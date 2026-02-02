@@ -1,0 +1,324 @@
+/**
+ * Unit tests for RecordingManager module.
+ * Tests the recording lifecycle: start, stop, pause, resume.
+ * @module tests/unit/RecordingManager.test
+ */
+/** @jest-environment jsdom */
+
+import { RecordingManager } from '../../src/recording/RecordingManager';
+import { RecordingStatus } from '../../src/types';
+import { DEFAULT_SETTINGS, AudioRecorderSettings } from '../../src/settings/Settings';
+import type { App } from 'obsidian';
+
+// Mock obsidian module
+jest.mock('obsidian', () => ({
+    Notice: jest.fn(),
+    MarkdownView: jest.fn(),
+    normalizePath: (path: string) => path.replace(/\\/g, '/'),
+}));
+
+// Mock AudioStreamHandler
+jest.mock('../../src/recording/AudioStreamHandler', () => ({
+    getAudioStreams: jest.fn(),
+    getAudioSourceName: jest.fn().mockResolvedValue('TestDevice'),
+    stopAllStreams: jest.fn(),
+}));
+
+// Mock WavEncoder
+jest.mock('../../src/recording/WavEncoder', () => ({
+    bufferToWave: jest.fn().mockReturnValue(new Blob(['test'], { type: 'audio/wav' })),
+}));
+
+describe('RecordingManager', () => {
+    let manager: RecordingManager;
+    let mockApp: App;
+    let mockSettings: AudioRecorderSettings;
+    let statusChangeCallback: jest.Mock;
+
+    beforeEach(() => {
+        // Reset mocks
+        jest.clearAllMocks();
+
+        // Create mock App
+        mockApp = {
+            vault: {
+                adapter: {
+                    exists: jest.fn().mockResolvedValue(false),
+                },
+                createBinary: jest.fn().mockResolvedValue(undefined),
+            },
+            workspace: {
+                getActiveViewOfType: jest.fn().mockReturnValue(null),
+            },
+        } as unknown as App;
+
+        // Use default settings
+        mockSettings = { ...DEFAULT_SETTINGS };
+
+        // Status change callback
+        statusChangeCallback = jest.fn();
+
+        // Create manager instance
+        manager = new RecordingManager(mockApp, mockSettings, statusChangeCallback);
+    });
+
+    describe('constructor', () => {
+        it('should initialize with idle status', () => {
+            expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+        });
+
+        it('should store the status change callback', () => {
+            expect(statusChangeCallback).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('getStatus', () => {
+        it('should return Idle initially', () => {
+            expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+        });
+    });
+
+    describe('updateSettings', () => {
+        it('should update settings reference', () => {
+            const newSettings: AudioRecorderSettings = {
+                ...DEFAULT_SETTINGS,
+                filePrefix: 'new-prefix',
+            };
+
+            manager.updateSettings(newSettings);
+
+            // Settings are private, but we can verify through behavior
+            expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+        });
+    });
+
+    describe('toggleRecording', () => {
+        beforeEach(() => {
+            // Mock MediaRecorder
+            const mockMediaRecorder = {
+                start: jest.fn(),
+                stop: jest.fn(),
+                pause: jest.fn(),
+                resume: jest.fn(),
+                ondataavailable: null as ((event: BlobEvent) => void) | null,
+                onerror: null as ((event: Event) => void) | null,
+                addEventListener: jest.fn((event: string, handler: () => void) => {
+                    if (event === 'stop') {
+                        handler();
+                    }
+                }),
+            };
+
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Mock global MediaRecorder
+            (global as Record<string, unknown>).MediaRecorder = jest.fn(() => mockMediaRecorder);
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Mock isTypeSupported
+            (global as Record<string, unknown>).MediaRecorder.isTypeSupported = jest.fn().mockReturnValue(true);
+
+            // Mock getAudioStreams
+            const { getAudioStreams } = jest.requireMock('../../src/recording/AudioStreamHandler') as {
+                getAudioStreams: jest.Mock;
+            };
+            getAudioStreams.mockResolvedValue([{
+                getTracks: () => [{ stop: jest.fn() }],
+            }]);
+        });
+
+        it('should start recording when idle', async () => {
+            expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+
+            await manager.toggleRecording();
+
+            expect(manager.getStatus()).toBe(RecordingStatus.Recording);
+            expect(statusChangeCallback).toHaveBeenCalledWith(RecordingStatus.Recording);
+        });
+
+        it('should stop recording when recording', async () => {
+            // First start
+            await manager.toggleRecording();
+            expect(manager.getStatus()).toBe(RecordingStatus.Recording);
+
+            // Then stop
+            await manager.toggleRecording();
+            expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+        });
+    });
+
+    describe('togglePauseResume', () => {
+        let mockMediaRecorder: {
+            start: jest.Mock;
+            stop: jest.Mock;
+            pause: jest.Mock;
+            resume: jest.Mock;
+            ondataavailable: ((event: BlobEvent) => void) | null;
+            onerror: ((event: Event) => void) | null;
+            addEventListener: jest.Mock;
+        };
+
+        beforeEach(() => {
+            mockMediaRecorder = {
+                start: jest.fn(),
+                stop: jest.fn(),
+                pause: jest.fn(),
+                resume: jest.fn(),
+                ondataavailable: null,
+                onerror: null,
+                addEventListener: jest.fn((event: string, handler: () => void) => {
+                    if (event === 'stop') {
+                        handler();
+                    }
+                }),
+            };
+
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Mock global MediaRecorder
+            (global as Record<string, unknown>).MediaRecorder = jest.fn(() => mockMediaRecorder);
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Mock isTypeSupported
+            (global as Record<string, unknown>).MediaRecorder.isTypeSupported = jest.fn().mockReturnValue(true);
+
+            const { getAudioStreams } = jest.requireMock('../../src/recording/AudioStreamHandler') as {
+                getAudioStreams: jest.Mock;
+            };
+            getAudioStreams.mockResolvedValue([{
+                getTracks: () => [{ stop: jest.fn() }],
+            }]);
+        });
+
+        it('should do nothing when idle', () => {
+            manager.togglePauseResume();
+
+            expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+            expect(mockMediaRecorder.pause).not.toHaveBeenCalled();
+        });
+
+        it('should pause when recording', async () => {
+            await manager.toggleRecording();
+            expect(manager.getStatus()).toBe(RecordingStatus.Recording);
+
+            manager.togglePauseResume();
+
+            expect(manager.getStatus()).toBe(RecordingStatus.Paused);
+            expect(statusChangeCallback).toHaveBeenCalledWith(RecordingStatus.Paused);
+        });
+
+        it('should resume when paused', async () => {
+            await manager.toggleRecording();
+            manager.togglePauseResume(); // Pause
+            expect(manager.getStatus()).toBe(RecordingStatus.Paused);
+
+            manager.togglePauseResume(); // Resume
+
+            expect(manager.getStatus()).toBe(RecordingStatus.Recording);
+            expect(statusChangeCallback).toHaveBeenCalledWith(RecordingStatus.Recording);
+        });
+    });
+
+    describe('cleanup', () => {
+        it('should reset all internal state', () => {
+            manager.cleanup();
+
+            expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+        });
+
+        it('should stop all streams', () => {
+            const { stopAllStreams } = jest.requireMock('../../src/recording/AudioStreamHandler') as {
+                stopAllStreams: jest.Mock;
+            };
+
+            manager.cleanup();
+
+            expect(stopAllStreams).toHaveBeenCalled();
+        });
+    });
+
+    describe('startRecording error handling', () => {
+        it('should handle unsupported format', async () => {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Mock global MediaRecorder
+            (global as Record<string, unknown>).MediaRecorder = {
+                isTypeSupported: jest.fn().mockReturnValue(false),
+            };
+
+            await manager.startRecording();
+
+            // Should remain idle on error
+            expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+        });
+
+        it('should handle stream acquisition error', async () => {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Mock global MediaRecorder
+            (global as Record<string, unknown>).MediaRecorder = {
+                isTypeSupported: jest.fn().mockReturnValue(true),
+            };
+
+            const { getAudioStreams } = jest.requireMock('../../src/recording/AudioStreamHandler') as {
+                getAudioStreams: jest.Mock;
+            };
+            getAudioStreams.mockRejectedValue(new Error('Permission denied'));
+
+            await manager.startRecording();
+
+            expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+        });
+    });
+
+    describe('lifecycle transitions', () => {
+        beforeEach(() => {
+            const mockMediaRecorder = {
+                start: jest.fn(),
+                stop: jest.fn(),
+                pause: jest.fn(),
+                resume: jest.fn(),
+                ondataavailable: null as ((event: BlobEvent) => void) | null,
+                onerror: null as ((event: Event) => void) | null,
+                addEventListener: jest.fn((event: string, handler: () => void) => {
+                    if (event === 'stop') {
+                        handler();
+                    }
+                }),
+            };
+
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Mock global MediaRecorder
+            (global as Record<string, unknown>).MediaRecorder = jest.fn(() => mockMediaRecorder);
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Mock isTypeSupported
+            (global as Record<string, unknown>).MediaRecorder.isTypeSupported = jest.fn().mockReturnValue(true);
+
+            const { getAudioStreams } = jest.requireMock('../../src/recording/AudioStreamHandler') as {
+                getAudioStreams: jest.Mock;
+            };
+            getAudioStreams.mockResolvedValue([{
+                getTracks: () => [{ stop: jest.fn() }],
+            }]);
+        });
+
+        it('should follow full lifecycle: idle -> recording -> paused -> recording -> idle', async () => {
+            expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+
+            // Start recording
+            await manager.toggleRecording();
+            expect(manager.getStatus()).toBe(RecordingStatus.Recording);
+
+            // Pause
+            manager.togglePauseResume();
+            expect(manager.getStatus()).toBe(RecordingStatus.Paused);
+
+            // Resume
+            manager.togglePauseResume();
+            expect(manager.getStatus()).toBe(RecordingStatus.Recording);
+
+            // Stop
+            await manager.toggleRecording();
+            expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+        });
+
+        it('should call onStatusChange for each transition', async () => {
+            await manager.toggleRecording();
+            manager.togglePauseResume();
+            manager.togglePauseResume();
+            await manager.toggleRecording();
+
+            expect(statusChangeCallback).toHaveBeenCalledTimes(4);
+            expect(statusChangeCallback).toHaveBeenNthCalledWith(1, RecordingStatus.Recording);
+            expect(statusChangeCallback).toHaveBeenNthCalledWith(2, RecordingStatus.Paused);
+            expect(statusChangeCallback).toHaveBeenNthCalledWith(3, RecordingStatus.Recording);
+            expect(statusChangeCallback).toHaveBeenNthCalledWith(4, RecordingStatus.Idle);
+        });
+    });
+});
