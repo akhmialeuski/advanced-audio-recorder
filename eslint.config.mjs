@@ -58,6 +58,7 @@ export default tseslint.config(
             '.agent/**',
             'eslint.config.mjs',
             'tests/**',
+            'scripts/**',
             '*.js',
             '*.mjs',
         ],
