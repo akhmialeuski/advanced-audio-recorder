@@ -108,9 +108,12 @@ export class RecordingManager {
 	 * Stops the current recording and saves the files.
 	 */
 	async stopRecording(): Promise<void> {
+		const recordersToStop = [...this.recorders];
+		const streamsToStop = [...this.streams];
+
 		try {
 			await Promise.all(
-				this.recorders.map(
+				recordersToStop.map(
 					(recorder) =>
 						new Promise<void>((resolve) => {
 							recorder.addEventListener('stop', () => resolve(), {
@@ -121,18 +124,19 @@ export class RecordingManager {
 				),
 			);
 
-			stopAllStreams(this.streams);
-			this.streams = [];
-
-			this.setStatus(RecordingStatus.Idle);
-			new Notice('Recording stopped');
-
 			await this.saveRecording();
+			new Notice('Recording stopped');
 		} catch (error) {
 			const message =
 				error instanceof Error ? error.message : String(error);
 			new Notice(`Error stopping recording: ${message}`);
 			console.error('[AudioRecorder] Error in stopRecording:', error);
+		} finally {
+			stopAllStreams(streamsToStop);
+			this.streams = [];
+			this.recorders = [];
+			this.audioChunks = [];
+			this.setStatus(RecordingStatus.Idle);
 		}
 	}
 
@@ -208,8 +212,6 @@ export class RecordingManager {
 		} else {
 			new Notice('No audio data recorded');
 		}
-
-		this.audioChunks = [];
 	}
 
 	private async mergeAudioTracks(): Promise<Blob> {

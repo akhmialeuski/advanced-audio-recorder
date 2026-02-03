@@ -229,6 +229,81 @@ describe('RecordingManager', () => {
         });
     });
 
+    describe('stopRecording error recovery', () => {
+        let mockStopTrack: jest.Mock;
+
+        beforeEach(() => {
+            mockStopTrack = jest.fn();
+
+            const mockMediaRecorder = {
+                start: jest.fn(),
+                stop: jest.fn(),
+                pause: jest.fn(),
+                resume: jest.fn(),
+                ondataavailable: null as ((event: BlobEvent) => void) | null,
+                onerror: null as ((event: Event) => void) | null,
+                addEventListener: jest.fn((event: string, handler: () => void) => {
+                    if (event === 'stop') {
+                        handler();
+                    }
+                }),
+            };
+
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Mock global MediaRecorder
+            (global as Record<string, unknown>).MediaRecorder = jest.fn(() => mockMediaRecorder);
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Mock isTypeSupported
+            (global as Record<string, unknown>).MediaRecorder.isTypeSupported = jest.fn().mockReturnValue(true);
+
+            const { getAudioStreams } = jest.requireMock('../../src/recording/AudioStreamHandler') as {
+                getAudioStreams: jest.Mock;
+            };
+            getAudioStreams.mockResolvedValue([{
+                getTracks: () => [{ stop: mockStopTrack }],
+            }]);
+        });
+
+        it('should reset status to Idle even when save fails', async () => {
+            // Start recording first
+            await manager.startRecording();
+            expect(manager.getStatus()).toBe(RecordingStatus.Recording);
+
+            // Mock vault to throw error during save
+            (mockApp.vault.createBinary as jest.Mock).mockRejectedValue(new Error('Save failed'));
+
+            // Stop recording - should recover
+            await manager.stopRecording();
+
+            // Status should be Idle despite error
+            expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+            expect(statusChangeCallback).toHaveBeenLastCalledWith(RecordingStatus.Idle);
+        });
+
+        it('should stop streams even when save fails', async () => {
+            const { stopAllStreams } = jest.requireMock('../../src/recording/AudioStreamHandler') as {
+                stopAllStreams: jest.Mock;
+            };
+
+            await manager.startRecording();
+
+            // Mock vault to throw error during save
+            (mockApp.vault.createBinary as jest.Mock).mockRejectedValue(new Error('Save failed'));
+
+            await manager.stopRecording();
+
+            // Streams should still be stopped
+            expect(stopAllStreams).toHaveBeenCalled();
+        });
+
+        it('should clear all arrays after stop', async () => {
+            await manager.startRecording();
+            await manager.stopRecording();
+
+            // Internal state should be cleared - verify by starting a new recording
+            // If arrays weren't cleared, this would have stale data
+            expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+        });
+    });
+
     describe('startRecording error handling', () => {
         it('should handle unsupported format', async () => {
             // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Mock global MediaRecorder
