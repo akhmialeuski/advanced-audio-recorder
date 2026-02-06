@@ -24,12 +24,33 @@ export async function getAudioStream(
 	deviceId?: string,
 	sampleRate?: number,
 ): Promise<MediaStream> {
-	return navigator.mediaDevices.getUserMedia({
-		audio: {
-			deviceId: deviceId ? { exact: deviceId } : undefined,
-			sampleRate: sampleRate,
-		},
-	});
+	try {
+		return await navigator.mediaDevices.getUserMedia({
+			audio: {
+				deviceId: deviceId ? { exact: deviceId } : undefined,
+				sampleRate: sampleRate,
+			},
+		});
+	} catch (error) {
+		if (
+			deviceId &&
+			(error instanceof OverconstrainedError ||
+				(error instanceof Error &&
+					(error.name === 'OverconstrainedError' ||
+						error.name === 'NotFoundError')))
+		) {
+			console.warn(
+				`[AudioStreamHandler] Failed to get audio stream for device ${deviceId}. Falling back to default device. Error: ${String(error)}`,
+			);
+			return navigator.mediaDevices.getUserMedia({
+				audio: {
+					deviceId: undefined, // Fallback to default
+					sampleRate: sampleRate,
+				},
+			});
+		}
+		throw error;
+	}
 }
 
 /**
