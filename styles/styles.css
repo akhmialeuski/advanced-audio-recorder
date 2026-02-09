@@ -11,3 +11,18 @@ If your plugin does not need CSS, delete this file.
     color: red;
     font-weight: bold;
 }
+
+/* Ribbon icon recording animation */
+.side-dock-ribbon-action.is-recording svg {
+    color: var(--color-red);
+    animation: pulse-recording 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-recording {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
