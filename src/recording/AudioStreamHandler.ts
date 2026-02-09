@@ -34,29 +34,70 @@ export class AudioStreamError extends Error {
 }
 
 /**
+ * Maximum number of retry attempts for temporary errors.
+ */
+const MAX_RETRIES = 2;
+
+/**
+ * Delay between retry attempts in milliseconds.
+ */
+const RETRY_DELAY_MS = 500;
+
+/**
+ * Delays execution for specified milliseconds.
+ */
+function delay(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
  * Gets a MediaStream for the specified audio device.
+ * Implements retry logic for temporary access errors.
  * @param deviceId - Optional device ID to use
  * @param sampleRate - Audio sample rate
  * @returns Promise resolving to MediaStream
- * @throws AudioStreamError if device access fails
+ * @throws AudioStreamError if device access fails after all retries
  */
 export async function getAudioStream(
 	deviceId?: string,
 	sampleRate?: number,
 ): Promise<MediaStream> {
-	try {
-		return await navigator.mediaDevices.getUserMedia({
-			audio: {
-				deviceId: deviceId ? { exact: deviceId } : undefined,
-				sampleRate: sampleRate,
-			},
-		});
-	} catch (error) {
-		if (error instanceof Error) {
-			throw new AudioStreamError(error, deviceId);
+	let lastError: Error | null = null;
+
+	for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+		try {
+			return await navigator.mediaDevices.getUserMedia({
+				audio: {
+					deviceId: deviceId ? { exact: deviceId } : undefined,
+					sampleRate: sampleRate,
+				},
+			});
+		} catch (error) {
+			lastError =
+				error instanceof Error ? error : new Error(String(error));
+
+			// Retry only for temporary errors (AbortError indicates interrupted request)
+			const isRetryable =
+				error instanceof DOMException &&
+				(error.name === 'AbortError' ||
+					error.name === 'NotReadableError');
+
+			if (isRetryable && attempt < MAX_RETRIES) {
+				console.debug(
+					`[AudioRecorder] Retry ${String(attempt + 1)}/${String(MAX_RETRIES)} for device access`,
+				);
+				await delay(RETRY_DELAY_MS);
+				continue;
+			}
+
+			throw new AudioStreamError(lastError, deviceId);
 		}
-		throw error;
 	}
+
+	throw new AudioStreamError(
+		lastError ?? new Error('Max retries exceeded'),
+		deviceId,
+	);
 }
 
 /**

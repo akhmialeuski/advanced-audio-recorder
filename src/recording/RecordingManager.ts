@@ -13,6 +13,7 @@ import {
 	stopAllStreams,
 } from './AudioStreamHandler';
 import { bufferToWave } from './WavEncoder';
+import { DebugLogger } from '../utils/DebugLogger';
 
 /**
  * Manages the audio recording lifecycle.
@@ -23,6 +24,8 @@ export class RecordingManager {
 	private streams: MediaStream[] = [];
 	private status: RecordingStatus = RecordingStatus.Idle;
 	private onStatusChange: (status: RecordingStatus) => void;
+	private debugLogger: DebugLogger;
+	private recordingStartTime: number = 0;
 
 	/**
 	 * Creates a new RecordingManager.
@@ -36,6 +39,7 @@ export class RecordingManager {
 		onStatusChange: (status: RecordingStatus) => void,
 	) {
 		this.onStatusChange = onStatusChange;
+		this.debugLogger = new DebugLogger(settings);
 	}
 
 	/**
@@ -51,6 +55,7 @@ export class RecordingManager {
 	 */
 	updateSettings(settings: AudioRecorderSettings): void {
 		this.settings = settings;
+		this.debugLogger.updateSettings(settings);
 	}
 
 	/**
@@ -70,6 +75,8 @@ export class RecordingManager {
 	async startRecording(): Promise<void> {
 		try {
 			const mimeType = `audio/${this.settings.recordingFormat};codecs=opus`;
+			this.debugLogger.logMimeType(mimeType);
+
 			if (!MediaRecorder.isTypeSupported(mimeType)) {
 				throw new Error(
 					`The format ${this.settings.recordingFormat} is not supported in this browser.`,
@@ -81,15 +88,20 @@ export class RecordingManager {
 				(stream) => new MediaRecorder(stream, { mimeType }),
 			);
 			this.audioChunks = this.recorders.map(() => []);
+			this.recordingStartTime = Date.now();
 
 			this.recorders.forEach((recorder, index) => {
 				recorder.ondataavailable = (event: BlobEvent): void => {
 					if (event.data.size > 0) {
 						this.audioChunks[index].push(event.data);
+						this.debugLogger.logChunkSize(index, event.data.size);
 					}
 				};
 				recorder.onerror = (event: Event): void => {
 					console.error('[AudioRecorder] Recorder error:', event);
+					new Notice(
+						'Recording error occurred. Check console for details.',
+					);
 				};
 				recorder.start();
 			});
@@ -97,11 +109,34 @@ export class RecordingManager {
 			this.setStatus(RecordingStatus.Recording);
 			new Notice('Recording started');
 		} catch (error) {
+			this.handleStartRecordingError(error);
+		}
+	}
+
+	/**
+	 * Handles errors during recording start with user-friendly messages.
+	 */
+	private handleStartRecordingError(error: unknown): void {
+		if (error instanceof DOMException) {
+			if (error.name === 'NotAllowedError') {
+				new Notice(
+					'Microphone access denied. Please grant permission in browser settings.',
+				);
+			} else if (error.name === 'NotFoundError') {
+				new Notice(
+					'No microphone found. Please connect an audio input device.',
+				);
+			} else if (error.name === 'NotReadableError') {
+				new Notice('Microphone is in use by another application.');
+			} else {
+				new Notice(`Recording error: ${error.message}`);
+			}
+		} else {
 			const message =
 				error instanceof Error ? error.message : String(error);
 			new Notice(`Error starting recording: ${message}`);
-			console.error('[AudioRecorder] Error in startRecording:', error);
 		}
+		console.error('[AudioRecorder] Error in startRecording:', error);
 	}
 
 	/**
@@ -123,6 +158,13 @@ export class RecordingManager {
 						}),
 				),
 			);
+
+			const durationMs = Date.now() - this.recordingStartTime;
+			const totalChunks = this.audioChunks.reduce(
+				(sum, chunks) => sum + chunks.length,
+				0,
+			);
+			this.debugLogger.logRecordingStats(durationMs, totalChunks);
 
 			await this.saveRecording();
 			new Notice('Recording stopped');

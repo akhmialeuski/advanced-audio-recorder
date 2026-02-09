@@ -38,9 +38,13 @@ export default class AudioRecorderPlugin extends Plugin {
 
 		this.addSettingTab(new AudioRecorderSettingTab(this.app, this));
 		this.registerCommands();
-		this.ribbonIconEl = this.addRibbonIcon('microphone', 'Start/stop recording', () => {
-			void this.recordingManager.toggleRecording();
-		});
+		this.ribbonIconEl = this.addRibbonIcon(
+			'microphone',
+			'Start/stop recording',
+			() => {
+				void this.recordingManager.toggleRecording();
+			},
+		);
 		this.setupStatusBar();
 	}
 
