@@ -77,8 +77,12 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName('Audio recorder')
-			.setDesc('Configure the audio recorder plugin.')
+			.setName('Advanced Audio Recorder')
+			.setHeading();
+
+		new Setting(containerEl)
+			.setName('Recording')
+			.setDesc('Configure audio recording options.')
 			.setHeading();
 
 		const supportedFormats = this.getSupportedFormats();

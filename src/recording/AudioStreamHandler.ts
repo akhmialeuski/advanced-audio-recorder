@@ -15,21 +15,48 @@ export async function getAudioInputDevices(): Promise<MediaDeviceInfo[]> {
 }
 
 /**
+ * Error thrown when audio stream acquisition fails.
+ */
+export class AudioStreamError extends Error {
+	constructor(
+		public readonly originalError: Error,
+		public readonly deviceId?: string,
+	) {
+		const message = deviceId
+			? `[Advanced Audio Recorder] Failed to access audio device "${deviceId}". ` +
+				`The device may be disconnected, in use by another application, or its ID may have changed. ` +
+				`Please verify the device in plugin settings. Original error: ${originalError.message}`
+			: `[Advanced Audio Recorder] Failed to access audio device. ` +
+				`Original error: ${originalError.message}`;
+		super(message);
+		this.name = 'AudioStreamError';
+	}
+}
+
+/**
  * Gets a MediaStream for the specified audio device.
  * @param deviceId - Optional device ID to use
  * @param sampleRate - Audio sample rate
  * @returns Promise resolving to MediaStream
+ * @throws AudioStreamError if device access fails
  */
 export async function getAudioStream(
 	deviceId?: string,
 	sampleRate?: number,
 ): Promise<MediaStream> {
-	return navigator.mediaDevices.getUserMedia({
-		audio: {
-			deviceId: deviceId ? { exact: deviceId } : undefined,
-			sampleRate: sampleRate,
-		},
-	});
+	try {
+		return await navigator.mediaDevices.getUserMedia({
+			audio: {
+				deviceId: deviceId ? { exact: deviceId } : undefined,
+				sampleRate: sampleRate,
+			},
+		});
+	} catch (error) {
+		if (error instanceof Error) {
+			throw new AudioStreamError(error, deviceId);
+		}
+		throw error;
+	}
 }
 
 /**

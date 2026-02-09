@@ -80,3 +80,66 @@ export function mergeSettings(
 ): AudioRecorderSettings {
 	return { ...DEFAULT_SETTINGS, ...userSettings };
 }
+
+/**
+ * Error thrown when settings validation fails.
+ */
+export class SettingsValidationError extends Error {
+	constructor(
+		public readonly field: string,
+		public readonly reason: string,
+	) {
+		super(
+			`[Advanced Audio Recorder] Invalid setting "${field}": ${reason}`,
+		);
+		this.name = 'SettingsValidationError';
+	}
+}
+
+/**
+ * Validates audio recorder settings before use.
+ * @param settings - Settings to validate
+ * @throws SettingsValidationError if any setting is invalid
+ */
+export function validateSettings(settings: AudioRecorderSettings): void {
+	if (!settings.audioDeviceId || settings.audioDeviceId.trim() === '') {
+		throw new SettingsValidationError(
+			'audioDeviceId',
+			'Audio device is not selected. Please select an audio input device in plugin settings.',
+		);
+	}
+
+	if (!settings.sampleRate || settings.sampleRate <= 0) {
+		throw new SettingsValidationError(
+			'sampleRate',
+			'Sample rate must be a positive number.',
+		);
+	}
+
+	if (!settings.recordingFormat || settings.recordingFormat.trim() === '') {
+		throw new SettingsValidationError(
+			'recordingFormat',
+			'Recording format is not selected.',
+		);
+	}
+
+	if (settings.enableMultiTrack) {
+		const trackCount = Object.keys(settings.trackAudioSources).length;
+		if (trackCount === 0) {
+			throw new SettingsValidationError(
+				'trackAudioSources',
+				'Multi-track recording is enabled but no audio sources are selected.',
+			);
+		}
+		for (const [trackNum, deviceId] of Object.entries(
+			settings.trackAudioSources,
+		)) {
+			if (!deviceId || deviceId.trim() === '') {
+				throw new SettingsValidationError(
+					`trackAudioSources[${trackNum}]`,
+					`Track ${trackNum} has no audio source selected.`,
+				);
+			}
+		}
+	}
+}
