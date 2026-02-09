@@ -1,13 +1,17 @@
 /**
- * Reproduction test for OverconstrainedError bug.
- * Verifies that recording fails when device constraints cannot be satisfied.
- * @module tests/repro_issue.test
+ * Tests for AudioStreamHandler error handling.
+ * Verifies that proper errors are logged when device constraints cannot be satisfied.
+ * @module tests/AudioStreamHandler.error.test
  */
 /** @jest-environment jsdom */
 
 import { RecordingManager } from '../src/recording/RecordingManager';
 import { RecordingStatus } from '../src/types';
-import { DEFAULT_SETTINGS, AudioRecorderSettings } from '../src/settings/Settings';
+import {
+    DEFAULT_SETTINGS,
+    AudioRecorderSettings,
+} from '../src/settings/Settings';
+import { AudioStreamError } from '../src/recording/AudioStreamHandler';
 import type { App } from 'obsidian';
 
 // Mock OverconstrainedError if not present in JSDOM
@@ -19,28 +23,34 @@ class OverconstrainedError extends Error {
         this.constraint = constraint;
     }
 }
-(global as any).OverconstrainedError = OverconstrainedError;
+(global as unknown as Record<string, unknown>).OverconstrainedError =
+    OverconstrainedError;
 
 // Mock obsidian module
+const mockNotice = jest.fn();
 jest.mock('obsidian', () => ({
-    Notice: jest.fn(),
+    Notice: jest.fn().mockImplementation((msg: string) => mockNotice(msg)),
     MarkdownView: jest.fn(),
     normalizePath: (path: string) => path.replace(/\\/g, '/'),
 }));
 
 // Mock WavEncoder
 jest.mock('../src/recording/WavEncoder', () => ({
-    bufferToWave: jest.fn().mockReturnValue(new Blob(['test'], { type: 'audio/wav' })),
+    bufferToWave: jest
+        .fn()
+        .mockReturnValue(new Blob(['test'], { type: 'audio/wav' })),
 }));
 
-describe('Reproduction: OverconstrainedError', () => {
+describe('AudioStreamHandler: Error Handling', () => {
     let manager: RecordingManager;
     let mockApp: App;
     let mockSettings: AudioRecorderSettings;
     let statusChangeCallback: jest.Mock;
+    let consoleErrorSpy: jest.SpyInstance;
 
     beforeEach(() => {
         jest.clearAllMocks();
+        consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
 
         mockApp = {
             vault: {
@@ -63,42 +73,142 @@ describe('Reproduction: OverconstrainedError', () => {
             ondataavailable: null,
             onerror: null,
         };
-        (global as any).MediaRecorder = jest.fn(() => mockMediaRecorder);
-        (global as any).MediaRecorder.isTypeSupported = jest.fn().mockReturnValue(true);
+        (global as unknown as Record<string, unknown>).MediaRecorder = jest.fn(
+            () => mockMediaRecorder,
+        );
+        (
+            (global as unknown as Record<string, unknown>)
+                .MediaRecorder as unknown as Record<string, unknown>
+        ).isTypeSupported = jest.fn().mockReturnValue(true);
     });
 
-    it('should start recording using fallback when OverconstrainedError occurs', async () => {
-        // Setup: Mock getUserMedia to throw OverconstrainedError on first attempt, then success on fallback
+    afterEach(() => {
+        consoleErrorSpy.mockRestore();
+    });
 
-        // We need to mock navigator.mediaDevices.getUserMedia specifically for this test
-        const getUserMediaMock = jest.fn()
-            .mockRejectedValueOnce(new OverconstrainedError('deviceId', 'Constraint not satisfied')) // First call fails
-            .mockResolvedValueOnce({ // Second call succeeds (fallback)
-                getTracks: () => [{ stop: jest.fn() }]
-            } as any); // Cast to any or partial MediaStream
+    it('should log AudioStreamError when OverconstrainedError occurs', async () => {
+        const getUserMediaMock = jest
+            .fn()
+            .mockRejectedValueOnce(
+                new OverconstrainedError('deviceId', 'Constraint not satisfied'),
+            );
 
         Object.defineProperty(navigator, 'mediaDevices', {
             value: {
                 getUserMedia: getUserMediaMock,
-                enumerateDevices: jest.fn().mockResolvedValue([])
+                enumerateDevices: jest.fn().mockResolvedValue([]),
             },
-            writable: true
+            writable: true,
         });
 
-        // Spy on console.warn to verify fallback log
-        const consoleSpy = jest.spyOn(console, 'warn').mockImplementation(() => { });
-
-        // Action: Attempt to start recording
         await manager.startRecording();
 
-        // Assertion: Status should be Recording (success)
-        expect(manager.getStatus()).toBe(RecordingStatus.Recording);
-
-        // Assertion: Fallback warning should be logged
-        expect(consoleSpy).toHaveBeenCalledWith(
-            expect.stringContaining('Falling back to default device')
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+            '[AudioRecorder] Error in startRecording:',
+            expect.any(AudioStreamError),
         );
+    });
 
-        consoleSpy.mockRestore();
+    it('should show Notice with error message containing device ID', async () => {
+        const getUserMediaMock = jest
+            .fn()
+            .mockRejectedValueOnce(
+                new OverconstrainedError('deviceId', 'Device not found'),
+            );
+
+        Object.defineProperty(navigator, 'mediaDevices', {
+            value: {
+                getUserMedia: getUserMediaMock,
+                enumerateDevices: jest.fn().mockResolvedValue([]),
+            },
+            writable: true,
+        });
+
+        await manager.startRecording();
+
+        expect(mockNotice).toHaveBeenCalledWith(
+            expect.stringContaining('test-device-id'),
+        );
+    });
+
+    it('should suggest checking plugin settings in Notice', async () => {
+        const getUserMediaMock = jest
+            .fn()
+            .mockRejectedValueOnce(new Error('NotFoundError'));
+
+        Object.defineProperty(navigator, 'mediaDevices', {
+            value: {
+                getUserMedia: getUserMediaMock,
+                enumerateDevices: jest.fn().mockResolvedValue([]),
+            },
+            writable: true,
+        });
+
+        await manager.startRecording();
+
+        expect(mockNotice).toHaveBeenCalledWith(
+            expect.stringContaining('verify the device in plugin settings'),
+        );
+    });
+
+    it('should not fallback to default device', async () => {
+        const getUserMediaMock = jest
+            .fn()
+            .mockRejectedValueOnce(
+                new OverconstrainedError('deviceId', 'Constraint not satisfied'),
+            );
+
+        Object.defineProperty(navigator, 'mediaDevices', {
+            value: {
+                getUserMedia: getUserMediaMock,
+                enumerateDevices: jest.fn().mockResolvedValue([]),
+            },
+            writable: true,
+        });
+
+        await manager.startRecording();
+
+        // getUserMedia should only be called once (no fallback attempt)
+        expect(getUserMediaMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('should remain in Idle status on error', async () => {
+        const getUserMediaMock = jest
+            .fn()
+            .mockRejectedValueOnce(new Error('Access denied'));
+
+        Object.defineProperty(navigator, 'mediaDevices', {
+            value: {
+                getUserMedia: getUserMediaMock,
+                enumerateDevices: jest.fn().mockResolvedValue([]),
+            },
+            writable: true,
+        });
+
+        await manager.startRecording();
+
+        expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+    });
+});
+
+describe('AudioStreamError', () => {
+    it('should create error with device ID', () => {
+        const original = new Error('Original error');
+        const error = new AudioStreamError(original, 'my-device-id');
+
+        expect(error.name).toBe('AudioStreamError');
+        expect(error.message).toContain('my-device-id');
+        expect(error.originalError).toBe(original);
+        expect(error.deviceId).toBe('my-device-id');
+    });
+
+    it('should create error without device ID', () => {
+        const original = new Error('Original error');
+        const error = new AudioStreamError(original);
+
+        expect(error.name).toBe('AudioStreamError');
+        expect(error.message).toContain('Failed to access audio device');
+        expect(error.message).toContain('Original error');
+        expect(error.deviceId).toBeUndefined();
     });
 });
