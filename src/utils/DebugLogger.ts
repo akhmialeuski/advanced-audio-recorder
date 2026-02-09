@@ -3,6 +3,7 @@
  * @module utils/DebugLogger
  */
 
+import { PLUGIN_LOG_PREFIX } from '../constants';
 import type { AudioRecorderSettings } from '../settings/Settings';
 
 /**
@@ -27,7 +28,7 @@ export class DebugLogger {
 	 */
 	logMimeType(mimeType: string): void {
 		if (!this.enabled) return;
-		console.debug('[AudioRecorder] Selected MIME type:', mimeType);
+		console.debug(`${PLUGIN_LOG_PREFIX} Selected MIME type:`, mimeType);
 	}
 
 	/**
@@ -36,7 +37,7 @@ export class DebugLogger {
 	logDevices(devices: MediaDeviceInfo[]): void {
 		if (!this.enabled) return;
 		console.debug(
-			'[AudioRecorder] Available audio devices:',
+			`${PLUGIN_LOG_PREFIX} Available audio devices:`,
 			devices.map((d) => ({ id: d.deviceId, label: d.label })),
 		);
 	}
@@ -47,7 +48,7 @@ export class DebugLogger {
 	logChunkSize(trackIndex: number, size: number): void {
 		if (!this.enabled) return;
 		console.debug(
-			`[AudioRecorder] Track ${String(trackIndex)} chunk size: ${String(size)} bytes`,
+			`${PLUGIN_LOG_PREFIX} Track ${String(trackIndex)} chunk size: ${String(size)} bytes`,
 		);
 	}
 
@@ -58,7 +59,7 @@ export class DebugLogger {
 		if (!this.enabled) return;
 		const durationSec = (durationMs / 1000).toFixed(1);
 		console.debug(
-			`[AudioRecorder] Recording stats: ${durationSec}s, ${String(totalChunks)} chunks`,
+			`${PLUGIN_LOG_PREFIX} Recording stats: ${durationSec}s, ${String(totalChunks)} chunks`,
 		);
 	}
 
@@ -67,6 +68,6 @@ export class DebugLogger {
 	 */
 	log(message: string, ...args: unknown[]): void {
 		if (!this.enabled) return;
-		console.debug(`[AudioRecorder] ${message}`, ...args);
+		console.debug(`${PLUGIN_LOG_PREFIX} ${message}`, ...args);
 	}
 }

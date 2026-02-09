@@ -11,8 +11,49 @@ import {
     DEFAULT_SETTINGS,
     AudioRecorderSettings,
 } from '../src/settings/Settings';
-import { AudioStreamError } from '../src/recording/AudioStreamHandler';
+import { AudioStreamError } from '../src/errors';
+import { PLUGIN_LOG_PREFIX } from '../src/constants';
 import type { App } from 'obsidian';
+
+// Mock AudioContext and OfflineAudioContext
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(global as any).AudioContext = jest.fn().mockImplementation(() => ({
+    decodeAudioData: jest.fn().mockResolvedValue({
+        duration: 1,
+        length: 44100,
+        sampleRate: 44100,
+        numberOfChannels: 1,
+        getChannelData: jest.fn().mockReturnValue(new Float32Array(44100)),
+    }),
+    createBufferSource: jest.fn().mockImplementation(() => ({
+        connect: jest.fn(),
+        start: jest.fn(),
+        buffer: null,
+    })),
+    destination: {},
+    close: jest.fn().mockResolvedValue(undefined),
+    sampleRate: 44100,
+}));
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(global as any).OfflineAudioContext = jest.fn().mockImplementation(() => ({
+    createBufferSource: jest.fn().mockImplementation(() => ({
+        connect: jest.fn(),
+        start: jest.fn(),
+        buffer: null,
+    })),
+    startRendering: jest.fn().mockResolvedValue({
+        length: 44100,
+        sampleRate: 44100,
+        getChannelData: jest.fn().mockReturnValue(new Float32Array(44100)),
+    }),
+    destination: {},
+}));
+
+// Mock AudioBuffer
+(global as any).AudioBuffer = jest.fn().mockImplementation(() => ({
+    getChannelData: jest.fn().mockReturnValue(new Float32Array(44100)),
+}));
 
 // Mock OverconstrainedError if not present in JSDOM
 class OverconstrainedError extends Error {
@@ -104,7 +145,7 @@ describe('AudioStreamHandler: Error Handling', () => {
         await manager.startRecording();
 
         expect(consoleErrorSpy).toHaveBeenCalledWith(
-            '[AudioRecorder] Error in startRecording:',
+            `${PLUGIN_LOG_PREFIX} Error in startRecording:`,
             expect.any(AudioStreamError),
         );
     });

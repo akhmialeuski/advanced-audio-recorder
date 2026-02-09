@@ -3,6 +3,8 @@
  * @module recording/AudioStreamHandler
  */
 
+import { PLUGIN_LOG_PREFIX } from '../constants';
+import { AudioStreamError } from '../errors';
 import type { AudioRecorderSettings } from '../settings/Settings';
 
 /**
@@ -12,25 +14,6 @@ import type { AudioRecorderSettings } from '../settings/Settings';
 export async function getAudioInputDevices(): Promise<MediaDeviceInfo[]> {
 	const devices = await navigator.mediaDevices.enumerateDevices();
 	return devices.filter((device) => device.kind === 'audioinput');
-}
-
-/**
- * Error thrown when audio stream acquisition fails.
- */
-export class AudioStreamError extends Error {
-	constructor(
-		public readonly originalError: Error,
-		public readonly deviceId?: string,
-	) {
-		const message = deviceId
-			? `[Advanced Audio Recorder] Failed to access audio device "${deviceId}". ` +
-				`The device may be disconnected, in use by another application, or its ID may have changed. ` +
-				`Please verify the device in plugin settings. Original error: ${originalError.message}`
-			: `[Advanced Audio Recorder] Failed to access audio device. ` +
-				`Original error: ${originalError.message}`;
-		super(message);
-		this.name = 'AudioStreamError';
-	}
 }
 
 /**
@@ -84,7 +67,7 @@ export async function getAudioStream(
 
 			if (isRetryable && attempt < MAX_RETRIES) {
 				console.debug(
-					`[AudioRecorder] Retry ${String(attempt + 1)}/${String(MAX_RETRIES)} for device access`,
+					`${PLUGIN_LOG_PREFIX} Retry ${String(attempt + 1)}/${String(MAX_RETRIES)} for device access`,
 				);
 				await delay(RETRY_DELAY_MS);
 				continue;

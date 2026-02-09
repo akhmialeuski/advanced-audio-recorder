@@ -13,6 +13,7 @@ import {
 	stopAllStreams,
 } from './AudioStreamHandler';
 import { bufferToWave } from './WavEncoder';
+import { PLUGIN_LOG_PREFIX } from '../constants';
 import { DebugLogger } from '../utils/DebugLogger';
 
 /**
@@ -98,7 +99,10 @@ export class RecordingManager {
 					}
 				};
 				recorder.onerror = (event: Event): void => {
-					console.error('[AudioRecorder] Recorder error:', event);
+					console.error(
+						`${PLUGIN_LOG_PREFIX} Recorder error:`,
+						event,
+					);
 					new Notice(
 						'Recording error occurred. Check console for details.',
 					);
@@ -136,7 +140,7 @@ export class RecordingManager {
 				error instanceof Error ? error.message : String(error);
 			new Notice(`Error starting recording: ${message}`);
 		}
-		console.error('[AudioRecorder] Error in startRecording:', error);
+		console.error(`${PLUGIN_LOG_PREFIX} Error in startRecording:`, error);
 	}
 
 	/**
@@ -172,7 +176,10 @@ export class RecordingManager {
 			const message =
 				error instanceof Error ? error.message : String(error);
 			new Notice(`Error stopping recording: ${message}`);
-			console.error('[AudioRecorder] Error in stopRecording:', error);
+			console.error(
+				`${PLUGIN_LOG_PREFIX} Error in stopRecording:`,
+				error,
+			);
 		} finally {
 			stopAllStreams(streamsToStop);
 			this.streams = [];
@@ -304,7 +311,9 @@ export class RecordingManager {
 		fileName: string,
 	): Promise<string | null> {
 		if (audioBlob.size === 0) {
-			console.debug(`[AudioRecorder] Skipping empty file: ${fileName}`);
+			console.debug(
+				`${PLUGIN_LOG_PREFIX} Skipping empty file: ${fileName}`,
+			);
 			return null;
 		}
 
