@@ -9,6 +9,7 @@ import { AudioRecorderSettings, mergeSettings } from './settings/Settings';
 import { AudioRecorderSettingTab } from './settings/SettingsTab';
 import { RecordingManager } from './recording/RecordingManager';
 import { updateStatusBar, initializeStatusBar } from './ui/StatusBar';
+import { updateRibbonIcon, initializeRibbonIcon } from './ui/RibbonIcon';
 import { showDeviceSelectionModal } from './ui/DeviceSelectionModal';
 
 /**
@@ -18,6 +19,7 @@ export default class AudioRecorderPlugin extends Plugin {
 	settings!: AudioRecorderSettings;
 	private recordingManager!: RecordingManager;
 	private statusBarItem: HTMLElement | null = null;
+	private ribbonIconEl: HTMLElement | null = null;
 
 	/**
 	 * Called when the plugin is loaded.
@@ -30,12 +32,13 @@ export default class AudioRecorderPlugin extends Plugin {
 			this.settings,
 			(status: RecordingStatus) => {
 				updateStatusBar(this.statusBarItem, status);
+				updateRibbonIcon(this.ribbonIconEl, status);
 			},
 		);
 
 		this.addSettingTab(new AudioRecorderSettingTab(this.app, this));
 		this.registerCommands();
-		this.addRibbonIcon('microphone', 'Start/stop recording', () => {
+		this.ribbonIconEl = this.addRibbonIcon('microphone', 'Start/stop recording', () => {
 			void this.recordingManager.toggleRecording();
 		});
 		this.setupStatusBar();
@@ -47,6 +50,7 @@ export default class AudioRecorderPlugin extends Plugin {
 	onunload(): void {
 		this.recordingManager.cleanup();
 		initializeStatusBar(this.statusBarItem);
+		initializeRibbonIcon(this.ribbonIconEl);
 	}
 
 	/**
