@@ -3,6 +3,8 @@
  * @module settings/Settings
  */
 
+import { SettingsValidationError } from '../errors';
+
 /**
  * Output mode for multi-track recordings.
  */
@@ -79,21 +81,6 @@ export function mergeSettings(
 	userSettings: Partial<AudioRecorderSettings>,
 ): AudioRecorderSettings {
 	return { ...DEFAULT_SETTINGS, ...userSettings };
-}
-
-/**
- * Error thrown when settings validation fails.
- */
-export class SettingsValidationError extends Error {
-	constructor(
-		public readonly field: string,
-		public readonly reason: string,
-	) {
-		super(
-			`[Advanced Audio Recorder] Invalid setting "${field}": ${reason}`,
-		);
-		this.name = 'SettingsValidationError';
-	}
 }
 
 /**

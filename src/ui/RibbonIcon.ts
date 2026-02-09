@@ -18,28 +18,28 @@ const ICON_RECORDING = 'mic';
  * @param status - Current recording status
  */
 export function updateRibbonIcon(
-    ribbonIconEl: HTMLElement | null,
-    status: RecordingStatus,
+	ribbonIconEl: HTMLElement | null,
+	status: RecordingStatus,
 ): void {
-    if (!ribbonIconEl) {
-        return;
-    }
+	if (!ribbonIconEl) {
+		return;
+	}
 
-    switch (status) {
-        case RecordingStatus.Recording:
-            setIcon(ribbonIconEl, ICON_RECORDING);
-            ribbonIconEl.classList.add('is-recording');
-            break;
-        case RecordingStatus.Paused:
-            setIcon(ribbonIconEl, ICON_RECORDING);
-            ribbonIconEl.classList.add('is-recording');
-            break;
-        case RecordingStatus.Idle:
-        default:
-            setIcon(ribbonIconEl, ICON_IDLE);
-            ribbonIconEl.classList.remove('is-recording');
-            break;
-    }
+	switch (status) {
+		case RecordingStatus.Recording:
+			setIcon(ribbonIconEl, ICON_RECORDING);
+			ribbonIconEl.classList.add('is-recording');
+			break;
+		case RecordingStatus.Paused:
+			setIcon(ribbonIconEl, ICON_RECORDING);
+			ribbonIconEl.classList.add('is-recording');
+			break;
+		case RecordingStatus.Idle:
+		default:
+			setIcon(ribbonIconEl, ICON_IDLE);
+			ribbonIconEl.classList.remove('is-recording');
+			break;
+	}
 }
 
 /**
@@ -47,5 +47,5 @@ export function updateRibbonIcon(
  * @param ribbonIconEl - The ribbon icon HTML element
  */
 export function initializeRibbonIcon(ribbonIconEl: HTMLElement | null): void {
-    updateRibbonIcon(ribbonIconEl, RecordingStatus.Idle);
+	updateRibbonIcon(ribbonIconEl, RecordingStatus.Idle);
 }

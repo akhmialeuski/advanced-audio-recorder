@@ -29,6 +29,46 @@ jest.mock('../../src/recording/WavEncoder', () => ({
     bufferToWave: jest.fn().mockReturnValue(new Blob(['test'], { type: 'audio/wav' })),
 }));
 
+// Mock AudioContext and OfflineAudioContext
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(global as any).AudioContext = jest.fn().mockImplementation(() => ({
+    decodeAudioData: jest.fn().mockResolvedValue({
+        duration: 1,
+        length: 44100,
+        sampleRate: 44100,
+        numberOfChannels: 1,
+        getChannelData: jest.fn().mockReturnValue(new Float32Array(44100)),
+    }),
+    createBufferSource: jest.fn().mockImplementation(() => ({
+        connect: jest.fn(),
+        start: jest.fn(),
+        buffer: null,
+    })),
+    destination: {},
+    close: jest.fn().mockResolvedValue(undefined),
+    sampleRate: 44100,
+}));
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(global as any).OfflineAudioContext = jest.fn().mockImplementation(() => ({
+    createBufferSource: jest.fn().mockImplementation(() => ({
+        connect: jest.fn(),
+        start: jest.fn(),
+        buffer: null,
+    })),
+    startRendering: jest.fn().mockResolvedValue({
+        length: 44100,
+        sampleRate: 44100,
+        getChannelData: jest.fn().mockReturnValue(new Float32Array(44100)),
+    }),
+    destination: {},
+}));
+
+// Mock AudioBuffer
+(global as any).AudioBuffer = jest.fn().mockImplementation(() => ({
+    getChannelData: jest.fn().mockReturnValue(new Float32Array(44100)),
+}));
+
 describe('RecordingManager', () => {
     let manager: RecordingManager;
     let mockApp: App;

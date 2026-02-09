@@ -3,6 +3,8 @@
  * @module recording/AudioStreamHandler
  */
 
+import { PLUGIN_LOG_PREFIX } from '../constants';
+import { AudioStreamError } from '../errors';
 import type { AudioRecorderSettings } from '../settings/Settings';
 
 /**
@@ -15,48 +17,70 @@ export async function getAudioInputDevices(): Promise<MediaDeviceInfo[]> {
 }
 
 /**
- * Error thrown when audio stream acquisition fails.
+ * Maximum number of retry attempts for temporary errors.
  */
-export class AudioStreamError extends Error {
-	constructor(
-		public readonly originalError: Error,
-		public readonly deviceId?: string,
-	) {
-		const message = deviceId
-			? `[Advanced Audio Recorder] Failed to access audio device "${deviceId}". ` +
-				`The device may be disconnected, in use by another application, or its ID may have changed. ` +
-				`Please verify the device in plugin settings. Original error: ${originalError.message}`
-			: `[Advanced Audio Recorder] Failed to access audio device. ` +
-				`Original error: ${originalError.message}`;
-		super(message);
-		this.name = 'AudioStreamError';
-	}
+const MAX_RETRIES = 2;
+
+/**
+ * Delay between retry attempts in milliseconds.
+ */
+const RETRY_DELAY_MS = 500;
+
+/**
+ * Delays execution for specified milliseconds.
+ */
+function delay(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
  * Gets a MediaStream for the specified audio device.
+ * Implements retry logic for temporary access errors.
  * @param deviceId - Optional device ID to use
  * @param sampleRate - Audio sample rate
  * @returns Promise resolving to MediaStream
- * @throws AudioStreamError if device access fails
+ * @throws AudioStreamError if device access fails after all retries
  */
 export async function getAudioStream(
 	deviceId?: string,
 	sampleRate?: number,
 ): Promise<MediaStream> {
-	try {
-		return await navigator.mediaDevices.getUserMedia({
-			audio: {
-				deviceId: deviceId ? { exact: deviceId } : undefined,
-				sampleRate: sampleRate,
-			},
-		});
-	} catch (error) {
-		if (error instanceof Error) {
-			throw new AudioStreamError(error, deviceId);
+	let lastError: Error | null = null;
+
+	for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+		try {
+			return await navigator.mediaDevices.getUserMedia({
+				audio: {
+					deviceId: deviceId ? { exact: deviceId } : undefined,
+					sampleRate: sampleRate,
+				},
+			});
+		} catch (error) {
+			lastError =
+				error instanceof Error ? error : new Error(String(error));
+
+			// Retry only for temporary errors (AbortError indicates interrupted request)
+			const isRetryable =
+				error instanceof DOMException &&
+				(error.name === 'AbortError' ||
+					error.name === 'NotReadableError');
+
+			if (isRetryable && attempt < MAX_RETRIES) {
+				console.debug(
+					`${PLUGIN_LOG_PREFIX} Retry ${String(attempt + 1)}/${String(MAX_RETRIES)} for device access`,
+				);
+				await delay(RETRY_DELAY_MS);
+				continue;
+			}
+
+			throw new AudioStreamError(lastError, deviceId);
 		}
-		throw error;
 	}
+
+	throw new AudioStreamError(
+		lastError ?? new Error('Max retries exceeded'),
+		deviceId,
+	);
 }
 
 /**

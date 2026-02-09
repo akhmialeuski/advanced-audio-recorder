@@ -77,10 +77,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName('Advanced Audio Recorder')
-			.setHeading();
-
-		new Setting(containerEl)
 			.setName('Recording')
 			.setDesc('Configure audio recording options.')
 			.setHeading();
