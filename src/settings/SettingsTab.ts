@@ -102,7 +102,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Recording')
-			.setDesc('Configure audio recording options.')
+			.setDesc(
+				'Configure recording quality, output behavior, and device routing. Current implementation is safe for long recording sessions under normal use.',
+			)
 			.setHeading();
 
 		const supportedFormats = this.getSupportedFormats();
@@ -117,7 +119,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		let summaryEl: HTMLElement | null = null;
 		new Setting(containerEl)
 			.setName('Recording format')
-			.setDesc('Select the output format for saved recordings.')
+			.setDesc(
+				'Select the final file format. The selected format is applied when files are saved.',
+			)
 			.addDropdown((dropdown) => {
 				supportedFormats.forEach((format) => {
 					dropdown.addOption(format, format);
@@ -134,7 +138,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Audio bitrate')
-			.setDesc('Controls compression quality and resulting file size.')
+			.setDesc(
+				'Controls compression quality and resulting file size. Higher bitrate = better quality and larger files.',
+			)
 			.addDropdown((dropdown) => {
 				this.bitrateOptionsKbps.forEach((bitrateKbps) => {
 					dropdown.addOption(
@@ -162,7 +168,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Sample rate')
-			.setDesc('Select the audio sample rate.')
+			.setDesc(
+				'Select the audio sample rate in hertz. 44.1 kHz or 48 kHz are recommended for voice and general recording.',
+			)
 			.addDropdown((dropdown) => {
 				const sampleRates = [8000, 16000, 22050, 44100, 48000];
 				sampleRates.forEach((rate) => {
@@ -177,7 +185,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Input device')
-			.setDesc('Select the audio input device for single recordings.')
+			.setDesc(
+				'Select the default input device for single-track recordings. You can also change it from the command palette.',
+			)
 			.addDropdown(async (dropdown) => {
 				await this.populateAudioDevices(dropdown);
 				dropdown.setValue(this.plugin.settings.audioDeviceId || '');
@@ -191,7 +201,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Save folder')
 			.setDesc(
-				'Specify the folder to save recordings. Autocomplete enabled.',
+				'Specify where recordings are saved in your vault. Existing folders are suggested as you type.',
 			)
 			.addText((text) => {
 				const folderOptions = this.getFolderOptions();
@@ -211,11 +221,18 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				});
 			});
 
+		new Setting(containerEl)
+			.setName('Documentation')
+			.setDesc(
+				'Use the start/stop recording command to control recording state, the pause/resume recording command to temporarily halt capture, and the select audio input device command for quick device switching. Long sessions are supported; choose compressed formats such as webm or ogg to reduce disk usage.',
+			)
+			.setHeading();
+
 		new Setting(containerEl).setName('File naming').setHeading();
 
 		new Setting(containerEl)
 			.setName('File prefix')
-			.setDesc('Set a prefix for the audio file names.')
+			.setDesc('Set the filename prefix used for exported recordings.')
 			.addText((text) =>
 				text
 					.setPlaceholder('Enter file prefix')
@@ -228,7 +245,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Debug mode')
-			.setDesc('Enable debug logging')
+			.setDesc(
+				'Enable verbose logs for troubleshooting recording issues.',
+			)
 			.addToggle((toggle) =>
 				toggle
 					.setValue(this.plugin.settings.debug)
@@ -242,7 +261,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Enable multi-track recording')
-			.setDesc('Toggle to activate or deactivate multi-track recording.')
+			.setDesc(
+				'Enable recording from multiple input devices at the same time.',
+			)
 			.addToggle((toggle) =>
 				toggle
 					.setValue(this.plugin.settings.enableMultiTrack)
@@ -256,7 +277,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		if (this.plugin.settings.enableMultiTrack) {
 			new Setting(containerEl)
 				.setName('Maximum tracks')
-				.setDesc('Set the number of simultaneous tracks (1-8).')
+				.setDesc(
+					'Set the number of simultaneous tracks (1-8). Use only what you need to keep configuration simple.',
+				)
 				.addSlider((slider) =>
 					slider
 						.setLimits(1, 8, 1)
@@ -272,7 +295,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			new Setting(containerEl)
 				.setName('Output mode')
 				.setDesc(
-					'Choose between single combined file or separate files for each track.',
+					'Choose whether multi-track output is exported as one combined file or one file per track.',
 				)
 				.addDropdown((dropdown) =>
 					dropdown
@@ -290,7 +313,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				new Setting(containerEl)
 					.setName(`Audio source for track ${String(i)}`)
 					.setDesc(
-						`Select the audio input device for track ${String(i)}`,
+						`Select the input device assigned to track ${String(i)}`,
 					)
 					.addDropdown(async (dropdown) => {
 						await this.populateAudioDevices(dropdown);
