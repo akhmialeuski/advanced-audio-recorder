@@ -27,6 +27,7 @@ interface AudioRecorderPluginInterface extends Plugin {
  */
 export class AudioRecorderSettingTab extends PluginSettingTab {
 	plugin: AudioRecorderPluginInterface;
+	private deviceDropdowns: DropdownComponent[] = [];
 
 	/**
 	 * Creates a new AudioRecorderSettingTab.
@@ -75,6 +76,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
+		this.deviceDropdowns = [];
+		navigator.mediaDevices.ondevicechange = () => {
+			void this.refreshDeviceList();
+		};
 
 		new Setting(containerEl)
 			.setName('Recording')
@@ -107,6 +112,19 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				dropdown.setValue(String(this.plugin.settings.sampleRate));
 				dropdown.onChange(async (value) => {
 					this.plugin.settings.sampleRate = parseInt(value, 10);
+					await this.plugin.saveSettings();
+				});
+			});
+
+		new Setting(containerEl)
+			.setName('Input device')
+			.setDesc('Select the audio input device for single recordings.')
+			.addDropdown(async (dropdown) => {
+				await this.populateAudioDevices(dropdown);
+				dropdown.setValue(this.plugin.settings.audioDeviceId || '');
+				this.deviceDropdowns.push(dropdown);
+				dropdown.onChange(async (value) => {
+					this.plugin.settings.audioDeviceId = value;
 					await this.plugin.saveSettings();
 				});
 			});
@@ -218,10 +236,20 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					.addDropdown(async (dropdown) => {
 						await this.populateAudioDevices(dropdown);
 						dropdown.setValue(
-							this.plugin.settings.trackAudioSources[i] || '',
+							this.plugin.settings.trackAudioSources.get(i)
+								?.deviceId || '',
 						);
+						this.deviceDropdowns.push(dropdown);
 						dropdown.onChange(async (value) => {
-							this.plugin.settings.trackAudioSources[i] = value;
+							if (value) {
+								this.plugin.settings.trackAudioSources.set(i, {
+									deviceId: value,
+								});
+							} else {
+								this.plugin.settings.trackAudioSources.delete(
+									i,
+								);
+							}
 							await this.plugin.saveSettings();
 						});
 					});
@@ -234,6 +262,8 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * @param dropdown - The dropdown component
 	 */
 	async populateAudioDevices(dropdown: DropdownComponent): Promise<void> {
+		dropdown.selectEl.empty();
+		dropdown.addOption('', 'Select device');
 		const devices = await this.getAudioInputDevices();
 		devices.forEach((device) => {
 			const label =
@@ -241,5 +271,17 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				`Audio device ${device.deviceId.substring(0, 8)}`;
 			dropdown.addOption(device.deviceId, label);
 		});
+	}
+
+	private async refreshDeviceList(): Promise<void> {
+		const refreshes = this.deviceDropdowns.map(async (dropdown) => {
+			const selectedValue = dropdown.getValue();
+			await this.populateAudioDevices(dropdown);
+			const hasOption = Array.from(dropdown.selectEl.options).some(
+				(option) => option.value === selectedValue,
+			);
+			dropdown.setValue(hasOption ? selectedValue : '');
+		});
+		await Promise.all(refreshes);
 	}
 }

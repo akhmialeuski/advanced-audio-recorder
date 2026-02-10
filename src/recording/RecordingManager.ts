@@ -11,6 +11,7 @@ import {
 	getAudioStreams,
 	getAudioSourceName,
 	stopAllStreams,
+	validateSelectedDevices,
 } from './AudioStreamHandler';
 import { bufferToWave } from './WavEncoder';
 import { PLUGIN_LOG_PREFIX } from '../constants';
@@ -23,6 +24,7 @@ export class RecordingManager {
 	private recorders: MediaRecorder[] = [];
 	private audioChunks: Blob[][] = [];
 	private streams: MediaStream[] = [];
+	private trackOrder: { trackNumber: number; deviceId: string }[] = [];
 	private status: RecordingStatus = RecordingStatus.Idle;
 	private onStatusChange: (status: RecordingStatus) => void;
 	private debugLogger: DebugLogger;
@@ -84,7 +86,12 @@ export class RecordingManager {
 				);
 			}
 
-			this.streams = await getAudioStreams(this.settings);
+			await validateSelectedDevices(this.settings);
+			const { streams, trackOrder } = await getAudioStreams(
+				this.settings,
+			);
+			this.streams = streams;
+			this.trackOrder = trackOrder;
 			this.recorders = this.streams.map(
 				(stream) => new MediaRecorder(stream, { mimeType }),
 			);
@@ -185,6 +192,7 @@ export class RecordingManager {
 			this.streams = [];
 			this.recorders = [];
 			this.audioChunks = [];
+			this.trackOrder = [];
 			this.setStatus(RecordingStatus.Idle);
 		}
 	}
@@ -242,8 +250,9 @@ export class RecordingManager {
 				const audioBlob = new Blob(chunks, {
 					type: `audio/${this.settings.recordingFormat}`,
 				});
-				const trackNumber = i + 1;
-				const deviceId = this.settings.trackAudioSources[trackNumber];
+				const trackInfo = this.trackOrder[i];
+				const trackNumber = trackInfo?.trackNumber ?? i + 1;
+				const deviceId = trackInfo?.deviceId;
 				const sourceName = deviceId
 					? await getAudioSourceName(deviceId)
 					: `Track${trackNumber}`;
