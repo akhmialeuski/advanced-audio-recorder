@@ -39,7 +39,7 @@ An audio recording plugin for Obsidian with configurable save location, input de
 3. Press **Enter**. The status bar and ribbon icon will indicate that the recording is paused.
 4. Run the same command again to **Resume**.
 
-![[docs/pause-resume.png]]
+![Pause/Resume Guide](docs/pause-resume.png)
 
 > [!TIP]
 > For the best experience, assign a **hotkey** to the `Pause/resume recording` command in Obsidian's **Settings > Hotkeys**.
