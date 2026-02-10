@@ -6,25 +6,15 @@ An audio recording plugin for Obsidian with configurable save location, input de
 
 - **Configurable Save Folder**: Choose where recordings are stored in your vault.
 - **Audio Input Selection**: Pick the microphone/input device from command palette or settings.
-- **Pause and Resume**: Pause and continue the same active recording session.
+- **Pause and Resume**: Pause and continue the same active recording session. This is triggered via the **Command Palette** or a custom hotkey while recording is active.
 - **Multi-Track Recording**: Record several input devices at once and export as a single or multiple files.
 - **Format and Bitrate Settings**: Choose output format and bitrate from plugin settings.
-
-## Known Limitations
-
-At the moment there are no known functional limitations that require user workarounds.
-
-- Long recording sessions are supported.
-- Selected output format is respected.
-- Multi-track recording and track assignment are stable in normal usage.
-
-If you hit an edge case, please open an issue with reproduction steps.
 
 ## Installation
 
 1. Open **Obsidian Settings**.
 2. Navigate to **Community Plugins** and disable **Safe Mode**.
-3. Click **Browse** and search for **"Obsidian Advanced Audio Recorder"**.
+3. Click **Browse** and search for **"Advanced Audio Recorder"**.
 4. Click **Install**.
 5. Once installed, **Enable** the plugin.
 
@@ -42,11 +32,23 @@ If you hit an edge case, please open an issue with reproduction steps.
 - **Pause/resume recording** — pauses an active recording and resumes it.
 - **Select audio input device** — opens a quick picker and saves the selected device.
 
+### How to Pause and Resume
+
+1. While a recording is **active**, open the Obsidian **Command Palette** (`Ctrl/Cmd + P`).
+2. Type `Advanced Audio Recorder: Pause/resume recording`.
+3. Press **Enter**. The status bar and ribbon icon will indicate that the recording is paused.
+4. Run the same command again to **Resume**.
+
+![[docs/pause-resume.png]]
+
+> [!TIP]
+> For the best experience, assign a **hotkey** to the `Pause/resume recording` command in Obsidian's **Settings > Hotkeys**.
+
 ## Formats and Containers
 
-- The plugin exposes supported formats based on your platform/browser MediaRecorder support.
-- Commonly available options include: `webm`, `ogg`, `mp3`, `m4a`, `mp4`, and `wav`.
-- When **WAV** is selected, recording is captured through a supported compressed recorder format and converted to WAV on save.
+- Available formats depend on your platform and browser **MediaRecorder** support.
+- Common options on most systems include: `webm`, `wav`, and `ogg`.
+- When **WAV** is selected, recording is captured in a compressed format and converted to WAV on save to ensure data integrity.
 - In multi-track mode:
   - **Single file** output combines tracks into one file.
   - **Multiple files** output saves one file per track.
