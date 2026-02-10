@@ -3,7 +3,7 @@
  * @module recording/RecordingManager
  */
 
-import { MarkdownView, normalizePath, Notice } from 'obsidian';
+import { MarkdownView, normalizePath, Notice, Platform } from 'obsidian';
 import type { App } from 'obsidian';
 import { RecordingStatus } from '../types';
 import type { AudioRecorderSettings } from '../settings/Settings';
@@ -17,18 +17,35 @@ import { bufferToWave } from './WavEncoder';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { DebugLogger } from '../utils/DebugLogger';
 
+type RecordingTarget = {
+	fileBaseName: string;
+	sourceName: string;
+	tempFilePath: string | null;
+	bufferedChunks: Blob[];
+	bufferedBytes: number;
+	segmentIndex: number;
+	segmentPaths: string[];
+	pendingWrite: Promise<void>;
+};
+
+const CHUNK_TIMESLICE_MS = 5000;
+const MOBILE_BUFFER_LIMIT_BYTES = 50 * 1024 * 1024;
+
 /**
  * Manages the audio recording lifecycle.
  */
 export class RecordingManager {
 	private recorders: MediaRecorder[] = [];
-	private audioChunks: Blob[][] = [];
+	private chunkTargets: RecordingTarget[] = [];
 	private streams: MediaStream[] = [];
 	private trackOrder: { trackNumber: number; deviceId: string }[] = [];
 	private status: RecordingStatus = RecordingStatus.Idle;
 	private onStatusChange: (status: RecordingStatus) => void;
 	private debugLogger: DebugLogger;
 	private recordingStartTime: number = 0;
+	private recordingTimestamp: string | null = null;
+	private totalChunks: number = 0;
+	private isMobileRecording: boolean = false;
 
 	/**
 	 * Creates a new RecordingManager.
@@ -95,13 +112,48 @@ export class RecordingManager {
 			this.recorders = this.streams.map(
 				(stream) => new MediaRecorder(stream, { mimeType }),
 			);
-			this.audioChunks = this.recorders.map(() => []);
 			this.recordingStartTime = Date.now();
+			this.recordingTimestamp = new Date()
+				.toISOString()
+				.replace(/[:.]/g, '-');
+			this.totalChunks = 0;
+			this.isMobileRecording = Platform.isMobileApp || Platform.isMobile;
+			this.chunkTargets = await Promise.all(
+				this.recorders.map(async (_recorder, index) => {
+					const trackInfo = this.trackOrder[index];
+					const trackNumber = trackInfo?.trackNumber ?? index + 1;
+					const deviceId = trackInfo?.deviceId;
+					const sourceName =
+						this.settings.useSourceNamesForTracks && deviceId
+							? await getAudioSourceName(deviceId)
+							: `Track${trackNumber}`;
+					const fileBaseName = `${this.settings.filePrefix}-${sourceName}-${this.recordingTimestamp}`;
+					let tempFilePath: string | null = null;
+					if (!this.isMobileRecording) {
+						const tempName = `${fileBaseName}.partial.${this.settings.recordingFormat}`;
+						tempFilePath = await this.resolveUniquePath(tempName);
+						await this.app.vault.createBinary(
+							tempFilePath,
+							new ArrayBuffer(0),
+						);
+					}
+					return {
+						fileBaseName,
+						sourceName,
+						tempFilePath,
+						bufferedChunks: [],
+						bufferedBytes: 0,
+						segmentIndex: 0,
+						segmentPaths: [],
+						pendingWrite: Promise.resolve(),
+					};
+				}),
+			);
 
 			this.recorders.forEach((recorder, index) => {
 				recorder.ondataavailable = (event: BlobEvent): void => {
 					if (event.data.size > 0) {
-						this.audioChunks[index].push(event.data);
+						void this.handleChunk(index, event.data);
 						this.debugLogger.logChunkSize(index, event.data.size);
 					}
 				};
@@ -114,7 +166,7 @@ export class RecordingManager {
 						'Recording error occurred. Check console for details.',
 					);
 				};
-				recorder.start();
+				recorder.start(CHUNK_TIMESLICE_MS);
 			});
 
 			this.setStatus(RecordingStatus.Recording);
@@ -170,12 +222,12 @@ export class RecordingManager {
 				),
 			);
 
-			const durationMs = Date.now() - this.recordingStartTime;
-			const totalChunks = this.audioChunks.reduce(
-				(sum, chunks) => sum + chunks.length,
-				0,
+			await Promise.all(
+				this.chunkTargets.map((target) => target.pendingWrite),
 			);
-			this.debugLogger.logRecordingStats(durationMs, totalChunks);
+
+			const durationMs = Date.now() - this.recordingStartTime;
+			this.debugLogger.logRecordingStats(durationMs, this.totalChunks);
 
 			await this.saveRecording();
 			new Notice('Recording stopped');
@@ -191,8 +243,10 @@ export class RecordingManager {
 			stopAllStreams(streamsToStop);
 			this.streams = [];
 			this.recorders = [];
-			this.audioChunks = [];
+			this.chunkTargets = [];
 			this.trackOrder = [];
+			this.recordingTimestamp = null;
+			this.totalChunks = 0;
 			this.setStatus(RecordingStatus.Idle);
 		}
 	}
@@ -220,8 +274,10 @@ export class RecordingManager {
 	cleanup(): void {
 		stopAllStreams(this.streams);
 		this.recorders = [];
-		this.audioChunks = [];
+		this.chunkTargets = [];
 		this.streams = [];
+		this.recordingTimestamp = null;
+		this.totalChunks = 0;
 	}
 
 	private setStatus(status: RecordingStatus): void {
@@ -230,37 +286,44 @@ export class RecordingManager {
 	}
 
 	private async saveRecording(): Promise<void> {
-		const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+		const timestamp =
+			this.recordingTimestamp ??
+			new Date().toISOString().replace(/[:.]/g, '-');
 		const fileLinks: string[] = [];
 
 		if (this.settings.outputMode === 'single') {
-			const mergedAudio = await this.mergeAudioTracks();
-			const fileName = `${this.settings.filePrefix}-multitrack-${timestamp}.wav`;
-			const filePath = await this.saveAudioFile(mergedAudio, fileName);
-			if (filePath) {
-				fileLinks.push(filePath);
-			}
-		} else {
-			for (let i = 0; i < this.audioChunks.length; i++) {
-				const chunks = this.audioChunks[i];
-				if (chunks.length === 0) {
-					continue;
+			if (this.chunkTargets.length === 1) {
+				const paths = await this.finalizeTrackFiles(
+					this.chunkTargets[0],
+					timestamp,
+				);
+				fileLinks.push(...paths);
+			} else {
+				if (this.isMobileRecording) {
+					await Promise.all(
+						this.chunkTargets.map((target) =>
+							this.flushMobileBuffer(target),
+						),
+					);
 				}
-
-				const audioBlob = new Blob(chunks, {
-					type: `audio/${this.settings.recordingFormat}`,
-				});
-				const trackInfo = this.trackOrder[i];
-				const trackNumber = trackInfo?.trackNumber ?? i + 1;
-				const deviceId = trackInfo?.deviceId;
-				const sourceName = deviceId
-					? await getAudioSourceName(deviceId)
-					: `Track${trackNumber}`;
-				const fileName = `${this.settings.filePrefix}-${sourceName}-${timestamp}.${this.settings.recordingFormat}`;
-				const filePath = await this.saveAudioFile(audioBlob, fileName);
+				const mergedAudio = await this.mergeAudioTracks();
+				const fileName = `${this.settings.filePrefix}-multitrack-${timestamp}.wav`;
+				const filePath = await this.saveAudioFile(
+					mergedAudio,
+					fileName,
+				);
 				if (filePath) {
 					fileLinks.push(filePath);
+					await this.cleanupIntermediateFiles();
 				}
+			}
+		} else {
+			for (let i = 0; i < this.chunkTargets.length; i++) {
+				const paths = await this.finalizeTrackFiles(
+					this.chunkTargets[i],
+					timestamp,
+				);
+				fileLinks.push(...paths);
 			}
 		}
 
@@ -275,13 +338,11 @@ export class RecordingManager {
 	private async mergeAudioTracks(): Promise<Blob> {
 		const audioContext = new AudioContext();
 		const buffers = await Promise.all(
-			this.audioChunks.map(async (chunks) => {
-				if (chunks.length === 0) {
+			this.chunkTargets.map(async (target) => {
+				const blob = await this.buildTrackBlob(target);
+				if (!blob) {
 					return null;
 				}
-				const blob = new Blob(chunks, {
-					type: `audio/${this.settings.recordingFormat}`,
-				});
 				const arrayBuffer = await blob.arrayBuffer();
 				return audioContext.decodeAudioData(arrayBuffer);
 			}),
@@ -315,18 +376,140 @@ export class RecordingManager {
 		return bufferToWave(renderedBuffer, renderedBuffer.length);
 	}
 
-	private async saveAudioFile(
-		audioBlob: Blob,
-		fileName: string,
-	): Promise<string | null> {
-		if (audioBlob.size === 0) {
-			console.debug(
-				`${PLUGIN_LOG_PREFIX} Skipping empty file: ${fileName}`,
+	private async handleChunk(index: number, data: Blob): Promise<void> {
+		const target = this.chunkTargets[index];
+		if (!target) {
+			return;
+		}
+		this.totalChunks += 1;
+		const enqueue = async (): Promise<void> => {
+			if (this.isMobileRecording) {
+				target.bufferedChunks.push(data);
+				target.bufferedBytes += data.size;
+				if (target.bufferedBytes >= MOBILE_BUFFER_LIMIT_BYTES) {
+					await this.flushMobileBuffer(target);
+				}
+				return;
+			}
+
+			if (!target.tempFilePath) {
+				return;
+			}
+			try {
+				const arrayBuffer = await data.arrayBuffer();
+				await (
+					this.app.vault.adapter as unknown as {
+						append: (
+							path: string,
+							data: ArrayBuffer,
+						) => Promise<void>;
+					}
+				).append(target.tempFilePath, arrayBuffer);
+			} catch (error) {
+				console.error(
+					`${PLUGIN_LOG_PREFIX} Failed to append chunk:`,
+					error,
+				);
+				new Notice(
+					'Failed to save recording chunk. Check console for details.',
+				);
+			}
+		};
+
+		target.pendingWrite = target.pendingWrite.then(enqueue);
+		await target.pendingWrite;
+	}
+
+	private async flushMobileBuffer(target: RecordingTarget): Promise<void> {
+		if (target.bufferedChunks.length === 0) {
+			return;
+		}
+		target.segmentIndex += 1;
+		const segmentName = `${target.fileBaseName}-part${String(
+			target.segmentIndex,
+		)}.${this.settings.recordingFormat}`;
+		const segmentPath = await this.resolveUniquePath(segmentName);
+		const segmentBlob = new Blob(target.bufferedChunks, {
+			type: `audio/${this.settings.recordingFormat}`,
+		});
+		await this.app.vault.createBinary(
+			segmentPath,
+			await segmentBlob.arrayBuffer(),
+		);
+		target.segmentPaths.push(segmentPath);
+		target.bufferedChunks = [];
+		target.bufferedBytes = 0;
+	}
+
+	private async buildTrackBlob(
+		target: RecordingTarget,
+	): Promise<Blob | null> {
+		const type = `audio/${this.settings.recordingFormat}`;
+		if (target.tempFilePath) {
+			const data = await this.app.vault.adapter.readBinary(
+				target.tempFilePath,
 			);
+			return new Blob([data], { type });
+		}
+
+		if (
+			target.segmentPaths.length === 0 &&
+			target.bufferedChunks.length === 0
+		) {
 			return null;
 		}
 
-		const arrayBuffer = await audioBlob.arrayBuffer();
+		const segmentBuffers = await Promise.all(
+			target.segmentPaths.map((path) =>
+				this.app.vault.adapter.readBinary(path),
+			),
+		);
+
+		return new Blob([...segmentBuffers, ...target.bufferedChunks], {
+			type,
+		});
+	}
+
+	private async cleanupIntermediateFiles(): Promise<void> {
+		await Promise.all(
+			this.chunkTargets.flatMap((target) => {
+				const removals: Promise<void>[] = [];
+				if (target.tempFilePath) {
+					removals.push(
+						this.app.vault.adapter.remove(target.tempFilePath),
+					);
+				}
+				for (const path of target.segmentPaths) {
+					removals.push(this.app.vault.adapter.remove(path));
+				}
+				return removals;
+			}),
+		);
+	}
+
+	private async finalizeTrackFiles(
+		target: RecordingTarget,
+		timestamp: string,
+	): Promise<string[]> {
+		const fileLinks: string[] = [];
+		if (this.isMobileRecording) {
+			await this.flushMobileBuffer(target);
+			fileLinks.push(...target.segmentPaths);
+			return fileLinks;
+		}
+
+		if (!target.tempFilePath) {
+			return fileLinks;
+		}
+
+		const fileName = `${this.settings.filePrefix}-${target.sourceName}-${timestamp}.${this.settings.recordingFormat}`;
+		const filePath = await this.resolveUniquePath(fileName);
+		await this.app.vault.adapter.rename(target.tempFilePath, filePath);
+		fileLinks.push(filePath);
+		return fileLinks;
+	}
+
+	private async resolveUniquePath(fileName: string): Promise<string> {
 		let sanitizedFileName = fileName.replace(/[\\/:*?"<>|]/g, '-');
 		let filePath = normalizePath(
 			`${this.settings.saveFolder}/${sanitizedFileName}`,
@@ -343,6 +526,23 @@ export class RecordingManager {
 			);
 			counter++;
 		}
+
+		return filePath;
+	}
+
+	private async saveAudioFile(
+		audioBlob: Blob,
+		fileName: string,
+	): Promise<string | null> {
+		if (audioBlob.size === 0) {
+			console.debug(
+				`${PLUGIN_LOG_PREFIX} Skipping empty file: ${fileName}`,
+			);
+			return null;
+		}
+
+		const arrayBuffer = await audioBlob.arrayBuffer();
+		const filePath = await this.resolveUniquePath(fileName);
 
 		await this.app.vault.createBinary(filePath, arrayBuffer);
 		return filePath;

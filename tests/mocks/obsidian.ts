@@ -54,6 +54,17 @@ export class App {
 export class Vault {
     adapter = {
         exists: async (_path: string): Promise<boolean> => false,
+        append: async (_path: string, _data: ArrayBuffer): Promise<void> => {
+            // Mock implementation
+        },
+        rename: async (_oldPath: string, _newPath: string): Promise<void> => {
+            // Mock implementation
+        },
+        readBinary: async (_path: string): Promise<ArrayBuffer> =>
+            new ArrayBuffer(0),
+        remove: async (_path: string): Promise<void> => {
+            // Mock implementation
+        },
     };
 
     async createBinary(_path: string, _data: ArrayBuffer): Promise<void> {
@@ -318,6 +329,11 @@ export class SliderComponent {
 export function normalizePath(path: string): string {
     return path.replace(/\\/g, '/').replace(/\/+/g, '/');
 }
+
+export const Platform = {
+    isMobile: false,
+    isMobileApp: false,
+};
 
 // Type definitions
 export interface PluginManifest {

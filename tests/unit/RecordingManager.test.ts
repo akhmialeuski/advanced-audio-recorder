@@ -15,6 +15,10 @@ jest.mock('obsidian', () => ({
     Notice: jest.fn(),
     MarkdownView: jest.fn(),
     normalizePath: (path: string) => path.replace(/\\/g, '/'),
+    Platform: {
+        isMobile: false,
+        isMobileApp: false,
+    },
 }));
 
 // Mock AudioStreamHandler
@@ -70,6 +74,13 @@ jest.mock('../../src/recording/WavEncoder', () => ({
     getChannelData: jest.fn().mockReturnValue(new Float32Array(44100)),
 }));
 
+if (!Blob.prototype.arrayBuffer) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test polyfill
+    (Blob.prototype as any).arrayBuffer = function (): Promise<ArrayBuffer> {
+        return Promise.resolve(new ArrayBuffer(0));
+    };
+}
+
 describe('RecordingManager', () => {
     let manager: RecordingManager;
     let mockApp: App;
@@ -85,6 +96,10 @@ describe('RecordingManager', () => {
             vault: {
                 adapter: {
                     exists: jest.fn().mockResolvedValue(false),
+                    append: jest.fn().mockResolvedValue(undefined),
+                    rename: jest.fn().mockResolvedValue(undefined),
+                    readBinary: jest.fn().mockResolvedValue(new ArrayBuffer(0)),
+                    remove: jest.fn().mockResolvedValue(undefined),
                 },
                 createBinary: jest.fn().mockResolvedValue(undefined),
             },
@@ -258,6 +273,111 @@ describe('RecordingManager', () => {
         });
     });
 
+    describe('streaming chunks', () => {
+        it('should append chunks to temp file on desktop', async () => {
+            const { Platform } = jest.requireMock('obsidian') as {
+                Platform: { isMobile: boolean; isMobileApp: boolean };
+            };
+            Platform.isMobile = false;
+            Platform.isMobileApp = false;
+
+            const mockMediaRecorder = {
+                start: jest.fn(),
+                stop: jest.fn(),
+                pause: jest.fn(),
+                resume: jest.fn(),
+                ondataavailable: null as ((event: BlobEvent) => void) | null,
+                onerror: null as ((event: Event) => void) | null,
+                addEventListener: jest.fn((event: string, handler: () => void) => {
+                    if (event === 'stop') {
+                        handler();
+                    }
+                }),
+            };
+
+            (global as Record<string, unknown>).MediaRecorder = jest.fn(
+                () => mockMediaRecorder,
+            );
+            (global as Record<string, unknown>).MediaRecorder.isTypeSupported = jest
+                .fn()
+                .mockReturnValue(true);
+
+            const { getAudioStreams } = jest.requireMock('../../src/recording/AudioStreamHandler') as {
+                getAudioStreams: jest.Mock;
+            };
+            getAudioStreams.mockResolvedValue({
+                streams: [{
+                    getTracks: () => [{ stop: jest.fn() }],
+                }],
+                trackOrder: [],
+            });
+
+            await manager.startRecording();
+
+            const chunk = new Blob([new Uint8Array([1, 2, 3])], {
+                type: 'audio/webm',
+            });
+            mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
+
+            await manager.stopRecording();
+
+            expect(mockApp.vault.adapter.append).toHaveBeenCalled();
+        });
+
+        it('should flush mobile buffer when limit reached', async () => {
+            const { Platform } = jest.requireMock('obsidian') as {
+                Platform: { isMobile: boolean; isMobileApp: boolean };
+            };
+            Platform.isMobile = true;
+            Platform.isMobileApp = true;
+
+            const mockMediaRecorder = {
+                start: jest.fn(),
+                stop: jest.fn(),
+                pause: jest.fn(),
+                resume: jest.fn(),
+                ondataavailable: null as ((event: BlobEvent) => void) | null,
+                onerror: null as ((event: Event) => void) | null,
+                addEventListener: jest.fn((event: string, handler: () => void) => {
+                    if (event === 'stop') {
+                        handler();
+                    }
+                }),
+            };
+
+            (global as Record<string, unknown>).MediaRecorder = jest.fn(
+                () => mockMediaRecorder,
+            );
+            (global as Record<string, unknown>).MediaRecorder.isTypeSupported = jest
+                .fn()
+                .mockReturnValue(true);
+
+            const { getAudioStreams } = jest.requireMock('../../src/recording/AudioStreamHandler') as {
+                getAudioStreams: jest.Mock;
+            };
+            getAudioStreams.mockResolvedValue({
+                streams: [{
+                    getTracks: () => [{ stop: jest.fn() }],
+                }],
+                trackOrder: [],
+            });
+
+            await manager.startRecording();
+
+            const target = (manager as unknown as { chunkTargets: Array<{ bufferedBytes: number }> }).chunkTargets[0];
+            target.bufferedBytes = 50 * 1024 * 1024 - 1;
+
+            const chunk = new Blob([new Uint8Array([1])], {
+                type: 'audio/webm',
+            });
+            mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
+
+            await manager.stopRecording();
+
+            expect(mockApp.vault.createBinary).toHaveBeenCalled();
+        });
+    });
+
     describe('cleanup', () => {
         it('should reset all internal state', () => {
             manager.cleanup();
@@ -318,7 +438,9 @@ describe('RecordingManager', () => {
             expect(manager.getStatus()).toBe(RecordingStatus.Recording);
 
             // Mock vault to throw error during save
-            (mockApp.vault.createBinary as jest.Mock).mockRejectedValue(new Error('Save failed'));
+            (mockApp.vault.adapter.rename as jest.Mock).mockRejectedValue(
+                new Error('Save failed'),
+            );
 
             // Stop recording - should recover
             await manager.stopRecording();
@@ -336,7 +458,9 @@ describe('RecordingManager', () => {
             await manager.startRecording();
 
             // Mock vault to throw error during save
-            (mockApp.vault.createBinary as jest.Mock).mockRejectedValue(new Error('Save failed'));
+            (mockApp.vault.adapter.rename as jest.Mock).mockRejectedValue(
+                new Error('Save failed'),
+            );
 
             await manager.stopRecording();
 
