@@ -73,6 +73,10 @@ jest.mock('obsidian', () => ({
     Notice: jest.fn().mockImplementation((msg: string) => mockNotice(msg)),
     MarkdownView: jest.fn(),
     normalizePath: (path: string) => path.replace(/\\/g, '/'),
+    Platform: {
+        isMobile: false,
+        isMobileApp: false,
+    },
 }));
 
 // Mock WavEncoder
@@ -95,7 +99,13 @@ describe('AudioStreamHandler: Error Handling', () => {
 
         mockApp = {
             vault: {
-                adapter: { exists: jest.fn().mockResolvedValue(false) },
+                adapter: {
+                    exists: jest.fn().mockResolvedValue(false),
+                    append: jest.fn().mockResolvedValue(undefined),
+                    rename: jest.fn().mockResolvedValue(undefined),
+                    readBinary: jest.fn().mockResolvedValue(new ArrayBuffer(0)),
+                    remove: jest.fn().mockResolvedValue(undefined),
+                },
                 createBinary: jest.fn().mockResolvedValue(undefined),
             },
             workspace: {
