@@ -30,6 +30,11 @@ type RecordingTarget = {
 
 const CHUNK_TIMESLICE_MS = 5000;
 const MOBILE_BUFFER_LIMIT_BYTES = 50 * 1024 * 1024;
+const MIME_TYPE_AUDIO_PREFIX = 'audio/';
+const CODECS_OPUS = 'codecs=opus';
+const WAV_FORMAT = 'wav';
+const WEBM_FORMAT = 'webm';
+const OGG_FORMAT = 'ogg';
 
 /**
  * Manages the audio recording lifecycle.
@@ -46,6 +51,7 @@ export class RecordingManager {
 	private recordingTimestamp: string | null = null;
 	private totalChunks: number = 0;
 	private isMobileRecording: boolean = false;
+	private activeRecorderFormat: string = WEBM_FORMAT;
 
 	/**
 	 * Creates a new RecordingManager.
@@ -94,14 +100,16 @@ export class RecordingManager {
 	 */
 	async startRecording(): Promise<void> {
 		try {
-			const mimeType = `audio/${this.settings.recordingFormat};codecs=opus`;
+			const { recorderFormat, mimeType } = this.resolveRecorderFormat();
+			this.activeRecorderFormat = recorderFormat;
 			this.debugLogger.logMimeType(mimeType);
+			this.debugLogger.log('Recording format configuration', {
+				outputFormat: this.settings.recordingFormat,
+				recorderFormat,
+				bitrate: this.settings.bitrate,
+			});
 
-			if (!MediaRecorder.isTypeSupported(mimeType)) {
-				throw new Error(
-					`The format ${this.settings.recordingFormat} is not supported in this browser.`,
-				);
-			}
+			this.ensureMimeTypeSupported(mimeType, recorderFormat);
 
 			await validateSelectedDevices(this.settings);
 			const { streams, trackOrder } = await getAudioStreams(
@@ -110,7 +118,11 @@ export class RecordingManager {
 			this.streams = streams;
 			this.trackOrder = trackOrder;
 			this.recorders = this.streams.map(
-				(stream) => new MediaRecorder(stream, { mimeType }),
+				(stream) =>
+					new MediaRecorder(stream, {
+						mimeType,
+						audioBitsPerSecond: this.settings.bitrate,
+					}),
 			);
 			this.recordingStartTime = Date.now();
 			this.recordingTimestamp = new Date()
@@ -130,7 +142,7 @@ export class RecordingManager {
 					const fileBaseName = `${this.settings.filePrefix}-${sourceName}-${this.recordingTimestamp}`;
 					let tempFilePath: string | null = null;
 					if (!this.isMobileRecording) {
-						const tempName = `${fileBaseName}.partial.${this.settings.recordingFormat}`;
+						const tempName = `${fileBaseName}.partial.${this.activeRecorderFormat}`;
 						tempFilePath = await this.resolveUniquePath(tempName);
 						await this.app.vault.createBinary(
 							tempFilePath,
@@ -306,8 +318,11 @@ export class RecordingManager {
 						),
 					);
 				}
-				const mergedAudio = await this.mergeAudioTracks();
-				const fileName = `${this.settings.filePrefix}-multitrack-${timestamp}.wav`;
+				const mergedAudio =
+					this.settings.recordingFormat === WAV_FORMAT
+						? await this.mergeAudioTracks()
+						: await this.combineTracksWithoutConversion();
+				const fileName = `${this.settings.filePrefix}-multitrack-${timestamp}.${this.settings.recordingFormat}`;
 				const filePath = await this.saveAudioFile(
 					mergedAudio,
 					fileName,
@@ -376,6 +391,28 @@ export class RecordingManager {
 		return bufferToWave(renderedBuffer, renderedBuffer.length);
 	}
 
+	private async combineTracksWithoutConversion(): Promise<Blob> {
+		const trackBlobs = await Promise.all(
+			this.chunkTargets.map((target) => this.buildTrackBlob(target)),
+		);
+		const nonEmptyTrackBlobs = trackBlobs.filter(
+			(blob): blob is Blob => blob !== null && blob.size > 0,
+		);
+		if (nonEmptyTrackBlobs.length === 0) {
+			throw new Error('No audio data recorded');
+		}
+		this.debugLogger.log(
+			'Combining multi-track data without WAV conversion',
+			{
+				trackCount: nonEmptyTrackBlobs.length,
+				format: this.settings.recordingFormat,
+			},
+		);
+		return new Blob(nonEmptyTrackBlobs, {
+			type: `${MIME_TYPE_AUDIO_PREFIX}${this.settings.recordingFormat}`,
+		});
+	}
+
 	private async handleChunk(index: number, data: Blob): Promise<void> {
 		const target = this.chunkTargets[index];
 		if (!target) {
@@ -429,12 +466,10 @@ export class RecordingManager {
 			target.segmentIndex,
 		)}.${this.settings.recordingFormat}`;
 		const segmentPath = await this.resolveUniquePath(segmentName);
-		const segmentBlob = new Blob(target.bufferedChunks, {
-			type: `audio/${this.settings.recordingFormat}`,
-		});
+		const outputBlob = await this.buildOutputBlob(target.bufferedChunks);
 		await this.app.vault.createBinary(
 			segmentPath,
-			await segmentBlob.arrayBuffer(),
+			await outputBlob.arrayBuffer(),
 		);
 		target.segmentPaths.push(segmentPath);
 		target.bufferedChunks = [];
@@ -444,7 +479,7 @@ export class RecordingManager {
 	private async buildTrackBlob(
 		target: RecordingTarget,
 	): Promise<Blob | null> {
-		const type = `audio/${this.settings.recordingFormat}`;
+		const type = this.getRecorderMediaType();
 		if (target.tempFilePath) {
 			const data = await this.app.vault.adapter.readBinary(
 				target.tempFilePath,
@@ -504,7 +539,24 @@ export class RecordingManager {
 
 		const fileName = `${this.settings.filePrefix}-${target.sourceName}-${timestamp}.${this.settings.recordingFormat}`;
 		const filePath = await this.resolveUniquePath(fileName);
-		await this.app.vault.adapter.rename(target.tempFilePath, filePath);
+
+		if (this.settings.recordingFormat === WAV_FORMAT) {
+			const data = await this.app.vault.adapter.readBinary(
+				target.tempFilePath,
+			);
+			const wavBlob = await this.convertBlobToWav(
+				new Blob([data], {
+					type: this.getRecorderMediaType(),
+				}),
+			);
+			await this.app.vault.createBinary(
+				filePath,
+				await wavBlob.arrayBuffer(),
+			);
+			await this.app.vault.adapter.remove(target.tempFilePath);
+		} else {
+			await this.app.vault.adapter.rename(target.tempFilePath, filePath);
+		}
 		fileLinks.push(filePath);
 		return fileLinks;
 	}
@@ -546,6 +598,75 @@ export class RecordingManager {
 
 		await this.app.vault.createBinary(filePath, arrayBuffer);
 		return filePath;
+	}
+
+	private resolveRecorderFormat(): {
+		recorderFormat: string;
+		mimeType: string;
+	} {
+		const outputFormat = this.settings.recordingFormat.toLowerCase();
+		if (outputFormat === WAV_FORMAT) {
+			const preferredCompressedFormats = [WEBM_FORMAT, OGG_FORMAT];
+			for (const format of preferredCompressedFormats) {
+				const mimeType = this.buildMimeType(format);
+				if (MediaRecorder.isTypeSupported(mimeType)) {
+					return { recorderFormat: format, mimeType };
+				}
+			}
+			throw new Error(
+				'WAV output requires an intermediate compressed format, but neither WebM nor OGG is supported in this browser.',
+			);
+		}
+
+		return {
+			recorderFormat: outputFormat,
+			mimeType: this.buildMimeType(outputFormat),
+		};
+	}
+
+	private buildMimeType(format: string): string {
+		if (format === WEBM_FORMAT || format === OGG_FORMAT) {
+			return `${MIME_TYPE_AUDIO_PREFIX}${format};${CODECS_OPUS}`;
+		}
+		return `${MIME_TYPE_AUDIO_PREFIX}${format}`;
+	}
+
+	private ensureMimeTypeSupported(
+		mimeType: string,
+		recorderFormat: string,
+	): void {
+		if (MediaRecorder.isTypeSupported(mimeType)) {
+			return;
+		}
+		throw new Error(
+			`The selected format "${this.settings.recordingFormat}" is not supported for recording in this browser. Please choose another format (current recorder format: ${recorderFormat}).`,
+		);
+	}
+
+	private getRecorderMediaType(): string {
+		return `${MIME_TYPE_AUDIO_PREFIX}${this.activeRecorderFormat}`;
+	}
+
+	private async buildOutputBlob(chunks: Blob[]): Promise<Blob> {
+		const recordedBlob = new Blob(chunks, {
+			type: this.getRecorderMediaType(),
+		});
+		if (this.settings.recordingFormat !== WAV_FORMAT) {
+			return recordedBlob;
+		}
+		return this.convertBlobToWav(recordedBlob);
+	}
+
+	private async convertBlobToWav(recordedBlob: Blob): Promise<Blob> {
+		const audioContext = new AudioContext();
+		try {
+			const arrayBuffer = await recordedBlob.arrayBuffer();
+			const decodedBuffer =
+				await audioContext.decodeAudioData(arrayBuffer);
+			return bufferToWave(decodedBuffer, decodedBuffer.length);
+		} finally {
+			await audioContext.close();
+		}
 	}
 
 	private insertFileLinks(fileLinks: string[]): void {
