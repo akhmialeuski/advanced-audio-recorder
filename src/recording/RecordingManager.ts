@@ -433,15 +433,19 @@ export class RecordingManager {
 				return;
 			}
 			try {
-				const arrayBuffer = await data.arrayBuffer();
-				await (
-					this.app.vault.adapter as unknown as {
-						append: (
-							path: string,
-							data: ArrayBuffer,
-						) => Promise<void>;
-					}
-				).append(target.tempFilePath, arrayBuffer);
+				const newData = await data.arrayBuffer();
+				const existing = await this.app.vault.adapter.readBinary(
+					target.tempFilePath,
+				);
+				const merged = new Uint8Array(
+					existing.byteLength + newData.byteLength,
+				);
+				merged.set(new Uint8Array(existing), 0);
+				merged.set(new Uint8Array(newData), existing.byteLength);
+				await this.app.vault.adapter.writeBinary(
+					target.tempFilePath,
+					merged.buffer,
+				);
 			} catch (error) {
 				console.error(
 					`${PLUGIN_LOG_PREFIX} Failed to append chunk:`,

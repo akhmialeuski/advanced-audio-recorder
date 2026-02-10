@@ -62,6 +62,12 @@ export class Vault {
         },
         readBinary: async (_path: string): Promise<ArrayBuffer> =>
             new ArrayBuffer(0),
+        writeBinary: async (
+            _path: string,
+            _data: ArrayBuffer,
+        ): Promise<void> => {
+            // Mock implementation
+        },
         remove: async (_path: string): Promise<void> => {
             // Mock implementation
         },

@@ -86,19 +86,21 @@ describe('RecordingManager', () => {
     let mockApp: App;
     let mockSettings: AudioRecorderSettings;
     let statusChangeCallback: jest.Mock;
+    let consoleErrorSpy: jest.SpyInstance;
 
     beforeEach(() => {
         // Reset mocks
         jest.clearAllMocks();
+        consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
 
         // Create mock App
         mockApp = {
             vault: {
                 adapter: {
                     exists: jest.fn().mockResolvedValue(false),
-                    append: jest.fn().mockResolvedValue(undefined),
                     rename: jest.fn().mockResolvedValue(undefined),
                     readBinary: jest.fn().mockResolvedValue(new ArrayBuffer(0)),
+                    writeBinary: jest.fn().mockResolvedValue(undefined),
                     remove: jest.fn().mockResolvedValue(undefined),
                 },
                 createBinary: jest.fn().mockResolvedValue(undefined),
@@ -116,6 +118,10 @@ describe('RecordingManager', () => {
 
         // Create manager instance
         manager = new RecordingManager(mockApp, mockSettings, statusChangeCallback);
+    });
+
+    afterEach(() => {
+        consoleErrorSpy.mockRestore();
     });
 
     describe('constructor', () => {
@@ -325,7 +331,7 @@ describe('RecordingManager', () => {
 
             await manager.stopRecording();
 
-            expect(mockApp.vault.adapter.append).toHaveBeenCalled();
+            expect(mockApp.vault.adapter.writeBinary).toHaveBeenCalled();
         });
 
         it('should flush mobile buffer when limit reached', async () => {
