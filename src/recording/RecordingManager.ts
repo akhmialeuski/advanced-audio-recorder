@@ -709,7 +709,12 @@ export class RecordingManager {
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		const editor = view?.editor;
 		if (editor) {
-			const links = fileLinks.map((path) => `![[${path}]]`).join('\n');
+			const links = fileLinks
+				.map((path) => {
+					const fileName = path.split('/').pop() ?? path;
+					return `![[${fileName}]]`;
+				})
+				.join('\n');
 			editor.replaceSelection(links);
 		}
 	}

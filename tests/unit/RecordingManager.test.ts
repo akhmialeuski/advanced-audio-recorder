@@ -914,4 +914,97 @@ describe('RecordingManager', () => {
         });
     });
 
+    describe('insertFileLinks uses basename only', () => {
+        it('should insert only filename without directory path in wikilinks', async () => {
+            const mockReplaceSelection = jest.fn();
+            (mockApp.workspace.getActiveViewOfType as jest.Mock).mockReturnValue({
+                editor: { replaceSelection: mockReplaceSelection },
+            });
+
+            const mockMediaRecorder = {
+                start: jest.fn(),
+                stop: jest.fn(),
+                pause: jest.fn(),
+                resume: jest.fn(),
+                ondataavailable: null as ((event: BlobEvent) => void) | null,
+                onerror: null as ((event: Event) => void) | null,
+                addEventListener: jest.fn((event: string, handler: () => void) => {
+                    if (event === 'stop') {
+                        handler();
+                    }
+                }),
+            };
+
+            (global as Record<string, unknown>).MediaRecorder = jest.fn(() => mockMediaRecorder);
+            (global as Record<string, unknown>).MediaRecorder.isTypeSupported = jest.fn().mockReturnValue(true);
+
+            const { getAudioStreams } = jest.requireMock('../../src/recording/AudioStreamHandler') as {
+                getAudioStreams: jest.Mock;
+            };
+            getAudioStreams.mockResolvedValue({
+                streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
+                trackOrder: [],
+            });
+
+            await manager.startRecording();
+            await manager.stopRecording();
+
+            expect(mockReplaceSelection).toHaveBeenCalled();
+            const insertedText = mockReplaceSelection.mock.calls[0][0] as string;
+            expect(insertedText).not.toContain('/');
+            expect(insertedText).toMatch(/^!\[\[recording-.*\]\]$/);
+        });
+
+        it('should use basename when file is saved in a nested directory', async () => {
+            mockSettings = {
+                ...DEFAULT_SETTINGS,
+                saveNearActiveFile: true,
+                activeFileSubfolder: 'Audio',
+            };
+            manager = new RecordingManager(mockApp, mockSettings, statusChangeCallback);
+            (mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
+                path: 'Projects/Notes/Daily.md',
+            });
+
+            const mockReplaceSelection = jest.fn();
+            (mockApp.workspace.getActiveViewOfType as jest.Mock).mockReturnValue({
+                editor: { replaceSelection: mockReplaceSelection },
+            });
+
+            const mockMediaRecorder = {
+                start: jest.fn(),
+                stop: jest.fn(),
+                pause: jest.fn(),
+                resume: jest.fn(),
+                ondataavailable: null as ((event: BlobEvent) => void) | null,
+                onerror: null as ((event: Event) => void) | null,
+                addEventListener: jest.fn((event: string, handler: () => void) => {
+                    if (event === 'stop') {
+                        handler();
+                    }
+                }),
+            };
+
+            (global as Record<string, unknown>).MediaRecorder = jest.fn(() => mockMediaRecorder);
+            (global as Record<string, unknown>).MediaRecorder.isTypeSupported = jest.fn().mockReturnValue(true);
+
+            const { getAudioStreams } = jest.requireMock('../../src/recording/AudioStreamHandler') as {
+                getAudioStreams: jest.Mock;
+            };
+            getAudioStreams.mockResolvedValue({
+                streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
+                trackOrder: [],
+            });
+
+            await manager.startRecording();
+            await manager.stopRecording();
+
+            expect(mockReplaceSelection).toHaveBeenCalled();
+            const insertedText = mockReplaceSelection.mock.calls[0][0] as string;
+            expect(insertedText).not.toContain('Projects/');
+            expect(insertedText).not.toContain('Audio/');
+            expect(insertedText).toMatch(/^!\[\[recording-.*\]\]$/);
+        });
+    });
+
 });
