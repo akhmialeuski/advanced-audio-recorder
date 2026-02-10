@@ -565,11 +565,45 @@ export class RecordingManager {
 		return fileLinks;
 	}
 
+	private getActiveFileDirectory(): string {
+		const activeFile = this.app.workspace.getActiveFile();
+		if (!activeFile || !activeFile.path.toLowerCase().endsWith('.md')) {
+			return '';
+		}
+		const segments = activeFile.path.split('/');
+		segments.pop();
+		return segments.join('/');
+	}
+
+	private getBaseSaveDirectory(): string {
+		if (this.settings.saveNearActiveFile) {
+			const activeDirectory = this.getActiveFileDirectory();
+			if (this.settings.activeFileSubfolder.trim() === '') {
+				return activeDirectory;
+			}
+			return normalizePath(
+				`${activeDirectory}/${this.settings.activeFileSubfolder}`,
+			);
+		}
+		return this.settings.saveFolder;
+	}
+
+	private async ensureFolderExists(path: string): Promise<void> {
+		const normalizedPath = normalizePath(path).trim();
+		if (!normalizedPath) {
+			return;
+		}
+		if (await this.app.vault.adapter.exists(normalizedPath)) {
+			return;
+		}
+		await this.app.vault.createFolder(normalizedPath);
+	}
+
 	private async resolveUniquePath(fileName: string): Promise<string> {
 		let sanitizedFileName = fileName.replace(/[\\/:*?"<>|]/g, '-');
-		let filePath = normalizePath(
-			`${this.settings.saveFolder}/${sanitizedFileName}`,
-		);
+		const baseDirectory = this.getBaseSaveDirectory();
+		await this.ensureFolderExists(baseDirectory);
+		let filePath = normalizePath(`${baseDirectory}/${sanitizedFileName}`);
 
 		let counter = 1;
 		while (await this.app.vault.adapter.exists(filePath)) {
@@ -577,9 +611,7 @@ export class RecordingManager {
 			const ext = parts.pop() ?? '';
 			const name = parts.join('.');
 			sanitizedFileName = `${name}_${String(counter)}.${ext}`;
-			filePath = normalizePath(
-				`${this.settings.saveFolder}/${sanitizedFileName}`,
-			);
+			filePath = normalizePath(`${baseDirectory}/${sanitizedFileName}`);
 			counter++;
 		}
 

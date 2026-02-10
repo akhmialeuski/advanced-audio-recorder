@@ -36,6 +36,10 @@ export interface AudioRecorderSettings {
 	recordingFormat: string;
 	/** Folder path to save recordings */
 	saveFolder: string;
+	/** Save recordings next to the currently active note */
+	saveNearActiveFile: boolean;
+	/** Optional subfolder (relative to active file directory) */
+	activeFileSubfolder: string;
 	/** Prefix for recorded file names */
 	filePrefix: string;
 	/** Hotkey for start/stop recording */
@@ -70,6 +74,8 @@ export interface AudioRecorderSettings {
 export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	recordingFormat: 'webm',
 	saveFolder: '',
+	saveNearActiveFile: false,
+	activeFileSubfolder: '',
 	filePrefix: 'recording',
 	startStopHotkey: '',
 	pauseHotkey: '',

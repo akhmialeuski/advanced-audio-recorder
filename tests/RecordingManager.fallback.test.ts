@@ -107,9 +107,11 @@ describe('AudioStreamHandler: Error Handling', () => {
                     remove: jest.fn().mockResolvedValue(undefined),
                 },
                 createBinary: jest.fn().mockResolvedValue(undefined),
+                createFolder: jest.fn().mockResolvedValue(undefined),
             },
             workspace: {
                 getActiveViewOfType: jest.fn().mockReturnValue(null),
+                getActiveFile: jest.fn().mockReturnValue(null),
             },
         } as unknown as App;
 
