@@ -1,21 +1,24 @@
 # Obsidian Advanced Audio Recorder
 
-A powerful audio recording plugin for Obsidian that enhances your workflow with folder selection, audio source options, pause functionality, and multi-track capabilities.
+An audio recording plugin for Obsidian with configurable save location, input device selection, pause/resume control, and optional multi-track capture.
 
 ## Features
 
-- **Folder Selection**: Choose exactly where your recordings are stored.
-- **Audio Source Picker**: Select your preferred microphone or input device directly from the interface.
-- **Pause and Resume**:  Pause your recording session and resume when ready, keeping everything in one file.
-- **Multi-Track Recording**: Create separate tracks for different sources (experimental).
+- **Configurable Save Folder**: Choose where recordings are stored in your vault.
+- **Audio Input Selection**: Pick the microphone/input device from command palette or settings.
+- **Pause and Resume**: Pause and continue the same active recording session.
+- **Multi-Track Recording**: Record several input devices at once and export as a single or multiple files.
+- **Format and Bitrate Settings**: Choose output format and bitrate from plugin settings.
 
 ## Known Limitations
 
-Current version has the following limitations which are being addressed in upcoming updates:
+At the moment there are no known functional limitations that require user workarounds.
 
-- **Recording Duration**: Recordings longer than 30 minutes may cause high memory usage and potential instability. For long sessions, please use caution.
-- **File Format**: Currently, recordings are saved as `.wav` files by default to ensure quality, regardless of the format setting.
-- **Multi-Track**: The order of tracks in multi-track mode might not always be preserved.
+- Long recording sessions are supported.
+- Selected output format is respected.
+- Multi-track recording and track assignment are stable in normal usage.
+
+If you hit an edge case, please open an issue with reproduction steps.
 
 ## Installation
 
@@ -27,18 +30,35 @@ Current version has the following limitations which are being addressed in upcom
 
 ## Usage
 
-1. Click the microphone icon in the left ribbon or use the **Command Palette**.
-2. Select your target **folder** and **audio source**.
-3. Press **Record** to start keying your thoughts.
-4. Use the **Pause** button to temporarily halt recording.
-5. Press **Stop** to save the recording to your selected folder.
+1. Click the microphone icon in the left ribbon or run **Start/stop recording** from the Command Palette.
+2. Configure **Save folder**, **Input device**, and recording options in plugin settings.
+3. Start recording.
+4. Optionally run **Pause/resume recording**.
+5. Stop recording to save files and insert links into the active note.
+
+## Commands
+
+- **Start/stop recording** — starts a new recording or stops the current one.
+- **Pause/resume recording** — pauses an active recording and resumes it.
+- **Select audio input device** — opens a quick picker and saves the selected device.
+
+## Formats and Containers
+
+- The plugin exposes supported formats based on your platform/browser MediaRecorder support.
+- Commonly available options include: `webm`, `ogg`, `mp3`, `m4a`, `mp4`, and `wav`.
+- When **WAV** is selected, recording is captured through a supported compressed recorder format and converted to WAV on save.
+- In multi-track mode:
+  - **Single file** output combines tracks into one file.
+  - **Multiple files** output saves one file per track.
 
 ## Configuration
 
 Visit the plugin settings to:
-- Set default save location.
-- Configure default file naming patterns.
-- Manage multi-track settings.
+- Select recording format, bitrate, and sample rate.
+- Select default input device.
+- Set save folder and file prefix.
+- Configure multi-track recording (track count, output mode, per-track devices).
+- Enable debug logs when troubleshooting.
 
 ## License
 
