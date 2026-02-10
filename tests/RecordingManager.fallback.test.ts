@@ -137,7 +137,13 @@ describe('AudioStreamHandler: Error Handling', () => {
         Object.defineProperty(navigator, 'mediaDevices', {
             value: {
                 getUserMedia: getUserMediaMock,
-                enumerateDevices: jest.fn().mockResolvedValue([]),
+                enumerateDevices: jest.fn().mockResolvedValue([
+                    {
+                        deviceId: 'test-device-id',
+                        kind: 'audioinput',
+                        label: 'Test Device',
+                    },
+                ]),
             },
             writable: true,
         });
@@ -160,7 +166,13 @@ describe('AudioStreamHandler: Error Handling', () => {
         Object.defineProperty(navigator, 'mediaDevices', {
             value: {
                 getUserMedia: getUserMediaMock,
-                enumerateDevices: jest.fn().mockResolvedValue([]),
+                enumerateDevices: jest.fn().mockResolvedValue([
+                    {
+                        deviceId: 'test-device-id',
+                        kind: 'audioinput',
+                        label: 'Test Device',
+                    },
+                ]),
             },
             writable: true,
         });
@@ -180,7 +192,13 @@ describe('AudioStreamHandler: Error Handling', () => {
         Object.defineProperty(navigator, 'mediaDevices', {
             value: {
                 getUserMedia: getUserMediaMock,
-                enumerateDevices: jest.fn().mockResolvedValue([]),
+                enumerateDevices: jest.fn().mockResolvedValue([
+                    {
+                        deviceId: 'test-device-id',
+                        kind: 'audioinput',
+                        label: 'Test Device',
+                    },
+                ]),
             },
             writable: true,
         });
@@ -202,7 +220,13 @@ describe('AudioStreamHandler: Error Handling', () => {
         Object.defineProperty(navigator, 'mediaDevices', {
             value: {
                 getUserMedia: getUserMediaMock,
-                enumerateDevices: jest.fn().mockResolvedValue([]),
+                enumerateDevices: jest.fn().mockResolvedValue([
+                    {
+                        deviceId: 'test-device-id',
+                        kind: 'audioinput',
+                        label: 'Test Device',
+                    },
+                ]),
             },
             writable: true,
         });
@@ -221,7 +245,13 @@ describe('AudioStreamHandler: Error Handling', () => {
         Object.defineProperty(navigator, 'mediaDevices', {
             value: {
                 getUserMedia: getUserMediaMock,
-                enumerateDevices: jest.fn().mockResolvedValue([]),
+                enumerateDevices: jest.fn().mockResolvedValue([
+                    {
+                        deviceId: 'test-device-id',
+                        kind: 'audioinput',
+                        label: 'Test Device',
+                    },
+                ]),
             },
             writable: true,
         });

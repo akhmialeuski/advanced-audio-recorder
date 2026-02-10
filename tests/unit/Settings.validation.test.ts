@@ -68,7 +68,7 @@ describe('validateSettings', () => {
             ...DEFAULT_SETTINGS,
             audioDeviceId: 'valid-device',
             enableMultiTrack: true,
-            trackAudioSources: {},
+            trackAudioSources: new Map(),
         };
         expect(() => validateSettings(settings)).toThrow(SettingsValidationError);
         expect(() => validateSettings(settings)).toThrow(
@@ -81,7 +81,10 @@ describe('validateSettings', () => {
             ...DEFAULT_SETTINGS,
             audioDeviceId: 'valid-device',
             enableMultiTrack: true,
-            trackAudioSources: { 1: 'device-1', 2: '' },
+            trackAudioSources: new Map([
+                [1, { deviceId: 'device-1' }],
+                [2, { deviceId: '' }],
+            ]),
         };
         expect(() => validateSettings(settings)).toThrow(SettingsValidationError);
         expect(() => validateSettings(settings)).toThrow(
@@ -102,7 +105,10 @@ describe('validateSettings', () => {
             ...DEFAULT_SETTINGS,
             audioDeviceId: 'valid-device',
             enableMultiTrack: true,
-            trackAudioSources: { 1: 'device-1', 2: 'device-2' },
+            trackAudioSources: new Map([
+                [1, { deviceId: 'device-1' }],
+                [2, { deviceId: 'device-2' }],
+            ]),
         };
         expect(() => validateSettings(settings)).not.toThrow();
     });

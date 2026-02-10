@@ -5,7 +5,11 @@
 
 import { Plugin } from 'obsidian';
 import { RecordingStatus } from './types';
-import { AudioRecorderSettings, mergeSettings } from './settings/Settings';
+import {
+	AudioRecorderSettings,
+	mergeSettings,
+	serializeSettings,
+} from './settings/Settings';
 import { AudioRecorderSettingTab } from './settings/SettingsTab';
 import { RecordingManager } from './recording/RecordingManager';
 import { updateStatusBar, initializeStatusBar } from './ui/StatusBar';
@@ -70,7 +74,7 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * Saves plugin settings to storage.
 	 */
 	async saveSettings(): Promise<void> {
-		await this.saveData(this.settings);
+		await this.saveData(serializeSettings(this.settings));
 		this.recordingManager.updateSettings(this.settings);
 	}
 
