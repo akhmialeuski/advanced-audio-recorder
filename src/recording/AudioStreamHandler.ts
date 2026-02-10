@@ -7,6 +7,11 @@ import { PLUGIN_LOG_PREFIX } from '../constants';
 import { AudioStreamError } from '../errors';
 import type { AudioRecorderSettings } from '../settings/Settings';
 
+export interface TrackAudioSource {
+	trackNumber: number;
+	deviceId: string;
+}
+
 /**
  * Gets all available audio input devices.
  * @returns Promise resolving to array of audio input devices
@@ -90,26 +95,71 @@ export async function getAudioStream(
  */
 export async function getAudioStreams(
 	settings: AudioRecorderSettings,
-): Promise<MediaStream[]> {
+): Promise<{ streams: MediaStream[]; trackOrder: TrackAudioSource[] }> {
 	if (settings.enableMultiTrack) {
-		const deviceIds: string[] = [];
-		for (const key of Object.keys(settings.trackAudioSources)) {
-			const trackNum = parseInt(key, 10);
-			const deviceId = settings.trackAudioSources[trackNum];
-			if (deviceId) {
-				deviceIds.push(deviceId);
-			}
-		}
-		const streamPromises = deviceIds.map((deviceId: string) =>
-			getAudioStream(deviceId, settings.sampleRate),
+		const trackOrder = getOrderedTrackSources(settings);
+		const streamPromises = trackOrder.map((source) =>
+			getAudioStream(source.deviceId, settings.sampleRate),
 		);
-		return Promise.all(streamPromises);
+		return { streams: await Promise.all(streamPromises), trackOrder };
 	}
 	const stream = await getAudioStream(
 		settings.audioDeviceId,
 		settings.sampleRate,
 	);
-	return [stream];
+	return { streams: [stream], trackOrder: [] };
+}
+
+/**
+ * Gets ordered track audio sources based on settings.
+ */
+export function getOrderedTrackSources(
+	settings: AudioRecorderSettings,
+): TrackAudioSource[] {
+	const sources: TrackAudioSource[] = [];
+	if (!settings.enableMultiTrack) {
+		return sources;
+	}
+	for (let i = 1; i <= settings.maxTracks; i++) {
+		const source = settings.trackAudioSources.get(i);
+		if (source?.deviceId) {
+			sources.push({ trackNumber: i, deviceId: source.deviceId });
+		}
+	}
+	return sources;
+}
+
+/**
+ * Validates that selected audio devices are still available.
+ */
+export async function validateSelectedDevices(
+	settings: AudioRecorderSettings,
+): Promise<void> {
+	const devices = await getAudioInputDevices();
+	const availableDeviceIds = new Set(
+		devices.map((device) => device.deviceId),
+	);
+
+	if (settings.enableMultiTrack) {
+		const missingTracks = getOrderedTrackSources(settings)
+			.filter((source) => !availableDeviceIds.has(source.deviceId))
+			.map((source) => source.trackNumber);
+		if (missingTracks.length > 0) {
+			throw new Error(
+				`Selected audio device(s) for track(s) ${missingTracks.join(', ')} are no longer available.`,
+			);
+		}
+		return;
+	}
+
+	if (
+		settings.audioDeviceId &&
+		!availableDeviceIds.has(settings.audioDeviceId)
+	) {
+		throw new Error(
+			'Selected audio input device is no longer available. Please choose another device in settings.',
+		);
+	}
 }
 
 /**

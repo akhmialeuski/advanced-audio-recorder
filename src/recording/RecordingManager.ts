@@ -11,6 +11,7 @@ import {
 	getAudioStreams,
 	getAudioSourceName,
 	stopAllStreams,
+	validateSelectedDevices,
 } from './AudioStreamHandler';
 import { bufferToWave } from './WavEncoder';
 import { PLUGIN_LOG_PREFIX } from '../constants';
@@ -37,6 +38,7 @@ export class RecordingManager {
 	private recorders: MediaRecorder[] = [];
 	private chunkTargets: RecordingTarget[] = [];
 	private streams: MediaStream[] = [];
+	private trackOrder: { trackNumber: number; deviceId: string }[] = [];
 	private status: RecordingStatus = RecordingStatus.Idle;
 	private onStatusChange: (status: RecordingStatus) => void;
 	private debugLogger: DebugLogger;
@@ -101,7 +103,12 @@ export class RecordingManager {
 				);
 			}
 
-			this.streams = await getAudioStreams(this.settings);
+			await validateSelectedDevices(this.settings);
+			const { streams, trackOrder } = await getAudioStreams(
+				this.settings,
+			);
+			this.streams = streams;
+			this.trackOrder = trackOrder;
 			this.recorders = this.streams.map(
 				(stream) => new MediaRecorder(stream, { mimeType }),
 			);
@@ -113,9 +120,9 @@ export class RecordingManager {
 			this.isMobileRecording = Platform.isMobileApp || Platform.isMobile;
 			this.chunkTargets = await Promise.all(
 				this.recorders.map(async (_recorder, index) => {
-					const trackNumber = index + 1;
-					const deviceId =
-						this.settings.trackAudioSources[trackNumber];
+					const trackInfo = this.trackOrder[index];
+					const trackNumber = trackInfo?.trackNumber ?? index + 1;
+					const deviceId = trackInfo?.deviceId;
 					const sourceName =
 						this.settings.useSourceNamesForTracks && deviceId
 							? await getAudioSourceName(deviceId)
@@ -237,6 +244,7 @@ export class RecordingManager {
 			this.streams = [];
 			this.recorders = [];
 			this.chunkTargets = [];
+			this.trackOrder = [];
 			this.recordingTimestamp = null;
 			this.totalChunks = 0;
 			this.setStatus(RecordingStatus.Idle);
@@ -287,7 +295,6 @@ export class RecordingManager {
 			if (this.chunkTargets.length === 1) {
 				const paths = await this.finalizeTrackFiles(
 					this.chunkTargets[0],
-					1,
 					timestamp,
 				);
 				fileLinks.push(...paths);
@@ -314,7 +321,6 @@ export class RecordingManager {
 			for (let i = 0; i < this.chunkTargets.length; i++) {
 				const paths = await this.finalizeTrackFiles(
 					this.chunkTargets[i],
-					i + 1,
 					timestamp,
 				);
 				fileLinks.push(...paths);
@@ -483,7 +489,6 @@ export class RecordingManager {
 
 	private async finalizeTrackFiles(
 		target: RecordingTarget,
-		trackNumber: number,
 		timestamp: string,
 	): Promise<string[]> {
 		const fileLinks: string[] = [];

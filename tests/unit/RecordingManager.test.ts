@@ -26,6 +26,7 @@ jest.mock('../../src/recording/AudioStreamHandler', () => ({
     getAudioStreams: jest.fn(),
     getAudioSourceName: jest.fn().mockResolvedValue('TestDevice'),
     stopAllStreams: jest.fn(),
+    validateSelectedDevices: jest.fn(),
 }));
 
 // Mock WavEncoder
@@ -173,9 +174,12 @@ describe('RecordingManager', () => {
             const { getAudioStreams } = jest.requireMock('../../src/recording/AudioStreamHandler') as {
                 getAudioStreams: jest.Mock;
             };
-            getAudioStreams.mockResolvedValue([{
-                getTracks: () => [{ stop: jest.fn() }],
-            }]);
+            getAudioStreams.mockResolvedValue({
+                streams: [{
+                    getTracks: () => [{ stop: jest.fn() }],
+                }],
+                trackOrder: [],
+            });
         });
 
         it('should start recording when idle', async () => {
@@ -232,9 +236,12 @@ describe('RecordingManager', () => {
             const { getAudioStreams } = jest.requireMock('../../src/recording/AudioStreamHandler') as {
                 getAudioStreams: jest.Mock;
             };
-            getAudioStreams.mockResolvedValue([{
-                getTracks: () => [{ stop: jest.fn() }],
-            }]);
+            getAudioStreams.mockResolvedValue({
+                streams: [{
+                    getTracks: () => [{ stop: jest.fn() }],
+                }],
+                trackOrder: [],
+            });
         });
 
         it('should do nothing when idle', () => {
@@ -411,9 +418,12 @@ describe('RecordingManager', () => {
             const { getAudioStreams } = jest.requireMock('../../src/recording/AudioStreamHandler') as {
                 getAudioStreams: jest.Mock;
             };
-            getAudioStreams.mockResolvedValue([{
-                getTracks: () => [{ stop: mockStopTrack }],
-            }]);
+            getAudioStreams.mockResolvedValue({
+                streams: [{
+                    getTracks: () => [{ stop: mockStopTrack }],
+                }],
+                trackOrder: [],
+            });
         });
 
         it('should reset status to Idle even when save fails', async () => {
@@ -516,9 +526,12 @@ describe('RecordingManager', () => {
             const { getAudioStreams } = jest.requireMock('../../src/recording/AudioStreamHandler') as {
                 getAudioStreams: jest.Mock;
             };
-            getAudioStreams.mockResolvedValue([{
-                getTracks: () => [{ stop: jest.fn() }],
-            }]);
+            getAudioStreams.mockResolvedValue({
+                streams: [{
+                    getTracks: () => [{ stop: jest.fn() }],
+                }],
+                trackOrder: [],
+            });
         });
 
         it('should follow full lifecycle: idle -> recording -> paused -> recording -> idle', async () => {

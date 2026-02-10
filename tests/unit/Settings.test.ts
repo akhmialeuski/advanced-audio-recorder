@@ -60,7 +60,8 @@ describe('Settings', () => {
         });
 
         it('should have empty track audio sources', () => {
-            expect(DEFAULT_SETTINGS.trackAudioSources).toEqual({});
+            expect(DEFAULT_SETTINGS.trackAudioSources).toBeInstanceOf(Map);
+            expect(DEFAULT_SETTINGS.trackAudioSources.size).toBe(0);
         });
 
         it('should have debug mode disabled by default', () => {
@@ -113,14 +114,25 @@ describe('Settings', () => {
         });
 
         it('should merge track audio sources', () => {
-            const trackSources: TrackAudioSources = {
-                1: 'device-id-1',
-                2: 'device-id-2',
-            };
+            const trackSources: TrackAudioSources = new Map([
+                [1, { deviceId: 'device-id-1' }],
+                [2, { deviceId: 'device-id-2' }],
+            ]);
 
             const result = mergeSettings({ trackAudioSources: trackSources });
 
-            expect(result.trackAudioSources).toEqual(trackSources);
+            expect(result.trackAudioSources.get(1)?.deviceId).toBe('device-id-1');
+            expect(result.trackAudioSources.get(2)?.deviceId).toBe('device-id-2');
+        });
+
+        it('should normalize serialized track audio sources into a Map', () => {
+            const result = mergeSettings({
+                trackAudioSources: { 1: 'device-id-1', 2: 'device-id-2' },
+            });
+
+            expect(result.trackAudioSources).toBeInstanceOf(Map);
+            expect(result.trackAudioSources.get(1)?.deviceId).toBe('device-id-1');
+            expect(result.trackAudioSources.get(2)?.deviceId).toBe('device-id-2');
         });
 
         it('should handle output mode changes', () => {
@@ -147,7 +159,10 @@ describe('Settings', () => {
                 maxTracks: 4,
                 outputMode: 'multiple',
                 useSourceNamesForTracks: false,
-                trackAudioSources: { 1: 'dev1', 2: 'dev2' },
+                trackAudioSources: new Map([
+                    [1, { deviceId: 'dev1' }],
+                    [2, { deviceId: 'dev2' }],
+                ]),
                 debug: true,
             };
 
@@ -191,15 +206,15 @@ describe('Settings', () => {
             expect(validModes).toHaveLength(2);
         });
 
-        it('TrackAudioSources should map numbers to strings', () => {
-            const sources: TrackAudioSources = {
-                1: 'device-1',
-                2: 'device-2',
-                3: 'device-3',
-            };
+        it('TrackAudioSources should map numbers to device IDs', () => {
+            const sources: TrackAudioSources = new Map([
+                [1, { deviceId: 'device-1' }],
+                [2, { deviceId: 'device-2' }],
+                [3, { deviceId: 'device-3' }],
+            ]);
 
-            expect(Object.keys(sources)).toHaveLength(3);
-            expect(sources[1]).toBe('device-1');
+            expect(sources.size).toBe(3);
+            expect(sources.get(1)?.deviceId).toBe('device-1');
         });
     });
 });

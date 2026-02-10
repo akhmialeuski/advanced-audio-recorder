@@ -13,7 +13,20 @@ export type OutputMode = 'single' | 'multiple';
 /**
  * Track audio sources mapping (track number -> device ID).
  */
-export type TrackAudioSources = Record<number, string>;
+export interface AudioSource {
+	/** Selected device ID for the track. */
+	deviceId: string;
+}
+
+/**
+ * Track audio sources mapping (track number -> audio source).
+ */
+export type TrackAudioSources = Map<number, AudioSource>;
+
+/**
+ * Serialized track audio sources mapping (track number -> device ID).
+ */
+export type TrackAudioSourcesRecord = Record<number, string | AudioSource>;
 
 /**
  * Plugin settings interface.
@@ -68,9 +81,83 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	maxTracks: 2,
 	outputMode: 'single',
 	useSourceNamesForTracks: true,
-	trackAudioSources: {},
+	trackAudioSources: new Map(),
 	debug: false,
 };
+
+export interface AudioRecorderSettingsInput extends Partial<
+	Omit<AudioRecorderSettings, 'trackAudioSources'>
+> {
+	trackAudioSources?: TrackAudioSources | TrackAudioSourcesRecord;
+}
+
+export interface SerializedAudioRecorderSettings extends Omit<
+	AudioRecorderSettings,
+	'trackAudioSources'
+> {
+	trackAudioSources: Record<number, string>;
+}
+
+/**
+ * Normalizes track audio sources into a Map.
+ */
+export function normalizeTrackAudioSources(
+	trackAudioSources?: TrackAudioSources | TrackAudioSourcesRecord,
+): TrackAudioSources {
+	if (!trackAudioSources) {
+		return new Map();
+	}
+
+	if (trackAudioSources instanceof Map) {
+		return new Map(trackAudioSources);
+	}
+
+	const sources = new Map<number, AudioSource>();
+	for (const [key, value] of Object.entries(trackAudioSources)) {
+		const trackNumber = Number(key);
+		if (Number.isNaN(trackNumber)) {
+			continue;
+		}
+		if (typeof value === 'string') {
+			sources.set(trackNumber, { deviceId: value });
+			continue;
+		}
+		if (value && typeof value === 'object' && 'deviceId' in value) {
+			const deviceId = (value as { deviceId?: unknown }).deviceId;
+			sources.set(trackNumber, {
+				deviceId: typeof deviceId === 'string' ? deviceId : '',
+			});
+		}
+	}
+	return sources;
+}
+
+/**
+ * Serializes track audio sources into a plain object.
+ */
+export function serializeTrackAudioSources(
+	trackAudioSources: TrackAudioSources,
+): Record<number, string> {
+	const serialized: Record<number, string> = {};
+	for (const [trackNumber, source] of trackAudioSources.entries()) {
+		serialized[trackNumber] = source.deviceId;
+	}
+	return serialized;
+}
+
+/**
+ * Serializes settings for persistence.
+ */
+export function serializeSettings(
+	settings: AudioRecorderSettings,
+): SerializedAudioRecorderSettings {
+	return {
+		...settings,
+		trackAudioSources: serializeTrackAudioSources(
+			settings.trackAudioSources,
+		),
+	};
+}
 
 /**
  * Merges user settings with defaults.
@@ -78,9 +165,15 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
  * @returns Complete settings object
  */
 export function mergeSettings(
-	userSettings: Partial<AudioRecorderSettings>,
+	userSettings: AudioRecorderSettingsInput = {},
 ): AudioRecorderSettings {
-	return { ...DEFAULT_SETTINGS, ...userSettings };
+	return {
+		...DEFAULT_SETTINGS,
+		...userSettings,
+		trackAudioSources: normalizeTrackAudioSources(
+			userSettings.trackAudioSources,
+		),
+	};
 }
 
 /**
@@ -111,17 +204,15 @@ export function validateSettings(settings: AudioRecorderSettings): void {
 	}
 
 	if (settings.enableMultiTrack) {
-		const trackCount = Object.keys(settings.trackAudioSources).length;
+		const trackCount = settings.trackAudioSources.size;
 		if (trackCount === 0) {
 			throw new SettingsValidationError(
 				'trackAudioSources',
 				'Multi-track recording is enabled but no audio sources are selected.',
 			);
 		}
-		for (const [trackNum, deviceId] of Object.entries(
-			settings.trackAudioSources,
-		)) {
-			if (!deviceId || deviceId.trim() === '') {
+		for (const [trackNum, source] of settings.trackAudioSources.entries()) {
+			if (!source.deviceId || source.deviceId.trim() === '') {
 				throw new SettingsValidationError(
 					`trackAudioSources[${trackNum}]`,
 					`Track ${trackNum} has no audio source selected.`,
