@@ -305,9 +305,12 @@ describe('RecordingManager', () => {
             const { getAudioStreams } = jest.requireMock('../../src/recording/AudioStreamHandler') as {
                 getAudioStreams: jest.Mock;
             };
-            getAudioStreams.mockResolvedValue([{
-                getTracks: () => [{ stop: jest.fn() }],
-            }]);
+            getAudioStreams.mockResolvedValue({
+                streams: [{
+                    getTracks: () => [{ stop: jest.fn() }],
+                }],
+                trackOrder: [],
+            });
 
             await manager.startRecording();
 
@@ -352,9 +355,12 @@ describe('RecordingManager', () => {
             const { getAudioStreams } = jest.requireMock('../../src/recording/AudioStreamHandler') as {
                 getAudioStreams: jest.Mock;
             };
-            getAudioStreams.mockResolvedValue([{
-                getTracks: () => [{ stop: jest.fn() }],
-            }]);
+            getAudioStreams.mockResolvedValue({
+                streams: [{
+                    getTracks: () => [{ stop: jest.fn() }],
+                }],
+                trackOrder: [],
+            });
 
             await manager.startRecording();
 
