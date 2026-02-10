@@ -104,9 +104,11 @@ describe('RecordingManager', () => {
                     remove: jest.fn().mockResolvedValue(undefined),
                 },
                 createBinary: jest.fn().mockResolvedValue(undefined),
+                createFolder: jest.fn().mockResolvedValue(undefined),
             },
             workspace: {
                 getActiveViewOfType: jest.fn().mockReturnValue(null),
+                getActiveFile: jest.fn().mockReturnValue(null),
             },
         } as unknown as App;
 
@@ -772,4 +774,237 @@ describe('RecordingManager', () => {
             expect(mockApp.vault.adapter.rename).not.toHaveBeenCalled();
         });
     });
+
+    describe('context-aware save location', () => {
+        it('should save near active markdown file when enabled without subfolder', async () => {
+            mockSettings = {
+                ...DEFAULT_SETTINGS,
+                saveNearActiveFile: true,
+                activeFileSubfolder: '',
+            };
+            manager = new RecordingManager(mockApp, mockSettings, statusChangeCallback);
+            (mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
+                path: 'Meetings/2026/Meeting Note.md',
+            });
+
+            const mockMediaRecorder = {
+                start: jest.fn(),
+                stop: jest.fn(),
+                pause: jest.fn(),
+                resume: jest.fn(),
+                ondataavailable: null as ((event: BlobEvent) => void) | null,
+                onerror: null as ((event: Event) => void) | null,
+                addEventListener: jest.fn((event: string, handler: () => void) => {
+                    if (event === 'stop') {
+                        handler();
+                    }
+                }),
+            };
+
+            (global as Record<string, unknown>).MediaRecorder = jest.fn(() => mockMediaRecorder);
+            (global as Record<string, unknown>).MediaRecorder.isTypeSupported = jest.fn().mockReturnValue(true);
+
+            const { getAudioStreams } = jest.requireMock('../../src/recording/AudioStreamHandler') as {
+                getAudioStreams: jest.Mock;
+            };
+            getAudioStreams.mockResolvedValue({
+                streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
+                trackOrder: [],
+            });
+
+            await manager.startRecording();
+            await manager.stopRecording();
+
+            expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
+                expect.stringMatching(/^Meetings\/2026\/recording-Track1-.*\.partial\.webm$/),
+                expect.any(ArrayBuffer),
+            );
+        });
+
+        it('should create active file subfolder and save recording there', async () => {
+            mockSettings = {
+                ...DEFAULT_SETTINGS,
+                saveNearActiveFile: true,
+                activeFileSubfolder: 'Audio',
+            };
+            manager = new RecordingManager(mockApp, mockSettings, statusChangeCallback);
+            (mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
+                path: 'Meetings/2026/Meeting Note.md',
+            });
+
+            const mockMediaRecorder = {
+                start: jest.fn(),
+                stop: jest.fn(),
+                pause: jest.fn(),
+                resume: jest.fn(),
+                ondataavailable: null as ((event: BlobEvent) => void) | null,
+                onerror: null as ((event: Event) => void) | null,
+                addEventListener: jest.fn((event: string, handler: () => void) => {
+                    if (event === 'stop') {
+                        handler();
+                    }
+                }),
+            };
+
+            (global as Record<string, unknown>).MediaRecorder = jest.fn(() => mockMediaRecorder);
+            (global as Record<string, unknown>).MediaRecorder.isTypeSupported = jest.fn().mockReturnValue(true);
+
+            const { getAudioStreams } = jest.requireMock('../../src/recording/AudioStreamHandler') as {
+                getAudioStreams: jest.Mock;
+            };
+            getAudioStreams.mockResolvedValue({
+                streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
+                trackOrder: [],
+            });
+
+            await manager.startRecording();
+            await manager.stopRecording();
+
+            expect(mockApp.vault.createFolder).toHaveBeenCalledWith('Meetings/2026/Audio');
+            expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
+                expect.stringMatching(/^Meetings\/2026\/Audio\/recording-Track1-.*\.partial\.webm$/),
+                expect.any(ArrayBuffer),
+            );
+        });
+
+        it('should fallback to global save folder when near-active mode is disabled', async () => {
+            mockSettings = {
+                ...DEFAULT_SETTINGS,
+                saveFolder: 'Recordings',
+                saveNearActiveFile: false,
+                activeFileSubfolder: 'Audio',
+            };
+            manager = new RecordingManager(mockApp, mockSettings, statusChangeCallback);
+            (mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
+                path: 'Meetings/2026/Meeting Note.md',
+            });
+
+            const mockMediaRecorder = {
+                start: jest.fn(),
+                stop: jest.fn(),
+                pause: jest.fn(),
+                resume: jest.fn(),
+                ondataavailable: null as ((event: BlobEvent) => void) | null,
+                onerror: null as ((event: Event) => void) | null,
+                addEventListener: jest.fn((event: string, handler: () => void) => {
+                    if (event === 'stop') {
+                        handler();
+                    }
+                }),
+            };
+
+            (global as Record<string, unknown>).MediaRecorder = jest.fn(() => mockMediaRecorder);
+            (global as Record<string, unknown>).MediaRecorder.isTypeSupported = jest.fn().mockReturnValue(true);
+
+            const { getAudioStreams } = jest.requireMock('../../src/recording/AudioStreamHandler') as {
+                getAudioStreams: jest.Mock;
+            };
+            getAudioStreams.mockResolvedValue({
+                streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
+                trackOrder: [],
+            });
+
+            await manager.startRecording();
+            await manager.stopRecording();
+
+            expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
+                expect.stringMatching(/^Recordings\/recording-Track1-.*\.partial\.webm$/),
+                expect.any(ArrayBuffer),
+            );
+        });
+    });
+
+    describe('insertFileLinks uses basename only', () => {
+        it('should insert only filename without directory path in wikilinks', async () => {
+            const mockReplaceSelection = jest.fn();
+            (mockApp.workspace.getActiveViewOfType as jest.Mock).mockReturnValue({
+                editor: { replaceSelection: mockReplaceSelection },
+            });
+
+            const mockMediaRecorder = {
+                start: jest.fn(),
+                stop: jest.fn(),
+                pause: jest.fn(),
+                resume: jest.fn(),
+                ondataavailable: null as ((event: BlobEvent) => void) | null,
+                onerror: null as ((event: Event) => void) | null,
+                addEventListener: jest.fn((event: string, handler: () => void) => {
+                    if (event === 'stop') {
+                        handler();
+                    }
+                }),
+            };
+
+            (global as Record<string, unknown>).MediaRecorder = jest.fn(() => mockMediaRecorder);
+            (global as Record<string, unknown>).MediaRecorder.isTypeSupported = jest.fn().mockReturnValue(true);
+
+            const { getAudioStreams } = jest.requireMock('../../src/recording/AudioStreamHandler') as {
+                getAudioStreams: jest.Mock;
+            };
+            getAudioStreams.mockResolvedValue({
+                streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
+                trackOrder: [],
+            });
+
+            await manager.startRecording();
+            await manager.stopRecording();
+
+            expect(mockReplaceSelection).toHaveBeenCalled();
+            const insertedText = mockReplaceSelection.mock.calls[0][0] as string;
+            expect(insertedText).not.toContain('/');
+            expect(insertedText).toMatch(/^!\[\[recording-.*\]\]$/);
+        });
+
+        it('should use basename when file is saved in a nested directory', async () => {
+            mockSettings = {
+                ...DEFAULT_SETTINGS,
+                saveNearActiveFile: true,
+                activeFileSubfolder: 'Audio',
+            };
+            manager = new RecordingManager(mockApp, mockSettings, statusChangeCallback);
+            (mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
+                path: 'Projects/Notes/Daily.md',
+            });
+
+            const mockReplaceSelection = jest.fn();
+            (mockApp.workspace.getActiveViewOfType as jest.Mock).mockReturnValue({
+                editor: { replaceSelection: mockReplaceSelection },
+            });
+
+            const mockMediaRecorder = {
+                start: jest.fn(),
+                stop: jest.fn(),
+                pause: jest.fn(),
+                resume: jest.fn(),
+                ondataavailable: null as ((event: BlobEvent) => void) | null,
+                onerror: null as ((event: Event) => void) | null,
+                addEventListener: jest.fn((event: string, handler: () => void) => {
+                    if (event === 'stop') {
+                        handler();
+                    }
+                }),
+            };
+
+            (global as Record<string, unknown>).MediaRecorder = jest.fn(() => mockMediaRecorder);
+            (global as Record<string, unknown>).MediaRecorder.isTypeSupported = jest.fn().mockReturnValue(true);
+
+            const { getAudioStreams } = jest.requireMock('../../src/recording/AudioStreamHandler') as {
+                getAudioStreams: jest.Mock;
+            };
+            getAudioStreams.mockResolvedValue({
+                streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
+                trackOrder: [],
+            });
+
+            await manager.startRecording();
+            await manager.stopRecording();
+
+            expect(mockReplaceSelection).toHaveBeenCalled();
+            const insertedText = mockReplaceSelection.mock.calls[0][0] as string;
+            expect(insertedText).not.toContain('Projects/');
+            expect(insertedText).not.toContain('Audio/');
+            expect(insertedText).toMatch(/^!\[\[recording-.*\]\]$/);
+        });
+    });
+
 });

@@ -21,6 +21,14 @@ describe('Settings', () => {
             expect(DEFAULT_SETTINGS.saveFolder).toBe('');
         });
 
+        it('should have save-near-active-file mode disabled by default', () => {
+            expect(DEFAULT_SETTINGS.saveNearActiveFile).toBe(false);
+        });
+
+        it('should have empty active file subfolder by default', () => {
+            expect(DEFAULT_SETTINGS.activeFileSubfolder).toBe('');
+        });
+
         it('should have default file prefix', () => {
             expect(DEFAULT_SETTINGS.filePrefix).toBe('recording');
         });
@@ -72,6 +80,8 @@ describe('Settings', () => {
             const expectedKeys: (keyof AudioRecorderSettings)[] = [
                 'recordingFormat',
                 'saveFolder',
+                'saveNearActiveFile',
+                'activeFileSubfolder',
                 'filePrefix',
                 'startStopHotkey',
                 'pauseHotkey',
@@ -148,6 +158,8 @@ describe('Settings', () => {
             const fullSettings: AudioRecorderSettings = {
                 recordingFormat: 'mp3',
                 saveFolder: '/recordings',
+                saveNearActiveFile: true,
+                activeFileSubfolder: 'Audio',
                 filePrefix: 'audio',
                 startStopHotkey: 'Ctrl+R',
                 pauseHotkey: 'Ctrl+P',

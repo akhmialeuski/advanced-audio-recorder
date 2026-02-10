@@ -222,6 +222,38 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			});
 
 		new Setting(containerEl)
+			.setName('Save recordings near active file')
+			.setDesc(
+				'Save recordings in the same directory as the currently active markdown file. This mode has priority over save folder.',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.saveNearActiveFile)
+					.onChange(async (value) => {
+						this.plugin.settings.saveNearActiveFile = value;
+						await this.plugin.saveSettings();
+						this.display();
+					}),
+			);
+
+		if (this.plugin.settings.saveNearActiveFile) {
+			new Setting(containerEl)
+				.setName('Active file subfolder')
+				.setDesc(
+					'Optional subfolder relative to the active file directory (for example: audio). Created automatically if missing.',
+				)
+				.addText((text) =>
+					text
+						.setPlaceholder('Audio')
+						.setValue(this.plugin.settings.activeFileSubfolder)
+						.onChange(async (value) => {
+							this.plugin.settings.activeFileSubfolder = value;
+							await this.plugin.saveSettings();
+						}),
+				);
+		}
+
+		new Setting(containerEl)
 			.setName('Documentation')
 			.setDesc(
 				'Use the start/stop recording command to control recording state, the pause/resume recording command to temporarily halt capture, and the select audio input device command for quick device switching. Long sessions are supported; choose compressed formats such as webm or ogg to reduce disk usage.',
