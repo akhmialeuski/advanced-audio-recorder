@@ -28,6 +28,7 @@ interface AudioRecorderPluginInterface extends Plugin {
 export class AudioRecorderSettingTab extends PluginSettingTab {
 	plugin: AudioRecorderPluginInterface;
 	private deviceDropdowns: DropdownComponent[] = [];
+	private readonly bitrateOptionsKbps = [64, 96, 128, 160, 192, 256, 320];
 
 	/**
 	 * Creates a new AudioRecorderSettingTab.
@@ -52,9 +53,27 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 */
 	getSupportedFormats(): string[] {
 		const formats = ['ogg', 'webm', 'mp3', 'm4a', 'mp4', 'wav'];
-		return formats.filter((format) =>
-			MediaRecorder.isTypeSupported(`audio/${format}`),
-		);
+		return formats.filter((format) => {
+			if (format === 'wav') {
+				return (
+					MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ||
+					MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
+				);
+			}
+			if (format === 'webm' || format === 'ogg') {
+				return MediaRecorder.isTypeSupported(
+					`audio/${format};codecs=opus`,
+				);
+			}
+			return MediaRecorder.isTypeSupported(`audio/${format}`);
+		});
+	}
+
+	private getCompressionDescription(format: string): string {
+		if (format === 'wav') {
+			return 'Uncompressed WAV (larger size; requires additional conversion after recording).';
+		}
+		return 'Compressed audio (smaller size; saved directly from recorder output).';
 	}
 
 	/**
@@ -87,9 +106,18 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			.setHeading();
 
 		const supportedFormats = this.getSupportedFormats();
+		const selectedBitrateKbps = Math.round(
+			this.plugin.settings.bitrate / 1000,
+		);
+		const updateOutputSummary = (container: HTMLElement): void => {
+			container.setText(
+				`Output: ${this.plugin.settings.recordingFormat.toUpperCase()}, ${String(Math.round(this.plugin.settings.bitrate / 1000))} kbps. ${this.getCompressionDescription(this.plugin.settings.recordingFormat)}`,
+			);
+		};
+		let summaryEl: HTMLElement | null = null;
 		new Setting(containerEl)
 			.setName('Recording format')
-			.setDesc('Select the audio recording format.')
+			.setDesc('Select the output format for saved recordings.')
 			.addDropdown((dropdown) => {
 				supportedFormats.forEach((format) => {
 					dropdown.addOption(format, format);
@@ -98,8 +126,39 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				dropdown.onChange(async (value) => {
 					this.plugin.settings.recordingFormat = value;
 					await this.plugin.saveSettings();
+					if (summaryEl) {
+						updateOutputSummary(summaryEl);
+					}
 				});
 			});
+
+		new Setting(containerEl)
+			.setName('Audio bitrate')
+			.setDesc('Controls compression quality and resulting file size.')
+			.addDropdown((dropdown) => {
+				this.bitrateOptionsKbps.forEach((bitrateKbps) => {
+					dropdown.addOption(
+						String(bitrateKbps),
+						`${String(bitrateKbps)} kbps`,
+					);
+				});
+				dropdown.setValue(String(selectedBitrateKbps));
+				dropdown.onChange(async (value) => {
+					this.plugin.settings.bitrate = parseInt(value, 10) * 1000;
+					await this.plugin.saveSettings();
+					if (summaryEl) {
+						updateOutputSummary(summaryEl);
+					}
+				});
+			});
+
+		const outputSummarySetting = new Setting(containerEl)
+			.setName('Output summary')
+			.setDesc(
+				'Shows the exact format, compression type, and bitrate used for recording.',
+			);
+		summaryEl = outputSummarySetting.descEl.createDiv();
+		updateOutputSummary(summaryEl);
 
 		new Setting(containerEl)
 			.setName('Sample rate')
