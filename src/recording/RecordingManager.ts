@@ -268,6 +268,8 @@ export class RecordingManager {
 		this.recorders = [];
 		this.chunkTargets = [];
 		this.streams = [];
+		this.recordingTimestamp = null;
+		this.totalChunks = 0;
 	}
 
 	private setStatus(status: RecordingStatus): void {
