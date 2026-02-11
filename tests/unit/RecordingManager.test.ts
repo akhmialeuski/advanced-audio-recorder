@@ -723,6 +723,8 @@ describe('RecordingManager', () => {
                 Notice: jest.Mock;
             };
 
+            const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => { });
+
             const { Platform } = jest.requireMock('obsidian') as {
                 Platform: { isMobile: boolean; isMobileApp: boolean };
             };
@@ -806,6 +808,16 @@ describe('RecordingManager', () => {
             expect(Notice).toHaveBeenCalledWith(
                 expect.stringContaining('Error stopping recording:'),
             );
+            expect(consoleWarnSpy).toHaveBeenCalledWith(
+                expect.stringContaining('[AudioRecorder] Failed to remove intermediate recording file:'),
+                expect.objectContaining({
+                    error: expect.objectContaining({
+                        message: 'cleanup failed',
+                    }),
+                }),
+            );
+
+            consoleWarnSpy.mockRestore();
         });
 
 

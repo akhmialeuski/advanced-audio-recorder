@@ -188,10 +188,11 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			.setDesc(
 				'Select the default input device for single-track recordings. You can also change it from the command palette.',
 			)
-			.addDropdown(async (dropdown) => {
-				await this.populateAudioDevices(dropdown);
-				dropdown.setValue(this.plugin.settings.audioDeviceId || '');
+			.addDropdown((dropdown) => {
 				this.deviceDropdowns.push(dropdown);
+				void this.populateAudioDevices(dropdown).then(() => {
+					dropdown.setValue(this.plugin.settings.audioDeviceId || '');
+				});
 				dropdown.onChange(async (value) => {
 					this.plugin.settings.audioDeviceId = value;
 					await this.plugin.saveSettings();
@@ -347,13 +348,14 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					.setDesc(
 						`Select the input device assigned to track ${String(i)}`,
 					)
-					.addDropdown(async (dropdown) => {
-						await this.populateAudioDevices(dropdown);
-						dropdown.setValue(
-							this.plugin.settings.trackAudioSources.get(i)
-								?.deviceId || '',
-						);
+					.addDropdown((dropdown) => {
 						this.deviceDropdowns.push(dropdown);
+						void this.populateAudioDevices(dropdown).then(() => {
+							dropdown.setValue(
+								this.plugin.settings.trackAudioSources.get(i)
+									?.deviceId || '',
+							);
+						});
 						dropdown.onChange(async (value) => {
 							if (value) {
 								this.plugin.settings.trackAudioSources.set(i, {
