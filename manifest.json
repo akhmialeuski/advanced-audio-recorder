@@ -3,8 +3,8 @@
 	"name": "Advanced Audio Recorder",
 	"version": "1.3.0",
 	"minAppVersion": "0.15.0",
-	"description": "Records audio directly, with input device and folder configuration, similar to the core one, but better",
+	"description": "Advanced audio recording with input device and folder configuration.",
 	"author": "Anatol Khmialeuski",
-	"authorUrl": "https://github.com/akhmialeuski/advanced-audio-recorder",
+	"authorUrl": "https://coff.ee/akhmelevskiy",
 	"isDesktopOnly": true
 }
