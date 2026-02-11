@@ -328,8 +328,18 @@ export class RecordingManager {
 					fileName,
 				);
 				if (filePath) {
+					const failedCleanupPaths =
+						await this.cleanupIntermediateFiles();
+					if (failedCleanupPaths.length > 0) {
+						await this.rollbackFinalFile(
+							filePath,
+							'Failed to finalize recording cleanup for merged output',
+						);
+						throw new Error(
+							`Temporary recording artifacts were kept for recovery: ${failedCleanupPaths.join(', ')}`,
+						);
+					}
 					fileLinks.push(filePath);
-					await this.cleanupIntermediateFiles();
 				}
 			}
 		} else {
@@ -509,21 +519,57 @@ export class RecordingManager {
 		});
 	}
 
-	private async cleanupIntermediateFiles(): Promise<void> {
+	private async cleanupIntermediateFiles(): Promise<string[]> {
+		const intermediatePaths = this.chunkTargets.flatMap((target) => {
+			const paths: string[] = [];
+			if (target.tempFilePath) {
+				paths.push(target.tempFilePath);
+			}
+			paths.push(...target.segmentPaths);
+			return paths;
+		});
+
+		return this.removeTemporaryArtifacts(
+			intermediatePaths,
+			'Failed to remove intermediate recording file',
+		);
+	}
+
+	private async removeTemporaryArtifacts(
+		paths: string[],
+		logContext: string,
+	): Promise<string[]> {
+		const failedPaths: string[] = [];
+
 		await Promise.all(
-			this.chunkTargets.flatMap((target) => {
-				const removals: Promise<void>[] = [];
-				if (target.tempFilePath) {
-					removals.push(
-						this.app.vault.adapter.remove(target.tempFilePath),
-					);
+			paths.map(async (path) => {
+				try {
+					await this.app.vault.adapter.remove(path);
+				} catch (error) {
+					failedPaths.push(path);
+					console.warn(`${PLUGIN_LOG_PREFIX} ${logContext}:`, {
+						path,
+						error,
+					});
 				}
-				for (const path of target.segmentPaths) {
-					removals.push(this.app.vault.adapter.remove(path));
-				}
-				return removals;
 			}),
 		);
+
+		return failedPaths;
+	}
+
+	private async rollbackFinalFile(
+		filePath: string,
+		logContext: string,
+	): Promise<void> {
+		try {
+			await this.app.vault.adapter.remove(filePath);
+		} catch (error) {
+			console.error(`${PLUGIN_LOG_PREFIX} ${logContext}:`, {
+				filePath,
+				error,
+			});
+		}
 	}
 
 	private async finalizeTrackFiles(
@@ -557,7 +603,19 @@ export class RecordingManager {
 				filePath,
 				await wavBlob.arrayBuffer(),
 			);
-			await this.app.vault.adapter.remove(target.tempFilePath);
+			const failedCleanupPaths = await this.removeTemporaryArtifacts(
+				[target.tempFilePath],
+				'Failed to remove temporary track file after WAV conversion',
+			);
+			if (failedCleanupPaths.length > 0) {
+				await this.rollbackFinalFile(
+					filePath,
+					'Failed to rollback finalized WAV track',
+				);
+				throw new Error(
+					`Temporary recording artifacts were kept for recovery: ${failedCleanupPaths.join(', ')}`,
+				);
+			}
 		} else {
 			await this.app.vault.adapter.rename(target.tempFilePath, filePath);
 		}
