@@ -713,6 +713,99 @@ describe('RecordingManager', () => {
                 expect.stringMatching(/\.wav$/),
                 expect.any(ArrayBuffer),
             );
+            expect(mockApp.vault.adapter.remove).toHaveBeenCalledWith(
+                expect.stringMatching(/\.partial\.webm$/),
+            );
+        });
+
+        it('should rollback merged output when cleanup of temporary partial files fails', async () => {
+            const { Notice } = jest.requireMock('obsidian') as {
+                Notice: jest.Mock;
+            };
+
+            const { Platform } = jest.requireMock('obsidian') as {
+                Platform: { isMobile: boolean; isMobileApp: boolean };
+            };
+            Platform.isMobile = false;
+            Platform.isMobileApp = false;
+
+            mockSettings = {
+                ...DEFAULT_SETTINGS,
+                enableMultiTrack: true,
+                outputMode: 'single',
+                recordingFormat: 'webm',
+            };
+            manager = new RecordingManager(mockApp, mockSettings, statusChangeCallback);
+
+            const mockMediaRecorders = [0, 1].map(() => ({
+                start: jest.fn(),
+                stop: jest.fn(),
+                pause: jest.fn(),
+                resume: jest.fn(),
+                ondataavailable: null as ((event: BlobEvent) => void) | null,
+                onerror: null as ((event: Event) => void) | null,
+                addEventListener: jest.fn((event: string, handler: () => void) => {
+                    if (event === 'stop') {
+                        handler();
+                    }
+                }),
+            }));
+            let recorderIndex = 0;
+
+            (global as Record<string, unknown>).MediaRecorder = jest.fn(() => {
+                const recorder = mockMediaRecorders[recorderIndex] ?? mockMediaRecorders[0];
+                recorderIndex += 1;
+                return recorder;
+            });
+            (global as Record<string, unknown>).MediaRecorder.isTypeSupported = jest
+                .fn()
+                .mockReturnValue(true);
+
+            const { getAudioStreams } = jest.requireMock('../../src/recording/AudioStreamHandler') as {
+                getAudioStreams: jest.Mock;
+            };
+            getAudioStreams.mockResolvedValue({
+                streams: [
+                    { getTracks: () => [{ stop: jest.fn() }] },
+                    { getTracks: () => [{ stop: jest.fn() }] },
+                ],
+                trackOrder: [],
+            });
+
+            (mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
+                new Uint8Array([1, 2, 3]).buffer,
+            );
+            (mockApp.vault.adapter.remove as jest.Mock).mockImplementation(
+                async (path: string) => {
+                    if (path.includes('.partial.')) {
+                        throw new Error('cleanup failed');
+                    }
+                    return undefined;
+                },
+            );
+
+            await manager.startRecording();
+
+            const chunk = new Blob([new Uint8Array([1, 2, 3])], {
+                type: 'audio/webm',
+            });
+            mockMediaRecorders.forEach((recorder) => {
+                recorder.ondataavailable?.({ data: chunk } as BlobEvent);
+            });
+
+            await Promise.resolve();
+            await manager.stopRecording();
+
+            expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
+                expect.stringMatching(/multitrack-.*\.webm$/),
+                expect.any(ArrayBuffer),
+            );
+            expect(mockApp.vault.adapter.remove).toHaveBeenCalledWith(
+                expect.stringMatching(/multitrack-.*\.webm$/),
+            );
+            expect(Notice).toHaveBeenCalledWith(
+                expect.stringContaining('Error stopping recording:'),
+            );
         });
 
 
