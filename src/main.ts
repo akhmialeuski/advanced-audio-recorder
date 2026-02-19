@@ -15,6 +15,7 @@ import { RecordingManager } from './recording/RecordingManager';
 import { updateStatusBar, initializeStatusBar } from './ui/StatusBar';
 import { updateRibbonIcon, initializeRibbonIcon } from './ui/RibbonIcon';
 import { showDeviceSelectionModal } from './ui/DeviceSelectionModal';
+import { ContextMenu } from './ui/ContextMenu';
 
 /**
  * Advanced Audio Recorder plugin for Obsidian.
@@ -24,6 +25,7 @@ export default class AudioRecorderPlugin extends Plugin {
 	private recordingManager!: RecordingManager;
 	private statusBarItem: HTMLElement | null = null;
 	private ribbonIconEl: HTMLElement | null = null;
+	private contextMenu!: ContextMenu;
 
 	/**
 	 * Called when the plugin is loaded.
@@ -50,6 +52,9 @@ export default class AudioRecorderPlugin extends Plugin {
 			},
 		);
 		this.setupStatusBar();
+
+		this.contextMenu = new ContextMenu(this.app, this);
+		this.contextMenu.register();
 	}
 
 	/**
