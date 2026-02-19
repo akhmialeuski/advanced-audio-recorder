@@ -25,6 +25,19 @@ An audio recording plugin for Obsidian with configurable save location, input de
 3. Start recording.
 4. Optionally run **Pause/resume recording**.
 5. Stop recording to save files and insert links into the active note.
+6. Optionally delete recordings from the File Explorer or using the context menu.
+
+### Deleting Recordings using the context menu
+
+You can delete recordings using the context menu in two ways:
+
+1. **From the Editor:** Right-click on the file link/embed in editing mode.
+
+![Delete via Link](docs/delete-via-link.png)
+
+2. **From the Player:** Right-click directly on the embedded player.
+
+![Delete via Player](docs/delete-via-player.png)
 
 ## Commands
 

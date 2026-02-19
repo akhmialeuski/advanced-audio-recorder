@@ -169,7 +169,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Sample rate')
 			.setDesc(
-				'Select the audio sample rate in Hertz. 44.1 kHz or 48 kHz are recommended for voice and general recording.',
+				'Select the audio sample rate in hertz. 44.1 kHz or 48 kHz are recommended for voice and general recording.',
 			)
 			.addDropdown((dropdown) => {
 				const sampleRates = [8000, 16000, 22050, 44100, 48000];
