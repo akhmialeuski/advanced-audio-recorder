@@ -13,6 +13,11 @@ import {
 } from 'obsidian';
 import type { Plugin } from 'obsidian';
 import type { AudioRecorderSettings, OutputMode } from './Settings';
+import {
+	detectSupportedFormats,
+	getSupportedSampleRates,
+	buildMimeType,
+} from '../recording/AudioCapabilityDetector';
 
 /**
  * Plugin interface for settings tab.
@@ -29,6 +34,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	plugin: AudioRecorderPluginInterface;
 	private deviceDropdowns: DropdownComponent[] = [];
 	private readonly bitrateOptionsKbps = [64, 96, 128, 160, 192, 256, 320];
+	private testRecordingPath: string | null = null;
+	private testRecorder: MediaRecorder | null = null;
+	private testChunks: Blob[] = [];
+	private testAudioElement: HTMLAudioElement | null = null;
 
 	/**
 	 * Creates a new AudioRecorderSettingTab.
@@ -49,24 +58,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * Gets supported audio formats.
+	 * Gets supported audio formats using runtime detection.
 	 */
 	getSupportedFormats(): string[] {
-		const formats = ['ogg', 'webm', 'mp3', 'm4a', 'mp4', 'wav'];
-		return formats.filter((format) => {
-			if (format === 'wav') {
-				return (
-					MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ||
-					MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
-				);
-			}
-			if (format === 'webm' || format === 'ogg') {
-				return MediaRecorder.isTypeSupported(
-					`audio/${format};codecs=opus`,
-				);
-			}
-			return MediaRecorder.isTypeSupported(`audio/${format}`);
-		});
+		return detectSupportedFormats();
 	}
 
 	private getCompressionDescription(format: string): string {
@@ -172,7 +167,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				'Select the audio sample rate in hertz. 44.1 kHz or 48 kHz are recommended for voice and general recording.',
 			)
 			.addDropdown((dropdown) => {
-				const sampleRates = [8000, 16000, 22050, 44100, 48000];
+				const sampleRates = getSupportedSampleRates();
 				sampleRates.forEach((rate) => {
 					dropdown.addOption(String(rate), String(rate));
 				});
@@ -290,6 +285,20 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					}),
 			);
 
+		new Setting(containerEl).setName('Diagnostics').setHeading();
+
+		const testContainer = containerEl.createDiv();
+		new Setting(testContainer)
+			.setName('Test recording')
+			.setDesc(
+				'Record a short audio clip to verify your current settings produce audible output. The test file is automatically deleted when you leave settings.',
+			)
+			.addButton((button) =>
+				button.setButtonText('Start test').onClick(() => {
+					void this.runTestRecording(testContainer);
+				}),
+			);
+
 		new Setting(containerEl).setName('Multi-track recording').setHeading();
 
 		new Setting(containerEl)
@@ -399,5 +408,167 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			dropdown.setValue(hasOption ? selectedValue : '');
 		});
 		await Promise.all(refreshes);
+	}
+
+	/**
+	 * Runs a short test recording and plays back the result.
+	 * @param container - DOM element to append playback controls to
+	 */
+	private async runTestRecording(container: HTMLElement): Promise<void> {
+		try {
+			await this.cleanupTestRecording();
+
+			const format = this.plugin.settings.recordingFormat;
+			const recorderFormat = format === 'wav' ? 'webm' : format;
+			const mimeType = buildMimeType(recorderFormat);
+
+			if (!MediaRecorder.isTypeSupported(mimeType)) {
+				this.showTestStatus(
+					container,
+					`Format "${format}" is not supported in this browser.`,
+					true,
+				);
+				return;
+			}
+
+			const stream = await navigator.mediaDevices.getUserMedia({
+				audio: {
+					deviceId: this.plugin.settings.audioDeviceId
+						? { exact: this.plugin.settings.audioDeviceId }
+						: undefined,
+					sampleRate: this.plugin.settings.sampleRate,
+				},
+			});
+
+			this.testChunks = [];
+			this.testRecorder = new MediaRecorder(stream, {
+				mimeType,
+				audioBitsPerSecond: this.plugin.settings.bitrate,
+			});
+
+			this.testRecorder.ondataavailable = (event: BlobEvent): void => {
+				if (event.data.size > 0) {
+					this.testChunks.push(event.data);
+				}
+			};
+
+			this.showTestStatus(container, 'Recording test clip...', false);
+
+			const recordingPromise = new Promise<void>((resolve) => {
+				if (this.testRecorder) {
+					this.testRecorder.addEventListener(
+						'stop',
+						() => resolve(),
+						{ once: true },
+					);
+				}
+			});
+
+			this.testRecorder.start();
+
+			await new Promise<void>((resolve) => setTimeout(resolve, 3000));
+
+			if (this.testRecorder.state !== 'inactive') {
+				this.testRecorder.stop();
+			}
+			for (const track of stream.getTracks()) {
+				track.stop();
+			}
+
+			await recordingPromise;
+
+			if (this.testChunks.length === 0) {
+				this.showTestStatus(
+					container,
+					'Test recording produced no data. Try a different format or device.',
+					true,
+				);
+				return;
+			}
+
+			const blob = new Blob(this.testChunks, {
+				type: `audio/${recorderFormat}`,
+			});
+			const url = URL.createObjectURL(blob);
+
+			this.showTestStatus(
+				container,
+				'Test recording complete. Listen below:',
+				false,
+			);
+
+			this.testAudioElement = container.createEl('audio', {
+				attr: { controls: 'true', src: url },
+			});
+			this.testAudioElement.addClass('aar-test-audio');
+		} catch (error) {
+			const message =
+				error instanceof Error ? error.message : String(error);
+			this.showTestStatus(
+				container,
+				`Test recording failed: ${message}`,
+				true,
+			);
+		}
+	}
+
+	/**
+	 * Displays test status message in the container.
+	 */
+	private showTestStatus(
+		container: HTMLElement,
+		message: string,
+		isError: boolean,
+	): void {
+		const existingStatus = container.querySelector('.aar-test-status');
+		if (existingStatus) {
+			existingStatus.remove();
+		}
+		const existingAudio = container.querySelector('.aar-test-audio');
+		if (existingAudio) {
+			existingAudio.remove();
+		}
+
+		const statusEl = container.createDiv({ cls: 'aar-test-status' });
+		statusEl.setText(message);
+		if (isError) {
+			statusEl.addClass('aar-test-error');
+		}
+	}
+
+	/**
+	 * Removes test recording resources.
+	 */
+	private async cleanupTestRecording(): Promise<void> {
+		if (this.testRecorder && this.testRecorder.state !== 'inactive') {
+			this.testRecorder.stop();
+		}
+		this.testRecorder = null;
+		this.testChunks = [];
+
+		if (this.testAudioElement) {
+			const src = this.testAudioElement.src;
+			if (src.startsWith('blob:')) {
+				URL.revokeObjectURL(src);
+			}
+			this.testAudioElement.remove();
+			this.testAudioElement = null;
+		}
+
+		if (this.testRecordingPath) {
+			try {
+				await this.app.vault.adapter.remove(this.testRecordingPath);
+			} catch {
+				// File may already be deleted
+			}
+			this.testRecordingPath = null;
+		}
+	}
+
+	/**
+	 * Cleans up test recording resources when settings tab is hidden.
+	 */
+	hide(): void {
+		void this.cleanupTestRecording();
 	}
 }
