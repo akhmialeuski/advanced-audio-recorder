@@ -26,3 +26,32 @@ If your plugin does not need CSS, delete this file.
         opacity: 0.5;
     }
 }
+
+/* Test recording states */
+.aar-test-status {
+    margin-top: 8px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+.aar-test-recording {
+    color: var(--color-red);
+    font-weight: bold;
+    animation: pulse-recording 1.5s ease-in-out infinite;
+}
+
+.aar-test-success {
+    color: var(--color-green);
+    font-weight: bold;
+}
+
+.aar-test-error {
+    color: var(--color-red);
+}
+
+.aar-test-audio {
+    display: block;
+    margin-top: 8px;
+    width: 100%;
+}

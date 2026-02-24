@@ -16,6 +16,10 @@ import {
 import { bufferToWave } from './WavEncoder';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { DebugLogger } from '../utils/DebugLogger';
+import {
+	buildMimeType,
+	validateRecordingCapability,
+} from './AudioCapabilityDetector';
 
 type RecordingTarget = {
 	fileBaseName: string;
@@ -31,7 +35,6 @@ type RecordingTarget = {
 const CHUNK_TIMESLICE_MS = 5000;
 const MOBILE_BUFFER_LIMIT_BYTES = 50 * 1024 * 1024;
 const MIME_TYPE_AUDIO_PREFIX = 'audio/';
-const CODECS_OPUS = 'codecs=opus';
 const WAV_FORMAT = 'wav';
 const WEBM_FORMAT = 'webm';
 const OGG_FORMAT = 'ogg';
@@ -109,7 +112,12 @@ export class RecordingManager {
 				bitrate: this.settings.bitrate,
 			});
 
-			this.ensureMimeTypeSupported(mimeType, recorderFormat);
+			const validation = validateRecordingCapability(
+				this.settings.recordingFormat,
+			);
+			if (!validation.valid) {
+				throw new Error(validation.reason);
+			}
 
 			await validateSelectedDevices(this.settings);
 			const { streams, trackOrder } = await getAudioStreams(
@@ -702,7 +710,7 @@ export class RecordingManager {
 		if (outputFormat === WAV_FORMAT) {
 			const preferredCompressedFormats = [WEBM_FORMAT, OGG_FORMAT];
 			for (const format of preferredCompressedFormats) {
-				const mimeType = this.buildMimeType(format);
+				const mimeType = buildMimeType(format);
 				if (MediaRecorder.isTypeSupported(mimeType)) {
 					return { recorderFormat: format, mimeType };
 				}
@@ -714,27 +722,8 @@ export class RecordingManager {
 
 		return {
 			recorderFormat: outputFormat,
-			mimeType: this.buildMimeType(outputFormat),
+			mimeType: buildMimeType(outputFormat),
 		};
-	}
-
-	private buildMimeType(format: string): string {
-		if (format === WEBM_FORMAT || format === OGG_FORMAT) {
-			return `${MIME_TYPE_AUDIO_PREFIX}${format};${CODECS_OPUS}`;
-		}
-		return `${MIME_TYPE_AUDIO_PREFIX}${format}`;
-	}
-
-	private ensureMimeTypeSupported(
-		mimeType: string,
-		recorderFormat: string,
-	): void {
-		if (MediaRecorder.isTypeSupported(mimeType)) {
-			return;
-		}
-		throw new Error(
-			`The selected format "${this.settings.recordingFormat}" is not supported for recording in this browser. Please choose another format (current recorder format: ${recorderFormat}).`,
-		);
 	}
 
 	private getRecorderMediaType(): string {

@@ -13,6 +13,11 @@ import {
 } from 'obsidian';
 import type { Plugin } from 'obsidian';
 import type { AudioRecorderSettings, OutputMode } from './Settings';
+import {
+	detectSupportedFormats,
+	getSupportedSampleRates,
+	buildMimeType,
+} from '../recording/AudioCapabilityDetector';
 
 /**
  * Plugin interface for settings tab.
@@ -29,6 +34,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	plugin: AudioRecorderPluginInterface;
 	private deviceDropdowns: DropdownComponent[] = [];
 	private readonly bitrateOptionsKbps = [64, 96, 128, 160, 192, 256, 320];
+	private testRecordingPath: string | null = null;
+	private testRecorder: MediaRecorder | null = null;
+	private testChunks: Blob[] = [];
+	private testAudioElement: HTMLAudioElement | null = null;
 
 	/**
 	 * Creates a new AudioRecorderSettingTab.
@@ -49,24 +58,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * Gets supported audio formats.
+	 * Gets supported audio formats using runtime detection.
 	 */
 	getSupportedFormats(): string[] {
-		const formats = ['ogg', 'webm', 'mp3', 'm4a', 'mp4', 'wav'];
-		return formats.filter((format) => {
-			if (format === 'wav') {
-				return (
-					MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ||
-					MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
-				);
-			}
-			if (format === 'webm' || format === 'ogg') {
-				return MediaRecorder.isTypeSupported(
-					`audio/${format};codecs=opus`,
-				);
-			}
-			return MediaRecorder.isTypeSupported(`audio/${format}`);
-		});
+		return detectSupportedFormats();
 	}
 
 	private getCompressionDescription(format: string): string {
@@ -100,12 +95,44 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			void this.refreshDeviceList();
 		};
 
+		// ── Audio input ──────────────────────────────────────────────
+		new Setting(containerEl).setName('Audio input').setHeading();
+
 		new Setting(containerEl)
-			.setName('Recording')
+			.setName('Input device')
 			.setDesc(
-				'Configure recording quality, output behavior, and device routing. Current implementation is safe for long recording sessions under normal use.',
+				'Select the default input device for single-track recordings. You can also change it from the command palette.',
 			)
-			.setHeading();
+			.addDropdown((dropdown) => {
+				this.deviceDropdowns.push(dropdown);
+				void this.populateAudioDevices(dropdown).then(() => {
+					dropdown.setValue(this.plugin.settings.audioDeviceId || '');
+				});
+				dropdown.onChange(async (value) => {
+					this.plugin.settings.audioDeviceId = value;
+					await this.plugin.saveSettings();
+				});
+			});
+
+		new Setting(containerEl)
+			.setName('Sample rate')
+			.setDesc(
+				'Audio sample rate in hertz. 44.1 kHz or 48 kHz recommended for voice and general recording.',
+			)
+			.addDropdown((dropdown) => {
+				const sampleRates = getSupportedSampleRates();
+				sampleRates.forEach((rate) => {
+					dropdown.addOption(String(rate), String(rate));
+				});
+				dropdown.setValue(String(this.plugin.settings.sampleRate));
+				dropdown.onChange(async (value) => {
+					this.plugin.settings.sampleRate = parseInt(value, 10);
+					await this.plugin.saveSettings();
+				});
+			});
+
+		// ── Output format ───────────────────────────────────────────
+		new Setting(containerEl).setName('Output format').setHeading();
 
 		const supportedFormats = this.getSupportedFormats();
 		const selectedBitrateKbps = Math.round(
@@ -166,38 +193,8 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		summaryEl = outputSummarySetting.descEl.createDiv();
 		updateOutputSummary(summaryEl);
 
-		new Setting(containerEl)
-			.setName('Sample rate')
-			.setDesc(
-				'Select the audio sample rate in hertz. 44.1 kHz or 48 kHz are recommended for voice and general recording.',
-			)
-			.addDropdown((dropdown) => {
-				const sampleRates = [8000, 16000, 22050, 44100, 48000];
-				sampleRates.forEach((rate) => {
-					dropdown.addOption(String(rate), String(rate));
-				});
-				dropdown.setValue(String(this.plugin.settings.sampleRate));
-				dropdown.onChange(async (value) => {
-					this.plugin.settings.sampleRate = parseInt(value, 10);
-					await this.plugin.saveSettings();
-				});
-			});
-
-		new Setting(containerEl)
-			.setName('Input device')
-			.setDesc(
-				'Select the default input device for single-track recordings. You can also change it from the command palette.',
-			)
-			.addDropdown((dropdown) => {
-				this.deviceDropdowns.push(dropdown);
-				void this.populateAudioDevices(dropdown).then(() => {
-					dropdown.setValue(this.plugin.settings.audioDeviceId || '');
-				});
-				dropdown.onChange(async (value) => {
-					this.plugin.settings.audioDeviceId = value;
-					await this.plugin.saveSettings();
-				});
-			});
+		// ── File storage ──────────────────────────────────────────
+		new Setting(containerEl).setName('File storage').setHeading();
 
 		new Setting(containerEl)
 			.setName('Save folder')
@@ -255,15 +252,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		}
 
 		new Setting(containerEl)
-			.setName('Documentation')
-			.setDesc(
-				'Use the start/stop recording command to control recording state, the pause/resume recording command to temporarily halt capture, and the select audio input device command for quick device switching. Long sessions are supported; choose compressed formats such as webm or ogg to reduce disk usage.',
-			)
-			.setHeading();
-
-		new Setting(containerEl).setName('File naming').setHeading();
-
-		new Setting(containerEl)
 			.setName('File prefix')
 			.setDesc('Set the filename prefix used for exported recordings.')
 			.addText((text) =>
@@ -276,20 +264,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		new Setting(containerEl)
-			.setName('Debug mode')
-			.setDesc(
-				'Enable verbose logs for troubleshooting recording issues.',
-			)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.debug)
-					.onChange(async (value) => {
-						this.plugin.settings.debug = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
+		// ── Multi-track recording ─────────────────────────────────
 		new Setting(containerEl).setName('Multi-track recording').setHeading();
 
 		new Setting(containerEl)
@@ -371,6 +346,35 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					});
 			}
 		}
+
+		// ── Diagnostics ────────────────────────────────────────────
+		new Setting(containerEl).setName('Diagnostics').setHeading();
+
+		const testContainer = containerEl.createDiv();
+		new Setting(testContainer)
+			.setName('Test recording')
+			.setDesc(
+				'Records a 5-second test clip using your current settings and plays it back. The test file is automatically deleted when you leave settings.',
+			)
+			.addButton((button) =>
+				button.setButtonText('Start test').onClick(() => {
+					void this.runTestRecording(testContainer);
+				}),
+			);
+
+		new Setting(containerEl)
+			.setName('Debug mode')
+			.setDesc(
+				'Enable verbose logs for troubleshooting recording issues.',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.debug)
+					.onChange(async (value) => {
+						this.plugin.settings.debug = value;
+						await this.plugin.saveSettings();
+					}),
+			);
 	}
 
 	/**
@@ -399,5 +403,177 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			dropdown.setValue(hasOption ? selectedValue : '');
 		});
 		await Promise.all(refreshes);
+	}
+
+	/**
+	 * Runs a short test recording and plays back the result.
+	 * @param container - DOM element to append playback controls to
+	 */
+	private async runTestRecording(container: HTMLElement): Promise<void> {
+		try {
+			await this.cleanupTestRecording();
+
+			const format = this.plugin.settings.recordingFormat;
+			const recorderFormat = format === 'wav' ? 'webm' : format;
+			const mimeType = buildMimeType(recorderFormat);
+
+			if (!MediaRecorder.isTypeSupported(mimeType)) {
+				this.showTestStatus(
+					container,
+					`Format "${format}" is not supported in this browser.`,
+					true,
+				);
+				return;
+			}
+
+			const stream = await navigator.mediaDevices.getUserMedia({
+				audio: {
+					deviceId: this.plugin.settings.audioDeviceId
+						? { exact: this.plugin.settings.audioDeviceId }
+						: undefined,
+					sampleRate: this.plugin.settings.sampleRate,
+				},
+			});
+
+			this.testChunks = [];
+			this.testRecorder = new MediaRecorder(stream, {
+				mimeType,
+				audioBitsPerSecond: this.plugin.settings.bitrate,
+			});
+
+			this.testRecorder.ondataavailable = (event: BlobEvent): void => {
+				if (event.data.size > 0) {
+					this.testChunks.push(event.data);
+				}
+			};
+
+			this.showTestStatus(
+				container,
+				'\u25CF Recording... (5 seconds)',
+				false,
+				'aar-test-recording',
+			);
+
+			const recordingPromise = new Promise<void>((resolve) => {
+				if (this.testRecorder) {
+					this.testRecorder.addEventListener(
+						'stop',
+						() => resolve(),
+						{ once: true },
+					);
+				}
+			});
+
+			this.testRecorder.start();
+
+			await new Promise<void>((resolve) => setTimeout(resolve, 5000));
+
+			if (this.testRecorder.state !== 'inactive') {
+				this.testRecorder.stop();
+			}
+			for (const track of stream.getTracks()) {
+				track.stop();
+			}
+
+			await recordingPromise;
+
+			if (this.testChunks.length === 0) {
+				this.showTestStatus(
+					container,
+					'Test recording produced no data. Try a different format or device.',
+					true,
+				);
+				return;
+			}
+
+			const blob = new Blob(this.testChunks, {
+				type: `audio/${recorderFormat}`,
+			});
+			const url = URL.createObjectURL(blob);
+
+			this.showTestStatus(
+				container,
+				'\u2714 Test recording complete. Listen below:',
+				false,
+				'aar-test-success',
+			);
+
+			this.testAudioElement = container.createEl('audio', {
+				attr: { controls: 'true', src: url },
+			});
+			this.testAudioElement.addClass('aar-test-audio');
+		} catch (error) {
+			const message =
+				error instanceof Error ? error.message : String(error);
+			this.showTestStatus(
+				container,
+				`Test recording failed: ${message}`,
+				true,
+			);
+		}
+	}
+
+	/**
+	 * Displays test status message in the container.
+	 */
+	private showTestStatus(
+		container: HTMLElement,
+		message: string,
+		isError: boolean,
+		extraClass?: string,
+	): void {
+		const existingStatus = container.querySelector('.aar-test-status');
+		if (existingStatus) {
+			existingStatus.remove();
+		}
+		const existingAudio = container.querySelector('.aar-test-audio');
+		if (existingAudio) {
+			existingAudio.remove();
+		}
+
+		const statusEl = container.createDiv({ cls: 'aar-test-status' });
+		statusEl.setText(message);
+		if (isError) {
+			statusEl.addClass('aar-test-error');
+		}
+		if (extraClass) {
+			statusEl.addClass(extraClass);
+		}
+	}
+
+	/**
+	 * Removes test recording resources.
+	 */
+	private async cleanupTestRecording(): Promise<void> {
+		if (this.testRecorder && this.testRecorder.state !== 'inactive') {
+			this.testRecorder.stop();
+		}
+		this.testRecorder = null;
+		this.testChunks = [];
+
+		if (this.testAudioElement) {
+			const src = this.testAudioElement.src;
+			if (src.startsWith('blob:')) {
+				URL.revokeObjectURL(src);
+			}
+			this.testAudioElement.remove();
+			this.testAudioElement = null;
+		}
+
+		if (this.testRecordingPath) {
+			try {
+				await this.app.vault.adapter.remove(this.testRecordingPath);
+			} catch {
+				// File may already be deleted
+			}
+			this.testRecordingPath = null;
+		}
+	}
+
+	/**
+	 * Cleans up test recording resources when settings tab is hidden.
+	 */
+	hide(): void {
+		void this.cleanupTestRecording();
 	}
 }

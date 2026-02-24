@@ -849,7 +849,7 @@ describe('RecordingManager', () => {
             (global as Record<string, unknown>).MediaRecorder = jest.fn(() => mockMediaRecorder);
             (global as Record<string, unknown>).MediaRecorder.isTypeSupported = jest
                 .fn()
-                .mockImplementation((mime: string) => mime === 'audio/webm;codecs=opus');
+                .mockImplementation((mime: string) => mime === 'audio/webm');
 
             const { getAudioStreams } = jest.requireMock('../../src/recording/AudioStreamHandler') as {
                 getAudioStreams: jest.Mock;
@@ -871,7 +871,7 @@ describe('RecordingManager', () => {
             await Promise.resolve();
             await manager.stopRecording();
 
-            expect(global.MediaRecorder.isTypeSupported).toHaveBeenCalledWith('audio/webm;codecs=opus');
+            expect(global.MediaRecorder.isTypeSupported).toHaveBeenCalledWith('audio/webm');
             expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
                 expect.stringMatching(/\.wav$/),
                 expect.any(ArrayBuffer),
