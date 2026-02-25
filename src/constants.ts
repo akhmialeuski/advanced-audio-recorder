@@ -13,6 +13,7 @@ export const AUDIO_EXTENSIONS = [
 	'webm',
 	'ogg',
 	'mp3',
+	'mp4',
 	'm4a',
 	'aac',
 	'flac',
