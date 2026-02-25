@@ -13,6 +13,8 @@ export const FORMAT_MP3 = 'mp3';
 export const FORMAT_M4A = 'm4a';
 export const FORMAT_MP4 = 'mp4';
 export const FORMAT_WAV = 'wav';
+export const FORMAT_AAC = 'aac';
+export const FORMAT_FLAC = 'flac';
 
 export const DEFAULT_SAMPLE_RATE = 44100;
 export const DEFAULT_BITRATE = 128000;

@@ -6,6 +6,7 @@
 
 import { ContextMenu } from '../../src/ui/ContextMenu';
 import { AUDIO_EXTENSIONS } from '../../src/constants';
+import { FORMAT_MP4 } from '../../src/recording/AudioCapabilityDetector';
 import {
     App,
     Menu,
@@ -124,7 +125,7 @@ describe('ContextMenu', () => {
         });
 
         it('should include mp4 in AUDIO_EXTENSIONS', () => {
-            expect(AUDIO_EXTENSIONS).toContain('mp4');
+            expect(AUDIO_EXTENSIONS).toContain(FORMAT_MP4);
         });
 
         test.each(AUDIO_EXTENSIONS)(

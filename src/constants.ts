@@ -3,18 +3,29 @@
  * @module constants
  */
 
+import {
+	FORMAT_WAV,
+	FORMAT_WEBM,
+	FORMAT_OGG,
+	FORMAT_MP3,
+	FORMAT_MP4,
+	FORMAT_M4A,
+	FORMAT_AAC,
+	FORMAT_FLAC,
+} from './recording/AudioCapabilityDetector';
+
 /**
  * Prefix for all plugin logs.
  */
 export const PLUGIN_LOG_PREFIX = '[AudioRecorder]';
 
 export const AUDIO_EXTENSIONS = [
-	'wav',
-	'webm',
-	'ogg',
-	'mp3',
-	'mp4',
-	'm4a',
-	'aac',
-	'flac',
+	FORMAT_WAV,
+	FORMAT_WEBM,
+	FORMAT_OGG,
+	FORMAT_MP3,
+	FORMAT_MP4,
+	FORMAT_M4A,
+	FORMAT_AAC,
+	FORMAT_FLAC,
 ];
