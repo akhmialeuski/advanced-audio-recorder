@@ -5,14 +5,26 @@
  * @module recording/AudioCapabilityDetector
  */
 
-const MIME_TYPE_AUDIO_PREFIX = 'audio/';
+export {
+	FORMAT_WAV,
+	FORMAT_WEBM,
+	FORMAT_OGG,
+	FORMAT_MP3,
+	FORMAT_MP4,
+	FORMAT_M4A,
+	FORMAT_AAC,
+	FORMAT_FLAC,
+} from '../constants';
+import {
+	FORMAT_WAV,
+	FORMAT_WEBM,
+	FORMAT_OGG,
+	FORMAT_MP3,
+	FORMAT_MP4,
+	FORMAT_M4A,
+} from '../constants';
 
-export const FORMAT_WEBM = 'webm';
-export const FORMAT_OGG = 'ogg';
-export const FORMAT_MP3 = 'mp3';
-export const FORMAT_M4A = 'm4a';
-export const FORMAT_MP4 = 'mp4';
-export const FORMAT_WAV = 'wav';
+const MIME_TYPE_AUDIO_PREFIX = 'audio/';
 
 export const DEFAULT_SAMPLE_RATE = 44100;
 export const DEFAULT_BITRATE = 128000;

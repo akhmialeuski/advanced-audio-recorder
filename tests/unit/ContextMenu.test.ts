@@ -5,6 +5,8 @@
 /** @jest-environment jsdom */
 
 import { ContextMenu } from '../../src/ui/ContextMenu';
+import { AUDIO_EXTENSIONS } from '../../src/constants';
+import { FORMAT_MP4 } from '../../src/recording/AudioCapabilityDetector';
 import {
     App,
     Menu,
@@ -122,6 +124,23 @@ describe('ContextMenu', () => {
             fileMenuCallback = call[1];
         });
 
+        it('should include mp4 in AUDIO_EXTENSIONS', () => {
+            expect(AUDIO_EXTENSIONS).toContain(FORMAT_MP4);
+        });
+
+        test.each(AUDIO_EXTENSIONS)(
+            'should add "Delete recording" item for %s files',
+            (extension) => {
+                const mockMenu = new Menu();
+                const mockFile = new TFile();
+                Object.defineProperty(mockFile, 'extension', { value: extension });
+
+                fileMenuCallback(mockMenu, mockFile);
+
+                expect(mockMenu.addItem).toHaveBeenCalled();
+            },
+        );
+
         it('should add "Delete recording" item for audio files', () => {
             const mockMenu = new Menu();
             const mockFile = new TFile();
@@ -237,6 +256,23 @@ describe('ContextMenu', () => {
                 offsetToPos: jest.fn(),
             } as unknown as Editor;
         });
+
+        test.each(AUDIO_EXTENSIONS)(
+            'should add "Delete recording & link" item for %s files',
+            (extension) => {
+                const mockMenu = new Menu();
+                (mockEditor.getLine as jest.Mock).mockReturnValue(`[[audio.${extension}]]`);
+                (mockEditor.getCursor as jest.Mock).mockReturnValue({ line: 0, ch: 2 });
+
+                const mockFile = new TFile();
+                Object.defineProperty(mockFile, 'extension', { value: extension });
+                (mockMetadataCache.getFirstLinkpathDest as jest.Mock).mockReturnValue(mockFile);
+
+                editorMenuCallback(mockMenu, mockEditor, {});
+
+                expect(mockMenu.addItem).toHaveBeenCalled();
+            },
+        );
 
         it('should do nothing if no link at cursor', () => {
             const mockMenu = new Menu();
@@ -437,6 +473,40 @@ describe('ContextMenu', () => {
             );
             playerMenuCallback = call[2];
         });
+
+        test.each(AUDIO_EXTENSIONS)(
+            'should resolve %s file and show context menu',
+            (extension) => {
+                const embed = document.createElement('div');
+                embed.className = 'internal-embed';
+                embed.setAttribute('src', `audio.${extension}`);
+                const target = document.createElement('span');
+                embed.appendChild(target);
+
+                const mockEvent = {
+                    target: target,
+                    pageX: 100,
+                    pageY: 200,
+                    preventDefault: jest.fn(),
+                    stopPropagation: jest.fn(),
+                } as unknown as MouseEvent;
+
+                const mockFile = new TFile();
+                Object.defineProperty(mockFile, 'extension', { value: extension });
+                (mockMetadataCache.getFirstLinkpathDest as jest.Mock).mockReturnValue(mockFile);
+                (mockWorkspace.getActiveFile as jest.Mock).mockReturnValue(null);
+
+                playerMenuCallback(mockEvent);
+
+                expect(mockEvent.preventDefault).toHaveBeenCalled();
+                expect(mockWorkspace.trigger).toHaveBeenCalledWith(
+                    'file-menu',
+                    expect.any(Menu),
+                    mockFile,
+                    'audio-recorder-player-context-menu',
+                );
+            },
+        );
 
         it('should do nothing if target is not part of internal-embed', () => {
             const mockEvent = {

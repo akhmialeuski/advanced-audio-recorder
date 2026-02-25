@@ -13,6 +13,7 @@ import {
     validateRecordingCapability,
     detectCapabilities,
     detectCodecSupport,
+    FORMAT_FLAC,
 } from '../../src/recording/AudioCapabilityDetector';
 
 describe('AudioCapabilityDetector', () => {
@@ -38,7 +39,7 @@ describe('AudioCapabilityDetector', () => {
         });
 
         it('should handle arbitrary format strings', () => {
-            expect(buildMimeType('flac')).toBe('audio/flac');
+            expect(buildMimeType(FORMAT_FLAC)).toBe(`audio/${FORMAT_FLAC}`);
         });
     });
 
