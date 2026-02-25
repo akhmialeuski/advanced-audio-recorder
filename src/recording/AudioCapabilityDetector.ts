@@ -9,6 +9,15 @@ const MIME_TYPE_AUDIO_PREFIX = 'audio/';
 
 const CANDIDATE_FORMATS = ['webm', 'ogg', 'mp3', 'm4a', 'mp4'];
 const WAV_FORMAT = 'wav';
+
+/** Candidate codecs to probe per container format. */
+const FORMAT_CODECS: Record<string, string[]> = {
+	webm: ['opus', 'vorbis', 'pcm'],
+	ogg: ['opus', 'vorbis'],
+	mp4: ['mp4a.40.2', 'mp4a.40.5', 'opus'],
+	m4a: ['mp4a.40.2', 'mp4a.40.5'],
+	mp3: ['mp3'],
+};
 const COMPRESSED_INTERMEDIATES = ['webm', 'ogg'];
 
 const CANDIDATE_SAMPLE_RATES = [8000, 16000, 22050, 44100, 48000];
@@ -32,6 +41,30 @@ export interface AudioCapabilities {
 	defaultSampleRate: number;
 	/** Default bitrate in bps. */
 	defaultBitrate: number;
+}
+
+/**
+ * Codec probing result for a single codec variant.
+ */
+export interface CodecVariantEntry {
+	/** Codec identifier (e.g. 'opus', 'mp4a.40.2'). */
+	codec: string;
+	/** Full MIME type string with codec suffix. */
+	mimeType: string;
+	/** Whether MediaRecorder.isTypeSupported() returns true for this variant. */
+	supported: boolean;
+}
+
+/**
+ * Codec support report for a single container format.
+ */
+export interface CodecSupportEntry {
+	/** Plain MIME type without codec suffix (e.g. 'audio/webm'). */
+	mimeType: string;
+	/** Whether the plain MIME type is supported. */
+	supported: boolean;
+	/** Per-codec variant probing results. */
+	withCodecs: CodecVariantEntry[];
 }
 
 /**
@@ -128,6 +161,35 @@ export function validateRecordingCapability(format: string): ValidationResult {
 	}
 
 	return { valid: true, reason: '' };
+}
+
+/**
+ * Probes MediaRecorder codec support for all candidate formats.
+ * For each container format, tests the plain MIME type and each
+ * codec variant to produce a complete support matrix.
+ * @returns Array of codec support entries per format
+ */
+export function detectCodecSupport(): CodecSupportEntry[] {
+	return CANDIDATE_FORMATS.map((format) => {
+		const plainMime = buildMimeType(format);
+		const supported =
+			typeof MediaRecorder !== 'undefined'
+				? MediaRecorder.isTypeSupported(plainMime)
+				: false;
+		const codecs = FORMAT_CODECS[format] ?? [];
+		const withCodecs: CodecVariantEntry[] = codecs.map((codec) => {
+			const mimeType = `${plainMime};codecs=${codec}`;
+			return {
+				codec,
+				mimeType,
+				supported:
+					typeof MediaRecorder !== 'undefined'
+						? MediaRecorder.isTypeSupported(mimeType)
+						: false,
+			};
+		});
+		return { mimeType: plainMime, supported, withCodecs };
+	});
 }
 
 /**

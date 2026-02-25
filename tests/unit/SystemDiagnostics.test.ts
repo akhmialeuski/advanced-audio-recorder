@@ -243,9 +243,15 @@ describe('SystemDiagnostics.collectAudioCapabilities', () => {
         AudioCapabilityDetector,
         'detectCapabilities',
     );
+    const mockDetectCodecSupport = jest.spyOn(
+        AudioCapabilityDetector,
+        'detectCodecSupport',
+    );
 
     beforeEach(() => {
         mockDetectCapabilities.mockReset();
+        mockDetectCodecSupport.mockReset();
+        mockDetectCodecSupport.mockReturnValue([]);
     });
 
     it('maps detectCapabilities result to capabilities object', () => {
@@ -263,6 +269,31 @@ describe('SystemDiagnostics.collectAudioCapabilities', () => {
         expect(result.supportedFormats).toEqual(['webm', 'ogg']);
         expect(result.supportedSampleRates).toEqual([44100, 48000]);
         expect(result.supportedBitrates).toEqual([128000, 256000]);
+    });
+
+    it('includes codecSupport from detectCodecSupport()', () => {
+        mockDetectCapabilities.mockReturnValueOnce({
+            supportedFormats: [],
+            supportedSampleRates: [],
+            supportedBitrates: [],
+            defaultFormat: 'webm',
+            defaultSampleRate: 44100,
+            defaultBitrate: 128000,
+        });
+        const fakeCodecSupport = [
+            {
+                mimeType: 'audio/webm',
+                supported: true,
+                withCodecs: [
+                    { codec: 'opus', mimeType: 'audio/webm;codecs=opus', supported: true },
+                ],
+            },
+        ];
+        mockDetectCodecSupport.mockReturnValueOnce(fakeCodecSupport);
+
+        const result = SystemDiagnostics.collectAudioCapabilities();
+
+        expect(result.codecSupport).toEqual(fakeCodecSupport);
     });
 
     it('reports mediaRecorderAvailable as true when MediaRecorder exists', () => {
@@ -300,6 +331,68 @@ describe('SystemDiagnostics.collectAudioCapabilities', () => {
     });
 });
 
+describe('SystemDiagnostics.collectActiveRecordingConfig', () => {
+    beforeEach(() => {
+        (global as Record<string, unknown>).MediaRecorder = {
+            isTypeSupported: jest.fn((type: string) =>
+                type === 'audio/mp4' || type === 'audio/webm',
+            ),
+        };
+    });
+
+    it('returns correct config for a directly supported format (mp4)', () => {
+        const settings = makeSettings({ recordingFormat: 'mp4' });
+        const result = SystemDiagnostics.collectActiveRecordingConfig(settings);
+
+        expect(result.outputFormat).toBe('mp4');
+        expect(result.recorderFormat).toBe('mp4');
+        expect(result.mimeType).toBe('audio/mp4');
+        expect(result.mimeTypeSupported).toBe(true);
+        expect(result.validationResult.valid).toBe(true);
+    });
+
+    it('resolves WAV to webm intermediate when webm is supported', () => {
+        const settings = makeSettings({ recordingFormat: 'wav' });
+        const result = SystemDiagnostics.collectActiveRecordingConfig(settings);
+
+        expect(result.outputFormat).toBe('wav');
+        expect(result.recorderFormat).toBe('webm');
+        expect(result.mimeType).toBe('audio/webm');
+        expect(result.mimeTypeSupported).toBe(true);
+    });
+
+    it('resolves WAV to ogg when webm is unavailable but ogg is supported', () => {
+        (global as Record<string, unknown>).MediaRecorder = {
+            isTypeSupported: jest.fn((type: string) => type === 'audio/ogg'),
+        };
+        const settings = makeSettings({ recordingFormat: 'wav' });
+        const result = SystemDiagnostics.collectActiveRecordingConfig(settings);
+
+        expect(result.recorderFormat).toBe('ogg');
+        expect(result.mimeTypeSupported).toBe(true);
+    });
+
+    it('reports mimeTypeSupported=false for WAV when no intermediate is available', () => {
+        (global as Record<string, unknown>).MediaRecorder = {
+            isTypeSupported: jest.fn().mockReturnValue(false),
+        };
+        const settings = makeSettings({ recordingFormat: 'wav' });
+        const result = SystemDiagnostics.collectActiveRecordingConfig(settings);
+
+        expect(result.mimeTypeSupported).toBe(false);
+        expect(result.validationResult.valid).toBe(false);
+    });
+
+    it('reports mimeTypeSupported=false for an unsupported format', () => {
+        const settings = makeSettings({ recordingFormat: 'ogg' });
+        const result = SystemDiagnostics.collectActiveRecordingConfig(settings);
+
+        // ogg is not in our mock
+        expect(result.mimeTypeSupported).toBe(false);
+        expect(result.validationResult.valid).toBe(false);
+    });
+});
+
 // ---------------------------------------------------------------------------
 // collect (integration)
 // ---------------------------------------------------------------------------
@@ -309,6 +402,10 @@ describe('SystemDiagnostics.collect', () => {
     const mockDetectCapabilities = jest.spyOn(
         AudioCapabilityDetector,
         'detectCapabilities',
+    );
+    const mockDetectCodecSupport = jest.spyOn(
+        AudioCapabilityDetector,
+        'detectCodecSupport',
     );
 
     beforeEach(() => {
@@ -325,10 +422,15 @@ describe('SystemDiagnostics.collect', () => {
             defaultSampleRate: 44100,
             defaultBitrate: 128000,
         });
+        mockDetectCodecSupport.mockReturnValue([]);
+        (global as Record<string, unknown>).MediaRecorder = {
+            isTypeSupported: jest.fn((type: string) => type === 'audio/webm'),
+        };
     });
 
     afterEach(() => {
         mockDetectCapabilities.mockReset();
+        mockDetectCodecSupport.mockReset();
     });
 
     it('returns a complete DiagnosticsData object', async () => {
@@ -341,6 +443,7 @@ describe('SystemDiagnostics.collect', () => {
         expect(result).toHaveProperty('environment');
         expect(result).toHaveProperty('audioDevices');
         expect(result).toHaveProperty('audioCapabilities');
+        expect(result).toHaveProperty('activeRecordingConfig');
         expect(result.environment.obsidianVersion).toBe('1.6.0');
         expect(result.pluginSettings.recordingFormat).toBe('webm');
         expect(Array.isArray(result.audioDevices)).toBe(true);
@@ -360,5 +463,14 @@ describe('SystemDiagnostics.collect', () => {
 
         expect(result.audioDevices).toHaveLength(1);
         expect(result.audioDevices[0].deviceId).toBe('in-1');
+    });
+
+    it('activeRecordingConfig reflects current settings format', async () => {
+        const settings = makeSettings({ recordingFormat: 'webm' });
+        const result = await SystemDiagnostics.collect(settings, makeApp());
+
+        expect(result.activeRecordingConfig.outputFormat).toBe('webm');
+        expect(result.activeRecordingConfig.mimeType).toBe('audio/webm');
+        expect(result.activeRecordingConfig.mimeTypeSupported).toBe(true);
     });
 });

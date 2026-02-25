@@ -12,6 +12,7 @@ import {
     getSupportedBitrates,
     validateRecordingCapability,
     detectCapabilities,
+    detectCodecSupport,
 } from '../../src/recording/AudioCapabilityDetector';
 
 describe('AudioCapabilityDetector', () => {
@@ -211,6 +212,64 @@ describe('AudioCapabilityDetector', () => {
             const caps = detectCapabilities();
 
             expect(caps.defaultFormat).toBe('webm');
+        });
+    });
+
+    describe('detectCodecSupport', () => {
+        it('returns an entry for each candidate format', () => {
+            (global as Record<string, unknown>).MediaRecorder = {
+                isTypeSupported: jest.fn((type: string) => type === 'audio/webm'),
+            };
+
+            const entries = detectCodecSupport();
+
+            // CANDIDATE_FORMATS = ['webm', 'ogg', 'mp3', 'm4a', 'mp4']
+            expect(entries).toHaveLength(5);
+        });
+
+        it('sets supported=true only for the MIME type that matches', () => {
+            (global as Record<string, unknown>).MediaRecorder = {
+                isTypeSupported: jest.fn((type: string) => type === 'audio/webm'),
+            };
+
+            const entries = detectCodecSupport();
+            const webm = entries.find((e) => e.mimeType === 'audio/webm');
+            const ogg = entries.find((e) => e.mimeType === 'audio/ogg');
+
+            expect(webm?.supported).toBe(true);
+            expect(ogg?.supported).toBe(false);
+        });
+
+        it('populates withCodecs with correct mimeType strings', () => {
+            (global as Record<string, unknown>).MediaRecorder = {
+                isTypeSupported: jest.fn((type: string) =>
+                    type === 'audio/webm' || type === 'audio/webm;codecs=opus',
+                ),
+            };
+
+            const entries = detectCodecSupport();
+            const webm = entries.find((e) => e.mimeType === 'audio/webm');
+
+            expect(webm).toBeDefined();
+            const opusEntry = webm?.withCodecs.find((c) => c.codec === 'opus');
+            expect(opusEntry?.mimeType).toBe('audio/webm;codecs=opus');
+            expect(opusEntry?.supported).toBe(true);
+
+            const vorbisEntry = webm?.withCodecs.find((c) => c.codec === 'vorbis');
+            expect(vorbisEntry?.supported).toBe(false);
+        });
+
+        it('returns supported=false for all when MediaRecorder is unavailable', () => {
+            (global as Record<string, unknown>).MediaRecorder = undefined;
+
+            const entries = detectCodecSupport();
+
+            entries.forEach((entry) => {
+                expect(entry.supported).toBe(false);
+                entry.withCodecs.forEach((v) => {
+                    expect(v.supported).toBe(false);
+                });
+            });
         });
     });
 });
