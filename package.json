@@ -1,6 +1,6 @@
 {
   "name": "advanced-audio-recorder",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "Advanced audio recording with input device and folder configuration.",
   "main": "main.js",
   "scripts": {
