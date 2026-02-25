@@ -37,7 +37,6 @@ export class AudioFileInfoModal extends Modal {
 		// Content definition matching the required Markdown output
 		const markdownLines = [
 			`- **File Name:** \`${this.info.fileName}\``,
-			`- **File Path:** \`${this.info.filePath}\``,
 			`- **File Size:** \`${this.info.fileSize}\``,
 			`- **Duration:** \`${this.info.duration}\``,
 			`- **Container Format:** \`${this.info.containerFormat}\``,
@@ -79,7 +78,6 @@ export class AudioFileInfoModal extends Modal {
 		};
 
 		addListItem('File Name', this.info.fileName);
-		addListItem('File Path', this.info.filePath);
 		addListItem('File Size', this.info.fileSize);
 		addListItem('Duration', this.info.duration);
 		addListItem('Container Format', this.info.containerFormat);

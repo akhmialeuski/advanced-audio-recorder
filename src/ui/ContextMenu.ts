@@ -85,8 +85,6 @@ export class ContextMenu {
 
 					const menu = new Menu();
 
-					this.addAudioFileInfoMenuItem(menu, file);
-
 					// Attempt to find the link in the editor to offer "Delete recording & link"
 					const activeView =
 						this.app.workspace.getActiveViewOfType(MarkdownView);

@@ -10,7 +10,6 @@ import { App, Notice, TFile } from 'obsidian';
  */
 export interface AudioFileInfo {
 	fileName: string;
-	filePath: string;
 	fileSize: string;
 	duration: string;
 	containerFormat: string;
@@ -81,7 +80,6 @@ export async function getAudioFileInfo(
 
 		return {
 			fileName: file.name,
-			filePath: file.path,
 			fileSize: formatBytes(fileSizeInBytes),
 			duration: formatDuration(durationInSeconds),
 			containerFormat: getMimeTypeFromExtension(extension),

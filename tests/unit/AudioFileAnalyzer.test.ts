@@ -67,7 +67,6 @@ describe('getAudioFileInfo', () => {
         expect(result).not.toBeNull();
         expect(result).toEqual({
             fileName: 'test.webm',
-            filePath: 'test.webm',
             fileSize: '1.5 MB',
             duration: '00:01:30',
             containerFormat: 'audio/webm',
