@@ -105,14 +105,64 @@ export class Notice {
 }
 
 /**
+ * Adds Obsidian DOM extension methods to an HTMLElement.
+ * Obsidian extends HTMLElement with helper methods like createEl, setText, etc.
+ */
+function addObsidianDomExtensions(el: HTMLElement): HTMLElement {
+    // Use unknown cast to avoid TypeScript's overloaded HTMLElement extension conflicts
+    const extended = el as unknown as Record<string, unknown>;
+
+    extended['createEl'] = (tag: string, opts?: { text?: string; cls?: string | string[]; attr?: Record<string, string> }): HTMLElement => {
+        const child = document.createElement(tag);
+        addObsidianDomExtensions(child);
+        if (opts?.text) child.textContent = opts.text;
+        if (opts?.cls) {
+            const classes = Array.isArray(opts.cls) ? opts.cls : opts.cls.split(' ');
+            classes.forEach((c) => child.classList.add(c));
+        }
+        if (opts?.attr) {
+            Object.entries(opts.attr).forEach(([k, v]) => child.setAttribute(k, v));
+        }
+        el.appendChild(child);
+        return child;
+    };
+
+    extended['createDiv'] = (opts?: { cls?: string }): HTMLElement => {
+        const createEl = extended['createEl'] as (tag: string, opts?: { cls?: string }) => HTMLElement;
+        return createEl('div', opts ? { cls: opts.cls } : undefined);
+    };
+
+    extended['setText'] = (text: string): void => {
+        el.textContent = text;
+    };
+
+    extended['addClass'] = (...classes: string[]): void => {
+        classes.forEach((c) => el.classList.add(c));
+    };
+
+    extended['removeClass'] = (...classes: string[]): void => {
+        classes.forEach((c) => el.classList.remove(c));
+    };
+
+    extended['empty'] = (): void => {
+        while (el.firstChild) {
+            el.removeChild(el.firstChild);
+        }
+    };
+
+    return el;
+}
+
+/**
  * Mock Modal class.
  */
 export class Modal {
     app: App;
-    contentEl: HTMLElement = document.createElement('div');
+    contentEl: HTMLElement;
 
     constructor(app: App) {
         this.app = app;
+        this.contentEl = addObsidianDomExtensions(document.createElement('div'));
     }
 
     open(): void {

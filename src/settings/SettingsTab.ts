@@ -18,6 +18,8 @@ import {
 	getSupportedSampleRates,
 	buildMimeType,
 } from '../recording/AudioCapabilityDetector';
+import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
+import { SystemInfoModal } from '../diagnostics/SystemInfoModal';
 
 /**
  * Plugin interface for settings tab.
@@ -359,6 +361,22 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			.addButton((button) =>
 				button.setButtonText('Start test').onClick(() => {
 					void this.runTestRecording(testContainer);
+				}),
+			);
+
+		new Setting(containerEl)
+			.setName('System info')
+			.setDesc(
+				'Show full system diagnostics including plugin settings, audio devices, and browser capabilities.',
+			)
+			.addButton((button) =>
+				button.setButtonText('Show info').onClick(() => {
+					void SystemDiagnostics.collect(
+						this.plugin.settings,
+						this.app,
+					).then((data) => {
+						new SystemInfoModal(this.app, data).open();
+					});
 				}),
 			);
 
