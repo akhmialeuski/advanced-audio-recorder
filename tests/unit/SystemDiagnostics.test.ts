@@ -7,6 +7,13 @@
 import { SystemDiagnostics } from 'src/diagnostics/SystemDiagnostics';
 import type { AudioRecorderSettings } from 'src/settings/Settings';
 import * as AudioCapabilityDetector from 'src/recording/AudioCapabilityDetector';
+import {
+    FORMAT_WEBM,
+    FORMAT_OGG,
+    FORMAT_MP4,
+    DEFAULT_SAMPLE_RATE,
+    DEFAULT_BITRATE,
+} from 'src/recording/AudioCapabilityDetector';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -16,9 +23,9 @@ function makeSettings(
     overrides: Partial<AudioRecorderSettings> = {},
 ): AudioRecorderSettings {
     return {
-        recordingFormat: 'webm',
-        bitrate: 128000,
-        sampleRate: 44100,
+        recordingFormat: FORMAT_WEBM,
+        bitrate: DEFAULT_BITRATE,
+        sampleRate: DEFAULT_SAMPLE_RATE,
         saveFolder: 'recordings',
         saveNearActiveFile: false,
         activeFileSubfolder: '',
@@ -55,9 +62,9 @@ describe('SystemDiagnostics.collectPluginSettings', () => {
         const settings = makeSettings();
         const result = SystemDiagnostics.collectPluginSettings(settings);
 
-        expect(result.recordingFormat).toBe('webm');
-        expect(result.bitrate).toBe(128000);
-        expect(result.sampleRate).toBe(44100);
+        expect(result.recordingFormat).toBe(FORMAT_WEBM);
+        expect(result.bitrate).toBe(DEFAULT_BITRATE);
+        expect(result.sampleRate).toBe(DEFAULT_SAMPLE_RATE);
         expect(result.saveFolder).toBe('recordings');
         expect(result.saveNearActiveFile).toBe(false);
         expect(result.activeFileSubfolder).toBe('');
@@ -256,19 +263,19 @@ describe('SystemDiagnostics.collectAudioCapabilities', () => {
 
     it('maps detectCapabilities result to capabilities object', () => {
         mockDetectCapabilities.mockReturnValueOnce({
-            supportedFormats: ['webm', 'ogg'],
-            supportedSampleRates: [44100, 48000],
-            supportedBitrates: [128000, 256000],
-            defaultFormat: 'webm',
-            defaultSampleRate: 44100,
-            defaultBitrate: 128000,
+            supportedFormats: [FORMAT_WEBM, FORMAT_OGG],
+            supportedSampleRates: [DEFAULT_SAMPLE_RATE, 48000],
+            supportedBitrates: [DEFAULT_BITRATE, 256000],
+            defaultFormat: FORMAT_WEBM,
+            defaultSampleRate: DEFAULT_SAMPLE_RATE,
+            defaultBitrate: DEFAULT_BITRATE,
         });
 
         const result = SystemDiagnostics.collectAudioCapabilities();
 
-        expect(result.supportedFormats).toEqual(['webm', 'ogg']);
-        expect(result.supportedSampleRates).toEqual([44100, 48000]);
-        expect(result.supportedBitrates).toEqual([128000, 256000]);
+        expect(result.supportedFormats).toEqual([FORMAT_WEBM, FORMAT_OGG]);
+        expect(result.supportedSampleRates).toEqual([DEFAULT_SAMPLE_RATE, 48000]);
+        expect(result.supportedBitrates).toEqual([DEFAULT_BITRATE, 256000]);
     });
 
     it('includes codecSupport from detectCodecSupport()', () => {
@@ -276,9 +283,9 @@ describe('SystemDiagnostics.collectAudioCapabilities', () => {
             supportedFormats: [],
             supportedSampleRates: [],
             supportedBitrates: [],
-            defaultFormat: 'webm',
-            defaultSampleRate: 44100,
-            defaultBitrate: 128000,
+            defaultFormat: FORMAT_WEBM,
+            defaultSampleRate: DEFAULT_SAMPLE_RATE,
+            defaultBitrate: DEFAULT_BITRATE,
         });
         const fakeCodecSupport = [
             {
@@ -301,9 +308,9 @@ describe('SystemDiagnostics.collectAudioCapabilities', () => {
             supportedFormats: [],
             supportedSampleRates: [],
             supportedBitrates: [],
-            defaultFormat: 'webm',
-            defaultSampleRate: 44100,
-            defaultBitrate: 128000,
+            defaultFormat: FORMAT_WEBM,
+            defaultSampleRate: DEFAULT_SAMPLE_RATE,
+            defaultBitrate: DEFAULT_BITRATE,
         });
 
         // MediaRecorder appears in jsdom
@@ -317,9 +324,9 @@ describe('SystemDiagnostics.collectAudioCapabilities', () => {
             supportedFormats: [],
             supportedSampleRates: [],
             supportedBitrates: [],
-            defaultFormat: 'webm',
-            defaultSampleRate: 44100,
-            defaultBitrate: 128000,
+            defaultFormat: FORMAT_WEBM,
+            defaultSampleRate: DEFAULT_SAMPLE_RATE,
+            defaultBitrate: DEFAULT_BITRATE,
         });
 
         const result = SystemDiagnostics.collectAudioCapabilities();
@@ -341,11 +348,11 @@ describe('SystemDiagnostics.collectActiveRecordingConfig', () => {
     });
 
     it('returns correct config for a directly supported format (mp4)', () => {
-        const settings = makeSettings({ recordingFormat: 'mp4' });
+        const settings = makeSettings({ recordingFormat: FORMAT_MP4 });
         const result = SystemDiagnostics.collectActiveRecordingConfig(settings);
 
-        expect(result.outputFormat).toBe('mp4');
-        expect(result.recorderFormat).toBe('mp4');
+        expect(result.outputFormat).toBe(FORMAT_MP4);
+        expect(result.recorderFormat).toBe(FORMAT_MP4);
         expect(result.mimeType).toBe('audio/mp4');
         expect(result.mimeTypeSupported).toBe(true);
         expect(result.validationResult.valid).toBe(true);
@@ -356,7 +363,7 @@ describe('SystemDiagnostics.collectActiveRecordingConfig', () => {
         const result = SystemDiagnostics.collectActiveRecordingConfig(settings);
 
         expect(result.outputFormat).toBe('wav');
-        expect(result.recorderFormat).toBe('webm');
+        expect(result.recorderFormat).toBe(FORMAT_WEBM);
         expect(result.mimeType).toBe('audio/webm');
         expect(result.mimeTypeSupported).toBe(true);
     });
@@ -368,7 +375,7 @@ describe('SystemDiagnostics.collectActiveRecordingConfig', () => {
         const settings = makeSettings({ recordingFormat: 'wav' });
         const result = SystemDiagnostics.collectActiveRecordingConfig(settings);
 
-        expect(result.recorderFormat).toBe('ogg');
+        expect(result.recorderFormat).toBe(FORMAT_OGG);
         expect(result.mimeTypeSupported).toBe(true);
     });
 
@@ -384,7 +391,7 @@ describe('SystemDiagnostics.collectActiveRecordingConfig', () => {
     });
 
     it('reports mimeTypeSupported=false for an unsupported format', () => {
-        const settings = makeSettings({ recordingFormat: 'ogg' });
+        const settings = makeSettings({ recordingFormat: FORMAT_OGG });
         const result = SystemDiagnostics.collectActiveRecordingConfig(settings);
 
         // ogg is not in our mock
@@ -415,12 +422,12 @@ describe('SystemDiagnostics.collect', () => {
         });
         mockEnumerate.mockResolvedValue([]);
         mockDetectCapabilities.mockReturnValue({
-            supportedFormats: ['webm'],
-            supportedSampleRates: [44100],
-            supportedBitrates: [128000],
-            defaultFormat: 'webm',
-            defaultSampleRate: 44100,
-            defaultBitrate: 128000,
+            supportedFormats: [FORMAT_WEBM],
+            supportedSampleRates: [DEFAULT_SAMPLE_RATE],
+            supportedBitrates: [DEFAULT_BITRATE],
+            defaultFormat: FORMAT_WEBM,
+            defaultSampleRate: DEFAULT_SAMPLE_RATE,
+            defaultBitrate: DEFAULT_BITRATE,
         });
         mockDetectCodecSupport.mockReturnValue([]);
         (global as Record<string, unknown>).MediaRecorder = {
@@ -445,7 +452,7 @@ describe('SystemDiagnostics.collect', () => {
         expect(result).toHaveProperty('audioCapabilities');
         expect(result).toHaveProperty('activeRecordingConfig');
         expect(result.environment.obsidianVersion).toBe('1.6.0');
-        expect(result.pluginSettings.recordingFormat).toBe('webm');
+        expect(result.pluginSettings.recordingFormat).toBe(FORMAT_WEBM);
         expect(Array.isArray(result.audioDevices)).toBe(true);
     });
 
@@ -466,10 +473,10 @@ describe('SystemDiagnostics.collect', () => {
     });
 
     it('activeRecordingConfig reflects current settings format', async () => {
-        const settings = makeSettings({ recordingFormat: 'webm' });
+        const settings = makeSettings({ recordingFormat: FORMAT_WEBM });
         const result = await SystemDiagnostics.collect(settings, makeApp());
 
-        expect(result.activeRecordingConfig.outputFormat).toBe('webm');
+        expect(result.activeRecordingConfig.outputFormat).toBe(FORMAT_WEBM);
         expect(result.activeRecordingConfig.mimeType).toBe('audio/webm');
         expect(result.activeRecordingConfig.mimeTypeSupported).toBe(true);
     });

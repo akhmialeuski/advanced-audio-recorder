@@ -10,8 +10,12 @@ import { serializeTrackAudioSources } from '../settings/Settings';
 import {
 	detectCapabilities,
 	detectCodecSupport,
+	getExpectedCodec,
 	buildMimeType,
 	validateRecordingCapability,
+	FORMAT_WAV,
+	FORMAT_WEBM,
+	FORMAT_OGG,
 } from '../recording/AudioCapabilityDetector';
 import type { CodecSupportEntry } from '../recording/AudioCapabilityDetector';
 
@@ -74,10 +78,12 @@ export interface DiagnosticsAudioCapabilities {
 export interface ActiveRecordingConfig {
 	/** User-selected output format (e.g. 'mp4', 'wav'). */
 	outputFormat: string;
-	/** Actual MediaRecorder format (wav → 'webm' intermediary). */
+	/** The format actually given to MediaRecorder (handles wav → 'webm' intermediary). */
 	recorderFormat: string;
 	/** MIME type passed to MediaRecorder (no codec suffix). */
 	mimeType: string;
+	/** The expected codec that the browser will select for this format. */
+	expectedCodec?: string;
 	/** Whether MediaRecorder.isTypeSupported() returns true for the mimeType. */
 	mimeTypeSupported: boolean;
 	/** Pre-recording validation result. */
@@ -211,8 +217,8 @@ export class SystemDiagnostics {
 
 		// For WAV output, MediaRecorder uses a compressed intermediate (webm/ogg).
 		// Mirror the same precedence as RecordingManager.resolveRecorderFormat().
-		if (outputFormat === 'wav') {
-			const intermediates = ['webm', 'ogg'];
+		if (outputFormat === FORMAT_WAV) {
+			const intermediates = [FORMAT_WEBM, FORMAT_OGG];
 			for (const format of intermediates) {
 				const mimeType = buildMimeType(format);
 				const supported =
@@ -231,8 +237,8 @@ export class SystemDiagnostics {
 			// Neither webm nor ogg available — report the failure.
 			return {
 				outputFormat,
-				recorderFormat: 'webm',
-				mimeType: buildMimeType('webm'),
+				recorderFormat: FORMAT_WEBM,
+				mimeType: buildMimeType(FORMAT_WEBM),
 				mimeTypeSupported: false,
 				validationResult,
 			};
@@ -247,6 +253,7 @@ export class SystemDiagnostics {
 			outputFormat,
 			recorderFormat: outputFormat,
 			mimeType,
+			expectedCodec: getExpectedCodec(outputFormat),
 			mimeTypeSupported,
 			validationResult,
 		};

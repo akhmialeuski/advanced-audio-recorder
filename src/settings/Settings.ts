@@ -4,6 +4,11 @@
  */
 
 import { SettingsValidationError } from '../errors';
+import {
+	FORMAT_WEBM,
+	DEFAULT_SAMPLE_RATE,
+	DEFAULT_BITRATE,
+} from '../recording/AudioCapabilityDetector';
 
 /**
  * Output mode for multi-track recordings.
@@ -72,7 +77,7 @@ export interface AudioRecorderSettings {
  * Default plugin settings.
  */
 export const DEFAULT_SETTINGS: AudioRecorderSettings = {
-	recordingFormat: 'webm',
+	recordingFormat: FORMAT_WEBM,
 	saveFolder: '',
 	saveNearActiveFile: false,
 	activeFileSubfolder: '',
@@ -81,8 +86,8 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	pauseHotkey: '',
 	resumeHotkey: '',
 	audioDeviceId: '',
-	sampleRate: 44100,
-	bitrate: 128000,
+	sampleRate: DEFAULT_SAMPLE_RATE,
+	bitrate: DEFAULT_BITRATE,
 	enableMultiTrack: false,
 	maxTracks: 2,
 	outputMode: 'single',
