@@ -19,9 +19,12 @@ If your plugin does not need CSS, delete this file.
 }
 
 @keyframes pulse-recording {
-    0%, 100% {
+
+    0%,
+    100% {
         opacity: 1;
     }
+
     50% {
         opacity: 0.5;
     }
@@ -54,4 +57,24 @@ If your plugin does not need CSS, delete this file.
     display: block;
     margin-top: 8px;
     width: 100%;
+}
+
+/* System info modal */
+.aar-system-info-json {
+    max-height: 60vh;
+    overflow-y: auto;
+    padding: 12px;
+    border-radius: 4px;
+    font-family: var(--font-monospace);
+    font-size: 0.85em;
+    white-space: pre-wrap;
+    word-break: break-word;
+    background-color: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    margin-top: 8px;
+}
+
+.aar-system-info-copied {
+    color: var(--color-green);
+    font-weight: bold;
 }

@@ -19,6 +19,9 @@ import { DebugLogger } from '../utils/DebugLogger';
 import {
 	buildMimeType,
 	validateRecordingCapability,
+	FORMAT_WEBM,
+	FORMAT_OGG,
+	FORMAT_WAV,
 } from './AudioCapabilityDetector';
 
 type RecordingTarget = {
@@ -35,9 +38,6 @@ type RecordingTarget = {
 const CHUNK_TIMESLICE_MS = 5000;
 const MOBILE_BUFFER_LIMIT_BYTES = 50 * 1024 * 1024;
 const MIME_TYPE_AUDIO_PREFIX = 'audio/';
-const WAV_FORMAT = 'wav';
-const WEBM_FORMAT = 'webm';
-const OGG_FORMAT = 'ogg';
 
 /**
  * Manages the audio recording lifecycle.
@@ -54,7 +54,7 @@ export class RecordingManager {
 	private recordingTimestamp: string | null = null;
 	private totalChunks: number = 0;
 	private isMobileRecording: boolean = false;
-	private activeRecorderFormat: string = WEBM_FORMAT;
+	private activeRecorderFormat: string = FORMAT_WEBM;
 
 	/**
 	 * Creates a new RecordingManager.
@@ -327,7 +327,7 @@ export class RecordingManager {
 					);
 				}
 				const mergedAudio =
-					this.settings.recordingFormat === WAV_FORMAT
+					this.settings.recordingFormat === FORMAT_WAV
 						? await this.mergeAudioTracks()
 						: await this.combineTracksWithoutConversion();
 				const fileName = `${this.settings.filePrefix}-multitrack-${timestamp}.${this.settings.recordingFormat}`;
@@ -598,7 +598,7 @@ export class RecordingManager {
 		const fileName = `${this.settings.filePrefix}-${target.sourceName}-${timestamp}.${this.settings.recordingFormat}`;
 		const filePath = await this.resolveUniquePath(fileName);
 
-		if (this.settings.recordingFormat === WAV_FORMAT) {
+		if (this.settings.recordingFormat === FORMAT_WAV) {
 			const data = await this.app.vault.adapter.readBinary(
 				target.tempFilePath,
 			);
@@ -707,12 +707,12 @@ export class RecordingManager {
 		mimeType: string;
 	} {
 		const outputFormat = this.settings.recordingFormat.toLowerCase();
-		if (outputFormat === WAV_FORMAT) {
-			const preferredCompressedFormats = [WEBM_FORMAT, OGG_FORMAT];
+		if (outputFormat === FORMAT_WAV) {
+			const preferredCompressedFormats = [FORMAT_WEBM, FORMAT_OGG];
 			for (const format of preferredCompressedFormats) {
 				const mimeType = buildMimeType(format);
 				if (MediaRecorder.isTypeSupported(mimeType)) {
-					return { recorderFormat: format, mimeType };
+					return { recorderFormat: format, mimeType: mimeType };
 				}
 			}
 			throw new Error(
@@ -734,7 +734,8 @@ export class RecordingManager {
 		const recordedBlob = new Blob(chunks, {
 			type: this.getRecorderMediaType(),
 		});
-		if (this.settings.recordingFormat !== WAV_FORMAT) {
+		const isWav = this.settings.recordingFormat === FORMAT_WAV;
+		if (!isWav) {
 			return recordedBlob;
 		}
 		return this.convertBlobToWav(recordedBlob);

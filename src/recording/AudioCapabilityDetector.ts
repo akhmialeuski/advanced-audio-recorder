@@ -7,9 +7,33 @@
 
 const MIME_TYPE_AUDIO_PREFIX = 'audio/';
 
-const CANDIDATE_FORMATS = ['webm', 'ogg', 'mp3', 'm4a', 'mp4'];
-const WAV_FORMAT = 'wav';
-const COMPRESSED_INTERMEDIATES = ['webm', 'ogg'];
+export const FORMAT_WEBM = 'webm';
+export const FORMAT_OGG = 'ogg';
+export const FORMAT_MP3 = 'mp3';
+export const FORMAT_M4A = 'm4a';
+export const FORMAT_MP4 = 'mp4';
+export const FORMAT_WAV = 'wav';
+
+export const DEFAULT_SAMPLE_RATE = 44100;
+export const DEFAULT_BITRATE = 128000;
+
+const CANDIDATE_FORMATS = [
+	FORMAT_WEBM,
+	FORMAT_OGG,
+	FORMAT_MP3,
+	FORMAT_M4A,
+	FORMAT_MP4,
+];
+
+/** Candidate codecs to probe per container format. */
+const FORMAT_CODECS: Record<string, string[]> = {
+	[FORMAT_WEBM]: ['opus', 'vorbis', 'pcm'],
+	[FORMAT_OGG]: ['opus', 'vorbis'],
+	[FORMAT_MP4]: ['mp4a.40.2', 'mp4a.40.5', 'opus'],
+	[FORMAT_M4A]: ['mp4a.40.2', 'mp4a.40.5'],
+	[FORMAT_MP3]: ['mp3'],
+};
+const COMPRESSED_INTERMEDIATES = [FORMAT_WEBM, FORMAT_OGG];
 
 const CANDIDATE_SAMPLE_RATES = [8000, 16000, 22050, 44100, 48000];
 const CANDIDATE_BITRATES_BPS = [
@@ -32,6 +56,30 @@ export interface AudioCapabilities {
 	defaultSampleRate: number;
 	/** Default bitrate in bps. */
 	defaultBitrate: number;
+}
+
+/**
+ * Codec probing result for a single codec variant.
+ */
+export interface CodecVariantEntry {
+	/** Codec identifier (e.g. 'opus', 'mp4a.40.2'). */
+	codec: string;
+	/** Full MIME type string with codec suffix. */
+	mimeType: string;
+	/** Whether MediaRecorder.isTypeSupported() returns true for this variant. */
+	supported: boolean;
+}
+
+/**
+ * Codec support report for a single container format.
+ */
+export interface CodecSupportEntry {
+	/** Plain MIME type without codec suffix (e.g. 'audio/webm'). */
+	mimeType: string;
+	/** Whether the plain MIME type is supported. */
+	supported: boolean;
+	/** Per-codec variant probing results. */
+	withCodecs: CodecVariantEntry[];
 }
 
 /**
@@ -75,7 +123,7 @@ export function detectSupportedFormats(): string[] {
 		MediaRecorder.isTypeSupported(buildMimeType(format)),
 	);
 	if (hasCompressedIntermediate) {
-		supported.push(WAV_FORMAT);
+		supported.push(FORMAT_WAV);
 	}
 
 	return supported;
@@ -106,7 +154,7 @@ export function getSupportedBitrates(): number[] {
  * @returns Validation result with diagnostic info
  */
 export function validateRecordingCapability(format: string): ValidationResult {
-	if (format === WAV_FORMAT) {
+	if (format === FORMAT_WAV) {
 		const hasIntermediate = COMPRESSED_INTERMEDIATES.some((f) =>
 			MediaRecorder.isTypeSupported(buildMimeType(f)),
 		);
@@ -131,6 +179,58 @@ export function validateRecordingCapability(format: string): ValidationResult {
 }
 
 /**
+ * Attempts to predict the codec that the browser will use for the
+ * given format by probing codec variants in order of preference.
+ * @param format - Audio format (e.g. 'webm', 'mp4')
+ * @returns The expected codec string (e.g. 'opus', 'mp4a.40.2'), or undefined
+ */
+export function getExpectedCodec(format: string): string | undefined {
+	if (typeof MediaRecorder === 'undefined') {
+		return undefined;
+	}
+	const codecs = FORMAT_CODECS[format];
+	if (!codecs || codecs.length === 0) {
+		return undefined;
+	}
+	const plainMime = buildMimeType(format);
+	for (const codec of codecs) {
+		if (MediaRecorder.isTypeSupported(`${plainMime};codecs=${codec}`)) {
+			return codec;
+		}
+	}
+	return undefined;
+}
+
+/**
+ * Probes MediaRecorder codec support for all candidate formats.
+ * For each container format, tests the plain MIME type and each
+ * codec variant to produce a complete support matrix.
+ * @returns Array of codec support entries per format
+ */
+export function detectCodecSupport(): CodecSupportEntry[] {
+	return CANDIDATE_FORMATS.map((format) => {
+		const plainMime = buildMimeType(format);
+		const supported =
+			typeof MediaRecorder !== 'undefined'
+				? MediaRecorder.isTypeSupported(plainMime)
+				: false;
+		const codecs = FORMAT_CODECS[format] ?? [];
+		const withCodecs: CodecVariantEntry[] = codecs.map((codec) => {
+			const mimeType = `${plainMime};codecs=${codec}`;
+			return {
+				codec,
+				mimeType,
+				supported:
+					typeof MediaRecorder !== 'undefined'
+						? MediaRecorder.isTypeSupported(mimeType)
+						: false,
+			};
+		});
+		return { mimeType: plainMime, supported, withCodecs };
+	});
+}
+
+/**
  * Detects all audio capabilities of the current environment.
  * @returns Full capability report
  */
@@ -139,16 +239,20 @@ export function detectCapabilities(): AudioCapabilities {
 	const supportedSampleRates = getSupportedSampleRates();
 	const supportedBitrates = getSupportedBitrates();
 
-	const defaultFormat = supportedFormats.includes('webm')
-		? 'webm'
-		: (supportedFormats[0] ?? 'webm');
+	const defaultFormat = supportedFormats.includes(FORMAT_WEBM)
+		? FORMAT_WEBM
+		: supportedFormats.includes(FORMAT_MP4)
+			? FORMAT_MP4
+			: supportedFormats.length > 0
+				? supportedFormats[0]
+				: FORMAT_WEBM;
 
 	return {
 		supportedFormats,
 		supportedSampleRates,
 		supportedBitrates,
 		defaultFormat,
-		defaultSampleRate: 44100,
-		defaultBitrate: 128000,
+		defaultSampleRate: DEFAULT_SAMPLE_RATE,
+		defaultBitrate: DEFAULT_BITRATE,
 	};
 }
