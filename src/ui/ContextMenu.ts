@@ -13,7 +13,10 @@ import {
 	Notice,
 	MarkdownView,
 } from 'obsidian';
+import type { MenuItem } from 'obsidian';
 import { AUDIO_EXTENSIONS } from '../constants';
+import { getAudioFileInfo } from '../utils/AudioFileAnalyzer';
+import { AudioFileInfoModal } from './AudioFileInfoModal';
 
 /**
  * Manages context menu items for audio files.
@@ -143,6 +146,7 @@ export class ContextMenu {
 				'file-menu',
 				(menu: Menu, file: TAbstractFile) => {
 					if (file instanceof TFile && this.isAudioFile(file)) {
+						this.addAudioFileInfoMenuItem(menu, file);
 						this.addDeleteRecordingMenuItem(menu, file);
 					}
 				},
@@ -191,6 +195,7 @@ export class ContextMenu {
 			return;
 		}
 
+		this.addAudioFileInfoMenuItem(menu, file);
 		this.addDeleteRecordingAndLinkMenuItem(
 			menu,
 			file,
@@ -283,7 +288,7 @@ export class ContextMenu {
 	 * @param file - The file to delete.
 	 */
 	private addDeleteRecordingMenuItem(menu: Menu, file: TFile): void {
-		menu.addItem((item) => {
+		menu.addItem((item: MenuItem) => {
 			item.setTitle('Delete recording')
 				.setIcon('trash')
 				.setSection('danger')
@@ -314,13 +319,32 @@ export class ContextMenu {
 		line: number,
 		linkMatch: { start: number; end: number },
 	): void {
-		menu.addItem((item) => {
+		menu.addItem((item: MenuItem) => {
 			item.setTitle('Delete recording & link to file')
 				.setIcon('trash')
 				.setSection('danger')
 				.onClick(() =>
 					this.deleteRecordingAndLink(file, editor, line, linkMatch),
 				);
+		});
+	}
+
+	/**
+	 * Adds an "Audio file info" item to the menu.
+	 * @param menu - The menu to add the item to.
+	 * @param file - The audio file.
+	 */
+	private addAudioFileInfoMenuItem(menu: Menu, file: TFile): void {
+		menu.addItem((item: MenuItem) => {
+			item.setTitle('Audio file info')
+				.setIcon('info')
+				.setSection('default')
+				.onClick(async () => {
+					const info = await getAudioFileInfo(this.app, file);
+					if (info) {
+						new AudioFileInfoModal(this.app, info).open();
+					}
+				});
 		});
 	}
 }
