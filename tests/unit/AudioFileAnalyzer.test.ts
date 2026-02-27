@@ -156,7 +156,9 @@ describe('getAudioFileInfo', () => {
 
         const result = await getAudioFileInfo(app, file);
         expect(result).toBeNull();
-        expect(Notice).toHaveBeenCalledWith('AudioContext is not supported. Cannot extract audio metadata.');
+        expect(Notice).toHaveBeenCalledWith(
+            'Audio context is not supported. Cannot extract audio metadata.',
+        );
 
         consoleSpy.mockRestore();
     });

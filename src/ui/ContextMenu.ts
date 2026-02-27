@@ -13,10 +13,20 @@ import {
 	Notice,
 	MarkdownView,
 } from 'obsidian';
+import type { MarkdownFileInfo } from 'obsidian';
 import type { MenuItem } from 'obsidian';
 import { AUDIO_EXTENSIONS } from '../constants';
 import { getAudioFileInfo } from '../utils/AudioFileAnalyzer';
 import { AudioFileInfoModal } from './AudioFileInfoModal';
+
+/** CodeMirror view attached to Editor (internal Obsidian API). */
+interface EditorCodeMirrorView {
+	posAtDOM?(node: Node): number;
+}
+
+interface EditorWithCM extends Editor {
+	cm?: EditorCodeMirrorView;
+}
 
 /**
  * Manages context menu items for audio files.
@@ -90,8 +100,7 @@ export class ContextMenu {
 						this.app.workspace.getActiveViewOfType(MarkdownView);
 					if (activeView) {
 						const editor = activeView.editor;
-						// eslint-disable-next-line @typescript-eslint/no-explicit-any
-						const editorView = (editor as any).cm;
+						const editorView = (editor as EditorWithCM).cm;
 						if (editorView && editorView.posAtDOM) {
 							try {
 								const pos = editorView.posAtDOM(embed);
@@ -162,8 +171,11 @@ export class ContextMenu {
 		this.plugin.registerEvent(
 			this.app.workspace.on(
 				'editor-menu',
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				(menu: Menu, editor: Editor, view: any) => {
+				(
+					menu: Menu,
+					editor: Editor,
+					view: MarkdownView | MarkdownFileInfo,
+				) => {
 					this.handleEditorMenu(menu, editor, view);
 				},
 			),
@@ -174,10 +186,13 @@ export class ContextMenu {
 	 * Handles the editor menu event.
 	 * @param menu - The context menu.
 	 * @param editor - The editor instance.
-	 * @param view - The markdown view (typed as any to avoid lint errors).
+	 * @param view - The markdown view or file info.
 	 */
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	private handleEditorMenu(menu: Menu, editor: Editor, view: any): void {
+	private handleEditorMenu(
+		menu: Menu,
+		editor: Editor,
+		view: MarkdownView | MarkdownFileInfo,
+	): void {
 		const cursor = editor.getCursor();
 		const lineText = editor.getLine(cursor.line);
 		const linkMatch = this.findLinkAtCursor(lineText, cursor.ch);

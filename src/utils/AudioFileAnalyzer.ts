@@ -43,7 +43,7 @@ export async function getAudioFileInfo(
 				'[AudioRecorder] AudioContext is not supported in this environment.',
 			);
 			new Notice(
-				'AudioContext is not supported. Cannot extract audio metadata.',
+				'Audio context is not supported. Cannot extract audio metadata.',
 			);
 			return null;
 		}
