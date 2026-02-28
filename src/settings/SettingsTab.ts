@@ -401,7 +401,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 */
 	async populateAudioDevices(dropdown: DropdownComponent): Promise<void> {
 		dropdown.selectEl.empty();
-		dropdown.addOption('', 'Select device');
 		const devices = await this.getAudioInputDevices();
 		devices.forEach((device) => {
 			const label =

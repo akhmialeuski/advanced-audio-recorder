@@ -1,4 +1,8 @@
 /**
+ * @jest-environment jsdom
+ */
+
+/**
  * Unit tests for Settings module.
  * @module tests/unit/Settings.test
  */
@@ -7,6 +11,7 @@ import {
     AudioRecorderSettings,
     DEFAULT_SETTINGS,
     mergeSettings,
+    mergeSettingsAsync,
     OutputMode,
     TrackAudioSources,
 } from '../../src/settings/Settings';
@@ -228,5 +233,113 @@ describe('Settings', () => {
             expect(sources.size).toBe(3);
             expect(sources.get(1)?.deviceId).toBe('device-1');
         });
+    });
+});
+
+describe('mergeSettingsAsync', () => {
+    const mockEnumerateDevices = jest.fn();
+    const mockGetUserMedia = jest.fn();
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        Object.defineProperty(global, 'navigator', {
+            value: {
+                mediaDevices: {
+                    enumerateDevices: mockEnumerateDevices,
+                    getUserMedia: mockGetUserMedia,
+                },
+            },
+            writable: true,
+        });
+    });
+
+    it('should auto-select default device when audioDeviceId is empty', async () => {
+        const devices: MediaDeviceInfo[] = [
+            {
+                deviceId: 'default',
+                label: 'Default - Microphone',
+                kind: 'audioinput',
+                groupId: 'group1',
+                toJSON: () => ({}),
+            },
+        ] as MediaDeviceInfo[];
+
+        mockGetUserMedia.mockResolvedValue({ getTracks: () => [] });
+        mockEnumerateDevices.mockResolvedValue(devices);
+
+        const result = await mergeSettingsAsync({});
+
+        expect(result.audioDeviceId).toBe('default');
+    });
+
+    it('should auto-select default device when audioDeviceId is whitespace', async () => {
+        const devices: MediaDeviceInfo[] = [
+            {
+                deviceId: 'default',
+                label: 'Default - Microphone',
+                kind: 'audioinput',
+                groupId: 'group1',
+                toJSON: () => ({}),
+            },
+        ] as MediaDeviceInfo[];
+
+        mockGetUserMedia.mockResolvedValue({ getTracks: () => [] });
+        mockEnumerateDevices.mockResolvedValue(devices);
+
+        const result = await mergeSettingsAsync({ audioDeviceId: '   ' });
+
+        expect(result.audioDeviceId).toBe('default');
+    });
+
+    it('should keep existing device ID when already set', async () => {
+        const devices: MediaDeviceInfo[] = [
+            {
+                deviceId: 'default',
+                label: 'Default - Microphone',
+                kind: 'audioinput',
+                groupId: 'group1',
+                toJSON: () => ({}),
+            },
+        ] as MediaDeviceInfo[];
+
+        mockGetUserMedia.mockResolvedValue({ getTracks: () => [] });
+        mockEnumerateDevices.mockResolvedValue(devices);
+
+        const result = await mergeSettingsAsync({ audioDeviceId: 'my-custom-device' });
+
+        expect(result.audioDeviceId).toBe('my-custom-device');
+    });
+
+    it('should leave audioDeviceId empty when no default device available', async () => {
+        mockGetUserMedia.mockRejectedValue(new Error('Permission denied'));
+
+        const result = await mergeSettingsAsync({});
+
+        expect(result.audioDeviceId).toBe('');
+    });
+
+    it('should preserve other settings while auto-selecting device', async () => {
+        const devices: MediaDeviceInfo[] = [
+            {
+                deviceId: 'default',
+                label: 'Default - Microphone',
+                kind: 'audioinput',
+                groupId: 'group1',
+                toJSON: () => ({}),
+            },
+        ] as MediaDeviceInfo[];
+
+        mockGetUserMedia.mockResolvedValue({ getTracks: () => [] });
+        mockEnumerateDevices.mockResolvedValue(devices);
+
+        const result = await mergeSettingsAsync({
+            recordingFormat: 'wav',
+            sampleRate: 48000,
+        });
+
+        expect(result.audioDeviceId).toBe('default');
+        expect(result.recordingFormat).toBe('wav');
+        expect(result.sampleRate).toBe(48000);
+        expect(result.filePrefix).toBe(DEFAULT_SETTINGS.filePrefix);
     });
 });

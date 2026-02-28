@@ -7,7 +7,7 @@ import { Plugin } from 'obsidian';
 import { RecordingStatus } from './types';
 import {
 	AudioRecorderSettings,
-	mergeSettings,
+	mergeSettingsAsync,
 	serializeSettings,
 } from './settings/Settings';
 import { AudioRecorderSettingTab } from './settings/SettingsTab';
@@ -72,7 +72,7 @@ export default class AudioRecorderPlugin extends Plugin {
 	async loadSettings(): Promise<void> {
 		const data =
 			(await this.loadData()) as Partial<AudioRecorderSettings> | null;
-		this.settings = mergeSettings(data ?? {});
+		this.settings = await mergeSettingsAsync(data ?? {});
 	}
 
 	/**

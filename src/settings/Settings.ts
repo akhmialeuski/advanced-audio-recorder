@@ -9,6 +9,7 @@ import {
 	DEFAULT_SAMPLE_RATE,
 	DEFAULT_BITRATE,
 } from '../recording/AudioCapabilityDetector';
+import { getDefaultDeviceId } from '../utils/DeviceUtils';
 
 /**
  * Output mode for multi-track recordings.
@@ -185,6 +186,29 @@ export function mergeSettings(
 			userSettings.trackAudioSources,
 		),
 	};
+}
+
+/**
+ * Async version of mergeSettings that detects and sets the default audio device
+ * if no device is configured. This should be called during plugin initialization
+ * to ensure a default device is selected for first-time users.
+ * @param userSettings - Partial user settings from storage
+ * @returns Complete settings object with default device if needed
+ */
+export async function mergeSettingsAsync(
+	userSettings: AudioRecorderSettingsInput = {},
+): Promise<AudioRecorderSettings> {
+	const merged = mergeSettings(userSettings);
+
+	// Auto-select default device if no device is configured
+	if (!merged.audioDeviceId || merged.audioDeviceId.trim() === '') {
+		const defaultDeviceId = await getDefaultDeviceId();
+		if (defaultDeviceId) {
+			merged.audioDeviceId = defaultDeviceId;
+		}
+	}
+
+	return merged;
 }
 
 /**
