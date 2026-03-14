@@ -10,6 +10,8 @@ import { RecordingStatus } from '../types';
 const ICON_IDLE = 'microphone';
 /** Icon name for recording state */
 const ICON_RECORDING = 'mic';
+/** Icon name for saving state */
+const ICON_SAVING = 'save';
 
 /**
  * Updates the ribbon icon element based on recording status.
@@ -29,15 +31,23 @@ export function updateRibbonIcon(
 		case RecordingStatus.Recording:
 			setIcon(ribbonIconEl, ICON_RECORDING);
 			ribbonIconEl.classList.add('is-recording');
+			ribbonIconEl.classList.remove('is-saving');
 			break;
 		case RecordingStatus.Paused:
 			setIcon(ribbonIconEl, ICON_RECORDING);
 			ribbonIconEl.classList.add('is-recording');
+			ribbonIconEl.classList.remove('is-saving');
+			break;
+		case RecordingStatus.Saving:
+			setIcon(ribbonIconEl, ICON_SAVING);
+			ribbonIconEl.classList.remove('is-recording');
+			ribbonIconEl.classList.add('is-saving');
 			break;
 		case RecordingStatus.Idle:
 		default:
 			setIcon(ribbonIconEl, ICON_IDLE);
 			ribbonIconEl.classList.remove('is-recording');
+			ribbonIconEl.classList.remove('is-saving');
 			break;
 	}
 }

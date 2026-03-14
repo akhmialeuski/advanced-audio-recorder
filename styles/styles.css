@@ -30,6 +30,46 @@ If your plugin does not need CSS, delete this file.
     }
 }
 
+/* Saving state */
+.is-saving {
+    color: var(--color-accent);
+    font-weight: bold;
+}
+
+.side-dock-ribbon-action.is-saving svg {
+    color: var(--color-accent);
+    animation: pulse-saving 1.5s ease-in-out infinite;
+}
+
+.aar-save-progress {
+    height: 3px;
+    width: 100%;
+    background-color: var(--background-modifier-border);
+    border-radius: 2px;
+    margin-top: 2px;
+    overflow: hidden;
+}
+
+.aar-save-progress-bar {
+    height: 100%;
+    width: var(--save-progress, 0%);
+    background-color: var(--color-accent);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+}
+
+@keyframes pulse-saving {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.6;
+    }
+}
+
 /* Test recording states */
 .aar-test-status {
     margin-top: 8px;

@@ -6,6 +6,7 @@
 import { MarkdownView, normalizePath, Notice, Platform } from 'obsidian';
 import type { App } from 'obsidian';
 import { RecordingStatus } from '../types';
+import type { SaveProgress } from '../types';
 import type { AudioRecorderSettings } from '../settings/Settings';
 import {
 	getAudioStreams,
@@ -55,7 +56,10 @@ export class RecordingManager {
 	private streams: MediaStream[] = [];
 	private trackOrder: { trackNumber: number; deviceId: string }[] = [];
 	private status: RecordingStatus = RecordingStatus.Idle;
-	private onStatusChange: (status: RecordingStatus) => void;
+	private onStatusChange: (
+		status: RecordingStatus,
+		saveProgress?: SaveProgress,
+	) => void;
 	private debugLogger: DebugLogger;
 	private recordingStartTime: number = 0;
 	private recordingTimestamp: string | null = null;
@@ -73,7 +77,10 @@ export class RecordingManager {
 	constructor(
 		private app: App,
 		private settings: AudioRecorderSettings,
-		onStatusChange: (status: RecordingStatus) => void,
+		onStatusChange: (
+			status: RecordingStatus,
+			saveProgress?: SaveProgress,
+		) => void,
 	) {
 		this.onStatusChange = onStatusChange;
 		this.debugLogger = new DebugLogger(settings);
@@ -241,19 +248,10 @@ export class RecordingManager {
 						? await getAudioSourceName(deviceId)
 						: `Track${trackNumber}`;
 				const fileBaseName = `${this.settings.filePrefix}-${sourceName}-${this.recordingTimestamp}`;
-				let tempFilePath: string | null = null;
-				if (!this.isMobileRecording) {
-					const tempName = `${fileBaseName}.partial.${this.activeRecorderFormat}`;
-					tempFilePath = await this.resolveUniquePath(tempName);
-					await this.app.vault.createBinary(
-						tempFilePath,
-						new ArrayBuffer(0),
-					);
-				}
 				return {
 					fileBaseName,
 					sourceName,
-					tempFilePath,
+					tempFilePath: null,
 					bufferedChunks: [],
 					bufferedBytes: 0,
 					segmentIndex: 0,
@@ -319,6 +317,8 @@ export class RecordingManager {
 		const streamsToStop = [...this.streams];
 
 		try {
+			this.updateSaveProgress(0, 'Saving...');
+
 			if (this.isWavPcmRecording) {
 				await Promise.all(
 					pcmRecordersToStop.map((recorder) => recorder.stop()),
@@ -347,6 +347,7 @@ export class RecordingManager {
 			this.debugLogger.logRecordingStats(durationMs, this.totalChunks);
 
 			await this.saveRecording();
+			this.updateSaveProgress(100, 'Saved');
 			new Notice('Recording stopped');
 		} catch (error) {
 			const message =
@@ -409,9 +410,16 @@ export class RecordingManager {
 		this.isWavPcmRecording = false;
 	}
 
-	private setStatus(status: RecordingStatus): void {
+	private setStatus(
+		status: RecordingStatus,
+		saveProgress?: SaveProgress,
+	): void {
 		this.status = status;
-		this.onStatusChange(status);
+		this.onStatusChange(status, saveProgress);
+	}
+
+	private updateSaveProgress(percent: number, description: string): void {
+		this.setStatus(RecordingStatus.Saving, { percent, description });
 	}
 
 	private async saveRecording(): Promise<void> {
@@ -419,6 +427,8 @@ export class RecordingManager {
 			this.recordingTimestamp ??
 			new Date().toISOString().replace(/[:.]/g, '-');
 		const fileLinks: string[] = [];
+
+		this.updateSaveProgress(20, 'Flushing buffers...');
 
 		if (this.settings.outputMode === 'single') {
 			if (this.chunkTargets.length === 1) {
@@ -442,16 +452,19 @@ export class RecordingManager {
 						),
 					);
 				}
+				this.updateSaveProgress(40, 'Assembling audio...');
 				const mergedAudio =
 					this.settings.recordingFormat === FORMAT_WAV
 						? await this.mergeAudioTracks()
 						: await this.combineTracksWithoutConversion();
+				this.updateSaveProgress(60, 'Writing file...');
 				const fileName = `${this.settings.filePrefix}-multitrack-${timestamp}.${this.settings.recordingFormat}`;
 				const filePath = await this.saveAudioFile(
 					mergedAudio,
 					fileName,
 				);
 				if (filePath) {
+					this.updateSaveProgress(80, 'Cleaning up...');
 					const failedCleanupPaths =
 						await this.cleanupIntermediateFiles();
 					if (failedCleanupPaths.length > 0) {
@@ -565,26 +578,16 @@ export class RecordingManager {
 				return;
 			}
 
-			if (!target.tempFilePath) {
-				return;
-			}
 			try {
-				const newData = await data.arrayBuffer();
-				const existing = await this.app.vault.adapter.readBinary(
-					target.tempFilePath,
-				);
-				const merged = new Uint8Array(
-					existing.byteLength + newData.byteLength,
-				);
-				merged.set(new Uint8Array(existing), 0);
-				merged.set(new Uint8Array(newData), existing.byteLength);
-				await this.app.vault.adapter.writeBinary(
-					target.tempFilePath,
-					merged.buffer,
-				);
+				target.segmentIndex += 1;
+				const segmentName = `${target.fileBaseName}-part${String(target.segmentIndex)}.${this.activeRecorderFormat}.tmp`;
+				const segmentPath = await this.resolveUniquePath(segmentName);
+				const arrayBuffer = await data.arrayBuffer();
+				await this.app.vault.createBinary(segmentPath, arrayBuffer);
+				target.segmentPaths.push(segmentPath);
 			} catch (error) {
 				console.error(
-					`${PLUGIN_LOG_PREFIX} Failed to append chunk:`,
+					`${PLUGIN_LOG_PREFIX} Failed to write segment:`,
 					error,
 				);
 				new Notice(
@@ -821,18 +824,22 @@ export class RecordingManager {
 		}
 
 		if (this.isWavPcmRecording) {
+			this.updateSaveProgress(20, 'Flushing buffers...');
 			await this.flushPcmBuffer(target);
 			if (target.segmentPaths.length === 0) {
 				return fileLinks;
 			}
+			this.updateSaveProgress(40, 'Assembling audio...');
 			const fileName = `${this.settings.filePrefix}-${target.sourceName}-${timestamp}.wav`;
 			const filePath = await this.resolveUniquePath(fileName);
+			this.updateSaveProgress(60, 'Writing file...');
 			await this.assembleWavFile(target, filePath);
 			fileLinks.push(filePath);
 			return fileLinks;
 		}
 
-		if (!target.tempFilePath) {
+		const blob = await this.buildTrackBlob(target);
+		if (!blob || blob.size === 0) {
 			return fileLinks;
 		}
 
@@ -840,34 +847,36 @@ export class RecordingManager {
 		const filePath = await this.resolveUniquePath(fileName);
 
 		if (this.settings.recordingFormat === FORMAT_WAV) {
-			const data = await this.app.vault.adapter.readBinary(
-				target.tempFilePath,
-			);
-			const wavBlob = await this.convertBlobToWav(
-				new Blob([data], {
-					type: this.getRecorderMediaType(),
-				}),
-			);
+			this.updateSaveProgress(40, 'Assembling audio...');
+			const wavBlob = await this.convertBlobToWav(blob);
+			this.updateSaveProgress(60, 'Writing file...');
 			await this.app.vault.createBinary(
 				filePath,
 				await wavBlob.arrayBuffer(),
 			);
-			const failedCleanupPaths = await this.removeTemporaryArtifacts(
-				[target.tempFilePath],
-				'Failed to remove temporary track file after WAV conversion',
-			);
-			if (failedCleanupPaths.length > 0) {
-				await this.rollbackFinalFile(
-					filePath,
-					'Failed to rollback finalized WAV track',
-				);
-				throw new Error(
-					`Temporary recording artifacts were kept for recovery: ${failedCleanupPaths.join(', ')}`,
-				);
-			}
 		} else {
-			await this.app.vault.adapter.rename(target.tempFilePath, filePath);
+			this.updateSaveProgress(60, 'Writing file...');
+			await this.app.vault.createBinary(
+				filePath,
+				await blob.arrayBuffer(),
+			);
 		}
+
+		this.updateSaveProgress(80, 'Cleaning up...');
+		const failedCleanupPaths = await this.removeTemporaryArtifacts(
+			target.segmentPaths,
+			'Failed to remove segment file after finalization',
+		);
+		if (failedCleanupPaths.length > 0) {
+			await this.rollbackFinalFile(
+				filePath,
+				'Failed to rollback finalized track',
+			);
+			throw new Error(
+				`Temporary recording artifacts were kept for recovery: ${failedCleanupPaths.join(', ')}`,
+			);
+		}
+
 		fileLinks.push(filePath);
 		return fileLinks;
 	}
