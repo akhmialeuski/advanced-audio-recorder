@@ -14,6 +14,18 @@ let mainPortOnMessage: ((event: MessageEvent) => void) | null = null;
 const mockWorkletPort = {
 	postMessage: jest.fn().mockImplementation((msg: { type: string }) => {
 		workletPortMessages.push(msg);
+		// Simulate worklet responding to flush with a 'flushed' sentinel
+		if (msg.type === 'flush' && mainPortOnMessage) {
+			queueMicrotask(() => {
+				if (mainPortOnMessage) {
+					mainPortOnMessage(
+						new MessageEvent('message', {
+							data: { type: 'flushed' },
+						}),
+					);
+				}
+			});
+		}
 	}),
 	get onmessage(): ((event: MessageEvent) => void) | null {
 		return mainPortOnMessage;
@@ -246,6 +258,18 @@ describe('PcmStreamRecorder', () => {
 	});
 
 	describe('stop', () => {
+		it('should flush worklet before disconnecting', async () => {
+			const stream = createMockStream();
+			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
+
+			await recorder.start();
+			await recorder.stop();
+
+			expect(mockWorkletPort.postMessage).toHaveBeenCalledWith({
+				type: 'flush',
+			});
+		});
+
 		it('should close AudioContext and disconnect nodes', async () => {
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
@@ -286,6 +310,64 @@ describe('PcmStreamRecorder', () => {
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
 			await expect(recorder.stop()).resolves.toBeUndefined();
+		});
+
+		it('should deliver flushed PCM data via onChunk before stop completes', async () => {
+			// Override postMessage to simulate flush with a trailing data chunk
+			mockWorkletPort.postMessage.mockImplementation(
+				(msg: { type: string }) => {
+					workletPortMessages.push(msg);
+					if (msg.type === 'flush' && mainPortOnMessage) {
+						queueMicrotask(() => {
+							if (mainPortOnMessage) {
+								// Worklet sends remaining buffered data before sentinel
+								const trailing = new Int16Array(64);
+								mainPortOnMessage(
+									new MessageEvent('message', {
+										data: trailing.buffer,
+									}),
+								);
+								mainPortOnMessage(
+									new MessageEvent('message', {
+										data: { type: 'flushed' },
+									}),
+								);
+							}
+						});
+					}
+				},
+			);
+
+			const stream = createMockStream();
+			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
+
+			await recorder.start();
+			await recorder.stop();
+
+			expect(onChunkMock).toHaveBeenCalledTimes(1);
+			expect(
+				(onChunkMock.mock.calls[0][0] as ArrayBuffer).byteLength,
+			).toBe(128);
+		});
+	});
+
+	describe('message filtering', () => {
+		it('should ignore non-ArrayBuffer messages from worklet', async () => {
+			const stream = createMockStream();
+			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
+
+			await recorder.start();
+
+			// Send a non-ArrayBuffer message (e.g. status object)
+			if (mainPortOnMessage) {
+				mainPortOnMessage(
+					new MessageEvent('message', {
+						data: { type: 'some-status' },
+					}),
+				);
+			}
+
+			expect(onChunkMock).not.toHaveBeenCalled();
 		});
 	});
 });
