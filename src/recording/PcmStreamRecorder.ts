@@ -1,5 +1,5 @@
 /**
- * Real-time PCM audio capture using ScriptProcessorNode.
+ * Real-time PCM audio capture using AudioWorkletNode.
  * Captures raw interleaved int16 PCM data from a MediaStream
  * for direct WAV encoding, avoiding memory-intensive post-hoc
  * decoding of compressed formats for long recordings.
@@ -7,10 +7,49 @@
  */
 
 /**
- * Buffer size for ScriptProcessorNode (samples per channel per callback).
- * 4096 at 44100 Hz gives ~93ms intervals (~11 callbacks/sec).
+ * Inline AudioWorklet processor source code.
+ * Runs on the audio rendering thread, converts float32 input
+ * to interleaved int16 PCM and posts it back via MessagePort.
+ * Supports pause/resume via port messages.
  */
-const PROCESSOR_BUFFER_SIZE = 4096;
+const WORKLET_PROCESSOR_SOURCE = `
+class PcmCaptureProcessor extends AudioWorkletProcessor {
+	constructor() {
+		super();
+		this._paused = false;
+		this.port.onmessage = (e) => {
+			if (e.data.type === 'pause') this._paused = true;
+			if (e.data.type === 'resume') this._paused = false;
+		};
+	}
+
+	process(inputs) {
+		if (this._paused) return true;
+		const input = inputs[0];
+		if (!input || input.length === 0) return true;
+
+		const numChannels = input.length;
+		const numSamples = input[0].length;
+		const int16Data = new Int16Array(numSamples * numChannels);
+
+		for (let i = 0; i < numSamples; i++) {
+			for (let ch = 0; ch < numChannels; ch++) {
+				const sample = Math.max(-1, Math.min(1, input[ch][i]));
+				int16Data[i * numChannels + ch] =
+					sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+			}
+		}
+
+		this.port.postMessage(int16Data.buffer, [int16Data.buffer]);
+		return true;
+	}
+}
+
+registerProcessor('pcm-capture-processor', PcmCaptureProcessor);
+`;
+
+/** Registered processor name matching the worklet source. */
+const PROCESSOR_NAME = 'pcm-capture-processor';
 
 /**
  * Callback type for receiving interleaved int16 PCM data chunks.
@@ -20,24 +59,17 @@ export type PcmChunkCallback = (data: ArrayBuffer) => void;
 /**
  * Captures raw PCM audio from a MediaStream in real-time.
  *
- * Uses ScriptProcessorNode to intercept audio samples from an
- * AudioContext, converts float32 to interleaved int16, and
- * delivers chunks via callback. Output is muted through a
- * zero-gain node to prevent speaker playback.
- *
- * ScriptProcessorNode is used over AudioWorkletNode for broader
- * compatibility across Obsidian environments (desktop Electron
- * and mobile WebView) and simpler setup (no module loading).
- *
- * TODO: Migrate to AudioWorkletNode when Obsidian's minimum
- * Electron version supports it reliably across all platforms.
+ * Uses AudioWorkletNode to intercept audio samples on the audio
+ * rendering thread, converts float32 to interleaved int16, and
+ * delivers chunks to the main thread via MessagePort. Output is
+ * muted through a zero-gain node to prevent speaker playback.
  */
 export class PcmStreamRecorder {
 	private audioContext: AudioContext | null = null;
 	private sourceNode: MediaStreamAudioSourceNode | null = null;
-	private processorNode: ScriptProcessorNode | null = null;
+	private workletNode: AudioWorkletNode | null = null;
 	private gainNode: GainNode | null = null;
-	private paused: boolean = false;
+	private workletBlobUrl: string | null = null;
 	private channelCount: number = 1;
 	private actualSampleRate: number = 44100;
 
@@ -69,7 +101,8 @@ export class PcmStreamRecorder {
 
 	/**
 	 * Starts capturing PCM audio data.
-	 * Creates AudioContext, connects source → processor → gain(0) → destination.
+	 * Registers the AudioWorklet processor via inline Blob URL,
+	 * then connects source → worklet → gain(0) → destination.
 	 */
 	async start(): Promise<void> {
 		this.audioContext = new AudioContext({
@@ -77,86 +110,65 @@ export class PcmStreamRecorder {
 		});
 		this.actualSampleRate = this.audioContext.sampleRate;
 
+		// Register the inline worklet processor
+		const blob = new Blob([WORKLET_PROCESSOR_SOURCE], {
+			type: 'application/javascript',
+		});
+		this.workletBlobUrl = URL.createObjectURL(blob);
+		await this.audioContext.audioWorklet.addModule(this.workletBlobUrl);
+
 		this.sourceNode = this.audioContext.createMediaStreamSource(
 			this.stream,
 		);
 		this.channelCount = this.sourceNode.channelCount;
 
-		// ScriptProcessorNode captures audio frames on the main thread
-		this.processorNode = this.audioContext.createScriptProcessor(
-			PROCESSOR_BUFFER_SIZE,
-			this.channelCount,
-			this.channelCount,
+		this.workletNode = new AudioWorkletNode(
+			this.audioContext,
+			PROCESSOR_NAME,
+			{
+				numberOfInputs: 1,
+				numberOfOutputs: 1,
+				channelCount: this.channelCount,
+			},
 		);
+
+		// Receive PCM data from the worklet thread
+		this.workletNode.port.onmessage = (event: MessageEvent): void => {
+			this.onChunk(event.data as ArrayBuffer);
+		};
 
 		// Mute output to prevent playback through speakers
 		this.gainNode = this.audioContext.createGain();
 		this.gainNode.gain.value = 0;
 
-		this.processorNode.onaudioprocess = (
-			event: AudioProcessingEvent,
-		): void => {
-			if (this.paused) {
-				return;
-			}
-
-			const inputBuffer = event.inputBuffer;
-			const numSamples = inputBuffer.length;
-			const numChannels = inputBuffer.numberOfChannels;
-
-			// Convert float32 to interleaved int16 PCM
-			const int16Data = new Int16Array(numSamples * numChannels);
-			for (let sampleIndex = 0; sampleIndex < numSamples; sampleIndex++) {
-				for (
-					let channelIndex = 0;
-					channelIndex < numChannels;
-					channelIndex++
-				) {
-					const sample = Math.max(
-						-1,
-						Math.min(
-							1,
-							inputBuffer.getChannelData(channelIndex)[
-								sampleIndex
-							],
-						),
-					);
-					int16Data[sampleIndex * numChannels + channelIndex] =
-						sample < 0 ? sample * 0x8000 : sample * 0x7fff;
-				}
-			}
-
-			this.onChunk(int16Data.buffer);
-		};
-
-		// Connect: source → processor → gain(0) → destination
-		this.sourceNode.connect(this.processorNode);
-		this.processorNode.connect(this.gainNode);
+		// Connect: source → worklet → gain(0) → destination
+		this.sourceNode.connect(this.workletNode);
+		this.workletNode.connect(this.gainNode);
 		this.gainNode.connect(this.audioContext.destination);
 	}
 
 	/**
-	 * Pauses PCM capture. Audio data is silently discarded while paused.
+	 * Pauses PCM capture. Audio frames are silently discarded in the worklet.
 	 */
 	pause(): void {
-		this.paused = true;
+		this.workletNode?.port.postMessage({ type: 'pause' });
 	}
 
 	/**
 	 * Resumes PCM capture after a pause.
 	 */
 	resume(): void {
-		this.paused = false;
+		this.workletNode?.port.postMessage({ type: 'resume' });
 	}
 
 	/**
 	 * Stops PCM capture and releases all audio resources.
 	 */
 	async stop(): Promise<void> {
-		if (this.processorNode) {
-			this.processorNode.onaudioprocess = null;
-			this.processorNode.disconnect();
-			this.processorNode = null;
+		if (this.workletNode) {
+			this.workletNode.port.onmessage = null;
+			this.workletNode.disconnect();
+			this.workletNode = null;
 		}
 		if (this.sourceNode) {
 			this.sourceNode.disconnect();
@@ -169,6 +181,10 @@ export class PcmStreamRecorder {
 		if (this.audioContext) {
 			await this.audioContext.close();
 			this.audioContext = null;
+		}
+		if (this.workletBlobUrl) {
+			URL.revokeObjectURL(this.workletBlobUrl);
+			this.workletBlobUrl = null;
 		}
 	}
 }
