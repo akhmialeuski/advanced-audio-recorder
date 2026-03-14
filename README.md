@@ -61,10 +61,25 @@ You can delete recordings using the context menu in two ways:
 
 - Available formats depend on your platform and browser **MediaRecorder** support.
 - Common options on most systems include: `webm`, `wav`, and `ogg`.
-- When **WAV** is selected, recording is captured in a compressed format and converted to WAV on save to ensure data integrity.
+- When **WAV** is selected on desktop, audio is captured as raw PCM in real time and assembled into a WAV file on save. This avoids memory-intensive post-hoc decoding and supports long recordings reliably.
 - In multi-track mode:
   - **Single file** output combines tracks into one file.
   - **Multiple files** output saves one file per track.
+
+## Save progress indicator
+
+For longer recordings, the save process (flushing buffers, assembling audio, writing the final file, and cleaning up temporary data) can take noticeable time. During this phase the plugin shows a progress bar in the status bar and a save icon in the ribbon so you always know what is happening:
+
+| Progress | Status |
+|----------|--------|
+| 0% | Saving... |
+| 20% | Flushing buffers... |
+| 40% | Assembling audio... |
+| 60% | Writing file... |
+| 80% | Cleaning up... |
+| 100% | Saved |
+
+For short recordings most of these steps complete instantly.
 
 ## Configuration
 
