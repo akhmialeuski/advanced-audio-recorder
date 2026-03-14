@@ -386,6 +386,13 @@ export function normalizePath(path: string): string {
     return path.replace(/\\/g, '/').replace(/\/+/g, '/');
 }
 
+/**
+ * Mock setIcon function.
+ */
+export function setIcon(_el: HTMLElement, _iconId: string): void {
+    // Mock implementation
+}
+
 export const Platform = {
     isMobile: false,
     isMobileApp: false,

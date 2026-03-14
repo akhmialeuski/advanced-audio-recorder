@@ -38,6 +38,12 @@ jest.mock('obsidian', () => ({
     FileManager: jest.fn(),
 }));
 
+jest.mock('../../src/ui/AudioFileInfoModal', () => ({
+    AudioFileInfoModal: jest.fn().mockImplementation(() => ({
+        open: jest.fn(),
+    })),
+}));
+
 describe('ContextMenu', () => {
     let contextMenu: ContextMenu;
     let mockApp: App;
@@ -166,7 +172,7 @@ describe('ContextMenu', () => {
 
             expect(mockItem.setTitle).toHaveBeenCalledWith('Delete recording');
             expect(mockItem.setIcon).toHaveBeenCalledWith('trash');
-            expect(mockItem.setSection).toHaveBeenCalledWith('danger');
+            expect(mockItem.setSection).toHaveBeenCalledWith('aar');
         });
 
         it('should add "Audio file info" item for audio files', () => {
@@ -191,7 +197,83 @@ describe('ContextMenu', () => {
 
             expect(mockItem.setTitle).toHaveBeenCalledWith('Audio file info');
             expect(mockItem.setIcon).toHaveBeenCalledWith('info');
-            expect(mockItem.setSection).toHaveBeenCalledWith('default');
+            expect(mockItem.setSection).toHaveBeenCalledWith('aar');
+        });
+
+        it('should open AudioFileInfoModal on "Audio file info" click', async () => {
+            const mockMenu = new Menu();
+            const mockFile = new TFile();
+            Object.defineProperty(mockFile, 'extension', { value: 'mp3' });
+
+            const mockInfo = { name: 'audio.mp3', size: 1024 };
+            jest.spyOn(AudioFileAnalyzer, 'getAudioFileInfo').mockResolvedValue(mockInfo);
+
+            fileMenuCallback(mockMenu, mockFile);
+
+            const addItemCallback = (mockMenu.addItem as jest.Mock).mock.calls[0][0];
+            const mockItem = {
+                setTitle: jest.fn().mockReturnThis(),
+                setIcon: jest.fn().mockReturnThis(),
+                setSection: jest.fn().mockReturnThis(),
+                onClick: jest.fn(),
+            };
+            addItemCallback(mockItem);
+
+            const clickHandler = mockItem.onClick.mock.calls[0][0];
+            await clickHandler();
+
+            expect(AudioFileAnalyzer.getAudioFileInfo).toHaveBeenCalledWith(mockApp, mockFile);
+        });
+
+        it('should not open modal if getAudioFileInfo returns null', async () => {
+            const mockMenu = new Menu();
+            const mockFile = new TFile();
+            Object.defineProperty(mockFile, 'extension', { value: 'mp3' });
+
+            jest.spyOn(AudioFileAnalyzer, 'getAudioFileInfo').mockResolvedValue(null);
+
+            fileMenuCallback(mockMenu, mockFile);
+
+            const addItemCallback = (mockMenu.addItem as jest.Mock).mock.calls[0][0];
+            const mockItem = {
+                setTitle: jest.fn().mockReturnThis(),
+                setIcon: jest.fn().mockReturnThis(),
+                setSection: jest.fn().mockReturnThis(),
+                onClick: jest.fn(),
+            };
+            addItemCallback(mockItem);
+
+            const clickHandler = mockItem.onClick.mock.calls[0][0];
+            await clickHandler();
+
+            expect(AudioFileAnalyzer.getAudioFileInfo).toHaveBeenCalledWith(mockApp, mockFile);
+        });
+
+        it('should not duplicate "Audio file info" when called twice on the same menu', () => {
+            const mockMenu = new Menu();
+            const mockFile = new TFile();
+            Object.defineProperty(mockFile, 'extension', { value: 'mp3' });
+
+            // Simulate both editor-menu and file-menu firing for the same Menu instance
+            fileMenuCallback(mockMenu, mockFile);
+            fileMenuCallback(mockMenu, mockFile);
+
+            // "Audio file info" should be added only once, but "Delete recording" is added each time
+            const calls = (mockMenu.addItem as jest.Mock).mock.calls;
+            const titles: string[] = [];
+            for (const call of calls) {
+                const mockItem = {
+                    setTitle: jest.fn().mockReturnThis(),
+                    setIcon: jest.fn().mockReturnThis(),
+                    setSection: jest.fn().mockReturnThis(),
+                    onClick: jest.fn(),
+                };
+                call[0](mockItem);
+                titles.push(mockItem.setTitle.mock.calls[0][0] as string);
+            }
+
+            const infoCount = titles.filter((t) => t === 'Audio file info').length;
+            expect(infoCount).toBe(1);
         });
 
         it('should NOT add item for non-audio files', () => {
