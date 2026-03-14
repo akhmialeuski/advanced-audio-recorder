@@ -5,6 +5,7 @@
 
 import { Plugin } from 'obsidian';
 import { RecordingStatus } from './types';
+import type { SaveProgress } from './types';
 import {
 	AudioRecorderSettings,
 	mergeSettingsAsync,
@@ -36,8 +37,8 @@ export default class AudioRecorderPlugin extends Plugin {
 		this.recordingManager = new RecordingManager(
 			this.app,
 			this.settings,
-			(status: RecordingStatus) => {
-				updateStatusBar(this.statusBarItem, status);
+			(status: RecordingStatus, saveProgress?: SaveProgress) => {
+				updateStatusBar(this.statusBarItem, status, saveProgress);
 				updateRibbonIcon(this.ribbonIconEl, status);
 			},
 		);

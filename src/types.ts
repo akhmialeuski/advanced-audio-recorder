@@ -10,4 +10,13 @@ export enum RecordingStatus {
 	Idle = 'idle',
 	Recording = 'recording',
 	Paused = 'paused',
+	Saving = 'saving',
 }
+
+/**
+ * Progress information during the save phase.
+ */
+export type SaveProgress = {
+	percent: number;
+	description: string;
+};

@@ -55,6 +55,24 @@ describe('RibbonIcon', () => {
             expect(ribbonElement.classList.contains('is-recording')).toBe(false);
         });
 
+        it('should change icon to save and add is-saving class when saving', () => {
+            updateRibbonIcon(ribbonElement, RecordingStatus.Saving);
+
+            expect(ribbonElement.getAttribute('data-icon')).toBe('save');
+            expect(ribbonElement.classList.contains('is-saving')).toBe(true);
+            expect(ribbonElement.classList.contains('is-recording')).toBe(false);
+        });
+
+        it('should remove is-saving class when transitioning from saving to idle', () => {
+            ribbonElement.classList.add('is-saving');
+            ribbonElement.setAttribute('data-icon', 'save');
+
+            updateRibbonIcon(ribbonElement, RecordingStatus.Idle);
+
+            expect(ribbonElement.getAttribute('data-icon')).toBe('microphone');
+            expect(ribbonElement.classList.contains('is-saving')).toBe(false);
+        });
+
         it('should handle default case same as idle', () => {
             ribbonElement.classList.add('is-recording');
 
