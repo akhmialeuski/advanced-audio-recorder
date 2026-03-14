@@ -117,20 +117,18 @@ describe('PcmStreamRecorder', () => {
 
 		it('should connect audio graph: source → processor → gain(0) → destination', async () => {
 			const stream = createMockStream();
-			const recorder = new PcmStreamRecorder(
-				stream,
-				44100,
-				onChunkMock,
-			);
+			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
 			await recorder.start();
 
 			expect(
 				mockAudioContext.createMediaStreamSource,
 			).toHaveBeenCalledWith(stream);
-			expect(
-				mockAudioContext.createScriptProcessor,
-			).toHaveBeenCalledWith(4096, 1, 1);
+			expect(mockAudioContext.createScriptProcessor).toHaveBeenCalledWith(
+				4096,
+				1,
+				1,
+			);
 			expect(mockAudioContext.createGain).toHaveBeenCalled();
 			expect(mockGainNode.gain.value).toBe(0);
 		});
@@ -138,11 +136,7 @@ describe('PcmStreamRecorder', () => {
 		it('should expose actual channels and sampleRate from AudioContext', async () => {
 			mockSourceNode.channelCount = 2;
 			const stream = createMockStream(2);
-			const recorder = new PcmStreamRecorder(
-				stream,
-				44100,
-				onChunkMock,
-			);
+			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
 			await recorder.start();
 
@@ -154,11 +148,7 @@ describe('PcmStreamRecorder', () => {
 	describe('onaudioprocess callback', () => {
 		it('should deliver interleaved int16 PCM data via onChunk', async () => {
 			const stream = createMockStream();
-			const recorder = new PcmStreamRecorder(
-				stream,
-				44100,
-				onChunkMock,
-			);
+			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
 			await recorder.start();
 
@@ -174,11 +164,7 @@ describe('PcmStreamRecorder', () => {
 		it('should interleave stereo samples correctly', async () => {
 			mockSourceNode.channelCount = 2;
 			const stream = createMockStream(2);
-			const recorder = new PcmStreamRecorder(
-				stream,
-				44100,
-				onChunkMock,
-			);
+			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
 			await recorder.start();
 
@@ -193,11 +179,7 @@ describe('PcmStreamRecorder', () => {
 
 		it('should clamp sample values to [-1, 1] range', async () => {
 			const stream = createMockStream();
-			const recorder = new PcmStreamRecorder(
-				stream,
-				44100,
-				onChunkMock,
-			);
+			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
 			await recorder.start();
 
@@ -222,11 +204,7 @@ describe('PcmStreamRecorder', () => {
 
 		it('should not deliver chunks when paused', async () => {
 			const stream = createMockStream();
-			const recorder = new PcmStreamRecorder(
-				stream,
-				44100,
-				onChunkMock,
-			);
+			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
 			await recorder.start();
 			recorder.pause();
@@ -239,11 +217,7 @@ describe('PcmStreamRecorder', () => {
 
 		it('should resume delivering chunks after resume', async () => {
 			const stream = createMockStream();
-			const recorder = new PcmStreamRecorder(
-				stream,
-				44100,
-				onChunkMock,
-			);
+			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
 			await recorder.start();
 			recorder.pause();
@@ -259,11 +233,7 @@ describe('PcmStreamRecorder', () => {
 	describe('stop', () => {
 		it('should close AudioContext and disconnect nodes', async () => {
 			const stream = createMockStream();
-			const recorder = new PcmStreamRecorder(
-				stream,
-				44100,
-				onChunkMock,
-			);
+			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
 			await recorder.start();
 			await recorder.stop();
@@ -273,11 +243,7 @@ describe('PcmStreamRecorder', () => {
 
 		it('should nullify onaudioprocess callback', async () => {
 			const stream = createMockStream();
-			const recorder = new PcmStreamRecorder(
-				stream,
-				44100,
-				onChunkMock,
-			);
+			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
 			await recorder.start();
 			await recorder.stop();
@@ -287,11 +253,7 @@ describe('PcmStreamRecorder', () => {
 
 		it('should handle stop when not started', async () => {
 			const stream = createMockStream();
-			const recorder = new PcmStreamRecorder(
-				stream,
-				44100,
-				onChunkMock,
-			);
+			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
 			// Should not throw
 			await expect(recorder.stop()).resolves.toBeUndefined();

@@ -35,7 +35,6 @@ If your plugin does not need CSS, delete this file.
     color: var(--color-accent);
     font-weight: bold;
     white-space: nowrap;
-    min-width: 150px;
 }
 
 .side-dock-ribbon-action.is-saving svg {

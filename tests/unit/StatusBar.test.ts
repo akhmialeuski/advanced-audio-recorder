@@ -113,9 +113,9 @@ describe('StatusBar', () => {
 				'.aar-save-progress-bar',
 			) as HTMLElement;
 			expect(progressBar).not.toBeNull();
-			expect(
-				progressBar?.style.getPropertyValue('--save-progress'),
-			).toBe('40%');
+			expect(progressBar?.style.getPropertyValue('--save-progress')).toBe(
+				'40%',
+			);
 		});
 
 		it('should show default "Saving..." when no progress provided', () => {
@@ -127,9 +127,9 @@ describe('StatusBar', () => {
 			const progressBar = statusBarItem.querySelector(
 				'.aar-save-progress-bar',
 			) as HTMLElement;
-			expect(
-				progressBar?.style.getPropertyValue('--save-progress'),
-			).toBe('0%');
+			expect(progressBar?.style.getPropertyValue('--save-progress')).toBe(
+				'0%',
+			);
 		});
 
 		it('should have progress container with correct classes', () => {
@@ -138,8 +138,7 @@ describe('StatusBar', () => {
 				description: 'Writing file...',
 			});
 
-			const container =
-				statusBarItem.querySelector('.aar-save-progress');
+			const container = statusBarItem.querySelector('.aar-save-progress');
 			expect(container).not.toBeNull();
 
 			const bar = container?.querySelector('.aar-save-progress-bar');
@@ -261,7 +260,9 @@ describe('StatusBar', () => {
 				'Pause recording',
 			);
 
-			buttons[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+			buttons[0].dispatchEvent(
+				new MouseEvent('click', { bubbles: true }),
+			);
 			expect(controls.onPauseResume).toHaveBeenCalledTimes(1);
 		});
 
@@ -280,7 +281,9 @@ describe('StatusBar', () => {
 			);
 
 			const buttons = statusBarItem.querySelectorAll('.aar-control-btn');
-			buttons[1].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+			buttons[1].dispatchEvent(
+				new MouseEvent('click', { bubbles: true }),
+			);
 			expect(controls.onStop).toHaveBeenCalledTimes(1);
 		});
 
