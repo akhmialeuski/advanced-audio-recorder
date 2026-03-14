@@ -410,6 +410,125 @@ describe('RecordingManager', () => {
 
             expect(mockApp.vault.createBinary).toHaveBeenCalled();
         });
+
+        it('should write multiple chunks as separate segment files and clean up after finalization', async () => {
+            const { Platform } = jest.requireMock('obsidian') as {
+                Platform: { isMobile: boolean; isMobileApp: boolean };
+            };
+            Platform.isMobile = false;
+            Platform.isMobileApp = false;
+
+            const mockMediaRecorder = {
+                start: jest.fn(),
+                stop: jest.fn(),
+                pause: jest.fn(),
+                resume: jest.fn(),
+                ondataavailable: null as ((event: BlobEvent) => void) | null,
+                onerror: null as ((event: Event) => void) | null,
+                addEventListener: jest.fn((event: string, handler: () => void) => {
+                    if (event === 'stop') {
+                        handler();
+                    }
+                }),
+            };
+
+            (global as Record<string, unknown>).MediaRecorder = jest.fn(
+                () => mockMediaRecorder,
+            );
+            (global as Record<string, unknown>).MediaRecorder.isTypeSupported = jest
+                .fn()
+                .mockReturnValue(true);
+
+            const { getAudioStreams } = jest.requireMock('../../src/recording/AudioStreamHandler') as {
+                getAudioStreams: jest.Mock;
+            };
+            getAudioStreams.mockResolvedValue({
+                streams: [{
+                    getTracks: () => [{ stop: jest.fn() }],
+                }],
+                trackOrder: [],
+            });
+
+            (mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
+                new Uint8Array([1, 2, 3]).buffer,
+            );
+
+            await manager.startRecording();
+
+            // Send 3 chunks
+            for (let i = 0; i < 3; i++) {
+                const chunk = new Blob([new Uint8Array([1, 2, 3])], {
+                    type: 'audio/webm',
+                });
+                mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
+            }
+            await Promise.resolve();
+
+            await manager.stopRecording();
+
+            // 3 segment files + 1 final file
+            expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
+                expect.stringMatching(/-part1\.webm\.tmp$/),
+                expect.any(ArrayBuffer),
+            );
+            expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
+                expect.stringMatching(/-part2\.webm\.tmp$/),
+                expect.any(ArrayBuffer),
+            );
+            expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
+                expect.stringMatching(/-part3\.webm\.tmp$/),
+                expect.any(ArrayBuffer),
+            );
+            // Segments cleaned up
+            expect(mockApp.vault.adapter.remove).toHaveBeenCalledTimes(3);
+        });
+
+        it('should save multi-track WAV via PCM capture and merge', async () => {
+            const { Platform } = jest.requireMock('obsidian') as {
+                Platform: { isMobile: boolean; isMobileApp: boolean };
+            };
+            Platform.isMobile = false;
+            Platform.isMobileApp = false;
+
+            mockSettings = {
+                ...DEFAULT_SETTINGS,
+                enableMultiTrack: true,
+                outputMode: 'single',
+                recordingFormat: 'wav',
+            };
+            manager = new RecordingManager(mockApp, mockSettings, statusChangeCallback);
+
+            (global as Record<string, unknown>).MediaRecorder = jest.fn();
+            (global as Record<string, unknown>).MediaRecorder.isTypeSupported = jest
+                .fn()
+                .mockImplementation((mime: string) => mime === 'audio/webm');
+
+            const { getAudioStreams } = jest.requireMock('../../src/recording/AudioStreamHandler') as {
+                getAudioStreams: jest.Mock;
+            };
+            getAudioStreams.mockResolvedValue({
+                streams: [
+                    { getTracks: () => [{ stop: jest.fn() }] },
+                    { getTracks: () => [{ stop: jest.fn() }] },
+                ],
+                trackOrder: [],
+            });
+
+            await manager.startRecording();
+
+            // Simulate PCM chunks for both tracks
+            const pcmData = new Int16Array([100, -100, 200, -200]).buffer;
+            capturedPcmChunkCallback?.(pcmData);
+
+            await Promise.resolve();
+            await manager.stopRecording();
+
+            // Should have created WAV file via mergeAudioTracks path
+            expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
+                expect.stringMatching(/multitrack-.*\.wav$/),
+                expect.any(ArrayBuffer),
+            );
+        });
     });
 
     describe('cleanup', () => {

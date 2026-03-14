@@ -172,12 +172,15 @@ export class RecordingManager {
 	}
 
 	/**
-	 * Initializes PCM recording for WAV output on desktop.
-	 * Creates PcmStreamRecorder instances and segment-based targets.
+	 * Creates recording targets for each stream, resolving track
+	 * names from device IDs or sequential numbering.
+	 * @param count - Number of targets to create
 	 */
-	private async initPcmRecording(): Promise<void> {
-		this.chunkTargets = await Promise.all(
-			this.streams.map(async (_stream, index) => {
+	private async createChunkTargets(
+		count: number,
+	): Promise<RecordingTarget[]> {
+		return Promise.all(
+			Array.from({ length: count }, async (_, index) => {
 				const trackInfo = this.trackOrder[index];
 				const trackNumber = trackInfo?.trackNumber ?? index + 1;
 				const deviceId = trackInfo?.deviceId;
@@ -201,6 +204,14 @@ export class RecordingManager {
 				};
 			}),
 		);
+	}
+
+	/**
+	 * Initializes PCM recording for WAV output on desktop.
+	 * Creates PcmStreamRecorder instances and segment-based targets.
+	 */
+	private async initPcmRecording(): Promise<void> {
+		this.chunkTargets = await this.createChunkTargets(this.streams.length);
 
 		this.pcmRecorders = this.streams.map(
 			(stream, index) =>
@@ -236,30 +247,8 @@ export class RecordingManager {
 					audioBitsPerSecond: this.settings.bitrate,
 				}),
 		);
-		this.chunkTargets = await Promise.all(
-			this.recorders.map(async (_recorder, index) => {
-				const trackInfo = this.trackOrder[index];
-				const trackNumber = trackInfo?.trackNumber ?? index + 1;
-				const deviceId = trackInfo?.deviceId;
-				const sourceName =
-					this.settings.useSourceNamesForTracks && deviceId
-						? await getAudioSourceName(deviceId)
-						: `Track${trackNumber}`;
-				const fileBaseName = `${this.settings.filePrefix}-${sourceName}-${this.recordingTimestamp}`;
-				return {
-					fileBaseName,
-					sourceName,
-					bufferedChunks: [],
-					bufferedBytes: 0,
-					segmentIndex: 0,
-					segmentPaths: [],
-					pendingWrite: Promise.resolve(),
-					pcmBuffers: [],
-					pcmBufferedBytes: 0,
-					pcmChannels: 1,
-					pcmSampleRate: this.settings.sampleRate,
-				};
-			}),
+		this.chunkTargets = await this.createChunkTargets(
+			this.recorders.length,
 		);
 
 		this.recorders.forEach((recorder, index) => {

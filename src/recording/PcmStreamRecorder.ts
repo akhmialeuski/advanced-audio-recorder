@@ -28,6 +28,9 @@ export type PcmChunkCallback = (data: ArrayBuffer) => void;
  * ScriptProcessorNode is used over AudioWorkletNode for broader
  * compatibility across Obsidian environments (desktop Electron
  * and mobile WebView) and simpler setup (no module loading).
+ *
+ * TODO: Migrate to AudioWorkletNode when Obsidian's minimum
+ * Electron version supports it reliably across all platforms.
  */
 export class PcmStreamRecorder {
 	private audioContext: AudioContext | null = null;
