@@ -29,7 +29,6 @@ import { PcmStreamRecorder } from './PcmStreamRecorder';
 type RecordingTarget = {
 	fileBaseName: string;
 	sourceName: string;
-	tempFilePath: string | null;
 	bufferedChunks: Blob[];
 	bufferedBytes: number;
 	segmentIndex: number;
@@ -190,7 +189,6 @@ export class RecordingManager {
 				return {
 					fileBaseName,
 					sourceName,
-					tempFilePath: null,
 					bufferedChunks: [],
 					bufferedBytes: 0,
 					segmentIndex: 0,
@@ -251,7 +249,6 @@ export class RecordingManager {
 				return {
 					fileBaseName,
 					sourceName,
-					tempFilePath: null,
 					bufferedChunks: [],
 					bufferedBytes: 0,
 					segmentIndex: 0,
@@ -317,8 +314,6 @@ export class RecordingManager {
 		const streamsToStop = [...this.streams];
 
 		try {
-			this.updateSaveProgress(0, 'Saving...');
-
 			if (this.isWavPcmRecording) {
 				await Promise.all(
 					pcmRecordersToStop.map((recorder) => recorder.stop()),
@@ -342,6 +337,8 @@ export class RecordingManager {
 			await Promise.all(
 				this.chunkTargets.map((target) => target.pendingWrite),
 			);
+
+			this.updateSaveProgress(0, 'Saving...');
 
 			const durationMs = Date.now() - this.recordingStartTime;
 			this.debugLogger.logRecordingStats(durationMs, this.totalChunks);
@@ -733,14 +730,6 @@ export class RecordingManager {
 	private async buildTrackBlob(
 		target: RecordingTarget,
 	): Promise<Blob | null> {
-		const type = this.getRecorderMediaType();
-		if (target.tempFilePath) {
-			const data = await this.app.vault.adapter.readBinary(
-				target.tempFilePath,
-			);
-			return new Blob([data], { type });
-		}
-
 		if (
 			target.segmentPaths.length === 0 &&
 			target.bufferedChunks.length === 0
@@ -748,6 +737,7 @@ export class RecordingManager {
 			return null;
 		}
 
+		const type = this.getRecorderMediaType();
 		const segmentBuffers = await Promise.all(
 			target.segmentPaths.map((path) =>
 				this.app.vault.adapter.readBinary(path),
@@ -760,14 +750,9 @@ export class RecordingManager {
 	}
 
 	private async cleanupIntermediateFiles(): Promise<string[]> {
-		const intermediatePaths = this.chunkTargets.flatMap((target) => {
-			const paths: string[] = [];
-			if (target.tempFilePath) {
-				paths.push(target.tempFilePath);
-			}
-			paths.push(...target.segmentPaths);
-			return paths;
-		});
+		const intermediatePaths = this.chunkTargets.flatMap(
+			(target) => target.segmentPaths,
+		);
 
 		return this.removeTemporaryArtifacts(
 			intermediatePaths,

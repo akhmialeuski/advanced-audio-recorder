@@ -37,6 +37,11 @@ function addObsidianElementMethods(el: HTMLElement): HTMLElement {
 		this.appendChild(div);
 		return div;
 	};
+	obsEl.setCssProps = function (props: Record<string, string>) {
+		for (const [key, value] of Object.entries(props)) {
+			this.style.setProperty(key, value);
+		}
+	};
 	return el;
 }
 

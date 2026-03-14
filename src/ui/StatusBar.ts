@@ -50,10 +50,9 @@ export function updateStatusBar(
 				cls: 'aar-save-progress-bar',
 			});
 			const percent = saveProgress?.percent ?? 0;
-			progressBar.style.setProperty(
-				'--save-progress',
-				`${String(percent)}%`,
-			);
+			progressBar.setCssProps({
+				'--save-progress': `${String(percent)}%`,
+			});
 			break;
 		}
 		case RecordingStatus.Idle:
