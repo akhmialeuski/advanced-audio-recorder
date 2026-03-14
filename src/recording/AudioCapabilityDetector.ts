@@ -130,11 +130,13 @@ export function detectSupportedFormats(): string[] {
 		}
 	}
 
-	// WAV is available if at least one compressed intermediate is supported
+	// WAV is always available on desktop via direct PCM capture,
+	// and available on mobile if a compressed intermediate is supported
 	const hasCompressedIntermediate = COMPRESSED_INTERMEDIATES.some((format) =>
 		MediaRecorder.isTypeSupported(buildMimeType(format)),
 	);
-	if (hasCompressedIntermediate) {
+	const hasAudioContext = typeof AudioContext !== 'undefined';
+	if (hasAudioContext || hasCompressedIntermediate) {
 		supported.push(FORMAT_WAV);
 	}
 
@@ -167,13 +169,16 @@ export function getSupportedBitrates(): number[] {
  */
 export function validateRecordingCapability(format: string): ValidationResult {
 	if (format === FORMAT_WAV) {
+		// WAV is available via direct PCM capture (AudioContext) on desktop,
+		// or via compressed intermediate on mobile
+		const hasAudioContext = typeof AudioContext !== 'undefined';
 		const hasIntermediate = COMPRESSED_INTERMEDIATES.some((f) =>
 			MediaRecorder.isTypeSupported(buildMimeType(f)),
 		);
-		if (!hasIntermediate) {
+		if (!hasAudioContext && !hasIntermediate) {
 			return {
 				valid: false,
-				reason: 'WAV output requires an intermediate compressed format, but neither WebM nor OGG is supported in this browser.',
+				reason: 'WAV output requires AudioContext or an intermediate compressed format, but neither is available in this browser.',
 			};
 		}
 		return { valid: true, reason: '' };

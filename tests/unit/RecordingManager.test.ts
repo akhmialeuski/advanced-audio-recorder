@@ -32,6 +32,25 @@ jest.mock('../../src/recording/AudioStreamHandler', () => ({
 // Mock WavEncoder
 jest.mock('../../src/recording/WavEncoder', () => ({
     bufferToWave: jest.fn().mockReturnValue(new Blob(['test'], { type: 'audio/wav' })),
+    assembleWavFromPcmSegments: jest.fn().mockReturnValue(new ArrayBuffer(44)),
+}));
+
+// Mock PcmStreamRecorder
+let capturedPcmChunkCallback: ((data: ArrayBuffer) => void) | null = null;
+jest.mock('../../src/recording/PcmStreamRecorder', () => ({
+    PcmStreamRecorder: jest.fn().mockImplementation(
+        (_stream: MediaStream, _sampleRate: number, onChunk: (data: ArrayBuffer) => void) => {
+            capturedPcmChunkCallback = onChunk;
+            return {
+                channels: 1,
+                sampleRate: 44100,
+                start: jest.fn().mockResolvedValue(undefined),
+                stop: jest.fn().mockResolvedValue(undefined),
+                pause: jest.fn(),
+                resume: jest.fn(),
+            };
+        },
+    ),
 }));
 
 // Mock AudioContext and OfflineAudioContext
@@ -822,8 +841,8 @@ describe('RecordingManager', () => {
 
 
         /**
-         * Ensures that WAV output mode performs explicit conversion and writes
-         * files with .wav extension after recording in a supported intermediary format.
+         * Ensures that WAV output mode uses direct PCM capture on desktop
+         * and writes files with .wav extension assembled from PCM segments.
          */
         it('should convert to wav only when output format is wav', async () => {
             mockSettings = {
@@ -832,21 +851,7 @@ describe('RecordingManager', () => {
             };
             manager = new RecordingManager(mockApp, mockSettings, statusChangeCallback);
 
-            const mockMediaRecorder = {
-                start: jest.fn(),
-                stop: jest.fn(),
-                pause: jest.fn(),
-                resume: jest.fn(),
-                ondataavailable: null as ((event: BlobEvent) => void) | null,
-                onerror: null as ((event: Event) => void) | null,
-                addEventListener: jest.fn((event: string, handler: () => void) => {
-                    if (event === 'stop') {
-                        handler();
-                    }
-                }),
-            };
-
-            (global as Record<string, unknown>).MediaRecorder = jest.fn(() => mockMediaRecorder);
+            (global as Record<string, unknown>).MediaRecorder = jest.fn();
             (global as Record<string, unknown>).MediaRecorder.isTypeSupported = jest
                 .fn()
                 .mockImplementation((mime: string) => mime === 'audio/webm');
@@ -863,15 +868,13 @@ describe('RecordingManager', () => {
 
             await manager.startRecording();
 
-            const chunk = new Blob([new Uint8Array([5, 6, 7])], {
-                type: 'audio/webm',
-            });
-            mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
+            // Simulate PCM chunk via captured callback
+            const pcmData = new Int16Array([100, -100, 200, -200]).buffer;
+            capturedPcmChunkCallback?.(pcmData);
 
             await Promise.resolve();
             await manager.stopRecording();
 
-            expect(global.MediaRecorder.isTypeSupported).toHaveBeenCalledWith('audio/webm');
             expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
                 expect.stringMatching(/\.wav$/),
                 expect.any(ArrayBuffer),
