@@ -34,6 +34,7 @@ If your plugin does not need CSS, delete this file.
 .is-saving {
     color: var(--color-accent);
     font-weight: bold;
+    white-space: nowrap;
 }
 
 .side-dock-ribbon-action.is-saving svg {
@@ -41,6 +42,47 @@ If your plugin does not need CSS, delete this file.
     animation: pulse-saving 1.5s ease-in-out infinite;
 }
 
+/* Recording controls in status bar */
+.aar-recording-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.aar-recording-label {
+    margin-right: 2px;
+}
+
+.aar-recording-buttons {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.aar-control-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    opacity: 0.8;
+    transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.aar-control-btn:hover {
+    opacity: 1;
+    background-color: var(--background-modifier-hover);
+}
+
+.aar-control-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* Save progress */
 .aar-save-progress {
     height: 3px;
     width: 100%;

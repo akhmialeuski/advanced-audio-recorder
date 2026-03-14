@@ -5,7 +5,7 @@
 
 import { Plugin } from 'obsidian';
 import { RecordingStatus } from './types';
-import type { SaveProgress } from './types';
+import type { SaveProgress, RecordingControls } from './types';
 import {
 	AudioRecorderSettings,
 	mergeSettingsAsync,
@@ -38,7 +38,13 @@ export default class AudioRecorderPlugin extends Plugin {
 			this.app,
 			this.settings,
 			(status: RecordingStatus, saveProgress?: SaveProgress) => {
-				updateStatusBar(this.statusBarItem, status, saveProgress);
+				const controls = this.buildRecordingControls(status);
+				updateStatusBar(
+					this.statusBarItem,
+					status,
+					saveProgress,
+					controls,
+				);
 				updateRibbonIcon(this.ribbonIconEl, status);
 			},
 		);
@@ -117,6 +123,33 @@ export default class AudioRecorderPlugin extends Plugin {
 				);
 			},
 		});
+	}
+
+	/**
+	 * Builds recording control callbacks for the status bar buttons.
+	 * Returns controls only when recording is active or paused.
+	 * @param status - Current recording status
+	 * @returns RecordingControls or undefined if not in a recording state
+	 */
+	private buildRecordingControls(
+		status: RecordingStatus,
+	): RecordingControls | undefined {
+		if (
+			status !== RecordingStatus.Recording &&
+			status !== RecordingStatus.Paused
+		) {
+			return undefined;
+		}
+
+		return {
+			onPauseResume: () => {
+				this.recordingManager.togglePauseResume();
+			},
+			onStop: () => {
+				void this.recordingManager.stopRecording();
+			},
+			isPaused: status === RecordingStatus.Paused,
+		};
 	}
 
 	/**

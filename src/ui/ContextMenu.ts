@@ -28,10 +28,16 @@ interface EditorWithCM extends Editor {
 	cm?: EditorCodeMirrorView;
 }
 
+/** Menu section identifier for all AAR plugin items. */
+const AAR_MENU_SECTION = 'aar';
+
 /**
  * Manages context menu items for audio files.
  */
 export class ContextMenu {
+	/** Tracks menus that already have the "Audio file info" item to prevent duplicates. */
+	private readonly menusWithInfoItem = new WeakSet<Menu>();
+
 	/**
 	 * Creates a new ContextMenu instance.
 	 * @param app - The Obsidian App instance.
@@ -306,7 +312,7 @@ export class ContextMenu {
 		menu.addItem((item: MenuItem) => {
 			item.setTitle('Delete recording')
 				.setIcon('trash')
-				.setSection('danger')
+				.setSection(AAR_MENU_SECTION)
 				.onClick(async () => {
 					try {
 						await this.app.fileManager.trashFile(file);
@@ -337,7 +343,7 @@ export class ContextMenu {
 		menu.addItem((item: MenuItem) => {
 			item.setTitle('Delete recording & link to file')
 				.setIcon('trash')
-				.setSection('danger')
+				.setSection(AAR_MENU_SECTION)
 				.onClick(() =>
 					this.deleteRecordingAndLink(file, editor, line, linkMatch),
 				);
@@ -350,10 +356,15 @@ export class ContextMenu {
 	 * @param file - The audio file.
 	 */
 	private addAudioFileInfoMenuItem(menu: Menu, file: TFile): void {
+		if (this.menusWithInfoItem.has(menu)) {
+			return;
+		}
+		this.menusWithInfoItem.add(menu);
+
 		menu.addItem((item: MenuItem) => {
 			item.setTitle('Audio file info')
 				.setIcon('info')
-				.setSection('default')
+				.setSection(AAR_MENU_SECTION)
 				.onClick(async () => {
 					const info = await getAudioFileInfo(this.app, file);
 					if (info) {

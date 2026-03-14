@@ -20,7 +20,7 @@ export default tseslint.config(
                 ...globals.es2021,
             },
             parserOptions: {
-                project: './tsconfig.json',
+                project: './tsconfig.eslint.json',
             },
         },
         rules: {
@@ -57,16 +57,29 @@ export default tseslint.config(
             '**/*.config.mjs',
             '.agent/**',
             'eslint.config.mjs',
-            'tests/**',
             'scripts/**',
             '*.js',
             '*.mjs',
         ],
     },
     {
-        files: ['**/*.spec.ts', '**/*.test.ts'],
+        files: ['tests/**/*.ts'],
         rules: {
+            // Test files need unbound methods for jest mocks
             '@typescript-eslint/unbound-method': 'off',
+            // Test mocks may require type assertions and flexible typing
+            '@typescript-eslint/no-explicit-any': 'warn',
+            '@typescript-eslint/no-unsafe-function-type': 'off',
+            // Test files may use require for jest.mock
+            '@typescript-eslint/no-require-imports': 'off',
+            // Mock files use _prefixed params to indicate intentionally unused args
+            '@typescript-eslint/no-unused-vars': [
+                'error',
+                {
+                    argsIgnorePattern: '^_',
+                    varsIgnorePattern: '^_',
+                },
+            ],
         },
     },
 );

@@ -20,3 +20,12 @@ export type SaveProgress = {
 	percent: number;
 	description: string;
 };
+
+/**
+ * Callbacks for recording control buttons in the status bar.
+ */
+export type RecordingControls = {
+	onPauseResume: () => void;
+	onStop: () => void;
+	isPaused: boolean;
+};
