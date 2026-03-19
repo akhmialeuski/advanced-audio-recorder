@@ -60,7 +60,7 @@ export default class AudioRecorderPlugin extends Plugin {
 		);
 		this.setupStatusBar();
 
-		this.contextMenu = new ContextMenu(this.app, this);
+		this.contextMenu = new ContextMenu(this.app, this, () => this.settings);
 		this.contextMenu.register();
 	}
 

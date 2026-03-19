@@ -18,6 +18,8 @@ import type { MenuItem } from 'obsidian';
 import { AUDIO_EXTENSIONS } from '../constants';
 import { getAudioFileInfo } from '../utils/AudioFileAnalyzer';
 import { AudioFileInfoModal } from './AudioFileInfoModal';
+import { ConversionModal } from './ConversionModal';
+import type { AudioRecorderSettings } from '../settings/Settings';
 
 /** CodeMirror view attached to Editor (internal Obsidian API). */
 interface EditorCodeMirrorView {
@@ -37,15 +39,19 @@ const AAR_MENU_SECTION = 'aar';
 export class ContextMenu {
 	/** Tracks menus that already have the "Audio file info" item to prevent duplicates. */
 	private readonly menusWithInfoItem = new WeakSet<Menu>();
+	/** Tracks menus that already have the "Convert audio format" item to prevent duplicates. */
+	private readonly menusWithConvertItem = new WeakSet<Menu>();
 
 	/**
 	 * Creates a new ContextMenu instance.
 	 * @param app - The Obsidian App instance.
 	 * @param plugin - The plugin instance.
+	 * @param getSettings - Returns current plugin settings.
 	 */
 	constructor(
 		private app: App,
 		private plugin: Plugin,
+		private getSettings: () => AudioRecorderSettings,
 	) {}
 
 	/**
@@ -162,6 +168,7 @@ export class ContextMenu {
 				(menu: Menu, file: TAbstractFile) => {
 					if (file instanceof TFile && this.isAudioFile(file)) {
 						this.addAudioFileInfoMenuItem(menu, file);
+						this.addConvertMenuItem(menu, file);
 						this.addDeleteRecordingMenuItem(menu, file);
 					}
 				},
@@ -217,6 +224,7 @@ export class ContextMenu {
 		}
 
 		this.addAudioFileInfoMenuItem(menu, file);
+		this.addConvertMenuItem(menu, file);
 		this.addDeleteRecordingAndLinkMenuItem(
 			menu,
 			file,
@@ -347,6 +355,31 @@ export class ContextMenu {
 				.onClick(() =>
 					this.deleteRecordingAndLink(file, editor, line, linkMatch),
 				);
+		});
+	}
+
+	/**
+	 * Adds a "Convert audio format" item to the menu.
+	 * @param menu - The menu to add the item to.
+	 * @param file - The audio file.
+	 */
+	private addConvertMenuItem(menu: Menu, file: TFile): void {
+		if (this.menusWithConvertItem.has(menu)) {
+			return;
+		}
+		this.menusWithConvertItem.add(menu);
+
+		menu.addItem((item: MenuItem) => {
+			item.setTitle('Convert audio format')
+				.setIcon('file-audio')
+				.setSection(AAR_MENU_SECTION)
+				.onClick(() => {
+					new ConversionModal(
+						this.app,
+						file,
+						this.getSettings(),
+					).open();
+				});
 		});
 	}
 
