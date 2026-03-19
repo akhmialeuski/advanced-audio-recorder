@@ -450,6 +450,9 @@ export class RecordingManager {
 							requestedFormat: this.settings.recordingFormat,
 						},
 					);
+					new Notice(
+						'Merged multi-track output saved as .wav for proper audio mixing.',
+					);
 				}
 				const mergedAudio = await this.mergeAudioTracks();
 				this.updateSaveProgress(60, 'Writing file...');

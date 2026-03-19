@@ -949,6 +949,8 @@ describe('RecordingManager', () => {
 			expect(mockApp.vault.adapter.remove).toHaveBeenCalledWith(
 				expect.stringMatching(/-part\d+\.webm\.tmp$/),
 			);
+			// Verify proper audio mixing was used
+			expect(global.OfflineAudioContext).toHaveBeenCalled();
 		});
 
 		it('should rollback merged output when cleanup of temporary partial files fails', async () => {
