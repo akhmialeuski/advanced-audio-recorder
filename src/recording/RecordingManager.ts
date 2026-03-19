@@ -442,13 +442,18 @@ export class RecordingManager {
 						),
 					);
 				}
-				this.updateSaveProgress(40, 'Assembling audio...');
-				const mergedAudio =
-					this.settings.recordingFormat === FORMAT_WAV
-						? await this.mergeAudioTracks()
-						: await this.combineTracksWithoutConversion();
+				this.updateSaveProgress(40, 'Mixing tracks...');
+				if (this.settings.recordingFormat !== FORMAT_WAV) {
+					this.debugLogger.log(
+						'Multi-track single output overrides format to WAV for proper mixing',
+						{
+							requestedFormat: this.settings.recordingFormat,
+						},
+					);
+				}
+				const mergedAudio = await this.mergeAudioTracks();
 				this.updateSaveProgress(60, 'Writing file...');
-				const fileName = `${this.settings.filePrefix}-multitrack-${timestamp}.${this.settings.recordingFormat}`;
+				const fileName = `${this.settings.filePrefix}-multitrack-${timestamp}.${FORMAT_WAV}`;
 				const filePath = await this.saveAudioFile(
 					mergedAudio,
 					fileName,
@@ -528,28 +533,6 @@ export class RecordingManager {
 		const renderedBuffer = await offlineContext.startRendering();
 		await audioContext.close();
 		return bufferToWave(renderedBuffer, renderedBuffer.length);
-	}
-
-	private async combineTracksWithoutConversion(): Promise<Blob> {
-		const trackBlobs = await Promise.all(
-			this.chunkTargets.map((target) => this.buildTrackBlob(target)),
-		);
-		const nonEmptyTrackBlobs = trackBlobs.filter(
-			(blob): blob is Blob => blob !== null && blob.size > 0,
-		);
-		if (nonEmptyTrackBlobs.length === 0) {
-			throw new Error('No audio data recorded');
-		}
-		this.debugLogger.log(
-			'Combining multi-track data without WAV conversion',
-			{
-				trackCount: nonEmptyTrackBlobs.length,
-				format: this.settings.recordingFormat,
-			},
-		);
-		return new Blob(nonEmptyTrackBlobs, {
-			type: `${MIME_TYPE_AUDIO_PREFIX}${this.settings.recordingFormat}`,
-		});
 	}
 
 	private async handleChunk(index: number, data: Blob): Promise<void> {
