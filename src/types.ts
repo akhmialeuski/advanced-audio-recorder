@@ -29,3 +29,15 @@ export type RecordingControls = {
 	onStop: () => void;
 	isPaused: boolean;
 };
+
+/**
+ * Captured insertion context at recording start.
+ */
+export interface InsertionContext {
+	/** Path of the note that was active when recording started. */
+	filePath: string;
+	/** Cursor line number at recording start. */
+	line: number;
+	/** Cursor character offset at recording start. */
+	ch: number;
+}

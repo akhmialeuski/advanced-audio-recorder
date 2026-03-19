@@ -959,7 +959,7 @@ describe('RecordingManager', () => {
 
 			const consoleWarnSpy = jest
 				.spyOn(console, 'warn')
-				.mockImplementation(() => {});
+				.mockImplementation(() => { });
 
 			const { Platform } = jest.requireMock('obsidian');
 			Platform.isMobile = false;
@@ -1439,6 +1439,213 @@ describe('RecordingManager', () => {
 			expect(insertedText).not.toContain('Projects/');
 			expect(insertedText).not.toContain('Audio/');
 			expect(insertedText).toMatch(/^!\[\[recording-.*\]\]$/);
+		});
+	});
+
+	describe('insertFileLinks with insertionContext', () => {
+		let mockMediaRecorder: {
+			start: jest.Mock;
+			stop: jest.Mock;
+			pause: jest.Mock;
+			resume: jest.Mock;
+			ondataavailable: ((event: BlobEvent) => void) | null;
+			onerror: ((event: Event) => void) | null;
+			addEventListener: jest.Mock;
+		};
+
+		beforeEach(() => {
+			mockMediaRecorder = {
+				start: jest.fn(),
+				stop: jest.fn(),
+				pause: jest.fn(),
+				resume: jest.fn(),
+				ondataavailable: null,
+				onerror: null,
+				addEventListener: jest.fn(
+					(event: string, handler: () => void) => {
+						if (event === 'stop') {
+							handler();
+						}
+					},
+				),
+			};
+
+			(global as Record<string, unknown>).MediaRecorder = jest.fn(
+				() => mockMediaRecorder,
+			);
+			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
+				jest.fn().mockReturnValue(true);
+
+			const { getAudioStreams } = jest.requireMock(
+				'../../src/recording/AudioStreamHandler',
+			);
+			getAudioStreams.mockResolvedValue({
+				streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
+				trackOrder: [],
+			});
+
+			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
+				new Uint8Array([1, 2, 3]).buffer,
+			);
+		});
+
+		it('should use replaceSelection on active note when insertAtOriginalPosition is disabled', async () => {
+			const mockReplaceSelection = jest.fn();
+			(
+				mockApp.workspace.getActiveViewOfType as jest.Mock
+			).mockReturnValue({
+				editor: { replaceSelection: mockReplaceSelection },
+			});
+
+			mockSettings = {
+				...DEFAULT_SETTINGS,
+				insertAtOriginalPosition: false,
+			};
+			manager = new RecordingManager(
+				mockApp,
+				mockSettings,
+				statusChangeCallback,
+			);
+
+			await manager.startRecording();
+			const chunk = new Blob([new Uint8Array([1, 2, 3])], {
+				type: 'audio/webm',
+			});
+			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
+			await Promise.resolve();
+			await manager.stopRecording();
+
+			expect(mockReplaceSelection).toHaveBeenCalled();
+		});
+
+		it('should use replaceRange at stored position when insertAtOriginalPosition is enabled', async () => {
+			const mockReplaceRange = jest.fn();
+			const mockGetCursor = jest.fn().mockReturnValue({ line: 5, ch: 3 });
+
+			// Mock getActiveViewOfType to return a view with file and editor for capture
+			(
+				mockApp.workspace.getActiveViewOfType as jest.Mock
+			).mockReturnValue({
+				file: { path: 'Notes/my-note.md' },
+				editor: {
+					getCursor: mockGetCursor,
+					replaceRange: mockReplaceRange,
+					replaceSelection: jest.fn(),
+				},
+			});
+
+			// Mock getLeavesOfType for finding the stored note
+			const mockLeafView = {
+				file: { path: 'Notes/my-note.md' },
+				editor: {
+					replaceRange: mockReplaceRange,
+					replaceSelection: jest.fn(),
+				},
+			};
+			Object.setPrototypeOf(
+				mockLeafView,
+				jest.requireMock('obsidian').MarkdownView.prototype,
+			);
+			(mockApp.workspace as Record<string, unknown>).getLeavesOfType =
+				jest.fn().mockReturnValue([{ view: mockLeafView }]);
+
+			mockSettings = {
+				...DEFAULT_SETTINGS,
+				insertAtOriginalPosition: true,
+			};
+			manager = new RecordingManager(
+				mockApp,
+				mockSettings,
+				statusChangeCallback,
+			);
+
+			await manager.startRecording();
+			const chunk = new Blob([new Uint8Array([1, 2, 3])], {
+				type: 'audio/webm',
+			});
+			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
+			await Promise.resolve();
+			await manager.stopRecording();
+
+			expect(mockReplaceRange).toHaveBeenCalledWith(
+				expect.stringMatching(/^!\[\[recording-.*\]\]$/),
+				{ line: 5, ch: 3 },
+			);
+		});
+
+		it('should fallback to replaceSelection when stored note leaf is not found', async () => {
+			const mockReplaceSelection = jest.fn();
+			const mockGetCursor = jest.fn().mockReturnValue({ line: 2, ch: 0 });
+
+			// During capture, return a view with file and editor
+			(
+				mockApp.workspace.getActiveViewOfType as jest.Mock
+			).mockReturnValue({
+				file: { path: 'Notes/original.md' },
+				editor: {
+					getCursor: mockGetCursor,
+					replaceSelection: mockReplaceSelection,
+				},
+			});
+
+			// No matching leaf found
+			(mockApp.workspace as Record<string, unknown>).getLeavesOfType =
+				jest.fn().mockReturnValue([]);
+
+			mockSettings = {
+				...DEFAULT_SETTINGS,
+				insertAtOriginalPosition: true,
+			};
+			manager = new RecordingManager(
+				mockApp,
+				mockSettings,
+				statusChangeCallback,
+			);
+
+			await manager.startRecording();
+			const chunk = new Blob([new Uint8Array([1, 2, 3])], {
+				type: 'audio/webm',
+			});
+			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
+			await Promise.resolve();
+			await manager.stopRecording();
+
+			// Falls back to active view replaceSelection
+			expect(mockReplaceSelection).toHaveBeenCalled();
+		});
+
+		it('should clear insertionContext after stopRecording', async () => {
+			const mockGetCursor = jest.fn().mockReturnValue({ line: 0, ch: 0 });
+			(
+				mockApp.workspace.getActiveViewOfType as jest.Mock
+			).mockReturnValue({
+				file: { path: 'Notes/test.md' },
+				editor: {
+					getCursor: mockGetCursor,
+					replaceSelection: jest.fn(),
+				},
+			});
+			(mockApp.workspace as Record<string, unknown>).getLeavesOfType =
+				jest.fn().mockReturnValue([]);
+
+			mockSettings = {
+				...DEFAULT_SETTINGS,
+				insertAtOriginalPosition: true,
+			};
+			manager = new RecordingManager(
+				mockApp,
+				mockSettings,
+				statusChangeCallback,
+			);
+
+			await manager.startRecording();
+			await manager.stopRecording();
+
+			// Access private field to verify cleanup
+			const context = (
+				manager as unknown as { insertionContext: unknown }
+			).insertionContext;
+			expect(context).toBeNull();
 		});
 	});
 });

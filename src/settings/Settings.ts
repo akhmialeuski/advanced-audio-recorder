@@ -72,6 +72,8 @@ export interface AudioRecorderSettings {
 	trackAudioSources: TrackAudioSources;
 	/** Enable debug logging */
 	debug: boolean;
+	/** Insert recording link at the note and cursor position where recording started */
+	insertAtOriginalPosition: boolean;
 }
 
 /**
@@ -95,6 +97,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	useSourceNamesForTracks: true,
 	trackAudioSources: new Map(),
 	debug: false,
+	insertAtOriginalPosition: false,
 };
 
 export interface AudioRecorderSettingsInput extends Partial<

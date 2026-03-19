@@ -81,6 +81,10 @@ describe('Settings', () => {
 			expect(DEFAULT_SETTINGS.debug).toBe(false);
 		});
 
+		it('should have insert at original position disabled by default', () => {
+			expect(DEFAULT_SETTINGS.insertAtOriginalPosition).toBe(false);
+		});
+
 		it('should be a complete AudioRecorderSettings object', () => {
 			const expectedKeys: (keyof AudioRecorderSettings)[] = [
 				'recordingFormat',
@@ -100,6 +104,7 @@ describe('Settings', () => {
 				'useSourceNamesForTracks',
 				'trackAudioSources',
 				'debug',
+				'insertAtOriginalPosition',
 			];
 
 			expectedKeys.forEach((key) => {
@@ -189,6 +194,7 @@ describe('Settings', () => {
 					[2, { deviceId: 'dev2' }],
 				]),
 				debug: true,
+				insertAtOriginalPosition: true,
 			};
 
 			const result = mergeSettings(fullSettings);
