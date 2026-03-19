@@ -22,7 +22,10 @@ import {
 	FORMAT_MP3,
 	FORMAT_MP4,
 	FORMAT_M4A,
+	FORMAT_AAC,
+	FORMAT_FLAC,
 } from '../constants';
+import { isOfflineEncodingSupported } from './AudioEncoder';
 
 const MIME_TYPE_AUDIO_PREFIX = 'audio/';
 
@@ -115,9 +118,12 @@ export function buildMimeType(format: string): string {
 	return `${MIME_TYPE_AUDIO_PREFIX}${format}`;
 }
 
+/** Formats available only via offline encoding (not MediaRecorder). */
+const OFFLINE_ONLY_FORMATS = [FORMAT_MP3, FORMAT_FLAC, FORMAT_AAC];
+
 /**
  * Detects which audio formats the current browser supports
- * for MediaRecorder output.
+ * for MediaRecorder output or offline encoding.
  * @returns Array of supported format strings
  */
 export function detectSupportedFormats(): string[] {
@@ -138,6 +144,14 @@ export function detectSupportedFormats(): string[] {
 	const hasAudioContext = typeof AudioContext !== 'undefined';
 	if (hasAudioContext || hasCompressedIntermediate) {
 		supported.push(FORMAT_WAV);
+	}
+
+	// Add offline-only formats if their encoder is available
+	// and they weren't already added via MediaRecorder support
+	for (const format of OFFLINE_ONLY_FORMATS) {
+		if (!supported.includes(format) && isOfflineEncodingSupported(format)) {
+			supported.push(format);
+		}
 	}
 
 	return supported;
@@ -163,7 +177,7 @@ export function getSupportedBitrates(): number[] {
 
 /**
  * Validates that a recording configuration is viable.
- * Checks MediaRecorder format support before recording starts.
+ * Checks MediaRecorder format support and offline encoding availability.
  * @param format - Audio format to validate
  * @returns Validation result with diagnostic info
  */
@@ -185,14 +199,29 @@ export function validateRecordingCapability(format: string): ValidationResult {
 	}
 
 	const mimeType = buildMimeType(format);
-	if (!MediaRecorder.isTypeSupported(mimeType)) {
+	if (MediaRecorder.isTypeSupported(mimeType)) {
+		return { valid: true, reason: '' };
+	}
+
+	// Format not supported by MediaRecorder — check if offline encoding
+	// is available and an intermediate recording format exists
+	if (isOfflineEncodingSupported(format)) {
+		const hasIntermediate = COMPRESSED_INTERMEDIATES.some((f) =>
+			MediaRecorder.isTypeSupported(buildMimeType(f)),
+		);
+		if (hasIntermediate) {
+			return { valid: true, reason: '' };
+		}
 		return {
 			valid: false,
-			reason: `The format "${format}" (${mimeType}) is not supported for recording in this browser.`,
+			reason: `The format "${format}" requires offline encoding with an intermediate recording format, but neither WebM nor OGG is supported.`,
 		};
 	}
 
-	return { valid: true, reason: '' };
+	return {
+		valid: false,
+		reason: `The format "${format}" (${mimeType}) is not supported for recording in this browser.`,
+	};
 }
 
 /**

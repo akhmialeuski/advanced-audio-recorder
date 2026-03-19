@@ -5,6 +5,13 @@
  */
 /** @jest-environment jsdom */
 
+// Mock AudioEncoder module to avoid mediabunny TextDecoder requirement
+jest.mock('../../src/recording/AudioEncoder', () => ({
+	isOfflineEncodingSupported: jest.fn((format: string) => {
+		return ['mp3', 'flac', 'aac'].includes(format);
+	}),
+}));
+
 import {
 	buildMimeType,
 	detectSupportedFormats,
@@ -44,7 +51,7 @@ describe('AudioCapabilityDetector', () => {
 	});
 
 	describe('detectSupportedFormats', () => {
-		it('should return only formats supported by MediaRecorder', () => {
+		it('should return MediaRecorder formats plus offline-only formats', () => {
 			(global as Record<string, unknown>).MediaRecorder = {
 				isTypeSupported: jest.fn((type: string) => {
 					return type === 'audio/webm' || type === 'audio/ogg';
@@ -55,8 +62,10 @@ describe('AudioCapabilityDetector', () => {
 
 			expect(formats).toContain('webm');
 			expect(formats).toContain('ogg');
-			expect(formats).not.toContain('mp3');
-			expect(formats).not.toContain('m4a');
+			// Offline-only formats are also included when their encoder is available
+			expect(formats).toContain('mp3');
+			expect(formats).toContain('flac');
+			expect(formats).toContain('aac');
 		});
 
 		it('should include wav when a compressed intermediate is supported', () => {
@@ -85,14 +94,20 @@ describe('AudioCapabilityDetector', () => {
 			expect(formats).not.toContain('wav');
 		});
 
-		it('should return empty array when nothing is supported', () => {
+		it('should return only offline-only formats when MediaRecorder supports nothing', () => {
 			(global as Record<string, unknown>).MediaRecorder = {
 				isTypeSupported: jest.fn().mockReturnValue(false),
 			};
 
 			const formats = detectSupportedFormats();
 
-			expect(formats).toEqual([]);
+			// No MediaRecorder formats, but offline-only encoders are still available
+			expect(formats).not.toContain('webm');
+			expect(formats).not.toContain('ogg');
+			expect(formats).not.toContain('wav');
+			expect(formats).toContain('mp3');
+			expect(formats).toContain('flac');
+			expect(formats).toContain('aac');
 		});
 	});
 
@@ -146,11 +161,18 @@ describe('AudioCapabilityDetector', () => {
 			expect(result.reason).toBe('');
 		});
 
-		it('should return invalid for unsupported format', () => {
+		it('should return valid for offline-only format when intermediate is available', () => {
 			const result = validateRecordingCapability('mp3');
 
+			// MP3 is offline-only but valid because WebM intermediate is supported
+			expect(result.valid).toBe(true);
+		});
+
+		it('should return invalid for completely unsupported format', () => {
+			const result = validateRecordingCapability('xyz');
+
 			expect(result.valid).toBe(false);
-			expect(result.reason).toContain('mp3');
+			expect(result.reason).toContain('xyz');
 			expect(result.reason).toContain('not supported');
 		});
 
@@ -205,14 +227,16 @@ describe('AudioCapabilityDetector', () => {
 			expect(caps.defaultFormat).toBe('ogg');
 		});
 
-		it('should default to webm when nothing is supported', () => {
+		it('should default to first available format when nothing is supported by MediaRecorder', () => {
 			(global as Record<string, unknown>).MediaRecorder = {
 				isTypeSupported: jest.fn().mockReturnValue(false),
 			};
 
 			const caps = detectCapabilities();
 
-			expect(caps.defaultFormat).toBe('webm');
+			// Only offline-only formats available; first one is the default
+			expect(caps.supportedFormats.length).toBeGreaterThan(0);
+			expect(caps.defaultFormat).toBe(caps.supportedFormats[0]);
 		});
 	});
 
