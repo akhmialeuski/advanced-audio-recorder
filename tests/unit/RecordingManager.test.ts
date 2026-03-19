@@ -959,7 +959,7 @@ describe('RecordingManager', () => {
 
 			const consoleWarnSpy = jest
 				.spyOn(console, 'warn')
-				.mockImplementation(() => { });
+				.mockImplementation(() => {});
 
 			const { Platform } = jest.requireMock('obsidian');
 			Platform.isMobile = false;
@@ -1568,8 +1568,8 @@ describe('RecordingManager', () => {
 			await manager.stopRecording();
 
 			expect(mockReplaceRange).toHaveBeenCalledWith(
-				expect.stringMatching(/^!\[\[recording-.*\]\]$/),
-				{ line: 5, ch: 3 },
+				expect.stringMatching(/^!\[\[recording-.*\]\]\n$/),
+				{ line: 6, ch: 0 },
 			);
 		});
 

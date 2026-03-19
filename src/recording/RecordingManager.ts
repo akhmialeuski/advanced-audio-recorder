@@ -997,6 +997,10 @@ export class RecordingManager {
 				line: cursor.line,
 				ch: cursor.ch,
 			};
+		} else {
+			this.debugLogger.log(
+				'Could not capture insertion context: no active Markdown view',
+			);
 		}
 	}
 
@@ -1023,10 +1027,10 @@ export class RecordingManager {
 			if (leafView instanceof MarkdownView) {
 				const editor = leafView.editor;
 				const pos = {
-					line: this.insertionContext.line,
-					ch: this.insertionContext.ch,
+					line: this.insertionContext.line + 1,
+					ch: 0,
 				};
-				editor.replaceRange(links, pos);
+				editor.replaceRange(links + '\n', pos);
 				return;
 			}
 		}
