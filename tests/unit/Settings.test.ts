@@ -195,6 +195,8 @@ describe('Settings', () => {
 				]),
 				debug: true,
 				insertAtOriginalPosition: true,
+				deleteSourceAfterConversion: false,
+				conversionLinkAction: 'after',
 			};
 
 			const result = mergeSettings(fullSettings);

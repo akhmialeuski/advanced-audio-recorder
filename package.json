@@ -52,6 +52,7 @@
   "jest": {
     "moduleNameMapper": {
       "^obsidian$": "<rootDir>/tests/mocks/obsidian.ts",
+      "^@mediabunny/flac-encoder$": "<rootDir>/tests/mocks/flac-encoder.ts",
       "src/(.*)": "<rootDir>/src/$1"
     },
     "moduleFileExtensions": [
@@ -62,6 +63,14 @@
     "transform": {
       "^.+\\.ts$": "ts-jest"
     },
-    "testEnvironment": "jsdom"
+    "testEnvironment": "jsdom",
+    "setupFiles": [
+      "<rootDir>/tests/setup.ts"
+    ]
+  },
+  "dependencies": {
+    "@mediabunny/flac-encoder": "1.39.2",
+    "lamejs": "1.2.1",
+    "mediabunny": "1.39.2"
   }
 }

@@ -58,3 +58,17 @@ export class RecordingError extends AudioRecorderError {
 		this.name = 'RecordingError';
 	}
 }
+
+/**
+ * Error thrown when offline audio encoding fails.
+ */
+export class EncodingError extends AudioRecorderError {
+	constructor(
+		message: string,
+		public readonly format: string,
+		public readonly originalError?: unknown,
+	) {
+		super(`Encoding to ${format} failed: ${message}`);
+		this.name = 'EncodingError';
+	}
+}

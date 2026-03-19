@@ -15,6 +15,7 @@ import {
 	validateSelectedDevices,
 } from './AudioStreamHandler';
 import { bufferToWave, assembleWavFromPcmSegments } from './WavEncoder';
+import { encodeAudioBuffer, isOfflineEncodingSupported } from './AudioEncoder';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { DebugLogger } from '../utils/DebugLogger';
 import {
@@ -443,20 +444,28 @@ export class RecordingManager {
 					);
 				}
 				this.updateSaveProgress(40, 'Mixing tracks...');
-				if (this.settings.recordingFormat !== FORMAT_WAV) {
+				const targetFormat = isOfflineEncodingSupported(
+					this.settings.recordingFormat,
+				)
+					? this.settings.recordingFormat
+					: FORMAT_WAV;
+				if (
+					targetFormat === FORMAT_WAV &&
+					this.settings.recordingFormat !== FORMAT_WAV
+				) {
 					this.debugLogger.log(
-						'Multi-track single output overrides format to WAV for proper mixing',
+						'Multi-track single output falls back to WAV (encoding unavailable)',
 						{
 							requestedFormat: this.settings.recordingFormat,
 						},
 					);
 					new Notice(
-						'Merged multi-track output saved as .wav for proper audio mixing.',
+						'Merged multi-track output saved as .wav (encoding unavailable for this format).',
 					);
 				}
 				const mergedAudio = await this.mergeAudioTracks();
 				this.updateSaveProgress(60, 'Writing file...');
-				const fileName = `${this.settings.filePrefix}-multitrack-${timestamp}.${FORMAT_WAV}`;
+				const fileName = `${this.settings.filePrefix}-multitrack-${timestamp}.${targetFormat}`;
 				const filePath = await this.saveAudioFile(
 					mergedAudio,
 					fileName,
@@ -535,6 +544,26 @@ export class RecordingManager {
 
 		const renderedBuffer = await offlineContext.startRendering();
 		await audioContext.close();
+
+		const targetFormat = this.settings.recordingFormat;
+		if (
+			targetFormat !== FORMAT_WAV &&
+			isOfflineEncodingSupported(targetFormat)
+		) {
+			return encodeAudioBuffer(
+				renderedBuffer,
+				{
+					format: targetFormat,
+					bitrate: this.settings.bitrate,
+				},
+				(percent) => {
+					this.updateSaveProgress(
+						40 + Math.round(percent * 0.2),
+						'Encoding audio...',
+					);
+				},
+			);
+		}
 		return bufferToWave(renderedBuffer, renderedBuffer.length);
 	}
 
@@ -807,7 +836,8 @@ export class RecordingManager {
 			return fileLinks;
 		}
 
-		const fileName = `${this.settings.filePrefix}-${target.sourceName}-${timestamp}.${this.settings.recordingFormat}`;
+		const outputFormat = this.settings.recordingFormat;
+		const fileName = `${this.settings.filePrefix}-${target.sourceName}-${timestamp}.${outputFormat}`;
 		const filePath = await this.resolveUniquePath(fileName);
 
 		if (this.settings.recordingFormat === FORMAT_WAV) {
@@ -817,6 +847,18 @@ export class RecordingManager {
 			await this.app.vault.createBinary(
 				filePath,
 				await wavBlob.arrayBuffer(),
+			);
+		} else if (this.isOfflineOnlyFormat(outputFormat)) {
+			// Offline-only format: decode intermediate blob, re-encode to target
+			this.updateSaveProgress(40, 'Decoding intermediate audio...');
+			const outputBlob = await this.convertBlobToFormat(
+				blob,
+				outputFormat,
+			);
+			this.updateSaveProgress(60, 'Writing file...');
+			await this.app.vault.createBinary(
+				filePath,
+				await outputBlob.arrayBuffer(),
 			);
 		} else {
 			this.updateSaveProgress(60, 'Writing file...');
@@ -921,23 +963,27 @@ export class RecordingManager {
 		mimeType: string;
 	} {
 		const outputFormat = this.settings.recordingFormat.toLowerCase();
-		if (outputFormat === FORMAT_WAV) {
-			const preferredCompressedFormats = [FORMAT_WEBM, FORMAT_OGG];
-			for (const format of preferredCompressedFormats) {
-				const mimeType = buildMimeType(format);
-				if (MediaRecorder.isTypeSupported(mimeType)) {
-					return { recorderFormat: format, mimeType: mimeType };
-				}
-			}
-			throw new Error(
-				'WAV output requires an intermediate compressed format, but neither WebM nor OGG is supported in this browser.',
-			);
+
+		// Check if MediaRecorder natively supports this format
+		const nativeMime = buildMimeType(outputFormat);
+		if (
+			outputFormat !== FORMAT_WAV &&
+			MediaRecorder.isTypeSupported(nativeMime)
+		) {
+			return { recorderFormat: outputFormat, mimeType: nativeMime };
 		}
 
-		return {
-			recorderFormat: outputFormat,
-			mimeType: buildMimeType(outputFormat),
-		};
+		// WAV and offline-only formats need an intermediate compressed format
+		const preferredCompressedFormats = [FORMAT_WEBM, FORMAT_OGG];
+		for (const format of preferredCompressedFormats) {
+			const mimeType = buildMimeType(format);
+			if (MediaRecorder.isTypeSupported(mimeType)) {
+				return { recorderFormat: format, mimeType };
+			}
+		}
+		throw new Error(
+			`Output format "${outputFormat}" requires an intermediate compressed format, but neither WebM nor OGG is supported in this browser.`,
+		);
 	}
 
 	private getRecorderMediaType(): string {
@@ -965,6 +1011,51 @@ export class RecordingManager {
 		} finally {
 			await audioContext.close();
 		}
+	}
+
+	/**
+	 * Checks if a format requires offline encoding (not natively
+	 * supported by MediaRecorder) and the recorder uses an intermediate format.
+	 */
+	private isOfflineOnlyFormat(format: string): boolean {
+		return (
+			format !== FORMAT_WAV &&
+			this.activeRecorderFormat !== format &&
+			isOfflineEncodingSupported(format)
+		);
+	}
+
+	/**
+	 * Decodes an intermediate blob and re-encodes it to the target format.
+	 * Uses OfflineAudioContext at the native sample rate to avoid
+	 * resampling artifacts.
+	 */
+	private async convertBlobToFormat(
+		recordedBlob: Blob,
+		targetFormat: string,
+	): Promise<Blob> {
+		const arrayBuffer = await recordedBlob.arrayBuffer();
+
+		// Probe native sample rate
+		const probeCtx = new AudioContext();
+		const probeBuffer = await probeCtx.decodeAudioData(
+			arrayBuffer.slice(0),
+		);
+		const nativeSampleRate = probeBuffer.sampleRate;
+		await probeCtx.close();
+
+		// Re-decode at native rate to avoid resampling
+		const offlineCtx = new OfflineAudioContext(
+			probeBuffer.numberOfChannels,
+			probeBuffer.length,
+			nativeSampleRate,
+		);
+		const decodedBuffer = await offlineCtx.decodeAudioData(arrayBuffer);
+
+		return encodeAudioBuffer(decodedBuffer, {
+			format: targetFormat,
+			bitrate: this.settings.bitrate,
+		});
 	}
 
 	/**

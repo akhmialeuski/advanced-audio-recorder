@@ -17,6 +17,14 @@ import { getDefaultDeviceId } from '../utils/DeviceUtils';
 export type OutputMode = 'single' | 'multiple';
 
 /**
+ * What to do with the converted file link in notes.
+ * - 'none': just save the file, don't touch notes
+ * - 'replace': replace source file link with the new file link
+ * - 'after': insert new file link after the source file link
+ */
+export type ConversionLinkAction = 'none' | 'replace' | 'after';
+
+/**
  * Track audio sources mapping (track number -> device ID).
  */
 export interface AudioSource {
@@ -74,6 +82,10 @@ export interface AudioRecorderSettings {
 	debug: boolean;
 	/** Insert recording link at the note and cursor position where recording started */
 	insertAtOriginalPosition: boolean;
+	/** Delete original file after successful format conversion */
+	deleteSourceAfterConversion: boolean;
+	/** What to do with converted file links in notes */
+	conversionLinkAction: ConversionLinkAction;
 }
 
 /**
@@ -98,6 +110,8 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	trackAudioSources: new Map(),
 	debug: false,
 	insertAtOriginalPosition: false,
+	deleteSourceAfterConversion: false,
+	conversionLinkAction: 'replace',
 };
 
 export interface AudioRecorderSettingsInput extends Partial<

@@ -12,12 +12,20 @@ import {
 	Vault,
 } from 'obsidian';
 import type { Plugin } from 'obsidian';
-import type { AudioRecorderSettings, OutputMode } from './Settings';
+import type {
+	AudioRecorderSettings,
+	OutputMode,
+	ConversionLinkAction,
+} from './Settings';
 import {
 	detectSupportedFormats,
 	getSupportedSampleRates,
 	buildMimeType,
 } from '../recording/AudioCapabilityDetector';
+import {
+	getEncoderDescription,
+	isOfflineEncodingSupported,
+} from '../recording/AudioEncoder';
 import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
 import { SystemInfoModal } from '../diagnostics/SystemInfoModal';
 
@@ -67,10 +75,24 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	}
 
 	private getCompressionDescription(format: string): string {
+		const encoder = getEncoderDescription(format);
 		if (format === 'wav') {
-			return 'Uncompressed WAV (larger size; requires additional conversion after recording).';
+			return `Uncompressed WAV (larger size). Encoder: ${encoder}.`;
 		}
-		return 'Compressed audio (smaller size; saved directly from recorder output).';
+		if (
+			isOfflineEncodingSupported(format) &&
+			!this.isMediaRecorderFormat(format)
+		) {
+			return `Compressed audio via offline encoding. Encoder: ${encoder}.`;
+		}
+		return `Compressed audio (smaller size; saved directly from recorder output). Encoder: ${encoder}.`;
+	}
+
+	private isMediaRecorderFormat(format: string): boolean {
+		if (typeof MediaRecorder === 'undefined') {
+			return false;
+		}
+		return MediaRecorder.isTypeSupported(buildMimeType(format));
 	}
 
 	/**
@@ -151,7 +173,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			)
 			.addDropdown((dropdown) => {
 				supportedFormats.forEach((format) => {
-					dropdown.addOption(format, format);
+					const label = this.isMediaRecorderFormat(format)
+						? format.toUpperCase()
+						: `${format.toUpperCase()} (offline)`;
+					dropdown.addOption(format, label);
 				});
 				dropdown.setValue(this.plugin.settings.recordingFormat);
 				dropdown.onChange(async (value) => {
@@ -192,6 +217,38 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			);
 		summaryEl = outputSummarySetting.descEl.createDiv();
 		updateOutputSummary(summaryEl);
+
+		new Setting(containerEl)
+			.setName('Delete source after conversion')
+			.setDesc(
+				'When converting audio via the context menu, delete the original file after a successful conversion.',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.deleteSourceAfterConversion)
+					.onChange(async (value) => {
+						this.plugin.settings.deleteSourceAfterConversion =
+							value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Update links after conversion')
+			.setDesc(
+				'How to handle links to the source file in notes after conversion.',
+			)
+			.addDropdown((dropdown) => {
+				dropdown.addOption('none', 'Do nothing');
+				dropdown.addOption('replace', 'Replace source link');
+				dropdown.addOption('after', 'Insert after source link');
+				dropdown.setValue(this.plugin.settings.conversionLinkAction);
+				dropdown.onChange(async (value) => {
+					this.plugin.settings.conversionLinkAction =
+						value as ConversionLinkAction;
+					await this.plugin.saveSettings();
+				});
+			});
 
 		// ── File storage ──────────────────────────────────────────
 		new Setting(containerEl).setName('File storage').setHeading();

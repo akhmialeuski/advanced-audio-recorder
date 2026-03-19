@@ -32,6 +32,18 @@ jest.mock('../../src/recording/AudioStreamHandler', () => ({
 	validateSelectedDevices: jest.fn(),
 }));
 
+// Mock AudioEncoder module to avoid mediabunny TextDecoder requirement
+jest.mock('../../src/recording/AudioEncoder', () => ({
+	encodeAudioBuffer: jest
+		.fn()
+		.mockResolvedValue(new Blob(['encoded'], { type: 'audio/webm' })),
+	isOfflineEncodingSupported: jest.fn((format: string) => {
+		return ['mp3', 'flac', 'aac', 'webm', 'ogg', 'mp4', 'm4a'].includes(
+			format,
+		);
+	}),
+}));
+
 // Mock WavEncoder
 jest.mock('../../src/recording/WavEncoder', () => ({
 	bufferToWave: jest
@@ -868,10 +880,10 @@ describe('RecordingManager', () => {
 
 	describe('single mode output format handling', () => {
 		/**
-		 * Verifies that single-file output in multi-track mode always
-		 * produces WAV via proper audio mixing regardless of configured format.
+		 * Verifies that single-file output in multi-track mode produces
+		 * the configured format via offline encoding when supported.
 		 */
-		it('should save single-mode multi-track recording as WAV regardless of configured format', async () => {
+		it('should save single-mode multi-track recording in configured format via offline encoding', async () => {
 			const { Platform } = jest.requireMock('obsidian');
 			Platform.isMobile = false;
 			Platform.isMobileApp = false;
@@ -941,9 +953,9 @@ describe('RecordingManager', () => {
 			await Promise.resolve();
 			await manager.stopRecording();
 
-			// Multi-track single output always produces WAV via mergeAudioTracks
+			// Multi-track single output encodes to target format (webm) via offline encoding
 			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
-				expect.stringMatching(/multitrack-.*\.wav$/),
+				expect.stringMatching(/multitrack-.*\.webm$/),
 				expect.any(ArrayBuffer),
 			);
 			expect(mockApp.vault.adapter.remove).toHaveBeenCalledWith(
@@ -1038,11 +1050,11 @@ describe('RecordingManager', () => {
 			await manager.stopRecording();
 
 			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
-				expect.stringMatching(/multitrack-.*\.wav$/),
+				expect.stringMatching(/multitrack-.*\.webm$/),
 				expect.any(ArrayBuffer),
 			);
 			expect(mockApp.vault.adapter.remove).toHaveBeenCalledWith(
-				expect.stringMatching(/multitrack-.*\.wav$/),
+				expect.stringMatching(/multitrack-.*\.webm$/),
 			);
 			expect(Notice).toHaveBeenCalledWith(
 				expect.stringContaining('Error stopping recording:'),
@@ -1060,10 +1072,10 @@ describe('RecordingManager', () => {
 		});
 
 		/**
-		 * Regression: multi-track MP4 must produce a properly mixed WAV file
-		 * instead of broken concatenated MP4 containers.
+		 * Regression: multi-track MP4 must produce a properly mixed/encoded file
+		 * via OfflineAudioContext instead of broken concatenated MP4 containers.
 		 */
-		it('should merge MP4 multi-track recording into WAV with all tracks mixed', async () => {
+		it('should merge MP4 multi-track recording into target format with all tracks mixed', async () => {
 			const { Platform } = jest.requireMock('obsidian');
 			Platform.isMobile = false;
 			Platform.isMobileApp = false;
@@ -1133,12 +1145,8 @@ describe('RecordingManager', () => {
 			await Promise.resolve();
 			await manager.stopRecording();
 
-			// Must produce WAV (properly mixed) not MP4 (broken concatenation)
+			// Must produce MP4 (properly mixed via OfflineAudioContext + offline encoding)
 			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
-				expect.stringMatching(/multitrack-.*\.wav$/),
-				expect.any(ArrayBuffer),
-			);
-			expect(mockApp.vault.createBinary).not.toHaveBeenCalledWith(
 				expect.stringMatching(/multitrack-.*\.mp4$/),
 				expect.any(ArrayBuffer),
 			);
