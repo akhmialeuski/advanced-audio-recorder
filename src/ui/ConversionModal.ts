@@ -156,10 +156,9 @@ export class ConversionModal extends Modal {
 			const arrayBuffer = await this.app.vault.adapter.readBinary(
 				this.sourceFile.path,
 			);
-			const audioContext = new AudioContext();
 
 			progressEl.setText('Decoding audio...');
-			const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+			const audioBuffer = await this.decodeAudioFile(arrayBuffer);
 
 			progressEl.setText('Encoding...');
 			const blob = await encodeAudioBuffer(
@@ -172,8 +171,6 @@ export class ConversionModal extends Modal {
 					progressEl.setText(`Encoding... ${String(percent)}%`);
 				},
 			);
-
-			await audioContext.close();
 
 			progressEl.setText('Saving...');
 			await this.app.vault.createBinary(
@@ -203,6 +200,33 @@ export class ConversionModal extends Modal {
 			progressEl.setText(`Error: ${message}`);
 			new Notice(`Conversion failed: ${message}`);
 		}
+	}
+
+	/**
+	 * Decodes an audio file preserving its native sample rate.
+	 * Uses OfflineAudioContext to avoid sample rate conversion
+	 * artifacts from the default AudioContext.
+	 */
+	private async decodeAudioFile(
+		arrayBuffer: ArrayBuffer,
+	): Promise<AudioBuffer> {
+		// First decode with a temporary context to discover the native sample rate
+		const probeCtx = new AudioContext();
+		const probeBuffer = await probeCtx.decodeAudioData(
+			arrayBuffer.slice(0),
+		);
+		const nativeSampleRate = probeBuffer.sampleRate;
+		await probeCtx.close();
+
+		// Re-decode with an OfflineAudioContext at the native sample rate
+		// to avoid resampling artifacts
+		const offlineCtx = new OfflineAudioContext(
+			probeBuffer.numberOfChannels,
+			probeBuffer.length,
+			nativeSampleRate,
+		);
+		const decoded = await offlineCtx.decodeAudioData(arrayBuffer);
+		return decoded;
 	}
 
 	/**

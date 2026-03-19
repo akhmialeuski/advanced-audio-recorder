@@ -1027,23 +1027,35 @@ export class RecordingManager {
 
 	/**
 	 * Decodes an intermediate blob and re-encodes it to the target format.
+	 * Uses OfflineAudioContext at the native sample rate to avoid
+	 * resampling artifacts.
 	 */
 	private async convertBlobToFormat(
 		recordedBlob: Blob,
 		targetFormat: string,
 	): Promise<Blob> {
-		const audioContext = new AudioContext();
-		try {
-			const arrayBuffer = await recordedBlob.arrayBuffer();
-			const decodedBuffer =
-				await audioContext.decodeAudioData(arrayBuffer);
-			return encodeAudioBuffer(decodedBuffer, {
-				format: targetFormat,
-				bitrate: this.settings.bitrate,
-			});
-		} finally {
-			await audioContext.close();
-		}
+		const arrayBuffer = await recordedBlob.arrayBuffer();
+
+		// Probe native sample rate
+		const probeCtx = new AudioContext();
+		const probeBuffer = await probeCtx.decodeAudioData(
+			arrayBuffer.slice(0),
+		);
+		const nativeSampleRate = probeBuffer.sampleRate;
+		await probeCtx.close();
+
+		// Re-decode at native rate to avoid resampling
+		const offlineCtx = new OfflineAudioContext(
+			probeBuffer.numberOfChannels,
+			probeBuffer.length,
+			nativeSampleRate,
+		);
+		const decodedBuffer = await offlineCtx.decodeAudioData(arrayBuffer);
+
+		return encodeAudioBuffer(decodedBuffer, {
+			format: targetFormat,
+			bitrate: this.settings.bitrate,
+		});
 	}
 
 	/**
