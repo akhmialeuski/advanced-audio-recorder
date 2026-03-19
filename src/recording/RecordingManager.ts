@@ -6,7 +6,7 @@
 import { MarkdownView, normalizePath, Notice, Platform } from 'obsidian';
 import type { App } from 'obsidian';
 import { RecordingStatus } from '../types';
-import type { SaveProgress } from '../types';
+import type { InsertionContext, SaveProgress } from '../types';
 import type { AudioRecorderSettings } from '../settings/Settings';
 import {
 	getAudioStreams,
@@ -66,6 +66,7 @@ export class RecordingManager {
 	private isMobileRecording: boolean = false;
 	private isWavPcmRecording: boolean = false;
 	private activeRecorderFormat: string = FORMAT_WEBM;
+	private insertionContext: InsertionContext | null = null;
 
 	/**
 	 * Creates a new RecordingManager.
@@ -164,6 +165,7 @@ export class RecordingManager {
 				await this.initMediaRecording();
 			}
 
+			this.captureInsertionContext();
 			this.setStatus(RecordingStatus.Recording);
 			new Notice('Recording started');
 		} catch (error) {
@@ -353,6 +355,7 @@ export class RecordingManager {
 			this.recordingTimestamp = null;
 			this.totalChunks = 0;
 			this.isWavPcmRecording = false;
+			this.insertionContext = null;
 			this.setStatus(RecordingStatus.Idle);
 		}
 	}
@@ -394,6 +397,7 @@ export class RecordingManager {
 		this.recordingTimestamp = null;
 		this.totalChunks = 0;
 		this.isWavPcmRecording = false;
+		this.insertionContext = null;
 	}
 
 	private setStatus(
@@ -977,16 +981,64 @@ export class RecordingManager {
 		}
 	}
 
-	private insertFileLinks(fileLinks: string[]): void {
+	/**
+	 * Captures the active note and cursor position for later insertion.
+	 */
+	private captureInsertionContext(): void {
+		if (!this.settings.insertAtOriginalPosition) {
+			return;
+		}
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-		const editor = view?.editor;
+		const filePath = view?.file?.path;
+		const cursor = view?.editor?.getCursor();
+		if (filePath && cursor) {
+			this.insertionContext = {
+				filePath,
+				line: cursor.line,
+				ch: cursor.ch,
+			};
+		} else {
+			this.debugLogger.log(
+				'Could not capture insertion context: no active Markdown view',
+			);
+		}
+	}
+
+	private insertFileLinks(fileLinks: string[]): void {
+		const links = fileLinks
+			.map((path) => {
+				const fileName = path.split('/').pop() ?? path;
+				return `![[${fileName}]]`;
+			})
+			.join('\n');
+
+		if (this.insertionContext) {
+			const leaf = this.app.workspace
+				.getLeavesOfType('markdown')
+				.find((l) => {
+					const leafView = l.view;
+					return (
+						leafView instanceof MarkdownView &&
+						leafView.file?.path === this.insertionContext?.filePath
+					);
+				});
+
+			const leafView = leaf?.view;
+			if (leafView instanceof MarkdownView) {
+				const editor = leafView.editor;
+				const pos = {
+					line: this.insertionContext.line + 1,
+					ch: 0,
+				};
+				editor.replaceRange(links + '\n', pos);
+				return;
+			}
+		}
+
+		// Fallback: insert into the currently active note
+		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+		const editor = activeView?.editor;
 		if (editor) {
-			const links = fileLinks
-				.map((path) => {
-					const fileName = path.split('/').pop() ?? path;
-					return `![[${fileName}]]`;
-				})
-				.join('\n');
 			editor.replaceSelection(links);
 		}
 	}

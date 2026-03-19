@@ -264,6 +264,20 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					}),
 			);
 
+		new Setting(containerEl)
+			.setName('Insert at original position')
+			.setDesc(
+				'When enabled, the plugin remembers the note and cursor position where recording started. The audio link is inserted at that location, even if you navigate away during recording. Note: if the original note is edited during recording, the insertion position may shift.',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.insertAtOriginalPosition)
+					.onChange(async (value) => {
+						this.plugin.settings.insertAtOriginalPosition = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
 		// ── Multi-track recording ─────────────────────────────────
 		new Setting(containerEl).setName('Multi-track recording').setHeading();
 
