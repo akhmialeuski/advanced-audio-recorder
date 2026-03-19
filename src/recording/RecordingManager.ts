@@ -555,7 +555,6 @@ export class RecordingManager {
 				{
 					format: targetFormat,
 					bitrate: this.settings.bitrate,
-					sampleRate: this.settings.sampleRate,
 				},
 				(percent) => {
 					this.updateSaveProgress(
@@ -1041,7 +1040,6 @@ export class RecordingManager {
 			return encodeAudioBuffer(decodedBuffer, {
 				format: targetFormat,
 				bitrate: this.settings.bitrate,
-				sampleRate: this.settings.sampleRate,
 			});
 		} finally {
 			await audioContext.close();

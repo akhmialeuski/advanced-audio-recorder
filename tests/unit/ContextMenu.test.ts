@@ -7,6 +7,7 @@
 import { ContextMenu } from '../../src/ui/ContextMenu';
 import { AUDIO_EXTENSIONS } from '../../src/constants';
 import { FORMAT_MP4 } from '../../src/recording/AudioCapabilityDetector';
+import type { AudioRecorderSettings } from '../../src/settings/Settings';
 import * as AudioFileAnalyzer from '../../src/utils/AudioFileAnalyzer';
 import {
 	App,
@@ -107,7 +108,8 @@ describe('ContextMenu', () => {
 			() =>
 				({
 					deleteSourceAfterConversion: true,
-				}) as never,
+					conversionLinkAction: 'replace',
+				}) as unknown as AudioRecorderSettings,
 		);
 	});
 

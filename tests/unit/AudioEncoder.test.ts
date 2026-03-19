@@ -69,7 +69,6 @@ describe('AudioEncoder', () => {
 		const defaultOptions: EncodingOptions = {
 			format: 'webm',
 			bitrate: 128000,
-			sampleRate: 44100,
 		};
 
 		it('should delegate WAV encoding to bufferToWave', async () => {
@@ -324,7 +323,7 @@ describe('AudioEncoder', () => {
 		});
 
 		it('should return true for WebCodecs formats when AudioEncoder is available', () => {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any -- simulating WebCodecs global in test
 			(global as any).AudioEncoder = jest.fn();
 
 			expect(isOfflineEncodingSupported('webm')).toBe(true);
@@ -333,12 +332,12 @@ describe('AudioEncoder', () => {
 			expect(isOfflineEncodingSupported('m4a')).toBe(true);
 			expect(isOfflineEncodingSupported('aac')).toBe(true);
 
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any -- cleaning up WebCodecs global in test
 			delete (global as any).AudioEncoder;
 		});
 
 		it('should return false for WebCodecs formats when AudioEncoder is unavailable', () => {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any -- cleaning up WebCodecs global in test
 			delete (global as any).AudioEncoder;
 
 			expect(isOfflineEncodingSupported('webm')).toBe(false);

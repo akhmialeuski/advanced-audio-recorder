@@ -6,18 +6,19 @@
 
 import { ConversionModal } from '../../src/ui/ConversionModal';
 import { App, TFile } from 'obsidian';
+import type { AudioRecorderSettings } from '../../src/settings/Settings';
 
 /**
  * Extends an HTMLElement with Obsidian's custom DOM methods.
  */
 function addObsidianDomMethods(el: HTMLElement): HTMLElement {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- augmenting HTMLElement with Obsidian DOM methods
 	(el as any).empty = function () {
 		while (this.firstChild) {
 			this.removeChild(this.firstChild);
 		}
 	};
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- augmenting HTMLElement with Obsidian DOM methods
 	(el as any).createEl = function (
 		tag: string,
 		opts?: { text?: string; cls?: string; attr?: Record<string, string> },
@@ -34,7 +35,7 @@ function addObsidianDomMethods(el: HTMLElement): HTMLElement {
 		this.appendChild(child);
 		return child;
 	};
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- augmenting HTMLElement with Obsidian DOM methods
 	(el as any).createDiv = function (opts?: { cls?: string }) {
 		return this.createEl('div', opts);
 	};
@@ -60,6 +61,7 @@ jest.mock('obsidian', () => ({
 	Setting: jest.fn().mockImplementation(() => ({
 		setName: jest.fn().mockReturnThis(),
 		setDesc: jest.fn().mockReturnThis(),
+		setHeading: jest.fn().mockReturnThis(),
 		addDropdown: jest.fn().mockReturnThis(),
 		addButton: jest.fn().mockReturnThis(),
 		addToggle: jest.fn().mockReturnThis(),
@@ -128,7 +130,7 @@ describe('ConversionModal', () => {
 		const modal = new ConversionModal(
 			mockApp,
 			mockFile,
-			mockSettings as never,
+			mockSettings as unknown as AudioRecorderSettings,
 		);
 		expect(modal).toBeDefined();
 	});
@@ -137,20 +139,21 @@ describe('ConversionModal', () => {
 		const modal = new ConversionModal(
 			mockApp,
 			mockFile,
-			mockSettings as never,
+			mockSettings as unknown as AudioRecorderSettings,
 		);
 		modal.onOpen();
 
-		const headings = modal.contentEl.querySelectorAll('h3');
-		expect(headings.length).toBe(1);
-		expect(headings[0].textContent).toBe('Convert audio format');
+		// Heading is rendered via Setting.setHeading(); source file info is a <p>
+		const source = modal.contentEl.querySelector('.aar-conversion-source');
+		expect(source).not.toBeNull();
+		expect(source?.textContent).toContain('recording.wav');
 	});
 
 	it('should show source file name', () => {
 		const modal = new ConversionModal(
 			mockApp,
 			mockFile,
-			mockSettings as never,
+			mockSettings as unknown as AudioRecorderSettings,
 		);
 		modal.onOpen();
 
@@ -162,7 +165,7 @@ describe('ConversionModal', () => {
 		const modal = new ConversionModal(
 			mockApp,
 			mockFile,
-			mockSettings as never,
+			mockSettings as unknown as AudioRecorderSettings,
 		);
 		modal.onOpen();
 		modal.onClose();

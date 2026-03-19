@@ -18,10 +18,7 @@ import {
 	getEncoderDescription,
 } from '../recording/AudioEncoder';
 import { AUDIO_EXTENSIONS, FORMAT_WAV } from '../constants';
-import {
-	getSupportedBitrates,
-	getSupportedSampleRates,
-} from '../recording/AudioCapabilityDetector';
+import { getSupportedBitrates } from '../recording/AudioCapabilityDetector';
 import type {
 	AudioRecorderSettings,
 	ConversionLinkAction,
@@ -34,7 +31,6 @@ export class ConversionModal extends Modal {
 	private readonly sourceFile: TFile;
 	private targetFormat: string = FORMAT_WAV;
 	private bitrate: number = 128000;
-	private sampleRate: number = 44100;
 	private deleteSource: boolean;
 	private linkAction: ConversionLinkAction;
 
@@ -49,7 +45,7 @@ export class ConversionModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 
-		contentEl.createEl('h3', { text: 'Convert audio format' });
+		new Setting(contentEl).setName('Convert audio format').setHeading();
 		contentEl.createEl('p', {
 			text: `Source: ${this.sourceFile.name}`,
 			cls: 'aar-conversion-source',
@@ -97,20 +93,6 @@ export class ConversionModal extends Modal {
 			});
 
 		new Setting(contentEl)
-			.setName('Sample rate')
-			.setDesc('Audio sample rate in hertz.')
-			.addDropdown((dropdown) => {
-				const rates = getSupportedSampleRates();
-				rates.forEach((rate) => {
-					dropdown.addOption(String(rate), `${String(rate)} Hz`);
-				});
-				dropdown.setValue(String(this.sampleRate));
-				dropdown.onChange((value) => {
-					this.sampleRate = parseInt(value, 10);
-				});
-			});
-
-		new Setting(contentEl)
 			.setName('Delete source file')
 			.setDesc('Remove the original file after successful conversion.')
 			.addToggle((toggle) =>
@@ -136,14 +118,17 @@ export class ConversionModal extends Modal {
 			cls: 'aar-conversion-progress',
 		});
 
-		new Setting(contentEl).addButton((button) =>
+		new Setting(contentEl).addButton((button) => {
 			button
 				.setButtonText('Convert')
 				.setCta()
 				.onClick(() => {
-					void this.runConversion(progressEl);
-				}),
-		);
+					button.setDisabled(true);
+					void this.runConversion(progressEl).finally(() => {
+						button.setDisabled(false);
+					});
+				});
+		});
 	}
 
 	onClose(): void {
@@ -182,7 +167,6 @@ export class ConversionModal extends Modal {
 				{
 					format: this.targetFormat,
 					bitrate: this.bitrate,
-					sampleRate: this.sampleRate,
 				},
 				(percent) => {
 					progressEl.setText(`Encoding... ${String(percent)}%`);
@@ -222,15 +206,24 @@ export class ConversionModal extends Modal {
 	}
 
 	/**
+	 * Builds a regex matching all common link formats for a filename:
+	 * ![[file]], [[file]], ![[file|alias]], [[file|alias]]
+	 */
+	private buildLinkPattern(fileName: string): RegExp {
+		const escaped = fileName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+		return new RegExp(`(!?\\[\\[${escaped}(?:\\|[^\\]]*)?\\]\\])`, 'g');
+	}
+
+	/**
 	 * Finds and updates links to the source file in all open editors.
+	 * Uses replaceRange to preserve undo history.
 	 */
 	private updateLinksInNotes(
 		sourceFileName: string,
 		newFileName: string,
 	): void {
 		const leaves = this.app.workspace.getLeavesOfType('markdown');
-		const sourceLink = `![[${sourceFileName}]]`;
-		const newLink = `![[${newFileName}]]`;
+		const pattern = this.buildLinkPattern(sourceFileName);
 
 		for (const leaf of leaves) {
 			if (!(leaf.view instanceof MarkdownView)) {
@@ -242,12 +235,35 @@ export class ConversionModal extends Modal {
 				continue;
 			}
 
-			if (this.linkAction === 'replace') {
-				editor.setValue(content.split(sourceLink).join(newLink));
-			} else if (this.linkAction === 'after') {
-				editor.setValue(
-					content.split(sourceLink).join(`${sourceLink}\n${newLink}`),
-				);
+			// Collect matches in reverse order to avoid offset shifts
+			const matches: { index: number; length: number; text: string }[] =
+				[];
+			let match: RegExpExecArray | null;
+			while ((match = pattern.exec(content)) !== null) {
+				matches.push({
+					index: match.index,
+					length: match[0].length,
+					text: match[0],
+				});
+			}
+
+			// Apply replacements from end to start so positions stay valid
+			for (let i = matches.length - 1; i >= 0; i--) {
+				const m = matches[i];
+				const from = editor.offsetToPos(m.index);
+				const to = editor.offsetToPos(m.index + m.length);
+
+				// Build the replacement link preserving embed prefix
+				const isEmbed = m.text.startsWith('!');
+				const newLink = isEmbed
+					? `![[${newFileName}]]`
+					: `[[${newFileName}]]`;
+
+				if (this.linkAction === 'replace') {
+					editor.replaceRange(newLink, from, to);
+				} else if (this.linkAction === 'after') {
+					editor.replaceRange(`${m.text}\n${newLink}`, from, to);
+				}
 			}
 		}
 	}

@@ -110,7 +110,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	trackAudioSources: new Map(),
 	debug: false,
 	insertAtOriginalPosition: false,
-	deleteSourceAfterConversion: true,
+	deleteSourceAfterConversion: false,
 	conversionLinkAction: 'replace',
 };
 

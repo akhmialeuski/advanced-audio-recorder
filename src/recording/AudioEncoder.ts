@@ -14,6 +14,7 @@ import {
 	OggOutputFormat,
 	FlacOutputFormat,
 } from 'mediabunny';
+import type { OutputFormat } from 'mediabunny';
 import { Mp3Encoder } from 'lamejs';
 import { bufferToWave } from './WavEncoder';
 import { EncodingError } from '../errors';
@@ -36,8 +37,6 @@ export interface EncodingOptions {
 	format: string;
 	/** Bitrate in bits per second. */
 	bitrate: number;
-	/** Sample rate in Hz. */
-	sampleRate: number;
 }
 
 /**
@@ -70,7 +69,7 @@ const MP3_SAMPLES_PER_FRAME = 1152;
 /**
  * Creates the appropriate Mediabunny OutputFormat for the given format.
  */
-function createOutputFormat(format: string) {
+function createOutputFormat(format: string): OutputFormat {
 	switch (format) {
 		case FORMAT_WEBM:
 			return new WebMOutputFormat();
@@ -144,16 +143,10 @@ async function encodeWithMediabunny(
 		const target = new BufferTarget();
 		const output = new Output({ format: outputFormat, target });
 
-		const encodingConfig: Record<string, unknown> = {
-			codec,
+		const audioSource = new AudioBufferSource({
+			codec: codec as 'opus' | 'aac' | 'flac',
 			bitrate,
-		};
-
-		const audioSource = new AudioBufferSource(
-			encodingConfig as ConstructorParameters<
-				typeof AudioBufferSource
-			>[0],
-		);
+		});
 		output.addAudioTrack(audioSource);
 
 		await output.start();
@@ -172,6 +165,9 @@ async function encodeWithMediabunny(
 		}
 		return new Blob([resultBuffer], { type: mimeType });
 	} catch (error) {
+		if (error instanceof EncodingError) {
+			throw error;
+		}
 		throw new EncodingError(
 			error instanceof Error ? error.message : String(error),
 			format,
@@ -194,6 +190,8 @@ function floatTo16BitPCM(input: Float32Array): Int16Array {
 
 /**
  * Encodes AudioBuffer to MP3 using lamejs.
+ * Async ensures synchronous encoding errors become rejected Promises,
+ * matching the Promise<Blob> contract expected by callers.
  */
 async function encodeWithLamejs(
 	buffer: AudioBuffer,
