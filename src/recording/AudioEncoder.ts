@@ -190,20 +190,18 @@ function floatTo16BitPCM(input: Float32Array): Int16Array {
 
 /**
  * Encodes AudioBuffer to MP3 using lamejs.
- * Async ensures synchronous encoding errors become rejected Promises,
- * matching the Promise<Blob> contract expected by callers.
  */
-async function encodeWithLamejs(
+function encodeWithLamejs(
 	buffer: AudioBuffer,
 	options: EncodingOptions,
 	onProgress?: ProgressCallback,
 ): Promise<Blob> {
-	const { bitrate } = options;
-	const bitrateKbps = Math.round(bitrate / 1000);
-	const channels = buffer.numberOfChannels;
-	const sampleRate = buffer.sampleRate;
-
 	try {
+		const { bitrate } = options;
+		const bitrateKbps = Math.round(bitrate / 1000);
+		const channels = buffer.numberOfChannels;
+		const sampleRate = buffer.sampleRate;
+
 		const encoder = new Mp3Encoder(channels, sampleRate, bitrateKbps);
 		const mp3Chunks: Uint8Array[] = [];
 
@@ -238,12 +236,16 @@ async function encodeWithLamejs(
 		}
 
 		onProgress?.(100);
-		return new Blob(mp3Chunks as BlobPart[], { type: 'audio/mp3' });
+		return Promise.resolve(
+			new Blob(mp3Chunks as BlobPart[], { type: 'audio/mp3' }),
+		);
 	} catch (error) {
-		throw new EncodingError(
-			error instanceof Error ? error.message : String(error),
-			FORMAT_MP3,
-			error,
+		return Promise.reject(
+			new EncodingError(
+				error instanceof Error ? error.message : String(error),
+				FORMAT_MP3,
+				error,
+			),
 		);
 	}
 }
