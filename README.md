@@ -1,77 +1,83 @@
 # Obsidian Advanced Audio Recorder
 
-An audio recording plugin for Obsidian with configurable save location, input device selection, pause/resume control, and optional multi-track capture.
+An advanced audio recording plugin for [Obsidian](https://obsidian.md) with configurable save location, input device selection, pause/resume control, multi-track capture, format conversion, and built-in diagnostics.
+
+**Desktop only** | Requires Obsidian 0.15.0+
 
 ## Features
 
-- **Configurable Save Folder**: Choose where recordings are stored in your vault.
-- **Audio Input Selection**: Pick the microphone/input device from command palette or settings.
-- **Pause and Resume**: Pause and continue the same active recording session. This is triggered via the **Command Palette** or a custom hotkey while recording is active.
-- **Multi-Track Recording**: Record several input devices at once and export as a single or multiple files.
-- **Format and Bitrate Settings**: Choose output format and bitrate from plugin settings.
+- **Audio recording** with real-time status bar and ribbon icon feedback.
+- **Pause and resume** mid-recording without losing progress.
+- **Multi-track recording** from up to 8 input devices simultaneously.
+- **8 output formats**: WAV, WebM, OGG, MP3, MP4, M4A, AAC, FLAC.
+- **Audio format conversion** between supported formats via context menu.
+- **Audio file info** viewer showing duration, bitrate, sample rate, codec, and more.
+- **Configurable save location** with vault folder or near-active-file mode.
+- **Insert at original position** to place the audio link where recording started.
+- **System diagnostics** for troubleshooting environment and codec issues.
+- **Test recording** to verify device and format settings before real use.
 
 ## Installation
 
-1. Open **Obsidian Settings**.
-2. Navigate to **Community Plugins** and disable **Safe Mode**.
+1. Open **Settings** in Obsidian.
+2. Navigate to **Community plugins** and disable **Safe mode**.
 3. Click **Browse** and search for **"Advanced Audio Recorder"**.
-4. Click **Install**.
-5. Once installed, **Enable** the plugin.
+4. Click **Install**, then **Enable** the plugin.
 
-## Usage
+## Quick start
 
-1. Click the microphone icon in the left ribbon or run **Start/stop recording** from the Command Palette.
-2. Configure **Save folder**, **Input device**, and recording options in plugin settings.
-3. Start recording.
-4. Optionally run **Pause/resume recording**.
-5. Stop recording to save files and insert links into the active note.
-6. Optionally delete recordings from the File Explorer or using the context menu.
-
-### Deleting Recordings using the context menu
-
-You can delete recordings using the context menu in two ways:
-
-1. **From the Editor:** Right-click on the file link/embed in editing mode.
-
-![Delete via Link](docs/delete-via-link.png)
-
-2. **From the Player:** Right-click directly on the embedded player.
-
-![Delete via Player](docs/delete-via-player.png)
+1. Click the **microphone icon** in the left ribbon (or run `Start/stop recording` from the command palette).
+2. Speak or play audio into your microphone.
+3. Click the ribbon icon again (or run the command) to **stop** and save.
+4. An audio embed link is automatically inserted into the active note.
 
 ## Commands
 
-- **Start/stop recording** — starts a new recording or stops the current one.
-- **Pause/resume recording** — pauses an active recording and resumes it.
-- **Select audio input device** — opens a quick picker and saves the selected device.
+All commands are available via the command palette (`Ctrl/Cmd + P`) and can be assigned custom hotkeys in **Settings > Hotkeys**.
 
-### How to Pause and Resume
+| Command | Description |
+|---------|-------------|
+| **Start/stop recording** | Starts a new recording session or stops the current one. The recorded file is saved and a link is inserted into the active note. |
+| **Pause/resume recording** | Pauses an active recording and resumes it. Available only while recording is active. |
+| **Select audio input device** | Opens a quick device picker modal. The selected device is saved to settings immediately. |
 
-1. While a recording is **active**, open the Obsidian **Command Palette** (`Ctrl/Cmd + P`).
-2. Type `Advanced Audio Recorder: Pause/resume recording`.
-3. Press **Enter**. The status bar and ribbon icon will indicate that the recording is paused.
-4. Run the same command again to **Resume**.
+> **Tip:** The plugin does not assign default hotkeys to avoid conflicts. Assign your own hotkeys in **Settings > Hotkeys** for the best experience.
 
-![Pause/Resume Guide](docs/pause-resume.png)
+## Recording workflow
 
-> [!TIP]
-> For the best experience, assign a **hotkey** to the `Pause/resume recording` command in Obsidian's **Settings > Hotkeys**.
+### Starting a recording
 
-## Formats and Containers
+Click the **microphone icon** in the ribbon or run `Start/stop recording` from the command palette. The plugin captures the current note and cursor position so the audio link can be inserted there when recording finishes.
 
-- Available formats depend on your platform and browser **MediaRecorder** support.
-- Common options on most systems include: `webm`, `wav`, and `ogg`.
-- When **WAV** is selected on desktop, audio is captured as raw PCM in real time and assembled into a WAV file on save. This avoids memory-intensive post-hoc decoding and supports long recordings reliably.
-- In multi-track mode:
-  - **Single file** output combines tracks into one file.
-  - **Multiple files** output saves one file per track.
+During recording:
+- The **ribbon icon** changes from a microphone to an active recording indicator.
+- The **status bar** displays `Recording...` with **Pause** and **Stop** buttons.
 
-## Save progress indicator
+### Pausing and resuming
 
-For longer recordings, the save process (flushing buffers, assembling audio, writing the final file, and cleaning up temporary data) can take noticeable time. During this phase the plugin shows a progress bar in the status bar and a save icon in the ribbon so you always know what is happening:
+While recording is active, run `Pause/resume recording` from the command palette or click the **Pause** button in the status bar.
 
-| Progress | Status |
-|----------|--------|
+- The status bar shows `Recording paused` with **Resume** and **Stop** buttons.
+- Run the same command again or click **Resume** to continue recording.
+
+![Pause/Resume guide](docs/pause-resume.png)
+
+### Stopping and saving
+
+Click the ribbon icon or run `Start/stop recording` again. The plugin:
+
+1. Stops the MediaRecorder.
+2. Flushes audio buffers and assembles the final file.
+3. Writes the file to the configured save location.
+4. Inserts an embed link (`![[filename.ext]]`) into the active note.
+5. Cleans up temporary data.
+
+### Save progress indicator
+
+For longer recordings, saving may take noticeable time. The status bar shows a progress bar during this phase:
+
+| Progress | Stage |
+|----------|-------|
 | 0% | Saving... |
 | 20% | Flushing buffers... |
 | 40% | Assembling audio... |
@@ -79,20 +85,169 @@ For longer recordings, the save process (flushing buffers, assembling audio, wri
 | 80% | Cleaning up... |
 | 100% | Saved |
 
-For short recordings most of these steps complete instantly.
+The ribbon icon switches to a **save** icon while saving is in progress.
 
-## Configuration
+## Context menu actions
 
-Visit the plugin settings to:
-- Select recording format, bitrate, and sample rate.
-- Select default input device.
-- Set save folder and file prefix.
-- Configure multi-track recording (track count, output mode, per-track devices).
-- Enable debug logs when troubleshooting.
+Right-click on an audio file in the **File Explorer**, on an audio **embed link** in the editor, or on an **embedded audio player** to access these actions:
+
+### Audio file info
+
+Displays detailed metadata about the audio file in a modal dialog:
+
+- **File name** and **file size**
+- **Duration** (HH:MM:SS)
+- **Container format** (MIME type)
+- **Audio codec** (opus, aac, mp3, pcm, flac, etc.)
+- **Bitrate** (calculated kbps)
+- **Sample rate** (Hz)
+- **Channels** (Mono/Stereo)
+
+The modal includes a **Copy as Markdown** button that copies all metadata as a formatted Markdown list to the clipboard. This is useful when filing bug reports.
+
+### Convert audio format
+
+Opens a conversion dialog to transcode the audio file to a different format. Options:
+
+- **Target format** with encoder description (e.g., `FLAC (flac-encoder)`, `MP3 (lamejs)`).
+- **Bitrate** selection (64-320 kbps).
+- **Delete source file** toggle to remove the original after successful conversion.
+- **Update links in notes**: `Do nothing`, `Replace source link`, or `Insert after source link`.
+
+The conversion reads the source file, decodes it at its native sample rate (to avoid resampling artifacts), re-encodes it in the target format, and saves the new file alongside the original.
+
+### Delete recording
+
+Moves the audio file to the system trash.
+
+### Delete recording & link to file
+
+Moves the audio file to the system trash **and** removes the corresponding embed link from the editor. Available when right-clicking on a link in the editor or on an embedded player.
+
+![Delete via link](docs/delete-via-link.png)
+![Delete via player](docs/delete-via-player.png)
+
+## Formats and containers
+
+Available recording formats depend on your platform's **MediaRecorder** support. The plugin detects supported formats at runtime.
+
+| Format | Codec | Encoding | Notes |
+|--------|-------|----------|-------|
+| **WebM** | Opus | Online | Default format. Widely supported on desktop. |
+| **OGG** | Opus/Vorbis | Online | Good compatibility on most systems. |
+| **WAV** | PCM | Online (streaming) | Uncompressed. Captured as raw PCM in real time and assembled into a WAV file on save. Supports long recordings reliably without memory issues. |
+| **MP3** | MP3 | Offline (lamejs) | Encoded after recording stops using the lamejs library. |
+| **FLAC** | FLAC | Offline (flac-encoder) | Lossless compression. Encoded after recording using flac-encoder. |
+| **MP4** | AAC | Online/Offline | Browser-dependent. May use offline encoding via mediabunny. |
+| **M4A** | AAC | Online/Offline | Same as MP4, different container extension. |
+| **AAC** | AAC | Online/Offline | Raw AAC stream. Browser-dependent support. |
+
+**Online encoding** means the browser's MediaRecorder writes data in real time during recording.
+**Offline encoding** means the audio is captured in a supported intermediate format (e.g., WebM) and then re-encoded after recording stops. The settings tab marks offline formats with an `(offline)` label.
+
+## Multi-track recording
+
+Record from multiple input devices simultaneously (up to 8 tracks).
+
+### Setup
+
+1. Enable **Multi-track recording** in settings.
+2. Set the **Maximum tracks** count (1-8).
+3. Assign an **Audio source** (input device) to each track.
+4. Choose the **Output mode**:
+   - **Single file**: all tracks are mixed into one file.
+   - **Multiple files**: each track is saved as a separate file.
+
+### Behavior
+
+- Each track uses its own MediaRecorder instance with the configured format and bitrate.
+- All tracks start and stop together.
+- In **Multiple files** mode, file names include the track number or device name (when **Use source names for tracks** is enabled).
+
+## Settings reference
+
+Open **Settings > Advanced Audio Recorder** to configure the plugin.
+
+### Audio input
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| **Input device** | Select the default microphone/input device. The dropdown dynamically lists all available devices and auto-refreshes when devices are connected or disconnected. | Auto-detected |
+| **Sample rate** | Audio sample rate in Hz. Options: 8000, 16000, 22050, 44100, 48000. | 44100 |
+
+### Output format
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| **Recording format** | Final file format. Offline formats are labeled with `(offline)`. | WebM |
+| **Audio bitrate** | Compression quality. Options: 64, 96, 128, 160, 192, 256, 320 kbps. Higher values produce better quality and larger files. | 128 kbps |
+| **Output summary** | Read-only display showing the current format, bitrate, compression type, and encoder. | — |
+| **Delete source after conversion** | When converting audio via context menu, automatically delete the original file after successful conversion. | Off |
+| **Update links after conversion** | How to handle links to the source file in notes after conversion. Options: `Do nothing`, `Replace source link`, `Insert after source link`. | Replace source link |
+
+### File storage
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| **Save folder** | Vault folder where recordings are stored. Offers autocomplete suggestions from existing folders. | Vault root |
+| **Save recordings near active file** | Save recordings in the same directory as the currently active note. Takes priority over Save folder. | Off |
+| **Active file subfolder** | Optional subfolder relative to the active file directory (e.g., `audio`). Created automatically if it does not exist. Only visible when "Save near active file" is enabled. | — |
+| **File prefix** | Filename prefix for recordings (e.g., `recording` produces `recording-1710000000000.webm`). | `recording` |
+| **Insert at original position** | Remember the note and cursor position when recording starts. The audio link is inserted at that location, even if you navigate away during recording. | Off |
+
+### Multi-track recording
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| **Enable multi-track recording** | Record from multiple input devices at the same time. | Off |
+| **Maximum tracks** | Number of simultaneous tracks (1-8). | 2 |
+| **Output mode** | `Single file` combines all tracks into one file. `Multiple files` saves one file per track. | Single file |
+| **Audio source for track N** | Select the input device for each track. One dropdown per track. | — |
+
+### Diagnostics
+
+| Setting | Description |
+|---------|-------------|
+| **Test recording** | Records a 5-second test clip using current settings and plays it back. The test file is automatically deleted when you leave settings. Useful for verifying device and format compatibility. |
+| **System info** | Opens a modal with full system diagnostics: Obsidian version, Electron version, platform, audio devices, supported formats, codec support, active recording configuration, and all plugin settings. Includes a **Copy to clipboard** button for sharing in bug reports. |
+| **Debug mode** | Enables verbose console logs prefixed with `[AudioRecorder]` for troubleshooting recording issues. |
+
+## Troubleshooting
+
+### No sound is recorded
+
+1. Check that the correct **Input device** is selected in settings.
+2. Run the **Test recording** from settings to verify device access.
+3. Ensure your OS/browser has granted microphone permissions to Obsidian.
+
+### Recording format is not available
+
+Some formats require browser-level MediaRecorder support. If a format is not listed:
+- Try **WebM** or **WAV** which have the broadest support.
+- Check **System info** in settings to see which formats and codecs your environment supports.
+
+### Conversion fails
+
+- Ensure the source file is a valid audio file (not corrupted).
+- Check that the target format is supported for offline encoding (see the **Formats and containers** table).
+- Use **Audio file info** from the context menu to inspect the source file properties.
+
+### Recording is slow to save
+
+Long recordings may take time during the save phase (buffer flushing, audio assembly). The progress bar in the status bar shows the current stage. This is expected behavior.
+
+### Collecting diagnostics for bug reports
+
+When reporting issues:
+1. Open **Settings > Advanced Audio Recorder > System info** and click **Copy to clipboard**.
+2. Right-click the problematic audio file and select **Audio file info**, then click **Copy as Markdown**.
+3. Include both outputs in your bug report along with steps to reproduce.
+
+See [Bug reporting guide](docs/BUG_REPORTING_GUIDE.md) for detailed instructions.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
 ## Support
 
