@@ -15,9 +15,19 @@
   },
   "keywords": [
     "obsidian",
+    "obsidian-plugin",
     "audio",
-    "recorder",
-    "plugin"
+    "audio-recorder",
+    "voice-recorder",
+    "recording",
+    "microphone",
+    "multi-track",
+    "audio-converter",
+    "wav",
+    "mp3",
+    "flac",
+    "ogg",
+    "webm"
   ],
   "author": "Anatol Khmialeuski",
   "repository": {
