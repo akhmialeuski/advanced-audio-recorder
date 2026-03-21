@@ -37,5 +37,8 @@ export const MOBILE_BUFFER_LIMIT_BYTES = 50 * 1024 * 1024;
 /** PCM buffer flush threshold for WAV desktop recordings. */
 export const PCM_FLUSH_THRESHOLD_BYTES = 50 * 1024 * 1024;
 
+/** Desktop MediaRecorder chunk buffer flush threshold before writing to disk. */
+export const DESKTOP_FLUSH_THRESHOLD_BYTES = 50 * 1024 * 1024;
+
 /** Common MIME type prefix for audio formats. */
 export const MIME_TYPE_AUDIO_PREFIX = 'audio/';

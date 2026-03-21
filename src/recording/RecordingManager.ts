@@ -20,6 +20,7 @@ import {
 	CHUNK_TIMESLICE_MS,
 	MOBILE_BUFFER_LIMIT_BYTES,
 	PCM_FLUSH_THRESHOLD_BYTES,
+	DESKTOP_FLUSH_THRESHOLD_BYTES,
 } from '../constants';
 import { DebugLogger } from '../utils/DebugLogger';
 import {
@@ -436,10 +437,10 @@ export class RecordingManager {
 				);
 				fileLinks.push(...paths);
 			} else {
-				if (this.isMobileRecording) {
+				if (!this.isWavPcmRecording) {
 					await Promise.all(
 						this.chunkTargets.map((target) =>
-							this.flushMobileBuffer(target),
+							this.flushChunkBuffer(target),
 						),
 					);
 				}
@@ -531,35 +532,15 @@ export class RecordingManager {
 			return;
 		}
 		this.totalChunks += 1;
-		const enqueue = async (): Promise<void> => {
-			if (this.isMobileRecording) {
-				target.bufferedChunks.push(data);
-				target.bufferedBytes += data.size;
-				if (target.bufferedBytes >= MOBILE_BUFFER_LIMIT_BYTES) {
-					await this.flushMobileBuffer(target);
-				}
-				return;
-			}
+		const flushThreshold = this.isMobileRecording
+			? MOBILE_BUFFER_LIMIT_BYTES
+			: DESKTOP_FLUSH_THRESHOLD_BYTES;
 
-			try {
-				target.segmentIndex += 1;
-				const segmentName = `${target.fileBaseName}-part${String(target.segmentIndex)}.${this.activeRecorderFormat}.tmp`;
-				const segmentPath = await resolveUniquePath(
-					segmentName,
-					this.app,
-					this.settings,
-				);
-				const arrayBuffer = await data.arrayBuffer();
-				await this.app.vault.createBinary(segmentPath, arrayBuffer);
-				target.segmentPaths.push(segmentPath);
-			} catch (error) {
-				console.error(
-					`${PLUGIN_LOG_PREFIX} Failed to write segment:`,
-					error,
-				);
-				new Notice(
-					'Failed to save recording chunk. Check console for details.',
-				);
+		const enqueue = async (): Promise<void> => {
+			target.bufferedChunks.push(data);
+			target.bufferedBytes += data.size;
+			if (target.bufferedBytes >= flushThreshold) {
+				await this.flushChunkBuffer(target);
 			}
 		};
 
@@ -684,29 +665,50 @@ export class RecordingManager {
 		return new Blob([wavBuffer], { type: 'audio/wav' });
 	}
 
-	private async flushMobileBuffer(target: RecordingTarget): Promise<void> {
+	private async flushChunkBuffer(target: RecordingTarget): Promise<void> {
 		if (target.bufferedChunks.length === 0) {
 			return;
 		}
 		target.segmentIndex += 1;
-		const segmentName = `${target.fileBaseName}-part${String(
-			target.segmentIndex,
-		)}.${this.settings.recordingFormat}`;
-		const segmentPath = await resolveUniquePath(
-			segmentName,
-			this.app,
-			this.settings,
-		);
-		const outputBlob = await buildOutputBlob(
-			target.bufferedChunks,
-			getRecorderMediaType(this.activeRecorderFormat),
-			this.settings.recordingFormat,
-		);
-		await this.app.vault.createBinary(
-			segmentPath,
-			await outputBlob.arrayBuffer(),
-		);
-		target.segmentPaths.push(segmentPath);
+
+		if (this.isMobileRecording) {
+			// Mobile: encode/convert chunks via buildOutputBlob pipeline
+			const segmentName = `${target.fileBaseName}-part${String(
+				target.segmentIndex,
+			)}.${this.settings.recordingFormat}`;
+			const segmentPath = await resolveUniquePath(
+				segmentName,
+				this.app,
+				this.settings,
+			);
+			const outputBlob = await buildOutputBlob(
+				target.bufferedChunks,
+				getRecorderMediaType(this.activeRecorderFormat),
+				this.settings.recordingFormat,
+			);
+			await this.app.vault.createBinary(
+				segmentPath,
+				await outputBlob.arrayBuffer(),
+			);
+			target.segmentPaths.push(segmentPath);
+		} else {
+			// Desktop: write raw chunks as a single segment file
+			const segmentName = `${target.fileBaseName}-part${String(target.segmentIndex)}.${this.activeRecorderFormat}.tmp`;
+			const segmentPath = await resolveUniquePath(
+				segmentName,
+				this.app,
+				this.settings,
+			);
+			const combined = new Blob(target.bufferedChunks, {
+				type: getRecorderMediaType(this.activeRecorderFormat),
+			});
+			await this.app.vault.createBinary(
+				segmentPath,
+				await combined.arrayBuffer(),
+			);
+			target.segmentPaths.push(segmentPath);
+		}
+
 		target.bufferedChunks = [];
 		target.bufferedBytes = 0;
 	}
@@ -739,7 +741,7 @@ export class RecordingManager {
 	): Promise<string[]> {
 		const fileLinks: string[] = [];
 		if (this.isMobileRecording) {
-			await this.flushMobileBuffer(target);
+			await this.flushChunkBuffer(target);
 			fileLinks.push(...target.segmentPaths);
 			return fileLinks;
 		}
@@ -763,6 +765,7 @@ export class RecordingManager {
 			return fileLinks;
 		}
 
+		await this.flushChunkBuffer(target);
 		const blob = await this.buildTrackBlob(target);
 		if (!blob || blob.size === 0) {
 			return fileLinks;
