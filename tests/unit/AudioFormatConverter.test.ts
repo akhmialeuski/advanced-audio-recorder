@@ -1,0 +1,802 @@
+/**
+ * Unit tests for AudioFormatConverter module.
+ * Tests format resolution, blob conversion, offline encoding, and track merging.
+ * @module tests/unit/AudioFormatConverter.test
+ */
+/** @jest-environment jsdom */
+
+import type { AudioRecorderSettings } from '../../src/settings/Settings';
+import { DEFAULT_SETTINGS } from '../../src/settings/Settings';
+import type { RecordingTarget } from '../../src/types';
+
+// Mock obsidian module
+jest.mock('obsidian', () => ({
+	normalizePath: (path: string) => path.replace(/\\/g, '/'),
+}));
+
+// Mock AudioEncoder module
+jest.mock('../../src/recording/AudioEncoder', () => ({
+	encodeAudioBuffer: jest
+		.fn()
+		.mockResolvedValue(new Blob(['encoded'], { type: 'audio/mp4' })),
+	isOfflineEncodingSupported: jest.fn((format: string) => {
+		return ['webm', 'ogg', 'mp4', 'm4a', 'aac', 'flac', 'mp3'].includes(
+			format,
+		);
+	}),
+}));
+
+// Mock WavEncoder
+jest.mock('../../src/recording/WavEncoder', () => ({
+	bufferToWave: jest
+		.fn()
+		.mockReturnValue(new Blob(['wav-data'], { type: 'audio/wav' })),
+}));
+
+// Mock AudioBuffer shape used across tests
+const createMockAudioBuffer = (
+	overrides?: Partial<{
+		duration: number;
+		length: number;
+		sampleRate: number;
+		numberOfChannels: number;
+	}>,
+) => ({
+	duration: overrides?.duration ?? 1,
+	length: overrides?.length ?? 44100,
+	sampleRate: overrides?.sampleRate ?? 44100,
+	numberOfChannels: overrides?.numberOfChannels ?? 1,
+	getChannelData: jest.fn().mockReturnValue(new Float32Array(44100)),
+});
+
+// Mock AudioContext
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- required for global mock
+(global as any).AudioContext = jest.fn().mockImplementation(() => ({
+	decodeAudioData: jest.fn().mockResolvedValue(createMockAudioBuffer()),
+	createBufferSource: jest.fn().mockImplementation(() => ({
+		connect: jest.fn(),
+		start: jest.fn(),
+		buffer: null,
+	})),
+	destination: {},
+	close: jest.fn().mockResolvedValue(undefined),
+	sampleRate: 44100,
+}));
+
+// Mock OfflineAudioContext
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- required for global mock
+(global as any).OfflineAudioContext = jest.fn().mockImplementation(() => ({
+	decodeAudioData: jest.fn().mockResolvedValue(createMockAudioBuffer()),
+	createBufferSource: jest.fn().mockImplementation(() => ({
+		connect: jest.fn(),
+		start: jest.fn(),
+		buffer: null,
+	})),
+	startRendering: jest.fn().mockResolvedValue(createMockAudioBuffer()),
+	destination: {},
+}));
+
+// Polyfill Blob.prototype.arrayBuffer for jsdom
+if (!Blob.prototype.arrayBuffer) {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test polyfill for jsdom
+	(Blob.prototype as any).arrayBuffer = function (): Promise<ArrayBuffer> {
+		return Promise.resolve(new ArrayBuffer(0));
+	};
+}
+
+// Mock MediaRecorder.isTypeSupported — default: support webm and ogg
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- required for global mock
+(global as any).MediaRecorder = {
+	isTypeSupported: jest.fn((mime: string) => {
+		return mime === 'audio/webm' || mime === 'audio/ogg';
+	}),
+};
+
+import {
+	resolveRecorderFormat,
+	isOfflineOnlyFormat,
+	getRecorderMediaType,
+	convertBlobToWav,
+	convertBlobToFormat,
+	buildOutputBlob,
+	mergeAudioTracks,
+} from '../../src/recording/AudioFormatConverter';
+
+describe('AudioFormatConverter', () => {
+	beforeEach(() => {
+		jest.clearAllMocks();
+
+		// Reset MediaRecorder.isTypeSupported to default
+		(MediaRecorder.isTypeSupported as jest.Mock).mockImplementation(
+			(mime: string) => mime === 'audio/webm' || mime === 'audio/ogg',
+		);
+	});
+
+	// ---------------------------------------------------------------
+	// resolveRecorderFormat
+	// ---------------------------------------------------------------
+	describe('resolveRecorderFormat', () => {
+		it('should return native format when MediaRecorder supports it', () => {
+			const settings: AudioRecorderSettings = {
+				...DEFAULT_SETTINGS,
+				recordingFormat: 'webm',
+			};
+			const result = resolveRecorderFormat(settings);
+			expect(result).toEqual({
+				recorderFormat: 'webm',
+				mimeType: 'audio/webm',
+			});
+		});
+
+		it('should return native format for OGG when supported', () => {
+			const settings: AudioRecorderSettings = {
+				...DEFAULT_SETTINGS,
+				recordingFormat: 'ogg',
+			};
+			const result = resolveRecorderFormat(settings);
+			expect(result).toEqual({
+				recorderFormat: 'ogg',
+				mimeType: 'audio/ogg',
+			});
+		});
+
+		it('should fall back to WebM when native format is not supported', () => {
+			const settings: AudioRecorderSettings = {
+				...DEFAULT_SETTINGS,
+				recordingFormat: 'mp4',
+			};
+			// mp4 not supported natively, but webm is
+			(MediaRecorder.isTypeSupported as jest.Mock).mockImplementation(
+				(mime: string) => mime === 'audio/webm',
+			);
+			const result = resolveRecorderFormat(settings);
+			expect(result).toEqual({
+				recorderFormat: 'webm',
+				mimeType: 'audio/webm',
+			});
+		});
+
+		it('should fall back to OGG when WebM is not supported', () => {
+			const settings: AudioRecorderSettings = {
+				...DEFAULT_SETTINGS,
+				recordingFormat: 'mp4',
+			};
+			(MediaRecorder.isTypeSupported as jest.Mock).mockImplementation(
+				(mime: string) => mime === 'audio/ogg',
+			);
+			const result = resolveRecorderFormat(settings);
+			expect(result).toEqual({
+				recorderFormat: 'ogg',
+				mimeType: 'audio/ogg',
+			});
+		});
+
+		it('should always use intermediate format for WAV (never native)', () => {
+			const settings: AudioRecorderSettings = {
+				...DEFAULT_SETTINGS,
+				recordingFormat: 'wav',
+			};
+			const result = resolveRecorderFormat(settings);
+			// WAV always falls through to intermediate compressed format
+			expect(result.recorderFormat).toBe('webm');
+			expect(result.mimeType).toBe('audio/webm');
+		});
+
+		it('should throw when neither WebM nor OGG is supported', () => {
+			const settings: AudioRecorderSettings = {
+				...DEFAULT_SETTINGS,
+				recordingFormat: 'mp4',
+			};
+			(MediaRecorder.isTypeSupported as jest.Mock).mockReturnValue(false);
+			expect(() => resolveRecorderFormat(settings)).toThrow(
+				/neither WebM nor OGG is supported/,
+			);
+		});
+
+		it('should treat format case-insensitively', () => {
+			const settings: AudioRecorderSettings = {
+				...DEFAULT_SETTINGS,
+				recordingFormat: 'WEBM',
+			};
+			const result = resolveRecorderFormat(settings);
+			expect(result).toEqual({
+				recorderFormat: 'webm',
+				mimeType: 'audio/webm',
+			});
+		});
+	});
+
+	// ---------------------------------------------------------------
+	// isOfflineOnlyFormat
+	// ---------------------------------------------------------------
+	describe('isOfflineOnlyFormat', () => {
+		it('should return true when format differs from recorder format and supports offline encoding', () => {
+			// mp4 is offline-encodable and recorder uses webm
+			expect(isOfflineOnlyFormat('mp4', 'webm')).toBe(true);
+		});
+
+		it('should return true for mp3 with webm recorder', () => {
+			expect(isOfflineOnlyFormat('mp3', 'webm')).toBe(true);
+		});
+
+		it('should return true for flac with ogg recorder', () => {
+			expect(isOfflineOnlyFormat('flac', 'ogg')).toBe(true);
+		});
+
+		it('should return true for aac with webm recorder', () => {
+			expect(isOfflineOnlyFormat('aac', 'webm')).toBe(true);
+		});
+
+		it('should return true for m4a with webm recorder', () => {
+			expect(isOfflineOnlyFormat('m4a', 'webm')).toBe(true);
+		});
+
+		it('should return false when format matches recorder format', () => {
+			expect(isOfflineOnlyFormat('webm', 'webm')).toBe(false);
+		});
+
+		it('should return false for wav (always handled separately)', () => {
+			expect(isOfflineOnlyFormat('wav', 'webm')).toBe(false);
+		});
+
+		it('should return false when format is not offline-encoding-supported', () => {
+			const { isOfflineEncodingSupported } = jest.requireMock(
+				'../../src/recording/AudioEncoder',
+			);
+			isOfflineEncodingSupported.mockReturnValueOnce(false);
+			expect(isOfflineOnlyFormat('unknownformat', 'webm')).toBe(false);
+		});
+	});
+
+	// ---------------------------------------------------------------
+	// getRecorderMediaType
+	// ---------------------------------------------------------------
+	describe('getRecorderMediaType', () => {
+		it('should return correct MIME type for webm', () => {
+			expect(getRecorderMediaType('webm')).toBe('audio/webm');
+		});
+
+		it('should return correct MIME type for ogg', () => {
+			expect(getRecorderMediaType('ogg')).toBe('audio/ogg');
+		});
+
+		it('should return correct MIME type for mp4', () => {
+			expect(getRecorderMediaType('mp4')).toBe('audio/mp4');
+		});
+
+		it('should return correct MIME type for wav', () => {
+			expect(getRecorderMediaType('wav')).toBe('audio/wav');
+		});
+
+		it('should handle arbitrary format string', () => {
+			expect(getRecorderMediaType('flac')).toBe('audio/flac');
+		});
+	});
+
+	// ---------------------------------------------------------------
+	// convertBlobToWav
+	// ---------------------------------------------------------------
+	describe('convertBlobToWav', () => {
+		it('should decode audio blob and return WAV blob', async () => {
+			const inputBlob = new Blob(['audio-data'], { type: 'audio/webm' });
+			const result = await convertBlobToWav(inputBlob);
+
+			expect(result).toBeInstanceOf(Blob);
+			expect(result.type).toBe('audio/wav');
+		});
+
+		it('should create an AudioContext and close it after conversion', async () => {
+			const inputBlob = new Blob(['audio-data'], { type: 'audio/webm' });
+			await convertBlobToWav(inputBlob);
+
+			expect(AudioContext).toHaveBeenCalledTimes(1);
+			// Verify AudioContext.close() was called
+			const ctxInstance = (AudioContext as unknown as jest.Mock).mock
+				.results[0].value;
+			expect(ctxInstance.close).toHaveBeenCalledTimes(1);
+		});
+
+		it('should call bufferToWave with decoded buffer', async () => {
+			const { bufferToWave } = jest.requireMock(
+				'../../src/recording/WavEncoder',
+			);
+			const inputBlob = new Blob(['audio-data'], { type: 'audio/webm' });
+			await convertBlobToWav(inputBlob);
+
+			expect(bufferToWave).toHaveBeenCalledTimes(1);
+			expect(bufferToWave).toHaveBeenCalledWith(
+				expect.objectContaining({ length: 44100 }),
+				44100,
+			);
+		});
+
+		it('should close AudioContext even when decodeAudioData throws', async () => {
+			const decodeError = new Error('decode failed');
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any -- required for mock override
+			(AudioContext as any).mockImplementationOnce(() => ({
+				decodeAudioData: jest.fn().mockRejectedValue(decodeError),
+				close: jest.fn().mockResolvedValue(undefined),
+			}));
+
+			const inputBlob = new Blob(['audio-data'], { type: 'audio/webm' });
+			await expect(convertBlobToWav(inputBlob)).rejects.toThrow(
+				'decode failed',
+			);
+
+			// Verify close was still called (finally block)
+			const ctxInstance = (AudioContext as unknown as jest.Mock).mock
+				.results[0].value;
+			expect(ctxInstance.close).toHaveBeenCalledTimes(1);
+		});
+	});
+
+	// ---------------------------------------------------------------
+	// convertBlobToFormat
+	// ---------------------------------------------------------------
+	describe('convertBlobToFormat', () => {
+		it('should decode blob and re-encode to target format', async () => {
+			const { encodeAudioBuffer } = jest.requireMock(
+				'../../src/recording/AudioEncoder',
+			);
+			const blob = new Blob(['test'], { type: 'audio/webm' });
+
+			const result = await convertBlobToFormat(blob, 'mp4', 128000);
+
+			expect(result).toBeInstanceOf(Blob);
+			expect(encodeAudioBuffer).toHaveBeenCalledTimes(1);
+			expect(encodeAudioBuffer).toHaveBeenCalledWith(
+				expect.objectContaining({ sampleRate: 44100 }),
+				{ format: 'mp4', bitrate: 128000 },
+				undefined,
+			);
+		});
+
+		it('should probe native sample rate with AudioContext first', async () => {
+			const blob = new Blob(['test'], { type: 'audio/webm' });
+			await convertBlobToFormat(blob, 'mp4', 128000);
+
+			// First AudioContext call is the probe context
+			expect(AudioContext).toHaveBeenCalledTimes(1);
+			const probeCtx = (AudioContext as unknown as jest.Mock).mock
+				.results[0].value;
+			expect(probeCtx.decodeAudioData).toHaveBeenCalledTimes(1);
+			expect(probeCtx.close).toHaveBeenCalledTimes(1);
+		});
+
+		it('should create OfflineAudioContext with native sample rate', async () => {
+			const blob = new Blob(['test'], { type: 'audio/webm' });
+			await convertBlobToFormat(blob, 'flac', 192000);
+
+			expect(OfflineAudioContext).toHaveBeenCalledWith(1, 44100, 44100);
+		});
+
+		it('should forward onProgress callback to encodeAudioBuffer', async () => {
+			const progressFn = jest.fn();
+			const blob = new Blob(['test'], { type: 'audio/webm' });
+			await convertBlobToFormat(blob, 'mp4', 128000, progressFn);
+
+			const { encodeAudioBuffer } = jest.requireMock(
+				'../../src/recording/AudioEncoder',
+			);
+			expect(encodeAudioBuffer).toHaveBeenCalledWith(
+				expect.anything(),
+				{ format: 'mp4', bitrate: 128000 },
+				progressFn,
+			);
+		});
+
+		it('should pass undefined when onProgress is not provided', async () => {
+			const blob = new Blob(['test'], { type: 'audio/webm' });
+			await convertBlobToFormat(blob, 'mp3', 320000);
+
+			const { encodeAudioBuffer } = jest.requireMock(
+				'../../src/recording/AudioEncoder',
+			);
+			expect(encodeAudioBuffer).toHaveBeenCalledWith(
+				expect.anything(),
+				{ format: 'mp3', bitrate: 320000 },
+				undefined,
+			);
+		});
+
+		it('should handle different target formats', async () => {
+			const { encodeAudioBuffer } = jest.requireMock(
+				'../../src/recording/AudioEncoder',
+			);
+			const blob = new Blob(['test'], { type: 'audio/webm' });
+
+			await convertBlobToFormat(blob, 'aac', 256000);
+			expect(encodeAudioBuffer).toHaveBeenCalledWith(
+				expect.anything(),
+				{ format: 'aac', bitrate: 256000 },
+				undefined,
+			);
+		});
+	});
+
+	// ---------------------------------------------------------------
+	// buildOutputBlob
+	// ---------------------------------------------------------------
+	describe('buildOutputBlob', () => {
+		it('should return raw blob for non-WAV format', async () => {
+			const chunks = [
+				new Blob(['chunk1'], { type: 'audio/webm' }),
+				new Blob(['chunk2'], { type: 'audio/webm' }),
+			];
+			const result = await buildOutputBlob(chunks, 'audio/webm', 'webm');
+			expect(result.type).toBe('audio/webm');
+		});
+
+		it('should combine multiple chunks into a single blob', async () => {
+			const chunks = [
+				new Blob(['chunk1'], { type: 'audio/ogg' }),
+				new Blob(['chunk2'], { type: 'audio/ogg' }),
+			];
+			const result = await buildOutputBlob(chunks, 'audio/ogg', 'ogg');
+			// Blob should have the combined size
+			expect(result.size).toBe(chunks[0].size + chunks[1].size);
+		});
+
+		it('should convert to WAV when recording format is wav', async () => {
+			const { bufferToWave } = jest.requireMock(
+				'../../src/recording/WavEncoder',
+			);
+			const chunks = [new Blob(['audio-data'], { type: 'audio/webm' })];
+			const result = await buildOutputBlob(chunks, 'audio/webm', 'wav');
+
+			expect(bufferToWave).toHaveBeenCalledTimes(1);
+			expect(result.type).toBe('audio/wav');
+		});
+
+		it('should not convert to WAV for mp4 format', async () => {
+			const { bufferToWave } = jest.requireMock(
+				'../../src/recording/WavEncoder',
+			);
+			const chunks = [new Blob(['data'], { type: 'audio/mp4' })];
+			await buildOutputBlob(chunks, 'audio/mp4', 'mp4');
+			expect(bufferToWave).not.toHaveBeenCalled();
+		});
+
+		it('should handle empty chunks array for non-WAV', async () => {
+			const result = await buildOutputBlob([], 'audio/webm', 'webm');
+			expect(result.size).toBe(0);
+			expect(result.type).toBe('audio/webm');
+		});
+	});
+
+	// ---------------------------------------------------------------
+	// mergeAudioTracks
+	// ---------------------------------------------------------------
+	describe('mergeAudioTracks', () => {
+		const createMockTarget = (name: string): RecordingTarget => ({
+			fileBaseName: name,
+			sourceName: name,
+			bufferedChunks: [],
+			bufferedBytes: 0,
+			segmentIndex: 0,
+			segmentPaths: [],
+			pendingWrite: Promise.resolve(),
+			pcmBuffers: [],
+			pcmBufferedBytes: 0,
+			pcmChannels: 1,
+			pcmSampleRate: 44100,
+		});
+
+		it('should merge multiple tracks using buildTrackBlob', async () => {
+			const targets = [
+				createMockTarget('track1'),
+				createMockTarget('track2'),
+			];
+			const buildPcmTrackWavBlob = jest.fn();
+			const buildTrackBlob = jest
+				.fn()
+				.mockResolvedValue(new Blob(['audio'], { type: 'audio/webm' }));
+
+			const settings: AudioRecorderSettings = {
+				...DEFAULT_SETTINGS,
+				recordingFormat: 'mp4',
+				bitrate: 128000,
+			};
+
+			const result = await mergeAudioTracks(
+				targets,
+				settings,
+				false,
+				buildPcmTrackWavBlob,
+				buildTrackBlob,
+			);
+
+			expect(buildTrackBlob).toHaveBeenCalledTimes(2);
+			expect(buildPcmTrackWavBlob).not.toHaveBeenCalled();
+			expect(result).toBeInstanceOf(Blob);
+		});
+
+		it('should merge multiple tracks using buildPcmTrackWavBlob for WAV PCM recordings', async () => {
+			const targets = [
+				createMockTarget('track1'),
+				createMockTarget('track2'),
+			];
+			const buildPcmTrackWavBlob = jest
+				.fn()
+				.mockResolvedValue(
+					new Blob(['pcm-wav'], { type: 'audio/wav' }),
+				);
+			const buildTrackBlob = jest.fn();
+
+			const settings: AudioRecorderSettings = {
+				...DEFAULT_SETTINGS,
+				recordingFormat: 'wav',
+				bitrate: 128000,
+			};
+
+			await mergeAudioTracks(
+				targets,
+				settings,
+				true,
+				buildPcmTrackWavBlob,
+				buildTrackBlob,
+			);
+
+			expect(buildPcmTrackWavBlob).toHaveBeenCalledTimes(2);
+			expect(buildTrackBlob).not.toHaveBeenCalled();
+		});
+
+		it('should encode merged result for offline-encodable formats', async () => {
+			const { encodeAudioBuffer } = jest.requireMock(
+				'../../src/recording/AudioEncoder',
+			);
+			const targets = [createMockTarget('track1')];
+			const buildTrackBlob = jest
+				.fn()
+				.mockResolvedValue(new Blob(['audio'], { type: 'audio/webm' }));
+
+			const settings: AudioRecorderSettings = {
+				...DEFAULT_SETTINGS,
+				recordingFormat: 'mp4',
+				bitrate: 128000,
+			};
+
+			await mergeAudioTracks(
+				targets,
+				settings,
+				false,
+				jest.fn(),
+				buildTrackBlob,
+			);
+
+			expect(encodeAudioBuffer).toHaveBeenCalledTimes(1);
+			expect(encodeAudioBuffer).toHaveBeenCalledWith(
+				expect.objectContaining({ sampleRate: 44100 }),
+				{ format: 'mp4', bitrate: 128000 },
+				expect.any(Function),
+			);
+		});
+
+		it('should fall back to WAV when format is wav', async () => {
+			const { bufferToWave } = jest.requireMock(
+				'../../src/recording/WavEncoder',
+			);
+			const { encodeAudioBuffer } = jest.requireMock(
+				'../../src/recording/AudioEncoder',
+			);
+			const targets = [createMockTarget('track1')];
+			const buildTrackBlob = jest
+				.fn()
+				.mockResolvedValue(new Blob(['audio'], { type: 'audio/webm' }));
+
+			const settings: AudioRecorderSettings = {
+				...DEFAULT_SETTINGS,
+				recordingFormat: 'wav',
+				bitrate: 128000,
+			};
+
+			const result = await mergeAudioTracks(
+				targets,
+				settings,
+				false,
+				jest.fn(),
+				buildTrackBlob,
+			);
+
+			expect(bufferToWave).toHaveBeenCalledTimes(1);
+			expect(encodeAudioBuffer).not.toHaveBeenCalled();
+			expect(result.type).toBe('audio/wav');
+		});
+
+		it('should throw when no audio data is recorded (all blobs null)', async () => {
+			const targets = [createMockTarget('track1')];
+			const buildTrackBlob = jest.fn().mockResolvedValue(null);
+
+			const settings: AudioRecorderSettings = {
+				...DEFAULT_SETTINGS,
+				recordingFormat: 'webm',
+			};
+
+			await expect(
+				mergeAudioTracks(
+					targets,
+					settings,
+					false,
+					jest.fn(),
+					buildTrackBlob,
+				),
+			).rejects.toThrow('No audio data recorded');
+		});
+
+		it('should skip null blobs and merge remaining valid tracks', async () => {
+			const targets = [
+				createMockTarget('track1'),
+				createMockTarget('track2'),
+				createMockTarget('track3'),
+			];
+			// First and third return blobs, second returns null
+			const buildTrackBlob = jest
+				.fn()
+				.mockResolvedValueOnce(
+					new Blob(['audio1'], { type: 'audio/webm' }),
+				)
+				.mockResolvedValueOnce(null)
+				.mockResolvedValueOnce(
+					new Blob(['audio3'], { type: 'audio/webm' }),
+				);
+
+			const settings: AudioRecorderSettings = {
+				...DEFAULT_SETTINGS,
+				recordingFormat: 'mp4',
+				bitrate: 128000,
+			};
+
+			const result = await mergeAudioTracks(
+				targets,
+				settings,
+				false,
+				jest.fn(),
+				buildTrackBlob,
+			);
+
+			expect(result).toBeInstanceOf(Blob);
+			// 2 valid buffers decoded, null one skipped
+			const ctxInstance = (AudioContext as unknown as jest.Mock).mock
+				.results[0].value;
+			expect(ctxInstance.decodeAudioData).toHaveBeenCalledTimes(2);
+		});
+
+		it('should create OfflineAudioContext with stereo channels and longest duration', async () => {
+			const targets = [createMockTarget('track1')];
+			const buildTrackBlob = jest
+				.fn()
+				.mockResolvedValue(new Blob(['audio'], { type: 'audio/webm' }));
+
+			const settings: AudioRecorderSettings = {
+				...DEFAULT_SETTINGS,
+				recordingFormat: 'mp4',
+				bitrate: 128000,
+			};
+
+			await mergeAudioTracks(
+				targets,
+				settings,
+				false,
+				jest.fn(),
+				buildTrackBlob,
+			);
+
+			// OfflineAudioContext(channels=2, length=sampleRate*duration, sampleRate)
+			expect(OfflineAudioContext).toHaveBeenCalledWith(
+				2,
+				44100 * 1, // sampleRate * duration(1)
+				44100,
+			);
+		});
+
+		it('should forward progress callback with adjusted percentage', async () => {
+			const { encodeAudioBuffer } = jest.requireMock(
+				'../../src/recording/AudioEncoder',
+			);
+
+			// Capture the progress callback passed to encodeAudioBuffer
+			let capturedProgressFn: ((percent: number) => void) | undefined;
+			encodeAudioBuffer.mockImplementation(
+				(
+					_buffer: unknown,
+					_options: unknown,
+					onProgress?: (percent: number) => void,
+				) => {
+					capturedProgressFn = onProgress;
+					return Promise.resolve(
+						new Blob(['encoded'], { type: 'audio/mp4' }),
+					);
+				},
+			);
+
+			const targets = [createMockTarget('track1')];
+			const buildTrackBlob = jest
+				.fn()
+				.mockResolvedValue(new Blob(['audio'], { type: 'audio/webm' }));
+			const onProgress = jest.fn();
+
+			const settings: AudioRecorderSettings = {
+				...DEFAULT_SETTINGS,
+				recordingFormat: 'mp4',
+				bitrate: 128000,
+			};
+
+			await mergeAudioTracks(
+				targets,
+				settings,
+				false,
+				jest.fn(),
+				buildTrackBlob,
+				onProgress,
+			);
+
+			// Simulate encoding progress
+			expect(capturedProgressFn).toBeDefined();
+			capturedProgressFn!(50);
+			// 40 + Math.round(50 * 0.2) = 40 + 10 = 50
+			expect(onProgress).toHaveBeenCalledWith(50, 'Encoding audio...');
+
+			capturedProgressFn!(100);
+			// 40 + Math.round(100 * 0.2) = 40 + 20 = 60
+			expect(onProgress).toHaveBeenCalledWith(60, 'Encoding audio...');
+		});
+
+		it('should close AudioContext after merging', async () => {
+			const targets = [createMockTarget('track1')];
+			const buildTrackBlob = jest
+				.fn()
+				.mockResolvedValue(new Blob(['audio'], { type: 'audio/webm' }));
+
+			const settings: AudioRecorderSettings = {
+				...DEFAULT_SETTINGS,
+				recordingFormat: 'wav',
+			};
+
+			await mergeAudioTracks(
+				targets,
+				settings,
+				false,
+				jest.fn(),
+				buildTrackBlob,
+			);
+
+			const ctxInstance = (AudioContext as unknown as jest.Mock).mock
+				.results[0].value;
+			expect(ctxInstance.close).toHaveBeenCalledTimes(1);
+		});
+
+		it('should use bufferToWave when format is not offline-encodable and not wav-like', async () => {
+			const { isOfflineEncodingSupported } = jest.requireMock(
+				'../../src/recording/AudioEncoder',
+			);
+			const { bufferToWave } = jest.requireMock(
+				'../../src/recording/WavEncoder',
+			);
+
+			// Make the target format NOT offline-encodable
+			isOfflineEncodingSupported.mockReturnValue(false);
+
+			const targets = [createMockTarget('track1')];
+			const buildTrackBlob = jest
+				.fn()
+				.mockResolvedValue(new Blob(['audio'], { type: 'audio/webm' }));
+
+			const settings: AudioRecorderSettings = {
+				...DEFAULT_SETTINGS,
+				recordingFormat: 'someformat',
+				bitrate: 128000,
+			};
+
+			await mergeAudioTracks(
+				targets,
+				settings,
+				false,
+				jest.fn(),
+				buildTrackBlob,
+			);
+
+			// Falls back to bufferToWave since format is not wav and not offline-encodable
+			expect(bufferToWave).toHaveBeenCalledTimes(1);
+		});
+	});
+});

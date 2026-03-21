@@ -41,3 +41,20 @@ export interface InsertionContext {
 	/** Cursor character offset at recording start. */
 	ch: number;
 }
+
+/**
+ * State for a single recording track (audio source).
+ */
+export type RecordingTarget = {
+	fileBaseName: string;
+	sourceName: string;
+	bufferedChunks: Blob[];
+	bufferedBytes: number;
+	segmentIndex: number;
+	segmentPaths: string[];
+	pendingWrite: Promise<void>;
+	pcmBuffers: ArrayBuffer[];
+	pcmBufferedBytes: number;
+	pcmChannels: number;
+	pcmSampleRate: number;
+};

@@ -465,7 +465,7 @@ describe('RecordingManager', () => {
 			expect(mockApp.vault.createBinary).toHaveBeenCalled();
 		});
 
-		it('should write multiple chunks as separate segment files and clean up after finalization', async () => {
+		it('should buffer multiple chunks into a single segment file and clean up after finalization', async () => {
 			const { Platform } = jest.requireMock('obsidian');
 			Platform.isMobile = false;
 			Platform.isMobileApp = false;
@@ -510,7 +510,7 @@ describe('RecordingManager', () => {
 
 			await manager.startRecording();
 
-			// Send 3 chunks
+			// Send 3 small chunks — all buffered in memory, flushed as 1 segment on stop
 			for (let i = 0; i < 3; i++) {
 				const chunk = new Blob([new Uint8Array([1, 2, 3])], {
 					type: 'audio/webm',
@@ -523,21 +523,13 @@ describe('RecordingManager', () => {
 
 			await manager.stopRecording();
 
-			// 3 segment files + 1 final file
+			// 1 combined segment file + 1 final file (instead of 3 + 1 before buffering)
 			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
 				expect.stringMatching(/-part1\.webm\.tmp$/),
 				expect.any(ArrayBuffer),
 			);
-			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
-				expect.stringMatching(/-part2\.webm\.tmp$/),
-				expect.any(ArrayBuffer),
-			);
-			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
-				expect.stringMatching(/-part3\.webm\.tmp$/),
-				expect.any(ArrayBuffer),
-			);
-			// Segments cleaned up
-			expect(mockApp.vault.adapter.remove).toHaveBeenCalledTimes(3);
+			// Only 1 segment to clean up
+			expect(mockApp.vault.adapter.remove).toHaveBeenCalledTimes(1);
 		});
 
 		it('should save multi-track WAV via PCM capture and merge', async () => {
