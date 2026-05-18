@@ -35,7 +35,7 @@ const RETRY_DELAY_MS = 500;
  * Delays execution for specified milliseconds.
  */
 function delay(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
+	return new Promise((resolve) => activeWindow.setTimeout(resolve, ms));
 }
 
 /**
