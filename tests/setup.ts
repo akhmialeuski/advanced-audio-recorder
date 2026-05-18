@@ -13,3 +13,18 @@ if (typeof globalThis.TextEncoder === 'undefined') {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- globalThis type augmentation requires any
 	(globalThis as any).TextEncoder = TextEncoder;
 }
+
+// Obsidian injects activeWindow/activeDocument as globals at runtime; jsdom does not.
+type ObsidianGlobals = {
+	activeWindow?: Window;
+	activeDocument?: Document;
+};
+
+if (typeof (globalThis as ObsidianGlobals).activeWindow === 'undefined') {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- globalThis type augmentation requires any
+	(globalThis as any).activeWindow = globalThis.window;
+}
+if (typeof (globalThis as ObsidianGlobals).activeDocument === 'undefined') {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- globalThis type augmentation requires any
+	(globalThis as any).activeDocument = globalThis.document;
+}

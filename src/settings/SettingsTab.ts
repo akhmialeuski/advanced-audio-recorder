@@ -261,14 +261,12 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			.addText((text) => {
 				const folderOptions = this.getFolderOptions();
 				text.inputEl.setAttribute('list', 'folder-options');
-				const datalist = document.createElement('datalist');
-				datalist.id = 'folder-options';
-				folderOptions.forEach((folder) => {
-					const option = document.createElement('option');
-					option.value = folder;
-					datalist.appendChild(option);
+				const datalist = text.inputEl.createEl('datalist', {
+					attr: { id: 'folder-options' },
 				});
-				text.inputEl.appendChild(datalist);
+				folderOptions.forEach((folder) => {
+					datalist.createEl('option', { attr: { value: folder } });
+				});
 				text.setValue(this.plugin.settings.saveFolder);
 				text.onChange(async (value) => {
 					this.plugin.settings.saveFolder = value;
@@ -552,7 +550,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 
 			this.testRecorder.start();
 
-			await new Promise<void>((resolve) => setTimeout(resolve, 5000));
+			await new Promise<void>((resolve) =>
+				activeWindow.setTimeout(resolve, 5000),
+			);
 
 			if (this.testRecorder.state !== 'inactive') {
 				this.testRecorder.stop();

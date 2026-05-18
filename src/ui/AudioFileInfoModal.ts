@@ -57,7 +57,7 @@ export class AudioFileInfoModal extends Modal {
 			void navigator.clipboard.writeText(markdownOutput).then(() => {
 				copyButton.setText('Copied!');
 				copyButton.addClass('aar-audio-info-copied');
-				setTimeout(() => {
+				activeWindow.setTimeout(() => {
 					copyButton.setText('Copy as Markdown');
 					copyButton.removeClass('aar-audio-info-copied');
 				}, COPY_CONFIRM_MS);

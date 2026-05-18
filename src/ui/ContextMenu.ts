@@ -69,7 +69,7 @@ export class ContextMenu {
 	 */
 	private registerPlayerMenu(): void {
 		this.plugin.registerDomEvent(
-			document,
+			activeDocument,
 			'contextmenu',
 			(event: MouseEvent) => {
 				const target = event.target as HTMLElement;
