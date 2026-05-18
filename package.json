@@ -38,7 +38,6 @@
   "devDependencies": {
     "@types/jest": "^29.5.0",
     "@types/node": "^18.0.0",
-    "builtin-modules": "3.3.0",
     "esbuild": "0.17.3",
     "eslint": "^9.39.1",
     "eslint-config-prettier": "^9.1.2",
