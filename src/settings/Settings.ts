@@ -282,17 +282,19 @@ export function validateSettings(settings: AudioRecorderSettings): void {
 		);
 	}
 
-	if (settings.autoSplitEnabled) {
-		if (
-			!Number.isInteger(settings.splitChunkMinutes) ||
-			settings.splitChunkMinutes < MIN_SPLIT_CHUNK_MINUTES ||
-			settings.splitChunkMinutes > MAX_SPLIT_CHUNK_MINUTES
-		) {
-			throw new SettingsValidationError(
-				'splitChunkMinutes',
-				`Part duration must be an integer between ${String(MIN_SPLIT_CHUNK_MINUTES)} and ${String(MAX_SPLIT_CHUNK_MINUTES)} minutes.`,
-			);
-		}
+	// Validated regardless of autoSplitEnabled: the value is also the
+	// default part duration for manual splitting. Runtime paths still
+	// clamp/sanitize defensively (clampSplitMinutes, sanitizePartSuffix)
+	// because validateSettings is not on the production load path.
+	if (
+		!Number.isInteger(settings.splitChunkMinutes) ||
+		settings.splitChunkMinutes < MIN_SPLIT_CHUNK_MINUTES ||
+		settings.splitChunkMinutes > MAX_SPLIT_CHUNK_MINUTES
+	) {
+		throw new SettingsValidationError(
+			'splitChunkMinutes',
+			`Part duration must be an integer between ${String(MIN_SPLIT_CHUNK_MINUTES)} and ${String(MAX_SPLIT_CHUNK_MINUTES)} minutes.`,
+		);
 	}
 
 	if (settings.enableMultiTrack) {

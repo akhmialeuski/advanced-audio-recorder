@@ -345,7 +345,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Split recordings automatically')
 			.setDesc(
-				'Save the recording as separate part files of fixed duration instead of one long file. Not applied to merged multi-track recordings.',
+				'Save the recording as separate part files of fixed duration instead of one long file. Desktop only; not applied to merged multi-track recordings.',
 			)
 			.addToggle((toggle) =>
 				toggle
@@ -386,14 +386,23 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					.setPlaceholder(DEFAULT_SPLIT_PART_SUFFIX)
 					.setValue(this.plugin.settings.splitPartSuffix)
 					.onChange(async (value) => {
-						// Persist only valid suffixes; the red border tells
-						// the user the last valid value is still in effect
-						const valid = SPLIT_PART_SUFFIX_PATTERN.test(value);
+						// Mirror the manual split dialog: surrounding
+						// whitespace is ignored and an empty field means
+						// the default suffix. Only valid suffixes are
+						// persisted; the red border tells the user the
+						// last valid value is still in effect
+						const trimmed = value.trim();
+						const valid =
+							trimmed === '' ||
+							SPLIT_PART_SUFFIX_PATTERN.test(trimmed);
 						text.inputEl.toggleClass('aar-input-invalid', !valid);
 						if (!valid) {
 							return;
 						}
-						this.plugin.settings.splitPartSuffix = value;
+						this.plugin.settings.splitPartSuffix =
+							trimmed === ''
+								? DEFAULT_SPLIT_PART_SUFFIX
+								: trimmed;
 						await this.plugin.saveSettings();
 					}),
 			);

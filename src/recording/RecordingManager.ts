@@ -23,6 +23,7 @@ import {
 	DESKTOP_FLUSH_THRESHOLD_BYTES,
 	DEFAULT_SPLIT_CHUNK_MINUTES,
 	DEFAULT_SPLIT_PART_SUFFIX,
+	MS_PER_MINUTE,
 } from '../constants';
 import { DebugLogger } from '../utils/DebugLogger';
 import {
@@ -59,9 +60,6 @@ import {
 	totalByteLength,
 } from './AudioSplitter';
 import { captureInsertionContext, insertFileLinks } from './NoteInserter';
-
-/** Milliseconds in one minute. */
-const MS_PER_MINUTE = 60_000;
 
 /**
  * Manages the audio recording lifecycle.
@@ -242,6 +240,9 @@ export class RecordingManager {
 		);
 		this.sessionSplitEnabled =
 			this.settings.autoSplitEnabled && !this.isMobileRecording;
+		if (this.settings.autoSplitEnabled && this.isMobileRecording) {
+			new Notice('Auto-split is not available in the mobile app.');
+		}
 
 		if (
 			this.sessionSplitEnabled &&
@@ -569,7 +570,7 @@ export class RecordingManager {
 		if (this.settings.outputMode === 'single') {
 			if (this.chunkTargets.length === 1) {
 				const target = this.chunkTargets[0];
-				const paths = await this.finalizeTrackFiles(target, timestamp);
+				const paths = await this.finalizeTrackFiles(target);
 				fileLinks.push(...target.partPaths, ...paths);
 			} else {
 				if (!this.isWavPcmRecording) {
@@ -646,7 +647,7 @@ export class RecordingManager {
 		} else {
 			for (let i = 0; i < this.chunkTargets.length; i++) {
 				const target = this.chunkTargets[i];
-				const paths = await this.finalizeTrackFiles(target, timestamp);
+				const paths = await this.finalizeTrackFiles(target);
 				fileLinks.push(...target.partPaths, ...paths);
 			}
 		}
@@ -1018,13 +1019,16 @@ export class RecordingManager {
 			this.app,
 		);
 		if (failedPaths.length > 0) {
-			await rollbackFinalFile(
-				filePath,
-				'Failed to rollback assembled WAV file',
-				this.app,
+			// Keep the assembled file: it already contains all captured
+			// audio, while segments that were removed exist nowhere else.
+			// Rolling it back would lose their audio permanently and leave
+			// part bookkeeping pointing at missing segment files.
+			console.error(
+				`${PLUGIN_LOG_PREFIX} Temporary segment files could not be removed:`,
+				failedPaths,
 			);
-			throw new Error(
-				`Temporary recording artifacts were kept for recovery: ${failedPaths.join(', ')}`,
+			new Notice(
+				`Recording saved, but temporary files could not be removed: ${failedPaths.join(', ')}`,
 			);
 		}
 	}
@@ -1133,31 +1137,29 @@ export class RecordingManager {
 	/**
 	 * Builds the final track file name, appending the part suffix when
 	 * the session was auto-split (the residual after the last rotation
-	 * becomes the next part number).
+	 * becomes the next part number). Uses the base name snapshotted at
+	 * session start so the residual matches its sibling part files even
+	 * when the file prefix setting changed mid-recording.
 	 * @param target - Recording target
-	 * @param timestamp - Recording timestamp string
 	 * @param extension - File extension without the dot
 	 */
 	private buildTrackFileName(
 		target: RecordingTarget,
-		timestamp: string,
 		extension: string,
 	): string {
-		const baseName = `${this.settings.filePrefix}-${target.sourceName}-${timestamp}`;
 		if (target.partIndex > 0) {
 			return buildPartFileName(
-				baseName,
+				target.fileBaseName,
 				this.sessionPartSuffix,
 				target.partIndex + 1,
 				extension,
 			);
 		}
-		return `${baseName}.${extension}`;
+		return `${target.fileBaseName}.${extension}`;
 	}
 
 	private async finalizeTrackFiles(
 		target: RecordingTarget,
-		timestamp: string,
 	): Promise<string[]> {
 		const fileLinks: string[] = [];
 		if (this.isMobileRecording) {
@@ -1173,11 +1175,7 @@ export class RecordingManager {
 				return fileLinks;
 			}
 			this.updateSaveProgress(40, 'Assembling audio...');
-			const fileName = this.buildTrackFileName(
-				target,
-				timestamp,
-				FORMAT_WAV,
-			);
+			const fileName = this.buildTrackFileName(target, FORMAT_WAV);
 			const filePath = await resolveUniquePath(
 				fileName,
 				this.app,
@@ -1191,7 +1189,6 @@ export class RecordingManager {
 
 		const fileName = this.buildTrackFileName(
 			target,
-			timestamp,
 			this.sessionOutputFormat,
 		);
 		const filePath = await this.finalizeMediaTrackToFile(
@@ -1236,9 +1233,10 @@ export class RecordingManager {
 	/**
 	 * Transcodes and writes a list of raw segment files into one final
 	 * audio file in the session output format, then removes the
-	 * temporary segments (rolling the final file back when cleanup
-	 * fails). Operates on an explicit segment list so part rotation can
-	 * finalize a detached snapshot while the next part is recording.
+	 * temporary segments (segments that cannot be removed are reported
+	 * and left on disk; the final file is always kept). Operates on an
+	 * explicit segment list so part rotation can finalize a detached
+	 * snapshot while the next part is recording.
 	 * @param segmentPaths - Segment files in capture order
 	 * @param fileName - Final file name
 	 * @param reportProgress - Whether to emit save-progress status
@@ -1329,13 +1327,16 @@ export class RecordingManager {
 			this.app,
 		);
 		if (failedCleanupPaths.length > 0) {
-			await rollbackFinalFile(
-				filePath,
-				'Failed to rollback finalized track',
-				this.app,
+			// Keep the final file: it already contains all captured audio,
+			// while segments that were removed exist nowhere else. Rolling
+			// it back would lose their audio permanently and leave part
+			// bookkeeping pointing at missing segment files.
+			console.error(
+				`${PLUGIN_LOG_PREFIX} Temporary segment files could not be removed:`,
+				failedCleanupPaths,
 			);
-			throw new Error(
-				`Temporary recording artifacts were kept for recovery: ${failedCleanupPaths.join(', ')}`,
+			new Notice(
+				`Recording saved, but temporary files could not be removed: ${failedCleanupPaths.join(', ')}`,
 			);
 		}
 

@@ -78,9 +78,15 @@ describe('buildLinkPattern', () => {
 });
 
 describe('buildReplacementLinks', () => {
-	it('should join embed links with newlines', () => {
+	it('should join embed links with newlines by default', () => {
 		expect(buildReplacementLinks(['a.wav', 'b.wav'], true)).toBe(
 			'![[a.wav]]\n![[b.wav]]',
+		);
+	});
+
+	it('should join links with a custom separator', () => {
+		expect(buildReplacementLinks(['a.wav', 'b.wav'], true, ' ')).toBe(
+			'![[a.wav]] ![[b.wav]]',
 		);
 	});
 
@@ -100,7 +106,9 @@ describe('updateLinksInOpenEditors', () => {
 		} as unknown as App;
 	}
 
-	it('should replace a single embed link with multiple part links', () => {
+	it('should replace an inline embed with space-separated part links', () => {
+		// The link shares its line with other content, so newlines would
+		// reflow the surrounding text
 		const editor = createEditor('before ![[rec.webm]] after');
 		const app = createApp([editor]);
 
@@ -113,9 +121,27 @@ describe('updateLinksInOpenEditors', () => {
 
 		expect(editor.replaceRange).toHaveBeenCalledTimes(1);
 		expect(editor.replaceRange).toHaveBeenCalledWith(
-			'![[rec-part1.webm]]\n![[rec-part2.webm]]',
+			'![[rec-part1.webm]] ![[rec-part2.webm]]',
 			{ line: 0, ch: 7 },
 			{ line: 0, ch: 20 },
+		);
+	});
+
+	it('should replace a link alone on its line with one link per line', () => {
+		const editor = createEditor('![[rec.webm]]');
+		const app = createApp([editor]);
+
+		updateLinksInOpenEditors(
+			app,
+			'rec.webm',
+			['rec-part1.webm', 'rec-part2.webm'],
+			'replace',
+		);
+
+		expect(editor.replaceRange).toHaveBeenCalledWith(
+			'![[rec-part1.webm]]\n![[rec-part2.webm]]',
+			{ line: 0, ch: 0 },
+			{ line: 0, ch: 13 },
 		);
 	});
 
@@ -209,6 +235,7 @@ describe('updateLinksInVault', () => {
 		content: string;
 		links?: ReferenceDouble[];
 		embeds?: ReferenceDouble[];
+		frontmatterLinks?: { link: string }[];
 	}
 
 	/**
@@ -284,10 +311,18 @@ describe('updateLinksInVault', () => {
 				resolvedLinks,
 				getFileCache: jest.fn((note: TFile) => {
 					const entry = notes[note.path];
-					if (!entry.links && !entry.embeds) {
+					if (
+						!entry.links &&
+						!entry.embeds &&
+						!entry.frontmatterLinks
+					) {
 						return null;
 					}
-					return { links: entry.links, embeds: entry.embeds };
+					return {
+						links: entry.links,
+						embeds: entry.embeds,
+						frontmatterLinks: entry.frontmatterLinks,
+					};
 				}),
 				getFirstLinkpathDest: jest.fn(
 					(linkpath: string) => linkTargets[linkpath] ?? null,
@@ -336,9 +371,11 @@ describe('updateLinksInVault', () => {
 			'replace',
 		);
 
-		expect(updated).toBe(1);
+		expect(updated.updatedNotes).toBe(1);
+		// The embed shares its line with other text, so the part links
+		// are space-separated to keep the line intact
 		expect(contents['note.md']).toBe(
-			'intro ![[rec-part1.webm]]\n![[rec-part2.webm]] outro',
+			'intro ![[rec-part1.webm]] ![[rec-part2.webm]] outro',
 		);
 		expect(generateMarkdownLink).toHaveBeenCalledWith(
 			expect.objectContaining({ path: 'audio/rec-part1.webm' }),
@@ -372,7 +409,7 @@ describe('updateLinksInVault', () => {
 			'replace',
 		);
 
-		expect(updated).toBe(1);
+		expect(updated.updatedNotes).toBe(1);
 		expect(contents['note.md']).toBe('see [[new.webm]] here');
 	});
 
@@ -400,7 +437,7 @@ describe('updateLinksInVault', () => {
 			'replace',
 		);
 
-		expect(updated).toBe(1);
+		expect(updated.updatedNotes).toBe(1);
 		expect(contents['note.md']).toBe('audio: ![](new.webm)');
 	});
 
@@ -438,7 +475,7 @@ describe('updateLinksInVault', () => {
 			'replace',
 		);
 
-		expect(updated).toBe(0);
+		expect(updated.updatedNotes).toBe(0);
 		expect(processMock).not.toHaveBeenCalled();
 		expect(contents['note.md']).toBe(content);
 	});
@@ -467,7 +504,7 @@ describe('updateLinksInVault', () => {
 			'after',
 		);
 
-		expect(updated).toBe(1);
+		expect(updated.updatedNotes).toBe(1);
 		expect(contents['note.md']).toBe('![[rec.webm]]\n![[new.webm]]');
 	});
 
@@ -488,14 +525,18 @@ describe('updateLinksInVault', () => {
 		);
 
 		expect(
-			await updateLinksInVault(
-				app,
-				source,
-				[createFile('new.webm')],
-				'none',
-			),
+			(
+				await updateLinksInVault(
+					app,
+					source,
+					[createFile('new.webm')],
+					'none',
+				)
+			).updatedNotes,
 		).toBe(0);
-		expect(await updateLinksInVault(app, source, [], 'replace')).toBe(0);
+		expect(
+			(await updateLinksInVault(app, source, [], 'replace')).updatedNotes,
+		).toBe(0);
 		expect(processMock).not.toHaveBeenCalled();
 	});
 
@@ -525,7 +566,8 @@ describe('updateLinksInVault', () => {
 			'replace',
 		);
 
-		expect(updated).toBe(0);
+		expect(updated.updatedNotes).toBe(0);
+		expect(updated.skippedReferences).toBe(1);
 		expect(contents['note.md']).toBe(content);
 		expect(warnSpy).toHaveBeenCalledTimes(1);
 		warnSpy.mockRestore();
@@ -565,9 +607,11 @@ describe('updateLinksInVault', () => {
 			'replace',
 		);
 
-		expect(updated).toBe(1);
+		expect(updated.updatedNotes).toBe(1);
+		// Both references share their line with other text, so the part
+		// links are space-separated to keep the line intact
 		expect(contents['note.md']).toBe(
-			'![[part1.webm]]\n![[part2.webm]] middle [[part1.webm]]\n[[part2.webm]] end',
+			'![[part1.webm]] ![[part2.webm]] middle [[part1.webm]] [[part2.webm]] end',
 		);
 	});
 
@@ -586,7 +630,7 @@ describe('updateLinksInVault', () => {
 			'replace',
 		);
 
-		expect(updated).toBe(0);
+		expect(updated.updatedNotes).toBe(0);
 		expect(processMock).not.toHaveBeenCalled();
 	});
 
@@ -605,7 +649,7 @@ describe('updateLinksInVault', () => {
 			'replace',
 		);
 
-		expect(updated).toBe(0);
+		expect(updated.updatedNotes).toBe(0);
 		expect(processMock).not.toHaveBeenCalled();
 	});
 
@@ -658,9 +702,149 @@ describe('updateLinksInVault', () => {
 			'replace',
 		);
 
-		expect(updated).toBe(1);
+		expect(updated.updatedNotes).toBe(1);
+		expect(updated.skippedReferences).toBe(1);
 		expect(contents['good.md']).toBe('![[new.webm]]');
 		expect(contents['stale.md']).toBe(staleContent);
 		warnSpy.mockRestore();
+	});
+
+	it('should keep a table row on one line when replacing an embed inside it', async () => {
+		const source = createFile('rec.webm');
+		const content = '| ![[rec.webm]] | comment |';
+		const { app, contents, generateMarkdownLink } = createVaultApp(
+			{ 'note.md': { 'rec.webm': 1 } },
+			{
+				'note.md': {
+					content,
+					embeds: [
+						createReference(content, '![[rec.webm]]', 'rec.webm'),
+					],
+				},
+			},
+			{ 'rec.webm': source },
+		);
+		generateMarkdownLink.mockImplementation(
+			(file: TFile) => `[[${file.name}]]`,
+		);
+
+		const updated = await updateLinksInVault(
+			app,
+			source,
+			[createFile('p1.webm'), createFile('p2.webm')],
+			'replace',
+		);
+
+		expect(updated.updatedNotes).toBe(1);
+		expect(contents['note.md']).toBe(
+			'| ![[p1.webm]] ![[p2.webm]] | comment |',
+		);
+	});
+
+	it('should keep a table row on one line for the after action', async () => {
+		const source = createFile('rec.webm');
+		const content = '| ![[rec.webm]] |';
+		const { app, contents, generateMarkdownLink } = createVaultApp(
+			{ 'note.md': { 'rec.webm': 1 } },
+			{
+				'note.md': {
+					content,
+					embeds: [
+						createReference(content, '![[rec.webm]]', 'rec.webm'),
+					],
+				},
+			},
+			{ 'rec.webm': source },
+		);
+		generateMarkdownLink.mockReturnValue('![[new.webm]]');
+
+		const updated = await updateLinksInVault(
+			app,
+			source,
+			[createFile('new.webm')],
+			'after',
+		);
+
+		expect(updated.updatedNotes).toBe(1);
+		expect(contents['note.md']).toBe('| ![[rec.webm]] ![[new.webm]] |');
+	});
+
+	it('should use one link per line when the embed is alone on its line', async () => {
+		const source = createFile('rec.webm');
+		const content = 'intro\n![[rec.webm]]\noutro';
+		const { app, contents, generateMarkdownLink } = createVaultApp(
+			{ 'note.md': { 'rec.webm': 1 } },
+			{
+				'note.md': {
+					content,
+					embeds: [
+						createReference(content, '![[rec.webm]]', 'rec.webm'),
+					],
+				},
+			},
+			{ 'rec.webm': source },
+		);
+		generateMarkdownLink.mockImplementation(
+			(file: TFile) => `[[${file.name}]]`,
+		);
+
+		const updated = await updateLinksInVault(
+			app,
+			source,
+			[createFile('p1.webm'), createFile('p2.webm')],
+			'replace',
+		);
+
+		expect(updated.updatedNotes).toBe(1);
+		expect(contents['note.md']).toBe(
+			'intro\n![[p1.webm]]\n![[p2.webm]]\noutro',
+		);
+	});
+
+	it('should count frontmatter references without touching them', async () => {
+		const source = createFile('rec.webm');
+		const bodyContent = '---\naudio: "[[rec.webm]]"\n---\n![[rec.webm]]';
+		const { app, contents, generateMarkdownLink } = createVaultApp(
+			{
+				'note.md': { 'rec.webm': 2 },
+				'fm-only.md': { 'rec.webm': 1 },
+			},
+			{
+				'note.md': {
+					content: bodyContent,
+					embeds: [
+						createReference(
+							bodyContent,
+							'![[rec.webm]]',
+							'rec.webm',
+						),
+					],
+					frontmatterLinks: [{ link: 'rec.webm' }],
+				},
+				'fm-only.md': {
+					content: '---\naudio: "[[rec.webm]]"\n---\n',
+					frontmatterLinks: [{ link: 'rec.webm' }],
+				},
+			},
+			{ 'rec.webm': source },
+		);
+		generateMarkdownLink.mockReturnValue('![[new.webm]]');
+
+		const updated = await updateLinksInVault(
+			app,
+			source,
+			[createFile('new.webm')],
+			'replace',
+		);
+
+		expect(updated.updatedNotes).toBe(1);
+		expect(updated.frontmatterReferences).toBe(2);
+		// The body embed is rewritten, the frontmatter stays untouched
+		expect(contents['note.md']).toBe(
+			'---\naudio: "[[rec.webm]]"\n---\n![[new.webm]]',
+		);
+		expect(contents['fm-only.md']).toBe(
+			'---\naudio: "[[rec.webm]]"\n---\n',
+		);
 	});
 });

@@ -43,6 +43,12 @@ export const DESKTOP_FLUSH_THRESHOLD_BYTES = 50 * 1024 * 1024;
 /** Common MIME type prefix for audio formats. */
 export const MIME_TYPE_AUDIO_PREFIX = 'audio/';
 
+/** Seconds in one minute. */
+export const SECONDS_PER_MINUTE = 60;
+
+/** Milliseconds in one minute. */
+export const MS_PER_MINUTE = 60_000;
+
 /** Default duration of one split part in minutes. */
 export const DEFAULT_SPLIT_CHUNK_MINUTES = 15;
 

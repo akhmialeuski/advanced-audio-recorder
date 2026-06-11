@@ -74,7 +74,12 @@ jest.mock('obsidian', () => ({
 		open = jest.fn();
 		close = jest.fn();
 	},
-	Notice: jest.fn(),
+	// Notice instances expose the methods used by the background
+	// progress notice (setMessage/hide)
+	Notice: jest.fn().mockImplementation(() => ({
+		setMessage: jest.fn(),
+		hide: jest.fn(),
+	})),
 	Setting: jest.fn().mockImplementation(() => {
 		const chain = {
 			setName: jest.fn(),
@@ -199,7 +204,11 @@ jest.mock('../../src/recording/AudioFormatConverter', () => ({
 
 // Mock the vault-wide link updater
 jest.mock('../../src/utils/LinkUpdater', () => ({
-	updateLinksInVault: jest.fn().mockResolvedValue(1),
+	updateLinksInVault: jest.fn().mockResolvedValue({
+		updatedNotes: 1,
+		skippedReferences: 0,
+		frontmatterReferences: 0,
+	}),
 }));
 
 import { encodeAudioBuffer } from '../../src/recording/AudioEncoder';
@@ -263,6 +272,7 @@ describe('SplitModal', () => {
 		splitPartSuffix: 'part',
 		bitrate: 128000,
 		deleteSourceAfterSplit: false,
+		conversionLinkAction: 'replace',
 	} as unknown as AudioRecorderSettings;
 
 	/**
@@ -336,6 +346,120 @@ describe('SplitModal', () => {
 		expect(internals(modal).partSuffix).toBe('part');
 		expect(internals(modal).deleteSource).toBe(false);
 		expect(internals(modal).linkAction).toBe('replace');
+	});
+
+	it('should seed the link action from the conversion link action setting', () => {
+		const modal = new SplitModal(mockApp, mockFile, {
+			...mockSettings,
+			conversionLinkAction: 'after',
+		} as unknown as AudioRecorderSettings);
+
+		expect(internals(modal).linkAction).toBe('after');
+	});
+
+	it('should snap an unsupported configured bitrate to the closest option', () => {
+		configureFile('recording.webm', 'webm');
+		const modal = new SplitModal(mockApp, mockFile, {
+			...mockSettings,
+			bitrate: 100000,
+		} as unknown as AudioRecorderSettings);
+		modal.onOpen();
+
+		expect((modal as unknown as { bitrate: number }).bitrate).toBe(96000);
+	});
+
+	it('should refresh the part name example when the suffix changes', () => {
+		const { Setting } = jest.requireMock('obsidian');
+		const modal = new SplitModal(mockApp, mockFile, mockSettings);
+		modal.onOpen();
+
+		const collectDescs = (): string[] =>
+			(Setting as jest.Mock).mock.results.flatMap(
+				(result: { value: { setDesc: jest.Mock } }) =>
+					result.value.setDesc.mock.calls.map((call: unknown[]) =>
+						String(call[0]),
+					),
+			);
+		expect(collectDescs()).toContainEqual(
+			expect.stringContaining('"recording-part1.wav"'),
+		);
+
+		mockCapturedControls.texts[0]('seg');
+		expect(collectDescs()).toContainEqual(
+			expect.stringContaining('"recording-seg1.wav"'),
+		);
+	});
+
+	it('should show the WAV extension in the example when encoding falls back', () => {
+		const { isOfflineEncodingSupported } = jest.requireMock(
+			'../../src/recording/AudioEncoder',
+		);
+		(isOfflineEncodingSupported as jest.Mock).mockReturnValue(false);
+		configureFile('recording.webm', 'webm');
+		const { Setting } = jest.requireMock('obsidian');
+		const modal = new SplitModal(mockApp, mockFile, mockSettings);
+		modal.onOpen();
+
+		const descs = (Setting as jest.Mock).mock.results.flatMap(
+			(result: { value: { setDesc: jest.Mock } }) =>
+				result.value.setDesc.mock.calls.map((call: unknown[]) =>
+					String(call[0]),
+				),
+		);
+		expect(descs).toContainEqual(
+			expect.stringContaining('"recording-part1.wav"'),
+		);
+		(isOfflineEncodingSupported as jest.Mock).mockReturnValue(true);
+	});
+
+	it('should clear the progress text when aborting on a collision', async () => {
+		(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
+			buildTestWav(1, 1000, 250000),
+		);
+		(mockApp.vault.adapter.exists as jest.Mock).mockResolvedValue(true);
+		const modal = new SplitModal(mockApp, mockFile, mockSettings);
+
+		await internals(modal).runSplit(progressEl);
+
+		expect(Notice).toHaveBeenCalledWith(
+			expect.stringContaining('already exists'),
+		);
+		expect(progressEl.textContent).toBe('');
+	});
+
+	it('should keep reporting progress in a notice when the modal closes mid-split', async () => {
+		let resolveRead!: (bytes: ArrayBuffer) => void;
+		(mockApp.vault.adapter.readBinary as jest.Mock).mockReturnValue(
+			new Promise<ArrayBuffer>((resolve) => {
+				resolveRead = resolve;
+			}),
+		);
+		const modal = new SplitModal(mockApp, mockFile, mockSettings);
+
+		const split = internals(modal).runSplit(progressEl);
+		modal.onClose();
+		// A repeated close must not spawn a second background notice
+		modal.onClose();
+		resolveRead(buildTestWav(1, 1000, 250000));
+		await split;
+
+		const backgroundNotices = (Notice as jest.Mock).mock.calls.filter(
+			(call: unknown[]) =>
+				String(call[0]).includes('continues in the background'),
+		);
+		expect(backgroundNotices).toHaveLength(1);
+		const backgroundIndex = (Notice as jest.Mock).mock.calls.findIndex(
+			(call: unknown[]) =>
+				String(call[0]).includes('continues in the background'),
+		);
+		expect(backgroundIndex).toBeGreaterThanOrEqual(0);
+		// The notice mirrors pipeline progress and is hidden at the end
+		const notice = (Notice as jest.Mock).mock.results[backgroundIndex]
+			.value as { setMessage: jest.Mock; hide: jest.Mock };
+		expect(notice.setMessage).toHaveBeenCalledWith(
+			expect.stringContaining('Writing part'),
+		);
+		expect(notice.hide).toHaveBeenCalled();
 	});
 
 	it('should fall back to the default suffix for an invalid configured suffix', () => {
@@ -441,8 +565,19 @@ describe('SplitModal', () => {
 
 		const button = mockCapturedControls.buttons[0];
 		button.click();
-		// The click handler runs the async pipeline in the background
-		await new Promise((resolve) => setTimeout(resolve, 20));
+		// The click handler runs the async pipeline in the background;
+		// the button is re-enabled in its finally block, so wait for that
+		// instead of a fixed delay (slow under coverage instrumentation)
+		for (let i = 0; i < 400; i++) {
+			if (
+				button.setDisabled.mock.calls.some(
+					(call: unknown[]) => call[0] === false,
+				)
+			) {
+				break;
+			}
+			await new Promise((resolve) => setTimeout(resolve, 5));
+		}
 
 		expect(mockApp.vault.createBinary).toHaveBeenCalledTimes(3);
 		expect(button.setDisabled).toHaveBeenCalledWith(true);
@@ -696,6 +831,119 @@ describe('SplitModal', () => {
 			await internals(modal).runSplit(progressEl);
 
 			expect(Notice).toHaveBeenCalledWith('Split failed: raw failure');
+		});
+
+		it('should roll back written parts by trashing them when a write fails', async () => {
+			(mockApp.vault.createBinary as jest.Mock)
+				.mockImplementationOnce((path: string) =>
+					Promise.resolve(makePartFile(path)),
+				)
+				.mockRejectedValueOnce(new Error('disk full'));
+			const modal = new SplitModal(mockApp, mockFile, mockSettings);
+
+			await internals(modal).runSplit(progressEl);
+
+			// trashFile keeps the rollback recoverable; the raw adapter
+			// path is only a fallback for non-TFile createBinary results
+			expect(mockApp.fileManager.trashFile).toHaveBeenCalledWith(
+				expect.objectContaining({
+					path: 'Recordings/recording-part1.wav',
+				}),
+			);
+			expect(mockApp.vault.adapter.remove).not.toHaveBeenCalled();
+		});
+
+		it('should report partial success when updating links fails after parts are written', async () => {
+			(updateLinksInVault as jest.Mock).mockRejectedValueOnce(
+				new Error('cache busy'),
+			);
+			const modal = new SplitModal(mockApp, mockFile, mockSettings);
+			internals(modal).deleteSource = true;
+
+			await internals(modal).runSplit(progressEl);
+
+			expect(mockApp.vault.createBinary).toHaveBeenCalledTimes(3);
+			// The parts are kept: no rollback after a post-write failure
+			expect(mockApp.vault.adapter.remove).not.toHaveBeenCalled();
+			expect(mockApp.fileManager.trashFile).not.toHaveBeenCalled();
+			expect(Notice).toHaveBeenCalledWith(
+				expect.stringContaining(
+					'Parts were created, but updating links failed',
+				),
+			);
+			const totalFailures = (Notice as jest.Mock).mock.calls.filter(
+				(call: unknown[]) => String(call[0]).startsWith('Split failed'),
+			);
+			expect(totalFailures).toHaveLength(0);
+		});
+
+		it('should report partial success when deleting the source fails', async () => {
+			(mockApp.fileManager.trashFile as jest.Mock).mockRejectedValueOnce(
+				new Error('locked'),
+			);
+			const modal = new SplitModal(mockApp, mockFile, mockSettings);
+			internals(modal).deleteSource = true;
+
+			await internals(modal).runSplit(progressEl);
+
+			expect(Notice).toHaveBeenCalledWith(
+				expect.stringContaining('the source file could not be deleted'),
+			);
+		});
+
+		it('should stringify non-Error post-write failures', async () => {
+			(updateLinksInVault as jest.Mock).mockRejectedValueOnce(
+				'raw link failure',
+			);
+			const modal = new SplitModal(mockApp, mockFile, mockSettings);
+			await internals(modal).runSplit(progressEl);
+			expect(Notice).toHaveBeenCalledWith(
+				expect.stringContaining('raw link failure'),
+			);
+
+			(mockApp.fileManager.trashFile as jest.Mock).mockRejectedValueOnce(
+				'raw delete failure',
+			);
+			const second = new SplitModal(mockApp, mockFile, mockSettings);
+			internals(second).deleteSource = true;
+			await internals(second).runSplit(progressEl);
+			expect(Notice).toHaveBeenCalledWith(
+				expect.stringContaining('raw delete failure'),
+			);
+		});
+
+		it('should keep the source when some links could not be updated', async () => {
+			(updateLinksInVault as jest.Mock).mockResolvedValueOnce({
+				updatedNotes: 1,
+				skippedReferences: 2,
+				frontmatterReferences: 0,
+			});
+			const modal = new SplitModal(mockApp, mockFile, mockSettings);
+			internals(modal).deleteSource = true;
+
+			await internals(modal).runSplit(progressEl);
+
+			expect(mockApp.fileManager.trashFile).not.toHaveBeenCalled();
+			expect(Notice).toHaveBeenCalledWith(
+				'Source file kept: 2 link(s) could not be updated.',
+			);
+		});
+
+		it('should warn about frontmatter links that stay on the source', async () => {
+			(updateLinksInVault as jest.Mock).mockResolvedValueOnce({
+				updatedNotes: 1,
+				skippedReferences: 0,
+				frontmatterReferences: 1,
+			});
+			const modal = new SplitModal(mockApp, mockFile, mockSettings);
+
+			await internals(modal).runSplit(progressEl);
+
+			expect(Notice).toHaveBeenCalledWith(
+				expect.stringContaining(
+					'frontmatter link(s) still point to the source file',
+				),
+			);
 		});
 
 		it('should log and continue when rollback of a written part fails', async () => {

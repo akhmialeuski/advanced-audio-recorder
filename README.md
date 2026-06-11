@@ -97,6 +97,7 @@ Notes on precision and behavior:
 - **WAV recordings** are split sample-exactly at the configured boundary.
 - **Compressed formats** (WebM, OGG, MP3, ...) restart the recorder at each boundary, so parts are approximately the configured length (within a few seconds) and a sub-second capture gap may occur between parts.
 - **Merged multi-track recordings** (output mode `Single file` with several tracks) are not auto-split; the plugin shows a notice and saves one merged file.
+- **Desktop only**: auto-split is not available in the mobile app; a notice is shown when a mobile recording starts with the option enabled.
 - Split settings changed during an active recording apply to the next session.
 
 ## Context menu actions
@@ -136,7 +137,7 @@ Opens a dialog to split the audio file into parts of a fixed duration. Options:
 - **Part name suffix** appended with the part number (e.g., `recording-part1.wav`).
 - **Bitrate** used when re-encoding parts of compressed formats (hidden for WAV sources).
 - **Delete source file** toggle to remove the original after a successful split.
-- **Update links in notes**: `Do nothing`, `Replace source link`, or `Insert after source link`. Links are updated in all notes of the vault, including notes that are not open. Both wikilinks (`![[...]]`) and Markdown links (`![](...)`) are covered, and new links follow your link-format preferences.
+- **Update links in notes**: `Do nothing`, `Replace source link`, or `Insert after source link`. Links in note bodies are updated across the whole vault, including notes that are not open. Both wikilinks (`![[...]]`) and Markdown links (`![](...)`) are covered, and new links follow your link-format preferences. Links inside frontmatter properties are **not** rewritten (a property cannot hold several links); the plugin shows a notice when such links exist. When a link shares a line with other content (for example a table row), the part links are separated with spaces instead of line breaks so the layout stays intact.
 
 WAV files are split losslessly at the byte level without re-encoding, building one part at a time so even multi-gigabyte files are handled. Compressed formats are decoded once into memory and re-encoded per part, so minor quality loss is possible and very long compressed files need enough free memory for the decoded audio. Part files are saved next to the source file, and the split is aborted if any target part file already exists. If writing fails midway, already-written parts are removed and the source file is kept.
 
@@ -223,7 +224,7 @@ Open **Settings > Advanced Audio Recorder** to configure the plugin.
 
 | Setting                            | Description                                                                                                                      | Default |
 | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| **Split recordings automatically** | Save the recording as separate part files of fixed duration. Not applied to merged multi-track recordings.                       | Off     |
+| **Split recordings automatically** | Save the recording as separate part files of fixed duration. Desktop only; not applied to merged multi-track recordings.         | Off     |
 | **Part duration**                  | Length of each part in minutes (1-180). Also the default part duration for manual splitting.                                     | 15      |
 | **Part name suffix**               | Suffix appended with the part number (e.g., `part` produces `-part1`, `-part2`). Letters, digits, hyphens, and underscores only. | `part`  |
 | **Delete source after split**      | Default state of the delete source file option in the manual split dialog.                                                       | Off     |

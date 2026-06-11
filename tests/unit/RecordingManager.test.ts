@@ -1908,6 +1908,83 @@ describe('RecordingManager', () => {
 			);
 		});
 
+		it('should notify that auto-split is unavailable on mobile', async () => {
+			const { Platform } = jest.requireMock('obsidian');
+			Platform.isMobile = true;
+			createManagerWithSettings({
+				recordingFormat: 'webm',
+				autoSplitEnabled: true,
+				splitChunkMinutes: 1,
+			});
+
+			await manager.startRecording();
+
+			const { Notice } = jest.requireMock('obsidian');
+			expect(Notice).toHaveBeenCalledWith(
+				'Auto-split is not available in the mobile app.',
+			);
+			await manager.stopRecording();
+		});
+
+		it('should keep the part file when segment cleanup fails', async () => {
+			createManagerWithSettings({
+				recordingFormat: 'wav',
+				autoSplitEnabled: true,
+				splitChunkMinutes: 1,
+			});
+			// Segment removal fails after the part file was assembled
+			(mockApp.vault.adapter.remove as jest.Mock).mockRejectedValue(
+				new Error('locked'),
+			);
+
+			await manager.startRecording();
+
+			capturedPcmChunkCallback?.(new ArrayBuffer(6_000_000));
+			await getInternals(manager).chunkTargets[0].pendingWrite;
+
+			// The assembled part is kept: the removed segments would
+			// otherwise be the only copy of the audio
+			const target = getInternals(manager).chunkTargets[0];
+			expect(target.partIndex).toBe(1);
+			expect(target.partPaths).toHaveLength(1);
+			const { Notice } = jest.requireMock('obsidian');
+			expect(Notice).toHaveBeenCalledWith(
+				expect.stringContaining(
+					'Recording saved, but temporary files could not be removed',
+				),
+			);
+			expect(manager.getStatus()).toBe(RecordingStatus.Recording);
+		});
+
+		it('should name the residual from the base name snapshotted at start', async () => {
+			createManagerWithSettings({
+				recordingFormat: 'wav',
+				autoSplitEnabled: true,
+				splitChunkMinutes: 1,
+			});
+
+			await manager.startRecording();
+
+			capturedPcmChunkCallback?.(new ArrayBuffer(6_000_000));
+			await getInternals(manager).chunkTargets[0].pendingWrite;
+
+			// Changing the prefix mid-session must not affect this session
+			manager.updateSettings({
+				...mockSettings,
+				filePrefix: 'changed',
+			});
+			await manager.stopRecording();
+
+			const residualCall = (
+				mockApp.vault.createBinary as jest.Mock
+			).mock.calls.find((call: unknown[]) =>
+				/-part2\.wav$/.test(String(call[0])),
+			);
+			expect(residualCall).toBeDefined();
+			expect(String(residualCall?.[0])).toContain('recording-');
+			expect(String(residualCall?.[0])).not.toContain('changed-');
+		});
+
 		it('should rotate MediaRecorder parts after the configured duration', async () => {
 			jest.useFakeTimers();
 			jest.setSystemTime(0);

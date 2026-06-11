@@ -170,14 +170,18 @@ describe('validateSettings', () => {
 		);
 	});
 
-	it('should not validate split minutes when auto-split is disabled', () => {
+	it('should validate split minutes even when auto-split is disabled', () => {
+		// The value is also the default part duration for manual splitting,
+		// so it must be valid regardless of the auto-split toggle
 		const settings: AudioRecorderSettings = {
 			...DEFAULT_SETTINGS,
 			audioDeviceId: 'valid-device',
 			autoSplitEnabled: false,
 			splitChunkMinutes: 0,
 		};
-		expect(() => validateSettings(settings)).not.toThrow();
+		expect(() => validateSettings(settings)).toThrow(
+			SettingsValidationError,
+		);
 	});
 
 	it('should pass validation with valid auto-split settings', () => {

@@ -16,6 +16,7 @@ import {
 	MAX_SPLIT_CHUNK_MINUTES,
 	DEFAULT_SPLIT_PART_SUFFIX,
 	PLUGIN_LOG_PREFIX,
+	SECONDS_PER_MINUTE,
 	SPLIT_PART_SUFFIX_PATTERN,
 	SPLIT_PART_SUFFIX_RULE_TEXT,
 } from '../constants';
@@ -32,13 +33,11 @@ import {
 	sanitizePartSuffix,
 } from '../recording/AudioSplitter';
 import { updateLinksInVault } from '../utils/LinkUpdater';
+import type { VaultLinkUpdateResult } from '../utils/LinkUpdater';
 import type {
 	AudioRecorderSettings,
 	ConversionLinkAction,
 } from '../settings/Settings';
-
-/** Seconds in one minute. */
-const SECONDS_PER_MINUTE = 60;
 
 /**
  * Modal for splitting an audio file into parts of a fixed duration.
@@ -49,7 +48,11 @@ export class SplitModal extends Modal {
 	private partSuffix: string;
 	private bitrate: number;
 	private deleteSource: boolean;
-	private linkAction: ConversionLinkAction = 'replace';
+	private linkAction: ConversionLinkAction;
+	/** Whether the split pipeline is currently running. */
+	private isSplitting = false;
+	/** Progress notice shown when the modal is closed mid-split. */
+	private progressNotice: Notice | null = null;
 
 	constructor(app: App, sourceFile: TFile, settings: AudioRecorderSettings) {
 		super(app);
@@ -58,6 +61,7 @@ export class SplitModal extends Modal {
 		this.partSuffix = sanitizePartSuffix(settings.splitPartSuffix);
 		this.bitrate = settings.bitrate;
 		this.deleteSource = settings.deleteSourceAfterSplit;
+		this.linkAction = settings.conversionLinkAction;
 	}
 
 	onOpen(): void {
@@ -87,27 +91,40 @@ export class SplitModal extends Modal {
 					}),
 			);
 
-		new Setting(contentEl)
-			.setName('Part name suffix')
-			.setDesc(
-				`Appended with the part number, e.g. "${this.sourceFile.basename}-${this.partSuffix}1.${this.sourceFile.extension}".`,
-			)
-			.addText((text) =>
-				text
-					.setPlaceholder(DEFAULT_SPLIT_PART_SUFFIX)
-					.setValue(this.partSuffix)
-					.onChange((value) => {
-						this.partSuffix = value;
-						// Mirror resolvePartSuffix: surrounding whitespace
-						// is ignored and empty means the default suffix
-						const trimmed = value.trim();
-						text.inputEl.toggleClass(
-							'aar-input-invalid',
-							trimmed !== '' &&
-								!SPLIT_PART_SUFFIX_PATTERN.test(trimmed),
-						);
-					}),
+		const suffixSetting = new Setting(contentEl).setName(
+			'Part name suffix',
+		);
+		const updateSuffixExample = (): void => {
+			const trimmed = this.partSuffix.trim();
+			if (trimmed !== '' && !SPLIT_PART_SUFFIX_PATTERN.test(trimmed)) {
+				// Keep the last valid example; the red border already
+				// marks the input as invalid
+				return;
+			}
+			const example =
+				trimmed === '' ? DEFAULT_SPLIT_PART_SUFFIX : trimmed;
+			suffixSetting.setDesc(
+				`Appended with the part number, e.g. "${this.sourceFile.basename}-${example}1.${this.getTargetExtension()}".`,
 			);
+		};
+		updateSuffixExample();
+		suffixSetting.addText((text) =>
+			text
+				.setPlaceholder(DEFAULT_SPLIT_PART_SUFFIX)
+				.setValue(this.partSuffix)
+				.onChange((value) => {
+					this.partSuffix = value;
+					// Mirror resolvePartSuffix: surrounding whitespace
+					// is ignored and empty means the default suffix
+					const trimmed = value.trim();
+					text.inputEl.toggleClass(
+						'aar-input-invalid',
+						trimmed !== '' &&
+							!SPLIT_PART_SUFFIX_PATTERN.test(trimmed),
+					);
+					updateSuffixExample();
+				}),
+		);
 
 		if (this.sourceFile.extension.toLowerCase() !== FORMAT_WAV) {
 			new Setting(contentEl)
@@ -121,6 +138,19 @@ export class SplitModal extends Modal {
 						const kbps = Math.round(bps / 1000);
 						dropdown.addOption(String(bps), `${String(kbps)} kbps`);
 					});
+					if (
+						bitrates.length > 0 &&
+						!bitrates.includes(this.bitrate)
+					) {
+						// Snap to the closest supported value so the dropdown
+						// always shows the bitrate actually used for encoding
+						this.bitrate = bitrates.reduce((closest, bps) =>
+							Math.abs(bps - this.bitrate) <
+							Math.abs(closest - this.bitrate)
+								? bps
+								: closest,
+						);
+					}
 					dropdown.setValue(String(this.bitrate));
 					dropdown.onChange((value) => {
 						this.bitrate = parseInt(value, 10);
@@ -140,7 +170,7 @@ export class SplitModal extends Modal {
 		new Setting(contentEl)
 			.setName('Update links in notes')
 			.setDesc(
-				'How to handle links to the source file in your notes. Links in all notes of the vault are updated.',
+				'How to handle links to the source file. Links in note bodies across the whole vault are updated; links in frontmatter properties are not.',
 			)
 			.addDropdown((dropdown) => {
 				dropdown.addOption('none', 'Do nothing');
@@ -170,7 +200,47 @@ export class SplitModal extends Modal {
 	}
 
 	onClose(): void {
+		if (this.isSplitting && !this.progressNotice) {
+			// Timeout 0 keeps the notice visible until hidden explicitly;
+			// setProgress mirrors further pipeline progress into it
+			this.progressNotice = new Notice(
+				`Splitting "${this.sourceFile.name}" continues in the background...`,
+				0,
+			);
+		}
 		this.contentEl.empty();
+	}
+
+	/**
+	 * Shows pipeline progress in the modal and mirrors it to the
+	 * background notice when the modal was closed mid-split.
+	 * @param progressEl - Progress element inside the modal
+	 * @param text - Progress text; an empty string clears the element
+	 */
+	private setProgress(progressEl: HTMLElement, text: string): void {
+		progressEl.setText(text);
+		if (this.progressNotice && text !== '') {
+			this.progressNotice.setMessage(
+				`Splitting "${this.sourceFile.name}": ${text}`,
+			);
+		}
+	}
+
+	/**
+	 * Resolves the extension the part files will get: WAV sources stay
+	 * WAV; compressed sources keep their format when an offline encoder
+	 * exists and fall back to WAV otherwise.
+	 * @returns Part file extension without the dot
+	 */
+	private getTargetExtension(): string {
+		const sourceExtension = this.sourceFile.extension.toLowerCase();
+		if (
+			sourceExtension === FORMAT_WAV ||
+			!isOfflineEncodingSupported(sourceExtension)
+		) {
+			return FORMAT_WAV;
+		}
+		return sourceExtension;
 	}
 
 	/**
@@ -195,69 +265,145 @@ export class SplitModal extends Modal {
 	/**
 	 * Executes the split pipeline: prepare parts, pre-check collisions,
 	 * write part files, update links, optionally delete the source.
+	 * Failures before any part is written abort the whole split;
+	 * failures after that are reported as partial success, because the
+	 * part files already exist on disk and a repeated run would abort
+	 * on the collision pre-check.
 	 */
 	private async runSplit(progressEl: HTMLElement): Promise<void> {
+		this.isSplitting = true;
 		try {
 			const suffix = this.resolvePartSuffix();
 			if (suffix === null) {
+				this.setProgress(progressEl, '');
 				return;
 			}
 			const partSeconds =
 				clampSplitMinutes(this.partMinutes) * SECONDS_PER_MINUTE;
 
-			progressEl.setText('Reading source file...');
-			const sourceBytes = await this.app.vault.adapter.readBinary(
-				this.sourceFile.path,
-			);
+			let partFiles: TFile[];
+			let partCount: number;
+			let firstPartName: string;
+			try {
+				this.setProgress(progressEl, 'Reading source file...');
+				const sourceBytes = await this.app.vault.adapter.readBinary(
+					this.sourceFile.path,
+				);
 
-			const parts = await this.preparePartBlobs(
-				sourceBytes,
-				partSeconds,
-				suffix,
-				progressEl,
-			);
-			if (!parts) {
+				const parts = await this.preparePartBlobs(
+					sourceBytes,
+					partSeconds,
+					suffix,
+					progressEl,
+				);
+				if (!parts) {
+					this.setProgress(progressEl, '');
+					return;
+				}
+
+				const partNames = parts.map((part) => part.fileName);
+				const partPaths = await this.resolvePartPaths(partNames);
+				if (!partPaths) {
+					this.setProgress(progressEl, '');
+					return;
+				}
+
+				partFiles = await this.writePartFiles(
+					parts,
+					partPaths,
+					progressEl,
+				);
+				partCount = parts.length;
+				firstPartName = partNames[0];
+			} catch (error) {
+				const message =
+					error instanceof Error ? error.message : String(error);
+				this.setProgress(progressEl, `Error: ${message}`);
+				new Notice(`Split failed: ${message}`);
 				return;
 			}
 
-			const partNames = parts.map((part) => part.fileName);
-			const partPaths = await this.resolvePartPaths(partNames);
-			if (!partPaths) {
+			// The parts exist on disk from here on
+			if (!(await this.finishSplit(progressEl, partFiles))) {
 				return;
 			}
 
-			const partFiles = await this.writePartFiles(
-				parts,
-				partPaths,
-				progressEl,
+			this.setProgress(progressEl, '');
+			new Notice(
+				`Split into ${String(partCount)} parts: ${firstPartName} ...`,
 			);
+			// Cleared before close() so onClose does not start a
+			// background notice for an already finished split
+			this.isSplitting = false;
+			this.close();
+		} finally {
+			this.isSplitting = false;
+			this.progressNotice?.hide();
+			this.progressNotice = null;
+		}
+	}
 
-			if (this.linkAction !== 'none') {
-				progressEl.setText('Updating links...');
-				await updateLinksInVault(
+	/**
+	 * Post-write pipeline steps: updates links and optionally deletes
+	 * the source file. The part files already exist, so errors here are
+	 * reported as partial success and never as a failed split. The
+	 * source file is kept when some links could not be updated, because
+	 * deleting it would leave those links broken.
+	 * @param progressEl - Progress element inside the modal
+	 * @param partFiles - Created part files in write order
+	 * @returns True when every requested step succeeded
+	 */
+	private async finishSplit(
+		progressEl: HTMLElement,
+		partFiles: TFile[],
+	): Promise<boolean> {
+		let linkResult: VaultLinkUpdateResult | null = null;
+		if (this.linkAction !== 'none') {
+			this.setProgress(progressEl, 'Updating links...');
+			try {
+				linkResult = await updateLinksInVault(
 					this.app,
 					this.sourceFile,
 					partFiles,
 					this.linkAction,
 				);
+			} catch (error) {
+				const message =
+					error instanceof Error ? error.message : String(error);
+				this.setProgress(progressEl, `Error: ${message}`);
+				new Notice(
+					`Parts were created, but updating links failed: ${message}. The source file was kept.`,
+				);
+				return false;
 			}
-
-			if (this.deleteSource) {
-				progressEl.setText('Removing source file...');
-				await this.app.fileManager.trashFile(this.sourceFile);
+			if (linkResult.frontmatterReferences > 0) {
+				new Notice(
+					`${String(linkResult.frontmatterReferences)} frontmatter link(s) still point to the source file: properties cannot hold several links.`,
+				);
 			}
-
-			progressEl.setText('');
-			new Notice(
-				`Split into ${String(parts.length)} parts: ${partNames[0]} ...`,
-			);
-			this.close();
-		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : String(error);
-			progressEl.setText(`Error: ${message}`);
-			new Notice(`Split failed: ${message}`);
 		}
+
+		if (this.deleteSource) {
+			if (linkResult !== null && linkResult.skippedReferences > 0) {
+				new Notice(
+					`Source file kept: ${String(linkResult.skippedReferences)} link(s) could not be updated.`,
+				);
+			} else {
+				this.setProgress(progressEl, 'Removing source file...');
+				try {
+					await this.app.fileManager.trashFile(this.sourceFile);
+				} catch (error) {
+					const message =
+						error instanceof Error ? error.message : String(error);
+					this.setProgress(progressEl, `Error: ${message}`);
+					new Notice(
+						`Parts were created, but the source file could not be deleted: ${message}`,
+					);
+					return false;
+				}
+			}
+		}
+		return true;
 	}
 
 	/**
@@ -309,7 +455,7 @@ export class SplitModal extends Modal {
 			// Non-raw WAV (compressed codec inside): fall through to decode
 		}
 
-		progressEl.setText('Decoding audio...');
+		this.setProgress(progressEl, 'Decoding audio...');
 		const audioBuffer = await decodeAudioDataAtNativeRate(sourceBytes);
 		const partSamples = partSeconds * audioBuffer.sampleRate;
 		if (audioBuffer.length <= partSamples) {
@@ -317,9 +463,7 @@ export class SplitModal extends Modal {
 			return null;
 		}
 
-		const targetFormat = isOfflineEncodingSupported(sourceExtension)
-			? sourceExtension
-			: FORMAT_WAV;
+		const targetFormat = this.getTargetExtension();
 		if (targetFormat !== sourceExtension) {
 			new Notice(
 				`Encoding to "${sourceExtension}" is unavailable; parts are saved as WAV.`,
@@ -383,11 +527,11 @@ export class SplitModal extends Modal {
 		partPaths: string[],
 		progressEl: HTMLElement,
 	): Promise<TFile[]> {
-		const writtenFiles: TFile[] = [];
-		const writtenPaths: string[] = [];
+		const written: { path: string; file: TFile | null }[] = [];
 		try {
 			for (let i = 0; i < parts.length; i++) {
-				progressEl.setText(
+				this.setProgress(
+					progressEl,
 					`Writing part ${String(i + 1)} of ${String(parts.length)}...`,
 				);
 				const bytes = await parts[i].data();
@@ -395,28 +539,34 @@ export class SplitModal extends Modal {
 					partPaths[i],
 					bytes,
 				);
-				writtenPaths.push(partPaths[i]);
-				if (created instanceof TFile) {
-					writtenFiles.push(created);
-				}
+				written.push({
+					path: partPaths[i],
+					file: created instanceof TFile ? created : null,
+				});
 				// Yield to the UI between parts: MP3 encoding is synchronous
 				await new Promise<void>((resolve) =>
 					activeWindow.setTimeout(resolve, 0),
 				);
 			}
 		} catch (error) {
-			for (const path of writtenPaths) {
+			for (const part of written) {
 				try {
-					await this.app.vault.adapter.remove(path);
+					if (part.file) {
+						// trashFile respects the user's file deletion
+						// preference and keeps the rollback recoverable
+						await this.app.fileManager.trashFile(part.file);
+					} else {
+						await this.app.vault.adapter.remove(part.path);
+					}
 				} catch (cleanupError) {
 					console.error(
 						`${PLUGIN_LOG_PREFIX} Failed to remove part after split error:`,
-						{ path, cleanupError },
+						{ path: part.path, cleanupError },
 					);
 				}
 			}
 			throw error;
 		}
-		return writtenFiles;
+		return written.flatMap((part) => (part.file ? [part.file] : []));
 	}
 }
