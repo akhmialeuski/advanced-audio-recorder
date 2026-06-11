@@ -106,6 +106,91 @@ describe('validateSettings', () => {
 		);
 	});
 
+	it('should throw when split part suffix contains illegal characters', () => {
+		const settings: AudioRecorderSettings = {
+			...DEFAULT_SETTINGS,
+			audioDeviceId: 'valid-device',
+			splitPartSuffix: 'pa/rt',
+		};
+		expect(() => validateSettings(settings)).toThrow(
+			SettingsValidationError,
+		);
+		expect(() => validateSettings(settings)).toThrow(
+			/Part suffix may contain only letters, digits, hyphens, and underscores/,
+		);
+	});
+
+	it('should throw when split part suffix is empty', () => {
+		const settings: AudioRecorderSettings = {
+			...DEFAULT_SETTINGS,
+			audioDeviceId: 'valid-device',
+			splitPartSuffix: '',
+		};
+		expect(() => validateSettings(settings)).toThrow(
+			SettingsValidationError,
+		);
+	});
+
+	it('should throw when auto-split is enabled with non-integer minutes', () => {
+		const settings: AudioRecorderSettings = {
+			...DEFAULT_SETTINGS,
+			audioDeviceId: 'valid-device',
+			autoSplitEnabled: true,
+			splitChunkMinutes: 2.5,
+		};
+		expect(() => validateSettings(settings)).toThrow(
+			SettingsValidationError,
+		);
+		expect(() => validateSettings(settings)).toThrow(
+			/Part duration must be an integer between 1 and 180 minutes/,
+		);
+	});
+
+	it('should throw when auto-split is enabled with zero minutes', () => {
+		const settings: AudioRecorderSettings = {
+			...DEFAULT_SETTINGS,
+			audioDeviceId: 'valid-device',
+			autoSplitEnabled: true,
+			splitChunkMinutes: 0,
+		};
+		expect(() => validateSettings(settings)).toThrow(
+			SettingsValidationError,
+		);
+	});
+
+	it('should throw when auto-split is enabled with minutes above the maximum', () => {
+		const settings: AudioRecorderSettings = {
+			...DEFAULT_SETTINGS,
+			audioDeviceId: 'valid-device',
+			autoSplitEnabled: true,
+			splitChunkMinutes: 181,
+		};
+		expect(() => validateSettings(settings)).toThrow(
+			SettingsValidationError,
+		);
+	});
+
+	it('should not validate split minutes when auto-split is disabled', () => {
+		const settings: AudioRecorderSettings = {
+			...DEFAULT_SETTINGS,
+			audioDeviceId: 'valid-device',
+			autoSplitEnabled: false,
+			splitChunkMinutes: 0,
+		};
+		expect(() => validateSettings(settings)).not.toThrow();
+	});
+
+	it('should pass validation with valid auto-split settings', () => {
+		const settings: AudioRecorderSettings = {
+			...DEFAULT_SETTINGS,
+			audioDeviceId: 'valid-device',
+			autoSplitEnabled: true,
+			splitChunkMinutes: 30,
+			splitPartSuffix: 'chunk_1-a',
+		};
+		expect(() => validateSettings(settings)).not.toThrow();
+	});
+
 	it('should pass validation with valid settings', () => {
 		const settings: AudioRecorderSettings = {
 			...DEFAULT_SETTINGS,

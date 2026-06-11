@@ -11,6 +11,7 @@ An advanced audio recording plugin for [Obsidian](https://obsidian.md) with conf
 - **Multi-track recording** from up to 8 input devices simultaneously.
 - **8 output formats**: WAV, WebM, OGG, MP3, MP4, M4A, AAC, FLAC.
 - **Audio format conversion** between supported formats via context menu.
+- **Audio splitting**: automatic splitting of recordings into fixed-duration parts and manual splitting of existing files via context menu.
 - **Audio file info** viewer showing duration, bitrate, sample rate, codec, and more.
 - **Configurable save location** with vault folder or near-active-file mode.
 - **Insert at original position** to place the audio link where recording started.
@@ -87,6 +88,17 @@ For longer recordings, saving may take noticeable time. The status bar shows a p
 
 The ribbon icon switches to a **save** icon while saving is in progress.
 
+### Automatic splitting
+
+When **Split recordings automatically** is enabled in settings, the recording is saved as separate part files of the configured duration (`recording-...-part1.webm`, `recording-...-part2.webm`, ...) instead of one long file. Each finished part is written to disk while the recording continues, and the remainder recorded after the last boundary becomes the final part. Links to all parts are inserted into the note when the recording stops.
+
+Notes on precision and behavior:
+
+- **WAV recordings** are split sample-exactly at the configured boundary.
+- **Compressed formats** (WebM, OGG, MP3, ...) restart the recorder at each boundary, so parts are approximately the configured length (within a few seconds) and a sub-second capture gap may occur between parts.
+- **Merged multi-track recordings** (output mode `Single file` with several tracks) are not auto-split; the plugin shows a notice and saves one merged file.
+- Split settings changed during an active recording apply to the next session.
+
 ## Context menu actions
 
 Right-click on an audio file in the **File Explorer**, on an audio **embed link** in the editor, or on an **embedded audio player** to access these actions:
@@ -115,6 +127,18 @@ Opens a conversion dialog to transcode the audio file to a different format. Opt
 - **Update links in notes**: `Do nothing`, `Replace source link`, or `Insert after source link`.
 
 The conversion reads the source file, decodes it at its native sample rate (to avoid resampling artifacts), re-encodes it in the target format, and saves the new file alongside the original.
+
+### Split audio into parts
+
+Opens a dialog to split the audio file into parts of a fixed duration. Options:
+
+- **Part duration** in minutes (1-180).
+- **Part name suffix** appended with the part number (e.g., `recording-part1.wav`).
+- **Bitrate** used when re-encoding parts of compressed formats (hidden for WAV sources).
+- **Delete source file** toggle to remove the original after a successful split.
+- **Update links in notes**: `Do nothing`, `Replace source link`, or `Insert after source link`. Links are updated in all notes of the vault, including notes that are not open.
+
+WAV files are split losslessly at the byte level without re-encoding. Compressed formats are decoded once and re-encoded per part, so minor quality loss is possible. Part files are saved next to the source file, and the split is aborted if any target part file already exists. If writing fails midway, already-written parts are removed and the source file is kept.
 
 ### Delete recording
 
@@ -194,6 +218,15 @@ Open **Settings > Advanced Audio Recorder** to configure the plugin.
 | **Active file subfolder** | Optional subfolder relative to the active file directory (e.g., `audio`). Created automatically if it does not exist. Only visible when "Save near active file" is enabled. | — |
 | **File prefix** | Filename prefix for recordings (e.g., `recording` produces `recording-1710000000000.webm`). | `recording` |
 | **Insert at original position** | Remember the note and cursor position when recording starts. The audio link is inserted at that location, even if you navigate away during recording. | Off |
+
+### Audio splitting
+
+| Setting                            | Description                                                                                                                      | Default |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| **Split recordings automatically** | Save the recording as separate part files of fixed duration. Not applied to merged multi-track recordings.                       | Off     |
+| **Part duration**                  | Length of each part in minutes (1-180). Also the default part duration for manual splitting.                                     | 15      |
+| **Part name suffix**               | Suffix appended with the part number (e.g., `part` produces `-part1`, `-part2`). Letters, digits, hyphens, and underscores only. | `part`  |
+| **Delete source after split**      | Default state of the delete source file option in the manual split dialog.                                                       | Off     |
 
 ### Multi-track recording
 

@@ -57,4 +57,10 @@ export type RecordingTarget = {
 	pcmBufferedBytes: number;
 	pcmChannels: number;
 	pcmSampleRate: number;
+	/** Number of auto-split parts already finalized for this track. */
+	partIndex: number;
+	/** Saved auto-split part file paths in order of creation. */
+	partPaths: string[];
+	/** Bytes of PCM data accumulated toward the current auto-split part. */
+	partPcmBytes: number;
 };

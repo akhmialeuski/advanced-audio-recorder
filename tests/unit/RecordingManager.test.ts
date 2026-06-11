@@ -1734,4 +1734,313 @@ describe('RecordingManager', () => {
 			expect(context).toBeNull();
 		});
 	});
+
+	describe('auto-split', () => {
+		interface TargetInternals {
+			pendingWrite: Promise<void>;
+			partPaths: string[];
+			partIndex: number;
+		}
+
+		interface ManagerInternals {
+			chunkTargets: TargetInternals[];
+			rotationPromise: Promise<void> | null;
+		}
+
+		let mockMediaRecorder: {
+			start: jest.Mock;
+			stop: jest.Mock;
+			pause: jest.Mock;
+			resume: jest.Mock;
+			ondataavailable: ((event: BlobEvent) => void) | null;
+			onerror: ((event: Event) => void) | null;
+			addEventListener: jest.Mock;
+		};
+
+		function getInternals(instance: RecordingManager): ManagerInternals {
+			return instance as unknown as ManagerInternals;
+		}
+
+		/**
+		 * Lets the voided handleChunk continuation run to completion so
+		 * rotationPromise is observable after awaiting pendingWrite.
+		 */
+		async function flushMicrotasks(): Promise<void> {
+			for (let i = 0; i < 10; i++) {
+				await Promise.resolve();
+			}
+		}
+
+		function createManagerWithSettings(
+			overrides: Partial<AudioRecorderSettings>,
+		): void {
+			mockSettings = { ...DEFAULT_SETTINGS, ...overrides };
+			manager = new RecordingManager(
+				mockApp,
+				mockSettings,
+				statusChangeCallback,
+			);
+		}
+
+		function setupStreams(count: number): void {
+			const { getAudioStreams } = jest.requireMock(
+				'../../src/recording/AudioStreamHandler',
+			);
+			getAudioStreams.mockResolvedValue({
+				streams: Array.from({ length: count }, () => ({
+					getTracks: () => [{ stop: jest.fn() }],
+				})),
+				trackOrder: [],
+			});
+		}
+
+		beforeEach(() => {
+			const { Platform } = jest.requireMock('obsidian');
+			Platform.isMobile = false;
+			Platform.isMobileApp = false;
+
+			mockMediaRecorder = {
+				start: jest.fn(),
+				stop: jest.fn(),
+				pause: jest.fn(),
+				resume: jest.fn(),
+				ondataavailable: null,
+				onerror: null,
+				addEventListener: jest.fn(
+					(event: string, handler: () => void) => {
+						if (event === 'stop') {
+							handler();
+						}
+					},
+				),
+			};
+
+			(global as Record<string, unknown>).MediaRecorder = jest.fn(
+				() => mockMediaRecorder,
+			);
+			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
+				jest.fn().mockReturnValue(true);
+
+			setupStreams(1);
+
+			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
+				new Uint8Array([1, 2, 3]).buffer,
+			);
+		});
+
+		afterEach(() => {
+			jest.useRealTimers();
+		});
+
+		it('should save PCM parts at byte boundaries and a residual part at stop', async () => {
+			createManagerWithSettings({
+				recordingFormat: 'wav',
+				autoSplitEnabled: true,
+				splitChunkMinutes: 1,
+			});
+
+			await manager.startRecording();
+
+			// Part limit: 1 min * 60 s * 44100 Hz * 1 ch * 2 B = 5,292,000 B
+			capturedPcmChunkCallback?.(new ArrayBuffer(3_000_000));
+			await getInternals(manager).chunkTargets[0].pendingWrite;
+			capturedPcmChunkCallback?.(new ArrayBuffer(3_000_000));
+			await getInternals(manager).chunkTargets[0].pendingWrite;
+
+			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
+				expect.stringMatching(/-part1\.wav$/),
+				expect.anything(),
+			);
+			const target = getInternals(manager).chunkTargets[0];
+			expect(target.partIndex).toBe(1);
+			expect(target.partPaths).toHaveLength(1);
+
+			await manager.stopRecording();
+
+			// The 708,000-byte carry becomes the residual second part
+			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
+				expect.stringMatching(/-part2\.wav$/),
+				expect.anything(),
+			);
+		});
+
+		it('should not split PCM recordings when auto-split is disabled', async () => {
+			createManagerWithSettings({
+				recordingFormat: 'wav',
+				autoSplitEnabled: false,
+				splitChunkMinutes: 1,
+			});
+
+			await manager.startRecording();
+
+			capturedPcmChunkCallback?.(new ArrayBuffer(6_000_000));
+			await getInternals(manager).chunkTargets[0].pendingWrite;
+
+			const partCalls = (
+				mockApp.vault.createBinary as jest.Mock
+			).mock.calls.filter((call: unknown[]) =>
+				/-part\d+\.wav$/.test(String(call[0])),
+			);
+			expect(partCalls).toHaveLength(0);
+		});
+
+		it('should use the configured suffix for PCM part files', async () => {
+			createManagerWithSettings({
+				recordingFormat: 'wav',
+				autoSplitEnabled: true,
+				splitChunkMinutes: 1,
+				splitPartSuffix: 'chunk',
+			});
+
+			await manager.startRecording();
+
+			capturedPcmChunkCallback?.(new ArrayBuffer(6_000_000));
+			await getInternals(manager).chunkTargets[0].pendingWrite;
+
+			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
+				expect.stringMatching(/-chunk1\.wav$/),
+				expect.anything(),
+			);
+		});
+
+		it('should rotate MediaRecorder parts after the configured duration', async () => {
+			jest.useFakeTimers();
+			jest.setSystemTime(0);
+			createManagerWithSettings({
+				recordingFormat: 'webm',
+				autoSplitEnabled: true,
+				splitChunkMinutes: 1,
+			});
+
+			await manager.startRecording();
+			expect(global.MediaRecorder).toHaveBeenCalledTimes(1);
+
+			jest.setSystemTime(61_000);
+			const chunk = new Blob([new Uint8Array([1, 2, 3])], {
+				type: 'audio/webm',
+			});
+			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
+			await getInternals(manager).chunkTargets[0].pendingWrite;
+			await flushMicrotasks();
+
+			const rotation = getInternals(manager).rotationPromise;
+			expect(rotation).not.toBeNull();
+			await rotation;
+
+			// Part finalized as a real file and recorders restarted
+			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
+				expect.stringMatching(/-part1\.webm$/),
+				expect.anything(),
+			);
+			expect(global.MediaRecorder).toHaveBeenCalledTimes(2);
+			expect(
+				getInternals(manager).chunkTargets[0].partPaths,
+			).toHaveLength(1);
+
+			// Residual data recorded after rotation becomes the next part
+			jest.setSystemTime(70_000);
+			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
+			await getInternals(manager).chunkTargets[0].pendingWrite;
+			await manager.stopRecording();
+
+			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
+				expect.stringMatching(/-part2\.webm$/),
+				expect.anything(),
+			);
+		});
+
+		it('should not count paused time toward the part duration', async () => {
+			jest.useFakeTimers();
+			jest.setSystemTime(0);
+			createManagerWithSettings({
+				recordingFormat: 'webm',
+				autoSplitEnabled: true,
+				splitChunkMinutes: 1,
+			});
+
+			await manager.startRecording();
+
+			jest.setSystemTime(30_000);
+			manager.togglePauseResume();
+			jest.setSystemTime(130_000);
+			manager.togglePauseResume();
+
+			// Active time is 30 s + 10 s = 40 s, below the 60 s boundary
+			jest.setSystemTime(140_000);
+			const chunk = new Blob([new Uint8Array([1, 2, 3])], {
+				type: 'audio/webm',
+			});
+			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
+			await getInternals(manager).chunkTargets[0].pendingWrite;
+			await flushMicrotasks();
+			expect(getInternals(manager).rotationPromise).toBeNull();
+
+			// Active time reaches 30 s + 35 s = 65 s, beyond the boundary
+			jest.setSystemTime(165_000);
+			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
+			await getInternals(manager).chunkTargets[0].pendingWrite;
+			await flushMicrotasks();
+
+			const rotation = getInternals(manager).rotationPromise;
+			expect(rotation).not.toBeNull();
+			await rotation;
+			expect(global.MediaRecorder).toHaveBeenCalledTimes(2);
+		});
+
+		it('should skip auto-split for merged multi-track recordings', async () => {
+			setupStreams(2);
+			createManagerWithSettings({
+				recordingFormat: 'webm',
+				autoSplitEnabled: true,
+				splitChunkMinutes: 1,
+				outputMode: 'single',
+			});
+
+			await manager.startRecording();
+
+			const { Notice } = jest.requireMock('obsidian');
+			expect(Notice).toHaveBeenCalledWith(
+				'Auto-split is skipped for merged multi-track recordings.',
+			);
+		});
+
+		it('should keep recording when part finalization fails', async () => {
+			jest.useFakeTimers();
+			jest.setSystemTime(0);
+			createManagerWithSettings({
+				recordingFormat: 'webm',
+				autoSplitEnabled: true,
+				splitChunkMinutes: 1,
+			});
+			// Fail only the final part write; segment (.tmp) writes succeed
+			(mockApp.vault.createBinary as jest.Mock).mockImplementation(
+				(path: string) =>
+					/-part1\.webm$/.test(path)
+						? Promise.reject(new Error('disk full'))
+						: Promise.resolve(),
+			);
+
+			await manager.startRecording();
+
+			jest.setSystemTime(61_000);
+			const chunk = new Blob([new Uint8Array([1, 2, 3])], {
+				type: 'audio/webm',
+			});
+			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
+			await getInternals(manager).chunkTargets[0].pendingWrite;
+			await flushMicrotasks();
+			await getInternals(manager).rotationPromise;
+
+			const { Notice } = jest.requireMock('obsidian');
+			expect(Notice).toHaveBeenCalledWith(
+				'Failed to save recording part. Recording continues; data is kept for the next part.',
+			);
+			const target = getInternals(manager).chunkTargets[0];
+			expect(target.partIndex).toBe(0);
+			expect(target.partPaths).toHaveLength(0);
+			// Recorders were restarted despite the failure
+			expect(global.MediaRecorder).toHaveBeenCalledTimes(2);
+			expect(manager.getStatus()).toBe(RecordingStatus.Recording);
+		});
+	});
 });

@@ -107,6 +107,31 @@ export async function convertBlobToWav(recordedBlob: Blob): Promise<Blob> {
 }
 
 /**
+ * Decodes compressed audio bytes preserving the native sample rate.
+ * First probes with a temporary AudioContext to discover the native
+ * rate, then re-decodes with an OfflineAudioContext at that rate to
+ * avoid resampling artifacts. The probe uses a copy of the buffer
+ * because decodeAudioData detaches its input.
+ * @param arrayBuffer - Encoded audio file bytes
+ * @returns Decoded AudioBuffer at the native sample rate
+ */
+export async function decodeAudioDataAtNativeRate(
+	arrayBuffer: ArrayBuffer,
+): Promise<AudioBuffer> {
+	const probeCtx = new AudioContext();
+	const probeBuffer = await probeCtx.decodeAudioData(arrayBuffer.slice(0));
+	const nativeSampleRate = probeBuffer.sampleRate;
+	await probeCtx.close();
+
+	const offlineCtx = new OfflineAudioContext(
+		probeBuffer.numberOfChannels,
+		probeBuffer.length,
+		nativeSampleRate,
+	);
+	return offlineCtx.decodeAudioData(arrayBuffer);
+}
+
+/**
  * Decodes an intermediate blob and re-encodes it to the target format.
  * Uses OfflineAudioContext at the native sample rate to avoid
  * resampling artifacts.
@@ -123,20 +148,7 @@ export async function convertBlobToFormat(
 	onProgress?: FormatProgressCallback,
 ): Promise<Blob> {
 	const arrayBuffer = await recordedBlob.arrayBuffer();
-
-	// Probe native sample rate
-	const probeCtx = new AudioContext();
-	const probeBuffer = await probeCtx.decodeAudioData(arrayBuffer.slice(0));
-	const nativeSampleRate = probeBuffer.sampleRate;
-	await probeCtx.close();
-
-	// Re-decode at native rate to avoid resampling
-	const offlineCtx = new OfflineAudioContext(
-		probeBuffer.numberOfChannels,
-		probeBuffer.length,
-		nativeSampleRate,
-	);
-	const decodedBuffer = await offlineCtx.decodeAudioData(arrayBuffer);
+	const decodedBuffer = await decodeAudioDataAtNativeRate(arrayBuffer);
 
 	return encodeAudioBuffer(
 		decodedBuffer,

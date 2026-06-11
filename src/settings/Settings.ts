@@ -9,6 +9,13 @@ import {
 	DEFAULT_SAMPLE_RATE,
 	DEFAULT_BITRATE,
 } from '../recording/AudioCapabilityDetector';
+import {
+	DEFAULT_SPLIT_CHUNK_MINUTES,
+	DEFAULT_SPLIT_PART_SUFFIX,
+	MIN_SPLIT_CHUNK_MINUTES,
+	MAX_SPLIT_CHUNK_MINUTES,
+	SPLIT_PART_SUFFIX_PATTERN,
+} from '../constants';
 import { getDefaultDeviceId } from '../utils/DeviceUtils';
 
 /**
@@ -86,6 +93,14 @@ export interface AudioRecorderSettings {
 	deleteSourceAfterConversion: boolean;
 	/** What to do with converted file links in notes */
 	conversionLinkAction: ConversionLinkAction;
+	/** Automatically split recordings into parts of fixed duration */
+	autoSplitEnabled: boolean;
+	/** Duration of one split part in minutes */
+	splitChunkMinutes: number;
+	/** Filename suffix for split parts (e.g. 'part' -> '-part1', '-part2') */
+	splitPartSuffix: string;
+	/** Delete the source file after a successful manual split */
+	deleteSourceAfterSplit: boolean;
 }
 
 /**
@@ -112,6 +127,10 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	insertAtOriginalPosition: false,
 	deleteSourceAfterConversion: false,
 	conversionLinkAction: 'replace',
+	autoSplitEnabled: false,
+	splitChunkMinutes: DEFAULT_SPLIT_CHUNK_MINUTES,
+	splitPartSuffix: DEFAULT_SPLIT_PART_SUFFIX,
+	deleteSourceAfterSplit: false,
 };
 
 export interface AudioRecorderSettingsInput extends Partial<
@@ -253,6 +272,26 @@ export function validateSettings(settings: AudioRecorderSettings): void {
 			'recordingFormat',
 			'Recording format is not selected.',
 		);
+	}
+
+	if (!SPLIT_PART_SUFFIX_PATTERN.test(settings.splitPartSuffix)) {
+		throw new SettingsValidationError(
+			'splitPartSuffix',
+			'Part suffix may contain only letters, digits, hyphens, and underscores.',
+		);
+	}
+
+	if (settings.autoSplitEnabled) {
+		if (
+			!Number.isInteger(settings.splitChunkMinutes) ||
+			settings.splitChunkMinutes < MIN_SPLIT_CHUNK_MINUTES ||
+			settings.splitChunkMinutes > MAX_SPLIT_CHUNK_MINUTES
+		) {
+			throw new SettingsValidationError(
+				'splitChunkMinutes',
+				`Part duration must be an integer between ${String(MIN_SPLIT_CHUNK_MINUTES)} and ${String(MAX_SPLIT_CHUNK_MINUTES)} minutes.`,
+			);
+		}
 	}
 
 	if (settings.enableMultiTrack) {
