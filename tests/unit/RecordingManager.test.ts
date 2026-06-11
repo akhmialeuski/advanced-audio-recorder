@@ -401,7 +401,7 @@ describe('RecordingManager', () => {
 
 			await manager.stopRecording();
 
-			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
+			expect(mockApp.vault.adapter.writeBinary).toHaveBeenCalledWith(
 				expect.stringMatching(/-part1\.webm\.tmp$/),
 				expect.any(ArrayBuffer),
 			);
@@ -524,7 +524,7 @@ describe('RecordingManager', () => {
 			await manager.stopRecording();
 
 			// 1 combined segment file + 1 final file (instead of 3 + 1 before buffering)
-			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
+			expect(mockApp.vault.adapter.writeBinary).toHaveBeenCalledWith(
 				expect.stringMatching(/-part1\.webm\.tmp$/),
 				expect.any(ArrayBuffer),
 			);
@@ -1254,7 +1254,7 @@ describe('RecordingManager', () => {
 
 			await manager.stopRecording();
 
-			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
+			expect(mockApp.vault.adapter.writeBinary).toHaveBeenCalledWith(
 				expect.stringMatching(
 					/^Meetings\/2026\/recording-Track1-.*-part1\.webm\.tmp$/,
 				),
@@ -1320,7 +1320,7 @@ describe('RecordingManager', () => {
 			expect(mockApp.vault.createFolder).toHaveBeenCalledWith(
 				'Meetings/2026/Audio',
 			);
-			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
+			expect(mockApp.vault.adapter.writeBinary).toHaveBeenCalledWith(
 				expect.stringMatching(
 					/^Meetings\/2026\/Audio\/recording-Track1-.*-part1\.webm\.tmp$/,
 				),
@@ -1384,7 +1384,7 @@ describe('RecordingManager', () => {
 
 			await manager.stopRecording();
 
-			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
+			expect(mockApp.vault.adapter.writeBinary).toHaveBeenCalledWith(
 				expect.stringMatching(
 					/^Recordings\/recording-Track1-.*-part1\.webm\.tmp$/,
 				),
@@ -2132,7 +2132,7 @@ describe('RecordingManager', () => {
 				splitChunkMinutes: 1,
 			});
 			// Fail only the PCM segment write that backs the part assembly
-			(mockApp.vault.createBinary as jest.Mock).mockImplementation(
+			(mockApp.vault.adapter.writeBinary as jest.Mock).mockImplementation(
 				(path: string) =>
 					path.includes('-pcm-part')
 						? Promise.reject(new Error('disk full'))
@@ -2164,7 +2164,7 @@ describe('RecordingManager', () => {
 			expect(target.partPcmBytes).toBe(0);
 
 			// Disk recovers: the preserved audio must reach the final file
-			(mockApp.vault.createBinary as jest.Mock).mockResolvedValue(
+			(mockApp.vault.adapter.writeBinary as jest.Mock).mockResolvedValue(
 				undefined,
 			);
 			await manager.stopRecording();
@@ -2389,7 +2389,7 @@ describe('RecordingManager', () => {
 			const flushGate = new Promise<void>((resolve) => {
 				releaseFlush = resolve;
 			});
-			(mockApp.vault.createBinary as jest.Mock).mockImplementation(
+			(mockApp.vault.adapter.writeBinary as jest.Mock).mockImplementation(
 				(path: string) =>
 					path.endsWith('.tmp') ? flushGate : Promise.resolve(),
 			);

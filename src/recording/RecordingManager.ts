@@ -1015,7 +1015,9 @@ export class RecordingManager {
 			offset += buf.byteLength;
 		}
 
-		await this.app.vault.createBinary(segmentPath, merged.buffer);
+		// Temporary segment: adapter write keeps the .tmp file out of
+		// vault indexing and file events; final files use createBinary
+		await this.app.vault.adapter.writeBinary(segmentPath, merged.buffer);
 		target.segmentPaths.push(segmentPath);
 		target.pcmBuffers = [];
 		target.pcmBufferedBytes = 0;
@@ -1127,7 +1129,9 @@ export class RecordingManager {
 			const combined = new Blob(target.bufferedChunks, {
 				type: getRecorderMediaType(this.activeRecorderFormat),
 			});
-			await this.app.vault.createBinary(
+			// Temporary segment: adapter write keeps the .tmp file out of
+			// vault indexing and file events; final files use createBinary
+			await this.app.vault.adapter.writeBinary(
 				segmentPath,
 				await combined.arrayBuffer(),
 			);
