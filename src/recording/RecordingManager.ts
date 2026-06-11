@@ -101,6 +101,10 @@ export class RecordingManager {
 	private rotationPromise: Promise<void> | null = null;
 	/** Whether the session is being stopped (blocks new part rotations). */
 	private isStopping: boolean = false;
+	/** Last save-progress percent reported to the status bar. */
+	private lastProgressPercent: number = -1;
+	/** Last save-progress description reported to the status bar. */
+	private lastProgressDescription: string = '';
 
 	/**
 	 * Creates a new RecordingManager.
@@ -462,6 +466,8 @@ export class RecordingManager {
 			this.partActiveMs = 0;
 			this.rotationPromise = null;
 			this.isStopping = false;
+			this.lastProgressPercent = -1;
+			this.lastProgressDescription = '';
 			this.setStatus(RecordingStatus.Idle);
 		}
 	}
@@ -555,8 +561,28 @@ export class RecordingManager {
 		this.onStatusChange(status, saveProgress);
 	}
 
+	/**
+	 * Reports save progress to the status bar, skipping updates whose
+	 * whole percent and description did not change. Encoders may emit
+	 * progress per audio frame (hundreds of thousands of calls for a
+	 * long recording), and every accepted update touches the DOM.
+	 * @param percent - Progress percentage (0-100)
+	 * @param description - Progress phase description
+	 */
 	private updateSaveProgress(percent: number, description: string): void {
-		this.setStatus(RecordingStatus.Saving, { percent, description });
+		const wholePercent = Math.round(percent);
+		if (
+			wholePercent === this.lastProgressPercent &&
+			description === this.lastProgressDescription
+		) {
+			return;
+		}
+		this.lastProgressPercent = wholePercent;
+		this.lastProgressDescription = description;
+		this.setStatus(RecordingStatus.Saving, {
+			percent: wholePercent,
+			description,
+		});
 	}
 
 	private async saveRecording(): Promise<void> {
