@@ -11,7 +11,10 @@ import {
 } from '../recording/AudioEncoder';
 import { AUDIO_EXTENSIONS, FORMAT_WAV } from '../constants';
 import { getSupportedBitrates } from '../recording/AudioCapabilityDetector';
-import { decodeAudioBlob } from '../recording/AudioFormatConverter';
+import {
+	decodeAudioBlob,
+	convertBlobToFormat,
+} from '../recording/AudioFormatConverter';
 import { updateLinksInOpenEditors } from '../utils/LinkUpdater';
 import type {
 	AudioRecorderSettings,
@@ -151,20 +154,34 @@ export class ConversionModal extends Modal {
 				this.sourceFile.path,
 			);
 
-			progressEl.setText('Decoding audio...');
-			const audioBuffer = await decodeAudioBlob(arrayBuffer);
-
-			progressEl.setText('Encoding...');
-			const blob = await encodeAudioBuffer(
-				audioBuffer,
-				{
-					format: this.targetFormat,
-					bitrate: this.bitrate,
-				},
-				(percent) => {
-					progressEl.setText(`Encoding... ${String(percent)}%`);
-				},
-			);
+			let blob: Blob;
+			if (this.targetFormat === FORMAT_WAV) {
+				// WAV needs a full decode; the streaming pipeline only
+				// targets compressed formats
+				progressEl.setText('Decoding audio...');
+				const audioBuffer = await decodeAudioBlob(arrayBuffer);
+				progressEl.setText('Encoding...');
+				blob = await encodeAudioBuffer(
+					audioBuffer,
+					{
+						format: this.targetFormat,
+						bitrate: this.bitrate,
+					},
+					(percent) => {
+						progressEl.setText(`Encoding... ${String(percent)}%`);
+					},
+				);
+			} else {
+				progressEl.setText('Converting...');
+				blob = await convertBlobToFormat(
+					new Blob([arrayBuffer]),
+					this.targetFormat,
+					this.bitrate,
+					(percent) => {
+						progressEl.setText(`Converting... ${String(percent)}%`);
+					},
+				);
+			}
 
 			progressEl.setText('Saving...');
 			await this.app.vault.createBinary(

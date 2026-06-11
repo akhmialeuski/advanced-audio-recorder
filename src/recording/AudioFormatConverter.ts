@@ -4,11 +4,25 @@
  * @module recording/AudioFormatConverter
  */
 
+import {
+	Input,
+	Output,
+	BlobSource,
+	BufferTarget,
+	ALL_FORMATS,
+	Conversion,
+} from 'mediabunny';
 import type { RecordingTarget } from '../types';
 import type { AudioRecorderSettings } from '../settings/Settings';
 import { bufferToWave } from './WavEncoder';
-import { encodeAudioBuffer, isOfflineEncodingSupported } from './AudioEncoder';
-import { MIME_TYPE_AUDIO_PREFIX } from '../constants';
+import {
+	encodeAudioBuffer,
+	isOfflineEncodingSupported,
+	ensureEncoderRegistered,
+	createOutputFormat,
+	FORMAT_CODEC_MAP,
+} from './AudioEncoder';
+import { MIME_TYPE_AUDIO_PREFIX, PLUGIN_LOG_PREFIX } from '../constants';
 import {
 	buildMimeType,
 	FORMAT_WEBM,
@@ -129,7 +143,74 @@ export async function decodeAudioBlob(
 }
 
 /**
+ * Converts a compressed audio blob to the target format using the
+ * streaming mediabunny Conversion pipeline: audio is transcoded in
+ * chunks without materializing the whole recording as PCM in memory,
+ * and matching codecs are remuxed without re-encoding.
+ * @param recordedBlob - Intermediate compressed blob
+ * @param targetFormat - Desired output format
+ * @param bitrate - Bitrate in bits per second
+ * @param onProgress - Optional encoding progress callback (0-100)
+ * @returns Re-encoded blob in the target format
+ */
+async function convertBlobWithConversion(
+	recordedBlob: Blob,
+	targetFormat: string,
+	bitrate: number,
+	onProgress?: FormatProgressCallback,
+): Promise<Blob> {
+	await ensureEncoderRegistered(targetFormat);
+
+	const input = new Input({
+		source: new BlobSource(recordedBlob),
+		formats: ALL_FORMATS,
+	});
+	const target = new BufferTarget();
+	const output = new Output({
+		format: createOutputFormat(targetFormat),
+		target,
+	});
+
+	const conversion = await Conversion.init({
+		input,
+		output,
+		audio: {
+			codec: FORMAT_CODEC_MAP[targetFormat] as
+				| 'opus'
+				| 'aac'
+				| 'flac'
+				| 'mp3',
+			bitrate,
+		},
+	});
+
+	if (onProgress) {
+		let lastPercent = -1;
+		conversion.onProgress = (progress: number): void => {
+			const percent = Math.round(progress * 100);
+			if (percent !== lastPercent) {
+				lastPercent = percent;
+				onProgress(percent);
+			}
+		};
+	}
+
+	await conversion.execute();
+
+	const resultBuffer = target.buffer;
+	if (!resultBuffer || resultBuffer.byteLength === 0) {
+		throw new Error(`Conversion to "${targetFormat}" produced no output`);
+	}
+	return new Blob([resultBuffer], {
+		type: `${MIME_TYPE_AUDIO_PREFIX}${targetFormat}`,
+	});
+}
+
+/**
  * Decodes an intermediate blob and re-encodes it to the target format.
+ * Tries the streaming Conversion pipeline first and falls back to the
+ * full decode-then-encode path on any failure, so every format keeps
+ * working even when the input container is not readable by mediabunny.
  * @param recordedBlob - Intermediate compressed blob
  * @param targetFormat - Desired output format
  * @param bitrate - Bitrate in bits per second
@@ -142,6 +223,20 @@ export async function convertBlobToFormat(
 	bitrate: number,
 	onProgress?: FormatProgressCallback,
 ): Promise<Blob> {
+	try {
+		return await convertBlobWithConversion(
+			recordedBlob,
+			targetFormat,
+			bitrate,
+			onProgress,
+		);
+	} catch (error) {
+		console.warn(
+			`${PLUGIN_LOG_PREFIX} Streaming conversion failed, falling back to decode and re-encode:`,
+			error,
+		);
+	}
+
 	const arrayBuffer = await recordedBlob.arrayBuffer();
 	const decodedBuffer = await decodeAudioBlob(arrayBuffer);
 
