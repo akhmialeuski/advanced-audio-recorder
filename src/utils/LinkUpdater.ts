@@ -2,12 +2,15 @@
  * Shared utilities for rewriting links to audio files in notes.
  * Used by the conversion flow (editor-based, preserves undo history)
  * and by the split flow (vault-wide, covers closed notes because the
- * source file may be deleted afterwards).
+ * source file may be deleted afterwards). The vault-wide variant works
+ * on parsed metadata references, so every link syntax Obsidian indexes
+ * (wikilinks, Markdown links, relative paths) is rewritten.
  * @module utils/LinkUpdater
  */
 
-import { MarkdownView, TFile } from 'obsidian';
-import type { App } from 'obsidian';
+import { MarkdownView, TFile, getLinkpath } from 'obsidian';
+import type { App, ReferenceCache } from 'obsidian';
+import { PLUGIN_LOG_PREFIX } from '../constants';
 import type { ConversionLinkAction } from '../settings/Settings';
 
 /**
@@ -111,48 +114,127 @@ export function updateLinksInOpenEditors(
 }
 
 /**
+ * Builds the replacement text for one parsed reference: one link per
+ * new file, generated with the user's link-format preferences, joined
+ * by newlines. The embed prefix of the original reference is preserved
+ * regardless of how generateMarkdownLink treats the file type.
+ * @param app - Obsidian App instance
+ * @param reference - The reference being replaced
+ * @param newFiles - Files the replacement links point to
+ * @param notePath - Path of the note containing the reference
+ * @param action - How to rewrite the link
+ * @returns Replacement text for the reference
+ */
+function buildReferenceReplacement(
+	app: App,
+	reference: ReferenceCache,
+	newFiles: TFile[],
+	notePath: string,
+	action: ConversionLinkAction,
+): string {
+	const isEmbed = reference.original.startsWith('!');
+	const links = newFiles
+		.map((file) => {
+			const link = app.fileManager.generateMarkdownLink(file, notePath);
+			const bareLink = link.startsWith('!') ? link.slice(1) : link;
+			return isEmbed ? `!${bareLink}` : bareLink;
+		})
+		.join('\n');
+	return action === 'after' ? `${reference.original}\n${links}` : links;
+}
+
+/**
+ * Collects the parsed references (links and embeds) of a note that
+ * resolve to the source file, sorted by descending position so they
+ * can be replaced from the end of the note to the start. Frontmatter
+ * links are deliberately excluded: multi-line replacement text would
+ * corrupt YAML properties.
+ * @param app - Obsidian App instance
+ * @param note - Note to scan
+ * @param sourceFile - File the references must resolve to
+ * @returns Matching references in descending position order
+ */
+function collectSourceReferences(
+	app: App,
+	note: TFile,
+	sourceFile: TFile,
+): ReferenceCache[] {
+	const cache = app.metadataCache.getFileCache(note);
+	const references = [...(cache?.links ?? []), ...(cache?.embeds ?? [])];
+	return references
+		.filter((reference) => {
+			const target = app.metadataCache.getFirstLinkpathDest(
+				getLinkpath(reference.link),
+				note.path,
+			);
+			return target?.path === sourceFile.path;
+		})
+		.sort((a, b) => b.position.start.offset - a.position.start.offset);
+}
+
+/**
  * Updates links to the source file in every note of the vault that
  * references it, including notes that are not currently open. Uses
- * metadataCache.resolvedLinks to find referencing notes and
- * vault.process for atomic modification.
+ * metadataCache.resolvedLinks to find referencing notes, the parsed
+ * link/embed references for exact positions (covering wikilinks,
+ * Markdown links, and relative paths alike), and vault.process for
+ * atomic modification.
  * @param app - Obsidian App instance
  * @param sourceFile - File whose links are being rewritten
- * @param newFileNames - File names of the replacement links
+ * @param newFiles - Files the replacement links point to
  * @param action - How to rewrite the links ('none' is a no-op)
  * @returns Number of notes that were updated
  */
 export async function updateLinksInVault(
 	app: App,
 	sourceFile: TFile,
-	newFileNames: string[],
+	newFiles: TFile[],
 	action: ConversionLinkAction,
 ): Promise<number> {
-	if (action === 'none' || newFileNames.length === 0) {
+	if (action === 'none' || newFiles.length === 0) {
 		return 0;
 	}
 
-	// Notes may link by file name or by full vault path; cover both forms
-	const patterns = [buildLinkPattern(sourceFile.name)];
-	if (sourceFile.path !== sourceFile.name) {
-		patterns.push(buildLinkPattern(sourceFile.path));
-	}
-	const referencingPaths = Object.entries(
-		app.metadataCache.resolvedLinks,
-	).filter(([, links]) => sourceFile.path in links);
+	const referencingPaths = Object.entries(app.metadataCache.resolvedLinks)
+		.filter(([, links]) => sourceFile.path in links)
+		.map(([notePath]) => notePath);
 
 	let updatedCount = 0;
-	for (const [notePath] of referencingPaths) {
+	for (const notePath of referencingPaths) {
 		const note = app.vault.getAbstractFileByPath(notePath);
 		if (!(note instanceof TFile)) {
+			continue;
+		}
+		const references = collectSourceReferences(app, note, sourceFile);
+		if (references.length === 0) {
 			continue;
 		}
 		let changed = false;
 		await app.vault.process(note, (content) => {
 			let rewritten = content;
-			for (const pattern of patterns) {
-				rewritten = rewritten.replace(pattern, (matchedLink) =>
-					rewriteMatchedLink(matchedLink, newFileNames, action),
-				);
+			// Replace from the end to the start so earlier offsets stay valid
+			for (const reference of references) {
+				const { start, end } = reference.position;
+				const original = rewritten.slice(start.offset, end.offset);
+				if (original !== reference.original) {
+					// The metadata cache lags behind the file content;
+					// skip the reference instead of corrupting the note
+					console.warn(
+						`${PLUGIN_LOG_PREFIX} Skipped a stale link reference in:`,
+						notePath,
+					);
+					continue;
+				}
+				rewritten =
+					rewritten.slice(0, start.offset) +
+					buildReferenceReplacement(
+						app,
+						reference,
+						newFiles,
+						notePath,
+						action,
+					) +
+					rewritten.slice(end.offset);
 			}
 			changed = rewritten !== content;
 			return rewritten;

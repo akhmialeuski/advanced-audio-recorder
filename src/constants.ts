@@ -61,3 +61,7 @@ export const DEFAULT_SPLIT_PART_SUFFIX = 'part';
  * free of path separators and regex metacharacters.
  */
 export const SPLIT_PART_SUFFIX_PATTERN = /^[A-Za-z0-9_-]+$/;
+
+/** User-facing description of the split part suffix character rule. */
+export const SPLIT_PART_SUFFIX_RULE_TEXT =
+	'Part suffix may contain only letters, digits, hyphens, and underscores.';

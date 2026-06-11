@@ -416,6 +416,15 @@ export function setIcon(_el: HTMLElement, _iconId: string): void {
 	// Mock implementation
 }
 
+/**
+ * Mock getLinkpath function: strips the subpath (heading/block
+ * reference) from a link text, mirroring the Obsidian behavior.
+ */
+export function getLinkpath(linktext: string): string {
+	const hashIndex = linktext.indexOf('#');
+	return hashIndex >= 0 ? linktext.slice(0, hashIndex) : linktext;
+}
+
 export const Platform = {
 	isMobile: false,
 	isMobileApp: false,

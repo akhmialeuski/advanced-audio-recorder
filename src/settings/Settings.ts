@@ -15,6 +15,7 @@ import {
 	MIN_SPLIT_CHUNK_MINUTES,
 	MAX_SPLIT_CHUNK_MINUTES,
 	SPLIT_PART_SUFFIX_PATTERN,
+	SPLIT_PART_SUFFIX_RULE_TEXT,
 } from '../constants';
 import { getDefaultDeviceId } from '../utils/DeviceUtils';
 
@@ -277,7 +278,7 @@ export function validateSettings(settings: AudioRecorderSettings): void {
 	if (!SPLIT_PART_SUFFIX_PATTERN.test(settings.splitPartSuffix)) {
 		throw new SettingsValidationError(
 			'splitPartSuffix',
-			'Part suffix may contain only letters, digits, hyphens, and underscores.',
+			SPLIT_PART_SUFFIX_RULE_TEXT,
 		);
 	}
 

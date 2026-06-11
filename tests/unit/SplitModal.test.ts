@@ -52,6 +52,7 @@ function addObsidianDomMethods(el: HTMLElement): HTMLElement {
 const mockCapturedControls = {
 	sliders: [] as ((value: number) => void)[],
 	texts: [] as ((value: string) => void)[],
+	textInputs: [] as { toggleClass: jest.Mock }[],
 	toggles: [] as ((value: boolean) => void)[],
 	dropdowns: [] as ((value: string) => void)[],
 	buttons: [] as { click: () => void; setDisabled: jest.Mock }[],
@@ -106,10 +107,13 @@ jest.mock('obsidian', () => ({
 		});
 		chain.addText.mockImplementation((cb: (text: unknown) => void) => {
 			const text = {
+				// onChange validation feedback toggles a CSS class here
+				inputEl: { toggleClass: jest.fn() },
 				setPlaceholder: jest.fn(),
 				setValue: jest.fn(),
 				onChange: jest.fn((handler: (value: string) => void) => {
 					mockCapturedControls.texts.push(handler);
+					mockCapturedControls.textInputs.push(text.inputEl);
 					return text;
 				}),
 			};
@@ -219,6 +223,17 @@ function buildTestWav(
 	return wav.buffer;
 }
 
+/**
+ * Creates a TFile instance (of the mocked class) for a created part path,
+ * mirroring what vault.createBinary returns in production.
+ */
+function makePartFile(path: string): TFile {
+	const file = new TFile();
+	file.path = path;
+	file.name = path.split('/').pop() ?? path;
+	return file;
+}
+
 /** Typed access to the private split pipeline. */
 interface SplitModalInternals {
 	runSplit(progressEl: HTMLElement): Promise<void>;
@@ -281,6 +296,7 @@ describe('SplitModal', () => {
 		jest.clearAllMocks();
 		mockCapturedControls.sliders.length = 0;
 		mockCapturedControls.texts.length = 0;
+		mockCapturedControls.textInputs.length = 0;
 		mockCapturedControls.toggles.length = 0;
 		mockCapturedControls.dropdowns.length = 0;
 		mockCapturedControls.buttons.length = 0;
@@ -295,7 +311,12 @@ describe('SplitModal', () => {
 					exists: jest.fn().mockResolvedValue(false),
 					remove: jest.fn().mockResolvedValue(undefined),
 				},
-				createBinary: jest.fn().mockResolvedValue(undefined),
+				// createBinary returns the created TFile, like the real vault
+				createBinary: jest
+					.fn()
+					.mockImplementation((path: string) =>
+						Promise.resolve(makePartFile(path)),
+					),
 			},
 			fileManager: {
 				trashFile: jest.fn().mockResolvedValue(undefined),
@@ -324,6 +345,20 @@ describe('SplitModal', () => {
 		} as unknown as AudioRecorderSettings);
 
 		expect(internals(modal).partSuffix).toBe('part');
+	});
+
+	it('should clamp out-of-range configured part durations', () => {
+		const tooLarge = new SplitModal(mockApp, mockFile, {
+			...mockSettings,
+			splitChunkMinutes: 10000,
+		} as unknown as AudioRecorderSettings);
+		expect(internals(tooLarge).partMinutes).toBe(180);
+
+		const nonFinite = new SplitModal(mockApp, mockFile, {
+			...mockSettings,
+			splitChunkMinutes: Number.NaN,
+		} as unknown as AudioRecorderSettings);
+		expect(internals(nonFinite).partMinutes).toBe(15);
 	});
 
 	it('should render source file info on open and clear on close', () => {
@@ -356,6 +391,33 @@ describe('SplitModal', () => {
 
 		mockCapturedControls.dropdowns[0]('after');
 		expect(internals(modal).linkAction).toBe('after');
+	});
+
+	it('should toggle the invalid-input class on the suffix field', () => {
+		const modal = new SplitModal(mockApp, mockFile, mockSettings);
+		modal.onOpen();
+
+		const handler = mockCapturedControls.texts[0];
+		const inputEl = mockCapturedControls.textInputs[0];
+
+		handler('bad/suffix');
+		expect(inputEl.toggleClass).toHaveBeenLastCalledWith(
+			'aar-input-invalid',
+			true,
+		);
+
+		handler('good-suffix');
+		expect(inputEl.toggleClass).toHaveBeenLastCalledWith(
+			'aar-input-invalid',
+			false,
+		);
+
+		// Empty input is valid: it falls back to the default suffix
+		handler('');
+		expect(inputEl.toggleClass).toHaveBeenLastCalledWith(
+			'aar-input-invalid',
+			false,
+		);
 	});
 
 	it('should show the bitrate dropdown only for compressed sources', () => {
@@ -426,7 +488,7 @@ describe('SplitModal', () => {
 			expect(new DataView(lastPart).getUint32(40, true)).toBe(10000);
 		});
 
-		it('should update links in the vault with all part names', async () => {
+		it('should update links in the vault with the created part files', async () => {
 			const modal = new SplitModal(mockApp, mockFile, mockSettings);
 
 			await internals(modal).runSplit(progressEl);
@@ -434,11 +496,38 @@ describe('SplitModal', () => {
 			expect(updateLinksInVault).toHaveBeenCalledWith(
 				mockApp,
 				mockFile,
-				[
-					'recording-part1.wav',
-					'recording-part2.wav',
-					'recording-part3.wav',
-				],
+				expect.arrayContaining([
+					expect.objectContaining({
+						path: 'Recordings/recording-part1.wav',
+					}),
+					expect.objectContaining({
+						path: 'Recordings/recording-part2.wav',
+					}),
+					expect.objectContaining({
+						path: 'Recordings/recording-part3.wav',
+					}),
+				]),
+				'replace',
+			);
+			const partFiles = (updateLinksInVault as jest.Mock).mock
+				.calls[0][2] as unknown[];
+			expect(partFiles).toHaveLength(3);
+			expect(partFiles.every((file) => file instanceof TFile)).toBe(true);
+		});
+
+		it('should pass only TFile results from createBinary to the link updater', async () => {
+			// Simulate an adapter that does not resolve to a TFile
+			(mockApp.vault.createBinary as jest.Mock).mockResolvedValue(
+				undefined,
+			);
+			const modal = new SplitModal(mockApp, mockFile, mockSettings);
+
+			await internals(modal).runSplit(progressEl);
+
+			expect(updateLinksInVault).toHaveBeenCalledWith(
+				mockApp,
+				mockFile,
+				[],
 				'replace',
 			);
 		});
@@ -476,6 +565,64 @@ describe('SplitModal', () => {
 			const trashOrder = (mockApp.fileManager.trashFile as jest.Mock).mock
 				.invocationCallOrder[0];
 			expect(trashOrder).toBeGreaterThan(lastWriteOrder);
+		});
+
+		it('should abort with the suffix rule before reading the source for an invalid suffix', async () => {
+			const modal = new SplitModal(mockApp, mockFile, mockSettings);
+			internals(modal).partSuffix = 'bad suffix';
+
+			await internals(modal).runSplit(progressEl);
+
+			expect(Notice).toHaveBeenCalledWith(
+				'Part suffix may contain only letters, digits, hyphens, and underscores.',
+			);
+			expect(mockApp.vault.adapter.readBinary).not.toHaveBeenCalled();
+			expect(mockApp.vault.createBinary).not.toHaveBeenCalled();
+		});
+
+		it('should fall back to the default suffix when the field is blank', async () => {
+			const modal = new SplitModal(mockApp, mockFile, mockSettings);
+			internals(modal).partSuffix = '   ';
+
+			await internals(modal).runSplit(progressEl);
+
+			const paths = (
+				mockApp.vault.createBinary as jest.Mock
+			).mock.calls.map((call: unknown[]) => call[0]);
+			expect(paths).toEqual([
+				'Recordings/recording-part1.wav',
+				'Recordings/recording-part2.wav',
+				'Recordings/recording-part3.wav',
+			]);
+		});
+
+		it('should clamp a zero part duration up to one minute', async () => {
+			const modal = new SplitModal(mockApp, mockFile, mockSettings);
+			internals(modal).partMinutes = 0;
+
+			await internals(modal).runSplit(progressEl);
+
+			// An unclamped zero-length part would abort the split;
+			// one-minute parts of the 250000-byte file yield three parts
+			expect(mockApp.vault.createBinary).toHaveBeenCalledTimes(3);
+		});
+
+		it('should clamp an oversized part duration down to 180 minutes', async () => {
+			// 10 Hz mono 16-bit: byteRate 20 B/s; a 180-minute part = 216000 B
+			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
+				buildTestWav(1, 10, 250000),
+			);
+			const modal = new SplitModal(mockApp, mockFile, mockSettings);
+			internals(modal).partMinutes = 10000;
+
+			await internals(modal).runSplit(progressEl);
+
+			// Unclamped 10000-minute parts would exceed the file and abort
+			expect(mockApp.vault.createBinary).toHaveBeenCalledTimes(2);
+			const calls = (mockApp.vault.createBinary as jest.Mock).mock
+				.calls as [string, ArrayBuffer][];
+			expect(calls[0][1].byteLength).toBe(WAV_HEADER_SIZE + 216000);
+			expect(calls[1][1].byteLength).toBe(WAV_HEADER_SIZE + 34000);
 		});
 
 		it('should abort when a target part file already exists', async () => {
@@ -633,6 +780,21 @@ describe('SplitModal', () => {
 			expect(mockApp.vault.createBinary).not.toHaveBeenCalled();
 			expect(Notice).toHaveBeenCalledWith(
 				'File is shorter than one part.',
+			);
+		});
+
+		it('should decode a WAV file without a raw sample data chunk', async () => {
+			// readBinary returns a non-RIFF buffer, so the lossless WAV
+			// path is rejected and the decode pipeline takes over
+			configureFile('recording.wav', 'wav');
+			const modal = new SplitModal(mockApp, mockFile, mockSettings);
+
+			await internals(modal).runSplit(progressEl);
+
+			expect(decodeAudioDataAtNativeRate).toHaveBeenCalledTimes(1);
+			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
+				'Recordings/recording-part1.wav',
+				expect.anything(),
 			);
 		});
 

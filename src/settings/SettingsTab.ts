@@ -30,6 +30,7 @@ import {
 	DEFAULT_SPLIT_PART_SUFFIX,
 	MIN_SPLIT_CHUNK_MINUTES,
 	MAX_SPLIT_CHUNK_MINUTES,
+	SPLIT_PART_SUFFIX_PATTERN,
 } from '../constants';
 import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
 import { SystemInfoModal } from '../diagnostics/SystemInfoModal';
@@ -385,6 +386,13 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					.setPlaceholder(DEFAULT_SPLIT_PART_SUFFIX)
 					.setValue(this.plugin.settings.splitPartSuffix)
 					.onChange(async (value) => {
+						// Persist only valid suffixes; the red border tells
+						// the user the last valid value is still in effect
+						const valid = SPLIT_PART_SUFFIX_PATTERN.test(value);
+						text.inputEl.toggleClass('aar-input-invalid', !valid);
+						if (!valid) {
+							return;
+						}
 						this.plugin.settings.splitPartSuffix = value;
 						await this.plugin.saveSettings();
 					}),

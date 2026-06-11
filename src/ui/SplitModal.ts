@@ -16,12 +16,16 @@ import {
 	MAX_SPLIT_CHUNK_MINUTES,
 	DEFAULT_SPLIT_PART_SUFFIX,
 	PLUGIN_LOG_PREFIX,
+	SPLIT_PART_SUFFIX_PATTERN,
+	SPLIT_PART_SUFFIX_RULE_TEXT,
 } from '../constants';
 import { getSupportedBitrates } from '../recording/AudioCapabilityDetector';
 import { decodeAudioDataAtNativeRate } from '../recording/AudioFormatConverter';
 import {
 	parseWavLayout,
-	splitWavBuffer,
+	buildWavPart,
+	clampSplitMinutes,
+	computeWavPartBytes,
 	sliceAudioBuffer,
 	computePartCount,
 	buildPartFileName,
@@ -50,7 +54,7 @@ export class SplitModal extends Modal {
 	constructor(app: App, sourceFile: TFile, settings: AudioRecorderSettings) {
 		super(app);
 		this.sourceFile = sourceFile;
-		this.partMinutes = settings.splitChunkMinutes;
+		this.partMinutes = clampSplitMinutes(settings.splitChunkMinutes);
 		this.partSuffix = sanitizePartSuffix(settings.splitPartSuffix);
 		this.bitrate = settings.bitrate;
 		this.deleteSource = settings.deleteSourceAfterSplit;
@@ -94,6 +98,14 @@ export class SplitModal extends Modal {
 					.setValue(this.partSuffix)
 					.onChange((value) => {
 						this.partSuffix = value;
+						// Mirror resolvePartSuffix: surrounding whitespace
+						// is ignored and empty means the default suffix
+						const trimmed = value.trim();
+						text.inputEl.toggleClass(
+							'aar-input-invalid',
+							trimmed !== '' &&
+								!SPLIT_PART_SUFFIX_PATTERN.test(trimmed),
+						);
 					}),
 			);
 
@@ -162,16 +174,36 @@ export class SplitModal extends Modal {
 	}
 
 	/**
+	 * Resolves the effective part suffix from the text field. An empty
+	 * field means the default suffix (shown as the placeholder); an
+	 * invalid value aborts the split with an explanation instead of
+	 * being silently replaced.
+	 * @returns The suffix to use, or null when the input is invalid
+	 */
+	private resolvePartSuffix(): string | null {
+		const suffix = this.partSuffix.trim();
+		if (suffix === '') {
+			return DEFAULT_SPLIT_PART_SUFFIX;
+		}
+		if (!SPLIT_PART_SUFFIX_PATTERN.test(suffix)) {
+			new Notice(SPLIT_PART_SUFFIX_RULE_TEXT);
+			return null;
+		}
+		return suffix;
+	}
+
+	/**
 	 * Executes the split pipeline: prepare parts, pre-check collisions,
 	 * write part files, update links, optionally delete the source.
 	 */
 	private async runSplit(progressEl: HTMLElement): Promise<void> {
 		try {
+			const suffix = this.resolvePartSuffix();
+			if (suffix === null) {
+				return;
+			}
 			const partSeconds =
-				Math.max(
-					MIN_SPLIT_CHUNK_MINUTES,
-					Math.floor(this.partMinutes),
-				) * SECONDS_PER_MINUTE;
+				clampSplitMinutes(this.partMinutes) * SECONDS_PER_MINUTE;
 
 			progressEl.setText('Reading source file...');
 			const sourceBytes = await this.app.vault.adapter.readBinary(
@@ -181,6 +213,7 @@ export class SplitModal extends Modal {
 			const parts = await this.preparePartBlobs(
 				sourceBytes,
 				partSeconds,
+				suffix,
 				progressEl,
 			);
 			if (!parts) {
@@ -193,14 +226,18 @@ export class SplitModal extends Modal {
 				return;
 			}
 
-			await this.writePartFiles(parts, partPaths, progressEl);
+			const partFiles = await this.writePartFiles(
+				parts,
+				partPaths,
+				progressEl,
+			);
 
 			if (this.linkAction !== 'none') {
 				progressEl.setText('Updating links...');
 				await updateLinksInVault(
 					this.app,
 					this.sourceFile,
-					partNames,
+					partFiles,
 					this.linkAction,
 				);
 			}
@@ -233,39 +270,40 @@ export class SplitModal extends Modal {
 	private async preparePartBlobs(
 		sourceBytes: ArrayBuffer,
 		partSeconds: number,
+		suffix: string,
 		progressEl: HTMLElement,
 	): Promise<
 		{ fileName: string; data: () => Promise<ArrayBuffer> }[] | null
 	> {
-		const suffix = sanitizePartSuffix(this.partSuffix);
 		const baseName = this.sourceFile.basename;
 		const sourceExtension = this.sourceFile.extension.toLowerCase();
 
 		if (sourceExtension === FORMAT_WAV) {
 			const layout = parseWavLayout(sourceBytes);
 			if (layout) {
-				const partBytes =
-					Math.floor(
-						(layout.byteRate * partSeconds) / layout.blockAlign,
-					) * layout.blockAlign;
-				if (layout.dataLength <= partBytes) {
+				const partBytes = computeWavPartBytes(layout, partSeconds);
+				if (partBytes <= 0 || layout.dataLength <= partBytes) {
 					new Notice('File is shorter than one part.');
 					return null;
 				}
-				progressEl.setText('Splitting audio data...');
-				const buffers = splitWavBuffer(
-					sourceBytes,
-					layout,
-					partSeconds,
+				const partCount = computePartCount(
+					layout.dataLength,
+					partBytes,
 				);
-				return buffers.map((buffer, index) => ({
+				return Array.from({ length: partCount }, (_, index) => ({
 					fileName: buildPartFileName(
 						baseName,
 						suffix,
 						index + 1,
 						FORMAT_WAV,
 					),
-					data: () => Promise.resolve(buffer),
+					// Built lazily inside data() so at most one part
+					// buffer is alive at a time while writing files that
+					// can be gigabytes in size
+					data: () =>
+						Promise.resolve(
+							buildWavPart(sourceBytes, layout, partBytes, index),
+						),
 				}));
 			}
 			// Non-raw WAV (compressed codec inside): fall through to decode
@@ -338,12 +376,14 @@ export class SplitModal extends Modal {
 	 * Writes all part files, yielding to the UI between parts.
 	 * On failure removes already-written parts and rethrows, keeping
 	 * the source file intact.
+	 * @returns The created part files in write order
 	 */
 	private async writePartFiles(
 		parts: { fileName: string; data: () => Promise<ArrayBuffer> }[],
 		partPaths: string[],
 		progressEl: HTMLElement,
-	): Promise<void> {
+	): Promise<TFile[]> {
+		const writtenFiles: TFile[] = [];
 		const writtenPaths: string[] = [];
 		try {
 			for (let i = 0; i < parts.length; i++) {
@@ -351,8 +391,14 @@ export class SplitModal extends Modal {
 					`Writing part ${String(i + 1)} of ${String(parts.length)}...`,
 				);
 				const bytes = await parts[i].data();
-				await this.app.vault.createBinary(partPaths[i], bytes);
+				const created = await this.app.vault.createBinary(
+					partPaths[i],
+					bytes,
+				);
 				writtenPaths.push(partPaths[i]);
+				if (created instanceof TFile) {
+					writtenFiles.push(created);
+				}
 				// Yield to the UI between parts: MP3 encoding is synchronous
 				await new Promise<void>((resolve) =>
 					activeWindow.setTimeout(resolve, 0),
@@ -371,5 +417,6 @@ export class SplitModal extends Modal {
 			}
 			throw error;
 		}
+		return writtenFiles;
 	}
 }

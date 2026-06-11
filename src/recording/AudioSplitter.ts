@@ -6,7 +6,10 @@
  */
 
 import {
+	DEFAULT_SPLIT_CHUNK_MINUTES,
 	DEFAULT_SPLIT_PART_SUFFIX,
+	MAX_SPLIT_CHUNK_MINUTES,
+	MIN_SPLIT_CHUNK_MINUTES,
 	SPLIT_PART_SUFFIX_PATTERN,
 } from '../constants';
 
@@ -115,51 +118,58 @@ export function parseWavLayout(buffer: ArrayBuffer): WavLayout | null {
 }
 
 /**
- * Splits raw WAV file bytes into standalone WAV files of the given
- * duration without decoding. Each part reuses the original header
- * (everything before the sample data) with patched RIFF and data chunk
- * sizes, so sample format, channels, and rate are preserved exactly.
- * Trailing chunks after the data chunk are dropped.
- * @param buffer - Raw WAV file bytes
+ * Computes the byte length of one lossless WAV part, aligned down to a
+ * whole sample frame so parts never cut a frame in half.
  * @param layout - Parsed WAV layout from parseWavLayout
  * @param partDurationSec - Duration of each part in seconds
- * @returns Array of complete WAV files, one per part
+ * @returns Part size in bytes (multiple of blockAlign, possibly 0)
  */
-export function splitWavBuffer(
-	buffer: ArrayBuffer,
+export function computeWavPartBytes(
 	layout: WavLayout,
 	partDurationSec: number,
-): ArrayBuffer[] {
+): number {
 	const rawPartBytes = Math.floor(layout.byteRate * partDurationSec);
-	const partBytes =
-		Math.floor(rawPartBytes / layout.blockAlign) * layout.blockAlign;
-	if (partBytes <= 0) {
-		return [];
-	}
+	return Math.floor(rawPartBytes / layout.blockAlign) * layout.blockAlign;
+}
 
-	const parts: ArrayBuffer[] = [];
+/**
+ * Builds one standalone WAV part of a byte-level split without decoding.
+ * The part reuses the original header (everything before the sample
+ * data) with patched RIFF and data chunk sizes, so sample format,
+ * channels, and rate are preserved exactly. Trailing chunks after the
+ * data chunk are dropped. Parts are built one at a time so callers can
+ * keep at most one part buffer alive while writing multi-gigabyte files.
+ * @param buffer - Raw WAV file bytes
+ * @param layout - Parsed WAV layout from parseWavLayout
+ * @param partBytes - Part size in bytes from computeWavPartBytes
+ * @param partIndex - 0-based part index
+ * @returns Complete WAV file for the requested part
+ */
+export function buildWavPart(
+	buffer: ArrayBuffer,
+	layout: WavLayout,
+	partBytes: number,
+	partIndex: number,
+): ArrayBuffer {
+	const start = partIndex * partBytes;
+	const length = Math.max(0, Math.min(partBytes, layout.dataLength - start));
 	const headerLength = layout.dataOffset;
 
-	for (let start = 0; start < layout.dataLength; start += partBytes) {
-		const length = Math.min(partBytes, layout.dataLength - start);
-		const part = new ArrayBuffer(headerLength + length);
-		const partBytesView = new Uint8Array(part);
-		partBytesView.set(new Uint8Array(buffer, 0, headerLength), 0);
-		partBytesView.set(
-			new Uint8Array(buffer, layout.dataOffset + start, length),
-			headerLength,
-		);
+	const part = new ArrayBuffer(headerLength + length);
+	const partView = new Uint8Array(part);
+	partView.set(new Uint8Array(buffer, 0, headerLength), 0);
+	partView.set(
+		new Uint8Array(buffer, layout.dataOffset + start, length),
+		headerLength,
+	);
 
-		const view = new DataView(part);
-		// RIFF chunk size: total file length minus the 8-byte RIFF header
-		view.setUint32(4, headerLength + length - RIFF_CHUNK_HEADER_SIZE, true);
-		// data chunk size: immediately precedes the sample data
-		view.setUint32(headerLength - 4, length, true);
+	const view = new DataView(part);
+	// RIFF chunk size: total file length minus the 8-byte RIFF header
+	view.setUint32(4, headerLength + length - RIFF_CHUNK_HEADER_SIZE, true);
+	// data chunk size: immediately precedes the sample data
+	view.setUint32(headerLength - 4, length, true);
 
-		parts.push(part);
-	}
-
-	return parts;
+	return part;
 }
 
 /**
@@ -252,4 +262,62 @@ export function sanitizePartSuffix(suffix: string): string {
 	return SPLIT_PART_SUFFIX_PATTERN.test(suffix)
 		? suffix
 		: DEFAULT_SPLIT_PART_SUFFIX;
+}
+
+/**
+ * Clamps a configured part duration to the supported range.
+ * validateSettings is not invoked on the production load path, so
+ * persisted settings may carry out-of-range or non-numeric values.
+ * @param minutes - User-configured part duration in minutes
+ * @returns Whole minutes within [MIN, MAX], or the default for
+ * non-finite input
+ */
+export function clampSplitMinutes(minutes: number): number {
+	if (!Number.isFinite(minutes)) {
+		return DEFAULT_SPLIT_CHUNK_MINUTES;
+	}
+	return Math.min(
+		MAX_SPLIT_CHUNK_MINUTES,
+		Math.max(MIN_SPLIT_CHUNK_MINUTES, Math.floor(minutes)),
+	);
+}
+
+/**
+ * Sums the byte lengths of a list of buffers.
+ * @param buffers - Buffers to measure
+ * @returns Total byte length
+ */
+export function totalByteLength(buffers: ArrayBuffer[]): number {
+	return buffers.reduce((sum, buffer) => sum + buffer.byteLength, 0);
+}
+
+/**
+ * Detaches the trailing `trailingBytes` from the end of a buffer list,
+ * mutating the list in place so it keeps only the leading remainder.
+ * The boundary may fall inside one buffer or span several buffers.
+ * Used to carry auto-split overshoot into the next part.
+ * @param buffers - Buffer list to split; mutated in place
+ * @param trailingBytes - Number of bytes to detach from the end
+ * @returns Detached trailing buffers in their original order
+ */
+export function detachTrailingBytes(
+	buffers: ArrayBuffer[],
+	trailingBytes: number,
+): ArrayBuffer[] {
+	const carry: ArrayBuffer[] = [];
+	let remaining = trailingBytes;
+	while (remaining > 0 && buffers.length > 0) {
+		const last = buffers[buffers.length - 1];
+		if (last.byteLength <= remaining) {
+			buffers.pop();
+			carry.unshift(last);
+			remaining -= last.byteLength;
+		} else {
+			const keepBytes = last.byteLength - remaining;
+			buffers[buffers.length - 1] = last.slice(0, keepBytes);
+			carry.unshift(last.slice(keepBytes));
+			remaining = 0;
+		}
+	}
+	return carry;
 }

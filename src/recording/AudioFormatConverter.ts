@@ -119,14 +119,19 @@ export async function decodeAudioDataAtNativeRate(
 	arrayBuffer: ArrayBuffer,
 ): Promise<AudioBuffer> {
 	const probeCtx = new AudioContext();
-	const probeBuffer = await probeCtx.decodeAudioData(arrayBuffer.slice(0));
-	const nativeSampleRate = probeBuffer.sampleRate;
-	await probeCtx.close();
+	let probeBuffer: AudioBuffer;
+	try {
+		probeBuffer = await probeCtx.decodeAudioData(arrayBuffer.slice(0));
+	} finally {
+		// Close even when decoding fails (corrupted/unsupported input),
+		// otherwise the AudioContext leaks
+		await probeCtx.close();
+	}
 
 	const offlineCtx = new OfflineAudioContext(
 		probeBuffer.numberOfChannels,
 		probeBuffer.length,
-		nativeSampleRate,
+		probeBuffer.sampleRate,
 	);
 	return offlineCtx.decodeAudioData(arrayBuffer);
 }

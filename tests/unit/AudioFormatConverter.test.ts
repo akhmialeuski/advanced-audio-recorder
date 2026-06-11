@@ -98,6 +98,7 @@ import {
 	getRecorderMediaType,
 	convertBlobToWav,
 	convertBlobToFormat,
+	decodeAudioDataAtNativeRate,
 	buildOutputBlob,
 	mergeAudioTracks,
 } from '../../src/recording/AudioFormatConverter';
@@ -327,6 +328,42 @@ describe('AudioFormatConverter', () => {
 			const ctxInstance = (AudioContext as unknown as jest.Mock).mock
 				.results[0].value;
 			expect(ctxInstance.close).toHaveBeenCalledTimes(1);
+		});
+	});
+
+	// ---------------------------------------------------------------
+	// decodeAudioDataAtNativeRate
+	// ---------------------------------------------------------------
+	describe('decodeAudioDataAtNativeRate', () => {
+		it('should probe, close the probe context, and re-decode offline', async () => {
+			const buffer = new ArrayBuffer(8);
+			await decodeAudioDataAtNativeRate(buffer);
+
+			expect(AudioContext).toHaveBeenCalledTimes(1);
+			const probeCtx = (AudioContext as unknown as jest.Mock).mock
+				.results[0].value;
+			expect(probeCtx.decodeAudioData).toHaveBeenCalledTimes(1);
+			expect(probeCtx.close).toHaveBeenCalledTimes(1);
+			expect(OfflineAudioContext).toHaveBeenCalledWith(1, 44100, 44100);
+		});
+
+		it('should close the probe context when decoding fails', async () => {
+			const decodeError = new Error('decode failed');
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any -- required for mock override
+			(AudioContext as any).mockImplementationOnce(() => ({
+				decodeAudioData: jest.fn().mockRejectedValue(decodeError),
+				close: jest.fn().mockResolvedValue(undefined),
+			}));
+
+			await expect(
+				decodeAudioDataAtNativeRate(new ArrayBuffer(8)),
+			).rejects.toThrow('decode failed');
+
+			// The probe AudioContext must not leak on corrupted input
+			const probeCtx = (AudioContext as unknown as jest.Mock).mock
+				.results[0].value;
+			expect(probeCtx.close).toHaveBeenCalledTimes(1);
+			expect(OfflineAudioContext).not.toHaveBeenCalled();
 		});
 	});
 

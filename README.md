@@ -136,9 +136,9 @@ Opens a dialog to split the audio file into parts of a fixed duration. Options:
 - **Part name suffix** appended with the part number (e.g., `recording-part1.wav`).
 - **Bitrate** used when re-encoding parts of compressed formats (hidden for WAV sources).
 - **Delete source file** toggle to remove the original after a successful split.
-- **Update links in notes**: `Do nothing`, `Replace source link`, or `Insert after source link`. Links are updated in all notes of the vault, including notes that are not open.
+- **Update links in notes**: `Do nothing`, `Replace source link`, or `Insert after source link`. Links are updated in all notes of the vault, including notes that are not open. Both wikilinks (`![[...]]`) and Markdown links (`![](...)`) are covered, and new links follow your link-format preferences.
 
-WAV files are split losslessly at the byte level without re-encoding. Compressed formats are decoded once and re-encoded per part, so minor quality loss is possible. Part files are saved next to the source file, and the split is aborted if any target part file already exists. If writing fails midway, already-written parts are removed and the source file is kept.
+WAV files are split losslessly at the byte level without re-encoding, building one part at a time so even multi-gigabyte files are handled. Compressed formats are decoded once into memory and re-encoded per part, so minor quality loss is possible and very long compressed files need enough free memory for the decoded audio. Part files are saved next to the source file, and the split is aborted if any target part file already exists. If writing fails midway, already-written parts are removed and the source file is kept.
 
 ### Delete recording
 
