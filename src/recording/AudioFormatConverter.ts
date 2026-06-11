@@ -309,8 +309,15 @@ export async function mergeAudioTracks(
 	const longestDuration = Math.max(
 		...validBuffers.map((buffer) => buffer.duration),
 	);
-	const offlineContext = new OfflineAudioContext(
+	// Mix in mono when every input is mono: a stereo render would just
+	// duplicate the mix into both channels while doubling encode time
+	// and file size. Any stereo input keeps the stereo render.
+	const channelCount = Math.min(
 		2,
+		Math.max(...validBuffers.map((buffer) => buffer.numberOfChannels)),
+	);
+	const offlineContext = new OfflineAudioContext(
+		channelCount,
 		audioContext.sampleRate * longestDuration,
 		audioContext.sampleRate,
 	);

@@ -778,7 +778,7 @@ describe('AudioFormatConverter', () => {
 			expect(ctxInstance.decodeAudioData).toHaveBeenCalledTimes(2);
 		});
 
-		it('should create OfflineAudioContext with stereo channels and longest duration', async () => {
+		it('should mix mono inputs into a mono OfflineAudioContext', async () => {
 			const targets = [createMockTarget('track1')];
 			const buildTrackBlob = jest
 				.fn()
@@ -798,12 +798,59 @@ describe('AudioFormatConverter', () => {
 				buildTrackBlob,
 			);
 
-			// OfflineAudioContext(channels=2, length=sampleRate*duration, sampleRate)
+			// All decoded inputs are mono (numberOfChannels: 1), so the mix
+			// renders in mono instead of duplicating into stereo
 			expect(OfflineAudioContext).toHaveBeenCalledWith(
-				2,
+				1,
 				44100 * 1, // sampleRate * duration(1)
 				44100,
 			);
+		});
+
+		it('should keep a stereo mix when any input is stereo', async () => {
+			const targets = [
+				createMockTarget('track1'),
+				createMockTarget('track2'),
+			];
+			const buildTrackBlob = jest
+				.fn()
+				.mockResolvedValue(new Blob(['audio'], { type: 'audio/webm' }));
+
+			// Second decoded track is stereo; override only this instance
+			(AudioContext as unknown as jest.Mock).mockImplementationOnce(
+				() => ({
+					decodeAudioData: jest
+						.fn()
+						.mockResolvedValueOnce(createMockAudioBuffer())
+						.mockResolvedValueOnce(
+							createMockAudioBuffer({ numberOfChannels: 2 }),
+						),
+					createBufferSource: jest.fn().mockImplementation(() => ({
+						connect: jest.fn(),
+						start: jest.fn(),
+						buffer: null,
+					})),
+					destination: {},
+					close: jest.fn().mockResolvedValue(undefined),
+					sampleRate: 44100,
+				}),
+			);
+
+			const settings: AudioRecorderSettings = {
+				...DEFAULT_SETTINGS,
+				recordingFormat: 'mp4',
+				bitrate: 128000,
+			};
+
+			await mergeAudioTracks(
+				targets,
+				settings,
+				false,
+				jest.fn(),
+				buildTrackBlob,
+			);
+
+			expect(OfflineAudioContext).toHaveBeenCalledWith(2, 44100, 44100);
 		});
 
 		it('should forward progress callback with adjusted percentage', async () => {
