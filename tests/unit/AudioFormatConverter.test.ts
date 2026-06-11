@@ -98,7 +98,7 @@ import {
 	getRecorderMediaType,
 	convertBlobToWav,
 	convertBlobToFormat,
-	decodeAudioDataAtNativeRate,
+	decodeAudioBlob,
 	buildOutputBlob,
 	mergeAudioTracks,
 } from '../../src/recording/AudioFormatConverter';
@@ -332,22 +332,23 @@ describe('AudioFormatConverter', () => {
 	});
 
 	// ---------------------------------------------------------------
-	// decodeAudioDataAtNativeRate
+	// decodeAudioBlob
 	// ---------------------------------------------------------------
-	describe('decodeAudioDataAtNativeRate', () => {
-		it('should probe, close the probe context, and re-decode offline', async () => {
+	describe('decodeAudioBlob', () => {
+		it('should decode exactly once and close the context', async () => {
 			const buffer = new ArrayBuffer(8);
-			await decodeAudioDataAtNativeRate(buffer);
+			await decodeAudioBlob(buffer);
 
 			expect(AudioContext).toHaveBeenCalledTimes(1);
-			const probeCtx = (AudioContext as unknown as jest.Mock).mock
-				.results[0].value;
-			expect(probeCtx.decodeAudioData).toHaveBeenCalledTimes(1);
-			expect(probeCtx.close).toHaveBeenCalledTimes(1);
-			expect(OfflineAudioContext).toHaveBeenCalledWith(1, 44100, 44100);
+			const ctx = (AudioContext as unknown as jest.Mock).mock.results[0]
+				.value;
+			expect(ctx.decodeAudioData).toHaveBeenCalledTimes(1);
+			expect(ctx.close).toHaveBeenCalledTimes(1);
+			// No second decode through an OfflineAudioContext
+			expect(OfflineAudioContext).not.toHaveBeenCalled();
 		});
 
-		it('should close the probe context when decoding fails', async () => {
+		it('should close the context when decoding fails', async () => {
 			const decodeError = new Error('decode failed');
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any -- required for mock override
 			(AudioContext as any).mockImplementationOnce(() => ({
@@ -355,15 +356,14 @@ describe('AudioFormatConverter', () => {
 				close: jest.fn().mockResolvedValue(undefined),
 			}));
 
-			await expect(
-				decodeAudioDataAtNativeRate(new ArrayBuffer(8)),
-			).rejects.toThrow('decode failed');
+			await expect(decodeAudioBlob(new ArrayBuffer(8))).rejects.toThrow(
+				'decode failed',
+			);
 
-			// The probe AudioContext must not leak on corrupted input
-			const probeCtx = (AudioContext as unknown as jest.Mock).mock
-				.results[0].value;
-			expect(probeCtx.close).toHaveBeenCalledTimes(1);
-			expect(OfflineAudioContext).not.toHaveBeenCalled();
+			// The AudioContext must not leak on corrupted input
+			const ctx = (AudioContext as unknown as jest.Mock).mock.results[0]
+				.value;
+			expect(ctx.close).toHaveBeenCalledTimes(1);
 		});
 	});
 
@@ -388,23 +388,16 @@ describe('AudioFormatConverter', () => {
 			);
 		});
 
-		it('should probe native sample rate with AudioContext first', async () => {
+		it('should decode once with a single AudioContext', async () => {
 			const blob = new Blob(['test'], { type: 'audio/webm' });
 			await convertBlobToFormat(blob, 'mp4', 128000);
 
-			// First AudioContext call is the probe context
 			expect(AudioContext).toHaveBeenCalledTimes(1);
-			const probeCtx = (AudioContext as unknown as jest.Mock).mock
-				.results[0].value;
-			expect(probeCtx.decodeAudioData).toHaveBeenCalledTimes(1);
-			expect(probeCtx.close).toHaveBeenCalledTimes(1);
-		});
-
-		it('should create OfflineAudioContext with native sample rate', async () => {
-			const blob = new Blob(['test'], { type: 'audio/webm' });
-			await convertBlobToFormat(blob, 'flac', 192000);
-
-			expect(OfflineAudioContext).toHaveBeenCalledWith(1, 44100, 44100);
+			const ctx = (AudioContext as unknown as jest.Mock).mock.results[0]
+				.value;
+			expect(ctx.decodeAudioData).toHaveBeenCalledTimes(1);
+			expect(ctx.close).toHaveBeenCalledTimes(1);
+			expect(OfflineAudioContext).not.toHaveBeenCalled();
 		});
 
 		it('should forward onProgress callback to encodeAudioBuffer', async () => {

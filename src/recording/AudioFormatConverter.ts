@@ -107,39 +107,29 @@ export async function convertBlobToWav(recordedBlob: Blob): Promise<Blob> {
 }
 
 /**
- * Decodes compressed audio bytes preserving the native sample rate.
- * First probes with a temporary AudioContext to discover the native
- * rate, then re-decodes with an OfflineAudioContext at that rate to
- * avoid resampling artifacts. The probe uses a copy of the buffer
- * because decodeAudioData detaches its input.
+ * Decodes compressed audio bytes into an AudioBuffer.
+ * Decodes exactly once: decodeAudioData resamples to the context rate
+ * by spec, so the previous probe-then-redecode-at-native-rate approach
+ * produced an identical buffer while doubling decode time and peak
+ * memory (two full PCM copies of the recording).
  * @param arrayBuffer - Encoded audio file bytes
- * @returns Decoded AudioBuffer at the native sample rate
+ * @returns Decoded AudioBuffer
  */
-export async function decodeAudioDataAtNativeRate(
+export async function decodeAudioBlob(
 	arrayBuffer: ArrayBuffer,
 ): Promise<AudioBuffer> {
-	const probeCtx = new AudioContext();
-	let probeBuffer: AudioBuffer;
+	const audioContext = new AudioContext();
 	try {
-		probeBuffer = await probeCtx.decodeAudioData(arrayBuffer.slice(0));
+		return await audioContext.decodeAudioData(arrayBuffer);
 	} finally {
 		// Close even when decoding fails (corrupted/unsupported input),
 		// otherwise the AudioContext leaks
-		await probeCtx.close();
+		await audioContext.close();
 	}
-
-	const offlineCtx = new OfflineAudioContext(
-		probeBuffer.numberOfChannels,
-		probeBuffer.length,
-		probeBuffer.sampleRate,
-	);
-	return offlineCtx.decodeAudioData(arrayBuffer);
 }
 
 /**
  * Decodes an intermediate blob and re-encodes it to the target format.
- * Uses OfflineAudioContext at the native sample rate to avoid
- * resampling artifacts.
  * @param recordedBlob - Intermediate compressed blob
  * @param targetFormat - Desired output format
  * @param bitrate - Bitrate in bits per second
@@ -153,7 +143,7 @@ export async function convertBlobToFormat(
 	onProgress?: FormatProgressCallback,
 ): Promise<Blob> {
 	const arrayBuffer = await recordedBlob.arrayBuffer();
-	const decodedBuffer = await decodeAudioDataAtNativeRate(arrayBuffer);
+	const decodedBuffer = await decodeAudioBlob(arrayBuffer);
 
 	return encodeAudioBuffer(
 		decodedBuffer,

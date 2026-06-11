@@ -21,7 +21,7 @@ import {
 	SPLIT_PART_SUFFIX_RULE_TEXT,
 } from '../constants';
 import { getSupportedBitrates } from '../recording/AudioCapabilityDetector';
-import { decodeAudioDataAtNativeRate } from '../recording/AudioFormatConverter';
+import { decodeAudioBlob } from '../recording/AudioFormatConverter';
 import {
 	parseWavLayout,
 	buildWavPart,
@@ -456,7 +456,7 @@ export class SplitModal extends Modal {
 		}
 
 		this.setProgress(progressEl, 'Decoding audio...');
-		const audioBuffer = await decodeAudioDataAtNativeRate(sourceBytes);
+		const audioBuffer = await decodeAudioBlob(sourceBytes);
 		const partSamples = partSeconds * audioBuffer.sampleRate;
 		if (audioBuffer.length <= partSamples) {
 			new Notice('File is shorter than one part.');

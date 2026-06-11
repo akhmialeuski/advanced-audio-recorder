@@ -11,7 +11,7 @@ import {
 } from '../recording/AudioEncoder';
 import { AUDIO_EXTENSIONS, FORMAT_WAV } from '../constants';
 import { getSupportedBitrates } from '../recording/AudioCapabilityDetector';
-import { decodeAudioDataAtNativeRate } from '../recording/AudioFormatConverter';
+import { decodeAudioBlob } from '../recording/AudioFormatConverter';
 import { updateLinksInOpenEditors } from '../utils/LinkUpdater';
 import type {
 	AudioRecorderSettings,
@@ -152,7 +152,7 @@ export class ConversionModal extends Modal {
 			);
 
 			progressEl.setText('Decoding audio...');
-			const audioBuffer = await decodeAudioDataAtNativeRate(arrayBuffer);
+			const audioBuffer = await decodeAudioBlob(arrayBuffer);
 
 			progressEl.setText('Encoding...');
 			const blob = await encodeAudioBuffer(
