@@ -1,7 +1,7 @@
 /**
  * Offline audio encoding module.
- * Converts AudioBuffer to compressed formats using Mediabunny (WebCodecs)
- * and lamejs (MP3).
+ * Converts AudioBuffer to compressed formats using Mediabunny
+ * (WebCodecs-backed, with extension encoders for FLAC and MP3).
  * @module recording/AudioEncoder
  */
 
@@ -13,9 +13,10 @@ import {
 	WebMOutputFormat,
 	OggOutputFormat,
 	FlacOutputFormat,
+	Mp3OutputFormat,
+	canEncodeAudio,
 } from 'mediabunny';
 import type { OutputFormat } from 'mediabunny';
-import { Mp3Encoder } from 'lamejs';
 import { bufferToWave } from './WavEncoder';
 import { EncodingError } from '../errors';
 import {
@@ -54,22 +55,20 @@ const WEBCODECS_FORMATS = new Set([
 ]);
 
 /** Codec used per format in Mediabunny AudioBufferSource. */
-const FORMAT_CODEC_MAP: Record<string, string> = {
+export const FORMAT_CODEC_MAP: Record<string, string> = {
 	[FORMAT_WEBM]: 'opus',
 	[FORMAT_OGG]: 'opus',
 	[FORMAT_MP4]: 'aac',
 	[FORMAT_M4A]: 'aac',
 	[FORMAT_AAC]: 'aac',
 	[FORMAT_FLAC]: 'flac',
+	[FORMAT_MP3]: 'mp3',
 };
-
-/** MP3 encoding chunk size (MPEG standard frame). */
-const MP3_SAMPLES_PER_FRAME = 1152;
 
 /**
  * Creates the appropriate Mediabunny OutputFormat for the given format.
  */
-function createOutputFormat(format: string): OutputFormat {
+export function createOutputFormat(format: string): OutputFormat {
 	switch (format) {
 		case FORMAT_WEBM:
 			return new WebMOutputFormat();
@@ -81,8 +80,29 @@ function createOutputFormat(format: string): OutputFormat {
 			return new Mp4OutputFormat();
 		case FORMAT_FLAC:
 			return new FlacOutputFormat();
+		case FORMAT_MP3:
+			return new Mp3OutputFormat();
 		default:
 			throw new EncodingError(`No output format for "${format}"`, format);
+	}
+}
+
+/**
+ * Ensures the encoder for the given format is available, registering
+ * the Mediabunny extension encoder (FLAC, MP3) when the platform has
+ * no native WebCodecs support. The canEncodeAudio guard makes repeat
+ * calls no-ops: a registered extension encoder counts as encodable.
+ * @param format - Target audio format
+ */
+export async function ensureEncoderRegistered(format: string): Promise<void> {
+	if (format === FORMAT_FLAC && !(await canEncodeAudio('flac'))) {
+		const { registerFlacEncoder } =
+			await import('@mediabunny/flac-encoder');
+		registerFlacEncoder();
+	}
+	if (format === FORMAT_MP3 && !(await canEncodeAudio('mp3'))) {
+		const { registerMp3Encoder } = await import('@mediabunny/mp3-encoder');
+		registerMp3Encoder();
 	}
 }
 
@@ -106,11 +126,11 @@ export async function encodeAudioBuffer(
 		return bufferToWave(buffer, buffer.length);
 	}
 
-	if (format === FORMAT_MP3) {
-		return encodeWithLamejs(buffer, options, onProgress);
-	}
-
-	if (WEBCODECS_FORMATS.has(format) || format === FORMAT_FLAC) {
+	if (
+		WEBCODECS_FORMATS.has(format) ||
+		format === FORMAT_FLAC ||
+		format === FORMAT_MP3
+	) {
 		return encodeWithMediabunny(buffer, options, onProgress);
 	}
 
@@ -119,7 +139,7 @@ export async function encodeAudioBuffer(
 
 /**
  * Encodes AudioBuffer using Mediabunny (WebCodecs-backed for Opus/AAC,
- * extension-backed for FLAC).
+ * extension-backed for FLAC and MP3).
  */
 async function encodeWithMediabunny(
 	buffer: AudioBuffer,
@@ -134,17 +154,14 @@ async function encodeWithMediabunny(
 	}
 
 	try {
-		// FLAC requires the encoder extension to be loaded first
-		if (format === FORMAT_FLAC) {
-			await import('@mediabunny/flac-encoder');
-		}
+		await ensureEncoderRegistered(format);
 
 		const outputFormat = createOutputFormat(format);
 		const target = new BufferTarget();
 		const output = new Output({ format: outputFormat, target });
 
 		const audioSource = new AudioBufferSource({
-			codec: codec as 'opus' | 'aac' | 'flac',
+			codec: codec as 'opus' | 'aac' | 'flac' | 'mp3',
 			bitrate,
 		});
 		output.addAudioTrack(audioSource);
@@ -172,80 +189,6 @@ async function encodeWithMediabunny(
 			error instanceof Error ? error.message : String(error),
 			format,
 			error,
-		);
-	}
-}
-
-/**
- * Converts Float32Array channel data to Int16Array for lamejs.
- */
-function floatTo16BitPCM(input: Float32Array): Int16Array {
-	const output = new Int16Array(input.length);
-	for (let i = 0; i < input.length; i++) {
-		const s = Math.max(-1, Math.min(1, input[i]));
-		output[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-	}
-	return output;
-}
-
-/**
- * Encodes AudioBuffer to MP3 using lamejs.
- */
-function encodeWithLamejs(
-	buffer: AudioBuffer,
-	options: EncodingOptions,
-	onProgress?: ProgressCallback,
-): Promise<Blob> {
-	try {
-		const { bitrate } = options;
-		const bitrateKbps = Math.round(bitrate / 1000);
-		const channels = buffer.numberOfChannels;
-		const sampleRate = buffer.sampleRate;
-
-		const encoder = new Mp3Encoder(channels, sampleRate, bitrateKbps);
-		const mp3Chunks: Uint8Array[] = [];
-
-		const left = floatTo16BitPCM(buffer.getChannelData(0));
-		const right =
-			channels >= 2
-				? floatTo16BitPCM(buffer.getChannelData(1))
-				: undefined;
-
-		const totalSamples = left.length;
-		let samplesProcessed = 0;
-
-		for (let i = 0; i < totalSamples; i += MP3_SAMPLES_PER_FRAME) {
-			const end = Math.min(i + MP3_SAMPLES_PER_FRAME, totalSamples);
-			const leftChunk = left.subarray(i, end);
-			const rightChunk = right?.subarray(i, end);
-
-			const mp3buf = encoder.encodeBuffer(leftChunk, rightChunk);
-			if (mp3buf.length > 0) {
-				mp3Chunks.push(new Uint8Array(mp3buf));
-			}
-
-			samplesProcessed = end;
-			if (onProgress && totalSamples > 0) {
-				onProgress(Math.round((samplesProcessed / totalSamples) * 90));
-			}
-		}
-
-		const finalBuf = encoder.flush();
-		if (finalBuf.length > 0) {
-			mp3Chunks.push(new Uint8Array(finalBuf));
-		}
-
-		onProgress?.(100);
-		return Promise.resolve(
-			new Blob(mp3Chunks as BlobPart[], { type: 'audio/mp3' }),
-		);
-	} catch (error) {
-		return Promise.reject(
-			new EncodingError(
-				error instanceof Error ? error.message : String(error),
-				FORMAT_MP3,
-				error,
-			),
 		);
 	}
 }
@@ -291,7 +234,7 @@ export function getEncoderDescription(format: string): string {
 		case FORMAT_AAC:
 			return 'AudioEncoder (AAC) + Mediabunny';
 		case FORMAT_MP3:
-			return 'lamejs (MP3)';
+			return 'Mediabunny MP3 Encoder';
 		case FORMAT_FLAC:
 			return 'Mediabunny FLAC Encoder';
 		default:
