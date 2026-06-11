@@ -85,6 +85,22 @@ describe('Settings', () => {
 			expect(DEFAULT_SETTINGS.insertAtOriginalPosition).toBe(false);
 		});
 
+		it('should have auto-split disabled by default', () => {
+			expect(DEFAULT_SETTINGS.autoSplitEnabled).toBe(false);
+		});
+
+		it('should have 15-minute split parts by default', () => {
+			expect(DEFAULT_SETTINGS.splitChunkMinutes).toBe(15);
+		});
+
+		it('should have "part" as the default split suffix', () => {
+			expect(DEFAULT_SETTINGS.splitPartSuffix).toBe('part');
+		});
+
+		it('should have delete source after split disabled by default', () => {
+			expect(DEFAULT_SETTINGS.deleteSourceAfterSplit).toBe(false);
+		});
+
 		it('should be a complete AudioRecorderSettings object', () => {
 			const expectedKeys: (keyof AudioRecorderSettings)[] = [
 				'recordingFormat',
@@ -105,6 +121,12 @@ describe('Settings', () => {
 				'trackAudioSources',
 				'debug',
 				'insertAtOriginalPosition',
+				'deleteSourceAfterConversion',
+				'conversionLinkAction',
+				'autoSplitEnabled',
+				'splitChunkMinutes',
+				'splitPartSuffix',
+				'deleteSourceAfterSplit',
 			];
 
 			expectedKeys.forEach((key) => {
@@ -197,6 +219,10 @@ describe('Settings', () => {
 				insertAtOriginalPosition: true,
 				deleteSourceAfterConversion: false,
 				conversionLinkAction: 'after',
+				autoSplitEnabled: true,
+				splitChunkMinutes: 30,
+				splitPartSuffix: 'chunk',
+				deleteSourceAfterSplit: true,
 			};
 
 			const result = mergeSettings(fullSettings);

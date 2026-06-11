@@ -3,15 +3,7 @@
  * @module ui/ConversionModal
  */
 
-import {
-	App,
-	MarkdownView,
-	Modal,
-	Notice,
-	Setting,
-	TFile,
-	normalizePath,
-} from 'obsidian';
+import { App, Modal, Notice, Setting, TFile, normalizePath } from 'obsidian';
 import {
 	encodeAudioBuffer,
 	isOfflineEncodingSupported,
@@ -19,6 +11,8 @@ import {
 } from '../recording/AudioEncoder';
 import { AUDIO_EXTENSIONS, FORMAT_WAV } from '../constants';
 import { getSupportedBitrates } from '../recording/AudioCapabilityDetector';
+import { decodeAudioDataAtNativeRate } from '../recording/AudioFormatConverter';
+import { updateLinksInOpenEditors } from '../utils/LinkUpdater';
 import type {
 	AudioRecorderSettings,
 	ConversionLinkAction,
@@ -158,7 +152,7 @@ export class ConversionModal extends Modal {
 			);
 
 			progressEl.setText('Decoding audio...');
-			const audioBuffer = await this.decodeAudioFile(arrayBuffer);
+			const audioBuffer = await decodeAudioDataAtNativeRate(arrayBuffer);
 
 			progressEl.setText('Encoding...');
 			const blob = await encodeAudioBuffer(
@@ -181,7 +175,12 @@ export class ConversionModal extends Modal {
 			// Update links in notes
 			if (this.linkAction !== 'none') {
 				progressEl.setText('Updating links...');
-				this.updateLinksInNotes(this.sourceFile.name, newFileName);
+				updateLinksInOpenEditors(
+					this.app,
+					this.sourceFile.name,
+					[newFileName],
+					this.linkAction,
+				);
 			}
 
 			// Delete source file
@@ -199,96 +198,6 @@ export class ConversionModal extends Modal {
 				error instanceof Error ? error.message : String(error);
 			progressEl.setText(`Error: ${message}`);
 			new Notice(`Conversion failed: ${message}`);
-		}
-	}
-
-	/**
-	 * Decodes an audio file preserving its native sample rate.
-	 * Uses OfflineAudioContext to avoid sample rate conversion
-	 * artifacts from the default AudioContext.
-	 */
-	private async decodeAudioFile(
-		arrayBuffer: ArrayBuffer,
-	): Promise<AudioBuffer> {
-		// First decode with a temporary context to discover the native sample rate
-		const probeCtx = new AudioContext();
-		const probeBuffer = await probeCtx.decodeAudioData(
-			arrayBuffer.slice(0),
-		);
-		const nativeSampleRate = probeBuffer.sampleRate;
-		await probeCtx.close();
-
-		// Re-decode with an OfflineAudioContext at the native sample rate
-		// to avoid resampling artifacts
-		const offlineCtx = new OfflineAudioContext(
-			probeBuffer.numberOfChannels,
-			probeBuffer.length,
-			nativeSampleRate,
-		);
-		const decoded = await offlineCtx.decodeAudioData(arrayBuffer);
-		return decoded;
-	}
-
-	/**
-	 * Builds a regex matching all common link formats for a filename:
-	 * ![[file]], [[file]], ![[file|alias]], [[file|alias]]
-	 */
-	private buildLinkPattern(fileName: string): RegExp {
-		const escaped = fileName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-		return new RegExp(`(!?\\[\\[${escaped}(?:\\|[^\\]]*)?\\]\\])`, 'g');
-	}
-
-	/**
-	 * Finds and updates links to the source file in all open editors.
-	 * Uses replaceRange to preserve undo history.
-	 */
-	private updateLinksInNotes(
-		sourceFileName: string,
-		newFileName: string,
-	): void {
-		const leaves = this.app.workspace.getLeavesOfType('markdown');
-		const pattern = this.buildLinkPattern(sourceFileName);
-
-		for (const leaf of leaves) {
-			if (!(leaf.view instanceof MarkdownView)) {
-				continue;
-			}
-			const editor = leaf.view.editor;
-			const content = editor.getValue();
-			if (!content.includes(sourceFileName)) {
-				continue;
-			}
-
-			// Collect matches in reverse order to avoid offset shifts
-			const matches: { index: number; length: number; text: string }[] =
-				[];
-			let match: RegExpExecArray | null;
-			while ((match = pattern.exec(content)) !== null) {
-				matches.push({
-					index: match.index,
-					length: match[0].length,
-					text: match[0],
-				});
-			}
-
-			// Apply replacements from end to start so positions stay valid
-			for (let i = matches.length - 1; i >= 0; i--) {
-				const m = matches[i];
-				const from = editor.offsetToPos(m.index);
-				const to = editor.offsetToPos(m.index + m.length);
-
-				// Build the replacement link preserving embed prefix
-				const isEmbed = m.text.startsWith('!');
-				const newLink = isEmbed
-					? `![[${newFileName}]]`
-					: `[[${newFileName}]]`;
-
-				if (this.linkAction === 'replace') {
-					editor.replaceRange(newLink, from, to);
-				} else if (this.linkAction === 'after') {
-					editor.replaceRange(`${m.text}\n${newLink}`, from, to);
-				}
-			}
 		}
 	}
 }

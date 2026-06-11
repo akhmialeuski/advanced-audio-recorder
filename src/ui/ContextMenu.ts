@@ -19,6 +19,7 @@ import { AUDIO_EXTENSIONS } from '../constants';
 import { getAudioFileInfo } from '../utils/AudioFileAnalyzer';
 import { AudioFileInfoModal } from './AudioFileInfoModal';
 import { ConversionModal } from './ConversionModal';
+import { SplitModal } from './SplitModal';
 import type { AudioRecorderSettings } from '../settings/Settings';
 
 /** CodeMirror view attached to Editor (internal Obsidian API). */
@@ -41,6 +42,8 @@ export class ContextMenu {
 	private readonly menusWithInfoItem = new WeakSet<Menu>();
 	/** Tracks menus that already have the "Convert audio format" item to prevent duplicates. */
 	private readonly menusWithConvertItem = new WeakSet<Menu>();
+	/** Tracks menus that already have the "Split audio into parts" item to prevent duplicates. */
+	private readonly menusWithSplitItem = new WeakSet<Menu>();
 
 	/**
 	 * Creates a new ContextMenu instance.
@@ -169,6 +172,7 @@ export class ContextMenu {
 					if (file instanceof TFile && this.isAudioFile(file)) {
 						this.addAudioFileInfoMenuItem(menu, file);
 						this.addConvertMenuItem(menu, file);
+						this.addSplitMenuItem(menu, file);
 						this.addDeleteRecordingMenuItem(menu, file);
 					}
 				},
@@ -225,6 +229,7 @@ export class ContextMenu {
 
 		this.addAudioFileInfoMenuItem(menu, file);
 		this.addConvertMenuItem(menu, file);
+		this.addSplitMenuItem(menu, file);
 		this.addDeleteRecordingAndLinkMenuItem(
 			menu,
 			file,
@@ -379,6 +384,27 @@ export class ContextMenu {
 						file,
 						this.getSettings(),
 					).open();
+				});
+		});
+	}
+
+	/**
+	 * Adds a "Split audio into parts" item to the menu.
+	 * @param menu - The menu to add the item to.
+	 * @param file - The audio file.
+	 */
+	private addSplitMenuItem(menu: Menu, file: TFile): void {
+		if (this.menusWithSplitItem.has(menu)) {
+			return;
+		}
+		this.menusWithSplitItem.add(menu);
+
+		menu.addItem((item: MenuItem) => {
+			item.setTitle('Split audio into parts')
+				.setIcon('scissors')
+				.setSection(AAR_MENU_SECTION)
+				.onClick(() => {
+					new SplitModal(this.app, file, this.getSettings()).open();
 				});
 		});
 	}

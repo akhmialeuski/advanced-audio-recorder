@@ -21,11 +21,15 @@ import {
 	MOBILE_BUFFER_LIMIT_BYTES,
 	PCM_FLUSH_THRESHOLD_BYTES,
 	DESKTOP_FLUSH_THRESHOLD_BYTES,
+	DEFAULT_SPLIT_CHUNK_MINUTES,
+	DEFAULT_SPLIT_PART_SUFFIX,
+	MS_PER_MINUTE,
 } from '../constants';
 import { DebugLogger } from '../utils/DebugLogger';
 import {
 	buildMimeType,
 	validateRecordingCapability,
+	DEFAULT_BITRATE,
 	FORMAT_WEBM,
 	FORMAT_WAV,
 } from './AudioCapabilityDetector';
@@ -47,6 +51,14 @@ import {
 	buildOutputBlob,
 	mergeAudioTracks,
 } from './AudioFormatConverter';
+import {
+	buildPartFileName,
+	clampSplitMinutes,
+	computePcmPartLimitBytes,
+	detachTrailingBytes,
+	sanitizePartSuffix,
+	totalByteLength,
+} from './AudioSplitter';
 import { captureInsertionContext, insertFileLinks } from './NoteInserter';
 
 /**
@@ -71,6 +83,24 @@ export class RecordingManager {
 	private isWavPcmRecording: boolean = false;
 	private activeRecorderFormat: string = FORMAT_WEBM;
 	private insertionContext: InsertionContext | null = null;
+	/** Whether auto-split is active for the current session (snapshot). */
+	private sessionSplitEnabled: boolean = false;
+	/** Part duration in minutes for the current session (snapshot). */
+	private sessionPartMinutes: number = DEFAULT_SPLIT_CHUNK_MINUTES;
+	/** Part name suffix for the current session (snapshot). */
+	private sessionPartSuffix: string = DEFAULT_SPLIT_PART_SUFFIX;
+	/** Output format for the current session (snapshot). */
+	private sessionOutputFormat: string = FORMAT_WEBM;
+	/** Encoder bitrate for the current session (snapshot). */
+	private sessionBitrate: number = DEFAULT_BITRATE;
+	/** Active (unpaused) milliseconds accumulated in the current part. */
+	private partActiveMs: number = 0;
+	/** Timestamp of the last start/resume/rotation for active-time tracking. */
+	private activeAnchor: number = 0;
+	/** In-flight MediaRecorder part rotation, if any. */
+	private rotationPromise: Promise<void> | null = null;
+	/** Whether the session is being stopped (blocks new part rotations). */
+	private isStopping: boolean = false;
 
 	/**
 	 * Creates a new RecordingManager.
@@ -122,6 +152,7 @@ export class RecordingManager {
 	 */
 	async startRecording(): Promise<void> {
 		try {
+			this.isStopping = false;
 			this.isMobileRecording = Platform.isMobileApp || Platform.isMobile;
 			this.isWavPcmRecording =
 				this.settings.recordingFormat === FORMAT_WAV &&
@@ -158,6 +189,8 @@ export class RecordingManager {
 			this.streams = streams;
 			this.trackOrder = trackOrder;
 
+			this.snapshotSessionSettings(streams.length);
+
 			this.recordingStartTime = Date.now();
 			this.recordingTimestamp = new Date()
 				.toISOString()
@@ -175,10 +208,58 @@ export class RecordingManager {
 				this.settings.insertAtOriginalPosition,
 				this.debugLogger,
 			);
+			this.partActiveMs = 0;
+			this.activeAnchor = Date.now();
 			this.setStatus(RecordingStatus.Recording);
 			new Notice('Recording started');
 		} catch (error) {
 			this.handleStartRecordingError(error);
+		}
+	}
+
+	/**
+	 * Snapshots the session-scoped settings (output format, bitrate,
+	 * auto-split configuration) used by the per-track part and
+	 * finalization paths, which read them repeatedly during the
+	 * session: updateSettings swaps the settings reference while
+	 * recording, and without the snapshot each rotation could produce
+	 * a part in a different format. The mobile flush and merged
+	 * multi-track stop paths still read live settings, matching their
+	 * pre-split behavior. Auto-split is skipped for merged multi-track
+	 * output because the tracks are mixed only once at stop.
+	 * @param streamCount - Number of acquired audio streams
+	 */
+	private snapshotSessionSettings(streamCount: number): void {
+		this.sessionOutputFormat = this.settings.recordingFormat;
+		this.sessionBitrate = this.settings.bitrate;
+		this.sessionPartMinutes = clampSplitMinutes(
+			this.settings.splitChunkMinutes,
+		);
+		this.sessionPartSuffix = sanitizePartSuffix(
+			this.settings.splitPartSuffix,
+		);
+		this.sessionSplitEnabled =
+			this.settings.autoSplitEnabled && !this.isMobileRecording;
+		if (this.settings.autoSplitEnabled && this.isMobileRecording) {
+			new Notice('Auto-split is not available in the mobile app.');
+		}
+
+		if (
+			this.sessionSplitEnabled &&
+			this.settings.outputMode === 'single' &&
+			streamCount > 1
+		) {
+			this.sessionSplitEnabled = false;
+			new Notice(
+				'Auto-split is skipped for merged multi-track recordings.',
+			);
+		}
+
+		if (this.sessionSplitEnabled) {
+			this.debugLogger.log('Auto-split enabled for this session', {
+				partMinutes: this.sessionPartMinutes,
+				partSuffix: this.sessionPartSuffix,
+			});
 		}
 	}
 
@@ -212,6 +293,9 @@ export class RecordingManager {
 					pcmBufferedBytes: 0,
 					pcmChannels: 1,
 					pcmSampleRate: this.settings.sampleRate,
+					partIndex: 0,
+					partPaths: [],
+					partPcmBytes: 0,
 				};
 			}),
 		);
@@ -250,16 +334,23 @@ export class RecordingManager {
 	 * and mobile WAV.
 	 */
 	private async initMediaRecording(): Promise<void> {
+		this.chunkTargets = await this.createChunkTargets(this.streams.length);
+		this.createAndStartMediaRecorders();
+	}
+
+	/**
+	 * Creates MediaRecorder instances on the current streams, attaches
+	 * chunk/error handlers, and starts them with the chunk timeslice.
+	 * Used at recording start and after each auto-split part rotation.
+	 */
+	private createAndStartMediaRecorders(): void {
 		const mimeType = buildMimeType(this.activeRecorderFormat);
 		this.recorders = this.streams.map(
 			(stream) =>
 				new MediaRecorder(stream, {
 					mimeType,
-					audioBitsPerSecond: this.settings.bitrate,
+					audioBitsPerSecond: this.sessionBitrate,
 				}),
-		);
-		this.chunkTargets = await this.createChunkTargets(
-			this.recorders.length,
 		);
 
 		this.recorders.forEach((recorder, index) => {
@@ -309,27 +400,29 @@ export class RecordingManager {
 	 * Stops the current recording and saves the files.
 	 */
 	async stopRecording(): Promise<void> {
-		const recordersToStop = [...this.recorders];
-		const pcmRecordersToStop = [...this.pcmRecorders];
-		const streamsToStop = [...this.streams];
+		if (this.isStopping) {
+			return;
+		}
+		// Block new part rotations from starting while stopping
+		// (shouldRotateMediaParts checks this flag)
+		this.isStopping = true;
 
 		try {
+			// Let an in-flight part rotation finish before tearing down:
+			// it replaces this.recorders, and its part files must be
+			// written before the residual is saved
+			if (this.rotationPromise) {
+				await this.rotationPromise;
+			}
+
 			if (this.isWavPcmRecording) {
 				await Promise.all(
-					pcmRecordersToStop.map((recorder) => recorder.stop()),
+					this.pcmRecorders.map((recorder) => recorder.stop()),
 				);
 			} else {
 				await Promise.all(
-					recordersToStop.map(
-						(recorder) =>
-							new Promise<void>((resolve) => {
-								recorder.addEventListener(
-									'stop',
-									() => resolve(),
-									{ once: true },
-								);
-								recorder.stop();
-							}),
+					this.recorders.map((recorder) =>
+						this.stopMediaRecorder(recorder),
 					),
 				);
 			}
@@ -355,7 +448,7 @@ export class RecordingManager {
 				error,
 			);
 		} finally {
-			stopAllStreams(streamsToStop);
+			stopAllStreams(this.streams);
 			this.streams = [];
 			this.recorders = [];
 			this.pcmRecorders = [];
@@ -365,8 +458,33 @@ export class RecordingManager {
 			this.totalChunks = 0;
 			this.isWavPcmRecording = false;
 			this.insertionContext = null;
+			this.sessionSplitEnabled = false;
+			this.partActiveMs = 0;
+			this.rotationPromise = null;
+			this.isStopping = false;
 			this.setStatus(RecordingStatus.Idle);
 		}
+	}
+
+	/**
+	 * Stops a MediaRecorder and resolves once its stop event has fired,
+	 * which guarantees the final dataavailable chunk was delivered.
+	 * Resolves immediately for recorders that are already inactive
+	 * (e.g. stopped by an in-flight part rotation), because calling
+	 * stop() on an inactive recorder throws.
+	 * @param recorder - Recorder to stop
+	 */
+	private stopMediaRecorder(recorder: MediaRecorder): Promise<void> {
+		return new Promise<void>((resolve) => {
+			if (recorder.state === 'inactive') {
+				resolve();
+				return;
+			}
+			recorder.addEventListener('stop', () => resolve(), {
+				once: true,
+			});
+			recorder.stop();
+		});
 	}
 
 	/**
@@ -377,16 +495,32 @@ export class RecordingManager {
 			if (this.isWavPcmRecording) {
 				this.pcmRecorders.forEach((recorder) => recorder.pause());
 			} else {
-				this.recorders.forEach((recorder) => recorder.pause());
+				// During a part rotation the recorders are momentarily
+				// inactive and pausing them would throw; the rotation
+				// re-applies the paused status when it restarts capture
+				this.recorders.forEach((recorder) => {
+					if (recorder.state !== 'inactive') {
+						recorder.pause();
+					}
+				});
 			}
+			// Freeze active-time accounting used by auto-split rotation
+			this.partActiveMs += Date.now() - this.activeAnchor;
 			this.setStatus(RecordingStatus.Paused);
 			new Notice('Recording paused');
 		} else if (this.status === RecordingStatus.Paused) {
 			if (this.isWavPcmRecording) {
 				this.pcmRecorders.forEach((recorder) => recorder.resume());
 			} else {
-				this.recorders.forEach((recorder) => recorder.resume());
+				// Skip recorders stopped by an in-flight part rotation;
+				// they are recreated in the resumed state
+				this.recorders.forEach((recorder) => {
+					if (recorder.state !== 'inactive') {
+						recorder.resume();
+					}
+				});
 			}
+			this.activeAnchor = Date.now();
 			this.setStatus(RecordingStatus.Recording);
 			new Notice('Recording resumed');
 		} else {
@@ -398,6 +532,10 @@ export class RecordingManager {
 	 * Cleans up resources on unload.
 	 */
 	cleanup(): void {
+		// Prevent an in-flight part rotation from recreating recorders
+		// on the released streams after unload
+		this.isStopping = true;
+		this.sessionSplitEnabled = false;
 		stopAllStreams(this.streams);
 		this.recorders = [];
 		this.pcmRecorders = [];
@@ -431,11 +569,9 @@ export class RecordingManager {
 
 		if (this.settings.outputMode === 'single') {
 			if (this.chunkTargets.length === 1) {
-				const paths = await this.finalizeTrackFiles(
-					this.chunkTargets[0],
-					timestamp,
-				);
-				fileLinks.push(...paths);
+				const target = this.chunkTargets[0];
+				const paths = await this.finalizeTrackFiles(target);
+				fileLinks.push(...target.partPaths, ...paths);
 			} else {
 				if (!this.isWavPcmRecording) {
 					await Promise.all(
@@ -510,11 +646,9 @@ export class RecordingManager {
 			}
 		} else {
 			for (let i = 0; i < this.chunkTargets.length; i++) {
-				const paths = await this.finalizeTrackFiles(
-					this.chunkTargets[i],
-					timestamp,
-				);
-				fileLinks.push(...paths);
+				const target = this.chunkTargets[i];
+				const paths = await this.finalizeTrackFiles(target);
+				fileLinks.push(...target.partPaths, ...paths);
 			}
 		}
 
@@ -546,6 +680,25 @@ export class RecordingManager {
 
 		target.pendingWrite = target.pendingWrite.then(enqueue);
 		await target.pendingWrite;
+
+		// Rotation spans all tracks and restarts the recorders, so it runs
+		// outside the per-target pendingWrite chain, guarded against reentry
+		if (this.shouldRotateMediaParts()) {
+			this.rotationPromise = this.rotateMediaRecorderParts()
+				.catch((error: unknown) => {
+					// Backstop: the rotation contains its own error
+					// handling, but an unexpected rejection must not
+					// become unhandled or poison a concurrent
+					// stopRecording awaiting this promise
+					console.error(
+						`${PLUGIN_LOG_PREFIX} Unexpected error during part rotation:`,
+						error,
+					);
+				})
+				.finally(() => {
+					this.rotationPromise = null;
+				});
+		}
 	}
 
 	private async handlePcmChunk(
@@ -561,6 +714,17 @@ export class RecordingManager {
 		const enqueue = async (): Promise<void> => {
 			target.pcmBuffers.push(data);
 			target.pcmBufferedBytes += data.byteLength;
+			if (this.sessionSplitEnabled) {
+				target.partPcmBytes += data.byteLength;
+				const partLimitBytes = computePcmPartLimitBytes(
+					this.sessionPartMinutes,
+					target.pcmSampleRate,
+					target.pcmChannels,
+				);
+				if (target.partPcmBytes >= partLimitBytes) {
+					await this.finalizePcmPart(target, partLimitBytes);
+				}
+			}
 			if (target.pcmBufferedBytes >= PCM_FLUSH_THRESHOLD_BYTES) {
 				await this.flushPcmBuffer(target);
 			}
@@ -568,6 +732,242 @@ export class RecordingManager {
 
 		target.pendingWrite = target.pendingWrite.then(enqueue);
 		await target.pendingWrite;
+	}
+
+	/**
+	 * Checks whether the MediaRecorder-based recording reached the
+	 * auto-split part boundary. PCM/WAV recordings split by exact byte
+	 * count instead (see handlePcmChunk).
+	 */
+	private shouldRotateMediaParts(): boolean {
+		if (
+			!this.sessionSplitEnabled ||
+			this.isWavPcmRecording ||
+			this.isStopping ||
+			this.rotationPromise !== null ||
+			this.status !== RecordingStatus.Recording
+		) {
+			return false;
+		}
+		const activeMs = this.partActiveMs + (Date.now() - this.activeAnchor);
+		return activeMs >= this.sessionPartMinutes * MS_PER_MINUTE;
+	}
+
+	/**
+	 * Finalizes the current auto-split part of a PCM/WAV recording.
+	 * Splits the last buffer at the exact part boundary, assembles the
+	 * part WAV file from flushed segments, and carries the overshoot
+	 * into the next part, keeping parts sample-exact. Runs inside the
+	 * target's pendingWrite chain; errors are contained so they cannot
+	 * poison subsequent writes.
+	 * @param target - Recording target to finalize
+	 * @param partLimitBytes - Exact part size in bytes
+	 */
+	private async finalizePcmPart(
+		target: RecordingTarget,
+		partLimitBytes: number,
+	): Promise<void> {
+		const overshoot = target.partPcmBytes - partLimitBytes;
+		const carry =
+			overshoot > 0
+				? detachTrailingBytes(target.pcmBuffers, overshoot)
+				: [];
+
+		target.partIndex += 1;
+		try {
+			const fileName = buildPartFileName(
+				target.fileBaseName,
+				this.sessionPartSuffix,
+				target.partIndex,
+				FORMAT_WAV,
+			);
+			const filePath = await resolveUniquePath(
+				fileName,
+				this.app,
+				this.settings,
+			);
+			await this.flushPcmBuffer(target);
+			if (target.segmentPaths.length > 0) {
+				await this.assembleWavFile(target, filePath);
+				target.partPaths.push(filePath);
+				this.debugLogger.log('Auto-split part saved', { filePath });
+				new Notice(`Recording part ${String(target.partIndex)} saved`);
+			}
+			target.segmentPaths = [];
+			target.segmentIndex = 0;
+		} catch (error) {
+			// Keep recording without losing audio: whatever was not
+			// flushed stays buffered (with the carry re-attached in
+			// capture order), flushed segments stay on disk, and all of
+			// it lands in the next part. Part accounting restarts from
+			// zero so the failed save is retried one part length later,
+			// not on every chunk.
+			target.partIndex -= 1;
+			target.pcmBuffers.push(...carry);
+			target.pcmBufferedBytes = totalByteLength(target.pcmBuffers);
+			target.partPcmBytes = 0;
+			console.error(
+				`${PLUGIN_LOG_PREFIX} Failed to finalize recording part:`,
+				error,
+			);
+			new Notice(
+				'Failed to save recording part. Recording continues; data is kept for the next part.',
+			);
+			return;
+		}
+		target.pcmBuffers = carry;
+		target.pcmBufferedBytes = totalByteLength(carry);
+		target.partPcmBytes = target.pcmBufferedBytes;
+	}
+
+	/**
+	 * Rotates MediaRecorder-based recording at an auto-split boundary:
+	 * stops the recorders to obtain a complete container, detaches the
+	 * buffered data of each track as a snapshot of plain segment files,
+	 * restarts the recorders on the same streams, and only then
+	 * transcodes the snapshots into part files. Restarting before the
+	 * potentially slow transcoding keeps the capture gap limited to
+	 * recorder stop plus raw buffer flush time. The recording status
+	 * stays Recording the whole time. Errors are contained so the
+	 * session keeps recording.
+	 */
+	private async rotateMediaRecorderParts(): Promise<void> {
+		const snapshots: {
+			target: RecordingTarget;
+			segmentPaths: string[];
+		}[] = [];
+		try {
+			const recordersToStop = [...this.recorders];
+			await Promise.all(
+				recordersToStop.map((recorder) =>
+					this.stopMediaRecorder(recorder),
+				),
+			);
+			await Promise.all(this.chunkTargets.map((t) => t.pendingWrite));
+
+			for (const target of this.chunkTargets) {
+				try {
+					// Plain file write of already-captured bytes; the
+					// expensive transcoding happens after the restart
+					await this.flushChunkBuffer(target);
+				} catch (error) {
+					// Chunks stay buffered in capture order and land in
+					// the next part
+					console.error(
+						`${PLUGIN_LOG_PREFIX} Failed to flush buffers at part boundary:`,
+						error,
+					);
+					new Notice(
+						'Failed to save recording part. Recording continues; data is kept for the next part.',
+					);
+					continue;
+				}
+				if (target.segmentPaths.length > 0) {
+					snapshots.push({
+						target,
+						segmentPaths: target.segmentPaths,
+					});
+					target.segmentPaths = [];
+					target.segmentIndex = 0;
+				}
+			}
+		} catch (error) {
+			console.error(
+				`${PLUGIN_LOG_PREFIX} Error during part rotation:`,
+				error,
+			);
+			new Notice('Failed to rotate recording part. Recording continues.');
+		} finally {
+			// Restart only while still recording or paused; a concurrent
+			// stopRecording awaits this rotation and tears recorders down
+			if (
+				!this.isStopping &&
+				(this.status === RecordingStatus.Recording ||
+					this.status === RecordingStatus.Paused)
+			) {
+				this.restartMediaRecorders();
+			}
+			this.partActiveMs = 0;
+			this.activeAnchor = Date.now();
+		}
+
+		// Transcode and write the part files while the next part is
+		// already being captured by the restarted recorders
+		for (const snapshot of snapshots) {
+			await this.finalizeMediaPartSnapshot(
+				snapshot.target,
+				snapshot.segmentPaths,
+			);
+		}
+	}
+
+	/**
+	 * Recreates and starts the MediaRecorders after a part rotation,
+	 * re-applying the paused state. A restart failure (e.g. the input
+	 * device disappeared mid-session) would otherwise leave the session
+	 * silently dead — status Recording with no recorder running — so
+	 * the session is stopped to salvage the parts already written.
+	 */
+	private restartMediaRecorders(): void {
+		try {
+			this.createAndStartMediaRecorders();
+			if (this.status === RecordingStatus.Paused) {
+				this.recorders.forEach((recorder) => recorder.pause());
+			}
+		} catch (error) {
+			console.error(
+				`${PLUGIN_LOG_PREFIX} Failed to restart recorders after part rotation:`,
+				error,
+			);
+			new Notice(
+				'Could not restart recording after saving a part. Stopping and saving the recording.',
+			);
+			void this.stopRecording();
+		}
+	}
+
+	/**
+	 * Transcodes one detached rotation snapshot into a part file and
+	 * records it on the target. On failure the snapshot segments are
+	 * re-attached in front of the data captured since the restart, so
+	 * the audio lands in the next part instead of being lost.
+	 * @param target - Recording target the snapshot belongs to
+	 * @param segmentPaths - Detached segment files in capture order
+	 */
+	private async finalizeMediaPartSnapshot(
+		target: RecordingTarget,
+		segmentPaths: string[],
+	): Promise<void> {
+		target.partIndex += 1;
+		try {
+			const fileName = buildPartFileName(
+				target.fileBaseName,
+				this.sessionPartSuffix,
+				target.partIndex,
+				this.sessionOutputFormat,
+			);
+			const filePath = await this.finalizeSegmentsToFile(
+				segmentPaths,
+				fileName,
+			);
+			if (filePath) {
+				target.partPaths.push(filePath);
+				this.debugLogger.log('Auto-split part saved', { filePath });
+				new Notice(`Recording part ${String(target.partIndex)} saved`);
+			} else {
+				target.partIndex -= 1;
+			}
+		} catch (error) {
+			target.partIndex -= 1;
+			target.segmentPaths = [...segmentPaths, ...target.segmentPaths];
+			console.error(
+				`${PLUGIN_LOG_PREFIX} Failed to finalize recording part:`,
+				error,
+			);
+			new Notice(
+				'Failed to save recording part. Recording continues; data is kept for the next part.',
+			);
+		}
 	}
 
 	private async flushPcmBuffer(target: RecordingTarget): Promise<void> {
@@ -582,11 +982,7 @@ export class RecordingManager {
 			this.settings,
 		);
 
-		const totalSize = target.pcmBuffers.reduce(
-			(sum, buf) => sum + buf.byteLength,
-			0,
-		);
-		const merged = new Uint8Array(totalSize);
+		const merged = new Uint8Array(totalByteLength(target.pcmBuffers));
 		let offset = 0;
 		for (const buf of target.pcmBuffers) {
 			merged.set(new Uint8Array(buf), offset);
@@ -623,13 +1019,16 @@ export class RecordingManager {
 			this.app,
 		);
 		if (failedPaths.length > 0) {
-			await rollbackFinalFile(
-				filePath,
-				'Failed to rollback assembled WAV file',
-				this.app,
+			// Keep the assembled file: it already contains all captured
+			// audio, while segments that were removed exist nowhere else.
+			// Rolling it back would lose their audio permanently and leave
+			// part bookkeeping pointing at missing segment files.
+			console.error(
+				`${PLUGIN_LOG_PREFIX} Temporary segment files could not be removed:`,
+				failedPaths,
 			);
-			throw new Error(
-				`Temporary recording artifacts were kept for recovery: ${failedPaths.join(', ')}`,
+			new Notice(
+				`Recording saved, but temporary files could not be removed: ${failedPaths.join(', ')}`,
 			);
 		}
 	}
@@ -735,9 +1134,32 @@ export class RecordingManager {
 		});
 	}
 
+	/**
+	 * Builds the final track file name, appending the part suffix when
+	 * the session was auto-split (the residual after the last rotation
+	 * becomes the next part number). Uses the base name snapshotted at
+	 * session start so the residual matches its sibling part files even
+	 * when the file prefix setting changed mid-recording.
+	 * @param target - Recording target
+	 * @param extension - File extension without the dot
+	 */
+	private buildTrackFileName(
+		target: RecordingTarget,
+		extension: string,
+	): string {
+		if (target.partIndex > 0) {
+			return buildPartFileName(
+				target.fileBaseName,
+				this.sessionPartSuffix,
+				target.partIndex + 1,
+				extension,
+			);
+		}
+		return `${target.fileBaseName}.${extension}`;
+	}
+
 	private async finalizeTrackFiles(
 		target: RecordingTarget,
-		timestamp: string,
 	): Promise<string[]> {
 		const fileLinks: string[] = [];
 		if (this.isMobileRecording) {
@@ -753,7 +1175,7 @@ export class RecordingManager {
 				return fileLinks;
 			}
 			this.updateSaveProgress(40, 'Assembling audio...');
-			const fileName = `${this.settings.filePrefix}-${target.sourceName}-${timestamp}.wav`;
+			const fileName = this.buildTrackFileName(target, FORMAT_WAV);
 			const filePath = await resolveUniquePath(
 				fileName,
 				this.app,
@@ -765,24 +1187,96 @@ export class RecordingManager {
 			return fileLinks;
 		}
 
+		const fileName = this.buildTrackFileName(
+			target,
+			this.sessionOutputFormat,
+		);
+		const filePath = await this.finalizeMediaTrackToFile(
+			target,
+			fileName,
+			true,
+		);
+		if (filePath) {
+			fileLinks.push(filePath);
+		}
+		return fileLinks;
+	}
+
+	/**
+	 * Finalizes buffered MediaRecorder data of one track into a final
+	 * audio file: flushes the chunk buffer to segment files and hands
+	 * them to finalizeSegmentsToFile. Used at stop; part rotation
+	 * finalizes detached snapshots directly instead.
+	 * @param target - Recording target to finalize
+	 * @param fileName - Final file name
+	 * @param reportProgress - Whether to emit save-progress status updates
+	 * @returns Final file path, or null when no audio data is buffered
+	 */
+	private async finalizeMediaTrackToFile(
+		target: RecordingTarget,
+		fileName: string,
+		reportProgress: boolean = false,
+	): Promise<string | null> {
 		await this.flushChunkBuffer(target);
-		const blob = await this.buildTrackBlob(target);
-		if (!blob || blob.size === 0) {
-			return fileLinks;
+		const filePath = await this.finalizeSegmentsToFile(
+			target.segmentPaths,
+			fileName,
+			reportProgress,
+		);
+		if (filePath) {
+			target.segmentPaths = [];
+			target.segmentIndex = 0;
+		}
+		return filePath;
+	}
+
+	/**
+	 * Transcodes and writes a list of raw segment files into one final
+	 * audio file in the session output format, then removes the
+	 * temporary segments (segments that cannot be removed are reported
+	 * and left on disk; the final file is always kept). Operates on an
+	 * explicit segment list so part rotation can finalize a detached
+	 * snapshot while the next part is recording.
+	 * @param segmentPaths - Segment files in capture order
+	 * @param fileName - Final file name
+	 * @param reportProgress - Whether to emit save-progress status
+	 * updates (must stay false during rotation: the Saving status would
+	 * tear down the status bar recording controls)
+	 * @returns Final file path, or null when the segments hold no data
+	 */
+	private async finalizeSegmentsToFile(
+		segmentPaths: string[],
+		fileName: string,
+		reportProgress: boolean = false,
+	): Promise<string | null> {
+		if (segmentPaths.length === 0) {
+			return null;
+		}
+		const segmentBuffers = await Promise.all(
+			segmentPaths.map((path) => this.app.vault.adapter.readBinary(path)),
+		);
+		const blob = new Blob(segmentBuffers, {
+			type: getRecorderMediaType(this.activeRecorderFormat),
+		});
+		if (blob.size === 0) {
+			return null;
 		}
 
-		const outputFormat = this.settings.recordingFormat;
-		const fileName = `${this.settings.filePrefix}-${target.sourceName}-${timestamp}.${outputFormat}`;
+		const outputFormat = this.sessionOutputFormat;
 		const filePath = await resolveUniquePath(
 			fileName,
 			this.app,
 			this.settings,
 		);
 
-		if (this.settings.recordingFormat === FORMAT_WAV) {
-			this.updateSaveProgress(40, 'Assembling audio...');
+		if (outputFormat === FORMAT_WAV) {
+			if (reportProgress) {
+				this.updateSaveProgress(40, 'Assembling audio...');
+			}
 			const wavBlob = await convertBlobToWav(blob);
-			this.updateSaveProgress(60, 'Writing file...');
+			if (reportProgress) {
+				this.updateSaveProgress(60, 'Writing file...');
+			}
 			await this.app.vault.createBinary(
 				filePath,
 				await wavBlob.arrayBuffer(),
@@ -791,49 +1285,61 @@ export class RecordingManager {
 			isOfflineOnlyFormat(outputFormat, this.activeRecorderFormat)
 		) {
 			// Offline-only format: decode intermediate blob, re-encode to target
-			this.updateSaveProgress(40, 'Encoding audio...');
+			if (reportProgress) {
+				this.updateSaveProgress(40, 'Encoding audio...');
+			}
 			const outputBlob = await convertBlobToFormat(
 				blob,
 				outputFormat,
-				this.settings.bitrate,
+				this.sessionBitrate,
 				(percent) => {
-					this.updateSaveProgress(
-						40 + Math.round(percent * 0.2),
-						'Encoding audio...',
-					);
+					if (reportProgress) {
+						this.updateSaveProgress(
+							40 + Math.round(percent * 0.2),
+							'Encoding audio...',
+						);
+					}
 				},
 			);
-			this.updateSaveProgress(60, 'Writing file...');
+			if (reportProgress) {
+				this.updateSaveProgress(60, 'Writing file...');
+			}
 			await this.app.vault.createBinary(
 				filePath,
 				await outputBlob.arrayBuffer(),
 			);
 		} else {
-			this.updateSaveProgress(60, 'Writing file...');
+			if (reportProgress) {
+				this.updateSaveProgress(60, 'Writing file...');
+			}
 			await this.app.vault.createBinary(
 				filePath,
 				await blob.arrayBuffer(),
 			);
 		}
 
-		this.updateSaveProgress(80, 'Cleaning up...');
+		if (reportProgress) {
+			this.updateSaveProgress(80, 'Cleaning up...');
+		}
 		const failedCleanupPaths = await removeTemporaryArtifacts(
-			target.segmentPaths,
+			segmentPaths,
 			'Failed to remove segment file after finalization',
 			this.app,
 		);
 		if (failedCleanupPaths.length > 0) {
-			await rollbackFinalFile(
-				filePath,
-				'Failed to rollback finalized track',
-				this.app,
+			// Keep the final file: it already contains all captured audio,
+			// while segments that were removed exist nowhere else. Rolling
+			// it back would lose their audio permanently and leave part
+			// bookkeeping pointing at missing segment files.
+			console.error(
+				`${PLUGIN_LOG_PREFIX} Temporary segment files could not be removed:`,
+				failedCleanupPaths,
 			);
-			throw new Error(
-				`Temporary recording artifacts were kept for recovery: ${failedCleanupPaths.join(', ')}`,
+			new Notice(
+				`Recording saved, but temporary files could not be removed: ${failedCleanupPaths.join(', ')}`,
 			);
 		}
 
-		fileLinks.push(filePath);
-		return fileLinks;
+		return filePath;
 	}
 }

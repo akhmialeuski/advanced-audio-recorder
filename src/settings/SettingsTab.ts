@@ -26,6 +26,12 @@ import {
 	getEncoderDescription,
 	isOfflineEncodingSupported,
 } from '../recording/AudioEncoder';
+import {
+	DEFAULT_SPLIT_PART_SUFFIX,
+	MIN_SPLIT_CHUNK_MINUTES,
+	MAX_SPLIT_CHUNK_MINUTES,
+	SPLIT_PART_SUFFIX_PATTERN,
+} from '../constants';
 import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
 import { SystemInfoModal } from '../diagnostics/SystemInfoModal';
 
@@ -329,6 +335,88 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.insertAtOriginalPosition)
 					.onChange(async (value) => {
 						this.plugin.settings.insertAtOriginalPosition = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		// ── Audio splitting ───────────────────────────────────────
+		new Setting(containerEl).setName('Audio splitting').setHeading();
+
+		new Setting(containerEl)
+			.setName('Split recordings automatically')
+			.setDesc(
+				'Save the recording as separate part files of fixed duration instead of one long file. Desktop only; not applied to merged multi-track recordings.',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.autoSplitEnabled)
+					.onChange(async (value) => {
+						this.plugin.settings.autoSplitEnabled = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Part duration')
+			.setDesc(
+				'Length of each part in minutes. Also used as the default for manual splitting from the context menu.',
+			)
+			.addSlider((slider) =>
+				slider
+					.setLimits(
+						MIN_SPLIT_CHUNK_MINUTES,
+						MAX_SPLIT_CHUNK_MINUTES,
+						1,
+					)
+					.setValue(this.plugin.settings.splitChunkMinutes)
+					.setDynamicTooltip()
+					.onChange(async (value) => {
+						this.plugin.settings.splitChunkMinutes = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Part name suffix')
+			.setDesc(
+				'Appended with the part number to part file names, e.g. "recording-part1.webm". Letters, digits, hyphens, and underscores only.',
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder(DEFAULT_SPLIT_PART_SUFFIX)
+					.setValue(this.plugin.settings.splitPartSuffix)
+					.onChange(async (value) => {
+						// Mirror the manual split dialog: surrounding
+						// whitespace is ignored and an empty field means
+						// the default suffix. Only valid suffixes are
+						// persisted; the red border tells the user the
+						// last valid value is still in effect
+						const trimmed = value.trim();
+						const valid =
+							trimmed === '' ||
+							SPLIT_PART_SUFFIX_PATTERN.test(trimmed);
+						text.inputEl.toggleClass('aar-input-invalid', !valid);
+						if (!valid) {
+							return;
+						}
+						this.plugin.settings.splitPartSuffix =
+							trimmed === ''
+								? DEFAULT_SPLIT_PART_SUFFIX
+								: trimmed;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Delete source after split')
+			.setDesc(
+				'Default state of the delete source file option in the manual split dialog.',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.deleteSourceAfterSplit)
+					.onChange(async (value) => {
+						this.plugin.settings.deleteSourceAfterSplit = value;
 						await this.plugin.saveSettings();
 					}),
 			);

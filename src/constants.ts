@@ -42,3 +42,32 @@ export const DESKTOP_FLUSH_THRESHOLD_BYTES = 50 * 1024 * 1024;
 
 /** Common MIME type prefix for audio formats. */
 export const MIME_TYPE_AUDIO_PREFIX = 'audio/';
+
+/** Seconds in one minute. */
+export const SECONDS_PER_MINUTE = 60;
+
+/** Milliseconds in one minute. */
+export const MS_PER_MINUTE = 60_000;
+
+/** Default duration of one split part in minutes. */
+export const DEFAULT_SPLIT_CHUNK_MINUTES = 15;
+
+/** Minimum allowed split part duration in minutes. */
+export const MIN_SPLIT_CHUNK_MINUTES = 1;
+
+/** Maximum allowed split part duration in minutes. */
+export const MAX_SPLIT_CHUNK_MINUTES = 180;
+
+/** Default filename suffix for split parts (e.g. "-part1", "-part2"). */
+export const DEFAULT_SPLIT_PART_SUFFIX = 'part';
+
+/**
+ * Allowed characters for the split part suffix. The suffix ends up in
+ * file names and in link-matching regular expressions, so it must stay
+ * free of path separators and regex metacharacters.
+ */
+export const SPLIT_PART_SUFFIX_PATTERN = /^[A-Za-z0-9_-]+$/;
+
+/** User-facing description of the split part suffix character rule. */
+export const SPLIT_PART_SUFFIX_RULE_TEXT =
+	'Part suffix may contain only letters, digits, hyphens, and underscores.';
