@@ -10,7 +10,11 @@ import {
 	getEncoderDescription,
 } from '../recording/AudioEncoder';
 import { AUDIO_EXTENSIONS, FORMAT_WAV } from '../constants';
-import { getSupportedBitrates } from '../recording/AudioCapabilityDetector';
+import {
+	addBitrateSetting,
+	addDeleteSourceSetting,
+	addLinkActionSetting,
+} from './settingHelpers';
 import {
 	decodeAudioBlob,
 	convertBlobToFormat,
@@ -79,42 +83,29 @@ export class ConversionModal extends Modal {
 				});
 			});
 
-		new Setting(contentEl)
-			.setName('Bitrate')
-			.setDesc('Audio bitrate for compressed formats.')
-			.addDropdown((dropdown) => {
-				const bitrates = getSupportedBitrates();
-				bitrates.forEach((bps) => {
-					const kbps = Math.round(bps / 1000);
-					dropdown.addOption(String(bps), `${String(kbps)} kbps`);
-				});
-				dropdown.setValue(String(this.bitrate));
-				dropdown.onChange((value) => {
-					this.bitrate = parseInt(value, 10);
-				});
-			});
+		this.bitrate = addBitrateSetting(contentEl, {
+			desc: 'Audio bitrate for compressed formats.',
+			initialBitrate: this.bitrate,
+			onChange: (bitrate) => {
+				this.bitrate = bitrate;
+			},
+		});
 
-		new Setting(contentEl)
-			.setName('Delete source file')
-			.setDesc('Remove the original file after successful conversion.')
-			.addToggle((toggle) =>
-				toggle.setValue(this.deleteSource).onChange((value) => {
-					this.deleteSource = value;
-				}),
-			);
+		addDeleteSourceSetting(contentEl, {
+			desc: 'Remove the original file after successful conversion.',
+			initialValue: this.deleteSource,
+			onChange: (value) => {
+				this.deleteSource = value;
+			},
+		});
 
-		new Setting(contentEl)
-			.setName('Update links in notes')
-			.setDesc('How to handle links to the converted file in your notes.')
-			.addDropdown((dropdown) => {
-				dropdown.addOption('none', 'Do nothing');
-				dropdown.addOption('replace', 'Replace source link');
-				dropdown.addOption('after', 'Insert after source link');
-				dropdown.setValue(this.linkAction);
-				dropdown.onChange((value) => {
-					this.linkAction = value as ConversionLinkAction;
-				});
-			});
+		addLinkActionSetting(contentEl, {
+			desc: 'How to handle links to the converted file in your notes.',
+			initialValue: this.linkAction,
+			onChange: (value) => {
+				this.linkAction = value;
+			},
+		});
 
 		const progressEl = contentEl.createDiv({
 			cls: 'aar-conversion-progress',

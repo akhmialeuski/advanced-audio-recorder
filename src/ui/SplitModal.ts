@@ -20,8 +20,12 @@ import {
 	SPLIT_PART_SUFFIX_PATTERN,
 	SPLIT_PART_SUFFIX_RULE_TEXT,
 } from '../constants';
-import { getSupportedBitrates } from '../recording/AudioCapabilityDetector';
 import { decodeAudioBlob } from '../recording/AudioFormatConverter';
+import {
+	addBitrateSetting,
+	addDeleteSourceSetting,
+	addLinkActionSetting,
+} from './settingHelpers';
 import {
 	parseWavLayout,
 	buildWavPart,
@@ -128,60 +132,30 @@ export class SplitModal extends Modal {
 		);
 
 		if (this.sourceFile.extension.toLowerCase() !== FORMAT_WAV) {
-			new Setting(contentEl)
-				.setName('Bitrate')
-				.setDesc(
-					'Bitrate used when re-encoding parts of compressed formats.',
-				)
-				.addDropdown((dropdown) => {
-					const bitrates = getSupportedBitrates();
-					bitrates.forEach((bps) => {
-						const kbps = Math.round(bps / 1000);
-						dropdown.addOption(String(bps), `${String(kbps)} kbps`);
-					});
-					if (
-						bitrates.length > 0 &&
-						!bitrates.includes(this.bitrate)
-					) {
-						// Snap to the closest supported value so the dropdown
-						// always shows the bitrate actually used for encoding
-						this.bitrate = bitrates.reduce((closest, bps) =>
-							Math.abs(bps - this.bitrate) <
-							Math.abs(closest - this.bitrate)
-								? bps
-								: closest,
-						);
-					}
-					dropdown.setValue(String(this.bitrate));
-					dropdown.onChange((value) => {
-						this.bitrate = parseInt(value, 10);
-					});
-				});
+			this.bitrate = addBitrateSetting(contentEl, {
+				desc: 'Bitrate used when re-encoding parts of compressed formats.',
+				initialBitrate: this.bitrate,
+				onChange: (bitrate) => {
+					this.bitrate = bitrate;
+				},
+			});
 		}
 
-		new Setting(contentEl)
-			.setName('Delete source file')
-			.setDesc('Remove the original file after a successful split.')
-			.addToggle((toggle) =>
-				toggle.setValue(this.deleteSource).onChange((value) => {
-					this.deleteSource = value;
-				}),
-			);
+		addDeleteSourceSetting(contentEl, {
+			desc: 'Remove the original file after a successful split.',
+			initialValue: this.deleteSource,
+			onChange: (value) => {
+				this.deleteSource = value;
+			},
+		});
 
-		new Setting(contentEl)
-			.setName('Update links in notes')
-			.setDesc(
-				'How to handle links to the source file. Links in note bodies across the whole vault are updated; links in frontmatter properties are not.',
-			)
-			.addDropdown((dropdown) => {
-				dropdown.addOption('none', 'Do nothing');
-				dropdown.addOption('replace', 'Replace source link');
-				dropdown.addOption('after', 'Insert after source link');
-				dropdown.setValue(this.linkAction);
-				dropdown.onChange((value) => {
-					this.linkAction = value as ConversionLinkAction;
-				});
-			});
+		addLinkActionSetting(contentEl, {
+			desc: 'How to handle links to the source file. Links in note bodies across the whole vault are updated; links in frontmatter properties are not.',
+			initialValue: this.linkAction,
+			onChange: (value) => {
+				this.linkAction = value;
+			},
+		});
 
 		const progressEl = contentEl.createDiv({
 			cls: 'aar-split-progress',
