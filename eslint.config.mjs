@@ -8,10 +8,30 @@ import globals from 'globals';
 export default tseslint.config(
     eslint.configs.recommended,
     ...tseslint.configs.recommended,
+    // Obsidian Plugin Rules (Recommended): a flat config array since
+    // eslint-plugin-obsidianmd 0.3.0. Its rule entries target plugin
+    // source code (and ship partially unscoped, which breaks on JSON
+    // manifests where type-aware rules cannot execute), so they are
+    // constrained to src/. The plugin's own JSON manifest linting
+    // entries keep their original file scope.
+    ...obsidianmd.configs.recommended.map((entry) => {
+        if (!entry.rules) {
+            return entry;
+        }
+        const isJsonEntry =
+            (typeof entry.language === 'string' &&
+                entry.language.startsWith('json')) ||
+            (Array.isArray(entry.files) &&
+                entry.files.every((file) => String(file).endsWith('.json')));
+        return isJsonEntry ? entry : { ...entry, files: ['src/**/*.ts'] };
+    }),
     {
+        // Typed linting applies to TypeScript sources only: the
+        // obsidianmd recommended config also lints JSON manifests,
+        // where type-aware rules cannot run
+        files: ['**/*.ts'],
         plugins: {
             prettier,
-            obsidianmd,
         },
         languageOptions: {
             globals: {
@@ -24,9 +44,6 @@ export default tseslint.config(
             },
         },
         rules: {
-            // Obsidian Plugin Rules (Recommended)
-            ...obsidianmd.configs.recommended,
-
             // Prettier integration
             'prettier/prettier': 'error',
 

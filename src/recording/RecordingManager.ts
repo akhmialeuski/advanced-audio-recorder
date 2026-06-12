@@ -532,7 +532,7 @@ export class RecordingManager {
 				resolve();
 				return;
 			}
-			const watchdog = setTimeout(() => {
+			const watchdog = window.setTimeout(() => {
 				console.error(
 					`${PLUGIN_LOG_PREFIX} MediaRecorder stop event did not arrive within ${String(
 						RECORDER_STOP_TIMEOUT_MS,
@@ -543,7 +543,7 @@ export class RecordingManager {
 			recorder.addEventListener(
 				'stop',
 				() => {
-					clearTimeout(watchdog);
+					window.clearTimeout(watchdog);
 					resolve();
 				},
 				{ once: true },
@@ -553,7 +553,7 @@ export class RecordingManager {
 			} catch (error) {
 				// The recorder went inactive between the state check and
 				// stop(): its data is already delivered, nothing to wait for
-				clearTimeout(watchdog);
+				window.clearTimeout(watchdog);
 				console.error(
 					`${PLUGIN_LOG_PREFIX} MediaRecorder stop() failed:`,
 					error,

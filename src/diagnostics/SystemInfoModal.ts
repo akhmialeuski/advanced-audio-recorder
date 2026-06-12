@@ -45,7 +45,7 @@ export class SystemInfoModal extends Modal {
 			void navigator.clipboard.writeText(json).then(() => {
 				copyButton.setText('Copied!');
 				copyButton.addClass('aar-system-info-copied');
-				activeWindow.setTimeout(() => {
+				window.setTimeout(() => {
 					copyButton.setText('Copy to clipboard');
 					copyButton.removeClass('aar-system-info-copied');
 				}, COPY_CONFIRM_MS);

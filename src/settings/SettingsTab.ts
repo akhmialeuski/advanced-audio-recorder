@@ -655,7 +655,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			this.testRecorder.start();
 
 			await new Promise<void>((resolve) =>
-				activeWindow.setTimeout(resolve, 5000),
+				window.setTimeout(resolve, 5000),
 			);
 
 			if (this.testRecorder.state !== 'inactive') {

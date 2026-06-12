@@ -70,7 +70,7 @@ interface PluginHarness {
  */
 function createPlugin(loadDataResults: LoadDataResult[]): PluginHarness {
 	const app = new App();
-	const plugin = new AudioRecorderPlugin(app as never, MANIFEST as never);
+	const plugin = new AudioRecorderPlugin(app, MANIFEST as never);
 
 	const loadData = jest.fn();
 	for (const result of loadDataResults) {

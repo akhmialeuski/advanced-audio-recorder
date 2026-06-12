@@ -157,7 +157,7 @@ describe('AudioFormatConverter', () => {
 		// Default input track: opus audio, the typical intermediate
 		// recording codec
 		mockGetPrimaryAudioTrack.mockResolvedValue({
-			codec: 'opus',
+			getCodec: jest.fn().mockResolvedValue('opus'),
 			isAudioTrack: (): boolean => true,
 		});
 	});

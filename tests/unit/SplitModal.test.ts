@@ -362,7 +362,7 @@ describe('SplitModal', () => {
 		const modal = new SplitModal(mockApp, mockFile, {
 			...mockSettings,
 			bitrate: 100000,
-		} as unknown as AudioRecorderSettings);
+		});
 		modal.onOpen();
 
 		expect((modal as unknown as { bitrate: number }).bitrate).toBe(96000);
@@ -466,7 +466,7 @@ describe('SplitModal', () => {
 		const modal = new SplitModal(mockApp, mockFile, {
 			...mockSettings,
 			splitPartSuffix: 'bad/suffix',
-		} as unknown as AudioRecorderSettings);
+		});
 
 		expect(internals(modal).partSuffix).toBe('part');
 	});
@@ -475,13 +475,13 @@ describe('SplitModal', () => {
 		const tooLarge = new SplitModal(mockApp, mockFile, {
 			...mockSettings,
 			splitChunkMinutes: 10000,
-		} as unknown as AudioRecorderSettings);
+		});
 		expect(internals(tooLarge).partMinutes).toBe(180);
 
 		const nonFinite = new SplitModal(mockApp, mockFile, {
 			...mockSettings,
 			splitChunkMinutes: Number.NaN,
-		} as unknown as AudioRecorderSettings);
+		});
 		expect(internals(nonFinite).partMinutes).toBe(15);
 	});
 

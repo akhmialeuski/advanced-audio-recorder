@@ -210,13 +210,12 @@ async function convertBlobWithConversion(
 	// when the caller knows the input is already at the requested
 	// bitrate. Discarded tracks are handled explicitly below, so
 	// mediabunny's own console warnings about them are disabled.
+	const inputCodec = await audioTrack.getCodec();
 	const conversion = await Conversion.init({
 		input,
 		output,
 		audio:
-			allowRemux && audioTrack.codec === codec
-				? { codec }
-				: { codec, bitrate },
+			allowRemux && inputCodec === codec ? { codec } : { codec, bitrate },
 		showWarnings: false,
 	});
 
