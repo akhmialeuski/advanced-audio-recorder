@@ -503,7 +503,7 @@ describe('RecordingFinalizer', () => {
 			expect(mergeAudioTracks).toHaveBeenCalled();
 		});
 
-		it('should roll back the merged file when cleanup fails', async () => {
+		it('should keep the merged file when cleanup fails', async () => {
 			(mockApp.vault.adapter.remove as jest.Mock).mockRejectedValue(
 				new Error('locked'),
 			);
@@ -517,9 +517,28 @@ describe('RecordingFinalizer', () => {
 				createTarget({ segmentPaths: ['b.tmp'] }),
 			];
 
-			await expect(
-				finalizer.saveRecording(targets, 'stamp', null),
-			).rejects.toThrow('kept for recovery');
+			await finalizer.saveRecording(targets, 'stamp', null);
+
+			// The merged file is the only complete copy of the audio of
+			// segments removed by a partial cleanup: it must never be
+			// rolled back
+			expect(mockApp.vault.adapter.remove).not.toHaveBeenCalledWith(
+				expect.stringMatching(/multitrack/),
+			);
+			expect(
+				getNotices().some((notice) =>
+					notice.startsWith(
+						'Recording saved, but temporary files could not be removed:',
+					),
+				),
+			).toBe(true);
+			expect(getNotices()).toContain('Saved 1 audio file(s)');
+			expect(consoleErrorSpy).toHaveBeenCalledWith(
+				expect.stringContaining(
+					'Temporary segment files could not be removed',
+				),
+				['a.tmp', 'b.tmp'],
+			);
 			warnSpy.mockRestore();
 		});
 	});

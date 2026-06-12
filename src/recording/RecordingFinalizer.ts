@@ -27,7 +27,6 @@ import {
 	resolveUniquePath,
 	saveAudioFile,
 	removeTemporaryArtifacts,
-	rollbackFinalFile,
 	cleanupIntermediateFiles,
 } from './RecordingFileManager';
 import {
@@ -227,13 +226,17 @@ export class RecordingFinalizer {
 						),
 					);
 					if (failedCleanupPaths.length > 0) {
-						await rollbackFinalFile(
-							filePath,
-							'Failed to finalize recording cleanup for merged output',
-							this.app,
+						// Keep the merged file: it already contains all
+						// captured audio, while segments removed by the
+						// partial cleanup exist nowhere else. Rolling it back
+						// would lose their audio permanently. Failed segments
+						// stay journaled for the next launch.
+						console.error(
+							`${PLUGIN_LOG_PREFIX} Temporary segment files could not be removed:`,
+							failedCleanupPaths,
 						);
-						throw new Error(
-							`Temporary recording artifacts were kept for recovery: ${failedCleanupPaths.join(', ')}`,
+						new Notice(
+							`Recording saved, but temporary files could not be removed: ${failedCleanupPaths.join(', ')}`,
 						);
 					}
 					fileLinks.push(filePath);

@@ -172,27 +172,6 @@ export async function removeTemporaryArtifacts(
 }
 
 /**
- * Attempts to remove a finalized file during rollback.
- * @param filePath - Path of the file to remove
- * @param logContext - Context message for error logs
- * @param app - Obsidian App instance
- */
-export async function rollbackFinalFile(
-	filePath: string,
-	logContext: string,
-	app: App,
-): Promise<void> {
-	try {
-		await app.vault.adapter.remove(filePath);
-	} catch (error) {
-		console.error(`${PLUGIN_LOG_PREFIX} ${logContext}:`, {
-			filePath,
-			error,
-		});
-	}
-}
-
-/**
  * Removes all intermediate segment files across recording targets.
  * @param chunkTargets - Recording targets with segment paths
  * @param app - Obsidian App instance

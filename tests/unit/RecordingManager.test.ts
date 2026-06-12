@@ -1593,11 +1593,14 @@ describe('RecordingManager', () => {
 			expect(global.OfflineAudioContext).toHaveBeenCalled();
 		});
 
-		it('should rollback merged output when cleanup of temporary partial files fails', async () => {
+		it('should keep the merged file when cleanup of temporary partial files fails', async () => {
 			const { Notice } = jest.requireMock('obsidian');
 
 			const consoleWarnSpy = jest
 				.spyOn(console, 'warn')
+				.mockImplementation(() => {});
+			const consoleErrorSpy = jest
+				.spyOn(console, 'error')
 				.mockImplementation(() => {});
 
 			const { Platform } = jest.requireMock('obsidian');
@@ -1681,11 +1684,26 @@ describe('RecordingManager', () => {
 				expect.stringMatching(/multitrack-.*\.webm$/),
 				expect.any(ArrayBuffer),
 			);
-			expect(mockApp.vault.adapter.remove).toHaveBeenCalledWith(
+			// The merged file is the only complete copy of the audio of
+			// segments removed by the partial cleanup: it must never be
+			// rolled back
+			expect(mockApp.vault.adapter.remove).not.toHaveBeenCalledWith(
 				expect.stringMatching(/multitrack-.*\.webm$/),
 			);
 			expect(Notice).toHaveBeenCalledWith(
+				expect.stringContaining(
+					'Recording saved, but temporary files could not be removed:',
+				),
+			);
+			expect(Notice).toHaveBeenCalledWith('Saved 1 audio file(s)');
+			expect(Notice).not.toHaveBeenCalledWith(
 				expect.stringContaining('Error stopping recording:'),
+			);
+			expect(consoleErrorSpy).toHaveBeenCalledWith(
+				expect.stringContaining(
+					'Temporary segment files could not be removed',
+				),
+				expect.arrayContaining([expect.stringContaining('.tmp')]),
 			);
 			expect(consoleWarnSpy).toHaveBeenCalledWith(
 				expect.stringContaining('[AudioRecorder]'),
@@ -1697,6 +1715,7 @@ describe('RecordingManager', () => {
 			);
 
 			consoleWarnSpy.mockRestore();
+			consoleErrorSpy.mockRestore();
 		});
 
 		/**

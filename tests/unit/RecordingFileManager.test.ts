@@ -19,7 +19,6 @@ import {
 	resolveUniquePathInDirectory,
 	saveAudioFile,
 	removeTemporaryArtifacts,
-	rollbackFinalFile,
 	cleanupIntermediateFiles,
 } from '../../src/recording/RecordingFileManager';
 
@@ -621,72 +620,6 @@ describe('RecordingFileManager', () => {
 				expect.stringContaining('[AudioRecorder]'),
 				expect.anything(),
 			);
-		});
-	});
-
-	// -----------------------------------------------------------------------
-	// rollbackFinalFile
-	// -----------------------------------------------------------------------
-	describe('rollbackFinalFile', () => {
-		it('should remove the file successfully', async () => {
-			(mockApp.vault.adapter.remove as jest.Mock).mockResolvedValue(
-				undefined,
-			);
-
-			await rollbackFinalFile(
-				'Recordings/final.webm',
-				'rollback context',
-				mockApp,
-			);
-
-			expect(mockApp.vault.adapter.remove).toHaveBeenCalledWith(
-				'Recordings/final.webm',
-			);
-			expect(consoleErrorSpy).not.toHaveBeenCalled();
-		});
-
-		it('should log error when removal fails', async () => {
-			(mockApp.vault.adapter.remove as jest.Mock).mockRejectedValue(
-				new Error('Cannot delete'),
-			);
-
-			await rollbackFinalFile(
-				'Recordings/final.webm',
-				'rollback failed',
-				mockApp,
-			);
-
-			expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
-			expect(consoleErrorSpy).toHaveBeenCalledWith(
-				expect.stringContaining('rollback failed'),
-				expect.objectContaining({
-					filePath: 'Recordings/final.webm',
-					error: expect.any(Error),
-				}),
-			);
-		});
-
-		it('should include log prefix in error message', async () => {
-			(mockApp.vault.adapter.remove as jest.Mock).mockRejectedValue(
-				new Error('fail'),
-			);
-
-			await rollbackFinalFile('file.webm', 'context', mockApp);
-
-			expect(consoleErrorSpy).toHaveBeenCalledWith(
-				expect.stringContaining('[AudioRecorder]'),
-				expect.anything(),
-			);
-		});
-
-		it('should not throw even when removal fails', async () => {
-			(mockApp.vault.adapter.remove as jest.Mock).mockRejectedValue(
-				new Error('Catastrophic failure'),
-			);
-
-			await expect(
-				rollbackFinalFile('file.webm', 'context', mockApp),
-			).resolves.toBeUndefined();
 		});
 	});
 
