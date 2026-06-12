@@ -34,6 +34,12 @@ export interface JournalTrack {
 	segmentPaths: string[];
 	/** Finalized auto-split part files (informational; never deleted). */
 	partPaths: string[];
+	/**
+	 * True when the first MediaRecorder segment (which carries the
+	 * container header) was lost: the remaining data is not playable
+	 * and the track is discard-only. Set by the recovery prune.
+	 */
+	headerLost?: boolean;
 }
 
 /**
