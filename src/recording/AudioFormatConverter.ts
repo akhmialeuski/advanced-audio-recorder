@@ -144,16 +144,31 @@ export async function decodeAudioBlob(
 }
 
 /**
+ * Options controlling blob-to-format conversion behavior.
+ */
+export interface BlobConversionOptions {
+	/**
+	 * Allows copying the audio packets without re-encoding (remux)
+	 * when the input codec already matches the target codec. Remux
+	 * ignores the requested bitrate, so it is only safe when the
+	 * input is known to be encoded at that bitrate already (the
+	 * recording pipeline configures the recorder with the session
+	 * bitrate). Conversions driven by an explicit user bitrate
+	 * choice must leave this off so the selection is always honored.
+	 */
+	allowRemux?: boolean;
+}
+
+/**
  * Converts a compressed audio blob to the target format using the
  * streaming mediabunny Conversion pipeline: audio is transcoded in
  * chunks without materializing the whole recording as PCM in memory.
- * When the input codec already matches the target codec the packets
- * are copied without re-encoding (remux); the matching input was
- * already encoded at the bitrate configured for the session, so the
- * remux preserves it exactly.
+ * With allowRemux, packets of an input whose codec already matches
+ * the target codec are copied without re-encoding.
  * @param recordedBlob - Intermediate compressed blob
  * @param targetFormat - Desired output format
  * @param bitrate - Bitrate in bits per second
+ * @param allowRemux - Allow packet copy when the codecs match
  * @param onProgress - Optional encoding progress callback (0-100)
  * @returns Re-encoded blob in the target format
  * @throws Error when the target format has no codec mapping, the
@@ -164,6 +179,7 @@ async function convertBlobWithConversion(
 	recordedBlob: Blob,
 	targetFormat: string,
 	bitrate: number,
+	allowRemux: boolean,
 	onProgress?: FormatProgressCallback,
 ): Promise<Blob> {
 	const codec: AudioCodec | undefined = FORMAT_CODEC_MAP[targetFormat];
@@ -190,13 +206,17 @@ async function convertBlobWithConversion(
 
 	// Omitting bitrate lets mediabunny copy packets (remux) when the
 	// input codec matches the target; setting it always forces a
-	// re-encode per the Conversion contract. Discarded tracks are
-	// handled explicitly below, so mediabunny's own console warnings
-	// about them are disabled.
+	// re-encode per the Conversion contract. Remux is allowed only
+	// when the caller knows the input is already at the requested
+	// bitrate. Discarded tracks are handled explicitly below, so
+	// mediabunny's own console warnings about them are disabled.
 	const conversion = await Conversion.init({
 		input,
 		output,
-		audio: audioTrack.codec === codec ? { codec } : { codec, bitrate },
+		audio:
+			allowRemux && audioTrack.codec === codec
+				? { codec }
+				: { codec, bitrate },
 		showWarnings: false,
 	});
 
@@ -245,6 +265,7 @@ async function convertBlobWithConversion(
  * @param targetFormat - Desired output format
  * @param bitrate - Bitrate in bits per second
  * @param onProgress - Optional encoding progress callback (0-100)
+ * @param options - Conversion behavior options
  * @returns Re-encoded blob in the target format
  */
 export async function convertBlobToFormat(
@@ -252,12 +273,14 @@ export async function convertBlobToFormat(
 	targetFormat: string,
 	bitrate: number,
 	onProgress?: FormatProgressCallback,
+	options: BlobConversionOptions = {},
 ): Promise<Blob> {
 	try {
 		return await convertBlobWithConversion(
 			recordedBlob,
 			targetFormat,
 			bitrate,
+			options.allowRemux ?? false,
 			onProgress,
 		);
 	} catch (error) {

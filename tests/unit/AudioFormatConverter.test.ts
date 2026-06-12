@@ -478,16 +478,36 @@ describe('AudioFormatConverter', () => {
 			expect(progressFn).toHaveBeenCalledWith(100);
 		});
 
-		it('should remux without bitrate when the input codec matches the target', async () => {
+		it('should remux without bitrate when the codecs match and remux is allowed', async () => {
 			const blob = new Blob(['test'], { type: 'audio/webm' });
 
-			// Input track is opus (default mock); ogg targets opus too
-			await convertBlobToFormat(blob, 'ogg', 128000);
+			// Input track is opus (default mock); ogg targets opus too.
+			// The recording pipeline opts in: its intermediate blob is
+			// already encoded at the requested bitrate.
+			await convertBlobToFormat(blob, 'ogg', 128000, undefined, {
+				allowRemux: true,
+			});
 
 			expect(mockConversionInit).toHaveBeenCalledWith(
 				expect.objectContaining({
 					audio: { codec: 'opus' },
 					showWarnings: false,
+				}),
+			);
+			expect(mockConversionExecute).toHaveBeenCalledTimes(1);
+		});
+
+		it('should re-encode at the requested bitrate when remux is not allowed', async () => {
+			const blob = new Blob(['test'], { type: 'audio/webm' });
+
+			// Matching codecs (opus input, ogg target), but without the
+			// remux opt-in the explicitly requested bitrate must be
+			// honored: manual conversions let the user pick it
+			await convertBlobToFormat(blob, 'ogg', 64000);
+
+			expect(mockConversionInit).toHaveBeenCalledWith(
+				expect.objectContaining({
+					audio: { codec: 'opus', bitrate: 64000 },
 				}),
 			);
 			expect(mockConversionExecute).toHaveBeenCalledTimes(1);

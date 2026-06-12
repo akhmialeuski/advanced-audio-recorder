@@ -1334,6 +1334,9 @@ export class RecordingManager {
 						);
 					}
 				},
+				// The intermediate blob was recorded at the session
+				// bitrate, so a codec-matching remux preserves it
+				{ allowRemux: true },
 			);
 			if (reportProgress) {
 				this.updateSaveProgress(60, 'Writing file...');

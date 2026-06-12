@@ -127,7 +127,7 @@ Opens a conversion dialog to transcode the audio file to a different format. Opt
 - **Delete source file** toggle to remove the original after successful conversion.
 - **Update links in notes**: `Do nothing`, `Replace source link`, or `Insert after source link`.
 
-The conversion reads the source file and transcodes it to the target format through the streaming mediabunny pipeline: the audio is processed in chunks instead of being decoded fully into memory, and when the source codec already matches the target codec the audio packets are copied without re-encoding. If the source container cannot be processed by the pipeline, the plugin falls back to a full decode and re-encode. The new file is saved alongside the original. Converting to WAV always performs a full decode.
+The conversion reads the source file and transcodes it to the target format through the streaming mediabunny pipeline: the audio is processed in chunks instead of being decoded fully into memory and is always re-encoded at the selected bitrate. If the source container cannot be processed by the pipeline, the plugin falls back to a full decode and re-encode. The new file is saved alongside the original. Converting to WAV always performs a full decode.
 
 ### Split audio into parts
 
@@ -168,7 +168,7 @@ Available recording formats depend on your platform's **MediaRecorder** support.
 | **AAC**  | AAC         | Online/Offline                    | Raw AAC stream. Browser-dependent support.                                                                                                     |
 
 **Online encoding** means the browser's MediaRecorder writes data in real time during recording.
-**Offline encoding** means the audio is captured in a supported intermediate format (e.g., WebM) and then re-encoded after recording stops. The settings tab marks offline formats with an `(offline)` label.
+**Offline encoding** means the audio is captured in a supported intermediate format (e.g., WebM) and then re-encoded after recording stops. When the intermediate codec already matches the target codec, the audio packets are copied without re-encoding. The settings tab marks offline formats with an `(offline)` label.
 
 ## Multi-track recording
 
