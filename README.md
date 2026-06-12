@@ -193,7 +193,7 @@ Record from multiple input devices simultaneously (up to 8 tracks).
 
 Open **Settings > Advanced Audio Recorder** to configure the plugin.
 
-The plugin keeps an automatic backup of its settings in `data.json.bak` next to `data.json` in the plugin folder. The backup is refreshed on every successful settings load and save and is used to restore the settings automatically when `data.json` goes missing or becomes unreadable. When `data.json` is missing and the backup is restored, a new `data.json` is written immediately so the backup is never the only copy. If the settings cannot be read at startup (for example, when the file is temporarily locked during a plugin update), the plugin leaves the stored file untouched, disables saving for the session to protect it, and shows a notice; restarting Obsidian recovers the settings.
+The plugin keeps an automatic backup of its settings in `data.json.bak` next to `data.json` in the plugin folder. The backup is refreshed on every successful settings load and save and is used to restore the settings automatically when `data.json` goes missing. When the backup is restored, a new `data.json` is written immediately so the backup is never the only copy. If `data.json` exists but cannot be read at startup (for example, when the file is temporarily locked during a plugin update), the plugin leaves the stored file untouched, keeps the session on the backup copy when one is readable (defaults otherwise), disables saving to protect the stored settings, and shows a notice; restarting Obsidian recovers the settings.
 
 ### Audio input
 

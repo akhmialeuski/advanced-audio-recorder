@@ -231,11 +231,9 @@ describe('AudioRecorderPlugin settings persistence', () => {
 		expect(saveData).toHaveBeenCalledTimes(1);
 	});
 
-	it('restores settings from the backup when both reads fail', async () => {
-		const { plugin, adapterRead, saveData, adapterExists } = createPlugin([
-			undefined,
-			undefined,
-		]);
+	it('uses the backup for the session and blocks saving when data.json is unreadable', async () => {
+		const { plugin, adapterRead, adapterWrite, saveData, adapterExists } =
+			createPlugin([undefined, undefined]);
 		adapterExists.mockResolvedValue(true);
 		adapterRead.mockResolvedValue(
 			JSON.stringify({ filePrefix: 'from-backup' }),
@@ -243,11 +241,17 @@ describe('AudioRecorderPlugin settings persistence', () => {
 
 		await onloadWithTimers(plugin);
 
+		// The readable backup keeps the session usable in memory
 		expect(adapterRead).toHaveBeenCalledWith(BACKUP_PATH);
 		expect(plugin.settings.filePrefix).toBe('from-backup');
 
+		// The unreadable data.json may be intact and newer than the
+		// backup (settings synced while the plugin was unloaded), so
+		// saving stays blocked instead of overwriting it with
+		// backup-derived values
 		await plugin.saveSettings();
-		expect(saveData).toHaveBeenCalledTimes(1);
+		expect(saveData).not.toHaveBeenCalled();
+		expect(adapterWrite).not.toHaveBeenCalled();
 	});
 
 	it('blocks saving when neither data.json nor the backup is readable', async () => {

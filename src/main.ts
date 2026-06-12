@@ -34,9 +34,8 @@ const SETTINGS_BACKUP_FILE = 'data.json.bak';
  */
 interface StoredSettingsReadResult {
 	/**
-	 * Stored settings, null when no settings exist on disk (saving
-	 * stays enabled), or undefined when settings exist on disk but
-	 * could not be read (saving gets blocked).
+	 * Stored settings, null when no settings exist on disk, or
+	 * undefined when no readable settings source is available.
 	 */
 	data: Partial<AudioRecorderSettings> | null | undefined;
 	/**
@@ -45,6 +44,13 @@ interface StoredSettingsReadResult {
 	 * recreated and the backup stops being the only copy on disk.
 	 */
 	restoredFromBackup: boolean;
+	/**
+	 * True when a settings file exists on disk but could not be
+	 * read: saving stays blocked so the possibly intact (and
+	 * possibly newer) stored settings are never overwritten by
+	 * values derived from this session's fallback.
+	 */
+	blockSaving: boolean;
 }
 
 /**
@@ -119,31 +125,48 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * Distinguishes "data.json is missing" (first install, defaults are
 	 * correct) from "data.json exists but could not be read" (transient
 	 * file lock during a plugin update, truncated file): the latter
-	 * falls back to defaults only in memory and blocks saving, so the
-	 * stored settings are never overwritten by the fallback. The two
+	 * keeps the session on the backup copy or defaults in memory and
+	 * blocks saving, so the stored settings are never overwritten by
+	 * the fallback. The two
 	 * cases are told apart by an explicit adapter.exists() check, not
 	 * by the loadData() return value: loadData() maps a missing file
 	 * to null only when the failed read carries an ENOENT error code,
 	 * and on some filesystems the read fails with a different code.
 	 */
 	async loadSettings(): Promise<void> {
-		const { data, restoredFromBackup } = await this.readStoredSettings();
+		const { data, restoredFromBackup, blockSaving } =
+			await this.readStoredSettings();
 
-		if (data === undefined) {
+		if (blockSaving) {
 			this.settingsLoadFailed = true;
+			// A readable backup keeps the session usable on the
+			// initial load; a failed reload keeps the current
+			// in-memory settings (external change while the file is
+			// locked). Saving stays blocked either way so the possibly
+			// intact and possibly newer stored settings are never
+			// overwritten by this session.
+			const backupApplies =
+				!this.settingsInitialized &&
+				data !== undefined &&
+				data !== null;
 			new Notice(
-				'Advanced Audio Recorder: the settings file could not be read. ' +
-					'Settings stored on disk are untouched, and saving is ' +
-					'disabled to protect them. Restart Obsidian to recover.',
+				backupApplies
+					? 'Advanced Audio Recorder: the settings file could not ' +
+							'be read. Settings from the backup file are used ' +
+							'for this session, and saving is disabled to ' +
+							'protect the stored file. Restart Obsidian to ' +
+							'recover.'
+					: 'Advanced Audio Recorder: the settings file could not ' +
+							'be read. Settings stored on disk are untouched, ' +
+							'and saving is disabled to protect them. Restart ' +
+							'Obsidian to recover.',
 			);
-			// Keep the current in-memory settings on a failed reload
-			// (external change while the file is locked); fall back to
-			// defaults only on the initial load when nothing has been
-			// loaded yet
-			if (!this.settingsInitialized) {
+			if (backupApplies) {
+				this.settings = await mergeSettingsAsync(data);
+			} else if (!this.settingsInitialized) {
 				this.settings = await mergeSettingsAsync({});
-				this.settingsInitialized = true;
 			}
+			this.settingsInitialized = true;
 			return;
 		}
 
@@ -151,6 +174,9 @@ export default class AudioRecorderPlugin extends Plugin {
 		this.settings = await mergeSettingsAsync(data ?? {});
 		this.settingsInitialized = true;
 		if (restoredFromBackup) {
+			new Notice(
+				'Advanced Audio Recorder: settings were restored from the backup file.',
+			);
 			// Complete the recovery: recreate the missing data.json
 			// right away instead of leaving the backup as the only
 			// copy until the user happens to change a setting.
@@ -167,7 +193,7 @@ export default class AudioRecorderPlugin extends Plugin {
 	async saveSettings(): Promise<void> {
 		if (this.settingsLoadFailed) {
 			// Never overwrite a possibly intact data.json with the
-			// in-memory defaults that replaced the unreadable settings
+			// in-memory fallback that replaced the unreadable settings
 			new Notice(
 				'Settings were not loaded correctly; changes are not saved ' +
 					'to protect your stored settings. Restart Obsidian.',
@@ -205,12 +231,13 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * saving instead of being overwritten with defaults.
 	 * @returns Read result: stored settings, null when no settings
 	 * exist on disk, or undefined when stored settings could not be
-	 * read
+	 * read; blockSaving is set whenever an existing settings file
+	 * could not be read
 	 */
 	private async readStoredSettings(): Promise<StoredSettingsReadResult> {
 		let data = await this.tryLoadData();
 		if (data !== undefined && data !== null) {
-			return { data, restoredFromBackup: false };
+			return { data, restoredFromBackup: false, blockSaving: false };
 		}
 
 		if (!(await this.pluginFileExists(SETTINGS_DATA_FILE))) {
@@ -218,29 +245,38 @@ export default class AudioRecorderPlugin extends Plugin {
 				// First install: no settings anywhere, defaults apply
 				// and saving stays enabled so data.json gets created
 				// on the next change
-				return { data: null, restoredFromBackup: false };
+				return {
+					data: null,
+					restoredFromBackup: false,
+					blockSaving: false,
+				};
 			}
 			// Missing data.json with a backup present: restore the
-			// lost settings and have the caller persist them
+			// lost settings and have the caller persist them. An
+			// unreadable backup is the only remaining copy of the
+			// settings, so it blocks saving instead.
 			const backup = await this.readSettingsBackup();
 			return {
 				data: backup,
 				restoredFromBackup: backup !== undefined,
+				blockSaving: backup === undefined,
 			};
 		}
 
 		await delay(SETTINGS_READ_RETRY_DELAY_MS);
 		data = await this.tryLoadData();
 		if (data !== undefined && data !== null) {
-			return { data, restoredFromBackup: false };
+			return { data, restoredFromBackup: false, blockSaving: false };
 		}
 
 		// data.json exists but is unreadable: a readable backup keeps
-		// the session usable; data.json itself stays untouched until
-		// the user changes a setting
+		// the session usable in memory, while saving stays blocked so
+		// the possibly newer data.json is never overwritten with
+		// backup-derived values
 		return {
 			data: await this.readSettingsBackup(),
 			restoredFromBackup: false,
+			blockSaving: true,
 		};
 	}
 
@@ -287,8 +323,10 @@ export default class AudioRecorderPlugin extends Plugin {
 	}
 
 	/**
-	 * Restores settings from the backup file written on every
-	 * successful load and save.
+	 * Reads and parses the settings backup file written on every
+	 * successful load and save. User-facing messaging is left to the
+	 * callers, which know whether the backup replaces a missing
+	 * data.json or only carries the session over an unreadable one.
 	 * @returns Parsed backup settings, or undefined when the backup is
 	 * missing or unreadable
 	 */
@@ -301,11 +339,7 @@ export default class AudioRecorderPlugin extends Plugin {
 		}
 		try {
 			const raw = await this.app.vault.adapter.read(backupPath);
-			const parsed = JSON.parse(raw) as Partial<AudioRecorderSettings>;
-			new Notice(
-				'Advanced Audio Recorder: settings were restored from the backup file.',
-			);
-			return parsed;
+			return JSON.parse(raw) as Partial<AudioRecorderSettings>;
 		} catch {
 			return undefined;
 		}
