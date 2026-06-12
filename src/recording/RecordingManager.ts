@@ -37,6 +37,7 @@ import { resolveRecorderFormat } from './AudioFormatConverter';
 import { TrackWriteQueue } from './TrackWriteQueue';
 import { RecordingFinalizer } from './RecordingFinalizer';
 import { PartRotationController } from './PartRotationController';
+import { SessionJournal } from './SessionJournal';
 import {
 	clampSplitMinutes,
 	computePcmPartLimitBytes,
@@ -96,10 +97,14 @@ export class RecordingManager {
 			status: RecordingStatus,
 			saveProgress?: SaveProgress,
 		) => void,
+		private readonly journal: SessionJournal = new SessionJournal(
+			null,
+			app,
+		),
 	) {
 		this.onStatusChange = onStatusChange;
 		this.debugLogger = new DebugLogger(settings);
-		this.writeQueue = new TrackWriteQueue(app, settings);
+		this.writeQueue = new TrackWriteQueue(app, settings, journal);
 		this.finalizer = new RecordingFinalizer(
 			app,
 			settings,
@@ -108,6 +113,7 @@ export class RecordingManager {
 			(progress: SaveProgress) => {
 				this.setStatus(RecordingStatus.Saving, progress);
 			},
+			journal,
 		);
 		this.rotation = new PartRotationController(
 			app,
@@ -130,6 +136,7 @@ export class RecordingManager {
 					this.restartMediaRecorders();
 				},
 			},
+			journal,
 		);
 	}
 
@@ -229,6 +236,28 @@ export class RecordingManager {
 				await this.initPcmRecording();
 			} else {
 				await this.initMediaRecording();
+			}
+
+			if (!this.isMobileRecording) {
+				// Mobile flushes write final files, never .tmp segments,
+				// so there is nothing to journal for recovery there
+				this.journal.startSession({
+					sessionId:
+						this.recordingTimestamp ??
+						String(this.recordingStartTime),
+					startedAt: this.recordingStartTime,
+					outputFormat: this.sessionOutputFormat,
+					recorderFormat: this.activeRecorderFormat,
+					bitrate: this.sessionBitrate,
+					tracks: this.chunkTargets.map((target) => ({
+						fileBaseName: target.fileBaseName,
+						isPcm: this.isWavPcmRecording,
+						pcmChannels: target.pcmChannels,
+						pcmSampleRate: target.pcmSampleRate,
+						segmentPaths: [],
+						partPaths: [],
+					})),
+				});
 			}
 
 			this.insertionContext = captureInsertionContext(
@@ -521,6 +550,12 @@ export class RecordingManager {
 				this.recordingTimestamp,
 				this.insertionContext,
 			);
+			// The session finalized cleanly: leftovers already produced
+			// their own Notices, and keeping them journaled would raise
+			// misleading recovery prompts for audio that is in the final
+			// files
+			this.journal.endSession();
+			await this.journal.flush();
 			this.finalizer.reportProgress(100, 'Saved');
 			new Notice('Recording stopped');
 		} catch (error) {
@@ -637,13 +672,46 @@ export class RecordingManager {
 	}
 
 	/**
-	 * Cleans up resources on unload.
+	 * Cleans up resources on unload. onunload is synchronous, so the
+	 * async work is fire-and-forget: the AudioContexts and the vault
+	 * adapter belong to the app, not the plugin, so the releases and
+	 * buffer flushes can still complete after the plugin object is
+	 * gone. The crash-recovery journal is deliberately NOT ended — an
+	 * unload mid-recording is exactly the case the next launch must
+	 * offer to recover. The in-memory tail below the flush threshold
+	 * may be lost; everything flushed to disk stays recoverable.
 	 */
 	cleanup(): void {
 		// Prevent an in-flight part rotation from recreating recorders
 		// on the released streams after unload
 		this.rotation.requestStop();
 		this.sessionSplitEnabled = false;
+		for (const recorder of this.pcmRecorders) {
+			recorder.stop().catch((error: unknown) => {
+				console.error(
+					`${PLUGIN_LOG_PREFIX} Failed to release PCM recorder on unload:`,
+					error,
+				);
+			});
+		}
+		for (const recorder of this.recorders) {
+			try {
+				if (recorder.state !== 'inactive') {
+					recorder.stop();
+				}
+			} catch (error) {
+				console.error(
+					`${PLUGIN_LOG_PREFIX} Failed to stop recorder on unload:`,
+					error,
+				);
+			}
+		}
+		for (const target of this.chunkTargets) {
+			void this.writeQueue.enqueue(target, async () => {
+				await this.writeQueue.flushChunkBuffer(target);
+				await this.writeQueue.flushPcmBuffer(target);
+			});
+		}
 		stopAllStreams(this.streams);
 		this.recorders = [];
 		this.pcmRecorders = [];

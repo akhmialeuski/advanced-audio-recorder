@@ -36,6 +36,7 @@ import {
 import { buildPartFileName } from './AudioSplitter';
 import { insertFileLinks } from './NoteInserter';
 import type { TrackWriteQueue } from './TrackWriteQueue';
+import { SessionJournal } from './SessionJournal';
 
 /**
  * Finalizes recording sessions into vault audio files.
@@ -55,6 +56,7 @@ export class RecordingFinalizer {
 	 * @param writeQueue - Write queue used to flush remaining buffers
 	 * @param debugLogger - Debug logger
 	 * @param onProgress - Receives deduplicated save-progress updates
+	 * @param journal - Crash-recovery journal tracking segment files
 	 */
 	constructor(
 		private readonly app: App,
@@ -62,6 +64,10 @@ export class RecordingFinalizer {
 		private readonly writeQueue: TrackWriteQueue,
 		private readonly debugLogger: DebugLogger,
 		private readonly onProgress: (progress: SaveProgress) => void,
+		private readonly journal: SessionJournal = new SessionJournal(
+			null,
+			app,
+		),
 	) {}
 
 	/**
@@ -195,9 +201,17 @@ export class RecordingFinalizer {
 				);
 				if (filePath) {
 					this.reportProgress(80, 'Cleaning up...');
+					const intermediatePaths = targets.flatMap(
+						(target) => target.segmentPaths,
+					);
 					const failedCleanupPaths = await cleanupIntermediateFiles(
 						targets,
 						this.app,
+					);
+					this.journal.removeSegments(
+						intermediatePaths.filter(
+							(path) => !failedCleanupPaths.includes(path),
+						),
 					);
 					if (failedCleanupPaths.length > 0) {
 						await rollbackFinalFile(
@@ -442,6 +456,9 @@ export class RecordingFinalizer {
 			'Failed to remove segment file after finalization',
 			this.app,
 		);
+		this.journal.removeSegments(
+			segmentPaths.filter((path) => !failedCleanupPaths.includes(path)),
+		);
 		if (failedCleanupPaths.length > 0) {
 			// Keep the final file: it already contains all captured audio,
 			// while segments that were removed exist nowhere else. Rolling
@@ -487,6 +504,9 @@ export class RecordingFinalizer {
 			target.segmentPaths,
 			'Failed to remove PCM segment file after WAV assembly',
 			this.app,
+		);
+		this.journal.removeSegments(
+			target.segmentPaths.filter((path) => !failedPaths.includes(path)),
 		);
 		if (failedPaths.length > 0) {
 			// Keep the assembled file: it already contains all captured

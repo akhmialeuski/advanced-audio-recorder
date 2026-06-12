@@ -22,6 +22,7 @@ import {
 } from './AudioSplitter';
 import type { TrackWriteQueue } from './TrackWriteQueue';
 import type { RecordingFinalizer } from './RecordingFinalizer';
+import { SessionJournal } from './SessionJournal';
 
 /**
  * Callbacks into the RecordingManager: recorder lifecycle stays with
@@ -62,6 +63,7 @@ export class PartRotationController {
 	 * @param finalizer - Finalizer producing the part files
 	 * @param debugLogger - Debug logger
 	 * @param hooks - Recorder lifecycle callbacks into the manager
+	 * @param journal - Crash-recovery journal tracking part files
 	 */
 	constructor(
 		private readonly app: App,
@@ -70,6 +72,10 @@ export class PartRotationController {
 		private readonly finalizer: RecordingFinalizer,
 		private readonly debugLogger: DebugLogger,
 		private readonly hooks: RotationHooks,
+		private readonly journal: SessionJournal = new SessionJournal(
+			null,
+			app,
+		),
 	) {}
 
 	/**
@@ -218,6 +224,7 @@ export class PartRotationController {
 			if (target.segmentPaths.length > 0) {
 				await this.finalizer.assembleWavFile(target, filePath);
 				target.partPaths.push(filePath);
+				this.journal.addPart(target.fileBaseName, filePath);
 				this.debugLogger.log('Auto-split part saved', { filePath });
 				new Notice(`Recording part ${String(target.partIndex)} saved`);
 			}
@@ -356,6 +363,7 @@ export class PartRotationController {
 			);
 			if (filePath) {
 				target.partPaths.push(filePath);
+				this.journal.addPart(target.fileBaseName, filePath);
 				this.debugLogger.log('Auto-split part saved', { filePath });
 				new Notice(`Recording part ${String(target.partIndex)} saved`);
 			} else {

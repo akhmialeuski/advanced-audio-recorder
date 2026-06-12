@@ -785,6 +785,179 @@ describe('RecordingManager', () => {
 		});
 	});
 
+	describe('session journal integration', () => {
+		interface JournalMock {
+			startSession: jest.Mock;
+			addSegment: jest.Mock;
+			addPart: jest.Mock;
+			removeSegments: jest.Mock;
+			endSession: jest.Mock;
+			flush: jest.Mock;
+		}
+		let mockJournal: JournalMock;
+
+		const createDesktopRecorder = (): {
+			ondataavailable: ((event: BlobEvent) => void) | null;
+		} => {
+			const mockMediaRecorder = {
+				start: jest.fn(),
+				stop: jest.fn(),
+				pause: jest.fn(),
+				resume: jest.fn(),
+				ondataavailable: null as ((event: BlobEvent) => void) | null,
+				onerror: null as ((event: Event) => void) | null,
+				addEventListener: jest.fn(
+					(event: string, handler: () => void) => {
+						if (event === 'stop') {
+							handler();
+						}
+					},
+				),
+			};
+			(global as Record<string, unknown>).MediaRecorder = jest.fn(
+				() => mockMediaRecorder,
+			);
+			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
+				jest.fn().mockReturnValue(true);
+			const { getAudioStreams } = jest.requireMock(
+				'../../src/recording/AudioStreamHandler',
+			);
+			getAudioStreams.mockResolvedValue({
+				streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
+				trackOrder: [],
+			});
+			return mockMediaRecorder;
+		};
+
+		const createManager = (): RecordingManager =>
+			new RecordingManager(
+				mockApp,
+				mockSettings,
+				statusChangeCallback,
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any -- journal double
+				mockJournal as any,
+			);
+
+		beforeEach(() => {
+			const { Platform } = jest.requireMock('obsidian');
+			Platform.isMobile = false;
+			Platform.isMobileApp = false;
+			mockJournal = {
+				startSession: jest.fn(),
+				addSegment: jest.fn(),
+				addPart: jest.fn(),
+				removeSegments: jest.fn(),
+				endSession: jest.fn(),
+				flush: jest.fn().mockResolvedValue(undefined),
+			};
+		});
+
+		it('should journal the session on desktop start and end it on stop', async () => {
+			createDesktopRecorder();
+			manager = createManager();
+			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
+				new Uint8Array([1, 2, 3]).buffer,
+			);
+
+			await manager.startRecording();
+
+			expect(mockJournal.startSession).toHaveBeenCalledWith(
+				expect.objectContaining({
+					recorderFormat: 'webm',
+					tracks: [
+						expect.objectContaining({
+							fileBaseName: expect.stringContaining('Track1'),
+							isPcm: false,
+						}),
+					],
+				}),
+			);
+
+			await manager.stopRecording();
+
+			expect(mockJournal.endSession).toHaveBeenCalled();
+			expect(mockJournal.flush).toHaveBeenCalled();
+		});
+
+		it('should not journal mobile sessions', async () => {
+			const { Platform } = jest.requireMock('obsidian');
+			Platform.isMobile = true;
+			Platform.isMobileApp = true;
+			createDesktopRecorder();
+			manager = createManager();
+
+			await manager.startRecording();
+			await manager.stopRecording();
+
+			expect(mockJournal.startSession).not.toHaveBeenCalled();
+		});
+
+		it('should record flushed segments in the journal', async () => {
+			const recorder = createDesktopRecorder();
+			manager = createManager();
+			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
+				new Uint8Array([1, 2, 3]).buffer,
+			);
+
+			await manager.startRecording();
+			const target = (
+				manager as unknown as {
+					chunkTargets: { bufferedBytes: number }[];
+				}
+			).chunkTargets[0];
+			target.bufferedBytes = 50 * 1024 * 1024 - 1;
+			recorder.ondataavailable?.({
+				data: new Blob([new Uint8Array([1])], { type: 'audio/webm' }),
+			} as BlobEvent);
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			expect(mockJournal.addSegment).toHaveBeenCalledWith(
+				expect.stringContaining('Track1'),
+				expect.stringMatching(/-part1\.webm\.tmp$/),
+			);
+
+			await manager.stopRecording();
+		});
+
+		it('should keep the journal when saving fails', async () => {
+			const recorder = createDesktopRecorder();
+			manager = createManager();
+			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
+				new Uint8Array([1, 2, 3]).buffer,
+			);
+			(mockApp.vault.createBinary as jest.Mock).mockRejectedValue(
+				new Error('disk full'),
+			);
+
+			await manager.startRecording();
+			recorder.ondataavailable?.({
+				data: new Blob([new Uint8Array([1])], { type: 'audio/webm' }),
+			} as BlobEvent);
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			await manager.stopRecording();
+
+			expect(mockJournal.endSession).not.toHaveBeenCalled();
+		});
+
+		it('should keep the journal and release recorders on cleanup', async () => {
+			mockSettings = { ...DEFAULT_SETTINGS, recordingFormat: 'wav' };
+			createDesktopRecorder();
+			manager = createManager();
+
+			await manager.startRecording();
+			manager.cleanup();
+
+			const { PcmStreamRecorder } = jest.requireMock(
+				'../../src/recording/PcmStreamRecorder',
+			);
+			const recorderInstance = (PcmStreamRecorder as jest.Mock).mock
+				.results[0].value as { stop: jest.Mock };
+			expect(recorderInstance.stop).toHaveBeenCalled();
+			expect(mockJournal.endSession).not.toHaveBeenCalled();
+		});
+	});
+
 	describe('merged output with no audio', () => {
 		it('should keep and report segment files when the merged blob is empty', async () => {
 			const { Platform } = jest.requireMock('obsidian');

@@ -16,6 +16,7 @@ import { PLUGIN_LOG_PREFIX } from '../constants';
 import { resolveUniquePath } from './RecordingFileManager';
 import { buildOutputBlob, getRecorderMediaType } from './AudioFormatConverter';
 import { totalByteLength } from './AudioSplitter';
+import { SessionJournal } from './SessionJournal';
 
 /**
  * Serializes buffer and flush operations per recording target and
@@ -31,10 +32,15 @@ export class TrackWriteQueue {
 	 * Creates a new TrackWriteQueue.
 	 * @param app - The Obsidian App instance
 	 * @param settings - Plugin settings (live reference)
+	 * @param journal - Crash-recovery journal tracking segment files
 	 */
 	constructor(
 		private readonly app: App,
 		private settings: AudioRecorderSettings,
+		private readonly journal: SessionJournal = new SessionJournal(
+			null,
+			app,
+		),
 	) {}
 
 	/**
@@ -170,6 +176,7 @@ export class TrackWriteQueue {
 				await combined.arrayBuffer(),
 			);
 			target.segmentPaths.push(segmentPath);
+			this.journal.addSegment(target.fileBaseName, segmentPath);
 		}
 
 		target.segmentIndex = segmentIndex;
@@ -212,6 +219,7 @@ export class TrackWriteQueue {
 		await this.app.vault.adapter.writeBinary(segmentPath, merged.buffer);
 		target.segmentIndex = segmentIndex;
 		target.segmentPaths.push(segmentPath);
+		this.journal.addSegment(target.fileBaseName, segmentPath);
 		target.pcmBuffers = [];
 		target.pcmBufferedBytes = 0;
 		// A successful flush ends the failure streak: re-arm the Notice
