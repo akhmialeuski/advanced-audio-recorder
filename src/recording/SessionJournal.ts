@@ -1,0 +1,425 @@
+/**
+ * Crash-recovery journal for recording sessions. Tracks the temporary
+ * segment files of every active desktop recording in a JSON file next
+ * to the plugin's data.json, so a session interrupted by a crash,
+ * power loss, or plugin unload can be recovered (or its leftovers
+ * cleaned up) on the next launch. All operations are best-effort and
+ * never throw into the recording hot path; mutations are serialized
+ * and writes are coalesced.
+ * @module recording/SessionJournal
+ */
+
+import type { App } from 'obsidian';
+import { PLUGIN_LOG_PREFIX } from '../constants';
+
+/** Journal file name inside the plugin folder. */
+export const JOURNAL_FILE_NAME = 'recording-journal.json';
+
+/** Current journal schema version. */
+export const JOURNAL_VERSION = 1;
+
+/**
+ * Journal entry for a single recording track.
+ */
+export interface JournalTrack {
+	/** Base name snapshotted at session start; unique per track. */
+	fileBaseName: string;
+	/** True for the desktop PCM/WAV capture path. */
+	isPcm: boolean;
+	/** Channel count of the PCM data (PCM tracks). */
+	pcmChannels: number;
+	/** Sample rate of the PCM data in Hz (PCM tracks). */
+	pcmSampleRate: number;
+	/** Live .tmp segment files (vault-relative), in capture order. */
+	segmentPaths: string[];
+	/** Finalized auto-split part files (informational; never deleted). */
+	partPaths: string[];
+}
+
+/**
+ * Journal entry for one recording session.
+ */
+export interface JournalSession {
+	/** Session id; the recording timestamp string. */
+	sessionId: string;
+	/** Epoch milliseconds of the recording start. */
+	startedAt: number;
+	/** Output format snapshotted at session start. */
+	outputFormat: string;
+	/** Container format of the MediaRecorder segments. */
+	recorderFormat: string;
+	/** Encoder bitrate snapshotted at session start. */
+	bitrate: number;
+	/** Tracks of the session. */
+	tracks: JournalTrack[];
+}
+
+/**
+ * On-disk journal file shape.
+ */
+export interface JournalFile {
+	/** Schema version (JOURNAL_VERSION). */
+	version: number;
+	/**
+	 * Sessions with possibly live temporary files. An array: a new
+	 * recording started before the user decided on a crashed session
+	 * appends instead of clobbering the undecided entry.
+	 */
+	sessions: JournalSession[];
+}
+
+/**
+ * Checks that a parsed value has the journal file shape.
+ * @param value - Parsed JSON value
+ * @returns True for a structurally valid journal
+ */
+function isValidJournal(value: unknown): value is JournalFile {
+	if (typeof value !== 'object' || value === null) {
+		return false;
+	}
+	const candidate = value as { version?: unknown; sessions?: unknown };
+	if (typeof candidate.version !== 'number') {
+		return false;
+	}
+	if (!Array.isArray(candidate.sessions)) {
+		return false;
+	}
+	return candidate.sessions.every((session: unknown) => {
+		if (typeof session !== 'object' || session === null) {
+			return false;
+		}
+		const entry = session as { sessionId?: unknown; tracks?: unknown };
+		return (
+			typeof entry.sessionId === 'string' && Array.isArray(entry.tracks)
+		);
+	});
+}
+
+/**
+ * Result of reading the journal from disk.
+ */
+export interface JournalReadResult {
+	/** Parsed journal, or null when missing or not usable. */
+	data: JournalFile | null;
+	/** True when the file exists but its content is not a journal. */
+	corrupt: boolean;
+}
+
+/**
+ * Best-effort journal of active recording sessions.
+ */
+export class SessionJournal {
+	/** In-memory journal state, lazily loaded from disk. */
+	private state: JournalFile | null = null;
+	/** Session id mutations apply to. */
+	private activeSessionId: string | null = null;
+	/** Serialized operation chain (never rejected). */
+	private opChain: Promise<void> = Promise.resolve();
+	/** Whether the in-memory state has unwritten changes. */
+	private dirty = false;
+	/** Whether a coalesced write is already queued on the chain. */
+	private writeScheduled = false;
+
+	/**
+	 * Creates a new SessionJournal.
+	 * @param journalPath - Vault-relative journal file path, or null
+	 * when the plugin folder is unknown (all operations no-op)
+	 * @param app - The Obsidian App instance
+	 */
+	constructor(
+		private readonly journalPath: string | null,
+		private readonly app: App,
+	) {}
+
+	/**
+	 * Reads and parses the journal from disk, bypassing the in-memory
+	 * state. Used by the startup recovery check.
+	 * @returns Parsed journal; corrupt is set when the file exists but
+	 * does not parse into a valid journal. A transient read failure
+	 * reports neither data nor corruption so the file survives for the
+	 * next launch.
+	 */
+	async readJournal(): Promise<JournalReadResult> {
+		if (!this.journalPath) {
+			return { data: null, corrupt: false };
+		}
+		let raw: string;
+		try {
+			if (!(await this.app.vault.adapter.exists(this.journalPath))) {
+				return { data: null, corrupt: false };
+			}
+			raw = await this.app.vault.adapter.read(this.journalPath);
+		} catch (error) {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Failed to read the recording journal:`,
+				error,
+			);
+			return { data: null, corrupt: false };
+		}
+		try {
+			const parsed: unknown = JSON.parse(raw);
+			if (!isValidJournal(parsed)) {
+				return { data: null, corrupt: true };
+			}
+			return { data: parsed, corrupt: false };
+		} catch {
+			return { data: null, corrupt: true };
+		}
+	}
+
+	/**
+	 * Removes the journal file from disk and resets the in-memory
+	 * state. Used by the recovery check for corrupt journals.
+	 */
+	async discardJournalFile(): Promise<void> {
+		if (!this.journalPath) {
+			return;
+		}
+		try {
+			if (await this.app.vault.adapter.exists(this.journalPath)) {
+				await this.app.vault.adapter.remove(this.journalPath);
+			}
+			this.state = null;
+		} catch (error) {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Failed to remove the recording journal:`,
+				error,
+			);
+		}
+	}
+
+	/**
+	 * Registers a new active recording session.
+	 * @param session - Session entry to journal
+	 */
+	startSession(session: JournalSession): void {
+		this.activeSessionId = session.sessionId;
+		this.mutate((state) => {
+			state.sessions.push(session);
+		});
+	}
+
+	/**
+	 * Records a flushed temporary segment file of the active session.
+	 * @param fileBaseName - Track identifier (RecordingTarget base name)
+	 * @param segmentPath - Vault-relative segment file path
+	 */
+	addSegment(fileBaseName: string, segmentPath: string): void {
+		this.mutateActiveSession((session) => {
+			const track = session.tracks.find(
+				(entry) => entry.fileBaseName === fileBaseName,
+			);
+			track?.segmentPaths.push(segmentPath);
+		});
+	}
+
+	/**
+	 * Records a finalized auto-split part file of the active session.
+	 * @param fileBaseName - Track identifier (RecordingTarget base name)
+	 * @param partPath - Vault-relative part file path
+	 */
+	addPart(fileBaseName: string, partPath: string): void {
+		this.mutateActiveSession((session) => {
+			const track = session.tracks.find(
+				(entry) => entry.fileBaseName === fileBaseName,
+			);
+			track?.partPaths.push(partPath);
+		});
+	}
+
+	/**
+	 * Removes consumed segment files from the active session, across
+	 * all of its tracks.
+	 * @param segmentPaths - Segment paths that were deleted from disk
+	 */
+	removeSegments(segmentPaths: string[]): void {
+		if (segmentPaths.length === 0) {
+			return;
+		}
+		const removed = new Set(segmentPaths);
+		this.mutateActiveSession((session) => {
+			for (const track of session.tracks) {
+				track.segmentPaths = track.segmentPaths.filter(
+					(path) => !removed.has(path),
+				);
+			}
+		});
+	}
+
+	/**
+	 * Ends the active session, removing it from the journal. The
+	 * journal file disappears once no sessions remain.
+	 */
+	endSession(): void {
+		const endedId = this.activeSessionId;
+		this.activeSessionId = null;
+		if (!endedId) {
+			return;
+		}
+		this.mutate((state) => {
+			state.sessions = state.sessions.filter(
+				(session) => session.sessionId !== endedId,
+			);
+		});
+	}
+
+	/**
+	 * Replaces the non-active sessions of the journal. Used by the
+	 * recovery flow to persist pruned, recovered, or discarded
+	 * sessions; a session that started recording meanwhile is kept.
+	 * @param sessions - Remaining non-active sessions
+	 */
+	async replaceSessions(sessions: JournalSession[]): Promise<void> {
+		this.mutate((state) => {
+			const active = state.sessions.find(
+				(session) => session.sessionId === this.activeSessionId,
+			);
+			state.sessions = active
+				? [
+						...sessions.filter(
+							(session) => session.sessionId !== active.sessionId,
+						),
+						active,
+					]
+				: [...sessions];
+		});
+		await this.flush();
+	}
+
+	/**
+	 * Waits until every queued journal operation (including the
+	 * coalesced write) has settled.
+	 */
+	async flush(): Promise<void> {
+		// Operations enqueue follow-up writes while running, so the
+		// chain may grow while it is being awaited
+		let tail: Promise<void>;
+		do {
+			tail = this.opChain;
+			await tail;
+		} while (tail !== this.opChain);
+	}
+
+	/**
+	 * Enqueues a state mutation followed by a coalesced write.
+	 * @param change - Mutation applied to the loaded journal state
+	 */
+	private mutate(change: (state: JournalFile) => void): void {
+		if (!this.journalPath) {
+			return;
+		}
+		this.enqueue(async () => {
+			await this.ensureLoaded();
+			if (!this.state) {
+				return;
+			}
+			change(this.state);
+			this.dirty = true;
+			this.scheduleWrite();
+		});
+	}
+
+	/**
+	 * Enqueues a mutation of the active session, if any.
+	 * @param change - Mutation applied to the active session entry
+	 */
+	private mutateActiveSession(
+		change: (session: JournalSession) => void,
+	): void {
+		this.mutate((state) => {
+			const session = state.sessions.find(
+				(entry) => entry.sessionId === this.activeSessionId,
+			);
+			if (session) {
+				change(session);
+			}
+		});
+	}
+
+	/**
+	 * Appends an operation to the serialized chain, containing its
+	 * failure: the journal is best-effort and must never break the
+	 * recording pipeline.
+	 * @param operation - Operation to serialize
+	 */
+	private enqueue(operation: () => Promise<void>): void {
+		this.opChain = this.opChain.then(operation).catch((error: unknown) => {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Recording journal operation failed:`,
+				error,
+			);
+		});
+	}
+
+	/**
+	 * Queues exactly one coalesced write behind the already-queued
+	 * mutations: consecutive synchronous mutations share a single
+	 * write instead of rewriting the file per call.
+	 */
+	private scheduleWrite(): void {
+		if (this.writeScheduled) {
+			return;
+		}
+		this.writeScheduled = true;
+		this.enqueue(async () => {
+			this.writeScheduled = false;
+			await this.persist();
+		});
+	}
+
+	/**
+	 * Loads the journal into memory once. A missing, corrupt, or
+	 * unreadable file starts from an empty journal — for mutations the
+	 * recording data matters more than preserving unreadable history.
+	 */
+	private async ensureLoaded(): Promise<void> {
+		if (this.state || !this.journalPath) {
+			return;
+		}
+		try {
+			if (!(await this.app.vault.adapter.exists(this.journalPath))) {
+				this.state = { version: JOURNAL_VERSION, sessions: [] };
+				return;
+			}
+			const raw = await this.app.vault.adapter.read(this.journalPath);
+			const parsed: unknown = JSON.parse(raw);
+			this.state = isValidJournal(parsed)
+				? parsed
+				: { version: JOURNAL_VERSION, sessions: [] };
+		} catch (error) {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Failed to load the recording journal; starting empty:`,
+				error,
+			);
+			this.state = { version: JOURNAL_VERSION, sessions: [] };
+		}
+	}
+
+	/**
+	 * Writes the in-memory state to disk. An empty journal removes the
+	 * file (falling back to writing an empty journal when the removal
+	 * fails, so a stale journal never triggers a bogus recovery).
+	 */
+	private async persist(): Promise<void> {
+		if (!this.journalPath || !this.state || !this.dirty) {
+			return;
+		}
+		this.dirty = false;
+		const path = this.journalPath;
+		if (this.state.sessions.length === 0) {
+			try {
+				if (await this.app.vault.adapter.exists(path)) {
+					await this.app.vault.adapter.remove(path);
+				}
+				return;
+			} catch (removeError) {
+				console.warn(
+					`${PLUGIN_LOG_PREFIX} Failed to remove the empty recording journal:`,
+					removeError,
+				);
+				// Fall through to writing the empty journal instead
+			}
+		}
+		await this.app.vault.adapter.write(path, JSON.stringify(this.state));
+	}
+}
