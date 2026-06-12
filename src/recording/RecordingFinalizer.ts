@@ -17,11 +17,7 @@ import type {
 import type { AudioRecorderSettings } from '../settings/Settings';
 import { PLUGIN_LOG_PREFIX, FORMAT_WAV } from '../constants';
 import { DebugLogger } from '../utils/DebugLogger';
-import {
-	assembleWavFromPcmSegments,
-	createWavHeader,
-	WAV_HEADER_SIZE,
-} from './WavEncoder';
+import { assembleWavFromPcmSegmentFiles } from './WavEncoder';
 import { isOfflineEncodingSupported } from './AudioEncoder';
 import {
 	resolveUniquePath,
@@ -502,7 +498,12 @@ export class RecordingFinalizer {
 		target: RecordingTarget,
 		filePath: string,
 	): Promise<void> {
-		const wavBuffer = await this.buildWavBufferFromSegments(target);
+		const wavBuffer = await assembleWavFromPcmSegmentFiles(
+			target.segmentPaths,
+			target.pcmChannels,
+			target.pcmSampleRate,
+			this.app,
+		);
 
 		await this.app.vault.createBinary(filePath, wavBuffer);
 
@@ -572,69 +573,6 @@ export class RecordingFinalizer {
 	}
 
 	/**
-	 * Assembles the WAV file buffer for a target's PCM segments. When
-	 * the adapter can report file sizes, the final buffer is allocated
-	 * once and the segments stream into it sequentially — peak memory
-	 * is the final file plus one segment, instead of two full copies of
-	 * the recording. Falls back to read-all-then-assemble otherwise.
-	 * @param target - Recording target with flushed PCM segments
-	 * @returns Complete WAV file bytes
-	 */
-	private async buildWavBufferFromSegments(
-		target: RecordingTarget,
-	): Promise<ArrayBuffer> {
-		const adapter = this.app.vault.adapter;
-		if (typeof adapter.stat === 'function') {
-			const stats = await Promise.all(
-				target.segmentPaths.map((path) => adapter.stat(path)),
-			);
-			if (stats.every((stat) => stat != null)) {
-				const totalPcmSize = stats.reduce(
-					(sum, stat) => sum + (stat?.size ?? 0),
-					0,
-				);
-				const wavBuffer = new ArrayBuffer(
-					WAV_HEADER_SIZE + totalPcmSize,
-				);
-				const wavView = new Uint8Array(wavBuffer);
-				let offset = WAV_HEADER_SIZE;
-				for (const path of target.segmentPaths) {
-					const segment = await adapter.readBinary(path);
-					if (offset + segment.byteLength > wavView.byteLength) {
-						throw new Error(
-							'PCM segment changed during WAV assembly',
-						);
-					}
-					wavView.set(new Uint8Array(segment), offset);
-					offset += segment.byteLength;
-				}
-				// The header is written last with the actual byte count,
-				// in case a segment shrank between stat and read
-				const header = createWavHeader(
-					target.pcmChannels,
-					target.pcmSampleRate,
-					offset - WAV_HEADER_SIZE,
-				);
-				wavView.set(new Uint8Array(header), 0);
-				return offset === wavBuffer.byteLength
-					? wavBuffer
-					: wavBuffer.slice(0, offset);
-			}
-		}
-
-		// Fallback for adapters without stat(): read everything, then
-		// assemble (two full copies of the recording in memory)
-		const segments = await Promise.all(
-			target.segmentPaths.map((path) => adapter.readBinary(path)),
-		);
-		return assembleWavFromPcmSegments(
-			segments,
-			target.pcmChannels,
-			target.pcmSampleRate,
-		);
-	}
-
-	/**
 	 * Builds a WAV blob from the flushed PCM segments of a target,
 	 * flushing any remaining buffered PCM data first.
 	 * @param target - Recording target
@@ -656,7 +594,13 @@ export class RecordingFinalizer {
 			return null;
 		}
 
-		return new Blob([await this.buildWavBufferFromSegments(target)], {
+		const wavBuffer = await assembleWavFromPcmSegmentFiles(
+			target.segmentPaths,
+			target.pcmChannels,
+			target.pcmSampleRate,
+			this.app,
+		);
+		return new Blob([wavBuffer], {
 			type: 'audio/wav',
 		});
 	}

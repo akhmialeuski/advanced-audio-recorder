@@ -27,11 +27,8 @@ jest.mock('obsidian', () => ({
 }));
 
 jest.mock('../../src/recording/WavEncoder', () => ({
-	assembleWavFromPcmSegments: jest.fn(
-		(segments: ArrayBuffer[]) =>
-			new Uint8Array(
-				44 + segments.reduce((sum, s) => sum + s.byteLength, 0),
-			).buffer,
+	assembleWavFromPcmSegmentFiles: jest.fn((segmentPaths: string[]) =>
+		Promise.resolve(new Uint8Array(44 + segmentPaths.length).buffer),
 	),
 }));
 
@@ -242,13 +239,16 @@ describe('RecoveryService', () => {
 
 			const result = await recoverSession(session, journal, mockApp);
 
-			const { assembleWavFromPcmSegments } = jest.requireMock(
+			const { assembleWavFromPcmSegmentFiles } = jest.requireMock(
 				'../../src/recording/WavEncoder',
 			);
-			expect(assembleWavFromPcmSegments).toHaveBeenCalledWith(
-				[expect.any(ArrayBuffer), expect.any(ArrayBuffer)],
+			// Streamed straight from the segment files: recovery must not
+			// read the whole track into memory before assembly
+			expect(assembleWavFromPcmSegmentFiles).toHaveBeenCalledWith(
+				['Audio/rec-pcm-part1.tmp', 'Audio/rec-pcm-part2.tmp'],
 				2,
 				48000,
+				mockApp,
 			);
 			expect(result.recoveredPaths).toEqual([
 				'Audio/recording-Track1-stamp-recovered.wav',

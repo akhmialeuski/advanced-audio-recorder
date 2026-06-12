@@ -6,6 +6,8 @@
  * @module recording/WavEncoder
  */
 
+import type { App } from 'obsidian';
+
 /**
  * Writes a string to a DataView at the specified offset.
  * @param view - The DataView to write to
@@ -129,4 +131,67 @@ export function assembleWavFromPcmSegments(
 	}
 
 	return wavBuffer;
+}
+
+/**
+ * Assembles a complete WAV file from flushed int16 PCM segment files.
+ * When the vault adapter can report file sizes, the final buffer is
+ * allocated once and the segments stream into it sequentially — peak
+ * memory is the final file plus one segment, instead of two full
+ * copies of the recording. Falls back to read-all-then-assemble for
+ * adapters without stat support.
+ * @param segmentPaths - Segment files in capture order (vault-relative)
+ * @param numChannels - Number of audio channels
+ * @param sampleRate - Sample rate in Hz
+ * @param app - Obsidian App instance
+ * @returns ArrayBuffer containing the complete WAV file
+ * @throws Error when a segment grew between stat and read
+ */
+export async function assembleWavFromPcmSegmentFiles(
+	segmentPaths: string[],
+	numChannels: number,
+	sampleRate: number,
+	app: App,
+): Promise<ArrayBuffer> {
+	const adapter = app.vault.adapter;
+	if (typeof adapter.stat === 'function') {
+		const stats = await Promise.all(
+			segmentPaths.map((path) => adapter.stat(path)),
+		);
+		if (stats.every((stat) => stat != null)) {
+			const totalPcmSize = stats.reduce(
+				(sum, stat) => sum + (stat?.size ?? 0),
+				0,
+			);
+			const wavBuffer = new ArrayBuffer(WAV_HEADER_SIZE + totalPcmSize);
+			const wavView = new Uint8Array(wavBuffer);
+			let offset = WAV_HEADER_SIZE;
+			for (const path of segmentPaths) {
+				const segment = await adapter.readBinary(path);
+				if (offset + segment.byteLength > wavView.byteLength) {
+					throw new Error('PCM segment changed during WAV assembly');
+				}
+				wavView.set(new Uint8Array(segment), offset);
+				offset += segment.byteLength;
+			}
+			// The header is written last with the actual byte count, in
+			// case a segment shrank between stat and read
+			const header = createWavHeader(
+				numChannels,
+				sampleRate,
+				offset - WAV_HEADER_SIZE,
+			);
+			wavView.set(new Uint8Array(header), 0);
+			return offset === wavBuffer.byteLength
+				? wavBuffer
+				: wavBuffer.slice(0, offset);
+		}
+	}
+
+	// Fallback for adapters without stat(): read everything, then
+	// assemble (two full copies of the recording in memory)
+	const segments = await Promise.all(
+		segmentPaths.map((path) => adapter.readBinary(path)),
+	);
+	return assembleWavFromPcmSegments(segments, numChannels, sampleRate);
 }

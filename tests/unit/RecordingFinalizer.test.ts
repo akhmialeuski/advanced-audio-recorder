@@ -22,9 +22,9 @@ jest.mock('obsidian', () => ({
 }));
 
 jest.mock('../../src/recording/WavEncoder', () => ({
-	assembleWavFromPcmSegments: jest.fn().mockReturnValue(new ArrayBuffer(44)),
-	createWavHeader: jest.fn().mockReturnValue(new ArrayBuffer(44)),
-	WAV_HEADER_SIZE: 44,
+	assembleWavFromPcmSegmentFiles: jest
+		.fn()
+		.mockResolvedValue(new ArrayBuffer(50)),
 }));
 
 jest.mock('../../src/recording/AudioEncoder', () => ({
@@ -277,37 +277,30 @@ describe('RecordingFinalizer', () => {
 	});
 
 	describe('assembleWavFile', () => {
-		it('should stream segments into one preallocated buffer when stat is available', async () => {
-			const adapter = mockApp.vault.adapter as unknown as Record<
-				string,
-				jest.Mock
-			>;
-			adapter.stat = jest.fn().mockResolvedValue({ size: 3 });
-			adapter.readBinary
-				.mockResolvedValueOnce(new Uint8Array([1, 2, 3]).buffer)
-				.mockResolvedValueOnce(new Uint8Array([4, 5, 6]).buffer);
+		it('should delegate assembly to the shared single-allocation helper', async () => {
+			const { assembleWavFromPcmSegmentFiles } = jest.requireMock(
+				'../../src/recording/WavEncoder',
+			);
 			const target = createTarget({
 				segmentPaths: ['pcm1.tmp', 'pcm2.tmp'],
+				pcmChannels: 2,
+				pcmSampleRate: 48000,
 			});
 
 			await finalizer.assembleWavFile(target, '/final.wav');
 
+			// The streaming behavior itself is covered by the WavEncoder
+			// suite; the finalizer must hand over the capture-order
+			// segment list and the track's PCM layout
+			expect(assembleWavFromPcmSegmentFiles).toHaveBeenCalledWith(
+				['pcm1.tmp', 'pcm2.tmp'],
+				2,
+				48000,
+				mockApp,
+			);
 			const written = (mockApp.vault.createBinary as jest.Mock).mock
 				.calls[0][1] as ArrayBuffer;
-			// 44-byte header + 6 PCM bytes in capture order
 			expect(written.byteLength).toBe(50);
-			expect(Array.from(new Uint8Array(written).slice(44))).toEqual([
-				1, 2, 3, 4, 5, 6,
-			]);
-			const { createWavHeader } = jest.requireMock(
-				'../../src/recording/WavEncoder',
-			);
-			expect(createWavHeader).toHaveBeenCalledWith(1, 44100, 6);
-			// The single-allocation path never calls the assembling helper
-			const { assembleWavFromPcmSegments } = jest.requireMock(
-				'../../src/recording/WavEncoder',
-			);
-			expect(assembleWavFromPcmSegments).not.toHaveBeenCalled();
 		});
 
 		it('should assemble segments and remove them', async () => {

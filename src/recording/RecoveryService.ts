@@ -9,8 +9,8 @@
  */
 
 import type { App } from 'obsidian';
-import { PLUGIN_LOG_PREFIX } from '../constants';
-import { assembleWavFromPcmSegments } from './WavEncoder';
+import { PLUGIN_LOG_PREFIX, FORMAT_WAV } from '../constants';
+import { assembleWavFromPcmSegmentFiles } from './WavEncoder';
 import {
 	removeTemporaryArtifacts,
 	resolveUniquePathInDirectory,
@@ -162,21 +162,25 @@ export async function recoverSession(
 				continue;
 			}
 
-			const segments: ArrayBuffer[] = [];
-			for (const path of track.segmentPaths) {
-				segments.push(await app.vault.adapter.readBinary(path));
-			}
-
 			let outputBytes: ArrayBuffer;
 			let extension: string;
 			if (track.isPcm) {
-				outputBytes = assembleWavFromPcmSegments(
-					segments,
+				// Stream the segments into one preallocated buffer: an
+				// interrupted long recording holds gigabytes of PCM, and
+				// reading everything before assembly would double the
+				// peak memory in exactly the scenario recovery targets
+				outputBytes = await assembleWavFromPcmSegmentFiles(
+					track.segmentPaths,
 					track.pcmChannels,
 					track.pcmSampleRate,
+					app,
 				);
-				extension = 'wav';
+				extension = FORMAT_WAV;
 			} else {
+				const segments: ArrayBuffer[] = [];
+				for (const path of track.segmentPaths) {
+					segments.push(await app.vault.adapter.readBinary(path));
+				}
 				const totalBytes = segments.reduce(
 					(sum, segment) => sum + segment.byteLength,
 					0,
