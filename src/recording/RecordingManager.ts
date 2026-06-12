@@ -105,6 +105,8 @@ export class RecordingManager {
 	private lastProgressPercent: number = -1;
 	/** Last save-progress description reported to the status bar. */
 	private lastProgressDescription: string = '';
+	/** Whether a buffered-write failure Notice is currently shown. */
+	private writeFailureNotified: boolean = false;
 
 	/**
 	 * Creates a new RecordingManager.
@@ -157,6 +159,7 @@ export class RecordingManager {
 	async startRecording(): Promise<void> {
 		try {
 			this.isStopping = false;
+			this.writeFailureNotified = false;
 			this.isMobileRecording = Platform.isMobileApp || Platform.isMobile;
 			this.isWavPcmRecording =
 				this.settings.recordingFormat === FORMAT_WAV &&
@@ -686,6 +689,50 @@ export class RecordingManager {
 		}
 	}
 
+	/**
+	 * Appends a task to the target's serialized write chain, containing
+	 * failures so one failed flush can never poison the chain: a
+	 * rejected pendingWrite would skip every later queued task (chunks
+	 * silently dropped) and surface as unhandled rejections in the
+	 * fire-and-forget recorder callbacks. A failed flush keeps its data
+	 * buffered, so containment loses no audio — the flush is retried on
+	 * the next chunk over the threshold and at finalization.
+	 * @param target - Recording target whose chain to append to
+	 * @param task - Buffer or flush operation to serialize
+	 * @returns Promise resolving when the task settled (never rejects)
+	 */
+	private enqueueWrite(
+		target: RecordingTarget,
+		task: () => Promise<void>,
+	): Promise<void> {
+		const link = target.pendingWrite.then(task).catch((error: unknown) => {
+			this.reportWriteFailure(error);
+		});
+		target.pendingWrite = link;
+		return link;
+	}
+
+	/**
+	 * Reports a failed buffered write once per failure streak: once the
+	 * buffer is over the flush threshold every following chunk retries
+	 * the flush, and a Notice per retry would flood the UI. The notice
+	 * re-arms after the next successful flush and at session start.
+	 * @param error - The write failure
+	 */
+	private reportWriteFailure(error: unknown): void {
+		console.error(
+			`${PLUGIN_LOG_PREFIX} Failed to write buffered audio; data stays buffered for retry:`,
+			error,
+		);
+		if (this.writeFailureNotified) {
+			return;
+		}
+		this.writeFailureNotified = true;
+		new Notice(
+			'Failed to write recording data to disk. Audio stays buffered and writing is retried while the recording continues.',
+		);
+	}
+
 	private async handleChunk(index: number, data: Blob): Promise<void> {
 		const target = this.chunkTargets[index];
 		if (!target) {
@@ -696,16 +743,13 @@ export class RecordingManager {
 			? MOBILE_BUFFER_LIMIT_BYTES
 			: DESKTOP_FLUSH_THRESHOLD_BYTES;
 
-		const enqueue = async (): Promise<void> => {
+		await this.enqueueWrite(target, async () => {
 			target.bufferedChunks.push(data);
 			target.bufferedBytes += data.size;
 			if (target.bufferedBytes >= flushThreshold) {
 				await this.flushChunkBuffer(target);
 			}
-		};
-
-		target.pendingWrite = target.pendingWrite.then(enqueue);
-		await target.pendingWrite;
+		});
 
 		// Rotation spans all tracks and restarts the recorders, so it runs
 		// outside the per-target pendingWrite chain, guarded against reentry
@@ -737,7 +781,7 @@ export class RecordingManager {
 		}
 		this.totalChunks += 1;
 
-		const enqueue = async (): Promise<void> => {
+		await this.enqueueWrite(target, async () => {
 			target.pcmBuffers.push(data);
 			target.pcmBufferedBytes += data.byteLength;
 			if (this.sessionSplitEnabled) {
@@ -754,10 +798,7 @@ export class RecordingManager {
 			if (target.pcmBufferedBytes >= PCM_FLUSH_THRESHOLD_BYTES) {
 				await this.flushPcmBuffer(target);
 			}
-		};
-
-		target.pendingWrite = target.pendingWrite.then(enqueue);
-		await target.pendingWrite;
+		});
 	}
 
 	/**
@@ -1000,8 +1041,10 @@ export class RecordingManager {
 		if (target.pcmBuffers.length === 0) {
 			return;
 		}
-		target.segmentIndex += 1;
-		const segmentName = `${target.fileBaseName}-pcm-part${String(target.segmentIndex)}.tmp`;
+		// The index is committed only after a successful write so a
+		// failed flush retries under the same segment number
+		const segmentIndex = target.segmentIndex + 1;
+		const segmentName = `${target.fileBaseName}-pcm-part${String(segmentIndex)}.tmp`;
 		const segmentPath = await resolveUniquePath(
 			segmentName,
 			this.app,
@@ -1020,9 +1063,12 @@ export class RecordingManager {
 		// recording path (the watcher reconciles the file later);
 		// final files use createBinary
 		await this.app.vault.adapter.writeBinary(segmentPath, merged.buffer);
+		target.segmentIndex = segmentIndex;
 		target.segmentPaths.push(segmentPath);
 		target.pcmBuffers = [];
 		target.pcmBufferedBytes = 0;
+		// A successful flush ends the failure streak: re-arm the Notice
+		this.writeFailureNotified = false;
 	}
 
 	private async assembleWavFile(
@@ -1098,12 +1144,14 @@ export class RecordingManager {
 		if (target.bufferedChunks.length === 0) {
 			return;
 		}
-		target.segmentIndex += 1;
+		// The index is committed only after a successful write so a
+		// failed flush retries under the same segment number
+		const segmentIndex = target.segmentIndex + 1;
 
 		if (this.isMobileRecording) {
 			// Mobile: encode/convert chunks via buildOutputBlob pipeline
 			const segmentName = `${target.fileBaseName}-part${String(
-				target.segmentIndex,
+				segmentIndex,
 			)}.${this.settings.recordingFormat}`;
 			const segmentPath = await resolveUniquePath(
 				segmentName,
@@ -1122,7 +1170,7 @@ export class RecordingManager {
 			target.segmentPaths.push(segmentPath);
 		} else {
 			// Desktop: write raw chunks as a single segment file
-			const segmentName = `${target.fileBaseName}-part${String(target.segmentIndex)}.${this.activeRecorderFormat}.tmp`;
+			const segmentName = `${target.fileBaseName}-part${String(segmentIndex)}.${this.activeRecorderFormat}.tmp`;
 			const segmentPath = await resolveUniquePath(
 				segmentName,
 				this.app,
@@ -1142,8 +1190,11 @@ export class RecordingManager {
 			target.segmentPaths.push(segmentPath);
 		}
 
+		target.segmentIndex = segmentIndex;
 		target.bufferedChunks = [];
 		target.bufferedBytes = 0;
+		// A successful flush ends the failure streak: re-arm the Notice
+		this.writeFailureNotified = false;
 	}
 
 	private async buildTrackBlob(

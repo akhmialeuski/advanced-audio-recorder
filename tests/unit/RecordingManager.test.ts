@@ -585,6 +585,206 @@ describe('RecordingManager', () => {
 		});
 	});
 
+	describe('write chain containment', () => {
+		interface MutableTarget {
+			bufferedBytes: number;
+			pcmBufferedBytes: number;
+			pendingWrite: Promise<void>;
+		}
+
+		/** Microtask+macrotask drain so void'ed chunk handlers settle. */
+		const flushAsync = (): Promise<void> =>
+			new Promise((resolve) => setTimeout(resolve, 0));
+
+		const getWriteFailureNotices = (): unknown[][] => {
+			const { Notice } = jest.requireMock('obsidian');
+			return (Notice as jest.Mock).mock.calls.filter((call) =>
+				String(call[0]).includes('Failed to write recording data'),
+			);
+		};
+
+		const createDesktopRecorder = (): {
+			ondataavailable: ((event: BlobEvent) => void) | null;
+		} => {
+			const { Platform } = jest.requireMock('obsidian');
+			Platform.isMobile = false;
+			Platform.isMobileApp = false;
+
+			const mockMediaRecorder = {
+				start: jest.fn(),
+				stop: jest.fn(),
+				pause: jest.fn(),
+				resume: jest.fn(),
+				ondataavailable: null as ((event: BlobEvent) => void) | null,
+				onerror: null as ((event: Event) => void) | null,
+				addEventListener: jest.fn(
+					(event: string, handler: () => void) => {
+						if (event === 'stop') {
+							handler();
+						}
+					},
+				),
+			};
+			(global as Record<string, unknown>).MediaRecorder = jest.fn(
+				() => mockMediaRecorder,
+			);
+			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
+				jest.fn().mockReturnValue(true);
+
+			const { getAudioStreams } = jest.requireMock(
+				'../../src/recording/AudioStreamHandler',
+			);
+			getAudioStreams.mockResolvedValue({
+				streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
+				trackOrder: [],
+			});
+
+			return mockMediaRecorder;
+		};
+
+		const getTarget = (index: number): MutableTarget =>
+			(manager as unknown as { chunkTargets: MutableTarget[] })
+				.chunkTargets[index];
+
+		it('should keep the chain alive and retry after a failed flush', async () => {
+			const recorder = createDesktopRecorder();
+			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
+				new Uint8Array([1, 2, 3]).buffer,
+			);
+
+			await manager.startRecording();
+			const target = getTarget(0);
+
+			const writeBinary = mockApp.vault.adapter.writeBinary as jest.Mock;
+			writeBinary
+				.mockRejectedValueOnce(new Error('disk full'))
+				.mockRejectedValueOnce(new Error('disk full'));
+
+			const sendChunk = (): void => {
+				// Keep the buffer over the threshold so every chunk
+				// triggers a flush attempt
+				target.bufferedBytes = 50 * 1024 * 1024 - 1;
+				recorder.ondataavailable?.({
+					data: new Blob([new Uint8Array([1, 2, 3])], {
+						type: 'audio/webm',
+					}),
+				} as BlobEvent);
+			};
+
+			sendChunk();
+			await flushAsync();
+			sendChunk();
+			await flushAsync();
+
+			// Two failed flushes: chain must stay resolvable, one Notice
+			await expect(target.pendingWrite).resolves.toBeUndefined();
+			expect(getWriteFailureNotices()).toHaveLength(1);
+			expect(writeBinary).toHaveBeenCalledTimes(2);
+
+			// Disk "recovers": the next chunk flushes the retained data
+			sendChunk();
+			await flushAsync();
+
+			expect(writeBinary).toHaveBeenCalledTimes(3);
+			expect(writeBinary).toHaveBeenLastCalledWith(
+				expect.stringMatching(/-part1\.webm\.tmp$/),
+				expect.any(ArrayBuffer),
+			);
+
+			await manager.stopRecording();
+			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+			expect(mockApp.vault.createBinary).toHaveBeenCalled();
+		});
+
+		it('should re-arm the failure Notice after a successful flush', async () => {
+			const recorder = createDesktopRecorder();
+			await manager.startRecording();
+			const target = getTarget(0);
+
+			const writeBinary = mockApp.vault.adapter.writeBinary as jest.Mock;
+			const sendChunk = (): void => {
+				target.bufferedBytes = 50 * 1024 * 1024 - 1;
+				recorder.ondataavailable?.({
+					data: new Blob([new Uint8Array([1])], {
+						type: 'audio/webm',
+					}),
+				} as BlobEvent);
+			};
+
+			writeBinary.mockRejectedValueOnce(new Error('disk full'));
+			sendChunk();
+			await flushAsync();
+			expect(getWriteFailureNotices()).toHaveLength(1);
+
+			// Successful flush ends the failure streak
+			sendChunk();
+			await flushAsync();
+
+			// New streak: a second Notice is allowed again
+			writeBinary.mockRejectedValueOnce(new Error('disk full'));
+			sendChunk();
+			await flushAsync();
+			expect(getWriteFailureNotices()).toHaveLength(2);
+
+			await manager.stopRecording();
+		});
+
+		it('should contain PCM flush failures without dropping later chunks', async () => {
+			const { Platform } = jest.requireMock('obsidian');
+			Platform.isMobile = false;
+			Platform.isMobileApp = false;
+
+			mockSettings = { ...DEFAULT_SETTINGS, recordingFormat: 'wav' };
+			manager = new RecordingManager(
+				mockApp,
+				mockSettings,
+				statusChangeCallback,
+			);
+
+			const { getAudioStreams } = jest.requireMock(
+				'../../src/recording/AudioStreamHandler',
+			);
+			getAudioStreams.mockResolvedValue({
+				streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
+				trackOrder: [],
+			});
+			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
+				new Uint8Array([1, 2, 3, 4]).buffer,
+			);
+
+			await manager.startRecording();
+			const target = getTarget(0);
+
+			const writeBinary = mockApp.vault.adapter.writeBinary as jest.Mock;
+			writeBinary.mockRejectedValueOnce(new Error('disk full'));
+
+			const sendPcm = (): void => {
+				// Keep the PCM buffer over the threshold so every chunk
+				// triggers a flush attempt
+				target.pcmBufferedBytes = 50 * 1024 * 1024 - 1;
+				capturedPcmChunkCallback?.(new Int16Array([100, -100]).buffer);
+			};
+
+			sendPcm();
+			await flushAsync();
+
+			await expect(target.pendingWrite).resolves.toBeUndefined();
+			expect(getWriteFailureNotices()).toHaveLength(1);
+
+			sendPcm();
+			await flushAsync();
+
+			expect(writeBinary).toHaveBeenCalledTimes(2);
+			expect(writeBinary).toHaveBeenLastCalledWith(
+				expect.stringMatching(/-pcm-part1\.tmp$/),
+				expect.any(ArrayBuffer),
+			);
+
+			await manager.stopRecording();
+			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+		});
+	});
+
 	describe('cleanup', () => {
 		it('should reset all internal state', () => {
 			manager.cleanup();
