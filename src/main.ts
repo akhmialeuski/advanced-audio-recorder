@@ -22,6 +22,9 @@ import { ContextMenu } from './ui/ContextMenu';
 /** Delay before retrying a failed settings read, in milliseconds. */
 const SETTINGS_READ_RETRY_DELAY_MS = 250;
 
+/** Settings file name used by Obsidian's loadData/saveData. */
+const SETTINGS_DATA_FILE = 'data.json';
+
 /** Backup file name for settings, stored next to data.json. */
 const SETTINGS_BACKUP_FILE = 'data.json.bak';
 
@@ -92,7 +95,11 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * correct) from "data.json exists but could not be read" (transient
 	 * file lock during a plugin update, truncated file): the latter
 	 * falls back to defaults only in memory and blocks saving, so the
-	 * stored settings are never overwritten by the fallback.
+	 * stored settings are never overwritten by the fallback. The two
+	 * cases are told apart by an explicit adapter.exists() check, not
+	 * by the loadData() return value: loadData() maps a missing file
+	 * to null only when the failed read carries an ENOENT error code,
+	 * and on some filesystems the read fails with a different code.
 	 */
 	async loadSettings(): Promise<void> {
 		const data = await this.readStoredSettings();
@@ -143,12 +150,17 @@ export default class AudioRecorderPlugin extends Plugin {
 	}
 
 	/**
-	 * Reads settings from disk, separating the three loadData outcomes:
-	 * an object (file read), null (file missing, ENOENT), and undefined
-	 * (file exists but reading or parsing failed). A failed read is
-	 * retried once, then the backup file is tried.
-	 * @returns Stored settings, null for a missing file, or undefined
-	 * when neither data.json nor the backup could be read
+	 * Reads settings from disk. loadData() reports a missing data.json
+	 * as null only when the underlying read fails with an ENOENT error
+	 * code; other filesystems surface a different code for the same
+	 * condition and loadData() then returns undefined, exactly like a
+	 * corrupt or locked file. The adapter's exists() check is therefore
+	 * the only reliable discriminator between "file missing" and "file
+	 * exists but could not be read". A failed read of an existing file
+	 * is retried once, then the backup file is tried.
+	 * @returns Stored settings, null when data.json is missing (saving
+	 * stays enabled), or undefined when data.json exists but neither it
+	 * nor the backup could be read
 	 */
 	private async readStoredSettings(): Promise<
 		Partial<AudioRecorderSettings> | null | undefined
@@ -157,8 +169,15 @@ export default class AudioRecorderPlugin extends Plugin {
 			| Partial<AudioRecorderSettings>
 			| null
 			| undefined;
-		if (data !== undefined) {
+		if (data !== undefined && data !== null) {
 			return data;
+		}
+
+		if (!(await this.settingsFileExists())) {
+			// Missing data.json: restore a lost file from the backup,
+			// or apply defaults on a first install. Saving stays
+			// enabled so the file gets created on the next change.
+			return (await this.readSettingsBackup()) ?? null;
 		}
 
 		await new Promise<void>((resolve) =>
@@ -168,11 +187,29 @@ export default class AudioRecorderPlugin extends Plugin {
 			| Partial<AudioRecorderSettings>
 			| null
 			| undefined;
-		if (data !== undefined) {
+		if (data !== undefined && data !== null) {
 			return data;
 		}
 
 		return this.readSettingsBackup();
+	}
+
+	/**
+	 * Checks whether data.json is present on disk.
+	 * @returns True when data.json exists, or when its existence cannot
+	 * be determined: the protective assumption keeps saveSettings from
+	 * overwriting a file that may still be intact
+	 */
+	private async settingsFileExists(): Promise<boolean> {
+		const dataPath = this.getPluginFilePath(SETTINGS_DATA_FILE);
+		if (!dataPath) {
+			return false;
+		}
+		try {
+			return await this.app.vault.adapter.exists(dataPath);
+		} catch {
+			return true;
+		}
 	}
 
 	/**
@@ -228,11 +265,20 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * @returns Backup path, or null when the plugin directory is unknown
 	 */
 	private getSettingsBackupPath(): string | null {
+		return this.getPluginFilePath(SETTINGS_BACKUP_FILE);
+	}
+
+	/**
+	 * Resolves the vault-relative path of a file in the plugin folder.
+	 * @param fileName - File name inside the plugin folder
+	 * @returns File path, or null when the plugin directory is unknown
+	 */
+	private getPluginFilePath(fileName: string): string | null {
 		const pluginDir = this.manifest.dir;
 		if (!pluginDir) {
 			return null;
 		}
-		return `${pluginDir}/${SETTINGS_BACKUP_FILE}`;
+		return `${pluginDir}/${fileName}`;
 	}
 
 	/**

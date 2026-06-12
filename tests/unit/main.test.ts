@@ -40,6 +40,7 @@ jest.mock('../../src/ui/DeviceSelectionModal', () => ({
 
 // Fixture path: in production the directory comes from manifest.dir
 const PLUGIN_DIR = 'config-dir/plugins/advanced-audio-recorder';
+const DATA_PATH = `${PLUGIN_DIR}/data.json`;
 const BACKUP_PATH = `${PLUGIN_DIR}/data.json.bak`;
 const RETRY_DELAY_MS = 250;
 
@@ -58,10 +59,13 @@ interface PluginHarness {
 	saveData: jest.Mock;
 	adapterRead: jest.Mock;
 	adapterWrite: jest.Mock;
+	adapterExists: jest.Mock;
 }
 
 /**
  * Creates a plugin instance with mocked persistence functions.
+ * data.json does not exist by default; tests that model an existing
+ * but unreadable file flip adapterExists to true.
  * @param loadDataResults - Sequence of loadData results per call
  */
 function createPlugin(loadDataResults: LoadDataResult[]): PluginHarness {
@@ -78,10 +82,19 @@ function createPlugin(loadDataResults: LoadDataResult[]): PluginHarness {
 
 	const adapterRead = jest.fn().mockResolvedValue('');
 	const adapterWrite = jest.fn().mockResolvedValue(undefined);
+	const adapterExists = jest.fn().mockResolvedValue(false);
 	plugin.app.vault.adapter.read = adapterRead;
 	plugin.app.vault.adapter.write = adapterWrite;
+	plugin.app.vault.adapter.exists = adapterExists;
 
-	return { plugin, loadData, saveData, adapterRead, adapterWrite };
+	return {
+		plugin,
+		loadData,
+		saveData,
+		adapterRead,
+		adapterWrite,
+		adapterExists,
+	};
 }
 
 /**
@@ -134,11 +147,47 @@ describe('AudioRecorderPlugin settings persistence', () => {
 		expect(saveData).toHaveBeenCalledTimes(1);
 	});
 
+	it('allows saving when a missing data.json is reported as a failed read', async () => {
+		// On some filesystems reading a missing file fails with a
+		// non-ENOENT code, so loadData() returns undefined instead of
+		// null. The file's absence must still enable saving, otherwise
+		// data.json can never be created.
+		const { plugin, loadData, saveData, adapterExists } = createPlugin([
+			undefined,
+		]);
+
+		await onloadWithTimers(plugin);
+
+		expect(adapterExists).toHaveBeenCalledWith(DATA_PATH);
+		// No retry for a file that does not exist
+		expect(loadData).toHaveBeenCalledTimes(1);
+		expect(plugin.settings.filePrefix).toBe(DEFAULT_SETTINGS.filePrefix);
+
+		await plugin.saveSettings();
+		expect(saveData).toHaveBeenCalledTimes(1);
+	});
+
+	it('restores settings from the backup when data.json is missing', async () => {
+		const { plugin, adapterRead, saveData } = createPlugin([null]);
+		adapterRead.mockResolvedValue(
+			JSON.stringify({ filePrefix: 'from-backup' }),
+		);
+
+		await onloadWithTimers(plugin);
+
+		expect(adapterRead).toHaveBeenCalledWith(BACKUP_PATH);
+		expect(plugin.settings.filePrefix).toBe('from-backup');
+
+		await plugin.saveSettings();
+		expect(saveData).toHaveBeenCalledTimes(1);
+	});
+
 	it('retries a failed read once and uses the second result', async () => {
-		const { plugin, loadData, saveData } = createPlugin([
+		const { plugin, loadData, saveData, adapterExists } = createPlugin([
 			undefined,
 			{ filePrefix: 'recovered' },
 		]);
+		adapterExists.mockResolvedValue(true);
 
 		await onloadWithTimers(plugin);
 
@@ -150,10 +199,11 @@ describe('AudioRecorderPlugin settings persistence', () => {
 	});
 
 	it('restores settings from the backup when both reads fail', async () => {
-		const { plugin, adapterRead, saveData } = createPlugin([
+		const { plugin, adapterRead, saveData, adapterExists } = createPlugin([
 			undefined,
 			undefined,
 		]);
+		adapterExists.mockResolvedValue(true);
 		adapterRead.mockResolvedValue(
 			JSON.stringify({ filePrefix: 'from-backup' }),
 		);
@@ -168,11 +218,10 @@ describe('AudioRecorderPlugin settings persistence', () => {
 	});
 
 	it('blocks saving when neither data.json nor the backup is readable', async () => {
-		const { plugin, adapterRead, saveData, adapterWrite } = createPlugin([
-			undefined,
-			undefined,
-		]);
-		adapterRead.mockRejectedValue(new Error('ENOENT'));
+		const { plugin, adapterRead, saveData, adapterWrite, adapterExists } =
+			createPlugin([undefined, undefined]);
+		adapterExists.mockResolvedValue(true);
+		adapterRead.mockRejectedValue(new Error('EBUSY'));
 
 		await onloadWithTimers(plugin);
 
@@ -186,10 +235,11 @@ describe('AudioRecorderPlugin settings persistence', () => {
 	});
 
 	it('blocks saving when the backup contains invalid JSON', async () => {
-		const { plugin, adapterRead, saveData } = createPlugin([
+		const { plugin, adapterRead, saveData, adapterExists } = createPlugin([
 			undefined,
 			undefined,
 		]);
+		adapterExists.mockResolvedValue(true);
 		adapterRead.mockResolvedValue('{ truncated');
 
 		await onloadWithTimers(plugin);
@@ -214,10 +264,9 @@ describe('AudioRecorderPlugin settings persistence', () => {
 	});
 
 	it('recovers saving after a successful reload', async () => {
-		const { plugin, adapterRead, saveData, loadData } = createPlugin([
-			undefined,
-			undefined,
-		]);
+		const { plugin, adapterRead, saveData, loadData, adapterExists } =
+			createPlugin([undefined, undefined]);
+		adapterExists.mockResolvedValue(true);
 		adapterRead.mockRejectedValue(new Error('EBUSY'));
 
 		await onloadWithTimers(plugin);
