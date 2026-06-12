@@ -18,6 +18,7 @@ import { assembleWavFromPcmSegments } from './WavEncoder';
 import {
 	PLUGIN_LOG_PREFIX,
 	CHUNK_TIMESLICE_MS,
+	RECORDER_STOP_TIMEOUT_MS,
 	MOBILE_BUFFER_LIMIT_BYTES,
 	PCM_FLUSH_THRESHOLD_BYTES,
 	DESKTOP_FLUSH_THRESHOLD_BYTES,
@@ -519,7 +520,10 @@ export class RecordingManager {
 	 * which guarantees the final dataavailable chunk was delivered.
 	 * Resolves immediately for recorders that are already inactive
 	 * (e.g. stopped by an in-flight part rotation), because calling
-	 * stop() on an inactive recorder throws.
+	 * stop() on an inactive recorder throws. A watchdog timeout keeps
+	 * the stop sequence from hanging forever when the audio subsystem
+	 * died and the stop event never arrives; the chunks delivered so
+	 * far are still saved.
 	 * @param recorder - Recorder to stop
 	 */
 	private stopMediaRecorder(recorder: MediaRecorder): Promise<void> {
@@ -528,10 +532,34 @@ export class RecordingManager {
 				resolve();
 				return;
 			}
-			recorder.addEventListener('stop', () => resolve(), {
-				once: true,
-			});
-			recorder.stop();
+			const watchdog = setTimeout(() => {
+				console.error(
+					`${PLUGIN_LOG_PREFIX} MediaRecorder stop event did not arrive within ${String(
+						RECORDER_STOP_TIMEOUT_MS,
+					)} ms; continuing with the data received so far`,
+				);
+				resolve();
+			}, RECORDER_STOP_TIMEOUT_MS);
+			recorder.addEventListener(
+				'stop',
+				() => {
+					clearTimeout(watchdog);
+					resolve();
+				},
+				{ once: true },
+			);
+			try {
+				recorder.stop();
+			} catch (error) {
+				// The recorder went inactive between the state check and
+				// stop(): its data is already delivered, nothing to wait for
+				clearTimeout(watchdog);
+				console.error(
+					`${PLUGIN_LOG_PREFIX} MediaRecorder stop() failed:`,
+					error,
+				);
+				resolve();
+			}
 		});
 	}
 

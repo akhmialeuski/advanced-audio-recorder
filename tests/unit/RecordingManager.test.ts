@@ -785,6 +785,92 @@ describe('RecordingManager', () => {
 		});
 	});
 
+	describe('stopMediaRecorder watchdog', () => {
+		afterEach(() => {
+			jest.useRealTimers();
+		});
+
+		it('should finish stopping when the stop event never fires', async () => {
+			const { Platform } = jest.requireMock('obsidian');
+			Platform.isMobile = false;
+			Platform.isMobileApp = false;
+
+			// Recorder whose stop event never arrives (dead audio subsystem)
+			const mockMediaRecorder = {
+				start: jest.fn(),
+				stop: jest.fn(),
+				pause: jest.fn(),
+				resume: jest.fn(),
+				state: 'recording',
+				ondataavailable: null as ((event: BlobEvent) => void) | null,
+				onerror: null as ((event: Event) => void) | null,
+				addEventListener: jest.fn(),
+			};
+			(global as Record<string, unknown>).MediaRecorder = jest.fn(
+				() => mockMediaRecorder,
+			);
+			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
+				jest.fn().mockReturnValue(true);
+
+			const { getAudioStreams } = jest.requireMock(
+				'../../src/recording/AudioStreamHandler',
+			);
+			getAudioStreams.mockResolvedValue({
+				streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
+				trackOrder: [],
+			});
+
+			await manager.startRecording();
+
+			jest.useFakeTimers();
+			const stopPromise = manager.stopRecording();
+			await jest.advanceTimersByTimeAsync(5000);
+			await stopPromise;
+
+			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+			expect(consoleErrorSpy).toHaveBeenCalledWith(
+				expect.stringContaining('stop event did not arrive'),
+			);
+		});
+
+		it('should resolve when stop() throws on a racing recorder', async () => {
+			const { Platform } = jest.requireMock('obsidian');
+			Platform.isMobile = false;
+			Platform.isMobileApp = false;
+
+			const mockMediaRecorder = {
+				start: jest.fn(),
+				stop: jest.fn(() => {
+					throw new Error('InvalidStateError');
+				}),
+				pause: jest.fn(),
+				resume: jest.fn(),
+				state: 'recording',
+				ondataavailable: null as ((event: BlobEvent) => void) | null,
+				onerror: null as ((event: Event) => void) | null,
+				addEventListener: jest.fn(),
+			};
+			(global as Record<string, unknown>).MediaRecorder = jest.fn(
+				() => mockMediaRecorder,
+			);
+			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
+				jest.fn().mockReturnValue(true);
+
+			const { getAudioStreams } = jest.requireMock(
+				'../../src/recording/AudioStreamHandler',
+			);
+			getAudioStreams.mockResolvedValue({
+				streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
+				trackOrder: [],
+			});
+
+			await manager.startRecording();
+			await manager.stopRecording();
+
+			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+		});
+	});
+
 	describe('cleanup', () => {
 		it('should reset all internal state', () => {
 			manager.cleanup();
