@@ -6,6 +6,8 @@
  * @module recording/PcmStreamRecorder
  */
 
+import { PLUGIN_LOG_PREFIX } from '../constants';
+
 /**
  * Number of interleaved int16 samples to accumulate before posting.
  * 4096 at 44100 Hz ≈ 93 ms (~11 posts/sec), matching the old
@@ -137,50 +139,59 @@ export class PcmStreamRecorder {
 	 * Starts capturing PCM audio data.
 	 * Registers the AudioWorklet processor via inline Blob URL,
 	 * then connects source → worklet → gain(0) → destination.
+	 * A failure releases everything acquired up to that point: the
+	 * caller has no handle to clean a partially started recorder, and
+	 * an unreleased AudioContext counts against a global limit while
+	 * the worklet blob URL would never be revoked.
 	 */
 	async start(): Promise<void> {
-		this.audioContext = new AudioContext({
-			sampleRate: this.requestedSampleRate,
-		});
-		this.actualSampleRate = this.audioContext.sampleRate;
+		try {
+			this.audioContext = new AudioContext({
+				sampleRate: this.requestedSampleRate,
+			});
+			this.actualSampleRate = this.audioContext.sampleRate;
 
-		// Register the inline worklet processor
-		const blob = new Blob([WORKLET_PROCESSOR_SOURCE], {
-			type: 'application/javascript',
-		});
-		this.workletBlobUrl = URL.createObjectURL(blob);
-		await this.audioContext.audioWorklet.addModule(this.workletBlobUrl);
+			// Register the inline worklet processor
+			const blob = new Blob([WORKLET_PROCESSOR_SOURCE], {
+				type: 'application/javascript',
+			});
+			this.workletBlobUrl = URL.createObjectURL(blob);
+			await this.audioContext.audioWorklet.addModule(this.workletBlobUrl);
 
-		this.sourceNode = this.audioContext.createMediaStreamSource(
-			this.stream,
-		);
-		this.channelCount = this.sourceNode.channelCount;
+			this.sourceNode = this.audioContext.createMediaStreamSource(
+				this.stream,
+			);
+			this.channelCount = this.sourceNode.channelCount;
 
-		this.workletNode = new AudioWorkletNode(
-			this.audioContext,
-			PROCESSOR_NAME,
-			{
-				numberOfInputs: 1,
-				numberOfOutputs: 1,
-				channelCount: this.channelCount,
-			},
-		);
+			this.workletNode = new AudioWorkletNode(
+				this.audioContext,
+				PROCESSOR_NAME,
+				{
+					numberOfInputs: 1,
+					numberOfOutputs: 1,
+					channelCount: this.channelCount,
+				},
+			);
 
-		// Receive PCM data from the worklet thread
-		this.workletNode.port.onmessage = (event: MessageEvent): void => {
-			if (event.data instanceof ArrayBuffer) {
-				this.onChunk(event.data);
-			}
-		};
+			// Receive PCM data from the worklet thread
+			this.workletNode.port.onmessage = (event: MessageEvent): void => {
+				if (event.data instanceof ArrayBuffer) {
+					this.onChunk(event.data);
+				}
+			};
 
-		// Mute output to prevent playback through speakers
-		this.gainNode = this.audioContext.createGain();
-		this.gainNode.gain.value = 0;
+			// Mute output to prevent playback through speakers
+			this.gainNode = this.audioContext.createGain();
+			this.gainNode.gain.value = 0;
 
-		// Connect: source → worklet → gain(0) → destination
-		this.sourceNode.connect(this.workletNode);
-		this.workletNode.connect(this.gainNode);
-		this.gainNode.connect(this.audioContext.destination);
+			// Connect: source → worklet → gain(0) → destination
+			this.sourceNode.connect(this.workletNode);
+			this.workletNode.connect(this.gainNode);
+			this.gainNode.connect(this.audioContext.destination);
+		} catch (error) {
+			await this.releaseResources();
+			throw error;
+		}
 	}
 
 	/**
@@ -230,6 +241,16 @@ export class PcmStreamRecorder {
 	 */
 	async stop(): Promise<void> {
 		await this.flushWorklet();
+		await this.releaseResources();
+	}
+
+	/**
+	 * Disconnects the audio graph, closes the AudioContext, and revokes
+	 * the worklet blob URL. Never throws: it runs both on the normal
+	 * stop path and inside the start() failure path, where a secondary
+	 * error must not mask the original one.
+	 */
+	private async releaseResources(): Promise<void> {
 		if (this.workletNode) {
 			this.workletNode.port.onmessage = null;
 			this.workletNode.disconnect();
@@ -244,7 +265,14 @@ export class PcmStreamRecorder {
 			this.gainNode = null;
 		}
 		if (this.audioContext) {
-			await this.audioContext.close();
+			try {
+				await this.audioContext.close();
+			} catch (error) {
+				console.warn(
+					`${PLUGIN_LOG_PREFIX} Failed to close AudioContext:`,
+					error,
+				);
+			}
 			this.audioContext = null;
 		}
 		if (this.workletBlobUrl) {

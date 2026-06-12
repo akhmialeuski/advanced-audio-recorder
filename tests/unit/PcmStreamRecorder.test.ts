@@ -189,6 +189,55 @@ describe('PcmStreamRecorder', () => {
 
 			expect(mainPortOnMessage).not.toBeNull();
 		});
+
+		it('should release resources when worklet registration fails', async () => {
+			mockAudioContext.audioWorklet.addModule.mockRejectedValueOnce(
+				new Error('addModule failed'),
+			);
+			const stream = createMockStream();
+			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
+
+			await expect(recorder.start()).rejects.toThrow('addModule failed');
+
+			expect(mockAudioContext.close).toHaveBeenCalled();
+			expect(URL.revokeObjectURL).toHaveBeenCalledWith(
+				'blob:mock-worklet-url',
+			);
+		});
+
+		it('should release resources when the audio graph setup fails', async () => {
+			mockAudioContext.createMediaStreamSource.mockImplementationOnce(
+				() => {
+					throw new Error('source failed');
+				},
+			);
+			const stream = createMockStream();
+			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
+
+			await expect(recorder.start()).rejects.toThrow('source failed');
+
+			expect(mockAudioContext.close).toHaveBeenCalled();
+			expect(URL.revokeObjectURL).toHaveBeenCalledWith(
+				'blob:mock-worklet-url',
+			);
+		});
+
+		it('should not mask the original error when cleanup itself fails', async () => {
+			const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
+			mockAudioContext.audioWorklet.addModule.mockRejectedValueOnce(
+				new Error('addModule failed'),
+			);
+			mockAudioContext.close.mockRejectedValueOnce(
+				new Error('close failed'),
+			);
+			const stream = createMockStream();
+			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
+
+			await expect(recorder.start()).rejects.toThrow('addModule failed');
+
+			expect(warnSpy).toHaveBeenCalled();
+			warnSpy.mockRestore();
+		});
 	});
 
 	describe('worklet message handling', () => {

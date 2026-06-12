@@ -220,8 +220,47 @@ export class RecordingManager {
 			this.setStatus(RecordingStatus.Recording);
 			new Notice('Recording started');
 		} catch (error) {
+			this.releasePartialSession();
 			this.handleStartRecordingError(error);
 		}
+	}
+
+	/**
+	 * Releases everything a failed startRecording may have acquired.
+	 * Errors after getAudioStreams (an unsupported MediaRecorder
+	 * mimeType, a failed worklet load, a failed insertion-context
+	 * capture) otherwise leave the microphone captured — device locked
+	 * and indicator on — until Obsidian restarts.
+	 */
+	private releasePartialSession(): void {
+		for (const recorder of this.pcmRecorders) {
+			recorder.stop().catch((error: unknown) => {
+				console.error(
+					`${PLUGIN_LOG_PREFIX} Failed to release PCM recorder after start failure:`,
+					error,
+				);
+			});
+		}
+		for (const recorder of this.recorders) {
+			try {
+				if (recorder.state !== 'inactive') {
+					recorder.stop();
+				}
+			} catch (error) {
+				console.error(
+					`${PLUGIN_LOG_PREFIX} Failed to stop recorder after start failure:`,
+					error,
+				);
+			}
+		}
+		stopAllStreams(this.streams);
+		this.streams = [];
+		this.recorders = [];
+		this.pcmRecorders = [];
+		this.chunkTargets = [];
+		this.trackOrder = [];
+		this.recordingTimestamp = null;
+		this.insertionContext = null;
 	}
 
 	/**

@@ -284,6 +284,111 @@ describe('AudioStreamHandler: Error Handling', () => {
 	});
 });
 
+describe('Start failure after stream acquisition', () => {
+	let manager: RecordingManager;
+	let mockApp: App;
+	let mockSettings: AudioRecorderSettings;
+	let statusChangeCallback: jest.Mock;
+	let consoleErrorSpy: jest.SpyInstance;
+	let trackStop: jest.Mock;
+
+	beforeEach(() => {
+		jest.clearAllMocks();
+		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+
+		mockApp = {
+			vault: {
+				adapter: {
+					exists: jest.fn().mockResolvedValue(false),
+					writeBinary: jest.fn().mockResolvedValue(undefined),
+					rename: jest.fn().mockResolvedValue(undefined),
+					readBinary: jest.fn().mockResolvedValue(new ArrayBuffer(0)),
+					remove: jest.fn().mockResolvedValue(undefined),
+				},
+				createBinary: jest.fn().mockResolvedValue(undefined),
+				createFolder: jest.fn().mockResolvedValue(undefined),
+			},
+			workspace: {
+				getActiveViewOfType: jest.fn().mockReturnValue(null),
+				getActiveFile: jest.fn().mockReturnValue(null),
+			},
+		} as unknown as App;
+
+		mockSettings = { ...DEFAULT_SETTINGS, audioDeviceId: 'test-device-id' };
+		statusChangeCallback = jest.fn();
+		manager = new RecordingManager(
+			mockApp,
+			mockSettings,
+			statusChangeCallback,
+		);
+
+		trackStop = jest.fn();
+		Object.defineProperty(navigator, 'mediaDevices', {
+			value: {
+				getUserMedia: jest.fn().mockResolvedValue({
+					getTracks: () => [{ stop: trackStop }],
+				}),
+				enumerateDevices: jest.fn().mockResolvedValue([
+					{
+						deviceId: 'test-device-id',
+						kind: 'audioinput',
+						label: 'Test Device',
+					},
+				]),
+			},
+			writable: true,
+		});
+	});
+
+	afterEach(() => {
+		consoleErrorSpy.mockRestore();
+	});
+
+	it('should stop acquired tracks when MediaRecorder creation fails', async () => {
+		(global as unknown as Record<string, unknown>).MediaRecorder = jest.fn(
+			() => {
+				throw new Error('mimeType not supported');
+			},
+		);
+		(
+			(global as unknown as Record<string, unknown>)
+				.MediaRecorder as Record<string, unknown>
+		).isTypeSupported = jest.fn().mockReturnValue(true);
+
+		await manager.startRecording();
+
+		expect(trackStop).toHaveBeenCalled();
+		expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+	});
+
+	it('should stop acquired tracks when PCM capture fails to start', async () => {
+		// The module-level AudioContext mock has no audioWorklet, so the
+		// real PcmStreamRecorder.start() fails like a broken worklet load
+		(global as unknown as Record<string, unknown>).MediaRecorder =
+			jest.fn();
+		(
+			(global as unknown as Record<string, unknown>)
+				.MediaRecorder as Record<string, unknown>
+		).isTypeSupported = jest.fn().mockReturnValue(true);
+
+		mockSettings = {
+			...DEFAULT_SETTINGS,
+			audioDeviceId: 'test-device-id',
+			recordingFormat: 'wav',
+		};
+		manager = new RecordingManager(
+			mockApp,
+			mockSettings,
+			statusChangeCallback,
+		);
+
+		await manager.startRecording();
+
+		expect(trackStop).toHaveBeenCalled();
+		expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+	});
+});
+
 describe('AudioStreamError', () => {
 	it('should create error with device ID', () => {
 		const original = new Error('Original error');
