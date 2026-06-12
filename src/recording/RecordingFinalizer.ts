@@ -37,6 +37,7 @@ import {
 	mergeAudioTracks,
 } from './AudioFormatConverter';
 import { buildMimeType } from './AudioCapabilityDetector';
+import { canStreamMix, mixPcmTracksToWav } from './StreamingMixer';
 import { buildPartFileName } from './AudioSplitter';
 import { insertFileLinks } from './NoteInserter';
 import type { TrackWriteQueue } from './TrackWriteQueue';
@@ -185,7 +186,15 @@ export class RecordingFinalizer {
 						'Merged multi-track output saved as .wav (encoding unavailable for this format).',
 					);
 				}
-				const mergedAudio = await mergeAudioTracks(
+				// PCM sessions mixing to WAV stream from disk in bounded
+				// memory; everything else (compressed outputs, rate
+				// mismatches, MediaRecorder sessions) uses the Web Audio
+				// mix, which is also the platform's resampler
+				let mergedAudio: Blob | null = null;
+				if (session.isWavPcm && targetFormat === FORMAT_WAV) {
+					mergedAudio = await this.tryStreamMixToWav(targets);
+				}
+				mergedAudio ??= await mergeAudioTracks(
 					targets,
 					this.settings,
 					session.isWavPcm,
@@ -514,6 +523,48 @@ export class RecordingFinalizer {
 			new Notice(
 				`Recording saved, but temporary files could not be removed: ${failedPaths.join(', ')}`,
 			);
+		}
+	}
+
+	/**
+	 * Attempts the bounded-memory streaming mix of flushed PCM tracks
+	 * into a WAV blob. Returns null when the tracks cannot be
+	 * stream-mixed (rate mismatch, no data, adapter without stat) or
+	 * the mix fails — the caller then uses the Web Audio path.
+	 * @param targets - Recording targets with flushed PCM segments
+	 * @returns Mixed WAV blob, or null to fall back
+	 */
+	private async tryStreamMixToWav(
+		targets: RecordingTarget[],
+	): Promise<Blob | null> {
+		const tracks = targets
+			.filter((target) => target.segmentPaths.length > 0)
+			.map((target) => ({
+				segmentPaths: target.segmentPaths,
+				channels: target.pcmChannels,
+				sampleRate: target.pcmSampleRate,
+			}));
+		if (!canStreamMix(tracks)) {
+			return null;
+		}
+		try {
+			const wavBuffer = await mixPcmTracksToWav(
+				tracks,
+				this.app,
+				(percent) => {
+					this.reportProgress(
+						40 + Math.round(percent * 0.2),
+						'Mixing tracks...',
+					);
+				},
+			);
+			return new Blob([wavBuffer], { type: 'audio/wav' });
+		} catch (error) {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Streaming mix failed, falling back to the Web Audio mix:`,
+				error,
+			);
+			return null;
 		}
 	}
 

@@ -57,6 +57,11 @@ jest.mock('../../src/recording/NoteInserter', () => ({
 	insertFileLinks: jest.fn(),
 }));
 
+jest.mock('../../src/recording/StreamingMixer', () => ({
+	canStreamMix: jest.fn().mockReturnValue(true),
+	mixPcmTracksToWav: jest.fn().mockResolvedValue(new ArrayBuffer(50)),
+}));
+
 if (!Blob.prototype.arrayBuffer) {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test polyfill for jsdom
 	(Blob.prototype as any).arrayBuffer = function (): Promise<ArrayBuffer> {
@@ -402,6 +407,100 @@ describe('RecordingFinalizer', () => {
 				expect.stringMatching(/multitrack-stamp\.wav$/),
 				expect.any(ArrayBuffer),
 			);
+		});
+
+		it('should stream-mix PCM sessions with WAV output', async () => {
+			const { canStreamMix, mixPcmTracksToWav } = jest.requireMock(
+				'../../src/recording/StreamingMixer',
+			);
+			const { mergeAudioTracks } = jest.requireMock(
+				'../../src/recording/AudioFormatConverter',
+			);
+			buildFinalizer(createSession({ isWavPcm: true }), {
+				...DEFAULT_SETTINGS,
+				outputMode: 'single',
+				recordingFormat: 'wav',
+			});
+			const targets = [
+				createTarget({
+					segmentPaths: ['a-pcm.tmp'],
+					pcmSampleRate: 48000,
+				}),
+				createTarget({
+					segmentPaths: ['b-pcm.tmp'],
+					pcmSampleRate: 48000,
+				}),
+			];
+
+			await finalizer.saveRecording(targets, 'stamp', null);
+
+			expect(canStreamMix).toHaveBeenCalled();
+			expect(mixPcmTracksToWav).toHaveBeenCalledWith(
+				[
+					expect.objectContaining({
+						segmentPaths: ['a-pcm.tmp'],
+						sampleRate: 48000,
+					}),
+					expect.objectContaining({
+						segmentPaths: ['b-pcm.tmp'],
+						sampleRate: 48000,
+					}),
+				],
+				mockApp,
+				expect.any(Function),
+			);
+			expect(mergeAudioTracks).not.toHaveBeenCalled();
+			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
+				expect.stringMatching(/multitrack-stamp\.wav$/),
+				expect.any(ArrayBuffer),
+			);
+		});
+
+		it('should fall back to the Web Audio mix when streaming is not possible', async () => {
+			const { canStreamMix, mixPcmTracksToWav } = jest.requireMock(
+				'../../src/recording/StreamingMixer',
+			);
+			const { mergeAudioTracks } = jest.requireMock(
+				'../../src/recording/AudioFormatConverter',
+			);
+			(canStreamMix as jest.Mock).mockReturnValueOnce(false);
+			buildFinalizer(createSession({ isWavPcm: true }), {
+				...DEFAULT_SETTINGS,
+				outputMode: 'single',
+				recordingFormat: 'wav',
+			});
+			const targets = [
+				createTarget({ segmentPaths: ['a-pcm.tmp'] }),
+				createTarget({ segmentPaths: ['b-pcm.tmp'] }),
+			];
+
+			await finalizer.saveRecording(targets, 'stamp', null);
+
+			expect(mixPcmTracksToWav).not.toHaveBeenCalled();
+			expect(mergeAudioTracks).toHaveBeenCalled();
+		});
+
+		it('should keep compressed merged outputs on the Web Audio mix', async () => {
+			const { mixPcmTracksToWav } = jest.requireMock(
+				'../../src/recording/StreamingMixer',
+			);
+			const { mergeAudioTracks } = jest.requireMock(
+				'../../src/recording/AudioFormatConverter',
+			);
+			buildFinalizer(createSession({ isWavPcm: true }), {
+				...DEFAULT_SETTINGS,
+				outputMode: 'single',
+				recordingFormat: 'mp3',
+			});
+			const targets = [
+				createTarget({ segmentPaths: ['a-pcm.tmp'] }),
+				createTarget({ segmentPaths: ['b-pcm.tmp'] }),
+			];
+
+			await finalizer.saveRecording(targets, 'stamp', null);
+
+			expect(mixPcmTracksToWav).not.toHaveBeenCalled();
+			expect(mergeAudioTracks).toHaveBeenCalled();
 		});
 
 		it('should roll back the merged file when cleanup fails', async () => {
