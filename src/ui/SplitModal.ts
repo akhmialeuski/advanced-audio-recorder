@@ -5,40 +5,26 @@
  * @module ui/SplitModal
  */
 
-import { App, Modal, Notice, Setting, TFile, normalizePath } from 'obsidian';
-import {
-	encodeAudioBuffer,
-	isOfflineEncodingSupported,
-} from '../recording/AudioEncoder';
+import { App, Modal, Notice, Setting, TFile } from 'obsidian';
 import {
 	FORMAT_WAV,
 	MIN_SPLIT_CHUNK_MINUTES,
 	MAX_SPLIT_CHUNK_MINUTES,
 	DEFAULT_SPLIT_PART_SUFFIX,
-	PLUGIN_LOG_PREFIX,
 	SECONDS_PER_MINUTE,
 	SPLIT_PART_SUFFIX_PATTERN,
 	SPLIT_PART_SUFFIX_RULE_TEXT,
 } from '../constants';
-import { decodeAudioBlob } from '../recording/AudioFormatConverter';
 import {
 	addBitrateSetting,
 	addDeleteSourceSetting,
 	addLinkActionSetting,
 } from './settingHelpers';
 import {
-	parseWavLayout,
-	buildWavPart,
 	clampSplitMinutes,
-	computeWavPartBytes,
-	sliceAudioBuffer,
-	computePartCount,
-	buildPartFileName,
 	sanitizePartSuffix,
 } from '../recording/AudioSplitter';
-import { updateLinksInVault } from '../utils/LinkUpdater';
-import type { VaultLinkUpdateResult } from '../utils/LinkUpdater';
-import { delay } from '../utils/TimeUtils';
+import { SplitService } from '../recording/SplitService';
 import type {
 	AudioRecorderSettings,
 	ConversionLinkAction,
@@ -58,9 +44,12 @@ export class SplitModal extends Modal {
 	private isSplitting = false;
 	/** Progress notice shown when the modal is closed mid-split. */
 	private progressNotice: Notice | null = null;
+	/** Split pipeline behind the form. */
+	private readonly splitService: SplitService;
 
 	constructor(app: App, sourceFile: TFile, settings: AudioRecorderSettings) {
 		super(app);
+		this.splitService = new SplitService(app);
 		this.sourceFile = sourceFile;
 		this.partMinutes = clampSplitMinutes(settings.splitChunkMinutes);
 		this.partSuffix = sanitizePartSuffix(settings.splitPartSuffix);
@@ -202,20 +191,11 @@ export class SplitModal extends Modal {
 	}
 
 	/**
-	 * Resolves the extension the part files will get: WAV sources stay
-	 * WAV; compressed sources keep their format when an offline encoder
-	 * exists and fall back to WAV otherwise.
+	 * Resolves the extension the part files will get.
 	 * @returns Part file extension without the dot
 	 */
 	private getTargetExtension(): string {
-		const sourceExtension = this.sourceFile.extension.toLowerCase();
-		if (
-			sourceExtension === FORMAT_WAV ||
-			!isOfflineEncodingSupported(sourceExtension)
-		) {
-			return FORMAT_WAV;
-		}
-		return sourceExtension;
+		return this.splitService.getTargetExtension(this.sourceFile);
 	}
 
 	/**
@@ -238,12 +218,9 @@ export class SplitModal extends Modal {
 	}
 
 	/**
-	 * Executes the split pipeline: prepare parts, pre-check collisions,
-	 * write part files, update links, optionally delete the source.
-	 * Failures before any part is written abort the whole split;
-	 * failures after that are reported as partial success, because the
-	 * part files already exist on disk and a repeated run would abort
-	 * on the collision pre-check.
+	 * Runs the split pipeline for the configured form values. Failure
+	 * details are surfaced by the pipeline itself; the form only shows
+	 * the completion notice and closes.
 	 */
 	private async runSplit(progressEl: HTMLElement): Promise<void> {
 		this.isSplitting = true;
@@ -256,56 +233,26 @@ export class SplitModal extends Modal {
 			const partSeconds =
 				clampSplitMinutes(this.partMinutes) * SECONDS_PER_MINUTE;
 
-			let partFiles: TFile[];
-			let partCount: number;
-			let firstPartName: string;
-			try {
-				this.setProgress(progressEl, 'Reading source file...');
-				const sourceBytes = await this.app.vault.adapter.readBinary(
-					this.sourceFile.path,
-				);
-
-				const parts = await this.preparePartBlobs(
-					sourceBytes,
+			const outcome = await this.splitService.split(
+				{
+					sourceFile: this.sourceFile,
 					partSeconds,
 					suffix,
-					progressEl,
-				);
-				if (!parts) {
-					this.setProgress(progressEl, '');
-					return;
-				}
-
-				const partNames = parts.map((part) => part.fileName);
-				const partPaths = await this.resolvePartPaths(partNames);
-				if (!partPaths) {
-					this.setProgress(progressEl, '');
-					return;
-				}
-
-				partFiles = await this.writePartFiles(
-					parts,
-					partPaths,
-					progressEl,
-				);
-				partCount = parts.length;
-				firstPartName = partNames[0];
-			} catch (error) {
-				const message =
-					error instanceof Error ? error.message : String(error);
-				this.setProgress(progressEl, `Error: ${message}`);
-				new Notice(`Split failed: ${message}`);
-				return;
-			}
-
-			// The parts exist on disk from here on
-			if (!(await this.finishSplit(progressEl, partFiles))) {
+					bitrate: this.bitrate,
+					deleteSource: this.deleteSource,
+					linkAction: this.linkAction,
+				},
+				(text) => {
+					this.setProgress(progressEl, text);
+				},
+			);
+			if (outcome.status !== 'completed') {
 				return;
 			}
 
 			this.setProgress(progressEl, '');
 			new Notice(
-				`Split into ${String(partCount)} parts: ${firstPartName} ...`,
+				`Split into ${String(outcome.partCount)} parts: ${outcome.firstPartName} ...`,
 			);
 			// Cleared before close() so onClose does not start a
 			// background notice for an already finished split
@@ -316,230 +263,5 @@ export class SplitModal extends Modal {
 			this.progressNotice?.hide();
 			this.progressNotice = null;
 		}
-	}
-
-	/**
-	 * Post-write pipeline steps: updates links and optionally deletes
-	 * the source file. The part files already exist, so errors here are
-	 * reported as partial success and never as a failed split. The
-	 * source file is kept when some links could not be updated, because
-	 * deleting it would leave those links broken.
-	 * @param progressEl - Progress element inside the modal
-	 * @param partFiles - Created part files in write order
-	 * @returns True when every requested step succeeded
-	 */
-	private async finishSplit(
-		progressEl: HTMLElement,
-		partFiles: TFile[],
-	): Promise<boolean> {
-		let linkResult: VaultLinkUpdateResult | null = null;
-		if (this.linkAction !== 'none') {
-			this.setProgress(progressEl, 'Updating links...');
-			try {
-				linkResult = await updateLinksInVault(
-					this.app,
-					this.sourceFile,
-					partFiles,
-					this.linkAction,
-				);
-			} catch (error) {
-				const message =
-					error instanceof Error ? error.message : String(error);
-				this.setProgress(progressEl, `Error: ${message}`);
-				new Notice(
-					`Parts were created, but updating links failed: ${message}. The source file was kept.`,
-				);
-				return false;
-			}
-			if (linkResult.frontmatterReferences > 0) {
-				new Notice(
-					`${String(linkResult.frontmatterReferences)} frontmatter link(s) still point to the source file: properties cannot hold several links.`,
-				);
-			}
-		}
-
-		if (this.deleteSource) {
-			if (linkResult !== null && linkResult.skippedReferences > 0) {
-				new Notice(
-					`Source file kept: ${String(linkResult.skippedReferences)} link(s) could not be updated.`,
-				);
-			} else {
-				this.setProgress(progressEl, 'Removing source file...');
-				try {
-					await this.app.fileManager.trashFile(this.sourceFile);
-				} catch (error) {
-					const message =
-						error instanceof Error ? error.message : String(error);
-					this.setProgress(progressEl, `Error: ${message}`);
-					new Notice(
-						`Parts were created, but the source file could not be deleted: ${message}`,
-					);
-					return false;
-				}
-			}
-		}
-		return true;
-	}
-
-	/**
-	 * Builds part blobs from the source bytes. WAV sources with a raw
-	 * sample data chunk are split byte-exactly without decoding; other
-	 * formats are decoded once and re-encoded per part.
-	 * @returns Parts with target file names, or null when splitting
-	 * is not possible (a Notice explains why)
-	 */
-	private async preparePartBlobs(
-		sourceBytes: ArrayBuffer,
-		partSeconds: number,
-		suffix: string,
-		progressEl: HTMLElement,
-	): Promise<
-		{ fileName: string; data: () => Promise<ArrayBuffer> }[] | null
-	> {
-		const baseName = this.sourceFile.basename;
-		const sourceExtension = this.sourceFile.extension.toLowerCase();
-
-		if (sourceExtension === FORMAT_WAV) {
-			const layout = parseWavLayout(sourceBytes);
-			if (layout) {
-				const partBytes = computeWavPartBytes(layout, partSeconds);
-				if (partBytes <= 0 || layout.dataLength <= partBytes) {
-					new Notice('File is shorter than one part.');
-					return null;
-				}
-				const partCount = computePartCount(
-					layout.dataLength,
-					partBytes,
-				);
-				return Array.from({ length: partCount }, (_, index) => ({
-					fileName: buildPartFileName(
-						baseName,
-						suffix,
-						index + 1,
-						FORMAT_WAV,
-					),
-					// Built lazily inside data() so at most one part
-					// buffer is alive at a time while writing files that
-					// can be gigabytes in size
-					data: () =>
-						Promise.resolve(
-							buildWavPart(sourceBytes, layout, partBytes, index),
-						),
-				}));
-			}
-			// Non-raw WAV (compressed codec inside): fall through to decode
-		}
-
-		this.setProgress(progressEl, 'Decoding audio...');
-		const audioBuffer = await decodeAudioBlob(sourceBytes);
-		const partSamples = partSeconds * audioBuffer.sampleRate;
-		if (audioBuffer.length <= partSamples) {
-			new Notice('File is shorter than one part.');
-			return null;
-		}
-
-		const targetFormat = this.getTargetExtension();
-		if (targetFormat !== sourceExtension) {
-			new Notice(
-				`Encoding to "${sourceExtension}" is unavailable; parts are saved as WAV.`,
-			);
-		}
-
-		const partCount = computePartCount(audioBuffer.length, partSamples);
-		return Array.from({ length: partCount }, (_, index) => ({
-			fileName: buildPartFileName(
-				baseName,
-				suffix,
-				index + 1,
-				targetFormat,
-			),
-			data: async () => {
-				const slice = sliceAudioBuffer(
-					audioBuffer,
-					index * partSamples,
-					(index + 1) * partSamples,
-				);
-				const blob = await encodeAudioBuffer(slice, {
-					format: targetFormat,
-					bitrate: this.bitrate,
-				});
-				return blob.arrayBuffer();
-			},
-		}));
-	}
-
-	/**
-	 * Resolves full vault paths for all parts and aborts when any
-	 * target file already exists.
-	 * @returns Normalized part paths, or null on collision
-	 */
-	private async resolvePartPaths(
-		partNames: string[],
-	): Promise<string[] | null> {
-		const directory = this.sourceFile.parent?.path ?? '';
-		const paths = partNames.map((name) =>
-			normalizePath(directory ? `${directory}/${name}` : name),
-		);
-		for (const path of paths) {
-			if (await this.app.vault.adapter.exists(path)) {
-				new Notice(
-					`File "${path}" already exists. Rename it or choose a different suffix.`,
-				);
-				return null;
-			}
-		}
-		return paths;
-	}
-
-	/**
-	 * Writes all part files, yielding to the UI between parts.
-	 * On failure removes already-written parts and rethrows, keeping
-	 * the source file intact.
-	 * @returns The created part files in write order
-	 */
-	private async writePartFiles(
-		parts: { fileName: string; data: () => Promise<ArrayBuffer> }[],
-		partPaths: string[],
-		progressEl: HTMLElement,
-	): Promise<TFile[]> {
-		const written: { path: string; file: TFile | null }[] = [];
-		try {
-			for (let i = 0; i < parts.length; i++) {
-				this.setProgress(
-					progressEl,
-					`Writing part ${String(i + 1)} of ${String(parts.length)}...`,
-				);
-				const bytes = await parts[i].data();
-				const created = await this.app.vault.createBinary(
-					partPaths[i],
-					bytes,
-				);
-				written.push({
-					path: partPaths[i],
-					file: created instanceof TFile ? created : null,
-				});
-				// Yield to the UI between parts so the progress text repaints
-				await delay(0);
-			}
-		} catch (error) {
-			for (const part of written) {
-				try {
-					if (part.file) {
-						// trashFile respects the user's file deletion
-						// preference and keeps the rollback recoverable
-						await this.app.fileManager.trashFile(part.file);
-					} else {
-						await this.app.vault.adapter.remove(part.path);
-					}
-				} catch (cleanupError) {
-					console.error(
-						`${PLUGIN_LOG_PREFIX} Failed to remove part after split error:`,
-						{ path: part.path, cleanupError },
-					);
-				}
-			}
-			throw error;
-		}
-		return written.flatMap((part) => (part.file ? [part.file] : []));
 	}
 }
