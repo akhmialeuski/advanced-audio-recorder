@@ -21,7 +21,7 @@ import {
 	SPLIT_PART_SUFFIX_RULE_TEXT,
 } from '../constants';
 import { getSupportedBitrates } from '../recording/AudioCapabilityDetector';
-import { decodeAudioDataAtNativeRate } from '../recording/AudioFormatConverter';
+import { decodeAudioBlob } from '../recording/AudioFormatConverter';
 import {
 	parseWavLayout,
 	buildWavPart,
@@ -34,6 +34,7 @@ import {
 } from '../recording/AudioSplitter';
 import { updateLinksInVault } from '../utils/LinkUpdater';
 import type { VaultLinkUpdateResult } from '../utils/LinkUpdater';
+import { delay } from '../utils/TimeUtils';
 import type {
 	AudioRecorderSettings,
 	ConversionLinkAction,
@@ -456,7 +457,7 @@ export class SplitModal extends Modal {
 		}
 
 		this.setProgress(progressEl, 'Decoding audio...');
-		const audioBuffer = await decodeAudioDataAtNativeRate(sourceBytes);
+		const audioBuffer = await decodeAudioBlob(sourceBytes);
 		const partSamples = partSeconds * audioBuffer.sampleRate;
 		if (audioBuffer.length <= partSamples) {
 			new Notice('File is shorter than one part.');
@@ -543,10 +544,8 @@ export class SplitModal extends Modal {
 					path: partPaths[i],
 					file: created instanceof TFile ? created : null,
 				});
-				// Yield to the UI between parts: MP3 encoding is synchronous
-				await new Promise<void>((resolve) =>
-					activeWindow.setTimeout(resolve, 0),
-				);
+				// Yield to the UI between parts so the progress text repaints
+				await delay(0);
 			}
 		} catch (error) {
 			for (const part of written) {

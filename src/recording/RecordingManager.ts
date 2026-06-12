@@ -101,6 +101,10 @@ export class RecordingManager {
 	private rotationPromise: Promise<void> | null = null;
 	/** Whether the session is being stopped (blocks new part rotations). */
 	private isStopping: boolean = false;
+	/** Last save-progress percent reported to the status bar. */
+	private lastProgressPercent: number = -1;
+	/** Last save-progress description reported to the status bar. */
+	private lastProgressDescription: string = '';
 
 	/**
 	 * Creates a new RecordingManager.
@@ -462,6 +466,8 @@ export class RecordingManager {
 			this.partActiveMs = 0;
 			this.rotationPromise = null;
 			this.isStopping = false;
+			this.lastProgressPercent = -1;
+			this.lastProgressDescription = '';
 			this.setStatus(RecordingStatus.Idle);
 		}
 	}
@@ -555,8 +561,28 @@ export class RecordingManager {
 		this.onStatusChange(status, saveProgress);
 	}
 
+	/**
+	 * Reports save progress to the status bar, skipping updates whose
+	 * whole percent and description did not change. Encoders may emit
+	 * progress per audio frame (hundreds of thousands of calls for a
+	 * long recording), and every accepted update touches the DOM.
+	 * @param percent - Progress percentage (0-100)
+	 * @param description - Progress phase description
+	 */
 	private updateSaveProgress(percent: number, description: string): void {
-		this.setStatus(RecordingStatus.Saving, { percent, description });
+		const wholePercent = Math.round(percent);
+		if (
+			wholePercent === this.lastProgressPercent &&
+			description === this.lastProgressDescription
+		) {
+			return;
+		}
+		this.lastProgressPercent = wholePercent;
+		this.lastProgressDescription = description;
+		this.setStatus(RecordingStatus.Saving, {
+			percent: wholePercent,
+			description,
+		});
 	}
 
 	private async saveRecording(): Promise<void> {
@@ -989,7 +1015,11 @@ export class RecordingManager {
 			offset += buf.byteLength;
 		}
 
-		await this.app.vault.createBinary(segmentPath, merged.buffer);
+		// Temporary segment: a plain adapter write skips createBinary's
+		// synchronous vault-index update and event dispatch on the hot
+		// recording path (the watcher reconciles the file later);
+		// final files use createBinary
+		await this.app.vault.adapter.writeBinary(segmentPath, merged.buffer);
 		target.segmentPaths.push(segmentPath);
 		target.pcmBuffers = [];
 		target.pcmBufferedBytes = 0;
@@ -1101,7 +1131,11 @@ export class RecordingManager {
 			const combined = new Blob(target.bufferedChunks, {
 				type: getRecorderMediaType(this.activeRecorderFormat),
 			});
-			await this.app.vault.createBinary(
+			// Temporary segment: a plain adapter write skips
+			// createBinary's synchronous vault-index update and event
+			// dispatch on the hot recording path (the watcher
+			// reconciles the file later); final files use createBinary
+			await this.app.vault.adapter.writeBinary(
 				segmentPath,
 				await combined.arrayBuffer(),
 			);
@@ -1300,6 +1334,9 @@ export class RecordingManager {
 						);
 					}
 				},
+				// The intermediate blob was recorded at the session
+				// bitrate, so a codec-matching remux preserves it
+				{ allowRemux: true },
 			);
 			if (reportProgress) {
 				this.updateSaveProgress(60, 'Writing file...');

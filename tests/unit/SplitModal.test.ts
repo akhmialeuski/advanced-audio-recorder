@@ -199,7 +199,7 @@ jest.mock('../../src/recording/AudioCapabilityDetector', () => ({
 
 // Mock the decoder: the compressed path decodes once via this function
 jest.mock('../../src/recording/AudioFormatConverter', () => ({
-	decodeAudioDataAtNativeRate: jest.fn(),
+	decodeAudioBlob: jest.fn(),
 }));
 
 // Mock the vault-wide link updater
@@ -212,7 +212,7 @@ jest.mock('../../src/utils/LinkUpdater', () => ({
 }));
 
 import { encodeAudioBuffer } from '../../src/recording/AudioEncoder';
-import { decodeAudioDataAtNativeRate } from '../../src/recording/AudioFormatConverter';
+import { decodeAudioBlob } from '../../src/recording/AudioFormatConverter';
 import { updateLinksInVault } from '../../src/utils/LinkUpdater';
 
 /** WAV header size produced by createWavHeader. */
@@ -597,7 +597,7 @@ describe('SplitModal', () => {
 
 			await internals(modal).runSplit(progressEl);
 
-			expect(decodeAudioDataAtNativeRate).not.toHaveBeenCalled();
+			expect(decodeAudioBlob).not.toHaveBeenCalled();
 			expect(mockApp.vault.createBinary).toHaveBeenCalledTimes(3);
 			const paths = (
 				mockApp.vault.createBinary as jest.Mock
@@ -975,7 +975,7 @@ describe('SplitModal', () => {
 				new ArrayBuffer(100),
 			);
 			// 150 s at 44100 Hz with 1-minute parts -> 3 parts
-			(decodeAudioDataAtNativeRate as jest.Mock).mockResolvedValue(
+			(decodeAudioBlob as jest.Mock).mockResolvedValue(
 				createMockAudioBuffer(1, 150 * 44100, 44100),
 			);
 			(global as Record<string, unknown>).AudioBuffer = class {
@@ -1001,7 +1001,7 @@ describe('SplitModal', () => {
 
 			await internals(modal).runSplit(progressEl);
 
-			expect(decodeAudioDataAtNativeRate).toHaveBeenCalledTimes(1);
+			expect(decodeAudioBlob).toHaveBeenCalledTimes(1);
 			expect(encodeAudioBuffer).toHaveBeenCalledTimes(3);
 			expect(encodeAudioBuffer).toHaveBeenCalledWith(
 				expect.objectContaining({ length: 60 * 44100 }),
@@ -1018,7 +1018,7 @@ describe('SplitModal', () => {
 		});
 
 		it('should abort when the audio is shorter than one part', async () => {
-			(decodeAudioDataAtNativeRate as jest.Mock).mockResolvedValue(
+			(decodeAudioBlob as jest.Mock).mockResolvedValue(
 				createMockAudioBuffer(1, 30 * 44100, 44100),
 			);
 			const modal = new SplitModal(mockApp, mockFile, mockSettings);
@@ -1039,7 +1039,7 @@ describe('SplitModal', () => {
 
 			await internals(modal).runSplit(progressEl);
 
-			expect(decodeAudioDataAtNativeRate).toHaveBeenCalledTimes(1);
+			expect(decodeAudioBlob).toHaveBeenCalledTimes(1);
 			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
 				'Recordings/recording-part1.wav',
 				expect.anything(),
@@ -1069,7 +1069,7 @@ describe('SplitModal', () => {
 		});
 
 		it('should report errors from decoding', async () => {
-			(decodeAudioDataAtNativeRate as jest.Mock).mockRejectedValue(
+			(decodeAudioBlob as jest.Mock).mockRejectedValue(
 				new Error('decode failed'),
 			);
 			const modal = new SplitModal(mockApp, mockFile, mockSettings);

@@ -5,6 +5,7 @@
 
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { AudioStreamError } from '../errors';
+import { delay } from '../utils/TimeUtils';
 import type { AudioRecorderSettings } from '../settings/Settings';
 
 export interface TrackAudioSource {
@@ -30,13 +31,6 @@ const MAX_RETRIES = 2;
  * Delay between retry attempts in milliseconds.
  */
 const RETRY_DELAY_MS = 500;
-
-/**
- * Delays execution for specified milliseconds.
- */
-function delay(ms: number): Promise<void> {
-	return new Promise((resolve) => activeWindow.setTimeout(resolve, ms));
-}
 
 /**
  * Gets a MediaStream for the specified audio device.

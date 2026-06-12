@@ -8,7 +8,7 @@
  */
 export class Plugin {
 	app: App;
-	manifest: PluginManifest | null = null;
+	manifest: PluginManifest;
 
 	constructor(app: App, manifest: PluginManifest) {
 		this.app = app;
@@ -58,6 +58,10 @@ export class App {
 export class Vault {
 	adapter = {
 		exists: async (_path: string): Promise<boolean> => false,
+		read: async (_path: string): Promise<string> => '',
+		write: async (_path: string, _data: string): Promise<void> => {
+			// Mock implementation
+		},
 		append: async (_path: string, _data: ArrayBuffer): Promise<void> => {
 			// Mock implementation
 		},
@@ -430,11 +434,69 @@ export const Platform = {
 	isMobileApp: false,
 };
 
+/**
+ * Debounced function type returned by the debounce mock.
+ */
+export type Debouncer<T extends unknown[], V> = ((...args: T) => void) & {
+	cancel: () => void;
+	run: () => V | undefined;
+};
+
+/**
+ * Mock debounce function. Defers the callback to a timer like the real
+ * implementation so tests can flush it with fake timers or run().
+ */
+export function debounce<T extends unknown[], V>(
+	cb: (...args: T) => V,
+	timeout?: number,
+	_resetTimer?: boolean,
+): Debouncer<T, V> {
+	let timer: ReturnType<typeof setTimeout> | null = null;
+	let pendingArgs: T | null = null;
+
+	const debounced = ((...args: T): void => {
+		pendingArgs = args;
+		if (timer !== null) {
+			clearTimeout(timer);
+		}
+		timer = setTimeout(() => {
+			timer = null;
+			if (pendingArgs) {
+				const callArgs = pendingArgs;
+				pendingArgs = null;
+				cb(...callArgs);
+			}
+		}, timeout ?? 0);
+	}) as Debouncer<T, V>;
+
+	debounced.cancel = (): void => {
+		if (timer !== null) {
+			clearTimeout(timer);
+			timer = null;
+		}
+		pendingArgs = null;
+	};
+
+	debounced.run = (): V | undefined => {
+		if (timer === null || !pendingArgs) {
+			return undefined;
+		}
+		clearTimeout(timer);
+		timer = null;
+		const callArgs = pendingArgs;
+		pendingArgs = null;
+		return cb(...callArgs);
+	};
+
+	return debounced;
+}
+
 // Type definitions
 export interface PluginManifest {
 	id: string;
 	name: string;
 	version: string;
+	dir?: string;
 }
 
 export interface Command {

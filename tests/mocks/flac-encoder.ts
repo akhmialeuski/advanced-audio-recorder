@@ -1,6 +1,8 @@
 /**
  * Mock for @mediabunny/flac-encoder.
- * The real module is a side-effect import that registers the FLAC codec.
- * In tests, this is a no-op.
+ * The real module registers a custom FLAC encoder with mediabunny.
+ * In tests, registration is a no-op.
  */
-export {};
+export const registerFlacEncoder = (): void => {
+	// Mock implementation
+};

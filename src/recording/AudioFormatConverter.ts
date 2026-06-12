@@ -4,11 +4,26 @@
  * @module recording/AudioFormatConverter
  */
 
+import {
+	Input,
+	Output,
+	BlobSource,
+	BufferTarget,
+	ALL_FORMATS,
+	Conversion,
+} from 'mediabunny';
+import type { AudioCodec } from 'mediabunny';
 import type { RecordingTarget } from '../types';
 import type { AudioRecorderSettings } from '../settings/Settings';
 import { bufferToWave } from './WavEncoder';
-import { encodeAudioBuffer, isOfflineEncodingSupported } from './AudioEncoder';
-import { MIME_TYPE_AUDIO_PREFIX } from '../constants';
+import {
+	encodeAudioBuffer,
+	isOfflineEncodingSupported,
+	ensureEncoderRegistered,
+	createOutputFormat,
+	FORMAT_CODEC_MAP,
+} from './AudioEncoder';
+import { MIME_TYPE_AUDIO_PREFIX, PLUGIN_LOG_PREFIX } from '../constants';
 import {
 	buildMimeType,
 	FORMAT_WEBM,
@@ -107,43 +122,150 @@ export async function convertBlobToWav(recordedBlob: Blob): Promise<Blob> {
 }
 
 /**
- * Decodes compressed audio bytes preserving the native sample rate.
- * First probes with a temporary AudioContext to discover the native
- * rate, then re-decodes with an OfflineAudioContext at that rate to
- * avoid resampling artifacts. The probe uses a copy of the buffer
- * because decodeAudioData detaches its input.
+ * Decodes compressed audio bytes into an AudioBuffer.
+ * Decodes exactly once: decodeAudioData resamples to the context rate
+ * by spec, so the previous probe-then-redecode-at-native-rate approach
+ * produced an identical buffer while doubling decode time and peak
+ * memory (two full PCM copies of the recording).
  * @param arrayBuffer - Encoded audio file bytes
- * @returns Decoded AudioBuffer at the native sample rate
+ * @returns Decoded AudioBuffer
  */
-export async function decodeAudioDataAtNativeRate(
+export async function decodeAudioBlob(
 	arrayBuffer: ArrayBuffer,
 ): Promise<AudioBuffer> {
-	const probeCtx = new AudioContext();
-	let probeBuffer: AudioBuffer;
+	const audioContext = new AudioContext();
 	try {
-		probeBuffer = await probeCtx.decodeAudioData(arrayBuffer.slice(0));
+		return await audioContext.decodeAudioData(arrayBuffer);
 	} finally {
 		// Close even when decoding fails (corrupted/unsupported input),
 		// otherwise the AudioContext leaks
-		await probeCtx.close();
+		await audioContext.close();
+	}
+}
+
+/**
+ * Options controlling blob-to-format conversion behavior.
+ */
+export interface BlobConversionOptions {
+	/**
+	 * Allows copying the audio packets without re-encoding (remux)
+	 * when the input codec already matches the target codec. Remux
+	 * ignores the requested bitrate, so it is only safe when the
+	 * input is known to be encoded at that bitrate already (the
+	 * recording pipeline configures the recorder with the session
+	 * bitrate). Conversions driven by an explicit user bitrate
+	 * choice must leave this off so the selection is always honored.
+	 */
+	allowRemux?: boolean;
+}
+
+/**
+ * Converts a compressed audio blob to the target format using the
+ * streaming mediabunny Conversion pipeline: audio is transcoded in
+ * chunks without materializing the whole recording as PCM in memory.
+ * With allowRemux, packets of an input whose codec already matches
+ * the target codec are copied without re-encoding.
+ * @param recordedBlob - Intermediate compressed blob
+ * @param targetFormat - Desired output format
+ * @param bitrate - Bitrate in bits per second
+ * @param allowRemux - Allow packet copy when the codecs match
+ * @param onProgress - Optional encoding progress callback (0-100)
+ * @returns Re-encoded blob in the target format
+ * @throws Error when the target format has no codec mapping, the
+ * input has no audio track, or the conversion cannot process the
+ * audio track (the caller falls back to decode and re-encode)
+ */
+async function convertBlobWithConversion(
+	recordedBlob: Blob,
+	targetFormat: string,
+	bitrate: number,
+	allowRemux: boolean,
+	onProgress?: FormatProgressCallback,
+): Promise<Blob> {
+	const codec: AudioCodec | undefined = FORMAT_CODEC_MAP[targetFormat];
+	if (!codec) {
+		throw new Error(`No codec mapping for format "${targetFormat}"`);
 	}
 
-	const offlineCtx = new OfflineAudioContext(
-		probeBuffer.numberOfChannels,
-		probeBuffer.length,
-		probeBuffer.sampleRate,
+	await ensureEncoderRegistered(targetFormat);
+
+	const input = new Input({
+		source: new BlobSource(recordedBlob),
+		formats: ALL_FORMATS,
+	});
+	const audioTrack = await input.getPrimaryAudioTrack();
+	if (!audioTrack) {
+		throw new Error('Input contains no audio track');
+	}
+
+	const target = new BufferTarget();
+	const output = new Output({
+		format: createOutputFormat(targetFormat),
+		target,
+	});
+
+	// Omitting bitrate lets mediabunny copy packets (remux) when the
+	// input codec matches the target; setting it always forces a
+	// re-encode per the Conversion contract. Remux is allowed only
+	// when the caller knows the input is already at the requested
+	// bitrate. Discarded tracks are handled explicitly below, so
+	// mediabunny's own console warnings about them are disabled.
+	const conversion = await Conversion.init({
+		input,
+		output,
+		audio:
+			allowRemux && audioTrack.codec === codec
+				? { codec }
+				: { codec, bitrate },
+		showWarnings: false,
+	});
+
+	// Conversion.init does not throw for codec problems: it silently
+	// discards the track (undecodable_source_codec or
+	// no_encodable_target_codec) and would emit a container without
+	// audio. Fail here instead, so the caller's decode-and-re-encode
+	// fallback processes the input.
+	const audioDiscarded = conversion.discardedTracks.some((discarded) =>
+		discarded.track.isAudioTrack(),
 	);
-	return offlineCtx.decodeAudioData(arrayBuffer);
+	if (!conversion.isValid || audioDiscarded) {
+		throw new Error(
+			`Conversion to "${targetFormat}" cannot process the input audio track`,
+		);
+	}
+
+	if (onProgress) {
+		let lastPercent = -1;
+		conversion.onProgress = (progress: number): void => {
+			const percent = Math.round(progress * 100);
+			if (percent !== lastPercent) {
+				lastPercent = percent;
+				onProgress(percent);
+			}
+		};
+	}
+
+	await conversion.execute();
+
+	const resultBuffer = target.buffer;
+	if (!resultBuffer || resultBuffer.byteLength === 0) {
+		throw new Error(`Conversion to "${targetFormat}" produced no output`);
+	}
+	return new Blob([resultBuffer], {
+		type: `${MIME_TYPE_AUDIO_PREFIX}${targetFormat}`,
+	});
 }
 
 /**
  * Decodes an intermediate blob and re-encodes it to the target format.
- * Uses OfflineAudioContext at the native sample rate to avoid
- * resampling artifacts.
+ * Tries the streaming Conversion pipeline first and falls back to the
+ * full decode-then-encode path on any failure, so every format keeps
+ * working even when the input container is not readable by mediabunny.
  * @param recordedBlob - Intermediate compressed blob
  * @param targetFormat - Desired output format
  * @param bitrate - Bitrate in bits per second
  * @param onProgress - Optional encoding progress callback (0-100)
+ * @param options - Conversion behavior options
  * @returns Re-encoded blob in the target format
  */
 export async function convertBlobToFormat(
@@ -151,9 +273,25 @@ export async function convertBlobToFormat(
 	targetFormat: string,
 	bitrate: number,
 	onProgress?: FormatProgressCallback,
+	options: BlobConversionOptions = {},
 ): Promise<Blob> {
+	try {
+		return await convertBlobWithConversion(
+			recordedBlob,
+			targetFormat,
+			bitrate,
+			options.allowRemux ?? false,
+			onProgress,
+		);
+	} catch (error) {
+		console.warn(
+			`${PLUGIN_LOG_PREFIX} Streaming conversion failed, falling back to decode and re-encode:`,
+			error,
+		);
+	}
+
 	const arrayBuffer = await recordedBlob.arrayBuffer();
-	const decodedBuffer = await decodeAudioDataAtNativeRate(arrayBuffer);
+	const decodedBuffer = await decodeAudioBlob(arrayBuffer);
 
 	return encodeAudioBuffer(
 		decodedBuffer,
@@ -224,8 +362,15 @@ export async function mergeAudioTracks(
 	const longestDuration = Math.max(
 		...validBuffers.map((buffer) => buffer.duration),
 	);
-	const offlineContext = new OfflineAudioContext(
+	// Mix in mono when every input is mono: a stereo render would just
+	// duplicate the mix into both channels while doubling encode time
+	// and file size. Any stereo input keeps the stereo render.
+	const channelCount = Math.min(
 		2,
+		Math.max(...validBuffers.map((buffer) => buffer.numberOfChannels)),
+	);
+	const offlineContext = new OfflineAudioContext(
+		channelCount,
 		audioContext.sampleRate * longestDuration,
 		audioContext.sampleRate,
 	);

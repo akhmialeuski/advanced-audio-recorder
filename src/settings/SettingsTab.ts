@@ -10,6 +10,7 @@ import {
 	Setting,
 	TFolder,
 	Vault,
+	debounce,
 } from 'obsidian';
 import type { Plugin } from 'obsidian';
 import type {
@@ -35,6 +36,9 @@ import {
 import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
 import { SystemInfoModal } from '../diagnostics/SystemInfoModal';
 
+/** Debounce delay for saving text settings, in milliseconds. */
+const TEXT_SETTING_SAVE_DEBOUNCE_MS = 500;
+
 /**
  * Plugin interface for settings tab.
  */
@@ -54,6 +58,18 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	private testRecorder: MediaRecorder | null = null;
 	private testChunks: Blob[] = [];
 	private testAudioElement: HTMLAudioElement | null = null;
+	/**
+	 * Debounced settings save shared by the text fields, which fire
+	 * onChange on every keystroke and would otherwise rewrite data.json
+	 * per character. Toggles, dropdowns, and sliders save directly.
+	 */
+	private readonly saveTextSettingDebounced = debounce(
+		() => {
+			void this.plugin.saveSettings();
+		},
+		TEXT_SETTING_SAVE_DEBOUNCE_MS,
+		true,
+	);
 
 	/**
 	 * Creates a new AudioRecorderSettingTab.
@@ -274,9 +290,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					datalist.createEl('option', { attr: { value: folder } });
 				});
 				text.setValue(this.plugin.settings.saveFolder);
-				text.onChange(async (value) => {
+				text.onChange((value) => {
 					this.plugin.settings.saveFolder = value;
-					await this.plugin.saveSettings();
+					this.saveTextSettingDebounced();
 				});
 			});
 
@@ -305,9 +321,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					text
 						.setPlaceholder('Audio')
 						.setValue(this.plugin.settings.activeFileSubfolder)
-						.onChange(async (value) => {
+						.onChange((value) => {
 							this.plugin.settings.activeFileSubfolder = value;
-							await this.plugin.saveSettings();
+							this.saveTextSettingDebounced();
 						}),
 				);
 		}
@@ -319,9 +335,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				text
 					.setPlaceholder('Enter file prefix')
 					.setValue(this.plugin.settings.filePrefix)
-					.onChange(async (value) => {
+					.onChange((value) => {
 						this.plugin.settings.filePrefix = value;
-						await this.plugin.saveSettings();
+						this.saveTextSettingDebounced();
 					}),
 			);
 
@@ -385,7 +401,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				text
 					.setPlaceholder(DEFAULT_SPLIT_PART_SUFFIX)
 					.setValue(this.plugin.settings.splitPartSuffix)
-					.onChange(async (value) => {
+					.onChange((value) => {
 						// Mirror the manual split dialog: surrounding
 						// whitespace is ignored and an empty field means
 						// the default suffix. Only valid suffixes are
@@ -403,7 +419,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 							trimmed === ''
 								? DEFAULT_SPLIT_PART_SUFFIX
 								: trimmed;
-						await this.plugin.saveSettings();
+						this.saveTextSettingDebounced();
 					}),
 			);
 
@@ -745,9 +761,11 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * Cleans up test recording resources when settings tab is hidden.
+	 * Cleans up test recording resources when settings tab is hidden
+	 * and flushes a pending debounced text-setting save.
 	 */
 	hide(): void {
+		this.saveTextSettingDebounced.run();
 		void this.cleanupTestRecording();
 	}
 }
