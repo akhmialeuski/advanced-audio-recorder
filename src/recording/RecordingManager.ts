@@ -284,9 +284,15 @@ export class RecordingManager {
 	 * Errors after getAudioStreams (an unsupported MediaRecorder
 	 * mimeType, a failed worklet load, a failed insertion-context
 	 * capture) otherwise leave the microphone captured — device locked
-	 * and indicator on — until Obsidian restarts.
+	 * and indicator on — until Obsidian restarts. The journal session
+	 * is ended too: nothing was flushed yet, and an orphaned entry
+	 * would keep an empty journal file on disk until the next launch
+	 * prunes it. Safe in every ordering — the active session id is
+	 * either null (failure before the journal start) or the id of the
+	 * failed session itself.
 	 */
 	private releasePartialSession(): void {
+		this.journal.endSession();
 		for (const recorder of this.pcmRecorders) {
 			recorder.stop().catch((error: unknown) => {
 				console.error(

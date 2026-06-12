@@ -878,6 +878,23 @@ describe('RecordingManager', () => {
 			expect(mockJournal.flush).toHaveBeenCalled();
 		});
 
+		it('should end the journal session when start fails after journaling', async () => {
+			createDesktopRecorder();
+			manager = createManager();
+			// The first status update (Recording) fires after the journal
+			// start; failing it exercises the partial-session release.
+			// Without endSession the orphaned entry keeps an empty journal
+			// file on disk until the next launch prunes it.
+			statusChangeCallback.mockImplementationOnce(() => {
+				throw new Error('status bar update failed');
+			});
+
+			await manager.startRecording();
+
+			expect(mockJournal.startSession).toHaveBeenCalledTimes(1);
+			expect(mockJournal.endSession).toHaveBeenCalledTimes(1);
+		});
+
 		it('should not journal mobile sessions', async () => {
 			const { Platform } = jest.requireMock('obsidian');
 			Platform.isMobile = true;
