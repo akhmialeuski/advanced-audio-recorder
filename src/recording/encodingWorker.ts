@@ -81,22 +81,19 @@ export async function handleEncodingMessage(
 	}
 }
 
-// Worker glue: only active inside a dedicated worker scope. The
-// module is also imported (types only) by the client on the main
+// Worker glue: only active inside a dedicated worker scope, detected
+// positively via importScripts, which exists in worker scopes only.
+// The module is also imported (types only) by the client on the main
 // thread, where this block must stay inert.
 declare const self:
 	| {
 			onmessage: ((event: MessageEvent) => void) | null;
 			postMessage: (message: unknown, transfer?: Transferable[]) => void;
-			document?: unknown;
+			importScripts?: (...urls: string[]) => void;
 	  }
 	| undefined;
 
-if (
-	typeof self !== 'undefined' &&
-	typeof self.postMessage === 'function' &&
-	typeof self.document === 'undefined'
-) {
+if (typeof self !== 'undefined' && typeof self.importScripts === 'function') {
 	self.onmessage = (event: MessageEvent): void => {
 		void handleEncodingMessage(
 			event.data as WorkerRequest,
