@@ -49,9 +49,9 @@ import {
 	getRecorderMediaType,
 	convertBlobToWav,
 	convertBlobToFormat,
-	buildOutputBlob,
 	mergeAudioTracks,
 } from './AudioFormatConverter';
+import { TrackWriteQueue } from './TrackWriteQueue';
 import {
 	buildPartFileName,
 	clampSplitMinutes,
@@ -106,8 +106,8 @@ export class RecordingManager {
 	private lastProgressPercent: number = -1;
 	/** Last save-progress description reported to the status bar. */
 	private lastProgressDescription: string = '';
-	/** Whether a buffered-write failure Notice is currently shown. */
-	private writeFailureNotified: boolean = false;
+	/** Serialized per-track write queue (buffering and flushes). */
+	private readonly writeQueue: TrackWriteQueue;
 
 	/**
 	 * Creates a new RecordingManager.
@@ -125,6 +125,7 @@ export class RecordingManager {
 	) {
 		this.onStatusChange = onStatusChange;
 		this.debugLogger = new DebugLogger(settings);
+		this.writeQueue = new TrackWriteQueue(app, settings);
 	}
 
 	/**
@@ -141,6 +142,7 @@ export class RecordingManager {
 	updateSettings(settings: AudioRecorderSettings): void {
 		this.settings = settings;
 		this.debugLogger.updateSettings(settings);
+		this.writeQueue.updateSettings(settings);
 	}
 
 	/**
@@ -160,7 +162,6 @@ export class RecordingManager {
 	async startRecording(): Promise<void> {
 		try {
 			this.isStopping = false;
-			this.writeFailureNotified = false;
 			this.isMobileRecording = Platform.isMobileApp || Platform.isMobile;
 			this.isWavPcmRecording =
 				this.settings.recordingFormat === FORMAT_WAV &&
@@ -198,6 +199,16 @@ export class RecordingManager {
 			this.trackOrder = trackOrder;
 
 			this.snapshotSessionSettings(streams.length);
+			this.writeQueue.beginSession({
+				isMobile: this.isMobileRecording,
+				isWavPcm: this.isWavPcmRecording,
+				recorderFormat: this.activeRecorderFormat,
+				outputFormat: this.sessionOutputFormat,
+				bitrate: this.sessionBitrate,
+				splitEnabled: this.sessionSplitEnabled,
+				partMinutes: this.sessionPartMinutes,
+				partSuffix: this.sessionPartSuffix,
+			});
 
 			this.recordingStartTime = Date.now();
 			this.recordingTimestamp = new Date()
@@ -491,9 +502,7 @@ export class RecordingManager {
 				);
 			}
 
-			await Promise.all(
-				this.chunkTargets.map((target) => target.pendingWrite),
-			);
+			await this.writeQueue.drain(this.chunkTargets);
 
 			this.updateSaveProgress(0, 'Saving...');
 
@@ -689,14 +698,14 @@ export class RecordingManager {
 				if (!this.isWavPcmRecording) {
 					await Promise.all(
 						this.chunkTargets.map((target) =>
-							this.flushChunkBuffer(target),
+							this.writeQueue.flushChunkBuffer(target),
 						),
 					);
 				}
 				if (this.isWavPcmRecording) {
 					await Promise.all(
 						this.chunkTargets.map((target) =>
-							this.flushPcmBuffer(target),
+							this.writeQueue.flushPcmBuffer(target),
 						),
 					);
 				}
@@ -790,50 +799,6 @@ export class RecordingManager {
 		}
 	}
 
-	/**
-	 * Appends a task to the target's serialized write chain, containing
-	 * failures so one failed flush can never poison the chain: a
-	 * rejected pendingWrite would skip every later queued task (chunks
-	 * silently dropped) and surface as unhandled rejections in the
-	 * fire-and-forget recorder callbacks. A failed flush keeps its data
-	 * buffered, so containment loses no audio — the flush is retried on
-	 * the next chunk over the threshold and at finalization.
-	 * @param target - Recording target whose chain to append to
-	 * @param task - Buffer or flush operation to serialize
-	 * @returns Promise resolving when the task settled (never rejects)
-	 */
-	private enqueueWrite(
-		target: RecordingTarget,
-		task: () => Promise<void>,
-	): Promise<void> {
-		const link = target.pendingWrite.then(task).catch((error: unknown) => {
-			this.reportWriteFailure(error);
-		});
-		target.pendingWrite = link;
-		return link;
-	}
-
-	/**
-	 * Reports a failed buffered write once per failure streak: once the
-	 * buffer is over the flush threshold every following chunk retries
-	 * the flush, and a Notice per retry would flood the UI. The notice
-	 * re-arms after the next successful flush and at session start.
-	 * @param error - The write failure
-	 */
-	private reportWriteFailure(error: unknown): void {
-		console.error(
-			`${PLUGIN_LOG_PREFIX} Failed to write buffered audio; data stays buffered for retry:`,
-			error,
-		);
-		if (this.writeFailureNotified) {
-			return;
-		}
-		this.writeFailureNotified = true;
-		new Notice(
-			'Failed to write recording data to disk. Audio stays buffered and writing is retried while the recording continues.',
-		);
-	}
-
 	private async handleChunk(index: number, data: Blob): Promise<void> {
 		const target = this.chunkTargets[index];
 		if (!target) {
@@ -844,11 +809,11 @@ export class RecordingManager {
 			? MOBILE_BUFFER_LIMIT_BYTES
 			: DESKTOP_FLUSH_THRESHOLD_BYTES;
 
-		await this.enqueueWrite(target, async () => {
+		await this.writeQueue.enqueue(target, async () => {
 			target.bufferedChunks.push(data);
 			target.bufferedBytes += data.size;
 			if (target.bufferedBytes >= flushThreshold) {
-				await this.flushChunkBuffer(target);
+				await this.writeQueue.flushChunkBuffer(target);
 			}
 		});
 
@@ -882,7 +847,7 @@ export class RecordingManager {
 		}
 		this.totalChunks += 1;
 
-		await this.enqueueWrite(target, async () => {
+		await this.writeQueue.enqueue(target, async () => {
 			target.pcmBuffers.push(data);
 			target.pcmBufferedBytes += data.byteLength;
 			if (this.sessionSplitEnabled) {
@@ -897,7 +862,7 @@ export class RecordingManager {
 				}
 			}
 			if (target.pcmBufferedBytes >= PCM_FLUSH_THRESHOLD_BYTES) {
-				await this.flushPcmBuffer(target);
+				await this.writeQueue.flushPcmBuffer(target);
 			}
 		});
 	}
@@ -954,7 +919,7 @@ export class RecordingManager {
 				this.app,
 				this.settings,
 			);
-			await this.flushPcmBuffer(target);
+			await this.writeQueue.flushPcmBuffer(target);
 			if (target.segmentPaths.length > 0) {
 				await this.assembleWavFile(target, filePath);
 				target.partPaths.push(filePath);
@@ -1011,13 +976,13 @@ export class RecordingManager {
 					this.stopMediaRecorder(recorder),
 				),
 			);
-			await Promise.all(this.chunkTargets.map((t) => t.pendingWrite));
+			await this.writeQueue.drain(this.chunkTargets);
 
 			for (const target of this.chunkTargets) {
 				try {
 					// Plain file write of already-captured bytes; the
 					// expensive transcoding happens after the restart
-					await this.flushChunkBuffer(target);
+					await this.writeQueue.flushChunkBuffer(target);
 				} catch (error) {
 					// Chunks stay buffered in capture order and land in
 					// the next part
@@ -1138,40 +1103,6 @@ export class RecordingManager {
 		}
 	}
 
-	private async flushPcmBuffer(target: RecordingTarget): Promise<void> {
-		if (target.pcmBuffers.length === 0) {
-			return;
-		}
-		// The index is committed only after a successful write so a
-		// failed flush retries under the same segment number
-		const segmentIndex = target.segmentIndex + 1;
-		const segmentName = `${target.fileBaseName}-pcm-part${String(segmentIndex)}.tmp`;
-		const segmentPath = await resolveUniquePath(
-			segmentName,
-			this.app,
-			this.settings,
-		);
-
-		const merged = new Uint8Array(totalByteLength(target.pcmBuffers));
-		let offset = 0;
-		for (const buf of target.pcmBuffers) {
-			merged.set(new Uint8Array(buf), offset);
-			offset += buf.byteLength;
-		}
-
-		// Temporary segment: a plain adapter write skips createBinary's
-		// synchronous vault-index update and event dispatch on the hot
-		// recording path (the watcher reconciles the file later);
-		// final files use createBinary
-		await this.app.vault.adapter.writeBinary(segmentPath, merged.buffer);
-		target.segmentIndex = segmentIndex;
-		target.segmentPaths.push(segmentPath);
-		target.pcmBuffers = [];
-		target.pcmBufferedBytes = 0;
-		// A successful flush ends the failure streak: re-arm the Notice
-		this.writeFailureNotified = false;
-	}
-
 	private async assembleWavFile(
 		target: RecordingTarget,
 		filePath: string,
@@ -1220,7 +1151,7 @@ export class RecordingManager {
 			return null;
 		}
 
-		await this.flushPcmBuffer(target);
+		await this.writeQueue.flushPcmBuffer(target);
 
 		if (target.segmentPaths.length === 0) {
 			return null;
@@ -1239,63 +1170,6 @@ export class RecordingManager {
 		);
 
 		return new Blob([wavBuffer], { type: 'audio/wav' });
-	}
-
-	private async flushChunkBuffer(target: RecordingTarget): Promise<void> {
-		if (target.bufferedChunks.length === 0) {
-			return;
-		}
-		// The index is committed only after a successful write so a
-		// failed flush retries under the same segment number
-		const segmentIndex = target.segmentIndex + 1;
-
-		if (this.isMobileRecording) {
-			// Mobile: encode/convert chunks via buildOutputBlob pipeline
-			const segmentName = `${target.fileBaseName}-part${String(
-				segmentIndex,
-			)}.${this.settings.recordingFormat}`;
-			const segmentPath = await resolveUniquePath(
-				segmentName,
-				this.app,
-				this.settings,
-			);
-			const outputBlob = await buildOutputBlob(
-				target.bufferedChunks,
-				getRecorderMediaType(this.activeRecorderFormat),
-				this.settings.recordingFormat,
-			);
-			await this.app.vault.createBinary(
-				segmentPath,
-				await outputBlob.arrayBuffer(),
-			);
-			target.segmentPaths.push(segmentPath);
-		} else {
-			// Desktop: write raw chunks as a single segment file
-			const segmentName = `${target.fileBaseName}-part${String(segmentIndex)}.${this.activeRecorderFormat}.tmp`;
-			const segmentPath = await resolveUniquePath(
-				segmentName,
-				this.app,
-				this.settings,
-			);
-			const combined = new Blob(target.bufferedChunks, {
-				type: getRecorderMediaType(this.activeRecorderFormat),
-			});
-			// Temporary segment: a plain adapter write skips
-			// createBinary's synchronous vault-index update and event
-			// dispatch on the hot recording path (the watcher
-			// reconciles the file later); final files use createBinary
-			await this.app.vault.adapter.writeBinary(
-				segmentPath,
-				await combined.arrayBuffer(),
-			);
-			target.segmentPaths.push(segmentPath);
-		}
-
-		target.segmentIndex = segmentIndex;
-		target.bufferedChunks = [];
-		target.bufferedBytes = 0;
-		// A successful flush ends the failure streak: re-arm the Notice
-		this.writeFailureNotified = false;
 	}
 
 	private async buildTrackBlob(
@@ -1349,14 +1223,14 @@ export class RecordingManager {
 	): Promise<string[]> {
 		const fileLinks: string[] = [];
 		if (this.isMobileRecording) {
-			await this.flushChunkBuffer(target);
+			await this.writeQueue.flushChunkBuffer(target);
 			fileLinks.push(...target.segmentPaths);
 			return fileLinks;
 		}
 
 		if (this.isWavPcmRecording) {
 			this.updateSaveProgress(20, 'Flushing buffers...');
-			await this.flushPcmBuffer(target);
+			await this.writeQueue.flushPcmBuffer(target);
 			if (target.segmentPaths.length === 0) {
 				return fileLinks;
 			}
@@ -1403,7 +1277,7 @@ export class RecordingManager {
 		fileName: string,
 		reportProgress: boolean = false,
 	): Promise<string | null> {
-		await this.flushChunkBuffer(target);
+		await this.writeQueue.flushChunkBuffer(target);
 		const filePath = await this.finalizeSegmentsToFile(
 			target.segmentPaths,
 			fileName,
