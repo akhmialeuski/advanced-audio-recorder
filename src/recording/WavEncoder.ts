@@ -40,7 +40,7 @@ export function getWavHeaderInfo(
 /**
  * WAV header size in bytes.
  */
-const WAV_HEADER_SIZE = 44;
+export const WAV_HEADER_SIZE = 44;
 
 /**
  * Bits per sample for 16-bit PCM.

@@ -23,6 +23,8 @@ jest.mock('obsidian', () => ({
 
 jest.mock('../../src/recording/WavEncoder', () => ({
 	assembleWavFromPcmSegments: jest.fn().mockReturnValue(new ArrayBuffer(44)),
+	createWavHeader: jest.fn().mockReturnValue(new ArrayBuffer(44)),
+	WAV_HEADER_SIZE: 44,
 }));
 
 jest.mock('../../src/recording/AudioEncoder', () => ({
@@ -270,6 +272,39 @@ describe('RecordingFinalizer', () => {
 	});
 
 	describe('assembleWavFile', () => {
+		it('should stream segments into one preallocated buffer when stat is available', async () => {
+			const adapter = mockApp.vault.adapter as unknown as Record<
+				string,
+				jest.Mock
+			>;
+			adapter.stat = jest.fn().mockResolvedValue({ size: 3 });
+			adapter.readBinary
+				.mockResolvedValueOnce(new Uint8Array([1, 2, 3]).buffer)
+				.mockResolvedValueOnce(new Uint8Array([4, 5, 6]).buffer);
+			const target = createTarget({
+				segmentPaths: ['pcm1.tmp', 'pcm2.tmp'],
+			});
+
+			await finalizer.assembleWavFile(target, '/final.wav');
+
+			const written = (mockApp.vault.createBinary as jest.Mock).mock
+				.calls[0][1] as ArrayBuffer;
+			// 44-byte header + 6 PCM bytes in capture order
+			expect(written.byteLength).toBe(50);
+			expect(Array.from(new Uint8Array(written).slice(44))).toEqual([
+				1, 2, 3, 4, 5, 6,
+			]);
+			const { createWavHeader } = jest.requireMock(
+				'../../src/recording/WavEncoder',
+			);
+			expect(createWavHeader).toHaveBeenCalledWith(1, 44100, 6);
+			// The single-allocation path never calls the assembling helper
+			const { assembleWavFromPcmSegments } = jest.requireMock(
+				'../../src/recording/WavEncoder',
+			);
+			expect(assembleWavFromPcmSegments).not.toHaveBeenCalled();
+		});
+
 		it('should assemble segments and remove them', async () => {
 			const target = createTarget({
 				segmentPaths: ['pcm1.tmp', 'pcm2.tmp'],
