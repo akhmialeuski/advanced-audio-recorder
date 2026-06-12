@@ -40,10 +40,13 @@ jest.mock('../../src/recording/AudioEncoder', () => ({
 // Mock mediabunny Conversion pipeline
 const mockConversionExecute = jest.fn().mockResolvedValue(undefined);
 const mockConversionInit = jest.fn();
+const mockGetPrimaryAudioTrack = jest.fn();
 const mockConvertedBuffer = new ArrayBuffer(64);
 
 jest.mock('mediabunny', () => ({
-	Input: jest.fn(),
+	Input: jest.fn().mockImplementation(() => ({
+		getPrimaryAudioTrack: (): unknown => mockGetPrimaryAudioTrack(),
+	})),
 	Output: jest.fn().mockImplementation(() => ({})),
 	BlobSource: jest.fn(),
 	BufferTarget: jest.fn().mockImplementation(() => ({
@@ -146,8 +149,17 @@ describe('AudioFormatConverter', () => {
 			Promise.resolve({
 				execute: mockConversionExecute,
 				onProgress: undefined,
+				isValid: true,
+				discardedTracks: [],
 			}),
 		);
+
+		// Default input track: opus audio, the typical intermediate
+		// recording codec
+		mockGetPrimaryAudioTrack.mockResolvedValue({
+			codec: 'opus',
+			isAudioTrack: (): boolean => true,
+		});
 	});
 
 	// ---------------------------------------------------------------
@@ -461,6 +473,118 @@ describe('AudioFormatConverter', () => {
 
 			instance.onProgress!(1);
 			expect(progressFn).toHaveBeenCalledWith(100);
+		});
+
+		it('should remux without bitrate when the input codec matches the target', async () => {
+			const blob = new Blob(['test'], { type: 'audio/webm' });
+
+			// Input track is opus (default mock); ogg targets opus too
+			await convertBlobToFormat(blob, 'ogg', 128000);
+
+			expect(mockConversionInit).toHaveBeenCalledWith(
+				expect.objectContaining({
+					audio: { codec: 'opus' },
+				}),
+			);
+			expect(mockConversionExecute).toHaveBeenCalledTimes(1);
+		});
+
+		it('should fall back when the audio track is discarded', async () => {
+			const { encodeAudioBuffer } = jest.requireMock(
+				'../../src/recording/AudioEncoder',
+			);
+			// Conversion.init does not throw for codec problems: the
+			// track is discarded and the output would contain no audio
+			mockConversionInit.mockImplementationOnce(() =>
+				Promise.resolve({
+					execute: mockConversionExecute,
+					isValid: true,
+					discardedTracks: [
+						{
+							track: { isAudioTrack: (): boolean => true },
+							reason: 'no_encodable_target_codec',
+						},
+					],
+				}),
+			);
+			const warnSpy = jest
+				.spyOn(console, 'warn')
+				.mockImplementation(() => undefined);
+			const blob = new Blob(['test'], { type: 'audio/webm' });
+
+			await convertBlobToFormat(blob, 'mp4', 128000);
+
+			expect(mockConversionExecute).not.toHaveBeenCalled();
+			expect(encodeAudioBuffer).toHaveBeenCalledWith(
+				expect.anything(),
+				{ format: 'mp4', bitrate: 128000 },
+				undefined,
+			);
+			expect(warnSpy).toHaveBeenCalled();
+			warnSpy.mockRestore();
+		});
+
+		it('should ignore discarded non-audio tracks', async () => {
+			// A video track in the source container is legitimately
+			// dropped when converting to an audio-only format
+			mockConversionInit.mockImplementationOnce(() =>
+				Promise.resolve({
+					execute: mockConversionExecute,
+					isValid: true,
+					discardedTracks: [
+						{
+							track: { isAudioTrack: (): boolean => false },
+							reason: 'max_track_count_of_type_reached',
+						},
+					],
+				}),
+			);
+			const blob = new Blob(['test'], { type: 'audio/mp4' });
+
+			const result = await convertBlobToFormat(blob, 'mp3', 192000);
+
+			expect(mockConversionExecute).toHaveBeenCalledTimes(1);
+			expect(result.type).toBe('audio/mp3');
+		});
+
+		it('should fall back when the conversion is invalid', async () => {
+			const { encodeAudioBuffer } = jest.requireMock(
+				'../../src/recording/AudioEncoder',
+			);
+			mockConversionInit.mockImplementationOnce(() =>
+				Promise.resolve({
+					execute: mockConversionExecute,
+					isValid: false,
+					discardedTracks: [],
+				}),
+			);
+			const warnSpy = jest
+				.spyOn(console, 'warn')
+				.mockImplementation(() => undefined);
+			const blob = new Blob(['test'], { type: 'audio/webm' });
+
+			await convertBlobToFormat(blob, 'aac', 256000);
+
+			expect(mockConversionExecute).not.toHaveBeenCalled();
+			expect(encodeAudioBuffer).toHaveBeenCalled();
+			warnSpy.mockRestore();
+		});
+
+		it('should fall back when the input has no audio track', async () => {
+			const { encodeAudioBuffer } = jest.requireMock(
+				'../../src/recording/AudioEncoder',
+			);
+			mockGetPrimaryAudioTrack.mockResolvedValueOnce(null);
+			const warnSpy = jest
+				.spyOn(console, 'warn')
+				.mockImplementation(() => undefined);
+			const blob = new Blob(['test'], { type: 'audio/webm' });
+
+			await convertBlobToFormat(blob, 'mp4', 128000);
+
+			expect(mockConversionInit).not.toHaveBeenCalled();
+			expect(encodeAudioBuffer).toHaveBeenCalled();
+			warnSpy.mockRestore();
 		});
 
 		it('should fall back to decode and re-encode when conversion fails', async () => {

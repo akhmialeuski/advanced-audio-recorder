@@ -145,13 +145,19 @@ export async function decodeAudioBlob(
 /**
  * Converts a compressed audio blob to the target format using the
  * streaming mediabunny Conversion pipeline: audio is transcoded in
- * chunks without materializing the whole recording as PCM in memory,
- * and matching codecs are remuxed without re-encoding.
+ * chunks without materializing the whole recording as PCM in memory.
+ * When the input codec already matches the target codec the packets
+ * are copied without re-encoding (remux); the matching input was
+ * already encoded at the bitrate configured for the session, so the
+ * remux preserves it exactly.
  * @param recordedBlob - Intermediate compressed blob
  * @param targetFormat - Desired output format
  * @param bitrate - Bitrate in bits per second
  * @param onProgress - Optional encoding progress callback (0-100)
  * @returns Re-encoded blob in the target format
+ * @throws Error when the target format has no codec mapping, the
+ * input has no audio track, or the conversion cannot process the
+ * audio track (the caller falls back to decode and re-encode)
  */
 async function convertBlobWithConversion(
 	recordedBlob: Blob,
@@ -159,30 +165,55 @@ async function convertBlobWithConversion(
 	bitrate: number,
 	onProgress?: FormatProgressCallback,
 ): Promise<Blob> {
+	const codec = FORMAT_CODEC_MAP[targetFormat] as
+		| 'opus'
+		| 'aac'
+		| 'flac'
+		| 'mp3'
+		| undefined;
+	if (!codec) {
+		throw new Error(`No codec mapping for format "${targetFormat}"`);
+	}
+
 	await ensureEncoderRegistered(targetFormat);
 
 	const input = new Input({
 		source: new BlobSource(recordedBlob),
 		formats: ALL_FORMATS,
 	});
+	const audioTrack = await input.getPrimaryAudioTrack();
+	if (!audioTrack) {
+		throw new Error('Input contains no audio track');
+	}
+
 	const target = new BufferTarget();
 	const output = new Output({
 		format: createOutputFormat(targetFormat),
 		target,
 	});
 
+	// Omitting bitrate lets mediabunny copy packets (remux) when the
+	// input codec matches the target; setting it always forces a
+	// re-encode per the Conversion contract
 	const conversion = await Conversion.init({
 		input,
 		output,
-		audio: {
-			codec: FORMAT_CODEC_MAP[targetFormat] as
-				| 'opus'
-				| 'aac'
-				| 'flac'
-				| 'mp3',
-			bitrate,
-		},
+		audio: audioTrack.codec === codec ? { codec } : { codec, bitrate },
 	});
+
+	// Conversion.init does not throw for codec problems: it silently
+	// discards the track (undecodable_source_codec or
+	// no_encodable_target_codec) and would emit a container without
+	// audio. Fail here instead, so the caller's decode-and-re-encode
+	// fallback processes the input.
+	const audioDiscarded = conversion.discardedTracks.some((discarded) =>
+		discarded.track.isAudioTrack(),
+	);
+	if (!conversion.isValid || audioDiscarded) {
+		throw new Error(
+			`Conversion to "${targetFormat}" cannot process the input audio track`,
+		);
+	}
 
 	if (onProgress) {
 		let lastPercent = -1;
