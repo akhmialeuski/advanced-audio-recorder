@@ -58,10 +58,15 @@ const context = await esbuild.context({
 		"@lezer/lr",
 		...builtins],
 	format: "cjs",
-	target: "es2020",
+	// Obsidian desktop runs on a current Electron/Chromium; es2022
+	// avoids transpiling class fields and top-level await helpers
+	target: "es2022",
 	logLevel: "info",
 	sourcemap: prod ? false : "inline",
 	treeShaking: true,
+	// Minified production bundle loads faster; the source stays
+	// readable in this repository
+	minify: prod,
 	outfile: "dist/main.js",
 	plugins: [copyStaticFiles],
 });
