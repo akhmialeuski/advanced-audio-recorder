@@ -13,11 +13,9 @@ import {
 	getExpectedCodec,
 	buildMimeType,
 	validateRecordingCapability,
-	FORMAT_WAV,
-	FORMAT_WEBM,
-	FORMAT_OGG,
 } from '../recording/AudioCapabilityDetector';
 import type { CodecSupportEntry } from '../recording/AudioCapabilityDetector';
+import { FORMAT_WAV, FORMAT_WEBM, FORMAT_OGG } from '../constants';
 
 /**
  * Serialized plugin settings for diagnostics.

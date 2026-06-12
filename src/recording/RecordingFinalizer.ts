@@ -28,11 +28,11 @@ import {
 } from './RecordingFileManager';
 import {
 	isOfflineOnlyFormat,
-	getRecorderMediaType,
 	convertBlobToWav,
 	convertBlobToFormat,
 	mergeAudioTracks,
 } from './AudioFormatConverter';
+import { buildMimeType } from './AudioCapabilityDetector';
 import { buildPartFileName } from './AudioSplitter';
 import { insertFileLinks } from './NoteInserter';
 import type { TrackWriteQueue } from './TrackWriteQueue';
@@ -385,7 +385,7 @@ export class RecordingFinalizer {
 			segmentPaths.map((path) => this.app.vault.adapter.readBinary(path)),
 		);
 		const blob = new Blob(segmentBuffers, {
-			type: getRecorderMediaType(session.recorderFormat),
+			type: buildMimeType(session.recorderFormat),
 		});
 		if (blob.size === 0) {
 			return null;
@@ -577,7 +577,7 @@ export class RecordingFinalizer {
 			return null;
 		}
 
-		const type = getRecorderMediaType(session.recorderFormat);
+		const type = buildMimeType(session.recorderFormat);
 		const segmentBuffers = await Promise.all(
 			target.segmentPaths.map((path) =>
 				this.app.vault.adapter.readBinary(path),

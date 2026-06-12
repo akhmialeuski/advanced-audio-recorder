@@ -127,7 +127,6 @@ if (!Blob.prototype.arrayBuffer) {
 import {
 	resolveRecorderFormat,
 	isOfflineOnlyFormat,
-	getRecorderMediaType,
 	convertBlobToWav,
 	convertBlobToFormat,
 	decodeAudioBlob,
@@ -295,31 +294,6 @@ describe('AudioFormatConverter', () => {
 			);
 			isOfflineEncodingSupported.mockReturnValueOnce(false);
 			expect(isOfflineOnlyFormat('unknownformat', 'webm')).toBe(false);
-		});
-	});
-
-	// ---------------------------------------------------------------
-	// getRecorderMediaType
-	// ---------------------------------------------------------------
-	describe('getRecorderMediaType', () => {
-		it('should return correct MIME type for webm', () => {
-			expect(getRecorderMediaType('webm')).toBe('audio/webm');
-		});
-
-		it('should return correct MIME type for ogg', () => {
-			expect(getRecorderMediaType('ogg')).toBe('audio/ogg');
-		});
-
-		it('should return correct MIME type for mp4', () => {
-			expect(getRecorderMediaType('mp4')).toBe('audio/mp4');
-		});
-
-		it('should return correct MIME type for wav', () => {
-			expect(getRecorderMediaType('wav')).toBe('audio/wav');
-		});
-
-		it('should handle arbitrary format string', () => {
-			expect(getRecorderMediaType('flac')).toBe('audio/flac');
 		});
 	});
 

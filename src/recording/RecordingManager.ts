@@ -23,14 +23,14 @@ import {
 	DESKTOP_FLUSH_THRESHOLD_BYTES,
 	DEFAULT_SPLIT_CHUNK_MINUTES,
 	DEFAULT_SPLIT_PART_SUFFIX,
+	DEFAULT_BITRATE,
+	FORMAT_WEBM,
+	FORMAT_WAV,
 } from '../constants';
 import { DebugLogger } from '../utils/DebugLogger';
 import {
 	buildMimeType,
 	validateRecordingCapability,
-	DEFAULT_BITRATE,
-	FORMAT_WEBM,
-	FORMAT_WAV,
 } from './AudioCapabilityDetector';
 import { PcmStreamRecorder } from './PcmStreamRecorder';
 import { resolveRecorderFormat } from './AudioFormatConverter';

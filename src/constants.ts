@@ -51,6 +51,12 @@ export const DESKTOP_FLUSH_THRESHOLD_BYTES = 50 * 1024 * 1024;
 /** Common MIME type prefix for audio formats. */
 export const MIME_TYPE_AUDIO_PREFIX = 'audio/';
 
+/** Default audio sample rate in Hz. */
+export const DEFAULT_SAMPLE_RATE = 44100;
+
+/** Default encoder bitrate in bits per second. */
+export const DEFAULT_BITRATE = 128000;
+
 /** Seconds in one minute. */
 export const SECONDS_PER_MINUTE = 60;
 

@@ -13,7 +13,7 @@ import {
 	FORMAT_MP4,
 	DEFAULT_SAMPLE_RATE,
 	DEFAULT_BITRATE,
-} from 'src/recording/AudioCapabilityDetector';
+} from 'src/constants';
 
 // ---------------------------------------------------------------------------
 // Helpers

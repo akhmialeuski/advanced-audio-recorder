@@ -14,7 +14,8 @@ import type { RecordingSessionConfig, RecordingTarget } from '../types';
 import type { AudioRecorderSettings } from '../settings/Settings';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { resolveUniquePath } from './RecordingFileManager';
-import { buildOutputBlob, getRecorderMediaType } from './AudioFormatConverter';
+import { buildOutputBlob } from './AudioFormatConverter';
+import { buildMimeType } from './AudioCapabilityDetector';
 import { totalByteLength } from './AudioSplitter';
 import { SessionJournal } from './SessionJournal';
 
@@ -148,7 +149,7 @@ export class TrackWriteQueue {
 			);
 			const outputBlob = await buildOutputBlob(
 				target.bufferedChunks,
-				getRecorderMediaType(session.recorderFormat),
+				buildMimeType(session.recorderFormat),
 				this.settings.recordingFormat,
 			);
 			await this.app.vault.createBinary(
@@ -165,7 +166,7 @@ export class TrackWriteQueue {
 				this.settings,
 			);
 			const combined = new Blob(target.bufferedChunks, {
-				type: getRecorderMediaType(session.recorderFormat),
+				type: buildMimeType(session.recorderFormat),
 			});
 			// Temporary segment: a plain adapter write skips
 			// createBinary's synchronous vault-index update and event

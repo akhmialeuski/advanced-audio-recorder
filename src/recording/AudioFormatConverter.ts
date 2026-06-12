@@ -23,13 +23,14 @@ import {
 	createOutputFormat,
 	FORMAT_CODEC_MAP,
 } from './AudioEncoder';
-import { MIME_TYPE_AUDIO_PREFIX, PLUGIN_LOG_PREFIX } from '../constants';
 import {
-	buildMimeType,
+	MIME_TYPE_AUDIO_PREFIX,
+	PLUGIN_LOG_PREFIX,
 	FORMAT_WEBM,
 	FORMAT_OGG,
 	FORMAT_WAV,
-} from './AudioCapabilityDetector';
+} from '../constants';
+import { buildMimeType } from './AudioCapabilityDetector';
 
 /**
  * Progress callback receiving percentage (0-100).
@@ -94,15 +95,6 @@ export function isOfflineOnlyFormat(
 		activeRecorderFormat !== format &&
 		isOfflineEncodingSupported(format)
 	);
-}
-
-/**
- * Returns the MIME type string for the active recorder format.
- * @param activeRecorderFormat - Format currently used by MediaRecorder
- * @returns MIME type string (e.g., "audio/webm")
- */
-export function getRecorderMediaType(activeRecorderFormat: string): string {
-	return `${MIME_TYPE_AUDIO_PREFIX}${activeRecorderFormat}`;
 }
 
 /**
