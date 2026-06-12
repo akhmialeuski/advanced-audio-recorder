@@ -34,6 +34,7 @@ import {
 } from '../recording/AudioSplitter';
 import { updateLinksInVault } from '../utils/LinkUpdater';
 import type { VaultLinkUpdateResult } from '../utils/LinkUpdater';
+import { delay } from '../utils/TimeUtils';
 import type {
 	AudioRecorderSettings,
 	ConversionLinkAction,
@@ -543,10 +544,8 @@ export class SplitModal extends Modal {
 					path: partPaths[i],
 					file: created instanceof TFile ? created : null,
 				});
-				// Yield to the UI between parts: MP3 encoding is synchronous
-				await new Promise<void>((resolve) =>
-					activeWindow.setTimeout(resolve, 0),
-				);
+				// Yield to the UI between parts so the progress text repaints
+				await delay(0);
 			}
 		} catch (error) {
 			for (const part of written) {
