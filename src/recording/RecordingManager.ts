@@ -755,6 +755,23 @@ export class RecordingManager {
 						);
 					}
 					fileLinks.push(filePath);
+				} else {
+					// An empty merged blob writes no final file; the
+					// segment files are the only copy of the captured
+					// audio, so they are kept and reported instead of
+					// being silently orphaned in the vault
+					const keptPaths = this.chunkTargets.flatMap(
+						(target) => target.segmentPaths,
+					);
+					if (keptPaths.length > 0) {
+						console.error(
+							`${PLUGIN_LOG_PREFIX} Merged output was empty; temporary segment files were kept:`,
+							keptPaths,
+						);
+						new Notice(
+							`Merged recording was empty. Temporary track files were kept: ${keptPaths.join(', ')}`,
+						);
+					}
 				}
 			}
 		} else {

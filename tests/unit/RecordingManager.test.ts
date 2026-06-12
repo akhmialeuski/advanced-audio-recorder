@@ -785,6 +785,73 @@ describe('RecordingManager', () => {
 		});
 	});
 
+	describe('merged output with no audio', () => {
+		it('should keep and report segment files when the merged blob is empty', async () => {
+			const { Platform } = jest.requireMock('obsidian');
+			Platform.isMobile = false;
+			Platform.isMobileApp = false;
+
+			mockSettings = {
+				...DEFAULT_SETTINGS,
+				enableMultiTrack: true,
+				outputMode: 'single',
+				recordingFormat: 'wav',
+			};
+			manager = new RecordingManager(
+				mockApp,
+				mockSettings,
+				statusChangeCallback,
+			);
+
+			(global as Record<string, unknown>).MediaRecorder = jest.fn();
+			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
+				jest
+					.fn()
+					.mockImplementation(
+						(mime: string) => mime === 'audio/webm',
+					);
+
+			const { getAudioStreams } = jest.requireMock(
+				'../../src/recording/AudioStreamHandler',
+			);
+			getAudioStreams.mockResolvedValue({
+				streams: [
+					{ getTracks: () => [{ stop: jest.fn() }] },
+					{ getTracks: () => [{ stop: jest.fn() }] },
+				],
+				trackOrder: [],
+			});
+
+			// The mixed render encodes to an empty blob: nothing to save
+			const { bufferToWave } = jest.requireMock(
+				'../../src/recording/WavEncoder',
+			);
+			bufferToWave.mockReturnValueOnce(new Blob([]));
+
+			await manager.startRecording();
+
+			const pcmData = new Int16Array([100, -100, 200, -200]).buffer;
+			capturedPcmChunkCallback?.(pcmData);
+			await Promise.resolve();
+
+			await manager.stopRecording();
+
+			// No final file, no cleanup of the only remaining audio copy
+			expect(mockApp.vault.createBinary).not.toHaveBeenCalledWith(
+				expect.stringMatching(/multitrack-.*\.wav$/),
+				expect.anything(),
+			);
+			expect(mockApp.vault.adapter.remove).not.toHaveBeenCalled();
+
+			const { Notice } = jest.requireMock('obsidian');
+			const keptNotice = (Notice as jest.Mock).mock.calls.find((call) =>
+				String(call[0]).includes('Temporary track files were kept'),
+			);
+			expect(keptNotice).toBeDefined();
+			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+		});
+	});
+
 	describe('track file base names', () => {
 		const setupTwoTrackRecording = (
 			trackOrder: { trackNumber: number; deviceId: string }[],
