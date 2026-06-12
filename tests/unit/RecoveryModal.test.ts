@@ -41,6 +41,7 @@ jest.mock('obsidian', () => ({
 		open = jest.fn();
 		close = jest.fn();
 	},
+	Notice: jest.fn(),
 	Setting: class {
 		setName(): this {
 			return this;
@@ -189,5 +190,46 @@ describe('RecoveryModal', () => {
 		await Promise.resolve();
 
 		expect(onRecover).toHaveBeenCalledTimes(1);
+	});
+
+	it('should contain a failing action, notify, and still close', async () => {
+		const { Notice } = jest.requireMock('obsidian');
+		const errorSpy = jest.spyOn(console, 'error').mockImplementation();
+		onRecover.mockRejectedValue(new Error('vault unavailable'));
+		const modal = openModal([createSession()]);
+
+		clickButton('Recover audio');
+		// Drain the rejected action and the catch/finally microtasks
+		await Promise.resolve();
+		await Promise.resolve();
+		await Promise.resolve();
+
+		// The click handler fires-and-forgets the action: a rejection
+		// must be contained here, not surface as an unhandled rejection
+		expect(errorSpy).toHaveBeenCalledWith(
+			expect.stringContaining('Recovery action failed'),
+			expect.objectContaining({ message: 'vault unavailable' }),
+		);
+		expect(Notice).toHaveBeenCalledWith(
+			'The recovery action failed. Check the console for details.',
+		);
+		expect(modal.close).toHaveBeenCalled();
+		errorSpy.mockRestore();
+	});
+
+	it('should accept a new action after a failed one', async () => {
+		const errorSpy = jest.spyOn(console, 'error').mockImplementation();
+		onRecover.mockRejectedValue(new Error('vault unavailable'));
+		openModal([createSession()]);
+
+		clickButton('Recover audio');
+		await Promise.resolve();
+		await Promise.resolve();
+		await Promise.resolve();
+		clickButton('Discard');
+		await Promise.resolve();
+
+		expect(onDiscard).toHaveBeenCalledTimes(1);
+		errorSpy.mockRestore();
 	});
 });

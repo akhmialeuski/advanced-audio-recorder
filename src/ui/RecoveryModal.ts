@@ -7,7 +7,8 @@
  * @module ui/RecoveryModal
  */
 
-import { App, Modal, Setting } from 'obsidian';
+import { App, Modal, Notice, Setting } from 'obsidian';
+import { PLUGIN_LOG_PREFIX } from '../constants';
 import type { JournalSession } from '../recording/SessionJournal';
 
 /**
@@ -103,7 +104,10 @@ export class RecoveryModal extends Modal {
 	}
 
 	/**
-	 * Runs an action exactly once and closes the modal afterwards.
+	 * Runs an action exactly once and closes the modal afterwards. A
+	 * failing action is contained here: the call sites are
+	 * fire-and-forget click handlers, where a rejection would surface
+	 * as an unhandled rejection while the modal closes silently.
 	 * @param action - Recover or discard callback
 	 */
 	private async runAction(action: () => Promise<void>): Promise<void> {
@@ -113,6 +117,14 @@ export class RecoveryModal extends Modal {
 		this.isRunning = true;
 		try {
 			await action();
+		} catch (error) {
+			console.error(
+				`${PLUGIN_LOG_PREFIX} Recovery action failed:`,
+				error,
+			);
+			new Notice(
+				'The recovery action failed. Check the console for details.',
+			);
 		} finally {
 			this.isRunning = false;
 			this.close();
