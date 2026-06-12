@@ -12,6 +12,7 @@ import {
 	ALL_FORMATS,
 	Conversion,
 } from 'mediabunny';
+import type { AudioCodec } from 'mediabunny';
 import type { RecordingTarget } from '../types';
 import type { AudioRecorderSettings } from '../settings/Settings';
 import { bufferToWave } from './WavEncoder';
@@ -165,12 +166,7 @@ async function convertBlobWithConversion(
 	bitrate: number,
 	onProgress?: FormatProgressCallback,
 ): Promise<Blob> {
-	const codec = FORMAT_CODEC_MAP[targetFormat] as
-		| 'opus'
-		| 'aac'
-		| 'flac'
-		| 'mp3'
-		| undefined;
+	const codec: AudioCodec | undefined = FORMAT_CODEC_MAP[targetFormat];
 	if (!codec) {
 		throw new Error(`No codec mapping for format "${targetFormat}"`);
 	}
@@ -194,11 +190,14 @@ async function convertBlobWithConversion(
 
 	// Omitting bitrate lets mediabunny copy packets (remux) when the
 	// input codec matches the target; setting it always forces a
-	// re-encode per the Conversion contract
+	// re-encode per the Conversion contract. Discarded tracks are
+	// handled explicitly below, so mediabunny's own console warnings
+	// about them are disabled.
 	const conversion = await Conversion.init({
 		input,
 		output,
 		audio: audioTrack.codec === codec ? { codec } : { codec, bitrate },
+		showWarnings: false,
 	});
 
 	// Conversion.init does not throw for codec problems: it silently

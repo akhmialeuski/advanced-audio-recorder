@@ -16,7 +16,7 @@ import {
 	Mp3OutputFormat,
 	canEncodeAudio,
 } from 'mediabunny';
-import type { OutputFormat } from 'mediabunny';
+import type { OutputFormat, AudioCodec } from 'mediabunny';
 import { bufferToWave } from './WavEncoder';
 import { EncodingError } from '../errors';
 import {
@@ -55,7 +55,7 @@ const WEBCODECS_FORMATS = new Set([
 ]);
 
 /** Codec used per format in Mediabunny AudioBufferSource. */
-export const FORMAT_CODEC_MAP: Record<string, string> = {
+export const FORMAT_CODEC_MAP: Record<string, AudioCodec> = {
 	[FORMAT_WEBM]: 'opus',
 	[FORMAT_OGG]: 'opus',
 	[FORMAT_MP4]: 'aac',
@@ -147,7 +147,7 @@ async function encodeWithMediabunny(
 	onProgress?: ProgressCallback,
 ): Promise<Blob> {
 	const { format, bitrate } = options;
-	const codec = FORMAT_CODEC_MAP[format];
+	const codec: AudioCodec | undefined = FORMAT_CODEC_MAP[format];
 
 	if (!codec) {
 		throw new EncodingError(`No codec mapping for "${format}"`, format);
@@ -161,7 +161,7 @@ async function encodeWithMediabunny(
 		const output = new Output({ format: outputFormat, target });
 
 		const audioSource = new AudioBufferSource({
-			codec: codec as 'opus' | 'aac' | 'flac' | 'mp3',
+			codec,
 			bitrate,
 		});
 		output.addAudioTrack(audioSource);
@@ -195,23 +195,22 @@ async function encodeWithMediabunny(
 
 /**
  * Checks whether offline encoding is supported for the given format.
- * WAV and MP3 are always available; WebCodecs formats require
- * AudioEncoder global; FLAC depends on the Mediabunny extension.
+ * WAV is always available; MP3 and FLAC are always available through
+ * the bundled Mediabunny extension encoders; WebCodecs formats
+ * require the AudioEncoder global.
  * @param format - Audio format to check
  * @returns true if offline encoding to this format is possible
  */
 export function isOfflineEncodingSupported(format: string): boolean {
-	if (format === FORMAT_WAV) {
-		return true;
-	}
-	if (format === FORMAT_MP3) {
+	if (
+		format === FORMAT_WAV ||
+		format === FORMAT_MP3 ||
+		format === FORMAT_FLAC
+	) {
 		return true;
 	}
 	if (WEBCODECS_FORMATS.has(format)) {
 		return typeof AudioEncoder !== 'undefined';
-	}
-	if (format === FORMAT_FLAC) {
-		return true;
 	}
 	return false;
 }

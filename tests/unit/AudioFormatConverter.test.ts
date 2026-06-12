@@ -431,6 +431,9 @@ describe('AudioFormatConverter', () => {
 			expect(mockConversionInit).toHaveBeenCalledWith(
 				expect.objectContaining({
 					audio: { codec: 'aac', bitrate: 128000 },
+					// Discarded tracks are handled by the plugin, so
+					// mediabunny's own console warnings are disabled
+					showWarnings: false,
 				}),
 			);
 			expect(mockConversionExecute).toHaveBeenCalledTimes(1);
@@ -484,6 +487,7 @@ describe('AudioFormatConverter', () => {
 			expect(mockConversionInit).toHaveBeenCalledWith(
 				expect.objectContaining({
 					audio: { codec: 'opus' },
+					showWarnings: false,
 				}),
 			);
 			expect(mockConversionExecute).toHaveBeenCalledTimes(1);
