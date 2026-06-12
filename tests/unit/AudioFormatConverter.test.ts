@@ -888,6 +888,87 @@ describe('AudioFormatConverter', () => {
 			).rejects.toThrow('No audio data recorded');
 		});
 
+		it('should close the AudioContext when no audio data is recorded', async () => {
+			const targets = [createMockTarget('track1')];
+			const buildTrackBlob = jest.fn().mockResolvedValue(null);
+
+			await expect(
+				mergeAudioTracks(
+					targets,
+					{ ...DEFAULT_SETTINGS, recordingFormat: 'webm' },
+					false,
+					jest.fn(),
+					buildTrackBlob,
+				),
+			).rejects.toThrow('No audio data recorded');
+
+			const contextInstance = (
+				global.AudioContext as unknown as jest.Mock
+			).mock.results[0].value as { close: jest.Mock };
+			expect(contextInstance.close).toHaveBeenCalled();
+		});
+
+		it('should close the AudioContext when decoding fails', async () => {
+			(
+				global.AudioContext as unknown as jest.Mock
+			).mockImplementationOnce(() => ({
+				decodeAudioData: jest
+					.fn()
+					.mockRejectedValue(new Error('corrupted track')),
+				destination: {},
+				close: jest.fn().mockResolvedValue(undefined),
+				sampleRate: 44100,
+			}));
+			const targets = [createMockTarget('track1')];
+			const buildTrackBlob = jest
+				.fn()
+				.mockResolvedValue(new Blob(['audio'], { type: 'audio/webm' }));
+
+			await expect(
+				mergeAudioTracks(
+					targets,
+					{ ...DEFAULT_SETTINGS, recordingFormat: 'webm' },
+					false,
+					jest.fn(),
+					buildTrackBlob,
+				),
+			).rejects.toThrow('corrupted track');
+
+			const contextInstance = (
+				global.AudioContext as unknown as jest.Mock
+			).mock.results[0].value as { close: jest.Mock };
+			expect(contextInstance.close).toHaveBeenCalled();
+		});
+
+		it('should not mask the merge error when closing the context fails', async () => {
+			const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
+			(
+				global.AudioContext as unknown as jest.Mock
+			).mockImplementationOnce(() => ({
+				decodeAudioData: jest
+					.fn()
+					.mockResolvedValue(createMockAudioBuffer()),
+				destination: {},
+				close: jest.fn().mockRejectedValue(new Error('close failed')),
+				sampleRate: 44100,
+			}));
+			const targets = [createMockTarget('track1')];
+			const buildTrackBlob = jest.fn().mockResolvedValue(null);
+
+			await expect(
+				mergeAudioTracks(
+					targets,
+					{ ...DEFAULT_SETTINGS, recordingFormat: 'webm' },
+					false,
+					jest.fn(),
+					buildTrackBlob,
+				),
+			).rejects.toThrow('No audio data recorded');
+
+			expect(warnSpy).toHaveBeenCalled();
+			warnSpy.mockRestore();
+		});
+
 		it('should skip null blobs and merge remaining valid tracks', async () => {
 			const targets = [
 				createMockTarget('track1'),

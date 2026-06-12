@@ -339,51 +339,63 @@ export async function mergeAudioTracks(
 	onProgress?: (percent: number, description: string) => void,
 ): Promise<Blob> {
 	const audioContext = new AudioContext();
-	const buffers = await Promise.all(
-		chunkTargets.map(async (target) => {
-			const blob = isWavPcmRecording
-				? await buildPcmTrackWavBlob(target)
-				: await buildTrackBlob(target);
-			if (!blob) {
-				return null;
-			}
-			const arrayBuffer = await blob.arrayBuffer();
-			return audioContext.decodeAudioData(arrayBuffer);
-		}),
-	);
+	let renderedBuffer: AudioBuffer;
+	try {
+		const buffers = await Promise.all(
+			chunkTargets.map(async (target) => {
+				const blob = isWavPcmRecording
+					? await buildPcmTrackWavBlob(target)
+					: await buildTrackBlob(target);
+				if (!blob) {
+					return null;
+				}
+				const arrayBuffer = await blob.arrayBuffer();
+				return audioContext.decodeAudioData(arrayBuffer);
+			}),
+		);
 
-	const validBuffers = buffers.filter(
-		(buffer): buffer is AudioBuffer => buffer !== null,
-	);
-	if (validBuffers.length === 0) {
-		throw new Error('No audio data recorded');
+		const validBuffers = buffers.filter(
+			(buffer): buffer is AudioBuffer => buffer !== null,
+		);
+		if (validBuffers.length === 0) {
+			throw new Error('No audio data recorded');
+		}
+
+		const longestDuration = Math.max(
+			...validBuffers.map((buffer) => buffer.duration),
+		);
+		// Mix in mono when every input is mono: a stereo render would just
+		// duplicate the mix into both channels while doubling encode time
+		// and file size. Any stereo input keeps the stereo render.
+		const channelCount = Math.min(
+			2,
+			Math.max(...validBuffers.map((buffer) => buffer.numberOfChannels)),
+		);
+		const offlineContext = new OfflineAudioContext(
+			channelCount,
+			audioContext.sampleRate * longestDuration,
+			audioContext.sampleRate,
+		);
+
+		validBuffers.forEach((buffer) => {
+			const source = offlineContext.createBufferSource();
+			source.buffer = buffer;
+			source.connect(offlineContext.destination);
+			source.start(0);
+		});
+
+		renderedBuffer = await offlineContext.startRendering();
+	} finally {
+		// Close on every path: empty input, a failed decode, and a
+		// failed render otherwise leak the AudioContext. A close failure
+		// must not mask the original error.
+		await audioContext.close().catch((error: unknown) => {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Failed to close AudioContext after track merge:`,
+				error,
+			);
+		});
 	}
-
-	const longestDuration = Math.max(
-		...validBuffers.map((buffer) => buffer.duration),
-	);
-	// Mix in mono when every input is mono: a stereo render would just
-	// duplicate the mix into both channels while doubling encode time
-	// and file size. Any stereo input keeps the stereo render.
-	const channelCount = Math.min(
-		2,
-		Math.max(...validBuffers.map((buffer) => buffer.numberOfChannels)),
-	);
-	const offlineContext = new OfflineAudioContext(
-		channelCount,
-		audioContext.sampleRate * longestDuration,
-		audioContext.sampleRate,
-	);
-
-	validBuffers.forEach((buffer) => {
-		const source = offlineContext.createBufferSource();
-		source.buffer = buffer;
-		source.connect(offlineContext.destination);
-		source.start(0);
-	});
-
-	const renderedBuffer = await offlineContext.startRendering();
-	await audioContext.close();
 
 	const targetFormat = settings.recordingFormat;
 	if (
