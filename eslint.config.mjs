@@ -38,6 +38,9 @@ export default tseslint.config(
                 ...globals.browser,
                 ...globals.node,
                 ...globals.es2021,
+                // Build-time global injected by esbuild (see
+                // esbuild.config.mjs and src/globals.d.ts)
+                __ENCODING_WORKER_SOURCE__: 'readonly',
             },
             parserOptions: {
                 project: './tsconfig.eslint.json',

@@ -21,6 +21,10 @@ import {
 	discardSession,
 } from './recording/RecoveryService';
 import { RecoveryModal } from './ui/RecoveryModal';
+import {
+	EncodingWorkerClient,
+	setEncodingWorkerClient,
+} from './recording/EncodingWorkerClient';
 import { updateStatusBar, initializeStatusBar } from './ui/StatusBar';
 import { updateRibbonIcon, initializeRibbonIcon } from './ui/RibbonIcon';
 import { showDeviceSelectionModal } from './ui/DeviceSelectionModal';
@@ -70,6 +74,7 @@ export default class AudioRecorderPlugin extends Plugin {
 	private ribbonIconEl: HTMLElement | null = null;
 	private contextMenu!: ContextMenu;
 	private journal!: SessionJournal;
+	private encodingWorker: EncodingWorkerClient | null = null;
 	/**
 	 * True when data.json exists on disk but could not be read at load
 	 * time. While set, saveSettings refuses to write so the possibly
@@ -88,6 +93,15 @@ export default class AudioRecorderPlugin extends Plugin {
 	 */
 	async onload(): Promise<void> {
 		await this.loadSettings();
+
+		// Offload streaming conversions to a Web Worker when the build
+		// injected its source; everything falls back to the main thread
+		this.encodingWorker = new EncodingWorkerClient(
+			typeof __ENCODING_WORKER_SOURCE__ === 'string'
+				? __ENCODING_WORKER_SOURCE__
+				: null,
+		);
+		setEncodingWorkerClient(this.encodingWorker);
 
 		this.journal = new SessionJournal(
 			this.getPluginFilePath(JOURNAL_FILE_NAME),
@@ -197,6 +211,9 @@ export default class AudioRecorderPlugin extends Plugin {
 	 */
 	onunload(): void {
 		this.recordingManager.cleanup();
+		setEncodingWorkerClient(null);
+		this.encodingWorker?.terminate();
+		this.encodingWorker = null;
 		initializeStatusBar(this.statusBarItem);
 		initializeRibbonIcon(this.ribbonIconEl);
 	}

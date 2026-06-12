@@ -30,6 +30,7 @@ import {
 	FORMAT_WAV,
 } from '../constants';
 import { buildMimeType } from './AudioCapabilityDetector';
+import { getEncodingWorkerClient } from './EncodingWorkerClient';
 
 /**
  * Progress callback receiving percentage (0-100).
@@ -264,6 +265,26 @@ export async function convertBlobToFormat(
 	onProgress?: FormatProgressCallback,
 	options: BlobConversionOptions = {},
 ): Promise<Blob> {
+	// Worker first: the demux/transcode/mux loop is pure computation
+	// and runs off the UI thread when the worker is available
+	const workerClient = getEncodingWorkerClient();
+	if (workerClient) {
+		try {
+			return await workerClient.convertBlob(
+				recordedBlob,
+				targetFormat,
+				bitrate,
+				options.allowRemux ?? false,
+				onProgress,
+			);
+		} catch (error) {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Worker conversion failed, falling back to the main thread:`,
+				error,
+			);
+		}
+	}
+
 	try {
 		return await convertBlobWithConversion(
 			recordedBlob,

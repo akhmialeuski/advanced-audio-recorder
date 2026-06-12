@@ -134,6 +134,8 @@ import {
 	buildOutputBlob,
 	mergeAudioTracks,
 } from '../../src/recording/AudioFormatConverter';
+import { setEncodingWorkerClient } from '../../src/recording/EncodingWorkerClient';
+import type { EncodingWorkerClient } from '../../src/recording/EncodingWorkerClient';
 
 describe('AudioFormatConverter', () => {
 	beforeEach(() => {
@@ -377,6 +379,64 @@ describe('AudioFormatConverter', () => {
 	// convertBlobToFormat
 	// ---------------------------------------------------------------
 	describe('convertBlobToFormat', () => {
+		afterEach(() => {
+			setEncodingWorkerClient(null);
+		});
+
+		it('should use the encoding worker when one is available', async () => {
+			const workerClient = {
+				isAvailable: () => true,
+				convertBlob: jest
+					.fn()
+					.mockResolvedValue(
+						new Blob(['worker'], { type: 'audio/mp3' }),
+					),
+			};
+			setEncodingWorkerClient(
+				workerClient as unknown as EncodingWorkerClient,
+			);
+			const blob = new Blob(['test'], { type: 'audio/webm' });
+
+			const result = await convertBlobToFormat(
+				blob,
+				'mp3',
+				192000,
+				undefined,
+				{ allowRemux: true },
+			);
+
+			expect(workerClient.convertBlob).toHaveBeenCalledWith(
+				blob,
+				'mp3',
+				192000,
+				true,
+				undefined,
+			);
+			// The main-thread pipeline is never touched
+			expect(mockConversionInit).not.toHaveBeenCalled();
+			expect(result.type).toBe('audio/mp3');
+		});
+
+		it('should fall back to the main thread when the worker fails', async () => {
+			const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
+			const workerClient = {
+				isAvailable: () => true,
+				convertBlob: jest
+					.fn()
+					.mockRejectedValue(new Error('worker died')),
+			};
+			setEncodingWorkerClient(
+				workerClient as unknown as EncodingWorkerClient,
+			);
+			const blob = new Blob(['test'], { type: 'audio/webm' });
+
+			const result = await convertBlobToFormat(blob, 'mp4', 128000);
+
+			expect(mockConversionInit).toHaveBeenCalledTimes(1);
+			expect(result).toBeInstanceOf(Blob);
+			warnSpy.mockRestore();
+		});
+
 		it('should convert via the streaming Conversion pipeline', async () => {
 			const { encodeAudioBuffer } = jest.requireMock(
 				'../../src/recording/AudioEncoder',
