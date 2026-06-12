@@ -13,20 +13,7 @@
  * @module recording/encodingWorker
  */
 
-import {
-	Input,
-	Output,
-	BlobSource,
-	BufferTarget,
-	ALL_FORMATS,
-	Conversion,
-} from 'mediabunny';
-import type { AudioCodec } from 'mediabunny';
-import {
-	ensureEncoderRegistered,
-	createOutputFormat,
-	FORMAT_CODEC_MAP,
-} from './AudioEncoder';
+import { runStreamingConversion } from './streamingConversion';
 import { MIME_TYPE_AUDIO_PREFIX } from '../constants';
 
 /**
@@ -55,10 +42,10 @@ export type WorkerResponse =
 	| { id: number; kind: 'error'; message: string };
 
 /**
- * Handles one conversion request. Mirrors the main-thread streaming
- * pipeline of AudioFormatConverter.convertBlobWithConversion; failures
- * are posted as error responses and the client falls back to the main
- * thread.
+ * Handles one conversion request through the shared streaming
+ * conversion core (see streamingConversion.ts, also used by the
+ * main-thread pipeline); failures are posted as error responses and
+ * the client falls back to the main thread.
  * @param request - Conversion request
  * @param post - Posts a response (with optional transferables)
  */
@@ -67,70 +54,15 @@ export async function handleEncodingMessage(
 	post: (response: WorkerResponse, transfer?: Transferable[]) => void,
 ): Promise<void> {
 	try {
-		const codec: AudioCodec | undefined =
-			FORMAT_CODEC_MAP[request.targetFormat];
-		if (!codec) {
-			throw new Error(
-				`No codec mapping for format "${request.targetFormat}"`,
-			);
-		}
-
-		await ensureEncoderRegistered(request.targetFormat);
-
-		const input = new Input({
-			source: new BlobSource(request.blob),
-			formats: ALL_FORMATS,
-		});
-		const audioTrack = await input.getPrimaryAudioTrack();
-		if (!audioTrack) {
-			throw new Error('Input contains no audio track');
-		}
-
-		const target = new BufferTarget();
-		const output = new Output({
-			format: createOutputFormat(request.targetFormat),
-			target,
-		});
-
-		const inputCodec = await audioTrack.getCodec();
-		// PCM targets are uncompressed: a bitrate option is invalid there
-		const isPcmTarget = codec.startsWith('pcm-');
-		const conversion = await Conversion.init({
-			input,
-			output,
-			audio:
-				(request.allowRemux && inputCodec === codec) || isPcmTarget
-					? { codec }
-					: { codec, bitrate: request.bitrate },
-			showWarnings: false,
-		});
-
-		const audioDiscarded = conversion.discardedTracks.some((discarded) =>
-			discarded.track.isAudioTrack(),
-		);
-		if (!conversion.isValid || audioDiscarded) {
-			throw new Error(
-				`Conversion to "${request.targetFormat}" cannot process the input audio track`,
-			);
-		}
-
-		let lastPercent = -1;
-		conversion.onProgress = (progress: number): void => {
-			const percent = Math.round(progress * 100);
-			if (percent !== lastPercent) {
-				lastPercent = percent;
+		const resultBuffer = await runStreamingConversion(
+			request.blob,
+			request.targetFormat,
+			request.bitrate,
+			request.allowRemux,
+			(percent) => {
 				post({ id: request.id, kind: 'progress', percent });
-			}
-		};
-
-		await conversion.execute();
-
-		const resultBuffer = target.buffer;
-		if (!resultBuffer || resultBuffer.byteLength === 0) {
-			throw new Error(
-				`Conversion to "${request.targetFormat}" produced no output`,
-			);
-		}
+			},
+		);
 		post(
 			{
 				id: request.id,

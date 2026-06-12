@@ -4,24 +4,10 @@
  * @module recording/AudioFormatConverter
  */
 
-import {
-	Input,
-	Output,
-	BlobSource,
-	BufferTarget,
-	ALL_FORMATS,
-	Conversion,
-} from 'mediabunny';
-import type { AudioCodec } from 'mediabunny';
 import type { RecordingTarget } from '../types';
 import type { AudioRecorderSettings } from '../settings/Settings';
-import {
-	encodeAudioBuffer,
-	isOfflineEncodingSupported,
-	ensureEncoderRegistered,
-	createOutputFormat,
-	FORMAT_CODEC_MAP,
-} from './AudioEncoder';
+import { encodeAudioBuffer, isOfflineEncodingSupported } from './AudioEncoder';
+import { runStreamingConversion } from './streamingConversion';
 import {
 	MIME_TYPE_AUDIO_PREFIX,
 	PLUGIN_LOG_PREFIX,
@@ -147,11 +133,9 @@ export interface BlobConversionOptions {
 }
 
 /**
- * Converts a compressed audio blob to the target format using the
- * streaming mediabunny Conversion pipeline: audio is transcoded in
- * chunks without materializing the whole recording as PCM in memory.
- * With allowRemux, packets of an input whose codec already matches
- * the target codec are copied without re-encoding.
+ * Converts a compressed audio blob to the target format on the main
+ * thread through the shared streaming conversion core (see
+ * streamingConversion.ts, also used by the encoding worker).
  * @param recordedBlob - Intermediate compressed blob
  * @param targetFormat - Desired output format
  * @param bitrate - Bitrate in bits per second
@@ -169,78 +153,13 @@ async function convertBlobWithConversion(
 	allowRemux: boolean,
 	onProgress?: FormatProgressCallback,
 ): Promise<Blob> {
-	const codec: AudioCodec | undefined = FORMAT_CODEC_MAP[targetFormat];
-	if (!codec) {
-		throw new Error(`No codec mapping for format "${targetFormat}"`);
-	}
-
-	await ensureEncoderRegistered(targetFormat);
-
-	const input = new Input({
-		source: new BlobSource(recordedBlob),
-		formats: ALL_FORMATS,
-	});
-	const audioTrack = await input.getPrimaryAudioTrack();
-	if (!audioTrack) {
-		throw new Error('Input contains no audio track');
-	}
-
-	const target = new BufferTarget();
-	const output = new Output({
-		format: createOutputFormat(targetFormat),
-		target,
-	});
-
-	// Omitting bitrate lets mediabunny copy packets (remux) when the
-	// input codec matches the target; setting it always forces a
-	// re-encode per the Conversion contract. Remux is allowed only
-	// when the caller knows the input is already at the requested
-	// bitrate. Discarded tracks are handled explicitly below, so
-	// mediabunny's own console warnings about them are disabled.
-	const inputCodec = await audioTrack.getCodec();
-	// PCM targets are uncompressed: a bitrate option is invalid there
-	const isPcmTarget = codec.startsWith('pcm-');
-	const conversion = await Conversion.init({
-		input,
-		output,
-		audio:
-			(allowRemux && inputCodec === codec) || isPcmTarget
-				? { codec }
-				: { codec, bitrate },
-		showWarnings: false,
-	});
-
-	// Conversion.init does not throw for codec problems: it silently
-	// discards the track (undecodable_source_codec or
-	// no_encodable_target_codec) and would emit a container without
-	// audio. Fail here instead, so the caller's decode-and-re-encode
-	// fallback processes the input.
-	const audioDiscarded = conversion.discardedTracks.some((discarded) =>
-		discarded.track.isAudioTrack(),
+	const resultBuffer = await runStreamingConversion(
+		recordedBlob,
+		targetFormat,
+		bitrate,
+		allowRemux,
+		onProgress,
 	);
-	if (!conversion.isValid || audioDiscarded) {
-		throw new Error(
-			`Conversion to "${targetFormat}" cannot process the input audio track`,
-		);
-	}
-
-	if (onProgress) {
-		let lastPercent = -1;
-		conversion.onProgress = (progress: number): void => {
-			const percent = Math.round(progress * 100);
-			if (percent !== lastPercent) {
-				lastPercent = percent;
-				onProgress(percent);
-			}
-		};
-	}
-
-	await conversion.execute();
-
-	const resultBuffer = target.buffer;
-	if (!resultBuffer || resultBuffer.byteLength === 0) {
-		throw new Error(`Conversion to "${targetFormat}" produced no output`);
-	}
 	return new Blob([resultBuffer], {
 		type: `${MIME_TYPE_AUDIO_PREFIX}${targetFormat}`,
 	});
