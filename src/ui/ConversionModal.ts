@@ -15,7 +15,8 @@ import {
 	decodeAudioBlob,
 	convertBlobToFormat,
 } from '../recording/AudioFormatConverter';
-import { updateLinksInOpenEditors } from '../utils/LinkUpdater';
+import { updateLinksInVault } from '../utils/LinkUpdater';
+import type { VaultLinkUpdateResult } from '../utils/LinkUpdater';
 import type {
 	AudioRecorderSettings,
 	ConversionLinkAction,
@@ -30,6 +31,10 @@ export class ConversionModal extends Modal {
 	private bitrate: number = 128000;
 	private deleteSource: boolean;
 	private linkAction: ConversionLinkAction;
+	/** Whether the conversion pipeline is currently running. */
+	private isConverting = false;
+	/** Progress notice shown when the modal is closed mid-conversion. */
+	private progressNotice: Notice | null = null;
 
 	constructor(app: App, sourceFile: TFile, settings: AudioRecorderSettings) {
 		super(app);
@@ -129,10 +134,34 @@ export class ConversionModal extends Modal {
 	}
 
 	onClose(): void {
+		if (this.isConverting && !this.progressNotice) {
+			// Timeout 0 keeps the notice visible until hidden explicitly;
+			// setProgress mirrors further pipeline progress into it
+			this.progressNotice = new Notice(
+				`Converting "${this.sourceFile.name}" continues in the background...`,
+				0,
+			);
+		}
 		this.contentEl.empty();
 	}
 
+	/**
+	 * Shows pipeline progress in the modal and mirrors it to the
+	 * background notice when the modal was closed mid-conversion.
+	 * @param progressEl - Progress element inside the modal
+	 * @param text - Progress text; an empty string clears the element
+	 */
+	private setProgress(progressEl: HTMLElement, text: string): void {
+		progressEl.setText(text);
+		if (this.progressNotice && text !== '') {
+			this.progressNotice.setMessage(
+				`Converting "${this.sourceFile.name}": ${text}`,
+			);
+		}
+	}
+
 	private async runConversion(progressEl: HTMLElement): Promise<void> {
+		this.isConverting = true;
 		try {
 			const baseName = this.sourceFile.basename;
 			const directory = this.sourceFile.parent?.path ?? '';
@@ -149,7 +178,7 @@ export class ConversionModal extends Modal {
 				return;
 			}
 
-			progressEl.setText('Reading source file...');
+			this.setProgress(progressEl, 'Reading source file...');
 			const arrayBuffer = await this.app.vault.adapter.readBinary(
 				this.sourceFile.path,
 			);
@@ -158,9 +187,9 @@ export class ConversionModal extends Modal {
 			if (this.targetFormat === FORMAT_WAV) {
 				// WAV needs a full decode; the streaming pipeline only
 				// targets compressed formats
-				progressEl.setText('Decoding audio...');
+				this.setProgress(progressEl, 'Decoding audio...');
 				const audioBuffer = await decodeAudioBlob(arrayBuffer);
-				progressEl.setText('Encoding...');
+				this.setProgress(progressEl, 'Encoding...');
 				blob = await encodeAudioBuffer(
 					audioBuffer,
 					{
@@ -168,53 +197,126 @@ export class ConversionModal extends Modal {
 						bitrate: this.bitrate,
 					},
 					(percent) => {
-						progressEl.setText(`Encoding... ${String(percent)}%`);
+						this.setProgress(
+							progressEl,
+							`Encoding... ${String(percent)}%`,
+						);
 					},
 				);
 			} else {
-				progressEl.setText('Converting...');
+				this.setProgress(progressEl, 'Converting...');
 				blob = await convertBlobToFormat(
 					new Blob([arrayBuffer]),
 					this.targetFormat,
 					this.bitrate,
 					(percent) => {
-						progressEl.setText(`Converting... ${String(percent)}%`);
+						this.setProgress(
+							progressEl,
+							`Converting... ${String(percent)}%`,
+						);
 					},
 				);
 			}
 
-			progressEl.setText('Saving...');
-			await this.app.vault.createBinary(
+			this.setProgress(progressEl, 'Saving...');
+			const createdFile = await this.app.vault.createBinary(
 				newPath,
 				await blob.arrayBuffer(),
 			);
 
-			// Update links in notes
-			if (this.linkAction !== 'none') {
-				progressEl.setText('Updating links...');
-				updateLinksInOpenEditors(
-					this.app,
-					this.sourceFile.name,
-					[newFileName],
-					this.linkAction,
-				);
+			// The converted file exists on disk from here on
+			if (
+				!(await this.finishConversion(
+					progressEl,
+					createdFile,
+					newFileName,
+				))
+			) {
+				return;
 			}
 
-			// Delete source file
-			if (this.deleteSource) {
-				progressEl.setText('Removing source file...');
-				await this.app.fileManager.trashFile(this.sourceFile);
-			}
-
-			progressEl.setText('');
+			this.setProgress(progressEl, '');
 			const action = this.deleteSource ? 'Replaced with' : 'Converted to';
 			new Notice(`${action} ${newFileName}`);
+			// Cleared before close() so onClose does not start a
+			// background notice for an already finished conversion
+			this.isConverting = false;
 			this.close();
 		} catch (error) {
 			const message =
 				error instanceof Error ? error.message : String(error);
-			progressEl.setText(`Error: ${message}`);
+			this.setProgress(progressEl, `Error: ${message}`);
 			new Notice(`Conversion failed: ${message}`);
+		} finally {
+			this.isConverting = false;
+			this.progressNotice?.hide();
+			this.progressNotice = null;
 		}
+	}
+
+	/**
+	 * Post-write pipeline steps: updates links across the whole vault
+	 * (covering notes that are not open, exactly like the split flow)
+	 * and optionally deletes the source file. The converted file already
+	 * exists, so errors here are reported as partial success. The source
+	 * file is kept when some links could not be updated, because
+	 * deleting it would leave those links broken.
+	 * @param progressEl - Progress element inside the modal
+	 * @param createdFile - The converted file
+	 * @param newFileName - Display name of the converted file
+	 * @returns True when every requested step succeeded
+	 */
+	private async finishConversion(
+		progressEl: HTMLElement,
+		createdFile: TFile,
+		newFileName: string,
+	): Promise<boolean> {
+		let linkResult: VaultLinkUpdateResult | null = null;
+		if (this.linkAction !== 'none') {
+			this.setProgress(progressEl, 'Updating links...');
+			try {
+				linkResult = await updateLinksInVault(
+					this.app,
+					this.sourceFile,
+					[createdFile],
+					this.linkAction,
+				);
+			} catch (error) {
+				const message =
+					error instanceof Error ? error.message : String(error);
+				this.setProgress(progressEl, `Error: ${message}`);
+				new Notice(
+					`"${newFileName}" was created, but updating links failed: ${message}. The source file was kept.`,
+				);
+				return false;
+			}
+			if (linkResult.frontmatterReferences > 0) {
+				new Notice(
+					`${String(linkResult.frontmatterReferences)} frontmatter link(s) still point to the source file and must be updated manually.`,
+				);
+			}
+		}
+
+		if (this.deleteSource) {
+			if (linkResult !== null && linkResult.skippedReferences > 0) {
+				new Notice(
+					`Source file kept: ${String(linkResult.skippedReferences)} link(s) could not be updated.`,
+				);
+			} else {
+				this.setProgress(progressEl, 'Removing source file...');
+				try {
+					await this.app.fileManager.trashFile(this.sourceFile);
+				} catch (error) {
+					const message =
+						error instanceof Error ? error.message : String(error);
+					this.setProgress(progressEl, `Error: ${message}`);
+					new Notice(
+						`"${newFileName}" was created, but the source file could not be deleted: ${message}`,
+					);
+					return false;
+				}
+			}
+		}
+		return true;
 	}
 }

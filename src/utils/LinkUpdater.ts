@@ -1,48 +1,17 @@
 /**
- * Shared utilities for rewriting links to audio files in notes.
- * Used by the conversion flow (editor-based, preserves undo history)
- * and by the split flow (vault-wide, covers closed notes because the
- * source file may be deleted afterwards). The vault-wide variant works
- * on parsed metadata references, so every link syntax Obsidian indexes
- * (wikilinks, Markdown links, relative paths) is rewritten; frontmatter
- * links cannot hold several replacement links and are only counted.
+ * Vault-wide rewriting of links to audio files in notes, used by the
+ * conversion and split flows (both may delete the source file, so
+ * closed notes must be covered too). Works on parsed metadata
+ * references, so every link syntax Obsidian indexes (wikilinks,
+ * Markdown links, relative paths) is rewritten; frontmatter links
+ * cannot hold several replacement links and are only counted.
  * @module utils/LinkUpdater
  */
 
-import { MarkdownView, TFile, getLinkpath } from 'obsidian';
+import { TFile, getLinkpath } from 'obsidian';
 import type { App, ReferenceCache } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import type { ConversionLinkAction } from '../settings/Settings';
-
-/**
- * Builds a regex matching all common internal link formats for a filename:
- * ![[file]], [[file]], ![[file|alias]], [[file|alias]]
- * @param fileName - File name (with extension) to match
- * @returns Global regex matching links to the file
- */
-export function buildLinkPattern(fileName: string): RegExp {
-	const escaped = fileName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-	return new RegExp(`(!?\\[\\[${escaped}(?:\\|[^\\]]*)?\\]\\])`, 'g');
-}
-
-/**
- * Builds the replacement text for a matched link: one link per new file,
- * joined by the given separator, preserving the embed prefix of the
- * original link.
- * @param newFileNames - File names of the replacement links
- * @param isEmbed - Whether the original link was an embed (starts with '!')
- * @param separator - Text inserted between the replacement links
- * @returns Joined replacement links
- */
-export function buildReplacementLinks(
-	newFileNames: string[],
-	isEmbed: boolean,
-	separator: string = '\n',
-): string {
-	return newFileNames
-		.map((name) => (isEmbed ? `![[${name}]]` : `[[${name}]]`))
-		.join(separator);
-}
 
 /**
  * Checks whether a reference occupies its line alone (ignoring
@@ -67,88 +36,6 @@ function isReferenceAloneOnLine(
 		content.slice(lineStart, startOffset).trim() === '' &&
 		content.slice(endOffset, lineEnd).trim() === ''
 	);
-}
-
-/**
- * Applies the link action to a single matched link text.
- * @param matchedLink - The full matched link (e.g. "![[file.webm]]")
- * @param newFileNames - File names of the replacement links
- * @param action - How to rewrite the link
- * @param separator - Text inserted between the resulting links
- * @returns Replacement text for the match
- */
-function rewriteMatchedLink(
-	matchedLink: string,
-	newFileNames: string[],
-	action: ConversionLinkAction,
-	separator: string,
-): string {
-	const isEmbed = matchedLink.startsWith('!');
-	const links = buildReplacementLinks(newFileNames, isEmbed, separator);
-	return action === 'after' ? `${matchedLink}${separator}${links}` : links;
-}
-
-/**
- * Finds and updates links to the source file in all open Markdown editors.
- * Uses replaceRange to preserve undo history.
- * @param app - Obsidian App instance
- * @param sourceFileName - File name (with extension) being replaced
- * @param newFileNames - File names of the replacement links
- * @param action - How to rewrite the links ('none' is a no-op)
- */
-export function updateLinksInOpenEditors(
-	app: App,
-	sourceFileName: string,
-	newFileNames: string[],
-	action: ConversionLinkAction,
-): void {
-	if (action === 'none' || newFileNames.length === 0) {
-		return;
-	}
-
-	const leaves = app.workspace.getLeavesOfType('markdown');
-	const pattern = buildLinkPattern(sourceFileName);
-
-	for (const leaf of leaves) {
-		if (!(leaf.view instanceof MarkdownView)) {
-			continue;
-		}
-		const editor = leaf.view.editor;
-		const content = editor.getValue();
-		if (!content.includes(sourceFileName)) {
-			continue;
-		}
-
-		// Collect matches first, then apply replacements from end to start
-		// so earlier offsets stay valid
-		const matches: { index: number; length: number; text: string }[] = [];
-		let match: RegExpExecArray | null;
-		while ((match = pattern.exec(content)) !== null) {
-			matches.push({
-				index: match.index,
-				length: match[0].length,
-				text: match[0],
-			});
-		}
-
-		for (let i = matches.length - 1; i >= 0; i--) {
-			const m = matches[i];
-			const from = editor.offsetToPos(m.index);
-			const to = editor.offsetToPos(m.index + m.length);
-			const separator = isReferenceAloneOnLine(
-				content,
-				m.index,
-				m.index + m.length,
-			)
-				? '\n'
-				: ' ';
-			editor.replaceRange(
-				rewriteMatchedLink(m.text, newFileNames, action, separator),
-				from,
-				to,
-			);
-		}
-	}
 }
 
 /**
