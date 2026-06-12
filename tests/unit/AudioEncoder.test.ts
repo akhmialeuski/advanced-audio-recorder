@@ -59,6 +59,11 @@ jest.mock('@mediabunny/mp3-encoder', () => ({
 describe('AudioEncoder', () => {
 	beforeEach(() => {
 		jest.clearAllMocks();
+		// Re-arm the default: clearAllMocks does not reset
+		// implementations, so a test that flips this mock would
+		// otherwise leak its value into the following tests
+		const { canEncodeAudio } = jest.requireMock('mediabunny');
+		canEncodeAudio.mockResolvedValue(false);
 	});
 
 	describe('encodeAudioBuffer', () => {
@@ -133,7 +138,6 @@ describe('AudioEncoder', () => {
 			});
 
 			expect(registerMp3Encoder).not.toHaveBeenCalled();
-			canEncodeAudio.mockResolvedValue(false);
 		});
 
 		it('should register the FLAC extension encoder when not natively supported', async () => {
