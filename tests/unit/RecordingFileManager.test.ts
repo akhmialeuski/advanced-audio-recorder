@@ -16,6 +16,7 @@ import {
 	getBaseSaveDirectory,
 	ensureFolderExists,
 	resolveUniquePath,
+	resolveUniquePathInDirectory,
 	saveAudioFile,
 	removeTemporaryArtifacts,
 	rollbackFinalFile,
@@ -269,6 +270,67 @@ describe('RecordingFileManager', () => {
 			expect(mockApp.vault.createFolder).toHaveBeenCalledWith(
 				'Recordings/subfolder',
 			);
+		});
+	});
+
+	// -----------------------------------------------------------------------
+	// resolveUniquePathInDirectory
+	// -----------------------------------------------------------------------
+	describe('resolveUniquePathInDirectory', () => {
+		it('should return the path directly when free', async () => {
+			(mockApp.vault.adapter.exists as jest.Mock).mockResolvedValue(
+				false,
+			);
+
+			const result = await resolveUniquePathInDirectory(
+				'Recordings',
+				'clip.webm',
+				mockApp,
+			);
+
+			expect(result).toBe('Recordings/clip.webm');
+		});
+
+		it('should append a counter on collision', async () => {
+			(mockApp.vault.adapter.exists as jest.Mock)
+				.mockResolvedValueOnce(true)
+				.mockResolvedValueOnce(false);
+
+			const result = await resolveUniquePathInDirectory(
+				'Recordings',
+				'clip.webm',
+				mockApp,
+			);
+
+			expect(result).toBe('Recordings/clip_1.webm');
+		});
+
+		it('should keep multi-dot names intact', async () => {
+			(mockApp.vault.adapter.exists as jest.Mock)
+				.mockResolvedValueOnce(true)
+				.mockResolvedValueOnce(false);
+
+			const result = await resolveUniquePathInDirectory(
+				'Recordings',
+				'clip.part1.webm.tmp',
+				mockApp,
+			);
+
+			expect(result).toBe('Recordings/clip.part1.webm_1.tmp');
+		});
+
+		it('should sanitize illegal characters', async () => {
+			(mockApp.vault.adapter.exists as jest.Mock).mockResolvedValue(
+				false,
+			);
+
+			const result = await resolveUniquePathInDirectory(
+				'Recordings',
+				'clip:1?.webm',
+				mockApp,
+			);
+
+			expect(result).toBe('Recordings/clip-1-.webm');
 		});
 	});
 
