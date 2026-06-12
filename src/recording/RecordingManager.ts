@@ -312,40 +312,57 @@ export class RecordingManager {
 
 	/**
 	 * Creates recording targets for each stream, resolving track
-	 * names from device IDs or sequential numbering.
+	 * names from device IDs or sequential numbering. Tracks that share
+	 * a device produce identical source names; those get the track
+	 * number appended, because targets with the same file base name
+	 * resolve identical segment paths from concurrent flushes and
+	 * overwrite each other's audio. The suffix cannot collide with a
+	 * genuine device name: getAudioSourceName strips all
+	 * non-alphanumeric characters, so no plain name contains a hyphen.
 	 * @param count - Number of targets to create
 	 */
 	private async createChunkTargets(
 		count: number,
 	): Promise<RecordingTarget[]> {
-		return Promise.all(
-			Array.from({ length: count }, async (_, index) => {
-				const trackInfo = this.trackOrder[index];
-				const trackNumber = trackInfo?.trackNumber ?? index + 1;
-				const deviceId = trackInfo?.deviceId;
-				const sourceName =
-					this.settings.useSourceNamesForTracks && deviceId
-						? await getAudioSourceName(deviceId)
-						: `Track${trackNumber}`;
-				const fileBaseName = `${this.settings.filePrefix}-${sourceName}-${this.recordingTimestamp}`;
-				return {
-					fileBaseName,
-					sourceName,
-					bufferedChunks: [],
-					bufferedBytes: 0,
-					segmentIndex: 0,
-					segmentPaths: [],
-					pendingWrite: Promise.resolve(),
-					pcmBuffers: [],
-					pcmBufferedBytes: 0,
-					pcmChannels: 1,
-					pcmSampleRate: this.settings.sampleRate,
-					partIndex: 0,
-					partPaths: [],
-					partPcmBytes: 0,
-				};
-			}),
+		const trackInfos = Array.from({ length: count }, (_, index) => {
+			const trackInfo = this.trackOrder[index];
+			return {
+				trackNumber: trackInfo?.trackNumber ?? index + 1,
+				deviceId: trackInfo?.deviceId,
+			};
+		});
+		const sourceNames = await Promise.all(
+			trackInfos.map(({ trackNumber, deviceId }) =>
+				this.settings.useSourceNamesForTracks && deviceId
+					? getAudioSourceName(deviceId)
+					: Promise.resolve(`Track${String(trackNumber)}`),
+			),
 		);
+		const nameCounts = new Map<string, number>();
+		for (const name of sourceNames) {
+			nameCounts.set(name, (nameCounts.get(name) ?? 0) + 1);
+		}
+		const uniqueNames = sourceNames.map((name, index) =>
+			(nameCounts.get(name) ?? 0) > 1
+				? `${name}-${String(trackInfos[index].trackNumber)}`
+				: name,
+		);
+		return uniqueNames.map((sourceName) => ({
+			fileBaseName: `${this.settings.filePrefix}-${sourceName}-${this.recordingTimestamp}`,
+			sourceName,
+			bufferedChunks: [],
+			bufferedBytes: 0,
+			segmentIndex: 0,
+			segmentPaths: [],
+			pendingWrite: Promise.resolve(),
+			pcmBuffers: [],
+			pcmBufferedBytes: 0,
+			pcmChannels: 1,
+			pcmSampleRate: this.settings.sampleRate,
+			partIndex: 0,
+			partPaths: [],
+			partPcmBytes: 0,
+		}));
 	}
 
 	/**

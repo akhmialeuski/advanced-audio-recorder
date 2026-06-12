@@ -785,6 +785,119 @@ describe('RecordingManager', () => {
 		});
 	});
 
+	describe('track file base names', () => {
+		const setupTwoTrackRecording = (
+			trackOrder: { trackNumber: number; deviceId: string }[],
+		): void => {
+			const { Platform } = jest.requireMock('obsidian');
+			Platform.isMobile = false;
+			Platform.isMobileApp = false;
+
+			const mockMediaRecorder = {
+				start: jest.fn(),
+				stop: jest.fn(),
+				pause: jest.fn(),
+				resume: jest.fn(),
+				ondataavailable: null as ((event: BlobEvent) => void) | null,
+				onerror: null as ((event: Event) => void) | null,
+				addEventListener: jest.fn(
+					(event: string, handler: () => void) => {
+						if (event === 'stop') {
+							handler();
+						}
+					},
+				),
+			};
+			(global as Record<string, unknown>).MediaRecorder = jest.fn(
+				() => mockMediaRecorder,
+			);
+			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
+				jest.fn().mockReturnValue(true);
+
+			const { getAudioStreams } = jest.requireMock(
+				'../../src/recording/AudioStreamHandler',
+			);
+			getAudioStreams.mockResolvedValue({
+				streams: [
+					{ getTracks: () => [{ stop: jest.fn() }] },
+					{ getTracks: () => [{ stop: jest.fn() }] },
+				],
+				trackOrder,
+			});
+		};
+
+		const getTargets = (): { fileBaseName: string; sourceName: string }[] =>
+			(
+				manager as unknown as {
+					chunkTargets: {
+						fileBaseName: string;
+						sourceName: string;
+					}[];
+				}
+			).chunkTargets;
+
+		it('should append track numbers when tracks share a device', async () => {
+			mockSettings = {
+				...DEFAULT_SETTINGS,
+				enableMultiTrack: true,
+				useSourceNamesForTracks: true,
+				outputMode: 'multiple',
+			};
+			manager = new RecordingManager(
+				mockApp,
+				mockSettings,
+				statusChangeCallback,
+			);
+			setupTwoTrackRecording([
+				{ trackNumber: 1, deviceId: 'shared-device' },
+				{ trackNumber: 2, deviceId: 'shared-device' },
+			]);
+
+			await manager.startRecording();
+
+			const targets = getTargets();
+			expect(targets).toHaveLength(2);
+			expect(targets[0].sourceName).toBe('TestDevice-1');
+			expect(targets[1].sourceName).toBe('TestDevice-2');
+			expect(targets[0].fileBaseName).not.toBe(targets[1].fileBaseName);
+
+			await manager.stopRecording();
+		});
+
+		it('should keep plain source names when they are unique', async () => {
+			const { getAudioSourceName } = jest.requireMock(
+				'../../src/recording/AudioStreamHandler',
+			);
+			getAudioSourceName
+				.mockResolvedValueOnce('DeviceA')
+				.mockResolvedValueOnce('DeviceB');
+
+			mockSettings = {
+				...DEFAULT_SETTINGS,
+				enableMultiTrack: true,
+				useSourceNamesForTracks: true,
+				outputMode: 'multiple',
+			};
+			manager = new RecordingManager(
+				mockApp,
+				mockSettings,
+				statusChangeCallback,
+			);
+			setupTwoTrackRecording([
+				{ trackNumber: 1, deviceId: 'device-a' },
+				{ trackNumber: 2, deviceId: 'device-b' },
+			]);
+
+			await manager.startRecording();
+
+			const targets = getTargets();
+			expect(targets[0].sourceName).toBe('DeviceA');
+			expect(targets[1].sourceName).toBe('DeviceB');
+
+			await manager.stopRecording();
+		});
+	});
+
 	describe('stopMediaRecorder watchdog', () => {
 		afterEach(() => {
 			jest.useRealTimers();
