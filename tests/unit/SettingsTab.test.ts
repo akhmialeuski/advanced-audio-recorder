@@ -122,4 +122,136 @@ describe('AudioRecorderSettingTab', () => {
 			expect(removeEventListenerMock).not.toHaveBeenCalled();
 		});
 	});
+
+	describe('test recording resource safety', () => {
+		interface RecorderMock {
+			state: string;
+			start: jest.Mock;
+			stop: jest.Mock;
+			ondataavailable: ((event: { data: Blob }) => void) | null;
+			addEventListener: jest.Mock;
+		}
+
+		const createRecorderMock = (): RecorderMock => {
+			const stopListeners: Array<() => void> = [];
+			const recorder: RecorderMock = {
+				state: 'recording',
+				start: jest.fn(),
+				stop: jest.fn(() => {
+					recorder.state = 'inactive';
+					stopListeners.forEach((listener) => listener());
+				}),
+				ondataavailable: null,
+				addEventListener: jest.fn(
+					(event: string, handler: () => void) => {
+						if (event === 'stop') {
+							stopListeners.push(handler);
+						}
+					},
+				),
+			};
+			return recorder;
+		};
+
+		const runTest = (container: HTMLElement): Promise<void> =>
+			(
+				tab as unknown as {
+					runTestRecording(c: HTMLElement): Promise<void>;
+				}
+			).runTestRecording(container);
+
+		let trackStop: jest.Mock;
+
+		beforeEach(() => {
+			trackStop = jest.fn();
+			getUserMediaMock.mockResolvedValue({
+				getTracks: () => [{ stop: trackStop }],
+			});
+			global.URL.createObjectURL = jest
+				.fn()
+				.mockReturnValue('blob:test-url');
+			global.URL.revokeObjectURL = jest.fn();
+		});
+
+		afterEach(() => {
+			jest.useRealTimers();
+		});
+
+		it('should stop the stream when MediaRecorder creation fails', async () => {
+			(global as Record<string, unknown>).MediaRecorder = jest.fn(() => {
+				throw new Error('mimeType not supported');
+			});
+			(
+				(global as Record<string, unknown>).MediaRecorder as Record<
+					string,
+					unknown
+				>
+			).isTypeSupported = jest.fn().mockReturnValue(true);
+
+			await runTest(tab.containerEl);
+
+			expect(trackStop).toHaveBeenCalled();
+			const status = tab.containerEl.querySelector('.aar-test-status');
+			expect(status?.textContent).toContain('Test recording failed');
+		});
+
+		it('should stop the stream and bail out when hidden mid-recording', async () => {
+			const recorder = createRecorderMock();
+			(global as Record<string, unknown>).MediaRecorder = jest.fn(
+				() => recorder,
+			);
+			(
+				(global as Record<string, unknown>).MediaRecorder as Record<
+					string,
+					unknown
+				>
+			).isTypeSupported = jest.fn().mockReturnValue(true);
+
+			jest.useFakeTimers();
+			const testPromise = runTest(tab.containerEl);
+			// Let getUserMedia resolve and the recorder start
+			await jest.advanceTimersByTimeAsync(0);
+			expect(recorder.start).toHaveBeenCalled();
+
+			// User leaves the settings tab during the 5 s wait
+			tab.hide();
+			expect(recorder.stop).toHaveBeenCalled();
+
+			await jest.advanceTimersByTimeAsync(5000);
+			await testPromise;
+
+			expect(trackStop).toHaveBeenCalled();
+			expect(URL.createObjectURL).not.toHaveBeenCalled();
+			expect(tab.containerEl.querySelector('.aar-test-audio')).toBeNull();
+		});
+
+		it('should stop the stream and attach playback on success', async () => {
+			const recorder = createRecorderMock();
+			(global as Record<string, unknown>).MediaRecorder = jest.fn(
+				() => recorder,
+			);
+			(
+				(global as Record<string, unknown>).MediaRecorder as Record<
+					string,
+					unknown
+				>
+			).isTypeSupported = jest.fn().mockReturnValue(true);
+
+			jest.useFakeTimers();
+			const testPromise = runTest(tab.containerEl);
+			await jest.advanceTimersByTimeAsync(0);
+
+			recorder.ondataavailable?.({ data: new Blob(['audio-data']) });
+
+			await jest.advanceTimersByTimeAsync(5000);
+			await testPromise;
+
+			expect(recorder.stop).toHaveBeenCalled();
+			expect(trackStop).toHaveBeenCalled();
+			expect(URL.createObjectURL).toHaveBeenCalled();
+			const audio = tab.containerEl.querySelector('.aar-test-audio');
+			expect(audio).not.toBeNull();
+			expect(audio?.getAttribute('src')).toBe('blob:test-url');
+		});
+	});
 });
