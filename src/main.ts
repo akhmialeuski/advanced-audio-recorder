@@ -30,6 +30,24 @@ const SETTINGS_DATA_FILE = 'data.json';
 const SETTINGS_BACKUP_FILE = 'data.json.bak';
 
 /**
+ * Result of reading the stored settings from disk.
+ */
+interface StoredSettingsReadResult {
+	/**
+	 * Stored settings, null when no settings exist on disk (saving
+	 * stays enabled), or undefined when settings exist on disk but
+	 * could not be read (saving gets blocked).
+	 */
+	data: Partial<AudioRecorderSettings> | null | undefined;
+	/**
+	 * True when data.json is missing and the settings were recovered
+	 * from the backup file: the caller persists them so data.json is
+	 * recreated and the backup stops being the only copy on disk.
+	 */
+	restoredFromBackup: boolean;
+}
+
+/**
  * Advanced Audio Recorder plugin for Obsidian.
  */
 export default class AudioRecorderPlugin extends Plugin {
@@ -109,7 +127,7 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * and on some filesystems the read fails with a different code.
 	 */
 	async loadSettings(): Promise<void> {
-		const data = await this.readStoredSettings();
+		const { data, restoredFromBackup } = await this.readStoredSettings();
 
 		if (data === undefined) {
 			this.settingsLoadFailed = true;
@@ -132,6 +150,14 @@ export default class AudioRecorderPlugin extends Plugin {
 		this.settingsLoadFailed = false;
 		this.settings = await mergeSettingsAsync(data ?? {});
 		this.settingsInitialized = true;
+		if (restoredFromBackup) {
+			// Complete the recovery: recreate the missing data.json
+			// right away instead of leaving the backup as the only
+			// copy until the user happens to change a setting.
+			// saveSettings() is not usable here: loadSettings() runs
+			// before the RecordingManager is constructed in onload.
+			await this.saveData(serializeSettings(this.settings));
+		}
 		await this.backupSettings();
 	}
 
@@ -172,33 +198,50 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * corrupt or locked file. The adapter's exists() check is therefore
 	 * the only reliable discriminator between "file missing" and "file
 	 * exists but could not be read". A failed read of an existing file
-	 * is retried once, then the backup file is tried.
-	 * @returns Stored settings, null when data.json is missing (saving
-	 * stays enabled), or undefined when data.json exists but neither it
-	 * nor the backup could be read
+	 * is retried once, then the backup file is tried. The same
+	 * missing-vs-unreadable distinction applies to the backup itself:
+	 * when data.json is missing, the backup is the only copy of the
+	 * settings, so a backup that exists but cannot be read blocks
+	 * saving instead of being overwritten with defaults.
+	 * @returns Read result: stored settings, null when no settings
+	 * exist on disk, or undefined when stored settings could not be
+	 * read
 	 */
-	private async readStoredSettings(): Promise<
-		Partial<AudioRecorderSettings> | null | undefined
-	> {
+	private async readStoredSettings(): Promise<StoredSettingsReadResult> {
 		let data = await this.tryLoadData();
 		if (data !== undefined && data !== null) {
-			return data;
+			return { data, restoredFromBackup: false };
 		}
 
-		if (!(await this.settingsFileExists())) {
-			// Missing data.json: restore a lost file from the backup,
-			// or apply defaults on a first install. Saving stays
-			// enabled so the file gets created on the next change.
-			return (await this.readSettingsBackup()) ?? null;
+		if (!(await this.pluginFileExists(SETTINGS_DATA_FILE))) {
+			if (!(await this.pluginFileExists(SETTINGS_BACKUP_FILE))) {
+				// First install: no settings anywhere, defaults apply
+				// and saving stays enabled so data.json gets created
+				// on the next change
+				return { data: null, restoredFromBackup: false };
+			}
+			// Missing data.json with a backup present: restore the
+			// lost settings and have the caller persist them
+			const backup = await this.readSettingsBackup();
+			return {
+				data: backup,
+				restoredFromBackup: backup !== undefined,
+			};
 		}
 
 		await delay(SETTINGS_READ_RETRY_DELAY_MS);
 		data = await this.tryLoadData();
 		if (data !== undefined && data !== null) {
-			return data;
+			return { data, restoredFromBackup: false };
 		}
 
-		return this.readSettingsBackup();
+		// data.json exists but is unreadable: a readable backup keeps
+		// the session usable; data.json itself stays untouched until
+		// the user changes a setting
+		return {
+			data: await this.readSettingsBackup(),
+			restoredFromBackup: false,
+		};
 	}
 
 	/**
@@ -225,18 +268,19 @@ export default class AudioRecorderPlugin extends Plugin {
 	}
 
 	/**
-	 * Checks whether data.json is present on disk.
-	 * @returns True when data.json exists, or when its existence cannot
-	 * be determined: the protective assumption keeps saveSettings from
-	 * overwriting a file that may still be intact
+	 * Checks whether a file in the plugin folder is present on disk.
+	 * @param fileName - File name inside the plugin folder
+	 * @returns True when the file exists, or when its existence cannot
+	 * be determined: the protective assumption treats an unverifiable
+	 * file as present so it is never overwritten while possibly intact
 	 */
-	private async settingsFileExists(): Promise<boolean> {
-		const dataPath = this.getPluginFilePath(SETTINGS_DATA_FILE);
-		if (!dataPath) {
+	private async pluginFileExists(fileName: string): Promise<boolean> {
+		const filePath = this.getPluginFilePath(fileName);
+		if (!filePath) {
 			return false;
 		}
 		try {
-			return await this.app.vault.adapter.exists(dataPath);
+			return await this.app.vault.adapter.exists(filePath);
 		} catch {
 			return true;
 		}

@@ -168,7 +168,12 @@ describe('AudioRecorderPlugin settings persistence', () => {
 	});
 
 	it('restores settings from the backup when data.json is missing', async () => {
-		const { plugin, adapterRead, saveData } = createPlugin([null]);
+		const { plugin, adapterRead, adapterExists, saveData } = createPlugin([
+			null,
+		]);
+		adapterExists.mockImplementation((path: string) =>
+			Promise.resolve(path === BACKUP_PATH),
+		);
 		adapterRead.mockResolvedValue(
 			JSON.stringify({ filePrefix: 'from-backup' }),
 		);
@@ -177,9 +182,37 @@ describe('AudioRecorderPlugin settings persistence', () => {
 
 		expect(adapterRead).toHaveBeenCalledWith(BACKUP_PATH);
 		expect(plugin.settings.filePrefix).toBe('from-backup');
+		// The restore is persisted right away: data.json is recreated
+		// so the backup stops being the only copy on disk
+		expect(saveData).toHaveBeenCalledTimes(1);
+		expect(saveData).toHaveBeenCalledWith(
+			expect.objectContaining({ filePrefix: 'from-backup' }),
+		);
 
 		await plugin.saveSettings();
-		expect(saveData).toHaveBeenCalledTimes(1);
+		expect(saveData).toHaveBeenCalledTimes(2);
+	});
+
+	it('blocks saving when data.json is missing and the backup cannot be read', async () => {
+		// With data.json missing, the backup is the only remaining
+		// copy of the settings: a transient read failure must block
+		// saving instead of letting the defaults overwrite it
+		const { plugin, adapterRead, adapterWrite, adapterExists, saveData } =
+			createPlugin([null]);
+		adapterExists.mockImplementation((path: string) =>
+			Promise.resolve(path === BACKUP_PATH),
+		);
+		adapterRead.mockRejectedValue(new Error('EBUSY'));
+
+		await onloadWithTimers(plugin);
+
+		// Defaults are active in memory only
+		expect(plugin.settings.filePrefix).toBe(DEFAULT_SETTINGS.filePrefix);
+
+		await plugin.saveSettings();
+		expect(saveData).not.toHaveBeenCalled();
+		// The possibly intact backup is never overwritten with defaults
+		expect(adapterWrite).not.toHaveBeenCalled();
 	});
 
 	it('retries a failed read once and uses the second result', async () => {
