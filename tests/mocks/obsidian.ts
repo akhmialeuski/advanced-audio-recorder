@@ -104,6 +104,11 @@ export class Workspace {
 	getActiveViewOfType<T>(_type: new (...args: unknown[]) => T): T | null {
 		return null;
 	}
+
+	onLayoutReady(callback: () => void): void {
+		// The mock workspace is always "ready"
+		callback();
+	}
 }
 
 /**

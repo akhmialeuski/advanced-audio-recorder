@@ -14,6 +14,13 @@ import {
 } from './settings/Settings';
 import { AudioRecorderSettingTab } from './settings/SettingsTab';
 import { RecordingManager } from './recording/RecordingManager';
+import { SessionJournal, JOURNAL_FILE_NAME } from './recording/SessionJournal';
+import {
+	collectRecoverableSessions,
+	recoverSession,
+	discardSession,
+} from './recording/RecoveryService';
+import { RecoveryModal } from './ui/RecoveryModal';
 import { updateStatusBar, initializeStatusBar } from './ui/StatusBar';
 import { updateRibbonIcon, initializeRibbonIcon } from './ui/RibbonIcon';
 import { showDeviceSelectionModal } from './ui/DeviceSelectionModal';
@@ -62,6 +69,7 @@ export default class AudioRecorderPlugin extends Plugin {
 	private statusBarItem: HTMLElement | null = null;
 	private ribbonIconEl: HTMLElement | null = null;
 	private contextMenu!: ContextMenu;
+	private journal!: SessionJournal;
 	/**
 	 * True when data.json exists on disk but could not be read at load
 	 * time. While set, saveSettings refuses to write so the possibly
@@ -81,6 +89,10 @@ export default class AudioRecorderPlugin extends Plugin {
 	async onload(): Promise<void> {
 		await this.loadSettings();
 
+		this.journal = new SessionJournal(
+			this.getPluginFilePath(JOURNAL_FILE_NAME),
+			this.app,
+		);
 		this.recordingManager = new RecordingManager(
 			this.app,
 			this.settings,
@@ -94,6 +106,7 @@ export default class AudioRecorderPlugin extends Plugin {
 				);
 				updateRibbonIcon(this.ribbonIconEl, status);
 			},
+			this.journal,
 		);
 
 		this.addSettingTab(new AudioRecorderSettingTab(this.app, this));
@@ -109,6 +122,74 @@ export default class AudioRecorderPlugin extends Plugin {
 
 		this.contextMenu = new ContextMenu(this.app, this, () => this.settings);
 		this.contextMenu.register();
+
+		// Recovery runs after the workspace is ready so plugin load is
+		// never delayed; a failure here must not break the plugin
+		this.app.workspace.onLayoutReady(() => {
+			void this.checkForInterruptedSessions();
+		});
+	}
+
+	/**
+	 * Offers recovery for recording sessions that died mid-recording
+	 * (crash, power loss, plugin unload). Sessions whose temporary
+	 * files vanished self-clear silently; everything else opens the
+	 * recovery modal.
+	 */
+	private async checkForInterruptedSessions(): Promise<void> {
+		try {
+			const sessions = await collectRecoverableSessions(
+				this.journal,
+				this.app,
+			);
+			if (sessions.length === 0) {
+				return;
+			}
+			new RecoveryModal(this.app, sessions, {
+				onRecover: async () => {
+					const recovered: string[] = [];
+					const failed: string[] = [];
+					for (const session of sessions) {
+						const result = await recoverSession(
+							session,
+							this.journal,
+							this.app,
+						);
+						recovered.push(...result.recoveredPaths);
+						failed.push(...result.failedTracks);
+					}
+					if (recovered.length > 0) {
+						new Notice(
+							`Recovered ${String(recovered.length)} audio file(s): ${recovered.join(', ')}`,
+						);
+					}
+					if (failed.length > 0) {
+						new Notice(
+							`Could not recover ${String(failed.length)} track(s); their temporary files were kept for the next attempt.`,
+						);
+					}
+				},
+				onDiscard: async () => {
+					const failedPaths: string[] = [];
+					for (const session of sessions) {
+						failedPaths.push(
+							...(await discardSession(
+								session,
+								this.journal,
+								this.app,
+							)),
+						);
+					}
+					new Notice(
+						failedPaths.length > 0
+							? `Some temporary recording files could not be removed: ${failedPaths.join(', ')}`
+							: 'Temporary recording files were discarded.',
+					);
+				},
+			}).open();
+		} catch (error) {
+			console.error(`${PLUGIN_LOG_PREFIX} Recovery check failed:`, error);
+		}
 	}
 
 	/**
