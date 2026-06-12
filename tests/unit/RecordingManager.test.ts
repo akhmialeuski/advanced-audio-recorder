@@ -46,9 +46,6 @@ jest.mock('../../src/recording/AudioEncoder', () => ({
 
 // Mock WavEncoder
 jest.mock('../../src/recording/WavEncoder', () => ({
-	bufferToWave: jest
-		.fn()
-		.mockReturnValue(new Blob(['test'], { type: 'audio/wav' })),
 	assembleWavFromPcmSegments: jest.fn().mockReturnValue(new ArrayBuffer(44)),
 }));
 
@@ -996,10 +993,10 @@ describe('RecordingManager', () => {
 			});
 
 			// The mixed render encodes to an empty blob: nothing to save
-			const { bufferToWave } = jest.requireMock(
-				'../../src/recording/WavEncoder',
+			const { encodeAudioBuffer } = jest.requireMock(
+				'../../src/recording/AudioEncoder',
 			);
-			bufferToWave.mockReturnValueOnce(new Blob([]));
+			encodeAudioBuffer.mockResolvedValueOnce(new Blob([]));
 
 			await manager.startRecording();
 

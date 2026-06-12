@@ -81,9 +81,7 @@ jest.mock('obsidian', () => ({
 
 // Mock WavEncoder
 jest.mock('../src/recording/WavEncoder', () => ({
-	bufferToWave: jest
-		.fn()
-		.mockReturnValue(new Blob(['test'], { type: 'audio/wav' })),
+	assembleWavFromPcmSegments: jest.fn().mockReturnValue(new ArrayBuffer(44)),
 }));
 
 describe('AudioStreamHandler: Error Handling', () => {

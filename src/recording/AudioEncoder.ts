@@ -14,10 +14,10 @@ import {
 	OggOutputFormat,
 	FlacOutputFormat,
 	Mp3OutputFormat,
+	WavOutputFormat,
 	canEncodeAudio,
 } from 'mediabunny';
 import type { OutputFormat, AudioCodec } from 'mediabunny';
-import { bufferToWave } from './WavEncoder';
 import { EncodingError } from '../errors';
 import {
 	FORMAT_WAV,
@@ -63,13 +63,22 @@ export const FORMAT_CODEC_MAP: Record<string, AudioCodec> = {
 	[FORMAT_AAC]: 'aac',
 	[FORMAT_FLAC]: 'flac',
 	[FORMAT_MP3]: 'mp3',
+	[FORMAT_WAV]: 'pcm-s16',
 };
+
+/**
+ * Uncompressed codecs: a bitrate option is meaningless for them and
+ * must not be passed to the encoder.
+ */
+const PCM_CODECS = new Set<AudioCodec>(['pcm-s16']);
 
 /**
  * Creates the appropriate Mediabunny OutputFormat for the given format.
  */
 export function createOutputFormat(format: string): OutputFormat {
 	switch (format) {
+		case FORMAT_WAV:
+			return new WavOutputFormat();
 		case FORMAT_WEBM:
 			return new WebMOutputFormat();
 		case FORMAT_OGG:
@@ -121,13 +130,9 @@ export async function encodeAudioBuffer(
 ): Promise<Blob> {
 	const { format } = options;
 
-	if (format === FORMAT_WAV) {
-		onProgress?.(100);
-		return bufferToWave(buffer, buffer.length);
-	}
-
 	if (
 		WEBCODECS_FORMATS.has(format) ||
+		format === FORMAT_WAV ||
 		format === FORMAT_FLAC ||
 		format === FORMAT_MP3
 	) {
@@ -160,10 +165,10 @@ async function encodeWithMediabunny(
 		const target = new BufferTarget();
 		const output = new Output({ format: outputFormat, target });
 
-		const audioSource = new AudioBufferSource({
-			codec,
-			bitrate,
-		});
+		// PCM is uncompressed: passing a bitrate is invalid for it
+		const audioSource = new AudioBufferSource(
+			PCM_CODECS.has(codec) ? { codec } : { codec, bitrate },
+		);
 		output.addAudioTrack(audioSource);
 
 		await output.start();

@@ -14,12 +14,6 @@ import { EncodingError } from '../../src/errors';
 import { createMockAudioBuffer } from '../helpers/createMockAudioBuffer';
 
 // Mock WavEncoder
-jest.mock('../../src/recording/WavEncoder', () => ({
-	bufferToWave: jest
-		.fn()
-		.mockReturnValue(new Blob(['wav-data'], { type: 'audio/wav' })),
-}));
-
 // Mock mediabunny
 const mockAdd = jest.fn().mockResolvedValue(undefined);
 const mockStart = jest.fn().mockResolvedValue(undefined);
@@ -45,6 +39,7 @@ jest.mock('mediabunny', () => ({
 	OggOutputFormat: jest.fn(),
 	FlacOutputFormat: jest.fn(),
 	Mp3OutputFormat: jest.fn(),
+	WavOutputFormat: jest.fn(),
 	canEncodeAudio: jest.fn().mockResolvedValue(false),
 }));
 
@@ -72,10 +67,9 @@ describe('AudioEncoder', () => {
 			bitrate: 128000,
 		};
 
-		it('should delegate WAV encoding to bufferToWave', async () => {
-			const { bufferToWave } = jest.requireMock(
-				'../../src/recording/WavEncoder',
-			);
+		it('should encode WAV using Mediabunny with the pcm-s16 codec', async () => {
+			const { WavOutputFormat, AudioBufferSource } =
+				jest.requireMock('mediabunny');
 			const buffer = createMockAudioBuffer(1, 1024, 44100);
 
 			const result = await encodeAudioBuffer(buffer, {
@@ -83,7 +77,11 @@ describe('AudioEncoder', () => {
 				format: 'wav',
 			});
 
-			expect(bufferToWave).toHaveBeenCalledWith(buffer, buffer.length);
+			expect(WavOutputFormat).toHaveBeenCalled();
+			// PCM is uncompressed: no bitrate option may be passed
+			expect(AudioBufferSource).toHaveBeenCalledWith({
+				codec: 'pcm-s16',
+			});
 			expect(result).toBeInstanceOf(Blob);
 			expect(result.type).toBe('audio/wav');
 		});

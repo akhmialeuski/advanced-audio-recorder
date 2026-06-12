@@ -15,7 +15,6 @@ import {
 import type { AudioCodec } from 'mediabunny';
 import type { RecordingTarget } from '../types';
 import type { AudioRecorderSettings } from '../settings/Settings';
-import { bufferToWave } from './WavEncoder';
 import {
 	encodeAudioBuffer,
 	isOfflineEncodingSupported,
@@ -98,19 +97,14 @@ export function isOfflineOnlyFormat(
 }
 
 /**
- * Decodes a compressed audio blob to WAV format.
+ * Converts a compressed audio blob to WAV format through the
+ * streaming mediabunny pipeline (with the decode-and-re-encode
+ * fallback of convertBlobToFormat). PCM output has no bitrate.
  * @param recordedBlob - Compressed audio blob
  * @returns WAV blob
  */
 export async function convertBlobToWav(recordedBlob: Blob): Promise<Blob> {
-	const audioContext = new AudioContext();
-	try {
-		const arrayBuffer = await recordedBlob.arrayBuffer();
-		const decodedBuffer = await audioContext.decodeAudioData(arrayBuffer);
-		return bufferToWave(decodedBuffer, decodedBuffer.length);
-	} finally {
-		await audioContext.close();
-	}
+	return convertBlobToFormat(recordedBlob, FORMAT_WAV, 0);
 }
 
 /**
@@ -203,11 +197,15 @@ async function convertBlobWithConversion(
 	// bitrate. Discarded tracks are handled explicitly below, so
 	// mediabunny's own console warnings about them are disabled.
 	const inputCodec = await audioTrack.getCodec();
+	// PCM targets are uncompressed: a bitrate option is invalid there
+	const isPcmTarget = codec.startsWith('pcm-');
 	const conversion = await Conversion.init({
 		input,
 		output,
 		audio:
-			allowRemux && inputCodec === codec ? { codec } : { codec, bitrate },
+			(allowRemux && inputCodec === codec) || isPcmTarget
+				? { codec }
+				: { codec, bitrate },
 		showWarnings: false,
 	});
 
@@ -388,24 +386,19 @@ export async function mergeAudioTracks(
 		});
 	}
 
-	const targetFormat = settings.recordingFormat;
-	if (
-		targetFormat !== FORMAT_WAV &&
-		isOfflineEncodingSupported(targetFormat)
-	) {
-		return encodeAudioBuffer(
-			renderedBuffer,
-			{
-				format: targetFormat,
-				bitrate: settings.bitrate,
-			},
-			(percent) => {
-				onProgress?.(
-					40 + Math.round(percent * 0.2),
-					'Encoding audio...',
-				);
-			},
-		);
-	}
-	return bufferToWave(renderedBuffer, renderedBuffer.length);
+	// Unsupported formats fall back to WAV, which mediabunny always
+	// encodes (pcm-s16 needs no platform encoder)
+	const targetFormat = isOfflineEncodingSupported(settings.recordingFormat)
+		? settings.recordingFormat
+		: FORMAT_WAV;
+	return encodeAudioBuffer(
+		renderedBuffer,
+		{
+			format: targetFormat,
+			bitrate: settings.bitrate,
+		},
+		(percent) => {
+			onProgress?.(40 + Math.round(percent * 0.2), 'Encoding audio...');
+		},
+	);
 }
