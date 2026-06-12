@@ -7,7 +7,6 @@
 /** @jest-environment jsdom */
 
 import { PartRotationController } from '../../src/recording/PartRotationController';
-import type { RotationHooks } from '../../src/recording/PartRotationController';
 import type { TrackWriteQueue } from '../../src/recording/TrackWriteQueue';
 import type { RecordingFinalizer } from '../../src/recording/RecordingFinalizer';
 import { DebugLogger } from '../../src/utils/DebugLogger';
