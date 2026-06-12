@@ -210,6 +210,29 @@ export class Modal {
 }
 
 /**
+ * Mock ButtonComponent class.
+ */
+export class ButtonComponent {
+	buttonEl: HTMLElement = document.createElement('button');
+
+	setButtonText(_text: string): this {
+		return this;
+	}
+
+	setCta(): this {
+		return this;
+	}
+
+	setDisabled(_disabled: boolean): this {
+		return this;
+	}
+
+	onClick(_callback: () => void): this {
+		return this;
+	}
+}
+
+/**
  * Mock Setting class.
  */
 export class Setting {
@@ -218,9 +241,11 @@ export class Setting {
 	descEl: HTMLElement;
 
 	constructor(_containerEl: HTMLElement) {
-		this.settingEl = document.createElement('div');
-		this.nameEl = document.createElement('div');
-		this.descEl = document.createElement('div');
+		this.settingEl = addObsidianDomExtensions(
+			document.createElement('div'),
+		);
+		this.nameEl = addObsidianDomExtensions(document.createElement('div'));
+		this.descEl = addObsidianDomExtensions(document.createElement('div'));
 	}
 
 	setName(_name: string): this {
@@ -250,6 +275,10 @@ export class Setting {
 	addSlider(_callback: (slider: SliderComponent) => void): this {
 		return this;
 	}
+
+	addButton(_callback: (button: ButtonComponent) => void): this {
+		return this;
+	}
 }
 
 /**
@@ -257,7 +286,9 @@ export class Setting {
  */
 export class PluginSettingTab {
 	app: App;
-	containerEl: HTMLElement = document.createElement('div');
+	containerEl: HTMLElement = addObsidianDomExtensions(
+		document.createElement('div'),
+	);
 	plugin: Plugin;
 
 	constructor(app: App, plugin: Plugin) {

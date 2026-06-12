@@ -59,6 +59,13 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	private testChunks: Blob[] = [];
 	private testAudioElement: HTMLAudioElement | null = null;
 	/**
+	 * Device-change listener active while the settings tab is open.
+	 * Registered via addEventListener so other consumers of the event
+	 * are not overwritten, and removed in hide() so the handler cannot
+	 * outlive the tab (or the plugin).
+	 */
+	private deviceChangeHandler: (() => void) | null = null;
+	/**
 	 * Debounced settings save shared by the text fields, which fire
 	 * onChange on every keystroke and would otherwise rewrite data.json
 	 * per character. Toggles, dropdowns, and sliders save directly.
@@ -137,9 +144,15 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 		this.deviceDropdowns = [];
-		navigator.mediaDevices.ondevicechange = () => {
-			void this.refreshDeviceList();
-		};
+		if (!this.deviceChangeHandler) {
+			this.deviceChangeHandler = (): void => {
+				void this.refreshDeviceList();
+			};
+			navigator.mediaDevices.addEventListener(
+				'devicechange',
+				this.deviceChangeHandler,
+			);
+		}
 
 		// ── Audio input ──────────────────────────────────────────────
 		new Setting(containerEl).setName('Audio input').setHeading();
@@ -761,11 +774,19 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * Cleans up test recording resources when settings tab is hidden
-	 * and flushes a pending debounced text-setting save.
+	 * Cleans up test recording resources when settings tab is hidden,
+	 * flushes a pending debounced text-setting save, and detaches the
+	 * device-change listener registered in display().
 	 */
 	hide(): void {
 		this.saveTextSettingDebounced.run();
 		void this.cleanupTestRecording();
+		if (this.deviceChangeHandler) {
+			navigator.mediaDevices.removeEventListener(
+				'devicechange',
+				this.deviceChangeHandler,
+			);
+			this.deviceChangeHandler = null;
+		}
 	}
 }
