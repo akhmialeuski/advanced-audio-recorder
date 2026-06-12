@@ -198,6 +198,11 @@ export default class AudioRecorderPlugin extends Plugin {
 				'Settings were not loaded correctly; changes are not saved ' +
 					'to protect your stored settings. Restart Obsidian.',
 			);
+			// The settings tab mutates the in-memory settings before
+			// calling saveSettings: propagate them so every subsystem
+			// sees the same session state even though nothing is
+			// persisted
+			this.recordingManager.updateSettings(this.settings);
 			return;
 		}
 		await this.saveData(serializeSettings(this.settings));

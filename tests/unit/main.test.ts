@@ -285,6 +285,32 @@ describe('AudioRecorderPlugin settings persistence', () => {
 		expect(saveData).not.toHaveBeenCalled();
 	});
 
+	it('propagates in-memory settings to the recording manager while saving is blocked', async () => {
+		const { plugin, saveData, adapterExists } = createPlugin([
+			undefined,
+			undefined,
+		]);
+		adapterExists.mockResolvedValue(true);
+
+		await onloadWithTimers(plugin);
+
+		const { RecordingManager } = jest.requireMock(
+			'../../src/recording/RecordingManager',
+		);
+		const manager = (RecordingManager as jest.Mock).mock.results[0]
+			.value as { updateSettings: jest.Mock };
+
+		// The settings tab mutates the in-memory settings before
+		// calling saveSettings; with persistence blocked, the change
+		// must still reach the recording manager so the whole session
+		// sees one consistent state
+		plugin.settings.filePrefix = 'changed-in-session';
+		await plugin.saveSettings();
+
+		expect(saveData).not.toHaveBeenCalled();
+		expect(manager.updateSettings).toHaveBeenCalledWith(plugin.settings);
+	});
+
 	it('treats a rejected settings read as a failed read', async () => {
 		// The current Obsidian loadData() never rejects, but that is
 		// undocumented internal behavior; a rejection must degrade to
