@@ -122,12 +122,12 @@ The modal includes a **Copy as Markdown** button that copies all metadata as a f
 
 Opens a conversion dialog to transcode the audio file to a different format. Options:
 
-- **Target format** with encoder description (e.g., `FLAC (flac-encoder)`, `MP3 (lamejs)`).
+- **Target format** with encoder description (e.g., `FLAC (Mediabunny FLAC Encoder)`, `MP3 (Mediabunny MP3 Encoder)`).
 - **Bitrate** selection (64-320 kbps).
 - **Delete source file** toggle to remove the original after successful conversion.
 - **Update links in notes**: `Do nothing`, `Replace source link`, or `Insert after source link`.
 
-The conversion reads the source file, decodes it at its native sample rate (to avoid resampling artifacts), re-encodes it in the target format, and saves the new file alongside the original.
+The conversion reads the source file and transcodes it to the target format through the streaming mediabunny pipeline: the audio is processed in chunks instead of being decoded fully into memory, and when the source codec already matches the target codec the audio packets are copied without re-encoding. If the source container cannot be processed by the pipeline, the plugin falls back to a full decode and re-encode. The new file is saved alongside the original. Converting to WAV always performs a full decode.
 
 ### Split audio into parts
 
@@ -156,16 +156,16 @@ Moves the audio file to the system trash **and** removes the corresponding embed
 
 Available recording formats depend on your platform's **MediaRecorder** support. The plugin detects supported formats at runtime.
 
-| Format | Codec | Encoding | Notes |
-|--------|-------|----------|-------|
-| **WebM** | Opus | Online | Default format. Widely supported on desktop. |
-| **OGG** | Opus/Vorbis | Online | Good compatibility on most systems. |
-| **WAV** | PCM | Online (streaming) | Uncompressed. Captured as raw PCM in real time and assembled into a WAV file on save. Supports long recordings reliably without memory issues. |
-| **MP3** | MP3 | Offline (lamejs) | Encoded after recording stops using the lamejs library. |
-| **FLAC** | FLAC | Offline (flac-encoder) | Lossless compression. Encoded after recording using flac-encoder. |
-| **MP4** | AAC | Online/Offline | Browser-dependent. May use offline encoding via mediabunny. |
-| **M4A** | AAC | Online/Offline | Same as MP4, different container extension. |
-| **AAC** | AAC | Online/Offline | Raw AAC stream. Browser-dependent support. |
+| Format   | Codec       | Encoding                          | Notes                                                                                                                                          |
+| -------- | ----------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| **WebM** | Opus        | Online                            | Default format. Widely supported on desktop.                                                                                                   |
+| **OGG**  | Opus/Vorbis | Online                            | Good compatibility on most systems.                                                                                                            |
+| **WAV**  | PCM         | Online (streaming)                | Uncompressed. Captured as raw PCM in real time and assembled into a WAV file on save. Supports long recordings reliably without memory issues. |
+| **MP3**  | MP3         | Offline (Mediabunny MP3 Encoder)  | Encoded after recording stops using the Mediabunny MP3 encoder extension.                                                                      |
+| **FLAC** | FLAC        | Offline (Mediabunny FLAC Encoder) | Lossless compression. Encoded after recording using the Mediabunny FLAC encoder extension.                                                     |
+| **MP4**  | AAC         | Online/Offline                    | Browser-dependent. May use offline encoding via mediabunny.                                                                                    |
+| **M4A**  | AAC         | Online/Offline                    | Same as MP4, different container extension.                                                                                                    |
+| **AAC**  | AAC         | Online/Offline                    | Raw AAC stream. Browser-dependent support.                                                                                                     |
 
 **Online encoding** means the browser's MediaRecorder writes data in real time during recording.
 **Offline encoding** means the audio is captured in a supported intermediate format (e.g., WebM) and then re-encoded after recording stops. The settings tab marks offline formats with an `(offline)` label.
@@ -192,6 +192,8 @@ Record from multiple input devices simultaneously (up to 8 tracks).
 ## Settings reference
 
 Open **Settings > Advanced Audio Recorder** to configure the plugin.
+
+The plugin keeps an automatic backup of its settings in `data.json.bak` next to `data.json` in the plugin folder. The backup is refreshed on every successful settings load and save and is used to restore the settings automatically when `data.json` goes missing or becomes unreadable. If the settings cannot be read at startup (for example, when the file is temporarily locked during a plugin update), the plugin leaves the stored file untouched, disables saving for the session to protect it, and shows a notice; restarting Obsidian recovers the settings.
 
 ### Audio input
 
