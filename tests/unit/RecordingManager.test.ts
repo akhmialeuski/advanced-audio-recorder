@@ -2213,7 +2213,7 @@ describe('RecordingManager', () => {
 
 		interface ManagerInternals {
 			chunkTargets: TargetInternals[];
-			rotationPromise: Promise<void> | null;
+			rotation: { rotationPromise: Promise<void> | null };
 		}
 
 		let mockMediaRecorder: {
@@ -2227,8 +2227,18 @@ describe('RecordingManager', () => {
 			addEventListener: jest.Mock;
 		};
 
-		function getInternals(instance: RecordingManager): ManagerInternals {
-			return instance as unknown as ManagerInternals;
+		function getInternals(instance: RecordingManager): {
+			chunkTargets: TargetInternals[];
+			rotationPromise: Promise<void> | null;
+		} {
+			const internals = instance as unknown as ManagerInternals;
+			return {
+				chunkTargets: internals.chunkTargets,
+				// Rotation state lives on the PartRotationController
+				get rotationPromise(): Promise<void> | null {
+					return internals.rotation.rotationPromise;
+				},
+			};
 		}
 
 		/**
