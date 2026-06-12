@@ -31,6 +31,14 @@ export const AUDIO_EXTENSIONS = [
 /** Interval between MediaRecorder data chunks in milliseconds. */
 export const CHUNK_TIMESLICE_MS = 5000;
 
+/**
+ * Maximum time to wait for a MediaRecorder stop event in milliseconds.
+ * If the audio subsystem dies mid-stop the event never fires; without
+ * the timeout the stop sequence would hang forever with the status bar
+ * stuck on "Saving".
+ */
+export const RECORDER_STOP_TIMEOUT_MS = 5000;
+
 /** Maximum in-memory buffer size for mobile recordings before flushing to disk. */
 export const MOBILE_BUFFER_LIMIT_BYTES = 50 * 1024 * 1024;
 
@@ -42,6 +50,12 @@ export const DESKTOP_FLUSH_THRESHOLD_BYTES = 50 * 1024 * 1024;
 
 /** Common MIME type prefix for audio formats. */
 export const MIME_TYPE_AUDIO_PREFIX = 'audio/';
+
+/** Default audio sample rate in Hz. */
+export const DEFAULT_SAMPLE_RATE = 44100;
+
+/** Default encoder bitrate in bits per second. */
+export const DEFAULT_BITRATE = 128000;
 
 /** Seconds in one minute. */
 export const SECONDS_PER_MINUTE = 60;

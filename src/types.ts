@@ -3,6 +3,8 @@
  * @module types
  */
 
+import type { OutputMode } from './settings/Settings';
+
 /**
  * Recording status states.
  */
@@ -40,6 +42,38 @@ export interface InsertionContext {
 	line: number;
 	/** Cursor character offset at recording start. */
 	ch: number;
+}
+
+/**
+ * Immutable snapshot of the session-scoped recording configuration,
+ * taken at recording start. The per-track part and finalization paths
+ * read these values repeatedly during the session; without the
+ * snapshot, a settings change mid-recording could switch formats
+ * between parts or reroute the finalization topology (outputMode
+ * decides whether a multi-track session merges, and the auto-split
+ * decision already depended on it at start). The mobile flush path
+ * deliberately keeps reading live settings (see
+ * TrackWriteQueue.flushChunkBuffer).
+ */
+export interface RecordingSessionConfig {
+	/** Whether the session runs in the mobile app. */
+	isMobile: boolean;
+	/** Whether the session captures raw PCM for WAV output (desktop). */
+	isWavPcm: boolean;
+	/** Container format produced by the MediaRecorders. */
+	recorderFormat: string;
+	/** Output format of the final files. */
+	outputFormat: string;
+	/** Output mode: 'single' merges multi-track sessions at stop. */
+	outputMode: OutputMode;
+	/** Encoder bitrate in bits per second. */
+	bitrate: number;
+	/** Whether auto-split is active for the session. */
+	splitEnabled: boolean;
+	/** Auto-split part duration in minutes. */
+	partMinutes: number;
+	/** Auto-split part name suffix. */
+	partSuffix: string;
 }
 
 /**

@@ -16,9 +16,9 @@ import {
 	getBaseSaveDirectory,
 	ensureFolderExists,
 	resolveUniquePath,
+	resolveUniquePathInDirectory,
 	saveAudioFile,
 	removeTemporaryArtifacts,
-	rollbackFinalFile,
 	cleanupIntermediateFiles,
 } from '../../src/recording/RecordingFileManager';
 
@@ -269,6 +269,67 @@ describe('RecordingFileManager', () => {
 			expect(mockApp.vault.createFolder).toHaveBeenCalledWith(
 				'Recordings/subfolder',
 			);
+		});
+	});
+
+	// -----------------------------------------------------------------------
+	// resolveUniquePathInDirectory
+	// -----------------------------------------------------------------------
+	describe('resolveUniquePathInDirectory', () => {
+		it('should return the path directly when free', async () => {
+			(mockApp.vault.adapter.exists as jest.Mock).mockResolvedValue(
+				false,
+			);
+
+			const result = await resolveUniquePathInDirectory(
+				'Recordings',
+				'clip.webm',
+				mockApp,
+			);
+
+			expect(result).toBe('Recordings/clip.webm');
+		});
+
+		it('should append a counter on collision', async () => {
+			(mockApp.vault.adapter.exists as jest.Mock)
+				.mockResolvedValueOnce(true)
+				.mockResolvedValueOnce(false);
+
+			const result = await resolveUniquePathInDirectory(
+				'Recordings',
+				'clip.webm',
+				mockApp,
+			);
+
+			expect(result).toBe('Recordings/clip_1.webm');
+		});
+
+		it('should keep multi-dot names intact', async () => {
+			(mockApp.vault.adapter.exists as jest.Mock)
+				.mockResolvedValueOnce(true)
+				.mockResolvedValueOnce(false);
+
+			const result = await resolveUniquePathInDirectory(
+				'Recordings',
+				'clip.part1.webm.tmp',
+				mockApp,
+			);
+
+			expect(result).toBe('Recordings/clip.part1.webm_1.tmp');
+		});
+
+		it('should sanitize illegal characters', async () => {
+			(mockApp.vault.adapter.exists as jest.Mock).mockResolvedValue(
+				false,
+			);
+
+			const result = await resolveUniquePathInDirectory(
+				'Recordings',
+				'clip:1?.webm',
+				mockApp,
+			);
+
+			expect(result).toBe('Recordings/clip-1-.webm');
 		});
 	});
 
@@ -559,72 +620,6 @@ describe('RecordingFileManager', () => {
 				expect.stringContaining('[AudioRecorder]'),
 				expect.anything(),
 			);
-		});
-	});
-
-	// -----------------------------------------------------------------------
-	// rollbackFinalFile
-	// -----------------------------------------------------------------------
-	describe('rollbackFinalFile', () => {
-		it('should remove the file successfully', async () => {
-			(mockApp.vault.adapter.remove as jest.Mock).mockResolvedValue(
-				undefined,
-			);
-
-			await rollbackFinalFile(
-				'Recordings/final.webm',
-				'rollback context',
-				mockApp,
-			);
-
-			expect(mockApp.vault.adapter.remove).toHaveBeenCalledWith(
-				'Recordings/final.webm',
-			);
-			expect(consoleErrorSpy).not.toHaveBeenCalled();
-		});
-
-		it('should log error when removal fails', async () => {
-			(mockApp.vault.adapter.remove as jest.Mock).mockRejectedValue(
-				new Error('Cannot delete'),
-			);
-
-			await rollbackFinalFile(
-				'Recordings/final.webm',
-				'rollback failed',
-				mockApp,
-			);
-
-			expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
-			expect(consoleErrorSpy).toHaveBeenCalledWith(
-				expect.stringContaining('rollback failed'),
-				expect.objectContaining({
-					filePath: 'Recordings/final.webm',
-					error: expect.any(Error),
-				}),
-			);
-		});
-
-		it('should include log prefix in error message', async () => {
-			(mockApp.vault.adapter.remove as jest.Mock).mockRejectedValue(
-				new Error('fail'),
-			);
-
-			await rollbackFinalFile('file.webm', 'context', mockApp);
-
-			expect(consoleErrorSpy).toHaveBeenCalledWith(
-				expect.stringContaining('[AudioRecorder]'),
-				expect.anything(),
-			);
-		});
-
-		it('should not throw even when removal fails', async () => {
-			(mockApp.vault.adapter.remove as jest.Mock).mockRejectedValue(
-				new Error('Catastrophic failure'),
-			);
-
-			await expect(
-				rollbackFinalFile('file.webm', 'context', mockApp),
-			).resolves.toBeUndefined();
 		});
 	});
 

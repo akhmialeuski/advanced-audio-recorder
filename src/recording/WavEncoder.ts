@@ -1,79 +1,12 @@
 /**
- * WAV encoder utility for converting AudioBuffer to WAV format
- * and assembling WAV files from raw PCM segments.
+ * WAV header utilities for assembling WAV files from raw int16 PCM
+ * segments captured by the streaming recording path. AudioBuffer
+ * encoding goes through mediabunny (see AudioEncoder), which handles
+ * WAVE output natively.
  * @module recording/WavEncoder
  */
 
-/**
- * Converts an AudioBuffer to a WAV Blob.
- * @param audioBuffer - The audio buffer to convert
- * @param length - The length of samples to convert
- * @returns WAV format Blob
- */
-export function bufferToWave(audioBuffer: AudioBuffer, length: number): Blob {
-	const numOfChan = audioBuffer.numberOfChannels;
-	const totalLength = length * numOfChan * 2 + 44;
-	const buffer = new ArrayBuffer(totalLength);
-	const view = new DataView(buffer);
-	const channels: Float32Array[] = [];
-	let offset = 0;
-
-	// Write RIFF header
-	writeString(view, offset, 'RIFF');
-	offset += 4;
-	view.setUint32(offset, totalLength - 8, true);
-	offset += 4;
-	writeString(view, offset, 'WAVE');
-	offset += 4;
-
-	// Write fmt subchunk
-	writeString(view, offset, 'fmt ');
-	offset += 4;
-	view.setUint32(offset, 16, true); // Subchunk1Size
-	offset += 4;
-	view.setUint16(offset, 1, true); // AudioFormat (PCM)
-	offset += 2;
-	view.setUint16(offset, numOfChan, true); // NumChannels
-	offset += 2;
-	view.setUint32(offset, audioBuffer.sampleRate, true); // SampleRate
-	offset += 4;
-	view.setUint32(offset, audioBuffer.sampleRate * 2 * numOfChan, true); // ByteRate
-	offset += 4;
-	view.setUint16(offset, numOfChan * 2, true); // BlockAlign
-	offset += 2;
-	view.setUint16(offset, 16, true); // BitsPerSample
-	offset += 2;
-
-	// Write data subchunk
-	writeString(view, offset, 'data');
-	offset += 4;
-	view.setUint32(offset, totalLength - 44, true); // Subchunk2Size
-	offset += 4;
-
-	// Get channel data
-	for (let i = 0; i < audioBuffer.numberOfChannels; i++) {
-		channels.push(audioBuffer.getChannelData(i));
-	}
-
-	// Write interleaved audio data
-	const sampleCount = Math.min(length, audioBuffer.length);
-	for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
-		for (let channelIndex = 0; channelIndex < numOfChan; channelIndex++) {
-			const sample = Math.max(
-				-1,
-				Math.min(1, channels[channelIndex][sampleIndex]),
-			);
-			const intSample = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
-			view.setInt16(
-				44 + sampleIndex * numOfChan * 2 + channelIndex * 2,
-				intSample,
-				true,
-			);
-		}
-	}
-
-	return new Blob([buffer], { type: 'audio/wav' });
-}
+import type { App } from 'obsidian';
 
 /**
  * Writes a string to a DataView at the specified offset.
@@ -109,7 +42,7 @@ export function getWavHeaderInfo(
 /**
  * WAV header size in bytes.
  */
-const WAV_HEADER_SIZE = 44;
+export const WAV_HEADER_SIZE = 44;
 
 /**
  * Bits per sample for 16-bit PCM.
@@ -198,4 +131,67 @@ export function assembleWavFromPcmSegments(
 	}
 
 	return wavBuffer;
+}
+
+/**
+ * Assembles a complete WAV file from flushed int16 PCM segment files.
+ * When the vault adapter can report file sizes, the final buffer is
+ * allocated once and the segments stream into it sequentially — peak
+ * memory is the final file plus one segment, instead of two full
+ * copies of the recording. Falls back to read-all-then-assemble for
+ * adapters without stat support.
+ * @param segmentPaths - Segment files in capture order (vault-relative)
+ * @param numChannels - Number of audio channels
+ * @param sampleRate - Sample rate in Hz
+ * @param app - Obsidian App instance
+ * @returns ArrayBuffer containing the complete WAV file
+ * @throws Error when a segment grew between stat and read
+ */
+export async function assembleWavFromPcmSegmentFiles(
+	segmentPaths: string[],
+	numChannels: number,
+	sampleRate: number,
+	app: App,
+): Promise<ArrayBuffer> {
+	const adapter = app.vault.adapter;
+	if (typeof adapter.stat === 'function') {
+		const stats = await Promise.all(
+			segmentPaths.map((path) => adapter.stat(path)),
+		);
+		if (stats.every((stat) => stat != null)) {
+			const totalPcmSize = stats.reduce(
+				(sum, stat) => sum + (stat?.size ?? 0),
+				0,
+			);
+			const wavBuffer = new ArrayBuffer(WAV_HEADER_SIZE + totalPcmSize);
+			const wavView = new Uint8Array(wavBuffer);
+			let offset = WAV_HEADER_SIZE;
+			for (const path of segmentPaths) {
+				const segment = await adapter.readBinary(path);
+				if (offset + segment.byteLength > wavView.byteLength) {
+					throw new Error('PCM segment changed during WAV assembly');
+				}
+				wavView.set(new Uint8Array(segment), offset);
+				offset += segment.byteLength;
+			}
+			// The header is written last with the actual byte count, in
+			// case a segment shrank between stat and read
+			const header = createWavHeader(
+				numChannels,
+				sampleRate,
+				offset - WAV_HEADER_SIZE,
+			);
+			wavView.set(new Uint8Array(header), 0);
+			return offset === wavBuffer.byteLength
+				? wavBuffer
+				: wavBuffer.slice(0, offset);
+		}
+	}
+
+	// Fallback for adapters without stat(): read everything, then
+	// assemble (two full copies of the recording in memory)
+	const segments = await Promise.all(
+		segmentPaths.map((path) => adapter.readBinary(path)),
+	);
+	return assembleWavFromPcmSegments(segments, numChannels, sampleRate);
 }

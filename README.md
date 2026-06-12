@@ -88,6 +88,16 @@ For longer recordings, saving may take noticeable time. The status bar shows a p
 
 The ribbon icon switches to a **save** icon while saving is in progress.
 
+### Crash recovery
+
+Desktop recordings register their temporary segment files in a journal (`recording-journal.json` in the plugin folder) while the session is active. If Obsidian crashes, the power is lost, or the plugin is disabled mid-recording, the next launch detects the interrupted session and offers three choices:
+
+- **Recover audio** — reassembles the surviving segments into playable files (`<name>-recovered.wav` for WAV sessions, the raw recorder container for compressed sessions) next to where the recording was being saved. No re-encoding is performed, so even truncated streams stay playable.
+- **Discard** — deletes the temporary segment files. Auto-split part files that were already finalized are never touched.
+- **Decide later** — leaves everything in place; the prompt returns on the next launch.
+
+Audio that was still buffered in memory at the moment of the crash (up to the flush threshold) cannot be recovered; everything already flushed to disk can.
+
 ### Automatic splitting
 
 When **Split recordings automatically** is enabled in settings, the recording is saved as separate part files of the configured duration (`recording-...-part1.webm`, `recording-...-part2.webm`, ...) instead of one long file. Each finished part is written to disk while the recording continues, and the remainder recorded after the last boundary becomes the final part. Links to all parts are inserted into the note when the recording stops.
@@ -187,7 +197,12 @@ Record from multiple input devices simultaneously (up to 8 tracks).
 
 - Each track uses its own MediaRecorder instance with the configured format and bitrate.
 - All tracks start and stop together.
-- In **Multiple files** mode, file names include the track number or device name (when **Use source names for tracks** is enabled).
+- In **Multiple files** mode, file names include the track number or device name (when **Use source names for tracks** is enabled). Tracks that share a device get the track number appended so their files never collide.
+
+### Memory notes for merged output
+
+- **WAV recordings merged to WAV** are mixed directly from the on-disk track data in small windows; memory use stays close to the size of the final file regardless of recording length.
+- **Compressed merged outputs** (and tracks with mismatched sample rates) are mixed through the Web Audio engine, which decodes every track into memory first — roughly 1.2 GB per hour-long stereo track. For very long multi-track sessions, prefer the `Multiple files` output mode or WAV output.
 
 ## Settings reference
 

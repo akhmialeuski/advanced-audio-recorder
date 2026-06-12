@@ -5,8 +5,7 @@
 /** @jest-environment jsdom */
 
 import { ContextMenu } from '../../src/ui/ContextMenu';
-import { AUDIO_EXTENSIONS } from '../../src/constants';
-import { FORMAT_MP4 } from '../../src/recording/AudioCapabilityDetector';
+import { AUDIO_EXTENSIONS, FORMAT_MP4 } from '../../src/constants';
 import type { AudioRecorderSettings } from '../../src/settings/Settings';
 import * as AudioFileAnalyzer from '../../src/utils/AudioFileAnalyzer';
 import {

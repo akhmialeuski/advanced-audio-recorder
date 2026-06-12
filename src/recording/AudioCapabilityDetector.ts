@@ -5,16 +5,6 @@
  * @module recording/AudioCapabilityDetector
  */
 
-export {
-	FORMAT_WAV,
-	FORMAT_WEBM,
-	FORMAT_OGG,
-	FORMAT_MP3,
-	FORMAT_MP4,
-	FORMAT_M4A,
-	FORMAT_AAC,
-	FORMAT_FLAC,
-} from '../constants';
 import {
 	FORMAT_WAV,
 	FORMAT_WEBM,
@@ -24,13 +14,11 @@ import {
 	FORMAT_M4A,
 	FORMAT_AAC,
 	FORMAT_FLAC,
+	MIME_TYPE_AUDIO_PREFIX,
+	DEFAULT_SAMPLE_RATE,
+	DEFAULT_BITRATE,
 } from '../constants';
 import { isOfflineEncodingSupported } from './AudioEncoder';
-
-const MIME_TYPE_AUDIO_PREFIX = 'audio/';
-
-export const DEFAULT_SAMPLE_RATE = 44100;
-export const DEFAULT_BITRATE = 128000;
 
 const CANDIDATE_FORMATS = [
 	FORMAT_WEBM,

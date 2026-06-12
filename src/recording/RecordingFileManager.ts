@@ -67,7 +67,38 @@ export async function ensureFolderExists(
 }
 
 /**
- * Resolves a unique file path, appending a counter suffix if needed.
+ * Resolves a unique file path inside an explicit directory, appending
+ * a counter suffix while the path is taken. The file name is
+ * sanitized of path separators and other illegal characters.
+ * @param directory - Vault-relative directory (may be empty for root)
+ * @param fileName - Desired file name
+ * @param app - Obsidian App instance
+ * @returns Unique normalized file path
+ */
+export async function resolveUniquePathInDirectory(
+	directory: string,
+	fileName: string,
+	app: App,
+): Promise<string> {
+	let sanitizedFileName = fileName.replace(/[\\/:*?"<>|]/g, '-');
+	let filePath = normalizePath(`${directory}/${sanitizedFileName}`);
+
+	let counter = 1;
+	while (await app.vault.adapter.exists(filePath)) {
+		const parts = sanitizedFileName.split('.');
+		const ext = parts.pop() ?? '';
+		const name = parts.join('.');
+		sanitizedFileName = `${name}_${String(counter)}.${ext}`;
+		filePath = normalizePath(`${directory}/${sanitizedFileName}`);
+		counter++;
+	}
+
+	return filePath;
+}
+
+/**
+ * Resolves a unique file path in the configured save directory,
+ * appending a counter suffix if needed.
  * @param fileName - Desired file name
  * @param app - Obsidian App instance
  * @param settings - Plugin settings
@@ -78,22 +109,9 @@ export async function resolveUniquePath(
 	app: App,
 	settings: AudioRecorderSettings,
 ): Promise<string> {
-	let sanitizedFileName = fileName.replace(/[\\/:*?"<>|]/g, '-');
 	const baseDirectory = getBaseSaveDirectory(settings, app);
 	await ensureFolderExists(baseDirectory, app);
-	let filePath = normalizePath(`${baseDirectory}/${sanitizedFileName}`);
-
-	let counter = 1;
-	while (await app.vault.adapter.exists(filePath)) {
-		const parts = sanitizedFileName.split('.');
-		const ext = parts.pop() ?? '';
-		const name = parts.join('.');
-		sanitizedFileName = `${name}_${String(counter)}.${ext}`;
-		filePath = normalizePath(`${baseDirectory}/${sanitizedFileName}`);
-		counter++;
-	}
-
-	return filePath;
+	return resolveUniquePathInDirectory(baseDirectory, fileName, app);
 }
 
 /**
@@ -151,27 +169,6 @@ export async function removeTemporaryArtifacts(
 	);
 
 	return failedPaths;
-}
-
-/**
- * Attempts to remove a finalized file during rollback.
- * @param filePath - Path of the file to remove
- * @param logContext - Context message for error logs
- * @param app - Obsidian App instance
- */
-export async function rollbackFinalFile(
-	filePath: string,
-	logContext: string,
-	app: App,
-): Promise<void> {
-	try {
-		await app.vault.adapter.remove(filePath);
-	} catch (error) {
-		console.error(`${PLUGIN_LOG_PREFIX} ${logContext}:`, {
-			filePath,
-			error,
-		});
-	}
 }
 
 /**

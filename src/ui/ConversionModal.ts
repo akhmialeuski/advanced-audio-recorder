@@ -3,19 +3,18 @@
  * @module ui/ConversionModal
  */
 
-import { App, Modal, Notice, Setting, TFile, normalizePath } from 'obsidian';
+import { App, Modal, Notice, Setting, TFile } from 'obsidian';
 import {
-	encodeAudioBuffer,
 	isOfflineEncodingSupported,
 	getEncoderDescription,
 } from '../recording/AudioEncoder';
 import { AUDIO_EXTENSIONS, FORMAT_WAV } from '../constants';
-import { getSupportedBitrates } from '../recording/AudioCapabilityDetector';
 import {
-	decodeAudioBlob,
-	convertBlobToFormat,
-} from '../recording/AudioFormatConverter';
-import { updateLinksInOpenEditors } from '../utils/LinkUpdater';
+	addBitrateSetting,
+	addDeleteSourceSetting,
+	addLinkActionSetting,
+} from './settingHelpers';
+import { ConversionService } from '../recording/ConversionService';
 import type {
 	AudioRecorderSettings,
 	ConversionLinkAction,
@@ -30,12 +29,19 @@ export class ConversionModal extends Modal {
 	private bitrate: number = 128000;
 	private deleteSource: boolean;
 	private linkAction: ConversionLinkAction;
+	/** Whether the conversion pipeline is currently running. */
+	private isConverting = false;
+	/** Progress notice shown when the modal is closed mid-conversion. */
+	private progressNotice: Notice | null = null;
+	/** Conversion pipeline behind the form. */
+	private readonly conversionService: ConversionService;
 
 	constructor(app: App, sourceFile: TFile, settings: AudioRecorderSettings) {
 		super(app);
 		this.sourceFile = sourceFile;
 		this.deleteSource = settings.deleteSourceAfterConversion;
 		this.linkAction = settings.conversionLinkAction;
+		this.conversionService = new ConversionService(app);
 	}
 
 	onOpen(): void {
@@ -74,42 +80,29 @@ export class ConversionModal extends Modal {
 				});
 			});
 
-		new Setting(contentEl)
-			.setName('Bitrate')
-			.setDesc('Audio bitrate for compressed formats.')
-			.addDropdown((dropdown) => {
-				const bitrates = getSupportedBitrates();
-				bitrates.forEach((bps) => {
-					const kbps = Math.round(bps / 1000);
-					dropdown.addOption(String(bps), `${String(kbps)} kbps`);
-				});
-				dropdown.setValue(String(this.bitrate));
-				dropdown.onChange((value) => {
-					this.bitrate = parseInt(value, 10);
-				});
-			});
+		this.bitrate = addBitrateSetting(contentEl, {
+			desc: 'Audio bitrate for compressed formats.',
+			initialBitrate: this.bitrate,
+			onChange: (bitrate) => {
+				this.bitrate = bitrate;
+			},
+		});
 
-		new Setting(contentEl)
-			.setName('Delete source file')
-			.setDesc('Remove the original file after successful conversion.')
-			.addToggle((toggle) =>
-				toggle.setValue(this.deleteSource).onChange((value) => {
-					this.deleteSource = value;
-				}),
-			);
+		addDeleteSourceSetting(contentEl, {
+			desc: 'Remove the original file after successful conversion.',
+			initialValue: this.deleteSource,
+			onChange: (value) => {
+				this.deleteSource = value;
+			},
+		});
 
-		new Setting(contentEl)
-			.setName('Update links in notes')
-			.setDesc('How to handle links to the converted file in your notes.')
-			.addDropdown((dropdown) => {
-				dropdown.addOption('none', 'Do nothing');
-				dropdown.addOption('replace', 'Replace source link');
-				dropdown.addOption('after', 'Insert after source link');
-				dropdown.setValue(this.linkAction);
-				dropdown.onChange((value) => {
-					this.linkAction = value as ConversionLinkAction;
-				});
-			});
+		addLinkActionSetting(contentEl, {
+			desc: 'How to handle links to the converted file in your notes.',
+			initialValue: this.linkAction,
+			onChange: (value) => {
+				this.linkAction = value;
+			},
+		});
 
 		const progressEl = contentEl.createDiv({
 			cls: 'aar-conversion-progress',
@@ -129,92 +122,62 @@ export class ConversionModal extends Modal {
 	}
 
 	onClose(): void {
+		if (this.isConverting && !this.progressNotice) {
+			// Timeout 0 keeps the notice visible until hidden explicitly;
+			// setProgress mirrors further pipeline progress into it
+			this.progressNotice = new Notice(
+				`Converting "${this.sourceFile.name}" continues in the background...`,
+				0,
+			);
+		}
 		this.contentEl.empty();
 	}
 
-	private async runConversion(progressEl: HTMLElement): Promise<void> {
-		try {
-			const baseName = this.sourceFile.basename;
-			const directory = this.sourceFile.parent?.path ?? '';
-			const newFileName = `${baseName}.${this.targetFormat}`;
-			const newPath = normalizePath(
-				directory ? `${directory}/${newFileName}` : newFileName,
+	/**
+	 * Shows pipeline progress in the modal and mirrors it to the
+	 * background notice when the modal was closed mid-conversion.
+	 * @param progressEl - Progress element inside the modal
+	 * @param text - Progress text; an empty string clears the element
+	 */
+	private setProgress(progressEl: HTMLElement, text: string): void {
+		progressEl.setText(text);
+		if (this.progressNotice && text !== '') {
+			this.progressNotice.setMessage(
+				`Converting "${this.sourceFile.name}": ${text}`,
 			);
+		}
+	}
 
-			// Check if target file already exists
-			if (await this.app.vault.adapter.exists(newPath)) {
-				new Notice(
-					`File "${newFileName}" already exists. Choose a different format or rename the existing file.`,
-				);
+	private async runConversion(progressEl: HTMLElement): Promise<void> {
+		this.isConverting = true;
+		try {
+			const outcome = await this.conversionService.convert(
+				{
+					sourceFile: this.sourceFile,
+					targetFormat: this.targetFormat,
+					bitrate: this.bitrate,
+					deleteSource: this.deleteSource,
+					linkAction: this.linkAction,
+				},
+				(text) => {
+					this.setProgress(progressEl, text);
+				},
+			);
+			if (outcome.status !== 'completed') {
 				return;
 			}
 
-			progressEl.setText('Reading source file...');
-			const arrayBuffer = await this.app.vault.adapter.readBinary(
-				this.sourceFile.path,
-			);
-
-			let blob: Blob;
-			if (this.targetFormat === FORMAT_WAV) {
-				// WAV needs a full decode; the streaming pipeline only
-				// targets compressed formats
-				progressEl.setText('Decoding audio...');
-				const audioBuffer = await decodeAudioBlob(arrayBuffer);
-				progressEl.setText('Encoding...');
-				blob = await encodeAudioBuffer(
-					audioBuffer,
-					{
-						format: this.targetFormat,
-						bitrate: this.bitrate,
-					},
-					(percent) => {
-						progressEl.setText(`Encoding... ${String(percent)}%`);
-					},
-				);
-			} else {
-				progressEl.setText('Converting...');
-				blob = await convertBlobToFormat(
-					new Blob([arrayBuffer]),
-					this.targetFormat,
-					this.bitrate,
-					(percent) => {
-						progressEl.setText(`Converting... ${String(percent)}%`);
-					},
-				);
-			}
-
-			progressEl.setText('Saving...');
-			await this.app.vault.createBinary(
-				newPath,
-				await blob.arrayBuffer(),
-			);
-
-			// Update links in notes
-			if (this.linkAction !== 'none') {
-				progressEl.setText('Updating links...');
-				updateLinksInOpenEditors(
-					this.app,
-					this.sourceFile.name,
-					[newFileName],
-					this.linkAction,
-				);
-			}
-
-			// Delete source file
-			if (this.deleteSource) {
-				progressEl.setText('Removing source file...');
-				await this.app.fileManager.trashFile(this.sourceFile);
-			}
-
-			progressEl.setText('');
+			this.setProgress(progressEl, '');
 			const action = this.deleteSource ? 'Replaced with' : 'Converted to';
-			new Notice(`${action} ${newFileName}`);
+			new Notice(`${action} ${outcome.newFileName}`);
+			// Cleared before close() so onClose does not start a
+			// background notice for an already finished conversion
+			this.isConverting = false;
 			this.close();
-		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : String(error);
-			progressEl.setText(`Error: ${message}`);
-			new Notice(`Conversion failed: ${message}`);
+		} finally {
+			this.isConverting = false;
+			this.progressNotice?.hide();
+			this.progressNotice = null;
 		}
 	}
 }

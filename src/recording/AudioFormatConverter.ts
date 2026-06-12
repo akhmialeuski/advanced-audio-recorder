@@ -4,32 +4,19 @@
  * @module recording/AudioFormatConverter
  */
 
-import {
-	Input,
-	Output,
-	BlobSource,
-	BufferTarget,
-	ALL_FORMATS,
-	Conversion,
-} from 'mediabunny';
-import type { AudioCodec } from 'mediabunny';
 import type { RecordingTarget } from '../types';
 import type { AudioRecorderSettings } from '../settings/Settings';
-import { bufferToWave } from './WavEncoder';
+import { encodeAudioBuffer, isOfflineEncodingSupported } from './AudioEncoder';
+import { runStreamingConversion } from './streamingConversion';
 import {
-	encodeAudioBuffer,
-	isOfflineEncodingSupported,
-	ensureEncoderRegistered,
-	createOutputFormat,
-	FORMAT_CODEC_MAP,
-} from './AudioEncoder';
-import { MIME_TYPE_AUDIO_PREFIX, PLUGIN_LOG_PREFIX } from '../constants';
-import {
-	buildMimeType,
+	MIME_TYPE_AUDIO_PREFIX,
+	PLUGIN_LOG_PREFIX,
 	FORMAT_WEBM,
 	FORMAT_OGG,
 	FORMAT_WAV,
-} from './AudioCapabilityDetector';
+} from '../constants';
+import { buildMimeType } from './AudioCapabilityDetector';
+import { getEncodingWorkerClient } from './EncodingWorkerClient';
 
 /**
  * Progress callback receiving percentage (0-100).
@@ -97,28 +84,14 @@ export function isOfflineOnlyFormat(
 }
 
 /**
- * Returns the MIME type string for the active recorder format.
- * @param activeRecorderFormat - Format currently used by MediaRecorder
- * @returns MIME type string (e.g., "audio/webm")
- */
-export function getRecorderMediaType(activeRecorderFormat: string): string {
-	return `${MIME_TYPE_AUDIO_PREFIX}${activeRecorderFormat}`;
-}
-
-/**
- * Decodes a compressed audio blob to WAV format.
+ * Converts a compressed audio blob to WAV format through the
+ * streaming mediabunny pipeline (with the decode-and-re-encode
+ * fallback of convertBlobToFormat). PCM output has no bitrate.
  * @param recordedBlob - Compressed audio blob
  * @returns WAV blob
  */
 export async function convertBlobToWav(recordedBlob: Blob): Promise<Blob> {
-	const audioContext = new AudioContext();
-	try {
-		const arrayBuffer = await recordedBlob.arrayBuffer();
-		const decodedBuffer = await audioContext.decodeAudioData(arrayBuffer);
-		return bufferToWave(decodedBuffer, decodedBuffer.length);
-	} finally {
-		await audioContext.close();
-	}
+	return convertBlobToFormat(recordedBlob, FORMAT_WAV, 0);
 }
 
 /**
@@ -160,11 +133,9 @@ export interface BlobConversionOptions {
 }
 
 /**
- * Converts a compressed audio blob to the target format using the
- * streaming mediabunny Conversion pipeline: audio is transcoded in
- * chunks without materializing the whole recording as PCM in memory.
- * With allowRemux, packets of an input whose codec already matches
- * the target codec are copied without re-encoding.
+ * Converts a compressed audio blob to the target format on the main
+ * thread through the shared streaming conversion core (see
+ * streamingConversion.ts, also used by the encoding worker).
  * @param recordedBlob - Intermediate compressed blob
  * @param targetFormat - Desired output format
  * @param bitrate - Bitrate in bits per second
@@ -182,75 +153,13 @@ async function convertBlobWithConversion(
 	allowRemux: boolean,
 	onProgress?: FormatProgressCallback,
 ): Promise<Blob> {
-	const codec: AudioCodec | undefined = FORMAT_CODEC_MAP[targetFormat];
-	if (!codec) {
-		throw new Error(`No codec mapping for format "${targetFormat}"`);
-	}
-
-	await ensureEncoderRegistered(targetFormat);
-
-	const input = new Input({
-		source: new BlobSource(recordedBlob),
-		formats: ALL_FORMATS,
-	});
-	const audioTrack = await input.getPrimaryAudioTrack();
-	if (!audioTrack) {
-		throw new Error('Input contains no audio track');
-	}
-
-	const target = new BufferTarget();
-	const output = new Output({
-		format: createOutputFormat(targetFormat),
-		target,
-	});
-
-	// Omitting bitrate lets mediabunny copy packets (remux) when the
-	// input codec matches the target; setting it always forces a
-	// re-encode per the Conversion contract. Remux is allowed only
-	// when the caller knows the input is already at the requested
-	// bitrate. Discarded tracks are handled explicitly below, so
-	// mediabunny's own console warnings about them are disabled.
-	const conversion = await Conversion.init({
-		input,
-		output,
-		audio:
-			allowRemux && audioTrack.codec === codec
-				? { codec }
-				: { codec, bitrate },
-		showWarnings: false,
-	});
-
-	// Conversion.init does not throw for codec problems: it silently
-	// discards the track (undecodable_source_codec or
-	// no_encodable_target_codec) and would emit a container without
-	// audio. Fail here instead, so the caller's decode-and-re-encode
-	// fallback processes the input.
-	const audioDiscarded = conversion.discardedTracks.some((discarded) =>
-		discarded.track.isAudioTrack(),
+	const resultBuffer = await runStreamingConversion(
+		recordedBlob,
+		targetFormat,
+		bitrate,
+		allowRemux,
+		onProgress,
 	);
-	if (!conversion.isValid || audioDiscarded) {
-		throw new Error(
-			`Conversion to "${targetFormat}" cannot process the input audio track`,
-		);
-	}
-
-	if (onProgress) {
-		let lastPercent = -1;
-		conversion.onProgress = (progress: number): void => {
-			const percent = Math.round(progress * 100);
-			if (percent !== lastPercent) {
-				lastPercent = percent;
-				onProgress(percent);
-			}
-		};
-	}
-
-	await conversion.execute();
-
-	const resultBuffer = target.buffer;
-	if (!resultBuffer || resultBuffer.byteLength === 0) {
-		throw new Error(`Conversion to "${targetFormat}" produced no output`);
-	}
 	return new Blob([resultBuffer], {
 		type: `${MIME_TYPE_AUDIO_PREFIX}${targetFormat}`,
 	});
@@ -275,6 +184,26 @@ export async function convertBlobToFormat(
 	onProgress?: FormatProgressCallback,
 	options: BlobConversionOptions = {},
 ): Promise<Blob> {
+	// Worker first: the demux/transcode/mux loop is pure computation
+	// and runs off the UI thread when the worker is available
+	const workerClient = getEncodingWorkerClient();
+	if (workerClient) {
+		try {
+			return await workerClient.convertBlob(
+				recordedBlob,
+				targetFormat,
+				bitrate,
+				options.allowRemux ?? false,
+				onProgress,
+			);
+		} catch (error) {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Worker conversion failed, falling back to the main thread:`,
+				error,
+			);
+		}
+	}
+
 	try {
 		return await convertBlobWithConversion(
 			recordedBlob,
@@ -321,9 +250,15 @@ export async function buildOutputBlob(
 }
 
 /**
- * Merges multiple audio tracks into a single mixed audio blob.
+ * Merges multiple audio tracks into a single mixed audio blob. The
+ * caller resolves the encodable target format (and names the output
+ * file from it), so it is passed in instead of being recomputed from
+ * live settings — a settings change during the potentially long mix
+ * could otherwise make the file extension and the encoded content
+ * diverge.
  * @param chunkTargets - Recording targets for each track
- * @param settings - Plugin settings
+ * @param targetFormat - Resolved encodable output format
+ * @param bitrate - Encoder bitrate in bits per second
  * @param isWavPcmRecording - Whether recording uses PCM/WAV path
  * @param buildPcmTrackWavBlob - Function to build WAV blob from PCM target
  * @param buildTrackBlob - Function to build blob from MediaRecorder target
@@ -332,77 +267,80 @@ export async function buildOutputBlob(
  */
 export async function mergeAudioTracks(
 	chunkTargets: RecordingTarget[],
-	settings: AudioRecorderSettings,
+	targetFormat: string,
+	bitrate: number,
 	isWavPcmRecording: boolean,
 	buildPcmTrackWavBlob: TrackBlobBuilder,
 	buildTrackBlob: TrackBlobBuilder,
 	onProgress?: (percent: number, description: string) => void,
 ): Promise<Blob> {
 	const audioContext = new AudioContext();
-	const buffers = await Promise.all(
-		chunkTargets.map(async (target) => {
-			const blob = isWavPcmRecording
-				? await buildPcmTrackWavBlob(target)
-				: await buildTrackBlob(target);
-			if (!blob) {
-				return null;
-			}
-			const arrayBuffer = await blob.arrayBuffer();
-			return audioContext.decodeAudioData(arrayBuffer);
-		}),
-	);
-
-	const validBuffers = buffers.filter(
-		(buffer): buffer is AudioBuffer => buffer !== null,
-	);
-	if (validBuffers.length === 0) {
-		throw new Error('No audio data recorded');
-	}
-
-	const longestDuration = Math.max(
-		...validBuffers.map((buffer) => buffer.duration),
-	);
-	// Mix in mono when every input is mono: a stereo render would just
-	// duplicate the mix into both channels while doubling encode time
-	// and file size. Any stereo input keeps the stereo render.
-	const channelCount = Math.min(
-		2,
-		Math.max(...validBuffers.map((buffer) => buffer.numberOfChannels)),
-	);
-	const offlineContext = new OfflineAudioContext(
-		channelCount,
-		audioContext.sampleRate * longestDuration,
-		audioContext.sampleRate,
-	);
-
-	validBuffers.forEach((buffer) => {
-		const source = offlineContext.createBufferSource();
-		source.buffer = buffer;
-		source.connect(offlineContext.destination);
-		source.start(0);
-	});
-
-	const renderedBuffer = await offlineContext.startRendering();
-	await audioContext.close();
-
-	const targetFormat = settings.recordingFormat;
-	if (
-		targetFormat !== FORMAT_WAV &&
-		isOfflineEncodingSupported(targetFormat)
-	) {
-		return encodeAudioBuffer(
-			renderedBuffer,
-			{
-				format: targetFormat,
-				bitrate: settings.bitrate,
-			},
-			(percent) => {
-				onProgress?.(
-					40 + Math.round(percent * 0.2),
-					'Encoding audio...',
-				);
-			},
+	let renderedBuffer: AudioBuffer;
+	try {
+		const buffers = await Promise.all(
+			chunkTargets.map(async (target) => {
+				const blob = isWavPcmRecording
+					? await buildPcmTrackWavBlob(target)
+					: await buildTrackBlob(target);
+				if (!blob) {
+					return null;
+				}
+				const arrayBuffer = await blob.arrayBuffer();
+				return audioContext.decodeAudioData(arrayBuffer);
+			}),
 		);
+
+		const validBuffers = buffers.filter(
+			(buffer): buffer is AudioBuffer => buffer !== null,
+		);
+		if (validBuffers.length === 0) {
+			throw new Error('No audio data recorded');
+		}
+
+		const longestDuration = Math.max(
+			...validBuffers.map((buffer) => buffer.duration),
+		);
+		// Mix in mono when every input is mono: a stereo render would just
+		// duplicate the mix into both channels while doubling encode time
+		// and file size. Any stereo input keeps the stereo render.
+		const channelCount = Math.min(
+			2,
+			Math.max(...validBuffers.map((buffer) => buffer.numberOfChannels)),
+		);
+		const offlineContext = new OfflineAudioContext(
+			channelCount,
+			audioContext.sampleRate * longestDuration,
+			audioContext.sampleRate,
+		);
+
+		validBuffers.forEach((buffer) => {
+			const source = offlineContext.createBufferSource();
+			source.buffer = buffer;
+			source.connect(offlineContext.destination);
+			source.start(0);
+		});
+
+		renderedBuffer = await offlineContext.startRendering();
+	} finally {
+		// Close on every path: empty input, a failed decode, and a
+		// failed render otherwise leak the AudioContext. A close failure
+		// must not mask the original error.
+		await audioContext.close().catch((error: unknown) => {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Failed to close AudioContext after track merge:`,
+				error,
+			);
+		});
 	}
-	return bufferToWave(renderedBuffer, renderedBuffer.length);
+
+	return encodeAudioBuffer(
+		renderedBuffer,
+		{
+			format: targetFormat,
+			bitrate,
+		},
+		(percent) => {
+			onProgress?.(40 + Math.round(percent * 0.2), 'Encoding audio...');
+		},
+	);
 }

@@ -38,6 +38,20 @@ jest.mock('../../src/ui/DeviceSelectionModal', () => ({
 	showDeviceSelectionModal: jest.fn(),
 }));
 
+jest.mock('../../src/recording/RecoveryService', () => ({
+	collectRecoverableSessions: jest.fn().mockResolvedValue([]),
+	recoverSession: jest
+		.fn()
+		.mockResolvedValue({ recoveredPaths: [], failedTracks: [] }),
+	discardSession: jest.fn().mockResolvedValue([]),
+}));
+
+jest.mock('../../src/ui/RecoveryModal', () => ({
+	RecoveryModal: jest.fn().mockImplementation(() => ({
+		open: jest.fn(),
+	})),
+}));
+
 // Fixture path: in production the directory comes from manifest.dir
 const PLUGIN_DIR = 'config-dir/plugins/advanced-audio-recorder';
 const DATA_PATH = `${PLUGIN_DIR}/data.json`;
@@ -70,7 +84,7 @@ interface PluginHarness {
  */
 function createPlugin(loadDataResults: LoadDataResult[]): PluginHarness {
 	const app = new App();
-	const plugin = new AudioRecorderPlugin(app as never, MANIFEST as never);
+	const plugin = new AudioRecorderPlugin(app, MANIFEST as never);
 
 	const loadData = jest.fn();
 	for (const result of loadDataResults) {
@@ -395,5 +409,122 @@ describe('AudioRecorderPlugin settings persistence', () => {
 		expect(plugin.settings.filePrefix).toBe('recovered');
 		await plugin.saveSettings();
 		expect(saveData).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('AudioRecorderPlugin crash recovery wiring', () => {
+	beforeEach(() => {
+		jest.useFakeTimers();
+	});
+
+	afterEach(() => {
+		jest.useRealTimers();
+		jest.clearAllMocks();
+	});
+
+	const createTestSession = (): Record<string, unknown> => ({
+		sessionId: 'session-1',
+		startedAt: 1765533600000,
+		outputFormat: 'webm',
+		recorderFormat: 'webm',
+		bitrate: 128000,
+		tracks: [],
+	});
+
+	it('passes the journal to the RecordingManager', async () => {
+		const { plugin } = createPlugin([null]);
+
+		await onloadWithTimers(plugin);
+
+		const { RecordingManager } = jest.requireMock(
+			'../../src/recording/RecordingManager',
+		);
+		const journalArg = (RecordingManager as jest.Mock).mock.calls[0][3] as {
+			readJournal?: unknown;
+		};
+		expect(typeof journalArg.readJournal).toBe('function');
+	});
+
+	it('does not open the recovery modal when nothing is recoverable', async () => {
+		const { plugin } = createPlugin([null]);
+
+		await onloadWithTimers(plugin);
+		await jest.advanceTimersByTimeAsync(0);
+
+		const { RecoveryModal } = jest.requireMock(
+			'../../src/ui/RecoveryModal',
+		);
+		expect(RecoveryModal).not.toHaveBeenCalled();
+	});
+
+	it('opens the recovery modal for recoverable sessions', async () => {
+		const { collectRecoverableSessions } = jest.requireMock(
+			'../../src/recording/RecoveryService',
+		);
+		const session = createTestSession();
+		collectRecoverableSessions.mockResolvedValueOnce([session]);
+		const { plugin } = createPlugin([null]);
+
+		await onloadWithTimers(plugin);
+		await jest.advanceTimersByTimeAsync(0);
+
+		const { RecoveryModal } = jest.requireMock(
+			'../../src/ui/RecoveryModal',
+		);
+		expect(RecoveryModal).toHaveBeenCalledWith(
+			plugin.app,
+			[session],
+			expect.objectContaining({
+				onRecover: expect.any(Function),
+				onDiscard: expect.any(Function),
+			}),
+		);
+		const modalInstance = (RecoveryModal as jest.Mock).mock.results[0]
+			.value as { open: jest.Mock };
+		expect(modalInstance.open).toHaveBeenCalled();
+	});
+
+	it('recovers every offered session through the callback', async () => {
+		const { collectRecoverableSessions, recoverSession } = jest.requireMock(
+			'../../src/recording/RecoveryService',
+		);
+		const sessions = [createTestSession(), createTestSession()];
+		collectRecoverableSessions.mockResolvedValueOnce(sessions);
+		const { plugin } = createPlugin([null]);
+
+		await onloadWithTimers(plugin);
+		await jest.advanceTimersByTimeAsync(0);
+
+		const { RecoveryModal } = jest.requireMock(
+			'../../src/ui/RecoveryModal',
+		);
+		const callbacks = (RecoveryModal as jest.Mock).mock.calls[0][2] as {
+			onRecover: () => Promise<void>;
+		};
+		await callbacks.onRecover();
+
+		expect(recoverSession).toHaveBeenCalledTimes(2);
+	});
+
+	it('does not break onload when the recovery check fails', async () => {
+		const consoleErrorSpy = jest
+			.spyOn(console, 'error')
+			.mockImplementation();
+		const { collectRecoverableSessions } = jest.requireMock(
+			'../../src/recording/RecoveryService',
+		);
+		collectRecoverableSessions.mockRejectedValueOnce(
+			new Error('journal exploded'),
+		);
+		const { plugin } = createPlugin([null]);
+
+		await expect(onloadWithTimers(plugin)).resolves.toBeUndefined();
+		await jest.advanceTimersByTimeAsync(0);
+
+		expect(consoleErrorSpy).toHaveBeenCalledWith(
+			expect.stringContaining('Recovery check failed'),
+			expect.any(Error),
+		);
+		consoleErrorSpy.mockRestore();
 	});
 });

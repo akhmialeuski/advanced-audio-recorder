@@ -36,12 +36,29 @@ const copyStaticFiles = {
 	}
 };
 
+// First pass: bundle the encoding worker so its source can be inlined
+// into the main bundle (the plugin starts it via a Blob URL). In watch
+// mode the worker source is captured once at startup; restart the dev
+// build after editing src/recording/encodingWorker.ts.
+const workerBuild = await esbuild.build({
+	entryPoints: ["src/recording/encodingWorker.ts"],
+	bundle: true,
+	format: "iife",
+	target: "es2022",
+	minify: prod,
+	write: false,
+});
+const encodingWorkerSource = workerBuild.outputFiles[0].text;
+
 const context = await esbuild.context({
 	banner: {
 		js: banner,
 	},
 	entryPoints: ["src/main.ts"],
 	bundle: true,
+	define: {
+		__ENCODING_WORKER_SOURCE__: JSON.stringify(encodingWorkerSource),
+	},
 	external: [
 		"obsidian",
 		"electron",
@@ -58,10 +75,15 @@ const context = await esbuild.context({
 		"@lezer/lr",
 		...builtins],
 	format: "cjs",
-	target: "es2020",
+	// Obsidian desktop runs on a current Electron/Chromium; es2022
+	// avoids transpiling class fields and top-level await helpers
+	target: "es2022",
 	logLevel: "info",
 	sourcemap: prod ? false : "inline",
 	treeShaking: true,
+	// Minified production bundle loads faster; the source stays
+	// readable in this repository
+	minify: prod,
 	outfile: "dist/main.js",
 	plugins: [copyStaticFiles],
 });

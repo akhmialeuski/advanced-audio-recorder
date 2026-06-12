@@ -39,6 +39,9 @@ import { SystemInfoModal } from '../diagnostics/SystemInfoModal';
 /** Debounce delay for saving text settings, in milliseconds. */
 const TEXT_SETTING_SAVE_DEBOUNCE_MS = 500;
 
+/** Duration of the diagnostics test recording, in milliseconds. */
+const TEST_RECORDING_DURATION_MS = 5000;
+
 /**
  * Plugin interface for settings tab.
  */
@@ -54,10 +57,16 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	plugin: AudioRecorderPluginInterface;
 	private deviceDropdowns: DropdownComponent[] = [];
 	private readonly bitrateOptionsKbps = [64, 96, 128, 160, 192, 256, 320];
-	private testRecordingPath: string | null = null;
 	private testRecorder: MediaRecorder | null = null;
 	private testChunks: Blob[] = [];
 	private testAudioElement: HTMLAudioElement | null = null;
+	/**
+	 * Device-change listener active while the settings tab is open.
+	 * Registered via addEventListener so other consumers of the event
+	 * are not overwritten, and removed in hide() so the handler cannot
+	 * outlive the tab (or the plugin).
+	 */
+	private deviceChangeHandler: (() => void) | null = null;
 	/**
 	 * Debounced settings save shared by the text fields, which fire
 	 * onChange on every keystroke and would otherwise rewrite data.json
@@ -137,9 +146,15 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 		this.deviceDropdowns = [];
-		navigator.mediaDevices.ondevicechange = () => {
-			void this.refreshDeviceList();
-		};
+		if (!this.deviceChangeHandler) {
+			this.deviceChangeHandler = (): void => {
+				void this.refreshDeviceList();
+			};
+			navigator.mediaDevices.addEventListener(
+				'devicechange',
+				this.deviceChangeHandler,
+			);
+		}
 
 		// ── Audio input ──────────────────────────────────────────────
 		new Setting(containerEl).setName('Audio input').setHeading();
@@ -527,7 +542,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		new Setting(testContainer)
 			.setName('Test recording')
 			.setDesc(
-				'Records a 5-second test clip using your current settings and plays it back. The test file is automatically deleted when you leave settings.',
+				'Records a 5-second test clip using your current settings and plays it back. Nothing is saved to your vault.',
 			)
 			.addButton((button) =>
 				button.setButtonText('Start test').onClick(() => {
@@ -594,12 +609,16 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * Runs a short test recording and plays back the result.
+	 * Runs a short test recording and plays back the result. The
+	 * microphone stream is released in a finally block so an error in
+	 * recorder setup (or the tab being hidden during the wait) can
+	 * never leave the device captured.
 	 * @param container - DOM element to append playback controls to
 	 */
 	private async runTestRecording(container: HTMLElement): Promise<void> {
+		let stream: MediaStream | null = null;
 		try {
-			await this.cleanupTestRecording();
+			this.cleanupTestRecording();
 
 			const format = this.plugin.settings.recordingFormat;
 			const recorderFormat = format === 'wav' ? 'webm' : format;
@@ -614,7 +633,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				return;
 			}
 
-			const stream = await navigator.mediaDevices.getUserMedia({
+			stream = await navigator.mediaDevices.getUserMedia({
 				audio: {
 					deviceId: this.plugin.settings.audioDeviceId
 						? { exact: this.plugin.settings.audioDeviceId }
@@ -624,12 +643,15 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			});
 
 			this.testChunks = [];
-			this.testRecorder = new MediaRecorder(stream, {
+			// Local reference: hide() may run cleanupTestRecording (which
+			// nulls this.testRecorder) at any await point below
+			const recorder = new MediaRecorder(stream, {
 				mimeType,
 				audioBitsPerSecond: this.plugin.settings.bitrate,
 			});
+			this.testRecorder = recorder;
 
-			this.testRecorder.ondataavailable = (event: BlobEvent): void => {
+			recorder.ondataavailable = (event: BlobEvent): void => {
 				if (event.data.size > 0) {
 					this.testChunks.push(event.data);
 				}
@@ -643,29 +665,27 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			);
 
 			const recordingPromise = new Promise<void>((resolve) => {
-				if (this.testRecorder) {
-					this.testRecorder.addEventListener(
-						'stop',
-						() => resolve(),
-						{ once: true },
-					);
-				}
+				recorder.addEventListener('stop', () => resolve(), {
+					once: true,
+				});
 			});
 
-			this.testRecorder.start();
+			recorder.start();
 
 			await new Promise<void>((resolve) =>
-				activeWindow.setTimeout(resolve, 5000),
+				window.setTimeout(resolve, TEST_RECORDING_DURATION_MS),
 			);
 
-			if (this.testRecorder.state !== 'inactive') {
-				this.testRecorder.stop();
+			if (recorder.state !== 'inactive') {
+				recorder.stop();
 			}
-			for (const track of stream.getTracks()) {
-				track.stop();
-			}
-
 			await recordingPromise;
+
+			if (this.testRecorder !== recorder) {
+				// The tab was hidden during the wait: cleanup already
+				// discarded the recorder and the result has nowhere to go
+				return;
+			}
 
 			if (this.testChunks.length === 0) {
 				this.showTestStatus(
@@ -700,6 +720,12 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				`Test recording failed: ${message}`,
 				true,
 			);
+		} finally {
+			if (stream) {
+				for (const track of stream.getTracks()) {
+					track.stop();
+				}
+			}
 		}
 	}
 
@@ -734,7 +760,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	/**
 	 * Removes test recording resources.
 	 */
-	private async cleanupTestRecording(): Promise<void> {
+	private cleanupTestRecording(): void {
 		if (this.testRecorder && this.testRecorder.state !== 'inactive') {
 			this.testRecorder.stop();
 		}
@@ -749,23 +775,22 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			this.testAudioElement.remove();
 			this.testAudioElement = null;
 		}
-
-		if (this.testRecordingPath) {
-			try {
-				await this.app.vault.adapter.remove(this.testRecordingPath);
-			} catch {
-				// File may already be deleted
-			}
-			this.testRecordingPath = null;
-		}
 	}
 
 	/**
-	 * Cleans up test recording resources when settings tab is hidden
-	 * and flushes a pending debounced text-setting save.
+	 * Cleans up test recording resources when settings tab is hidden,
+	 * flushes a pending debounced text-setting save, and detaches the
+	 * device-change listener registered in display().
 	 */
 	hide(): void {
 		this.saveTextSettingDebounced.run();
-		void this.cleanupTestRecording();
+		this.cleanupTestRecording();
+		if (this.deviceChangeHandler) {
+			navigator.mediaDevices.removeEventListener(
+				'devicechange',
+				this.deviceChangeHandler,
+			);
+			this.deviceChangeHandler = null;
+		}
 	}
 }
