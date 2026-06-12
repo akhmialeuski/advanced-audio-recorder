@@ -18,6 +18,7 @@ import { updateStatusBar, initializeStatusBar } from './ui/StatusBar';
 import { updateRibbonIcon, initializeRibbonIcon } from './ui/RibbonIcon';
 import { showDeviceSelectionModal } from './ui/DeviceSelectionModal';
 import { ContextMenu } from './ui/ContextMenu';
+import { delay } from './utils/TimeUtils';
 
 /** Delay before retrying a failed settings read, in milliseconds. */
 const SETTINGS_READ_RETRY_DELAY_MS = 250;
@@ -43,6 +44,12 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * intact file is never overwritten with defaults.
 	 */
 	private settingsLoadFailed = false;
+	/**
+	 * True once settings have been assigned at least once. Lets a
+	 * failed reload keep the current in-memory settings instead of
+	 * replacing them with defaults.
+	 */
+	private settingsInitialized = false;
 
 	/**
 	 * Called when the plugin is loaded.
@@ -108,15 +115,23 @@ export default class AudioRecorderPlugin extends Plugin {
 			this.settingsLoadFailed = true;
 			new Notice(
 				'Advanced Audio Recorder: the settings file could not be read. ' +
-					'Using defaults for this session; settings stored on disk are untouched. ' +
-					'Restart Obsidian to recover them.',
+					'Settings stored on disk are untouched, and saving is ' +
+					'disabled to protect them. Restart Obsidian to recover.',
 			);
-			this.settings = await mergeSettingsAsync({});
+			// Keep the current in-memory settings on a failed reload
+			// (external change while the file is locked); fall back to
+			// defaults only on the initial load when nothing has been
+			// loaded yet
+			if (!this.settingsInitialized) {
+				this.settings = await mergeSettingsAsync({});
+				this.settingsInitialized = true;
+			}
 			return;
 		}
 
 		this.settingsLoadFailed = false;
 		this.settings = await mergeSettingsAsync(data ?? {});
+		this.settingsInitialized = true;
 		await this.backupSettings();
 	}
 
@@ -165,10 +180,7 @@ export default class AudioRecorderPlugin extends Plugin {
 	private async readStoredSettings(): Promise<
 		Partial<AudioRecorderSettings> | null | undefined
 	> {
-		let data = (await this.loadData()) as
-			| Partial<AudioRecorderSettings>
-			| null
-			| undefined;
+		let data = await this.tryLoadData();
 		if (data !== undefined && data !== null) {
 			return data;
 		}
@@ -180,18 +192,36 @@ export default class AudioRecorderPlugin extends Plugin {
 			return (await this.readSettingsBackup()) ?? null;
 		}
 
-		await new Promise<void>((resolve) =>
-			activeWindow.setTimeout(resolve, SETTINGS_READ_RETRY_DELAY_MS),
-		);
-		data = (await this.loadData()) as
-			| Partial<AudioRecorderSettings>
-			| null
-			| undefined;
+		await delay(SETTINGS_READ_RETRY_DELAY_MS);
+		data = await this.tryLoadData();
 		if (data !== undefined && data !== null) {
 			return data;
 		}
 
 		return this.readSettingsBackup();
+	}
+
+	/**
+	 * Calls loadData() and maps a rejected read to undefined. The
+	 * current Obsidian implementation never rejects (read and parse
+	 * failures are caught internally and reported as undefined), but
+	 * that behavior is undocumented; mapping a rejection to the
+	 * failed-read result keeps the missing-vs-unreadable
+	 * discrimination independent of Obsidian internals.
+	 * @returns Stored settings, null for a missing file, or undefined
+	 * when the read failed
+	 */
+	private async tryLoadData(): Promise<
+		Partial<AudioRecorderSettings> | null | undefined
+	> {
+		try {
+			return (await this.loadData()) as
+				| Partial<AudioRecorderSettings>
+				| null
+				| undefined;
+		} catch {
+			return undefined;
+		}
 	}
 
 	/**

@@ -248,6 +248,58 @@ describe('AudioRecorderPlugin settings persistence', () => {
 		expect(saveData).not.toHaveBeenCalled();
 	});
 
+	it('treats a rejected settings read as a failed read', async () => {
+		// The current Obsidian loadData() never rejects, but that is
+		// undocumented internal behavior; a rejection must degrade to
+		// the failed-read path instead of breaking onload
+		const { plugin, loadData, saveData } = createPlugin([]);
+		loadData.mockRejectedValue(new Error('read failure'));
+
+		await onloadWithTimers(plugin);
+
+		// data.json does not exist: defaults apply and saving stays
+		// enabled so the file gets created on the next change
+		expect(plugin.settings.filePrefix).toBe(DEFAULT_SETTINGS.filePrefix);
+		await plugin.saveSettings();
+		expect(saveData).toHaveBeenCalledTimes(1);
+	});
+
+	it('blocks saving when a rejected read hits an existing data.json', async () => {
+		const { plugin, loadData, saveData, adapterExists } = createPlugin([]);
+		adapterExists.mockResolvedValue(true);
+		loadData.mockRejectedValue(new Error('read failure'));
+
+		await onloadWithTimers(plugin);
+
+		await plugin.saveSettings();
+		expect(saveData).not.toHaveBeenCalled();
+	});
+
+	it('keeps the in-memory settings when a reload read fails', async () => {
+		const { plugin, loadData, saveData, adapterExists } = createPlugin([
+			{ filePrefix: 'loaded' },
+		]);
+
+		await onloadWithTimers(plugin);
+		expect(plugin.settings.filePrefix).toBe('loaded');
+
+		// External change arrives while the file is locked: every
+		// subsequent read fails
+		adapterExists.mockResolvedValue(true);
+		loadData.mockResolvedValue(undefined);
+		const changePromise = plugin.onExternalSettingsChange();
+		await jest.advanceTimersByTimeAsync(RETRY_DELAY_MS);
+		await changePromise;
+
+		// The previously loaded settings stay active instead of being
+		// replaced with defaults
+		expect(plugin.settings.filePrefix).toBe('loaded');
+
+		// Saving stays blocked until a successful reload
+		await plugin.saveSettings();
+		expect(saveData).not.toHaveBeenCalled();
+	});
+
 	it('reloads settings on external settings change', async () => {
 		const { plugin, loadData } = createPlugin([
 			{ filePrefix: 'before' },
