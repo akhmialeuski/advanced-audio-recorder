@@ -768,15 +768,10 @@ describe('AudioFormatConverter', () => {
 				.fn()
 				.mockResolvedValue(new Blob(['audio'], { type: 'audio/webm' }));
 
-			const settings: AudioRecorderSettings = {
-				...DEFAULT_SETTINGS,
-				recordingFormat: 'mp4',
-				bitrate: 128000,
-			};
-
 			const result = await mergeAudioTracks(
 				targets,
-				settings,
+				'mp4',
+				128000,
 				false,
 				buildPcmTrackWavBlob,
 				buildTrackBlob,
@@ -799,15 +794,10 @@ describe('AudioFormatConverter', () => {
 				);
 			const buildTrackBlob = jest.fn();
 
-			const settings: AudioRecorderSettings = {
-				...DEFAULT_SETTINGS,
-				recordingFormat: 'wav',
-				bitrate: 128000,
-			};
-
 			await mergeAudioTracks(
 				targets,
-				settings,
+				'wav',
+				128000,
 				true,
 				buildPcmTrackWavBlob,
 				buildTrackBlob,
@@ -826,15 +816,10 @@ describe('AudioFormatConverter', () => {
 				.fn()
 				.mockResolvedValue(new Blob(['audio'], { type: 'audio/webm' }));
 
-			const settings: AudioRecorderSettings = {
-				...DEFAULT_SETTINGS,
-				recordingFormat: 'mp4',
-				bitrate: 128000,
-			};
-
 			await mergeAudioTracks(
 				targets,
-				settings,
+				'mp4',
+				128000,
 				false,
 				jest.fn(),
 				buildTrackBlob,
@@ -857,15 +842,10 @@ describe('AudioFormatConverter', () => {
 				.fn()
 				.mockResolvedValue(new Blob(['audio'], { type: 'audio/webm' }));
 
-			const settings: AudioRecorderSettings = {
-				...DEFAULT_SETTINGS,
-				recordingFormat: 'wav',
-				bitrate: 128000,
-			};
-
 			await mergeAudioTracks(
 				targets,
-				settings,
+				'wav',
+				128000,
 				false,
 				jest.fn(),
 				buildTrackBlob,
@@ -882,15 +862,11 @@ describe('AudioFormatConverter', () => {
 			const targets = [createMockTarget('track1')];
 			const buildTrackBlob = jest.fn().mockResolvedValue(null);
 
-			const settings: AudioRecorderSettings = {
-				...DEFAULT_SETTINGS,
-				recordingFormat: 'webm',
-			};
-
 			await expect(
 				mergeAudioTracks(
 					targets,
-					settings,
+					'webm',
+					128000,
 					false,
 					jest.fn(),
 					buildTrackBlob,
@@ -905,7 +881,8 @@ describe('AudioFormatConverter', () => {
 			await expect(
 				mergeAudioTracks(
 					targets,
-					{ ...DEFAULT_SETTINGS, recordingFormat: 'webm' },
+					'webm',
+					128000,
 					false,
 					jest.fn(),
 					buildTrackBlob,
@@ -937,7 +914,8 @@ describe('AudioFormatConverter', () => {
 			await expect(
 				mergeAudioTracks(
 					targets,
-					{ ...DEFAULT_SETTINGS, recordingFormat: 'webm' },
+					'webm',
+					128000,
 					false,
 					jest.fn(),
 					buildTrackBlob,
@@ -968,7 +946,8 @@ describe('AudioFormatConverter', () => {
 			await expect(
 				mergeAudioTracks(
 					targets,
-					{ ...DEFAULT_SETTINGS, recordingFormat: 'webm' },
+					'webm',
+					128000,
 					false,
 					jest.fn(),
 					buildTrackBlob,
@@ -996,15 +975,10 @@ describe('AudioFormatConverter', () => {
 					new Blob(['audio3'], { type: 'audio/webm' }),
 				);
 
-			const settings: AudioRecorderSettings = {
-				...DEFAULT_SETTINGS,
-				recordingFormat: 'mp4',
-				bitrate: 128000,
-			};
-
 			const result = await mergeAudioTracks(
 				targets,
-				settings,
+				'mp4',
+				128000,
 				false,
 				jest.fn(),
 				buildTrackBlob,
@@ -1023,15 +997,10 @@ describe('AudioFormatConverter', () => {
 				.fn()
 				.mockResolvedValue(new Blob(['audio'], { type: 'audio/webm' }));
 
-			const settings: AudioRecorderSettings = {
-				...DEFAULT_SETTINGS,
-				recordingFormat: 'mp4',
-				bitrate: 128000,
-			};
-
 			await mergeAudioTracks(
 				targets,
-				settings,
+				'mp4',
+				128000,
 				false,
 				jest.fn(),
 				buildTrackBlob,
@@ -1075,15 +1044,10 @@ describe('AudioFormatConverter', () => {
 				}),
 			);
 
-			const settings: AudioRecorderSettings = {
-				...DEFAULT_SETTINGS,
-				recordingFormat: 'mp4',
-				bitrate: 128000,
-			};
-
 			await mergeAudioTracks(
 				targets,
-				settings,
+				'mp4',
+				128000,
 				false,
 				jest.fn(),
 				buildTrackBlob,
@@ -1118,15 +1082,10 @@ describe('AudioFormatConverter', () => {
 				.mockResolvedValue(new Blob(['audio'], { type: 'audio/webm' }));
 			const onProgress = jest.fn();
 
-			const settings: AudioRecorderSettings = {
-				...DEFAULT_SETTINGS,
-				recordingFormat: 'mp4',
-				bitrate: 128000,
-			};
-
 			await mergeAudioTracks(
 				targets,
-				settings,
+				'mp4',
+				128000,
 				false,
 				jest.fn(),
 				buildTrackBlob,
@@ -1150,14 +1109,10 @@ describe('AudioFormatConverter', () => {
 				.fn()
 				.mockResolvedValue(new Blob(['audio'], { type: 'audio/webm' }));
 
-			const settings: AudioRecorderSettings = {
-				...DEFAULT_SETTINGS,
-				recordingFormat: 'wav',
-			};
-
 			await mergeAudioTracks(
 				targets,
-				settings,
+				'wav',
+				128000,
 				false,
 				jest.fn(),
 				buildTrackBlob,
@@ -1166,40 +1121,6 @@ describe('AudioFormatConverter', () => {
 			const ctxInstance = (AudioContext as unknown as jest.Mock).mock
 				.results[0].value;
 			expect(ctxInstance.close).toHaveBeenCalledTimes(1);
-		});
-
-		it('should encode as WAV when the format is not offline-encodable', async () => {
-			const { isOfflineEncodingSupported, encodeAudioBuffer } =
-				jest.requireMock('../../src/recording/AudioEncoder');
-
-			// Make the target format NOT offline-encodable
-			isOfflineEncodingSupported.mockReturnValue(false);
-
-			const targets = [createMockTarget('track1')];
-			const buildTrackBlob = jest
-				.fn()
-				.mockResolvedValue(new Blob(['audio'], { type: 'audio/webm' }));
-
-			const settings: AudioRecorderSettings = {
-				...DEFAULT_SETTINGS,
-				recordingFormat: 'someformat',
-				bitrate: 128000,
-			};
-
-			await mergeAudioTracks(
-				targets,
-				settings,
-				false,
-				jest.fn(),
-				buildTrackBlob,
-			);
-
-			// Falls back to WAV (mediabunny encodes pcm-s16 everywhere)
-			expect(encodeAudioBuffer).toHaveBeenCalledWith(
-				expect.anything(),
-				expect.objectContaining({ format: 'wav' }),
-				expect.any(Function),
-			);
 		});
 	});
 });

@@ -250,9 +250,15 @@ export async function buildOutputBlob(
 }
 
 /**
- * Merges multiple audio tracks into a single mixed audio blob.
+ * Merges multiple audio tracks into a single mixed audio blob. The
+ * caller resolves the encodable target format (and names the output
+ * file from it), so it is passed in instead of being recomputed from
+ * live settings — a settings change during the potentially long mix
+ * could otherwise make the file extension and the encoded content
+ * diverge.
  * @param chunkTargets - Recording targets for each track
- * @param settings - Plugin settings
+ * @param targetFormat - Resolved encodable output format
+ * @param bitrate - Encoder bitrate in bits per second
  * @param isWavPcmRecording - Whether recording uses PCM/WAV path
  * @param buildPcmTrackWavBlob - Function to build WAV blob from PCM target
  * @param buildTrackBlob - Function to build blob from MediaRecorder target
@@ -261,7 +267,8 @@ export async function buildOutputBlob(
  */
 export async function mergeAudioTracks(
 	chunkTargets: RecordingTarget[],
-	settings: AudioRecorderSettings,
+	targetFormat: string,
+	bitrate: number,
 	isWavPcmRecording: boolean,
 	buildPcmTrackWavBlob: TrackBlobBuilder,
 	buildTrackBlob: TrackBlobBuilder,
@@ -326,16 +333,11 @@ export async function mergeAudioTracks(
 		});
 	}
 
-	// Unsupported formats fall back to WAV, which mediabunny always
-	// encodes (pcm-s16 needs no platform encoder)
-	const targetFormat = isOfflineEncodingSupported(settings.recordingFormat)
-		? settings.recordingFormat
-		: FORMAT_WAV;
 	return encodeAudioBuffer(
 		renderedBuffer,
 		{
 			format: targetFormat,
-			bitrate: settings.bitrate,
+			bitrate,
 		},
 		(percent) => {
 			onProgress?.(40 + Math.round(percent * 0.2), 'Encoding audio...');

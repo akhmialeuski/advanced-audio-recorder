@@ -141,7 +141,7 @@ export class RecordingFinalizer {
 
 		this.reportProgress(20, 'Flushing buffers...');
 
-		if (this.settings.outputMode === 'single') {
+		if (session.outputMode === 'single') {
 			if (targets.length === 1) {
 				const target = targets[0];
 				const paths = await this.finalizeTrackFiles(target);
@@ -162,19 +162,22 @@ export class RecordingFinalizer {
 					);
 				}
 				this.reportProgress(40, 'Mixing tracks...');
+				// Computed once from the session snapshot and passed all
+				// the way to the encoder, so the file extension and the
+				// encoded content can never diverge
 				const targetFormat = isOfflineEncodingSupported(
-					this.settings.recordingFormat,
+					session.outputFormat,
 				)
-					? this.settings.recordingFormat
+					? session.outputFormat
 					: FORMAT_WAV;
 				if (
 					targetFormat === FORMAT_WAV &&
-					this.settings.recordingFormat !== FORMAT_WAV
+					session.outputFormat !== FORMAT_WAV
 				) {
 					this.debugLogger.log(
 						'Multi-track single output falls back to WAV (encoding unavailable)',
 						{
-							requestedFormat: this.settings.recordingFormat,
+							requestedFormat: session.outputFormat,
 						},
 					);
 					new Notice(
@@ -191,7 +194,8 @@ export class RecordingFinalizer {
 				}
 				mergedAudio ??= await mergeAudioTracks(
 					targets,
-					this.settings,
+					targetFormat,
+					session.bitrate,
 					session.isWavPcm,
 					(target) => this.buildPcmTrackWavBlob(target),
 					(target) => this.buildTrackBlob(target),

@@ -7,7 +7,7 @@ import { Notice, Platform } from 'obsidian';
 import type { App } from 'obsidian';
 import { RecordingStatus } from '../types';
 import type { InsertionContext, RecordingTarget, SaveProgress } from '../types';
-import type { AudioRecorderSettings } from '../settings/Settings';
+import type { AudioRecorderSettings, OutputMode } from '../settings/Settings';
 import {
 	getAudioStreams,
 	getAudioSourceName,
@@ -75,6 +75,8 @@ export class RecordingManager {
 	private sessionPartSuffix: string = DEFAULT_SPLIT_PART_SUFFIX;
 	/** Output format for the current session (snapshot). */
 	private sessionOutputFormat: string = FORMAT_WEBM;
+	/** Output mode for the current session (snapshot). */
+	private sessionOutputMode: OutputMode = 'multiple';
 	/** Encoder bitrate for the current session (snapshot). */
 	private sessionBitrate: number = DEFAULT_BITRATE;
 	/** Serialized per-track write queue (buffering and flushes). */
@@ -217,6 +219,7 @@ export class RecordingManager {
 				isWavPcm: this.isWavPcmRecording,
 				recorderFormat: this.activeRecorderFormat,
 				outputFormat: this.sessionOutputFormat,
+				outputMode: this.sessionOutputMode,
 				bitrate: this.sessionBitrate,
 				splitEnabled: this.sessionSplitEnabled,
 				partMinutes: this.sessionPartMinutes,
@@ -315,19 +318,22 @@ export class RecordingManager {
 	}
 
 	/**
-	 * Snapshots the session-scoped settings (output format, bitrate,
-	 * auto-split configuration) used by the per-track part and
-	 * finalization paths, which read them repeatedly during the
-	 * session: updateSettings swaps the settings reference while
+	 * Snapshots the session-scoped settings (output format, output
+	 * mode, bitrate, auto-split configuration) used by the per-track
+	 * part and finalization paths, which read them repeatedly during
+	 * the session: updateSettings swaps the settings reference while
 	 * recording, and without the snapshot each rotation could produce
-	 * a part in a different format. The mobile flush and merged
-	 * multi-track stop paths still read live settings, matching their
-	 * pre-split behavior. Auto-split is skipped for merged multi-track
-	 * output because the tracks are mixed only once at stop.
+	 * a part in a different format, or an outputMode change could
+	 * reroute a split session into the merged finalization and drop
+	 * its part files from the inserted links. The mobile flush path
+	 * still reads live settings, matching its pre-split behavior.
+	 * Auto-split is skipped for merged multi-track output because the
+	 * tracks are mixed only once at stop.
 	 * @param streamCount - Number of acquired audio streams
 	 */
 	private snapshotSessionSettings(streamCount: number): void {
 		this.sessionOutputFormat = this.settings.recordingFormat;
+		this.sessionOutputMode = this.settings.outputMode;
 		this.sessionBitrate = this.settings.bitrate;
 		this.sessionPartMinutes = clampSplitMinutes(
 			this.settings.splitChunkMinutes,
@@ -343,7 +349,7 @@ export class RecordingManager {
 
 		if (
 			this.sessionSplitEnabled &&
-			this.settings.outputMode === 'single' &&
+			this.sessionOutputMode === 'single' &&
 			streamCount > 1
 		) {
 			this.sessionSplitEnabled = false;

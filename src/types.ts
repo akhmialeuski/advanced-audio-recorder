@@ -3,6 +3,8 @@
  * @module types
  */
 
+import type { OutputMode } from './settings/Settings';
+
 /**
  * Recording status states.
  */
@@ -47,8 +49,11 @@ export interface InsertionContext {
  * taken at recording start. The per-track part and finalization paths
  * read these values repeatedly during the session; without the
  * snapshot, a settings change mid-recording could switch formats
- * between parts. The mobile flush path deliberately keeps reading
- * live settings (see TrackWriteQueue.flushChunkBuffer).
+ * between parts or reroute the finalization topology (outputMode
+ * decides whether a multi-track session merges, and the auto-split
+ * decision already depended on it at start). The mobile flush path
+ * deliberately keeps reading live settings (see
+ * TrackWriteQueue.flushChunkBuffer).
  */
 export interface RecordingSessionConfig {
 	/** Whether the session runs in the mobile app. */
@@ -59,6 +64,8 @@ export interface RecordingSessionConfig {
 	recorderFormat: string;
 	/** Output format of the final files. */
 	outputFormat: string;
+	/** Output mode: 'single' merges multi-track sessions at stop. */
+	outputMode: OutputMode;
 	/** Encoder bitrate in bits per second. */
 	bitrate: number;
 	/** Whether auto-split is active for the session. */

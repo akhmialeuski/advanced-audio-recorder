@@ -96,6 +96,7 @@ const createSession = (
 	isWavPcm: false,
 	recorderFormat: 'webm',
 	outputFormat: 'webm',
+	outputMode: 'single',
 	bitrate: 128000,
 	splitEnabled: false,
 	partMinutes: 15,
@@ -338,10 +339,7 @@ describe('RecordingFinalizer', () => {
 
 	describe('saveRecording', () => {
 		it('should finalize each track and insert links in multiple mode', async () => {
-			buildFinalizer(createSession(), {
-				...DEFAULT_SETTINGS,
-				outputMode: 'multiple',
-			});
+			buildFinalizer(createSession({ outputMode: 'multiple' }));
 			const targets = [
 				createTarget({ segmentPaths: ['a-part1.webm.tmp'] }),
 				createTarget({
@@ -368,22 +366,57 @@ describe('RecordingFinalizer', () => {
 		});
 
 		it('should report when no audio data was recorded', async () => {
-			buildFinalizer(createSession(), {
-				...DEFAULT_SETTINGS,
-				outputMode: 'multiple',
-			});
+			buildFinalizer(createSession({ outputMode: 'multiple' }));
 
 			await finalizer.saveRecording([createTarget()], 'stamp', null);
 
 			expect(getNotices()).toContain('No audio data recorded');
 		});
 
-		it('should fall back to WAV with a Notice for unsupported merged formats', async () => {
-			buildFinalizer(createSession(), {
+		it('should follow the session outputMode snapshot over live settings', async () => {
+			// The live settings switched to 'single' mid-recording; the
+			// session snapshot taken at start must keep the per-track
+			// finalization, or the parts already saved by auto-split
+			// would silently vanish from the inserted links
+			buildFinalizer(createSession({ outputMode: 'multiple' }), {
 				...DEFAULT_SETTINGS,
 				outputMode: 'single',
-				recordingFormat: 'unsupported-format',
 			});
+			const targets = [
+				createTarget({
+					segmentPaths: ['a-part2.webm.tmp'],
+					partPaths: ['a-part1.webm'],
+					partIndex: 1,
+				}),
+				createTarget({
+					fileBaseName: 'recording-Track2-stamp',
+					segmentPaths: ['b-part1.webm.tmp'],
+				}),
+			];
+
+			await finalizer.saveRecording(targets, 'stamp', null);
+
+			const { mergeAudioTracks } = jest.requireMock(
+				'../../src/recording/AudioFormatConverter',
+			);
+			expect(mergeAudioTracks).not.toHaveBeenCalled();
+			const { insertFileLinks } = jest.requireMock(
+				'../../src/recording/NoteInserter',
+			);
+			expect(insertFileLinks).toHaveBeenCalledWith(
+				expect.arrayContaining(['a-part1.webm']),
+				null,
+				mockApp,
+			);
+		});
+
+		it('should fall back to WAV with a Notice for unsupported merged formats', async () => {
+			buildFinalizer(
+				createSession({
+					outputMode: 'single',
+					outputFormat: 'unsupported-format',
+				}),
+			);
 			const targets = [
 				createTarget({ segmentPaths: ['a.tmp'] }),
 				createTarget({ segmentPaths: ['b.tmp'] }),
@@ -409,11 +442,13 @@ describe('RecordingFinalizer', () => {
 			const { mergeAudioTracks } = jest.requireMock(
 				'../../src/recording/AudioFormatConverter',
 			);
-			buildFinalizer(createSession({ isWavPcm: true }), {
-				...DEFAULT_SETTINGS,
-				outputMode: 'single',
-				recordingFormat: 'wav',
-			});
+			buildFinalizer(
+				createSession({
+					isWavPcm: true,
+					outputMode: 'single',
+					outputFormat: 'wav',
+				}),
+			);
 			const targets = [
 				createTarget({
 					segmentPaths: ['a-pcm.tmp'],
@@ -457,11 +492,13 @@ describe('RecordingFinalizer', () => {
 				'../../src/recording/AudioFormatConverter',
 			);
 			(canStreamMix as jest.Mock).mockReturnValueOnce(false);
-			buildFinalizer(createSession({ isWavPcm: true }), {
-				...DEFAULT_SETTINGS,
-				outputMode: 'single',
-				recordingFormat: 'wav',
-			});
+			buildFinalizer(
+				createSession({
+					isWavPcm: true,
+					outputMode: 'single',
+					outputFormat: 'wav',
+				}),
+			);
 			const targets = [
 				createTarget({ segmentPaths: ['a-pcm.tmp'] }),
 				createTarget({ segmentPaths: ['b-pcm.tmp'] }),
@@ -470,7 +507,17 @@ describe('RecordingFinalizer', () => {
 			await finalizer.saveRecording(targets, 'stamp', null);
 
 			expect(mixPcmTracksToWav).not.toHaveBeenCalled();
-			expect(mergeAudioTracks).toHaveBeenCalled();
+			// The resolved target format and the session bitrate are
+			// passed in; the mix never re-reads live settings
+			expect(mergeAudioTracks).toHaveBeenCalledWith(
+				targets,
+				'wav',
+				128000,
+				true,
+				expect.any(Function),
+				expect.any(Function),
+				expect.any(Function),
+			);
 		});
 
 		it('should keep compressed merged outputs on the Web Audio mix', async () => {
@@ -480,11 +527,13 @@ describe('RecordingFinalizer', () => {
 			const { mergeAudioTracks } = jest.requireMock(
 				'../../src/recording/AudioFormatConverter',
 			);
-			buildFinalizer(createSession({ isWavPcm: true }), {
-				...DEFAULT_SETTINGS,
-				outputMode: 'single',
-				recordingFormat: 'mp3',
-			});
+			buildFinalizer(
+				createSession({
+					isWavPcm: true,
+					outputMode: 'single',
+					outputFormat: 'mp3',
+				}),
+			);
 			const targets = [
 				createTarget({ segmentPaths: ['a-pcm.tmp'] }),
 				createTarget({ segmentPaths: ['b-pcm.tmp'] }),
@@ -501,10 +550,7 @@ describe('RecordingFinalizer', () => {
 				new Error('locked'),
 			);
 			const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
-			buildFinalizer(createSession(), {
-				...DEFAULT_SETTINGS,
-				outputMode: 'single',
-			});
+			buildFinalizer(createSession({ outputMode: 'single' }));
 			const targets = [
 				createTarget({ segmentPaths: ['a.tmp'] }),
 				createTarget({ segmentPaths: ['b.tmp'] }),

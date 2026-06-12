@@ -51,6 +51,7 @@ const createSession = (
 	isWavPcm: false,
 	recorderFormat: 'webm',
 	outputFormat: 'webm',
+	outputMode: 'multiple',
 	bitrate: 128000,
 	splitEnabled: true,
 	partMinutes: 15,
