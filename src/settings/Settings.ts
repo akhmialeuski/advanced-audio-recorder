@@ -14,6 +14,18 @@ import {
 	MAX_SPLIT_CHUNK_MINUTES,
 	SPLIT_PART_SUFFIX_PATTERN,
 	SPLIT_PART_SUFFIX_RULE_TEXT,
+	DEFAULT_PLAYER_WAVEFORM_HEIGHT,
+	MIN_PLAYER_WAVEFORM_HEIGHT,
+	MAX_PLAYER_WAVEFORM_HEIGHT,
+	DEFAULT_PLAYER_WAVEFORM_MAX_FILE_MB,
+	MIN_PLAYER_WAVEFORM_MAX_FILE_MB,
+	MAX_PLAYER_WAVEFORM_MAX_FILE_MB,
+	DEFAULT_PLAYER_SKIP_SECONDS,
+	MIN_PLAYER_SKIP_SECONDS,
+	MAX_PLAYER_SKIP_SECONDS,
+	DEFAULT_PLAYER_PLAYBACK_RATE,
+	MIN_PLAYER_PLAYBACK_RATE,
+	MAX_PLAYER_PLAYBACK_RATE,
 } from '../constants';
 import { getDefaultDeviceId } from '../utils/DeviceUtils';
 
@@ -100,6 +112,30 @@ export interface AudioRecorderSettings {
 	splitPartSuffix: string;
 	/** Delete the source file after a successful manual split */
 	deleteSourceAfterSplit: boolean;
+	/** Replace the built-in audio embed with the enhanced player */
+	enhancedPlayerEnabled: boolean;
+	/** Draw a waveform behind the player seek bar */
+	playerShowWaveform: boolean;
+	/** Waveform height in pixels */
+	playerWaveformHeight: number;
+	/** Upper bound (MB) on files decoded to draw a waveform */
+	playerWaveformMaxFileSizeMb: number;
+	/** Show the playback-speed control */
+	playerShowSpeedControl: boolean;
+	/** Default playback rate applied to new players */
+	playerDefaultPlaybackRate: number;
+	/** Show the skip-forward / skip-back buttons */
+	playerShowSkipButtons: boolean;
+	/** Seconds skipped by the skip-forward / skip-back buttons */
+	playerSkipSeconds: number;
+	/** Show the volume control */
+	playerShowVolumeControl: boolean;
+	/** Show the elapsed / total time display */
+	playerShowTimeDisplay: boolean;
+	/** Loop playback by default */
+	playerDefaultLoop: boolean;
+	/** Enable timecode links (#t=) that seek the player */
+	playerEnableTimestampLinks: boolean;
 }
 
 /**
@@ -130,6 +166,18 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	splitChunkMinutes: DEFAULT_SPLIT_CHUNK_MINUTES,
 	splitPartSuffix: DEFAULT_SPLIT_PART_SUFFIX,
 	deleteSourceAfterSplit: false,
+	enhancedPlayerEnabled: false,
+	playerShowWaveform: true,
+	playerWaveformHeight: DEFAULT_PLAYER_WAVEFORM_HEIGHT,
+	playerWaveformMaxFileSizeMb: DEFAULT_PLAYER_WAVEFORM_MAX_FILE_MB,
+	playerShowSpeedControl: true,
+	playerDefaultPlaybackRate: DEFAULT_PLAYER_PLAYBACK_RATE,
+	playerShowSkipButtons: true,
+	playerSkipSeconds: DEFAULT_PLAYER_SKIP_SECONDS,
+	playerShowVolumeControl: true,
+	playerShowTimeDisplay: true,
+	playerDefaultLoop: false,
+	playerEnableTimestampLinks: true,
 };
 
 export interface AudioRecorderSettingsInput extends Partial<
@@ -312,4 +360,100 @@ export function validateSettings(settings: AudioRecorderSettings): void {
 			}
 		}
 	}
+}
+
+/**
+ * Sanitized, render-ready view of the enhanced player settings. The
+ * player reads these instead of the raw settings so a hand-edited or
+ * out-of-range data.json can never produce a broken player (a zero
+ * height, a negative skip amount, a NaN playback rate). Player settings
+ * are deliberately kept off validateSettings: they are unrelated to
+ * recording and must never throw on the recording path.
+ */
+export interface ResolvedPlayerSettings {
+	showWaveform: boolean;
+	waveformHeight: number;
+	waveformMaxFileSizeBytes: number;
+	showSpeedControl: boolean;
+	defaultPlaybackRate: number;
+	showSkipButtons: boolean;
+	skipSeconds: number;
+	showVolumeControl: boolean;
+	showTimeDisplay: boolean;
+	defaultLoop: boolean;
+	enableTimestampLinks: boolean;
+}
+
+/**
+ * Clamps a number into a range, falling back to a default when the
+ * value is not finite (e.g. a hand-edited data.json wrote a string).
+ * @param value - Raw value
+ * @param min - Lower bound (inclusive)
+ * @param max - Upper bound (inclusive)
+ * @param fallback - Value used when the input is not finite
+ * @returns Clamped, finite number
+ */
+function clampNumber(
+	value: number,
+	min: number,
+	max: number,
+	fallback: number,
+): number {
+	if (!Number.isFinite(value)) {
+		return fallback;
+	}
+	return Math.min(max, Math.max(min, value));
+}
+
+/**
+ * Produces sanitized enhanced-player settings from the stored values,
+ * clamping every numeric field into its supported range.
+ * @param settings - Current plugin settings
+ * @returns Render-ready player settings
+ */
+export function resolvePlayerSettings(
+	settings: AudioRecorderSettings,
+): ResolvedPlayerSettings {
+	return {
+		showWaveform: settings.playerShowWaveform,
+		waveformHeight: Math.round(
+			clampNumber(
+				settings.playerWaveformHeight,
+				MIN_PLAYER_WAVEFORM_HEIGHT,
+				MAX_PLAYER_WAVEFORM_HEIGHT,
+				DEFAULT_PLAYER_WAVEFORM_HEIGHT,
+			),
+		),
+		waveformMaxFileSizeBytes:
+			Math.round(
+				clampNumber(
+					settings.playerWaveformMaxFileSizeMb,
+					MIN_PLAYER_WAVEFORM_MAX_FILE_MB,
+					MAX_PLAYER_WAVEFORM_MAX_FILE_MB,
+					DEFAULT_PLAYER_WAVEFORM_MAX_FILE_MB,
+				),
+			) *
+			1024 *
+			1024,
+		showSpeedControl: settings.playerShowSpeedControl,
+		defaultPlaybackRate: clampNumber(
+			settings.playerDefaultPlaybackRate,
+			MIN_PLAYER_PLAYBACK_RATE,
+			MAX_PLAYER_PLAYBACK_RATE,
+			DEFAULT_PLAYER_PLAYBACK_RATE,
+		),
+		showSkipButtons: settings.playerShowSkipButtons,
+		skipSeconds: Math.round(
+			clampNumber(
+				settings.playerSkipSeconds,
+				MIN_PLAYER_SKIP_SECONDS,
+				MAX_PLAYER_SKIP_SECONDS,
+				DEFAULT_PLAYER_SKIP_SECONDS,
+			),
+		),
+		showVolumeControl: settings.playerShowVolumeControl,
+		showTimeDisplay: settings.playerShowTimeDisplay,
+		defaultLoop: settings.playerDefaultLoop,
+		enableTimestampLinks: settings.playerEnableTimestampLinks,
+	};
 }

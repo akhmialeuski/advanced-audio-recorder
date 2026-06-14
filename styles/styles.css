@@ -165,3 +165,114 @@ If your plugin does not need CSS, delete this file.
 input.aar-input-invalid {
     border-color: var(--text-error);
 }
+
+/* ── Enhanced audio player ─────────────────────────────────────── */
+.aar-player {
+    /* Waveform colors derive from the theme so it matches any palette */
+    --aar-waveform-played: var(--color-accent);
+    --aar-waveform-unplayed: var(--background-modifier-border);
+    --aar-waveform-height: 48px;
+
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    background-color: var(--background-secondary);
+}
+
+.aar-player-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.aar-player-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    height: 28px;
+    padding: 0 6px;
+    border: none;
+    border-radius: 5px;
+    background-color: transparent;
+    color: var(--text-normal);
+    cursor: pointer;
+    box-shadow: none;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.aar-player-btn:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+.aar-player-btn.is-active {
+    color: var(--color-accent);
+}
+
+.aar-player-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.aar-player-speed {
+    font-size: 0.85em;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.aar-player-volume {
+    width: 80px;
+    accent-color: var(--color-accent);
+    cursor: pointer;
+}
+
+.aar-player-time {
+    margin-left: auto;
+    font-size: 0.85em;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.aar-player-seek {
+    position: relative;
+    width: 100%;
+    cursor: pointer;
+}
+
+.aar-player-seek-waveform {
+    height: var(--aar-waveform-height);
+}
+
+.aar-player-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.aar-player-seek-bar {
+    height: 6px;
+    border-radius: 3px;
+    background-color: var(--background-modifier-border);
+    overflow: hidden;
+}
+
+.aar-player-progress-fill {
+    height: 100%;
+    width: 0%;
+    background-color: var(--color-accent);
+    border-radius: 3px;
+}
+
+.aar-player-waveform-skipped::after {
+    content: 'Waveform skipped (file too large)';
+    display: block;
+    font-size: 0.8em;
+    color: var(--text-faint);
+    padding-top: 4px;
+}

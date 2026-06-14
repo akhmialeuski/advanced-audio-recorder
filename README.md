@@ -12,6 +12,7 @@ An advanced audio recording plugin for [Obsidian](https://obsidian.md) with conf
 - **8 output formats**: WAV, WebM, OGG, MP3, MP4, M4A, AAC, FLAC.
 - **Audio format conversion** between supported formats via context menu.
 - **Audio splitting**: automatic splitting of recordings into fixed-duration parts and manual splitting of existing files via context menu.
+- **Enhanced audio player** that replaces the built-in embed with a waveform, playback-speed control, skip buttons, volume, loop, a time display, and timecode links.
 - **Audio file info** viewer showing duration, bitrate, sample rate, codec, and more.
 - **Configurable save location** with vault folder or near-active-file mode.
 - **Insert at original position** to place the audio link where recording started.
@@ -162,6 +163,29 @@ Moves the audio file to the system trash **and** removes the corresponding embed
 ![Delete via link](docs/delete-via-link.png)
 ![Delete via player](docs/delete-via-player.png)
 
+## Enhanced audio player
+
+When **Enhanced audio player** is enabled in settings, the plugin replaces Obsidian's built-in audio embed with a richer player wherever an audio file is embedded (`![[recording.webm]]`). The takeover is done through a Markdown post-processor, so it applies in both Reading view and Live Preview and is torn down cleanly when a note re-renders or its leaf closes. Disabling the setting restores the built-in embed on the next render.
+
+The player offers:
+
+- **Waveform seek bar**: the recording is drawn as a waveform; click or drag anywhere on it to seek. The played portion uses the theme accent color. Waveforms are computed once per file revision and cached, so scrolling a note with many players does not redecode audio.
+- **Playback speed**: cycle through speed presets (0.5×–3×). A default speed can be set in settings.
+- **Skip buttons**: jump backward and forward by a configurable number of seconds.
+- **Volume** control and **loop** toggle.
+- **Time display**: elapsed and total time.
+- **Copy timestamp link**: copies a link to the current position (for example `[[recording#t=1:30]]`), following your link-format preferences.
+
+### Timecode links
+
+A link with a `#t=` offset jumps a rendered player to that position instead of opening the file. The offset accepts plain seconds (`#t=90`), `m:ss` (`#t=1:30`), and `h:mm:ss` (`#t=1:02:03`). When a matching player is already visible in the note, clicking the link seeks it; otherwise the link behaves normally.
+
+### Waveform and large files
+
+Drawing a waveform requires decoding the whole file into memory, so files above the configurable **Waveform file size limit** skip the waveform and fall back to a plain seek bar (still fully seekable). Turn off **Show waveform** to always use the plain seek bar and avoid decoding.
+
+> **Desktop and mobile**: the enhanced player works wherever Obsidian renders audio embeds. Waveform extraction relies on the Web Audio API available in the app.
+
 ## Formats and containers
 
 Available recording formats depend on your platform's **MediaRecorder** support. The plugin detects supported formats at runtime.
@@ -254,6 +278,23 @@ The plugin keeps an automatic backup of its settings in `data.json.bak` next to 
 | **Maximum tracks** | Number of simultaneous tracks (1-8). | 2 |
 | **Output mode** | `Single file` combines all tracks into one file. `Multiple files` saves one file per track. | Single file |
 | **Audio source for track N** | Select the input device for each track. One dropdown per track. | — |
+
+### Audio player
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| **Enhanced audio player** | Replace the built-in audio embed with the enhanced player. Enabling it reveals the options below. Applies to notes rendered after the change. | Off |
+| **Show waveform** | Draw a waveform behind the seek bar. When off, a plain progress bar is shown and no decoding is performed. | On |
+| **Waveform height** | Height of the waveform in pixels (24–160). | 48 |
+| **Waveform file size limit** | Files larger than this (in megabytes, 1–500) skip the waveform and show a plain seek bar. | 50 |
+| **Show speed control** | Show the playback-speed button. | On |
+| **Default playback speed** | Speed applied to players when a note opens. | 1× |
+| **Show skip buttons** | Show skip-forward and skip-back buttons. | On |
+| **Skip amount** | Seconds skipped by the skip buttons (1–60). | 10 |
+| **Show volume control** | Show the volume slider. | On |
+| **Show time display** | Show elapsed and total time. | On |
+| **Loop by default** | Start new players with looping enabled. | Off |
+| **Timecode links** | Enable `#t=` links that seek a player, plus the player's "copy timestamp link" button. | On |
 
 ### Diagnostics
 

@@ -32,6 +32,13 @@ import {
 	MIN_SPLIT_CHUNK_MINUTES,
 	MAX_SPLIT_CHUNK_MINUTES,
 	SPLIT_PART_SUFFIX_PATTERN,
+	MIN_PLAYER_WAVEFORM_HEIGHT,
+	MAX_PLAYER_WAVEFORM_HEIGHT,
+	MIN_PLAYER_WAVEFORM_MAX_FILE_MB,
+	MAX_PLAYER_WAVEFORM_MAX_FILE_MB,
+	MIN_PLAYER_SKIP_SECONDS,
+	MAX_PLAYER_SKIP_SECONDS,
+	PLAYER_PLAYBACK_RATE_PRESETS,
 } from '../constants';
 import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
 import { SystemInfoModal } from '../diagnostics/SystemInfoModal';
@@ -535,6 +542,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			}
 		}
 
+		// ── Audio player ───────────────────────────────────────────
+		this.renderAudioPlayerSettings(containerEl);
+
 		// ── Diagnostics ────────────────────────────────────────────
 		new Setting(containerEl).setName('Diagnostics').setHeading();
 
@@ -576,6 +586,206 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.debug)
 					.onChange(async (value) => {
 						this.plugin.settings.debug = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+	}
+
+	/**
+	 * Renders the enhanced audio player settings. The master toggle is
+	 * always shown; the detailed controls appear only while the player
+	 * is enabled, and toggling it re-renders the tab so they show or
+	 * hide immediately.
+	 * @param containerEl - The settings container element
+	 */
+	private renderAudioPlayerSettings(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName('Audio player').setHeading();
+
+		new Setting(containerEl)
+			.setName('Enhanced audio player')
+			.setDesc(
+				'Replace the built-in audio embed with a richer player (waveform, speed, skip, volume, loop, timecode links). Applies to notes rendered after the change.',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.enhancedPlayerEnabled)
+					.onChange(async (value) => {
+						this.plugin.settings.enhancedPlayerEnabled = value;
+						await this.plugin.saveSettings();
+						this.display();
+					}),
+			);
+
+		if (!this.plugin.settings.enhancedPlayerEnabled) {
+			return;
+		}
+
+		new Setting(containerEl)
+			.setName('Show waveform')
+			.setDesc(
+				'Draw a waveform behind the seek bar. Disable to show a plain progress bar (no decoding required).',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.playerShowWaveform)
+					.onChange(async (value) => {
+						this.plugin.settings.playerShowWaveform = value;
+						await this.plugin.saveSettings();
+						this.display();
+					}),
+			);
+
+		if (this.plugin.settings.playerShowWaveform) {
+			new Setting(containerEl)
+				.setName('Waveform height')
+				.setDesc('Height of the waveform in pixels.')
+				.addSlider((slider) =>
+					slider
+						.setLimits(
+							MIN_PLAYER_WAVEFORM_HEIGHT,
+							MAX_PLAYER_WAVEFORM_HEIGHT,
+							2,
+						)
+						.setValue(this.plugin.settings.playerWaveformHeight)
+						.setDynamicTooltip()
+						.onChange(async (value) => {
+							this.plugin.settings.playerWaveformHeight = value;
+							await this.plugin.saveSettings();
+						}),
+				);
+
+			new Setting(containerEl)
+				.setName('Waveform file size limit')
+				.setDesc(
+					'Files larger than this size in megabytes skip the waveform and show a plain seek bar, because drawing a waveform decodes the whole file into memory.',
+				)
+				.addSlider((slider) =>
+					slider
+						.setLimits(
+							MIN_PLAYER_WAVEFORM_MAX_FILE_MB,
+							MAX_PLAYER_WAVEFORM_MAX_FILE_MB,
+							1,
+						)
+						.setValue(
+							this.plugin.settings.playerWaveformMaxFileSizeMb,
+						)
+						.setDynamicTooltip()
+						.onChange(async (value) => {
+							this.plugin.settings.playerWaveformMaxFileSizeMb =
+								value;
+							await this.plugin.saveSettings();
+						}),
+				);
+		}
+
+		new Setting(containerEl)
+			.setName('Show speed control')
+			.setDesc('Show a playback-speed button on the player.')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.playerShowSpeedControl)
+					.onChange(async (value) => {
+						this.plugin.settings.playerShowSpeedControl = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Default playback speed')
+			.setDesc('Speed applied to players when a note opens.')
+			.addDropdown((dropdown) => {
+				PLAYER_PLAYBACK_RATE_PRESETS.forEach((rate) => {
+					dropdown.addOption(String(rate), `${String(rate)}x`);
+				});
+				dropdown.setValue(
+					String(this.plugin.settings.playerDefaultPlaybackRate),
+				);
+				dropdown.onChange(async (value) => {
+					this.plugin.settings.playerDefaultPlaybackRate =
+						Number(value);
+					await this.plugin.saveSettings();
+				});
+			});
+
+		new Setting(containerEl)
+			.setName('Show skip buttons')
+			.setDesc('Show skip-forward and skip-back buttons.')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.playerShowSkipButtons)
+					.onChange(async (value) => {
+						this.plugin.settings.playerShowSkipButtons = value;
+						await this.plugin.saveSettings();
+						this.display();
+					}),
+			);
+
+		if (this.plugin.settings.playerShowSkipButtons) {
+			new Setting(containerEl)
+				.setName('Skip amount')
+				.setDesc('Seconds skipped by the skip buttons.')
+				.addSlider((slider) =>
+					slider
+						.setLimits(
+							MIN_PLAYER_SKIP_SECONDS,
+							MAX_PLAYER_SKIP_SECONDS,
+							1,
+						)
+						.setValue(this.plugin.settings.playerSkipSeconds)
+						.setDynamicTooltip()
+						.onChange(async (value) => {
+							this.plugin.settings.playerSkipSeconds = value;
+							await this.plugin.saveSettings();
+						}),
+				);
+		}
+
+		new Setting(containerEl)
+			.setName('Show volume control')
+			.setDesc('Show a volume slider on the player.')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.playerShowVolumeControl)
+					.onChange(async (value) => {
+						this.plugin.settings.playerShowVolumeControl = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Show time display')
+			.setDesc('Show elapsed and total time on the player.')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.playerShowTimeDisplay)
+					.onChange(async (value) => {
+						this.plugin.settings.playerShowTimeDisplay = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Loop by default')
+			.setDesc('Start new players with looping enabled.')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.playerDefaultLoop)
+					.onChange(async (value) => {
+						this.plugin.settings.playerDefaultLoop = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Timecode links')
+			.setDesc(
+				'Enable links with a #t= offset (e.g. [[recording#t=1:30]]) to jump a player to that position, and the "copy timestamp link" button on the player.',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.playerEnableTimestampLinks)
+					.onChange(async (value) => {
+						this.plugin.settings.playerEnableTimestampLinks = value;
 						await this.plugin.saveSettings();
 					}),
 			);

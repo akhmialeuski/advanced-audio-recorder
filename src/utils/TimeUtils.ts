@@ -13,3 +13,60 @@
 export function delay(ms: number): Promise<void> {
 	return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
+
+/**
+ * Formats a duration in seconds as a human-readable timecode. Durations
+ * below one hour render as `m:ss`; one hour and above render as
+ * `h:mm:ss`. Negative or non-finite inputs collapse to `0:00`.
+ * @param totalSeconds - Duration in seconds
+ * @returns Timecode string (e.g. "1:05" or "1:02:03")
+ */
+export function formatTimecode(totalSeconds: number): string {
+	if (!Number.isFinite(totalSeconds) || totalSeconds < 0) {
+		return '0:00';
+	}
+	const rounded = Math.floor(totalSeconds);
+	const hours = Math.floor(rounded / 3600);
+	const minutes = Math.floor((rounded % 3600) / 60);
+	const seconds = rounded % 60;
+	const paddedSeconds = String(seconds).padStart(2, '0');
+	if (hours > 0) {
+		const paddedMinutes = String(minutes).padStart(2, '0');
+		return `${String(hours)}:${paddedMinutes}:${paddedSeconds}`;
+	}
+	return `${String(minutes)}:${paddedSeconds}`;
+}
+
+/**
+ * Parses a timecode string into a number of seconds. Accepts a plain
+ * seconds count ("90", "90.5"), `m:ss`, and `h:mm:ss`, each optionally
+ * carrying a fractional seconds component. Whitespace is ignored.
+ * Returns null when the input is empty or malformed so callers can tell
+ * "no timecode" from "zero seconds".
+ * @param value - Timecode string to parse
+ * @returns Seconds as a number, or null when the input is not a valid
+ * timecode
+ */
+export function parseTimecode(value: string): number | null {
+	const trimmed = value.trim();
+	if (trimmed === '') {
+		return null;
+	}
+	const parts = trimmed.split(':');
+	if (parts.length > 3) {
+		return null;
+	}
+	let seconds = 0;
+	for (let index = 0; index < parts.length; index++) {
+		const part = parts[index];
+		// Only the last segment may carry a fractional component; the
+		// hour and minute segments are whole numbers
+		const isLast = index === parts.length - 1;
+		const pattern = isLast ? /^\d+(\.\d+)?$/ : /^\d+$/;
+		if (!pattern.test(part)) {
+			return null;
+		}
+		seconds = seconds * 60 + Number(part);
+	}
+	return seconds;
+}

@@ -85,3 +85,53 @@ export const SPLIT_PART_SUFFIX_PATTERN = /^[A-Za-z0-9_-]+$/;
 /** User-facing description of the split part suffix character rule. */
 export const SPLIT_PART_SUFFIX_RULE_TEXT =
 	'Part suffix may contain only letters, digits, hyphens, and underscores.';
+
+// ── Enhanced audio player ───────────────────────────────────────────
+
+/** Default waveform height in pixels. */
+export const DEFAULT_PLAYER_WAVEFORM_HEIGHT = 48;
+
+/** Minimum configurable waveform height in pixels. */
+export const MIN_PLAYER_WAVEFORM_HEIGHT = 24;
+
+/** Maximum configurable waveform height in pixels. */
+export const MAX_PLAYER_WAVEFORM_HEIGHT = 160;
+
+/**
+ * Default upper bound, in megabytes, on files the player decodes to
+ * draw a waveform. Larger files render a plain seek bar instead, because
+ * computing a waveform requires decoding the whole file into memory.
+ */
+export const DEFAULT_PLAYER_WAVEFORM_MAX_FILE_MB = 50;
+
+/** Minimum configurable waveform file-size limit in megabytes. */
+export const MIN_PLAYER_WAVEFORM_MAX_FILE_MB = 1;
+
+/** Maximum configurable waveform file-size limit in megabytes. */
+export const MAX_PLAYER_WAVEFORM_MAX_FILE_MB = 500;
+
+/** Default seconds skipped by the player's skip-forward/back buttons. */
+export const DEFAULT_PLAYER_SKIP_SECONDS = 10;
+
+/** Minimum configurable skip amount in seconds. */
+export const MIN_PLAYER_SKIP_SECONDS = 1;
+
+/** Maximum configurable skip amount in seconds. */
+export const MAX_PLAYER_SKIP_SECONDS = 60;
+
+/** Default playback rate applied to new players. */
+export const DEFAULT_PLAYER_PLAYBACK_RATE = 1;
+
+/** Minimum selectable playback rate. */
+export const MIN_PLAYER_PLAYBACK_RATE = 0.25;
+
+/** Maximum selectable playback rate. */
+export const MAX_PLAYER_PLAYBACK_RATE = 4;
+
+/** Selectable playback-rate presets shown in the player and settings. */
+export const PLAYER_PLAYBACK_RATE_PRESETS = [
+	0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3,
+];
+
+/** Number of waveform bars drawn per 100 pixels of player width. */
+export const PLAYER_WAVEFORM_BARS_PER_100PX = 50;
