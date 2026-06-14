@@ -39,6 +39,11 @@ import {
 	type MarkerKind,
 	type PlayerMarker,
 } from './markers/markerModel';
+import {
+	PLAYER_ACTIONS_PROP,
+	type PlayerEmbedActions,
+	type PlayerEmbedElement,
+} from './playerEmbedActions';
 
 /**
  * A very large finite time used to coax browsers into computing the
@@ -145,6 +150,8 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		if (this.settings.enableMarkers) {
 			void this.loadMarkers();
 		}
+
+		this.publishContextActions();
 
 		this.registry.register(this.file.path, this);
 		this.register(() => {
@@ -414,6 +421,11 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 */
 	private registerSeekPointer(): void {
 		this.registerDomEvent(this.seekEl, 'pointerdown', (event) => {
+			// Ignore non-primary buttons so a right-click opens the
+			// context menu instead of seeking
+			if (event.button !== 0) {
+				return;
+			}
 			this.isSeeking = true;
 			this.seekToPointer(event);
 		});
@@ -433,6 +445,15 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * @param event - Pointer or mouse event over the seek area
 	 */
 	private pointerTime(event: PointerEvent | MouseEvent): number | null {
+		return this.timeAtClientX(event.clientX);
+	}
+
+	/**
+	 * Converts a client X coordinate to a playback offset along the seek
+	 * area, or null when the duration is unknown or the area has no width.
+	 * @param clientX - Horizontal viewport coordinate
+	 */
+	private timeAtClientX(clientX: number): number | null {
 		if (!Number.isFinite(this.audio.duration) || this.audio.duration <= 0) {
 			return null;
 		}
@@ -442,9 +463,36 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		}
 		const fraction = Math.min(
 			1,
-			Math.max(0, (event.clientX - rect.left) / rect.width),
+			Math.max(0, (clientX - rect.left) / rect.width),
 		);
 		return fraction * this.audio.duration;
+	}
+
+	/**
+	 * Publishes position-aware actions on the embed element so the
+	 * context menu can offer marker, chapter, timestamp, and play/pause
+	 * actions on right-click. The reference is removed on unload.
+	 */
+	private publishContextActions(): void {
+		const actions: PlayerEmbedActions = {
+			markersEnabled: this.settings.enableMarkers,
+			timestampLinksEnabled: this.settings.enableTimestampLinks,
+			timeAtClientX: (clientX: number) => this.timeAtClientX(clientX),
+			addMarkerAtTime: (time: number, kind: MarkerKind) => {
+				void this.addMarkerAt(time, kind);
+			},
+			copyTimestampAtTime: (time: number) => {
+				void this.copyTimestampLink(time);
+			},
+			togglePlayback: () => {
+				this.togglePlay();
+			},
+		};
+		const el = this.containerEl as PlayerEmbedElement;
+		el[PLAYER_ACTIONS_PROP] = actions;
+		this.register(() => {
+			delete el[PLAYER_ACTIONS_PROP];
+		});
 	}
 
 	/**
@@ -894,6 +942,10 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				`${marker.label} (${formatTimecode(marker.time)})`,
 			);
 			this.registerDomEvent(tick, 'pointerdown', (event) => {
+				// Let a right-click fall through to the context menu
+				if (event.button !== 0) {
+					return;
+				}
 				// Stop the seek handler from also firing for this click
 				event.stopPropagation();
 				this.seekTo(marker.time);
@@ -951,11 +1003,14 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	}
 
 	/**
-	 * Copies a timecode link to the current position, respecting the
-	 * vault's link-format preference.
+	 * Copies a timecode link to a position, respecting the vault's
+	 * link-format preference.
+	 * @param time - Offset in seconds (defaults to the current position)
 	 */
-	private async copyTimestampLink(): Promise<void> {
-		const seconds = Math.floor(this.audio.currentTime);
+	private async copyTimestampLink(
+		time = this.audio.currentTime,
+	): Promise<void> {
+		const seconds = Math.floor(Math.max(0, time));
 		const link = this.app.fileManager.generateMarkdownLink(
 			this.file,
 			this.options.sourcePath,

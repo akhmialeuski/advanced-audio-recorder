@@ -186,6 +186,7 @@ With **Markers and chapters** enabled, each recording can carry per-file **bookm
 - **Markers and chapters appear on the seek bar** — bookmarks as ticks, chapters as labelled boundary lines — and clicking one jumps to it.
 - The optional **marker list** below the player lets you jump to, **rename**, or **delete** each entry.
 - **Previous / next chapter** buttons navigate between chapter boundaries.
+- **Right-click the player** to add a marker or chapter, or copy a timestamp link, **at the clicked position** — alongside the usual audio file actions (info, convert, split, delete).
 
 Markers are stored in a single `player-markers.json` index inside the plugin folder, keyed by the recording's path, so your vault stays free of sidecar files. (Moving or renaming the audio file currently orphans its markers.)
 

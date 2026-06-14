@@ -16,6 +16,11 @@ import {
 import type { MarkdownFileInfo } from 'obsidian';
 import type { MenuItem } from 'obsidian';
 import { AUDIO_EXTENSIONS } from '../constants';
+import {
+	PLAYER_ACTIONS_PROP,
+	type PlayerEmbedElement,
+} from '../player/playerEmbedActions';
+import type { MarkerKind } from '../player/markers/markerModel';
 import { getAudioFileInfo } from '../utils/AudioFileAnalyzer';
 import { AudioFileInfoModal } from './AudioFileInfoModal';
 import { ConversionModal } from './ConversionModal';
@@ -146,6 +151,14 @@ export class ContextMenu {
 
 					// Trigger the 'file-menu' event to allow Obsidian and other plugins (including this one)
 					// to populate the menu with valid actions for this file.
+					// Offer position-aware actions when the embed is an
+					// enhanced player (add marker/chapter, copy timestamp).
+					this.addEnhancedPlayerMenuItems(
+						menu,
+						embed as HTMLElement,
+						event,
+					);
+
 					this.app.workspace.trigger(
 						'file-menu',
 						menu,
@@ -158,6 +171,58 @@ export class ContextMenu {
 			},
 			{ capture: true },
 		);
+	}
+
+	/**
+	 * Adds position-aware enhanced-player actions to the menu when the
+	 * right-clicked embed is an enhanced player. The clicked time is
+	 * derived from the cursor position over the seek area, so "add marker
+	 * here" lands where the user clicked rather than at playback.
+	 * @param menu - The context menu being built
+	 * @param embed - The right-clicked embed element
+	 * @param event - The originating mouse event
+	 */
+	private addEnhancedPlayerMenuItems(
+		menu: Menu,
+		embed: HTMLElement,
+		event: MouseEvent,
+	): void {
+		const actions = (embed as PlayerEmbedElement)[PLAYER_ACTIONS_PROP];
+		if (!actions) {
+			return;
+		}
+		const time = actions.timeAtClientX(event.clientX);
+		if (time === null) {
+			return;
+		}
+		const addMarkerItem = (
+			title: string,
+			icon: string,
+			kind: MarkerKind,
+		): void => {
+			menu.addItem((item: MenuItem) => {
+				item.setTitle(title)
+					.setIcon(icon)
+					.setSection(AAR_MENU_SECTION)
+					.onClick(() => {
+						actions.addMarkerAtTime(time, kind);
+					});
+			});
+		};
+		if (actions.markersEnabled) {
+			addMarkerItem('Add marker here', 'bookmark-plus', 'bookmark');
+			addMarkerItem('Add chapter here', 'list-plus', 'chapter');
+		}
+		if (actions.timestampLinksEnabled) {
+			menu.addItem((item: MenuItem) => {
+				item.setTitle('Copy timestamp link here')
+					.setIcon('link')
+					.setSection(AAR_MENU_SECTION)
+					.onClick(() => {
+						actions.copyTimestampAtTime(time);
+					});
+			});
+		}
 	}
 
 	/**
