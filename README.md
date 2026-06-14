@@ -169,7 +169,7 @@ When **Enhanced audio player** is enabled in settings, the plugin replaces Obsid
 
 The player offers:
 
-- **Waveform seek bar**: the recording is drawn as a waveform; click or drag anywhere on it to seek. The played portion uses the theme accent color. Waveforms are computed once per file revision and cached, so scrolling a note with many players does not redecode audio.
+- **Waveform seek bar**: the recording is drawn as a waveform; click or drag anywhere on it to seek. The seek bar is keyboard-operable too (focus it and use the arrow keys, Home, and End). The played portion uses the theme accent color. Waveforms are computed once per file revision and cached, so scrolling a note with many players does not redecode audio.
 - **Playback speed**: cycle through speed presets (0.5×–3×). A default speed can be set in settings.
 - **Skip buttons**: jump backward and forward by a configurable number of seconds.
 - **Volume** control and **loop** toggle.

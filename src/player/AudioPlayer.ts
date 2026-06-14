@@ -54,6 +54,13 @@ import {
 const DURATION_PROBE_SECONDS = 1e101;
 
 /**
+ * How long to wait for a probed stream to report its real duration
+ * before giving up, so playback is not left stranded at the probe seek
+ * position when the corrected duration never arrives.
+ */
+const DURATION_PROBE_TIMEOUT_MS = 5000;
+
+/**
  * Generates a short, collision-resistant marker id. Uses crypto.randomUUID
  * when available, falling back to a timestamp-and-random combination.
  */
@@ -96,6 +103,8 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	private markerListEl: HTMLElement | null = null;
 	private muteButton: HTMLElement | null = null;
 	private markers: PlayerMarker[] = [];
+	/** Cached waveform colors; refreshed on load and on resize. */
+	private waveformColors: { played: string; unplayed: string } | null = null;
 
 	/**
 	 * @param containerEl - The embed element to take over
@@ -144,6 +153,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			this.markerListEl = this.containerEl.createDiv({
 				cls: 'aar-player-marker-list',
 			});
+			this.registerMarkerListDelegation(this.markerListEl);
 		}
 		this.registerAudioEvents();
 
@@ -376,6 +386,12 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 */
 	private buildSeekArea(): void {
 		this.seekEl = this.containerEl.createDiv({ cls: 'aar-player-seek' });
+		// Expose the seek area as a keyboard-operable slider so seeking is
+		// not mouse-only (the native audio element offered this for free)
+		this.seekEl.setAttribute('role', 'slider');
+		this.seekEl.setAttribute('tabindex', '0');
+		this.seekEl.setAttribute('aria-label', 'Seek');
+		this.seekEl.setAttribute('aria-valuemin', '0');
 		if (this.settings.showWaveform) {
 			this.seekEl.addClass('aar-player-seek-waveform');
 			this.seekEl.style.setProperty(
@@ -386,6 +402,8 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				cls: 'aar-player-canvas',
 			});
 			this.resizeObserver = new ResizeObserver(() => {
+				// Re-read theme colors in case the theme changed, then redraw
+				this.waveformColors = null;
 				this.drawWaveform();
 			});
 			this.resizeObserver.observe(this.seekEl);
@@ -403,6 +421,23 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			this.markersOverlayEl = this.seekEl.createDiv({
 				cls: 'aar-player-markers',
 			});
+			// One delegated handler serves every tick, so rebuilding the
+			// overlay never accumulates per-tick listeners
+			this.registerDomEvent(
+				this.markersOverlayEl,
+				'pointerdown',
+				(event) => {
+					if (event.button !== 0) {
+						return;
+					}
+					const time = this.markerTimeFromEvent(event);
+					if (time !== null) {
+						// Keep the seek handler on the parent from firing too
+						event.stopPropagation();
+						this.seekTo(time);
+					}
+				},
+			);
 			// Double-clicking the track drops a bookmark at that position
 			this.registerDomEvent(this.seekEl, 'dblclick', (event) => {
 				const time = this.pointerTime(event);
@@ -412,6 +447,56 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			});
 		}
 		this.registerSeekPointer();
+		this.registerSeekKeyboard();
+	}
+
+	/**
+	 * Wires keyboard seeking on the slider-role seek area: arrow keys
+	 * nudge by a few seconds, Home/End jump to the bounds.
+	 */
+	private registerSeekKeyboard(): void {
+		const stepSeconds = 5;
+		this.registerDomEvent(this.seekEl, 'keydown', (event) => {
+			switch (event.key) {
+				case 'ArrowRight':
+				case 'ArrowUp':
+					this.skip(stepSeconds);
+					break;
+				case 'ArrowLeft':
+				case 'ArrowDown':
+					this.skip(-stepSeconds);
+					break;
+				case 'Home':
+					this.audio.currentTime = 0;
+					this.updateProgress();
+					break;
+				case 'End':
+					if (Number.isFinite(this.audio.duration)) {
+						this.audio.currentTime = this.audio.duration;
+						this.updateProgress();
+					}
+					break;
+				default:
+					return;
+			}
+			event.preventDefault();
+		});
+	}
+
+	/**
+	 * Resolves the marker time for a delegated overlay pointer event by
+	 * reading the tick's stored time, or null when the target is not a
+	 * tick.
+	 * @param event - Pointer event on the markers overlay
+	 */
+	private markerTimeFromEvent(event: PointerEvent): number | null {
+		const target = event.target as HTMLElement | null;
+		const tick = target?.closest<HTMLElement>('.aar-player-tick');
+		if (!tick?.dataset.time) {
+			return null;
+		}
+		const time = Number(tick.dataset.time);
+		return Number.isFinite(time) ? time : null;
 	}
 
 	/**
@@ -546,28 +631,44 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			return;
 		}
 		this.durationProbeActive = true;
-		const onDurationChange = (): void => {
-			if (!Number.isFinite(this.audio.duration)) {
-				return;
-			}
+		let watchdog = 0;
+		const finish = (resolved: boolean): void => {
 			this.audio.removeEventListener('durationchange', onDurationChange);
+			window.clearTimeout(watchdog);
 			this.durationProbeActive = false;
+			// Restore the start position whether or not the probe worked;
+			// leaving currentTime near the probe value would strand
+			// playback at the end of the file
 			this.audio.currentTime = 0;
-			this.applyStartOffset();
+			if (resolved) {
+				this.applyStartOffset();
+			}
 			this.renderMarkers();
 			this.updateProgress();
 		};
+		const onDurationChange = (): void => {
+			if (Number.isFinite(this.audio.duration)) {
+				finish(true);
+			}
+		};
 		this.audio.addEventListener('durationchange', onDurationChange);
-		this.register(() =>
-			this.audio.removeEventListener('durationchange', onDurationChange),
-		);
+		// Give up if the corrected duration never arrives, so the probe
+		// seek position is not left stranded at the end of the stream
+		watchdog = window.setTimeout(() => {
+			if (this.durationProbeActive) {
+				finish(false);
+			}
+		}, DURATION_PROBE_TIMEOUT_MS);
+		this.register(() => {
+			this.audio.removeEventListener('durationchange', onDurationChange);
+			window.clearTimeout(watchdog);
+		});
 		try {
 			this.audio.currentTime = DURATION_PROBE_SECONDS;
 		} catch {
-			// Some sources reject the probe seek; leave the duration
-			// unknown and fall back to a non-seekable display
-			this.audio.removeEventListener('durationchange', onDurationChange);
-			this.durationProbeActive = false;
+			// Some sources reject the probe seek; give up immediately and
+			// fall back to a non-seekable display
+			finish(false);
 		}
 	}
 
@@ -675,13 +776,8 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		ctx.scale(dpr, dpr);
 		ctx.clearRect(0, 0, cssWidth, cssHeight);
 
-		const styles = activeWindow.getComputedStyle(this.canvas);
-		const playedColor =
-			styles.getPropertyValue('--aar-waveform-played').trim() ||
-			'#7c6fda';
-		const unplayedColor =
-			styles.getPropertyValue('--aar-waveform-unplayed').trim() ||
-			'#b3b3b3';
+		const { played: playedColor, unplayed: unplayedColor } =
+			this.resolveWaveformColors();
 
 		const barCount = this.peaks.length;
 		const barWidth = cssWidth / barCount;
@@ -702,6 +798,31 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	}
 
 	/**
+	 * Returns the waveform colors, reading them from the theme once and
+	 * caching the result. The colors do not change during playback, so
+	 * resolving them on every redraw would force a needless style
+	 * recalculation; the cache is invalidated on resize to pick up theme
+	 * changes.
+	 */
+	private resolveWaveformColors(): { played: string; unplayed: string } {
+		if (this.waveformColors) {
+			return this.waveformColors;
+		}
+		const styles = activeWindow.getComputedStyle(
+			this.canvas ?? this.seekEl,
+		);
+		this.waveformColors = {
+			played:
+				styles.getPropertyValue('--aar-waveform-played').trim() ||
+				'#7c6fda',
+			unplayed:
+				styles.getPropertyValue('--aar-waveform-unplayed').trim() ||
+				'#b3b3b3',
+		};
+		return this.waveformColors;
+	}
+
+	/**
 	 * Updates the seek visuals and time display from the current
 	 * playback position.
 	 */
@@ -715,14 +836,24 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 					: 0;
 			this.progressFillEl.style.width = `${String(fraction * 100)}%`;
 		}
+		const total = Number.isFinite(this.audio.duration)
+			? this.audio.duration
+			: 0;
 		if (this.timeEl) {
-			const total = Number.isFinite(this.audio.duration)
-				? this.audio.duration
-				: 0;
 			this.timeEl.setText(
 				`${formatTimecode(this.audio.currentTime)} / ${formatTimecode(total)}`,
 			);
 		}
+		// Keep the slider's accessible value in sync for screen readers
+		this.seekEl.setAttribute('aria-valuemax', String(Math.floor(total)));
+		this.seekEl.setAttribute(
+			'aria-valuenow',
+			String(Math.floor(this.audio.currentTime)),
+		);
+		this.seekEl.setAttribute(
+			'aria-valuetext',
+			`${formatTimecode(this.audio.currentTime)} of ${formatTimecode(total)}`,
+		);
 	}
 
 	/**
@@ -860,6 +991,9 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 */
 	private async renameMarker(id: string, label: string): Promise<void> {
 		this.markers = updateMarker(this.markers, id, { label });
+		// Update the tick tooltip without rebuilding the list, so the
+		// input the user is typing in keeps focus
+		this.renderMarkerTicks();
 		await this.persistMarkers();
 	}
 
@@ -937,25 +1071,53 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 						: 'aar-player-tick aar-player-tick-bookmark',
 			});
 			tick.style.left = `${String(left)}%`;
+			tick.dataset.time = String(marker.time);
 			tick.setAttribute(
 				'aria-label',
 				`${marker.label} (${formatTimecode(marker.time)})`,
 			);
-			this.registerDomEvent(tick, 'pointerdown', (event) => {
-				// Let a right-click fall through to the context menu
-				if (event.button !== 0) {
-					return;
-				}
-				// Stop the seek handler from also firing for this click
-				event.stopPropagation();
-				this.seekTo(marker.time);
-			});
+			// Clicks are handled by one delegated listener on the overlay
+			// (see buildSeekArea), so rebuilding ticks adds no listeners
 		}
 	}
 
 	/**
-	 * Rebuilds the marker list below the player: each row jumps on click,
-	 * renames inline, and can be deleted.
+	 * Registers the delegated click and change handlers for the marker
+	 * list once, so rebuilding rows never accumulates listeners. Rows
+	 * carry the marker id and an action in data attributes.
+	 * @param listEl - The marker list container
+	 */
+	private registerMarkerListDelegation(listEl: HTMLElement): void {
+		this.registerDomEvent(listEl, 'click', (event) => {
+			const target = (
+				event.target as HTMLElement | null
+			)?.closest<HTMLElement>('[data-action]');
+			const id = target?.dataset.markerId;
+			if (!target || !id) {
+				return;
+			}
+			if (target.dataset.action === 'jump') {
+				const marker = this.markers.find((m) => m.id === id);
+				if (marker) {
+					this.seekTo(marker.time);
+				}
+			} else if (target.dataset.action === 'delete') {
+				void this.deleteMarker(id);
+			}
+		});
+		this.registerDomEvent(listEl, 'change', (event) => {
+			const input = event.target as HTMLInputElement | null;
+			const id = input?.dataset.markerId;
+			if (input && id && input.dataset.action === 'rename') {
+				void this.renameMarker(id, input.value);
+			}
+		});
+	}
+
+	/**
+	 * Rebuilds the marker list rows. Event handling is delegated to the
+	 * list container (see registerMarkerListDelegation), so this only
+	 * builds DOM and never attaches per-row listeners.
 	 */
 	private renderMarkerList(): void {
 		if (!this.markerListEl) {
@@ -971,6 +1133,8 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				cls: 'aar-player-marker-time',
 				text: formatTimecode(marker.time),
 			});
+			jump.dataset.action = 'jump';
+			jump.dataset.markerId = marker.id;
 			jump.setAttribute(
 				'aria-label',
 				marker.kind === 'chapter'
@@ -981,24 +1145,19 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				row.createSpan({ cls: 'aar-player-marker-kind' }),
 				marker.kind === 'chapter' ? 'list' : 'bookmark',
 			);
-			this.registerDomEvent(jump, 'click', () => {
-				this.seekTo(marker.time);
-			});
 			const label = row.createEl('input', {
 				cls: 'aar-player-marker-label',
 				attr: { type: 'text', value: marker.label },
 			});
-			this.registerDomEvent(label, 'change', () => {
-				void this.renameMarker(marker.id, label.value);
-			});
+			label.dataset.action = 'rename';
+			label.dataset.markerId = marker.id;
 			const remove = row.createEl('button', {
 				cls: 'aar-player-marker-delete',
 				attr: { 'aria-label': 'Delete' },
 			});
+			remove.dataset.action = 'delete';
+			remove.dataset.markerId = marker.id;
 			setIcon(remove, 'trash-2');
-			this.registerDomEvent(remove, 'click', () => {
-				void this.deleteMarker(marker.id);
-			});
 		}
 	}
 

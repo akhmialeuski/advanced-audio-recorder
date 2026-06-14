@@ -33,6 +33,8 @@ export class MarkerStore {
 	private loadPromise: Promise<Map<string, PlayerMarker[]>> | null = null;
 	/** Serializes writes so concurrent saves never interleave. */
 	private writeChain: Promise<void> = Promise.resolve();
+	/** Ensures the memory-only-storage warning is logged at most once. */
+	private warnedNoIndexPath = false;
 
 	/**
 	 * @param app - Obsidian App instance
@@ -133,6 +135,12 @@ export class MarkerStore {
 	 */
 	private persist(cache: Map<string, PlayerMarker[]>): Promise<void> {
 		if (!this.indexPath) {
+			if (!this.warnedNoIndexPath) {
+				this.warnedNoIndexPath = true;
+				console.warn(
+					`${PLUGIN_LOG_PREFIX} Plugin folder is unknown; player markers are kept in memory only and will not survive a reload.`,
+				);
+			}
 			return Promise.resolve();
 		}
 		const indexPath = this.indexPath;
