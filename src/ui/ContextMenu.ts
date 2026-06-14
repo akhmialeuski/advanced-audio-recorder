@@ -22,6 +22,7 @@ import { getAudioFileInfo } from '../utils/AudioFileAnalyzer';
 import { AudioFileInfoModal } from './AudioFileInfoModal';
 import { ConversionModal } from './ConversionModal';
 import { SplitModal } from './SplitModal';
+import { TranscriptionModal } from './TranscriptionModal';
 import type { AudioRecorderSettings } from '../settings/Settings';
 
 /** CodeMirror view attached to Editor (internal Obsidian API). */
@@ -46,6 +47,8 @@ export class ContextMenu {
 	private readonly menusWithConvertItem = new WeakSet<Menu>();
 	/** Tracks menus that already have the "Split audio into parts" item to prevent duplicates. */
 	private readonly menusWithSplitItem = new WeakSet<Menu>();
+	/** Tracks menus that already have the "Transcribe audio" item to prevent duplicates. */
+	private readonly menusWithTranscribeItem = new WeakSet<Menu>();
 
 	/**
 	 * Creates a new ContextMenu instance.
@@ -239,6 +242,7 @@ export class ContextMenu {
 						this.addAudioFileInfoMenuItem(menu, file);
 						this.addConvertMenuItem(menu, file);
 						this.addSplitMenuItem(menu, file);
+						this.addTranscribeMenuItem(menu, file);
 						this.addDeleteRecordingMenuItem(menu, file);
 					}
 				},
@@ -296,6 +300,7 @@ export class ContextMenu {
 		this.addAudioFileInfoMenuItem(menu, file);
 		this.addConvertMenuItem(menu, file);
 		this.addSplitMenuItem(menu, file);
+		this.addTranscribeMenuItem(menu, file);
 		this.addDeleteRecordingAndLinkMenuItem(
 			menu,
 			file,
@@ -303,6 +308,35 @@ export class ContextMenu {
 			cursor.line,
 			linkMatch,
 		);
+	}
+
+	/**
+	 * Adds a "Transcribe audio" item to the menu when transcription is
+	 * enabled in settings.
+	 * @param menu - The menu to add the item to.
+	 * @param file - The audio file.
+	 */
+	private addTranscribeMenuItem(menu: Menu, file: TFile): void {
+		if (!this.getSettings().transcriptionEnabled) {
+			return;
+		}
+		if (this.menusWithTranscribeItem.has(menu)) {
+			return;
+		}
+		this.menusWithTranscribeItem.add(menu);
+
+		menu.addItem((item: MenuItem) => {
+			item.setTitle('Transcribe audio')
+				.setIcon('captions')
+				.setSection(AAR_MENU_SECTION)
+				.onClick(() => {
+					new TranscriptionModal(
+						this.app,
+						file,
+						this.getSettings,
+					).open();
+				});
+		});
 	}
 
 	/**

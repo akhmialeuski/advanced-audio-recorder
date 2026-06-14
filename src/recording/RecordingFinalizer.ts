@@ -128,12 +128,13 @@ export class RecordingFinalizer {
 	 * @param targets - Recording targets of the session
 	 * @param timestamp - Session timestamp for the merged file name
 	 * @param insertionContext - Where to insert the file links
+	 * @returns Vault paths of the audio files that were written
 	 */
 	async saveRecording(
 		targets: RecordingTarget[],
 		timestamp: string | null,
 		insertionContext: InsertionContext | null,
-	): Promise<void> {
+	): Promise<string[]> {
 		const session = this.requireSession();
 		const effectiveTimestamp =
 			timestamp ?? new Date().toISOString().replace(/[:.]/g, '-');
@@ -272,6 +273,7 @@ export class RecordingFinalizer {
 		} else {
 			new Notice('No audio data recorded');
 		}
+		return fileLinks;
 	}
 
 	/**

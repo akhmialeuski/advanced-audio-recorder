@@ -3,7 +3,7 @@
  * @module main
  */
 
-import { Notice, Plugin } from 'obsidian';
+import { Notice, Plugin, TFile } from 'obsidian';
 import { RecordingStatus } from './types';
 import type { SaveProgress, RecordingControls } from './types';
 import { PLUGIN_LOG_PREFIX } from './constants';
@@ -31,6 +31,9 @@ import { showDeviceSelectionModal } from './ui/DeviceSelectionModal';
 import { ContextMenu } from './ui/ContextMenu';
 import { EnhancedPlayerRegistrar } from './player/EnhancedPlayerRegistrar';
 import { MarkerStore } from './player/markers/MarkerStore';
+import { transcribeFile } from './transcription/runTranscription';
+import { TranscriptionModal } from './ui/TranscriptionModal';
+import { AUDIO_EXTENSIONS } from './constants';
 import { delay } from './utils/TimeUtils';
 
 /** Delay before retrying a failed settings read, in milliseconds. */
@@ -124,6 +127,9 @@ export default class AudioRecorderPlugin extends Plugin {
 				updateRibbonIcon(this.ribbonIconEl, status);
 			},
 			this.journal,
+			(paths: string[]) => {
+				this.handleRecordingSaved(paths);
+			},
 		);
 
 		this.addSettingTab(new AudioRecorderSettingTab(this.app, this));
@@ -540,6 +546,61 @@ export default class AudioRecorderPlugin extends Plugin {
 					},
 				);
 			},
+		});
+
+		this.addCommand({
+			id: 'transcribe-active-audio',
+			name: 'Transcribe active audio file',
+			checkCallback: (checking: boolean) => {
+				const file = this.app.workspace.getActiveFile();
+				const isAudio =
+					file instanceof TFile &&
+					AUDIO_EXTENSIONS.includes(file.extension.toLowerCase());
+				if (!this.settings.transcriptionEnabled || !isAudio) {
+					return false;
+				}
+				if (!checking) {
+					new TranscriptionModal(
+						this.app,
+						file,
+						() => this.settings,
+					).open();
+				}
+				return true;
+			},
+		});
+	}
+
+	/**
+	 * Transcribe-on-save hook: when enabled, transcribes the first saved
+	 * audio file. Runs after the recording's link is inserted, so the
+	 * recording note is active and timecode links resolve correctly.
+	 * @param paths - Vault paths of the audio files just saved
+	 */
+	private handleRecordingSaved(paths: string[]): void {
+		if (
+			!this.settings.transcriptionEnabled ||
+			!this.settings.transcribeOnSave ||
+			paths.length === 0
+		) {
+			return;
+		}
+		const file = this.app.vault.getAbstractFileByPath(paths[0]);
+		if (!(file instanceof TFile)) {
+			return;
+		}
+		const notePath = this.app.workspace.getActiveFile()?.path ?? '';
+		new Notice('Transcribing recording...');
+		void transcribeFile(this.app, () => this.settings, file, {
+			notePathForLinks: notePath,
+		}).catch((error: unknown) => {
+			const message =
+				error instanceof Error ? error.message : String(error);
+			new Notice(`Transcription failed: ${message}`);
+			console.error(
+				`${PLUGIN_LOG_PREFIX} Transcribe-on-save failed:`,
+				error,
+			);
 		});
 	}
 

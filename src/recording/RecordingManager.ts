@@ -103,6 +103,7 @@ export class RecordingManager {
 			null,
 			app,
 		),
+		private readonly onRecordingSaved?: (paths: string[]) => void,
 	) {
 		this.onStatusChange = onStatusChange;
 		this.debugLogger = new DebugLogger(settings);
@@ -557,11 +558,23 @@ export class RecordingManager {
 			const durationMs = Date.now() - this.recordingStartTime;
 			this.debugLogger.logRecordingStats(durationMs, this.totalChunks);
 
-			await this.finalizer.saveRecording(
+			const savedPaths = await this.finalizer.saveRecording(
 				this.chunkTargets,
 				this.recordingTimestamp,
 				this.insertionContext,
 			);
+			if (savedPaths.length > 0) {
+				// Fire-and-forget post-save hook (e.g. transcribe-on-save);
+				// failures must never break the stop sequence
+				try {
+					this.onRecordingSaved?.(savedPaths);
+				} catch (hookError) {
+					console.error(
+						`${PLUGIN_LOG_PREFIX} Post-save hook failed:`,
+						hookError,
+					);
+				}
+			}
 			// The session finalized cleanly: leftovers already produced
 			// their own Notices, and keeping them journaled would raise
 			// misleading recovery prompts for audio that is in the final

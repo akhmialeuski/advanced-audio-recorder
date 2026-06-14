@@ -1,0 +1,64 @@
+/**
+ * Core data model for transcripts. A transcript is an ordered list of
+ * timed segments, each optionally attributed to a speaker, plus the
+ * detected language and provenance metadata. The model is provider- and
+ * UI-agnostic so the formatting, file, and diarization logic can be unit
+ * tested without any network or DOM dependency.
+ * @module transcription/TranscriptTypes
+ */
+
+/**
+ * A single word with its own timing, when the provider returns
+ * word-level timestamps. Optional — many providers return segments only.
+ */
+export interface TranscriptWord {
+	/** Start offset in seconds from the beginning of the audio. */
+	start: number;
+	/** End offset in seconds from the beginning of the audio. */
+	end: number;
+	/** The word text (no surrounding whitespace). */
+	text: string;
+}
+
+/**
+ * A contiguous span of transcribed speech.
+ */
+export interface TranscriptSegment {
+	/** Start offset in seconds from the beginning of the audio. */
+	start: number;
+	/** End offset in seconds from the beginning of the audio. */
+	end: number;
+	/** The transcribed text for this span. */
+	text: string;
+	/**
+	 * Speaker identifier when diarization is available (e.g. "Speaker 1"),
+	 * or undefined when speakers are not distinguished.
+	 */
+	speaker?: string;
+	/** Optional word-level timings within this segment. */
+	words?: TranscriptWord[];
+}
+
+/**
+ * A fully assembled transcript.
+ */
+export interface Transcript {
+	/** Detected or requested language as a BCP-47 / ISO code, when known. */
+	language?: string;
+	/** Ordered, non-overlapping (by start) segments. */
+	segments: TranscriptSegment[];
+	/** Distinct speaker labels present in the segments, in first-seen order. */
+	speakers: string[];
+	/** Provenance: which engine/model produced the transcript. */
+	model?: string;
+	/** ISO-8601 timestamp of when the transcript was produced. */
+	createdAt?: string;
+	/** Vault path of the source audio file, when known. */
+	sourcePath?: string;
+}
+
+/** Format used to serialize a transcript to a sidecar/export file. */
+export type TranscriptFileFormat = 'json' | 'srt' | 'vtt' | 'txt';
+
+/** Where the transcript output is written. */
+export type TranscriptDestination = 'note' | 'file' | 'both';

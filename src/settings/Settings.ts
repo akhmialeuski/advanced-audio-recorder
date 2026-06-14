@@ -14,8 +14,17 @@ import {
 	MAX_SPLIT_CHUNK_MINUTES,
 	SPLIT_PART_SUFFIX_PATTERN,
 	SPLIT_PART_SUFFIX_RULE_TEXT,
+	DEFAULT_TRANSCRIBE_CHUNK_MB,
+	DEFAULT_WHISPER_API_BASE_URL,
+	DEFAULT_WHISPER_API_MODEL,
+	DEFAULT_LLM_OPENAI_BASE_URL,
 } from '../constants';
 import { getDefaultDeviceId } from '../utils/DeviceUtils';
+import type {
+	TranscriptDestination,
+	TranscriptFileFormat,
+} from '../transcription/TranscriptTypes';
+import type { LlmTask } from '../transcription/llmPostProcess';
 
 /**
  * Output mode for multi-track recordings.
@@ -106,7 +115,75 @@ export interface AudioRecorderSettings {
 	playerShowWaveform: boolean;
 	/** Show the markers and chapters window below the player */
 	playerEnableMarkers: boolean;
+	/** Enable the transcription feature */
+	transcriptionEnabled: boolean;
+	/** Automatically transcribe a recording after it is saved */
+	transcribeOnSave: boolean;
+	/** Transcription engine: Whisper API or local whisper.cpp */
+	transcriptionProvider: TranscriptionProviderId;
+	/** Language hint ('auto' to detect) */
+	transcriptionLanguage: string;
+	/** Request speaker diarization when the provider supports it */
+	transcriptionDiarize: boolean;
+	/** Request word-level timestamps when supported */
+	transcriptionWordTimestamps: boolean;
+	/** Upload size limit per chunk, in megabytes (Whisper API) */
+	transcriptionChunkMb: number;
+	/** Whisper API base URL (OpenAI-compatible) */
+	whisperApiBaseUrl: string;
+	/** Whisper API key */
+	whisperApiKey: string;
+	/** Whisper API model id */
+	whisperApiModel: string;
+	/** Path to the local whisper.cpp binary */
+	localWhisperBinaryPath: string;
+	/** Path to the local whisper model file */
+	localWhisperModelPath: string;
+	/** Extra CLI arguments for the local whisper binary (space-separated) */
+	localWhisperExtraArgs: string;
+	/** Where to write the transcript */
+	transcriptDestination: TranscriptDestination;
+	/** File format when writing a transcript file */
+	transcriptFileFormat: TranscriptFileFormat;
+	/** Include timestamps in the in-note transcript */
+	transcriptIncludeTimestamps: boolean;
+	/** Render timestamps as clickable player links */
+	transcriptTimestampLinks: boolean;
+	/** Include speaker labels in the in-note transcript */
+	transcriptIncludeSpeakers: boolean;
+	/** Merge consecutive same-speaker segments onto one line */
+	transcriptMergeConsecutiveSpeaker: boolean;
+	/** Template for the timestamp fragment ({time}) */
+	transcriptTimestampFormat: string;
+	/** Template for the speaker fragment ({speaker}) */
+	transcriptSpeakerFormat: string;
+	/** Line arrangement template ({timestamp}/{speaker}/{text}) */
+	transcriptLineFormat: string;
+	/** Heading inserted above the in-note transcript (empty for none) */
+	transcriptHeading: string;
+	/** Enable LLM post-processing of the transcript */
+	llmPostProcessEnabled: boolean;
+	/** LLM post-processing task */
+	llmPostProcessTask: LlmTask;
+	/** Custom instruction for the 'custom' task */
+	llmCustomInstruction: string;
+	/** LLM provider: OpenAI-compatible or Anthropic */
+	llmProvider: LlmProviderId;
+	/** LLM base URL */
+	llmBaseUrl: string;
+	/** LLM API key */
+	llmApiKey: string;
+	/** LLM model id */
+	llmModel: string;
+	/** Maximum output tokens for LLM post-processing */
+	llmMaxTokens: number;
 }
+
+/** Transcription engine identifier. */
+export type TranscriptionProviderId = 'whisper-api' | 'local-whisper';
+
+/** LLM post-processing provider identifier. */
+export type LlmProviderId = 'openai-compatible' | 'anthropic';
 
 /**
  * Default plugin settings.
@@ -139,6 +216,37 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	enhancedPlayerEnabled: false,
 	playerShowWaveform: true,
 	playerEnableMarkers: true,
+	transcriptionEnabled: false,
+	transcribeOnSave: false,
+	transcriptionProvider: 'whisper-api',
+	transcriptionLanguage: 'auto',
+	transcriptionDiarize: false,
+	transcriptionWordTimestamps: false,
+	transcriptionChunkMb: DEFAULT_TRANSCRIBE_CHUNK_MB,
+	whisperApiBaseUrl: DEFAULT_WHISPER_API_BASE_URL,
+	whisperApiKey: '',
+	whisperApiModel: DEFAULT_WHISPER_API_MODEL,
+	localWhisperBinaryPath: '',
+	localWhisperModelPath: '',
+	localWhisperExtraArgs: '',
+	transcriptDestination: 'note',
+	transcriptFileFormat: 'json',
+	transcriptIncludeTimestamps: true,
+	transcriptTimestampLinks: true,
+	transcriptIncludeSpeakers: true,
+	transcriptMergeConsecutiveSpeaker: true,
+	transcriptTimestampFormat: '[{time}]',
+	transcriptSpeakerFormat: '**{speaker}**',
+	transcriptLineFormat: '{timestamp} {speaker} {text}',
+	transcriptHeading: '## Transcript',
+	llmPostProcessEnabled: false,
+	llmPostProcessTask: 'cleanup',
+	llmCustomInstruction: '',
+	llmProvider: 'openai-compatible',
+	llmBaseUrl: DEFAULT_LLM_OPENAI_BASE_URL,
+	llmApiKey: '',
+	llmModel: 'gpt-4o-mini',
+	llmMaxTokens: 4096,
 };
 
 export interface AudioRecorderSettingsInput extends Partial<

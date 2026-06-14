@@ -200,3 +200,42 @@ export const WAVEFORM_MAX_DECODE_BYTES = 1024 * 1024 * 1024;
  * starts the decode just before the player scrolls into view.
  */
 export const PLAYER_WAVEFORM_PREFETCH_MARGIN_PX = 200;
+
+// Transcription
+
+/**
+ * Sample rate, in Hz, that audio is resampled to before transcription.
+ * 16 kHz mono is the input Whisper-family models are trained on and
+ * keeps uploads small.
+ */
+export const TRANSCRIBE_SAMPLE_RATE = 16000;
+
+/** Bytes per second of 16 kHz mono 16-bit PCM (the chunk upload rate). */
+export const TRANSCRIBE_BYTES_PER_SEC = TRANSCRIBE_SAMPLE_RATE * 2;
+
+/**
+ * Default upload size limit per request, in megabytes, for the Whisper
+ * API. OpenAI's limit is 25 MB; chunks are sized to stay under it.
+ */
+export const DEFAULT_TRANSCRIBE_CHUNK_MB = 24;
+
+/** Default OpenAI-compatible transcription endpoint base URL. */
+export const DEFAULT_WHISPER_API_BASE_URL = 'https://api.openai.com/v1';
+
+/** Default Whisper API model id. */
+export const DEFAULT_WHISPER_API_MODEL = 'whisper-1';
+
+/** Default OpenAI-compatible chat base URL for LLM post-processing. */
+export const DEFAULT_LLM_OPENAI_BASE_URL = 'https://api.openai.com/v1';
+
+/** Default Anthropic Messages API base URL. */
+export const DEFAULT_LLM_ANTHROPIC_BASE_URL = 'https://api.anthropic.com/v1';
+
+/** Anthropic API version header value. */
+export const ANTHROPIC_API_VERSION = '2023-06-01';
+
+/** Default Anthropic model for transcript post-processing. */
+export const DEFAULT_LLM_ANTHROPIC_MODEL = 'claude-opus-4-8';
+
+/** Default local Ollama base URL for LLM post-processing. */
+export const DEFAULT_LLM_OLLAMA_BASE_URL = 'http://localhost:11434/v1';

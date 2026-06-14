@@ -204,6 +204,38 @@ The waveform is drawn for supported audio files up to a large safety size. Peaks
 
 > **Desktop and mobile**: the enhanced player works wherever Obsidian renders audio embeds. Waveform extraction relies on the Web Audio API available in the app.
 
+## Transcription (speech-to-text)
+
+When **Enable transcription** is on in settings, recordings (and any existing audio file) can be transcribed to text. Right-click an audio file or its embed and choose **Transcribe audio**, run the **Transcribe active audio file** command, or enable **Transcribe after recording** to do it automatically.
+
+### Engines
+
+- **Whisper API (OpenAI-compatible)** — works with OpenAI and any compatible endpoint (e.g. Groq) by setting the base URL, key, and model. Audio is resampled to 16 kHz mono and split into upload-sized chunks automatically, so long recordings are handled within the API's per-request size limit; the chunk transcripts are stitched back onto one timeline.
+- **Local whisper.cpp (desktop)** — runs a local `whisper.cpp` binary with no network access. Set the binary and model paths in settings.
+
+All languages supported by the chosen model work; leave **Language** as `auto` to detect, or set an ISO code (e.g. `en`, `ru`, `es`).
+
+### Speakers and diarization
+
+The transcript data model carries per-segment **speaker** labels. Enable **Speaker diarization** to request them; labels are produced by providers that support diarization and are rendered in the output (and can be renamed later).
+
+### Output
+
+Choose where the transcript goes with **Destination**: insert into the note, save as a sidecar file, or both.
+
+- **File formats**: `JSON` (full data including speakers and word timings), `SRT`, `WebVTT`, or plain `TXT`. The sidecar is written next to the audio file.
+- **In-note formatting** is fully configurable: a **note heading**, toggles for timestamps and speakers, and three templates — **timestamp format** (`{time}`), **speaker format** (`{speaker}`), and **line format** (`{timestamp} {speaker} {text}`).
+- **Timestamps as player links**: each timestamp can be a `#t=` link that jumps the [enhanced player](#enhanced-audio-player) to that position — click a line to hear it.
+
+### LLM post-processing
+
+Optionally pass the transcript through an LLM to **clean up** punctuation/formatting (preserving wording, timestamps, and speakers), **summarize** it into key points and action items, or apply a **custom instruction**. Providers:
+
+- **OpenAI / Groq / Ollama** (OpenAI-compatible chat API — a local Ollama server needs no key).
+- **Anthropic (Claude)** — defaults to `claude-opus-4-8`.
+
+> **API keys** are stored in the plugin's `data.json` on this device and are never written to diagnostics output. Avoid syncing `data.json` to untrusted locations. Local whisper.cpp and Ollama keep everything offline.
+
 ## Formats and containers
 
 Available recording formats depend on your platform's **MediaRecorder** support. The plugin detects supported formats at runtime.
