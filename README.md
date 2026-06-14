@@ -174,7 +174,20 @@ The player offers:
 - **Skip buttons**: jump backward and forward by a configurable number of seconds.
 - **Volume** control and **loop** toggle.
 - **Time display**: elapsed and total time.
+- **Mute** toggle alongside the volume control.
 - **Copy timestamp link**: copies a link to the current position (for example `[[recording#t=1:30]]`), following your link-format preferences.
+
+### Markers and chapters
+
+With **Markers and chapters** enabled, each recording can carry per-file **bookmarks** (jump points) and **chapters** (named segments):
+
+- **Add a bookmark** at the current position with the bookmark button, or by **double-clicking the waveform**.
+- **Add a chapter** at the current position with the chapter button.
+- **Markers and chapters appear on the seek bar** — bookmarks as ticks, chapters as labelled boundary lines — and clicking one jumps to it.
+- The optional **marker list** below the player lets you jump to, **rename**, or **delete** each entry.
+- **Previous / next chapter** buttons navigate between chapter boundaries.
+
+Markers are stored in a single `player-markers.json` index inside the plugin folder, keyed by the recording's path, so your vault stays free of sidecar files. (Moving or renaming the audio file currently orphans its markers.)
 
 ### Timecode links
 
@@ -292,9 +305,13 @@ The plugin keeps an automatic backup of its settings in `data.json.bak` next to 
 | **Show skip buttons** | Show skip-forward and skip-back buttons. | On |
 | **Skip amount** | Seconds skipped by the skip buttons (1–60). | 10 |
 | **Show volume control** | Show the volume slider. | On |
+| **Show mute button** | Show a mute / unmute button. | On |
 | **Show time display** | Show elapsed and total time. | On |
 | **Loop by default** | Start new players with looping enabled. | Off |
 | **Timecode links** | Enable `#t=` links that seek a player, plus the player's "copy timestamp link" button. | On |
+| **Markers and chapters** | Add per-file bookmarks and chapters. Enabling it reveals the options below. Stored in the plugin folder, not the vault. | On |
+| **Show marker list** | List markers and chapters below the player with jump, rename, and delete actions. | On |
+| **Chapter navigation** | Show previous / next chapter buttons. | On |
 
 ### Diagnostics
 

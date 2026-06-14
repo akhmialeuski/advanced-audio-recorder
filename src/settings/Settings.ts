@@ -136,6 +136,14 @@ export interface AudioRecorderSettings {
 	playerDefaultLoop: boolean;
 	/** Enable timecode links (#t=) that seek the player */
 	playerEnableTimestampLinks: boolean;
+	/** Show a mute / unmute button */
+	playerShowMuteButton: boolean;
+	/** Enable per-file markers and chapters */
+	playerEnableMarkers: boolean;
+	/** Show the marker / chapter list below the player */
+	playerShowMarkerList: boolean;
+	/** Show previous / next chapter navigation buttons */
+	playerShowChapterNav: boolean;
 }
 
 /**
@@ -178,6 +186,10 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	playerShowTimeDisplay: true,
 	playerDefaultLoop: false,
 	playerEnableTimestampLinks: true,
+	playerShowMuteButton: true,
+	playerEnableMarkers: true,
+	playerShowMarkerList: true,
+	playerShowChapterNav: true,
 };
 
 export interface AudioRecorderSettingsInput extends Partial<
@@ -382,6 +394,10 @@ export interface ResolvedPlayerSettings {
 	showTimeDisplay: boolean;
 	defaultLoop: boolean;
 	enableTimestampLinks: boolean;
+	showMuteButton: boolean;
+	enableMarkers: boolean;
+	showMarkerList: boolean;
+	showChapterNav: boolean;
 }
 
 /**
@@ -455,5 +471,9 @@ export function resolvePlayerSettings(
 		showTimeDisplay: settings.playerShowTimeDisplay,
 		defaultLoop: settings.playerDefaultLoop,
 		enableTimestampLinks: settings.playerEnableTimestampLinks,
+		showMuteButton: settings.playerShowMuteButton,
+		enableMarkers: settings.playerEnableMarkers,
+		showMarkerList: settings.playerShowMarkerList,
+		showChapterNav: settings.playerShowChapterNav,
 	};
 }

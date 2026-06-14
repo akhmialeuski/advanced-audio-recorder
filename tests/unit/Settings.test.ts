@@ -235,6 +235,10 @@ describe('Settings', () => {
 				playerShowTimeDisplay: false,
 				playerDefaultLoop: true,
 				playerEnableTimestampLinks: false,
+				playerShowMuteButton: false,
+				playerEnableMarkers: false,
+				playerShowMarkerList: false,
+				playerShowChapterNav: false,
 			};
 
 			const result = mergeSettings(fullSettings);

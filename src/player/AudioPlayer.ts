@@ -1,11 +1,11 @@
 /**
  * Enhanced audio player rendered in place of Obsidian's built-in audio
  * embed. Adds a waveform (or seek bar), playback-speed control, skip
- * buttons, a volume control, loop, a time display, and a "copy
- * timestamp link" action. Implemented as a MarkdownRenderChild so its
- * lifecycle (event listeners, audio element, registry registration,
- * observers) is torn down automatically when the note re-renders or the
- * leaf closes.
+ * buttons, a volume control, mute, loop, a time display, per-file
+ * markers and chapters, and a "copy timestamp link" action. Implemented
+ * as a MarkdownRenderChild so its lifecycle (event listeners, audio
+ * element, registry registration, observers) is torn down automatically
+ * when the note re-renders or the leaf closes.
  * @module player/AudioPlayer
  */
 
@@ -27,6 +27,18 @@ import type {
 	AudioPlayerRegistry,
 	SeekablePlayer,
 } from './AudioPlayerRegistry';
+import type { MarkerStore } from './markers/MarkerStore';
+import {
+	addMarker,
+	bookmarks,
+	chapters,
+	nextChapterTime,
+	previousChapterTime,
+	removeMarker,
+	updateMarker,
+	type MarkerKind,
+	type PlayerMarker,
+} from './markers/markerModel';
 
 /**
  * A very large finite time used to coax browsers into computing the
@@ -35,6 +47,20 @@ import type {
  * the true value, after which playback is reset to the start.
  */
 const DURATION_PROBE_SECONDS = 1e101;
+
+/**
+ * Generates a short, collision-resistant marker id. Uses crypto.randomUUID
+ * when available, falling back to a timestamp-and-random combination.
+ */
+function generateMarkerId(): string {
+	const cryptoApi = (
+		activeWindow as Window & { crypto?: { randomUUID?: () => string } }
+	).crypto;
+	if (cryptoApi?.randomUUID) {
+		return cryptoApi.randomUUID();
+	}
+	return `${String(Date.now())}-${Math.random().toString(36).slice(2)}`;
+}
 
 /**
  * Options passed to a player when it is created for an embed.
@@ -61,6 +87,10 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	private isSeeking = false;
 	private durationProbeActive = false;
 	private resizeObserver: ResizeObserver | null = null;
+	private markersOverlayEl: HTMLElement | null = null;
+	private markerListEl: HTMLElement | null = null;
+	private muteButton: HTMLElement | null = null;
+	private markers: PlayerMarker[] = [];
 
 	/**
 	 * @param containerEl - The embed element to take over
@@ -69,6 +99,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * @param settings - Sanitized player settings
 	 * @param registry - Registry for timecode-link seeking
 	 * @param peakCache - Shared waveform peak cache
+	 * @param markerStore - Persistence for markers and chapters
 	 * @param options - Per-embed options (start offset, source note)
 	 */
 	constructor(
@@ -78,6 +109,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		private readonly settings: ResolvedPlayerSettings,
 		private readonly registry: AudioPlayerRegistry,
 		private readonly peakCache: WaveformPeakCache,
+		private readonly markerStore: MarkerStore,
 		private readonly options: AudioPlayerOptions,
 	) {
 		super(containerEl);
@@ -103,7 +135,16 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 
 		this.buildControls();
 		this.buildSeekArea();
+		if (this.settings.enableMarkers && this.settings.showMarkerList) {
+			this.markerListEl = this.containerEl.createDiv({
+				cls: 'aar-player-marker-list',
+			});
+		}
 		this.registerAudioEvents();
+
+		if (this.settings.enableMarkers) {
+			void this.loadMarkers();
+		}
 
 		this.registry.register(this.file.path, this);
 		this.register(() => {
@@ -224,6 +265,17 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			});
 		}
 
+		if (this.settings.showMuteButton) {
+			this.muteButton = this.createIconButton(
+				controls,
+				'volume-2',
+				'Mute / unmute',
+				() => {
+					this.toggleMute();
+				},
+			);
+		}
+
 		if (this.settings.showVolumeControl) {
 			const volume = controls.createEl('input', {
 				cls: 'aar-player-volume',
@@ -238,6 +290,10 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			});
 			this.registerDomEvent(volume, 'input', () => {
 				this.audio.volume = Number(volume.value);
+				if (this.audio.muted && Number(volume.value) > 0) {
+					this.audio.muted = false;
+					this.updateMuteIcon();
+				}
 			});
 		}
 
@@ -251,6 +307,43 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			},
 		);
 		loopButton.toggleClass('is-active', this.audio.loop);
+
+		if (this.settings.enableMarkers) {
+			this.createIconButton(
+				controls,
+				'bookmark-plus',
+				'Add marker at current position',
+				() => {
+					void this.addMarkerAt(this.audio.currentTime, 'bookmark');
+				},
+			);
+			this.createIconButton(
+				controls,
+				'list-plus',
+				'Add chapter at current position',
+				() => {
+					void this.addMarkerAt(this.audio.currentTime, 'chapter');
+				},
+			);
+			if (this.settings.showChapterNav) {
+				this.createIconButton(
+					controls,
+					'chevron-first',
+					'Previous chapter',
+					() => {
+						this.jumpToPreviousChapter();
+					},
+				);
+				this.createIconButton(
+					controls,
+					'chevron-last',
+					'Next chapter',
+					() => {
+						this.jumpToNextChapter();
+					},
+				);
+			}
+		}
 
 		if (this.settings.showTimeDisplay) {
 			this.timeEl = controls.createDiv({ cls: 'aar-player-time' });
@@ -299,6 +392,18 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				cls: 'aar-player-progress-fill',
 			});
 		}
+		if (this.settings.enableMarkers) {
+			this.markersOverlayEl = this.seekEl.createDiv({
+				cls: 'aar-player-markers',
+			});
+			// Double-clicking the track drops a bookmark at that position
+			this.registerDomEvent(this.seekEl, 'dblclick', (event) => {
+				const time = this.pointerTime(event);
+				if (time !== null) {
+					void this.addMarkerAt(time, 'bookmark');
+				}
+			});
+		}
 		this.registerSeekPointer();
 	}
 
@@ -323,22 +428,35 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	}
 
 	/**
-	 * Seeks to the position under the pointer along the seek area.
-	 * @param event - Pointer event from the seek interaction
+	 * Converts a pointer event's horizontal position into a playback
+	 * offset along the seek area, or null when the duration is unknown.
+	 * @param event - Pointer or mouse event over the seek area
 	 */
-	private seekToPointer(event: PointerEvent): void {
+	private pointerTime(event: PointerEvent | MouseEvent): number | null {
 		if (!Number.isFinite(this.audio.duration) || this.audio.duration <= 0) {
-			return;
+			return null;
 		}
 		const rect = this.seekEl.getBoundingClientRect();
 		if (rect.width === 0) {
-			return;
+			return null;
 		}
 		const fraction = Math.min(
 			1,
 			Math.max(0, (event.clientX - rect.left) / rect.width),
 		);
-		this.audio.currentTime = fraction * this.audio.duration;
+		return fraction * this.audio.duration;
+	}
+
+	/**
+	 * Seeks to the position under the pointer along the seek area.
+	 * @param event - Pointer event from the seek interaction
+	 */
+	private seekToPointer(event: PointerEvent): void {
+		const time = this.pointerTime(event);
+		if (time === null) {
+			return;
+		}
+		this.audio.currentTime = time;
 		this.updateProgress();
 	}
 
@@ -352,6 +470,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				this.resolveInfiniteDuration();
 			} else {
 				this.applyStartOffset();
+				this.renderMarkers();
 			}
 			this.updateProgress();
 		});
@@ -387,6 +506,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			this.durationProbeActive = false;
 			this.audio.currentTime = 0;
 			this.applyStartOffset();
+			this.renderMarkers();
 			this.updateProgress();
 		};
 		this.audio.addEventListener('durationchange', onDurationChange);
@@ -605,6 +725,228 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		this.audio.playbackRate = next;
 		if (this.speedButton) {
 			this.speedButton.setText(this.formatRate(next));
+		}
+	}
+
+	/**
+	 * Toggles the muted state and refreshes the mute button icon.
+	 */
+	private toggleMute(): void {
+		this.audio.muted = !this.audio.muted;
+		this.updateMuteIcon();
+	}
+
+	/**
+	 * Reflects the current muted state on the mute button.
+	 */
+	private updateMuteIcon(): void {
+		if (this.muteButton) {
+			setIcon(
+				this.muteButton,
+				this.audio.muted ? 'volume-x' : 'volume-2',
+			);
+			this.muteButton.toggleClass('is-active', this.audio.muted);
+		}
+	}
+
+	/**
+	 * Loads persisted markers for this file and renders them.
+	 */
+	private async loadMarkers(): Promise<void> {
+		try {
+			const stored = await this.markerStore.get(this.file.path);
+			if (!this.containerEl.isConnected) {
+				return;
+			}
+			this.markers = stored;
+			this.renderMarkers();
+		} catch (error) {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Failed to load markers for ${this.file.path}:`,
+				error,
+			);
+		}
+	}
+
+	/**
+	 * Adds a marker or chapter at the given time with a default label,
+	 * persists it, and re-renders. The user can rename it afterwards in
+	 * the marker list.
+	 * @param time - Offset in seconds
+	 * @param kind - Whether to add a bookmark or a chapter
+	 */
+	private async addMarkerAt(time: number, kind: MarkerKind): Promise<void> {
+		const safeTime = Math.max(0, time);
+		const sameKindCount = this.markers.filter(
+			(marker) => marker.kind === kind,
+		).length;
+		const label =
+			kind === 'chapter'
+				? `Chapter ${String(sameKindCount + 1)}`
+				: `Marker ${String(sameKindCount + 1)}`;
+		this.markers = addMarker(this.markers, {
+			id: generateMarkerId(),
+			time: safeTime,
+			label,
+			kind,
+		});
+		this.renderMarkers();
+		await this.persistMarkers();
+		new Notice(`${label} added at ${formatTimecode(safeTime)}`);
+	}
+
+	/**
+	 * Removes a marker by id, persists, and re-renders.
+	 * @param id - Marker identifier
+	 */
+	private async deleteMarker(id: string): Promise<void> {
+		this.markers = removeMarker(this.markers, id);
+		this.renderMarkers();
+		await this.persistMarkers();
+	}
+
+	/**
+	 * Renames a marker, persists, and re-renders.
+	 * @param id - Marker identifier
+	 * @param label - New label
+	 */
+	private async renameMarker(id: string, label: string): Promise<void> {
+		this.markers = updateMarker(this.markers, id, { label });
+		await this.persistMarkers();
+	}
+
+	/**
+	 * Jumps playback to the next chapter after the current position.
+	 */
+	private jumpToNextChapter(): void {
+		const target = nextChapterTime(
+			chapters(this.markers),
+			this.audio.currentTime,
+		);
+		if (target !== null) {
+			this.seekTo(target);
+		}
+	}
+
+	/**
+	 * Jumps playback to the previous chapter (or the start of the current
+	 * one shortly after its boundary).
+	 */
+	private jumpToPreviousChapter(): void {
+		const target = previousChapterTime(
+			chapters(this.markers),
+			this.audio.currentTime,
+		);
+		this.seekTo(target ?? 0);
+	}
+
+	/**
+	 * Persists the current markers for this file.
+	 */
+	private async persistMarkers(): Promise<void> {
+		try {
+			await this.markerStore.set(this.file.path, this.markers);
+		} catch (error) {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Failed to save markers for ${this.file.path}:`,
+				error,
+			);
+		}
+	}
+
+	/**
+	 * Renders marker ticks over the seek area and rebuilds the marker
+	 * list. Ticks are positioned only when the duration is known; the
+	 * list is always rebuilt so labels and timecodes stay current.
+	 */
+	private renderMarkers(): void {
+		if (!this.settings.enableMarkers) {
+			return;
+		}
+		this.renderMarkerTicks();
+		this.renderMarkerList();
+	}
+
+	/**
+	 * Positions a tick (bookmarks) or boundary line (chapters) for every
+	 * marker along the seek area.
+	 */
+	private renderMarkerTicks(): void {
+		if (!this.markersOverlayEl) {
+			return;
+		}
+		this.markersOverlayEl.empty();
+		const duration = this.audio.duration;
+		if (!Number.isFinite(duration) || duration <= 0) {
+			return;
+		}
+		for (const marker of this.markers) {
+			const left = Math.min(100, (marker.time / duration) * 100);
+			const tick = this.markersOverlayEl.createDiv({
+				cls:
+					marker.kind === 'chapter'
+						? 'aar-player-tick aar-player-tick-chapter'
+						: 'aar-player-tick aar-player-tick-bookmark',
+			});
+			tick.style.left = `${String(left)}%`;
+			tick.setAttribute(
+				'aria-label',
+				`${marker.label} (${formatTimecode(marker.time)})`,
+			);
+			this.registerDomEvent(tick, 'pointerdown', (event) => {
+				// Stop the seek handler from also firing for this click
+				event.stopPropagation();
+				this.seekTo(marker.time);
+			});
+		}
+	}
+
+	/**
+	 * Rebuilds the marker list below the player: each row jumps on click,
+	 * renames inline, and can be deleted.
+	 */
+	private renderMarkerList(): void {
+		if (!this.markerListEl) {
+			return;
+		}
+		this.markerListEl.empty();
+		const ordered = [...bookmarks(this.markers), ...chapters(this.markers)];
+		for (const marker of ordered) {
+			const row = this.markerListEl.createDiv({
+				cls: 'aar-player-marker-row',
+			});
+			const jump = row.createEl('button', {
+				cls: 'aar-player-marker-time',
+				text: formatTimecode(marker.time),
+			});
+			jump.setAttribute(
+				'aria-label',
+				marker.kind === 'chapter'
+					? 'Jump to chapter'
+					: 'Jump to marker',
+			);
+			setIcon(
+				row.createSpan({ cls: 'aar-player-marker-kind' }),
+				marker.kind === 'chapter' ? 'list' : 'bookmark',
+			);
+			this.registerDomEvent(jump, 'click', () => {
+				this.seekTo(marker.time);
+			});
+			const label = row.createEl('input', {
+				cls: 'aar-player-marker-label',
+				attr: { type: 'text', value: marker.label },
+			});
+			this.registerDomEvent(label, 'change', () => {
+				void this.renameMarker(marker.id, label.value);
+			});
+			const remove = row.createEl('button', {
+				cls: 'aar-player-marker-delete',
+				attr: { 'aria-label': 'Delete' },
+			});
+			setIcon(remove, 'trash-2');
+			this.registerDomEvent(remove, 'click', () => {
+				void this.deleteMarker(marker.id);
+			});
 		}
 	}
 

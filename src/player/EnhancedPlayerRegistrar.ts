@@ -18,6 +18,7 @@ import { AudioPlayerRegistry } from './AudioPlayerRegistry';
 import { WaveformPeakCache } from './WaveformData';
 import { AudioPlayer } from './AudioPlayer';
 import { parseAudioLinkTarget, isAudioFile } from './timecodeLinks';
+import type { MarkerStore } from './markers/MarkerStore';
 
 /** Dataset flag marking an embed already taken over by the player. */
 const ENHANCED_FLAG = 'aarEnhanced';
@@ -33,11 +34,13 @@ export class EnhancedPlayerRegistrar {
 	 * @param plugin - Owning plugin (for registration lifecycle)
 	 * @param app - Obsidian App instance
 	 * @param getSettings - Returns the current plugin settings
+	 * @param markerStore - Persistence for markers and chapters
 	 */
 	constructor(
 		private readonly plugin: Plugin,
 		private readonly app: App,
 		private readonly getSettings: () => AudioRecorderSettings,
+		private readonly markerStore: MarkerStore,
 	) {}
 
 	/**
@@ -74,6 +77,7 @@ export class EnhancedPlayerRegistrar {
 	dispose(): void {
 		this.registry.clear();
 		this.peakCache.clear();
+		this.markerStore.clearCache();
 	}
 
 	/**
@@ -109,6 +113,7 @@ export class EnhancedPlayerRegistrar {
 			resolvePlayerSettings(this.getSettings()),
 			this.registry,
 			this.peakCache,
+			this.markerStore,
 			{ startSeconds, sourcePath: ctx.sourcePath },
 		);
 		ctx.addChild(player);

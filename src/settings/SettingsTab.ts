@@ -777,6 +777,18 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
+			.setName('Show mute button')
+			.setDesc('Show a mute / unmute button on the player.')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.playerShowMuteButton)
+					.onChange(async (value) => {
+						this.plugin.settings.playerShowMuteButton = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
 			.setName('Timecode links')
 			.setDesc(
 				'Enable links with a #t= offset (e.g. [[recording#t=1:30]]) to jump a player to that position, and the "copy timestamp link" button on the player.',
@@ -789,6 +801,49 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					}),
 			);
+
+		new Setting(containerEl)
+			.setName('Markers and chapters')
+			.setDesc(
+				'Add per-file bookmarks (jump points) and chapters (named segments). Markers are stored in the plugin folder, not in your vault.',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.playerEnableMarkers)
+					.onChange(async (value) => {
+						this.plugin.settings.playerEnableMarkers = value;
+						await this.plugin.saveSettings();
+						this.display();
+					}),
+			);
+
+		if (this.plugin.settings.playerEnableMarkers) {
+			new Setting(containerEl)
+				.setName('Show marker list')
+				.setDesc(
+					'List markers and chapters below the player, with jump, rename, and delete actions.',
+				)
+				.addToggle((toggle) =>
+					toggle
+						.setValue(this.plugin.settings.playerShowMarkerList)
+						.onChange(async (value) => {
+							this.plugin.settings.playerShowMarkerList = value;
+							await this.plugin.saveSettings();
+						}),
+				);
+
+			new Setting(containerEl)
+				.setName('Chapter navigation')
+				.setDesc('Show previous / next chapter buttons on the player.')
+				.addToggle((toggle) =>
+					toggle
+						.setValue(this.plugin.settings.playerShowChapterNav)
+						.onChange(async (value) => {
+							this.plugin.settings.playerShowChapterNav = value;
+							await this.plugin.saveSettings();
+						}),
+				);
+		}
 	}
 
 	/**
