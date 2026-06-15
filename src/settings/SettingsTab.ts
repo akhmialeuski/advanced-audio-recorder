@@ -191,6 +191,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				});
 			});
 
+		// Audio processing & feedback
+		this.renderInputProcessingSettings(containerEl);
+
 		// Output format
 		new Setting(containerEl).setName('Output format').setHeading();
 
@@ -654,6 +657,82 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	}
 
 	/**
+	 * Renders the audio input-processing constraints and the live
+	 * recording-feedback options.
+	 * @param containerEl - The settings container element
+	 */
+	private renderInputProcessingSettings(containerEl: HTMLElement): void {
+		const s = this.plugin.settings;
+		new Setting(containerEl)
+			.setName('Audio processing & feedback')
+			.setHeading();
+
+		new Setting(containerEl)
+			.setName('Noise suppression')
+			.setDesc('Apply the browser noise-suppression filter to the input.')
+			.addToggle((toggle) =>
+				toggle.setValue(s.inputNoiseSuppression).onChange(async (v) => {
+					s.inputNoiseSuppression = v;
+					await this.plugin.saveSettings();
+				}),
+			);
+
+		new Setting(containerEl)
+			.setName('Echo cancellation')
+			.setDesc('Apply the browser echo-cancellation filter to the input.')
+			.addToggle((toggle) =>
+				toggle.setValue(s.inputEchoCancellation).onChange(async (v) => {
+					s.inputEchoCancellation = v;
+					await this.plugin.saveSettings();
+				}),
+			);
+
+		new Setting(containerEl)
+			.setName('Automatic gain control')
+			.setDesc('Let the browser normalize the input level automatically.')
+			.addToggle((toggle) =>
+				toggle.setValue(s.inputAutoGainControl).onChange(async (v) => {
+					s.inputAutoGainControl = v;
+					await this.plugin.saveSettings();
+				}),
+			);
+
+		new Setting(containerEl)
+			.setName('Input level meter')
+			.setDesc('Show a live input-level meter while recording.')
+			.addToggle((toggle) =>
+				toggle.setValue(s.showInputLevelMeter).onChange(async (v) => {
+					s.showInputLevelMeter = v;
+					await this.plugin.saveSettings();
+				}),
+			);
+
+		new Setting(containerEl)
+			.setName('Recording stats')
+			.setDesc(
+				'Show the live elapsed time and recorded file size while recording.',
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(s.showRecordingStats).onChange(async (v) => {
+					s.showRecordingStats = v;
+					await this.plugin.saveSettings();
+				}),
+			);
+
+		new Setting(containerEl)
+			.setName('Mobile recording banner')
+			.setDesc(
+				'Show a prominent recording banner on mobile, where there is no ribbon indicator.',
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(s.mobileRecordingBanner).onChange(async (v) => {
+					s.mobileRecordingBanner = v;
+					await this.plugin.saveSettings();
+				}),
+			);
+	}
+
+	/**
 	 * Populates dropdown with audio devices.
 	 * @param dropdown - The dropdown component
 	 */
@@ -711,6 +790,11 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 						? { exact: this.plugin.settings.audioDeviceId }
 						: undefined,
 					sampleRate: this.plugin.settings.sampleRate,
+					noiseSuppression:
+						this.plugin.settings.inputNoiseSuppression,
+					echoCancellation:
+						this.plugin.settings.inputEchoCancellation,
+					autoGainControl: this.plugin.settings.inputAutoGainControl,
 				},
 			});
 

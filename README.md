@@ -209,6 +209,15 @@ The waveform is drawn for supported audio files up to a large safety size. Peaks
 
 > **Desktop and mobile**: the enhanced player works wherever Obsidian renders audio embeds. Waveform extraction relies on the Web Audio API available in the app.
 
+## Recording feedback & input processing
+
+Live feedback while recording, and control over the browser's input processing — all configurable under **Settings > Advanced Audio Recorder > Audio processing & feedback**.
+
+- **Noise suppression**, **echo cancellation**, and **automatic gain control** toggles are applied to the microphone stream (and to the diagnostics test recording).
+- **Input level meter**: a live VU meter in the status bar shows that the microphone is actually picking up sound.
+- **Recording stats**: the status bar shows the live elapsed time (excluding paused intervals) and the recorded file size as it grows.
+- **Mobile recording banner**: on mobile — where there is no ribbon icon — a prominent banner shows that a recording is in progress, with the elapsed time and a stop button.
+
 ## Transcription (speech-to-text)
 
 When **Enable transcription** is on in settings, recordings (and any existing audio file) can be transcribed to text. Right-click an audio file or its embed and choose **Transcribe audio**, run the **Transcribe active audio file** command, or enable **Transcribe after recording** to do it automatically.

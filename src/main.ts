@@ -3,7 +3,7 @@
  * @module main
  */
 
-import { Notice, Plugin, TFile } from 'obsidian';
+import { Notice, Platform, Plugin, TFile } from 'obsidian';
 import { RecordingStatus } from './types';
 import type {
 	SaveProgress,
@@ -31,9 +31,11 @@ import {
 } from './recording/EncodingWorkerClient';
 import {
 	updateStatusBar,
+	updateRecordingLiveStats,
 	initializeStatusBar,
 	renderTranscriptionStatusBar,
 } from './ui/StatusBar';
+import { RecordingBanner } from './ui/RecordingBanner';
 import { updateRibbonIcon, initializeRibbonIcon } from './ui/RibbonIcon';
 import { showDeviceSelectionModal } from './ui/DeviceSelectionModal';
 import { ContextMenu } from './ui/ContextMenu';
@@ -56,6 +58,9 @@ const SETTINGS_BACKUP_FILE = 'data.json.bak';
 
 /** Accessible label for the status-bar action that reopens a minimized transcription. */
 const RESTORE_TRANSCRIPTION_LABEL = 'Restore transcription window';
+
+/** Refresh interval, in ms, for the live recording stats and meter. */
+const LIVE_STATS_INTERVAL_MS = 200;
 
 /**
  * Result of reading the stored settings from disk.
@@ -99,6 +104,7 @@ export default class AudioRecorderPlugin extends Plugin {
 	private statusBarItem: HTMLElement | null = null;
 	private ribbonIconEl: HTMLElement | null = null;
 	private contextMenu!: ContextMenu;
+	private recordingBanner!: RecordingBanner;
 	private playerRegistrar!: EnhancedPlayerRegistrar;
 	private journal!: SessionJournal;
 	private encodingWorker: EncodingWorkerClient | null = null;
@@ -151,17 +157,14 @@ export default class AudioRecorderPlugin extends Plugin {
 		// at stop) and the player registrar (which reads/edits them), so
 		// their cache and serialized write chain stay unified.
 		const markerStore = new MarkerStore(this.app);
+		this.recordingBanner = new RecordingBanner(() => {
+			void this.recordingManager.stopRecording();
+		});
 		this.recordingManager = new RecordingManager(
 			this.app,
 			this.settings,
 			(status: RecordingStatus, saveProgress?: SaveProgress) => {
-				this.recordingStatus = status;
-				this.recordingSaveProgress =
-					status === RecordingStatus.Saving
-						? saveProgress
-						: undefined;
-				this.renderStatusBar();
-				updateRibbonIcon(this.ribbonIconEl, status);
+				this.handleStatusChange(status, saveProgress);
 			},
 			this.journal,
 			(result: RecordingSaveResult) => {
@@ -271,6 +274,7 @@ export default class AudioRecorderPlugin extends Plugin {
 	 */
 	onunload(): void {
 		this.recordingManager.cleanup();
+		this.recordingBanner.hide();
 		this.playerRegistrar.dispose();
 		setEncodingWorkerClient(null);
 		this.encodingWorker?.terminate();
@@ -735,6 +739,10 @@ export default class AudioRecorderPlugin extends Plugin {
 			this.recordingStatus,
 			this.recordingSaveProgress,
 			controls,
+			{
+				showStats: this.settings.showRecordingStats,
+				showMeter: this.settings.showInputLevelMeter,
+			},
 		);
 	}
 
@@ -785,10 +793,72 @@ export default class AudioRecorderPlugin extends Plugin {
 	}
 
 	/**
-	 * Sets up the status bar item.
+	 * Sets up the status bar item and the live-stats refresh interval.
 	 */
 	private setupStatusBar(): void {
 		this.statusBarItem = this.addStatusBarItem();
 		initializeStatusBar(this.statusBarItem);
+		// Refresh the live recording indicators a few times a second so the
+		// timer and meter stay smooth without re-rendering the status bar.
+		this.registerInterval(
+			window.setInterval(() => {
+				this.pumpLiveStats();
+			}, LIVE_STATS_INTERVAL_MS),
+		);
+	}
+
+	/**
+	 * Renders the status bar and the mobile banner for a status change.
+	 * @param status - New recording status
+	 * @param saveProgress - Optional save progress for the saving state
+	 */
+	private handleStatusChange(
+		status: RecordingStatus,
+		saveProgress?: SaveProgress,
+	): void {
+		this.recordingStatus = status;
+		this.recordingSaveProgress =
+			status === RecordingStatus.Saving ? saveProgress : undefined;
+		// Route through renderStatusBar so minimized transcription progress
+		// keeps its precedence when recording returns to idle.
+		this.renderStatusBar();
+		updateRibbonIcon(this.ribbonIconEl, status);
+
+		const active =
+			status === RecordingStatus.Recording ||
+			status === RecordingStatus.Paused;
+		if (
+			active &&
+			Platform.isMobile &&
+			this.settings.mobileRecordingBanner
+		) {
+			this.recordingBanner.show(status === RecordingStatus.Paused);
+		} else {
+			this.recordingBanner.hide();
+		}
+	}
+
+	/**
+	 * Pushes live elapsed time, recorded size, and input level to the
+	 * status bar and mobile banner while a recording is active.
+	 */
+	private pumpLiveStats(): void {
+		const status = this.recordingManager.getStatus();
+		if (
+			status !== RecordingStatus.Recording &&
+			status !== RecordingStatus.Paused
+		) {
+			return;
+		}
+		const elapsedMs = this.recordingManager.getElapsedMs();
+		updateRecordingLiveStats(this.statusBarItem, {
+			elapsedMs,
+			bytes: this.recordingManager.getRecordedBytes(),
+			level: this.recordingManager.getInputLevel(),
+		});
+		this.recordingBanner.update(
+			elapsedMs,
+			status === RecordingStatus.Paused,
+		);
 	}
 }
