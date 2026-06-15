@@ -117,7 +117,7 @@ export class TranscriptionService {
 			});
 		}
 
-		let transcript = stitchChunks(results, {
+		const transcript = stitchChunks(results, {
 			model: provider.id,
 			createdAt: new Date().toISOString(),
 			sourcePath: file.path,
@@ -136,8 +136,6 @@ export class TranscriptionService {
 			markdown = await this.postProcess(settings, transcript, markdown);
 		}
 
-		// Reflect the LLM language passthrough into the transcript metadata
-		transcript = { ...transcript };
 		options.onProgress?.(1, 'Done');
 		return { transcript, markdown };
 	}

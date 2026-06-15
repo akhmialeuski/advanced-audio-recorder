@@ -6,6 +6,7 @@
 
 import { MarkdownView, Notice } from 'obsidian';
 import type { App, TFile } from 'obsidian';
+import { PLUGIN_LOG_PREFIX } from '../constants';
 import { resolveUniquePathInDirectory } from '../recording/RecordingFileManager';
 import { serializeTranscriptFile } from './transcriptFormat';
 import type { Transcript, TranscriptFileFormat } from './TranscriptTypes';
@@ -80,10 +81,20 @@ export function insertTranscriptIntoActiveNote(
 		return false;
 	}
 	const block = heading ? `${heading}\n\n${markdown}` : markdown;
-	const editor = view.editor;
-	const cursor = editor.getCursor();
-	editor.replaceRange(`\n\n${block}\n`, cursor);
-	return true;
+	try {
+		const editor = view.editor;
+		const cursor = editor.getCursor();
+		editor.replaceRange(`\n\n${block}\n`, cursor);
+		return true;
+	} catch (error) {
+		// The active note may be in reading mode or otherwise not editable;
+		// report not-inserted so the caller can fall back to the file/notice.
+		console.warn(
+			`${PLUGIN_LOG_PREFIX} Could not insert transcript into the active note:`,
+			error,
+		);
+		return false;
+	}
 }
 
 /**

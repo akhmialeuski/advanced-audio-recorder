@@ -51,6 +51,22 @@ describe('formatTranscriptMarkdown', () => {
 		expect(md).toContain('one two');
 	});
 
+	it('does not merge segments without speakers (keeps timestamps)', () => {
+		const transcript = buildTranscript([
+			seg(0, 1, 'one'),
+			seg(1, 2, 'two'),
+		]);
+		const md = formatTranscriptMarkdown(
+			transcript,
+			DEFAULT_TRANSCRIPT_MARKDOWN_OPTIONS,
+			stubLink,
+		);
+		// Two separate lines, each with its own timecode link
+		expect(md.split('\n\n')).toHaveLength(2);
+		expect(md).toContain('[[[rec#t=0|0:00]]] one');
+		expect(md).toContain('[[[rec#t=1|0:01]]] two');
+	});
+
 	it('omits timestamps and speakers when disabled', () => {
 		const transcript = buildTranscript([seg(3, 4, 'text', 'Alice')]);
 		const md = formatTranscriptMarkdown(

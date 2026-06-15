@@ -18,6 +18,7 @@ import {
 	DEFAULT_WHISPER_API_BASE_URL,
 	DEFAULT_WHISPER_API_MODEL,
 	DEFAULT_LLM_OPENAI_BASE_URL,
+	DEFAULT_LLM_MAX_TOKENS,
 } from '../constants';
 import { getDefaultDeviceId } from '../utils/DeviceUtils';
 import type {
@@ -246,7 +247,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	llmBaseUrl: DEFAULT_LLM_OPENAI_BASE_URL,
 	llmApiKey: '',
 	llmModel: 'gpt-4o-mini',
-	llmMaxTokens: 4096,
+	llmMaxTokens: DEFAULT_LLM_MAX_TOKENS,
 };
 
 export interface AudioRecorderSettingsInput extends Partial<

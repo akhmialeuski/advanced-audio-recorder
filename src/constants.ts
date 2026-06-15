@@ -239,3 +239,21 @@ export const DEFAULT_LLM_ANTHROPIC_MODEL = 'claude-opus-4-8';
 
 /** Default local Ollama base URL for LLM post-processing. */
 export const DEFAULT_LLM_OLLAMA_BASE_URL = 'http://localhost:11434/v1';
+
+/** Minimum configurable transcription chunk size in megabytes. */
+export const MIN_TRANSCRIBE_CHUNK_MB = 1;
+
+/**
+ * Maximum configurable transcription chunk size in megabytes. Capped at
+ * 24 to stay under OpenAI's 25 MB per-request limit.
+ */
+export const MAX_TRANSCRIBE_CHUNK_MB = 24;
+
+/** Default maximum output tokens for LLM post-processing. */
+export const DEFAULT_LLM_MAX_TOKENS = 4096;
+
+/** Minimum configurable LLM output token budget. */
+export const MIN_LLM_MAX_TOKENS = 512;
+
+/** Maximum configurable LLM output token budget. */
+export const MAX_LLM_MAX_TOKENS = 32000;

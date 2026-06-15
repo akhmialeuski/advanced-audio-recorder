@@ -74,6 +74,10 @@ function toRenderRows(
 		if (
 			merge &&
 			previous &&
+			// Only merge a genuine speaker turn: without diarization every
+			// segment has an undefined speaker, and merging them all would
+			// collapse the transcript into one line and lose timestamps.
+			segment.speaker !== undefined &&
 			previous.speaker === segment.speaker &&
 			segment.text.length > 0
 		) {

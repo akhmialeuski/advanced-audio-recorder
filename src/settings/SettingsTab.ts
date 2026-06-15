@@ -32,6 +32,10 @@ import {
 	MIN_SPLIT_CHUNK_MINUTES,
 	MAX_SPLIT_CHUNK_MINUTES,
 	SPLIT_PART_SUFFIX_PATTERN,
+	MIN_TRANSCRIBE_CHUNK_MB,
+	MAX_TRANSCRIBE_CHUNK_MB,
+	MIN_LLM_MAX_TOKENS,
+	MAX_LLM_MAX_TOKENS,
 } from '../constants';
 import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
 import { SystemInfoModal } from '../diagnostics/SystemInfoModal';
@@ -719,6 +723,40 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				}),
 			);
 
+		new Setting(containerEl)
+			.setName('Word-level timestamps')
+			.setDesc('Request per-word timing when the provider supports it.')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(s.transcriptionWordTimestamps)
+					.onChange(async (v) => {
+						s.transcriptionWordTimestamps = v;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		if (s.transcriptionProvider === 'whisper-api') {
+			new Setting(containerEl)
+				.setName('Upload chunk size')
+				.setDesc(
+					'Megabytes per request. Long recordings are split into chunks of this size to stay under the API limit.',
+				)
+				.addSlider((slider) =>
+					slider
+						.setLimits(
+							MIN_TRANSCRIBE_CHUNK_MB,
+							MAX_TRANSCRIBE_CHUNK_MB,
+							1,
+						)
+						.setValue(s.transcriptionChunkMb)
+						.setDynamicTooltip()
+						.onChange(async (v) => {
+							s.transcriptionChunkMb = v;
+							await this.plugin.saveSettings();
+						}),
+				);
+		}
+
 		if (s.transcriptionProvider === 'whisper-api') {
 			this.addTextSetting(
 				containerEl,
@@ -863,6 +901,20 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					}),
 			);
 
+		new Setting(containerEl)
+			.setName('Merge speaker turns')
+			.setDesc(
+				'Combine consecutive segments from the same speaker into one line (diarized transcripts only).',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(s.transcriptMergeConsecutiveSpeaker)
+					.onChange(async (v) => {
+						s.transcriptMergeConsecutiveSpeaker = v;
+						await this.plugin.saveSettings();
+					}),
+			);
+
 		this.addTextSetting(
 			containerEl,
 			'Timestamp format',
@@ -968,6 +1020,19 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			() => s.llmModel,
 			(v) => (s.llmModel = v),
 		);
+		new Setting(containerEl)
+			.setName('Max output tokens')
+			.setDesc('Upper bound on the LLM response length.')
+			.addSlider((slider) =>
+				slider
+					.setLimits(MIN_LLM_MAX_TOKENS, MAX_LLM_MAX_TOKENS, 512)
+					.setValue(s.llmMaxTokens)
+					.setDynamicTooltip()
+					.onChange(async (v) => {
+						s.llmMaxTokens = v;
+						await this.plugin.saveSettings();
+					}),
+			);
 	}
 
 	/**

@@ -43,7 +43,9 @@ export function buildMultipart(fields: MultipartField[]): MultipartBody {
 			pushText(
 				`Content-Disposition: form-data; name="${field.name}"\r\n\r\n`,
 			);
-			pushText(`${field.value}\r\n`);
+			// Strip CR/LF so a stray newline in a user-set value (model id,
+			// language) cannot inject extra multipart headers or parts.
+			pushText(`${field.value.replace(/[\r\n]+/g, ' ')}\r\n`);
 		} else {
 			pushText(
 				`Content-Disposition: form-data; name="${field.name}"; filename="${field.filename}"\r\n`,
