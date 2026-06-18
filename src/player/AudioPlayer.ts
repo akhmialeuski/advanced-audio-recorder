@@ -792,7 +792,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		const cached = this.peakCache.get(cacheKey);
 		if (cached) {
 			this.peaks = cached;
-			this.drawWaveform();
+			this.redrawWaveformWhenSized();
 			return;
 		}
 		try {
@@ -810,7 +810,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			}
 			this.peaks = computeWaveformPeaks(channels, bucketCount);
 			this.peakCache.set(cacheKey, this.peaks);
-			this.drawWaveform();
+			this.redrawWaveformWhenSized();
 		} catch (error) {
 			console.warn(
 				`${PLUGIN_LOG_PREFIX} Failed to build waveform for ${this.file.path}:`,
@@ -820,6 +820,30 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			// so the fallback bar must not claim the file is "too large"
 			this.seekEl.addClass('aar-player-waveform-unavailable');
 		}
+	}
+
+	/**
+	 * Draws the waveform once the seek area has a measurable width. On
+	 * first render the canvas can be laid out a frame or two after the
+	 * peaks are ready (width still 0), so a plain draw would no-op and
+	 * leave the waveform blank until the user interacts. Retry across a
+	 * few animation frames until the width settles.
+	 * @param attempts - Remaining retries before giving up
+	 */
+	private redrawWaveformWhenSized(attempts = 10): void {
+		if (!this.canvas || !this.peaks || !this.containerEl.isConnected) {
+			return;
+		}
+		if (this.seekEl.clientWidth > 0) {
+			this.drawWaveform();
+			return;
+		}
+		if (attempts <= 0) {
+			return;
+		}
+		window.requestAnimationFrame(() => {
+			this.redrawWaveformWhenSized(attempts - 1);
+		});
 	}
 
 	/**
