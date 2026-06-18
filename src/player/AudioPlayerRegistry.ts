@@ -14,6 +14,8 @@ export interface SeekablePlayer {
 	seekTo(seconds: number): void;
 	/** True while the player is attached to the document. */
 	isConnected(): boolean;
+	/** Re-reads and re-renders this player's markers from the store. */
+	reloadMarkers(): void;
 }
 
 /**
@@ -81,6 +83,33 @@ export class AudioPlayerRegistry {
 			this.playersByPath.delete(path);
 		}
 		return seeked;
+	}
+
+	/**
+	 * Tells every other connected player for a path to re-read its markers,
+	 * so a change made in one view (e.g. Live Preview) shows in the others
+	 * (e.g. Reading view) without re-opening the note. Disconnected players
+	 * are pruned in passing.
+	 * @param path - Vault-relative path whose markers changed
+	 * @param source - The player that made the change (skipped)
+	 */
+	reloadMarkers(path: string, source: SeekablePlayer): void {
+		const players = this.playersByPath.get(path);
+		if (!players) {
+			return;
+		}
+		for (const player of [...players]) {
+			if (!player.isConnected()) {
+				players.delete(player);
+				continue;
+			}
+			if (player !== source) {
+				player.reloadMarkers();
+			}
+		}
+		if (players.size === 0) {
+			this.playersByPath.delete(path);
+		}
 	}
 
 	/**

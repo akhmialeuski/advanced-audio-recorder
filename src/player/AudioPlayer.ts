@@ -327,6 +327,17 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	}
 
 	/**
+	 * Re-reads this player's markers from the store and re-renders them.
+	 * Called by the registry when another view changed the same file's
+	 * markers, so reading view and Live Preview stay in sync.
+	 */
+	reloadMarkers(): void {
+		if (this.settings.enableMarkers) {
+			void this.loadMarkers();
+		}
+	}
+
+	/**
 	 * Removes any `audio` element Obsidian's embed loader injects after
 	 * we take over, guaranteeing our player is the only one rendered
 	 * regardless of post-processor ordering. The observer is scoped to
@@ -1245,6 +1256,9 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	private async persistMarkers(): Promise<void> {
 		try {
 			await this.markerStore.set(this.file.path, this.markers);
+			// Refresh other live players of this file (e.g. the reading-view
+			// copy) so the change shows everywhere without re-opening
+			this.registry.reloadMarkers(this.file.path, this);
 		} catch (error) {
 			console.warn(
 				`${PLUGIN_LOG_PREFIX} Failed to save markers for ${this.file.path}:`,
