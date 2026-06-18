@@ -92,6 +92,12 @@ export interface AudioPlayerOptions {
 	startSeconds: number | null;
 	/** Vault path of the note hosting the embed (for link generation). */
 	sourcePath: string;
+	/**
+	 * Render immediately instead of waiting for Obsidian to load the
+	 * embed. Set when the player owns its container from the start (the
+	 * embed-registry path), where no default player is ever injected.
+	 */
+	immediate?: boolean;
 }
 
 /**
@@ -152,6 +158,12 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * our player is the one that survives.
 	 */
 	onload(): void {
+		if (this.options.immediate) {
+			// The embed-registry path hands us an owned container with no
+			// default player to wait for, so render right away
+			this.renderPlayer();
+			return;
+		}
 		this.whenEmbedReady(() => {
 			this.renderPlayer();
 		});

@@ -1,15 +1,18 @@
 /**
- * Wires the enhanced audio player into Obsidian: a markdown post
- * processor that replaces internal audio embeds with the custom player,
- * and a document-level click handler that routes timecode links to a
- * live player. Both paths are gated on the feature toggle so disabling
- * the player makes Obsidian fall back to its built-in embed on the next
- * render.
+ * Wires the enhanced audio player into Obsidian. The primary path
+ * registers a custom embed creator in Obsidian's embed registry, so
+ * Obsidian itself builds the player for the plugin's media extensions in
+ * both Reading view and Live Preview — no DOM race, no default player to
+ * suppress. When the (internal) registry API is unavailable, it falls
+ * back to a markdown post-processor that takes over `.internal-embed`
+ * elements (Reading view only). A document-level click handler routes
+ * timecode links to a live player. All paths respect the feature toggle.
  * @module player/EnhancedPlayerRegistrar
  */
 
 import { TFile } from 'obsidian';
 import type { App, MarkdownPostProcessorContext, Plugin } from 'obsidian';
+import { AUDIO_EXTENSIONS, PLUGIN_LOG_PREFIX } from '../constants';
 import {
 	resolvePlayerSettings,
 	type AudioRecorderSettings,
@@ -17,8 +20,18 @@ import {
 import { AudioPlayerRegistry } from './AudioPlayerRegistry';
 import { WaveformPeakCache, SharedAudioDecoder } from './WaveformData';
 import { AudioPlayer } from './AudioPlayer';
+import {
+	EnhancedMediaEmbed,
+	type EnhancedMediaEmbedDeps,
+} from './EnhancedMediaEmbed';
 import { parseAudioLinkTarget, isAudioFile } from './timecodeLinks';
 import type { MarkerStore } from './markers/MarkerStore';
+import {
+	getEmbedRegistry,
+	EmbedRegistryOverride,
+	type EmbedComponent,
+	type EmbedInfo,
+} from '../obsidian/embedRegistry';
 
 /** Dataset flag marking an embed already taken over by the player. */
 const ENHANCED_FLAG = 'aarEnhanced';
@@ -31,6 +44,8 @@ export class EnhancedPlayerRegistrar {
 	private readonly peakCache = new WaveformPeakCache();
 	/** One AudioContext shared by every player for waveform decoding. */
 	private readonly decoder = new SharedAudioDecoder();
+	/** Active embed-registry override, or null when on the fallback path. */
+	private embedOverride: EmbedRegistryOverride | null = null;
 
 	/**
 	 * @param plugin - Owning plugin (for registration lifecycle)
@@ -50,7 +65,14 @@ export class EnhancedPlayerRegistrar {
 	 * handler. Safe to call once during plugin load.
 	 */
 	register(): void {
+		this.setupEmbedRegistry();
+
 		this.plugin.registerMarkdownPostProcessor((el, ctx) => {
+			// The embed registry already handles every mode; the
+			// post-processor is only the Reading-view fallback
+			if (this.embedOverride) {
+				return;
+			}
 			if (!this.getSettings().enhancedPlayerEnabled) {
 				return;
 			}
@@ -77,6 +99,10 @@ export class EnhancedPlayerRegistrar {
 	 * nothing outlives the plugin.
 	 */
 	dispose(): void {
+		// Restore Obsidian's default embed creators before anything else,
+		// so disabling the plugin never leaves overridden media embeds
+		this.embedOverride?.restore();
+		this.embedOverride = null;
 		this.registry.clear();
 		this.peakCache.clear();
 		this.markerStore.clearCache();
@@ -84,6 +110,72 @@ export class EnhancedPlayerRegistrar {
 			// Closing a context that never opened or already failed is
 			// non-fatal during teardown
 		});
+	}
+
+	/**
+	 * Registers a custom embed creator for the plugin's media extensions
+	 * via Obsidian's internal embed registry, capturing the originals for
+	 * restoration. No-ops (leaving the post-processor fallback active)
+	 * when the internal API is unavailable.
+	 */
+	private setupEmbedRegistry(): void {
+		const registry = getEmbedRegistry(this.app);
+		if (!EmbedRegistryOverride.isAvailable(registry)) {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Embed registry API unavailable; using the Markdown post-processor fallback (Reading view only).`,
+			);
+			return;
+		}
+		const override = new EmbedRegistryOverride(registry);
+		override.override(AUDIO_EXTENSIONS, (info, file, subpath) =>
+			this.createEmbed(info, file, subpath),
+		);
+		this.embedOverride = override;
+	}
+
+	/**
+	 * Embed creator installed in the registry. Builds the enhanced player
+	 * when the feature is enabled, otherwise delegates to Obsidian's
+	 * captured default creator so toggling the setting takes effect on the
+	 * next render without re-registering.
+	 * @param info - Embed context from Obsidian
+	 * @param file - Media file to embed
+	 * @param subpath - Embed subpath (timecode, if any)
+	 */
+	private createEmbed(
+		info: EmbedInfo,
+		file: TFile,
+		subpath: string,
+	): EmbedComponent {
+		if (this.getSettings().enhancedPlayerEnabled && isAudioFile(file)) {
+			return new EnhancedMediaEmbed(
+				info,
+				file,
+				subpath,
+				this.embedDeps(),
+			);
+		}
+		const previous = this.embedOverride?.getPrevious(file.extension);
+		if (previous) {
+			return previous(info, file, subpath);
+		}
+		// No default creator was captured (unexpected): render the enhanced
+		// player anyway so the embed is not left blank
+		return new EnhancedMediaEmbed(info, file, subpath, this.embedDeps());
+	}
+
+	/**
+	 * Bundles the shared dependencies an embed needs to build a player.
+	 */
+	private embedDeps(): EnhancedMediaEmbedDeps {
+		return {
+			app: this.app,
+			getSettings: this.getSettings,
+			registry: this.registry,
+			peakCache: this.peakCache,
+			decoder: this.decoder,
+			markerStore: this.markerStore,
+		};
 	}
 
 	/**

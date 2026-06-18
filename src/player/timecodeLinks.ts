@@ -39,6 +39,22 @@ export function parseAudioLinkTarget(src: string): AudioLinkTarget {
 }
 
 /**
+ * Parses the timecode seconds from an embed subpath, when present.
+ * Obsidian's embed registry passes the subpath (the part after `#`)
+ * separately from the link path, so this complements parseAudioLinkTarget
+ * for the registry path. A leading `#` is tolerated.
+ * @param subpath - Embed subpath (e.g. "t=1:30" or "#t=1:30")
+ * @returns Seconds parsed from a `t=` subpath, or null when absent/invalid
+ */
+export function parseTimecodeSubpath(subpath: string): number | null {
+	const cleaned = subpath.startsWith('#') ? subpath.slice(1) : subpath;
+	if (!cleaned.startsWith('t=')) {
+		return null;
+	}
+	return parseTimecode(cleaned.slice(2));
+}
+
+/**
  * Tells whether a resolved file is one of the audio formats the plugin
  * handles.
  * @param file - File to test

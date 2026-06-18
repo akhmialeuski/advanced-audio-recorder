@@ -3,7 +3,11 @@
  */
 
 import { TFile } from 'obsidian';
-import { parseAudioLinkTarget, isAudioFile } from 'src/player/timecodeLinks';
+import {
+	parseAudioLinkTarget,
+	parseTimecodeSubpath,
+	isAudioFile,
+} from 'src/player/timecodeLinks';
 
 describe('parseAudioLinkTarget', () => {
 	it('returns the path and no offset when there is no subpath', () => {
@@ -52,5 +56,23 @@ describe('isAudioFile', () => {
 	it('rejects non-audio extensions', () => {
 		expect(isAudioFile(new TFile('a/note.md'))).toBe(false);
 		expect(isAudioFile(new TFile('a/image.png'))).toBe(false);
+	});
+});
+
+describe('parseTimecodeSubpath', () => {
+	it('parses a t= subpath in each timecode format', () => {
+		expect(parseTimecodeSubpath('t=90')).toBe(90);
+		expect(parseTimecodeSubpath('t=1:30')).toBe(90);
+		expect(parseTimecodeSubpath('t=1:02:03')).toBe(3723);
+	});
+
+	it('tolerates a leading hash', () => {
+		expect(parseTimecodeSubpath('#t=1:30')).toBe(90);
+	});
+
+	it('returns null for non-timecode or malformed subpaths', () => {
+		expect(parseTimecodeSubpath('')).toBeNull();
+		expect(parseTimecodeSubpath('heading')).toBeNull();
+		expect(parseTimecodeSubpath('t=abc')).toBeNull();
 	});
 });
