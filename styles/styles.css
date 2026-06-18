@@ -408,13 +408,21 @@ input.aar-input-invalid {
     display: none;
 }
 
-/* Static, clickable marker label used in read-only mode */
+/* Static, clickable marker label used in read-only mode (link, not button) */
 .aar-player-marker-label-static {
+    flex: 1;
+    min-width: 0;
+    padding: 0 4px;
     text-align: left;
-    cursor: pointer;
+    font-size: 0.85em;
+    background: transparent;
+    border: none;
     box-shadow: none;
+    color: var(--text-normal);
+    cursor: pointer;
 }
 
 .aar-player-marker-label-static:hover {
     color: var(--text-accent);
+    text-decoration: underline;
 }

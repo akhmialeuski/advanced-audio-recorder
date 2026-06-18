@@ -33,11 +33,11 @@ import type {
 import type { MarkerStore } from './markers/MarkerStore';
 import {
 	addMarker,
-	bookmarks,
 	chapters,
 	nextChapterTime,
 	previousChapterTime,
 	removeMarker,
+	sortMarkers,
 	updateMarker,
 	type MarkerKind,
 	type PlayerMarker,
@@ -1336,7 +1336,8 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			return;
 		}
 		this.markerListEl.empty();
-		const ordered = [...bookmarks(this.markers), ...chapters(this.markers)];
+		// One list, ordered purely by timestamp regardless of marker kind
+		const ordered = sortMarkers(this.markers);
 		for (const marker of ordered) {
 			const row = this.markerListEl.createDiv({
 				cls: 'aar-player-marker-row',
@@ -1372,9 +1373,9 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				remove.dataset.markerId = marker.id;
 				setIcon(remove, 'trash-2');
 			} else {
-				// Reading view: the label only jumps, no rename/delete
+				// Reading view: the label is a link that only jumps
 				const label = row.createEl('button', {
-					cls: 'aar-player-marker-label aar-player-marker-label-static',
+					cls: 'aar-player-marker-label-static',
 					text: marker.label,
 				});
 				label.dataset.action = 'jump';
