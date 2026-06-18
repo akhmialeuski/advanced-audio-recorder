@@ -114,6 +114,13 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	private peaks: number[] | null = null;
 	private isSeeking = false;
 	private durationProbeActive = false;
+	/**
+	 * Set on teardown. Async work checks this rather than
+	 * containerEl.isConnected, because the embed-registry path renders
+	 * while the container is briefly detached (not yet inserted), and
+	 * bailing then would drop the waveform and markers.
+	 */
+	private unloaded = false;
 	private resizeObserver: ResizeObserver | null = null;
 	private markersOverlayEl: HTMLElement | null = null;
 	private markerListEl: HTMLElement | null = null;
@@ -225,6 +232,9 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * Runs once the embed is ready (see whenEmbedReady).
 	 */
 	private renderPlayer(): void {
+		this.register(() => {
+			this.unloaded = true;
+		});
 		this.containerEl.empty();
 		this.containerEl.addClass('aar-player');
 		// The embed element keeps Obsidian's own audio loader alive; an
@@ -809,11 +819,11 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		}
 		try {
 			const data = await this.app.vault.readBinary(this.file);
-			if (!this.containerEl.isConnected) {
+			if (this.unloaded) {
 				return;
 			}
 			const audioBuffer = await this.decoder.decode(data);
-			if (!this.containerEl.isConnected) {
+			if (this.unloaded) {
 				return;
 			}
 			const channels: Float32Array[] = [];
@@ -843,7 +853,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * @param attempts - Remaining retries before giving up
 	 */
 	private redrawWaveformWhenSized(attempts = 10): void {
-		if (!this.canvas || !this.peaks || !this.containerEl.isConnected) {
+		if (!this.canvas || !this.peaks || this.unloaded) {
 			return;
 		}
 		if (this.seekEl.clientWidth > 0) {
@@ -1054,7 +1064,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	private async loadMarkers(): Promise<void> {
 		try {
 			const stored = await this.markerStore.get(this.file.path);
-			if (!this.containerEl.isConnected) {
+			if (this.unloaded) {
 				return;
 			}
 			this.markers = stored;
