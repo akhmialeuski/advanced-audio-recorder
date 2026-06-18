@@ -7,6 +7,7 @@ import {
 	bookmarks,
 	chapterIndexAt,
 	chapters,
+	markerRows,
 	nextChapterTime,
 	parseMarkers,
 	previousChapterTime,
@@ -218,6 +219,51 @@ describe('markerModel — edge and negative cases', () => {
 			time: 1,
 			label: 'A',
 			kind: 'bookmark',
+		});
+	});
+});
+
+describe('markerRows — single source for both render modes', () => {
+	it('returns one list ordered by time regardless of kind', () => {
+		const list = [
+			marker('c', 30, 'chapter'),
+			marker('b', 10, 'bookmark'),
+			marker('a', 5, 'chapter'),
+		];
+		expect(markerRows(list, true).map((r) => r.id)).toEqual([
+			'a',
+			'b',
+			'c',
+		]);
+		expect(markerRows(list, false).map((r) => r.id)).toEqual([
+			'a',
+			'b',
+			'c',
+		]);
+	});
+
+	it('shows the same markers in both modes, differing only by actions', () => {
+		const list = [marker('a', 1, 'bookmark'), marker('b', 2, 'chapter')];
+		const editable = markerRows(list, true);
+		const readonly = markerRows(list, false);
+		expect(editable.map((r) => r.id)).toEqual(readonly.map((r) => r.id));
+		expect(editable[0]?.actions).toEqual(['jump', 'rename', 'delete']);
+		expect(readonly[0]?.actions).toEqual(['jump']);
+	});
+
+	it('returns an empty list for no markers', () => {
+		expect(markerRows([], true)).toEqual([]);
+		expect(markerRows([], false)).toEqual([]);
+	});
+
+	it('carries each marker time, label, and kind', () => {
+		const rows = markerRows([marker('a', 7, 'chapter', 'Intro')], false);
+		expect(rows[0]).toEqual({
+			id: 'a',
+			time: 7,
+			label: 'Intro',
+			kind: 'chapter',
+			actions: ['jump'],
 		});
 	});
 });

@@ -212,3 +212,44 @@ export function parseMarkers(value: unknown): PlayerMarker[] {
 	}
 	return sortMarkers(result);
 }
+
+/** Action available on a marker-list row. */
+export type MarkerRowAction = 'jump' | 'rename' | 'delete';
+
+/**
+ * A marker-list row. The same markers appear in every render mode,
+ * ordered by time regardless of kind; only the available actions differ.
+ */
+export interface MarkerRow {
+	id: string;
+	time: number;
+	label: string;
+	kind: MarkerKind;
+	/** Actions offered on this row. */
+	actions: MarkerRowAction[];
+}
+
+/**
+ * Builds the marker-list rows: one list ordered purely by timestamp
+ * regardless of kind, identical in every render mode. Editing actions
+ * (rename, delete) are offered only when editable; otherwise the row is
+ * jump-only. This is the single source of truth for what the list shows,
+ * so reading view and Live Preview never diverge on content or ordering.
+ * @param markers - Markers to list
+ * @param editable - Whether editing actions are available
+ */
+export function markerRows(
+	markers: readonly PlayerMarker[],
+	editable: boolean,
+): MarkerRow[] {
+	const actions: MarkerRowAction[] = editable
+		? ['jump', 'rename', 'delete']
+		: ['jump'];
+	return sortMarkers(markers).map((marker) => ({
+		id: marker.id,
+		time: marker.time,
+		label: marker.label,
+		kind: marker.kind,
+		actions: [...actions],
+	}));
+}

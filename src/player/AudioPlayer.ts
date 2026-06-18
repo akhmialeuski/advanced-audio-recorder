@@ -34,14 +34,15 @@ import type { MarkerStore } from './markers/MarkerStore';
 import {
 	addMarker,
 	chapters,
+	markerRows,
 	nextChapterTime,
 	previousChapterTime,
 	removeMarker,
-	sortMarkers,
 	updateMarker,
 	type MarkerKind,
 	type PlayerMarker,
 } from './markers/markerModel';
+import { formatPlaybackRate, speedMenuItems } from './playbackRate';
 import {
 	setPlayerEmbedActions,
 	clearPlayerEmbedActions,
@@ -388,7 +389,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		if (this.settings.showSpeedControl) {
 			this.speedButton = controls.createEl('button', {
 				cls: 'aar-player-btn aar-player-speed',
-				text: this.formatRate(this.settings.defaultPlaybackRate),
+				text: formatPlaybackRate(this.settings.defaultPlaybackRate),
 			});
 			this.speedButton.setAttribute('aria-label', 'Playback speed');
 			this.registerDomEvent(this.speedButton, 'click', (event) => {
@@ -1096,12 +1097,16 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 */
 	private showSpeedMenu(event: MouseEvent): void {
 		const menu = new Menu();
-		for (const rate of PLAYER_PLAYBACK_RATE_PRESETS) {
-			menu.addItem((item) => {
-				item.setTitle(this.formatRate(rate))
-					.setChecked(Math.abs(this.audio.playbackRate - rate) < 1e-6)
+		for (const item of speedMenuItems(
+			this.audio.playbackRate,
+			PLAYER_PLAYBACK_RATE_PRESETS,
+		)) {
+			menu.addItem((menuItem) => {
+				menuItem
+					.setTitle(item.label)
+					.setChecked(item.checked)
 					.onClick(() => {
-						this.setPlaybackRate(rate);
+						this.setPlaybackRate(item.rate);
 					});
 			});
 		}
@@ -1115,7 +1120,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	private setPlaybackRate(rate: number): void {
 		this.audio.playbackRate = rate;
 		if (this.speedButton) {
-			this.speedButton.setText(this.formatRate(rate));
+			this.speedButton.setText(formatPlaybackRate(rate));
 		}
 	}
 
@@ -1336,50 +1341,50 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			return;
 		}
 		this.markerListEl.empty();
-		// One list, ordered purely by timestamp regardless of marker kind
-		const ordered = sortMarkers(this.markers);
-		for (const marker of ordered) {
-			const row = this.markerListEl.createDiv({
+		// markerRows is the single source of truth: the same markers, one
+		// list ordered by time, in both modes; only the actions differ
+		for (const row of markerRows(this.markers, this.editable)) {
+			const rowEl = this.markerListEl.createDiv({
 				cls: 'aar-player-marker-row',
 			});
-			const jump = row.createEl('button', {
+			const jump = rowEl.createEl('button', {
 				cls: 'aar-player-marker-time',
-				text: formatTimecode(marker.time),
+				text: formatTimecode(row.time),
 			});
 			jump.dataset.action = 'jump';
-			jump.dataset.markerId = marker.id;
+			jump.dataset.markerId = row.id;
 			jump.setAttribute(
 				'aria-label',
-				marker.kind === 'chapter'
-					? 'Jump to chapter'
-					: 'Jump to marker',
+				row.kind === 'chapter' ? 'Jump to chapter' : 'Jump to marker',
 			);
 			setIcon(
-				row.createSpan({ cls: 'aar-player-marker-kind' }),
-				marker.kind === 'chapter' ? 'list' : 'bookmark',
+				rowEl.createSpan({ cls: 'aar-player-marker-kind' }),
+				row.kind === 'chapter' ? 'list' : 'bookmark',
 			);
-			if (this.editable) {
-				const label = row.createEl('input', {
+			if (row.actions.includes('rename')) {
+				const label = rowEl.createEl('input', {
 					cls: 'aar-player-marker-label',
-					attr: { type: 'text', value: marker.label },
+					attr: { type: 'text', value: row.label },
 				});
 				label.dataset.action = 'rename';
-				label.dataset.markerId = marker.id;
-				const remove = row.createEl('button', {
+				label.dataset.markerId = row.id;
+			} else {
+				// Read-only: the label is a link that only jumps
+				const label = rowEl.createEl('button', {
+					cls: 'aar-player-marker-label-static',
+					text: row.label,
+				});
+				label.dataset.action = 'jump';
+				label.dataset.markerId = row.id;
+			}
+			if (row.actions.includes('delete')) {
+				const remove = rowEl.createEl('button', {
 					cls: 'aar-player-marker-delete',
 					attr: { 'aria-label': 'Delete' },
 				});
 				remove.dataset.action = 'delete';
-				remove.dataset.markerId = marker.id;
+				remove.dataset.markerId = row.id;
 				setIcon(remove, 'trash-2');
-			} else {
-				// Reading view: the label is a link that only jumps
-				const label = row.createEl('button', {
-					cls: 'aar-player-marker-label-static',
-					text: marker.label,
-				});
-				label.dataset.action = 'jump';
-				label.dataset.markerId = marker.id;
 			}
 		}
 	}
@@ -1409,14 +1414,6 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			);
 			new Notice('Could not copy timestamp link to the clipboard.');
 		}
-	}
-
-	/**
-	 * Formats a playback rate for the speed button (e.g. "1.5x").
-	 * @param rate - Playback rate multiplier
-	 */
-	private formatRate(rate: number): string {
-		return `${String(rate)}x`;
 	}
 
 	/**
