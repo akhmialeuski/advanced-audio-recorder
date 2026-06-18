@@ -92,6 +92,23 @@ export class EnhancedPlayerRegistrar {
 			},
 			{ capture: true },
 		);
+
+		// Keep each recording's marker sidecar attached to the file: move
+		// it on rename/move and remove it on delete
+		this.plugin.registerEvent(
+			this.app.vault.on('rename', (file, oldPath) => {
+				if (file instanceof TFile && isAudioFile(file)) {
+					void this.markerStore.handleRename(oldPath, file.path);
+				}
+			}),
+		);
+		this.plugin.registerEvent(
+			this.app.vault.on('delete', (file) => {
+				if (file instanceof TFile && isAudioFile(file)) {
+					void this.markerStore.handleDelete(file.path);
+				}
+			}),
+		);
 	}
 
 	/**

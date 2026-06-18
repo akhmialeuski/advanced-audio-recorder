@@ -188,7 +188,9 @@ With **Markers and chapters** enabled, each recording can carry per-file **bookm
 - **Previous / next chapter** buttons navigate between chapter boundaries.
 - **Right-click the player** to add a marker or chapter, or copy a timestamp link, **at the clicked position** — alongside the usual audio file actions (info, convert, split, delete).
 
-Markers are stored in a single `player-markers.json` index inside the plugin folder, keyed by the recording's path, so your vault stays free of sidecar files. (Moving or renaming the audio file currently orphans its markers.)
+Adding, renaming, and deleting markers is available while **editing** the note (Live Preview). In **Reading view** the markers and chapters are read-only — they are shown and remain clickable to jump, but cannot be edited.
+
+Markers are stored in a sidecar file next to each recording (for example `recording.webm.markers.json`). Because the sidecar lives in your vault, markers survive a plugin reinstall and travel with the vault; renaming, moving, or deleting the recording moves or removes its sidecar automatically, so markers stay attached.
 
 ### Timecode links
 
@@ -310,7 +312,7 @@ The plugin keeps an automatic backup of its settings in `data.json.bak` next to 
 | **Show time display** | Show elapsed and total time. | On |
 | **Loop by default** | Start new players with looping enabled. | Off |
 | **Timecode links** | Enable `#t=` links that seek a player, plus the player's "copy timestamp link" button. | On |
-| **Markers and chapters** | Add per-file bookmarks and chapters. Enabling it reveals the options below. Stored in the plugin folder, not the vault. | On |
+| **Markers and chapters** | Add per-file bookmarks and chapters. Enabling it reveals the options below. Stored in a sidecar file next to each recording. | On |
 | **Show marker list** | List markers and chapters below the player with jump, rename, and delete actions. | On |
 | **Chapter navigation** | Show previous / next chapter buttons. | On |
 

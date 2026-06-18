@@ -42,9 +42,6 @@ const SETTINGS_DATA_FILE = 'data.json';
 /** Backup file name for settings, stored next to data.json. */
 const SETTINGS_BACKUP_FILE = 'data.json.bak';
 
-/** Index file storing per-recording player markers and chapters. */
-const MARKER_INDEX_FILE = 'player-markers.json';
-
 /**
  * Result of reading the stored settings from disk.
  */
@@ -147,10 +144,7 @@ export default class AudioRecorderPlugin extends Plugin {
 			this,
 			this.app,
 			() => this.settings,
-			new MarkerStore(
-				this.app,
-				this.getPluginFilePath(MARKER_INDEX_FILE),
-			),
+			new MarkerStore(this.app),
 		);
 		this.playerRegistrar.register();
 
