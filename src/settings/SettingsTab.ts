@@ -163,7 +163,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			);
 		}
 
-		// ── Audio input ──────────────────────────────────────────────
+		// Audio input
 		new Setting(containerEl).setName('Audio input').setHeading();
 
 		new Setting(containerEl)
@@ -197,7 +197,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				});
 			});
 
-		// ── Output format ───────────────────────────────────────────
+		// Output format
 		new Setting(containerEl).setName('Output format').setHeading();
 
 		const supportedFormats = this.getSupportedFormats();
@@ -294,7 +294,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				});
 			});
 
-		// ── File storage ──────────────────────────────────────────
+		// File storage
 		new Setting(containerEl).setName('File storage').setHeading();
 
 		new Setting(containerEl)
@@ -377,7 +377,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		// ── Audio splitting ───────────────────────────────────────
+		// Audio splitting
 		new Setting(containerEl).setName('Audio splitting').setHeading();
 
 		new Setting(containerEl)
@@ -459,7 +459,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		// ── Multi-track recording ─────────────────────────────────
+		// Multi-track recording
 		new Setting(containerEl).setName('Multi-track recording').setHeading();
 
 		new Setting(containerEl)
@@ -542,10 +542,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			}
 		}
 
-		// ── Audio player ───────────────────────────────────────────
+		// Audio player
 		this.renderAudioPlayerSettings(containerEl);
 
-		// ── Diagnostics ────────────────────────────────────────────
+		// Diagnostics
 		new Setting(containerEl).setName('Diagnostics').setHeading();
 
 		const testContainer = containerEl.createDiv();

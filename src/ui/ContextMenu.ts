@@ -16,10 +16,7 @@ import {
 import type { MarkdownFileInfo } from 'obsidian';
 import type { MenuItem } from 'obsidian';
 import { AUDIO_EXTENSIONS } from '../constants';
-import {
-	PLAYER_ACTIONS_PROP,
-	type PlayerEmbedElement,
-} from '../player/playerEmbedActions';
+import { getPlayerEmbedActions } from '../player/playerEmbedActions';
 import type { MarkerKind } from '../player/markers/markerModel';
 import { getAudioFileInfo } from '../utils/AudioFileAnalyzer';
 import { AudioFileInfoModal } from './AudioFileInfoModal';
@@ -187,7 +184,7 @@ export class ContextMenu {
 		embed: HTMLElement,
 		event: MouseEvent,
 	): void {
-		const actions = (embed as PlayerEmbedElement)[PLAYER_ACTIONS_PROP];
+		const actions = getPlayerEmbedActions(embed);
 		if (!actions) {
 			return;
 		}

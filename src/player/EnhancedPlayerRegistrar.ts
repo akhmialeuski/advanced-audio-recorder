@@ -15,7 +15,7 @@ import {
 	type AudioRecorderSettings,
 } from '../settings/Settings';
 import { AudioPlayerRegistry } from './AudioPlayerRegistry';
-import { WaveformPeakCache } from './WaveformData';
+import { WaveformPeakCache, SharedAudioDecoder } from './WaveformData';
 import { AudioPlayer } from './AudioPlayer';
 import { parseAudioLinkTarget, isAudioFile } from './timecodeLinks';
 import type { MarkerStore } from './markers/MarkerStore';
@@ -29,6 +29,8 @@ const ENHANCED_FLAG = 'aarEnhanced';
 export class EnhancedPlayerRegistrar {
 	private readonly registry = new AudioPlayerRegistry();
 	private readonly peakCache = new WaveformPeakCache();
+	/** One AudioContext shared by every player for waveform decoding. */
+	private readonly decoder = new SharedAudioDecoder();
 
 	/**
 	 * @param plugin - Owning plugin (for registration lifecycle)
@@ -53,7 +55,7 @@ export class EnhancedPlayerRegistrar {
 				return;
 			}
 			const embeds = Array.from(
-				el.querySelectorAll<HTMLElement>('span.internal-embed'),
+				el.querySelectorAll<HTMLElement>('.internal-embed'),
 			);
 			for (const embed of embeds) {
 				this.tryEnhanceEmbed(embed, ctx);
@@ -78,6 +80,10 @@ export class EnhancedPlayerRegistrar {
 		this.registry.clear();
 		this.peakCache.clear();
 		this.markerStore.clearCache();
+		void this.decoder.close().catch(() => {
+			// Closing a context that never opened or already failed is
+			// non-fatal during teardown
+		});
 	}
 
 	/**
@@ -113,6 +119,7 @@ export class EnhancedPlayerRegistrar {
 			resolvePlayerSettings(this.getSettings()),
 			this.registry,
 			this.peakCache,
+			this.decoder,
 			this.markerStore,
 			{ startSeconds, sourcePath: ctx.sourcePath },
 		);

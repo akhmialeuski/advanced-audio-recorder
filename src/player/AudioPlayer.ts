@@ -15,6 +15,8 @@ import {
 	PLUGIN_LOG_PREFIX,
 	PLAYER_WAVEFORM_BARS_PER_100PX,
 	PLAYER_PLAYBACK_RATE_PRESETS,
+	PLAYER_WAVEFORM_FALLBACK_PLAYED,
+	PLAYER_WAVEFORM_FALLBACK_UNPLAYED,
 } from '../constants';
 import { formatTimecode } from '../utils/TimeUtils';
 import type { ResolvedPlayerSettings } from '../settings/Settings';
@@ -22,6 +24,7 @@ import {
 	computeWaveformPeaks,
 	waveformCacheKey,
 	WaveformPeakCache,
+	type AudioDecoder,
 } from './WaveformData';
 import type {
 	AudioPlayerRegistry,
@@ -40,9 +43,9 @@ import {
 	type PlayerMarker,
 } from './markers/markerModel';
 import {
-	PLAYER_ACTIONS_PROP,
+	setPlayerEmbedActions,
+	clearPlayerEmbedActions,
 	type PlayerEmbedActions,
-	type PlayerEmbedElement,
 } from './playerEmbedActions';
 
 /**
@@ -113,6 +116,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * @param settings - Sanitized player settings
 	 * @param registry - Registry for timecode-link seeking
 	 * @param peakCache - Shared waveform peak cache
+	 * @param decoder - Shared audio decoder for waveform extraction
 	 * @param markerStore - Persistence for markers and chapters
 	 * @param options - Per-embed options (start offset, source note)
 	 */
@@ -123,6 +127,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		private readonly settings: ResolvedPlayerSettings,
 		private readonly registry: AudioPlayerRegistry,
 		private readonly peakCache: WaveformPeakCache,
+		private readonly decoder: AudioDecoder,
 		private readonly markerStore: MarkerStore,
 		private readonly options: AudioPlayerOptions,
 	) {
@@ -394,10 +399,9 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		this.seekEl.setAttribute('aria-valuemin', '0');
 		if (this.settings.showWaveform) {
 			this.seekEl.addClass('aar-player-seek-waveform');
-			this.seekEl.style.setProperty(
-				'--aar-waveform-height',
-				`${String(this.settings.waveformHeight)}px`,
-			);
+			this.seekEl.setCssProps({
+				'--aar-waveform-height': `${String(this.settings.waveformHeight)}px`,
+			});
 			this.canvas = this.seekEl.createEl('canvas', {
 				cls: 'aar-player-canvas',
 			});
@@ -501,8 +505,8 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 
 	/**
 	 * Wires pointer events for click/drag seeking on the seek area. The
-	 * move and release listeners live on the document so a drag that
-	 * leaves the player still tracks the pointer.
+	 * seek area captures the pointer on press so a drag that leaves it
+	 * still tracks, without a document-wide listener per player instance.
 	 */
 	private registerSeekPointer(): void {
 		this.registerDomEvent(this.seekEl, 'pointerdown', (event) => {
@@ -512,14 +516,23 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				return;
 			}
 			this.isSeeking = true;
+			// Route subsequent pointer events to the seek area even when
+			// the cursor leaves it during the drag
+			this.seekEl.setPointerCapture(event.pointerId);
 			this.seekToPointer(event);
 		});
-		this.registerDomEvent(activeDocument, 'pointermove', (event) => {
+		this.registerDomEvent(this.seekEl, 'pointermove', (event) => {
 			if (this.isSeeking) {
 				this.seekToPointer(event);
 			}
 		});
-		this.registerDomEvent(activeDocument, 'pointerup', () => {
+		this.registerDomEvent(this.seekEl, 'pointerup', (event) => {
+			this.isSeeking = false;
+			if (this.seekEl.hasPointerCapture(event.pointerId)) {
+				this.seekEl.releasePointerCapture(event.pointerId);
+			}
+		});
+		this.registerDomEvent(this.seekEl, 'pointercancel', () => {
 			this.isSeeking = false;
 		});
 	}
@@ -573,10 +586,9 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				this.togglePlay();
 			},
 		};
-		const el = this.containerEl as PlayerEmbedElement;
-		el[PLAYER_ACTIONS_PROP] = actions;
+		setPlayerEmbedActions(this.containerEl, actions);
 		this.register(() => {
-			delete el[PLAYER_ACTIONS_PROP];
+			clearPlayerEmbedActions(this.containerEl);
 		});
 	}
 
@@ -710,14 +722,15 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			this.drawWaveform();
 			return;
 		}
-		let audioContext: AudioContext | null = null;
 		try {
 			const data = await this.app.vault.readBinary(this.file);
 			if (!this.containerEl.isConnected) {
 				return;
 			}
-			audioContext = new AudioContext();
-			const audioBuffer = await audioContext.decodeAudioData(data);
+			const audioBuffer = await this.decoder.decode(data);
+			if (!this.containerEl.isConnected) {
+				return;
+			}
 			const channels: Float32Array[] = [];
 			for (let i = 0; i < audioBuffer.numberOfChannels; i++) {
 				channels.push(audioBuffer.getChannelData(i));
@@ -730,13 +743,9 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				`${PLUGIN_LOG_PREFIX} Failed to build waveform for ${this.file.path}:`,
 				error,
 			);
-			this.seekEl.addClass('aar-player-waveform-skipped');
-		} finally {
-			if (audioContext) {
-				void audioContext.close().catch(() => {
-					// Closing a context that already failed is non-fatal
-				});
-			}
+			// A read/decode failure is distinct from the size-limit skip,
+			// so the fallback bar must not claim the file is "too large"
+			this.seekEl.addClass('aar-player-waveform-unavailable');
 		}
 	}
 
@@ -814,10 +823,10 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		this.waveformColors = {
 			played:
 				styles.getPropertyValue('--aar-waveform-played').trim() ||
-				'#7c6fda',
+				PLAYER_WAVEFORM_FALLBACK_PLAYED,
 			unplayed:
 				styles.getPropertyValue('--aar-waveform-unplayed').trim() ||
-				'#b3b3b3',
+				PLAYER_WAVEFORM_FALLBACK_UNPLAYED,
 		};
 		return this.waveformColors;
 	}
@@ -834,7 +843,9 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				Number.isFinite(this.audio.duration) && this.audio.duration > 0
 					? this.audio.currentTime / this.audio.duration
 					: 0;
-			this.progressFillEl.style.width = `${String(fraction * 100)}%`;
+			this.progressFillEl.setCssProps({
+				'--aar-progress': `${String(fraction * 100)}%`,
+			});
 		}
 		const total = Number.isFinite(this.audio.duration)
 			? this.audio.duration
@@ -1070,7 +1081,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 						? 'aar-player-tick aar-player-tick-chapter'
 						: 'aar-player-tick aar-player-tick-bookmark',
 			});
-			tick.style.left = `${String(left)}%`;
+			tick.setCssProps({ '--aar-tick-left': `${String(left)}%` });
 			tick.dataset.time = String(marker.time);
 			tick.setAttribute(
 				'aria-label',

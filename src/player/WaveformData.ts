@@ -141,3 +141,52 @@ export class WaveformPeakCache {
 		this.entries.clear();
 	}
 }
+
+/**
+ * Decodes encoded audio bytes into an AudioBuffer for waveform
+ * extraction.
+ */
+export interface AudioDecoder {
+	/**
+	 * Decodes encoded audio file contents into samples.
+	 * @param data - Encoded audio file bytes
+	 */
+	decode(data: ArrayBuffer): Promise<AudioBuffer>;
+}
+
+/**
+ * Decodes audio through a single, lazily created AudioContext shared by
+ * every player. Browsers cap the number of concurrent AudioContexts (six
+ * in Chromium), so creating one per file would throw as soon as a note
+ * embeds several recordings; reusing one context avoids the cap and the
+ * per-file create/close overhead. The context is closed when the player
+ * feature is disposed.
+ */
+export class SharedAudioDecoder implements AudioDecoder {
+	private context: AudioContext | null = null;
+
+	/**
+	 * Decodes encoded audio bytes, creating the shared context on first
+	 * use. Decoding does not require a running context, so an autoplay
+	 * suspension does not affect it.
+	 * @param data - Encoded audio file bytes
+	 */
+	decode(data: ArrayBuffer): Promise<AudioBuffer> {
+		if (!this.context) {
+			this.context = new AudioContext();
+		}
+		return this.context.decodeAudioData(data);
+	}
+
+	/**
+	 * Closes the shared context, releasing its audio thread.
+	 */
+	async close(): Promise<void> {
+		if (!this.context) {
+			return;
+		}
+		const context = this.context;
+		this.context = null;
+		await context.close();
+	}
+}

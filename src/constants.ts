@@ -86,7 +86,7 @@ export const SPLIT_PART_SUFFIX_PATTERN = /^[A-Za-z0-9_-]+$/;
 export const SPLIT_PART_SUFFIX_RULE_TEXT =
 	'Part suffix may contain only letters, digits, hyphens, and underscores.';
 
-// ── Enhanced audio player ───────────────────────────────────────────
+// Enhanced audio player
 
 /** Default waveform height in pixels. */
 export const DEFAULT_PLAYER_WAVEFORM_HEIGHT = 48;
@@ -135,3 +135,15 @@ export const PLAYER_PLAYBACK_RATE_PRESETS = [
 
 /** Number of waveform bars drawn per 100 pixels of player width. */
 export const PLAYER_WAVEFORM_BARS_PER_100PX = 50;
+
+/**
+ * Fallback color for the played portion of the waveform, used only when
+ * the theme CSS variable `--aar-waveform-played` is unavailable.
+ */
+export const PLAYER_WAVEFORM_FALLBACK_PLAYED = '#7c6fda';
+
+/**
+ * Fallback color for the unplayed portion of the waveform, used only when
+ * the theme CSS variable `--aar-waveform-unplayed` is unavailable.
+ */
+export const PLAYER_WAVEFORM_FALLBACK_UNPLAYED = '#b3b3b3';

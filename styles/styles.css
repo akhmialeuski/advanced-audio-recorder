@@ -166,7 +166,7 @@ input.aar-input-invalid {
     border-color: var(--text-error);
 }
 
-/* ── Enhanced audio player ─────────────────────────────────────── */
+/* Enhanced audio player */
 .aar-player {
     /* Waveform colors derive from the theme so it matches any palette */
     --aar-waveform-played: var(--color-accent);
@@ -270,17 +270,25 @@ input.aar-input-invalid {
 
 .aar-player-progress-fill {
     height: 100%;
-    width: 0%;
+    width: var(--aar-progress, 0%);
     background-color: var(--color-accent);
     border-radius: 3px;
 }
 
-.aar-player-waveform-skipped::after {
-    content: 'Waveform skipped (file too large)';
+.aar-player-waveform-skipped::after,
+.aar-player-waveform-unavailable::after {
     display: block;
     font-size: 0.8em;
     color: var(--text-faint);
     padding-top: 4px;
+}
+
+.aar-player-waveform-skipped::after {
+    content: 'Waveform skipped (file too large)';
+}
+
+.aar-player-waveform-unavailable::after {
+    content: 'Waveform unavailable';
 }
 
 /* Marker ticks and chapter boundaries over the seek area */
@@ -294,6 +302,7 @@ input.aar-input-invalid {
     position: absolute;
     top: 0;
     bottom: 0;
+    left: var(--aar-tick-left, 0%);
     width: 2px;
     transform: translateX(-1px);
     pointer-events: auto;
