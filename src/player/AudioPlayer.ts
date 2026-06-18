@@ -64,6 +64,13 @@ const DURATION_PROBE_SECONDS = 1e101;
 const DURATION_PROBE_TIMEOUT_MS = 5000;
 
 /**
+ * Fallback delay before rendering the player when Obsidian never signals
+ * that the embed finished loading (e.g. a broken link, or a change to
+ * Obsidian's embed markup), so the player is never left unrendered.
+ */
+const EMBED_LOAD_FALLBACK_MS = 400;
+
+/**
  * Generates a short, collision-resistant marker id. Uses crypto.randomUUID
  * when available, falling back to a timestamp-and-random combination.
  */
@@ -136,10 +143,76 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	}
 
 	/**
-	 * Builds the player UI, wires events, and starts waveform
-	 * extraction. Runs when the render child is attached.
+	 * Defers the takeover until Obsidian has finished loading the embed,
+	 * then renders the player. Obsidian loads internal media embeds
+	 * asynchronously through its own loader, which owns the embed element
+	 * and overwrites a player built too early — notably for files it
+	 * treats as video (mp4, webm, mov, mkv, ogv). Rendering only after the
+	 * embed is populated lets empty() clear Obsidian's native element so
+	 * our player is the one that survives.
 	 */
 	onload(): void {
+		this.whenEmbedReady(() => {
+			this.renderPlayer();
+		});
+	}
+
+	/**
+	 * Reports whether Obsidian has populated the embed: it either set the
+	 * `is-loaded` class or injected a native media element.
+	 */
+	private isEmbedLoaded(): boolean {
+		return (
+			this.containerEl.hasClass('is-loaded') ||
+			this.containerEl.querySelector('audio, video') !== null
+		);
+	}
+
+	/**
+	 * Runs the takeover once Obsidian has populated the embed, or after a
+	 * short fallback delay if that signal never arrives. The observer and
+	 * timer are torn down on unload and after firing once.
+	 * @param run - Callback that performs the takeover
+	 */
+	private whenEmbedReady(run: () => void): void {
+		if (this.isEmbedLoaded()) {
+			run();
+			return;
+		}
+		let done = false;
+		let fallback = 0;
+		let observer: MutationObserver | null = null;
+		const finish = (): void => {
+			if (done) {
+				return;
+			}
+			done = true;
+			observer?.disconnect();
+			window.clearTimeout(fallback);
+			run();
+		};
+		observer = new MutationObserver(() => {
+			if (this.isEmbedLoaded()) {
+				finish();
+			}
+		});
+		observer.observe(this.containerEl, {
+			childList: true,
+			attributes: true,
+			attributeFilter: ['class'],
+		});
+		fallback = window.setTimeout(finish, EMBED_LOAD_FALLBACK_MS);
+		this.register(() => {
+			observer?.disconnect();
+			window.clearTimeout(fallback);
+		});
+	}
+
+	/**
+	 * Builds the player UI, wires events, and starts waveform extraction.
+	 * Runs once the embed is ready (see whenEmbedReady).
+	 */
+	private renderPlayer(): void {
 		this.containerEl.empty();
 		this.containerEl.addClass('aar-player');
 		// The embed element keeps Obsidian's own audio loader alive; an
