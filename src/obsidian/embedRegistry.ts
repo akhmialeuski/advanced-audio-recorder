@@ -42,15 +42,15 @@ export type EmbedCreator = (
 ) => EmbedComponent;
 
 /**
- * Internal embed registry shape. Every member is optional so the runtime
- * guard can detect an incompatible or removed API instead of crashing.
+ * Internal embed registry shape. Only the `embedByExtension` lookup map
+ * is used: overriding and restoring creators is done by writing it
+ * directly. Obsidian's registerExtension(s) methods are deliberately not
+ * called because they throw on extensions that are already registered
+ * (every media extension is), which would abort plugin load. The member
+ * is optional so the runtime guard can detect a removed/changed API.
  */
 export interface EmbedRegistry {
 	embedByExtension?: Record<string, EmbedCreator>;
-	registerExtension?(extension: string, creator: EmbedCreator): void;
-	registerExtensions?(extensions: string[], creator: EmbedCreator): void;
-	unregisterExtension?(extension: string): void;
-	unregisterExtensions?(extensions: string[]): void;
 }
 
 declare module 'obsidian' {
@@ -86,7 +86,7 @@ export class EmbedRegistryOverride {
 	constructor(private readonly registry: EmbedRegistry) {}
 
 	/**
-	 * Reports whether a registry exposes enough of the internal API to
+	 * Reports whether a registry exposes the extension map needed to
 	 * override and restore creators safely.
 	 * @param registry - Candidate registry (may be null)
 	 */
@@ -96,33 +96,28 @@ export class EmbedRegistryOverride {
 		return (
 			registry !== null &&
 			typeof registry.embedByExtension === 'object' &&
-			registry.embedByExtension !== null &&
-			(typeof registry.registerExtension === 'function' ||
-				typeof registry.registerExtensions === 'function')
+			registry.embedByExtension !== null
 		);
 	}
 
 	/**
 	 * Captures the current creators for the given extensions and installs
-	 * the replacement.
+	 * the replacement by writing the lookup map directly. Direct
+	 * assignment is intentional: registerExtensions throws on
+	 * already-registered extensions, and this mirrors what restore()
+	 * reverses.
 	 * @param extensions - File extensions to take over
 	 * @param creator - Replacement embed creator
 	 */
 	override(extensions: string[], creator: EmbedCreator): void {
+		const map = this.registry.embedByExtension;
+		if (!map) {
+			return;
+		}
 		this.extensions = [...extensions];
 		for (const ext of extensions) {
-			this.previous.set(ext, this.registry.embedByExtension?.[ext]);
-		}
-		if (typeof this.registry.registerExtensions === 'function') {
-			this.registry.registerExtensions(extensions, creator);
-		} else if (typeof this.registry.registerExtension === 'function') {
-			for (const ext of extensions) {
-				this.registry.registerExtension(ext, creator);
-			}
-		} else if (this.registry.embedByExtension) {
-			for (const ext of extensions) {
-				this.registry.embedByExtension[ext] = creator;
-			}
+			this.previous.set(ext, map[ext]);
+			map[ext] = creator;
 		}
 		this.active = true;
 	}

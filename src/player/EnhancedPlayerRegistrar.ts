@@ -119,18 +119,29 @@ export class EnhancedPlayerRegistrar {
 	 * when the internal API is unavailable.
 	 */
 	private setupEmbedRegistry(): void {
-		const registry = getEmbedRegistry(this.app);
-		if (!EmbedRegistryOverride.isAvailable(registry)) {
-			console.warn(
-				`${PLUGIN_LOG_PREFIX} Embed registry API unavailable; using the Markdown post-processor fallback (Reading view only).`,
+		// A failure here must never abort plugin load: fall back to the
+		// post-processor (Reading view) instead of crashing
+		try {
+			const registry = getEmbedRegistry(this.app);
+			if (!EmbedRegistryOverride.isAvailable(registry)) {
+				console.warn(
+					`${PLUGIN_LOG_PREFIX} Embed registry API unavailable; using the Markdown post-processor fallback (Reading view only).`,
+				);
+				return;
+			}
+			const override = new EmbedRegistryOverride(registry);
+			override.override(AUDIO_EXTENSIONS, (info, file, subpath) =>
+				this.createEmbed(info, file, subpath),
 			);
-			return;
+			this.embedOverride = override;
+		} catch (error) {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Failed to set up the embed registry; using the Markdown post-processor fallback.`,
+				error,
+			);
+			this.embedOverride?.restore();
+			this.embedOverride = null;
 		}
-		const override = new EmbedRegistryOverride(registry);
-		override.override(AUDIO_EXTENSIONS, (info, file, subpath) =>
-			this.createEmbed(info, file, subpath),
-		);
-		this.embedOverride = override;
 	}
 
 	/**
