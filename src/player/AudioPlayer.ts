@@ -9,7 +9,7 @@
  * @module player/AudioPlayer
  */
 
-import { MarkdownRenderChild, Notice, setIcon } from 'obsidian';
+import { MarkdownRenderChild, Menu, Notice, setIcon } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import {
 	PLUGIN_LOG_PREFIX,
@@ -121,6 +121,12 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * bailing then would drop the waveform and markers.
 	 */
 	private unloaded = false;
+	/**
+	 * Whether marker/chapter editing is allowed. True only in Live Preview
+	 * (inside the CodeMirror editor); Reading view is display-and-jump
+	 * only. Determined once the embed is attached (see whenAttached).
+	 */
+	private editable = true;
 	private resizeObserver: ResizeObserver | null = null;
 	private markersOverlayEl: HTMLElement | null = null;
 	private markerListEl: HTMLElement | null = null;
@@ -261,7 +267,15 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			void this.loadMarkers();
 		}
 
+		// Publish now with the default (editable) mode; applyMode
+		// re-publishes once the real mode is known
 		this.publishContextActions();
+
+		// Reading view vs Live Preview can only be told once the embed is
+		// attached, so the edit/read-only affordances are applied then
+		this.whenAttached(() => {
+			this.applyMode();
+		});
 
 		this.registry.register(this.file.path, this);
 		this.register(() => {
@@ -377,8 +391,8 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				text: this.formatRate(this.settings.defaultPlaybackRate),
 			});
 			this.speedButton.setAttribute('aria-label', 'Playback speed');
-			this.registerDomEvent(this.speedButton, 'click', () => {
-				this.cyclePlaybackRate();
+			this.registerDomEvent(this.speedButton, 'click', (event) => {
+				this.showSpeedMenu(event);
 			});
 		}
 
@@ -426,6 +440,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		loopButton.toggleClass('is-active', this.audio.loop);
 
 		if (this.settings.enableMarkers) {
+			// Adding markers/chapters is edit-only; hidden in reading view
 			this.createIconButton(
 				controls,
 				'bookmark-plus',
@@ -433,7 +448,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				() => {
 					void this.addMarkerAt(this.audio.currentTime, 'bookmark');
 				},
-			);
+			).addClass('aar-player-edit-only');
 			this.createIconButton(
 				controls,
 				'list-plus',
@@ -441,7 +456,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				() => {
 					void this.addMarkerAt(this.audio.currentTime, 'chapter');
 				},
-			);
+			).addClass('aar-player-edit-only');
 			if (this.settings.showChapterNav) {
 				this.createIconButton(
 					controls,
@@ -537,8 +552,11 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 					}
 				},
 			);
-			// Double-clicking the track drops a bookmark at that position
+			// Double-clicking the track drops a bookmark (edit mode only)
 			this.registerDomEvent(this.seekEl, 'dblclick', (event) => {
+				if (!this.editable) {
+					return;
+				}
 				const time = this.pointerTime(event);
 				if (time !== null) {
 					void this.addMarkerAt(time, 'bookmark');
@@ -662,13 +680,65 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	}
 
 	/**
+	 * Runs the callback once the embed is attached to the document (the
+	 * embed-registry path renders while still detached), so DOM-context
+	 * checks like the editor-mode probe are reliable. Gives up after a
+	 * short budget, leaving the editable default untouched.
+	 * @param run - Callback to run once attached
+	 */
+	private whenAttached(run: () => void): void {
+		if (this.containerEl.isConnected) {
+			run();
+			return;
+		}
+		let attempts = 90;
+		const tick = (): void => {
+			if (this.unloaded) {
+				return;
+			}
+			if (this.containerEl.isConnected) {
+				run();
+				return;
+			}
+			if (attempts-- <= 0) {
+				return;
+			}
+			window.requestAnimationFrame(tick);
+		};
+		window.requestAnimationFrame(tick);
+	}
+
+	/**
+	 * Resolves the edit/read-only mode from the attached DOM and applies
+	 * it: toggles the read-only class (hides edit-only controls via CSS),
+	 * rebuilds the marker UI for the mode, and re-publishes the context
+	 * actions so add-marker entries are gated.
+	 */
+	private applyMode(): void {
+		this.editable = this.detectEditable();
+		this.containerEl.toggleClass('aar-player-readonly', !this.editable);
+		this.renderMarkers();
+		this.publishContextActions();
+	}
+
+	/**
+	 * Reports whether the player is in an editable context. Live Preview
+	 * renders the embed inside the CodeMirror editor; Reading view does
+	 * not, so it is display-and-jump only.
+	 */
+	private detectEditable(): boolean {
+		return this.containerEl.closest('.cm-editor') !== null;
+	}
+
+	/**
 	 * Publishes position-aware actions on the embed element so the
 	 * context menu can offer marker, chapter, timestamp, and play/pause
 	 * actions on right-click. The reference is removed on unload.
 	 */
 	private publishContextActions(): void {
 		const actions: PlayerEmbedActions = {
-			markersEnabled: this.settings.enableMarkers,
+			// Adding markers/chapters from the context menu is edit-only
+			markersEnabled: this.settings.enableMarkers && this.editable,
 			timestampLinksEnabled: this.settings.enableTimestampLinks,
 			timeAtClientX: (clientX: number) => this.timeAtClientX(clientX),
 			addMarkerAtTime: (time: number, kind: MarkerKind) => {
@@ -1019,21 +1089,33 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	}
 
 	/**
-	 * Advances the playback rate to the next preset, wrapping around, and
-	 * reflects it on the speed button.
+	 * Opens a dropdown of the playback-rate presets at the speed button,
+	 * with the current rate checked, so the user can pick any speed (not
+	 * only step it upward).
+	 * @param event - The click event on the speed button
 	 */
-	private cyclePlaybackRate(): void {
-		const current = this.audio.playbackRate;
-		const index = PLAYER_PLAYBACK_RATE_PRESETS.findIndex(
-			(rate) => Math.abs(rate - current) < 1e-6,
-		);
-		const next =
-			PLAYER_PLAYBACK_RATE_PRESETS[
-				(index + 1) % PLAYER_PLAYBACK_RATE_PRESETS.length
-			];
-		this.audio.playbackRate = next;
+	private showSpeedMenu(event: MouseEvent): void {
+		const menu = new Menu();
+		for (const rate of PLAYER_PLAYBACK_RATE_PRESETS) {
+			menu.addItem((item) => {
+				item.setTitle(this.formatRate(rate))
+					.setChecked(Math.abs(this.audio.playbackRate - rate) < 1e-6)
+					.onClick(() => {
+						this.setPlaybackRate(rate);
+					});
+			});
+		}
+		menu.showAtMouseEvent(event);
+	}
+
+	/**
+	 * Applies a playback rate and reflects it on the speed button.
+	 * @param rate - Playback rate multiplier
+	 */
+	private setPlaybackRate(rate: number): void {
+		this.audio.playbackRate = rate;
 		if (this.speedButton) {
-			this.speedButton.setText(this.formatRate(next));
+			this.speedButton.setText(this.formatRate(rate));
 		}
 	}
 
@@ -1275,19 +1357,29 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				row.createSpan({ cls: 'aar-player-marker-kind' }),
 				marker.kind === 'chapter' ? 'list' : 'bookmark',
 			);
-			const label = row.createEl('input', {
-				cls: 'aar-player-marker-label',
-				attr: { type: 'text', value: marker.label },
-			});
-			label.dataset.action = 'rename';
-			label.dataset.markerId = marker.id;
-			const remove = row.createEl('button', {
-				cls: 'aar-player-marker-delete',
-				attr: { 'aria-label': 'Delete' },
-			});
-			remove.dataset.action = 'delete';
-			remove.dataset.markerId = marker.id;
-			setIcon(remove, 'trash-2');
+			if (this.editable) {
+				const label = row.createEl('input', {
+					cls: 'aar-player-marker-label',
+					attr: { type: 'text', value: marker.label },
+				});
+				label.dataset.action = 'rename';
+				label.dataset.markerId = marker.id;
+				const remove = row.createEl('button', {
+					cls: 'aar-player-marker-delete',
+					attr: { 'aria-label': 'Delete' },
+				});
+				remove.dataset.action = 'delete';
+				remove.dataset.markerId = marker.id;
+				setIcon(remove, 'trash-2');
+			} else {
+				// Reading view: the label only jumps, no rename/delete
+				const label = row.createEl('button', {
+					cls: 'aar-player-marker-label aar-player-marker-label-static',
+					text: marker.label,
+				});
+				label.dataset.action = 'jump';
+				label.dataset.markerId = marker.id;
+			}
 		}
 	}
 

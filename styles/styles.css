@@ -402,3 +402,19 @@ input.aar-input-invalid {
     width: 14px;
     height: 14px;
 }
+
+/* Read-only mode (reading view): hide editing affordances */
+.aar-player-readonly .aar-player-edit-only {
+    display: none;
+}
+
+/* Static, clickable marker label used in read-only mode */
+.aar-player-marker-label-static {
+    text-align: left;
+    cursor: pointer;
+    box-shadow: none;
+}
+
+.aar-player-marker-label-static:hover {
+    color: var(--text-accent);
+}
