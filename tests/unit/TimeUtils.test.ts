@@ -58,3 +58,30 @@ describe('parseTimecode', () => {
 		expect(parseTimecode('1:.5:3')).toBeNull();
 	});
 });
+
+describe('formatTimecode / parseTimecode — more edge cases', () => {
+	it('pads minutes only past an hour', () => {
+		expect(formatTimecode(599)).toBe('9:59');
+		expect(formatTimecode(3599)).toBe('59:59');
+		expect(formatTimecode(3600)).toBe('1:00:00');
+	});
+
+	it('rejects empty segments and stray colons', () => {
+		expect(parseTimecode(':30')).toBeNull();
+		expect(parseTimecode('1:')).toBeNull();
+		expect(parseTimecode('::')).toBeNull();
+		expect(parseTimecode('1::3')).toBeNull();
+	});
+
+	it('rejects negative and non-numeric parts', () => {
+		expect(parseTimecode('-5')).toBeNull();
+		expect(parseTimecode('1:-5')).toBeNull();
+		expect(parseTimecode('1a:30')).toBeNull();
+	});
+
+	it('allows a fractional component only in the last segment', () => {
+		expect(parseTimecode('1.5')).toBe(1.5);
+		expect(parseTimecode('0:0:1.25')).toBe(1.25);
+		expect(parseTimecode('1.5:30')).toBeNull();
+	});
+});

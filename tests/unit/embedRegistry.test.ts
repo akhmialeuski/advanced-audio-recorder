@@ -78,3 +78,30 @@ describe('EmbedRegistryOverride override/restore', () => {
 		}).not.toThrow();
 	});
 });
+
+describe('EmbedRegistryOverride — negative cases', () => {
+	it('getPrevious is undefined for a non-overridden extension', () => {
+		const override = new EmbedRegistryOverride(makeRegistry());
+		override.override(['mp3'], creator('ours'));
+		expect(override.getPrevious('wav')).toBeUndefined();
+	});
+
+	it('restore before override is a no-op', () => {
+		const original = creator('default');
+		const reg = makeRegistry({ mp3: original });
+		const override = new EmbedRegistryOverride(reg);
+		expect(() => {
+			override.restore();
+		}).not.toThrow();
+		expect(reg.embedByExtension.mp3).toBe(original);
+	});
+
+	it('override without a map does nothing', () => {
+		const reg = {} as EmbedRegistry;
+		const override = new EmbedRegistryOverride(reg);
+		expect(() => {
+			override.override(['mp3'], creator('ours'));
+		}).not.toThrow();
+		expect(override.getPrevious('mp3')).toBeUndefined();
+	});
+});

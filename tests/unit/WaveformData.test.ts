@@ -87,3 +87,60 @@ describe('WaveformPeakCache', () => {
 		expect(cache.get('a')).toBeUndefined();
 	});
 });
+
+describe('computeWaveformPeaks — edge and negative cases', () => {
+	it('uses absolute amplitude for negative samples', () => {
+		const peaks = computeWaveformPeaks([new Float32Array([-1, 0])], 2);
+		expect(peaks[0]).toBeCloseTo(1);
+		expect(peaks[1]).toBeCloseTo(0);
+	});
+
+	it('returns all zeros for silent input', () => {
+		expect(
+			computeWaveformPeaks([new Float32Array([0, 0, 0, 0])], 2),
+		).toEqual([0, 0]);
+	});
+
+	it('handles a bucket count larger than the frame count', () => {
+		const peaks = computeWaveformPeaks([new Float32Array([1, 0])], 8);
+		expect(peaks).toHaveLength(8);
+		expect(Math.max(...peaks)).toBeCloseTo(1);
+	});
+
+	it('averages an uneven number of channels', () => {
+		const peaks = computeWaveformPeaks(
+			[
+				new Float32Array([1]),
+				new Float32Array([0]),
+				new Float32Array([0.5]),
+			],
+			1,
+		);
+		expect(peaks[0]).toBeCloseTo(1);
+	});
+
+	it('returns empty for a negative bucket count', () => {
+		expect(computeWaveformPeaks([new Float32Array([1])], -3)).toEqual([]);
+	});
+});
+
+describe('WaveformPeakCache — eviction and overwrite', () => {
+	it('evicts when the bound is a single entry', () => {
+		const cache = new WaveformPeakCache(1);
+		cache.set('a', [1]);
+		cache.set('b', [2]);
+		expect(cache.get('a')).toBeUndefined();
+		expect(cache.get('b')).toEqual([2]);
+	});
+
+	it('overwriting a key does not grow the cache', () => {
+		const cache = new WaveformPeakCache(2);
+		cache.set('a', [1]);
+		cache.set('a', [9]);
+		cache.set('b', [2]);
+		cache.set('c', [3]);
+		expect(cache.get('a')).toBeUndefined();
+		expect(cache.get('b')).toEqual([2]);
+		expect(cache.get('c')).toEqual([3]);
+	});
+});

@@ -126,3 +126,98 @@ describe('serializeMarkers / parseMarkers', () => {
 		]);
 	});
 });
+
+describe('markerModel — edge and negative cases', () => {
+	it('sortMarkers is stable for equal times', () => {
+		const list = [marker('a', 5), marker('b', 5), marker('c', 5)];
+		expect(sortMarkers(list).map((m) => m.id)).toEqual(['a', 'b', 'c']);
+	});
+
+	it('addMarker keeps a single merged list sorted across kinds', () => {
+		let list: PlayerMarker[] = [];
+		list = addMarker(list, marker('c', 20, 'chapter'));
+		list = addMarker(list, marker('b', 5, 'bookmark'));
+		list = addMarker(list, marker('a', 1, 'chapter'));
+		expect(list.map((m) => m.id)).toEqual(['a', 'b', 'c']);
+	});
+
+	it('removeMarker on a missing id returns the list unchanged', () => {
+		const list = [marker('a', 1)];
+		expect(removeMarker(list, 'missing')).toEqual(list);
+	});
+
+	it('updateMarker on a missing id is a no-op', () => {
+		const list = [marker('a', 1)];
+		expect(updateMarker(list, 'missing', { label: 'x' })).toEqual(list);
+	});
+
+	it('chapterIndexAt handles boundaries and empty input', () => {
+		const sorted = sortMarkers([
+			marker('c1', 0, 'chapter'),
+			marker('c2', 60, 'chapter'),
+		]);
+		expect(chapterIndexAt(sorted, -1)).toBe(-1);
+		expect(chapterIndexAt(sorted, 0)).toBe(0);
+		expect(chapterIndexAt(sorted, 60)).toBe(1);
+		expect(chapterIndexAt([], 0)).toBe(-1);
+	});
+
+	it('nextChapterTime returns null at or past the last chapter', () => {
+		const sorted = sortMarkers([marker('c1', 10, 'chapter')]);
+		expect(nextChapterTime(sorted, 10)).toBeNull();
+		expect(nextChapterTime([], 0)).toBeNull();
+	});
+
+	it('previousChapterTime returns null before the first chapter', () => {
+		const sorted = sortMarkers([marker('c1', 30, 'chapter')]);
+		expect(previousChapterTime(sorted, 5)).toBeNull();
+		expect(previousChapterTime([], 5)).toBeNull();
+	});
+
+	it('parseMarkers drops entries with a non-finite or missing time', () => {
+		expect(
+			parseMarkers([
+				{ id: 'a', time: Number.NaN, kind: 'bookmark' },
+				{ id: 'b', time: Number.POSITIVE_INFINITY, kind: 'chapter' },
+				{ id: 'c', kind: 'bookmark' },
+			]),
+		).toEqual([]);
+	});
+
+	it('parseMarkers drops entries with a missing or non-string id', () => {
+		expect(
+			parseMarkers([
+				{ time: 1, kind: 'bookmark' },
+				{ id: 5, time: 1, kind: 'bookmark' },
+			]),
+		).toEqual([]);
+	});
+
+	it('parseMarkers coerces a non-string label to an empty string', () => {
+		const parsed = parseMarkers([
+			{ id: 'a', time: 1, kind: 'chapter', label: 42 },
+		]);
+		expect(parsed[0]?.label).toBe('');
+	});
+
+	it('parseMarkers keeps both kinds and rejects unknown kinds', () => {
+		const parsed = parseMarkers([
+			{ id: 'a', time: 1, kind: 'bookmark' },
+			{ id: 'b', time: 2, kind: 'chapter' },
+			{ id: 'c', time: 3, kind: 'segment' },
+		]);
+		expect(parsed.map((m) => m.id)).toEqual(['a', 'b']);
+	});
+
+	it('serializeMarkers strips unknown fields', () => {
+		const list = [
+			{ id: 'a', time: 1, label: 'A', kind: 'bookmark', extra: true },
+		] as unknown as PlayerMarker[];
+		expect(serializeMarkers(list)[0]).toEqual({
+			id: 'a',
+			time: 1,
+			label: 'A',
+			kind: 'bookmark',
+		});
+	});
+});
