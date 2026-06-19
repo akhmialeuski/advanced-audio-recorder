@@ -196,9 +196,11 @@ Markers are stored in a sidecar file next to each recording (for example `record
 
 A link with a `#t=` offset jumps a rendered player to that position instead of opening the file. The offset accepts plain seconds (`#t=90`), `m:ss` (`#t=1:30`), and `h:mm:ss` (`#t=1:02:03`). When a matching player is already visible in the note, clicking the link seeks it; otherwise the link behaves normally.
 
-### Waveform and large files
+### Audio, video, and unsupported files
 
-Drawing a waveform requires decoding the whole file into memory, so files above the configurable **Waveform file size limit** skip the waveform and fall back to a plain seek bar (still fully seekable). Turn off **Show waveform** to always use the plain seek bar and avoid decoding.
+The enhanced player takes over **audio-only** files. Files that carry video (for example a `.mp4` or `.webm` with a video track) are left to Obsidian's built-in player so the video can be watched, and any file the app cannot decode falls back to the built-in embed as well. The container is classified from the file's metadata rather than its extension, so an audio-only `.mp4` or `.webm` recording still gets the enhanced player.
+
+For supported audio the waveform is always drawn — there is no file-size limit. Turn off **Show waveform** to use the plain (still seekable) bar instead.
 
 > **Desktop and mobile**: the enhanced player works wherever Obsidian renders audio embeds. Waveform extraction relies on the Web Audio API available in the app.
 
@@ -302,7 +304,6 @@ The plugin keeps an automatic backup of its settings in `data.json.bak` next to 
 | **Enhanced audio player** | Replace the built-in audio embed with the enhanced player. Enabling it reveals the options below. Applies to notes rendered after the change. | Off |
 | **Show waveform** | Draw a waveform behind the seek bar. When off, a plain progress bar is shown and no decoding is performed. | On |
 | **Waveform height** | Height of the waveform in pixels (24–160). | 48 |
-| **Waveform file size limit** | Files larger than this (in megabytes, 1–500) skip the waveform and show a plain seek bar. | 50 |
 | **Show speed control** | Show the playback-speed button. | On |
 | **Default playback speed** | Speed applied to players when a note opens. | 1× |
 | **Show skip buttons** | Show skip-forward and skip-back buttons. | On |

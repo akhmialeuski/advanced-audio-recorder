@@ -226,7 +226,6 @@ describe('Settings', () => {
 				enhancedPlayerEnabled: true,
 				playerShowWaveform: false,
 				playerWaveformHeight: 64,
-				playerWaveformMaxFileSizeMb: 100,
 				playerShowSpeedControl: false,
 				playerDefaultPlaybackRate: 1.5,
 				playerShowSkipButtons: false,

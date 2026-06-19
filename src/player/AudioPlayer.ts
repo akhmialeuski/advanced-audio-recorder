@@ -892,15 +892,11 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	}
 
 	/**
-	 * Decodes the file and computes (or reuses cached) waveform peaks,
-	 * skipping files larger than the configured limit to avoid decoding
-	 * very large recordings into memory.
+	 * Decodes the file and computes (or reuses cached) waveform peaks. The
+	 * waveform is always attempted for supported audio (no size limit); a
+	 * decode failure falls back silently to the plain, still-seekable bar.
 	 */
 	private async loadWaveform(): Promise<void> {
-		if (this.file.stat.size > this.settings.waveformMaxFileSizeBytes) {
-			this.seekEl.addClass('aar-player-waveform-skipped');
-			return;
-		}
 		const bucketCount = this.computeBucketCount();
 		const cacheKey = waveformCacheKey(
 			this.file.path,
@@ -931,13 +927,12 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			this.peakCache.set(cacheKey, this.peaks);
 			this.redrawWaveformWhenSized();
 		} catch (error) {
+			// Leave the (still seekable) bar without a waveform; no visible
+			// error — the player keeps working
 			console.warn(
 				`${PLUGIN_LOG_PREFIX} Failed to build waveform for ${this.file.path}:`,
 				error,
 			);
-			// A read/decode failure is distinct from the size-limit skip,
-			// so the fallback bar must not claim the file is "too large"
-			this.seekEl.addClass('aar-player-waveform-unavailable');
 		}
 	}
 

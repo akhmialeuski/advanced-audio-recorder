@@ -284,22 +284,6 @@ input.aar-input-invalid {
     border-radius: 3px;
 }
 
-.aar-player-waveform-skipped::after,
-.aar-player-waveform-unavailable::after {
-    display: block;
-    font-size: 0.8em;
-    color: var(--text-faint);
-    padding-top: 4px;
-}
-
-.aar-player-waveform-skipped::after {
-    content: 'Waveform skipped (file too large)';
-}
-
-.aar-player-waveform-unavailable::after {
-    content: 'Waveform unavailable';
-}
-
 /* Marker ticks and chapter boundaries over the seek area */
 .aar-player-markers {
     position: absolute;

@@ -97,19 +97,6 @@ export const MIN_PLAYER_WAVEFORM_HEIGHT = 24;
 /** Maximum configurable waveform height in pixels. */
 export const MAX_PLAYER_WAVEFORM_HEIGHT = 160;
 
-/**
- * Default upper bound, in megabytes, on files the player decodes to
- * draw a waveform. Larger files render a plain seek bar instead, because
- * computing a waveform requires decoding the whole file into memory.
- */
-export const DEFAULT_PLAYER_WAVEFORM_MAX_FILE_MB = 50;
-
-/** Minimum configurable waveform file-size limit in megabytes. */
-export const MIN_PLAYER_WAVEFORM_MAX_FILE_MB = 1;
-
-/** Maximum configurable waveform file-size limit in megabytes. */
-export const MAX_PLAYER_WAVEFORM_MAX_FILE_MB = 500;
-
 /** Default seconds skipped by the player's skip-forward/back buttons. */
 export const DEFAULT_PLAYER_SKIP_SECONDS = 10;
 

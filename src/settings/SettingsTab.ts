@@ -34,8 +34,6 @@ import {
 	SPLIT_PART_SUFFIX_PATTERN,
 	MIN_PLAYER_WAVEFORM_HEIGHT,
 	MAX_PLAYER_WAVEFORM_HEIGHT,
-	MIN_PLAYER_WAVEFORM_MAX_FILE_MB,
-	MAX_PLAYER_WAVEFORM_MAX_FILE_MB,
 	MIN_PLAYER_SKIP_SECONDS,
 	MAX_PLAYER_SKIP_SECONDS,
 	PLAYER_PLAYBACK_RATE_PRESETS,
@@ -650,29 +648,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 						.setDynamicTooltip()
 						.onChange(async (value) => {
 							this.plugin.settings.playerWaveformHeight = value;
-							await this.plugin.saveSettings();
-						}),
-				);
-
-			new Setting(containerEl)
-				.setName('Waveform file size limit')
-				.setDesc(
-					'Files larger than this size in megabytes skip the waveform and show a plain seek bar, because drawing a waveform decodes the whole file into memory.',
-				)
-				.addSlider((slider) =>
-					slider
-						.setLimits(
-							MIN_PLAYER_WAVEFORM_MAX_FILE_MB,
-							MAX_PLAYER_WAVEFORM_MAX_FILE_MB,
-							1,
-						)
-						.setValue(
-							this.plugin.settings.playerWaveformMaxFileSizeMb,
-						)
-						.setDynamicTooltip()
-						.onChange(async (value) => {
-							this.plugin.settings.playerWaveformMaxFileSizeMb =
-								value;
 							await this.plugin.saveSettings();
 						}),
 				);

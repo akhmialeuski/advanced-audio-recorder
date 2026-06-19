@@ -34,14 +34,12 @@ describe('enhanced player default settings', () => {
 });
 
 describe('resolvePlayerSettings', () => {
-	it('passes through in-range values and converts MB to bytes', () => {
+	it('passes through in-range numeric values', () => {
 		const settings = mergeSettings({
-			playerWaveformMaxFileSizeMb: 10,
 			playerSkipSeconds: 15,
 			playerDefaultPlaybackRate: 1.5,
 		});
 		const resolved = resolvePlayerSettings(settings);
-		expect(resolved.waveformMaxFileSizeBytes).toBe(10 * 1024 * 1024);
 		expect(resolved.skipSeconds).toBe(15);
 		expect(resolved.defaultPlaybackRate).toBe(1.5);
 	});

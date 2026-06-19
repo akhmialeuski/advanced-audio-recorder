@@ -17,9 +17,6 @@ import {
 	DEFAULT_PLAYER_WAVEFORM_HEIGHT,
 	MIN_PLAYER_WAVEFORM_HEIGHT,
 	MAX_PLAYER_WAVEFORM_HEIGHT,
-	DEFAULT_PLAYER_WAVEFORM_MAX_FILE_MB,
-	MIN_PLAYER_WAVEFORM_MAX_FILE_MB,
-	MAX_PLAYER_WAVEFORM_MAX_FILE_MB,
 	DEFAULT_PLAYER_SKIP_SECONDS,
 	MIN_PLAYER_SKIP_SECONDS,
 	MAX_PLAYER_SKIP_SECONDS,
@@ -118,8 +115,6 @@ export interface AudioRecorderSettings {
 	playerShowWaveform: boolean;
 	/** Waveform height in pixels */
 	playerWaveformHeight: number;
-	/** Upper bound (MB) on files decoded to draw a waveform */
-	playerWaveformMaxFileSizeMb: number;
 	/** Show the playback-speed control */
 	playerShowSpeedControl: boolean;
 	/** Default playback rate applied to new players */
@@ -177,7 +172,6 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	enhancedPlayerEnabled: false,
 	playerShowWaveform: true,
 	playerWaveformHeight: DEFAULT_PLAYER_WAVEFORM_HEIGHT,
-	playerWaveformMaxFileSizeMb: DEFAULT_PLAYER_WAVEFORM_MAX_FILE_MB,
 	playerShowSpeedControl: true,
 	playerDefaultPlaybackRate: DEFAULT_PLAYER_PLAYBACK_RATE,
 	playerShowSkipButtons: true,
@@ -385,7 +379,6 @@ export function validateSettings(settings: AudioRecorderSettings): void {
 export interface ResolvedPlayerSettings {
 	showWaveform: boolean;
 	waveformHeight: number;
-	waveformMaxFileSizeBytes: number;
 	showSpeedControl: boolean;
 	defaultPlaybackRate: number;
 	showSkipButtons: boolean;
@@ -440,17 +433,6 @@ export function resolvePlayerSettings(
 				DEFAULT_PLAYER_WAVEFORM_HEIGHT,
 			),
 		),
-		waveformMaxFileSizeBytes:
-			Math.round(
-				clampNumber(
-					settings.playerWaveformMaxFileSizeMb,
-					MIN_PLAYER_WAVEFORM_MAX_FILE_MB,
-					MAX_PLAYER_WAVEFORM_MAX_FILE_MB,
-					DEFAULT_PLAYER_WAVEFORM_MAX_FILE_MB,
-				),
-			) *
-			1024 *
-			1024,
 		showSpeedControl: settings.playerShowSpeedControl,
 		defaultPlaybackRate: clampNumber(
 			settings.playerDefaultPlaybackRate,
