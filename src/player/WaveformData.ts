@@ -70,20 +70,53 @@ export function computeWaveformPeaks(
 /**
  * Builds a cache key that changes whenever the file content changes, so
  * peaks computed for an earlier revision are never reused after the
- * file is edited or replaced.
+ * file is edited or replaced. The key intentionally does not depend on the
+ * rendered width: peaks are cached at a fixed resolution and downsampled
+ * for display, so resizing never invalidates the cache.
  * @param path - Vault-relative file path
  * @param mtime - File modification time in milliseconds
  * @param size - File size in bytes
- * @param bucketCount - Bucket count the peaks were computed for
  * @returns Stable cache key
  */
 export function waveformCacheKey(
 	path: string,
 	mtime: number,
 	size: number,
-	bucketCount: number,
 ): string {
-	return `${path}:${String(mtime)}:${String(size)}:${String(bucketCount)}`;
+	return `${path}:${String(mtime)}:${String(size)}`;
+}
+
+/**
+ * Downsamples a high-resolution peak array to a smaller bar count by taking
+ * the max of each group, so the cached peaks can be drawn at any width
+ * without re-decoding. Returns the input unchanged when it already has at
+ * most `target` peaks.
+ * @param peaks - Source peaks (0..1)
+ * @param target - Desired number of bars
+ * @returns Downsampled peaks of length min(target, peaks.length)
+ */
+export function downsamplePeaks(peaks: number[], target: number): number[] {
+	if (target <= 0) {
+		return [];
+	}
+	if (peaks.length <= target) {
+		return peaks;
+	}
+	const result = new Array<number>(target).fill(0);
+	const perBucket = peaks.length / target;
+	for (let i = 0; i < target; i++) {
+		const start = Math.floor(i * perBucket);
+		const end =
+			i === target - 1 ? peaks.length : Math.floor((i + 1) * perBucket);
+		let max = 0;
+		for (let j = start; j < end; j++) {
+			if (peaks[j] > max) {
+				max = peaks[j];
+			}
+		}
+		result[i] = max;
+	}
+	return result;
 }
 
 /**

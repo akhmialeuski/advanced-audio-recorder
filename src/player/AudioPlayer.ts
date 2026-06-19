@@ -17,11 +17,13 @@ import {
 	PLAYER_PLAYBACK_RATE_PRESETS,
 	PLAYER_WAVEFORM_FALLBACK_PLAYED,
 	PLAYER_WAVEFORM_FALLBACK_UNPLAYED,
+	WAVEFORM_CACHE_BUCKETS,
 } from '../constants';
 import { formatTimecode } from '../utils/TimeUtils';
 import type { ResolvedPlayerSettings } from '../settings/Settings';
 import {
 	computeWaveformPeaks,
+	downsamplePeaks,
 	waveformCacheKey,
 	WaveformPeakCache,
 	type AudioDecoder,
@@ -169,7 +171,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		containerEl: HTMLElement,
 		private readonly app: App,
 		private readonly file: TFile,
-		private readonly settings: ResolvedPlayerSettings,
+		private settings: ResolvedPlayerSettings,
 		private readonly registry: AudioPlayerRegistry,
 		private readonly peakCache: WaveformPeakCache,
 		private readonly decoder: AudioDecoder,
@@ -253,13 +255,47 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	}
 
 	/**
-	 * Builds the player UI, wires events, and starts waveform extraction.
-	 * Runs once the embed is ready (see whenEmbedReady).
+	 * One-time setup: wires the audio element and events, registers with the
+	 * registry, and renders the UI. The audio element and its listeners are
+	 * created once here (never on a settings re-render) so playback is never
+	 * interrupted and listeners never duplicate. Runs once the embed is
+	 * ready (see whenEmbedReady).
 	 */
 	private renderPlayer(): void {
 		this.register(() => {
 			this.unloaded = true;
 		});
+
+		this.audio.preload = 'metadata';
+		this.audio.src = this.app.vault.getResourcePath(this.file);
+		this.registerAudioEvents();
+
+		this.registry.register(this.file.path, this);
+		this.register(() => {
+			this.registry.unregister(this.file.path, this);
+		});
+		this.register(() => {
+			this.audio.pause();
+			// Releasing the source lets the browser reclaim the decoder
+			this.audio.removeAttribute('src');
+			this.audio.load();
+		});
+
+		this.renderUi();
+	}
+
+	/**
+	 * Re-renders the player UI from the current settings. Re-runnable: called
+	 * on first render and again by applySettings when a window toggle
+	 * changes. It rebuilds only the DOM the player owns inside its container,
+	 * leaving the audio element (and playback) untouched — so toggling the
+	 * waveform or markers window applies instantly without a note re-render.
+	 */
+	private renderUi(): void {
+		// Tear down the re-creatable observer before rebuilding the seek area
+		this.resizeObserver?.disconnect();
+		this.resizeObserver = null;
+
 		this.containerEl.empty();
 		this.containerEl.addClass('aar-player');
 		// The embed element keeps Obsidian's own audio loader alive; an
@@ -267,8 +303,6 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		// only one shown
 		this.guardAgainstDefaultEmbed();
 
-		this.audio.preload = 'metadata';
-		this.audio.src = this.app.vault.getResourcePath(this.file);
 		this.audio.loop = this.settings.defaultLoop;
 		this.audio.playbackRate = this.settings.defaultPlaybackRate;
 
@@ -279,11 +313,14 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				cls: 'aar-player-marker-list',
 			});
 			this.registerMarkerListDelegation(this.markerListEl);
+		} else {
+			this.markerListEl = null;
 		}
-		this.registerAudioEvents();
 
 		if (this.settings.enableMarkers) {
 			void this.loadMarkers();
+		} else {
+			this.markers = [];
 		}
 
 		// Publish now with the default (read-only) mode; applyMode
@@ -298,20 +335,25 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			this.applyMode();
 		});
 
-		this.registry.register(this.file.path, this);
-		this.register(() => {
-			this.registry.unregister(this.file.path, this);
-		});
-		this.register(() => {
-			this.audio.pause();
-			// Releasing the source lets the browser reclaim the decoder
-			this.audio.removeAttribute('src');
-			this.audio.load();
-		});
-
 		if (this.settings.showWaveform) {
 			void this.loadWaveform();
 		}
+
+		this.updateProgress();
+	}
+
+	/**
+	 * Re-renders the player UI in place with new settings (e.g. after the
+	 * waveform or markers window is toggled). Playback continues
+	 * uninterrupted because the audio element is not rebuilt.
+	 * @param settings - The new render-ready player settings
+	 */
+	applySettings(settings: ResolvedPlayerSettings): void {
+		if (this.unloaded) {
+			return;
+		}
+		this.settings = settings;
+		this.renderUi();
 	}
 
 	/**
@@ -893,12 +935,12 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * decode failure falls back silently to the plain, still-seekable bar.
 	 */
 	private async loadWaveform(): Promise<void> {
-		const bucketCount = this.computeBucketCount();
+		// Cache at a fixed resolution independent of width, so resizing or
+		// switching view modes redraws from cache instead of re-decoding
 		const cacheKey = waveformCacheKey(
 			this.file.path,
 			this.file.stat.mtime,
 			this.file.stat.size,
-			bucketCount,
 		);
 		const cached = this.peakCache.get(cacheKey);
 		if (cached) {
@@ -919,7 +961,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			for (let i = 0; i < audioBuffer.numberOfChannels; i++) {
 				channels.push(audioBuffer.getChannelData(i));
 			}
-			this.peaks = computeWaveformPeaks(channels, bucketCount);
+			this.peaks = computeWaveformPeaks(channels, WAVEFORM_CACHE_BUCKETS);
 			this.peakCache.set(cacheKey, this.peaks);
 			this.redrawWaveformWhenSized();
 		} catch (error) {
@@ -995,7 +1037,9 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		const { played: playedColor, unplayed: unplayedColor } =
 			this.resolveWaveformColors();
 
-		const barCount = this.peaks.length;
+		// Downsample the cached high-res peaks to the current width
+		const bars = downsamplePeaks(this.peaks, this.computeBucketCount());
+		const barCount = bars.length;
 		const barWidth = cssWidth / barCount;
 		const gap = Math.min(1, barWidth * 0.2);
 		const playedFraction =
@@ -1005,7 +1049,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		const playedBars = playedFraction * barCount;
 
 		for (let i = 0; i < barCount; i++) {
-			const barHeight = Math.max(1, this.peaks[i] * (cssHeight - 2));
+			const barHeight = Math.max(1, bars[i] * (cssHeight - 2));
 			const x = i * barWidth;
 			const y = (cssHeight - barHeight) / 2;
 			ctx.fillStyle = i <= playedBars ? playedColor : unplayedColor;

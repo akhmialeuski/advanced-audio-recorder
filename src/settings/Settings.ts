@@ -105,6 +105,10 @@ export interface AudioRecorderSettings {
 	deleteSourceAfterSplit: boolean;
 	/** Replace the built-in audio embed with the enhanced player */
 	enhancedPlayerEnabled: boolean;
+	/** Draw the waveform window behind the seek bar */
+	playerShowWaveform: boolean;
+	/** Show the markers and chapters window below the player */
+	playerEnableMarkers: boolean;
 }
 
 /**
@@ -136,6 +140,8 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	splitPartSuffix: DEFAULT_SPLIT_PART_SUFFIX,
 	deleteSourceAfterSplit: false,
 	enhancedPlayerEnabled: false,
+	playerShowWaveform: true,
+	playerEnableMarkers: true,
 };
 
 export interface AudioRecorderSettingsInput extends Partial<
@@ -346,15 +352,17 @@ export interface ResolvedPlayerSettings {
 }
 
 /**
- * The fixed enhanced-player layout. The player's elements are not
- * user-configurable: every control is always shown with sensible defaults.
- * This is intentional — per-element toggles were removed so the player
- * behaves identically everywhere and needs no live re-rendering.
+ * Builds the render-ready player layout. The control buttons (speed, skip,
+ * volume, time, mute, loop, timecode links) are fixed and always shown; only
+ * the waveform window and the markers/chapters window are user-toggleable.
+ * @param settings - Current plugin settings
  * @returns Render-ready player settings
  */
-export function resolvePlayerSettings(): ResolvedPlayerSettings {
+export function resolvePlayerSettings(
+	settings: AudioRecorderSettings,
+): ResolvedPlayerSettings {
 	return {
-		showWaveform: true,
+		showWaveform: settings.playerShowWaveform,
 		waveformHeight: DEFAULT_PLAYER_WAVEFORM_HEIGHT,
 		showSpeedControl: true,
 		defaultPlaybackRate: DEFAULT_PLAYER_PLAYBACK_RATE,
@@ -365,8 +373,8 @@ export function resolvePlayerSettings(): ResolvedPlayerSettings {
 		defaultLoop: false,
 		enableTimestampLinks: true,
 		showMuteButton: true,
-		enableMarkers: true,
-		showMarkerList: true,
-		showChapterNav: true,
+		enableMarkers: settings.playerEnableMarkers,
+		showMarkerList: settings.playerEnableMarkers,
+		showChapterNav: settings.playerEnableMarkers,
 	};
 }

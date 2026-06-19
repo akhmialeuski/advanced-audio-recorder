@@ -224,6 +224,8 @@ describe('Settings', () => {
 				splitPartSuffix: 'chunk',
 				deleteSourceAfterSplit: true,
 				enhancedPlayerEnabled: true,
+				playerShowWaveform: false,
+				playerEnableMarkers: false,
 			};
 
 			const result = mergeSettings(fullSettings);

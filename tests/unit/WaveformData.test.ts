@@ -4,6 +4,7 @@
 
 import {
 	computeWaveformPeaks,
+	downsamplePeaks,
 	waveformCacheKey,
 	WaveformPeakCache,
 } from 'src/player/WaveformData';
@@ -50,13 +51,34 @@ describe('computeWaveformPeaks', () => {
 });
 
 describe('waveformCacheKey', () => {
-	it('changes when any component changes', () => {
-		const base = waveformCacheKey('a.wav', 100, 2000, 64);
-		expect(waveformCacheKey('a.wav', 100, 2000, 64)).toBe(base);
-		expect(waveformCacheKey('b.wav', 100, 2000, 64)).not.toBe(base);
-		expect(waveformCacheKey('a.wav', 101, 2000, 64)).not.toBe(base);
-		expect(waveformCacheKey('a.wav', 100, 2001, 64)).not.toBe(base);
-		expect(waveformCacheKey('a.wav', 100, 2000, 128)).not.toBe(base);
+	it('changes when the file content changes but not with width', () => {
+		const base = waveformCacheKey('a.wav', 100, 2000);
+		// Stable for the same file (width is not part of the key, so a
+		// resize or mode switch reuses the cached peaks)
+		expect(waveformCacheKey('a.wav', 100, 2000)).toBe(base);
+		expect(waveformCacheKey('b.wav', 100, 2000)).not.toBe(base);
+		expect(waveformCacheKey('a.wav', 101, 2000)).not.toBe(base);
+		expect(waveformCacheKey('a.wav', 100, 2001)).not.toBe(base);
+	});
+});
+
+describe('downsamplePeaks', () => {
+	it('returns the input unchanged when it already fits', () => {
+		const peaks = [0.1, 0.2, 0.3];
+		expect(downsamplePeaks(peaks, 4)).toBe(peaks);
+		expect(downsamplePeaks(peaks, 3)).toBe(peaks);
+	});
+
+	it('reduces to the target count by taking the max of each group', () => {
+		const peaks = [0.1, 0.9, 0.3, 0.2];
+		const result = downsamplePeaks(peaks, 2);
+		expect(result).toHaveLength(2);
+		expect(result[0]).toBeCloseTo(0.9);
+		expect(result[1]).toBeCloseTo(0.3);
+	});
+
+	it('returns empty for a non-positive target', () => {
+		expect(downsamplePeaks([0.1, 0.2], 0)).toEqual([]);
 	});
 });
 

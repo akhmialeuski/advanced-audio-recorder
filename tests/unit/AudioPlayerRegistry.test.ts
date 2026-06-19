@@ -6,6 +6,7 @@ import {
 	AudioPlayerRegistry,
 	type SeekablePlayer,
 } from 'src/player/AudioPlayerRegistry';
+import type { ResolvedPlayerSettings } from 'src/settings/Settings';
 
 /**
  * Builds a fake player that records seek calls and reports a fixed
@@ -14,10 +15,12 @@ import {
 function makePlayer(connected = true): SeekablePlayer & {
 	seeks: number[];
 	reloads: number;
+	applied: number;
 } {
 	return {
 		seeks: [] as number[],
 		reloads: 0,
+		applied: 0,
 		seekTo(seconds: number): void {
 			this.seeks.push(seconds);
 		},
@@ -26,6 +29,9 @@ function makePlayer(connected = true): SeekablePlayer & {
 		},
 		reloadMarkers(): void {
 			this.reloads += 1;
+		},
+		applySettings(_settings: ResolvedPlayerSettings): void {
+			this.applied += 1;
 		},
 	};
 }
@@ -109,5 +115,22 @@ describe('AudioPlayerRegistry', () => {
 		expect(() => {
 			registry.reloadMarkers('missing.wav', makePlayer());
 		}).not.toThrow();
+	});
+
+	it('broadcasts applySettings to every connected player, pruning the rest', () => {
+		const registry = new AudioPlayerRegistry();
+		const a = makePlayer();
+		const b = makePlayer();
+		const gone = makePlayer(false);
+		registry.register('rec.wav', a);
+		registry.register('rec.wav', b);
+		registry.register('other.wav', gone);
+
+		registry.applySettings({} as ResolvedPlayerSettings);
+
+		expect(a.applied).toBe(1);
+		expect(b.applied).toBe(1);
+		// Disconnected players are not updated (and are pruned)
+		expect(gone.applied).toBe(0);
 	});
 });

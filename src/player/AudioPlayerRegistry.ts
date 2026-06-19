@@ -1,9 +1,12 @@
 /**
  * Registry of live enhanced audio players, keyed by the vault path of
  * the file they play. Timecode links use it to seek an already-rendered
- * player instead of opening a fresh one.
+ * player instead of opening a fresh one, and a settings change uses it to
+ * re-apply the player layout in place (no view re-render).
  * @module player/AudioPlayerRegistry
  */
+
+import type { ResolvedPlayerSettings } from '../settings/Settings';
 
 /**
  * Minimal contract a player exposes to the registry. Kept narrow so the
@@ -16,6 +19,8 @@ export interface SeekablePlayer {
 	isConnected(): boolean;
 	/** Re-reads and re-renders this player's markers from the store. */
 	reloadMarkers(): void;
+	/** Re-renders the player UI in place with new settings. */
+	applySettings(settings: ResolvedPlayerSettings): void;
 }
 
 /**
@@ -109,6 +114,25 @@ export class AudioPlayerRegistry {
 		}
 		if (players.size === 0) {
 			this.playersByPath.delete(path);
+		}
+	}
+
+	/**
+	 * Re-applies the player layout to every connected player in place, so a
+	 * settings change (e.g. toggling the waveform or markers window) takes
+	 * effect immediately without re-rendering the note. Disconnected players
+	 * are pruned in passing.
+	 * @param settings - The new render-ready player settings
+	 */
+	applySettings(settings: ResolvedPlayerSettings): void {
+		for (const players of this.playersByPath.values()) {
+			for (const player of [...players]) {
+				if (!player.isConnected()) {
+					players.delete(player);
+					continue;
+				}
+				player.applySettings(settings);
+			}
 		}
 	}
 

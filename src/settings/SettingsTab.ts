@@ -585,10 +585,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * Renders the enhanced audio player setting. Only the master toggle is
-	 * offered: the player's elements (waveform, speed, skip, volume, time,
-	 * mute, markers, chapters, timecode links) are fixed and always shown,
-	 * so there is nothing else to configure.
+	 * Renders the enhanced audio player settings: the master toggle plus the
+	 * two window toggles (waveform, markers/chapters). The control buttons
+	 * (speed, skip, volume, time, mute, loop, timecode links) are fixed.
 	 * @param containerEl - The settings container element
 	 */
 	private renderAudioPlayerSettings(containerEl: HTMLElement): void {
@@ -606,6 +605,36 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 						this.plugin.settings.enhancedPlayerEnabled = value;
 						await this.plugin.saveSettings();
 						this.display();
+					}),
+			);
+
+		if (!this.plugin.settings.enhancedPlayerEnabled) {
+			return;
+		}
+
+		new Setting(containerEl)
+			.setName('Show waveform')
+			.setDesc('Draw a waveform behind the seek bar.')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.playerShowWaveform)
+					.onChange(async (value) => {
+						this.plugin.settings.playerShowWaveform = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Markers and chapters')
+			.setDesc(
+				'Show the markers and chapters list below the player. Markers are stored next to the recording, not in your vault.',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.playerEnableMarkers)
+					.onChange(async (value) => {
+						this.plugin.settings.playerEnableMarkers = value;
+						await this.plugin.saveSettings();
 					}),
 			);
 	}

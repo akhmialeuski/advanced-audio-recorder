@@ -99,6 +99,13 @@ export const DEFAULT_PLAYER_SKIP_SECONDS = 10;
 /** Playback rate applied to new players. */
 export const DEFAULT_PLAYER_PLAYBACK_RATE = 1;
 
+/**
+ * Fixed waveform resolution decoded and cached per file, independent of the
+ * rendered width. The display downsamples this to the current width, so
+ * resizing or switching view modes never triggers a re-decode.
+ */
+export const WAVEFORM_CACHE_BUCKETS = 1024;
+
 /** Selectable playback-rate presets shown in the player and settings. */
 export const PLAYER_PLAYBACK_RATE_PRESETS = [
 	0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3,

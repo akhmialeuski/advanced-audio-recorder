@@ -176,19 +176,25 @@ export class EnhancedPlayerRegistrar {
 	}
 
 	/**
-	 * Applies a settings change. The only player setting that affects
-	 * rendering is the master enable toggle (the player's elements are
-	 * fixed), so a re-render is requested ONLY when that toggle flips. This
-	 * keeps unrelated settings changes — and the player itself — from
-	 * re-rendering open notes, which is what made the page lag.
+	 * Applies a settings change. Toggling the master enable flips which
+	 * component each embed is (native vs enhanced), so it needs a view
+	 * re-render — but only on the actual flip. Every other player setting
+	 * (the waveform and markers windows) is applied IN PLACE to the live
+	 * players, so it never re-renders the note. This split is what keeps
+	 * settings changes from lagging the page.
 	 */
 	refresh(): void {
 		const enabled = this.getSettings().enhancedPlayerEnabled;
-		if (enabled === this.lastEnabled) {
+		if (enabled !== this.lastEnabled) {
+			this.lastEnabled = enabled;
+			this.scheduleRerender();
 			return;
 		}
-		this.lastEnabled = enabled;
-		this.scheduleRerender();
+		if (enabled) {
+			this.registry.applySettings(
+				resolvePlayerSettings(this.getSettings()),
+			);
+		}
 	}
 
 	/**
@@ -314,7 +320,7 @@ export class EnhancedPlayerRegistrar {
 			info.containerEl,
 			this.app,
 			file,
-			resolvePlayerSettings(),
+			resolvePlayerSettings(this.getSettings()),
 			this.registry,
 			this.peakCache,
 			this.decoder,
@@ -400,7 +406,7 @@ export class EnhancedPlayerRegistrar {
 			embed,
 			this.app,
 			file,
-			resolvePlayerSettings(),
+			resolvePlayerSettings(this.getSettings()),
 			this.registry,
 			this.peakCache,
 			this.decoder,
