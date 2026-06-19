@@ -30,6 +30,7 @@ import {
 	getEmbedRegistry,
 	EmbedRegistryOverride,
 	type EmbedComponent,
+	type EmbedCreator,
 	type EmbedInfo,
 } from '../obsidian/embedRegistry';
 
@@ -175,27 +176,30 @@ export class EnhancedPlayerRegistrar {
 		file: TFile,
 		subpath: string,
 	): EmbedComponent {
-		if (this.getSettings().enhancedPlayerEnabled && isAudioFile(file)) {
-			return new EnhancedMediaEmbed(
-				info,
-				file,
-				subpath,
-				this.embedDeps(),
-			);
-		}
 		const previous = this.embedOverride?.getPrevious(file.extension);
-		if (previous) {
+		// Feature off: hand straight back to Obsidian's default
+		if (!this.getSettings().enhancedPlayerEnabled && previous) {
 			return previous(info, file, subpath);
 		}
-		// No default creator was captured (unexpected): render the enhanced
-		// player anyway so the embed is not left blank
-		return new EnhancedMediaEmbed(info, file, subpath, this.embedDeps());
+		// Feature on: the embed probes the file and mounts the enhanced
+		// player only for audio-only files, else the built-in embed (video
+		// / unsupported) via the captured default creator
+		return new EnhancedMediaEmbed(
+			info,
+			file,
+			subpath,
+			this.embedDeps(previous),
+		);
 	}
 
 	/**
-	 * Bundles the shared dependencies an embed needs to build a player.
+	 * Bundles the shared dependencies an embed needs, including the default
+	 * creator to fall back to for video and unsupported files.
+	 * @param fallbackCreator - Obsidian's captured default creator
 	 */
-	private embedDeps(): EnhancedMediaEmbedDeps {
+	private embedDeps(
+		fallbackCreator: EmbedCreator | undefined,
+	): EnhancedMediaEmbedDeps {
 		return {
 			app: this.app,
 			getSettings: this.getSettings,
@@ -203,6 +207,7 @@ export class EnhancedPlayerRegistrar {
 			peakCache: this.peakCache,
 			decoder: this.decoder,
 			markerStore: this.markerStore,
+			fallbackCreator,
 		};
 	}
 
