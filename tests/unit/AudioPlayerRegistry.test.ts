@@ -117,6 +117,47 @@ describe('AudioPlayerRegistry', () => {
 		}).not.toThrow();
 	});
 
+	it('shares one audio element across players of the same file', () => {
+		const registry = new AudioPlayerRegistry();
+		const first = registry.acquireAudio('rec.wav', 'app://rec');
+		const second = registry.acquireAudio('rec.wav', 'app://rec');
+
+		// Same element -> a player in either view mode controls one playback
+		expect(first.audio).toBe(second.audio);
+		expect(first.isNew).toBe(true);
+		expect(second.isNew).toBe(false);
+
+		expect(registry.acquireAudio('other.wav', 'app://o').audio).not.toBe(
+			first.audio,
+		);
+	});
+
+	it('keeps the audio alive across a mode switch, then frees it after the grace period', () => {
+		jest.useFakeTimers();
+		try {
+			const registry = new AudioPlayerRegistry();
+			const a = registry.acquireAudio('rec.wav', 'app://rec');
+			registry.acquireAudio('rec.wav', 'app://rec'); // second view mode
+
+			// One view unloads; the element must survive for the other
+			registry.releaseAudio('rec.wav');
+			jest.advanceTimersByTime(100);
+			expect(registry.acquireAudio('rec.wav', 'app://rec').audio).toBe(
+				a.audio,
+			);
+
+			// Now both remaining holders release -> after grace it is freed
+			registry.releaseAudio('rec.wav');
+			registry.releaseAudio('rec.wav');
+			jest.advanceTimersByTime(1000);
+			expect(registry.acquireAudio('rec.wav', 'app://rec').isNew).toBe(
+				true,
+			);
+		} finally {
+			jest.useRealTimers();
+		}
+	});
+
 	it('broadcasts applySettings to every connected player, pruning the rest', () => {
 		const registry = new AudioPlayerRegistry();
 		const a = makePlayer();

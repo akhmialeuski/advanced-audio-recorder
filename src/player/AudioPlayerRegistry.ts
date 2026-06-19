@@ -6,7 +6,19 @@
  * @module player/AudioPlayerRegistry
  */
 
+import { SHARED_AUDIO_GRACE_MS } from '../constants';
 import type { ResolvedPlayerSettings } from '../settings/Settings';
+
+/** A reference-counted audio element shared by every player of one file. */
+interface SharedAudio {
+	audio: HTMLAudioElement;
+	/** Number of live players currently bound to this element. */
+	refs: number;
+	/** Pending release timer id, or 0 when none is scheduled. */
+	releaseTimer: number;
+	/** Whether playback should resume if a player re-acquires during grace. */
+	resumeOnReacquire: boolean;
+}
 
 /**
  * Minimal contract a player exposes to the registry. Kept narrow so the
@@ -30,6 +42,76 @@ export interface SeekablePlayer {
  */
 export class AudioPlayerRegistry {
 	private readonly playersByPath = new Map<string, Set<SeekablePlayer>>();
+	/** One shared audio element per file path, so every view mode controls
+	 * the same playback (a player in Reading view and one in Live Preview are
+	 * never independent). */
+	private readonly audioByPath = new Map<string, SharedAudio>();
+
+	/**
+	 * Returns the shared audio element for a file, creating it on first use.
+	 * Every player for the same path gets the SAME element, so playing,
+	 * pausing or seeking from any view mode affects the one playback. A
+	 * re-acquire during the release grace period cancels the release and
+	 * resumes playback if it was running, making a mode switch seamless.
+	 * @param path - Vault-relative path of the file
+	 * @param src - Resource URL to play (used only when creating)
+	 * @returns The shared element and whether it was just created
+	 */
+	acquireAudio(
+		path: string,
+		src: string,
+	): { audio: HTMLAudioElement; isNew: boolean } {
+		const existing = this.audioByPath.get(path);
+		if (existing) {
+			if (existing.releaseTimer !== 0) {
+				window.clearTimeout(existing.releaseTimer);
+				existing.releaseTimer = 0;
+			}
+			existing.refs += 1;
+			if (existing.resumeOnReacquire) {
+				existing.resumeOnReacquire = false;
+				void existing.audio.play().catch(() => {
+					// Resume may be blocked; the user can press play
+				});
+			}
+			return { audio: existing.audio, isNew: false };
+		}
+		const audio = new Audio();
+		audio.preload = 'metadata';
+		audio.src = src;
+		this.audioByPath.set(path, {
+			audio,
+			refs: 1,
+			releaseTimer: 0,
+			resumeOnReacquire: false,
+		});
+		return { audio, isNew: true };
+	}
+
+	/**
+	 * Releases one player's hold on a file's shared audio. When the last
+	 * player lets go, playback is paused immediately (so no audio outlives a
+	 * closed note) but the element is kept for a short grace period, so a
+	 * view-mode switch can re-acquire and resume it instead of restarting.
+	 * @param path - Vault-relative path the audio was acquired under
+	 */
+	releaseAudio(path: string): void {
+		const entry = this.audioByPath.get(path);
+		if (!entry) {
+			return;
+		}
+		entry.refs -= 1;
+		if (entry.refs > 0) {
+			return;
+		}
+		entry.resumeOnReacquire = !entry.audio.paused;
+		entry.audio.pause();
+		entry.releaseTimer = window.setTimeout(() => {
+			entry.audio.removeAttribute('src');
+			entry.audio.load();
+			this.audioByPath.delete(path);
+		}, SHARED_AUDIO_GRACE_MS);
+	}
 
 	/**
 	 * Registers a player for a file path.
@@ -137,9 +219,19 @@ export class AudioPlayerRegistry {
 	}
 
 	/**
-	 * Drops every registration. Used when the feature is torn down.
+	 * Drops every registration and tears down all shared audio. Used when the
+	 * feature is torn down.
 	 */
 	clear(): void {
+		for (const entry of this.audioByPath.values()) {
+			if (entry.releaseTimer !== 0) {
+				window.clearTimeout(entry.releaseTimer);
+			}
+			entry.audio.pause();
+			entry.audio.removeAttribute('src');
+			entry.audio.load();
+		}
+		this.audioByPath.clear();
 		this.playersByPath.clear();
 	}
 }

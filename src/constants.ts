@@ -106,6 +106,14 @@ export const DEFAULT_PLAYER_PLAYBACK_RATE = 1;
  */
 export const WAVEFORM_CACHE_BUCKETS = 1024;
 
+/**
+ * Grace period before a shared audio element is released after its last
+ * player unloads. A view-mode switch unloads the old player and creates the
+ * new one within a frame or two, so this keeps the same audio element (and
+ * its playback) alive across the switch instead of stopping and restarting.
+ */
+export const SHARED_AUDIO_GRACE_MS = 500;
+
 /** Selectable playback-rate presets shown in the player and settings. */
 export const PLAYER_PLAYBACK_RATE_PRESETS = [
 	0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3,

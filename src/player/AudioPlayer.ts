@@ -120,7 +120,12 @@ export interface AudioPlayerOptions {
  * Renders and drives a single enhanced audio player instance.
  */
 export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
-	private readonly audio: HTMLAudioElement;
+	/** Shared per-file audio element, acquired from the registry on render so
+	 * every view mode controls the same playback. */
+	private audio!: HTMLAudioElement;
+	/** True when this player created the shared audio (applies the #t= start
+	 * offset; secondary players must not move shared playback). */
+	private ownsAudio = false;
 	private playButton!: HTMLElement;
 	private seekEl!: HTMLElement;
 	private canvas: HTMLCanvasElement | null = null;
@@ -180,7 +185,6 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		private readonly options: AudioPlayerOptions,
 	) {
 		super(containerEl);
-		this.audio = new Audio();
 	}
 
 	/**
@@ -267,19 +271,24 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			this.unloaded = true;
 		});
 
-		this.audio.preload = 'metadata';
-		this.audio.src = this.app.vault.getResourcePath(this.file);
+		// Bind to the file's shared audio element so every view mode controls
+		// the same playback; the registry releases it once the last player
+		// unloads
+		const { audio, isNew } = this.registry.acquireAudio(
+			this.file.path,
+			this.app.vault.getResourcePath(this.file),
+		);
+		this.audio = audio;
+		this.ownsAudio = isNew;
+		this.register(() => {
+			this.registry.releaseAudio(this.file.path);
+		});
+
 		this.registerAudioEvents();
 
 		this.registry.register(this.file.path, this);
 		this.register(() => {
 			this.registry.unregister(this.file.path, this);
-		});
-		this.register(() => {
-			this.audio.pause();
-			// Releasing the source lets the browser reclaim the decoder
-			this.audio.removeAttribute('src');
-			this.audio.load();
 		});
 
 		this.renderUi();
@@ -434,7 +443,10 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 
 		this.playButton = this.createIconButton(
 			controls,
-			'play',
+			// Reflect the shared audio's current state, so a player rendered
+			// while playback is already running (e.g. after a mode switch)
+			// shows the pause icon rather than a stale play icon
+			this.audio.paused ? 'play' : 'pause',
 			'Play / pause',
 			() => {
 				this.togglePlay();
@@ -929,6 +941,13 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * after the duration is known.
 	 */
 	private applyStartOffset(): void {
+		// Only the player that created the shared audio applies its #t= start;
+		// a secondary player (e.g. the other view mode) must not jump shared
+		// playback to its own offset
+		if (!this.ownsAudio) {
+			this.options.startSeconds = null;
+			return;
+		}
 		if (this.options.startSeconds === null) {
 			return;
 		}
