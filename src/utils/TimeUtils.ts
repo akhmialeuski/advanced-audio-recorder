@@ -15,22 +15,34 @@ export function delay(ms: number): Promise<void> {
 }
 
 /**
- * Formats a duration in seconds as a human-readable timecode. Durations
- * below one hour render as `m:ss`; one hour and above render as
- * `h:mm:ss`. Negative or non-finite inputs collapse to `0:00`.
- * @param totalSeconds - Duration in seconds
- * @returns Timecode string (e.g. "1:05" or "1:02:03")
+ * Formats a duration in seconds as a human-readable timecode. The width is
+ * chosen from `referenceSeconds` (defaults to the value itself), so a set of
+ * timecodes sharing one reference all render at the same width and line up:
+ * a reference of one hour or more forces `h:mm:ss` (e.g. `0:01:49`), below an
+ * hour uses `m:ss` (e.g. `12:23`). Negative or non-finite inputs collapse to
+ * the matching zero (`0:00` or `0:00:00`).
+ * @param totalSeconds - Duration in seconds to format
+ * @param referenceSeconds - Reference used to pick the format/width; defaults
+ *   to totalSeconds. Pass the total recording length so every marker aligns.
+ * @returns Timecode string (e.g. "12:23" or "0:01:49")
  */
-export function formatTimecode(totalSeconds: number): string {
+export function formatTimecode(
+	totalSeconds: number,
+	referenceSeconds: number = totalSeconds,
+): string {
+	const reference = Number.isFinite(referenceSeconds)
+		? referenceSeconds
+		: totalSeconds;
+	const showHours = Number.isFinite(reference) && reference >= 3600;
 	if (!Number.isFinite(totalSeconds) || totalSeconds < 0) {
-		return '0:00';
+		return showHours ? '0:00:00' : '0:00';
 	}
 	const rounded = Math.floor(totalSeconds);
 	const hours = Math.floor(rounded / 3600);
 	const minutes = Math.floor((rounded % 3600) / 60);
 	const seconds = rounded % 60;
 	const paddedSeconds = String(seconds).padStart(2, '0');
-	if (hours > 0) {
+	if (hours > 0 || showHours) {
 		const paddedMinutes = String(minutes).padStart(2, '0');
 		return `${String(hours)}:${paddedMinutes}:${paddedSeconds}`;
 	}

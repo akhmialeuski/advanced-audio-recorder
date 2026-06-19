@@ -27,6 +27,39 @@ describe('formatTimecode', () => {
 	});
 });
 
+describe('formatTimecode with a reference duration', () => {
+	it('forces h:mm:ss for every value when the recording is an hour or more', () => {
+		// Reference 1:07:20 -> all marker times align at h:mm:ss
+		const total = 4040;
+		expect(formatTimecode(109, total)).toBe('0:01:49');
+		expect(formatTimecode(1017, total)).toBe('0:16:57');
+		expect(formatTimecode(4028, total)).toBe('1:07:08');
+	});
+
+	it('keeps m:ss for every value when the recording is under an hour', () => {
+		const total = 743; // 12:23
+		expect(formatTimecode(5, total)).toBe('0:05');
+		expect(formatTimecode(125, total)).toBe('2:05');
+		expect(formatTimecode(743, total)).toBe('12:23');
+	});
+
+	it('collapses invalid input to the reference width', () => {
+		expect(formatTimecode(Number.NaN, 4040)).toBe('0:00:00');
+		expect(formatTimecode(-1, 4040)).toBe('0:00:00');
+		expect(formatTimecode(Number.NaN, 600)).toBe('0:00');
+	});
+
+	it('still shows hours when the value exceeds an hour despite a short reference', () => {
+		// Defensive: a value past an hour never loses its hours component
+		expect(formatTimecode(3661, 100)).toBe('1:01:01');
+	});
+
+	it('falls back to value-based formatting when the reference is not finite', () => {
+		expect(formatTimecode(65, Number.NaN)).toBe('1:05');
+		expect(formatTimecode(3661, Number.POSITIVE_INFINITY)).toBe('1:01:01');
+	});
+});
+
 describe('parseTimecode', () => {
 	it('parses a plain seconds count', () => {
 		expect(parseTimecode('90')).toBe(90);

@@ -1133,8 +1133,9 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			? this.audio.duration
 			: 0;
 		if (this.timeEl) {
+			// Format elapsed against the total so both sides share one width
 			this.timeEl.setText(
-				`${formatTimecode(this.audio.currentTime)} / ${formatTimecode(total)}`,
+				`${formatTimecode(this.audio.currentTime, total)} / ${formatTimecode(total, total)}`,
 			);
 		}
 		// Keep the slider's accessible value in sync for screen readers
@@ -1145,7 +1146,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		);
 		this.seekEl.setAttribute(
 			'aria-valuetext',
-			`${formatTimecode(this.audio.currentTime)} of ${formatTimecode(total)}`,
+			`${formatTimecode(this.audio.currentTime, total)} of ${formatTimecode(total, total)}`,
 		);
 		// Move the active-segment highlight as playback crosses boundaries
 		this.updateActiveMarker();
@@ -1464,15 +1465,21 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			this.editable,
 			this.knownDuration(),
 		);
+		// One reference width for every timestamp, from the recording length
+		// (falling back to the latest marker when the duration is unknown), so
+		// all rows line up: e.g. 0:01:49 / 1:07:08 for an hour-long recording
+		const reference =
+			this.knownDuration() ??
+			rows.reduce((max, row) => Math.max(max, row.time), 0);
 		for (const row of rows) {
 			const rowEl = this.markerListEl.createDiv({
 				cls: 'aar-player-marker-row',
 			});
 			this.markerRowEls.push(rowEl);
 			if (this.editable) {
-				this.buildEditableRow(rowEl, row);
+				this.buildEditableRow(rowEl, row, reference);
 			} else {
-				this.buildReadonlyRow(rowEl, row);
+				this.buildReadonlyRow(rowEl, row, reference);
 			}
 		}
 		this.updateActiveMarker();
@@ -1483,11 +1490,16 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * and delete button.
 	 * @param rowEl - The row element
 	 * @param row - Row model
+	 * @param referenceSeconds - Total duration used to align the timestamp
 	 */
-	private buildEditableRow(rowEl: HTMLElement, row: MarkerRow): void {
+	private buildEditableRow(
+		rowEl: HTMLElement,
+		row: MarkerRow,
+		referenceSeconds: number,
+	): void {
 		const jump = rowEl.createEl('button', {
 			cls: 'aar-player-marker-time',
-			text: formatTimecode(row.time),
+			text: formatTimecode(row.time, referenceSeconds),
 		});
 		jump.dataset.action = 'jump';
 		jump.dataset.markerId = row.id;
@@ -1520,8 +1532,13 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * shown on the right.
 	 * @param rowEl - The row element
 	 * @param row - Row model
+	 * @param referenceSeconds - Total duration used to align the timestamps
 	 */
-	private buildReadonlyRow(rowEl: HTMLElement, row: MarkerRow): void {
+	private buildReadonlyRow(
+		rowEl: HTMLElement,
+		row: MarkerRow,
+		referenceSeconds: number,
+	): void {
 		rowEl.addClass('aar-player-marker-row-clickable');
 		rowEl.dataset.action = 'jump';
 		rowEl.dataset.markerId = row.id;
@@ -1531,7 +1548,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		);
 		rowEl.createSpan({
 			cls: 'aar-player-marker-time',
-			text: formatTimecode(row.time),
+			text: formatTimecode(row.time, referenceSeconds),
 		});
 		setIcon(
 			rowEl.createSpan({ cls: 'aar-player-marker-kind' }),
@@ -1545,7 +1562,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			cls: 'aar-player-marker-segment',
 			text:
 				row.segmentSeconds !== null
-					? formatTimecode(row.segmentSeconds)
+					? formatTimecode(row.segmentSeconds, referenceSeconds)
 					: '',
 		});
 	}
