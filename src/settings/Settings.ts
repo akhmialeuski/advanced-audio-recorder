@@ -15,14 +15,8 @@ import {
 	SPLIT_PART_SUFFIX_PATTERN,
 	SPLIT_PART_SUFFIX_RULE_TEXT,
 	DEFAULT_PLAYER_WAVEFORM_HEIGHT,
-	MIN_PLAYER_WAVEFORM_HEIGHT,
-	MAX_PLAYER_WAVEFORM_HEIGHT,
 	DEFAULT_PLAYER_SKIP_SECONDS,
-	MIN_PLAYER_SKIP_SECONDS,
-	MAX_PLAYER_SKIP_SECONDS,
 	DEFAULT_PLAYER_PLAYBACK_RATE,
-	MIN_PLAYER_PLAYBACK_RATE,
-	MAX_PLAYER_PLAYBACK_RATE,
 } from '../constants';
 import { getDefaultDeviceId } from '../utils/DeviceUtils';
 
@@ -111,34 +105,6 @@ export interface AudioRecorderSettings {
 	deleteSourceAfterSplit: boolean;
 	/** Replace the built-in audio embed with the enhanced player */
 	enhancedPlayerEnabled: boolean;
-	/** Draw a waveform behind the player seek bar */
-	playerShowWaveform: boolean;
-	/** Waveform height in pixels */
-	playerWaveformHeight: number;
-	/** Show the playback-speed control */
-	playerShowSpeedControl: boolean;
-	/** Default playback rate applied to new players */
-	playerDefaultPlaybackRate: number;
-	/** Show the skip-forward / skip-back buttons */
-	playerShowSkipButtons: boolean;
-	/** Seconds skipped by the skip-forward / skip-back buttons */
-	playerSkipSeconds: number;
-	/** Show the volume control */
-	playerShowVolumeControl: boolean;
-	/** Show the elapsed / total time display */
-	playerShowTimeDisplay: boolean;
-	/** Loop playback by default */
-	playerDefaultLoop: boolean;
-	/** Enable timecode links (#t=) that seek the player */
-	playerEnableTimestampLinks: boolean;
-	/** Show a mute / unmute button */
-	playerShowMuteButton: boolean;
-	/** Enable per-file markers and chapters */
-	playerEnableMarkers: boolean;
-	/** Show the marker / chapter list below the player */
-	playerShowMarkerList: boolean;
-	/** Show previous / next chapter navigation buttons */
-	playerShowChapterNav: boolean;
 }
 
 /**
@@ -170,20 +136,6 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	splitPartSuffix: DEFAULT_SPLIT_PART_SUFFIX,
 	deleteSourceAfterSplit: false,
 	enhancedPlayerEnabled: false,
-	playerShowWaveform: true,
-	playerWaveformHeight: DEFAULT_PLAYER_WAVEFORM_HEIGHT,
-	playerShowSpeedControl: true,
-	playerDefaultPlaybackRate: DEFAULT_PLAYER_PLAYBACK_RATE,
-	playerShowSkipButtons: true,
-	playerSkipSeconds: DEFAULT_PLAYER_SKIP_SECONDS,
-	playerShowVolumeControl: true,
-	playerShowTimeDisplay: true,
-	playerDefaultLoop: false,
-	playerEnableTimestampLinks: true,
-	playerShowMuteButton: true,
-	playerEnableMarkers: true,
-	playerShowMarkerList: true,
-	playerShowChapterNav: true,
 };
 
 export interface AudioRecorderSettingsInput extends Partial<
@@ -394,68 +346,27 @@ export interface ResolvedPlayerSettings {
 }
 
 /**
- * Clamps a number into a range, falling back to a default when the
- * value is not finite (e.g. a hand-edited data.json wrote a string).
- * @param value - Raw value
- * @param min - Lower bound (inclusive)
- * @param max - Upper bound (inclusive)
- * @param fallback - Value used when the input is not finite
- * @returns Clamped, finite number
- */
-function clampNumber(
-	value: number,
-	min: number,
-	max: number,
-	fallback: number,
-): number {
-	if (!Number.isFinite(value)) {
-		return fallback;
-	}
-	return Math.min(max, Math.max(min, value));
-}
-
-/**
- * Produces sanitized enhanced-player settings from the stored values,
- * clamping every numeric field into its supported range.
- * @param settings - Current plugin settings
+ * The fixed enhanced-player layout. The player's elements are not
+ * user-configurable: every control is always shown with sensible defaults.
+ * This is intentional — per-element toggles were removed so the player
+ * behaves identically everywhere and needs no live re-rendering.
  * @returns Render-ready player settings
  */
-export function resolvePlayerSettings(
-	settings: AudioRecorderSettings,
-): ResolvedPlayerSettings {
+export function resolvePlayerSettings(): ResolvedPlayerSettings {
 	return {
-		showWaveform: settings.playerShowWaveform,
-		waveformHeight: Math.round(
-			clampNumber(
-				settings.playerWaveformHeight,
-				MIN_PLAYER_WAVEFORM_HEIGHT,
-				MAX_PLAYER_WAVEFORM_HEIGHT,
-				DEFAULT_PLAYER_WAVEFORM_HEIGHT,
-			),
-		),
-		showSpeedControl: settings.playerShowSpeedControl,
-		defaultPlaybackRate: clampNumber(
-			settings.playerDefaultPlaybackRate,
-			MIN_PLAYER_PLAYBACK_RATE,
-			MAX_PLAYER_PLAYBACK_RATE,
-			DEFAULT_PLAYER_PLAYBACK_RATE,
-		),
-		showSkipButtons: settings.playerShowSkipButtons,
-		skipSeconds: Math.round(
-			clampNumber(
-				settings.playerSkipSeconds,
-				MIN_PLAYER_SKIP_SECONDS,
-				MAX_PLAYER_SKIP_SECONDS,
-				DEFAULT_PLAYER_SKIP_SECONDS,
-			),
-		),
-		showVolumeControl: settings.playerShowVolumeControl,
-		showTimeDisplay: settings.playerShowTimeDisplay,
-		defaultLoop: settings.playerDefaultLoop,
-		enableTimestampLinks: settings.playerEnableTimestampLinks,
-		showMuteButton: settings.playerShowMuteButton,
-		enableMarkers: settings.playerEnableMarkers,
-		showMarkerList: settings.playerShowMarkerList,
-		showChapterNav: settings.playerShowChapterNav,
+		showWaveform: true,
+		waveformHeight: DEFAULT_PLAYER_WAVEFORM_HEIGHT,
+		showSpeedControl: true,
+		defaultPlaybackRate: DEFAULT_PLAYER_PLAYBACK_RATE,
+		showSkipButtons: true,
+		skipSeconds: DEFAULT_PLAYER_SKIP_SECONDS,
+		showVolumeControl: true,
+		showTimeDisplay: true,
+		defaultLoop: false,
+		enableTimestampLinks: true,
+		showMuteButton: true,
+		enableMarkers: true,
+		showMarkerList: true,
+		showChapterNav: true,
 	};
 }

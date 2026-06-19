@@ -95,8 +95,12 @@ function setup(enabled = true): {
 
 	const previewLeaf = {
 		view: viewStub('preview'),
+		rebuildView: jest.fn(),
 	} as unknown as WorkspaceLeaf;
-	const sourceLeaf = { view: viewStub('source') } as unknown as WorkspaceLeaf;
+	const sourceLeaf = {
+		view: viewStub('source'),
+		rebuildView: jest.fn(),
+	} as unknown as WorkspaceLeaf;
 	const getLeaves = jest.fn(() => [previewLeaf, sourceLeaf]);
 
 	const app = {
@@ -218,36 +222,44 @@ describe('EnhancedPlayerRegistrar embed creation', () => {
 	});
 });
 
-describe('EnhancedPlayerRegistrar applies settings by re-rendering both modes', () => {
-	it('re-renders open markdown views on refresh (reading and live preview alike)', async () => {
-		const { registrar, leaves, getLeaves } = setup(true);
+describe('EnhancedPlayerRegistrar re-renders only when needed', () => {
+	it('rebuilds open views when the master toggle flips', async () => {
+		const { registrar, leaves, getLeaves, settings } = setup(true);
 
+		// Flip the only render-affecting setting
+		settings.enhancedPlayerEnabled = false;
 		registrar.refresh();
 		await flush();
 
 		expect(getLeaves).toHaveBeenCalledWith('markdown');
-		// Reading view re-renders via previewMode; Live Preview via the
-		// current sub-view's set(get(), true) — the same single signal
-		const preview = leaves.preview.view as unknown as {
-			previewMode: { rerender: jest.Mock };
-		};
-		expect(preview.previewMode.rerender).toHaveBeenCalledWith(true);
+		// Both modes rebuild through the same path, which unloads the old
+		// embeds (so no stale media keeps playing)
+		expect(
+			(leaves.preview as unknown as { rebuildView: jest.Mock })
+				.rebuildView,
+		).toHaveBeenCalledTimes(1);
+		expect(
+			(leaves.source as unknown as { rebuildView: jest.Mock })
+				.rebuildView,
+		).toHaveBeenCalledTimes(1);
+	});
 
-		const source = leaves.source.view as unknown as {
-			currentMode: {
-				set: jest.Mock;
-				applyScroll: jest.Mock;
-			};
-		};
-		expect(source.currentMode.set).toHaveBeenCalledWith('content', true);
-		expect(source.currentMode.applyScroll).toHaveBeenCalledWith(7);
+	it('does NOT re-render when the enabled state is unchanged (no lag)', async () => {
+		const { registrar, getLeaves } = setup(true);
+
+		// A settings save that did not flip the toggle must not touch views
+		registrar.refresh();
+		registrar.refresh();
+		await flush();
+
+		expect(getLeaves).not.toHaveBeenCalled();
 	});
 
 	it('upgrades an audio-only container to enhanced by re-rendering after the probe', async () => {
 		probeMock.mockResolvedValue('audio');
 		const { creator, getLeaves } = setup(true);
 
-		// First render of an ambiguous container shows native and probes
+		// First render of a not-yet-probed file shows native and probes
 		creator(info, fileOf('mp4'), '');
 		expect(probeMock).toHaveBeenCalledTimes(1);
 

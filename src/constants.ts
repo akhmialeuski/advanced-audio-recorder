@@ -87,33 +87,17 @@ export const SPLIT_PART_SUFFIX_RULE_TEXT =
 	'Part suffix may contain only letters, digits, hyphens, and underscores.';
 
 // Enhanced audio player
+// The player's elements are fixed (not user-configurable); these are the
+// values it always renders with.
 
-/** Default waveform height in pixels. */
+/** Waveform height in pixels. */
 export const DEFAULT_PLAYER_WAVEFORM_HEIGHT = 48;
 
-/** Minimum configurable waveform height in pixels. */
-export const MIN_PLAYER_WAVEFORM_HEIGHT = 24;
-
-/** Maximum configurable waveform height in pixels. */
-export const MAX_PLAYER_WAVEFORM_HEIGHT = 160;
-
-/** Default seconds skipped by the player's skip-forward/back buttons. */
+/** Seconds skipped by the player's skip-forward/back buttons. */
 export const DEFAULT_PLAYER_SKIP_SECONDS = 10;
 
-/** Minimum configurable skip amount in seconds. */
-export const MIN_PLAYER_SKIP_SECONDS = 1;
-
-/** Maximum configurable skip amount in seconds. */
-export const MAX_PLAYER_SKIP_SECONDS = 60;
-
-/** Default playback rate applied to new players. */
+/** Playback rate applied to new players. */
 export const DEFAULT_PLAYER_PLAYBACK_RATE = 1;
-
-/** Minimum selectable playback rate. */
-export const MIN_PLAYER_PLAYBACK_RATE = 0.25;
-
-/** Maximum selectable playback rate. */
-export const MAX_PLAYER_PLAYBACK_RATE = 4;
 
 /** Selectable playback-rate presets shown in the player and settings. */
 export const PLAYER_PLAYBACK_RATE_PRESETS = [

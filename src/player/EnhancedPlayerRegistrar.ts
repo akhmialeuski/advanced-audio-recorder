@@ -79,6 +79,8 @@ export class EnhancedPlayerRegistrar {
 	private readonly mediaKindCache = new Map<string, MediaKind>();
 	/** File paths with a probe in flight, to avoid concurrent probes. */
 	private readonly probing = new Set<string>();
+	/** Last seen feature-enabled state, so refresh re-renders only on a flip. */
+	private lastEnabled = false;
 	/** Debounced re-render of open markdown views (settings + probe upgrades). */
 	private readonly scheduleRerender = debounce(
 		() => this.rerenderMarkdownViews(),
@@ -105,6 +107,7 @@ export class EnhancedPlayerRegistrar {
 	 * handlers. Safe to call once during plugin load.
 	 */
 	register(): void {
+		this.lastEnabled = this.getSettings().enhancedPlayerEnabled;
 		this.setupEmbedRegistry();
 
 		this.plugin.registerMarkdownPostProcessor((el, ctx) => {
@@ -173,11 +176,18 @@ export class EnhancedPlayerRegistrar {
 	}
 
 	/**
-	 * Re-evaluates every open view so settings changes (e.g. the player
-	 * toggle or any player setting) apply immediately, identically in
-	 * Reading view and Live Preview, without re-opening the note.
+	 * Applies a settings change. The only player setting that affects
+	 * rendering is the master enable toggle (the player's elements are
+	 * fixed), so a re-render is requested ONLY when that toggle flips. This
+	 * keeps unrelated settings changes — and the player itself — from
+	 * re-rendering open notes, which is what made the page lag.
 	 */
 	refresh(): void {
+		const enabled = this.getSettings().enhancedPlayerEnabled;
+		if (enabled === this.lastEnabled) {
+			return;
+		}
+		this.lastEnabled = enabled;
 		this.scheduleRerender();
 	}
 
@@ -304,7 +314,7 @@ export class EnhancedPlayerRegistrar {
 			info.containerEl,
 			this.app,
 			file,
-			resolvePlayerSettings(this.getSettings()),
+			resolvePlayerSettings(),
 			this.registry,
 			this.peakCache,
 			this.decoder,
@@ -314,11 +324,10 @@ export class EnhancedPlayerRegistrar {
 	}
 
 	/**
-	 * Re-renders every open markdown view through Obsidian's own pipeline,
-	 * which recreates embeds with the current settings. Reading view uses
-	 * previewMode.rerender; Live Preview re-sets the active sub-view's data
-	 * (preserving scroll). Using Obsidian's render path means the player
-	 * behaves identically in both modes — no in-place DOM surgery.
+	 * Rebuilds every open markdown view so embeds are recreated with the
+	 * current decision (native vs enhanced). Only called on the rare events
+	 * that change what an embed should be: the master toggle flipping, or a
+	 * probe revealing an audio-only file.
 	 */
 	private rerenderMarkdownViews(): void {
 		const leaves = this.app.workspace.getLeavesOfType('markdown');
@@ -328,8 +337,12 @@ export class EnhancedPlayerRegistrar {
 	}
 
 	/**
-	 * Re-renders a single markdown leaf in whichever mode it is showing.
-	 * @param leaf - Workspace leaf to re-render
+	 * Rebuilds a single markdown leaf. rebuildView fully recreates the view,
+	 * which unloads the old embeds — stopping any media they were playing —
+	 * and recreates them. This is the reliable path for Live Preview, where
+	 * merely re-setting the editor data leaves stale embeds running. Reading
+	 * view falls back to previewMode.rerender if rebuildView is unavailable.
+	 * @param leaf - Workspace leaf to rebuild
 	 */
 	private rerenderLeaf(leaf: WorkspaceLeaf): void {
 		const view = leaf.view;
@@ -337,16 +350,16 @@ export class EnhancedPlayerRegistrar {
 			return;
 		}
 		try {
-			if (view.getMode() === 'preview') {
-				view.previewMode.rerender(true);
+			const rebuildable = leaf as WorkspaceLeaf & {
+				rebuildView?: () => void;
+			};
+			if (typeof rebuildable.rebuildView === 'function') {
+				rebuildable.rebuildView();
 				return;
 			}
-			// Live Preview / source: re-set the active sub-view's data to
-			// rebuild its rendered widgets, restoring the scroll position
-			const mode = view.currentMode;
-			const scroll = mode.getScroll();
-			mode.set(mode.get(), true);
-			mode.applyScroll(scroll);
+			if (view.getMode() === 'preview') {
+				view.previewMode.rerender(true);
+			}
 		} catch (error) {
 			// One view failing to re-render must not stop the rest
 			console.error(
@@ -387,7 +400,7 @@ export class EnhancedPlayerRegistrar {
 			embed,
 			this.app,
 			file,
-			resolvePlayerSettings(this.getSettings()),
+			resolvePlayerSettings(),
 			this.registry,
 			this.peakCache,
 			this.decoder,
@@ -404,11 +417,9 @@ export class EnhancedPlayerRegistrar {
 	 * @param event - The captured click event
 	 */
 	private handleTimecodeClick(event: MouseEvent): void {
-		const settings = this.getSettings();
-		if (
-			!settings.enhancedPlayerEnabled ||
-			!settings.playerEnableTimestampLinks
-		) {
+		// Timecode links are part of the fixed player feature set; they work
+		// whenever the enhanced player is enabled.
+		if (!this.getSettings().enhancedPlayerEnabled) {
 			return;
 		}
 		const target = event.target as HTMLElement | null;

@@ -224,20 +224,6 @@ describe('Settings', () => {
 				splitPartSuffix: 'chunk',
 				deleteSourceAfterSplit: true,
 				enhancedPlayerEnabled: true,
-				playerShowWaveform: false,
-				playerWaveformHeight: 64,
-				playerShowSpeedControl: false,
-				playerDefaultPlaybackRate: 1.5,
-				playerShowSkipButtons: false,
-				playerSkipSeconds: 20,
-				playerShowVolumeControl: false,
-				playerShowTimeDisplay: false,
-				playerDefaultLoop: true,
-				playerEnableTimestampLinks: false,
-				playerShowMuteButton: false,
-				playerEnableMarkers: false,
-				playerShowMarkerList: false,
-				playerShowChapterNav: false,
 			};
 
 			const result = mergeSettings(fullSettings);
