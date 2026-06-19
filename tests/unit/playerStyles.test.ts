@@ -57,4 +57,14 @@ describe('read-only player styles', () => {
 		expect(active).not.toBeNull();
 		expect(active).toMatch(/background-color/);
 	});
+
+	it('frames the waveform in a padded bordered rectangle', () => {
+		const waveform = ruleBody('.aar-player-seek-waveform');
+		expect(waveform).not.toBeNull();
+		expect(waveform).toMatch(/border:/);
+		expect(waveform).toMatch(/border-radius:/);
+		expect(waveform).toMatch(/padding:/);
+		// content-box keeps the canvas height equal to the waveform height
+		expect(waveform).toMatch(/box-sizing:\s*content-box/);
+	});
 });
