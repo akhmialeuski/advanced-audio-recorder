@@ -36,4 +36,25 @@ describe('read-only player styles', () => {
 		expect(body).not.toBeNull();
 		expect(body).toMatch(/display:\s*none/);
 	});
+
+	it('left-aligned label fills the row so the segment sits at the right', () => {
+		const label = ruleBody('.aar-player .aar-player-marker-label-static');
+		expect(label).not.toBeNull();
+		expect(label).toMatch(/flex:\s*1/);
+
+		const segment = ruleBody('.aar-player-marker-segment');
+		expect(segment).not.toBeNull();
+	});
+
+	it('makes the whole read-only row a clickable jump target', () => {
+		const row = ruleBody('.aar-player-marker-row-clickable');
+		expect(row).not.toBeNull();
+		expect(row).toMatch(/cursor:\s*pointer/);
+	});
+
+	it('highlights the currently-playing segment row', () => {
+		const active = ruleBody('.aar-player-marker-row.is-active');
+		expect(active).not.toBeNull();
+		expect(active).toMatch(/background-color/);
+	});
 });

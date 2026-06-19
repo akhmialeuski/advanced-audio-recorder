@@ -3,6 +3,7 @@
  */
 
 import {
+	activeMarkerIndex,
 	addMarker,
 	bookmarks,
 	chapterIndexAt,
@@ -264,6 +265,46 @@ describe('markerRows — single source for both render modes', () => {
 			label: 'Intro',
 			kind: 'chapter',
 			actions: ['jump'],
+			segmentSeconds: null,
 		});
+	});
+
+	it('computes each segment length as the gap to the next marker', () => {
+		const rows = markerRows(
+			[marker('a', 0), marker('b', 5), marker('c', 12)],
+			false,
+		);
+		expect(rows.map((r) => r.segmentSeconds)).toEqual([5, 7, null]);
+	});
+
+	it('uses the track duration for the last segment when provided', () => {
+		const rows = markerRows([marker('a', 0), marker('b', 5)], false, 20);
+		expect(rows.map((r) => r.segmentSeconds)).toEqual([5, 15]);
+	});
+
+	it('leaves the last segment null when the duration is before the marker', () => {
+		const rows = markerRows([marker('a', 30)], false, 10);
+		expect(rows[0]?.segmentSeconds).toBeNull();
+	});
+});
+
+describe('activeMarkerIndex', () => {
+	const sorted = sortMarkers([
+		marker('a', 0),
+		marker('b', 5),
+		marker('c', 12),
+	]);
+
+	it('returns the last marker at or before the time', () => {
+		expect(activeMarkerIndex(sorted, 0)).toBe(0);
+		expect(activeMarkerIndex(sorted, 4)).toBe(0);
+		expect(activeMarkerIndex(sorted, 5)).toBe(1);
+		expect(activeMarkerIndex(sorted, 100)).toBe(2);
+	});
+
+	it('returns -1 before the first marker or for an empty list', () => {
+		const later = sortMarkers([marker('a', 3)]);
+		expect(activeMarkerIndex(later, 1)).toBe(-1);
+		expect(activeMarkerIndex([], 5)).toBe(-1);
 	});
 });

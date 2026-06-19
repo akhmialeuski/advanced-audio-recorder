@@ -32,14 +32,17 @@ import type {
 } from './AudioPlayerRegistry';
 import type { MarkerStore } from './markers/MarkerStore';
 import {
+	activeMarkerIndex,
 	addMarker,
 	chapters,
 	markerRows,
 	nextChapterTime,
 	previousChapterTime,
 	removeMarker,
+	sortMarkers,
 	updateMarker,
 	type MarkerKind,
+	type MarkerRow,
 	type PlayerMarker,
 } from './markers/markerModel';
 import { formatPlaybackRate, speedMenuItems } from './playbackRate';
@@ -70,6 +73,14 @@ const DURATION_PROBE_TIMEOUT_MS = 5000;
  * Obsidian's embed markup), so the player is never left unrendered.
  */
 const EMBED_LOAD_FALLBACK_MS = 400;
+
+/**
+ * Debounce before persisting a marker rename, so the rename is saved and
+ * synced to other views shortly after typing even when no change/blur
+ * event fires (e.g. toggling edit/preview by hotkey), without writing on
+ * every keystroke.
+ */
+const RENAME_DEBOUNCE_MS = 400;
 
 /**
  * Generates a short, collision-resistant marker id. Uses crypto.randomUUID
@@ -131,6 +142,10 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	private resizeObserver: ResizeObserver | null = null;
 	private markersOverlayEl: HTMLElement | null = null;
 	private markerListEl: HTMLElement | null = null;
+	/** Row elements of the marker list, in sorted order, for active highlight. */
+	private markerRowEls: HTMLElement[] = [];
+	/** Pending debounced marker-rename persist timer. */
+	private renameTimer = 0;
 	private muteButton: HTMLElement | null = null;
 	private markers: PlayerMarker[] = [];
 	/** Cached waveform colors; refreshed on load and on resize. */
@@ -1066,6 +1081,8 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			'aria-valuetext',
 			`${formatTimecode(this.audio.currentTime)} of ${formatTimecode(total)}`,
 		);
+		// Move the active-segment highlight as playback crosses boundaries
+		this.updateActiveMarker();
 	}
 
 	/**
@@ -1336,12 +1353,30 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				void this.deleteMarker(id);
 			}
 		});
+		// Persist a rename shortly after typing (debounced), so the change
+		// is saved and synced to other views even when no change/blur event
+		// fires (e.g. toggling edit/preview by hotkey)
+		this.registerDomEvent(listEl, 'input', (event) => {
+			const input = event.target as HTMLInputElement | null;
+			const id = input?.dataset.markerId;
+			if (input && id && input.dataset.action === 'rename') {
+				const value = input.value;
+				window.clearTimeout(this.renameTimer);
+				this.renameTimer = window.setTimeout(() => {
+					void this.renameMarker(id, value);
+				}, RENAME_DEBOUNCE_MS);
+			}
+		});
 		this.registerDomEvent(listEl, 'change', (event) => {
 			const input = event.target as HTMLInputElement | null;
 			const id = input?.dataset.markerId;
 			if (input && id && input.dataset.action === 'rename') {
+				window.clearTimeout(this.renameTimer);
 				void this.renameMarker(id, input.value);
 			}
+		});
+		this.register(() => {
+			window.clearTimeout(this.renameTimer);
 		});
 	}
 
@@ -1355,52 +1390,125 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			return;
 		}
 		this.markerListEl.empty();
+		this.markerRowEls = [];
 		// markerRows is the single source of truth: the same markers, one
 		// list ordered by time, in both modes; only the actions differ
-		for (const row of markerRows(this.markers, this.editable)) {
+		const rows = markerRows(
+			this.markers,
+			this.editable,
+			this.knownDuration(),
+		);
+		for (const row of rows) {
 			const rowEl = this.markerListEl.createDiv({
 				cls: 'aar-player-marker-row',
 			});
-			const jump = rowEl.createEl('button', {
-				cls: 'aar-player-marker-time',
-				text: formatTimecode(row.time),
-			});
-			jump.dataset.action = 'jump';
-			jump.dataset.markerId = row.id;
-			jump.setAttribute(
-				'aria-label',
-				row.kind === 'chapter' ? 'Jump to chapter' : 'Jump to marker',
-			);
-			setIcon(
-				rowEl.createSpan({ cls: 'aar-player-marker-kind' }),
-				row.kind === 'chapter' ? 'list' : 'bookmark',
-			);
-			if (row.actions.includes('rename')) {
-				const label = rowEl.createEl('input', {
-					cls: 'aar-player-marker-label',
-					attr: { type: 'text', value: row.label },
-				});
-				label.dataset.action = 'rename';
-				label.dataset.markerId = row.id;
+			this.markerRowEls.push(rowEl);
+			if (this.editable) {
+				this.buildEditableRow(rowEl, row);
 			} else {
-				// Read-only: the label is a link that only jumps
-				const label = rowEl.createEl('button', {
-					cls: 'aar-player-marker-label-static',
-					text: row.label,
-				});
-				label.dataset.action = 'jump';
-				label.dataset.markerId = row.id;
-			}
-			if (row.actions.includes('delete')) {
-				const remove = rowEl.createEl('button', {
-					cls: 'aar-player-marker-delete',
-					attr: { 'aria-label': 'Delete' },
-				});
-				remove.dataset.action = 'delete';
-				remove.dataset.markerId = row.id;
-				setIcon(remove, 'trash-2');
+				this.buildReadonlyRow(rowEl, row);
 			}
 		}
+		this.updateActiveMarker();
+	}
+
+	/**
+	 * Builds an editable marker row: jump time, kind icon, rename input,
+	 * and delete button.
+	 * @param rowEl - The row element
+	 * @param row - Row model
+	 */
+	private buildEditableRow(rowEl: HTMLElement, row: MarkerRow): void {
+		const jump = rowEl.createEl('button', {
+			cls: 'aar-player-marker-time',
+			text: formatTimecode(row.time),
+		});
+		jump.dataset.action = 'jump';
+		jump.dataset.markerId = row.id;
+		jump.setAttribute(
+			'aria-label',
+			row.kind === 'chapter' ? 'Jump to chapter' : 'Jump to marker',
+		);
+		setIcon(
+			rowEl.createSpan({ cls: 'aar-player-marker-kind' }),
+			row.kind === 'chapter' ? 'list' : 'bookmark',
+		);
+		const label = rowEl.createEl('input', {
+			cls: 'aar-player-marker-label',
+			attr: { type: 'text', value: row.label },
+		});
+		label.dataset.action = 'rename';
+		label.dataset.markerId = row.id;
+		const remove = rowEl.createEl('button', {
+			cls: 'aar-player-marker-delete',
+			attr: { 'aria-label': 'Delete' },
+		});
+		remove.dataset.action = 'delete';
+		remove.dataset.markerId = row.id;
+		setIcon(remove, 'trash-2');
+	}
+
+	/**
+	 * Builds a read-only marker row: the whole row is one jump target (no
+	 * button chrome), the label fills the width, and the segment length is
+	 * shown on the right.
+	 * @param rowEl - The row element
+	 * @param row - Row model
+	 */
+	private buildReadonlyRow(rowEl: HTMLElement, row: MarkerRow): void {
+		rowEl.addClass('aar-player-marker-row-clickable');
+		rowEl.dataset.action = 'jump';
+		rowEl.dataset.markerId = row.id;
+		rowEl.setAttribute(
+			'aria-label',
+			row.kind === 'chapter' ? 'Jump to chapter' : 'Jump to marker',
+		);
+		rowEl.createSpan({
+			cls: 'aar-player-marker-time',
+			text: formatTimecode(row.time),
+		});
+		setIcon(
+			rowEl.createSpan({ cls: 'aar-player-marker-kind' }),
+			row.kind === 'chapter' ? 'list' : 'bookmark',
+		);
+		rowEl.createSpan({
+			cls: 'aar-player-marker-label-static',
+			text: row.label,
+		});
+		rowEl.createSpan({
+			cls: 'aar-player-marker-segment',
+			text:
+				row.segmentSeconds !== null
+					? formatTimecode(row.segmentSeconds)
+					: '',
+		});
+	}
+
+	/**
+	 * Highlights the marker row whose segment contains the current
+	 * playback position, so the playing section is obvious and the
+	 * highlight moves as playback crosses marker boundaries.
+	 */
+	private updateActiveMarker(): void {
+		if (this.markerRowEls.length === 0) {
+			return;
+		}
+		const index = activeMarkerIndex(
+			sortMarkers(this.markers),
+			this.audio.currentTime,
+		);
+		this.markerRowEls.forEach((rowEl, i) => {
+			rowEl.toggleClass('is-active', i === index);
+		});
+	}
+
+	/**
+	 * Returns the track duration when known, otherwise null.
+	 */
+	private knownDuration(): number | null {
+		return Number.isFinite(this.audio.duration) && this.audio.duration > 0
+			? this.audio.duration
+			: null;
 	}
 
 	/**

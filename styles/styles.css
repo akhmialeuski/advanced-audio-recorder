@@ -344,6 +344,8 @@ input.aar-input-invalid {
     display: flex;
     align-items: center;
     gap: 6px;
+    padding: 1px 4px;
+    border-radius: 4px;
 }
 
 .aar-player-marker-kind {
@@ -408,9 +410,9 @@ input.aar-input-invalid {
     display: none;
 }
 
-/* Static, clickable marker label used in read-only mode (link, not button).
-   Scoped under .aar-player to outrank the reading-view button styling that
-   would otherwise centre the text. */
+/* Read-only marker label: left-aligned text that fills the row. Scoped
+   under .aar-player to outrank reading-view button text-align so the text
+   stays at the left. */
 .aar-player .aar-player-marker-label-static {
     flex: 1;
     min-width: 0;
@@ -418,14 +420,32 @@ input.aar-input-invalid {
     text-align: left;
     justify-content: flex-start;
     font-size: 0.85em;
-    background: transparent;
-    border: none;
-    box-shadow: none;
     color: var(--text-normal);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Segment length shown at the right of a read-only row */
+.aar-player-marker-segment {
+    padding-left: 8px;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.8em;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+/* The whole read-only row is a single jump target */
+.aar-player-marker-row-clickable {
     cursor: pointer;
 }
 
-.aar-player .aar-player-marker-label-static:hover {
-    color: var(--text-accent);
-    text-decoration: underline;
+.aar-player-marker-row-clickable:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+/* Currently-playing segment: highlighted with an accent edge */
+.aar-player-marker-row.is-active {
+    background-color: var(--background-modifier-hover);
+    box-shadow: inset 2px 0 0 var(--color-accent);
 }

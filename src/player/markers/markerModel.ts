@@ -227,29 +227,71 @@ export interface MarkerRow {
 	kind: MarkerKind;
 	/** Actions offered on this row. */
 	actions: MarkerRowAction[];
+	/**
+	 * Length of this marker's segment — the gap to the next marker, or to
+	 * the end of the track for the last marker — or null when unknown
+	 * (e.g. the duration is not available yet).
+	 */
+	segmentSeconds: number | null;
 }
 
 /**
  * Builds the marker-list rows: one list ordered purely by timestamp
  * regardless of kind, identical in every render mode. Editing actions
  * (rename, delete) are offered only when editable; otherwise the row is
- * jump-only. This is the single source of truth for what the list shows,
- * so reading view and Live Preview never diverge on content or ordering.
+ * jump-only. Each row also carries its segment length. This is the single
+ * source of truth for what the list shows, so reading view and Live
+ * Preview never diverge on content or ordering.
  * @param markers - Markers to list
  * @param editable - Whether editing actions are available
+ * @param durationSeconds - Track duration, used for the last segment
  */
 export function markerRows(
 	markers: readonly PlayerMarker[],
 	editable: boolean,
+	durationSeconds: number | null = null,
 ): MarkerRow[] {
 	const actions: MarkerRowAction[] = editable
 		? ['jump', 'rename', 'delete']
 		: ['jump'];
-	return sortMarkers(markers).map((marker) => ({
-		id: marker.id,
-		time: marker.time,
-		label: marker.label,
-		kind: marker.kind,
-		actions: [...actions],
-	}));
+	const sorted = sortMarkers(markers);
+	return sorted.map((marker, index) => {
+		const next = sorted[index + 1];
+		let segmentSeconds: number | null = null;
+		if (next) {
+			segmentSeconds = Math.max(0, next.time - marker.time);
+		} else if (durationSeconds !== null && durationSeconds > marker.time) {
+			segmentSeconds = durationSeconds - marker.time;
+		}
+		return {
+			id: marker.id,
+			time: marker.time,
+			label: marker.label,
+			kind: marker.kind,
+			actions: [...actions],
+			segmentSeconds,
+		};
+	});
+}
+
+/**
+ * Returns the index of the marker whose segment contains the given time
+ * (the last marker at or before it), or -1 when the time precedes the
+ * first marker. Used to highlight the currently-playing segment.
+ * @param sortedMarkers - Markers sorted by time ascending
+ * @param time - Playback offset in seconds
+ */
+export function activeMarkerIndex(
+	sortedMarkers: readonly PlayerMarker[],
+	time: number,
+): number {
+	let index = -1;
+	for (let i = 0; i < sortedMarkers.length; i++) {
+		if (sortedMarkers[i].time <= time + 1e-6) {
+			index = i;
+		} else {
+			break;
+		}
+	}
+	return index;
 }
