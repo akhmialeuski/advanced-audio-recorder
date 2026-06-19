@@ -68,3 +68,32 @@ describe('read-only player styles', () => {
 		expect(waveform).toMatch(/box-sizing:\s*content-box/);
 	});
 });
+
+describe('plain seek bar (waveform off)', () => {
+	it('is a spaced, rounded track that stands out from the controls and list', () => {
+		const bar = ruleBody('.aar-player-seek-bar');
+		expect(bar).not.toBeNull();
+		// Vertical margin separates it from the controls above and list below
+		expect(bar).toMatch(/margin:/);
+		expect(bar).toMatch(/height:/);
+		// Remaining (unplayed) portion is the muted track color
+		expect(bar).toMatch(
+			/background-color:\s*var\(--background-modifier-border\)/,
+		);
+	});
+
+	it('fills the played portion with the high-contrast accent, width-driven', () => {
+		const fill = ruleBody('.aar-player-progress-fill');
+		expect(fill).not.toBeNull();
+		expect(fill).toMatch(/width:\s*var\(--aar-progress/);
+		expect(fill).toMatch(/background-color:\s*var\(--color-accent\)/);
+	});
+
+	it('marks the current position with an accent thumb tied to the progress', () => {
+		const thumb = ruleBody('.aar-player-progress-thumb');
+		expect(thumb).not.toBeNull();
+		expect(thumb).toMatch(/left:\s*var\(--aar-progress/);
+		expect(thumb).toMatch(/background-color:\s*var\(--color-accent\)/);
+		expect(thumb).toMatch(/border-radius:\s*50%/);
+	});
+});

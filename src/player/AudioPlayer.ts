@@ -20,6 +20,7 @@ import {
 	WAVEFORM_CACHE_BUCKETS,
 } from '../constants';
 import { formatTimecode } from '../utils/TimeUtils';
+import { playbackProgress } from './playbackProgress';
 import type { ResolvedPlayerSettings } from '../settings/Settings';
 import {
 	computeWaveformPeaks,
@@ -575,6 +576,12 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 */
 	private buildSeekArea(): void {
 		this.seekEl = this.containerEl.createDiv({ cls: 'aar-player-seek' });
+		// Reset the element refs every render. Without this, toggling the
+		// waveform off leaves a stale (removed) canvas in this.canvas, so
+		// updateProgress would draw onto the dead canvas and never update the
+		// new progress bar — the seek position would freeze.
+		this.canvas = null;
+		this.progressFillEl = null;
 		// Expose the seek area as a keyboard-operable slider so seeking is
 		// not mouse-only (the native audio element offered this for free)
 		this.seekEl.setAttribute('role', 'slider');
@@ -600,10 +607,13 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				this.resizeObserver = null;
 			});
 		} else {
+			// Plain progress bar: a filled track (played, high contrast) over
+			// a muted track (remaining), with a thumb marking the position
 			this.seekEl.addClass('aar-player-seek-bar');
 			this.progressFillEl = this.seekEl.createDiv({
 				cls: 'aar-player-progress-fill',
 			});
+			this.seekEl.createDiv({ cls: 'aar-player-progress-thumb' });
 		}
 		if (this.settings.enableMarkers) {
 			this.markersOverlayEl = this.seekEl.createDiv({
@@ -1042,10 +1052,10 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		const barCount = bars.length;
 		const barWidth = cssWidth / barCount;
 		const gap = Math.min(1, barWidth * 0.2);
-		const playedFraction =
-			Number.isFinite(this.audio.duration) && this.audio.duration > 0
-				? this.audio.currentTime / this.audio.duration
-				: 0;
+		const playedFraction = playbackProgress(
+			this.audio.currentTime,
+			this.audio.duration,
+		);
 		const playedBars = playedFraction * barCount;
 
 		for (let i = 0; i < barCount; i++) {
@@ -1090,11 +1100,13 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		if (this.canvas && this.peaks) {
 			this.drawWaveform();
 		} else if (this.progressFillEl) {
-			const fraction =
-				Number.isFinite(this.audio.duration) && this.audio.duration > 0
-					? this.audio.currentTime / this.audio.duration
-					: 0;
-			this.progressFillEl.setCssProps({
+			const fraction = playbackProgress(
+				this.audio.currentTime,
+				this.audio.duration,
+			);
+			// Set on the seek area so both the fill (width) and the thumb
+			// (left) read the same position via the inherited variable
+			this.seekEl.setCssProps({
 				'--aar-progress': `${String(fraction * 100)}%`,
 			});
 		}

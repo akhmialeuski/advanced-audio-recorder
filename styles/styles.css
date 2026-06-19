@@ -270,18 +270,39 @@ input.aar-input-invalid {
     height: 100%;
 }
 
+/* Plain progress bar shown when the waveform is off. Framed with vertical
+   margins so it stands out from the controls above and the marker list
+   below; the played portion is the high-contrast accent, the remaining
+   portion a muted track, and a thumb marks the current position. */
 .aar-player-seek-bar {
-    height: 6px;
-    border-radius: 3px;
+    height: 8px;
+    margin: 12px 2px;
+    border-radius: 4px;
+    /* Remaining (unplayed): low-contrast track */
     background-color: var(--background-modifier-border);
-    overflow: hidden;
+    box-shadow: inset 0 0 0 1px var(--background-modifier-border-hover);
 }
 
 .aar-player-progress-fill {
     height: 100%;
     width: var(--aar-progress, 0%);
+    /* Played: high-contrast accent */
     background-color: var(--color-accent);
-    border-radius: 3px;
+    border-radius: 4px;
+}
+
+.aar-player-progress-thumb {
+    position: absolute;
+    top: 50%;
+    left: var(--aar-progress, 0%);
+    width: 12px;
+    height: 12px;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background-color: var(--color-accent);
+    /* Ring so the thumb stands out over both the played and unplayed track */
+    box-shadow: 0 0 0 2px var(--background-secondary);
+    pointer-events: none;
 }
 
 /* Marker ticks and chapter boundaries over the seek area */
