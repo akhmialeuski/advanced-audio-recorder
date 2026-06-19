@@ -1,27 +1,32 @@
 /**
  * The single controller Obsidian creates (via the embed registry) for
- * every media embed of the plugin's extensions. It owns one decision:
- * what to mount into the embed container — and it mounts native-first.
+ * every media embed of the plugin's extensions. It owns one decision —
+ * what to mount into the embed container — and is the single source of
+ * truth for it. It mounts native-first.
  *
  * Native-first is the rule that keeps both view modes working:
  *
  *   - On load it mounts Obsidian's built-in embed SYNCHRONOUSLY (the
  *     captured default creator), so the container is never empty. This is
  *     the final state for video and unsupported files, and a placeholder
- *     for audio. Mounting synchronously matters in Live Preview, where
- *     CodeMirror measures the embed's height at creation: an empty
- *     container collapses to a zero-height box (the "empty bar" bug), and a
- *     late async mount lands inside it.
- *   - It then probes the media kind once (only when the feature is on and
- *     the kind is still unknown) and, ONLY if the file is confirmed
- *     audio-only, REPLACES the native embed with the enhanced AudioPlayer.
+ *     for audio still being probed. Mounting synchronously matters in Live
+ *     Preview, where CodeMirror measures the embed's height at creation: an
+ *     empty container collapses to a zero-height box (the "empty bar" bug),
+ *     and a late async mount lands inside it.
+ *   - It then resolves the media kind — from the extension when that is
+ *     unambiguous (audio formats), otherwise by probing once (video-capable
+ *     mp4/webm). ONLY if the file is audio-only does it REPLACE the native
+ *     embed with the enhanced AudioPlayer.
  *
  * So the only DOM surgery the plugin performs is for files it actually
  * enhances (audio); video/unsupported files are mounted natively and never
  * touched again. The probed kind is cached per file path (shared across
- * embeds), so re-renders decide synchronously — no flash, no re-probe.
- * `refresh()` re-evaluates in place after a settings change (most
- * importantly toggling the player on/off), applying it immediately.
+ * embeds), so re-renders decide synchronously.
+ *
+ * `refresh()` is the live-settings signal: it REBUILDS the enhanced player
+ * from the current settings (so changing any player setting re-renders
+ * immediately, with no note reload) and swaps native<->enhanced when the
+ * feature is toggled.
  * @module player/EnhancedMediaEmbed
  */
 
@@ -36,7 +41,11 @@ import {
 	type AudioRecorderSettings,
 } from '../settings/Settings';
 import { parseTimecodeSubpath } from './timecodeLinks';
-import { probeMediaKind, type MediaKind } from './mediaProbe';
+import {
+	probeMediaKind,
+	mediaKindFromExtension,
+	type MediaKind,
+} from './mediaProbe';
 import { shouldEnhance } from './playerMode';
 import type {
 	EmbedComponent,
@@ -55,8 +64,9 @@ export interface EnhancedMediaEmbedDeps {
 	decoder: AudioDecoder;
 	markerStore: MarkerStore;
 	/**
-	 * Probed media kind per file path, shared across embeds so a file is
-	 * probed once and every later render decides synchronously.
+	 * Probed media kind per file path, shared across embeds so a
+	 * video-capable file is probed once and every later render decides
+	 * synchronously.
 	 */
 	mediaKindCache: Map<string, MediaKind>;
 	/**
@@ -80,6 +90,7 @@ export class EnhancedMediaEmbed extends Component implements EmbedComponent {
 	private readonly containerEl: HTMLElement;
 	private child: MountedChild | null = null;
 	private mounted: MountKind | null = null;
+	private nativeLoaded = false;
 	private probeStarted = false;
 	private unloaded = false;
 
@@ -100,22 +111,25 @@ export class EnhancedMediaEmbed extends Component implements EmbedComponent {
 	}
 
 	onload(): void {
-		// Mount synchronously (native unless a cached kind says otherwise),
-		// then probe in the background — never leave the container empty
+		// Mount synchronously (native unless the kind is already known to be
+		// audio), then probe in the background — never leave the container
+		// empty for the editor to measure as zero height
 		this.evaluate();
 		void this.probeIfNeeded();
 	}
 
 	/**
-	 * Obsidian calls this to (re)load the file. Ensure something is mounted,
-	 * then forward to the native child — the built-in embed only loads its
-	 * media when loadFile is called on it, and Obsidian calls it on THIS
-	 * component, not on the nested native one.
+	 * Obsidian calls this to (re)load the file. On the first call it triggers
+	 * the initial mount; later calls just (re)load the native child once.
+	 * Loading native exactly once is what prevents a duplicate built-in
+	 * player, since Obsidian calls loadFile on THIS component, not on the
+	 * nested native one.
 	 */
 	loadFile(): void {
-		this.evaluate();
-		if (this.mounted === 'native' && this.child?.loadFile) {
-			void this.child.loadFile(this.file);
+		if (this.mounted === null) {
+			this.evaluate();
+		} else {
+			this.loadNativeOnce();
 		}
 		void this.probeIfNeeded();
 	}
@@ -126,16 +140,36 @@ export class EnhancedMediaEmbed extends Component implements EmbedComponent {
 	}
 
 	/**
-	 * Re-evaluates the mount in place after a settings change, so toggling
-	 * the player (or any player setting) takes effect without re-opening the
-	 * note.
+	 * Live-settings signal. Rebuilds the enhanced player from the current
+	 * settings so any player-setting change re-renders immediately, and
+	 * swaps native<->enhanced when the feature is toggled — all without
+	 * re-opening the note.
 	 */
 	refresh(): void {
 		if (this.unloaded) {
 			return;
 		}
-		this.evaluate();
+		if (this.desiredMount() === 'enhanced') {
+			// Force a rebuild so changed player settings take effect
+			this.remount('enhanced');
+		} else {
+			// Native is Obsidian's default and unaffected by our settings:
+			// only swap if the enhanced player is currently showing
+			this.mount('native');
+		}
 		void this.probeIfNeeded();
+	}
+
+	/**
+	 * The media kind from current knowledge: the extension when it is
+	 * unambiguous, else the cached probe result, else null (unknown).
+	 */
+	private knownKind(): MediaKind | null {
+		return (
+			mediaKindFromExtension(this.file.extension) ??
+			this.deps.mediaKindCache.get(this.file.path) ??
+			null
+		);
 	}
 
 	/**
@@ -145,28 +179,30 @@ export class EnhancedMediaEmbed extends Component implements EmbedComponent {
 	 */
 	private desiredMount(): MountKind {
 		const enabled = this.deps.getSettings().enhancedPlayerEnabled;
-		const kind = this.deps.mediaKindCache.get(this.file.path);
-		return shouldEnhance(enabled, kind ?? 'unsupported')
+		return shouldEnhance(enabled, this.knownKind() ?? 'unsupported')
 			? 'enhanced'
 			: 'native';
 	}
 
-	/** Mounts the desired target if it differs from what is mounted. */
+	/** Mounts the desired target, idempotently (no churn on re-render). */
 	private evaluate(): void {
 		this.mount(this.desiredMount());
 	}
 
 	/**
 	 * Probes the media kind once, but only when it could change the mount:
-	 * the feature must be on (a disabled player is always native) and the
-	 * kind still unknown (a cached kind is final). Upgrades to the enhanced
-	 * player if the file turns out audio-only.
+	 * the feature must be on (a disabled player is always native), the
+	 * extension must be ambiguous, and the kind still unknown. Upgrades to
+	 * the enhanced player if the file turns out audio-only.
 	 */
 	private async probeIfNeeded(): Promise<void> {
 		if (this.probeStarted || this.unloaded) {
 			return;
 		}
 		if (!this.deps.getSettings().enhancedPlayerEnabled) {
+			return;
+		}
+		if (mediaKindFromExtension(this.file.extension) !== null) {
 			return;
 		}
 		if (this.deps.mediaKindCache.has(this.file.path)) {
@@ -183,21 +219,26 @@ export class EnhancedMediaEmbed extends Component implements EmbedComponent {
 		this.evaluate();
 	}
 
-	/**
-	 * Mounts the target, replacing whatever is mounted. Idempotent: a no-op
-	 * when the target is already mounted, so re-renders and refreshes never
-	 * churn the DOM or flash.
-	 * @param target - What to mount
-	 */
+	/** Mounts the target only if it differs from what is mounted. */
 	private mount(target: MountKind): void {
 		if (this.mounted === target) {
 			return;
 		}
+		this.remount(target);
+	}
+
+	/**
+	 * Tears down the current child and mounts the target unconditionally.
+	 * Used directly by refresh so a settings change always re-renders.
+	 * @param target - What to mount
+	 */
+	private remount(target: MountKind): void {
 		if (this.child) {
 			this.removeChild(this.child);
 			this.child = null;
 		}
 		this.containerEl.empty();
+		this.nativeLoaded = false;
 		this.mounted = target;
 		if (target === 'enhanced') {
 			this.mountEnhanced();
@@ -218,8 +259,21 @@ export class EnhancedMediaEmbed extends Component implements EmbedComponent {
 		const native = creator(this.info, this.file, this.subpath);
 		this.child = native;
 		this.addChild(native);
-		if (typeof native.loadFile === 'function') {
-			void native.loadFile(this.file);
+		this.loadNativeOnce();
+	}
+
+	/**
+	 * Loads the native child's media at most once per mounted instance, so a
+	 * stray second loadFile call never appends a duplicate built-in player.
+	 */
+	private loadNativeOnce(): void {
+		if (
+			this.mounted === 'native' &&
+			!this.nativeLoaded &&
+			this.child?.loadFile
+		) {
+			this.nativeLoaded = true;
+			void this.child.loadFile(this.file);
 		}
 	}
 

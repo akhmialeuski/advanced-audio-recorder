@@ -13,6 +13,7 @@
 import type { App, TFile } from 'obsidian';
 import { EnhancedMediaEmbed } from 'src/player/EnhancedMediaEmbed';
 import type { EnhancedMediaEmbedDeps } from 'src/player/EnhancedMediaEmbed';
+import { AudioPlayer } from 'src/player/AudioPlayer';
 import { probeMediaKind, type MediaKind } from 'src/player/mediaProbe';
 import { DEFAULT_SETTINGS } from 'src/settings/Settings';
 import type { AudioRecorderSettings } from 'src/settings/Settings';
@@ -39,11 +40,14 @@ jest.mock('src/player/AudioPlayer', () => ({
 	}),
 }));
 
+// Mock only the async probe; keep the real pure mediaKindFromExtension
 jest.mock('src/player/mediaProbe', () => ({
+	...jest.requireActual('src/player/mediaProbe'),
 	probeMediaKind: jest.fn(),
 }));
 
 const probeMock = jest.mocked(probeMediaKind);
+const audioPlayerMock = jest.mocked(AudioPlayer);
 
 /** Resolves after pending microtasks so an awaited probe settles. */
 function flush(): Promise<void> {
@@ -60,6 +64,7 @@ function setup(
 	options: {
 		enabled?: boolean;
 		cached?: MediaKind;
+		extension?: string;
 	} = {},
 ): {
 	embed: EnhancedMediaEmbed;
@@ -74,7 +79,8 @@ function setup(
 		}
 	};
 	const info: EmbedInfo = { containerEl: container, sourcePath: 'note.md' };
-	const file = { path: 'recording.webm', extension: 'webm' } as TFile;
+	const extension = options.extension ?? 'webm';
+	const file = { path: `recording.${extension}`, extension } as TFile;
 
 	const settings: AudioRecorderSettings = {
 		...DEFAULT_SETTINGS,
@@ -120,6 +126,7 @@ function setup(
 
 beforeEach(() => {
 	probeMock.mockReset();
+	audioPlayerMock.mockClear();
 });
 
 describe('EnhancedMediaEmbed mount sequencing', () => {
@@ -235,14 +242,76 @@ describe('EnhancedMediaEmbed refresh applies settings immediately', () => {
 		expect(container.querySelector(`.${NATIVE_MARKER}`)).toBeNull();
 	});
 
-	it('does not re-create the mount on a redundant refresh', () => {
+	it('does not re-create the native mount on a redundant refresh', () => {
 		const { embed, creatorCalls } = setup({ cached: 'video' });
 
 		embed.load();
 		const afterLoad = creatorCalls();
 		embed.refresh();
 
-		// Idempotent: same target, no DOM churn or extra native creation
+		// Native is Obsidian's default, unaffected by our settings: same
+		// target means no DOM churn or extra native creation
 		expect(creatorCalls()).toBe(afterLoad);
+	});
+
+	it('rebuilds the enhanced player on refresh so setting changes re-render', () => {
+		const { embed, container } = setup({ cached: 'audio' });
+
+		embed.load();
+		expect(audioPlayerMock).toHaveBeenCalledTimes(1);
+
+		// A player-setting change keeps the mount enhanced, but the player
+		// must be rebuilt with the new settings — not left as a no-op (the
+		// "have to reload the page" regression)
+		embed.refresh();
+
+		expect(audioPlayerMock).toHaveBeenCalledTimes(2);
+		expect(container.querySelectorAll(`.${ENHANCED_MARKER}`)).toHaveLength(
+			1,
+		);
+	});
+});
+
+describe('EnhancedMediaEmbed loads native exactly once', () => {
+	it('does not duplicate the built-in player across load and loadFile', () => {
+		const { embed, container } = setup({ enabled: false });
+
+		// Obsidian drives both hooks; neither may append a second native player
+		embed.load();
+		embed.loadFile();
+		embed.loadFile();
+
+		expect(container.querySelectorAll(`.${NATIVE_MARKER}`)).toHaveLength(1);
+	});
+
+	it('does not duplicate the built-in player when loadFile precedes load', () => {
+		const { embed, container } = setup({ enabled: false });
+
+		embed.loadFile();
+		embed.load();
+
+		expect(container.querySelectorAll(`.${NATIVE_MARKER}`)).toHaveLength(1);
+	});
+});
+
+describe('EnhancedMediaEmbed extension fast path', () => {
+	it('enhances an unambiguous audio file synchronously without probing', () => {
+		const { embed, container } = setup({ extension: 'wav' });
+
+		embed.load();
+
+		expect(container.querySelector(`.${ENHANCED_MARKER}`)).not.toBeNull();
+		expect(container.querySelector(`.${NATIVE_MARKER}`)).toBeNull();
+		expect(probeMock).not.toHaveBeenCalled();
+	});
+
+	it('probes a video-capable container before deciding', async () => {
+		probeMock.mockResolvedValue('audio');
+		const { embed } = setup({ extension: 'mp4' });
+
+		embed.load();
+		await flush();
+
+		expect(probeMock).toHaveBeenCalledTimes(1);
 	});
 });

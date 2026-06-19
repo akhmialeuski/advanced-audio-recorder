@@ -14,6 +14,32 @@ export type MediaKind = 'audio' | 'video' | 'unsupported';
 const PROBE_TIMEOUT_MS = 4000;
 
 /**
+ * Extensions whose container can carry a video track, so audio-vs-video is
+ * only known after inspecting the file. Every other registered media
+ * extension is audio by definition and needs no probe.
+ */
+const VIDEO_CAPABLE_EXTENSIONS = new Set([
+	'mp4',
+	'webm',
+	'mkv',
+	'mov',
+	'm4v',
+	'ogv',
+]);
+
+/**
+ * Resolves the media kind from the file extension alone, when possible.
+ * Returns `audio` for extensions that are always audio, and null for
+ * video-capable containers (mp4/webm) that must be probed.
+ * @param extension - File extension without the dot
+ */
+export function mediaKindFromExtension(extension: string): MediaKind | null {
+	return VIDEO_CAPABLE_EXTENSIONS.has(extension.toLowerCase())
+		? null
+		: 'audio';
+}
+
+/**
  * Loads a media resource's metadata to classify it. A video track (non
  * zero dimensions) marks it as video; metadata without video is audio; a
  * load error is unsupported. Resolves to audio if metadata never arrives,

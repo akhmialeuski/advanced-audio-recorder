@@ -203,7 +203,15 @@ export class EnhancedPlayerRegistrar {
 	 */
 	refresh(): void {
 		for (const embed of [...this.liveEmbeds]) {
-			embed.refresh();
+			try {
+				embed.refresh();
+			} catch (error) {
+				// One embed failing to re-render must not stop the rest
+				console.error(
+					`${PLUGIN_LOG_PREFIX} Failed to refresh a media embed.`,
+					error,
+				);
+			}
 		}
 	}
 
