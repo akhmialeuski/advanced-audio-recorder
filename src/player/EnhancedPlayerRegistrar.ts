@@ -12,10 +12,11 @@
  *     plugin, so Live Preview never doubles it and nothing fights
  *     CodeMirror.
  *
- * The media kind is taken from the extension when unambiguous, otherwise
- * probed once (mp4/webm) and cached per path. When a probe reveals an
- * audio-only container, the open views are re-rendered so the embed is
- * rebuilt as the enhanced player. Settings changes use the SAME re-render,
+ * The media kind is always determined by probing the actual content (the
+ * extension is never trusted, since a container can carry a video track):
+ * each file is probed once and cached per path. When a probe reveals an
+ * audio-only file, the open views are re-rendered so the embed is rebuilt
+ * as the enhanced player. Settings changes use the SAME re-render,
  * so any player setting applies immediately and identically in both modes —
  * Reading view via previewMode.rerender, Live Preview via the current
  * sub-view's set(get(), true). When the internal registry API is
@@ -45,11 +46,7 @@ import {
 	isAudioFile,
 	parseTimecodeSubpath,
 } from './timecodeLinks';
-import {
-	probeMediaKind,
-	mediaKindFromExtension,
-	type MediaKind,
-} from './mediaProbe';
+import { probeMediaKind, type MediaKind } from './mediaProbe';
 import type { MarkerStore } from './markers/MarkerStore';
 import {
 	getEmbedRegistry,
@@ -218,11 +215,11 @@ export class EnhancedPlayerRegistrar {
 
 	/**
 	 * Embed creator installed in the registry. Returns the enhanced player
-	 * for audio-only files when the feature is on, and otherwise Obsidian's
-	 * own native embed unwrapped (so video and unsupported files render
-	 * exactly as Obsidian would, in both view modes). A video-capable
-	 * container of unknown kind renders native now and is probed; if it is
-	 * audio-only, a re-render upgrades it.
+	 * for files probed as audio-only when the feature is on, and otherwise
+	 * Obsidian's own native embed unwrapped (so video and unsupported files
+	 * render exactly as Obsidian would, in both view modes). A not-yet-probed
+	 * file renders native now and is probed; if it is audio-only, a re-render
+	 * upgrades it.
 	 * @param info - Embed context from Obsidian
 	 * @param file - Media file to embed
 	 * @param subpath - Embed subpath (timecode, if any)
@@ -240,9 +237,9 @@ export class EnhancedPlayerRegistrar {
 			return this.buildAudioPlayer(info, file, subpath);
 		}
 
-		// Not enhanced: render Obsidian's own embed. For an ambiguous
-		// container we have not classified yet, probe in the background and
-		// re-render to upgrade it if it turns out audio-only.
+		// Not (yet) known to be audio: render Obsidian's own embed. If the
+		// file has not been probed yet, probe its content in the background
+		// and re-render to upgrade it if it turns out audio-only.
 		if (enabled && kind === null && nativeCreator) {
 			void this.probeAndUpgrade(file);
 		}
@@ -256,21 +253,19 @@ export class EnhancedPlayerRegistrar {
 	}
 
 	/**
-	 * The media kind known without probing: from the extension when it is
-	 * unambiguous, else the cached probe result, else null.
+	 * The media kind already determined by a prior probe, or null when the
+	 * file has not been probed yet. The extension is never trusted: a
+	 * container (even one usually holding audio) can carry a video track, so
+	 * audio-vs-video is always decided by probing the actual content.
 	 * @param file - Media file
 	 */
 	private knownKind(file: TFile): MediaKind | null {
-		return (
-			mediaKindFromExtension(file.extension) ??
-			this.mediaKindCache.get(file.path) ??
-			null
-		);
+		return this.mediaKindCache.get(file.path) ?? null;
 	}
 
 	/**
-	 * Probes a video-capable container once and, if it is audio-only,
-	 * re-renders open views so the embed is rebuilt as the enhanced player.
+	 * Probes a media file's content once and, if it is audio-only, re-renders
+	 * open views so the embed is rebuilt as the enhanced player.
 	 * @param file - Media file to probe
 	 */
 	private async probeAndUpgrade(file: TFile): Promise<void> {

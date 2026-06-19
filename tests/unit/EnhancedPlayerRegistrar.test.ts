@@ -32,7 +32,6 @@ jest.mock('src/player/AudioPlayer', () => ({
 	})),
 }));
 
-// Mock only the async probe; keep the real pure mediaKindFromExtension
 jest.mock('src/player/mediaProbe', () => ({
 	...jest.requireActual('src/player/mediaProbe'),
 	probeMediaKind: jest.fn(),
@@ -176,15 +175,36 @@ describe('EnhancedPlayerRegistrar embed creation', () => {
 		expect(audioPlayerMock).not.toHaveBeenCalled();
 	});
 
-	it('returns the enhanced player for an unambiguous audio file without probing', () => {
+	it('probes content for an audio-extension file too (never trusts the extension)', () => {
+		probeMock.mockResolvedValue('audio');
 		const { creator, nativeCreator } = setup(true);
 
-		const result = creator(info, fileOf('wav'), '') as {
+		// A wav can in principle carry a video track, so it must be probed,
+		// not enhanced on faith: render native first, probe the content
+		const result = creator(info, fileOf('wav'), '') as NativeInstance;
+
+		expect(result.__native).toBe('wav');
+		expect(nativeCreator).toHaveBeenCalledTimes(1);
+		expect(probeMock).toHaveBeenCalledTimes(1);
+	});
+
+	it('renders enhanced once a probe has classified the file as audio', async () => {
+		probeMock.mockResolvedValue('audio');
+		const { creator } = setup(true);
+
+		// First render probes and shows native
+		const first = creator(info, fileOf('wav'), '') as NativeInstance;
+		expect(first.__native).toBe('wav');
+
+		await flush();
+		probeMock.mockClear();
+
+		// A later render of the same file (as Obsidian does after the
+		// re-render) is enhanced now, with no further probe
+		const second = creator(info, fileOf('wav'), '') as {
 			__enhanced?: boolean;
 		};
-
-		expect(result.__enhanced).toBe(true);
-		expect(nativeCreator).not.toHaveBeenCalled();
+		expect(second.__enhanced).toBe(true);
 		expect(probeMock).not.toHaveBeenCalled();
 	});
 
