@@ -257,8 +257,8 @@ input.aar-input-invalid {
        --aar-waveform-height (no stretch); the padding/border add around it. */
     box-sizing: content-box;
     height: var(--aar-waveform-height);
-    padding: 12px 0;
-    margin: 4px 0;
+    padding: 20px 0;
+    margin: 8px 0;
     border: 1px solid var(--background-modifier-border);
     border-radius: 6px;
     background-color: var(--background-primary);

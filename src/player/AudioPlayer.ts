@@ -46,6 +46,7 @@ import {
 	type PlayerMarker,
 } from './markers/markerModel';
 import { formatPlaybackRate, speedMenuItems } from './playbackRate';
+import { isEditableContext } from './playerMode';
 import {
 	setPlayerEmbedActions,
 	clearPlayerEmbedActions,
@@ -134,11 +135,13 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 */
 	private unloaded = false;
 	/**
-	 * Whether marker/chapter editing is allowed. True only in Live Preview
-	 * (inside the CodeMirror editor); Reading view is display-and-jump
-	 * only. Determined once the embed is attached (see whenAttached).
+	 * Whether marker/chapter editing is allowed. Defaults to read-only and
+	 * is set true only once the embed is confirmed to be inside the editor
+	 * (Live Preview); Reading view stays read-only. Defaulting to false
+	 * means a missed/late detection can never wrongly show edit controls
+	 * in Reading view — the regression this guards against.
 	 */
-	private editable = true;
+	private editable = false;
 	private resizeObserver: ResizeObserver | null = null;
 	private markersOverlayEl: HTMLElement | null = null;
 	private markerListEl: HTMLElement | null = null;
@@ -283,12 +286,14 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			void this.loadMarkers();
 		}
 
-		// Publish now with the default (editable) mode; applyMode
+		// Publish now with the default (read-only) mode; applyMode
 		// re-publishes once the real mode is known
 		this.publishContextActions();
 
-		// Reading view vs Live Preview can only be told once the embed is
-		// attached, so the edit/read-only affordances are applied then
+		// Editable only in Live Preview; this can be told reliably once the
+		// embed is attached, so apply the edit/read-only affordances then.
+		// Defaulting to read-only means Reading view is correct even if this
+		// never runs.
 		this.whenAttached(() => {
 			this.applyMode();
 		});
@@ -742,19 +747,10 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * actions so add-marker entries are gated.
 	 */
 	private applyMode(): void {
-		this.editable = this.detectEditable();
+		this.editable = isEditableContext(this.containerEl);
 		this.containerEl.toggleClass('aar-player-readonly', !this.editable);
 		this.renderMarkers();
 		this.publishContextActions();
-	}
-
-	/**
-	 * Reports whether the player is in an editable context. Live Preview
-	 * renders the embed inside the CodeMirror editor; Reading view does
-	 * not, so it is display-and-jump only.
-	 */
-	private detectEditable(): boolean {
-		return this.containerEl.closest('.cm-editor') !== null;
 	}
 
 	/**
