@@ -3,6 +3,8 @@
  * @module utils/TimeUtils
  */
 
+import { SECONDS_PER_MINUTE, SECONDS_PER_HOUR } from '../constants';
+
 /**
  * Delays execution for the specified number of milliseconds.
  * Uses activeWindow so the timer is attached to the active Obsidian
@@ -33,14 +35,17 @@ export function formatTimecode(
 	const reference = Number.isFinite(referenceSeconds)
 		? referenceSeconds
 		: totalSeconds;
-	const showHours = Number.isFinite(reference) && reference >= 3600;
+	const showHours =
+		Number.isFinite(reference) && reference >= SECONDS_PER_HOUR;
 	if (!Number.isFinite(totalSeconds) || totalSeconds < 0) {
 		return showHours ? '0:00:00' : '0:00';
 	}
 	const rounded = Math.floor(totalSeconds);
-	const hours = Math.floor(rounded / 3600);
-	const minutes = Math.floor((rounded % 3600) / 60);
-	const seconds = rounded % 60;
+	const hours = Math.floor(rounded / SECONDS_PER_HOUR);
+	const minutes = Math.floor(
+		(rounded % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE,
+	);
+	const seconds = rounded % SECONDS_PER_MINUTE;
 	const paddedSeconds = String(seconds).padStart(2, '0');
 	if (hours > 0 || showHours) {
 		const paddedMinutes = String(minutes).padStart(2, '0');

@@ -121,6 +121,50 @@ export class Notice {
 }
 
 /**
+ * Mock MenuItem class. Builder methods are chainable like the real API.
+ */
+export class MenuItem {
+	setTitle(_title: string): this {
+		return this;
+	}
+	setIcon(_icon: string): this {
+		return this;
+	}
+	setChecked(_checked: boolean): this {
+		return this;
+	}
+	setSection(_section: string): this {
+		return this;
+	}
+	setDisabled(_disabled: boolean): this {
+		return this;
+	}
+	onClick(_callback: () => void): this {
+		return this;
+	}
+}
+
+/**
+ * Mock Menu class. addItem invokes the builder with a MenuItem so callers
+ * exercise their item-building code; showing is a no-op.
+ */
+export class Menu {
+	addItem(callback: (item: MenuItem) => void): this {
+		callback(new MenuItem());
+		return this;
+	}
+	addSeparator(): this {
+		return this;
+	}
+	showAtMouseEvent(_event: MouseEvent): this {
+		return this;
+	}
+	showAtPosition(_position: { x: number; y: number }): this {
+		return this;
+	}
+}
+
+/**
  * Mock Component class mirroring Obsidian's load/unload child tree.
  * Faithful enough for embed controllers: addChild loads the child when the
  * parent is loaded, removeChild unloads it, and register callbacks fire on
@@ -186,8 +230,17 @@ export class Component {
 		// Mock implementation
 	}
 
-	registerDomEvent(): void {
-		// Mock implementation
+	registerDomEvent(
+		el: EventTarget,
+		type: string,
+		callback: EventListenerOrEventListenerObject,
+	): void {
+		// Faithful enough for tests: attach the listener and auto-remove it on
+		// unload, so delegated handlers actually fire when events are dispatched.
+		if (el && typeof el.addEventListener === 'function') {
+			el.addEventListener(type, callback);
+			this.register(() => el.removeEventListener(type, callback));
+		}
 	}
 
 	registerInterval(_id: number): void {
@@ -266,6 +319,29 @@ function addObsidianDomExtensions(el: HTMLElement): HTMLElement {
 			el.removeChild(el.firstChild);
 		}
 	};
+
+	extended['createSpan'] = (opts?: {
+		cls?: string;
+		text?: string;
+	}): HTMLElement => {
+		const createEl = extended['createEl'] as (
+			tag: string,
+			opts?: { cls?: string; text?: string },
+		) => HTMLElement;
+		return createEl('span', opts);
+	};
+
+	extended['setCssProps'] = (props: Record<string, string>): void => {
+		Object.entries(props).forEach(([key, value]) => {
+			el.style.setProperty(key, value);
+		});
+	};
+
+	extended['toggleClass'] = (cls: string, force?: boolean): void => {
+		el.classList.toggle(cls, force);
+	};
+
+	extended['hasClass'] = (cls: string): boolean => el.classList.contains(cls);
 
 	return el;
 }

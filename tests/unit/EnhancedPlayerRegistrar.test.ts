@@ -17,6 +17,7 @@ import { MarkdownView } from 'obsidian';
 import type { App, Plugin, TFile, WorkspaceLeaf } from 'obsidian';
 import { EnhancedPlayerRegistrar } from 'src/player/EnhancedPlayerRegistrar';
 import { AudioPlayer } from 'src/player/AudioPlayer';
+import { AudioPlayerRegistry } from 'src/player/AudioPlayerRegistry';
 import { probeMediaKind } from 'src/player/mediaProbe';
 import { AUDIO_EXTENSIONS } from 'src/constants';
 import { DEFAULT_SETTINGS } from 'src/settings/Settings';
@@ -51,7 +52,10 @@ interface NativeInstance {
 }
 
 /** Builds a MarkdownView stub for a given mode with re-render spies. */
-function viewStub(mode: 'preview' | 'source'): MarkdownView {
+function viewStub(
+	mode: 'preview' | 'source',
+	notePath = 'note.md',
+): MarkdownView {
 	const currentMode = {
 		get: jest.fn(() => 'content'),
 		set: jest.fn(),
@@ -62,6 +66,7 @@ function viewStub(mode: 'preview' | 'source'): MarkdownView {
 		getMode: () => mode,
 		previewMode: { rerender: jest.fn() },
 		currentMode,
+		file: { path: notePath },
 	});
 }
 
@@ -93,21 +98,32 @@ function setup(enabled = true): {
 		embedByExtension[ext] = nativeCreator;
 	}
 
+	// The preview note embeds the recording; the source note does not, so a
+	// probe upgrade should rebuild only the preview leaf (scoped re-render).
 	const previewLeaf = {
-		view: viewStub('preview'),
+		view: viewStub('preview', 'note.md'),
 		rebuildView: jest.fn(),
 	} as unknown as WorkspaceLeaf;
 	const sourceLeaf = {
-		view: viewStub('source'),
+		view: viewStub('source', 'other.md'),
 		rebuildView: jest.fn(),
 	} as unknown as WorkspaceLeaf;
 	const getLeaves = jest.fn(() => [previewLeaf, sourceLeaf]);
 
+	const embedsByNote: Record<string, { embeds: Array<{ link: string }> }> = {
+		'note.md': { embeds: [{ link: 'recording.mp4' }] },
+		'other.md': { embeds: [] },
+	};
 	const app = {
 		embedRegistry: { embedByExtension },
 		vault: {
 			getResourcePath: () => 'app://media',
 			on: jest.fn(() => ({})),
+		},
+		metadataCache: {
+			getFileCache: (file: { path: string }) =>
+				embedsByNote[file.path] ?? { embeds: [] },
+			getFirstLinkpathDest: (linkPath: string) => ({ path: linkPath }),
 		},
 		workspace: {
 			getActiveFile: () => ({ path: 'note.md' }),
@@ -255,6 +271,36 @@ describe('EnhancedPlayerRegistrar re-renders only when needed', () => {
 		expect(getLeaves).not.toHaveBeenCalled();
 	});
 
+	it('does NOT re-apply the layout to players when no player window changed', () => {
+		const applySpy = jest.spyOn(
+			AudioPlayerRegistry.prototype,
+			'applySettings',
+		);
+		try {
+			const { registrar } = setup(true);
+			// A save that did not change a player window
+			registrar.refresh();
+			expect(applySpy).not.toHaveBeenCalled();
+		} finally {
+			applySpy.mockRestore();
+		}
+	});
+
+	it('re-applies the layout to players only when a player window changed', () => {
+		const applySpy = jest.spyOn(
+			AudioPlayerRegistry.prototype,
+			'applySettings',
+		);
+		try {
+			const { registrar, settings } = setup(true);
+			settings.playerShowWaveform = !settings.playerShowWaveform;
+			registrar.refresh();
+			expect(applySpy).toHaveBeenCalledTimes(1);
+		} finally {
+			applySpy.mockRestore();
+		}
+	});
+
 	it('upgrades an audio-only container to enhanced by re-rendering after the probe', async () => {
 		probeMock.mockResolvedValue('audio');
 		const { creator, getLeaves } = setup(true);
@@ -267,6 +313,25 @@ describe('EnhancedPlayerRegistrar re-renders only when needed', () => {
 
 		// The probe found audio, so a re-render is requested to upgrade it
 		expect(getLeaves).toHaveBeenCalledWith('markdown');
+	});
+
+	it('re-renders only the leaves that embed the probed file (scoped upgrade)', async () => {
+		probeMock.mockResolvedValue('audio');
+		const { creator, leaves } = setup(true);
+
+		// recording.mp4 is embedded only by the preview note (note.md)
+		creator(info, fileOf('mp4'), '');
+		await flush();
+
+		expect(
+			(leaves.preview as unknown as { rebuildView: jest.Mock })
+				.rebuildView,
+		).toHaveBeenCalledTimes(1);
+		// The source note (other.md) does not embed it, so it is left alone
+		expect(
+			(leaves.source as unknown as { rebuildView: jest.Mock })
+				.rebuildView,
+		).not.toHaveBeenCalled();
 	});
 
 	it('does not re-render after probing a real video file', async () => {

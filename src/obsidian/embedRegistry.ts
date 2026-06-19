@@ -70,10 +70,11 @@ export function getEmbedRegistry(app: App): EmbedRegistry | null {
 
 /**
  * Overrides the embed creators for a set of extensions and restores the
- * originals on teardown. Registration prefers the public-ish
- * registerExtension(s) methods and falls back to writing the
- * embedByExtension map directly; restoration always rewrites the map so
- * the plugin never leaves a dangling override after unload.
+ * originals on teardown. Registration writes the embedByExtension map
+ * directly — registerExtension(s) is deliberately not used because it throws
+ * on extensions that are already registered (every media extension is).
+ * Restoration always rewrites the map so the plugin never leaves a dangling
+ * override after unload.
  */
 export class EmbedRegistryOverride {
 	private readonly previous = new Map<string, EmbedCreator | undefined>();

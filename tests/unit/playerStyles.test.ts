@@ -67,6 +67,25 @@ describe('read-only player styles', () => {
 		// content-box keeps the canvas height equal to the waveform height
 		expect(waveform).toMatch(/box-sizing:\s*content-box/);
 	});
+
+	it('stacks the base and played canvases in a positioned layer', () => {
+		const layer = ruleBody('.aar-player-waveform');
+		expect(layer).not.toBeNull();
+		expect(layer).toMatch(/position:\s*relative/);
+
+		const canvas = ruleBody('.aar-player-canvas');
+		expect(canvas).not.toBeNull();
+		expect(canvas).toMatch(/position:\s*absolute/);
+	});
+
+	it('reveals the played waveform by clipping from the progress variable, not by redrawing', () => {
+		const played = ruleBody('.aar-player-canvas-played');
+		expect(played).not.toBeNull();
+		// The played layer is clipped from the right by the progress variable,
+		// so moving the playhead only repaints the clip (no canvas work)
+		expect(played).toMatch(/clip-path:\s*inset\(/);
+		expect(played).toMatch(/var\(--aar-progress/);
+	});
 });
 
 describe('plain seek bar (waveform off)', () => {

@@ -4,6 +4,7 @@
 
 import {
 	computeWaveformPeaks,
+	computeWaveformPeaksProgressive,
 	downsamplePeaks,
 	waveformCacheKey,
 	WaveformPeakCache,
@@ -143,6 +144,91 @@ describe('computeWaveformPeaks — edge and negative cases', () => {
 
 	it('returns empty for a negative bucket count', () => {
 		expect(computeWaveformPeaks([new Float32Array([1])], -3)).toEqual([]);
+	});
+});
+
+describe('computeWaveformPeaksProgressive', () => {
+	const immediateYield = (): Promise<void> => Promise.resolve();
+
+	it('produces the same normalized result as the synchronous version', async () => {
+		const channel = new Float32Array([
+			0.1, 0.1, 0.5, 0.5, 0.9, 0.2, 0.3, 0.0,
+		]);
+		const progressive = await computeWaveformPeaksProgressive(
+			[channel],
+			4,
+			{
+				chunkBuckets: 1,
+				yieldControl: immediateYield,
+			},
+		);
+		const sync = computeWaveformPeaks([channel], 4);
+		expect(progressive).toHaveLength(4);
+		progressive.forEach((value, i) => {
+			expect(value).toBeCloseTo(sync[i]);
+		});
+	});
+
+	it('reports a normalized snapshot after each chunk and yields between chunks', async () => {
+		const channel = new Float32Array([0.2, 0.4, 0.6, 0.8]);
+		const snapshots: number[][] = [];
+		let yields = 0;
+		const final = await computeWaveformPeaksProgressive([channel], 4, {
+			chunkBuckets: 2,
+			onProgress: (peaks) => snapshots.push([...peaks]),
+			yieldControl: () => {
+				yields++;
+				return Promise.resolve();
+			},
+		});
+		// 4 buckets / 2 per chunk = 2 chunks -> 2 snapshots, 1 yield between
+		expect(snapshots).toHaveLength(2);
+		expect(yields).toBe(1);
+		for (const snapshot of snapshots) {
+			expect(snapshot).toHaveLength(4);
+			for (const value of snapshot) {
+				expect(value).toBeGreaterThanOrEqual(0);
+				expect(value).toBeLessThanOrEqual(1);
+			}
+		}
+		// The last snapshot matches the returned, fully normalized peaks
+		expect(snapshots[snapshots.length - 1]).toEqual(final);
+	});
+
+	it('aborts early and stops computing further chunks', async () => {
+		const channel = new Float32Array([1, 1, 1, 1, 1, 1, 1, 1]);
+		let progressCalls = 0;
+		const result = await computeWaveformPeaksProgressive([channel], 8, {
+			chunkBuckets: 2,
+			yieldControl: immediateYield,
+			onProgress: () => {
+				progressCalls++;
+			},
+			// Abort once the first chunk has reported progress
+			shouldAbort: () => progressCalls >= 1,
+		});
+		expect(result).toHaveLength(8);
+		expect(progressCalls).toBe(1);
+		// Buckets past the first chunk were never computed
+		expect(result.slice(2)).toEqual([0, 0, 0, 0, 0, 0]);
+	});
+
+	it('mirrors the synchronous edge cases', async () => {
+		expect(
+			await computeWaveformPeaksProgressive([], 4, {
+				yieldControl: immediateYield,
+			}),
+		).toEqual([]);
+		expect(
+			await computeWaveformPeaksProgressive([new Float32Array([1])], 0, {
+				yieldControl: immediateYield,
+			}),
+		).toEqual([]);
+		expect(
+			await computeWaveformPeaksProgressive([new Float32Array(0)], 3, {
+				yieldControl: immediateYield,
+			}),
+		).toEqual([0, 0, 0]);
 	});
 });
 

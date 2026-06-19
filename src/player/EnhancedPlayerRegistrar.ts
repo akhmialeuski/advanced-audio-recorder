@@ -26,7 +26,7 @@
  * @module player/EnhancedPlayerRegistrar
  */
 
-import { TFile, MarkdownView, debounce } from 'obsidian';
+import { TFile, MarkdownView, debounce, getLinkpath } from 'obsidian';
 import type {
 	App,
 	MarkdownPostProcessorContext,
@@ -36,7 +36,9 @@ import type {
 import { AUDIO_EXTENSIONS, PLUGIN_LOG_PREFIX } from '../constants';
 import {
 	resolvePlayerSettings,
+	playerSettingsEqual,
 	type AudioRecorderSettings,
+	type ResolvedPlayerSettings,
 } from '../settings/Settings';
 import { AudioPlayerRegistry } from './AudioPlayerRegistry';
 import { WaveformPeakCache, SharedAudioDecoder } from './WaveformData';
@@ -81,9 +83,15 @@ export class EnhancedPlayerRegistrar {
 	private readonly probing = new Set<string>();
 	/** Last seen feature-enabled state, so refresh re-renders only on a flip. */
 	private lastEnabled = false;
-	/** Debounced re-render of open markdown views (settings + probe upgrades). */
+	/** Last applied resolved layout, so an unchanged save re-applies nothing. */
+	private lastResolved: ResolvedPlayerSettings | null = null;
+	/** Paths pending a scoped re-render (probe upgrades of specific files). */
+	private readonly pendingRerenderPaths = new Set<string>();
+	/** Whether every leaf must re-render (master toggle flip). */
+	private pendingRerenderAll = false;
+	/** Debounced flush that coalesces a burst of re-render requests. */
 	private readonly scheduleRerender = debounce(
-		() => this.rerenderMarkdownViews(),
+		() => this.flushRerender(),
 		RERENDER_DEBOUNCE_MS,
 		true,
 	);
@@ -108,6 +116,9 @@ export class EnhancedPlayerRegistrar {
 	 */
 	register(): void {
 		this.lastEnabled = this.getSettings().enhancedPlayerEnabled;
+		this.lastResolved = this.lastEnabled
+			? resolvePlayerSettings(this.getSettings())
+			: null;
 		this.setupEmbedRegistry();
 
 		this.plugin.registerMarkdownPostProcessor((el, ctx) => {
@@ -187,14 +198,28 @@ export class EnhancedPlayerRegistrar {
 		const enabled = this.getSettings().enhancedPlayerEnabled;
 		if (enabled !== this.lastEnabled) {
 			this.lastEnabled = enabled;
-			this.scheduleRerender();
+			this.lastResolved = enabled
+				? resolvePlayerSettings(this.getSettings())
+				: null;
+			// A flip changes what every embed is (native vs enhanced), so
+			// every leaf must re-render
+			this.requestRerenderAll();
 			return;
 		}
-		if (enabled) {
-			this.registry.applySettings(
-				resolvePlayerSettings(this.getSettings()),
-			);
+		if (!enabled) {
+			return;
 		}
+		const resolved = resolvePlayerSettings(this.getSettings());
+		// Skip when no player window changed, so an unrelated settings save
+		// never reapplies the layout to (or rebuilds) open players
+		if (
+			this.lastResolved &&
+			playerSettingsEqual(resolved, this.lastResolved)
+		) {
+			return;
+		}
+		this.lastResolved = resolved;
+		this.registry.applySettings(resolved);
 	}
 
 	/**
@@ -295,7 +320,9 @@ export class EnhancedPlayerRegistrar {
 			);
 			this.mediaKindCache.set(file.path, kind);
 			if (kind === 'audio' && this.getSettings().enhancedPlayerEnabled) {
-				this.scheduleRerender();
+				// Only the notes that actually embed this file need rebuilding,
+				// so a large note that does not embed it is never re-rendered
+				this.requestRerenderForFile(file.path);
 			}
 		} finally {
 			this.probing.delete(file.path);
@@ -330,16 +357,73 @@ export class EnhancedPlayerRegistrar {
 	}
 
 	/**
-	 * Rebuilds every open markdown view so embeds are recreated with the
-	 * current decision (native vs enhanced). Only called on the rare events
-	 * that change what an embed should be: the master toggle flipping, or a
-	 * probe revealing an audio-only file.
+	 * Requests a re-render of every open leaf (master toggle flip, which
+	 * changes what every embed should be).
 	 */
-	private rerenderMarkdownViews(): void {
+	private requestRerenderAll(): void {
+		this.pendingRerenderAll = true;
+		this.scheduleRerender();
+	}
+
+	/**
+	 * Requests a re-render of only the leaves that embed the given file, so a
+	 * probe upgrade never re-renders unrelated (possibly large) notes.
+	 * @param path - Vault path of the upgraded file
+	 */
+	private requestRerenderForFile(path: string): void {
+		this.pendingRerenderPaths.add(path);
+		this.scheduleRerender();
+	}
+
+	/**
+	 * Flushes the coalesced re-render requests: rebuilds every leaf on a full
+	 * request, otherwise only the leaves whose note embeds a pending file.
+	 */
+	private flushRerender(): void {
+		const all = this.pendingRerenderAll;
+		const paths = new Set(this.pendingRerenderPaths);
+		this.pendingRerenderAll = false;
+		this.pendingRerenderPaths.clear();
+		if (!all && paths.size === 0) {
+			return;
+		}
 		const leaves = this.app.workspace.getLeavesOfType('markdown');
 		for (const leaf of leaves) {
-			this.rerenderLeaf(leaf);
+			if (all || this.leafEmbedsAnyPath(leaf, paths)) {
+				this.rerenderLeaf(leaf);
+			}
 		}
+	}
+
+	/**
+	 * Whether a leaf's note embeds any of the given file paths, resolved
+	 * through the metadata cache. A note with no matching embed is left
+	 * untouched.
+	 * @param leaf - Workspace leaf to test
+	 * @param paths - Candidate embedded file paths
+	 */
+	private leafEmbedsAnyPath(
+		leaf: WorkspaceLeaf,
+		paths: Set<string>,
+	): boolean {
+		const view = leaf.view;
+		if (!(view instanceof MarkdownView) || !view.file) {
+			return false;
+		}
+		const embeds = this.app.metadataCache.getFileCache(view.file)?.embeds;
+		if (!embeds) {
+			return false;
+		}
+		for (const embed of embeds) {
+			const dest = this.app.metadataCache.getFirstLinkpathDest(
+				getLinkpath(embed.link),
+				view.file.path,
+			);
+			if (dest && paths.has(dest.path)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**

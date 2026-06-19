@@ -264,10 +264,27 @@ input.aar-input-invalid {
     background-color: var(--background-primary);
 }
 
+/* Inner layer that stacks the base and played waveform canvases */
+.aar-player-waveform {
+    position: relative;
+    width: 100%;
+    height: var(--aar-waveform-height);
+}
+
 .aar-player-canvas {
+    position: absolute;
+    inset: 0;
     display: block;
     width: 100%;
     height: 100%;
+}
+
+/* Accent-colored copy of the waveform, revealed up to the playhead by
+   clipping from the right. Updating --aar-progress only repaints this layer
+   (no layout, no canvas reallocation), so the playing position moves cheaply
+   on every timeupdate instead of redrawing the whole waveform. */
+.aar-player-canvas-played {
+    clip-path: inset(0 calc(100% - var(--aar-progress, 0%)) 0 0);
 }
 
 /* Plain progress bar shown when the waveform is off. Framed with vertical

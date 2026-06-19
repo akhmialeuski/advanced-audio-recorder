@@ -28,3 +28,39 @@ if (typeof (globalThis as ObsidianGlobals).activeDocument === 'undefined') {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- globalThis type augmentation requires any
 	(globalThis as any).activeDocument = globalThis.document;
 }
+
+// jsdom lacks ResizeObserver, which the waveform seek area observes.
+if (
+	typeof (globalThis as { ResizeObserver?: unknown }).ResizeObserver ===
+	'undefined'
+) {
+	class ResizeObserverMock {
+		observe(): void {
+			// Mock implementation
+		}
+		unobserve(): void {
+			// Mock implementation
+		}
+		disconnect(): void {
+			// Mock implementation
+		}
+	}
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- globalThis type augmentation requires any
+	(globalThis as any).ResizeObserver = ResizeObserverMock;
+}
+
+// Obsidian augments Node with instanceOf; jsdom does not. The player's
+// default-embed guard calls node.instanceOf on mutation-added nodes.
+const nodeProto = globalThis.Node?.prototype as
+	| (Node & { instanceOf?: unknown })
+	| undefined;
+if (nodeProto && typeof nodeProto.instanceOf === 'undefined') {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- prototype augmentation requires any
+	(nodeProto as any).instanceOf = function (
+		this: Node,
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- mirrors Obsidian's loose signature
+		ctor: any,
+	): boolean {
+		return this instanceof ctor;
+	};
+}

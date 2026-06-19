@@ -6,6 +6,9 @@
  * @module player/playbackRate
  */
 
+/** Tolerance that absorbs floating point drift when comparing playback rates. */
+const RATE_COMPARISON_EPSILON = 1e-6;
+
 /**
  * Formats a playback rate for display (e.g. 1.5 becomes "1.5x").
  * @param rate - Playback rate multiplier
@@ -38,6 +41,6 @@ export function speedMenuItems(
 	return presets.map((rate) => ({
 		rate,
 		label: formatPlaybackRate(rate),
-		checked: Math.abs(currentRate - rate) < 1e-6,
+		checked: Math.abs(currentRate - rate) < RATE_COMPARISON_EPSILON,
 	}));
 }

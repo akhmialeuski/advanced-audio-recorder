@@ -14,9 +14,6 @@ import {
 	MAX_SPLIT_CHUNK_MINUTES,
 	SPLIT_PART_SUFFIX_PATTERN,
 	SPLIT_PART_SUFFIX_RULE_TEXT,
-	DEFAULT_PLAYER_WAVEFORM_HEIGHT,
-	DEFAULT_PLAYER_SKIP_SECONDS,
-	DEFAULT_PLAYER_PLAYBACK_RATE,
 } from '../constants';
 import { getDefaultDeviceId } from '../utils/DeviceUtils';
 
@@ -327,34 +324,22 @@ export function validateSettings(settings: AudioRecorderSettings): void {
 }
 
 /**
- * Sanitized, render-ready view of the enhanced player settings. The
- * player reads these instead of the raw settings so a hand-edited or
- * out-of-range data.json can never produce a broken player (a zero
- * height, a negative skip amount, a NaN playback rate). Player settings
- * are deliberately kept off validateSettings: they are unrelated to
- * recording and must never throw on the recording path.
+ * Render-ready view of the enhanced player's two user-toggleable windows.
+ * Every other player element (speed, skip, volume, mute, loop, time display,
+ * timecode links, marker list, chapter navigation) is fixed and rendered
+ * unconditionally from constants, so this only carries the two toggles that
+ * actually vary. Player settings are deliberately kept off validateSettings:
+ * they are unrelated to recording and must never throw on the recording path.
  */
 export interface ResolvedPlayerSettings {
+	/** Draw the waveform behind the seek bar; false renders the plain bar. */
 	showWaveform: boolean;
-	waveformHeight: number;
-	showSpeedControl: boolean;
-	defaultPlaybackRate: number;
-	showSkipButtons: boolean;
-	skipSeconds: number;
-	showVolumeControl: boolean;
-	showTimeDisplay: boolean;
-	defaultLoop: boolean;
-	enableTimestampLinks: boolean;
-	showMuteButton: boolean;
+	/** Show the markers and chapters window (list, ticks, edit controls). */
 	enableMarkers: boolean;
-	showMarkerList: boolean;
-	showChapterNav: boolean;
 }
 
 /**
- * Builds the render-ready player layout. The control buttons (speed, skip,
- * volume, time, mute, loop, timecode links) are fixed and always shown; only
- * the waveform window and the markers/chapters window are user-toggleable.
+ * Builds the render-ready player layout from the two window toggles.
  * @param settings - Current plugin settings
  * @returns Render-ready player settings
  */
@@ -363,18 +348,23 @@ export function resolvePlayerSettings(
 ): ResolvedPlayerSettings {
 	return {
 		showWaveform: settings.playerShowWaveform,
-		waveformHeight: DEFAULT_PLAYER_WAVEFORM_HEIGHT,
-		showSpeedControl: true,
-		defaultPlaybackRate: DEFAULT_PLAYER_PLAYBACK_RATE,
-		showSkipButtons: true,
-		skipSeconds: DEFAULT_PLAYER_SKIP_SECONDS,
-		showVolumeControl: true,
-		showTimeDisplay: true,
-		defaultLoop: false,
-		enableTimestampLinks: true,
-		showMuteButton: true,
 		enableMarkers: settings.playerEnableMarkers,
-		showMarkerList: settings.playerEnableMarkers,
-		showChapterNav: settings.playerEnableMarkers,
 	};
+}
+
+/**
+ * Whether two resolved player layouts are identical. A settings save that
+ * does not change either window toggle re-applies nothing to live players,
+ * so an unrelated setting change never rebuilds an open player.
+ * @param a - One resolved layout
+ * @param b - Another resolved layout
+ * @returns True when both toggles match
+ */
+export function playerSettingsEqual(
+	a: ResolvedPlayerSettings,
+	b: ResolvedPlayerSettings,
+): boolean {
+	return (
+		a.showWaveform === b.showWaveform && a.enableMarkers === b.enableMarkers
+	);
 }

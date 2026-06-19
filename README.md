@@ -165,13 +165,13 @@ Moves the audio file to the system trash **and** removes the corresponding embed
 
 ## Enhanced audio player
 
-When **Enhanced audio player** is enabled in settings, the plugin replaces Obsidian's built-in audio embed with a richer player wherever an audio file is embedded (`![[recording.webm]]`). The takeover is done through a Markdown post-processor, so it applies in both Reading view and Live Preview and is torn down cleanly when a note re-renders or its leaf closes. Disabling the setting restores the built-in embed on the next render.
+When **Enhanced audio player** is enabled in settings, the plugin replaces Obsidian's built-in audio embed with a richer player wherever an audio file is embedded (`![[recording.webm]]`). The takeover integrates with Obsidian's own embed rendering (with a Markdown post-processor fallback), so it applies in both Reading view and Live Preview and is torn down cleanly when a note re-renders or its leaf closes. Disabling the setting restores the built-in embed on the next render.
 
 The player offers:
 
 - **Waveform seek bar**: the recording is drawn as a waveform; click or drag anywhere on it to seek. The seek bar is keyboard-operable too (focus it and use the arrow keys, Home, and End). The played portion uses the theme accent color. Waveforms are computed once per file revision and cached, so scrolling a note with many players does not redecode audio.
-- **Playback speed**: cycle through speed presets (0.5×–3×). A default speed can be set in settings.
-- **Skip buttons**: jump backward and forward by a configurable number of seconds.
+- **Playback speed**: cycle through speed presets (0.5×–3×) from the speed button.
+- **Skip buttons**: jump backward and forward by 10 seconds.
 - **Volume** control and **loop** toggle.
 - **Time display**: elapsed and total time.
 - **Mute** toggle alongside the volume control.
@@ -200,7 +200,7 @@ A link with a `#t=` offset jumps a rendered player to that position instead of o
 
 The enhanced player takes over **audio-only** files. Files that carry video (for example a `.mp4` or `.webm` with a video track) are left to Obsidian's built-in player so the video can be watched, and any file the app cannot decode falls back to the built-in embed as well. The container is classified from the file's metadata rather than its extension, so an audio-only `.mp4` or `.webm` recording still gets the enhanced player.
 
-For supported audio the waveform is always drawn — there is no file-size limit. Turn off **Show waveform** to use the plain (still seekable) bar instead.
+The waveform is drawn for any supported audio file, regardless of length. Peaks are computed progressively in the background and the waveform fills in as they become ready, so even a long (hour-plus) recording never blocks the interface. If a file cannot be decoded, the player falls back to the plain (still seekable) bar. Turn off **Show waveform** to always use the plain bar (no decoding is performed).
 
 > **Desktop and mobile**: the enhanced player works wherever Obsidian renders audio embeds. Waveform extraction relies on the Web Audio API available in the app.
 
@@ -299,23 +299,13 @@ The plugin keeps an automatic backup of its settings in `data.json.bak` next to 
 
 ### Audio player
 
+The player's controls (speed, skip, volume, mute, loop, time display, copy-timestamp link) are fixed; only the master toggle and the two windows below are configurable.
+
 | Setting | Description | Default |
 |---------|-------------|---------|
-| **Enhanced audio player** | Replace the built-in audio embed with the enhanced player. Enabling it reveals the options below. Applies to notes rendered after the change. | Off |
-| **Show waveform** | Draw a waveform behind the seek bar. When off, a plain progress bar is shown and no decoding is performed. | On |
-| **Waveform height** | Height of the waveform in pixels (24–160). | 48 |
-| **Show speed control** | Show the playback-speed button. | On |
-| **Default playback speed** | Speed applied to players when a note opens. | 1× |
-| **Show skip buttons** | Show skip-forward and skip-back buttons. | On |
-| **Skip amount** | Seconds skipped by the skip buttons (1–60). | 10 |
-| **Show volume control** | Show the volume slider. | On |
-| **Show mute button** | Show a mute / unmute button. | On |
-| **Show time display** | Show elapsed and total time. | On |
-| **Loop by default** | Start new players with looping enabled. | Off |
-| **Timecode links** | Enable `#t=` links that seek a player, plus the player's "copy timestamp link" button. | On |
-| **Markers and chapters** | Add per-file bookmarks and chapters. Enabling it reveals the options below. Stored in a sidecar file next to each recording. | On |
-| **Show marker list** | List markers and chapters below the player with jump, rename, and delete actions. | On |
-| **Chapter navigation** | Show previous / next chapter buttons. | On |
+| **Enhanced audio player** | Replace the built-in audio embed with the enhanced player (waveform, speed, skip, volume, mute, loop, time display, timecode links, markers and chapters). Enabling it reveals the two options below. Applies to notes rendered after the change. | Off |
+| **Show waveform** | Draw a waveform behind the seek bar. When off, a plain (still seekable) progress bar is shown and no audio is decoded. | On |
+| **Markers and chapters** | Show the markers and chapters list below the player, with the add, jump, rename, delete, and chapter-navigation controls. Markers are stored in a sidecar file next to each recording. | On |
 
 ### Diagnostics
 

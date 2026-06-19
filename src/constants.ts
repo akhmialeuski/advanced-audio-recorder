@@ -60,6 +60,9 @@ export const DEFAULT_BITRATE = 128000;
 /** Seconds in one minute. */
 export const SECONDS_PER_MINUTE = 60;
 
+/** Seconds in one hour. */
+export const SECONDS_PER_HOUR = 3600;
+
 /** Milliseconds in one minute. */
 export const MS_PER_MINUTE = 60_000;
 
@@ -133,3 +136,38 @@ export const PLAYER_WAVEFORM_FALLBACK_PLAYED = '#7c6fda';
  * the theme CSS variable `--aar-waveform-unplayed` is unavailable.
  */
 export const PLAYER_WAVEFORM_FALLBACK_UNPLAYED = '#b3b3b3';
+
+/** Default loop state applied to a newly created shared audio element. */
+export const DEFAULT_PLAYER_LOOP = false;
+
+/** Seconds the seek area moves per arrow-key press. */
+export const PLAYER_SEEK_KEYBOARD_STEP_SECONDS = 5;
+
+/**
+ * Animation frames to wait for the embed to attach to the document before
+ * giving up the editor-mode probe (the embed-registry path renders while
+ * still detached). At ~60fps this is roughly 1.5 seconds.
+ */
+export const PLAYER_ATTACH_WAIT_FRAMES = 90;
+
+/**
+ * Animation frames to retry drawing the waveform while the seek area still
+ * reports a zero width (layout has not settled yet).
+ */
+export const PLAYER_WAVEFORM_REDRAW_RETRIES = 10;
+
+/**
+ * Fallback seek-area width in pixels used to size the waveform before the
+ * real layout width is known.
+ */
+export const PLAYER_WAVEFORM_FALLBACK_WIDTH_PX = 600;
+
+/** Maximum number of distinct waveforms retained in the bounded peak cache. */
+export const WAVEFORM_CACHE_MAX_ENTRIES = 64;
+
+/**
+ * Number of high-resolution buckets computed per progressive chunk before
+ * yielding control back to the event loop, so peak extraction for a large
+ * file never blocks the main thread in a single long synchronous pass.
+ */
+export const WAVEFORM_PROGRESSIVE_CHUNK_BUCKETS = 16;

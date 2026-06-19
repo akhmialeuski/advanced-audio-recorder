@@ -9,12 +9,8 @@ import {
 	DEFAULT_SETTINGS,
 	mergeSettings,
 	resolvePlayerSettings,
+	playerSettingsEqual,
 } from 'src/settings/Settings';
-import {
-	DEFAULT_PLAYER_WAVEFORM_HEIGHT,
-	DEFAULT_PLAYER_SKIP_SECONDS,
-	DEFAULT_PLAYER_PLAYBACK_RATE,
-} from 'src/constants';
 
 describe('enhanced player settings', () => {
 	it('ships disabled with both windows on by default', () => {
@@ -35,7 +31,7 @@ describe('enhanced player settings', () => {
 });
 
 describe('resolvePlayerSettings', () => {
-	it('shows every fixed control and honours both window toggles', () => {
+	it('carries only the two window toggles (fixed elements are not fields)', () => {
 		const resolved = resolvePlayerSettings(
 			mergeSettings({
 				playerShowWaveform: true,
@@ -45,38 +41,58 @@ describe('resolvePlayerSettings', () => {
 
 		expect(resolved).toEqual({
 			showWaveform: true,
-			waveformHeight: DEFAULT_PLAYER_WAVEFORM_HEIGHT,
-			showSpeedControl: true,
-			defaultPlaybackRate: DEFAULT_PLAYER_PLAYBACK_RATE,
-			showSkipButtons: true,
-			skipSeconds: DEFAULT_PLAYER_SKIP_SECONDS,
-			showVolumeControl: true,
-			showTimeDisplay: true,
-			defaultLoop: false,
-			enableTimestampLinks: true,
-			showMuteButton: true,
 			enableMarkers: true,
-			showMarkerList: true,
-			showChapterNav: true,
 		});
 	});
 
 	it('reflects the waveform window toggle', () => {
-		const resolved = resolvePlayerSettings(
-			mergeSettings({ playerShowWaveform: false }),
-		);
-		expect(resolved.showWaveform).toBe(false);
-		// Buttons stay fixed regardless
-		expect(resolved.showSpeedControl).toBe(true);
-		expect(resolved.showVolumeControl).toBe(true);
+		expect(
+			resolvePlayerSettings(mergeSettings({ playerShowWaveform: false }))
+				.showWaveform,
+		).toBe(false);
+		expect(
+			resolvePlayerSettings(mergeSettings({ playerShowWaveform: true }))
+				.showWaveform,
+		).toBe(true);
 	});
 
-	it('reflects the markers window toggle across the marker fields', () => {
-		const resolved = resolvePlayerSettings(
-			mergeSettings({ playerEnableMarkers: false }),
-		);
-		expect(resolved.enableMarkers).toBe(false);
-		expect(resolved.showMarkerList).toBe(false);
-		expect(resolved.showChapterNav).toBe(false);
+	it('reflects the markers window toggle', () => {
+		expect(
+			resolvePlayerSettings(mergeSettings({ playerEnableMarkers: false }))
+				.enableMarkers,
+		).toBe(false);
+		expect(
+			resolvePlayerSettings(mergeSettings({ playerEnableMarkers: true }))
+				.enableMarkers,
+		).toBe(true);
+	});
+});
+
+describe('playerSettingsEqual', () => {
+	it('is true for identical layouts', () => {
+		expect(
+			playerSettingsEqual(
+				{ showWaveform: true, enableMarkers: false },
+				{ showWaveform: true, enableMarkers: false },
+			),
+		).toBe(true);
+	});
+
+	it('is false when the waveform toggle differs', () => {
+		expect(
+			playerSettingsEqual(
+				{ showWaveform: true, enableMarkers: true },
+				{ showWaveform: false, enableMarkers: true },
+			),
+		).toBe(false);
+	});
+
+	it('is false when the markers toggle differs', () => {
+		expect(
+			playerSettingsEqual(
+				{ showWaveform: true, enableMarkers: true },
+				{ showWaveform: true, enableMarkers: false },
+			),
+		).toBe(false);
 	});
 });

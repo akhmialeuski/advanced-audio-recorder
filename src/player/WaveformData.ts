@@ -5,6 +5,11 @@
  * @module player/WaveformData
  */
 
+import {
+	WAVEFORM_CACHE_MAX_ENTRIES,
+	WAVEFORM_PROGRESSIVE_CHUNK_BUCKETS,
+} from '../constants';
+
 /**
  * Computes normalized amplitude peaks for a waveform display. Every
  * output bucket holds the maximum absolute sample amplitude (0..1)
@@ -30,41 +35,172 @@ export function computeWaveformPeaks(
 	const peaks = new Array<number>(bucketCount).fill(0);
 	const framesPerBucket = frameCount / bucketCount;
 	const channelCount = channels.length;
-
-	for (let bucket = 0; bucket < bucketCount; bucket++) {
-		const start = Math.floor(bucket * framesPerBucket);
-		// The final bucket always extends to the last frame so trailing
-		// samples are never dropped by rounding
-		const end =
-			bucket === bucketCount - 1
-				? frameCount
-				: Math.floor((bucket + 1) * framesPerBucket);
-		let maxAmplitude = 0;
-		for (let frame = start; frame < end; frame++) {
-			let mixed = 0;
-			for (let channel = 0; channel < channelCount; channel++) {
-				mixed += channels[channel][frame];
-			}
-			const amplitude = Math.abs(mixed / channelCount);
-			if (amplitude > maxAmplitude) {
-				maxAmplitude = amplitude;
-			}
-		}
-		peaks[bucket] = maxAmplitude;
-	}
-
 	let loudest = 0;
-	for (const peak of peaks) {
+	for (let bucket = 0; bucket < bucketCount; bucket++) {
+		const [start, end] = bucketBounds(
+			bucket,
+			bucketCount,
+			framesPerBucket,
+			frameCount,
+		);
+		const peak = bucketPeak(channels, channelCount, start, end);
+		peaks[bucket] = peak;
 		if (peak > loudest) {
 			loudest = peak;
 		}
 	}
-	if (loudest > 0) {
-		for (let bucket = 0; bucket < bucketCount; bucket++) {
-			peaks[bucket] /= loudest;
+	return normalizePeaks(peaks, loudest);
+}
+
+/**
+ * Options controlling progressive peak extraction.
+ */
+export interface ProgressivePeaksOptions {
+	/**
+	 * Invoked with a normalized snapshot of the peaks computed so far after
+	 * each chunk, so the waveform can be drawn incrementally as it fills in.
+	 */
+	onProgress?: (peaks: number[]) => void;
+	/** High-resolution buckets computed per chunk before yielding. */
+	chunkBuckets?: number;
+	/**
+	 * Yields control to the event loop between chunks. Defaults to a
+	 * macrotask; tests inject an immediate resolver for determinism.
+	 */
+	yieldControl?: () => Promise<void>;
+	/**
+	 * Returns true to abort the computation early (e.g. the player unloaded).
+	 * The partially computed result is then discarded by the caller.
+	 */
+	shouldAbort?: () => boolean;
+}
+
+/**
+ * Computes the same normalized peaks as computeWaveformPeaks, but in chunks
+ * that yield to the event loop between them, so extracting peaks from a large
+ * file never blocks the main thread in one long synchronous pass. Snapshots
+ * are reported through onProgress (normalized against the running maximum) so
+ * the waveform can be drawn as it fills in, and the final array is normalized
+ * against the true global maximum.
+ * @param channels - Decoded per-channel sample data
+ * @param bucketCount - Number of peaks to produce (waveform bar count)
+ * @param options - Progress, chunking, yielding, and abort hooks
+ * @returns Array of bucketCount normalized peaks in the range 0..1
+ */
+export async function computeWaveformPeaksProgressive(
+	channels: Float32Array[],
+	bucketCount: number,
+	options: ProgressivePeaksOptions = {},
+): Promise<number[]> {
+	const chunkBuckets =
+		options.chunkBuckets ?? WAVEFORM_PROGRESSIVE_CHUNK_BUCKETS;
+	const yieldControl = options.yieldControl ?? defaultYield;
+
+	if (bucketCount <= 0 || channels.length === 0) {
+		return [];
+	}
+	const frameCount = channels[0].length;
+	if (frameCount === 0) {
+		return new Array<number>(bucketCount).fill(0);
+	}
+
+	const raw = new Array<number>(bucketCount).fill(0);
+	const framesPerBucket = frameCount / bucketCount;
+	const channelCount = channels.length;
+	let runningMax = 0;
+
+	for (
+		let chunkStart = 0;
+		chunkStart < bucketCount;
+		chunkStart += chunkBuckets
+	) {
+		if (options.shouldAbort?.()) {
+			return raw;
+		}
+		const chunkEnd = Math.min(bucketCount, chunkStart + chunkBuckets);
+		for (let bucket = chunkStart; bucket < chunkEnd; bucket++) {
+			const [start, end] = bucketBounds(
+				bucket,
+				bucketCount,
+				framesPerBucket,
+				frameCount,
+			);
+			const peak = bucketPeak(channels, channelCount, start, end);
+			raw[bucket] = peak;
+			if (peak > runningMax) {
+				runningMax = peak;
+			}
+		}
+		options.onProgress?.(normalizePeaks(raw.slice(), runningMax));
+		if (chunkEnd < bucketCount) {
+			await yieldControl();
+		}
+	}
+	return normalizePeaks(raw, runningMax);
+}
+
+/**
+ * Resolves the [start, end) frame bounds of a bucket. The final bucket always
+ * extends to the last frame so trailing samples are never dropped by rounding.
+ */
+function bucketBounds(
+	bucket: number,
+	bucketCount: number,
+	framesPerBucket: number,
+	frameCount: number,
+): [number, number] {
+	const start = Math.floor(bucket * framesPerBucket);
+	const end =
+		bucket === bucketCount - 1
+			? frameCount
+			: Math.floor((bucket + 1) * framesPerBucket);
+	return [start, end];
+}
+
+/**
+ * Returns the maximum absolute mono-mixed amplitude across a frame range.
+ */
+function bucketPeak(
+	channels: Float32Array[],
+	channelCount: number,
+	start: number,
+	end: number,
+): number {
+	let maxAmplitude = 0;
+	for (let frame = start; frame < end; frame++) {
+		let mixed = 0;
+		for (let channel = 0; channel < channelCount; channel++) {
+			mixed += channels[channel][frame];
+		}
+		const amplitude = Math.abs(mixed / channelCount);
+		if (amplitude > maxAmplitude) {
+			maxAmplitude = amplitude;
+		}
+	}
+	return maxAmplitude;
+}
+
+/**
+ * Normalizes peaks in place so the given maximum maps to 1, keeping quiet
+ * recordings visible. A non-positive maximum leaves the peaks untouched.
+ */
+function normalizePeaks(peaks: number[], max: number): number[] {
+	if (max > 0) {
+		for (let i = 0; i < peaks.length; i++) {
+			peaks[i] /= max;
 		}
 	}
 	return peaks;
+}
+
+/**
+ * Default inter-chunk yield: a macrotask, which lets the browser paint and
+ * handle input between chunks.
+ */
+function defaultYield(): Promise<void> {
+	return new Promise<void>((resolve) => {
+		window.setTimeout(resolve, 0);
+	});
 }
 
 /**
@@ -130,7 +266,9 @@ export class WaveformPeakCache {
 	/**
 	 * @param maxEntries - Maximum number of distinct waveforms to retain
 	 */
-	constructor(private readonly maxEntries: number = 64) {}
+	constructor(
+		private readonly maxEntries: number = WAVEFORM_CACHE_MAX_ENTRIES,
+	) {}
 
 	/**
 	 * Returns cached peaks for a key, refreshing its recency, or

@@ -14,6 +14,19 @@
 export type MarkerKind = 'bookmark' | 'chapter';
 
 /**
+ * Tolerance for time comparisons so a marker positioned exactly at the
+ * playhead counts as reached despite floating point drift.
+ */
+const TIME_EPSILON_SECONDS = 1e-6;
+
+/**
+ * Lead-in window for the "previous chapter" action: pressing it within this
+ * many seconds after a chapter boundary jumps to the previous chapter rather
+ * than restarting the current one.
+ */
+const CHAPTER_LEAD_IN_SECONDS = 2;
+
+/**
  * A labelled point in an audio file.
  */
 export interface PlayerMarker {
@@ -107,7 +120,7 @@ export function chapterIndexAt(
 ): number {
 	let index = -1;
 	for (let i = 0; i < sortedChapters.length; i++) {
-		if (sortedChapters[i].time <= time + 1e-6) {
+		if (sortedChapters[i].time <= time + TIME_EPSILON_SECONDS) {
 			index = i;
 		} else {
 			break;
@@ -127,7 +140,7 @@ export function nextChapterTime(
 	time: number,
 ): number | null {
 	for (const chapter of sortedChapters) {
-		if (chapter.time > time + 1e-6) {
+		if (chapter.time > time + TIME_EPSILON_SECONDS) {
 			return chapter.time;
 		}
 	}
@@ -148,10 +161,9 @@ export function previousChapterTime(
 	sortedChapters: readonly PlayerMarker[],
 	time: number,
 ): number | null {
-	const leadInSeconds = 2;
 	let target: number | null = null;
 	for (const chapter of sortedChapters) {
-		if (chapter.time < time - leadInSeconds) {
+		if (chapter.time < time - CHAPTER_LEAD_IN_SECONDS) {
 			target = chapter.time;
 		} else {
 			break;
@@ -287,7 +299,7 @@ export function activeMarkerIndex(
 ): number {
 	let index = -1;
 	for (let i = 0; i < sortedMarkers.length; i++) {
-		if (sortedMarkers[i].time <= time + 1e-6) {
+		if (sortedMarkers[i].time <= time + TIME_EPSILON_SECONDS) {
 			index = i;
 		} else {
 			break;
