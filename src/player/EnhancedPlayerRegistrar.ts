@@ -25,6 +25,7 @@ import {
 	type EnhancedMediaEmbedDeps,
 } from './EnhancedMediaEmbed';
 import { parseAudioLinkTarget, isAudioFile } from './timecodeLinks';
+import type { MediaKind } from './mediaProbe';
 import type { MarkerStore } from './markers/MarkerStore';
 import {
 	getEmbedRegistry,
@@ -49,6 +50,8 @@ export class EnhancedPlayerRegistrar {
 	private embedOverride: EmbedRegistryOverride | null = null;
 	/** Live embed controllers, refreshed in place when settings change. */
 	private readonly liveEmbeds = new Set<EnhancedMediaEmbed>();
+	/** Probed media kind per file path, shared so each file is probed once. */
+	private readonly mediaKindCache = new Map<string, MediaKind>();
 
 	/**
 	 * @param plugin - Owning plugin (for registration lifecycle)
@@ -125,6 +128,7 @@ export class EnhancedPlayerRegistrar {
 		this.embedOverride = null;
 		this.registry.clear();
 		this.peakCache.clear();
+		this.mediaKindCache.clear();
 		this.markerStore.clearCache();
 		void this.decoder.close().catch(() => {
 			// Closing a context that never opened or already failed is
@@ -218,6 +222,7 @@ export class EnhancedPlayerRegistrar {
 			peakCache: this.peakCache,
 			decoder: this.decoder,
 			markerStore: this.markerStore,
+			mediaKindCache: this.mediaKindCache,
 			fallbackCreator,
 		};
 	}

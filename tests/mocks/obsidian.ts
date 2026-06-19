@@ -121,6 +121,93 @@ export class Notice {
 }
 
 /**
+ * Mock Component class mirroring Obsidian's load/unload child tree.
+ * Faithful enough for embed controllers: addChild loads the child when the
+ * parent is loaded, removeChild unloads it, and register callbacks fire on
+ * unload.
+ */
+export class Component {
+	private loaded = false;
+	private readonly children: Component[] = [];
+	private readonly registrations: Array<() => void> = [];
+
+	load(): void {
+		if (this.loaded) {
+			return;
+		}
+		this.loaded = true;
+		this.onload();
+		this.children.forEach((child) => child.load());
+	}
+
+	onload(): void {
+		// Overridden by subclasses
+	}
+
+	unload(): void {
+		if (!this.loaded) {
+			return;
+		}
+		this.loaded = false;
+		while (this.children.length > 0) {
+			this.children.pop()?.unload();
+		}
+		this.onunload();
+		this.registrations.forEach((cb) => cb());
+		this.registrations.length = 0;
+	}
+
+	onunload(): void {
+		// Overridden by subclasses
+	}
+
+	addChild<T extends Component>(child: T): T {
+		this.children.push(child);
+		if (this.loaded) {
+			child.load();
+		}
+		return child;
+	}
+
+	removeChild<T extends Component>(child: T): T {
+		const index = this.children.indexOf(child);
+		if (index >= 0) {
+			this.children.splice(index, 1);
+		}
+		child.unload();
+		return child;
+	}
+
+	register(cb: () => void): void {
+		this.registrations.push(cb);
+	}
+
+	registerEvent(_eventRef: unknown): void {
+		// Mock implementation
+	}
+
+	registerDomEvent(): void {
+		// Mock implementation
+	}
+
+	registerInterval(_id: number): void {
+		// Mock implementation
+	}
+}
+
+/**
+ * Mock MarkdownRenderChild bound to a container element.
+ */
+export class MarkdownRenderChild extends Component {
+	containerEl: HTMLElement;
+
+	constructor(containerEl: HTMLElement) {
+		super();
+		this.containerEl = containerEl;
+	}
+}
+
+/**
  * Adds Obsidian DOM extension methods to an HTMLElement.
  * Obsidian extends HTMLElement with helper methods like createEl, setText, etc.
  */
