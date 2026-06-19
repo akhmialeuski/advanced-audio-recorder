@@ -313,11 +313,15 @@ export default class AudioRecorderPlugin extends Plugin {
 			// sees the same session state even though nothing is
 			// persisted
 			this.recordingManager.updateSettings(this.settings);
+			this.playerRegistrar.refresh();
 			return;
 		}
 		await this.saveData(serializeSettings(this.settings));
 		await this.backupSettings();
 		this.recordingManager.updateSettings(this.settings);
+		// Apply player-affecting changes (enable toggle, waveform, etc.)
+		// to open embeds immediately, without re-opening the note
+		this.playerRegistrar.refresh();
 	}
 
 	/**

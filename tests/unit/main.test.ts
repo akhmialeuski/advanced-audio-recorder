@@ -28,6 +28,7 @@ jest.mock('../../src/player/EnhancedPlayerRegistrar', () => ({
 	EnhancedPlayerRegistrar: jest.fn().mockImplementation(() => ({
 		register: jest.fn(),
 		dispose: jest.fn(),
+		refresh: jest.fn(),
 	})),
 }));
 

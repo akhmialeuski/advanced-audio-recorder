@@ -47,6 +47,8 @@ export class EnhancedPlayerRegistrar {
 	private readonly decoder = new SharedAudioDecoder();
 	/** Active embed-registry override, or null when on the fallback path. */
 	private embedOverride: EmbedRegistryOverride | null = null;
+	/** Live embed controllers, refreshed in place when settings change. */
+	private readonly liveEmbeds = new Set<EnhancedMediaEmbed>();
 
 	/**
 	 * @param plugin - Owning plugin (for registration lifecycle)
@@ -176,20 +178,29 @@ export class EnhancedPlayerRegistrar {
 		file: TFile,
 		subpath: string,
 	): EmbedComponent {
+		// Always return the controller: it decides per file (feature flag,
+		// audio vs video vs unsupported) and can re-decide in place, so a
+		// settings change applies immediately without re-rendering the note
 		const previous = this.embedOverride?.getPrevious(file.extension);
-		// Feature off: hand straight back to Obsidian's default
-		if (!this.getSettings().enhancedPlayerEnabled && previous) {
-			return previous(info, file, subpath);
-		}
-		// Feature on: the embed probes the file and mounts the enhanced
-		// player only for audio-only files, else the built-in embed (video
-		// / unsupported) via the captured default creator
-		return new EnhancedMediaEmbed(
+		const embed = new EnhancedMediaEmbed(
 			info,
 			file,
 			subpath,
 			this.embedDeps(previous),
 		);
+		this.liveEmbeds.add(embed);
+		embed.register(() => this.liveEmbeds.delete(embed));
+		return embed;
+	}
+
+	/**
+	 * Re-evaluates every live embed in place. Called when settings change
+	 * (e.g. the player is toggled on/off) so the change applies at once.
+	 */
+	refresh(): void {
+		for (const embed of [...this.liveEmbeds]) {
+			embed.refresh();
+		}
 	}
 
 	/**
