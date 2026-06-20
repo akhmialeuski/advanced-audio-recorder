@@ -10,9 +10,11 @@
  *    because applySettings always re-rendered. The fix no-ops when the
  *    resolved layout is unchanged.
  *
- * They also cover the waveform size guard (large files fall back to the plain
- * bar) and the seekTo autoplay contract (timecode links play; in-player jumps
- * preserve the play/pause state).
+ * They also cover the waveform decision (drawn progressively for files up to a
+ * high safety ceiling; the plain seekable bar is used for pathological files
+ * beyond it), the render-scoped teardown that keeps in-place re-renders from
+ * accumulating observers, and the seekTo autoplay contract (timecode links
+ * play; in-player jumps preserve the play/pause state).
  */
 
 import { App, Modal } from 'obsidian';
@@ -327,7 +329,7 @@ describe('waveform rendering decision (F2/F3)', () => {
 		}
 	});
 
-	it('still renders the waveform for a long/large file (no size cap)', async () => {
+	it('renders the waveform for a large file below the safety ceiling', async () => {
 		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
 			// Silence the expected decode-rejection warning
 		});
@@ -353,6 +355,24 @@ describe('waveform rendering decision (F2/F3)', () => {
 		} finally {
 			warn.mockRestore();
 		}
+	});
+
+	it('falls back to the plain bar for a pathological file above the ceiling', () => {
+		const container = makeContainer();
+		// A multi-gigabyte file is not decoded for a cosmetic waveform: the
+		// plain (still seekable) bar is shown so the decode can never spike
+		// memory. No decode runs, so no warning is emitted.
+		makePlayer(
+			container,
+			makeRegistry(makeFakeAudio()),
+			{ showWaveform: true, enableMarkers: false },
+			makeFile(2 * 1024 * 1024 * 1024, 'wav'),
+		).onload();
+		expect(container.querySelector('.aar-player-seek-waveform')).toBeNull();
+		expect(container.querySelector('.aar-player-seek-bar')).not.toBeNull();
+		expect(
+			container.querySelector('.aar-player-progress-fill'),
+		).not.toBeNull();
 	});
 });
 
@@ -670,5 +690,83 @@ describe('lazy waveform decode (B2)', () => {
 		// No observer to defer behind -> decode right away (fallback path)
 		expect(decode).toHaveBeenCalledTimes(1);
 		expect(MockIntersectionObserver.instances).toHaveLength(0);
+	});
+});
+
+describe('render-scoped teardown across in-place re-renders (F1)', () => {
+	/**
+	 * A MutationObserver that tracks how many instances are currently
+	 * connected, so the test can assert the default-embed guard observer is
+	 * torn down per render instead of accumulating one per re-render.
+	 */
+	class CountingMutationObserver {
+		static live = 0;
+		private connected = false;
+		observe(): void {
+			if (!this.connected) {
+				this.connected = true;
+				CountingMutationObserver.live += 1;
+			}
+		}
+		disconnect(): void {
+			if (this.connected) {
+				this.connected = false;
+				CountingMutationObserver.live -= 1;
+			}
+		}
+		takeRecords(): MutationRecord[] {
+			return [];
+		}
+	}
+
+	let originalMO: typeof MutationObserver;
+
+	beforeEach(() => {
+		CountingMutationObserver.live = 0;
+		originalMO = window.MutationObserver;
+		window.MutationObserver = CountingMutationObserver;
+	});
+
+	afterEach(() => {
+		window.MutationObserver = originalMO;
+	});
+
+	it('keeps exactly one default-embed guard observer across many re-renders', () => {
+		const player = makePlayer(
+			makeContainer(),
+			makeRegistry(makeFakeAudio()),
+			PLAIN,
+		);
+		player.onload();
+		// One live guard observer after the initial render
+		expect(CountingMutationObserver.live).toBe(1);
+
+		// Several in-place re-renders, each a real layout change so renderUi runs
+		for (let i = 0; i < 6; i++) {
+			player.applySettings({
+				showWaveform: false,
+				enableMarkers: i % 2 === 0,
+			});
+		}
+
+		// The guard observer is disconnected per render, so exactly one stays
+		// live; before the fix this grew to one per re-render
+		expect(CountingMutationObserver.live).toBe(1);
+	});
+
+	it('disconnects the last render guard observer on unload', () => {
+		const player = makePlayer(
+			makeContainer(),
+			makeRegistry(makeFakeAudio()),
+			PLAIN,
+		);
+		// load() (not onload()) so the mock marks the child loaded and runs the
+		// registered unload cleanups
+		player.load();
+		expect(CountingMutationObserver.live).toBe(1);
+
+		player.unload();
+
+		expect(CountingMutationObserver.live).toBe(0);
 	});
 });

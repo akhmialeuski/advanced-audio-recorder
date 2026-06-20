@@ -168,10 +168,12 @@ input.aar-input-invalid {
 
 /* Enhanced audio player */
 .aar-player {
-    /* Waveform colors derive from the theme so it matches any palette */
+    /* Waveform colors derive from the theme so it matches any palette. The
+       waveform height variable (--aar-waveform-height) is set from the
+       PLAYER_WAVEFORM_HEIGHT constant by WaveformCanvas, so its value lives in
+       one place (the constant) rather than being duplicated here. */
     --aar-waveform-played: var(--color-accent);
     --aar-waveform-unplayed: var(--background-modifier-border);
-    --aar-waveform-height: 48px;
 
     display: flex;
     flex-direction: column;

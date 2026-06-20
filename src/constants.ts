@@ -94,13 +94,13 @@ export const SPLIT_PART_SUFFIX_RULE_TEXT =
 // values it always renders with.
 
 /** Waveform height in pixels. */
-export const DEFAULT_PLAYER_WAVEFORM_HEIGHT = 48;
+export const PLAYER_WAVEFORM_HEIGHT = 48;
 
 /** Seconds skipped by the player's skip-forward/back buttons. */
-export const DEFAULT_PLAYER_SKIP_SECONDS = 10;
+export const PLAYER_SKIP_SECONDS = 10;
 
 /** Playback rate applied to new players. */
-export const DEFAULT_PLAYER_PLAYBACK_RATE = 1;
+export const PLAYER_PLAYBACK_RATE = 1;
 
 /**
  * Fixed waveform resolution decoded and cached per file, independent of the
@@ -137,8 +137,8 @@ export const PLAYER_WAVEFORM_FALLBACK_PLAYED = '#7c6fda';
  */
 export const PLAYER_WAVEFORM_FALLBACK_UNPLAYED = '#b3b3b3';
 
-/** Default loop state applied to a newly created shared audio element. */
-export const DEFAULT_PLAYER_LOOP = false;
+/** Loop state applied to a newly created shared audio element. */
+export const PLAYER_LOOP = false;
 
 /** Seconds the seek area moves per arrow-key press. */
 export const PLAYER_SEEK_KEYBOARD_STEP_SECONDS = 5;
@@ -180,6 +180,18 @@ export const WAVEFORM_PROGRESSIVE_CHUNK_BUCKETS = 16;
  * 8 kHz is the safe minimum and ample for peak extraction.
  */
 export const WAVEFORM_DECODE_SAMPLE_RATE = 8000;
+
+/**
+ * Upper bound on the encoded file size the waveform will decode. Decoding holds
+ * the whole encoded file in memory, and decodeAudioData can transiently
+ * allocate several times that before the low-rate resample, so a pathological
+ * multi-gigabyte file would risk an out-of-memory spike for a cosmetic
+ * waveform. Realistic recordings (including hour-long uncompressed WAV) stay
+ * well under this ceiling; only pathological files fall back to the plain
+ * (still seekable) bar. This is a safety valve, not the old per-size skip:
+ * everything below it is still drawn progressively.
+ */
+export const WAVEFORM_MAX_DECODE_BYTES = 1024 * 1024 * 1024;
 
 /**
  * Distance (px) from the viewport at which a player decodes its waveform.

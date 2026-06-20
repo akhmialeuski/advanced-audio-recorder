@@ -16,7 +16,7 @@ import {
 	PLAYER_WAVEFORM_FALLBACK_PLAYED,
 	PLAYER_WAVEFORM_FALLBACK_UNPLAYED,
 	PLAYER_WAVEFORM_FALLBACK_WIDTH_PX,
-	DEFAULT_PLAYER_WAVEFORM_HEIGHT,
+	PLAYER_WAVEFORM_HEIGHT,
 } from '../../constants';
 import { downsamplePeaks } from '../WaveformData';
 
@@ -49,7 +49,7 @@ export class WaveformCanvas {
 	 */
 	constructor(private readonly seekEl: HTMLElement) {
 		this.seekEl.setCssProps({
-			'--aar-waveform-height': `${String(DEFAULT_PLAYER_WAVEFORM_HEIGHT)}px`,
+			'--aar-waveform-height': `${String(PLAYER_WAVEFORM_HEIGHT)}px`,
 		});
 		const layer = this.seekEl.createDiv({ cls: 'aar-player-waveform' });
 		this.baseCanvas = layer.createEl('canvas', {
@@ -109,7 +109,7 @@ export class WaveformCanvas {
 		if (cssWidth === 0) {
 			return;
 		}
-		const cssHeight = DEFAULT_PLAYER_WAVEFORM_HEIGHT;
+		const cssHeight = PLAYER_WAVEFORM_HEIGHT;
 		const bars = this.barsForWidth(cssWidth);
 		const { played, unplayed } = this.resolveColors();
 		this.paint(this.baseCanvas, bars, cssWidth, cssHeight, unplayed);

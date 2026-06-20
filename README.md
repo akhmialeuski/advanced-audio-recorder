@@ -200,7 +200,7 @@ A link with a `#t=` offset jumps a rendered player to that position instead of o
 
 The enhanced player takes over **audio-only** files. Files that carry video (for example a `.mp4` or `.webm` with a video track) are left to Obsidian's built-in player so the video can be watched, and any file the app cannot decode falls back to the built-in embed as well. The container is classified from the file's metadata rather than its extension, so an audio-only `.mp4` or `.webm` recording still gets the enhanced player.
 
-The waveform is drawn for any supported audio file, regardless of length. Peaks are computed progressively in the background and the waveform fills in as they become ready, so even a long (hour-plus) recording never blocks the interface. If a file cannot be decoded, the player falls back to the plain (still seekable) bar. Turn off **Show waveform** to always use the plain bar (no decoding is performed).
+The waveform is drawn for supported audio files up to a large safety size. Peaks are computed progressively in the background and the waveform fills in as they become ready, so even a long (hour-plus) recording never blocks the interface. A pathological multi-gigabyte file (or one that cannot be decoded) falls back to the plain (still seekable) bar instead. Turn off **Show waveform** to always use the plain bar (no decoding is performed).
 
 > **Desktop and mobile**: the enhanced player works wherever Obsidian renders audio embeds. Waveform extraction relies on the Web Audio API available in the app.
 

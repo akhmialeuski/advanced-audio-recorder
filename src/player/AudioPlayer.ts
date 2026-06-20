@@ -19,9 +19,10 @@ import {
 	PLUGIN_LOG_PREFIX,
 	PLAYER_PLAYBACK_RATE_PRESETS,
 	WAVEFORM_CACHE_BUCKETS,
-	DEFAULT_PLAYER_LOOP,
-	DEFAULT_PLAYER_PLAYBACK_RATE,
-	DEFAULT_PLAYER_SKIP_SECONDS,
+	WAVEFORM_MAX_DECODE_BYTES,
+	PLAYER_LOOP,
+	PLAYER_PLAYBACK_RATE,
+	PLAYER_SKIP_SECONDS,
 	PLAYER_SEEK_KEYBOARD_STEP_SECONDS,
 	PLAYER_ATTACH_WAIT_FRAMES,
 	PLAYER_WAVEFORM_REDRAW_RETRIES,
@@ -168,6 +169,13 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	private muteButton: HTMLElement | null = null;
 	/** Authoritative marker list for this file; the view renders from it. */
 	private markers: PlayerMarker[] = [];
+	/**
+	 * Cleanups scoped to the CURRENT render pass (not the component lifetime).
+	 * Run at the start of every renderUi and on unload, so observers and
+	 * listeners created while building the UI are torn down per render instead
+	 * of accumulating across in-place settings re-renders.
+	 */
+	private renderCleanups: Array<() => void> = [];
 
 	/**
 	 * @param containerEl - The embed element to take over
@@ -277,12 +285,10 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		this.register(() => {
 			this.unloaded = true;
 		});
-		// Disconnect the lazy waveform observer on unload. It is recreated per
-		// renderUi and disconnected once it fires, but the final one would
-		// otherwise outlive the last render.
+		// Run the current render pass's cleanups on unload too, so the last
+		// render's observers and listeners are torn down with the component
 		this.register(() => {
-			this.waveformObserver?.disconnect();
-			this.waveformObserver = null;
+			this.runRenderCleanups();
 		});
 
 		// Bind to the file's shared audio element so every view mode controls
@@ -297,8 +303,8 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		// never on a re-render: otherwise a mode switch or an unrelated
 		// settings save would reset the user's chosen speed and loop.
 		if (isNew) {
-			this.audio.loop = DEFAULT_PLAYER_LOOP;
-			this.audio.playbackRate = DEFAULT_PLAYER_PLAYBACK_RATE;
+			this.audio.loop = PLAYER_LOOP;
+			this.audio.playbackRate = PLAYER_PLAYBACK_RATE;
 		}
 		this.register(() => {
 			this.registry.releaseAudio(this.file.path);
@@ -327,11 +333,11 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * waveform or markers window applies instantly without a note re-render.
 	 */
 	private renderUi(): void {
-		// Tear down the re-creatable observers before rebuilding the seek area
-		this.resizeObserver?.disconnect();
-		this.resizeObserver = null;
-		this.waveformObserver?.disconnect();
-		this.waveformObserver = null;
+		// Tear down the previous render pass before rebuilding, so an in-place
+		// settings re-render never accumulates observers or listeners on the
+		// component lifetime (each is registered per render, see below). The
+		// observers' own cleanups null these fields.
+		this.runRenderCleanups();
 
 		this.containerEl.empty();
 		this.containerEl.addClass('aar-player');
@@ -372,7 +378,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			this.applyMode();
 		});
 
-		if (this.settings.showWaveform) {
+		if (this.shouldShowWaveform()) {
 			this.scheduleWaveformLoad();
 		}
 
@@ -459,10 +465,10 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	private createMarkerView(): MarkerListView {
 		const host: MarkerListHost = {
 			register: (cleanup) => {
-				this.register(cleanup);
+				this.registerRenderCleanup(cleanup);
 			},
 			registerDomEvent: (el, type, callback) => {
-				this.registerDomEvent(el, type, callback);
+				this.registerRenderDomEvent(el, type, callback);
 			},
 		};
 		const callbacks: MarkerListCallbacks = {
@@ -504,7 +510,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			}
 		});
 		observer.observe(this.containerEl, { childList: true });
-		this.registerCleanup(() => observer.disconnect());
+		this.registerRenderCleanup(() => observer.disconnect());
 	}
 
 	/**
@@ -532,17 +538,17 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		this.createIconButton(
 			controls,
 			'rewind',
-			`Back ${String(DEFAULT_PLAYER_SKIP_SECONDS)}s`,
+			`Back ${String(PLAYER_SKIP_SECONDS)}s`,
 			() => {
-				this.skip(-DEFAULT_PLAYER_SKIP_SECONDS);
+				this.skip(-PLAYER_SKIP_SECONDS);
 			},
 		);
 		this.createIconButton(
 			controls,
 			'fast-forward',
-			`Forward ${String(DEFAULT_PLAYER_SKIP_SECONDS)}s`,
+			`Forward ${String(PLAYER_SKIP_SECONDS)}s`,
 			() => {
-				this.skip(DEFAULT_PLAYER_SKIP_SECONDS);
+				this.skip(PLAYER_SKIP_SECONDS);
 			},
 		);
 
@@ -553,7 +559,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			text: formatPlaybackRate(this.audio.playbackRate),
 		});
 		this.speedButton.setAttribute('aria-label', 'Playback speed');
-		this.registerDomEvent(this.speedButton, 'click', (event) => {
+		this.registerRenderDomEvent(this.speedButton, 'click', (event) => {
 			this.showSpeedMenu(event);
 		});
 
@@ -579,7 +585,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				'aria-label': 'Volume',
 			},
 		});
-		this.registerDomEvent(volume, 'input', () => {
+		this.registerRenderDomEvent(volume, 'input', () => {
 			this.audio.volume = Number(volume.value);
 			if (this.audio.muted && Number(volume.value) > 0) {
 				this.audio.muted = false;
@@ -666,7 +672,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		this.seekEl.setAttribute('tabindex', '0');
 		this.seekEl.setAttribute('aria-label', 'Seek');
 		this.seekEl.setAttribute('aria-valuemin', '0');
-		if (this.settings.showWaveform) {
+		if (this.shouldShowWaveform()) {
 			this.seekEl.addClass('aar-player-seek-waveform');
 			this.waveform = new WaveformCanvas(this.seekEl);
 			this.resizeObserver = new ResizeObserver(() => {
@@ -675,7 +681,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				this.waveform?.redraw();
 			});
 			this.resizeObserver.observe(this.seekEl);
-			this.registerCleanup(() => {
+			this.registerRenderCleanup(() => {
 				this.resizeObserver?.disconnect();
 				this.resizeObserver = null;
 			});
@@ -701,7 +707,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * nudge by a few seconds, Home/End jump to the bounds.
 	 */
 	private registerSeekKeyboard(): void {
-		this.registerDomEvent(this.seekEl, 'keydown', (event) => {
+		this.registerRenderDomEvent(this.seekEl, 'keydown', (event) => {
 			switch (event.key) {
 				case 'ArrowRight':
 				case 'ArrowUp':
@@ -736,7 +742,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * still tracks, without a document-wide listener per player instance.
 	 */
 	private registerSeekPointer(): void {
-		this.registerDomEvent(this.seekEl, 'pointerdown', (event) => {
+		this.registerRenderDomEvent(this.seekEl, 'pointerdown', (event) => {
 			// Ignore non-primary buttons so a right-click opens the
 			// context menu instead of seeking
 			if (event.button !== 0) {
@@ -748,18 +754,18 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			this.seekEl.setPointerCapture(event.pointerId);
 			this.seekToPointer(event);
 		});
-		this.registerDomEvent(this.seekEl, 'pointermove', (event) => {
+		this.registerRenderDomEvent(this.seekEl, 'pointermove', (event) => {
 			if (this.isSeeking) {
 				this.seekToPointer(event);
 			}
 		});
-		this.registerDomEvent(this.seekEl, 'pointerup', (event) => {
+		this.registerRenderDomEvent(this.seekEl, 'pointerup', (event) => {
 			this.isSeeking = false;
 			if (this.seekEl.hasPointerCapture(event.pointerId)) {
 				this.seekEl.releasePointerCapture(event.pointerId);
 			}
 		});
-		this.registerDomEvent(this.seekEl, 'pointercancel', () => {
+		this.registerRenderDomEvent(this.seekEl, 'pointercancel', () => {
 			this.isSeeking = false;
 		});
 	}
@@ -859,7 +865,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			},
 		};
 		setPlayerEmbedActions(this.containerEl, actions);
-		this.register(() => {
+		this.registerRenderCleanup(() => {
 			clearPlayerEmbedActions(this.containerEl);
 		});
 	}
@@ -1040,6 +1046,14 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		);
 		this.waveformObserver = observer;
 		observer.observe(this.containerEl);
+		// Scoped to this render: a re-render or unload disconnects it, so a
+		// stale observer never decodes into a replaced player
+		this.registerRenderCleanup(() => {
+			observer.disconnect();
+			if (this.waveformObserver === observer) {
+				this.waveformObserver = null;
+			}
+		});
 	}
 
 	/**
@@ -1451,17 +1465,62 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			attr: { 'aria-label': label },
 		});
 		setIcon(button, icon);
-		this.registerDomEvent(button, 'click', onClick);
+		this.registerRenderDomEvent(button, 'click', onClick);
 		return button;
 	}
 
 	/**
-	 * Registers a cleanup callback that runs on unload. Thin wrapper over
-	 * MarkdownRenderChild.register for readability at call sites that
-	 * tear down observers.
+	 * Registers a cleanup tied to the CURRENT render pass rather than the
+	 * component lifetime, so re-rendering in place tears down the previous
+	 * render's observers and listeners instead of stacking them.
 	 * @param cleanup - Cleanup callback
 	 */
-	private registerCleanup(cleanup: () => void): void {
-		this.register(cleanup);
+	private registerRenderCleanup(cleanup: () => void): void {
+		this.renderCleanups.push(cleanup);
+	}
+
+	/**
+	 * Runs and clears the current render pass's cleanups. Called at the start
+	 * of every re-render and once on unload.
+	 */
+	private runRenderCleanups(): void {
+		const cleanups = this.renderCleanups;
+		this.renderCleanups = [];
+		for (const cleanup of cleanups) {
+			cleanup();
+		}
+	}
+
+	/**
+	 * Adds a DOM listener scoped to the current render pass. The target element
+	 * is recreated on every renderUi (containerEl.empty()), so its listener is
+	 * removed per render rather than retained on the component until unload.
+	 * @param el - Target element (recreated each render)
+	 * @param type - DOM event type
+	 * @param handler - Event handler
+	 */
+	private registerRenderDomEvent<K extends keyof HTMLElementEventMap>(
+		el: HTMLElement,
+		type: K,
+		handler: (event: HTMLElementEventMap[K]) => void,
+	): void {
+		el.addEventListener(type, handler as EventListener);
+		this.registerRenderCleanup(() => {
+			el.removeEventListener(type, handler as EventListener);
+		});
+	}
+
+	/**
+	 * Whether the waveform should be drawn for this file. It is shown for files
+	 * up to a high safety ceiling; a pathological multi-gigabyte file falls back
+	 * to the plain (still seekable) bar instead, because decoding it for a
+	 * cosmetic waveform would risk an out-of-memory spike. Realistic recordings
+	 * stay well under the ceiling and are still drawn progressively.
+	 */
+	private shouldShowWaveform(): boolean {
+		return (
+			this.settings.showWaveform &&
+			this.file.stat.size <= WAVEFORM_MAX_DECODE_BYTES
+		);
 	}
 }

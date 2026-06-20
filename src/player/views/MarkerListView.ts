@@ -65,6 +65,9 @@ export class MarkerListView {
 	/** Row elements in sorted order, for the active-segment highlight. */
 	private rowEls: HTMLElement[] = [];
 	private markers: PlayerMarker[] = [];
+	/** Time-sorted copy of `markers`, recomputed only when the data changes so
+	 * the active-segment highlight never re-sorts on every timeupdate. */
+	private sortedMarkers: PlayerMarker[] = [];
 	private editable = false;
 	/** Pending debounced rename-persist timer. */
 	private renameTimer = 0;
@@ -81,6 +84,9 @@ export class MarkerListView {
 	/** Replaces the marker data the view renders from. */
 	setMarkers(markers: PlayerMarker[]): void {
 		this.markers = markers;
+		// Sort once on data change; updateActive runs on every timeupdate and
+		// must not re-sort the list each time
+		this.sortedMarkers = sortMarkers(markers);
 	}
 
 	/** Sets whether editing affordances (rename, delete, add) are offered. */
@@ -208,7 +214,7 @@ export class MarkerListView {
 		if (this.rowEls.length === 0) {
 			return;
 		}
-		const index = activeMarkerIndex(sortMarkers(this.markers), currentTime);
+		const index = activeMarkerIndex(this.sortedMarkers, currentTime);
 		this.rowEls.forEach((rowEl, i) => {
 			rowEl.toggleClass('is-active', i === index);
 		});
