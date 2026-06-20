@@ -61,4 +61,31 @@ describe('describeTranscriptOutcome', () => {
 		});
 		expect(text.toLowerCase()).toContain('could not write');
 	});
+
+	it('reports a file saved and linked in the note', () => {
+		expect(
+			describeTranscriptOutcome({
+				inserted: false,
+				filePath: 'audio.srt',
+				noteRequested: false,
+				savedAsFallback: false,
+				linkRequested: true,
+				linkInserted: true,
+			}),
+		).toBe('Transcript saved to audio.srt and linked in the note.');
+	});
+
+	it('does not claim a link when the note was not editable', () => {
+		const text = describeTranscriptOutcome({
+			inserted: false,
+			filePath: 'audio.srt',
+			noteRequested: false,
+			savedAsFallback: false,
+			linkRequested: true,
+			linkInserted: false,
+		});
+		expect(text).toContain('saved to audio.srt');
+		expect(text).toContain('to link it');
+		expect(text).not.toContain('linked in the note.');
+	});
 });

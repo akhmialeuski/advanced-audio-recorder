@@ -121,28 +121,6 @@ export function stitchChunks(
 }
 
 /**
- * Renames a speaker label across all segments, returning a new transcript.
- * Used by the UI to turn provider labels ("SPEAKER_00") into names.
- * @param transcript - Source transcript
- * @param from - Existing speaker label
- * @param to - Replacement label
- */
-export function renameSpeaker(
-	transcript: Transcript,
-	from: string,
-	to: string,
-): Transcript {
-	const segments = transcript.segments.map((segment) =>
-		segment.speaker === from ? { ...segment, speaker: to } : segment,
-	);
-	return {
-		...transcript,
-		segments,
-		speakers: collectSpeakers(segments),
-	};
-}
-
-/**
  * Joins all segment text into a single normalized paragraph string.
  * @param transcript - Source transcript
  */

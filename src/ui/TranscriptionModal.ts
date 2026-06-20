@@ -1,17 +1,35 @@
 /**
- * Modal that runs transcription for an audio file, showing progress and
- * allowing cancellation. Output destination, provider, and formatting are
- * taken from settings (configured in the settings tab).
+ * Modal that configures and runs transcription for a single audio file.
+ * The per-run options (engine, language, diarization, destination, file
+ * format, in-note toggles, and LLM post-processing) default from settings
+ * and can be overridden here for this run only — the saved settings are
+ * never mutated. Shows progress and allows cancellation; the detailed
+ * in-note templates (heading, timestamp/speaker/line format) remain in the
+ * settings tab and are applied as configured there.
  * @module ui/TranscriptionModal
  */
 
-import { App, Modal, Notice, Setting, TFile } from 'obsidian';
+import { Modal, Notice, Setting } from 'obsidian';
+import type { App, ButtonComponent, TFile } from 'obsidian';
 import {
-	LLM_TASK_LABELS,
-	TRANSCRIPT_DESTINATION_LABELS,
-	TRANSCRIPTION_PROVIDER_LABELS,
+	LLM_TASK_OPTIONS,
+	TRANSCRIPT_DESTINATION_OPTIONS,
+	TRANSCRIPT_FILE_FORMAT_OPTIONS,
+	TRANSCRIPTION_PROVIDER_OPTIONS,
 	type AudioRecorderSettings,
+	type TranscriptionProviderId,
 } from '../settings/Settings';
+import type {
+	TranscriptDestination,
+	TranscriptFileFormat,
+} from '../transcription/TranscriptTypes';
+import type { LlmTask } from '../transcription/llmPostProcess';
+import {
+	addDropdown,
+	addText,
+	addToggle,
+	type SettingsSectionContext,
+} from '../settings/settingControls';
 import { transcribeFile } from '../transcription/runTranscription';
 import {
 	TranscriptionCancelledError,
@@ -26,15 +44,21 @@ export class TranscriptionModal extends Modal {
 	private running = false;
 	private statusEl: HTMLElement | null = null;
 	private progressFillEl: HTMLElement | null = null;
-	private runButton: HTMLButtonElement | null = null;
+	private configEl: HTMLElement | null = null;
+	private runButton: ButtonComponent | null = null;
+	private secondaryButton: ButtonComponent | null = null;
+	/** Per-run settings copy: edited here, never persisted to plugin data. */
+	private readonly runSettings: AudioRecorderSettings;
 
 	constructor(
 		app: App,
 		private readonly file: TFile,
-		private readonly getSettings: () => AudioRecorderSettings,
+		getSettings: () => AudioRecorderSettings,
 		private readonly options: { autoStart?: boolean } = {},
 	) {
 		super(app);
+		// Shallow copy is enough: every option edited here is a primitive.
+		this.runSettings = { ...getSettings() };
 	}
 
 	onOpen(): void {
@@ -42,24 +66,12 @@ export class TranscriptionModal extends Modal {
 		contentEl.empty();
 		new Setting(contentEl).setName('Transcribe audio').setHeading();
 		contentEl.createEl('p', {
+			cls: 'aar-transcribe-config',
 			text: `Source: ${this.file.name}`,
 		});
 
-		const settings = this.getSettings();
-		const language =
-			settings.transcriptionLanguage === 'auto'
-				? 'Auto-detect'
-				: settings.transcriptionLanguage;
-		contentEl.createEl('p', {
-			cls: 'aar-transcribe-config',
-			text:
-				`Engine: ${TRANSCRIPTION_PROVIDER_LABELS[settings.transcriptionProvider]}` +
-				` · Language: ${language}` +
-				` · Output: ${TRANSCRIPT_DESTINATION_LABELS[settings.transcriptDestination]}` +
-				(settings.llmPostProcessEnabled
-					? ` · LLM: ${LLM_TASK_LABELS[settings.llmPostProcessTask]}`
-					: ''),
-		});
+		this.configEl = contentEl.createDiv({ cls: 'aar-transcribe-options' });
+		this.renderConfig();
 
 		this.statusEl = contentEl.createDiv({ cls: 'aar-transcribe-status' });
 		this.statusEl.setText('Ready.');
@@ -72,7 +84,7 @@ export class TranscriptionModal extends Modal {
 
 		new Setting(contentEl)
 			.addButton((button) => {
-				this.runButton = button.buttonEl;
+				this.runButton = button;
 				button
 					.setButtonText('Transcribe')
 					.setCta()
@@ -80,15 +92,16 @@ export class TranscriptionModal extends Modal {
 						void this.startRun();
 					});
 			})
-			.addButton((button) =>
-				button.setButtonText('Cancel').onClick(() => {
+			.addButton((button) => {
+				this.secondaryButton = button;
+				button.setButtonText('Close').onClick(() => {
 					if (this.running) {
 						this.cancelled = true;
 					} else {
 						this.close();
 					}
-				}),
-			);
+				});
+			});
 
 		if (this.options.autoStart) {
 			// Auto-run for the transcribe-on-save hook: the modal still shows
@@ -99,19 +112,125 @@ export class TranscriptionModal extends Modal {
 	}
 
 	/**
+	 * Renders the editable per-run option controls into the config container.
+	 * Re-invoked when an option that reveals or hides others changes.
+	 */
+	private renderConfig(): void {
+		const container = this.configEl;
+		if (!container) {
+			return;
+		}
+		container.empty();
+		const s = this.runSettings;
+		const ctx: SettingsSectionContext = {
+			containerEl: container,
+			settings: s,
+			// Per-run dialog: options are not persisted to plugin data.
+			save: () => Promise.resolve(),
+			rerender: () => {
+				this.renderConfig();
+			},
+			saveDebounced: () => {
+				/* no debounced persistence in the dialog */
+			},
+		};
+
+		addDropdown(ctx, {
+			name: 'Engine',
+			options: TRANSCRIPTION_PROVIDER_OPTIONS,
+			get: () => s.transcriptionProvider,
+			set: (v) =>
+				(s.transcriptionProvider = v as TranscriptionProviderId),
+		});
+		addText(ctx, {
+			name: 'Language',
+			desc: 'ISO code (e.g. en, ru, es) or "auto" to detect.',
+			get: () => s.transcriptionLanguage,
+			set: (v) => (s.transcriptionLanguage = v.trim() || 'auto'),
+		});
+		addToggle(ctx, {
+			name: 'Speaker diarization',
+			desc: 'Request speaker labels (providers detect the speaker count automatically).',
+			get: () => s.transcriptionDiarize,
+			set: (v) => (s.transcriptionDiarize = v),
+		});
+		addToggle(ctx, {
+			name: 'Word-level timestamps',
+			desc: 'Request per-word timing (recorded in JSON file output only).',
+			get: () => s.transcriptionWordTimestamps,
+			set: (v) => (s.transcriptionWordTimestamps = v),
+		});
+
+		addDropdown(ctx, {
+			name: 'Destination',
+			options: TRANSCRIPT_DESTINATION_OPTIONS,
+			get: () => s.transcriptDestination,
+			set: (v) => (s.transcriptDestination = v as TranscriptDestination),
+			rerender: true,
+		});
+		if (s.transcriptDestination !== 'note') {
+			addDropdown(ctx, {
+				name: 'File format',
+				options: TRANSCRIPT_FILE_FORMAT_OPTIONS,
+				get: () => s.transcriptFileFormat,
+				set: (v) =>
+					(s.transcriptFileFormat = v as TranscriptFileFormat),
+			});
+		}
+		// In-note formatting applies only when the transcript Markdown is
+		// rendered into the note (note/both). For file/link only the sidecar
+		// file is produced, so these toggles would have no effect.
+		if (
+			s.transcriptDestination === 'note' ||
+			s.transcriptDestination === 'both'
+		) {
+			addToggle(ctx, {
+				name: 'Include timestamps',
+				get: () => s.transcriptIncludeTimestamps,
+				set: (v) => (s.transcriptIncludeTimestamps = v),
+			});
+			addToggle(ctx, {
+				name: 'Include speakers',
+				get: () => s.transcriptIncludeSpeakers,
+				set: (v) => (s.transcriptIncludeSpeakers = v),
+			});
+		}
+
+		addToggle(ctx, {
+			name: 'LLM post-processing',
+			desc: 'Clean up, summarize, or apply a custom instruction with an LLM.',
+			get: () => s.llmPostProcessEnabled,
+			set: (v) => (s.llmPostProcessEnabled = v),
+			rerender: true,
+		});
+		if (s.llmPostProcessEnabled) {
+			// Only the task is per-run here; the LLM provider, endpoint, key,
+			// and model stay in settings (a key cannot be entered safely in a
+			// transient dialog), so switching providers belongs in the tab.
+			addDropdown(ctx, {
+				name: 'LLM task',
+				options: LLM_TASK_OPTIONS,
+				get: () => s.llmPostProcessTask,
+				set: (v) => (s.llmPostProcessTask = v as LlmTask),
+			});
+		}
+	}
+
+	/**
 	 * Runs the transcription, updating progress and handling errors.
 	 */
 	private async startRun(): Promise<void> {
 		if (this.running) {
 			return;
 		}
-		this.running = true;
-		this.cancelled = false;
-		this.runButton?.setAttr('disabled', 'true');
+		this.setRunning(true);
+		// Snapshot the options so a control toggled mid-run cannot change an
+		// in-flight job; edits only affect the next attempt after a failure.
+		const settings = { ...this.runSettings };
 		const token: CancellationToken = { isCancelled: () => this.cancelled };
 		const notePath = this.app.workspace.getActiveFile()?.path ?? '';
 		try {
-			await transcribeFile(this.app, this.getSettings, this.file, {
+			await transcribeFile(this.app, () => settings, this.file, {
 				notePathForLinks: notePath,
 				token,
 				onProgress: (fraction, label) => {
@@ -130,9 +249,24 @@ export class TranscriptionModal extends Modal {
 				this.statusEl?.setText(`Failed: ${message}`);
 			}
 		} finally {
-			this.running = false;
-			this.runButton?.removeAttribute('disabled');
+			this.setRunning(false);
 		}
+	}
+
+	/**
+	 * Toggles the running state: disables the config and run button while a
+	 * job is in flight and switches the secondary button between cancel and
+	 * close.
+	 * @param running - Whether a transcription is in progress
+	 */
+	private setRunning(running: boolean): void {
+		this.running = running;
+		if (running) {
+			this.cancelled = false;
+		}
+		this.runButton?.setDisabled(running);
+		this.secondaryButton?.setButtonText(running ? 'Cancel' : 'Close');
+		this.configEl?.toggleClass('aar-transcribe-options-disabled', running);
 	}
 
 	/**

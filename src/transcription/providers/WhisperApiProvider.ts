@@ -8,7 +8,12 @@
  */
 
 import { WHISPER_API_MAX_REQUEST_BYTES } from '../../constants';
-import { buildMultipart, requestJson, trimTrailingSlash } from '../httpClient';
+import {
+	buildMultipart,
+	requestJson,
+	trimTrailingSlash,
+	uploadTimeoutMs,
+} from '../httpClient';
 import { mapWhisperResponse, type WhisperResult } from './whisperResponse';
 import type {
 	AudioPayload,
@@ -93,6 +98,7 @@ export class WhisperApiProvider implements TranscriptionProvider {
 			headers: { Authorization: `Bearer ${this.config.apiKey}` },
 			contentType,
 			body,
+			timeoutMs: uploadTimeoutMs(body.byteLength),
 		});
 		return mapWhisperResponse(json);
 	}

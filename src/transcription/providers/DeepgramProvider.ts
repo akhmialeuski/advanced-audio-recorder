@@ -9,7 +9,7 @@
  */
 
 import { DEEPGRAM_MAX_REQUEST_BYTES } from '../../constants';
-import { requestJson, trimTrailingSlash } from '../httpClient';
+import { requestJson, trimTrailingSlash, uploadTimeoutMs } from '../httpClient';
 import { mapDeepgramResponse } from './deepgramResponse';
 import type { WhisperResult } from './whisperResponse';
 import type {
@@ -68,6 +68,7 @@ export class DeepgramProvider implements TranscriptionProvider {
 			headers: { Authorization: `Token ${this.config.apiKey}` },
 			contentType: payload.contentType,
 			body: payload.data,
+			timeoutMs: uploadTimeoutMs(payload.data.byteLength),
 		});
 		return mapDeepgramResponse(json, options.diarize);
 	}

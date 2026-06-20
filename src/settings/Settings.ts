@@ -216,6 +216,18 @@ export const TRANSCRIPT_DESTINATION_LABELS: Record<
 	note: 'Insert into note',
 	file: 'Save to file',
 	both: 'Note and file',
+	link: 'Save to file and link it in the note',
+};
+
+/** Display labels for each transcript file format (single source for UI). */
+export const TRANSCRIPT_FILE_FORMAT_LABELS: Record<
+	TranscriptFileFormat,
+	string
+> = {
+	json: 'JSON (full data + speakers)',
+	srt: 'SubRip (.srt)',
+	vtt: 'WebVTT (.vtt)',
+	txt: 'Plain text (.txt)',
 };
 
 /** Display labels for each LLM post-processing task (single source for UI). */
@@ -227,6 +239,46 @@ export const LLM_TASK_LABELS: Record<LlmTask, string> = {
 
 /** LLM post-processing provider identifier. */
 export type LlmProviderId = 'openai-compatible' | 'anthropic';
+
+/** A value/label pair for a dropdown control (single source for the UI). */
+export interface LabeledOption {
+	value: string;
+	label: string;
+}
+
+/**
+ * Builds dropdown options from a label map, preserving key insertion order.
+ * Lets the settings tab and the transcription modal share one source of
+ * truth for both option values and their display labels.
+ * @param labels - Map of value to display label
+ * @returns Ordered value/label option pairs
+ */
+function optionsFromLabels<K extends string>(
+	labels: Record<K, string>,
+): LabeledOption[] {
+	return (Object.keys(labels) as K[]).map((value) => ({
+		value,
+		label: labels[value],
+	}));
+}
+
+/** Engine dropdown options, derived from the engine label map. */
+export const TRANSCRIPTION_PROVIDER_OPTIONS = optionsFromLabels(
+	TRANSCRIPTION_PROVIDER_LABELS,
+);
+
+/** Destination dropdown options, derived from the destination label map. */
+export const TRANSCRIPT_DESTINATION_OPTIONS = optionsFromLabels(
+	TRANSCRIPT_DESTINATION_LABELS,
+);
+
+/** File-format dropdown options, derived from the file-format label map. */
+export const TRANSCRIPT_FILE_FORMAT_OPTIONS = optionsFromLabels(
+	TRANSCRIPT_FILE_FORMAT_LABELS,
+);
+
+/** LLM-task dropdown options, derived from the task label map. */
+export const LLM_TASK_OPTIONS = optionsFromLabels(LLM_TASK_LABELS);
 
 /**
  * Default plugin settings.
@@ -281,7 +333,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	transcriptTimestampLinks: true,
 	transcriptIncludeSpeakers: true,
 	transcriptMergeConsecutiveSpeaker: true,
-	transcriptTimestampFormat: '[{time}]',
+	transcriptTimestampFormat: '{time}',
 	transcriptSpeakerFormat: '**{speaker}**',
 	transcriptLineFormat: '{timestamp} {speaker} {text}',
 	transcriptHeading: '## Transcript',

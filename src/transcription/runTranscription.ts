@@ -14,6 +14,7 @@ import {
 	type TranscribeRunResult,
 } from './TranscriptionService';
 import {
+	insertTranscriptFileLink,
 	insertTranscriptIntoNote,
 	notifyTranscriptWritten,
 	writeTranscriptFile,
@@ -51,16 +52,17 @@ export async function transcribeFile(
 		token: options.token,
 	});
 
+	const destination = settings.transcriptDestination;
 	const wantsFile =
-		settings.transcriptDestination === 'file' ||
-		settings.transcriptDestination === 'both';
-	const wantsNote =
-		settings.transcriptDestination === 'note' ||
-		settings.transcriptDestination === 'both';
+		destination === 'file' ||
+		destination === 'both' ||
+		destination === 'link';
+	const wantsNote = destination === 'note' || destination === 'both';
+	const wantsLink = destination === 'link';
 
-	let filePath: string | null = null;
+	let transcriptFile: TFile | null = null;
 	if (wantsFile) {
-		filePath = await writeTranscriptFile(
+		transcriptFile = await writeTranscriptFile(
 			app,
 			file,
 			result.transcript,
@@ -76,13 +78,22 @@ export async function transcribeFile(
 			settings.transcriptHeading,
 		);
 	}
+	let linkInserted = false;
+	if (wantsLink && transcriptFile) {
+		linkInserted = insertTranscriptFileLink(
+			app,
+			options.notePathForLinks,
+			transcriptFile,
+			settings.transcriptHeading,
+		);
+	}
 	// Safety net: a completed (and, on a paid API, already-billed) transcript
 	// must never be silently dropped. If in-note output was the only requested
 	// destination but the insert failed (note not open, reading mode), write a
 	// sidecar file instead of reporting a hollow success.
 	let savedAsFallback = false;
-	if (wantsNote && !inserted && filePath === null) {
-		filePath = await writeTranscriptFile(
+	if (wantsNote && !inserted && transcriptFile === null) {
+		transcriptFile = await writeTranscriptFile(
 			app,
 			file,
 			result.transcript,
@@ -92,9 +103,11 @@ export async function transcribeFile(
 	}
 	notifyTranscriptWritten({
 		inserted,
-		filePath,
+		filePath: transcriptFile?.path ?? null,
 		noteRequested: wantsNote,
 		savedAsFallback,
+		linkRequested: wantsLink,
+		linkInserted,
 	});
 	return result;
 }

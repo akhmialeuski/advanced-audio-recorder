@@ -36,8 +36,10 @@ describe('formatTranscriptMarkdown', () => {
 			DEFAULT_TRANSCRIPT_MARKDOWN_OPTIONS,
 			stubLink,
 		);
-		expect(md).toContain('[[[rec#t=0|0:00]]] **Alice** Hello there');
-		expect(md).toContain('[[[rec#t=65|1:05]]] **Bob** Hi');
+		// The default timestamp format is bare `{time}`, so a wikilink is not
+		// wrapped in extra brackets (which would nest as `[[[...]]]`).
+		expect(md).toContain('[[rec#t=0|0:00]] **Alice** Hello there');
+		expect(md).toContain('[[rec#t=65|1:05]] **Bob** Hi');
 	});
 
 	it('merges consecutive same-speaker segments', () => {
@@ -66,8 +68,8 @@ describe('formatTranscriptMarkdown', () => {
 		);
 		// Two separate lines, each with its own timecode link
 		expect(md.split('\n\n')).toHaveLength(2);
-		expect(md).toContain('[[[rec#t=0|0:00]]] one');
-		expect(md).toContain('[[[rec#t=1|0:01]]] two');
+		expect(md).toContain('[[rec#t=0|0:00]] one');
+		expect(md).toContain('[[rec#t=1|0:01]] two');
 	});
 
 	it('omits timestamps and speakers when disabled', () => {
@@ -89,6 +91,20 @@ describe('formatTranscriptMarkdown', () => {
 		const md = formatTranscriptMarkdown(
 			transcript,
 			{ ...DEFAULT_TRANSCRIPT_MARKDOWN_OPTIONS, timestampLinks: false },
+			stubLink,
+		);
+		expect(md).toBe('0:05 x');
+	});
+
+	it('honors a custom bracketed timestamp format', () => {
+		const transcript = buildTranscript([seg(5, 6, 'x')]);
+		const md = formatTranscriptMarkdown(
+			transcript,
+			{
+				...DEFAULT_TRANSCRIPT_MARKDOWN_OPTIONS,
+				timestampLinks: false,
+				timestampFormat: '[{time}]',
+			},
 			stubLink,
 		);
 		expect(md).toBe('[0:05] x');

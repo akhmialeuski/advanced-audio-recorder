@@ -5,8 +5,8 @@
  * @module transcription/llm/LlmProvider
  */
 
-import { ANTHROPIC_API_VERSION } from '../../constants';
-import { requestJson } from '../httpClient';
+import { ANTHROPIC_API_VERSION, LLM_REQUEST_TIMEOUT_MS } from '../../constants';
+import { requestJson, trimTrailingSlash } from '../httpClient';
 import type { LlmPrompt } from '../llmPostProcess';
 import { extractAnthropicText, extractOpenAiText } from './llmResponse';
 
@@ -27,13 +27,6 @@ export interface LlmConfig {
 	baseUrl: string;
 	apiKey: string;
 	model: string;
-}
-
-/**
- * Removes a single trailing slash from a base URL.
- */
-function trimTrailingSlash(url: string): string {
-	return url.endsWith('/') ? url.slice(0, -1) : url;
 }
 
 /**
@@ -64,6 +57,7 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
 					{ role: 'user', content: prompt.user },
 				],
 			}),
+			timeoutMs: LLM_REQUEST_TIMEOUT_MS,
 		});
 		return extractOpenAiText(json);
 	}
@@ -95,6 +89,7 @@ export class AnthropicLlmProvider implements LlmProvider {
 				system: prompt.system,
 				messages: [{ role: 'user', content: prompt.user }],
 			}),
+			timeoutMs: LLM_REQUEST_TIMEOUT_MS,
 		});
 		return extractAnthropicText(json);
 	}

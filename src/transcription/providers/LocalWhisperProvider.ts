@@ -7,6 +7,7 @@
  * @module transcription/providers/LocalWhisperProvider
  */
 
+import { LOCAL_WHISPER_MAX_BUFFER_BYTES } from '../../constants';
 import type { TranscriptSegment } from '../TranscriptTypes';
 import type { WhisperResult } from './whisperResponse';
 import { isRecord, num } from './responseUtils';
@@ -23,6 +24,7 @@ interface NodeModules {
 		execFile: (
 			file: string,
 			args: string[],
+			options: { maxBuffer: number },
 			callback: (
 				error: Error | null,
 				stdout: string,
@@ -156,6 +158,9 @@ export class LocalWhisperProvider implements TranscriptionProvider {
 				node.childProcess.execFile(
 					this.config.binaryPath,
 					args,
+					// whisper.cpp streams the full transcript to stdout; raise the
+					// buffer so a long recording is not killed at Node's 1 MB default.
+					{ maxBuffer: LOCAL_WHISPER_MAX_BUFFER_BYTES },
 					(error) => {
 						if (error) {
 							reject(error);

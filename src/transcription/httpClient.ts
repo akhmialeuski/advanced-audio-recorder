@@ -7,7 +7,11 @@
 
 import { requestUrl } from 'obsidian';
 import type { RequestUrlResponse } from 'obsidian';
-import { TRANSCRIBE_REQUEST_TIMEOUT_MS } from '../constants';
+import {
+	TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS,
+	TRANSCRIBE_REQUEST_TIMEOUT_MS,
+	TRANSCRIBE_UPLOAD_BYTES_PER_MS,
+} from '../constants';
 
 /** One field of a multipart/form-data body. */
 export type MultipartField =
@@ -74,6 +78,21 @@ export function buildMultipart(fields: MultipartField[]): MultipartBody {
 /** Removes a single trailing slash from a base URL. */
 export function trimTrailingSlash(url: string): string {
 	return url.endsWith('/') ? url.slice(0, -1) : url;
+}
+
+/**
+ * Scales a request timeout with the upload size so a large but healthy
+ * upload (e.g. a whole-file Deepgram request) is not aborted prematurely.
+ * Starts at the floor and adds time proportional to the payload at a
+ * conservative assumed throughput, capped at the hard ceiling.
+ * @param byteLength - Size of the request body in bytes
+ * @returns Timeout in milliseconds
+ */
+export function uploadTimeoutMs(byteLength: number): number {
+	const scaled =
+		TRANSCRIBE_REQUEST_TIMEOUT_MS +
+		Math.ceil(byteLength / TRANSCRIBE_UPLOAD_BYTES_PER_MS);
+	return Math.min(scaled, TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS);
 }
 
 /** Status used for errors that never reached an HTTP response (transport/timeout). */
@@ -238,6 +257,8 @@ export async function requestJson<T = unknown>(options: {
 	headers?: Record<string, string>;
 	body?: string | ArrayBuffer;
 	contentType?: string;
+	/** Per-request deadline; defaults to the transcription floor timeout. */
+	timeoutMs?: number;
 }): Promise<T> {
 	const safeUrl = urlForMessage(options.url);
 	let response: RequestUrlResponse;
@@ -251,7 +272,7 @@ export async function requestJson<T = unknown>(options: {
 				contentType: options.contentType,
 				throw: false,
 			}),
-			TRANSCRIBE_REQUEST_TIMEOUT_MS,
+			options.timeoutMs ?? TRANSCRIBE_REQUEST_TIMEOUT_MS,
 			safeUrl,
 		);
 	} catch (error) {

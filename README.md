@@ -220,11 +220,18 @@ All languages supported by the chosen model work; leave **Language** as `auto` t
 
 ### Speakers and diarization
 
-The transcript data model carries per-segment **speaker** labels. Enable **Speaker diarization** to request them. Deepgram diarizes natively; OpenAI-compatible Whisper endpoints honor it on a best-effort basis. Labels are rendered in the output and can be renamed later.
+The transcript data model carries per-segment **speaker** labels. Enable **Speaker diarization** to request them. Deepgram diarizes natively; OpenAI-compatible Whisper endpoints honor it on a best-effort basis. The provider detects the number of speakers automatically, and labels (e.g. `Speaker 1`) are rendered in the output.
 
 ### Output
 
-Choose where the transcript goes with **Destination**: insert into the note, save as a sidecar file, or both.
+Choose where the transcript goes with **Destination**:
+
+- **Insert into note** — render the full transcript Markdown into the active note.
+- **Save to file** — write a sidecar transcript file next to the audio.
+- **Note and file** — do both.
+- **Save to file and link it in the note** — write the sidecar file and insert a link (`[[…]]` in wikilink vaults) to it into the note, instead of pasting the whole transcript.
+
+Most options also appear in the **Transcribe audio** dialog, so you can choose the engine, language, diarization, destination, and file format for a single run without changing your defaults.
 
 - **File formats**: `JSON` (full data including speakers and word timings), `SRT`, `WebVTT`, or plain `TXT`. The sidecar is written next to the audio file.
 - **In-note formatting** is fully configurable: a **note heading**, toggles for timestamps and speakers, and three templates — **timestamp format** (`{time}`), **speaker format** (`{speaker}`), and **line format** (`{timestamp} {speaker} {text}`).

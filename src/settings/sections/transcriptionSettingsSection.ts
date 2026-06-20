@@ -14,7 +14,10 @@ import {
 } from '../../constants';
 import {
 	applyLlmProviderDefaults,
-	TRANSCRIPTION_PROVIDER_LABELS,
+	LLM_TASK_OPTIONS,
+	TRANSCRIPT_DESTINATION_OPTIONS,
+	TRANSCRIPT_FILE_FORMAT_OPTIONS,
+	TRANSCRIPTION_PROVIDER_OPTIONS,
 	type TranscriptionProviderId,
 } from '../Settings';
 import {
@@ -23,14 +26,8 @@ import {
 	addSlider,
 	addText,
 	addToggle,
-	type DropdownOption,
 	type SettingsSectionContext,
 } from '../settingControls';
-
-/** Engine options for the dropdown, derived from the label map. */
-const PROVIDER_OPTIONS: DropdownOption[] = (
-	Object.keys(TRANSCRIPTION_PROVIDER_LABELS) as TranscriptionProviderId[]
-).map((value) => ({ value, label: TRANSCRIPTION_PROVIDER_LABELS[value] }));
 
 /**
  * Renders the full transcription settings section.
@@ -61,7 +58,7 @@ export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
 	addDropdown(ctx, {
 		name: 'Engine',
 		desc: 'Whisper API (cloud), Deepgram (cloud), or a local whisper.cpp binary (desktop).',
-		options: PROVIDER_OPTIONS,
+		options: TRANSCRIPTION_PROVIDER_OPTIONS,
 		get: () => s.transcriptionProvider,
 		set: (v) => (s.transcriptionProvider = v as TranscriptionProviderId),
 		rerender: true,
@@ -83,7 +80,7 @@ export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
 
 	addToggle(ctx, {
 		name: 'Word-level timestamps',
-		desc: 'Request per-word timing when the provider supports it.',
+		desc: 'Request per-word timing when the provider supports it. Recorded in JSON file output only.',
 		get: () => s.transcriptionWordTimestamps,
 		set: (v) => (s.transcriptionWordTimestamps = v),
 	});
@@ -187,31 +184,19 @@ function renderTranscriptOutputSection(ctx: SettingsSectionContext): void {
 
 	addDropdown(ctx, {
 		name: 'Destination',
-		desc: 'Insert into the note, save as a sidecar file, or both.',
-		options: [
-			{ value: 'note', label: 'Insert into note' },
-			{ value: 'file', label: 'Save to file' },
-			{ value: 'both', label: 'Note and file' },
-		],
+		desc: 'Insert into the note, save as a sidecar file, both, or save a file and link it in the note.',
+		options: TRANSCRIPT_DESTINATION_OPTIONS,
 		get: () => s.transcriptDestination,
 		set: (v) =>
 			(s.transcriptDestination = v as typeof s.transcriptDestination),
 		rerender: true,
 	});
 
-	if (
-		s.transcriptDestination === 'file' ||
-		s.transcriptDestination === 'both'
-	) {
+	if (s.transcriptDestination !== 'note') {
 		addDropdown(ctx, {
 			name: 'File format',
 			desc: 'Format for the transcript sidecar file.',
-			options: [
-				{ value: 'json', label: 'JSON (full data + speakers)' },
-				{ value: 'srt', label: 'SubRip (.srt)' },
-				{ value: 'vtt', label: 'WebVTT (.vtt)' },
-				{ value: 'txt', label: 'Plain text (.txt)' },
-			],
+			options: TRANSCRIPT_FILE_FORMAT_OPTIONS,
 			get: () => s.transcriptFileFormat,
 			set: (v) =>
 				(s.transcriptFileFormat = v as typeof s.transcriptFileFormat),
@@ -253,9 +238,9 @@ function renderTranscriptOutputSection(ctx: SettingsSectionContext): void {
 
 	addText(ctx, {
 		name: 'Timestamp format',
-		desc: 'Template for the timestamp; {time} is the timecode/link.',
+		desc: 'Template for the timestamp; {time} is the timecode/link. Avoid wrapping {time} in [ ] when timestamp links are on.',
 		get: () => s.transcriptTimestampFormat,
-		set: (v) => (s.transcriptTimestampFormat = v || '[{time}]'),
+		set: (v) => (s.transcriptTimestampFormat = v || '{time}'),
 	});
 	addText(ctx, {
 		name: 'Speaker format',
@@ -290,11 +275,8 @@ function renderLlmSection(ctx: SettingsSectionContext): void {
 
 	addDropdown(ctx, {
 		name: 'Task',
-		options: [
-			{ value: 'cleanup', label: 'Clean up (punctuation, formatting)' },
-			{ value: 'summary', label: 'Summarize (key points + actions)' },
-			{ value: 'custom', label: 'Custom instruction' },
-		],
+		desc: 'Clean up punctuation/formatting, summarize into key points, or apply a custom instruction.',
+		options: LLM_TASK_OPTIONS,
 		get: () => s.llmPostProcessTask,
 		set: (v) => (s.llmPostProcessTask = v as typeof s.llmPostProcessTask),
 		rerender: true,

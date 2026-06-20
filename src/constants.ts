@@ -283,12 +283,45 @@ export const MIN_LLM_MAX_TOKENS = 512;
 export const MAX_LLM_MAX_TOKENS = 32000;
 
 /**
- * Timeout, in milliseconds, for a single transcription/LLM HTTP request.
+ * Floor timeout, in milliseconds, for a transcription HTTP request.
  * Obsidian's requestUrl exposes no abort signal, so the helper races the
- * request against this deadline to bound a hung endpoint (e.g. a
- * misconfigured local Ollama/whisper server) instead of stalling forever.
+ * request against a deadline to bound a hung endpoint (e.g. a misconfigured
+ * local Ollama/whisper server) instead of stalling forever. Whole-file
+ * uploads scale above this floor with their payload size; see
+ * TRANSCRIBE_UPLOAD_BYTES_PER_MS and TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS.
  */
 export const TRANSCRIBE_REQUEST_TIMEOUT_MS = 120_000;
+
+/**
+ * Hard ceiling on a single transcription request timeout, in milliseconds
+ * (30 minutes). A whole-file upload (e.g. a multi-hundred-MB Deepgram
+ * request) scales its timeout with payload size up to this bound, so a
+ * large but healthy upload is never aborted prematurely.
+ */
+export const TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS = 30 * 60_000;
+
+/**
+ * Assumed sustained upload throughput, in bytes per millisecond (~1 MB/s),
+ * used to scale a request timeout with its payload size. Deliberately
+ * conservative so a slow connection still gets enough time to finish.
+ */
+export const TRANSCRIBE_UPLOAD_BYTES_PER_MS = 1024;
+
+/**
+ * Timeout, in milliseconds, for an LLM post-processing request (5 minutes).
+ * Longer than the transcription floor because a capable model cleaning or
+ * summarizing a long transcript can legitimately take minutes; a shorter
+ * deadline would discard completed (and billed) work as a false timeout.
+ */
+export const LLM_REQUEST_TIMEOUT_MS = 5 * 60_000;
+
+/**
+ * Maximum bytes buffered from the local whisper.cpp child process's stdout
+ * and stderr (64 MB). whisper.cpp prints the full transcript to stdout, so
+ * Node's 1 MB default would kill the process on a long recording; a
+ * generous ceiling lets long offline transcriptions complete.
+ */
+export const LOCAL_WHISPER_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 
 /**
  * Upper bound of the progress fraction reserved for chunk transcription.

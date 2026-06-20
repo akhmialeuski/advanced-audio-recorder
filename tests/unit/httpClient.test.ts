@@ -1,11 +1,17 @@
 /**
- * Tests for friendlyHttpHint: the human-readable guidance shown for common
- * provider HTTP failures. The regression focus is detecting an out-of-quota
- * or out-of-credit (billing) problem across providers, since that is the most
- * common and most confusing failure when a key has no funds.
+ * Tests for friendlyHttpHint (human-readable guidance for common provider
+ * HTTP failures) and uploadTimeoutMs (the payload-scaled request deadline
+ * that keeps a large but healthy upload from being aborted prematurely).
  */
 
-import { friendlyHttpHint } from 'src/transcription/httpClient';
+import {
+	friendlyHttpHint,
+	uploadTimeoutMs,
+} from 'src/transcription/httpClient';
+import {
+	TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS,
+	TRANSCRIBE_REQUEST_TIMEOUT_MS,
+} from 'src/constants';
 
 describe('friendlyHttpHint', () => {
 	it('flags an OpenAI insufficient_quota 429 as a billing problem', () => {
@@ -50,5 +56,29 @@ describe('friendlyHttpHint', () => {
 
 	it('returns no hint for an unrecognized client error', () => {
 		expect(friendlyHttpHint(404, 'Not Found')).toBe('');
+	});
+});
+
+describe('uploadTimeoutMs', () => {
+	it('uses the floor timeout for an empty payload', () => {
+		expect(uploadTimeoutMs(0)).toBe(TRANSCRIBE_REQUEST_TIMEOUT_MS);
+	});
+
+	it('scales above the floor for a sizeable payload', () => {
+		const timeout = uploadTimeoutMs(100 * 1024 * 1024);
+		expect(timeout).toBeGreaterThan(TRANSCRIBE_REQUEST_TIMEOUT_MS);
+		expect(timeout).toBeLessThanOrEqual(TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS);
+	});
+
+	it('caps a very large payload at the ceiling', () => {
+		expect(uploadTimeoutMs(8 * 1024 * 1024 * 1024)).toBe(
+			TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS,
+		);
+	});
+
+	it('is monotonic in payload size', () => {
+		expect(uploadTimeoutMs(10 * 1024 * 1024)).toBeLessThanOrEqual(
+			uploadTimeoutMs(20 * 1024 * 1024),
+		);
 	});
 });

@@ -60,5 +60,11 @@ export interface Transcript {
 /** Format used to serialize a transcript to a sidecar/export file. */
 export type TranscriptFileFormat = 'json' | 'srt' | 'vtt' | 'txt';
 
-/** Where the transcript output is written. */
-export type TranscriptDestination = 'note' | 'file' | 'both';
+/**
+ * Where the transcript output is written.
+ * - `note`: render the full transcript Markdown into the active note.
+ * - `file`: write a sidecar transcript file next to the audio.
+ * - `both`: render into the note and write a sidecar file.
+ * - `link`: write a sidecar file and insert a link to it into the note.
+ */
+export type TranscriptDestination = 'note' | 'file' | 'both' | 'link';

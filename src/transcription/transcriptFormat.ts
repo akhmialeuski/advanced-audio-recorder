@@ -43,7 +43,10 @@ export const DEFAULT_TRANSCRIPT_MARKDOWN_OPTIONS: TranscriptMarkdownOptions = {
 	timestampLinks: true,
 	includeSpeakers: true,
 	mergeConsecutiveSpeaker: true,
-	timestampFormat: '[{time}]',
+	// No surrounding brackets by default: with timestamp links on (the
+	// default) the link already delimits the timecode, and wrapping a
+	// wikilink in '[...]' would produce fragile nested brackets ('[[[...]]]').
+	timestampFormat: '{time}',
 	speakerFormat: '**{speaker}**',
 	lineFormat: '{timestamp} {speaker} {text}',
 };

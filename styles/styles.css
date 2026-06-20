@@ -489,6 +489,15 @@ input.aar-input-invalid {
     font-size: 0.9em;
 }
 
+.aar-transcribe-options {
+    margin: 8px 0;
+}
+
+.aar-transcribe-options-disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
 .aar-transcribe-status {
     margin: 8px 0 4px;
     font-size: 0.9em;

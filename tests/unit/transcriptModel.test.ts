@@ -9,7 +9,6 @@ import {
 	normalizeWhitespace,
 	offsetSegment,
 	plainText,
-	renameSpeaker,
 	stitchChunks,
 } from 'src/transcription/transcriptModel';
 import type {
@@ -95,18 +94,6 @@ describe('stitchChunks', () => {
 		expect(combined.segments.map((s) => s.start)).toEqual([0, 60]);
 		expect(combined.segments.map((s) => s.text)).toEqual(['one', 'two']);
 		expect(combined.language).toBe('en');
-	});
-});
-
-describe('renameSpeaker', () => {
-	it('renames a speaker across segments and updates the list', () => {
-		const transcript = buildTranscript([
-			seg(0, 1, 'a', 'SPEAKER_00'),
-			seg(1, 2, 'b', 'SPEAKER_01'),
-		]);
-		const renamed = renameSpeaker(transcript, 'SPEAKER_00', 'Alice');
-		expect(renamed.segments[0].speaker).toBe('Alice');
-		expect(renamed.speakers).toEqual(['Alice', 'SPEAKER_01']);
 	});
 });
 

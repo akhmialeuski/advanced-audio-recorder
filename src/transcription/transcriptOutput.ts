@@ -45,32 +45,90 @@ function directoryOf(path: string): string {
  * @param audioFile - Source audio file
  * @param transcript - Transcript to serialize
  * @param format - File format
- * @returns The created file's vault path
+ * @returns The created transcript file
  */
 export async function writeTranscriptFile(
 	app: App,
 	audioFile: TFile,
 	transcript: Transcript,
 	format: TranscriptFileFormat,
-): Promise<string> {
+): Promise<TFile> {
 	const desired = buildTranscriptFilePath(audioFile.path, format);
 	const directory = directoryOf(desired);
 	const fileName = desired.slice(
 		directory.length === 0 ? 0 : directory.length + 1,
 	);
 	const target = await resolveUniquePathInDirectory(directory, fileName, app);
-	await app.vault.create(target, serializeTranscriptFile(transcript, format));
-	return target;
+	return app.vault.create(
+		target,
+		serializeTranscriptFile(transcript, format),
+	);
+}
+
+/**
+ * Finds the open, editable Markdown view for a specific note path, or null
+ * when that note is not open in a Markdown leaf. Targets the note the
+ * timecode links were generated against — not whatever happens to be active
+ * when an async transcription finishes — so output never lands in an
+ * unrelated file the user switched to mid-run.
+ * @param app - Obsidian App
+ * @param notePath - Vault path of the target note
+ */
+function findNoteView(app: App, notePath: string): MarkdownView | null {
+	if (!notePath) {
+		return null;
+	}
+	const view = app.workspace
+		.getLeavesOfType('markdown')
+		.map((leaf) => leaf.view)
+		.find(
+			(candidate): candidate is MarkdownView =>
+				candidate instanceof MarkdownView &&
+				candidate.file?.path === notePath,
+		);
+	return view ?? null;
+}
+
+/**
+ * Inserts a Markdown block at the cursor of the given note, optionally under
+ * a heading. Returns true when inserted, false when the note is not open in
+ * an editable view (reading mode or not open), so the caller can fall back.
+ * @param app - Obsidian App
+ * @param notePath - Vault path of the target note (the link source)
+ * @param body - Markdown to insert
+ * @param heading - Optional heading line (empty for none)
+ */
+function insertBlockIntoNote(
+	app: App,
+	notePath: string,
+	body: string,
+	heading: string,
+): boolean {
+	const view = findNoteView(app, notePath);
+	if (!view) {
+		return false;
+	}
+	const block = heading ? `${heading}\n\n${body}` : body;
+	try {
+		const editor = view.editor;
+		const cursor = editor.getCursor();
+		editor.replaceRange(`\n\n${block}\n`, cursor);
+		return true;
+	} catch (error) {
+		// The note may be in reading mode or otherwise not editable; report
+		// not-inserted so the caller can fall back to the file/notice.
+		console.warn(
+			`${PLUGIN_LOG_PREFIX} Could not insert into the note:`,
+			error,
+		);
+		return false;
+	}
 }
 
 /**
  * Inserts the transcript Markdown at the cursor of the note the timecode
- * links were generated against, optionally under a heading. Targets that
- * specific note — not whatever happens to be active when transcription
- * finishes — so a long async run that ends after the user switched notes
- * never writes the transcript (with links relative to the source note)
- * into an unrelated file. Returns true when inserted, false when that note
- * is not open in an editable view (the caller falls back to the file/notice).
+ * links were generated against, optionally under a heading. Returns true
+ * when inserted, false when that note is not open in an editable view.
  * @param app - Obsidian App
  * @param notePath - Vault path of the target note (the link source)
  * @param markdown - Rendered transcript Markdown
@@ -82,35 +140,28 @@ export function insertTranscriptIntoNote(
 	markdown: string,
 	heading: string,
 ): boolean {
-	if (!notePath) {
-		return false;
-	}
-	const view = app.workspace
-		.getLeavesOfType('markdown')
-		.map((leaf) => leaf.view)
-		.find(
-			(candidate): candidate is MarkdownView =>
-				candidate instanceof MarkdownView &&
-				candidate.file?.path === notePath,
-		);
-	if (!view) {
-		return false;
-	}
-	const block = heading ? `${heading}\n\n${markdown}` : markdown;
-	try {
-		const editor = view.editor;
-		const cursor = editor.getCursor();
-		editor.replaceRange(`\n\n${block}\n`, cursor);
-		return true;
-	} catch (error) {
-		// The note may be in reading mode or otherwise not editable; report
-		// not-inserted so the caller can fall back to the file/notice.
-		console.warn(
-			`${PLUGIN_LOG_PREFIX} Could not insert transcript into the note:`,
-			error,
-		);
-		return false;
-	}
+	return insertBlockIntoNote(app, notePath, markdown, heading);
+}
+
+/**
+ * Inserts a link to a written transcript file into the target note,
+ * optionally under a heading. The link is built with
+ * {@link App.fileManager.generateMarkdownLink} so it honors the vault's
+ * link format (a `[[wikilink]]` when wikilinks are enabled). Returns true
+ * when inserted, false when the note is not open in an editable view.
+ * @param app - Obsidian App
+ * @param notePath - Vault path of the target note (the link source)
+ * @param transcriptFile - The written transcript file to link to
+ * @param heading - Optional heading line (empty for none)
+ */
+export function insertTranscriptFileLink(
+	app: App,
+	notePath: string,
+	transcriptFile: TFile,
+	heading: string,
+): boolean {
+	const link = app.fileManager.generateMarkdownLink(transcriptFile, notePath);
+	return insertBlockIntoNote(app, notePath, link, heading);
 }
 
 /** Outcome of writing a transcript, used to build an honest user notice. */
@@ -123,6 +174,10 @@ export interface TranscriptWriteOutcome {
 	noteRequested: boolean;
 	/** Whether the file was written only as a fallback after a failed insert. */
 	savedAsFallback: boolean;
+	/** Whether the user asked to link the transcript file in the note. */
+	linkRequested?: boolean;
+	/** Whether a link to the transcript file was inserted into the note. */
+	linkInserted?: boolean;
 }
 
 /**
@@ -135,7 +190,14 @@ export interface TranscriptWriteOutcome {
 export function describeTranscriptOutcome(
 	outcome: TranscriptWriteOutcome,
 ): string {
-	const { inserted, filePath, noteRequested, savedAsFallback } = outcome;
+	const {
+		inserted,
+		filePath,
+		noteRequested,
+		savedAsFallback,
+		linkRequested = false,
+		linkInserted = false,
+	} = outcome;
 	if (savedAsFallback && filePath) {
 		return (
 			`Could not insert the transcript into the note (open it in editing ` +
@@ -147,7 +209,17 @@ export function describeTranscriptOutcome(
 		parts.push('inserted into the note');
 	}
 	if (filePath) {
-		parts.push(`saved to ${filePath}`);
+		if (linkRequested) {
+			// A link to the file was requested: report honestly whether it
+			// landed, since insertion fails when the note is not editable.
+			parts.push(
+				linkInserted
+					? `saved to ${filePath} and linked in the note`
+					: `saved to ${filePath} (open the note in editing mode to link it)`,
+			);
+		} else {
+			parts.push(`saved to ${filePath}`);
+		}
 	}
 	if (parts.length > 0) {
 		return `Transcript ${parts.join(' and ')}.`;
