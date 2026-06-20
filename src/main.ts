@@ -573,8 +573,15 @@ export default class AudioRecorderPlugin extends Plugin {
 
 	/**
 	 * Transcribe-on-save hook: when enabled, transcribes the first saved
-	 * audio file. Runs after the recording's link is inserted, so the
-	 * recording note is active and timecode links resolve correctly.
+	 * audio file (`paths[0]`). Runs after the recording's link is inserted,
+	 * so the recording note is active and timecode links resolve correctly.
+	 *
+	 * Only the first file is transcribed by design: a multi-track session
+	 * produces several tracks of the same audio (transcribing each would be
+	 * redundant and multiply API cost), and an auto-split session would
+	 * otherwise fire one transcription request per part. For those cases the
+	 * user transcribes the desired file explicitly via the context menu or
+	 * the "Transcribe active audio file" command.
 	 * @param paths - Vault paths of the audio files just saved
 	 */
 	private handleRecordingSaved(paths: string[]): void {

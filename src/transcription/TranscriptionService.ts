@@ -1,19 +1,28 @@
 /**
- * Orchestrates transcription: read the audio, decode/resample to 16 kHz
- * mono, split into upload-sized chunks, transcribe each chunk through the
- * configured provider, stitch the results back onto the original
- * timeline, render Markdown (with clickable timecode links), and
- * optionally post-process with an LLM.
+ * Orchestrates transcription: read the audio, prepare provider-ready
+ * payloads (either the original container untouched when the provider
+ * accepts it and it fits the limit, or a decoded 16 kHz mono WAV split
+ * into upload-sized chunks), transcribe each payload through the configured
+ * provider, stitch the results back onto the original timeline, render
+ * Markdown (with clickable timecode links), and optionally post-process
+ * with an LLM. LLM post-processing is best-effort: a failure falls back to
+ * the raw transcript rather than discarding the completed work.
  * @module transcription/TranscriptionService
  */
 
+import { Notice } from 'obsidian';
 import type { App, TFile } from 'obsidian';
+import {
+	PLUGIN_LOG_PREFIX,
+	TRANSCRIBE_CHUNK_PROGRESS_CEILING,
+} from '../constants';
 import type { AudioRecorderSettings } from '../settings/Settings';
 import {
 	audioMimeFromExtension,
 	audioPrepOptions,
 	prepareAudio,
 } from './audioPrep';
+import type { AudioPayload } from './providers/TranscriptionProvider';
 import { buildTranscript, plainText, stitchChunks } from './transcriptModel';
 import {
 	DEFAULT_TRANSCRIPT_MARKDOWN_OPTIONS,
@@ -101,25 +110,49 @@ export class TranscriptionService {
 				provider.capabilities,
 				provider.requiresNetwork,
 				Math.max(1, settings.transcriptionChunkMb) * 1024 * 1024,
+				transcribeOptions.diarize,
 			),
 		);
 		this.throwIfCancelled(token);
 
 		const payloads = prepared.payloads;
+		const partCount = payloads.length;
 		const results: { offsetSeconds: number; transcript: Transcript }[] = [];
-		for (let i = 0; i < payloads.length; i++) {
+		for (let i = 0; i < partCount; i++) {
 			this.throwIfCancelled(token);
-			const payload = payloads[i];
+			const prepPayload = payloads[i];
+			const partLabel =
+				partCount > 1
+					? `part ${String(i + 1)} of ${String(partCount)}`
+					: '';
 			options.onProgress?.(
-				i / Math.max(1, payloads.length),
-				payloads.length > 1
-					? `Transcribing part ${String(i + 1)} of ${String(payloads.length)}...`
-					: 'Transcribing...',
+				(i / partCount) * TRANSCRIBE_CHUNK_PROGRESS_CEILING,
+				partLabel ? `Transcribing ${partLabel}...` : 'Transcribing...',
 			);
-			const chunkResult = await provider.transcribe(
-				payload,
-				transcribeOptions,
-			);
+			// Materialize this payload's bytes only now, so a multi-chunk job
+			// never holds more than one chunk's WAV in memory at a time.
+			const payload: AudioPayload = {
+				data: prepPayload.createData(),
+				contentType: prepPayload.contentType,
+				filename: prepPayload.filename,
+				offsetSeconds: prepPayload.offsetSeconds,
+			};
+			let chunkResult;
+			try {
+				chunkResult = await provider.transcribe(
+					payload,
+					transcribeOptions,
+				);
+			} catch (error) {
+				// Single-part jobs need no extra context; for multi-part,
+				// name which part failed so the error is actionable.
+				if (!partLabel) {
+					throw error;
+				}
+				const detail =
+					error instanceof Error ? error.message : String(error);
+				throw new Error(`${detail} (while transcribing ${partLabel})`);
+			}
 			results.push({
 				offsetSeconds: payload.offsetSeconds,
 				transcript: buildTranscript(chunkResult.segments, {
@@ -143,8 +176,31 @@ export class TranscriptionService {
 
 		if (settings.llmPostProcessEnabled) {
 			this.throwIfCancelled(token);
-			options.onProgress?.(0.95, 'Post-processing with LLM...');
-			markdown = await this.postProcess(settings, transcript, markdown);
+			options.onProgress?.(
+				TRANSCRIBE_CHUNK_PROGRESS_CEILING,
+				'Post-processing with LLM...',
+			);
+			// Post-processing is best-effort: a failure (bad key, network,
+			// timeout) must not discard the completed transcript, so fall back
+			// to the raw Markdown and tell the user the cleanup was skipped.
+			try {
+				markdown = await this.postProcess(
+					settings,
+					transcript,
+					markdown,
+				);
+			} catch (error) {
+				if (error instanceof TranscriptionCancelledError) {
+					throw error;
+				}
+				console.warn(
+					`${PLUGIN_LOG_PREFIX} LLM post-processing failed; keeping the raw transcript.`,
+					error,
+				);
+				new Notice(
+					'LLM post-processing failed; saving the raw transcript.',
+				);
+			}
 		}
 
 		options.onProgress?.(1, 'Done');

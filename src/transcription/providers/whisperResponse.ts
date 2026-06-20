@@ -7,20 +7,12 @@
  */
 
 import type { TranscriptSegment, TranscriptWord } from '../TranscriptTypes';
+import { isRecord, num } from './responseUtils';
 
 /** Parsed result of one transcription request. */
 export interface WhisperResult {
 	language?: string;
 	segments: TranscriptSegment[];
-}
-
-/**
- * Coerces an unknown value to a finite number, or returns the fallback.
- */
-function num(value: unknown, fallback = 0): number {
-	return typeof value === 'number' && Number.isFinite(value)
-		? value
-		: fallback;
 }
 
 /**
@@ -32,18 +24,17 @@ function mapWords(value: unknown): TranscriptWord[] | undefined {
 	}
 	const words: TranscriptWord[] = [];
 	for (const entry of value) {
-		if (typeof entry !== 'object' || entry === null) {
+		if (!isRecord(entry)) {
 			continue;
 		}
-		const record = entry as Record<string, unknown>;
-		const text = record.word ?? record.text;
+		const text = entry.word ?? entry.text;
 		if (typeof text !== 'string') {
 			continue;
 		}
 		words.push({
 			text: text.trim(),
-			start: num(record.start),
-			end: num(record.end),
+			start: num(entry.start),
+			end: num(entry.end),
 		});
 	}
 	return words.length > 0 ? words : undefined;
@@ -56,31 +47,30 @@ function mapWords(value: unknown): TranscriptWord[] | undefined {
  * @param body - Parsed JSON response body
  */
 export function mapWhisperResponse(body: unknown): WhisperResult {
-	if (typeof body !== 'object' || body === null) {
+	if (!isRecord(body)) {
 		return { segments: [] };
 	}
-	const record = body as Record<string, unknown>;
 	const language =
-		typeof record.language === 'string' ? record.language : undefined;
+		typeof body.language === 'string' ? body.language : undefined;
 
-	const rawSegments = record.segments;
+	const rawSegments = body.segments;
 	if (Array.isArray(rawSegments) && rawSegments.length > 0) {
 		const segments: TranscriptSegment[] = [];
 		for (const entry of rawSegments) {
-			if (typeof entry !== 'object' || entry === null) {
+			if (!isRecord(entry)) {
 				continue;
 			}
-			const seg = entry as Record<string, unknown>;
-			const text = typeof seg.text === 'string' ? seg.text.trim() : '';
+			const text =
+				typeof entry.text === 'string' ? entry.text.trim() : '';
 			if (text === '') {
 				continue;
 			}
 			const speaker =
-				typeof seg.speaker === 'string' ? seg.speaker : undefined;
-			const words = mapWords(seg.words);
+				typeof entry.speaker === 'string' ? entry.speaker : undefined;
+			const words = mapWords(entry.words);
 			segments.push({
-				start: num(seg.start),
-				end: num(seg.end, num(seg.start)),
+				start: num(entry.start),
+				end: num(entry.end, num(entry.start)),
 				text,
 				...(speaker ? { speaker } : {}),
 				...(words ? { words } : {}),
@@ -90,7 +80,7 @@ export function mapWhisperResponse(body: unknown): WhisperResult {
 	}
 
 	// No segment array: fall back to the flat transcript text.
-	const text = typeof record.text === 'string' ? record.text.trim() : '';
+	const text = typeof body.text === 'string' ? body.text.trim() : '';
 	return {
 		language,
 		segments: text === '' ? [] : [{ start: 0, end: 0, text }],

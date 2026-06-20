@@ -8,6 +8,7 @@
 
 import type { TranscriptSegment } from '../TranscriptTypes';
 import type { WhisperResult } from './whisperResponse';
+import { isRecord, num } from './responseUtils';
 import type {
 	AudioPayload,
 	ProviderCapabilities,
@@ -70,30 +71,27 @@ function loadNodeModules(): NodeModules | null {
  * @param body - Parsed whisper.cpp JSON
  */
 export function mapWhisperCppJson(body: unknown): WhisperResult {
-	if (typeof body !== 'object' || body === null) {
+	if (!isRecord(body)) {
 		return { segments: [] };
 	}
-	const record = body as Record<string, unknown>;
-	const items = record.transcription;
+	const items = body.transcription;
 	const language =
-		typeof record.language === 'string' ? record.language : undefined;
+		typeof body.language === 'string' ? body.language : undefined;
 	if (!Array.isArray(items)) {
 		return { language, segments: [] };
 	}
 	const segments: TranscriptSegment[] = [];
 	for (const entry of items) {
-		if (typeof entry !== 'object' || entry === null) {
+		if (!isRecord(entry)) {
 			continue;
 		}
-		const item = entry as Record<string, unknown>;
-		const offsets = item.offsets as Record<string, unknown> | undefined;
-		const text = typeof item.text === 'string' ? item.text.trim() : '';
+		const offsets = isRecord(entry.offsets) ? entry.offsets : undefined;
+		const text = typeof entry.text === 'string' ? entry.text.trim() : '';
 		if (text === '') {
 			continue;
 		}
-		const fromMs =
-			offsets && typeof offsets.from === 'number' ? offsets.from : 0;
-		const toMs = offsets && typeof offsets.to === 'number' ? offsets.to : 0;
+		const fromMs = offsets ? num(offsets.from) : 0;
+		const toMs = offsets ? num(offsets.to, fromMs) : 0;
 		segments.push({ start: fromMs / 1000, end: toMs / 1000, text });
 	}
 	return { language, segments };
@@ -166,8 +164,23 @@ export class LocalWhisperProvider implements TranscriptionProvider {
 					},
 				);
 			});
-			const raw = node.fs.readFileSync(jsonPath, 'utf8');
-			return mapWhisperCppJson(JSON.parse(raw));
+			let raw: string;
+			try {
+				raw = node.fs.readFileSync(jsonPath, 'utf8');
+			} catch {
+				throw new Error(
+					'Local whisper.cpp did not produce an output file. Check the binary and model paths.',
+				);
+			}
+			let parsed: unknown;
+			try {
+				parsed = JSON.parse(raw);
+			} catch {
+				throw new Error(
+					'Local whisper.cpp produced invalid JSON output.',
+				);
+			}
+			return mapWhisperCppJson(parsed);
 		} finally {
 			node.fs.rmSync(wavPath, { force: true });
 			node.fs.rmSync(jsonPath, { force: true });

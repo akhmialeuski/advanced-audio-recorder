@@ -7,6 +7,8 @@
 
 import { App, Modal, Notice, Setting, TFile } from 'obsidian';
 import {
+	LLM_TASK_LABELS,
+	TRANSCRIPT_DESTINATION_LABELS,
 	TRANSCRIPTION_PROVIDER_LABELS,
 	type AudioRecorderSettings,
 } from '../settings/Settings';
@@ -43,14 +45,18 @@ export class TranscriptionModal extends Modal {
 		});
 
 		const settings = this.getSettings();
+		const language =
+			settings.transcriptionLanguage === 'auto'
+				? 'Auto-detect'
+				: settings.transcriptionLanguage;
 		contentEl.createEl('p', {
 			cls: 'aar-transcribe-config',
 			text:
 				`Engine: ${TRANSCRIPTION_PROVIDER_LABELS[settings.transcriptionProvider]}` +
-				` · Language: ${settings.transcriptionLanguage}` +
-				` · Output: ${settings.transcriptDestination}` +
+				` · Language: ${language}` +
+				` · Output: ${TRANSCRIPT_DESTINATION_LABELS[settings.transcriptDestination]}` +
 				(settings.llmPostProcessEnabled
-					? ` · LLM: ${settings.llmPostProcessTask}`
+					? ` · LLM: ${LLM_TASK_LABELS[settings.llmPostProcessTask]}`
 					: ''),
 		});
 
@@ -130,7 +136,9 @@ export class TranscriptionModal extends Modal {
 			const percent = Math.round(
 				Math.max(0, Math.min(1, fraction)) * 100,
 			);
-			this.progressFillEl.style.width = `${String(percent)}%`;
+			this.progressFillEl.setCssProps({
+				'--aar-transcribe-progress': `${String(percent)}%`,
+			});
 		}
 	}
 

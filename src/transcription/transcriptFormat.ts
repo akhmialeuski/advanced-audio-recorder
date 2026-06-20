@@ -8,7 +8,11 @@
  */
 
 import { formatTimecode } from '../utils/TimeUtils';
-import type { Transcript, TranscriptSegment } from './TranscriptTypes';
+import type {
+	Transcript,
+	TranscriptFileFormat,
+	TranscriptSegment,
+} from './TranscriptTypes';
 
 /**
  * Options controlling the Markdown rendering. The three format fragments
@@ -115,6 +119,17 @@ function applyTemplate(
 }
 
 /**
+ * Neutralizes Obsidian wikilink/transclusion syntax in transcript content
+ * before it is written into a note. Left raw, a `[[...]]` or `![[...]]` in
+ * transcribed text would render as an unintended link or embed; escaping
+ * the brackets keeps the literal text without linking.
+ * @param text - Raw transcript text or speaker label
+ */
+function neutralizeWikilinks(text: string): string {
+	return text.replace(/\[\[/g, '\\[\\[').replace(/\]\]/g, '\\]\\]');
+}
+
+/**
  * Renders a transcript to Markdown lines using the configured templates.
  * Each speaker turn (or segment) becomes one line.
  * @param transcript - Source transcript
@@ -143,12 +158,14 @@ export function formatTranscriptMarkdown(
 			: '';
 		const speaker =
 			options.includeSpeakers && row.speaker
-				? applyTemplate(options.speakerFormat, { speaker: row.speaker })
+				? applyTemplate(options.speakerFormat, {
+						speaker: neutralizeWikilinks(row.speaker),
+					})
 				: '';
 		return applyTemplate(options.lineFormat, {
 			timestamp,
 			speaker,
-			text: row.text,
+			text: neutralizeWikilinks(row.text),
 		});
 	});
 	return lines.join('\n\n');
@@ -173,7 +190,7 @@ function renderTimecode(
  */
 export function serializeTranscriptFile(
 	transcript: Transcript,
-	format: 'json' | 'srt' | 'vtt' | 'txt',
+	format: TranscriptFileFormat,
 ): string {
 	switch (format) {
 		case 'json':
@@ -184,6 +201,14 @@ export function serializeTranscriptFile(
 			return toVtt(transcript);
 		case 'txt':
 			return toPlainTextFile(transcript);
+		default: {
+			// Compile-time exhaustiveness: a new format becomes a type error
+			// here instead of silently serializing to undefined at runtime.
+			const exhaustive: never = format;
+			throw new Error(
+				`Unsupported transcript file format: ${String(exhaustive)}`,
+			);
+		}
 	}
 }
 
@@ -192,11 +217,15 @@ export function serializeTranscriptFile(
  * `HH:MM:SS.mmm` (VTT).
  */
 function formatSubtitleTime(seconds: number, millisSep: string): string {
-	const clamped = Math.max(0, seconds);
-	const hours = Math.floor(clamped / 3600);
-	const minutes = Math.floor((clamped % 3600) / 60);
-	const secs = Math.floor(clamped % 60);
-	const millis = Math.round((clamped - Math.floor(clamped)) * 1000);
+	// Decompose from a single rounded millisecond total so rounding can never
+	// leave the millis field at 1000 (which a separate floor of seconds would
+	// produce, e.g. 12.9996 -> "00:00:12,1000").
+	const totalMillis = Math.round(Math.max(0, seconds) * 1000);
+	const millis = totalMillis % 1000;
+	const totalSecs = Math.floor(totalMillis / 1000);
+	const hours = Math.floor(totalSecs / 3600);
+	const minutes = Math.floor((totalSecs % 3600) / 60);
+	const secs = totalSecs % 60;
 	const pad = (value: number, width = 2): string =>
 		String(value).padStart(width, '0');
 	return `${pad(hours)}:${pad(minutes)}:${pad(secs)}${millisSep}${pad(millis, 3)}`;

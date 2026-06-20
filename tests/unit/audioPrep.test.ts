@@ -1,14 +1,16 @@
 /**
  * Tests for the audio preparation helpers: extension-to-MIME mapping,
- * capability-derived prep options, and the whole-file path (sending the
- * original bytes untouched). The decode path is exercised indirectly via
- * planChunks tests, since decoding needs the Web Audio API.
+ * capability-derived prep options, the whole-file path (sending the
+ * original bytes untouched), and the whole-file diarization guard. The
+ * decode path is exercised indirectly via planChunks tests, since decoding
+ * needs the Web Audio API.
  */
 
 import {
 	audioMimeFromExtension,
 	audioPrepOptions,
 	prepareAudio,
+	WholeFileDiarizationLimitError,
 } from 'src/transcription/audioPrep';
 import type { ProviderCapabilities } from 'src/transcription/providers/TranscriptionProvider';
 
@@ -38,14 +40,24 @@ describe('audioPrepOptions', () => {
 	};
 
 	it('bounds the chunk size by the provider limit for network providers', () => {
-		const options = audioPrepOptions(networkCaps, true, 100 * 1024 * 1024);
+		const options = audioPrepOptions(
+			networkCaps,
+			true,
+			100 * 1024 * 1024,
+			false,
+		);
 		expect(options.chunkBytes).toBe(25 * 1024 * 1024);
 		expect(options.maxRequestBytes).toBe(25 * 1024 * 1024);
 		expect(options.acceptsOriginalContainer).toBe(true);
 	});
 
 	it('uses the user chunk size when it is under the provider limit', () => {
-		const options = audioPrepOptions(networkCaps, true, 10 * 1024 * 1024);
+		const options = audioPrepOptions(
+			networkCaps,
+			true,
+			10 * 1024 * 1024,
+			false,
+		);
 		expect(options.chunkBytes).toBe(10 * 1024 * 1024);
 	});
 
@@ -55,8 +67,24 @@ describe('audioPrepOptions', () => {
 			acceptsOriginalContainer: false,
 			diarizesWholeFile: false,
 		};
-		const options = audioPrepOptions(localCaps, false, 10 * 1024 * 1024);
+		const options = audioPrepOptions(
+			localCaps,
+			false,
+			10 * 1024 * 1024,
+			false,
+		);
 		expect(options.chunkBytes).toBe(Number.POSITIVE_INFINITY);
+	});
+
+	it('carries the diarization flags through', () => {
+		const diarizingCaps: ProviderCapabilities = {
+			maxRequestBytes: 1000,
+			acceptsOriginalContainer: true,
+			diarizesWholeFile: true,
+		};
+		const options = audioPrepOptions(diarizingCaps, true, 1000, true);
+		expect(options.diarize).toBe(true);
+		expect(options.diarizesWholeFile).toBe(true);
 	});
 });
 
@@ -67,12 +95,42 @@ describe('prepareAudio (whole-file path)', () => {
 			maxRequestBytes: 1000,
 			acceptsOriginalContainer: true,
 			chunkBytes: 1000,
+			diarize: false,
+			diarizesWholeFile: false,
 		});
 		expect(result.totalSeconds).toBeNull();
 		expect(result.payloads).toHaveLength(1);
-		expect(result.payloads[0].data).toBe(raw);
+		expect(result.payloads[0].createData()).toBe(raw);
 		expect(result.payloads[0].contentType).toBe('audio/webm');
 		expect(result.payloads[0].filename).toBe('rec.webm');
 		expect(result.payloads[0].offsetSeconds).toBe(0);
+	});
+
+	it('sends the whole file even when diarizing, as long as it fits', async () => {
+		const raw = new Uint8Array([1, 2, 3, 4]).buffer;
+		const result = await prepareAudio(raw, 'rec.webm', 'audio/webm', {
+			maxRequestBytes: 1000,
+			acceptsOriginalContainer: true,
+			chunkBytes: 1000,
+			diarize: true,
+			diarizesWholeFile: true,
+		});
+		expect(result.payloads).toHaveLength(1);
+		expect(result.payloads[0].createData()).toBe(raw);
+	});
+});
+
+describe('prepareAudio (whole-file diarization guard)', () => {
+	it('refuses to chunk a too-large file for a whole-file diarizing provider', async () => {
+		const raw = new Uint8Array(2048).buffer;
+		await expect(
+			prepareAudio(raw, 'rec.webm', 'audio/webm', {
+				maxRequestBytes: 1024,
+				acceptsOriginalContainer: true,
+				chunkBytes: 512,
+				diarize: true,
+				diarizesWholeFile: true,
+			}),
+		).rejects.toBeInstanceOf(WholeFileDiarizationLimitError);
 	});
 });

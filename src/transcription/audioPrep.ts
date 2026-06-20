@@ -22,10 +22,30 @@ import {
 	TRANSCRIBE_SAMPLE_RATE,
 } from '../constants';
 import { decodeToMono16k, extractChunkWav, planChunks } from './audioChunks';
-import type {
-	AudioPayload,
-	ProviderCapabilities,
-} from './providers/TranscriptionProvider';
+import type { ProviderCapabilities } from './providers/TranscriptionProvider';
+
+/** Bytes in one megabyte, for human-readable size messages. */
+const BYTES_PER_MB = 1024 * 1024;
+
+/**
+ * Raised when a file is too large to send whole to a provider that
+ * diarizes across an entire request, so it would have to be chunked —
+ * which resets speaker numbering per chunk. Refusing is preferable to
+ * silently producing inconsistent speaker labels.
+ */
+export class WholeFileDiarizationLimitError extends Error {
+	constructor(fileBytes: number, limitBytes: number) {
+		super(
+			`This recording (${String(Math.round(fileBytes / BYTES_PER_MB))} MB) ` +
+				`is too large for diarized transcription with this provider, which ` +
+				`needs the whole file in one request (limit ` +
+				`${String(Math.round(limitBytes / BYTES_PER_MB))} MB). Disable ` +
+				`speaker diarization, split the recording, or use a provider with a ` +
+				`higher limit.`,
+		);
+		this.name = 'WholeFileDiarizationLimitError';
+	}
+}
 
 /** Maps a lowercased file extension to its upload container MIME type. */
 const EXTENSION_MIME: Record<string, string> = {
@@ -61,12 +81,37 @@ export interface AudioPrepOptions {
 	 * whole-file path. Use Number.POSITIVE_INFINITY to produce a single chunk.
 	 */
 	chunkBytes: number;
+	/** Whether speaker diarization is requested for this run. */
+	diarize: boolean;
+	/**
+	 * Whether the provider needs the whole file in one request for stable
+	 * speaker numbering. When true and diarization is requested, a file that
+	 * must be chunked is rejected rather than silently re-numbered per chunk.
+	 */
+	diarizesWholeFile: boolean;
+}
+
+/**
+ * One prepared upload unit whose bytes are produced on demand. The heavy
+ * `createData()` is called once, immediately before the unit is uploaded,
+ * so only a single chunk's bytes are materialized at a time instead of all
+ * chunks at once.
+ */
+export interface PreparedPayload {
+	/** MIME type of the bytes (e.g. 'audio/wav', 'audio/webm'). */
+	contentType: string;
+	/** Filename hint for multipart uploads. */
+	filename: string;
+	/** Offset of this payload from the start of the recording, in seconds. */
+	offsetSeconds: number;
+	/** Builds the upload bytes; invoked once, right before uploading. */
+	createData(): ArrayBuffer;
 }
 
 /** Prepared payloads plus the total duration when it is known. */
 export interface PreparedAudio {
 	/** Ordered payloads to transcribe; segment offsets are pre-computed. */
-	payloads: AudioPayload[];
+	payloads: PreparedPayload[];
 	/**
 	 * Total audio duration in seconds, or null when the original file was
 	 * sent untouched (no decode happened, so the duration was never measured).
@@ -104,25 +149,35 @@ export async function prepareAudio(
 		return {
 			payloads: [
 				{
-					data: raw,
 					contentType: fileMime,
 					filename: fileName,
 					offsetSeconds: 0,
+					createData: () => raw,
 				},
 			],
 			totalSeconds: null,
 		};
 	}
 
+	// The file must be decoded and split. A provider that diarizes across the
+	// whole request cannot keep speaker numbering stable once chunked, so
+	// refuse rather than emit a transcript with reset speakers per chunk.
+	if (options.diarize && options.diarizesWholeFile) {
+		throw new WholeFileDiarizationLimitError(
+			raw.byteLength,
+			options.maxRequestBytes,
+		);
+	}
+
 	const samples = await decodeToMono16k(raw);
 	const totalSeconds = samples.length / TRANSCRIBE_SAMPLE_RATE;
 	const plans = planChunks(totalSeconds, options.chunkBytes);
-	const payloads: AudioPayload[] = plans.map((plan) => ({
-		data: extractChunkWav(samples, plan),
+	const multiChunk = plans.length > 1;
+	const payloads: PreparedPayload[] = plans.map((plan) => ({
 		contentType: `${MIME_TYPE_AUDIO_PREFIX}wav`,
-		filename:
-			plans.length > 1 ? `audio-${String(plan.index)}.wav` : 'audio.wav',
+		filename: multiChunk ? `audio-${String(plan.index)}.wav` : 'audio.wav',
 		offsetSeconds: plan.startSeconds,
+		createData: () => extractChunkWav(samples, plan),
 	}));
 	return { payloads, totalSeconds };
 }
@@ -135,12 +190,14 @@ export async function prepareAudio(
  * @param capabilities - The provider's declared capabilities
  * @param requiresNetwork - Whether the provider uploads over the network
  * @param userChunkBytes - The user-configured chunk size in bytes
+ * @param diarize - Whether speaker diarization is requested for this run
  * @returns Options to pass to {@link prepareAudio}
  */
 export function audioPrepOptions(
 	capabilities: ProviderCapabilities,
 	requiresNetwork: boolean,
 	userChunkBytes: number,
+	diarize: boolean,
 ): AudioPrepOptions {
 	const chunkBytes = requiresNetwork
 		? Math.min(capabilities.maxRequestBytes, userChunkBytes)
@@ -149,5 +206,7 @@ export function audioPrepOptions(
 		maxRequestBytes: capabilities.maxRequestBytes,
 		acceptsOriginalContainer: capabilities.acceptsOriginalContainer,
 		chunkBytes,
+		diarize,
+		diarizesWholeFile: capabilities.diarizesWholeFile,
 	};
 }

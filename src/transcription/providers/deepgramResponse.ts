@@ -10,18 +10,7 @@
 
 import type { TranscriptSegment, TranscriptWord } from '../TranscriptTypes';
 import type { WhisperResult } from './whisperResponse';
-
-/** Narrows an unknown value to a plain record. */
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null;
-}
-
-/** Coerces an unknown value to a finite number, or returns the fallback. */
-function num(value: unknown, fallback = 0): number {
-	return typeof value === 'number' && Number.isFinite(value)
-		? value
-		: fallback;
-}
+import { isRecord, num } from './responseUtils';
 
 /** Formats a Deepgram speaker index (0-based) as a label, when present. */
 function speakerLabel(value: unknown, diarize: boolean): string | undefined {

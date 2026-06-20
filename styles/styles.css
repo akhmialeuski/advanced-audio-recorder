@@ -504,7 +504,7 @@ input.aar-input-invalid {
 
 .aar-transcribe-progress-bar {
     height: 100%;
-    width: 0%;
+    width: var(--aar-transcribe-progress, 0%);
     background-color: var(--color-accent);
     border-radius: 2px;
     transition: width 0.3s ease;

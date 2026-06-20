@@ -8,6 +8,7 @@
 
 import { TRANSCRIBE_BYTES_PER_SEC, TRANSCRIBE_SAMPLE_RATE } from '../constants';
 import { createWavHeader, WAV_HEADER_SIZE } from '../recording/WavEncoder';
+import { decodeAudioBlob } from '../recording/AudioFormatConverter';
 
 /**
  * Encodes mono Float32 samples (range -1..1) into a 16-bit PCM WAV blob.
@@ -54,9 +55,12 @@ export function planChunks(
 	if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) {
 		return [];
 	}
+	// Budget the PCM payload only, leaving room for the WAV header each chunk
+	// carries, so a chunk's encoded size never exceeds the provider limit
+	// (it would by 44 bytes if the header were not subtracted).
 	const maxChunkSeconds = Math.max(
 		1,
-		Math.floor(maxBytes / TRANSCRIBE_BYTES_PER_SEC),
+		Math.floor((maxBytes - WAV_HEADER_SIZE) / TRANSCRIBE_BYTES_PER_SEC),
 	);
 	const chunks: ChunkPlan[] = [];
 	let start = 0;
@@ -80,19 +84,13 @@ export function planChunks(
 export async function decodeToMono16k(
 	data: ArrayBuffer,
 ): Promise<Float32Array> {
-	const decodeContext = new AudioContext();
-	let decoded: AudioBuffer;
-	try {
-		decoded = await decodeContext.decodeAudioData(data.slice(0));
-	} finally {
-		void decodeContext.close().catch(() => {
-			// Closing a context that already failed is non-fatal
-		});
+	// Reuse the shared decoder (owns the AudioContext lifecycle and closes it
+	// even on failure) instead of re-implementing decode here.
+	const decoded = await decodeAudioBlob(data);
+	const frameCount = Math.round(decoded.duration * TRANSCRIBE_SAMPLE_RATE);
+	if (!Number.isFinite(frameCount) || frameCount <= 0) {
+		return new Float32Array(0);
 	}
-	const frameCount = Math.max(
-		1,
-		Math.ceil((decoded.duration || 0) * TRANSCRIBE_SAMPLE_RATE),
-	);
 	const offline = new OfflineAudioContext(
 		1,
 		frameCount,
@@ -117,10 +115,15 @@ export function extractChunkWav(
 	samples: Float32Array,
 	chunk: ChunkPlan,
 ): ArrayBuffer {
-	const startFrame = Math.floor(chunk.startSeconds * TRANSCRIBE_SAMPLE_RATE);
+	// Round both ends the same way so adjacent chunks tile exactly — a shared
+	// boundary maps to one frame, with no duplicated or dropped sample.
+	const startFrame = Math.min(
+		samples.length,
+		Math.round(chunk.startSeconds * TRANSCRIBE_SAMPLE_RATE),
+	);
 	const endFrame = Math.min(
 		samples.length,
-		Math.ceil(chunk.endSeconds * TRANSCRIBE_SAMPLE_RATE),
+		Math.round(chunk.endSeconds * TRANSCRIBE_SAMPLE_RATE),
 	);
 	const slice = samples.subarray(startFrame, Math.max(startFrame, endFrame));
 	return encodeMonoWav(slice, TRANSCRIBE_SAMPLE_RATE);

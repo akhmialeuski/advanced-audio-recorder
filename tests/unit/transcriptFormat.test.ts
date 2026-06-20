@@ -8,7 +8,10 @@ import {
 	serializeTranscriptFile,
 } from 'src/transcription/transcriptFormat';
 import { buildTranscript } from 'src/transcription/transcriptModel';
-import type { TranscriptSegment } from 'src/transcription/TranscriptTypes';
+import type {
+	TranscriptFileFormat,
+	TranscriptSegment,
+} from 'src/transcription/TranscriptTypes';
 
 function seg(
 	start: number,
@@ -90,6 +93,24 @@ describe('formatTranscriptMarkdown', () => {
 		);
 		expect(md).toBe('[0:05] x');
 	});
+
+	it('neutralizes wikilink/transclusion syntax in transcript text and speakers', () => {
+		const transcript = buildTranscript([
+			seg(0, 1, 'see ![[secret-note]] and [[other]]', '[[host]]'),
+		]);
+		const md = formatTranscriptMarkdown(
+			transcript,
+			DEFAULT_TRANSCRIPT_MARKDOWN_OPTIONS,
+			stubLink,
+		);
+		// No raw embed/wikilink survives from the content
+		expect(md).not.toContain('![[');
+		expect(md).not.toContain('[[secret-note]]');
+		expect(md).not.toContain('[[other]]');
+		expect(md).not.toContain('[[host]]');
+		// The brackets are present but escaped
+		expect(md).toContain('\\[\\[secret-note\\]\\]');
+	});
 });
 
 describe('serializeTranscriptFile', () => {
@@ -119,5 +140,22 @@ describe('serializeTranscriptFile', () => {
 	it('serializes JSON round-trippable to the transcript', () => {
 		const json = serializeTranscriptFile(transcript, 'json');
 		expect(JSON.parse(json)).toEqual(transcript);
+	});
+
+	it('carries milliseconds into seconds instead of overflowing to 1000', () => {
+		// 12.9996s rounds to 13.000s, not "12,1000"
+		const edge = buildTranscript([seg(0, 12.9996, 'x')]);
+		const srt = serializeTranscriptFile(edge, 'srt');
+		expect(srt).toContain('00:00:00,000 --> 00:00:13,000');
+		expect(srt).not.toContain(',1000');
+	});
+
+	it('throws on an unsupported file format instead of writing undefined', () => {
+		expect(() =>
+			serializeTranscriptFile(
+				transcript,
+				'bogus' as unknown as TranscriptFileFormat,
+			),
+		).toThrow('Unsupported transcript file format');
 	});
 });

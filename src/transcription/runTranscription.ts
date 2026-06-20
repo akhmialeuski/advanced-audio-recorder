@@ -14,7 +14,7 @@ import {
 	type TranscribeRunResult,
 } from './TranscriptionService';
 import {
-	insertTranscriptIntoActiveNote,
+	insertTranscriptIntoNote,
 	notifyTranscriptWritten,
 	writeTranscriptFile,
 } from './transcriptOutput';
@@ -69,8 +69,9 @@ export async function transcribeFile(
 	}
 	let inserted = false;
 	if (wantsNote) {
-		inserted = insertTranscriptIntoActiveNote(
+		inserted = insertTranscriptIntoNote(
 			app,
+			options.notePathForLinks,
 			result.markdown,
 			settings.transcriptHeading,
 		);

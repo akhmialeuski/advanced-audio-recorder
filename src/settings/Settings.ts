@@ -204,6 +204,23 @@ export const TRANSCRIPTION_PROVIDER_LABELS: Record<
 	'local-whisper': 'Local whisper.cpp (desktop)',
 };
 
+/** Display labels for each transcript destination (single source for UI). */
+export const TRANSCRIPT_DESTINATION_LABELS: Record<
+	TranscriptDestination,
+	string
+> = {
+	note: 'Insert into note',
+	file: 'Save to file',
+	both: 'Note and file',
+};
+
+/** Display labels for each LLM post-processing task (single source for UI). */
+export const LLM_TASK_LABELS: Record<LlmTask, string> = {
+	cleanup: 'Clean up',
+	summary: 'Summarize',
+	custom: 'Custom',
+};
+
 /** LLM post-processing provider identifier. */
 export type LlmProviderId = 'openai-compatible' | 'anthropic';
 

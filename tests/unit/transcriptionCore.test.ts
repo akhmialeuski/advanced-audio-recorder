@@ -21,6 +21,7 @@ import {
 } from 'src/transcription/factories';
 import { mergeSettings } from 'src/settings/Settings';
 import { TRANSCRIBE_BYTES_PER_SEC } from 'src/constants';
+import { WAV_HEADER_SIZE } from 'src/recording/WavEncoder';
 
 describe('planChunks', () => {
 	it('returns nothing for non-positive duration', () => {
@@ -33,14 +34,26 @@ describe('planChunks', () => {
 		expect(plans).toEqual([{ index: 0, startSeconds: 0, endSeconds: 60 }]);
 	});
 
-	it('splits into chunks bounded by the byte budget', () => {
-		// 10s budget per chunk, 25s total -> 3 chunks (10,10,5)
+	it('splits into chunks bounded by the byte budget (leaving room for the WAV header)', () => {
+		// 10s of PCM plus the 44-byte WAV header exceeds the budget, so the
+		// per-chunk budget is 9s: 25s total -> 3 chunks (9, 9, 7).
 		const plans = planChunks(25, 10 * TRANSCRIBE_BYTES_PER_SEC);
 		expect(plans).toEqual([
-			{ index: 0, startSeconds: 0, endSeconds: 10 },
-			{ index: 1, startSeconds: 10, endSeconds: 20 },
-			{ index: 2, startSeconds: 20, endSeconds: 25 },
+			{ index: 0, startSeconds: 0, endSeconds: 9 },
+			{ index: 1, startSeconds: 9, endSeconds: 18 },
+			{ index: 2, startSeconds: 18, endSeconds: 25 },
 		]);
+	});
+
+	it('keeps every chunk within the byte limit once the WAV header is added', () => {
+		const maxBytes = 10 * TRANSCRIBE_BYTES_PER_SEC;
+		const plans = planChunks(25, maxBytes);
+		for (const plan of plans) {
+			const pcmBytes =
+				(plan.endSeconds - plan.startSeconds) *
+				TRANSCRIBE_BYTES_PER_SEC;
+			expect(pcmBytes + WAV_HEADER_SIZE).toBeLessThanOrEqual(maxBytes);
+		}
 	});
 });
 
