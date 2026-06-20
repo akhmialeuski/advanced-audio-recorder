@@ -29,6 +29,8 @@ import { updateStatusBar, initializeStatusBar } from './ui/StatusBar';
 import { updateRibbonIcon, initializeRibbonIcon } from './ui/RibbonIcon';
 import { showDeviceSelectionModal } from './ui/DeviceSelectionModal';
 import { ContextMenu } from './ui/ContextMenu';
+import { EnhancedPlayerRegistrar } from './player/EnhancedPlayerRegistrar';
+import { MarkerStore } from './player/markers/MarkerStore';
 import { delay } from './utils/TimeUtils';
 
 /** Delay before retrying a failed settings read, in milliseconds. */
@@ -73,6 +75,7 @@ export default class AudioRecorderPlugin extends Plugin {
 	private statusBarItem: HTMLElement | null = null;
 	private ribbonIconEl: HTMLElement | null = null;
 	private contextMenu!: ContextMenu;
+	private playerRegistrar!: EnhancedPlayerRegistrar;
 	private journal!: SessionJournal;
 	private encodingWorker: EncodingWorkerClient | null = null;
 	/**
@@ -136,6 +139,14 @@ export default class AudioRecorderPlugin extends Plugin {
 
 		this.contextMenu = new ContextMenu(this.app, this, () => this.settings);
 		this.contextMenu.register();
+
+		this.playerRegistrar = new EnhancedPlayerRegistrar(
+			this,
+			this.app,
+			() => this.settings,
+			new MarkerStore(this.app),
+		);
+		this.playerRegistrar.register();
 
 		// Recovery runs after the workspace is ready so plugin load is
 		// never delayed; a failure here must not break the plugin
@@ -211,6 +222,7 @@ export default class AudioRecorderPlugin extends Plugin {
 	 */
 	onunload(): void {
 		this.recordingManager.cleanup();
+		this.playerRegistrar.dispose();
 		setEncodingWorkerClient(null);
 		this.encodingWorker?.terminate();
 		this.encodingWorker = null;
@@ -301,11 +313,15 @@ export default class AudioRecorderPlugin extends Plugin {
 			// sees the same session state even though nothing is
 			// persisted
 			this.recordingManager.updateSettings(this.settings);
+			this.playerRegistrar.refresh();
 			return;
 		}
 		await this.saveData(serializeSettings(this.settings));
 		await this.backupSettings();
 		this.recordingManager.updateSettings(this.settings);
+		// Apply player-affecting changes (enable toggle, waveform, etc.)
+		// to open embeds immediately, without re-opening the note
+		this.playerRegistrar.refresh();
 	}
 
 	/**

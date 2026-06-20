@@ -156,7 +156,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			);
 		}
 
-		// ── Audio input ──────────────────────────────────────────────
+		// Audio input
 		new Setting(containerEl).setName('Audio input').setHeading();
 
 		new Setting(containerEl)
@@ -190,7 +190,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				});
 			});
 
-		// ── Output format ───────────────────────────────────────────
+		// Output format
 		new Setting(containerEl).setName('Output format').setHeading();
 
 		const supportedFormats = this.getSupportedFormats();
@@ -287,7 +287,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				});
 			});
 
-		// ── File storage ──────────────────────────────────────────
+		// File storage
 		new Setting(containerEl).setName('File storage').setHeading();
 
 		new Setting(containerEl)
@@ -370,7 +370,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		// ── Audio splitting ───────────────────────────────────────
+		// Audio splitting
 		new Setting(containerEl).setName('Audio splitting').setHeading();
 
 		new Setting(containerEl)
@@ -452,7 +452,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		// ── Multi-track recording ─────────────────────────────────
+		// Multi-track recording
 		new Setting(containerEl).setName('Multi-track recording').setHeading();
 
 		new Setting(containerEl)
@@ -535,7 +535,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			}
 		}
 
-		// ── Diagnostics ────────────────────────────────────────────
+		// Audio player
+		this.renderAudioPlayerSettings(containerEl);
+
+		// Diagnostics
 		new Setting(containerEl).setName('Diagnostics').setHeading();
 
 		const testContainer = containerEl.createDiv();
@@ -576,6 +579,61 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.debug)
 					.onChange(async (value) => {
 						this.plugin.settings.debug = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+	}
+
+	/**
+	 * Renders the enhanced audio player settings: the master toggle plus the
+	 * two window toggles (waveform, markers/chapters). The control buttons
+	 * (speed, skip, volume, time, mute, loop, timecode links) are fixed.
+	 * @param containerEl - The settings container element
+	 */
+	private renderAudioPlayerSettings(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName('Audio player').setHeading();
+
+		new Setting(containerEl)
+			.setName('Enhanced audio player')
+			.setDesc(
+				'Replace the built-in audio embed with a richer player (waveform, speed, skip, volume, loop, timecode links, markers and chapters). Video files keep the built-in player.',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.enhancedPlayerEnabled)
+					.onChange(async (value) => {
+						this.plugin.settings.enhancedPlayerEnabled = value;
+						await this.plugin.saveSettings();
+						this.display();
+					}),
+			);
+
+		if (!this.plugin.settings.enhancedPlayerEnabled) {
+			return;
+		}
+
+		new Setting(containerEl)
+			.setName('Show waveform')
+			.setDesc('Draw a waveform behind the seek bar.')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.playerShowWaveform)
+					.onChange(async (value) => {
+						this.plugin.settings.playerShowWaveform = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Markers and chapters')
+			.setDesc(
+				'Show the markers and chapters list below the player. Markers are stored next to the recording, not in your vault.',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.playerEnableMarkers)
+					.onChange(async (value) => {
+						this.plugin.settings.playerEnableMarkers = value;
 						await this.plugin.saveSettings();
 					}),
 			);

@@ -12,6 +12,7 @@ An advanced audio recording plugin for [Obsidian](https://obsidian.md) with conf
 - **8 output formats**: WAV, WebM, OGG, MP3, MP4, M4A, AAC, FLAC.
 - **Audio format conversion** between supported formats via context menu.
 - **Audio splitting**: automatic splitting of recordings into fixed-duration parts and manual splitting of existing files via context menu.
+- **Enhanced audio player** that replaces the built-in embed with a waveform, playback-speed control, skip buttons, volume, loop, a time display, and timecode links.
 - **Audio file info** viewer showing duration, bitrate, sample rate, codec, and more.
 - **Configurable save location** with vault folder or near-active-file mode.
 - **Insert at original position** to place the audio link where recording started.
@@ -162,6 +163,47 @@ Moves the audio file to the system trash **and** removes the corresponding embed
 ![Delete via link](docs/delete-via-link.png)
 ![Delete via player](docs/delete-via-player.png)
 
+## Enhanced audio player
+
+When **Enhanced audio player** is enabled in settings, the plugin replaces Obsidian's built-in audio embed with a richer player wherever an audio file is embedded (`![[recording.webm]]`). The takeover integrates with Obsidian's own embed rendering (with a Markdown post-processor fallback), so it applies in both Reading view and Live Preview and is torn down cleanly when a note re-renders or its leaf closes. Disabling the setting restores the built-in embed on the next render.
+
+The player offers:
+
+- **Waveform seek bar**: the recording is drawn as a waveform; click or drag anywhere on it to seek. The seek bar is keyboard-operable too (focus it and use the arrow keys, Home, and End). The played portion uses the theme accent color. Waveforms are computed once per file revision and cached, so scrolling a note with many players does not redecode audio.
+- **Playback speed**: cycle through speed presets (0.5×–3×) from the speed button.
+- **Skip buttons**: jump backward and forward by 10 seconds.
+- **Volume** control and **loop** toggle.
+- **Time display**: elapsed and total time.
+- **Mute** toggle alongside the volume control.
+- **Copy timestamp link**: copies a link to the current position (for example `[[recording#t=1:30]]`), following your link-format preferences.
+
+### Markers and chapters
+
+With **Markers and chapters** enabled, each recording can carry per-file **bookmarks** (jump points) and **chapters** (named segments):
+
+- **Add a bookmark** at the current position with the bookmark button, or by **double-clicking the waveform**.
+- **Add a chapter** at the current position with the chapter button.
+- **Markers and chapters appear on the seek bar** — bookmarks as ticks, chapters as labelled boundary lines — and clicking one jumps to it.
+- The optional **marker list** below the player lets you jump to, **rename**, or **delete** each entry.
+- **Previous / next chapter** buttons navigate between chapter boundaries.
+- **Right-click the player** to add a marker or chapter, or copy a timestamp link, **at the clicked position** — alongside the usual audio file actions (info, convert, split, delete).
+
+Adding, renaming, and deleting markers is available while **editing** the note (Live Preview). In **Reading view** the markers and chapters are read-only — they are shown and remain clickable to jump, but cannot be edited.
+
+Markers are stored in a sidecar file next to each recording (for example `recording.webm.markers.json`). Because the sidecar lives in your vault, markers survive a plugin reinstall and travel with the vault; renaming, moving, or deleting the recording moves or removes its sidecar automatically, so markers stay attached.
+
+### Timecode links
+
+A link with a `#t=` offset jumps a rendered player to that position instead of opening the file. The offset accepts plain seconds (`#t=90`), `m:ss` (`#t=1:30`), and `h:mm:ss` (`#t=1:02:03`). When a matching player is already visible in the note, clicking the link seeks it; otherwise the link behaves normally.
+
+### Audio, video, and unsupported files
+
+The enhanced player takes over **audio-only** files. Files that carry video (for example a `.mp4` or `.webm` with a video track) are left to Obsidian's built-in player so the video can be watched, and any file the app cannot decode falls back to the built-in embed as well. The container is classified from the file's metadata rather than its extension, so an audio-only `.mp4` or `.webm` recording still gets the enhanced player.
+
+The waveform is drawn for supported audio files up to a large safety size. Peaks are computed progressively in the background and the waveform fills in as they become ready, so even a long (hour-plus) recording never blocks the interface. A pathological multi-gigabyte file (or one that cannot be decoded) falls back to the plain (still seekable) bar instead. Turn off **Show waveform** to always use the plain bar (no decoding is performed).
+
+> **Desktop and mobile**: the enhanced player works wherever Obsidian renders audio embeds. Waveform extraction relies on the Web Audio API available in the app.
+
 ## Formats and containers
 
 Available recording formats depend on your platform's **MediaRecorder** support. The plugin detects supported formats at runtime.
@@ -254,6 +296,16 @@ The plugin keeps an automatic backup of its settings in `data.json.bak` next to 
 | **Maximum tracks** | Number of simultaneous tracks (1-8). | 2 |
 | **Output mode** | `Single file` combines all tracks into one file. `Multiple files` saves one file per track. | Single file |
 | **Audio source for track N** | Select the input device for each track. One dropdown per track. | — |
+
+### Audio player
+
+The player's controls (speed, skip, volume, mute, loop, time display, copy-timestamp link) are fixed; only the master toggle and the two windows below are configurable.
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| **Enhanced audio player** | Replace the built-in audio embed with the enhanced player (waveform, speed, skip, volume, mute, loop, time display, timecode links, markers and chapters). Enabling it reveals the two options below. Applies to notes rendered after the change. | Off |
+| **Show waveform** | Draw a waveform behind the seek bar. When off, a plain (still seekable) progress bar is shown and no audio is decoded. | On |
+| **Markers and chapters** | Show the markers and chapters list below the player, with the add, jump, rename, delete, and chapter-navigation controls. Markers are stored in a sidecar file next to each recording. | On |
 
 ### Diagnostics
 

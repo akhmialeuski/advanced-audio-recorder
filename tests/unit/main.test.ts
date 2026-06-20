@@ -24,6 +24,14 @@ jest.mock('../../src/ui/ContextMenu', () => ({
 	})),
 }));
 
+jest.mock('../../src/player/EnhancedPlayerRegistrar', () => ({
+	EnhancedPlayerRegistrar: jest.fn().mockImplementation(() => ({
+		register: jest.fn(),
+		dispose: jest.fn(),
+		refresh: jest.fn(),
+	})),
+}));
+
 jest.mock('../../src/ui/StatusBar', () => ({
 	updateStatusBar: jest.fn(),
 	initializeStatusBar: jest.fn(),

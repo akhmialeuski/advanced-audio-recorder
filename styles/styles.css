@@ -165,3 +165,320 @@ If your plugin does not need CSS, delete this file.
 input.aar-input-invalid {
     border-color: var(--text-error);
 }
+
+/* Enhanced audio player */
+.aar-player {
+    /* Waveform colors derive from the theme so it matches any palette. The
+       waveform height variable (--aar-waveform-height) is set from the
+       PLAYER_WAVEFORM_HEIGHT constant by WaveformCanvas, so its value lives in
+       one place (the constant) rather than being duplicated here. */
+    --aar-waveform-played: var(--color-accent);
+    --aar-waveform-unplayed: var(--background-modifier-border);
+
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    background-color: var(--background-secondary);
+}
+
+.aar-player-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.aar-player-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    height: 28px;
+    padding: 0 6px;
+    border: none;
+    border-radius: 5px;
+    background-color: transparent;
+    color: var(--text-normal);
+    cursor: pointer;
+    box-shadow: none;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.aar-player-btn:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+.aar-player-btn.is-active {
+    color: var(--color-accent);
+}
+
+.aar-player-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.aar-player-speed {
+    font-size: 0.85em;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.aar-player-volume {
+    width: 80px;
+    accent-color: var(--color-accent);
+    cursor: pointer;
+}
+
+.aar-player-time {
+    margin-left: auto;
+    font-size: 0.85em;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.aar-player-seek {
+    position: relative;
+    width: 100%;
+    cursor: pointer;
+}
+
+.aar-player-seek:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
+.aar-player-seek-waveform {
+    /* Frame the waveform in a padded rectangle so it reads as its own
+       panel. content-box keeps the canvas height equal to
+       --aar-waveform-height (no stretch); the padding/border add around it. */
+    box-sizing: content-box;
+    height: var(--aar-waveform-height);
+    padding: 20px 0;
+    margin: 8px 0;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    background-color: var(--background-primary);
+}
+
+/* Inner layer that stacks the base and played waveform canvases */
+.aar-player-waveform {
+    position: relative;
+    width: 100%;
+    height: var(--aar-waveform-height);
+}
+
+.aar-player-canvas {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* Accent-colored copy of the waveform, revealed up to the playhead by
+   clipping from the right. Updating --aar-progress only repaints this layer
+   (no layout, no canvas reallocation), so the playing position moves cheaply
+   on every timeupdate instead of redrawing the whole waveform. */
+.aar-player-canvas-played {
+    clip-path: inset(0 calc(100% - var(--aar-progress, 0%)) 0 0);
+}
+
+/* Plain progress bar shown when the waveform is off. Framed with vertical
+   margins so it stands out from the controls above and the marker list
+   below; the played portion is the high-contrast accent, the remaining
+   portion a muted track, and a thumb marks the current position. */
+.aar-player-seek-bar {
+    height: 8px;
+    margin: 12px 2px;
+    border-radius: 4px;
+    /* Remaining (unplayed): low-contrast track */
+    background-color: var(--background-modifier-border);
+    box-shadow: inset 0 0 0 1px var(--background-modifier-border-hover);
+}
+
+.aar-player-progress-fill {
+    height: 100%;
+    width: var(--aar-progress, 0%);
+    /* Played: high-contrast accent */
+    background-color: var(--color-accent);
+    border-radius: 4px;
+}
+
+.aar-player-progress-thumb {
+    position: absolute;
+    top: 50%;
+    left: var(--aar-progress, 0%);
+    width: 12px;
+    height: 12px;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background-color: var(--color-accent);
+    /* Ring so the thumb stands out over both the played and unplayed track */
+    box-shadow: 0 0 0 2px var(--background-secondary);
+    pointer-events: none;
+}
+
+/* Marker ticks and chapter boundaries over the seek area */
+.aar-player-markers {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.aar-player-tick {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: var(--aar-tick-left, 0%);
+    width: 2px;
+    transform: translateX(-1px);
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+.aar-player-tick-bookmark {
+    background-color: var(--text-accent);
+    opacity: 0.7;
+}
+
+.aar-player-tick-bookmark:hover {
+    opacity: 1;
+}
+
+.aar-player-tick-chapter {
+    background-color: var(--text-warning, var(--color-orange));
+    width: 2px;
+    opacity: 0.85;
+}
+
+.aar-player-tick-chapter::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -2px;
+    border: 3px solid transparent;
+    border-top-color: var(--text-warning, var(--color-orange));
+}
+
+/* Marker / chapter list below the player */
+.aar-player-marker-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.aar-player-marker-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 1px 4px;
+    border-radius: 4px;
+}
+
+.aar-player-marker-kind {
+    display: inline-flex;
+    color: var(--text-muted);
+}
+
+.aar-player-marker-kind svg {
+    width: 14px;
+    height: 14px;
+}
+
+.aar-player-marker-time {
+    font-variant-numeric: tabular-nums;
+    font-size: 0.85em;
+    color: var(--text-accent);
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 0 4px;
+    cursor: pointer;
+}
+
+.aar-player-marker-label {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.85em;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--text-normal);
+}
+
+.aar-player-marker-label:hover,
+.aar-player-marker-label:focus {
+    border-color: var(--background-modifier-border);
+    background-color: var(--background-primary);
+}
+
+.aar-player-marker-delete {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    color: var(--text-faint);
+    cursor: pointer;
+}
+
+.aar-player-marker-delete:hover {
+    color: var(--text-error);
+}
+
+.aar-player-marker-delete svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* Read-only mode (reading view): hide editing affordances */
+.aar-player-readonly .aar-player-edit-only {
+    display: none;
+}
+
+/* Read-only marker label: left-aligned text that fills the row. Scoped
+   under .aar-player to outrank reading-view button text-align so the text
+   stays at the left. */
+.aar-player .aar-player-marker-label-static {
+    flex: 1;
+    min-width: 0;
+    padding: 0 4px;
+    text-align: left;
+    justify-content: flex-start;
+    font-size: 0.85em;
+    color: var(--text-normal);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Segment length shown at the right of a read-only row */
+.aar-player-marker-segment {
+    padding-left: 8px;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.8em;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+/* The whole read-only row is a single jump target */
+.aar-player-marker-row-clickable {
+    cursor: pointer;
+}
+
+.aar-player-marker-row-clickable:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+/* Currently-playing segment: highlighted with an accent edge */
+.aar-player-marker-row.is-active {
+    background-color: var(--background-modifier-hover);
+    box-shadow: inset 2px 0 0 var(--color-accent);
+}
