@@ -278,3 +278,18 @@ export const MIN_LLM_MAX_TOKENS = 512;
 
 /** Maximum configurable LLM output token budget. */
 export const MAX_LLM_MAX_TOKENS = 32000;
+
+/**
+ * Timeout, in milliseconds, for a single transcription/LLM HTTP request.
+ * Obsidian's requestUrl exposes no abort signal, so the helper races the
+ * request against this deadline to bound a hung endpoint (e.g. a
+ * misconfigured local Ollama/whisper server) instead of stalling forever.
+ */
+export const TRANSCRIBE_REQUEST_TIMEOUT_MS = 120_000;
+
+/**
+ * Upper bound of the progress fraction reserved for chunk transcription.
+ * The remaining 0.95..1 band covers LLM post-processing and finalization,
+ * so the bar never jumps backwards when post-processing starts.
+ */
+export const TRANSCRIBE_CHUNK_PROGRESS_CEILING = 0.95;
