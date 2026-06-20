@@ -1,8 +1,9 @@
 /**
  * Transcription via a local whisper.cpp binary. Desktop only — it shells
  * out through Node's child_process, which is unavailable in the mobile
- * app. Each chunk is written to a temp WAV, transcribed to JSON, then the
- * temp files are removed.
+ * app. The service hands this provider a single decoded WAV per request (it
+ * declares no upload limit), which is written to a temp file, transcribed to
+ * JSON, then both temp files are removed.
  * @module transcription/providers/LocalWhisperProvider
  */
 

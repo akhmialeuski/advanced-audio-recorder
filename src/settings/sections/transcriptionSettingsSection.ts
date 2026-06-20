@@ -13,6 +13,7 @@ import {
 	MAX_LLM_MAX_TOKENS,
 } from '../../constants';
 import {
+	applyLlmProviderDefaults,
 	TRANSCRIPTION_PROVIDER_LABELS,
 	type TranscriptionProviderId,
 } from '../Settings';
@@ -315,7 +316,15 @@ function renderLlmSection(ctx: SettingsSectionContext): void {
 			{ value: 'anthropic', label: 'Anthropic (Claude)' },
 		],
 		get: () => s.llmProvider,
-		set: (v) => (s.llmProvider = v as typeof s.llmProvider),
+		set: (v) => {
+			// Move the base URL and model to the picked provider's defaults
+			// when they are still defaults, so choosing Anthropic does not
+			// leave an OpenAI URL/model behind (and vice versa).
+			const provider = v as typeof s.llmProvider;
+			applyLlmProviderDefaults(s, provider);
+			s.llmProvider = provider;
+		},
+		rerender: true,
 	});
 	addText(ctx, {
 		name: 'LLM base URL',

@@ -76,6 +76,25 @@ export async function transcribeFile(
 			settings.transcriptHeading,
 		);
 	}
-	notifyTranscriptWritten(inserted, filePath);
+	// Safety net: a completed (and, on a paid API, already-billed) transcript
+	// must never be silently dropped. If in-note output was the only requested
+	// destination but the insert failed (note not open, reading mode), write a
+	// sidecar file instead of reporting a hollow success.
+	let savedAsFallback = false;
+	if (wantsNote && !inserted && filePath === null) {
+		filePath = await writeTranscriptFile(
+			app,
+			file,
+			result.transcript,
+			settings.transcriptFileFormat,
+		);
+		savedAsFallback = true;
+	}
+	notifyTranscriptWritten({
+		inserted,
+		filePath,
+		noteRequested: wantsNote,
+		savedAsFallback,
+	});
 	return result;
 }

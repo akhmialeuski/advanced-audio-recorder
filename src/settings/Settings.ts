@@ -20,6 +20,10 @@ import {
 	DEFAULT_DEEPGRAM_BASE_URL,
 	DEFAULT_DEEPGRAM_MODEL,
 	DEFAULT_LLM_OPENAI_BASE_URL,
+	DEFAULT_LLM_OPENAI_MODEL,
+	DEFAULT_LLM_ANTHROPIC_BASE_URL,
+	DEFAULT_LLM_ANTHROPIC_MODEL,
+	DEFAULT_LLM_OLLAMA_BASE_URL,
 	DEFAULT_LLM_MAX_TOKENS,
 } from '../constants';
 import { getDefaultDeviceId } from '../utils/DeviceUtils';
@@ -287,9 +291,59 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	llmProvider: 'openai-compatible',
 	llmBaseUrl: DEFAULT_LLM_OPENAI_BASE_URL,
 	llmApiKey: '',
-	llmModel: 'gpt-4o-mini',
+	llmModel: DEFAULT_LLM_OPENAI_MODEL,
 	llmMaxTokens: DEFAULT_LLM_MAX_TOKENS,
 };
+
+/**
+ * Base URLs that ship as provider defaults. Auto-switching only replaces a
+ * value still equal to one of these, so a custom endpoint the user typed is
+ * never clobbered when the provider changes.
+ */
+const DEFAULT_LLM_BASE_URLS: ReadonlySet<string> = new Set([
+	DEFAULT_LLM_OPENAI_BASE_URL,
+	DEFAULT_LLM_ANTHROPIC_BASE_URL,
+	DEFAULT_LLM_OLLAMA_BASE_URL,
+]);
+
+/** Model ids that ship as provider defaults (same auto-switch guard). */
+const DEFAULT_LLM_MODELS: ReadonlySet<string> = new Set([
+	DEFAULT_LLM_OPENAI_MODEL,
+	DEFAULT_LLM_ANTHROPIC_MODEL,
+]);
+
+/**
+ * Aligns the LLM base URL and model with the target provider's defaults when
+ * the current values are still provider defaults; a custom URL or model the
+ * user entered is preserved. Mutates and returns `settings` so the settings
+ * tab can switch the dependent fields in one step when the provider changes.
+ * @param settings - Settings to adjust in place
+ * @param provider - The provider being switched to
+ * @returns The same settings object, adjusted
+ */
+export function applyLlmProviderDefaults(
+	settings: AudioRecorderSettings,
+	provider: LlmProviderId,
+): AudioRecorderSettings {
+	if (provider === 'anthropic') {
+		if (DEFAULT_LLM_BASE_URLS.has(settings.llmBaseUrl)) {
+			settings.llmBaseUrl = DEFAULT_LLM_ANTHROPIC_BASE_URL;
+		}
+		if (DEFAULT_LLM_MODELS.has(settings.llmModel)) {
+			settings.llmModel = DEFAULT_LLM_ANTHROPIC_MODEL;
+		}
+		return settings;
+	}
+	// OpenAI-compatible (OpenAI / Groq / Ollama): only move off the Anthropic
+	// defaults, leaving any other OpenAI-compatible endpoint or model intact.
+	if (settings.llmBaseUrl === DEFAULT_LLM_ANTHROPIC_BASE_URL) {
+		settings.llmBaseUrl = DEFAULT_LLM_OPENAI_BASE_URL;
+	}
+	if (settings.llmModel === DEFAULT_LLM_ANTHROPIC_MODEL) {
+		settings.llmModel = DEFAULT_LLM_OPENAI_MODEL;
+	}
+	return settings;
+}
 
 export interface AudioRecorderSettingsInput extends Partial<
 	Omit<AudioRecorderSettings, 'trackAudioSources'>

@@ -32,6 +32,7 @@ export class TranscriptionModal extends Modal {
 		app: App,
 		private readonly file: TFile,
 		private readonly getSettings: () => AudioRecorderSettings,
+		private readonly options: { autoStart?: boolean } = {},
 	) {
 		super(app);
 	}
@@ -88,6 +89,13 @@ export class TranscriptionModal extends Modal {
 					}
 				}),
 			);
+
+		if (this.options.autoStart) {
+			// Auto-run for the transcribe-on-save hook: the modal still shows
+			// progress and offers cancel, so an automatic run stays visible and
+			// interruptible instead of being a silent background job.
+			void this.startRun();
+		}
 	}
 
 	/**

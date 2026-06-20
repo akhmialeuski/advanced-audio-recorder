@@ -82,6 +82,36 @@ const NO_HTTP_STATUS = 0;
 /** Maximum length of a response-body excerpt embedded in an error message. */
 const ERROR_BODY_EXCERPT_LENGTH = 500;
 
+/** Lowest 2xx success status (inclusive). */
+const HTTP_OK_MIN = 200;
+
+/** First status above the 2xx success range (exclusive upper bound). */
+const HTTP_OK_MAX_EXCLUSIVE = 300;
+
+/** Authentication failed (bad or missing key). */
+const HTTP_UNAUTHORIZED = 401;
+
+/** Payment required — always a billing/quota problem. */
+const HTTP_PAYMENT_REQUIRED = 402;
+
+/** Forbidden (the key lacks access). */
+const HTTP_FORBIDDEN = 403;
+
+/** Too many requests (rate limited). */
+const HTTP_TOO_MANY_REQUESTS = 429;
+
+/** Lowest 5xx server-error status. */
+const HTTP_SERVER_ERROR_MIN = 500;
+
+/** Body substrings that signal an out-of-quota / billing problem (any provider). */
+const QUOTA_BODY_MARKERS = [
+	'quota',
+	'insufficient',
+	'billing',
+	'credit',
+	'payment',
+];
+
 /**
  * Strips a quoted multipart header parameter of the characters that could
  * break out of the quoted value — `"`, CR, and LF — mirroring the CR/LF
@@ -153,6 +183,48 @@ function withTimeout(
 }
 
 /**
+ * Maps an HTTP failure to a short, human-readable hint for the common cases —
+ * out of quota/credit, bad key, rate limit, provider outage — or '' when no
+ * specific guidance applies. Provider-neutral: matches OpenAI
+ * `insufficient_quota`, Anthropic "credit balance is too low", and Deepgram
+ * `INSUFFICIENT_CREDITS` alike. The caller still appends the raw status and
+ * body excerpt for diagnostics.
+ * @param status - HTTP status code (0 for transport/timeout failures)
+ * @param body - Response body excerpt (may be empty)
+ * @returns A human-readable hint, or '' when none applies
+ */
+export function friendlyHttpHint(status: number, body: string): string {
+	const lower = body.toLowerCase();
+	const looksLikeBilling =
+		status === HTTP_PAYMENT_REQUIRED ||
+		QUOTA_BODY_MARKERS.some((marker) => lower.includes(marker));
+	if (looksLikeBilling) {
+		return (
+			'Out of API quota or credit. Check the provider plan and billing ' +
+			'details — a chat subscription (e.g. ChatGPT Plus) does not include ' +
+			'API credit.'
+		);
+	}
+	if (status === HTTP_UNAUTHORIZED || status === HTTP_FORBIDDEN) {
+		return (
+			'Authentication failed. Check that the API key is correct and ' +
+			'authorized for this provider.'
+		);
+	}
+	if (
+		status === HTTP_TOO_MANY_REQUESTS ||
+		lower.includes('rate limit') ||
+		lower.includes('too many requests')
+	) {
+		return 'Rate limit reached. Wait a moment and try again.';
+	}
+	if (status >= HTTP_SERVER_ERROR_MIN) {
+		return 'The provider had a server error. Try again shortly.';
+	}
+	return '';
+}
+
+/**
  * Performs a request and parses the JSON body. Normalizes every failure
  * mode into an {@link HttpError}: a non-2xx status (with a trimmed body
  * excerpt), a transport failure, a timeout, and a 2xx body that is not
@@ -192,14 +264,19 @@ export async function requestJson<T = unknown>(options: {
 			`Request to ${safeUrl} failed: ${message}`,
 		);
 	}
-	if (response.status < 200 || response.status >= 300) {
+	if (
+		response.status < HTTP_OK_MIN ||
+		response.status >= HTTP_OK_MAX_EXCLUSIVE
+	) {
 		const excerpt = (response.text || '').slice(
 			0,
 			ERROR_BODY_EXCERPT_LENGTH,
 		);
+		const hint = friendlyHttpHint(response.status, excerpt);
+		const detail = `Request to ${safeUrl} failed with status ${String(response.status)}: ${excerpt}`;
 		throw new HttpError(
 			response.status,
-			`Request to ${safeUrl} failed with status ${String(response.status)}: ${excerpt}`,
+			hint ? `${hint} (${detail})` : detail,
 		);
 	}
 	// Parse the body defensively: a 2xx with an empty/HTML/truncated body

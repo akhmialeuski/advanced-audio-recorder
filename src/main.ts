@@ -31,7 +31,6 @@ import { showDeviceSelectionModal } from './ui/DeviceSelectionModal';
 import { ContextMenu } from './ui/ContextMenu';
 import { EnhancedPlayerRegistrar } from './player/EnhancedPlayerRegistrar';
 import { MarkerStore } from './player/markers/MarkerStore';
-import { transcribeFile } from './transcription/runTranscription';
 import { TranscriptionModal } from './ui/TranscriptionModal';
 import { AUDIO_EXTENSIONS } from './constants';
 import { delay } from './utils/TimeUtils';
@@ -596,19 +595,14 @@ export default class AudioRecorderPlugin extends Plugin {
 		if (!(file instanceof TFile)) {
 			return;
 		}
-		const notePath = this.app.workspace.getActiveFile()?.path ?? '';
-		new Notice('Transcribing recording...');
-		void transcribeFile(this.app, () => this.settings, file, {
-			notePathForLinks: notePath,
-		}).catch((error: unknown) => {
-			const message =
-				error instanceof Error ? error.message : String(error);
-			new Notice(`Transcription failed: ${message}`);
-			console.error(
-				`${PLUGIN_LOG_PREFIX} Transcribe-on-save failed:`,
-				error,
-			);
-		});
+		// Open the transcription modal and auto-run it: the user gets visible
+		// progress and a cancel button for what can be a long, paid job instead
+		// of a silent background request. The modal reports its own errors and
+		// writes the configured outputs (with a file fallback when the note is
+		// not editable).
+		new TranscriptionModal(this.app, file, () => this.settings, {
+			autoStart: true,
+		}).open();
 	}
 
 	/**

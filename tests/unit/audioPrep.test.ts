@@ -98,7 +98,6 @@ describe('prepareAudio (whole-file path)', () => {
 			diarize: false,
 			diarizesWholeFile: false,
 		});
-		expect(result.totalSeconds).toBeNull();
 		expect(result.payloads).toHaveLength(1);
 		expect(result.payloads[0].createData()).toBe(raw);
 		expect(result.payloads[0].contentType).toBe('audio/webm');

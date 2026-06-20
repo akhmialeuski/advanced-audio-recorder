@@ -113,25 +113,57 @@ export function insertTranscriptIntoNote(
 	}
 }
 
+/** Outcome of writing a transcript, used to build an honest user notice. */
+export interface TranscriptWriteOutcome {
+	/** Whether the Markdown was inserted into the target note. */
+	inserted: boolean;
+	/** Sidecar file path when one was written, otherwise null. */
+	filePath: string | null;
+	/** Whether the user asked for in-note output. */
+	noteRequested: boolean;
+	/** Whether the file was written only as a fallback after a failed insert. */
+	savedAsFallback: boolean;
+}
+
 /**
- * Notifies the user about where the transcript was written.
- * @param notePath - Note path, when inserted into a note
- * @param filePath - Sidecar file path, when written
+ * Builds the user-facing notice for a transcript write outcome. Pure (no
+ * Obsidian dependency) so the wording — especially the "could not insert"
+ * cases that must never read as success — is unit tested.
+ * @param outcome - What was written and what the user requested
+ * @returns The notice text
  */
-export function notifyTranscriptWritten(
-	insertedIntoNote: boolean,
-	filePath: string | null,
-): void {
+export function describeTranscriptOutcome(
+	outcome: TranscriptWriteOutcome,
+): string {
+	const { inserted, filePath, noteRequested, savedAsFallback } = outcome;
+	if (savedAsFallback && filePath) {
+		return (
+			`Could not insert the transcript into the note (open it in editing ` +
+			`mode to insert there). Saved to ${filePath} instead.`
+		);
+	}
 	const parts: string[] = [];
-	if (insertedIntoNote) {
+	if (inserted) {
 		parts.push('inserted into the note');
 	}
 	if (filePath) {
 		parts.push(`saved to ${filePath}`);
 	}
-	new Notice(
-		parts.length > 0
-			? `Transcript ${parts.join(' and ')}.`
-			: 'Transcript ready.',
-	);
+	if (parts.length > 0) {
+		return `Transcript ${parts.join(' and ')}.`;
+	}
+	if (noteRequested) {
+		// Note output was requested but nothing was written and no fallback
+		// file exists: be honest rather than claim a hollow success.
+		return 'Could not write the transcript. Open the note in editing mode and try again.';
+	}
+	return 'Transcript ready.';
+}
+
+/**
+ * Notifies the user about where the transcript was written.
+ * @param outcome - What was written and what the user requested
+ */
+export function notifyTranscriptWritten(outcome: TranscriptWriteOutcome): void {
+	new Notice(describeTranscriptOutcome(outcome));
 }

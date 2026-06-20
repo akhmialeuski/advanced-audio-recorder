@@ -108,15 +108,10 @@ export interface PreparedPayload {
 	createData(): ArrayBuffer;
 }
 
-/** Prepared payloads plus the total duration when it is known. */
+/** Prepared payloads ready to transcribe. */
 export interface PreparedAudio {
 	/** Ordered payloads to transcribe; segment offsets are pre-computed. */
 	payloads: PreparedPayload[];
-	/**
-	 * Total audio duration in seconds, or null when the original file was
-	 * sent untouched (no decode happened, so the duration was never measured).
-	 */
-	totalSeconds: number | null;
 }
 
 /**
@@ -134,7 +129,7 @@ export interface PreparedAudio {
  * @param fileName - Source file name (used as the upload filename)
  * @param fileMime - MIME type for the original container
  * @param options - Provider-derived preparation options
- * @returns Prepared payloads and the known total duration
+ * @returns Prepared payloads ready to transcribe
  */
 export async function prepareAudio(
 	raw: ArrayBuffer,
@@ -155,7 +150,6 @@ export async function prepareAudio(
 					createData: () => raw,
 				},
 			],
-			totalSeconds: null,
 		};
 	}
 
@@ -179,7 +173,7 @@ export async function prepareAudio(
 		offsetSeconds: plan.startSeconds,
 		createData: () => extractChunkWav(samples, plan),
 	}));
-	return { payloads, totalSeconds };
+	return { payloads };
 }
 
 /**

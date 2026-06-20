@@ -249,6 +249,9 @@ export const DEEPGRAM_MAX_REQUEST_BYTES = 2 * 1024 * 1024 * 1024;
 /** Default OpenAI-compatible chat base URL for LLM post-processing. */
 export const DEFAULT_LLM_OPENAI_BASE_URL = 'https://api.openai.com/v1';
 
+/** Default OpenAI-compatible chat model for LLM post-processing. */
+export const DEFAULT_LLM_OPENAI_MODEL = 'gpt-4o-mini';
+
 /** Default Anthropic Messages API base URL. */
 export const DEFAULT_LLM_ANTHROPIC_BASE_URL = 'https://api.anthropic.com/v1';
 
