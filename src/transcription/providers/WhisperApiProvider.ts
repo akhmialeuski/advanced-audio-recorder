@@ -7,9 +7,12 @@
  * @module transcription/providers/WhisperApiProvider
  */
 
-import { buildMultipart, requestJson } from '../httpClient';
+import { WHISPER_API_MAX_REQUEST_BYTES } from '../../constants';
+import { buildMultipart, requestJson, trimTrailingSlash } from '../httpClient';
 import { mapWhisperResponse, type WhisperResult } from './whisperResponse';
 import type {
+	AudioPayload,
+	ProviderCapabilities,
 	TranscribeOptions,
 	TranscriptionProvider,
 } from './TranscriptionProvider';
@@ -22,17 +25,24 @@ export interface WhisperApiConfig {
 }
 
 /**
- * OpenAI-compatible Whisper transcription provider.
+ * OpenAI-compatible Whisper transcription provider. Accepts the original
+ * container (mp3, wav, webm, m4a, ...) up to the 25 MB API limit; larger
+ * recordings are decoded and split into WAV chunks by the service.
  */
 export class WhisperApiProvider implements TranscriptionProvider {
 	readonly id = 'whisper-api';
 	readonly label = 'Whisper API (OpenAI-compatible)';
 	readonly requiresNetwork = true;
+	readonly capabilities: ProviderCapabilities = {
+		maxRequestBytes: WHISPER_API_MAX_REQUEST_BYTES,
+		acceptsOriginalContainer: true,
+		diarizesWholeFile: false,
+	};
 
 	constructor(private readonly config: WhisperApiConfig) {}
 
 	async transcribe(
-		audio: ArrayBuffer,
+		payload: AudioPayload,
 		options: TranscribeOptions,
 	): Promise<WhisperResult> {
 		const granularities: string[] = ['segment'];
@@ -43,9 +53,9 @@ export class WhisperApiProvider implements TranscriptionProvider {
 			{
 				type: 'file' as const,
 				name: 'file',
-				filename: 'audio.wav',
-				contentType: 'audio/wav',
-				data: audio,
+				filename: payload.filename,
+				contentType: payload.contentType,
+				data: payload.data,
 			},
 			{ type: 'text' as const, name: 'model', value: this.config.model },
 			{
@@ -86,11 +96,4 @@ export class WhisperApiProvider implements TranscriptionProvider {
 		});
 		return mapWhisperResponse(json);
 	}
-}
-
-/**
- * Removes a single trailing slash from a base URL.
- */
-function trimTrailingSlash(url: string): string {
-	return url.endsWith('/') ? url.slice(0, -1) : url;
 }

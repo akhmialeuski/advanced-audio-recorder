@@ -210,14 +210,17 @@ When **Enable transcription** is on in settings, recordings (and any existing au
 
 ### Engines
 
-- **Whisper API (OpenAI-compatible)** — works with OpenAI and any compatible endpoint (e.g. Groq) by setting the base URL, key, and model. Audio is resampled to 16 kHz mono and split into upload-sized chunks automatically, so long recordings are handled within the API's per-request size limit; the chunk transcripts are stitched back onto one timeline.
+- **Whisper API (OpenAI-compatible)** — works with OpenAI and any compatible endpoint (e.g. Groq) by setting the base URL, key, and model. Recordings within the API's 25 MB per-request limit are uploaded in their original format; larger files are resampled to 16 kHz mono, split into upload-sized chunks, and stitched back onto one timeline.
+- **Deepgram** — Deepgram's official pre-recorded API (`nova-3` by default). Set the API key (and optionally the model or base URL). Files up to 2 GB are sent whole, so diarization keeps consistent speaker numbering across the entire recording. A free Deepgram account includes a generous starter credit; beyond that, usage is pay-as-you-go.
 - **Local whisper.cpp (desktop)** — runs a local `whisper.cpp` binary with no network access. Set the binary and model paths in settings.
+
+Audio preparation (decoding and chunking, when needed) happens in memory and works on both desktop and mobile; whenever a provider accepts the original container, the file is sent untouched, which keeps memory low and avoids re-encoding. Nothing is written to disk, except that the local whisper.cpp engine hands each request to the binary as a temporary WAV and deletes it afterward.
 
 All languages supported by the chosen model work; leave **Language** as `auto` to detect, or set an ISO code (e.g. `en`, `ru`, `es`).
 
 ### Speakers and diarization
 
-The transcript data model carries per-segment **speaker** labels. Enable **Speaker diarization** to request them; labels are produced by providers that support diarization and are rendered in the output (and can be renamed later).
+The transcript data model carries per-segment **speaker** labels. Enable **Speaker diarization** to request them. Deepgram diarizes natively; OpenAI-compatible Whisper endpoints honor it on a best-effort basis. Labels are rendered in the output and can be renamed later.
 
 ### Output
 

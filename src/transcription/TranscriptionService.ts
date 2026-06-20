@@ -8,9 +8,12 @@
  */
 
 import type { App, TFile } from 'obsidian';
-import { TRANSCRIBE_SAMPLE_RATE } from '../constants';
 import type { AudioRecorderSettings } from '../settings/Settings';
-import { decodeToMono16k, extractChunkWav, planChunks } from './audioChunks';
+import {
+	audioMimeFromExtension,
+	audioPrepOptions,
+	prepareAudio,
+} from './audioPrep';
 import { buildTranscript, plainText, stitchChunks } from './transcriptModel';
 import {
 	DEFAULT_TRANSCRIPT_MARKDOWN_OPTIONS,
@@ -88,29 +91,37 @@ export class TranscriptionService {
 			wordTimestamps: settings.transcriptionWordTimestamps,
 		};
 
-		options.onProgress?.(0, 'Decoding audio...');
+		options.onProgress?.(0, 'Preparing audio...');
 		const raw = await this.app.vault.readBinary(file);
-		const samples = await decodeToMono16k(raw);
-		const totalSeconds = samples.length / TRANSCRIBE_SAMPLE_RATE;
-		const maxBytes =
-			Math.max(1, settings.transcriptionChunkMb) * 1024 * 1024;
-		const chunks = planChunks(totalSeconds, maxBytes);
+		const prepared = await prepareAudio(
+			raw,
+			file.name,
+			audioMimeFromExtension(file.extension),
+			audioPrepOptions(
+				provider.capabilities,
+				provider.requiresNetwork,
+				Math.max(1, settings.transcriptionChunkMb) * 1024 * 1024,
+			),
+		);
 		this.throwIfCancelled(token);
 
+		const payloads = prepared.payloads;
 		const results: { offsetSeconds: number; transcript: Transcript }[] = [];
-		for (const chunk of chunks) {
+		for (let i = 0; i < payloads.length; i++) {
 			this.throwIfCancelled(token);
+			const payload = payloads[i];
 			options.onProgress?.(
-				chunk.index / Math.max(1, chunks.length),
-				`Transcribing part ${String(chunk.index + 1)} of ${String(chunks.length)}...`,
+				i / Math.max(1, payloads.length),
+				payloads.length > 1
+					? `Transcribing part ${String(i + 1)} of ${String(payloads.length)}...`
+					: 'Transcribing...',
 			);
-			const wav = extractChunkWav(samples, chunk);
 			const chunkResult = await provider.transcribe(
-				wav,
+				payload,
 				transcribeOptions,
 			);
 			results.push({
-				offsetSeconds: chunk.startSeconds,
+				offsetSeconds: payload.offsetSeconds,
 				transcript: buildTranscript(chunkResult.segments, {
 					language: chunkResult.language,
 				}),

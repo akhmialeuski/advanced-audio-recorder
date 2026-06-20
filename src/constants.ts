@@ -225,6 +225,27 @@ export const DEFAULT_WHISPER_API_BASE_URL = 'https://api.openai.com/v1';
 /** Default Whisper API model id. */
 export const DEFAULT_WHISPER_API_MODEL = 'whisper-1';
 
+/**
+ * Hard per-request upload ceiling for the OpenAI Whisper API, in bytes
+ * (25 MB). Files at or under this are uploaded in their original
+ * container; larger recordings are decoded and split into WAV chunks that
+ * stay under the limit.
+ */
+export const WHISPER_API_MAX_REQUEST_BYTES = 25 * 1024 * 1024;
+
+/** Default Deepgram pre-recorded API base URL. */
+export const DEFAULT_DEEPGRAM_BASE_URL = 'https://api.deepgram.com/v1';
+
+/** Default Deepgram model id. */
+export const DEFAULT_DEEPGRAM_MODEL = 'nova-3';
+
+/**
+ * Hard per-request upload ceiling for Deepgram pre-recorded audio, in
+ * bytes (2 GB). Deepgram diarizes a whole request with consistent speaker
+ * numbering, so files under this are sent in one piece instead of chunked.
+ */
+export const DEEPGRAM_MAX_REQUEST_BYTES = 2 * 1024 * 1024 * 1024;
+
 /** Default OpenAI-compatible chat base URL for LLM post-processing. */
 export const DEFAULT_LLM_OPENAI_BASE_URL = 'https://api.openai.com/v1';
 

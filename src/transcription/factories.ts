@@ -7,6 +7,7 @@
 import type { AudioRecorderSettings } from '../settings/Settings';
 import { WhisperApiProvider } from './providers/WhisperApiProvider';
 import { LocalWhisperProvider } from './providers/LocalWhisperProvider';
+import { DeepgramProvider } from './providers/DeepgramProvider';
 import type { TranscriptionProvider } from './providers/TranscriptionProvider';
 import {
 	AnthropicLlmProvider,
@@ -50,6 +51,18 @@ export function createTranscriptionProvider(
 			);
 		}
 		return provider;
+	}
+	if (settings.transcriptionProvider === 'deepgram') {
+		if (!settings.deepgramApiKey) {
+			throw new ProviderConfigError(
+				'Set the Deepgram API key in settings to transcribe.',
+			);
+		}
+		return new DeepgramProvider({
+			baseUrl: settings.deepgramBaseUrl,
+			apiKey: settings.deepgramApiKey,
+			model: settings.deepgramModel,
+		});
 	}
 	if (!settings.whisperApiKey) {
 		throw new ProviderConfigError(

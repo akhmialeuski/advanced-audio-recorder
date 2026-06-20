@@ -175,6 +175,28 @@ describe('provider factories', () => {
 		);
 	});
 
+	it('requires a Deepgram API key', () => {
+		const settings = mergeSettings({
+			transcriptionProvider: 'deepgram',
+			deepgramApiKey: '',
+		});
+		expect(() => createTranscriptionProvider(settings)).toThrow(
+			ProviderConfigError,
+		);
+	});
+
+	it('builds a whole-file Deepgram provider with a key', () => {
+		const provider = createTranscriptionProvider(
+			mergeSettings({
+				transcriptionProvider: 'deepgram',
+				deepgramApiKey: 'dg-test',
+			}),
+		);
+		expect(provider.id).toBe('deepgram');
+		expect(provider.capabilities.acceptsOriginalContainer).toBe(true);
+		expect(provider.capabilities.diarizesWholeFile).toBe(true);
+	});
+
 	it('requires an Anthropic key but not an Ollama key', () => {
 		expect(() =>
 			createLlmProvider(

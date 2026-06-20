@@ -17,6 +17,8 @@ import {
 	DEFAULT_TRANSCRIBE_CHUNK_MB,
 	DEFAULT_WHISPER_API_BASE_URL,
 	DEFAULT_WHISPER_API_MODEL,
+	DEFAULT_DEEPGRAM_BASE_URL,
+	DEFAULT_DEEPGRAM_MODEL,
 	DEFAULT_LLM_OPENAI_BASE_URL,
 	DEFAULT_LLM_MAX_TOKENS,
 } from '../constants';
@@ -136,6 +138,12 @@ export interface AudioRecorderSettings {
 	whisperApiKey: string;
 	/** Whisper API model id */
 	whisperApiModel: string;
+	/** Deepgram API base URL */
+	deepgramBaseUrl: string;
+	/** Deepgram API key */
+	deepgramApiKey: string;
+	/** Deepgram model id */
+	deepgramModel: string;
 	/** Path to the local whisper.cpp binary */
 	localWhisperBinaryPath: string;
 	/** Path to the local whisper model file */
@@ -181,7 +189,20 @@ export interface AudioRecorderSettings {
 }
 
 /** Transcription engine identifier. */
-export type TranscriptionProviderId = 'whisper-api' | 'local-whisper';
+export type TranscriptionProviderId =
+	| 'whisper-api'
+	| 'local-whisper'
+	| 'deepgram';
+
+/** Display labels for each transcription engine (single source for UI). */
+export const TRANSCRIPTION_PROVIDER_LABELS: Record<
+	TranscriptionProviderId,
+	string
+> = {
+	'whisper-api': 'Whisper API (OpenAI-compatible)',
+	deepgram: 'Deepgram',
+	'local-whisper': 'Local whisper.cpp (desktop)',
+};
 
 /** LLM post-processing provider identifier. */
 export type LlmProviderId = 'openai-compatible' | 'anthropic';
@@ -227,6 +248,9 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	whisperApiBaseUrl: DEFAULT_WHISPER_API_BASE_URL,
 	whisperApiKey: '',
 	whisperApiModel: DEFAULT_WHISPER_API_MODEL,
+	deepgramBaseUrl: DEFAULT_DEEPGRAM_BASE_URL,
+	deepgramApiKey: '',
+	deepgramModel: DEFAULT_DEEPGRAM_MODEL,
 	localWhisperBinaryPath: '',
 	localWhisperModelPath: '',
 	localWhisperExtraArgs: '',

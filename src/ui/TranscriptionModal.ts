@@ -6,7 +6,10 @@
  */
 
 import { App, Modal, Notice, Setting, TFile } from 'obsidian';
-import type { AudioRecorderSettings } from '../settings/Settings';
+import {
+	TRANSCRIPTION_PROVIDER_LABELS,
+	type AudioRecorderSettings,
+} from '../settings/Settings';
 import { transcribeFile } from '../transcription/runTranscription';
 import {
 	TranscriptionCancelledError,
@@ -43,7 +46,7 @@ export class TranscriptionModal extends Modal {
 		contentEl.createEl('p', {
 			cls: 'aar-transcribe-config',
 			text:
-				`Engine: ${settings.transcriptionProvider === 'local-whisper' ? 'Local whisper.cpp' : 'Whisper API'}` +
+				`Engine: ${TRANSCRIPTION_PROVIDER_LABELS[settings.transcriptionProvider]}` +
 				` · Language: ${settings.transcriptionLanguage}` +
 				` · Output: ${settings.transcriptDestination}` +
 				(settings.llmPostProcessEnabled

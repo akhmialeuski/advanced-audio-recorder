@@ -70,6 +70,11 @@ export function buildMultipart(fields: MultipartField[]): MultipartBody {
 	};
 }
 
+/** Removes a single trailing slash from a base URL. */
+export function trimTrailingSlash(url: string): string {
+	return url.endsWith('/') ? url.slice(0, -1) : url;
+}
+
 /** Error thrown when a provider returns a non-2xx response. */
 export class HttpError extends Error {
 	constructor(

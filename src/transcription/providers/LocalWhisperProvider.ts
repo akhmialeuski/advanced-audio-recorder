@@ -9,6 +9,8 @@
 import type { TranscriptSegment } from '../TranscriptTypes';
 import type { WhisperResult } from './whisperResponse';
 import type {
+	AudioPayload,
+	ProviderCapabilities,
 	TranscribeOptions,
 	TranscriptionProvider,
 } from './TranscriptionProvider';
@@ -104,6 +106,13 @@ export class LocalWhisperProvider implements TranscriptionProvider {
 	readonly id = 'local-whisper';
 	readonly label = 'Local whisper.cpp';
 	readonly requiresNetwork = false;
+	readonly capabilities: ProviderCapabilities = {
+		// Local: no upload limit, so the whole decoded file is one WAV chunk.
+		maxRequestBytes: Number.POSITIVE_INFINITY,
+		// whisper.cpp reads a WAV file path, so it needs decoded WAV input.
+		acceptsOriginalContainer: false,
+		diarizesWholeFile: false,
+	};
 	private readonly node = loadNodeModules();
 
 	constructor(private readonly config: LocalWhisperConfig) {}
@@ -114,7 +123,7 @@ export class LocalWhisperProvider implements TranscriptionProvider {
 	}
 
 	async transcribe(
-		audio: ArrayBuffer,
+		payload: AudioPayload,
 		options: TranscribeOptions,
 	): Promise<WhisperResult> {
 		const node = this.node;
@@ -129,7 +138,7 @@ export class LocalWhisperProvider implements TranscriptionProvider {
 		);
 		const wavPath = `${base}.wav`;
 		const jsonPath = `${base}.json`;
-		node.fs.writeFileSync(wavPath, new Uint8Array(audio));
+		node.fs.writeFileSync(wavPath, new Uint8Array(payload.data));
 
 		const args = [
 			'-m',
