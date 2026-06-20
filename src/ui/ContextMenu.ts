@@ -17,7 +17,7 @@ import type { MarkdownFileInfo } from 'obsidian';
 import type { MenuItem } from 'obsidian';
 import { AUDIO_EXTENSIONS } from '../constants';
 import { getPlayerEmbedActions } from '../player/playerEmbedActions';
-import type { MarkerKind } from '../player/markers/markerModel';
+import { MARKER_KIND, type MarkerKind } from '../player/markers/markerModel';
 import { getAudioFileInfo } from '../utils/AudioFileAnalyzer';
 import { AudioFileInfoModal } from './AudioFileInfoModal';
 import { ConversionModal } from './ConversionModal';
@@ -207,8 +207,12 @@ export class ContextMenu {
 			});
 		};
 		if (actions.markersEnabled) {
-			addMarkerItem('Add marker here', 'bookmark-plus', 'bookmark');
-			addMarkerItem('Add chapter here', 'list-plus', 'chapter');
+			addMarkerItem(
+				'Add marker here',
+				'bookmark-plus',
+				MARKER_KIND.bookmark,
+			);
+			addMarkerItem('Add chapter here', 'list-plus', MARKER_KIND.chapter);
 		}
 		if (actions.timestampLinksEnabled) {
 			menu.addItem((item: MenuItem) => {

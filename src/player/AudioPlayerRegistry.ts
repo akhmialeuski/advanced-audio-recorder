@@ -18,6 +18,13 @@ interface SharedAudio {
 	releaseTimer: number;
 	/** Whether playback should resume if a player re-acquires during grace. */
 	resumeOnReacquire: boolean;
+	/**
+	 * Whether the user has engaged this playback (played or sought it). Once
+	 * engaged, a per-embed #t= start hint is no longer meaningful and must not
+	 * reappear, so it is tracked here (shared across every embed of the file)
+	 * rather than per player.
+	 */
+	engaged: boolean;
 }
 
 /**
@@ -84,6 +91,7 @@ export class AudioPlayerRegistry {
 			refs: 1,
 			releaseTimer: 0,
 			resumeOnReacquire: false,
+			engaged: false,
 		});
 		return { audio, isNew: true };
 	}
@@ -216,6 +224,30 @@ export class AudioPlayerRegistry {
 				player.applySettings(settings);
 			}
 		}
+	}
+
+	/**
+	 * Marks a file's shared playback as engaged: the user has played or sought
+	 * it, so a per-embed #t= start hint is no longer meaningful and must not
+	 * reappear (e.g. when playback later returns to 0). Shared across every
+	 * embed of the file, so engaging from one clears the hint on all of them.
+	 * @param path - Vault-relative path of the file
+	 */
+	markAudioEngaged(path: string): void {
+		const entry = this.audioByPath.get(path);
+		if (entry) {
+			entry.engaged = true;
+		}
+	}
+
+	/**
+	 * Whether a file's shared playback has been engaged (played or sought).
+	 * Defaults to false for an unknown path or a freshly created element, so a
+	 * #t= embed shows its start until the timeline actually moves.
+	 * @param path - Vault-relative path of the file
+	 */
+	isAudioEngaged(path: string): boolean {
+		return this.audioByPath.get(path)?.engaged ?? false;
 	}
 
 	/**

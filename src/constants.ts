@@ -171,3 +171,20 @@ export const WAVEFORM_CACHE_MAX_ENTRIES = 64;
  * file never blocks the main thread in a single long synchronous pass.
  */
 export const WAVEFORM_PROGRESSIVE_CHUNK_BUCKETS = 16;
+
+/**
+ * Sample rate (Hz) the waveform decoder resamples to. The waveform only needs
+ * an amplitude envelope, so decoding through a low-rate OfflineAudioContext
+ * keeps a long recording's decoded PCM small instead of allocating the full
+ * native-rate buffer (which can reach hundreds of MB for an hour of stereo).
+ * 8 kHz is the safe minimum and ample for peak extraction.
+ */
+export const WAVEFORM_DECODE_SAMPLE_RATE = 8000;
+
+/**
+ * Distance (px) from the viewport at which a player decodes its waveform.
+ * The waveform is decoded lazily through an IntersectionObserver so a long
+ * note with many recordings does not decode every embed up front; this margin
+ * starts the decode just before the player scrolls into view.
+ */
+export const PLAYER_WAVEFORM_PREFETCH_MARGIN_PX = 200;

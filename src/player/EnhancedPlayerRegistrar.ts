@@ -49,6 +49,7 @@ import {
 	parseTimecodeSubpath,
 } from './timecodeLinks';
 import { probeMediaKind, type MediaKind } from './mediaProbe';
+import { shouldEnhance } from './playerMode';
 import type { MarkerStore } from './markers/MarkerStore';
 import {
 	getEmbedRegistry,
@@ -274,7 +275,7 @@ export class EnhancedPlayerRegistrar {
 		const nativeCreator = this.embedOverride?.getPrevious(file.extension);
 		const kind = this.knownKind(file);
 
-		if (enabled && kind === 'audio') {
+		if (shouldEnhance(enabled, kind)) {
 			return this.buildAudioPlayer(info, file, subpath);
 		}
 
@@ -319,7 +320,7 @@ export class EnhancedPlayerRegistrar {
 				this.app.vault.getResourcePath(file),
 			);
 			this.mediaKindCache.set(file.path, kind);
-			if (kind === 'audio' && this.getSettings().enhancedPlayerEnabled) {
+			if (shouldEnhance(this.getSettings().enhancedPlayerEnabled, kind)) {
 				// Only the notes that actually embed this file need rebuilding,
 				// so a large note that does not embed it is never re-rendered
 				this.requestRerenderForFile(file.path);

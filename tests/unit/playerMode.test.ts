@@ -46,4 +46,8 @@ describe('shouldEnhance', () => {
 		expect(shouldEnhance(false, 'audio')).toBe(false);
 		expect(shouldEnhance(false, 'video')).toBe(false);
 	});
+
+	it('does not enhance a not-yet-probed file (null kind)', () => {
+		expect(shouldEnhance(true, null)).toBe(false);
+	});
 });

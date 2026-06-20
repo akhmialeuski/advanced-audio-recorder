@@ -7,50 +7,9 @@
 
 import {
 	WAVEFORM_CACHE_MAX_ENTRIES,
+	WAVEFORM_DECODE_SAMPLE_RATE,
 	WAVEFORM_PROGRESSIVE_CHUNK_BUCKETS,
 } from '../constants';
-
-/**
- * Computes normalized amplitude peaks for a waveform display. Every
- * output bucket holds the maximum absolute sample amplitude (0..1)
- * across the corresponding slice of the audio, with the channels mixed
- * down to mono by averaging. The result is normalized so the loudest
- * bucket reaches 1, which keeps quiet recordings visible.
- * @param channels - Decoded per-channel sample data
- * @param bucketCount - Number of peaks to produce (waveform bar count)
- * @returns Array of bucketCount normalized peaks in the range 0..1
- */
-export function computeWaveformPeaks(
-	channels: Float32Array[],
-	bucketCount: number,
-): number[] {
-	if (bucketCount <= 0 || channels.length === 0) {
-		return [];
-	}
-	const frameCount = channels[0].length;
-	if (frameCount === 0) {
-		return new Array<number>(bucketCount).fill(0);
-	}
-
-	const peaks = new Array<number>(bucketCount).fill(0);
-	const framesPerBucket = frameCount / bucketCount;
-	const channelCount = channels.length;
-	let loudest = 0;
-	for (let bucket = 0; bucket < bucketCount; bucket++) {
-		const [start, end] = bucketBounds(
-			bucket,
-			bucketCount,
-			framesPerBucket,
-			frameCount,
-		);
-		const peak = bucketPeak(channels, channelCount, start, end);
-		peaks[bucket] = peak;
-		if (peak > loudest) {
-			loudest = peak;
-		}
-	}
-	return normalizePeaks(peaks, loudest);
-}
 
 /**
  * Options controlling progressive peak extraction.
@@ -76,9 +35,11 @@ export interface ProgressivePeaksOptions {
 }
 
 /**
- * Computes the same normalized peaks as computeWaveformPeaks, but in chunks
- * that yield to the event loop between them, so extracting peaks from a large
- * file never blocks the main thread in one long synchronous pass. Snapshots
+ * Computes normalized amplitude peaks for a waveform display, in chunks that
+ * yield to the event loop between them, so extracting peaks from a large file
+ * never blocks the main thread in one long synchronous pass. Every output
+ * bucket holds the maximum absolute mono-mixed sample amplitude across its
+ * slice; the result is normalized so the loudest bucket reaches 1. Snapshots
  * are reported through onProgress (normalized against the running maximum) so
  * the waveform can be drawn as it fills in, and the final array is normalized
  * against the true global maximum.
@@ -326,38 +287,47 @@ export interface AudioDecoder {
 }
 
 /**
- * Decodes audio through a single, lazily created AudioContext shared by
- * every player. Browsers cap the number of concurrent AudioContexts (six
- * in Chromium), so creating one per file would throw as soon as a note
- * embeds several recordings; reusing one context avoids the cap and the
- * per-file create/close overhead. The context is closed when the player
- * feature is disposed.
+ * Decodes audio through a single, lazily created OfflineAudioContext shared
+ * by every player. The context's low sample rate (WAVEFORM_DECODE_SAMPLE_RATE)
+ * makes decodeAudioData resample while decoding, so a long recording yields a
+ * small decoded buffer instead of the full native-rate PCM (hundreds of MB for
+ * an hour of stereo) — the waveform needs only an amplitude envelope. One
+ * shared context also avoids the per-file create overhead and the realtime
+ * AudioContext count cap. The reference is dropped when the player feature is
+ * disposed; an OfflineAudioContext holds no realtime audio thread to close.
  */
 export class SharedAudioDecoder implements AudioDecoder {
-	private context: AudioContext | null = null;
+	private context: OfflineAudioContext | null = null;
 
 	/**
-	 * Decodes encoded audio bytes, creating the shared context on first
-	 * use. Decoding does not require a running context, so an autoplay
-	 * suspension does not affect it.
+	 * Decodes encoded audio bytes, creating the shared low-rate context on
+	 * first use. decodeAudioData resamples the result to the context's sample
+	 * rate, so the decoded PCM stays small regardless of the file's native
+	 * rate. Correctness does not depend on the resample: peak extraction is
+	 * rate-agnostic, so a platform that ignored the target rate would still
+	 * produce the right waveform, just less cheaply.
 	 * @param data - Encoded audio file bytes
 	 */
 	decode(data: ArrayBuffer): Promise<AudioBuffer> {
 		if (!this.context) {
-			this.context = new AudioContext();
+			// The length (1) is irrelevant to decoding, which uses only the
+			// context's sample rate to resample the decoded result
+			this.context = new OfflineAudioContext(
+				1,
+				1,
+				WAVEFORM_DECODE_SAMPLE_RATE,
+			);
 		}
 		return this.context.decodeAudioData(data);
 	}
 
 	/**
-	 * Closes the shared context, releasing its audio thread.
+	 * Drops the shared context. An OfflineAudioContext owns no realtime audio
+	 * thread, so there is nothing to close; releasing the reference lets a
+	 * fresh one be created if decoding resumes later.
 	 */
-	async close(): Promise<void> {
-		if (!this.context) {
-			return;
-		}
-		const context = this.context;
+	close(): Promise<void> {
 		this.context = null;
-		await context.close();
+		return Promise.resolve();
 	}
 }

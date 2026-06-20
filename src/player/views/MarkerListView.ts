@@ -14,6 +14,8 @@ import { setIcon } from 'obsidian';
 import { formatTimecode } from '../../utils/TimeUtils';
 import {
 	activeMarkerIndex,
+	MARKER_KIND,
+	MARKER_ROW_ACTION,
 	markerRows,
 	sortMarkers,
 	type MarkerKind,
@@ -112,7 +114,7 @@ export class MarkerListView {
 			}
 			const time = this.callbacks.timeAtClientX(event.clientX);
 			if (time !== null) {
-				this.callbacks.onAddAt(time, 'bookmark');
+				this.callbacks.onAddAt(time, MARKER_KIND.bookmark);
 			}
 		});
 	}
@@ -132,12 +134,12 @@ export class MarkerListView {
 			if (!target || !id) {
 				return;
 			}
-			if (target.dataset.action === 'jump') {
+			if (target.dataset.action === MARKER_ROW_ACTION.jump) {
 				const marker = this.markers.find((m) => m.id === id);
 				if (marker) {
 					this.callbacks.onJump(marker.time);
 				}
-			} else if (target.dataset.action === 'delete') {
+			} else if (target.dataset.action === MARKER_ROW_ACTION.delete) {
 				this.callbacks.onDelete(id);
 			}
 		});
@@ -146,7 +148,11 @@ export class MarkerListView {
 		this.host.registerDomEvent(this.listEl, 'input', (event) => {
 			const input = event.target as HTMLInputElement | null;
 			const id = input?.dataset.markerId;
-			if (input && id && input.dataset.action === 'rename') {
+			if (
+				input &&
+				id &&
+				input.dataset.action === MARKER_ROW_ACTION.rename
+			) {
 				const value = input.value;
 				window.clearTimeout(this.renameTimer);
 				this.renameTimer = window.setTimeout(() => {
@@ -157,7 +163,11 @@ export class MarkerListView {
 		this.host.registerDomEvent(this.listEl, 'change', (event) => {
 			const input = event.target as HTMLInputElement | null;
 			const id = input?.dataset.markerId;
-			if (input && id && input.dataset.action === 'rename') {
+			if (
+				input &&
+				id &&
+				input.dataset.action === MARKER_ROW_ACTION.rename
+			) {
 				window.clearTimeout(this.renameTimer);
 				this.callbacks.onRename(id, input.value);
 			}
@@ -236,7 +246,7 @@ export class MarkerListView {
 			const left = Math.min(100, (marker.time / durationSeconds) * 100);
 			const tick = this.overlayEl.createDiv({
 				cls:
-					marker.kind === 'chapter'
+					marker.kind === MARKER_KIND.chapter
 						? 'aar-player-tick aar-player-tick-chapter'
 						: 'aar-player-tick aar-player-tick-bookmark',
 			});
@@ -294,27 +304,29 @@ export class MarkerListView {
 			cls: 'aar-player-marker-time',
 			text: formatTimecode(row.time, referenceSeconds),
 		});
-		jump.dataset.action = 'jump';
+		jump.dataset.action = MARKER_ROW_ACTION.jump;
 		jump.dataset.markerId = row.id;
 		jump.setAttribute(
 			'aria-label',
-			row.kind === 'chapter' ? 'Jump to chapter' : 'Jump to marker',
+			row.kind === MARKER_KIND.chapter
+				? 'Jump to chapter'
+				: 'Jump to marker',
 		);
 		setIcon(
 			rowEl.createSpan({ cls: 'aar-player-marker-kind' }),
-			row.kind === 'chapter' ? 'list' : 'bookmark',
+			row.kind === MARKER_KIND.chapter ? 'list' : 'bookmark',
 		);
 		const label = rowEl.createEl('input', {
 			cls: 'aar-player-marker-label',
 			attr: { type: 'text', value: row.label },
 		});
-		label.dataset.action = 'rename';
+		label.dataset.action = MARKER_ROW_ACTION.rename;
 		label.dataset.markerId = row.id;
 		const remove = rowEl.createEl('button', {
 			cls: 'aar-player-marker-delete',
 			attr: { 'aria-label': 'Delete' },
 		});
-		remove.dataset.action = 'delete';
+		remove.dataset.action = MARKER_ROW_ACTION.delete;
 		remove.dataset.markerId = row.id;
 		setIcon(remove, 'trash-2');
 	}
@@ -332,11 +344,13 @@ export class MarkerListView {
 		referenceSeconds: number,
 	): void {
 		rowEl.addClass('aar-player-marker-row-clickable');
-		rowEl.dataset.action = 'jump';
+		rowEl.dataset.action = MARKER_ROW_ACTION.jump;
 		rowEl.dataset.markerId = row.id;
 		rowEl.setAttribute(
 			'aria-label',
-			row.kind === 'chapter' ? 'Jump to chapter' : 'Jump to marker',
+			row.kind === MARKER_KIND.chapter
+				? 'Jump to chapter'
+				: 'Jump to marker',
 		);
 		rowEl.createSpan({
 			cls: 'aar-player-marker-time',
@@ -344,7 +358,7 @@ export class MarkerListView {
 		});
 		setIcon(
 			rowEl.createSpan({ cls: 'aar-player-marker-kind' }),
-			row.kind === 'chapter' ? 'list' : 'bookmark',
+			row.kind === MARKER_KIND.chapter ? 'list' : 'bookmark',
 		);
 		rowEl.createSpan({
 			cls: 'aar-player-marker-label-static',

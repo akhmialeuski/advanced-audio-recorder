@@ -25,6 +25,7 @@ import {
 	PLAYER_SEEK_KEYBOARD_STEP_SECONDS,
 	PLAYER_ATTACH_WAIT_FRAMES,
 	PLAYER_WAVEFORM_REDRAW_RETRIES,
+	PLAYER_WAVEFORM_PREFETCH_MARGIN_PX,
 } from '../constants';
 import { formatTimecode } from '../utils/TimeUtils';
 import { playbackProgress } from './playbackProgress';
@@ -46,6 +47,7 @@ import type { MarkerStore } from './markers/MarkerStore';
 import {
 	addMarker,
 	chapters,
+	MARKER_KIND,
 	nextChapterTime,
 	previousChapterTime,
 	removeMarker,
@@ -126,9 +128,14 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	/** Shared per-file audio element, acquired from the registry on render so
 	 * every view mode controls the same playback. */
 	private audio!: HTMLAudioElement;
-	/** True when this player created the shared audio (applies the #t= start
-	 * offset; secondary players must not move shared playback). */
-	private ownsAudio = false;
+	/**
+	 * The #t= start position to show for THIS embed until its playback engages.
+	 * The audio element is shared per file, so moving its currentTime would drag
+	 * every other embed of the same file; instead each embed shows its own start
+	 * here (display only) and seeks the shared element to it just-in-time when
+	 * the user plays or skips this embed. Null when the embed has no #t= offset.
+	 */
+	private startHint: number | null = null;
 	private playButton!: HTMLElement;
 	private seekEl!: HTMLElement;
 	/** Waveform renderer, or null when the plain bar is shown. */
@@ -156,6 +163,8 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 */
 	private editable = false;
 	private resizeObserver: ResizeObserver | null = null;
+	/** Observer that defers the waveform decode until the player is on screen. */
+	private waveformObserver: IntersectionObserver | null = null;
 	private muteButton: HTMLElement | null = null;
 	/** Authoritative marker list for this file; the view renders from it. */
 	private markers: PlayerMarker[] = [];
@@ -268,6 +277,13 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		this.register(() => {
 			this.unloaded = true;
 		});
+		// Disconnect the lazy waveform observer on unload. It is recreated per
+		// renderUi and disconnected once it fires, but the final one would
+		// otherwise outlive the last render.
+		this.register(() => {
+			this.waveformObserver?.disconnect();
+			this.waveformObserver = null;
+		});
 
 		// Bind to the file's shared audio element so every view mode controls
 		// the same playback; the registry releases it once the last player
@@ -277,7 +293,6 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			this.app.vault.getResourcePath(this.file),
 		);
 		this.audio = audio;
-		this.ownsAudio = isNew;
 		// Apply player defaults ONLY when the shared audio is first created,
 		// never on a re-render: otherwise a mode switch or an unrelated
 		// settings save would reset the user's chosen speed and loop.
@@ -296,6 +311,11 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			this.registry.unregister(this.file.path, this);
 		});
 
+		// Each embed shows its OWN #t= start (display only); the shared audio is
+		// never moved on render, so a second embed of the same file is not
+		// dragged to this embed's offset. renderUi's updateProgress reflects it.
+		this.startHint = this.options.startSeconds;
+
 		this.renderUi();
 	}
 
@@ -307,9 +327,11 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * waveform or markers window applies instantly without a note re-render.
 	 */
 	private renderUi(): void {
-		// Tear down the re-creatable observer before rebuilding the seek area
+		// Tear down the re-creatable observers before rebuilding the seek area
 		this.resizeObserver?.disconnect();
 		this.resizeObserver = null;
+		this.waveformObserver?.disconnect();
+		this.waveformObserver = null;
 
 		this.containerEl.empty();
 		this.containerEl.addClass('aar-player');
@@ -351,7 +373,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		});
 
 		if (this.settings.showWaveform) {
-			void this.loadWaveform();
+			this.scheduleWaveformLoad();
 		}
 
 		this.updateProgress();
@@ -386,6 +408,8 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * @param autoplay - Start playback after seeking (default true)
 	 */
 	seekTo(seconds: number, autoplay = true): void {
+		// A user seek (timecode link, marker jump) engages the shared timeline
+		this.engageTimeline();
 		const target = Math.max(0, seconds);
 		const apply = (): void => {
 			this.audio.currentTime = Number.isFinite(this.audio.duration)
@@ -581,7 +605,10 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				'bookmark-plus',
 				'Add marker at current position',
 				() => {
-					void this.addMarkerAt(this.audio.currentTime, 'bookmark');
+					void this.addMarkerAt(
+						this.audio.currentTime,
+						MARKER_KIND.bookmark,
+					);
 				},
 			).addClass('aar-player-edit-only');
 			this.createIconButton(
@@ -589,7 +616,10 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				'list-plus',
 				'Add chapter at current position',
 				() => {
-					void this.addMarkerAt(this.audio.currentTime, 'chapter');
+					void this.addMarkerAt(
+						this.audio.currentTime,
+						MARKER_KIND.chapter,
+					);
 				},
 			).addClass('aar-player-edit-only');
 			this.createIconButton(
@@ -682,10 +712,12 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 					this.skip(-PLAYER_SEEK_KEYBOARD_STEP_SECONDS);
 					break;
 				case 'Home':
+					this.engageTimeline();
 					this.audio.currentTime = 0;
 					this.updateProgress();
 					break;
 				case 'End':
+					this.engageTimeline();
 					if (Number.isFinite(this.audio.duration)) {
 						this.audio.currentTime = this.audio.duration;
 						this.updateProgress();
@@ -841,6 +873,8 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		if (time === null) {
 			return;
 		}
+		// A user drag engages the shared timeline
+		this.engageTimeline();
 		this.audio.currentTime = time;
 		this.updateProgress();
 	}
@@ -854,7 +888,6 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			if (!Number.isFinite(this.audio.duration)) {
 				this.resolveInfiniteDuration();
 			} else {
-				this.applyStartOffset();
 				this.renderMarkers();
 			}
 			this.updateProgress();
@@ -863,6 +896,9 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			this.updateProgress();
 		});
 		this.registerDomEvent(this.audio, 'play', () => {
+			// Any play (this embed or another) makes the timeline live, so a
+			// per-embed #t= start hint must not reappear afterwards
+			this.engageTimeline();
 			setIcon(this.playButton, 'pause');
 		});
 		this.registerDomEvent(this.audio, 'pause', () => {
@@ -884,23 +920,21 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		}
 		this.durationProbeActive = true;
 		let watchdog = 0;
-		const finish = (resolved: boolean): void => {
+		const finish = (): void => {
 			this.audio.removeEventListener('durationchange', onDurationChange);
 			window.clearTimeout(watchdog);
 			this.durationProbeActive = false;
-			// Restore the start position whether or not the probe worked;
-			// leaving currentTime near the probe value would strand
-			// playback at the end of the file
+			// Restore the start position; leaving currentTime near the probe
+			// value would strand playback at the end of the file. The #t= start
+			// (if any) is shown via the display hint, not by moving the shared
+			// element here.
 			this.audio.currentTime = 0;
-			if (resolved) {
-				this.applyStartOffset();
-			}
 			this.renderMarkers();
 			this.updateProgress();
 		};
 		const onDurationChange = (): void => {
 			if (Number.isFinite(this.audio.duration)) {
-				finish(true);
+				finish();
 			}
 		};
 		this.audio.addEventListener('durationchange', onDurationChange);
@@ -908,7 +942,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		// seek position is not left stranded at the end of the stream
 		watchdog = window.setTimeout(() => {
 			if (this.durationProbeActive) {
-				finish(false);
+				finish();
 			}
 		}, DURATION_PROBE_TIMEOUT_MS);
 		this.register(() => {
@@ -920,30 +954,92 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		} catch {
 			// Some sources reject the probe seek; give up immediately and
 			// fall back to a non-seekable display
-			finish(false);
+			finish();
 		}
 	}
 
 	/**
-	 * Applies the timecode start offset from the embed subpath, once,
-	 * after the duration is known.
+	 * The position to display for this embed: its #t= start hint while the
+	 * shared audio is still untouched (at the very start, paused), otherwise the
+	 * real shared playback position. This is what lets two embeds of one file
+	 * show different start positions even though they share one audio element.
 	 */
-	private applyStartOffset(): void {
-		// Only the player that created the shared audio applies its #t= start;
-		// a secondary player (e.g. the other view mode) must not jump shared
-		// playback to its own offset
-		if (!this.ownsAudio) {
-			this.options.startSeconds = null;
+	private currentPosition(): number {
+		if (
+			this.startHint !== null &&
+			this.audio.currentTime === 0 &&
+			this.audio.paused &&
+			!this.registry.isAudioEngaged(this.file.path)
+		) {
+			return Number.isFinite(this.audio.duration)
+				? Math.min(this.startHint, this.audio.duration)
+				: this.startHint;
+		}
+		return this.audio.currentTime;
+	}
+
+	/**
+	 * Engages this embed's #t= start: seeks the shared audio to the hint (once,
+	 * and only while it is still at the very start) so playback begins there,
+	 * then clears the hint so the embed follows real shared playback. A no-op
+	 * once already engaged or when the embed has no #t= offset.
+	 */
+	private engageStart(): void {
+		if (this.startHint === null) {
 			return;
 		}
-		if (this.options.startSeconds === null) {
+		const target = this.startHint;
+		this.startHint = null;
+		if (this.audio.currentTime === 0) {
+			this.audio.currentTime = Number.isFinite(this.audio.duration)
+				? Math.min(target, this.audio.duration)
+				: target;
+		}
+	}
+
+	/**
+	 * Records that the user has engaged this file's shared playback (played or
+	 * sought it). Consumes this embed's #t= start hint and marks the shared
+	 * timeline engaged in the registry, so the hint never reappears on any
+	 * embed of the file — even after playback later returns to 0.
+	 */
+	private engageTimeline(): void {
+		this.startHint = null;
+		this.registry.markAudioEngaged(this.file.path);
+	}
+
+	/**
+	 * Decodes the waveform lazily: a long note with several recordings must not
+	 * decode every embed up front. Waits until the player is near the viewport
+	 * (IntersectionObserver), then decodes once. Environments without
+	 * IntersectionObserver decode immediately so the waveform still appears. The
+	 * observer is torn down on re-render and on unload.
+	 */
+	private scheduleWaveformLoad(): void {
+		// typeof is safe even where IntersectionObserver is undeclared (tests,
+		// non-DOM hosts); there, decode immediately so the waveform still shows
+		if (typeof IntersectionObserver === 'undefined') {
+			void this.loadWaveform();
 			return;
 		}
-		const target = this.options.startSeconds;
-		this.options.startSeconds = null;
-		this.audio.currentTime = Number.isFinite(this.audio.duration)
-			? Math.min(target, this.audio.duration)
-			: target;
+		const observer = new IntersectionObserver(
+			(entries) => {
+				if (!entries.some((entry) => entry.isIntersecting)) {
+					return;
+				}
+				// One-shot: ignore any later callback for a consumed/replaced
+				// observer, then decode once and stop observing
+				if (this.waveformObserver !== observer) {
+					return;
+				}
+				observer.disconnect();
+				this.waveformObserver = null;
+				void this.loadWaveform();
+			},
+			{ rootMargin: `${String(PLAYER_WAVEFORM_PREFETCH_MARGIN_PX)}px` },
+		);
+		this.waveformObserver = observer;
+		observer.observe(this.containerEl);
 	}
 
 	/**
@@ -1049,10 +1145,10 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * playback position.
 	 */
 	private updateProgress(): void {
-		const fraction = playbackProgress(
-			this.audio.currentTime,
-			this.audio.duration,
-		);
+		// Use the display position (the #t= start hint until this embed engages,
+		// else the real shared position) so each embed reflects its own start
+		const position = this.currentPosition();
+		const fraction = playbackProgress(position, this.audio.duration);
 		if (this.waveform) {
 			// Cheap: only moves the clip variable, no canvas work
 			this.waveform.setProgress(fraction);
@@ -1069,21 +1165,18 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		if (this.timeEl) {
 			// Format elapsed against the total so both sides share one width
 			this.timeEl.setText(
-				`${formatTimecode(this.audio.currentTime, total)} / ${formatTimecode(total, total)}`,
+				`${formatTimecode(position, total)} / ${formatTimecode(total, total)}`,
 			);
 		}
 		// Keep the slider's accessible value in sync for screen readers
 		this.seekEl.setAttribute('aria-valuemax', String(Math.floor(total)));
-		this.seekEl.setAttribute(
-			'aria-valuenow',
-			String(Math.floor(this.audio.currentTime)),
-		);
+		this.seekEl.setAttribute('aria-valuenow', String(Math.floor(position)));
 		this.seekEl.setAttribute(
 			'aria-valuetext',
-			`${formatTimecode(this.audio.currentTime, total)} of ${formatTimecode(total, total)}`,
+			`${formatTimecode(position, total)} of ${formatTimecode(total, total)}`,
 		);
 		// Move the active-segment highlight as playback crosses boundaries
-		this.markerView?.updateActive(this.audio.currentTime);
+		this.markerView?.updateActive(position);
 	}
 
 	/**
@@ -1091,6 +1184,8 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 */
 	private togglePlay(): void {
 		if (this.audio.paused) {
+			// Begin from this embed's #t= start (if pending) rather than 0
+			this.engageStart();
 			void this.audio.play().catch((error: unknown) => {
 				console.warn(
 					`${PLUGIN_LOG_PREFIX} Playback could not start:`,
@@ -1108,6 +1203,9 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * @param deltaSeconds - Signed number of seconds to skip
 	 */
 	private skip(deltaSeconds: number): void {
+		// Engage the #t= start first so a skip is relative to the shown position
+		this.engageStart();
+		this.engageTimeline();
 		const max = Number.isFinite(this.audio.duration)
 			? this.audio.duration
 			: this.audio.currentTime + Math.abs(deltaSeconds);
@@ -1206,7 +1304,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			(marker) => marker.kind === kind,
 		).length;
 		const label =
-			kind === 'chapter'
+			kind === MARKER_KIND.chapter
 				? `Chapter ${String(sameKindCount + 1)}`
 				: `Marker ${String(sameKindCount + 1)}`;
 		this.markers = addMarker(this.markers, {

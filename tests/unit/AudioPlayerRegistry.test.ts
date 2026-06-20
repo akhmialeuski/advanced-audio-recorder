@@ -174,4 +174,42 @@ describe('AudioPlayerRegistry', () => {
 		// Disconnected players are not updated (and are pruned)
 		expect(gone.applied).toBe(0);
 	});
+
+	it('tracks the engaged state of a shared audio element', () => {
+		const registry = new AudioPlayerRegistry();
+		registry.acquireAudio('rec.wav', 'app://rec');
+
+		// A fresh element is not engaged, so a #t= embed may show its start
+		expect(registry.isAudioEngaged('rec.wav')).toBe(false);
+		registry.markAudioEngaged('rec.wav');
+		expect(registry.isAudioEngaged('rec.wav')).toBe(true);
+	});
+
+	it('reports not engaged for an unknown path', () => {
+		const registry = new AudioPlayerRegistry();
+		expect(registry.isAudioEngaged('missing.wav')).toBe(false);
+		// Marking an unknown path is a no-op, never throws
+		expect(() => {
+			registry.markAudioEngaged('missing.wav');
+		}).not.toThrow();
+	});
+
+	it('resets the engaged state when the shared element is recreated', () => {
+		jest.useFakeTimers();
+		try {
+			const registry = new AudioPlayerRegistry();
+			registry.acquireAudio('rec.wav', 'app://rec');
+			registry.markAudioEngaged('rec.wav');
+
+			// Release and let the grace period free the element
+			registry.releaseAudio('rec.wav');
+			jest.advanceTimersByTime(1000);
+
+			// A re-mounted #t= embed starts from a fresh, not-engaged element
+			registry.acquireAudio('rec.wav', 'app://rec');
+			expect(registry.isAudioEngaged('rec.wav')).toBe(false);
+		} finally {
+			jest.useRealTimers();
+		}
+	});
 });

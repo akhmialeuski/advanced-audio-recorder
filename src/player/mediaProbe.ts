@@ -7,8 +7,18 @@
  * @module player/mediaProbe
  */
 
+/**
+ * The media classifications the probe can return, as named constants so
+ * call sites reference MEDIA_KIND.audio instead of repeating the literal.
+ */
+export const MEDIA_KIND = {
+	audio: 'audio',
+	video: 'video',
+	unsupported: 'unsupported',
+} as const;
+
 /** Classification of a media file for takeover decisions. */
-export type MediaKind = 'audio' | 'video' | 'unsupported';
+export type MediaKind = (typeof MEDIA_KIND)[keyof typeof MEDIA_KIND];
 
 /** How long to wait for metadata before assuming a plain audio file. */
 const PROBE_TIMEOUT_MS = 4000;
@@ -42,7 +52,9 @@ export function probeMediaKind(resourceUrl: string): Promise<MediaKind> {
 			'loadedmetadata',
 			() => {
 				settle(
-					el.videoWidth > 0 && el.videoHeight > 0 ? 'video' : 'audio',
+					el.videoWidth > 0 && el.videoHeight > 0
+						? MEDIA_KIND.video
+						: MEDIA_KIND.audio,
 				);
 			},
 			{ once: true },
@@ -50,12 +62,12 @@ export function probeMediaKind(resourceUrl: string): Promise<MediaKind> {
 		el.addEventListener(
 			'error',
 			() => {
-				settle('unsupported');
+				settle(MEDIA_KIND.unsupported);
 			},
 			{ once: true },
 		);
 		timer = window.setTimeout(() => {
-			settle('audio');
+			settle(MEDIA_KIND.audio);
 		}, PROBE_TIMEOUT_MS);
 		el.src = resourceUrl;
 	});

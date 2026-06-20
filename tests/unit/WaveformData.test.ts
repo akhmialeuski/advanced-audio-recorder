@@ -3,49 +3,69 @@
  */
 
 import {
-	computeWaveformPeaks,
 	computeWaveformPeaksProgressive,
 	downsamplePeaks,
+	SharedAudioDecoder,
 	waveformCacheKey,
 	WaveformPeakCache,
 } from 'src/player/WaveformData';
+import { WAVEFORM_DECODE_SAMPLE_RATE } from 'src/constants';
 
-describe('computeWaveformPeaks', () => {
-	it('returns empty for non-positive bucket counts', () => {
-		expect(computeWaveformPeaks([new Float32Array([1])], 0)).toEqual([]);
+/** Resolve immediately so progressive extraction completes within a test tick. */
+const immediateYield = (): Promise<void> => Promise.resolve();
+
+describe('computeWaveformPeaksProgressive — peak extraction', () => {
+	it('returns empty for non-positive bucket counts', async () => {
+		expect(
+			await computeWaveformPeaksProgressive([new Float32Array([1])], 0, {
+				yieldControl: immediateYield,
+			}),
+		).toEqual([]);
 	});
 
-	it('returns empty when there are no channels', () => {
-		expect(computeWaveformPeaks([], 4)).toEqual([]);
+	it('returns empty when there are no channels', async () => {
+		expect(
+			await computeWaveformPeaksProgressive([], 4, {
+				yieldControl: immediateYield,
+			}),
+		).toEqual([]);
 	});
 
-	it('returns zeros for empty channel data', () => {
-		expect(computeWaveformPeaks([new Float32Array(0)], 3)).toEqual([
-			0, 0, 0,
-		]);
+	it('returns zeros for empty channel data', async () => {
+		expect(
+			await computeWaveformPeaksProgressive([new Float32Array(0)], 3, {
+				yieldControl: immediateYield,
+			}),
+		).toEqual([0, 0, 0]);
 	});
 
-	it('normalizes peaks so the loudest bucket reaches 1', () => {
+	it('normalizes peaks so the loudest bucket reaches 1', async () => {
 		const channel = new Float32Array([0.1, 0.1, 0.5, 0.5]);
-		const peaks = computeWaveformPeaks([channel], 2);
+		const peaks = await computeWaveformPeaksProgressive([channel], 2, {
+			yieldControl: immediateYield,
+		});
 		expect(peaks).toHaveLength(2);
 		expect(peaks[1]).toBeCloseTo(1);
 		expect(peaks[0]).toBeCloseTo(0.2);
 	});
 
-	it('mixes channels down to mono by averaging', () => {
+	it('mixes channels down to mono by averaging', async () => {
 		const left = new Float32Array([1, 0]);
 		const right = new Float32Array([0, 0]);
 		// Bucket 0 mixes (1+0)/2 = 0.5, bucket 1 mixes 0 -> after
 		// normalization bucket 0 is the loudest at 1
-		const peaks = computeWaveformPeaks([left, right], 2);
+		const peaks = await computeWaveformPeaksProgressive([left, right], 2, {
+			yieldControl: immediateYield,
+		});
 		expect(peaks[0]).toBeCloseTo(1);
 		expect(peaks[1]).toBeCloseTo(0);
 	});
 
-	it('includes trailing frames in the final bucket', () => {
+	it('includes trailing frames in the final bucket', async () => {
 		const channel = new Float32Array([0, 0, 0, 1]);
-		const peaks = computeWaveformPeaks([channel], 2);
+		const peaks = await computeWaveformPeaksProgressive([channel], 2, {
+			yieldControl: immediateYield,
+		});
 		// The last frame must influence the final bucket
 		expect(peaks[1]).toBeCloseTo(1);
 	});
@@ -111,62 +131,75 @@ describe('WaveformPeakCache', () => {
 	});
 });
 
-describe('computeWaveformPeaks — edge and negative cases', () => {
-	it('uses absolute amplitude for negative samples', () => {
-		const peaks = computeWaveformPeaks([new Float32Array([-1, 0])], 2);
+describe('computeWaveformPeaksProgressive — edge and negative cases', () => {
+	it('uses absolute amplitude for negative samples', async () => {
+		const peaks = await computeWaveformPeaksProgressive(
+			[new Float32Array([-1, 0])],
+			2,
+			{ yieldControl: immediateYield },
+		);
 		expect(peaks[0]).toBeCloseTo(1);
 		expect(peaks[1]).toBeCloseTo(0);
 	});
 
-	it('returns all zeros for silent input', () => {
+	it('returns all zeros for silent input', async () => {
 		expect(
-			computeWaveformPeaks([new Float32Array([0, 0, 0, 0])], 2),
+			await computeWaveformPeaksProgressive(
+				[new Float32Array([0, 0, 0, 0])],
+				2,
+				{ yieldControl: immediateYield },
+			),
 		).toEqual([0, 0]);
 	});
 
-	it('handles a bucket count larger than the frame count', () => {
-		const peaks = computeWaveformPeaks([new Float32Array([1, 0])], 8);
+	it('handles a bucket count larger than the frame count', async () => {
+		const peaks = await computeWaveformPeaksProgressive(
+			[new Float32Array([1, 0])],
+			8,
+			{ yieldControl: immediateYield },
+		);
 		expect(peaks).toHaveLength(8);
 		expect(Math.max(...peaks)).toBeCloseTo(1);
 	});
 
-	it('averages an uneven number of channels', () => {
-		const peaks = computeWaveformPeaks(
+	it('averages an uneven number of channels', async () => {
+		const peaks = await computeWaveformPeaksProgressive(
 			[
 				new Float32Array([1]),
 				new Float32Array([0]),
 				new Float32Array([0.5]),
 			],
 			1,
+			{ yieldControl: immediateYield },
 		);
 		expect(peaks[0]).toBeCloseTo(1);
 	});
 
-	it('returns empty for a negative bucket count', () => {
-		expect(computeWaveformPeaks([new Float32Array([1])], -3)).toEqual([]);
+	it('returns empty for a negative bucket count', async () => {
+		expect(
+			await computeWaveformPeaksProgressive([new Float32Array([1])], -3, {
+				yieldControl: immediateYield,
+			}),
+		).toEqual([]);
 	});
 });
 
 describe('computeWaveformPeaksProgressive', () => {
-	const immediateYield = (): Promise<void> => Promise.resolve();
-
-	it('produces the same normalized result as the synchronous version', async () => {
+	it('produces correctly normalized peaks across chunks', async () => {
 		const channel = new Float32Array([
 			0.1, 0.1, 0.5, 0.5, 0.9, 0.2, 0.3, 0.0,
 		]);
-		const progressive = await computeWaveformPeaksProgressive(
-			[channel],
-			4,
-			{
-				chunkBuckets: 1,
-				yieldControl: immediateYield,
-			},
-		);
-		const sync = computeWaveformPeaks([channel], 4);
-		expect(progressive).toHaveLength(4);
-		progressive.forEach((value, i) => {
-			expect(value).toBeCloseTo(sync[i]);
+		const peaks = await computeWaveformPeaksProgressive([channel], 4, {
+			chunkBuckets: 1,
+			yieldControl: immediateYield,
 		});
+		// Buckets hold the max abs amplitude (0.1, 0.5, 0.9, 0.3), normalized
+		// so the loudest (0.9) maps to 1
+		expect(peaks).toHaveLength(4);
+		expect(peaks[0]).toBeCloseTo(0.1 / 0.9);
+		expect(peaks[1]).toBeCloseTo(0.5 / 0.9);
+		expect(peaks[2]).toBeCloseTo(1);
+		expect(peaks[3]).toBeCloseTo(0.3 / 0.9);
 	});
 
 	it('reports a normalized snapshot after each chunk and yields between chunks', async () => {
@@ -250,5 +283,89 @@ describe('WaveformPeakCache — eviction and overwrite', () => {
 		expect(cache.get('a')).toBeUndefined();
 		expect(cache.get('b')).toEqual([2]);
 		expect(cache.get('c')).toEqual([3]);
+	});
+});
+
+describe('SharedAudioDecoder', () => {
+	/** A fake OfflineAudioContext recording how it was constructed and used. */
+	class FakeOfflineAudioContext {
+		static count = 0;
+		static last: FakeOfflineAudioContext | null = null;
+		readonly decodeAudioData = jest.fn(
+			(): Promise<AudioBuffer> =>
+				Promise.resolve({ duration: 1 } as AudioBuffer),
+		);
+		constructor(
+			readonly numberOfChannels: number,
+			readonly length: number,
+			readonly sampleRate: number,
+		) {
+			FakeOfflineAudioContext.count += 1;
+			FakeOfflineAudioContext.last = this;
+		}
+	}
+
+	type OfflineCtor = typeof OfflineAudioContext;
+	let original: OfflineCtor | undefined;
+
+	beforeEach(() => {
+		FakeOfflineAudioContext.count = 0;
+		FakeOfflineAudioContext.last = null;
+		original = (globalThis as { OfflineAudioContext?: OfflineCtor })
+			.OfflineAudioContext;
+		(
+			globalThis as { OfflineAudioContext?: OfflineCtor }
+		).OfflineAudioContext =
+			FakeOfflineAudioContext as unknown as OfflineCtor;
+	});
+
+	afterEach(() => {
+		(
+			globalThis as { OfflineAudioContext?: OfflineCtor }
+		).OfflineAudioContext = original;
+	});
+
+	it('decodes through a low-sample-rate OfflineAudioContext', async () => {
+		const decoder = new SharedAudioDecoder();
+		const data = new ArrayBuffer(8);
+
+		await decoder.decode(data);
+
+		// A long recording must not be decoded at its full native rate; the
+		// waveform only needs a low-rate amplitude envelope
+		expect(FakeOfflineAudioContext.count).toBe(1);
+		expect(FakeOfflineAudioContext.last?.sampleRate).toBe(
+			WAVEFORM_DECODE_SAMPLE_RATE,
+		);
+		expect(
+			FakeOfflineAudioContext.last?.decodeAudioData,
+		).toHaveBeenCalledWith(data);
+	});
+
+	it('reuses one decoding context across files', async () => {
+		const decoder = new SharedAudioDecoder();
+
+		await decoder.decode(new ArrayBuffer(4));
+		await decoder.decode(new ArrayBuffer(4));
+
+		// One shared context, so embeds of several recordings never spawn a
+		// context each
+		expect(FakeOfflineAudioContext.count).toBe(1);
+	});
+
+	it('drops the context on close so a later decode recreates it', async () => {
+		const decoder = new SharedAudioDecoder();
+		await decoder.decode(new ArrayBuffer(4));
+		expect(FakeOfflineAudioContext.count).toBe(1);
+
+		await decoder.close();
+		await decoder.decode(new ArrayBuffer(4));
+
+		expect(FakeOfflineAudioContext.count).toBe(2);
+	});
+
+	it('close is safe when no context was ever created', async () => {
+		const decoder = new SharedAudioDecoder();
+		await expect(decoder.close()).resolves.toBeUndefined();
 	});
 });

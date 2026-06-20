@@ -11,7 +11,7 @@
  * @module player/playerMode
  */
 
-import type { MediaKind } from './mediaProbe';
+import { MEDIA_KIND, type MediaKind } from './mediaProbe';
 
 /**
  * Whether an embed is in an editable context. True only when the element
@@ -25,11 +25,15 @@ export function isEditableContext(el: HTMLElement): boolean {
 
 /**
  * Whether the enhanced player should take over the embed. Only when the
- * feature is enabled and the file is audio-only; video and unsupported
- * files use Obsidian's built-in embed.
+ * feature is enabled and the file is audio-only; video, unsupported, and
+ * not-yet-probed (null) files use Obsidian's built-in embed. Accepting null
+ * lets this be the single decision point even before a file has been probed.
  * @param enabled - The enhancedPlayerEnabled setting
- * @param kind - Probed media kind
+ * @param kind - Probed media kind, or null when the file has not been probed
  */
-export function shouldEnhance(enabled: boolean, kind: MediaKind): boolean {
-	return enabled && kind === 'audio';
+export function shouldEnhance(
+	enabled: boolean,
+	kind: MediaKind | null,
+): boolean {
+	return enabled && kind === MEDIA_KIND.audio;
 }

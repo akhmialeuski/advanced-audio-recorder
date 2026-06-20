@@ -5,8 +5,6 @@
 import {
 	activeMarkerIndex,
 	addMarker,
-	bookmarks,
-	chapterIndexAt,
 	chapters,
 	markerRows,
 	nextChapterTime,
@@ -61,15 +59,14 @@ describe('removeMarker / updateMarker', () => {
 	});
 });
 
-describe('bookmarks / chapters', () => {
-	it('partitions by kind, each time-sorted', () => {
+describe('chapters', () => {
+	it('returns only the chapters, time-sorted', () => {
 		const list = [
 			marker('c2', 40, 'chapter'),
 			marker('b2', 30, 'bookmark'),
 			marker('c1', 10, 'chapter'),
 			marker('b1', 5, 'bookmark'),
 		];
-		expect(bookmarks(list).map((m) => m.id)).toEqual(['b1', 'b2']);
 		expect(chapters(list).map((m) => m.id)).toEqual(['c1', 'c2']);
 	});
 });
@@ -80,13 +77,6 @@ describe('chapter navigation', () => {
 		marker('c2', 60, 'chapter'),
 		marker('c3', 120, 'chapter'),
 	]);
-
-	it('finds the current chapter index', () => {
-		expect(chapterIndexAt(sorted, 0)).toBe(0);
-		expect(chapterIndexAt(sorted, 70)).toBe(1);
-		expect(chapterIndexAt(sorted, 130)).toBe(2);
-		expect(chapterIndexAt([], 5)).toBe(-1);
-	});
 
 	it('finds the next chapter time', () => {
 		expect(nextChapterTime(sorted, 0)).toBe(60);
@@ -151,17 +141,6 @@ describe('markerModel — edge and negative cases', () => {
 	it('updateMarker on a missing id is a no-op', () => {
 		const list = [marker('a', 1)];
 		expect(updateMarker(list, 'missing', { label: 'x' })).toEqual(list);
-	});
-
-	it('chapterIndexAt handles boundaries and empty input', () => {
-		const sorted = sortMarkers([
-			marker('c1', 0, 'chapter'),
-			marker('c2', 60, 'chapter'),
-		]);
-		expect(chapterIndexAt(sorted, -1)).toBe(-1);
-		expect(chapterIndexAt(sorted, 0)).toBe(0);
-		expect(chapterIndexAt(sorted, 60)).toBe(1);
-		expect(chapterIndexAt([], 0)).toBe(-1);
 	});
 
 	it('nextChapterTime returns null at or past the last chapter', () => {

@@ -39,6 +39,8 @@ interface FakeAudio {
 	pause: jest.Mock;
 	addEventListener: (type: string, cb: Listener) => void;
 	removeEventListener: (type: string, cb: Listener) => void;
+	/** Test hook: invoke the registered listeners for an event type. */
+	emit: (type: string) => void;
 }
 
 function makeFakeAudio(): FakeAudio {
@@ -67,6 +69,11 @@ function makeFakeAudio(): FakeAudio {
 		removeEventListener: (type, cb) => {
 			handlers.get(type)?.delete(cb);
 		},
+		emit: (type) => {
+			handlers.get(type)?.forEach((cb) => {
+				cb();
+			});
+		},
 	};
 	return audio;
 }
@@ -74,6 +81,9 @@ function makeFakeAudio(): FakeAudio {
 /** A registry that hands out one shared audio: first acquire is "new". */
 function makeRegistry(audio: FakeAudio): AudioPlayerRegistry {
 	let created = false;
+	// Faithfully track the shared engaged flag so #t= hint tests exercise the
+	// real cross-embed behavior (engaging via one embed clears the hint on all)
+	let engaged = false;
 	const registry = {
 		acquireAudio: jest.fn(() => {
 			const isNew = !created;
@@ -87,6 +97,10 @@ function makeRegistry(audio: FakeAudio): AudioPlayerRegistry {
 		seek: jest.fn(),
 		applySettings: jest.fn(),
 		clear: jest.fn(),
+		markAudioEngaged: jest.fn(() => {
+			engaged = true;
+		}),
+		isAudioEngaged: jest.fn(() => engaged),
 	};
 	return registry as AudioPlayerRegistry;
 }
@@ -132,6 +146,7 @@ function makePlayer(
 	registry: AudioPlayerRegistry,
 	settings: ResolvedPlayerSettings,
 	file: TFile = makeFile(),
+	startSeconds: number | null = null,
 ): AudioPlayer {
 	return new AudioPlayer(
 		container,
@@ -142,7 +157,7 @@ function makePlayer(
 		new WaveformPeakCache(),
 		decoder,
 		markerStore,
-		{ startSeconds: null, sourcePath: 'note.md', immediate: true },
+		{ startSeconds, sourcePath: 'note.md', immediate: true },
 	);
 }
 
@@ -338,5 +353,322 @@ describe('waveform rendering decision (F2/F3)', () => {
 		} finally {
 			warn.mockRestore();
 		}
+	});
+});
+
+describe('timecode start offset (#t=) positions and shows the embed', () => {
+	it('shows the #t= offset as the start position without moving the shared audio', () => {
+		const audio = makeFakeAudio();
+		audio.duration = 5;
+		audio.readyState = 1;
+		const container = makeContainer();
+
+		makePlayer(
+			container,
+			makeRegistry(audio),
+			PLAIN,
+			makeFile(1000, 'wav'),
+			3,
+		).onload();
+
+		// The embed shows its #t=3 start (paused at 3 of 5 seconds)...
+		expect(container.querySelector('.aar-player-time')?.textContent).toBe(
+			'0:03 / 0:05',
+		);
+		expect(audio.paused).toBe(true);
+		// ...but it must NOT move the shared element, so a second embed of the
+		// same file is never dragged to 0:03 (the start is per-embed, display
+		// only, until this embed's playback actually begins)
+		expect(audio.currentTime).toBe(0);
+	});
+
+	it('keeps a plain embed at 0:00 while a same-file #t= embed shows its offset', () => {
+		// Two distinct embeds of ONE file share a single audio element (so one
+		// playback is controllable across view modes). The #t= start must stay
+		// per-embed: the plain embed must not inherit the other embed's 0:03.
+		const audio = makeFakeAudio();
+		audio.duration = 5;
+		audio.readyState = 1;
+		const registry = makeRegistry(audio);
+
+		const withOffset = makeContainer();
+		makePlayer(
+			withOffset,
+			registry,
+			PLAIN,
+			makeFile(1000, 'wav'),
+			3,
+		).onload();
+		const plain = makeContainer();
+		makePlayer(
+			plain,
+			registry,
+			PLAIN,
+			makeFile(1000, 'wav'),
+			null,
+		).onload();
+
+		expect(withOffset.querySelector('.aar-player-time')?.textContent).toBe(
+			'0:03 / 0:05',
+		);
+		expect(plain.querySelector('.aar-player-time')?.textContent).toBe(
+			'0:00 / 0:05',
+		);
+		expect(audio.currentTime).toBe(0);
+	});
+
+	it('starts playback from the #t= offset when the user presses play', () => {
+		const audio = makeFakeAudio();
+		audio.duration = 5;
+		audio.readyState = 1;
+		const container = makeContainer();
+		makePlayer(
+			container,
+			makeRegistry(audio),
+			PLAIN,
+			makeFile(1000, 'wav'),
+			3,
+		).onload();
+		// Display-only until the user engages this embed
+		expect(audio.currentTime).toBe(0);
+
+		container
+			.querySelector<HTMLElement>('[aria-label="Play / pause"]')
+			?.click();
+
+		// Pressing play engages the embed at its #t= start
+		expect(audio.currentTime).toBe(3);
+		expect(audio.play).toHaveBeenCalled();
+	});
+
+	it('shows the live shared position, not its #t= start, once playback is engaged', () => {
+		const audio = makeFakeAudio();
+		audio.duration = 5;
+		audio.readyState = 1;
+		// Another embed (or the user) has already moved playback
+		audio.currentTime = 4;
+		const container = makeContainer();
+
+		makePlayer(
+			container,
+			makeRegistry(audio),
+			PLAIN,
+			makeFile(1000, 'wav'),
+			3,
+		).onload();
+
+		// The #t= start is a hint only while the shared audio is untouched; once
+		// it is engaged, the embed reflects the real shared position
+		expect(container.querySelector('.aar-player-time')?.textContent).toBe(
+			'0:04 / 0:05',
+		);
+		expect(audio.currentTime).toBe(4);
+	});
+
+	it('clamps a #t= offset beyond the duration to the end', () => {
+		const audio = makeFakeAudio();
+		audio.duration = 5;
+		audio.readyState = 1;
+		const container = makeContainer();
+
+		makePlayer(
+			container,
+			makeRegistry(audio),
+			PLAIN,
+			makeFile(1000, 'wav'),
+			999,
+		).onload();
+
+		expect(container.querySelector('.aar-player-time')?.textContent).toBe(
+			'0:05 / 0:05',
+		);
+	});
+
+	it('does not resurface a stale #t= start after playback returns to 0', () => {
+		const audio = makeFakeAudio();
+		audio.duration = 5;
+		audio.readyState = 1;
+		const container = makeContainer();
+		makePlayer(
+			container,
+			makeRegistry(audio),
+			PLAIN,
+			makeFile(1000, 'wav'),
+			3,
+		).onload();
+		// Initially the embed shows its #t=3 start
+		expect(container.querySelector('.aar-player-time')?.textContent).toBe(
+			'0:03 / 0:05',
+		);
+
+		// Playback engages the shared timeline, then the user returns to the
+		// very start and pauses
+		audio.emit('play');
+		audio.currentTime = 0;
+		audio.paused = true;
+		audio.emit('timeupdate');
+
+		// The #t=3 hint is consumed: it must NOT reappear at position 0
+		expect(container.querySelector('.aar-player-time')?.textContent).toBe(
+			'0:00 / 0:05',
+		);
+	});
+
+	it('clears the #t= start on same-file embeds once playback engages', () => {
+		const audio = makeFakeAudio();
+		audio.duration = 5;
+		audio.readyState = 1;
+		// One shared timeline drives both embeds of the file
+		const registry = makeRegistry(audio);
+
+		const withOffset = makeContainer();
+		makePlayer(
+			withOffset,
+			registry,
+			PLAIN,
+			makeFile(1000, 'wav'),
+			3,
+		).onload();
+		const plain = makeContainer();
+		makePlayer(
+			plain,
+			registry,
+			PLAIN,
+			makeFile(1000, 'wav'),
+			null,
+		).onload();
+		expect(withOffset.querySelector('.aar-player-time')?.textContent).toBe(
+			'0:03 / 0:05',
+		);
+
+		// Playing the plain embed engages the shared timeline; after it returns
+		// to 0 paused, the #t= embed must reflect the live timeline, not its hint
+		audio.emit('play');
+		audio.currentTime = 0;
+		audio.paused = true;
+		audio.emit('timeupdate');
+
+		expect(withOffset.querySelector('.aar-player-time')?.textContent).toBe(
+			'0:00 / 0:05',
+		);
+	});
+});
+
+describe('lazy waveform decode (B2)', () => {
+	/** A controllable IntersectionObserver: never auto-fires; the test drives it. */
+	class MockIntersectionObserver {
+		static instances: MockIntersectionObserver[] = [];
+		readonly observe = jest.fn();
+		readonly unobserve = jest.fn();
+		readonly disconnect = jest.fn();
+		constructor(private readonly callback: IntersectionObserverCallback) {
+			MockIntersectionObserver.instances.push(this);
+		}
+		/** Simulate the observed player scrolling into view. */
+		triggerIntersect(): void {
+			this.callback(
+				[{ isIntersecting: true } as IntersectionObserverEntry],
+				this as unknown as IntersectionObserver,
+			);
+		}
+	}
+
+	const WAVEFORM: ResolvedPlayerSettings = {
+		showWaveform: true,
+		enableMarkers: false,
+	};
+
+	let originalIO: typeof IntersectionObserver | undefined;
+	let warn: jest.SpyInstance;
+
+	beforeEach(() => {
+		MockIntersectionObserver.instances = [];
+		originalIO = window.IntersectionObserver;
+		window.IntersectionObserver =
+			MockIntersectionObserver as unknown as typeof IntersectionObserver;
+		// loadWaveform's decode rejects in these tests; silence the warning
+		warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+	});
+
+	afterEach(() => {
+		window.IntersectionObserver = originalIO as typeof IntersectionObserver;
+		warn.mockRestore();
+	});
+
+	/** Builds a waveform player wired to a decode spy. */
+	function makeWaveformPlayer(decode: jest.Mock): AudioPlayer {
+		return new AudioPlayer(
+			makeContainer(),
+			app,
+			makeFile(1000, 'wav'),
+			WAVEFORM,
+			makeRegistry(makeFakeAudio()),
+			new WaveformPeakCache(),
+			{ decode },
+			markerStore,
+			{ startSeconds: null, sourcePath: 'note.md', immediate: true },
+		);
+	}
+
+	const tick = (): Promise<void> =>
+		new Promise((resolve) => setTimeout(resolve, 0));
+
+	const rejectingDecode = (): jest.Mock =>
+		jest.fn(() => Promise.reject(new Error('no decode in tests')));
+
+	it('does not decode until the player scrolls into view', async () => {
+		const decode = rejectingDecode();
+		makeWaveformPlayer(decode).onload();
+
+		// The waveform layer is built eagerly, but nothing is decoded yet — a
+		// long note with many recordings must not decode every embed up front
+		expect(MockIntersectionObserver.instances).toHaveLength(1);
+		expect(decode).not.toHaveBeenCalled();
+
+		MockIntersectionObserver.instances[0].triggerIntersect();
+		await tick();
+
+		expect(decode).toHaveBeenCalledTimes(1);
+	});
+
+	it('decodes only once and stops observing after the first intersection', async () => {
+		const decode = rejectingDecode();
+		makeWaveformPlayer(decode).onload();
+		const observer = MockIntersectionObserver.instances[0];
+
+		observer.triggerIntersect();
+		await tick();
+		// Scrolling away and back must not re-decode
+		observer.triggerIntersect();
+		await tick();
+
+		expect(decode).toHaveBeenCalledTimes(1);
+		expect(observer.disconnect).toHaveBeenCalled();
+	});
+
+	it('disconnects the observer on unload without decoding off-screen', () => {
+		const decode = rejectingDecode();
+		const player = makeWaveformPlayer(decode);
+		// load() (not onload()) so the mock marks the child loaded and runs the
+		// registered unload cleanups
+		player.load();
+		const observer = MockIntersectionObserver.instances[0];
+
+		player.unload();
+
+		expect(observer.disconnect).toHaveBeenCalled();
+		expect(decode).not.toHaveBeenCalled();
+	});
+
+	it('decodes immediately when IntersectionObserver is unavailable', async () => {
+		window.IntersectionObserver =
+			undefined as unknown as typeof IntersectionObserver;
+		const decode = rejectingDecode();
+		makeWaveformPlayer(decode).onload();
+		await tick();
+
+		// No observer to defer behind -> decode right away (fallback path)
+		expect(decode).toHaveBeenCalledTimes(1);
+		expect(MockIntersectionObserver.instances).toHaveLength(0);
 	});
 });

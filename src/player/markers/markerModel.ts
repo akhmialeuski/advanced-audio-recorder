@@ -10,8 +10,18 @@
  * @module player/markers/markerModel
  */
 
+/**
+ * The marker kinds the player supports, as named constants so call sites
+ * reference MARKER_KIND.bookmark instead of repeating the literal — which
+ * also pins the persisted `kind` value in one place.
+ */
+export const MARKER_KIND = {
+	bookmark: 'bookmark',
+	chapter: 'chapter',
+} as const;
+
 /** Distinguishes a jump-to bookmark from a chapter boundary. */
-export type MarkerKind = 'bookmark' | 'chapter';
+export type MarkerKind = (typeof MARKER_KIND)[keyof typeof MARKER_KIND];
 
 /**
  * Tolerance for time comparisons so a marker positioned exactly at the
@@ -92,41 +102,11 @@ export function updateMarker(
 }
 
 /**
- * Returns the time-sorted bookmarks from a marker list.
- * @param markers - Markers to filter
- */
-export function bookmarks(markers: readonly PlayerMarker[]): PlayerMarker[] {
-	return sortMarkers(markers.filter((m) => m.kind === 'bookmark'));
-}
-
-/**
  * Returns the time-sorted chapters from a marker list.
  * @param markers - Markers to filter
  */
 export function chapters(markers: readonly PlayerMarker[]): PlayerMarker[] {
-	return sortMarkers(markers.filter((m) => m.kind === 'chapter'));
-}
-
-/**
- * Returns the index of the chapter containing the given time (the last
- * chapter whose start is at or before the time), or -1 when the time
- * precedes the first chapter or there are no chapters.
- * @param sortedChapters - Chapters sorted by time ascending
- * @param time - Playback offset in seconds
- */
-export function chapterIndexAt(
-	sortedChapters: readonly PlayerMarker[],
-	time: number,
-): number {
-	let index = -1;
-	for (let i = 0; i < sortedChapters.length; i++) {
-		if (sortedChapters[i].time <= time + TIME_EPSILON_SECONDS) {
-			index = i;
-		} else {
-			break;
-		}
-	}
-	return index;
+	return sortMarkers(markers.filter((m) => m.kind === MARKER_KIND.chapter));
 }
 
 /**
@@ -211,7 +191,7 @@ export function parseMarkers(value: unknown): PlayerMarker[] {
 			typeof time !== 'number' ||
 			!Number.isFinite(time) ||
 			typeof id !== 'string' ||
-			(kind !== 'bookmark' && kind !== 'chapter')
+			(kind !== MARKER_KIND.bookmark && kind !== MARKER_KIND.chapter)
 		) {
 			continue;
 		}
@@ -225,8 +205,20 @@ export function parseMarkers(value: unknown): PlayerMarker[] {
 	return sortMarkers(result);
 }
 
+/**
+ * The actions a marker-list row can carry, as named constants so the
+ * dataset values written and read back by the view never drift (those
+ * reads are plain strings the type system cannot check).
+ */
+export const MARKER_ROW_ACTION = {
+	jump: 'jump',
+	rename: 'rename',
+	delete: 'delete',
+} as const;
+
 /** Action available on a marker-list row. */
-export type MarkerRowAction = 'jump' | 'rename' | 'delete';
+export type MarkerRowAction =
+	(typeof MARKER_ROW_ACTION)[keyof typeof MARKER_ROW_ACTION];
 
 /**
  * A marker-list row. The same markers appear in every render mode,
@@ -264,8 +256,12 @@ export function markerRows(
 	durationSeconds: number | null = null,
 ): MarkerRow[] {
 	const actions: MarkerRowAction[] = editable
-		? ['jump', 'rename', 'delete']
-		: ['jump'];
+		? [
+				MARKER_ROW_ACTION.jump,
+				MARKER_ROW_ACTION.rename,
+				MARKER_ROW_ACTION.delete,
+			]
+		: [MARKER_ROW_ACTION.jump];
 	const sorted = sortMarkers(markers);
 	return sorted.map((marker, index) => {
 		const next = sorted[index + 1];
