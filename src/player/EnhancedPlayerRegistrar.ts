@@ -69,6 +69,12 @@ const ENHANCED_FLAG = 'aarEnhanced';
 const RERENDER_DEBOUNCE_MS = 50;
 
 /**
+ * Number of extra scoped re-render attempts for a freshly inserted embed
+ * whose metadata cache entry may lag behind the editor update.
+ */
+const SCOPED_RERENDER_RETRY_LIMIT = 5;
+
+/**
  * Registers and owns the enhanced player integration.
  */
 export class EnhancedPlayerRegistrar {
@@ -88,6 +94,8 @@ export class EnhancedPlayerRegistrar {
 	private lastResolved: ResolvedPlayerSettings | null = null;
 	/** Paths pending a scoped re-render (probe upgrades of specific files). */
 	private readonly pendingRerenderPaths = new Set<string>();
+	/** Retry count per scoped path while metadata catches up. */
+	private readonly pendingRerenderRetries = new Map<string, number>();
 	/** Whether every leaf must re-render (master toggle flip). */
 	private pendingRerenderAll = false;
 	/** Debounced flush that coalesces a burst of re-render requests. */
@@ -180,6 +188,8 @@ export class EnhancedPlayerRegistrar {
 		this.peakCache.clear();
 		this.mediaKindCache.clear();
 		this.probing.clear();
+		this.pendingRerenderPaths.clear();
+		this.pendingRerenderRetries.clear();
 		this.markerStore.clearCache();
 		void this.decoder.close().catch(() => {
 			// Closing a context that never opened or already failed is
@@ -387,6 +397,9 @@ export class EnhancedPlayerRegistrar {
 	 */
 	private requestRerenderForFile(path: string): void {
 		this.pendingRerenderPaths.add(path);
+		if (!this.pendingRerenderRetries.has(path)) {
+			this.pendingRerenderRetries.set(path, 0);
+		}
 		this.scheduleRerender();
 	}
 
@@ -403,31 +416,46 @@ export class EnhancedPlayerRegistrar {
 			return;
 		}
 		const leaves = this.app.workspace.getLeavesOfType('markdown');
-		for (const leaf of leaves) {
-			if (all || this.leafEmbedsAnyPath(leaf, paths)) {
+		if (all) {
+			for (const leaf of leaves) {
 				this.rerenderLeaf(leaf);
 			}
+			for (const path of paths) {
+				this.pendingRerenderRetries.delete(path);
+			}
+			return;
 		}
+		const unmatchedPaths = new Set(paths);
+		for (const leaf of leaves) {
+			const matchedPaths = this.leafEmbeddedPaths(leaf, paths);
+			if (matchedPaths.size > 0) {
+				this.rerenderLeaf(leaf);
+				for (const path of matchedPaths) {
+					unmatchedPaths.delete(path);
+				}
+			}
+		}
+		this.rescheduleUnmatchedRerenders(unmatchedPaths);
 	}
 
 	/**
-	 * Whether a leaf's note embeds any of the given file paths, resolved
-	 * through the metadata cache. A note with no matching embed is left
-	 * untouched.
+	 * Returns the given file paths embedded by a leaf's note, resolved through
+	 * the metadata cache. A note with no matching embed is left untouched.
 	 * @param leaf - Workspace leaf to test
 	 * @param paths - Candidate embedded file paths
 	 */
-	private leafEmbedsAnyPath(
+	private leafEmbeddedPaths(
 		leaf: WorkspaceLeaf,
 		paths: Set<string>,
-	): boolean {
+	): Set<string> {
+		const matchedPaths = new Set<string>();
 		const view = leaf.view;
 		if (!(view instanceof MarkdownView) || !view.file) {
-			return false;
+			return matchedPaths;
 		}
 		const embeds = this.app.metadataCache.getFileCache(view.file)?.embeds;
 		if (!embeds) {
-			return false;
+			return matchedPaths;
 		}
 		for (const embed of embeds) {
 			const dest = this.app.metadataCache.getFirstLinkpathDest(
@@ -435,10 +463,30 @@ export class EnhancedPlayerRegistrar {
 				view.file.path,
 			);
 			if (dest && paths.has(dest.path)) {
-				return true;
+				matchedPaths.add(dest.path);
 			}
 		}
-		return false;
+		return matchedPaths;
+	}
+
+	/**
+	 * Keeps a scoped upgrade alive briefly when the media probe finished before
+	 * Obsidian indexed the newly inserted embed in metadataCache.
+	 * @param unmatchedPaths - Probed audio paths not found in open note caches
+	 */
+	private rescheduleUnmatchedRerenders(unmatchedPaths: Set<string>): void {
+		for (const path of unmatchedPaths) {
+			const retryCount = this.pendingRerenderRetries.get(path) ?? 0;
+			if (retryCount >= SCOPED_RERENDER_RETRY_LIMIT) {
+				this.pendingRerenderRetries.delete(path);
+				continue;
+			}
+			this.pendingRerenderRetries.set(path, retryCount + 1);
+			this.pendingRerenderPaths.add(path);
+		}
+		if (this.pendingRerenderPaths.size > 0) {
+			this.scheduleRerender();
+		}
 	}
 
 	/**

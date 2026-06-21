@@ -81,6 +81,7 @@ function setup(enabled = true): {
 	settings: AudioRecorderSettings;
 	leaves: { preview: WorkspaceLeaf; source: WorkspaceLeaf };
 	getLeaves: jest.Mock;
+	embedsByNote: Record<string, { embeds: Array<{ link: string }> }>;
 } {
 	const settings: AudioRecorderSettings = {
 		...DEFAULT_SETTINGS,
@@ -164,6 +165,7 @@ function setup(enabled = true): {
 		settings,
 		leaves: { preview: previewLeaf, source: sourceLeaf },
 		getLeaves,
+		embedsByNote,
 	};
 }
 
@@ -332,6 +334,26 @@ describe('EnhancedPlayerRegistrar re-renders only when needed', () => {
 			(leaves.source as unknown as { rebuildView: jest.Mock })
 				.rebuildView,
 		).not.toHaveBeenCalled();
+	});
+
+	it('retries a scoped upgrade when metadata has not indexed the new embed yet', async () => {
+		probeMock.mockResolvedValue('audio');
+		const { creator, embedsByNote, leaves } = setup(true);
+		const previewLeaf = leaves.preview as unknown as {
+			rebuildView: jest.Mock;
+		};
+		const rebuildView = previewLeaf.rebuildView;
+		embedsByNote['note.md'] = { embeds: [] };
+
+		creator(info, fileOf('mp4'), '');
+		await flush();
+
+		expect(rebuildView).not.toHaveBeenCalled();
+
+		embedsByNote['note.md'] = { embeds: [{ link: 'recording.mp4' }] };
+		await flush();
+
+		expect(rebuildView).toHaveBeenCalledTimes(1);
 	});
 
 	it('does not re-render after probing a real video file', async () => {
