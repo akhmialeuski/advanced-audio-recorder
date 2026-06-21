@@ -45,6 +45,20 @@ export interface InsertionContext {
 }
 
 /**
+ * Result of finalizing a recording: the vault paths of the audio files
+ * written, and the note the audio links were inserted into (null when no
+ * note received them). The post-save hook uses `notePath` so an automatic
+ * transcription targets the same note the recording embed landed in, instead
+ * of whatever file happens to be active when the async job runs.
+ */
+export interface RecordingSaveResult {
+	/** Vault paths of the audio files that were written. */
+	audioPaths: string[];
+	/** Note the audio links were inserted into, or null when none was. */
+	notePath: string | null;
+}
+
+/**
  * Immutable snapshot of the session-scoped recording configuration,
  * taken at recording start. The per-track part and finalization paths
  * read these values repeatedly during the session; without the

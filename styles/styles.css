@@ -482,3 +482,39 @@ input.aar-input-invalid {
     background-color: var(--background-modifier-hover);
     box-shadow: inset 2px 0 0 var(--color-accent);
 }
+
+/* Transcription modal */
+.aar-transcribe-config {
+    color: var(--text-muted);
+    font-size: 0.9em;
+}
+
+.aar-transcribe-options {
+    margin: 8px 0;
+}
+
+.aar-transcribe-options-disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.aar-transcribe-status {
+    margin: 8px 0 4px;
+    font-size: 0.9em;
+}
+
+.aar-transcribe-progress {
+    height: 4px;
+    width: 100%;
+    background-color: var(--background-modifier-border);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.aar-transcribe-progress-bar {
+    height: 100%;
+    width: var(--aar-transcribe-progress, 0%);
+    background-color: var(--color-accent);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+}

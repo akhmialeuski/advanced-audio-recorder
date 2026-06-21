@@ -271,27 +271,41 @@ export class EnhancedPlayerRegistrar {
 		file: TFile,
 		subpath: string,
 	): EmbedComponent {
-		const enabled = this.getSettings().enhancedPlayerEnabled;
 		const nativeCreator = this.embedOverride?.getPrevious(file.extension);
-		const kind = this.knownKind(file);
+		// A throw here propagates into Obsidian's embed registry and breaks
+		// opening the whole note ("Failed to open"). Guard it: log the full
+		// error and fall back to Obsidian's native embed so the note opens.
+		try {
+			const enabled = this.getSettings().enhancedPlayerEnabled;
+			const kind = this.knownKind(file);
 
-		if (shouldEnhance(enabled, kind)) {
+			if (shouldEnhance(enabled, kind)) {
+				return this.buildAudioPlayer(info, file, subpath);
+			}
+
+			// Not (yet) known to be audio: render Obsidian's own embed. If the
+			// file has not been probed yet, probe its content in the background
+			// and re-render to upgrade it if it turns out audio-only.
+			if (enabled && kind === null && nativeCreator) {
+				void this.probeAndUpgrade(file);
+			}
+			if (nativeCreator) {
+				return nativeCreator(info, file, subpath);
+			}
+			// No captured native creator (does not happen for the registered
+			// media extensions): fall back to the enhanced player so the embed
+			// is never empty.
 			return this.buildAudioPlayer(info, file, subpath);
+		} catch (error) {
+			console.error(
+				`${PLUGIN_LOG_PREFIX} Failed to create the audio embed for ${file.path}; falling back to the native embed.`,
+				error,
+			);
+			if (nativeCreator) {
+				return nativeCreator(info, file, subpath);
+			}
+			throw error;
 		}
-
-		// Not (yet) known to be audio: render Obsidian's own embed. If the
-		// file has not been probed yet, probe its content in the background
-		// and re-render to upgrade it if it turns out audio-only.
-		if (enabled && kind === null && nativeCreator) {
-			void this.probeAndUpgrade(file);
-		}
-		if (nativeCreator) {
-			return nativeCreator(info, file, subpath);
-		}
-		// No captured native creator (does not happen for the registered
-		// media extensions): fall back to the enhanced player so the embed
-		// is never empty.
-		return this.buildAudioPlayer(info, file, subpath);
 	}
 
 	/**

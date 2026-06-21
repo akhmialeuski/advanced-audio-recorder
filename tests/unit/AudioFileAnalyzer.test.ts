@@ -100,19 +100,19 @@ describe('getAudioFileInfo', () => {
 	});
 
 	it('should correctly infer codecs from extensions', async () => {
-		(file as any).extension = 'mp4';
+		(file as { extension: string }).extension = 'mp4';
 		let result = await getAudioFileInfo(app, file);
 		expect(result?.containerFormat).toBe('audio/mp4');
 		expect(result?.audioCodec).toBe('aac');
 
-		(file as any).extension = 'ogg';
+		(file as { extension: string }).extension = 'ogg';
 		result = await getAudioFileInfo(app, file);
 		expect(result?.containerFormat).toBe('audio/ogg');
 		expect(result?.audioCodec).toBe('opus/vorbis');
 	});
 
 	it('should format very small files correctly', async () => {
-		(file as any).stat.size = 500;
+		(file as { stat: { size: number } }).stat.size = 500;
 		mockDecodeAudioData.mockResolvedValue({
 			duration: 1,
 			sampleRate: 44100,

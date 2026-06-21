@@ -200,3 +200,132 @@ export const WAVEFORM_MAX_DECODE_BYTES = 1024 * 1024 * 1024;
  * starts the decode just before the player scrolls into view.
  */
 export const PLAYER_WAVEFORM_PREFETCH_MARGIN_PX = 200;
+
+// Transcription
+
+/**
+ * Sample rate, in Hz, that audio is resampled to before transcription.
+ * 16 kHz mono is the input Whisper-family models are trained on and
+ * keeps uploads small.
+ */
+export const TRANSCRIBE_SAMPLE_RATE = 16000;
+
+/** Bytes per second of 16 kHz mono 16-bit PCM (the chunk upload rate). */
+export const TRANSCRIBE_BYTES_PER_SEC = TRANSCRIBE_SAMPLE_RATE * 2;
+
+/**
+ * Default upload size limit per request, in megabytes, for the Whisper
+ * API. OpenAI's limit is 25 MB; chunks are sized to stay under it.
+ */
+export const DEFAULT_TRANSCRIBE_CHUNK_MB = 24;
+
+/** Default OpenAI-compatible transcription endpoint base URL. */
+export const DEFAULT_WHISPER_API_BASE_URL = 'https://api.openai.com/v1';
+
+/** Default Whisper API model id. */
+export const DEFAULT_WHISPER_API_MODEL = 'whisper-1';
+
+/**
+ * Hard per-request upload ceiling for the OpenAI Whisper API, in bytes
+ * (25 MB). Files at or under this are uploaded in their original
+ * container; larger recordings are decoded and split into WAV chunks that
+ * stay under the limit.
+ */
+export const WHISPER_API_MAX_REQUEST_BYTES = 25 * 1024 * 1024;
+
+/** Default Deepgram pre-recorded API base URL. */
+export const DEFAULT_DEEPGRAM_BASE_URL = 'https://api.deepgram.com/v1';
+
+/** Default Deepgram model id. */
+export const DEFAULT_DEEPGRAM_MODEL = 'nova-3';
+
+/**
+ * Hard per-request upload ceiling for Deepgram pre-recorded audio, in
+ * bytes (2 GB). Deepgram diarizes a whole request with consistent speaker
+ * numbering, so files under this are sent in one piece instead of chunked.
+ */
+export const DEEPGRAM_MAX_REQUEST_BYTES = 2 * 1024 * 1024 * 1024;
+
+/** Default OpenAI-compatible chat base URL for LLM post-processing. */
+export const DEFAULT_LLM_OPENAI_BASE_URL = 'https://api.openai.com/v1';
+
+/** Default OpenAI-compatible chat model for LLM post-processing. */
+export const DEFAULT_LLM_OPENAI_MODEL = 'gpt-4o-mini';
+
+/** Default Anthropic Messages API base URL. */
+export const DEFAULT_LLM_ANTHROPIC_BASE_URL = 'https://api.anthropic.com/v1';
+
+/** Anthropic API version header value. */
+export const ANTHROPIC_API_VERSION = '2023-06-01';
+
+/** Default Anthropic model for transcript post-processing. */
+export const DEFAULT_LLM_ANTHROPIC_MODEL = 'claude-opus-4-8';
+
+/** Default local Ollama base URL for LLM post-processing. */
+export const DEFAULT_LLM_OLLAMA_BASE_URL = 'http://localhost:11434/v1';
+
+/** Minimum configurable transcription chunk size in megabytes. */
+export const MIN_TRANSCRIBE_CHUNK_MB = 1;
+
+/**
+ * Maximum configurable transcription chunk size in megabytes. Capped at
+ * 24 to stay under OpenAI's 25 MB per-request limit.
+ */
+export const MAX_TRANSCRIBE_CHUNK_MB = 24;
+
+/** Default maximum output tokens for LLM post-processing. */
+export const DEFAULT_LLM_MAX_TOKENS = 4096;
+
+/** Minimum configurable LLM output token budget. */
+export const MIN_LLM_MAX_TOKENS = 512;
+
+/** Maximum configurable LLM output token budget. */
+export const MAX_LLM_MAX_TOKENS = 32000;
+
+/**
+ * Floor timeout, in milliseconds, for a transcription HTTP request.
+ * Obsidian's requestUrl exposes no abort signal, so the helper races the
+ * request against a deadline to bound a hung endpoint (e.g. a misconfigured
+ * local Ollama/whisper server) instead of stalling forever. Whole-file
+ * uploads scale above this floor with their payload size; see
+ * TRANSCRIBE_UPLOAD_BYTES_PER_MS and TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS.
+ */
+export const TRANSCRIBE_REQUEST_TIMEOUT_MS = 120_000;
+
+/**
+ * Hard ceiling on a single transcription request timeout, in milliseconds
+ * (30 minutes). A whole-file upload (e.g. a multi-hundred-MB Deepgram
+ * request) scales its timeout with payload size up to this bound, so a
+ * large but healthy upload is never aborted prematurely.
+ */
+export const TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS = 30 * 60_000;
+
+/**
+ * Assumed sustained upload throughput, in bytes per millisecond (~1 MB/s),
+ * used to scale a request timeout with its payload size. Deliberately
+ * conservative so a slow connection still gets enough time to finish.
+ */
+export const TRANSCRIBE_UPLOAD_BYTES_PER_MS = 1024;
+
+/**
+ * Timeout, in milliseconds, for an LLM post-processing request (5 minutes).
+ * Longer than the transcription floor because a capable model cleaning or
+ * summarizing a long transcript can legitimately take minutes; a shorter
+ * deadline would discard completed (and billed) work as a false timeout.
+ */
+export const LLM_REQUEST_TIMEOUT_MS = 5 * 60_000;
+
+/**
+ * Maximum bytes buffered from the local whisper.cpp child process's stdout
+ * and stderr (64 MB). whisper.cpp prints the full transcript to stdout, so
+ * Node's 1 MB default would kill the process on a long recording; a
+ * generous ceiling lets long offline transcriptions complete.
+ */
+export const LOCAL_WHISPER_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
+
+/**
+ * Upper bound of the progress fraction reserved for chunk transcription.
+ * The remaining 0.95..1 band covers LLM post-processing and finalization,
+ * so the bar never jumps backwards when post-processing starts.
+ */
+export const TRANSCRIBE_CHUNK_PROGRESS_CEILING = 0.95;

@@ -3,9 +3,13 @@
  * @module main
  */
 
-import { Notice, Plugin } from 'obsidian';
+import { Notice, Plugin, TFile } from 'obsidian';
 import { RecordingStatus } from './types';
-import type { SaveProgress, RecordingControls } from './types';
+import type {
+	SaveProgress,
+	RecordingControls,
+	RecordingSaveResult,
+} from './types';
 import { PLUGIN_LOG_PREFIX } from './constants';
 import {
 	AudioRecorderSettings,
@@ -31,6 +35,8 @@ import { showDeviceSelectionModal } from './ui/DeviceSelectionModal';
 import { ContextMenu } from './ui/ContextMenu';
 import { EnhancedPlayerRegistrar } from './player/EnhancedPlayerRegistrar';
 import { MarkerStore } from './player/markers/MarkerStore';
+import { TranscriptionModal } from './ui/TranscriptionModal';
+import { AUDIO_EXTENSIONS } from './constants';
 import { delay } from './utils/TimeUtils';
 
 /** Delay before retrying a failed settings read, in milliseconds. */
@@ -124,6 +130,9 @@ export default class AudioRecorderPlugin extends Plugin {
 				updateRibbonIcon(this.ribbonIconEl, status);
 			},
 			this.journal,
+			(result: RecordingSaveResult) => {
+				this.handleRecordingSaved(result);
+			},
 		);
 
 		this.addSettingTab(new AudioRecorderSettingTab(this.app, this));
@@ -284,9 +293,7 @@ export default class AudioRecorderPlugin extends Plugin {
 		this.settings = await mergeSettingsAsync(data ?? {});
 		this.settingsInitialized = true;
 		if (restoredFromBackup) {
-			new Notice(
-				'Advanced Audio Recorder: settings were restored from the backup file.',
-			);
+			new Notice('Settings were restored from the backup file.');
 			// Complete the recovery: recreate the missing data.json
 			// right away instead of leaving the backup as the only
 			// copy until the user happens to change a setting.
@@ -541,6 +548,66 @@ export default class AudioRecorderPlugin extends Plugin {
 				);
 			},
 		});
+
+		this.addCommand({
+			id: 'transcribe-active-audio',
+			name: 'Transcribe active audio file',
+			checkCallback: (checking: boolean) => {
+				const file = this.app.workspace.getActiveFile();
+				const isAudio =
+					file instanceof TFile &&
+					AUDIO_EXTENSIONS.includes(file.extension.toLowerCase());
+				if (!this.settings.transcriptionEnabled || !isAudio) {
+					return false;
+				}
+				if (!checking) {
+					new TranscriptionModal(
+						this.app,
+						file,
+						() => this.settings,
+					).open();
+				}
+				return true;
+			},
+		});
+	}
+
+	/**
+	 * Transcribe-on-save hook: when enabled, transcribes the first saved
+	 * audio file (`audioPaths[0]`). The transcript is targeted at the same
+	 * note the recording embed was inserted into (`result.notePath`), so the
+	 * timecode links resolve there even if the user navigated to another note
+	 * before the async job ran.
+	 *
+	 * Only the first file is transcribed by design: a multi-track session
+	 * produces several tracks of the same audio (transcribing each would be
+	 * redundant and multiply API cost), and an auto-split session would
+	 * otherwise fire one transcription request per part. For those cases the
+	 * user transcribes the desired file explicitly via the context menu or
+	 * the "Transcribe active audio file" command.
+	 * @param result - The saved audio paths and the note the links landed in
+	 */
+	private handleRecordingSaved(result: RecordingSaveResult): void {
+		if (
+			!this.settings.transcriptionEnabled ||
+			!this.settings.transcribeOnSave ||
+			result.audioPaths.length === 0
+		) {
+			return;
+		}
+		const file = this.app.vault.getAbstractFileByPath(result.audioPaths[0]);
+		if (!(file instanceof TFile)) {
+			return;
+		}
+		// Open the transcription modal and auto-run it: the user gets visible
+		// progress and a cancel button for what can be a long, paid job instead
+		// of a silent background request. The modal reports its own errors and
+		// writes the configured outputs (with a file fallback when the note is
+		// not editable).
+		new TranscriptionModal(this.app, file, () => this.settings, {
+			autoStart: true,
+			notePath: result.notePath ?? undefined,
+		}).open();
 	}
 
 	/**

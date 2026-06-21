@@ -35,6 +35,7 @@ import {
 } from '../constants';
 import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
 import { SystemInfoModal } from '../diagnostics/SystemInfoModal';
+import { renderTranscriptionSection } from './sections/transcriptionSettingsSection';
 
 /** Debounce delay for saving text settings, in milliseconds. */
 const TEXT_SETTING_SAVE_DEBOUNCE_MS = 500;
@@ -359,7 +360,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Insert at original position')
 			.setDesc(
-				'When enabled, the plugin remembers the note and cursor position where recording started. The audio link is inserted at that location, even if you navigate away during recording. Note: if the original note is edited during recording, the insertion position may shift.',
+				'When enabled, the plugin remembers the note and insertion position where recording started. The audio link is inserted at that location, even if you navigate away during recording. Note: if the original note is edited during recording, the insertion position may shift.',
 			)
 			.addToggle((toggle) =>
 				toggle
@@ -537,6 +538,19 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 
 		// Audio player
 		this.renderAudioPlayerSettings(containerEl);
+
+		// Transcription
+		renderTranscriptionSection({
+			containerEl,
+			settings: this.plugin.settings,
+			save: () => this.plugin.saveSettings(),
+			rerender: () => {
+				this.display();
+			},
+			saveDebounced: () => {
+				this.saveTextSettingDebounced();
+			},
+		});
 
 		// Diagnostics
 		new Setting(containerEl).setName('Diagnostics').setHeading();

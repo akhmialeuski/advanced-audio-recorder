@@ -204,6 +204,48 @@ The waveform is drawn for supported audio files up to a large safety size. Peaks
 
 > **Desktop and mobile**: the enhanced player works wherever Obsidian renders audio embeds. Waveform extraction relies on the Web Audio API available in the app.
 
+## Transcription (speech-to-text)
+
+When **Enable transcription** is on in settings, recordings (and any existing audio file) can be transcribed to text. Right-click an audio file or its embed and choose **Transcribe audio**, run the **Transcribe active audio file** command, or enable **Transcribe after recording** to do it automatically.
+
+### Engines
+
+- **Whisper API (OpenAI-compatible)** — works with OpenAI and any compatible endpoint (e.g. Groq) by setting the base URL, key, and model. Recordings within the API's 25 MB per-request limit are uploaded in their original format; larger files are resampled to 16 kHz mono, split into upload-sized chunks, and stitched back onto one timeline.
+- **Deepgram** — Deepgram's official pre-recorded API (`nova-3` by default). Set the API key (and optionally the model or base URL). Files up to 2 GB are sent whole, so diarization keeps consistent speaker numbering across the entire recording. A free Deepgram account includes a generous starter credit; beyond that, usage is pay-as-you-go.
+- **Local whisper.cpp (desktop)** — runs a local `whisper.cpp` binary with no network access. Set the binary and model paths in settings.
+
+Audio preparation (decoding and chunking, when needed) happens in memory and works on both desktop and mobile; whenever a provider accepts the original container, the file is sent untouched, which keeps memory low and avoids re-encoding. Nothing is written to disk, except that the local whisper.cpp engine hands each request to the binary as a temporary WAV and deletes it afterward.
+
+All languages supported by the chosen model work; leave **Language** as `auto` to detect, or set an ISO code (e.g. `en`, `ru`, `es`).
+
+### Speakers and diarization
+
+The transcript data model carries per-segment **speaker** labels. Enable **Speaker diarization** to request them. Deepgram diarizes natively; OpenAI-compatible Whisper endpoints honor it on a best-effort basis. The provider detects the number of speakers automatically, and labels (e.g. `Speaker 1`) are rendered in the output.
+
+### Output
+
+Choose where the transcript goes with **Destination**:
+
+- **Insert into note** — render the full transcript Markdown into the active note.
+- **Save to file** — write a sidecar transcript file next to the audio.
+- **Note and file** — do both.
+- **Save to file and link it in the note** — write the sidecar file and insert a link (`[[…]]` in wikilink vaults) to it into the note, instead of pasting the whole transcript.
+
+Most options also appear in the **Transcribe audio** dialog, so you can choose the engine, language, diarization, destination, and file format for a single run without changing your defaults.
+
+- **File formats**: `JSON` (full data including speakers and word timings), `SRT`, `WebVTT`, or plain `TXT`. The sidecar is written next to the audio file.
+- **In-note formatting** is fully configurable: a **note heading**, toggles for timestamps and speakers, and three templates — **timestamp format** (`{time}`), **speaker format** (`{speaker}`), and **line format** (`{timestamp} {speaker} {text}`).
+- **Timestamps as player links**: each timestamp can be a `#t=` link that jumps the [enhanced player](#enhanced-audio-player) to that position — click a line to hear it.
+
+### LLM post-processing
+
+Optionally pass the transcript through an LLM to **clean up** punctuation/formatting (preserving wording, timestamps, and speakers), **summarize** it into key points and action items, or apply a **custom instruction**. Providers:
+
+- **OpenAI / Groq / Ollama** (OpenAI-compatible chat API — a local Ollama server needs no key).
+- **Anthropic (Claude)** — defaults to `claude-opus-4-8`.
+
+> **API keys** are stored in the plugin's `data.json` on this device and are never written to diagnostics output. Avoid syncing `data.json` to untrusted locations. Local whisper.cpp and Ollama keep everything offline.
+
 ## Formats and containers
 
 Available recording formats depend on your platform's **MediaRecorder** support. The plugin detects supported formats at runtime.

@@ -49,12 +49,14 @@ export function captureInsertionContext(
  * @param fileLinks - Array of saved file paths
  * @param insertionContext - Previously captured cursor context
  * @param app - Obsidian App instance
+ * @returns The path of the note the links were inserted into, or null when
+ *          no editable note was available to receive them
  */
 export function insertFileLinks(
 	fileLinks: string[],
 	insertionContext: InsertionContext | null,
 	app: App,
-): void {
+): string | null {
 	const links = fileLinks
 		.map((path) => {
 			const fileName = path.split('/').pop() ?? path;
@@ -79,7 +81,7 @@ export function insertFileLinks(
 				ch: 0,
 			};
 			editor.replaceRange(links + '\n', pos);
-			return;
+			return leafView.file?.path ?? insertionContext.filePath;
 		}
 	}
 
@@ -88,5 +90,7 @@ export function insertFileLinks(
 	const editor = activeView?.editor;
 	if (editor) {
 		editor.replaceSelection(links);
+		return activeView?.file?.path ?? null;
 	}
+	return null;
 }
