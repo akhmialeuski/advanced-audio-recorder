@@ -13,8 +13,8 @@
  * design.
  */
 
-import { MarkdownView } from 'obsidian';
-import type { App, Plugin, TFile, WorkspaceLeaf } from 'obsidian';
+import { MarkdownView, TFile } from 'obsidian';
+import type { App, Plugin, WorkspaceLeaf } from 'obsidian';
 import { EnhancedPlayerRegistrar } from 'src/player/EnhancedPlayerRegistrar';
 import { AudioPlayer } from 'src/player/AudioPlayer';
 import { AudioPlayerRegistry } from 'src/player/AudioPlayerRegistry';
@@ -81,6 +81,7 @@ function setup(enabled = true): {
 	settings: AudioRecorderSettings;
 	leaves: { preview: WorkspaceLeaf; source: WorkspaceLeaf };
 	getLeaves: jest.Mock;
+	embedsByNote: Record<string, { embeds: Array<{ link: string }> }>;
 } {
 	const settings: AudioRecorderSettings = {
 		...DEFAULT_SETTINGS,
@@ -118,6 +119,7 @@ function setup(enabled = true): {
 		embedRegistry: { embedByExtension },
 		vault: {
 			getResourcePath: () => 'app://media',
+			getAbstractFileByPath: (path: string) => fileFromPath(path),
 			on: jest.fn(() => ({})),
 		},
 		metadataCache: {
@@ -164,11 +166,20 @@ function setup(enabled = true): {
 		settings,
 		leaves: { preview: previewLeaf, source: sourceLeaf },
 		getLeaves,
+		embedsByNote,
 	};
 }
 
+function fileFromPath(path: string): TFile {
+	const extension = path.split('.').pop() ?? '';
+	return Object.assign(Object.create(TFile.prototype), {
+		path,
+		extension,
+	}) as TFile;
+}
+
 function fileOf(extension: string): TFile {
-	return { path: `recording.${extension}`, extension } as TFile;
+	return fileFromPath(`recording.${extension}`);
 }
 
 const info: EmbedInfo = {
@@ -315,6 +326,28 @@ describe('EnhancedPlayerRegistrar re-renders only when needed', () => {
 		expect(getLeaves).toHaveBeenCalledWith('markdown');
 	});
 
+	it('primes a saved recording for enhancement without waiting for native embed render', async () => {
+		probeMock.mockResolvedValue('audio');
+		const { registrar, embedsByNote, leaves } = setup(true);
+		const previewLeaf = leaves.preview as unknown as {
+			rebuildView: jest.Mock;
+		};
+		embedsByNote['note.md'] = { embeds: [] };
+
+		registrar.primeSavedRecordingsForEnhancement(
+			['recording.mp4'],
+			'note.md',
+		);
+		await flush();
+
+		expect(probeMock).toHaveBeenCalledTimes(1);
+		expect(previewLeaf.rebuildView).toHaveBeenCalledTimes(1);
+		expect(
+			(leaves.source as unknown as { rebuildView: jest.Mock })
+				.rebuildView,
+		).not.toHaveBeenCalled();
+	});
+
 	it('re-renders only the leaves that embed the probed file (scoped upgrade)', async () => {
 		probeMock.mockResolvedValue('audio');
 		const { creator, leaves } = setup(true);
@@ -332,6 +365,26 @@ describe('EnhancedPlayerRegistrar re-renders only when needed', () => {
 			(leaves.source as unknown as { rebuildView: jest.Mock })
 				.rebuildView,
 		).not.toHaveBeenCalled();
+	});
+
+	it('retries a scoped upgrade when metadata has not indexed the new embed yet', async () => {
+		probeMock.mockResolvedValue('audio');
+		const { creator, embedsByNote, leaves } = setup(true);
+		const previewLeaf = leaves.preview as unknown as {
+			rebuildView: jest.Mock;
+		};
+		const rebuildView = previewLeaf.rebuildView;
+		embedsByNote['note.md'] = { embeds: [] };
+
+		creator(info, fileOf('mp4'), '');
+		await flush();
+
+		expect(rebuildView).not.toHaveBeenCalled();
+
+		embedsByNote['note.md'] = { embeds: [{ link: 'recording.mp4' }] };
+		await flush();
+
+		expect(rebuildView).toHaveBeenCalledTimes(1);
 	});
 
 	it('does not re-render after probing a real video file', async () => {
