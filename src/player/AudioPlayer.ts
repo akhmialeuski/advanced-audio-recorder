@@ -149,6 +149,11 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	private isSeeking = false;
 	private durationProbeActive = false;
 	/**
+	 * Guards the one-time render so onload (Reading view) and Obsidian's
+	 * loadFile (Live Preview embed widget) never both render this player.
+	 */
+	private renderStarted = false;
+	/**
 	 * Set on teardown. Async work checks this rather than
 	 * containerEl.isConnected, because the embed-registry path renders
 	 * while the container is briefly detached (not yet inserted), and
@@ -215,12 +220,74 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		if (this.options.immediate) {
 			// The embed-registry path hands us an owned container with no
 			// default player to wait for, so render right away
-			this.renderPlayer();
+			this.safeRenderPlayer();
 			return;
 		}
 		this.whenEmbedReady(() => {
-			this.renderPlayer();
+			this.safeRenderPlayer();
 		});
+	}
+
+	/**
+	 * Obsidian's Live Preview embed lifecycle creates the embed component and
+	 * then calls `loadFile()` on it to load the file. The enhanced player is
+	 * constructed with its file and renders through the immediate path, so
+	 * this just ensures that render ran. Its ABSENCE was the bug: the
+	 * CodeMirror embed widget called `loadFile` on a component that lacked it
+	 * ("loadFile is not a function"), which crashed the editor and blanked the
+	 * note (Obsidian then reported "Failed to open"). Reading view renders via
+	 * onload and never calls loadFile, which is why only edited notes broke.
+	 * @param file - File Obsidian asks to load (the embed's own file)
+	 */
+	loadFile(file?: TFile): void {
+		// Render only the embed-registry (immediate) path here; the
+		// post-processor path renders from onload once the embed is ready.
+		if (this.options.immediate && (!file || file.path === this.file.path)) {
+			this.safeRenderPlayer();
+		}
+	}
+
+	/**
+	 * Renders the player, but never lets a render failure escape into
+	 * Obsidian's embed loader — an uncaught throw there breaks opening the
+	 * whole note (Obsidian reports "Failed to open"). On failure the full
+	 * error is logged and the embed falls back to a plain native audio
+	 * element, so the note still opens and the audio still plays.
+	 */
+	private safeRenderPlayer(): void {
+		if (this.renderStarted) {
+			return;
+		}
+		this.renderStarted = true;
+		try {
+			this.renderPlayer();
+		} catch (error) {
+			console.error(
+				`${PLUGIN_LOG_PREFIX} Enhanced player failed to render for ${this.file.path}; falling back to the native audio element.`,
+				error,
+			);
+			this.renderNativeFallback();
+		}
+	}
+
+	/**
+	 * Replaces the container with a plain native audio element. Last-resort
+	 * fallback when the enhanced render throws, so an embed bug degrades to a
+	 * working native player instead of blanking the note.
+	 */
+	private renderNativeFallback(): void {
+		try {
+			this.containerEl.empty();
+			this.containerEl.removeClass('aar-player');
+			const audio = this.containerEl.createEl('audio');
+			audio.controls = true;
+			audio.src = this.app.vault.getResourcePath(this.file);
+		} catch (fallbackError) {
+			console.error(
+				`${PLUGIN_LOG_PREFIX} Native audio fallback also failed for ${this.file.path}.`,
+				fallbackError,
+			);
+		}
 	}
 
 	/**
