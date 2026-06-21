@@ -373,6 +373,41 @@ describe('RecordingFinalizer', () => {
 			expect(getNotices()).toContain('No audio data recorded');
 		});
 
+		it('returns the audio paths and the note the links landed in', async () => {
+			// The post-save hook (transcribe-on-save) targets this note, so the
+			// path inserted into must be threaded back out of saveRecording.
+			buildFinalizer(createSession({ outputMode: 'multiple' }));
+			const { insertFileLinks } = jest.requireMock(
+				'../../src/recording/NoteInserter',
+			);
+			(insertFileLinks as jest.Mock).mockReturnValue('notes/daily.md');
+			const targets = [
+				createTarget({ segmentPaths: ['a-part1.webm.tmp'] }),
+			];
+
+			const result = await finalizer.saveRecording(
+				targets,
+				'stamp',
+				null,
+			);
+
+			expect(result.audioPaths.length).toBeGreaterThan(0);
+			expect(result.notePath).toBe('notes/daily.md');
+		});
+
+		it('returns an empty result with no note when nothing was recorded', async () => {
+			buildFinalizer(createSession({ outputMode: 'multiple' }));
+
+			const result = await finalizer.saveRecording(
+				[createTarget()],
+				'stamp',
+				null,
+			);
+
+			expect(result.audioPaths).toEqual([]);
+			expect(result.notePath).toBeNull();
+		});
+
 		it('should follow the session outputMode snapshot over live settings', async () => {
 			// The live settings switched to 'single' mid-recording; the
 			// session snapshot taken at start must keep the per-track

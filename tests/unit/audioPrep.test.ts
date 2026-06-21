@@ -10,6 +10,7 @@ import {
 	audioMimeFromExtension,
 	audioPrepOptions,
 	prepareAudio,
+	shouldWarnDiarizationSplit,
 	WholeFileDiarizationLimitError,
 } from 'src/transcription/audioPrep';
 import type { ProviderCapabilities } from 'src/transcription/providers/TranscriptionProvider';
@@ -88,6 +89,24 @@ describe('audioPrepOptions', () => {
 	});
 });
 
+describe('shouldWarnDiarizationSplit', () => {
+	it('warns when a diarized run is split on a per-request-numbering provider', () => {
+		expect(shouldWarnDiarizationSplit(2, true, false)).toBe(true);
+	});
+
+	it('does not warn for a single chunk', () => {
+		expect(shouldWarnDiarizationSplit(1, true, false)).toBe(false);
+	});
+
+	it('does not warn when diarization was not requested', () => {
+		expect(shouldWarnDiarizationSplit(3, false, false)).toBe(false);
+	});
+
+	it('does not warn for a provider that diarizes the whole request', () => {
+		expect(shouldWarnDiarizationSplit(3, true, true)).toBe(false);
+	});
+});
+
 describe('prepareAudio (whole-file path)', () => {
 	it('sends the original bytes untouched when within the limit', async () => {
 		const raw = new Uint8Array([1, 2, 3, 4]).buffer;
@@ -103,6 +122,18 @@ describe('prepareAudio (whole-file path)', () => {
 		expect(result.payloads[0].contentType).toBe('audio/webm');
 		expect(result.payloads[0].filename).toBe('rec.webm');
 		expect(result.payloads[0].offsetSeconds).toBe(0);
+	});
+
+	it('does not flag a diarization split when the whole file is sent', async () => {
+		const raw = new Uint8Array([1, 2, 3, 4]).buffer;
+		const result = await prepareAudio(raw, 'rec.webm', 'audio/webm', {
+			maxRequestBytes: 1000,
+			acceptsOriginalContainer: true,
+			chunkBytes: 1000,
+			diarize: true,
+			diarizesWholeFile: false,
+		});
+		expect(result.diarizationSplitWarning).toBe(false);
 	});
 
 	it('sends the whole file even when diarizing, as long as it fits', async () => {

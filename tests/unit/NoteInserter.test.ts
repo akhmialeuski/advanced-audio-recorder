@@ -343,5 +343,48 @@ describe('NoteInserter', () => {
 				'',
 			);
 		});
+
+		it('returns the context note path when inserted at the captured context', () => {
+			const view = createMockView('notes/daily.md', 5, 0);
+			const context: InsertionContext = {
+				filePath: 'notes/daily.md',
+				line: 7,
+				ch: 3,
+			};
+			const app = createMockApp({ leaves: [{ view }] });
+
+			const notePath = insertFileLinks(
+				['recordings/audio.webm'],
+				context,
+				app,
+			);
+
+			expect(notePath).toBe('notes/daily.md');
+		});
+
+		it('returns the active note path when falling back to the active editor', () => {
+			const activeView = createMockView('notes/other.md', 2, 0);
+			const app = createMockApp({ activeView, leaves: [] });
+
+			const notePath = insertFileLinks(
+				['recordings/audio.webm'],
+				null,
+				app,
+			);
+
+			expect(notePath).toBe('notes/other.md');
+		});
+
+		it('returns null when no editor is available to receive the links', () => {
+			const app = createMockApp({ activeView: null, leaves: [] });
+
+			const notePath = insertFileLinks(
+				['recordings/audio.webm'],
+				null,
+				app,
+			);
+
+			expect(notePath).toBeNull();
+		});
 	});
 });

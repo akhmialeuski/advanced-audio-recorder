@@ -240,6 +240,12 @@ export const LLM_TASK_LABELS: Record<LlmTask, string> = {
 /** LLM post-processing provider identifier. */
 export type LlmProviderId = 'openai-compatible' | 'anthropic';
 
+/** Display labels for each LLM provider (single source for the UI). */
+export const LLM_PROVIDER_LABELS: Record<LlmProviderId, string> = {
+	'openai-compatible': 'OpenAI / Groq / Ollama',
+	anthropic: 'Anthropic (Claude)',
+};
+
 /** A value/label pair for a dropdown control (single source for the UI). */
 export interface LabeledOption {
 	value: string;
@@ -279,6 +285,9 @@ export const TRANSCRIPT_FILE_FORMAT_OPTIONS = optionsFromLabels(
 
 /** LLM-task dropdown options, derived from the task label map. */
 export const LLM_TASK_OPTIONS = optionsFromLabels(LLM_TASK_LABELS);
+
+/** LLM-provider dropdown options, derived from the provider label map. */
+export const LLM_PROVIDER_OPTIONS = optionsFromLabels(LLM_PROVIDER_LABELS);
 
 /**
  * Default plugin settings.

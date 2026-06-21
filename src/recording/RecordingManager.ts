@@ -6,7 +6,12 @@
 import { Notice, Platform } from 'obsidian';
 import type { App } from 'obsidian';
 import { RecordingStatus } from '../types';
-import type { InsertionContext, RecordingTarget, SaveProgress } from '../types';
+import type {
+	InsertionContext,
+	RecordingSaveResult,
+	RecordingTarget,
+	SaveProgress,
+} from '../types';
 import type { AudioRecorderSettings, OutputMode } from '../settings/Settings';
 import {
 	getAudioStreams,
@@ -103,7 +108,9 @@ export class RecordingManager {
 			null,
 			app,
 		),
-		private readonly onRecordingSaved?: (paths: string[]) => void,
+		private readonly onRecordingSaved?: (
+			result: RecordingSaveResult,
+		) => void,
 	) {
 		this.onStatusChange = onStatusChange;
 		this.debugLogger = new DebugLogger(settings);
@@ -558,16 +565,16 @@ export class RecordingManager {
 			const durationMs = Date.now() - this.recordingStartTime;
 			this.debugLogger.logRecordingStats(durationMs, this.totalChunks);
 
-			const savedPaths = await this.finalizer.saveRecording(
+			const saveResult = await this.finalizer.saveRecording(
 				this.chunkTargets,
 				this.recordingTimestamp,
 				this.insertionContext,
 			);
-			if (savedPaths.length > 0) {
+			if (saveResult.audioPaths.length > 0) {
 				// Fire-and-forget post-save hook (e.g. transcribe-on-save);
 				// failures must never break the stop sequence
 				try {
-					this.onRecordingSaved?.(savedPaths);
+					this.onRecordingSaved?.(saveResult);
 				} catch (hookError) {
 					console.error(
 						`${PLUGIN_LOG_PREFIX} Post-save hook failed:`,

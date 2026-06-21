@@ -14,6 +14,7 @@ import {
 } from '../../constants';
 import {
 	applyLlmProviderDefaults,
+	LLM_PROVIDER_OPTIONS,
 	LLM_TASK_OPTIONS,
 	TRANSCRIPT_DESTINATION_OPTIONS,
 	TRANSCRIPT_FILE_FORMAT_OPTIONS,
@@ -293,10 +294,7 @@ function renderLlmSection(ctx: SettingsSectionContext): void {
 
 	addDropdown(ctx, {
 		name: 'LLM provider',
-		options: [
-			{ value: 'openai-compatible', label: 'OpenAI / Groq / Ollama' },
-			{ value: 'anthropic', label: 'Anthropic (Claude)' },
-		],
+		options: LLM_PROVIDER_OPTIONS,
 		get: () => s.llmProvider,
 		set: (v) => {
 			// Move the base URL and model to the picked provider's defaults

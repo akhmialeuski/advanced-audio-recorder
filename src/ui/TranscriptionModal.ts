@@ -9,7 +9,7 @@
  * @module ui/TranscriptionModal
  */
 
-import { Modal, Notice, Setting } from 'obsidian';
+import { MarkdownView, Modal, Notice, Setting } from 'obsidian';
 import type { App, ButtonComponent, TFile } from 'obsidian';
 import {
 	LLM_TASK_OPTIONS,
@@ -31,6 +31,7 @@ import {
 	type SettingsSectionContext,
 } from '../settings/settingControls';
 import { transcribeFile } from '../transcription/runTranscription';
+import { effectiveTranscriptDestination } from '../transcription/transcriptOutput';
 import {
 	TranscriptionCancelledError,
 	type CancellationToken,
@@ -49,16 +50,39 @@ export class TranscriptionModal extends Modal {
 	private secondaryButton: ButtonComponent | null = null;
 	/** Per-run settings copy: edited here, never persisted to plugin data. */
 	private readonly runSettings: AudioRecorderSettings;
+	/**
+	 * Note the transcript is inserted into and timecode links are built
+	 * against — resolved once at construction so the run targets the right
+	 * note even if the active pane changes before it starts.
+	 */
+	private readonly notePath: string;
 
 	constructor(
 		app: App,
 		private readonly file: TFile,
 		getSettings: () => AudioRecorderSettings,
-		private readonly options: { autoStart?: boolean } = {},
+		private readonly options: {
+			autoStart?: boolean;
+			notePath?: string;
+		} = {},
 	) {
 		super(app);
 		// Shallow copy is enough: every option edited here is a primitive.
 		this.runSettings = { ...getSettings() };
+		// Prefer an explicit note (transcribe-on-save passes the note the
+		// recording embed was inserted into); otherwise the active Markdown
+		// note. When neither exists (e.g. the audio file itself is the active
+		// pane, as with the command), in-note insertion cannot work, so an
+		// in-note-only destination is downgraded to a file up front instead of
+		// always falling back with a misleading "could not insert" notice.
+		this.notePath =
+			this.options.notePath ??
+			app.workspace.getActiveViewOfType(MarkdownView)?.file?.path ??
+			'';
+		this.runSettings.transcriptDestination = effectiveTranscriptDestination(
+			this.runSettings.transcriptDestination,
+			this.notePath !== '',
+		);
 	}
 
 	onOpen(): void {
@@ -228,10 +252,9 @@ export class TranscriptionModal extends Modal {
 		// in-flight job; edits only affect the next attempt after a failure.
 		const settings = { ...this.runSettings };
 		const token: CancellationToken = { isCancelled: () => this.cancelled };
-		const notePath = this.app.workspace.getActiveFile()?.path ?? '';
 		try {
 			await transcribeFile(this.app, () => settings, this.file, {
-				notePathForLinks: notePath,
+				notePathForLinks: this.notePath,
 				token,
 				onProgress: (fraction, label) => {
 					this.updateProgress(fraction, label);

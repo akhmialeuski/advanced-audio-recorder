@@ -111,9 +111,11 @@ jest.mock('../../src/recording/PcmStreamRecorder', () => ({
 }));
 
 // Mock AudioBuffer
-(global as any).AudioBuffer = jest.fn().mockImplementation(() => ({
-	getChannelData: jest.fn().mockReturnValue(new Float32Array(44100)),
-}));
+(global as unknown as { AudioBuffer: unknown }).AudioBuffer = jest
+	.fn()
+	.mockImplementation(() => ({
+		getChannelData: jest.fn().mockReturnValue(new Float32Array(44100)),
+	}));
 
 if (!Blob.prototype.arrayBuffer) {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test polyfill
@@ -2276,6 +2278,47 @@ describe('RecordingManager', () => {
 			await manager.stopRecording();
 
 			expect(mockReplaceSelection).toHaveBeenCalled();
+		});
+
+		it('forwards the saved audio paths and note path to the post-save hook', async () => {
+			// Regression: transcribe-on-save must receive the note the recording
+			// links landed in, so an auto-transcription targets that note rather
+			// than whatever file is active when the async job runs.
+			const onRecordingSaved = jest.fn();
+			(
+				mockApp.workspace.getActiveViewOfType as jest.Mock
+			).mockReturnValue({
+				file: { path: 'Notes/active.md' },
+				editor: { replaceSelection: jest.fn() },
+			});
+
+			mockSettings = {
+				...DEFAULT_SETTINGS,
+				insertAtOriginalPosition: false,
+			};
+			manager = new RecordingManager(
+				mockApp,
+				mockSettings,
+				statusChangeCallback,
+				undefined,
+				onRecordingSaved,
+			);
+
+			await manager.startRecording();
+			const chunk = new Blob([new Uint8Array([1, 2, 3])], {
+				type: 'audio/webm',
+			});
+			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
+			await Promise.resolve();
+			await manager.stopRecording();
+
+			expect(onRecordingSaved).toHaveBeenCalledTimes(1);
+			const result = onRecordingSaved.mock.calls[0][0] as {
+				audioPaths: string[];
+				notePath: string | null;
+			};
+			expect(result.audioPaths.length).toBeGreaterThan(0);
+			expect(result.notePath).toBe('Notes/active.md');
 		});
 
 		it('should use replaceRange at stored position when insertAtOriginalPosition is enabled', async () => {

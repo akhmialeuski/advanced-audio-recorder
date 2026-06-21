@@ -122,13 +122,19 @@ const HTTP_TOO_MANY_REQUESTS = 429;
 /** Lowest 5xx server-error status. */
 const HTTP_SERVER_ERROR_MIN = 500;
 
-/** Body substrings that signal an out-of-quota / billing problem (any provider). */
+/**
+ * Body substrings that signal an out-of-quota / billing problem (any provider).
+ * Deliberately specific (e.g. `insufficient_quota`, `credit balance`) rather than
+ * bare `insufficient`/`credit`, so an auth message like "insufficient permissions"
+ * on a 403 is not misread as a billing problem and is left to the auth branch.
+ */
 const QUOTA_BODY_MARKERS = [
 	'quota',
-	'insufficient',
+	'insufficient_quota',
+	'insufficient_credits',
+	'insufficient credits',
+	'credit balance',
 	'billing',
-	'credit',
-	'payment',
 ];
 
 /**

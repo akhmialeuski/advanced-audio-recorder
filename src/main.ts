@@ -5,7 +5,11 @@
 
 import { Notice, Plugin, TFile } from 'obsidian';
 import { RecordingStatus } from './types';
-import type { SaveProgress, RecordingControls } from './types';
+import type {
+	SaveProgress,
+	RecordingControls,
+	RecordingSaveResult,
+} from './types';
 import { PLUGIN_LOG_PREFIX } from './constants';
 import {
 	AudioRecorderSettings,
@@ -126,8 +130,8 @@ export default class AudioRecorderPlugin extends Plugin {
 				updateRibbonIcon(this.ribbonIconEl, status);
 			},
 			this.journal,
-			(paths: string[]) => {
-				this.handleRecordingSaved(paths);
+			(result: RecordingSaveResult) => {
+				this.handleRecordingSaved(result);
 			},
 		);
 
@@ -289,9 +293,7 @@ export default class AudioRecorderPlugin extends Plugin {
 		this.settings = await mergeSettingsAsync(data ?? {});
 		this.settingsInitialized = true;
 		if (restoredFromBackup) {
-			new Notice(
-				'Advanced Audio Recorder: settings were restored from the backup file.',
-			);
+			new Notice('Settings were restored from the backup file.');
 			// Complete the recovery: recreate the missing data.json
 			// right away instead of leaving the backup as the only
 			// copy until the user happens to change a setting.
@@ -572,8 +574,10 @@ export default class AudioRecorderPlugin extends Plugin {
 
 	/**
 	 * Transcribe-on-save hook: when enabled, transcribes the first saved
-	 * audio file (`paths[0]`). Runs after the recording's link is inserted,
-	 * so the recording note is active and timecode links resolve correctly.
+	 * audio file (`audioPaths[0]`). The transcript is targeted at the same
+	 * note the recording embed was inserted into (`result.notePath`), so the
+	 * timecode links resolve there even if the user navigated to another note
+	 * before the async job ran.
 	 *
 	 * Only the first file is transcribed by design: a multi-track session
 	 * produces several tracks of the same audio (transcribing each would be
@@ -581,17 +585,17 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * otherwise fire one transcription request per part. For those cases the
 	 * user transcribes the desired file explicitly via the context menu or
 	 * the "Transcribe active audio file" command.
-	 * @param paths - Vault paths of the audio files just saved
+	 * @param result - The saved audio paths and the note the links landed in
 	 */
-	private handleRecordingSaved(paths: string[]): void {
+	private handleRecordingSaved(result: RecordingSaveResult): void {
 		if (
 			!this.settings.transcriptionEnabled ||
 			!this.settings.transcribeOnSave ||
-			paths.length === 0
+			result.audioPaths.length === 0
 		) {
 			return;
 		}
-		const file = this.app.vault.getAbstractFileByPath(paths[0]);
+		const file = this.app.vault.getAbstractFileByPath(result.audioPaths[0]);
 		if (!(file instanceof TFile)) {
 			return;
 		}
@@ -602,6 +606,7 @@ export default class AudioRecorderPlugin extends Plugin {
 		// not editable).
 		new TranscriptionModal(this.app, file, () => this.settings, {
 			autoStart: true,
+			notePath: result.notePath ?? undefined,
 		}).open();
 	}
 

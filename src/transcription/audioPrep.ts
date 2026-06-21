@@ -112,6 +112,31 @@ export interface PreparedPayload {
 export interface PreparedAudio {
 	/** Ordered payloads to transcribe; segment offsets are pre-computed. */
 	payloads: PreparedPayload[];
+	/**
+	 * True when a diarized run had to be split across multiple chunks on a
+	 * provider that numbers speakers per request (not whole-file), so speaker
+	 * labels can reset between parts. The caller surfaces this to the user
+	 * rather than letting the inconsistency pass silently.
+	 */
+	diarizationSplitWarning: boolean;
+}
+
+/**
+ * Whether a diarized run will be split across more than one chunk on a
+ * provider that does not diarize the whole request, in which case speaker
+ * numbering can differ between parts. Pure so the warning condition is unit
+ * tested without decoding audio.
+ * @param chunkCount - Number of chunks the audio was split into
+ * @param diarize - Whether speaker diarization was requested
+ * @param diarizesWholeFile - Whether the provider diarizes a whole request
+ * @returns True when speaker labels may be inconsistent across chunks
+ */
+export function shouldWarnDiarizationSplit(
+	chunkCount: number,
+	diarize: boolean,
+	diarizesWholeFile: boolean,
+): boolean {
+	return diarize && !diarizesWholeFile && chunkCount > 1;
 }
 
 /**
@@ -150,6 +175,7 @@ export async function prepareAudio(
 					createData: () => raw,
 				},
 			],
+			diarizationSplitWarning: false,
 		};
 	}
 
@@ -173,7 +199,14 @@ export async function prepareAudio(
 		offsetSeconds: plan.startSeconds,
 		createData: () => extractChunkWav(samples, plan),
 	}));
-	return { payloads };
+	return {
+		payloads,
+		diarizationSplitWarning: shouldWarnDiarizationSplit(
+			plans.length,
+			options.diarize,
+			options.diarizesWholeFile,
+		),
+	};
 }
 
 /**

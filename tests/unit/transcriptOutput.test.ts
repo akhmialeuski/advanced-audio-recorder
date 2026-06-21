@@ -4,7 +4,11 @@
  * reads as success and always points the user to the fallback file.
  */
 
-import { describeTranscriptOutcome } from 'src/transcription/transcriptOutput';
+import {
+	describeTranscriptOutcome,
+	effectiveTranscriptDestination,
+} from 'src/transcription/transcriptOutput';
+import type { TranscriptDestination } from 'src/transcription/TranscriptTypes';
 
 describe('describeTranscriptOutcome', () => {
 	it('reports a plain in-note insertion', () => {
@@ -87,5 +91,30 @@ describe('describeTranscriptOutcome', () => {
 		expect(text).toContain('saved to audio.srt');
 		expect(text).toContain('to link it');
 		expect(text).not.toContain('linked in the note.');
+	});
+});
+
+describe('effectiveTranscriptDestination', () => {
+	it('downgrades a note-only destination to file when there is no host note', () => {
+		// Regression: the "Transcribe active audio file" command runs with the
+		// audio file itself active, so a 'note' destination could only ever
+		// fall back. Downgrade up front to 'file' instead.
+		expect(effectiveTranscriptDestination('note', false)).toBe('file');
+	});
+
+	it('keeps a note destination when a host note is available', () => {
+		expect(effectiveTranscriptDestination('note', true)).toBe('note');
+	});
+
+	it('leaves file/both/link unchanged regardless of host note', () => {
+		const others: TranscriptDestination[] = ['file', 'both', 'link'];
+		for (const destination of others) {
+			expect(effectiveTranscriptDestination(destination, false)).toBe(
+				destination,
+			);
+			expect(effectiveTranscriptDestination(destination, true)).toBe(
+				destination,
+			);
+		}
 	});
 });

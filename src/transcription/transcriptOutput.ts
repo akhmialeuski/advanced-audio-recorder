@@ -9,7 +9,30 @@ import type { App, TFile } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { resolveUniquePathInDirectory } from '../recording/RecordingFileManager';
 import { serializeTranscriptFile } from './transcriptFormat';
-import type { Transcript, TranscriptFileFormat } from './TranscriptTypes';
+import type {
+	Transcript,
+	TranscriptDestination,
+	TranscriptFileFormat,
+} from './TranscriptTypes';
+
+/**
+ * Resolves the effective transcript destination for a run, given whether an
+ * editable host note is available to insert into. With no host note (for
+ * example when the audio file itself is the active pane, as with the
+ * "Transcribe active audio file" command), an in-note-only destination can
+ * never do anything but fall back to a file, so it is downgraded to `file`
+ * up front — the run does what it can without a misleading "could not insert"
+ * outcome. `both`, `link`, and `file` already write a file and are unchanged.
+ * @param destination - The configured/requested destination
+ * @param hasHostNote - Whether an editable host note is available
+ * @returns The destination to actually use for this run
+ */
+export function effectiveTranscriptDestination(
+	destination: TranscriptDestination,
+	hasHostNote: boolean,
+): TranscriptDestination {
+	return !hasHostNote && destination === 'note' ? 'file' : destination;
+}
 
 /**
  * Builds the transcript sidecar file name for an audio path and format.

@@ -22,7 +22,10 @@ import {
 	audioPrepOptions,
 	prepareAudio,
 } from './audioPrep';
-import type { AudioPayload } from './providers/TranscriptionProvider';
+import type {
+	AudioPayload,
+	TranscriptionProvider,
+} from './providers/TranscriptionProvider';
 import { buildTranscript, plainText, stitchChunks } from './transcriptModel';
 import {
 	DEFAULT_TRANSCRIPT_MARKDOWN_OPTIONS,
@@ -32,6 +35,7 @@ import {
 } from './transcriptFormat';
 import { buildPostProcessPrompt } from './llmPostProcess';
 import { createLlmProvider, createTranscriptionProvider } from './factories';
+import type { LlmProvider } from './llm/LlmProvider';
 import type { Transcript } from './TranscriptTypes';
 
 /** Cooperative cancellation signal checked between chunks. */
@@ -70,13 +74,36 @@ export class TranscriptionCancelledError extends Error {
 }
 
 /**
+ * Provider factories the service depends on. Injectable so tests can supply
+ * deterministic providers; defaults build the real providers from settings.
+ */
+export interface TranscriptionServiceDeps {
+	/** Builds the transcription provider from settings. */
+	createProvider?: (settings: AudioRecorderSettings) => TranscriptionProvider;
+	/** Builds the LLM post-processing provider from settings. */
+	createLlm?: (settings: AudioRecorderSettings) => LlmProvider;
+}
+
+/**
  * Runs the full transcription pipeline for an audio file.
  */
 export class TranscriptionService {
+	private readonly createProvider: (
+		settings: AudioRecorderSettings,
+	) => TranscriptionProvider;
+	private readonly createLlm: (
+		settings: AudioRecorderSettings,
+	) => LlmProvider;
+
 	constructor(
 		private readonly app: App,
 		private getSettings: () => AudioRecorderSettings,
-	) {}
+		deps: TranscriptionServiceDeps = {},
+	) {
+		this.createProvider =
+			deps.createProvider ?? createTranscriptionProvider;
+		this.createLlm = deps.createLlm ?? createLlmProvider;
+	}
 
 	/**
 	 * Transcribes an audio file and returns the transcript and Markdown.
@@ -89,7 +116,7 @@ export class TranscriptionService {
 	): Promise<TranscribeRunResult> {
 		const settings = this.getSettings();
 		const token = options.token ?? NEVER_CANCELLED;
-		const provider = createTranscriptionProvider(settings);
+		const provider = this.createProvider(settings);
 		const transcribeOptions = {
 			language:
 				settings.transcriptionLanguage &&
@@ -114,6 +141,17 @@ export class TranscriptionService {
 			),
 		);
 		this.throwIfCancelled(token);
+
+		if (prepared.diarizationSplitWarning) {
+			// The recording was too large to send whole and this engine numbers
+			// speakers per request, so labels can differ between parts. Tell the
+			// user rather than emitting silently inconsistent speaker labels.
+			new Notice(
+				'Recording was split into parts for this engine; speaker labels may ' +
+					'differ between parts. Use Deepgram or split the recording for ' +
+					'consistent speakers.',
+			);
+		}
 
 		const payloads = prepared.payloads;
 		const partCount = payloads.length;
@@ -160,6 +198,13 @@ export class TranscriptionService {
 				}),
 			});
 		}
+
+		// Honor a cancel pressed during the final (or only) request: requestUrl
+		// cannot abort it, but a cancelled run must not silently write output.
+		// Without this, single-request jobs (whole-file Deepgram, a sub-limit
+		// Whisper upload, local whisper.cpp) would ignore Cancel and report
+		// success, since the per-chunk check only fires before the next chunk.
+		this.throwIfCancelled(token);
 
 		const transcript = stitchChunks(results, {
 			model: provider.id,
@@ -216,7 +261,7 @@ export class TranscriptionService {
 		transcript: Transcript,
 		markdown: string,
 	): Promise<string> {
-		const llm = createLlmProvider(settings);
+		const llm = this.createLlm(settings);
 		const prompt = buildPostProcessPrompt(
 			settings.llmPostProcessTask === 'summary'
 				? plainText(transcript)

@@ -360,7 +360,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Insert at original position')
 			.setDesc(
-				'When enabled, the plugin remembers the note and cursor position where recording started. The audio link is inserted at that location, even if you navigate away during recording. Note: if the original note is edited during recording, the insertion position may shift.',
+				'When enabled, the plugin remembers the note and insertion position where recording started. The audio link is inserted at that location, even if you navigate away during recording. Note: if the original note is edited during recording, the insertion position may shift.',
 			)
 			.addToggle((toggle) =>
 				toggle

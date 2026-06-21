@@ -12,6 +12,7 @@ import {
 	TranscriptionService,
 	type CancellationToken,
 	type TranscribeRunResult,
+	type TranscriptionServiceDeps,
 } from './TranscriptionService';
 import {
 	insertTranscriptFileLink,
@@ -36,6 +37,7 @@ export interface TranscribeFileOptions {
  * @param getSettings - Returns current plugin settings
  * @param file - Audio file to transcribe
  * @param options - Run options
+ * @param deps - Optional provider factories (injected in tests)
  * @returns The transcription result
  */
 export async function transcribeFile(
@@ -43,9 +45,10 @@ export async function transcribeFile(
 	getSettings: () => AudioRecorderSettings,
 	file: TFile,
 	options: TranscribeFileOptions,
+	deps: TranscriptionServiceDeps = {},
 ): Promise<TranscribeRunResult> {
 	const settings = getSettings();
-	const service = new TranscriptionService(app, getSettings);
+	const service = new TranscriptionService(app, getSettings, deps);
 	const result = await service.run(file, {
 		notePathForLinks: options.notePathForLinks,
 		onProgress: options.onProgress,

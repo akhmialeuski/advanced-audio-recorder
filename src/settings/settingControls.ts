@@ -7,7 +7,7 @@
  */
 
 import { Setting } from 'obsidian';
-import type { AudioRecorderSettings } from './Settings';
+import type { AudioRecorderSettings, LabeledOption } from './Settings';
 
 /**
  * Shared dependencies a settings section needs: where to render, the live
@@ -91,17 +91,12 @@ export function addToggle(
 	);
 }
 
-/** One dropdown option. */
-export interface DropdownOption {
-	value: string;
-	label: string;
-}
-
 /** Configuration for a dropdown control. */
 export interface DropdownControlConfig {
 	name: string;
 	desc?: string;
-	options: DropdownOption[];
+	/** Value/label option pairs (see {@link LabeledOption}). */
+	options: LabeledOption[];
 	get: () => string;
 	set: (value: string) => void;
 	/** Re-render the tab after the change (to reveal/hide dependent settings). */

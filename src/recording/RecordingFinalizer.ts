@@ -10,6 +10,7 @@ import { Notice } from 'obsidian';
 import type { App } from 'obsidian';
 import type {
 	InsertionContext,
+	RecordingSaveResult,
 	RecordingSessionConfig,
 	RecordingTarget,
 	SaveProgress,
@@ -128,13 +129,13 @@ export class RecordingFinalizer {
 	 * @param targets - Recording targets of the session
 	 * @param timestamp - Session timestamp for the merged file name
 	 * @param insertionContext - Where to insert the file links
-	 * @returns Vault paths of the audio files that were written
+	 * @returns The written audio paths and the note the links landed in
 	 */
 	async saveRecording(
 		targets: RecordingTarget[],
 		timestamp: string | null,
 		insertionContext: InsertionContext | null,
-	): Promise<string[]> {
+	): Promise<RecordingSaveResult> {
 		const session = this.requireSession();
 		const effectiveTimestamp =
 			timestamp ?? new Date().toISOString().replace(/[:.]/g, '-');
@@ -267,13 +268,14 @@ export class RecordingFinalizer {
 			}
 		}
 
+		let notePath: string | null = null;
 		if (fileLinks.length > 0) {
-			insertFileLinks(fileLinks, insertionContext, this.app);
+			notePath = insertFileLinks(fileLinks, insertionContext, this.app);
 			new Notice(`Saved ${String(fileLinks.length)} audio file(s)`);
 		} else {
 			new Notice('No audio data recorded');
 		}
-		return fileLinks;
+		return { audioPaths: fileLinks, notePath };
 	}
 
 	/**

@@ -51,9 +51,11 @@ import type { App } from 'obsidian';
 }));
 
 // Mock AudioBuffer
-(global as any).AudioBuffer = jest.fn().mockImplementation(() => ({
-	getChannelData: jest.fn().mockReturnValue(new Float32Array(44100)),
-}));
+(global as unknown as { AudioBuffer: unknown }).AudioBuffer = jest
+	.fn()
+	.mockImplementation(() => ({
+		getChannelData: jest.fn().mockReturnValue(new Float32Array(44100)),
+	}));
 
 // Mock OverconstrainedError if not present in JSDOM
 class OverconstrainedError extends Error {

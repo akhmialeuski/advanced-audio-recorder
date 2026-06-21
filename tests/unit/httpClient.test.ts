@@ -42,6 +42,26 @@ describe('friendlyHttpHint', () => {
 		).toContain('authentication failed');
 	});
 
+	it('flags a Deepgram INSUFFICIENT_CREDITS body as billing', () => {
+		expect(
+			friendlyHttpHint(
+				400,
+				'{"err_code":"INSUFFICIENT_CREDITS"}',
+			).toLowerCase(),
+		).toContain('quota or credit');
+	});
+
+	it('treats a 403 "insufficient permissions" as auth, not billing', () => {
+		// Regression: the bare "insufficient" marker used to misclassify a
+		// forbidden/scope error as a billing problem. It must read as auth.
+		const hint = friendlyHttpHint(
+			403,
+			'{"error":"insufficient permissions for this resource"}',
+		).toLowerCase();
+		expect(hint).toContain('authentication failed');
+		expect(hint).not.toContain('quota or credit');
+	});
+
 	it('reports a rate limit for a plain 429 with no billing markers', () => {
 		expect(
 			friendlyHttpHint(429, 'Too Many Requests, slow down').toLowerCase(),
