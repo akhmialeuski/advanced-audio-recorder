@@ -13,8 +13,8 @@
  * design.
  */
 
-import { MarkdownView } from 'obsidian';
-import type { App, Plugin, TFile, WorkspaceLeaf } from 'obsidian';
+import { MarkdownView, TFile } from 'obsidian';
+import type { App, Plugin, WorkspaceLeaf } from 'obsidian';
 import { EnhancedPlayerRegistrar } from 'src/player/EnhancedPlayerRegistrar';
 import { AudioPlayer } from 'src/player/AudioPlayer';
 import { AudioPlayerRegistry } from 'src/player/AudioPlayerRegistry';
@@ -119,6 +119,7 @@ function setup(enabled = true): {
 		embedRegistry: { embedByExtension },
 		vault: {
 			getResourcePath: () => 'app://media',
+			getAbstractFileByPath: (path: string) => fileFromPath(path),
 			on: jest.fn(() => ({})),
 		},
 		metadataCache: {
@@ -169,8 +170,16 @@ function setup(enabled = true): {
 	};
 }
 
+function fileFromPath(path: string): TFile {
+	const extension = path.split('.').pop() ?? '';
+	return Object.assign(Object.create(TFile.prototype), {
+		path,
+		extension,
+	}) as TFile;
+}
+
 function fileOf(extension: string): TFile {
-	return { path: `recording.${extension}`, extension } as TFile;
+	return fileFromPath(`recording.${extension}`);
 }
 
 const info: EmbedInfo = {
@@ -315,6 +324,28 @@ describe('EnhancedPlayerRegistrar re-renders only when needed', () => {
 
 		// The probe found audio, so a re-render is requested to upgrade it
 		expect(getLeaves).toHaveBeenCalledWith('markdown');
+	});
+
+	it('primes a saved recording for enhancement without waiting for native embed render', async () => {
+		probeMock.mockResolvedValue('audio');
+		const { registrar, embedsByNote, leaves } = setup(true);
+		const previewLeaf = leaves.preview as unknown as {
+			rebuildView: jest.Mock;
+		};
+		embedsByNote['note.md'] = { embeds: [] };
+
+		registrar.primeSavedRecordingsForEnhancement(
+			['recording.mp4'],
+			'note.md',
+		);
+		await flush();
+
+		expect(probeMock).toHaveBeenCalledTimes(1);
+		expect(previewLeaf.rebuildView).toHaveBeenCalledTimes(1);
+		expect(
+			(leaves.source as unknown as { rebuildView: jest.Mock })
+				.rebuildView,
+		).not.toHaveBeenCalled();
 	});
 
 	it('re-renders only the leaves that embed the probed file (scoped upgrade)', async () => {

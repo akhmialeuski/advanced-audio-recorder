@@ -588,6 +588,11 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * @param result - The saved audio paths and the note the links landed in
 	 */
 	private handleRecordingSaved(result: RecordingSaveResult): void {
+		this.playerRegistrar.primeSavedRecordingsForEnhancement(
+			result.audioPaths,
+			result.notePath,
+		);
+
 		if (
 			!this.settings.transcriptionEnabled ||
 			!this.settings.transcribeOnSave ||

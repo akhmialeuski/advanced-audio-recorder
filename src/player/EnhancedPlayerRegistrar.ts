@@ -96,6 +96,13 @@ export class EnhancedPlayerRegistrar {
 	private readonly pendingRerenderPaths = new Set<string>();
 	/** Retry count per scoped path while metadata catches up. */
 	private readonly pendingRerenderRetries = new Map<string, number>();
+	/** Notes to rebuild directly once a saved recording probes as audio. */
+	private readonly pendingDirectRerenderNotePaths = new Map<
+		string,
+		Set<string>
+	>();
+	/** Notes that should receive a direct rebuild after the current probe. */
+	private readonly pendingProbeNotePaths = new Map<string, Set<string>>();
 	/** Whether every leaf must re-render (master toggle flip). */
 	private pendingRerenderAll = false;
 	/** Debounced flush that coalesces a burst of re-render requests. */
@@ -190,6 +197,8 @@ export class EnhancedPlayerRegistrar {
 		this.probing.clear();
 		this.pendingRerenderPaths.clear();
 		this.pendingRerenderRetries.clear();
+		this.pendingDirectRerenderNotePaths.clear();
+		this.pendingProbeNotePaths.clear();
 		this.markerStore.clearCache();
 		void this.decoder.close().catch(() => {
 			// Closing a context that never opened or already failed is
@@ -231,6 +240,31 @@ export class EnhancedPlayerRegistrar {
 		}
 		this.lastResolved = resolved;
 		this.registry.applySettings(resolved);
+	}
+
+	/**
+	 * Primes freshly saved recordings for enhancement after the recording
+	 * pipeline inserts their embeds into a note. This avoids depending on
+	 * Obsidian first creating a native embed and starting the lazy probe: once
+	 * the file is proven audio-only, the note that received the embed is
+	 * rebuilt directly.
+	 * @param audioPaths - Vault paths written by the recording finalizer
+	 * @param notePath - Note that received the embed links, if any
+	 */
+	primeSavedRecordingsForEnhancement(
+		audioPaths: string[],
+		notePath: string | null,
+	): void {
+		if (!this.getSettings().enhancedPlayerEnabled || !notePath) {
+			return;
+		}
+		for (const audioPath of audioPaths) {
+			const file = this.app.vault.getAbstractFileByPath(audioPath);
+			if (!(file instanceof TFile) || !isAudioFile(file)) {
+				continue;
+			}
+			void this.probeAndUpgrade(file, notePath);
+		}
 	}
 
 	/**
@@ -334,8 +368,26 @@ export class EnhancedPlayerRegistrar {
 	 * open views so the embed is rebuilt as the enhanced player.
 	 * @param file - Media file to probe
 	 */
-	private async probeAndUpgrade(file: TFile): Promise<void> {
-		if (this.mediaKindCache.has(file.path) || this.probing.has(file.path)) {
+	private async probeAndUpgrade(
+		file: TFile,
+		notePath?: string,
+	): Promise<void> {
+		if (notePath) {
+			this.addPendingProbeNotePath(file.path, notePath);
+		}
+		const knownKind = this.mediaKindCache.get(file.path);
+		if (knownKind) {
+			if (
+				shouldEnhance(
+					this.getSettings().enhancedPlayerEnabled,
+					knownKind,
+				)
+			) {
+				this.requestRerenderForFile(file.path, notePath);
+			}
+			return;
+		}
+		if (this.probing.has(file.path)) {
 			return;
 		}
 		this.probing.add(file.path);
@@ -345,13 +397,33 @@ export class EnhancedPlayerRegistrar {
 			);
 			this.mediaKindCache.set(file.path, kind);
 			if (shouldEnhance(this.getSettings().enhancedPlayerEnabled, kind)) {
-				// Only the notes that actually embed this file need rebuilding,
-				// so a large note that does not embed it is never re-rendered
-				this.requestRerenderForFile(file.path);
+				const notePaths = this.pendingProbeNotePaths.get(file.path);
+				if (notePaths && notePaths.size > 0) {
+					for (const pendingNotePath of notePaths) {
+						this.requestRerenderForFile(file.path, pendingNotePath);
+					}
+				} else {
+					// Only the notes that actually embed this file need rebuilding,
+					// so a large note that does not embed it is never re-rendered
+					this.requestRerenderForFile(file.path);
+				}
 			}
 		} finally {
+			this.pendingProbeNotePaths.delete(file.path);
 			this.probing.delete(file.path);
 		}
+	}
+
+	/**
+	 * Remembers that a saved recording should rebuild a known note after its
+	 * media probe completes.
+	 * @param path - Vault path of the recording
+	 * @param notePath - Note that received the embed link
+	 */
+	private addPendingProbeNotePath(path: string, notePath: string): void {
+		const notePaths = this.pendingProbeNotePaths.get(path) ?? new Set();
+		notePaths.add(notePath);
+		this.pendingProbeNotePaths.set(path, notePaths);
 	}
 
 	/**
@@ -395,8 +467,14 @@ export class EnhancedPlayerRegistrar {
 	 * probe upgrade never re-renders unrelated (possibly large) notes.
 	 * @param path - Vault path of the upgraded file
 	 */
-	private requestRerenderForFile(path: string): void {
+	private requestRerenderForFile(path: string, notePath?: string): void {
 		this.pendingRerenderPaths.add(path);
+		if (notePath) {
+			const notePaths =
+				this.pendingDirectRerenderNotePaths.get(path) ?? new Set();
+			notePaths.add(notePath);
+			this.pendingDirectRerenderNotePaths.set(path, notePaths);
+		}
 		if (!this.pendingRerenderRetries.has(path)) {
 			this.pendingRerenderRetries.set(path, 0);
 		}
@@ -422,20 +500,54 @@ export class EnhancedPlayerRegistrar {
 			}
 			for (const path of paths) {
 				this.pendingRerenderRetries.delete(path);
+				this.pendingDirectRerenderNotePaths.delete(path);
 			}
 			return;
 		}
 		const unmatchedPaths = new Set(paths);
+		const matchedRerenderPaths = new Set<string>();
 		for (const leaf of leaves) {
-			const matchedPaths = this.leafEmbeddedPaths(leaf, paths);
+			const matchedPaths = new Set([
+				...this.leafDirectRerenderPaths(leaf, paths),
+				...this.leafEmbeddedPaths(leaf, paths),
+			]);
 			if (matchedPaths.size > 0) {
 				this.rerenderLeaf(leaf);
 				for (const path of matchedPaths) {
 					unmatchedPaths.delete(path);
+					matchedRerenderPaths.add(path);
 				}
 			}
 		}
+		for (const path of matchedRerenderPaths) {
+			this.pendingRerenderRetries.delete(path);
+			this.pendingDirectRerenderNotePaths.delete(path);
+		}
 		this.rescheduleUnmatchedRerenders(unmatchedPaths);
+	}
+
+	/**
+	 * Returns probed file paths that should rebuild this exact note because
+	 * the recording pipeline just inserted their embeds there.
+	 * @param leaf - Workspace leaf to test
+	 * @param paths - Candidate embedded file paths
+	 */
+	private leafDirectRerenderPaths(
+		leaf: WorkspaceLeaf,
+		paths: Set<string>,
+	): Set<string> {
+		const matchedPaths = new Set<string>();
+		const view = leaf.view;
+		if (!(view instanceof MarkdownView) || !view.file) {
+			return matchedPaths;
+		}
+		for (const path of paths) {
+			const notePaths = this.pendingDirectRerenderNotePaths.get(path);
+			if (notePaths?.has(view.file.path)) {
+				matchedPaths.add(path);
+			}
+		}
+		return matchedPaths;
 	}
 
 	/**
@@ -479,6 +591,7 @@ export class EnhancedPlayerRegistrar {
 			const retryCount = this.pendingRerenderRetries.get(path) ?? 0;
 			if (retryCount >= SCOPED_RERENDER_RETRY_LIMIT) {
 				this.pendingRerenderRetries.delete(path);
+				this.pendingDirectRerenderNotePaths.delete(path);
 				continue;
 			}
 			this.pendingRerenderRetries.set(path, retryCount + 1);

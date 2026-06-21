@@ -29,6 +29,7 @@ jest.mock('../../src/player/EnhancedPlayerRegistrar', () => ({
 		register: jest.fn(),
 		dispose: jest.fn(),
 		refresh: jest.fn(),
+		primeSavedRecordingsForEnhancement: jest.fn(),
 	})),
 }));
 
@@ -331,6 +332,37 @@ describe('AudioRecorderPlugin settings persistence', () => {
 
 		expect(saveData).not.toHaveBeenCalled();
 		expect(manager.updateSettings).toHaveBeenCalledWith(plugin.settings);
+	});
+
+	it('primes saved recordings for enhanced player rendering', async () => {
+		const { plugin } = createPlugin([null]);
+
+		await onloadWithTimers(plugin);
+
+		const { RecordingManager } = jest.requireMock(
+			'../../src/recording/RecordingManager',
+		);
+		const onRecordingSaved = (RecordingManager as jest.Mock).mock
+			.calls[0][4] as (result: {
+			audioPaths: string[];
+			notePath: string | null;
+		}) => void;
+		const { EnhancedPlayerRegistrar } = jest.requireMock(
+			'../../src/player/EnhancedPlayerRegistrar',
+		);
+		const registrar = (EnhancedPlayerRegistrar as jest.Mock).mock.results[0]
+			.value as {
+			primeSavedRecordingsForEnhancement: jest.Mock;
+		};
+
+		onRecordingSaved({
+			audioPaths: ['recordings/fresh.webm'],
+			notePath: 'notes/daily.md',
+		});
+
+		expect(
+			registrar.primeSavedRecordingsForEnhancement,
+		).toHaveBeenCalledWith(['recordings/fresh.webm'], 'notes/daily.md');
 	});
 
 	it('treats a rejected settings read as a failed read', async () => {
