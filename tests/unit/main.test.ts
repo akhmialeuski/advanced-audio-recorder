@@ -6,6 +6,8 @@
 import { App } from 'obsidian';
 import AudioRecorderPlugin from '../../src/main';
 import { DEFAULT_SETTINGS } from '../../src/settings/Settings';
+import type { SaveProgress } from '../../src/types';
+import type { TranscriptionModalOptions } from '../../src/ui/TranscriptionModal';
 
 jest.mock('../../src/recording/RecordingManager', () => ({
 	RecordingManager: jest.fn().mockImplementation(() => ({
@@ -567,5 +569,98 @@ describe('AudioRecorderPlugin crash recovery wiring', () => {
 			expect.any(Error),
 		);
 		consoleErrorSpy.mockRestore();
+	});
+});
+
+describe('AudioRecorderPlugin background transcription status bar', () => {
+	beforeEach(() => {
+		jest.useFakeTimers();
+	});
+
+	afterEach(() => {
+		jest.useRealTimers();
+		jest.clearAllMocks();
+	});
+
+	/** Builds per-modal background-progress callbacks via the private factory. */
+	const buildBackgroundProgress = (
+		plugin: AudioRecorderPlugin,
+	): NonNullable<TranscriptionModalOptions['backgroundProgress']> => {
+		const factory = plugin as unknown as {
+			createTranscriptionModalOptions: () => TranscriptionModalOptions;
+		};
+		const options = factory.createTranscriptionModalOptions();
+		if (!options.backgroundProgress) {
+			throw new Error('Expected background progress callbacks');
+		}
+		return options.backgroundProgress;
+	};
+
+	const progress = (percent: number, description: string): SaveProgress => ({
+		percent,
+		description,
+	});
+
+	it('renders the most recent minimized transcription and falls back when it clears', async () => {
+		const { plugin } = createPlugin([null]);
+		await onloadWithTimers(plugin);
+
+		const { renderTranscriptionStatusBar, updateStatusBar } =
+			jest.requireMock('../../src/ui/StatusBar');
+		(renderTranscriptionStatusBar as jest.Mock).mockClear();
+
+		const first = buildBackgroundProgress(plugin);
+		const second = buildBackgroundProgress(plugin);
+		const restoreFirst = jest.fn();
+		const restoreSecond = jest.fn();
+
+		first.show(progress(10, 'First job'), restoreFirst);
+		second.show(progress(60, 'Second job'), restoreSecond);
+
+		// The most recently updated job occupies the single status-bar slot.
+		expect(renderTranscriptionStatusBar).toHaveBeenLastCalledWith(
+			expect.anything(),
+			progress(60, 'Second job'),
+			expect.objectContaining({ onActivate: restoreSecond }),
+		);
+
+		// Clearing the active job falls back to the other still-minimized job
+		// instead of blanking the bar.
+		second.clear();
+		expect(renderTranscriptionStatusBar).toHaveBeenLastCalledWith(
+			expect.anything(),
+			progress(10, 'First job'),
+			expect.objectContaining({ onActivate: restoreFirst }),
+		);
+
+		// Clearing the last job releases the slot to the idle renderer.
+		(updateStatusBar as jest.Mock).mockClear();
+		first.clear();
+		expect(updateStatusBar).toHaveBeenCalled();
+	});
+
+	it('keeps the active job displayed when a superseded job clears', async () => {
+		const { plugin } = createPlugin([null]);
+		await onloadWithTimers(plugin);
+
+		const { renderTranscriptionStatusBar } = jest.requireMock(
+			'../../src/ui/StatusBar',
+		);
+
+		const first = buildBackgroundProgress(plugin);
+		const second = buildBackgroundProgress(plugin);
+		const restoreSecond = jest.fn();
+
+		first.show(progress(10, 'First job'), jest.fn());
+		second.show(progress(60, 'Second job'), restoreSecond);
+
+		(renderTranscriptionStatusBar as jest.Mock).mockClear();
+		// The earlier job finishes while the later one still owns the slot.
+		first.clear();
+		expect(renderTranscriptionStatusBar).toHaveBeenLastCalledWith(
+			expect.anything(),
+			progress(60, 'Second job'),
+			expect.objectContaining({ onActivate: restoreSecond }),
+		);
 	});
 });

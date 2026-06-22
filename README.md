@@ -237,6 +237,10 @@ Most options also appear in the **Transcribe audio** dialog, so you can choose t
 - **In-note formatting** is fully configurable: a **note heading**, toggles for timestamps and speakers, and three templates — **timestamp format** (`{time}`), **speaker format** (`{speaker}`), and **line format** (`{timestamp} {speaker} {text}`).
 - **Timestamps as player links**: each timestamp can be a `#t=` link that jumps the [enhanced player](#enhanced-audio-player) to that position — click a line to hear it.
 
+### Progress and minimizing
+
+While a transcription runs, the dialog shows a progress bar and a **Cancel** button. Transcription can be slow and may be a paid API call, so you do not have to wait on the open dialog: click **Minimize** to send the job to the status bar and keep working. The status bar then shows live transcription progress; click it (or focus it and press Enter) to reopen the dialog. Recording always takes precedence in the status bar, so the transcription progress reappears once recording finishes. Closing the dialog (instead of minimizing) cancels the running job.
+
 ### LLM post-processing
 
 Optionally pass the transcript through an LLM to **clean up** punctuation/formatting (preserving wording, timestamps, and speakers), **summarize** it into key points and action items, or apply a **custom instruction**. Providers:

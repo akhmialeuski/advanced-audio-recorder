@@ -53,6 +53,9 @@ const SETTINGS_DATA_FILE = 'data.json';
 /** Backup file name for settings, stored next to data.json. */
 const SETTINGS_BACKUP_FILE = 'data.json.bak';
 
+/** Accessible label for the status-bar action that reopens a minimized transcription. */
+const RESTORE_TRANSCRIPTION_LABEL = 'Restore transcription window';
+
 /**
  * Result of reading the stored settings from disk.
  */
@@ -78,10 +81,10 @@ interface StoredSettingsReadResult {
 }
 
 /**
- * Status-bar state owned by a minimized transcription modal.
+ * Status-bar state owned by a minimized transcription modal. The owning
+ * modal id is the map key, so it is not repeated here.
  */
 interface BackgroundTranscriptionProgress {
-	id: number;
 	progress: SaveProgress;
 	restore: () => void;
 }
@@ -100,8 +103,16 @@ export default class AudioRecorderPlugin extends Plugin {
 	private encodingWorker: EncodingWorkerClient | null = null;
 	private recordingStatus: RecordingStatus = RecordingStatus.Idle;
 	private recordingSaveProgress: SaveProgress | undefined;
-	private backgroundTranscriptionProgress: BackgroundTranscriptionProgress | null =
-		null;
+	/**
+	 * Minimized transcriptions reporting progress in the status bar, keyed by
+	 * a per-modal id. Insertion order is preserved, so the most recently
+	 * updated job is the one rendered; clearing it falls back to the previous
+	 * still-minimized job instead of blanking the bar.
+	 */
+	private backgroundTranscriptions = new Map<
+		number,
+		BackgroundTranscriptionProgress
+	>();
 	private nextBackgroundTranscriptionId = 0;
 	/**
 	 * True when data.json exists on disk but could not be read at load
@@ -650,22 +661,38 @@ export default class AudioRecorderPlugin extends Plugin {
 		return {
 			backgroundProgress: {
 				show: (progress: SaveProgress, restore: () => void) => {
-					this.backgroundTranscriptionProgress = {
-						id,
+					// Re-insert so the most recently updated job sorts last and
+					// becomes the rendered one, even when several are minimized.
+					this.backgroundTranscriptions.delete(id);
+					this.backgroundTranscriptions.set(id, {
 						progress,
 						restore,
-					};
+					});
 					this.renderStatusBar();
 				},
 				clear: () => {
-					if (this.backgroundTranscriptionProgress?.id !== id) {
-						return;
+					if (this.backgroundTranscriptions.delete(id)) {
+						this.renderStatusBar();
 					}
-					this.backgroundTranscriptionProgress = null;
-					this.renderStatusBar();
 				},
 			},
 		};
+	}
+
+	/**
+	 * Returns the minimized transcription that should currently occupy the
+	 * status bar (the most recently updated one), or undefined when none are
+	 * minimized.
+	 * @returns The active background transcription, if any
+	 */
+	private activeBackgroundTranscription():
+		| BackgroundTranscriptionProgress
+		| undefined {
+		let active: BackgroundTranscriptionProgress | undefined;
+		for (const entry of this.backgroundTranscriptions.values()) {
+			active = entry;
+		}
+		return active;
 	}
 
 	/**
@@ -673,18 +700,12 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * minimized transcription progress because they carry recording controls.
 	 */
 	private renderStatusBar(): void {
-		if (
-			this.recordingStatus === RecordingStatus.Idle &&
-			this.backgroundTranscriptionProgress
-		) {
-			renderTranscriptionStatusBar(
-				this.statusBarItem,
-				this.backgroundTranscriptionProgress.progress,
-				{
-					onActivate: this.backgroundTranscriptionProgress.restore,
-					activationLabel: 'Restore transcription window',
-				},
-			);
+		const active = this.activeBackgroundTranscription();
+		if (this.recordingStatus === RecordingStatus.Idle && active) {
+			renderTranscriptionStatusBar(this.statusBarItem, active.progress, {
+				onActivate: active.restore,
+				activationLabel: RESTORE_TRANSCRIPTION_LABEL,
+			});
 			return;
 		}
 

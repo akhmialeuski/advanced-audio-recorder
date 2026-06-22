@@ -125,8 +125,8 @@ function renderSavingState(el: HTMLElement, saveProgress?: SaveProgress): void {
 }
 
 /**
- * Renders a minimized transcription job in the status bar. Double-clicking
- * the progress surface or focusing it and pressing Enter/Space restores the
+ * Renders a minimized transcription job in the status bar. Clicking the
+ * progress surface or focusing it and pressing Enter/Space restores the
  * transcription modal.
  * @param statusBarItem - The status bar HTML element
  * @param progress - Current transcription progress
@@ -179,8 +179,11 @@ function renderProgressState(
 		wrapper.setAttribute('role', 'button');
 		wrapper.setAttribute('aria-label', options.activationLabel);
 		wrapper.tabIndex = 0;
-		wrapper.addEventListener('dblclick', (event: MouseEvent) => {
-			event.preventDefault();
+		// Single click matches the sibling recording controls and the
+		// role="button" semantics; stop propagation so the surrounding status
+		// bar item does not also react.
+		wrapper.addEventListener('click', (event: MouseEvent) => {
+			event.stopPropagation();
 			options.onActivate();
 		});
 		wrapper.addEventListener('keydown', (event: KeyboardEvent) => {

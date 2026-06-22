@@ -38,6 +38,9 @@ import {
 } from '../transcription/TranscriptionService';
 import type { SaveProgress } from '../types';
 
+/** Default status label shown before the engine reports a finer-grained stage. */
+const DEFAULT_TRANSCRIBE_LABEL = 'Transcribing...';
+
 /**
  * Callbacks used when the modal is minimized while transcription continues.
  */
@@ -73,7 +76,7 @@ export class TranscriptionModal extends Modal {
 	private minimized = false;
 	private lastProgress: SaveProgress = {
 		percent: 0,
-		description: 'Transcribing...',
+		description: DEFAULT_TRANSCRIBE_LABEL,
 	};
 	/** Per-run settings copy: edited here, never persisted to plugin data. */
 	private readonly runSettings: AudioRecorderSettings;
@@ -289,7 +292,7 @@ export class TranscriptionModal extends Modal {
 			return;
 		}
 		this.setRunning(true);
-		this.updateProgress(0, 'Transcribing...');
+		this.updateProgress(0, DEFAULT_TRANSCRIBE_LABEL);
 		// Snapshot the options so a control toggled mid-run cannot change an
 		// in-flight job; edits only affect the next attempt after a failure.
 		const settings = { ...this.runSettings };

@@ -244,7 +244,7 @@ describe('StatusBar', () => {
 			);
 		});
 
-		it('should restore transcription on double click', () => {
+		it('should restore transcription on a single click', () => {
 			const onActivate = jest.fn();
 			renderTranscriptionStatusBar(
 				statusBarItem,
@@ -261,11 +261,35 @@ describe('StatusBar', () => {
 			const action = statusBarItem.querySelector(
 				'.aar-status-progress-actionable',
 			);
+			action?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+			expect(onActivate).toHaveBeenCalledTimes(1);
+		});
+
+		it('should not restore transcription on a double click only', () => {
+			const onActivate = jest.fn();
+			renderTranscriptionStatusBar(
+				statusBarItem,
+				{
+					percent: 10,
+					description: 'Transcribing...',
+				},
+				{
+					onActivate,
+					activationLabel: 'Restore transcription window',
+				},
+			);
+
+			const action = statusBarItem.querySelector(
+				'.aar-status-progress-actionable',
+			);
+			// A bare dblclick event no longer triggers the restore; only the
+			// click events a real double click also fires would.
 			action?.dispatchEvent(
 				new MouseEvent('dblclick', { bubbles: true }),
 			);
 
-			expect(onActivate).toHaveBeenCalledTimes(1);
+			expect(onActivate).not.toHaveBeenCalled();
 		});
 
 		it('should restore transcription from keyboard activation', () => {
