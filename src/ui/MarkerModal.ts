@@ -58,7 +58,10 @@ export class RecordingMarkerModal extends Modal {
 			const button = toggle.createEl('button', {
 				cls: 'aar-marker-type-btn',
 			});
-			setIcon(button.createSpan({ cls: 'aar-marker-type-icon' }), option.icon);
+			setIcon(
+				button.createSpan({ cls: 'aar-marker-type-icon' }),
+				option.icon,
+			);
 			button.createSpan({ text: option.label });
 			button.addEventListener('click', () => {
 				this.selectKind(option.kind);
@@ -93,7 +96,7 @@ export class RecordingMarkerModal extends Modal {
 
 		this.refreshKindButtons();
 		// Defer focus until the modal is in the DOM so select() works
-		activeWindow.setTimeout(() => {
+		window.setTimeout(() => {
 			this.inputEl?.focus();
 			this.inputEl?.select();
 		}, 0);

@@ -481,7 +481,9 @@ describe('PartRotationController', () => {
 		});
 
 		it('advances the compressed part ordinal after a rotation', async () => {
-			buildController(createSession({ splitEnabled: true, partMinutes: 15 }));
+			buildController(
+				createSession({ splitEnabled: true, partMinutes: 15 }),
+			);
 
 			jest.advanceTimersByTime(15 * MS_PER_MINUTE);
 			controller.maybeRotate();

@@ -16,9 +16,10 @@ import type {
 import { MarkerStore } from '../player/markers/MarkerStore';
 import {
 	MARKER_KIND,
+	removeMarker,
 	sortMarkers,
+	updateMarker,
 	type MarkerKind,
-	type PlayerMarker,
 } from '../player/markers/markerModel';
 import {
 	defaultMarkerLabel,
@@ -111,6 +112,13 @@ export class RecordingManager {
 	private markerBuffer: RecordingMarkerDraft[] = [];
 	/** Last marker kind chosen in the modal, preselected next time. */
 	private lastMarkerKind: MarkerKind = MARKER_KIND.bookmark;
+	/**
+	 * Sidecar paths each persisted marker landed in, keyed by draft id.
+	 * Populated at stop so a naming modal still open when the session ends
+	 * can edit or discard the already-saved marker rather than silently
+	 * losing the change. Reset when a new session starts.
+	 */
+	private readonly persistedMarkerPaths = new Map<string, string[]>();
 
 	/**
 	 * Creates a new RecordingManager.
@@ -223,6 +231,10 @@ export class RecordingManager {
 						? trimmed
 						: this.nextMarkerLabel(kind, draft.id);
 				this.lastMarkerKind = kind;
+				// If the session finalized while the modal was open the draft
+				// was already persisted with its default label; push the edit
+				// through to the sidecar so the user's name/kind is not lost.
+				void this.syncPersistedMarker(draft);
 			},
 			cancel: () => {
 				const index = this.markerBuffer.findIndex(
@@ -231,6 +243,9 @@ export class RecordingManager {
 				if (index !== -1) {
 					this.markerBuffer.splice(index, 1);
 				}
+				// Same race: a draft persisted before the modal closed must be
+				// removed from its sidecar so cancelling truly discards it.
+				void this.removePersistedMarker(draft.id);
 			},
 		};
 	}
@@ -242,7 +257,10 @@ export class RecordingManager {
 	 * @param kind - Marker kind being labelled
 	 * @param excludeId - Draft id to exclude from the count, or null
 	 */
-	private nextMarkerLabel(kind: MarkerKind, excludeId: string | null): string {
+	private nextMarkerLabel(
+		kind: MarkerKind,
+		excludeId: string | null,
+	): string {
 		const others = this.markerBuffer.filter(
 			(entry) => entry.id !== excludeId,
 		);
@@ -264,20 +282,84 @@ export class RecordingManager {
 			{ trackIndex: 0, files: result.audioPaths },
 		];
 		const writes = groupMarkersByFile(this.markerBuffer, groups);
+		// Record where each draft landed before any await runs, so a modal
+		// still open can reach its persisted marker by id. Done in one
+		// synchronous pass: no commit/cancel can interleave mid-write.
+		for (const { path, markers } of writes) {
+			for (const marker of markers) {
+				const paths = this.persistedMarkerPaths.get(marker.id) ?? [];
+				paths.push(path);
+				this.persistedMarkerPaths.set(marker.id, paths);
+			}
+		}
 		for (const { path, markers } of writes) {
 			try {
 				const existing = await this.markerStore.get(path);
-				const added: PlayerMarker[] = markers.map((marker) => ({
-					id: generateMarkerId(),
-					...marker,
-				}));
 				await this.markerStore.set(
 					path,
-					sortMarkers([...existing, ...added]),
+					sortMarkers([...existing, ...markers]),
 				);
 			} catch (error) {
 				console.error(
 					`${PLUGIN_LOG_PREFIX} Failed to persist recording markers for ${path}:`,
+					error,
+				);
+			}
+		}
+	}
+
+	/**
+	 * Pushes a draft's edited label and kind onto every sidecar it was
+	 * already persisted to. No-op while the session is still active (the
+	 * draft is then edited in place in the buffer instead). Never throws: a
+	 * sidecar write failure must not surface from a UI commit handler.
+	 * @param draft - The edited draft
+	 */
+	private async syncPersistedMarker(
+		draft: RecordingMarkerDraft,
+	): Promise<void> {
+		const paths = this.persistedMarkerPaths.get(draft.id);
+		if (!paths) {
+			return;
+		}
+		for (const path of paths) {
+			try {
+				const existing = await this.markerStore.get(path);
+				await this.markerStore.set(
+					path,
+					updateMarker(existing, draft.id, {
+						label: draft.label,
+						kind: draft.kind,
+					}),
+				);
+			} catch (error) {
+				console.error(
+					`${PLUGIN_LOG_PREFIX} Failed to update persisted marker for ${path}:`,
+					error,
+				);
+			}
+		}
+	}
+
+	/**
+	 * Removes an already-persisted marker from every sidecar it landed in.
+	 * No-op while the session is still active (the draft is just dropped from
+	 * the buffer instead). Never throws.
+	 * @param id - The draft/marker id to remove
+	 */
+	private async removePersistedMarker(id: string): Promise<void> {
+		const paths = this.persistedMarkerPaths.get(id);
+		if (!paths) {
+			return;
+		}
+		this.persistedMarkerPaths.delete(id);
+		for (const path of paths) {
+			try {
+				const existing = await this.markerStore.get(path);
+				await this.markerStore.set(path, removeMarker(existing, id));
+			} catch (error) {
+				console.error(
+					`${PLUGIN_LOG_PREFIX} Failed to remove persisted marker for ${path}:`,
 					error,
 				);
 			}
@@ -370,6 +452,7 @@ export class RecordingManager {
 				.replace(/[:.]/g, '-');
 			this.totalChunks = 0;
 			this.markerBuffer = [];
+			this.persistedMarkerPaths.clear();
 
 			if (this.isWavPcmRecording) {
 				await this.initPcmRecording();

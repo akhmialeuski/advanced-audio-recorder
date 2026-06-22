@@ -82,7 +82,14 @@ export interface PartPosition {
  * synchronized by audio time across all tracks: compressed sessions reset the
  * per-part clock on each rotation (so the part ordinal comes from the rotation
  * counter), while PCM sessions split sample-exact at exactly partMinutes of
- * audio (so the ordinal is derived deterministically from the session clock).
+ * audio, so the ordinal is derived from the session clock.
+ *
+ * For PCM the session clock is wall-clock active time, used as a proxy for
+ * captured-sample time. The two can drift by the audio-hardware-vs-system
+ * clock skew (well under a second per part in practice), so a marker dropped
+ * within that skew of a part boundary may resolve to the neighbouring part;
+ * `resolvePartFileIndex` then clamps it into a real file. This is accepted in
+ * exchange for one position mechanism shared by compressed and PCM sessions.
  * @param state - Active-time snapshot with the live term already folded in
  */
 export function computePartPosition(state: PartPositionState): PartPosition {
@@ -122,10 +129,14 @@ export function resolvePartFileIndex(
 	return Math.min(Math.max(0, partOrdinal), fileCount - 1);
 }
 
-/** A label/kind/time triple destined for one file's sidecar (id assigned later). */
+/**
+ * A marker destined for one file's sidecar. Carries the originating draft's
+ * id so the same logical marker keeps a stable identity across the tracks it
+ * fans out to, and can still be found and edited after it is persisted.
+ */
 export interface MarkerFileWrite {
 	path: string;
-	markers: { time: number; label: string; kind: MarkerKind }[];
+	markers: { id: string; time: number; label: string; kind: MarkerKind }[];
 }
 
 /**
@@ -159,6 +170,7 @@ export function groupMarkersByFile(
 				order.push(path);
 			}
 			entry.markers.push({
+				id: draft.id,
 				time: draft.offsetSeconds,
 				label: draft.label,
 				kind: draft.kind,

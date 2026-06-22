@@ -39,7 +39,9 @@ const draft = (
 describe('computePartPosition', () => {
 	it('returns the whole-session offset when auto-split is off', () => {
 		expect(
-			computePartPosition(state({ splitEnabled: false, sessionActiveMs: 42000 })),
+			computePartPosition(
+				state({ splitEnabled: false, sessionActiveMs: 42000 }),
+			),
 		).toEqual({ partOrdinal: 0, offsetSeconds: 42 });
 	});
 
@@ -160,11 +162,19 @@ describe('resolvePartFileIndex', () => {
 
 describe('groupMarkersByFile', () => {
 	it('maps a single-file recording to that one file', () => {
-		const groups: TrackFileGroup[] = [{ trackIndex: 0, files: ['rec.webm'] }];
+		const groups: TrackFileGroup[] = [
+			{ trackIndex: 0, files: ['rec.webm'] },
+		];
 		expect(
-			groupMarkersByFile([draft({ offsetSeconds: 12, label: 'M' })], groups),
+			groupMarkersByFile(
+				[draft({ offsetSeconds: 12, label: 'M' })],
+				groups,
+			),
 		).toEqual([
-			{ path: 'rec.webm', markers: [{ time: 12, label: 'M', kind: 'bookmark' }] },
+			{
+				path: 'rec.webm',
+				markers: [{ id: 'd', time: 12, label: 'M', kind: 'bookmark' }],
+			},
 		]);
 	});
 
@@ -174,12 +184,18 @@ describe('groupMarkersByFile', () => {
 			{ trackIndex: 1, files: ['system.webm'] },
 		];
 		expect(
-			groupMarkersByFile([draft({ offsetSeconds: 8, label: 'Q' })], groups),
+			groupMarkersByFile(
+				[draft({ offsetSeconds: 8, label: 'Q' })],
+				groups,
+			),
 		).toEqual([
-			{ path: 'mic.webm', markers: [{ time: 8, label: 'Q', kind: 'bookmark' }] },
+			{
+				path: 'mic.webm',
+				markers: [{ id: 'd', time: 8, label: 'Q', kind: 'bookmark' }],
+			},
 			{
 				path: 'system.webm',
-				markers: [{ time: 8, label: 'Q', kind: 'bookmark' }],
+				markers: [{ id: 'd', time: 8, label: 'Q', kind: 'bookmark' }],
 			},
 		]);
 	});
@@ -189,29 +205,53 @@ describe('groupMarkersByFile', () => {
 			{ trackIndex: 0, files: ['merged.wav'] },
 		];
 		expect(
-			groupMarkersByFile([draft({ partOrdinal: 0, offsetSeconds: 5 })], groups),
+			groupMarkersByFile(
+				[draft({ partOrdinal: 0, offsetSeconds: 5 })],
+				groups,
+			),
 		).toEqual([
 			{
 				path: 'merged.wav',
-				markers: [{ time: 5, label: 'Marker 1', kind: 'bookmark' }],
+				markers: [
+					{ id: 'd', time: 5, label: 'Marker 1', kind: 'bookmark' },
+				],
 			},
 		]);
 	});
 
 	it('routes split-recording markers to the part file of their ordinal', () => {
 		const groups: TrackFileGroup[] = [
-			{ trackIndex: 0, files: ['rec-part1.wav', 'rec-part2.wav', 'rec.wav'] },
+			{
+				trackIndex: 0,
+				files: ['rec-part1.wav', 'rec-part2.wav', 'rec.wav'],
+			},
 		];
 		const writes = groupMarkersByFile(
 			[
-				draft({ id: 'a', partOrdinal: 0, offsetSeconds: 4, label: 'A' }),
-				draft({ id: 'b', partOrdinal: 2, offsetSeconds: 6, label: 'B' }),
+				draft({
+					id: 'a',
+					partOrdinal: 0,
+					offsetSeconds: 4,
+					label: 'A',
+				}),
+				draft({
+					id: 'b',
+					partOrdinal: 2,
+					offsetSeconds: 6,
+					label: 'B',
+				}),
 			],
 			groups,
 		);
 		expect(writes).toEqual([
-			{ path: 'rec-part1.wav', markers: [{ time: 4, label: 'A', kind: 'bookmark' }] },
-			{ path: 'rec.wav', markers: [{ time: 6, label: 'B', kind: 'bookmark' }] },
+			{
+				path: 'rec-part1.wav',
+				markers: [{ id: 'a', time: 4, label: 'A', kind: 'bookmark' }],
+			},
+			{
+				path: 'rec.wav',
+				markers: [{ id: 'b', time: 6, label: 'B', kind: 'bookmark' }],
+			},
 		]);
 	});
 
@@ -222,16 +262,38 @@ describe('groupMarkersByFile', () => {
 		];
 		const writes = groupMarkersByFile(
 			[
-				draft({ id: 'a', partOrdinal: 0, offsetSeconds: 3, label: 'A' }),
-				draft({ id: 'b', partOrdinal: 1, offsetSeconds: 9, label: 'B' }),
+				draft({
+					id: 'a',
+					partOrdinal: 0,
+					offsetSeconds: 3,
+					label: 'A',
+				}),
+				draft({
+					id: 'b',
+					partOrdinal: 1,
+					offsetSeconds: 9,
+					label: 'B',
+				}),
 			],
 			groups,
 		);
 		expect(writes).toEqual([
-			{ path: 'mic-part1.wav', markers: [{ time: 3, label: 'A', kind: 'bookmark' }] },
-			{ path: 'mic.wav', markers: [{ time: 9, label: 'B', kind: 'bookmark' }] },
-			{ path: 'sys-part1.wav', markers: [{ time: 3, label: 'A', kind: 'bookmark' }] },
-			{ path: 'sys.wav', markers: [{ time: 9, label: 'B', kind: 'bookmark' }] },
+			{
+				path: 'mic-part1.wav',
+				markers: [{ id: 'a', time: 3, label: 'A', kind: 'bookmark' }],
+			},
+			{
+				path: 'mic.wav',
+				markers: [{ id: 'b', time: 9, label: 'B', kind: 'bookmark' }],
+			},
+			{
+				path: 'sys-part1.wav',
+				markers: [{ id: 'a', time: 3, label: 'A', kind: 'bookmark' }],
+			},
+			{
+				path: 'sys.wav',
+				markers: [{ id: 'b', time: 9, label: 'B', kind: 'bookmark' }],
+			},
 		]);
 	});
 
@@ -240,11 +302,16 @@ describe('groupMarkersByFile', () => {
 			{ trackIndex: 0, files: ['part1.wav', 'residual.wav'] },
 		];
 		expect(
-			groupMarkersByFile([draft({ partOrdinal: 5, offsetSeconds: 7 })], groups),
+			groupMarkersByFile(
+				[draft({ partOrdinal: 5, offsetSeconds: 7 })],
+				groups,
+			),
 		).toEqual([
 			{
 				path: 'residual.wav',
-				markers: [{ time: 7, label: 'Marker 1', kind: 'bookmark' }],
+				markers: [
+					{ id: 'd', time: 7, label: 'Marker 1', kind: 'bookmark' },
+				],
 			},
 		]);
 	});
@@ -255,7 +322,9 @@ describe('groupMarkersByFile', () => {
 	});
 
 	it('returns nothing for an empty marker buffer', () => {
-		const groups: TrackFileGroup[] = [{ trackIndex: 0, files: ['rec.webm'] }];
+		const groups: TrackFileGroup[] = [
+			{ trackIndex: 0, files: ['rec.webm'] },
+		];
 		expect(groupMarkersByFile([], groups)).toEqual([]);
 	});
 
@@ -281,8 +350,8 @@ describe('groupMarkersByFile', () => {
 			{
 				path: 'x.webm',
 				markers: [
-					{ time: 2, label: 'A', kind: 'bookmark' },
-					{ time: 1, label: 'C1', kind: 'chapter' },
+					{ id: 'a', time: 2, label: 'A', kind: 'bookmark' },
+					{ id: 'b', time: 1, label: 'C1', kind: 'chapter' },
 				],
 			},
 		]);

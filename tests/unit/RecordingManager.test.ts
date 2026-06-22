@@ -2336,6 +2336,35 @@ describe('RecordingManager', () => {
 			return { store, set };
 		};
 
+		// A store that actually remembers what was written, so reach-through
+		// edits/removals after stop can be asserted against the final state.
+		const makeStatefulMarkerStore = (): {
+			store: MarkerStore;
+			set: jest.Mock;
+			read: (path: string) => PlayerMarker[];
+		} => {
+			const data = new Map<string, PlayerMarker[]>();
+			const set = jest.fn((path: string, markers: PlayerMarker[]) => {
+				data.set(path, [...markers]);
+				return Promise.resolve();
+			});
+			const store = {
+				get: jest.fn((path: string) =>
+					Promise.resolve(data.get(path) ?? []),
+				),
+				set,
+			} as unknown as MarkerStore;
+			return { store, set, read: (path) => data.get(path) ?? [] };
+		};
+
+		// A commit/cancel queues fire-and-forget sidecar writes (get -> set is
+		// two microtask hops); draining a few turns lets them settle.
+		const flushMicrotasks = async (): Promise<void> => {
+			for (let i = 0; i < 5; i++) {
+				await Promise.resolve();
+			}
+		};
+
 		const feedChunkAndStop = async (): Promise<void> => {
 			const chunk = new Blob([new Uint8Array([1, 2, 3])], {
 				type: 'audio/webm',
@@ -2368,7 +2397,10 @@ describe('RecordingManager', () => {
 			await feedChunkAndStop();
 
 			expect(set).toHaveBeenCalledTimes(1);
-			const [path, markers] = set.mock.calls[0] as [string, PlayerMarker[]];
+			const [path, markers] = set.mock.calls[0] as [
+				string,
+				PlayerMarker[],
+			];
 			expect(typeof path).toBe('string');
 			expect(markers).toHaveLength(1);
 			expect(markers[0]).toMatchObject({
@@ -2429,6 +2461,67 @@ describe('RecordingManager', () => {
 			await feedChunkAndStop();
 
 			expect(set).not.toHaveBeenCalled();
+		});
+
+		it('applies a label edit committed after the session has stopped', async () => {
+			const { store, set, read } = makeStatefulMarkerStore();
+			mockSettings = {
+				...DEFAULT_SETTINGS,
+				playerEnableMarkers: true,
+				insertAtOriginalPosition: false,
+			};
+			manager = new RecordingManager(
+				mockApp,
+				mockSettings,
+				statusChangeCallback,
+				undefined,
+				undefined,
+				store,
+			);
+
+			await manager.startRecording();
+			const handle = manager.captureMarkerDraft();
+			// Stop persists the draft with its default label while the modal
+			// is still open; the user then finishes naming it.
+			await feedChunkAndStop();
+			handle?.commit('Renamed live', MARKER_KIND.chapter);
+			await flushMicrotasks();
+
+			const path = set.mock.calls[0][0] as string;
+			const final = read(path);
+			expect(final).toHaveLength(1);
+			expect(final[0]).toMatchObject({
+				label: 'Renamed live',
+				kind: MARKER_KIND.chapter,
+			});
+		});
+
+		it('removes a marker cancelled after the session has stopped', async () => {
+			const { store, set, read } = makeStatefulMarkerStore();
+			mockSettings = {
+				...DEFAULT_SETTINGS,
+				playerEnableMarkers: true,
+				insertAtOriginalPosition: false,
+			};
+			manager = new RecordingManager(
+				mockApp,
+				mockSettings,
+				statusChangeCallback,
+				undefined,
+				undefined,
+				store,
+			);
+
+			await manager.startRecording();
+			const handle = manager.captureMarkerDraft();
+			await feedChunkAndStop();
+			const path = set.mock.calls[0][0] as string;
+			expect(read(path)).toHaveLength(1);
+
+			handle?.cancel();
+			await flushMicrotasks();
+
+			expect(read(path)).toHaveLength(0);
 		});
 
 		it('refuses to drop a marker when no recording is active', () => {

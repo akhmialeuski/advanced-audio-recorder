@@ -26,14 +26,22 @@ describe('defaultMarkerLabel', () => {
 			MARKER_KIND.chapter,
 			MARKER_KIND.bookmark,
 		]);
-		expect(defaultMarkerLabel(markers, MARKER_KIND.bookmark)).toBe('Marker 3');
-		expect(defaultMarkerLabel(markers, MARKER_KIND.chapter)).toBe('Chapter 2');
+		expect(defaultMarkerLabel(markers, MARKER_KIND.bookmark)).toBe(
+			'Marker 3',
+		);
+		expect(defaultMarkerLabel(markers, MARKER_KIND.chapter)).toBe(
+			'Chapter 2',
+		);
 	});
 
 	it('numbers bookmarks and chapters independently', () => {
 		const markers = kinds([MARKER_KIND.chapter, MARKER_KIND.chapter]);
-		expect(defaultMarkerLabel(markers, MARKER_KIND.bookmark)).toBe('Marker 1');
-		expect(defaultMarkerLabel(markers, MARKER_KIND.chapter)).toBe('Chapter 3');
+		expect(defaultMarkerLabel(markers, MARKER_KIND.bookmark)).toBe(
+			'Marker 1',
+		);
+		expect(defaultMarkerLabel(markers, MARKER_KIND.chapter)).toBe(
+			'Chapter 3',
+		);
 	});
 });
 

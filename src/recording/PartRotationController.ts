@@ -23,10 +23,7 @@ import {
 import type { TrackWriteQueue } from './TrackWriteQueue';
 import type { RecordingFinalizer } from './RecordingFinalizer';
 import { SessionJournal } from './SessionJournal';
-import {
-	computePartPosition,
-	type PartPosition,
-} from './recordingMarkers';
+import { computePartPosition, type PartPosition } from './recordingMarkers';
 
 /**
  * Callbacks into the RecordingManager: recorder lifecycle stays with

@@ -41,6 +41,7 @@ All commands are available via the command palette (`Ctrl/Cmd + P`) and can be a
 |---------|-------------|
 | **Start/stop recording** | Starts a new recording session or stops the current one. The recorded file is saved and a link is inserted into the active note. |
 | **Pause/resume recording** | Pauses an active recording and resumes it. Available only while recording is active. |
+| **Add marker/chapter at current position** | Drops a bookmark or chapter at the live recording position while recording or paused. Available only when **Markers and chapters** is enabled. |
 | **Select audio input device** | Opens a quick device picker modal. The selected device is saved to settings immediately. |
 
 > **Tip:** The plugin does not assign default hotkeys to avoid conflicts. Assign your own hotkeys in **Settings > Hotkeys** for the best experience.
@@ -53,7 +54,11 @@ Click the **microphone icon** in the ribbon or run `Start/stop recording` from t
 
 During recording:
 - The **ribbon icon** changes from a microphone to an active recording indicator.
-- The **status bar** displays `Recording...` with **Pause** and **Stop** buttons.
+- The **status bar** displays `Recording...` with **Pause** and **Stop** buttons. When **Markers and chapters** is enabled, an **Add marker** button appears next to them.
+
+### Marking moments while recording
+
+When **Markers and chapters** is enabled, you can drop a bookmark or chapter at the current position without waiting for playback: click the **Add marker** button in the status bar or run `Add marker/chapter at current position` (available while recording or paused). A small dialog lets you name the marker and pick its kind; the timestamp is **frozen at the moment you triggered it**, so naming never shifts the position. The marker is attached to the recording's sidecar at save and shows up in the enhanced player once the recording stops.
 
 ### Pausing and resuming
 

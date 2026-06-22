@@ -269,7 +269,11 @@ export class RecordingFinalizer {
 				}
 			}
 		} else {
-			for (let trackIndex = 0; trackIndex < targets.length; trackIndex++) {
+			for (
+				let trackIndex = 0;
+				trackIndex < targets.length;
+				trackIndex++
+			) {
 				const target = targets[trackIndex];
 				const paths = await this.finalizeTrackFiles(target);
 				const files = [...target.partPaths, ...paths];
