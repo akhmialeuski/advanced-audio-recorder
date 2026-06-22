@@ -29,13 +29,18 @@ import {
 	EncodingWorkerClient,
 	setEncodingWorkerClient,
 } from './recording/EncodingWorkerClient';
-import { updateStatusBar, initializeStatusBar } from './ui/StatusBar';
+import {
+	updateStatusBar,
+	initializeStatusBar,
+	renderTranscriptionStatusBar,
+} from './ui/StatusBar';
 import { updateRibbonIcon, initializeRibbonIcon } from './ui/RibbonIcon';
 import { showDeviceSelectionModal } from './ui/DeviceSelectionModal';
 import { ContextMenu } from './ui/ContextMenu';
 import { EnhancedPlayerRegistrar } from './player/EnhancedPlayerRegistrar';
 import { MarkerStore } from './player/markers/MarkerStore';
 import { TranscriptionModal } from './ui/TranscriptionModal';
+import type { TranscriptionModalOptions } from './ui/TranscriptionModal';
 import { AUDIO_EXTENSIONS } from './constants';
 import { delay } from './utils/TimeUtils';
 
@@ -73,6 +78,15 @@ interface StoredSettingsReadResult {
 }
 
 /**
+ * Status-bar state owned by a minimized transcription modal.
+ */
+interface BackgroundTranscriptionProgress {
+	id: number;
+	progress: SaveProgress;
+	restore: () => void;
+}
+
+/**
  * Advanced Audio Recorder plugin for Obsidian.
  */
 export default class AudioRecorderPlugin extends Plugin {
@@ -84,6 +98,11 @@ export default class AudioRecorderPlugin extends Plugin {
 	private playerRegistrar!: EnhancedPlayerRegistrar;
 	private journal!: SessionJournal;
 	private encodingWorker: EncodingWorkerClient | null = null;
+	private recordingStatus: RecordingStatus = RecordingStatus.Idle;
+	private recordingSaveProgress: SaveProgress | undefined;
+	private backgroundTranscriptionProgress: BackgroundTranscriptionProgress | null =
+		null;
+	private nextBackgroundTranscriptionId = 0;
 	/**
 	 * True when data.json exists on disk but could not be read at load
 	 * time. While set, saveSettings refuses to write so the possibly
@@ -120,13 +139,12 @@ export default class AudioRecorderPlugin extends Plugin {
 			this.app,
 			this.settings,
 			(status: RecordingStatus, saveProgress?: SaveProgress) => {
-				const controls = this.buildRecordingControls(status);
-				updateStatusBar(
-					this.statusBarItem,
-					status,
-					saveProgress,
-					controls,
-				);
+				this.recordingStatus = status;
+				this.recordingSaveProgress =
+					status === RecordingStatus.Saving
+						? saveProgress
+						: undefined;
+				this.renderStatusBar();
 				updateRibbonIcon(this.ribbonIconEl, status);
 			},
 			this.journal,
@@ -146,7 +164,12 @@ export default class AudioRecorderPlugin extends Plugin {
 		);
 		this.setupStatusBar();
 
-		this.contextMenu = new ContextMenu(this.app, this, () => this.settings);
+		this.contextMenu = new ContextMenu(
+			this.app,
+			this,
+			() => this.settings,
+			() => this.createTranscriptionModalOptions(),
+		);
 		this.contextMenu.register();
 
 		this.playerRegistrar = new EnhancedPlayerRegistrar(
@@ -565,6 +588,7 @@ export default class AudioRecorderPlugin extends Plugin {
 						this.app,
 						file,
 						() => this.settings,
+						this.createTranscriptionModalOptions(),
 					).open();
 				}
 				return true;
@@ -610,9 +634,67 @@ export default class AudioRecorderPlugin extends Plugin {
 		// writes the configured outputs (with a file fallback when the note is
 		// not editable).
 		new TranscriptionModal(this.app, file, () => this.settings, {
+			...this.createTranscriptionModalOptions(),
 			autoStart: true,
 			notePath: result.notePath ?? undefined,
 		}).open();
+	}
+
+	/**
+	 * Creates modal options that let a minimized transcription report progress
+	 * in this plugin's status bar.
+	 * @returns Transcription modal options
+	 */
+	private createTranscriptionModalOptions(): TranscriptionModalOptions {
+		const id = ++this.nextBackgroundTranscriptionId;
+		return {
+			backgroundProgress: {
+				show: (progress: SaveProgress, restore: () => void) => {
+					this.backgroundTranscriptionProgress = {
+						id,
+						progress,
+						restore,
+					};
+					this.renderStatusBar();
+				},
+				clear: () => {
+					if (this.backgroundTranscriptionProgress?.id !== id) {
+						return;
+					}
+					this.backgroundTranscriptionProgress = null;
+					this.renderStatusBar();
+				},
+			},
+		};
+	}
+
+	/**
+	 * Renders the shared status bar. Recording states take precedence over
+	 * minimized transcription progress because they carry recording controls.
+	 */
+	private renderStatusBar(): void {
+		if (
+			this.recordingStatus === RecordingStatus.Idle &&
+			this.backgroundTranscriptionProgress
+		) {
+			renderTranscriptionStatusBar(
+				this.statusBarItem,
+				this.backgroundTranscriptionProgress.progress,
+				{
+					onActivate: this.backgroundTranscriptionProgress.restore,
+					activationLabel: 'Restore transcription window',
+				},
+			);
+			return;
+		}
+
+		const controls = this.buildRecordingControls(this.recordingStatus);
+		updateStatusBar(
+			this.statusBarItem,
+			this.recordingStatus,
+			this.recordingSaveProgress,
+			controls,
+		);
 	}
 
 	/**

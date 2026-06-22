@@ -37,6 +37,12 @@ If your plugin does not need CSS, delete this file.
     white-space: nowrap;
 }
 
+.is-transcribing {
+    color: var(--color-accent);
+    font-weight: bold;
+    white-space: nowrap;
+}
+
 .side-dock-ribbon-action.is-saving svg {
     color: var(--color-accent);
     animation: pulse-saving 1.5s ease-in-out infinite;
@@ -83,6 +89,20 @@ If your plugin does not need CSS, delete this file.
 }
 
 /* Save progress */
+.aar-status-progress-content {
+    width: 100%;
+}
+
+.aar-status-progress-actionable {
+    cursor: pointer;
+}
+
+.aar-status-progress-actionable:focus-visible {
+    outline: 1px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 3px;
+}
+
 .aar-save-progress {
     height: 3px;
     width: 100%;

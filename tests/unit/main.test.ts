@@ -36,6 +36,7 @@ jest.mock('../../src/player/EnhancedPlayerRegistrar', () => ({
 jest.mock('../../src/ui/StatusBar', () => ({
 	updateStatusBar: jest.fn(),
 	initializeStatusBar: jest.fn(),
+	renderTranscriptionStatusBar: jest.fn(),
 }));
 
 jest.mock('../../src/ui/RibbonIcon', () => ({

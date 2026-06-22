@@ -5,7 +5,11 @@
  */
 /** @jest-environment jsdom */
 
-import { updateStatusBar, initializeStatusBar } from '../../src/ui/StatusBar';
+import {
+	updateStatusBar,
+	initializeStatusBar,
+	renderTranscriptionStatusBar,
+} from '../../src/ui/StatusBar';
 import { RecordingStatus } from '../../src/types';
 import type { RecordingControls } from '../../src/types';
 
@@ -173,6 +177,27 @@ describe('StatusBar', () => {
 			expect(statusBarItem.textContent).toContain('Recording...');
 		});
 
+		it('should clear transcription state when transitioning to recording', () => {
+			renderTranscriptionStatusBar(
+				statusBarItem,
+				{
+					percent: 50,
+					description: 'Transcribing audio...',
+				},
+				{
+					onActivate: jest.fn(),
+					activationLabel: 'Restore transcription window',
+				},
+			);
+
+			updateStatusBar(statusBarItem, RecordingStatus.Recording);
+
+			expect(statusBarItem.classList.contains('is-transcribing')).toBe(
+				false,
+			);
+			expect(statusBarItem.textContent).toContain('Recording...');
+		});
+
 		it('should handle default case same as idle', () => {
 			statusBarItem.classList.add('is-recording');
 
@@ -182,6 +207,98 @@ describe('StatusBar', () => {
 			expect(statusBarItem.classList.contains('is-recording')).toBe(
 				false,
 			);
+		});
+	});
+
+	describe('transcription progress', () => {
+		it('should show minimized transcription progress in the status bar', () => {
+			renderTranscriptionStatusBar(
+				statusBarItem,
+				{
+					percent: 35,
+					description: 'Transcribing chunk 1...',
+				},
+				{
+					onActivate: jest.fn(),
+					activationLabel: 'Restore transcription window',
+				},
+			);
+
+			expect(statusBarItem.classList.contains('is-transcribing')).toBe(
+				true,
+			);
+			expect(statusBarItem.classList.contains('is-recording')).toBe(
+				false,
+			);
+			expect(statusBarItem.classList.contains('is-saving')).toBe(false);
+			expect(statusBarItem.textContent).toContain(
+				'Transcribing chunk 1...',
+			);
+
+			const progressBar = statusBarItem.querySelector(
+				'.aar-save-progress-bar',
+			) as HTMLElement;
+			expect(progressBar).not.toBeNull();
+			expect(progressBar.style.getPropertyValue('--save-progress')).toBe(
+				'35%',
+			);
+		});
+
+		it('should restore transcription on double click', () => {
+			const onActivate = jest.fn();
+			renderTranscriptionStatusBar(
+				statusBarItem,
+				{
+					percent: 10,
+					description: 'Transcribing...',
+				},
+				{
+					onActivate,
+					activationLabel: 'Restore transcription window',
+				},
+			);
+
+			const action = statusBarItem.querySelector(
+				'.aar-status-progress-actionable',
+			);
+			action?.dispatchEvent(
+				new MouseEvent('dblclick', { bubbles: true }),
+			);
+
+			expect(onActivate).toHaveBeenCalledTimes(1);
+		});
+
+		it('should restore transcription from keyboard activation', () => {
+			const onActivate = jest.fn();
+			renderTranscriptionStatusBar(
+				statusBarItem,
+				{
+					percent: 10,
+					description: 'Transcribing...',
+				},
+				{
+					onActivate,
+					activationLabel: 'Restore transcription window',
+				},
+			);
+
+			const action = statusBarItem.querySelector(
+				'.aar-status-progress-actionable',
+			);
+			action?.dispatchEvent(
+				new KeyboardEvent('keydown', {
+					key: 'Enter',
+					bubbles: true,
+				}),
+			);
+			action?.dispatchEvent(
+				new KeyboardEvent('keydown', {
+					key: ' ',
+					bubbles: true,
+				}),
+			);
+
+			expect(onActivate).toHaveBeenCalledTimes(2);
 		});
 	});
 
