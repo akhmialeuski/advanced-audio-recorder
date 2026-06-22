@@ -88,6 +88,44 @@ If your plugin does not need CSS, delete this file.
     height: 14px;
 }
 
+/* Add-marker modal */
+.aar-marker-modal .aar-marker-type {
+    display: flex;
+    gap: 6px;
+    margin: 4px 0 12px;
+}
+
+.aar-marker-type-btn {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 10px;
+    cursor: pointer;
+}
+
+.aar-marker-type-btn.is-active {
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+    box-shadow: none;
+}
+
+.aar-marker-type-icon {
+    display: inline-flex;
+    align-items: center;
+}
+
+.aar-marker-type-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.aar-marker-name-input {
+    width: 100%;
+    margin-bottom: 4px;
+}
+
 /* Save progress */
 .aar-status-progress-content {
     width: 100%;

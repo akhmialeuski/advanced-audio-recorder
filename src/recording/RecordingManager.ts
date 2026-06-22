@@ -11,7 +11,25 @@ import type {
 	RecordingSaveResult,
 	RecordingTarget,
 	SaveProgress,
+	TrackFileGroup,
 } from '../types';
+import { MarkerStore } from '../player/markers/MarkerStore';
+import {
+	MARKER_KIND,
+	removeMarker,
+	sortMarkers,
+	updateMarker,
+	type MarkerKind,
+} from '../player/markers/markerModel';
+import {
+	defaultMarkerLabel,
+	generateMarkerId,
+} from '../player/markers/markerFactory';
+import {
+	groupMarkersByFile,
+	type RecordingMarkerDraft,
+	type RecordingMarkerHandle,
+} from './recordingMarkers';
 import type { AudioRecorderSettings, OutputMode } from '../settings/Settings';
 import {
 	getAudioStreams,
@@ -90,6 +108,17 @@ export class RecordingManager {
 	private readonly finalizer: RecordingFinalizer;
 	/** Auto-split part rotation (timing, reentry, part finalization). */
 	private readonly rotation: PartRotationController;
+	/** Markers captured during the current session, flushed at stop. */
+	private markerBuffer: RecordingMarkerDraft[] = [];
+	/** Last marker kind chosen in the modal, preselected next time. */
+	private lastMarkerKind: MarkerKind = MARKER_KIND.bookmark;
+	/**
+	 * Sidecar paths each persisted marker landed in, keyed by draft id.
+	 * Populated at stop so a naming modal still open when the session ends
+	 * can edit or discard the already-saved marker rather than silently
+	 * losing the change. Reset when a new session starts.
+	 */
+	private readonly persistedMarkerPaths = new Map<string, string[]>();
 
 	/**
 	 * Creates a new RecordingManager.
@@ -111,6 +140,7 @@ export class RecordingManager {
 		private readonly onRecordingSaved?: (
 			result: RecordingSaveResult,
 		) => void,
+		private readonly markerStore: MarkerStore = new MarkerStore(app),
 	) {
 		this.onStatusChange = onStatusChange;
 		this.debugLogger = new DebugLogger(settings);
@@ -155,6 +185,185 @@ export class RecordingManager {
 	 */
 	getStatus(): RecordingStatus {
 		return this.status;
+	}
+
+	/**
+	 * Whether a marker can be dropped right now: a session must be active
+	 * (recording or paused) and the player markers feature must be enabled,
+	 * since markers are only ever surfaced by the enhanced player.
+	 */
+	canDropMarker(): boolean {
+		return (
+			(this.status === RecordingStatus.Recording ||
+				this.status === RecordingStatus.Paused) &&
+			this.settings.playerEnableMarkers
+		);
+	}
+
+	/**
+	 * Captures a marker at the current position and adds it to the session
+	 * buffer immediately, so it survives even if the recording stops while
+	 * the naming modal is still open. Returns an editing handle for the
+	 * modal, or null when a marker cannot be dropped now.
+	 */
+	captureMarkerDraft(): RecordingMarkerHandle | null {
+		if (!this.canDropMarker()) {
+			return null;
+		}
+		const position = this.rotation.getCurrentPartPosition(this.status);
+		const draft: RecordingMarkerDraft = {
+			id: generateMarkerId(),
+			partOrdinal: position.partOrdinal,
+			offsetSeconds: position.offsetSeconds,
+			kind: this.lastMarkerKind,
+			label: this.nextMarkerLabel(this.lastMarkerKind, null),
+		};
+		this.markerBuffer.push(draft);
+		return {
+			initialKind: draft.kind,
+			defaultLabelFor: (kind: MarkerKind) =>
+				this.nextMarkerLabel(kind, draft.id),
+			commit: (label: string, kind: MarkerKind) => {
+				draft.kind = kind;
+				const trimmed = label.trim();
+				draft.label =
+					trimmed.length > 0
+						? trimmed
+						: this.nextMarkerLabel(kind, draft.id);
+				this.lastMarkerKind = kind;
+				// If the session finalized while the modal was open the draft
+				// was already persisted with its default label; push the edit
+				// through to the sidecar so the user's name/kind is not lost.
+				void this.syncPersistedMarker(draft);
+			},
+			cancel: () => {
+				const index = this.markerBuffer.findIndex(
+					(entry) => entry.id === draft.id,
+				);
+				if (index !== -1) {
+					this.markerBuffer.splice(index, 1);
+				}
+				// Same race: a draft persisted before the modal closed must be
+				// removed from its sidecar so cancelling truly discards it.
+				void this.removePersistedMarker(draft.id);
+			},
+		};
+	}
+
+	/**
+	 * Default label for a new marker of the given kind, numbered after the
+	 * markers already buffered this session (excluding the given draft so it
+	 * never counts itself).
+	 * @param kind - Marker kind being labelled
+	 * @param excludeId - Draft id to exclude from the count, or null
+	 */
+	private nextMarkerLabel(
+		kind: MarkerKind,
+		excludeId: string | null,
+	): string {
+		const others = this.markerBuffer.filter(
+			(entry) => entry.id !== excludeId,
+		);
+		return defaultMarkerLabel(others, kind);
+	}
+
+	/**
+	 * Writes the session's buffered markers into the sidecars of the final
+	 * files. Each marker resolves to its part's file per track and fans out
+	 * to every track (they share one timeline). Never throws: a marker write
+	 * failure must not break the stop sequence.
+	 * @param result - The finalized save result with per-track file groups
+	 */
+	private async persistMarkers(result: RecordingSaveResult): Promise<void> {
+		if (this.markerBuffer.length === 0) {
+			return;
+		}
+		const groups: TrackFileGroup[] = result.trackFiles ?? [
+			{ trackIndex: 0, files: result.audioPaths },
+		];
+		const writes = groupMarkersByFile(this.markerBuffer, groups);
+		// Record where each draft landed before any await runs, so a modal
+		// still open can reach its persisted marker by id. Done in one
+		// synchronous pass: no commit/cancel can interleave mid-write.
+		for (const { path, markers } of writes) {
+			for (const marker of markers) {
+				const paths = this.persistedMarkerPaths.get(marker.id) ?? [];
+				paths.push(path);
+				this.persistedMarkerPaths.set(marker.id, paths);
+			}
+		}
+		for (const { path, markers } of writes) {
+			try {
+				const existing = await this.markerStore.get(path);
+				await this.markerStore.set(
+					path,
+					sortMarkers([...existing, ...markers]),
+				);
+			} catch (error) {
+				console.error(
+					`${PLUGIN_LOG_PREFIX} Failed to persist recording markers for ${path}:`,
+					error,
+				);
+			}
+		}
+	}
+
+	/**
+	 * Pushes a draft's edited label and kind onto every sidecar it was
+	 * already persisted to. No-op while the session is still active (the
+	 * draft is then edited in place in the buffer instead). Never throws: a
+	 * sidecar write failure must not surface from a UI commit handler.
+	 * @param draft - The edited draft
+	 */
+	private async syncPersistedMarker(
+		draft: RecordingMarkerDraft,
+	): Promise<void> {
+		const paths = this.persistedMarkerPaths.get(draft.id);
+		if (!paths) {
+			return;
+		}
+		for (const path of paths) {
+			try {
+				const existing = await this.markerStore.get(path);
+				await this.markerStore.set(
+					path,
+					updateMarker(existing, draft.id, {
+						label: draft.label,
+						kind: draft.kind,
+					}),
+				);
+			} catch (error) {
+				console.error(
+					`${PLUGIN_LOG_PREFIX} Failed to update persisted marker for ${path}:`,
+					error,
+				);
+			}
+		}
+	}
+
+	/**
+	 * Removes an already-persisted marker from every sidecar it landed in.
+	 * No-op while the session is still active (the draft is just dropped from
+	 * the buffer instead). Never throws.
+	 * @param id - The draft/marker id to remove
+	 */
+	private async removePersistedMarker(id: string): Promise<void> {
+		const paths = this.persistedMarkerPaths.get(id);
+		if (!paths) {
+			return;
+		}
+		this.persistedMarkerPaths.delete(id);
+		for (const path of paths) {
+			try {
+				const existing = await this.markerStore.get(path);
+				await this.markerStore.set(path, removeMarker(existing, id));
+			} catch (error) {
+				console.error(
+					`${PLUGIN_LOG_PREFIX} Failed to remove persisted marker for ${path}:`,
+					error,
+				);
+			}
+		}
 	}
 
 	/**
@@ -242,6 +451,8 @@ export class RecordingManager {
 				.toISOString()
 				.replace(/[:.]/g, '-');
 			this.totalChunks = 0;
+			this.markerBuffer = [];
+			this.persistedMarkerPaths.clear();
 
 			if (this.isWavPcmRecording) {
 				await this.initPcmRecording();
@@ -329,6 +540,7 @@ export class RecordingManager {
 		this.trackOrder = [];
 		this.recordingTimestamp = null;
 		this.insertionContext = null;
+		this.markerBuffer = [];
 	}
 
 	/**
@@ -570,6 +782,9 @@ export class RecordingManager {
 				this.recordingTimestamp,
 				this.insertionContext,
 			);
+			// Persist live markers before the hook so they are on disk when a
+			// post-save action (e.g. opening the player) reads the sidecar
+			await this.persistMarkers(saveResult);
 			if (saveResult.audioPaths.length > 0) {
 				// Fire-and-forget post-save hook (e.g. transcribe-on-save);
 				// failures must never break the stop sequence
@@ -610,6 +825,7 @@ export class RecordingManager {
 			this.isWavPcmRecording = false;
 			this.insertionContext = null;
 			this.sessionSplitEnabled = false;
+			this.markerBuffer = [];
 			this.setStatus(RecordingStatus.Idle);
 		}
 	}

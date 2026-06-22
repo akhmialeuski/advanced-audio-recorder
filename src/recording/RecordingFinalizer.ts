@@ -14,6 +14,7 @@ import type {
 	RecordingSessionConfig,
 	RecordingTarget,
 	SaveProgress,
+	TrackFileGroup,
 } from '../types';
 import type { AudioRecorderSettings } from '../settings/Settings';
 import { PLUGIN_LOG_PREFIX, FORMAT_WAV } from '../constants';
@@ -140,6 +141,7 @@ export class RecordingFinalizer {
 		const effectiveTimestamp =
 			timestamp ?? new Date().toISOString().replace(/[:.]/g, '-');
 		const fileLinks: string[] = [];
+		const trackFiles: TrackFileGroup[] = [];
 
 		this.reportProgress(20, 'Flushing buffers...');
 
@@ -147,7 +149,9 @@ export class RecordingFinalizer {
 			if (targets.length === 1) {
 				const target = targets[0];
 				const paths = await this.finalizeTrackFiles(target);
-				fileLinks.push(...target.partPaths, ...paths);
+				const files = [...target.partPaths, ...paths];
+				fileLinks.push(...files);
+				trackFiles.push({ trackIndex: 0, files });
 			} else {
 				if (!session.isWavPcm) {
 					await Promise.all(
@@ -242,6 +246,9 @@ export class RecordingFinalizer {
 						);
 					}
 					fileLinks.push(filePath);
+					// One merged file carries every track's timeline, so all
+					// markers resolve against this single file (part ordinal 0).
+					trackFiles.push({ trackIndex: 0, files: [filePath] });
 				} else {
 					// An empty merged blob writes no final file; the
 					// segment files are the only copy of the captured
@@ -262,9 +269,16 @@ export class RecordingFinalizer {
 				}
 			}
 		} else {
-			for (const target of targets) {
+			for (
+				let trackIndex = 0;
+				trackIndex < targets.length;
+				trackIndex++
+			) {
+				const target = targets[trackIndex];
 				const paths = await this.finalizeTrackFiles(target);
-				fileLinks.push(...target.partPaths, ...paths);
+				const files = [...target.partPaths, ...paths];
+				fileLinks.push(...files);
+				trackFiles.push({ trackIndex, files });
 			}
 		}
 
@@ -275,7 +289,7 @@ export class RecordingFinalizer {
 		} else {
 			new Notice('No audio data recorded');
 		}
-		return { audioPaths: fileLinks, notePath };
+		return { audioPaths: fileLinks, notePath, trackFiles };
 	}
 
 	/**

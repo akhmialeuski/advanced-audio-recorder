@@ -56,6 +56,7 @@ import {
 	type MarkerKind,
 	type PlayerMarker,
 } from './markers/markerModel';
+import { defaultMarkerLabel, generateMarkerId } from './markers/markerFactory';
 import { formatPlaybackRate, speedMenuItems } from './playbackRate';
 import { isEditableContext } from './playerMode';
 import {
@@ -91,20 +92,6 @@ const DURATION_PROBE_TIMEOUT_MS = 5000;
  * Obsidian's embed markup), so the player is never left unrendered.
  */
 const EMBED_LOAD_FALLBACK_MS = 400;
-
-/**
- * Generates a short, collision-resistant marker id. Uses crypto.randomUUID
- * when available, falling back to a timestamp-and-random combination.
- */
-function generateMarkerId(): string {
-	const cryptoApi = (
-		activeWindow as Window & { crypto?: { randomUUID?: () => string } }
-	).crypto;
-	if (cryptoApi?.randomUUID) {
-		return cryptoApi.randomUUID();
-	}
-	return `${String(Date.now())}-${Math.random().toString(36).slice(2)}`;
-}
 
 /**
  * Options passed to a player when it is created for an embed.
@@ -1381,13 +1368,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 */
 	private async addMarkerAt(time: number, kind: MarkerKind): Promise<void> {
 		const safeTime = Math.max(0, time);
-		const sameKindCount = this.markers.filter(
-			(marker) => marker.kind === kind,
-		).length;
-		const label =
-			kind === MARKER_KIND.chapter
-				? `Chapter ${String(sameKindCount + 1)}`
-				: `Marker ${String(sameKindCount + 1)}`;
+		const label = defaultMarkerLabel(this.markers, kind);
 		this.markers = addMarker(this.markers, {
 			id: generateMarkerId(),
 			time: safeTime,

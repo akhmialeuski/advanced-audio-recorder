@@ -408,6 +408,98 @@ describe('RecordingFinalizer', () => {
 			expect(result.notePath).toBeNull();
 		});
 
+		// The recording-marker feature resolves each marker to a file via
+		// these per-track groups, so the grouping must always flatten back
+		// to audioPaths in order across every output topology.
+		const flattenTrackFiles = (files?: { files: string[] }[]): string[] =>
+			(files ?? []).flatMap((group) => group.files);
+
+		it('groups files per track in multiple mode', async () => {
+			buildFinalizer(createSession({ outputMode: 'multiple' }));
+			const targets = [
+				createTarget({ segmentPaths: ['a-part1.webm.tmp'] }),
+				createTarget({
+					fileBaseName: 'recording-Track2-stamp',
+					segmentPaths: ['b-part1.webm.tmp'],
+				}),
+			];
+
+			const result = await finalizer.saveRecording(
+				targets,
+				'stamp',
+				null,
+			);
+
+			expect(result.trackFiles).toHaveLength(2);
+			expect(result.trackFiles?.map((group) => group.trackIndex)).toEqual(
+				[0, 1],
+			);
+			expect(flattenTrackFiles(result.trackFiles)).toEqual(
+				result.audioPaths,
+			);
+		});
+
+		it('groups a split track as its parts followed by the residual', async () => {
+			buildFinalizer(
+				createSession({ outputMode: 'single', splitEnabled: true }),
+			);
+			const target = createTarget({
+				partPaths: ['rec-part1.webm'],
+				partIndex: 1,
+				segmentPaths: ['rec-part2.webm.tmp'],
+			});
+
+			const result = await finalizer.saveRecording(
+				[target],
+				'stamp',
+				null,
+			);
+
+			expect(result.trackFiles).toHaveLength(1);
+			expect(result.trackFiles?.[0].trackIndex).toBe(0);
+			expect(result.trackFiles?.[0].files[0]).toBe('rec-part1.webm');
+			expect(flattenTrackFiles(result.trackFiles)).toEqual(
+				result.audioPaths,
+			);
+		});
+
+		it('groups a merged multi-track recording as a single file', async () => {
+			buildFinalizer(createSession({ outputMode: 'single' }));
+			const targets = [
+				createTarget({ segmentPaths: ['a.tmp'] }),
+				createTarget({
+					fileBaseName: 'recording-Track2-stamp',
+					segmentPaths: ['b.tmp'],
+				}),
+			];
+
+			const result = await finalizer.saveRecording(
+				targets,
+				'stamp',
+				null,
+			);
+
+			expect(result.trackFiles).toHaveLength(1);
+			expect(result.trackFiles?.[0].trackIndex).toBe(0);
+			expect(result.audioPaths).toHaveLength(1);
+			expect(flattenTrackFiles(result.trackFiles)).toEqual(
+				result.audioPaths,
+			);
+		});
+
+		it('keeps the grouping empty when nothing was recorded', async () => {
+			buildFinalizer(createSession({ outputMode: 'multiple' }));
+
+			const result = await finalizer.saveRecording(
+				[createTarget()],
+				'stamp',
+				null,
+			);
+
+			expect(flattenTrackFiles(result.trackFiles)).toEqual([]);
+			expect(result.audioPaths).toEqual([]);
+		});
+
 		it('should follow the session outputMode snapshot over live settings', async () => {
 			// The live settings switched to 'single' mid-recording; the
 			// session snapshot taken at start must keep the per-track
