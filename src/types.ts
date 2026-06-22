@@ -30,6 +30,9 @@ export type RecordingControls = {
 	onPauseResume: () => void;
 	onStop: () => void;
 	isPaused: boolean;
+	/** Drops a marker/chapter at the current position; absent when markers
+	 * are disabled, so the button is hidden. */
+	onAddMarker?: () => void;
 };
 
 /**
@@ -56,6 +59,24 @@ export interface RecordingSaveResult {
 	audioPaths: string[];
 	/** Note the audio links were inserted into, or null when none was. */
 	notePath: string | null;
+	/** Written files grouped per track in part order, so recording-time
+	 * markers can be resolved to the right file. Absent only when a caller
+	 * (e.g. a test mock) does not provide it. */
+	trackFiles?: TrackFileGroup[];
+}
+
+/**
+ * One track's final files in part order: a single file for a plain track,
+ * the ordered part files for an auto-split track, or the one merged file for
+ * a single-output multi-track session. All tracks of a session share one
+ * audio timeline, so a marker at a given part/offset applies to each track's
+ * file at the same index.
+ */
+export interface TrackFileGroup {
+	/** Index of the track in the session's target order. */
+	trackIndex: number;
+	/** This track's files, ordered: [...parts, residual]. */
+	files: string[];
 }
 
 /**

@@ -39,6 +39,7 @@ import { showDeviceSelectionModal } from './ui/DeviceSelectionModal';
 import { ContextMenu } from './ui/ContextMenu';
 import { EnhancedPlayerRegistrar } from './player/EnhancedPlayerRegistrar';
 import { MarkerStore } from './player/markers/MarkerStore';
+import { RecordingMarkerModal } from './ui/MarkerModal';
 import { TranscriptionModal } from './ui/TranscriptionModal';
 import type { TranscriptionModalOptions } from './ui/TranscriptionModal';
 import { AUDIO_EXTENSIONS } from './constants';
@@ -146,6 +147,10 @@ export default class AudioRecorderPlugin extends Plugin {
 			this.getPluginFilePath(JOURNAL_FILE_NAME),
 			this.app,
 		);
+		// One MarkerStore is shared by recording (which writes live markers
+		// at stop) and the player registrar (which reads/edits them), so
+		// their cache and serialized write chain stay unified.
+		const markerStore = new MarkerStore(this.app);
 		this.recordingManager = new RecordingManager(
 			this.app,
 			this.settings,
@@ -162,6 +167,7 @@ export default class AudioRecorderPlugin extends Plugin {
 			(result: RecordingSaveResult) => {
 				this.handleRecordingSaved(result);
 			},
+			markerStore,
 		);
 
 		this.addSettingTab(new AudioRecorderSettingTab(this.app, this));
@@ -187,7 +193,7 @@ export default class AudioRecorderPlugin extends Plugin {
 			this,
 			this.app,
 			() => this.settings,
-			new MarkerStore(this.app),
+			markerStore,
 		);
 		this.playerRegistrar.register();
 
@@ -570,6 +576,20 @@ export default class AudioRecorderPlugin extends Plugin {
 		});
 
 		this.addCommand({
+			id: 'add-recording-marker',
+			name: 'Add marker/chapter at current position',
+			checkCallback: (checking: boolean) => {
+				if (!this.recordingManager.canDropMarker()) {
+					return false;
+				}
+				if (!checking) {
+					this.openMarkerModal();
+				}
+				return true;
+			},
+		});
+
+		this.addCommand({
 			id: 'select-audio-input-device',
 			name: 'Select audio input device',
 			callback: () => {
@@ -742,7 +762,26 @@ export default class AudioRecorderPlugin extends Plugin {
 				void this.recordingManager.stopRecording();
 			},
 			isPaused: status === RecordingStatus.Paused,
+			// Only offered when markers are enabled, since they are surfaced
+			// solely by the enhanced player; absent hides the status-bar button
+			onAddMarker: this.settings.playerEnableMarkers
+				? () => {
+						this.openMarkerModal();
+					}
+				: undefined,
 		};
+	}
+
+	/**
+	 * Captures a marker at the current recording position and opens the
+	 * naming modal. No-op when a marker cannot be dropped right now.
+	 */
+	private openMarkerModal(): void {
+		const handle = this.recordingManager.captureMarkerDraft();
+		if (!handle) {
+			return;
+		}
+		new RecordingMarkerModal(this.app, handle).open();
 	}
 
 	/**

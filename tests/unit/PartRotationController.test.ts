@@ -418,4 +418,80 @@ describe('PartRotationController', () => {
 			expect(target.partPaths).toHaveLength(0);
 		});
 	});
+
+	describe('getCurrentPartPosition', () => {
+		it('reports the whole-session offset when auto-split is off', () => {
+			buildController(createSession({ splitEnabled: false }));
+
+			jest.advanceTimersByTime(5000);
+
+			expect(
+				controller.getCurrentPartPosition(RecordingStatus.Recording),
+			).toEqual({ partOrdinal: 0, offsetSeconds: 5 });
+		});
+
+		it('is zero immediately after the session starts', () => {
+			buildController(createSession({ splitEnabled: false }));
+
+			expect(
+				controller.getCurrentPartPosition(RecordingStatus.Recording),
+			).toEqual({ partOrdinal: 0, offsetSeconds: 0 });
+		});
+
+		it('excludes paused time from the offset', () => {
+			buildController(createSession({ splitEnabled: false }));
+
+			jest.advanceTimersByTime(3000);
+			controller.markPaused();
+			jest.advanceTimersByTime(4000);
+
+			expect(
+				controller.getCurrentPartPosition(RecordingStatus.Paused),
+			).toEqual({ partOrdinal: 0, offsetSeconds: 3 });
+		});
+
+		it('resumes counting active time after a pause', () => {
+			buildController(createSession({ splitEnabled: false }));
+
+			jest.advanceTimersByTime(3000);
+			controller.markPaused();
+			jest.advanceTimersByTime(4000);
+			controller.markResumed();
+			jest.advanceTimersByTime(2000);
+
+			expect(
+				controller.getCurrentPartPosition(RecordingStatus.Recording),
+			).toEqual({ partOrdinal: 0, offsetSeconds: 5 });
+		});
+
+		it('derives the PCM split ordinal and offset from the session clock', () => {
+			buildController(
+				createSession({
+					isWavPcm: true,
+					splitEnabled: true,
+					partMinutes: 1,
+				}),
+			);
+
+			jest.advanceTimersByTime(90_000);
+
+			expect(
+				controller.getCurrentPartPosition(RecordingStatus.Recording),
+			).toEqual({ partOrdinal: 1, offsetSeconds: 30 });
+		});
+
+		it('advances the compressed part ordinal after a rotation', async () => {
+			buildController(createSession({ splitEnabled: true, partMinutes: 15 }));
+
+			jest.advanceTimersByTime(15 * MS_PER_MINUTE);
+			controller.maybeRotate();
+			await controller.waitForPendingRotation();
+
+			const position = controller.getCurrentPartPosition(
+				RecordingStatus.Recording,
+			);
+			expect(position.partOrdinal).toBe(1);
+			expect(position.offsetSeconds).toBeLessThan(1);
+		});
+	});
 });

@@ -23,6 +23,10 @@ import {
 import type { TrackWriteQueue } from './TrackWriteQueue';
 import type { RecordingFinalizer } from './RecordingFinalizer';
 import { SessionJournal } from './SessionJournal';
+import {
+	computePartPosition,
+	type PartPosition,
+} from './recordingMarkers';
 
 /**
  * Callbacks into the RecordingManager: recorder lifecycle stays with
@@ -48,6 +52,10 @@ export class PartRotationController {
 	private session: RecordingSessionConfig | null = null;
 	/** Active (unpaused) milliseconds accumulated in the current part. */
 	private partActiveMs = 0;
+	/** Active (unpaused) milliseconds accumulated across the whole session. */
+	private sessionActiveMs = 0;
+	/** Count of completed part rotations (the current part index). */
+	private sessionPartOrdinal = 0;
 	/** Timestamp of the last start/resume/rotation for active-time tracking. */
 	private activeAnchor = 0;
 	/** In-flight MediaRecorder part rotation, if any. */
@@ -94,16 +102,47 @@ export class PartRotationController {
 	beginSession(session: RecordingSessionConfig): void {
 		this.session = session;
 		this.partActiveMs = 0;
+		this.sessionActiveMs = 0;
+		this.sessionPartOrdinal = 0;
 		this.activeAnchor = Date.now();
 		this.rotationPromise = null;
 		this.isStopping = false;
 	}
 
 	/**
-	 * Freezes active-time accounting when the recording is paused.
+	 * Freezes active-time accounting when the recording is paused. Folds the
+	 * elapsed active span into both the per-part and the whole-session
+	 * counters so paused time is excluded from marker positions too.
 	 */
 	markPaused(): void {
-		this.partActiveMs += Date.now() - this.activeAnchor;
+		const elapsed = Date.now() - this.activeAnchor;
+		this.partActiveMs += elapsed;
+		this.sessionActiveMs += elapsed;
+	}
+
+	/**
+	 * Returns the current marker position: the part ordinal that is
+	 * recording now and the offset within it. Derived from the controller's
+	 * own active-time accounting in one synchronous read, so the pair is
+	 * always internally consistent even mid-rotation. The live span since
+	 * the last anchor is added only while actually recording, so a position
+	 * taken during a pause excludes the paused time.
+	 * @param status - Current recording status
+	 */
+	getCurrentPartPosition(status: RecordingStatus): PartPosition {
+		const session = this.session;
+		const liveMs =
+			status === RecordingStatus.Recording
+				? Date.now() - this.activeAnchor
+				: 0;
+		return computePartPosition({
+			isWavPcm: session?.isWavPcm ?? false,
+			splitEnabled: session?.splitEnabled ?? false,
+			partMinutes: session?.partMinutes ?? 0,
+			partActiveMs: this.partActiveMs + liveMs,
+			sessionActiveMs: this.sessionActiveMs + liveMs,
+			sessionPartOrdinal: this.sessionPartOrdinal,
+		});
 	}
 
 	/**
@@ -319,6 +358,11 @@ export class PartRotationController {
 			) {
 				this.hooks.restartRecorders();
 			}
+			// Close out the part that just ended: fold its active span into
+			// the session clock, open a new part, and advance the ordinal so
+			// markers dropped after this point attach to the new part.
+			this.sessionActiveMs += Date.now() - this.activeAnchor;
+			this.sessionPartOrdinal += 1;
 			this.partActiveMs = 0;
 			this.activeAnchor = Date.now();
 		}

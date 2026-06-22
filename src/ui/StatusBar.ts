@@ -76,6 +76,14 @@ function renderRecordingState(
 		const buttons = container.createSpan({
 			cls: 'aar-recording-buttons',
 		});
+		if (controls.onAddMarker) {
+			createControlButton(
+				buttons,
+				'bookmark',
+				'Add marker',
+				controls.onAddMarker,
+			);
+		}
 		createControlButton(
 			buttons,
 			controls.isPaused ? 'play' : 'pause',
