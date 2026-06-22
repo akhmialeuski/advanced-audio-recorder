@@ -36,6 +36,29 @@ import {
 	TranscriptionCancelledError,
 	type CancellationToken,
 } from '../transcription/TranscriptionService';
+import type { SaveProgress } from '../types';
+
+/** Default status label shown before the engine reports a finer-grained stage. */
+const DEFAULT_TRANSCRIBE_LABEL = 'Transcribing...';
+
+/**
+ * Callbacks used when the modal is minimized while transcription continues.
+ */
+export type TranscriptionBackgroundProgressCallbacks = {
+	/** Shows or updates the status-bar progress entry. */
+	show: (progress: SaveProgress, restore: () => void) => void;
+	/** Removes the status-bar progress entry owned by this modal. */
+	clear: () => void;
+};
+
+/**
+ * Options for a transcription modal instance.
+ */
+export type TranscriptionModalOptions = {
+	autoStart?: boolean;
+	notePath?: string;
+	backgroundProgress?: TranscriptionBackgroundProgressCallbacks;
+};
 
 /**
  * Transcription dialog for a single audio file.
@@ -47,7 +70,14 @@ export class TranscriptionModal extends Modal {
 	private progressFillEl: HTMLElement | null = null;
 	private configEl: HTMLElement | null = null;
 	private runButton: ButtonComponent | null = null;
+	private minimizeButton: ButtonComponent | null = null;
 	private secondaryButton: ButtonComponent | null = null;
+	private rendered = false;
+	private minimized = false;
+	private lastProgress: SaveProgress = {
+		percent: 0,
+		description: DEFAULT_TRANSCRIBE_LABEL,
+	};
 	/** Per-run settings copy: edited here, never persisted to plugin data. */
 	private readonly runSettings: AudioRecorderSettings;
 	/**
@@ -61,10 +91,7 @@ export class TranscriptionModal extends Modal {
 		app: App,
 		private readonly file: TFile,
 		getSettings: () => AudioRecorderSettings,
-		private readonly options: {
-			autoStart?: boolean;
-			notePath?: string;
-		} = {},
+		private readonly options: TranscriptionModalOptions = {},
 	) {
 		super(app);
 		// Shallow copy is enough: every option edited here is a primitive.
@@ -86,6 +113,12 @@ export class TranscriptionModal extends Modal {
 	}
 
 	onOpen(): void {
+		if (this.rendered) {
+			this.minimized = false;
+			this.clearBackgroundProgress();
+			return;
+		}
+
 		const { contentEl } = this;
 		contentEl.empty();
 		new Setting(contentEl).setName('Transcribe audio').setHeading();
@@ -117,6 +150,15 @@ export class TranscriptionModal extends Modal {
 					});
 			})
 			.addButton((button) => {
+				this.minimizeButton = button;
+				button
+					.setButtonText('Minimize')
+					.setDisabled(true)
+					.onClick(() => {
+						this.minimize();
+					});
+			})
+			.addButton((button) => {
 				this.secondaryButton = button;
 				button.setButtonText('Close').onClick(() => {
 					if (this.running) {
@@ -126,6 +168,8 @@ export class TranscriptionModal extends Modal {
 					}
 				});
 			});
+
+		this.rendered = true;
 
 		if (this.options.autoStart) {
 			// Auto-run for the transcribe-on-save hook: the modal still shows
@@ -248,6 +292,7 @@ export class TranscriptionModal extends Modal {
 			return;
 		}
 		this.setRunning(true);
+		this.updateProgress(0, DEFAULT_TRANSCRIBE_LABEL);
 		// Snapshot the options so a control toggled mid-run cannot change an
 		// in-flight job; edits only affect the next attempt after a failure.
 		const settings = { ...this.runSettings };
@@ -260,7 +305,15 @@ export class TranscriptionModal extends Modal {
 					this.updateProgress(fraction, label);
 				},
 			});
-			this.close();
+			this.setRunning(false);
+			this.clearBackgroundProgress();
+			if (this.minimized) {
+				this.minimized = false;
+				this.contentEl.empty();
+				this.rendered = false;
+			} else {
+				this.close();
+			}
 		} catch (error) {
 			if (error instanceof TranscriptionCancelledError) {
 				new Notice('Transcription cancelled.');
@@ -271,8 +324,14 @@ export class TranscriptionModal extends Modal {
 				new Notice(`Transcription failed: ${message}`);
 				this.statusEl?.setText(`Failed: ${message}`);
 			}
+			if (this.minimized) {
+				this.restore();
+			}
 		} finally {
-			this.setRunning(false);
+			if (this.running) {
+				this.setRunning(false);
+			}
+			this.clearBackgroundProgress();
 		}
 	}
 
@@ -288,6 +347,7 @@ export class TranscriptionModal extends Modal {
 			this.cancelled = false;
 		}
 		this.runButton?.setDisabled(running);
+		this.minimizeButton?.setDisabled(!running);
 		this.secondaryButton?.setButtonText(running ? 'Cancel' : 'Close');
 		this.configEl?.toggleClass('aar-transcribe-options-disabled', running);
 	}
@@ -301,13 +361,66 @@ export class TranscriptionModal extends Modal {
 			const percent = Math.round(
 				Math.max(0, Math.min(1, fraction)) * 100,
 			);
+			this.lastProgress = { percent, description: label };
 			this.progressFillEl.setCssProps({
 				'--aar-transcribe-progress': `${String(percent)}%`,
 			});
+			this.reportBackgroundProgress();
 		}
 	}
 
+	/**
+	 * Minimizes the modal while keeping the current transcription running.
+	 */
+	private minimize(): void {
+		if (!this.running || this.minimized) {
+			return;
+		}
+		this.minimized = true;
+		this.reportBackgroundProgress();
+		this.close();
+	}
+
+	/**
+	 * Restores a minimized modal.
+	 */
+	private restore(): void {
+		if (!this.minimized) {
+			return;
+		}
+		this.minimized = false;
+		this.clearBackgroundProgress();
+		this.open();
+	}
+
+	/**
+	 * Publishes the latest progress to the status bar while minimized.
+	 */
+	private reportBackgroundProgress(): void {
+		if (!this.minimized) {
+			return;
+		}
+		this.options.backgroundProgress?.show(this.lastProgress, () => {
+			this.restore();
+		});
+	}
+
+	/**
+	 * Clears this modal's background progress entry.
+	 */
+	private clearBackgroundProgress(): void {
+		this.options.backgroundProgress?.clear();
+	}
+
 	onClose(): void {
+		if (this.minimized && this.running) {
+			return;
+		}
+		if (this.running) {
+			this.cancelled = true;
+		}
+		this.clearBackgroundProgress();
 		this.contentEl.empty();
+		this.rendered = false;
 	}
 }

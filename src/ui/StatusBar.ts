@@ -8,6 +8,16 @@ import { RecordingStatus } from '../types';
 import type { SaveProgress, RecordingControls } from '../types';
 
 /**
+ * Options for an interactive background progress indicator.
+ */
+export type BackgroundProgressOptions = {
+	/** Restores the hidden UI associated with the background task. */
+	onActivate: () => void;
+	/** Accessible label for the restore action. */
+	activationLabel: string;
+};
+
+/**
  * Updates the status bar element based on recording status.
  * Uses Obsidian's extended HTMLElement methods.
  * @param statusBarItem - The status bar HTML element
@@ -56,6 +66,7 @@ function renderRecordingState(
 	el.empty();
 	el.classList.add('is-recording');
 	el.classList.remove('is-saving');
+	el.classList.remove('is-transcribing');
 
 	const container = el.createDiv({ cls: 'aar-recording-controls' });
 	const text = container.createSpan({ cls: 'aar-recording-label' });
@@ -110,20 +121,90 @@ function createControlButton(
  * @param saveProgress - Optional save progress info
  */
 function renderSavingState(el: HTMLElement, saveProgress?: SaveProgress): void {
+	renderProgressState(el, saveProgress, 'is-saving', 'Saving...');
+}
+
+/**
+ * Renders a minimized transcription job in the status bar. Clicking the
+ * progress surface or focusing it and pressing Enter/Space restores the
+ * transcription modal.
+ * @param statusBarItem - The status bar HTML element
+ * @param progress - Current transcription progress
+ * @param options - Restore action metadata
+ */
+export function renderTranscriptionStatusBar(
+	statusBarItem: HTMLElement | null,
+	progress: SaveProgress,
+	options: BackgroundProgressOptions,
+): void {
+	if (!statusBarItem) {
+		return;
+	}
+	renderProgressState(
+		statusBarItem,
+		progress,
+		'is-transcribing',
+		'Transcribing...',
+		options,
+	);
+}
+
+/**
+ * Renders a compact progress indicator in the status bar.
+ * @param el - The status bar HTML element
+ * @param progress - Optional progress info
+ * @param stateClass - CSS class for the active state
+ * @param defaultDescription - Fallback text
+ * @param options - Optional restore action metadata
+ */
+function renderProgressState(
+	el: HTMLElement,
+	progress: SaveProgress | undefined,
+	stateClass: 'is-saving' | 'is-transcribing',
+	defaultDescription: string,
+	options?: BackgroundProgressOptions,
+): void {
 	el.empty();
 	el.classList.remove('is-recording');
-	el.classList.add('is-saving');
+	el.classList.remove('is-saving');
+	el.classList.remove('is-transcribing');
+	el.classList.add(stateClass);
 
-	const text = el.createSpan();
-	text.textContent = saveProgress?.description ?? 'Saving...';
+	const wrapper = el.createDiv({
+		cls: options
+			? 'aar-status-progress-content aar-status-progress-actionable'
+			: 'aar-status-progress-content',
+	});
+	if (options) {
+		wrapper.setAttribute('role', 'button');
+		wrapper.setAttribute('aria-label', options.activationLabel);
+		wrapper.tabIndex = 0;
+		// Single click matches the sibling recording controls and the
+		// role="button" semantics; stop propagation so the surrounding status
+		// bar item does not also react.
+		wrapper.addEventListener('click', (event: MouseEvent) => {
+			event.stopPropagation();
+			options.onActivate();
+		});
+		wrapper.addEventListener('keydown', (event: KeyboardEvent) => {
+			if (event.key !== 'Enter' && event.key !== ' ') {
+				return;
+			}
+			event.preventDefault();
+			options.onActivate();
+		});
+	}
 
-	const progressContainer = el.createDiv({
+	const text = wrapper.createSpan();
+	text.textContent = progress?.description ?? defaultDescription;
+
+	const progressContainer = wrapper.createDiv({
 		cls: 'aar-save-progress',
 	});
 	const progressBar = progressContainer.createDiv({
 		cls: 'aar-save-progress-bar',
 	});
-	const percent = saveProgress?.percent ?? 0;
+	const percent = progress?.percent ?? 0;
 	progressBar.setCssProps({
 		'--save-progress': `${String(percent)}%`,
 	});
@@ -138,6 +219,7 @@ function renderIdleState(el: HTMLElement): void {
 	el.textContent = '';
 	el.classList.remove('is-recording');
 	el.classList.remove('is-saving');
+	el.classList.remove('is-transcribing');
 }
 
 /**

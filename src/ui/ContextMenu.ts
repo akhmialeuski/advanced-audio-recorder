@@ -23,6 +23,7 @@ import { AudioFileInfoModal } from './AudioFileInfoModal';
 import { ConversionModal } from './ConversionModal';
 import { SplitModal } from './SplitModal';
 import { TranscriptionModal } from './TranscriptionModal';
+import type { TranscriptionModalOptions } from './TranscriptionModal';
 import type { AudioRecorderSettings } from '../settings/Settings';
 
 /** CodeMirror view attached to Editor (internal Obsidian API). */
@@ -55,11 +56,13 @@ export class ContextMenu {
 	 * @param app - The Obsidian App instance.
 	 * @param plugin - The plugin instance.
 	 * @param getSettings - Returns current plugin settings.
+	 * @param createTranscriptionModalOptions - Builds per-modal transcription options.
 	 */
 	constructor(
 		private app: App,
 		private plugin: Plugin,
 		private getSettings: () => AudioRecorderSettings,
+		private createTranscriptionModalOptions: () => TranscriptionModalOptions = () => ({}),
 	) {}
 
 	/**
@@ -334,6 +337,7 @@ export class ContextMenu {
 						this.app,
 						file,
 						this.getSettings,
+						this.createTranscriptionModalOptions(),
 					).open();
 				});
 		});
