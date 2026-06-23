@@ -12,6 +12,10 @@ import {
 	MIN_LLM_MAX_TOKENS,
 	MAX_LLM_MAX_TOKENS,
 	TRANSCRIPTION_PROVIDER_IDS,
+	WHISPER_API_MODELS_DOC_URL,
+	DEEPGRAM_MODELS_DOC_URL,
+	LOCAL_WHISPER_MODEL_NAMES,
+	LOCAL_WHISPER_MODELS_DOC_URL,
 } from '../../constants';
 import {
 	applyLlmProviderDefaults,
@@ -25,6 +29,7 @@ import {
 import {
 	addDropdown,
 	addHeading,
+	addModelPicker,
 	addSlider,
 	addText,
 	addToggle,
@@ -133,11 +138,17 @@ function renderWhisperApiSettings(ctx: SettingsSectionContext): void {
 		set: (v) => (s.whisperApiKey = v),
 		secret: true,
 	});
-	addText(ctx, {
+	addModelPicker(ctx, {
 		name: 'Whisper model',
-		desc: 'Transcription model id (e.g. whisper-1).',
-		get: () => s.whisperApiModel,
-		set: (v) => (s.whisperApiModel = v),
+		desc: 'OpenAI: whisper-1. Groq and other hosts: whisper-large-v3, whisper-large-v3-turbo. The model must support verbose_json with timestamps.',
+		helpLink: {
+			label: 'Whisper API models',
+			url: WHISPER_API_MODELS_DOC_URL,
+		},
+		getModels: () => s.whisperApiModels,
+		setModels: (models) => (s.whisperApiModels = models),
+		getSelected: () => s.whisperApiModel,
+		setSelected: (id) => (s.whisperApiModel = id),
 	});
 }
 
@@ -157,11 +168,17 @@ function renderDeepgramSettings(ctx: SettingsSectionContext): void {
 		set: (v) => (s.deepgramApiKey = v),
 		secret: true,
 	});
-	addText(ctx, {
+	addModelPicker(ctx, {
 		name: 'Deepgram model',
-		desc: 'Model id (e.g. nova-3, nova-2). Files up to 2 GB are sent whole for consistent speaker labels.',
-		get: () => s.deepgramModel,
-		set: (v) => (s.deepgramModel = v),
+		desc: 'Pick a Deepgram model (e.g. nova-3, nova-2-meeting, enhanced-phonecall). Files up to 2 GB are sent whole for consistent speaker labels.',
+		helpLink: {
+			label: 'Deepgram model list',
+			url: DEEPGRAM_MODELS_DOC_URL,
+		},
+		getModels: () => s.deepgramModels,
+		setModels: (models) => (s.deepgramModels = models),
+		getSelected: () => s.deepgramModel,
+		setSelected: (id) => (s.deepgramModel = id),
 	});
 }
 
@@ -176,7 +193,11 @@ function renderLocalWhisperSettings(ctx: SettingsSectionContext): void {
 	});
 	addText(ctx, {
 		name: 'Model path',
-		desc: 'Absolute path to the whisper model file (.bin).',
+		desc: `Absolute path to a GGML model file (.bin). Download one of: ${LOCAL_WHISPER_MODEL_NAMES.join(', ')} (names ending in .en are English-only).`,
+		helpLink: {
+			label: 'Download whisper.cpp models',
+			url: LOCAL_WHISPER_MODELS_DOC_URL,
+		},
 		get: () => s.localWhisperModelPath,
 		set: (v) => (s.localWhisperModelPath = v),
 	});
