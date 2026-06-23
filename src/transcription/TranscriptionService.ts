@@ -123,7 +123,13 @@ export class TranscriptionService {
 				settings.transcriptionLanguage !== 'auto'
 					? settings.transcriptionLanguage
 					: undefined,
-			diarize: settings.transcriptionDiarize,
+			// Only request diarization when the engine can actually produce
+			// speaker labels. This ignores a stale "on" setting left over from a
+			// diarizing engine, so a non-diarizing engine never sends a request
+			// field it would silently drop.
+			diarize:
+				settings.transcriptionDiarize &&
+				provider.capabilities.supportsDiarization,
 			wordTimestamps: settings.transcriptionWordTimestamps,
 		};
 

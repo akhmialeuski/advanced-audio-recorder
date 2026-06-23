@@ -29,6 +29,7 @@ import {
 	addToggle,
 	type SettingsSectionContext,
 } from '../settingControls';
+import { providerSupportsDiarization } from '../../transcription/providers/capabilities';
 
 /**
  * Renders the full transcription settings section.
@@ -72,11 +73,17 @@ export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
 		set: (v) => (s.transcriptionLanguage = v.trim() || 'auto'),
 	});
 
+	const canDiarize = providerSupportsDiarization(s.transcriptionProvider);
 	addToggle(ctx, {
 		name: 'Speaker diarization',
-		desc: 'Request speaker labels. Native on Deepgram; best-effort on compatible Whisper endpoints.',
-		get: () => s.transcriptionDiarize,
+		desc: canDiarize
+			? 'Request speaker labels. Speaker count is detected automatically.'
+			: 'Not supported by the selected engine. Use Deepgram for speaker labels.',
+		// Reflect the effective state: a stored "on" reads as off for an engine
+		// that cannot diarize, so the control never claims a result it cannot give.
+		get: () => canDiarize && s.transcriptionDiarize,
 		set: (v) => (s.transcriptionDiarize = v),
+		disabled: !canDiarize,
 	});
 
 	addToggle(ctx, {

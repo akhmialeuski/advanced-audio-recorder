@@ -69,6 +69,12 @@ export interface ToggleControlConfig {
 	set: (value: boolean) => void;
 	/** Re-render the tab after the change (to reveal/hide dependent settings). */
 	rerender?: boolean;
+	/**
+	 * Render the toggle non-interactive. Used for an option the current
+	 * selection cannot use (e.g. diarization on an engine that cannot diarize),
+	 * so the control stays visible and explained rather than silently inert.
+	 */
+	disabled?: boolean;
 }
 
 /** Adds a toggle bound to a getter/setter that saves immediately. */
@@ -80,15 +86,18 @@ export function addToggle(
 	if (config.desc) {
 		setting.setDesc(config.desc);
 	}
-	setting.addToggle((toggle) =>
+	setting.addToggle((toggle) => {
 		toggle.setValue(config.get()).onChange(async (value) => {
 			config.set(value);
 			await ctx.save();
 			if (config.rerender) {
 				ctx.rerender();
 			}
-		}),
-	);
+		});
+		if (config.disabled) {
+			toggle.setDisabled(true);
+		}
+	});
 }
 
 /** Configuration for a dropdown control. */

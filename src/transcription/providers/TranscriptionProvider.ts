@@ -59,6 +59,13 @@ export interface ProviderCapabilities {
 	 * file so speaker labels stay stable instead of resetting per chunk.
 	 */
 	diarizesWholeFile: boolean;
+	/**
+	 * Whether the provider can return speaker labels at all. Gates the
+	 * diarization UI and the diarize request: an engine that cannot diarize
+	 * (OpenAI's Whisper, local whisper.cpp) must not offer an enabled toggle,
+	 * since the request would be silently ignored and mislead the user.
+	 */
+	supportsDiarization: boolean;
 }
 
 /** A provider that transcribes a single audio payload. */

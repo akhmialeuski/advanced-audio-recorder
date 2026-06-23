@@ -8,8 +8,8 @@
  * @module transcription/providers/DeepgramProvider
  */
 
-import { DEEPGRAM_MAX_REQUEST_BYTES } from '../../constants';
 import { requestJson, trimTrailingSlash, uploadTimeoutMs } from '../httpClient';
+import { DEEPGRAM_CAPABILITIES } from './capabilities';
 import { mapDeepgramResponse } from './deepgramResponse';
 import type { WhisperResult } from './whisperResponse';
 import type {
@@ -33,11 +33,7 @@ export class DeepgramProvider implements TranscriptionProvider {
 	readonly id = 'deepgram';
 	readonly label = 'Deepgram';
 	readonly requiresNetwork = true;
-	readonly capabilities: ProviderCapabilities = {
-		maxRequestBytes: DEEPGRAM_MAX_REQUEST_BYTES,
-		acceptsOriginalContainer: true,
-		diarizesWholeFile: true,
-	};
+	readonly capabilities: ProviderCapabilities = DEEPGRAM_CAPABILITIES;
 
 	constructor(private readonly config: DeepgramConfig) {}
 
