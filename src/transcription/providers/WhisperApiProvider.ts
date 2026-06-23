@@ -9,6 +9,7 @@
  * @module transcription/providers/WhisperApiProvider
  */
 
+import { TRANSCRIPTION_PROVIDER_IDS } from '../../constants';
 import {
 	buildMultipart,
 	requestJson,
@@ -37,7 +38,7 @@ export interface WhisperApiConfig {
  * recordings are decoded and split into WAV chunks by the service.
  */
 export class WhisperApiProvider implements TranscriptionProvider {
-	readonly id = 'whisper-api';
+	readonly id = TRANSCRIPTION_PROVIDER_IDS.WHISPER_API;
 	readonly label = 'Whisper API (OpenAI-compatible)';
 	readonly requiresNetwork = true;
 	readonly capabilities: ProviderCapabilities = WHISPER_API_CAPABILITIES;

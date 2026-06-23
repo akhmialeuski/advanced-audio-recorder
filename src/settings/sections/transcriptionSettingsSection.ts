@@ -11,6 +11,7 @@ import {
 	MAX_TRANSCRIBE_CHUNK_MB,
 	MIN_LLM_MAX_TOKENS,
 	MAX_LLM_MAX_TOKENS,
+	TRANSCRIPTION_PROVIDER_IDS,
 } from '../../constants';
 import {
 	applyLlmProviderDefaults,
@@ -93,9 +94,11 @@ export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
 		set: (v) => (s.transcriptionWordTimestamps = v),
 	});
 
-	if (s.transcriptionProvider === 'whisper-api') {
+	if (s.transcriptionProvider === TRANSCRIPTION_PROVIDER_IDS.WHISPER_API) {
 		renderWhisperApiSettings(ctx);
-	} else if (s.transcriptionProvider === 'deepgram') {
+	} else if (
+		s.transcriptionProvider === TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM
+	) {
 		renderDeepgramSettings(ctx);
 	} else {
 		renderLocalWhisperSettings(ctx);

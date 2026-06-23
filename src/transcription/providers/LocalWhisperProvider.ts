@@ -7,7 +7,10 @@
  * @module transcription/providers/LocalWhisperProvider
  */
 
-import { LOCAL_WHISPER_MAX_BUFFER_BYTES } from '../../constants';
+import {
+	LOCAL_WHISPER_MAX_BUFFER_BYTES,
+	TRANSCRIPTION_PROVIDER_IDS,
+} from '../../constants';
 import type { TranscriptSegment } from '../TranscriptTypes';
 import { LOCAL_WHISPER_CAPABILITIES } from './capabilities';
 import type { WhisperResult } from './whisperResponse';
@@ -105,7 +108,7 @@ export function mapWhisperCppJson(body: unknown): WhisperResult {
  * Local whisper.cpp transcription provider (desktop only).
  */
 export class LocalWhisperProvider implements TranscriptionProvider {
-	readonly id = 'local-whisper';
+	readonly id = TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER;
 	readonly label = 'Local whisper.cpp';
 	readonly requiresNetwork = false;
 	readonly capabilities: ProviderCapabilities = LOCAL_WHISPER_CAPABILITIES;

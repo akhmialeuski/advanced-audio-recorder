@@ -8,6 +8,7 @@
  * @module transcription/providers/DeepgramProvider
  */
 
+import { TRANSCRIPTION_PROVIDER_IDS } from '../../constants';
 import { requestJson, trimTrailingSlash, uploadTimeoutMs } from '../httpClient';
 import { DEEPGRAM_CAPABILITIES } from './capabilities';
 import { mapDeepgramResponse } from './deepgramResponse';
@@ -30,7 +31,7 @@ export interface DeepgramConfig {
  * Deepgram pre-recorded transcription provider.
  */
 export class DeepgramProvider implements TranscriptionProvider {
-	readonly id = 'deepgram';
+	readonly id = TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM;
 	readonly label = 'Deepgram';
 	readonly requiresNetwork = true;
 	readonly capabilities: ProviderCapabilities = DEEPGRAM_CAPABILITIES;

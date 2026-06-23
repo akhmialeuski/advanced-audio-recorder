@@ -204,6 +204,18 @@ export const PLAYER_WAVEFORM_PREFETCH_MARGIN_PX = 200;
 // Transcription
 
 /**
+ * Transcription engine ids. The single source for the string values used as
+ * the provider `id`, the settings discriminator, and the keys of the engine
+ * label and capability maps, so the literals are never hand-typed across the
+ * codebase. {@link TranscriptionProviderId} is derived from these values.
+ */
+export const TRANSCRIPTION_PROVIDER_IDS = {
+	WHISPER_API: 'whisper-api',
+	LOCAL_WHISPER: 'local-whisper',
+	DEEPGRAM: 'deepgram',
+} as const;
+
+/**
  * Sample rate, in Hz, that audio is resampled to before transcription.
  * 16 kHz mono is the input Whisper-family models are trained on and
  * keeps uploads small.

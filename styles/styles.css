@@ -576,3 +576,13 @@ input.aar-input-invalid {
     border-radius: 2px;
     transition: width 0.3s ease;
 }
+
+/* A setting rendered disabled: dimmed and non-interactive so an option the
+   current selection cannot use reads clearly as off, not merely unset. */
+.aar-setting-disabled {
+    opacity: 0.5;
+}
+
+.aar-setting-disabled .setting-item-control {
+    pointer-events: none;
+}

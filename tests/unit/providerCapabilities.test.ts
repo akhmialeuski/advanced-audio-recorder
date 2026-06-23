@@ -3,9 +3,11 @@
  * that the UI-facing lookup reflects it. Diarization must be advertised only
  * for engines that actually return speaker labels (Deepgram), so the settings
  * tab and the per-run dialog can disable the toggle for the others instead of
- * offering an option the engine would silently ignore.
+ * offering an option the engine would silently ignore. Also pins the engine
+ * id constants as the single source for the provider ids and map keys.
  * @module tests/unit/providerCapabilities.test
  */
+/** @jest-environment jsdom */
 
 import {
 	DEEPGRAM_CAPABILITIES,
@@ -14,6 +16,11 @@ import {
 	TRANSCRIPTION_PROVIDER_CAPABILITIES,
 	WHISPER_API_CAPABILITIES,
 } from 'src/transcription/providers/capabilities';
+import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
+import { TRANSCRIPTION_PROVIDER_LABELS } from 'src/settings/Settings';
+import { WhisperApiProvider } from 'src/transcription/providers/WhisperApiProvider';
+import { DeepgramProvider } from 'src/transcription/providers/DeepgramProvider';
+import { LocalWhisperProvider } from 'src/transcription/providers/LocalWhisperProvider';
 
 describe('transcription provider capabilities', () => {
 	it('advertises diarization only for Deepgram', () => {
@@ -38,5 +45,31 @@ describe('transcription provider capabilities', () => {
 		expect(providerSupportsDiarization('whisper-api')).toBe(false);
 		expect(providerSupportsDiarization('local-whisper')).toBe(false);
 		expect(providerSupportsDiarization('deepgram')).toBe(true);
+	});
+});
+
+describe('transcription engine id constants', () => {
+	it('are the source for each provider id', () => {
+		expect(
+			new WhisperApiProvider({ baseUrl: '', apiKey: '', model: '' }).id,
+		).toBe(TRANSCRIPTION_PROVIDER_IDS.WHISPER_API);
+		expect(
+			new DeepgramProvider({ baseUrl: '', apiKey: '', model: '' }).id,
+		).toBe(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM);
+		expect(
+			new LocalWhisperProvider({
+				binaryPath: '',
+				modelPath: '',
+				extraArgs: [],
+			}).id,
+		).toBe(TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER);
+	});
+
+	it('key the capability and label maps (no hand-typed literals drift)', () => {
+		const ids = [...Object.values(TRANSCRIPTION_PROVIDER_IDS)].sort();
+		expect(Object.keys(TRANSCRIPTION_PROVIDER_CAPABILITIES).sort()).toEqual(
+			ids,
+		);
+		expect(Object.keys(TRANSCRIPTION_PROVIDER_LABELS).sort()).toEqual(ids);
 	});
 });

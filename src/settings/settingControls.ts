@@ -9,6 +9,9 @@
 import { Setting } from 'obsidian';
 import type { AudioRecorderSettings, LabeledOption } from './Settings';
 
+/** Class applied to a setting row that is rendered disabled (dimmed). */
+export const SETTING_DISABLED_CLASS = 'aar-setting-disabled';
+
 /**
  * Shared dependencies a settings section needs: where to render, the live
  * settings object, and the three save/rerender hooks the controls call.
@@ -98,6 +101,11 @@ export function addToggle(
 			toggle.setDisabled(true);
 		}
 	});
+	if (config.disabled) {
+		// Dim the whole row so a non-interactive option reads as disabled,
+		// not merely "off" — the toggle's own disabled state is too subtle.
+		setting.settingEl.addClass(SETTING_DISABLED_CLASS);
+	}
 }
 
 /** Configuration for a dropdown control. */
