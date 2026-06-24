@@ -52,7 +52,7 @@ export class ContextMenu {
 	/** Tracks menus that already have the "Transcribe audio" item to prevent duplicates. */
 	private readonly menusWithTranscribeItem = new WeakSet<Menu>();
 	/** Tracks menus that already have the "Clean up audio" item to prevent duplicates. */
-	private readonly menusWithProcessItem = new WeakSet<Menu>();
+	private readonly menusWithCleanupItem = new WeakSet<Menu>();
 
 	/**
 	 * Creates a new ContextMenu instance.
@@ -248,7 +248,7 @@ export class ContextMenu {
 						this.addAudioFileInfoMenuItem(menu, file);
 						this.addConvertMenuItem(menu, file);
 						this.addSplitMenuItem(menu, file);
-						this.addProcessMenuItem(menu, file);
+						this.addCleanupMenuItem(menu, file);
 						this.addTranscribeMenuItem(menu, file);
 						this.addDeleteRecordingMenuItem(menu, file);
 					}
@@ -307,7 +307,7 @@ export class ContextMenu {
 		this.addAudioFileInfoMenuItem(menu, file);
 		this.addConvertMenuItem(menu, file);
 		this.addSplitMenuItem(menu, file);
-		this.addProcessMenuItem(menu, file);
+		this.addCleanupMenuItem(menu, file);
 		this.addTranscribeMenuItem(menu, file);
 		this.addDeleteRecordingAndLinkMenuItem(
 			menu,
@@ -324,11 +324,11 @@ export class ContextMenu {
 	 * @param menu - The menu to add the item to.
 	 * @param file - The audio file.
 	 */
-	private addProcessMenuItem(menu: Menu, file: TFile): void {
-		if (this.menusWithProcessItem.has(menu)) {
+	private addCleanupMenuItem(menu: Menu, file: TFile): void {
+		if (this.menusWithCleanupItem.has(menu)) {
 			return;
 		}
-		this.menusWithProcessItem.add(menu);
+		this.menusWithCleanupItem.add(menu);
 
 		menu.addItem((item: MenuItem) => {
 			item.setTitle('Clean up audio')

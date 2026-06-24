@@ -33,12 +33,12 @@ import {
 	MIN_SPLIT_CHUNK_MINUTES,
 	MAX_SPLIT_CHUNK_MINUTES,
 	SPLIT_PART_SUFFIX_PATTERN,
-	MIN_INPUT_HIGHPASS_HZ,
-	MAX_INPUT_HIGHPASS_HZ,
-	MIN_INPUT_GATE_THRESHOLD_DB,
-	MAX_INPUT_GATE_THRESHOLD_DB,
-	MIN_INPUT_LEVELING_MAKEUP_DB,
-	MAX_INPUT_LEVELING_MAKEUP_DB,
+	MIN_CLEANUP_HIGHPASS_HZ,
+	MAX_CLEANUP_HIGHPASS_HZ,
+	MIN_CLEANUP_GATE_THRESHOLD_DB,
+	MAX_CLEANUP_GATE_THRESHOLD_DB,
+	MIN_CLEANUP_LEVELING_MAKEUP_DB,
+	MAX_CLEANUP_LEVELING_MAKEUP_DB,
 } from '../constants';
 import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
 import { SystemInfoModal } from '../diagnostics/SystemInfoModal';
@@ -738,7 +738,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				}),
 			);
 
-		this.renderInputDspSettings(containerEl);
+		this.renderAudioCleanupSettings(containerEl);
 	}
 
 	/**
@@ -747,7 +747,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * dialog opened from the context menu; each run can override them.
 	 * @param containerEl - The settings container element
 	 */
-	private renderInputDspSettings(containerEl: HTMLElement): void {
+	private renderAudioCleanupSettings(containerEl: HTMLElement): void {
 		const s = this.plugin.settings;
 		new Setting(containerEl)
 			.setName('Audio cleanup defaults')
@@ -761,19 +761,25 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			.setDesc('Remove low-frequency rumble below the cutoff by default.')
 			.addSlider((slider) =>
 				slider
-					.setLimits(MIN_INPUT_HIGHPASS_HZ, MAX_INPUT_HIGHPASS_HZ, 5)
-					.setValue(s.inputHighPassHz)
+					.setLimits(
+						MIN_CLEANUP_HIGHPASS_HZ,
+						MAX_CLEANUP_HIGHPASS_HZ,
+						5,
+					)
+					.setValue(s.cleanupHighPassHz)
 					.setDynamicTooltip()
 					.onChange(async (v) => {
-						s.inputHighPassHz = v;
+						s.cleanupHighPassHz = v;
 						await this.plugin.saveSettings();
 					}),
 			)
 			.addToggle((toggle) =>
-				toggle.setValue(s.inputHighPassEnabled).onChange(async (v) => {
-					s.inputHighPassEnabled = v;
-					await this.plugin.saveSettings();
-				}),
+				toggle
+					.setValue(s.cleanupHighPassEnabled)
+					.onChange(async (v) => {
+						s.cleanupHighPassEnabled = v;
+						await this.plugin.saveSettings();
+					}),
 			);
 
 		new Setting(containerEl)
@@ -784,22 +790,24 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			.addSlider((slider) =>
 				slider
 					.setLimits(
-						MIN_INPUT_GATE_THRESHOLD_DB,
-						MAX_INPUT_GATE_THRESHOLD_DB,
+						MIN_CLEANUP_GATE_THRESHOLD_DB,
+						MAX_CLEANUP_GATE_THRESHOLD_DB,
 						1,
 					)
-					.setValue(s.inputNoiseGateThresholdDb)
+					.setValue(s.cleanupNoiseGateThresholdDb)
 					.setDynamicTooltip()
 					.onChange(async (v) => {
-						s.inputNoiseGateThresholdDb = v;
+						s.cleanupNoiseGateThresholdDb = v;
 						await this.plugin.saveSettings();
 					}),
 			)
 			.addToggle((toggle) =>
-				toggle.setValue(s.inputNoiseGateEnabled).onChange(async (v) => {
-					s.inputNoiseGateEnabled = v;
-					await this.plugin.saveSettings();
-				}),
+				toggle
+					.setValue(s.cleanupNoiseGateEnabled)
+					.onChange(async (v) => {
+						s.cleanupNoiseGateEnabled = v;
+						await this.plugin.saveSettings();
+					}),
 			);
 
 		new Setting(containerEl)
@@ -810,22 +818,24 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			.addSlider((slider) =>
 				slider
 					.setLimits(
-						MIN_INPUT_LEVELING_MAKEUP_DB,
-						MAX_INPUT_LEVELING_MAKEUP_DB,
+						MIN_CLEANUP_LEVELING_MAKEUP_DB,
+						MAX_CLEANUP_LEVELING_MAKEUP_DB,
 						1,
 					)
-					.setValue(s.inputLevelingMakeupDb)
+					.setValue(s.cleanupLevelingMakeupDb)
 					.setDynamicTooltip()
 					.onChange(async (v) => {
-						s.inputLevelingMakeupDb = v;
+						s.cleanupLevelingMakeupDb = v;
 						await this.plugin.saveSettings();
 					}),
 			)
 			.addToggle((toggle) =>
-				toggle.setValue(s.inputLevelingEnabled).onChange(async (v) => {
-					s.inputLevelingEnabled = v;
-					await this.plugin.saveSettings();
-				}),
+				toggle
+					.setValue(s.cleanupLevelingEnabled)
+					.onChange(async (v) => {
+						s.cleanupLevelingEnabled = v;
+						await this.plugin.saveSettings();
+					}),
 			);
 	}
 

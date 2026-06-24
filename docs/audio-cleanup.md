@@ -76,7 +76,7 @@ The compressor itself uses fixed, speech-friendly settings (threshold −24 dB, 
 
 ## Output
 
-- The cleaned file is always written as **16-bit PCM WAV**, regardless of the source format, because the cleanup re-encodes the decoded audio losslessly. The source's channel layout (mono/stereo) and sample rate are preserved.
+- The cleaned file is always written as **16-bit PCM WAV**, regardless of the source format, because the cleanup re-encodes the decoded audio. The source's channel layout (mono/stereo) is preserved; the sample rate is the one the Obsidian audio engine decodes to, which may differ from the source.
 - The file is saved **next to the source**, named `<source-name>-processed.wav`. If that name is taken, a numeric suffix is appended (`…-processed_1.wav`).
 - The original file is left untouched unless you enable **Delete source after processing**. If processing succeeds but deleting the source fails, the cleaned copy is still kept and a notice explains what happened.
 
@@ -106,8 +106,8 @@ Start conservative and re-run with stronger settings if needed — the original 
 ## Limitations
 
 - **Output is always WAV.** Convert it afterwards with **Convert audio format** from the context menu if you need a compressed format.
-- **Size and length caps.** Cleanup decodes the whole file into memory and runs part of the work on the main thread, so a file is refused with a clear message when it is larger than 1 GB (checked before decoding) or longer than two hours. Split it first (**Split audio into parts**) and clean each part.
-- **Desktop and mobile.** Cleanup uses the Web Audio API available in the Obsidian app; it works on both, but processing a long file briefly uses significant memory and CPU.
+- **Size and length caps.** Cleanup decodes the whole file into memory and runs part of the work on the main thread, so a file is refused with a clear message when it is larger than 1 GB (checked before decoding) or longer than two hours. Split it first (**Split audio into parts**) and clean each part. The length is only known after decoding, so a heavily compressed file that is under 1 GB but very long may fail while decoding (a generic processing error) rather than with the friendly length message — split it and clean each part.
+- **Desktop only.** The plugin is desktop-only, so cleanup runs only in the Obsidian desktop app. Processing a long file briefly uses significant memory and CPU.
 - **Not real-time.** This is post-processing. To shape the signal *during* recording, use the browser input toggles under **Audio processing & feedback** instead.
 
 ## Troubleshooting

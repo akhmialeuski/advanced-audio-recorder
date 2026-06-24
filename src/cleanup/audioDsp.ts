@@ -7,15 +7,15 @@
  */
 
 import {
-	DEFAULT_INPUT_GATE_THRESHOLD_DB,
-	DEFAULT_INPUT_HIGHPASS_HZ,
-	DEFAULT_INPUT_LEVELING_MAKEUP_DB,
-	MAX_INPUT_GATE_THRESHOLD_DB,
-	MAX_INPUT_HIGHPASS_HZ,
-	MAX_INPUT_LEVELING_MAKEUP_DB,
-	MIN_INPUT_GATE_THRESHOLD_DB,
-	MIN_INPUT_HIGHPASS_HZ,
-	MIN_INPUT_LEVELING_MAKEUP_DB,
+	DEFAULT_CLEANUP_GATE_THRESHOLD_DB,
+	DEFAULT_CLEANUP_HIGHPASS_HZ,
+	DEFAULT_CLEANUP_LEVELING_MAKEUP_DB,
+	MAX_CLEANUP_GATE_THRESHOLD_DB,
+	MAX_CLEANUP_HIGHPASS_HZ,
+	MAX_CLEANUP_LEVELING_MAKEUP_DB,
+	MIN_CLEANUP_GATE_THRESHOLD_DB,
+	MIN_CLEANUP_HIGHPASS_HZ,
+	MIN_CLEANUP_LEVELING_MAKEUP_DB,
 } from '../constants';
 import type { AudioRecorderSettings } from '../settings/Settings';
 
@@ -50,30 +50,30 @@ export function resolveAudioDspConfig(
 ): AudioDspConfig {
 	return {
 		highPass: {
-			enabled: settings.inputHighPassEnabled,
+			enabled: settings.cleanupHighPassEnabled,
 			hz: clamp(
-				settings.inputHighPassHz,
-				MIN_INPUT_HIGHPASS_HZ,
-				MAX_INPUT_HIGHPASS_HZ,
-				DEFAULT_INPUT_HIGHPASS_HZ,
+				settings.cleanupHighPassHz,
+				MIN_CLEANUP_HIGHPASS_HZ,
+				MAX_CLEANUP_HIGHPASS_HZ,
+				DEFAULT_CLEANUP_HIGHPASS_HZ,
 			),
 		},
 		gate: {
-			enabled: settings.inputNoiseGateEnabled,
+			enabled: settings.cleanupNoiseGateEnabled,
 			thresholdDb: clamp(
-				settings.inputNoiseGateThresholdDb,
-				MIN_INPUT_GATE_THRESHOLD_DB,
-				MAX_INPUT_GATE_THRESHOLD_DB,
-				DEFAULT_INPUT_GATE_THRESHOLD_DB,
+				settings.cleanupNoiseGateThresholdDb,
+				MIN_CLEANUP_GATE_THRESHOLD_DB,
+				MAX_CLEANUP_GATE_THRESHOLD_DB,
+				DEFAULT_CLEANUP_GATE_THRESHOLD_DB,
 			),
 		},
 		leveling: {
-			enabled: settings.inputLevelingEnabled,
+			enabled: settings.cleanupLevelingEnabled,
 			makeupDb: clamp(
-				settings.inputLevelingMakeupDb,
-				MIN_INPUT_LEVELING_MAKEUP_DB,
-				MAX_INPUT_LEVELING_MAKEUP_DB,
-				DEFAULT_INPUT_LEVELING_MAKEUP_DB,
+				settings.cleanupLevelingMakeupDb,
+				MIN_CLEANUP_LEVELING_MAKEUP_DB,
+				MAX_CLEANUP_LEVELING_MAKEUP_DB,
+				DEFAULT_CLEANUP_LEVELING_MAKEUP_DB,
 			),
 		},
 	};

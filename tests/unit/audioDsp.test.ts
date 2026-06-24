@@ -12,10 +12,10 @@ import {
 } from 'src/cleanup/audioDsp';
 import { mergeSettings } from 'src/settings/Settings';
 import {
-	DEFAULT_INPUT_HIGHPASS_HZ,
-	MAX_INPUT_GATE_THRESHOLD_DB,
-	MAX_INPUT_HIGHPASS_HZ,
-	MIN_INPUT_LEVELING_MAKEUP_DB,
+	DEFAULT_CLEANUP_HIGHPASS_HZ,
+	MAX_CLEANUP_GATE_THRESHOLD_DB,
+	MAX_CLEANUP_HIGHPASS_HZ,
+	MIN_CLEANUP_LEVELING_MAKEUP_DB,
 } from 'src/constants';
 
 describe('gateShouldOpen', () => {
@@ -62,12 +62,12 @@ describe('resolveAudioDspConfig', () => {
 	it('passes through valid values', () => {
 		const config = resolveAudioDspConfig(
 			mergeSettings({
-				inputHighPassEnabled: true,
-				inputHighPassHz: 120,
-				inputNoiseGateEnabled: true,
-				inputNoiseGateThresholdDb: -45,
-				inputLevelingEnabled: true,
-				inputLevelingMakeupDb: 9,
+				cleanupHighPassEnabled: true,
+				cleanupHighPassHz: 120,
+				cleanupNoiseGateEnabled: true,
+				cleanupNoiseGateThresholdDb: -45,
+				cleanupLevelingEnabled: true,
+				cleanupLevelingMakeupDb: 9,
 			}),
 		);
 		expect(config.highPass).toEqual({ enabled: true, hz: 120 });
@@ -78,21 +78,21 @@ describe('resolveAudioDspConfig', () => {
 	it('clamps out-of-range values', () => {
 		const config = resolveAudioDspConfig(
 			mergeSettings({
-				inputHighPassHz: 10_000,
-				inputNoiseGateThresholdDb: 0,
-				inputLevelingMakeupDb: -100,
+				cleanupHighPassHz: 10_000,
+				cleanupNoiseGateThresholdDb: 0,
+				cleanupLevelingMakeupDb: -100,
 			}),
 		);
-		expect(config.highPass.hz).toBe(MAX_INPUT_HIGHPASS_HZ);
-		expect(config.gate.thresholdDb).toBe(MAX_INPUT_GATE_THRESHOLD_DB);
-		expect(config.leveling.makeupDb).toBe(MIN_INPUT_LEVELING_MAKEUP_DB);
+		expect(config.highPass.hz).toBe(MAX_CLEANUP_HIGHPASS_HZ);
+		expect(config.gate.thresholdDb).toBe(MAX_CLEANUP_GATE_THRESHOLD_DB);
+		expect(config.leveling.makeupDb).toBe(MIN_CLEANUP_LEVELING_MAKEUP_DB);
 	});
 
 	it('falls back to defaults for non-finite values', () => {
 		const settings = mergeSettings({});
-		settings.inputHighPassHz = Number.NaN;
+		settings.cleanupHighPassHz = Number.NaN;
 		expect(resolveAudioDspConfig(settings).highPass.hz).toBe(
-			DEFAULT_INPUT_HIGHPASS_HZ,
+			DEFAULT_CLEANUP_HIGHPASS_HZ,
 		);
 	});
 });

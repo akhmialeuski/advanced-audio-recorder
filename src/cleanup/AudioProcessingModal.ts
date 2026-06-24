@@ -6,14 +6,22 @@
  * @module cleanup/AudioProcessingModal
  */
 
-import { App, ButtonComponent, Modal, Notice, Setting, TFile } from 'obsidian';
 import {
-	MIN_INPUT_HIGHPASS_HZ,
-	MAX_INPUT_HIGHPASS_HZ,
-	MIN_INPUT_GATE_THRESHOLD_DB,
-	MAX_INPUT_GATE_THRESHOLD_DB,
-	MIN_INPUT_LEVELING_MAKEUP_DB,
-	MAX_INPUT_LEVELING_MAKEUP_DB,
+	App,
+	ButtonComponent,
+	Modal,
+	Notice,
+	Setting,
+	SliderComponent,
+	TFile,
+} from 'obsidian';
+import {
+	MIN_CLEANUP_HIGHPASS_HZ,
+	MAX_CLEANUP_HIGHPASS_HZ,
+	MIN_CLEANUP_GATE_THRESHOLD_DB,
+	MAX_CLEANUP_GATE_THRESHOLD_DB,
+	MIN_CLEANUP_LEVELING_MAKEUP_DB,
+	MAX_CLEANUP_LEVELING_MAKEUP_DB,
 	PLUGIN_LOG_PREFIX,
 } from '../constants';
 import { AudioProcessingService } from './AudioProcessingService';
@@ -58,8 +66,8 @@ export class AudioProcessingModal extends Modal {
 			this.config.highPass.enabled,
 			(v) => (this.config.highPass.enabled = v),
 			{
-				min: MIN_INPUT_HIGHPASS_HZ,
-				max: MAX_INPUT_HIGHPASS_HZ,
+				min: MIN_CLEANUP_HIGHPASS_HZ,
+				max: MAX_CLEANUP_HIGHPASS_HZ,
 				step: 5,
 				value: this.config.highPass.hz,
 				onChange: (v) => (this.config.highPass.hz = v),
@@ -72,8 +80,8 @@ export class AudioProcessingModal extends Modal {
 			this.config.gate.enabled,
 			(v) => (this.config.gate.enabled = v),
 			{
-				min: MIN_INPUT_GATE_THRESHOLD_DB,
-				max: MAX_INPUT_GATE_THRESHOLD_DB,
+				min: MIN_CLEANUP_GATE_THRESHOLD_DB,
+				max: MAX_CLEANUP_GATE_THRESHOLD_DB,
 				step: 1,
 				value: this.config.gate.thresholdDb,
 				onChange: (v) => (this.config.gate.thresholdDb = v),
@@ -86,8 +94,8 @@ export class AudioProcessingModal extends Modal {
 			this.config.leveling.enabled,
 			(v) => (this.config.leveling.enabled = v),
 			{
-				min: MIN_INPUT_LEVELING_MAKEUP_DB,
-				max: MAX_INPUT_LEVELING_MAKEUP_DB,
+				min: MIN_CLEANUP_LEVELING_MAKEUP_DB,
+				max: MAX_CLEANUP_LEVELING_MAKEUP_DB,
 				step: 1,
 				value: this.config.leveling.makeupDb,
 				onChange: (v) => (this.config.leveling.makeupDb = v),
@@ -118,7 +126,9 @@ export class AudioProcessingModal extends Modal {
 	}
 
 	/**
-	 * Adds a stage toggle with a parameter slider on the same row.
+	 * Adds a stage toggle with a parameter slider on the same row. The
+	 * slider is greyed out while the stage is off so it is clear the
+	 * parameter only takes effect once the stage is enabled.
 	 */
 	private addStageWithSlider(
 		container: HTMLElement,
@@ -134,17 +144,24 @@ export class AudioProcessingModal extends Modal {
 			onChange: (value: number) => void;
 		},
 	): void {
+		let sliderComponent!: SliderComponent;
 		new Setting(container)
 			.setName(name)
 			.setDesc(desc)
-			.addSlider((s) =>
-				s
+			.addSlider((s) => {
+				sliderComponent = s
 					.setLimits(slider.min, slider.max, slider.step)
 					.setValue(slider.value)
 					.setDynamicTooltip()
-					.onChange(slider.onChange),
-			)
-			.addToggle((toggle) => toggle.setValue(enabled).onChange(onToggle));
+					.onChange(slider.onChange);
+				s.setDisabled(!enabled);
+			})
+			.addToggle((toggle) =>
+				toggle.setValue(enabled).onChange((value) => {
+					onToggle(value);
+					sliderComponent.setDisabled(!value);
+				}),
+			);
 	}
 
 	/**

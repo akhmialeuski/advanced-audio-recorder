@@ -49,7 +49,13 @@ export function encodeWavInterleaved(
 		for (let channel = 0; channel < numChannels; channel++) {
 			const sample = channels[channel][frame];
 			const clamped = Math.max(-1, Math.min(1, sample));
-			view.setInt16(offset, Math.round(clamped * 0x7fff), true);
+			// Match the project's int16 mapping (PcmStreamRecorder): use the
+			// full negative range (-32768) for negatives and 32767 for
+			// positives, rather than scaling both rails by 32767.
+			const pcm = Math.round(
+				clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff,
+			);
+			view.setInt16(offset, pcm, true);
 			offset += 2;
 		}
 	}
@@ -79,6 +85,11 @@ export class AudioProcessingService {
 		const sampleRate = decoded.sampleRate;
 		let samples = decoded.data;
 
+		// The gate runs first, on the decoded signal, so the whole pipeline
+		// is a single main-thread pass before the offline render. This keeps
+		// it to one OfflineAudioContext (peak memory) at the cost of the gate
+		// detecting on un-high-passed audio; if a future change needs the
+		// high-pass to precede the gate, split the offline render in two.
 		if (config.gate.enabled) {
 			samples = samples.map((channel) =>
 				applyNoiseGateToChannel(
@@ -106,7 +117,10 @@ export class AudioProcessingService {
 	): Promise<{ sampleRate: number; data: Float32Array[] }> {
 		const context = new AudioContext();
 		try {
-			const decoded = await context.decodeAudioData(data.slice(0));
+			// decodeAudioData detaches its input buffer; that is fine here
+			// because `data` is not reused after this call, and avoiding a
+			// defensive copy halves peak memory for near-cap files.
+			const decoded = await context.decodeAudioData(data);
 			if (decoded.duration > MAX_AUDIO_CLEANUP_SECONDS) {
 				throw new Error(
 					`Audio is too long to clean up here (limit ${String(

@@ -252,8 +252,8 @@ describe('encodeWavInterleaved', () => {
 		expect(view.getInt16(2, true)).toBe(0);
 		// Frame 1: left=0 -> 0, right=0.5 -> ~16384
 		expect(view.getInt16(6, true)).toBeCloseTo(16384, -1);
-		// Clipping: -1 -> -32767
-		expect(view.getInt16(8, true)).toBe(-32767);
+		// Full negative range: -1 -> -32768
+		expect(view.getInt16(8, true)).toBe(-32768);
 	});
 
 	it('produces a header-only file for empty channels', () => {
