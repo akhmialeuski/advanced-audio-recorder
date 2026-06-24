@@ -33,6 +33,12 @@ import {
 	MIN_SPLIT_CHUNK_MINUTES,
 	MAX_SPLIT_CHUNK_MINUTES,
 	SPLIT_PART_SUFFIX_PATTERN,
+	MIN_INPUT_HIGHPASS_HZ,
+	MAX_INPUT_HIGHPASS_HZ,
+	MIN_INPUT_GATE_THRESHOLD_DB,
+	MAX_INPUT_GATE_THRESHOLD_DB,
+	MIN_INPUT_LEVELING_MAKEUP_DB,
+	MAX_INPUT_LEVELING_MAKEUP_DB,
 } from '../constants';
 import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
 import { SystemInfoModal } from '../diagnostics/SystemInfoModal';
@@ -728,6 +734,96 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			.addToggle((toggle) =>
 				toggle.setValue(s.mobileRecordingBanner).onChange(async (v) => {
 					s.mobileRecordingBanner = v;
+					await this.plugin.saveSettings();
+				}),
+			);
+
+		this.renderInputDspSettings(containerEl);
+	}
+
+	/**
+	 * Renders the default settings for the on-demand "Clean up audio"
+	 * dialog (high-pass, noise gate, loudness leveling). These prefill the
+	 * dialog opened from the context menu; each run can override them.
+	 * @param containerEl - The settings container element
+	 */
+	private renderInputDspSettings(containerEl: HTMLElement): void {
+		const s = this.plugin.settings;
+		new Setting(containerEl)
+			.setName('Audio cleanup defaults')
+			.setDesc(
+				'Defaults for the cleanup action in the file/embed context menu. Cleanup runs on demand and writes a processed copy; it does not change live recording.',
+			)
+			.setHeading();
+
+		new Setting(containerEl)
+			.setName('High-pass filter')
+			.setDesc('Remove low-frequency rumble below the cutoff by default.')
+			.addSlider((slider) =>
+				slider
+					.setLimits(MIN_INPUT_HIGHPASS_HZ, MAX_INPUT_HIGHPASS_HZ, 5)
+					.setValue(s.inputHighPassHz)
+					.setDynamicTooltip()
+					.onChange(async (v) => {
+						s.inputHighPassHz = v;
+						await this.plugin.saveSettings();
+					}),
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(s.inputHighPassEnabled).onChange(async (v) => {
+					s.inputHighPassEnabled = v;
+					await this.plugin.saveSettings();
+				}),
+			);
+
+		new Setting(containerEl)
+			.setName('Noise gate')
+			.setDesc(
+				'Silence the signal below the threshold (dBFS) by default.',
+			)
+			.addSlider((slider) =>
+				slider
+					.setLimits(
+						MIN_INPUT_GATE_THRESHOLD_DB,
+						MAX_INPUT_GATE_THRESHOLD_DB,
+						1,
+					)
+					.setValue(s.inputNoiseGateThresholdDb)
+					.setDynamicTooltip()
+					.onChange(async (v) => {
+						s.inputNoiseGateThresholdDb = v;
+						await this.plugin.saveSettings();
+					}),
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(s.inputNoiseGateEnabled).onChange(async (v) => {
+					s.inputNoiseGateEnabled = v;
+					await this.plugin.saveSettings();
+				}),
+			);
+
+		new Setting(containerEl)
+			.setName('Loudness leveling')
+			.setDesc(
+				'Even out quiet and loud passages (compressor); makeup gain (dB).',
+			)
+			.addSlider((slider) =>
+				slider
+					.setLimits(
+						MIN_INPUT_LEVELING_MAKEUP_DB,
+						MAX_INPUT_LEVELING_MAKEUP_DB,
+						1,
+					)
+					.setValue(s.inputLevelingMakeupDb)
+					.setDynamicTooltip()
+					.onChange(async (v) => {
+						s.inputLevelingMakeupDb = v;
+						await this.plugin.saveSettings();
+					}),
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(s.inputLevelingEnabled).onChange(async (v) => {
+					s.inputLevelingEnabled = v;
 					await this.plugin.saveSettings();
 				}),
 			);

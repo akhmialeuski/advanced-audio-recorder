@@ -218,6 +218,12 @@ Live feedback while recording, and control over the browser's input processing �
 - **Recording stats**: the status bar shows the live elapsed time (excluding paused intervals) and the total recorded size as it grows (the sum across all tracks and parts).
 - **Mobile recording banner**: on mobile — where there is no ribbon icon — a prominent banner shows that a recording is in progress, with the elapsed time and a stop button.
 
+### Clean up audio (on demand)
+
+Right-click an audio file (or its embed) and choose **Clean up audio** to remove noise (high-pass filter + noise gate) and even out loudness, writing a processed copy and leaving the original untouched. It runs only when you ask — it never alters live recording.
+
+See the **[Audio cleanup guide](docs/audio-cleanup.md)** for a full walkthrough: each stage, recommended settings, output behavior, limitations, and troubleshooting.
+
 ## Transcription (speech-to-text)
 
 When **Enable transcription** is on in settings, recordings (and any existing audio file) can be transcribed to text. Right-click an audio file or its embed and choose **Transcribe audio**, run the **Transcribe active audio file** command, or enable **Transcribe after recording** to do it automatically.

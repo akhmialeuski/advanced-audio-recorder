@@ -55,6 +55,12 @@ jest.mock('../../src/ui/SplitModal', () => ({
 	})),
 }));
 
+jest.mock('../../src/cleanup/AudioProcessingModal', () => ({
+	AudioProcessingModal: jest.fn().mockImplementation(() => ({
+		open: jest.fn(),
+	})),
+}));
+
 // Mock AudioEncoder to avoid mediabunny TextDecoder requirement
 jest.mock('../../src/recording/AudioEncoder', () => ({
 	encodeAudioBuffer: jest.fn(),
@@ -185,11 +191,11 @@ describe('ContextMenu', () => {
 
 			fileMenuCallback(mockMenu, mockFile);
 
-			expect(mockMenu.addItem).toHaveBeenCalledTimes(4);
+			expect(mockMenu.addItem).toHaveBeenCalledTimes(5);
 
 			// Verify the delete item configuration (4th item: Audio info, Convert, Split, Delete)
 			const addItemCallback = (mockMenu.addItem as jest.Mock).mock
-				.calls[3][0];
+				.calls[4][0];
 			const mockItem = {
 				setTitle: jest.fn().mockReturnThis(),
 				setIcon: jest.fn().mockReturnThis(),
@@ -210,7 +216,7 @@ describe('ContextMenu', () => {
 
 			fileMenuCallback(mockMenu, mockFile);
 
-			expect(mockMenu.addItem).toHaveBeenCalledTimes(4);
+			expect(mockMenu.addItem).toHaveBeenCalledTimes(5);
 
 			// Verify the audio info item configuration (1st item)
 			const addItemCallback = (mockMenu.addItem as jest.Mock).mock
@@ -325,7 +331,7 @@ describe('ContextMenu', () => {
 
 			fileMenuCallback(mockMenu, mockFile);
 
-			expect(mockMenu.addItem).toHaveBeenCalledTimes(4);
+			expect(mockMenu.addItem).toHaveBeenCalledTimes(5);
 
 			// Verify the split item configuration (3rd item: info, convert, split, delete)
 			const addItemCallback = (mockMenu.addItem as jest.Mock).mock
@@ -375,6 +381,39 @@ describe('ContextMenu', () => {
 			);
 		});
 
+		it('adds a "Clean up audio" item and opens AudioProcessingModal', () => {
+			const { AudioProcessingModal } = jest.requireMock(
+				'../../src/cleanup/AudioProcessingModal',
+			);
+			const mockMenu = new Menu();
+			const mockFile = new TFile();
+			Object.defineProperty(mockFile, 'extension', { value: 'mp3' });
+
+			fileMenuCallback(mockMenu, mockFile);
+
+			// Order: info(0), convert(1), split(2), clean up(3), delete(4)
+			const addItemCallback = (mockMenu.addItem as jest.Mock).mock
+				.calls[3][0];
+			const mockItem = {
+				setTitle: jest.fn().mockReturnThis(),
+				setIcon: jest.fn().mockReturnThis(),
+				setSection: jest.fn().mockReturnThis(),
+				onClick: jest.fn(),
+			};
+			addItemCallback(mockItem);
+
+			expect(mockItem.setTitle).toHaveBeenCalledWith('Clean up audio');
+			expect(mockItem.setSection).toHaveBeenCalledWith('aar');
+
+			const clickHandler = mockItem.onClick.mock.calls[0][0];
+			clickHandler();
+			expect(AudioProcessingModal).toHaveBeenCalledWith(
+				mockApp,
+				mockFile,
+				expect.any(Object),
+			);
+		});
+
 		it('should not duplicate "Split audio into parts" when called twice on the same menu', () => {
 			const mockMenu = new Menu();
 			const mockFile = new TFile();
@@ -420,7 +459,7 @@ describe('ContextMenu', () => {
 			fileMenuCallback(mockMenu, mockFile);
 
 			const addItemCallback = (mockMenu.addItem as jest.Mock).mock
-				.calls[3][0];
+				.calls[4][0];
 			const mockItem = {
 				setTitle: jest.fn().mockReturnThis(),
 				setIcon: jest.fn().mockReturnThis(),
@@ -451,7 +490,7 @@ describe('ContextMenu', () => {
 			fileMenuCallback(mockMenu, mockFile);
 
 			const addItemCallback = (mockMenu.addItem as jest.Mock).mock
-				.calls[3][0];
+				.calls[4][0];
 			const mockItem = {
 				setTitle: jest.fn().mockReturnThis(),
 				setIcon: jest.fn().mockReturnThis(),
@@ -565,9 +604,9 @@ describe('ContextMenu', () => {
 
 			editorMenuCallback(mockMenu, mockEditor, {});
 
-			expect(mockMenu.addItem).toHaveBeenCalledTimes(4);
+			expect(mockMenu.addItem).toHaveBeenCalledTimes(5);
 			const addItemCallback = (mockMenu.addItem as jest.Mock).mock
-				.calls[3][0]; // Delete recording & link is the fourth item (info, convert, split, delete&link)
+				.calls[4][0]; // Delete recording & link is the fourth item (info, convert, split, delete&link)
 			const mockItem = {
 				setTitle: jest.fn().mockReturnThis(),
 				setIcon: jest.fn().mockReturnThis(),
@@ -601,7 +640,7 @@ describe('ContextMenu', () => {
 			editorMenuCallback(mockMenu, mockEditor, {});
 
 			const addItemCallback = (mockMenu.addItem as jest.Mock).mock
-				.calls[3][0];
+				.calls[4][0];
 			const mockItem = {
 				setTitle: jest.fn().mockReturnThis(),
 				setIcon: jest.fn().mockReturnThis(),
@@ -653,7 +692,7 @@ describe('ContextMenu', () => {
 			editorMenuCallback(mockMenu, mockEditor, {});
 
 			const addItemCallback = (mockMenu.addItem as jest.Mock).mock
-				.calls[3][0];
+				.calls[4][0];
 			const mockItem = {
 				setTitle: jest.fn().mockReturnThis(),
 				setIcon: jest.fn().mockReturnThis(),

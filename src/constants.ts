@@ -438,3 +438,49 @@ export const LOCAL_WHISPER_MODELS_DOC_URL =
  * so the bar never jumps backwards when post-processing starts.
  */
 export const TRANSCRIBE_CHUNK_PROGRESS_CEILING = 0.95;
+
+// ── Input DSP processing ────────────────────────────────────────────
+
+/** Default high-pass filter cutoff in Hz (removes low rumble). */
+export const DEFAULT_INPUT_HIGHPASS_HZ = 80;
+
+/** Minimum configurable high-pass cutoff in Hz. */
+export const MIN_INPUT_HIGHPASS_HZ = 20;
+
+/** Maximum configurable high-pass cutoff in Hz. */
+export const MAX_INPUT_HIGHPASS_HZ = 300;
+
+/** Default noise-gate threshold in dBFS. */
+export const DEFAULT_INPUT_GATE_THRESHOLD_DB = -50;
+
+/** Minimum configurable noise-gate threshold in dBFS. */
+export const MIN_INPUT_GATE_THRESHOLD_DB = -80;
+
+/** Maximum configurable noise-gate threshold in dBFS. */
+export const MAX_INPUT_GATE_THRESHOLD_DB = -20;
+
+/** Default makeup gain in dB applied after leveling compression. */
+export const DEFAULT_INPUT_LEVELING_MAKEUP_DB = 6;
+
+/** Minimum configurable leveling makeup gain in dB. */
+export const MIN_INPUT_LEVELING_MAKEUP_DB = 0;
+
+/** Maximum configurable leveling makeup gain in dB. */
+export const MAX_INPUT_LEVELING_MAKEUP_DB = 24;
+
+/**
+ * Upper bound, in bytes, on the encoded size of a file the on-demand
+ * audio cleanup will read and decode. Checked before decoding so a
+ * pathologically large file is rejected up front instead of allocating
+ * the whole decoded buffer (and a larger Float32 working copy) in the
+ * renderer. Mirrors the player's WAVEFORM_MAX_DECODE_BYTES ceiling.
+ */
+export const MAX_AUDIO_CLEANUP_BYTES = 1024 * 1024 * 1024;
+
+/**
+ * Upper bound, in seconds, on the duration of a file the on-demand audio
+ * cleanup will process. The noise gate and WAV encoding run as a single
+ * synchronous pass on the main thread, so a very long file would freeze
+ * the UI; above this the action asks the user to split the file first.
+ */
+export const MAX_AUDIO_CLEANUP_SECONDS = 2 * 60 * 60;

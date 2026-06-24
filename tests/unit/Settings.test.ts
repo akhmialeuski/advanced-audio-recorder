@@ -268,6 +268,12 @@ describe('Settings', () => {
 				showInputLevelMeter: false,
 				showRecordingStats: false,
 				mobileRecordingBanner: false,
+				inputHighPassEnabled: false,
+				inputHighPassHz: 100,
+				inputNoiseGateEnabled: true,
+				inputNoiseGateThresholdDb: -45,
+				inputLevelingEnabled: true,
+				inputLevelingMakeupDb: 9,
 			};
 
 			const result = mergeSettings(fullSettings);

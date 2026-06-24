@@ -618,12 +618,18 @@ input.aar-input-invalid {
     box-shadow: inset 2px 0 0 var(--color-accent);
 }
 
-/* Transcription modal */
-.aar-transcribe-config {
+/* Modal text shared by the transcription and audio-cleanup dialogs */
+.aar-modal-config {
     color: var(--text-muted);
     font-size: 0.9em;
 }
 
+.aar-modal-status {
+    margin: 8px 0 4px;
+    font-size: 0.9em;
+}
+
+/* Transcription modal */
 .aar-transcribe-options {
     margin: 8px 0;
 }
@@ -631,11 +637,6 @@ input.aar-input-invalid {
 .aar-transcribe-options-disabled {
     opacity: 0.5;
     pointer-events: none;
-}
-
-.aar-transcribe-status {
-    margin: 8px 0 4px;
-    font-size: 0.9em;
 }
 
 .aar-transcribe-progress {

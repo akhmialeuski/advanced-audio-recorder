@@ -127,14 +127,14 @@ export class TranscriptionModal extends Modal {
 		contentEl.empty();
 		new Setting(contentEl).setName('Transcribe audio').setHeading();
 		contentEl.createEl('p', {
-			cls: 'aar-transcribe-config',
+			cls: 'aar-modal-config',
 			text: `Source: ${this.file.name}`,
 		});
 
 		this.configEl = contentEl.createDiv({ cls: 'aar-transcribe-options' });
 		this.renderConfig();
 
-		this.statusEl = contentEl.createDiv({ cls: 'aar-transcribe-status' });
+		this.statusEl = contentEl.createDiv({ cls: 'aar-modal-status' });
 		this.statusEl.setText('Ready.');
 		const progress = contentEl.createDiv({
 			cls: 'aar-transcribe-progress',

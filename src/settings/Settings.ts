@@ -28,6 +28,9 @@ import {
 	DEFAULT_LLM_ANTHROPIC_MODEL,
 	DEFAULT_LLM_OLLAMA_BASE_URL,
 	DEFAULT_LLM_MAX_TOKENS,
+	DEFAULT_INPUT_HIGHPASS_HZ,
+	DEFAULT_INPUT_GATE_THRESHOLD_DB,
+	DEFAULT_INPUT_LEVELING_MAKEUP_DB,
 } from '../constants';
 import { getDefaultDeviceId } from '../utils/DeviceUtils';
 import type {
@@ -209,6 +212,18 @@ export interface AudioRecorderSettings {
 	showRecordingStats: boolean;
 	/** Show a prominent recording banner on mobile */
 	mobileRecordingBanner: boolean;
+	/** Default: enable the high-pass (low-rumble removal) stage */
+	inputHighPassEnabled: boolean;
+	/** High-pass filter cutoff in Hz */
+	inputHighPassHz: number;
+	/** Enable the noise gate */
+	inputNoiseGateEnabled: boolean;
+	/** Noise-gate threshold in dBFS */
+	inputNoiseGateThresholdDb: number;
+	/** Enable loudness leveling (compression) */
+	inputLevelingEnabled: boolean;
+	/** Makeup gain in dB applied after leveling */
+	inputLevelingMakeupDb: number;
 }
 
 /** Transcription engine identifier, derived from {@link TRANSCRIPTION_PROVIDER_IDS}. */
@@ -379,6 +394,12 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	showInputLevelMeter: true,
 	showRecordingStats: true,
 	mobileRecordingBanner: true,
+	inputHighPassEnabled: true,
+	inputHighPassHz: DEFAULT_INPUT_HIGHPASS_HZ,
+	inputNoiseGateEnabled: false,
+	inputNoiseGateThresholdDb: DEFAULT_INPUT_GATE_THRESHOLD_DB,
+	inputLevelingEnabled: false,
+	inputLevelingMakeupDb: DEFAULT_INPUT_LEVELING_MAKEUP_DB,
 };
 
 /**
