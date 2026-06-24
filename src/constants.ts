@@ -469,6 +469,18 @@ export const MIN_CLEANUP_LEVELING_MAKEUP_DB = 0;
 export const MAX_CLEANUP_LEVELING_MAKEUP_DB = 24;
 
 /**
+ * Slider step (Hz) for the high-pass cutoff, shared by the cleanup
+ * dialog and the settings tab so the two surfaces cannot drift apart.
+ */
+export const CLEANUP_HIGHPASS_STEP_HZ = 5;
+
+/** Slider step (dBFS) for the noise-gate threshold in the cleanup UI. */
+export const CLEANUP_GATE_STEP_DB = 1;
+
+/** Slider step (dB) for the leveling makeup gain in the cleanup UI. */
+export const CLEANUP_LEVELING_STEP_DB = 1;
+
+/**
  * Upper bound, in bytes, on the encoded size of a file the on-demand
  * audio cleanup will read and decode. Checked before decoding so a
  * pathologically large file is rejected up front instead of allocating
@@ -485,3 +497,19 @@ export const MAX_AUDIO_CLEANUP_BYTES = WAVEFORM_MAX_DECODE_BYTES;
  * the UI; above this the action asks the user to split the file first.
  */
 export const MAX_AUDIO_CLEANUP_SECONDS = 2 * 60 * 60;
+
+/**
+ * Upper bound on the total decoded sample count (frames × channels) the
+ * on-demand cleanup will process. Where {@link MAX_AUDIO_CLEANUP_BYTES}
+ * bounds the on-disk size, this bounds the decoded working set: the
+ * pipeline holds several full Float32 copies of the signal at once (the
+ * gated input, the OfflineAudioContext buffer, and the rendered output),
+ * so peak memory scales with this count rather than with the encoded
+ * size. A heavily compressed file can be small on disk yet decode to a
+ * multi-gigabyte buffer the byte guard alone would not catch; at 4 bytes
+ * per sample and roughly three concurrent copies this caps the peak
+ * working set near 1.5 GB. Checked right after decoding, before the
+ * Float32 channels are materialized, so an oversized file is refused with
+ * a clear message instead of failing with an out-of-memory error.
+ */
+export const MAX_AUDIO_CLEANUP_DECODED_SAMPLES = 128 * 1024 * 1024;

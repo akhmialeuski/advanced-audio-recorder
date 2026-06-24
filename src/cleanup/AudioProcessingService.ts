@@ -10,6 +10,7 @@ import type { App, TFile } from 'obsidian';
 import {
 	MAX_AUDIO_CLEANUP_BYTES,
 	MAX_AUDIO_CLEANUP_SECONDS,
+	MAX_AUDIO_CLEANUP_DECODED_SAMPLES,
 } from '../constants';
 import { createWavHeader, WAV_HEADER_SIZE } from '../recording/WavEncoder';
 import { resolveUniquePathInDirectory } from '../recording/RecordingFileManager';
@@ -39,6 +40,17 @@ export function encodeWavInterleaved(
 ): ArrayBuffer {
 	const numChannels = Math.max(1, channels.length);
 	const numFrames = channels[0]?.length ?? 0;
+	// The interleave loop indexes every channel up to numFrames (taken
+	// from channel 0). Enforce the equal-length invariant the JSDoc
+	// promises, so a mismatched channel fails loudly instead of writing
+	// NaN (-> silent 0) samples for the missing tail.
+	for (let channel = 1; channel < channels.length; channel++) {
+		if (channels[channel].length !== numFrames) {
+			throw new Error(
+				'Cannot encode WAV: all channels must have the same length.',
+			);
+		}
+	}
 	const pcmByteLength = numFrames * numChannels * 2;
 	const header = createWavHeader(numChannels, sampleRate, pcmByteLength);
 	const out = new ArrayBuffer(WAV_HEADER_SIZE + pcmByteLength);
@@ -128,6 +140,19 @@ export class AudioProcessingService {
 					)} minutes). Split it into parts first.`,
 				);
 			}
+			// Reject by decoded working set, not just encoded size: a small
+			// compressed file can decode to a multi-gigabyte buffer that the
+			// pre-decode byte guard cannot see. Checked before the Float32
+			// channels are copied out, so an oversized file fails with a
+			// clear message rather than an out-of-memory error mid-pipeline.
+			if (
+				decoded.length * decoded.numberOfChannels >
+				MAX_AUDIO_CLEANUP_DECODED_SAMPLES
+			) {
+				throw new Error(
+					'Audio file is too large to clean up here. Split it into parts first.',
+				);
+			}
 			const channels: Float32Array[] = [];
 			for (let i = 0; i < decoded.numberOfChannels; i++) {
 				channels.push(Float32Array.from(decoded.getChannelData(i)));
@@ -204,7 +229,7 @@ export class AudioProcessingService {
 	/**
 	 * Resolves a unique `<name>-processed.wav` path next to the source.
 	 */
-	private async resolveOutputPath(file: TFile): Promise<string> {
+	private resolveOutputPath(file: TFile): Promise<string> {
 		const slash = file.path.lastIndexOf('/');
 		const directory = slash >= 0 ? file.path.slice(0, slash) : '';
 		return resolveUniquePathInDirectory(

@@ -22,6 +22,9 @@ import {
 	MAX_CLEANUP_GATE_THRESHOLD_DB,
 	MIN_CLEANUP_LEVELING_MAKEUP_DB,
 	MAX_CLEANUP_LEVELING_MAKEUP_DB,
+	CLEANUP_HIGHPASS_STEP_HZ,
+	CLEANUP_GATE_STEP_DB,
+	CLEANUP_LEVELING_STEP_DB,
 	PLUGIN_LOG_PREFIX,
 } from '../constants';
 import { AudioProcessingService } from './AudioProcessingService';
@@ -68,7 +71,7 @@ export class AudioProcessingModal extends Modal {
 			{
 				min: MIN_CLEANUP_HIGHPASS_HZ,
 				max: MAX_CLEANUP_HIGHPASS_HZ,
-				step: 5,
+				step: CLEANUP_HIGHPASS_STEP_HZ,
 				value: this.config.highPass.hz,
 				onChange: (v) => (this.config.highPass.hz = v),
 			},
@@ -82,7 +85,7 @@ export class AudioProcessingModal extends Modal {
 			{
 				min: MIN_CLEANUP_GATE_THRESHOLD_DB,
 				max: MAX_CLEANUP_GATE_THRESHOLD_DB,
-				step: 1,
+				step: CLEANUP_GATE_STEP_DB,
 				value: this.config.gate.thresholdDb,
 				onChange: (v) => (this.config.gate.thresholdDb = v),
 			},
@@ -96,7 +99,7 @@ export class AudioProcessingModal extends Modal {
 			{
 				min: MIN_CLEANUP_LEVELING_MAKEUP_DB,
 				max: MAX_CLEANUP_LEVELING_MAKEUP_DB,
-				step: 1,
+				step: CLEANUP_LEVELING_STEP_DB,
 				value: this.config.leveling.makeupDb,
 				onChange: (v) => (this.config.leveling.makeupDb = v),
 			},

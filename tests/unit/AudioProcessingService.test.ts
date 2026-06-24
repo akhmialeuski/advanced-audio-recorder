@@ -17,6 +17,7 @@ import type { AudioDspConfig } from 'src/cleanup/audioDsp';
 import {
 	MAX_AUDIO_CLEANUP_BYTES,
 	MAX_AUDIO_CLEANUP_SECONDS,
+	MAX_AUDIO_CLEANUP_DECODED_SAMPLES,
 } from 'src/constants';
 
 /** A writable fake AudioBuffer. */
@@ -213,6 +214,29 @@ describe('AudioProcessingService.process (e2e pipeline)', () => {
 		).rejects.toThrow(/too long/i);
 	});
 
+	it('rejects files whose decoded working set exceeds the sample cap', async () => {
+		// A short, highly compressed file can pass the byte and duration
+		// guards yet decode to a buffer too large to hold several copies of.
+		// length × channels exceeds the cap while the duration stays under
+		// the limit, so the decoded-sample guard is what rejects it.
+		const sampleRate = 48000;
+		const oversized = {
+			numberOfChannels: 2,
+			length: MAX_AUDIO_CLEANUP_DECODED_SAMPLES,
+			sampleRate,
+			duration: MAX_AUDIO_CLEANUP_DECODED_SAMPLES / sampleRate,
+			getChannelData: (): Float32Array => new Float32Array(1),
+		};
+		decodeAudioData.mockResolvedValue(oversized);
+		const { app } = makeApp();
+		await expect(
+			new AudioProcessingService(app).process(
+				fakeFile('dense.opus'),
+				ALL_STAGES,
+			),
+		).rejects.toThrow(/too large/i);
+	});
+
 	it('rejects files with no decodable audio', async () => {
 		decodeAudioData.mockResolvedValue(fakeBuffer([], 16000));
 		const { app } = makeApp();
@@ -259,5 +283,13 @@ describe('encodeWavInterleaved', () => {
 	it('produces a header-only file for empty channels', () => {
 		const wav = encodeWavInterleaved([], 16000);
 		expect(readWavHeader(wav).dataBytes).toBe(0);
+	});
+
+	it('throws when channels have mismatched lengths', () => {
+		const left = new Float32Array([1, 0, -1]);
+		const right = new Float32Array([0, 0.5]);
+		expect(() => encodeWavInterleaved([left, right], 48000)).toThrow(
+			/same length/i,
+		);
 	});
 });

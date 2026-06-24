@@ -39,6 +39,9 @@ import {
 	MAX_CLEANUP_GATE_THRESHOLD_DB,
 	MIN_CLEANUP_LEVELING_MAKEUP_DB,
 	MAX_CLEANUP_LEVELING_MAKEUP_DB,
+	CLEANUP_HIGHPASS_STEP_HZ,
+	CLEANUP_GATE_STEP_DB,
+	CLEANUP_LEVELING_STEP_DB,
 } from '../constants';
 import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
 import { SystemInfoModal } from '../diagnostics/SystemInfoModal';
@@ -764,7 +767,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					.setLimits(
 						MIN_CLEANUP_HIGHPASS_HZ,
 						MAX_CLEANUP_HIGHPASS_HZ,
-						5,
+						CLEANUP_HIGHPASS_STEP_HZ,
 					)
 					.setValue(s.cleanupHighPassHz)
 					.setDynamicTooltip()
@@ -792,7 +795,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					.setLimits(
 						MIN_CLEANUP_GATE_THRESHOLD_DB,
 						MAX_CLEANUP_GATE_THRESHOLD_DB,
-						1,
+						CLEANUP_GATE_STEP_DB,
 					)
 					.setValue(s.cleanupNoiseGateThresholdDb)
 					.setDynamicTooltip()
@@ -820,7 +823,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					.setLimits(
 						MIN_CLEANUP_LEVELING_MAKEUP_DB,
 						MAX_CLEANUP_LEVELING_MAKEUP_DB,
-						1,
+						CLEANUP_LEVELING_STEP_DB,
 					)
 					.setValue(s.cleanupLevelingMakeupDb)
 					.setDynamicTooltip()
