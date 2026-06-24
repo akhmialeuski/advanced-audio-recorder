@@ -18,6 +18,9 @@ import {
 /** Class applied to a setting row that is rendered disabled (dimmed). */
 export const SETTING_DISABLED_CLASS = 'aar-setting-disabled';
 
+/** Class applied to a "learn more" link appended to a setting description. */
+export const SETTING_DOC_LINK_CLASS = 'aar-doc-link';
+
 /** A "learn more" link appended to a setting's description. */
 export interface HelpLink {
 	label: string;
@@ -34,7 +37,7 @@ function appendHelpLink(setting: Setting, link: HelpLink): void {
 	setting.descEl.createEl('br');
 	setting.descEl.createEl('a', {
 		text: link.label,
-		cls: 'aar-doc-link',
+		cls: SETTING_DOC_LINK_CLASS,
 		attr: { href: link.url, target: '_blank', rel: 'noopener' },
 	});
 }
@@ -244,6 +247,13 @@ export function addModelPicker(
 		config.getSelected(),
 	);
 	const selected = normalizeModelId(config.getSelected()) || models[0] || '';
+	// Self-heal a missing/empty stored selection: persist the fallback so the
+	// shown model is the one actually used at transcription time (a hand-edited
+	// or migrated config could otherwise leave an empty model selected).
+	if (selected !== '' && selected !== config.getSelected()) {
+		config.setSelected(selected);
+		void ctx.save();
+	}
 
 	const picker = new Setting(ctx.containerEl)
 		.setName(config.name)

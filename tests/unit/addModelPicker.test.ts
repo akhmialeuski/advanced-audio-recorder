@@ -253,4 +253,15 @@ describe('addModelPicker', () => {
 		expect(addRow.buttons[1].text).toBe('Remove selected');
 		expect(addRow.buttons[1].disabled).toBe(true);
 	});
+
+	it('persists a fallback selection when the stored model id is empty', () => {
+		const { state, ctx } = setup(['nova-3', 'nova-2'], '');
+		expect(state.selected).toBe('nova-3');
+		expect(ctx.save).toHaveBeenCalled();
+	});
+
+	it('normalizes a whitespace-padded stored model id', () => {
+		const { state } = setup(['nova-3'], '  nova-3  ');
+		expect(state.selected).toBe('nova-3');
+	});
 });
