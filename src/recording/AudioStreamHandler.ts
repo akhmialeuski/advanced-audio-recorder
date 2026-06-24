@@ -33,16 +33,41 @@ const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 500;
 
 /**
+ * Browser audio-processing constraints applied to the input stream.
+ */
+export interface AudioProcessingConstraints {
+	noiseSuppression: boolean;
+	echoCancellation: boolean;
+	autoGainControl: boolean;
+}
+
+/**
+ * Reads the audio-processing constraints from settings.
+ * @param settings - Plugin settings
+ */
+export function getProcessingConstraints(
+	settings: AudioRecorderSettings,
+): AudioProcessingConstraints {
+	return {
+		noiseSuppression: settings.inputNoiseSuppression,
+		echoCancellation: settings.inputEchoCancellation,
+		autoGainControl: settings.inputAutoGainControl,
+	};
+}
+
+/**
  * Gets a MediaStream for the specified audio device.
  * Implements retry logic for temporary access errors.
  * @param deviceId - Optional device ID to use
  * @param sampleRate - Audio sample rate
+ * @param processing - Optional audio-processing constraints
  * @returns Promise resolving to MediaStream
  * @throws AudioStreamError if device access fails after all retries
  */
 export async function getAudioStream(
 	deviceId?: string,
 	sampleRate?: number,
+	processing?: AudioProcessingConstraints,
 ): Promise<MediaStream> {
 	let lastError: Error | null = null;
 
@@ -52,6 +77,13 @@ export async function getAudioStream(
 				audio: {
 					deviceId: deviceId ? { exact: deviceId } : undefined,
 					sampleRate: sampleRate,
+					...(processing
+						? {
+								noiseSuppression: processing.noiseSuppression,
+								echoCancellation: processing.echoCancellation,
+								autoGainControl: processing.autoGainControl,
+							}
+						: {}),
 				},
 			});
 		} catch (error) {
@@ -90,16 +122,18 @@ export async function getAudioStream(
 export async function getAudioStreams(
 	settings: AudioRecorderSettings,
 ): Promise<{ streams: MediaStream[]; trackOrder: TrackAudioSource[] }> {
+	const processing = getProcessingConstraints(settings);
 	if (settings.enableMultiTrack) {
 		const trackOrder = getOrderedTrackSources(settings);
 		const streamPromises = trackOrder.map((source) =>
-			getAudioStream(source.deviceId, settings.sampleRate),
+			getAudioStream(source.deviceId, settings.sampleRate, processing),
 		);
 		return { streams: await Promise.all(streamPromises), trackOrder };
 	}
 	const stream = await getAudioStream(
 		settings.audioDeviceId,
 		settings.sampleRate,
+		processing,
 	);
 	return { streams: [stream], trackOrder: [] };
 }

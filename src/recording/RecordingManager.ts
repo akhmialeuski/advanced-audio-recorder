@@ -56,6 +56,7 @@ import {
 	validateRecordingCapability,
 } from './AudioCapabilityDetector';
 import { PcmStreamRecorder } from './PcmStreamRecorder';
+import { InputLevelMonitor } from './InputLevelMonitor';
 import { resolveRecorderFormat } from './AudioFormatConverter';
 import { TrackWriteQueue } from './TrackWriteQueue';
 import { RecordingFinalizer } from './RecordingFinalizer';
@@ -86,6 +87,10 @@ export class RecordingManager {
 	private recordingStartTime: number = 0;
 	private recordingTimestamp: string | null = null;
 	private totalChunks: number = 0;
+	/** Total bytes of audio data observed this session (live size). */
+	private recordedBytes: number = 0;
+	/** Live input-level meter for the primary stream, when enabled. */
+	private levelMonitor: InputLevelMonitor | null = null;
 	private isMobileRecording: boolean = false;
 	private isWavPcmRecording: boolean = false;
 	private activeRecorderFormat: string = FORMAT_WEBM;
@@ -198,6 +203,36 @@ export class RecordingManager {
 				this.status === RecordingStatus.Paused) &&
 			this.settings.playerEnableMarkers
 		);
+	}
+
+	/**
+	 * Returns the current input level (0..1) for a VU meter, or 0 when no
+	 * monitor is running.
+	 */
+	getInputLevel(): number {
+		return this.levelMonitor?.getLevel() ?? 0;
+	}
+
+	/**
+	 * Returns the total bytes of audio data observed this session.
+	 */
+	getRecordedBytes(): number {
+		return this.recordedBytes;
+	}
+
+	/**
+	 * Returns the elapsed active recording time in milliseconds, excluding
+	 * paused intervals. Zero when idle. Delegates to the rotation
+	 * controller, which already owns the pause-aware active-time clock.
+	 */
+	getElapsedMs(): number {
+		if (
+			this.status !== RecordingStatus.Recording &&
+			this.status !== RecordingStatus.Paused
+		) {
+			return 0;
+		}
+		return this.rotation.getSessionActiveMs(this.status);
 	}
 
 	/**
@@ -367,6 +402,28 @@ export class RecordingManager {
 	}
 
 	/**
+	 * Starts the input-level monitor on the primary stream when the meter
+	 * is enabled. A failure to start is non-fatal (the meter just stays
+	 * at zero).
+	 */
+	private startLevelMonitor(): void {
+		this.stopLevelMonitor();
+		if (!this.settings.showInputLevelMeter || this.streams.length === 0) {
+			return;
+		}
+		this.levelMonitor = new InputLevelMonitor();
+		this.levelMonitor.start(this.streams[0]);
+	}
+
+	/**
+	 * Stops and releases the input-level monitor.
+	 */
+	private stopLevelMonitor(): void {
+		this.levelMonitor?.stop();
+		this.levelMonitor = null;
+	}
+
+	/**
 	 * Updates settings reference.
 	 * @param settings - New settings
 	 */
@@ -453,6 +510,8 @@ export class RecordingManager {
 			this.totalChunks = 0;
 			this.markerBuffer = [];
 			this.persistedMarkerPaths.clear();
+			this.recordedBytes = 0;
+			this.startLevelMonitor();
 
 			if (this.isWavPcmRecording) {
 				await this.initPcmRecording();
@@ -814,6 +873,7 @@ export class RecordingManager {
 				error,
 			);
 		} finally {
+			this.stopLevelMonitor();
 			stopAllStreams(this.streams);
 			this.streams = [];
 			this.recorders = [];
@@ -822,6 +882,7 @@ export class RecordingManager {
 			this.trackOrder = [];
 			this.recordingTimestamp = null;
 			this.totalChunks = 0;
+			this.recordedBytes = 0;
 			this.isWavPcmRecording = false;
 			this.insertionContext = null;
 			this.sessionSplitEnabled = false;
@@ -934,6 +995,7 @@ export class RecordingManager {
 		// on the released streams after unload
 		this.rotation.requestStop();
 		this.sessionSplitEnabled = false;
+		this.stopLevelMonitor();
 		for (const recorder of this.pcmRecorders) {
 			recorder.stop().catch((error: unknown) => {
 				console.error(
@@ -985,6 +1047,7 @@ export class RecordingManager {
 			return;
 		}
 		this.totalChunks += 1;
+		this.recordedBytes += data.size;
 		const flushThreshold = this.isMobileRecording
 			? MOBILE_BUFFER_LIMIT_BYTES
 			: DESKTOP_FLUSH_THRESHOLD_BYTES;
@@ -1012,6 +1075,7 @@ export class RecordingManager {
 			return;
 		}
 		this.totalChunks += 1;
+		this.recordedBytes += data.byteLength;
 
 		await this.writeQueue.enqueue(target, async () => {
 			target.pcmBuffers.push(data);

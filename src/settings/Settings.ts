@@ -197,6 +197,18 @@ export interface AudioRecorderSettings {
 	llmModel: string;
 	/** Maximum output tokens for LLM post-processing */
 	llmMaxTokens: number;
+	/** Apply browser noise suppression to the input */
+	inputNoiseSuppression: boolean;
+	/** Apply browser echo cancellation to the input */
+	inputEchoCancellation: boolean;
+	/** Apply browser automatic gain control to the input */
+	inputAutoGainControl: boolean;
+	/** Show a live input-level meter while recording */
+	showInputLevelMeter: boolean;
+	/** Show live elapsed time and file size while recording */
+	showRecordingStats: boolean;
+	/** Show a prominent recording banner on mobile */
+	mobileRecordingBanner: boolean;
 }
 
 /** Transcription engine identifier, derived from {@link TRANSCRIPTION_PROVIDER_IDS}. */
@@ -361,6 +373,12 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	llmApiKey: '',
 	llmModel: DEFAULT_LLM_OPENAI_MODEL,
 	llmMaxTokens: DEFAULT_LLM_MAX_TOKENS,
+	inputNoiseSuppression: true,
+	inputEchoCancellation: true,
+	inputAutoGainControl: true,
+	showInputLevelMeter: true,
+	showRecordingStats: true,
+	mobileRecordingBanner: true,
 };
 
 /**

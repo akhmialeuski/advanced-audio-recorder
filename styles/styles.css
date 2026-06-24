@@ -126,6 +126,83 @@ If your plugin does not need CSS, delete this file.
     margin-bottom: 4px;
 }
 
+/* Live recording stats and input meter */
+.aar-recording-live {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 6px;
+    font-variant-numeric: tabular-nums;
+}
+
+.aar-recording-time {
+    color: var(--text-normal);
+}
+
+.aar-recording-size {
+    color: var(--text-muted);
+}
+
+.aar-input-meter {
+    display: inline-block;
+    width: 42px;
+    height: 6px;
+    border-radius: 3px;
+    background-color: var(--background-modifier-border);
+    overflow: hidden;
+}
+
+.aar-input-meter-fill {
+    display: block;
+    height: 100%;
+    width: var(--aar-meter-fill, 0%);
+    background-color: var(--color-green);
+    transition: width 0.1s linear;
+}
+
+/* Mobile recording banner */
+.aar-recording-banner {
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: var(--layer-notice, 100);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    background-color: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    box-shadow: var(--shadow-s);
+    font-variant-numeric: tabular-nums;
+}
+
+.aar-recording-banner-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: var(--color-red);
+    animation: pulse-recording 1.5s ease-in-out infinite;
+}
+
+.aar-recording-banner.is-paused .aar-recording-banner-dot {
+    animation: none;
+    background-color: var(--text-muted);
+}
+
+.aar-recording-banner-stop {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    color: var(--color-red);
+}
+
+.aar-recording-banner-stop svg {
+    width: 16px;
+    height: 16px;
+}
+
 /* Save progress */
 .aar-status-progress-content {
     width: 100%;

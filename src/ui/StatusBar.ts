@@ -6,6 +6,26 @@
 import { setIcon } from 'obsidian';
 import { RecordingStatus } from '../types';
 import type { SaveProgress, RecordingControls } from '../types';
+import { formatTimecode } from '../utils/TimeUtils';
+import { formatByteSize } from '../utils/formatBytes';
+
+/** Which live indicators to render in the recording state. */
+export interface RecordingLiveOptions {
+	/** Show elapsed time and recorded size. */
+	showStats: boolean;
+	/** Show the input-level meter. */
+	showMeter: boolean;
+}
+
+/** Live values pushed to the recording status bar on a timer. */
+export interface RecordingLiveStats {
+	/** Elapsed active recording time in milliseconds. */
+	elapsedMs: number;
+	/** Recorded bytes so far. */
+	bytes: number;
+	/** Input level as a 0..1 fraction. */
+	level: number;
+}
 
 /**
  * Options for an interactive background progress indicator.
@@ -30,6 +50,7 @@ export function updateStatusBar(
 	status: RecordingStatus,
 	saveProgress?: SaveProgress,
 	controls?: RecordingControls,
+	liveOptions?: RecordingLiveOptions,
 ): void {
 	if (!statusBarItem) {
 		return;
@@ -37,10 +58,20 @@ export function updateStatusBar(
 
 	switch (status) {
 		case RecordingStatus.Recording:
-			renderRecordingState(statusBarItem, 'Recording...', controls);
+			renderRecordingState(
+				statusBarItem,
+				'Recording...',
+				controls,
+				liveOptions,
+			);
 			break;
 		case RecordingStatus.Paused:
-			renderRecordingState(statusBarItem, 'Recording paused', controls);
+			renderRecordingState(
+				statusBarItem,
+				'Recording paused',
+				controls,
+				liveOptions,
+			);
 			break;
 		case RecordingStatus.Saving:
 			renderSavingState(statusBarItem, saveProgress);
@@ -62,6 +93,7 @@ function renderRecordingState(
 	el: HTMLElement,
 	label: string,
 	controls?: RecordingControls,
+	liveOptions?: RecordingLiveOptions,
 ): void {
 	el.empty();
 	el.classList.add('is-recording');
@@ -96,6 +128,49 @@ function renderRecordingState(
 			'Stop recording',
 			controls.onStop,
 		);
+	}
+
+	if (liveOptions?.showStats || liveOptions?.showMeter) {
+		const live = container.createSpan({ cls: 'aar-recording-live' });
+		if (liveOptions.showStats) {
+			live.createSpan({ cls: 'aar-recording-time', text: '0:00' });
+			live.createSpan({ cls: 'aar-recording-size', text: '0 B' });
+		}
+		if (liveOptions.showMeter) {
+			const meter = live.createSpan({ cls: 'aar-input-meter' });
+			meter.createSpan({ cls: 'aar-input-meter-fill' });
+		}
+	}
+}
+
+/**
+ * Updates the live recording indicators (elapsed time, recorded size,
+ * input level) in place, without re-rendering the status bar. No-op when
+ * the recording state is not currently shown.
+ * @param statusBarItem - The status bar element
+ * @param stats - Live values to display
+ */
+export function updateRecordingLiveStats(
+	statusBarItem: HTMLElement | null,
+	stats: RecordingLiveStats,
+): void {
+	const live = statusBarItem?.querySelector('.aar-recording-live');
+	if (!live) {
+		return;
+	}
+	const time = live.querySelector('.aar-recording-time');
+	if (time) {
+		time.textContent = formatTimecode(stats.elapsedMs / 1000);
+	}
+	const size = live.querySelector('.aar-recording-size');
+	if (size) {
+		size.textContent = formatByteSize(stats.bytes);
+	}
+	const fill = live.querySelector<HTMLElement>('.aar-input-meter-fill');
+	if (fill) {
+		fill.setCssProps({
+			'--aar-meter-fill': `${String(Math.round(stats.level * 100))}%`,
+		});
 	}
 }
 

@@ -35,6 +35,10 @@ export class Plugin {
 		return document.createElement('div');
 	}
 
+	registerInterval(id: number): number {
+		return id;
+	}
+
 	async loadData(): Promise<unknown> {
 		return {};
 	}

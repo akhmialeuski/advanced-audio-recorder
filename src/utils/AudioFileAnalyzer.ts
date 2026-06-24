@@ -4,6 +4,7 @@
  */
 
 import { App, Notice, TFile } from 'obsidian';
+import { formatByteSize } from './formatBytes';
 
 /**
  * Represents detailed information about an audio file.
@@ -80,7 +81,11 @@ export async function getAudioFileInfo(
 
 		return {
 			fileName: file.name,
-			fileSize: formatBytes(fileSizeInBytes),
+			fileSize: formatByteSize(fileSizeInBytes, {
+				decimals: 2,
+				trimZeros: true,
+				bytesLabel: 'Bytes',
+			}),
 			duration: formatDuration(durationInSeconds),
 			containerFormat: getMimeTypeFromExtension(extension),
 			audioCodec: inferCodecFromExtension(extension),
@@ -93,24 +98,6 @@ export async function getAudioFileInfo(
 		new Notice('An error occurred while analyzing the audio file.');
 		return null;
 	}
-}
-
-/**
- * Formats a byte size into a human-readable string.
- * @param bytes - The size in bytes.
- * @param decimals - Number of decimal places.
- * @returns Formatted size string.
- */
-function formatBytes(bytes: number, decimals = 2): string {
-	if (!+bytes) return '0 Bytes';
-
-	const k = 1024;
-	const dm = decimals < 0 ? 0 : decimals;
-	const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
-
-	const i = Math.floor(Math.log(bytes) / Math.log(k));
-
-	return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }
 
 /**

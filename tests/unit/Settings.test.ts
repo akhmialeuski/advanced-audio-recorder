@@ -262,6 +262,12 @@ describe('Settings', () => {
 				llmApiKey: 'ak-test',
 				llmModel: 'claude-opus-4-8',
 				llmMaxTokens: 2048,
+				inputNoiseSuppression: false,
+				inputEchoCancellation: false,
+				inputAutoGainControl: false,
+				showInputLevelMeter: false,
+				showRecordingStats: false,
+				mobileRecordingBanner: false,
 			};
 
 			const result = mergeSettings(fullSettings);
