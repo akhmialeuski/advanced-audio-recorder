@@ -225,7 +225,7 @@ All languages supported by the chosen model work; leave **Language** as `auto` t
 
 ### Speakers and diarization
 
-The transcript data model carries per-segment **speaker** labels. Enable **Speaker diarization** to request them. Deepgram diarizes natively; OpenAI-compatible Whisper endpoints honor it on a best-effort basis. The provider detects the number of speakers automatically, and labels (e.g. `Speaker 1`) are rendered in the output.
+The transcript data model carries per-segment **speaker** labels. Enable **Speaker diarization** to request them. Diarization is currently available with **Deepgram** only; OpenAI's Whisper API and local whisper.cpp do not return speaker labels, so the toggle is disabled for those engines rather than requesting a field they silently ignore. The provider detects the number of speakers automatically, and labels (e.g. `Speaker 1`) are rendered in the output.
 
 ### Output
 

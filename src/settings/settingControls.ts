@@ -9,6 +9,9 @@
 import { Setting } from 'obsidian';
 import type { AudioRecorderSettings, LabeledOption } from './Settings';
 
+/** Class applied to a setting row that is rendered disabled (dimmed). */
+export const SETTING_DISABLED_CLASS = 'aar-setting-disabled';
+
 /**
  * Shared dependencies a settings section needs: where to render, the live
  * settings object, and the three save/rerender hooks the controls call.
@@ -69,6 +72,12 @@ export interface ToggleControlConfig {
 	set: (value: boolean) => void;
 	/** Re-render the tab after the change (to reveal/hide dependent settings). */
 	rerender?: boolean;
+	/**
+	 * Render the toggle non-interactive. Used for an option the current
+	 * selection cannot use (e.g. diarization on an engine that cannot diarize),
+	 * so the control stays visible and explained rather than silently inert.
+	 */
+	disabled?: boolean;
 }
 
 /** Adds a toggle bound to a getter/setter that saves immediately. */
@@ -80,15 +89,23 @@ export function addToggle(
 	if (config.desc) {
 		setting.setDesc(config.desc);
 	}
-	setting.addToggle((toggle) =>
+	setting.addToggle((toggle) => {
 		toggle.setValue(config.get()).onChange(async (value) => {
 			config.set(value);
 			await ctx.save();
 			if (config.rerender) {
 				ctx.rerender();
 			}
-		}),
-	);
+		});
+		if (config.disabled) {
+			toggle.setDisabled(true);
+		}
+	});
+	if (config.disabled) {
+		// Dim the whole row so a non-interactive option reads as disabled,
+		// not merely "off" — the toggle's own disabled state is too subtle.
+		setting.settingEl.addClass(SETTING_DISABLED_CLASS);
+	}
 }
 
 /** Configuration for a dropdown control. */

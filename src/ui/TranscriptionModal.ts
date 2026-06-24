@@ -31,6 +31,10 @@ import {
 	type SettingsSectionContext,
 } from '../settings/settingControls';
 import { transcribeFile } from '../transcription/runTranscription';
+import {
+	effectiveDiarize,
+	providerSupportsDiarization,
+} from '../transcription/providers/capabilities';
 import { effectiveTranscriptDestination } from '../transcription/transcriptOutput';
 import {
 	TranscriptionCancelledError,
@@ -209,6 +213,9 @@ export class TranscriptionModal extends Modal {
 			get: () => s.transcriptionProvider,
 			set: (v) =>
 				(s.transcriptionProvider = v as TranscriptionProviderId),
+			// Re-render so the diarization toggle reflects the new engine's
+			// capabilities (enabled only when the engine can diarize).
+			rerender: true,
 		});
 		addText(ctx, {
 			name: 'Language',
@@ -216,11 +223,21 @@ export class TranscriptionModal extends Modal {
 			get: () => s.transcriptionLanguage,
 			set: (v) => (s.transcriptionLanguage = v.trim() || 'auto'),
 		});
+		const canDiarize = providerSupportsDiarization(s.transcriptionProvider);
 		addToggle(ctx, {
 			name: 'Speaker diarization',
-			desc: 'Request speaker labels (providers detect the speaker count automatically).',
-			get: () => s.transcriptionDiarize,
+			desc: canDiarize
+				? 'Request speaker labels (providers detect the speaker count automatically).'
+				: 'Not supported by the selected engine. Use Deepgram for speaker labels.',
+			// Reflect the effective state: a stored "on" from a diarizing engine
+			// must read as off here when the chosen engine cannot diarize.
+			get: () =>
+				effectiveDiarize(
+					s.transcriptionProvider,
+					s.transcriptionDiarize,
+				),
 			set: (v) => (s.transcriptionDiarize = v),
+			disabled: !canDiarize,
 		});
 		addToggle(ctx, {
 			name: 'Word-level timestamps',

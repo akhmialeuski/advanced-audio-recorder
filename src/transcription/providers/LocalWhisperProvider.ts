@@ -7,8 +7,12 @@
  * @module transcription/providers/LocalWhisperProvider
  */
 
-import { LOCAL_WHISPER_MAX_BUFFER_BYTES } from '../../constants';
+import {
+	LOCAL_WHISPER_MAX_BUFFER_BYTES,
+	TRANSCRIPTION_PROVIDER_IDS,
+} from '../../constants';
 import type { TranscriptSegment } from '../TranscriptTypes';
+import { LOCAL_WHISPER_CAPABILITIES } from './capabilities';
 import type { WhisperResult } from './whisperResponse';
 import { isRecord, num } from './responseUtils';
 import type {
@@ -104,16 +108,10 @@ export function mapWhisperCppJson(body: unknown): WhisperResult {
  * Local whisper.cpp transcription provider (desktop only).
  */
 export class LocalWhisperProvider implements TranscriptionProvider {
-	readonly id = 'local-whisper';
+	readonly id = TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER;
 	readonly label = 'Local whisper.cpp';
 	readonly requiresNetwork = false;
-	readonly capabilities: ProviderCapabilities = {
-		// Local: no upload limit, so the whole decoded file is one WAV chunk.
-		maxRequestBytes: Number.POSITIVE_INFINITY,
-		// whisper.cpp reads a WAV file path, so it needs decoded WAV input.
-		acceptsOriginalContainer: false,
-		diarizesWholeFile: false,
-	};
+	readonly capabilities: ProviderCapabilities = LOCAL_WHISPER_CAPABILITIES;
 	private readonly node = loadNodeModules();
 
 	constructor(private readonly config: LocalWhisperConfig) {}

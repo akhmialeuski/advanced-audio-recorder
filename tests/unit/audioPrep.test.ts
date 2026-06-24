@@ -38,6 +38,7 @@ describe('audioPrepOptions', () => {
 		maxRequestBytes: 25 * 1024 * 1024,
 		acceptsOriginalContainer: true,
 		diarizesWholeFile: false,
+		supportsDiarization: false,
 	};
 
 	it('bounds the chunk size by the provider limit for network providers', () => {
@@ -67,6 +68,7 @@ describe('audioPrepOptions', () => {
 			maxRequestBytes: Number.POSITIVE_INFINITY,
 			acceptsOriginalContainer: false,
 			diarizesWholeFile: false,
+			supportsDiarization: false,
 		};
 		const options = audioPrepOptions(
 			localCaps,
@@ -82,6 +84,7 @@ describe('audioPrepOptions', () => {
 			maxRequestBytes: 1000,
 			acceptsOriginalContainer: true,
 			diarizesWholeFile: true,
+			supportsDiarization: true,
 		};
 		const options = audioPrepOptions(diarizingCaps, true, 1000, true);
 		expect(options.diarize).toBe(true);

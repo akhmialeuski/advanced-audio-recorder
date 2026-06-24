@@ -2,18 +2,21 @@
  * Transcription via an OpenAI-compatible Whisper API
  * (`POST {baseUrl}/audio/transcriptions`). Works with OpenAI and any
  * compatible endpoint (e.g. Groq) by changing the base URL and model.
- * Diarization and word timestamps are requested best-effort — endpoints
- * that ignore the extra fields simply return segment-level results.
+ * Word timestamps are requested best-effort. Speaker diarization is not
+ * offered: OpenAI's Whisper returns no speaker labels, so the diarization
+ * UI is disabled for this engine rather than requesting a field the API
+ * silently ignores.
  * @module transcription/providers/WhisperApiProvider
  */
 
-import { WHISPER_API_MAX_REQUEST_BYTES } from '../../constants';
+import { TRANSCRIPTION_PROVIDER_IDS } from '../../constants';
 import {
 	buildMultipart,
 	requestJson,
 	trimTrailingSlash,
 	uploadTimeoutMs,
 } from '../httpClient';
+import { WHISPER_API_CAPABILITIES } from './capabilities';
 import { mapWhisperResponse, type WhisperResult } from './whisperResponse';
 import type {
 	AudioPayload,
@@ -35,14 +38,10 @@ export interface WhisperApiConfig {
  * recordings are decoded and split into WAV chunks by the service.
  */
 export class WhisperApiProvider implements TranscriptionProvider {
-	readonly id = 'whisper-api';
+	readonly id = TRANSCRIPTION_PROVIDER_IDS.WHISPER_API;
 	readonly label = 'Whisper API (OpenAI-compatible)';
 	readonly requiresNetwork = true;
-	readonly capabilities: ProviderCapabilities = {
-		maxRequestBytes: WHISPER_API_MAX_REQUEST_BYTES,
-		acceptsOriginalContainer: true,
-		diarizesWholeFile: false,
-	};
+	readonly capabilities: ProviderCapabilities = WHISPER_API_CAPABILITIES;
 
 	constructor(private readonly config: WhisperApiConfig) {}
 
@@ -79,15 +78,6 @@ export class WhisperApiProvider implements TranscriptionProvider {
 				type: 'text' as const,
 				name: 'language',
 				value: options.language,
-			});
-		}
-		if (options.diarize) {
-			// Honored by diarization-capable compatible endpoints; ignored
-			// by OpenAI's own Whisper without error.
-			fields.push({
-				type: 'text' as const,
-				name: 'diarize',
-				value: 'true',
 			});
 		}
 

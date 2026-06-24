@@ -1,0 +1,88 @@
+/**
+ * Tests that each transcription engine declares whether it can diarize, and
+ * that the UI-facing lookup reflects it. Diarization must be advertised only
+ * for engines that actually return speaker labels (Deepgram), so the settings
+ * tab and the per-run dialog can disable the toggle for the others instead of
+ * offering an option the engine would silently ignore. Also pins the engine
+ * id constants as the single source for the provider ids and map keys.
+ * @module tests/unit/providerCapabilities.test
+ */
+/** @jest-environment jsdom */
+
+import {
+	DEEPGRAM_CAPABILITIES,
+	effectiveDiarize,
+	LOCAL_WHISPER_CAPABILITIES,
+	providerSupportsDiarization,
+	TRANSCRIPTION_PROVIDER_CAPABILITIES,
+	WHISPER_API_CAPABILITIES,
+} from 'src/transcription/providers/capabilities';
+import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
+import { TRANSCRIPTION_PROVIDER_LABELS } from 'src/settings/Settings';
+import { WhisperApiProvider } from 'src/transcription/providers/WhisperApiProvider';
+import { DeepgramProvider } from 'src/transcription/providers/DeepgramProvider';
+import { LocalWhisperProvider } from 'src/transcription/providers/LocalWhisperProvider';
+
+describe('transcription provider capabilities', () => {
+	it('advertises diarization only for Deepgram', () => {
+		expect(WHISPER_API_CAPABILITIES.supportsDiarization).toBe(false);
+		expect(LOCAL_WHISPER_CAPABILITIES.supportsDiarization).toBe(false);
+		expect(DEEPGRAM_CAPABILITIES.supportsDiarization).toBe(true);
+	});
+
+	it('maps every engine id to its capabilities', () => {
+		expect(TRANSCRIPTION_PROVIDER_CAPABILITIES['whisper-api']).toBe(
+			WHISPER_API_CAPABILITIES,
+		);
+		expect(TRANSCRIPTION_PROVIDER_CAPABILITIES['local-whisper']).toBe(
+			LOCAL_WHISPER_CAPABILITIES,
+		);
+		expect(TRANSCRIPTION_PROVIDER_CAPABILITIES.deepgram).toBe(
+			DEEPGRAM_CAPABILITIES,
+		);
+	});
+
+	it('exposes diarization support through the UI helper', () => {
+		expect(providerSupportsDiarization('whisper-api')).toBe(false);
+		expect(providerSupportsDiarization('local-whisper')).toBe(false);
+		expect(providerSupportsDiarization('deepgram')).toBe(true);
+	});
+});
+
+describe('effectiveDiarize', () => {
+	it('requests diarization only when requested AND the engine supports it', () => {
+		expect(effectiveDiarize('deepgram', true)).toBe(true);
+		expect(effectiveDiarize('deepgram', false)).toBe(false);
+	});
+
+	it('ignores a requested "on" for an engine that cannot diarize', () => {
+		expect(effectiveDiarize('whisper-api', true)).toBe(false);
+		expect(effectiveDiarize('local-whisper', true)).toBe(false);
+	});
+});
+
+describe('transcription engine id constants', () => {
+	it('are the source for each provider id', () => {
+		expect(
+			new WhisperApiProvider({ baseUrl: '', apiKey: '', model: '' }).id,
+		).toBe(TRANSCRIPTION_PROVIDER_IDS.WHISPER_API);
+		expect(
+			new DeepgramProvider({ baseUrl: '', apiKey: '', model: '' }).id,
+		).toBe(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM);
+		expect(
+			new LocalWhisperProvider({
+				binaryPath: '',
+				modelPath: '',
+				extraArgs: [],
+			}).id,
+		).toBe(TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER);
+	});
+
+	it('key the capability and label maps (no hand-typed literals drift)', () => {
+		const ids = [...Object.values(TRANSCRIPTION_PROVIDER_IDS)].sort();
+		expect(Object.keys(TRANSCRIPTION_PROVIDER_CAPABILITIES).sort()).toEqual(
+			ids,
+		);
+		expect(Object.keys(TRANSCRIPTION_PROVIDER_LABELS).sort()).toEqual(ids);
+	});
+});

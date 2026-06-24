@@ -19,6 +19,7 @@ import {
 	DEFAULT_WHISPER_API_MODEL,
 	DEFAULT_DEEPGRAM_BASE_URL,
 	DEFAULT_DEEPGRAM_MODEL,
+	TRANSCRIPTION_PROVIDER_IDS,
 	DEFAULT_LLM_OPENAI_BASE_URL,
 	DEFAULT_LLM_OPENAI_MODEL,
 	DEFAULT_LLM_ANTHROPIC_BASE_URL,
@@ -192,20 +193,18 @@ export interface AudioRecorderSettings {
 	llmMaxTokens: number;
 }
 
-/** Transcription engine identifier. */
+/** Transcription engine identifier, derived from {@link TRANSCRIPTION_PROVIDER_IDS}. */
 export type TranscriptionProviderId =
-	| 'whisper-api'
-	| 'local-whisper'
-	| 'deepgram';
+	(typeof TRANSCRIPTION_PROVIDER_IDS)[keyof typeof TRANSCRIPTION_PROVIDER_IDS];
 
 /** Display labels for each transcription engine (single source for UI). */
 export const TRANSCRIPTION_PROVIDER_LABELS: Record<
 	TranscriptionProviderId,
 	string
 > = {
-	'whisper-api': 'Whisper API (OpenAI-compatible)',
-	deepgram: 'Deepgram',
-	'local-whisper': 'Local whisper.cpp (desktop)',
+	[TRANSCRIPTION_PROVIDER_IDS.WHISPER_API]: 'Whisper API (OpenAI-compatible)',
+	[TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM]: 'Deepgram',
+	[TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER]: 'Local whisper.cpp (desktop)',
 };
 
 /** Display labels for each transcript destination (single source for UI). */
@@ -322,7 +321,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	playerEnableMarkers: true,
 	transcriptionEnabled: false,
 	transcribeOnSave: false,
-	transcriptionProvider: 'whisper-api',
+	transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
 	transcriptionLanguage: 'auto',
 	transcriptionDiarize: false,
 	transcriptionWordTimestamps: false,

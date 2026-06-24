@@ -11,6 +11,7 @@ import {
 	MAX_TRANSCRIBE_CHUNK_MB,
 	MIN_LLM_MAX_TOKENS,
 	MAX_LLM_MAX_TOKENS,
+	TRANSCRIPTION_PROVIDER_IDS,
 } from '../../constants';
 import {
 	applyLlmProviderDefaults,
@@ -29,6 +30,10 @@ import {
 	addToggle,
 	type SettingsSectionContext,
 } from '../settingControls';
+import {
+	effectiveDiarize,
+	providerSupportsDiarization,
+} from '../../transcription/providers/capabilities';
 
 /**
  * Renders the full transcription settings section.
@@ -72,11 +77,18 @@ export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
 		set: (v) => (s.transcriptionLanguage = v.trim() || 'auto'),
 	});
 
+	const canDiarize = providerSupportsDiarization(s.transcriptionProvider);
 	addToggle(ctx, {
 		name: 'Speaker diarization',
-		desc: 'Request speaker labels. Native on Deepgram; best-effort on compatible Whisper endpoints.',
-		get: () => s.transcriptionDiarize,
+		desc: canDiarize
+			? 'Request speaker labels. Speaker count is detected automatically.'
+			: 'Not supported by the selected engine. Use Deepgram for speaker labels.',
+		// Reflect the effective state: a stored "on" reads as off for an engine
+		// that cannot diarize, so the control never claims a result it cannot give.
+		get: () =>
+			effectiveDiarize(s.transcriptionProvider, s.transcriptionDiarize),
 		set: (v) => (s.transcriptionDiarize = v),
+		disabled: !canDiarize,
 	});
 
 	addToggle(ctx, {
@@ -86,9 +98,11 @@ export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
 		set: (v) => (s.transcriptionWordTimestamps = v),
 	});
 
-	if (s.transcriptionProvider === 'whisper-api') {
+	if (s.transcriptionProvider === TRANSCRIPTION_PROVIDER_IDS.WHISPER_API) {
 		renderWhisperApiSettings(ctx);
-	} else if (s.transcriptionProvider === 'deepgram') {
+	} else if (
+		s.transcriptionProvider === TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM
+	) {
 		renderDeepgramSettings(ctx);
 	} else {
 		renderLocalWhisperSettings(ctx);

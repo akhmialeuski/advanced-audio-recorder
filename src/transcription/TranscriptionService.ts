@@ -35,6 +35,7 @@ import {
 } from './transcriptFormat';
 import { buildPostProcessPrompt } from './llmPostProcess';
 import { createLlmProvider, createTranscriptionProvider } from './factories';
+import { effectiveDiarize } from './providers/capabilities';
 import type { LlmProvider } from './llm/LlmProvider';
 import type { Transcript } from './TranscriptTypes';
 
@@ -123,7 +124,14 @@ export class TranscriptionService {
 				settings.transcriptionLanguage !== 'auto'
 					? settings.transcriptionLanguage
 					: undefined,
-			diarize: settings.transcriptionDiarize,
+			// Only request diarization when the engine can actually produce
+			// speaker labels. effectiveDiarize is the shared gate, so a stale
+			// "on" left from a diarizing engine is ignored and a non-diarizing
+			// engine never sends a field it would silently drop.
+			diarize: effectiveDiarize(
+				settings.transcriptionProvider,
+				settings.transcriptionDiarize,
+			),
 			wordTimestamps: settings.transcriptionWordTimestamps,
 		};
 
