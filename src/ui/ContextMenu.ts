@@ -24,6 +24,7 @@ import { ConversionModal } from './ConversionModal';
 import { SplitModal } from './SplitModal';
 import { TranscriptionModal } from './TranscriptionModal';
 import type { TranscriptionModalOptions } from './TranscriptionModal';
+import { AudioProcessingModal } from '../cleanup/AudioProcessingModal';
 import type { AudioRecorderSettings } from '../settings/Settings';
 
 /** CodeMirror view attached to Editor (internal Obsidian API). */
@@ -50,6 +51,8 @@ export class ContextMenu {
 	private readonly menusWithSplitItem = new WeakSet<Menu>();
 	/** Tracks menus that already have the "Transcribe audio" item to prevent duplicates. */
 	private readonly menusWithTranscribeItem = new WeakSet<Menu>();
+	/** Tracks menus that already have the "Clean up audio" item to prevent duplicates. */
+	private readonly menusWithCleanupItem = new WeakSet<Menu>();
 
 	/**
 	 * Creates a new ContextMenu instance.
@@ -245,6 +248,7 @@ export class ContextMenu {
 						this.addAudioFileInfoMenuItem(menu, file);
 						this.addConvertMenuItem(menu, file);
 						this.addSplitMenuItem(menu, file);
+						this.addCleanupMenuItem(menu, file);
 						this.addTranscribeMenuItem(menu, file);
 						this.addDeleteRecordingMenuItem(menu, file);
 					}
@@ -303,6 +307,7 @@ export class ContextMenu {
 		this.addAudioFileInfoMenuItem(menu, file);
 		this.addConvertMenuItem(menu, file);
 		this.addSplitMenuItem(menu, file);
+		this.addCleanupMenuItem(menu, file);
 		this.addTranscribeMenuItem(menu, file);
 		this.addDeleteRecordingAndLinkMenuItem(
 			menu,
@@ -311,6 +316,32 @@ export class ContextMenu {
 			cursor.line,
 			linkMatch,
 		);
+	}
+
+	/**
+	 * Adds a "Clean up audio" item that opens the on-demand DSP dialog
+	 * (noise gate, high-pass, loudness leveling).
+	 * @param menu - The menu to add the item to.
+	 * @param file - The audio file.
+	 */
+	private addCleanupMenuItem(menu: Menu, file: TFile): void {
+		if (this.menusWithCleanupItem.has(menu)) {
+			return;
+		}
+		this.menusWithCleanupItem.add(menu);
+
+		menu.addItem((item: MenuItem) => {
+			item.setTitle('Clean up audio')
+				.setIcon('wand-2')
+				.setSection(AAR_MENU_SECTION)
+				.onClick(() => {
+					new AudioProcessingModal(
+						this.app,
+						file,
+						this.getSettings(),
+					).open();
+				});
+		});
 	}
 
 	/**

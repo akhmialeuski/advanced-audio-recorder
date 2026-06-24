@@ -99,7 +99,14 @@ export default tseslint.config(
             'no-console': ['error', { allow: ['warn', 'error', 'debug'] }],
 
             // Obsidian Plugin Rules
-            'obsidianmd/ui/sentence-case': 'warn',
+            // ignoreWords keeps audio units/format acronyms the default
+            // dictionary lacks; listing them is additive (DEFAULT_ACRONYMS
+            // such as API/URL are unaffected) and preserves their exact
+            // mixed casing (dB, dBFS) instead of lowercasing them.
+            'obsidianmd/ui/sentence-case': [
+                'warn',
+                { ignoreWords: ['WAV', 'dB', 'dBFS'] },
+            ],
         },
     },
     {
