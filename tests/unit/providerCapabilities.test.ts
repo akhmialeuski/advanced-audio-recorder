@@ -11,6 +11,7 @@
 
 import {
 	DEEPGRAM_CAPABILITIES,
+	effectiveDiarize,
 	LOCAL_WHISPER_CAPABILITIES,
 	providerSupportsDiarization,
 	TRANSCRIPTION_PROVIDER_CAPABILITIES,
@@ -45,6 +46,18 @@ describe('transcription provider capabilities', () => {
 		expect(providerSupportsDiarization('whisper-api')).toBe(false);
 		expect(providerSupportsDiarization('local-whisper')).toBe(false);
 		expect(providerSupportsDiarization('deepgram')).toBe(true);
+	});
+});
+
+describe('effectiveDiarize', () => {
+	it('requests diarization only when requested AND the engine supports it', () => {
+		expect(effectiveDiarize('deepgram', true)).toBe(true);
+		expect(effectiveDiarize('deepgram', false)).toBe(false);
+	});
+
+	it('ignores a requested "on" for an engine that cannot diarize', () => {
+		expect(effectiveDiarize('whisper-api', true)).toBe(false);
+		expect(effectiveDiarize('local-whisper', true)).toBe(false);
 	});
 });
 

@@ -30,7 +30,10 @@ import {
 	addToggle,
 	type SettingsSectionContext,
 } from '../settingControls';
-import { providerSupportsDiarization } from '../../transcription/providers/capabilities';
+import {
+	effectiveDiarize,
+	providerSupportsDiarization,
+} from '../../transcription/providers/capabilities';
 
 /**
  * Renders the full transcription settings section.
@@ -82,7 +85,8 @@ export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
 			: 'Not supported by the selected engine. Use Deepgram for speaker labels.',
 		// Reflect the effective state: a stored "on" reads as off for an engine
 		// that cannot diarize, so the control never claims a result it cannot give.
-		get: () => canDiarize && s.transcriptionDiarize,
+		get: () =>
+			effectiveDiarize(s.transcriptionProvider, s.transcriptionDiarize),
 		set: (v) => (s.transcriptionDiarize = v),
 		disabled: !canDiarize,
 	});

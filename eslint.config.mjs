@@ -5,6 +5,41 @@ import prettier from 'eslint-plugin-prettier';
 import eslintConfigPrettier from 'eslint-config-prettier';
 import globals from 'globals';
 
+// Local plugin: ban banner/divider comments (a run of three or more dashes).
+// It inspects comment tokens only, so dashes inside string literals (e.g. a
+// multipart boundary or YAML front-matter in a test fixture) are never flagged.
+const localRules = {
+    rules: {
+        'no-dashes-in-comments': {
+            meta: {
+                type: 'problem',
+                docs: {
+                    description:
+                        'Disallow a run of three or more dashes in comments (banner/divider comments).',
+                },
+                schema: [],
+                messages: {
+                    dashes: 'Avoid "---" or longer dash runs in comments; use a plain descriptive comment instead.',
+                },
+            },
+            create(context) {
+                return {
+                    Program() {
+                        for (const comment of context.sourceCode.getAllComments()) {
+                            if (/-{3,}/.test(comment.value)) {
+                                context.report({
+                                    loc: comment.loc,
+                                    messageId: 'dashes',
+                                });
+                            }
+                        }
+                    },
+                };
+            },
+        },
+    },
+};
+
 export default tseslint.config(
     eslint.configs.recommended,
     ...tseslint.configs.recommended,
@@ -65,6 +100,16 @@ export default tseslint.config(
 
             // Obsidian Plugin Rules
             'obsidianmd/ui/sentence-case': 'warn',
+        },
+    },
+    {
+        // Ban banner/divider comments in plugin source. Scoped to src/ so the
+        // pre-existing banner comments in some test files do not have to be
+        // cleaned up in the same change; production code stays free of them.
+        files: ['src/**/*.ts'],
+        plugins: { local: localRules },
+        rules: {
+            'local/no-dashes-in-comments': 'error',
         },
     },
     eslintConfigPrettier,

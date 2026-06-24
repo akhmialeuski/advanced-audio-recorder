@@ -31,7 +31,10 @@ import {
 	type SettingsSectionContext,
 } from '../settings/settingControls';
 import { transcribeFile } from '../transcription/runTranscription';
-import { providerSupportsDiarization } from '../transcription/providers/capabilities';
+import {
+	effectiveDiarize,
+	providerSupportsDiarization,
+} from '../transcription/providers/capabilities';
 import { effectiveTranscriptDestination } from '../transcription/transcriptOutput';
 import {
 	TranscriptionCancelledError,
@@ -228,7 +231,11 @@ export class TranscriptionModal extends Modal {
 				: 'Not supported by the selected engine. Use Deepgram for speaker labels.',
 			// Reflect the effective state: a stored "on" from a diarizing engine
 			// must read as off here when the chosen engine cannot diarize.
-			get: () => canDiarize && s.transcriptionDiarize,
+			get: () =>
+				effectiveDiarize(
+					s.transcriptionProvider,
+					s.transcriptionDiarize,
+				),
 			set: (v) => (s.transcriptionDiarize = v),
 			disabled: !canDiarize,
 		});

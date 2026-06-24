@@ -3,7 +3,8 @@
  * actually diarize. The earlier behavior sent a diarize field to engines that
  * silently ignored it (OpenAI's Whisper), so a user could enable speaker
  * labels and get an unlabeled transcript with no warning. The diarize option
- * must now be the AND of the user's setting and the engine's capability.
+ * must now be the AND of the user's setting and the engine's capability,
+ * derived from the configured engine id (effectiveDiarize).
  * @module tests/unit/transcriptionDiarizeGating.test
  */
 
@@ -13,7 +14,11 @@ import type {
 	TranscribeOptions,
 	TranscriptionProvider,
 } from 'src/transcription/providers/TranscriptionProvider';
-import { mergeSettings } from 'src/settings/Settings';
+import {
+	mergeSettings,
+	type TranscriptionProviderId,
+} from 'src/settings/Settings';
+import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 
 const audioFile = {
 	name: 'rec.webm',
@@ -21,10 +26,14 @@ const audioFile = {
 	path: 'rec.webm',
 } as unknown as TFile;
 
-/** A whole-file provider that records the options it was transcribed with. */
-function makeProvider(
-	supportsDiarization: boolean,
-): TranscriptionProvider & { lastOptions: TranscribeOptions | null } {
+/**
+ * A whole-file provider that records the options it was transcribed with. Its
+ * capabilities only steer audio preparation; whether diarization is requested
+ * is decided from the configured engine id, not this stub.
+ */
+function makeProvider(): TranscriptionProvider & {
+	lastOptions: TranscribeOptions | null;
+} {
 	const provider = {
 		id: 'fake',
 		label: 'Fake',
@@ -32,8 +41,8 @@ function makeProvider(
 		capabilities: {
 			maxRequestBytes: Number.POSITIVE_INFINITY,
 			acceptsOriginalContainer: true,
-			diarizesWholeFile: supportsDiarization,
-			supportsDiarization,
+			diarizesWholeFile: true,
+			supportsDiarization: true,
 		},
 		lastOptions: null as TranscribeOptions | null,
 		transcribe: jest.fn(async (_payload, options: TranscribeOptions) => {
@@ -55,38 +64,53 @@ function makeApp(): App {
 }
 
 async function runWith(
-	provider: TranscriptionProvider,
+	engineId: TranscriptionProviderId,
 	diarizeSetting: boolean,
-): Promise<void> {
+): Promise<TranscriptionProvider & { lastOptions: TranscribeOptions | null }> {
+	const provider = makeProvider();
 	const service = new TranscriptionService(
 		makeApp(),
 		() =>
 			mergeSettings({
-				transcriptionProvider: 'whisper-api',
-				whisperApiKey: 'test-key',
+				transcriptionProvider: engineId,
 				transcriptionDiarize: diarizeSetting,
 			}),
 		{ createProvider: () => provider },
 	);
 	await service.run(audioFile, { notePathForLinks: 'note.md' });
+	return provider;
 }
 
 describe('TranscriptionService diarization gating', () => {
-	it('does not request diarization when the engine cannot diarize, even if enabled', async () => {
-		const provider = makeProvider(false);
-		await runWith(provider, true);
+	it('does not request diarization for a non-diarizing engine, even if enabled', async () => {
+		const provider = await runWith(
+			TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			true,
+		);
 		expect(provider.lastOptions?.diarize).toBe(false);
 	});
 
-	it('requests diarization when both the engine supports it and it is enabled', async () => {
-		const provider = makeProvider(true);
-		await runWith(provider, true);
+	it('does not request diarization for local whisper, even if enabled', async () => {
+		const provider = await runWith(
+			TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+			true,
+		);
+		expect(provider.lastOptions?.diarize).toBe(false);
+	});
+
+	it('requests diarization for a diarizing engine when enabled', async () => {
+		const provider = await runWith(
+			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			true,
+		);
 		expect(provider.lastOptions?.diarize).toBe(true);
 	});
 
 	it('does not request diarization when a capable engine has it disabled', async () => {
-		const provider = makeProvider(true);
-		await runWith(provider, false);
+		const provider = await runWith(
+			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			false,
+		);
 		expect(provider.lastOptions?.diarize).toBe(false);
 	});
 });

@@ -64,3 +64,19 @@ export function providerSupportsDiarization(
 ): boolean {
 	return TRANSCRIPTION_PROVIDER_CAPABILITIES[id].supportsDiarization;
 }
+
+/**
+ * The diarization actually requested for a run: the user's preference AND the
+ * engine's capability. The single place this AND-gate lives, so the settings
+ * tab, the per-run dialog, and the service never diverge — a stored "on" left
+ * from a diarizing engine is ignored for an engine that cannot diarize.
+ * @param id - Selected transcription engine id
+ * @param requested - The user's diarization preference
+ * @returns Whether speaker labels should be requested
+ */
+export function effectiveDiarize(
+	id: TranscriptionProviderId,
+	requested: boolean,
+): boolean {
+	return requested && providerSupportsDiarization(id);
+}
