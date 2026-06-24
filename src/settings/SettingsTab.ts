@@ -192,9 +192,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				});
 			});
 
-		// Audio processing & feedback
-		this.renderInputProcessingSettings(containerEl);
-
 		// Output format
 		new Setting(containerEl).setName('Output format').setHeading();
 
@@ -555,6 +552,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				this.saveTextSettingDebounced();
 			},
 		});
+
+		// Audio processing & feedback
+		this.renderInputProcessingSettings(containerEl);
 
 		// Diagnostics
 		new Setting(containerEl).setName('Diagnostics').setHeading();
