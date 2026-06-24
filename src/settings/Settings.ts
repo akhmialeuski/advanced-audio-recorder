@@ -17,8 +17,10 @@ import {
 	DEFAULT_TRANSCRIBE_CHUNK_MB,
 	DEFAULT_WHISPER_API_BASE_URL,
 	DEFAULT_WHISPER_API_MODEL,
+	WHISPER_API_MODEL_SUGGESTIONS,
 	DEFAULT_DEEPGRAM_BASE_URL,
 	DEFAULT_DEEPGRAM_MODEL,
+	DEEPGRAM_MODEL_SUGGESTIONS,
 	TRANSCRIPTION_PROVIDER_IDS,
 	DEFAULT_LLM_OPENAI_BASE_URL,
 	DEFAULT_LLM_OPENAI_MODEL,
@@ -141,14 +143,18 @@ export interface AudioRecorderSettings {
 	whisperApiBaseUrl: string;
 	/** Whisper API key */
 	whisperApiKey: string;
-	/** Whisper API model id */
+	/** Whisper API model id (the selected one) */
 	whisperApiModel: string;
+	/** Known Whisper API model ids offered in the picker (user-editable) */
+	whisperApiModels: string[];
 	/** Deepgram API base URL */
 	deepgramBaseUrl: string;
 	/** Deepgram API key */
 	deepgramApiKey: string;
-	/** Deepgram model id */
+	/** Deepgram model id (the selected one) */
 	deepgramModel: string;
+	/** Known Deepgram model ids offered in the picker (user-editable) */
+	deepgramModels: string[];
 	/** Path to the local whisper.cpp binary */
 	localWhisperBinaryPath: string;
 	/** Path to the local whisper model file */
@@ -329,9 +335,11 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	whisperApiBaseUrl: DEFAULT_WHISPER_API_BASE_URL,
 	whisperApiKey: '',
 	whisperApiModel: DEFAULT_WHISPER_API_MODEL,
+	whisperApiModels: [...WHISPER_API_MODEL_SUGGESTIONS],
 	deepgramBaseUrl: DEFAULT_DEEPGRAM_BASE_URL,
 	deepgramApiKey: '',
 	deepgramModel: DEFAULT_DEEPGRAM_MODEL,
+	deepgramModels: [...DEEPGRAM_MODEL_SUGGESTIONS],
 	localWhisperBinaryPath: '',
 	localWhisperModelPath: '',
 	localWhisperExtraArgs: '',

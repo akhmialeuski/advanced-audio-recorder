@@ -586,3 +586,8 @@ input.aar-input-invalid {
 .aar-setting-disabled .setting-item-control {
     pointer-events: none;
 }
+
+/* "Learn more" link appended to a setting description. */
+.aar-doc-link {
+    font-size: 0.85em;
+}

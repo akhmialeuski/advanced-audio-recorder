@@ -219,6 +219,8 @@ When **Enable transcription** is on in settings, recordings (and any existing au
 - **Deepgram** — Deepgram's official pre-recorded API (`nova-3` by default). Set the API key (and optionally the model or base URL). Files up to 2 GB are sent whole, so diarization keeps consistent speaker numbering across the entire recording. A free Deepgram account includes a generous starter credit; beyond that, usage is pay-as-you-go.
 - **Local whisper.cpp (desktop)** — runs a local `whisper.cpp` binary with no network access. Set the binary and model paths in settings.
 
+For the cloud engines the **model** is chosen from an editable list: pick one from the dropdown, type a custom id under **Add custom model** to add it (and **Remove selected** to prune it), and follow the link next to the field to the engine's model catalogue. The list is seeded with the common models (for Deepgram this includes the Nova, Enhanced, and Base families). The local whisper.cpp engine instead takes a model **file path**, with the common GGML model names and a download link shown in its description.
+
 Audio preparation (decoding and chunking, when needed) happens in memory and works on both desktop and mobile; whenever a provider accepts the original container, the file is sent untouched, which keeps memory low and avoids re-encoding. Nothing is written to disk, except that the local whisper.cpp engine hands each request to the binary as a temporary WAV and deletes it afterward.
 
 All languages supported by the chosen model work; leave **Language** as `auto` to detect, or set an ISO code (e.g. `en`, `ru`, `es`).

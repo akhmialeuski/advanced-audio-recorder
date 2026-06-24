@@ -238,6 +238,26 @@ export const DEFAULT_WHISPER_API_BASE_URL = 'https://api.openai.com/v1';
 export const DEFAULT_WHISPER_API_MODEL = 'whisper-1';
 
 /**
+ * Seed model ids for the OpenAI-compatible Whisper API. They populate the
+ * model picker on first run and can be extended with custom ids in settings.
+ * All return `verbose_json` with segment timestamps, which the provider
+ * relies on: `whisper-1` is OpenAI's; the `*-v3*` ids are served by Groq and
+ * other compatible hosts. (OpenAI's newer `gpt-4o-transcribe` models are
+ * omitted: they do not support `verbose_json`, so they are incompatible with
+ * the timed output the plugin requests.)
+ */
+export const WHISPER_API_MODEL_SUGGESTIONS = [
+	'whisper-1',
+	'whisper-large-v3',
+	'whisper-large-v3-turbo',
+	'distil-whisper-large-v3-en',
+];
+
+/** Where to find the model list for the configured Whisper API host. */
+export const WHISPER_API_MODELS_DOC_URL =
+	'https://platform.openai.com/docs/guides/speech-to-text';
+
+/**
  * Hard per-request upload ceiling for the OpenAI Whisper API, in bytes
  * (25 MB). Files at or under this are uploaded in their original
  * container; larger recordings are decoded and split into WAV chunks that
@@ -250,6 +270,60 @@ export const DEFAULT_DEEPGRAM_BASE_URL = 'https://api.deepgram.com/v1';
 
 /** Default Deepgram model id. */
 export const DEFAULT_DEEPGRAM_MODEL = 'nova-3';
+
+/**
+ * Seed Deepgram speech-to-text model ids for the pre-recorded API. They
+ * populate the model picker on first run and can be extended with custom ids
+ * in settings. Grouped by family: Nova-3, Nova-2 and its named variants,
+ * Nova, Enhanced (`enhanced`, `enhanced-meeting`, `enhanced-phonecall`,
+ * `enhanced-finance`), Base, and the hosted Whisper sizes. The real-time
+ * Flux family is omitted — it targets streaming voice agents, not the
+ * pre-recorded transcription this plugin uses. See
+ * {@link DEEPGRAM_MODELS_DOC_URL} for the authoritative, current list.
+ */
+export const DEEPGRAM_MODEL_SUGGESTIONS = [
+	'nova-3',
+	'nova-3-general',
+	'nova-3-medical',
+	'nova-2',
+	'nova-2-general',
+	'nova-2-meeting',
+	'nova-2-phonecall',
+	'nova-2-voicemail',
+	'nova-2-finance',
+	'nova-2-conversationalai',
+	'nova-2-video',
+	'nova-2-medical',
+	'nova-2-drivethru',
+	'nova-2-automotive',
+	'nova-2-atc',
+	'nova',
+	'nova-general',
+	'nova-phonecall',
+	'enhanced',
+	'enhanced-general',
+	'enhanced-meeting',
+	'enhanced-phonecall',
+	'enhanced-finance',
+	'base',
+	'base-general',
+	'base-meeting',
+	'base-phonecall',
+	'base-voicemail',
+	'base-finance',
+	'base-conversationalai',
+	'base-video',
+	'whisper',
+	'whisper-tiny',
+	'whisper-base',
+	'whisper-small',
+	'whisper-medium',
+	'whisper-large',
+];
+
+/** Authoritative, current list of Deepgram speech-to-text models. */
+export const DEEPGRAM_MODELS_DOC_URL =
+	'https://developers.deepgram.com/docs/model';
 
 /**
  * Hard per-request upload ceiling for Deepgram pre-recorded audio, in
@@ -334,6 +408,29 @@ export const LLM_REQUEST_TIMEOUT_MS = 5 * 60_000;
  * generous ceiling lets long offline transcriptions complete.
  */
 export const LOCAL_WHISPER_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
+
+/**
+ * GGML model names available for whisper.cpp, shown in settings so the user
+ * knows which model files to download. Names ending in `.en` are
+ * English-only; the rest are multilingual. The plugin points at a model
+ * file path, so these are guidance rather than selectable ids.
+ */
+export const LOCAL_WHISPER_MODEL_NAMES = [
+	'tiny',
+	'tiny.en',
+	'base',
+	'base.en',
+	'small',
+	'small.en',
+	'medium',
+	'medium.en',
+	'large-v3',
+	'large-v3-turbo',
+];
+
+/** Where to download whisper.cpp GGML model files. */
+export const LOCAL_WHISPER_MODELS_DOC_URL =
+	'https://huggingface.co/ggerganov/whisper.cpp';
 
 /**
  * Upper bound of the progress fraction reserved for chunk transcription.
