@@ -711,7 +711,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Recording stats')
 			.setDesc(
-				'Show the live elapsed time and recorded file size while recording.',
+				'Show the live elapsed time and total recorded size while recording.',
 			)
 			.addToggle((toggle) =>
 				toggle.setValue(s.showRecordingStats).onChange(async (v) => {
