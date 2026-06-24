@@ -40,10 +40,19 @@ export class RecordingBanner {
 			});
 			stop.setAttribute('aria-label', 'Stop recording');
 			stop.setAttribute('role', 'button');
+			stop.setAttribute('tabindex', '0');
 			setIcon(stop, 'square');
 			stop.addEventListener('click', (event) => {
 				event.stopPropagation();
 				this.onStop();
+			});
+			// A role="button" element must also activate on Enter/Space
+			stop.addEventListener('keydown', (event) => {
+				if (event.key === 'Enter' || event.key === ' ') {
+					event.preventDefault();
+					event.stopPropagation();
+					this.onStop();
+				}
 			});
 		}
 		this.el.toggleClass('is-paused', paused);

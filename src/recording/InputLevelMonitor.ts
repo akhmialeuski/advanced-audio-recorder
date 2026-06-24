@@ -57,6 +57,13 @@ export class InputLevelMonitor {
 	start(stream: MediaStream): void {
 		try {
 			this.context = new AudioContext();
+			// A context may start suspended until a user gesture; resume so
+			// the analyser receives data instead of reading silence.
+			if (this.context.state === 'suspended') {
+				void this.context.resume().catch(() => {
+					// Non-fatal: the meter simply stays at zero
+				});
+			}
 			this.source = this.context.createMediaStreamSource(stream);
 			this.analyser = this.context.createAnalyser();
 			this.analyser.fftSize = 1024;

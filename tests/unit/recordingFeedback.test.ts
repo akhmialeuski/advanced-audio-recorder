@@ -22,6 +22,16 @@ describe('formatByteSize', () => {
 		expect(formatByteSize(-5)).toBe('0 B');
 		expect(formatByteSize(Number.NaN)).toBe('0 B');
 	});
+
+	it('honors presentation options (decimals, trimZeros, bytesLabel)', () => {
+		expect(formatByteSize(1.25 * 1024 * 1024, { decimals: 2 })).toBe(
+			'1.25 MB',
+		);
+		expect(
+			formatByteSize(1.5 * 1024 * 1024, { decimals: 2, trimZeros: true }),
+		).toBe('1.5 MB');
+		expect(formatByteSize(500, { bytesLabel: 'Bytes' })).toBe('500 Bytes');
+	});
 });
 
 describe('computeRms', () => {

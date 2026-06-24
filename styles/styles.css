@@ -155,7 +155,7 @@ If your plugin does not need CSS, delete this file.
 .aar-input-meter-fill {
     display: block;
     height: 100%;
-    width: 0%;
+    width: var(--aar-meter-fill, 0%);
     background-color: var(--color-green);
     transition: width 0.1s linear;
 }

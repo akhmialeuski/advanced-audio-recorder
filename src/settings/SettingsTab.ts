@@ -27,6 +27,7 @@ import {
 	getEncoderDescription,
 	isOfflineEncodingSupported,
 } from '../recording/AudioEncoder';
+import { getProcessingConstraints } from '../recording/AudioStreamHandler';
 import {
 	DEFAULT_SPLIT_PART_SUFFIX,
 	MIN_SPLIT_CHUNK_MINUTES,
@@ -790,11 +791,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 						? { exact: this.plugin.settings.audioDeviceId }
 						: undefined,
 					sampleRate: this.plugin.settings.sampleRate,
-					noiseSuppression:
-						this.plugin.settings.inputNoiseSuppression,
-					echoCancellation:
-						this.plugin.settings.inputEchoCancellation,
-					autoGainControl: this.plugin.settings.inputAutoGainControl,
+					...getProcessingConstraints(this.plugin.settings),
 				},
 			});
 

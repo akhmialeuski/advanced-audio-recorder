@@ -168,7 +168,9 @@ export function updateRecordingLiveStats(
 	}
 	const fill = live.querySelector<HTMLElement>('.aar-input-meter-fill');
 	if (fill) {
-		fill.style.width = `${String(Math.round(stats.level * 100))}%`;
+		fill.setCssProps({
+			'--aar-meter-fill': `${String(Math.round(stats.level * 100))}%`,
+		});
 	}
 }
 

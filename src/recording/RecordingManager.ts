@@ -89,10 +89,6 @@ export class RecordingManager {
 	private totalChunks: number = 0;
 	/** Total bytes of audio data observed this session (live size). */
 	private recordedBytes: number = 0;
-	/** Accumulated paused time in ms, for pause-aware elapsed time. */
-	private pausedAccumMs: number = 0;
-	/** Timestamp when the current pause began, or null when not paused. */
-	private pauseStartedAt: number | null = null;
 	/** Live input-level meter for the primary stream, when enabled. */
 	private levelMonitor: InputLevelMonitor | null = null;
 	private isMobileRecording: boolean = false;
@@ -226,7 +222,8 @@ export class RecordingManager {
 
 	/**
 	 * Returns the elapsed active recording time in milliseconds, excluding
-	 * paused intervals. Zero when idle.
+	 * paused intervals. Zero when idle. Delegates to the rotation
+	 * controller, which already owns the pause-aware active-time clock.
 	 */
 	getElapsedMs(): number {
 		if (
@@ -235,15 +232,7 @@ export class RecordingManager {
 		) {
 			return 0;
 		}
-		const pausedNow =
-			this.pauseStartedAt !== null ? Date.now() - this.pauseStartedAt : 0;
-		return Math.max(
-			0,
-			Date.now() -
-				this.recordingStartTime -
-				this.pausedAccumMs -
-				pausedNow,
-		);
+		return this.rotation.getSessionActiveMs(this.status);
 	}
 
 	/**
@@ -522,8 +511,6 @@ export class RecordingManager {
 			this.markerBuffer = [];
 			this.persistedMarkerPaths.clear();
 			this.recordedBytes = 0;
-			this.pausedAccumMs = 0;
-			this.pauseStartedAt = null;
 			this.startLevelMonitor();
 
 			if (this.isWavPcmRecording) {
@@ -896,8 +883,6 @@ export class RecordingManager {
 			this.recordingTimestamp = null;
 			this.totalChunks = 0;
 			this.recordedBytes = 0;
-			this.pausedAccumMs = 0;
-			this.pauseStartedAt = null;
 			this.isWavPcmRecording = false;
 			this.insertionContext = null;
 			this.sessionSplitEnabled = false;
@@ -973,7 +958,6 @@ export class RecordingManager {
 			}
 			// Freeze active-time accounting used by auto-split rotation
 			this.rotation.markPaused();
-			this.pauseStartedAt = Date.now();
 			this.setStatus(RecordingStatus.Paused);
 			new Notice('Recording paused');
 		} else if (this.status === RecordingStatus.Paused) {
@@ -989,10 +973,6 @@ export class RecordingManager {
 				});
 			}
 			this.rotation.markResumed();
-			if (this.pauseStartedAt !== null) {
-				this.pausedAccumMs += Date.now() - this.pauseStartedAt;
-				this.pauseStartedAt = null;
-			}
 			this.setStatus(RecordingStatus.Recording);
 			new Notice('Recording resumed');
 		} else {

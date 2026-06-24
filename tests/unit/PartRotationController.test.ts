@@ -496,4 +496,55 @@ describe('PartRotationController', () => {
 			expect(position.offsetSeconds).toBeLessThan(1);
 		});
 	});
+
+	describe('getSessionActiveMs', () => {
+		it('is zero immediately after the session starts', () => {
+			expect(
+				controller.getSessionActiveMs(RecordingStatus.Recording),
+			).toBe(0);
+		});
+
+		it('counts active wall-clock time while recording', () => {
+			jest.advanceTimersByTime(5000);
+
+			expect(
+				controller.getSessionActiveMs(RecordingStatus.Recording),
+			).toBe(5000);
+		});
+
+		it('freezes during a pause and excludes the paused span', () => {
+			jest.advanceTimersByTime(3000);
+			controller.markPaused();
+			jest.advanceTimersByTime(4000);
+
+			// Frozen at the active time accumulated before the pause
+			expect(controller.getSessionActiveMs(RecordingStatus.Paused)).toBe(
+				3000,
+			);
+		});
+
+		it('resumes counting after a pause, never counting paused time', () => {
+			jest.advanceTimersByTime(3000);
+			controller.markPaused();
+			jest.advanceTimersByTime(4000);
+			controller.markResumed();
+			jest.advanceTimersByTime(2000);
+
+			expect(
+				controller.getSessionActiveMs(RecordingStatus.Recording),
+			).toBe(5000);
+		});
+
+		it('keeps accumulating across an auto-split rotation', async () => {
+			jest.advanceTimersByTime(15 * MS_PER_MINUTE);
+			controller.maybeRotate();
+			await controller.waitForPendingRotation();
+			jest.advanceTimersByTime(2000);
+
+			// Whole-session active time spans both parts
+			expect(
+				controller.getSessionActiveMs(RecordingStatus.Recording),
+			).toBe(15 * MS_PER_MINUTE + 2000);
+		});
+	});
 });

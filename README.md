@@ -215,7 +215,7 @@ Live feedback while recording, and control over the browser's input processing �
 
 - **Noise suppression**, **echo cancellation**, and **automatic gain control** toggles are applied to the microphone stream (and to the diagnostics test recording).
 - **Input level meter**: a live VU meter in the status bar shows that the microphone is actually picking up sound.
-- **Recording stats**: the status bar shows the live elapsed time (excluding paused intervals) and the recorded file size as it grows.
+- **Recording stats**: the status bar shows the live elapsed time (excluding paused intervals) and the total recorded size as it grows (the sum across all tracks and parts).
 - **Mobile recording banner**: on mobile — where there is no ribbon icon — a prominent banner shows that a recording is in progress, with the elapsed time and a stop button.
 
 ## Transcription (speech-to-text)

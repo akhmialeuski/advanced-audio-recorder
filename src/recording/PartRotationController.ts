@@ -143,6 +143,21 @@ export class PartRotationController {
 	}
 
 	/**
+	 * Returns the active (unpaused) milliseconds elapsed since the session
+	 * began. The live span since the last anchor is added only while
+	 * recording, so a value read during a pause excludes the paused time.
+	 * This is the single source of truth for pause-aware elapsed time.
+	 * @param status - Current recording status
+	 */
+	getSessionActiveMs(status: RecordingStatus): number {
+		const liveMs =
+			status === RecordingStatus.Recording
+				? Date.now() - this.activeAnchor
+				: 0;
+		return this.sessionActiveMs + liveMs;
+	}
+
+	/**
 	 * Re-anchors active-time accounting when the recording resumes
 	 * (and when capture actually starts).
 	 */
