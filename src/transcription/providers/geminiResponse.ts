@@ -9,71 +9,32 @@
  */
 
 import type { TranscriptSegment } from '../TranscriptTypes';
+import { parseTimecode } from '../../utils/TimeUtils';
 import type { WhisperResult } from './whisperResponse';
+import { geminiCandidateText } from './geminiShared';
 import { isRecord } from './responseUtils';
 
-/** Multiplier between adjacent sexagesimal timecode fields (60). */
-const SECONDS_PER_MINUTE = 60;
-
-/** Minimum/maximum field count for a "MM:SS" or "HH:MM:SS" timecode. */
-const MIN_TIMECODE_PARTS = 2;
-const MAX_TIMECODE_PARTS = 3;
-
 /**
- * Parses a timecode to seconds. Accepts a finite number (already seconds) or a
- * "HH:MM:SS"/"MM:SS" string — a defensive fallback in case the model emits a
- * string despite the numeric schema. Returns `fallback` for anything else.
+ * Coerces a raw timecode value to seconds. Accepts a finite number (already
+ * seconds) or a "HH:MM:SS"/"MM:SS"/bare-seconds string — a defensive fallback
+ * in case the model emits a string despite the numeric schema — delegating the
+ * string case to the shared timecode parser. Returns `fallback` for anything
+ * else.
  * @param value - Raw timecode value
  * @param fallback - Returned when `value` cannot be parsed
+ * @returns Seconds as a number
  */
-export function parseTimecode(value: unknown, fallback = 0): number {
+export function timecodeToSeconds(value: unknown, fallback = 0): number {
 	if (typeof value === 'number' && Number.isFinite(value)) {
 		return value;
 	}
 	if (typeof value === 'string') {
-		const parts = value.trim().split(':');
-		if (
-			parts.length >= MIN_TIMECODE_PARTS &&
-			parts.length <= MAX_TIMECODE_PARTS
-		) {
-			let seconds = 0;
-			for (const part of parts) {
-				const field = Number(part);
-				if (!Number.isFinite(field)) {
-					return fallback;
-				}
-				seconds = seconds * SECONDS_PER_MINUTE + field;
-			}
+		const seconds = parseTimecode(value);
+		if (seconds !== null) {
 			return seconds;
-		}
-		const direct = Number(value);
-		if (Number.isFinite(direct)) {
-			return direct;
 		}
 	}
 	return fallback;
-}
-
-/** Concatenates the text parts of the first candidate, or '' when absent. */
-function candidateText(body: unknown): string {
-	if (!isRecord(body) || !Array.isArray(body.candidates)) {
-		return '';
-	}
-	const first: unknown = body.candidates[0];
-	if (
-		!isRecord(first) ||
-		!isRecord(first.content) ||
-		!Array.isArray(first.content.parts)
-	) {
-		return '';
-	}
-	const parts: string[] = [];
-	for (const part of first.content.parts) {
-		if (isRecord(part) && typeof part.text === 'string') {
-			parts.push(part.text);
-		}
-	}
-	return parts.join('');
 }
 
 /**
@@ -85,7 +46,7 @@ export function mapGeminiResponse(
 	body: unknown,
 	diarize: boolean,
 ): WhisperResult {
-	const text = candidateText(body);
+	const text = geminiCandidateText(body);
 	if (text.trim() === '') {
 		return { segments: [] };
 	}
@@ -109,8 +70,8 @@ export function mapGeminiResponse(
 		if (segText === '') {
 			continue;
 		}
-		const start = parseTimecode(entry.start);
-		const end = parseTimecode(entry.end, start);
+		const start = timecodeToSeconds(entry.start);
+		const end = timecodeToSeconds(entry.end, start);
 		const speaker =
 			diarize &&
 			typeof entry.speaker === 'string' &&

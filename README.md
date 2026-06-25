@@ -232,6 +232,7 @@ When **Enable transcription** is on in settings, recordings (and any existing au
 
 - **Whisper API (OpenAI-compatible)** — works with OpenAI and any compatible endpoint (e.g. Groq) by setting the base URL, key, and model. Recordings within the API's 25 MB per-request limit are uploaded in their original format; larger files are resampled to 16 kHz mono, split into upload-sized chunks, and stitched back onto one timeline.
 - **Deepgram** — Deepgram's official pre-recorded API (`nova-3` by default). Set the API key (and optionally the model or base URL). Files up to 2 GB are sent whole, so diarization keeps consistent speaker numbering across the entire recording. A free Deepgram account includes a generous starter credit; beyond that, usage is pay-as-you-go.
+- **Google Gemini** — Google's multimodal `generateContent` API (`gemini-2.5-flash` by default). Set the API key (and optionally the model or base URL). The whole recording is uploaded via the File API and transcribed in one request (files up to 2 GB), so diarization keeps consistent speaker numbering across the entire recording. Containers Gemini does not accept (e.g. `webm`, `m4a`) are decoded to 16 kHz mono WAV before upload.
 - **Local whisper.cpp (desktop)** — runs a local `whisper.cpp` binary with no network access. Set the binary and model paths in settings.
 
 For the cloud engines the **model** is chosen from an editable list: pick one from the dropdown, type a custom id under **Add custom model** to add it (and **Remove selected** to prune it), and follow the link next to the field to the engine's model catalogue. The list is seeded with the common models (for Deepgram this includes the Nova, Enhanced, and Base families). The local whisper.cpp engine instead takes a model **file path**, with the common GGML model names and a download link shown in its description.
@@ -242,7 +243,7 @@ All languages supported by the chosen model work; leave **Language** as `auto` t
 
 ### Speakers and diarization
 
-The transcript data model carries per-segment **speaker** labels. Enable **Speaker diarization** to request them. Diarization is currently available with **Deepgram** only; OpenAI's Whisper API and local whisper.cpp do not return speaker labels, so the toggle is disabled for those engines rather than requesting a field they silently ignore. The provider detects the number of speakers automatically, and labels (e.g. `Speaker 1`) are rendered in the output.
+The transcript data model carries per-segment **speaker** labels. Enable **Speaker diarization** to request them. Diarization is currently available with **Deepgram** and **Google Gemini**; OpenAI's Whisper API and local whisper.cpp do not return speaker labels, so the toggle is disabled for those engines rather than requesting a field they silently ignore. The provider detects the number of speakers automatically, and labels (e.g. `Speaker 1`) are rendered in the output.
 
 ### Output
 
@@ -269,6 +270,7 @@ Optionally pass the transcript through an LLM to **clean up** punctuation/format
 
 - **OpenAI / Groq / Ollama** (OpenAI-compatible chat API — a local Ollama server needs no key).
 - **Anthropic (Claude)** — defaults to `claude-opus-4-8`.
+- **Google Gemini** — defaults to `gemini-2.5-flash`.
 
 > **API keys** are stored in the plugin's `data.json` on this device and are never written to diagnostics output. Avoid syncing `data.json` to untrusted locations. Local whisper.cpp and Ollama keep everything offline.
 

@@ -13,6 +13,7 @@ import {
 	extractGeminiText,
 	extractOpenAiText,
 } from './llmResponse';
+import { assertGeminiNotTruncated } from '../providers/geminiShared';
 
 /** A provider that completes a single prompt and returns text. */
 export interface LlmProvider {
@@ -124,6 +125,10 @@ export class GeminiLlmProvider implements LlmProvider {
 			}),
 			timeoutMs: LLM_REQUEST_TIMEOUT_MS,
 		});
+		// Gemini 2.5 models spend the output budget on thinking too, so a low
+		// max-tokens can truncate the answer; fail loudly instead of returning
+		// a partial or empty result that silently replaces the transcript.
+		assertGeminiNotTruncated(json);
 		return extractGeminiText(json);
 	}
 }

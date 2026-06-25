@@ -7,7 +7,7 @@
 
 import {
 	mapGeminiResponse,
-	parseTimecode,
+	timecodeToSeconds,
 } from 'src/transcription/providers/geminiResponse';
 
 /** Wraps a structured transcript object as a Gemini generateContent body. */
@@ -109,24 +109,24 @@ describe('mapGeminiResponse', () => {
 	});
 });
 
-describe('parseTimecode', () => {
+describe('timecodeToSeconds', () => {
 	it('passes finite numbers through as seconds', () => {
-		expect(parseTimecode(42)).toBe(42);
-		expect(parseTimecode(0)).toBe(0);
+		expect(timecodeToSeconds(42)).toBe(42);
+		expect(timecodeToSeconds(0)).toBe(0);
 	});
 
 	it('parses MM:SS and HH:MM:SS strings', () => {
-		expect(parseTimecode('02:05')).toBe(125);
-		expect(parseTimecode('01:00:00')).toBe(3600);
+		expect(timecodeToSeconds('02:05')).toBe(125);
+		expect(timecodeToSeconds('01:00:00')).toBe(3600);
 	});
 
 	it('parses a bare numeric string', () => {
-		expect(parseTimecode('12.5')).toBe(12.5);
+		expect(timecodeToSeconds('12.5')).toBe(12.5);
 	});
 
 	it('returns the fallback for unparseable values', () => {
-		expect(parseTimecode(undefined, 7)).toBe(7);
-		expect(parseTimecode('aa:bb', 7)).toBe(7);
-		expect(parseTimecode(Number.NaN, 7)).toBe(7);
+		expect(timecodeToSeconds(undefined, 7)).toBe(7);
+		expect(timecodeToSeconds('aa:bb', 7)).toBe(7);
+		expect(timecodeToSeconds(Number.NaN, 7)).toBe(7);
 	});
 });

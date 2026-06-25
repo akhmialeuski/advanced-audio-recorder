@@ -18,6 +18,7 @@ import { requestJson, trimTrailingSlash, uploadTimeoutMs } from '../httpClient';
 import { GEMINI_CAPABILITIES } from './capabilities';
 import { deleteFile, uploadFile, waitUntilActive } from './geminiFileApi';
 import { mapGeminiResponse } from './geminiResponse';
+import { assertGeminiNotTruncated } from './geminiShared';
 import type { WhisperResult } from './whisperResponse';
 import type {
 	AudioPayload,
@@ -146,6 +147,9 @@ export class GeminiProvider implements TranscriptionProvider {
 				// for how long Gemini may take to transcribe the audio.
 				timeoutMs: uploadTimeoutMs(data.byteLength),
 			});
+			// A truncated (MAX_TOKENS) response yields invalid JSON that would
+			// otherwise map to an empty transcript with no explanation.
+			assertGeminiNotTruncated(json);
 			return mapGeminiResponse(json, options.diarize);
 		} finally {
 			// Best-effort cleanup; a left-over file expires on Google's side.

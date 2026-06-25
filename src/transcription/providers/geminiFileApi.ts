@@ -3,24 +3,23 @@
  * poll until it is ACTIVE, and delete it afterwards. Isolated from the provider
  * so the network steps stay testable-by-eye and the provider reads as a
  * straight-line orchestration. The upload-start step needs a response header
- * (`x-goog-upload-url`), which the shared `requestJson` helper does not expose,
- * so it calls Obsidian's `requestUrl` directly; the other steps use
- * `requestJson`.
+ * (`x-goog-upload-url`), so it uses `requestRaw` — which returns the raw
+ * response after asserting success — while the body steps use `requestJson`.
  * @module transcription/providers/geminiFileApi
  */
 
-import { requestUrl } from 'obsidian';
 import {
 	GEMINI_FILE_MAX_WAIT_MS,
 	GEMINI_FILE_POLL_INTERVAL_MS,
 } from '../../constants';
 import {
-	friendlyHttpHint,
 	HttpError,
 	requestJson,
+	requestRaw,
 	trimTrailingSlash,
 	uploadTimeoutMs,
 } from '../httpClient';
+import { delay } from '../../utils/TimeUtils';
 import { isRecord } from './responseUtils';
 
 /** A reference to a file uploaded to the Gemini File API. */
@@ -32,15 +31,6 @@ export interface GeminiFile {
 	/** Processing state: PROCESSING, ACTIVE, or FAILED. */
 	state: string;
 }
-
-/** Maximum length of an error-body excerpt embedded in a message. */
-const ERROR_BODY_EXCERPT_LENGTH = 500;
-
-/** Lowest 2xx success status (inclusive). */
-const HTTP_OK_MIN = 200;
-
-/** First status above the 2xx success range (exclusive). */
-const HTTP_OK_MAX_EXCLUSIVE = 300;
 
 /** Status used for failures that never reached an HTTP response. */
 const NO_HTTP_STATUS = 0;
@@ -88,13 +78,6 @@ function parseFile(body: unknown): GeminiFile {
 	};
 }
 
-/** Resolves after `ms` milliseconds. */
-function delay(ms: number): Promise<void> {
-	return new Promise((resolve) => {
-		window.setTimeout(resolve, ms);
-	});
-}
-
 /**
  * Uploads audio bytes via the resumable File API protocol and returns the file
  * reference (which may still be PROCESSING — poll with {@link waitUntilActive}).
@@ -115,7 +98,7 @@ export async function uploadFile(
 	const numBytes = String(data.byteLength);
 	// Step 1: start a resumable session; the upload URL is returned in a
 	// response header, so call requestUrl directly to read it.
-	const start = await requestUrl({
+	const start = await requestRaw({
 		url: `${base}/upload/v1beta/files`,
 		method: 'POST',
 		headers: {
@@ -124,20 +107,10 @@ export async function uploadFile(
 			'X-Goog-Upload-Command': 'start',
 			'X-Goog-Upload-Header-Content-Length': numBytes,
 			'X-Goog-Upload-Header-Content-Type': mimeType,
-			'Content-Type': 'application/json',
 		},
+		contentType: 'application/json',
 		body: JSON.stringify({ file: { display_name: displayName } }),
-		throw: false,
 	});
-	if (start.status < HTTP_OK_MIN || start.status >= HTTP_OK_MAX_EXCLUSIVE) {
-		const excerpt = (start.text || '').slice(0, ERROR_BODY_EXCERPT_LENGTH);
-		const hint = friendlyHttpHint(start.status, excerpt);
-		const detail = `Gemini upload failed with status ${String(start.status)}: ${excerpt}`;
-		throw new HttpError(
-			start.status,
-			hint ? `${hint} (${detail})` : detail,
-		);
-	}
 	const uploadUrl = readHeader(start.headers, 'x-goog-upload-url');
 	if (!uploadUrl) {
 		throw new HttpError(
@@ -212,10 +185,9 @@ export async function deleteFile(
 	apiKey: string,
 	fileName: string,
 ): Promise<void> {
-	await requestUrl({
+	await requestRaw({
 		url: `${trimTrailingSlash(baseUrl)}/v1beta/${fileName}`,
 		method: 'DELETE',
 		headers: { 'x-goog-api-key': apiKey },
-		throw: false,
 	});
 }

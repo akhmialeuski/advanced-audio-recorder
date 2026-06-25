@@ -632,6 +632,64 @@ export function getLinkpath(linktext: string): string {
 	return hashIndex >= 0 ? linktext.slice(0, hashIndex) : linktext;
 }
 
+/**
+ * Minimal request parameter the {@link requestUrl} mock receives. Mirrors the
+ * fields the HTTP client passes (Obsidian's real `RequestUrlParam` has more).
+ */
+export interface MockRequestUrlParam {
+	url: string;
+	method?: string;
+	headers?: Record<string, string>;
+	body?: string | ArrayBuffer;
+	contentType?: string;
+	throw?: boolean;
+}
+
+/**
+ * Minimal response the {@link requestUrl} mock returns — the subset of
+ * Obsidian's `RequestUrlResponse` that the HTTP client reads.
+ */
+export interface MockRequestUrlResponse {
+	status: number;
+	headers: Record<string, string>;
+	text: string;
+}
+
+/** Handler a test installs to script {@link requestUrl} responses. */
+export type RequestUrlHandler = (
+	param: MockRequestUrlParam,
+) => MockRequestUrlResponse | Promise<MockRequestUrlResponse>;
+
+let requestUrlHandler: RequestUrlHandler | null = null;
+
+/**
+ * Installs the handler the {@link requestUrl} mock delegates to (pass null to
+ * clear). Tests script network responses through it and should clear it in an
+ * afterEach so handlers do not leak between tests.
+ */
+export function __setRequestUrlHandler(
+	handler: RequestUrlHandler | null,
+): void {
+	requestUrlHandler = handler;
+}
+
+/**
+ * Mock requestUrl. Delegates to the test-installed handler; rejects when none
+ * is installed so an unmocked network call fails loudly instead of hanging.
+ */
+export function requestUrl(
+	param: MockRequestUrlParam,
+): Promise<MockRequestUrlResponse> {
+	if (!requestUrlHandler) {
+		return Promise.reject(
+			new Error(
+				`requestUrl mock: no handler installed (called ${param.url})`,
+			),
+		);
+	}
+	return Promise.resolve(requestUrlHandler(param));
+}
+
 export const Platform = {
 	isMobile: false,
 	isMobileApp: false,

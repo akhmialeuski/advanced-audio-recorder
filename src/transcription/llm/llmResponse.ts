@@ -6,6 +6,7 @@
  */
 
 import { isRecord } from '../providers/responseUtils';
+import { geminiCandidateText } from '../providers/geminiShared';
 
 /**
  * Extracts the assistant message text from an OpenAI-compatible
@@ -64,22 +65,5 @@ export function extractAnthropicText(body: unknown): string {
  * @returns The combined text, or empty string when absent
  */
 export function extractGeminiText(body: unknown): string {
-	if (!isRecord(body) || !Array.isArray(body.candidates)) {
-		return '';
-	}
-	const first: unknown = body.candidates[0];
-	if (
-		!isRecord(first) ||
-		!isRecord(first.content) ||
-		!Array.isArray(first.content.parts)
-	) {
-		return '';
-	}
-	const parts: string[] = [];
-	for (const part of first.content.parts) {
-		if (isRecord(part) && typeof part.text === 'string') {
-			parts.push(part.text);
-		}
-	}
-	return parts.join('').trim();
+	return geminiCandidateText(body).trim();
 }
