@@ -10,6 +10,7 @@
 
 import {
 	DEEPGRAM_MAX_REQUEST_BYTES,
+	GEMINI_MAX_REQUEST_BYTES,
 	TRANSCRIPTION_PROVIDER_IDS,
 	WHISPER_API_MAX_REQUEST_BYTES,
 } from '../../constants';
@@ -43,6 +44,19 @@ export const LOCAL_WHISPER_CAPABILITIES: ProviderCapabilities = {
 	supportsDiarization: false,
 };
 
+/**
+ * Google Gemini: a multimodal model that transcribes a whole file uploaded via
+ * the File API in one request, so it diarizes with stable speaker numbering.
+ * Accepts the original container (unsupported formats are decoded to WAV inside
+ * the provider).
+ */
+export const GEMINI_CAPABILITIES: ProviderCapabilities = {
+	maxRequestBytes: GEMINI_MAX_REQUEST_BYTES,
+	acceptsOriginalContainer: true,
+	diarizesWholeFile: true,
+	supportsDiarization: true,
+};
+
 /** Capabilities for every engine, keyed by its settings id. */
 export const TRANSCRIPTION_PROVIDER_CAPABILITIES: Record<
 	TranscriptionProviderId,
@@ -51,6 +65,7 @@ export const TRANSCRIPTION_PROVIDER_CAPABILITIES: Record<
 	[TRANSCRIPTION_PROVIDER_IDS.WHISPER_API]: WHISPER_API_CAPABILITIES,
 	[TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER]: LOCAL_WHISPER_CAPABILITIES,
 	[TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM]: DEEPGRAM_CAPABILITIES,
+	[TRANSCRIPTION_PROVIDER_IDS.GEMINI]: GEMINI_CAPABILITIES,
 };
 
 /**

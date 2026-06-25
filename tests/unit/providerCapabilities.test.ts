@@ -12,6 +12,7 @@
 import {
 	DEEPGRAM_CAPABILITIES,
 	effectiveDiarize,
+	GEMINI_CAPABILITIES,
 	LOCAL_WHISPER_CAPABILITIES,
 	providerSupportsDiarization,
 	TRANSCRIPTION_PROVIDER_CAPABILITIES,
@@ -21,13 +22,15 @@ import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { TRANSCRIPTION_PROVIDER_LABELS } from 'src/settings/Settings';
 import { WhisperApiProvider } from 'src/transcription/providers/WhisperApiProvider';
 import { DeepgramProvider } from 'src/transcription/providers/DeepgramProvider';
+import { GeminiProvider } from 'src/transcription/providers/GeminiProvider';
 import { LocalWhisperProvider } from 'src/transcription/providers/LocalWhisperProvider';
 
 describe('transcription provider capabilities', () => {
-	it('advertises diarization only for Deepgram', () => {
+	it('advertises diarization only for engines that return speaker labels', () => {
 		expect(WHISPER_API_CAPABILITIES.supportsDiarization).toBe(false);
 		expect(LOCAL_WHISPER_CAPABILITIES.supportsDiarization).toBe(false);
 		expect(DEEPGRAM_CAPABILITIES.supportsDiarization).toBe(true);
+		expect(GEMINI_CAPABILITIES.supportsDiarization).toBe(true);
 	});
 
 	it('maps every engine id to its capabilities', () => {
@@ -40,12 +43,16 @@ describe('transcription provider capabilities', () => {
 		expect(TRANSCRIPTION_PROVIDER_CAPABILITIES.deepgram).toBe(
 			DEEPGRAM_CAPABILITIES,
 		);
+		expect(TRANSCRIPTION_PROVIDER_CAPABILITIES.gemini).toBe(
+			GEMINI_CAPABILITIES,
+		);
 	});
 
 	it('exposes diarization support through the UI helper', () => {
 		expect(providerSupportsDiarization('whisper-api')).toBe(false);
 		expect(providerSupportsDiarization('local-whisper')).toBe(false);
 		expect(providerSupportsDiarization('deepgram')).toBe(true);
+		expect(providerSupportsDiarization('gemini')).toBe(true);
 	});
 });
 
@@ -69,6 +76,9 @@ describe('transcription engine id constants', () => {
 		expect(
 			new DeepgramProvider({ baseUrl: '', apiKey: '', model: '' }).id,
 		).toBe(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM);
+		expect(
+			new GeminiProvider({ baseUrl: '', apiKey: '', model: '' }).id,
+		).toBe(TRANSCRIPTION_PROVIDER_IDS.GEMINI);
 		expect(
 			new LocalWhisperProvider({
 				binaryPath: '',

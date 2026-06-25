@@ -56,3 +56,30 @@ export function extractAnthropicText(body: unknown): string {
 	}
 	return parts.join('').trim();
 }
+
+/**
+ * Extracts the text from a Gemini `generateContent` response by concatenating
+ * the `text` parts of the first candidate.
+ * @param body - Parsed JSON response
+ * @returns The combined text, or empty string when absent
+ */
+export function extractGeminiText(body: unknown): string {
+	if (!isRecord(body) || !Array.isArray(body.candidates)) {
+		return '';
+	}
+	const first: unknown = body.candidates[0];
+	if (
+		!isRecord(first) ||
+		!isRecord(first.content) ||
+		!Array.isArray(first.content.parts)
+	) {
+		return '';
+	}
+	const parts: string[] = [];
+	for (const part of first.content.parts) {
+		if (isRecord(part) && typeof part.text === 'string') {
+			parts.push(part.text);
+		}
+	}
+	return parts.join('').trim();
+}

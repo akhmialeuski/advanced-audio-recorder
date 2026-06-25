@@ -8,7 +8,11 @@
 import { ANTHROPIC_API_VERSION, LLM_REQUEST_TIMEOUT_MS } from '../../constants';
 import { requestJson, trimTrailingSlash } from '../httpClient';
 import type { LlmPrompt } from '../llmPostProcess';
-import { extractAnthropicText, extractOpenAiText } from './llmResponse';
+import {
+	extractAnthropicText,
+	extractGeminiText,
+	extractOpenAiText,
+} from './llmResponse';
 
 /** A provider that completes a single prompt and returns text. */
 export interface LlmProvider {
@@ -92,5 +96,34 @@ export class AnthropicLlmProvider implements LlmProvider {
 			timeoutMs: LLM_REQUEST_TIMEOUT_MS,
 		});
 		return extractAnthropicText(json);
+	}
+}
+
+/**
+ * Google Gemini provider via the `generateContent` endpoint. Uses
+ * `x-goog-api-key` auth and maps the prompt's system/user parts onto Gemini's
+ * `systemInstruction`/`contents` shape.
+ */
+export class GeminiLlmProvider implements LlmProvider {
+	readonly id = 'gemini';
+	readonly label = 'Google Gemini';
+
+	constructor(private readonly config: LlmConfig) {}
+
+	async complete(prompt: LlmPrompt, maxTokens: number): Promise<string> {
+		const url = `${trimTrailingSlash(this.config.baseUrl)}/v1beta/models/${this.config.model}:generateContent`;
+		const json = await requestJson({
+			url,
+			method: 'POST',
+			headers: { 'x-goog-api-key': this.config.apiKey },
+			contentType: 'application/json',
+			body: JSON.stringify({
+				systemInstruction: { parts: [{ text: prompt.system }] },
+				contents: [{ role: 'user', parts: [{ text: prompt.user }] }],
+				generationConfig: { maxOutputTokens: maxTokens },
+			}),
+			timeoutMs: LLM_REQUEST_TIMEOUT_MS,
+		});
+		return extractGeminiText(json);
 	}
 }

@@ -213,6 +213,7 @@ export const TRANSCRIPTION_PROVIDER_IDS = {
 	WHISPER_API: 'whisper-api',
 	LOCAL_WHISPER: 'local-whisper',
 	DEEPGRAM: 'deepgram',
+	GEMINI: 'gemini',
 } as const;
 
 /**
@@ -332,6 +333,64 @@ export const DEEPGRAM_MODELS_DOC_URL =
  */
 export const DEEPGRAM_MAX_REQUEST_BYTES = 2 * 1024 * 1024 * 1024;
 
+/**
+ * Default Gemini API base URL. The provider appends `/v1beta/...` for model
+ * and file operations and `/upload/v1beta/files` for the File API upload, so
+ * this value carries no version segment.
+ */
+export const DEFAULT_GEMINI_BASE_URL =
+	'https://generativelanguage.googleapis.com';
+
+/** Default Gemini transcription model id. */
+export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+
+/**
+ * Seed Gemini model ids for the model picker on first run; the list is
+ * user-editable. Flash models are cheaper and fast enough for transcription;
+ * Pro is better for difficult audio. See {@link GEMINI_MODELS_DOC_URL} for the
+ * authoritative, current list.
+ */
+export const GEMINI_MODEL_SUGGESTIONS = [
+	'gemini-2.5-flash',
+	'gemini-2.5-pro',
+	'gemini-2.5-flash-lite',
+	'gemini-2.0-flash',
+];
+
+/** Authoritative, current list of Gemini models. */
+export const GEMINI_MODELS_DOC_URL =
+	'https://ai.google.dev/gemini-api/docs/models';
+
+/**
+ * Hard per-request ceiling for Gemini, in bytes (2 GB — the File API limit).
+ * Gemini transcribes a whole file in one request with consistent speaker
+ * labels, so files under this are sent in one piece instead of chunked.
+ */
+export const GEMINI_MAX_REQUEST_BYTES = 2 * 1024 * 1024 * 1024;
+
+/**
+ * Container MIME types the Gemini File API accepts for audio directly. Any
+ * other container (notably `audio/webm` and `audio/mp4`/m4a, which the plugin
+ * can record) is decoded to 16 kHz mono WAV before upload.
+ */
+export const GEMINI_AUDIO_MIME_TYPES: ReadonlySet<string> = new Set([
+	`${MIME_TYPE_AUDIO_PREFIX}wav`,
+	`${MIME_TYPE_AUDIO_PREFIX}mpeg`,
+	`${MIME_TYPE_AUDIO_PREFIX}aac`,
+	`${MIME_TYPE_AUDIO_PREFIX}ogg`,
+	`${MIME_TYPE_AUDIO_PREFIX}flac`,
+	`${MIME_TYPE_AUDIO_PREFIX}aiff`,
+]);
+
+/** Interval between Gemini File API status polls, in milliseconds. */
+export const GEMINI_FILE_POLL_INTERVAL_MS = 1500;
+
+/**
+ * Maximum time to wait for an uploaded Gemini file to leave the PROCESSING
+ * state before giving up, in milliseconds.
+ */
+export const GEMINI_FILE_MAX_WAIT_MS = 2 * 60_000;
+
 /** Default OpenAI-compatible chat base URL for LLM post-processing. */
 export const DEFAULT_LLM_OPENAI_BASE_URL = 'https://api.openai.com/v1';
 
@@ -349,6 +408,17 @@ export const DEFAULT_LLM_ANTHROPIC_MODEL = 'claude-opus-4-8';
 
 /** Default local Ollama base URL for LLM post-processing. */
 export const DEFAULT_LLM_OLLAMA_BASE_URL = 'http://localhost:11434/v1';
+
+/**
+ * Default Gemini base URL for LLM post-processing. Like the transcription
+ * base URL it carries no version segment; the provider appends
+ * `/v1beta/models/{model}:generateContent`.
+ */
+export const DEFAULT_LLM_GEMINI_BASE_URL =
+	'https://generativelanguage.googleapis.com';
+
+/** Default Gemini model for transcript post-processing. */
+export const DEFAULT_LLM_GEMINI_MODEL = 'gemini-2.5-flash';
 
 /** Minimum configurable transcription chunk size in megabytes. */
 export const MIN_TRANSCRIBE_CHUNK_MB = 1;
