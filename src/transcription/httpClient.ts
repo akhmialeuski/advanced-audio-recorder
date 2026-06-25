@@ -249,15 +249,8 @@ export function friendlyHttpHint(status: number, body: string): string {
 	return '';
 }
 
-/**
- * Performs a request and parses the JSON body. Normalizes every failure
- * mode into an {@link HttpError}: a non-2xx status (with a trimmed body
- * excerpt), a transport failure, a timeout, and a 2xx body that is not
- * valid JSON. Secrets in the URL query string are never echoed.
- * @param options - Request options (throw is disabled internally)
- * @returns Parsed JSON body
- */
-export async function requestJson<T = unknown>(options: {
+/** Options shared by {@link requestRaw} and {@link requestJson}. */
+export interface RequestOptions {
 	url: string;
 	method: string;
 	headers?: Record<string, string>;
@@ -265,7 +258,22 @@ export async function requestJson<T = unknown>(options: {
 	contentType?: string;
 	/** Per-request deadline; defaults to the transcription floor timeout. */
 	timeoutMs?: number;
-}): Promise<T> {
+}
+
+/**
+ * Performs a request and returns the raw response after asserting success.
+ * Normalizes a non-2xx status (with a trimmed body excerpt and a friendly
+ * hint), a transport failure, and a timeout into an {@link HttpError}, and
+ * never echoes secrets in the URL query string. Use this over
+ * {@link requestJson} only when the caller needs the raw response (e.g. to
+ * read a response header that the JSON helper does not expose); otherwise
+ * prefer {@link requestJson}.
+ * @param options - Request options (throw is disabled internally)
+ * @returns The successful (2xx) response
+ */
+export async function requestRaw(
+	options: RequestOptions,
+): Promise<RequestUrlResponse> {
 	const safeUrl = urlForMessage(options.url);
 	let response: RequestUrlResponse;
 	try {
@@ -306,6 +314,21 @@ export async function requestJson<T = unknown>(options: {
 			hint ? `${hint} (${detail})` : detail,
 		);
 	}
+	return response;
+}
+
+/**
+ * Performs a request and parses the JSON body. Normalizes every failure
+ * mode into an {@link HttpError}: a non-2xx status (with a trimmed body
+ * excerpt), a transport failure, a timeout, and a 2xx body that is not
+ * valid JSON. Secrets in the URL query string are never echoed.
+ * @param options - Request options (throw is disabled internally)
+ * @returns Parsed JSON body
+ */
+export async function requestJson<T = unknown>(
+	options: RequestOptions,
+): Promise<T> {
+	const response = await requestRaw(options);
 	// Parse the body defensively: a 2xx with an empty/HTML/truncated body
 	// would otherwise throw a raw SyntaxError that is not an HttpError.
 	try {
@@ -313,7 +336,7 @@ export async function requestJson<T = unknown>(options: {
 	} catch {
 		throw new HttpError(
 			response.status,
-			`Request to ${safeUrl} returned a non-JSON response.`,
+			`Request to ${urlForMessage(options.url)} returned a non-JSON response.`,
 		);
 	}
 }

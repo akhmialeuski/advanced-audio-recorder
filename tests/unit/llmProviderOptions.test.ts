@@ -23,10 +23,11 @@ describe('LLM provider options (single source of truth)', () => {
 		);
 	});
 
-	it('lists both providers with non-empty labels', () => {
+	it('lists every provider with non-empty labels', () => {
 		expect(LLM_PROVIDER_OPTIONS.map((option) => option.value)).toEqual([
 			'openai-compatible',
 			'anthropic',
+			'gemini',
 		]);
 		for (const option of LLM_PROVIDER_OPTIONS) {
 			expect(option.label.length).toBeGreaterThan(0);

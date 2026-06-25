@@ -4,14 +4,16 @@
  * @module transcription/factories
  */
 
-import { TRANSCRIPTION_PROVIDER_IDS } from '../constants';
+import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from '../constants';
 import type { AudioRecorderSettings } from '../settings/Settings';
 import { WhisperApiProvider } from './providers/WhisperApiProvider';
 import { LocalWhisperProvider } from './providers/LocalWhisperProvider';
 import { DeepgramProvider } from './providers/DeepgramProvider';
+import { GeminiProvider } from './providers/GeminiProvider';
 import type { TranscriptionProvider } from './providers/TranscriptionProvider';
 import {
 	AnthropicLlmProvider,
+	GeminiLlmProvider,
 	OpenAiCompatibleLlmProvider,
 	type LlmProvider,
 } from './llm/LlmProvider';
@@ -70,6 +72,18 @@ export function createTranscriptionProvider(
 			model: settings.deepgramModel,
 		});
 	}
+	if (settings.transcriptionProvider === TRANSCRIPTION_PROVIDER_IDS.GEMINI) {
+		if (!settings.geminiApiKey) {
+			throw new ProviderConfigError(
+				'Set the Google Gemini API key in settings to transcribe.',
+			);
+		}
+		return new GeminiProvider({
+			baseUrl: settings.geminiBaseUrl,
+			apiKey: settings.geminiApiKey,
+			model: settings.geminiModel,
+		});
+	}
 	if (!settings.whisperApiKey) {
 		throw new ProviderConfigError(
 			'Set the Whisper API key in settings to transcribe.',
@@ -94,13 +108,21 @@ export function createLlmProvider(
 		apiKey: settings.llmApiKey,
 		model: settings.llmModel,
 	};
-	if (settings.llmProvider === 'anthropic') {
+	if (settings.llmProvider === LLM_PROVIDER_IDS.ANTHROPIC) {
 		if (!config.apiKey) {
 			throw new ProviderConfigError(
 				'Set the Anthropic API key in settings.',
 			);
 		}
 		return new AnthropicLlmProvider(config);
+	}
+	if (settings.llmProvider === LLM_PROVIDER_IDS.GEMINI) {
+		if (!config.apiKey) {
+			throw new ProviderConfigError(
+				'Set the Google Gemini API key in settings.',
+			);
+		}
+		return new GeminiLlmProvider(config);
 	}
 	// OpenAI-compatible: a local Ollama server needs no key, hosted APIs do.
 	return new OpenAiCompatibleLlmProvider(config);

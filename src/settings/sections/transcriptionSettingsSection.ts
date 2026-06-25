@@ -14,6 +14,7 @@ import {
 	TRANSCRIPTION_PROVIDER_IDS,
 	WHISPER_API_MODELS_DOC_URL,
 	DEEPGRAM_MODELS_DOC_URL,
+	GEMINI_MODELS_DOC_URL,
 	LOCAL_WHISPER_MODEL_NAMES,
 	LOCAL_WHISPER_MODELS_DOC_URL,
 } from '../../constants';
@@ -68,7 +69,7 @@ export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
 
 	addDropdown(ctx, {
 		name: 'Engine',
-		desc: 'Whisper API (cloud), Deepgram (cloud), or a local whisper.cpp binary (desktop).',
+		desc: 'Whisper API, Deepgram, or Google Gemini (cloud), or a local whisper.cpp binary (desktop).',
 		options: TRANSCRIPTION_PROVIDER_OPTIONS,
 		get: () => s.transcriptionProvider,
 		set: (v) => (s.transcriptionProvider = v as TranscriptionProviderId),
@@ -109,6 +110,8 @@ export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
 		s.transcriptionProvider === TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM
 	) {
 		renderDeepgramSettings(ctx);
+	} else if (s.transcriptionProvider === TRANSCRIPTION_PROVIDER_IDS.GEMINI) {
+		renderGeminiSettings(ctx);
 	} else {
 		renderLocalWhisperSettings(ctx);
 	}
@@ -183,6 +186,36 @@ function renderDeepgramSettings(ctx: SettingsSectionContext): void {
 		setModels: (models) => (s.deepgramModels = models),
 		getSelected: () => s.deepgramModel,
 		setSelected: (id) => (s.deepgramModel = id),
+	});
+}
+
+/** Google Gemini engine fields (base URL, key, model). */
+function renderGeminiSettings(ctx: SettingsSectionContext): void {
+	const s = ctx.settings;
+	addText(ctx, {
+		name: 'Gemini base URL',
+		desc: 'Gemini API base (default https://generativelanguage.googleapis.com).',
+		get: () => s.geminiBaseUrl,
+		set: (v) => (s.geminiBaseUrl = v),
+	});
+	addText(ctx, {
+		name: 'Gemini API key',
+		desc: 'Stored in plugin data on this device. Avoid syncing data.json to untrusted locations.',
+		get: () => s.geminiApiKey,
+		set: (v) => (s.geminiApiKey = v),
+		secret: true,
+	});
+	addModelPicker(ctx, {
+		name: 'Gemini model',
+		desc: 'Pick a Gemini model (e.g. gemini-2.5-flash, gemini-2.5-pro). The whole recording is uploaded via the File API for consistent speaker labels.',
+		helpLink: {
+			label: 'Gemini model list',
+			url: GEMINI_MODELS_DOC_URL,
+		},
+		getModels: () => s.geminiModels,
+		setModels: (models) => (s.geminiModels = models),
+		getSelected: () => s.geminiModel,
+		setSelected: (id) => (s.geminiModel = id),
 	});
 }
 
@@ -343,7 +376,7 @@ function renderLlmSection(ctx: SettingsSectionContext): void {
 	});
 	addText(ctx, {
 		name: 'LLM base URL',
-		desc: 'API base URL (e.g. https://api.openai.com/v1, http://localhost:11434/v1, or https://api.anthropic.com/v1).',
+		desc: 'API base URL (e.g. https://api.openai.com/v1, http://localhost:11434/v1, https://api.anthropic.com/v1, or https://generativelanguage.googleapis.com).',
 		get: () => s.llmBaseUrl,
 		set: (v) => (s.llmBaseUrl = v),
 	});
@@ -356,7 +389,7 @@ function renderLlmSection(ctx: SettingsSectionContext): void {
 	});
 	addText(ctx, {
 		name: 'LLM model',
-		desc: 'Model id (e.g. gpt-4o-mini, llama3.1, claude-opus-4-8).',
+		desc: 'Model id (e.g. gpt-4o-mini, llama3.1, claude-opus-4-8, gemini-2.5-flash).',
 		get: () => s.llmModel,
 		set: (v) => (s.llmModel = v),
 	});

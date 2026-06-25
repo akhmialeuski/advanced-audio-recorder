@@ -6,6 +6,7 @@
  */
 
 import { isRecord } from '../providers/responseUtils';
+import { geminiCandidateText } from '../providers/geminiShared';
 
 /**
  * Extracts the assistant message text from an OpenAI-compatible
@@ -55,4 +56,14 @@ export function extractAnthropicText(body: unknown): string {
 		}
 	}
 	return parts.join('').trim();
+}
+
+/**
+ * Extracts the text from a Gemini `generateContent` response by concatenating
+ * the `text` parts of the first candidate.
+ * @param body - Parsed JSON response
+ * @returns The combined text, or empty string when absent
+ */
+export function extractGeminiText(body: unknown): string {
+	return geminiCandidateText(body).trim();
 }

@@ -21,12 +21,18 @@ import {
 	DEFAULT_DEEPGRAM_BASE_URL,
 	DEFAULT_DEEPGRAM_MODEL,
 	DEEPGRAM_MODEL_SUGGESTIONS,
+	DEFAULT_GEMINI_BASE_URL,
+	DEFAULT_GEMINI_MODEL,
+	GEMINI_MODEL_SUGGESTIONS,
 	TRANSCRIPTION_PROVIDER_IDS,
+	LLM_PROVIDER_IDS,
 	DEFAULT_LLM_OPENAI_BASE_URL,
 	DEFAULT_LLM_OPENAI_MODEL,
 	DEFAULT_LLM_ANTHROPIC_BASE_URL,
 	DEFAULT_LLM_ANTHROPIC_MODEL,
 	DEFAULT_LLM_OLLAMA_BASE_URL,
+	DEFAULT_LLM_GEMINI_BASE_URL,
+	DEFAULT_LLM_GEMINI_MODEL,
 	DEFAULT_LLM_MAX_TOKENS,
 	DEFAULT_CLEANUP_HIGHPASS_HZ,
 	DEFAULT_CLEANUP_GATE_THRESHOLD_DB,
@@ -158,6 +164,14 @@ export interface AudioRecorderSettings {
 	deepgramModel: string;
 	/** Known Deepgram model ids offered in the picker (user-editable) */
 	deepgramModels: string[];
+	/** Gemini API base URL */
+	geminiBaseUrl: string;
+	/** Gemini API key */
+	geminiApiKey: string;
+	/** Gemini model id (the selected one) */
+	geminiModel: string;
+	/** Known Gemini model ids offered in the picker (user-editable) */
+	geminiModels: string[];
 	/** Path to the local whisper.cpp binary */
 	localWhisperBinaryPath: string;
 	/** Path to the local whisper model file */
@@ -237,6 +251,7 @@ export const TRANSCRIPTION_PROVIDER_LABELS: Record<
 > = {
 	[TRANSCRIPTION_PROVIDER_IDS.WHISPER_API]: 'Whisper API (OpenAI-compatible)',
 	[TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM]: 'Deepgram',
+	[TRANSCRIPTION_PROVIDER_IDS.GEMINI]: 'Google Gemini',
 	[TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER]: 'Local whisper.cpp (desktop)',
 };
 
@@ -269,13 +284,15 @@ export const LLM_TASK_LABELS: Record<LlmTask, string> = {
 	custom: 'Custom',
 };
 
-/** LLM post-processing provider identifier. */
-export type LlmProviderId = 'openai-compatible' | 'anthropic';
+/** LLM post-processing provider identifier (derived from {@link LLM_PROVIDER_IDS}). */
+export type LlmProviderId =
+	(typeof LLM_PROVIDER_IDS)[keyof typeof LLM_PROVIDER_IDS];
 
 /** Display labels for each LLM provider (single source for the UI). */
 export const LLM_PROVIDER_LABELS: Record<LlmProviderId, string> = {
-	'openai-compatible': 'OpenAI / Groq / Ollama',
-	anthropic: 'Anthropic (Claude)',
+	[LLM_PROVIDER_IDS.OPENAI_COMPATIBLE]: 'OpenAI / Groq / Ollama',
+	[LLM_PROVIDER_IDS.ANTHROPIC]: 'Anthropic (Claude)',
+	[LLM_PROVIDER_IDS.GEMINI]: 'Google Gemini',
 };
 
 /** A value/label pair for a dropdown control (single source for the UI). */
@@ -367,6 +384,10 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	deepgramApiKey: '',
 	deepgramModel: DEFAULT_DEEPGRAM_MODEL,
 	deepgramModels: [...DEEPGRAM_MODEL_SUGGESTIONS],
+	geminiBaseUrl: DEFAULT_GEMINI_BASE_URL,
+	geminiApiKey: '',
+	geminiModel: DEFAULT_GEMINI_MODEL,
+	geminiModels: [...GEMINI_MODEL_SUGGESTIONS],
 	localWhisperBinaryPath: '',
 	localWhisperModelPath: '',
 	localWhisperExtraArgs: '',
@@ -383,7 +404,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	llmPostProcessEnabled: false,
 	llmPostProcessTask: 'cleanup',
 	llmCustomInstruction: '',
-	llmProvider: 'openai-compatible',
+	llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
 	llmBaseUrl: DEFAULT_LLM_OPENAI_BASE_URL,
 	llmApiKey: '',
 	llmModel: DEFAULT_LLM_OPENAI_MODEL,
@@ -411,12 +432,14 @@ const DEFAULT_LLM_BASE_URLS: ReadonlySet<string> = new Set([
 	DEFAULT_LLM_OPENAI_BASE_URL,
 	DEFAULT_LLM_ANTHROPIC_BASE_URL,
 	DEFAULT_LLM_OLLAMA_BASE_URL,
+	DEFAULT_LLM_GEMINI_BASE_URL,
 ]);
 
 /** Model ids that ship as provider defaults (same auto-switch guard). */
 const DEFAULT_LLM_MODELS: ReadonlySet<string> = new Set([
 	DEFAULT_LLM_OPENAI_MODEL,
 	DEFAULT_LLM_ANTHROPIC_MODEL,
+	DEFAULT_LLM_GEMINI_MODEL,
 ]);
 
 /**
@@ -432,7 +455,7 @@ export function applyLlmProviderDefaults(
 	settings: AudioRecorderSettings,
 	provider: LlmProviderId,
 ): AudioRecorderSettings {
-	if (provider === 'anthropic') {
+	if (provider === LLM_PROVIDER_IDS.ANTHROPIC) {
 		if (DEFAULT_LLM_BASE_URLS.has(settings.llmBaseUrl)) {
 			settings.llmBaseUrl = DEFAULT_LLM_ANTHROPIC_BASE_URL;
 		}
@@ -441,12 +464,28 @@ export function applyLlmProviderDefaults(
 		}
 		return settings;
 	}
-	// OpenAI-compatible (OpenAI / Groq / Ollama): only move off the Anthropic
-	// defaults, leaving any other OpenAI-compatible endpoint or model intact.
-	if (settings.llmBaseUrl === DEFAULT_LLM_ANTHROPIC_BASE_URL) {
+	if (provider === LLM_PROVIDER_IDS.GEMINI) {
+		if (DEFAULT_LLM_BASE_URLS.has(settings.llmBaseUrl)) {
+			settings.llmBaseUrl = DEFAULT_LLM_GEMINI_BASE_URL;
+		}
+		if (DEFAULT_LLM_MODELS.has(settings.llmModel)) {
+			settings.llmModel = DEFAULT_LLM_GEMINI_MODEL;
+		}
+		return settings;
+	}
+	// OpenAI-compatible (OpenAI / Groq / Ollama): only move off another
+	// provider's shipped default (Anthropic or Gemini), leaving any other
+	// OpenAI-compatible endpoint or model the user entered intact.
+	if (
+		settings.llmBaseUrl === DEFAULT_LLM_ANTHROPIC_BASE_URL ||
+		settings.llmBaseUrl === DEFAULT_LLM_GEMINI_BASE_URL
+	) {
 		settings.llmBaseUrl = DEFAULT_LLM_OPENAI_BASE_URL;
 	}
-	if (settings.llmModel === DEFAULT_LLM_ANTHROPIC_MODEL) {
+	if (
+		settings.llmModel === DEFAULT_LLM_ANTHROPIC_MODEL ||
+		settings.llmModel === DEFAULT_LLM_GEMINI_MODEL
+	) {
 		settings.llmModel = DEFAULT_LLM_OPENAI_MODEL;
 	}
 	return settings;

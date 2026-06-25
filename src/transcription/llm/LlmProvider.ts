@@ -5,10 +5,25 @@
  * @module transcription/llm/LlmProvider
  */
 
-import { ANTHROPIC_API_VERSION, LLM_REQUEST_TIMEOUT_MS } from '../../constants';
+import {
+	ANTHROPIC_API_VERSION,
+	GEMINI_API_KEY_HEADER,
+	LLM_PROVIDER_IDS,
+	LLM_REQUEST_TIMEOUT_MS,
+} from '../../constants';
 import { requestJson, trimTrailingSlash } from '../httpClient';
 import type { LlmPrompt } from '../llmPostProcess';
-import { extractAnthropicText, extractOpenAiText } from './llmResponse';
+import {
+	extractAnthropicText,
+	extractGeminiText,
+	extractOpenAiText,
+} from './llmResponse';
+import {
+	assertGeminiNotBlocked,
+	assertGeminiNotTruncated,
+	geminiGenerateContentUrl,
+	geminiThinkingConfig,
+} from '../providers/geminiShared';
 
 /** A provider that completes a single prompt and returns text. */
 export interface LlmProvider {
@@ -34,7 +49,7 @@ export interface LlmConfig {
  * and a local Ollama server (which accepts an empty API key).
  */
 export class OpenAiCompatibleLlmProvider implements LlmProvider {
-	readonly id = 'openai-compatible';
+	readonly id = LLM_PROVIDER_IDS.OPENAI_COMPATIBLE;
 	readonly label = 'OpenAI-compatible (OpenAI / Groq / Ollama)';
 
 	constructor(private readonly config: LlmConfig) {}
@@ -68,7 +83,7 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
  * direct-browser-access header so the request works from the renderer.
  */
 export class AnthropicLlmProvider implements LlmProvider {
-	readonly id = 'anthropic';
+	readonly id = LLM_PROVIDER_IDS.ANTHROPIC;
 	readonly label = 'Anthropic (Claude)';
 
 	constructor(private readonly config: LlmConfig) {}
@@ -92,5 +107,54 @@ export class AnthropicLlmProvider implements LlmProvider {
 			timeoutMs: LLM_REQUEST_TIMEOUT_MS,
 		});
 		return extractAnthropicText(json);
+	}
+}
+
+/**
+ * Google Gemini provider via the `generateContent` endpoint. Uses
+ * `x-goog-api-key` auth and maps the prompt's system/user parts onto Gemini's
+ * `systemInstruction`/`contents` shape.
+ */
+export class GeminiLlmProvider implements LlmProvider {
+	readonly id = LLM_PROVIDER_IDS.GEMINI;
+	readonly label = 'Google Gemini';
+
+	constructor(private readonly config: LlmConfig) {}
+
+	async complete(prompt: LlmPrompt, maxTokens: number): Promise<string> {
+		const url = geminiGenerateContentUrl(
+			this.config.baseUrl,
+			this.config.model,
+		);
+		// Cleanup/summary is deterministic; on models that support a thinking
+		// budget, thinking would otherwise consume maxOutputTokens and truncate
+		// or empty the answer. Models without a thinking budget (2.0 and
+		// earlier) get no thinkingConfig, which they would otherwise reject.
+		const thinkingConfig = geminiThinkingConfig(this.config.model);
+		const json = await requestJson({
+			url,
+			method: 'POST',
+			headers: { [GEMINI_API_KEY_HEADER]: this.config.apiKey },
+			contentType: 'application/json',
+			body: JSON.stringify({
+				systemInstruction: { parts: [{ text: prompt.system }] },
+				contents: [{ role: 'user', parts: [{ text: prompt.user }] }],
+				generationConfig: {
+					maxOutputTokens: maxTokens,
+					...(thinkingConfig ? { thinkingConfig } : {}),
+				},
+			}),
+			timeoutMs: LLM_REQUEST_TIMEOUT_MS,
+		});
+		// A MAX_TOKENS stop yields a partial/empty answer; a safety/policy block
+		// yields no candidate. Fail loudly instead of silently replacing the
+		// transcript with a truncated or empty result.
+		assertGeminiNotTruncated(
+			json,
+			'Raise the max output tokens in settings, shorten the input, or ' +
+				'choose a model with a larger output limit.',
+		);
+		assertGeminiNotBlocked(json);
+		return extractGeminiText(json);
 	}
 }

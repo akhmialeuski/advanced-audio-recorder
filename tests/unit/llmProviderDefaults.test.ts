@@ -10,6 +10,8 @@ import {
 	DEFAULT_LLM_OPENAI_MODEL,
 	DEFAULT_LLM_ANTHROPIC_BASE_URL,
 	DEFAULT_LLM_ANTHROPIC_MODEL,
+	DEFAULT_LLM_GEMINI_BASE_URL,
+	DEFAULT_LLM_GEMINI_MODEL,
 } from 'src/constants';
 
 describe('applyLlmProviderDefaults', () => {
@@ -27,6 +29,26 @@ describe('applyLlmProviderDefaults', () => {
 		const settings = mergeSettings({
 			llmBaseUrl: DEFAULT_LLM_ANTHROPIC_BASE_URL,
 			llmModel: DEFAULT_LLM_ANTHROPIC_MODEL,
+		});
+		applyLlmProviderDefaults(settings, 'openai-compatible');
+		expect(settings.llmBaseUrl).toBe(DEFAULT_LLM_OPENAI_BASE_URL);
+		expect(settings.llmModel).toBe(DEFAULT_LLM_OPENAI_MODEL);
+	});
+
+	it('switches OpenAI defaults to Gemini defaults when choosing Gemini', () => {
+		const settings = mergeSettings({
+			llmBaseUrl: DEFAULT_LLM_OPENAI_BASE_URL,
+			llmModel: DEFAULT_LLM_OPENAI_MODEL,
+		});
+		applyLlmProviderDefaults(settings, 'gemini');
+		expect(settings.llmBaseUrl).toBe(DEFAULT_LLM_GEMINI_BASE_URL);
+		expect(settings.llmModel).toBe(DEFAULT_LLM_GEMINI_MODEL);
+	});
+
+	it('moves Gemini defaults back to OpenAI defaults when choosing OpenAI-compatible', () => {
+		const settings = mergeSettings({
+			llmBaseUrl: DEFAULT_LLM_GEMINI_BASE_URL,
+			llmModel: DEFAULT_LLM_GEMINI_MODEL,
 		});
 		applyLlmProviderDefaults(settings, 'openai-compatible');
 		expect(settings.llmBaseUrl).toBe(DEFAULT_LLM_OPENAI_BASE_URL);
