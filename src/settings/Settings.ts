@@ -25,6 +25,7 @@ import {
 	DEFAULT_GEMINI_MODEL,
 	GEMINI_MODEL_SUGGESTIONS,
 	TRANSCRIPTION_PROVIDER_IDS,
+	LLM_PROVIDER_IDS,
 	DEFAULT_LLM_OPENAI_BASE_URL,
 	DEFAULT_LLM_OPENAI_MODEL,
 	DEFAULT_LLM_ANTHROPIC_BASE_URL,
@@ -283,14 +284,15 @@ export const LLM_TASK_LABELS: Record<LlmTask, string> = {
 	custom: 'Custom',
 };
 
-/** LLM post-processing provider identifier. */
-export type LlmProviderId = 'openai-compatible' | 'anthropic' | 'gemini';
+/** LLM post-processing provider identifier (derived from {@link LLM_PROVIDER_IDS}). */
+export type LlmProviderId =
+	(typeof LLM_PROVIDER_IDS)[keyof typeof LLM_PROVIDER_IDS];
 
 /** Display labels for each LLM provider (single source for the UI). */
 export const LLM_PROVIDER_LABELS: Record<LlmProviderId, string> = {
-	'openai-compatible': 'OpenAI / Groq / Ollama',
-	anthropic: 'Anthropic (Claude)',
-	gemini: 'Google Gemini',
+	[LLM_PROVIDER_IDS.OPENAI_COMPATIBLE]: 'OpenAI / Groq / Ollama',
+	[LLM_PROVIDER_IDS.ANTHROPIC]: 'Anthropic (Claude)',
+	[LLM_PROVIDER_IDS.GEMINI]: 'Google Gemini',
 };
 
 /** A value/label pair for a dropdown control (single source for the UI). */
@@ -402,7 +404,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	llmPostProcessEnabled: false,
 	llmPostProcessTask: 'cleanup',
 	llmCustomInstruction: '',
-	llmProvider: 'openai-compatible',
+	llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
 	llmBaseUrl: DEFAULT_LLM_OPENAI_BASE_URL,
 	llmApiKey: '',
 	llmModel: DEFAULT_LLM_OPENAI_MODEL,
@@ -453,7 +455,7 @@ export function applyLlmProviderDefaults(
 	settings: AudioRecorderSettings,
 	provider: LlmProviderId,
 ): AudioRecorderSettings {
-	if (provider === 'anthropic') {
+	if (provider === LLM_PROVIDER_IDS.ANTHROPIC) {
 		if (DEFAULT_LLM_BASE_URLS.has(settings.llmBaseUrl)) {
 			settings.llmBaseUrl = DEFAULT_LLM_ANTHROPIC_BASE_URL;
 		}
@@ -462,7 +464,7 @@ export function applyLlmProviderDefaults(
 		}
 		return settings;
 	}
-	if (provider === 'gemini') {
+	if (provider === LLM_PROVIDER_IDS.GEMINI) {
 		if (DEFAULT_LLM_BASE_URLS.has(settings.llmBaseUrl)) {
 			settings.llmBaseUrl = DEFAULT_LLM_GEMINI_BASE_URL;
 		}

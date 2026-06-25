@@ -53,21 +53,36 @@ describe('geminiFinishReason', () => {
 });
 
 describe('assertGeminiNotTruncated', () => {
+	const REMEDY = 'Shorten the input or pick a bigger model.';
+
 	it('throws when the response was cut off at the output token limit', () => {
 		expect(() =>
-			assertGeminiNotTruncated({
-				candidates: [{ finishReason: GEMINI_FINISH_MAX_TOKENS }],
-			}),
+			assertGeminiNotTruncated(
+				{ candidates: [{ finishReason: GEMINI_FINISH_MAX_TOKENS }] },
+				REMEDY,
+			),
 		).toThrow(/output token limit/i);
+	});
+
+	it('appends the caller-supplied remedy to the message', () => {
+		// The advice differs by task (transcription cannot raise a token limit),
+		// so the caller passes it rather than the shared helper hardcoding one.
+		expect(() =>
+			assertGeminiNotTruncated(
+				{ candidates: [{ finishReason: GEMINI_FINISH_MAX_TOKENS }] },
+				REMEDY,
+			),
+		).toThrow(REMEDY);
 	});
 
 	it('does not throw for a normal stop or an absent finish reason', () => {
 		expect(() =>
-			assertGeminiNotTruncated({
-				candidates: [{ finishReason: 'STOP' }],
-			}),
+			assertGeminiNotTruncated(
+				{ candidates: [{ finishReason: 'STOP' }] },
+				REMEDY,
+			),
 		).not.toThrow();
-		expect(() => assertGeminiNotTruncated({})).not.toThrow();
+		expect(() => assertGeminiNotTruncated({}, REMEDY)).not.toThrow();
 	});
 });
 
@@ -119,21 +134,29 @@ describe('geminiGenerateContentUrl', () => {
 });
 
 describe('geminiThinkingConfig', () => {
-	it('turns thinking off for flash-family models', () => {
+	it('turns thinking off for 2.5 flash-family models', () => {
 		expect(geminiThinkingConfig('gemini-2.5-flash')).toEqual({
 			thinkingBudget: 0,
 		});
-		expect(geminiThinkingConfig('gemini-2.0-flash')).toEqual({
+		expect(geminiThinkingConfig('gemini-2.5-flash-lite')).toEqual({
 			thinkingBudget: 0,
 		});
 	});
 
-	it('uses the minimum budget for Pro models, which cannot disable thinking', () => {
+	it('uses the minimum budget for 2.5 Pro, which cannot disable thinking', () => {
 		expect(geminiThinkingConfig('gemini-2.5-pro')).toEqual({
 			thinkingBudget: 128,
 		});
 		expect(geminiThinkingConfig('GEMINI-2.5-PRO')).toEqual({
 			thinkingBudget: 128,
 		});
+	});
+
+	it('returns undefined for models without a thinking budget (2.0 and earlier)', () => {
+		// thinkingBudget is a 2.5-series feature; sending thinkingConfig to a
+		// 2.0 model is rejected by the API, so the config must be omitted.
+		expect(geminiThinkingConfig('gemini-2.0-flash')).toBeUndefined();
+		// "pro" alone must not enable thinking — the 2.5 marker is required.
+		expect(geminiThinkingConfig('gemini-1.5-pro')).toBeUndefined();
 	});
 });

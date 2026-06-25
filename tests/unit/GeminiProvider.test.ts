@@ -5,8 +5,13 @@
  * branch, the thinking-off generationConfig, and the truncation/block guards.
  */
 
-import { GeminiProvider } from 'src/transcription/providers/GeminiProvider';
+import {
+	GeminiProvider,
+	geminiGenerateTimeoutMs,
+} from 'src/transcription/providers/GeminiProvider';
 import type { AudioPayload } from 'src/transcription/providers/TranscriptionProvider';
+import { uploadTimeoutMs } from 'src/transcription/httpClient';
+import { GEMINI_GENERATE_MIN_TIMEOUT_MS } from 'src/constants';
 import {
 	__setRequestUrlHandler,
 	type MockRequestUrlParam,
@@ -34,7 +39,7 @@ interface GenerateBody {
 	generationConfig: {
 		temperature: number;
 		responseMimeType: string;
-		thinkingConfig: { thinkingBudget: number };
+		thinkingConfig?: { thinkingBudget: number };
 	};
 }
 
@@ -230,5 +235,48 @@ describe('GeminiProvider.transcribe', () => {
 		expect(flow.generateBody().generationConfig.thinkingConfig).toEqual({
 			thinkingBudget: 128,
 		});
+	});
+
+	it('omits thinkingConfig for a model without a thinking budget (2.0)', async () => {
+		const flow = scriptFlow(
+			transcriptBody({ segments: [{ start: 0, text: 'hi' }] }),
+		);
+
+		await provider('gemini-2.0-flash').transcribe(payload('audio/wav'), {
+			diarize: false,
+			wordTimestamps: false,
+		});
+
+		// 2.0 rejects thinkingConfig, so the key must be absent entirely.
+		const config = flow.generateBody().generationConfig;
+		expect('thinkingConfig' in config).toBe(false);
+	});
+
+	it('surfaces the transcription-specific remedy on truncation', async () => {
+		scriptFlow(transcriptBody({ segments: [] }, 'MAX_TOKENS'));
+
+		// Transcription has no max-tokens setting, so the advice must point at
+		// the recording/model, not at raising a limit.
+		await expect(
+			provider().transcribe(payload('audio/wav'), {
+				diarize: false,
+				wordTimestamps: false,
+			}),
+		).rejects.toThrow(/shorter recording/i);
+	});
+});
+
+describe('geminiGenerateTimeoutMs', () => {
+	it('floors a small upload at the generous inference minimum', () => {
+		// A few bytes (e.g. a tiny clip) must not inherit the short upload
+		// proxy; the inference floor applies so long audio is not cut off.
+		expect(geminiGenerateTimeoutMs(8)).toBe(GEMINI_GENERATE_MIN_TIMEOUT_MS);
+	});
+
+	it('uses the size-scaled upload budget once it exceeds the floor', () => {
+		const bigBytes = 600 * 1024 * 1024;
+		const scaled = uploadTimeoutMs(bigBytes);
+		expect(scaled).toBeGreaterThan(GEMINI_GENERATE_MIN_TIMEOUT_MS);
+		expect(geminiGenerateTimeoutMs(bigBytes)).toBe(scaled);
 	});
 });

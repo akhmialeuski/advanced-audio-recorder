@@ -10,6 +10,7 @@
 import {
 	GEMINI_API_KEY_HEADER,
 	GEMINI_AUDIO_MIME_TYPES,
+	GEMINI_GENERATE_MIN_TIMEOUT_MS,
 	MIME_TYPE_AUDIO_PREFIX,
 	TRANSCRIBE_SAMPLE_RATE,
 	TRANSCRIPTION_PROVIDER_IDS,
@@ -81,6 +82,31 @@ const TRANSCRIPT_SCHEMA = {
 	required: ['segments'],
 };
 
+/**
+ * Task-specific remedy appended to the truncation error. Unlike the LLM path,
+ * transcription exposes no output-token setting, so the advice is to shorten the
+ * recording or change model rather than to raise a limit.
+ */
+const TRUNCATION_REMEDY =
+	'Use a shorter recording, split it into parts, or choose a model with a ' +
+	'larger output limit.';
+
+/**
+ * Timeout for the transcription `generateContent` call. Inference time tracks
+ * audio duration, not byte size, and a compressed accepted container (mp3, aac,
+ * ogg, flac) has far fewer bytes than its duration implies, so the upload-size
+ * proxy alone can abort a healthy long transcription. Take the larger of the
+ * size-scaled upload budget and a generous floor.
+ * @param byteLength - Size of the uploaded audio bytes
+ * @returns Timeout in milliseconds
+ */
+export function geminiGenerateTimeoutMs(byteLength: number): number {
+	return Math.max(
+		uploadTimeoutMs(byteLength),
+		GEMINI_GENERATE_MIN_TIMEOUT_MS,
+	);
+}
+
 /** Builds the per-run instruction text sent alongside the audio. */
 function buildInstruction(options: TranscribeOptions): string {
 	const lines = [
@@ -137,6 +163,12 @@ export class GeminiProvider implements TranscriptionProvider {
 				this.config.baseUrl,
 				this.config.model,
 			);
+			// Transcription is deterministic; on models that support a thinking
+			// budget, disabling thinking frees the whole output budget for the
+			// transcript and avoids MAX_TOKENS truncation. Models without a
+			// thinking budget (2.0 and earlier) get no thinkingConfig at all,
+			// which they would otherwise reject.
+			const thinkingConfig = geminiThinkingConfig(this.config.model);
 			const json = await requestJson({
 				url,
 				method: 'POST',
@@ -156,20 +188,15 @@ export class GeminiProvider implements TranscriptionProvider {
 						temperature: 0,
 						responseMimeType: 'application/json',
 						responseSchema: TRANSCRIPT_SCHEMA,
-						// Transcription is deterministic; disabling thinking
-						// frees the whole output budget for the transcript and
-						// avoids MAX_TOKENS truncation.
-						thinkingConfig: geminiThinkingConfig(this.config.model),
+						...(thinkingConfig ? { thinkingConfig } : {}),
 					},
 				}),
-				// The file is already uploaded; the byte size is only a proxy
-				// for how long Gemini may take to transcribe the audio.
-				timeoutMs: uploadTimeoutMs(data.byteLength),
+				timeoutMs: geminiGenerateTimeoutMs(data.byteLength),
 			});
 			// A truncated (MAX_TOKENS) response yields invalid JSON, and a
 			// safety/policy block yields no candidate; both would otherwise map
 			// to an empty transcript with no explanation.
-			assertGeminiNotTruncated(json);
+			assertGeminiNotTruncated(json, TRUNCATION_REMEDY);
 			assertGeminiNotBlocked(json);
 			return mapGeminiResponse(json, options.diarize);
 		} finally {

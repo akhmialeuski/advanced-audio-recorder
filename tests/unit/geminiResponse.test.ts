@@ -19,6 +19,23 @@ function geminiBody(structured: unknown): unknown {
 	};
 }
 
+/** Wraps arbitrary candidate text (not necessarily JSON) as a response body. */
+function geminiTextBody(text: string): unknown {
+	return { candidates: [{ content: { parts: [{ text }] } }] };
+}
+
+let warnSpy: jest.SpyInstance;
+
+beforeEach(() => {
+	// The mapper warns on unexpected (post-guard) bodies; suppress the noise and
+	// let the diagnostic tests assert against it.
+	warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+});
+
+afterEach(() => {
+	warnSpy.mockRestore();
+});
+
 describe('mapGeminiResponse', () => {
 	it('maps segments with speaker labels when diarizing', () => {
 		const result = mapGeminiResponse(
@@ -106,6 +123,33 @@ describe('mapGeminiResponse', () => {
 		).toEqual([]);
 		// Valid JSON but no segments array.
 		expect(mapGeminiResponse(geminiBody({}), false).segments).toEqual([]);
+	});
+
+	it('warns and returns empty on non-JSON candidate text', () => {
+		// After the provider's truncation/block guards, a non-JSON body is
+		// unexpected; it must be logged rather than silently dropped.
+		expect(
+			mapGeminiResponse(geminiTextBody('not json at all'), false)
+				.segments,
+		).toEqual([]);
+		expect(warnSpy).toHaveBeenCalledTimes(1);
+		expect(String(warnSpy.mock.calls[0][1])).toContain('not json at all');
+	});
+
+	it('warns and returns empty when valid JSON has no segments array', () => {
+		expect(
+			mapGeminiResponse(geminiBody({ language: 'en' }), false).segments,
+		).toEqual([]);
+		expect(warnSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it('does not warn on a legitimately empty candidate', () => {
+		// No text at all is a valid "nothing transcribed" result, not an error.
+		expect(mapGeminiResponse({ candidates: [] }, false).segments).toEqual(
+			[],
+		);
+		expect(mapGeminiResponse(null, false).segments).toEqual([]);
+		expect(warnSpy).not.toHaveBeenCalled();
 	});
 });
 

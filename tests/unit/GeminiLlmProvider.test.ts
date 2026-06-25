@@ -23,7 +23,7 @@ const PROMPT: LlmPrompt = { system: 'You clean transcripts.', user: 'hello' };
 interface LlmGenerateBody {
 	generationConfig: {
 		maxOutputTokens: number;
-		thinkingConfig: { thinkingBudget: number };
+		thinkingConfig?: { thinkingBudget: number };
 	};
 }
 
@@ -74,18 +74,34 @@ describe('GeminiLlmProvider.complete', () => {
 		await provider('gemini-2.5-pro').complete(PROMPT, MAX_TOKENS);
 
 		const body = JSON.parse(String(seen?.body)) as LlmGenerateBody;
-		expect(body.generationConfig.thinkingConfig.thinkingBudget).toBe(128);
+		expect(body.generationConfig.thinkingConfig?.thinkingBudget).toBe(128);
 	});
 
-	it('throws when the answer was truncated at the token limit', async () => {
+	it('omits thinkingConfig for a model without a thinking budget (2.0)', async () => {
+		let seen: MockRequestUrlParam | undefined;
+		__setRequestUrlHandler((param): MockRequestUrlResponse => {
+			seen = param;
+			return { status: 200, headers: {}, text: geminiText('ok') };
+		});
+
+		await provider('gemini-2.0-flash').complete(PROMPT, MAX_TOKENS);
+
+		// 2.0 rejects thinkingConfig, so the key must be absent entirely.
+		const body = JSON.parse(String(seen?.body)) as LlmGenerateBody;
+		expect('thinkingConfig' in body.generationConfig).toBe(false);
+	});
+
+	it('throws with the LLM remedy when the answer was truncated', async () => {
 		__setRequestUrlHandler(() => ({
 			status: 200,
 			headers: {},
 			text: geminiText('partial', 'MAX_TOKENS'),
 		}));
 
+		// The LLM path does expose a max-tokens setting, so its remedy points
+		// there (unlike the transcription path).
 		await expect(provider().complete(PROMPT, MAX_TOKENS)).rejects.toThrow(
-			/output token limit/i,
+			/raise the max output tokens/i,
 		);
 	});
 

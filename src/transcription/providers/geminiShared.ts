@@ -24,6 +24,15 @@ export const GEMINI_FINISH_MAX_TOKENS = 'MAX_TOKENS';
 const GEMINI_PRO_MODEL_MARKER = 'pro';
 
 /**
+ * Substring that identifies a model accepting the `thinkingBudget` parameter.
+ * Thinking budgets are a Gemini 2.5-series feature: 2.0 and earlier reject a
+ * `thinkingConfig` outright, and Gemini 3 controls reasoning with a different
+ * parameter. Gating on this marker keeps the config off requests to models that
+ * would 400 on it.
+ */
+const GEMINI_THINKING_BUDGET_MODEL_MARKER = '2.5';
+
+/**
  * Terminal finish reasons that mean the model produced no usable output (a
  * safety/recitation/policy stop rather than a normal completion). MAX_TOKENS is
  * handled separately by {@link assertGeminiNotTruncated}.
@@ -53,18 +62,23 @@ export function geminiGenerateContentUrl(
 
 /**
  * Builds the `thinkingConfig` for a deterministic Gemini request (transcription
- * or post-processing), neither of which benefits from chain-of-thought. Turns
- * thinking off for flash-family models; Gemini 2.5 Pro cannot disable it and
- * rejects a 0 budget, so it gets the minimum supported budget instead.
+ * or post-processing), neither of which benefits from chain-of-thought. Returns
+ * undefined for a model that does not accept a thinking budget (2.0 and
+ * earlier), so the caller omits the field rather than sending one the API
+ * rejects. For a 2.5 model it turns thinking off; Gemini 2.5 Pro cannot disable
+ * it and rejects a 0 budget, so it gets the minimum supported budget instead.
  * @param model - Gemini model id
- * @returns A thinkingConfig object for generationConfig
+ * @returns A thinkingConfig object, or undefined when the model has no thinking budget
  */
-export function geminiThinkingConfig(model: string): {
-	thinkingBudget: number;
-} {
-	const isPro = model.toLowerCase().includes(GEMINI_PRO_MODEL_MARKER);
+export function geminiThinkingConfig(
+	model: string,
+): { thinkingBudget: number } | undefined {
+	const lower = model.toLowerCase();
+	if (!lower.includes(GEMINI_THINKING_BUDGET_MODEL_MARKER)) {
+		return undefined;
+	}
 	return {
-		thinkingBudget: isPro
+		thinkingBudget: lower.includes(GEMINI_PRO_MODEL_MARKER)
 			? GEMINI_PRO_MIN_THINKING_BUDGET
 			: GEMINI_THINKING_BUDGET_OFF,
 	};
@@ -119,15 +133,18 @@ export function geminiFinishReason(body: unknown): string | undefined {
  * it reached the output token limit. Gemini 2.5 models also spend part of the
  * output budget on internal "thinking", so a low limit can truncate or empty
  * the usable text; surfacing this beats silently returning a partial transcript
- * or an empty post-processing result.
+ * or an empty post-processing result. The caller supplies the `remedy` because
+ * the actionable advice differs by task: the LLM path can raise the max-tokens
+ * setting, whereas transcription has no such control and must shorten the input
+ * or change model.
  * @param body - Parsed JSON `generateContent` response
+ * @param remedy - Task-specific sentence appended to the error
  */
-export function assertGeminiNotTruncated(body: unknown): void {
+export function assertGeminiNotTruncated(body: unknown, remedy: string): void {
 	if (geminiFinishReason(body) === GEMINI_FINISH_MAX_TOKENS) {
 		throw new Error(
 			'Gemini stopped because it reached its output token limit, so the ' +
-				'response is incomplete. Use a shorter input, raise the max ' +
-				'output tokens, or pick a model with a larger output limit.',
+				`response is incomplete. ${remedy}`,
 		);
 	}
 }

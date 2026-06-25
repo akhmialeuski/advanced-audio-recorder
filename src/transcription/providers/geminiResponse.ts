@@ -10,9 +10,13 @@
 
 import type { TranscriptSegment } from '../TranscriptTypes';
 import { parseTimecode } from '../../utils/TimeUtils';
+import { PLUGIN_LOG_PREFIX } from '../../constants';
 import type { WhisperResult } from './whisperResponse';
 import { geminiCandidateText } from './geminiShared';
 import { isRecord } from './responseUtils';
+
+/** Max characters of an unparseable candidate excerpt logged for diagnosis. */
+const RESPONSE_EXCERPT_LENGTH = 200;
 
 /**
  * Coerces a raw timecode value to seconds. Accepts a finite number (already
@@ -48,15 +52,26 @@ export function mapGeminiResponse(
 ): WhisperResult {
 	const text = geminiCandidateText(body);
 	if (text.trim() === '') {
+		// A legitimately empty candidate (no content); nothing to warn about.
 		return { segments: [] };
 	}
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(text);
 	} catch {
+		// The provider's truncation/block guards have already passed, so a
+		// non-JSON candidate here is genuinely unexpected (the schema forces
+		// JSON). Surface it for diagnosis instead of silently dropping it.
+		console.warn(
+			`${PLUGIN_LOG_PREFIX} Gemini returned non-JSON transcript text; treating as empty:`,
+			text.slice(0, RESPONSE_EXCERPT_LENGTH),
+		);
 		return { segments: [] };
 	}
 	if (!isRecord(parsed) || !Array.isArray(parsed.segments)) {
+		console.warn(
+			`${PLUGIN_LOG_PREFIX} Gemini transcript JSON had no segments array; treating as empty.`,
+		);
 		return { segments: [] };
 	}
 	const language =

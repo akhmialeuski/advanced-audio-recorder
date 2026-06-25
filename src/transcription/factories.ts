@@ -4,7 +4,7 @@
  * @module transcription/factories
  */
 
-import { TRANSCRIPTION_PROVIDER_IDS } from '../constants';
+import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from '../constants';
 import type { AudioRecorderSettings } from '../settings/Settings';
 import { WhisperApiProvider } from './providers/WhisperApiProvider';
 import { LocalWhisperProvider } from './providers/LocalWhisperProvider';
@@ -108,7 +108,7 @@ export function createLlmProvider(
 		apiKey: settings.llmApiKey,
 		model: settings.llmModel,
 	};
-	if (settings.llmProvider === 'anthropic') {
+	if (settings.llmProvider === LLM_PROVIDER_IDS.ANTHROPIC) {
 		if (!config.apiKey) {
 			throw new ProviderConfigError(
 				'Set the Anthropic API key in settings.',
@@ -116,7 +116,7 @@ export function createLlmProvider(
 		}
 		return new AnthropicLlmProvider(config);
 	}
-	if (settings.llmProvider === 'gemini') {
+	if (settings.llmProvider === LLM_PROVIDER_IDS.GEMINI) {
 		if (!config.apiKey) {
 			throw new ProviderConfigError(
 				'Set the Google Gemini API key in settings.',

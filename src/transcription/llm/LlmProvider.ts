@@ -8,6 +8,7 @@
 import {
 	ANTHROPIC_API_VERSION,
 	GEMINI_API_KEY_HEADER,
+	LLM_PROVIDER_IDS,
 	LLM_REQUEST_TIMEOUT_MS,
 } from '../../constants';
 import { requestJson, trimTrailingSlash } from '../httpClient';
@@ -48,7 +49,7 @@ export interface LlmConfig {
  * and a local Ollama server (which accepts an empty API key).
  */
 export class OpenAiCompatibleLlmProvider implements LlmProvider {
-	readonly id = 'openai-compatible';
+	readonly id = LLM_PROVIDER_IDS.OPENAI_COMPATIBLE;
 	readonly label = 'OpenAI-compatible (OpenAI / Groq / Ollama)';
 
 	constructor(private readonly config: LlmConfig) {}
@@ -82,7 +83,7 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
  * direct-browser-access header so the request works from the renderer.
  */
 export class AnthropicLlmProvider implements LlmProvider {
-	readonly id = 'anthropic';
+	readonly id = LLM_PROVIDER_IDS.ANTHROPIC;
 	readonly label = 'Anthropic (Claude)';
 
 	constructor(private readonly config: LlmConfig) {}
@@ -115,7 +116,7 @@ export class AnthropicLlmProvider implements LlmProvider {
  * `systemInstruction`/`contents` shape.
  */
 export class GeminiLlmProvider implements LlmProvider {
-	readonly id = 'gemini';
+	readonly id = LLM_PROVIDER_IDS.GEMINI;
 	readonly label = 'Google Gemini';
 
 	constructor(private readonly config: LlmConfig) {}
@@ -125,6 +126,11 @@ export class GeminiLlmProvider implements LlmProvider {
 			this.config.baseUrl,
 			this.config.model,
 		);
+		// Cleanup/summary is deterministic; on models that support a thinking
+		// budget, thinking would otherwise consume maxOutputTokens and truncate
+		// or empty the answer. Models without a thinking budget (2.0 and
+		// earlier) get no thinkingConfig, which they would otherwise reject.
+		const thinkingConfig = geminiThinkingConfig(this.config.model);
 		const json = await requestJson({
 			url,
 			method: 'POST',
@@ -135,9 +141,7 @@ export class GeminiLlmProvider implements LlmProvider {
 				contents: [{ role: 'user', parts: [{ text: prompt.user }] }],
 				generationConfig: {
 					maxOutputTokens: maxTokens,
-					// Cleanup/summary is deterministic; thinking would otherwise
-					// consume maxOutputTokens and truncate or empty the answer.
-					thinkingConfig: geminiThinkingConfig(this.config.model),
+					...(thinkingConfig ? { thinkingConfig } : {}),
 				},
 			}),
 			timeoutMs: LLM_REQUEST_TIMEOUT_MS,
@@ -145,7 +149,11 @@ export class GeminiLlmProvider implements LlmProvider {
 		// A MAX_TOKENS stop yields a partial/empty answer; a safety/policy block
 		// yields no candidate. Fail loudly instead of silently replacing the
 		// transcript with a truncated or empty result.
-		assertGeminiNotTruncated(json);
+		assertGeminiNotTruncated(
+			json,
+			'Raise the max output tokens in settings, shorten the input, or ' +
+				'choose a model with a larger output limit.',
+		);
 		assertGeminiNotBlocked(json);
 		return extractGeminiText(json);
 	}

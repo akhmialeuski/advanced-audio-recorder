@@ -426,6 +426,29 @@ export const GEMINI_THINKING_BUDGET_OFF = 0;
  */
 export const GEMINI_PRO_MIN_THINKING_BUDGET = 128;
 
+/**
+ * Floor for the Gemini transcription `generateContent` timeout, in
+ * milliseconds. Inference time scales with audio duration, which the upload
+ * byte size underestimates for compressed accepted containers (mp3, aac, ogg,
+ * flac); this floor keeps a long compressed recording from timing out while
+ * Gemini is still transcribing. The size-scaled upload budget still applies
+ * above it (capped at {@link TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS}).
+ */
+export const GEMINI_GENERATE_MIN_TIMEOUT_MS = 10 * 60_000;
+
+/**
+ * LLM post-processing provider ids. The single source for the string values
+ * used as the provider `id`, the settings discriminator, and the keys of the
+ * provider label map, so the literals are never hand-typed across the codebase.
+ * {@link LlmProviderId} is derived from these values. Mirrors
+ * {@link TRANSCRIPTION_PROVIDER_IDS}.
+ */
+export const LLM_PROVIDER_IDS = {
+	OPENAI_COMPATIBLE: 'openai-compatible',
+	ANTHROPIC: 'anthropic',
+	GEMINI: 'gemini',
+} as const;
+
 /** Default OpenAI-compatible chat base URL for LLM post-processing. */
 export const DEFAULT_LLM_OPENAI_BASE_URL = 'https://api.openai.com/v1';
 
