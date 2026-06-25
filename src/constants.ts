@@ -382,14 +382,49 @@ export const GEMINI_AUDIO_MIME_TYPES: ReadonlySet<string> = new Set([
 	`${MIME_TYPE_AUDIO_PREFIX}aiff`,
 ]);
 
+/** Header carrying the Gemini API key on every request. */
+export const GEMINI_API_KEY_HEADER = 'x-goog-api-key';
+
 /** Interval between Gemini File API status polls, in milliseconds. */
 export const GEMINI_FILE_POLL_INTERVAL_MS = 1500;
 
 /**
- * Maximum time to wait for an uploaded Gemini file to leave the PROCESSING
- * state before giving up, in milliseconds.
+ * Floor for the time to wait for an uploaded Gemini file to leave the
+ * PROCESSING state, in milliseconds. Small files are usually ready within
+ * this; larger uploads scale up from here (see {@link GEMINI_FILE_MAX_WAIT_MS}).
  */
-export const GEMINI_FILE_MAX_WAIT_MS = 2 * 60_000;
+export const GEMINI_FILE_MIN_WAIT_MS = 2 * 60_000;
+
+/**
+ * Ceiling for the processing wait, in milliseconds. A near-2 GB upload can
+ * take several minutes to become ACTIVE, so the wait scales with size up to
+ * this cap rather than aborting a healthy large file at the floor.
+ */
+export const GEMINI_FILE_MAX_WAIT_MS = 20 * 60_000;
+
+/**
+ * Bytes of upload per millisecond added to {@link GEMINI_FILE_MIN_WAIT_MS} when
+ * scaling the processing wait with file size. Deliberately conservative so a
+ * large file is not aborted prematurely; the wait is still capped at
+ * {@link GEMINI_FILE_MAX_WAIT_MS}.
+ */
+export const GEMINI_FILE_WAIT_BYTES_PER_MS = 2048;
+
+/**
+ * Thinking budget that turns Gemini's chain-of-thought off. Transcription and
+ * transcript post-processing are deterministic and gain nothing from thinking,
+ * while thinking tokens otherwise consume the output-token budget and can
+ * truncate or empty the result. Flash-family models accept 0; Gemini 2.5 Pro
+ * cannot disable thinking, see {@link GEMINI_PRO_MIN_THINKING_BUDGET}.
+ */
+export const GEMINI_THINKING_BUDGET_OFF = 0;
+
+/**
+ * Minimum thinking budget for Gemini 2.5 Pro, which cannot disable thinking and
+ * rejects a budget of 0. Applied so a Pro selection still caps thinking at the
+ * floor instead of letting the dynamic budget consume the output budget.
+ */
+export const GEMINI_PRO_MIN_THINKING_BUDGET = 128;
 
 /** Default OpenAI-compatible chat base URL for LLM post-processing. */
 export const DEFAULT_LLM_OPENAI_BASE_URL = 'https://api.openai.com/v1';

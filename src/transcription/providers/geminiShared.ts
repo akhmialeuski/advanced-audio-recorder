@@ -1,15 +1,74 @@
 /**
- * Shared parsing of a Gemini `generateContent` response, used by both the
- * transcription mapper and the LLM text extractor. Centralizes the candidate
- * narrowing so a fix to the response shape applies to both consumers, and
- * exposes the finish reason so callers can detect a truncated response.
+ * Shared Gemini `generateContent` helpers used by both the transcription
+ * provider and the LLM provider: request building (endpoint URL, thinking
+ * config) and response parsing (candidate text, finish reason, and guards that
+ * turn a truncated or blocked response into a clear error). Centralizing this
+ * keeps a fix to the request or response shape applied to both consumers.
  * @module transcription/providers/geminiShared
  */
 
 import { isRecord } from './responseUtils';
+import { trimTrailingSlash } from '../httpClient';
+import {
+	GEMINI_PRO_MIN_THINKING_BUDGET,
+	GEMINI_THINKING_BUDGET_OFF,
+} from '../../constants';
 
 /** Finish reason set when the model stops because it hit the output token cap. */
 export const GEMINI_FINISH_MAX_TOKENS = 'MAX_TOKENS';
+
+/**
+ * Substring that identifies a Gemini Pro model id. Pro cannot disable thinking
+ * (it rejects a 0 budget), so it is given the minimum budget instead.
+ */
+const GEMINI_PRO_MODEL_MARKER = 'pro';
+
+/**
+ * Terminal finish reasons that mean the model produced no usable output (a
+ * safety/recitation/policy stop rather than a normal completion). MAX_TOKENS is
+ * handled separately by {@link assertGeminiNotTruncated}.
+ */
+export const GEMINI_BLOCKING_FINISH_REASONS: ReadonlySet<string> = new Set([
+	'SAFETY',
+	'RECITATION',
+	'BLOCKLIST',
+	'PROHIBITED_CONTENT',
+	'SPII',
+]);
+
+/**
+ * Builds the `generateContent` endpoint URL for a model. The base URL carries
+ * no version segment, so the `/v1beta/models/{model}:generateContent` path is
+ * appended here.
+ * @param baseUrl - Gemini base URL (no version segment)
+ * @param model - Gemini model id
+ * @returns The full generateContent URL
+ */
+export function geminiGenerateContentUrl(
+	baseUrl: string,
+	model: string,
+): string {
+	return `${trimTrailingSlash(baseUrl)}/v1beta/models/${model}:generateContent`;
+}
+
+/**
+ * Builds the `thinkingConfig` for a deterministic Gemini request (transcription
+ * or post-processing), neither of which benefits from chain-of-thought. Turns
+ * thinking off for flash-family models; Gemini 2.5 Pro cannot disable it and
+ * rejects a 0 budget, so it gets the minimum supported budget instead.
+ * @param model - Gemini model id
+ * @returns A thinkingConfig object for generationConfig
+ */
+export function geminiThinkingConfig(model: string): {
+	thinkingBudget: number;
+} {
+	const isPro = model.toLowerCase().includes(GEMINI_PRO_MODEL_MARKER);
+	return {
+		thinkingBudget: isPro
+			? GEMINI_PRO_MIN_THINKING_BUDGET
+			: GEMINI_THINKING_BUDGET_OFF,
+	};
+}
 
 /**
  * Concatenates the `text` parts of the first candidate's content, or returns
@@ -69,6 +128,45 @@ export function assertGeminiNotTruncated(body: unknown): void {
 			'Gemini stopped because it reached its output token limit, so the ' +
 				'response is incomplete. Use a shorter input, raise the max ' +
 				'output tokens, or pick a model with a larger output limit.',
+		);
+	}
+}
+
+/**
+ * Reads `promptFeedback.blockReason`, set when Gemini rejects the request
+ * before generating (e.g. a safety filter on the prompt or audio).
+ * @param body - Parsed JSON `generateContent` response
+ * @returns The block reason string, or undefined when not blocked
+ */
+function geminiPromptBlockReason(body: unknown): string | undefined {
+	if (!isRecord(body) || !isRecord(body.promptFeedback)) {
+		return undefined;
+	}
+	const reason = body.promptFeedback.blockReason;
+	return typeof reason === 'string' ? reason : undefined;
+}
+
+/**
+ * Throws a clear error when Gemini returned no usable content for a terminal
+ * reason other than truncation — a prompt-level block or a safety/recitation/
+ * policy stop. Without this such a response maps to an empty transcript or an
+ * empty post-processing result with no explanation. Pair with
+ * {@link assertGeminiNotTruncated}, which covers the MAX_TOKENS case.
+ * @param body - Parsed JSON `generateContent` response
+ */
+export function assertGeminiNotBlocked(body: unknown): void {
+	const blockReason = geminiPromptBlockReason(body);
+	if (blockReason) {
+		throw new Error(
+			`Gemini blocked the request (${blockReason}) and returned no ` +
+				'output. Adjust the input or check the provider content policy.',
+		);
+	}
+	const reason = geminiFinishReason(body);
+	if (reason && GEMINI_BLOCKING_FINISH_REASONS.has(reason)) {
+		throw new Error(
+			`Gemini stopped without usable output (${reason}). Adjust the ` +
+				'input or check the provider content policy.',
 		);
 	}
 }

@@ -8,9 +8,14 @@
 
 import {
 	deleteFile,
+	fileProcessingWaitMs,
 	uploadFile,
 	waitUntilActive,
 } from 'src/transcription/providers/geminiFileApi';
+import {
+	GEMINI_FILE_MAX_WAIT_MS,
+	GEMINI_FILE_MIN_WAIT_MS,
+} from 'src/constants';
 import { __setRequestUrlHandler, type MockRequestUrlParam } from 'obsidian';
 
 const BASE_URL = 'https://gemini.example';
@@ -170,5 +175,26 @@ describe('deleteFile', () => {
 		expect(seen?.method).toBe('DELETE');
 		expect(seen?.url).toBe(`${BASE_URL}/v1beta/files/x`);
 		expect(seen?.headers?.['x-goog-api-key']).toBe(API_KEY);
+	});
+});
+
+describe('fileProcessingWaitMs', () => {
+	it('uses the floor for a tiny file', () => {
+		expect(fileProcessingWaitMs(0)).toBe(GEMINI_FILE_MIN_WAIT_MS);
+		expect(fileProcessingWaitMs(1024)).toBeGreaterThanOrEqual(
+			GEMINI_FILE_MIN_WAIT_MS,
+		);
+	});
+
+	it('scales above the floor for a large file', () => {
+		const wait = fileProcessingWaitMs(500 * 1024 * 1024);
+		expect(wait).toBeGreaterThan(GEMINI_FILE_MIN_WAIT_MS);
+		expect(wait).toBeLessThanOrEqual(GEMINI_FILE_MAX_WAIT_MS);
+	});
+
+	it('caps a very large file at the ceiling', () => {
+		expect(fileProcessingWaitMs(8 * 1024 * 1024 * 1024)).toBe(
+			GEMINI_FILE_MAX_WAIT_MS,
+		);
 	});
 });

@@ -8,17 +8,28 @@
  */
 
 import {
+	GEMINI_API_KEY_HEADER,
 	GEMINI_AUDIO_MIME_TYPES,
 	MIME_TYPE_AUDIO_PREFIX,
 	TRANSCRIBE_SAMPLE_RATE,
 	TRANSCRIPTION_PROVIDER_IDS,
 } from '../../constants';
 import { decodeToMono16k, encodeMonoWav } from '../audioChunks';
-import { requestJson, trimTrailingSlash, uploadTimeoutMs } from '../httpClient';
+import { requestJson, uploadTimeoutMs } from '../httpClient';
 import { GEMINI_CAPABILITIES } from './capabilities';
-import { deleteFile, uploadFile, waitUntilActive } from './geminiFileApi';
+import {
+	deleteFile,
+	fileProcessingWaitMs,
+	uploadFile,
+	waitUntilActive,
+} from './geminiFileApi';
 import { mapGeminiResponse } from './geminiResponse';
-import { assertGeminiNotTruncated } from './geminiShared';
+import {
+	assertGeminiNotBlocked,
+	assertGeminiNotTruncated,
+	geminiGenerateContentUrl,
+	geminiThinkingConfig,
+} from './geminiShared';
 import type { WhisperResult } from './whisperResponse';
 import type {
 	AudioPayload,
@@ -120,12 +131,16 @@ export class GeminiProvider implements TranscriptionProvider {
 				this.config.baseUrl,
 				this.config.apiKey,
 				file.name,
+				fileProcessingWaitMs(data.byteLength),
 			);
-			const url = `${trimTrailingSlash(this.config.baseUrl)}/v1beta/models/${this.config.model}:generateContent`;
+			const url = geminiGenerateContentUrl(
+				this.config.baseUrl,
+				this.config.model,
+			);
 			const json = await requestJson({
 				url,
 				method: 'POST',
-				headers: { 'x-goog-api-key': this.config.apiKey },
+				headers: { [GEMINI_API_KEY_HEADER]: this.config.apiKey },
 				contentType: 'application/json',
 				body: JSON.stringify({
 					contents: [
@@ -141,15 +156,21 @@ export class GeminiProvider implements TranscriptionProvider {
 						temperature: 0,
 						responseMimeType: 'application/json',
 						responseSchema: TRANSCRIPT_SCHEMA,
+						// Transcription is deterministic; disabling thinking
+						// frees the whole output budget for the transcript and
+						// avoids MAX_TOKENS truncation.
+						thinkingConfig: geminiThinkingConfig(this.config.model),
 					},
 				}),
 				// The file is already uploaded; the byte size is only a proxy
 				// for how long Gemini may take to transcribe the audio.
 				timeoutMs: uploadTimeoutMs(data.byteLength),
 			});
-			// A truncated (MAX_TOKENS) response yields invalid JSON that would
-			// otherwise map to an empty transcript with no explanation.
+			// A truncated (MAX_TOKENS) response yields invalid JSON, and a
+			// safety/policy block yields no candidate; both would otherwise map
+			// to an empty transcript with no explanation.
 			assertGeminiNotTruncated(json);
+			assertGeminiNotBlocked(json);
 			return mapGeminiResponse(json, options.diarize);
 		} finally {
 			// Best-effort cleanup; a left-over file expires on Google's side.

@@ -1,14 +1,18 @@
 /**
- * Tests for the shared Gemini response helpers: concatenating the candidate
- * text parts, reading the finish reason, and the truncation guard that turns a
- * MAX_TOKENS stop into a clear error (so a thinking-model output overrun is not
- * silently mapped to an empty transcript or post-processing result).
+ * Tests for the shared Gemini helpers: request building (endpoint URL and the
+ * per-model thinking config) and response parsing (candidate text, finish
+ * reason, the truncation guard, and the block guard) — so a thinking-model
+ * overrun or a safety stop is surfaced rather than silently mapped to an empty
+ * transcript or post-processing result.
  */
 
 import {
+	assertGeminiNotBlocked,
 	assertGeminiNotTruncated,
 	geminiCandidateText,
 	geminiFinishReason,
+	geminiGenerateContentUrl,
+	geminiThinkingConfig,
 	GEMINI_FINISH_MAX_TOKENS,
 } from 'src/transcription/providers/geminiShared';
 
@@ -64,5 +68,72 @@ describe('assertGeminiNotTruncated', () => {
 			}),
 		).not.toThrow();
 		expect(() => assertGeminiNotTruncated({})).not.toThrow();
+	});
+});
+
+describe('assertGeminiNotBlocked', () => {
+	it('throws on a prompt-level block reason', () => {
+		expect(() =>
+			assertGeminiNotBlocked({
+				promptFeedback: { blockReason: 'SAFETY' },
+			}),
+		).toThrow(/blocked the request \(SAFETY\)/i);
+	});
+
+	it('throws on a safety/recitation finish reason', () => {
+		expect(() =>
+			assertGeminiNotBlocked({
+				candidates: [{ finishReason: 'RECITATION' }],
+			}),
+		).toThrow(/without usable output \(RECITATION\)/i);
+	});
+
+	it('does not throw for a normal stop, MAX_TOKENS, or an empty body', () => {
+		expect(() =>
+			assertGeminiNotBlocked({ candidates: [{ finishReason: 'STOP' }] }),
+		).not.toThrow();
+		// MAX_TOKENS is the truncation guard's responsibility, not this one.
+		expect(() =>
+			assertGeminiNotBlocked({
+				candidates: [{ finishReason: GEMINI_FINISH_MAX_TOKENS }],
+			}),
+		).not.toThrow();
+		expect(() => assertGeminiNotBlocked({})).not.toThrow();
+	});
+});
+
+describe('geminiGenerateContentUrl', () => {
+	it('appends the v1beta generateContent path to the base URL', () => {
+		expect(
+			geminiGenerateContentUrl('https://gen.example', 'gemini-2.5-flash'),
+		).toBe(
+			'https://gen.example/v1beta/models/gemini-2.5-flash:generateContent',
+		);
+	});
+
+	it('trims a trailing slash on the base URL', () => {
+		expect(geminiGenerateContentUrl('https://gen.example/', 'm')).toBe(
+			'https://gen.example/v1beta/models/m:generateContent',
+		);
+	});
+});
+
+describe('geminiThinkingConfig', () => {
+	it('turns thinking off for flash-family models', () => {
+		expect(geminiThinkingConfig('gemini-2.5-flash')).toEqual({
+			thinkingBudget: 0,
+		});
+		expect(geminiThinkingConfig('gemini-2.0-flash')).toEqual({
+			thinkingBudget: 0,
+		});
+	});
+
+	it('uses the minimum budget for Pro models, which cannot disable thinking', () => {
+		expect(geminiThinkingConfig('gemini-2.5-pro')).toEqual({
+			thinkingBudget: 128,
+		});
+		expect(geminiThinkingConfig('GEMINI-2.5-PRO')).toEqual({
+			thinkingBudget: 128,
+		});
 	});
 });

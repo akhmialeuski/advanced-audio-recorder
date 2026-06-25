@@ -9,8 +9,11 @@
  */
 
 import {
+	GEMINI_API_KEY_HEADER,
 	GEMINI_FILE_MAX_WAIT_MS,
+	GEMINI_FILE_MIN_WAIT_MS,
 	GEMINI_FILE_POLL_INTERVAL_MS,
+	GEMINI_FILE_WAIT_BYTES_PER_MS,
 } from '../../constants';
 import {
 	HttpError,
@@ -21,6 +24,21 @@ import {
 } from '../httpClient';
 import { delay } from '../../utils/TimeUtils';
 import { isRecord } from './responseUtils';
+
+/**
+ * Scales the processing wait with the uploaded size: a near-2 GB file can take
+ * several minutes to become ACTIVE, so the budget grows from a floor up to a
+ * cap rather than aborting a healthy large upload too early. Mirrors the
+ * size-scaling the request timeouts use.
+ * @param byteLength - Size of the uploaded bytes
+ * @returns Maximum wait in milliseconds
+ */
+export function fileProcessingWaitMs(byteLength: number): number {
+	const scaled =
+		GEMINI_FILE_MIN_WAIT_MS +
+		Math.ceil(byteLength / GEMINI_FILE_WAIT_BYTES_PER_MS);
+	return Math.min(scaled, GEMINI_FILE_MAX_WAIT_MS);
+}
 
 /** A reference to a file uploaded to the Gemini File API. */
 export interface GeminiFile {
@@ -102,7 +120,7 @@ export async function uploadFile(
 		url: `${base}/upload/v1beta/files`,
 		method: 'POST',
 		headers: {
-			'x-goog-api-key': apiKey,
+			[GEMINI_API_KEY_HEADER]: apiKey,
 			'X-Goog-Upload-Protocol': 'resumable',
 			'X-Goog-Upload-Command': 'start',
 			'X-Goog-Upload-Header-Content-Length': numBytes,
@@ -138,20 +156,24 @@ export async function uploadFile(
  * @param baseUrl - Gemini base URL (no version segment)
  * @param apiKey - Gemini API key
  * @param fileName - File resource name (e.g. "files/abc-123")
+ * @param maxWaitMs - Overall wait budget; defaults to the floor. Callers that
+ *   know the upload size should pass {@link fileProcessingWaitMs} so large
+ *   files are not aborted prematurely.
  */
 export async function waitUntilActive(
 	baseUrl: string,
 	apiKey: string,
 	fileName: string,
+	maxWaitMs: number = GEMINI_FILE_MIN_WAIT_MS,
 ): Promise<void> {
 	const base = trimTrailingSlash(baseUrl);
-	const deadline = Date.now() + GEMINI_FILE_MAX_WAIT_MS;
+	const deadline = Date.now() + maxWaitMs;
 	for (;;) {
 		const file = parseFile(
 			await requestJson<unknown>({
 				url: `${base}/v1beta/${fileName}`,
 				method: 'GET',
-				headers: { 'x-goog-api-key': apiKey },
+				headers: { [GEMINI_API_KEY_HEADER]: apiKey },
 			}),
 		);
 		if (file.state === FILE_STATE_ACTIVE) {
@@ -188,6 +210,6 @@ export async function deleteFile(
 	await requestRaw({
 		url: `${trimTrailingSlash(baseUrl)}/v1beta/${fileName}`,
 		method: 'DELETE',
-		headers: { 'x-goog-api-key': apiKey },
+		headers: { [GEMINI_API_KEY_HEADER]: apiKey },
 	});
 }

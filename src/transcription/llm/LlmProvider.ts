@@ -5,7 +5,11 @@
  * @module transcription/llm/LlmProvider
  */
 
-import { ANTHROPIC_API_VERSION, LLM_REQUEST_TIMEOUT_MS } from '../../constants';
+import {
+	ANTHROPIC_API_VERSION,
+	GEMINI_API_KEY_HEADER,
+	LLM_REQUEST_TIMEOUT_MS,
+} from '../../constants';
 import { requestJson, trimTrailingSlash } from '../httpClient';
 import type { LlmPrompt } from '../llmPostProcess';
 import {
@@ -13,7 +17,12 @@ import {
 	extractGeminiText,
 	extractOpenAiText,
 } from './llmResponse';
-import { assertGeminiNotTruncated } from '../providers/geminiShared';
+import {
+	assertGeminiNotBlocked,
+	assertGeminiNotTruncated,
+	geminiGenerateContentUrl,
+	geminiThinkingConfig,
+} from '../providers/geminiShared';
 
 /** A provider that completes a single prompt and returns text. */
 export interface LlmProvider {
@@ -112,23 +121,32 @@ export class GeminiLlmProvider implements LlmProvider {
 	constructor(private readonly config: LlmConfig) {}
 
 	async complete(prompt: LlmPrompt, maxTokens: number): Promise<string> {
-		const url = `${trimTrailingSlash(this.config.baseUrl)}/v1beta/models/${this.config.model}:generateContent`;
+		const url = geminiGenerateContentUrl(
+			this.config.baseUrl,
+			this.config.model,
+		);
 		const json = await requestJson({
 			url,
 			method: 'POST',
-			headers: { 'x-goog-api-key': this.config.apiKey },
+			headers: { [GEMINI_API_KEY_HEADER]: this.config.apiKey },
 			contentType: 'application/json',
 			body: JSON.stringify({
 				systemInstruction: { parts: [{ text: prompt.system }] },
 				contents: [{ role: 'user', parts: [{ text: prompt.user }] }],
-				generationConfig: { maxOutputTokens: maxTokens },
+				generationConfig: {
+					maxOutputTokens: maxTokens,
+					// Cleanup/summary is deterministic; thinking would otherwise
+					// consume maxOutputTokens and truncate or empty the answer.
+					thinkingConfig: geminiThinkingConfig(this.config.model),
+				},
 			}),
 			timeoutMs: LLM_REQUEST_TIMEOUT_MS,
 		});
-		// Gemini 2.5 models spend the output budget on thinking too, so a low
-		// max-tokens can truncate the answer; fail loudly instead of returning
-		// a partial or empty result that silently replaces the transcript.
+		// A MAX_TOKENS stop yields a partial/empty answer; a safety/policy block
+		// yields no candidate. Fail loudly instead of silently replacing the
+		// transcript with a truncated or empty result.
 		assertGeminiNotTruncated(json);
+		assertGeminiNotBlocked(json);
 		return extractGeminiText(json);
 	}
 }
