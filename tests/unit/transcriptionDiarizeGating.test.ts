@@ -114,3 +114,70 @@ describe('TranscriptionService diarization gating', () => {
 		expect(provider.lastOptions?.diarize).toBe(false);
 	});
 });
+
+/**
+ * A whole-file provider that returns a segment already carrying a speaker
+ * label, to prove the output drops speakers when diarization is not in
+ * effect even if the provider supplied one.
+ */
+function makeSpeakerProvider(): TranscriptionProvider {
+	return {
+		id: 'fake',
+		label: 'Fake',
+		requiresNetwork: false,
+		capabilities: {
+			maxRequestBytes: Number.POSITIVE_INFINITY,
+			maxRequestSeconds: Number.POSITIVE_INFINITY,
+			acceptsOriginalContainer: true,
+			supportsDiarization: true,
+		},
+		transcribe: jest.fn(async () => ({
+			segments: [{ start: 0, end: 1, text: 'hi', speaker: 'Speaker 1' }],
+		})),
+	};
+}
+
+async function runMarkdown(
+	engineId: TranscriptionProviderId,
+	diarizeSetting: boolean,
+): Promise<string> {
+	const service = new TranscriptionService(
+		makeApp(),
+		() =>
+			mergeSettings({
+				transcriptionProvider: engineId,
+				transcriptionDiarize: diarizeSetting,
+			}),
+		{ createProvider: () => makeSpeakerProvider() },
+	);
+	const result = await service.run(audioFile, {
+		notePathForLinks: 'note.md',
+	});
+	return result.markdown;
+}
+
+describe('TranscriptionService speaker output gating', () => {
+	it('omits speaker labels for a non-diarizing engine, even if the provider returns one', async () => {
+		const markdown = await runMarkdown(
+			TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			true,
+		);
+		expect(markdown).not.toContain('Speaker 1');
+	});
+
+	it('omits speaker labels when a capable engine has diarization disabled', async () => {
+		const markdown = await runMarkdown(
+			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			false,
+		);
+		expect(markdown).not.toContain('Speaker 1');
+	});
+
+	it('keeps speaker labels for a diarizing engine when enabled', async () => {
+		const markdown = await runMarkdown(
+			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			true,
+		);
+		expect(markdown).toContain('Speaker 1');
+	});
+});

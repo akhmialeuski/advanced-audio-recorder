@@ -9,6 +9,7 @@
 /** @jest-environment jsdom */
 
 import {
+	addText,
 	addToggle,
 	SETTING_DISABLED_CLASS,
 	type SettingsSectionContext,
@@ -20,6 +21,7 @@ interface SettingCapture {
 	name: string;
 	el: HTMLElement;
 	toggle: { value: boolean; disabled: boolean } | null;
+	text: { value: string; disabled: boolean } | null;
 }
 const captured: SettingCapture[] = [];
 
@@ -33,7 +35,7 @@ jest.mock('obsidian', () => ({
 				c,
 			) => el.classList.add(c);
 			this.settingEl = el;
-			this.cap = { name: '', el, toggle: null };
+			this.cap = { name: '', el, toggle: null, text: null };
 			captured.push(this.cap);
 		}
 		setName(name: string): this {
@@ -41,6 +43,36 @@ jest.mock('obsidian', () => ({
 			return this;
 		}
 		setDesc(): this {
+			return this;
+		}
+		addText(
+			callback: (text: {
+				value: string;
+				disabled: boolean;
+				inputEl: { type: string };
+				setValue: (v: string) => unknown;
+				onChange: (h: (v: string) => void) => unknown;
+				setDisabled: (d: boolean) => unknown;
+			}) => void,
+		): this {
+			const text = {
+				value: '',
+				disabled: false,
+				inputEl: { type: 'text' },
+				setValue(v: string) {
+					this.value = v;
+					return this;
+				},
+				onChange() {
+					return this;
+				},
+				setDisabled(d: boolean) {
+					this.disabled = d;
+					return this;
+				},
+			};
+			callback(text);
+			this.cap.text = text;
 			return this;
 		}
 		addToggle(
@@ -118,5 +150,41 @@ describe('addToggle disabled rendering', () => {
 		);
 		expect(setting.toggle?.disabled).toBe(false);
 		expect(setting.toggle?.value).toBe(true);
+	});
+});
+
+describe('addText disabled rendering', () => {
+	beforeEach(() => {
+		captured.length = 0;
+	});
+
+	it('dims the row and disables the input when disabled', () => {
+		addText(makeCtx(), {
+			name: 'Speaker format',
+			get: () => '**{speaker}**',
+			set: () => undefined,
+			disabled: true,
+		});
+
+		const setting = captured[0];
+		expect(setting.el.classList.contains(SETTING_DISABLED_CLASS)).toBe(
+			true,
+		);
+		expect(setting.text?.disabled).toBe(true);
+	});
+
+	it('leaves an enabled input interactive and undimmed', () => {
+		addText(makeCtx(), {
+			name: 'Speaker format',
+			get: () => '**{speaker}**',
+			set: () => undefined,
+		});
+
+		const setting = captured[0];
+		expect(setting.el.classList.contains(SETTING_DISABLED_CLASS)).toBe(
+			false,
+		);
+		expect(setting.text?.disabled).toBe(false);
+		expect(setting.text?.value).toBe('**{speaker}**');
 	});
 });

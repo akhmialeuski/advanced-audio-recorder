@@ -297,12 +297,22 @@ export class TranscriptionService {
 	private markdownOptions(
 		settings: AudioRecorderSettings,
 	): TranscriptMarkdownOptions {
+		// Without effective diarization there are no speaker labels, so the
+		// speaker-related options must not take effect even if stored "on" —
+		// otherwise a leftover setting (or a provider that returns labels it was
+		// not asked for) could leak speaker prefixes the UI says are off. This is
+		// the output-side half of disabling those controls in the settings tab.
+		const diarizes = effectiveDiarize(
+			settings.transcriptionProvider,
+			settings.transcriptionDiarize,
+		);
 		return {
 			...DEFAULT_TRANSCRIPT_MARKDOWN_OPTIONS,
 			includeTimestamps: settings.transcriptIncludeTimestamps,
 			timestampLinks: settings.transcriptTimestampLinks,
-			includeSpeakers: settings.transcriptIncludeSpeakers,
-			mergeConsecutiveSpeaker: settings.transcriptMergeConsecutiveSpeaker,
+			includeSpeakers: diarizes && settings.transcriptIncludeSpeakers,
+			mergeConsecutiveSpeaker:
+				diarizes && settings.transcriptMergeConsecutiveSpeaker,
 			timestampFormat: settings.transcriptTimestampFormat,
 			speakerFormat: settings.transcriptSpeakerFormat,
 			lineFormat: settings.transcriptLineFormat,

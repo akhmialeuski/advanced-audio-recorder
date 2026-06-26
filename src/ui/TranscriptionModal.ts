@@ -224,6 +224,12 @@ export class TranscriptionModal extends Modal {
 			set: (v) => (s.transcriptionLanguage = v.trim() || 'auto'),
 		});
 		const canDiarize = providerSupportsDiarization(s.transcriptionProvider);
+		// Whether speaker labels will actually be produced for this run; gates the
+		// Include speakers toggle below the same way it gates the toggle itself.
+		const diarizes = effectiveDiarize(
+			s.transcriptionProvider,
+			s.transcriptionDiarize,
+		);
 		addToggle(ctx, {
 			name: 'Speaker diarization',
 			desc: canDiarize
@@ -238,6 +244,9 @@ export class TranscriptionModal extends Modal {
 				),
 			set: (v) => (s.transcriptionDiarize = v),
 			disabled: !canDiarize,
+			// Re-render so the Include speakers toggle below tracks this one:
+			// without diarization there are no speaker labels to include.
+			rerender: true,
 		});
 		addToggle(ctx, {
 			name: 'Word-level timestamps',
@@ -276,8 +285,12 @@ export class TranscriptionModal extends Modal {
 			});
 			addToggle(ctx, {
 				name: 'Include speakers',
+				desc: diarizes
+					? undefined
+					: 'Available only with speaker diarization.',
 				get: () => s.transcriptIncludeSpeakers,
 				set: (v) => (s.transcriptIncludeSpeakers = v),
+				disabled: !diarizes,
 			});
 		}
 

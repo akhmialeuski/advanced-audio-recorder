@@ -74,6 +74,13 @@ export interface TextControlConfig {
 	secret?: boolean;
 	/** Optional "learn more" link appended to the description. */
 	helpLink?: HelpLink;
+	/**
+	 * Render the input non-interactive and dim the row. Used for a template the
+	 * current selection cannot use (e.g. the speaker label format on a run that
+	 * cannot diarize), so the control stays visible and explained rather than
+	 * editable but inert.
+	 */
+	disabled?: boolean;
 }
 
 /** Adds a text input bound to a getter/setter with a debounced save. */
@@ -96,7 +103,15 @@ export function addText(
 			config.set(value);
 			ctx.saveDebounced();
 		});
+		if (config.disabled) {
+			text.setDisabled(true);
+		}
 	});
+	if (config.disabled) {
+		// Dim the whole row so a non-interactive input reads as unavailable, not
+		// merely empty — mirrors the disabled rendering used by addToggle.
+		setting.settingEl.addClass(SETTING_DISABLED_CLASS);
+	}
 }
 
 /** Configuration for a toggle control. */
