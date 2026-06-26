@@ -19,6 +19,10 @@ import {
 	type TranscriptionProviderId,
 } from 'src/settings/Settings';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
+import type {
+	Transcript,
+	TranscriptSegment,
+} from 'src/transcription/TranscriptTypes';
 
 const audioFile = {
 	name: 'rec.webm',
@@ -31,7 +35,9 @@ const audioFile = {
  * capabilities only steer audio preparation; whether diarization is requested
  * is decided from the configured engine id, not this stub.
  */
-function makeProvider(): TranscriptionProvider & {
+function makeProvider(
+	segments: TranscriptSegment[] = [{ start: 0, end: 1, text: 'hi' }],
+): TranscriptionProvider & {
 	lastOptions: TranscribeOptions | null;
 } {
 	const provider = {
@@ -47,7 +53,7 @@ function makeProvider(): TranscriptionProvider & {
 		lastOptions: null as TranscribeOptions | null,
 		transcribe: jest.fn(async (_payload, options: TranscribeOptions) => {
 			provider.lastOptions = options;
-			return { segments: [{ start: 0, end: 1, text: 'hi' }] };
+			return { segments };
 		}),
 	};
 	return provider;
@@ -116,31 +122,17 @@ describe('TranscriptionService diarization gating', () => {
 });
 
 /**
- * A whole-file provider that returns a segment already carrying a speaker
- * label, to prove the output drops speakers when diarization is not in
- * effect even if the provider supplied one.
+ * Runs a transcription with a provider that returns a segment already
+ * carrying a speaker label, to prove speakers are dropped from every output
+ * when diarization is not in effect even if the provider supplied one.
  */
-function makeSpeakerProvider(): TranscriptionProvider {
-	return {
-		id: 'fake',
-		label: 'Fake',
-		requiresNetwork: false,
-		capabilities: {
-			maxRequestBytes: Number.POSITIVE_INFINITY,
-			maxRequestSeconds: Number.POSITIVE_INFINITY,
-			acceptsOriginalContainer: true,
-			supportsDiarization: true,
-		},
-		transcribe: jest.fn(async () => ({
-			segments: [{ start: 0, end: 1, text: 'hi', speaker: 'Speaker 1' }],
-		})),
-	};
-}
-
-async function runMarkdown(
+async function runWithSpeaker(
 	engineId: TranscriptionProviderId,
 	diarizeSetting: boolean,
-): Promise<string> {
+): Promise<{ markdown: string; transcript: Transcript }> {
+	const segments: TranscriptSegment[] = [
+		{ start: 0, end: 1, text: 'hi', speaker: 'Speaker 1' },
+	];
 	const service = new TranscriptionService(
 		makeApp(),
 		() =>
@@ -148,36 +140,41 @@ async function runMarkdown(
 				transcriptionProvider: engineId,
 				transcriptionDiarize: diarizeSetting,
 			}),
-		{ createProvider: () => makeSpeakerProvider() },
+		{ createProvider: () => makeProvider(segments) },
 	);
-	const result = await service.run(audioFile, {
-		notePathForLinks: 'note.md',
-	});
-	return result.markdown;
+	return service.run(audioFile, { notePathForLinks: 'note.md' });
 }
 
 describe('TranscriptionService speaker output gating', () => {
 	it('omits speaker labels for a non-diarizing engine, even if the provider returns one', async () => {
-		const markdown = await runMarkdown(
+		const { markdown, transcript } = await runWithSpeaker(
 			TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
 			true,
 		);
 		expect(markdown).not.toContain('Speaker 1');
+		// Speakers are stripped from the canonical transcript, so the sidecar
+		// file/JSON output stays consistent with the note Markdown.
+		expect(transcript.speakers).toEqual([]);
+		expect(transcript.segments.every((s) => s.speaker === undefined)).toBe(
+			true,
+		);
 	});
 
 	it('omits speaker labels when a capable engine has diarization disabled', async () => {
-		const markdown = await runMarkdown(
+		const { markdown, transcript } = await runWithSpeaker(
 			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 			false,
 		);
 		expect(markdown).not.toContain('Speaker 1');
+		expect(transcript.speakers).toEqual([]);
 	});
 
 	it('keeps speaker labels for a diarizing engine when enabled', async () => {
-		const markdown = await runMarkdown(
+		const { markdown, transcript } = await runWithSpeaker(
 			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 			true,
 		);
 		expect(markdown).toContain('Speaker 1');
+		expect(transcript.speakers).toEqual(['Speaker 1']);
 	});
 });
