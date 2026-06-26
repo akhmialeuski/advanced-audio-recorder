@@ -19,33 +19,12 @@ import {
 	FORMAT_AAC,
 	FORMAT_FLAC,
 	MIME_TYPE_AUDIO_PREFIX,
+	MIN_AUDIO_BYTES_PER_SEC,
+	TRANSCRIBE_BYTES_PER_SEC,
 	TRANSCRIBE_SAMPLE_RATE,
 } from '../constants';
 import { decodeToMono16k, extractChunkWav, planChunks } from './audioChunks';
 import type { ProviderCapabilities } from './providers/TranscriptionProvider';
-
-/** Bytes in one megabyte, for human-readable size messages. */
-const BYTES_PER_MB = 1024 * 1024;
-
-/**
- * Raised when a file is too large to send whole to a provider that
- * diarizes across an entire request, so it would have to be chunked —
- * which resets speaker numbering per chunk. Refusing is preferable to
- * silently producing inconsistent speaker labels.
- */
-export class WholeFileDiarizationLimitError extends Error {
-	constructor(fileBytes: number, limitBytes: number) {
-		super(
-			`This recording (${String(Math.round(fileBytes / BYTES_PER_MB))} MB) ` +
-				`is too large for diarized transcription with this provider, which ` +
-				`needs the whole file in one request (limit ` +
-				`${String(Math.round(limitBytes / BYTES_PER_MB))} MB). Disable ` +
-				`speaker diarization, split the recording, or use a provider with a ` +
-				`higher limit.`,
-		);
-		this.name = 'WholeFileDiarizationLimitError';
-	}
-}
 
 /** Maps a lowercased file extension to its upload container MIME type. */
 const EXTENSION_MIME: Record<string, string> = {
@@ -74,6 +53,13 @@ export function audioMimeFromExtension(extension: string): string {
 export interface AudioPrepOptions {
 	/** Hard per-request byte ceiling declared by the provider. */
 	maxRequestBytes: number;
+	/**
+	 * Longest recording, in seconds, the provider transcribes in one request.
+	 * A recording longer than this is decoded and split even when its bytes fit
+	 * {@link maxRequestBytes}. Number.POSITIVE_INFINITY disables the duration
+	 * gate (the whole-file decision then rests on bytes alone).
+	 */
+	maxRequestSeconds: number;
 	/** Whether the provider accepts the original container bytes. */
 	acceptsOriginalContainer: boolean;
 	/**
@@ -83,12 +69,6 @@ export interface AudioPrepOptions {
 	chunkBytes: number;
 	/** Whether speaker diarization is requested for this run. */
 	diarize: boolean;
-	/**
-	 * Whether the provider needs the whole file in one request for stable
-	 * speaker numbering. When true and diarization is requested, a file that
-	 * must be chunked is rejected rather than silently re-numbered per chunk.
-	 */
-	diarizesWholeFile: boolean;
 }
 
 /**
@@ -113,43 +93,79 @@ export interface PreparedAudio {
 	/** Ordered payloads to transcribe; segment offsets are pre-computed. */
 	payloads: PreparedPayload[];
 	/**
-	 * True when a diarized run had to be split across multiple chunks on a
-	 * provider that numbers speakers per request (not whole-file), so speaker
-	 * labels can reset between parts. The caller surfaces this to the user
-	 * rather than letting the inconsistency pass silently.
+	 * True when a diarized run had to be split across multiple parts (too large
+	 * or too long for one request), so speaker numbering can reset between parts
+	 * — every provider numbers speakers per request once the recording is split.
+	 * The caller surfaces this to the user rather than letting the inconsistency
+	 * pass silently.
 	 */
 	diarizationSplitWarning: boolean;
 }
 
 /**
- * Whether a diarized run will be split across more than one chunk on a
- * provider that does not diarize the whole request, in which case speaker
- * numbering can differ between parts. Pure so the warning condition is unit
- * tested without decoding audio.
- * @param chunkCount - Number of chunks the audio was split into
+ * Whether a diarized run was split across more than one part, in which case
+ * speaker numbering can differ between parts. Once a recording is split, every
+ * provider numbers speakers per request, so even a whole-file diarizer loses
+ * cross-part consistency. Pure so the warning condition is unit tested without
+ * decoding audio.
+ * @param chunkCount - Number of parts the audio was split into
  * @param diarize - Whether speaker diarization was requested
- * @param diarizesWholeFile - Whether the provider diarizes a whole request
- * @returns True when speaker labels may be inconsistent across chunks
+ * @returns True when speaker labels may be inconsistent across parts
  */
 export function shouldWarnDiarizationSplit(
 	chunkCount: number,
 	diarize: boolean,
-	diarizesWholeFile: boolean,
 ): boolean {
-	return diarize && !diarizesWholeFile && chunkCount > 1;
+	return diarize && chunkCount > 1;
+}
+
+/**
+ * Whether a file's byte size alone proves it is within a provider's per-request
+ * duration cap, so it can be sent whole without first decoding it to measure
+ * its true length. Uses a conservative minimum bitrate ({@link
+ * MIN_AUDIO_BYTES_PER_SEC}): below `cap * minBitrate` bytes even the most
+ * heavily compressed audio cannot exceed the cap. An infinite cap is always
+ * satisfied. A larger file is not necessarily too long — it just cannot be
+ * proven short cheaply, so it falls through to the decode path, which measures
+ * the exact duration.
+ * @param byteLength - Encoded file size in bytes
+ * @param maxRequestSeconds - Provider per-request duration cap in seconds
+ * @returns True when the byte size guarantees the recording is within the cap
+ */
+export function withinDurationCap(
+	byteLength: number,
+	maxRequestSeconds: number,
+): boolean {
+	if (!Number.isFinite(maxRequestSeconds)) {
+		return true;
+	}
+	return byteLength <= maxRequestSeconds * MIN_AUDIO_BYTES_PER_SEC;
 }
 
 /**
  * Prepares an audio file into provider-ready payloads.
  *
- * Whole-file path: when the provider accepts the original container and the
- * encoded file is within its limit, the original bytes are sent as one
- * payload — no decode, so peak memory is just the file size and any
- * whole-file diarization stays consistent.
+ * Whole-file path: when the provider accepts the original container, the
+ * encoded file is within its byte limit, and the byte size proves the
+ * recording is within the provider's per-request duration cap, the original
+ * bytes are sent as one payload — no decode, so peak memory is just the file
+ * size and any whole-file diarization stays consistent.
  *
- * Decode path: otherwise the file is decoded to 16 kHz mono and split into
- * WAV chunks bounded by `chunkBytes` (one chunk when `chunkBytes` is
- * infinite, e.g. a local engine with no upload limit).
+ * Decode path: otherwise (an unsupported container, an over-limit file, or a
+ * recording too long for one request) the file is decoded to 16 kHz mono and
+ * split into WAV chunks bounded by `chunkBytes` (a single chunk when it still
+ * fits, e.g. a duration cap the byte proxy could not rule out cheaply). A
+ * diarized split is flagged so the caller can warn that speaker numbering may
+ * reset between parts.
+ *
+ * The decode path always emits WAV, even for a single part that fits whole.
+ * Re-sending the original bytes instead would save the WAV size on an accepted
+ * compressed container, but it would force a second decode in a provider that
+ * decodes containers it does not accept (Gemini re-decodes mp4/webm) — and
+ * those are this plugin's own recording formats, the common case. Emitting WAV
+ * keeps the recorded-file path to a single decode; the only cost is a larger
+ * upload for the uncommon case of an imported accepted container (mp3/aac/…)
+ * big enough to miss the cheap whole-file proof yet short enough to fit.
  * @param raw - Encoded file bytes
  * @param fileName - Source file name (used as the upload filename)
  * @param fileMime - MIME type for the original container
@@ -164,7 +180,8 @@ export async function prepareAudio(
 ): Promise<PreparedAudio> {
 	if (
 		options.acceptsOriginalContainer &&
-		raw.byteLength <= options.maxRequestBytes
+		raw.byteLength <= options.maxRequestBytes &&
+		withinDurationCap(raw.byteLength, options.maxRequestSeconds)
 	) {
 		return {
 			payloads: [
@@ -177,16 +194,6 @@ export async function prepareAudio(
 			],
 			diarizationSplitWarning: false,
 		};
-	}
-
-	// The file must be decoded and split. A provider that diarizes across the
-	// whole request cannot keep speaker numbering stable once chunked, so
-	// refuse rather than emit a transcript with reset speakers per chunk.
-	if (options.diarize && options.diarizesWholeFile) {
-		throw new WholeFileDiarizationLimitError(
-			raw.byteLength,
-			options.maxRequestBytes,
-		);
 	}
 
 	const samples = await decodeToMono16k(raw);
@@ -204,16 +211,19 @@ export async function prepareAudio(
 		diarizationSplitWarning: shouldWarnDiarizationSplit(
 			plans.length,
 			options.diarize,
-			options.diarizesWholeFile,
 		),
 	};
 }
 
 /**
  * Computes provider-ready preparation options from capabilities and the
- * user's preferred chunk size. Network providers honor the user's chunk
- * size (bounded by the provider limit); a local provider with no upload
- * limit produces a single chunk.
+ * user's preferred chunk size. A provider with a per-request duration cap
+ * (Gemini) sizes its parts by that cap, so the whole-file threshold and the
+ * split size agree and a recording just over the cap divides into even parts;
+ * the user's byte-oriented chunk size targets the Whisper API's 25 MB request
+ * limit and does not apply. Otherwise a network provider honors the user's
+ * chunk size (bounded by the provider limit) and a local provider with no
+ * upload limit produces a single chunk.
  * @param capabilities - The provider's declared capabilities
  * @param requiresNetwork - Whether the provider uploads over the network
  * @param userChunkBytes - The user-configured chunk size in bytes
@@ -226,14 +236,19 @@ export function audioPrepOptions(
 	userChunkBytes: number,
 	diarize: boolean,
 ): AudioPrepOptions {
-	const chunkBytes = requiresNetwork
-		? Math.min(capabilities.maxRequestBytes, userChunkBytes)
-		: capabilities.maxRequestBytes;
+	const chunkBytes = Number.isFinite(capabilities.maxRequestSeconds)
+		? Math.min(
+				capabilities.maxRequestSeconds * TRANSCRIBE_BYTES_PER_SEC,
+				capabilities.maxRequestBytes,
+			)
+		: requiresNetwork
+			? Math.min(capabilities.maxRequestBytes, userChunkBytes)
+			: capabilities.maxRequestBytes;
 	return {
 		maxRequestBytes: capabilities.maxRequestBytes,
+		maxRequestSeconds: capabilities.maxRequestSeconds,
 		acceptsOriginalContainer: capabilities.acceptsOriginalContainer,
 		chunkBytes,
 		diarize,
-		diarizesWholeFile: capabilities.diarizesWholeFile,
 	};
 }

@@ -151,9 +151,10 @@ export class TranscriptionService {
 		this.throwIfCancelled(token);
 
 		if (prepared.diarizationSplitWarning) {
-			// The recording was too large to send whole and this engine numbers
-			// speakers per request, so labels can differ between parts. Tell the
-			// user rather than emitting silently inconsistent speaker labels.
+			// The recording was too long (or too large) for one request and had
+			// to be split. Every engine numbers speakers per request, so labels
+			// can differ between parts; tell the user rather than emitting
+			// silently inconsistent speaker labels.
 			new Notice(
 				'Recording was split into parts for this engine; speaker labels may ' +
 					'differ between parts. Use Deepgram or split the recording for ' +

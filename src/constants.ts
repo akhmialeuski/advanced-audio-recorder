@@ -227,6 +227,16 @@ export const TRANSCRIBE_SAMPLE_RATE = 16000;
 export const TRANSCRIBE_BYTES_PER_SEC = TRANSCRIBE_SAMPLE_RATE * 2;
 
 /**
+ * Conservative lower bound on real-world audio bitrate, in bytes per second
+ * (~8 kbps), used only as a cheap proof that a small file is short enough to
+ * send to a duration-capped provider whole without decoding it to measure its
+ * true length. Set well below any practical speech codec so a file that passes
+ * the proof (bytes <= cap * this) genuinely cannot exceed the duration cap;
+ * larger files fall through to the decode path, which measures exactly.
+ */
+export const MIN_AUDIO_BYTES_PER_SEC = 1000;
+
+/**
  * Default upload size limit per request, in megabytes, for the Whisper
  * API. OpenAI's limit is 25 MB; chunks are sized to stay under it.
  */
@@ -435,6 +445,18 @@ export const GEMINI_PRO_MIN_THINKING_BUDGET = 128;
  * above it (capped at {@link TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS}).
  */
 export const GEMINI_GENERATE_MIN_TIMEOUT_MS = 10 * 60_000;
+
+/**
+ * Longest recording, in seconds, that Gemini transcribes in a single
+ * `generateContent` request. Beyond this the audio is split into parts that
+ * are transcribed separately and stitched back onto the timeline: one request
+ * for a long meeting would otherwise outlast the request timeout and risk
+ * MAX_TOKENS truncation, since both inference time and the output transcript
+ * grow with audio duration. Sized so each part finishes comfortably within
+ * {@link GEMINI_GENERATE_MIN_TIMEOUT_MS}. Splitting resets Gemini's per-request
+ * speaker numbering, so a diarized split surfaces a warning to the user.
+ */
+export const GEMINI_MAX_WHOLE_FILE_SECONDS = 15 * 60;
 
 /**
  * LLM post-processing provider ids. The single source for the string values

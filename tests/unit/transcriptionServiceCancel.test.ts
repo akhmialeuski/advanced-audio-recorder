@@ -37,8 +37,8 @@ function makeProvider(onTranscribe: () => void): TranscriptionProvider {
 		requiresNetwork: false,
 		capabilities: {
 			maxRequestBytes: Number.POSITIVE_INFINITY,
+			maxRequestSeconds: Number.POSITIVE_INFINITY,
 			acceptsOriginalContainer: true,
-			diarizesWholeFile: false,
 			supportsDiarization: false,
 		},
 		transcribe: jest.fn(async () => {
