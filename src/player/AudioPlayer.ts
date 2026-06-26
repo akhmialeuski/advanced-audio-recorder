@@ -945,7 +945,14 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 */
 	private registerAudioEvents(): void {
 		this.registerDomEvent(this.audio, 'loadedmetadata', () => {
-			if (!Number.isFinite(this.audio.duration)) {
+			// Some plugin-produced mp4 files load with no usable duration: it
+			// reads as Infinity/NaN, or as a finite 0 (a multitrack mp4 whose
+			// container never got its real length stamped). Both leave the
+			// timeline stuck at 0:00, so probe for the true length in either case.
+			if (
+				!Number.isFinite(this.audio.duration) ||
+				this.audio.duration <= 0
+			) {
 				this.resolveInfiniteDuration();
 			} else {
 				this.renderMarkers();
@@ -970,9 +977,12 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	}
 
 	/**
-	 * Resolves a duration that the browser initially reports as Infinity
-	 * (common for MediaRecorder WebM) by probing a far seek position and
-	 * waiting for the corrected value, then restoring the start.
+	 * Resolves a duration the browser does not report up front — Infinity/NaN
+	 * (common for MediaRecorder WebM) or a finite 0 (some multitrack mp4 whose
+	 * container lacks a stamped length) — by probing a far seek position and
+	 * waiting for a real, positive value, then restoring the start. When the
+	 * seek yields no usable length the watchdog gives up and the bar stays
+	 * unseekable, so a truly length-less file degrades rather than hangs.
 	 */
 	private resolveInfiniteDuration(): void {
 		if (this.durationProbeActive) {
@@ -993,7 +1003,13 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			this.updateProgress();
 		};
 		const onDurationChange = (): void => {
-			if (Number.isFinite(this.audio.duration)) {
+			// Wait for a real, positive length: a file that loaded at 0 reports a
+			// finite-but-useless 0, so finishing on "finite" alone would lock in
+			// the bogus zero instead of the corrected duration.
+			if (
+				Number.isFinite(this.audio.duration) &&
+				this.audio.duration > 0
+			) {
 				finish();
 			}
 		};
@@ -1227,9 +1243,10 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				'--aar-progress': `${String(fraction * 100)}%`,
 			});
 		}
-		const total = Number.isFinite(this.audio.duration)
-			? this.audio.duration
-			: 0;
+		const total =
+			Number.isFinite(this.audio.duration) && this.audio.duration > 0
+				? this.audio.duration
+				: 0;
 		if (this.timeEl) {
 			// Format elapsed against the total so both sides share one width
 			this.timeEl.setText(
