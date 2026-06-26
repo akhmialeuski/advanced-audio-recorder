@@ -188,6 +188,31 @@ describe('AudioProcessingService.process (e2e pipeline)', () => {
 		);
 	});
 
+	it('segments a recording longer than one segment, writing the full length', async () => {
+		// Force a 1-second segment so this 3.5s clip is processed across four
+		// segments; the output must still cover every frame.
+		const sampleRate = 1000;
+		const numFrames = 3500;
+		const loud = new Float32Array(numFrames).fill(0.5);
+		decodeAudioData.mockResolvedValue(fakeBuffer([loud], sampleRate));
+		const { app, written } = makeApp();
+		const service = new AudioProcessingService(app, 1);
+		const path = await service.process(fakeFile('voice/long.wav'), {
+			highPass: { enabled: false, hz: 80 },
+			gate: { enabled: true, thresholdDb: -50 },
+			leveling: { enabled: false, makeupDb: 0 },
+		});
+		const buffer = written.get(path) as ArrayBuffer;
+		expect(readWavHeader(buffer).dataBytes).toBe(numFrames * 2);
+		// A frame in the final segment carries real audio (the loud input opens
+		// the gate), proving every segment's output landed in the buffer rather
+		// than leaving the tail as the initial zeros.
+		const pcm = new DataView(buffer, 44);
+		expect(
+			Math.abs(pcm.getInt16((numFrames - 1) * 2, true)),
+		).toBeGreaterThan(0);
+	});
+
 	it('rejects files larger than the byte limit before decoding', async () => {
 		const { app } = makeApp();
 		await expect(
