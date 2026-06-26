@@ -13,6 +13,7 @@ import {
 	geminiFinishReason,
 	geminiGenerateContentUrl,
 	geminiThinkingConfig,
+	geminiUsage,
 	GEMINI_FINISH_MAX_TOKENS,
 } from 'src/transcription/providers/geminiShared';
 
@@ -83,6 +84,82 @@ describe('assertGeminiNotTruncated', () => {
 			),
 		).not.toThrow();
 		expect(() => assertGeminiNotTruncated({}, REMEDY)).not.toThrow();
+	});
+
+	it('embeds the reported output and total token counts in the message', () => {
+		// The user needs to know how far the response ran before the cap.
+		expect(() =>
+			assertGeminiNotTruncated(
+				{
+					candidates: [{ finishReason: GEMINI_FINISH_MAX_TOKENS }],
+					usageMetadata: {
+						candidatesTokenCount: 65536,
+						totalTokenCount: 78000,
+					},
+				},
+				REMEDY,
+			),
+		).toThrow(/65536 output tokens, 78000 total/);
+	});
+
+	it('notes the thinking-token share when the model reports it', () => {
+		expect(() =>
+			assertGeminiNotTruncated(
+				{
+					candidates: [{ finishReason: GEMINI_FINISH_MAX_TOKENS }],
+					usageMetadata: {
+						candidatesTokenCount: 4096,
+						thoughtsTokenCount: 4000,
+						totalTokenCount: 9000,
+					},
+				},
+				REMEDY,
+			),
+		).toThrow(/4096 output tokens including 4000 on thinking/);
+	});
+
+	it('omits the usage parenthetical when no counts are reported', () => {
+		// A response without usageMetadata must still read as a clean sentence.
+		let message = '';
+		try {
+			assertGeminiNotTruncated(
+				{ candidates: [{ finishReason: GEMINI_FINISH_MAX_TOKENS }] },
+				REMEDY,
+			);
+		} catch (error) {
+			message = error instanceof Error ? error.message : String(error);
+		}
+		expect(message).toContain('output token limit, so the response');
+		expect(message).not.toContain('(');
+	});
+});
+
+describe('geminiUsage', () => {
+	it('reads the finite token counts from usageMetadata', () => {
+		expect(
+			geminiUsage({
+				usageMetadata: {
+					promptTokenCount: 10,
+					candidatesTokenCount: 20,
+					totalTokenCount: 30,
+					thoughtsTokenCount: 5,
+				},
+			}),
+		).toEqual({
+			promptTokenCount: 10,
+			candidatesTokenCount: 20,
+			totalTokenCount: 30,
+			thoughtsTokenCount: 5,
+		});
+	});
+
+	it('returns an empty object when usageMetadata is absent or malformed', () => {
+		expect(geminiUsage({})).toEqual({});
+		expect(geminiUsage(null)).toEqual({});
+		// A non-numeric count is dropped rather than coerced to a number.
+		expect(
+			geminiUsage({ usageMetadata: { candidatesTokenCount: 'lots' } }),
+		).toEqual({});
 	});
 });
 

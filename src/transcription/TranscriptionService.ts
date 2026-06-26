@@ -172,6 +172,7 @@ export class TranscriptionService {
 		const payloads = prepared.payloads;
 		const partCount = payloads.length;
 		const results: { offsetSeconds: number; transcript: Transcript }[] = [];
+		const failedParts: { label: string; message: string }[] = [];
 		for (let i = 0; i < partCount; i++) {
 			this.throwIfCancelled(token);
 			const prepPayload = payloads[i];
@@ -191,28 +192,45 @@ export class TranscriptionService {
 				filename: prepPayload.filename,
 				offsetSeconds: prepPayload.offsetSeconds,
 			};
-			let chunkResult;
 			try {
-				chunkResult = await provider.transcribe(
+				const chunkResult = await provider.transcribe(
 					payload,
 					transcribeOptions,
 				);
+				results.push({
+					offsetSeconds: payload.offsetSeconds,
+					transcript: buildTranscript(chunkResult.segments, {
+						language: chunkResult.language,
+					}),
+				});
 			} catch (error) {
-				// Single-part jobs need no extra context; for multi-part,
-				// name which part failed so the error is actionable.
-				if (!partLabel) {
+				// A cancel aborts the whole run; never salvage past it.
+				if (error instanceof TranscriptionCancelledError) {
 					throw error;
 				}
 				const detail =
 					error instanceof Error ? error.message : String(error);
-				throw new Error(`${detail} (while transcribing ${partLabel})`);
+				// A single-part job has nothing to keep, so fail as before. For
+				// a multi-part job, record the failure and carry on: discarding
+				// a completed (and, on a paid API, already-billed) part because
+				// a later part hit a provider limit would throw away good work.
+				if (!partLabel) {
+					throw error;
+				}
+				failedParts.push({ label: partLabel, message: detail });
 			}
-			results.push({
-				offsetSeconds: payload.offsetSeconds,
-				transcript: buildTranscript(chunkResult.segments, {
-					language: chunkResult.language,
-				}),
-			});
+		}
+
+		// Every part failed: there is no transcript to keep, so surface the
+		// first failure (named like the per-part error) rather than writing
+		// nothing and reporting a hollow success.
+		if (results.length === 0) {
+			const first = failedParts[0];
+			throw new Error(
+				first
+					? `${first.message} (while transcribing ${first.label})`
+					: 'Transcription produced no output.',
+			);
 		}
 
 		// Honor a cancel pressed during the final (or only) request: requestUrl
@@ -240,6 +258,23 @@ export class TranscriptionService {
 			markdownOptions,
 			this.linkBuilder(file, options.notePathForLinks),
 		);
+
+		// Some parts failed but others succeeded: keep the good parts, flag the
+		// gap at the top of the note so the transcript is not mistaken for
+		// complete, and warn — rather than failing the whole run and discarding
+		// a transcript the user already paid for.
+		if (failedParts.length > 0) {
+			const labels = failedParts.map((part) => part.label).join(', ');
+			const verb = failedParts.length > 1 ? 'are' : 'is';
+			markdown =
+				`> [!warning] Transcription incomplete: ${labels} could not be ` +
+				`transcribed and ${verb} missing below.\n\n${markdown}`;
+			new Notice(
+				`Some audio could not be transcribed (${labels}) and is missing ` +
+					'from the transcript; saving the parts that succeeded. ' +
+					failedParts[0].message,
+			);
+		}
 
 		if (settings.llmPostProcessEnabled) {
 			this.throwIfCancelled(token);

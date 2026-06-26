@@ -129,12 +129,75 @@ export function geminiFinishReason(body: unknown): string | undefined {
 }
 
 /**
+ * Token counts Gemini reports in `usageMetadata`. Every field is optional: a
+ * response may omit usage data, and only a thinking model reports
+ * `thoughtsTokenCount`, so callers treat a missing count as "unknown" rather
+ * than zero.
+ */
+export interface GeminiUsage {
+	promptTokenCount?: number;
+	candidatesTokenCount?: number;
+	totalTokenCount?: number;
+	thoughtsTokenCount?: number;
+}
+
+/**
+ * Reads the `usageMetadata` token counts from a `generateContent` response,
+ * keeping only finite numbers. Returns an empty object when usage is absent so
+ * a caller can distinguish "not reported" from a real zero.
+ * @param body - Parsed JSON `generateContent` response
+ * @returns The reported token counts (absent fields stay undefined)
+ */
+export function geminiUsage(body: unknown): GeminiUsage {
+	if (!isRecord(body) || !isRecord(body.usageMetadata)) {
+		return {};
+	}
+	const meta = body.usageMetadata;
+	const finite = (value: unknown): number | undefined =>
+		typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+	return {
+		promptTokenCount: finite(meta.promptTokenCount),
+		candidatesTokenCount: finite(meta.candidatesTokenCount),
+		totalTokenCount: finite(meta.totalTokenCount),
+		thoughtsTokenCount: finite(meta.thoughtsTokenCount),
+	};
+}
+
+/**
+ * Formats the reported token usage as a parenthetical for the truncation error,
+ * e.g. ` (generated 65536 output tokens, 78000 total)`. Returns '' when the
+ * response carried no usable counts, so the message degrades cleanly when the
+ * provider omits usage data.
+ * @param body - Parsed JSON `generateContent` response
+ * @returns A leading-space parenthetical, or '' when no counts are present
+ */
+function geminiUsageDetail(body: unknown): string {
+	const usage = geminiUsage(body);
+	const parts: string[] = [];
+	if (usage.candidatesTokenCount !== undefined) {
+		const thinking =
+			usage.thoughtsTokenCount && usage.thoughtsTokenCount > 0
+				? ` including ${String(usage.thoughtsTokenCount)} on thinking`
+				: '';
+		parts.push(
+			`generated ${String(usage.candidatesTokenCount)} output tokens${thinking}`,
+		);
+	}
+	if (usage.totalTokenCount !== undefined) {
+		parts.push(`${String(usage.totalTokenCount)} total`);
+	}
+	return parts.length > 0 ? ` (${parts.join(', ')})` : '';
+}
+
+/**
  * Throws a clear, actionable error when a Gemini response was cut off because
  * it reached the output token limit. Gemini 2.5 models also spend part of the
  * output budget on internal "thinking", so a low limit can truncate or empty
  * the usable text; surfacing this beats silently returning a partial transcript
- * or an empty post-processing result. The caller supplies the `remedy` because
- * the actionable advice differs by task: the LLM path can raise the max-tokens
+ * or an empty post-processing result. The message embeds the reported token
+ * usage (output and total counts) so the user sees how far the response ran
+ * before hitting the cap. The caller supplies the `remedy` because the
+ * actionable advice differs by task: the LLM path can raise the max-tokens
  * setting, whereas transcription has no such control and must shorten the input
  * or change model.
  * @param body - Parsed JSON `generateContent` response
@@ -143,8 +206,9 @@ export function geminiFinishReason(body: unknown): string | undefined {
 export function assertGeminiNotTruncated(body: unknown, remedy: string): void {
 	if (geminiFinishReason(body) === GEMINI_FINISH_MAX_TOKENS) {
 		throw new Error(
-			'Gemini stopped because it reached its output token limit, so the ' +
-				`response is incomplete. ${remedy}`,
+			'Gemini stopped because it reached its output token limit' +
+				`${geminiUsageDetail(body)}, so the response is incomplete. ` +
+				remedy,
 		);
 	}
 }
