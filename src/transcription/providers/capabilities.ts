@@ -26,7 +26,6 @@ export const WHISPER_API_CAPABILITIES: ProviderCapabilities = {
 	maxRequestBytes: WHISPER_API_MAX_REQUEST_BYTES,
 	maxRequestSeconds: Number.POSITIVE_INFINITY,
 	acceptsOriginalContainer: true,
-	diarizesWholeFile: false,
 	supportsDiarization: false,
 };
 
@@ -35,7 +34,6 @@ export const DEEPGRAM_CAPABILITIES: ProviderCapabilities = {
 	maxRequestBytes: DEEPGRAM_MAX_REQUEST_BYTES,
 	maxRequestSeconds: Number.POSITIVE_INFINITY,
 	acceptsOriginalContainer: true,
-	diarizesWholeFile: true,
 	supportsDiarization: true,
 };
 
@@ -44,7 +42,6 @@ export const LOCAL_WHISPER_CAPABILITIES: ProviderCapabilities = {
 	maxRequestBytes: Number.POSITIVE_INFINITY,
 	maxRequestSeconds: Number.POSITIVE_INFINITY,
 	acceptsOriginalContainer: false,
-	diarizesWholeFile: false,
 	supportsDiarization: false,
 };
 
@@ -61,7 +58,6 @@ export const GEMINI_CAPABILITIES: ProviderCapabilities = {
 	maxRequestBytes: GEMINI_MAX_REQUEST_BYTES,
 	maxRequestSeconds: GEMINI_MAX_WHOLE_FILE_SECONDS,
 	acceptsOriginalContainer: true,
-	diarizesWholeFile: true,
 	supportsDiarization: true,
 };
 

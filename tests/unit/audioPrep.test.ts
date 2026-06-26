@@ -22,7 +22,10 @@ import {
 	withinDurationCap,
 } from 'src/transcription/audioPrep';
 import { decodeToMono16k } from 'src/transcription/audioChunks';
-import { TRANSCRIBE_BYTES_PER_SEC } from 'src/constants';
+import {
+	TRANSCRIBE_BYTES_PER_SEC,
+	TRANSCRIBE_SAMPLE_RATE,
+} from 'src/constants';
 import { WAV_HEADER_SIZE } from 'src/recording/WavEncoder';
 import type { ProviderCapabilities } from 'src/transcription/providers/TranscriptionProvider';
 
@@ -30,7 +33,7 @@ const decodeMock = jest.mocked(decodeToMono16k);
 
 /** Synthetic 16 kHz mono samples spanning the given number of seconds. */
 function samplesForSeconds(seconds: number): Float32Array {
-	return new Float32Array(seconds * 16000);
+	return new Float32Array(seconds * TRANSCRIBE_SAMPLE_RATE);
 }
 
 /** A chunk byte budget that yields parts of exactly `seconds` each. */
@@ -87,7 +90,6 @@ describe('audioPrepOptions', () => {
 		maxRequestBytes: 25 * 1024 * 1024,
 		maxRequestSeconds: Number.POSITIVE_INFINITY,
 		acceptsOriginalContainer: true,
-		diarizesWholeFile: false,
 		supportsDiarization: false,
 	};
 
@@ -119,7 +121,6 @@ describe('audioPrepOptions', () => {
 			maxRequestBytes: Number.POSITIVE_INFINITY,
 			maxRequestSeconds: Number.POSITIVE_INFINITY,
 			acceptsOriginalContainer: false,
-			diarizesWholeFile: false,
 			supportsDiarization: false,
 		};
 		const options = audioPrepOptions(
@@ -137,7 +138,6 @@ describe('audioPrepOptions', () => {
 			maxRequestBytes: 2 * 1024 * 1024 * 1024,
 			maxRequestSeconds: 900,
 			acceptsOriginalContainer: true,
-			diarizesWholeFile: true,
 			supportsDiarization: true,
 		};
 		const options = audioPrepOptions(
@@ -155,7 +155,6 @@ describe('audioPrepOptions', () => {
 			maxRequestBytes: 1000,
 			maxRequestSeconds: Number.POSITIVE_INFINITY,
 			acceptsOriginalContainer: true,
-			diarizesWholeFile: true,
 			supportsDiarization: true,
 		};
 		const options = audioPrepOptions(diarizingCaps, true, 1000, true);

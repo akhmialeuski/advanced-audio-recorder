@@ -63,12 +63,6 @@ export interface ProviderCapabilities {
 	 */
 	acceptsOriginalContainer: boolean;
 	/**
-	 * Whether the provider diarizes across an entire request with consistent
-	 * speaker numbering. When true, the service prefers sending the whole
-	 * file so speaker labels stay stable instead of resetting per chunk.
-	 */
-	diarizesWholeFile: boolean;
-	/**
 	 * Whether the provider can return speaker labels at all. Gates the
 	 * diarization UI and the diarize request: an engine that cannot diarize
 	 * (OpenAI's Whisper, local whisper.cpp) must not offer an enabled toggle,

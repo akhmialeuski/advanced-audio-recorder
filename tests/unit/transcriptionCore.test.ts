@@ -207,7 +207,7 @@ describe('provider factories', () => {
 		);
 		expect(provider.id).toBe('deepgram');
 		expect(provider.capabilities.acceptsOriginalContainer).toBe(true);
-		expect(provider.capabilities.diarizesWholeFile).toBe(true);
+		expect(provider.capabilities.supportsDiarization).toBe(true);
 	});
 
 	it('requires an Anthropic key but not an Ollama key', () => {

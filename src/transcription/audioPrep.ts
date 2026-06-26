@@ -157,6 +157,15 @@ export function withinDurationCap(
  * fits, e.g. a duration cap the byte proxy could not rule out cheaply). A
  * diarized split is flagged so the caller can warn that speaker numbering may
  * reset between parts.
+ *
+ * The decode path always emits WAV, even for a single part that fits whole.
+ * Re-sending the original bytes instead would save the WAV size on an accepted
+ * compressed container, but it would force a second decode in a provider that
+ * decodes containers it does not accept (Gemini re-decodes mp4/webm) — and
+ * those are this plugin's own recording formats, the common case. Emitting WAV
+ * keeps the recorded-file path to a single decode; the only cost is a larger
+ * upload for the uncommon case of an imported accepted container (mp3/aac/…)
+ * big enough to miss the cheap whole-file proof yet short enough to fit.
  * @param raw - Encoded file bytes
  * @param fileName - Source file name (used as the upload filename)
  * @param fileMime - MIME type for the original container
@@ -228,7 +237,10 @@ export function audioPrepOptions(
 	diarize: boolean,
 ): AudioPrepOptions {
 	const chunkBytes = Number.isFinite(capabilities.maxRequestSeconds)
-		? capabilities.maxRequestSeconds * TRANSCRIBE_BYTES_PER_SEC
+		? Math.min(
+				capabilities.maxRequestSeconds * TRANSCRIBE_BYTES_PER_SEC,
+				capabilities.maxRequestBytes,
+			)
 		: requiresNetwork
 			? Math.min(capabilities.maxRequestBytes, userChunkBytes)
 			: capabilities.maxRequestBytes;
