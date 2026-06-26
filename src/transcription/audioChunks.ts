@@ -75,6 +75,40 @@ export function planChunks(
 }
 
 /**
+ * Splits a chunk plan into two halves at its midpoint, for retrying a part
+ * that overran a provider's output token limit as smaller pieces. The shared
+ * midpoint boundary tiles exactly because {@link extractChunkWav} rounds both
+ * ends to the same frame. Returns an empty array when the chunk is too short to
+ * divide into two halves that each stay at or above `minSeconds`, signalling
+ * the caller to stop subdividing.
+ * @param chunk - The chunk plan to split
+ * @param minSeconds - Smallest half a split may produce
+ * @returns Two half-length plans, or [] when the chunk is at the floor
+ */
+export function splitChunkPlan(
+	chunk: ChunkPlan,
+	minSeconds: number,
+): ChunkPlan[] {
+	const duration = chunk.endSeconds - chunk.startSeconds;
+	if (duration < 2 * minSeconds) {
+		return [];
+	}
+	const midSeconds = chunk.startSeconds + duration / 2;
+	return [
+		{
+			index: chunk.index * 2,
+			startSeconds: chunk.startSeconds,
+			endSeconds: midSeconds,
+		},
+		{
+			index: chunk.index * 2 + 1,
+			startSeconds: midSeconds,
+			endSeconds: chunk.endSeconds,
+		},
+	];
+}
+
+/**
  * Decodes an audio file and resamples it to a single 16 kHz mono PCM
  * channel via an OfflineAudioContext. This is the canonical Whisper input
  * and makes every source format chunk identically.

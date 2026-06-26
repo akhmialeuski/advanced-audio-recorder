@@ -16,6 +16,7 @@ import {
 	geminiUsage,
 	GEMINI_FINISH_MAX_TOKENS,
 } from 'src/transcription/providers/geminiShared';
+import { TranscriptTruncatedError } from 'src/transcription/transcriptionErrors';
 
 describe('geminiCandidateText', () => {
 	it('concatenates the text parts of the first candidate without trimming', () => {
@@ -63,6 +64,17 @@ describe('assertGeminiNotTruncated', () => {
 				REMEDY,
 			),
 		).toThrow(/output token limit/i);
+	});
+
+	it('throws a TranscriptTruncatedError so callers can subdivide on it', () => {
+		// The transcription orchestrator branches on this exact type to retry a
+		// part as smaller pieces, so the thrown class is part of the contract.
+		expect(() =>
+			assertGeminiNotTruncated(
+				{ candidates: [{ finishReason: GEMINI_FINISH_MAX_TOKENS }] },
+				REMEDY,
+			),
+		).toThrow(TranscriptTruncatedError);
 	});
 
 	it('appends the caller-supplied remedy to the message', () => {

@@ -13,6 +13,7 @@ import {
 	GEMINI_PRO_MIN_THINKING_BUDGET,
 	GEMINI_THINKING_BUDGET_OFF,
 } from '../../constants';
+import { TranscriptTruncatedError } from '../transcriptionErrors';
 
 /** Finish reason set when the model stops because it hit the output token cap. */
 export const GEMINI_FINISH_MAX_TOKENS = 'MAX_TOKENS';
@@ -205,7 +206,7 @@ function geminiUsageDetail(body: unknown): string {
  */
 export function assertGeminiNotTruncated(body: unknown, remedy: string): void {
 	if (geminiFinishReason(body) === GEMINI_FINISH_MAX_TOKENS) {
-		throw new Error(
+		throw new TranscriptTruncatedError(
 			'Gemini stopped because it reached its output token limit' +
 				`${geminiUsageDetail(body)}, so the response is incomplete. ` +
 				remedy,

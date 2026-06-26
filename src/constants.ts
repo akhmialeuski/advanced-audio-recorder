@@ -459,6 +459,17 @@ export const GEMINI_GENERATE_MIN_TIMEOUT_MS = 10 * 60_000;
 export const GEMINI_MAX_WHOLE_FILE_SECONDS = 15 * 60;
 
 /**
+ * Smallest half an adaptive subdivision may produce when a part overruns a
+ * provider's output token limit. Output token count is not predictable from
+ * audio duration (a dense, diarized stretch yields far more text than a sparse
+ * one), so a part that truncates is retried as halves; this floor stops the
+ * recursion once the pieces are short enough that a further split would cost
+ * more requests than it saves, after which the part is reported as failed and
+ * the surrounding parts are still kept.
+ */
+export const MIN_SUBDIVIDE_SECONDS = 60;
+
+/**
  * LLM post-processing provider ids. The single source for the string values
  * used as the provider `id`, the settings discriminator, and the keys of the
  * provider label map, so the literals are never hand-typed across the codebase.

@@ -19,6 +19,8 @@ import {
 } from 'src/transcription/TranscriptionService';
 import type { TranscriptionProvider } from 'src/transcription/providers/TranscriptionProvider';
 import { prepareAudio } from 'src/transcription/audioPrep';
+import { TranscriptTruncatedError } from 'src/transcription/transcriptionErrors';
+import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
 import { mergeSettings } from 'src/settings/Settings';
 
 jest.mock('obsidian', () => {
@@ -77,6 +79,51 @@ function prepareTwoParts(): void {
 		],
 		diarizationSplitWarning: false,
 	});
+}
+
+/**
+ * One prepared part spanning 0..900s that, on demand, subdivides into two
+ * halves; each half declares it cannot split further (subdivide -> []), so a
+ * test can drive both the recovery path and the at-the-floor failure path.
+ */
+function prepareSubdividingPart(): void {
+	const half = (
+		offsetSeconds: number,
+		endSeconds: number,
+		filename: string,
+	) => ({
+		contentType: 'audio/wav',
+		filename,
+		offsetSeconds,
+		endSeconds,
+		createData: () => new ArrayBuffer(4),
+		subdivide: () => [],
+	});
+	mockPrepareAudio.mockResolvedValue({
+		payloads: [
+			{
+				contentType: 'audio/wav',
+				filename: 'audio.wav',
+				offsetSeconds: 0,
+				endSeconds: 900,
+				createData: () => new ArrayBuffer(4),
+				subdivide: () => [
+					half(0, 450, 'audio-0.wav'),
+					half(450, 900, 'audio-1.wav'),
+				],
+			},
+		],
+		diarizationSplitWarning: false,
+	});
+}
+
+/** A stub LLM provider whose cleanup output deliberately carries no callout. */
+function makeLlm(output: string): LlmProvider {
+	return {
+		id: 'fake-llm',
+		label: 'Fake LLM',
+		complete: jest.fn(async () => output),
+	};
 }
 
 function makeProvider(transcribe: jest.Mock): TranscriptionProvider {
@@ -161,5 +208,108 @@ describe('TranscriptionService multi-part salvage', () => {
 			}),
 		).rejects.toThrow(/first failed \(while transcribing part 1 of 2\)/);
 		expect(mockNotice).not.toHaveBeenCalled();
+	});
+
+	it('subdivides a truncated part and keeps both halves', async () => {
+		prepareSubdividingPart();
+		const transcribe = jest
+			.fn()
+			// The whole part overruns the output token cap...
+			.mockRejectedValueOnce(
+				new TranscriptTruncatedError(
+					'Gemini stopped because it reached its output token limit',
+				),
+			)
+			// ...so it is retried as two halves, both of which now fit.
+			.mockResolvedValueOnce({
+				segments: [{ start: 0, end: 1, text: 'first half' }],
+			})
+			.mockResolvedValueOnce({
+				segments: [{ start: 0, end: 1, text: 'second half' }],
+			});
+		const service = new TranscriptionService(
+			makeApp(),
+			() => mergeSettings(baseSettings),
+			{ createProvider: () => makeProvider(transcribe) },
+		);
+
+		const result = await service.run(audioFile, {
+			notePathForLinks: 'note.md',
+			token: NEVER_CANCELLED,
+		});
+
+		// One truncated attempt on the whole part plus the two halves.
+		expect(transcribe).toHaveBeenCalledTimes(3);
+		expect(result.transcript.segments.map((s) => s.text)).toEqual([
+			'first half',
+			'second half',
+		]);
+		// Both halves succeeded, so there is no gap to flag and no warning.
+		expect(result.markdown).not.toContain('Transcription incomplete');
+		expect(mockNotice).not.toHaveBeenCalled();
+	});
+
+	it('fails, naming the timeline span, when every subdivision still truncates', async () => {
+		prepareSubdividingPart();
+		const truncated = (): TranscriptTruncatedError =>
+			new TranscriptTruncatedError(
+				'Gemini stopped because it reached its output token limit',
+			);
+		const transcribe = jest
+			.fn()
+			.mockRejectedValueOnce(truncated()) // whole part
+			.mockRejectedValueOnce(truncated()) // first half (at the floor)
+			.mockRejectedValueOnce(truncated()); // second half (at the floor)
+		const service = new TranscriptionService(
+			makeApp(),
+			() => mergeSettings(baseSettings),
+			{ createProvider: () => makeProvider(transcribe) },
+		);
+
+		// Every leaf failed: nothing to keep, so the run surfaces the first
+		// failure named by the timeline span that could not be salvaged.
+		await expect(
+			service.run(audioFile, {
+				notePathForLinks: 'note.md',
+				token: NEVER_CANCELLED,
+			}),
+		).rejects.toThrow(
+			/output token limit \(while transcribing the .* segment\)/,
+		);
+		expect(transcribe).toHaveBeenCalledTimes(3);
+	});
+
+	it('keeps the incompleteness warning after LLM post-processing replaces the body', async () => {
+		const transcribe = jest
+			.fn()
+			.mockRejectedValueOnce(new Error('boom'))
+			.mockResolvedValueOnce({
+				segments: [{ start: 0, end: 1, text: 'good part' }],
+			});
+		const service = new TranscriptionService(
+			makeApp(),
+			() =>
+				mergeSettings({
+					...baseSettings,
+					llmPostProcessEnabled: true,
+					llmPostProcessTask: 'cleanup',
+				}),
+			{
+				createProvider: () => makeProvider(transcribe),
+				// Cleanup replaces the whole body and drops any callout it was
+				// handed, so the gap warning must be re-applied after it returns.
+				createLlm: () => makeLlm('LLM CLEANED OUTPUT'),
+			},
+		);
+
+		const result = await service.run(audioFile, {
+			notePathForLinks: 'note.md',
+			token: NEVER_CANCELLED,
+		});
+
+		// The cleaned body is used, and the gap warning still survives above it.
+		expect(result.markdown).toContain('LLM CLEANED OUTPUT');
+		expect(result.markdown).toContain('Transcription incomplete');
+		expect(result.markdown).toContain('part 1 of 2');
 	});
 });
