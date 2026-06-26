@@ -49,6 +49,15 @@ export interface ProviderCapabilities {
 	 */
 	maxRequestBytes: number;
 	/**
+	 * Longest recording, in seconds, the provider transcribes reliably in one
+	 * request. A recording longer than this is decoded and split into parts
+	 * even when its byte size fits {@link maxRequestBytes}, because inference
+	 * time and the output transcript grow with audio duration, not bytes. Use
+	 * Number.POSITIVE_INFINITY when the provider has no practical per-request
+	 * duration limit (a whole-file API like Deepgram, or a local engine).
+	 */
+	maxRequestSeconds: number;
+	/**
 	 * Whether the provider accepts the original container bytes (any common
 	 * audio format). When false, the provider needs decoded 16 kHz mono WAV.
 	 */

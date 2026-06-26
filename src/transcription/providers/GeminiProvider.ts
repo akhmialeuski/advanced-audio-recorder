@@ -1,9 +1,10 @@
 /**
- * Transcription via Google Gemini. Uploads the whole audio file with the File
- * API — so speaker numbering stays consistent across the recording — then asks
- * `generateContent` for a structured JSON transcript with timecodes and
- * optional speaker labels. Containers Gemini does not accept (e.g. webm) are
- * decoded to 16 kHz mono WAV before upload.
+ * Transcription via Google Gemini. Uploads one audio payload with the File API,
+ * then asks `generateContent` for a structured JSON transcript with timecodes
+ * and optional speaker labels. The orchestrator sends a short recording whole
+ * (one payload, so speaker numbering stays consistent across it) and splits a
+ * recording too long for one request into parts. Containers Gemini does not
+ * accept (e.g. webm) are decoded to 16 kHz mono WAV before upload.
  * @module transcription/providers/GeminiProvider
  */
 

@@ -40,6 +40,7 @@ function makeProvider(): TranscriptionProvider & {
 		requiresNetwork: false,
 		capabilities: {
 			maxRequestBytes: Number.POSITIVE_INFINITY,
+			maxRequestSeconds: Number.POSITIVE_INFINITY,
 			acceptsOriginalContainer: true,
 			diarizesWholeFile: true,
 			supportsDiarization: true,

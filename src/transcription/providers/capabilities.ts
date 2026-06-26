@@ -11,6 +11,7 @@
 import {
 	DEEPGRAM_MAX_REQUEST_BYTES,
 	GEMINI_MAX_REQUEST_BYTES,
+	GEMINI_MAX_WHOLE_FILE_SECONDS,
 	TRANSCRIPTION_PROVIDER_IDS,
 	WHISPER_API_MAX_REQUEST_BYTES,
 } from '../../constants';
@@ -23,6 +24,7 @@ import type { ProviderCapabilities } from './TranscriptionProvider';
  */
 export const WHISPER_API_CAPABILITIES: ProviderCapabilities = {
 	maxRequestBytes: WHISPER_API_MAX_REQUEST_BYTES,
+	maxRequestSeconds: Number.POSITIVE_INFINITY,
 	acceptsOriginalContainer: true,
 	diarizesWholeFile: false,
 	supportsDiarization: false,
@@ -31,6 +33,7 @@ export const WHISPER_API_CAPABILITIES: ProviderCapabilities = {
 /** Deepgram pre-recorded API: diarizes a whole request with stable labels. */
 export const DEEPGRAM_CAPABILITIES: ProviderCapabilities = {
 	maxRequestBytes: DEEPGRAM_MAX_REQUEST_BYTES,
+	maxRequestSeconds: Number.POSITIVE_INFINITY,
 	acceptsOriginalContainer: true,
 	diarizesWholeFile: true,
 	supportsDiarization: true,
@@ -39,6 +42,7 @@ export const DEEPGRAM_CAPABILITIES: ProviderCapabilities = {
 /** Local whisper.cpp: no upload limit, needs decoded WAV, no diarization. */
 export const LOCAL_WHISPER_CAPABILITIES: ProviderCapabilities = {
 	maxRequestBytes: Number.POSITIVE_INFINITY,
+	maxRequestSeconds: Number.POSITIVE_INFINITY,
 	acceptsOriginalContainer: false,
 	diarizesWholeFile: false,
 	supportsDiarization: false,
@@ -48,10 +52,14 @@ export const LOCAL_WHISPER_CAPABILITIES: ProviderCapabilities = {
  * Google Gemini: a multimodal model that transcribes a whole file uploaded via
  * the File API in one request, so it diarizes with stable speaker numbering.
  * Accepts the original container (unsupported formats are decoded to WAV inside
- * the provider).
+ * the provider). Bounded by a per-request duration cap: a recording longer than
+ * {@link GEMINI_MAX_WHOLE_FILE_SECONDS} is split into parts so one request never
+ * outlasts the timeout or truncates the output, at the cost of speaker numbering
+ * resetting between parts (surfaced to the user as a warning).
  */
 export const GEMINI_CAPABILITIES: ProviderCapabilities = {
 	maxRequestBytes: GEMINI_MAX_REQUEST_BYTES,
+	maxRequestSeconds: GEMINI_MAX_WHOLE_FILE_SECONDS,
 	acceptsOriginalContainer: true,
 	diarizesWholeFile: true,
 	supportsDiarization: true,

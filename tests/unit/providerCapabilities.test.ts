@@ -33,6 +33,21 @@ describe('transcription provider capabilities', () => {
 		expect(GEMINI_CAPABILITIES.supportsDiarization).toBe(true);
 	});
 
+	it('caps only Gemini by per-request duration; others are unbounded', () => {
+		// Gemini transcribes a whole file in one synchronous request, so a long
+		// recording must be split; the whole-file APIs have no duration limit.
+		expect(GEMINI_CAPABILITIES.maxRequestSeconds).toBe(15 * 60);
+		expect(WHISPER_API_CAPABILITIES.maxRequestSeconds).toBe(
+			Number.POSITIVE_INFINITY,
+		);
+		expect(DEEPGRAM_CAPABILITIES.maxRequestSeconds).toBe(
+			Number.POSITIVE_INFINITY,
+		);
+		expect(LOCAL_WHISPER_CAPABILITIES.maxRequestSeconds).toBe(
+			Number.POSITIVE_INFINITY,
+		);
+	});
+
 	it('maps every engine id to its capabilities', () => {
 		expect(TRANSCRIPTION_PROVIDER_CAPABILITIES['whisper-api']).toBe(
 			WHISPER_API_CAPABILITIES,
