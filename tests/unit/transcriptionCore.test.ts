@@ -143,6 +143,24 @@ describe('buildPostProcessPrompt', () => {
 		});
 		expect(prompt.system).toBe('Bullet it');
 	});
+
+	it('uses the provided cleanup template and appends the language', () => {
+		const prompt = buildPostProcessPrompt('t', {
+			task: 'cleanup',
+			language: 'es',
+			cleanupPrompt: 'MY CLEANUP BASE',
+		});
+		expect(prompt.system).toContain('MY CLEANUP BASE');
+		expect(prompt.system).toContain('es');
+	});
+
+	it('uses the provided summary template', () => {
+		const prompt = buildPostProcessPrompt('t', {
+			task: 'summary',
+			summaryPrompt: 'MY SUMMARY BASE',
+		});
+		expect(prompt.system).toContain('MY SUMMARY BASE');
+	});
 });
 
 describe('buildTranscriptFilePath', () => {
@@ -210,19 +228,54 @@ describe('provider factories', () => {
 		expect(provider.capabilities.supportsDiarization).toBe(true);
 	});
 
-	it('requires an Anthropic key but not an Ollama key', () => {
+	it('requires a key for every LLM provider', () => {
 		expect(() =>
 			createLlmProvider(
-				mergeSettings({ llmProvider: 'anthropic', llmApiKey: '' }),
+				mergeSettings({
+					llmProvider: 'anthropic',
+					anthropicApiKey: '',
+				}),
 			),
 		).toThrow(ProviderConfigError);
+		expect(() =>
+			createLlmProvider(
+				mergeSettings({ llmProvider: 'gemini', geminiApiKey: '' }),
+			),
+		).toThrow(ProviderConfigError);
+		expect(() =>
+			createLlmProvider(
+				mergeSettings({
+					llmProvider: 'openai-compatible',
+					whisperApiKey: '',
+				}),
+			),
+		).toThrow(ProviderConfigError);
+	});
+
+	it('builds each LLM provider from its shared vendor key', () => {
 		expect(
 			createLlmProvider(
 				mergeSettings({
 					llmProvider: 'openai-compatible',
-					llmApiKey: '',
+					whisperApiKey: 'sk-test',
 				}),
 			).id,
 		).toBe('openai-compatible');
+		expect(
+			createLlmProvider(
+				mergeSettings({
+					llmProvider: 'anthropic',
+					anthropicApiKey: 'ak-test',
+				}),
+			).id,
+		).toBe('anthropic');
+		expect(
+			createLlmProvider(
+				mergeSettings({
+					llmProvider: 'gemini',
+					geminiApiKey: 'gm-test',
+				}),
+			).id,
+		).toBe('gemini');
 	});
 });

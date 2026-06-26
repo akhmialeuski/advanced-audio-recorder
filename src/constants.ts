@@ -486,9 +486,6 @@ export const ANTHROPIC_API_VERSION = '2023-06-01';
 /** Default Anthropic model for transcript post-processing. */
 export const DEFAULT_LLM_ANTHROPIC_MODEL = 'claude-opus-4-8';
 
-/** Default local Ollama base URL for LLM post-processing. */
-export const DEFAULT_LLM_OLLAMA_BASE_URL = 'http://localhost:11434/v1';
-
 /**
  * Default Gemini base URL for LLM post-processing. Like the transcription
  * base URL it carries no version segment; the provider appends
@@ -517,6 +514,82 @@ export const MIN_LLM_MAX_TOKENS = 512;
 
 /** Maximum configurable LLM output token budget. */
 export const MAX_LLM_MAX_TOKENS = 32000;
+
+/**
+ * Seed OpenAI chat model ids for the LLM model picker on first run; the list
+ * is user-editable. Chat/completions models suitable for transcript cleanup
+ * and summarization. See {@link OPENAI_MODELS_DOC_URL} for the current list.
+ */
+export const LLM_OPENAI_MODEL_SUGGESTIONS = [
+	'gpt-4o-mini',
+	'gpt-4o',
+	'gpt-4.1',
+	'gpt-4.1-mini',
+	'o4-mini',
+];
+
+/**
+ * Seed Anthropic model ids for the LLM model picker on first run; the list is
+ * user-editable. See {@link ANTHROPIC_MODELS_DOC_URL} for the current list.
+ */
+export const LLM_ANTHROPIC_MODEL_SUGGESTIONS = [
+	'claude-opus-4-8',
+	'claude-sonnet-4-6',
+	'claude-haiku-4-5',
+];
+
+/**
+ * Seed Gemini model ids for the LLM model picker on first run; the list is
+ * user-editable. See {@link GEMINI_MODELS_DOC_URL} for the current list.
+ */
+export const LLM_GEMINI_MODEL_SUGGESTIONS = [
+	'gemini-2.5-flash',
+	'gemini-2.5-pro',
+	'gemini-2.5-flash-lite',
+];
+
+/** Where to find the OpenAI model catalog. */
+export const OPENAI_MODELS_DOC_URL = 'https://platform.openai.com/docs/models';
+
+/** Where to find the Anthropic (Claude) model catalog. */
+export const ANTHROPIC_MODELS_DOC_URL =
+	'https://docs.anthropic.com/en/docs/about-claude/models';
+
+/**
+ * Default editable system prompt for the cleanup task. The language clause is
+ * appended automatically at request time (see {@link cleanupLanguageClause}),
+ * so this base text carries no language directive.
+ */
+export const DEFAULT_LLM_CLEANUP_PROMPT =
+	'You are an expert transcription editor. You are given a raw, ' +
+	'machine-generated transcript. Correct punctuation, capitalization, ' +
+	'and obvious speech-to-text errors; insert sensible paragraph breaks; ' +
+	'and remove filler artifacts only when they add no meaning. Do NOT ' +
+	'summarize, translate, paraphrase, add, or omit content — preserve ' +
+	'the speaker’s exact wording and meaning. Preserve any speaker labels ' +
+	'and timestamps exactly as they appear, keeping each on its original ' +
+	'line. Return only the corrected transcript with no preamble.';
+
+/**
+ * Default editable system prompt for the summary task. The language clause is
+ * appended automatically at request time (see {@link summaryLanguageClause}),
+ * so this base text carries no language directive.
+ */
+export const DEFAULT_LLM_SUMMARY_PROMPT =
+	'You are an expert analyst. Summarize the following transcript into a ' +
+	'concise set of key points and any action items, as Markdown bullet ' +
+	'lists under short headings. Be faithful to the content and do not ' +
+	'invent details. Return only the summary with no preamble.';
+
+/**
+ * Default editable instruction for the custom task. Unlike cleanup and
+ * summary, the custom instruction is sent verbatim with no language clause, so
+ * the user controls every directive including language.
+ */
+export const DEFAULT_LLM_CUSTOM_INSTRUCTION =
+	'Rewrite the following transcript as clean, well-structured Markdown ' +
+	'notes. Preserve the original language and meaning, and return only the ' +
+	'result with no preamble.';
 
 /**
  * Floor timeout, in milliseconds, for a transcription HTTP request.

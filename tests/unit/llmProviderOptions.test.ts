@@ -40,7 +40,11 @@ describe('LLM provider options (single source of truth)', () => {
 		for (const option of LLM_PROVIDER_OPTIONS) {
 			const settings = mergeSettings({
 				llmProvider: option.value as LlmProviderId,
-				llmApiKey: 'test-key',
+				// Each provider reads its own vendor key (OpenAI reuses the
+				// Whisper key, Gemini its transcription key, Anthropic its own).
+				whisperApiKey: 'sk-test',
+				anthropicApiKey: 'ak-test',
+				geminiApiKey: 'gm-test',
 			});
 			expect(() => createLlmProvider(settings)).not.toThrow();
 		}

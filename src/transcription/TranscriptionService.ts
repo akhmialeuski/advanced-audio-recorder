@@ -291,6 +291,8 @@ export class TranscriptionService {
 			{
 				task: settings.llmPostProcessTask,
 				language: transcript.language,
+				cleanupPrompt: settings.llmCleanupPrompt,
+				summaryPrompt: settings.llmSummaryPrompt,
 				customInstruction: settings.llmCustomInstruction,
 			},
 		);

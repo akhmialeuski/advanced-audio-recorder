@@ -30,10 +30,15 @@ import {
 	DEFAULT_LLM_OPENAI_MODEL,
 	DEFAULT_LLM_ANTHROPIC_BASE_URL,
 	DEFAULT_LLM_ANTHROPIC_MODEL,
-	DEFAULT_LLM_OLLAMA_BASE_URL,
 	DEFAULT_LLM_GEMINI_BASE_URL,
 	DEFAULT_LLM_GEMINI_MODEL,
 	DEFAULT_LLM_MAX_TOKENS,
+	LLM_OPENAI_MODEL_SUGGESTIONS,
+	LLM_ANTHROPIC_MODEL_SUGGESTIONS,
+	LLM_GEMINI_MODEL_SUGGESTIONS,
+	DEFAULT_LLM_CLEANUP_PROMPT,
+	DEFAULT_LLM_SUMMARY_PROMPT,
+	DEFAULT_LLM_CUSTOM_INSTRUCTION,
 	DEFAULT_CLEANUP_HIGHPASS_HZ,
 	DEFAULT_CLEANUP_GATE_THRESHOLD_DB,
 	DEFAULT_CLEANUP_LEVELING_MAKEUP_DB,
@@ -150,7 +155,7 @@ export interface AudioRecorderSettings {
 	transcriptionChunkMb: number;
 	/** Whisper API base URL (OpenAI-compatible) */
 	whisperApiBaseUrl: string;
-	/** Whisper API key */
+	/** Whisper API key. Shared with the OpenAI LLM provider as the OpenAI vendor key. */
 	whisperApiKey: string;
 	/** Whisper API model id (the selected one) */
 	whisperApiModel: string;
@@ -166,7 +171,7 @@ export interface AudioRecorderSettings {
 	deepgramModels: string[];
 	/** Gemini API base URL */
 	geminiBaseUrl: string;
-	/** Gemini API key */
+	/** Gemini API key. Shared between Gemini transcription and the Gemini LLM provider. */
 	geminiApiKey: string;
 	/** Gemini model id (the selected one) */
 	geminiModel: string;
@@ -202,16 +207,34 @@ export interface AudioRecorderSettings {
 	llmPostProcessEnabled: boolean;
 	/** LLM post-processing task */
 	llmPostProcessTask: LlmTask;
-	/** Custom instruction for the 'custom' task */
+	/** Editable system prompt for the cleanup task (language clause auto-appended) */
+	llmCleanupPrompt: string;
+	/** Editable system prompt for the summary task (language clause auto-appended) */
+	llmSummaryPrompt: string;
+	/** Editable instruction for the 'custom' task (sent verbatim) */
 	llmCustomInstruction: string;
-	/** LLM provider: OpenAI-compatible or Anthropic */
+	/** LLM provider: OpenAI, Anthropic, or Google Gemini */
 	llmProvider: LlmProviderId;
 	/** LLM base URL */
 	llmBaseUrl: string;
-	/** LLM API key */
-	llmApiKey: string;
-	/** LLM model id */
-	llmModel: string;
+	/**
+	 * Anthropic API key. OpenAI and Gemini LLM reuse the transcription keys
+	 * (whisperApiKey, geminiApiKey) so a vendor token is entered once; Anthropic
+	 * has no transcription counterpart, so it keeps its own key here.
+	 */
+	anthropicApiKey: string;
+	/** Selected OpenAI LLM model id */
+	llmOpenAiModel: string;
+	/** Known OpenAI LLM model ids offered in the picker (user-editable) */
+	llmOpenAiModels: string[];
+	/** Selected Anthropic LLM model id */
+	llmAnthropicModel: string;
+	/** Known Anthropic LLM model ids offered in the picker (user-editable) */
+	llmAnthropicModels: string[];
+	/** Selected Gemini LLM model id */
+	llmGeminiModel: string;
+	/** Known Gemini LLM model ids offered in the picker (user-editable) */
+	llmGeminiModels: string[];
 	/** Maximum output tokens for LLM post-processing */
 	llmMaxTokens: number;
 	/** Apply browser noise suppression to the input */
@@ -290,7 +313,7 @@ export type LlmProviderId =
 
 /** Display labels for each LLM provider (single source for the UI). */
 export const LLM_PROVIDER_LABELS: Record<LlmProviderId, string> = {
-	[LLM_PROVIDER_IDS.OPENAI_COMPATIBLE]: 'OpenAI / Groq / Ollama',
+	[LLM_PROVIDER_IDS.OPENAI_COMPATIBLE]: 'OpenAI',
 	[LLM_PROVIDER_IDS.ANTHROPIC]: 'Anthropic (Claude)',
 	[LLM_PROVIDER_IDS.GEMINI]: 'Google Gemini',
 };
@@ -403,11 +426,18 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	transcriptHeading: '## Transcript',
 	llmPostProcessEnabled: false,
 	llmPostProcessTask: 'cleanup',
-	llmCustomInstruction: '',
+	llmCleanupPrompt: DEFAULT_LLM_CLEANUP_PROMPT,
+	llmSummaryPrompt: DEFAULT_LLM_SUMMARY_PROMPT,
+	llmCustomInstruction: DEFAULT_LLM_CUSTOM_INSTRUCTION,
 	llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
 	llmBaseUrl: DEFAULT_LLM_OPENAI_BASE_URL,
-	llmApiKey: '',
-	llmModel: DEFAULT_LLM_OPENAI_MODEL,
+	anthropicApiKey: '',
+	llmOpenAiModel: DEFAULT_LLM_OPENAI_MODEL,
+	llmOpenAiModels: [...LLM_OPENAI_MODEL_SUGGESTIONS],
+	llmAnthropicModel: DEFAULT_LLM_ANTHROPIC_MODEL,
+	llmAnthropicModels: [...LLM_ANTHROPIC_MODEL_SUGGESTIONS],
+	llmGeminiModel: DEFAULT_LLM_GEMINI_MODEL,
+	llmGeminiModels: [...LLM_GEMINI_MODEL_SUGGESTIONS],
 	llmMaxTokens: DEFAULT_LLM_MAX_TOKENS,
 	inputNoiseSuppression: true,
 	inputEchoCancellation: true,
@@ -431,22 +461,15 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 const DEFAULT_LLM_BASE_URLS: ReadonlySet<string> = new Set([
 	DEFAULT_LLM_OPENAI_BASE_URL,
 	DEFAULT_LLM_ANTHROPIC_BASE_URL,
-	DEFAULT_LLM_OLLAMA_BASE_URL,
 	DEFAULT_LLM_GEMINI_BASE_URL,
 ]);
 
-/** Model ids that ship as provider defaults (same auto-switch guard). */
-const DEFAULT_LLM_MODELS: ReadonlySet<string> = new Set([
-	DEFAULT_LLM_OPENAI_MODEL,
-	DEFAULT_LLM_ANTHROPIC_MODEL,
-	DEFAULT_LLM_GEMINI_MODEL,
-]);
-
 /**
- * Aligns the LLM base URL and model with the target provider's defaults when
- * the current values are still provider defaults; a custom URL or model the
- * user entered is preserved. Mutates and returns `settings` so the settings
- * tab can switch the dependent fields in one step when the provider changes.
+ * Aligns the LLM base URL with the target provider's default when the current
+ * value is still a provider default; a custom URL the user entered is
+ * preserved. The model is not switched here — each provider keeps its own
+ * selected model in a dedicated field. Mutates and returns `settings` so the
+ * settings tab can switch the base URL in one step when the provider changes.
  * @param settings - Settings to adjust in place
  * @param provider - The provider being switched to
  * @returns The same settings object, adjusted
@@ -459,34 +482,22 @@ export function applyLlmProviderDefaults(
 		if (DEFAULT_LLM_BASE_URLS.has(settings.llmBaseUrl)) {
 			settings.llmBaseUrl = DEFAULT_LLM_ANTHROPIC_BASE_URL;
 		}
-		if (DEFAULT_LLM_MODELS.has(settings.llmModel)) {
-			settings.llmModel = DEFAULT_LLM_ANTHROPIC_MODEL;
-		}
 		return settings;
 	}
 	if (provider === LLM_PROVIDER_IDS.GEMINI) {
 		if (DEFAULT_LLM_BASE_URLS.has(settings.llmBaseUrl)) {
 			settings.llmBaseUrl = DEFAULT_LLM_GEMINI_BASE_URL;
 		}
-		if (DEFAULT_LLM_MODELS.has(settings.llmModel)) {
-			settings.llmModel = DEFAULT_LLM_GEMINI_MODEL;
-		}
 		return settings;
 	}
-	// OpenAI-compatible (OpenAI / Groq / Ollama): only move off another
-	// provider's shipped default (Anthropic or Gemini), leaving any other
-	// OpenAI-compatible endpoint or model the user entered intact.
+	// OpenAI: only move off another provider's shipped default base URL
+	// (Anthropic or Gemini), leaving any other OpenAI-compatible endpoint the
+	// user entered intact.
 	if (
 		settings.llmBaseUrl === DEFAULT_LLM_ANTHROPIC_BASE_URL ||
 		settings.llmBaseUrl === DEFAULT_LLM_GEMINI_BASE_URL
 	) {
 		settings.llmBaseUrl = DEFAULT_LLM_OPENAI_BASE_URL;
-	}
-	if (
-		settings.llmModel === DEFAULT_LLM_ANTHROPIC_MODEL ||
-		settings.llmModel === DEFAULT_LLM_GEMINI_MODEL
-	) {
-		settings.llmModel = DEFAULT_LLM_OPENAI_MODEL;
 	}
 	return settings;
 }
@@ -573,13 +584,68 @@ export function serializeSettings(
 export function mergeSettings(
 	userSettings: AudioRecorderSettingsInput = {},
 ): AudioRecorderSettings {
-	return {
+	const merged: AudioRecorderSettings = {
 		...DEFAULT_SETTINGS,
 		...userSettings,
 		trackAudioSources: normalizeTrackAudioSources(
 			userSettings.trackAudioSources,
 		),
 	};
+	migrateLegacyLlmSettings(merged, userSettings);
+	return merged;
+}
+
+/**
+ * Carries forward settings saved under the pre-rework LLM schema. The old
+ * single `llmApiKey` maps onto the new per-vendor key (OpenAI reuses
+ * `whisperApiKey`, Gemini reuses `geminiApiKey`, Anthropic uses its own
+ * `anthropicApiKey`), and the old single `llmModel` maps onto the selected
+ * model of the stored provider. The superseded flat fields are then dropped so
+ * a later save does not persist them. A vendor key already set is never
+ * overwritten, so the migration cannot clobber a freshly entered token.
+ * @param merged - The merged settings to migrate in place
+ * @param raw - The raw user settings as loaded from disk
+ */
+function migrateLegacyLlmSettings(
+	merged: AudioRecorderSettings,
+	raw: AudioRecorderSettingsInput,
+): void {
+	const legacy = raw as unknown as Record<string, unknown>;
+	const legacyKey =
+		typeof legacy.llmApiKey === 'string' ? legacy.llmApiKey : '';
+	if (legacyKey) {
+		if (
+			merged.llmProvider === LLM_PROVIDER_IDS.ANTHROPIC &&
+			!merged.anthropicApiKey
+		) {
+			merged.anthropicApiKey = legacyKey;
+		} else if (
+			merged.llmProvider === LLM_PROVIDER_IDS.GEMINI &&
+			!merged.geminiApiKey
+		) {
+			merged.geminiApiKey = legacyKey;
+		} else if (
+			merged.llmProvider === LLM_PROVIDER_IDS.OPENAI_COMPATIBLE &&
+			!merged.whisperApiKey
+		) {
+			merged.whisperApiKey = legacyKey;
+		}
+	}
+	const legacyModel =
+		typeof legacy.llmModel === 'string' ? legacy.llmModel.trim() : '';
+	if (legacyModel) {
+		if (merged.llmProvider === LLM_PROVIDER_IDS.ANTHROPIC) {
+			merged.llmAnthropicModel = legacyModel;
+		} else if (merged.llmProvider === LLM_PROVIDER_IDS.GEMINI) {
+			merged.llmGeminiModel = legacyModel;
+		} else {
+			merged.llmOpenAiModel = legacyModel;
+		}
+	}
+	// Drop the superseded flat fields so a later save does not persist them.
+	const mergedRecord = merged as unknown as Record<string, unknown>;
+	delete mergedRecord.llmApiKey;
+	delete mergedRecord.llmModel;
 }
 
 /**
