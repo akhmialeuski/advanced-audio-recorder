@@ -616,9 +616,28 @@ export const TRANSCRIBE_REQUEST_TIMEOUT_MS = 120_000;
  * Hard ceiling on a single transcription request timeout, in milliseconds
  * (30 minutes). A whole-file upload (e.g. a multi-hundred-MB Deepgram
  * request) scales its timeout with payload size up to this bound, so a
- * large but healthy upload is never aborted prematurely.
+ * large but healthy upload is never aborted prematurely. Used as the
+ * fallback ceiling when no per-request cap is supplied; the user-facing cap
+ * comes from {@link DEFAULT_TRANSCRIPTION_TIMEOUT_MINUTES} via settings.
  */
 export const TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS = 30 * 60_000;
+
+/**
+ * Default per-request transcription timeout, in minutes. A single network
+ * request (one part of a multi-part job, or a whole-file upload) that runs
+ * longer than this is aborted and reported, so a hung endpoint or a stalled
+ * upload fails the part instead of stalling the whole run indefinitely. The
+ * size-scaled timeout still applies underneath; this value caps it. The
+ * default matches the Gemini generate floor so it is generous enough for a
+ * healthy long request yet bounds a genuine hang.
+ */
+export const DEFAULT_TRANSCRIPTION_TIMEOUT_MINUTES = 10;
+
+/** Smallest configurable per-request transcription timeout, in minutes. */
+export const MIN_TRANSCRIPTION_TIMEOUT_MINUTES = 1;
+
+/** Largest configurable per-request transcription timeout, in minutes. */
+export const MAX_TRANSCRIPTION_TIMEOUT_MINUTES = 60;
 
 /**
  * Assumed sustained upload throughput, in bytes per millisecond (~1 MB/s),
@@ -735,15 +754,36 @@ export const MAX_AUDIO_CLEANUP_SECONDS = 2 * 60 * 60;
 /**
  * Upper bound on the total decoded sample count (frames × channels) the
  * on-demand cleanup will process. Where {@link MAX_AUDIO_CLEANUP_BYTES}
- * bounds the on-disk size, this bounds the decoded working set: the
- * pipeline holds several full Float32 copies of the signal at once (the
- * gated input, the OfflineAudioContext buffer, and the rendered output),
- * so peak memory scales with this count rather than with the encoded
- * size. A heavily compressed file can be small on disk yet decode to a
- * multi-gigabyte buffer the byte guard alone would not catch; at 4 bytes
- * per sample and roughly three concurrent copies this caps the peak
- * working set near 1.5 GB. Checked right after decoding, before the
- * Float32 channels are materialized, so an oversized file is refused with
- * a clear message instead of failing with an out-of-memory error.
+ * bounds the on-disk size, this bounds the decoded working set. Cleanup now
+ * processes the signal in time segments (see {@link CLEANUP_SEGMENT_SECONDS}),
+ * so the gate and the OfflineAudioContext only ever hold one segment at a
+ * time; the lasting full-size allocations are just the decoded buffer (4
+ * bytes/sample) and the interleaved 16-bit WAV output (2 bytes/sample). At
+ * this cap that peak stays near ~1.6 GB regardless of how many DSP stages run,
+ * which lets a ~45-minute stereo recording be cleaned up in memory without the
+ * old "split into parts first" detour. A heavily compressed file can be small
+ * on disk yet decode to a multi-gigabyte buffer the byte guard alone would not
+ * catch, so the count is checked right after decoding, before the Float32
+ * channels are materialized, refusing an oversized file with a clear message
+ * instead of an out-of-memory error.
  */
-export const MAX_AUDIO_CLEANUP_DECODED_SAMPLES = 128 * 1024 * 1024;
+export const MAX_AUDIO_CLEANUP_DECODED_SAMPLES = 256 * 1024 * 1024;
+
+/**
+ * Length, in seconds, of one cleanup processing segment. The signal is gated
+ * and rendered one segment at a time so peak memory does not scale with the
+ * recording length. Long enough that the per-segment OfflineAudioContext setup
+ * cost is negligible, short enough that one segment's working set stays small.
+ */
+export const CLEANUP_SEGMENT_SECONDS = 120;
+
+/**
+ * Warm-up overlap, in seconds, prepended to each cleanup segment (except the
+ * first) and then discarded. The high-pass filter, compressor, and gate are
+ * stateful; processing a short lead-in lets their envelopes settle to the same
+ * place they would reach in a single continuous pass, so segment boundaries
+ * leave no audible click or level jump. Comfortably longer than the
+ * compressor's release time, so the dynamics fully re-converge before the kept
+ * region begins.
+ */
+export const CLEANUP_WARMUP_SECONDS = 3;

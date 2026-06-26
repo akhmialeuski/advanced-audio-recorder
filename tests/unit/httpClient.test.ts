@@ -96,6 +96,13 @@ describe('uploadTimeoutMs', () => {
 		);
 	});
 
+	it('honors a caller-supplied cap below the default ceiling', () => {
+		// The user-configured per-request limit lowers the cap; a large payload
+		// that would otherwise scale higher is clamped to it.
+		const cap = 5 * 60_000;
+		expect(uploadTimeoutMs(8 * 1024 * 1024 * 1024, cap)).toBe(cap);
+	});
+
 	it('is monotonic in payload size', () => {
 		expect(uploadTimeoutMs(10 * 1024 * 1024)).toBeLessThanOrEqual(
 			uploadTimeoutMs(20 * 1024 * 1024),

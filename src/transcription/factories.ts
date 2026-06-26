@@ -4,7 +4,11 @@
  * @module transcription/factories
  */
 
-import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from '../constants';
+import {
+	LLM_PROVIDER_IDS,
+	MS_PER_MINUTE,
+	TRANSCRIPTION_PROVIDER_IDS,
+} from '../constants';
 import type { AudioRecorderSettings } from '../settings/Settings';
 import { WhisperApiProvider } from './providers/WhisperApiProvider';
 import { LocalWhisperProvider } from './providers/LocalWhisperProvider';
@@ -34,6 +38,11 @@ export class ProviderConfigError extends Error {
 export function createTranscriptionProvider(
 	settings: AudioRecorderSettings,
 ): TranscriptionProvider {
+	// Per-request timeout cap shared by every network provider, from the
+	// user-configured limit (minutes). Local whisper.cpp makes no HTTP request,
+	// so it ignores this.
+	const requestTimeoutMs =
+		settings.transcriptionTimeoutMinutes * MS_PER_MINUTE;
 	if (
 		settings.transcriptionProvider ===
 		TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER
@@ -70,6 +79,7 @@ export function createTranscriptionProvider(
 			baseUrl: settings.deepgramBaseUrl,
 			apiKey: settings.deepgramApiKey,
 			model: settings.deepgramModel,
+			requestTimeoutMs,
 		});
 	}
 	if (settings.transcriptionProvider === TRANSCRIPTION_PROVIDER_IDS.GEMINI) {
@@ -82,6 +92,7 @@ export function createTranscriptionProvider(
 			baseUrl: settings.geminiBaseUrl,
 			apiKey: settings.geminiApiKey,
 			model: settings.geminiModel,
+			requestTimeoutMs,
 		});
 	}
 	if (!settings.whisperApiKey) {
@@ -93,6 +104,7 @@ export function createTranscriptionProvider(
 		baseUrl: settings.whisperApiBaseUrl,
 		apiKey: settings.whisperApiKey,
 		model: settings.whisperApiModel,
+		requestTimeoutMs,
 	});
 }
 

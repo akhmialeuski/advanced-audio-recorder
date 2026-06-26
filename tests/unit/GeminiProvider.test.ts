@@ -279,4 +279,12 @@ describe('geminiGenerateTimeoutMs', () => {
 		expect(scaled).toBeGreaterThan(GEMINI_GENERATE_MIN_TIMEOUT_MS);
 		expect(geminiGenerateTimeoutMs(bigBytes)).toBe(scaled);
 	});
+
+	it('clamps to the configured cap even below the inference floor', () => {
+		// A user who sets a 5-minute limit overrides the 10-minute floor: the
+		// per-request cap wins so the run cannot wait longer than configured.
+		const cap = 5 * 60_000;
+		expect(geminiGenerateTimeoutMs(8, cap)).toBe(cap);
+		expect(geminiGenerateTimeoutMs(600 * 1024 * 1024, cap)).toBe(cap);
+	});
 });

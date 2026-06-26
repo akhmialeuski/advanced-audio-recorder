@@ -20,7 +20,11 @@ import {
 	ProviderConfigError,
 } from 'src/transcription/factories';
 import { mergeSettings } from 'src/settings/Settings';
-import { TRANSCRIBE_BYTES_PER_SEC } from 'src/constants';
+import {
+	TRANSCRIBE_BYTES_PER_SEC,
+	DEFAULT_LLM_CLEANUP_PROMPT,
+	DEFAULT_LLM_SUMMARY_PROMPT,
+} from 'src/constants';
 import { WAV_HEADER_SIZE } from 'src/recording/WavEncoder';
 
 describe('planChunks', () => {
@@ -160,6 +164,21 @@ describe('buildPostProcessPrompt', () => {
 			summaryPrompt: 'MY SUMMARY BASE',
 		});
 		expect(prompt.system).toContain('MY SUMMARY BASE');
+	});
+
+	it('falls back to the shipped default when a template is empty', () => {
+		// Clearing the field in settings leaves an empty string; the request must
+		// still carry a usable system prompt rather than sending none.
+		const cleanup = buildPostProcessPrompt('t', {
+			task: 'cleanup',
+			cleanupPrompt: '',
+		});
+		expect(cleanup.system).toContain(DEFAULT_LLM_CLEANUP_PROMPT);
+		const summary = buildPostProcessPrompt('t', {
+			task: 'summary',
+			summaryPrompt: '   ',
+		});
+		expect(summary.system).toContain(DEFAULT_LLM_SUMMARY_PROMPT);
 	});
 });
 

@@ -25,6 +25,8 @@ export interface DeepgramConfig {
 	baseUrl: string;
 	apiKey: string;
 	model: string;
+	/** Per-request timeout cap (ms); the user-configured transcription limit. */
+	requestTimeoutMs?: number;
 }
 
 /**
@@ -65,7 +67,10 @@ export class DeepgramProvider implements TranscriptionProvider {
 			headers: { Authorization: `Token ${this.config.apiKey}` },
 			contentType: payload.contentType,
 			body: payload.data,
-			timeoutMs: uploadTimeoutMs(payload.data.byteLength),
+			timeoutMs: uploadTimeoutMs(
+				payload.data.byteLength,
+				this.config.requestTimeoutMs,
+			),
 		});
 		return mapDeepgramResponse(json, options.diarize);
 	}

@@ -655,6 +655,13 @@ input.aar-input-invalid {
     transition: width 0.3s ease;
 }
 
+.aar-transcribe-elapsed {
+    margin-top: 4px;
+    font-size: 0.8em;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
 /* A setting rendered disabled: dimmed and non-interactive so an option the
    current selection cannot use reads clearly as off, not merely unset. */
 .aar-setting-disabled {

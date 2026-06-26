@@ -9,6 +9,8 @@
 import {
 	MIN_TRANSCRIBE_CHUNK_MB,
 	MAX_TRANSCRIBE_CHUNK_MB,
+	MIN_TRANSCRIPTION_TIMEOUT_MINUTES,
+	MAX_TRANSCRIPTION_TIMEOUT_MINUTES,
 	MIN_LLM_MAX_TOKENS,
 	MAX_LLM_MAX_TOKENS,
 	TRANSCRIPTION_PROVIDER_IDS,
@@ -110,6 +112,20 @@ export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
 		get: () => s.transcriptionWordTimestamps,
 		set: (v) => (s.transcriptionWordTimestamps = v),
 	});
+
+	// Cloud engines only: a hung network request is bounded by this limit. Local
+	// whisper.cpp runs no HTTP request, so the timeout does not apply to it.
+	if (s.transcriptionProvider !== TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER) {
+		addSlider(ctx, {
+			name: 'Request timeout',
+			desc: 'Minutes before a single transcription request (one part of a long recording) is aborted and reported as failed, so a stalled request cannot hang the run indefinitely.',
+			min: MIN_TRANSCRIPTION_TIMEOUT_MINUTES,
+			max: MAX_TRANSCRIPTION_TIMEOUT_MINUTES,
+			step: 1,
+			get: () => s.transcriptionTimeoutMinutes,
+			set: (v) => (s.transcriptionTimeoutMinutes = v),
+		});
+	}
 
 	if (s.transcriptionProvider === TRANSCRIPTION_PROVIDER_IDS.WHISPER_API) {
 		renderWhisperApiSettings(ctx);
@@ -392,7 +408,7 @@ function renderLlmPromptField(ctx: SettingsSectionContext): void {
 	if (s.llmPostProcessTask === 'cleanup') {
 		addTextArea(ctx, {
 			name: 'Cleanup prompt',
-			desc: 'System instruction for the cleanup pass. The transcript language is appended automatically.',
+			desc: 'System instruction for the cleanup pass. The transcript language is appended automatically. Leave empty to use the built-in default.',
 			get: () => s.llmCleanupPrompt,
 			set: (v) => (s.llmCleanupPrompt = v),
 		});
@@ -401,7 +417,7 @@ function renderLlmPromptField(ctx: SettingsSectionContext): void {
 	if (s.llmPostProcessTask === 'summary') {
 		addTextArea(ctx, {
 			name: 'Summary prompt',
-			desc: 'System instruction for the summary pass. The transcript language is appended automatically.',
+			desc: 'System instruction for the summary pass. The transcript language is appended automatically. Leave empty to use the built-in default.',
 			get: () => s.llmSummaryPrompt,
 			set: (v) => (s.llmSummaryPrompt = v),
 		});

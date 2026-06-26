@@ -264,7 +264,9 @@ Most options also appear in the **Transcribe audio** dialog, so you can choose t
 
 ### Progress and minimizing
 
-While a transcription runs, the dialog shows a progress bar and a **Cancel** button. Transcription can be slow and may be a paid API call, so you do not have to wait on the open dialog: click **Minimize** to send the job to the status bar and keep working. The status bar then shows live transcription progress; click it (or focus it and press Enter) to reopen the dialog. Recording always takes precedence in the status bar, so the transcription progress reappears once recording finishes. Closing the dialog (instead of minimizing) cancels the running job.
+While a transcription runs, the dialog shows a progress bar, an elapsed-time counter, and a **Cancel** button. Transcription can be slow and may be a paid API call, so you do not have to wait on the open dialog: click **Minimize** to send the job to the status bar and keep working. The status bar then shows live transcription progress; click it (or focus it and press Enter) to reopen the dialog. Recording always takes precedence in the status bar, so the transcription progress reappears once recording finishes. Closing the dialog (instead of minimizing) cancels the running job.
+
+Each network request (one part of a long recording, or a whole-file upload) is bounded by a configurable **Request timeout** (default 10 minutes) under the transcription settings, so a stalled request fails that part and is reported rather than hanging the run indefinitely. Cancellation is checked between requests, so pressing **Cancel** during an in-flight request takes effect once that request returns or hits the timeout.
 
 ### LLM post-processing
 

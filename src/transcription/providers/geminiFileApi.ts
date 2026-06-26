@@ -104,6 +104,7 @@ function parseFile(body: unknown): GeminiFile {
  * @param data - Encoded audio bytes
  * @param mimeType - MIME type of the bytes
  * @param displayName - Human-readable name stored with the file
+ * @param maxTimeoutMs - Per-request timeout cap for the byte-upload step
  */
 export async function uploadFile(
 	baseUrl: string,
@@ -111,6 +112,7 @@ export async function uploadFile(
 	data: ArrayBuffer,
 	mimeType: string,
 	displayName: string,
+	maxTimeoutMs?: number,
 ): Promise<GeminiFile> {
 	const base = trimTrailingSlash(baseUrl);
 	const numBytes = String(data.byteLength);
@@ -145,7 +147,7 @@ export async function uploadFile(
 			'X-Goog-Upload-Command': 'upload, finalize',
 		},
 		body: data,
-		timeoutMs: uploadTimeoutMs(data.byteLength),
+		timeoutMs: uploadTimeoutMs(data.byteLength, maxTimeoutMs),
 	});
 	return parseFile(finalized);
 }

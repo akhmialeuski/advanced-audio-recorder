@@ -13,6 +13,7 @@ import {
 	GEMINI_AUDIO_MIME_TYPES,
 	GEMINI_GENERATE_MIN_TIMEOUT_MS,
 	MIME_TYPE_AUDIO_PREFIX,
+	TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS,
 	TRANSCRIBE_SAMPLE_RATE,
 	TRANSCRIPTION_PROVIDER_IDS,
 } from '../../constants';
@@ -45,6 +46,8 @@ export interface GeminiConfig {
 	baseUrl: string;
 	apiKey: string;
 	model: string;
+	/** Per-request timeout cap (ms); the user-configured transcription limit. */
+	requestTimeoutMs?: number;
 }
 
 /** WAV MIME type used when a container is decoded before upload. */
@@ -97,15 +100,22 @@ const TRUNCATION_REMEDY =
  * audio duration, not byte size, and a compressed accepted container (mp3, aac,
  * ogg, flac) has far fewer bytes than its duration implies, so the upload-size
  * proxy alone can abort a healthy long transcription. Take the larger of the
- * size-scaled upload budget and a generous floor.
+ * size-scaled upload budget and a generous floor, then cap by the
+ * user-configured per-request limit so the floor cannot exceed it.
  * @param byteLength - Size of the uploaded audio bytes
+ * @param maxMs - Per-request timeout cap; defaults to
+ *   {@link TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS}
  * @returns Timeout in milliseconds
  */
-export function geminiGenerateTimeoutMs(byteLength: number): number {
-	return Math.max(
-		uploadTimeoutMs(byteLength),
+export function geminiGenerateTimeoutMs(
+	byteLength: number,
+	maxMs: number = TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS,
+): number {
+	const base = Math.max(
+		uploadTimeoutMs(byteLength, maxMs),
 		GEMINI_GENERATE_MIN_TIMEOUT_MS,
 	);
+	return Math.min(base, maxMs);
 }
 
 /** Builds the per-run instruction text sent alongside the audio. */
@@ -152,6 +162,7 @@ export class GeminiProvider implements TranscriptionProvider {
 			data,
 			mimeType,
 			payload.filename,
+			this.config.requestTimeoutMs,
 		);
 		try {
 			await waitUntilActive(
@@ -192,7 +203,10 @@ export class GeminiProvider implements TranscriptionProvider {
 						...(thinkingConfig ? { thinkingConfig } : {}),
 					},
 				}),
-				timeoutMs: geminiGenerateTimeoutMs(data.byteLength),
+				timeoutMs: geminiGenerateTimeoutMs(
+					data.byteLength,
+					this.config.requestTimeoutMs,
+				),
 			});
 			// A truncated (MAX_TOKENS) response yields invalid JSON, and a
 			// safety/policy block yields no candidate; both would otherwise map

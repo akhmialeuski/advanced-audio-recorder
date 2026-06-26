@@ -24,6 +24,7 @@ import {
 	DEFAULT_GEMINI_BASE_URL,
 	DEFAULT_GEMINI_MODEL,
 	GEMINI_MODEL_SUGGESTIONS,
+	DEFAULT_TRANSCRIPTION_TIMEOUT_MINUTES,
 	TRANSCRIPTION_PROVIDER_IDS,
 	LLM_PROVIDER_IDS,
 	DEFAULT_LLM_OPENAI_BASE_URL,
@@ -153,6 +154,8 @@ export interface AudioRecorderSettings {
 	transcriptionWordTimestamps: boolean;
 	/** Upload size limit per chunk, in megabytes (Whisper API) */
 	transcriptionChunkMb: number;
+	/** Per-request transcription timeout, in minutes (a hung request fails after this) */
+	transcriptionTimeoutMinutes: number;
 	/** Whisper API base URL (OpenAI-compatible) */
 	whisperApiBaseUrl: string;
 	/** Whisper API key. Shared with the OpenAI LLM provider as the OpenAI vendor key. */
@@ -399,6 +402,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	transcriptionDiarize: false,
 	transcriptionWordTimestamps: false,
 	transcriptionChunkMb: DEFAULT_TRANSCRIBE_CHUNK_MB,
+	transcriptionTimeoutMinutes: DEFAULT_TRANSCRIPTION_TIMEOUT_MINUTES,
 	whisperApiBaseUrl: DEFAULT_WHISPER_API_BASE_URL,
 	whisperApiKey: '',
 	whisperApiModel: DEFAULT_WHISPER_API_MODEL,

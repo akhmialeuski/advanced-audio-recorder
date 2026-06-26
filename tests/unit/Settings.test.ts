@@ -234,6 +234,7 @@ describe('Settings', () => {
 				transcriptionDiarize: true,
 				transcriptionWordTimestamps: true,
 				transcriptionChunkMb: 10,
+				transcriptionTimeoutMinutes: 15,
 				whisperApiBaseUrl: 'https://api.groq.com/openai/v1',
 				whisperApiKey: 'sk-test',
 				whisperApiModel: 'whisper-large-v3',
