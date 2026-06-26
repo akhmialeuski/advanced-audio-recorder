@@ -43,10 +43,22 @@ export class AudioProcessingModal extends Modal {
 	private deleteSource = false;
 	private processing = false;
 
+	/**
+	 * @param app - Obsidian app handle
+	 * @param file - Source audio file to clean up
+	 * @param settings - Plugin settings (seed the default stage config)
+	 * @param onProcessed - Called after a successful write, before the source is
+	 *   trashed, so a caller can link the result into the note while the source
+	 *   embed still resolves. `replaceSource` mirrors the delete-source choice.
+	 */
 	constructor(
 		app: App,
 		private readonly file: TFile,
 		settings: AudioRecorderSettings,
+		private readonly onProcessed?: (result: {
+			outputPath: string;
+			replaceSource: boolean;
+		}) => void | Promise<void>,
 	) {
 		super(app);
 		this.config = resolveAudioDspConfig(settings);
@@ -190,6 +202,22 @@ export class AudioProcessingModal extends Modal {
 		try {
 			const service = new AudioProcessingService(this.app);
 			const outputPath = await service.process(this.file, this.config);
+			// Link the result into the note before the source is trashed, so the
+			// source embed still resolves when it is matched and replaced. A
+			// failure here is non-fatal: the processed file is already written.
+			if (this.onProcessed) {
+				try {
+					await this.onProcessed({
+						outputPath,
+						replaceSource: this.deleteSource,
+					});
+				} catch (linkError) {
+					console.warn(
+						`${PLUGIN_LOG_PREFIX} Failed to link the processed file into the note:`,
+						linkError,
+					);
+				}
+			}
 			if (this.deleteSource) {
 				try {
 					await this.app.fileManager.trashFile(this.file);

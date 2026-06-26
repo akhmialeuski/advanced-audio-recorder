@@ -112,6 +112,7 @@ describe('ConversionService', () => {
 		expect(outcome).toEqual({
 			status: 'completed',
 			newFileName: 'recording.webm',
+			newPath: 'Audio/recording.webm',
 		});
 		expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
 			'Audio/recording.webm',

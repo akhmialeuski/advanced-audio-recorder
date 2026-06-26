@@ -5,7 +5,7 @@
  * @module recording/NoteInserter
  */
 
-import { MarkdownView } from 'obsidian';
+import { MarkdownView, TFile, getLinkpath } from 'obsidian';
 import type { App } from 'obsidian';
 import type { InsertionContext } from '../types';
 import type { DebugLogger } from '../utils/DebugLogger';
@@ -93,4 +93,57 @@ export function insertFileLinks(
 		return activeView?.file?.path ?? null;
 	}
 	return null;
+}
+
+/**
+ * Links a processed (cleaned/converted) audio file into the note that embeds
+ * the source, mirroring how a freshly recorded file is linked. When the source
+ * is being removed its embed is replaced (so no broken link is left behind);
+ * otherwise the new embed is inserted on the line right after it, keeping both.
+ * Edits the note content atomically via `vault.process`, matching the source
+ * embed by its exact original text, so a stale cursor or offset cannot misplace
+ * the insert. Returns the note path the embed landed in, or null when the active
+ * note does not embed the source (e.g. cleanup invoked from the file explorer),
+ * so the caller can skip the enhanced-player priming.
+ * @param app - Obsidian App instance
+ * @param sourceFile - The original audio file that was processed
+ * @param processedPath - Vault path of the processed output
+ * @param replaceSource - Replace the source embed instead of inserting after it
+ * @returns The note path the embed was inserted into, or null when none matched
+ */
+export async function insertProcessedAudioEmbed(
+	app: App,
+	sourceFile: TFile,
+	processedPath: string,
+	replaceSource: boolean,
+): Promise<string | null> {
+	const note = app.workspace.getActiveFile();
+	if (!note || note.extension !== 'md') {
+		return null;
+	}
+	const embeds = app.metadataCache.getFileCache(note)?.embeds ?? [];
+	const target = embeds.find(
+		(embed) =>
+			app.metadataCache.getFirstLinkpathDest(
+				getLinkpath(embed.link),
+				note.path,
+			)?.path === sourceFile.path,
+	);
+	if (!target) {
+		return null;
+	}
+	const processedFile = app.vault.getAbstractFileByPath(processedPath);
+	const link =
+		processedFile instanceof TFile
+			? app.fileManager.generateMarkdownLink(processedFile, note.path)
+			: `[[${processedPath.split('/').pop() ?? processedPath}]]`;
+	const newEmbed = `!${link}`;
+	const original = target.original;
+	await app.vault.process(note, (content) =>
+		content.replace(
+			original,
+			replaceSource ? newEmbed : `${original}\n${newEmbed}`,
+		),
+	);
+	return note.path;
 }

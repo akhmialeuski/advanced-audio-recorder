@@ -25,7 +25,18 @@ import { SplitModal } from './SplitModal';
 import { TranscriptionModal } from './TranscriptionModal';
 import type { TranscriptionModalOptions } from './TranscriptionModal';
 import { AudioProcessingModal } from '../cleanup/AudioProcessingModal';
+import { insertProcessedAudioEmbed } from '../recording/NoteInserter';
 import type { AudioRecorderSettings } from '../settings/Settings';
+
+/**
+ * Primes freshly written files for the enhanced player so a cleaned/converted
+ * file is upgraded immediately instead of after the note is reopened. Injected
+ * so the context menu stays decoupled from the player registrar.
+ */
+export type EnhancementPrimer = (
+	paths: string[],
+	notePath: string | null,
+) => void;
 
 /** CodeMirror view attached to Editor (internal Obsidian API). */
 interface EditorCodeMirrorView {
@@ -66,6 +77,7 @@ export class ContextMenu {
 		private plugin: Plugin,
 		private getSettings: () => AudioRecorderSettings,
 		private createTranscriptionModalOptions: () => TranscriptionModalOptions = () => ({}),
+		private primeForEnhancement: EnhancementPrimer = () => {},
 	) {}
 
 	/**
@@ -339,6 +351,20 @@ export class ContextMenu {
 						this.app,
 						file,
 						this.getSettings(),
+						async ({ outputPath, replaceSource }) => {
+							// Link the result into the note (replace the source
+							// embed when it is being deleted, else insert after),
+							// then prime it so the enhanced player applies at once.
+							const notePath = await insertProcessedAudioEmbed(
+								this.app,
+								file,
+								outputPath,
+								replaceSource,
+							);
+							if (notePath) {
+								this.primeForEnhancement([outputPath], notePath);
+							}
+						},
 					).open();
 				});
 		});
@@ -518,6 +544,15 @@ export class ContextMenu {
 						this.app,
 						file,
 						this.getSettings(),
+						(convertedPath) => {
+							// The note link is already rewritten by the
+							// conversion's linkAction; prime the active note so the
+							// new embed becomes the enhanced player at once.
+							this.primeForEnhancement(
+								[convertedPath],
+								this.app.workspace.getActiveFile()?.path ?? null,
+							);
+						},
 					).open();
 				});
 		});

@@ -34,7 +34,7 @@ export interface ConversionRequest {
  * the user via Notices by the pipeline.
  */
 export type ConversionOutcome =
-	| { status: 'completed'; newFileName: string }
+	| { status: 'completed'; newFileName: string; newPath: string }
 	| { status: 'aborted' }
 	| { status: 'partial' };
 
@@ -139,7 +139,7 @@ export class ConversionService {
 			return { status: 'partial' };
 		}
 
-		return { status: 'completed', newFileName };
+		return { status: 'completed', newFileName, newPath };
 	}
 
 	/**
