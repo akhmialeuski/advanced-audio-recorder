@@ -127,7 +127,7 @@ describe('assertGeminiNotTruncated', () => {
 				},
 				REMEDY,
 			),
-		).toThrow(/4096 output tokens including 4000 on thinking/);
+		).toThrow(/4096 output tokens plus 4000 on thinking/);
 	});
 
 	it('omits the usage parenthetical when no counts are reported', () => {

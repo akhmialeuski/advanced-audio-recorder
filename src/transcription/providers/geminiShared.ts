@@ -176,9 +176,12 @@ function geminiUsageDetail(body: unknown): string {
 	const usage = geminiUsage(body);
 	const parts: string[] = [];
 	if (usage.candidatesTokenCount !== undefined) {
+		// Gemini reports thinking tokens separately from candidatesTokenCount
+		// (billing is the sum of the two), so they are added to, not contained
+		// within, the output-token count — hence "plus", not "including".
 		const thinking =
 			usage.thoughtsTokenCount && usage.thoughtsTokenCount > 0
-				? ` including ${String(usage.thoughtsTokenCount)} on thinking`
+				? ` plus ${String(usage.thoughtsTokenCount)} on thinking`
 				: '';
 		parts.push(
 			`generated ${String(usage.candidatesTokenCount)} output tokens${thinking}`,

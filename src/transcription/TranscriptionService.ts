@@ -181,7 +181,7 @@ export class TranscriptionService {
 			this.throwIfCancelled(token);
 			const partLabel =
 				partCount > 1
-					? `part ${String(i + 1)} of ${String(partCount)}`
+					? this.describePart(payloads[i], i, partCount)
 					: '';
 			options.onProgress?.(
 				(i / partCount) * TRANSCRIBE_CHUNK_PROGRESS_CEILING,
@@ -392,6 +392,29 @@ export class TranscriptionService {
 			return `the segment at ${start}`;
 		}
 		return `the ${start}–${formatTimecode(part.endSeconds, reference)} segment`;
+	}
+
+	/**
+	 * Labels a top-level part for progress and salvage messages. A part whose
+	 * span is known (the decode path stamps {@link PreparedPayload.endSeconds})
+	 * is named by its timeline range, matching how a subdivided part is named so
+	 * the incomplete-transcription warning never mixes a "part N of M" label with
+	 * a timecode span. Only when the span was never measured (no endSeconds) does
+	 * it fall back to the ordinal position.
+	 * @param part - The prepared top-level part
+	 * @param index - Zero-based position of the part
+	 * @param count - Total number of top-level parts
+	 * @returns A human label for the part
+	 */
+	private describePart(
+		part: PreparedPayload,
+		index: number,
+		count: number,
+	): string {
+		if (part.endSeconds !== undefined) {
+			return this.partTimeLabel(part);
+		}
+		return `part ${String(index + 1)} of ${String(count)}`;
 	}
 
 	/**
