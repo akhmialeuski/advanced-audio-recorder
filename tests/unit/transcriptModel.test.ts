@@ -10,6 +10,7 @@ import {
 	offsetSegment,
 	plainText,
 	stitchChunks,
+	stripSpeakers,
 } from 'src/transcription/transcriptModel';
 import type {
 	Transcript,
@@ -39,6 +40,54 @@ describe('collectSpeakers', () => {
 			seg(2, 3, 'c', 'B'),
 		];
 		expect(collectSpeakers(segments)).toEqual(['B', 'A']);
+	});
+});
+
+describe('stripSpeakers', () => {
+	it('removes every segment speaker and empties the speaker list', () => {
+		const transcript = buildTranscript([
+			seg(0, 1, 'a', 'A'),
+			seg(1, 2, 'b', 'B'),
+		]);
+		expect(transcript.speakers).toEqual(['A', 'B']);
+
+		const stripped = stripSpeakers(transcript);
+		expect(stripped.speakers).toEqual([]);
+		expect(stripped.segments.every((s) => s.speaker === undefined)).toBe(
+			true,
+		);
+	});
+
+	it('preserves word-level timings and other metadata', () => {
+		const transcript: Transcript = {
+			language: 'en',
+			model: 'fake',
+			speakers: ['A'],
+			segments: [
+				{
+					start: 0,
+					end: 1,
+					text: 'hi',
+					speaker: 'A',
+					words: [{ start: 0, end: 1, text: 'hi' }],
+				},
+			],
+		};
+
+		const stripped = stripSpeakers(transcript);
+		expect(stripped.language).toBe('en');
+		expect(stripped.model).toBe('fake');
+		expect(stripped.segments[0].words).toEqual([
+			{ start: 0, end: 1, text: 'hi' },
+		]);
+		expect(stripped.segments[0].speaker).toBeUndefined();
+	});
+
+	it('does not mutate the source transcript', () => {
+		const transcript = buildTranscript([seg(0, 1, 'a', 'A')]);
+		stripSpeakers(transcript);
+		expect(transcript.speakers).toEqual(['A']);
+		expect(transcript.segments[0].speaker).toBe('A');
 	});
 });
 

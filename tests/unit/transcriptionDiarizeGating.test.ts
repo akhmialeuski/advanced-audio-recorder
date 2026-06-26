@@ -19,6 +19,10 @@ import {
 	type TranscriptionProviderId,
 } from 'src/settings/Settings';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
+import type {
+	Transcript,
+	TranscriptSegment,
+} from 'src/transcription/TranscriptTypes';
 
 const audioFile = {
 	name: 'rec.webm',
@@ -31,7 +35,9 @@ const audioFile = {
  * capabilities only steer audio preparation; whether diarization is requested
  * is decided from the configured engine id, not this stub.
  */
-function makeProvider(): TranscriptionProvider & {
+function makeProvider(
+	segments: TranscriptSegment[] = [{ start: 0, end: 1, text: 'hi' }],
+): TranscriptionProvider & {
 	lastOptions: TranscribeOptions | null;
 } {
 	const provider = {
@@ -47,7 +53,7 @@ function makeProvider(): TranscriptionProvider & {
 		lastOptions: null as TranscribeOptions | null,
 		transcribe: jest.fn(async (_payload, options: TranscribeOptions) => {
 			provider.lastOptions = options;
-			return { segments: [{ start: 0, end: 1, text: 'hi' }] };
+			return { segments };
 		}),
 	};
 	return provider;
@@ -112,5 +118,63 @@ describe('TranscriptionService diarization gating', () => {
 			false,
 		);
 		expect(provider.lastOptions?.diarize).toBe(false);
+	});
+});
+
+/**
+ * Runs a transcription with a provider that returns a segment already
+ * carrying a speaker label, to prove speakers are dropped from every output
+ * when diarization is not in effect even if the provider supplied one.
+ */
+async function runWithSpeaker(
+	engineId: TranscriptionProviderId,
+	diarizeSetting: boolean,
+): Promise<{ markdown: string; transcript: Transcript }> {
+	const segments: TranscriptSegment[] = [
+		{ start: 0, end: 1, text: 'hi', speaker: 'Speaker 1' },
+	];
+	const service = new TranscriptionService(
+		makeApp(),
+		() =>
+			mergeSettings({
+				transcriptionProvider: engineId,
+				transcriptionDiarize: diarizeSetting,
+			}),
+		{ createProvider: () => makeProvider(segments) },
+	);
+	return service.run(audioFile, { notePathForLinks: 'note.md' });
+}
+
+describe('TranscriptionService speaker output gating', () => {
+	it('omits speaker labels for a non-diarizing engine, even if the provider returns one', async () => {
+		const { markdown, transcript } = await runWithSpeaker(
+			TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			true,
+		);
+		expect(markdown).not.toContain('Speaker 1');
+		// Speakers are stripped from the canonical transcript, so the sidecar
+		// file/JSON output stays consistent with the note Markdown.
+		expect(transcript.speakers).toEqual([]);
+		expect(transcript.segments.every((s) => s.speaker === undefined)).toBe(
+			true,
+		);
+	});
+
+	it('omits speaker labels when a capable engine has diarization disabled', async () => {
+		const { markdown, transcript } = await runWithSpeaker(
+			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			false,
+		);
+		expect(markdown).not.toContain('Speaker 1');
+		expect(transcript.speakers).toEqual([]);
+	});
+
+	it('keeps speaker labels for a diarizing engine when enabled', async () => {
+		const { markdown, transcript } = await runWithSpeaker(
+			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			true,
+		);
+		expect(markdown).toContain('Speaker 1');
+		expect(transcript.speakers).toEqual(['Speaker 1']);
 	});
 });

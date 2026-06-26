@@ -26,7 +26,12 @@ import type {
 	AudioPayload,
 	TranscriptionProvider,
 } from './providers/TranscriptionProvider';
-import { buildTranscript, plainText, stitchChunks } from './transcriptModel';
+import {
+	buildTranscript,
+	plainText,
+	stitchChunks,
+	stripSpeakers,
+} from './transcriptModel';
 import {
 	DEFAULT_TRANSCRIPT_MARKDOWN_OPTIONS,
 	formatTranscriptMarkdown,
@@ -118,20 +123,22 @@ export class TranscriptionService {
 		const settings = this.getSettings();
 		const token = options.token ?? NEVER_CANCELLED;
 		const provider = this.createProvider(settings);
+		// One gate for the whole run: a stale "on" left from a diarizing engine
+		// is ignored and a non-diarizing engine never sends a field it would
+		// silently drop. The same value decides both whether to request speaker
+		// labels here and whether to strip any the provider returned (below), so
+		// the request-time and output-time decisions can never diverge.
+		const diarize = effectiveDiarize(
+			settings.transcriptionProvider,
+			settings.transcriptionDiarize,
+		);
 		const transcribeOptions = {
 			language:
 				settings.transcriptionLanguage &&
 				settings.transcriptionLanguage !== 'auto'
 					? settings.transcriptionLanguage
 					: undefined,
-			// Only request diarization when the engine can actually produce
-			// speaker labels. effectiveDiarize is the shared gate, so a stale
-			// "on" left from a diarizing engine is ignored and a non-diarizing
-			// engine never sends a field it would silently drop.
-			diarize: effectiveDiarize(
-				settings.transcriptionProvider,
-				settings.transcriptionDiarize,
-			),
+			diarize,
 			wordTimestamps: settings.transcriptionWordTimestamps,
 		};
 
@@ -215,11 +222,17 @@ export class TranscriptionService {
 		// success, since the per-chunk check only fires before the next chunk.
 		this.throwIfCancelled(token);
 
-		const transcript = stitchChunks(results, {
+		const stitched = stitchChunks(results, {
 			model: provider.id,
 			createdAt: new Date().toISOString(),
 			sourcePath: file.path,
 		});
+		// Without effective diarization there are no speakers; drop any the
+		// provider returned so no output path (note Markdown, sidecar file, or
+		// JSON) shows a label the user did not ask for. Doing it once here, on
+		// the canonical transcript, keeps every consumer consistent rather than
+		// gating each renderer separately.
+		const transcript = diarize ? stitched : stripSpeakers(stitched);
 
 		const markdownOptions = this.markdownOptions(settings);
 		let markdown = formatTranscriptMarkdown(
@@ -297,6 +310,10 @@ export class TranscriptionService {
 	private markdownOptions(
 		settings: AudioRecorderSettings,
 	): TranscriptMarkdownOptions {
+		// Speaker labels are already stripped from the transcript when
+		// diarization is not in effect (see run()), so these options can honor
+		// the user's settings directly: includeSpeakers/mergeConsecutiveSpeaker
+		// simply have nothing to act on when there are no speakers.
 		return {
 			...DEFAULT_TRANSCRIPT_MARKDOWN_OPTIONS,
 			includeTimestamps: settings.transcriptIncludeTimestamps,

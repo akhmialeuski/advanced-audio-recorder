@@ -95,6 +95,9 @@ export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
 			effectiveDiarize(s.transcriptionProvider, s.transcriptionDiarize),
 		set: (v) => (s.transcriptionDiarize = v),
 		disabled: !canDiarize,
+		// Re-render so the speaker-related output controls below enable or
+		// disable in step with diarization the moment this toggle changes.
+		rerender: true,
 	});
 
 	addToggle(ctx, {
@@ -251,6 +254,18 @@ function renderTranscriptOutputSection(ctx: SettingsSectionContext): void {
 	const s = ctx.settings;
 	addHeading(ctx, 'Transcript output');
 
+	// Speaker labels only exist when diarization is actually in effect (the
+	// engine can diarize AND the user enabled it), so the speaker-related
+	// output controls are inert without it. Disable and dim them, like the
+	// Speaker diarization toggle, so they read as unavailable rather than as
+	// settings that quietly do nothing.
+	const diarizes = effectiveDiarize(
+		s.transcriptionProvider,
+		s.transcriptionDiarize,
+	);
+	const speakerDisabledHint =
+		'Available only with speaker diarization; the current engine and settings produce no speaker labels.';
+
 	addDropdown(ctx, {
 		name: 'Destination',
 		desc: 'Insert into the note, save as a sidecar file, both, or save a file and link it in the note.',
@@ -294,15 +309,20 @@ function renderTranscriptOutputSection(ctx: SettingsSectionContext): void {
 
 	addToggle(ctx, {
 		name: 'Include speakers',
+		desc: diarizes ? undefined : speakerDisabledHint,
 		get: () => s.transcriptIncludeSpeakers,
 		set: (v) => (s.transcriptIncludeSpeakers = v),
+		disabled: !diarizes,
 	});
 
 	addToggle(ctx, {
 		name: 'Merge speaker turns',
-		desc: 'Combine consecutive segments from the same speaker into one line (diarized transcripts only).',
+		desc: diarizes
+			? 'Combine consecutive segments from the same speaker into one line (diarized transcripts only).'
+			: speakerDisabledHint,
 		get: () => s.transcriptMergeConsecutiveSpeaker,
 		set: (v) => (s.transcriptMergeConsecutiveSpeaker = v),
+		disabled: !diarizes,
 	});
 
 	addText(ctx, {
@@ -313,9 +333,12 @@ function renderTranscriptOutputSection(ctx: SettingsSectionContext): void {
 	});
 	addText(ctx, {
 		name: 'Speaker format',
-		desc: 'Template for the speaker label; {speaker} is the name.',
+		desc: diarizes
+			? 'Template for the speaker label; {speaker} is the name.'
+			: speakerDisabledHint,
 		get: () => s.transcriptSpeakerFormat,
 		set: (v) => (s.transcriptSpeakerFormat = v || '**{speaker}**'),
+		disabled: !diarizes,
 	});
 	addText(ctx, {
 		name: 'Line format',

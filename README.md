@@ -245,6 +245,8 @@ All languages supported by the chosen model work; leave **Language** as `auto` t
 
 The transcript data model carries per-segment **speaker** labels. Enable **Speaker diarization** to request them. Diarization is currently available with **Deepgram** and **Google Gemini**; OpenAI's Whisper API and local whisper.cpp do not return speaker labels, so the toggle is disabled for those engines rather than requesting a field they silently ignore. The provider detects the number of speakers automatically, and labels (e.g. `Speaker 1`) are rendered in the output.
 
+The speaker-related output controls — **Include speakers**, **Merge speaker turns**, and **Speaker format** — are likewise disabled whenever diarization is not in effect (an engine that cannot diarize, or the diarization toggle turned off), since there are no speaker labels for them to act on. When diarization is off, speaker labels are stripped from the transcript entirely, so neither the in-note Markdown nor the sidecar file (including JSON) shows them.
+
 ### Output
 
 Choose where the transcript goes with **Destination**:

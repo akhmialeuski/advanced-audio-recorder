@@ -40,6 +40,34 @@ export function collectSpeakers(
 }
 
 /**
+ * Returns a copy of the transcript with all speaker attribution removed:
+ * every segment drops its `speaker` and the speaker list is emptied, while
+ * word-level timings are kept intact. Applied when diarization is not in
+ * effect so no output path — note Markdown, sidecar file, or JSON — ever
+ * shows a label the user did not ask for. The no-speakers transcript is the
+ * single source of truth, so every consumer stays consistent.
+ * @param transcript - Source transcript
+ */
+export function stripSpeakers(transcript: Transcript): Transcript {
+	return {
+		...transcript,
+		segments: transcript.segments.map((segment) => {
+			// Rebuild without the speaker field; preserve word-level timings.
+			const stripped: TranscriptSegment = {
+				start: segment.start,
+				end: segment.end,
+				text: segment.text,
+			};
+			if (segment.words) {
+				stripped.words = segment.words;
+			}
+			return stripped;
+		}),
+		speakers: [],
+	};
+}
+
+/**
  * Sorts segments by start time (stable for equal starts) and normalizes
  * each segment's text whitespace. Returns a new array.
  * @param segments - Transcript segments
