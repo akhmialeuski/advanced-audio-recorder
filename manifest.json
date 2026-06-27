@@ -3,8 +3,9 @@
 	"name": "Advanced Audio Recorder",
 	"version": "1.5.0",
 	"minAppVersion": "1.6.6",
-	"description": "Advanced audio recording with input device and folder configuration.",
+	"description": "Record, play, and transcribe audio in your vault: multi-track recording, a waveform player with bookmarks, format conversion, cleanup, and speech-to-text (Whisper, Deepgram, Gemini, offline).",
 	"author": "Anatol Khmialeuski",
 	"authorUrl": "https://coff.ee/akhmelevskiy",
+	"fundingUrl": "https://coff.ee/akhmelevskiy",
 	"isDesktopOnly": true
 }

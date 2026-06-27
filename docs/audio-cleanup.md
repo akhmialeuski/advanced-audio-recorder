@@ -27,6 +27,9 @@ Use it when:
 
 ## How to run it
 
+![The Clean up audio dialog with its stage toggles](images/modal-clean-up-audio.png)
+*Figure: the Clean up audio dialog with per-stage toggles and parameters.*
+
 1. Right-click the target audio in any of these places:
    - the **File Explorer**,
    - an audio **embed link** in the editor (`![[recording.webm]]`),
@@ -46,9 +49,9 @@ The stages are applied in this order: **noise gate → high-pass filter → loud
 
 Attenuates everything below a cutoff frequency, which removes low-frequency rumble: air conditioning, traffic, desk thumps, mains hum, and microphone handling noise.
 
-| Parameter | Meaning | Range | Default |
-|-----------|---------|-------|---------|
-| **Cutoff (Hz)** | Frequencies below this are progressively attenuated. | 20–300 Hz | 80 Hz |
+| Parameter       | Meaning                                              | Range     | Default |
+| --------------- | ---------------------------------------------------- | --------- | ------- |
+| **Cutoff (Hz)** | Frequencies below this are progressively attenuated. | 20–300 Hz | 80 Hz   |
 
 - **Speech**: 80–120 Hz is safe and removes most rumble without thinning the voice.
 - **Music / full-range**: keep it low (20–40 Hz) or disable it, so you don't lose bass.
@@ -57,8 +60,8 @@ Attenuates everything below a cutoff frequency, which removes low-frequency rumb
 
 Silences the signal whenever its level falls below a threshold, so quiet background noise between words/phrases disappears. The gate uses **hysteresis** (it opens at the threshold but only closes once the level drops a margin below it) plus attack/release smoothing, so it does not "chatter" on and off or introduce clicks.
 
-| Parameter | Meaning | Range | Default |
-|-----------|---------|-------|---------|
+| Parameter            | Meaning                                      | Range           | Default  |
+| -------------------- | -------------------------------------------- | --------------- | -------- |
 | **Threshold (dBFS)** | Audio quieter than this is gated to silence. | −80 to −20 dBFS | −50 dBFS |
 
 - A **lower** threshold (e.g. −60 dBFS) gates only very quiet noise — safer, less aggressive.
@@ -68,9 +71,9 @@ Silences the signal whenever its level falls below a threshold, so quiet backgro
 
 Runs the audio through a compressor and a makeup-gain stage to even out quiet and loud passages — useful for interviews or dictation recorded at an inconsistent distance from the mic.
 
-| Parameter | Meaning | Range | Default |
-|-----------|---------|-------|---------|
-| **Makeup gain (dB)** | Gain added after compression to restore overall level. | 0–24 dB | 6 dB |
+| Parameter            | Meaning                                                | Range   | Default |
+| -------------------- | ------------------------------------------------------ | ------- | ------- |
+| **Makeup gain (dB)** | Gain added after compression to restore overall level. | 0–24 dB | 6 dB    |
 
 The compressor itself uses fixed, speech-friendly settings (threshold −24 dB, ratio 12:1, knee 30 dB, attack 3 ms, release 250 ms). Raise the makeup gain if the result is quieter than you want; lower it if it sounds too loud or starts to distort.
 
@@ -79,27 +82,31 @@ The compressor itself uses fixed, speech-friendly settings (threshold −24 dB, 
 - The cleaned file is always written as **16-bit PCM WAV**, regardless of the source format, because the cleanup re-encodes the decoded audio. The source's channel layout (mono/stereo) is preserved; the sample rate is the one the Obsidian audio engine decodes to, which may differ from the source.
 - The file is saved **next to the source**, named `<source-name>-processed.wav`. If that name is taken, a numeric suffix is appended (`…-processed_1.wav`).
 - The original file is left untouched unless you enable **Delete source after processing**. If processing succeeds but deleting the source fails, the cleaned copy is still kept and a notice explains what happened.
+- **Linking into your note.** When you start the cleanup from an embed or player **inside a note**, the cleaned copy is linked into that note automatically: with **Delete source after processing** on, the source's embed is *replaced* with the cleaned file (so no broken link is left behind); with it off, the cleaned file's embed is *inserted on the line right after* the source, keeping both. The new links follow your link-format preferences, and the [enhanced player](audio-player.md) picks up the cleaned file straight away. Running cleanup from the **File Explorer** (where the active note does not embed the file) writes the copy but adds no link.
 
 ## Defaults and settings
 
+![The Audio cleanup defaults settings section](images/settings-audio-cleanup-defaults.png)
+*Figure: the Audio cleanup defaults section in plugin settings.*
+
 Under **Settings → Advanced Audio Recorder → Audio cleanup defaults**, set the values the dialog starts from each time:
 
-| Setting | Description | Default |
-|---------|-------------|---------|
-| **High-pass filter** | Default on/off and cutoff (Hz) for the high-pass stage. | On, 80 Hz |
-| **Noise gate** | Default on/off and threshold (dBFS) for the gate. | Off, −50 dBFS |
-| **Loudness leveling** | Default on/off and makeup gain (dB) for the compressor. | Off, 6 dB |
+| Setting               | Description                                             | Default       |
+| --------------------- | ------------------------------------------------------- | ------------- |
+| **High-pass filter**  | Default on/off and cutoff (Hz) for the high-pass stage. | On, 80 Hz     |
+| **Noise gate**        | Default on/off and threshold (dBFS) for the gate.       | Off, −50 dBFS |
+| **Loudness leveling** | Default on/off and makeup gain (dB) for the compressor. | Off, 6 dB     |
 
 These are only defaults — every run can override them in the dialog.
 
 ## Recommended settings
 
-| Use case | High-pass | Noise gate | Leveling |
-|----------|-----------|-----------|----------|
-| Voice note / dictation | On, ~90 Hz | On, −50 dBFS | On, ~6 dB |
-| Interview (two voices) | On, ~80 Hz | On, −45 dBFS | On, ~4 dB |
-| Lecture in a noisy room | On, ~100 Hz | On, −40 dBFS | On, ~6 dB |
-| Music / instrument | Off or ~30 Hz | Off | Off |
+| Use case                | High-pass     | Noise gate   | Leveling  |
+| ----------------------- | ------------- | ------------ | --------- |
+| Voice note / dictation  | On, ~90 Hz    | On, −50 dBFS | On, ~6 dB |
+| Interview (two voices)  | On, ~80 Hz    | On, −45 dBFS | On, ~4 dB |
+| Lecture in a noisy room | On, ~100 Hz   | On, −40 dBFS | On, ~6 dB |
+| Music / instrument      | Off or ~30 Hz | Off          | Off       |
 
 Start conservative and re-run with stronger settings if needed — the original is preserved, so you can experiment freely.
 
