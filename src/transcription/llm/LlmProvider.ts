@@ -1,7 +1,7 @@
 /**
- * LLM provider abstraction for transcript post-processing, plus the
- * OpenAI-compatible (OpenAI / Groq / Ollama) and Anthropic
- * implementations. All calls go through Obsidian's `requestUrl`.
+ * LLM provider abstraction for transcript post-processing, plus the OpenAI,
+ * Anthropic, and Google Gemini implementations. The OpenAI provider speaks the
+ * OpenAI Chat Completions API. All calls go through Obsidian's `requestUrl`.
  * @module transcription/llm/LlmProvider
  */
 
@@ -45,12 +45,13 @@ export interface LlmConfig {
 }
 
 /**
- * OpenAI-compatible chat-completions provider. Works with OpenAI, Groq,
- * and a local Ollama server (which accepts an empty API key).
+ * OpenAI chat-completions provider, using the OpenAI Chat Completions API.
+ * The implementation stays OpenAI-compatible, but only OpenAI is offered as a
+ * configured vendor.
  */
 export class OpenAiCompatibleLlmProvider implements LlmProvider {
 	readonly id = LLM_PROVIDER_IDS.OPENAI_COMPATIBLE;
-	readonly label = 'OpenAI-compatible (OpenAI / Groq / Ollama)';
+	readonly label = 'OpenAI';
 
 	constructor(private readonly config: LlmConfig) {}
 

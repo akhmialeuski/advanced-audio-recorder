@@ -36,7 +36,19 @@ export class ConversionModal extends Modal {
 	/** Conversion pipeline behind the form. */
 	private readonly conversionService: ConversionService;
 
-	constructor(app: App, sourceFile: TFile, settings: AudioRecorderSettings) {
+	/**
+	 * @param app - Obsidian app handle
+	 * @param sourceFile - Audio file to convert
+	 * @param settings - Plugin settings (seed format/bitrate/link defaults)
+	 * @param onConverted - Called with the converted file's path after a
+	 *   successful run, so a caller can prime it for the enhanced player.
+	 */
+	constructor(
+		app: App,
+		sourceFile: TFile,
+		settings: AudioRecorderSettings,
+		private readonly onConverted?: (convertedPath: string) => void,
+	) {
 		super(app);
 		this.sourceFile = sourceFile;
 		this.deleteSource = settings.deleteSourceAfterConversion;
@@ -168,6 +180,9 @@ export class ConversionModal extends Modal {
 			}
 
 			this.setProgress(progressEl, '');
+			// Conversion already rewrote the note's link (linkAction); prime the
+			// new file so the enhanced player applies without reopening the note.
+			this.onConverted?.(outcome.newPath);
 			const action = this.deleteSource ? 'Replaced with' : 'Converted to';
 			new Notice(`${action} ${outcome.newFileName}`);
 			// Cleared before close() so onClose does not start a

@@ -9,6 +9,7 @@
 
 import {
 	AudioRecorderSettings,
+	AudioRecorderSettingsInput,
 	DEFAULT_SETTINGS,
 	mergeSettings,
 	mergeSettingsAsync,
@@ -233,6 +234,7 @@ describe('Settings', () => {
 				transcriptionDiarize: true,
 				transcriptionWordTimestamps: true,
 				transcriptionChunkMb: 10,
+				transcriptionTimeoutMinutes: 15,
 				whisperApiBaseUrl: 'https://api.groq.com/openai/v1',
 				whisperApiKey: 'sk-test',
 				whisperApiModel: 'whisper-large-v3',
@@ -260,11 +262,18 @@ describe('Settings', () => {
 				transcriptHeading: '# T',
 				llmPostProcessEnabled: true,
 				llmPostProcessTask: 'summary',
+				llmCleanupPrompt: 'cleanup base',
+				llmSummaryPrompt: 'summary base',
 				llmCustomInstruction: 'do it',
 				llmProvider: 'anthropic',
 				llmBaseUrl: 'https://api.anthropic.com/v1',
-				llmApiKey: 'ak-test',
-				llmModel: 'claude-opus-4-8',
+				anthropicApiKey: 'ak-test',
+				llmOpenAiModel: 'gpt-4o',
+				llmOpenAiModels: ['gpt-4o', 'gpt-4o-mini'],
+				llmAnthropicModel: 'claude-opus-4-8',
+				llmAnthropicModels: ['claude-opus-4-8', 'claude-sonnet-4-6'],
+				llmGeminiModel: 'gemini-2.5-flash',
+				llmGeminiModels: ['gemini-2.5-flash', 'gemini-2.5-pro'],
 				llmMaxTokens: 2048,
 				inputNoiseSuppression: false,
 				inputEchoCancellation: false,
@@ -291,6 +300,45 @@ describe('Settings', () => {
 			mergeSettings({ recordingFormat: 'wav' });
 
 			expect(DEFAULT_SETTINGS).toEqual(originalDefaults);
+		});
+
+		it('migrates a legacy llmApiKey/llmModel onto the Anthropic vendor fields', () => {
+			// Pre-rework data held one flat key and model for the stored provider.
+			const legacy = {
+				llmProvider: 'anthropic',
+				llmApiKey: 'ak-legacy',
+				llmModel: 'claude-legacy',
+			} as unknown as AudioRecorderSettingsInput;
+
+			const result = mergeSettings(legacy);
+
+			expect(result.anthropicApiKey).toBe('ak-legacy');
+			expect(result.llmAnthropicModel).toBe('claude-legacy');
+			// The superseded flat fields must not linger in the merged object.
+			const record = result as unknown as Record<string, unknown>;
+			expect(record.llmApiKey).toBeUndefined();
+			expect(record.llmModel).toBeUndefined();
+		});
+
+		it('maps a legacy OpenAI llmApiKey onto the shared Whisper/OpenAI key', () => {
+			const result = mergeSettings({
+				llmProvider: 'openai-compatible',
+				llmApiKey: 'sk-legacy',
+				llmModel: 'gpt-legacy',
+			} as unknown as AudioRecorderSettingsInput);
+
+			expect(result.whisperApiKey).toBe('sk-legacy');
+			expect(result.llmOpenAiModel).toBe('gpt-legacy');
+		});
+
+		it('does not overwrite a vendor key that is already set', () => {
+			const result = mergeSettings({
+				llmProvider: 'gemini',
+				geminiApiKey: 'gm-current',
+				llmApiKey: 'gm-legacy',
+			} as unknown as AudioRecorderSettingsInput);
+
+			expect(result.geminiApiKey).toBe('gm-current');
 		});
 
 		it('should handle boolean settings correctly', () => {

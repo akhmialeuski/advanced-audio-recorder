@@ -411,6 +411,7 @@ describe('ContextMenu', () => {
 				mockApp,
 				mockFile,
 				expect.any(Object),
+				expect.any(Function),
 			);
 		});
 

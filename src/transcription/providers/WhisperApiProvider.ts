@@ -30,6 +30,8 @@ export interface WhisperApiConfig {
 	baseUrl: string;
 	apiKey: string;
 	model: string;
+	/** Per-request timeout cap (ms); the user-configured transcription limit. */
+	requestTimeoutMs?: number;
 }
 
 /**
@@ -88,7 +90,10 @@ export class WhisperApiProvider implements TranscriptionProvider {
 			headers: { Authorization: `Bearer ${this.config.apiKey}` },
 			contentType,
 			body,
-			timeoutMs: uploadTimeoutMs(body.byteLength),
+			timeoutMs: uploadTimeoutMs(
+				body.byteLength,
+				this.config.requestTimeoutMs,
+			),
 		});
 		return mapWhisperResponse(json);
 	}

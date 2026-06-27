@@ -189,6 +189,15 @@ export default class AudioRecorderPlugin extends Plugin {
 			this,
 			() => this.settings,
 			() => this.createTranscriptionModalOptions(),
+			// Prime a freshly cleaned/converted file so the enhanced player
+			// applies immediately instead of after the note is reopened. The
+			// registrar is created just below; the closure resolves it lazily
+			// when a processing run finishes.
+			(paths, notePath) =>
+				this.playerRegistrar.primeSavedRecordingsForEnhancement(
+					paths,
+					notePath,
+				),
 		);
 		this.contextMenu.register();
 

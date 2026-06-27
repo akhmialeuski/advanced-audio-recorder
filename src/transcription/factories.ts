@@ -4,7 +4,11 @@
  * @module transcription/factories
  */
 
-import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from '../constants';
+import {
+	LLM_PROVIDER_IDS,
+	MS_PER_MINUTE,
+	TRANSCRIPTION_PROVIDER_IDS,
+} from '../constants';
 import type { AudioRecorderSettings } from '../settings/Settings';
 import { WhisperApiProvider } from './providers/WhisperApiProvider';
 import { LocalWhisperProvider } from './providers/LocalWhisperProvider';
@@ -34,6 +38,11 @@ export class ProviderConfigError extends Error {
 export function createTranscriptionProvider(
 	settings: AudioRecorderSettings,
 ): TranscriptionProvider {
+	// Per-request timeout cap shared by every network provider, from the
+	// user-configured limit (minutes). Local whisper.cpp makes no HTTP request,
+	// so it ignores this.
+	const requestTimeoutMs =
+		settings.transcriptionTimeoutMinutes * MS_PER_MINUTE;
 	if (
 		settings.transcriptionProvider ===
 		TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER
@@ -70,6 +79,7 @@ export function createTranscriptionProvider(
 			baseUrl: settings.deepgramBaseUrl,
 			apiKey: settings.deepgramApiKey,
 			model: settings.deepgramModel,
+			requestTimeoutMs,
 		});
 	}
 	if (settings.transcriptionProvider === TRANSCRIPTION_PROVIDER_IDS.GEMINI) {
@@ -82,6 +92,7 @@ export function createTranscriptionProvider(
 			baseUrl: settings.geminiBaseUrl,
 			apiKey: settings.geminiApiKey,
 			model: settings.geminiModel,
+			requestTimeoutMs,
 		});
 	}
 	if (!settings.whisperApiKey) {
@@ -93,39 +104,54 @@ export function createTranscriptionProvider(
 		baseUrl: settings.whisperApiBaseUrl,
 		apiKey: settings.whisperApiKey,
 		model: settings.whisperApiModel,
+		requestTimeoutMs,
 	});
 }
 
 /**
- * Builds the configured LLM post-processing provider.
+ * Builds the configured LLM post-processing provider. The API key is the
+ * shared per-vendor key (OpenAI reuses the Whisper API key, Gemini reuses the
+ * Gemini transcription key, Anthropic uses its own), and the model is the
+ * provider's own selected id. Every provider requires a key.
  * @param settings - Plugin settings
  */
 export function createLlmProvider(
 	settings: AudioRecorderSettings,
 ): LlmProvider {
-	const config = {
-		baseUrl: settings.llmBaseUrl,
-		apiKey: settings.llmApiKey,
-		model: settings.llmModel,
-	};
+	const baseUrl = settings.llmBaseUrl;
 	if (settings.llmProvider === LLM_PROVIDER_IDS.ANTHROPIC) {
-		if (!config.apiKey) {
+		if (!settings.anthropicApiKey) {
 			throw new ProviderConfigError(
 				'Set the Anthropic API key in settings.',
 			);
 		}
-		return new AnthropicLlmProvider(config);
+		return new AnthropicLlmProvider({
+			baseUrl,
+			apiKey: settings.anthropicApiKey,
+			model: settings.llmAnthropicModel,
+		});
 	}
 	if (settings.llmProvider === LLM_PROVIDER_IDS.GEMINI) {
-		if (!config.apiKey) {
+		if (!settings.geminiApiKey) {
 			throw new ProviderConfigError(
 				'Set the Google Gemini API key in settings.',
 			);
 		}
-		return new GeminiLlmProvider(config);
+		return new GeminiLlmProvider({
+			baseUrl,
+			apiKey: settings.geminiApiKey,
+			model: settings.llmGeminiModel,
+		});
 	}
-	// OpenAI-compatible: a local Ollama server needs no key, hosted APIs do.
-	return new OpenAiCompatibleLlmProvider(config);
+	// OpenAI reuses the Whisper API key as the shared OpenAI vendor key.
+	if (!settings.whisperApiKey) {
+		throw new ProviderConfigError('Set the OpenAI API key in settings.');
+	}
+	return new OpenAiCompatibleLlmProvider({
+		baseUrl,
+		apiKey: settings.whisperApiKey,
+		model: settings.llmOpenAiModel,
+	});
 }
 
 /**

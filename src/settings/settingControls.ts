@@ -21,6 +21,12 @@ export const SETTING_DISABLED_CLASS = 'aar-setting-disabled';
 /** Class applied to a "learn more" link appended to a setting description. */
 export const SETTING_DOC_LINK_CLASS = 'aar-doc-link';
 
+/** Class applied to a setting whose control is a full-width, stacked text area. */
+export const SETTING_STACKED_CLASS = 'aar-setting-stacked';
+
+/** Default visible row count for a multi-line text-area control. */
+const DEFAULT_TEXTAREA_ROWS = 6;
+
 /** A "learn more" link appended to a setting's description. */
 export interface HelpLink {
 	label: string;
@@ -110,6 +116,56 @@ export function addText(
 	if (config.disabled) {
 		// Dim the whole row so a non-interactive input reads as unavailable, not
 		// merely empty — mirrors the disabled rendering used by addToggle.
+		setting.settingEl.addClass(SETTING_DISABLED_CLASS);
+	}
+}
+
+/** Configuration for a debounced multi-line text-area control. */
+export interface TextAreaControlConfig {
+	name: string;
+	desc?: string;
+	get: () => string;
+	set: (value: string) => void;
+	/** Optional "learn more" link appended to the description. */
+	helpLink?: HelpLink;
+	/** Visible row count (defaults to {@link DEFAULT_TEXTAREA_ROWS}). */
+	rows?: number;
+	/** Render the input non-interactive and dim the row. */
+	disabled?: boolean;
+}
+
+/**
+ * Adds a full-width, stacked multi-line text area bound to a getter/setter with
+ * a debounced save. Used for the editable LLM prompts, where a single-line text
+ * field is too cramped to read or edit a multi-sentence instruction.
+ * @param ctx - Section context
+ * @param config - Text-area bindings
+ */
+export function addTextArea(
+	ctx: SettingsSectionContext,
+	config: TextAreaControlConfig,
+): void {
+	const setting = new Setting(ctx.containerEl).setName(config.name);
+	if (config.desc) {
+		setting.setDesc(config.desc);
+	}
+	if (config.helpLink) {
+		appendHelpLink(setting, config.helpLink);
+	}
+	setting.addTextArea((text) => {
+		// rows is a textarea attribute (not a style), so it is allowed; width
+		// and height come from the stacked-layout CSS class on the row.
+		text.inputEl.rows = config.rows ?? DEFAULT_TEXTAREA_ROWS;
+		text.setValue(config.get()).onChange((value) => {
+			config.set(value);
+			ctx.saveDebounced();
+		});
+		if (config.disabled) {
+			text.setDisabled(true);
+		}
+	});
+	setting.settingEl.addClass(SETTING_STACKED_CLASS);
+	if (config.disabled) {
 		setting.settingEl.addClass(SETTING_DISABLED_CLASS);
 	}
 }

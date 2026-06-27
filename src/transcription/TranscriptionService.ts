@@ -21,11 +21,15 @@ import {
 	audioMimeFromExtension,
 	audioPrepOptions,
 	prepareAudio,
+	type PreparedPayload,
 } from './audioPrep';
 import type {
 	AudioPayload,
+	TranscribeOptions,
 	TranscriptionProvider,
 } from './providers/TranscriptionProvider';
+import { TranscriptTruncatedError } from './transcriptionErrors';
+import { formatTimecode } from '../utils/TimeUtils';
 import {
 	buildTranscript,
 	plainText,
@@ -172,47 +176,38 @@ export class TranscriptionService {
 		const payloads = prepared.payloads;
 		const partCount = payloads.length;
 		const results: { offsetSeconds: number; transcript: Transcript }[] = [];
+		const failedParts: { label: string; message: string }[] = [];
 		for (let i = 0; i < partCount; i++) {
 			this.throwIfCancelled(token);
-			const prepPayload = payloads[i];
 			const partLabel =
 				partCount > 1
-					? `part ${String(i + 1)} of ${String(partCount)}`
+					? this.describePart(payloads[i], i, partCount)
 					: '';
 			options.onProgress?.(
 				(i / partCount) * TRANSCRIBE_CHUNK_PROGRESS_CEILING,
 				partLabel ? `Transcribing ${partLabel}...` : 'Transcribing...',
 			);
-			// Materialize this payload's bytes only now, so a multi-chunk job
-			// never holds more than one chunk's WAV in memory at a time.
-			const payload: AudioPayload = {
-				data: prepPayload.createData(),
-				contentType: prepPayload.contentType,
-				filename: prepPayload.filename,
-				offsetSeconds: prepPayload.offsetSeconds,
-			};
-			let chunkResult;
-			try {
-				chunkResult = await provider.transcribe(
-					payload,
-					transcribeOptions,
-				);
-			} catch (error) {
-				// Single-part jobs need no extra context; for multi-part,
-				// name which part failed so the error is actionable.
-				if (!partLabel) {
-					throw error;
-				}
-				const detail =
-					error instanceof Error ? error.message : String(error);
-				throw new Error(`${detail} (while transcribing ${partLabel})`);
-			}
-			results.push({
-				offsetSeconds: payload.offsetSeconds,
-				transcript: buildTranscript(chunkResult.segments, {
-					language: chunkResult.language,
-				}),
-			});
+			await this.transcribePart(
+				provider,
+				payloads[i],
+				transcribeOptions,
+				token,
+				partLabel,
+				results,
+				failedParts,
+			);
+		}
+
+		// Every part failed: there is no transcript to keep, so surface the
+		// first failure (named like the per-part error) rather than writing
+		// nothing and reporting a hollow success.
+		if (results.length === 0) {
+			const first = failedParts[0];
+			throw new Error(
+				first
+					? `${first.message} (while transcribing ${first.label})`
+					: 'Transcription produced no output.',
+			);
 		}
 
 		// Honor a cancel pressed during the final (or only) request: requestUrl
@@ -240,6 +235,25 @@ export class TranscriptionService {
 			markdownOptions,
 			this.linkBuilder(file, options.notePathForLinks),
 		);
+
+		// Some parts failed but others succeeded: keep the good parts and warn,
+		// rather than failing the whole run and discarding a transcript the user
+		// already paid for. The gap is flagged with a callout prepended only
+		// after post-processing (below), because an LLM cleanup/custom pass
+		// replaces the whole body and would otherwise strip the warning.
+		let incompleteWarning = '';
+		if (failedParts.length > 0) {
+			const labels = failedParts.map((part) => part.label).join(', ');
+			const verb = failedParts.length > 1 ? 'are' : 'is';
+			incompleteWarning =
+				`> [!warning] Transcription incomplete: ${labels} could not ` +
+				`be transcribed and ${verb} missing below.\n\n`;
+			new Notice(
+				`Some audio could not be transcribed (${labels}) and is missing ` +
+					'from the transcript; saving the parts that succeeded. ' +
+					failedParts[0].message,
+			);
+		}
 
 		if (settings.llmPostProcessEnabled) {
 			this.throwIfCancelled(token);
@@ -270,8 +284,153 @@ export class TranscriptionService {
 			}
 		}
 
+		// Flag any gap last, so the callout survives an LLM cleanup/custom pass
+		// that would otherwise replace the body and drop it.
+		markdown = incompleteWarning + markdown;
+
 		options.onProgress?.(1, 'Done');
 		return { transcript, markdown };
+	}
+
+	/**
+	 * Transcribes one prepared part, pushing its stitched result or, on failure,
+	 * recording the failure so the surrounding parts are still kept. When a
+	 * provider truncates the part because its output token budget was exhausted
+	 * ({@link TranscriptTruncatedError}), the part is split into smaller pieces
+	 * and each is transcribed in turn, recovering a dense stretch that overran
+	 * the cap instead of losing it; only when the part is already at the minimum
+	 * length (subdivision yields nothing) does it count as a failure. A part with
+	 * an empty label is a single indivisible job and fails the whole run as
+	 * before.
+	 * @param provider - The active transcription provider
+	 * @param prepared - The prepared part to transcribe
+	 * @param providerOptions - Per-request provider options (language, diarize)
+	 * @param token - Cancellation token
+	 * @param label - Human label for the part ('' for a single indivisible job)
+	 * @param results - Accumulates successful per-part transcripts (mutated)
+	 * @param failedParts - Accumulates recoverable per-part failures (mutated)
+	 */
+	private async transcribePart(
+		provider: TranscriptionProvider,
+		prepared: PreparedPayload,
+		providerOptions: TranscribeOptions,
+		token: CancellationToken,
+		label: string,
+		results: { offsetSeconds: number; transcript: Transcript }[],
+		failedParts: { label: string; message: string }[],
+	): Promise<void> {
+		this.throwIfCancelled(token);
+		// Materialize this payload's bytes only now, so a multi-chunk job never
+		// holds more than one chunk's WAV in memory at a time.
+		const payload: AudioPayload = {
+			data: prepared.createData(),
+			contentType: prepared.contentType,
+			filename: prepared.filename,
+			offsetSeconds: prepared.offsetSeconds,
+		};
+		try {
+			const chunkResult = await provider.transcribe(
+				payload,
+				providerOptions,
+			);
+			results.push({
+				offsetSeconds: payload.offsetSeconds,
+				transcript: buildTranscript(chunkResult.segments, {
+					language: chunkResult.language,
+				}),
+			});
+		} catch (error) {
+			// A cancel aborts the whole run; never salvage past it.
+			if (error instanceof TranscriptionCancelledError) {
+				throw error;
+			}
+			// The part overran the provider's output token budget. Retrying it as
+			// smaller pieces keeps each piece's output under the cap, so a dense
+			// stretch is recovered rather than discarded. Each retry is a real
+			// (and, on a paid API, billed) request, so the subdivision is logged:
+			// the recursion is bounded only by the MIN_SUBDIVIDE_SECONDS floor, so
+			// a consistently dense part can fan out into several extra requests.
+			if (error instanceof TranscriptTruncatedError) {
+				const halves = prepared.subdivide?.() ?? [];
+				if (halves.length > 0) {
+					console.debug(
+						`${PLUGIN_LOG_PREFIX} ${label || 'The audio'} overran ` +
+							'the output token limit; retrying as ' +
+							`${String(halves.length)} smaller pieces.`,
+					);
+					for (const half of halves) {
+						await this.transcribePart(
+							provider,
+							half,
+							providerOptions,
+							token,
+							this.partTimeLabel(half),
+							results,
+							failedParts,
+						);
+					}
+					return;
+				}
+				// At the minimum subdividable length a further split would cost
+				// more requests than it saves, so stop here and let the part be
+				// reported (or fail the run, for a single indivisible job).
+				console.debug(
+					`${PLUGIN_LOG_PREFIX} ${label || 'The audio'} still ` +
+						'overran the output token limit at the minimum segment ' +
+						'length; reporting it without subdividing further.',
+				);
+			}
+			const detail =
+				error instanceof Error ? error.message : String(error);
+			// A single indivisible job has nothing to keep, so fail as before. A
+			// labelled part (one of several, or a subdivision) records the failure
+			// and carries on: discarding a completed — and, on a paid API, already
+			// billed — part because another part hit a provider limit would throw
+			// away good work.
+			if (!label) {
+				throw error;
+			}
+			failedParts.push({ label, message: detail });
+		}
+	}
+
+	/**
+	 * Labels a subdivided part by its span on the timeline, e.g. "the
+	 * 7:30–15:00 segment", so a salvage warning names which stretch is missing
+	 * rather than an opaque part number that no longer maps to the split.
+	 * @param part - The prepared sub-part
+	 * @returns A human label for the part's time range
+	 */
+	private partTimeLabel(part: PreparedPayload): string {
+		const reference = part.endSeconds ?? part.offsetSeconds;
+		const start = formatTimecode(part.offsetSeconds, reference);
+		if (part.endSeconds === undefined) {
+			return `the segment at ${start}`;
+		}
+		return `the ${start}–${formatTimecode(part.endSeconds, reference)} segment`;
+	}
+
+	/**
+	 * Labels a top-level part for progress and salvage messages. A part whose
+	 * span is known (the decode path stamps {@link PreparedPayload.endSeconds})
+	 * is named by its timeline range, matching how a subdivided part is named so
+	 * the incomplete-transcription warning never mixes a "part N of M" label with
+	 * a timecode span. Only when the span was never measured (no endSeconds) does
+	 * it fall back to the ordinal position.
+	 * @param part - The prepared top-level part
+	 * @param index - Zero-based position of the part
+	 * @param count - Total number of top-level parts
+	 * @returns A human label for the part
+	 */
+	private describePart(
+		part: PreparedPayload,
+		index: number,
+		count: number,
+	): string {
+		if (part.endSeconds !== undefined) {
+			return this.partTimeLabel(part);
+		}
+		return `part ${String(index + 1)} of ${String(count)}`;
 	}
 
 	/**
@@ -291,6 +450,8 @@ export class TranscriptionService {
 			{
 				task: settings.llmPostProcessTask,
 				language: transcript.language,
+				cleanupPrompt: settings.llmCleanupPrompt,
+				summaryPrompt: settings.llmSummaryPrompt,
 				customInstruction: settings.llmCustomInstruction,
 			},
 		);

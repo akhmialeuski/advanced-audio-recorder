@@ -9,12 +9,17 @@
 import {
 	MIN_TRANSCRIBE_CHUNK_MB,
 	MAX_TRANSCRIBE_CHUNK_MB,
+	MIN_TRANSCRIPTION_TIMEOUT_MINUTES,
+	MAX_TRANSCRIPTION_TIMEOUT_MINUTES,
 	MIN_LLM_MAX_TOKENS,
 	MAX_LLM_MAX_TOKENS,
 	TRANSCRIPTION_PROVIDER_IDS,
+	LLM_PROVIDER_IDS,
 	WHISPER_API_MODELS_DOC_URL,
 	DEEPGRAM_MODELS_DOC_URL,
 	GEMINI_MODELS_DOC_URL,
+	OPENAI_MODELS_DOC_URL,
+	ANTHROPIC_MODELS_DOC_URL,
 	LOCAL_WHISPER_MODEL_NAMES,
 	LOCAL_WHISPER_MODELS_DOC_URL,
 } from '../../constants';
@@ -33,6 +38,7 @@ import {
 	addModelPicker,
 	addSlider,
 	addText,
+	addTextArea,
 	addToggle,
 	type SettingsSectionContext,
 } from '../settingControls';
@@ -106,6 +112,20 @@ export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
 		get: () => s.transcriptionWordTimestamps,
 		set: (v) => (s.transcriptionWordTimestamps = v),
 	});
+
+	// Cloud engines only: a hung network request is bounded by this limit. Local
+	// whisper.cpp runs no HTTP request, so the timeout does not apply to it.
+	if (s.transcriptionProvider !== TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER) {
+		addSlider(ctx, {
+			name: 'Request timeout',
+			desc: 'Minutes before a single transcription request (one part of a long recording) is aborted and reported as failed, so a stalled request cannot hang the run indefinitely.',
+			min: MIN_TRANSCRIPTION_TIMEOUT_MINUTES,
+			max: MAX_TRANSCRIPTION_TIMEOUT_MINUTES,
+			step: 1,
+			get: () => s.transcriptionTimeoutMinutes,
+			set: (v) => (s.transcriptionTimeoutMinutes = v),
+		});
+	}
 
 	if (s.transcriptionProvider === TRANSCRIPTION_PROVIDER_IDS.WHISPER_API) {
 		renderWhisperApiSettings(ctx);
@@ -374,23 +394,55 @@ function renderLlmSection(ctx: SettingsSectionContext): void {
 		rerender: true,
 	});
 
-	if (s.llmPostProcessTask === 'custom') {
-		addText(ctx, {
-			name: 'Custom instruction',
-			desc: 'System instruction applied to the transcript text.',
-			get: () => s.llmCustomInstruction,
-			set: (v) => (s.llmCustomInstruction = v),
-		});
-	}
+	renderLlmPromptField(ctx);
+	renderLlmProviderFields(ctx);
+}
 
+/**
+ * Editable prompt for the selected task. Cleanup and summary expose their
+ * (language-agnostic) base prompt with the language clause appended at request
+ * time; custom is sent verbatim and gets a larger field.
+ */
+function renderLlmPromptField(ctx: SettingsSectionContext): void {
+	const s = ctx.settings;
+	if (s.llmPostProcessTask === 'cleanup') {
+		addTextArea(ctx, {
+			name: 'Cleanup prompt',
+			desc: 'System instruction for the cleanup pass. The transcript language is appended automatically. Leave empty to use the built-in default.',
+			get: () => s.llmCleanupPrompt,
+			set: (v) => (s.llmCleanupPrompt = v),
+		});
+		return;
+	}
+	if (s.llmPostProcessTask === 'summary') {
+		addTextArea(ctx, {
+			name: 'Summary prompt',
+			desc: 'System instruction for the summary pass. The transcript language is appended automatically. Leave empty to use the built-in default.',
+			get: () => s.llmSummaryPrompt,
+			set: (v) => (s.llmSummaryPrompt = v),
+		});
+		return;
+	}
+	addTextArea(ctx, {
+		name: 'Custom instruction',
+		desc: 'System instruction applied to the transcript text. Sent verbatim — include any language directive yourself.',
+		get: () => s.llmCustomInstruction,
+		set: (v) => (s.llmCustomInstruction = v),
+		rows: 8,
+	});
+}
+
+/** Provider dropdown, shared vendor key, base URL, model picker, token budget. */
+function renderLlmProviderFields(ctx: SettingsSectionContext): void {
+	const s = ctx.settings;
 	addDropdown(ctx, {
 		name: 'LLM provider',
 		options: LLM_PROVIDER_OPTIONS,
 		get: () => s.llmProvider,
 		set: (v) => {
-			// Move the base URL and model to the picked provider's defaults
-			// when they are still defaults, so choosing Anthropic does not
-			// leave an OpenAI URL/model behind (and vice versa).
+			// Move the base URL to the picked provider's default when it is still
+			// a default, so choosing Anthropic does not leave an OpenAI URL behind
+			// (and vice versa). The model is per-provider and switches on its own.
 			const provider = v as typeof s.llmProvider;
 			applyLlmProviderDefaults(s, provider);
 			s.llmProvider = provider;
@@ -399,23 +451,12 @@ function renderLlmSection(ctx: SettingsSectionContext): void {
 	});
 	addText(ctx, {
 		name: 'LLM base URL',
-		desc: 'API base URL (e.g. https://api.openai.com/v1, http://localhost:11434/v1, https://api.anthropic.com/v1, or https://generativelanguage.googleapis.com).',
+		desc: 'API base URL (e.g. https://api.openai.com/v1, https://api.anthropic.com/v1, or https://generativelanguage.googleapis.com).',
 		get: () => s.llmBaseUrl,
 		set: (v) => (s.llmBaseUrl = v),
 	});
-	addText(ctx, {
-		name: 'LLM API key',
-		desc: 'Leave empty for a local Ollama server. Stored in plugin data on this device.',
-		get: () => s.llmApiKey,
-		set: (v) => (s.llmApiKey = v),
-		secret: true,
-	});
-	addText(ctx, {
-		name: 'LLM model',
-		desc: 'Model id (e.g. gpt-4o-mini, llama3.1, claude-opus-4-8, gemini-2.5-flash).',
-		get: () => s.llmModel,
-		set: (v) => (s.llmModel = v),
-	});
+	renderLlmKeyField(ctx);
+	renderLlmModelPicker(ctx);
 	addSlider(ctx, {
 		name: 'Max output tokens',
 		desc: 'Upper bound on the LLM response length.',
@@ -424,5 +465,88 @@ function renderLlmSection(ctx: SettingsSectionContext): void {
 		step: 512,
 		get: () => s.llmMaxTokens,
 		set: (v) => (s.llmMaxTokens = v),
+	});
+}
+
+/**
+ * API-key field bound to the shared per-vendor key. OpenAI and Gemini reuse the
+ * transcription key (so a vendor token is entered once); Anthropic keeps its
+ * own.
+ */
+function renderLlmKeyField(ctx: SettingsSectionContext): void {
+	const s = ctx.settings;
+	if (s.llmProvider === LLM_PROVIDER_IDS.ANTHROPIC) {
+		addText(ctx, {
+			name: 'Anthropic API key',
+			desc: 'Stored in plugin data on this device.',
+			get: () => s.anthropicApiKey,
+			set: (v) => (s.anthropicApiKey = v),
+			secret: true,
+		});
+		return;
+	}
+	if (s.llmProvider === LLM_PROVIDER_IDS.GEMINI) {
+		addText(ctx, {
+			name: 'Google Gemini API key',
+			desc: 'Shared with the Gemini transcription engine — set it in either place.',
+			get: () => s.geminiApiKey,
+			set: (v) => (s.geminiApiKey = v),
+			secret: true,
+		});
+		return;
+	}
+	addText(ctx, {
+		name: 'OpenAI API key',
+		desc: 'Shared with the Whisper API transcription engine — set it in either place.',
+		get: () => s.whisperApiKey,
+		set: (v) => (s.whisperApiKey = v),
+		secret: true,
+	});
+}
+
+/** Model picker bound to the selected provider's saved, user-editable list. */
+function renderLlmModelPicker(ctx: SettingsSectionContext): void {
+	const s = ctx.settings;
+	if (s.llmProvider === LLM_PROVIDER_IDS.ANTHROPIC) {
+		addModelPicker(ctx, {
+			name: 'LLM model',
+			desc: 'Pick an Anthropic model (e.g. claude-opus-4-8, claude-sonnet-4-6).',
+			helpLink: {
+				label: 'Anthropic models',
+				url: ANTHROPIC_MODELS_DOC_URL,
+			},
+			getModels: () => s.llmAnthropicModels,
+			setModels: (models) => (s.llmAnthropicModels = models),
+			getSelected: () => s.llmAnthropicModel,
+			setSelected: (id) => (s.llmAnthropicModel = id),
+		});
+		return;
+	}
+	if (s.llmProvider === LLM_PROVIDER_IDS.GEMINI) {
+		addModelPicker(ctx, {
+			name: 'LLM model',
+			desc: 'Pick a Gemini model (e.g. gemini-2.5-flash, gemini-2.5-pro).',
+			helpLink: {
+				label: 'Gemini model list',
+				url: GEMINI_MODELS_DOC_URL,
+			},
+			getModels: () => s.llmGeminiModels,
+			setModels: (models) => (s.llmGeminiModels = models),
+			getSelected: () => s.llmGeminiModel,
+			setSelected: (id) => (s.llmGeminiModel = id),
+		});
+		return;
+	}
+	addModelPicker(ctx, {
+		name: 'LLM model',
+		desc: 'Pick an OpenAI model (e.g. gpt-4o-mini, gpt-4o).',
+		helpLink: {
+			label: 'OpenAI models',
+			url: OPENAI_MODELS_DOC_URL,
+		},
+		getModels: () => s.llmOpenAiModels,
+		setModels: (models) => (s.llmOpenAiModels = models),
+		getSelected: () => s.llmOpenAiModel,
+		setSelected: (id) => (s.llmOpenAiModel = id),
 	});
 }

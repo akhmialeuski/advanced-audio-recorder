@@ -106,13 +106,13 @@ Start conservative and re-run with stronger settings if needed — the original 
 ## Limitations
 
 - **Output is always WAV.** Convert it afterwards with **Convert audio format** from the context menu if you need a compressed format.
-- **Size and length caps.** Cleanup decodes the whole file into memory and runs part of the work on the main thread, so a file is refused with a clear message when it is larger than 1 GB (checked before decoding), longer than two hours, or decodes to more samples than the working set allows (checked right after decoding). The decoded-size cap catches a heavily compressed file that is small on disk yet expands to several gigabytes once decoded. In every case, split it first (**Split audio into parts**) and clean each part.
+- **Size and length caps.** Cleanup decodes the whole file into memory, then processes it one time segment at a time so memory stays bounded regardless of the recording length — a roughly 45-minute stereo recording is cleaned up in memory without splitting it first. A file is still refused with a clear message when it is larger than 1 GB (checked before decoding), longer than two hours, or decodes to more samples than the working set allows (checked right after decoding). The decoded-size cap catches a heavily compressed file that is small on disk yet expands to several gigabytes once decoded. For a file over the cap, split it first (**Split audio into parts**) and clean each part.
 - **Desktop only.** The plugin is desktop-only, so cleanup runs only in the Obsidian desktop app. Processing a long file briefly uses significant memory and CPU.
 - **Not real-time.** This is post-processing. To shape the signal *during* recording, use the browser input toggles under **Audio processing & feedback** instead.
 
 ## Troubleshooting
 
-- **"Audio file is too large to clean up here"** — the file exceeds the 1 GB on-disk limit, or it decodes to a buffer too large to process here. Split it into parts and process each part.
+- **"Audio file is too large to clean up here"** — the file exceeds the 1 GB on-disk limit, or it decodes to more samples than the working set allows (roughly a 45-minute stereo recording). Split it into parts and process each part.
 - **"Audio is too long to clean up here"** — the file exceeds the two-hour limit. Split it into parts and process each part.
 - **"The file contains no decodable audio data"** — the file is empty or its container/codec can't be decoded by the app. Check the file with **Audio file info**, or convert it first.
 - **"Audio processing failed: …"** — decoding or writing failed; the message carries the cause. Verify the file is a valid audio file and that there is free space in the vault.

@@ -264,17 +264,21 @@ Most options also appear in the **Transcribe audio** dialog, so you can choose t
 
 ### Progress and minimizing
 
-While a transcription runs, the dialog shows a progress bar and a **Cancel** button. Transcription can be slow and may be a paid API call, so you do not have to wait on the open dialog: click **Minimize** to send the job to the status bar and keep working. The status bar then shows live transcription progress; click it (or focus it and press Enter) to reopen the dialog. Recording always takes precedence in the status bar, so the transcription progress reappears once recording finishes. Closing the dialog (instead of minimizing) cancels the running job.
+While a transcription runs, the dialog shows a progress bar, an elapsed-time counter, and a **Cancel** button. Transcription can be slow and may be a paid API call, so you do not have to wait on the open dialog: click **Minimize** to send the job to the status bar and keep working. The status bar then shows live transcription progress; click it (or focus it and press Enter) to reopen the dialog. Recording always takes precedence in the status bar, so the transcription progress reappears once recording finishes. Closing the dialog (instead of minimizing) cancels the running job.
+
+Each network request (one part of a long recording, or a whole-file upload) is bounded by a configurable **Request timeout** (default 10 minutes) under the transcription settings, so a stalled request fails that part and is reported rather than hanging the run indefinitely. Cancellation is checked between requests, so pressing **Cancel** during an in-flight request takes effect once that request returns or hits the timeout.
 
 ### LLM post-processing
 
-Optionally pass the transcript through an LLM to **clean up** punctuation/formatting (preserving wording, timestamps, and speakers), **summarize** it into key points and action items, or apply a **custom instruction**. Providers:
+Optionally pass the transcript through an LLM to **clean up** punctuation/formatting (preserving wording, timestamps, and speakers), **summarize** it into key points and action items, or apply a **custom instruction**. Each task has its own editable prompt: the cleanup and summary prompts ship with sensible defaults and have the transcript language appended automatically, while the custom instruction is sent verbatim and gets a larger editor. Providers:
 
-- **OpenAI / Groq / Ollama** (OpenAI-compatible chat API — a local Ollama server needs no key).
+- **OpenAI** — defaults to `gpt-4o-mini`.
 - **Anthropic (Claude)** — defaults to `claude-opus-4-8`.
 - **Google Gemini** — defaults to `gemini-2.5-flash`.
 
-> **API keys** are stored in the plugin's `data.json` on this device and are never written to diagnostics output. Avoid syncing `data.json` to untrusted locations. Local whisper.cpp and Ollama keep everything offline.
+The model is chosen from a per-provider picker — the same control used for transcription models: pick from the saved list, add a custom model id, or remove one. The API key is shared per vendor with the transcription engines: set the OpenAI key once and it serves both the Whisper API engine and the OpenAI LLM, and likewise for Google Gemini; Anthropic has its own key.
+
+> **API keys** are stored in the plugin's `data.json` on this device and are never written to diagnostics output. Avoid syncing `data.json` to untrusted locations. Local whisper.cpp keeps everything offline.
 
 ## Formats and containers
 

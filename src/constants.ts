@@ -459,6 +459,17 @@ export const GEMINI_GENERATE_MIN_TIMEOUT_MS = 10 * 60_000;
 export const GEMINI_MAX_WHOLE_FILE_SECONDS = 15 * 60;
 
 /**
+ * Smallest half an adaptive subdivision may produce when a part overruns a
+ * provider's output token limit. Output token count is not predictable from
+ * audio duration (a dense, diarized stretch yields far more text than a sparse
+ * one), so a part that truncates is retried as halves; this floor stops the
+ * recursion once the pieces are short enough that a further split would cost
+ * more requests than it saves, after which the part is reported as failed and
+ * the surrounding parts are still kept.
+ */
+export const MIN_SUBDIVIDE_SECONDS = 60;
+
+/**
  * LLM post-processing provider ids. The single source for the string values
  * used as the provider `id`, the settings discriminator, and the keys of the
  * provider label map, so the literals are never hand-typed across the codebase.
@@ -485,9 +496,6 @@ export const ANTHROPIC_API_VERSION = '2023-06-01';
 
 /** Default Anthropic model for transcript post-processing. */
 export const DEFAULT_LLM_ANTHROPIC_MODEL = 'claude-opus-4-8';
-
-/** Default local Ollama base URL for LLM post-processing. */
-export const DEFAULT_LLM_OLLAMA_BASE_URL = 'http://localhost:11434/v1';
 
 /**
  * Default Gemini base URL for LLM post-processing. Like the transcription
@@ -519,6 +527,82 @@ export const MIN_LLM_MAX_TOKENS = 512;
 export const MAX_LLM_MAX_TOKENS = 32000;
 
 /**
+ * Seed OpenAI chat model ids for the LLM model picker on first run; the list
+ * is user-editable. Chat/completions models suitable for transcript cleanup
+ * and summarization. See {@link OPENAI_MODELS_DOC_URL} for the current list.
+ */
+export const LLM_OPENAI_MODEL_SUGGESTIONS = [
+	'gpt-4o-mini',
+	'gpt-4o',
+	'gpt-4.1',
+	'gpt-4.1-mini',
+	'o4-mini',
+];
+
+/**
+ * Seed Anthropic model ids for the LLM model picker on first run; the list is
+ * user-editable. See {@link ANTHROPIC_MODELS_DOC_URL} for the current list.
+ */
+export const LLM_ANTHROPIC_MODEL_SUGGESTIONS = [
+	'claude-opus-4-8',
+	'claude-sonnet-4-6',
+	'claude-haiku-4-5',
+];
+
+/**
+ * Seed Gemini model ids for the LLM model picker on first run; the list is
+ * user-editable. See {@link GEMINI_MODELS_DOC_URL} for the current list.
+ */
+export const LLM_GEMINI_MODEL_SUGGESTIONS = [
+	'gemini-2.5-flash',
+	'gemini-2.5-pro',
+	'gemini-2.5-flash-lite',
+];
+
+/** Where to find the OpenAI model catalog. */
+export const OPENAI_MODELS_DOC_URL = 'https://platform.openai.com/docs/models';
+
+/** Where to find the Anthropic (Claude) model catalog. */
+export const ANTHROPIC_MODELS_DOC_URL =
+	'https://docs.anthropic.com/en/docs/about-claude/models';
+
+/**
+ * Default editable system prompt for the cleanup task. The language clause is
+ * appended automatically at request time (see {@link cleanupLanguageClause}),
+ * so this base text carries no language directive.
+ */
+export const DEFAULT_LLM_CLEANUP_PROMPT =
+	'You are an expert transcription editor. You are given a raw, ' +
+	'machine-generated transcript. Correct punctuation, capitalization, ' +
+	'and obvious speech-to-text errors; insert sensible paragraph breaks; ' +
+	'and remove filler artifacts only when they add no meaning. Do NOT ' +
+	'summarize, translate, paraphrase, add, or omit content — preserve ' +
+	'the speaker’s exact wording and meaning. Preserve any speaker labels ' +
+	'and timestamps exactly as they appear, keeping each on its original ' +
+	'line. Return only the corrected transcript with no preamble.';
+
+/**
+ * Default editable system prompt for the summary task. The language clause is
+ * appended automatically at request time (see {@link summaryLanguageClause}),
+ * so this base text carries no language directive.
+ */
+export const DEFAULT_LLM_SUMMARY_PROMPT =
+	'You are an expert analyst. Summarize the following transcript into a ' +
+	'concise set of key points and any action items, as Markdown bullet ' +
+	'lists under short headings. Be faithful to the content and do not ' +
+	'invent details. Return only the summary with no preamble.';
+
+/**
+ * Default editable instruction for the custom task. Unlike cleanup and
+ * summary, the custom instruction is sent verbatim with no language clause, so
+ * the user controls every directive including language.
+ */
+export const DEFAULT_LLM_CUSTOM_INSTRUCTION =
+	'Rewrite the following transcript as clean, well-structured Markdown ' +
+	'notes. Preserve the original language and meaning, and return only the ' +
+	'result with no preamble.';
+
+/**
  * Floor timeout, in milliseconds, for a transcription HTTP request.
  * Obsidian's requestUrl exposes no abort signal, so the helper races the
  * request against a deadline to bound a hung endpoint (e.g. a misconfigured
@@ -532,9 +616,28 @@ export const TRANSCRIBE_REQUEST_TIMEOUT_MS = 120_000;
  * Hard ceiling on a single transcription request timeout, in milliseconds
  * (30 minutes). A whole-file upload (e.g. a multi-hundred-MB Deepgram
  * request) scales its timeout with payload size up to this bound, so a
- * large but healthy upload is never aborted prematurely.
+ * large but healthy upload is never aborted prematurely. Used as the
+ * fallback ceiling when no per-request cap is supplied; the user-facing cap
+ * comes from {@link DEFAULT_TRANSCRIPTION_TIMEOUT_MINUTES} via settings.
  */
 export const TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS = 30 * 60_000;
+
+/**
+ * Default per-request transcription timeout, in minutes. A single network
+ * request (one part of a multi-part job, or a whole-file upload) that runs
+ * longer than this is aborted and reported, so a hung endpoint or a stalled
+ * upload fails the part instead of stalling the whole run indefinitely. The
+ * size-scaled timeout still applies underneath; this value caps it. The
+ * default matches the Gemini generate floor so it is generous enough for a
+ * healthy long request yet bounds a genuine hang.
+ */
+export const DEFAULT_TRANSCRIPTION_TIMEOUT_MINUTES = 10;
+
+/** Smallest configurable per-request transcription timeout, in minutes. */
+export const MIN_TRANSCRIPTION_TIMEOUT_MINUTES = 1;
+
+/** Largest configurable per-request transcription timeout, in minutes. */
+export const MAX_TRANSCRIPTION_TIMEOUT_MINUTES = 60;
 
 /**
  * Assumed sustained upload throughput, in bytes per millisecond (~1 MB/s),
@@ -651,15 +754,36 @@ export const MAX_AUDIO_CLEANUP_SECONDS = 2 * 60 * 60;
 /**
  * Upper bound on the total decoded sample count (frames × channels) the
  * on-demand cleanup will process. Where {@link MAX_AUDIO_CLEANUP_BYTES}
- * bounds the on-disk size, this bounds the decoded working set: the
- * pipeline holds several full Float32 copies of the signal at once (the
- * gated input, the OfflineAudioContext buffer, and the rendered output),
- * so peak memory scales with this count rather than with the encoded
- * size. A heavily compressed file can be small on disk yet decode to a
- * multi-gigabyte buffer the byte guard alone would not catch; at 4 bytes
- * per sample and roughly three concurrent copies this caps the peak
- * working set near 1.5 GB. Checked right after decoding, before the
- * Float32 channels are materialized, so an oversized file is refused with
- * a clear message instead of failing with an out-of-memory error.
+ * bounds the on-disk size, this bounds the decoded working set. Cleanup now
+ * processes the signal in time segments (see {@link CLEANUP_SEGMENT_SECONDS}),
+ * so the gate and the OfflineAudioContext only ever hold one segment at a
+ * time; the lasting full-size allocations are just the decoded buffer (4
+ * bytes/sample) and the interleaved 16-bit WAV output (2 bytes/sample). At
+ * this cap that peak stays near ~1.6 GB regardless of how many DSP stages run,
+ * which lets a ~45-minute stereo recording be cleaned up in memory without the
+ * old "split into parts first" detour. A heavily compressed file can be small
+ * on disk yet decode to a multi-gigabyte buffer the byte guard alone would not
+ * catch, so the count is checked right after decoding, before the Float32
+ * channels are materialized, refusing an oversized file with a clear message
+ * instead of an out-of-memory error.
  */
-export const MAX_AUDIO_CLEANUP_DECODED_SAMPLES = 128 * 1024 * 1024;
+export const MAX_AUDIO_CLEANUP_DECODED_SAMPLES = 256 * 1024 * 1024;
+
+/**
+ * Length, in seconds, of one cleanup processing segment. The signal is gated
+ * and rendered one segment at a time so peak memory does not scale with the
+ * recording length. Long enough that the per-segment OfflineAudioContext setup
+ * cost is negligible, short enough that one segment's working set stays small.
+ */
+export const CLEANUP_SEGMENT_SECONDS = 120;
+
+/**
+ * Warm-up overlap, in seconds, prepended to each cleanup segment (except the
+ * first) and then discarded. The high-pass filter, compressor, and gate are
+ * stateful; processing a short lead-in lets their envelopes settle to the same
+ * place they would reach in a single continuous pass, so segment boundaries
+ * leave no audible click or level jump. Comfortably longer than the
+ * compressor's release time, so the dynamics fully re-converge before the kept
+ * region begins.
+ */
+export const CLEANUP_WARMUP_SECONDS = 3;

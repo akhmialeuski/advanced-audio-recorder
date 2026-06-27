@@ -84,15 +84,20 @@ export function trimTrailingSlash(url: string): string {
  * Scales a request timeout with the upload size so a large but healthy
  * upload (e.g. a whole-file Deepgram request) is not aborted prematurely.
  * Starts at the floor and adds time proportional to the payload at a
- * conservative assumed throughput, capped at the hard ceiling.
+ * conservative assumed throughput, capped at `maxMs`.
  * @param byteLength - Size of the request body in bytes
+ * @param maxMs - Hard cap for the timeout (the user-configured per-request
+ *   limit); defaults to {@link TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS}
  * @returns Timeout in milliseconds
  */
-export function uploadTimeoutMs(byteLength: number): number {
+export function uploadTimeoutMs(
+	byteLength: number,
+	maxMs: number = TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS,
+): number {
 	const scaled =
 		TRANSCRIBE_REQUEST_TIMEOUT_MS +
 		Math.ceil(byteLength / TRANSCRIBE_UPLOAD_BYTES_PER_MS);
-	return Math.min(scaled, TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS);
+	return Math.min(scaled, maxMs);
 }
 
 /** Status used for errors that never reached an HTTP response (transport/timeout). */

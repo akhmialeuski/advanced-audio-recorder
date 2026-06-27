@@ -655,6 +655,13 @@ input.aar-input-invalid {
     transition: width 0.3s ease;
 }
 
+.aar-transcribe-elapsed {
+    margin-top: 4px;
+    font-size: 0.8em;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
 /* A setting rendered disabled: dimmed and non-interactive so an option the
    current selection cannot use reads clearly as off, not merely unset. */
 .aar-setting-disabled {
@@ -668,4 +675,23 @@ input.aar-input-invalid {
 /* "Learn more" link appended to a setting description. */
 .aar-doc-link {
     font-size: 0.85em;
+}
+
+/* Multi-line prompt editor: stack the control under the label and let the
+   text area fill the row so long editable prompts have room to breathe. */
+.aar-setting-stacked {
+    display: block;
+}
+
+.aar-setting-stacked .setting-item-control {
+    width: 100%;
+    padding-top: var(--size-4-2);
+    justify-content: flex-start;
+}
+
+.aar-setting-stacked .setting-item-control textarea {
+    width: 100%;
+    min-height: 6em;
+    resize: vertical;
+    font-family: var(--font-monospace);
 }

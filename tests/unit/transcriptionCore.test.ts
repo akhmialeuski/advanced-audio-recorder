@@ -20,7 +20,11 @@ import {
 	ProviderConfigError,
 } from 'src/transcription/factories';
 import { mergeSettings } from 'src/settings/Settings';
-import { TRANSCRIBE_BYTES_PER_SEC } from 'src/constants';
+import {
+	TRANSCRIBE_BYTES_PER_SEC,
+	DEFAULT_LLM_CLEANUP_PROMPT,
+	DEFAULT_LLM_SUMMARY_PROMPT,
+} from 'src/constants';
 import { WAV_HEADER_SIZE } from 'src/recording/WavEncoder';
 
 describe('planChunks', () => {
@@ -143,6 +147,39 @@ describe('buildPostProcessPrompt', () => {
 		});
 		expect(prompt.system).toBe('Bullet it');
 	});
+
+	it('uses the provided cleanup template and appends the language', () => {
+		const prompt = buildPostProcessPrompt('t', {
+			task: 'cleanup',
+			language: 'es',
+			cleanupPrompt: 'MY CLEANUP BASE',
+		});
+		expect(prompt.system).toContain('MY CLEANUP BASE');
+		expect(prompt.system).toContain('es');
+	});
+
+	it('uses the provided summary template', () => {
+		const prompt = buildPostProcessPrompt('t', {
+			task: 'summary',
+			summaryPrompt: 'MY SUMMARY BASE',
+		});
+		expect(prompt.system).toContain('MY SUMMARY BASE');
+	});
+
+	it('falls back to the shipped default when a template is empty', () => {
+		// Clearing the field in settings leaves an empty string; the request must
+		// still carry a usable system prompt rather than sending none.
+		const cleanup = buildPostProcessPrompt('t', {
+			task: 'cleanup',
+			cleanupPrompt: '',
+		});
+		expect(cleanup.system).toContain(DEFAULT_LLM_CLEANUP_PROMPT);
+		const summary = buildPostProcessPrompt('t', {
+			task: 'summary',
+			summaryPrompt: '   ',
+		});
+		expect(summary.system).toContain(DEFAULT_LLM_SUMMARY_PROMPT);
+	});
 });
 
 describe('buildTranscriptFilePath', () => {
@@ -210,19 +247,54 @@ describe('provider factories', () => {
 		expect(provider.capabilities.supportsDiarization).toBe(true);
 	});
 
-	it('requires an Anthropic key but not an Ollama key', () => {
+	it('requires a key for every LLM provider', () => {
 		expect(() =>
 			createLlmProvider(
-				mergeSettings({ llmProvider: 'anthropic', llmApiKey: '' }),
+				mergeSettings({
+					llmProvider: 'anthropic',
+					anthropicApiKey: '',
+				}),
 			),
 		).toThrow(ProviderConfigError);
+		expect(() =>
+			createLlmProvider(
+				mergeSettings({ llmProvider: 'gemini', geminiApiKey: '' }),
+			),
+		).toThrow(ProviderConfigError);
+		expect(() =>
+			createLlmProvider(
+				mergeSettings({
+					llmProvider: 'openai-compatible',
+					whisperApiKey: '',
+				}),
+			),
+		).toThrow(ProviderConfigError);
+	});
+
+	it('builds each LLM provider from its shared vendor key', () => {
 		expect(
 			createLlmProvider(
 				mergeSettings({
 					llmProvider: 'openai-compatible',
-					llmApiKey: '',
+					whisperApiKey: 'sk-test',
 				}),
 			).id,
 		).toBe('openai-compatible');
+		expect(
+			createLlmProvider(
+				mergeSettings({
+					llmProvider: 'anthropic',
+					anthropicApiKey: 'ak-test',
+				}),
+			).id,
+		).toBe('anthropic');
+		expect(
+			createLlmProvider(
+				mergeSettings({
+					llmProvider: 'gemini',
+					geminiApiKey: 'gm-test',
+				}),
+			).id,
+		).toBe('gemini');
 	});
 });

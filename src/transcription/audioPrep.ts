@@ -20,10 +20,17 @@ import {
 	FORMAT_FLAC,
 	MIME_TYPE_AUDIO_PREFIX,
 	MIN_AUDIO_BYTES_PER_SEC,
+	MIN_SUBDIVIDE_SECONDS,
 	TRANSCRIBE_BYTES_PER_SEC,
 	TRANSCRIBE_SAMPLE_RATE,
 } from '../constants';
-import { decodeToMono16k, extractChunkWav, planChunks } from './audioChunks';
+import {
+	decodeToMono16k,
+	extractChunkWav,
+	planChunks,
+	splitChunkPlan,
+	type ChunkPlan,
+} from './audioChunks';
 import type { ProviderCapabilities } from './providers/TranscriptionProvider';
 
 /** Maps a lowercased file extension to its upload container MIME type. */
@@ -84,8 +91,22 @@ export interface PreparedPayload {
 	filename: string;
 	/** Offset of this payload from the start of the recording, in seconds. */
 	offsetSeconds: number;
+	/**
+	 * End of this payload on the recording timeline, in seconds. Present on the
+	 * decode path (so a part can be labelled and subdivided by its time range);
+	 * absent on the whole-file path, whose true duration is never measured.
+	 */
+	endSeconds?: number;
 	/** Builds the upload bytes; invoked once, right before uploading. */
 	createData(): ArrayBuffer;
+	/**
+	 * Splits this payload into smaller payloads covering the same audio, for a
+	 * provider that overran its output token budget on this part. Present only on
+	 * the decode path (the decoded samples are still in memory); returns the
+	 * smaller payloads, or [] when the part is already at the minimum
+	 * subdividable length.
+	 */
+	subdivide?: () => PreparedPayload[];
 }
 
 /** Prepared payloads ready to transcribe. */
@@ -200,12 +221,28 @@ export async function prepareAudio(
 	const totalSeconds = samples.length / TRANSCRIBE_SAMPLE_RATE;
 	const plans = planChunks(totalSeconds, options.chunkBytes);
 	const multiChunk = plans.length > 1;
-	const payloads: PreparedPayload[] = plans.map((plan) => ({
+	// Build a payload for a plan, retaining the decoded samples so the part can
+	// be re-split on demand when a provider overruns its output token budget.
+	const buildPayload = (
+		plan: ChunkPlan,
+		filename: string,
+	): PreparedPayload => ({
 		contentType: `${MIME_TYPE_AUDIO_PREFIX}wav`,
-		filename: multiChunk ? `audio-${String(plan.index)}.wav` : 'audio.wav',
+		filename,
 		offsetSeconds: plan.startSeconds,
+		endSeconds: plan.endSeconds,
 		createData: () => extractChunkWav(samples, plan),
-	}));
+		subdivide: () =>
+			splitChunkPlan(plan, MIN_SUBDIVIDE_SECONDS).map((half) =>
+				buildPayload(half, `audio-${String(half.index)}.wav`),
+			),
+	});
+	const payloads: PreparedPayload[] = plans.map((plan) =>
+		buildPayload(
+			plan,
+			multiChunk ? `audio-${String(plan.index)}.wav` : 'audio.wav',
+		),
+	);
 	return {
 		payloads,
 		diarizationSplitWarning: shouldWarnDiarizationSplit(

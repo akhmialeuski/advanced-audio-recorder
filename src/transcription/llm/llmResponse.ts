@@ -9,8 +9,8 @@ import { isRecord } from '../providers/responseUtils';
 import { geminiCandidateText } from '../providers/geminiShared';
 
 /**
- * Extracts the assistant message text from an OpenAI-compatible
- * `chat/completions` response (also used by Groq and Ollama).
+ * Extracts the assistant message text from an OpenAI Chat Completions
+ * (`chat/completions`) response.
  * @param body - Parsed JSON response
  * @returns The message content, or empty string when absent
  */

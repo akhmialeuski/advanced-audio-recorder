@@ -8,17 +8,64 @@
 
 import type { App, TFile } from 'obsidian';
 import {
+	CLEANUP_SEGMENT_SECONDS,
+	CLEANUP_WARMUP_SECONDS,
 	MAX_AUDIO_CLEANUP_BYTES,
 	MAX_AUDIO_CLEANUP_SECONDS,
 	MAX_AUDIO_CLEANUP_DECODED_SAMPLES,
 } from '../constants';
 import { createWavHeader, WAV_HEADER_SIZE } from '../recording/WavEncoder';
 import { resolveUniquePathInDirectory } from '../recording/RecordingFileManager';
+import { delay } from '../utils/TimeUtils';
 import {
 	applyNoiseGateToChannel,
 	dbToGain,
 	type AudioDspConfig,
 } from './audioDsp';
+
+/**
+ * Maps a Float32 sample (range -1..1) to a little-endian int16 value. Uses the
+ * full negative rail (-32768) for negatives and 32767 for positives, matching
+ * the project's int16 mapping (PcmStreamRecorder), rather than scaling both
+ * rails by 32767.
+ * @param sample - Sample in the range -1..1
+ * @returns Signed 16-bit PCM value
+ */
+export function floatToInt16(sample: number): number {
+	const clamped = Math.max(-1, Math.min(1, sample));
+	return Math.round(clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff);
+}
+
+/**
+ * Writes `frameCount` interleaved 16-bit PCM frames from `channels`, starting
+ * at source frame `srcFrom`, into the WAV PCM region at destination frame
+ * `destFrame`. Used to fill the output one processed segment at a time.
+ * @param pcm - DataView over the WAV PCM region (after the header)
+ * @param channels - Per-channel segment samples
+ * @param srcFrom - First source frame to copy (skips the discarded warm-up)
+ * @param frameCount - Number of frames to write
+ * @param destFrame - Destination frame offset within the output
+ */
+function writeWavSegment(
+	pcm: DataView,
+	channels: Float32Array[],
+	srcFrom: number,
+	frameCount: number,
+	destFrame: number,
+): void {
+	const numChannels = channels.length;
+	let offset = destFrame * numChannels * 2;
+	for (let frame = 0; frame < frameCount; frame++) {
+		for (let channel = 0; channel < numChannels; channel++) {
+			pcm.setInt16(
+				offset,
+				floatToInt16(channels[channel][srcFrom + frame]),
+				true,
+			);
+			offset += 2;
+		}
+	}
+}
 
 /** Loudness-leveling compressor curve, fixed and tuned for speech. */
 const LEVELING_COMPRESSOR_THRESHOLD_DB = -24;
@@ -28,60 +75,26 @@ const LEVELING_COMPRESSOR_ATTACK_S = 0.003;
 const LEVELING_COMPRESSOR_RELEASE_S = 0.25;
 
 /**
- * Encodes per-channel Float32 samples (range -1..1) into an interleaved
- * 16-bit PCM WAV file.
- * @param channels - Per-channel sample data (all the same length)
- * @param sampleRate - Sample rate in Hz
- * @returns WAV-encoded bytes
- */
-export function encodeWavInterleaved(
-	channels: Float32Array[],
-	sampleRate: number,
-): ArrayBuffer {
-	const numChannels = Math.max(1, channels.length);
-	const numFrames = channels[0]?.length ?? 0;
-	// The interleave loop indexes every channel up to numFrames (taken
-	// from channel 0). Enforce the equal-length invariant the JSDoc
-	// promises, so a mismatched channel fails loudly instead of writing
-	// NaN (-> silent 0) samples for the missing tail.
-	for (let channel = 1; channel < channels.length; channel++) {
-		if (channels[channel].length !== numFrames) {
-			throw new Error(
-				'Cannot encode WAV: all channels must have the same length.',
-			);
-		}
-	}
-	const pcmByteLength = numFrames * numChannels * 2;
-	const header = createWavHeader(numChannels, sampleRate, pcmByteLength);
-	const out = new ArrayBuffer(WAV_HEADER_SIZE + pcmByteLength);
-	new Uint8Array(out).set(new Uint8Array(header), 0);
-	const view = new DataView(out, WAV_HEADER_SIZE);
-	let offset = 0;
-	for (let frame = 0; frame < numFrames; frame++) {
-		for (let channel = 0; channel < numChannels; channel++) {
-			const sample = channels[channel][frame];
-			const clamped = Math.max(-1, Math.min(1, sample));
-			// Match the project's int16 mapping (PcmStreamRecorder): use the
-			// full negative range (-32768) for negatives and 32767 for
-			// positives, rather than scaling both rails by 32767.
-			const pcm = Math.round(
-				clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff,
-			);
-			view.setInt16(offset, pcm, true);
-			offset += 2;
-		}
-	}
-	return out;
-}
-
-/**
  * Runs the offline audio-cleanup pipeline.
  */
 export class AudioProcessingService {
-	constructor(private readonly app: App) {}
+	/**
+	 * @param app - Obsidian app handle
+	 * @param segmentSeconds - Processing segment length; defaults to
+	 *   {@link CLEANUP_SEGMENT_SECONDS}. Overridable so tests can force
+	 *   multi-segment behavior on a short clip.
+	 */
+	constructor(
+		private readonly app: App,
+		private readonly segmentSeconds: number = CLEANUP_SEGMENT_SECONDS,
+	) {}
 
 	/**
-	 * Processes an audio file and writes a cleaned WAV copy.
+	 * Processes an audio file and writes a cleaned WAV copy. The signal is
+	 * decoded once, then gated and rendered one time segment at a time directly
+	 * into the output buffer, so peak memory is bounded by the decoded input
+	 * and the WAV output rather than growing with the recording length — a long
+	 * recording is cleaned up in memory without the old "split first" detour.
 	 * @param file - Source audio file
 	 * @param config - Stages to apply
 	 * @returns Vault path of the written file
@@ -93,17 +106,85 @@ export class AudioProcessingService {
 			);
 		}
 		const data = await this.app.vault.readBinary(file);
-		const decoded = await this.decodeChannels(data);
-		const sampleRate = decoded.sampleRate;
-		let samples = decoded.data;
+		const { sampleRate, data: channels } = await this.decodeChannels(data);
+		const numChannels = channels.length;
+		const numFrames = channels[0].length;
 
-		// The gate runs first, on the decoded signal, so the whole pipeline
-		// is a single main-thread pass before the offline render. This keeps
-		// it to one OfflineAudioContext (peak memory) at the cost of the gate
-		// detecting on un-high-passed audio; if a future change needs the
-		// high-pass to precede the gate, split the offline render in two.
+		// Allocate the full interleaved 16-bit WAV output once and fill it a
+		// segment at a time. Only the decoded input and this output live at full
+		// length; each segment's gate/offline working set is released before the
+		// next iteration.
+		const pcmByteLength = numFrames * numChannels * 2;
+		const out = new ArrayBuffer(WAV_HEADER_SIZE + pcmByteLength);
+		new Uint8Array(out).set(
+			new Uint8Array(
+				createWavHeader(numChannels, sampleRate, pcmByteLength),
+			),
+			0,
+		);
+		const pcm = new DataView(out, WAV_HEADER_SIZE);
+
+		const segmentFrames = Math.max(
+			1,
+			Math.floor(sampleRate * this.segmentSeconds),
+		);
+		const warmupFrames = Math.floor(sampleRate * CLEANUP_WARMUP_SECONDS);
+		for (
+			let segStart = 0;
+			segStart < numFrames;
+			segStart += segmentFrames
+		) {
+			const segEnd = Math.min(numFrames, segStart + segmentFrames);
+			await this.processSegment(
+				channels,
+				sampleRate,
+				config,
+				segStart,
+				segEnd,
+				warmupFrames,
+				pcm,
+			);
+			// Yield to the UI between segments so a long file does not freeze it.
+			await delay(0);
+		}
+
+		const outputPath = await this.resolveOutputPath(file);
+		await this.app.vault.createBinary(outputPath, out);
+		return outputPath;
+	}
+
+	/**
+	 * Processes one time segment and writes its kept frames into the output. The
+	 * segment is read with a warm-up lead-in (discarded after processing) so the
+	 * stateful gate and offline stages reach the same envelope they would in a
+	 * continuous pass, leaving no boundary artifact. The gate runs first, on the
+	 * decoded signal, then the high-pass and leveling render offline — the same
+	 * order as a whole-file pass, just bounded to one segment.
+	 * @param channels - Full decoded per-channel samples (read as views)
+	 * @param sampleRate - Sample rate in Hz
+	 * @param config - Stages to apply
+	 * @param segStart - First frame of the kept region
+	 * @param segEnd - End frame (exclusive) of the kept region
+	 * @param warmupFrames - Lead-in frames to process and then discard
+	 * @param pcm - DataView over the output WAV PCM region
+	 */
+	private async processSegment(
+		channels: Float32Array[],
+		sampleRate: number,
+		config: AudioDspConfig,
+		segStart: number,
+		segEnd: number,
+		warmupFrames: number,
+		pcm: DataView,
+	): Promise<void> {
+		const inStart = Math.max(0, segStart - warmupFrames);
+		// Frames of warm-up at the front of the processed segment to drop.
+		const keepFrom = segStart - inStart;
+		let segment = channels.map((channel) =>
+			channel.subarray(inStart, segEnd),
+		);
 		if (config.gate.enabled) {
-			samples = samples.map((channel) =>
+			segment = segment.map((channel) =>
 				applyNoiseGateToChannel(
 					channel,
 					sampleRate,
@@ -112,13 +193,9 @@ export class AudioProcessingService {
 			);
 		}
 		if (config.highPass.enabled || config.leveling.enabled) {
-			samples = await this.renderOffline(samples, sampleRate, config);
+			segment = await this.renderOffline(segment, sampleRate, config);
 		}
-
-		const wav = encodeWavInterleaved(samples, sampleRate);
-		const outputPath = await this.resolveOutputPath(file);
-		await this.app.vault.createBinary(outputPath, wav);
-		return outputPath;
+		writeWavSegment(pcm, segment, keepFrom, segEnd - segStart, segStart);
 	}
 
 	/**

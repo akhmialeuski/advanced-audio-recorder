@@ -31,6 +31,7 @@ import {
 	type SettingsSectionContext,
 } from '../settings/settingControls';
 import { transcribeFile } from '../transcription/runTranscription';
+import { formatTimecode } from '../utils/TimeUtils';
 import {
 	effectiveDiarize,
 	providerSupportsDiarization,
@@ -71,6 +72,11 @@ export class TranscriptionModal extends Modal {
 	private cancelled = false;
 	private running = false;
 	private statusEl: HTMLElement | null = null;
+	private elapsedEl: HTMLElement | null = null;
+	/** Interval handle for the live elapsed-time counter (null when stopped). */
+	private elapsedTimer: number | null = null;
+	/** Wall-clock start of the current run, in ms, for the elapsed counter. */
+	private runStartedAt = 0;
 	private progressFillEl: HTMLElement | null = null;
 	private configEl: HTMLElement | null = null;
 	private runButton: ButtonComponent | null = null;
@@ -142,6 +148,9 @@ export class TranscriptionModal extends Modal {
 		this.progressFillEl = progress.createDiv({
 			cls: 'aar-transcribe-progress-bar',
 		});
+		// Live elapsed-time counter; hidden until a run starts so an idle dialog
+		// shows no stray "0:00".
+		this.elapsedEl = contentEl.createDiv({ cls: 'aar-transcribe-elapsed' });
 
 		new Setting(contentEl)
 			.addButton((button) => {
@@ -375,11 +384,47 @@ export class TranscriptionModal extends Modal {
 		this.running = running;
 		if (running) {
 			this.cancelled = false;
+			this.startElapsedTimer();
+		} else {
+			this.stopElapsedTimer();
 		}
 		this.runButton?.setDisabled(running);
 		this.minimizeButton?.setDisabled(!running);
 		this.secondaryButton?.setButtonText(running ? 'Cancel' : 'Close');
 		this.configEl?.toggleClass('aar-transcribe-options-disabled', running);
+	}
+
+	/**
+	 * Starts the live elapsed-time counter, ticking once a second. The same
+	 * element is reused across minimize/restore, so the counter keeps running
+	 * visually while the job continues.
+	 */
+	private startElapsedTimer(): void {
+		this.runStartedAt = Date.now();
+		this.renderElapsed();
+		if (this.elapsedTimer !== null) {
+			window.clearInterval(this.elapsedTimer);
+		}
+		this.elapsedTimer = window.setInterval(() => {
+			this.renderElapsed();
+		}, 1000);
+	}
+
+	/** Stops the elapsed-time counter, leaving the final value on screen. */
+	private stopElapsedTimer(): void {
+		if (this.elapsedTimer !== null) {
+			window.clearInterval(this.elapsedTimer);
+			this.elapsedTimer = null;
+		}
+	}
+
+	/** Writes the elapsed time since the run started as mm:ss (or h:mm:ss). */
+	private renderElapsed(): void {
+		if (!this.elapsedEl) {
+			return;
+		}
+		const seconds = Math.floor((Date.now() - this.runStartedAt) / 1000);
+		this.elapsedEl.setText(`Elapsed ${formatTimecode(seconds)}`);
 	}
 
 	/**
@@ -449,6 +494,7 @@ export class TranscriptionModal extends Modal {
 		if (this.running) {
 			this.cancelled = true;
 		}
+		this.stopElapsedTimer();
 		this.clearBackgroundProgress();
 		this.contentEl.empty();
 		this.rendered = false;
