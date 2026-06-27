@@ -11,7 +11,7 @@
 import type { App, TFile } from 'obsidian';
 import {
 	AudioProcessingService,
-	encodeWavInterleaved,
+	floatToInt16,
 } from 'src/cleanup/AudioProcessingService';
 import type { AudioDspConfig } from 'src/cleanup/audioDsp';
 import {
@@ -285,36 +285,19 @@ describe('AudioProcessingService.process (e2e pipeline)', () => {
 	});
 });
 
-describe('encodeWavInterleaved', () => {
-	it('writes a header and interleaves channels, round-tripping samples', () => {
-		const left = new Float32Array([1, 0, -1]);
-		const right = new Float32Array([0, 0.5, -0.5]);
-		const wav = encodeWavInterleaved([left, right], 48000);
-		const header = readWavHeader(wav);
-		expect(header.channels).toBe(2);
-		expect(header.sampleRate).toBe(48000);
-		expect(header.dataBytes).toBe(3 * 2 * 2);
-
-		const view = new DataView(wav, 44);
-		// Frame 0: left=1 -> 32767, right=0 -> 0
-		expect(view.getInt16(0, true)).toBe(32767);
-		expect(view.getInt16(2, true)).toBe(0);
-		// Frame 1: left=0 -> 0, right=0.5 -> ~16384
-		expect(view.getInt16(6, true)).toBeCloseTo(16384, -1);
-		// Full negative range: -1 -> -32768
-		expect(view.getInt16(8, true)).toBe(-32768);
+describe('floatToInt16', () => {
+	it('maps the rails asymmetrically (-1 -> -32768, +1 -> 32767)', () => {
+		expect(floatToInt16(1)).toBe(32767);
+		expect(floatToInt16(-1)).toBe(-32768);
+		expect(floatToInt16(0)).toBe(0);
+		// 0.5 scales by the positive rail (0x7fff).
+		expect(floatToInt16(0.5)).toBeCloseTo(16384, -1);
+		// Negatives scale by the full negative rail (0x8000).
+		expect(floatToInt16(-0.5)).toBe(-16384);
 	});
 
-	it('produces a header-only file for empty channels', () => {
-		const wav = encodeWavInterleaved([], 16000);
-		expect(readWavHeader(wav).dataBytes).toBe(0);
-	});
-
-	it('throws when channels have mismatched lengths', () => {
-		const left = new Float32Array([1, 0, -1]);
-		const right = new Float32Array([0, 0.5]);
-		expect(() => encodeWavInterleaved([left, right], 48000)).toThrow(
-			/same length/i,
-		);
+	it('clamps samples outside the -1..1 range', () => {
+		expect(floatToInt16(2)).toBe(32767);
+		expect(floatToInt16(-2)).toBe(-32768);
 	});
 });

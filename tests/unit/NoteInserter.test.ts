@@ -413,9 +413,12 @@ describe('NoteInserter', () => {
 			resolves?: Record<string, string>;
 			content: string;
 		}): { app: App; getContent: () => string } {
-			const note = opts.noteActive === false
-				? null
-				: new MockTFile(`notes/daily.${opts.noteExtension ?? 'md'}`);
+			const note =
+				opts.noteActive === false
+					? null
+					: new MockTFile(
+							`notes/daily.${opts.noteExtension ?? 'md'}`,
+						);
 			let content = opts.content;
 			const app = {
 				workspace: {
@@ -471,9 +474,7 @@ describe('NoteInserter', () => {
 			);
 
 			expect(notePath).toBe('notes/daily.md');
-			expect(getContent()).toBe(
-				'intro\n![[recording-clean.wav]]\noutro',
-			);
+			expect(getContent()).toBe('intro\n![[recording-clean.wav]]\noutro');
 		});
 
 		it('inserts the new embed after the source when it is kept', async () => {
@@ -500,9 +501,7 @@ describe('NoteInserter', () => {
 
 		it('returns null when the active note does not embed the source', async () => {
 			const { app, getContent } = buildEmbedApp({
-				embeds: [
-					{ link: 'other.mp4', original: '![[other.mp4]]' },
-				],
+				embeds: [{ link: 'other.mp4', original: '![[other.mp4]]' }],
 				resolves: { 'other.mp4': 'Audio/other.mp4' },
 				content: 'intro\n![[other.mp4]]\noutro',
 			});
@@ -549,6 +548,104 @@ describe('NoteInserter', () => {
 			);
 
 			expect(notePath).toBeNull();
+		});
+
+		it('writes a processed filename containing $ verbatim', async () => {
+			// A `$&`/`$$` in the replacement would be reinterpreted by
+			// String.prototype.replace, corrupting the note. The link text must
+			// land in the note exactly as generated.
+			const { app, getContent } = buildEmbedApp({
+				embeds: [
+					{ link: 'recording.mp4', original: '![[recording.mp4]]' },
+				],
+				resolves: { 'recording.mp4': 'Audio/recording.mp4' },
+				content: 'intro\n![[recording.mp4]]\noutro',
+			});
+
+			const notePath = await insertProcessedAudioEmbed(
+				app,
+				source(),
+				'Audio/clean $& $$.wav',
+				true,
+			);
+
+			expect(notePath).toBe('notes/daily.md');
+			expect(getContent()).toBe('intro\n![[clean $& $$.wav]]\noutro');
+		});
+
+		it('replaces every embed of the source when it is being deleted', async () => {
+			// The source embedded twice must leave no occurrence behind, or
+			// trashing it would orphan the un-rewritten embed.
+			const { app, getContent } = buildEmbedApp({
+				embeds: [
+					{ link: 'recording.mp4', original: '![[recording.mp4]]' },
+					{ link: 'recording.mp4', original: '![[recording.mp4]]' },
+				],
+				resolves: { 'recording.mp4': 'Audio/recording.mp4' },
+				content: 'a\n![[recording.mp4]]\nb\n![[recording.mp4]]\nc',
+			});
+
+			const notePath = await insertProcessedAudioEmbed(
+				app,
+				source(),
+				'Audio/recording-clean.wav',
+				true,
+			);
+
+			expect(notePath).toBe('notes/daily.md');
+			expect(getContent()).toBe(
+				'a\n![[recording-clean.wav]]\nb\n![[recording-clean.wav]]\nc',
+			);
+		});
+
+		it('replaces distinct source embeds (plain and aliased) alike', async () => {
+			const { app, getContent } = buildEmbedApp({
+				embeds: [
+					{ link: 'recording.mp4', original: '![[recording.mp4]]' },
+					{
+						link: 'recording.mp4',
+						original: '![[recording.mp4|My audio]]',
+					},
+				],
+				resolves: { 'recording.mp4': 'Audio/recording.mp4' },
+				content:
+					'a\n![[recording.mp4]]\nb\n![[recording.mp4|My audio]]\nc',
+			});
+
+			await insertProcessedAudioEmbed(
+				app,
+				source(),
+				'Audio/recording-clean.wav',
+				true,
+			);
+
+			expect(getContent()).toBe(
+				'a\n![[recording-clean.wav]]\nb\n![[recording-clean.wav]]\nc',
+			);
+		});
+
+		it('inserts after the first embed only when the source is kept', async () => {
+			// Keeping a twice-embedded source must add the processed embed once,
+			// after the first occurrence, not once per occurrence.
+			const { app, getContent } = buildEmbedApp({
+				embeds: [
+					{ link: 'recording.mp4', original: '![[recording.mp4]]' },
+					{ link: 'recording.mp4', original: '![[recording.mp4]]' },
+				],
+				resolves: { 'recording.mp4': 'Audio/recording.mp4' },
+				content: 'a\n![[recording.mp4]]\nb\n![[recording.mp4]]\nc',
+			});
+
+			await insertProcessedAudioEmbed(
+				app,
+				source(),
+				'Audio/recording-clean.wav',
+				false,
+			);
+
+			expect(getContent()).toBe(
+				'a\n![[recording.mp4]]\n![[recording-clean.wav]]\nb\n![[recording.mp4]]\nc',
+			);
 		});
 	});
 });

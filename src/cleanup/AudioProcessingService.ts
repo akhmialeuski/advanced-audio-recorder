@@ -31,7 +31,7 @@ import {
  * @param sample - Sample in the range -1..1
  * @returns Signed 16-bit PCM value
  */
-function floatToInt16(sample: number): number {
+export function floatToInt16(sample: number): number {
 	const clamped = Math.max(-1, Math.min(1, sample));
 	return Math.round(clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff);
 }
@@ -73,45 +73,6 @@ const LEVELING_COMPRESSOR_KNEE_DB = 30;
 const LEVELING_COMPRESSOR_RATIO = 12;
 const LEVELING_COMPRESSOR_ATTACK_S = 0.003;
 const LEVELING_COMPRESSOR_RELEASE_S = 0.25;
-
-/**
- * Encodes per-channel Float32 samples (range -1..1) into an interleaved
- * 16-bit PCM WAV file.
- * @param channels - Per-channel sample data (all the same length)
- * @param sampleRate - Sample rate in Hz
- * @returns WAV-encoded bytes
- */
-export function encodeWavInterleaved(
-	channels: Float32Array[],
-	sampleRate: number,
-): ArrayBuffer {
-	const numChannels = Math.max(1, channels.length);
-	const numFrames = channels[0]?.length ?? 0;
-	// The interleave loop indexes every channel up to numFrames (taken
-	// from channel 0). Enforce the equal-length invariant the JSDoc
-	// promises, so a mismatched channel fails loudly instead of writing
-	// NaN (-> silent 0) samples for the missing tail.
-	for (let channel = 1; channel < channels.length; channel++) {
-		if (channels[channel].length !== numFrames) {
-			throw new Error(
-				'Cannot encode WAV: all channels must have the same length.',
-			);
-		}
-	}
-	const pcmByteLength = numFrames * numChannels * 2;
-	const header = createWavHeader(numChannels, sampleRate, pcmByteLength);
-	const out = new ArrayBuffer(WAV_HEADER_SIZE + pcmByteLength);
-	new Uint8Array(out).set(new Uint8Array(header), 0);
-	const view = new DataView(out, WAV_HEADER_SIZE);
-	let offset = 0;
-	for (let frame = 0; frame < numFrames; frame++) {
-		for (let channel = 0; channel < numChannels; channel++) {
-			view.setInt16(offset, floatToInt16(channels[channel][frame]), true);
-			offset += 2;
-		}
-	}
-	return out;
-}
 
 /**
  * Runs the offline audio-cleanup pipeline.

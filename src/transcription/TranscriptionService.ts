@@ -346,10 +346,18 @@ export class TranscriptionService {
 			}
 			// The part overran the provider's output token budget. Retrying it as
 			// smaller pieces keeps each piece's output under the cap, so a dense
-			// stretch is recovered rather than discarded.
+			// stretch is recovered rather than discarded. Each retry is a real
+			// (and, on a paid API, billed) request, so the subdivision is logged:
+			// the recursion is bounded only by the MIN_SUBDIVIDE_SECONDS floor, so
+			// a consistently dense part can fan out into several extra requests.
 			if (error instanceof TranscriptTruncatedError) {
 				const halves = prepared.subdivide?.() ?? [];
 				if (halves.length > 0) {
+					console.debug(
+						`${PLUGIN_LOG_PREFIX} ${label || 'The audio'} overran ` +
+							'the output token limit; retrying as ' +
+							`${String(halves.length)} smaller pieces.`,
+					);
 					for (const half of halves) {
 						await this.transcribePart(
 							provider,
@@ -363,6 +371,14 @@ export class TranscriptionService {
 					}
 					return;
 				}
+				// At the minimum subdividable length a further split would cost
+				// more requests than it saves, so stop here and let the part be
+				// reported (or fail the run, for a single indivisible job).
+				console.debug(
+					`${PLUGIN_LOG_PREFIX} ${label || 'The audio'} still ` +
+						'overran the output token limit at the minimum segment ' +
+						'length; reporting it without subdividing further.',
+				);
 			}
 			const detail =
 				error instanceof Error ? error.message : String(error);
