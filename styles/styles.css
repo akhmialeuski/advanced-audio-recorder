@@ -695,3 +695,33 @@ input.aar-input-invalid {
     resize: vertical;
     font-family: var(--font-monospace);
 }
+
+/* Documentation callout at the top of the settings tab. A subtle, accent-bordered
+   banner so the link to the full guides is the first thing the user sees. */
+.aar-doc-callout {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--size-4-2);
+    margin: var(--size-4-2) 0 var(--size-4-4);
+    padding: var(--size-4-3);
+    border: 1px solid var(--background-modifier-border);
+    border-left: 3px solid var(--interactive-accent);
+    border-radius: var(--radius-m);
+    background: var(--background-secondary);
+}
+
+.aar-doc-callout-icon {
+    display: flex;
+    align-items: center;
+    color: var(--interactive-accent);
+    flex-shrink: 0;
+}
+
+.aar-doc-callout-body {
+    color: var(--text-muted);
+    line-height: var(--line-height-tight);
+}
+
+.aar-doc-callout-link {
+    font-weight: var(--font-semibold);
+}

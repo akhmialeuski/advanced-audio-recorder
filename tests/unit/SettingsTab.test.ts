@@ -11,6 +11,7 @@ import {
 	DEFAULT_SETTINGS,
 	AudioRecorderSettings,
 } from '../../src/settings/Settings';
+import { DOCS_URL } from '../../src/constants';
 
 // Mock AudioEncoder to avoid loading mediabunny in jsdom
 jest.mock('../../src/recording/AudioEncoder', () => ({
@@ -69,6 +70,41 @@ describe('AudioRecorderSettingTab', () => {
 			new App(),
 			mockPlugin as unknown as AudioRecorderSettingTab['plugin'],
 		);
+	});
+
+	describe('documentation link', () => {
+		it('should render a documentation callout linking to the docs', () => {
+			tab.display();
+
+			const link = tab.containerEl.querySelector<HTMLAnchorElement>(
+				'.aar-doc-callout-link',
+			);
+			expect(link).not.toBeNull();
+			expect(link?.getAttribute('href')).toBe(DOCS_URL);
+		});
+
+		it('should open the documentation link in a new tab safely', () => {
+			tab.display();
+
+			const link = tab.containerEl.querySelector<HTMLAnchorElement>(
+				'.aar-doc-callout-link',
+			);
+			// New tab plus rel=noopener so the docs page cannot reach back
+			// into the Obsidian window via window.opener.
+			expect(link?.getAttribute('target')).toBe('_blank');
+			expect(link?.getAttribute('rel')).toBe('noopener');
+		});
+
+		it('should render the callout only once per display() call', () => {
+			tab.display();
+			tab.display();
+
+			const callouts =
+				tab.containerEl.querySelectorAll('.aar-doc-callout');
+			// display() empties the container first, so a re-render must not
+			// stack duplicate callouts.
+			expect(callouts.length).toBe(1);
+		});
 	});
 
 	describe('device-change listener lifecycle', () => {

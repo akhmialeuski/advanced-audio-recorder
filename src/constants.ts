@@ -8,6 +8,15 @@
  */
 export const PLUGIN_LOG_PREFIX = '[AudioRecorder]';
 
+/**
+ * Public documentation home. Points at the `docs/` folder on GitHub, whose
+ * `index.md` renders automatically as the folder landing page, so the in-app
+ * settings link opens the full guides without the user hunting through the
+ * repository.
+ */
+export const DOCS_URL =
+	'https://github.com/akhmialeuski/advanced-audio-recorder/tree/master/docs';
+
 export const FORMAT_WAV = 'wav';
 export const FORMAT_WEBM = 'webm';
 export const FORMAT_OGG = 'ogg';
