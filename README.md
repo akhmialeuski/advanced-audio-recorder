@@ -12,7 +12,7 @@ Desktop only. Requires Obsidian 1.6.6 or newer. MIT licensed.
 
 The full documentation lives in the [docs](docs/index.md) folder, and the same link is built into the plugin's settings tab.
 
-![Advanced Audio Recorder in action](docs/pause-resume.png)
+![The enhanced audio player showing the waveform, playback controls, and a list of bookmarks and chapters.](docs/images/player-overview.png)
 
 ## Features
 
