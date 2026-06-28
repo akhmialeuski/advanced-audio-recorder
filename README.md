@@ -4,7 +4,7 @@ Advanced Audio Recorder lets you record, play, clean up, and transcribe audio di
 
 Use it for voice notes, meetings, interviews, lectures, and dictation. [Record](docs/recording.md) audio with one click, play it back in an [enhanced waveform player](docs/audio-player.md), add bookmarks and chapters, [split](docs/splitting.md) or [convert](docs/formats.md) files, and [clean up](docs/audio-cleanup.md) noisy recordings when needed.
 
-The plugin also includes [built-in transcription](docs/transcription.md). You can transcribe recordings or existing audio files in your vault using OpenAI Whisper, Groq, Deepgram, Google Gemini, or a local offline whisper.cpp model. Transcripts can include speaker labels, clickable timestamps, and an optional [AI summary](docs/llm-post-processing.md) saved next to your note.
+The plugin also includes [built-in transcription](docs/transcription.md). You can transcribe recordings or existing audio files in your vault using the OpenAI-compatible Whisper API (OpenAI, Groq, and other hosts), Deepgram, Google Gemini, or a local offline whisper.cpp model. Transcripts can include speaker labels, clickable timestamps, and an optional [AI summary](docs/llm-post-processing.md) saved next to your note.
 
 All audio and generated files stay in your vault. API keys are stored locally and are never sent anywhere except to the transcription provider you choose.
 
@@ -25,6 +25,8 @@ The full documentation lives in the [docs](docs/index.md) folder, and the same l
 - Formats and file operations: convert between WAV, WebM, OGG, MP3, MP4, M4A, AAC, and FLAC, and split long files from the right-click menu.
 
 Recording is fast and forgiving. Start and stop from the ribbon or a command, follow live feedback in the status bar, and pause or resume without losing anything. Capture up to eight input devices at once for multi-microphone interviews, let long sessions split into fixed-length parts automatically, and recover the audio on the next launch if Obsidian closes mid-recording. See [Recording](docs/recording.md) and [Multi-track recording](docs/multi-track-recording.md).
+
+![The recording status bar showing the Recording label, control buttons, elapsed time, file size, and input level meter.](docs/images/status-bar-recording.png)
 
 The enhanced player turns playback into a first-class part of your notes. Recordings embed as a player with a clickable waveform, adjustable speed, skip, loop, and volume. Add per-recording bookmarks and chapters, move between them, and copy timestamp links that jump straight to a moment in the audio. See the [enhanced audio player](docs/audio-player.md).
 
