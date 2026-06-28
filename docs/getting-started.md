@@ -1,6 +1,6 @@
 # Getting started
 
-This guide takes you from zero to your first recording with **Advanced Audio Recorder**. You will install the plugin, grant your microphone access, record and play back a clip, learn where files are saved, and run through a quick configuration checklist. No audio-engineering background is needed — every step is spelled out.
+This guide takes you from zero to your first recording with **Advanced Audio Recorder**. You will install the plugin, grant your microphone access, record and play back a clip, learn where files are saved, and run through a quick configuration checklist. No audio-engineering background is needed - every step is spelled out.
 
 - [Requirements](#requirements)
 - [Installation](#installation)
@@ -20,7 +20,7 @@ Advanced Audio Recorder is a **desktop-only** plugin. Before you start, make sur
 | Requirement               | Detail                                                                                                                                   |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | **Platform**              | The Obsidian **desktop** app (Windows, macOS, or Linux). The plugin does not load on mobile.                                             |
-| **Obsidian version**      | App version **1.6.6 or newer**. Update Obsidian from **Settings → About → Check for updates** if you are on an older build.              |
+| **Obsidian version**      | App version **1.6.6 or newer**. Update Obsidian from **Settings > About > Check for updates** if you are on an older build.              |
 | **A microphone**          | Any built-in or external input device that your operating system recognizes.                                                             |
 | **Microphone permission** | Your operating system must allow the Obsidian app to use the microphone (see [Granting microphone access](#granting-microphone-access)). |
 
@@ -44,7 +44,7 @@ You can install the plugin from Obsidian's built-in plugin browser (recommended)
 ![Community plugins browser showing Advanced Audio Recorder in the search results with an Install button](images/install-community-plugins-browse.png)
 *Figure: Searching for the plugin in the Community plugins browser.*
 
-![The installed plugin entry under Settings → Community plugins → Installed plugins with its toggle enabled](images/install-enabled-plugin.png)
+![The installed plugin entry under Settings > Community plugins > Installed plugins with its toggle enabled](images/install-enabled-plugin.png)
 *Figure: The plugin enabled in the installed-plugins list.*
 
 Once enabled, a **microphone icon** appears in the left ribbon and a new **Advanced Audio Recorder** entry appears in your settings.
@@ -59,7 +59,7 @@ Use this method to install a specific release or a build you compiled yourself.
    <vault>/.obsidian/plugins/advanced-audio-recorder/
    ```
 3. Copy `main.js`, `manifest.json`, and `styles.css` into that folder.
-4. Restart Obsidian (or reload it), open **Settings → Community plugins**, and **Enable** **Advanced Audio Recorder**.
+4. Restart Obsidian (or reload it), open **Settings > Community plugins**, and **Enable** **Advanced Audio Recorder**.
 
 The `.obsidian` folder is hidden by default; enable hidden files in your file manager if you cannot see it.
 
@@ -67,19 +67,19 @@ The `.obsidian` folder is hidden by default; enable hidden files in your file ma
 
 ## Granting microphone access
 
-The plugin records through your operating system's microphone, so the OS must grant Obsidian permission to use it. The first time you record, your system may show a permission prompt — choose **Allow**. If you never see a prompt, or no sound is captured, set the permission manually:
+The plugin records through your operating system's microphone, so the OS must grant Obsidian permission to use it. The first time you record, your system may show a permission prompt - choose **Allow**. If you never see a prompt, or no sound is captured, set the permission manually:
 
-- **Windows** — open **Settings → Privacy & security → Microphone**, make sure **Microphone access** and **Let desktop apps access your microphone** are on, and confirm Obsidian (or the desktop-apps group) is allowed.
-- **macOS** — open **System Settings → Privacy & Security → Microphone** and enable **Obsidian**. You may need to quit and reopen Obsidian for the change to take effect.
-- **Linux** — make sure your audio server (PipeWire or PulseAudio) exposes the input device and that no other application holds it exclusively. Use your distribution's sound settings to verify the input is active.
+- **Windows** - open **Settings > Privacy & security > Microphone**, make sure **Microphone access** and **Let desktop apps access your microphone** are on, and confirm Obsidian (or the desktop-apps group) is allowed.
+- **macOS** - open **System Settings > Privacy & Security > Microphone** and enable **Obsidian**. You may need to quit and reopen Obsidian for the change to take effect.
+- **Linux** - make sure your audio server (PipeWire or PulseAudio) exposes the input device and that no other application holds it exclusively. Use your distribution's sound settings to verify the input is active.
 
 ![Operating system microphone permission prompt asking whether to allow Obsidian to use the microphone](images/getting-started-mic-permission.png)
 *Figure: The OS-level microphone permission prompt shown on first use.*
 
 If recording produces no sound:
 
-1. Confirm the correct **Input device** is selected in **Settings → Advanced Audio Recorder → Audio input** (see [Audio input](settings-reference.md#audio-input)).
-2. Run **Test recording** from **Settings → Advanced Audio Recorder → Diagnostics** — it records a five-second clip with your current settings and plays it back, and nothing is saved to your vault.
+1. Confirm the correct **Input device** is selected in **Settings > Advanced Audio Recorder > Audio input** (see [Audio input](settings-reference.md#audio-input)).
+2. Run **Test recording** from **Settings > Advanced Audio Recorder > Diagnostics** - it records a five-second clip with your current settings and plays it back, and nothing is saved to your vault.
 3. Re-check the OS permission above, and make sure no other app is holding the microphone.
 
 See [Troubleshooting](troubleshooting.md) for more on capture problems.
@@ -91,7 +91,7 @@ See [Troubleshooting](troubleshooting.md) for more on capture problems.
 With the plugin enabled and your microphone allowed, record your first clip:
 
 1. Open or create a note where you want the audio link to land, and place your cursor there.
-2. Click the **microphone icon** in the left ribbon, or open the command palette (`Ctrl/Cmd + P`) and run **Start/stop recording**. The plugin assigns no default hotkeys; you can add your own under **Settings → Hotkeys**.
+2. Click the **microphone icon** in the left ribbon, or open the command palette (`Ctrl/Cmd + P`) and run **Start/stop recording**. The plugin assigns no default hotkeys; you can add your own under **Settings > Hotkeys**.
 3. Speak (or play audio) into your microphone. While recording:
    - The **ribbon icon** changes from a microphone to an active recording indicator.
    - The **status bar** shows `Recording...` with **Pause** and **Stop** buttons. If you enabled **Markers and chapters**, an **Add marker** button appears too.
@@ -105,12 +105,12 @@ With the plugin enabled and your microphone allowed, record your first clip:
 ![Status bar reading Recording with Pause, Stop, and Add marker buttons and a live input level meter](images/status-bar-recording.png)
 *Figure: The status bar while a recording is in progress.*
 
-When you stop, the plugin flushes the audio buffers, assembles the final file, writes it to your save location, and inserts an embed link (`![[filename.ext]]`) into the active note. For longer recordings, saving can take a moment; the status bar shows a progress bar that walks through `Saving... → Flushing buffers... → Assembling audio... → Writing file... → Cleaning up... → Saved`, and the ribbon switches to a **save** icon while saving runs.
+When you stop, the plugin flushes the audio buffers, assembles the final file, writes it to your save location, and inserts an embed link (`![[filename.ext]]`) into the active note. For longer recordings, saving can take a moment; the status bar shows a progress bar that walks through `Saving... > Flushing buffers... > Assembling audio... > Writing file... > Cleaning up... > Saved`, and the ribbon switches to a **save** icon while saving runs.
 
 ![Note showing an automatically inserted audio embed link after a recording was saved](images/getting-started-inserted-link.png)
 *Figure: The audio embed link inserted into the note after saving.*
 
-For the full recording workflow — markers, pause/resume, automatic splitting, and crash recovery — see [Recording](recording.md).
+For the full recording workflow - markers, pause/resume, automatic splitting, and crash recovery - see [Recording](recording.md).
 
 ---
 
@@ -120,7 +120,7 @@ The inserted embed link plays your recording directly in the note. Out of the bo
 
 For a richer experience, turn on the **Enhanced audio player**:
 
-1. Open **Settings → Advanced Audio Recorder → Audio player**.
+1. Open **Settings > Advanced Audio Recorder > Audio player**.
 2. Enable **Enhanced audio player**. Two extra options appear: **Show waveform** (on by default) and **Markers and chapters** (on by default).
 3. Reopen or re-render the note. The embed is now a waveform player with playback-speed presets, ±10-second skip, volume and mute, a loop toggle, an elapsed/total time display, and a copy-timestamp-link button.
 
@@ -140,11 +140,11 @@ By default, recordings are written to your **vault root** with the file prefix `
 | **Save folder**                      | The vault folder where recordings are stored. Type to autocomplete from your existing folders.                                    | Vault root |
 | **Save recordings near active file** | Saves each recording in the same folder as the currently active note. This **takes priority** over **Save folder** when it is on. | Off        |
 
-When **Save recordings near active file** is on, an optional **Active file subfolder** field appears — set it (for example `audio`) to place recordings in a subfolder next to the note; the folder is created automatically if it does not exist.
+When **Save recordings near active file** is on, an optional **Active file subfolder** field appears - set it (for example `audio`) to place recordings in a subfolder next to the note; the folder is created automatically if it does not exist.
 
 You can also turn on **Insert at original position** so the embed link lands at the cursor position where recording started, even if you navigate to another note while recording.
 
-Configure all of this under **Settings → Advanced Audio Recorder → File storage** — see [File storage](settings-reference.md#file-storage) for every field.
+Configure all of this under **Settings > Advanced Audio Recorder > File storage** - see [File storage](settings-reference.md#file-storage) for every field.
 
 ---
 
@@ -152,14 +152,14 @@ Configure all of this under **Settings → Advanced Audio Recorder → File stor
 
 Run through these once to tailor the plugin to your setup. Every item links to the full reference.
 
-1. **Pick your input device.** **Settings → Advanced Audio Recorder → Audio input → Input device**. The dropdown lists every detected microphone and refreshes automatically when you plug or unplug one. See [Audio input](settings-reference.md#audio-input).
-2. **Choose a recording format.** **Settings → Advanced Audio Recorder → Output format → Recording format** (default **WebM**). Offline formats are labelled `(offline)`. See [Formats](formats.md) for which to pick.
-3. **Set the save folder.** **Settings → Advanced Audio Recorder → File storage** — set **Save folder**, or turn on **Save recordings near active file**. See [File storage](settings-reference.md#file-storage).
-4. **(Optional) Enable the enhanced player.** **Settings → Advanced Audio Recorder → Audio player → Enhanced audio player**. See [Audio player](audio-player.md).
-5. **(Optional) Enable transcription.** **Settings → Advanced Audio Recorder → Transcription → Enable transcription**, then pick an engine and add an API key (or set up local whisper.cpp). See [Transcription](transcription.md) and the [use-case guides](use-cases/index.md).
-6. **(Optional) Verify your setup.** **Settings → Advanced Audio Recorder → Diagnostics → Test recording** records a five-second clip and plays it back without saving anything.
+1. **Pick your input device.** **Settings > Advanced Audio Recorder > Audio input > Input device**. The dropdown lists every detected microphone and refreshes automatically when you plug or unplug one. See [Audio input](settings-reference.md#audio-input).
+2. **Choose a recording format.** **Settings > Advanced Audio Recorder > Output format > Recording format** (default **WebM**). Offline formats are labelled `(offline)`. See [Formats](formats.md) for which to pick.
+3. **Set the save folder.** **Settings > Advanced Audio Recorder > File storage** - set **Save folder**, or turn on **Save recordings near active file**. See [File storage](settings-reference.md#file-storage).
+4. **(Optional) Enable the enhanced player.** **Settings > Advanced Audio Recorder > Audio player > Enhanced audio player**. See [Audio player](audio-player.md).
+5. **(Optional) Enable transcription.** **Settings > Advanced Audio Recorder > Transcription > Enable transcription**, then pick an engine and add an API key (or set up local whisper.cpp). See [Transcription](transcription.md) and the [use-case guides](use-cases/index.md).
+6. **(Optional) Verify your setup.** **Settings > Advanced Audio Recorder > Diagnostics > Test recording** records a five-second clip and plays it back without saving anything.
 
-The settings tab opens with a **documentation callout** at the very top — a quick link to these guides, so you never have to hunt through the repository.
+The settings tab opens with a **documentation callout** at the very top - a quick link to these guides, so you never have to hunt through the repository.
 
 ![Documentation callout at the top of the Advanced Audio Recorder settings tab linking to the online docs](images/settings-documentation-callout.png)
 *Figure: The documentation callout shown at the top of the settings tab.*
@@ -170,15 +170,15 @@ The settings tab opens with a **documentation callout** at the very top — a qu
 
 You are ready to record. From here:
 
-- [Features](features.md) — a tour of everything the plugin can do.
-- [Recording](recording.md) — pause/resume, markers, automatic splitting, save progress, and crash recovery.
-- [Multi-track recording](multi-track-recording.md) — capture several input devices at once.
-- [Formats](formats.md) — the eight output formats and when to use each.
-- [Audio player](audio-player.md) — the enhanced player, markers and chapters, and timecode links.
-- [Audio cleanup](audio-cleanup.md) — remove noise and even out loudness on an existing file.
-- [Transcription](transcription.md) — turn recordings into text with Whisper, Deepgram, Gemini, or local whisper.cpp.
-- [LLM post-processing](llm-post-processing.md) — clean up or summarize a transcript with an LLM.
-- [Settings reference](settings-reference.md) — every setting, default, and range in one place.
-- [Troubleshooting](troubleshooting.md) — fixes for the most common problems.
+- [Features](features.md) - a tour of everything the plugin can do.
+- [Recording](recording.md) - pause/resume, markers, automatic splitting, save progress, and crash recovery.
+- [Multi-track recording](multi-track-recording.md) - capture several input devices at once.
+- [Formats](formats.md) - the eight output formats and when to use each.
+- [Audio player](audio-player.md) - the enhanced player, markers and chapters, and timecode links.
+- [Audio cleanup](audio-cleanup.md) - remove noise and even out loudness on an existing file.
+- [Transcription](transcription.md) - turn recordings into text with Whisper, Deepgram, Gemini, or local whisper.cpp.
+- [LLM post-processing](llm-post-processing.md) - clean up or summarize a transcript with an LLM.
+- [Settings reference](settings-reference.md) - every setting, default, and range in one place.
+- [Troubleshooting](troubleshooting.md) - fixes for the most common problems.
 
 Back to the [documentation home](index.md).

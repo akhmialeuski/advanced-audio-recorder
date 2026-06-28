@@ -1,6 +1,6 @@
 # Recording
 
-Recording is the core of Advanced Audio Recorder: start a capture from the ribbon or the command palette, watch live feedback in the status bar, drop markers as you go, and the plugin writes the finished file and inserts an embed link into your note when you stop. This page walks the complete workflow end to end — every button, every status-bar state, every save stage, and what happens when a recording is interrupted.
+Recording is the core of Advanced Audio Recorder: start a capture from the ribbon or the command palette, watch live feedback in the status bar, drop markers as you go, and the plugin writes the finished file and inserts an embed link into your note when you stop. This page walks the complete workflow end to end - every button, every status-bar state, every save stage, and what happens when a recording is interrupted.
 
 - [Starting a recording](#starting-a-recording)
 - [Switching the input device](#switching-the-input-device)
@@ -22,9 +22,9 @@ There are two equivalent ways to start a recording:
 1. Click the **microphone icon** in the left ribbon, or
 2. Open the command palette (`Ctrl/Cmd + P`) and run **Start/stop recording**.
 
-The plugin does not assign a default hotkey to any command, so if you want a keyboard shortcut, set one yourself under **Settings → Hotkeys**.
+The plugin does not assign a default hotkey to any command, so if you want a keyboard shortcut, set one yourself under **Settings > Hotkeys**.
 
-The moment you start, the plugin captures the **active note and cursor position** so the finished audio link can be placed exactly where you began — see [Insert at original position](#insert-at-original-position) for when this matters. A short `Recording started` notice confirms the session is live.
+The moment you start, the plugin captures the **active note and cursor position** so the finished audio link can be placed exactly where you began - see [Insert at original position](#insert-at-original-position) for when this matters. A short `Recording started` notice confirms the session is live.
 
 ![Ribbon microphone icon highlighted in the Obsidian left sidebar](images/ribbon-microphone-icon.png)
 *Figure: The microphone icon in the left ribbon starts and stops a recording.*
@@ -38,18 +38,18 @@ If the recording cannot start, the plugin shows a specific notice instead of fai
 | The device is already in use by another app | `Microphone is in use by another application.`                           |
 | The selected format is not supported        | The reason reported by the capability check                              |
 
-If recording does not work, run **Test recording** from settings and check **System info** for supported formats — see [Troubleshooting](troubleshooting.md).
+If recording does not work, run **Test recording** from settings and check **System info** for supported formats - see [Troubleshooting](troubleshooting.md).
 
 ---
 
 ## Switching the input device
 
-You do not have to open the settings tab to change which microphone records. Run the **Select audio input device** command from the command palette (`Ctrl/Cmd + P`) and a quick-pick modal opens, listing every input the plugin detected. Choose one and it is saved to your settings **immediately** — a confirmation notice reports the device that is now selected, and the next recording uses it.
+You do not have to open the settings tab to change which microphone records. Run the **Select audio input device** command from the command palette (`Ctrl/Cmd + P`) and a quick-pick modal opens, listing every input the plugin detected. Choose one and it is saved to your settings **immediately** - a confirmation notice reports the device that is now selected, and the next recording uses it.
 
 ![The Select audio input device modal listing detected microphones](images/modal-select-input-device.png)
 *Figure: The Select audio input device modal listing detected microphones.*
 
-This is the quickest way to switch mics between recordings — for example, moving from a laptop's built-in microphone to a headset before a meeting. The same choice is also available, alongside the sample rate, under [Audio input settings](settings-reference.md#audio-input).
+This is the quickest way to switch mics between recordings - for example, moving from a laptop's built-in microphone to a headset before a meeting. The same choice is also available, alongside the sample rate, under [Audio input settings](settings-reference.md#audio-input).
 
 ---
 
@@ -76,13 +76,13 @@ The **Add marker** button only renders when the **Markers and chapters** option 
 
 ## Live feedback
 
-Alongside the control buttons, the status bar shows live indicators that confirm the microphone is working and the recording is growing. Both are configurable under **Settings → Audio processing & feedback**.
+Alongside the control buttons, the status bar shows live indicators that confirm the microphone is working and the recording is growing. Both are configurable under **Settings > Audio processing & feedback**.
 
 ![Status bar input level meter reacting to microphone input next to the elapsed time and size](images/status-bar-live-feedback.png)
 *Figure: The live input meter, elapsed time, and recorded size update continuously while you record.*
 
-- **Input level meter** — a live VU meter that fills in response to the microphone signal, so you can see at a glance that sound is actually being picked up. Controlled by **Input level meter** (default On).
-- **Recording stats** — two figures that update continuously:
+- **Input level meter** - a live VU meter that fills in response to the microphone signal, so you can see at a glance that sound is actually being picked up. Controlled by **Input level meter** (default On).
+- **Recording stats** - two figures that update continuously:
   - **Elapsed time** in `m:ss` (or `h:mm:ss` for long sessions). This counts *active* recording time only; paused intervals are excluded.
   - **Total recorded size**, shown as it grows. For multi-track or multi-part sessions this is the sum across all tracks and parts.
 
@@ -94,7 +94,7 @@ Turning either indicator off only hides it from the status bar; recording itself
 
 ## Marking moments while recording
 
-When **Markers and chapters** is enabled, you can flag an important moment the instant it happens — no need to wait for playback. This is ideal for marking the start of a topic in a lecture, an action item in a meeting, or a take you want to find again.
+When **Markers and chapters** is enabled, you can flag an important moment the instant it happens - no need to wait for playback. This is ideal for marking the start of a topic in a lecture, an action item in a meeting, or a take you want to find again.
 
 To drop a marker:
 
@@ -108,9 +108,9 @@ To drop a marker:
 Two details make this reliable:
 
 - **The timestamp is frozen at the moment you trigger the marker.** However long you spend naming it, the marker lands at the position where you clicked, not where the recording has reached by the time you confirm.
-- **The marker is attached at save.** It is written into the recording's sidecar file when the session stops, so it is already present the first time you open the finished recording in the [enhanced player](audio-player.md#markers-and-chapters). If the recording happens to stop while the naming dialog is still open, the marker is still saved with its default name, and your edit (or cancellation) is applied to the saved marker afterward — nothing is lost.
+- **The marker is attached at save.** It is written into the recording's sidecar file when the session stops, so it is already present the first time you open the finished recording in the [enhanced player](audio-player.md#markers-and-chapters). If the recording happens to stop while the naming dialog is still open, the marker is still saved with its default name, and your edit (or cancellation) is applied to the saved marker afterward - nothing is lost.
 
-Markers behave the same way in the player whether they were added live or during playback. For the full marker and chapter feature — the marker list, seek-bar ticks, chapter navigation, and where the sidecar is stored — see [Markers and chapters](audio-player.md#markers-and-chapters).
+Markers behave the same way in the player whether they were added live or during playback. For the full marker and chapter feature - the marker list, seek-bar ticks, chapter navigation, and where the sidecar is stored - see [Markers and chapters](audio-player.md#markers-and-chapters).
 
 ---
 
@@ -167,12 +167,12 @@ A recording that is slow to save is expected behaviour for long captures, not an
 
 ## Insert at original position
 
-By default the embed link is inserted at the cursor in whatever note is active when the recording **stops**. Enable **Insert at original position** (under **Settings → File storage**, default Off) to instead remember the note and cursor position from when the recording **started** and place the link there — even if you scrolled, switched notes, or navigated away during the recording.
+By default the embed link is inserted at the cursor in whatever note is active when the recording **stops**. Enable **Insert at original position** (under **Settings > File storage**, default Off) to instead remember the note and cursor position from when the recording **started** and place the link there - even if you scrolled, switched notes, or navigated away during the recording.
 
 ![File storage settings showing the Insert at original position toggle](images/settings-insert-at-original-position.png)
 *Figure: The Insert at original position toggle in the File storage settings.*
 
-The position is captured as a snapshot at the moment recording begins. One caveat follows from that: if you **edit the original note while recording** — adding or deleting text above the saved spot — the remembered position can shift, because it is an offset into the note as it was when recording started. For predictable placement, avoid editing the target note's earlier content during a recording, or simply leave this option off and let the link land at your cursor on stop.
+The position is captured as a snapshot at the moment recording begins. One caveat follows from that: if you **edit the original note while recording** - adding or deleting text above the saved spot - the remembered position can shift, because it is an offset into the note as it was when recording started. For predictable placement, avoid editing the target note's earlier content during a recording, or simply leave this option off and let the link land at your cursor on stop.
 
 This setting works together with the [file storage options](file-operations.md) that decide *which folder* the audio file itself is written to.
 
@@ -198,13 +198,13 @@ Notes on what can and cannot be recovered:
 - Recovered WAV (PCM) sessions are written as `<name>-recovered.wav`; compressed sessions are written in their raw recorder container as `<name>-recovered.<ext>`. The output lands in the directory where the recording was being saved, not in your current save folder (which may have changed since the crash).
 - **Audio still buffered in memory** at the instant of the crash (up to the flush threshold) **cannot be recovered**. Everything already flushed to disk can.
 - For a compressed track, the first segment carries the container header. If that first segment was lost, the track cannot be made playable and is reported as a failed track rather than producing a broken file.
-- A session with **no surviving segments on disk** is pruned automatically and never prompts — so a crash before the first flush self-clears.
+- A session with **no surviving segments on disk** is pruned automatically and never prompts - so a crash before the first flush self-clears.
 
 ---
 
 ## Mobile recording banner
 
-Advanced Audio Recorder is a **desktop-only** plugin. The **Mobile recording banner** option (under **Settings → Audio processing & feedback**, default On) governs a floating on-screen banner intended for mobile, where there is no ribbon icon to show that a recording is in progress. When shown, the banner displays a recording indicator, the elapsed time, and a stop button so the session is always visible and stoppable.
+Advanced Audio Recorder is a **desktop-only** plugin. The **Mobile recording banner** option (under **Settings > Audio processing & feedback**, default On) governs a floating on-screen banner intended for mobile, where there is no ribbon icon to show that a recording is in progress. When shown, the banner displays a recording indicator, the elapsed time, and a stop button so the session is always visible and stoppable.
 
 ![Floating recording banner with a red dot, elapsed time, and a stop button](images/recording-banner.png)
 *Figure: The floating recording banner, which surfaces an active recording where the ribbon is unavailable.*
@@ -219,11 +219,11 @@ When **Split recordings automatically** is enabled, a long recording is saved as
 
 In brief:
 
-- **Part duration** (default 15 minutes, range 1–180) sets the length of each part.
+- **Part duration** (default 15 minutes, range 1-180) sets the length of each part.
 - WAV recordings split sample-exactly at the boundary; compressed formats restart the recorder at each boundary, so parts are approximately the configured length and a sub-second gap may occur between them.
 - Auto-split is **desktop only** and is **not** applied to merged multi-track output (one `Single file` mixed from several tracks); the plugin shows a notice and saves a single merged file in that case.
 
-This is only a summary. For the full behaviour — manual splitting of existing files, naming, link rewriting, and memory notes — see [Splitting](splitting.md).
+This is only a summary. For the full behaviour - manual splitting of existing files, naming, link rewriting, and memory notes - see [Splitting](splitting.md).
 
 ---
 
@@ -242,7 +242,7 @@ These settings shape the recording workflow. See the [settings reference](settin
 | **File prefix**                      | The filename prefix for new recordings (default `recording`).                                      | [File storage](settings-reference.md#file-storage)                              |
 | **Insert at original position**      | Places the embed link where recording started rather than at the cursor on stop (default Off).     | [File storage](settings-reference.md#file-storage)                              |
 | **Split recordings automatically**   | Saves a long recording as fixed-duration part files (desktop only, default Off).                   | [Audio splitting](settings-reference.md#audio-splitting)                        |
-| **Part duration**                    | The length of each auto-split part in minutes (default 15, range 1–180).                           | [Audio splitting](settings-reference.md#audio-splitting)                        |
+| **Part duration**                    | The length of each auto-split part in minutes (default 15, range 1-180).                           | [Audio splitting](settings-reference.md#audio-splitting)                        |
 | **Markers and chapters**             | Enables the **Add marker** control while recording and the marker list in the player (default On). | [Audio player](settings-reference.md#audio-player)                              |
 | **Input level meter**                | Shows the live VU meter in the status bar (default On).                                            | [Audio processing & feedback](settings-reference.md#audio-processing--feedback) |
 | **Recording stats**                  | Shows live elapsed time and recorded size in the status bar (default On).                          | [Audio processing & feedback](settings-reference.md#audio-processing--feedback) |

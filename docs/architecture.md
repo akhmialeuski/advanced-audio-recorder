@@ -2,7 +2,7 @@
 
 This document is a technical map of how **Advanced Audio Recorder** is put together: how the plugin loads, how a recording flows from microphone to file, how transcription and the enhanced player work, and how crash recovery and settings backup keep your data safe. It is written for contributors and curious power users. If you only want to *use* the plugin, start with [Getting started](getting-started.md) and the [Features overview](features.md); come back here when you want to know *why* something behaves the way it does, or where in the source a behavior lives.
 
-Everything below is verified against the plugin source under `src/`. The plugin is **desktop-first** (it requires Obsidian `1.6.6+` and is marked desktop-only), though several read-side features — transcription preparation, the enhanced player — also work where Obsidian renders on mobile.
+Everything below is verified against the plugin source under `src/`. The plugin is **desktop-first** (it requires Obsidian `1.6.6+` and is marked desktop-only), though several read-side features - transcription preparation, the enhanced player - also work where Obsidian renders on mobile.
 
 - [System overview](#system-overview)
 - [Plugin lifecycle](#plugin-lifecycle)
@@ -100,7 +100,7 @@ What to notice:
 
 - **The plugin object is a thin coordinator.** `main.ts` builds the managers, wires their callbacks, and forwards UI events to them. The real work lives in the subsystem classes.
 - **One `MarkerStore` is shared** by the recording subsystem (which writes markers captured during a session) and the player subsystem (which reads and edits them), so their cache and serialized write chain stay unified.
-- **The context menu is the hub for file actions.** Right-clicking an audio file routes to transcription, cleanup, conversion, splitting, info, and delete — see [File operations](file-operations.md).
+- **The context menu is the hub for file actions.** Right-clicking an audio file routes to transcription, cleanup, conversion, splitting, info, and delete - see [File operations](file-operations.md).
 - **Settings persist to `data.json`** with an automatic `data.json.bak` next to it, described in [Settings load and backup](#settings-load-and-backup).
 
 ![System overview diagram with Obsidian host, plugin entry, and the recording, player, transcription, cleanup, settings, and UI subsystems](images/architecture-system-overview.png)
@@ -138,9 +138,9 @@ Notes on the lifecycle:
 
 - **Settings load first**, because every manager constructed afterward receives a live `settings` reference. The load path can restore from `data.json.bak` and even block saving when the stored file is unreadable (see [Settings load and backup](#settings-load-and-backup)).
 - **Streaming conversions are offloaded to a Web Worker** when the build injected its source; if that source is unavailable, everything falls back to the main thread.
-- **Commands registered** are exactly five: `Start/stop recording`, `Pause/resume recording`, `Add marker/chapter at current position` (gated on markers being enabled and a session being active), `Select audio input device`, and `Transcribe active audio file` (gated on transcription being enabled and the active file being audio). No default hotkeys are assigned — see [Recording](recording.md) and [Settings reference](settings-reference.md).
+- **Commands registered** are exactly five: `Start/stop recording`, `Pause/resume recording`, `Add marker/chapter at current position` (gated on markers being enabled and a session being active), `Select audio input device`, and `Transcribe active audio file` (gated on transcription being enabled and the active file being audio). No default hotkeys are assigned - see [Recording](recording.md) and [Settings reference](settings-reference.md).
 - **Recovery runs after layout is ready**, never during load, and a failure there is caught and logged so it can never break the plugin.
-- **Unload restores Obsidian's native embeds first** (so disabling the plugin never leaves overridden media embeds behind), then flushes recording buffers best-effort. The crash-recovery journal is deliberately *not* ended on unload — an unload mid-recording is exactly the case the next launch should offer to recover.
+- **Unload restores Obsidian's native embeds first** (so disabling the plugin never leaves overridden media embeds behind), then flushes recording buffers best-effort. The crash-recovery journal is deliberately *not* ended on unload - an unload mid-recording is exactly the case the next launch should offer to recover.
 
 ![Plugin lifecycle diagram showing the onload registration order and the onunload teardown order](images/architecture-plugin-lifecycle.png)
 *Figure: the ordered steps performed when the plugin loads and when it unloads.*
@@ -194,12 +194,12 @@ sequenceDiagram
 
 Key decisions in this pipeline:
 
-- **Two capture paths.** WAV on desktop uses a `PcmStreamRecorder` that captures raw PCM directly and assembles a WAV on save — this streams to disk and handles long recordings reliably. Every other format (and WAV on mobile) uses a `MediaRecorder` started with a chunk timeslice, delivering compressed chunks. Format details and the online-vs-offline distinction are in [Formats](formats.md).
+- **Two capture paths.** WAV on desktop uses a `PcmStreamRecorder` that captures raw PCM directly and assembles a WAV on save - this streams to disk and handles long recordings reliably. Every other format (and WAV on mobile) uses a `MediaRecorder` started with a chunk timeslice, delivering compressed chunks. Format details and the online-vs-offline distinction are in [Formats](formats.md).
 - **Buffering and flushing.** The `TrackWriteQueue` serializes per-track writes; chunks accumulate to a flush threshold and are written to `.tmp` segment files. These segments are what the crash-recovery journal tracks.
 - **Auto-split rotation.** When auto-split is on (desktop, and not for a merged multi-track session), `PartRotationController` finalizes a part at each boundary while recording continues. WAV parts are split sample-exactly; compressed formats restart the recorder per boundary. See [Splitting](splitting.md).
-- **Finalization.** `RecordingFinalizer` produces the final files and reports the save-progress stages you see in the status bar (`Saving → Flushing buffers → Assembling audio → Writing file → Cleaning up → Saved`). Offline formats are re-encoded here; packets are copied without re-encoding when the codec already matches.
+- **Finalization.** `RecordingFinalizer` produces the final files and reports the save-progress stages you see in the status bar (`Saving > Flushing buffers > Assembling audio > Writing file > Cleaning up > Saved`). Offline formats are re-encoded here; packets are copied without re-encoding when the codec already matches.
 - **Multi-track output.** In `Single file` mode the tracks are mixed into one file; in `Multiple files` mode each track is saved separately, with the source/device name (and the track number appended to disambiguate when tracks share a device). See [Multi-track recording](multi-track-recording.md).
-- **Transcribe-on-save.** When `Transcribe after recording` is enabled, the hook transcribes only the first saved file — a multi-track session records the same audio per track, and an auto-split session would otherwise fire one request per part. See [Transcription](transcription.md) and [Transcribe after recording](use-cases/transcribe-after-recording.md).
+- **Transcribe-on-save.** When `Transcribe after recording` is enabled, the hook transcribes only the first saved file - a multi-track session records the same audio per track, and an auto-split session would otherwise fire one request per part. See [Transcription](transcription.md) and [Transcribe after recording](use-cases/transcribe-after-recording.md).
 
 ![Recording pipeline sequence from start through capture, finalize, write, and the transcribe-on-save hook](images/architecture-recording-pipeline.png)
 *Figure: the sequence of calls from pressing record to writing the file and firing the post-save hook.*
@@ -245,7 +245,7 @@ flowchart TD
 
 How the stages map to behavior:
 
-- **Preparation is lazy.** When a provider accepts the original container and the file fits the per-request limit, the bytes are sent untouched — no decode, so peak memory stays at the encoded file size. Only when the container is unsupported or the file is too large/long does the service decode to 16 kHz mono WAV and split it into upload-sized (or time-bounded) parts. Each part materializes its WAV bytes only just before upload, so a multi-chunk job never holds more than one chunk in memory.
+- **Preparation is lazy.** When a provider accepts the original container and the file fits the per-request limit, the bytes are sent untouched - no decode, so peak memory stays at the encoded file size. Only when the container is unsupported or the file is too large/long does the service decode to 16 kHz mono WAV and split it into upload-sized (or time-bounded) parts. Each part materializes its WAV bytes only just before upload, so a multi-chunk job never holds more than one chunk in memory.
 - **Per-engine limits and behavior.** Whisper API has a hard 25 MB per-request limit (larger files are resampled and chunked, then stitched; no diarization). Deepgram sends up to 2 GB whole with consistent diarization. Gemini uploads up to 2 GB whole, decodes containers it does not accept, and splits recordings longer than 15 minutes into stitched parts (diarized splits reset speaker numbering, surfaced as a warning). Local whisper.cpp runs a local binary fully offline. See [Transcription](transcription.md#engines) and the engine setup guides under [Use cases](use-cases/index.md).
 - **Stitching.** Successful per-part transcripts are merged onto the original timeline. A part that overruns a provider's output-token budget is subdivided and retried rather than discarded; a part that fails outright is recorded as missing, and the run keeps the good parts and warns instead of failing the whole job.
 - **Diarization is one gate for the whole run.** The effective diarize flag decides both whether speaker labels are requested and whether any returned labels are stripped, so the request-time and output-time decisions can never diverge. Diarization is only available for Deepgram and Gemini. See [Speakers and diarization](transcription.md#speakers-and-diarization).
@@ -316,7 +316,7 @@ flowchart TD
 
 Important details:
 
-- **What can be recovered.** Everything already flushed to disk can be reassembled; in-memory audio still buffered below the flush threshold at the moment of the crash cannot. Recovery never transcodes — a raw reassembled container (or a WAV for PCM sessions) is the safest artifact a truncated stream can produce.
+- **What can be recovered.** Everything already flushed to disk can be reassembled; in-memory audio still buffered below the flush threshold at the moment of the crash cannot. Recovery never transcodes - a raw reassembled container (or a WAV for PCM sessions) is the safest artifact a truncated stream can produce.
 - **Pruning self-clears.** `collectRecoverableSessions` drops segments (and tracks, and sessions) whose files no longer exist and persists the pruned journal, so a crash before the first flush self-clears without ever prompting. A corrupt journal is deleted; a journal written by a newer plugin version is left untouched so a downgrade never destroys recovery data it cannot interpret.
 - **MediaRecorder header rule.** A compressed track is only playable from its first segment (which carries the container header); if that segment was lost, the track is marked discard-only rather than producing an unplayable file.
 - **Recover, Discard, Decide later.** Recover reassembles surviving segments and removes the consumed temp files. Discard deletes the temp segments but never touches finalized auto-split part files. Decide later leaves everything in place and the prompt returns next launch. See [Crash recovery](recording.md#crash-recovery) in the recording guide.

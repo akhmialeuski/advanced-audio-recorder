@@ -22,19 +22,19 @@ The **Enhanced audio player** replaces Obsidian's built-in audio embed with a ri
 
 ## Enabling the player
 
-The enhanced player is off by default. Turn it on under **Settings → Advanced Audio Recorder → Audio player → Enhanced audio player**.
+The enhanced player is off by default. Turn it on under **Settings > Advanced Audio Recorder > Audio player > Enhanced audio player**.
 
-1. Open **Settings → Advanced Audio Recorder**.
+1. Open **Settings > Advanced Audio Recorder**.
 2. Scroll to the **Audio player** section.
 3. Enable **Enhanced audio player**.
-4. Two more options appear below it — **Show waveform** (on by default) and **Markers and chapters** (on by default).
+4. Two more options appear below it - **Show waveform** (on by default) and **Markers and chapters** (on by default).
 
 ![Audio player settings section with the Enhanced audio player, Show waveform, and Markers and chapters toggles](images/settings-audio-player.png)
 *Figure: the Audio player settings section, with the master toggle and its two windows.*
 
 The change applies to notes that are **rendered after** the change. Toggling the master switch flips what every embed is (native versus enhanced), so the plugin re-renders open notes to rebuild their embeds. Disabling **Enhanced audio player** restores Obsidian's built-in embed on the next render.
 
-The two sub-toggles — **Show waveform** and **Markers and chapters** — apply **in place** to already-open players, so flipping either one updates the live player immediately without re-rendering the note or interrupting playback. See [Related settings](#related-settings).
+The two sub-toggles - **Show waveform** and **Markers and chapters** - apply **in place** to already-open players, so flipping either one updates the live player immediately without re-rendering the note or interrupting playback. See [Related settings](#related-settings).
 
 ---
 
@@ -44,7 +44,7 @@ The player integrates with Obsidian's own embed rendering rather than bolting on
 
 - **Embed registry.** The plugin registers a custom embed creator in Obsidian's internal embed registry for its media extensions (`wav`, `webm`, `ogg`, `mp3`, `mp4`, `m4a`, `aac`, `flac`). Obsidian itself then builds the embed through the plugin in **both Reading view and Live Preview**, so the enhanced player is the embed rather than something layered over a native one.
 - **Markdown post-processor fallback.** When the internal embed-registry API is unavailable, the plugin falls back to a Markdown post-processor that takes over embeds in **Reading view only**. A console warning notes when this fallback is in use.
-- **Clean teardown.** Each player is a render child whose lifecycle — event listeners, the audio element, observers, and registry registration — is torn down automatically when the note re-renders or its leaf closes. If the enhanced render ever throws, the embed degrades to a plain native `audio` element so the note still opens and the audio still plays.
+- **Clean teardown.** Each player is a render child whose lifecycle - event listeners, the audio element, observers, and registry registration - is torn down automatically when the note re-renders or its leaf closes. If the enhanced render ever throws, the embed degrades to a plain native `audio` element so the note still opens and the audio still plays.
 
 A single audio element is shared per file across view modes, so the same playback is controlled whether you are in Reading view or Live Preview, and switching modes does not stop and restart playback.
 
@@ -54,7 +54,7 @@ A single audio element is shared per file across view modes, so the same playbac
 
 ## The controls
 
-Every control below is **fixed** — none of them is configurable. Only the master **Enhanced audio player** toggle and the two windows (**Show waveform**, **Markers and chapters**) can be changed in settings.
+Every control below is **fixed** - none of them is configurable. Only the master **Enhanced audio player** toggle and the two windows (**Show waveform**, **Markers and chapters**) can be changed in settings.
 
 ![Enhanced player control row showing play, skip back, skip forward, speed, mute, volume, loop, chapter navigation, time, and copy-link buttons](images/player-controls.png)
 *Figure: the full control row of the enhanced player.*
@@ -68,7 +68,7 @@ The recording is drawn as a waveform that doubles as the seek bar.
 - **Played portion.** The part you have already played uses the **theme accent color**, so progress is visible at a glance.
 - **Caching.** Waveforms are computed once per file revision (keyed on the file path, modification time, and size) and cached, so scrolling a note with many players does not re-decode audio. Resizing the window or switching view modes redraws from the cache instead of decoding again.
 - **Lazy and progressive decoding.** Decoding is deferred until the player scrolls near the viewport, so a long note with several recordings does not decode every embed up front. Peaks are then computed progressively in the background and the waveform fills in as they become ready, so even an hour-plus recording never blocks the interface.
-- **Plain-bar fallback.** A file larger than the safety ceiling (**1 GB** on disk), or one the app cannot decode, falls back to a plain — but still seekable — progress bar instead of the waveform. The plain bar shows a filled track for the played portion and a thumb at the current position.
+- **Plain-bar fallback.** A file larger than the safety ceiling (**1 GB** on disk), or one the app cannot decode, falls back to a plain - but still seekable - progress bar instead of the waveform. The plain bar shows a filled track for the played portion and a thumb at the current position.
 - **Disabling the waveform.** Turn off **Show waveform** in settings to always use the plain bar. No audio is decoded in that mode at all.
 
 ![Waveform seek bar with the played portion highlighted in the theme accent color and a position thumb](images/player-waveform-seek.png)
@@ -105,7 +105,7 @@ The time readout shows **elapsed / total** time (for example `1:05 / 3:42`). Bot
 
 ### Copy timestamp link
 
-The **link** button copies a [timecode link](#timecode-links) to the **current position** — for example `[[recording#t=1:30]]` — to the clipboard, following your vault's link-format preferences. A notice confirms the copied timestamp. You can also copy a link at any other position from the [right-click menu](#markers-and-chapters).
+The **link** button copies a [timecode link](#timecode-links) to the **current position** - for example `[[recording#t=1:30]]` - to the clipboard, following your vault's link-format preferences. A notice confirms the copied timestamp. You can also copy a link at any other position from the [right-click menu](#markers-and-chapters).
 
 ---
 
@@ -147,14 +147,14 @@ The **previous chapter** and **next chapter** buttons move between chapter bound
 
 **Right-click menu**
 
-Right-click the player to add a **marker** or **chapter**, or copy a **timestamp link**, **at the clicked position** — alongside the usual audio file actions (info, convert, split, delete). Position-aware actions use the spot under the cursor. The **add marker** and **add chapter** items appear only when **Markers and chapters** is enabled and the note is open for editing (Live Preview); **copy timestamp link** is always available.
+Right-click the player to add a **marker** or **chapter**, or copy a **timestamp link**, **at the clicked position** - alongside the usual audio file actions (info, convert, split, delete). Position-aware actions use the spot under the cursor. The **add marker** and **add chapter** items appear only when **Markers and chapters** is enabled and the note is open for editing (Live Preview); **copy timestamp link** is always available.
 
 ![Right-click context menu on the player offering add marker, add chapter, copy timestamp link, and file actions](images/player-context-menu.png)
 *Figure: the right-click menu on the player, with position-aware marker, chapter, and timestamp actions.*
 
 **Editing versus read-only**
 
-Adding, renaming, and deleting markers is available while **editing** the note (Live Preview). In **Reading view** the markers and chapters are **read-only** — they are shown and remain clickable to jump, but cannot be edited. The player defaults to read-only and only enables edit controls once it confirms it is inside the editor, so Reading view never wrongly shows edit affordances.
+Adding, renaming, and deleting markers is available while **editing** the note (Live Preview). In **Reading view** the markers and chapters are **read-only** - they are shown and remain clickable to jump, but cannot be edited. The player defaults to read-only and only enables edit controls once it confirms it is inside the editor, so Reading view never wrongly shows edit affordances.
 
 **Storage and portability**
 
@@ -164,7 +164,7 @@ Markers are stored in a **sidecar file** next to each recording, named `<recordi
 - They **travel with the vault**.
 - Renaming, moving, or deleting the recording **moves or removes its sidecar automatically**, so markers stay attached and never orphan. Deleting all of a recording's markers removes the sidecar, so the vault is not left with empty files.
 
-Markers can also be added **while recording**, before the file even exists as a player — see [Marking moments while recording](recording.md#marking-moments-while-recording). Those markers attach to the recording's sidecar at save and show up in the player once the recording stops.
+Markers can also be added **while recording**, before the file even exists as a player - see [Marking moments while recording](recording.md#marking-moments-while-recording). Those markers attach to the recording's sidecar at save and show up in the player once the recording stops.
 
 ---
 
@@ -183,7 +183,7 @@ When a matching player is already visible in the note, **clicking the link seeks
 ![Note showing a transcript line as a clickable timecode link that seeks the player above it](images/player-timecode-link.png)
 *Figure: a timecode link in a note seeking the player to the linked position.*
 
-Timecode links are also how transcripts become clickable: when **Timestamps as player links** is on, each transcript timestamp is rendered as a `#t=` link that seeks the player to that moment — click a line to hear it. See [Transcription → output formatting](transcription.md#output-where-the-transcript-goes) for how those links are generated, and [Copy timestamp link](#copy-timestamp-link) above to create one by hand.
+Timecode links are also how transcripts become clickable: when **Timestamps as player links** is on, each transcript timestamp is rendered as a `#t=` link that seeks the player to that moment - click a line to hear it. See [Transcription > output formatting](transcription.md#output-where-the-transcript-goes) for how those links are generated, and [Copy timestamp link](#copy-timestamp-link) above to create one by hand.
 
 ---
 
@@ -203,7 +203,7 @@ The waveform is drawn for supported audio files up to the **1 GB** decode ceilin
 
 ## Related settings
 
-All three controls live under **Settings → Advanced Audio Recorder → Audio player**. The player's other controls (speed, skip, volume, mute, loop, time display, copy-timestamp link) are fixed and are not listed here because there is nothing to configure.
+All three controls live under **Settings > Advanced Audio Recorder > Audio player**. The player's other controls (speed, skip, volume, mute, loop, time display, copy-timestamp link) are fixed and are not listed here because there is nothing to configure.
 
 | Setting                   | Description                                                                                                                                                | Default |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |

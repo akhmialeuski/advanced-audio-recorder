@@ -33,10 +33,10 @@ When **Split recordings automatically** is enabled, a recording is saved as a se
 
 ### Enabling it
 
-1. Open **Settings → Advanced Audio Recorder → Audio splitting**.
+1. Open **Settings > Advanced Audio Recorder > Audio splitting**.
 2. Turn on **Split recordings automatically**.
 3. Set **Part duration** (the slider runs from `1` to `180` minutes; the default is `15`). This value is the target length of every part.
-4. Optionally set the **Part name suffix** (default `part`) that is appended with the part number — see [Part naming](#part-naming).
+4. Optionally set the **Part name suffix** (default `part`) that is appended with the part number - see [Part naming](#part-naming).
 5. Record as usual. When you stop, the part files are written and all of their links are inserted into the active note.
 
 ### Precision at the boundary
@@ -48,7 +48,7 @@ How exactly a part lands on the configured boundary depends on the recording for
 | **WAV** (PCM)          | **Sample-exact.** Parts are cut on a whole sample frame at exactly the configured duration, because raw PCM can be sliced cleanly.                                                               |
 | **Compressed** formats | **Approximate.** The recorder restarts at each boundary, so each part is roughly the configured length (within a few seconds), and a sub-second capture gap may occur between consecutive parts. |
 
-"Compressed" covers WebM, OGG, MP3, FLAC, MP4, M4A, and AAC. For a gap-free, sample-accurate split, record in **WAV** — see [Formats](formats.md) for the trade-offs of each container.
+"Compressed" covers WebM, OGG, MP3, FLAC, MP4, M4A, and AAC. For a gap-free, sample-accurate split, record in **WAV** - see [Formats](formats.md) for the trade-offs of each container.
 
 ### Constraints
 
@@ -80,11 +80,11 @@ The dialog header shows the **Source** file name and exposes these options. Each
 
 | Option                    | What it does                                                                                                                                                                   | Range / values                                                    | Default                                                                |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| **Part duration**         | Length of each part in minutes. A live tooltip shows the current value as you drag the slider.                                                                                 | `1`–`180` minutes                                                 | Your **Part duration** setting (`15`)                                  |
+| **Part duration**         | Length of each part in minutes. A live tooltip shows the current value as you drag the slider.                                                                                 | `1`-`180` minutes                                                 | Your **Part duration** setting (`15`)                                  |
 | **Part name suffix**      | Text appended with the part number to name each file. The description previews the resulting file name as you type. Invalid characters mark the field red and block the split. | Letters, digits, hyphens, and underscores only                    | Your **Part name suffix** setting (`part`)                             |
 | **Bitrate**               | Bitrate used when re-encoding parts of a compressed source. **Hidden for WAV sources**, which are split without re-encoding.                                                   | `64`, `96`, `128`, `160`, `192`, `256`, `320` kbps                | Your **Audio bitrate** setting (`128`)                                 |
 | **Delete source file**    | Move the original file to the system trash after a successful split.                                                                                                           | On / Off                                                          | Your **Delete source after split** setting (`Off`)                     |
-| **Update links in notes** | How to rewrite the links that point at the source file across your vault — see [How link updating works](#how-link-updating-works).                                            | `Do nothing` / `Replace source link` / `Insert after source link` | Your **Update links after conversion** setting (`Replace source link`) |
+| **Update links in notes** | How to rewrite the links that point at the source file across your vault - see [How link updating works](#how-link-updating-works).                                            | `Do nothing` / `Replace source link` / `Insert after source link` | Your **Update links after conversion** setting (`Replace source link`) |
 
 Click **Split** to run. The dialog shows live progress text (`Reading source file…`, `Decoding audio…`, `Writing part N of M…`, `Updating links…`, `Removing source file…`). When it finishes, a notice reports the number of parts and the first part's name.
 
@@ -100,8 +100,8 @@ Each part file is named:
 
 For a source `meeting.wav` split with the default suffix, you get `meeting-part1.wav`, `meeting-part2.wav`, and so on. The numbering is `1`-based and continues for as many parts as the duration produces.
 
-- The **suffix** may contain only letters, digits, hyphens, and underscores (`A–Z`, `a–z`, `0–9`, `-`, `_`). Leading and trailing whitespace is ignored. An empty suffix falls back to the default `part`. Any other character is rejected with the notice *"Part suffix may contain only letters, digits, hyphens, and underscores."* and the split does not run.
-- The **extension** of the parts depends on the source format — see [Lossless vs lossy splitting](#lossless-vs-lossy-splitting). WAV sources stay `.wav`; a compressed source keeps its own extension when an offline encoder is available for it, and otherwise the parts are written as WAV (with a notice explaining the fallback).
+- The **suffix** may contain only letters, digits, hyphens, and underscores (`A-Z`, `a-z`, `0-9`, `-`, `_`). Leading and trailing whitespace is ignored. An empty suffix falls back to the default `part`. Any other character is rejected with the notice *"Part suffix may contain only letters, digits, hyphens, and underscores."* and the split does not run.
+- The **extension** of the parts depends on the source format - see [Lossless vs lossy splitting](#lossless-vs-lossy-splitting). WAV sources stay `.wav`; a compressed source keeps its own extension when an offline encoder is available for it, and otherwise the parts are written as WAV (with a notice explaining the fallback).
 
 ---
 
@@ -112,7 +112,7 @@ When **Update links in notes** is set to `Replace source link` or `Insert after 
 What it covers:
 
 - **The whole vault.** Every note that references the source file is updated, including notes that are not currently open. The plugin finds them through Obsidian's resolved-link index, so nothing is missed because a note happened to be closed.
-- **Both link syntaxes.** Wikilinks (`![[recording.wav]]`) and Markdown links (`![](recording.wav)`), embeds and plain links alike, are all rewritten. Because the work is done on Obsidian's parsed link references, every link form the app indexes — including relative paths — is covered.
+- **Both link syntaxes.** Wikilinks (`![[recording.wav]]`) and Markdown links (`![](recording.wav)`), embeds and plain links alike, are all rewritten. Because the work is done on Obsidian's parsed link references, every link form the app indexes - including relative paths - is covered.
 - **One link per part.** A single source link is replaced with one link per part. With `Replace source link` the source link is swapped for the part links; with `Insert after source link` the original link is kept and the part links are added after it.
 - **Your link-format preferences.** New links are generated with `app.fileManager.generateMarkdownLink`, so they follow your vault's link settings (wikilinks vs Markdown links, shortest path, and so on). The embed marker (`!`) of the original link is preserved, so an embed stays an embed.
 
@@ -139,7 +139,7 @@ The plugin picks the cheapest correct method based on the source format:
 
 | Source                 | Method                                                                                                                                                                                 | Quality              | Memory                                                             |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- | ------------------------------------------------------------------ |
-| **WAV** (raw PCM)      | **Lossless byte-level split.** The raw sample data is sliced at whole-frame boundaries and each part reuses the original header with patched chunk sizes. No decoding, no re-encoding. | **No loss.**         | One part at a time — **multi-gigabyte files are safe.**            |
+| **WAV** (raw PCM)      | **Lossless byte-level split.** The raw sample data is sliced at whole-frame boundaries and each part reuses the original header with patched chunk sizes. No decoding, no re-encoding. | **No loss.**         | One part at a time - **multi-gigabyte files are safe.**            |
 | **Compressed** formats | **Decode once, re-encode per part.** The file is decoded fully into memory, then each part is sliced from the decoded audio and re-encoded at the chosen bitrate.                      | Minor loss possible. | Needs enough free memory to hold the **entire decoded** recording. |
 
 Notes:
@@ -164,12 +164,12 @@ The split is designed so a failure never leaves you with a half-broken set of fi
 
 ## Related settings
 
-These live under **Settings → Advanced Audio Recorder → Audio splitting** and seed the defaults for both automatic and manual splitting. See [Settings reference](settings-reference.md#audio-splitting) for the full table.
+These live under **Settings > Advanced Audio Recorder > Audio splitting** and seed the defaults for both automatic and manual splitting. See [Settings reference](settings-reference.md#audio-splitting) for the full table.
 
 | Setting                            | Used by                        | Default | Notes                                                                  |
 | ---------------------------------- | ------------------------------ | ------- | ---------------------------------------------------------------------- |
 | **Split recordings automatically** | Automatic splitting only       | `Off`   | Desktop only; not applied to merged multi-track recordings.            |
-| **Part duration**                  | Automatic and manual splitting | `15`    | `1`–`180` minutes. Also the starting value in the manual split dialog. |
+| **Part duration**                  | Automatic and manual splitting | `15`    | `1`-`180` minutes. Also the starting value in the manual split dialog. |
 | **Part name suffix**               | Automatic and manual splitting | `part`  | Letters, digits, hyphens, and underscores only.                        |
 | **Delete source after split**      | Manual split dialog default    | `Off`   | Seeds the **Delete source file** toggle in the split dialog.           |
 
@@ -186,11 +186,11 @@ The split dialog also reuses two settings from elsewhere:
 
 ## Troubleshooting
 
-- **"File is shorter than one part."** — The source is shorter than the configured **Part duration**. Lower the part duration, or split a longer file.
-- **"File … already exists. Rename it or choose a different suffix."** — A target part name collides with an existing file in the same folder. Rename the existing file or change the **Part name suffix**, then retry.
-- **"Part suffix may contain only letters, digits, hyphens, and underscores."** — The suffix contains a disallowed character. Use only `A–Z`, `a–z`, `0–9`, `-`, or `_`.
-- **"Encoding to "…" is unavailable; parts are saved as WAV."** — The source's compressed format has no offline encoder, so the parts were written as WAV instead. This is expected; convert them afterwards with **Convert audio format** if you need a compressed format.
-- **"… frontmatter link(s) still point to the source file."** — Some links live in a note's YAML frontmatter, which cannot be rewritten. Update those property links by hand.
-- **"Source file kept: … link(s) could not be updated."** — You asked to delete the source, but some links could not be rewritten, so the source was kept to avoid breaking them.
-- **A compressed split runs out of memory** — Re-encoding decodes the whole file into memory. Split it in WAV instead (record in WAV, or convert to WAV first with **Convert audio format**), which splits losslessly one part at a time.
-- **Automatic split did not happen** — Auto-split is **desktop only** and does not apply to merged (`Single file`) multi-track recordings. Confirm **Split recordings automatically** is on, that you are on desktop, and that the recording is not a merged multi-track session.
+- **"File is shorter than one part."** - The source is shorter than the configured **Part duration**. Lower the part duration, or split a longer file.
+- **"File … already exists. Rename it or choose a different suffix."** - A target part name collides with an existing file in the same folder. Rename the existing file or change the **Part name suffix**, then retry.
+- **"Part suffix may contain only letters, digits, hyphens, and underscores."** - The suffix contains a disallowed character. Use only `A-Z`, `a-z`, `0-9`, `-`, or `_`.
+- **"Encoding to "…" is unavailable; parts are saved as WAV."** - The source's compressed format has no offline encoder, so the parts were written as WAV instead. This is expected; convert them afterwards with **Convert audio format** if you need a compressed format.
+- **"… frontmatter link(s) still point to the source file."** - Some links live in a note's YAML frontmatter, which cannot be rewritten. Update those property links by hand.
+- **"Source file kept: … link(s) could not be updated."** - You asked to delete the source, but some links could not be rewritten, so the source was kept to avoid breaking them.
+- **A compressed split runs out of memory** - Re-encoding decodes the whole file into memory. Split it in WAV instead (record in WAV, or convert to WAV first with **Convert audio format**), which splits losslessly one part at a time.
+- **Automatic split did not happen** - Auto-split is **desktop only** and does not apply to merged (`Single file`) multi-track recordings. Confirm **Split recordings automatically** is on, that you are on desktop, and that the recording is not a merged multi-track session.

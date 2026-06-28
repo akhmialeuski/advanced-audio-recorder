@@ -1,6 +1,6 @@
 # Features overview
 
-Advanced Audio Recorder is a desktop-only recording plugin for [Obsidian](https://obsidian.md) that captures audio from one or many input devices, saves it in the format you choose, and layers on an enhanced player, transcription, on-demand cleanup, and diagnostics. This page is a complete catalog of every feature in the plugin: each one gets a short summary and a **Learn more** link to its deep-dive doc. Use it as a map — start anywhere, then follow the links for full procedures, settings, and limitations.
+Advanced Audio Recorder is a desktop-only recording plugin for [Obsidian](https://obsidian.md) that captures audio from one or many input devices, saves it in the format you choose, and layers on an enhanced player, transcription, on-demand cleanup, and diagnostics. This page is a complete catalog of every feature in the plugin: each one gets a short summary and a **Learn more** link to its deep-dive doc. Use it as a map - start anywhere, then follow the links for full procedures, settings, and limitations.
 
 - [Recording](#recording)
 - [Pause and resume](#pause-and-resume)
@@ -29,7 +29,7 @@ Advanced Audio Recorder is a desktop-only recording plugin for [Obsidian](https:
 
 ## Recording
 
-Start and stop a recording from the **microphone icon** in the left ribbon or with the `Start/stop recording` command. While recording, the ribbon icon switches to an active indicator and the **status bar** shows `Recording...` with **Pause** and **Stop** buttons. When you stop, the plugin flushes its buffers, assembles the file, writes it to your save location, and inserts an embed link (`![[filename.ext]]`) into the active note. For longer recordings a save-progress bar walks through stages (`Saving...` → `Flushing buffers...` → `Assembling audio...` → `Writing file...` → `Cleaning up...` → `Saved`) while the ribbon shows a save icon.
+Start and stop a recording from the **microphone icon** in the left ribbon or with the `Start/stop recording` command. While recording, the ribbon icon switches to an active indicator and the **status bar** shows `Recording...` with **Pause** and **Stop** buttons. When you stop, the plugin flushes its buffers, assembles the file, writes it to your save location, and inserts an embed link (`![[filename.ext]]`) into the active note. For longer recordings a save-progress bar walks through stages (`Saving...` > `Flushing buffers...` > `Assembling audio...` > `Writing file...` > `Cleaning up...` > `Saved`) while the ribbon shows a save icon.
 
 To choose which microphone is used, run the `Select audio input device` command. It opens a quick-pick modal listing the detected input devices; choosing one saves it to settings immediately and shows a confirmation notice.
 
@@ -49,7 +49,7 @@ Learn more: [Recording](recording.md#marking-moments-while-recording)
 
 ## Crash recovery
 
-Desktop recordings journal their temporary segment files (`recording-journal.json` in the plugin folder) while a session is active. If Obsidian crashes, loses power, or the plugin is disabled mid-recording, the next launch detects the interrupted session and offers a modal with three choices: **Recover audio** (reassembles surviving segments with no re-encode), **Discard** (deletes temp segments; already-finalized auto-split parts are untouched), or **Decide later** (prompt returns next launch). Audio still buffered in memory at the moment of the crash — up to the flush threshold — cannot be recovered; everything already flushed to disk can.
+Desktop recordings journal their temporary segment files (`recording-journal.json` in the plugin folder) while a session is active. If Obsidian crashes, loses power, or the plugin is disabled mid-recording, the next launch detects the interrupted session and offers a modal with three choices: **Recover audio** (reassembles surviving segments with no re-encode), **Discard** (deletes temp segments; already-finalized auto-split parts are untouched), or **Decide later** (prompt returns next launch). Audio still buffered in memory at the moment of the crash - up to the flush threshold - cannot be recovered; everything already flushed to disk can.
 
 Learn more: [Recording](recording.md#crash-recovery)
 
@@ -67,25 +67,25 @@ Learn more: [Multi-track recording](multi-track-recording.md)
 
 ## Output formats and encoding
 
-The plugin supports 8 output formats — **WebM** (default), **OGG**, **WAV**, **MP3**, **FLAC**, **MP4**, **M4A**, and **AAC** — with availability detected at runtime from your platform's MediaRecorder support. **Online** formats are written in real time by the browser's MediaRecorder; **offline** formats (MP3, FLAC, and sometimes MP4/M4A/AAC) are captured in an intermediate container and re-encoded after you stop, with packets copied without re-encoding when the codec already matches. The settings tab marks offline formats with an `(offline)` label.
+The plugin supports 8 output formats - **WebM** (default), **OGG**, **WAV**, **MP3**, **FLAC**, **MP4**, **M4A**, and **AAC** - with availability detected at runtime from your platform's MediaRecorder support. **Online** formats are written in real time by the browser's MediaRecorder; **offline** formats (MP3, FLAC, and sometimes MP4/M4A/AAC) are captured in an intermediate container and re-encoded after you stop, with packets copied without re-encoding when the codec already matches. The settings tab marks offline formats with an `(offline)` label.
 
 Learn more: [Formats](formats.md)
 
 ## Format conversion
 
-Right-click any audio file (in the File Explorer, on an embed link, or on an embedded player) and choose **Convert audio format** to transcode it to a different format. The dialog offers a **Target format** (with encoder description), a **Bitrate** selection (64–320 kbps), a **Delete source file** toggle, and an **Update links in notes** choice (`Do nothing`, `Replace source link`, `Insert after source link`). Conversion runs through the streaming Mediabunny pipeline in chunks and re-encodes at the chosen bitrate; converting to WAV always performs a full decode.
+Right-click any audio file (in the File Explorer, on an embed link, or on an embedded player) and choose **Convert audio format** to transcode it to a different format. The dialog offers a **Target format** (with encoder description), a **Bitrate** selection (64-320 kbps), a **Delete source file** toggle, and an **Update links in notes** choice (`Do nothing`, `Replace source link`, `Insert after source link`). Conversion runs through the streaming Mediabunny pipeline in chunks and re-encodes at the chosen bitrate; converting to WAV always performs a full decode.
 
 Learn more: [File operations](file-operations.md#convert-audio-format)
 
 ## Manual splitting
 
-Right-click an audio file and choose **Split audio into parts** to break an existing recording into fixed-duration parts. The dialog offers a **Part duration** (1–180 minutes), a **Part name suffix**, a re-encode **Bitrate** (hidden for WAV sources), a **Delete source file** toggle, and **Update links in notes**. WAV files are split losslessly at the byte level (so even multi-gigabyte files are handled); compressed formats are decoded once and re-encoded per part. Link updates apply across the whole vault and cover both wikilinks and Markdown links.
+Right-click an audio file and choose **Split audio into parts** to break an existing recording into fixed-duration parts. The dialog offers a **Part duration** (1-180 minutes), a **Part name suffix**, a re-encode **Bitrate** (hidden for WAV sources), a **Delete source file** toggle, and **Update links in notes**. WAV files are split losslessly at the byte level (so even multi-gigabyte files are handled); compressed formats are decoded once and re-encoded per part. Link updates apply across the whole vault and cover both wikilinks and Markdown links.
 
 Learn more: [Splitting](splitting.md#manual-splitting-existing-file)
 
 ## Audio file info
 
-Right-click an audio file and choose **Audio file info** to open a modal with its metadata: file name and size, duration (HH:MM:SS), container format (MIME type), audio codec, bitrate, sample rate, and channels (Mono/Stereo). A **Copy as Markdown** button copies all of it as a formatted Markdown list — handy when filing bug reports.
+Right-click an audio file and choose **Audio file info** to open a modal with its metadata: file name and size, duration (HH:MM:SS), container format (MIME type), audio codec, bitrate, sample rate, and channels (Mono/Stereo). A **Copy as Markdown** button copies all of it as a formatted Markdown list - handy when filing bug reports.
 
 Learn more: [File operations](file-operations.md#audio-file-info)
 
@@ -97,7 +97,7 @@ Learn more: [File operations](file-operations.md#delete-recording)
 
 ## Enhanced audio player
 
-When **Enhanced audio player** is enabled, the plugin replaces Obsidian's built-in audio embed with a richer player anywhere an audio file is embedded. It adds a **waveform seek bar** (click, drag, or use the keyboard to seek; the played portion uses the theme accent), **playback speed** presets (0.5×–3×), **skip** buttons (±10s), **volume** and **mute**, a **loop** toggle, a **time display** (elapsed/total), and a **copy timestamp link** button. Timecode links (`#t=90`, `#t=1:30`, `#t=1:02:03`) jump a visible player to that position. The enhanced player takes over audio-only files; files with a video track and undecodable files keep Obsidian's built-in player.
+When **Enhanced audio player** is enabled, the plugin replaces Obsidian's built-in audio embed with a richer player anywhere an audio file is embedded. It adds a **waveform seek bar** (click, drag, or use the keyboard to seek; the played portion uses the theme accent), **playback speed** presets (0.5×-3×), **skip** buttons (±10s), **volume** and **mute**, a **loop** toggle, a **time display** (elapsed/total), and a **copy timestamp link** button. Timecode links (`#t=90`, `#t=1:30`, `#t=1:02:03`) jump a visible player to that position. The enhanced player takes over audio-only files; files with a video track and undecodable files keep Obsidian's built-in player.
 
 ![Enhanced audio player with waveform seek bar, speed, skip, volume, loop, and time display](images/player-overview.png)
 *Figure: The enhanced player replaces the built-in audio embed.*
@@ -163,20 +163,20 @@ Learn more: [Troubleshooting](troubleshooting.md) and [Bug reporting guide](BUG_
 | Pause and resume              | Pause and continue a session without losing progress              | Command palette / status bar                   | [Recording](recording.md#pausing-and-resuming)                 |
 | Markers while recording       | Drop a bookmark or chapter at the live position                   | Status bar (when markers enabled)              | [Recording](recording.md#marking-moments-while-recording)      |
 | Crash recovery                | Recover audio after a crash, power loss, or mid-recording disable | Automatic modal on next launch                 | [Recording](recording.md#crash-recovery)                       |
-| Automatic splitting           | Save a recording as fixed-duration part files                     | Settings → Audio splitting                     | [Splitting](splitting.md#automatic-splitting-during-recording) |
-| Multi-track recording         | Capture up to 8 input devices at once; single or per-track files  | Settings → Multi-track recording               | [Multi-track recording](multi-track-recording.md)              |
-| Output formats and encoding   | 8 formats with online/offline encoding                            | Settings → Output format                       | [Formats](formats.md)                                          |
-| Format conversion             | Transcode a file to another format and bitrate                    | Context menu → Convert audio format            | [File operations](file-operations.md#convert-audio-format)     |
-| Manual splitting              | Split an existing file into fixed-duration parts                  | Context menu → Split audio into parts          | [Splitting](splitting.md#manual-splitting-existing-file)       |
-| Audio file info               | Inspect metadata; copy it as Markdown                             | Context menu → Audio file info                 | [File operations](file-operations.md#audio-file-info)          |
-| Delete / delete and link      | Trash a recording, optionally removing its embed link             | Context menu → Delete actions                  | [File operations](file-operations.md#delete-recording)         |
-| Enhanced audio player         | Waveform seek bar, speed, skip, volume, loop, timecode links      | Settings → Audio player                        | [Audio player](audio-player.md)                                |
-| Markers and chapters          | Per-file bookmarks and chapters stored in a sidecar               | Settings → Audio player                        | [Audio player](audio-player.md#markers-and-chapters)           |
-| On-demand audio cleanup       | Offline noise removal and loudness leveling to a new copy         | Context menu → Clean up audio                  | [Audio cleanup](audio-cleanup.md)                              |
-| Input processing and feedback | Noise/echo/AGC toggles, input meter, stats, mobile banner         | Settings → Audio processing & feedback         | [Recording](recording.md#live-feedback)                        |
-| Transcription                 | Speech-to-text via 4 engines, diarization, output formats         | Settings → Transcription                       | [Transcription](transcription.md)                              |
-| LLM post-processing           | Clean up, summarize, or custom-process a transcript with an LLM   | Settings → Transcription → LLM post-processing | [LLM post-processing](llm-post-processing.md)                  |
-| Diagnostics                   | Test recording, system info, debug mode                           | Settings → Diagnostics                         | [Troubleshooting](troubleshooting.md)                          |
+| Automatic splitting           | Save a recording as fixed-duration part files                     | Settings > Audio splitting                     | [Splitting](splitting.md#automatic-splitting-during-recording) |
+| Multi-track recording         | Capture up to 8 input devices at once; single or per-track files  | Settings > Multi-track recording               | [Multi-track recording](multi-track-recording.md)              |
+| Output formats and encoding   | 8 formats with online/offline encoding                            | Settings > Output format                       | [Formats](formats.md)                                          |
+| Format conversion             | Transcode a file to another format and bitrate                    | Context menu > Convert audio format            | [File operations](file-operations.md#convert-audio-format)     |
+| Manual splitting              | Split an existing file into fixed-duration parts                  | Context menu > Split audio into parts          | [Splitting](splitting.md#manual-splitting-existing-file)       |
+| Audio file info               | Inspect metadata; copy it as Markdown                             | Context menu > Audio file info                 | [File operations](file-operations.md#audio-file-info)          |
+| Delete / delete and link      | Trash a recording, optionally removing its embed link             | Context menu > Delete actions                  | [File operations](file-operations.md#delete-recording)         |
+| Enhanced audio player         | Waveform seek bar, speed, skip, volume, loop, timecode links      | Settings > Audio player                        | [Audio player](audio-player.md)                                |
+| Markers and chapters          | Per-file bookmarks and chapters stored in a sidecar               | Settings > Audio player                        | [Audio player](audio-player.md#markers-and-chapters)           |
+| On-demand audio cleanup       | Offline noise removal and loudness leveling to a new copy         | Context menu > Clean up audio                  | [Audio cleanup](audio-cleanup.md)                              |
+| Input processing and feedback | Noise/echo/AGC toggles, input meter, stats, mobile banner         | Settings > Audio processing & feedback         | [Recording](recording.md#live-feedback)                        |
+| Transcription                 | Speech-to-text via 4 engines, diarization, output formats         | Settings > Transcription                       | [Transcription](transcription.md)                              |
+| LLM post-processing           | Clean up, summarize, or custom-process a transcript with an LLM   | Settings > Transcription > LLM post-processing | [LLM post-processing](llm-post-processing.md)                  |
+| Diagnostics                   | Test recording, system info, debug mode                           | Settings > Diagnostics                         | [Troubleshooting](troubleshooting.md)                          |
 
 ---
 

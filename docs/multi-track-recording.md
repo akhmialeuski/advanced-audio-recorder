@@ -21,12 +21,12 @@ Normal recording captures a single input device. Multi-track recording lets you 
 
 Use it when:
 
-- You are recording an **interview with two microphones** — one per speaker — and want each voice cleanly captured, either kept on separate files or mixed into one.
+- You are recording an **interview with two microphones** - one per speaker - and want each voice cleanly captured, either kept on separate files or mixed into one.
 - You run a **panel or podcast** where several people each have their own mic.
 - You want to capture **a mic plus a second input** (for example a second person's headset) without an external mixer.
 - You want **per-track files you can edit independently** afterward (lower one voice, clean up one channel, transcribe one speaker).
 
-If you only ever record from one device, leave multi-track off — single-device recording is the default and needs no setup. See [Recording](recording.md) for the basics.
+If you only ever record from one device, leave multi-track off - single-device recording is the default and needs no setup. See [Recording](recording.md) for the basics.
 
 > **Desktop only.** Multi-track recording, like the whole plugin, runs only in the Obsidian desktop app.
 
@@ -34,18 +34,18 @@ If you only ever record from one device, leave multi-track off — single-device
 
 ## Setup
 
-Multi-track recording is configured under **Settings → Advanced Audio Recorder → Multi-track recording**. The track controls only appear once the feature is enabled.
+Multi-track recording is configured under **Settings > Advanced Audio Recorder > Multi-track recording**. The track controls only appear once the feature is enabled.
 
-1. Open **Settings → Advanced Audio Recorder** and scroll to the **Multi-track recording** heading.
+1. Open **Settings > Advanced Audio Recorder** and scroll to the **Multi-track recording** heading.
 2. Turn on **Enable multi-track recording**. (Default: **Off**.) The track options below appear.
-3. Set **Maximum tracks** with the slider — the number of simultaneous tracks, from **1 to 8** (default **2**). Use only what you need; each extra track is another live recorder.
+3. Set **Maximum tracks** with the slider - the number of simultaneous tracks, from **1 to 8** (default **2**). Use only what you need; each extra track is another live recorder.
 4. Choose the **Output mode**: **Single file** (all tracks mixed into one) or **Multiple files** (one file per track). Default is **Single file**.
-5. For each track, assign an **Audio source for track N** — pick the input device from the dropdown. There is one dropdown per track, numbered up to the **Maximum tracks** value. The device list auto-populates and refreshes as devices are connected or disconnected.
+5. For each track, assign an **Audio source for track N** - pick the input device from the dropdown. There is one dropdown per track, numbered up to the **Maximum tracks** value. The device list auto-populates and refreshes as devices are connected or disconnected.
 
 ![Multi-track recording settings with the enable toggle on, the Maximum tracks slider, the Output mode dropdown, and several "Audio source for track N" device dropdowns](images/settings-multi-track.png)
 *Figure: the Multi-track recording settings section with multiple per-track device dropdowns shown.*
 
-Once configured, start recording exactly as you normally do — the **microphone ribbon icon** or the **Start/stop recording** command. All assigned tracks begin together. See [Recording](recording.md) for the recording workflow, status bar, and save behavior.
+Once configured, start recording exactly as you normally do - the **microphone ribbon icon** or the **Start/stop recording** command. All assigned tracks begin together. See [Recording](recording.md) for the recording workflow, status bar, and save behavior.
 
 > **Tip:** You can assign the **same device** to more than one track. The plugin keeps the files from colliding (see [File naming in Multiple files mode](#file-naming-in-multiple-files-mode)), though recording the same source twice rarely adds anything.
 
@@ -64,14 +64,14 @@ The **Output mode** dropdown decides what happens when you stop the session.
 
 Every track is combined into a single mixed file at your configured [format](formats.md) and bitrate. Mono inputs are duplicated into both channels; the output is mono only when every input is mono, and stereo otherwise. The mix runs **after** you stop recording, so a longer session takes a moment to assemble (the status bar shows the [save progress](recording.md#save-progress-in-the-status-bar)). One embed link is inserted into your note.
 
-Because the tracks are mixed only once at stop, **merged output cannot be auto-split** — see [Interaction with automatic splitting](#interaction-with-automatic-splitting). For very long mixed sessions, mind the [memory notes](#memory-notes-for-merged-output) below.
+Because the tracks are mixed only once at stop, **merged output cannot be auto-split** - see [Interaction with automatic splitting](#interaction-with-automatic-splitting). For very long mixed sessions, mind the [memory notes](#memory-notes-for-merged-output) below.
 
 ![Single-file output mode selected in the Output mode dropdown](images/settings-multi-track-single.png)
 *Figure: the Output mode dropdown set to Single file.*
 
 ### Multiple files (one per track)
 
-Each track is saved as its **own separate file** — no mixing happens. You get one file per track, each at your configured format and bitrate, and a link to **each** part file is inserted into the note when the recording stops. This mode keeps memory low (nothing is decoded for a mixdown) and is the recommended choice for long multi-track sessions.
+Each track is saved as its **own separate file** - no mixing happens. You get one file per track, each at your configured format and bitrate, and a link to **each** part file is inserted into the note when the recording stops. This mode keeps memory low (nothing is decoded for a mixdown) and is the recommended choice for long multi-track sessions.
 
 ![Multiple-files output mode selected in the Output mode dropdown](images/settings-multi-track-multiple.png)
 *Figure: the Output mode dropdown set to Multiple files.*
@@ -89,7 +89,7 @@ In **Multiple files** mode, each track's file is named from the **source device 
 - **`<timestamp>`** is the session timestamp shared by every track in the recording.
 - **`<ext>`** is the recording format's extension.
 
-When **two tracks use the same device**, their source names would be identical and the files would collide. To prevent that, the plugin **appends the track number** to disambiguate them — for example `recording-BuiltinMicrophone-1-...` and `recording-BuiltinMicrophone-2-...`. The suffix is only added to the tracks that actually clash; uniquely named tracks keep their plain source name.
+When **two tracks use the same device**, their source names would be identical and the files would collide. To prevent that, the plugin **appends the track number** to disambiguate them - for example `recording-BuiltinMicrophone-1-...` and `recording-BuiltinMicrophone-2-...`. The suffix is only added to the tracks that actually clash; uniquely named tracks keep their plain source name.
 
 > **There is no toggle for this.** Using the source/device name (with the track number appended to disambiguate) is the **default and only** behavior in the current version. You do not need to enable anything, and there is no "use source names" setting in the UI.
 
@@ -110,15 +110,15 @@ When **two tracks use the same device**, their source names would be identical a
 
 ## Memory notes for merged output
 
-Mixing tracks into a **Single file** has to bring audio together in memory, and how much memory that takes depends on the format. This only matters in **Single file** mode — **Multiple files** mode never mixes and stays low on memory.
+Mixing tracks into a **Single file** has to bring audio together in memory, and how much memory that takes depends on the format. This only matters in **Single file** mode - **Multiple files** mode never mixes and stays low on memory.
 
 | Merged session                             | How it is mixed                                                             | Memory footprint                                          |
 | ------------------------------------------ | --------------------------------------------------------------------------- | --------------------------------------------------------- |
-| **WAV tracks → mixed WAV**                 | Mixed directly from the on-disk PCM in small fixed-size windows             | Stays close to the **size of the final file**, any length |
+| **WAV tracks > mixed WAV**                 | Mixed directly from the on-disk PCM in small fixed-size windows             | Stays close to the **size of the final file**, any length |
 | **Compressed, or mismatched sample rates** | Decoded through the Web Audio engine (each track fully decoded into memory) | Roughly **1.2 GB per hour-long stereo track**             |
 
-- **WAV → WAV merges are cheap.** Because WAV tracks are already raw PCM on disk, they are mixed straight from disk in small windows. Peak memory is about the output file plus one window per track, regardless of how long the recording is.
-- **Compressed or rate-mismatched merges are expensive.** A compressed merged output (or tracks whose sample rates do not match) must be decoded through the Web Audio engine, which loads **every track into memory** — about **1.2 GB per hour-long stereo track**.
+- **WAV > WAV merges are cheap.** Because WAV tracks are already raw PCM on disk, they are mixed straight from disk in small windows. Peak memory is about the output file plus one window per track, regardless of how long the recording is.
+- **Compressed or rate-mismatched merges are expensive.** A compressed merged output (or tracks whose sample rates do not match) must be decoded through the Web Audio engine, which loads **every track into memory** - about **1.2 GB per hour-long stereo track**.
 - **For very long multi-track sessions, prefer `Multiple files` or WAV.** Either switch to **Multiple files** output (no mixdown at all) or record to **[WAV](formats.md)** so the cheap streaming mix is used. Both keep memory bounded for hour-plus sessions.
 
 ---
@@ -129,28 +129,28 @@ Mixing tracks into a **Single file** has to bring audio together in memory, and 
 
 Auto-split **does** work in these cases:
 
-- **Multiple files** mode — each track's file can still be split into parts as it records, because no mixdown is involved.
+- **Multiple files** mode - each track's file can still be split into parts as it records, because no mixdown is involved.
 - A single-track session (one stream), which behaves like a normal recording.
 
-For everything about splitting — automatic and manual, part naming, WAV vs compressed precision — see [Splitting](splitting.md).
+For everything about splitting - automatic and manual, part naming, WAV vs compressed precision - see [Splitting](splitting.md).
 
 ---
 
 ## Related settings
 
-All multi-track controls live under **Settings → Advanced Audio Recorder → Multi-track recording**.
+All multi-track controls live under **Settings > Advanced Audio Recorder > Multi-track recording**.
 
 | Setting                          | Description                                                                              | Default     |
 | -------------------------------- | ---------------------------------------------------------------------------------------- | ----------- |
 | **Enable multi-track recording** | Record from multiple input devices at the same time. Reveals the options below.          | Off         |
-| **Maximum tracks**               | Number of simultaneous tracks (slider, 1–8).                                             | 2           |
+| **Maximum tracks**               | Number of simultaneous tracks (slider, 1-8).                                             | 2           |
 | **Output mode**                  | `Single file` mixes all tracks into one file. `Multiple files` saves one file per track. | Single file |
-| **Audio source for track N**     | Input device assigned to each track. One dropdown per track, up to **Maximum tracks**.   | —           |
+| **Audio source for track N**     | Input device assigned to each track. One dropdown per track, up to **Maximum tracks**.   | -           |
 
 Settings that also shape multi-track output:
 
-- **Recording format** and **Audio bitrate** apply to **every** track — see [Formats](formats.md) and the [Settings reference](settings-reference.md#output-format).
-- **File prefix**, **Save folder**, and the near-active-file options control where files land and how they are named — see [File operations](file-operations.md).
-- **Split recordings automatically** interacts with merged output as described above — see [Splitting](splitting.md).
+- **Recording format** and **Audio bitrate** apply to **every** track - see [Formats](formats.md) and the [Settings reference](settings-reference.md#output-format).
+- **File prefix**, **Save folder**, and the near-active-file options control where files land and how they are named - see [File operations](file-operations.md).
+- **Split recordings automatically** interacts with merged output as described above - see [Splitting](splitting.md).
 
 For the full list of every plugin setting, see the [Settings reference](settings-reference.md). For the basics of starting, pausing, and saving a recording, see [Recording](recording.md).
