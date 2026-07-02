@@ -2,7 +2,7 @@
  * Offline audio encoding module.
  * Converts AudioBuffer to compressed formats using Mediabunny
  * (WebCodecs-backed, with extension encoders for FLAC and MP3).
- * @module recording/AudioEncoder
+ * @module audio/AudioEncoder
  */
 
 import {

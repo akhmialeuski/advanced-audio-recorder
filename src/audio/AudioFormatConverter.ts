@@ -1,7 +1,7 @@
 /**
  * Audio format conversion and track processing utilities.
  * Handles format resolution, blob conversion, and multi-track merging.
- * @module recording/AudioFormatConverter
+ * @module audio/AudioFormatConverter
  */
 
 import type { RecordingTarget } from '../types';

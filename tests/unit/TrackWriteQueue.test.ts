@@ -19,7 +19,7 @@ jest.mock('obsidian', () => ({
 }));
 
 // Mock AudioFormatConverter: the mobile flush pipeline has its own suite
-jest.mock('../../src/recording/AudioFormatConverter', () => ({
+jest.mock('../../src/audio/AudioFormatConverter', () => ({
 	buildOutputBlob: jest
 		.fn()
 		.mockResolvedValue(new Blob(['output'], { type: 'audio/webm' })),
@@ -294,7 +294,7 @@ describe('TrackWriteQueue', () => {
 			await queue.flushChunkBuffer(target);
 
 			const { buildOutputBlob } = jest.requireMock(
-				'../../src/recording/AudioFormatConverter',
+				'../../src/audio/AudioFormatConverter',
 			);
 			expect(buildOutputBlob).toHaveBeenCalledWith(
 				chunks,

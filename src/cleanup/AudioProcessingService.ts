@@ -14,8 +14,8 @@ import {
 	MAX_AUDIO_CLEANUP_SECONDS,
 	MAX_AUDIO_CLEANUP_DECODED_SAMPLES,
 } from '../constants';
-import { createWavHeader, WAV_HEADER_SIZE } from '../recording/WavEncoder';
-import { resolveUniquePathInDirectory } from '../recording/RecordingFileManager';
+import { createWavHeader, WAV_HEADER_SIZE } from '../audio/WavEncoder';
+import { resolveUniquePathInDirectory } from '../audio/RecordingFileManager';
 import { delay } from '../utils/TimeUtils';
 import {
 	applyNoiseGateToChannel,

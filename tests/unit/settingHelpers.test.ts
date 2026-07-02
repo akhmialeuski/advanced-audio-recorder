@@ -88,7 +88,7 @@ jest.mock('obsidian', () => ({
 	},
 }));
 
-jest.mock('../../src/recording/AudioCapabilityDetector', () => ({
+jest.mock('../../src/audio/AudioCapabilityDetector', () => ({
 	getSupportedBitrates: jest
 		.fn()
 		.mockReturnValue([64000, 96000, 128000, 192000]),

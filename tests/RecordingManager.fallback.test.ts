@@ -82,7 +82,7 @@ jest.mock('obsidian', () => ({
 }));
 
 // Mock WavEncoder
-jest.mock('../src/recording/WavEncoder', () => ({
+jest.mock('../src/audio/WavEncoder', () => ({
 	assembleWavFromPcmSegmentFiles: jest
 		.fn()
 		.mockResolvedValue(new ArrayBuffer(44)),

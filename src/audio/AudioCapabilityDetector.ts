@@ -2,7 +2,7 @@
  * Runtime audio capability detection for MediaRecorder support.
  * Probes the browser for supported formats, sample rates, and validates
  * recording configurations before use.
- * @module recording/AudioCapabilityDetector
+ * @module audio/AudioCapabilityDetector
  */
 
 import {

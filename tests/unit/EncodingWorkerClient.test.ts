@@ -8,8 +8,8 @@ import {
 	EncodingWorkerClient,
 	setEncodingWorkerClient,
 	getEncodingWorkerClient,
-} from '../../src/recording/EncodingWorkerClient';
-import type { WorkerResponse } from '../../src/recording/encodingWorker';
+} from '../../src/audio/EncodingWorkerClient';
+import type { WorkerResponse } from '../../src/audio/encodingWorker';
 
 /** Captured worker doubles created by the client. */
 interface WorkerDouble {

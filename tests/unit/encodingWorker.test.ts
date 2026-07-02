@@ -5,11 +5,11 @@
  */
 /** @jest-environment jsdom */
 
-import { handleEncodingMessage } from '../../src/recording/encodingWorker';
+import { handleEncodingMessage } from '../../src/audio/encodingWorker';
 import type {
 	WorkerRequest,
 	WorkerResponse,
-} from '../../src/recording/encodingWorker';
+} from '../../src/audio/encodingWorker';
 
 const mockConversionExecute = jest.fn().mockResolvedValue(undefined);
 const mockConversionInit = jest.fn();
@@ -31,7 +31,7 @@ jest.mock('mediabunny', () => ({
 	},
 }));
 
-jest.mock('../../src/recording/AudioEncoder', () => ({
+jest.mock('../../src/audio/AudioEncoder', () => ({
 	ensureEncoderRegistered: jest.fn().mockResolvedValue(undefined),
 	createOutputFormat: jest.fn().mockReturnValue({}),
 	FORMAT_CODEC_MAP: {

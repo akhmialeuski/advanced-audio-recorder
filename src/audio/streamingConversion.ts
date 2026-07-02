@@ -5,7 +5,7 @@
  * whole recording as PCM in memory. Used identically by the
  * main-thread pipeline (AudioFormatConverter) and the encoding Web
  * Worker (encodingWorker), so the two execution paths cannot diverge.
- * @module recording/streamingConversion
+ * @module audio/streamingConversion
  */
 
 import {

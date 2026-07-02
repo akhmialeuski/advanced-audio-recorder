@@ -28,7 +28,7 @@ import { RecoveryModal } from './ui/RecoveryModal';
 import {
 	EncodingWorkerClient,
 	setEncodingWorkerClient,
-} from './recording/EncodingWorkerClient';
+} from './audio/EncodingWorkerClient';
 import {
 	updateStatusBar,
 	updateRecordingLiveStats,

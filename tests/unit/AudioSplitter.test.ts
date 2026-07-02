@@ -18,7 +18,7 @@ import {
 	PCM_BYTES_PER_SAMPLE,
 	type WavLayout,
 } from '../../src/recording/AudioSplitter';
-import { createWavHeader } from '../../src/recording/WavEncoder';
+import { createWavHeader } from '../../src/audio/WavEncoder';
 
 /** WAV header size produced by createWavHeader. */
 const WAV_HEADER_SIZE = 44;

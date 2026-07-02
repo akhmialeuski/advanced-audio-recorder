@@ -22,11 +22,11 @@ import {
 	detectSupportedFormats,
 	getSupportedSampleRates,
 	buildMimeType,
-} from '../recording/AudioCapabilityDetector';
+} from '../audio/AudioCapabilityDetector';
 import {
 	getEncoderDescription,
 	isOfflineEncodingSupported,
-} from '../recording/AudioEncoder';
+} from '../audio/AudioEncoder';
 import { getProcessingConstraints } from '../recording/AudioStreamHandler';
 import {
 	DEFAULT_SPLIT_PART_SUFFIX,

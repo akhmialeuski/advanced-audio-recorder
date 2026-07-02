@@ -19,21 +19,21 @@ import type {
 import type { AudioRecorderSettings } from '../settings/Settings';
 import { PLUGIN_LOG_PREFIX, FORMAT_WAV } from '../constants';
 import { DebugLogger } from '../utils/DebugLogger';
-import { assembleWavFromPcmSegmentFiles } from './WavEncoder';
-import { isOfflineEncodingSupported } from './AudioEncoder';
+import { assembleWavFromPcmSegmentFiles } from '../audio/WavEncoder';
+import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
 import {
 	resolveUniquePath,
 	saveAudioFile,
 	removeTemporaryArtifacts,
 	cleanupIntermediateFiles,
-} from './RecordingFileManager';
+} from '../audio/RecordingFileManager';
 import {
 	isOfflineOnlyFormat,
 	convertBlobToWav,
 	convertBlobToFormat,
 	mergeAudioTracks,
-} from './AudioFormatConverter';
-import { buildMimeType } from './AudioCapabilityDetector';
+} from '../audio/AudioFormatConverter';
+import { buildMimeType } from '../audio/AudioCapabilityDetector';
 import { canStreamMix, mixPcmTracksToWav } from './StreamingMixer';
 import { buildPartFileName } from './AudioSplitter';
 import { insertFileLinks } from './NoteInserter';

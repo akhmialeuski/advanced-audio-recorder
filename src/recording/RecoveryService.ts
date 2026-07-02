@@ -10,11 +10,11 @@
 
 import type { App } from 'obsidian';
 import { PLUGIN_LOG_PREFIX, FORMAT_WAV } from '../constants';
-import { assembleWavFromPcmSegmentFiles } from './WavEncoder';
+import { assembleWavFromPcmSegmentFiles } from '../audio/WavEncoder';
 import {
 	removeTemporaryArtifacts,
 	resolveUniquePathInDirectory,
-} from './RecordingFileManager';
+} from '../audio/RecordingFileManager';
 import { JOURNAL_VERSION } from './SessionJournal';
 import type {
 	JournalSession,

@@ -3,7 +3,7 @@
  * segments captured by the streaming recording path. AudioBuffer
  * encoding goes through mediabunny (see AudioEncoder), which handles
  * WAVE output natively.
- * @module recording/WavEncoder
+ * @module audio/WavEncoder
  */
 
 import type { App } from 'obsidian';

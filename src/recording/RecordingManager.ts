@@ -54,10 +54,10 @@ import { DebugLogger } from '../utils/DebugLogger';
 import {
 	buildMimeType,
 	validateRecordingCapability,
-} from './AudioCapabilityDetector';
+} from '../audio/AudioCapabilityDetector';
 import { PcmStreamRecorder } from './PcmStreamRecorder';
 import { InputLevelMonitor } from './InputLevelMonitor';
-import { resolveRecorderFormat } from './AudioFormatConverter';
+import { resolveRecorderFormat } from '../audio/AudioFormatConverter';
 import { TrackWriteQueue } from './TrackWriteQueue';
 import { RecordingFinalizer } from './RecordingFinalizer';
 import { PartRotationController } from './PartRotationController';

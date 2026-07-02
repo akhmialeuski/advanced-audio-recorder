@@ -16,7 +16,7 @@
  */
 
 import type { App } from 'obsidian';
-import { createWavHeader, WAV_HEADER_SIZE } from './WavEncoder';
+import { createWavHeader, WAV_HEADER_SIZE } from '../audio/WavEncoder';
 
 /** Bytes per int16 sample. */
 const BYTES_PER_SAMPLE = 2;

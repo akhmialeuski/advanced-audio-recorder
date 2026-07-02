@@ -7,7 +7,7 @@
 import { MarkdownView, Notice } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
-import { resolveUniquePathInDirectory } from '../recording/RecordingFileManager';
+import { resolveUniquePathInDirectory } from '../audio/RecordingFileManager';
 import { serializeTranscriptFile } from './transcriptFormat';
 import type {
 	Transcript,

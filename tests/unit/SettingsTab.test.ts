@@ -13,7 +13,7 @@ import {
 } from '../../src/settings/Settings';
 
 // Mock AudioEncoder to avoid loading mediabunny in jsdom
-jest.mock('../../src/recording/AudioEncoder', () => ({
+jest.mock('../../src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest.fn(),
 	isOfflineEncodingSupported: jest.fn((format: string) =>
 		['mp3', 'flac', 'wav', 'webm', 'ogg', 'mp4', 'm4a'].includes(format),

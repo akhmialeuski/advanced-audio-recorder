@@ -8,8 +8,8 @@ import {
 	encodeAudioBuffer,
 	isOfflineEncodingSupported,
 	getEncoderDescription,
-} from '../../src/recording/AudioEncoder';
-import type { EncodingOptions } from '../../src/recording/AudioEncoder';
+} from '../../src/audio/AudioEncoder';
+import type { EncodingOptions } from '../../src/audio/AudioEncoder';
 import { EncodingError } from '../../src/errors';
 import { createMockAudioBuffer } from '../helpers/createMockAudioBuffer';
 

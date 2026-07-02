@@ -13,8 +13,8 @@ import {
 	getExpectedCodec,
 	buildMimeType,
 	validateRecordingCapability,
-} from '../recording/AudioCapabilityDetector';
-import type { CodecSupportEntry } from '../recording/AudioCapabilityDetector';
+} from '../audio/AudioCapabilityDetector';
+import type { CodecSupportEntry } from '../audio/AudioCapabilityDetector';
 import { FORMAT_WAV, FORMAT_WEBM, FORMAT_OGG } from '../constants';
 
 /**

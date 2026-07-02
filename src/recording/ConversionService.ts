@@ -6,9 +6,9 @@
 
 import { Notice, normalizePath } from 'obsidian';
 import type { App, TFile } from 'obsidian';
-import { encodeAudioBuffer } from './AudioEncoder';
+import { encodeAudioBuffer } from '../audio/AudioEncoder';
 import { FORMAT_WAV } from '../constants';
-import { decodeAudioBlob, convertBlobToFormat } from './AudioFormatConverter';
+import { decodeAudioBlob, convertBlobToFormat } from '../audio/AudioFormatConverter';
 import { updateLinksInVault } from '../utils/LinkUpdater';
 import type { VaultLinkUpdateResult } from '../utils/LinkUpdater';
 import type { ConversionLinkAction } from '../settings/Settings';

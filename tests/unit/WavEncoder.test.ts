@@ -10,7 +10,7 @@ import {
 	createWavHeader,
 	assembleWavFromPcmSegments,
 	assembleWavFromPcmSegmentFiles,
-} from '../../src/recording/WavEncoder';
+} from '../../src/audio/WavEncoder';
 
 describe('WavEncoder', () => {
 	describe('getWavHeaderInfo', () => {

@@ -36,7 +36,7 @@ jest.mock('../../src/recording/AudioStreamHandler', () => ({
 }));
 
 // Mock AudioEncoder module to avoid mediabunny TextDecoder requirement
-jest.mock('../../src/recording/AudioEncoder', () => ({
+jest.mock('../../src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest
 		.fn()
 		.mockResolvedValue(new Blob(['encoded'], { type: 'audio/webm' })),
@@ -48,7 +48,7 @@ jest.mock('../../src/recording/AudioEncoder', () => ({
 }));
 
 // Mock WavEncoder
-jest.mock('../../src/recording/WavEncoder', () => ({
+jest.mock('../../src/audio/WavEncoder', () => ({
 	assembleWavFromPcmSegmentFiles: jest
 		.fn()
 		.mockResolvedValue(new ArrayBuffer(44)),
@@ -1018,7 +1018,7 @@ describe('RecordingManager', () => {
 
 			// The mixed render encodes to an empty blob: nothing to save
 			const { encodeAudioBuffer } = jest.requireMock(
-				'../../src/recording/AudioEncoder',
+				'../../src/audio/AudioEncoder',
 			);
 			encodeAudioBuffer.mockResolvedValueOnce(new Blob([]));
 

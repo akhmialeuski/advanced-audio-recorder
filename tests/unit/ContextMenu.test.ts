@@ -62,7 +62,7 @@ jest.mock('../../src/cleanup/AudioProcessingModal', () => ({
 }));
 
 // Mock AudioEncoder to avoid mediabunny TextDecoder requirement
-jest.mock('../../src/recording/AudioEncoder', () => ({
+jest.mock('../../src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest.fn(),
 	isOfflineEncodingSupported: jest.fn().mockReturnValue(true),
 	getEncoderDescription: jest.fn().mockReturnValue('Test Encoder'),

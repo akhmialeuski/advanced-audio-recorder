@@ -20,7 +20,7 @@ import {
 	saveAudioFile,
 	removeTemporaryArtifacts,
 	cleanupIntermediateFiles,
-} from '../../src/recording/RecordingFileManager';
+} from '../../src/audio/RecordingFileManager';
 
 // Mock obsidian module
 jest.mock('obsidian', () => ({

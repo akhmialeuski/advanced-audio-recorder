@@ -4,7 +4,7 @@
  * uses for its AudioWorklet), correlates requests with responses, and
  * degrades permanently to the main-thread pipeline when the worker
  * cannot run - conversion never depends on worker availability.
- * @module recording/EncodingWorkerClient
+ * @module audio/EncodingWorkerClient
  */
 
 import { PLUGIN_LOG_PREFIX } from '../constants';

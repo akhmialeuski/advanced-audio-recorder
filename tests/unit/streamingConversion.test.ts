@@ -5,7 +5,7 @@
  */
 /** @jest-environment jsdom */
 
-import { runStreamingConversion } from '../../src/recording/streamingConversion';
+import { runStreamingConversion } from '../../src/audio/streamingConversion';
 
 const mockConversionExecute = jest.fn().mockResolvedValue(undefined);
 const mockConversionInit = jest.fn();
@@ -27,7 +27,7 @@ jest.mock('mediabunny', () => ({
 	},
 }));
 
-jest.mock('../../src/recording/AudioEncoder', () => ({
+jest.mock('../../src/audio/AudioEncoder', () => ({
 	ensureEncoderRegistered: jest.fn().mockResolvedValue(undefined),
 	createOutputFormat: jest.fn().mockReturnValue({}),
 	FORMAT_CODEC_MAP: {

@@ -13,9 +13,9 @@ import type { App } from 'obsidian';
 import type { RecordingSessionConfig, RecordingTarget } from '../types';
 import type { AudioRecorderSettings } from '../settings/Settings';
 import { PLUGIN_LOG_PREFIX } from '../constants';
-import { resolveUniquePath } from './RecordingFileManager';
-import { buildOutputBlob } from './AudioFormatConverter';
-import { buildMimeType } from './AudioCapabilityDetector';
+import { resolveUniquePath } from '../audio/RecordingFileManager';
+import { buildOutputBlob } from '../audio/AudioFormatConverter';
+import { buildMimeType } from '../audio/AudioCapabilityDetector';
 import { totalByteLength } from './AudioSplitter';
 import { SessionJournal } from './SessionJournal';
 

@@ -7,7 +7,7 @@ import { App, Modal, Notice, Setting, TFile } from 'obsidian';
 import {
 	isOfflineEncodingSupported,
 	getEncoderDescription,
-} from '../recording/AudioEncoder';
+} from '../audio/AudioEncoder';
 import { AUDIO_EXTENSIONS, FORMAT_WAV } from '../constants';
 import {
 	addBitrateSetting,

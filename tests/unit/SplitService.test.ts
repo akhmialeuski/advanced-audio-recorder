@@ -23,7 +23,7 @@ jest.mock('obsidian', () => ({
 	normalizePath: (path: string) => path.replace(/\\/g, '/'),
 }));
 
-jest.mock('../../src/recording/AudioEncoder', () => ({
+jest.mock('../../src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest
 		.fn()
 		.mockResolvedValue(new Blob(['encoded'], { type: 'audio/mp3' })),
@@ -32,7 +32,7 @@ jest.mock('../../src/recording/AudioEncoder', () => ({
 	),
 }));
 
-jest.mock('../../src/recording/AudioFormatConverter', () => ({
+jest.mock('../../src/audio/AudioFormatConverter', () => ({
 	decodeAudioBlob: jest.fn().mockResolvedValue({
 		length: 882000,
 		sampleRate: 44100,

@@ -7,8 +7,8 @@
  */
 
 import { TRANSCRIBE_BYTES_PER_SEC, TRANSCRIBE_SAMPLE_RATE } from '../constants';
-import { createWavHeader, WAV_HEADER_SIZE } from '../recording/WavEncoder';
-import { decodeAudioBlob } from '../recording/AudioFormatConverter';
+import { createWavHeader, WAV_HEADER_SIZE } from '../audio/WavEncoder';
+import { decodeAudioBlob } from '../audio/AudioFormatConverter';
 
 /**
  * Encodes mono Float32 samples (range -1..1) into a 16-bit PCM WAV blob.
