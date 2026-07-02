@@ -5,11 +5,56 @@ import prettier from 'eslint-plugin-prettier';
 import eslintConfigPrettier from 'eslint-config-prettier';
 import globals from 'globals';
 
+// Non-ASCII typography characters that must never appear in source: em/en
+// dashes, curly quotes, arrows, multiplication sign, approximation sign, and
+// the horizontal ellipsis. The codebase (comments and user-facing strings
+// alike) uses their plain ASCII equivalents instead.
+const NON_ASCII_TYPOGRAPHY = /[–—‘’“”…←→↔×≈]/;
+
 // Local plugin: ban banner/divider comments (a run of three or more dashes).
 // It inspects comment tokens only, so dashes inside string literals (e.g. a
 // multipart boundary or YAML front-matter in a test fixture) are never flagged.
 const localRules = {
     rules: {
+        'no-non-ascii-typography': {
+            meta: {
+                type: 'problem',
+                docs: {
+                    description:
+                        'Disallow non-ASCII typography (em/en dashes, curly quotes, arrows) anywhere in source; use plain ASCII equivalents.',
+                },
+                schema: [],
+                messages: {
+                    nonAscii:
+                        'Non-ASCII typography character "{{char}}"; use its plain ASCII equivalent (e.g. "-", "\'", "->", "x", "~").',
+                },
+            },
+            create(context) {
+                return {
+                    Program() {
+                        const text = context.sourceCode.text;
+                        const pattern = new RegExp(
+                            NON_ASCII_TYPOGRAPHY.source,
+                            'g',
+                        );
+                        for (const match of text.matchAll(pattern)) {
+                            context.report({
+                                loc: {
+                                    start: context.sourceCode.getLocFromIndex(
+                                        match.index,
+                                    ),
+                                    end: context.sourceCode.getLocFromIndex(
+                                        match.index + 1,
+                                    ),
+                                },
+                                messageId: 'nonAscii',
+                                data: { char: match[0] },
+                            });
+                        }
+                    },
+                };
+            },
+        },
         'no-dashes-in-comments': {
             meta: {
                 type: 'problem',
@@ -117,6 +162,15 @@ export default tseslint.config(
         plugins: { local: localRules },
         rules: {
             'local/no-dashes-in-comments': 'error',
+        },
+    },
+    {
+        // Non-ASCII typography is banned everywhere (source and tests),
+        // in comments and user-facing strings alike.
+        files: ['src/**/*.ts', 'tests/**/*.ts'],
+        plugins: { local: localRules },
+        rules: {
+            'local/no-non-ascii-typography': 'error',
         },
     },
     eslintConfigPrettier,

@@ -2,10 +2,10 @@
  * Single source of truth for the player's mode decisions, kept pure so
  * they can be unit-tested and never drift across the codebase:
  *
- * - `isEditableContext` — is the embed editable (Live Preview) or
+ * - `isEditableContext` - is the embed editable (Live Preview) or
  *   read-only (Reading view / detached / unknown)? Editing is allowed
  *   only inside the CodeMirror editor; everything else is display-only.
- * - `shouldEnhance` — should the enhanced player take over, or should the
+ * - `shouldEnhance` - should the enhanced player take over, or should the
  *   built-in embed be used? Only enabled, audio-only files are enhanced;
  *   video and unsupported files fall back to the built-in embed.
  * @module player/playerMode

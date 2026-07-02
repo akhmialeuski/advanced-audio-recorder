@@ -471,7 +471,7 @@ const DEFAULT_LLM_BASE_URLS: ReadonlySet<string> = new Set([
 /**
  * Aligns the LLM base URL with the target provider's default when the current
  * value is still a provider default; a custom URL the user entered is
- * preserved. The model is not switched here — each provider keeps its own
+ * preserved. The model is not switched here - each provider keeps its own
  * selected model in a dedicated field. Mutates and returns `settings` so the
  * settings tab can switch the base URL in one step when the provider changes.
  * @param settings - Settings to adjust in place

@@ -76,7 +76,7 @@ export class TrackWriteQueue {
 	/**
 	 * Appends a task to the target's serialized write chain, containing
 	 * failures so one failed flush can never poison the chain. A failed
-	 * flush keeps its data buffered, so containment loses no audio —
+	 * flush keeps its data buffered, so containment loses no audio -
 	 * the flush is retried on the next chunk over the threshold and at
 	 * finalization.
 	 * @param target - Recording target whose chain to append to

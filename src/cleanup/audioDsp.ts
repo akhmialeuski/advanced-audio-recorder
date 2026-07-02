@@ -1,8 +1,8 @@
 /**
  * Pure DSP helpers for on-demand audio cleanup: config resolution and
- * clamping, dB↔gain, the noise-gate open/close decision (with
+ * clamping, dB/gain conversion, the noise-gate open/close decision (with
  * hysteresis), and an offline envelope-based noise gate over decoded
- * samples. No WebAudio or I/O — all logic here is unit tested.
+ * samples. No WebAudio or I/O - all logic here is unit tested.
  * @module cleanup/audioDsp
  */
 

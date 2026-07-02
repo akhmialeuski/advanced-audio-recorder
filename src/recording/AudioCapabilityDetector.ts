@@ -191,7 +191,7 @@ export function validateRecordingCapability(format: string): ValidationResult {
 		return { valid: true, reason: '' };
 	}
 
-	// Format not supported by MediaRecorder — check if offline encoding
+	// Format not supported by MediaRecorder - check if offline encoding
 	// is available and an intermediate recording format exists
 	if (isOfflineEncodingSupported(format)) {
 		const hasIntermediate = COMPRESSED_INTERMEDIATES.some((f) =>

@@ -79,7 +79,7 @@ describe('EmbedRegistryOverride override/restore', () => {
 	});
 });
 
-describe('EmbedRegistryOverride — negative cases', () => {
+describe('EmbedRegistryOverride - negative cases', () => {
 	it('getPrevious is undefined for a non-overridden extension', () => {
 		const override = new EmbedRegistryOverride(makeRegistry());
 		override.override(['mp3'], creator('ours'));

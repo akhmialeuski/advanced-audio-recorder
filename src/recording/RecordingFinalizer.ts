@@ -125,7 +125,7 @@ export class RecordingFinalizer {
 
 	/**
 	 * Finalizes a stopped recording session: flushes remaining buffers,
-	 * produces the final file(s) — per track or mixed — and inserts the
+	 * produces the final file(s) - per track or mixed - and inserts the
 	 * note links.
 	 * @param targets - Recording targets of the session
 	 * @param timestamp - Session timestamp for the merged file name
@@ -556,7 +556,7 @@ export class RecordingFinalizer {
 	 * Attempts the bounded-memory streaming mix of flushed PCM tracks
 	 * into a WAV blob. Returns null when the tracks cannot be
 	 * stream-mixed (rate mismatch, no data, adapter without stat) or
-	 * the mix fails — the caller then uses the Web Audio path.
+	 * the mix fails - the caller then uses the Web Audio path.
 	 * @param targets - Recording targets with flushed PCM segments
 	 * @returns Mixed WAV blob, or null to fall back
 	 */

@@ -15,7 +15,7 @@ import {
 } from 'obsidian';
 import type { MarkdownFileInfo } from 'obsidian';
 import type { MenuItem } from 'obsidian';
-import { AUDIO_EXTENSIONS } from '../constants';
+import { AUDIO_EXTENSIONS, PLUGIN_LOG_PREFIX } from '../constants';
 import { getPlayerEmbedActions } from '../player/playerEmbedActions';
 import { MARKER_KIND, type MarkerKind } from '../player/markers/markerModel';
 import { getAudioFileInfo } from '../utils/AudioFileAnalyzer';
@@ -160,7 +160,7 @@ export class ContextMenu {
 								}
 							} catch (e) {
 								console.error(
-									'[AudioRecorder] Failed to resolve link position in editor:',
+									`${PLUGIN_LOG_PREFIX} Failed to resolve link position in editor:`,
 									e,
 								);
 							}
@@ -362,7 +362,10 @@ export class ContextMenu {
 								replaceSource,
 							);
 							if (notePath) {
-								this.primeForEnhancement([outputPath], notePath);
+								this.primeForEnhancement(
+									[outputPath],
+									notePath,
+								);
 							}
 						},
 					).open();
@@ -550,7 +553,8 @@ export class ContextMenu {
 							// new embed becomes the enhanced player at once.
 							this.primeForEnhancement(
 								[convertedPath],
-								this.app.workspace.getActiveFile()?.path ?? null,
+								this.app.workspace.getActiveFile()?.path ??
+									null,
 							);
 						},
 					).open();

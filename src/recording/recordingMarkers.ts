@@ -2,7 +2,7 @@
  * Pure helpers for placing markers during a recording session. A marker is
  * captured live at the instant the user triggers it; its position is stored
  * as a (part ordinal, within-part offset) pair so it can be resolved to the
- * right final file once the session is finalized — correctly across plain,
+ * right final file once the session is finalized - correctly across plain,
  * auto-split, and multi-track recordings.
  *
  * Everything here is pure (no DOM, no I/O, no clock) so the position and

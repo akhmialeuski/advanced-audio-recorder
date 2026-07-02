@@ -67,7 +67,7 @@ export class InputLevelMonitor {
 			this.source = this.context.createMediaStreamSource(stream);
 			this.analyser = this.context.createAnalyser();
 			this.analyser.fftSize = 1024;
-			// Analyser only — never connect to the destination, or the
+			// Analyser only - never connect to the destination, or the
 			// input would be played back as a feedback loop.
 			this.source.connect(this.analyser);
 			this.buffer = new Float32Array(this.analyser.fftSize);

@@ -71,7 +71,7 @@ export class RecoveryModal extends Modal {
 					? ` ${String(partCount)} already saved part file(s) are safe and stay untouched.`
 					: '';
 			contentEl.createEl('p', {
-				text: `${startedAt} — ${String(trackCount)} track(s), ${String(segmentCount)} temporary segment(s).${parts}`,
+				text: `${startedAt} - ${String(trackCount)} track(s), ${String(segmentCount)} temporary segment(s).${parts}`,
 				cls: 'aar-recovery-session',
 			});
 		}

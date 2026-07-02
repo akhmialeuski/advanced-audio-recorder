@@ -3,7 +3,7 @@
  * from inlined source via a Blob URL (the technique the PCM recorder
  * uses for its AudioWorklet), correlates requests with responses, and
  * degrades permanently to the main-thread pipeline when the worker
- * cannot run — conversion never depends on worker availability.
+ * cannot run - conversion never depends on worker availability.
  * @module recording/EncodingWorkerClient
  */
 

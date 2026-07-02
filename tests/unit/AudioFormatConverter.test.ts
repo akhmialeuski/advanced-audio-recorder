@@ -117,7 +117,7 @@ if (!Blob.prototype.arrayBuffer) {
 	};
 }
 
-// Mock MediaRecorder.isTypeSupported — default: support webm and ogg
+// Mock MediaRecorder.isTypeSupported - default: support webm and ogg
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- required for global mock
 (global as any).MediaRecorder = {
 	isTypeSupported: jest.fn((mime: string) => {

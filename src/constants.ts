@@ -288,7 +288,7 @@ export const DEFAULT_DEEPGRAM_MODEL = 'nova-3';
  * in settings. Grouped by family: Nova-3, Nova-2 and its named variants,
  * Nova, Enhanced (`enhanced`, `enhanced-meeting`, `enhanced-phonecall`,
  * `enhanced-finance`), Base, and the hosted Whisper sizes. The real-time
- * Flux family is omitted — it targets streaming voice agents, not the
+ * Flux family is omitted - it targets streaming voice agents, not the
  * pre-recorded transcription this plugin uses. See
  * {@link DEEPGRAM_MODELS_DOC_URL} for the authoritative, current list.
  */
@@ -372,7 +372,7 @@ export const GEMINI_MODELS_DOC_URL =
 	'https://ai.google.dev/gemini-api/docs/models';
 
 /**
- * Hard per-request ceiling for Gemini, in bytes (2 GB — the File API limit).
+ * Hard per-request ceiling for Gemini, in bytes (2 GB - the File API limit).
  * Gemini transcribes a whole file in one request with consistent speaker
  * labels, so files under this are sent in one piece instead of chunked.
  */
@@ -576,8 +576,8 @@ export const DEFAULT_LLM_CLEANUP_PROMPT =
 	'machine-generated transcript. Correct punctuation, capitalization, ' +
 	'and obvious speech-to-text errors; insert sensible paragraph breaks; ' +
 	'and remove filler artifacts only when they add no meaning. Do NOT ' +
-	'summarize, translate, paraphrase, add, or omit content — preserve ' +
-	'the speaker’s exact wording and meaning. Preserve any speaker labels ' +
+	'summarize, translate, paraphrase, add, or omit content - preserve ' +
+	"the speaker's exact wording and meaning. Preserve any speaker labels " +
 	'and timestamps exactly as they appear, keeping each on its original ' +
 	'line. Return only the corrected transcript with no preamble.';
 
@@ -752,7 +752,7 @@ export const MAX_AUDIO_CLEANUP_BYTES = WAVEFORM_MAX_DECODE_BYTES;
 export const MAX_AUDIO_CLEANUP_SECONDS = 2 * 60 * 60;
 
 /**
- * Upper bound on the total decoded sample count (frames × channels) the
+ * Upper bound on the total decoded sample count (frames x channels) the
  * on-demand cleanup will process. Where {@link MAX_AUDIO_CLEANUP_BYTES}
  * bounds the on-disk size, this bounds the decoded working set. Cleanup now
  * processes the signal in time segments (see {@link CLEANUP_SEGMENT_SECONDS}),

@@ -375,7 +375,7 @@ export class SessionJournal {
 
 	/**
 	 * Loads the journal into memory once. A missing, corrupt, or
-	 * unreadable file starts from an empty journal — for mutations the
+	 * unreadable file starts from an empty journal - for mutations the
 	 * recording data matters more than preserving unreadable history.
 	 */
 	private async ensureLoaded(): Promise<void> {

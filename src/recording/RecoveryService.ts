@@ -48,7 +48,7 @@ function directoryOf(path: string): string {
  * disk. Prunes segments that no longer exist (and whole tracks and
  * sessions without any), persisting the pruned journal: a crash
  * before the first flush therefore self-clears without prompting.
- * A corrupt journal is deleted — nothing in it is actionable. A
+ * A corrupt journal is deleted - nothing in it is actionable. A
  * journal written by a newer plugin version is left untouched so a
  * downgrade never destroys recovery data it cannot interpret.
  * @param journal - Session journal
@@ -133,7 +133,7 @@ async function persistSessionUpdate(
  * Recovers one interrupted session: PCM tracks are reassembled into
  * WAV files, MediaRecorder tracks are byte-concatenated into their
  * recorder container format. The output lands in the directory of the
- * first segment — where the user was recording — not in the currently
+ * first segment - where the user was recording - not in the currently
  * configured save folder, which may have changed since the crash.
  * Successfully recovered tracks leave the journal; failed tracks stay
  * for the next launch.
@@ -156,7 +156,7 @@ export async function recoverSession(
 				continue;
 			}
 			if (!track.isPcm && track.headerLost) {
-				// No container header — the data is not playable
+				// No container header - the data is not playable
 				result.failedTracks.push(track.fileBaseName);
 				remainingTracks.push(track);
 				continue;
@@ -229,7 +229,7 @@ export async function recoverSession(
 
 /**
  * Discards the temporary files of one interrupted session. Finalized
- * part files (partPaths) are never touched — they are complete audio
+ * part files (partPaths) are never touched - they are complete audio
  * the user may want to keep. Segments that could not be removed stay
  * journaled for a retry on the next launch.
  * @param session - Session to discard (as returned by collect)

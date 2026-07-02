@@ -561,11 +561,11 @@ export class RecordingManager {
 	 * Releases everything a failed startRecording may have acquired.
 	 * Errors after getAudioStreams (an unsupported MediaRecorder
 	 * mimeType, a failed worklet load, a failed insertion-context
-	 * capture) otherwise leave the microphone captured — device locked
-	 * and indicator on — until Obsidian restarts. The journal session
+	 * capture) otherwise leave the microphone captured - device locked
+	 * and indicator on - until Obsidian restarts. The journal session
 	 * is ended too: nothing was flushed yet, and an orphaned entry
 	 * would keep an empty journal file on disk until the next launch
-	 * prunes it. Safe in every ordering — the active session id is
+	 * prunes it. Safe in every ordering - the active session id is
 	 * either null (failure before the journal start) or the id of the
 	 * failed session itself.
 	 */
@@ -985,7 +985,7 @@ export class RecordingManager {
 	 * async work is fire-and-forget: the AudioContexts and the vault
 	 * adapter belong to the app, not the plugin, so the releases and
 	 * buffer flushes can still complete after the plugin object is
-	 * gone. The crash-recovery journal is deliberately NOT ended — an
+	 * gone. The crash-recovery journal is deliberately NOT ended - an
 	 * unload mid-recording is exactly the case the next launch must
 	 * offer to recover. The in-memory tail below the flush threshold
 	 * may be lost; everything flushed to disk stays recoverable.
@@ -1101,7 +1101,7 @@ export class RecordingManager {
 	 * Recreates and starts the MediaRecorders after a part rotation,
 	 * re-applying the paused state. A restart failure (e.g. the input
 	 * device disappeared mid-session) would otherwise leave the session
-	 * silently dead — status Recording with no recorder running — so
+	 * silently dead - status Recording with no recorder running - so
 	 * the session is stopped to salvage the parts already written.
 	 */
 	private restartMediaRecorders(): void {

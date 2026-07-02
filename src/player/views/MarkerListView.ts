@@ -4,7 +4,7 @@
  * and event delegation live here so the player coordinator stays focused on
  * playback and persistence; everything audio- or storage-coupled is passed in
  * as callbacks. The owning player remains the single source of truth for the
- * marker data — this view only renders what it is given and reports user
+ * marker data - this view only renders what it is given and reports user
  * intent back. Handlers are delegated once per container so rebuilding rows or
  * ticks never accumulates per-element listeners.
  * @module player/views/MarkerListView

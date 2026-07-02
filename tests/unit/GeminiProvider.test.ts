@@ -1,6 +1,6 @@
 /**
- * Tests for the GeminiProvider transcription orchestration: the upload →
- * poll-until-ACTIVE → generateContent → best-effort delete flow scripted
+ * Tests for the GeminiProvider transcription orchestration: the upload ->
+ * poll-until-ACTIVE -> generateContent -> best-effort delete flow scripted
  * through the shared requestUrl mock, the WAV-passthrough vs decode-to-WAV
  * branch, the thinking-off generationConfig, and the truncation/block guards.
  */

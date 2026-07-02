@@ -136,7 +136,7 @@ export function assembleWavFromPcmSegments(
 /**
  * Assembles a complete WAV file from flushed int16 PCM segment files.
  * When the vault adapter can report file sizes, the final buffer is
- * allocated once and the segments stream into it sequentially — peak
+ * allocated once and the segments stream into it sequentially - peak
  * memory is the final file plus one segment, instead of two full
  * copies of the recording. Falls back to read-all-then-assemble for
  * adapters without stat support.

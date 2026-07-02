@@ -92,7 +92,7 @@ describe('parseTimecode', () => {
 	});
 });
 
-describe('formatTimecode / parseTimecode — more edge cases', () => {
+describe('formatTimecode / parseTimecode - more edge cases', () => {
 	it('pads minutes only past an hour', () => {
 		expect(formatTimecode(599)).toBe('9:59');
 		expect(formatTimecode(3599)).toBe('59:59');

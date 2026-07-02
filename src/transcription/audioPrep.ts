@@ -116,7 +116,7 @@ export interface PreparedAudio {
 	/**
 	 * True when a diarized run had to be split across multiple parts (too large
 	 * or too long for one request), so speaker numbering can reset between parts
-	 * — every provider numbers speakers per request once the recording is split.
+	 * - every provider numbers speakers per request once the recording is split.
 	 * The caller surfaces this to the user rather than letting the inconsistency
 	 * pass silently.
 	 */
@@ -146,7 +146,7 @@ export function shouldWarnDiarizationSplit(
  * its true length. Uses a conservative minimum bitrate ({@link
  * MIN_AUDIO_BYTES_PER_SEC}): below `cap * minBitrate` bytes even the most
  * heavily compressed audio cannot exceed the cap. An infinite cap is always
- * satisfied. A larger file is not necessarily too long — it just cannot be
+ * satisfied. A larger file is not necessarily too long - it just cannot be
  * proven short cheaply, so it falls through to the decode path, which measures
  * the exact duration.
  * @param byteLength - Encoded file size in bytes
@@ -169,7 +169,7 @@ export function withinDurationCap(
  * Whole-file path: when the provider accepts the original container, the
  * encoded file is within its byte limit, and the byte size proves the
  * recording is within the provider's per-request duration cap, the original
- * bytes are sent as one payload — no decode, so peak memory is just the file
+ * bytes are sent as one payload - no decode, so peak memory is just the file
  * size and any whole-file diarization stays consistent.
  *
  * Decode path: otherwise (an unsupported container, an over-limit file, or a
@@ -182,10 +182,10 @@ export function withinDurationCap(
  * The decode path always emits WAV, even for a single part that fits whole.
  * Re-sending the original bytes instead would save the WAV size on an accepted
  * compressed container, but it would force a second decode in a provider that
- * decodes containers it does not accept (Gemini re-decodes mp4/webm) — and
+ * decodes containers it does not accept (Gemini re-decodes mp4/webm) - and
  * those are this plugin's own recording formats, the common case. Emitting WAV
  * keeps the recorded-file path to a single decode; the only cost is a larger
- * upload for the uncommon case of an imported accepted container (mp3/aac/…)
+ * upload for the uncommon case of an imported accepted container (mp3/aac/etc.)
  * big enough to miss the cheap whole-file proof yet short enough to fit.
  * @param raw - Encoded file bytes
  * @param fileName - Source file name (used as the upload filename)

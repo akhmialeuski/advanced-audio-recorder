@@ -14,7 +14,7 @@ import { WAVEFORM_DECODE_SAMPLE_RATE } from 'src/constants';
 /** Resolve immediately so progressive extraction completes within a test tick. */
 const immediateYield = (): Promise<void> => Promise.resolve();
 
-describe('computeWaveformPeaksProgressive — peak extraction', () => {
+describe('computeWaveformPeaksProgressive - peak extraction', () => {
 	it('returns empty for non-positive bucket counts', async () => {
 		expect(
 			await computeWaveformPeaksProgressive([new Float32Array([1])], 0, {
@@ -131,7 +131,7 @@ describe('WaveformPeakCache', () => {
 	});
 });
 
-describe('computeWaveformPeaksProgressive — edge and negative cases', () => {
+describe('computeWaveformPeaksProgressive - edge and negative cases', () => {
 	it('uses absolute amplitude for negative samples', async () => {
 		const peaks = await computeWaveformPeaksProgressive(
 			[new Float32Array([-1, 0])],
@@ -265,7 +265,7 @@ describe('computeWaveformPeaksProgressive', () => {
 	});
 });
 
-describe('WaveformPeakCache — eviction and overwrite', () => {
+describe('WaveformPeakCache - eviction and overwrite', () => {
 	it('evicts when the bound is a single entry', () => {
 		const cache = new WaveformPeakCache(1);
 		cache.set('a', [1]);

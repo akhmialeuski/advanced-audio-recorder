@@ -425,7 +425,7 @@ function renderLlmPromptField(ctx: SettingsSectionContext): void {
 	}
 	addTextArea(ctx, {
 		name: 'Custom instruction',
-		desc: 'System instruction applied to the transcript text. Sent verbatim — include any language directive yourself.',
+		desc: 'System instruction applied to the transcript text. Sent verbatim - include any language directive yourself.',
 		get: () => s.llmCustomInstruction,
 		set: (v) => (s.llmCustomInstruction = v),
 		rows: 8,
@@ -488,7 +488,7 @@ function renderLlmKeyField(ctx: SettingsSectionContext): void {
 	if (s.llmProvider === LLM_PROVIDER_IDS.GEMINI) {
 		addText(ctx, {
 			name: 'Google Gemini API key',
-			desc: 'Shared with the Gemini transcription engine — set it in either place.',
+			desc: 'Shared with the Gemini transcription engine - set it in either place.',
 			get: () => s.geminiApiKey,
 			set: (v) => (s.geminiApiKey = v),
 			secret: true,
@@ -497,7 +497,7 @@ function renderLlmKeyField(ctx: SettingsSectionContext): void {
 	}
 	addText(ctx, {
 		name: 'OpenAI API key',
-		desc: 'Shared with the Whisper API transcription engine — set it in either place.',
+		desc: 'Shared with the Whisper API transcription engine - set it in either place.',
 		get: () => s.whisperApiKey,
 		set: (v) => (s.whisperApiKey = v),
 		secret: true,

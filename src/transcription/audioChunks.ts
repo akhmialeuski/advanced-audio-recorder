@@ -149,7 +149,7 @@ export function extractChunkWav(
 	samples: Float32Array,
 	chunk: ChunkPlan,
 ): ArrayBuffer {
-	// Round both ends the same way so adjacent chunks tile exactly — a shared
+	// Round both ends the same way so adjacent chunks tile exactly - a shared
 	// boundary maps to one frame, with no duplicated or dropped sample.
 	const startFrame = Math.min(
 		samples.length,

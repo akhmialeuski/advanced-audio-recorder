@@ -4,6 +4,7 @@
  */
 
 import { App, Notice, TFile } from 'obsidian';
+import { PLUGIN_LOG_PREFIX } from '../constants';
 import { formatByteSize } from './formatBytes';
 
 /**
@@ -41,7 +42,7 @@ export async function getAudioFileInfo(
 				.webkitAudioContext;
 		if (!AudioContextClass) {
 			console.error(
-				'[AudioRecorder] AudioContext is not supported in this environment.',
+				`${PLUGIN_LOG_PREFIX} AudioContext is not supported in this environment.`,
 			);
 			new Notice(
 				'Audio context is not supported. Cannot extract audio metadata.',
@@ -55,7 +56,10 @@ export async function getAudioFileInfo(
 		try {
 			audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
 		} catch (e) {
-			console.error('[AudioRecorder] Failed to decode audio data:', e);
+			console.error(
+				`${PLUGIN_LOG_PREFIX} Failed to decode audio data:`,
+				e,
+			);
 			new Notice('Failed to decode audio file data.');
 			return null;
 		} finally {
@@ -94,7 +98,10 @@ export async function getAudioFileInfo(
 			channels: formatChannels(audioBuffer.numberOfChannels),
 		};
 	} catch (error) {
-		console.error('[AudioRecorder] Error analyzing audio file:', error);
+		console.error(
+			`${PLUGIN_LOG_PREFIX} Error analyzing audio file:`,
+			error,
+		);
 		new Notice('An error occurred while analyzing the audio file.');
 		return null;
 	}

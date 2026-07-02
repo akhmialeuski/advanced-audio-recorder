@@ -646,7 +646,7 @@ export interface MockRequestUrlParam {
 }
 
 /**
- * Minimal response the {@link requestUrl} mock returns — the subset of
+ * Minimal response the {@link requestUrl} mock returns - the subset of
  * Obsidian's `RequestUrlResponse` that the HTTP client reads.
  */
 export interface MockRequestUrlResponse {

@@ -2,7 +2,7 @@
  * Modal that configures and runs transcription for a single audio file.
  * The per-run options (engine, language, diarization, destination, file
  * format, in-note toggles, and LLM post-processing) default from settings
- * and can be overridden here for this run only — the saved settings are
+ * and can be overridden here for this run only - the saved settings are
  * never mutated. Shows progress and allows cancellation; the detailed
  * in-note templates (heading, timestamp/speaker/line format) remain in the
  * settings tab and are applied as configured there.
@@ -92,7 +92,7 @@ export class TranscriptionModal extends Modal {
 	private readonly runSettings: AudioRecorderSettings;
 	/**
 	 * Note the transcript is inserted into and timecode links are built
-	 * against — resolved once at construction so the run targets the right
+	 * against - resolved once at construction so the run targets the right
 	 * note even if the active pane changes before it starts.
 	 */
 	private readonly notePath: string;

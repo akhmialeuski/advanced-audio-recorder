@@ -336,7 +336,7 @@ describe('waveform rendering decision (F2/F3)', () => {
 		try {
 			const container = makeContainer();
 			// A multi-hundred-MB (hour-long) recording must still get the
-			// waveform — it is computed progressively, not skipped by a cap
+			// waveform - it is computed progressively, not skipped by a cap
 			makePlayer(
 				container,
 				makeRegistry(makeFakeAudio()),
@@ -640,7 +640,7 @@ describe('lazy waveform decode (B2)', () => {
 		const decode = rejectingDecode();
 		makeWaveformPlayer(decode).onload();
 
-		// The waveform layer is built eagerly, but nothing is decoded yet — a
+		// The waveform layer is built eagerly, but nothing is decoded yet - a
 		// long note with many recordings must not decode every embed up front
 		expect(MockIntersectionObserver.instances).toHaveLength(1);
 		expect(decode).not.toHaveBeenCalled();

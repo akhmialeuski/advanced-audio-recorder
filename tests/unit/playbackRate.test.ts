@@ -1,5 +1,5 @@
 /**
- * Tests for the playback-rate helpers — the single source of truth for
+ * Tests for the playback-rate helpers - the single source of truth for
  * the speed control shared by both render modes.
  */
 

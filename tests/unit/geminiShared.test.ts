@@ -1,7 +1,7 @@
 /**
  * Tests for the shared Gemini helpers: request building (endpoint URL and the
  * per-model thinking config) and response parsing (candidate text, finish
- * reason, the truncation guard, and the block guard) — so a thinking-model
+ * reason, the truncation guard, and the block guard) - so a thinking-model
  * overrun or a safety stop is surfaced rather than silently mapped to an empty
  * transcript or post-processing result.
  */
@@ -245,7 +245,7 @@ describe('geminiThinkingConfig', () => {
 		// thinkingBudget is a 2.5-series feature; sending thinkingConfig to a
 		// 2.0 model is rejected by the API, so the config must be omitted.
 		expect(geminiThinkingConfig('gemini-2.0-flash')).toBeUndefined();
-		// "pro" alone must not enable thinking — the 2.5 marker is required.
+		// "pro" alone must not enable thinking - the 2.5 marker is required.
 		expect(geminiThinkingConfig('gemini-1.5-pro')).toBeUndefined();
 	});
 });

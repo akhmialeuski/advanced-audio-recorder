@@ -514,7 +514,7 @@ describe('RecordingManager', () => {
 
 			await manager.startRecording();
 
-			// Send 3 small chunks — all buffered in memory, flushed as 1 segment on stop
+			// Send 3 small chunks - all buffered in memory, flushed as 1 segment on stop
 			for (let i = 0; i < 3; i++) {
 				const chunk = new Blob([new Uint8Array([1, 2, 3])], {
 					type: 'audio/webm',

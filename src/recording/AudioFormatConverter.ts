@@ -253,7 +253,7 @@ export async function buildOutputBlob(
  * Merges multiple audio tracks into a single mixed audio blob. The
  * caller resolves the encodable target format (and names the output
  * file from it), so it is passed in instead of being recomputed from
- * live settings — a settings change during the potentially long mix
+ * live settings - a settings change during the potentially long mix
  * could otherwise make the file extension and the encoded content
  * diverge.
  * @param chunkTargets - Recording targets for each track

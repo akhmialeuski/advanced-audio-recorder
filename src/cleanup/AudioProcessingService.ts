@@ -2,7 +2,7 @@
  * On-demand audio cleanup: decode an existing audio file, apply the
  * selected DSP stages (noise gate, high-pass filter, loudness leveling)
  * offline, and write a processed WAV copy next to the source. Invoked
- * from the context menu — it never runs during live recording.
+ * from the context menu - it never runs during live recording.
  * @module cleanup/AudioProcessingService
  */
 
@@ -93,7 +93,7 @@ export class AudioProcessingService {
 	 * Processes an audio file and writes a cleaned WAV copy. The signal is
 	 * decoded once, then gated and rendered one time segment at a time directly
 	 * into the output buffer, so peak memory is bounded by the decoded input
-	 * and the WAV output rather than growing with the recording length — a long
+	 * and the WAV output rather than growing with the recording length - a long
 	 * recording is cleaned up in memory without the old "split first" detour.
 	 * @param file - Source audio file
 	 * @param config - Stages to apply
@@ -158,7 +158,7 @@ export class AudioProcessingService {
 	 * segment is read with a warm-up lead-in (discarded after processing) so the
 	 * stateful gate and offline stages reach the same envelope they would in a
 	 * continuous pass, leaving no boundary artifact. The gate runs first, on the
-	 * decoded signal, then the high-pass and leveling render offline — the same
+	 * decoded signal, then the high-pass and leveling render offline - the same
 	 * order as a whole-file pass, just bounded to one segment.
 	 * @param channels - Full decoded per-channel samples (read as views)
 	 * @param sampleRate - Sample rate in Hz

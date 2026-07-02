@@ -99,8 +99,8 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 	const originalProcess = global.process;
 
 	afterEach(() => {
-		// eslint-disable-next-line
-        (global as unknown as { process: NodeJS.Process }).process = originalProcess;
+		(global as unknown as { process: NodeJS.Process }).process =
+			originalProcess;
 	});
 
 	it('reads apiVersion from app', () => {
@@ -116,8 +116,7 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 			platform: 'win32',
 			arch: 'x64',
 		};
-		// eslint-disable-next-line -- test override of global
-        (global as unknown as { process: typeof proc }).process = proc;
+		(global as unknown as { process: typeof proc }).process = proc;
 
 		const result = SystemDiagnostics.collectEnvironment(makeApp());
 
@@ -129,8 +128,7 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 
 	it('uses "unknown" when process.platform is absent', () => {
 		const proc = { versions: { electron: '28.0.0', node: '20.11.0' } };
-		// eslint-disable-next-line -- test override of global
-        (global as unknown as { process: typeof proc }).process = proc;
+		(global as unknown as { process: typeof proc }).process = proc;
 
 		const result = SystemDiagnostics.collectEnvironment(makeApp());
 
@@ -138,8 +136,7 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 	});
 
 	it('returns "unknown" for electronVersion when process is undefined', () => {
-		// eslint-disable-next-line -- test override of global
-        (global as unknown as { process: undefined }).process = undefined;
+		(global as unknown as { process: undefined }).process = undefined;
 
 		const result = SystemDiagnostics.collectEnvironment(makeApp());
 

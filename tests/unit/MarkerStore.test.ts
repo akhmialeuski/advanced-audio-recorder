@@ -100,7 +100,7 @@ describe('MarkerStore (sidecar)', () => {
 	});
 });
 
-describe('MarkerStore — negative and concurrency cases', () => {
+describe('MarkerStore - negative and concurrency cases', () => {
 	it('does not throw when the adapter write fails', async () => {
 		const app = {
 			vault: {

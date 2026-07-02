@@ -242,7 +242,7 @@ describe('AudioProcessingService.process (e2e pipeline)', () => {
 	it('rejects files whose decoded working set exceeds the sample cap', async () => {
 		// A short, highly compressed file can pass the byte and duration
 		// guards yet decode to a buffer too large to hold several copies of.
-		// length × channels exceeds the cap while the duration stays under
+		// length x channels exceeds the cap while the duration stays under
 		// the limit, so the decoded-sample guard is what rejects it.
 		const sampleRate = 48000;
 		const oversized = {

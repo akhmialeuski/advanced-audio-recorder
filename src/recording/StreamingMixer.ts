@@ -1,7 +1,7 @@
 /**
  * Bounded-memory mixer for multi-track PCM/WAV sessions. The tracks
  * already sit on disk as raw int16 segments, so they are mixed in
- * fixed-size windows directly into the preallocated WAV file buffer —
+ * fixed-size windows directly into the preallocated WAV file buffer -
  * peak memory is the output file plus one window per track, instead
  * of decoding every track into float32 AudioBuffers and rendering
  * them through an OfflineAudioContext (which costs multiple gigabytes
@@ -10,7 +10,7 @@
  * Scope: equal sample rates only (the PCM recorders are created with
  * an explicit shared rate, so this is the normal case). Rate
  * mismatches and compressed merged outputs keep using the Web Audio
- * path — OfflineAudioContext is the platform's resampler, and
+ * path - OfflineAudioContext is the platform's resampler, and
  * reimplementing resampling here would be reinventing it badly.
  * @module recording/StreamingMixer
  */
