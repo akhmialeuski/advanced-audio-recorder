@@ -15,48 +15,15 @@ import {
 import { AudioStreamError } from '../../src/errors';
 import { PLUGIN_LOG_PREFIX } from '../../src/constants';
 import type { App } from 'obsidian';
+import {
+	createRecordingMockApp,
+	installRecordingMediaStubs,
+} from './helpers/recordingManagerTestKit';
 
-// Mock AudioContext and OfflineAudioContext
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-(global as any).AudioContext = jest.fn().mockImplementation(() => ({
-	decodeAudioData: jest.fn().mockResolvedValue({
-		duration: 1,
-		length: 44100,
-		sampleRate: 44100,
-		numberOfChannels: 1,
-		getChannelData: jest.fn().mockReturnValue(new Float32Array(44100)),
-	}),
-	createBufferSource: jest.fn().mockImplementation(() => ({
-		connect: jest.fn(),
-		start: jest.fn(),
-		buffer: null,
-	})),
-	destination: {},
-	close: jest.fn().mockResolvedValue(undefined),
-	sampleRate: 44100,
-}));
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-(global as any).OfflineAudioContext = jest.fn().mockImplementation(() => ({
-	createBufferSource: jest.fn().mockImplementation(() => ({
-		connect: jest.fn(),
-		start: jest.fn(),
-		buffer: null,
-	})),
-	startRendering: jest.fn().mockResolvedValue({
-		length: 44100,
-		sampleRate: 44100,
-		getChannelData: jest.fn().mockReturnValue(new Float32Array(44100)),
-	}),
-	destination: {},
-}));
-
-// Mock AudioBuffer
-(global as unknown as { AudioBuffer: unknown }).AudioBuffer = jest
-	.fn()
-	.mockImplementation(() => ({
-		getChannelData: jest.fn().mockReturnValue(new Float32Array(44100)),
-	}));
+// Mock AudioContext, OfflineAudioContext, and AudioBuffer. The kit's
+// AudioContext stub has no audioWorklet, so the real PcmStreamRecorder
+// used below fails to start like a broken worklet load.
+installRecordingMediaStubs();
 
 // Mock OverconstrainedError if not present in JSDOM
 class OverconstrainedError extends Error {
@@ -100,23 +67,7 @@ describe('AudioStreamHandler: Error Handling', () => {
 		jest.clearAllMocks();
 		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
 
-		mockApp = {
-			vault: {
-				adapter: {
-					exists: jest.fn().mockResolvedValue(false),
-					writeBinary: jest.fn().mockResolvedValue(undefined),
-					rename: jest.fn().mockResolvedValue(undefined),
-					readBinary: jest.fn().mockResolvedValue(new ArrayBuffer(0)),
-					remove: jest.fn().mockResolvedValue(undefined),
-				},
-				createBinary: jest.fn().mockResolvedValue(undefined),
-				createFolder: jest.fn().mockResolvedValue(undefined),
-			},
-			workspace: {
-				getActiveViewOfType: jest.fn().mockReturnValue(null),
-				getActiveFile: jest.fn().mockReturnValue(null),
-			},
-		} as unknown as App;
+		mockApp = createRecordingMockApp();
 
 		mockSettings = { ...DEFAULT_SETTINGS, audioDeviceId: 'test-device-id' };
 		statusChangeCallback = jest.fn();
@@ -299,23 +250,7 @@ describe('Start failure after stream acquisition', () => {
 		jest.clearAllMocks();
 		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
 
-		mockApp = {
-			vault: {
-				adapter: {
-					exists: jest.fn().mockResolvedValue(false),
-					writeBinary: jest.fn().mockResolvedValue(undefined),
-					rename: jest.fn().mockResolvedValue(undefined),
-					readBinary: jest.fn().mockResolvedValue(new ArrayBuffer(0)),
-					remove: jest.fn().mockResolvedValue(undefined),
-				},
-				createBinary: jest.fn().mockResolvedValue(undefined),
-				createFolder: jest.fn().mockResolvedValue(undefined),
-			},
-			workspace: {
-				getActiveViewOfType: jest.fn().mockReturnValue(null),
-				getActiveFile: jest.fn().mockReturnValue(null),
-			},
-		} as unknown as App;
+		mockApp = createRecordingMockApp();
 
 		mockSettings = { ...DEFAULT_SETTINGS, audioDeviceId: 'test-device-id' };
 		statusChangeCallback = jest.fn();
