@@ -97,8 +97,8 @@
     ]
   },
   "dependencies": {
-    "@mediabunny/flac-encoder": "1.46.0",
-    "@mediabunny/mp3-encoder": "1.46.0",
-    "mediabunny": "1.46.0"
+    "@mediabunny/flac-encoder": "1.50.4",
+    "@mediabunny/mp3-encoder": "1.50.4",
+    "mediabunny": "1.50.4"
   }
 }

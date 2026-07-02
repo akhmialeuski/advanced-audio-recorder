@@ -122,7 +122,7 @@ export class TranscriptionModal extends Modal {
 		);
 	}
 
-	onOpen(): void {
+	override onOpen(): void {
 		if (this.rendered) {
 			this.minimized = false;
 			this.clearBackgroundProgress();
@@ -487,7 +487,7 @@ export class TranscriptionModal extends Modal {
 		this.options.backgroundProgress?.clear();
 	}
 
-	onClose(): void {
+	override onClose(): void {
 		if (this.minimized && this.running) {
 			return;
 		}

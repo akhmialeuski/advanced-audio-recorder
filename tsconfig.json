@@ -4,10 +4,10 @@
     "rootDir": "./src",
     "outDir": "./dist",
     "module": "ESNext",
-    "target": "ES2020",
+    "target": "ES2022",
     "lib": [
       "DOM",
-      "ES2020"
+      "ES2022"
     ],
     "strict": true,
     "noImplicitAny": true,
@@ -16,6 +16,8 @@
     "noFallthroughCasesInSwitch": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
+    "noImplicitOverride": true,
+    "useUnknownInCatchVariables": true,
     "esModuleInterop": true,
     "moduleResolution": "node",
     "importHelpers": true,

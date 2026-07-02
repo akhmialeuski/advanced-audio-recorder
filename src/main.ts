@@ -142,7 +142,7 @@ export default class AudioRecorderPlugin extends Plugin {
 	/**
 	 * Called when the plugin is loaded.
 	 */
-	async onload(): Promise<void> {
+	override async onload(): Promise<void> {
 		await this.loadSettings();
 
 		// Offload streaming conversions to a Web Worker when the build
@@ -275,7 +275,7 @@ export default class AudioRecorderPlugin extends Plugin {
 	/**
 	 * Called when the plugin is unloaded.
 	 */
-	onunload(): void {
+	override onunload(): void {
 		this.recordingManager.cleanup();
 		this.recordingBanner.hide();
 		this.playerRegistrar.dispose();
@@ -383,7 +383,7 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * stale in-memory copy does not overwrite the external change on
 	 * the next save.
 	 */
-	async onExternalSettingsChange(): Promise<void> {
+	override async onExternalSettingsChange(): Promise<void> {
 		await this.loadSettings();
 		this.recordingManager.updateSettings(this.settings);
 	}

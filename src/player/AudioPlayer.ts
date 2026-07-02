@@ -203,7 +203,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * embed is populated lets empty() clear Obsidian's native element so
 	 * our player is the one that survives.
 	 */
-	onload(): void {
+	override onload(): void {
 		if (this.options.immediate) {
 			// The embed-registry path hands us an owned container with no
 			// default player to wait for, so render right away

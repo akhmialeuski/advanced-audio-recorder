@@ -29,7 +29,7 @@ export class AudioFileInfoModal extends Modal {
 	/**
 	 * Renders the modal content.
 	 */
-	onOpen(): void {
+	override onOpen(): void {
 		const { contentEl } = this;
 
 		new Setting(contentEl).setName('Audio file info').setHeading();
@@ -90,7 +90,7 @@ export class AudioFileInfoModal extends Modal {
 	/**
 	 * Cleans up modal content on close.
 	 */
-	onClose(): void {
+	override onClose(): void {
 		this.contentEl.empty();
 	}
 }

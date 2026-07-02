@@ -58,7 +58,7 @@ export class ConversionModal extends Modal {
 		this.conversionService = new ConversionService(app, getWorkerClient);
 	}
 
-	onOpen(): void {
+	override onOpen(): void {
 		const { contentEl } = this;
 		contentEl.empty();
 
@@ -135,7 +135,7 @@ export class ConversionModal extends Modal {
 		});
 	}
 
-	onClose(): void {
+	override onClose(): void {
 		if (this.isConverting && !this.progressNotice) {
 			// Timeout 0 keeps the notice visible until hidden explicitly;
 			// setProgress mirrors further pipeline progress into it

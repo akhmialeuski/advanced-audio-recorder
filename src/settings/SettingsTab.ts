@@ -998,7 +998,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * flushes a pending debounced text-setting save, and detaches the
 	 * device-change listener registered in display().
 	 */
-	hide(): void {
+	override hide(): void {
 		this.saveTextSettingDebounced.run();
 		this.cleanupTestRecording();
 		if (this.deviceChangeHandler) {

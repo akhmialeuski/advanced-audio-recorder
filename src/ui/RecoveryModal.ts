@@ -43,7 +43,7 @@ export class RecoveryModal extends Modal {
 		super(app);
 	}
 
-	onOpen(): void {
+	override onOpen(): void {
 		const { contentEl } = this;
 		contentEl.empty();
 
@@ -97,7 +97,7 @@ export class RecoveryModal extends Modal {
 			);
 	}
 
-	onClose(): void {
+	override onClose(): void {
 		// Closing without a decision keeps the journal untouched: the
 		// prompt returns on the next launch
 		this.contentEl.empty();
