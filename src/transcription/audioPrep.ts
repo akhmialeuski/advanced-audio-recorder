@@ -10,20 +10,13 @@
  */
 
 import {
-	FORMAT_WAV,
-	FORMAT_WEBM,
-	FORMAT_OGG,
-	FORMAT_MP3,
-	FORMAT_MP4,
-	FORMAT_M4A,
-	FORMAT_AAC,
-	FORMAT_FLAC,
-	MIME_TYPE_AUDIO_PREFIX,
 	MIN_AUDIO_BYTES_PER_SEC,
 	MIN_SUBDIVIDE_SECONDS,
 	TRANSCRIBE_BYTES_PER_SEC,
 	TRANSCRIBE_SAMPLE_RATE,
+	MIME_TYPE_AUDIO_PREFIX,
 } from '../constants';
+import { audioMimeForExtension } from '../audio/formatRegistry';
 import {
 	decodeToMono16k,
 	extractChunkWav,
@@ -33,18 +26,6 @@ import {
 } from './audioChunks';
 import type { ProviderCapabilities } from './providers/TranscriptionProvider';
 
-/** Maps a lowercased file extension to its upload container MIME type. */
-const EXTENSION_MIME: Record<string, string> = {
-	[FORMAT_WAV]: `${MIME_TYPE_AUDIO_PREFIX}wav`,
-	[FORMAT_WEBM]: `${MIME_TYPE_AUDIO_PREFIX}webm`,
-	[FORMAT_OGG]: `${MIME_TYPE_AUDIO_PREFIX}ogg`,
-	[FORMAT_MP3]: `${MIME_TYPE_AUDIO_PREFIX}mpeg`,
-	[FORMAT_MP4]: `${MIME_TYPE_AUDIO_PREFIX}mp4`,
-	[FORMAT_M4A]: `${MIME_TYPE_AUDIO_PREFIX}mp4`,
-	[FORMAT_AAC]: `${MIME_TYPE_AUDIO_PREFIX}aac`,
-	[FORMAT_FLAC]: `${MIME_TYPE_AUDIO_PREFIX}flac`,
-};
-
 /**
  * Resolves an upload MIME type for a file extension, defaulting to
  * `audio/<ext>` for anything not explicitly mapped.
@@ -52,8 +33,7 @@ const EXTENSION_MIME: Record<string, string> = {
  * @returns A container MIME type suitable for an upload
  */
 export function audioMimeFromExtension(extension: string): string {
-	const ext = extension.toLowerCase();
-	return EXTENSION_MIME[ext] ?? `${MIME_TYPE_AUDIO_PREFIX}${ext}`;
+	return audioMimeForExtension(extension.toLowerCase());
 }
 
 /** How the audio should be prepared for a specific provider. */

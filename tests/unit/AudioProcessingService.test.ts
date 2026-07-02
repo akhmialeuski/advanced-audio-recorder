@@ -9,10 +9,8 @@
  */
 
 import type { App, TFile } from 'obsidian';
-import {
-	AudioProcessingService,
-	floatToInt16,
-} from 'src/cleanup/AudioProcessingService';
+import { AudioProcessingService } from 'src/cleanup/AudioProcessingService';
+import { floatToInt16 } from 'src/audio/pcm';
 import type { AudioDspConfig } from 'src/cleanup/audioDsp';
 import {
 	MAX_AUDIO_CLEANUP_BYTES,

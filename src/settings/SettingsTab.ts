@@ -42,6 +42,8 @@ import {
 	CLEANUP_HIGHPASS_STEP_HZ,
 	CLEANUP_GATE_STEP_DB,
 	CLEANUP_LEVELING_STEP_DB,
+	FORMAT_WAV,
+	FORMAT_WEBM,
 } from '../constants';
 import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
 import { SystemInfoModal } from '../diagnostics/SystemInfoModal';
@@ -118,7 +120,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 
 	private getCompressionDescription(format: string): string {
 		const encoder = getEncoderDescription(format);
-		if (format === 'wav') {
+		if (format === FORMAT_WAV) {
 			return `Uncompressed WAV (larger size). Encoder: ${encoder}.`;
 		}
 		if (
@@ -882,7 +884,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			this.cleanupTestRecording();
 
 			const format = this.plugin.settings.recordingFormat;
-			const recorderFormat = format === 'wav' ? 'webm' : format;
+			const recorderFormat = format === FORMAT_WAV ? FORMAT_WEBM : format;
 			const mimeType = buildMimeType(recorderFormat);
 
 			if (!MediaRecorder.isTypeSupported(mimeType)) {

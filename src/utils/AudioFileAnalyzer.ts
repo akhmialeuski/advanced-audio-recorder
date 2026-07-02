@@ -5,7 +5,12 @@
 
 import { App, Notice, TFile } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
+import {
+	audioMimeForExtension,
+	getFormatDescriptor,
+} from '../audio/formatRegistry';
 import { formatByteSize } from './formatBytes';
+import { formatTimecode } from './TimeUtils';
 
 /**
  * Represents detailed information about an audio file.
@@ -90,9 +95,9 @@ export async function getAudioFileInfo(
 				trimZeros: true,
 				bytesLabel: 'Bytes',
 			}),
-			duration: formatDuration(durationInSeconds),
-			containerFormat: getMimeTypeFromExtension(extension),
-			audioCodec: inferCodecFromExtension(extension),
+			duration: formatTimecode(durationInSeconds),
+			containerFormat: audioMimeForExtension(extension),
+			audioCodec: getFormatDescriptor(extension)?.codecLabel ?? 'unknown',
 			bitrate: `${bitrateKbps} kbps`,
 			sampleRate: `${audioBuffer.sampleRate} Hz`,
 			channels: formatChannels(audioBuffer.numberOfChannels),
@@ -108,28 +113,6 @@ export async function getAudioFileInfo(
 }
 
 /**
- * Formats duration in seconds to HH:MM:SS string.
- * @param seconds - Total seconds.
- * @returns Formatted duration string.
- */
-function formatDuration(seconds: number): string {
-	if (!isFinite(seconds) || seconds < 0) {
-		return '00:00:00';
-	}
-
-	const h = Math.floor(seconds / 3600);
-	const m = Math.floor((seconds % 3600) / 60);
-	const s = Math.floor(seconds % 60);
-
-	const pad = (num: number) => num.toString().padStart(2, '0');
-
-	if (h > 0) {
-		return `${pad(h)}:${pad(m)}:${pad(s)}`;
-	}
-	return `00:${pad(m)}:${pad(s)}`;
-}
-
-/**
  * Formats the number of channels into a readable string.
  * @param channels - Number of audio channels.
  * @returns Formatted channels string.
@@ -138,57 +121,4 @@ function formatChannels(channels: number): string {
 	if (channels === 1) return '1 (Mono)';
 	if (channels === 2) return '2 (Stereo)';
 	return `${channels} channels`;
-}
-
-/**
- * Infers the likely audio codec based on the file extension.
- * @param extension - The file extension.
- * @returns The inferred codec string.
- */
-function inferCodecFromExtension(extension: string): string {
-	switch (extension) {
-		case 'webm':
-			return 'opus';
-		case 'ogg':
-			return 'opus/vorbis';
-		case 'mp4':
-		case 'm4a':
-		case 'aac':
-			return 'aac';
-		case 'mp3':
-			return 'mp3';
-		case 'wav':
-			return 'pcm';
-		case 'flac':
-			return 'flac';
-		default:
-			return 'unknown';
-	}
-}
-
-/**
- * Gets the standard MIME type for the audio container format.
- * @param extension - The file extension.
- * @returns The MIME type string.
- */
-function getMimeTypeFromExtension(extension: string): string {
-	switch (extension) {
-		case 'webm':
-			return 'audio/webm';
-		case 'ogg':
-			return 'audio/ogg';
-		case 'mp4':
-		case 'm4a':
-			return 'audio/mp4';
-		case 'aac':
-			return 'audio/aac';
-		case 'mp3':
-			return 'audio/mpeg';
-		case 'wav':
-			return 'audio/wav';
-		case 'flac':
-			return 'audio/flac';
-		default:
-			return `audio/${extension}`;
-	}
 }

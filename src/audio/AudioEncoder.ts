@@ -9,26 +9,16 @@ import {
 	Output,
 	BufferTarget,
 	AudioBufferSource,
-	Mp4OutputFormat,
-	WebMOutputFormat,
-	OggOutputFormat,
-	FlacOutputFormat,
-	Mp3OutputFormat,
-	WavOutputFormat,
 	canEncodeAudio,
 } from 'mediabunny';
 import type { OutputFormat, AudioCodec } from 'mediabunny';
 import { EncodingError } from '../errors';
+import { FORMAT_MP3, FORMAT_FLAC } from '../constants';
 import {
-	FORMAT_WAV,
-	FORMAT_WEBM,
-	FORMAT_OGG,
-	FORMAT_MP3,
-	FORMAT_MP4,
-	FORMAT_M4A,
-	FORMAT_AAC,
-	FORMAT_FLAC,
-} from '../constants';
+	AUDIO_FORMAT_IDS,
+	FORMAT_REGISTRY,
+	getFormatDescriptor,
+} from './formatRegistry';
 
 /**
  * Options for offline audio encoding.
@@ -45,55 +35,24 @@ export interface EncodingOptions {
  */
 export type ProgressCallback = (percent: number) => void;
 
-/** Formats that Mediabunny handles via AudioBufferSource (WebCodecs-backed). */
-const WEBCODECS_FORMATS = new Set([
-	FORMAT_WEBM,
-	FORMAT_OGG,
-	FORMAT_MP4,
-	FORMAT_M4A,
-	FORMAT_AAC,
-]);
-
-/** Codec used per format in Mediabunny AudioBufferSource. */
-export const FORMAT_CODEC_MAP: Record<string, AudioCodec> = {
-	[FORMAT_WEBM]: 'opus',
-	[FORMAT_OGG]: 'opus',
-	[FORMAT_MP4]: 'aac',
-	[FORMAT_M4A]: 'aac',
-	[FORMAT_AAC]: 'aac',
-	[FORMAT_FLAC]: 'flac',
-	[FORMAT_MP3]: 'mp3',
-	[FORMAT_WAV]: 'pcm-s16',
-};
-
 /**
- * Uncompressed codecs: a bitrate option is meaningless for them and
- * must not be passed to the encoder.
+ * Codec used per format in Mediabunny AudioBufferSource. A view over
+ * the format registry, kept as an export because the streaming
+ * conversion pipeline (and its worker) resolve codecs through it.
  */
-const PCM_CODECS = new Set<AudioCodec>(['pcm-s16']);
+export const FORMAT_CODEC_MAP: Record<string, AudioCodec> = Object.fromEntries(
+	AUDIO_FORMAT_IDS.map((id) => [id, FORMAT_REGISTRY[id].codec]),
+);
 
 /**
  * Creates the appropriate Mediabunny OutputFormat for the given format.
  */
 export function createOutputFormat(format: string): OutputFormat {
-	switch (format) {
-		case FORMAT_WAV:
-			return new WavOutputFormat();
-		case FORMAT_WEBM:
-			return new WebMOutputFormat();
-		case FORMAT_OGG:
-			return new OggOutputFormat();
-		case FORMAT_MP4:
-		case FORMAT_M4A:
-		case FORMAT_AAC:
-			return new Mp4OutputFormat();
-		case FORMAT_FLAC:
-			return new FlacOutputFormat();
-		case FORMAT_MP3:
-			return new Mp3OutputFormat();
-		default:
-			throw new EncodingError(`No output format for "${format}"`, format);
+	const descriptor = getFormatDescriptor(format);
+	if (!descriptor) {
+		throw new EncodingError(`No output format for "${format}"`, format);
 	}
+	return descriptor.createOutputFormat();
 }
 
 /**
@@ -104,12 +63,18 @@ export function createOutputFormat(format: string): OutputFormat {
  * @param format - Target audio format
  */
 export async function ensureEncoderRegistered(format: string): Promise<void> {
-	if (format === FORMAT_FLAC && !(await canEncodeAudio('flac'))) {
+	if (
+		format === FORMAT_FLAC &&
+		!(await canEncodeAudio(FORMAT_REGISTRY[FORMAT_FLAC].codec))
+	) {
 		const { registerFlacEncoder } =
 			await import('@mediabunny/flac-encoder');
 		registerFlacEncoder();
 	}
-	if (format === FORMAT_MP3 && !(await canEncodeAudio('mp3'))) {
+	if (
+		format === FORMAT_MP3 &&
+		!(await canEncodeAudio(FORMAT_REGISTRY[FORMAT_MP3].codec))
+	) {
 		const { registerMp3Encoder } = await import('@mediabunny/mp3-encoder');
 		registerMp3Encoder();
 	}
@@ -130,12 +95,7 @@ export async function encodeAudioBuffer(
 ): Promise<Blob> {
 	const { format } = options;
 
-	if (
-		WEBCODECS_FORMATS.has(format) ||
-		format === FORMAT_WAV ||
-		format === FORMAT_FLAC ||
-		format === FORMAT_MP3
-	) {
+	if (getFormatDescriptor(format)) {
 		return encodeWithMediabunny(buffer, options, onProgress);
 	}
 
@@ -152,11 +112,12 @@ async function encodeWithMediabunny(
 	onProgress?: ProgressCallback,
 ): Promise<Blob> {
 	const { format, bitrate } = options;
-	const codec: AudioCodec | undefined = FORMAT_CODEC_MAP[format];
+	const descriptor = getFormatDescriptor(format);
 
-	if (!codec) {
+	if (!descriptor) {
 		throw new EncodingError(`No codec mapping for "${format}"`, format);
 	}
+	const codec = descriptor.codec;
 
 	try {
 		await ensureEncoderRegistered(format);
@@ -167,7 +128,7 @@ async function encodeWithMediabunny(
 
 		// PCM is uncompressed: passing a bitrate is invalid for it
 		const audioSource = new AudioBufferSource(
-			PCM_CODECS.has(codec) ? { codec } : { codec, bitrate },
+			descriptor.isPcm ? { codec } : { codec, bitrate },
 		);
 		output.addAudioTrack(audioSource);
 
@@ -207,17 +168,14 @@ async function encodeWithMediabunny(
  * @returns true if offline encoding to this format is possible
  */
 export function isOfflineEncodingSupported(format: string): boolean {
-	if (
-		format === FORMAT_WAV ||
-		format === FORMAT_MP3 ||
-		format === FORMAT_FLAC
-	) {
-		return true;
+	const descriptor = getFormatDescriptor(format);
+	if (!descriptor) {
+		return false;
 	}
-	if (WEBCODECS_FORMATS.has(format)) {
+	if (descriptor.requiresWebCodecs) {
 		return typeof AudioEncoder !== 'undefined';
 	}
-	return false;
+	return true;
 }
 
 /**
@@ -226,22 +184,5 @@ export function isOfflineEncodingSupported(format: string): boolean {
  * @returns Encoder description string
  */
 export function getEncoderDescription(format: string): string {
-	switch (format) {
-		case FORMAT_WAV:
-			return 'PCM (built-in)';
-		case FORMAT_WEBM:
-			return 'AudioEncoder (Opus) + Mediabunny';
-		case FORMAT_OGG:
-			return 'AudioEncoder (Opus) + Mediabunny';
-		case FORMAT_MP4:
-		case FORMAT_M4A:
-		case FORMAT_AAC:
-			return 'AudioEncoder (AAC) + Mediabunny';
-		case FORMAT_MP3:
-			return 'Mediabunny MP3 Encoder';
-		case FORMAT_FLAC:
-			return 'Mediabunny FLAC Encoder';
-		default:
-			return 'Unknown';
-	}
+	return getFormatDescriptor(format)?.encoderDescription ?? 'Unknown';
 }

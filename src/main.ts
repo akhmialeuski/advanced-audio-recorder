@@ -25,10 +25,7 @@ import {
 	discardSession,
 } from './recording/RecoveryService';
 import { RecoveryModal } from './ui/RecoveryModal';
-import {
-	EncodingWorkerClient,
-	setEncodingWorkerClient,
-} from './audio/EncodingWorkerClient';
+import { EncodingWorkerClient } from './audio/EncodingWorkerClient';
 import {
 	updateStatusBar,
 	updateRecordingLiveStats,
@@ -147,8 +144,6 @@ export default class AudioRecorderPlugin extends Plugin {
 				? __ENCODING_WORKER_SOURCE__
 				: null,
 		);
-		setEncodingWorkerClient(this.encodingWorker);
-
 		this.journal = new SessionJournal(
 			this.getPluginFilePath(JOURNAL_FILE_NAME),
 			this.app,
@@ -171,6 +166,7 @@ export default class AudioRecorderPlugin extends Plugin {
 				this.handleRecordingSaved(result);
 			},
 			markerStore,
+			() => this.encodingWorker,
 		);
 
 		this.addSettingTab(new AudioRecorderSettingTab(this.app, this));
@@ -198,6 +194,7 @@ export default class AudioRecorderPlugin extends Plugin {
 					paths,
 					notePath,
 				),
+			() => this.encodingWorker,
 		);
 		this.contextMenu.register();
 
@@ -285,7 +282,6 @@ export default class AudioRecorderPlugin extends Plugin {
 		this.recordingManager.cleanup();
 		this.recordingBanner.hide();
 		this.playerRegistrar.dispose();
-		setEncodingWorkerClient(null);
 		this.encodingWorker?.terminate();
 		this.encodingWorker = null;
 		initializeStatusBar(this.statusBarItem);

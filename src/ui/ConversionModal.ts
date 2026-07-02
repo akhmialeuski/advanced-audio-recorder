@@ -15,6 +15,7 @@ import {
 	addLinkActionSetting,
 } from './settingHelpers';
 import { ConversionService } from '../recording/ConversionService';
+import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import type {
 	AudioRecorderSettings,
 	ConversionLinkAction,
@@ -48,12 +49,13 @@ export class ConversionModal extends Modal {
 		sourceFile: TFile,
 		settings: AudioRecorderSettings,
 		private readonly onConverted?: (convertedPath: string) => void,
+		getWorkerClient: () => EncodingWorkerClient | null = () => null,
 	) {
 		super(app);
 		this.sourceFile = sourceFile;
 		this.deleteSource = settings.deleteSourceAfterConversion;
 		this.linkAction = settings.conversionLinkAction;
-		this.conversionService = new ConversionService(app);
+		this.conversionService = new ConversionService(app, getWorkerClient);
 	}
 
 	onOpen(): void {

@@ -16,10 +16,10 @@
  */
 
 import type { App } from 'obsidian';
-import { createWavHeader, WAV_HEADER_SIZE } from '../audio/WavEncoder';
+import { createWavFileBuffer, WAV_HEADER_SIZE } from '../audio/WavEncoder';
+import { INT16_MAX, INT16_MIN, PCM_BYTES_PER_SAMPLE } from '../audio/pcm';
 
 /** Bytes per int16 sample. */
-const BYTES_PER_SAMPLE = 2;
 
 /** Default mix window in sample frames (~1 MiB stereo int16). */
 const DEFAULT_WINDOW_FRAMES = 262144;
@@ -100,7 +100,7 @@ class PcmSegmentReader {
 				this.current = new Int16Array(
 					bytes,
 					0,
-					Math.floor(bytes.byteLength / BYTES_PER_SAMPLE),
+					Math.floor(bytes.byteLength / PCM_BYTES_PER_SAMPLE),
 				);
 				this.currentOffset = 0;
 			}
@@ -160,7 +160,7 @@ export async function mixPcmTracksToWav(
 			bytes += stat.size;
 		}
 		frameCounts.push(
-			Math.floor(bytes / (BYTES_PER_SAMPLE * track.channels)),
+			Math.floor(bytes / (PCM_BYTES_PER_SAMPLE * track.channels)),
 		);
 	}
 	const totalFrames = Math.max(...frameCounts);
@@ -170,20 +170,12 @@ export async function mixPcmTracksToWav(
 	);
 	const sampleRate = tracks[0].sampleRate;
 
-	const wavBuffer = new ArrayBuffer(
-		WAV_HEADER_SIZE + totalFrames * outChannels * BYTES_PER_SAMPLE,
+	const wavBuffer = createWavFileBuffer(
+		outChannels,
+		sampleRate,
+		totalFrames * outChannels * PCM_BYTES_PER_SAMPLE,
 	);
 	const output = new Int16Array(wavBuffer, WAV_HEADER_SIZE);
-	new Uint8Array(wavBuffer).set(
-		new Uint8Array(
-			createWavHeader(
-				outChannels,
-				sampleRate,
-				totalFrames * outChannels * BYTES_PER_SAMPLE,
-			),
-		),
-		0,
-	);
 
 	const readers = tracks.map(
 		(track) =>
@@ -223,7 +215,7 @@ export async function mixPcmTracksToWav(
 		for (let i = 0; i < frames * outChannels; i++) {
 			const sum = accumulator[i];
 			output[outBase + i] =
-				sum > 32767 ? 32767 : sum < -32768 ? -32768 : sum;
+				sum > INT16_MAX ? INT16_MAX : sum < INT16_MIN ? INT16_MIN : sum;
 		}
 
 		frameOffset += frames;

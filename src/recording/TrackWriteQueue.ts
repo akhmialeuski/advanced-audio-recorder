@@ -13,10 +13,10 @@ import type { App } from 'obsidian';
 import type { RecordingSessionConfig, RecordingTarget } from '../types';
 import type { AudioRecorderSettings } from '../settings/Settings';
 import { PLUGIN_LOG_PREFIX } from '../constants';
+import { concatArrayBuffers } from '../utils/buffers';
 import { resolveUniquePath } from '../audio/RecordingFileManager';
 import { buildOutputBlob } from '../audio/AudioFormatConverter';
 import { buildMimeType } from '../audio/AudioCapabilityDetector';
-import { totalByteLength } from './AudioSplitter';
 import { SessionJournal } from './SessionJournal';
 
 /**
@@ -206,12 +206,7 @@ export class TrackWriteQueue {
 			this.settings,
 		);
 
-		const merged = new Uint8Array(totalByteLength(target.pcmBuffers));
-		let offset = 0;
-		for (const buf of target.pcmBuffers) {
-			merged.set(new Uint8Array(buf), offset);
-			offset += buf.byteLength;
-		}
+		const merged = concatArrayBuffers(target.pcmBuffers);
 
 		// Temporary segment: a plain adapter write skips createBinary's
 		// synchronous vault-index update and event dispatch on the hot

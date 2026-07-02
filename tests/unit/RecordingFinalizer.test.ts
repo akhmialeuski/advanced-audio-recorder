@@ -244,7 +244,7 @@ describe('RecordingFinalizer', () => {
 				'mp3',
 				128000,
 				expect.any(Function),
-				{ allowRemux: true },
+				{ allowRemux: true, workerClient: null },
 			);
 			// The encoder progress callback maps into the 40-60% band
 			const progressCallback = (convertBlobToFormat as jest.Mock).mock

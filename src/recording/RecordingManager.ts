@@ -58,6 +58,7 @@ import {
 import { PcmStreamRecorder } from './PcmStreamRecorder';
 import { InputLevelMonitor } from './InputLevelMonitor';
 import { resolveRecorderFormat } from '../audio/AudioFormatConverter';
+import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import { TrackWriteQueue } from './TrackWriteQueue';
 import { RecordingFinalizer } from './RecordingFinalizer';
 import { PartRotationController } from './PartRotationController';
@@ -146,6 +147,7 @@ export class RecordingManager {
 			result: RecordingSaveResult,
 		) => void,
 		private readonly markerStore: MarkerStore = new MarkerStore(app),
+		getWorkerClient: () => EncodingWorkerClient | null = () => null,
 	) {
 		this.onStatusChange = onStatusChange;
 		this.debugLogger = new DebugLogger(settings);
@@ -159,6 +161,7 @@ export class RecordingManager {
 				this.setStatus(RecordingStatus.Saving, progress);
 			},
 			journal,
+			getWorkerClient,
 		);
 		this.rotation = new PartRotationController(
 			app,

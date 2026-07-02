@@ -34,6 +34,8 @@ import {
 	mergeAudioTracks,
 } from '../audio/AudioFormatConverter';
 import { buildMimeType } from '../audio/AudioCapabilityDetector';
+import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
+import { audioMimeForExtension } from '../audio/formatRegistry';
 import { canStreamMix, mixPcmTracksToWav } from './StreamingMixer';
 import { buildPartFileName } from './AudioSplitter';
 import { insertFileLinks } from './NoteInserter';
@@ -70,6 +72,8 @@ export class RecordingFinalizer {
 			null,
 			app,
 		),
+		private readonly getWorkerClient: () => EncodingWorkerClient | null = () =>
+			null,
 	) {}
 
 	/**
@@ -436,7 +440,9 @@ export class RecordingFinalizer {
 			if (reportProgress) {
 				this.reportProgress(40, 'Assembling audio...');
 			}
-			const wavBlob = await convertBlobToWav(blob);
+			const wavBlob = await convertBlobToWav(blob, {
+				workerClient: this.getWorkerClient(),
+			});
 			if (reportProgress) {
 				this.reportProgress(60, 'Writing file...');
 			}
@@ -463,7 +469,7 @@ export class RecordingFinalizer {
 				},
 				// The intermediate blob was recorded at the session
 				// bitrate, so a codec-matching remux preserves it
-				{ allowRemux: true },
+				{ allowRemux: true, workerClient: this.getWorkerClient() },
 			);
 			if (reportProgress) {
 				this.reportProgress(60, 'Writing file...');
@@ -584,7 +590,9 @@ export class RecordingFinalizer {
 					);
 				},
 			);
-			return new Blob([wavBuffer], { type: 'audio/wav' });
+			return new Blob([wavBuffer], {
+				type: audioMimeForExtension(FORMAT_WAV),
+			});
 		} catch (error) {
 			console.warn(
 				`${PLUGIN_LOG_PREFIX} Streaming mix failed, falling back to the Web Audio mix:`,
@@ -623,7 +631,7 @@ export class RecordingFinalizer {
 			this.app,
 		);
 		return new Blob([wavBuffer], {
-			type: 'audio/wav',
+			type: audioMimeForExtension(FORMAT_WAV),
 		});
 	}
 

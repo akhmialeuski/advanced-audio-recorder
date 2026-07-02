@@ -21,6 +21,7 @@ import { MARKER_KIND, type MarkerKind } from '../player/markers/markerModel';
 import { getAudioFileInfo } from '../utils/AudioFileAnalyzer';
 import { AudioFileInfoModal } from './AudioFileInfoModal';
 import { ConversionModal } from './ConversionModal';
+import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import { SplitModal } from './SplitModal';
 import { TranscriptionModal } from './TranscriptionModal';
 import type { TranscriptionModalOptions } from './TranscriptionModal';
@@ -78,6 +79,7 @@ export class ContextMenu {
 		private getSettings: () => AudioRecorderSettings,
 		private createTranscriptionModalOptions: () => TranscriptionModalOptions = () => ({}),
 		private primeForEnhancement: EnhancementPrimer = () => {},
+		private getWorkerClient: () => EncodingWorkerClient | null = () => null,
 	) {}
 
 	/**
@@ -557,6 +559,7 @@ export class ContextMenu {
 									null,
 							);
 						},
+						this.getWorkerClient,
 					).open();
 				});
 		});

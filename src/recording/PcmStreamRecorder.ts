@@ -6,7 +6,7 @@
  * @module recording/PcmStreamRecorder
  */
 
-import { PLUGIN_LOG_PREFIX } from '../constants';
+import { DEFAULT_SAMPLE_RATE, PLUGIN_LOG_PREFIX } from '../constants';
 
 /**
  * Number of interleaved int16 samples to accumulate before posting.
@@ -107,7 +107,7 @@ export class PcmStreamRecorder {
 	private gainNode: GainNode | null = null;
 	private workletBlobUrl: string | null = null;
 	private channelCount: number = 1;
-	private actualSampleRate: number = 44100;
+	private actualSampleRate: number = DEFAULT_SAMPLE_RATE;
 
 	/**
 	 * Creates a new PcmStreamRecorder.

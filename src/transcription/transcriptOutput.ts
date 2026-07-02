@@ -8,6 +8,7 @@ import { MarkdownView, Notice } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { resolveUniquePathInDirectory } from '../audio/RecordingFileManager';
+import { directoryOf } from '../utils/paths';
 import { serializeTranscriptFile } from './transcriptFormat';
 import type {
 	Transcript,
@@ -50,15 +51,6 @@ export function buildTranscriptFilePath(
 	const base = dotIndex > 0 ? audioPath.slice(0, dotIndex) : audioPath;
 	const suffix = format === 'json' ? 'transcript.json' : format;
 	return `${base}.${suffix}`;
-}
-
-/**
- * Returns the directory portion of a vault path ('' for a root file).
- * @param path - Vault path
- */
-function directoryOf(path: string): string {
-	const slash = path.lastIndexOf('/');
-	return slash >= 0 ? path.slice(0, slash) : '';
 }
 
 /**

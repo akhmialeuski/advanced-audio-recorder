@@ -10,6 +10,8 @@
 
 import type { App } from 'obsidian';
 import { PLUGIN_LOG_PREFIX, FORMAT_WAV } from '../constants';
+import { concatArrayBuffers } from '../utils/buffers';
+import { directoryOf } from '../utils/paths';
 import { assembleWavFromPcmSegmentFiles } from '../audio/WavEncoder';
 import {
 	removeTemporaryArtifacts,
@@ -30,17 +32,6 @@ export interface RecoveryResult {
 	recoveredPaths: string[];
 	/** Base names of tracks that could not be recovered. */
 	failedTracks: string[];
-}
-
-/**
- * Returns the directory part of a vault-relative path.
- * @param path - Vault-relative file path
- * @returns Directory path, or empty string for root-level files
- */
-function directoryOf(path: string): string {
-	const segments = path.split('/');
-	segments.pop();
-	return segments.join('/');
 }
 
 /**
@@ -181,17 +172,7 @@ export async function recoverSession(
 				for (const path of track.segmentPaths) {
 					segments.push(await app.vault.adapter.readBinary(path));
 				}
-				const totalBytes = segments.reduce(
-					(sum, segment) => sum + segment.byteLength,
-					0,
-				);
-				const combined = new Uint8Array(totalBytes);
-				let offset = 0;
-				for (const segment of segments) {
-					combined.set(new Uint8Array(segment), offset);
-					offset += segment.byteLength;
-				}
-				outputBytes = combined.buffer;
+				outputBytes = concatArrayBuffers(segments).buffer;
 				extension = session.recorderFormat;
 			}
 

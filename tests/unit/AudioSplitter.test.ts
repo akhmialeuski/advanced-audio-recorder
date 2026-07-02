@@ -15,9 +15,9 @@ import {
 	clampSplitMinutes,
 	totalByteLength,
 	detachTrailingBytes,
-	PCM_BYTES_PER_SAMPLE,
 	type WavLayout,
 } from '../../src/recording/AudioSplitter';
+import { PCM_BYTES_PER_SAMPLE } from '../../src/audio/pcm';
 import { createWavHeader } from '../../src/audio/WavEncoder';
 
 /** WAV header size produced by createWavHeader. */

@@ -134,7 +134,6 @@ import {
 	buildOutputBlob,
 	mergeAudioTracks,
 } from '../../src/audio/AudioFormatConverter';
-import { setEncodingWorkerClient } from '../../src/audio/EncodingWorkerClient';
 import type { EncodingWorkerClient } from '../../src/audio/EncodingWorkerClient';
 
 describe('AudioFormatConverter', () => {
@@ -379,10 +378,6 @@ describe('AudioFormatConverter', () => {
 	// convertBlobToFormat
 	// ---------------------------------------------------------------
 	describe('convertBlobToFormat', () => {
-		afterEach(() => {
-			setEncodingWorkerClient(null);
-		});
-
 		it('should use the encoding worker when one is available', async () => {
 			const workerClient = {
 				isAvailable: () => true,
@@ -392,9 +387,6 @@ describe('AudioFormatConverter', () => {
 						new Blob(['worker'], { type: 'audio/mp3' }),
 					),
 			};
-			setEncodingWorkerClient(
-				workerClient as unknown as EncodingWorkerClient,
-			);
 			const blob = new Blob(['test'], { type: 'audio/webm' });
 
 			const result = await convertBlobToFormat(
@@ -402,7 +394,11 @@ describe('AudioFormatConverter', () => {
 				'mp3',
 				192000,
 				undefined,
-				{ allowRemux: true },
+				{
+					allowRemux: true,
+					workerClient:
+						workerClient as unknown as EncodingWorkerClient,
+				},
 			);
 
 			expect(workerClient.convertBlob).toHaveBeenCalledWith(
@@ -425,12 +421,18 @@ describe('AudioFormatConverter', () => {
 					.fn()
 					.mockRejectedValue(new Error('worker died')),
 			};
-			setEncodingWorkerClient(
-				workerClient as unknown as EncodingWorkerClient,
-			);
 			const blob = new Blob(['test'], { type: 'audio/webm' });
 
-			const result = await convertBlobToFormat(blob, 'mp4', 128000);
+			const result = await convertBlobToFormat(
+				blob,
+				'mp4',
+				128000,
+				undefined,
+				{
+					workerClient:
+						workerClient as unknown as EncodingWorkerClient,
+				},
+			);
 
 			expect(mockConversionInit).toHaveBeenCalledTimes(1);
 			expect(result).toBeInstanceOf(Blob);
