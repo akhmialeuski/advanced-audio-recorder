@@ -44,12 +44,12 @@ import {
 	registerRecordingActionCommands,
 } from './actions/registerActionCommands';
 import { EnhancedPlayerRegistrar } from './player/EnhancedPlayerRegistrar';
-import { MarkerStore } from './player/markers/MarkerStore';
+import { MarkerStore } from './markers/MarkerStore';
 import { RecordingMarkerModal } from './ui/MarkerModal';
 import { TranscriptionModal } from './ui/TranscriptionModal';
 import type { TranscriptionModalOptions } from './ui/TranscriptionModal';
 import { COMMAND_IDS } from './constants';
-import type { MarkerKind } from './player/markers/markerModel';
+import type { MarkerKind } from './markers/markerModel';
 import { delay } from './utils/TimeUtils';
 
 /** Delay before retrying a failed settings read, in milliseconds. */

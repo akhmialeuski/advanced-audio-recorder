@@ -21,7 +21,7 @@ import {
 	type MarkerKind,
 	type MarkerRow,
 	type PlayerMarker,
-} from '../markers/markerModel';
+} from '../../markers/markerModel';
 
 /**
  * Debounce before persisting a marker rename, so a rename is saved and synced

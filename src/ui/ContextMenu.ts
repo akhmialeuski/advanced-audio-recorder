@@ -17,7 +17,7 @@ import type { MarkdownFileInfo } from 'obsidian';
 import type { MenuItem } from 'obsidian';
 import { AAR_MENU_SECTION, PLUGIN_LOG_PREFIX } from '../constants';
 import { getPlayerEmbedActions } from '../player/playerEmbedActions';
-import { MARKER_KIND, type MarkerKind } from '../player/markers/markerModel';
+import { MARKER_KIND, type MarkerKind } from '../markers/markerModel';
 import { isAudioFile } from '../utils/audioFile';
 import type { ActionServices, FileAction } from '../actions/PluginAction';
 import { renderFileActionsIntoMenu } from '../actions/renderActionsIntoMenu';

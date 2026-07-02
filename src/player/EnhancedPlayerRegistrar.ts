@@ -50,7 +50,7 @@ import {
 } from './timecodeLinks';
 import { probeMediaKind, type MediaKind } from './mediaProbe';
 import { shouldEnhance } from './playerMode';
-import type { MarkerStore } from './markers/MarkerStore';
+import type { MarkerStore } from '../markers/MarkerStore';
 import {
 	getEmbedRegistry,
 	EmbedRegistryOverride,

@@ -3,7 +3,7 @@
  * the default label scheme. Living in one module keeps the recording-time
  * marker capture and the in-player "add marker" action producing identical
  * ids and labels instead of drifting apart.
- * @module player/markers/markerFactory
+ * @module markers/markerFactory
  */
 
 import { MARKER_KIND, type MarkerKind } from './markerModel';

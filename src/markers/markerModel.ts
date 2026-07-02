@@ -7,7 +7,7 @@
  *
  * Every function here is pure (no DOM, no I/O) so the ordering,
  * navigation, and (de)serialization logic can be unit tested directly.
- * @module player/markers/markerModel
+ * @module markers/markerModel
  */
 
 /**

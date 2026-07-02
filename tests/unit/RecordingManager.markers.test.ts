@@ -7,8 +7,8 @@
 
 import { RecordingManager } from '../../src/recording/RecordingManager';
 import { RecordingStatus } from '../../src/types';
-import { MARKER_KIND } from '../../src/player/markers/markerModel';
-import type { PlayerMarker } from '../../src/player/markers/markerModel';
+import { MARKER_KIND } from '../../src/markers/markerModel';
+import type { PlayerMarker } from '../../src/markers/markerModel';
 import {
 	DEFAULT_SETTINGS,
 	AudioRecorderSettings,

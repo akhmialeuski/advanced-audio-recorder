@@ -23,7 +23,7 @@ import { AUDIO_EXTENSIONS } from 'src/constants';
 import { DEFAULT_SETTINGS } from 'src/settings/Settings';
 import type { AudioRecorderSettings } from 'src/settings/Settings';
 import type { EmbedInfo } from 'src/obsidian/embedRegistry';
-import type { MarkerStore } from 'src/player/markers/MarkerStore';
+import type { MarkerStore } from 'src/markers/MarkerStore';
 
 jest.mock('src/player/AudioPlayer', () => ({
 	AudioPlayer: jest.fn().mockImplementation(() => ({

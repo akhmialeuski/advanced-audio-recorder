@@ -15,7 +15,7 @@ import {
 import { FILE_ACTIONS } from '../../src/actions/fileActions';
 import { createRecordingMarkerActions } from '../../src/actions/recordingMarkerActions';
 import { COMMAND_IDS } from '../../src/constants';
-import { MARKER_KIND } from '../../src/player/markers/markerModel';
+import { MARKER_KIND } from '../../src/markers/markerModel';
 import type {
 	ActionServices,
 	FileAction,

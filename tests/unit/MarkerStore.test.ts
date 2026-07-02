@@ -3,8 +3,8 @@
  */
 
 import type { App } from 'obsidian';
-import { MarkerStore } from 'src/player/markers/MarkerStore';
-import type { PlayerMarker } from 'src/player/markers/markerModel';
+import { MarkerStore } from 'src/markers/MarkerStore';
+import type { PlayerMarker } from 'src/markers/markerModel';
 
 /**
  * Builds a fake App whose adapter is backed by an in-memory file map,

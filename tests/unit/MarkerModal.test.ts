@@ -7,8 +7,8 @@
 
 import { App } from 'obsidian';
 import { RecordingMarkerModal } from '../../src/ui/MarkerModal';
-import { MARKER_KIND } from '../../src/player/markers/markerModel';
-import type { MarkerKind } from '../../src/player/markers/markerModel';
+import { MARKER_KIND } from '../../src/markers/markerModel';
+import type { MarkerKind } from '../../src/markers/markerModel';
 import type { RecordingMarkerHandle } from '../../src/recording/recordingMarkers';
 
 /** Builds a draft handle double with call-recording commit/cancel. */

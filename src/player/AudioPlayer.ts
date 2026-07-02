@@ -44,7 +44,7 @@ import type {
 	AudioPlayerRegistry,
 	SeekablePlayer,
 } from './AudioPlayerRegistry';
-import type { MarkerStore } from './markers/MarkerStore';
+import type { MarkerStore } from '../markers/MarkerStore';
 import {
 	addMarker,
 	chapters,
@@ -55,8 +55,8 @@ import {
 	updateMarker,
 	type MarkerKind,
 	type PlayerMarker,
-} from './markers/markerModel';
-import { defaultMarkerLabel, generateMarkerId } from './markers/markerFactory';
+} from '../markers/markerModel';
+import { defaultMarkerLabel, generateMarkerId } from '../markers/markerFactory';
 import { formatPlaybackRate, speedMenuItems } from './playbackRate';
 import { isEditableContext } from './playerMode';
 import {

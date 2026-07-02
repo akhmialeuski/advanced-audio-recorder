@@ -13,18 +13,15 @@ import type {
 	SaveProgress,
 	TrackFileGroup,
 } from '../types';
-import { MarkerStore } from '../player/markers/MarkerStore';
+import { MarkerStore } from '../markers/MarkerStore';
 import {
 	MARKER_KIND,
 	removeMarker,
 	sortMarkers,
 	updateMarker,
 	type MarkerKind,
-} from '../player/markers/markerModel';
-import {
-	defaultMarkerLabel,
-	generateMarkerId,
-} from '../player/markers/markerFactory';
+} from '../markers/markerModel';
+import { defaultMarkerLabel, generateMarkerId } from '../markers/markerFactory';
 import {
 	groupMarkersByFile,
 	type RecordingMarkerDraft,

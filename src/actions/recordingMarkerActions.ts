@@ -6,7 +6,7 @@
  */
 
 import { COMMAND_IDS } from '../constants';
-import { MARKER_KIND, type MarkerKind } from '../player/markers/markerModel';
+import { MARKER_KIND, type MarkerKind } from '../markers/markerModel';
 import type { RecordingMarkerAction } from './PluginAction';
 
 /**

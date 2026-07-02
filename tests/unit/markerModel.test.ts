@@ -15,7 +15,7 @@ import {
 	sortMarkers,
 	updateMarker,
 	type PlayerMarker,
-} from 'src/player/markers/markerModel';
+} from 'src/markers/markerModel';
 
 function marker(
 	id: string,

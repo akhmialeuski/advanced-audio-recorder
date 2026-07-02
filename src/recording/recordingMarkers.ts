@@ -10,7 +10,7 @@
  * @module recording/recordingMarkers
  */
 
-import type { MarkerKind } from '../player/markers/markerModel';
+import type { MarkerKind } from '../markers/markerModel';
 import type { TrackFileGroup } from '../types';
 
 /**

@@ -9,8 +9,8 @@
 
 import type { App } from 'obsidian';
 import type { RecordingManager } from '../../../src/recording/RecordingManager';
-import type { MarkerStore } from '../../../src/player/markers/MarkerStore';
-import type { PlayerMarker } from '../../../src/player/markers/markerModel';
+import type { MarkerStore } from '../../../src/markers/MarkerStore';
+import type { PlayerMarker } from '../../../src/markers/markerModel';
 
 /**
  * Installs the AudioContext, OfflineAudioContext, and AudioBuffer

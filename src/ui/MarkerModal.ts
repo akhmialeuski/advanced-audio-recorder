@@ -7,7 +7,7 @@
  */
 
 import { App, Modal, setIcon } from 'obsidian';
-import { MARKER_KIND, type MarkerKind } from '../player/markers/markerModel';
+import { MARKER_KIND, type MarkerKind } from '../markers/markerModel';
 import type { RecordingMarkerHandle } from '../recording/recordingMarkers';
 
 /** A selectable kind option rendered as a segmented-toggle button. */
