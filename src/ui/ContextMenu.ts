@@ -15,29 +15,14 @@ import {
 } from 'obsidian';
 import type { MarkdownFileInfo } from 'obsidian';
 import type { MenuItem } from 'obsidian';
-import { AUDIO_EXTENSIONS, PLUGIN_LOG_PREFIX } from '../constants';
+import { AAR_MENU_SECTION, PLUGIN_LOG_PREFIX } from '../constants';
 import { getPlayerEmbedActions } from '../player/playerEmbedActions';
 import { MARKER_KIND, type MarkerKind } from '../player/markers/markerModel';
-import { getAudioFileInfo } from '../utils/AudioFileAnalyzer';
-import { AudioFileInfoModal } from './AudioFileInfoModal';
-import { ConversionModal } from './ConversionModal';
-import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
-import { SplitModal } from './SplitModal';
-import { TranscriptionModal } from './TranscriptionModal';
-import type { TranscriptionModalOptions } from './TranscriptionModal';
-import { AudioProcessingModal } from '../cleanup/AudioProcessingModal';
-import { insertProcessedAudioEmbed } from '../recording/NoteInserter';
-import type { AudioRecorderSettings } from '../settings/Settings';
+import { isAudioFile } from '../utils/audioFile';
+import type { ActionServices, FileAction } from '../actions/PluginAction';
+import { renderFileActionsIntoMenu } from '../actions/renderActionsIntoMenu';
 
-/**
- * Primes freshly written files for the enhanced player so a cleaned/converted
- * file is upgraded immediately instead of after the note is reopened. Injected
- * so the context menu stays decoupled from the player registrar.
- */
-export type EnhancementPrimer = (
-	paths: string[],
-	notePath: string | null,
-) => void;
+export type { EnhancementPrimer } from '../actions/PluginAction';
 
 /** CodeMirror view attached to Editor (internal Obsidian API). */
 interface EditorCodeMirrorView {
@@ -48,39 +33,42 @@ interface EditorWithCM extends Editor {
 	cm?: EditorCodeMirrorView;
 }
 
-/** Menu section identifier for all AAR plugin items. */
-const AAR_MENU_SECTION = 'aar';
-
 /**
  * Manages context menu items for audio files.
  */
 export class ContextMenu {
-	/** Tracks menus that already have the "Audio file info" item to prevent duplicates. */
-	private readonly menusWithInfoItem = new WeakSet<Menu>();
-	/** Tracks menus that already have the "Convert audio format" item to prevent duplicates. */
-	private readonly menusWithConvertItem = new WeakSet<Menu>();
-	/** Tracks menus that already have the "Split audio into parts" item to prevent duplicates. */
-	private readonly menusWithSplitItem = new WeakSet<Menu>();
-	/** Tracks menus that already have the "Transcribe audio" item to prevent duplicates. */
-	private readonly menusWithTranscribeItem = new WeakSet<Menu>();
-	/** Tracks menus that already have the "Clean up audio" item to prevent duplicates. */
-	private readonly menusWithCleanupItem = new WeakSet<Menu>();
+	/**
+	 * Per-menu ids of actions already rendered. Obsidian can fire both
+	 * editor-menu and file-menu for one Menu instance, and the player
+	 * menu re-triggers file-menu, so every add is deduplicated here.
+	 */
+	private readonly renderedActions = new WeakMap<Menu, Set<string>>();
+
+	private readonly app: App;
 
 	/**
 	 * Creates a new ContextMenu instance.
-	 * @param app - The Obsidian App instance.
 	 * @param plugin - The plugin instance.
-	 * @param getSettings - Returns current plugin settings.
-	 * @param createTranscriptionModalOptions - Builds per-modal transcription options.
+	 * @param services - Injected action services (app, settings, ...).
+	 * @param fileActions - Per-file actions in display order.
 	 */
 	constructor(
-		private app: App,
 		private plugin: Plugin,
-		private getSettings: () => AudioRecorderSettings,
-		private createTranscriptionModalOptions: () => TranscriptionModalOptions = () => ({}),
-		private primeForEnhancement: EnhancementPrimer = () => {},
-		private getWorkerClient: () => EncodingWorkerClient | null = () => null,
-	) {}
+		private services: ActionServices,
+		private fileActions: readonly FileAction[],
+	) {
+		this.app = services.app;
+	}
+
+	/** Returns (creating on first use) the menu's rendered-action set. */
+	private renderedSetFor(menu: Menu): Set<string> {
+		let rendered = this.renderedActions.get(menu);
+		if (!rendered) {
+			rendered = new Set<string>();
+			this.renderedActions.set(menu, rendered);
+		}
+		return rendered;
+	}
 
 	/**
 	 * Registers all context menu events.
@@ -128,7 +116,7 @@ export class ContextMenu {
 					return;
 				}
 
-				if (file instanceof TFile && this.isAudioFile(file)) {
+				if (file instanceof TFile && isAudioFile(file)) {
 					// Prevent the default browser context menu
 					event.preventDefault();
 					event.stopPropagation();
@@ -258,13 +246,14 @@ export class ContextMenu {
 			this.app.workspace.on(
 				'file-menu',
 				(menu: Menu, file: TAbstractFile) => {
-					if (file instanceof TFile && this.isAudioFile(file)) {
-						this.addAudioFileInfoMenuItem(menu, file);
-						this.addConvertMenuItem(menu, file);
-						this.addSplitMenuItem(menu, file);
-						this.addCleanupMenuItem(menu, file);
-						this.addTranscribeMenuItem(menu, file);
-						this.addDeleteRecordingMenuItem(menu, file);
+					if (file instanceof TFile && isAudioFile(file)) {
+						renderFileActionsIntoMenu(
+							menu,
+							this.fileActions,
+							file,
+							this.services,
+							this.renderedSetFor(menu),
+						);
 					}
 				},
 			),
@@ -314,15 +303,17 @@ export class ContextMenu {
 			view.file ? view.file.path : '',
 		);
 
-		if (!(file instanceof TFile) || !this.isAudioFile(file)) {
+		if (!(file instanceof TFile) || !isAudioFile(file)) {
 			return;
 		}
 
-		this.addAudioFileInfoMenuItem(menu, file);
-		this.addConvertMenuItem(menu, file);
-		this.addSplitMenuItem(menu, file);
-		this.addCleanupMenuItem(menu, file);
-		this.addTranscribeMenuItem(menu, file);
+		renderFileActionsIntoMenu(
+			menu,
+			this.fileActions.filter((action) => action.showInEditorMenu),
+			file,
+			this.services,
+			this.renderedSetFor(menu),
+		);
 		this.addDeleteRecordingAndLinkMenuItem(
 			menu,
 			file,
@@ -330,79 +321,6 @@ export class ContextMenu {
 			cursor.line,
 			linkMatch,
 		);
-	}
-
-	/**
-	 * Adds a "Clean up audio" item that opens the on-demand DSP dialog
-	 * (noise gate, high-pass, loudness leveling).
-	 * @param menu - The menu to add the item to.
-	 * @param file - The audio file.
-	 */
-	private addCleanupMenuItem(menu: Menu, file: TFile): void {
-		if (this.menusWithCleanupItem.has(menu)) {
-			return;
-		}
-		this.menusWithCleanupItem.add(menu);
-
-		menu.addItem((item: MenuItem) => {
-			item.setTitle('Clean up audio')
-				.setIcon('wand-2')
-				.setSection(AAR_MENU_SECTION)
-				.onClick(() => {
-					new AudioProcessingModal(
-						this.app,
-						file,
-						this.getSettings(),
-						async ({ outputPath, replaceSource }) => {
-							// Link the result into the note (replace the source
-							// embed when it is being deleted, else insert after),
-							// then prime it so the enhanced player applies at once.
-							const notePath = await insertProcessedAudioEmbed(
-								this.app,
-								file,
-								outputPath,
-								replaceSource,
-							);
-							if (notePath) {
-								this.primeForEnhancement(
-									[outputPath],
-									notePath,
-								);
-							}
-						},
-					).open();
-				});
-		});
-	}
-
-	/**
-	 * Adds a "Transcribe audio" item to the menu when transcription is
-	 * enabled in settings.
-	 * @param menu - The menu to add the item to.
-	 * @param file - The audio file.
-	 */
-	private addTranscribeMenuItem(menu: Menu, file: TFile): void {
-		if (!this.getSettings().transcriptionEnabled) {
-			return;
-		}
-		if (this.menusWithTranscribeItem.has(menu)) {
-			return;
-		}
-		this.menusWithTranscribeItem.add(menu);
-
-		menu.addItem((item: MenuItem) => {
-			item.setTitle('Transcribe audio')
-				.setIcon('captions')
-				.setSection(AAR_MENU_SECTION)
-				.onClick(() => {
-					new TranscriptionModal(
-						this.app,
-						file,
-						this.getSettings,
-						this.createTranscriptionModalOptions(),
-					).open();
-				});
-		});
 	}
 
 	/**
@@ -440,15 +358,6 @@ export class ContextMenu {
 	}
 
 	/**
-	 * Checks if a file is an audio file based on its extension.
-	 * @param file - The file to check.
-	 * @returns True if the file is an audio file, false otherwise.
-	 */
-	private isAudioFile(file: TFile): boolean {
-		return AUDIO_EXTENSIONS.includes(file.extension.toLowerCase());
-	}
-
-	/**
 	 * Finds a markdown or wiki link at the specified cursor position in a line of text.
 	 * @param lineText - The text of the line.
 	 * @param cursorCh - The cursor character index.
@@ -483,28 +392,6 @@ export class ContextMenu {
 		return null;
 	}
 	/**
-	 * Adds a "Delete recording" item to the menu.
-	 * @param menu - The menu to add the item to.
-	 * @param file - The file to delete.
-	 */
-	private addDeleteRecordingMenuItem(menu: Menu, file: TFile): void {
-		menu.addItem((item: MenuItem) => {
-			item.setTitle('Delete recording')
-				.setIcon('trash')
-				.setSection(AAR_MENU_SECTION)
-				.onClick(async () => {
-					try {
-						await this.app.fileManager.trashFile(file);
-						new Notice('Recording deleted');
-					} catch (error) {
-						new Notice('Failed to delete recording');
-						console.error('Failed to delete recording:', error);
-					}
-				});
-		});
-	}
-
-	/**
 	 * Adds a "Delete recording & link to file" item to the menu.
 	 * @param menu - The menu to add the item to.
 	 * @param file - The file to delete.
@@ -526,87 +413,6 @@ export class ContextMenu {
 				.onClick(() =>
 					this.deleteRecordingAndLink(file, editor, line, linkMatch),
 				);
-		});
-	}
-
-	/**
-	 * Adds a "Convert audio format" item to the menu.
-	 * @param menu - The menu to add the item to.
-	 * @param file - The audio file.
-	 */
-	private addConvertMenuItem(menu: Menu, file: TFile): void {
-		if (this.menusWithConvertItem.has(menu)) {
-			return;
-		}
-		this.menusWithConvertItem.add(menu);
-
-		menu.addItem((item: MenuItem) => {
-			item.setTitle('Convert audio format')
-				.setIcon('file-audio')
-				.setSection(AAR_MENU_SECTION)
-				.onClick(() => {
-					new ConversionModal(
-						this.app,
-						file,
-						this.getSettings(),
-						(convertedPath) => {
-							// The note link is already rewritten by the
-							// conversion's linkAction; prime the active note so the
-							// new embed becomes the enhanced player at once.
-							this.primeForEnhancement(
-								[convertedPath],
-								this.app.workspace.getActiveFile()?.path ??
-									null,
-							);
-						},
-						this.getWorkerClient,
-					).open();
-				});
-		});
-	}
-
-	/**
-	 * Adds a "Split audio into parts" item to the menu.
-	 * @param menu - The menu to add the item to.
-	 * @param file - The audio file.
-	 */
-	private addSplitMenuItem(menu: Menu, file: TFile): void {
-		if (this.menusWithSplitItem.has(menu)) {
-			return;
-		}
-		this.menusWithSplitItem.add(menu);
-
-		menu.addItem((item: MenuItem) => {
-			item.setTitle('Split audio into parts')
-				.setIcon('scissors')
-				.setSection(AAR_MENU_SECTION)
-				.onClick(() => {
-					new SplitModal(this.app, file, this.getSettings()).open();
-				});
-		});
-	}
-
-	/**
-	 * Adds an "Audio file info" item to the menu.
-	 * @param menu - The menu to add the item to.
-	 * @param file - The audio file.
-	 */
-	private addAudioFileInfoMenuItem(menu: Menu, file: TFile): void {
-		if (this.menusWithInfoItem.has(menu)) {
-			return;
-		}
-		this.menusWithInfoItem.add(menu);
-
-		menu.addItem((item: MenuItem) => {
-			item.setTitle('Audio file info')
-				.setIcon('info')
-				.setSection(AAR_MENU_SECTION)
-				.onClick(async () => {
-					const info = await getAudioFileInfo(this.app, file);
-					if (info) {
-						new AudioFileInfoModal(this.app, info).open();
-					}
-				});
 		});
 	}
 }

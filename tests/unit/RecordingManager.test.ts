@@ -2411,6 +2411,35 @@ describe('RecordingManager', () => {
 			expect(markers[0].id.length).toBeGreaterThan(0);
 		});
 
+		it('fixes the draft kind up front when a preselect kind is passed', async () => {
+			const { store } = makeFakeMarkerStore();
+			mockSettings = {
+				...DEFAULT_SETTINGS,
+				playerEnableMarkers: true,
+				insertAtOriginalPosition: false,
+			};
+			manager = new RecordingManager(
+				mockApp,
+				mockSettings,
+				statusChangeCallback,
+				undefined,
+				undefined,
+				store,
+			);
+
+			await manager.startRecording();
+			// The kind-fixed commands (add bookmark/add chapter) preselect
+			// the kind instead of reusing the last modal choice
+			const handle = manager.captureMarkerDraft(MARKER_KIND.chapter);
+			expect(handle?.initialKind).toBe(MARKER_KIND.chapter);
+			// The default label follows the preselected kind's numbering
+			expect(handle?.defaultLabelFor(MARKER_KIND.chapter)).toContain(
+				'Chapter',
+			);
+			handle?.cancel();
+			await manager.stopRecording();
+		});
+
 		it('numbers default marker labels sequentially within a session', async () => {
 			const { store, set } = makeFakeMarkerStore();
 			mockSettings = {

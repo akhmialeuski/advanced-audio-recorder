@@ -36,12 +36,20 @@ import { RecordingBanner } from './ui/RecordingBanner';
 import { updateRibbonIcon, initializeRibbonIcon } from './ui/RibbonIcon';
 import { showDeviceSelectionModal } from './ui/DeviceSelectionModal';
 import { ContextMenu } from './ui/ContextMenu';
+import type { ActionServices } from './actions/PluginAction';
+import { FILE_ACTIONS } from './actions/fileActions';
+import { createRecordingMarkerActions } from './actions/recordingMarkerActions';
+import {
+	registerFileActionCommands,
+	registerRecordingActionCommands,
+} from './actions/registerActionCommands';
 import { EnhancedPlayerRegistrar } from './player/EnhancedPlayerRegistrar';
 import { MarkerStore } from './player/markers/MarkerStore';
 import { RecordingMarkerModal } from './ui/MarkerModal';
 import { TranscriptionModal } from './ui/TranscriptionModal';
 import type { TranscriptionModalOptions } from './ui/TranscriptionModal';
-import { AUDIO_EXTENSIONS } from './constants';
+import { COMMAND_IDS } from './constants';
+import type { MarkerKind } from './player/markers/markerModel';
 import { delay } from './utils/TimeUtils';
 
 /** Delay before retrying a failed settings read, in milliseconds. */
@@ -181,20 +189,9 @@ export default class AudioRecorderPlugin extends Plugin {
 		this.setupStatusBar();
 
 		this.contextMenu = new ContextMenu(
-			this.app,
 			this,
-			() => this.settings,
-			() => this.createTranscriptionModalOptions(),
-			// Prime a freshly cleaned/converted file so the enhanced player
-			// applies immediately instead of after the note is reopened. The
-			// registrar is created just below; the closure resolves it lazily
-			// when a processing run finishes.
-			(paths, notePath) =>
-				this.playerRegistrar.primeSavedRecordingsForEnhancement(
-					paths,
-					notePath,
-				),
-			() => this.encodingWorker,
+			this.createActionServices(),
+			FILE_ACTIONS,
 		);
 		this.contextMenu.register();
 
@@ -565,11 +562,34 @@ export default class AudioRecorderPlugin extends Plugin {
 	}
 
 	/**
-	 * Registers plugin commands.
+	 * Builds the shared services injected into every plugin action.
+	 * The player registrar is created after the context menu, so the
+	 * primer closure resolves it lazily when a processing run finishes.
+	 */
+	private createActionServices(): ActionServices {
+		return {
+			app: this.app,
+			getSettings: () => this.settings,
+			createTranscriptionModalOptions: () =>
+				this.createTranscriptionModalOptions(),
+			primeForEnhancement: (paths, notePath) =>
+				this.playerRegistrar.primeSavedRecordingsForEnhancement(
+					paths,
+					notePath,
+				),
+			getWorkerClient: () => this.encodingWorker,
+		};
+	}
+
+	/**
+	 * Registers plugin commands: the recording-session commands plus
+	 * every file action from the shared registry, so each context-menu
+	 * feature is also reachable from the palette and assignable in the
+	 * Hotkeys settings.
 	 */
 	private registerCommands(): void {
 		this.addCommand({
-			id: 'start-stop-recording',
+			id: COMMAND_IDS.startStopRecording,
 			name: 'Start/stop recording',
 			callback: () => {
 				void this.recordingManager.toggleRecording();
@@ -577,7 +597,7 @@ export default class AudioRecorderPlugin extends Plugin {
 		});
 
 		this.addCommand({
-			id: 'pause-resume-recording',
+			id: COMMAND_IDS.pauseResumeRecording,
 			name: 'Pause/resume recording',
 			callback: () => {
 				this.recordingManager.togglePauseResume();
@@ -585,7 +605,7 @@ export default class AudioRecorderPlugin extends Plugin {
 		});
 
 		this.addCommand({
-			id: 'add-recording-marker',
+			id: COMMAND_IDS.addRecordingMarker,
 			name: 'Add marker/chapter at current position',
 			checkCallback: (checking: boolean) => {
 				if (!this.recordingManager.canDropMarker()) {
@@ -599,7 +619,7 @@ export default class AudioRecorderPlugin extends Plugin {
 		});
 
 		this.addCommand({
-			id: 'select-audio-input-device',
+			id: COMMAND_IDS.selectAudioInputDevice,
 			name: 'Select audio input device',
 			callback: () => {
 				void showDeviceSelectionModal(
@@ -612,28 +632,19 @@ export default class AudioRecorderPlugin extends Plugin {
 			},
 		});
 
-		this.addCommand({
-			id: 'transcribe-active-audio',
-			name: 'Transcribe active audio file',
-			checkCallback: (checking: boolean) => {
-				const file = this.app.workspace.getActiveFile();
-				const isAudio =
-					file instanceof TFile &&
-					AUDIO_EXTENSIONS.includes(file.extension.toLowerCase());
-				if (!this.settings.transcriptionEnabled || !isAudio) {
-					return false;
-				}
-				if (!checking) {
-					new TranscriptionModal(
-						this.app,
-						file,
-						() => this.settings,
-						this.createTranscriptionModalOptions(),
-					).open();
-				}
-				return true;
-			},
-		});
+		registerRecordingActionCommands(
+			this,
+			createRecordingMarkerActions((kind) => {
+				this.openMarkerModal(kind);
+			}),
+			() => this.recordingManager.canDropMarker(),
+		);
+
+		registerFileActionCommands(
+			this,
+			FILE_ACTIONS,
+			this.createActionServices(),
+		);
 	}
 
 	/**
@@ -788,9 +799,11 @@ export default class AudioRecorderPlugin extends Plugin {
 	/**
 	 * Captures a marker at the current recording position and opens the
 	 * naming modal. No-op when a marker cannot be dropped right now.
+	 * @param preselectKind - Marker kind fixed by the invoking command;
+	 *   defaults to the kind last chosen in the modal
 	 */
-	private openMarkerModal(): void {
-		const handle = this.recordingManager.captureMarkerDraft();
+	private openMarkerModal(preselectKind?: MarkerKind): void {
+		const handle = this.recordingManager.captureMarkerDraft(preselectKind);
 		if (!handle) {
 			return;
 		}

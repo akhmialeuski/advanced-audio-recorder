@@ -787,3 +787,28 @@ export const CLEANUP_SEGMENT_SECONDS = 120;
  * region begins.
  */
 export const CLEANUP_WARMUP_SECONDS = 3;
+
+// Actions
+
+/** Menu section identifier grouping all plugin context-menu items. */
+export const AAR_MENU_SECTION = 'aar';
+
+/**
+ * Command ids for every palette-registered action. The transcribe id
+ * predates the action registry and is kept verbatim so user-assigned
+ * hotkeys survive.
+ */
+export const COMMAND_IDS = {
+	startStopRecording: 'start-stop-recording',
+	pauseResumeRecording: 'pause-resume-recording',
+	addRecordingMarker: 'add-recording-marker',
+	addRecordingBookmark: 'add-recording-bookmark',
+	addRecordingChapter: 'add-recording-chapter',
+	selectAudioInputDevice: 'select-audio-input-device',
+	audioFileInfo: 'audio-file-info',
+	convertAudioFormat: 'convert-audio-format',
+	splitAudio: 'split-audio-into-parts',
+	cleanupAudio: 'clean-up-audio',
+	transcribeAudio: 'transcribe-active-audio',
+	deleteRecording: 'delete-recording',
+} as const;

@@ -5,8 +5,6 @@
  * @module player/timecodeLinks
  */
 
-import type { TFile } from 'obsidian';
-import { AUDIO_EXTENSIONS } from '../constants';
 import { parseTimecode } from '../utils/TimeUtils';
 
 /**
@@ -54,11 +52,4 @@ export function parseTimecodeSubpath(subpath: string): number | null {
 	return parseTimecode(cleaned.slice(2));
 }
 
-/**
- * Tells whether a resolved file is one of the audio formats the plugin
- * handles.
- * @param file - File to test
- */
-export function isAudioFile(file: TFile): boolean {
-	return AUDIO_EXTENSIONS.includes(file.extension.toLowerCase());
-}
+export { isAudioFile } from '../utils/audioFile';

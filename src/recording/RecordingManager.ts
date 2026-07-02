@@ -243,18 +243,23 @@ export class RecordingManager {
 	 * buffer immediately, so it survives even if the recording stops while
 	 * the naming modal is still open. Returns an editing handle for the
 	 * modal, or null when a marker cannot be dropped now.
+	 * @param preselectKind - Marker kind fixed by the invoking command;
+	 *   defaults to the kind last chosen in the modal
 	 */
-	captureMarkerDraft(): RecordingMarkerHandle | null {
+	captureMarkerDraft(
+		preselectKind?: MarkerKind,
+	): RecordingMarkerHandle | null {
 		if (!this.canDropMarker()) {
 			return null;
 		}
 		const position = this.rotation.getCurrentPartPosition(this.status);
+		const kind = preselectKind ?? this.lastMarkerKind;
 		const draft: RecordingMarkerDraft = {
 			id: generateMarkerId(),
 			partOrdinal: position.partOrdinal,
 			offsetSeconds: position.offsetSeconds,
-			kind: this.lastMarkerKind,
-			label: this.nextMarkerLabel(this.lastMarkerKind, null),
+			kind,
+			label: this.nextMarkerLabel(kind, null),
 		};
 		this.markerBuffer.push(draft);
 		return {
