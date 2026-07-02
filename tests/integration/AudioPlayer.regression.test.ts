@@ -22,7 +22,7 @@ import { AudioPlayer } from 'src/player/AudioPlayer';
 import { WaveformPeakCache, type AudioDecoder } from 'src/player/WaveformData';
 import type { AudioPlayerRegistry } from 'src/player/AudioPlayerRegistry';
 import type { MarkerStore } from 'src/player/markers/MarkerStore';
-import type { ResolvedPlayerSettings } from 'src/settings/Settings';
+import type { ResolvedPlayerSettings } from 'src/player/playerSettings';
 import type { TFile } from 'obsidian';
 
 type Listener = () => void;

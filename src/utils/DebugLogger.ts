@@ -4,7 +4,15 @@
  */
 
 import { PLUGIN_LOG_PREFIX } from '../constants';
-import type { AudioRecorderSettings } from '../settings/Settings';
+
+/**
+ * The one settings field the logger reads. Structural, so callers pass
+ * the full plugin settings without this utility depending on the
+ * settings module.
+ */
+export interface DebugLoggingSettings {
+	readonly debug: boolean;
+}
 
 /**
  * DebugLogger provides conditional logging based on settings.debug flag.
@@ -12,14 +20,14 @@ import type { AudioRecorderSettings } from '../settings/Settings';
 export class DebugLogger {
 	private enabled: boolean;
 
-	constructor(settings: AudioRecorderSettings) {
+	constructor(settings: DebugLoggingSettings) {
 		this.enabled = settings.debug;
 	}
 
 	/**
 	 * Updates the debug enabled state.
 	 */
-	updateSettings(settings: AudioRecorderSettings): void {
+	updateSettings(settings: DebugLoggingSettings): void {
 		this.enabled = settings.debug;
 	}
 

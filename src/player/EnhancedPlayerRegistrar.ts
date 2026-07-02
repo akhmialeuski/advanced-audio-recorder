@@ -34,12 +34,12 @@ import type {
 	WorkspaceLeaf,
 } from 'obsidian';
 import { AUDIO_EXTENSIONS, PLUGIN_LOG_PREFIX } from '../constants';
+import { type AudioRecorderSettings } from '../settings/Settings';
 import {
 	resolvePlayerSettings,
 	playerSettingsEqual,
-	type AudioRecorderSettings,
 	type ResolvedPlayerSettings,
-} from '../settings/Settings';
+} from '../player/playerSettings';
 import { AudioPlayerRegistry } from './AudioPlayerRegistry';
 import { WaveformPeakCache, SharedAudioDecoder } from './WaveformData';
 import { AudioPlayer } from './AudioPlayer';

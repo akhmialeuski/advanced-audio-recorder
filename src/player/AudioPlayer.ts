@@ -33,7 +33,7 @@ import { playbackProgress } from './playbackProgress';
 import {
 	playerSettingsEqual,
 	type ResolvedPlayerSettings,
-} from '../settings/Settings';
+} from '../player/playerSettings';
 import {
 	computeWaveformPeaksProgressive,
 	waveformCacheKey,

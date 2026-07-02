@@ -3,6 +3,7 @@
  * @module settings/Settings
  */
 
+import type { ConversionLinkAction, OutputMode } from '../types';
 import { SettingsValidationError } from '../errors';
 import {
 	FORMAT_WEBM,
@@ -51,10 +52,7 @@ import type {
 } from '../transcription/TranscriptTypes';
 import type { LlmTask } from '../transcription/llmPostProcess';
 
-/**
- * Output mode for multi-track recordings.
- */
-export type OutputMode = 'single' | 'multiple';
+export type { OutputMode } from '../types';
 
 /**
  * What to do with the converted file link in notes.
@@ -62,7 +60,7 @@ export type OutputMode = 'single' | 'multiple';
  * - 'replace': replace source file link with the new file link
  * - 'after': insert new file link after the source file link
  */
-export type ConversionLinkAction = 'none' | 'replace' | 'after';
+export type { ConversionLinkAction } from '../types';
 
 /**
  * Track audio sources mapping (track number -> device ID).
@@ -741,50 +739,4 @@ export function validateSettings(settings: AudioRecorderSettings): void {
 			}
 		}
 	}
-}
-
-/**
- * Render-ready view of the enhanced player's two user-toggleable windows.
- * Every other player element (speed, skip, volume, mute, loop, time display,
- * timecode links, marker list, chapter navigation) is fixed and rendered
- * unconditionally from constants, so this only carries the two toggles that
- * actually vary. Player settings are deliberately kept off validateSettings:
- * they are unrelated to recording and must never throw on the recording path.
- */
-export interface ResolvedPlayerSettings {
-	/** Draw the waveform behind the seek bar; false renders the plain bar. */
-	showWaveform: boolean;
-	/** Show the markers and chapters window (list, ticks, edit controls). */
-	enableMarkers: boolean;
-}
-
-/**
- * Builds the render-ready player layout from the two window toggles.
- * @param settings - Current plugin settings
- * @returns Render-ready player settings
- */
-export function resolvePlayerSettings(
-	settings: AudioRecorderSettings,
-): ResolvedPlayerSettings {
-	return {
-		showWaveform: settings.playerShowWaveform,
-		enableMarkers: settings.playerEnableMarkers,
-	};
-}
-
-/**
- * Whether two resolved player layouts are identical. A settings save that
- * does not change either window toggle re-applies nothing to live players,
- * so an unrelated setting change never rebuilds an open player.
- * @param a - One resolved layout
- * @param b - Another resolved layout
- * @returns True when both toggles match
- */
-export function playerSettingsEqual(
-	a: ResolvedPlayerSettings,
-	b: ResolvedPlayerSettings,
-): boolean {
-	return (
-		a.showWaveform === b.showWaveform && a.enableMarkers === b.enableMarkers
-	);
 }

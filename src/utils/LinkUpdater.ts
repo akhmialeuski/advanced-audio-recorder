@@ -11,7 +11,7 @@
 import { TFile, getLinkpath } from 'obsidian';
 import type { App, ReferenceCache } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
-import type { ConversionLinkAction } from '../settings/Settings';
+import type { ConversionLinkAction } from '../types';
 
 /**
  * Checks whether a reference occupies its line alone (ignoring
