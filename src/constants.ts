@@ -39,6 +39,14 @@ export const CHUNK_TIMESLICE_MS = 5000;
  */
 export const RECORDER_STOP_TIMEOUT_MS = 5000;
 
+/**
+ * Maximum time to wait for the PCM capture worklet to acknowledge a
+ * flush request in milliseconds. If the audio subsystem dies the
+ * `flushed` reply never arrives; without the timeout stop() would hang
+ * before releasing the AudioContext and the worklet blob URL.
+ */
+export const PCM_FLUSH_TIMEOUT_MS = 5000;
+
 /** Maximum in-memory buffer size for mobile recordings before flushing to disk. */
 export const MOBILE_BUFFER_LIMIT_BYTES = 50 * 1024 * 1024;
 

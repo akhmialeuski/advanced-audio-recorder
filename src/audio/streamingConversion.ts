@@ -57,6 +57,34 @@ export async function runStreamingConversion(
 		source: new BlobSource(recordedBlob),
 		formats: ALL_FORMATS,
 	});
+	try {
+		return await convertWithInput(
+			input,
+			targetFormat,
+			codec,
+			bitrate,
+			allowRemux,
+			onProgress,
+		);
+	} finally {
+		// The Input holds readers over the blob; free them on success
+		// and on every throw path alike
+		input.dispose();
+	}
+}
+
+/**
+ * Runs the conversion over an already-opened Input. Separated so the
+ * caller can guarantee input disposal in one place.
+ */
+async function convertWithInput(
+	input: Input,
+	targetFormat: string,
+	codec: AudioCodec,
+	bitrate: number,
+	allowRemux: boolean,
+	onProgress?: (percent: number) => void,
+): Promise<ArrayBuffer> {
 	const audioTrack = await input.getPrimaryAudioTrack();
 	if (!audioTrack) {
 		throw new Error('Input contains no audio track');

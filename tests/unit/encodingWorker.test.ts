@@ -14,11 +14,13 @@ import type {
 const mockConversionExecute = jest.fn().mockResolvedValue(undefined);
 const mockConversionInit = jest.fn();
 const mockGetPrimaryAudioTrack = jest.fn();
+const mockInputDispose = jest.fn();
 const mockConvertedBuffer = new ArrayBuffer(64);
 
 jest.mock('mediabunny', () => ({
 	Input: jest.fn().mockImplementation(() => ({
 		getPrimaryAudioTrack: (): unknown => mockGetPrimaryAudioTrack(),
+		dispose: mockInputDispose,
 	})),
 	Output: jest.fn().mockImplementation(() => ({})),
 	BlobSource: jest.fn(),

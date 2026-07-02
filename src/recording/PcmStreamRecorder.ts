@@ -6,7 +6,11 @@
  * @module recording/PcmStreamRecorder
  */
 
-import { DEFAULT_SAMPLE_RATE, PLUGIN_LOG_PREFIX } from '../constants';
+import {
+	DEFAULT_SAMPLE_RATE,
+	PCM_FLUSH_TIMEOUT_MS,
+	PLUGIN_LOG_PREFIX,
+} from '../constants';
 
 /**
  * Number of interleaved int16 samples to accumulate before posting.
@@ -209,7 +213,11 @@ export class PcmStreamRecorder {
 	}
 
 	/**
-	 * Flushes any remaining buffered samples from the worklet.
+	 * Flushes any remaining buffered samples from the worklet. A
+	 * watchdog resolves the wait if the `flushed` acknowledgement never
+	 * arrives (dead audio subsystem), so stop() always reaches
+	 * releaseResources() and the AudioContext and worklet blob URL are
+	 * freed. The MediaRecorder path guards its stop event the same way.
 	 */
 	private async flushWorklet(): Promise<void> {
 		const node = this.workletNode;
@@ -218,6 +226,17 @@ export class PcmStreamRecorder {
 		}
 		return new Promise<void>((resolve) => {
 			const prev = node.port.onmessage;
+			const finish = (): void => {
+				window.clearTimeout(watchdog);
+				node.port.onmessage = prev;
+				resolve();
+			};
+			const watchdog = window.setTimeout(() => {
+				console.warn(
+					`${PLUGIN_LOG_PREFIX} PCM flush acknowledgement timed out; releasing resources anyway`,
+				);
+				finish();
+			}, PCM_FLUSH_TIMEOUT_MS);
 			node.port.onmessage = (event: MessageEvent): void => {
 				if (
 					event.data &&
@@ -225,8 +244,7 @@ export class PcmStreamRecorder {
 					'type' in event.data &&
 					(event.data as { type: string }).type === 'flushed'
 				) {
-					node.port.onmessage = prev;
-					resolve();
+					finish();
 					return;
 				}
 				if (prev) {

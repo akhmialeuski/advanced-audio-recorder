@@ -1008,6 +1008,16 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		}
 		const existingAudio = container.querySelector('.aar-test-audio');
 		if (existingAudio) {
+			// Revoke the element's blob URL before dropping it: repeated
+			// test recordings would otherwise leak one blob per rerun
+			// until the settings tab is closed
+			const src = existingAudio.getAttribute('src');
+			if (src?.startsWith('blob:')) {
+				URL.revokeObjectURL(src);
+			}
+			if (existingAudio === this.testAudioElement) {
+				this.testAudioElement = null;
+			}
 			existingAudio.remove();
 		}
 

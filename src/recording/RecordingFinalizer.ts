@@ -419,12 +419,10 @@ export class RecordingFinalizer {
 		if (segmentPaths.length === 0) {
 			return null;
 		}
-		const segmentBuffers = await Promise.all(
-			segmentPaths.map((path) => this.app.vault.adapter.readBinary(path)),
+		const blob = await this.readSegmentsAsBlob(
+			segmentPaths,
+			buildMimeType(session.recorderFormat),
 		);
-		const blob = new Blob(segmentBuffers, {
-			type: buildMimeType(session.recorderFormat),
-		});
 		if (blob.size === 0) {
 			return null;
 		}
@@ -653,14 +651,30 @@ export class RecordingFinalizer {
 		}
 
 		const type = buildMimeType(session.recorderFormat);
-		const segmentBuffers = await Promise.all(
-			target.segmentPaths.map((path) =>
-				this.app.vault.adapter.readBinary(path),
-			),
-		);
+		const blob = await this.readSegmentsAsBlob(target.segmentPaths, type);
 
-		return new Blob([...segmentBuffers, ...target.bufferedChunks], {
-			type,
-		});
+		return new Blob([blob, ...target.bufferedChunks], { type });
+	}
+
+	/**
+	 * Reads segment files sequentially and accumulates them into one
+	 * Blob. Appending each segment to a growing Blob (a lazy
+	 * concatenation in Chromium) keeps at most one raw segment buffer
+	 * alive at a time, instead of fanning out every read at once and
+	 * holding the whole recording as ArrayBuffers.
+	 * @param segmentPaths - Segment files in capture order
+	 * @param type - MIME type for the resulting Blob
+	 * @returns Concatenated segment data
+	 */
+	private async readSegmentsAsBlob(
+		segmentPaths: string[],
+		type: string,
+	): Promise<Blob> {
+		let blob = new Blob([], { type });
+		for (const path of segmentPaths) {
+			const segment = await this.app.vault.adapter.readBinary(path);
+			blob = new Blob([blob, segment], { type });
+		}
+		return blob;
 	}
 }
