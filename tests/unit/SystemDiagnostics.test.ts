@@ -243,18 +243,20 @@ describe('SystemDiagnostics.collectAudioDevices', () => {
 // ---------------------------------------------------------------------------
 
 describe('SystemDiagnostics.collectAudioCapabilities', () => {
-	const mockDetectCapabilities = jest.spyOn(
-		AudioCapabilityDetector,
-		'detectCapabilities',
-	);
-	const mockDetectCodecSupport = jest.spyOn(
-		AudioCapabilityDetector,
-		'detectCodecSupport',
-	);
+	// Spies are created per test: the global restoreMocks option
+	// restores them after each one
+	let mockDetectCapabilities: jest.SpyInstance;
+	let mockDetectCodecSupport: jest.SpyInstance;
 
 	beforeEach(() => {
-		mockDetectCapabilities.mockReset();
-		mockDetectCodecSupport.mockReset();
+		mockDetectCapabilities = jest.spyOn(
+			AudioCapabilityDetector,
+			'detectCapabilities',
+		);
+		mockDetectCodecSupport = jest.spyOn(
+			AudioCapabilityDetector,
+			'detectCodecSupport',
+		);
 		mockDetectCodecSupport.mockReturnValue([]);
 	});
 
@@ -412,16 +414,18 @@ describe('SystemDiagnostics.collectActiveRecordingConfig', () => {
 
 describe('SystemDiagnostics.collect', () => {
 	const mockEnumerate = jest.fn();
-	const mockDetectCapabilities = jest.spyOn(
-		AudioCapabilityDetector,
-		'detectCapabilities',
-	);
-	const mockDetectCodecSupport = jest.spyOn(
-		AudioCapabilityDetector,
-		'detectCodecSupport',
-	);
+	let mockDetectCapabilities: jest.SpyInstance;
+	let mockDetectCodecSupport: jest.SpyInstance;
 
 	beforeEach(() => {
+		mockDetectCapabilities = jest.spyOn(
+			AudioCapabilityDetector,
+			'detectCapabilities',
+		);
+		mockDetectCodecSupport = jest.spyOn(
+			AudioCapabilityDetector,
+			'detectCodecSupport',
+		);
 		Object.defineProperty(global.navigator, 'mediaDevices', {
 			value: { enumerateDevices: mockEnumerate },
 			configurable: true,

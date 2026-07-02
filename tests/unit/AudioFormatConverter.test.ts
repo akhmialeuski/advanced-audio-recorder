@@ -109,14 +109,6 @@ const createMockAudioBuffer = (
 	destination: {},
 }));
 
-// Polyfill Blob.prototype.arrayBuffer for jsdom
-if (!Blob.prototype.arrayBuffer) {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test polyfill for jsdom
-	(Blob.prototype as any).arrayBuffer = function (): Promise<ArrayBuffer> {
-		return Promise.resolve(new ArrayBuffer(0));
-	};
-}
-
 // Mock MediaRecorder.isTypeSupported - default: support webm and ogg
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- required for global mock
 (global as any).MediaRecorder = {

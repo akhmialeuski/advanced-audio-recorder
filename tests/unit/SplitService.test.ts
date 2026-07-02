@@ -59,13 +59,6 @@ jest.mock('../../src/utils/LinkUpdater', () => ({
 	}),
 }));
 
-if (!Blob.prototype.arrayBuffer) {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test polyfill for jsdom
-	(Blob.prototype as any).arrayBuffer = function (): Promise<ArrayBuffer> {
-		return Promise.resolve(new ArrayBuffer(0));
-	};
-}
-
 const createSourceFile = (extension: string): TFile => {
 	const file = new TFile();
 	Object.assign(file, {

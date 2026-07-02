@@ -1,18 +1,19 @@
 /**
- * Tests for AudioStreamHandler error handling.
- * Verifies that proper errors are logged when device constraints cannot be satisfied.
- * @module tests/AudioStreamHandler.error.test
+ * Tests for the RecordingManager start-failure fallback paths.
+ * Verifies that stream errors surface to the user and release the
+ * partially opened session.
+ * @module tests/unit/RecordingManager.fallback.test
  */
 /** @jest-environment jsdom */
 
-import { RecordingManager } from '../src/recording/RecordingManager';
-import { RecordingStatus } from '../src/types';
+import { RecordingManager } from '../../src/recording/RecordingManager';
+import { RecordingStatus } from '../../src/types';
 import {
 	DEFAULT_SETTINGS,
 	AudioRecorderSettings,
-} from '../src/settings/Settings';
-import { AudioStreamError } from '../src/errors';
-import { PLUGIN_LOG_PREFIX } from '../src/constants';
+} from '../../src/settings/Settings';
+import { AudioStreamError } from '../../src/errors';
+import { PLUGIN_LOG_PREFIX } from '../../src/constants';
 import type { App } from 'obsidian';
 
 // Mock AudioContext and OfflineAudioContext
@@ -82,7 +83,7 @@ jest.mock('obsidian', () => ({
 }));
 
 // Mock WavEncoder
-jest.mock('../src/audio/WavEncoder', () => ({
+jest.mock('../../src/audio/WavEncoder', () => ({
 	assembleWavFromPcmSegmentFiles: jest
 		.fn()
 		.mockResolvedValue(new ArrayBuffer(44)),

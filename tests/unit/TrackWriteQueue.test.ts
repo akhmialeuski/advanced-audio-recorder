@@ -26,13 +26,6 @@ jest.mock('../../src/audio/AudioFormatConverter', () => ({
 	getRecorderMediaType: jest.fn((format: string) => `audio/${format}`),
 }));
 
-if (!Blob.prototype.arrayBuffer) {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test polyfill for jsdom
-	(Blob.prototype as any).arrayBuffer = function (): Promise<ArrayBuffer> {
-		return Promise.resolve(new ArrayBuffer(0));
-	};
-}
-
 const createTarget = (): RecordingTarget => ({
 	fileBaseName: 'recording-Track1-stamp',
 	sourceName: 'Track1',

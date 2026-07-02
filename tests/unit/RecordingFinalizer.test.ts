@@ -62,13 +62,6 @@ jest.mock('../../src/recording/StreamingMixer', () => ({
 	mixPcmTracksToWav: jest.fn().mockResolvedValue(new ArrayBuffer(50)),
 }));
 
-if (!Blob.prototype.arrayBuffer) {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test polyfill for jsdom
-	(Blob.prototype as any).arrayBuffer = function (): Promise<ArrayBuffer> {
-		return Promise.resolve(new ArrayBuffer(0));
-	};
-}
-
 const createTarget = (
 	overrides: Partial<RecordingTarget> = {},
 ): RecordingTarget => ({

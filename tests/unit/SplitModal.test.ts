@@ -256,13 +256,6 @@ function internals(modal: SplitModal): SplitModalInternals {
 	return modal as unknown as SplitModalInternals;
 }
 
-if (!Blob.prototype.arrayBuffer) {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test polyfill
-	(Blob.prototype as any).arrayBuffer = function (): Promise<ArrayBuffer> {
-		return Promise.resolve(new ArrayBuffer(8));
-	};
-}
-
 describe('SplitModal', () => {
 	let mockApp: App;
 	let mockFile: TFile;

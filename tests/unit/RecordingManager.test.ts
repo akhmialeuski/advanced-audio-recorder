@@ -120,13 +120,6 @@ jest.mock('../../src/recording/PcmStreamRecorder', () => ({
 		getChannelData: jest.fn().mockReturnValue(new Float32Array(44100)),
 	}));
 
-if (!Blob.prototype.arrayBuffer) {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test polyfill
-	(Blob.prototype as any).arrayBuffer = function (): Promise<ArrayBuffer> {
-		return Promise.resolve(new ArrayBuffer(0));
-	};
-}
-
 describe('RecordingManager', () => {
 	let manager: RecordingManager;
 	let mockApp: App;
@@ -597,8 +590,13 @@ describe('RecordingManager', () => {
 		}
 
 		/** Microtask+macrotask drain so void'ed chunk handlers settle. */
-		const flushAsync = (): Promise<void> =>
-			new Promise((resolve) => setTimeout(resolve, 0));
+		// Two macrotask turns: the Blob.arrayBuffer polyfill reads through
+		// FileReader, which takes an extra event-loop turn before the
+		// write chain advances
+		const flushAsync = async (): Promise<void> => {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		};
 
 		const getWriteFailureNotices = (): unknown[][] => {
 			const { Notice } = jest.requireMock('obsidian');
@@ -930,6 +928,9 @@ describe('RecordingManager', () => {
 			recorder.ondataavailable?.({
 				data: new Blob([new Uint8Array([1])], { type: 'audio/webm' }),
 			} as BlobEvent);
+			// The Blob.arrayBuffer polyfill reads through FileReader, which
+			// takes an extra event-loop turn before the flush lands
+			await new Promise((resolve) => setTimeout(resolve, 0));
 			await new Promise((resolve) => setTimeout(resolve, 0));
 
 			expect(mockJournal.addSegment).toHaveBeenCalledWith(
