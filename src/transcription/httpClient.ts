@@ -12,6 +12,7 @@ import {
 	TRANSCRIBE_REQUEST_TIMEOUT_MS,
 	TRANSCRIBE_UPLOAD_BYTES_PER_MS,
 } from '../constants';
+import { randomToken } from '../utils/ids';
 
 /** One field of a multipart/form-data body. */
 export type MultipartField =
@@ -36,7 +37,7 @@ export interface MultipartBody {
  * @returns The encoded body and the matching content-type header value
  */
 export function buildMultipart(fields: MultipartField[]): MultipartBody {
-	const boundary = `----aar${Math.random().toString(16).slice(2)}${String(Date.now())}`;
+	const boundary = `----aar${randomToken()}${String(Date.now())}`;
 	const encoder = new TextEncoder();
 	const chunks: Uint8Array[] = [];
 	const pushText = (text: string): void => {

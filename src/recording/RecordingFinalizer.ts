@@ -8,6 +8,7 @@
 
 import { Notice } from 'obsidian';
 import type { App } from 'obsidian';
+import { sessionTimestamp } from '../utils/ids';
 import type {
 	InsertionContext,
 	RecordingSaveResult,
@@ -142,8 +143,7 @@ export class RecordingFinalizer {
 		insertionContext: InsertionContext | null,
 	): Promise<RecordingSaveResult> {
 		const session = this.requireSession();
-		const effectiveTimestamp =
-			timestamp ?? new Date().toISOString().replace(/[:.]/g, '-');
+		const effectiveTimestamp = timestamp ?? sessionTimestamp();
 		const fileLinks: string[] = [];
 		const trackFiles: TrackFileGroup[] = [];
 

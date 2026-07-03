@@ -9,6 +9,9 @@
 import { TRANSCRIBE_BYTES_PER_SEC, TRANSCRIBE_SAMPLE_RATE } from '../constants';
 import { createWavFileBuffer, WAV_HEADER_SIZE } from '../audio/WavEncoder';
 import { floatToInt16 } from '../audio/pcm';
+
+/** Channel count of the mono WAV uploads produced for transcription. */
+const WAV_MONO_CHANNEL_COUNT = 1;
 import { decodeAudioBlob } from '../audio/AudioFormatConverter';
 
 /**
@@ -22,7 +25,11 @@ export function encodeMonoWav(
 	sampleRate: number,
 ): ArrayBuffer {
 	const pcmByteLength = samples.length * 2;
-	const out = createWavFileBuffer(1, sampleRate, pcmByteLength);
+	const out = createWavFileBuffer(
+		WAV_MONO_CHANNEL_COUNT,
+		sampleRate,
+		pcmByteLength,
+	);
 	const view = new DataView(out, WAV_HEADER_SIZE);
 	for (let i = 0; i < samples.length; i++) {
 		view.setInt16(i * 2, floatToInt16(samples[i]), true);

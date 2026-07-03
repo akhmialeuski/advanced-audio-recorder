@@ -13,6 +13,7 @@
 import { Notice } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import {
+	BYTES_PER_MB,
 	PLUGIN_LOG_PREFIX,
 	TRANSCRIBE_CHUNK_PROGRESS_CEILING,
 } from '../constants';
@@ -155,7 +156,7 @@ export class TranscriptionService {
 			audioPrepOptions(
 				provider.capabilities,
 				provider.requiresNetwork,
-				Math.max(1, settings.transcriptionChunkMb) * 1024 * 1024,
+				Math.max(1, settings.transcriptionChunkMb) * BYTES_PER_MB,
 				transcribeOptions.diarize,
 			),
 		);

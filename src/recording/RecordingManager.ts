@@ -62,6 +62,7 @@ import {
 	sanitizePartSuffix,
 } from './AudioSplitter';
 import { captureInsertionContext } from './NoteInserter';
+import { sessionTimestamp } from '../utils/ids';
 
 /**
  * Manages the audio recording lifecycle.
@@ -344,9 +345,7 @@ export class RecordingManager {
 			this.rotation.beginSession(sessionConfig);
 
 			this.recordingStartTime = Date.now();
-			this.recordingTimestamp = new Date()
-				.toISOString()
-				.replace(/[:.]/g, '-');
+			this.recordingTimestamp = sessionTimestamp();
 			this.totalChunks = 0;
 			this.markers.beginSession();
 			this.recordedBytes = 0;
