@@ -263,9 +263,7 @@ export function detectCapabilities(): AudioCapabilities {
 		? FORMAT_WEBM
 		: supportedFormats.includes(FORMAT_MP4)
 			? FORMAT_MP4
-			: supportedFormats.length > 0
-				? supportedFormats[0]
-				: FORMAT_WEBM;
+			: (supportedFormats[0] ?? FORMAT_WEBM);
 
 	return {
 		supportedFormats,

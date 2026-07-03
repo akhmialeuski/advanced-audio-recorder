@@ -130,7 +130,8 @@ export async function insertProcessedAudioEmbed(
 				note.path,
 			)?.path === sourceFile.path,
 	);
-	if (matches.length === 0) {
+	const firstMatch = matches[0];
+	if (!firstMatch) {
 		return null;
 	}
 	const processedFile = app.vault.getFileByPath(processedPath);
@@ -141,7 +142,7 @@ export async function insertProcessedAudioEmbed(
 	await app.vault.process(note, (content) =>
 		replaceSource
 			? replaceSourceEmbeds(content, matches, newEmbed)
-			: insertEmbedAfterSource(content, matches[0].original, newEmbed),
+			: insertEmbedAfterSource(content, firstMatch.original, newEmbed),
 	);
 	return note.path;
 }

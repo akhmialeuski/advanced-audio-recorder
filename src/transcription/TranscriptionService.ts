@@ -189,17 +189,19 @@ export class TranscriptionService {
 		const failedParts: { label: string; message: string }[] = [];
 		for (let i = 0; i < partCount; i++) {
 			this.throwIfCancelled(token);
+			const payload = payloads[i];
+			if (!payload) {
+				continue;
+			}
 			const partLabel =
-				partCount > 1
-					? this.describePart(payloads[i], i, partCount)
-					: '';
+				partCount > 1 ? this.describePart(payload, i, partCount) : '';
 			options.onProgress?.(
 				(i / partCount) * TRANSCRIBE_CHUNK_PROGRESS_CEILING,
 				partLabel ? `Transcribing ${partLabel}...` : 'Transcribing...',
 			);
 			await this.transcribePart(
 				provider,
-				payloads[i],
+				payload,
 				transcribeOptions,
 				token,
 				partLabel,
@@ -261,7 +263,7 @@ export class TranscriptionService {
 			new Notice(
 				`Some audio could not be transcribed (${labels}) and is missing ` +
 					'from the transcript; saving the parts that succeeded. ' +
-					failedParts[0].message,
+					(failedParts[0]?.message ?? ''),
 			);
 		}
 

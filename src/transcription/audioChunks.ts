@@ -50,7 +50,7 @@ export async function encodeMonoWav(
 	for (let start = 0; start < samples.length; start += ENCODE_YIELD_FRAMES) {
 		const end = Math.min(samples.length, start + ENCODE_YIELD_FRAMES);
 		for (let i = start; i < end; i++) {
-			view.setInt16(i * 2, floatToInt16(samples[i]), true);
+			view.setInt16(i * 2, floatToInt16(samples[i] ?? 0), true);
 		}
 		if (end < samples.length) {
 			await yieldToEventLoop();

@@ -374,8 +374,9 @@ export class ContextMenu {
 		while ((match = internalLinkRegex.exec(lineText)) !== null) {
 			const start = match.index;
 			const end = start + match[0].length;
-			if (cursorCh >= start && cursorCh <= end) {
-				return { path: match[1], start, end };
+			const path = match[1];
+			if (path !== undefined && cursorCh >= start && cursorCh <= end) {
+				return { path, start, end };
 			}
 		}
 
@@ -384,8 +385,9 @@ export class ContextMenu {
 		while ((match = markdownLinkRegex.exec(lineText)) !== null) {
 			const start = match.index;
 			const end = start + match[0].length;
-			if (cursorCh >= start && cursorCh <= end) {
-				return { path: match[2], start, end };
+			const path = match[2];
+			if (path !== undefined && cursorCh >= start && cursorCh <= end) {
+				return { path, start, end };
 			}
 		}
 

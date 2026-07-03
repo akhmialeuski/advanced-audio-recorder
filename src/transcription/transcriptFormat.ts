@@ -115,7 +115,7 @@ function applyTemplate(
 		/\{(\w+)\}/g,
 		(_match, name: string) =>
 			Object.prototype.hasOwnProperty.call(values, name)
-				? values[name]
+				? (values[name] ?? '')
 				: '',
 	);
 	return substituted.replace(/[ \t]{2,}/g, ' ').trim();

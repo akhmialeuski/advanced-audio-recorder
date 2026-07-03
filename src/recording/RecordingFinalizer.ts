@@ -149,11 +149,11 @@ export class RecordingFinalizer {
 
 		this.reportProgress(20, 'Flushing buffers...');
 
+		const soloTarget = targets.length === 1 ? targets[0] : undefined;
 		if (session.outputMode === 'single') {
-			if (targets.length === 1) {
-				const target = targets[0];
-				const paths = await this.finalizeTrackFiles(target);
-				const files = [...target.partPaths, ...paths];
+			if (soloTarget) {
+				const paths = await this.finalizeTrackFiles(soloTarget);
+				const files = [...soloTarget.partPaths, ...paths];
 				fileLinks.push(...files);
 				trackFiles.push({ trackIndex: 0, files });
 			} else {
@@ -279,6 +279,9 @@ export class RecordingFinalizer {
 				trackIndex++
 			) {
 				const target = targets[trackIndex];
+				if (!target) {
+					continue;
+				}
 				const paths = await this.finalizeTrackFiles(target);
 				const files = [...target.partPaths, ...paths];
 				fileLinks.push(...files);

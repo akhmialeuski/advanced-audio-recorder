@@ -172,7 +172,8 @@ export function applyNoiseGateToChannel(
 		const end = Math.min(samples.length, start + windowSize);
 		let sumSquares = 0;
 		for (let i = start; i < end; i++) {
-			sumSquares += samples[i] * samples[i];
+			const sample = samples[i] ?? 0;
+			sumSquares += sample * sample;
 		}
 		const rms = Math.sqrt(sumSquares / (end - start));
 		const rmsDb = rms > 0 ? 20 * Math.log10(rms) : -Infinity;
@@ -181,7 +182,7 @@ export function applyNoiseGateToChannel(
 		for (let i = start; i < end; i++) {
 			const coef = target > gain ? attackCoef : releaseCoef;
 			gain = target + (gain - target) * coef;
-			out[i] = samples[i] * gain;
+			out[i] = (samples[i] ?? 0) * gain;
 		}
 	}
 	return out;

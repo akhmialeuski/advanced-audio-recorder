@@ -83,9 +83,10 @@ export class ConversionModal extends Modal {
 						`${format.toUpperCase()} (${encoder})`,
 					);
 				});
-				if (availableFormats.length > 0) {
-					this.targetFormat = availableFormats[0];
-					dropdown.setValue(this.targetFormat);
+				const firstFormat = availableFormats[0];
+				if (firstFormat) {
+					this.targetFormat = firstFormat;
+					dropdown.setValue(firstFormat);
 				}
 				dropdown.onChange((value) => {
 					this.targetFormat = value;

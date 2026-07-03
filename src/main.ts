@@ -679,7 +679,11 @@ export default class AudioRecorderPlugin extends Plugin {
 		) {
 			return;
 		}
-		const file = this.app.vault.getFileByPath(result.audioPaths[0]);
+		const [firstAudioPath] = result.audioPaths;
+		if (!firstAudioPath) {
+			return;
+		}
+		const file = this.app.vault.getFileByPath(firstAudioPath);
 		if (!file) {
 			return;
 		}

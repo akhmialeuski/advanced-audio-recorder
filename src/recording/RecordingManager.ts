@@ -253,8 +253,12 @@ export class RecordingManager {
 		if (!this.settings.showInputLevelMeter || this.streams.length === 0) {
 			return;
 		}
+		const primaryStream = this.streams[0];
+		if (!primaryStream) {
+			return;
+		}
 		this.levelMonitor = new InputLevelMonitor();
-		this.levelMonitor.start(this.streams[0]);
+		this.levelMonitor.start(primaryStream);
 	}
 
 	/**
@@ -525,7 +529,7 @@ export class RecordingManager {
 		}
 		const uniqueNames = sourceNames.map((name, index) =>
 			(nameCounts.get(name) ?? 0) > 1
-				? `${name}-${String(trackInfos[index].trackNumber)}`
+				? `${name}-${String(trackInfos[index]?.trackNumber ?? index + 1)}`
 				: name,
 		);
 		return uniqueNames.map((sourceName) => ({
@@ -565,6 +569,9 @@ export class RecordingManager {
 			this.pcmRecorders.map(async (recorder, index) => {
 				await recorder.start();
 				const target = this.chunkTargets[index];
+				if (!target) {
+					return;
+				}
 				target.pcmChannels = recorder.channels;
 				target.pcmSampleRate = recorder.sampleRate;
 			}),

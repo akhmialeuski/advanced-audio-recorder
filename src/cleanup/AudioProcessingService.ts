@@ -48,7 +48,7 @@ function writeWavSegment(
 		for (let channel = 0; channel < numChannels; channel++) {
 			pcm.setInt16(
 				offset,
-				floatToInt16(channels[channel][srcFrom + frame]),
+				floatToInt16(channels[channel]?.[srcFrom + frame] ?? 0),
 				true,
 			);
 			offset += 2;
@@ -97,7 +97,8 @@ export class AudioProcessingService {
 		const data = await this.app.vault.readBinary(file);
 		const { sampleRate, data: channels } = await this.decodeChannels(data);
 		const numChannels = channels.length;
-		const numFrames = channels[0].length;
+		// decodeChannels rejects empty audio, so the first channel exists
+		const numFrames = channels[0]?.length ?? 0;
 
 		// Allocate the full interleaved 16-bit WAV output once and fill it a
 		// segment at a time. Only the decoded input and this output live at full
@@ -217,7 +218,7 @@ export class AudioProcessingService {
 			for (let i = 0; i < decoded.numberOfChannels; i++) {
 				channels.push(Float32Array.from(decoded.getChannelData(i)));
 			}
-			if (channels.length === 0 || channels[0].length === 0) {
+			if ((channels[0]?.length ?? 0) === 0) {
 				throw new Error('The file contains no decodable audio data.');
 			}
 			return { sampleRate: decoded.sampleRate, data: channels };
@@ -249,7 +250,10 @@ export class AudioProcessingService {
 		);
 		const buffer = offline.createBuffer(numChannels, length, sampleRate);
 		for (let i = 0; i < numChannels; i++) {
-			buffer.getChannelData(i).set(channels[i]);
+			const channel = channels[i];
+			if (channel) {
+				buffer.getChannelData(i).set(channel);
+			}
 		}
 		const source = offline.createBufferSource();
 		source.buffer = buffer;

@@ -135,7 +135,7 @@ export class SplitService {
 
 			partFiles = await this.writePartFiles(parts, partPaths, onProgress);
 			partCount = parts.length;
-			firstPartName = partNames[0];
+			firstPartName = partNames[0] ?? '';
 		} catch (error) {
 			const message =
 				error instanceof Error ? error.message : String(error);
@@ -353,13 +353,18 @@ export class SplitService {
 				onProgress(
 					`Writing part ${String(i + 1)} of ${String(parts.length)}...`,
 				);
-				const bytes = await parts[i].data();
+				const part = parts[i];
+				const partPath = partPaths[i];
+				if (!part || !partPath) {
+					continue;
+				}
+				const bytes = await part.data();
 				const created = await this.app.vault.createBinary(
-					partPaths[i],
+					partPath,
 					bytes,
 				);
 				written.push({
-					path: partPaths[i],
+					path: partPath,
 					file: created instanceof TFile ? created : null,
 				});
 				// Yield to the UI between parts so the progress text repaints
