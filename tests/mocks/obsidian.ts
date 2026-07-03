@@ -116,13 +116,17 @@ export class Workspace {
 }
 
 /**
- * Mock Notice class.
+ * Mock Notice: a jest.fn-backed constructor so tests can assert on
+ * `(Notice as jest.Mock).mock.calls` without re-mocking the module.
+ * The global clearMocks option resets the calls between tests.
  */
-export class Notice {
-	constructor(_message: string, _timeout?: number) {
-		// Mock implementation
-	}
-}
+export const Notice = jest.fn(function (
+	this: { message: string },
+	message: string,
+	_timeout?: number,
+) {
+	this.message = message;
+});
 
 /**
  * Mock MenuItem class. Builder methods are chainable like the real API.
@@ -267,8 +271,10 @@ export class MarkdownRenderChild extends Component {
 /**
  * Adds Obsidian DOM extension methods to an HTMLElement.
  * Obsidian extends HTMLElement with helper methods like createEl, setText, etc.
+ * Exported so DOM-driven tests can extend elements Obsidian extends at
+ * runtime (e.g. document.body for body-mounted UI like RecordingBanner).
  */
-function addObsidianDomExtensions(el: HTMLElement): HTMLElement {
+export function addObsidianDomExtensions(el: HTMLElement): HTMLElement {
 	// Use unknown cast to avoid TypeScript's overloaded HTMLElement extension conflicts
 	const extended = el as unknown as Record<string, unknown>;
 
@@ -364,12 +370,23 @@ export class Modal {
 		);
 	}
 
+	titleEl: HTMLElement = addObsidianDomExtensions(
+		document.createElement('div'),
+	);
+
 	open(): void {
-		// Mock implementation
+		// Mirrors Obsidian: opening renders the modal contents
+		this.onOpen();
 	}
 
 	close(): void {
-		// Mock implementation
+		// Mirrors Obsidian: closing tears the contents down
+		this.onClose();
+	}
+
+	setTitle(title: string): this {
+		this.titleEl.setText(title);
+		return this;
 	}
 
 	onOpen(): void {
@@ -385,9 +402,12 @@ export class Modal {
  * Mock ButtonComponent class.
  */
 export class ButtonComponent {
-	buttonEl: HTMLElement = document.createElement('button');
+	buttonEl: HTMLButtonElement = addObsidianDomExtensions(
+		document.createElement('button'),
+	);
 
-	setButtonText(_text: string): this {
+	setButtonText(text: string): this {
+		this.buttonEl.textContent = text;
 		return this;
 	}
 
@@ -395,11 +415,14 @@ export class ButtonComponent {
 		return this;
 	}
 
-	setDisabled(_disabled: boolean): this {
+	setDisabled(disabled: boolean): this {
+		this.buttonEl.disabled = disabled;
 		return this;
 	}
 
-	onClick(_callback: () => void): this {
+	onClick(callback: () => void): this {
+		// Clicking buttonEl triggers the handler, as in Obsidian
+		this.buttonEl.addEventListener('click', callback);
 		return this;
 	}
 }
@@ -411,20 +434,36 @@ export class Setting {
 	settingEl: HTMLElement;
 	nameEl: HTMLElement;
 	descEl: HTMLElement;
+	controlEl: HTMLElement;
 
-	constructor(_containerEl: HTMLElement) {
+	constructor(containerEl: HTMLElement) {
+		// Mirrors Obsidian: the setting row is attached to the container
+		// so tests can locate rendered controls through the DOM
 		this.settingEl = addObsidianDomExtensions(
 			document.createElement('div'),
 		);
+		this.settingEl.classList.add('setting-item');
 		this.nameEl = addObsidianDomExtensions(document.createElement('div'));
+		this.nameEl.classList.add('setting-item-name');
 		this.descEl = addObsidianDomExtensions(document.createElement('div'));
+		this.descEl.classList.add('setting-item-description');
+		this.controlEl = addObsidianDomExtensions(
+			document.createElement('div'),
+		);
+		this.controlEl.classList.add('setting-item-control');
+		this.settingEl.appendChild(this.nameEl);
+		this.settingEl.appendChild(this.descEl);
+		this.settingEl.appendChild(this.controlEl);
+		containerEl.appendChild(this.settingEl);
 	}
 
-	setName(_name: string): this {
+	setName(name: string): this {
+		this.nameEl.textContent = name;
 		return this;
 	}
 
-	setDesc(_desc: string): this {
+	setDesc(desc: string): this {
+		this.descEl.textContent = desc;
 		return this;
 	}
 
@@ -432,24 +471,57 @@ export class Setting {
 		return this;
 	}
 
-	addText(_callback: (text: TextComponent) => void): this {
+	/** Components created by the add* methods, in creation order. */
+	components: Array<
+		| TextComponent
+		| ToggleComponent
+		| DropdownComponent
+		| SliderComponent
+		| ButtonComponent
+	> = [];
+
+	private addComponent<
+		T extends
+			| TextComponent
+			| ToggleComponent
+			| DropdownComponent
+			| SliderComponent
+			| ButtonComponent,
+	>(component: T, callback: (component: T) => void): this {
+		this.components.push(component);
+		// Attach the component's element like Obsidian does, so DOM
+		// queries and clicks reach it
+		const el =
+			(component as { buttonEl?: HTMLElement }).buttonEl ??
+			(component as { inputEl?: HTMLElement }).inputEl ??
+			(component as { selectEl?: HTMLElement }).selectEl ??
+			(component as { toggleEl?: HTMLElement }).toggleEl ??
+			(component as { sliderEl?: HTMLElement }).sliderEl;
+		if (el) {
+			this.controlEl.appendChild(el);
+		}
+		callback(component);
 		return this;
 	}
 
-	addToggle(_callback: (toggle: ToggleComponent) => void): this {
-		return this;
+	addText(callback: (text: TextComponent) => void): this {
+		return this.addComponent(new TextComponent(), callback);
 	}
 
-	addDropdown(_callback: (dropdown: DropdownComponent) => void): this {
-		return this;
+	addToggle(callback: (toggle: ToggleComponent) => void): this {
+		return this.addComponent(new ToggleComponent(), callback);
 	}
 
-	addSlider(_callback: (slider: SliderComponent) => void): this {
-		return this;
+	addDropdown(callback: (dropdown: DropdownComponent) => void): this {
+		return this.addComponent(new DropdownComponent(), callback);
 	}
 
-	addButton(_callback: (button: ButtonComponent) => void): this {
-		return this;
+	addSlider(callback: (slider: SliderComponent) => void): this {
+		return this.addComponent(new SliderComponent(), callback);
+	}
+
+	addButton(callback: (button: ButtonComponent) => void): this {
+		return this.addComponent(new ButtonComponent(), callback);
 	}
 }
 
@@ -532,9 +604,27 @@ export class TFile extends TAbstractFile {
  * Mock DropdownComponent class.
  */
 export class DropdownComponent {
+	selectEl: HTMLSelectElement = addObsidianDomExtensions(
+		document.createElement('select'),
+	);
 	value = '';
+	disabled = false;
 
-	addOption(_value: string, _display: string): this {
+	/** Change handler, stored as Obsidian does for test triggering. */
+	changeCallback: ((value: string) => void) | null = null;
+
+	addOption(value: string, display: string): this {
+		const option = document.createElement('option');
+		option.value = value;
+		option.textContent = display;
+		this.selectEl.appendChild(option);
+		return this;
+	}
+
+	addOptions(options: Record<string, string>): this {
+		for (const [value, display] of Object.entries(options)) {
+			this.addOption(value, display);
+		}
 		return this;
 	}
 
@@ -543,7 +633,13 @@ export class DropdownComponent {
 		return this;
 	}
 
-	onChange(_callback: (value: string) => void): this {
+	setDisabled(disabled: boolean): this {
+		this.disabled = disabled;
+		return this;
+	}
+
+	onChange(callback: (value: string) => void): this {
+		this.changeCallback = callback;
 		return this;
 	}
 }
@@ -552,19 +648,33 @@ export class DropdownComponent {
  * Mock TextComponent class.
  */
 export class TextComponent {
-	inputEl: HTMLInputElement = document.createElement('input');
+	inputEl: HTMLInputElement = addObsidianDomExtensions(
+		document.createElement('input'),
+	);
 	value = '';
+	disabled = false;
 
-	setPlaceholder(_placeholder: string): this {
+	/** Change handler, stored as Obsidian does for test triggering. */
+	changeCallback: ((value: string) => void) | null = null;
+
+	setPlaceholder(placeholder: string): this {
+		this.inputEl.placeholder = placeholder;
 		return this;
 	}
 
 	setValue(value: string): this {
 		this.value = value;
+		this.inputEl.value = value;
 		return this;
 	}
 
-	onChange(_callback: (value: string) => void): this {
+	setDisabled(disabled: boolean): this {
+		this.disabled = disabled;
+		return this;
+	}
+
+	onChange(callback: (value: string) => void): this {
+		this.changeCallback = callback;
 		return this;
 	}
 }
@@ -573,14 +683,44 @@ export class TextComponent {
  * Mock ToggleComponent class.
  */
 export class ToggleComponent {
+	toggleEl: HTMLElement = addObsidianDomExtensions(
+		document.createElement('div'),
+	);
 	value = false;
+	disabled = false;
+
+	/** Change handler, stored as Obsidian does for test triggering. */
+	changeCallback: ((value: boolean) => void) | null = null;
+
+	constructor() {
+		// Mirrors Obsidian: clicking the toggle flips the value and
+		// fires the change handler
+		this.toggleEl.classList.add('checkbox-container');
+		this.toggleEl.addEventListener('click', () => {
+			if (this.disabled) {
+				return;
+			}
+			this.value = !this.value;
+			this.changeCallback?.(this.value);
+		});
+	}
 
 	setValue(value: boolean): this {
 		this.value = value;
 		return this;
 	}
 
-	onChange(_callback: (value: boolean) => void): this {
+	setDisabled(disabled: boolean): this {
+		this.disabled = disabled;
+		return this;
+	}
+
+	setTooltip(_tooltip: string): this {
+		return this;
+	}
+
+	onChange(callback: (value: boolean) => void): this {
+		this.changeCallback = callback;
 		return this;
 	}
 }
@@ -589,7 +729,14 @@ export class ToggleComponent {
  * Mock SliderComponent class.
  */
 export class SliderComponent {
+	sliderEl: HTMLInputElement = addObsidianDomExtensions(
+		document.createElement('input'),
+	);
 	value = 0;
+	disabled = false;
+
+	/** Change handler, stored as Obsidian does for test triggering. */
+	changeCallback: ((value: number) => void) | null = null;
 
 	setLimits(_min: number, _max: number, _step: number): this {
 		return this;
@@ -604,7 +751,13 @@ export class SliderComponent {
 		return this;
 	}
 
-	onChange(_callback: (value: number) => void): this {
+	setDisabled(disabled: boolean): this {
+		this.disabled = disabled;
+		return this;
+	}
+
+	onChange(callback: (value: number) => void): this {
+		this.changeCallback = callback;
 		return this;
 	}
 }
@@ -646,7 +799,7 @@ export interface MockRequestUrlParam {
 }
 
 /**
- * Minimal response the {@link requestUrl} mock returns — the subset of
+ * Minimal response the {@link requestUrl} mock returns - the subset of
  * Obsidian's `RequestUrlResponse` that the HTTP client reads.
  */
 export interface MockRequestUrlResponse {
@@ -694,6 +847,56 @@ export const Platform = {
 	isMobile: false,
 	isMobileApp: false,
 };
+
+/** Mock of obsidian's module-level API version export. */
+export const apiVersion = '1.12.3';
+
+/**
+ * Mock AbstractInputSuggest: enough surface for components that attach
+ * popover suggestions to a text input (e.g. FolderSuggest). Suggestions
+ * never open in tests; the constructor and the value plumbing suffice.
+ */
+export abstract class AbstractInputSuggest<T> {
+	limit = 100;
+
+	constructor(
+		public app: App,
+		protected inputEl: HTMLInputElement | HTMLDivElement,
+	) {}
+
+	protected abstract getSuggestions(query: string): T[] | Promise<T[]>;
+	abstract renderSuggestion(value: T, el: HTMLElement): void;
+
+	setValue(value: string): void {
+		if (this.inputEl instanceof HTMLInputElement) {
+			this.inputEl.value = value;
+		}
+	}
+
+	getValue(): string {
+		return this.inputEl instanceof HTMLInputElement
+			? this.inputEl.value
+			: '';
+	}
+
+	selectSuggestion(_value: T, _evt: MouseEvent | KeyboardEvent): void {
+		// Mock implementation
+	}
+
+	onSelect(
+		_callback: (value: T, evt: MouseEvent | KeyboardEvent) => unknown,
+	): this {
+		return this;
+	}
+
+	open(): void {
+		// Mock implementation
+	}
+
+	close(): void {
+		// Mock implementation
+	}
+}
 
 /**
  * Debounced function type returned by the debounce mock.

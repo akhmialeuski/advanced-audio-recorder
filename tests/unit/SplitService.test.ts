@@ -4,10 +4,9 @@
  * the service-level contract.
  * @module tests/unit/SplitService.test
  */
-/** @jest-environment jsdom */
 
-import { SplitService } from '../../src/recording/SplitService';
-import type { SplitRequest } from '../../src/recording/SplitService';
+import { SplitService } from 'src/recording/SplitService';
+import type { SplitRequest } from 'src/recording/SplitService';
 import { TFile, App } from 'obsidian';
 
 jest.mock('obsidian', () => ({
@@ -23,7 +22,7 @@ jest.mock('obsidian', () => ({
 	normalizePath: (path: string) => path.replace(/\\/g, '/'),
 }));
 
-jest.mock('../../src/recording/AudioEncoder', () => ({
+jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest
 		.fn()
 		.mockResolvedValue(new Blob(['encoded'], { type: 'audio/mp3' })),
@@ -32,7 +31,7 @@ jest.mock('../../src/recording/AudioEncoder', () => ({
 	),
 }));
 
-jest.mock('../../src/recording/AudioFormatConverter', () => ({
+jest.mock('src/audio/AudioFormatConverter', () => ({
 	decodeAudioBlob: jest.fn().mockResolvedValue({
 		length: 882000,
 		sampleRate: 44100,
@@ -41,30 +40,23 @@ jest.mock('../../src/recording/AudioFormatConverter', () => ({
 	}),
 }));
 
-jest.mock('../../src/recording/AudioSplitter', () => {
+jest.mock('src/recording/AudioSplitter', () => {
 	const actual = jest.requireActual<
-		typeof import('../../src/recording/AudioSplitter')
-	>('../../src/recording/AudioSplitter');
+		typeof import('src/recording/AudioSplitter')
+	>('src/recording/AudioSplitter');
 	return {
 		...actual,
 		sliceAudioBuffer: jest.fn().mockReturnValue({}),
 	};
 });
 
-jest.mock('../../src/utils/LinkUpdater', () => ({
+jest.mock('src/utils/LinkUpdater', () => ({
 	updateLinksInVault: jest.fn().mockResolvedValue({
 		updatedNotes: 0,
 		skippedReferences: 0,
 		frontmatterReferences: 0,
 	}),
 }));
-
-if (!Blob.prototype.arrayBuffer) {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test polyfill for jsdom
-	(Blob.prototype as any).arrayBuffer = function (): Promise<ArrayBuffer> {
-		return Promise.resolve(new ArrayBuffer(0));
-	};
-}
 
 const createSourceFile = (extension: string): TFile => {
 	const file = new TFile();

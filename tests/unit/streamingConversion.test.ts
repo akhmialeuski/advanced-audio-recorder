@@ -3,18 +3,19 @@
  * the main-thread pipeline and the encoding worker.
  * @module tests/unit/streamingConversion.test
  */
-/** @jest-environment jsdom */
 
-import { runStreamingConversion } from '../../src/recording/streamingConversion';
+import { runStreamingConversion } from 'src/audio/streamingConversion';
 
 const mockConversionExecute = jest.fn().mockResolvedValue(undefined);
 const mockConversionInit = jest.fn();
 const mockGetPrimaryAudioTrack = jest.fn();
+const mockInputDispose = jest.fn();
 const mockConvertedBuffer = new ArrayBuffer(64);
 
 jest.mock('mediabunny', () => ({
 	Input: jest.fn().mockImplementation(() => ({
 		getPrimaryAudioTrack: (): unknown => mockGetPrimaryAudioTrack(),
+		dispose: mockInputDispose,
 	})),
 	Output: jest.fn().mockImplementation(() => ({})),
 	BlobSource: jest.fn(),
@@ -27,7 +28,7 @@ jest.mock('mediabunny', () => ({
 	},
 }));
 
-jest.mock('../../src/recording/AudioEncoder', () => ({
+jest.mock('src/audio/AudioEncoder', () => ({
 	ensureEncoderRegistered: jest.fn().mockResolvedValue(undefined),
 	createOutputFormat: jest.fn().mockReturnValue({}),
 	FORMAT_CODEC_MAP: {
@@ -88,6 +89,22 @@ describe('runStreamingConversion', () => {
 		await expect(
 			runStreamingConversion(inputBlob, 'mp3', 128000, false),
 		).rejects.toThrow('Input contains no audio track');
+	});
+
+	it('should dispose the input on success', async () => {
+		await runStreamingConversion(inputBlob, 'mp3', 128000, false);
+
+		expect(mockInputDispose).toHaveBeenCalledTimes(1);
+	});
+
+	it('should dispose the input when the conversion throws', async () => {
+		mockGetPrimaryAudioTrack.mockResolvedValue(null);
+
+		await expect(
+			runStreamingConversion(inputBlob, 'mp3', 128000, false),
+		).rejects.toThrow('Input contains no audio track');
+
+		expect(mockInputDispose).toHaveBeenCalledTimes(1);
 	});
 
 	it('should force a re-encode with bitrate by default', async () => {

@@ -21,7 +21,8 @@ export function computeRms(samples: Float32Array): number {
 	}
 	let sumSquares = 0;
 	for (let i = 0; i < samples.length; i++) {
-		sumSquares += samples[i] * samples[i];
+		const sample = samples[i] ?? 0;
+		sumSquares += sample * sample;
 	}
 	return Math.sqrt(sumSquares / samples.length);
 }
@@ -67,7 +68,7 @@ export class InputLevelMonitor {
 			this.source = this.context.createMediaStreamSource(stream);
 			this.analyser = this.context.createAnalyser();
 			this.analyser.fftSize = 1024;
-			// Analyser only — never connect to the destination, or the
+			// Analyser only - never connect to the destination, or the
 			// input would be played back as a feedback loop.
 			this.source.connect(this.analyser);
 			this.buffer = new Float32Array(this.analyser.fftSize);

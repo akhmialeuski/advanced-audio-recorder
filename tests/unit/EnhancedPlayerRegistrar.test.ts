@@ -1,35 +1,43 @@
-/** @jest-environment jsdom */
 /**
- * Regression guard for the recurring "settings apply in one view mode but
- * not the other" / "video shows twice in Live Preview" defects. The fix:
- * the registrar is the single decision point — it returns Obsidian's OWN
- * native embed (unwrapped) for anything it does not enhance, returns the
- * enhanced player for audio, and applies settings by RE-RENDERING the view
- * through Obsidian's own pipeline (identical for Reading view and Live
- * Preview) instead of mutating embed DOM in place.
+ * Regression guard for two recurring defect families in the enhanced
+ * player integration:
  *
- * These tests fail on the previous design (which always wrapped the embed
- * and refreshed in place via a private list) and pass on the re-render
- * design.
+ * 1. "settings apply in one view mode but not the other" / "video shows
+ *    twice in Live Preview": the registrar is the single decision point -
+ *    it returns Obsidian's OWN native embed (unwrapped) for anything it
+ *    knows it will not enhance, the enhanced player for known audio, and
+ *    applies the master toggle by re-rendering through Obsidian's own
+ *    pipeline.
+ *
+ * 2. Issue #39, "background media probe triggers a full note rebuild":
+ *    a probe verdict must NEVER re-render a note. A not-yet-probed file
+ *    renders inside a MediaEmbedShell that upgrades this one embed to the
+ *    enhanced player in place; leaf.rebuildView() is reserved for the
+ *    master toggle flip alone. These tests fail on the previous design,
+ *    which upgraded probed files by rebuilding the embedding leaves.
  */
 
-import { MarkdownView, TFile } from 'obsidian';
+import { Component, MarkdownView, TFile } from 'obsidian';
 import type { App, Plugin, WorkspaceLeaf } from 'obsidian';
 import { EnhancedPlayerRegistrar } from 'src/player/EnhancedPlayerRegistrar';
+import { MediaEmbedShell } from 'src/player/MediaEmbedShell';
 import { AudioPlayer } from 'src/player/AudioPlayer';
 import { AudioPlayerRegistry } from 'src/player/AudioPlayerRegistry';
 import { probeMediaKind } from 'src/player/mediaProbe';
+import type { MediaKind, MediaProbeResult } from 'src/player/mediaProbe';
+import type { MediaKindStore } from 'src/player/MediaKindStore';
 import { AUDIO_EXTENSIONS } from 'src/constants';
-import { DEFAULT_SETTINGS } from 'src/settings/Settings';
-import type { AudioRecorderSettings } from 'src/settings/Settings';
+import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import type { EmbedInfo } from 'src/obsidian/embedRegistry';
-import type { MarkerStore } from 'src/player/markers/MarkerStore';
+import type { MarkerStore } from 'src/markers/MarkerStore';
 
 jest.mock('src/player/AudioPlayer', () => ({
 	AudioPlayer: jest.fn().mockImplementation(() => ({
 		__enhanced: true,
 		load: jest.fn(),
 		unload: jest.fn(),
+		loadFile: jest.fn(),
 	})),
 }));
 
@@ -41,14 +49,41 @@ jest.mock('src/player/mediaProbe', () => ({
 const probeMock = jest.mocked(probeMediaKind);
 const audioPlayerMock = jest.mocked(AudioPlayer);
 
-/** Resolves after the debounced re-render timer has fired. */
+/** Builds a probe result; probes are confident unless stated otherwise. */
+function probeResult(kind: MediaKind, confident = true): MediaProbeResult {
+	return { kind, confident };
+}
+
+/** Resolves after the probe microtasks and the re-render debounce. */
 function flush(): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, 120));
 }
 
-/** A native embed instance tagged with the file extension that produced it. */
-interface NativeInstance {
-	__native: string;
+/**
+ * A native embed instance: a real Component (so a shell can host and
+ * unload it) tagged with the extension that produced it.
+ */
+class NativeEmbed extends Component {
+	readonly __native: string;
+	/** Set when the shell (or Obsidian) unloaded this embed. */
+	unloaded = false;
+	readonly loadFile = jest.fn();
+
+	constructor(extension: string) {
+		super();
+		this.__native = extension;
+	}
+
+	override onunload(): void {
+		this.unloaded = true;
+	}
+}
+
+/** The mocked enhanced-player instance shape. */
+interface EnhancedInstance {
+	__enhanced: boolean;
+	load: jest.Mock;
+	loadFile: jest.Mock;
 }
 
 /** Builds a MarkdownView stub for a given mode with re-render spies. */
@@ -70,18 +105,37 @@ function viewStub(
 	});
 }
 
+/** A fully mocked persistent media-kind store. */
+function kindStoreStub(): jest.Mocked<
+	Pick<
+		MediaKindStore,
+		'load' | 'get' | 'set' | 'handleRename' | 'handleDelete' | 'flush'
+	>
+> {
+	return {
+		load: jest.fn().mockResolvedValue(undefined),
+		get: jest.fn().mockReturnValue(null),
+		set: jest.fn(),
+		handleRename: jest.fn(),
+		handleDelete: jest.fn(),
+		flush: jest.fn(),
+	};
+}
+
 /**
  * Builds a registrar wired to fakes and registers it. Returns the installed
  * embed creator plus the spies needed to assert behaviour.
  */
-function setup(enabled = true): {
+function setup(
+	enabled = true,
+	kindStore: ReturnType<typeof kindStoreStub> | null = null,
+): {
 	registrar: EnhancedPlayerRegistrar;
 	creator: (info: EmbedInfo, file: TFile, subpath: string) => unknown;
 	nativeCreator: jest.Mock;
 	settings: AudioRecorderSettings;
 	leaves: { preview: WorkspaceLeaf; source: WorkspaceLeaf };
 	getLeaves: jest.Mock;
-	embedsByNote: Record<string, { embeds: Array<{ link: string }> }>;
 } {
 	const settings: AudioRecorderSettings = {
 		...DEFAULT_SETTINGS,
@@ -89,9 +143,8 @@ function setup(enabled = true): {
 	};
 
 	const nativeCreator = jest.fn(
-		(_info: EmbedInfo, file: TFile): NativeInstance => ({
-			__native: file.extension,
-		}),
+		(_info: EmbedInfo, file: TFile): NativeEmbed =>
+			new NativeEmbed(file.extension),
 	);
 
 	const embedByExtension: Record<string, unknown> = {};
@@ -99,8 +152,6 @@ function setup(enabled = true): {
 		embedByExtension[ext] = nativeCreator;
 	}
 
-	// The preview note embeds the recording; the source note does not, so a
-	// probe upgrade should rebuild only the preview leaf (scoped re-render).
 	const previewLeaf = {
 		view: viewStub('preview', 'note.md'),
 		rebuildView: jest.fn(),
@@ -111,20 +162,15 @@ function setup(enabled = true): {
 	} as unknown as WorkspaceLeaf;
 	const getLeaves = jest.fn(() => [previewLeaf, sourceLeaf]);
 
-	const embedsByNote: Record<string, { embeds: Array<{ link: string }> }> = {
-		'note.md': { embeds: [{ link: 'recording.mp4' }] },
-		'other.md': { embeds: [] },
-	};
 	const app = {
 		embedRegistry: { embedByExtension },
 		vault: {
 			getResourcePath: () => 'app://media',
-			getAbstractFileByPath: (path: string) => fileFromPath(path),
+			getFileByPath: (path: string) => fileFromPath(path),
 			on: jest.fn(() => ({})),
 		},
 		metadataCache: {
-			getFileCache: (file: { path: string }) =>
-				embedsByNote[file.path] ?? { embeds: [] },
+			getFileCache: () => ({ embeds: [] }),
 			getFirstLinkpathDest: (linkPath: string) => ({ path: linkPath }),
 		},
 		workspace: {
@@ -150,6 +196,7 @@ function setup(enabled = true): {
 		app,
 		() => settings,
 		markerStore,
+		kindStore,
 	);
 	registrar.register();
 
@@ -166,7 +213,6 @@ function setup(enabled = true): {
 		settings,
 		leaves: { preview: previewLeaf, source: sourceLeaf },
 		getLeaves,
-		embedsByNote,
 	};
 }
 
@@ -182,6 +228,13 @@ function fileOf(extension: string): TFile {
 	return fileFromPath(`recording.${extension}`);
 }
 
+function embedInfo(): EmbedInfo {
+	return {
+		containerEl: document.createElement('div'),
+		sourcePath: 'note.md',
+	};
+}
+
 const info: EmbedInfo = {
 	containerEl: document.createElement('div'),
 	sourcePath: 'note.md',
@@ -193,45 +246,87 @@ beforeEach(() => {
 });
 
 describe('EnhancedPlayerRegistrar embed creation', () => {
-	it('returns Obsidian’s own native embed for a video file (no wrapper, no double)', () => {
-		probeMock.mockResolvedValue('video');
-		const { creator, nativeCreator } = setup(true);
-
-		const result = creator(info, fileOf('mp4'), '') as NativeInstance;
-
-		// The unwrapped native instance — exactly what Obsidian renders on its
-		// own, so Live Preview cannot double it
-		expect(result.__native).toBe('mp4');
-		expect(nativeCreator).toHaveBeenCalledTimes(1);
-		expect(audioPlayerMock).not.toHaveBeenCalled();
-	});
-
-	it('probes content for an audio-extension file too (never trusts the extension)', () => {
-		probeMock.mockResolvedValue('audio');
+	it('hosts the native embed in a shell while a file is unprobed (never trusts the extension)', () => {
+		probeMock.mockResolvedValue(probeResult('audio'));
 		const { creator, nativeCreator } = setup(true);
 
 		// A wav can in principle carry a video track, so it must be probed,
-		// not enhanced on faith: render native first, probe the content
-		const result = creator(info, fileOf('wav'), '') as NativeInstance;
+		// not enhanced on faith: the native embed shows while the probe runs
+		const result = creator(info, fileOf('wav'), '');
 
-		expect(result.__native).toBe('wav');
+		expect(result).toBeInstanceOf(MediaEmbedShell);
 		expect(nativeCreator).toHaveBeenCalledTimes(1);
+		expect(probeMock).toHaveBeenCalledTimes(1);
+		// The player is not built before the probe settles
+		expect(audioPlayerMock).not.toHaveBeenCalled();
+	});
+
+	it('upgrades the embed IN PLACE when the probe finds audio - no note re-render (issue #39)', async () => {
+		probeMock.mockResolvedValue(probeResult('audio'));
+		const { creator, nativeCreator, getLeaves, leaves } = setup(true);
+
+		const shell = creator(info, fileOf('wav'), '') as Component;
+		shell.load();
+
+		await flush();
+
+		// The shell swapped this one embed: the native child was unloaded
+		// (stopping any playback) and the player took over the container
+		const native = nativeCreator.mock.results[0].value as NativeEmbed;
+		expect(native.unloaded).toBe(true);
+		expect(audioPlayerMock).toHaveBeenCalledTimes(1);
+		const player = audioPlayerMock.mock.results[0]
+			.value as unknown as EnhancedInstance;
+		expect(player.load).toHaveBeenCalled();
+		// The core of issue #39: no leaf was inspected or rebuilt, so a
+		// large embedding note is never re-rendered by a probe verdict
+		expect(getLeaves).not.toHaveBeenCalled();
+		expect(
+			(leaves.preview as unknown as { rebuildView: jest.Mock })
+				.rebuildView,
+		).not.toHaveBeenCalled();
+	});
+
+	it('keeps the native embed for a video file - no player, no re-render', async () => {
+		probeMock.mockResolvedValue(probeResult('video'));
+		const { creator, nativeCreator, getLeaves } = setup(true);
+
+		const shell = creator(info, fileOf('mp4'), '') as Component;
+		shell.load();
+
+		await flush();
+
+		const native = nativeCreator.mock.results[0].value as NativeEmbed;
+		expect(native.unloaded).toBe(false);
+		expect(audioPlayerMock).not.toHaveBeenCalled();
+		expect(getLeaves).not.toHaveBeenCalled();
+	});
+
+	it("returns Obsidian's own native embed unwrapped once a file is known video (no wrapper, no double)", async () => {
+		probeMock.mockResolvedValue(probeResult('video'));
+		const { creator } = setup(true);
+
+		creator(info, fileOf('mp4'), '');
+		await flush();
+
+		// The kind is cached now: the next render gets exactly what Obsidian
+		// renders on its own, so Live Preview cannot double it
+		const second = creator(info, fileOf('mp4'), '') as NativeEmbed;
+		expect(second).toBeInstanceOf(NativeEmbed);
+		expect(second.__native).toBe('mp4');
 		expect(probeMock).toHaveBeenCalledTimes(1);
 	});
 
-	it('renders enhanced once a probe has classified the file as audio', async () => {
-		probeMock.mockResolvedValue('audio');
+	it('renders enhanced directly once a probe has classified the file as audio', async () => {
+		probeMock.mockResolvedValue(probeResult('audio'));
 		const { creator } = setup(true);
 
-		// First render probes and shows native
-		const first = creator(info, fileOf('wav'), '') as NativeInstance;
-		expect(first.__native).toBe('wav');
-
+		creator(info, fileOf('wav'), '');
 		await flush();
 		probeMock.mockClear();
 
-		// A later render of the same file (as Obsidian does after the
-		// re-render) is enhanced now, with no further probe
+		// A later render of the same file is enhanced from the start, with
+		// no further probe and no shell
 		const second = creator(info, fileOf('wav'), '') as {
 			__enhanced?: boolean;
 		};
@@ -242,10 +337,88 @@ describe('EnhancedPlayerRegistrar embed creation', () => {
 	it('returns the native embed for every file when the feature is disabled', () => {
 		const { creator } = setup(false);
 
-		const result = creator(info, fileOf('wav'), '') as NativeInstance;
+		const result = creator(info, fileOf('wav'), '') as NativeEmbed;
 
+		expect(result).toBeInstanceOf(NativeEmbed);
 		expect(result.__native).toBe('wav');
+		expect(probeMock).not.toHaveBeenCalled();
 		expect(audioPlayerMock).not.toHaveBeenCalled();
+	});
+
+	it('shares one probe across multiple embeds of the same file and upgrades each in place', async () => {
+		probeMock.mockResolvedValue(probeResult('audio'));
+		const { creator } = setup(true);
+
+		const first = creator(embedInfo(), fileOf('wav'), '') as Component;
+		const second = creator(embedInfo(), fileOf('wav'), '') as Component;
+		expect(probeMock).toHaveBeenCalledTimes(1);
+		first.load();
+		second.load();
+
+		await flush();
+
+		expect(audioPlayerMock).toHaveBeenCalledTimes(2);
+	});
+
+	it('does not swap after the embed was unloaded (note closed mid-probe)', async () => {
+		let resolveProbe!: (result: MediaProbeResult) => void;
+		probeMock.mockImplementation(
+			() =>
+				new Promise<MediaProbeResult>((resolve) => {
+					resolveProbe = resolve;
+				}),
+		);
+		const { creator } = setup(true);
+
+		const shell = creator(info, fileOf('wav'), '') as Component;
+		shell.load();
+		shell.unload();
+		resolveProbe(probeResult('audio'));
+
+		await flush();
+
+		expect(audioPlayerMock).not.toHaveBeenCalled();
+	});
+
+	it('does not swap when the feature was disabled while the probe ran', async () => {
+		let resolveProbe!: (result: MediaProbeResult) => void;
+		probeMock.mockImplementation(
+			() =>
+				new Promise<MediaProbeResult>((resolve) => {
+					resolveProbe = resolve;
+				}),
+		);
+		const { creator, settings } = setup(true);
+
+		const shell = creator(info, fileOf('wav'), '') as Component;
+		shell.load();
+		settings.enhancedPlayerEnabled = false;
+		resolveProbe(probeResult('audio'));
+
+		await flush();
+
+		expect(audioPlayerMock).not.toHaveBeenCalled();
+	});
+
+	it('forwards loadFile to the hosted embed and replays it after the swap', async () => {
+		probeMock.mockResolvedValue(probeResult('audio'));
+		const { creator, nativeCreator } = setup(true);
+
+		const shell = creator(info, fileOf('wav'), '') as MediaEmbedShell;
+		shell.load();
+		const file = fileOf('wav');
+		void shell.loadFile(file);
+
+		const native = nativeCreator.mock.results[0].value as NativeEmbed;
+		expect(native.loadFile).toHaveBeenCalledWith(file);
+
+		await flush();
+
+		// Live Preview drove the old child through loadFile, so the new
+		// child gets the same call and renders
+		const player = audioPlayerMock.mock.results[0]
+			.value as unknown as EnhancedInstance;
+		expect(player.loadFile).toHaveBeenCalledWith(file);
 	});
 });
 
@@ -312,88 +485,81 @@ describe('EnhancedPlayerRegistrar re-renders only when needed', () => {
 		}
 	});
 
-	it('upgrades an audio-only container to enhanced by re-rendering after the probe', async () => {
-		probeMock.mockResolvedValue('audio');
-		const { creator, getLeaves } = setup(true);
+	it('primes a saved recording so its embed is enhanced from the start - still no re-render', async () => {
+		probeMock.mockResolvedValue(probeResult('audio'));
+		const { registrar, creator, getLeaves } = setup(true);
 
-		// First render of a not-yet-probed file shows native and probes
-		creator(info, fileOf('mp4'), '');
+		registrar.primeSavedRecordingsForEnhancement(['recording.wav']);
 		expect(probeMock).toHaveBeenCalledTimes(1);
-
 		await flush();
 
-		// The probe found audio, so a re-render is requested to upgrade it
-		expect(getLeaves).toHaveBeenCalledWith('markdown');
-	});
-
-	it('primes a saved recording for enhancement without waiting for native embed render', async () => {
-		probeMock.mockResolvedValue('audio');
-		const { registrar, embedsByNote, leaves } = setup(true);
-		const previewLeaf = leaves.preview as unknown as {
-			rebuildView: jest.Mock;
+		// The kind was probed before Obsidian ever created the embed, so
+		// the embed is built enhanced directly - no native pass, no swap
+		const embed = creator(info, fileOf('wav'), '') as {
+			__enhanced?: boolean;
 		};
-		embedsByNote['note.md'] = { embeds: [] };
-
-		registrar.primeSavedRecordingsForEnhancement(
-			['recording.mp4'],
-			'note.md',
-		);
-		await flush();
-
+		expect(embed.__enhanced).toBe(true);
 		expect(probeMock).toHaveBeenCalledTimes(1);
-		expect(previewLeaf.rebuildView).toHaveBeenCalledTimes(1);
-		expect(
-			(leaves.source as unknown as { rebuildView: jest.Mock })
-				.rebuildView,
-		).not.toHaveBeenCalled();
-	});
-
-	it('re-renders only the leaves that embed the probed file (scoped upgrade)', async () => {
-		probeMock.mockResolvedValue('audio');
-		const { creator, leaves } = setup(true);
-
-		// recording.mp4 is embedded only by the preview note (note.md)
-		creator(info, fileOf('mp4'), '');
-		await flush();
-
-		expect(
-			(leaves.preview as unknown as { rebuildView: jest.Mock })
-				.rebuildView,
-		).toHaveBeenCalledTimes(1);
-		// The source note (other.md) does not embed it, so it is left alone
-		expect(
-			(leaves.source as unknown as { rebuildView: jest.Mock })
-				.rebuildView,
-		).not.toHaveBeenCalled();
-	});
-
-	it('retries a scoped upgrade when metadata has not indexed the new embed yet', async () => {
-		probeMock.mockResolvedValue('audio');
-		const { creator, embedsByNote, leaves } = setup(true);
-		const previewLeaf = leaves.preview as unknown as {
-			rebuildView: jest.Mock;
-		};
-		const rebuildView = previewLeaf.rebuildView;
-		embedsByNote['note.md'] = { embeds: [] };
-
-		creator(info, fileOf('mp4'), '');
-		await flush();
-
-		expect(rebuildView).not.toHaveBeenCalled();
-
-		embedsByNote['note.md'] = { embeds: [{ link: 'recording.mp4' }] };
-		await flush();
-
-		expect(rebuildView).toHaveBeenCalledTimes(1);
-	});
-
-	it('does not re-render after probing a real video file', async () => {
-		probeMock.mockResolvedValue('video');
-		const { creator, getLeaves } = setup(true);
-
-		creator(info, fileOf('mp4'), '');
-		await flush();
-
 		expect(getLeaves).not.toHaveBeenCalled();
+	});
+});
+
+describe('EnhancedPlayerRegistrar persistent media kinds', () => {
+	it('loads the persisted store on register', () => {
+		const kindStore = kindStoreStub();
+		setup(true, kindStore);
+
+		expect(kindStore.load).toHaveBeenCalledTimes(1);
+	});
+
+	it('renders enhanced immediately when the store knows the file is audio (no probe, no swap)', () => {
+		const kindStore = kindStoreStub();
+		kindStore.get.mockReturnValue('audio');
+		const { creator } = setup(true, kindStore);
+
+		const embed = creator(info, fileOf('wav'), '') as {
+			__enhanced?: boolean;
+		};
+
+		expect(embed.__enhanced).toBe(true);
+		expect(probeMock).not.toHaveBeenCalled();
+	});
+
+	it('persists a confident probe result', async () => {
+		probeMock.mockResolvedValue(probeResult('audio'));
+		const kindStore = kindStoreStub();
+		const { creator } = setup(true, kindStore);
+
+		const shell = creator(info, fileOf('wav'), '') as Component;
+		shell.load();
+		await flush();
+
+		expect(kindStore.set).toHaveBeenCalledWith(
+			expect.objectContaining({ path: 'recording.wav' }),
+			'audio',
+		);
+	});
+
+	it('does NOT persist a timeout fallback, but still upgrades this session', async () => {
+		probeMock.mockResolvedValue(probeResult('audio', false));
+		const kindStore = kindStoreStub();
+		const { creator } = setup(true, kindStore);
+
+		const shell = creator(info, fileOf('wav'), '') as Component;
+		shell.load();
+		await flush();
+
+		// A slow-loading video must not be remembered as audio forever
+		expect(kindStore.set).not.toHaveBeenCalled();
+		expect(audioPlayerMock).toHaveBeenCalledTimes(1);
+	});
+
+	it('flushes pending store writes on dispose', () => {
+		const kindStore = kindStoreStub();
+		const { registrar } = setup(true, kindStore);
+
+		registrar.dispose();
+
+		expect(kindStore.flush).toHaveBeenCalledTimes(1);
 	});
 });

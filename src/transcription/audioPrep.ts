@@ -10,20 +10,13 @@
  */
 
 import {
-	FORMAT_WAV,
-	FORMAT_WEBM,
-	FORMAT_OGG,
-	FORMAT_MP3,
-	FORMAT_MP4,
-	FORMAT_M4A,
-	FORMAT_AAC,
-	FORMAT_FLAC,
-	MIME_TYPE_AUDIO_PREFIX,
 	MIN_AUDIO_BYTES_PER_SEC,
 	MIN_SUBDIVIDE_SECONDS,
 	TRANSCRIBE_BYTES_PER_SEC,
 	TRANSCRIBE_SAMPLE_RATE,
+	MIME_TYPE_AUDIO_PREFIX,
 } from '../constants';
+import { audioMimeForExtension } from '../audio/formatRegistry';
 import {
 	decodeToMono16k,
 	extractChunkWav,
@@ -33,18 +26,6 @@ import {
 } from './audioChunks';
 import type { ProviderCapabilities } from './providers/TranscriptionProvider';
 
-/** Maps a lowercased file extension to its upload container MIME type. */
-const EXTENSION_MIME: Record<string, string> = {
-	[FORMAT_WAV]: `${MIME_TYPE_AUDIO_PREFIX}wav`,
-	[FORMAT_WEBM]: `${MIME_TYPE_AUDIO_PREFIX}webm`,
-	[FORMAT_OGG]: `${MIME_TYPE_AUDIO_PREFIX}ogg`,
-	[FORMAT_MP3]: `${MIME_TYPE_AUDIO_PREFIX}mpeg`,
-	[FORMAT_MP4]: `${MIME_TYPE_AUDIO_PREFIX}mp4`,
-	[FORMAT_M4A]: `${MIME_TYPE_AUDIO_PREFIX}mp4`,
-	[FORMAT_AAC]: `${MIME_TYPE_AUDIO_PREFIX}aac`,
-	[FORMAT_FLAC]: `${MIME_TYPE_AUDIO_PREFIX}flac`,
-};
-
 /**
  * Resolves an upload MIME type for a file extension, defaulting to
  * `audio/<ext>` for anything not explicitly mapped.
@@ -52,8 +33,7 @@ const EXTENSION_MIME: Record<string, string> = {
  * @returns A container MIME type suitable for an upload
  */
 export function audioMimeFromExtension(extension: string): string {
-	const ext = extension.toLowerCase();
-	return EXTENSION_MIME[ext] ?? `${MIME_TYPE_AUDIO_PREFIX}${ext}`;
+	return audioMimeForExtension(extension.toLowerCase());
 }
 
 /** How the audio should be prepared for a specific provider. */
@@ -98,7 +78,7 @@ export interface PreparedPayload {
 	 */
 	endSeconds?: number;
 	/** Builds the upload bytes; invoked once, right before uploading. */
-	createData(): ArrayBuffer;
+	createData(): ArrayBuffer | Promise<ArrayBuffer>;
 	/**
 	 * Splits this payload into smaller payloads covering the same audio, for a
 	 * provider that overran its output token budget on this part. Present only on
@@ -116,7 +96,7 @@ export interface PreparedAudio {
 	/**
 	 * True when a diarized run had to be split across multiple parts (too large
 	 * or too long for one request), so speaker numbering can reset between parts
-	 * — every provider numbers speakers per request once the recording is split.
+	 * - every provider numbers speakers per request once the recording is split.
 	 * The caller surfaces this to the user rather than letting the inconsistency
 	 * pass silently.
 	 */
@@ -146,7 +126,7 @@ export function shouldWarnDiarizationSplit(
  * its true length. Uses a conservative minimum bitrate ({@link
  * MIN_AUDIO_BYTES_PER_SEC}): below `cap * minBitrate` bytes even the most
  * heavily compressed audio cannot exceed the cap. An infinite cap is always
- * satisfied. A larger file is not necessarily too long — it just cannot be
+ * satisfied. A larger file is not necessarily too long - it just cannot be
  * proven short cheaply, so it falls through to the decode path, which measures
  * the exact duration.
  * @param byteLength - Encoded file size in bytes
@@ -169,7 +149,7 @@ export function withinDurationCap(
  * Whole-file path: when the provider accepts the original container, the
  * encoded file is within its byte limit, and the byte size proves the
  * recording is within the provider's per-request duration cap, the original
- * bytes are sent as one payload — no decode, so peak memory is just the file
+ * bytes are sent as one payload - no decode, so peak memory is just the file
  * size and any whole-file diarization stays consistent.
  *
  * Decode path: otherwise (an unsupported container, an over-limit file, or a
@@ -182,10 +162,10 @@ export function withinDurationCap(
  * The decode path always emits WAV, even for a single part that fits whole.
  * Re-sending the original bytes instead would save the WAV size on an accepted
  * compressed container, but it would force a second decode in a provider that
- * decodes containers it does not accept (Gemini re-decodes mp4/webm) — and
+ * decodes containers it does not accept (Gemini re-decodes mp4/webm) - and
  * those are this plugin's own recording formats, the common case. Emitting WAV
  * keeps the recorded-file path to a single decode; the only cost is a larger
- * upload for the uncommon case of an imported accepted container (mp3/aac/…)
+ * upload for the uncommon case of an imported accepted container (mp3/aac/etc.)
  * big enough to miss the cheap whole-file proof yet short enough to fit.
  * @param raw - Encoded file bytes
  * @param fileName - Source file name (used as the upload filename)
@@ -217,6 +197,13 @@ export async function prepareAudio(
 		};
 	}
 
+	// The full decoded PCM stays alive for the whole run (~230 MB for an
+	// hour at 16 kHz mono, audit finding 6.8): each chunk's WAV is
+	// materialized lazily from a non-copying subarray view, and keeping the
+	// samples is what lets a part be re-split on demand when a provider
+	// overruns its output token budget. A decode-per-chunk scheme would
+	// drop the retention but re-decode the file once per chunk; revisit if
+	// long-recording memory pressure ever outweighs that trade.
 	const samples = await decodeToMono16k(raw);
 	const totalSeconds = samples.length / TRANSCRIBE_SAMPLE_RATE;
 	const plans = planChunks(totalSeconds, options.chunkBytes);

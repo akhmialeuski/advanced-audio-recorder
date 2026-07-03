@@ -6,7 +6,7 @@
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { AudioStreamError } from '../errors';
 import { delay } from '../utils/TimeUtils';
-import type { AudioRecorderSettings } from '../settings/Settings';
+import type { AudioRecorderSettings } from '../settings/settingsSchema';
 
 export interface TrackAudioSource {
 	trackNumber: number;
@@ -128,7 +128,26 @@ export async function getAudioStreams(
 		const streamPromises = trackOrder.map((source) =>
 			getAudioStream(source.deviceId, settings.sampleRate, processing),
 		);
-		return { streams: await Promise.all(streamPromises), trackOrder };
+		// Settle every request before failing: with Promise.all a single
+		// rejected track would abandon the microphones that already opened,
+		// leaving them captured (device locked, indicator on) until app
+		// restart, because the caller never receives them to stop.
+		const results = await Promise.allSettled(streamPromises);
+		const opened = results
+			.filter(
+				(result): result is PromiseFulfilledResult<MediaStream> =>
+					result.status === 'fulfilled',
+			)
+			.map((result) => result.value);
+		const failed = results.find(
+			(result): result is PromiseRejectedResult =>
+				result.status === 'rejected',
+		);
+		if (failed) {
+			stopAllStreams(opened);
+			throw failed.reason;
+		}
+		return { streams: opened, trackOrder };
 	}
 	const stream = await getAudioStream(
 		settings.audioDeviceId,

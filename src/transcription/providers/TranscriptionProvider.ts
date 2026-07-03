@@ -3,7 +3,7 @@
  * into timed segments. The orchestrating service prepares the audio
  * (reading the file, optionally decoding and chunking) according to each
  * provider's declared capabilities, so providers only implement a single
- * request — keeping API, local, and future providers interchangeable.
+ * request - keeping API, local, and future providers interchangeable.
  * @module transcription/providers/TranscriptionProvider
  */
 
@@ -17,6 +17,13 @@ export interface TranscribeOptions {
 	diarize: boolean;
 	/** Request word-level timestamps when supported. */
 	wordTimestamps: boolean;
+	/**
+	 * Optional abort signal for the provider's HTTP requests. Providers on
+	 * CORS-capable endpoints pass it through so a cancel aborts the upload
+	 * mid-flight; providers that cannot abort (requestUrl-only endpoints,
+	 * the local CLI) ignore it and remain cancel-between-chunks only.
+	 */
+	signal?: AbortSignal;
 }
 
 /**

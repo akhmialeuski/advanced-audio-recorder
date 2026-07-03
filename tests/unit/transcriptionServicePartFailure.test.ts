@@ -1,11 +1,10 @@
 /**
- * @jest-environment jsdom
  */
 
 /**
  * Tests that a multi-part transcription keeps the parts that succeeded when a
  * later part fails (e.g. a Gemini MAX_TOKENS truncation), instead of discarding
- * a completed — and, on a paid API, already-billed — transcript. The note flags
+ * a completed - and, on a paid API, already-billed - transcript. The note flags
  * the gap, the user is warned, and only when every part fails does the run
  * surface an error.
  * @module tests/unit/transcriptionServicePartFailure.test
@@ -21,7 +20,7 @@ import type { TranscriptionProvider } from 'src/transcription/providers/Transcri
 import { prepareAudio } from 'src/transcription/audioPrep';
 import { TranscriptTruncatedError } from 'src/transcription/transcriptionErrors';
 import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
-import { mergeSettings } from 'src/settings/Settings';
+import { mergeSettings } from 'src/settings/settingsSerialization';
 
 jest.mock('obsidian', () => {
 	const actual = jest.requireActual('../mocks/obsidian');
@@ -74,6 +73,33 @@ function prepareTwoParts(): void {
 				contentType: 'audio/wav',
 				filename: 'audio-1.wav',
 				offsetSeconds: 60,
+				createData: () => new ArrayBuffer(4),
+			},
+		],
+		diarizationSplitWarning: false,
+	});
+}
+
+/**
+ * Two prepared parts that carry their timeline spans (endSeconds), exactly as
+ * the decode path stamps them, so a salvage label reads as a time range rather
+ * than the "part N of M" fallback the span-less payloads above produce.
+ */
+function prepareTwoPartsWithSpans(): void {
+	mockPrepareAudio.mockResolvedValue({
+		payloads: [
+			{
+				contentType: 'audio/wav',
+				filename: 'audio-0.wav',
+				offsetSeconds: 0,
+				endSeconds: 450,
+				createData: () => new ArrayBuffer(4),
+			},
+			{
+				contentType: 'audio/wav',
+				filename: 'audio-1.wav',
+				offsetSeconds: 450,
+				endSeconds: 900,
 				createData: () => new ArrayBuffer(4),
 			},
 		],
@@ -311,5 +337,34 @@ describe('TranscriptionService multi-part salvage', () => {
 		expect(result.markdown).toContain('LLM CLEANED OUTPUT');
 		expect(result.markdown).toContain('Transcription incomplete');
 		expect(result.markdown).toContain('part 1 of 2');
+	});
+
+	it('labels a salvaged part by its timeline span when the span is known', async () => {
+		// The decode path stamps endSeconds on every part, so in production the
+		// salvage label is a time range, never the ordinal fallback. Exercise
+		// that path so the wording the user actually sees is covered.
+		prepareTwoPartsWithSpans();
+		const transcribe = jest
+			.fn()
+			.mockResolvedValueOnce({
+				segments: [{ start: 0, end: 1, text: 'first part' }],
+			})
+			.mockRejectedValueOnce(new Error('boom'));
+		const service = new TranscriptionService(
+			makeApp(),
+			() => mergeSettings(baseSettings),
+			{ createProvider: () => makeProvider(transcribe) },
+		);
+
+		const result = await service.run(audioFile, {
+			notePathForLinks: 'note.md',
+			token: NEVER_CANCELLED,
+		});
+
+		expect(result.markdown).toContain('the 7:30-15:00 segment');
+		expect(result.markdown).not.toContain('part 2 of 2');
+		expect(mockNotice).toHaveBeenCalledWith(
+			expect.stringContaining('the 7:30-15:00 segment'),
+		);
 	});
 });

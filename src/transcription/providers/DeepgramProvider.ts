@@ -71,6 +71,7 @@ export class DeepgramProvider implements TranscriptionProvider {
 				payload.data.byteLength,
 				this.config.requestTimeoutMs,
 			),
+			signal: options.signal,
 		});
 		return mapDeepgramResponse(json, options.diarize);
 	}

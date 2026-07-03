@@ -39,7 +39,7 @@ export class DeviceSelectionModal extends Modal {
 	/**
 	 * Called when the modal is opened.
 	 */
-	onOpen(): void {
+	override onOpen(): void {
 		const { contentEl } = this;
 
 		new Setting(contentEl)
@@ -76,7 +76,7 @@ export class DeviceSelectionModal extends Modal {
 	/**
 	 * Called when the modal is closed.
 	 */
-	onClose(): void {
+	override onClose(): void {
 		const { contentEl } = this;
 		contentEl.empty();
 	}

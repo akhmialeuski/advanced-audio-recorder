@@ -150,7 +150,7 @@ export class GeminiProvider implements TranscriptionProvider {
 		const accepted = GEMINI_AUDIO_MIME_TYPES.has(payload.contentType);
 		const data = accepted
 			? payload.data
-			: encodeMonoWav(
+			: await encodeMonoWav(
 					await decodeToMono16k(payload.data),
 					TRANSCRIBE_SAMPLE_RATE,
 				);
@@ -163,6 +163,7 @@ export class GeminiProvider implements TranscriptionProvider {
 			mimeType,
 			payload.filename,
 			this.config.requestTimeoutMs,
+			options.signal,
 		);
 		try {
 			await waitUntilActive(
@@ -207,6 +208,7 @@ export class GeminiProvider implements TranscriptionProvider {
 					data.byteLength,
 					this.config.requestTimeoutMs,
 				),
+				signal: options.signal,
 			});
 			// A truncated (MAX_TOKENS) response yields invalid JSON, and a
 			// safety/policy block yields no candidate; both would otherwise map

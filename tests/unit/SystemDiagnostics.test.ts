@@ -1,12 +1,11 @@
-/** @jest-environment jsdom */
 /**
  * Unit tests for SystemDiagnostics.
  * @module tests/unit/SystemDiagnostics
  */
 
 import { SystemDiagnostics } from 'src/diagnostics/SystemDiagnostics';
-import type { AudioRecorderSettings } from 'src/settings/Settings';
-import * as AudioCapabilityDetector from 'src/recording/AudioCapabilityDetector';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
+import * as AudioCapabilityDetector from 'src/audio/AudioCapabilityDetector';
 import {
 	FORMAT_WEBM,
 	FORMAT_OGG,
@@ -99,15 +98,14 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 	const originalProcess = global.process;
 
 	afterEach(() => {
-		// eslint-disable-next-line
-        (global as unknown as { process: NodeJS.Process }).process = originalProcess;
+		(global as unknown as { process: NodeJS.Process }).process =
+			originalProcess;
 	});
 
-	it('reads apiVersion from app', () => {
-		const app = makeApp('1.7.3');
-		const result = SystemDiagnostics.collectEnvironment(app);
+	it("reads the API version from obsidian's module export", () => {
+		const result = SystemDiagnostics.collectEnvironment(makeApp());
 
-		expect(result.obsidianVersion).toBe('1.7.3');
+		expect(result.obsidianVersion).toBe('1.12.3');
 	});
 
 	it('reads electron and node versions from process.versions', () => {
@@ -116,8 +114,7 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 			platform: 'win32',
 			arch: 'x64',
 		};
-		// eslint-disable-next-line -- test override of global
-        (global as unknown as { process: typeof proc }).process = proc;
+		(global as unknown as { process: typeof proc }).process = proc;
 
 		const result = SystemDiagnostics.collectEnvironment(makeApp());
 
@@ -129,8 +126,7 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 
 	it('uses "unknown" when process.platform is absent', () => {
 		const proc = { versions: { electron: '28.0.0', node: '20.11.0' } };
-		// eslint-disable-next-line -- test override of global
-        (global as unknown as { process: typeof proc }).process = proc;
+		(global as unknown as { process: typeof proc }).process = proc;
 
 		const result = SystemDiagnostics.collectEnvironment(makeApp());
 
@@ -138,23 +134,13 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 	});
 
 	it('returns "unknown" for electronVersion when process is undefined', () => {
-		// eslint-disable-next-line -- test override of global
-        (global as unknown as { process: undefined }).process = undefined;
+		(global as unknown as { process: undefined }).process = undefined;
 
 		const result = SystemDiagnostics.collectEnvironment(makeApp());
 
 		expect(result.electronVersion).toBe('unknown');
 		expect(result.nodeVersion).toBe('unknown');
 		expect(result.arch).toBe('unknown');
-	});
-
-	it('returns "unknown" obsidianVersion when app has no apiVersion', () => {
-		const app = {} as Parameters<
-			typeof SystemDiagnostics.collectEnvironment
-		>[0];
-		const result = SystemDiagnostics.collectEnvironment(app);
-
-		expect(result.obsidianVersion).toBe('unknown');
 	});
 
 	it('returns "unknown" for userAgent', () => {
@@ -246,18 +232,20 @@ describe('SystemDiagnostics.collectAudioDevices', () => {
 // ---------------------------------------------------------------------------
 
 describe('SystemDiagnostics.collectAudioCapabilities', () => {
-	const mockDetectCapabilities = jest.spyOn(
-		AudioCapabilityDetector,
-		'detectCapabilities',
-	);
-	const mockDetectCodecSupport = jest.spyOn(
-		AudioCapabilityDetector,
-		'detectCodecSupport',
-	);
+	// Spies are created per test: the global restoreMocks option
+	// restores them after each one
+	let mockDetectCapabilities: jest.SpyInstance;
+	let mockDetectCodecSupport: jest.SpyInstance;
 
 	beforeEach(() => {
-		mockDetectCapabilities.mockReset();
-		mockDetectCodecSupport.mockReset();
+		mockDetectCapabilities = jest.spyOn(
+			AudioCapabilityDetector,
+			'detectCapabilities',
+		);
+		mockDetectCodecSupport = jest.spyOn(
+			AudioCapabilityDetector,
+			'detectCodecSupport',
+		);
 		mockDetectCodecSupport.mockReturnValue([]);
 	});
 
@@ -415,16 +403,18 @@ describe('SystemDiagnostics.collectActiveRecordingConfig', () => {
 
 describe('SystemDiagnostics.collect', () => {
 	const mockEnumerate = jest.fn();
-	const mockDetectCapabilities = jest.spyOn(
-		AudioCapabilityDetector,
-		'detectCapabilities',
-	);
-	const mockDetectCodecSupport = jest.spyOn(
-		AudioCapabilityDetector,
-		'detectCodecSupport',
-	);
+	let mockDetectCapabilities: jest.SpyInstance;
+	let mockDetectCodecSupport: jest.SpyInstance;
 
 	beforeEach(() => {
+		mockDetectCapabilities = jest.spyOn(
+			AudioCapabilityDetector,
+			'detectCapabilities',
+		);
+		mockDetectCodecSupport = jest.spyOn(
+			AudioCapabilityDetector,
+			'detectCodecSupport',
+		);
 		Object.defineProperty(global.navigator, 'mediaDevices', {
 			value: { enumerateDevices: mockEnumerate },
 			configurable: true,
@@ -460,7 +450,7 @@ describe('SystemDiagnostics.collect', () => {
 		expect(result).toHaveProperty('audioDevices');
 		expect(result).toHaveProperty('audioCapabilities');
 		expect(result).toHaveProperty('activeRecordingConfig');
-		expect(result.environment.obsidianVersion).toBe('1.6.0');
+		expect(result.environment.obsidianVersion).toBe('1.12.3');
 		expect(result.pluginSettings.recordingFormat).toBe(FORMAT_WEBM);
 		expect(Array.isArray(result.audioDevices)).toBe(true);
 	});

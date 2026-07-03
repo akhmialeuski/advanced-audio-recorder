@@ -9,7 +9,7 @@
  * @module player/playerEmbedActions
  */
 
-import type { MarkerKind } from './markers/markerModel';
+import type { MarkerKind } from '../markers/markerModel';
 
 /**
  * Position-aware player actions associated with an embed element so the

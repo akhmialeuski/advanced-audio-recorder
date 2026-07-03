@@ -5,6 +5,24 @@
 
 import { TextDecoder, TextEncoder } from 'util';
 
+// Explicit resource management (`using`/`await using`) lowers through
+// tslib helpers that require the well-known dispose symbols; jest's
+// sandboxed global may lack them.
+const symbolWithDispose = Symbol as {
+	dispose?: symbol;
+	asyncDispose?: symbol;
+};
+if (typeof symbolWithDispose.dispose === 'undefined') {
+	Object.defineProperty(Symbol, 'dispose', {
+		value: Symbol.for('Symbol.dispose'),
+	});
+}
+if (typeof symbolWithDispose.asyncDispose === 'undefined') {
+	Object.defineProperty(Symbol, 'asyncDispose', {
+		value: Symbol.for('Symbol.asyncDispose'),
+	});
+}
+
 if (typeof globalThis.TextDecoder === 'undefined') {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- globalThis type augmentation requires any
 	(globalThis as any).TextDecoder = TextDecoder;
@@ -62,5 +80,20 @@ if (nodeProto && typeof nodeProto.instanceOf === 'undefined') {
 		ctor: any,
 	): boolean {
 		return this instanceof ctor;
+	};
+}
+
+// jsdom's Blob lacks arrayBuffer(); the recording and conversion
+// pipelines call it on every write path. FileReader-backed so the
+// bytes are the blob's real contents.
+if (!Blob.prototype.arrayBuffer) {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test polyfill for jsdom
+	(Blob.prototype as any).arrayBuffer = function (): Promise<ArrayBuffer> {
+		return new Promise((resolve, reject) => {
+			const reader = new FileReader();
+			reader.onload = (): void => resolve(reader.result as ArrayBuffer);
+			reader.onerror = (): void => reject(reader.error);
+			reader.readAsArrayBuffer(this as Blob);
+		});
 	};
 }

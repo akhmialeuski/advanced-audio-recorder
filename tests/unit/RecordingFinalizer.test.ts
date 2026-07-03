@@ -4,16 +4,15 @@
  * deduplication.
  * @module tests/unit/RecordingFinalizer.test
  */
-/** @jest-environment jsdom */
 
-import { RecordingFinalizer } from '../../src/recording/RecordingFinalizer';
-import { TrackWriteQueue } from '../../src/recording/TrackWriteQueue';
-import { DebugLogger } from '../../src/utils/DebugLogger';
-import type { RecordingSessionConfig, RecordingTarget } from '../../src/types';
+import { RecordingFinalizer } from 'src/recording/RecordingFinalizer';
+import { TrackWriteQueue } from 'src/recording/TrackWriteQueue';
+import { DebugLogger } from 'src/utils/DebugLogger';
+import type { RecordingSessionConfig, RecordingTarget } from 'src/types';
 import {
 	DEFAULT_SETTINGS,
 	AudioRecorderSettings,
-} from '../../src/settings/Settings';
+} from 'src/settings/settingsSchema';
 import type { App } from 'obsidian';
 
 jest.mock('obsidian', () => ({
@@ -21,28 +20,24 @@ jest.mock('obsidian', () => ({
 	normalizePath: (path: string) => path.replace(/\\/g, '/'),
 }));
 
-jest.mock('../../src/recording/WavEncoder', () => ({
+jest.mock('src/audio/WavEncoder', () => ({
 	assembleWavFromPcmSegmentFiles: jest
 		.fn()
 		.mockResolvedValue(new ArrayBuffer(50)),
 }));
 
-jest.mock('../../src/recording/AudioEncoder', () => ({
+jest.mock('src/audio/AudioEncoder', () => ({
 	isOfflineEncodingSupported: jest.fn((format: string) =>
 		['mp3', 'flac', 'webm', 'ogg', 'mp4', 'm4a', 'aac'].includes(format),
 	),
 }));
 
-jest.mock('../../src/recording/AudioFormatConverter', () => ({
+jest.mock('src/audio/AudioFormatConverter', () => ({
 	mergeAudioTracks: jest
 		.fn()
 		.mockResolvedValue(new Blob(['merged'], { type: 'audio/wav' })),
-	convertBlobToWav: jest
-		.fn()
-		.mockResolvedValue(new Blob(['wav'], { type: 'audio/wav' })),
-	convertBlobToFormat: jest
-		.fn()
-		.mockResolvedValue(new Blob(['encoded'], { type: 'audio/mp3' })),
+	convertBlobToWavBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(8)),
+	convertBlobToFormatBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(8)),
 	getRecorderMediaType: jest.fn((format: string) => `audio/${format}`),
 	isOfflineOnlyFormat: jest.fn(
 		(format: string, recorderFormat: string) =>
@@ -53,21 +48,14 @@ jest.mock('../../src/recording/AudioFormatConverter', () => ({
 		.mockResolvedValue(new Blob(['output'], { type: 'audio/webm' })),
 }));
 
-jest.mock('../../src/recording/NoteInserter', () => ({
+jest.mock('src/recording/NoteInserter', () => ({
 	insertFileLinks: jest.fn(),
 }));
 
-jest.mock('../../src/recording/StreamingMixer', () => ({
+jest.mock('src/recording/StreamingMixer', () => ({
 	canStreamMix: jest.fn().mockReturnValue(true),
 	mixPcmTracksToWav: jest.fn().mockResolvedValue(new ArrayBuffer(50)),
 }));
-
-if (!Blob.prototype.arrayBuffer) {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test polyfill for jsdom
-	(Blob.prototype as any).arrayBuffer = function (): Promise<ArrayBuffer> {
-		return Promise.resolve(new ArrayBuffer(0));
-	};
-}
 
 const createTarget = (
 	overrides: Partial<RecordingTarget> = {},
@@ -218,19 +206,19 @@ describe('RecordingFinalizer', () => {
 
 		it('should convert to WAV when the output format is wav', async () => {
 			buildFinalizer(createSession({ outputFormat: 'wav' }));
-			const { convertBlobToWav } = jest.requireMock(
-				'../../src/recording/AudioFormatConverter',
+			const { convertBlobToWavBuffer } = jest.requireMock(
+				'src/audio/AudioFormatConverter',
 			);
 
 			await finalizer.finalizeSegmentsToFile(['seg1.tmp'], 'final.wav');
 
-			expect(convertBlobToWav).toHaveBeenCalled();
+			expect(convertBlobToWavBuffer).toHaveBeenCalled();
 		});
 
 		it('should re-encode offline-only formats with remux allowed and mapped progress', async () => {
 			buildFinalizer(createSession({ outputFormat: 'mp3' }));
-			const { convertBlobToFormat } = jest.requireMock(
-				'../../src/recording/AudioFormatConverter',
+			const { convertBlobToFormatBuffer } = jest.requireMock(
+				'src/audio/AudioFormatConverter',
 			);
 
 			await finalizer.finalizeSegmentsToFile(
@@ -239,16 +227,16 @@ describe('RecordingFinalizer', () => {
 				true,
 			);
 
-			expect(convertBlobToFormat).toHaveBeenCalledWith(
+			expect(convertBlobToFormatBuffer).toHaveBeenCalledWith(
 				expect.any(Blob),
 				'mp3',
 				128000,
 				expect.any(Function),
-				{ allowRemux: true },
+				{ allowRemux: true, workerClient: null },
 			);
 			// The encoder progress callback maps into the 40-60% band
-			const progressCallback = (convertBlobToFormat as jest.Mock).mock
-				.calls[0][3] as (percent: number) => void;
+			const progressCallback = (convertBlobToFormatBuffer as jest.Mock)
+				.mock.calls[0][3] as (percent: number) => void;
 			progressCallback(50);
 			expect(onProgress).toHaveBeenCalledWith({
 				percent: 50,
@@ -280,7 +268,7 @@ describe('RecordingFinalizer', () => {
 	describe('assembleWavFile', () => {
 		it('should delegate assembly to the shared single-allocation helper', async () => {
 			const { assembleWavFromPcmSegmentFiles } = jest.requireMock(
-				'../../src/recording/WavEncoder',
+				'src/audio/WavEncoder',
 			);
 			const target = createTarget({
 				segmentPaths: ['pcm1.tmp', 'pcm2.tmp'],
@@ -351,7 +339,7 @@ describe('RecordingFinalizer', () => {
 			await finalizer.saveRecording(targets, 'stamp', null);
 
 			const { insertFileLinks } = jest.requireMock(
-				'../../src/recording/NoteInserter',
+				'src/recording/NoteInserter',
 			);
 			expect(insertFileLinks).toHaveBeenCalledWith(
 				[expect.any(String), expect.any(String)],
@@ -378,7 +366,7 @@ describe('RecordingFinalizer', () => {
 			// path inserted into must be threaded back out of saveRecording.
 			buildFinalizer(createSession({ outputMode: 'multiple' }));
 			const { insertFileLinks } = jest.requireMock(
-				'../../src/recording/NoteInserter',
+				'src/recording/NoteInserter',
 			);
 			(insertFileLinks as jest.Mock).mockReturnValue('notes/daily.md');
 			const targets = [
@@ -524,11 +512,11 @@ describe('RecordingFinalizer', () => {
 			await finalizer.saveRecording(targets, 'stamp', null);
 
 			const { mergeAudioTracks } = jest.requireMock(
-				'../../src/recording/AudioFormatConverter',
+				'src/audio/AudioFormatConverter',
 			);
 			expect(mergeAudioTracks).not.toHaveBeenCalled();
 			const { insertFileLinks } = jest.requireMock(
-				'../../src/recording/NoteInserter',
+				'src/recording/NoteInserter',
 			);
 			expect(insertFileLinks).toHaveBeenCalledWith(
 				expect.arrayContaining(['a-part1.webm']),
@@ -564,10 +552,10 @@ describe('RecordingFinalizer', () => {
 
 		it('should stream-mix PCM sessions with WAV output', async () => {
 			const { canStreamMix, mixPcmTracksToWav } = jest.requireMock(
-				'../../src/recording/StreamingMixer',
+				'src/recording/StreamingMixer',
 			);
 			const { mergeAudioTracks } = jest.requireMock(
-				'../../src/recording/AudioFormatConverter',
+				'src/audio/AudioFormatConverter',
 			);
 			buildFinalizer(
 				createSession({
@@ -613,10 +601,10 @@ describe('RecordingFinalizer', () => {
 
 		it('should fall back to the Web Audio mix when streaming is not possible', async () => {
 			const { canStreamMix, mixPcmTracksToWav } = jest.requireMock(
-				'../../src/recording/StreamingMixer',
+				'src/recording/StreamingMixer',
 			);
 			const { mergeAudioTracks } = jest.requireMock(
-				'../../src/recording/AudioFormatConverter',
+				'src/audio/AudioFormatConverter',
 			);
 			(canStreamMix as jest.Mock).mockReturnValueOnce(false);
 			buildFinalizer(
@@ -649,10 +637,10 @@ describe('RecordingFinalizer', () => {
 
 		it('should keep compressed merged outputs on the Web Audio mix', async () => {
 			const { mixPcmTracksToWav } = jest.requireMock(
-				'../../src/recording/StreamingMixer',
+				'src/recording/StreamingMixer',
 			);
 			const { mergeAudioTracks } = jest.requireMock(
-				'../../src/recording/AudioFormatConverter',
+				'src/audio/AudioFormatConverter',
 			);
 			buildFinalizer(
 				createSession({

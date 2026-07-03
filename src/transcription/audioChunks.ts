@@ -7,27 +7,54 @@
  */
 
 import { TRANSCRIBE_BYTES_PER_SEC, TRANSCRIBE_SAMPLE_RATE } from '../constants';
-import { createWavHeader, WAV_HEADER_SIZE } from '../recording/WavEncoder';
-import { decodeAudioBlob } from '../recording/AudioFormatConverter';
+import { createWavFileBuffer, WAV_HEADER_SIZE } from '../audio/WavEncoder';
+import { floatToInt16 } from '../audio/pcm';
+
+/** Channel count of the mono WAV uploads produced for transcription. */
+const WAV_MONO_CHANNEL_COUNT = 1;
+import { decodeAudioBlob } from '../audio/AudioFormatConverter';
+
+/**
+ * Frames converted per synchronous slice of {@link encodeMonoWav} before
+ * yielding to the event loop. A 25 MB Whisper chunk is ~12.5M frames;
+ * without the yields that loop runs hundreds of milliseconds on the UI
+ * thread in one block. Half a million frames is a few milliseconds of
+ * work per slice.
+ */
+const ENCODE_YIELD_FRAMES = 500_000;
+
+/** Lets the UI thread breathe between conversion slices. */
+function yieldToEventLoop(): Promise<void> {
+	return new Promise((resolve) => window.setTimeout(resolve, 0));
+}
 
 /**
  * Encodes mono Float32 samples (range -1..1) into a 16-bit PCM WAV blob.
+ * The float-to-int16 conversion runs in slices with an event-loop yield
+ * between them, so encoding a large upload chunk does not jank the UI.
  * @param samples - Mono sample data
  * @param sampleRate - Sample rate in Hz
  * @returns WAV-encoded bytes
  */
-export function encodeMonoWav(
+export async function encodeMonoWav(
 	samples: Float32Array,
 	sampleRate: number,
-): ArrayBuffer {
+): Promise<ArrayBuffer> {
 	const pcmByteLength = samples.length * 2;
-	const header = createWavHeader(1, sampleRate, pcmByteLength);
-	const out = new ArrayBuffer(WAV_HEADER_SIZE + pcmByteLength);
-	new Uint8Array(out).set(new Uint8Array(header), 0);
+	const out = createWavFileBuffer(
+		WAV_MONO_CHANNEL_COUNT,
+		sampleRate,
+		pcmByteLength,
+	);
 	const view = new DataView(out, WAV_HEADER_SIZE);
-	for (let i = 0; i < samples.length; i++) {
-		const clamped = Math.max(-1, Math.min(1, samples[i]));
-		view.setInt16(i * 2, Math.round(clamped * 0x7fff), true);
+	for (let start = 0; start < samples.length; start += ENCODE_YIELD_FRAMES) {
+		const end = Math.min(samples.length, start + ENCODE_YIELD_FRAMES);
+		for (let i = start; i < end; i++) {
+			view.setInt16(i * 2, floatToInt16(samples[i] ?? 0), true);
+		}
+		if (end < samples.length) {
+			await yieldToEventLoop();
+		}
 	}
 	return out;
 }
@@ -148,8 +175,8 @@ export async function decodeToMono16k(
 export function extractChunkWav(
 	samples: Float32Array,
 	chunk: ChunkPlan,
-): ArrayBuffer {
-	// Round both ends the same way so adjacent chunks tile exactly — a shared
+): Promise<ArrayBuffer> {
+	// Round both ends the same way so adjacent chunks tile exactly - a shared
 	// boundary maps to one frame, with no duplicated or dropped sample.
 	const startFrame = Math.min(
 		samples.length,

@@ -4,10 +4,9 @@
  * covers the service-level contract.
  * @module tests/unit/ConversionService.test
  */
-/** @jest-environment jsdom */
 
-import { ConversionService } from '../../src/recording/ConversionService';
-import type { ConversionRequest } from '../../src/recording/ConversionService';
+import { ConversionService } from 'src/recording/ConversionService';
+import type { ConversionRequest } from 'src/recording/ConversionService';
 import { TFile, App } from 'obsidian';
 
 jest.mock('obsidian', () => ({
@@ -23,33 +22,24 @@ jest.mock('obsidian', () => ({
 	normalizePath: (path: string) => path.replace(/\\/g, '/'),
 }));
 
-jest.mock('../../src/recording/AudioEncoder', () => ({
+jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest
 		.fn()
 		.mockResolvedValue(new Blob(['encoded'], { type: 'audio/wav' })),
 }));
 
-jest.mock('../../src/recording/AudioFormatConverter', () => ({
+jest.mock('src/audio/AudioFormatConverter', () => ({
 	decodeAudioBlob: jest.fn().mockResolvedValue({}),
-	convertBlobToFormat: jest
-		.fn()
-		.mockResolvedValue(new Blob(['converted'], { type: 'audio/webm' })),
+	convertBlobToFormatBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(8)),
 }));
 
-jest.mock('../../src/utils/LinkUpdater', () => ({
+jest.mock('src/utils/LinkUpdater', () => ({
 	updateLinksInVault: jest.fn().mockResolvedValue({
 		updatedNotes: 0,
 		skippedReferences: 0,
 		frontmatterReferences: 0,
 	}),
 }));
-
-if (!Blob.prototype.arrayBuffer) {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test polyfill for jsdom
-	(Blob.prototype as any).arrayBuffer = function (): Promise<ArrayBuffer> {
-		return Promise.resolve(new ArrayBuffer(0));
-	};
-}
 
 const createSourceFile = (): TFile => {
 	const file = new TFile();
@@ -122,10 +112,10 @@ describe('ConversionService', () => {
 
 	it('should use the decode-and-encode path for WAV targets', async () => {
 		const { decodeAudioBlob } = jest.requireMock(
-			'../../src/recording/AudioFormatConverter',
+			'src/audio/AudioFormatConverter',
 		);
 		const { encodeAudioBuffer } = jest.requireMock(
-			'../../src/recording/AudioEncoder',
+			'src/audio/AudioEncoder',
 		);
 
 		await service.convert(

@@ -39,9 +39,9 @@ const copyStaticFiles = {
 // First pass: bundle the encoding worker so its source can be inlined
 // into the main bundle (the plugin starts it via a Blob URL). In watch
 // mode the worker source is captured once at startup; restart the dev
-// build after editing src/recording/encodingWorker.ts.
+// build after editing src/audio/encodingWorker.ts.
 const workerBuild = await esbuild.build({
-	entryPoints: ["src/recording/encodingWorker.ts"],
+	entryPoints: ["src/audio/encodingWorker.ts"],
 	bundle: true,
 	format: "iife",
 	target: "es2022",

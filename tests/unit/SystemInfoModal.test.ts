@@ -1,4 +1,3 @@
-/** @jest-environment jsdom */
 /**
  * Unit tests for SystemInfoModal.
  * @module tests/unit/SystemInfoModal

@@ -5,12 +5,12 @@
  * the rest.
  */
 
+import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
+import { mergeSettings } from 'src/settings/settingsSerialization';
 import {
-	DEFAULT_SETTINGS,
-	mergeSettings,
 	resolvePlayerSettings,
 	playerSettingsEqual,
-} from 'src/settings/Settings';
+} from 'src/player/playerSettings';
 
 describe('enhanced player settings', () => {
 	it('ships disabled with both windows on by default', () => {

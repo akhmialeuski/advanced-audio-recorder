@@ -7,7 +7,8 @@
 import { MarkdownView, Notice } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
-import { resolveUniquePathInDirectory } from '../recording/RecordingFileManager';
+import { resolveUniquePathInDirectory } from '../audio/RecordingFileManager';
+import { directoryOf } from '../utils/paths';
 import { serializeTranscriptFile } from './transcriptFormat';
 import type {
 	Transcript,
@@ -21,7 +22,7 @@ import type {
  * example when the audio file itself is the active pane, as with the
  * "Transcribe active audio file" command), an in-note-only destination can
  * never do anything but fall back to a file, so it is downgraded to `file`
- * up front — the run does what it can without a misleading "could not insert"
+ * up front - the run does what it can without a misleading "could not insert"
  * outcome. `both`, `link`, and `file` already write a file and are unchanged.
  * @param destination - The configured/requested destination
  * @param hasHostNote - Whether an editable host note is available
@@ -50,15 +51,6 @@ export function buildTranscriptFilePath(
 	const base = dotIndex > 0 ? audioPath.slice(0, dotIndex) : audioPath;
 	const suffix = format === 'json' ? 'transcript.json' : format;
 	return `${base}.${suffix}`;
-}
-
-/**
- * Returns the directory portion of a vault path ('' for a root file).
- * @param path - Vault path
- */
-function directoryOf(path: string): string {
-	const slash = path.lastIndexOf('/');
-	return slash >= 0 ? path.slice(0, slash) : '';
 }
 
 /**
@@ -91,8 +83,8 @@ export async function writeTranscriptFile(
 /**
  * Finds the open, editable Markdown view for a specific note path, or null
  * when that note is not open in a Markdown leaf. Targets the note the
- * timecode links were generated against — not whatever happens to be active
- * when an async transcription finishes — so output never lands in an
+ * timecode links were generated against - not whatever happens to be active
+ * when an async transcription finishes - so output never lands in an
  * unrelated file the user switched to mid-run.
  * @param app - Obsidian App
  * @param notePath - Vault path of the target note
@@ -205,8 +197,8 @@ export interface TranscriptWriteOutcome {
 
 /**
  * Builds the user-facing notice for a transcript write outcome. Pure (no
- * Obsidian dependency) so the wording — especially the "could not insert"
- * cases that must never read as success — is unit tested.
+ * Obsidian dependency) so the wording - especially the "could not insert"
+ * cases that must never read as success - is unit tested.
  * @param outcome - What was written and what the user requested
  * @returns The notice text
  */

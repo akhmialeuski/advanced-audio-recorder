@@ -4,21 +4,20 @@
  */
 
 import { App, Modal, Notice, Setting, TFile } from 'obsidian';
-import {
-	isOfflineEncodingSupported,
-	getEncoderDescription,
-} from '../recording/AudioEncoder';
+import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
 import { AUDIO_EXTENSIONS, FORMAT_WAV } from '../constants';
 import {
 	addBitrateSetting,
 	addDeleteSourceSetting,
 	addLinkActionSetting,
 } from './settingHelpers';
-import { ConversionService } from '../recording/ConversionService';
+import { getEncoderDescription } from './formatDescriptions';
+import { ConversionService } from '../recording/api';
+import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import type {
 	AudioRecorderSettings,
 	ConversionLinkAction,
-} from '../settings/Settings';
+} from '../settings/settingsSchema';
 
 /**
  * Modal for converting an audio file to a different format.
@@ -48,15 +47,16 @@ export class ConversionModal extends Modal {
 		sourceFile: TFile,
 		settings: AudioRecorderSettings,
 		private readonly onConverted?: (convertedPath: string) => void,
+		getWorkerClient: () => EncodingWorkerClient | null = () => null,
 	) {
 		super(app);
 		this.sourceFile = sourceFile;
 		this.deleteSource = settings.deleteSourceAfterConversion;
 		this.linkAction = settings.conversionLinkAction;
-		this.conversionService = new ConversionService(app);
+		this.conversionService = new ConversionService(app, getWorkerClient);
 	}
 
-	onOpen(): void {
+	override onOpen(): void {
 		const { contentEl } = this;
 		contentEl.empty();
 
@@ -83,9 +83,10 @@ export class ConversionModal extends Modal {
 						`${format.toUpperCase()} (${encoder})`,
 					);
 				});
-				if (availableFormats.length > 0) {
-					this.targetFormat = availableFormats[0];
-					dropdown.setValue(this.targetFormat);
+				const firstFormat = availableFormats[0];
+				if (firstFormat) {
+					this.targetFormat = firstFormat;
+					dropdown.setValue(firstFormat);
 				}
 				dropdown.onChange((value) => {
 					this.targetFormat = value;
@@ -133,7 +134,7 @@ export class ConversionModal extends Modal {
 		});
 	}
 
-	onClose(): void {
+	override onClose(): void {
 		if (this.isConverting && !this.progressNotice) {
 			// Timeout 0 keeps the notice visible until hidden explicitly;
 			// setProgress mirrors further pipeline progress into it

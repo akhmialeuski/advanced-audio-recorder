@@ -1,5 +1,5 @@
 /**
- * Transcription via a local whisper.cpp binary. Desktop only — it shells
+ * Transcription via a local whisper.cpp binary. Desktop only - it shells
  * out through Node's child_process, which is unavailable in the mobile
  * app. The service hands this provider a single decoded WAV per request (it
  * declares no upload limit), which is written to a temp file, transcribed to
@@ -15,6 +15,7 @@ import type { TranscriptSegment } from '../TranscriptTypes';
 import { LOCAL_WHISPER_CAPABILITIES } from './capabilities';
 import type { WhisperResult } from './whisperResponse';
 import { isRecord, num } from './responseUtils';
+import { randomToken } from '../../utils/ids';
 import type {
 	AudioPayload,
 	ProviderCapabilities,
@@ -133,7 +134,7 @@ export class LocalWhisperProvider implements TranscriptionProvider {
 		}
 		const base = node.path.join(
 			node.os.tmpdir(),
-			`aar-whisper-${String(Date.now())}-${Math.random().toString(16).slice(2)}`,
+			`aar-whisper-${String(Date.now())}-${randomToken()}`,
 		);
 		const wavPath = `${base}.wav`;
 		const jsonPath = `${base}.json`;

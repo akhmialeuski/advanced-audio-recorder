@@ -1,8 +1,8 @@
 /**
  * Pure DSP helpers for on-demand audio cleanup: config resolution and
- * clamping, dB↔gain, the noise-gate open/close decision (with
+ * clamping, dB/gain conversion, the noise-gate open/close decision (with
  * hysteresis), and an offline envelope-based noise gate over decoded
- * samples. No WebAudio or I/O — all logic here is unit tested.
+ * samples. No WebAudio or I/O - all logic here is unit tested.
  * @module cleanup/audioDsp
  */
 
@@ -17,7 +17,7 @@ import {
 	MIN_CLEANUP_HIGHPASS_HZ,
 	MIN_CLEANUP_LEVELING_MAKEUP_DB,
 } from '../constants';
-import type { AudioRecorderSettings } from '../settings/Settings';
+import type { AudioRecorderSettings } from '../settings/settingsSchema';
 
 /** Resolved, clamped audio-cleanup configuration. */
 export interface AudioDspConfig {
@@ -172,7 +172,8 @@ export function applyNoiseGateToChannel(
 		const end = Math.min(samples.length, start + windowSize);
 		let sumSquares = 0;
 		for (let i = start; i < end; i++) {
-			sumSquares += samples[i] * samples[i];
+			const sample = samples[i] ?? 0;
+			sumSquares += sample * sample;
 		}
 		const rms = Math.sqrt(sumSquares / (end - start));
 		const rmsDb = rms > 0 ? 20 * Math.log10(rms) : -Infinity;
@@ -181,7 +182,7 @@ export function applyNoiseGateToChannel(
 		for (let i = start; i < end; i++) {
 			const coef = target > gain ? attackCoef : releaseCoef;
 			gain = target + (gain - target) * coef;
-			out[i] = samples[i] * gain;
+			out[i] = (samples[i] ?? 0) * gain;
 		}
 	}
 	return out;

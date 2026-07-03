@@ -1,7 +1,7 @@
 /**
  * Tests that a transcription run honors a cancel pressed during the final (or
  * only) request. Obsidian's requestUrl cannot abort the in-flight call, but a
- * cancelled run must still throw and write nothing — otherwise a single-request
+ * cancelled run must still throw and write nothing - otherwise a single-request
  * job (whole-file Deepgram, a sub-limit Whisper upload, local whisper.cpp)
  * would ignore Cancel and silently report success, since the per-chunk check
  * only fires before the next chunk.
@@ -16,7 +16,7 @@ import {
 } from 'src/transcription/TranscriptionService';
 import { transcribeFile } from 'src/transcription/runTranscription';
 import type { TranscriptionProvider } from 'src/transcription/providers/TranscriptionProvider';
-import { mergeSettings } from 'src/settings/Settings';
+import { mergeSettings } from 'src/settings/settingsSerialization';
 
 const audioFile = {
 	name: 'rec.webm',

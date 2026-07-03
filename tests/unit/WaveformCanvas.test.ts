@@ -1,8 +1,7 @@
-/** @jest-environment jsdom */
 /**
  * Unit tests for the waveform renderer. The central regression guard is that
- * moving the playhead (setProgress) does no canvas work — it only updates the
- * clip variable — so playback never re-rasterizes or re-downsamples the
+ * moving the playhead (setProgress) does no canvas work - it only updates the
+ * clip variable - so playback never re-rasterizes or re-downsamples the
  * waveform, which is what made large notes janky before.
  */
 

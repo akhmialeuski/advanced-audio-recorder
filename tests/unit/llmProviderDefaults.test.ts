@@ -2,10 +2,11 @@
  * Tests for applyLlmProviderDefaults: switching the LLM provider should move
  * the base URL to the new provider's default when it is still a default, and
  * must never clobber a custom endpoint the user typed. The model is no longer
- * switched here — each provider keeps its own selected model.
+ * switched here - each provider keeps its own selected model.
  */
 
-import { applyLlmProviderDefaults, mergeSettings } from 'src/settings/Settings';
+import { applyLlmProviderDefaults } from 'src/settings/settingsSchema';
+import { mergeSettings } from 'src/settings/settingsSerialization';
 import {
 	DEFAULT_LLM_OPENAI_BASE_URL,
 	DEFAULT_LLM_ANTHROPIC_BASE_URL,

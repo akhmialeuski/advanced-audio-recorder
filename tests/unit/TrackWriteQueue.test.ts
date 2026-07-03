@@ -3,14 +3,13 @@
  * Tests chain serialization, failure containment, and buffer flushes.
  * @module tests/unit/TrackWriteQueue.test
  */
-/** @jest-environment jsdom */
 
-import { TrackWriteQueue } from '../../src/recording/TrackWriteQueue';
-import type { RecordingSessionConfig, RecordingTarget } from '../../src/types';
+import { TrackWriteQueue } from 'src/recording/TrackWriteQueue';
+import type { RecordingSessionConfig, RecordingTarget } from 'src/types';
 import {
 	DEFAULT_SETTINGS,
 	AudioRecorderSettings,
-} from '../../src/settings/Settings';
+} from 'src/settings/settingsSchema';
 import type { App } from 'obsidian';
 
 jest.mock('obsidian', () => ({
@@ -19,19 +18,12 @@ jest.mock('obsidian', () => ({
 }));
 
 // Mock AudioFormatConverter: the mobile flush pipeline has its own suite
-jest.mock('../../src/recording/AudioFormatConverter', () => ({
+jest.mock('src/audio/AudioFormatConverter', () => ({
 	buildOutputBlob: jest
 		.fn()
 		.mockResolvedValue(new Blob(['output'], { type: 'audio/webm' })),
 	getRecorderMediaType: jest.fn((format: string) => `audio/${format}`),
 }));
-
-if (!Blob.prototype.arrayBuffer) {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test polyfill for jsdom
-	(Blob.prototype as any).arrayBuffer = function (): Promise<ArrayBuffer> {
-		return Promise.resolve(new ArrayBuffer(0));
-	};
-}
 
 const createTarget = (): RecordingTarget => ({
 	fileBaseName: 'recording-Track1-stamp',
@@ -294,7 +286,7 @@ describe('TrackWriteQueue', () => {
 			await queue.flushChunkBuffer(target);
 
 			const { buildOutputBlob } = jest.requireMock(
-				'../../src/recording/AudioFormatConverter',
+				'src/audio/AudioFormatConverter',
 			);
 			expect(buildOutputBlob).toHaveBeenCalledWith(
 				chunks,

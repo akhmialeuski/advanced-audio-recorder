@@ -23,12 +23,12 @@ import {
 import {
 	clampSplitMinutes,
 	sanitizePartSuffix,
-} from '../recording/AudioSplitter';
-import { SplitService } from '../recording/SplitService';
+	SplitService,
+} from '../recording/api';
 import type {
 	AudioRecorderSettings,
 	ConversionLinkAction,
-} from '../settings/Settings';
+} from '../settings/settingsSchema';
 
 /**
  * Modal for splitting an audio file into parts of a fixed duration.
@@ -58,7 +58,7 @@ export class SplitModal extends Modal {
 		this.linkAction = settings.conversionLinkAction;
 	}
 
-	onOpen(): void {
+	override onOpen(): void {
 		const { contentEl } = this;
 		contentEl.empty();
 
@@ -163,7 +163,7 @@ export class SplitModal extends Modal {
 		});
 	}
 
-	onClose(): void {
+	override onClose(): void {
 		if (this.isSplitting && !this.progressNotice) {
 			// Timeout 0 keeps the notice visible until hidden explicitly;
 			// setProgress mirrors further pipeline progress into it

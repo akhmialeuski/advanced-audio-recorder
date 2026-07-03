@@ -11,10 +11,10 @@ import { Notice } from 'obsidian';
 import type { App } from 'obsidian';
 import { RecordingStatus } from '../types';
 import type { RecordingSessionConfig, RecordingTarget } from '../types';
-import type { AudioRecorderSettings } from '../settings/Settings';
+import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import { PLUGIN_LOG_PREFIX, MS_PER_MINUTE, FORMAT_WAV } from '../constants';
 import { DebugLogger } from '../utils/DebugLogger';
-import { resolveUniquePath } from './RecordingFileManager';
+import { resolveUniquePath } from '../audio/RecordingFileManager';
 import {
 	buildPartFileName,
 	detachTrailingBytes,

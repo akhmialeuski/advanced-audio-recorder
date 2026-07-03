@@ -1,7 +1,7 @@
 /**
  * Bounded-memory mixer for multi-track PCM/WAV sessions. The tracks
  * already sit on disk as raw int16 segments, so they are mixed in
- * fixed-size windows directly into the preallocated WAV file buffer —
+ * fixed-size windows directly into the preallocated WAV file buffer -
  * peak memory is the output file plus one window per track, instead
  * of decoding every track into float32 AudioBuffers and rendering
  * them through an OfflineAudioContext (which costs multiple gigabytes
@@ -10,16 +10,16 @@
  * Scope: equal sample rates only (the PCM recorders are created with
  * an explicit shared rate, so this is the normal case). Rate
  * mismatches and compressed merged outputs keep using the Web Audio
- * path — OfflineAudioContext is the platform's resampler, and
+ * path - OfflineAudioContext is the platform's resampler, and
  * reimplementing resampling here would be reinventing it badly.
  * @module recording/StreamingMixer
  */
 
 import type { App } from 'obsidian';
-import { createWavHeader, WAV_HEADER_SIZE } from './WavEncoder';
+import { createWavFileBuffer, WAV_HEADER_SIZE } from '../audio/WavEncoder';
+import { INT16_MAX, INT16_MIN, PCM_BYTES_PER_SAMPLE } from '../audio/pcm';
 
 /** Bytes per int16 sample. */
-const BYTES_PER_SAMPLE = 2;
 
 /** Default mix window in sample frames (~1 MiB stereo int16). */
 const DEFAULT_WINDOW_FRAMES = 262144;
@@ -42,10 +42,11 @@ export interface PcmMixTrack {
  * @returns True when all tracks share a sample rate and have data
  */
 export function canStreamMix(tracks: PcmMixTrack[]): boolean {
-	if (tracks.length === 0) {
+	const first = tracks[0];
+	if (!first) {
 		return false;
 	}
-	const rate = tracks[0].sampleRate;
+	const rate = first.sampleRate;
 	return tracks.every(
 		(track) =>
 			track.segmentPaths.length > 0 &&
@@ -89,18 +90,17 @@ class PcmSegmentReader {
 		let written = 0;
 		while (written < samplesWanted) {
 			if (!this.current || this.currentOffset >= this.current.length) {
-				if (this.segmentIndex >= this.segmentPaths.length) {
+				const path = this.segmentPaths[this.segmentIndex];
+				if (path === undefined) {
 					break;
 				}
-				const bytes = await this.app.vault.adapter.readBinary(
-					this.segmentPaths[this.segmentIndex],
-				);
+				const bytes = await this.app.vault.adapter.readBinary(path);
 				this.segmentIndex += 1;
 				// Whole int16 samples only; a torn trailing byte is dropped
 				this.current = new Int16Array(
 					bytes,
 					0,
-					Math.floor(bytes.byteLength / BYTES_PER_SAMPLE),
+					Math.floor(bytes.byteLength / PCM_BYTES_PER_SAMPLE),
 				);
 				this.currentOffset = 0;
 			}
@@ -160,30 +160,26 @@ export async function mixPcmTracksToWav(
 			bytes += stat.size;
 		}
 		frameCounts.push(
-			Math.floor(bytes / (BYTES_PER_SAMPLE * track.channels)),
+			Math.floor(bytes / (PCM_BYTES_PER_SAMPLE * track.channels)),
 		);
+	}
+	const firstTrack = tracks[0];
+	if (!firstTrack) {
+		throw new Error('No tracks to mix');
 	}
 	const totalFrames = Math.max(...frameCounts);
 	const outChannels = Math.min(
 		2,
 		Math.max(...tracks.map((track) => track.channels)),
 	);
-	const sampleRate = tracks[0].sampleRate;
+	const sampleRate = firstTrack.sampleRate;
 
-	const wavBuffer = new ArrayBuffer(
-		WAV_HEADER_SIZE + totalFrames * outChannels * BYTES_PER_SAMPLE,
+	const wavBuffer = createWavFileBuffer(
+		outChannels,
+		sampleRate,
+		totalFrames * outChannels * PCM_BYTES_PER_SAMPLE,
 	);
 	const output = new Int16Array(wavBuffer, WAV_HEADER_SIZE);
-	new Uint8Array(wavBuffer).set(
-		new Uint8Array(
-			createWavHeader(
-				outChannels,
-				sampleRate,
-				totalFrames * outChannels * BYTES_PER_SAMPLE,
-			),
-		),
-		0,
-	);
 
 	const readers = tracks.map(
 		(track) =>
@@ -200,30 +196,41 @@ export async function mixPcmTracksToWav(
 		accumulator.fill(0, 0, frames * outChannels);
 
 		for (let trackIndex = 0; trackIndex < tracks.length; trackIndex++) {
-			const channels = tracks[trackIndex].channels;
+			const track = tracks[trackIndex];
 			const window = windows[trackIndex];
-			await readers[trackIndex].read(frames, window);
+			const reader = readers[trackIndex];
+			if (!track || !window || !reader) {
+				// The three arrays are built in lockstep from tracks;
+				// an index cannot miss one without missing all
+				continue;
+			}
+			await reader.read(frames, window);
 
-			if (channels === outChannels) {
+			// The `?? 0` narrows the checked index reads with the mix's
+			// neutral element; every access below is in bounds by
+			// construction (the buffers are sized from windowFrames)
+			if (track.channels === outChannels) {
 				for (let i = 0; i < frames * outChannels; i++) {
-					accumulator[i] += window[i];
+					accumulator[i] = (accumulator[i] ?? 0) + (window[i] ?? 0);
 				}
 			} else {
 				// Mono into stereo: duplicate the sample into both
 				// channels, matching the Web Audio up-mix behavior
 				for (let frame = 0; frame < frames; frame++) {
-					const sample = window[frame];
-					accumulator[frame * 2] += sample;
-					accumulator[frame * 2 + 1] += sample;
+					const sample = window[frame] ?? 0;
+					accumulator[frame * 2] =
+						(accumulator[frame * 2] ?? 0) + sample;
+					accumulator[frame * 2 + 1] =
+						(accumulator[frame * 2 + 1] ?? 0) + sample;
 				}
 			}
 		}
 
 		const outBase = frameOffset * outChannels;
 		for (let i = 0; i < frames * outChannels; i++) {
-			const sum = accumulator[i];
+			const sum = accumulator[i] ?? 0;
 			output[outBase + i] =
-				sum > 32767 ? 32767 : sum < -32768 ? -32768 : sum;
+				sum > INT16_MAX ? INT16_MAX : sum < INT16_MIN ? INT16_MIN : sum;
 		}
 
 		frameOffset += frames;

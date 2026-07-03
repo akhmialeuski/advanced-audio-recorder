@@ -3,14 +3,13 @@
  * Tests file I/O operations: path resolution, saving, cleanup, and rollback.
  * @module tests/unit/RecordingFileManager.test
  */
-/** @jest-environment jsdom */
 
 import type { App } from 'obsidian';
 import {
 	DEFAULT_SETTINGS,
 	AudioRecorderSettings,
-} from '../../src/settings/Settings';
-import type { RecordingTarget } from '../../src/types';
+} from 'src/settings/settingsSchema';
+import type { RecordingTarget } from 'src/types';
 import {
 	getActiveFileDirectory,
 	getBaseSaveDirectory,
@@ -20,7 +19,7 @@ import {
 	saveAudioFile,
 	removeTemporaryArtifacts,
 	cleanupIntermediateFiles,
-} from '../../src/recording/RecordingFileManager';
+} from 'src/audio/RecordingFileManager';
 
 // Mock obsidian module
 jest.mock('obsidian', () => ({
@@ -28,17 +27,6 @@ jest.mock('obsidian', () => ({
 }));
 
 // Polyfill Blob.arrayBuffer for jsdom if missing
-if (!Blob.prototype.arrayBuffer) {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- jsdom polyfill required for test environment
-	(Blob.prototype as any).arrayBuffer = function (): Promise<ArrayBuffer> {
-		return new Promise((resolve, reject) => {
-			const reader = new FileReader();
-			reader.onload = (): void => resolve(reader.result as ArrayBuffer);
-			reader.onerror = (): void => reject(reader.error);
-			reader.readAsArrayBuffer(this as Blob);
-		});
-	};
-}
 
 describe('RecordingFileManager', () => {
 	let mockApp: App;

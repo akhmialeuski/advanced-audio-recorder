@@ -1,4 +1,3 @@
-/** @jest-environment jsdom */
 /**
  * Regression guards for the enhanced player's two long-standing defects:
  *
@@ -13,16 +12,19 @@
  * They also cover the waveform decision (drawn progressively for files up to a
  * high safety ceiling; the plain seekable bar is used for pathological files
  * beyond it), the render-scoped teardown that keeps in-place re-renders from
- * accumulating observers, and the seekTo autoplay contract (timecode links
- * play; in-player jumps preserve the play/pause state).
+ * accumulating observers, the seekTo autoplay contract (timecode links play;
+ * in-player jumps preserve the play/pause state), and per-embed playback
+ * independence: distinct embeds of one file (plain vs #t=) drive independent
+ * audio elements, so playing or seeking one never moves the other (issue #38),
+ * while marker registrations stay per file so marker edits sync across embeds.
  */
 
 import { App, Modal } from 'obsidian';
 import { AudioPlayer } from 'src/player/AudioPlayer';
 import { WaveformPeakCache, type AudioDecoder } from 'src/player/WaveformData';
 import type { AudioPlayerRegistry } from 'src/player/AudioPlayerRegistry';
-import type { MarkerStore } from 'src/player/markers/MarkerStore';
-import type { ResolvedPlayerSettings } from 'src/settings/Settings';
+import type { MarkerStore } from 'src/markers/MarkerStore';
+import type { ResolvedPlayerSettings } from 'src/player/playerSettings';
 import type { TFile } from 'obsidian';
 
 type Listener = () => void;
@@ -80,17 +82,30 @@ function makeFakeAudio(): FakeAudio {
 	return audio;
 }
 
-/** A registry that hands out one shared audio: first acquire is "new". */
-function makeRegistry(audio: FakeAudio): AudioPlayerRegistry {
-	let created = false;
-	// Faithfully track the shared engaged flag so #t= hint tests exercise the
-	// real cross-embed behavior (engaging via one embed clears the hint on all)
-	let engaged = false;
+/**
+ * A key-aware registry stand-in that mirrors the real acquire semantics:
+ * each distinct playback key (file path + #t= start) gets its own audio
+ * element and its own engaged flag, and re-acquiring a known key returns
+ * the same element with isNew=false. New keys consume the provided fakes
+ * in acquisition order, then fall back to fresh ones - so a test that
+ * mounts several distinct embeds controls each element it asserts on.
+ */
+function makeRegistry(...audios: FakeAudio[]): AudioPlayerRegistry {
+	const entries = new Map<string, { audio: FakeAudio; engaged: boolean }>();
+	let nextAudio = 0;
 	const registry = {
-		acquireAudio: jest.fn(() => {
-			const isNew = !created;
-			created = true;
-			return { audio: audio as unknown as HTMLAudioElement, isNew };
+		acquireAudio: jest.fn((key: string) => {
+			const existing = entries.get(key);
+			if (existing) {
+				return {
+					audio: existing.audio as unknown as HTMLAudioElement,
+					isNew: false,
+				};
+			}
+			const audio = audios[nextAudio] ?? makeFakeAudio();
+			nextAudio += 1;
+			entries.set(key, { audio, engaged: false });
+			return { audio: audio as unknown as HTMLAudioElement, isNew: true };
 		}),
 		releaseAudio: jest.fn(),
 		register: jest.fn(),
@@ -99,12 +114,17 @@ function makeRegistry(audio: FakeAudio): AudioPlayerRegistry {
 		seek: jest.fn(),
 		applySettings: jest.fn(),
 		clear: jest.fn(),
-		markAudioEngaged: jest.fn(() => {
-			engaged = true;
+		markAudioEngaged: jest.fn((key: string) => {
+			const entry = entries.get(key);
+			if (entry) {
+				entry.engaged = true;
+			}
 		}),
-		isAudioEngaged: jest.fn(() => engaged),
+		isAudioEngaged: jest.fn(
+			(key: string) => entries.get(key)?.engaged ?? false,
+		),
 	};
-	return registry as AudioPlayerRegistry;
+	return registry;
 }
 
 const app = {
@@ -336,7 +356,7 @@ describe('waveform rendering decision (F2/F3)', () => {
 		try {
 			const container = makeContainer();
 			// A multi-hundred-MB (hour-long) recording must still get the
-			// waveform — it is computed progressively, not skipped by a cap
+			// waveform - it is computed progressively, not skipped by a cap
 			makePlayer(
 				container,
 				makeRegistry(makeFakeAudio()),
@@ -403,13 +423,16 @@ describe('timecode start offset (#t=) positions and shows the embed', () => {
 	});
 
 	it('keeps a plain embed at 0:00 while a same-file #t= embed shows its offset', () => {
-		// Two distinct embeds of ONE file share a single audio element (so one
-		// playback is controllable across view modes). The #t= start must stay
-		// per-embed: the plain embed must not inherit the other embed's 0:03.
-		const audio = makeFakeAudio();
-		audio.duration = 5;
-		audio.readyState = 1;
-		const registry = makeRegistry(audio);
+		// Two distinct embeds of ONE file drive independent playback elements
+		// (issue #38). The #t= start stays per-embed: the plain embed must not
+		// inherit the other embed's 0:03, and neither element is moved.
+		const timedAudio = makeFakeAudio();
+		timedAudio.duration = 5;
+		timedAudio.readyState = 1;
+		const plainAudio = makeFakeAudio();
+		plainAudio.duration = 5;
+		plainAudio.readyState = 1;
+		const registry = makeRegistry(timedAudio, plainAudio);
 
 		const withOffset = makeContainer();
 		makePlayer(
@@ -434,7 +457,8 @@ describe('timecode start offset (#t=) positions and shows the embed', () => {
 		expect(plain.querySelector('.aar-player-time')?.textContent).toBe(
 			'0:00 / 0:05',
 		);
-		expect(audio.currentTime).toBe(0);
+		expect(timedAudio.currentTime).toBe(0);
+		expect(plainAudio.currentTime).toBe(0);
 	});
 
 	it('starts playback from the #t= offset when the user presses play', () => {
@@ -465,7 +489,8 @@ describe('timecode start offset (#t=) positions and shows the embed', () => {
 		const audio = makeFakeAudio();
 		audio.duration = 5;
 		audio.readyState = 1;
-		// Another embed (or the user) has already moved playback
+		// The same embed in another view/pane (or the user) has already moved
+		// this embed's playback
 		audio.currentTime = 4;
 		const container = makeContainer();
 
@@ -534,12 +559,17 @@ describe('timecode start offset (#t=) positions and shows the embed', () => {
 		);
 	});
 
-	it('clears the #t= start on same-file embeds once playback engages', () => {
-		const audio = makeFakeAudio();
-		audio.duration = 5;
-		audio.readyState = 1;
-		// One shared timeline drives both embeds of the file
-		const registry = makeRegistry(audio);
+	it('keeps the #t= start while a different embed of the same file plays (issue #38)', () => {
+		// Distinct embeds of one file have independent playback: playing the
+		// plain embed must neither move the #t= embed's position nor consume
+		// its start hint.
+		const timedAudio = makeFakeAudio();
+		timedAudio.duration = 5;
+		timedAudio.readyState = 1;
+		const plainAudio = makeFakeAudio();
+		plainAudio.duration = 5;
+		plainAudio.readyState = 1;
+		const registry = makeRegistry(timedAudio, plainAudio);
 
 		const withOffset = makeContainer();
 		makePlayer(
@@ -557,20 +587,89 @@ describe('timecode start offset (#t=) positions and shows the embed', () => {
 			makeFile(1000, 'wav'),
 			null,
 		).onload();
+
+		// The plain embed plays and advances to 0:02
+		plainAudio.paused = false;
+		plainAudio.emit('play');
+		plainAudio.currentTime = 2;
+		plainAudio.emit('timeupdate');
+
+		expect(plain.querySelector('.aar-player-time')?.textContent).toBe(
+			'0:02 / 0:05',
+		);
+		// The #t= embed is untouched: still paused at its own 0:03 start
 		expect(withOffset.querySelector('.aar-player-time')?.textContent).toBe(
 			'0:03 / 0:05',
 		);
+		expect(timedAudio.currentTime).toBe(0);
+		expect(timedAudio.play).not.toHaveBeenCalled();
+	});
 
-		// Playing the plain embed engages the shared timeline; after it returns
-		// to 0 paused, the #t= embed must reflect the live timeline, not its hint
-		audio.emit('play');
-		audio.currentTime = 0;
-		audio.paused = true;
-		audio.emit('timeupdate');
+	it('does not move a same-file embed when another embed is seeked (issue #38)', () => {
+		const timedAudio = makeFakeAudio();
+		timedAudio.duration = 5;
+		timedAudio.readyState = 1;
+		const plainAudio = makeFakeAudio();
+		plainAudio.duration = 5;
+		plainAudio.readyState = 1;
+		const registry = makeRegistry(timedAudio, plainAudio);
 
-		expect(withOffset.querySelector('.aar-player-time')?.textContent).toBe(
-			'0:00 / 0:05',
+		const withOffset = makeContainer();
+		makePlayer(
+			withOffset,
+			registry,
+			PLAIN,
+			makeFile(1000, 'wav'),
+			3,
+		).onload();
+		const plain = makeContainer();
+		const plainPlayer = makePlayer(
+			plain,
+			registry,
+			PLAIN,
+			makeFile(1000, 'wav'),
+			null,
 		);
+		plainPlayer.onload();
+
+		// Seeking the plain embed moves only its own element
+		plainPlayer.seekTo(4, false);
+		plainAudio.emit('timeupdate');
+
+		expect(plainAudio.currentTime).toBe(4);
+		expect(plain.querySelector('.aar-player-time')?.textContent).toBe(
+			'0:04 / 0:05',
+		);
+		expect(timedAudio.currentTime).toBe(0);
+		expect(withOffset.querySelector('.aar-player-time')?.textContent).toBe(
+			'0:03 / 0:05',
+		);
+	});
+
+	it('registers every embed of a file under the file path, keeping markers in sync', () => {
+		// Marker data is per FILE: the registry's player registrations (used
+		// to broadcast marker reloads) must stay keyed by path even though
+		// each embed drives its own playback element.
+		const registry = makeRegistry();
+		const first = makePlayer(
+			makeContainer(),
+			registry,
+			PLAIN,
+			makeFile(1000, 'wav'),
+			3,
+		);
+		first.onload();
+		const second = makePlayer(
+			makeContainer(),
+			registry,
+			PLAIN,
+			makeFile(1000, 'wav'),
+			null,
+		);
+		second.onload();
+
+		expect(registry.register).toHaveBeenCalledWith('rec.wav', first);
+		expect(registry.register).toHaveBeenCalledWith('rec.wav', second);
 	});
 });
 
@@ -640,7 +739,7 @@ describe('lazy waveform decode (B2)', () => {
 		const decode = rejectingDecode();
 		makeWaveformPlayer(decode).onload();
 
-		// The waveform layer is built eagerly, but nothing is decoded yet — a
+		// The waveform layer is built eagerly, but nothing is decoded yet - a
 		// long note with many recordings must not decode every embed up front
 		expect(MockIntersectionObserver.instances).toHaveLength(1);
 		expect(decode).not.toHaveBeenCalled();

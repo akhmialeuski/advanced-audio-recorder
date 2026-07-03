@@ -3,10 +3,91 @@
  * @module tests/unit/AudioStreamHandler.test
  */
 
-import { getOrderedTrackSources } from '../../src/recording/AudioStreamHandler';
-import { DEFAULT_SETTINGS } from '../../src/settings/Settings';
+import {
+	getAudioStreams,
+	getOrderedTrackSources,
+} from 'src/recording/AudioStreamHandler';
+import { AudioStreamError } from 'src/errors';
+import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
+
+/** Builds a MediaStream stub whose tracks record stop() calls. */
+function fakeStream(): { stream: MediaStream; stop: jest.Mock } {
+	const stop = jest.fn();
+	const stream = {
+		getTracks: () => [{ stop }],
+	} as unknown as MediaStream;
+	return { stream, stop };
+}
 
 describe('AudioStreamHandler', () => {
+	describe('getAudioStreams (multi-track partial failure)', () => {
+		const originalMediaDevices = navigator.mediaDevices;
+		let getUserMedia: jest.Mock;
+
+		const multiTrackSettings = {
+			...DEFAULT_SETTINGS,
+			enableMultiTrack: true,
+			maxTracks: 2,
+			trackAudioSources: new Map([
+				[1, { deviceId: 'device-1' }],
+				[2, { deviceId: 'device-2' }],
+			]),
+		};
+
+		beforeEach(() => {
+			getUserMedia = jest.fn();
+			Object.defineProperty(navigator, 'mediaDevices', {
+				value: { getUserMedia },
+				configurable: true,
+			});
+		});
+
+		afterEach(() => {
+			Object.defineProperty(navigator, 'mediaDevices', {
+				value: originalMediaDevices,
+				configurable: true,
+			});
+		});
+
+		it('returns all streams in track order when every device opens', async () => {
+			const first = fakeStream();
+			const second = fakeStream();
+			getUserMedia
+				.mockResolvedValueOnce(first.stream)
+				.mockResolvedValueOnce(second.stream);
+
+			const result = await getAudioStreams(multiTrackSettings);
+
+			expect(result.streams).toEqual([first.stream, second.stream]);
+			expect(result.trackOrder.map((s) => s.trackNumber)).toEqual([1, 2]);
+			expect(first.stop).not.toHaveBeenCalled();
+			expect(second.stop).not.toHaveBeenCalled();
+		});
+
+		it('stops already-opened microphones when another track fails', async () => {
+			const opened = fakeStream();
+			getUserMedia.mockImplementation(
+				(constraints: { audio: { deviceId?: { exact: string } } }) => {
+					if (constraints.audio.deviceId?.exact === 'device-1') {
+						return Promise.resolve(opened.stream);
+					}
+					return Promise.reject(
+						new DOMException('denied', 'NotAllowedError'),
+					);
+				},
+			);
+
+			await expect(getAudioStreams(multiTrackSettings)).rejects.toThrow(
+				AudioStreamError,
+			);
+
+			// The successfully opened microphone must be released; with the
+			// old Promise.all the stream never reached the caller and stayed
+			// captured until app restart.
+			expect(opened.stop).toHaveBeenCalledTimes(1);
+		});
+	});
+
 	describe('getOrderedTrackSources', () => {
 		it('should return sources in track order regardless of Map insertion order', () => {
 			const settings = {

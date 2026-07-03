@@ -1,21 +1,20 @@
 /**
  * Unit tests for the shared setting-control builders, focused on the
  * disabled (dimmed) rendering used for options the current selection cannot
- * use — e.g. speaker diarization on an engine that cannot diarize. A disabled
+ * use - e.g. speaker diarization on an engine that cannot diarize. A disabled
  * control must both be non-interactive and visually greyed (a dim class on the
  * row), so the user can tell it is off because it is unavailable, not unset.
  * The capturing Setting mock is shared from tests/helpers/captureSettings.
  * @module tests/unit/settingControls.test
  */
-/** @jest-environment jsdom */
 
 import {
 	addText,
 	addToggle,
 	SETTING_DISABLED_CLASS,
 	type SettingsSectionContext,
-} from '../../src/settings/settingControls';
-import type { AudioRecorderSettings } from '../../src/settings/Settings';
+} from 'src/settings/settingControls';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { capturedSettings } from '../helpers/captureSettings';
 
 jest.mock('obsidian', () => ({

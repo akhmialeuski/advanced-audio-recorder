@@ -180,7 +180,7 @@ export class WaveformCanvas {
 		for (let i = 0; i < barCount; i++) {
 			const barHeight = Math.max(
 				1,
-				bars[i] * (cssHeight - BAR_VERTICAL_INSET),
+				(bars[i] ?? 0) * (cssHeight - BAR_VERTICAL_INSET),
 			);
 			const x = i * barWidth;
 			const y = (cssHeight - barHeight) / 2;

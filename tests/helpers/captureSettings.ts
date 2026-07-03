@@ -4,7 +4,7 @@
  * `tests/mocks/obsidian.ts` cannot be used for control-state assertions
  * because its builder methods never invoke the callback; this one does, so
  * tests can verify the disabled (dimmed) rendering of settings. Dropdown,
- * slider, and button builders are chainable no-ops — enough to render whole
+ * slider, and button builders are chainable no-ops - enough to render whole
  * sections (e.g. the model picker) without capturing their state.
  * @module tests/helpers/captureSettings
  */

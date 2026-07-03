@@ -2,10 +2,9 @@
  * Unit tests for RecoveryModal module.
  * @module tests/unit/RecoveryModal.test
  */
-/** @jest-environment jsdom */
 
-import { RecoveryModal } from '../../src/ui/RecoveryModal';
-import type { JournalSession } from '../../src/recording/SessionJournal';
+import { RecoveryModal } from 'src/ui/RecoveryModal';
+import type { JournalSession } from 'src/recording/SessionJournal';
 import { App } from 'obsidian';
 
 /** Captured action buttons rendered by the modal. */

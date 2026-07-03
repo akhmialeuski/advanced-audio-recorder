@@ -1,11 +1,10 @@
-/** @jest-environment jsdom */
 /**
  * Unit tests for AudioFileInfoModal.
  * @module tests/unit/AudioFileInfoModal
  */
 
-import { AudioFileInfoModal } from '../../src/ui/AudioFileInfoModal';
-import type { AudioFileInfo } from '../../src/utils/AudioFileAnalyzer';
+import { AudioFileInfoModal } from 'src/ui/AudioFileInfoModal';
+import type { AudioFileInfo } from 'src/utils/AudioFileAnalyzer';
 import { App } from 'obsidian';
 
 // ---------------------------------------------------------------------------

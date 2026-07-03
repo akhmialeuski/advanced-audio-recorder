@@ -3,15 +3,14 @@
  * Tests the status bar state changes during recording and saving.
  * @module tests/unit/StatusBar.test
  */
-/** @jest-environment jsdom */
 
 import {
 	updateStatusBar,
 	initializeStatusBar,
 	renderTranscriptionStatusBar,
-} from '../../src/ui/StatusBar';
-import { RecordingStatus } from '../../src/types';
-import type { RecordingControls } from '../../src/types';
+} from 'src/ui/StatusBar';
+import { RecordingStatus } from 'src/types';
+import type { RecordingControls } from 'src/types';
 
 jest.mock('obsidian', () => ({
 	setIcon: jest.fn(),

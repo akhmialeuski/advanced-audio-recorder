@@ -87,7 +87,7 @@ export function geminiThinkingConfig(
 
 /**
  * Concatenates the `text` parts of the first candidate's content, or returns
- * '' when the response has no usable candidate. Does not trim — callers that
+ * '' when the response has no usable candidate. Does not trim - callers that
  * need a trimmed string apply it themselves.
  * @param body - Parsed JSON `generateContent` response
  * @returns The combined candidate text, or '' when absent
@@ -178,7 +178,7 @@ function geminiUsageDetail(body: unknown): string {
 	if (usage.candidatesTokenCount !== undefined) {
 		// Gemini reports thinking tokens separately from candidatesTokenCount
 		// (billing is the sum of the two), so they are added to, not contained
-		// within, the output-token count — hence "plus", not "including".
+		// within, the output-token count - hence "plus", not "including".
 		const thinking =
 			usage.thoughtsTokenCount && usage.thoughtsTokenCount > 0
 				? ` plus ${String(usage.thoughtsTokenCount)} on thinking`
@@ -233,7 +233,7 @@ function geminiPromptBlockReason(body: unknown): string | undefined {
 
 /**
  * Throws a clear error when Gemini returned no usable content for a terminal
- * reason other than truncation — a prompt-level block or a safety/recitation/
+ * reason other than truncation - a prompt-level block or a safety/recitation/
  * policy stop. Without this such a response maps to an empty transcript or an
  * empty post-processing result with no explanation. Pair with
  * {@link assertGeminiNotTruncated}, which covers the MAX_TOKENS case.

@@ -3,28 +3,26 @@
  * Tests device-change listener lifecycle and test recording cleanup.
  * @module tests/unit/SettingsTab.test
  */
-/** @jest-environment jsdom */
 
 import { App } from 'obsidian';
-import { AudioRecorderSettingTab } from '../../src/settings/SettingsTab';
+import { AudioRecorderSettingTab } from 'src/settings/SettingsTab';
 import {
 	DEFAULT_SETTINGS,
 	AudioRecorderSettings,
-} from '../../src/settings/Settings';
-import { DOCS_URL } from '../../src/constants';
+} from 'src/settings/settingsSchema';
+import { DOCS_URL } from 'src/constants';
 
 // Mock AudioEncoder to avoid loading mediabunny in jsdom
-jest.mock('../../src/recording/AudioEncoder', () => ({
+jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest.fn(),
 	isOfflineEncodingSupported: jest.fn((format: string) =>
 		['mp3', 'flac', 'wav', 'webm', 'ogg', 'mp4', 'm4a'].includes(format),
 	),
-	getEncoderDescription: jest.fn().mockReturnValue('Test Encoder'),
 }));
 
 // Mock SystemDiagnostics: pulled in by the settings tab but exercised
 // in its own suite
-jest.mock('../../src/diagnostics/SystemDiagnostics', () => ({
+jest.mock('src/diagnostics/SystemDiagnostics', () => ({
 	SystemDiagnostics: { collect: jest.fn() },
 }));
 
@@ -66,10 +64,7 @@ describe('AudioRecorderSettingTab', () => {
 			settings: mockSettings,
 			saveSettings: jest.fn().mockResolvedValue(undefined),
 		};
-		tab = new AudioRecorderSettingTab(
-			new App(),
-			mockPlugin as unknown as AudioRecorderSettingTab['plugin'],
-		);
+		tab = new AudioRecorderSettingTab(new App(), mockPlugin);
 	});
 
 	describe('documentation link', () => {

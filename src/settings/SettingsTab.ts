@@ -18,17 +18,16 @@ import type {
 	AudioRecorderSettings,
 	OutputMode,
 	ConversionLinkAction,
-} from './Settings';
+} from './settingsSchema';
 import {
 	detectSupportedFormats,
 	getSupportedSampleRates,
 	buildMimeType,
-} from '../recording/AudioCapabilityDetector';
-import {
-	getEncoderDescription,
-	isOfflineEncodingSupported,
-} from '../recording/AudioEncoder';
-import { getProcessingConstraints } from '../recording/AudioStreamHandler';
+} from '../audio/AudioCapabilityDetector';
+import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
+import { getEncoderDescription } from '../ui/formatDescriptions';
+import { TestRecorder } from '../recording/TestRecorder';
+import { FolderSuggest } from './FolderSuggest';
 import {
 	DEFAULT_SPLIT_PART_SUFFIX,
 	MIN_SPLIT_CHUNK_MINUTES,
@@ -44,6 +43,7 @@ import {
 	CLEANUP_GATE_STEP_DB,
 	CLEANUP_LEVELING_STEP_DB,
 	DOCS_URL,
+	FORMAT_WAV,
 } from '../constants';
 import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
 import { SystemInfoModal } from '../diagnostics/SystemInfoModal';
@@ -70,8 +70,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	plugin: AudioRecorderPluginInterface;
 	private deviceDropdowns: DropdownComponent[] = [];
 	private readonly bitrateOptionsKbps = [64, 96, 128, 160, 192, 256, 320];
-	private testRecorder: MediaRecorder | null = null;
-	private testChunks: Blob[] = [];
+	private readonly testRecorder = new TestRecorder();
 	private testAudioElement: HTMLAudioElement | null = null;
 	/**
 	 * Device-change listener active while the settings tab is open.
@@ -120,7 +119,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 
 	private getCompressionDescription(format: string): string {
 		const encoder = getEncoderDescription(format);
-		if (format === 'wav') {
+		if (format === FORMAT_WAV) {
 			return `Uncompressed WAV (larger size). Encoder: ${encoder}.`;
 		}
 		if (
@@ -313,14 +312,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				'Specify where recordings are saved in your vault. Existing folders are suggested as you type.',
 			)
 			.addText((text) => {
-				const folderOptions = this.getFolderOptions();
-				text.inputEl.setAttribute('list', 'folder-options');
-				const datalist = text.inputEl.createEl('datalist', {
-					attr: { id: 'folder-options' },
-				});
-				folderOptions.forEach((folder) => {
-					datalist.createEl('option', { attr: { value: folder } });
-				});
+				new FolderSuggest(this.app, text.inputEl, () =>
+					this.getFolderOptions(),
+				);
 				text.setValue(this.plugin.settings.saveFolder);
 				text.onChange((value) => {
 					this.plugin.settings.saveFolder = value;
@@ -916,79 +910,36 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * @param container - DOM element to append playback controls to
 	 */
 	private async runTestRecording(container: HTMLElement): Promise<void> {
-		let stream: MediaStream | null = null;
 		try {
 			this.cleanupTestRecording();
 
-			const format = this.plugin.settings.recordingFormat;
-			const recorderFormat = format === 'wav' ? 'webm' : format;
-			const mimeType = buildMimeType(recorderFormat);
-
-			if (!MediaRecorder.isTypeSupported(mimeType)) {
-				this.showTestStatus(
-					container,
-					`Format "${format}" is not supported in this browser.`,
-					true,
-				);
-				return;
-			}
-
-			stream = await navigator.mediaDevices.getUserMedia({
-				audio: {
-					deviceId: this.plugin.settings.audioDeviceId
-						? { exact: this.plugin.settings.audioDeviceId }
-						: undefined,
-					sampleRate: this.plugin.settings.sampleRate,
-					...getProcessingConstraints(this.plugin.settings),
+			const result = await this.testRecorder.record(
+				this.plugin.settings,
+				TEST_RECORDING_DURATION_MS,
+				() => {
+					this.showTestStatus(
+						container,
+						'\u25CF Recording... (5 seconds)',
+						false,
+						'aar-test-recording',
+					);
 				},
-			});
-
-			this.testChunks = [];
-			// Local reference: hide() may run cleanupTestRecording (which
-			// nulls this.testRecorder) at any await point below
-			const recorder = new MediaRecorder(stream, {
-				mimeType,
-				audioBitsPerSecond: this.plugin.settings.bitrate,
-			});
-			this.testRecorder = recorder;
-
-			recorder.ondataavailable = (event: BlobEvent): void => {
-				if (event.data.size > 0) {
-					this.testChunks.push(event.data);
-				}
-			};
-
-			this.showTestStatus(
-				container,
-				'\u25CF Recording... (5 seconds)',
-				false,
-				'aar-test-recording',
 			);
 
-			const recordingPromise = new Promise<void>((resolve) => {
-				recorder.addEventListener('stop', () => resolve(), {
-					once: true,
-				});
-			});
-
-			recorder.start();
-
-			await new Promise<void>((resolve) =>
-				window.setTimeout(resolve, TEST_RECORDING_DURATION_MS),
-			);
-
-			if (recorder.state !== 'inactive') {
-				recorder.stop();
-			}
-			await recordingPromise;
-
-			if (this.testRecorder !== recorder) {
+			if (result.kind === 'cancelled') {
 				// The tab was hidden during the wait: cleanup already
 				// discarded the recorder and the result has nowhere to go
 				return;
 			}
-
-			if (this.testChunks.length === 0) {
+			if (result.kind === 'unsupported') {
+				this.showTestStatus(
+					container,
+					`Format "${this.plugin.settings.recordingFormat}" is not supported in this browser.`,
+					true,
+				);
+				return;
+			}
+			if (result.kind === 'empty') {
 				this.showTestStatus(
 					container,
 					'Test recording produced no data. Try a different format or device.',
@@ -997,10 +948,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				return;
 			}
 
-			const blob = new Blob(this.testChunks, {
-				type: `audio/${recorderFormat}`,
-			});
-			const url = URL.createObjectURL(blob);
+			const url = URL.createObjectURL(result.blob);
 
 			this.showTestStatus(
 				container,
@@ -1021,12 +969,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				`Test recording failed: ${message}`,
 				true,
 			);
-		} finally {
-			if (stream) {
-				for (const track of stream.getTracks()) {
-					track.stop();
-				}
-			}
 		}
 	}
 
@@ -1045,6 +987,16 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		}
 		const existingAudio = container.querySelector('.aar-test-audio');
 		if (existingAudio) {
+			// Revoke the element's blob URL before dropping it: repeated
+			// test recordings would otherwise leak one blob per rerun
+			// until the settings tab is closed
+			const src = existingAudio.getAttribute('src');
+			if (src?.startsWith('blob:')) {
+				URL.revokeObjectURL(src);
+			}
+			if (existingAudio === this.testAudioElement) {
+				this.testAudioElement = null;
+			}
 			existingAudio.remove();
 		}
 
@@ -1062,11 +1014,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * Removes test recording resources.
 	 */
 	private cleanupTestRecording(): void {
-		if (this.testRecorder && this.testRecorder.state !== 'inactive') {
-			this.testRecorder.stop();
-		}
-		this.testRecorder = null;
-		this.testChunks = [];
+		this.testRecorder.cancel();
 
 		if (this.testAudioElement) {
 			const src = this.testAudioElement.src;
@@ -1083,7 +1031,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * flushes a pending debounced text-setting save, and detaches the
 	 * device-change listener registered in display().
 	 */
-	hide(): void {
+	override hide(): void {
 		this.saveTextSettingDebounced.run();
 		this.cleanupTestRecording();
 		if (this.deviceChangeHandler) {

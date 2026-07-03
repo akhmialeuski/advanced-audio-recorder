@@ -1,6 +1,5 @@
-/** @jest-environment jsdom */
 /**
- * Guards the player's mode/decision single source of truth — the logic
+ * Guards the player's mode/decision single source of truth - the logic
  * behind two recurring regressions: Reading view wrongly showing editable
  * marker controls, and video/unsupported files being taken over instead
  * of left to the built-in player.

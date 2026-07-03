@@ -6,11 +6,15 @@
  * @module recording/PcmStreamRecorder
  */
 
-import { PLUGIN_LOG_PREFIX } from '../constants';
+import {
+	DEFAULT_SAMPLE_RATE,
+	PCM_FLUSH_TIMEOUT_MS,
+	PLUGIN_LOG_PREFIX,
+} from '../constants';
 
 /**
  * Number of interleaved int16 samples to accumulate before posting.
- * 4096 at 44100 Hz ≈ 93 ms (~11 posts/sec), matching the old
+ * 4096 at 44100 Hz ~ 93 ms (~11 posts/sec), matching the old
  * ScriptProcessorNode cadence and avoiding main-thread overload
  * from the 128-sample render quantum (~344 calls/sec).
  */
@@ -107,7 +111,7 @@ export class PcmStreamRecorder {
 	private gainNode: GainNode | null = null;
 	private workletBlobUrl: string | null = null;
 	private channelCount: number = 1;
-	private actualSampleRate: number = 44100;
+	private actualSampleRate: number = DEFAULT_SAMPLE_RATE;
 
 	/**
 	 * Creates a new PcmStreamRecorder.
@@ -138,7 +142,7 @@ export class PcmStreamRecorder {
 	/**
 	 * Starts capturing PCM audio data.
 	 * Registers the AudioWorklet processor via inline Blob URL,
-	 * then connects source → worklet → gain(0) → destination.
+	 * then connects source -> worklet -> gain(0) -> destination.
 	 * A failure releases everything acquired up to that point: the
 	 * caller has no handle to clean a partially started recorder, and
 	 * an unreleased AudioContext counts against a global limit while
@@ -184,7 +188,7 @@ export class PcmStreamRecorder {
 			this.gainNode = this.audioContext.createGain();
 			this.gainNode.gain.value = 0;
 
-			// Connect: source → worklet → gain(0) → destination
+			// Connect: source -> worklet -> gain(0) -> destination
 			this.sourceNode.connect(this.workletNode);
 			this.workletNode.connect(this.gainNode);
 			this.gainNode.connect(this.audioContext.destination);
@@ -209,30 +213,45 @@ export class PcmStreamRecorder {
 	}
 
 	/**
-	 * Flushes any remaining buffered samples from the worklet.
+	 * Flushes any remaining buffered samples from the worklet. A
+	 * watchdog resolves the wait if the `flushed` acknowledgement never
+	 * arrives (dead audio subsystem), so stop() always reaches
+	 * releaseResources() and the AudioContext and worklet blob URL are
+	 * freed. The MediaRecorder path guards its stop event the same way.
 	 */
 	private async flushWorklet(): Promise<void> {
-		if (!this.workletNode) {
+		const node = this.workletNode;
+		if (!node) {
 			return;
 		}
 		return new Promise<void>((resolve) => {
-			const prev = this.workletNode!.port.onmessage;
-			this.workletNode!.port.onmessage = (event: MessageEvent): void => {
+			const prev = node.port.onmessage;
+			const finish = (): void => {
+				window.clearTimeout(watchdog);
+				node.port.onmessage = prev;
+				resolve();
+			};
+			const watchdog = window.setTimeout(() => {
+				console.warn(
+					`${PLUGIN_LOG_PREFIX} PCM flush acknowledgement timed out; releasing resources anyway`,
+				);
+				finish();
+			}, PCM_FLUSH_TIMEOUT_MS);
+			node.port.onmessage = (event: MessageEvent): void => {
 				if (
 					event.data &&
 					typeof event.data === 'object' &&
 					'type' in event.data &&
 					(event.data as { type: string }).type === 'flushed'
 				) {
-					this.workletNode!.port.onmessage = prev;
-					resolve();
+					finish();
 					return;
 				}
 				if (prev) {
-					prev.call(this.workletNode!.port, event);
+					prev.call(node.port, event);
 				}
 			};
-			this.workletNode!.port.postMessage({ type: 'flush' });
+			node.port.postMessage({ type: 'flush' });
 		});
 	}
 

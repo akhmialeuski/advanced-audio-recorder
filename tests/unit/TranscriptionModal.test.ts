@@ -2,12 +2,11 @@
  * Unit tests for TranscriptionModal background/minimize behavior.
  * @module tests/unit/TranscriptionModal.test
  */
-/** @jest-environment jsdom */
 
 import { App, TFile } from 'obsidian';
-import { DEFAULT_SETTINGS } from '../../src/settings/Settings';
-import { TranscriptionModal } from '../../src/ui/TranscriptionModal';
-import type { AudioRecorderSettings } from '../../src/settings/Settings';
+import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
+import { TranscriptionModal } from 'src/ui/TranscriptionModal';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 
 type TranscriptionModalInternals = {
 	setRunning: (running: boolean) => void;
@@ -83,7 +82,10 @@ describe('TranscriptionModal minimize behavior', () => {
 		const restore = lastShowCall?.[1] as (() => void) | undefined;
 		restore?.();
 
-		expect(callbacks.clear).toHaveBeenCalledTimes(1);
+		// Cleared exactly twice: once by restore() itself and once by the
+		// rendered-modal branch of onOpen (Modal.open() invokes onOpen,
+		// in Obsidian and in the mock alike); the callback is idempotent
+		expect(callbacks.clear).toHaveBeenCalledTimes(2);
 		expect(internals.minimized).toBe(false);
 	});
 

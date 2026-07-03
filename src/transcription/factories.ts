@@ -9,7 +9,7 @@ import {
 	MS_PER_MINUTE,
 	TRANSCRIPTION_PROVIDER_IDS,
 } from '../constants';
-import type { AudioRecorderSettings } from '../settings/Settings';
+import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import { WhisperApiProvider } from './providers/WhisperApiProvider';
 import { LocalWhisperProvider } from './providers/LocalWhisperProvider';
 import { DeepgramProvider } from './providers/DeepgramProvider';
@@ -156,7 +156,7 @@ export function createLlmProvider(
 
 /**
  * Splits a space-separated argument string into individual arguments,
- * dropping empty tokens. (Quoting is intentionally not supported — paths
+ * dropping empty tokens. (Quoting is intentionally not supported - paths
  * with spaces should be configured via the dedicated path fields.)
  * @param raw - Raw argument string
  */

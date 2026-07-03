@@ -24,20 +24,34 @@ export type MediaKind = (typeof MEDIA_KIND)[keyof typeof MEDIA_KIND];
 const PROBE_TIMEOUT_MS = 4000;
 
 /**
+ * A probe's classification plus whether it came from real metadata.
+ * A timeout fallback is usable for this session but must not be
+ * persisted, or a slow-loading video would stay misclassified as audio
+ * across sessions.
+ */
+export interface MediaProbeResult {
+	/** The media classification. */
+	kind: MediaKind;
+	/** True when derived from metadata/error, false on the timeout fallback. */
+	confident: boolean;
+}
+
+/**
  * Loads a media resource's metadata to classify it. A video track (non
  * zero dimensions) marks it as video; metadata without video is audio; a
  * load error is unsupported. Resolves to audio if metadata never arrives,
- * so a slow probe still yields the enhanced player.
+ * so a slow probe still yields the enhanced player - but flagged as not
+ * confident, so the fallback is never persisted as the file's true kind.
  * @param resourceUrl - Resource URL from app.vault.getResourcePath
  */
-export function probeMediaKind(resourceUrl: string): Promise<MediaKind> {
+export function probeMediaKind(resourceUrl: string): Promise<MediaProbeResult> {
 	return new Promise((resolve) => {
 		const el = activeDocument.createElement('video');
 		el.preload = 'metadata';
 		el.muted = true;
 		let settled = false;
 		let timer = 0;
-		const settle = (kind: MediaKind): void => {
+		const settle = (kind: MediaKind, confident: boolean): void => {
 			if (settled) {
 				return;
 			}
@@ -46,7 +60,7 @@ export function probeMediaKind(resourceUrl: string): Promise<MediaKind> {
 			// Release the probe element's decoder
 			el.removeAttribute('src');
 			el.load();
-			resolve(kind);
+			resolve({ kind, confident });
 		};
 		el.addEventListener(
 			'loadedmetadata',
@@ -55,6 +69,7 @@ export function probeMediaKind(resourceUrl: string): Promise<MediaKind> {
 					el.videoWidth > 0 && el.videoHeight > 0
 						? MEDIA_KIND.video
 						: MEDIA_KIND.audio,
+					true,
 				);
 			},
 			{ once: true },
@@ -62,12 +77,12 @@ export function probeMediaKind(resourceUrl: string): Promise<MediaKind> {
 		el.addEventListener(
 			'error',
 			() => {
-				settle(MEDIA_KIND.unsupported);
+				settle(MEDIA_KIND.unsupported, true);
 			},
 			{ once: true },
 		);
 		timer = window.setTimeout(() => {
-			settle(MEDIA_KIND.audio);
+			settle(MEDIA_KIND.audio, false);
 		}, PROBE_TIMEOUT_MS);
 		el.src = resourceUrl;
 	});

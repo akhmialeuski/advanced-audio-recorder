@@ -6,12 +6,16 @@
 
 import { Notice, normalizePath } from 'obsidian';
 import type { App, TFile } from 'obsidian';
-import { encodeAudioBuffer } from './AudioEncoder';
+import { encodeAudioBuffer } from '../audio/AudioEncoder';
 import { FORMAT_WAV } from '../constants';
-import { decodeAudioBlob, convertBlobToFormat } from './AudioFormatConverter';
+import {
+	decodeAudioBlob,
+	convertBlobToFormatBuffer,
+} from '../audio/AudioFormatConverter';
+import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import { updateLinksInVault } from '../utils/LinkUpdater';
 import type { VaultLinkUpdateResult } from '../utils/LinkUpdater';
-import type { ConversionLinkAction } from '../settings/Settings';
+import type { ConversionLinkAction } from '../settings/settingsSchema';
 
 /**
  * Parameters of one conversion operation.
@@ -47,7 +51,11 @@ export class ConversionService {
 	 * Creates a new ConversionService.
 	 * @param app - The Obsidian App instance
 	 */
-	constructor(private readonly app: App) {}
+	constructor(
+		private readonly app: App,
+		private readonly getWorkerClient: () => EncodingWorkerClient | null = () =>
+			null,
+	) {}
 
 	/**
 	 * Executes the conversion pipeline: existence pre-check, decode or
@@ -85,14 +93,14 @@ export class ConversionService {
 				request.sourceFile.path,
 			);
 
-			let blob: Blob;
+			let data: ArrayBuffer;
 			if (request.targetFormat === FORMAT_WAV) {
 				// WAV needs a full decode; the streaming pipeline only
 				// targets compressed formats
 				onProgress('Decoding audio...');
 				const audioBuffer = await decodeAudioBlob(arrayBuffer);
 				onProgress('Encoding...');
-				blob = await encodeAudioBuffer(
+				const blob = await encodeAudioBuffer(
 					audioBuffer,
 					{
 						format: request.targetFormat,
@@ -102,23 +110,25 @@ export class ConversionService {
 						onProgress(`Encoding... ${String(percent)}%`);
 					},
 				);
+				data = await blob.arrayBuffer();
 			} else {
 				onProgress('Converting...');
-				blob = await convertBlobToFormat(
+				// Bytes go straight to createBinary; the buffer variant
+				// avoids wrapping the streamed result in a Blob only to
+				// read it back out.
+				data = await convertBlobToFormatBuffer(
 					new Blob([arrayBuffer]),
 					request.targetFormat,
 					request.bitrate,
 					(percent) => {
 						onProgress(`Converting... ${String(percent)}%`);
 					},
+					{ workerClient: this.getWorkerClient() },
 				);
 			}
 
 			onProgress('Saving...');
-			createdFile = await this.app.vault.createBinary(
-				newPath,
-				await blob.arrayBuffer(),
-			);
+			createdFile = await this.app.vault.createBinary(newPath, data);
 		} catch (error) {
 			const message =
 				error instanceof Error ? error.message : String(error);

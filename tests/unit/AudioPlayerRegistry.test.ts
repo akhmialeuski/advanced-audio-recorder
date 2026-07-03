@@ -4,9 +4,10 @@
 
 import {
 	AudioPlayerRegistry,
+	playbackKey,
 	type SeekablePlayer,
 } from 'src/player/AudioPlayerRegistry';
-import type { ResolvedPlayerSettings } from 'src/settings/Settings';
+import type { ResolvedPlayerSettings } from 'src/player/playerSettings';
 
 /**
  * Builds a fake player that records seek calls and reports a fixed
@@ -36,22 +37,57 @@ function makePlayer(connected = true): SeekablePlayer & {
 	};
 }
 
+describe('playbackKey', () => {
+	it('separates embeds of one file by their #t= start', () => {
+		expect(playbackKey('rec.wav', null)).toBe(playbackKey('rec.wav', null));
+		expect(playbackKey('rec.wav', 3)).toBe(playbackKey('rec.wav', 3));
+		expect(playbackKey('rec.wav', 3)).not.toBe(
+			playbackKey('rec.wav', null),
+		);
+		expect(playbackKey('rec.wav', 3)).not.toBe(playbackKey('rec.wav', 4));
+		expect(playbackKey('a.wav', null)).not.toBe(playbackKey('b.wav', null));
+	});
+
+	it('cannot collide with a path that spells out the #t= suffix', () => {
+		// The separator is a character no vault path can contain, so a file
+		// literally named "rec.wav#t=3" never aliases a real #t=3 embed key
+		expect(playbackKey('rec.wav#t=3', null)).not.toBe(
+			playbackKey('rec.wav', 3),
+		);
+	});
+});
+
 describe('AudioPlayerRegistry', () => {
-	it('seeks every registered player for a path', () => {
+	it('seeks only the first connected player for a path', () => {
 		const registry = new AudioPlayerRegistry();
 		const a = makePlayer();
 		const b = makePlayer();
 		registry.register('rec.wav', a);
 		registry.register('rec.wav', b);
 
+		// Each player drives its own playback element, so seeking (and
+		// autoplaying) every player would start overlapping playbacks; a
+		// timecode click targets one player only
 		expect(registry.seek('rec.wav', 42)).toBe(true);
 		expect(a.seeks).toEqual([42]);
-		expect(b.seeks).toEqual([42]);
+		expect(b.seeks).toEqual([]);
 	});
 
 	it('returns false when no player is registered for the path', () => {
 		const registry = new AudioPlayerRegistry();
 		expect(registry.seek('missing.wav', 10)).toBe(false);
+	});
+
+	it('falls through to the next player when the first is disconnected', () => {
+		const registry = new AudioPlayerRegistry();
+		const disconnected = makePlayer(false);
+		const connected = makePlayer(true);
+		registry.register('rec.wav', disconnected);
+		registry.register('rec.wav', connected);
+
+		expect(registry.seek('rec.wav', 5)).toBe(true);
+		expect(connected.seeks).toEqual([5]);
+		expect(disconnected.seeks).toEqual([]);
 	});
 
 	it('prunes disconnected players during a seek', () => {
@@ -117,42 +153,60 @@ describe('AudioPlayerRegistry', () => {
 		}).not.toThrow();
 	});
 
-	it('shares one audio element across players of the same file', () => {
+	it('shares one audio element across players of the same embed identity', () => {
 		const registry = new AudioPlayerRegistry();
-		const first = registry.acquireAudio('rec.wav', 'app://rec');
-		const second = registry.acquireAudio('rec.wav', 'app://rec');
+		const key = playbackKey('rec.wav', null);
+		const first = registry.acquireAudio(key, 'app://rec');
+		const second = registry.acquireAudio(key, 'app://rec');
 
-		// Same element -> a player in either view mode controls one playback
+		// Same element -> the same embed in either view mode controls one
+		// playback
 		expect(first.audio).toBe(second.audio);
 		expect(first.isNew).toBe(true);
 		expect(second.isNew).toBe(false);
 
-		expect(registry.acquireAudio('other.wav', 'app://o').audio).not.toBe(
-			first.audio,
+		expect(
+			registry.acquireAudio(playbackKey('other.wav', null), 'app://o')
+				.audio,
+		).not.toBe(first.audio);
+	});
+
+	it('gives distinct embeds of one file independent audio elements', () => {
+		const registry = new AudioPlayerRegistry();
+		// A plain embed and a #t=3 embed of the SAME file must not share a
+		// playback: playing or seeking one must never move the other
+		const plain = registry.acquireAudio(
+			playbackKey('rec.wav', null),
+			'app://rec',
 		);
+		const timed = registry.acquireAudio(
+			playbackKey('rec.wav', 3),
+			'app://rec',
+		);
+
+		expect(timed.audio).not.toBe(plain.audio);
+		expect(plain.isNew).toBe(true);
+		expect(timed.isNew).toBe(true);
 	});
 
 	it('keeps the audio alive across a mode switch, then frees it after the grace period', () => {
 		jest.useFakeTimers();
 		try {
 			const registry = new AudioPlayerRegistry();
-			const a = registry.acquireAudio('rec.wav', 'app://rec');
-			registry.acquireAudio('rec.wav', 'app://rec'); // second view mode
+			const key = playbackKey('rec.wav', null);
+			const a = registry.acquireAudio(key, 'app://rec');
+			registry.acquireAudio(key, 'app://rec'); // second view mode
 
 			// One view unloads; the element must survive for the other
-			registry.releaseAudio('rec.wav');
+			registry.releaseAudio(key);
 			jest.advanceTimersByTime(100);
-			expect(registry.acquireAudio('rec.wav', 'app://rec').audio).toBe(
-				a.audio,
-			);
+			expect(registry.acquireAudio(key, 'app://rec').audio).toBe(a.audio);
 
 			// Now both remaining holders release -> after grace it is freed
-			registry.releaseAudio('rec.wav');
-			registry.releaseAudio('rec.wav');
+			registry.releaseAudio(key);
+			registry.releaseAudio(key);
 			jest.advanceTimersByTime(1000);
-			expect(registry.acquireAudio('rec.wav', 'app://rec').isNew).toBe(
-				true,
-			);
+			expect(registry.acquireAudio(key, 'app://rec').isNew).toBe(true);
 		} finally {
 			jest.useRealTimers();
 		}
@@ -177,20 +231,35 @@ describe('AudioPlayerRegistry', () => {
 
 	it('tracks the engaged state of a shared audio element', () => {
 		const registry = new AudioPlayerRegistry();
-		registry.acquireAudio('rec.wav', 'app://rec');
+		const key = playbackKey('rec.wav', 3);
+		registry.acquireAudio(key, 'app://rec');
 
 		// A fresh element is not engaged, so a #t= embed may show its start
-		expect(registry.isAudioEngaged('rec.wav')).toBe(false);
-		registry.markAudioEngaged('rec.wav');
-		expect(registry.isAudioEngaged('rec.wav')).toBe(true);
+		expect(registry.isAudioEngaged(key)).toBe(false);
+		registry.markAudioEngaged(key);
+		expect(registry.isAudioEngaged(key)).toBe(true);
 	});
 
-	it('reports not engaged for an unknown path', () => {
+	it('tracks the engaged state per embed identity, not per file', () => {
 		const registry = new AudioPlayerRegistry();
-		expect(registry.isAudioEngaged('missing.wav')).toBe(false);
-		// Marking an unknown path is a no-op, never throws
+		const plainKey = playbackKey('rec.wav', null);
+		const timedKey = playbackKey('rec.wav', 3);
+		registry.acquireAudio(plainKey, 'app://rec');
+		registry.acquireAudio(timedKey, 'app://rec');
+
+		// Playing the plain embed must not consume the #t= embed's start hint
+		registry.markAudioEngaged(plainKey);
+		expect(registry.isAudioEngaged(plainKey)).toBe(true);
+		expect(registry.isAudioEngaged(timedKey)).toBe(false);
+	});
+
+	it('reports not engaged for an unknown key', () => {
+		const registry = new AudioPlayerRegistry();
+		const key = playbackKey('missing.wav', null);
+		expect(registry.isAudioEngaged(key)).toBe(false);
+		// Marking an unknown key is a no-op, never throws
 		expect(() => {
-			registry.markAudioEngaged('missing.wav');
+			registry.markAudioEngaged(key);
 		}).not.toThrow();
 	});
 
@@ -198,16 +267,17 @@ describe('AudioPlayerRegistry', () => {
 		jest.useFakeTimers();
 		try {
 			const registry = new AudioPlayerRegistry();
-			registry.acquireAudio('rec.wav', 'app://rec');
-			registry.markAudioEngaged('rec.wav');
+			const key = playbackKey('rec.wav', 3);
+			registry.acquireAudio(key, 'app://rec');
+			registry.markAudioEngaged(key);
 
 			// Release and let the grace period free the element
-			registry.releaseAudio('rec.wav');
+			registry.releaseAudio(key);
 			jest.advanceTimersByTime(1000);
 
 			// A re-mounted #t= embed starts from a fresh, not-engaged element
-			registry.acquireAudio('rec.wav', 'app://rec');
-			expect(registry.isAudioEngaged('rec.wav')).toBe(false);
+			registry.acquireAudio(key, 'app://rec');
+			expect(registry.isAudioEngaged(key)).toBe(false);
 		} finally {
 			jest.useRealTimers();
 		}

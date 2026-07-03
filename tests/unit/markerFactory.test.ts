@@ -3,13 +3,12 @@
  * generation reused by both the player and recording-time marker capture.
  * @module tests/unit/markerFactory.test
  */
-/** @jest-environment jsdom */
 
 import {
 	defaultMarkerLabel,
 	generateMarkerId,
-} from 'src/player/markers/markerFactory';
-import { MARKER_KIND, type MarkerKind } from 'src/player/markers/markerModel';
+} from 'src/markers/markerFactory';
+import { MARKER_KIND, type MarkerKind } from 'src/markers/markerModel';
 
 const kinds = (list: MarkerKind[]): { kind: MarkerKind }[] =>
 	list.map((kind) => ({ kind }));

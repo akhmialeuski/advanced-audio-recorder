@@ -3,16 +3,9 @@
  * Tests journal persistence, write coalescing, and failure tolerance.
  * @module tests/unit/SessionJournal.test
  */
-/** @jest-environment jsdom */
 
-import {
-	SessionJournal,
-	JOURNAL_VERSION,
-} from '../../src/recording/SessionJournal';
-import type {
-	JournalFile,
-	JournalSession,
-} from '../../src/recording/SessionJournal';
+import { SessionJournal, JOURNAL_VERSION } from 'src/recording/SessionJournal';
+import type { JournalFile, JournalSession } from 'src/recording/SessionJournal';
 import type { App } from 'obsidian';
 
 jest.mock('obsidian', () => ({

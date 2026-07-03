@@ -4,17 +4,18 @@
  * @module diagnostics/SystemDiagnostics
  */
 
+import { apiVersion } from 'obsidian';
 import type { App } from 'obsidian';
-import type { AudioRecorderSettings } from '../settings/Settings';
-import { serializeTrackAudioSources } from '../settings/Settings';
+import type { AudioRecorderSettings } from '../settings/settingsSchema';
+import { serializeTrackAudioSources } from '../settings/settingsSerialization';
 import {
 	detectCapabilities,
 	detectCodecSupport,
 	getExpectedCodec,
 	buildMimeType,
 	validateRecordingCapability,
-} from '../recording/AudioCapabilityDetector';
-import type { CodecSupportEntry } from '../recording/AudioCapabilityDetector';
+} from '../audio/AudioCapabilityDetector';
+import type { CodecSupportEntry } from '../audio/AudioCapabilityDetector';
 import { FORMAT_WAV, FORMAT_WEBM, FORMAT_OGG } from '../constants';
 
 /**
@@ -76,7 +77,7 @@ export interface DiagnosticsAudioCapabilities {
 export interface ActiveRecordingConfig {
 	/** User-selected output format (e.g. 'mp4', 'wav'). */
 	outputFormat: string;
-	/** The format actually given to MediaRecorder (handles wav → 'webm' intermediary). */
+	/** The format actually given to MediaRecorder (handles wav -> 'webm' intermediary). */
 	recorderFormat: string;
 	/** MIME type passed to MediaRecorder (no codec suffix). */
 	mimeType: string;
@@ -132,12 +133,13 @@ export class SystemDiagnostics {
 
 	/**
 	 * Collects Obsidian and runtime environment information.
-	 * @param app - The Obsidian App instance
+	 * @param _app - The Obsidian App instance (kept for signature stability;
+	 *   the API version now comes from obsidian's module-level export)
 	 * @returns Environment info object
 	 */
-	static collectEnvironment(app: App): DiagnosticsEnvironment {
-		const apiVersion =
-			(app as unknown as { apiVersion?: string }).apiVersion ?? 'unknown';
+	static collectEnvironment(_app: App): DiagnosticsEnvironment {
+		// The API version ships as a module-level export; the old cast read a
+		// non-existent app property and always fell back to 'unknown'.
 		const proc = (typeof process !== 'undefined' ? process : null) as {
 			type?: string;
 			versions?: {
@@ -232,7 +234,7 @@ export class SystemDiagnostics {
 					};
 				}
 			}
-			// Neither webm nor ogg available — report the failure.
+			// Neither webm nor ogg available - report the failure.
 			return {
 				outputFormat,
 				recorderFormat: FORMAT_WEBM,

@@ -11,7 +11,7 @@
 import { TFile, getLinkpath } from 'obsidian';
 import type { App, ReferenceCache } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
-import type { ConversionLinkAction } from '../settings/Settings';
+import type { ConversionLinkAction } from '../types';
 
 /**
  * Checks whether a reference occupies its line alone (ignoring
@@ -190,8 +190,8 @@ export async function updateLinksInVault(
 		.map(([notePath]) => notePath);
 
 	for (const notePath of referencingPaths) {
-		const note = app.vault.getAbstractFileByPath(notePath);
-		if (!(note instanceof TFile)) {
+		const note = app.vault.getFileByPath(notePath);
+		if (!note) {
 			continue;
 		}
 		result.frontmatterReferences += countFrontmatterReferences(

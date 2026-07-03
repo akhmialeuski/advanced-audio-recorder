@@ -1,10 +1,9 @@
-/** @jest-environment jsdom */
 /**
  * Unit tests for AudioFileAnalyzer.
  * @module tests/unit/AudioFileAnalyzer
  */
 
-import { getAudioFileInfo } from '../../src/utils/AudioFileAnalyzer';
+import { getAudioFileInfo } from 'src/utils/AudioFileAnalyzer';
 import { App, Notice, TFile } from 'obsidian';
 
 // Mock Notice
@@ -22,6 +21,23 @@ jest.mock('obsidian', () => ({
 		stat: {
 			size: 1572864, // 1.5 MB
 		},
+	})),
+}));
+
+// Mock mediabunny's container probe. Defaults to an unparseable input
+// (getPrimaryAudioTrack rejects) so the existing decode-fallback tests
+// keep exercising the AudioContext path; probe tests override it.
+const mockGetPrimaryAudioTrack = jest.fn();
+const mockComputeDuration = jest.fn();
+const mockDispose = jest.fn();
+
+jest.mock('mediabunny', () => ({
+	ALL_FORMATS: [],
+	BufferSource: jest.fn(),
+	Input: jest.fn().mockImplementation(() => ({
+		getPrimaryAudioTrack: (): unknown => mockGetPrimaryAudioTrack(),
+		computeDuration: (): unknown => mockComputeDuration(),
+		dispose: mockDispose,
 	})),
 }));
 
@@ -57,10 +73,53 @@ describe('getAudioFileInfo', () => {
 		});
 		mockClose.mockResolvedValue(undefined);
 
+		// Default: the probe cannot parse the container, so the decode
+		// fallback runs (the pre-probe behavior the older tests assert).
+		mockGetPrimaryAudioTrack.mockRejectedValue(
+			new Error('unparseable container'),
+		);
+		mockComputeDuration.mockResolvedValue(0);
+
 		Object.defineProperty(window, 'AudioContext', {
 			writable: true,
 			value: MockAudioContext,
 		});
+	});
+
+	it('reads metadata from the container probe without decoding', async () => {
+		mockGetPrimaryAudioTrack.mockResolvedValue({
+			getSampleRate: () => 48000,
+			getNumberOfChannels: () => 2,
+		});
+		mockComputeDuration.mockResolvedValue(90);
+
+		const result = await getAudioFileInfo(app, file);
+
+		expect(result).toEqual({
+			fileName: 'test.webm',
+			fileSize: '1.5 MB',
+			duration: '1:30',
+			containerFormat: 'audio/webm',
+			audioCodec: 'opus',
+			bitrate: '140 kbps',
+			sampleRate: '48000 Hz',
+			channels: '2 (Stereo)',
+		});
+		// The probe answered, so the expensive full decode never ran
+		expect(mockDecodeAudioData).not.toHaveBeenCalled();
+		expect(mockDispose).toHaveBeenCalled();
+	});
+
+	it('disposes the probe input even when parsing fails', async () => {
+		const warn = jest.spyOn(console, 'warn').mockImplementation();
+		try {
+			await getAudioFileInfo(app, file);
+			expect(mockDispose).toHaveBeenCalled();
+			// The decode fallback provided the metadata instead
+			expect(mockDecodeAudioData).toHaveBeenCalled();
+		} finally {
+			warn.mockRestore();
+		}
 	});
 
 	it('should accurately extract and format audio metadata', async () => {
@@ -70,7 +129,7 @@ describe('getAudioFileInfo', () => {
 		expect(result).toEqual({
 			fileName: 'test.webm',
 			fileSize: '1.5 MB',
-			duration: '00:01:30',
+			duration: '1:30',
 			containerFormat: 'audio/webm',
 			audioCodec: 'opus',
 			bitrate: '140 kbps', // (1572864 * 8) / 90 / 1000 = ~139.8 -> 140
@@ -130,7 +189,7 @@ describe('getAudioFileInfo', () => {
 			numberOfChannels: 1,
 		});
 		const result = await getAudioFileInfo(app, file);
-		expect(result?.duration).toBe('00:00:00');
+		expect(result?.duration).toBe('0:00');
 		expect(result?.bitrate).toBe('0 kbps');
 	});
 
