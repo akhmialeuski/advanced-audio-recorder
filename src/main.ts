@@ -3,7 +3,7 @@
  * @module main
  */
 
-import { Notice, Platform, Plugin, TFile } from 'obsidian';
+import { Notice, Platform, Plugin } from 'obsidian';
 import { RecordingStatus } from './types';
 import type {
 	SaveProgress,
@@ -679,8 +679,8 @@ export default class AudioRecorderPlugin extends Plugin {
 		) {
 			return;
 		}
-		const file = this.app.vault.getAbstractFileByPath(result.audioPaths[0]);
-		if (!(file instanceof TFile)) {
+		const file = this.app.vault.getFileByPath(result.audioPaths[0]);
+		if (!file) {
 			return;
 		}
 		// Open the transcription modal and auto-run it: the user gets visible

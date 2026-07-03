@@ -11,12 +11,16 @@ export type OutputMode = 'single' | 'multiple';
 /**
  * Recording status states.
  */
-export enum RecordingStatus {
-	Idle = 'idle',
-	Recording = 'recording',
-	Paused = 'paused',
-	Saving = 'saving',
-}
+export const RecordingStatus = {
+	Idle: 'idle',
+	Recording: 'recording',
+	Paused: 'paused',
+	Saving: 'saving',
+} as const;
+
+/** A recording lifecycle state (derived from {@link RecordingStatus}). */
+export type RecordingStatus =
+	(typeof RecordingStatus)[keyof typeof RecordingStatus];
 
 /**
  * Progress information during the save phase.

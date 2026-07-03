@@ -133,11 +133,10 @@ export async function insertProcessedAudioEmbed(
 	if (matches.length === 0) {
 		return null;
 	}
-	const processedFile = app.vault.getAbstractFileByPath(processedPath);
-	const link =
-		processedFile instanceof TFile
-			? app.fileManager.generateMarkdownLink(processedFile, note.path)
-			: `[[${processedPath.split('/').pop() ?? processedPath}]]`;
+	const processedFile = app.vault.getFileByPath(processedPath);
+	const link = processedFile
+		? app.fileManager.generateMarkdownLink(processedFile, note.path)
+		: `[[${processedPath.split('/').pop() ?? processedPath}]]`;
 	const newEmbed = `!${link}`;
 	await app.vault.process(note, (content) =>
 		replaceSource

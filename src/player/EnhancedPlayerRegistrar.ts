@@ -253,8 +253,8 @@ export class EnhancedPlayerRegistrar {
 			return;
 		}
 		for (const audioPath of audioPaths) {
-			const file = this.app.vault.getAbstractFileByPath(audioPath);
-			if (!(file instanceof TFile) || !isAudioFile(file)) {
+			const file = this.app.vault.getFileByPath(audioPath);
+			if (!file || !isAudioFile(file)) {
 				continue;
 			}
 			void this.probeKind(file);

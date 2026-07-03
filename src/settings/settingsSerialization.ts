@@ -5,6 +5,7 @@
  */
 
 import { LLM_PROVIDER_IDS } from '../constants';
+import { isRecord } from '../utils/objects';
 import { getDefaultDeviceId } from '../utils/DeviceUtils';
 import {
 	DEFAULT_SETTINGS,
@@ -111,7 +112,7 @@ function migrateLegacyLlmSettings(
 	merged: AudioRecorderSettings,
 	raw: AudioRecorderSettingsInput,
 ): void {
-	const legacy = raw as unknown as Record<string, unknown>;
+	const legacy: Record<string, unknown> = isRecord(raw) ? raw : {};
 	const legacyKey =
 		typeof legacy.llmApiKey === 'string' ? legacy.llmApiKey : '';
 	if (legacyKey) {
@@ -144,9 +145,10 @@ function migrateLegacyLlmSettings(
 		}
 	}
 	// Drop the superseded flat fields so a later save does not persist them.
-	const mergedRecord = merged as unknown as Record<string, unknown>;
-	delete mergedRecord.llmApiKey;
-	delete mergedRecord.llmModel;
+	if (isRecord(merged)) {
+		delete merged.llmApiKey;
+		delete merged.llmModel;
+	}
 }
 
 /**

@@ -26,6 +26,7 @@ import {
 import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
 import { getEncoderDescription } from '../ui/formatDescriptions';
 import { TestRecorder } from '../recording/TestRecorder';
+import { FolderSuggest } from './FolderSuggest';
 import {
 	DEFAULT_SPLIT_PART_SUFFIX,
 	MIN_SPLIT_CHUNK_MINUTES,
@@ -305,14 +306,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				'Specify where recordings are saved in your vault. Existing folders are suggested as you type.',
 			)
 			.addText((text) => {
-				const folderOptions = this.getFolderOptions();
-				text.inputEl.setAttribute('list', 'folder-options');
-				const datalist = text.inputEl.createEl('datalist', {
-					attr: { id: 'folder-options' },
-				});
-				folderOptions.forEach((folder) => {
-					datalist.createEl('option', { attr: { value: folder } });
-				});
+				new FolderSuggest(this.app, text.inputEl, () =>
+					this.getFolderOptions(),
+				);
 				text.setValue(this.plugin.settings.saveFolder);
 				text.onChange((value) => {
 					this.plugin.settings.saveFolder = value;

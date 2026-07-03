@@ -4,6 +4,7 @@
  * @module diagnostics/SystemDiagnostics
  */
 
+import { apiVersion } from 'obsidian';
 import type { App } from 'obsidian';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import { serializeTrackAudioSources } from '../settings/settingsSerialization';
@@ -132,12 +133,13 @@ export class SystemDiagnostics {
 
 	/**
 	 * Collects Obsidian and runtime environment information.
-	 * @param app - The Obsidian App instance
+	 * @param _app - The Obsidian App instance (kept for signature stability;
+	 *   the API version now comes from obsidian's module-level export)
 	 * @returns Environment info object
 	 */
-	static collectEnvironment(app: App): DiagnosticsEnvironment {
-		const apiVersion =
-			(app as unknown as { apiVersion?: string }).apiVersion ?? 'unknown';
+	static collectEnvironment(_app: App): DiagnosticsEnvironment {
+		// The API version ships as a module-level export; the old cast read a
+		// non-existent app property and always fell back to 'unknown'.
 		const proc = (typeof process !== 'undefined' ? process : null) as {
 			type?: string;
 			versions?: {

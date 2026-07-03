@@ -130,7 +130,7 @@ describe('updateLinksInVault', () => {
 				),
 			},
 			vault: {
-				getAbstractFileByPath: jest.fn((path: string) =>
+				getFileByPath: jest.fn((path: string) =>
 					path in notes ? createFile(path) : null,
 				),
 				process: processMock,

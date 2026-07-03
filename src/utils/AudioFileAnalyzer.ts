@@ -15,6 +15,7 @@ import {
 } from '../audio/formatRegistry';
 import { formatByteSize } from './formatBytes';
 import { formatTimecode } from './TimeUtils';
+import { autoClosing, disposableOf } from './disposables';
 
 /**
  * Represents detailed information about an audio file.
@@ -107,10 +108,12 @@ async function probeMetadata(
 	data: ArrayBuffer,
 	path: string,
 ): Promise<ProbedAudioMetadata | null> {
-	const input = new Input({
-		source: new BufferSource(data),
-		formats: ALL_FORMATS,
-	});
+	using input = disposableOf(
+		new Input({
+			source: new BufferSource(data),
+			formats: ALL_FORMATS,
+		}),
+	);
 	try {
 		const track = await input.getPrimaryAudioTrack();
 		if (!track) {
@@ -127,8 +130,6 @@ async function probeMetadata(
 			error,
 		);
 		return null;
-	} finally {
-		input.dispose();
 	}
 }
 
@@ -143,10 +144,7 @@ async function decodeMetadata(
 ): Promise<ProbedAudioMetadata | null> {
 	// Use window.AudioContext or window.webkitAudioContext for
 	// cross-browser compatibility.
-	const AudioContextClass =
-		window.AudioContext ||
-		(window as unknown as { webkitAudioContext?: typeof AudioContext })
-			.webkitAudioContext;
+	const AudioContextClass = window.AudioContext || window.webkitAudioContext;
 	if (!AudioContextClass) {
 		console.error(
 			`${PLUGIN_LOG_PREFIX} AudioContext is not supported in this environment.`,
@@ -157,7 +155,9 @@ async function decodeMetadata(
 		return null;
 	}
 
-	const audioContext = new AudioContextClass();
+	// The context is released after decoding - autoClosing skips a
+	// context that is already closed
+	await using audioContext = autoClosing(new AudioContextClass());
 	try {
 		const audioBuffer = await audioContext.decodeAudioData(data);
 		return {
@@ -169,11 +169,6 @@ async function decodeMetadata(
 		console.error(`${PLUGIN_LOG_PREFIX} Failed to decode audio data:`, e);
 		new Notice('Failed to decode audio file data.');
 		return null;
-	} finally {
-		// Ensure we release the context resources after decoding
-		if (audioContext.state !== 'closed') {
-			await audioContext.close();
-		}
 	}
 }
 

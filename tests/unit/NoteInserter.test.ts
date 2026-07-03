@@ -435,7 +435,7 @@ describe('NoteInserter', () => {
 					},
 				},
 				vault: {
-					getAbstractFileByPath: (path: string): MockTFile =>
+					getFileByPath: (path: string): MockTFile =>
 						new MockTFile(path),
 					process: (
 						_note: unknown,

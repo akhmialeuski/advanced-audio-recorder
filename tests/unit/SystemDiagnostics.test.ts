@@ -102,11 +102,10 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 			originalProcess;
 	});
 
-	it('reads apiVersion from app', () => {
-		const app = makeApp('1.7.3');
-		const result = SystemDiagnostics.collectEnvironment(app);
+	it("reads the API version from obsidian's module export", () => {
+		const result = SystemDiagnostics.collectEnvironment(makeApp());
 
-		expect(result.obsidianVersion).toBe('1.7.3');
+		expect(result.obsidianVersion).toBe('1.12.3');
 	});
 
 	it('reads electron and node versions from process.versions', () => {
@@ -142,15 +141,6 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 		expect(result.electronVersion).toBe('unknown');
 		expect(result.nodeVersion).toBe('unknown');
 		expect(result.arch).toBe('unknown');
-	});
-
-	it('returns "unknown" obsidianVersion when app has no apiVersion', () => {
-		const app = {} as Parameters<
-			typeof SystemDiagnostics.collectEnvironment
-		>[0];
-		const result = SystemDiagnostics.collectEnvironment(app);
-
-		expect(result.obsidianVersion).toBe('unknown');
 	});
 
 	it('returns "unknown" for userAgent', () => {
@@ -460,7 +450,7 @@ describe('SystemDiagnostics.collect', () => {
 		expect(result).toHaveProperty('audioDevices');
 		expect(result).toHaveProperty('audioCapabilities');
 		expect(result).toHaveProperty('activeRecordingConfig');
-		expect(result.environment.obsidianVersion).toBe('1.6.0');
+		expect(result.environment.obsidianVersion).toBe('1.12.3');
 		expect(result.pluginSettings.recordingFormat).toBe(FORMAT_WEBM);
 		expect(Array.isArray(result.audioDevices)).toBe(true);
 	});

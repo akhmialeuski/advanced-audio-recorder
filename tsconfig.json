@@ -1,37 +1,28 @@
 {
-  "compilerOptions": {
-    "baseUrl": "./src",
-    "rootDir": "./src",
-    "outDir": "./dist",
-    "module": "ESNext",
-    "target": "ES2022",
-    "lib": [
-      "DOM",
-      "ES2022"
-    ],
-    "strict": true,
-    "noImplicitAny": true,
-    "strictNullChecks": true,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noImplicitOverride": true,
-    "useUnknownInCatchVariables": true,
-    "esModuleInterop": true,
-    "moduleResolution": "node",
-    "importHelpers": true,
-    "isolatedModules": true,
-    "inlineSourceMap": true,
-    "inlineSources": true,
-    "skipLibCheck": true
-  },
-  "include": [
-    "src/**/*.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "tests",
-    "dist"
-  ]
+	"compilerOptions": {
+		"baseUrl": "./src",
+		"rootDir": "./src",
+		"outDir": "./dist",
+		"module": "ESNext",
+		"target": "ES2022",
+		"lib": ["DOM", "ES2022", "ESNext.Disposable"],
+		"strict": true,
+		"noImplicitAny": true,
+		"strictNullChecks": true,
+		"noImplicitReturns": true,
+		"noFallthroughCasesInSwitch": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"noImplicitOverride": true,
+		"useUnknownInCatchVariables": true,
+		"esModuleInterop": true,
+		"moduleResolution": "node",
+		"importHelpers": true,
+		"isolatedModules": true,
+		"inlineSourceMap": true,
+		"inlineSources": true,
+		"skipLibCheck": true
+	},
+	"include": ["src/**/*.ts"],
+	"exclude": ["node_modules", "tests", "dist"]
 }

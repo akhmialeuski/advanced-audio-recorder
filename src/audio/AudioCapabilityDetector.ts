@@ -25,10 +25,12 @@ const CANDIDATE_FORMATS = MEDIA_RECORDER_CANDIDATE_FORMATS;
 
 const COMPRESSED_INTERMEDIATES = COMPRESSED_INTERMEDIATE_FORMATS;
 
-const CANDIDATE_SAMPLE_RATES = [8000, 16000, 22050, 44100, 48000];
+const CANDIDATE_SAMPLE_RATES = [
+	8000, 16000, 22050, 44100, 48000,
+] as const satisfies readonly number[];
 const CANDIDATE_BITRATES_BPS = [
 	64000, 96000, 128000, 160000, 192000, 256000, 320000,
-];
+] as const satisfies readonly number[];
 
 /**
  * Result of a full capability detection.

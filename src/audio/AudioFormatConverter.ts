@@ -8,6 +8,7 @@ import type { RecordingTarget } from '../types';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import { encodeAudioBuffer, isOfflineEncodingSupported } from './AudioEncoder';
 import { runStreamingConversion } from './streamingConversion';
+import { autoClosing } from '../utils/disposables';
 import {
 	MIME_TYPE_AUDIO_PREFIX,
 	PLUGIN_LOG_PREFIX,
@@ -130,14 +131,10 @@ export async function convertBlobToWavBuffer(
 export async function decodeAudioBlob(
 	arrayBuffer: ArrayBuffer,
 ): Promise<AudioBuffer> {
-	const audioContext = new AudioContext();
-	try {
-		return await audioContext.decodeAudioData(arrayBuffer);
-	} finally {
-		// Close even when decoding fails (corrupted/unsupported input),
-		// otherwise the AudioContext leaks
-		await audioContext.close();
-	}
+	// Closed even when decoding fails (corrupted/unsupported input),
+	// otherwise the AudioContext leaks
+	await using audioContext = autoClosing(new AudioContext());
+	return await audioContext.decodeAudioData(arrayBuffer);
 }
 
 /**

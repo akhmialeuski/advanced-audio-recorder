@@ -166,7 +166,7 @@ function setup(
 		embedRegistry: { embedByExtension },
 		vault: {
 			getResourcePath: () => 'app://media',
-			getAbstractFileByPath: (path: string) => fileFromPath(path),
+			getFileByPath: (path: string) => fileFromPath(path),
 			on: jest.fn(() => ({})),
 		},
 		metadataCache: {
