@@ -23,10 +23,8 @@ import {
 	getSupportedSampleRates,
 	buildMimeType,
 } from '../audio/AudioCapabilityDetector';
-import {
-	getEncoderDescription,
-	isOfflineEncodingSupported,
-} from '../audio/AudioEncoder';
+import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
+import { getEncoderDescription } from '../ui/formatDescriptions';
 import { TestRecorder } from '../recording/TestRecorder';
 import {
 	DEFAULT_SPLIT_PART_SUFFIX,

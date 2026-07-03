@@ -187,7 +187,6 @@ jest.mock('../../src/audio/AudioEncoder', () => ({
 		.fn()
 		.mockResolvedValue(new Blob(['encoded'], { type: 'audio/webm' })),
 	isOfflineEncodingSupported: jest.fn().mockReturnValue(true),
-	getEncoderDescription: jest.fn().mockReturnValue('Test Encoder'),
 }));
 
 // Mock AudioCapabilityDetector

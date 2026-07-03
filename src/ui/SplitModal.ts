@@ -23,8 +23,8 @@ import {
 import {
 	clampSplitMinutes,
 	sanitizePartSuffix,
-} from '../recording/AudioSplitter';
-import { SplitService } from '../recording/SplitService';
+	SplitService,
+} from '../recording/api';
 import type {
 	AudioRecorderSettings,
 	ConversionLinkAction,

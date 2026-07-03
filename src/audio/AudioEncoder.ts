@@ -177,12 +177,3 @@ export function isOfflineEncodingSupported(format: string): boolean {
 	}
 	return true;
 }
-
-/**
- * Returns a human-readable description of the encoder used for the format.
- * @param format - Audio format
- * @returns Encoder description string
- */
-export function getEncoderDescription(format: string): string {
-	return getFormatDescriptor(format)?.encoderDescription ?? 'Unknown';
-}

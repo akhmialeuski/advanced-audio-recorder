@@ -18,7 +18,6 @@ jest.mock('../../src/audio/AudioEncoder', () => ({
 	isOfflineEncodingSupported: jest.fn((format: string) =>
 		['mp3', 'flac', 'wav', 'webm', 'ogg', 'mp4', 'm4a'].includes(format),
 	),
-	getEncoderDescription: jest.fn().mockReturnValue('Test Encoder'),
 }));
 
 // Mock SystemDiagnostics: pulled in by the settings tab but exercised

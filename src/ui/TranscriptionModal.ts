@@ -21,28 +21,24 @@ import {
 	TRANSCRIPT_FILE_FORMAT_OPTIONS,
 	TRANSCRIPTION_PROVIDER_OPTIONS,
 } from '../settings/labels';
-import type {
-	TranscriptDestination,
-	TranscriptFileFormat,
-} from '../transcription/TranscriptTypes';
-import type { LlmTask } from '../transcription/llmPostProcess';
 import {
 	addDropdown,
 	addText,
 	addToggle,
 	type SettingsSectionContext,
 } from '../settings/settingControls';
-import { transcribeFile } from '../transcription/runTranscription';
 import { formatTimecode } from '../utils/TimeUtils';
 import {
 	effectiveDiarize,
+	effectiveTranscriptDestination,
 	providerSupportsDiarization,
-} from '../transcription/providers/capabilities';
-import { effectiveTranscriptDestination } from '../transcription/transcriptOutput';
-import {
+	transcribeFile,
 	TranscriptionCancelledError,
 	type CancellationToken,
-} from '../transcription/TranscriptionService';
+	type LlmTask,
+	type TranscriptDestination,
+	type TranscriptFileFormat,
+} from '../transcription/api';
 import type { SaveProgress } from '../types';
 
 /** Default status label shown before the engine reports a finer-grained stage. */

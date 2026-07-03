@@ -66,7 +66,6 @@ jest.mock('../../src/cleanup/AudioProcessingModal', () => ({
 jest.mock('../../src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest.fn(),
 	isOfflineEncodingSupported: jest.fn().mockReturnValue(true),
-	getEncoderDescription: jest.fn().mockReturnValue('Test Encoder'),
 }));
 
 describe('ContextMenu', () => {

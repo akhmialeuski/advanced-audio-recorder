@@ -64,8 +64,6 @@ export interface AudioFormatDescriptor {
 	readonly mime: string;
 	/** Codec label shown in the audio file info modal. */
 	readonly codecLabel: string;
-	/** Encoder description shown in settings and the conversion dialog. */
-	readonly encoderDescription: string;
 }
 
 /**
@@ -84,7 +82,6 @@ export const FORMAT_REGISTRY = {
 		probeCodecs: [],
 		mime: `${MIME_TYPE_AUDIO_PREFIX}wav`,
 		codecLabel: 'pcm',
-		encoderDescription: 'PCM (built-in)',
 	},
 	[FORMAT_WEBM]: {
 		codec: 'opus',
@@ -97,7 +94,6 @@ export const FORMAT_REGISTRY = {
 		probeCodecs: ['opus', 'vorbis', 'pcm'],
 		mime: `${MIME_TYPE_AUDIO_PREFIX}webm`,
 		codecLabel: 'opus',
-		encoderDescription: 'AudioEncoder (Opus) + Mediabunny',
 	},
 	[FORMAT_OGG]: {
 		codec: 'opus',
@@ -110,7 +106,6 @@ export const FORMAT_REGISTRY = {
 		probeCodecs: ['opus', 'vorbis'],
 		mime: `${MIME_TYPE_AUDIO_PREFIX}ogg`,
 		codecLabel: 'opus/vorbis',
-		encoderDescription: 'AudioEncoder (Opus) + Mediabunny',
 	},
 	[FORMAT_MP3]: {
 		codec: 'mp3',
@@ -123,7 +118,6 @@ export const FORMAT_REGISTRY = {
 		probeCodecs: ['mp3'],
 		mime: `${MIME_TYPE_AUDIO_PREFIX}mpeg`,
 		codecLabel: 'mp3',
-		encoderDescription: 'Mediabunny MP3 Encoder',
 	},
 	[FORMAT_M4A]: {
 		codec: 'aac',
@@ -136,7 +130,6 @@ export const FORMAT_REGISTRY = {
 		probeCodecs: ['mp4a.40.2', 'mp4a.40.5'],
 		mime: `${MIME_TYPE_AUDIO_PREFIX}mp4`,
 		codecLabel: 'aac',
-		encoderDescription: 'AudioEncoder (AAC) + Mediabunny',
 	},
 	[FORMAT_MP4]: {
 		codec: 'aac',
@@ -149,7 +142,6 @@ export const FORMAT_REGISTRY = {
 		probeCodecs: ['mp4a.40.2', 'mp4a.40.5', 'opus'],
 		mime: `${MIME_TYPE_AUDIO_PREFIX}mp4`,
 		codecLabel: 'aac',
-		encoderDescription: 'AudioEncoder (AAC) + Mediabunny',
 	},
 	[FORMAT_FLAC]: {
 		codec: 'flac',
@@ -162,7 +154,6 @@ export const FORMAT_REGISTRY = {
 		probeCodecs: [],
 		mime: `${MIME_TYPE_AUDIO_PREFIX}flac`,
 		codecLabel: 'flac',
-		encoderDescription: 'Mediabunny FLAC Encoder',
 	},
 	[FORMAT_AAC]: {
 		codec: 'aac',
@@ -175,7 +166,6 @@ export const FORMAT_REGISTRY = {
 		probeCodecs: [],
 		mime: `${MIME_TYPE_AUDIO_PREFIX}aac`,
 		codecLabel: 'aac',
-		encoderDescription: 'AudioEncoder (AAC) + Mediabunny',
 	},
 } as const satisfies Record<string, AudioFormatDescriptor>;
 

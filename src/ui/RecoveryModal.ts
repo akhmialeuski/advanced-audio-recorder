@@ -9,7 +9,7 @@
 
 import { App, Modal, Notice, Setting } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
-import type { JournalSession } from '../recording/SessionJournal';
+import type { JournalSession } from '../recording/api';
 
 /**
  * Actions the user can take on the interrupted sessions.

@@ -4,17 +4,15 @@
  */
 
 import { App, Modal, Notice, Setting, TFile } from 'obsidian';
-import {
-	isOfflineEncodingSupported,
-	getEncoderDescription,
-} from '../audio/AudioEncoder';
+import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
 import { AUDIO_EXTENSIONS, FORMAT_WAV } from '../constants';
 import {
 	addBitrateSetting,
 	addDeleteSourceSetting,
 	addLinkActionSetting,
 } from './settingHelpers';
-import { ConversionService } from '../recording/ConversionService';
+import { getEncoderDescription } from './formatDescriptions';
+import { ConversionService } from '../recording/api';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import type {
 	AudioRecorderSettings,
