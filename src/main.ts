@@ -44,6 +44,7 @@ import {
 	registerRecordingActionCommands,
 } from './actions/registerActionCommands';
 import { EnhancedPlayerRegistrar } from './player/EnhancedPlayerRegistrar';
+import { MediaKindStore, MEDIA_KIND_STORE_FILE } from './player/MediaKindStore';
 import { MarkerStore } from './markers/MarkerStore';
 import { RecordingMarkerModal } from './ui/MarkerModal';
 import { TranscriptionModal } from './ui/TranscriptionModal';
@@ -195,11 +196,18 @@ export default class AudioRecorderPlugin extends Plugin {
 		);
 		this.contextMenu.register();
 
+		// Media kinds persist across sessions so the first open of a note
+		// never repeats a file's probe (and the embed upgrade behind it)
+		const mediaKindStore = new MediaKindStore(
+			this.app,
+			this.getPluginFilePath(MEDIA_KIND_STORE_FILE),
+		);
 		this.playerRegistrar = new EnhancedPlayerRegistrar(
 			this,
 			this.app,
 			() => this.settings,
 			markerStore,
+			mediaKindStore,
 		);
 		this.playerRegistrar.register();
 
@@ -572,11 +580,8 @@ export default class AudioRecorderPlugin extends Plugin {
 			getSettings: () => this.settings,
 			createTranscriptionModalOptions: () =>
 				this.createTranscriptionModalOptions(),
-			primeForEnhancement: (paths, notePath) =>
-				this.playerRegistrar.primeSavedRecordingsForEnhancement(
-					paths,
-					notePath,
-				),
+			primeForEnhancement: (paths) =>
+				this.playerRegistrar.primeSavedRecordingsForEnhancement(paths),
 			getWorkerClient: () => this.encodingWorker,
 		};
 	}
@@ -665,7 +670,6 @@ export default class AudioRecorderPlugin extends Plugin {
 	private handleRecordingSaved(result: RecordingSaveResult): void {
 		this.playerRegistrar.primeSavedRecordingsForEnhancement(
 			result.audioPaths,
-			result.notePath,
 		);
 
 		if (

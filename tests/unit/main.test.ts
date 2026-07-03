@@ -365,7 +365,7 @@ describe('AudioRecorderPlugin settings persistence', () => {
 
 		expect(
 			registrar.primeSavedRecordingsForEnhancement,
-		).toHaveBeenCalledWith(['recordings/fresh.webm'], 'notes/daily.md');
+		).toHaveBeenCalledWith(['recordings/fresh.webm']);
 	});
 
 	it('treats a rejected settings read as a failed read', async () => {

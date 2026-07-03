@@ -75,20 +75,29 @@ describe('probeMediaKind', () => {
 		fakeVideo.videoWidth = 1920;
 		fakeVideo.videoHeight = 1080;
 		fakeVideo.fire('loadedmetadata');
-		await expect(result).resolves.toBe('video');
+		await expect(result).resolves.toEqual({
+			kind: 'video',
+			confident: true,
+		});
 	});
 
 	it('classifies metadata without video dimensions as audio', async () => {
 		const result = probeMediaKind('app://media');
 		// videoWidth/videoHeight stay 0 -> audio-only
 		fakeVideo.fire('loadedmetadata');
-		await expect(result).resolves.toBe('audio');
+		await expect(result).resolves.toEqual({
+			kind: 'audio',
+			confident: true,
+		});
 	});
 
 	it('classifies a load error as unsupported', async () => {
 		const result = probeMediaKind('app://media');
 		fakeVideo.fire('error');
-		await expect(result).resolves.toBe('unsupported');
+		await expect(result).resolves.toEqual({
+			kind: 'unsupported',
+			confident: true,
+		});
 	});
 
 	it('falls back to audio when metadata never arrives (timeout)', async () => {
@@ -96,7 +105,11 @@ describe('probeMediaKind', () => {
 		try {
 			const result = probeMediaKind('app://media');
 			jest.advanceTimersByTime(4000);
-			await expect(result).resolves.toBe('audio');
+			// The fallback is usable now but flagged, so it is never persisted
+			await expect(result).resolves.toEqual({
+				kind: 'audio',
+				confident: false,
+			});
 		} finally {
 			jest.useRealTimers();
 		}
@@ -119,7 +132,10 @@ describe('probeMediaKind', () => {
 		fakeVideo.videoHeight = 100;
 		fakeVideo.fire('loadedmetadata'); // first settle -> video
 		fakeVideo.fire('error'); // must be ignored
-		await expect(result).resolves.toBe('video');
+		await expect(result).resolves.toEqual({
+			kind: 'video',
+			confident: true,
+		});
 		expect(fakeVideo.load).toHaveBeenCalledTimes(1);
 	});
 });

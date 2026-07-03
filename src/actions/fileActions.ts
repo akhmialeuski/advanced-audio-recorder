@@ -53,12 +53,9 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 				services.getSettings(),
 				(convertedPath) => {
 					// The note link is already rewritten by the conversion's
-					// linkAction; prime the active note so the new embed
+					// linkAction; prime the converted file so its embed
 					// becomes the enhanced player at once.
-					services.primeForEnhancement(
-						[convertedPath],
-						services.app.workspace.getActiveFile()?.path ?? null,
-					);
+					services.primeForEnhancement([convertedPath]);
 				},
 				services.getWorkerClient,
 			).open();
@@ -89,15 +86,13 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 					// Link the result into the note (replace the source embed
 					// when it is being deleted, else insert after), then prime
 					// it so the enhanced player applies at once.
-					const notePath = await insertProcessedAudioEmbed(
+					await insertProcessedAudioEmbed(
 						services.app,
 						file,
 						outputPath,
 						replaceSource,
 					);
-					if (notePath) {
-						services.primeForEnhancement([outputPath], notePath);
-					}
+					services.primeForEnhancement([outputPath]);
 				},
 			).open();
 		},
