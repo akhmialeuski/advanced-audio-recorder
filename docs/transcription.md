@@ -5,10 +5,10 @@
 - [Enabling transcription](#enabling-transcription)
 - [Three ways to run it](#three-ways-to-run-it)
 - [Engines](#engines)
-  - [Whisper API (OpenAI-compatible)](#whisper-api-openai-compatible)
-  - [Deepgram](#deepgram)
-  - [Google Gemini](#google-gemini)
-  - [Local whisper.cpp (desktop)](#local-whispercpp-desktop)
+    - [Whisper API (OpenAI-compatible)](#whisper-api-openai-compatible)
+    - [Deepgram](#deepgram)
+    - [Google Gemini](#google-gemini)
+    - [Local whisper.cpp (desktop)](#local-whispercpp-desktop)
 - [Model picker and language](#model-picker-and-language)
 - [Speakers and diarization](#speakers-and-diarization)
 - [Output: where the transcript goes](#output-where-the-transcript-goes)
@@ -37,7 +37,7 @@ Open **Settings > Advanced Audio Recorder > Transcription** and turn on **Enable
 9. **LLM post-processing** - optional, documented separately in [LLM post-processing](llm-post-processing.md).
 
 ![Transcription settings section with Enable transcription on, the Engine dropdown, Language, and diarization toggles](images/settings-transcription.png)
-*Figure: the Transcription settings section after enabling it, showing the engine and global options.*
+_Figure: the Transcription settings section after enabling it, showing the engine and global options._
 
 ---
 
@@ -45,11 +45,11 @@ Open **Settings > Advanced Audio Recorder > Transcription** and turn on **Enable
 
 Once transcription is enabled, you can start a run in three ways:
 
-| Method                           | How to trigger it                                                                                   | When it is available                                                 |
-| -------------------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| **Transcribe audio** (menu)      | Right-click an audio file in the **File Explorer**, an audio **embed link**, or an embedded player. | Always, for any audio file, once transcription is enabled.           |
-| **Transcribe active audio file** | Run the command from the palette (`Ctrl/Cmd + P`).                                                  | Only when transcription is enabled **and** the active file is audio. |
-| **Transcribe after recording**   | Toggle **Transcribe after recording** on; every new recording is transcribed when it is saved.      | Automatic; runs as soon as a recording finishes saving.              |
+| Method                         | How to trigger it                                                                                   | When it is available                                                 |
+| ------------------------------ | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| **Transcribe audio** (menu)    | Right-click an audio file in the **File Explorer**, an audio **embed link**, or an embedded player. | Always, for any audio file, once transcription is enabled.           |
+| **Transcribe audio** (command) | Run the identically named command from the palette (`Ctrl/Cmd + P`); it targets the active file.    | Only when transcription is enabled **and** the active file is audio. |
+| **Transcribe after recording** | Toggle **Transcribe after recording** on; every new recording is transcribed when it is saved.      | Automatic; runs as soon as a recording finishes saving.              |
 
 The first two open the **Transcribe audio** dialog, where you can override the engine, language, diarization, destination, and file format for that single run (see [The Transcribe dialog](#the-transcribe-dialog-per-run-overrides)). The automatic path opens the same dialog with progress already running, so an auto-run stays visible and you can still cancel it.
 
@@ -93,7 +93,7 @@ Behavior and limits:
 Getting a key: [OpenAI Whisper API key](use-cases/openai-whisper-api-key.md) · [Groq Whisper setup](use-cases/groq-whisper-setup.md). The catalogue link next to the model picker points at the [OpenAI speech-to-text guide](https://platform.openai.com/docs/guides/speech-to-text).
 
 ![Whisper API engine settings: upload chunk size slider, base URL, API key, and model picker](images/settings-transcription-whisper.png)
-*Figure: the Whisper API engine fields, with the upload chunk-size slider and the model picker.*
+_Figure: the Whisper API engine fields, with the upload chunk-size slider and the model picker._
 
 ### Deepgram
 
@@ -117,7 +117,7 @@ Behavior and limits:
 Getting a key: [Deepgram API key](use-cases/deepgram-api-key.md). The catalogue link points at the [Deepgram model list](https://developers.deepgram.com/docs/model).
 
 ![Deepgram engine settings: base URL, API key, and the Deepgram model picker](images/settings-transcription-deepgram.png)
-*Figure: the Deepgram engine fields with the model picker seeded with the Nova family.*
+_Figure: the Deepgram engine fields with the model picker seeded with the Nova family._
 
 ### Google Gemini
 
@@ -141,7 +141,7 @@ Behavior and limits:
 Getting a key: [Gemini API key](use-cases/gemini-api-key.md). The catalogue link points at the [Gemini model list](https://ai.google.dev/gemini-api/docs/models).
 
 ![Google Gemini engine settings: base URL, API key, and the Gemini model picker](images/settings-transcription-gemini.png)
-*Figure: the Google Gemini engine fields with the Flash and Pro models in the picker.*
+_Figure: the Google Gemini engine fields with the Flash and Pro models in the picker._
 
 ### Local whisper.cpp (desktop)
 
@@ -165,7 +165,7 @@ Behavior and limits:
 Setup walkthrough: [Local whisper.cpp](use-cases/local-whisper-cpp.md). The download link in the model-path description points at the [whisper.cpp models on Hugging Face](https://huggingface.co/ggerganov/whisper.cpp).
 
 ![Local whisper.cpp engine settings: binary path, model path, and extra arguments fields](images/settings-transcription-local-whisper.png)
-*Figure: the local whisper.cpp engine fields for an offline transcription setup.*
+_Figure: the local whisper.cpp engine fields for an offline transcription setup._
 
 ---
 
@@ -203,7 +203,7 @@ Because there are no labels to act on without diarization, these output controls
 - **Speaker format**
 
 ![Speaker diarization toggle enabled for Deepgram, with the speaker output controls active below](images/settings-transcription-diarization.png)
-*Figure: with Deepgram and diarization on, the speaker-related output controls become editable.*
+_Figure: with Deepgram and diarization on, the speaker-related output controls become editable._
 
 ---
 
@@ -218,7 +218,7 @@ Pick where the transcript lands with **Destination**:
 | **Note and file**                        | Do both - insert the Markdown and write the sidecar file.                                               |
 | **Save to file and link it in the note** | Write the sidecar file and insert a link to it into the note (instead of pasting the whole transcript). |
 
-When you ask for in-note output but the note is not open in an editable view (reading mode, or not open at all), a completed transcript is **never silently dropped**: the plugin writes a sidecar file as a fallback and the notice tells you what happened. If the audio file itself is the active pane (as with the **Transcribe active audio file** command), an in-note-only destination is downgraded to a file up front, so the run does what it can without a misleading "could not insert" outcome.
+When you ask for in-note output but the note is not open in an editable view (reading mode, or not open at all), a completed transcript is **never silently dropped**: the plugin writes a sidecar file as a fallback and the notice tells you what happened. If the audio file itself is the active pane (as with the **Transcribe audio** command), an in-note-only destination is downgraded to a file up front, so the run does what it can without a misleading "could not insert" outcome.
 
 **File formats** (shown when the destination is anything other than note-only):
 
@@ -229,10 +229,10 @@ When you ask for in-note output but the note is not open in an editable view (re
 | **WebVTT (.vtt)**               | `.vtt`             | WebVTT cues with `HH:MM:SS.mmm` timing; speaker as a line prefix.            |
 | **Plain text (.txt)**           | `.txt`             | Readable lines, each prefixed with `[timecode]` and the speaker.             |
 
-The sidecar is written **next to the audio file**, sharing its base name (JSON uses a `.transcript.json` suffix so it is not mistaken for other JSON). If a file with that name already exists, a numeric suffix is appended to avoid overwriting it. **Word-level timestamps** (the global toggle) only appear in the **JSON** output, and only some engines populate them: **Whisper API** (when the toggle is on) and **Deepgram** return per-word timings, while **Google Gemini** and **local whisper.cpp** return segment-level timing only, so the toggle has no effect for those two.
+The sidecar is written **next to the audio file**, sharing its base name (JSON uses a `.transcript.json` suffix so it is not mistaken for other JSON). If a file with that name already exists, a numeric suffix is appended to avoid overwriting it. **Word-level timestamps** (the global toggle) only appear in the **JSON** output, and only some engines populate them: **Whisper API** requests per-word timings when the toggle is on, **Deepgram** always returns them regardless of the toggle, while **Google Gemini** and **local whisper.cpp** return segment-level timing only, so the toggle has no effect for those three.
 
 ![A note showing an inserted transcript under the Transcript heading, with clickable timestamp links and speaker labels](images/transcription-rendered-transcript.png)
-*Figure: a rendered transcript inserted into a note, with timestamp player links and speaker labels.*
+_Figure: a rendered transcript inserted into a note, with timestamp player links and speaker labels._
 
 ---
 
@@ -260,7 +260,7 @@ How the templates compose: each line takes its **timestamp** (wrapped by **Times
 
 ## The Transcribe dialog (per-run overrides)
 
-When you run **Transcribe audio** from the context menu or the **Transcribe active audio file** command, the dialog lets you override the global defaults **for that run only** - your saved settings are never changed. The dialog shows the source file name and these editable options:
+When you run **Transcribe audio** from the context menu or the command palette, the dialog lets you override the global defaults **for that run only** - your saved settings are never changed. The dialog shows the source file name and these editable options:
 
 - **Engine** - switch engine for this run.
 - **Language** - `auto` or an ISO code.
@@ -276,7 +276,7 @@ The detailed in-note templates (note heading, timestamp/speaker/line format) and
 Options toggled mid-run do **not** change an in-flight job: the run snapshots its options when you press **Transcribe**, so edits only affect the next attempt after a failure.
 
 ![The Transcribe audio dialog with per-run Engine, Language, diarization, Destination, and File format controls](images/transcription-dialog.png)
-*Figure: the Transcribe audio dialog with the per-run overrides above the progress area.*
+_Figure: the Transcribe audio dialog with the per-run overrides above the progress area._
 
 ---
 
@@ -284,16 +284,18 @@ Options toggled mid-run do **not** change an in-flight job: the run snapshots it
 
 While a transcription runs, the dialog shows a **progress bar**, a live **elapsed-time counter**, and a status label that reports the current stage (preparing audio, transcribing a part, post-processing). The buttons let you control the run:
 
-- **Cancel** - stops the run. Cancellation is checked between requests, so pressing **Cancel** during an in-flight request takes effect once that request returns or hits the timeout.
+- **Cancel** - stops the run. For endpoints that accept direct browser requests (the normal case), pressing **Cancel** aborts the in-flight request immediately and releases the connection. Only when an endpoint refuses browser (CORS) requests and the plugin falls back to Obsidian's own request channel does cancellation wait until that request returns or hits the timeout. The [LLM post-processing](llm-post-processing.md) step is the exception: once the LLM request is in flight it runs to completion (bounded by its fixed 5-minute timeout) and the transcript is still written.
 - **Minimize** - sends the job to the status bar so you can keep working. The status bar then shows live transcription progress; **click it** (or focus it and press Enter) to reopen the dialog. **Closing** the dialog instead of minimizing **cancels** the running job.
 - **Recording takes precedence** in the status bar, so an active recording's status is shown first and the transcription progress reappears once recording finishes.
 
 ![Status bar showing a minimized transcription job with its progress percentage](images/status-bar-transcription.png)
-*Figure: a minimized transcription reporting progress in the status bar; click it to reopen the dialog.*
+_Figure: a minimized transcription reporting progress in the status bar; click it to reopen the dialog._
 
 Each network request - one part of a long recording, or a whole-file upload - is bounded by the **Request timeout** (default **10 minutes**, range **1-60**), so a stalled request fails that part and is reported rather than hanging the run. Underneath this cap, a whole-file upload scales its own timeout with payload size, so a large but healthy upload is not aborted prematurely; the **Request timeout** value is the ceiling.
 
 When a long recording is split into several parts, parts that fail are reported and the parts that succeeded are still kept - a `> [!warning]` callout names the missing stretch in the inserted Markdown, and a notice explains what was lost. Only if **every** part fails does the whole run fail with the first error.
+
+A part whose transcript overruns the model's **output-token limit** (which Gemini can hit on dense speech) is not discarded: it is automatically split into smaller halves and retried, down to a minimum segment length of one minute. Each retry is a separate, normally billed API request; only a segment that is truncated even at the minimum length is reported as missing.
 
 ---
 
@@ -355,7 +357,7 @@ Per-engine fields (base URL, key, model picker, upload chunk size) are documente
 ## Troubleshooting
 
 - **"Transcribe audio" is missing from the menu** - enable **Enable transcription** in settings first.
-- **The Transcribe active audio file command does nothing** - it runs only when the active file is an audio file and transcription is enabled. Open the audio file (or its note) and try again.
+- **The Transcribe audio palette command does nothing** - it runs only when the active file is an audio file and transcription is enabled. Open the audio file (or its note) and try again.
 - **Speaker labels never appear** - only Deepgram and Gemini diarize; the toggle is disabled for Whisper API and local whisper.cpp. With a diarizing engine, make sure **Speaker diarization** and **Include speakers** are on. Without diarization in effect, labels are stripped everywhere, including the JSON file.
 - **Speaker numbers change partway through a Gemini transcript** - a recording over 15 minutes is split into parts and Gemini renumbers speakers per part. Use **Deepgram** (sends the whole file) or split the recording for consistent speakers.
 - **"Could not insert the transcript into the note"** - the note was not open in editing mode. The transcript is saved as a sidecar file as a fallback; the notice shows its path. Open the note in editing mode to insert there.

@@ -5,8 +5,8 @@ Splitting breaks one long recording into several shorter part files. **Advanced 
 - [Why split](#why-split)
 - [Automatic splitting (during recording)](#automatic-splitting-during-recording)
 - [Manual splitting (existing file)](#manual-splitting-existing-file)
-  - [The split dialog](#the-split-dialog)
-  - [Part naming](#part-naming)
+    - [The split dialog](#the-split-dialog)
+    - [Part naming](#part-naming)
 - [How link updating works](#how-link-updating-works)
 - [Lossless vs lossy splitting](#lossless-vs-lossy-splitting)
 - [Failure handling](#failure-handling)
@@ -29,7 +29,7 @@ A two-hour lecture or an all-day meeting recorded as one file is awkward to work
 When **Split recordings automatically** is enabled, a recording is saved as a series of fixed-duration part files (`recording-…-part1.webm`, `recording-…-part2.webm`, …) instead of one long file. Each finished part is written to disk while the recording continues, and the remainder recorded after the last boundary becomes the final part. Links to **all** parts are inserted into the note when the recording stops.
 
 ![Settings panel showing the Split recordings automatically toggle, Part duration slider, Part name suffix field, and Delete source after split toggle](images/settings-audio-splitting.png)
-*Figure: the Audio splitting section of the plugin settings, where automatic splitting is enabled and the part duration and suffix are configured.*
+_Figure: the Audio splitting section of the plugin settings, where automatic splitting is enabled and the part duration and suffix are configured._
 
 ### Enabling it
 
@@ -57,7 +57,7 @@ How exactly a part lands on the configured boundary depends on the recording for
 - **Changes apply next session.** Split settings changed during an active recording take effect on the **next** recording, not the one in progress.
 
 ![A note showing four embedded audio links inserted after an automatic split: recording-part1 through recording-part4](images/splitting-auto-part-links.png)
-*Figure: after an automatically split recording stops, an embed link for every part is inserted into the active note.*
+_Figure: after an automatically split recording stops, an embed link for every part is inserted into the active note._
 
 ---
 
@@ -74,7 +74,7 @@ To open the split dialog, right-click the target audio in any of these places an
 ### The split dialog
 
 ![The Split audio into parts dialog showing the source file name, Part duration slider, Part name suffix field, Bitrate dropdown, Delete source toggle, Update links dropdown, and the Split button](images/modal-split-audio.png)
-*Figure: the Split audio into parts dialog, with the per-run options that override your saved defaults for a single split.*
+_Figure: the Split audio into parts dialog, with the per-run options that override your saved defaults for a single split._
 
 The dialog header shows the **Source** file name and exposes these options. Each starts from your saved settings but can be changed for this one run:
 
@@ -100,7 +100,7 @@ Each part file is named:
 
 For a source `meeting.wav` split with the default suffix, you get `meeting-part1.wav`, `meeting-part2.wav`, and so on. The numbering is `1`-based and continues for as many parts as the duration produces.
 
-- The **suffix** may contain only letters, digits, hyphens, and underscores (`A-Z`, `a-z`, `0-9`, `-`, `_`). Leading and trailing whitespace is ignored. An empty suffix falls back to the default `part`. Any other character is rejected with the notice *"Part suffix may contain only letters, digits, hyphens, and underscores."* and the split does not run.
+- The **suffix** may contain only letters, digits, hyphens, and underscores (`A-Z`, `a-z`, `0-9`, `-`, `_`). Leading and trailing whitespace is ignored. An empty suffix falls back to the default `part`. Any other character is rejected with the notice _"Part suffix may contain only letters, digits, hyphens, and underscores."_ and the split does not run.
 - The **extension** of the parts depends on the source format - see [Lossless vs lossy splitting](#lossless-vs-lossy-splitting). WAV sources stay `.wav`; a compressed source keeps its own extension when an offline encoder is available for it, and otherwise the parts are written as WAV (with a notice explaining the fallback).
 
 ---
@@ -129,7 +129,7 @@ How the replacement is laid out depends on whether the link is alone on its line
 If you chose **Delete source file** but some links could not be updated (a stale reference was skipped), the plugin **keeps the source file** rather than leave those links broken, and shows a notice explaining why.
 
 ![A note before and after a split, showing one source embed replaced by three stacked part embeds when alone on a line](images/splitting-link-replacement.png)
-*Figure: a source embed alone on its line is replaced by one embed per part, each on its own line.*
+_Figure: a source embed alone on its line is replaced by one embed per part, each on its own line._
 
 ---
 
@@ -148,7 +148,7 @@ Notes:
 - **Compressed sources are re-encoded**, so a small amount of quality loss is possible (lossy formats lose a little each time they are re-encoded), and a very long compressed file needs enough free memory for the decoded audio. If the source's format has no offline encoder available, the parts are written as **WAV** and a notice explains the fallback.
 - **Parts are saved next to the source file**, in the same vault folder.
 
-A source must be **longer than one part** to split. If the file is shorter than the configured part duration, the plugin shows *"File is shorter than one part."* and does nothing.
+A source must be **longer than one part** to split. If the file is shorter than the configured part duration, the plugin shows _"File is shorter than one part."_ and does nothing.
 
 ---
 
@@ -156,7 +156,7 @@ A source must be **longer than one part** to split. If the file is shorter than 
 
 The split is designed so a failure never leaves you with a half-broken set of files:
 
-- **Collision pre-check.** Before writing anything, the plugin checks that none of the target part names already exist next to the source. If any does, the split is **aborted** with a notice (*"File … already exists. Rename it or choose a different suffix."*) and no files are written. Rename the existing file or pick a different suffix and try again.
+- **Collision pre-check.** Before writing anything, the plugin checks that none of the target part names already exist next to the source. If any does, the split is **aborted** with a notice (_"File … already exists. Rename it or choose a different suffix."_) and no files are written. Rename the existing file or pick a different suffix and try again.
 - **Mid-write rollback.** If writing fails partway through (for example, the disk fills up), the parts already written are **removed** and the **source file is kept**. You are back where you started.
 - **Post-write steps are best-effort.** Once all parts exist on disk, the link update and optional source deletion run. If one of those fails, the parts are kept (they already exist) and the result is reported as a **partial** success, with a notice describing what went wrong. The source file is kept whenever links could not be fully updated.
 

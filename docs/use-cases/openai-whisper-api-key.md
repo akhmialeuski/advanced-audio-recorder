@@ -48,7 +48,7 @@ You only need to do this once per OpenAI account.
 6. Paste it somewhere safe for a moment (you will move it into the plugin in [Step 4](#step-4-configure-the-plugin)).
 
 ![The OpenAI platform API keys page with the Create new secret key button](../images/openai-api-keys-page.png)
-*Figure: the OpenAI API keys page where you create and copy a new secret key.*
+_Figure: the OpenAI API keys page where you create and copy a new secret key._
 
 > **Keep the key secret.** Anyone with this key can spend against your account. Never paste it into a note, a screenshot, or a shared file. The plugin stores it locally on your device - see [Limits and behavior](#limits-and-behavior).
 
@@ -76,7 +76,7 @@ Open **Settings > Advanced Audio Recorder** and scroll to the **Transcription** 
 7. (Optional) Choose where the transcript goes under **Transcript output > Destination**. The default is **Insert into note**.
 
 ![The plugin Transcription settings with the Whisper API engine selected and the key, base URL, and model fields](../images/settings-transcription-whisper-api.png)
-*Figure: the Transcription settings configured for the OpenAI Whisper API engine.*
+_Figure: the Transcription settings configured for the OpenAI Whisper API engine._
 
 > **Speaker diarization** stays greyed out and off for the Whisper API engine - OpenAI's Whisper does not return speaker labels. The speaker-related output controls (Include speakers, Merge speaker turns, Speaker format) are disabled to match.
 
@@ -84,12 +84,12 @@ Open **Settings > Advanced Audio Recorder** and scroll to the **Transcription** 
 
 1. Click the **microphone icon** in the left ribbon (or run **Start/stop recording** from the command palette) and say a sentence or two.
 2. Click the ribbon icon again to stop and save. An audio embed link is inserted into the active note.
-3. Open the audio file so it is the **active file** (click its name in the embed, or its File Explorer entry), then run **Transcribe active audio file** from the command palette - or simply right-click the recording (or its embed/player) and choose **Transcribe audio**, which works regardless of which file is active. (Opening the note that embeds the audio leaves the *note* active, so the palette command stays hidden.)
+3. Open the audio file so it is the **active file** (click its name in the embed, or its File Explorer entry), then run **Transcribe audio** from the command palette - or simply right-click the recording (or its embed/player) and choose **Transcribe audio**, which works regardless of which file is active. (Opening the note that embeds the audio leaves the _note_ active, so the palette command stays hidden.)
 4. A progress dialog opens with a progress bar, an elapsed timer, **Cancel**, and **Minimize** (which sends the job to the status bar so you can keep working - click the status bar to reopen it). Closing the dialog cancels the job.
 5. When it finishes, the transcript is written to the destination you chose. Read it back to confirm it matches what you said.
 
 ![The transcription progress dialog with a progress bar, elapsed timer, Cancel, and Minimize](../images/transcription-progress-dialog.png)
-*Figure: the transcription progress dialog while a Whisper API request runs.*
+_Figure: the transcription progress dialog while a Whisper API request runs._
 
 If the test works, your key, billing, and model are all correct.
 

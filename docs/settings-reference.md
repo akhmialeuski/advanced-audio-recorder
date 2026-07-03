@@ -11,12 +11,12 @@ This is the exhaustive reference for every setting in **Advanced Audio Recorder*
 - [Multi-track recording](#multi-track-recording)
 - [Audio player](#audio-player)
 - [Transcription](#transcription)
-  - [Engine: Whisper API](#engine-whisper-api)
-  - [Engine: Deepgram](#engine-deepgram)
-  - [Engine: Google Gemini](#engine-google-gemini)
-  - [Engine: Local whisper.cpp](#engine-local-whispercpp)
-  - [Transcript output](#transcript-output)
-  - [LLM post-processing](#llm-post-processing)
+    - [Engine: Whisper API](#engine-whisper-api)
+    - [Engine: Deepgram](#engine-deepgram)
+    - [Engine: Google Gemini](#engine-google-gemini)
+    - [Engine: Local whisper.cpp](#engine-local-whispercpp)
+    - [Transcript output](#transcript-output)
+    - [LLM post-processing](#llm-post-processing)
 - [Audio processing & feedback](#audio-processing--feedback)
 - [Audio cleanup defaults](#audio-cleanup-defaults)
 - [Diagnostics](#diagnostics)
@@ -45,7 +45,7 @@ Player settings apply live: changing **Show waveform** or **Markers and chapters
 At the very top of the settings tab is a callout with a book icon linking to the online documentation, so the guides and use-case walkthroughs are one click away instead of buried in the GitHub repository.
 
 ![Documentation callout at the top of the Advanced Audio Recorder settings tab with a book icon and an Open the documentation link](images/settings-documentation-callout.png)
-*Figure: The documentation callout pinned above the first settings section.*
+_Figure: The documentation callout pinned above the first settings section._
 
 | Control                    | What it does                                                                 | Options / range | Default |
 | -------------------------- | ---------------------------------------------------------------------------- | --------------- | ------- |
@@ -58,12 +58,12 @@ At the very top of the settings tab is a callout with a book icon linking to the
 Pick the microphone and sample rate used for single-track recordings. The device dropdown auto-refreshes when you plug or unplug a device while the tab is open. See [Recording](recording.md) for how these are used.
 
 ![Audio input settings section showing the input device dropdown and the sample rate dropdown](images/settings-audio-input.png)
-*Figure: The Audio input section with the device picker and sample-rate selector.*
+_Figure: The Audio input section with the device picker and sample-rate selector._
 
-| Setting          | What it does                                                                                                                                                                                                                                                                         | Options / range                                                   | Default       |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------- | ------------- |
-| **Input device** | Default input device for single-track recordings. The dropdown lists every detected device and refreshes on device change. The **Select audio input device** command opens a quick device-picker modal; choosing a device saves it here immediately and shows a confirmation notice. | Auto-detected device list                                         | Auto-detected |
-| **Sample rate**  | Audio sample rate in hertz. The exact options come from runtime detection of what your hardware supports.                                                                                                                                                                            | Detected rates (commonly 8000 / 16000 / 22050 / 44100 / 48000 Hz) | 44100 Hz      |
+| Setting          | What it does                                                                                                                                                                                                                                                                         | Options / range                                                   | Default                                                                                                                |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| **Input device** | Default input device for single-track recordings. The dropdown lists every detected device and refreshes on device change. The **Select audio input device** command opens a quick device-picker modal; choosing a device saves it here immediately and shows a confirmation notice. | Auto-detected device list                                         | None - pick one before recording (the dropdown shows the first detected device, but nothing is saved until you choose) |
+| **Sample rate**  | Audio sample rate in hertz. The exact options come from runtime detection of what your hardware supports.                                                                                                                                                                            | Detected rates (commonly 8000 / 16000 / 22050 / 44100 / 48000 Hz) | 44100 Hz                                                                                                               |
 
 ---
 
@@ -72,7 +72,7 @@ Pick the microphone and sample rate used for single-track recordings. The device
 Choose the final file format and quality for recordings, and how conversions handle the source file and its links. Offline formats are labelled `(offline)` in the dropdown. See [Formats and containers](formats.md) and [File operations](file-operations.md).
 
 ![Output format settings section with recording format dropdown, bitrate dropdown, read-only output summary, and conversion toggles](images/settings-output-format.png)
-*Figure: The Output format section, including the read-only Output summary line.*
+_Figure: The Output format section, including the read-only Output summary line._
 
 | Setting                            | What it does                                                                                             | Options / range                                             | Default             |
 | ---------------------------------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------------- |
@@ -89,7 +89,7 @@ Choose the final file format and quality for recordings, and how conversions han
 Decide where recordings are saved, what they are named, and where the embed link is inserted. See [Recording](recording.md) and [File operations](file-operations.md).
 
 ![File storage settings section showing save folder, save near active file toggle, file prefix, and insert at original position toggle](images/settings-file-storage.png)
-*Figure: The File storage section. The Active file subfolder field appears only when Save near active file is on.*
+_Figure: The File storage section. The Active file subfolder field appears only when Save near active file is on._
 
 | Setting                              | What it does                                                                                                                                                                      | Options / range                      | Default     |
 | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | ----------- |
@@ -106,7 +106,7 @@ Decide where recordings are saved, what they are named, and where the embed link
 Split a long recording into fixed-duration parts, and set the defaults the manual split dialog starts from. Auto-split is desktop only and is not applied to merged multi-track recordings. See [Splitting](splitting.md).
 
 ![Audio splitting settings section with the auto-split toggle, part duration slider, part name suffix field, and delete source toggle](images/settings-audio-splitting.png)
-*Figure: The Audio splitting section with the Part duration slider.*
+_Figure: The Audio splitting section with the Part duration slider._
 
 | Setting                            | What it does                                                                                                                                                                                                 | Options / range                          | Default |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------- | ------- |
@@ -122,7 +122,7 @@ Split a long recording into fixed-duration parts, and set the defaults the manua
 Record from several input devices at once. The track configuration controls only appear once **Enable multi-track recording** is on, and the number of **Audio source for track N** dropdowns matches **Maximum tracks**. See [Multi-track recording](multi-track-recording.md).
 
 ![Multi-track recording settings section with the enable toggle, maximum tracks slider, output mode dropdown, and per-track source dropdowns](images/settings-multi-track.png)
-*Figure: The Multi-track recording section with one source dropdown per track.*
+_Figure: The Multi-track recording section with one source dropdown per track._
 
 | Setting                          | What it does                                                                                                                                                                                                                         | Options / range              | Default     |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------- | ----------- |
@@ -138,7 +138,7 @@ Record from several input devices at once. The track configuration controls only
 Replace Obsidian's built-in audio embed with the enhanced player. The two window toggles (**Show waveform**, **Markers and chapters**) only appear once **Enhanced audio player** is on. The player's other controls - playback speed (0.5×-3×), ±10 s skip, volume, mute, loop, time display, and the copy-timestamp-link button - are fixed and not configurable here. See [Audio player](audio-player.md).
 
 ![Audio player settings section with the enhanced player toggle, show waveform toggle, and markers and chapters toggle](images/settings-audio-player.png)
-*Figure: The Audio player section with the two window toggles revealed.*
+_Figure: The Audio player section with the two window toggles revealed._
 
 | Setting                   | What it does                                                                                                                                                                                                                 | Options / range | Default |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- | ------- |
@@ -153,7 +153,7 @@ Replace Obsidian's built-in audio embed with the enhanced player. The two window
 Turn recordings (and existing audio files) into text. Only **Enable transcription** is visible until you turn it on; then the engine fields, transcript output, and LLM sub-section appear. The fields below the engine dropdown change with the selected **Engine**. See [Transcription](transcription.md) for the full feature guide and [Speakers and diarization](transcription.md#speakers-and-diarization) for diarization behavior.
 
 ![Transcription settings section with enable toggle, transcribe after recording toggle, engine dropdown, language field, diarization toggle, and word timestamps toggle](images/settings-transcription-core.png)
-*Figure: The shared Transcription controls shown for every engine.*
+_Figure: The shared Transcription controls shown for every engine._
 
 These controls are shown for every engine (once transcription is enabled), except **Request timeout**, which is hidden for Local whisper.cpp:
 
@@ -172,7 +172,7 @@ These controls are shown for every engine (once transcription is enabled), excep
 Shown when **Engine** is **Whisper API (OpenAI-compatible)**. Works with OpenAI and any compatible host (for example Groq) by setting the base URL, key, and model. The 25 MB per-request limit is enforced by the API; files at or under it are uploaded in their original container, while larger files are resampled to 16 kHz mono, split into upload-sized WAV chunks, and stitched onto one timeline. No diarization. See [OpenAI Whisper API key](use-cases/openai-whisper-api-key.md) and [Groq Whisper setup](use-cases/groq-whisper-setup.md).
 
 ![Whisper API engine fields with upload chunk size slider, base URL, API key, and model picker](images/settings-transcription-whisper.png)
-*Figure: The Whisper API engine fields.*
+_Figure: The Whisper API engine fields._
 
 | Setting                  | What it does                                                                                                                                                 | Options / range                                                                                                 | Default                     |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- | --------------------------- |
@@ -181,12 +181,14 @@ Shown when **Engine** is **Whisper API (OpenAI-compatible)**. Works with OpenAI 
 | **Whisper API key**      | API key, stored in plugin data on this device. Shared with the OpenAI LLM provider as the OpenAI vendor key.                                                 | Secret text                                                                                                     | - (empty)                   |
 | **Whisper model**        | Model id, chosen from an editable list (pick, **Add custom model**, **Remove selected**) with a catalogue link. Must support `verbose_json` with timestamps. | Editable list (seeded: `whisper-1`, `whisper-large-v3`, `whisper-large-v3-turbo`, `distil-whisper-large-v3-en`) | `whisper-1`                 |
 
+Every model picker in this tab (Whisper, Deepgram, Gemini, and the LLM model below) is followed by its own **Add custom model** row: a text field with an **Add** button that appends a model id to the list, and a **Remove selected** button that removes the currently selected id.
+
 ### Engine: Deepgram
 
 Shown when **Engine** is **Deepgram**. Deepgram's official pre-recorded API. Files up to 2 GB are sent whole, so diarization keeps consistent speaker numbering across the entire recording. A free account includes a starter credit, then pay-as-you-go. See [Deepgram API key](use-cases/deepgram-api-key.md).
 
 ![Deepgram engine fields with base URL, API key, and model picker](images/settings-transcription-deepgram.png)
-*Figure: The Deepgram engine fields.*
+_Figure: The Deepgram engine fields._
 
 | Setting               | What it does                                                                                                                              | Options / range                                                 | Default                       |
 | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | ----------------------------- |
@@ -199,7 +201,7 @@ Shown when **Engine** is **Deepgram**. Deepgram's official pre-recorded API. Fil
 Shown when **Engine** is **Google Gemini**. Google's multimodal `generateContent` plus the File API. Files up to 2 GB are uploaded whole. Containers Gemini does not accept (for example `webm`, `m4a`) are decoded to 16 kHz mono WAV first. Recordings longer than 15 minutes are split into parts and stitched; a diarized split resets speaker numbering and surfaces a warning. See [Gemini API key](use-cases/gemini-api-key.md).
 
 ![Gemini engine fields with base URL, API key, and model picker](images/settings-transcription-gemini.png)
-*Figure: The Google Gemini engine fields.*
+_Figure: The Google Gemini engine fields._
 
 | Setting             | What it does                                                                        | Options / range                                                                                           | Default                                     |
 | ------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
@@ -212,7 +214,7 @@ Shown when **Engine** is **Google Gemini**. Google's multimodal `generateContent
 Shown when **Engine** is **Local whisper.cpp (desktop)**. Runs a local `whisper.cpp` binary fully offline - no network request, so **Request timeout** is hidden and there is no diarization. See [Local whisper.cpp](use-cases/local-whisper-cpp.md).
 
 ![Local whisper.cpp engine fields with binary path, model path, and extra arguments](images/settings-transcription-local-whisper.png)
-*Figure: The Local whisper.cpp engine fields.*
+_Figure: The Local whisper.cpp engine fields._
 
 | Setting                     | What it does                                                                                                                           | Options / range                                                                                                                         | Default   |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | --------- |
@@ -225,7 +227,7 @@ Shown when **Engine** is **Local whisper.cpp (desktop)**. Runs a local `whisper.
 Shown for every engine, below the engine fields. Controls where the transcript goes and how it is formatted in the note. The **File format** dropdown appears only when **Destination** is not "Insert into note". The speaker-related controls (**Include speakers**, **Merge speaker turns**, **Speaker format**) are disabled and greyed out whenever diarization is not in effect - that is, with an engine that cannot diarize, or with diarization turned off - because there are no speaker labels for them to act on.
 
 ![Transcript output settings with destination dropdown, file format, note heading, timestamp toggles, speaker toggles, and the format templates](images/settings-transcript-output.png)
-*Figure: The Transcript output controls and template fields.*
+_Figure: The Transcript output controls and template fields._
 
 | Setting                        | What it does                                                                                                                                                      | Options / range                                                                        | Default                        |
 | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------ |
@@ -245,7 +247,7 @@ Shown for every engine, below the engine fields. Controls where the transcript g
 Sub-section inside Transcription, below Transcript output. Optionally pass the transcript through an LLM to clean up, summarize, or apply a custom instruction. Only **Enable LLM post-processing** is visible until it is on; then the task, prompt, provider, key, model, and token controls appear. The prompt field changes with the **Task**, and the API key field and model picker change with the **LLM provider**. See [LLM post-processing](llm-post-processing.md) and [Anthropic API key](use-cases/anthropic-api-key.md).
 
 ![LLM post-processing settings with enable toggle, task dropdown, prompt editor, provider dropdown, base URL, API key, model picker, and max output tokens slider](images/settings-llm-post-processing.png)
-*Figure: The LLM post-processing sub-section with the Clean up task selected.*
+_Figure: The LLM post-processing sub-section with the Clean up task selected._
 
 | Setting                                        | What it does                                                                                                                                                                                                              | Options / range                                                                                                                                                                                                                                                    | Default                                                |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------ |
@@ -267,7 +269,7 @@ Sub-section inside Transcription, below Transcript output. Optionally pass the t
 Control the browser's input processing applied while recording, plus the live recording feedback shown in the status bar and on mobile. These input filters are applied during recording (and to the diagnostics test recording), unlike the after-the-fact [Audio cleanup](audio-cleanup.md) action. See [Recording](recording.md).
 
 ![Audio processing and feedback settings with noise suppression, echo cancellation, automatic gain control, input level meter, recording stats, and mobile recording banner toggles](images/settings-audio-processing-feedback.png)
-*Figure: The Audio processing & feedback section.*
+_Figure: The Audio processing & feedback section._
 
 | Setting                     | What it does                                                                          | Options / range | Default |
 | --------------------------- | ------------------------------------------------------------------------------------- | --------------- | ------- |
@@ -285,7 +287,7 @@ Control the browser's input processing applied while recording, plus the live re
 Sub-heading at the end of **Audio processing & feedback**. These values prefill the on-demand **Clean up audio** dialog opened from the file/embed context menu; each run can override them. Cleanup writes a processed copy and never changes live recording. Each row pairs a slider (the parameter value) with a toggle (default on/off). See the full [Audio cleanup guide](audio-cleanup.md).
 
 ![Audio cleanup defaults settings with high-pass filter, noise gate, and loudness leveling each as a slider plus a toggle](images/settings-audio-cleanup-defaults.png)
-*Figure: The Audio cleanup defaults, each a slider-plus-toggle pair.*
+_Figure: The Audio cleanup defaults, each a slider-plus-toggle pair._
 
 | Setting               | What it does                                                                                | Options / range                          | Default       |
 | --------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------- | ------------- |
@@ -300,7 +302,7 @@ Sub-heading at the end of **Audio processing & feedback**. These values prefill 
 Tools for verifying your setup and gathering information for bug reports. See [Troubleshooting](troubleshooting.md) and the [Bug reporting guide](BUG_REPORTING_GUIDE.md).
 
 ![Diagnostics settings with the Start test button, Show info button, and Debug mode toggle](images/settings-diagnostics.png)
-*Figure: The Diagnostics section.*
+_Figure: The Diagnostics section._
 
 | Setting            | What it does                                                                                                                                                                                                                                                                                                                                                                                                       | Options / range         | Default |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------- | ------- |
@@ -309,7 +311,7 @@ Tools for verifying your setup and gathering information for bug reports. See [T
 | **Debug mode**     | Enable verbose logs (prefixed `[AudioRecorder]`) for troubleshooting recording issues.                                                                                                                                                                                                                                                                                                                             | On / Off                | Off     |
 
 ![System info modal showing diagnostics output and a Copy to clipboard button](images/modal-system-info.png)
-*Figure: The System info modal opened from Diagnostics.*
+_Figure: The System info modal opened from Diagnostics._
 
 ---
 

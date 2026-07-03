@@ -33,7 +33,7 @@ Gemini reads the audio itself rather than running a dedicated speech model, whic
 | Reused for              | Gemini [LLM post-processing](../llm-post-processing.md) (same key) |
 
 ![Transcription settings with the engine set to Google Gemini, showing the Gemini base URL, API key, and model fields](../images/settings-transcription-gemini.png)
-*Figure: The Transcription settings section after you pick Google Gemini as the engine.*
+_Figure: The Transcription settings section after you pick Google Gemini as the engine._
 
 ---
 
@@ -46,7 +46,7 @@ Gemini reads the audio itself rather than running a dedicated speech model, whic
 5. Keep the AI Studio tab open until you have pasted the key into Obsidian - for security, Google may not show the full key again later.
 
 ![Google AI Studio API keys page with the Create API key button and a generated key](../images/gemini-aistudio-create-key.png)
-*Figure: Creating and copying a Gemini API key in Google AI Studio.*
+_Figure: Creating and copying a Gemini API key in Google AI Studio._
 
 > Your free-tier usage and any billing live in Google AI Studio / Google Cloud. If a request is rejected for quota, check your usage there.
 
@@ -66,7 +66,7 @@ In Obsidian, open **Settings > Advanced Audio Recorder** and scroll to the **Tra
 8. (Optional) Turn on **Transcribe after recording** to transcribe every new recording automatically.
 
 ![Gemini model picker showing gemini-2.5-flash selected, with Add custom model and Remove selected buttons and a catalogue link](../images/settings-gemini-model-picker.png)
-*Figure: The Gemini model picker with the default model selected and the catalogue link.*
+_Figure: The Gemini model picker with the default model selected and the catalogue link._
 
 The table below summarizes the fields you set:
 
@@ -94,13 +94,13 @@ A few behaviors are specific to Gemini and worth knowing before you transcribe a
 - **Word-level timestamps** appear in **JSON** file output only, not in the in-note transcript.
 
 ![Transcription progress dialog with a progress bar, elapsed timer, Cancel, and Minimize buttons](../images/transcription-progress-dialog.png)
-*Figure: The transcription progress dialog; Minimize sends the job to the status bar so you can keep working.*
+_Figure: The transcription progress dialog; Minimize sends the job to the status bar so you can keep working._
 
 ---
 
 ## Reuse the same key for LLM post-processing
 
-Gemini is also one of the three [LLM post-processing](../llm-post-processing.md) providers, alongside OpenAI and Anthropic. When you select **Google Gemini** as the LLM provider, the plugin **reuses the same Gemini API key** - the key field there reads *"Shared with the Gemini transcription engine - set it in either place."* You do not need a second key.
+Gemini is also one of the three [LLM post-processing](../llm-post-processing.md) providers, alongside OpenAI and Anthropic. When you select **Google Gemini** as the LLM provider, the plugin **reuses the same Gemini API key** - the key field there reads _"Shared with the Gemini transcription engine - set it in either place."_ You do not need a second key.
 
 To enable it:
 
@@ -111,7 +111,7 @@ To enable it:
 5. Pick a model under the Gemini LLM model picker (default `gemini-2.5-flash`), and adjust **Max output tokens** if needed (default 4096, range 512-32000).
 
 ![LLM post-processing subsection set to the Google Gemini provider with the shared-key notice](../images/settings-llm-gemini-provider.png)
-*Figure: The LLM post-processing subsection with Google Gemini selected; the API key is shared with transcription.*
+_Figure: The LLM post-processing subsection with Google Gemini selected; the API key is shared with transcription._
 
 See the [LLM post-processing guide](../llm-post-processing.md) for the full set of tasks, prompts, and provider options.
 
@@ -121,11 +121,11 @@ See the [LLM post-processing guide](../llm-post-processing.md) for the full set 
 
 1. Open a note and record a short clip, or open an existing audio file in your vault.
 2. Make sure Gemini is the selected engine and your key is pasted in.
-3. With an audio file active, run **Transcribe active audio file** from the command palette (this command appears only when transcription is enabled and the active file is audio).
+3. With an audio file active, run **Transcribe audio** from the command palette (this command appears only when transcription is enabled and the active file is audio).
 4. Watch the progress dialog. When it finishes, the transcript is inserted into the note and/or written to a sidecar file, depending on your **Transcript output** settings.
 
 ![Status bar showing a minimized transcription job in progress](../images/status-bar-transcribing.png)
-*Figure: A transcription job minimized to the status bar; click it to reopen the dialog.*
+_Figure: A transcription job minimized to the status bar; click it to reopen the dialog._
 
 If a transcript appears with speaker labels (when diarization is on) and clickable timecodes, Gemini is working.
 
@@ -133,15 +133,15 @@ If a transcript appears with speaker labels (when diarization is on) and clickab
 
 ## Troubleshooting
 
-| Symptom                                                     | Likely cause and fix                                                                                                                                                 |
-| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `API key not valid` / `permission denied` / `401` / `403`   | The key is wrong, truncated, or restricted. Recopy it from [AI Studio](https://aistudio.google.com/apikey) into **Gemini API key**, with no spaces.                  |
-| `429` / quota or rate-limit error                           | You hit the free-tier or project quota. Wait, or enable billing in Google AI Studio / Google Cloud. Try `gemini-2.5-flash` (cheaper) if you were using Pro.          |
-| `404` / model not found                                     | The model id is unknown to your account. Pick `gemini-2.5-flash` or another id from the [model catalogue](https://ai.google.dev/gemini-api/docs/models).             |
-| Speaker numbers seem to restart partway through a long file | Expected: a recording over 15 minutes is split and diarization resets per part (a warning is shown). Use [Deepgram](deepgram-api-key.md) for whole-file diarization. |
-| Request times out on a long recording                       | Raise **Request timeout** (up to 60 minutes), or split the recording first. See [Splitting recordings](../splitting.md).                                             |
-| Transcript is empty or truncated                            | The response hit the model's output-token limit. Use a shorter recording, split it, or choose a model with a larger output limit, as the error suggests.             |
-| Connection or network errors                                | Gemini is a cloud engine and needs internet. For fully offline transcription, use [local whisper.cpp](local-whisper-cpp.md).                                         |
+| Symptom                                                     | Likely cause and fix                                                                                                                                                                                                                                                                                          |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `API key not valid` / `permission denied` / `401` / `403`   | The key is wrong, truncated, or restricted. Recopy it from [AI Studio](https://aistudio.google.com/apikey) into **Gemini API key**, with no spaces.                                                                                                                                                           |
+| `429` / quota or rate-limit error                           | You hit the free-tier or project quota. Wait, or enable billing in Google AI Studio / Google Cloud. Try `gemini-2.5-flash` (cheaper) if you were using Pro.                                                                                                                                                   |
+| `404` / model not found                                     | The model id is unknown to your account. Pick `gemini-2.5-flash` or another id from the [model catalogue](https://ai.google.dev/gemini-api/docs/models).                                                                                                                                                      |
+| Speaker numbers seem to restart partway through a long file | Expected: a recording over 15 minutes is split and diarization resets per part (a warning is shown). Use [Deepgram](deepgram-api-key.md) for whole-file diarization.                                                                                                                                          |
+| Request times out on a long recording                       | Raise **Request timeout** (up to 60 minutes), or split the recording first. See [Splitting recordings](../splitting.md).                                                                                                                                                                                      |
+| Transcript is empty or truncated                            | The response hit the model's output-token limit. The plugin retries an overrunning part automatically in smaller halves (down to one-minute segments; each retry is a normal billed request), so a persisting error means even that failed. Choose a model with a larger output limit or split the recording. |
+| Connection or network errors                                | Gemini is a cloud engine and needs internet. For fully offline transcription, use [local whisper.cpp](local-whisper-cpp.md).                                                                                                                                                                                  |
 
 > **Key privacy.** Your Gemini API key is stored in the plugin's `data.json` on this device and is never written to diagnostics. Avoid syncing `data.json` to untrusted locations. If you need everything to stay offline, use the [local whisper.cpp engine](local-whisper-cpp.md) instead.
 

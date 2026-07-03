@@ -5,9 +5,9 @@
 - [What it is and when to use it](#what-it-is-and-when-to-use-it)
 - [Setup](#setup)
 - [Output modes](#output-modes)
-  - [Single file (mixed)](#single-file-mixed)
-  - [Multiple files (one per track)](#multiple-files-one-per-track)
-  - [File naming in Multiple files mode](#file-naming-in-multiple-files-mode)
+    - [Single file (mixed)](#single-file-mixed)
+    - [Multiple files (one per track)](#multiple-files-one-per-track)
+    - [File naming in Multiple files mode](#file-naming-in-multiple-files-mode)
 - [Behavior](#behavior)
 - [Memory notes for merged output](#memory-notes-for-merged-output)
 - [Interaction with automatic splitting](#interaction-with-automatic-splitting)
@@ -43,7 +43,7 @@ Multi-track recording is configured under **Settings > Advanced Audio Recorder >
 5. For each track, assign an **Audio source for track N** - pick the input device from the dropdown. There is one dropdown per track, numbered up to the **Maximum tracks** value. The device list auto-populates and refreshes as devices are connected or disconnected.
 
 ![Multi-track recording settings with the enable toggle on, the Maximum tracks slider, the Output mode dropdown, and several "Audio source for track N" device dropdowns](images/settings-multi-track.png)
-*Figure: the Multi-track recording settings section with multiple per-track device dropdowns shown.*
+_Figure: the Multi-track recording settings section with multiple per-track device dropdowns shown._
 
 Once configured, start recording exactly as you normally do - the **microphone ribbon icon** or the **Start/stop recording** command. All assigned tracks begin together. See [Recording](recording.md) for the recording workflow, status bar, and save behavior.
 
@@ -67,14 +67,14 @@ Every track is combined into a single mixed file at your configured [format](for
 Because the tracks are mixed only once at stop, **merged output cannot be auto-split** - see [Interaction with automatic splitting](#interaction-with-automatic-splitting). For very long mixed sessions, mind the [memory notes](#memory-notes-for-merged-output) below.
 
 ![Single-file output mode selected in the Output mode dropdown](images/settings-multi-track-single.png)
-*Figure: the Output mode dropdown set to Single file.*
+_Figure: the Output mode dropdown set to Single file._
 
 ### Multiple files (one per track)
 
 Each track is saved as its **own separate file** - no mixing happens. You get one file per track, each at your configured format and bitrate, and a link to **each** part file is inserted into the note when the recording stops. This mode keeps memory low (nothing is decoded for a mixdown) and is the recommended choice for long multi-track sessions.
 
 ![Multiple-files output mode selected in the Output mode dropdown](images/settings-multi-track-multiple.png)
-*Figure: the Output mode dropdown set to Multiple files.*
+_Figure: the Output mode dropdown set to Multiple files._
 
 ### File naming in Multiple files mode
 
@@ -94,7 +94,7 @@ When **two tracks use the same device**, their source names would be identical a
 > **There is no toggle for this.** Using the source/device name (with the track number appended to disambiguate) is the **default and only** behavior in the current version. You do not need to enable anything, and there is no "use source names" setting in the UI.
 
 ![File Explorer showing several per-track recording files named after their source devices](images/multi-track-files-explorer.png)
-*Figure: per-track files in the File Explorer, each named after its source device.*
+_Figure: per-track files in the File Explorer, each named after its source device._
 
 ---
 

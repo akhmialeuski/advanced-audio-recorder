@@ -3,7 +3,7 @@
 **Advanced Audio Recorder** is a desktop-only [Obsidian](https://obsidian.md) plugin that turns your vault into a full-featured voice recorder, dictation tool, and meeting recorder. Record audio straight into a note, capture several microphones at once, save in any of eight formats, convert and split files, play recordings back in an enhanced waveform player with markers and chapters, clean up noisy audio on demand, and transcribe speech to text with four engines (OpenAI-compatible Whisper, Deepgram, Google Gemini, or a fully offline local whisper.cpp) - with optional LLM post-processing to clean up or summarize the transcript. It requires Obsidian **1.6.6 or newer**.
 
 ![The enhanced audio player embedded in a note, showing the waveform seek bar, transport controls, and a marker list](images/index-hero-player.png)
-*Figure: A recording playing back in the enhanced waveform player with markers and chapters.*
+_Figure: A recording playing back in the enhanced waveform player with markers and chapters._
 
 - [What is Advanced Audio Recorder?](#what-is-advanced-audio-recorder)
 - [Highlights](#highlights)
@@ -125,7 +125,7 @@ A 30-second quick start. For the full walkthrough, see [Getting started](getting
 5. An audio embed link - `![[recording-….webm]]` - is inserted into your active note. Click it to play it back in the [enhanced player](audio-player.md).
 
 ![The plugin's Settings tab with the documentation callout at the top and the Audio input section below it](images/index-settings-tab.png)
-*Figure: The Settings tab, where every recording, playback, and transcription option lives.*
+_Figure: The Settings tab, where every recording, playback, and transcription option lives._
 
 The plugin assigns **no default hotkeys** to avoid conflicts - assign your own under **Settings > Hotkeys**. For a complete map of every setting, see the [Settings reference](settings-reference.md).
 

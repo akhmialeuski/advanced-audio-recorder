@@ -3,25 +3,25 @@
 This guide helps you diagnose and fix problems with Advanced Audio Recorder. It covers the three built-in diagnostics tools - **Test recording**, **System info**, and **Debug mode** - and then walks through the most common problems with concrete fixes. When you cannot solve an issue yourself, the last sections explain exactly what to collect and where to report it.
 
 - [Diagnostics tools](#diagnostics-tools)
-  - [Test recording](#test-recording)
-  - [System info](#system-info)
-  - [Debug mode](#debug-mode)
+    - [Test recording](#test-recording)
+    - [System info](#system-info)
+    - [Debug mode](#debug-mode)
 - [Common problems and fixes](#common-problems-and-fixes)
-  - [No sound is recorded](#no-sound-is-recorded)
-  - [A recording format is not available](#a-recording-format-is-not-available)
-  - [Conversion fails](#conversion-fails)
-  - [Recording is slow to save](#recording-is-slow-to-save)
-  - [Waveform not showing or player not enhanced](#waveform-not-showing-or-player-not-enhanced)
-  - [Transcription errors](#transcription-errors)
-  - [Audio cleanup errors](#audio-cleanup-errors)
-  - [Settings not saving](#settings-not-saving)
+    - [No sound is recorded](#no-sound-is-recorded)
+    - [A recording format is not available](#a-recording-format-is-not-available)
+    - [Conversion fails](#conversion-fails)
+    - [Recording is slow to save](#recording-is-slow-to-save)
+    - [Waveform not showing or player not enhanced](#waveform-not-showing-or-player-not-enhanced)
+    - [Transcription errors](#transcription-errors)
+    - [Audio cleanup errors](#audio-cleanup-errors)
+    - [Settings not saving](#settings-not-saving)
 - [Collecting diagnostics for a bug report](#collecting-diagnostics-for-a-bug-report)
 - [Where to report](#where-to-report)
 
 All three diagnostics tools live at the bottom of the settings tab, under **Settings > Advanced Audio Recorder > Diagnostics**.
 
 ![The Diagnostics section of the settings tab with Test recording, System info, and Debug mode](images/settings-diagnostics.png)
-*Figure: the Diagnostics section, with the Test recording control, the System info "Show info" button, and the Debug mode toggle.*
+_Figure: the Diagnostics section, with the Test recording control, the System info "Show info" button, and the Debug mode toggle._
 
 ---
 
@@ -48,7 +48,7 @@ What it tells you:
 The test uses exactly the same input device, sample rate, bitrate, and browser input processing (noise suppression, echo cancellation, automatic gain control) as a real recording, so it is a faithful preview. Nothing is written to disk - when you leave the section the clip is discarded.
 
 ![Test recording control after a successful 5-second clip, showing the inline playback player](images/diagnostics-test-recording.png)
-*Figure: a completed test recording with the inline audio player ready to play the captured clip back.*
+_Figure: a completed test recording with the inline audio player ready to play the captured clip back._
 
 ### System info
 
@@ -73,7 +73,7 @@ The snapshot contains the following groups:
 The snapshot never contains your API keys, transcripts, or note contents - only the technical configuration listed above. It is safe to share in a public issue.
 
 ![The System diagnostics modal showing the formatted JSON snapshot and the Copy to clipboard button](images/modal-system-info.png)
-*Figure: the System diagnostics modal with the full JSON snapshot and the Copy to clipboard button.*
+_Figure: the System diagnostics modal with the full JSON snapshot and the Copy to clipboard button._
 
 ### Debug mode
 
@@ -91,7 +91,7 @@ Notes:
 - If your environment blocks the developer console, capture the System info JSON instead and describe the symptoms in detail; that is usually enough for a first diagnosis.
 
 ![The developer console filtered to entries beginning with the AudioRecorder tag](images/diagnostics-debug-console.png)
-*Figure: the developer console showing verbose log lines prefixed with [AudioRecorder] after Debug mode is enabled.*
+_Figure: the developer console showing verbose log lines prefixed with [AudioRecorder] after Debug mode is enabled._
 
 ---
 
@@ -103,10 +103,11 @@ The recording finishes but the file is silent, or **Test recording** plays back 
 
 1. Run **Test recording** (see [above](#test-recording)) to isolate the problem to capture rather than playback.
 2. Check the **input device** through either surface - both write your choice to settings:
-   - **Settings > Audio input** is the settings UI; pick the correct microphone from the dropdown. A freshly plugged-in device may need the dropdown to refresh - it auto-refreshes on device changes.
-   - **Select audio input device** is a command that opens a *separate* quick-pick modal listing detected microphones; choosing one saves it immediately and shows a confirmation notice.
+    - **Settings > Audio input** is the settings UI; pick the correct microphone from the dropdown. A freshly plugged-in device may need the dropdown to refresh - it auto-refreshes on device changes.
+    - **Select audio input device** is a command that opens a _separate_ quick-pick modal listing detected microphones; choosing one saves it immediately and shows a confirmation notice.
 
-   See [Switching the input device](recording.md#switching-the-input-device) for details.
+    See [Switching the input device](recording.md#switching-the-input-device) for details.
+
 3. Confirm the OS and Obsidian both have **microphone permission**. On macOS, check **System Settings > Privacy & Security > Microphone**. On Windows, check **Settings > Privacy > Microphone**.
 4. Make sure the microphone is not muted in hardware or in the OS mixer, and that the input level is non-zero.
 5. With **Input level meter** enabled (**Settings > Audio processing & feedback**), watch the meter move when you speak - a flat meter means no signal is reaching the plugin.
@@ -196,7 +197,7 @@ Other tips:
 See also: [Transcription](transcription.md), [LLM post-processing](llm-post-processing.md), and the per-engine guides: [OpenAI / Whisper API](use-cases/openai-whisper-api-key.md), [Groq](use-cases/groq-whisper-setup.md), [Deepgram](use-cases/deepgram-api-key.md), [Gemini](use-cases/gemini-api-key.md), [Anthropic / Claude](use-cases/anthropic-api-key.md), [Local whisper.cpp](use-cases/local-whisper-cpp.md).
 
 ![The transcription progress dialog with a progress bar, elapsed timer, Cancel, and Minimize buttons](images/transcription-progress-dialog.png)
-*Figure: the transcription progress dialog showing the progress bar, elapsed timer, and the Cancel and Minimize buttons.*
+_Figure: the transcription progress dialog showing the progress bar, elapsed timer, and the Cancel and Minimize buttons._
 
 ### Audio cleanup errors
 

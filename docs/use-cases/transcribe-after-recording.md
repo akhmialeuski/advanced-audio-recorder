@@ -5,11 +5,11 @@ This guide sets up a hands-off workflow: you stop a recording, and the plugin im
 - [Goal](#goal)
 - [Prerequisites](#prerequisites)
 - [Step-by-step setup](#step-by-step-setup)
-  - [1. Enable transcription](#1-enable-transcription)
-  - [2. Turn on "Transcribe after recording"](#2-turn-on-transcribe-after-recording)
-  - [3. Set your defaults](#3-set-your-defaults)
-  - [4. Record](#4-record)
-  - [5. Watch the transcription dialog auto-start](#5-watch-the-transcription-dialog-auto-start)
+    - [1. Enable transcription](#1-enable-transcription)
+    - [2. Turn on "Transcribe after recording"](#2-turn-on-transcribe-after-recording)
+    - [3. Set your defaults](#3-set-your-defaults)
+    - [4. Record](#4-record)
+    - [5. Watch the transcription dialog auto-start](#5-watch-the-transcription-dialog-auto-start)
 - [Where the transcript lands](#where-the-transcript-lands)
 - [Important: only the first saved file is transcribed](#important-only-the-first-saved-file-is-transcribed)
 - [Tips](#tips)
@@ -19,7 +19,7 @@ This guide sets up a hands-off workflow: you stop a recording, and the plugin im
 
 Record audio, stop, and get a finished transcript in your note automatically. The plugin opens its transcription dialog the moment a recording is saved, runs the job using your saved settings, and inserts the result into the note where the recording link went. You stay in control: the dialog still shows progress and a **Cancel** button, and you can minimize it to keep working while the job finishes.
 
-This is the same engine and output described in [Transcription](../transcription.md) - the only difference is that the run starts on its own instead of from the **Transcribe active audio file** command or the right-click menu.
+This is the same engine and output described in [Transcription](../transcription.md) - the only difference is that the run starts on its own instead of from the **Transcribe audio** command or the right-click menu.
 
 ---
 
@@ -37,7 +37,7 @@ Before automatic transcription can do anything useful, you need a transcription 
 | Google Gemini                 | [Gemini API key](gemini-api-key.md)                   | Yes          | Yes         |
 | Local `whisper.cpp` (offline) | [Local whisper.cpp](local-whisper-cpp.md)             | No           | No          |
 
-2. **Confirm it works once, manually.** Open any audio file, run **Transcribe active audio file** from the command palette (or **Transcribe audio** from the right-click menu), and make sure a transcript comes back. Automatic transcription uses the exact same configuration, so if a manual run succeeds, the automatic one will too.
+2. **Confirm it works once, manually.** Open any audio file, run **Transcribe audio** from the command palette (or from the right-click menu), and make sure a transcript comes back. Automatic transcription uses the exact same configuration, so if a manual run succeeds, the automatic one will too.
 
 3. (Optional) **Decide on output formatting.** Destination, file format, diarization, and the in-note template all come from your settings. Set them now so the automatic transcript looks the way you want - see [Transcription](../transcription.md) for the full output options and [LLM post-processing](../llm-post-processing.md) if you also want an automatic clean-up or summary.
 
@@ -50,7 +50,7 @@ Before automatic transcription can do anything useful, you need a transcription 
 All of this lives under **Settings > Advanced Audio Recorder > Transcription**.
 
 ![The Transcription settings section with the Enable transcription and Transcribe after recording toggles](../images/settings-transcription-after-recording.png)
-*Figure: the two toggles at the top of the Transcription section that drive the automatic workflow.*
+_Figure: the two toggles at the top of the Transcription section that drive the automatic workflow._
 
 ### 1. Enable transcription
 
@@ -90,7 +90,7 @@ Record as you normally would - see [Recording](../recording.md) for the full wor
 The recording saves, the audio embed link (`![[recording-….webm]]`) is inserted into your active note, and the automatic transcription begins.
 
 ![The status bar showing the save-progress stages before transcription begins](../images/status-bar-saving.png)
-*Figure: the recording is flushed and written to the vault first; transcription starts once the save completes.*
+_Figure: the recording is flushed and written to the vault first; transcription starts once the save completes._
 
 ### 5. Watch the transcription dialog auto-start
 
@@ -102,7 +102,7 @@ As soon as the first file is saved, the **Transcribe audio** dialog opens and st
 - A **Minimize** button to send the job to the status bar and keep working (see [Tips](#tips)).
 
 ![The Transcribe audio dialog auto-running with progress bar, elapsed timer, Cancel, and Minimize](../images/transcription-dialog-autostart.png)
-*Figure: the dialog opens and runs by itself after a recording is saved; you can cancel or minimize at any time.*
+_Figure: the dialog opens and runs by itself after a recording is saved; you can cancel or minimize at any time._
 
 When the job finishes, the dialog closes (or, if you minimized it, the status-bar entry clears) and the transcript is written to the configured destination.
 
@@ -120,7 +120,7 @@ This matters for two reasons:
 If the target note cannot be written to - for example the recording was made while no Markdown note was active, so there is no note to insert into - a note-only destination is automatically downgraded to a file so the transcript is never lost. The sidecar transcript file is written next to the audio instead.
 
 ![A note showing the recording embed followed by the inserted transcript under its heading](../images/note-with-transcript.png)
-*Figure: the transcript lands under its heading in the same note as the recording, with clickable timecode links.*
+_Figure: the transcript lands under its heading in the same note as the recording, with clickable timecode links._
 
 ---
 
@@ -140,7 +140,7 @@ The reason: a multi-track session in **Multiple files** mode produces several tr
 **To transcribe any other file manually**, use either:
 
 - The **right-click > Transcribe audio** menu on the file in the File Explorer, an audio embed link, or the embedded player, or
-- The **Transcribe active audio file** command from the command palette, with the audio file open as the active pane.
+- The **Transcribe audio** command from the command palette, with the audio file open as the active pane.
 
 Both open the same **Transcribe audio** dialog - the difference is that you press **Transcribe** yourself instead of it auto-starting. For multi-track per-track output, pick the track you actually want a transcript of; for auto-split, transcribe each part you need. See [Multi-track recording](../multi-track-recording.md) and [Recording](../recording.md) for how those sessions are saved.
 
@@ -150,8 +150,8 @@ Both open the same **Transcribe audio** dialog - the difference is that you pres
 
 - **Minimize and keep working.** Press **Minimize** in the dialog to send the running job to the status bar. Click the status-bar entry to reopen the full dialog. This is ideal for long recordings on a paid engine - you do not have to sit and watch.
 
-  ![The status bar showing a minimized transcription job with its progress](../images/status-bar-transcription-progress.png)
-  *Figure: a minimized transcription reports its progress in the status bar; click it to restore the dialog.*
+    ![The status bar showing a minimized transcription job with its progress](../images/status-bar-transcription-progress.png)
+    _Figure: a minimized transcription reports its progress in the status bar; click it to restore the dialog._
 
 - **Recording takes precedence in the status bar.** If you start a new recording while a previous transcription is minimized, the status bar shows the **recording controls** instead of the transcription progress, because the recording controls need to be reachable. The transcription keeps running in the background and its status-bar entry returns once recording goes back to idle.
 

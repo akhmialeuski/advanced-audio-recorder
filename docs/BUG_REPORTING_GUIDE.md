@@ -37,7 +37,7 @@ Describe what you expected to happen and what actually happened instead.
 The plugin includes a built-in diagnostics tool that collects all relevant environment information in one step.
 
 ![System info modal showing diagnostics output and a Copy to clipboard button](images/modal-system-info.png)
-*Figure: The System info modal opened from the Diagnostics settings section.*
+_Figure: The System info modal opened from the Diagnostics settings section._
 
 **How to collect:**
 
@@ -48,6 +48,7 @@ The plugin includes a built-in diagnostics tool that collects all relevant envir
 5. Paste the copied JSON into your bug report.
 
 The diagnostics output includes:
+
 - Plugin settings (format, bitrate, sample rate, save folder, multi-track config).
 - Environment info (Obsidian version, Electron version, platform, architecture).
 - Audio devices (all detected input and output devices).
@@ -59,7 +60,7 @@ The diagnostics output includes:
 If the bug involves a specific audio file (e.g., playback issues, corruption, wrong format), collect the file metadata:
 
 ![Audio file info modal showing file metadata and a Copy as Markdown button](images/modal-audio-file-info.png)
-*Figure: The Audio file info modal opened from the file context menu.*
+_Figure: The Audio file info modal opened from the file context menu._
 
 1. In the **File Explorer** or in the **Editor**, right-click on the audio file.
 2. Select **Audio file info** from the context menu.
@@ -87,6 +88,7 @@ If the issue is visual (e.g., status bar glitch, modal rendering problem), attac
 > **Title:** Recording produces empty file when using FLAC format
 >
 > **Steps to reproduce:**
+>
 > 1. Set recording format to FLAC in plugin settings.
 > 2. Start a recording and speak for 10 seconds.
 > 3. Stop the recording.
@@ -97,6 +99,7 @@ If the issue is visual (e.g., status bar glitch, modal rendering problem), attac
 > **Actual:** The file is empty (0 bytes). No error message is shown.
 >
 > **Audio file info:**
+>
 > - File Name: `recording-1710000000000.flac`
 > - File Size: `0 Bytes`
 > - Duration: `00:00:00`
@@ -106,7 +109,7 @@ If the issue is visual (e.g., status bar glitch, modal rendering problem), attac
 > - Sample Rate: `0 Hz`
 > - Channels: `unknown`
 >
-> **System diagnostics:** *(JSON pasted here)*
+> **System diagnostics:** _(JSON pasted here)_
 
 ## Where to report
 

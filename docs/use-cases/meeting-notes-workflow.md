@@ -4,11 +4,11 @@ This is an end-to-end workflow that ties several features together: you record a
 
 - [Goal](#goal)
 - [Recommended setup](#recommended-setup)
-  - [1. Pick a diarizing engine](#1-pick-a-diarizing-engine)
-  - [2. Enable speaker diarization](#2-enable-speaker-diarization)
-  - [3. Choose where the transcript goes](#3-choose-where-the-transcript-goes)
-  - [4. Turn on LLM post-processing with the Summarize task](#4-turn-on-llm-post-processing-with-the-summarize-task)
-  - [5. (Optional) Multiple microphones](#5-optional-multiple-microphones)
+    - [1. Pick a diarizing engine](#1-pick-a-diarizing-engine)
+    - [2. Enable speaker diarization](#2-enable-speaker-diarization)
+    - [3. Choose where the transcript goes](#3-choose-where-the-transcript-goes)
+    - [4. Turn on LLM post-processing with the Summarize task](#4-turn-on-llm-post-processing-with-the-summarize-task)
+    - [5. (Optional) Multiple microphones](#5-optional-multiple-microphones)
 - [Steps: run the workflow](#steps-run-the-workflow)
 - [Cleanup tips for noisy rooms and large files](#cleanup-tips-for-noisy-rooms-and-large-files)
 - [End-to-end checklist](#end-to-end-checklist)
@@ -27,7 +27,7 @@ By the end of this guide you will be able to:
 You configure this **once**. After that, every meeting is: click record > talk > click stop > read the summary.
 
 ![A finished meeting note showing an embedded waveform player at the top, a diarized transcript with speaker labels and timecodes, and an LLM summary with action items below](../images/use-case-meeting-finished-note.png)
-*Figure: The end result - one note with the audio player, a diarized transcript, and an LLM-written summary with action items.*
+_Figure: The end result - one note with the audio player, a diarized transcript, and an LLM-written summary with action items._
 
 ---
 
@@ -53,7 +53,7 @@ For a multi-hour meeting, Deepgram sends the whole file in one request, so speak
 3. Leave **Model** on its default (`nova-3` for Deepgram, `gemini-2.5-flash` for Gemini) unless you have a reason to change it.
 
 ![Transcription settings with the Engine dropdown open, showing Whisper API, Deepgram, Google Gemini, and Local whisper.cpp options](../images/settings-meeting-engine-choice.png)
-*Figure: Pick a diarizing engine - only Deepgram and Google Gemini produce speaker labels.*
+_Figure: Pick a diarizing engine - only Deepgram and Google Gemini produce speaker labels._
 
 ### 2. Enable speaker diarization
 
@@ -69,7 +69,7 @@ When diarization is on, several speaker-related options unlock further down in t
 | **Speaker format**      | `**{speaker}**` | The template that renders each label (bold by default).          |
 
 ![Speaker diarization toggle turned on in the Transcription settings, with the speaker-related output options visible below](../images/settings-meeting-diarization.png)
-*Figure: With diarization on, the Include speakers, Merge speaker turns, and Speaker format options become available.*
+_Figure: With diarization on, the Include speakers, Merge speaker turns, and Speaker format options become available._
 
 ### 3. Choose where the transcript goes
 
@@ -96,7 +96,7 @@ The in-note formatting defaults are already tuned for meetings:
 | **Include speakers**           | On              | Shows the speaker label (diarization must be on).          |
 
 ![Transcript output settings with Destination set to Note and file and File format set to JSON](../images/settings-meeting-transcript-output.png)
-*Figure: Note and file with JSON gives you a readable in-note transcript plus a reusable sidecar.*
+_Figure: Note and file with JSON gives you a readable in-note transcript plus a reusable sidecar._
 
 See [Transcription](../transcription.md) for the complete output reference, and [Settings reference](../settings-reference.md) for every field and template.
 
@@ -109,15 +109,15 @@ This is what turns a wall of transcript text into a usable summary with action i
 3. Each task carries its own editable prompt. The **Summarize** prompt ships with a sensible default and has the transcript language appended automatically - edit it if you want a specific structure (for example, "list decisions, then action items with owners").
 4. Pick an **LLM provider**: **OpenAI**, **Anthropic (Claude)**, or **Google Gemini**.
 5. Confirm the **API key**. The plugin shares keys where the same vendor does both jobs:
-   - **OpenAI** LLM reuses your **Whisper API** key.
-   - **Gemini** LLM reuses your **Gemini** key.
-   - **Anthropic (Claude)** has its **own** dedicated key - see [Anthropic / Claude](anthropic-api-key.md).
+    - **OpenAI** LLM reuses your **Whisper API** key.
+    - **Gemini** LLM reuses your **Gemini** key.
+    - **Anthropic (Claude)** has its **own** dedicated key - see [Anthropic / Claude](anthropic-api-key.md).
 6. Leave **Max output tokens** at its default of **4096** (range 512-32000) unless your summaries are getting cut off, in which case raise it.
 
 Provider model defaults are **OpenAI** `gpt-4o-mini`, **Anthropic** `claude-opus-4-8`, and **Gemini** `gemini-2.5-flash`. The **LLM base URL** auto-switches to the provider default unless you have typed a custom one.
 
 ![LLM post-processing settings with Enable on, Task set to Summarize, the editable summary prompt, and the LLM provider dropdown](../images/settings-meeting-llm-summarize.png)
-*Figure: Enable LLM post-processing, choose the Summarize task, and pick a provider - the summary is written into the note alongside the transcript.*
+_Figure: Enable LLM post-processing, choose the Summarize task, and pick a provider - the summary is written into the note alongside the transcript._
 
 A practical pairing: use **Gemini** for both transcription and the summary so one key covers everything, or **Deepgram** for the diarized transcript plus **OpenAI** or **Anthropic** for the summary. See [LLM post-processing](../llm-post-processing.md) for the full reference.
 
@@ -142,30 +142,30 @@ Once the setup above is done, each meeting is fast.
 1. **Open the note** where you want the meeting captured, and place the cursor where the audio embed should go.
 2. **Start recording.** Click the **microphone icon** in the left ribbon, or run **Start/stop recording** from the command palette. The ribbon icon and status bar show the live state, with an input-level meter and elapsed-time/size stats (configured under **Audio processing & feedback**).
 
-   ![The status bar showing an active recording with an elapsed timer and input level meter, and the ribbon microphone icon highlighted](../images/status-bar-meeting-recording.png)
-   *Figure: While recording, the status bar shows the elapsed time and live input level.*
+    ![The status bar showing an active recording with an elapsed timer and input level meter, and the ribbon microphone icon highlighted](../images/status-bar-meeting-recording.png)
+    _Figure: While recording, the status bar shows the elapsed time and live input level._
 
 3. **Mark agenda items as you go.** If **Markers and chapters** is enabled (under **Audio player** - this toggle appears only once **Enhanced audio player** is turned on), run **Add marker/chapter at current position** from the command palette each time the meeting moves to a new topic. These markers become seek-bar ticks and a jump list in the player, so you can return to any agenda item in one click later. See [Markers and chapters](../audio-player.md#markers-and-chapters).
 4. **Pause if needed.** Run **Pause/resume recording** during a break; resume to continue the same file without losing progress.
 5. **Stop and save.** Click the ribbon icon again (or run **Start/stop recording**). The status bar walks through the save stages (Saving > Flushing buffers > Assembling audio > Writing file > Cleaning up > Saved), and an audio embed link is inserted at your cursor.
 6. **Let it transcribe.**
-   - If you turned on **Transcribe after recording**, transcription starts automatically as soon as the file is saved.
-   - Otherwise, with the audio file active, run **Transcribe active audio file** from the command palette.
+    - If you turned on **Transcribe after recording**, transcription starts automatically as soon as the file is saved.
+    - Otherwise, with the audio file active, run **Transcribe audio** from the command palette.
 
-   A progress dialog appears with a progress bar, an elapsed timer, **Cancel**, and **Minimize**. Click **Minimize** to send the job to the status bar and keep working in your vault; click the status bar entry to reopen the dialog. Closing the dialog cancels the job.
+    A progress dialog appears with a progress bar, an elapsed timer, **Cancel**, and **Minimize**. Click **Minimize** to send the job to the status bar and keep working in your vault; click the status bar entry to reopen the dialog. Closing the dialog cancels the job.
 
-   ![Transcription progress dialog with a progress bar, elapsed timer, and Cancel and Minimize buttons](../images/transcription-progress-meeting.png)
-   *Figure: The transcription progress dialog - minimize it to the status bar to keep working while a long meeting transcribes.*
+    ![Transcription progress dialog with a progress bar, elapsed timer, and Cancel and Minimize buttons](../images/transcription-progress-meeting.png)
+    _Figure: The transcription progress dialog - minimize it to the status bar to keep working while a long meeting transcribes._
 
 7. **Review the diarized transcript.** When transcription finishes, the transcript is written under the **Note heading** (`## Transcript` by default). Each line is attributed to a speaker and prefixed with a clickable timecode - click any timecode to seek the embedded player to that moment.
 
-   ![A meeting transcript in a note with two labelled speakers, each line prefixed with a clickable timecode](../images/use-case-meeting-diarized-transcript.png)
-   *Figure: The diarized transcript - bold speaker labels and clickable timecodes that seek the player.*
+    ![A meeting transcript in a note with two labelled speakers, each line prefixed with a clickable timecode](../images/use-case-meeting-diarized-transcript.png)
+    _Figure: The diarized transcript - bold speaker labels and clickable timecodes that seek the player._
 
 8. **Read the summary and action items.** Because **LLM post-processing** is on with the **Summarize** task, the LLM-written summary is produced alongside the transcript. Read the key points and action items, then assign owners or copy them into your task tracker.
 
-   ![An LLM-generated meeting summary with a key points list and an action items list below the transcript](../images/use-case-meeting-summary.png)
-   *Figure: The LLM summary with key points and action items, written from the diarized transcript.*
+    ![An LLM-generated meeting summary with a key points list and an action items list below the transcript](../images/use-case-meeting-summary.png)
+    _Figure: The LLM summary with key points and action items, written from the diarized transcript._
 
 ---
 
@@ -205,7 +205,7 @@ Use this once to confirm your setup, then just record.
 2. Start recording (ribbon icon or **Start/stop recording**).
 3. Add a marker at each agenda item (**Add marker/chapter at current position**).
 4. Stop recording (saves and inserts the embed).
-5. Transcription runs (auto, or run **Transcribe active audio file**).
+5. Transcription runs (auto, or run **Transcribe audio**).
 6. Review the diarized transcript and click timecodes to jump.
 7. Read the LLM summary and action items.
 

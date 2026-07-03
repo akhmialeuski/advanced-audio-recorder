@@ -20,7 +20,7 @@ import type {
  * Resolves the effective transcript destination for a run, given whether an
  * editable host note is available to insert into. With no host note (for
  * example when the audio file itself is the active pane, as with the
- * "Transcribe active audio file" command), an in-note-only destination can
+ * "Transcribe audio" command), an in-note-only destination can
  * never do anything but fall back to a file, so it is downgraded to `file`
  * up front - the run does what it can without a misleading "could not insert"
  * outcome. `both`, `link`, and `file` already write a file and are unchanged.

@@ -5,9 +5,9 @@ The **Clean up audio** action runs offline digital signal processing (DSP) over 
 - [Overview](#overview)
 - [How to run it](#how-to-run-it)
 - [Processing stages](#processing-stages)
-  - [High-pass filter](#high-pass-filter)
-  - [Noise gate](#noise-gate)
-  - [Loudness leveling](#loudness-leveling)
+    - [High-pass filter](#high-pass-filter)
+    - [Noise gate](#noise-gate)
+    - [Loudness leveling](#loudness-leveling)
 - [Output](#output)
 - [Defaults and settings](#defaults-and-settings)
 - [Recommended settings](#recommended-settings)
@@ -16,7 +16,7 @@ The **Clean up audio** action runs offline digital signal processing (DSP) over 
 
 ## Overview
 
-The browser's built-in input processing (noise suppression, echo cancellation, automatic gain control - configured under **Settings > Audio processing & feedback**) is applied *while recording*. The **Clean up audio** action is the stronger, after-the-fact alternative: it decodes a finished file, applies the stages you select, and writes a cleaned `…-processed.wav` copy next to the source.
+The browser's built-in input processing (noise suppression, echo cancellation, automatic gain control - configured under **Settings > Audio processing & feedback**) is applied _while recording_. The **Clean up audio** action is the stronger, after-the-fact alternative: it decodes a finished file, applies the stages you select, and writes a cleaned `…-processed.wav` copy next to the source.
 
 Use it when:
 
@@ -28,12 +28,12 @@ Use it when:
 ## How to run it
 
 ![The Clean up audio dialog with its stage toggles](images/modal-clean-up-audio.png)
-*Figure: the Clean up audio dialog with per-stage toggles and parameters.*
+_Figure: the Clean up audio dialog with per-stage toggles and parameters._
 
 1. Right-click the target audio in any of these places:
-   - the **File Explorer**,
-   - an audio **embed link** in the editor (`![[recording.webm]]`),
-   - an **embedded audio player**.
+    - the **File Explorer**,
+    - an audio **embed link** in the editor (`![[recording.webm]]`),
+    - an **embedded audio player**.
 2. Choose **Clean up audio**.
 3. In the dialog, toggle the stages you want and adjust their parameters. The toggles and values start from your settings defaults but can be changed per run.
 4. (Optional) Enable **Delete source after processing** to move the original to the system trash once the cleaned copy is written.
@@ -82,12 +82,12 @@ The compressor itself uses fixed, speech-friendly settings (threshold -24 dB, ra
 - The cleaned file is always written as **16-bit PCM WAV**, regardless of the source format, because the cleanup re-encodes the decoded audio. The source's channel layout (mono/stereo) is preserved; the sample rate is the one the Obsidian audio engine decodes to, which may differ from the source.
 - The file is saved **next to the source**, named `<source-name>-processed.wav`. If that name is taken, a numeric suffix is appended (`…-processed_1.wav`).
 - The original file is left untouched unless you enable **Delete source after processing**. If processing succeeds but deleting the source fails, the cleaned copy is still kept and a notice explains what happened.
-- **Linking into your note.** When you start the cleanup from an embed or player **inside a note**, the cleaned copy is linked into that note automatically: with **Delete source after processing** on, the source's embed is *replaced* with the cleaned file (so no broken link is left behind); with it off, the cleaned file's embed is *inserted on the line right after* the source, keeping both. The new links follow your link-format preferences, and the [enhanced player](audio-player.md) picks up the cleaned file straight away. Running cleanup from the **File Explorer** (where the active note does not embed the file) writes the copy but adds no link.
+- **Linking into your note.** When you start the cleanup from an embed or player **inside a note**, the cleaned copy is linked into that note automatically: with **Delete source after processing** on, the source's embed is _replaced_ with the cleaned file (so no broken link is left behind); with it off, the cleaned file's embed is _inserted on the line right after_ the source, keeping both. The new links follow your link-format preferences, and the [enhanced player](audio-player.md) picks up the cleaned file straight away. Running cleanup from the **File Explorer** (where the active note does not embed the file) writes the copy but adds no link.
 
 ## Defaults and settings
 
 ![The Audio cleanup defaults settings section](images/settings-audio-cleanup-defaults.png)
-*Figure: the Audio cleanup defaults section in plugin settings.*
+_Figure: the Audio cleanup defaults section in plugin settings._
 
 Under **Settings > Advanced Audio Recorder > Audio cleanup defaults**, set the values the dialog starts from each time:
 
@@ -115,7 +115,7 @@ Start conservative and re-run with stronger settings if needed - the original is
 - **Output is always WAV.** Convert it afterwards with **Convert audio format** from the context menu if you need a compressed format.
 - **Size and length caps.** Cleanup decodes the whole file into memory, then processes it one time segment at a time so memory stays bounded regardless of the recording length - a roughly 45-minute stereo recording is cleaned up in memory without splitting it first. A file is still refused with a clear message when it is larger than 1 GB (checked before decoding), longer than two hours, or decodes to more samples than the working set allows (checked right after decoding). The decoded-size cap catches a heavily compressed file that is small on disk yet expands to several gigabytes once decoded. For a file over the cap, split it first (**Split audio into parts**) and clean each part.
 - **Desktop only.** The plugin is desktop-only, so cleanup runs only in the Obsidian desktop app. Processing a long file briefly uses significant memory and CPU.
-- **Not real-time.** This is post-processing. To shape the signal *during* recording, use the browser input toggles under **Audio processing & feedback** instead.
+- **Not real-time.** This is post-processing. To shape the signal _during_ recording, use the browser input toggles under **Audio processing & feedback** instead.
 
 ## Troubleshooting
 

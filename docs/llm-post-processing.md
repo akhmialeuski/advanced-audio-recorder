@@ -5,9 +5,9 @@
 - [What it does and when it runs](#what-it-does-and-when-it-runs)
 - [Enabling it](#enabling-it)
 - [The three tasks](#the-three-tasks)
-  - [Clean up](#clean-up)
-  - [Summarize](#summarize)
-  - [Custom](#custom)
+    - [Clean up](#clean-up)
+    - [Summarize](#summarize)
+    - [Custom](#custom)
 - [Editable prompts](#editable-prompts)
 - [Default prompts](#default-prompts)
 - [Providers and models](#providers-and-models)
@@ -28,10 +28,10 @@ When **Enable LLM post-processing** is on, the plugin runs the LLM pass at the v
 3. **LLM post-processing runs** on that result - the status bar and progress dialog show `Post-processing with LLM...`.
 4. The processed text is written to your note and/or sidecar file according to **Destination**.
 
-It changes the **text** of the transcript, not the audio. It runs on every transcription while it is enabled - automatic [transcribe-after-recording](use-cases/transcribe-after-recording.md) runs, the **Transcribe active audio file** command, and the right-click **Transcribe audio** action all go through the same step.
+It changes the **text** of the transcript, not the audio. It runs on every transcription while it is enabled - automatic [transcribe-after-recording](use-cases/transcribe-after-recording.md) runs, the **Transcribe audio** command, and the right-click **Transcribe audio** action all go through the same step.
 
 ![LLM post-processing settings with the enable toggle, task dropdown, prompt editor, provider, base URL, key, model, and token slider](images/settings-llm-post-processing.png)
-*Figure: the LLM post-processing subsection inside Settings > Transcription.*
+_Figure: the LLM post-processing subsection inside Settings > Transcription._
 
 > **It is a separate, paid API call.** The cloud providers (OpenAI, Anthropic, Google Gemini) bill for the tokens this step uses, on top of the transcription engine's cost. The local whisper.cpp transcription engine is offline, but LLM post-processing always uses one of the three cloud LLM providers.
 
@@ -89,7 +89,7 @@ For **Clean up** and **Summarize**, leave the field empty to use the built-in de
 For **Custom**, the editor is larger because nothing is added: the instruction you type is the entire system prompt. If you leave it empty, the plugin falls back to a generic instruction (`Process the following transcript as instructed.`), which is rarely what you want - type a real instruction.
 
 ![Cleanup prompt text area populated with the default editor instruction](images/settings-llm-prompt-editor.png)
-*Figure: the per-task prompt editor; the Custom instruction field is taller and is sent verbatim.*
+_Figure: the per-task prompt editor; the Custom instruction field is taller and is sent verbatim._
 
 ---
 
@@ -132,7 +132,7 @@ The **LLM model** picker is the same control used for transcription models: pick
 The model list is per-provider, so switching the **LLM provider** dropdown swaps both the picker contents and the selected model to that provider's list - your OpenAI choice is remembered separately from your Anthropic and Gemini choices.
 
 ![LLM provider dropdown and model picker showing the per-provider catalogue link](images/settings-llm-provider-model.png)
-*Figure: the LLM provider dropdown and the per-provider model picker with add/remove and a catalogue link.*
+_Figure: the LLM provider dropdown and the per-provider model picker with add/remove and a catalogue link._
 
 ---
 
@@ -241,7 +241,7 @@ The exact headings come from the model following the summary prompt; the `### Su
 
 - **Best-effort.** Post-processing never throws away a transcript you already paid to produce. If the LLM call fails (bad key, network error, timeout, or a blocked/empty response), the plugin keeps the **raw transcript**, shows a notice (`LLM post-processing failed; saving the raw transcript.`), and continues. The transcript is still saved.
 - **Request timeout.** Each LLM request is bounded by a fixed 5-minute timeout (longer than the transcription floor, because cleaning or summarizing a long transcript can legitimately take minutes). This is separate from the transcription **Request timeout** setting.
-- **Cancellation.** Cancelling the transcription dialog before post-processing finishes stops the run; closing the dialog cancels the job, while [Minimize](transcription.md#progress-and-minimizing) keeps it running in the status bar.
+- **Cancellation.** Cancel is honored up to the moment post-processing begins. Once the LLM request itself is in flight it is not aborted - it runs to completion (bounded by the fixed 5-minute timeout) and the transcript is still written. Closing the dialog cancels the job at the same boundaries, while [Minimize](transcription.md#progress-and-minimizing) keeps it running in the status bar.
 - **Token truncation is surfaced.** On Gemini, a response cut off by the output-token limit (or blocked by a safety policy) fails the post-processing step loudly rather than silently replacing the transcript with a partial result - so you fall back to the raw transcript instead of getting a half-cleaned one. Raise **Max output tokens** or shorten the input if this happens.
 - **Incomplete-transcription warnings survive.** If part of a long recording could not be transcribed, the plugin prepends its warning callout **after** post-processing, so a cleanup/custom pass that replaces the body cannot strip it.
 

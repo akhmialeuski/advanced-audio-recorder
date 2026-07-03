@@ -1,6 +1,6 @@
 # Use cases and how-to guides
 
-This is the hub for the step-by-step guides. The reference docs describe *what* each feature does; the guides here show *how* to get something done end to end - sign up for a transcription provider, paste an API key into the right field, set up a fully offline engine, or run a complete record-and-summarize workflow. Each guide is self-contained, so start with the one that matches your goal and follow it from top to bottom.
+This is the hub for the step-by-step guides. The reference docs describe _what_ each feature does; the guides here show _how_ to get something done end to end - sign up for a transcription provider, paste an API key into the right field, set up a fully offline engine, or run a complete record-and-summarize workflow. Each guide is self-contained, so start with the one that matches your goal and follow it from top to bottom.
 
 - [Where to start](#where-to-start)
 - [Getting API keys](#getting-api-keys)
@@ -10,7 +10,7 @@ This is the hub for the step-by-step guides. The reference docs describe *what* 
 - [Related reference docs](#related-reference-docs)
 
 ![The Advanced Audio Recorder settings tab open on the Transcription section, with the engine dropdown and API key field visible](../images/use-cases-overview.png)
-*Figure: Most how-to guides end in the same place - the Transcription section of the settings tab, where you pick an engine and paste a key.*
+_Figure: Most how-to guides end in the same place - the Transcription section of the settings tab, where you pick an engine and paste a key._
 
 ## Where to start
 
@@ -34,7 +34,7 @@ Cloud transcription engines (and the LLM post-processing providers) authenticate
 | [Anthropic / Claude](anthropic-api-key.md)        | Anthropic                | **LLM post-processing** with Claude (clean up/summarize). |
 
 ![A provider console showing an API key being copied, next to the plugin's API key field where it is pasted](../images/use-cases-api-key-flow.png)
-*Figure: Every API-key guide follows the same shape - generate the key on the provider site, then paste it into the matching field in the Transcription settings.*
+_Figure: Every API-key guide follows the same shape - generate the key on the provider site, then paste it into the matching field in the Transcription settings._
 
 > **Heads-up on shared keys.** The plugin reuses keys where the same vendor serves both jobs: the OpenAI **LLM post-processing** provider reuses your Whisper API key, and the Gemini LLM provider reuses your Gemini key. Anthropic/Claude has its own dedicated key. See [LLM post-processing](../llm-post-processing.md) for details.
 
@@ -49,7 +49,7 @@ Cloud transcription engines (and the LLM post-processing providers) authenticate
 The **Local whisper.cpp** engine runs a binary you install yourself and a GGML model file you download once. Nothing leaves your machine. This guide covers the binary path, the model path (an absolute path to a GGML `.bin` file), extra CLI arguments, and which model size to pick.
 
 ![The Transcription settings with the Local whisper.cpp engine selected, showing the binary path, model path, and extra CLI args fields](../images/use-cases-whisper-cpp-settings.png)
-*Figure: The Local whisper.cpp engine adds binary-path, model-path, and extra-args fields instead of an API key.*
+_Figure: The Local whisper.cpp engine adds binary-path, model-path, and extra-args fields instead of an API key._
 
 ---
 
@@ -63,7 +63,7 @@ These guides combine several features into one end-to-end procedure.
 | [Record and summarize a meeting](meeting-notes-workflow.md)               | Record a meeting, transcribe it with diarization, and add an LLM summary.   |
 
 ![A note containing an embedded recording, its transcript, and an LLM-generated summary heading below it](../images/use-cases-meeting-result.png)
-*Figure: The meeting-notes workflow produces a single note with the recording, a diarized transcript, and an LLM summary.*
+_Figure: The meeting-notes workflow produces a single note with the recording, a diarized transcript, and an LLM summary._
 
 ---
 

@@ -96,7 +96,7 @@ describe('describeTranscriptOutcome', () => {
 
 describe('effectiveTranscriptDestination', () => {
 	it('downgrades a note-only destination to file when there is no host note', () => {
-		// Regression: the "Transcribe active audio file" command runs with the
+		// Regression: the "Transcribe audio" command runs with the
 		// audio file itself active, so a 'note' destination could only ever
 		// fall back. Downgrade up front to 'file' instead.
 		expect(effectiveTranscriptDestination('note', false)).toBe('file');

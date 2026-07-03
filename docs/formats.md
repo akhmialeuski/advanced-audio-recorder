@@ -28,7 +28,7 @@ If the format you want is not in the list:
 > The plugin builds **plain** MIME types (no `;codecs=…` suffix) for the recording test, because appending a codec suffix can trigger silent recording bugs in certain Chromium/Electron builds. The detailed per-codec probe is reported only in **System info** for diagnostics.
 
 ![Output format section of the plugin settings tab with the Recording format dropdown expanded.](images/settings-output-format-formats.png)
-*Figure: the Recording format dropdown lists only the formats your machine supports; offline-only formats carry an `(offline)` label.*
+_Figure: the Recording format dropdown lists only the formats your machine supports; offline-only formats carry an `(offline)` label._
 
 ## The formats table
 
@@ -57,7 +57,7 @@ Every format is produced one of two ways. The settings dropdown marks the offlin
 - **Offline encoding** - the audio is first captured into a supported **intermediate** container (typically WebM or OGG), and then re-encoded to the target format **after you stop recording**. MP3 and FLAC are always offline (they use the bundled Mediabunny extension encoders). MP4, M4A, and AAC are offline whenever MediaRecorder cannot write them directly, in which case they too go through the intermediate-and-re-encode path.
 
 ![The Recording format dropdown showing the "(offline)" labels.](images/settings-output-format-offline-label.png)
-*Figure: offline formats carry an `(offline)` label in the Recording format dropdown so you can tell them apart from online ones.*
+_Figure: offline formats carry an `(offline)` label in the Recording format dropdown so you can tell them apart from online ones._
 
 When the intermediate codec **already matches** the target codec, the audio **packets are copied without re-encoding** - there is no second lossy pass and no quality loss for that step. Re-encoding only happens when the codecs differ.
 
@@ -105,7 +105,7 @@ The **Audio bitrate** setting controls the quality and size of **compressed** re
 Bitrate applies to the **compressed** formats (WebM, OGG, MP3, FLAC, MP4, M4A, AAC). It is **not used for WAV**: WAV is uncompressed 16-bit PCM, so its size is fixed by the sample rate and channel count, and a bitrate setting would be meaningless for it. For that reason the bitrate control is irrelevant to WAV output and is hidden in the WAV split/convert flows.
 
 ![The Audio bitrate dropdown.](images/settings-output-bitrate.png)
-*Figure: the Audio bitrate dropdown sets the quality and size of compressed recordings, with a default of 128 kbps.*
+_Figure: the Audio bitrate dropdown sets the quality and size of compressed recordings, with a default of 128 kbps._
 
 ## The output summary line
 
@@ -121,7 +121,7 @@ Directly under the format and bitrate controls, **Settings > Output format** sho
 Use it as a quick sanity check before recording: if the encoder or compression type is not what you expected, adjust the format or bitrate above it.
 
 ![Output summary read-only line in settings showing format, bitrate, compression type, and encoder.](images/settings-output-summary.png)
-*Figure: the Output summary line confirms the format, bitrate, compression type, and encoder for your current settings.*
+_Figure: the Output summary line confirms the format, bitrate, compression type, and encoder for your current settings._
 
 ## Where to set the format
 

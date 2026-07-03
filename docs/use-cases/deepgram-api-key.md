@@ -34,7 +34,7 @@ If you only ever record a single speaker and want a fully free, offline option, 
 A new account includes a **free starter credit**, so you do not need to add a payment method before your first transcription. You can add billing later when the starter credit runs out.
 
 ![Deepgram Console sign-up page in a web browser](../images/use-case-deepgram-signup.png)
-*Figure: The Deepgram Console sign-up page at console.deepgram.com/signup.*
+_Figure: The Deepgram Console sign-up page at console.deepgram.com/signup._
 
 ## Step 2: Create an API key
 
@@ -45,7 +45,7 @@ A new account includes a **free starter credit**, so you do not need to add a pa
 5. Paste the key somewhere safe for the next step (you will put it into the plugin's settings).
 
 ![Deepgram Console API Keys page with a Create a New API Key button](../images/use-case-deepgram-api-keys.png)
-*Figure: The API Keys page in the Deepgram Console, where you create and copy a key.*
+_Figure: The API Keys page in the Deepgram Console, where you create and copy a key._
 
 Treat the key like a password. Anyone who has it can spend your Deepgram credit. If a key leaks, return to the **API Keys** page and revoke it.
 
@@ -67,7 +67,7 @@ Open **Settings > Advanced Audio Recorder** and scroll to the **Transcription** 
 | **Deepgram model**    | `nova-3` (or a named variant)              | `nova-3`                      |
 
 ![Transcription settings with Engine set to Deepgram, the base URL, API key, and model picker](../images/settings-transcription-deepgram.png)
-*Figure: The Deepgram engine fields under Settings > Transcription.*
+_Figure: The Deepgram engine fields under Settings > Transcription._
 
 The model picker lets you pick from a seeded list, **Add custom model** to type an id Deepgram supports, or **Remove selected** to drop one you do not use. A link to Deepgram's authoritative model catalogue - [https://developers.deepgram.com/docs/model](https://developers.deepgram.com/docs/model) - sits next to the picker.
 
@@ -78,10 +78,10 @@ Diarization is what separates each voice into a labelled speaker. It is **off by
 1. Still in the **Transcription** section, find **Speaker diarization**.
 2. Turn it **on**.
 
-**Speaker diarization** is enabled only for engines that support it - **Deepgram** and **Google Gemini**. With the Whisper API or local whisper.cpp selected, the toggle is greyed out and reads *"Not supported by the selected engine. Use Deepgram for speaker labels."* Because you selected Deepgram in Step 3, the toggle is active.
+**Speaker diarization** is enabled only for engines that support it - **Deepgram** and **Google Gemini**. With the Whisper API or local whisper.cpp selected, the toggle is greyed out and reads _"Not supported by the selected engine. Use Deepgram for speaker labels."_ Because you selected Deepgram in Step 3, the toggle is active.
 
 ![Speaker diarization toggle turned on in the Transcription settings](../images/settings-transcription-diarization.png)
-*Figure: The Speaker diarization toggle, enabled because Deepgram is the selected engine.*
+_Figure: The Speaker diarization toggle, enabled because Deepgram is the selected engine._
 
 When diarization is on, the speaker-related output options unlock further down the **Transcript output** area: **Include speakers** (default on) and **Merge speaker turns** (default on, which combines consecutive lines from the same speaker into one block). The **Speaker format** template (default `**{speaker}**`) controls how each label is rendered. See [Speakers and diarization](../transcription.md#speakers-and-diarization) for the full behavior.
 
@@ -92,18 +92,18 @@ When diarization is on, the speaker-related output options unlock further down t
 Confirm everything works end to end with a short clip that has two distinct voices.
 
 1. Record (or open) a short audio file in which **two people each speak at least once** - for example, a 30-second mock interview. You can record one with the ribbon **microphone icon** or the **Start/stop recording** command.
-2. Make the audio file the **active file**: open the audio file itself (click its name in the embed, or its entry in the File Explorer) so it opens in its own pane. Opening the *note* it is embedded in does not count - the command below checks the active file's type.
-3. Run **Transcribe active audio file** from the command palette, or right-click the recording (or its embed/player) and choose **Transcribe audio**. The palette command appears only when transcription is enabled and the active file is an audio file; the right-click action works regardless of the active file.
+2. Make the audio file the **active file**: open the audio file itself (click its name in the embed, or its entry in the File Explorer) so it opens in its own pane. Opening the _note_ it is embedded in does not count - the command below checks the active file's type.
+3. Run **Transcribe audio** from the command palette, or right-click the recording (or its embed/player) and choose **Transcribe audio**. The palette command appears only when transcription is enabled and the active file is an audio file; the right-click action works regardless of the active file.
 4. A progress dialog opens with a progress bar, an elapsed timer, **Cancel**, and **Minimize**. Let it finish.
 5. Read the transcript. With diarization on, lines are grouped and labelled by speaker - you should see at least two distinct speakers (for example **Speaker 1** and **Speaker 2**, rendered per your **Speaker format**).
 
 ![Transcription progress dialog with a progress bar, elapsed timer, Cancel, and Minimize buttons](../images/transcription-progress-dialog.png)
-*Figure: The transcription progress dialog; click Minimize to send the job to the status bar and keep working.*
+_Figure: The transcription progress dialog; click Minimize to send the job to the status bar and keep working._
 
 If both speakers appear with their own labels, diarization is working. If everything is attributed to one speaker, see [Troubleshooting](#troubleshooting).
 
 ![A diarized transcript in a note showing two labelled speakers with timestamps](../images/use-case-deepgram-diarized-transcript.png)
-*Figure: A finished diarized transcript with two speakers labelled.*
+_Figure: A finished diarized transcript with two speakers labelled._
 
 ## Choosing a model
 
