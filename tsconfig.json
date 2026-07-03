@@ -1,11 +1,14 @@
 {
 	"compilerOptions": {
-		"baseUrl": "./src",
 		"rootDir": "./src",
 		"outDir": "./dist",
+		"paths": {
+			"src/*": ["./src/*"]
+		},
 		"module": "ESNext",
 		"target": "ES2022",
 		"lib": ["DOM", "ES2022", "ESNext.Disposable"],
+		"types": ["node"],
 		"strict": true,
 		"noImplicitAny": true,
 		"strictNullChecks": true,
@@ -17,7 +20,7 @@
 		"noUncheckedIndexedAccess": true,
 		"useUnknownInCatchVariables": true,
 		"esModuleInterop": true,
-		"moduleResolution": "node",
+		"moduleResolution": "bundler",
 		"importHelpers": true,
 		"isolatedModules": true,
 		"inlineSourceMap": true,

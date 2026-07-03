@@ -84,9 +84,7 @@ describe('DeviceSelectionModal', () => {
 		await tick();
 
 		expect(onSelected).toHaveBeenCalledWith('mic-2', 'Headset');
-		expect(Notice as unknown as jest.Mock).toHaveBeenCalledWith(
-			'Selected audio device: Headset',
-		);
+		expect(Notice).toHaveBeenCalledWith('Selected audio device: Headset');
 		expect(close).toHaveBeenCalled();
 	});
 
@@ -119,9 +117,7 @@ describe('showDeviceSelectionModal', () => {
 
 		await showDeviceSelectionModal(new App(), jest.fn());
 
-		expect(Notice as unknown as jest.Mock).toHaveBeenCalledWith(
-			'No audio input devices found',
-		);
+		expect(Notice).toHaveBeenCalledWith('No audio input devices found');
 	});
 
 	it('opens the modal listing only audio inputs', async () => {

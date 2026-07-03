@@ -130,7 +130,7 @@ describe('AudioProcessingModal', () => {
 		await settle();
 
 		expect(processMock).not.toHaveBeenCalled();
-		expect(Notice as unknown as jest.Mock).toHaveBeenCalledWith(
+		expect(Notice).toHaveBeenCalledWith(
 			'Enable at least one processing stage.',
 		);
 	});
@@ -155,7 +155,7 @@ describe('AudioProcessingModal', () => {
 			replaceSource: false,
 		});
 		expect(app.fileManager.trashFile).not.toHaveBeenCalled();
-		expect(Notice as unknown as jest.Mock).toHaveBeenCalledWith(
+		expect(Notice).toHaveBeenCalledWith(
 			'Processed audio saved to recordings/take-processed.wav',
 		);
 		expect(closeSpy).toHaveBeenCalled();
@@ -202,7 +202,7 @@ describe('AudioProcessingModal', () => {
 		processButton.click();
 		await settle();
 
-		expect(Notice as unknown as jest.Mock).toHaveBeenCalledWith(
+		expect(Notice).toHaveBeenCalledWith(
 			'Processed audio saved to recordings/take-processed.wav, but the source could not be deleted.',
 		);
 		warnSpy.mockRestore();
@@ -219,7 +219,7 @@ describe('AudioProcessingModal', () => {
 		processButton.click();
 		await settle();
 
-		expect(Notice as unknown as jest.Mock).toHaveBeenCalledWith(
+		expect(Notice).toHaveBeenCalledWith(
 			'Audio processing failed: decode failed',
 		);
 		expect(closeSpy).not.toHaveBeenCalled();
@@ -240,7 +240,7 @@ describe('AudioProcessingModal', () => {
 		processButton.click();
 		await settle();
 
-		expect(Notice as unknown as jest.Mock).toHaveBeenCalledWith(
+		expect(Notice).toHaveBeenCalledWith(
 			'Processed audio saved to recordings/take-processed.wav',
 		);
 		expect(closeSpy).toHaveBeenCalled();
