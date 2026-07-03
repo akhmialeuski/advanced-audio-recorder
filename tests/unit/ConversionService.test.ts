@@ -4,10 +4,9 @@
  * covers the service-level contract.
  * @module tests/unit/ConversionService.test
  */
-/** @jest-environment jsdom */
 
-import { ConversionService } from '../../src/recording/ConversionService';
-import type { ConversionRequest } from '../../src/recording/ConversionService';
+import { ConversionService } from 'src/recording/ConversionService';
+import type { ConversionRequest } from 'src/recording/ConversionService';
 import { TFile, App } from 'obsidian';
 
 jest.mock('obsidian', () => ({
@@ -23,20 +22,20 @@ jest.mock('obsidian', () => ({
 	normalizePath: (path: string) => path.replace(/\\/g, '/'),
 }));
 
-jest.mock('../../src/audio/AudioEncoder', () => ({
+jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest
 		.fn()
 		.mockResolvedValue(new Blob(['encoded'], { type: 'audio/wav' })),
 }));
 
-jest.mock('../../src/audio/AudioFormatConverter', () => ({
+jest.mock('src/audio/AudioFormatConverter', () => ({
 	decodeAudioBlob: jest.fn().mockResolvedValue({}),
 	convertBlobToFormat: jest
 		.fn()
 		.mockResolvedValue(new Blob(['converted'], { type: 'audio/webm' })),
 }));
 
-jest.mock('../../src/utils/LinkUpdater', () => ({
+jest.mock('src/utils/LinkUpdater', () => ({
 	updateLinksInVault: jest.fn().mockResolvedValue({
 		updatedNotes: 0,
 		skippedReferences: 0,
@@ -115,10 +114,10 @@ describe('ConversionService', () => {
 
 	it('should use the decode-and-encode path for WAV targets', async () => {
 		const { decodeAudioBlob } = jest.requireMock(
-			'../../src/audio/AudioFormatConverter',
+			'src/audio/AudioFormatConverter',
 		);
 		const { encodeAudioBuffer } = jest.requireMock(
-			'../../src/audio/AudioEncoder',
+			'src/audio/AudioEncoder',
 		);
 
 		await service.convert(

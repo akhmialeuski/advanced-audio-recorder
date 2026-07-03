@@ -2,14 +2,13 @@
  * Unit tests for AudioEncoder module.
  * @module tests/unit/AudioEncoder.test
  */
-/** @jest-environment jsdom */
 
 import {
 	encodeAudioBuffer,
 	isOfflineEncodingSupported,
-} from '../../src/audio/AudioEncoder';
-import type { EncodingOptions } from '../../src/audio/AudioEncoder';
-import { EncodingError } from '../../src/errors';
+} from 'src/audio/AudioEncoder';
+import type { EncodingOptions } from 'src/audio/AudioEncoder';
+import { EncodingError } from 'src/errors';
 import { createMockAudioBuffer } from '../helpers/createMockAudioBuffer';
 
 // Mock WavEncoder

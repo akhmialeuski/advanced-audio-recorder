@@ -1,11 +1,10 @@
-/** @jest-environment jsdom */
 /**
  * Unit tests for DebugLogger.
  */
 
-import { DebugLogger } from '../../src/utils/DebugLogger';
-import type { AudioRecorderSettings } from '../../src/settings/settingsSchema';
-import { DEFAULT_SETTINGS } from '../../src/settings/settingsSchema';
+import { DebugLogger } from 'src/utils/DebugLogger';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
+import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 
 describe('DebugLogger', () => {
 	let consoleMock: jest.SpyInstance;

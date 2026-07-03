@@ -4,14 +4,13 @@
  * link insertion.
  * @module tests/unit/RecordingManager.output.test
  */
-/** @jest-environment jsdom */
 
-import { RecordingManager } from '../../src/recording/RecordingManager';
-import { RecordingStatus } from '../../src/types';
+import { RecordingManager } from 'src/recording/RecordingManager';
+import { RecordingStatus } from 'src/types';
 import {
 	DEFAULT_SETTINGS,
 	AudioRecorderSettings,
-} from '../../src/settings/settingsSchema';
+} from 'src/settings/settingsSchema';
 import type { App } from 'obsidian';
 import {
 	createRecordingMockApp,
@@ -30,7 +29,7 @@ jest.mock('obsidian', () => ({
 }));
 
 // Mock AudioStreamHandler
-jest.mock('../../src/recording/AudioStreamHandler', () => ({
+jest.mock('src/recording/AudioStreamHandler', () => ({
 	getAudioStreams: jest.fn(),
 	getAudioSourceName: jest.fn().mockResolvedValue('TestDevice'),
 	stopAllStreams: jest.fn(),
@@ -38,7 +37,7 @@ jest.mock('../../src/recording/AudioStreamHandler', () => ({
 }));
 
 // Mock AudioEncoder module to avoid mediabunny TextDecoder requirement
-jest.mock('../../src/audio/AudioEncoder', () => ({
+jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest
 		.fn()
 		.mockResolvedValue(new Blob(['encoded'], { type: 'audio/webm' })),
@@ -50,7 +49,7 @@ jest.mock('../../src/audio/AudioEncoder', () => ({
 }));
 
 // Mock WavEncoder
-jest.mock('../../src/audio/WavEncoder', () => ({
+jest.mock('src/audio/WavEncoder', () => ({
 	assembleWavFromPcmSegmentFiles: jest
 		.fn()
 		.mockResolvedValue(new ArrayBuffer(44)),
@@ -58,7 +57,7 @@ jest.mock('../../src/audio/WavEncoder', () => ({
 
 // Mock PcmStreamRecorder
 let capturedPcmChunkCallback: ((data: ArrayBuffer) => void) | null = null;
-jest.mock('../../src/recording/PcmStreamRecorder', () => ({
+jest.mock('src/recording/PcmStreamRecorder', () => ({
 	PcmStreamRecorder: jest
 		.fn()
 		.mockImplementation(
@@ -142,7 +141,7 @@ describe('RecordingManager', () => {
 					);
 
 			const { getAudioStreams } = jest.requireMock(
-				'../../src/recording/AudioStreamHandler',
+				'src/recording/AudioStreamHandler',
 			);
 			getAudioStreams.mockResolvedValue({
 				streams: [
@@ -154,7 +153,7 @@ describe('RecordingManager', () => {
 
 			// The mixed render encodes to an empty blob: nothing to save
 			const { encodeAudioBuffer } = jest.requireMock(
-				'../../src/audio/AudioEncoder',
+				'src/audio/AudioEncoder',
 			);
 			encodeAudioBuffer.mockResolvedValueOnce(new Blob([]));
 
@@ -212,7 +211,7 @@ describe('RecordingManager', () => {
 				jest.fn().mockReturnValue(true);
 
 			const { getAudioStreams } = jest.requireMock(
-				'../../src/recording/AudioStreamHandler',
+				'src/recording/AudioStreamHandler',
 			);
 			getAudioStreams.mockResolvedValue({
 				streams: [
@@ -263,7 +262,7 @@ describe('RecordingManager', () => {
 
 		it('should keep plain source names when they are unique', async () => {
 			const { getAudioSourceName } = jest.requireMock(
-				'../../src/recording/AudioStreamHandler',
+				'src/recording/AudioStreamHandler',
 			);
 			getAudioSourceName
 				.mockResolvedValueOnce('DeviceA')
@@ -344,7 +343,7 @@ describe('RecordingManager', () => {
 				jest.fn().mockReturnValue(true);
 
 			const { getAudioStreams } = jest.requireMock(
-				'../../src/recording/AudioStreamHandler',
+				'src/recording/AudioStreamHandler',
 			);
 			getAudioStreams.mockResolvedValue({
 				streams: [
@@ -435,7 +434,7 @@ describe('RecordingManager', () => {
 				jest.fn().mockReturnValue(true);
 
 			const { getAudioStreams } = jest.requireMock(
-				'../../src/recording/AudioStreamHandler',
+				'src/recording/AudioStreamHandler',
 			);
 			getAudioStreams.mockResolvedValue({
 				streams: [
@@ -555,7 +554,7 @@ describe('RecordingManager', () => {
 				jest.fn().mockReturnValue(true);
 
 			const { getAudioStreams } = jest.requireMock(
-				'../../src/recording/AudioStreamHandler',
+				'src/recording/AudioStreamHandler',
 			);
 			getAudioStreams.mockResolvedValue({
 				streams: [
@@ -614,7 +613,7 @@ describe('RecordingManager', () => {
 					);
 
 			const { getAudioStreams } = jest.requireMock(
-				'../../src/recording/AudioStreamHandler',
+				'src/recording/AudioStreamHandler',
 			);
 			getAudioStreams.mockResolvedValue({
 				streams: [
@@ -681,7 +680,7 @@ describe('RecordingManager', () => {
 				jest.fn().mockReturnValue(true);
 
 			const { getAudioStreams } = jest.requireMock(
-				'../../src/recording/AudioStreamHandler',
+				'src/recording/AudioStreamHandler',
 			);
 			getAudioStreams.mockResolvedValue({
 				streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
@@ -744,7 +743,7 @@ describe('RecordingManager', () => {
 				jest.fn().mockReturnValue(true);
 
 			const { getAudioStreams } = jest.requireMock(
-				'../../src/recording/AudioStreamHandler',
+				'src/recording/AudioStreamHandler',
 			);
 			getAudioStreams.mockResolvedValue({
 				streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
@@ -811,7 +810,7 @@ describe('RecordingManager', () => {
 				jest.fn().mockReturnValue(true);
 
 			const { getAudioStreams } = jest.requireMock(
-				'../../src/recording/AudioStreamHandler',
+				'src/recording/AudioStreamHandler',
 			);
 			getAudioStreams.mockResolvedValue({
 				streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
@@ -869,7 +868,7 @@ describe('RecordingManager', () => {
 				jest.fn().mockReturnValue(true);
 
 			const { getAudioStreams } = jest.requireMock(
-				'../../src/recording/AudioStreamHandler',
+				'src/recording/AudioStreamHandler',
 			);
 			getAudioStreams.mockResolvedValue({
 				streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
@@ -942,7 +941,7 @@ describe('RecordingManager', () => {
 				jest.fn().mockReturnValue(true);
 
 			const { getAudioStreams } = jest.requireMock(
-				'../../src/recording/AudioStreamHandler',
+				'src/recording/AudioStreamHandler',
 			);
 			getAudioStreams.mockResolvedValue({
 				streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
@@ -1007,7 +1006,7 @@ describe('RecordingManager', () => {
 				jest.fn().mockReturnValue(true);
 
 			const { getAudioStreams } = jest.requireMock(
-				'../../src/recording/AudioStreamHandler',
+				'src/recording/AudioStreamHandler',
 			);
 			getAudioStreams.mockResolvedValue({
 				streams: [{ getTracks: () => [{ stop: jest.fn() }] }],

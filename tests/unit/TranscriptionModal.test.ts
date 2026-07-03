@@ -2,12 +2,11 @@
  * Unit tests for TranscriptionModal background/minimize behavior.
  * @module tests/unit/TranscriptionModal.test
  */
-/** @jest-environment jsdom */
 
 import { App, TFile } from 'obsidian';
-import { DEFAULT_SETTINGS } from '../../src/settings/settingsSchema';
-import { TranscriptionModal } from '../../src/ui/TranscriptionModal';
-import type { AudioRecorderSettings } from '../../src/settings/settingsSchema';
+import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
+import { TranscriptionModal } from 'src/ui/TranscriptionModal';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 
 type TranscriptionModalInternals = {
 	setRunning: (running: boolean) => void;

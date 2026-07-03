@@ -1,5 +1,4 @@
 /**
- * @jest-environment jsdom
  */
 
 /**
@@ -13,11 +12,11 @@ import {
 	DEFAULT_SETTINGS,
 	OutputMode,
 	TrackAudioSources,
-} from '../../src/settings/settingsSchema';
+} from 'src/settings/settingsSchema';
 import {
 	mergeSettings,
 	mergeSettingsAsync,
-} from '../../src/settings/settingsSerialization';
+} from 'src/settings/settingsSerialization';
 
 describe('Settings', () => {
 	describe('DEFAULT_SETTINGS', () => {
@@ -327,7 +326,7 @@ describe('Settings', () => {
 				llmProvider: 'openai-compatible',
 				llmApiKey: 'sk-legacy',
 				llmModel: 'gpt-legacy',
-			} as unknown as AudioRecorderSettingsInput);
+			});
 
 			expect(result.whisperApiKey).toBe('sk-legacy');
 			expect(result.llmOpenAiModel).toBe('gpt-legacy');
@@ -338,7 +337,7 @@ describe('Settings', () => {
 				llmProvider: 'gemini',
 				geminiApiKey: 'gm-current',
 				llmApiKey: 'gm-legacy',
-			} as unknown as AudioRecorderSettingsInput);
+			});
 
 			expect(result.geminiApiKey).toBe('gm-current');
 		});

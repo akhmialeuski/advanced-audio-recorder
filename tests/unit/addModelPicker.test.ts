@@ -6,13 +6,12 @@
  * for each engine.
  * @module tests/unit/addModelPicker.test
  */
-/** @jest-environment jsdom */
 
 import {
 	addModelPicker,
 	type SettingsSectionContext,
-} from '../../src/settings/settingControls';
-import type { AudioRecorderSettings } from '../../src/settings/settingsSchema';
+} from 'src/settings/settingControls';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 
 interface DropdownCapture {
 	options: { value: string; label: string }[];

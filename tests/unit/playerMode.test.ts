@@ -1,4 +1,3 @@
-/** @jest-environment jsdom */
 /**
  * Guards the player's mode/decision single source of truth - the logic
  * behind two recurring regressions: Reading view wrongly showing editable

@@ -1,4 +1,3 @@
-/** @jest-environment jsdom */
 /**
  * Unit tests for the marker/chapter view extracted from the player. They
  * cover the rendering of the list and ticks, the delegated jump/delete/rename

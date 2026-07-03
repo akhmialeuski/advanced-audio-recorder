@@ -3,7 +3,7 @@
  * @module tests/unit/LinkUpdater.test
  */
 
-import { updateLinksInVault } from '../../src/utils/LinkUpdater';
+import { updateLinksInVault } from 'src/utils/LinkUpdater';
 import { App, TFile } from 'obsidian';
 
 jest.mock('obsidian', () => ({

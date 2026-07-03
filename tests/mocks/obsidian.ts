@@ -271,8 +271,10 @@ export class MarkdownRenderChild extends Component {
 /**
  * Adds Obsidian DOM extension methods to an HTMLElement.
  * Obsidian extends HTMLElement with helper methods like createEl, setText, etc.
+ * Exported so DOM-driven tests can extend elements Obsidian extends at
+ * runtime (e.g. document.body for body-mounted UI like RecordingBanner).
  */
-function addObsidianDomExtensions(el: HTMLElement): HTMLElement {
+export function addObsidianDomExtensions(el: HTMLElement): HTMLElement {
 	// Use unknown cast to avoid TypeScript's overloaded HTMLElement extension conflicts
 	const extended = el as unknown as Record<string, unknown>;
 

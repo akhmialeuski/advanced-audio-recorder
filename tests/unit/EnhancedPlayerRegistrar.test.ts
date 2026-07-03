@@ -1,4 +1,3 @@
-/** @jest-environment jsdom */
 /**
  * Regression guard for two recurring defect families in the enhanced
  * player integration:

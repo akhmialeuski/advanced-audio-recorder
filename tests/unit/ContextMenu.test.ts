@@ -1,14 +1,18 @@
 /**
- * Unit tests for ContextMenu module.
+ * Unit tests for ContextMenu. Behavior-focused: menus are rendered into a
+ * recording Menu fake and asserted by their visible item titles and what
+ * each item's click actually does (modals opened, files trashed, links
+ * removed), not by the setIcon/setSection call structure - so harmless
+ * implementation changes do not break the suite while real regressions
+ * (a missing action, a click doing the wrong thing) still do.
  * @module tests/unit/ContextMenu.test
  */
-/** @jest-environment jsdom */
 
-import { ContextMenu } from '../../src/ui/ContextMenu';
-import { FILE_ACTIONS } from '../../src/actions/fileActions';
-import { AUDIO_EXTENSIONS, FORMAT_MP4 } from '../../src/constants';
-import type { AudioRecorderSettings } from '../../src/settings/settingsSchema';
-import * as AudioFileAnalyzer from '../../src/utils/AudioFileAnalyzer';
+import { ContextMenu } from 'src/ui/ContextMenu';
+import { FILE_ACTIONS } from 'src/actions/fileActions';
+import { AUDIO_EXTENSIONS } from 'src/constants';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
+import * as AudioFileAnalyzer from 'src/utils/AudioFileAnalyzer';
 import {
 	App,
 	Menu,
@@ -22,51 +26,111 @@ import {
 	FileManager,
 } from 'obsidian';
 
-// Mock obsidian module
-jest.mock('obsidian', () => ({
-	App: jest.fn(),
-	Menu: class {
-		addItem = jest.fn();
-		showAtPosition = jest.fn();
-	},
-	Modal: class {},
-	TFile: jest.fn(),
-	Plugin: jest.fn(),
-	Editor: jest.fn(),
-	Notice: jest.fn(),
-	MarkdownView: jest.fn(),
-	FileManager: jest.fn(),
-}));
+/** The shape of a recorded menu item (see the Menu fake below). */
+interface RecordedMenuItem {
+	title: string;
+	onClickHandler: (() => unknown) | null;
+}
 
-jest.mock('../../src/ui/AudioFileInfoModal', () => ({
+/** The shape of the recording Menu fake, for structural casts. */
+interface RecordedMenu {
+	items: RecordedMenuItem[];
+	showAtPosition: jest.Mock;
+}
+
+// Mock obsidian with a recording Menu fake: items are inspectable by
+// title and clickable, so tests assert user-visible behavior instead of
+// builder-call structure.
+jest.mock('obsidian', () => {
+	class MockMenuItem {
+		title = '';
+		onClickHandler: (() => unknown) | null = null;
+		setTitle(title: string): this {
+			this.title = title;
+			return this;
+		}
+		setIcon(): this {
+			return this;
+		}
+		setSection(): this {
+			return this;
+		}
+		onClick(handler: () => unknown): this {
+			this.onClickHandler = handler;
+			return this;
+		}
+	}
+	class MockMenu {
+		items: MockMenuItem[] = [];
+		showAtPosition = jest.fn();
+		addItem(cb: (item: MockMenuItem) => void): this {
+			const item = new MockMenuItem();
+			cb(item);
+			this.items.push(item);
+			return this;
+		}
+		addSeparator(): this {
+			return this;
+		}
+	}
+	return {
+		App: jest.fn(),
+		Menu: MockMenu,
+		Modal: class {},
+		TFile: jest.fn(),
+		Plugin: jest.fn(),
+		Editor: jest.fn(),
+		Notice: jest.fn(),
+		MarkdownView: jest.fn(),
+		FileManager: jest.fn(),
+	};
+});
+
+jest.mock('src/ui/AudioFileInfoModal', () => ({
 	AudioFileInfoModal: jest.fn().mockImplementation(() => ({
 		open: jest.fn(),
 	})),
 }));
 
-jest.mock('../../src/ui/ConversionModal', () => ({
+jest.mock('src/ui/ConversionModal', () => ({
 	ConversionModal: jest.fn().mockImplementation(() => ({
 		open: jest.fn(),
 	})),
 }));
 
-jest.mock('../../src/ui/SplitModal', () => ({
+jest.mock('src/ui/SplitModal', () => ({
 	SplitModal: jest.fn().mockImplementation(() => ({
 		open: jest.fn(),
 	})),
 }));
 
-jest.mock('../../src/cleanup/AudioProcessingModal', () => ({
+jest.mock('src/cleanup/AudioProcessingModal', () => ({
 	AudioProcessingModal: jest.fn().mockImplementation(() => ({
 		open: jest.fn(),
 	})),
 }));
 
 // Mock AudioEncoder to avoid mediabunny TextDecoder requirement
-jest.mock('../../src/audio/AudioEncoder', () => ({
+jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest.fn(),
 	isOfflineEncodingSupported: jest.fn().mockReturnValue(true),
 }));
+
+/** The visible item titles of a rendered menu. */
+function titlesOf(menu: Menu): string[] {
+	return (menu as unknown as RecordedMenu).items.map((item) => item.title);
+}
+
+/** Clicks the menu item with the given title (fails if absent). */
+async function clickItem(menu: Menu, title: string): Promise<void> {
+	const item = (menu as unknown as RecordedMenu).items.find(
+		(candidate) => candidate.title === title,
+	);
+	if (!item?.onClickHandler) {
+		throw new Error(`menu item "${title}" not found or not clickable`);
+	}
+	await item.onClickHandler();
+}
 
 describe('ContextMenu', () => {
 	let contextMenu: ContextMenu;
@@ -80,7 +144,6 @@ describe('ContextMenu', () => {
 	beforeEach(() => {
 		jest.clearAllMocks();
 
-		// Mock App and its components
 		mockWorkspace = {
 			on: jest.fn(),
 			trigger: jest.fn(),
@@ -107,7 +170,6 @@ describe('ContextMenu', () => {
 			fileManager: mockFileManager,
 		} as unknown as App;
 
-		// Mock Plugin
 		mockPlugin = {
 			registerEvent: jest.fn(),
 			registerDomEvent: jest.fn(),
@@ -130,25 +192,25 @@ describe('ContextMenu', () => {
 		);
 	});
 
+	function makeAudioFile(extension = 'mp3'): TFile {
+		const file = new TFile();
+		Object.defineProperty(file, 'extension', { value: extension });
+		return file;
+	}
+
 	describe('register', () => {
 		it('should register file, editor, and player menus', () => {
-			// We can't easily spy on private methods, so we verify side effects (calls to plugin.register*)
 			contextMenu.register();
 
-			// registerFileMenu calls workspace.on('file-menu') and plugin.registerEvent
 			expect(mockWorkspace.on).toHaveBeenCalledWith(
 				'file-menu',
 				expect.any(Function),
 			);
 			expect(mockPlugin.registerEvent).toHaveBeenCalled();
-
-			// registerEditorMenu calls workspace.on('editor-menu') and plugin.registerEvent
 			expect(mockWorkspace.on).toHaveBeenCalledWith(
 				'editor-menu',
 				expect.any(Function),
 			);
-
-			// registerPlayerMenu calls plugin.registerDomEvent
 			expect(mockPlugin.registerDomEvent).toHaveBeenCalledWith(
 				document,
 				'contextmenu',
@@ -163,330 +225,146 @@ describe('ContextMenu', () => {
 
 		beforeEach(() => {
 			contextMenu.register();
-			// Extract the callback passed to workspace.on('file-menu', ...)
 			const call = (mockWorkspace.on as jest.Mock).mock.calls.find(
 				(c) => c[0] === 'file-menu',
 			);
 			fileMenuCallback = call[1];
 		});
 
-		it('should include mp4 in AUDIO_EXTENSIONS', () => {
-			expect(AUDIO_EXTENSIONS).toContain(FORMAT_MP4);
-		});
-
 		test.each(AUDIO_EXTENSIONS)(
-			'should add "Delete recording" item for %s files',
+			'offers the recording actions for %s files',
 			(extension) => {
-				const mockMenu = new Menu();
-				const mockFile = new TFile();
-				Object.defineProperty(mockFile, 'extension', {
-					value: extension,
-				});
+				const menu = new Menu();
 
-				fileMenuCallback(mockMenu, mockFile);
+				fileMenuCallback(menu, makeAudioFile(extension));
 
-				expect(mockMenu.addItem).toHaveBeenCalled();
+				expect(titlesOf(menu)).toContain('Delete recording');
 			},
 		);
 
-		it('should add "Delete recording" item for audio files', () => {
-			const mockMenu = new Menu();
-			const mockFile = new TFile();
-			// Mock TFile properties setup
-			Object.defineProperty(mockFile, 'extension', { value: 'mp3' });
+		it('offers the full action set for an audio file (transcription off)', () => {
+			const menu = new Menu();
 
-			fileMenuCallback(mockMenu, mockFile);
+			fileMenuCallback(menu, makeAudioFile());
 
-			expect(mockMenu.addItem).toHaveBeenCalledTimes(5);
-
-			// Verify the delete item configuration (4th item: Audio info, Convert, Split, Delete)
-			const addItemCallback = (mockMenu.addItem as jest.Mock).mock
-				.calls[4][0];
-			const mockItem = {
-				setTitle: jest.fn().mockReturnThis(),
-				setIcon: jest.fn().mockReturnThis(),
-				setSection: jest.fn().mockReturnThis(),
-				onClick: jest.fn(),
-			};
-			addItemCallback(mockItem);
-
-			expect(mockItem.setTitle).toHaveBeenCalledWith('Delete recording');
-			expect(mockItem.setIcon).toHaveBeenCalledWith('trash');
-			expect(mockItem.setSection).toHaveBeenCalledWith('aar');
+			expect(titlesOf(menu)).toEqual([
+				'Audio file info',
+				'Convert audio format',
+				'Split audio into parts',
+				'Clean up audio',
+				'Delete recording',
+			]);
 		});
 
-		it('should add "Audio file info" item for audio files', () => {
-			const mockMenu = new Menu();
-			const mockFile = new TFile();
-			Object.defineProperty(mockFile, 'extension', { value: 'mp3' });
-
-			fileMenuCallback(mockMenu, mockFile);
-
-			expect(mockMenu.addItem).toHaveBeenCalledTimes(5);
-
-			// Verify the audio info item configuration (1st item)
-			const addItemCallback = (mockMenu.addItem as jest.Mock).mock
-				.calls[0][0];
-			const mockItem = {
-				setTitle: jest.fn().mockReturnThis(),
-				setIcon: jest.fn().mockReturnThis(),
-				setSection: jest.fn().mockReturnThis(),
-				onClick: jest.fn(),
-			};
-			addItemCallback(mockItem);
-
-			expect(mockItem.setTitle).toHaveBeenCalledWith('Audio file info');
-			expect(mockItem.setIcon).toHaveBeenCalledWith('info');
-			expect(mockItem.setSection).toHaveBeenCalledWith('aar');
-		});
-
-		it('should open AudioFileInfoModal on "Audio file info" click', async () => {
-			const mockMenu = new Menu();
-			const mockFile = new TFile();
-			Object.defineProperty(mockFile, 'extension', { value: 'mp3' });
-
-			const mockInfo = { name: 'audio.mp3', size: 1024 };
+		it('opens the file-info modal from "Audio file info"', async () => {
+			const { AudioFileInfoModal } = jest.requireMock(
+				'src/ui/AudioFileInfoModal',
+			);
+			const menu = new Menu();
+			const file = makeAudioFile();
+			const info = { name: 'audio.mp3', size: 1024 };
 			jest.spyOn(AudioFileAnalyzer, 'getAudioFileInfo').mockResolvedValue(
-				mockInfo,
+				info,
 			);
 
-			fileMenuCallback(mockMenu, mockFile);
-
-			const addItemCallback = (mockMenu.addItem as jest.Mock).mock
-				.calls[0][0];
-			const mockItem = {
-				setTitle: jest.fn().mockReturnThis(),
-				setIcon: jest.fn().mockReturnThis(),
-				setSection: jest.fn().mockReturnThis(),
-				onClick: jest.fn(),
-			};
-			addItemCallback(mockItem);
-
-			const clickHandler = mockItem.onClick.mock.calls[0][0];
-			await clickHandler();
+			fileMenuCallback(menu, file);
+			await clickItem(menu, 'Audio file info');
 
 			expect(AudioFileAnalyzer.getAudioFileInfo).toHaveBeenCalledWith(
 				mockApp,
-				mockFile,
+				file,
 			);
+			expect(AudioFileInfoModal).toHaveBeenCalled();
 		});
 
-		it('should not open modal if getAudioFileInfo returns null', async () => {
-			const mockMenu = new Menu();
-			const mockFile = new TFile();
-			Object.defineProperty(mockFile, 'extension', { value: 'mp3' });
-
+		it('does not open the file-info modal when analysis fails', async () => {
+			const { AudioFileInfoModal } = jest.requireMock(
+				'src/ui/AudioFileInfoModal',
+			);
+			const menu = new Menu();
 			jest.spyOn(AudioFileAnalyzer, 'getAudioFileInfo').mockResolvedValue(
 				null,
 			);
 
-			fileMenuCallback(mockMenu, mockFile);
+			fileMenuCallback(menu, makeAudioFile());
+			await clickItem(menu, 'Audio file info');
 
-			const addItemCallback = (mockMenu.addItem as jest.Mock).mock
-				.calls[0][0];
-			const mockItem = {
-				setTitle: jest.fn().mockReturnThis(),
-				setIcon: jest.fn().mockReturnThis(),
-				setSection: jest.fn().mockReturnThis(),
-				onClick: jest.fn(),
-			};
-			addItemCallback(mockItem);
+			expect(AudioFileInfoModal).not.toHaveBeenCalled();
+		});
 
-			const clickHandler = mockItem.onClick.mock.calls[0][0];
-			await clickHandler();
+		it('does not duplicate actions when both menu hooks fire for one menu', () => {
+			const menu = new Menu();
+			const file = makeAudioFile();
 
-			expect(AudioFileAnalyzer.getAudioFileInfo).toHaveBeenCalledWith(
-				mockApp,
-				mockFile,
+			// Simulate both editor-menu and file-menu firing for the same Menu
+			fileMenuCallback(menu, file);
+			fileMenuCallback(menu, file);
+
+			const titles = titlesOf(menu);
+			expect(titles.filter((t) => t === 'Audio file info')).toHaveLength(
+				1,
 			);
+			expect(
+				titles.filter((t) => t === 'Split audio into parts'),
+			).toHaveLength(1);
 		});
 
-		it('should not duplicate "Audio file info" when called twice on the same menu', () => {
-			const mockMenu = new Menu();
-			const mockFile = new TFile();
-			Object.defineProperty(mockFile, 'extension', { value: 'mp3' });
+		it('opens SplitModal with the current settings from "Split audio into parts"', async () => {
+			const { SplitModal } = jest.requireMock('src/ui/SplitModal');
+			const menu = new Menu();
+			const file = makeAudioFile();
 
-			// Simulate both editor-menu and file-menu firing for the same Menu instance
-			fileMenuCallback(mockMenu, mockFile);
-			fileMenuCallback(mockMenu, mockFile);
-
-			// "Audio file info" should be added only once, but "Delete recording" is added each time
-			const calls = (mockMenu.addItem as jest.Mock).mock.calls;
-			const titles: string[] = [];
-			for (const call of calls) {
-				const mockItem = {
-					setTitle: jest.fn().mockReturnThis(),
-					setIcon: jest.fn().mockReturnThis(),
-					setSection: jest.fn().mockReturnThis(),
-					onClick: jest.fn(),
-				};
-				call[0](mockItem);
-				titles.push(mockItem.setTitle.mock.calls[0][0] as string);
-			}
-
-			const infoCount = titles.filter(
-				(t) => t === 'Audio file info',
-			).length;
-			expect(infoCount).toBe(1);
-		});
-
-		it('should add "Split audio into parts" item for audio files', () => {
-			const mockMenu = new Menu();
-			const mockFile = new TFile();
-			Object.defineProperty(mockFile, 'extension', { value: 'mp3' });
-
-			fileMenuCallback(mockMenu, mockFile);
-
-			expect(mockMenu.addItem).toHaveBeenCalledTimes(5);
-
-			// Verify the split item configuration (3rd item: info, convert, split, delete)
-			const addItemCallback = (mockMenu.addItem as jest.Mock).mock
-				.calls[2][0];
-			const mockItem = {
-				setTitle: jest.fn().mockReturnThis(),
-				setIcon: jest.fn().mockReturnThis(),
-				setSection: jest.fn().mockReturnThis(),
-				onClick: jest.fn(),
-			};
-			addItemCallback(mockItem);
-
-			expect(mockItem.setTitle).toHaveBeenCalledWith(
-				'Split audio into parts',
-			);
-			expect(mockItem.setIcon).toHaveBeenCalledWith('scissors');
-			expect(mockItem.setSection).toHaveBeenCalledWith('aar');
-		});
-
-		it('should open SplitModal on "Split audio into parts" click', () => {
-			const { SplitModal } = jest.requireMock('../../src/ui/SplitModal');
-			const mockMenu = new Menu();
-			const mockFile = new TFile();
-			Object.defineProperty(mockFile, 'extension', { value: 'mp3' });
-
-			fileMenuCallback(mockMenu, mockFile);
-
-			const addItemCallback = (mockMenu.addItem as jest.Mock).mock
-				.calls[2][0];
-			const mockItem = {
-				setTitle: jest.fn().mockReturnThis(),
-				setIcon: jest.fn().mockReturnThis(),
-				setSection: jest.fn().mockReturnThis(),
-				onClick: jest.fn(),
-			};
-			addItemCallback(mockItem);
-
-			const clickHandler = mockItem.onClick.mock.calls[0][0];
-			clickHandler();
+			fileMenuCallback(menu, file);
+			await clickItem(menu, 'Split audio into parts');
 
 			expect(SplitModal).toHaveBeenCalledWith(
 				mockApp,
-				mockFile,
+				file,
 				expect.objectContaining({
 					deleteSourceAfterConversion: true,
 				}),
 			);
 		});
 
-		it('adds a "Clean up audio" item and opens AudioProcessingModal', () => {
+		it('opens AudioProcessingModal from "Clean up audio"', async () => {
 			const { AudioProcessingModal } = jest.requireMock(
-				'../../src/cleanup/AudioProcessingModal',
+				'src/cleanup/AudioProcessingModal',
 			);
-			const mockMenu = new Menu();
-			const mockFile = new TFile();
-			Object.defineProperty(mockFile, 'extension', { value: 'mp3' });
+			const menu = new Menu();
+			const file = makeAudioFile();
 
-			fileMenuCallback(mockMenu, mockFile);
+			fileMenuCallback(menu, file);
+			await clickItem(menu, 'Clean up audio');
 
-			// Order: info(0), convert(1), split(2), clean up(3), delete(4)
-			const addItemCallback = (mockMenu.addItem as jest.Mock).mock
-				.calls[3][0];
-			const mockItem = {
-				setTitle: jest.fn().mockReturnThis(),
-				setIcon: jest.fn().mockReturnThis(),
-				setSection: jest.fn().mockReturnThis(),
-				onClick: jest.fn(),
-			};
-			addItemCallback(mockItem);
-
-			expect(mockItem.setTitle).toHaveBeenCalledWith('Clean up audio');
-			expect(mockItem.setSection).toHaveBeenCalledWith('aar');
-
-			const clickHandler = mockItem.onClick.mock.calls[0][0];
-			clickHandler();
 			expect(AudioProcessingModal).toHaveBeenCalledWith(
 				mockApp,
-				mockFile,
+				file,
 				expect.any(Object),
 				expect.any(Function),
 			);
 		});
 
-		it('should not duplicate "Split audio into parts" when called twice on the same menu', () => {
-			const mockMenu = new Menu();
-			const mockFile = new TFile();
-			Object.defineProperty(mockFile, 'extension', { value: 'mp3' });
+		it('offers no actions for non-audio files', () => {
+			const menu = new Menu();
 
-			fileMenuCallback(mockMenu, mockFile);
-			fileMenuCallback(mockMenu, mockFile);
+			fileMenuCallback(menu, makeAudioFile('md'));
 
-			const calls = (mockMenu.addItem as jest.Mock).mock.calls;
-			const titles: string[] = [];
-			for (const call of calls) {
-				const mockItem = {
-					setTitle: jest.fn().mockReturnThis(),
-					setIcon: jest.fn().mockReturnThis(),
-					setSection: jest.fn().mockReturnThis(),
-					onClick: jest.fn(),
-				};
-				call[0](mockItem);
-				titles.push(mockItem.setTitle.mock.calls[0][0] as string);
-			}
-
-			const splitCount = titles.filter(
-				(t) => t === 'Split audio into parts',
-			).length;
-			expect(splitCount).toBe(1);
+			expect(titlesOf(menu)).toEqual([]);
 		});
 
-		it('should NOT add item for non-audio files', () => {
-			const mockMenu = new Menu();
-			const mockFile = new TFile();
-			Object.defineProperty(mockFile, 'extension', { value: 'md' });
+		it('trashes the file and confirms from "Delete recording"', async () => {
+			const menu = new Menu();
+			const file = makeAudioFile();
 
-			fileMenuCallback(mockMenu, mockFile);
+			fileMenuCallback(menu, file);
+			await clickItem(menu, 'Delete recording');
 
-			expect(mockMenu.addItem).not.toHaveBeenCalled();
-		});
-
-		it('should delete file on click', async () => {
-			const mockMenu = new Menu();
-			const mockFile = new TFile();
-			Object.defineProperty(mockFile, 'extension', { value: 'mp3' });
-
-			fileMenuCallback(mockMenu, mockFile);
-
-			const addItemCallback = (mockMenu.addItem as jest.Mock).mock
-				.calls[4][0];
-			const mockItem = {
-				setTitle: jest.fn().mockReturnThis(),
-				setIcon: jest.fn().mockReturnThis(),
-				setSection: jest.fn().mockReturnThis(),
-				onClick: jest.fn(),
-			};
-			addItemCallback(mockItem);
-
-			// Trigger click
-			const clickHandler = mockItem.onClick.mock.calls[0][0];
-			await clickHandler();
-
-			expect(mockFileManager.trashFile).toHaveBeenCalledWith(mockFile);
+			expect(mockFileManager.trashFile).toHaveBeenCalledWith(file);
 			expect(Notice).toHaveBeenCalledWith('Recording deleted');
 		});
 
-		it('should handle deletion error', async () => {
-			const mockMenu = new Menu();
-			const mockFile = new TFile();
-			Object.defineProperty(mockFile, 'extension', { value: 'mp3' });
+		it('reports a deletion failure without throwing', async () => {
+			const menu = new Menu();
 			(mockFileManager.trashFile as jest.Mock).mockRejectedValue(
 				new Error('Delete failed'),
 			);
@@ -494,20 +372,8 @@ describe('ContextMenu', () => {
 				.spyOn(console, 'error')
 				.mockImplementation(() => {});
 
-			fileMenuCallback(mockMenu, mockFile);
-
-			const addItemCallback = (mockMenu.addItem as jest.Mock).mock
-				.calls[4][0];
-			const mockItem = {
-				setTitle: jest.fn().mockReturnThis(),
-				setIcon: jest.fn().mockReturnThis(),
-				setSection: jest.fn().mockReturnThis(),
-				onClick: jest.fn(),
-			};
-			addItemCallback(mockItem);
-
-			const clickHandler = mockItem.onClick.mock.calls[0][0];
-			await clickHandler();
+			fileMenuCallback(menu, makeAudioFile());
+			await clickItem(menu, 'Delete recording');
 
 			expect(Notice).toHaveBeenCalledWith('Failed to delete recording');
 			expect(consoleSpy).toHaveBeenCalled();
@@ -539,9 +405,9 @@ describe('ContextMenu', () => {
 		});
 
 		test.each(AUDIO_EXTENSIONS)(
-			'should add "Delete recording & link" item for %s files',
+			'offers "Delete recording & link to file" for %s links',
 			(extension) => {
-				const mockMenu = new Menu();
+				const menu = new Menu();
 				(mockEditor.getLine as jest.Mock).mockReturnValue(
 					`[[audio.${extension}]]`,
 				);
@@ -549,123 +415,62 @@ describe('ContextMenu', () => {
 					line: 0,
 					ch: 2,
 				});
-
-				const mockFile = new TFile();
-				Object.defineProperty(mockFile, 'extension', {
-					value: extension,
-				});
 				(
 					mockMetadataCache.getFirstLinkpathDest as jest.Mock
-				).mockReturnValue(mockFile);
+				).mockReturnValue(makeAudioFile(extension));
 
-				editorMenuCallback(mockMenu, mockEditor, {});
+				editorMenuCallback(menu, mockEditor, {});
 
-				expect(mockMenu.addItem).toHaveBeenCalled();
+				expect(titlesOf(menu)).toContain(
+					'Delete recording & link to file',
+				);
 			},
 		);
 
-		it('should do nothing if no link at cursor', () => {
-			const mockMenu = new Menu();
+		it('offers nothing when no link is at the cursor', () => {
+			const menu = new Menu();
 			(mockEditor.getLine as jest.Mock).mockReturnValue('Just text');
 
-			editorMenuCallback(mockMenu, mockEditor, {});
+			editorMenuCallback(menu, mockEditor, {});
 
-			expect(mockMenu.addItem).not.toHaveBeenCalled();
+			expect(titlesOf(menu)).toEqual([]);
 		});
 
-		it('should do nothing if link resolves to non-audio file', () => {
-			const mockMenu = new Menu();
+		it('offers nothing when the link resolves to a non-audio file', () => {
+			const menu = new Menu();
 			(mockEditor.getLine as jest.Mock).mockReturnValue('[[note]]');
 			(mockEditor.getCursor as jest.Mock).mockReturnValue({
 				line: 0,
 				ch: 2,
-			}); // Inside link
-			(
-				mockMetadataCache.getFirstLinkpathDest as jest.Mock
-			).mockReturnValue(new TFile()); // Default check fails mostly on extension mock? Or default TFile mock
-
-			const mockFile = new TFile();
-			Object.defineProperty(mockFile, 'extension', { value: 'md' });
-			(
-				mockMetadataCache.getFirstLinkpathDest as jest.Mock
-			).mockReturnValue(mockFile);
-
-			editorMenuCallback(mockMenu, mockEditor, {});
-
-			expect(mockMenu.addItem).not.toHaveBeenCalled();
-		});
-
-		it('should add "Delete recording & link" if valid audio link', () => {
-			const mockMenu = new Menu();
-			(mockEditor.getLine as jest.Mock).mockReturnValue('[[audio.mp3]]');
-			(mockEditor.getCursor as jest.Mock).mockReturnValue({
-				line: 0,
-				ch: 2,
 			});
-
-			const mockFile = new TFile();
-			Object.defineProperty(mockFile, 'extension', { value: 'mp3' });
 			(
 				mockMetadataCache.getFirstLinkpathDest as jest.Mock
-			).mockReturnValue(mockFile);
+			).mockReturnValue(makeAudioFile('md'));
 
-			editorMenuCallback(mockMenu, mockEditor, {});
+			editorMenuCallback(menu, mockEditor, {});
 
-			expect(mockMenu.addItem).toHaveBeenCalledTimes(5);
-			const addItemCallback = (mockMenu.addItem as jest.Mock).mock
-				.calls[4][0]; // Delete recording & link is the fourth item (info, convert, split, delete&link)
-			const mockItem = {
-				setTitle: jest.fn().mockReturnThis(),
-				setIcon: jest.fn().mockReturnThis(),
-				setSection: jest.fn().mockReturnThis(),
-				onClick: jest.fn(),
-			};
-			addItemCallback(mockItem);
-
-			expect(mockItem.setTitle).toHaveBeenCalledWith(
-				'Delete recording & link to file',
-			);
+			expect(titlesOf(menu)).toEqual([]);
 		});
 
-		it('should delete file and remove link text on click', async () => {
-			const mockMenu = new Menu();
+		it('deletes the file and removes the link text on click', async () => {
+			const menu = new Menu();
 			(mockEditor.getLine as jest.Mock).mockReturnValue(
 				'Text [[audio.mp3]] Text',
 			);
-			// Cursor at link
 			(mockEditor.getCursor as jest.Mock).mockReturnValue({
 				line: 0,
 				ch: 7,
 			});
-
-			const mockFile = new TFile();
-			Object.defineProperty(mockFile, 'extension', { value: 'mp3' });
+			const file = makeAudioFile();
 			(
 				mockMetadataCache.getFirstLinkpathDest as jest.Mock
-			).mockReturnValue(mockFile);
+			).mockReturnValue(file);
 
-			editorMenuCallback(mockMenu, mockEditor, {});
+			editorMenuCallback(menu, mockEditor, {});
+			await clickItem(menu, 'Delete recording & link to file');
 
-			const addItemCallback = (mockMenu.addItem as jest.Mock).mock
-				.calls[4][0];
-			const mockItem = {
-				setTitle: jest.fn().mockReturnThis(),
-				setIcon: jest.fn().mockReturnThis(),
-				setSection: jest.fn().mockReturnThis(),
-				onClick: jest.fn(),
-			};
-			addItemCallback(mockItem);
-
-			const clickHandler = mockItem.onClick.mock.calls[0][0];
-			await clickHandler();
-
-			expect(mockFileManager.trashFile).toHaveBeenCalledWith(mockFile);
-			// Verify editor.replaceRange was called with correct range for [[audio.mp3]]
-			// "Text [[audio.mp3]] Text" -> Link is at index 5 to 18 (13 chars)
-			// But strict regex might handle it differently.
-			// Let's rely on the fact that existing logic finds it.
-			// Regex !?\[\[(.*?)(?:\|.*?)?\]\]
-			// For 'Text [[audio.mp3]] Text', match index is 5.
+			expect(mockFileManager.trashFile).toHaveBeenCalledWith(file);
+			// "Text [[audio.mp3]] Text": the link spans columns 5..18
 			expect(mockEditor.replaceRange).toHaveBeenCalledWith(
 				'',
 				{ line: 0, ch: 5 },
@@ -674,21 +479,16 @@ describe('ContextMenu', () => {
 			expect(Notice).toHaveBeenCalledWith('Recording and link deleted');
 		});
 
-		it('should handle deletion error in editor menu', async () => {
-			const mockMenu = new Menu();
+		it('reports a deletion failure from the editor menu', async () => {
+			const menu = new Menu();
 			(mockEditor.getLine as jest.Mock).mockReturnValue('[[audio.mp3]]');
 			(mockEditor.getCursor as jest.Mock).mockReturnValue({
 				line: 0,
 				ch: 2,
 			});
-
-			const mockFile = new TFile();
-			Object.defineProperty(mockFile, 'extension', { value: 'mp3' });
 			(
 				mockMetadataCache.getFirstLinkpathDest as jest.Mock
-			).mockReturnValue(mockFile);
-
-			// Mock delete failure
+			).mockReturnValue(makeAudioFile());
 			(mockFileManager.trashFile as jest.Mock).mockRejectedValue(
 				new Error('Delete failed'),
 			);
@@ -696,101 +496,72 @@ describe('ContextMenu', () => {
 				.spyOn(console, 'error')
 				.mockImplementation();
 
-			editorMenuCallback(mockMenu, mockEditor, {});
-
-			const addItemCallback = (mockMenu.addItem as jest.Mock).mock
-				.calls[4][0];
-			const mockItem = {
-				setTitle: jest.fn().mockReturnThis(),
-				setIcon: jest.fn().mockReturnThis(),
-				setSection: jest.fn().mockReturnThis(),
-				onClick: jest.fn(),
-			};
-			addItemCallback(mockItem);
-
-			const clickHandler = mockItem.onClick.mock.calls[0][0];
-			await clickHandler();
+			editorMenuCallback(menu, mockEditor, {});
+			await clickItem(menu, 'Delete recording & link to file');
 
 			expect(Notice).toHaveBeenCalledWith('Failed to delete recording');
 			expect(consoleSpy).toHaveBeenCalled();
 			consoleSpy.mockRestore();
 		});
 
-		it('should work with markdown links', () => {
-			const mockMenu = new Menu();
+		it('recognizes markdown-style links', () => {
+			const menu = new Menu();
 			(mockEditor.getLine as jest.Mock).mockReturnValue(
 				'[link](audio.mp3)',
 			);
-			// [link](audio.mp3) -> cursor at 5 (inside link text) or 10 (inside path)
-			// Regex: !?\[(.*?)\]\((.*?)\)
-			// Group 1: link, Group 2: audio.mp3
-			// Match index 0. Length: [link](audio.mp3) = 17 chars.
 			(mockEditor.getCursor as jest.Mock).mockReturnValue({
 				line: 0,
 				ch: 10,
 			});
-
-			const mockFile = new TFile();
-			Object.defineProperty(mockFile, 'extension', { value: 'mp3' });
 			(
 				mockMetadataCache.getFirstLinkpathDest as jest.Mock
-			).mockReturnValue(mockFile);
+			).mockReturnValue(makeAudioFile());
 
-			editorMenuCallback(mockMenu, mockEditor, {});
+			editorMenuCallback(menu, mockEditor, {});
 
-			expect(mockMenu.addItem).toHaveBeenCalled();
+			expect(titlesOf(menu)).toContain('Delete recording & link to file');
 		});
 
-		it('should handle view with no file', () => {
-			const mockMenu = new Menu();
+		it('resolves the link without a source path when the view has no file', () => {
+			const menu = new Menu();
 			(mockEditor.getLine as jest.Mock).mockReturnValue('[[audio.mp3]]');
 			(mockEditor.getCursor as jest.Mock).mockReturnValue({
 				line: 0,
 				ch: 2,
 			});
-
-			// view has no file property or it is null
-			const mockView = {};
-
-			const mockFile = new TFile();
-			Object.defineProperty(mockFile, 'extension', { value: 'mp3' });
-			// Should call getFirstLinkpathDest with sourcePath = ''
 			(
 				mockMetadataCache.getFirstLinkpathDest as jest.Mock
-			).mockReturnValue(mockFile);
+			).mockReturnValue(makeAudioFile());
 
-			editorMenuCallback(mockMenu, mockEditor, mockView);
+			editorMenuCallback(menu, mockEditor, {});
 
 			expect(mockMetadataCache.getFirstLinkpathDest).toHaveBeenCalledWith(
 				'audio.mp3',
 				'',
 			);
-			expect(mockMenu.addItem).toHaveBeenCalled();
+			expect(titlesOf(menu)).not.toEqual([]);
 		});
 
-		it('should handle view with file', () => {
-			const mockMenu = new Menu();
+		it("resolves the link against the view's file path", () => {
+			const menu = new Menu();
 			(mockEditor.getLine as jest.Mock).mockReturnValue('[[audio.mp3]]');
 			(mockEditor.getCursor as jest.Mock).mockReturnValue({
 				line: 0,
 				ch: 2,
 			});
-
-			const mockView = { file: { path: 'view.md' } };
-
-			const mockFile = new TFile();
-			Object.defineProperty(mockFile, 'extension', { value: 'mp3' });
 			(
 				mockMetadataCache.getFirstLinkpathDest as jest.Mock
-			).mockReturnValue(mockFile);
+			).mockReturnValue(makeAudioFile());
 
-			editorMenuCallback(mockMenu, mockEditor, mockView);
+			editorMenuCallback(menu, mockEditor, {
+				file: { path: 'view.md' },
+			});
 
 			expect(mockMetadataCache.getFirstLinkpathDest).toHaveBeenCalledWith(
 				'audio.mp3',
 				'view.md',
 			);
-			expect(mockMenu.addItem).toHaveBeenCalled();
+			expect(titlesOf(menu)).not.toEqual([]);
 		});
 	});
 
@@ -805,170 +576,123 @@ describe('ContextMenu', () => {
 			playerMenuCallback = call[2];
 		});
 
-		test.each(AUDIO_EXTENSIONS)(
-			'should resolve %s file and show context menu',
-			(extension) => {
-				const embed = document.createElement('div');
-				embed.className = 'internal-embed';
-				embed.setAttribute('src', `audio.${extension}`);
-				const target = document.createElement('span');
-				embed.appendChild(target);
-
-				const mockEvent = {
-					target: target,
-					pageX: 100,
-					pageY: 200,
-					preventDefault: jest.fn(),
-					stopPropagation: jest.fn(),
-				} as unknown as MouseEvent;
-
-				const mockFile = new TFile();
-				Object.defineProperty(mockFile, 'extension', {
-					value: extension,
-				});
-				(
-					mockMetadataCache.getFirstLinkpathDest as jest.Mock
-				).mockReturnValue(mockFile);
-				(mockWorkspace.getActiveFile as jest.Mock).mockReturnValue(
-					null,
-				);
-
-				playerMenuCallback(mockEvent);
-
-				expect(mockEvent.preventDefault).toHaveBeenCalled();
-				expect(mockWorkspace.trigger).toHaveBeenCalledWith(
-					'file-menu',
-					expect.any(Menu),
-					mockFile,
-					'audio-recorder-player-context-menu',
-				);
-			},
-		);
-
-		it('should do nothing if target is not part of internal-embed', () => {
-			const mockEvent = {
-				target: document.createElement('div'),
-			} as unknown as MouseEvent;
-
-			playerMenuCallback(mockEvent);
-
-			expect(
-				mockMetadataCache.getFirstLinkpathDest,
-			).not.toHaveBeenCalled();
-		});
-
-		it('should do nothing if embed has no src', () => {
+		function makeEmbedEvent(src = 'audio.mp3'): MouseEvent {
 			const embed = document.createElement('div');
 			embed.className = 'internal-embed';
-			// No src attribute
-
+			embed.setAttribute('src', src);
 			const target = document.createElement('span');
 			embed.appendChild(target);
-
-			const mockEvent = {
-				target: target,
-			} as unknown as MouseEvent;
-
-			playerMenuCallback(mockEvent);
-
-			expect(
-				mockMetadataCache.getFirstLinkpathDest,
-			).not.toHaveBeenCalled();
-		});
-
-		it('should resolve file and show menu if valid audio', () => {
-			const embed = document.createElement('div');
-			embed.className = 'internal-embed';
-			embed.setAttribute('src', 'audio.mp3');
-
-			const target = document.createElement('span');
-			embed.appendChild(target);
-
-			const mockEvent = {
-				target: target,
+			return {
+				target,
 				pageX: 100,
 				pageY: 200,
 				preventDefault: jest.fn(),
 				stopPropagation: jest.fn(),
 			} as unknown as MouseEvent;
+		}
 
-			const mockFile = new TFile();
-			Object.defineProperty(mockFile, 'extension', { value: 'mp3' });
+		/** The menu the player handler passed to workspace.trigger. */
+		function triggeredMenu(): Menu {
+			const call = (mockWorkspace.trigger as jest.Mock).mock.calls.find(
+				(c) => c[0] === 'file-menu',
+			);
+			if (!call) {
+				throw new Error('file-menu was not triggered');
+			}
+			return call[1] as Menu;
+		}
+
+		test.each(AUDIO_EXTENSIONS)(
+			'shows the context menu for %s embeds',
+			(extension) => {
+				const event = makeEmbedEvent(`audio.${extension}`);
+				const file = makeAudioFile(extension);
+				(
+					mockMetadataCache.getFirstLinkpathDest as jest.Mock
+				).mockReturnValue(file);
+				(mockWorkspace.getActiveFile as jest.Mock).mockReturnValue(
+					null,
+				);
+
+				playerMenuCallback(event);
+
+				expect(event.preventDefault).toHaveBeenCalled();
+				expect(mockWorkspace.trigger).toHaveBeenCalledWith(
+					'file-menu',
+					expect.any(Object),
+					file,
+					'audio-recorder-player-context-menu',
+				);
+			},
+		);
+
+		it('does nothing when the target is not inside an internal embed', () => {
+			playerMenuCallback({
+				target: document.createElement('div'),
+			} as unknown as MouseEvent);
+
+			expect(
+				mockMetadataCache.getFirstLinkpathDest,
+			).not.toHaveBeenCalled();
+		});
+
+		it('does nothing when the embed has no src', () => {
+			const embed = document.createElement('div');
+			embed.className = 'internal-embed';
+			const target = document.createElement('span');
+			embed.appendChild(target);
+
+			playerMenuCallback({ target } as unknown as MouseEvent);
+
+			expect(
+				mockMetadataCache.getFirstLinkpathDest,
+			).not.toHaveBeenCalled();
+		});
+
+		it('resolves the embed against the active file and shows the menu', () => {
+			const event = makeEmbedEvent();
+			const file = makeAudioFile();
 			(
 				mockMetadataCache.getFirstLinkpathDest as jest.Mock
-			).mockReturnValue(mockFile);
-
-			// Cover truthy activeFile branch
-			const mockActiveFile = new TFile();
-			mockActiveFile.path = 'active.md';
+			).mockReturnValue(file);
+			const activeFile = new TFile();
+			activeFile.path = 'active.md';
 			(mockWorkspace.getActiveFile as jest.Mock).mockReturnValue(
-				mockActiveFile,
+				activeFile,
 			);
 
-			playerMenuCallback(mockEvent);
+			playerMenuCallback(event);
 
-			expect(mockEvent.preventDefault).toHaveBeenCalled();
-			expect(mockEvent.stopPropagation).toHaveBeenCalled();
-			expect(mockWorkspace.trigger).toHaveBeenCalledWith(
-				'file-menu',
-				expect.any(Menu),
-				mockFile,
-				'audio-recorder-player-context-menu',
-			);
+			expect(event.preventDefault).toHaveBeenCalled();
+			expect(event.stopPropagation).toHaveBeenCalled();
 			expect(mockMetadataCache.getFirstLinkpathDest).toHaveBeenCalledWith(
 				'audio.mp3',
 				'active.md',
 			);
+			expect(
+				(triggeredMenu() as unknown as RecordedMenu).showAtPosition,
+			).toHaveBeenCalledWith({ x: 100, y: 200 });
 		});
 
-		it('should do nothing if file resolution fails', () => {
-			const embed = document.createElement('div');
-			embed.className = 'internal-embed';
-			embed.setAttribute('src', 'audio.mp3');
-			const target = document.createElement('span');
-			embed.appendChild(target);
-
-			const mockEvent = {
-				target: target,
-			} as unknown as MouseEvent;
-
+		it('does nothing when the file cannot be resolved', () => {
+			const event = makeEmbedEvent();
 			(
 				mockMetadataCache.getFirstLinkpathDest as jest.Mock
 			).mockReturnValue(null);
 
-			playerMenuCallback(mockEvent);
+			playerMenuCallback(event);
 
-			expect(mockEvent.preventDefault).not.toBeDefined(); // Event not passed to callback in this test setup actually, wait.
-			// The callback receives event. If we don't mock preventDefault it might be undefined properly.
-			// But we want to ensure we returned early.
-			// Check if triggers were called.
 			expect(mockWorkspace.trigger).not.toHaveBeenCalled();
 		});
 
-		it('should handle no active file in player menu', () => {
-			const embed = document.createElement('div');
-			embed.className = 'internal-embed';
-			embed.setAttribute('src', 'audio.mp3');
-			const target = document.createElement('span');
-			embed.appendChild(target);
-
-			const mockEvent = {
-				target: target,
-				preventDefault: jest.fn(),
-				stopPropagation: jest.fn(),
-			} as unknown as MouseEvent;
-
+		it('resolves without a source path when there is no active file', () => {
+			const event = makeEmbedEvent();
 			(mockWorkspace.getActiveFile as jest.Mock).mockReturnValue(null);
-
-			// We expect getFirstLinkpathDest to be called with sourcePath = ''
-			// and if it finds file, proceed.
-			const mockFile = new TFile();
-			Object.defineProperty(mockFile, 'extension', { value: 'mp3' });
 			(
 				mockMetadataCache.getFirstLinkpathDest as jest.Mock
-			).mockReturnValue(mockFile);
+			).mockReturnValue(makeAudioFile());
 
-			playerMenuCallback(mockEvent);
+			playerMenuCallback(event);
 
 			expect(mockMetadataCache.getFirstLinkpathDest).toHaveBeenCalledWith(
 				'audio.mp3',
@@ -977,117 +701,40 @@ describe('ContextMenu', () => {
 			expect(mockWorkspace.trigger).toHaveBeenCalled();
 		});
 
-		it('should attempt to find link in editor and add "Delete & Link" option', () => {
-			const embed = document.createElement('div');
-			embed.className = 'internal-embed';
-			embed.setAttribute('src', 'audio.mp3');
-			const target = document.createElement('span');
-			embed.appendChild(target);
-
-			const mockEvent = {
-				target: target,
-				pageX: 100,
-				pageY: 200,
-				preventDefault: jest.fn(),
-				stopPropagation: jest.fn(),
-			} as unknown as MouseEvent;
-
-			const mockFile = new TFile();
-			Object.defineProperty(mockFile, 'extension', { value: 'mp3' });
+		it('offers "Delete recording & link to file" when the embed maps to an editor link', () => {
+			const event = makeEmbedEvent();
 			(
 				mockMetadataCache.getFirstLinkpathDest as jest.Mock
-			).mockReturnValue(mockFile);
+			).mockReturnValue(makeAudioFile());
 
-			// Mock active view and editor
 			const mockEditor = {
 				offsetToPos: jest.fn().mockReturnValue({ line: 0, ch: 0 }),
 				getLine: jest.fn().mockReturnValue('[[audio.mp3]]'),
-				getCursor: jest.fn().mockReturnValue({ line: 10, ch: 10 }), // Should rely on offsetToPos result
+				getCursor: jest.fn().mockReturnValue({ line: 10, ch: 10 }),
 				replaceRange: jest.fn(),
 			} as unknown as Editor;
-
-			const editorViewOverride = {
-				posAtDOM: jest.fn().mockReturnValue(0),
-			};
-			// Mock casting editor to any to access cm/posAtDOM
 			Object.defineProperty(mockEditor, 'cm', {
-				get: () => editorViewOverride,
+				get: () => ({ posAtDOM: jest.fn().mockReturnValue(0) }),
 			});
-
 			(mockWorkspace.getActiveViewOfType as jest.Mock).mockReturnValue({
 				editor: mockEditor,
 			});
 
-			playerMenuCallback(mockEvent);
+			playerMenuCallback(event);
 
-			// With findLinkAtCursor working (line is '[[audio.mp3]]', cursor 0), it matches
-			// We expect the menu to have items.
-			// Since we create 'new Menu()' inside using mock, we check its calls.
-			// The class creates one Menu instance.
-			// We can't easily access that exact instance unless we spy on Menu constructor or check args passed to workspace.trigger
-
-			const triggerCall = (mockWorkspace.trigger as jest.Mock).mock
-				.calls[0];
-			const menuInstance = triggerCall[1];
-
-			expect(menuInstance.addItem).toHaveBeenCalled();
-
-			// Check if one of the items is "Delete recording & link"
-			// Since we manually add it inside registerPlayerMenu logic
-			// logic: if (linkMatch) { addDeleteRecordingAndLinkMenuItem(...) }
-
-			// We can check if addItem was called enough times or with specific title setup
-			const calls = (menuInstance.addItem as jest.Mock).mock.calls;
-			let foundDeleteLink = false;
-
-			for (const call of calls) {
-				const cb = call[0];
-				const mockItem = {
-					setTitle: jest.fn().mockReturnThis(),
-					setIcon: jest.fn().mockReturnThis(),
-					setSection: jest.fn().mockReturnThis(),
-					onClick: jest.fn(),
-				};
-				cb(mockItem);
-				if (
-					mockItem.setTitle.mock.calls.length > 0 &&
-					mockItem.setTitle.mock.calls[0][0] ===
-						'Delete recording & link to file'
-				) {
-					foundDeleteLink = true;
-					break;
-				}
-			}
-
-			expect(foundDeleteLink).toBe(true);
+			expect(titlesOf(triggeredMenu())).toContain(
+				'Delete recording & link to file',
+			);
 		});
 
-		it('should handle errors in link resolution gracefully', () => {
-			const embed = document.createElement('div');
-			embed.className = 'internal-embed';
-			embed.setAttribute('src', 'audio.mp3');
-			const target = document.createElement('span');
-			embed.appendChild(target);
-
-			const mockEvent = {
-				target: target,
-				pageX: 100,
-				pageY: 200,
-				preventDefault: jest.fn(),
-				stopPropagation: jest.fn(),
-			} as unknown as MouseEvent;
-
-			const mockFile = new TFile();
-			Object.defineProperty(mockFile, 'extension', { value: 'mp3' });
+		it('degrades gracefully when the editor link resolution throws', () => {
+			const event = makeEmbedEvent();
 			(
 				mockMetadataCache.getFirstLinkpathDest as jest.Mock
-			).mockReturnValue(mockFile);
-
+			).mockReturnValue(makeAudioFile());
 			const consoleSpy = jest
 				.spyOn(console, 'error')
 				.mockImplementation();
-
-			// Force error by returning an editor that throws inside posAtDOM
 			const mockEditor = {
 				get cm() {
 					return {
@@ -1101,7 +748,7 @@ describe('ContextMenu', () => {
 				editor: mockEditor,
 			});
 
-			playerMenuCallback(mockEvent);
+			playerMenuCallback(event);
 
 			expect(consoleSpy).toHaveBeenCalledWith(
 				'[AudioRecorder] Failed to resolve link position in editor:',

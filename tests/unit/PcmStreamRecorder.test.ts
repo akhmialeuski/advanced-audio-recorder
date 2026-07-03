@@ -3,9 +3,8 @@
  * Tests real-time PCM capture from MediaStream using AudioWorkletNode.
  * @module tests/unit/PcmStreamRecorder.test
  */
-/** @jest-environment jsdom */
 
-import { PcmStreamRecorder } from '../../src/recording/PcmStreamRecorder';
+import { PcmStreamRecorder } from 'src/recording/PcmStreamRecorder';
 
 // Track messages sent to the worklet port
 let workletPortMessages: Array<{ type: string }> = [];

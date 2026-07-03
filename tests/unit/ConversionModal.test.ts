@@ -2,11 +2,10 @@
  * Unit tests for ConversionModal module.
  * @module tests/unit/ConversionModal.test
  */
-/** @jest-environment jsdom */
 
-import { ConversionModal } from '../../src/ui/ConversionModal';
+import { ConversionModal } from 'src/ui/ConversionModal';
 import { App, TFile } from 'obsidian';
-import type { AudioRecorderSettings } from '../../src/settings/settingsSchema';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 
 /**
  * Extends an HTMLElement with Obsidian's custom DOM methods.
@@ -92,7 +91,7 @@ jest.mock('obsidian', () => ({
 }));
 
 // Mock LinkUpdater: the vault-wide rewrite has its own suite
-jest.mock('../../src/utils/LinkUpdater', () => ({
+jest.mock('src/utils/LinkUpdater', () => ({
 	updateLinksInVault: jest.fn().mockResolvedValue({
 		updatedNotes: 1,
 		skippedReferences: 0,
@@ -101,7 +100,7 @@ jest.mock('../../src/utils/LinkUpdater', () => ({
 }));
 
 // Mock AudioFormatConverter: conversion pipelines have their own suite
-jest.mock('../../src/audio/AudioFormatConverter', () => ({
+jest.mock('src/audio/AudioFormatConverter', () => ({
 	decodeAudioBlob: jest.fn().mockResolvedValue({}),
 	convertBlobToFormat: jest
 		.fn()
@@ -109,7 +108,7 @@ jest.mock('../../src/audio/AudioFormatConverter', () => ({
 }));
 
 // Mock AudioEncoder
-jest.mock('../../src/audio/AudioEncoder', () => ({
+jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest
 		.fn()
 		.mockResolvedValue(new Blob(['encoded'], { type: 'audio/mp3' })),
@@ -117,7 +116,7 @@ jest.mock('../../src/audio/AudioEncoder', () => ({
 }));
 
 // Mock AudioCapabilityDetector
-jest.mock('../../src/audio/AudioCapabilityDetector', () => ({
+jest.mock('src/audio/AudioCapabilityDetector', () => ({
 	getSupportedBitrates: jest
 		.fn()
 		.mockReturnValue([64000, 96000, 128000, 192000, 256000, 320000]),
@@ -169,20 +168,12 @@ describe('ConversionModal', () => {
 	});
 
 	it('should instantiate with source file', () => {
-		const modal = new ConversionModal(
-			mockApp,
-			mockFile,
-			mockSettings as unknown as AudioRecorderSettings,
-		);
+		const modal = new ConversionModal(mockApp, mockFile, mockSettings);
 		expect(modal).toBeDefined();
 	});
 
 	it('should set up content on open', () => {
-		const modal = new ConversionModal(
-			mockApp,
-			mockFile,
-			mockSettings as unknown as AudioRecorderSettings,
-		);
+		const modal = new ConversionModal(mockApp, mockFile, mockSettings);
 		modal.onOpen();
 
 		// Heading is rendered via Setting.setHeading(); source file info is a <p>
@@ -192,11 +183,7 @@ describe('ConversionModal', () => {
 	});
 
 	it('should show source file name', () => {
-		const modal = new ConversionModal(
-			mockApp,
-			mockFile,
-			mockSettings as unknown as AudioRecorderSettings,
-		);
+		const modal = new ConversionModal(mockApp, mockFile, mockSettings);
 		modal.onOpen();
 
 		const source = modal.contentEl.querySelector('.aar-conversion-source');
@@ -204,11 +191,7 @@ describe('ConversionModal', () => {
 	});
 
 	it('should clear content on close', () => {
-		const modal = new ConversionModal(
-			mockApp,
-			mockFile,
-			mockSettings as unknown as AudioRecorderSettings,
-		);
+		const modal = new ConversionModal(mockApp, mockFile, mockSettings);
 		modal.onOpen();
 		modal.onClose();
 
@@ -232,7 +215,7 @@ describe('ConversionModal', () => {
 			const modal = new ConversionModal(mockApp, mockFile, {
 				...mockSettings,
 				...settings,
-			} as unknown as AudioRecorderSettings);
+			});
 			modal.onOpen();
 			// The Setting mock never invokes dropdown callbacks, so the
 			// format selection from onOpen does not run; pick the target
@@ -251,7 +234,7 @@ describe('ConversionModal', () => {
 
 		it('should update links vault-wide with the created file', async () => {
 			const { updateLinksInVault } = jest.requireMock(
-				'../../src/utils/LinkUpdater',
+				'src/utils/LinkUpdater',
 			);
 			const { modal, progressEl } = createModal();
 
@@ -274,7 +257,7 @@ describe('ConversionModal', () => {
 
 		it('should keep the source when some links could not be updated', async () => {
 			const { updateLinksInVault } = jest.requireMock(
-				'../../src/utils/LinkUpdater',
+				'src/utils/LinkUpdater',
 			);
 			updateLinksInVault.mockResolvedValueOnce({
 				updatedNotes: 1,
@@ -295,7 +278,7 @@ describe('ConversionModal', () => {
 
 		it('should report frontmatter links that stay on the source', async () => {
 			const { updateLinksInVault } = jest.requireMock(
-				'../../src/utils/LinkUpdater',
+				'src/utils/LinkUpdater',
 			);
 			updateLinksInVault.mockResolvedValueOnce({
 				updatedNotes: 0,
@@ -315,7 +298,7 @@ describe('ConversionModal', () => {
 
 		it('should skip link updates and deletion for the none action', async () => {
 			const { updateLinksInVault } = jest.requireMock(
-				'../../src/utils/LinkUpdater',
+				'src/utils/LinkUpdater',
 			);
 			const { modal, progressEl } = createModal({
 				conversionLinkAction: 'none',
@@ -330,7 +313,7 @@ describe('ConversionModal', () => {
 
 		it('should show a background notice when closed mid-conversion', async () => {
 			const { convertBlobToFormat } = jest.requireMock(
-				'../../src/audio/AudioFormatConverter',
+				'src/audio/AudioFormatConverter',
 			);
 			let resolveConversion: (blob: Blob) => void = () => undefined;
 			convertBlobToFormat.mockReturnValueOnce(

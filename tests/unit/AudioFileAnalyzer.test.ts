@@ -1,10 +1,9 @@
-/** @jest-environment jsdom */
 /**
  * Unit tests for AudioFileAnalyzer.
  * @module tests/unit/AudioFileAnalyzer
  */
 
-import { getAudioFileInfo } from '../../src/utils/AudioFileAnalyzer';
+import { getAudioFileInfo } from 'src/utils/AudioFileAnalyzer';
 import { App, Notice, TFile } from 'obsidian';
 
 // Mock Notice

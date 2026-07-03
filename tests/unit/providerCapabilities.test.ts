@@ -7,7 +7,6 @@
  * id constants as the single source for the provider ids and map keys.
  * @module tests/unit/providerCapabilities.test
  */
-/** @jest-environment jsdom */
 
 import {
 	DEEPGRAM_CAPABILITIES,

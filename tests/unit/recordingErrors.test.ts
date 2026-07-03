@@ -3,7 +3,7 @@
  * @module tests/unit/recordingErrors.test
  */
 
-import { describeRecordingError } from '../../src/recording/recordingErrors';
+import { describeRecordingError } from 'src/recording/recordingErrors';
 
 describe('describeRecordingError', () => {
 	it.each([

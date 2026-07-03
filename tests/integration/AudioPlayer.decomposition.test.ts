@@ -1,4 +1,3 @@
-/** @jest-environment jsdom */
 /**
  * Regression guards for the AudioPlayer decomposition (audit finding 2.6):
  * the control row (PlayerControlsView), pointer/keyboard seeking

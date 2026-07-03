@@ -5,7 +5,6 @@
  * path runs: read -> decode -> gate -> offline render -> WAV encode ->
  * write. Also covers the WAV encoder round-trip and the guards.
  *
- * @jest-environment jsdom
  */
 
 import type { App, TFile } from 'obsidian';

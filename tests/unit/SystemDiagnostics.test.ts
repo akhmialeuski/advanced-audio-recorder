@@ -1,4 +1,3 @@
-/** @jest-environment jsdom */
 /**
  * Unit tests for SystemDiagnostics.
  * @module tests/unit/SystemDiagnostics

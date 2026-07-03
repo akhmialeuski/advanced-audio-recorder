@@ -3,7 +3,7 @@
  * @module tests/unit/formatDescriptions.test
  */
 
-import { getEncoderDescription } from '../../src/ui/formatDescriptions';
+import { getEncoderDescription } from 'src/ui/formatDescriptions';
 
 describe('getEncoderDescription', () => {
 	it.each([

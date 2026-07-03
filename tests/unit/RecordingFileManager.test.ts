@@ -3,14 +3,13 @@
  * Tests file I/O operations: path resolution, saving, cleanup, and rollback.
  * @module tests/unit/RecordingFileManager.test
  */
-/** @jest-environment jsdom */
 
 import type { App } from 'obsidian';
 import {
 	DEFAULT_SETTINGS,
 	AudioRecorderSettings,
-} from '../../src/settings/settingsSchema';
-import type { RecordingTarget } from '../../src/types';
+} from 'src/settings/settingsSchema';
+import type { RecordingTarget } from 'src/types';
 import {
 	getActiveFileDirectory,
 	getBaseSaveDirectory,
@@ -20,7 +19,7 @@ import {
 	saveAudioFile,
 	removeTemporaryArtifacts,
 	cleanupIntermediateFiles,
-} from '../../src/audio/RecordingFileManager';
+} from 'src/audio/RecordingFileManager';
 
 // Mock obsidian module
 jest.mock('obsidian', () => ({

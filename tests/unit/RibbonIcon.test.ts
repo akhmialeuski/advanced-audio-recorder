@@ -3,13 +3,9 @@
  * Tests the ribbon icon state changes during recording.
  * @module tests/unit/RibbonIcon.test
  */
-/** @jest-environment jsdom */
 
-import {
-	updateRibbonIcon,
-	initializeRibbonIcon,
-} from '../../src/ui/RibbonIcon';
-import { RecordingStatus } from '../../src/types';
+import { updateRibbonIcon, initializeRibbonIcon } from 'src/ui/RibbonIcon';
+import { RecordingStatus } from 'src/types';
 
 // Mock the setIcon function from obsidian
 jest.mock('obsidian', () => ({
