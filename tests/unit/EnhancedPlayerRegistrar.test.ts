@@ -2,7 +2,7 @@
 /**
  * Regression guard for the recurring "settings apply in one view mode but
  * not the other" / "video shows twice in Live Preview" defects. The fix:
- * the registrar is the single decision point — it returns Obsidian's OWN
+ * the registrar is the single decision point - it returns Obsidian's OWN
  * native embed (unwrapped) for anything it does not enhance, returns the
  * enhanced player for audio, and applies settings by RE-RENDERING the view
  * through Obsidian's own pipeline (identical for Reading view and Live
@@ -23,7 +23,7 @@ import { AUDIO_EXTENSIONS } from 'src/constants';
 import { DEFAULT_SETTINGS } from 'src/settings/Settings';
 import type { AudioRecorderSettings } from 'src/settings/Settings';
 import type { EmbedInfo } from 'src/obsidian/embedRegistry';
-import type { MarkerStore } from 'src/player/markers/MarkerStore';
+import type { MarkerStore } from 'src/markers/MarkerStore';
 
 jest.mock('src/player/AudioPlayer', () => ({
 	AudioPlayer: jest.fn().mockImplementation(() => ({
@@ -193,13 +193,13 @@ beforeEach(() => {
 });
 
 describe('EnhancedPlayerRegistrar embed creation', () => {
-	it('returns Obsidian’s own native embed for a video file (no wrapper, no double)', () => {
+	it("returns Obsidian's own native embed for a video file (no wrapper, no double)", () => {
 		probeMock.mockResolvedValue('video');
 		const { creator, nativeCreator } = setup(true);
 
 		const result = creator(info, fileOf('mp4'), '') as NativeInstance;
 
-		// The unwrapped native instance — exactly what Obsidian renders on its
+		// The unwrapped native instance - exactly what Obsidian renders on its
 		// own, so Live Preview cannot double it
 		expect(result.__native).toBe('mp4');
 		expect(nativeCreator).toHaveBeenCalledTimes(1);

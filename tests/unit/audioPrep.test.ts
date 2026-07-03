@@ -26,7 +26,7 @@ import {
 	TRANSCRIBE_BYTES_PER_SEC,
 	TRANSCRIBE_SAMPLE_RATE,
 } from 'src/constants';
-import { WAV_HEADER_SIZE } from 'src/recording/WavEncoder';
+import { WAV_HEADER_SIZE } from 'src/audio/WavEncoder';
 import type { ProviderCapabilities } from 'src/transcription/providers/TranscriptionProvider';
 
 const decodeMock = jest.mocked(decodeToMono16k);

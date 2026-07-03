@@ -156,7 +156,7 @@ export function createLlmProvider(
 
 /**
  * Splits a space-separated argument string into individual arguments,
- * dropping empty tokens. (Quoting is intentionally not supported — paths
+ * dropping empty tokens. (Quoting is intentionally not supported - paths
  * with spaces should be configured via the dedicated path fields.)
  * @param raw - Raw argument string
  */

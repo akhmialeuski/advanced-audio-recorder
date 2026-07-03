@@ -29,7 +29,7 @@ export class SystemInfoModal extends Modal {
 	/**
 	 * Renders the modal content.
 	 */
-	onOpen(): void {
+	override onOpen(): void {
 		const { contentEl } = this;
 
 		new Setting(contentEl).setName('System diagnostics').setHeading();
@@ -59,7 +59,7 @@ export class SystemInfoModal extends Modal {
 	/**
 	 * Cleans up modal content on close.
 	 */
-	onClose(): void {
+	override onClose(): void {
 		this.contentEl.empty();
 	}
 }

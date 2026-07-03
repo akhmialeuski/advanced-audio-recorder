@@ -13,18 +13,15 @@ import type {
 	SaveProgress,
 	TrackFileGroup,
 } from '../types';
-import { MarkerStore } from '../player/markers/MarkerStore';
+import { MarkerStore } from '../markers/MarkerStore';
 import {
 	MARKER_KIND,
 	removeMarker,
 	sortMarkers,
 	updateMarker,
 	type MarkerKind,
-} from '../player/markers/markerModel';
-import {
-	defaultMarkerLabel,
-	generateMarkerId,
-} from '../player/markers/markerFactory';
+} from '../markers/markerModel';
+import { defaultMarkerLabel, generateMarkerId } from '../markers/markerFactory';
 import {
 	groupMarkersByFile,
 	type RecordingMarkerDraft,
@@ -54,10 +51,11 @@ import { DebugLogger } from '../utils/DebugLogger';
 import {
 	buildMimeType,
 	validateRecordingCapability,
-} from './AudioCapabilityDetector';
+} from '../audio/AudioCapabilityDetector';
 import { PcmStreamRecorder } from './PcmStreamRecorder';
 import { InputLevelMonitor } from './InputLevelMonitor';
-import { resolveRecorderFormat } from './AudioFormatConverter';
+import { resolveRecorderFormat } from '../audio/AudioFormatConverter';
+import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import { TrackWriteQueue } from './TrackWriteQueue';
 import { RecordingFinalizer } from './RecordingFinalizer';
 import { PartRotationController } from './PartRotationController';
@@ -146,6 +144,7 @@ export class RecordingManager {
 			result: RecordingSaveResult,
 		) => void,
 		private readonly markerStore: MarkerStore = new MarkerStore(app),
+		getWorkerClient: () => EncodingWorkerClient | null = () => null,
 	) {
 		this.onStatusChange = onStatusChange;
 		this.debugLogger = new DebugLogger(settings);
@@ -159,6 +158,7 @@ export class RecordingManager {
 				this.setStatus(RecordingStatus.Saving, progress);
 			},
 			journal,
+			getWorkerClient,
 		);
 		this.rotation = new PartRotationController(
 			app,
@@ -240,18 +240,23 @@ export class RecordingManager {
 	 * buffer immediately, so it survives even if the recording stops while
 	 * the naming modal is still open. Returns an editing handle for the
 	 * modal, or null when a marker cannot be dropped now.
+	 * @param preselectKind - Marker kind fixed by the invoking command;
+	 *   defaults to the kind last chosen in the modal
 	 */
-	captureMarkerDraft(): RecordingMarkerHandle | null {
+	captureMarkerDraft(
+		preselectKind?: MarkerKind,
+	): RecordingMarkerHandle | null {
 		if (!this.canDropMarker()) {
 			return null;
 		}
 		const position = this.rotation.getCurrentPartPosition(this.status);
+		const kind = preselectKind ?? this.lastMarkerKind;
 		const draft: RecordingMarkerDraft = {
 			id: generateMarkerId(),
 			partOrdinal: position.partOrdinal,
 			offsetSeconds: position.offsetSeconds,
-			kind: this.lastMarkerKind,
-			label: this.nextMarkerLabel(this.lastMarkerKind, null),
+			kind,
+			label: this.nextMarkerLabel(kind, null),
 		};
 		this.markerBuffer.push(draft);
 		return {
@@ -561,11 +566,11 @@ export class RecordingManager {
 	 * Releases everything a failed startRecording may have acquired.
 	 * Errors after getAudioStreams (an unsupported MediaRecorder
 	 * mimeType, a failed worklet load, a failed insertion-context
-	 * capture) otherwise leave the microphone captured — device locked
-	 * and indicator on — until Obsidian restarts. The journal session
+	 * capture) otherwise leave the microphone captured - device locked
+	 * and indicator on - until Obsidian restarts. The journal session
 	 * is ended too: nothing was flushed yet, and an orphaned entry
 	 * would keep an empty journal file on disk until the next launch
-	 * prunes it. Safe in every ordering — the active session id is
+	 * prunes it. Safe in every ordering - the active session id is
 	 * either null (failure before the journal start) or the id of the
 	 * failed session itself.
 	 */
@@ -985,7 +990,7 @@ export class RecordingManager {
 	 * async work is fire-and-forget: the AudioContexts and the vault
 	 * adapter belong to the app, not the plugin, so the releases and
 	 * buffer flushes can still complete after the plugin object is
-	 * gone. The crash-recovery journal is deliberately NOT ended — an
+	 * gone. The crash-recovery journal is deliberately NOT ended - an
 	 * unload mid-recording is exactly the case the next launch must
 	 * offer to recover. The in-memory tail below the flush threshold
 	 * may be lost; everything flushed to disk stays recoverable.
@@ -1101,7 +1106,7 @@ export class RecordingManager {
 	 * Recreates and starts the MediaRecorders after a part rotation,
 	 * re-applying the paused state. A restart failure (e.g. the input
 	 * device disappeared mid-session) would otherwise leave the session
-	 * silently dead — status Recording with no recorder running — so
+	 * silently dead - status Recording with no recorder running - so
 	 * the session is stopped to salvage the parts already written.
 	 */
 	private restartMediaRecorders(): void {

@@ -12,7 +12,7 @@ import {
 	type MarkerListCallbacks,
 	type MarkerListHost,
 } from 'src/player/views/MarkerListView';
-import type { PlayerMarker } from 'src/player/markers/markerModel';
+import type { PlayerMarker } from 'src/markers/markerModel';
 
 const MARKERS: PlayerMarker[] = [
 	{ id: 'a', time: 10, label: 'Intro', kind: 'chapter' },

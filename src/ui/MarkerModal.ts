@@ -7,7 +7,7 @@
  */
 
 import { App, Modal, setIcon } from 'obsidian';
-import { MARKER_KIND, type MarkerKind } from '../player/markers/markerModel';
+import { MARKER_KIND, type MarkerKind } from '../markers/markerModel';
 import type { RecordingMarkerHandle } from '../recording/recordingMarkers';
 
 /** A selectable kind option rendered as a segmented-toggle button. */
@@ -48,7 +48,7 @@ export class RecordingMarkerModal extends Modal {
 	 * Builds the modal contents: a compact kind toggle and a full-width
 	 * name field over a standard button row.
 	 */
-	onOpen(): void {
+	override onOpen(): void {
 		const { contentEl } = this;
 		contentEl.addClass('aar-marker-modal');
 		this.setTitle('Add marker');
@@ -141,7 +141,7 @@ export class RecordingMarkerModal extends Modal {
 	/**
 	 * Discards the draft when the modal closes without confirmation.
 	 */
-	onClose(): void {
+	override onClose(): void {
 		if (!this.committed) {
 			this.handle.cancel();
 		}

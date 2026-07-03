@@ -17,7 +17,7 @@
  * each file is probed once and cached per path. When a probe reveals an
  * audio-only file, the open views are re-rendered so the embed is rebuilt
  * as the enhanced player. Settings changes use the SAME re-render,
- * so any player setting applies immediately and identically in both modes —
+ * so any player setting applies immediately and identically in both modes -
  * Reading view via previewMode.rerender, Live Preview via the current
  * sub-view's set(get(), true). When the internal registry API is
  * unavailable, a Markdown post-processor takes over embeds (Reading view
@@ -34,12 +34,12 @@ import type {
 	WorkspaceLeaf,
 } from 'obsidian';
 import { AUDIO_EXTENSIONS, PLUGIN_LOG_PREFIX } from '../constants';
+import { type AudioRecorderSettings } from '../settings/Settings';
 import {
 	resolvePlayerSettings,
 	playerSettingsEqual,
-	type AudioRecorderSettings,
 	type ResolvedPlayerSettings,
-} from '../settings/Settings';
+} from '../player/playerSettings';
 import { AudioPlayerRegistry } from './AudioPlayerRegistry';
 import { WaveformPeakCache, SharedAudioDecoder } from './WaveformData';
 import { AudioPlayer } from './AudioPlayer';
@@ -50,7 +50,7 @@ import {
 } from './timecodeLinks';
 import { probeMediaKind, type MediaKind } from './mediaProbe';
 import { shouldEnhance } from './playerMode';
-import type { MarkerStore } from './markers/MarkerStore';
+import type { MarkerStore } from '../markers/MarkerStore';
 import {
 	getEmbedRegistry,
 	EmbedRegistryOverride,
@@ -209,7 +209,7 @@ export class EnhancedPlayerRegistrar {
 	/**
 	 * Applies a settings change. Toggling the master enable flips which
 	 * component each embed is (native vs enhanced), so it needs a view
-	 * re-render — but only on the actual flip. Every other player setting
+	 * re-render - but only on the actual flip. Every other player setting
 	 * (the waveform and markers windows) is applied IN PLACE to the live
 	 * players, so it never re-renders the note. This split is what keeps
 	 * settings changes from lagging the page.
@@ -604,7 +604,7 @@ export class EnhancedPlayerRegistrar {
 
 	/**
 	 * Rebuilds a single markdown leaf. rebuildView fully recreates the view,
-	 * which unloads the old embeds — stopping any media they were playing —
+	 * which unloads the old embeds - stopping any media they were playing -
 	 * and recreates them. This is the reliable path for Live Preview, where
 	 * merely re-setting the editor data leaves stale embeds running. Reading
 	 * view falls back to previewMode.rerender if rebuildView is unavailable.

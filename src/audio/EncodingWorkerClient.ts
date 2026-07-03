@@ -3,8 +3,8 @@
  * from inlined source via a Blob URL (the technique the PCM recorder
  * uses for its AudioWorklet), correlates requests with responses, and
  * degrades permanently to the main-thread pipeline when the worker
- * cannot run — conversion never depends on worker availability.
- * @module recording/EncodingWorkerClient
+ * cannot run - conversion never depends on worker availability.
+ * @module audio/EncodingWorkerClient
  */
 
 import { PLUGIN_LOG_PREFIX } from '../constants';
@@ -184,24 +184,4 @@ export class EncodingWorkerClient {
 		}
 		this.pending.clear();
 	}
-}
-
-/** Active client used by the conversion pipeline, set by the plugin. */
-let activeClient: EncodingWorkerClient | null = null;
-
-/**
- * Registers the encoding worker client for the conversion pipeline.
- * @param client - Client instance, or null to disable worker offload
- */
-export function setEncodingWorkerClient(
-	client: EncodingWorkerClient | null,
-): void {
-	activeClient = client;
-}
-
-/**
- * Returns the active encoding worker client, if any is usable.
- */
-export function getEncodingWorkerClient(): EncodingWorkerClient | null {
-	return activeClient && activeClient.isAvailable() ? activeClient : null;
 }

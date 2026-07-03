@@ -2,7 +2,7 @@
  * Static, config-independent capability descriptors for each transcription
  * engine, plus a lookup by engine id. Kept separate from the provider classes
  * so the UI can decide which options to offer (notably speaker diarization)
- * without constructing a provider — construction validates and requires API
+ * without constructing a provider - construction validates and requires API
  * keys the per-run dialog may not have yet. The provider classes reference
  * these same constants, so capabilities stay a single source of truth.
  * @module transcription/providers/capabilities
@@ -87,7 +87,7 @@ export function providerSupportsDiarization(
 /**
  * The diarization actually requested for a run: the user's preference AND the
  * engine's capability. The single place this AND-gate lives, so the settings
- * tab, the per-run dialog, and the service never diverge — a stored "on" left
+ * tab, the per-run dialog, and the service never diverge - a stored "on" left
  * from a diarizing engine is ignored for an engine that cannot diarize.
  * @param id - Selected transcription engine id
  * @param requested - The user's diarization preference

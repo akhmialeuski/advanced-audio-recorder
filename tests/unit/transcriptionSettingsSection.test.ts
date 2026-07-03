@@ -2,7 +2,7 @@
  * Regression tests for the wiring in renderTranscriptionSection: the three
  * speaker-related output controls (Include speakers, Merge speaker turns,
  * Speaker format) must be disabled exactly when diarization is not in effect
- * — the engine cannot diarize, or a capable engine has the toggle off. The
+ * - the engine cannot diarize, or a capable engine has the toggle off. The
  * shared capturing Setting mock runs each builder callback, so the per-row
  * disabled state can be checked by name, catching a future refactor that
  * drops the disabled flag on any of these controls.

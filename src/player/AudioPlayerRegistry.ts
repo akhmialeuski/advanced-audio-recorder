@@ -7,7 +7,7 @@
  */
 
 import { SHARED_AUDIO_GRACE_MS } from '../constants';
-import type { ResolvedPlayerSettings } from '../settings/Settings';
+import type { ResolvedPlayerSettings } from '../player/playerSettings';
 
 /** A reference-counted audio element shared by every player of one file. */
 interface SharedAudio {

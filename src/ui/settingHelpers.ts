@@ -5,7 +5,7 @@
  */
 
 import { Setting } from 'obsidian';
-import { getSupportedBitrates } from '../recording/AudioCapabilityDetector';
+import { getSupportedBitrates } from '../audio/AudioCapabilityDetector';
 import type { ConversionLinkAction } from '../settings/Settings';
 
 /**

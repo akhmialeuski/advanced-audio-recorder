@@ -3,7 +3,7 @@
  * segments captured by the streaming recording path. AudioBuffer
  * encoding goes through mediabunny (see AudioEncoder), which handles
  * WAVE output natively.
- * @module recording/WavEncoder
+ * @module audio/WavEncoder
  */
 
 import type { App } from 'obsidian';
@@ -102,6 +102,27 @@ export function createWavHeader(
 }
 
 /**
+ * Allocates a complete WAV file buffer with the header already written.
+ * Callers fill the PCM region (starting at WAV_HEADER_SIZE) afterwards.
+ * @param numChannels - Number of audio channels
+ * @param sampleRate - Sample rate in Hz
+ * @param pcmByteLength - Total length of PCM data in bytes
+ * @returns ArrayBuffer sized for header plus PCM, header written
+ */
+export function createWavFileBuffer(
+	numChannels: number,
+	sampleRate: number,
+	pcmByteLength: number,
+): ArrayBuffer {
+	const wavBuffer = new ArrayBuffer(WAV_HEADER_SIZE + pcmByteLength);
+	new Uint8Array(wavBuffer).set(
+		new Uint8Array(createWavHeader(numChannels, sampleRate, pcmByteLength)),
+		0,
+	);
+	return wavBuffer;
+}
+
+/**
  * Assembles a complete WAV file from raw int16 PCM data segments.
  * Concatenates all segments after a proper WAV header.
  * @param segments - Array of raw interleaved int16 PCM data buffers
@@ -116,12 +137,12 @@ export function assembleWavFromPcmSegments(
 ): ArrayBuffer {
 	const totalPcmSize = segments.reduce((sum, buf) => sum + buf.byteLength, 0);
 
-	const header = createWavHeader(numChannels, sampleRate, totalPcmSize);
-	const wavBuffer = new ArrayBuffer(WAV_HEADER_SIZE + totalPcmSize);
+	const wavBuffer = createWavFileBuffer(
+		numChannels,
+		sampleRate,
+		totalPcmSize,
+	);
 	const wavView = new Uint8Array(wavBuffer);
-
-	// Copy header
-	wavView.set(new Uint8Array(header), 0);
 
 	// Copy PCM segments
 	let offset = WAV_HEADER_SIZE;
@@ -136,7 +157,7 @@ export function assembleWavFromPcmSegments(
 /**
  * Assembles a complete WAV file from flushed int16 PCM segment files.
  * When the vault adapter can report file sizes, the final buffer is
- * allocated once and the segments stream into it sequentially — peak
+ * allocated once and the segments stream into it sequentially - peak
  * memory is the final file plus one segment, instead of two full
  * copies of the recording. Falls back to read-all-then-assemble for
  * adapters without stat support.

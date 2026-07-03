@@ -3,7 +3,10 @@
  * @module types
  */
 
-import type { OutputMode } from './settings/Settings';
+/**
+ * Output mode for multi-track recordings.
+ */
+export type OutputMode = 'single' | 'multiple';
 
 /**
  * Recording status states.
@@ -133,3 +136,10 @@ export type RecordingTarget = {
 	/** Bytes of PCM data accumulated toward the current auto-split part. */
 	partPcmBytes: number;
 };
+
+/**
+ * What happens to the note link after a conversion or split produces a
+ * new file: leave the original link, replace it, or insert the new
+ * link after it.
+ */
+export type ConversionLinkAction = 'none' | 'replace' | 'after';

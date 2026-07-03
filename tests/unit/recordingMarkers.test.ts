@@ -12,7 +12,7 @@ import {
 	type PartPositionState,
 	type RecordingMarkerDraft,
 } from 'src/recording/recordingMarkers';
-import { MARKER_KIND } from 'src/player/markers/markerModel';
+import { MARKER_KIND } from 'src/markers/markerModel';
 import type { TrackFileGroup } from 'src/types';
 
 const state = (over: Partial<PartPositionState> = {}): PartPositionState => ({

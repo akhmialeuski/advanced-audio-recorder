@@ -3,7 +3,7 @@
  * into timed segments. The orchestrating service prepares the audio
  * (reading the file, optionally decoding and chunking) according to each
  * provider's declared capabilities, so providers only implement a single
- * request — keeping API, local, and future providers interchangeable.
+ * request - keeping API, local, and future providers interchangeable.
  * @module transcription/providers/TranscriptionProvider
  */
 

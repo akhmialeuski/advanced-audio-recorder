@@ -101,7 +101,7 @@ jest.mock('../../src/utils/LinkUpdater', () => ({
 }));
 
 // Mock AudioFormatConverter: conversion pipelines have their own suite
-jest.mock('../../src/recording/AudioFormatConverter', () => ({
+jest.mock('../../src/audio/AudioFormatConverter', () => ({
 	decodeAudioBlob: jest.fn().mockResolvedValue({}),
 	convertBlobToFormat: jest
 		.fn()
@@ -109,7 +109,7 @@ jest.mock('../../src/recording/AudioFormatConverter', () => ({
 }));
 
 // Mock AudioEncoder
-jest.mock('../../src/recording/AudioEncoder', () => ({
+jest.mock('../../src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest
 		.fn()
 		.mockResolvedValue(new Blob(['encoded'], { type: 'audio/mp3' })),
@@ -118,7 +118,7 @@ jest.mock('../../src/recording/AudioEncoder', () => ({
 }));
 
 // Mock AudioCapabilityDetector
-jest.mock('../../src/recording/AudioCapabilityDetector', () => ({
+jest.mock('../../src/audio/AudioCapabilityDetector', () => ({
 	getSupportedBitrates: jest
 		.fn()
 		.mockReturnValue([64000, 96000, 128000, 192000, 256000, 320000]),
@@ -131,14 +131,6 @@ const mockSettings = {
 	deleteSourceAfterConversion: true,
 	conversionLinkAction: 'replace',
 };
-
-// Polyfill Blob.prototype.arrayBuffer for jsdom
-if (!Blob.prototype.arrayBuffer) {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test polyfill for jsdom
-	(Blob.prototype as any).arrayBuffer = function (): Promise<ArrayBuffer> {
-		return Promise.resolve(new ArrayBuffer(0));
-	};
-}
 
 describe('ConversionModal', () => {
 	let mockApp: App;
@@ -339,7 +331,7 @@ describe('ConversionModal', () => {
 
 		it('should show a background notice when closed mid-conversion', async () => {
 			const { convertBlobToFormat } = jest.requireMock(
-				'../../src/recording/AudioFormatConverter',
+				'../../src/audio/AudioFormatConverter',
 			);
 			let resolveConversion: (blob: Blob) => void = () => undefined;
 			convertBlobToFormat.mockReturnValueOnce(

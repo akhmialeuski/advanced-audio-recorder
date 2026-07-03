@@ -25,7 +25,7 @@ import {
 	DEFAULT_LLM_CLEANUP_PROMPT,
 	DEFAULT_LLM_SUMMARY_PROMPT,
 } from 'src/constants';
-import { WAV_HEADER_SIZE } from 'src/recording/WavEncoder';
+import { WAV_HEADER_SIZE } from 'src/audio/WavEncoder';
 
 describe('planChunks', () => {
 	it('returns nothing for non-positive duration', () => {

@@ -4,12 +4,8 @@
  */
 /** @jest-environment jsdom */
 
-import {
-	EncodingWorkerClient,
-	setEncodingWorkerClient,
-	getEncodingWorkerClient,
-} from '../../src/recording/EncodingWorkerClient';
-import type { WorkerResponse } from '../../src/recording/encodingWorker';
+import { EncodingWorkerClient } from '../../src/audio/EncodingWorkerClient';
+import type { WorkerResponse } from '../../src/audio/encodingWorker';
 
 /** Captured worker doubles created by the client. */
 interface WorkerDouble {
@@ -51,7 +47,6 @@ describe('EncodingWorkerClient', () => {
 
 	afterEach(() => {
 		consoleWarnSpy.mockRestore();
-		setEncodingWorkerClient(null);
 	});
 
 	it('should be unavailable without bundled worker source', async () => {
@@ -194,22 +189,5 @@ describe('EncodingWorkerClient', () => {
 		await expect(conversion).rejects.toThrow('terminated');
 		expect(worker.terminate).toHaveBeenCalled();
 		expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:worker-url');
-	});
-
-	describe('client registry', () => {
-		it('should expose only usable clients', () => {
-			expect(getEncodingWorkerClient()).toBeNull();
-
-			const unusable = new EncodingWorkerClient(null);
-			setEncodingWorkerClient(unusable);
-			expect(getEncodingWorkerClient()).toBeNull();
-
-			const usable = new EncodingWorkerClient('worker-source');
-			setEncodingWorkerClient(usable);
-			expect(getEncodingWorkerClient()).toBe(usable);
-
-			setEncodingWorkerClient(null);
-			expect(getEncodingWorkerClient()).toBeNull();
-		});
 	});
 });

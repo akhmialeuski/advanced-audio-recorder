@@ -6,7 +6,7 @@ import {
 	AudioPlayerRegistry,
 	type SeekablePlayer,
 } from 'src/player/AudioPlayerRegistry';
-import type { ResolvedPlayerSettings } from 'src/settings/Settings';
+import type { ResolvedPlayerSettings } from 'src/player/playerSettings';
 
 /**
  * Builds a fake player that records seek calls and reports a fixed

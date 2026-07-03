@@ -19,21 +19,23 @@ import type {
 import type { AudioRecorderSettings } from '../settings/Settings';
 import { PLUGIN_LOG_PREFIX, FORMAT_WAV } from '../constants';
 import { DebugLogger } from '../utils/DebugLogger';
-import { assembleWavFromPcmSegmentFiles } from './WavEncoder';
-import { isOfflineEncodingSupported } from './AudioEncoder';
+import { assembleWavFromPcmSegmentFiles } from '../audio/WavEncoder';
+import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
 import {
 	resolveUniquePath,
 	saveAudioFile,
 	removeTemporaryArtifacts,
 	cleanupIntermediateFiles,
-} from './RecordingFileManager';
+} from '../audio/RecordingFileManager';
 import {
 	isOfflineOnlyFormat,
 	convertBlobToWav,
 	convertBlobToFormat,
 	mergeAudioTracks,
-} from './AudioFormatConverter';
-import { buildMimeType } from './AudioCapabilityDetector';
+} from '../audio/AudioFormatConverter';
+import { buildMimeType } from '../audio/AudioCapabilityDetector';
+import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
+import { audioMimeForExtension } from '../audio/formatRegistry';
 import { canStreamMix, mixPcmTracksToWav } from './StreamingMixer';
 import { buildPartFileName } from './AudioSplitter';
 import { insertFileLinks } from './NoteInserter';
@@ -70,6 +72,8 @@ export class RecordingFinalizer {
 			null,
 			app,
 		),
+		private readonly getWorkerClient: () => EncodingWorkerClient | null = () =>
+			null,
 	) {}
 
 	/**
@@ -125,7 +129,7 @@ export class RecordingFinalizer {
 
 	/**
 	 * Finalizes a stopped recording session: flushes remaining buffers,
-	 * produces the final file(s) — per track or mixed — and inserts the
+	 * produces the final file(s) - per track or mixed - and inserts the
 	 * note links.
 	 * @param targets - Recording targets of the session
 	 * @param timestamp - Session timestamp for the merged file name
@@ -415,12 +419,10 @@ export class RecordingFinalizer {
 		if (segmentPaths.length === 0) {
 			return null;
 		}
-		const segmentBuffers = await Promise.all(
-			segmentPaths.map((path) => this.app.vault.adapter.readBinary(path)),
+		const blob = await this.readSegmentsAsBlob(
+			segmentPaths,
+			buildMimeType(session.recorderFormat),
 		);
-		const blob = new Blob(segmentBuffers, {
-			type: buildMimeType(session.recorderFormat),
-		});
 		if (blob.size === 0) {
 			return null;
 		}
@@ -436,7 +438,9 @@ export class RecordingFinalizer {
 			if (reportProgress) {
 				this.reportProgress(40, 'Assembling audio...');
 			}
-			const wavBlob = await convertBlobToWav(blob);
+			const wavBlob = await convertBlobToWav(blob, {
+				workerClient: this.getWorkerClient(),
+			});
 			if (reportProgress) {
 				this.reportProgress(60, 'Writing file...');
 			}
@@ -463,7 +467,7 @@ export class RecordingFinalizer {
 				},
 				// The intermediate blob was recorded at the session
 				// bitrate, so a codec-matching remux preserves it
-				{ allowRemux: true },
+				{ allowRemux: true, workerClient: this.getWorkerClient() },
 			);
 			if (reportProgress) {
 				this.reportProgress(60, 'Writing file...');
@@ -556,7 +560,7 @@ export class RecordingFinalizer {
 	 * Attempts the bounded-memory streaming mix of flushed PCM tracks
 	 * into a WAV blob. Returns null when the tracks cannot be
 	 * stream-mixed (rate mismatch, no data, adapter without stat) or
-	 * the mix fails — the caller then uses the Web Audio path.
+	 * the mix fails - the caller then uses the Web Audio path.
 	 * @param targets - Recording targets with flushed PCM segments
 	 * @returns Mixed WAV blob, or null to fall back
 	 */
@@ -584,7 +588,9 @@ export class RecordingFinalizer {
 					);
 				},
 			);
-			return new Blob([wavBuffer], { type: 'audio/wav' });
+			return new Blob([wavBuffer], {
+				type: audioMimeForExtension(FORMAT_WAV),
+			});
 		} catch (error) {
 			console.warn(
 				`${PLUGIN_LOG_PREFIX} Streaming mix failed, falling back to the Web Audio mix:`,
@@ -623,7 +629,7 @@ export class RecordingFinalizer {
 			this.app,
 		);
 		return new Blob([wavBuffer], {
-			type: 'audio/wav',
+			type: audioMimeForExtension(FORMAT_WAV),
 		});
 	}
 
@@ -645,14 +651,30 @@ export class RecordingFinalizer {
 		}
 
 		const type = buildMimeType(session.recorderFormat);
-		const segmentBuffers = await Promise.all(
-			target.segmentPaths.map((path) =>
-				this.app.vault.adapter.readBinary(path),
-			),
-		);
+		const blob = await this.readSegmentsAsBlob(target.segmentPaths, type);
 
-		return new Blob([...segmentBuffers, ...target.bufferedChunks], {
-			type,
-		});
+		return new Blob([blob, ...target.bufferedChunks], { type });
+	}
+
+	/**
+	 * Reads segment files sequentially and accumulates them into one
+	 * Blob. Appending each segment to a growing Blob (a lazy
+	 * concatenation in Chromium) keeps at most one raw segment buffer
+	 * alive at a time, instead of fanning out every read at once and
+	 * holding the whole recording as ArrayBuffers.
+	 * @param segmentPaths - Segment files in capture order
+	 * @param type - MIME type for the resulting Blob
+	 * @returns Concatenated segment data
+	 */
+	private async readSegmentsAsBlob(
+		segmentPaths: string[],
+		type: string,
+	): Promise<Blob> {
+		let blob = new Blob([], { type });
+		for (const path of segmentPaths) {
+			const segment = await this.app.vault.adapter.readBinary(path);
+			blob = new Blob([blob, segment], { type });
+		}
+		return blob;
 	}
 }

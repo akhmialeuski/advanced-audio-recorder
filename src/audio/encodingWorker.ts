@@ -10,7 +10,7 @@
  * main bundle as source text (see esbuild.config.mjs); the client
  * starts it via a Blob URL, the same technique the PCM recorder uses
  * for its AudioWorklet.
- * @module recording/encodingWorker
+ * @module audio/encodingWorker
  */
 
 import { runStreamingConversion } from './streamingConversion';

@@ -10,11 +10,13 @@
 
 import type { App } from 'obsidian';
 import { PLUGIN_LOG_PREFIX, FORMAT_WAV } from '../constants';
-import { assembleWavFromPcmSegmentFiles } from './WavEncoder';
+import { concatArrayBuffers } from '../utils/buffers';
+import { directoryOf } from '../utils/paths';
+import { assembleWavFromPcmSegmentFiles } from '../audio/WavEncoder';
 import {
 	removeTemporaryArtifacts,
 	resolveUniquePathInDirectory,
-} from './RecordingFileManager';
+} from '../audio/RecordingFileManager';
 import { JOURNAL_VERSION } from './SessionJournal';
 import type {
 	JournalSession,
@@ -33,22 +35,11 @@ export interface RecoveryResult {
 }
 
 /**
- * Returns the directory part of a vault-relative path.
- * @param path - Vault-relative file path
- * @returns Directory path, or empty string for root-level files
- */
-function directoryOf(path: string): string {
-	const segments = path.split('/');
-	segments.pop();
-	return segments.join('/');
-}
-
-/**
  * Collects the sessions that still have recoverable segment files on
  * disk. Prunes segments that no longer exist (and whole tracks and
  * sessions without any), persisting the pruned journal: a crash
  * before the first flush therefore self-clears without prompting.
- * A corrupt journal is deleted — nothing in it is actionable. A
+ * A corrupt journal is deleted - nothing in it is actionable. A
  * journal written by a newer plugin version is left untouched so a
  * downgrade never destroys recovery data it cannot interpret.
  * @param journal - Session journal
@@ -133,7 +124,7 @@ async function persistSessionUpdate(
  * Recovers one interrupted session: PCM tracks are reassembled into
  * WAV files, MediaRecorder tracks are byte-concatenated into their
  * recorder container format. The output lands in the directory of the
- * first segment — where the user was recording — not in the currently
+ * first segment - where the user was recording - not in the currently
  * configured save folder, which may have changed since the crash.
  * Successfully recovered tracks leave the journal; failed tracks stay
  * for the next launch.
@@ -156,7 +147,7 @@ export async function recoverSession(
 				continue;
 			}
 			if (!track.isPcm && track.headerLost) {
-				// No container header — the data is not playable
+				// No container header - the data is not playable
 				result.failedTracks.push(track.fileBaseName);
 				remainingTracks.push(track);
 				continue;
@@ -181,17 +172,7 @@ export async function recoverSession(
 				for (const path of track.segmentPaths) {
 					segments.push(await app.vault.adapter.readBinary(path));
 				}
-				const totalBytes = segments.reduce(
-					(sum, segment) => sum + segment.byteLength,
-					0,
-				);
-				const combined = new Uint8Array(totalBytes);
-				let offset = 0;
-				for (const segment of segments) {
-					combined.set(new Uint8Array(segment), offset);
-					offset += segment.byteLength;
-				}
-				outputBytes = combined.buffer;
+				outputBytes = concatArrayBuffers(segments).buffer;
 				extension = session.recorderFormat;
 			}
 
@@ -229,7 +210,7 @@ export async function recoverSession(
 
 /**
  * Discards the temporary files of one interrupted session. Finalized
- * part files (partPaths) are never touched — they are complete audio
+ * part files (partPaths) are never touched - they are complete audio
  * the user may want to keep. Segments that could not be removed stay
  * journaled for a retry on the next launch.
  * @param session - Session to discard (as returned by collect)

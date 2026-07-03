@@ -47,14 +47,15 @@
     "husky": "^9.0.0",
     "jest": "30.4.2",
     "jest-environment-jsdom": "30.4.1",
-    "obsidian": "latest",
-    "prettier": "^3.0.0",
+    "nano-staged": "0.8.0",
+    "obsidian": "1.12.3",
+    "prettier": "3.8.1",
     "ts-jest": "29.4.11",
     "tslib": "2.8.1",
     "typescript": "^5.9.3",
     "typescript-eslint": "8.61.0"
   },
-  "lint-staged": {
+  "nano-staged": {
     "*.ts": "eslint --fix",
     "*.json": "prettier --write"
   },
@@ -63,7 +64,7 @@
       "^obsidian$": "<rootDir>/tests/mocks/obsidian.ts",
       "^@mediabunny/flac-encoder$": "<rootDir>/tests/mocks/flac-encoder.ts",
       "^@mediabunny/mp3-encoder$": "<rootDir>/tests/mocks/mp3-encoder.ts",
-      "src/(.*)": "<rootDir>/src/$1"
+      "^src/(.*)$": "<rootDir>/src/$1"
     },
     "moduleFileExtensions": [
       "js",
@@ -74,13 +75,30 @@
       "^.+\\.ts$": "ts-jest"
     },
     "testEnvironment": "jsdom",
+    "testMatch": [
+      "<rootDir>/tests/**/*.test.ts"
+    ],
+    "clearMocks": true,
+    "restoreMocks": true,
+    "collectCoverageFrom": [
+      "src/**/*.ts",
+      "!src/**/*.d.ts"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "statements": 80,
+        "branches": 71,
+        "functions": 70,
+        "lines": 80
+      }
+    },
     "setupFiles": [
       "<rootDir>/tests/setup.ts"
     ]
   },
   "dependencies": {
-    "@mediabunny/flac-encoder": "1.46.0",
-    "@mediabunny/mp3-encoder": "1.46.0",
-    "mediabunny": "1.46.0"
+    "@mediabunny/flac-encoder": "1.50.4",
+    "@mediabunny/mp3-encoder": "1.50.4",
+    "mediabunny": "1.50.4"
   }
 }

@@ -8,9 +8,12 @@
 
 import { Notice, TFile, normalizePath } from 'obsidian';
 import type { App } from 'obsidian';
-import { encodeAudioBuffer, isOfflineEncodingSupported } from './AudioEncoder';
+import {
+	encodeAudioBuffer,
+	isOfflineEncodingSupported,
+} from '../audio/AudioEncoder';
 import { FORMAT_WAV, PLUGIN_LOG_PREFIX } from '../constants';
-import { decodeAudioBlob } from './AudioFormatConverter';
+import { decodeAudioBlob } from '../audio/AudioFormatConverter';
 import {
 	parseWavLayout,
 	buildWavPart,

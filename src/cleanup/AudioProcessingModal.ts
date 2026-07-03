@@ -64,7 +64,7 @@ export class AudioProcessingModal extends Modal {
 		this.config = resolveAudioDspConfig(settings);
 	}
 
-	onOpen(): void {
+	override onOpen(): void {
 		const { contentEl } = this;
 		contentEl.empty();
 		new Setting(contentEl).setName('Clean up audio').setHeading();
@@ -246,7 +246,7 @@ export class AudioProcessingModal extends Modal {
 		}
 	}
 
-	onClose(): void {
+	override onClose(): void {
 		this.contentEl.empty();
 	}
 }

@@ -2,7 +2,7 @@
  * Isolated adapter for Obsidian's internal embed registry. The registry
  * lets a plugin register a custom embed component per file extension, so
  * Obsidian itself creates our player instead of its default audio/video
- * embed — covering both Reading view and Live Preview without racing the
+ * embed - covering both Reading view and Live Preview without racing the
  * DOM. This API is undocumented and absent from the public obsidian.d.ts,
  * so every access goes through this module: the types live here, the
  * shape is probed defensively at runtime, and the original creators are
@@ -71,7 +71,7 @@ export function getEmbedRegistry(app: App): EmbedRegistry | null {
 /**
  * Overrides the embed creators for a set of extensions and restores the
  * originals on teardown. Registration writes the embedByExtension map
- * directly — registerExtension(s) is deliberately not used because it throws
+ * directly - registerExtension(s) is deliberately not used because it throws
  * on extensions that are already registered (every media extension is).
  * Restoration always rewrites the map so the plugin never leaves a dangling
  * override after unload.

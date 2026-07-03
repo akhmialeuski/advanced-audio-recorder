@@ -15,7 +15,7 @@ import {
 	sortMarkers,
 	updateMarker,
 	type PlayerMarker,
-} from 'src/player/markers/markerModel';
+} from 'src/markers/markerModel';
 
 function marker(
 	id: string,
@@ -119,7 +119,7 @@ describe('serializeMarkers / parseMarkers', () => {
 	});
 });
 
-describe('markerModel — edge and negative cases', () => {
+describe('markerModel - edge and negative cases', () => {
 	it('sortMarkers is stable for equal times', () => {
 		const list = [marker('a', 5), marker('b', 5), marker('c', 5)];
 		expect(sortMarkers(list).map((m) => m.id)).toEqual(['a', 'b', 'c']);
@@ -203,7 +203,7 @@ describe('markerModel — edge and negative cases', () => {
 	});
 });
 
-describe('markerRows — single source for both render modes', () => {
+describe('markerRows - single source for both render modes', () => {
 	it('returns one list ordered by time regardless of kind', () => {
 		const list = [
 			marker('c', 30, 'chapter'),

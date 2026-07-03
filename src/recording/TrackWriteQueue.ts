@@ -13,10 +13,10 @@ import type { App } from 'obsidian';
 import type { RecordingSessionConfig, RecordingTarget } from '../types';
 import type { AudioRecorderSettings } from '../settings/Settings';
 import { PLUGIN_LOG_PREFIX } from '../constants';
-import { resolveUniquePath } from './RecordingFileManager';
-import { buildOutputBlob } from './AudioFormatConverter';
-import { buildMimeType } from './AudioCapabilityDetector';
-import { totalByteLength } from './AudioSplitter';
+import { concatArrayBuffers } from '../utils/buffers';
+import { resolveUniquePath } from '../audio/RecordingFileManager';
+import { buildOutputBlob } from '../audio/AudioFormatConverter';
+import { buildMimeType } from '../audio/AudioCapabilityDetector';
 import { SessionJournal } from './SessionJournal';
 
 /**
@@ -76,7 +76,7 @@ export class TrackWriteQueue {
 	/**
 	 * Appends a task to the target's serialized write chain, containing
 	 * failures so one failed flush can never poison the chain. A failed
-	 * flush keeps its data buffered, so containment loses no audio —
+	 * flush keeps its data buffered, so containment loses no audio -
 	 * the flush is retried on the next chunk over the threshold and at
 	 * finalization.
 	 * @param target - Recording target whose chain to append to
@@ -206,12 +206,7 @@ export class TrackWriteQueue {
 			this.settings,
 		);
 
-		const merged = new Uint8Array(totalByteLength(target.pcmBuffers));
-		let offset = 0;
-		for (const buf of target.pcmBuffers) {
-			merged.set(new Uint8Array(buf), offset);
-			offset += buf.byteLength;
-		}
+		const merged = concatArrayBuffers(target.pcmBuffers);
 
 		// Temporary segment: a plain adapter write skips createBinary's
 		// synchronous vault-index update and event dispatch on the hot

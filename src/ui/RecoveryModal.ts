@@ -43,7 +43,7 @@ export class RecoveryModal extends Modal {
 		super(app);
 	}
 
-	onOpen(): void {
+	override onOpen(): void {
 		const { contentEl } = this;
 		contentEl.empty();
 
@@ -71,7 +71,7 @@ export class RecoveryModal extends Modal {
 					? ` ${String(partCount)} already saved part file(s) are safe and stay untouched.`
 					: '';
 			contentEl.createEl('p', {
-				text: `${startedAt} — ${String(trackCount)} track(s), ${String(segmentCount)} temporary segment(s).${parts}`,
+				text: `${startedAt} - ${String(trackCount)} track(s), ${String(segmentCount)} temporary segment(s).${parts}`,
 				cls: 'aar-recovery-session',
 			});
 		}
@@ -97,7 +97,7 @@ export class RecoveryModal extends Modal {
 			);
 	}
 
-	onClose(): void {
+	override onClose(): void {
 		// Closing without a decision keeps the journal untouched: the
 		// prompt returns on the next launch
 		this.contentEl.empty();

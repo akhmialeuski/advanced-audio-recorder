@@ -6,7 +6,7 @@
 /** @jest-environment jsdom */
 
 // Mock AudioEncoder module to avoid mediabunny TextDecoder requirement
-jest.mock('../../src/recording/AudioEncoder', () => ({
+jest.mock('../../src/audio/AudioEncoder', () => ({
 	isOfflineEncodingSupported: jest.fn((format: string) => {
 		return ['mp3', 'flac', 'aac'].includes(format);
 	}),
@@ -21,7 +21,7 @@ import {
 	detectCapabilities,
 	detectCodecSupport,
 	FORMAT_FLAC,
-} from '../../src/recording/AudioCapabilityDetector';
+} from '../../src/audio/AudioCapabilityDetector';
 
 describe('AudioCapabilityDetector', () => {
 	beforeEach(() => {

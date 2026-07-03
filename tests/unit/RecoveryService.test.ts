@@ -26,7 +26,7 @@ jest.mock('obsidian', () => ({
 	normalizePath: (path: string) => path.replace(/\\/g, '/'),
 }));
 
-jest.mock('../../src/recording/WavEncoder', () => ({
+jest.mock('../../src/audio/WavEncoder', () => ({
 	assembleWavFromPcmSegmentFiles: jest.fn((segmentPaths: string[]) =>
 		Promise.resolve(new Uint8Array(44 + segmentPaths.length).buffer),
 	),
@@ -240,7 +240,7 @@ describe('RecoveryService', () => {
 			const result = await recoverSession(session, journal, mockApp);
 
 			const { assembleWavFromPcmSegmentFiles } = jest.requireMock(
-				'../../src/recording/WavEncoder',
+				'../../src/audio/WavEncoder',
 			);
 			// Streamed straight from the segment files: recovery must not
 			// read the whole track into memory before assembly

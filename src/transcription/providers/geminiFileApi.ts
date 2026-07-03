@@ -3,8 +3,8 @@
  * poll until it is ACTIVE, and delete it afterwards. Isolated from the provider
  * so the network steps stay testable-by-eye and the provider reads as a
  * straight-line orchestration. The upload-start step needs a response header
- * (`x-goog-upload-url`), so it uses `requestRaw` — which returns the raw
- * response after asserting success — while the body steps use `requestJson`.
+ * (`x-goog-upload-url`), so it uses `requestRaw` - which returns the raw
+ * response after asserting success - while the body steps use `requestJson`.
  * @module transcription/providers/geminiFileApi
  */
 
@@ -74,7 +74,7 @@ function readHeader(
 /**
  * Narrows a parsed file payload to a {@link GeminiFile}. The upload-finalize
  * response wraps the file in `{ file: {...} }`; the status GET returns the file
- * object directly — both are handled.
+ * object directly - both are handled.
  */
 function parseFile(body: unknown): GeminiFile {
 	const file = isRecord(body) && isRecord(body.file) ? body.file : body;
@@ -98,7 +98,7 @@ function parseFile(body: unknown): GeminiFile {
 
 /**
  * Uploads audio bytes via the resumable File API protocol and returns the file
- * reference (which may still be PROCESSING — poll with {@link waitUntilActive}).
+ * reference (which may still be PROCESSING - poll with {@link waitUntilActive}).
  * @param baseUrl - Gemini base URL (no version segment)
  * @param apiKey - Gemini API key
  * @param data - Encoded audio bytes

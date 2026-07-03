@@ -13,9 +13,7 @@ import {
 	SECONDS_PER_MINUTE,
 	SPLIT_PART_SUFFIX_PATTERN,
 } from '../constants';
-
-/** Bytes per sample for 16-bit PCM data captured by PcmStreamRecorder. */
-export const PCM_BYTES_PER_SAMPLE = 2;
+import { PCM_BYTES_PER_SAMPLE } from '../audio/pcm';
 
 /** Byte length of a RIFF chunk header (4-byte id + 4-byte size). */
 const RIFF_CHUNK_HEADER_SIZE = 8;

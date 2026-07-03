@@ -5,6 +5,7 @@
 /** @jest-environment jsdom */
 
 import { ContextMenu } from '../../src/ui/ContextMenu';
+import { FILE_ACTIONS } from '../../src/actions/fileActions';
 import { AUDIO_EXTENSIONS, FORMAT_MP4 } from '../../src/constants';
 import type { AudioRecorderSettings } from '../../src/settings/Settings';
 import * as AudioFileAnalyzer from '../../src/utils/AudioFileAnalyzer';
@@ -62,7 +63,7 @@ jest.mock('../../src/cleanup/AudioProcessingModal', () => ({
 }));
 
 // Mock AudioEncoder to avoid mediabunny TextDecoder requirement
-jest.mock('../../src/recording/AudioEncoder', () => ({
+jest.mock('../../src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest.fn(),
 	isOfflineEncodingSupported: jest.fn().mockReturnValue(true),
 	getEncoderDescription: jest.fn().mockReturnValue('Test Encoder'),
@@ -114,13 +115,19 @@ describe('ContextMenu', () => {
 		} as unknown as Plugin;
 
 		contextMenu = new ContextMenu(
-			mockApp,
 			mockPlugin,
-			() =>
-				({
-					deleteSourceAfterConversion: true,
-					conversionLinkAction: 'replace',
-				}) as unknown as AudioRecorderSettings,
+			{
+				app: mockApp,
+				getSettings: () =>
+					({
+						deleteSourceAfterConversion: true,
+						conversionLinkAction: 'replace',
+					}) as unknown as AudioRecorderSettings,
+				createTranscriptionModalOptions: () => ({}),
+				primeForEnhancement: () => {},
+				getWorkerClient: () => null,
+			},
+			FILE_ACTIONS,
 		);
 	});
 

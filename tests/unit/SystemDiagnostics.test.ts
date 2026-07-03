@@ -6,7 +6,7 @@
 
 import { SystemDiagnostics } from 'src/diagnostics/SystemDiagnostics';
 import type { AudioRecorderSettings } from 'src/settings/Settings';
-import * as AudioCapabilityDetector from 'src/recording/AudioCapabilityDetector';
+import * as AudioCapabilityDetector from 'src/audio/AudioCapabilityDetector';
 import {
 	FORMAT_WEBM,
 	FORMAT_OGG,
@@ -99,8 +99,8 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 	const originalProcess = global.process;
 
 	afterEach(() => {
-		// eslint-disable-next-line
-        (global as unknown as { process: NodeJS.Process }).process = originalProcess;
+		(global as unknown as { process: NodeJS.Process }).process =
+			originalProcess;
 	});
 
 	it('reads apiVersion from app', () => {
@@ -116,8 +116,7 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 			platform: 'win32',
 			arch: 'x64',
 		};
-		// eslint-disable-next-line -- test override of global
-        (global as unknown as { process: typeof proc }).process = proc;
+		(global as unknown as { process: typeof proc }).process = proc;
 
 		const result = SystemDiagnostics.collectEnvironment(makeApp());
 
@@ -129,8 +128,7 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 
 	it('uses "unknown" when process.platform is absent', () => {
 		const proc = { versions: { electron: '28.0.0', node: '20.11.0' } };
-		// eslint-disable-next-line -- test override of global
-        (global as unknown as { process: typeof proc }).process = proc;
+		(global as unknown as { process: typeof proc }).process = proc;
 
 		const result = SystemDiagnostics.collectEnvironment(makeApp());
 
@@ -138,8 +136,7 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 	});
 
 	it('returns "unknown" for electronVersion when process is undefined', () => {
-		// eslint-disable-next-line -- test override of global
-        (global as unknown as { process: undefined }).process = undefined;
+		(global as unknown as { process: undefined }).process = undefined;
 
 		const result = SystemDiagnostics.collectEnvironment(makeApp());
 
@@ -246,18 +243,20 @@ describe('SystemDiagnostics.collectAudioDevices', () => {
 // ---------------------------------------------------------------------------
 
 describe('SystemDiagnostics.collectAudioCapabilities', () => {
-	const mockDetectCapabilities = jest.spyOn(
-		AudioCapabilityDetector,
-		'detectCapabilities',
-	);
-	const mockDetectCodecSupport = jest.spyOn(
-		AudioCapabilityDetector,
-		'detectCodecSupport',
-	);
+	// Spies are created per test: the global restoreMocks option
+	// restores them after each one
+	let mockDetectCapabilities: jest.SpyInstance;
+	let mockDetectCodecSupport: jest.SpyInstance;
 
 	beforeEach(() => {
-		mockDetectCapabilities.mockReset();
-		mockDetectCodecSupport.mockReset();
+		mockDetectCapabilities = jest.spyOn(
+			AudioCapabilityDetector,
+			'detectCapabilities',
+		);
+		mockDetectCodecSupport = jest.spyOn(
+			AudioCapabilityDetector,
+			'detectCodecSupport',
+		);
 		mockDetectCodecSupport.mockReturnValue([]);
 	});
 
@@ -415,16 +414,18 @@ describe('SystemDiagnostics.collectActiveRecordingConfig', () => {
 
 describe('SystemDiagnostics.collect', () => {
 	const mockEnumerate = jest.fn();
-	const mockDetectCapabilities = jest.spyOn(
-		AudioCapabilityDetector,
-		'detectCapabilities',
-	);
-	const mockDetectCodecSupport = jest.spyOn(
-		AudioCapabilityDetector,
-		'detectCodecSupport',
-	);
+	let mockDetectCapabilities: jest.SpyInstance;
+	let mockDetectCodecSupport: jest.SpyInstance;
 
 	beforeEach(() => {
+		mockDetectCapabilities = jest.spyOn(
+			AudioCapabilityDetector,
+			'detectCapabilities',
+		);
+		mockDetectCodecSupport = jest.spyOn(
+			AudioCapabilityDetector,
+			'detectCodecSupport',
+		);
 		Object.defineProperty(global.navigator, 'mediaDevices', {
 			value: { enumerateDevices: mockEnumerate },
 			configurable: true,

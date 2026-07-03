@@ -70,7 +70,7 @@ describe('getAudioFileInfo', () => {
 		expect(result).toEqual({
 			fileName: 'test.webm',
 			fileSize: '1.5 MB',
-			duration: '00:01:30',
+			duration: '1:30',
 			containerFormat: 'audio/webm',
 			audioCodec: 'opus',
 			bitrate: '140 kbps', // (1572864 * 8) / 90 / 1000 = ~139.8 -> 140
@@ -130,7 +130,7 @@ describe('getAudioFileInfo', () => {
 			numberOfChannels: 1,
 		});
 		const result = await getAudioFileInfo(app, file);
-		expect(result?.duration).toBe('00:00:00');
+		expect(result?.duration).toBe('0:00');
 		expect(result?.bitrate).toBe('0 kbps');
 	});
 

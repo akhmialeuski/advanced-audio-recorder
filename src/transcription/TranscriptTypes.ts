@@ -9,7 +9,7 @@
 
 /**
  * A single word with its own timing, when the provider returns
- * word-level timestamps. Optional — many providers return segments only.
+ * word-level timestamps. Optional - many providers return segments only.
  */
 export interface TranscriptWord {
 	/** Start offset in seconds from the beginning of the audio. */

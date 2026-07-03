@@ -1,5 +1,5 @@
 /**
- * Transcription via a local whisper.cpp binary. Desktop only — it shells
+ * Transcription via a local whisper.cpp binary. Desktop only - it shells
  * out through Node's child_process, which is unavailable in the mobile
  * app. The service hands this provider a single decoded WAV per request (it
  * declares no upload limit), which is written to a temp file, transcribed to

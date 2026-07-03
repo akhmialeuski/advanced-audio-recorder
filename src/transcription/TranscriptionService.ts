@@ -384,8 +384,8 @@ export class TranscriptionService {
 				error instanceof Error ? error.message : String(error);
 			// A single indivisible job has nothing to keep, so fail as before. A
 			// labelled part (one of several, or a subdivision) records the failure
-			// and carries on: discarding a completed — and, on a paid API, already
-			// billed — part because another part hit a provider limit would throw
+			// and carries on: discarding a completed - and, on a paid API, already
+			// billed - part because another part hit a provider limit would throw
 			// away good work.
 			if (!label) {
 				throw error;
@@ -396,7 +396,7 @@ export class TranscriptionService {
 
 	/**
 	 * Labels a subdivided part by its span on the timeline, e.g. "the
-	 * 7:30–15:00 segment", so a salvage warning names which stretch is missing
+	 * 7:30-15:00 segment", so a salvage warning names which stretch is missing
 	 * rather than an opaque part number that no longer maps to the split.
 	 * @param part - The prepared sub-part
 	 * @returns A human label for the part's time range
@@ -407,7 +407,7 @@ export class TranscriptionService {
 		if (part.endSeconds === undefined) {
 			return `the segment at ${start}`;
 		}
-		return `the ${start}–${formatTimecode(part.endSeconds, reference)} segment`;
+		return `the ${start}-${formatTimecode(part.endSeconds, reference)} segment`;
 	}
 
 	/**

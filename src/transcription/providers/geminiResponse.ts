@@ -20,8 +20,8 @@ const RESPONSE_EXCERPT_LENGTH = 200;
 
 /**
  * Coerces a raw timecode value to seconds. Accepts a finite number (already
- * seconds) or a "HH:MM:SS"/"MM:SS"/bare-seconds string — a defensive fallback
- * in case the model emits a string despite the numeric schema — delegating the
+ * seconds) or a "HH:MM:SS"/"MM:SS"/bare-seconds string - a defensive fallback
+ * in case the model emits a string despite the numeric schema - delegating the
  * string case to the shared timecode parser. Returns `fallback` for anything
  * else.
  * @param value - Raw timecode value

@@ -2,41 +2,28 @@
  * Runtime audio capability detection for MediaRecorder support.
  * Probes the browser for supported formats, sample rates, and validates
  * recording configurations before use.
- * @module recording/AudioCapabilityDetector
+ * @module audio/AudioCapabilityDetector
  */
 
 import {
 	FORMAT_WAV,
 	FORMAT_WEBM,
-	FORMAT_OGG,
-	FORMAT_MP3,
 	FORMAT_MP4,
-	FORMAT_M4A,
-	FORMAT_AAC,
-	FORMAT_FLAC,
 	MIME_TYPE_AUDIO_PREFIX,
 	DEFAULT_SAMPLE_RATE,
 	DEFAULT_BITRATE,
 } from '../constants';
 import { isOfflineEncodingSupported } from './AudioEncoder';
+import {
+	COMPRESSED_INTERMEDIATE_FORMATS,
+	MEDIA_RECORDER_CANDIDATE_FORMATS,
+	OFFLINE_ONLY_FORMATS,
+	getFormatDescriptor,
+} from './formatRegistry';
 
-const CANDIDATE_FORMATS = [
-	FORMAT_WEBM,
-	FORMAT_OGG,
-	FORMAT_MP3,
-	FORMAT_M4A,
-	FORMAT_MP4,
-];
+const CANDIDATE_FORMATS = MEDIA_RECORDER_CANDIDATE_FORMATS;
 
-/** Candidate codecs to probe per container format. */
-const FORMAT_CODECS: Record<string, string[]> = {
-	[FORMAT_WEBM]: ['opus', 'vorbis', 'pcm'],
-	[FORMAT_OGG]: ['opus', 'vorbis'],
-	[FORMAT_MP4]: ['mp4a.40.2', 'mp4a.40.5', 'opus'],
-	[FORMAT_M4A]: ['mp4a.40.2', 'mp4a.40.5'],
-	[FORMAT_MP3]: ['mp3'],
-};
-const COMPRESSED_INTERMEDIATES = [FORMAT_WEBM, FORMAT_OGG];
+const COMPRESSED_INTERMEDIATES = COMPRESSED_INTERMEDIATE_FORMATS;
 
 const CANDIDATE_SAMPLE_RATES = [8000, 16000, 22050, 44100, 48000];
 const CANDIDATE_BITRATES_BPS = [
@@ -105,9 +92,6 @@ export interface ValidationResult {
 export function buildMimeType(format: string): string {
 	return `${MIME_TYPE_AUDIO_PREFIX}${format}`;
 }
-
-/** Formats available only via offline encoding (not MediaRecorder). */
-const OFFLINE_ONLY_FORMATS = [FORMAT_MP3, FORMAT_FLAC, FORMAT_AAC];
 
 /**
  * Detects which audio formats the current browser supports
@@ -191,7 +175,7 @@ export function validateRecordingCapability(format: string): ValidationResult {
 		return { valid: true, reason: '' };
 	}
 
-	// Format not supported by MediaRecorder — check if offline encoding
+	// Format not supported by MediaRecorder - check if offline encoding
 	// is available and an intermediate recording format exists
 	if (isOfflineEncodingSupported(format)) {
 		const hasIntermediate = COMPRESSED_INTERMEDIATES.some((f) =>
@@ -222,7 +206,7 @@ export function getExpectedCodec(format: string): string | undefined {
 	if (typeof MediaRecorder === 'undefined') {
 		return undefined;
 	}
-	const codecs = FORMAT_CODECS[format];
+	const codecs = getFormatDescriptor(format)?.probeCodecs;
 	if (!codecs || codecs.length === 0) {
 		return undefined;
 	}
@@ -248,7 +232,7 @@ export function detectCodecSupport(): CodecSupportEntry[] {
 			typeof MediaRecorder !== 'undefined'
 				? MediaRecorder.isTypeSupported(plainMime)
 				: false;
-		const codecs = FORMAT_CODECS[format] ?? [];
+		const codecs = getFormatDescriptor(format)?.probeCodecs ?? [];
 		const withCodecs: CodecVariantEntry[] = codecs.map((codec) => {
 			const mimeType = `${plainMime};codecs=${codec}`;
 			return {

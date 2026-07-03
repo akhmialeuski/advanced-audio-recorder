@@ -2,7 +2,7 @@
  * On-demand audio cleanup: decode an existing audio file, apply the
  * selected DSP stages (noise gate, high-pass filter, loudness leveling)
  * offline, and write a processed WAV copy next to the source. Invoked
- * from the context menu — it never runs during live recording.
+ * from the context menu - it never runs during live recording.
  * @module cleanup/AudioProcessingService
  */
 
@@ -14,27 +14,16 @@ import {
 	MAX_AUDIO_CLEANUP_SECONDS,
 	MAX_AUDIO_CLEANUP_DECODED_SAMPLES,
 } from '../constants';
-import { createWavHeader, WAV_HEADER_SIZE } from '../recording/WavEncoder';
-import { resolveUniquePathInDirectory } from '../recording/RecordingFileManager';
+import { createWavFileBuffer, WAV_HEADER_SIZE } from '../audio/WavEncoder';
+import { floatToInt16 } from '../audio/pcm';
+import { directoryOf } from '../utils/paths';
+import { resolveUniquePathInDirectory } from '../audio/RecordingFileManager';
 import { delay } from '../utils/TimeUtils';
 import {
 	applyNoiseGateToChannel,
 	dbToGain,
 	type AudioDspConfig,
 } from './audioDsp';
-
-/**
- * Maps a Float32 sample (range -1..1) to a little-endian int16 value. Uses the
- * full negative rail (-32768) for negatives and 32767 for positives, matching
- * the project's int16 mapping (PcmStreamRecorder), rather than scaling both
- * rails by 32767.
- * @param sample - Sample in the range -1..1
- * @returns Signed 16-bit PCM value
- */
-export function floatToInt16(sample: number): number {
-	const clamped = Math.max(-1, Math.min(1, sample));
-	return Math.round(clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff);
-}
 
 /**
  * Writes `frameCount` interleaved 16-bit PCM frames from `channels`, starting
@@ -93,7 +82,7 @@ export class AudioProcessingService {
 	 * Processes an audio file and writes a cleaned WAV copy. The signal is
 	 * decoded once, then gated and rendered one time segment at a time directly
 	 * into the output buffer, so peak memory is bounded by the decoded input
-	 * and the WAV output rather than growing with the recording length — a long
+	 * and the WAV output rather than growing with the recording length - a long
 	 * recording is cleaned up in memory without the old "split first" detour.
 	 * @param file - Source audio file
 	 * @param config - Stages to apply
@@ -115,13 +104,7 @@ export class AudioProcessingService {
 		// length; each segment's gate/offline working set is released before the
 		// next iteration.
 		const pcmByteLength = numFrames * numChannels * 2;
-		const out = new ArrayBuffer(WAV_HEADER_SIZE + pcmByteLength);
-		new Uint8Array(out).set(
-			new Uint8Array(
-				createWavHeader(numChannels, sampleRate, pcmByteLength),
-			),
-			0,
-		);
+		const out = createWavFileBuffer(numChannels, sampleRate, pcmByteLength);
 		const pcm = new DataView(out, WAV_HEADER_SIZE);
 
 		const segmentFrames = Math.max(
@@ -158,7 +141,7 @@ export class AudioProcessingService {
 	 * segment is read with a warm-up lead-in (discarded after processing) so the
 	 * stateful gate and offline stages reach the same envelope they would in a
 	 * continuous pass, leaving no boundary artifact. The gate runs first, on the
-	 * decoded signal, then the high-pass and leveling render offline — the same
+	 * decoded signal, then the high-pass and leveling render offline - the same
 	 * order as a whole-file pass, just bounded to one segment.
 	 * @param channels - Full decoded per-channel samples (read as views)
 	 * @param sampleRate - Sample rate in Hz
@@ -307,8 +290,7 @@ export class AudioProcessingService {
 	 * Resolves a unique `<name>-processed.wav` path next to the source.
 	 */
 	private resolveOutputPath(file: TFile): Promise<string> {
-		const slash = file.path.lastIndexOf('/');
-		const directory = slash >= 0 ? file.path.slice(0, slash) : '';
+		const directory = directoryOf(file.path);
 		return resolveUniquePathInDirectory(
 			directory,
 			`${file.basename}-processed.wav`,

@@ -1,7 +1,7 @@
 /**
  * Pure operations over the transcript data model: sorting, normalization,
  * chunk stitching (time offsetting + concatenation), and speaker
- * collection/renaming. No DOM, network, or I/O — all logic here is unit
+ * collection/renaming. No DOM, network, or I/O - all logic here is unit
  * tested directly.
  * @module transcription/transcriptModel
  */
@@ -43,7 +43,7 @@ export function collectSpeakers(
  * Returns a copy of the transcript with all speaker attribution removed:
  * every segment drops its `speaker` and the speaker list is emptied, while
  * word-level timings are kept intact. Applied when diarization is not in
- * effect so no output path — note Markdown, sidecar file, or JSON — ever
+ * effect so no output path - note Markdown, sidecar file, or JSON - ever
  * shows a label the user did not ask for. The no-speakers transcript is the
  * single source of truth, so every consumer stays consistent.
  * @param transcript - Source transcript

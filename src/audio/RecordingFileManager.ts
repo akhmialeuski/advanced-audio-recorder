@@ -1,7 +1,7 @@
 /**
  * File I/O operations for the recording pipeline.
  * Handles path resolution, saving, temporary file cleanup, and rollback.
- * @module recording/RecordingFileManager
+ * @module audio/RecordingFileManager
  */
 
 import { normalizePath } from 'obsidian';

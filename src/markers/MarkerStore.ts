@@ -7,11 +7,11 @@
  * sidecar so the markers stay attached and do not orphan. Reads are
  * cached per path and writes are serialized through a promise chain so
  * concurrent edits from several players cannot interleave.
- * @module player/markers/MarkerStore
+ * @module markers/MarkerStore
  */
 
 import type { App } from 'obsidian';
-import { PLUGIN_LOG_PREFIX } from '../../constants';
+import { PLUGIN_LOG_PREFIX } from '../constants';
 import {
 	parseMarkers,
 	serializeMarkers,

@@ -6,7 +6,7 @@
 
 import { SplitModal } from '../../src/ui/SplitModal';
 import { App, Notice, TFile } from 'obsidian';
-import { createWavHeader } from '../../src/recording/WavEncoder';
+import { createWavHeader } from '../../src/audio/WavEncoder';
 import { createMockAudioBuffer } from '../helpers/createMockAudioBuffer';
 import type { AudioRecorderSettings } from '../../src/settings/Settings';
 
@@ -182,7 +182,7 @@ jest.mock('obsidian', () => ({
 }));
 
 // Mock AudioEncoder
-jest.mock('../../src/recording/AudioEncoder', () => ({
+jest.mock('../../src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest
 		.fn()
 		.mockResolvedValue(new Blob(['encoded'], { type: 'audio/webm' })),
@@ -191,14 +191,14 @@ jest.mock('../../src/recording/AudioEncoder', () => ({
 }));
 
 // Mock AudioCapabilityDetector
-jest.mock('../../src/recording/AudioCapabilityDetector', () => ({
+jest.mock('../../src/audio/AudioCapabilityDetector', () => ({
 	getSupportedBitrates: jest
 		.fn()
 		.mockReturnValue([64000, 96000, 128000, 192000, 256000, 320000]),
 }));
 
 // Mock the decoder: the compressed path decodes once via this function
-jest.mock('../../src/recording/AudioFormatConverter', () => ({
+jest.mock('../../src/audio/AudioFormatConverter', () => ({
 	decodeAudioBlob: jest.fn(),
 }));
 
@@ -211,8 +211,8 @@ jest.mock('../../src/utils/LinkUpdater', () => ({
 	}),
 }));
 
-import { encodeAudioBuffer } from '../../src/recording/AudioEncoder';
-import { decodeAudioBlob } from '../../src/recording/AudioFormatConverter';
+import { encodeAudioBuffer } from '../../src/audio/AudioEncoder';
+import { decodeAudioBlob } from '../../src/audio/AudioFormatConverter';
 import { updateLinksInVault } from '../../src/utils/LinkUpdater';
 
 /** WAV header size produced by createWavHeader. */
@@ -254,13 +254,6 @@ interface SplitModalInternals {
 
 function internals(modal: SplitModal): SplitModalInternals {
 	return modal as unknown as SplitModalInternals;
-}
-
-if (!Blob.prototype.arrayBuffer) {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test polyfill
-	(Blob.prototype as any).arrayBuffer = function (): Promise<ArrayBuffer> {
-		return Promise.resolve(new ArrayBuffer(8));
-	};
 }
 
 describe('SplitModal', () => {
@@ -392,7 +385,7 @@ describe('SplitModal', () => {
 
 	it('should show the WAV extension in the example when encoding falls back', () => {
 		const { isOfflineEncodingSupported } = jest.requireMock(
-			'../../src/recording/AudioEncoder',
+			'../../src/audio/AudioEncoder',
 		);
 		(isOfflineEncodingSupported as jest.Mock).mockReturnValue(false);
 		configureFile('recording.webm', 'webm');
@@ -1048,7 +1041,7 @@ describe('SplitModal', () => {
 
 		it('should fall back to WAV when the source format cannot be encoded', async () => {
 			const { isOfflineEncodingSupported } = jest.requireMock(
-				'../../src/recording/AudioEncoder',
+				'../../src/audio/AudioEncoder',
 			);
 			(isOfflineEncodingSupported as jest.Mock).mockReturnValue(false);
 			const modal = new SplitModal(mockApp, mockFile, mockSettings);

@@ -2,7 +2,7 @@
  * Tests for the GeminiLlmProvider post-processing path: the generateContent
  * request shape (endpoint URL, x-goog-api-key header, max-tokens, thinking
  * disabled), text extraction, the per-model thinking budget, and the
- * truncation/block guards — all scripted through the shared requestUrl mock.
+ * truncation/block guards - all scripted through the shared requestUrl mock.
  */
 
 import { GeminiLlmProvider } from 'src/transcription/llm/LlmProvider';

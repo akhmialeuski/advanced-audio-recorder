@@ -115,7 +115,7 @@ export function addText(
 	});
 	if (config.disabled) {
 		// Dim the whole row so a non-interactive input reads as unavailable, not
-		// merely empty — mirrors the disabled rendering used by addToggle.
+		// merely empty - mirrors the disabled rendering used by addToggle.
 		setting.settingEl.addClass(SETTING_DISABLED_CLASS);
 	}
 }
@@ -209,7 +209,7 @@ export function addToggle(
 	});
 	if (config.disabled) {
 		// Dim the whole row so a non-interactive option reads as disabled,
-		// not merely "off" — the toggle's own disabled state is too subtle.
+		// not merely "off" - the toggle's own disabled state is too subtle.
 		setting.settingEl.addClass(SETTING_DISABLED_CLASS);
 	}
 }

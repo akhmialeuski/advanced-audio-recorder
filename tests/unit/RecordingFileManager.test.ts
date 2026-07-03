@@ -20,7 +20,7 @@ import {
 	saveAudioFile,
 	removeTemporaryArtifacts,
 	cleanupIntermediateFiles,
-} from '../../src/recording/RecordingFileManager';
+} from '../../src/audio/RecordingFileManager';
 
 // Mock obsidian module
 jest.mock('obsidian', () => ({
@@ -28,17 +28,6 @@ jest.mock('obsidian', () => ({
 }));
 
 // Polyfill Blob.arrayBuffer for jsdom if missing
-if (!Blob.prototype.arrayBuffer) {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- jsdom polyfill required for test environment
-	(Blob.prototype as any).arrayBuffer = function (): Promise<ArrayBuffer> {
-		return new Promise((resolve, reject) => {
-			const reader = new FileReader();
-			reader.onload = (): void => resolve(reader.result as ArrayBuffer);
-			reader.onerror = (): void => reject(reader.error);
-			reader.readAsArrayBuffer(this as Blob);
-		});
-	};
-}
 
 describe('RecordingFileManager', () => {
 	let mockApp: App;

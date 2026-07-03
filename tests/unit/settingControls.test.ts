@@ -1,7 +1,7 @@
 /**
  * Unit tests for the shared setting-control builders, focused on the
  * disabled (dimmed) rendering used for options the current selection cannot
- * use — e.g. speaker diarization on an engine that cannot diarize. A disabled
+ * use - e.g. speaker diarization on an engine that cannot diarize. A disabled
  * control must both be non-interactive and visually greyed (a dim class on the
  * row), so the user can tell it is off because it is unavailable, not unset.
  * The capturing Setting mock is shared from tests/helpers/captureSettings.

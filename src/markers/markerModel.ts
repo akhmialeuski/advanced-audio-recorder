@@ -7,12 +7,12 @@
  *
  * Every function here is pure (no DOM, no I/O) so the ordering,
  * navigation, and (de)serialization logic can be unit tested directly.
- * @module player/markers/markerModel
+ * @module markers/markerModel
  */
 
 /**
  * The marker kinds the player supports, as named constants so call sites
- * reference MARKER_KIND.bookmark instead of repeating the literal — which
+ * reference MARKER_KIND.bookmark instead of repeating the literal - which
  * also pins the persisted `kind` value in one place.
  */
 export const MARKER_KIND = {
@@ -232,8 +232,8 @@ export interface MarkerRow {
 	/** Actions offered on this row. */
 	actions: MarkerRowAction[];
 	/**
-	 * Length of this marker's segment — the gap to the next marker, or to
-	 * the end of the track for the last marker — or null when unknown
+	 * Length of this marker's segment - the gap to the next marker, or to
+	 * the end of the track for the last marker - or null when unknown
 	 * (e.g. the duration is not available yet).
 	 */
 	segmentSeconds: number | null;

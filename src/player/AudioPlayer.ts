@@ -33,7 +33,7 @@ import { playbackProgress } from './playbackProgress';
 import {
 	playerSettingsEqual,
 	type ResolvedPlayerSettings,
-} from '../settings/Settings';
+} from '../player/playerSettings';
 import {
 	computeWaveformPeaksProgressive,
 	waveformCacheKey,
@@ -44,7 +44,7 @@ import type {
 	AudioPlayerRegistry,
 	SeekablePlayer,
 } from './AudioPlayerRegistry';
-import type { MarkerStore } from './markers/MarkerStore';
+import type { MarkerStore } from '../markers/MarkerStore';
 import {
 	addMarker,
 	chapters,
@@ -55,8 +55,8 @@ import {
 	updateMarker,
 	type MarkerKind,
 	type PlayerMarker,
-} from './markers/markerModel';
-import { defaultMarkerLabel, generateMarkerId } from './markers/markerFactory';
+} from '../markers/markerModel';
+import { defaultMarkerLabel, generateMarkerId } from '../markers/markerFactory';
 import { formatPlaybackRate, speedMenuItems } from './playbackRate';
 import { isEditableContext } from './playerMode';
 import {
@@ -152,7 +152,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * is set true only once the embed is confirmed to be inside the editor
 	 * (Live Preview); Reading view stays read-only. Defaulting to false
 	 * means a missed/late detection can never wrongly show edit controls
-	 * in Reading view — the regression this guards against.
+	 * in Reading view - the regression this guards against.
 	 */
 	private editable = false;
 	private resizeObserver: ResizeObserver | null = null;
@@ -198,12 +198,12 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * Defers the takeover until Obsidian has finished loading the embed,
 	 * then renders the player. Obsidian loads internal media embeds
 	 * asynchronously through its own loader, which owns the embed element
-	 * and overwrites a player built too early — notably for files it
+	 * and overwrites a player built too early - notably for files it
 	 * treats as video (mp4, webm, mov, mkv, ogv). Rendering only after the
 	 * embed is populated lets empty() clear Obsidian's native element so
 	 * our player is the one that survives.
 	 */
-	onload(): void {
+	override onload(): void {
 		if (this.options.immediate) {
 			// The embed-registry path hands us an owned container with no
 			// default player to wait for, so render right away
@@ -236,7 +236,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 
 	/**
 	 * Renders the player, but never lets a render failure escape into
-	 * Obsidian's embed loader — an uncaught throw there breaks opening the
+	 * Obsidian's embed loader - an uncaught throw there breaks opening the
 	 * whole note (Obsidian reports "Failed to open"). On failure the full
 	 * error is logged and the embed falls back to a plain native audio
 	 * element, so the note still opens and the audio still plays.
@@ -383,7 +383,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * Re-renders the player UI from the current settings. Re-runnable: called
 	 * on first render and again by applySettings when a window toggle
 	 * changes. It rebuilds only the DOM the player owns inside its container,
-	 * leaving the audio element (and playback) untouched — so toggling the
+	 * leaving the audio element (and playback) untouched - so toggling the
 	 * waveform or markers window applies instantly without a note re-render.
 	 */
 	private renderUi(): void {
@@ -442,8 +442,8 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	/**
 	 * Re-renders the player UI in place with new settings (e.g. after the
 	 * waveform or markers window is toggled). Does nothing when the settings
-	 * are unchanged, so a save that did not touch a player window — even an
-	 * unrelated recording setting — never rebuilds an open player or resets
+	 * are unchanged, so a save that did not touch a player window - even an
+	 * unrelated recording setting - never rebuilds an open player or resets
 	 * its playback. Playback continues uninterrupted because the audio
 	 * element is not rebuilt.
 	 * @param settings - The new render-ready player settings
@@ -977,9 +977,9 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	}
 
 	/**
-	 * Resolves a duration the browser does not report up front — Infinity/NaN
+	 * Resolves a duration the browser does not report up front - Infinity/NaN
 	 * (common for MediaRecorder WebM) or a finite 0 (some multitrack mp4 whose
-	 * container lacks a stamped length) — by probing a far seek position and
+	 * container lacks a stamped length) - by probing a far seek position and
 	 * waiting for a real, positive value, then restoring the start. When the
 	 * seek yields no usable length the watchdog gives up and the bar stays
 	 * unseekable, so a truly length-less file degrades rather than hangs.
@@ -1077,7 +1077,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * Records that the user has engaged this file's shared playback (played or
 	 * sought it). Consumes this embed's #t= start hint and marks the shared
 	 * timeline engaged in the registry, so the hint never reappears on any
-	 * embed of the file — even after playback later returns to 0.
+	 * embed of the file - even after playback later returns to 0.
 	 */
 	private engageTimeline(): void {
 		this.startHint = null;
@@ -1178,7 +1178,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			this.applyWaveformPeaks(peaks);
 		} catch (error) {
 			// Leave the (still seekable) bar without a waveform; no visible
-			// error — the player keeps working
+			// error - the player keeps working
 			console.warn(
 				`${PLUGIN_LOG_PREFIX} Failed to build waveform for ${this.file.path}:`,
 				error,

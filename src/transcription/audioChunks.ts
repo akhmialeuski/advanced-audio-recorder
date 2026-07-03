@@ -7,8 +7,9 @@
  */
 
 import { TRANSCRIBE_BYTES_PER_SEC, TRANSCRIBE_SAMPLE_RATE } from '../constants';
-import { createWavHeader, WAV_HEADER_SIZE } from '../recording/WavEncoder';
-import { decodeAudioBlob } from '../recording/AudioFormatConverter';
+import { createWavFileBuffer, WAV_HEADER_SIZE } from '../audio/WavEncoder';
+import { floatToInt16 } from '../audio/pcm';
+import { decodeAudioBlob } from '../audio/AudioFormatConverter';
 
 /**
  * Encodes mono Float32 samples (range -1..1) into a 16-bit PCM WAV blob.
@@ -21,13 +22,10 @@ export function encodeMonoWav(
 	sampleRate: number,
 ): ArrayBuffer {
 	const pcmByteLength = samples.length * 2;
-	const header = createWavHeader(1, sampleRate, pcmByteLength);
-	const out = new ArrayBuffer(WAV_HEADER_SIZE + pcmByteLength);
-	new Uint8Array(out).set(new Uint8Array(header), 0);
+	const out = createWavFileBuffer(1, sampleRate, pcmByteLength);
 	const view = new DataView(out, WAV_HEADER_SIZE);
 	for (let i = 0; i < samples.length; i++) {
-		const clamped = Math.max(-1, Math.min(1, samples[i]));
-		view.setInt16(i * 2, Math.round(clamped * 0x7fff), true);
+		view.setInt16(i * 2, floatToInt16(samples[i]), true);
 	}
 	return out;
 }
@@ -149,7 +147,7 @@ export function extractChunkWav(
 	samples: Float32Array,
 	chunk: ChunkPlan,
 ): ArrayBuffer {
-	// Round both ends the same way so adjacent chunks tile exactly — a shared
+	// Round both ends the same way so adjacent chunks tile exactly - a shared
 	// boundary maps to one frame, with no duplicated or dropped sample.
 	const startFrame = Math.min(
 		samples.length,

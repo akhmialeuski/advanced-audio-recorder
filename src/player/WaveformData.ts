@@ -291,7 +291,7 @@ export interface AudioDecoder {
  * by every player. The context's low sample rate (WAVEFORM_DECODE_SAMPLE_RATE)
  * makes decodeAudioData resample while decoding, so a long recording yields a
  * small decoded buffer instead of the full native-rate PCM (hundreds of MB for
- * an hour of stereo) — the waveform needs only an amplitude envelope. One
+ * an hour of stereo) - the waveform needs only an amplitude envelope. One
  * shared context also avoids the per-file create overhead and the realtime
  * AudioContext count cap. The reference is dropped when the player feature is
  * disposed; an OfflineAudioContext holds no realtime audio thread to close.

@@ -1,7 +1,7 @@
 /**
  * Audio format conversion and track processing utilities.
  * Handles format resolution, blob conversion, and multi-track merging.
- * @module recording/AudioFormatConverter
+ * @module audio/AudioFormatConverter
  */
 
 import type { RecordingTarget } from '../types';
@@ -16,7 +16,7 @@ import {
 	FORMAT_WAV,
 } from '../constants';
 import { buildMimeType } from './AudioCapabilityDetector';
-import { getEncodingWorkerClient } from './EncodingWorkerClient';
+import type { EncodingWorkerClient } from './EncodingWorkerClient';
 
 /**
  * Progress callback receiving percentage (0-100).
@@ -90,8 +90,11 @@ export function isOfflineOnlyFormat(
  * @param recordedBlob - Compressed audio blob
  * @returns WAV blob
  */
-export async function convertBlobToWav(recordedBlob: Blob): Promise<Blob> {
-	return convertBlobToFormat(recordedBlob, FORMAT_WAV, 0);
+export async function convertBlobToWav(
+	recordedBlob: Blob,
+	options: BlobConversionOptions = {},
+): Promise<Blob> {
+	return convertBlobToFormat(recordedBlob, FORMAT_WAV, 0, undefined, options);
 }
 
 /**
@@ -130,6 +133,11 @@ export interface BlobConversionOptions {
 	 * choice must leave this off so the selection is always honored.
 	 */
 	allowRemux?: boolean;
+	/**
+	 * Encoding worker to offload the conversion to. When absent or
+	 * unavailable, the conversion runs on the main thread.
+	 */
+	workerClient?: EncodingWorkerClient | null;
 }
 
 /**
@@ -186,7 +194,10 @@ export async function convertBlobToFormat(
 ): Promise<Blob> {
 	// Worker first: the demux/transcode/mux loop is pure computation
 	// and runs off the UI thread when the worker is available
-	const workerClient = getEncodingWorkerClient();
+	const workerClient =
+		options.workerClient && options.workerClient.isAvailable()
+			? options.workerClient
+			: null;
 	if (workerClient) {
 		try {
 			return await workerClient.convertBlob(
@@ -253,7 +264,7 @@ export async function buildOutputBlob(
  * Merges multiple audio tracks into a single mixed audio blob. The
  * caller resolves the encodable target format (and names the output
  * file from it), so it is passed in instead of being recomputed from
- * live settings — a settings change during the potentially long mix
+ * live settings - a settings change during the potentially long mix
  * could otherwise make the file extension and the encoded content
  * diverge.
  * @param chunkTargets - Recording targets for each track

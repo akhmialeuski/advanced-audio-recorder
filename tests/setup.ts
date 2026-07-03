@@ -64,3 +64,18 @@ if (nodeProto && typeof nodeProto.instanceOf === 'undefined') {
 		return this instanceof ctor;
 	};
 }
+
+// jsdom's Blob lacks arrayBuffer(); the recording and conversion
+// pipelines call it on every write path. FileReader-backed so the
+// bytes are the blob's real contents.
+if (!Blob.prototype.arrayBuffer) {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test polyfill for jsdom
+	(Blob.prototype as any).arrayBuffer = function (): Promise<ArrayBuffer> {
+		return new Promise((resolve, reject) => {
+			const reader = new FileReader();
+			reader.onload = (): void => resolve(reader.result as ArrayBuffer);
+			reader.onerror = (): void => reject(reader.error);
+			reader.readAsArrayBuffer(this as Blob);
+		});
+	};
+}

@@ -6,9 +6,13 @@
 
 import { Notice, normalizePath } from 'obsidian';
 import type { App, TFile } from 'obsidian';
-import { encodeAudioBuffer } from './AudioEncoder';
+import { encodeAudioBuffer } from '../audio/AudioEncoder';
 import { FORMAT_WAV } from '../constants';
-import { decodeAudioBlob, convertBlobToFormat } from './AudioFormatConverter';
+import {
+	decodeAudioBlob,
+	convertBlobToFormat,
+} from '../audio/AudioFormatConverter';
+import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import { updateLinksInVault } from '../utils/LinkUpdater';
 import type { VaultLinkUpdateResult } from '../utils/LinkUpdater';
 import type { ConversionLinkAction } from '../settings/Settings';
@@ -47,7 +51,11 @@ export class ConversionService {
 	 * Creates a new ConversionService.
 	 * @param app - The Obsidian App instance
 	 */
-	constructor(private readonly app: App) {}
+	constructor(
+		private readonly app: App,
+		private readonly getWorkerClient: () => EncodingWorkerClient | null = () =>
+			null,
+	) {}
 
 	/**
 	 * Executes the conversion pipeline: existence pre-check, decode or
@@ -111,6 +119,7 @@ export class ConversionService {
 					(percent) => {
 						onProgress(`Converting... ${String(percent)}%`);
 					},
+					{ workerClient: this.getWorkerClient() },
 				);
 			}
 

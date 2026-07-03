@@ -39,6 +39,14 @@ export const CHUNK_TIMESLICE_MS = 5000;
  */
 export const RECORDER_STOP_TIMEOUT_MS = 5000;
 
+/**
+ * Maximum time to wait for the PCM capture worklet to acknowledge a
+ * flush request in milliseconds. If the audio subsystem dies the
+ * `flushed` reply never arrives; without the timeout stop() would hang
+ * before releasing the AudioContext and the worklet blob URL.
+ */
+export const PCM_FLUSH_TIMEOUT_MS = 5000;
+
 /** Maximum in-memory buffer size for mobile recordings before flushing to disk. */
 export const MOBILE_BUFFER_LIMIT_BYTES = 50 * 1024 * 1024;
 
@@ -288,7 +296,7 @@ export const DEFAULT_DEEPGRAM_MODEL = 'nova-3';
  * in settings. Grouped by family: Nova-3, Nova-2 and its named variants,
  * Nova, Enhanced (`enhanced`, `enhanced-meeting`, `enhanced-phonecall`,
  * `enhanced-finance`), Base, and the hosted Whisper sizes. The real-time
- * Flux family is omitted — it targets streaming voice agents, not the
+ * Flux family is omitted - it targets streaming voice agents, not the
  * pre-recorded transcription this plugin uses. See
  * {@link DEEPGRAM_MODELS_DOC_URL} for the authoritative, current list.
  */
@@ -372,7 +380,7 @@ export const GEMINI_MODELS_DOC_URL =
 	'https://ai.google.dev/gemini-api/docs/models';
 
 /**
- * Hard per-request ceiling for Gemini, in bytes (2 GB — the File API limit).
+ * Hard per-request ceiling for Gemini, in bytes (2 GB - the File API limit).
  * Gemini transcribes a whole file in one request with consistent speaker
  * labels, so files under this are sent in one piece instead of chunked.
  */
@@ -576,8 +584,8 @@ export const DEFAULT_LLM_CLEANUP_PROMPT =
 	'machine-generated transcript. Correct punctuation, capitalization, ' +
 	'and obvious speech-to-text errors; insert sensible paragraph breaks; ' +
 	'and remove filler artifacts only when they add no meaning. Do NOT ' +
-	'summarize, translate, paraphrase, add, or omit content — preserve ' +
-	'the speaker’s exact wording and meaning. Preserve any speaker labels ' +
+	'summarize, translate, paraphrase, add, or omit content - preserve ' +
+	"the speaker's exact wording and meaning. Preserve any speaker labels " +
 	'and timestamps exactly as they appear, keeping each on its original ' +
 	'line. Return only the corrected transcript with no preamble.';
 
@@ -752,7 +760,7 @@ export const MAX_AUDIO_CLEANUP_BYTES = WAVEFORM_MAX_DECODE_BYTES;
 export const MAX_AUDIO_CLEANUP_SECONDS = 2 * 60 * 60;
 
 /**
- * Upper bound on the total decoded sample count (frames × channels) the
+ * Upper bound on the total decoded sample count (frames x channels) the
  * on-demand cleanup will process. Where {@link MAX_AUDIO_CLEANUP_BYTES}
  * bounds the on-disk size, this bounds the decoded working set. Cleanup now
  * processes the signal in time segments (see {@link CLEANUP_SEGMENT_SECONDS}),
@@ -787,3 +795,28 @@ export const CLEANUP_SEGMENT_SECONDS = 120;
  * region begins.
  */
 export const CLEANUP_WARMUP_SECONDS = 3;
+
+// Actions
+
+/** Menu section identifier grouping all plugin context-menu items. */
+export const AAR_MENU_SECTION = 'aar';
+
+/**
+ * Command ids for every palette-registered action. The transcribe id
+ * predates the action registry and is kept verbatim so user-assigned
+ * hotkeys survive.
+ */
+export const COMMAND_IDS = {
+	startStopRecording: 'start-stop-recording',
+	pauseResumeRecording: 'pause-resume-recording',
+	addRecordingMarker: 'add-recording-marker',
+	addRecordingBookmark: 'add-recording-bookmark',
+	addRecordingChapter: 'add-recording-chapter',
+	selectAudioInputDevice: 'select-audio-input-device',
+	audioFileInfo: 'audio-file-info',
+	convertAudioFormat: 'convert-audio-format',
+	splitAudio: 'split-audio-into-parts',
+	cleanupAudio: 'clean-up-audio',
+	transcribeAudio: 'transcribe-active-audio',
+	deleteRecording: 'delete-recording',
+} as const;

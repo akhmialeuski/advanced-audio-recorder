@@ -152,7 +152,7 @@ export async function insertProcessedAudioEmbed(
  * the source afterwards leaves no broken link even when the note embeds it more
  * than once. Uses split/join rather than `String.prototype.replace`, whose
  * string replacement reinterprets `$` substitution patterns such as `$&` and
- * `$$` — a filename or alias containing `$` would otherwise corrupt the
+ * `$$` - a filename or alias containing `$` would otherwise corrupt the
  * rewritten note.
  * @param content - Current note body
  * @param matches - Embeds that resolve to the source file

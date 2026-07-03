@@ -5,7 +5,7 @@
 /**
  * Tests that a multi-part transcription keeps the parts that succeeded when a
  * later part fails (e.g. a Gemini MAX_TOKENS truncation), instead of discarding
- * a completed — and, on a paid API, already-billed — transcript. The note flags
+ * a completed - and, on a paid API, already-billed - transcript. The note flags
  * the gap, the user is warned, and only when every part fails does the run
  * surface an error.
  * @module tests/unit/transcriptionServicePartFailure.test
@@ -362,10 +362,10 @@ describe('TranscriptionService multi-part salvage', () => {
 			token: NEVER_CANCELLED,
 		});
 
-		expect(result.markdown).toContain('the 7:30–15:00 segment');
+		expect(result.markdown).toContain('the 7:30-15:00 segment');
 		expect(result.markdown).not.toContain('part 2 of 2');
 		expect(mockNotice).toHaveBeenCalledWith(
-			expect.stringContaining('the 7:30–15:00 segment'),
+			expect.stringContaining('the 7:30-15:00 segment'),
 		);
 	});
 });

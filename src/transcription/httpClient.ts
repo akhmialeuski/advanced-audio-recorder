@@ -115,7 +115,7 @@ const HTTP_OK_MAX_EXCLUSIVE = 300;
 /** Authentication failed (bad or missing key). */
 const HTTP_UNAUTHORIZED = 401;
 
-/** Payment required — always a billing/quota problem. */
+/** Payment required - always a billing/quota problem. */
 const HTTP_PAYMENT_REQUIRED = 402;
 
 /** Forbidden (the key lacks access). */
@@ -144,7 +144,7 @@ const QUOTA_BODY_MARKERS = [
 
 /**
  * Strips a quoted multipart header parameter of the characters that could
- * break out of the quoted value — `"`, CR, and LF — mirroring the CR/LF
+ * break out of the quoted value - `"`, CR, and LF - mirroring the CR/LF
  * stripping applied to text-field values, so a name or filename can never
  * inject extra parts or headers regardless of its source.
  * @param value - Raw parameter value
@@ -213,8 +213,8 @@ function withTimeout(
 }
 
 /**
- * Maps an HTTP failure to a short, human-readable hint for the common cases —
- * out of quota/credit, bad key, rate limit, provider outage — or '' when no
+ * Maps an HTTP failure to a short, human-readable hint for the common cases -
+ * out of quota/credit, bad key, rate limit, provider outage - or '' when no
  * specific guidance applies. Provider-neutral: matches OpenAI
  * `insufficient_quota`, Anthropic "credit balance is too low", and Deepgram
  * `INSUFFICIENT_CREDITS` alike. The caller still appends the raw status and
@@ -231,7 +231,7 @@ export function friendlyHttpHint(status: number, body: string): string {
 	if (looksLikeBilling) {
 		return (
 			'Out of API quota or credit. Check the provider plan and billing ' +
-			'details — a chat subscription (e.g. ChatGPT Plus) does not include ' +
+			'details - a chat subscription (e.g. ChatGPT Plus) does not include ' +
 			'API credit.'
 		);
 	}
