@@ -102,9 +102,7 @@ jest.mock('src/utils/LinkUpdater', () => ({
 // Mock AudioFormatConverter: conversion pipelines have their own suite
 jest.mock('src/audio/AudioFormatConverter', () => ({
 	decodeAudioBlob: jest.fn().mockResolvedValue({}),
-	convertBlobToFormat: jest
-		.fn()
-		.mockResolvedValue(new Blob(['converted'], { type: 'audio/webm' })),
+	convertBlobToFormatBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(8)),
 }));
 
 // Mock AudioEncoder
@@ -312,12 +310,13 @@ describe('ConversionModal', () => {
 		});
 
 		it('should show a background notice when closed mid-conversion', async () => {
-			const { convertBlobToFormat } = jest.requireMock(
+			const { convertBlobToFormatBuffer } = jest.requireMock(
 				'src/audio/AudioFormatConverter',
 			);
-			let resolveConversion: (blob: Blob) => void = () => undefined;
-			convertBlobToFormat.mockReturnValueOnce(
-				new Promise<Blob>((resolve) => {
+			let resolveConversion: (data: ArrayBuffer) => void = () =>
+				undefined;
+			convertBlobToFormatBuffer.mockReturnValueOnce(
+				new Promise<ArrayBuffer>((resolve) => {
 					resolveConversion = resolve;
 				}),
 			);
@@ -335,7 +334,7 @@ describe('ConversionModal', () => {
 			expect(background).toBeDefined();
 			expect(background?.timeout).toBe(0);
 
-			resolveConversion(new Blob(['converted']));
+			resolveConversion(new ArrayBuffer(8));
 			await conversionPromise;
 
 			// Progress was mirrored into the notice and it was hidden

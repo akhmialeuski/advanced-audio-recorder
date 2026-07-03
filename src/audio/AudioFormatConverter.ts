@@ -98,6 +98,27 @@ export async function convertBlobToWav(
 }
 
 /**
+ * Like {@link convertBlobToWav} but returns the raw bytes, for callers
+ * that hand the result straight to vault.createBinary. On the streaming
+ * path this skips a Blob wrap plus a full read-back of the converted
+ * audio (two whole-file copies).
+ * @param recordedBlob - Compressed audio blob
+ * @returns WAV bytes
+ */
+export async function convertBlobToWavBuffer(
+	recordedBlob: Blob,
+	options: BlobConversionOptions = {},
+): Promise<ArrayBuffer> {
+	return convertBlobToFormatBuffer(
+		recordedBlob,
+		FORMAT_WAV,
+		0,
+		undefined,
+		options,
+	);
+}
+
+/**
  * Decodes compressed audio bytes into an AudioBuffer.
  * Decodes exactly once: decodeAudioData resamples to the context rate
  * by spec, so the previous probe-then-redecode-at-native-rate approach
@@ -241,6 +262,75 @@ export async function convertBlobToFormat(
 }
 
 /**
+ * Like {@link convertBlobToFormat} but returns the raw bytes, for callers
+ * that hand the result straight to vault.createBinary. The streaming path
+ * returns its buffer directly instead of wrapping it in a Blob that the
+ * caller would immediately read back out - two avoided copies of the
+ * whole converted file. The worker and decode fallbacks still produce a
+ * Blob internally and read it once, exactly as the Blob-returning path's
+ * callers did before.
+ * @param recordedBlob - Intermediate compressed blob
+ * @param targetFormat - Desired output format
+ * @param bitrate - Bitrate in bits per second
+ * @param onProgress - Optional encoding progress callback (0-100)
+ * @param options - Conversion behavior options
+ * @returns Re-encoded bytes in the target format
+ */
+export async function convertBlobToFormatBuffer(
+	recordedBlob: Blob,
+	targetFormat: string,
+	bitrate: number,
+	onProgress?: FormatProgressCallback,
+	options: BlobConversionOptions = {},
+): Promise<ArrayBuffer> {
+	const workerClient =
+		options.workerClient && options.workerClient.isAvailable()
+			? options.workerClient
+			: null;
+	if (workerClient) {
+		try {
+			const converted = await workerClient.convertBlob(
+				recordedBlob,
+				targetFormat,
+				bitrate,
+				options.allowRemux ?? false,
+				onProgress,
+			);
+			return await converted.arrayBuffer();
+		} catch (error) {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Worker conversion failed, falling back to the main thread:`,
+				error,
+			);
+		}
+	}
+
+	try {
+		return await runStreamingConversion(
+			recordedBlob,
+			targetFormat,
+			bitrate,
+			options.allowRemux ?? false,
+			onProgress,
+		);
+	} catch (error) {
+		console.warn(
+			`${PLUGIN_LOG_PREFIX} Streaming conversion failed, falling back to decode and re-encode:`,
+			error,
+		);
+	}
+
+	const arrayBuffer = await recordedBlob.arrayBuffer();
+	const decodedBuffer = await decodeAudioBlob(arrayBuffer);
+	const encoded = await encodeAudioBuffer(
+		decodedBuffer,
+		{ format: targetFormat, bitrate },
+		onProgress,
+	);
+	return encoded.arrayBuffer();
+}
+
+/**
  * Combines buffered chunks into a single blob, optionally converting
  * to WAV if the recording format requires it.
  * @param chunks - Buffered audio chunks
@@ -267,6 +357,13 @@ export async function buildOutputBlob(
  * live settings - a settings change during the potentially long mix
  * could otherwise make the file extension and the encoded content
  * diverge.
+ *
+ * Memory: every track is decoded to a full AudioBuffer and mixed through
+ * an OfflineAudioContext, so peak memory scales with total session PCM
+ * (audit finding 6.4). This path is a deliberate fallback - it is reached
+ * only when the streaming mix cannot apply (tryStreamMixToWav covers PCM
+ * tracks with matching sample rates) - and should be revisited if the
+ * streaming mixer ever grows resampling support for mismatched rates.
  * @param chunkTargets - Recording targets for each track
  * @param targetFormat - Resolved encodable output format
  * @param bitrate - Encoder bitrate in bits per second

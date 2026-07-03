@@ -61,6 +61,19 @@ export function createAndStartMediaRecorders(
 }
 
 /**
+ * Detaches the chunk and error handlers from recorders that are being
+ * discarded, so a chunk already queued by the browser cannot fire into a
+ * torn-down session (e.g. after stop, unload, or a failed start).
+ * @param recorders - Recorders about to be dropped
+ */
+export function detachRecorderHandlers(recorders: MediaRecorder[]): void {
+	for (const recorder of recorders) {
+		recorder.ondataavailable = null;
+		recorder.onerror = null;
+	}
+}
+
+/**
  * Creates PcmStreamRecorder instances for direct PCM capture, one per
  * stream. The recorders are not started; the caller starts them so it can
  * read the negotiated channel count and sample rate per recorder.

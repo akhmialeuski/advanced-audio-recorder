@@ -6,12 +6,15 @@
 
 import {
 	friendlyHttpHint,
+	HttpError,
+	requestRaw,
 	uploadTimeoutMs,
 } from 'src/transcription/httpClient';
 import {
 	TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS,
 	TRANSCRIBE_REQUEST_TIMEOUT_MS,
 } from 'src/constants';
+import { __setRequestUrlHandler } from '../mocks/obsidian';
 
 describe('friendlyHttpHint', () => {
 	it('flags an OpenAI insufficient_quota 429 as a billing problem', () => {
@@ -107,5 +110,113 @@ describe('uploadTimeoutMs', () => {
 		expect(uploadTimeoutMs(10 * 1024 * 1024)).toBeLessThanOrEqual(
 			uploadTimeoutMs(20 * 1024 * 1024),
 		);
+	});
+});
+
+describe('requestRaw abort support', () => {
+	afterEach(() => {
+		__setRequestUrlHandler(null);
+		delete (globalThis as { fetch?: unknown }).fetch;
+	});
+
+	function mockFetch(impl: (typeof globalThis)['fetch']): jest.Mock {
+		const mock = jest.fn(impl);
+		(globalThis as { fetch?: unknown }).fetch = mock;
+		return mock;
+	}
+
+	/** A minimal Response stand-in (jsdom ships no Response constructor). */
+	function fakeResponse(
+		status: number,
+		body: string,
+		headers: Record<string, string> = {},
+	): Response {
+		return {
+			status,
+			text: () => Promise.resolve(body),
+			headers: new Map(Object.entries(headers)),
+		} as unknown as Response;
+	}
+
+	it('sends the request through fetch when a signal is provided', async () => {
+		const fetchMock = mockFetch(() =>
+			Promise.resolve(
+				fakeResponse(200, '{"ok":true}', { 'x-test': 'yes' }),
+			),
+		);
+
+		const response = await requestRaw({
+			url: 'https://api.example.com/v1/transcribe',
+			method: 'POST',
+			body: 'payload',
+			signal: new AbortController().signal,
+		});
+
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(response.status).toBe(200);
+		expect(response.text).toBe('{"ok":true}');
+		expect(response.headers['x-test']).toBe('yes');
+	});
+
+	it('rejects with a cancellation HttpError when the signal aborts mid-flight', async () => {
+		const controller = new AbortController();
+		mockFetch(
+			(_url, init) =>
+				new Promise((_resolve, reject) => {
+					init?.signal?.addEventListener('abort', () => {
+						reject(
+							new DOMException(
+								'The operation was aborted.',
+								'AbortError',
+							),
+						);
+					});
+				}),
+		);
+
+		const pending = requestRaw({
+			url: 'https://api.example.com/v1/transcribe',
+			method: 'POST',
+			signal: controller.signal,
+		});
+		controller.abort();
+
+		await expect(pending).rejects.toThrow(HttpError);
+		await expect(pending).rejects.toThrow(/was cancelled/);
+	});
+
+	it('falls back to requestUrl when fetch fails at the network layer (CORS)', async () => {
+		mockFetch(() => Promise.reject(new TypeError('Failed to fetch')));
+		__setRequestUrlHandler(() => ({
+			status: 200,
+			headers: {},
+			text: '{"via":"requestUrl"}',
+		}));
+
+		const response = await requestRaw({
+			url: 'https://api.example.com/v1/transcribe',
+			method: 'POST',
+			signal: new AbortController().signal,
+		});
+
+		expect(response.text).toBe('{"via":"requestUrl"}');
+	});
+
+	it('does not touch fetch when no signal is provided', async () => {
+		const fetchMock = mockFetch(() =>
+			Promise.resolve(fakeResponse(200, '')),
+		);
+		__setRequestUrlHandler(() => ({
+			status: 200,
+			headers: {},
+			text: 'ok',
+		}));
+
+		await requestRaw({
+			url: 'https://api.example.com/v1/transcribe',
+			method: 'GET',
+		});
+
+		expect(fetchMock).not.toHaveBeenCalled();
 	});
 });

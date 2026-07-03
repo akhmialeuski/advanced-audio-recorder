@@ -68,6 +68,8 @@ export type TranscriptionModalOptions = {
  */
 export class TranscriptionModal extends Modal {
 	private cancelled = false;
+	/** Aborts the in-flight run's HTTP requests when cancelled. */
+	private abortController: AbortController | null = null;
 	private running = false;
 	private statusEl: HTMLElement | null = null;
 	private elapsedEl: HTMLElement | null = null;
@@ -173,7 +175,7 @@ export class TranscriptionModal extends Modal {
 				this.secondaryButton = button;
 				button.setButtonText('Close').onClick(() => {
 					if (this.running) {
-						this.cancelled = true;
+						this.cancelRun();
 					} else {
 						this.close();
 					}
@@ -333,7 +335,13 @@ export class TranscriptionModal extends Modal {
 		// Snapshot the options so a control toggled mid-run cannot change an
 		// in-flight job; edits only affect the next attempt after a failure.
 		const settings = { ...this.runSettings };
-		const token: CancellationToken = { isCancelled: () => this.cancelled };
+		this.abortController = new AbortController();
+		const token: CancellationToken = {
+			isCancelled: () => this.cancelled,
+			// Lets abort-capable providers stop an in-flight upload at once;
+			// requestUrl-only endpoints still finish or time out on their own.
+			signal: this.abortController.signal,
+		};
 		try {
 			await transcribeFile(this.app, () => settings, this.file, {
 				notePathForLinks: this.notePath,
@@ -370,6 +378,15 @@ export class TranscriptionModal extends Modal {
 			}
 			this.clearBackgroundProgress();
 		}
+	}
+
+	/**
+	 * Cancels the in-flight run: flags the cooperative token and aborts the
+	 * current HTTP request where the transport supports it.
+	 */
+	private cancelRun(): void {
+		this.cancelled = true;
+		this.abortController?.abort();
 	}
 
 	/**
@@ -490,7 +507,7 @@ export class TranscriptionModal extends Modal {
 			return;
 		}
 		if (this.running) {
-			this.cancelled = true;
+			this.cancelRun();
 		}
 		this.stopElapsedTimer();
 		this.clearBackgroundProgress();

@@ -240,8 +240,13 @@ export class WaveformController {
 		if (attempts <= 0) {
 			return;
 		}
-		window.requestAnimationFrame(() => {
+		const rafId = window.requestAnimationFrame(() => {
 			this.redrawWhenSized(attempts - 1);
+		});
+		// Cancel outright on re-render/unload instead of relying on the
+		// unloaded flag alone to fizzle the retry chain.
+		this.host.registerRenderCleanup(() => {
+			window.cancelAnimationFrame(rafId);
 		});
 	}
 }

@@ -711,6 +711,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			return;
 		}
 		let attempts = PLAYER_ATTACH_WAIT_FRAMES;
+		let rafId = 0;
 		const tick = (): void => {
 			if (this.unloaded) {
 				return;
@@ -722,9 +723,14 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			if (attempts-- <= 0) {
 				return;
 			}
-			window.requestAnimationFrame(tick);
+			rafId = window.requestAnimationFrame(tick);
 		};
-		window.requestAnimationFrame(tick);
+		rafId = window.requestAnimationFrame(tick);
+		// Cancel outright on re-render/unload instead of relying on the
+		// unloaded flag alone to fizzle the loop.
+		this.registerRenderCleanup(() => {
+			window.cancelAnimationFrame(rafId);
+		});
 	}
 
 	/**

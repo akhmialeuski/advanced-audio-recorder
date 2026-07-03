@@ -30,8 +30,8 @@ import {
 } from '../audio/RecordingFileManager';
 import {
 	isOfflineOnlyFormat,
-	convertBlobToWav,
-	convertBlobToFormat,
+	convertBlobToWavBuffer,
+	convertBlobToFormatBuffer,
 	mergeAudioTracks,
 } from '../audio/AudioFormatConverter';
 import { buildMimeType } from '../audio/AudioCapabilityDetector';
@@ -438,22 +438,19 @@ export class RecordingFinalizer {
 			if (reportProgress) {
 				this.reportProgress(40, 'Assembling audio...');
 			}
-			const wavBlob = await convertBlobToWav(blob, {
+			const wavData = await convertBlobToWavBuffer(blob, {
 				workerClient: this.getWorkerClient(),
 			});
 			if (reportProgress) {
 				this.reportProgress(60, 'Writing file...');
 			}
-			await this.app.vault.createBinary(
-				filePath,
-				await wavBlob.arrayBuffer(),
-			);
+			await this.app.vault.createBinary(filePath, wavData);
 		} else if (isOfflineOnlyFormat(outputFormat, session.recorderFormat)) {
 			// Offline-only format: decode intermediate blob, re-encode to target
 			if (reportProgress) {
 				this.reportProgress(40, 'Encoding audio...');
 			}
-			const outputBlob = await convertBlobToFormat(
+			const outputData = await convertBlobToFormatBuffer(
 				blob,
 				outputFormat,
 				session.bitrate,
@@ -472,10 +469,7 @@ export class RecordingFinalizer {
 			if (reportProgress) {
 				this.reportProgress(60, 'Writing file...');
 			}
-			await this.app.vault.createBinary(
-				filePath,
-				await outputBlob.arrayBuffer(),
-			);
+			await this.app.vault.createBinary(filePath, outputData);
 		} else {
 			if (reportProgress) {
 				this.reportProgress(60, 'Writing file...');

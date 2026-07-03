@@ -47,6 +47,7 @@ import type { PcmStreamRecorder } from './PcmStreamRecorder';
 import {
 	createAndStartMediaRecorders,
 	createPcmRecorders,
+	detachRecorderHandlers,
 } from './RecorderFactory';
 import { describeRecordingError } from './recordingErrors';
 import { InputLevelMonitor } from './InputLevelMonitor';
@@ -431,6 +432,7 @@ export class RecordingManager {
 		}
 		stopAllStreams(this.streams);
 		this.streams = [];
+		detachRecorderHandlers(this.recorders);
 		this.recorders = [];
 		this.pcmRecorders = [];
 		this.chunkTargets = [];
@@ -584,6 +586,10 @@ export class RecordingManager {
 	 * part rotation.
 	 */
 	private startMediaRecorders(): void {
+		// The recorders being replaced (initial start: none; part rotation:
+		// the stopped previous batch) must not fire a late chunk into the
+		// new part's accounting.
+		detachRecorderHandlers(this.recorders);
 		this.recorders = createAndStartMediaRecorders(
 			this.streams,
 			{
@@ -691,6 +697,7 @@ export class RecordingManager {
 			this.stopLevelMonitor();
 			stopAllStreams(this.streams);
 			this.streams = [];
+			detachRecorderHandlers(this.recorders);
 			this.recorders = [];
 			this.pcmRecorders = [];
 			this.chunkTargets = [];
@@ -838,6 +845,7 @@ export class RecordingManager {
 			});
 		}
 		stopAllStreams(this.streams);
+		detachRecorderHandlers(this.recorders);
 		this.recorders = [];
 		this.pcmRecorders = [];
 		this.chunkTargets = [];

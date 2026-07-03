@@ -30,9 +30,7 @@ jest.mock('src/audio/AudioEncoder', () => ({
 
 jest.mock('src/audio/AudioFormatConverter', () => ({
 	decodeAudioBlob: jest.fn().mockResolvedValue({}),
-	convertBlobToFormat: jest
-		.fn()
-		.mockResolvedValue(new Blob(['converted'], { type: 'audio/webm' })),
+	convertBlobToFormatBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(8)),
 }));
 
 jest.mock('src/utils/LinkUpdater', () => ({

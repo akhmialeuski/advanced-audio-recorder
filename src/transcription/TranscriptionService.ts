@@ -52,6 +52,12 @@ import type { Transcript } from './TranscriptTypes';
 /** Cooperative cancellation signal checked between chunks. */
 export interface CancellationToken {
 	isCancelled(): boolean;
+	/**
+	 * Optional abort signal that fires when the run is cancelled, so
+	 * in-flight HTTP requests can be aborted immediately instead of only
+	 * being checked between chunks.
+	 */
+	signal?: AbortSignal;
 }
 
 /** A token that is never cancelled. */
@@ -145,6 +151,9 @@ export class TranscriptionService {
 					: undefined,
 			diarize,
 			wordTimestamps: settings.transcriptionWordTimestamps,
+			// Providers on abortable transports stop the in-flight request
+			// the moment the user cancels, not at the next chunk boundary.
+			signal: token.signal,
 		};
 
 		options.onProgress?.(0, 'Preparing audio...');
@@ -324,7 +333,7 @@ export class TranscriptionService {
 		// Materialize this payload's bytes only now, so a multi-chunk job never
 		// holds more than one chunk's WAV in memory at a time.
 		const payload: AudioPayload = {
-			data: prepared.createData(),
+			data: await prepared.createData(),
 			contentType: prepared.contentType,
 			filename: prepared.filename,
 			offsetSeconds: prepared.offsetSeconds,
@@ -341,9 +350,14 @@ export class TranscriptionService {
 				}),
 			});
 		} catch (error) {
-			// A cancel aborts the whole run; never salvage past it.
+			// A cancel aborts the whole run; never salvage past it. An abort
+			// of the in-flight request surfaces as a transport error, so map
+			// it back to the cancellation the user asked for.
 			if (error instanceof TranscriptionCancelledError) {
 				throw error;
+			}
+			if (token.isCancelled()) {
+				throw new TranscriptionCancelledError();
 			}
 			// The part overran the provider's output token budget. Retrying it as
 			// smaller pieces keeps each piece's output under the cap, so a dense

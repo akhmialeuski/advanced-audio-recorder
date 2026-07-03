@@ -10,7 +10,7 @@ import { encodeAudioBuffer } from '../audio/AudioEncoder';
 import { FORMAT_WAV } from '../constants';
 import {
 	decodeAudioBlob,
-	convertBlobToFormat,
+	convertBlobToFormatBuffer,
 } from '../audio/AudioFormatConverter';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import { updateLinksInVault } from '../utils/LinkUpdater';
@@ -93,14 +93,14 @@ export class ConversionService {
 				request.sourceFile.path,
 			);
 
-			let blob: Blob;
+			let data: ArrayBuffer;
 			if (request.targetFormat === FORMAT_WAV) {
 				// WAV needs a full decode; the streaming pipeline only
 				// targets compressed formats
 				onProgress('Decoding audio...');
 				const audioBuffer = await decodeAudioBlob(arrayBuffer);
 				onProgress('Encoding...');
-				blob = await encodeAudioBuffer(
+				const blob = await encodeAudioBuffer(
 					audioBuffer,
 					{
 						format: request.targetFormat,
@@ -110,9 +110,13 @@ export class ConversionService {
 						onProgress(`Encoding... ${String(percent)}%`);
 					},
 				);
+				data = await blob.arrayBuffer();
 			} else {
 				onProgress('Converting...');
-				blob = await convertBlobToFormat(
+				// Bytes go straight to createBinary; the buffer variant
+				// avoids wrapping the streamed result in a Blob only to
+				// read it back out.
+				data = await convertBlobToFormatBuffer(
 					new Blob([arrayBuffer]),
 					request.targetFormat,
 					request.bitrate,
@@ -124,10 +128,7 @@ export class ConversionService {
 			}
 
 			onProgress('Saving...');
-			createdFile = await this.app.vault.createBinary(
-				newPath,
-				await blob.arrayBuffer(),
-			);
+			createdFile = await this.app.vault.createBinary(newPath, data);
 		} catch (error) {
 			const message =
 				error instanceof Error ? error.message : String(error);

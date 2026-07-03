@@ -214,6 +214,124 @@ function withTimeout(
 }
 
 /**
+ * The response surface both transports provide. Structurally a subset of
+ * Obsidian's RequestUrlResponse, so the requestUrl path returns its
+ * response unchanged while the fetch path builds a compatible object.
+ */
+export interface HttpResponse {
+	status: number;
+	headers: Record<string, string>;
+	text: string;
+}
+
+/**
+ * Performs the request through `fetch`, which - unlike `requestUrl` -
+ * honors an AbortSignal, so pressing Cancel releases the socket and the
+ * in-flight request body immediately instead of after the timeout. The
+ * timeout aborts through the same controller. Only usable against
+ * endpoints that allow browser (CORS) requests; the caller falls back to
+ * `requestUrl` when the endpoint refuses.
+ * @param options - Request options (signal set by the caller)
+ * @param timeoutMs - Deadline in milliseconds
+ * @param safeUrl - Query-stripped URL for error messages
+ */
+async function fetchResponse(
+	options: RequestOptions,
+	timeoutMs: number,
+	safeUrl: string,
+): Promise<HttpResponse> {
+	const controller = new AbortController();
+	let timedOut = false;
+	const timer = window.setTimeout(() => {
+		timedOut = true;
+		controller.abort();
+	}, timeoutMs);
+	const outer = options.signal;
+	const onOuterAbort = (): void => {
+		controller.abort();
+	};
+	if (outer?.aborted) {
+		controller.abort();
+	} else {
+		outer?.addEventListener('abort', onOuterAbort);
+	}
+	try {
+		const headers: Record<string, string> = { ...options.headers };
+		if (options.contentType) {
+			headers['Content-Type'] = options.contentType;
+		}
+		// eslint-disable-next-line no-restricted-globals -- deliberate: requestUrl cannot abort an in-flight request; fetch honors the AbortSignal, and CORS-refusing endpoints fall back to requestUrl (see dispatchRequest)
+		const response = await fetch(options.url, {
+			method: options.method,
+			headers,
+			body: options.body,
+			signal: controller.signal,
+		});
+		const text = await response.text();
+		const responseHeaders: Record<string, string> = {};
+		response.headers.forEach((value, key) => {
+			responseHeaders[key] = value;
+		});
+		return { status: response.status, headers: responseHeaders, text };
+	} catch (error) {
+		if (controller.signal.aborted) {
+			throw new HttpError(
+				NO_HTTP_STATUS,
+				timedOut
+					? `Request to ${safeUrl} timed out after ${String(timeoutMs)} ms.`
+					: `Request to ${safeUrl} was cancelled.`,
+			);
+		}
+		throw error;
+	} finally {
+		window.clearTimeout(timer);
+		outer?.removeEventListener('abort', onOuterAbort);
+	}
+}
+
+/**
+ * Chooses the transport for one request: abortable `fetch` when a signal
+ * was provided, otherwise Obsidian's CORS-exempt `requestUrl`. A fetch
+ * that fails at the network layer (typically a CORS rejection from an
+ * OpenAI-compatible endpoint that only expects server-side clients) is
+ * retried once through `requestUrl` - re-sending the body, but that
+ * matches the pre-abort behavior where every request went that way.
+ * @param options - Request options
+ * @param timeoutMs - Deadline in milliseconds
+ * @param safeUrl - Query-stripped URL for error messages
+ */
+async function dispatchRequest(
+	options: RequestOptions,
+	timeoutMs: number,
+	safeUrl: string,
+): Promise<HttpResponse> {
+	if (options.signal) {
+		try {
+			return await fetchResponse(options, timeoutMs, safeUrl);
+		} catch (error) {
+			// An HttpError here is a timeout or cancel - final either way. A
+			// TypeError is fetch's network-layer failure (CORS/DNS/refused);
+			// only then is requestUrl worth a try.
+			if (error instanceof HttpError || !(error instanceof TypeError)) {
+				throw error;
+			}
+		}
+	}
+	return withTimeout(
+		requestUrl({
+			url: options.url,
+			method: options.method,
+			headers: options.headers,
+			body: options.body,
+			contentType: options.contentType,
+			throw: false,
+		}),
+		timeoutMs,
+		safeUrl,
+	);
+}
+
+/**
  * Maps an HTTP failure to a short, human-readable hint for the common cases -
  * out of quota/credit, bad key, rate limit, provider outage - or '' when no
  * specific guidance applies. Provider-neutral: matches OpenAI
@@ -264,6 +382,14 @@ export interface RequestOptions {
 	contentType?: string;
 	/** Per-request deadline; defaults to the transcription floor timeout. */
 	timeoutMs?: number;
+	/**
+	 * Optional abort signal. When set, the request is sent through `fetch`
+	 * (which can actually abort mid-flight) so a Cancel releases the socket
+	 * and request body immediately. Endpoints that refuse browser (CORS)
+	 * requests fall back to `requestUrl`, which cannot abort - there the
+	 * request keeps running until the timeout, as before.
+	 */
+	signal?: AbortSignal;
 }
 
 /**
@@ -279,22 +405,12 @@ export interface RequestOptions {
  */
 export async function requestRaw(
 	options: RequestOptions,
-): Promise<RequestUrlResponse> {
+): Promise<HttpResponse> {
 	const safeUrl = urlForMessage(options.url);
-	let response: RequestUrlResponse;
+	const timeoutMs = options.timeoutMs ?? TRANSCRIBE_REQUEST_TIMEOUT_MS;
+	let response: HttpResponse;
 	try {
-		response = await withTimeout(
-			requestUrl({
-				url: options.url,
-				method: options.method,
-				headers: options.headers,
-				body: options.body,
-				contentType: options.contentType,
-				throw: false,
-			}),
-			options.timeoutMs ?? TRANSCRIBE_REQUEST_TIMEOUT_MS,
-			safeUrl,
-		);
+		response = await dispatchRequest(options, timeoutMs, safeUrl);
 	} catch (error) {
 		if (error instanceof HttpError) {
 			throw error;

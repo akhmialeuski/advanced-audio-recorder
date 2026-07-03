@@ -36,12 +36,8 @@ jest.mock('src/audio/AudioFormatConverter', () => ({
 	mergeAudioTracks: jest
 		.fn()
 		.mockResolvedValue(new Blob(['merged'], { type: 'audio/wav' })),
-	convertBlobToWav: jest
-		.fn()
-		.mockResolvedValue(new Blob(['wav'], { type: 'audio/wav' })),
-	convertBlobToFormat: jest
-		.fn()
-		.mockResolvedValue(new Blob(['encoded'], { type: 'audio/mp3' })),
+	convertBlobToWavBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(8)),
+	convertBlobToFormatBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(8)),
 	getRecorderMediaType: jest.fn((format: string) => `audio/${format}`),
 	isOfflineOnlyFormat: jest.fn(
 		(format: string, recorderFormat: string) =>
@@ -210,18 +206,18 @@ describe('RecordingFinalizer', () => {
 
 		it('should convert to WAV when the output format is wav', async () => {
 			buildFinalizer(createSession({ outputFormat: 'wav' }));
-			const { convertBlobToWav } = jest.requireMock(
+			const { convertBlobToWavBuffer } = jest.requireMock(
 				'src/audio/AudioFormatConverter',
 			);
 
 			await finalizer.finalizeSegmentsToFile(['seg1.tmp'], 'final.wav');
 
-			expect(convertBlobToWav).toHaveBeenCalled();
+			expect(convertBlobToWavBuffer).toHaveBeenCalled();
 		});
 
 		it('should re-encode offline-only formats with remux allowed and mapped progress', async () => {
 			buildFinalizer(createSession({ outputFormat: 'mp3' }));
-			const { convertBlobToFormat } = jest.requireMock(
+			const { convertBlobToFormatBuffer } = jest.requireMock(
 				'src/audio/AudioFormatConverter',
 			);
 
@@ -231,7 +227,7 @@ describe('RecordingFinalizer', () => {
 				true,
 			);
 
-			expect(convertBlobToFormat).toHaveBeenCalledWith(
+			expect(convertBlobToFormatBuffer).toHaveBeenCalledWith(
 				expect.any(Blob),
 				'mp3',
 				128000,
@@ -239,8 +235,8 @@ describe('RecordingFinalizer', () => {
 				{ allowRemux: true, workerClient: null },
 			);
 			// The encoder progress callback maps into the 40-60% band
-			const progressCallback = (convertBlobToFormat as jest.Mock).mock
-				.calls[0][3] as (percent: number) => void;
+			const progressCallback = (convertBlobToFormatBuffer as jest.Mock)
+				.mock.calls[0][3] as (percent: number) => void;
 			progressCallback(50);
 			expect(onProgress).toHaveBeenCalledWith({
 				percent: 50,
