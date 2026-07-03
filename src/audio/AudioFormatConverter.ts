@@ -5,7 +5,7 @@
  */
 
 import type { RecordingTarget } from '../types';
-import type { AudioRecorderSettings } from '../settings/Settings';
+import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import { encodeAudioBuffer, isOfflineEncodingSupported } from './AudioEncoder';
 import { runStreamingConversion } from './streamingConversion';
 import {

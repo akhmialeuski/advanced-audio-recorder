@@ -20,7 +20,7 @@ import type {
 	ActionServices,
 	FileAction,
 } from '../../src/actions/PluginAction';
-import type { AudioRecorderSettings } from '../../src/settings/Settings';
+import type { AudioRecorderSettings } from '../../src/settings/settingsSchema';
 
 jest.mock('../../src/ui/AudioFileInfoModal', () => ({
 	AudioFileInfoModal: jest

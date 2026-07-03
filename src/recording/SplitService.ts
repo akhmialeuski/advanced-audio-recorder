@@ -25,7 +25,7 @@ import {
 import { updateLinksInVault } from '../utils/LinkUpdater';
 import type { VaultLinkUpdateResult } from '../utils/LinkUpdater';
 import { delay } from '../utils/TimeUtils';
-import type { ConversionLinkAction } from '../settings/Settings';
+import type { ConversionLinkAction } from '../settings/settingsSchema';
 
 /**
  * Parameters of one split operation.

@@ -19,7 +19,7 @@ import {
 	WHISPER_API_CAPABILITIES,
 } from 'src/transcription/providers/capabilities';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
-import { TRANSCRIPTION_PROVIDER_LABELS } from 'src/settings/Settings';
+import { TRANSCRIPTION_PROVIDER_LABELS } from 'src/settings/labels';
 import { WhisperApiProvider } from 'src/transcription/providers/WhisperApiProvider';
 import { DeepgramProvider } from 'src/transcription/providers/DeepgramProvider';
 import { GeminiProvider } from 'src/transcription/providers/GeminiProvider';

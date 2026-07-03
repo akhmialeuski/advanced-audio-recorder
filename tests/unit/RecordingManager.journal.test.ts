@@ -9,7 +9,7 @@ import { RecordingManager } from '../../src/recording/RecordingManager';
 import {
 	DEFAULT_SETTINGS,
 	AudioRecorderSettings,
-} from '../../src/settings/Settings';
+} from '../../src/settings/settingsSchema';
 import type { App } from 'obsidian';
 import {
 	createDesktopRecorder,

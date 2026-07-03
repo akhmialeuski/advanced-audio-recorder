@@ -17,7 +17,7 @@ import {
 	MIN_CLEANUP_HIGHPASS_HZ,
 	MIN_CLEANUP_LEVELING_MAKEUP_DB,
 } from '../constants';
-import type { AudioRecorderSettings } from '../settings/Settings';
+import type { AudioRecorderSettings } from '../settings/settingsSchema';
 
 /** Resolved, clamped audio-cleanup configuration. */
 export interface AudioDspConfig {

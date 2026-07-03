@@ -16,7 +16,7 @@ import {
 	PLUGIN_LOG_PREFIX,
 	TRANSCRIBE_CHUNK_PROGRESS_CEILING,
 } from '../constants';
-import type { AudioRecorderSettings } from '../settings/Settings';
+import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import {
 	audioMimeFromExtension,
 	audioPrepOptions,

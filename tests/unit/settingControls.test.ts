@@ -15,7 +15,7 @@ import {
 	SETTING_DISABLED_CLASS,
 	type SettingsSectionContext,
 } from '../../src/settings/settingControls';
-import type { AudioRecorderSettings } from '../../src/settings/Settings';
+import type { AudioRecorderSettings } from '../../src/settings/settingsSchema';
 import { capturedSettings } from '../helpers/captureSettings';
 
 jest.mock('obsidian', () => ({

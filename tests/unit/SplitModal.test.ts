@@ -8,7 +8,7 @@ import { SplitModal } from '../../src/ui/SplitModal';
 import { App, Notice, TFile } from 'obsidian';
 import { createWavHeader } from '../../src/audio/WavEncoder';
 import { createMockAudioBuffer } from '../helpers/createMockAudioBuffer';
-import type { AudioRecorderSettings } from '../../src/settings/Settings';
+import type { AudioRecorderSettings } from '../../src/settings/settingsSchema';
 
 /**
  * Extends an HTMLElement with Obsidian's custom DOM methods.

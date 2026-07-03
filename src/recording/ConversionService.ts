@@ -15,7 +15,7 @@ import {
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import { updateLinksInVault } from '../utils/LinkUpdater';
 import type { VaultLinkUpdateResult } from '../utils/LinkUpdater';
-import type { ConversionLinkAction } from '../settings/Settings';
+import type { ConversionLinkAction } from '../settings/settingsSchema';
 
 /**
  * Parameters of one conversion operation.

@@ -5,7 +5,7 @@
  */
 
 import { SystemDiagnostics } from 'src/diagnostics/SystemDiagnostics';
-import type { AudioRecorderSettings } from 'src/settings/Settings';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import * as AudioCapabilityDetector from 'src/audio/AudioCapabilityDetector';
 import {
 	FORMAT_WEBM,

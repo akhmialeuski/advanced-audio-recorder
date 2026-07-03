@@ -9,8 +9,8 @@
 import { App, Notice, TFile } from 'obsidian';
 import { AudioProcessingModal } from '../../src/cleanup/AudioProcessingModal';
 import { AudioProcessingService } from '../../src/cleanup/AudioProcessingService';
-import { DEFAULT_SETTINGS } from '../../src/settings/Settings';
-import type { AudioRecorderSettings } from '../../src/settings/Settings';
+import { DEFAULT_SETTINGS } from '../../src/settings/settingsSchema';
+import type { AudioRecorderSettings } from '../../src/settings/settingsSchema';
 
 jest.mock('../../src/cleanup/AudioProcessingService');
 

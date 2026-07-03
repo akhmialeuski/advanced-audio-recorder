@@ -1,20 +1,15 @@
 /**
- * Settings interface and default values for the Audio Recorder plugin.
- * @module settings/Settings
+ * Settings type surface and default values for the Audio Recorder plugin.
+ * @module settings/settingsSchema
  */
 
 import type { ConversionLinkAction, OutputMode } from '../types';
-import { SettingsValidationError } from '../errors';
 import {
 	FORMAT_WEBM,
 	DEFAULT_SAMPLE_RATE,
 	DEFAULT_BITRATE,
 	DEFAULT_SPLIT_CHUNK_MINUTES,
 	DEFAULT_SPLIT_PART_SUFFIX,
-	MIN_SPLIT_CHUNK_MINUTES,
-	MAX_SPLIT_CHUNK_MINUTES,
-	SPLIT_PART_SUFFIX_PATTERN,
-	SPLIT_PART_SUFFIX_RULE_TEXT,
 	DEFAULT_TRANSCRIBE_CHUNK_MB,
 	DEFAULT_WHISPER_API_BASE_URL,
 	DEFAULT_WHISPER_API_MODEL,
@@ -45,7 +40,6 @@ import {
 	DEFAULT_CLEANUP_GATE_THRESHOLD_DB,
 	DEFAULT_CLEANUP_LEVELING_MAKEUP_DB,
 } from '../constants';
-import { getDefaultDeviceId } from '../utils/DeviceUtils';
 import type {
 	TranscriptDestination,
 	TranscriptFileFormat,
@@ -268,99 +262,29 @@ export interface AudioRecorderSettings {
 export type TranscriptionProviderId =
 	(typeof TRANSCRIPTION_PROVIDER_IDS)[keyof typeof TRANSCRIPTION_PROVIDER_IDS];
 
-/** Display labels for each transcription engine (single source for UI). */
-export const TRANSCRIPTION_PROVIDER_LABELS: Record<
-	TranscriptionProviderId,
-	string
-> = {
-	[TRANSCRIPTION_PROVIDER_IDS.WHISPER_API]: 'Whisper API (OpenAI-compatible)',
-	[TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM]: 'Deepgram',
-	[TRANSCRIPTION_PROVIDER_IDS.GEMINI]: 'Google Gemini',
-	[TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER]: 'Local whisper.cpp (desktop)',
-};
-
-/** Display labels for each transcript destination (single source for UI). */
-export const TRANSCRIPT_DESTINATION_LABELS: Record<
-	TranscriptDestination,
-	string
-> = {
-	note: 'Insert into note',
-	file: 'Save to file',
-	both: 'Note and file',
-	link: 'Save to file and link it in the note',
-};
-
-/** Display labels for each transcript file format (single source for UI). */
-export const TRANSCRIPT_FILE_FORMAT_LABELS: Record<
-	TranscriptFileFormat,
-	string
-> = {
-	json: 'JSON (full data + speakers)',
-	srt: 'SubRip (.srt)',
-	vtt: 'WebVTT (.vtt)',
-	txt: 'Plain text (.txt)',
-};
-
-/** Display labels for each LLM post-processing task (single source for UI). */
-export const LLM_TASK_LABELS: Record<LlmTask, string> = {
-	cleanup: 'Clean up',
-	summary: 'Summarize',
-	custom: 'Custom',
-};
-
 /** LLM post-processing provider identifier (derived from {@link LLM_PROVIDER_IDS}). */
 export type LlmProviderId =
 	(typeof LLM_PROVIDER_IDS)[keyof typeof LLM_PROVIDER_IDS];
 
-/** Display labels for each LLM provider (single source for the UI). */
-export const LLM_PROVIDER_LABELS: Record<LlmProviderId, string> = {
-	[LLM_PROVIDER_IDS.OPENAI_COMPATIBLE]: 'OpenAI',
-	[LLM_PROVIDER_IDS.ANTHROPIC]: 'Anthropic (Claude)',
-	[LLM_PROVIDER_IDS.GEMINI]: 'Google Gemini',
-};
-
-/** A value/label pair for a dropdown control (single source for the UI). */
-export interface LabeledOption {
-	value: string;
-	label: string;
+/**
+ * Partial settings as accepted from storage or callers; track sources may
+ * arrive as a Map or as the serialized record form.
+ */
+export interface AudioRecorderSettingsInput extends Partial<
+	Omit<AudioRecorderSettings, 'trackAudioSources'>
+> {
+	trackAudioSources?: TrackAudioSources | TrackAudioSourcesRecord;
 }
 
 /**
- * Builds dropdown options from a label map, preserving key insertion order.
- * Lets the settings tab and the transcription modal share one source of
- * truth for both option values and their display labels.
- * @param labels - Map of value to display label
- * @returns Ordered value/label option pairs
+ * Settings shape as persisted to disk (track sources flattened to a record).
  */
-function optionsFromLabels<K extends string>(
-	labels: Record<K, string>,
-): LabeledOption[] {
-	return (Object.keys(labels) as K[]).map((value) => ({
-		value,
-		label: labels[value],
-	}));
+export interface SerializedAudioRecorderSettings extends Omit<
+	AudioRecorderSettings,
+	'trackAudioSources'
+> {
+	trackAudioSources: Record<number, string>;
 }
-
-/** Engine dropdown options, derived from the engine label map. */
-export const TRANSCRIPTION_PROVIDER_OPTIONS = optionsFromLabels(
-	TRANSCRIPTION_PROVIDER_LABELS,
-);
-
-/** Destination dropdown options, derived from the destination label map. */
-export const TRANSCRIPT_DESTINATION_OPTIONS = optionsFromLabels(
-	TRANSCRIPT_DESTINATION_LABELS,
-);
-
-/** File-format dropdown options, derived from the file-format label map. */
-export const TRANSCRIPT_FILE_FORMAT_OPTIONS = optionsFromLabels(
-	TRANSCRIPT_FILE_FORMAT_LABELS,
-);
-
-/** LLM-task dropdown options, derived from the task label map. */
-export const LLM_TASK_OPTIONS = optionsFromLabels(LLM_TASK_LABELS);
-
-/** LLM-provider dropdown options, derived from the provider label map. */
-export const LLM_PROVIDER_OPTIONS = optionsFromLabels(LLM_PROVIDER_LABELS);
 
 /**
  * Default plugin settings.
@@ -502,241 +426,4 @@ export function applyLlmProviderDefaults(
 		settings.llmBaseUrl = DEFAULT_LLM_OPENAI_BASE_URL;
 	}
 	return settings;
-}
-
-export interface AudioRecorderSettingsInput extends Partial<
-	Omit<AudioRecorderSettings, 'trackAudioSources'>
-> {
-	trackAudioSources?: TrackAudioSources | TrackAudioSourcesRecord;
-}
-
-export interface SerializedAudioRecorderSettings extends Omit<
-	AudioRecorderSettings,
-	'trackAudioSources'
-> {
-	trackAudioSources: Record<number, string>;
-}
-
-/**
- * Normalizes track audio sources into a Map.
- */
-export function normalizeTrackAudioSources(
-	trackAudioSources?: TrackAudioSources | TrackAudioSourcesRecord,
-): TrackAudioSources {
-	if (!trackAudioSources) {
-		return new Map();
-	}
-
-	if (trackAudioSources instanceof Map) {
-		return new Map(trackAudioSources);
-	}
-
-	const sources = new Map<number, AudioSource>();
-	for (const [key, value] of Object.entries(trackAudioSources)) {
-		const trackNumber = Number(key);
-		if (Number.isNaN(trackNumber)) {
-			continue;
-		}
-		if (typeof value === 'string') {
-			sources.set(trackNumber, { deviceId: value });
-			continue;
-		}
-		if (value && typeof value === 'object' && 'deviceId' in value) {
-			const deviceId = (value as { deviceId?: unknown }).deviceId;
-			sources.set(trackNumber, {
-				deviceId: typeof deviceId === 'string' ? deviceId : '',
-			});
-		}
-	}
-	return sources;
-}
-
-/**
- * Serializes track audio sources into a plain object.
- */
-export function serializeTrackAudioSources(
-	trackAudioSources: TrackAudioSources,
-): Record<number, string> {
-	const serialized: Record<number, string> = {};
-	for (const [trackNumber, source] of trackAudioSources.entries()) {
-		serialized[trackNumber] = source.deviceId;
-	}
-	return serialized;
-}
-
-/**
- * Serializes settings for persistence.
- */
-export function serializeSettings(
-	settings: AudioRecorderSettings,
-): SerializedAudioRecorderSettings {
-	return {
-		...settings,
-		trackAudioSources: serializeTrackAudioSources(
-			settings.trackAudioSources,
-		),
-	};
-}
-
-/**
- * Merges user settings with defaults.
- * @param userSettings - Partial user settings
- * @returns Complete settings object
- */
-export function mergeSettings(
-	userSettings: AudioRecorderSettingsInput = {},
-): AudioRecorderSettings {
-	const merged: AudioRecorderSettings = {
-		...DEFAULT_SETTINGS,
-		...userSettings,
-		trackAudioSources: normalizeTrackAudioSources(
-			userSettings.trackAudioSources,
-		),
-	};
-	migrateLegacyLlmSettings(merged, userSettings);
-	return merged;
-}
-
-/**
- * Carries forward settings saved under the pre-rework LLM schema. The old
- * single `llmApiKey` maps onto the new per-vendor key (OpenAI reuses
- * `whisperApiKey`, Gemini reuses `geminiApiKey`, Anthropic uses its own
- * `anthropicApiKey`), and the old single `llmModel` maps onto the selected
- * model of the stored provider. The superseded flat fields are then dropped so
- * a later save does not persist them. A vendor key already set is never
- * overwritten, so the migration cannot clobber a freshly entered token.
- * @param merged - The merged settings to migrate in place
- * @param raw - The raw user settings as loaded from disk
- */
-function migrateLegacyLlmSettings(
-	merged: AudioRecorderSettings,
-	raw: AudioRecorderSettingsInput,
-): void {
-	const legacy = raw as unknown as Record<string, unknown>;
-	const legacyKey =
-		typeof legacy.llmApiKey === 'string' ? legacy.llmApiKey : '';
-	if (legacyKey) {
-		if (
-			merged.llmProvider === LLM_PROVIDER_IDS.ANTHROPIC &&
-			!merged.anthropicApiKey
-		) {
-			merged.anthropicApiKey = legacyKey;
-		} else if (
-			merged.llmProvider === LLM_PROVIDER_IDS.GEMINI &&
-			!merged.geminiApiKey
-		) {
-			merged.geminiApiKey = legacyKey;
-		} else if (
-			merged.llmProvider === LLM_PROVIDER_IDS.OPENAI_COMPATIBLE &&
-			!merged.whisperApiKey
-		) {
-			merged.whisperApiKey = legacyKey;
-		}
-	}
-	const legacyModel =
-		typeof legacy.llmModel === 'string' ? legacy.llmModel.trim() : '';
-	if (legacyModel) {
-		if (merged.llmProvider === LLM_PROVIDER_IDS.ANTHROPIC) {
-			merged.llmAnthropicModel = legacyModel;
-		} else if (merged.llmProvider === LLM_PROVIDER_IDS.GEMINI) {
-			merged.llmGeminiModel = legacyModel;
-		} else {
-			merged.llmOpenAiModel = legacyModel;
-		}
-	}
-	// Drop the superseded flat fields so a later save does not persist them.
-	const mergedRecord = merged as unknown as Record<string, unknown>;
-	delete mergedRecord.llmApiKey;
-	delete mergedRecord.llmModel;
-}
-
-/**
- * Async version of mergeSettings that detects and sets the default audio device
- * if no device is configured. This should be called during plugin initialization
- * to ensure a default device is selected for first-time users.
- * @param userSettings - Partial user settings from storage
- * @returns Complete settings object with default device if needed
- */
-export async function mergeSettingsAsync(
-	userSettings: AudioRecorderSettingsInput = {},
-): Promise<AudioRecorderSettings> {
-	const merged = mergeSettings(userSettings);
-
-	// Auto-select default device if no device is configured
-	if (!merged.audioDeviceId || merged.audioDeviceId.trim() === '') {
-		const defaultDeviceId = await getDefaultDeviceId();
-		if (defaultDeviceId) {
-			merged.audioDeviceId = defaultDeviceId;
-		}
-	}
-
-	return merged;
-}
-
-/**
- * Validates audio recorder settings before use.
- * @param settings - Settings to validate
- * @throws SettingsValidationError if any setting is invalid
- */
-export function validateSettings(settings: AudioRecorderSettings): void {
-	if (!settings.audioDeviceId || settings.audioDeviceId.trim() === '') {
-		throw new SettingsValidationError(
-			'audioDeviceId',
-			'Audio device is not selected. Please select an audio input device in plugin settings.',
-		);
-	}
-
-	if (!settings.sampleRate || settings.sampleRate <= 0) {
-		throw new SettingsValidationError(
-			'sampleRate',
-			'Sample rate must be a positive number.',
-		);
-	}
-
-	if (!settings.recordingFormat || settings.recordingFormat.trim() === '') {
-		throw new SettingsValidationError(
-			'recordingFormat',
-			'Recording format is not selected.',
-		);
-	}
-
-	if (!SPLIT_PART_SUFFIX_PATTERN.test(settings.splitPartSuffix)) {
-		throw new SettingsValidationError(
-			'splitPartSuffix',
-			SPLIT_PART_SUFFIX_RULE_TEXT,
-		);
-	}
-
-	// Validated regardless of autoSplitEnabled: the value is also the
-	// default part duration for manual splitting. Runtime paths still
-	// clamp/sanitize defensively (clampSplitMinutes, sanitizePartSuffix)
-	// because validateSettings is not on the production load path.
-	if (
-		!Number.isInteger(settings.splitChunkMinutes) ||
-		settings.splitChunkMinutes < MIN_SPLIT_CHUNK_MINUTES ||
-		settings.splitChunkMinutes > MAX_SPLIT_CHUNK_MINUTES
-	) {
-		throw new SettingsValidationError(
-			'splitChunkMinutes',
-			`Part duration must be an integer between ${String(MIN_SPLIT_CHUNK_MINUTES)} and ${String(MAX_SPLIT_CHUNK_MINUTES)} minutes.`,
-		);
-	}
-
-	if (settings.enableMultiTrack) {
-		const trackCount = settings.trackAudioSources.size;
-		if (trackCount === 0) {
-			throw new SettingsValidationError(
-				'trackAudioSources',
-				'Multi-track recording is enabled but no audio sources are selected.',
-			);
-		}
-		for (const [trackNum, source] of settings.trackAudioSources.entries()) {
-			if (!source.deviceId || source.deviceId.trim() === '') {
-				throw new SettingsValidationError(
-					`trackAudioSources[${trackNum}]`,
-					`Track ${trackNum} has no audio source selected.`,
-				);
-			}
-		}
-	}
 }

@@ -21,7 +21,7 @@ import type { TranscriptionProvider } from 'src/transcription/providers/Transcri
 import { prepareAudio } from 'src/transcription/audioPrep';
 import { TranscriptTruncatedError } from 'src/transcription/transcriptionErrors';
 import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
-import { mergeSettings } from 'src/settings/Settings';
+import { mergeSettings } from 'src/settings/settingsSerialization';
 
 jest.mock('obsidian', () => {
 	const actual = jest.requireActual('../mocks/obsidian');

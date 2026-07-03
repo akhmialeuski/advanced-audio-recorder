@@ -11,7 +11,7 @@
 import { Notice } from 'obsidian';
 import type { App } from 'obsidian';
 import type { RecordingSessionConfig, RecordingTarget } from '../types';
-import type { AudioRecorderSettings } from '../settings/Settings';
+import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { concatArrayBuffers } from '../utils/buffers';
 import { resolveUniquePath } from '../audio/RecordingFileManager';

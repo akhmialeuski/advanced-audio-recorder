@@ -28,7 +28,7 @@ import { SplitService } from '../recording/SplitService';
 import type {
 	AudioRecorderSettings,
 	ConversionLinkAction,
-} from '../settings/Settings';
+} from '../settings/settingsSchema';
 
 /**
  * Modal for splitting an audio file into parts of a fixed duration.

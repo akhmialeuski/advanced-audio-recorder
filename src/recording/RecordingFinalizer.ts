@@ -16,7 +16,7 @@ import type {
 	SaveProgress,
 	TrackFileGroup,
 } from '../types';
-import type { AudioRecorderSettings } from '../settings/Settings';
+import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import { PLUGIN_LOG_PREFIX, FORMAT_WAV } from '../constants';
 import { DebugLogger } from '../utils/DebugLogger';
 import { assembleWavFromPcmSegmentFiles } from '../audio/WavEncoder';

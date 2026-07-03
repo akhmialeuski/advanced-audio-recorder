@@ -5,9 +5,9 @@
 /** @jest-environment jsdom */
 
 import { App, TFile } from 'obsidian';
-import { DEFAULT_SETTINGS } from '../../src/settings/Settings';
+import { DEFAULT_SETTINGS } from '../../src/settings/settingsSchema';
 import { TranscriptionModal } from '../../src/ui/TranscriptionModal';
-import type { AudioRecorderSettings } from '../../src/settings/Settings';
+import type { AudioRecorderSettings } from '../../src/settings/settingsSchema';
 
 type TranscriptionModalInternals = {
 	setRunning: (running: boolean) => void;

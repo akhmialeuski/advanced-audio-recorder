@@ -11,11 +11,13 @@ import {
 	AudioRecorderSettings,
 	AudioRecorderSettingsInput,
 	DEFAULT_SETTINGS,
-	mergeSettings,
-	mergeSettingsAsync,
 	OutputMode,
 	TrackAudioSources,
-} from '../../src/settings/Settings';
+} from '../../src/settings/settingsSchema';
+import {
+	mergeSettings,
+	mergeSettingsAsync,
+} from '../../src/settings/settingsSerialization';
 
 describe('Settings', () => {
 	describe('DEFAULT_SETTINGS', () => {

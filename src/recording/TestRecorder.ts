@@ -9,7 +9,7 @@
 import { buildMimeType } from '../audio/AudioCapabilityDetector';
 import { FORMAT_WAV, FORMAT_WEBM, MIME_TYPE_AUDIO_PREFIX } from '../constants';
 import { getProcessingConstraints } from './AudioStreamHandler';
-import type { AudioRecorderSettings } from '../settings/Settings';
+import type { AudioRecorderSettings } from '../settings/settingsSchema';
 
 /** Outcome of one test capture. */
 export type TestRecordingResult =

@@ -12,7 +12,7 @@ import {
 	addModelPicker,
 	type SettingsSectionContext,
 } from '../../src/settings/settingControls';
-import type { AudioRecorderSettings } from '../../src/settings/Settings';
+import type { AudioRecorderSettings } from '../../src/settings/settingsSchema';
 
 interface DropdownCapture {
 	options: { value: string; label: string }[];

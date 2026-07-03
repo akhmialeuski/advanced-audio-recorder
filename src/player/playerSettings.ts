@@ -5,7 +5,7 @@
  * @module player/playerSettings
  */
 
-import type { AudioRecorderSettings } from '../settings/Settings';
+import type { AudioRecorderSettings } from '../settings/settingsSchema';
 
 /**
  * Render-ready view of the enhanced player's two user-toggleable windows.

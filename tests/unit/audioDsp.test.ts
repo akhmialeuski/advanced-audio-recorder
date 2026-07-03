@@ -10,7 +10,7 @@ import {
 	hasActiveStage,
 	resolveAudioDspConfig,
 } from 'src/cleanup/audioDsp';
-import { mergeSettings } from 'src/settings/Settings';
+import { mergeSettings } from 'src/settings/settingsSerialization';
 import {
 	DEFAULT_CLEANUP_HIGHPASS_HZ,
 	MAX_CLEANUP_GATE_THRESHOLD_DB,

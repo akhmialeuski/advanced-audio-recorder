@@ -6,7 +6,7 @@
 
 import { ConversionModal } from '../../src/ui/ConversionModal';
 import { App, TFile } from 'obsidian';
-import type { AudioRecorderSettings } from '../../src/settings/Settings';
+import type { AudioRecorderSettings } from '../../src/settings/settingsSchema';
 
 /**
  * Extends an HTMLElement with Obsidian's custom DOM methods.

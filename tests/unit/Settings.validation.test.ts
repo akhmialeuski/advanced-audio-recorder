@@ -6,8 +6,8 @@
 import {
 	AudioRecorderSettings,
 	DEFAULT_SETTINGS,
-	validateSettings,
-} from '../../src/settings/Settings';
+} from '../../src/settings/settingsSchema';
+import { validateSettings } from '../../src/settings/settingsValidation';
 import { SettingsValidationError } from '../../src/errors';
 
 describe('validateSettings', () => {

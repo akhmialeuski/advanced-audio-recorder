@@ -11,11 +11,11 @@ import type {
 	RecordingSaveResult,
 } from './types';
 import { PLUGIN_LOG_PREFIX } from './constants';
+import { AudioRecorderSettings } from './settings/settingsSchema';
 import {
-	AudioRecorderSettings,
 	mergeSettingsAsync,
 	serializeSettings,
-} from './settings/Settings';
+} from './settings/settingsSerialization';
 import { AudioRecorderSettingTab } from './settings/SettingsTab';
 import { RecordingManager } from './recording/RecordingManager';
 import { SessionJournal, JOURNAL_FILE_NAME } from './recording/SessionJournal';

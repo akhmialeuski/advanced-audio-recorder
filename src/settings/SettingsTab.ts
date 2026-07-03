@@ -17,7 +17,7 @@ import type {
 	AudioRecorderSettings,
 	OutputMode,
 	ConversionLinkAction,
-} from './Settings';
+} from './settingsSchema';
 import {
 	detectSupportedFormats,
 	getSupportedSampleRates,

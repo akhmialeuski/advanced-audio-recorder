@@ -11,7 +11,7 @@ import { RecordingStatus } from '../../src/types';
 import {
 	DEFAULT_SETTINGS,
 	AudioRecorderSettings,
-} from '../../src/settings/Settings';
+} from '../../src/settings/settingsSchema';
 import { AudioStreamError } from '../../src/errors';
 import { PLUGIN_LOG_PREFIX } from '../../src/constants';
 import type { App } from 'obsidian';

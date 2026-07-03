@@ -9,7 +9,7 @@ import {
 	MS_PER_MINUTE,
 	TRANSCRIPTION_PROVIDER_IDS,
 } from '../constants';
-import type { AudioRecorderSettings } from '../settings/Settings';
+import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import { WhisperApiProvider } from './providers/WhisperApiProvider';
 import { LocalWhisperProvider } from './providers/LocalWhisperProvider';
 import { DeepgramProvider } from './providers/DeepgramProvider';

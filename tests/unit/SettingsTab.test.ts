@@ -10,7 +10,7 @@ import { AudioRecorderSettingTab } from '../../src/settings/SettingsTab';
 import {
 	DEFAULT_SETTINGS,
 	AudioRecorderSettings,
-} from '../../src/settings/Settings';
+} from '../../src/settings/settingsSchema';
 
 // Mock AudioEncoder to avoid loading mediabunny in jsdom
 jest.mock('../../src/audio/AudioEncoder', () => ({

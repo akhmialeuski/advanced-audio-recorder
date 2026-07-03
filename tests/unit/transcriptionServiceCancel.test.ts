@@ -16,7 +16,7 @@ import {
 } from 'src/transcription/TranscriptionService';
 import { transcribeFile } from 'src/transcription/runTranscription';
 import type { TranscriptionProvider } from 'src/transcription/providers/TranscriptionProvider';
-import { mergeSettings } from 'src/settings/Settings';
+import { mergeSettings } from 'src/settings/settingsSerialization';
 
 const audioFile = {
 	name: 'rec.webm',

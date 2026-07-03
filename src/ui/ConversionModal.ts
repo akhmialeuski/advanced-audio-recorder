@@ -19,7 +19,7 @@ import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import type {
 	AudioRecorderSettings,
 	ConversionLinkAction,
-} from '../settings/Settings';
+} from '../settings/settingsSchema';
 
 /**
  * Modal for converting an audio file to a different format.

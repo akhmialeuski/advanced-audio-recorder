@@ -13,7 +13,7 @@ import type { RecordingSessionConfig, RecordingTarget } from '../../src/types';
 import {
 	DEFAULT_SETTINGS,
 	AudioRecorderSettings,
-} from '../../src/settings/Settings';
+} from '../../src/settings/settingsSchema';
 import type { App } from 'obsidian';
 
 jest.mock('obsidian', () => ({

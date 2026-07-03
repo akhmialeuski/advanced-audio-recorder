@@ -11,11 +11,11 @@
 /** @jest-environment jsdom */
 
 import { renderTranscriptionSection } from '../../src/settings/sections/transcriptionSettingsSection';
-import {
-	mergeSettings,
-	type AudioRecorderSettings,
-	type TranscriptionProviderId,
-} from '../../src/settings/Settings';
+import type {
+	AudioRecorderSettings,
+	TranscriptionProviderId,
+} from '../../src/settings/settingsSchema';
+import { mergeSettings } from '../../src/settings/settingsSerialization';
 import type { SettingsSectionContext } from '../../src/settings/settingControls';
 import { TRANSCRIPTION_PROVIDER_IDS } from '../../src/constants';
 import {

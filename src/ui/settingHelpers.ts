@@ -6,7 +6,7 @@
 
 import { Setting } from 'obsidian';
 import { getSupportedBitrates } from '../audio/AudioCapabilityDetector';
-import type { ConversionLinkAction } from '../settings/Settings';
+import type { ConversionLinkAction } from '../settings/settingsSchema';
 
 /**
  * Adds a bitrate dropdown listing the supported bitrates. The initial

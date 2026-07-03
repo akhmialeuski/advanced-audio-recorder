@@ -11,14 +11,16 @@
 
 import { MarkdownView, Modal, Notice, Setting } from 'obsidian';
 import type { App, ButtonComponent, TFile } from 'obsidian';
+import type {
+	AudioRecorderSettings,
+	TranscriptionProviderId,
+} from '../settings/settingsSchema';
 import {
 	LLM_TASK_OPTIONS,
 	TRANSCRIPT_DESTINATION_OPTIONS,
 	TRANSCRIPT_FILE_FORMAT_OPTIONS,
 	TRANSCRIPTION_PROVIDER_OPTIONS,
-	type AudioRecorderSettings,
-	type TranscriptionProviderId,
-} from '../settings/Settings';
+} from '../settings/labels';
 import type {
 	TranscriptDestination,
 	TranscriptFileFormat,

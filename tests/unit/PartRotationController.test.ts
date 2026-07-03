@@ -15,7 +15,7 @@ import type { RecordingSessionConfig, RecordingTarget } from '../../src/types';
 import {
 	DEFAULT_SETTINGS,
 	AudioRecorderSettings,
-} from '../../src/settings/Settings';
+} from '../../src/settings/settingsSchema';
 import { MS_PER_MINUTE } from '../../src/constants';
 import type { App } from 'obsidian';
 

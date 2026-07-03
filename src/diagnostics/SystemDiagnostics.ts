@@ -5,8 +5,8 @@
  */
 
 import type { App } from 'obsidian';
-import type { AudioRecorderSettings } from '../settings/Settings';
-import { serializeTrackAudioSources } from '../settings/Settings';
+import type { AudioRecorderSettings } from '../settings/settingsSchema';
+import { serializeTrackAudioSources } from '../settings/settingsSerialization';
 import {
 	detectCapabilities,
 	detectCodecSupport,

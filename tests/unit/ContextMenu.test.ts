@@ -7,7 +7,7 @@
 import { ContextMenu } from '../../src/ui/ContextMenu';
 import { FILE_ACTIONS } from '../../src/actions/fileActions';
 import { AUDIO_EXTENSIONS, FORMAT_MP4 } from '../../src/constants';
-import type { AudioRecorderSettings } from '../../src/settings/Settings';
+import type { AudioRecorderSettings } from '../../src/settings/settingsSchema';
 import * as AudioFileAnalyzer from '../../src/utils/AudioFileAnalyzer';
 import {
 	App,

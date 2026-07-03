@@ -5,7 +5,7 @@
 
 import { App } from 'obsidian';
 import AudioRecorderPlugin from '../../src/main';
-import { DEFAULT_SETTINGS } from '../../src/settings/Settings';
+import { DEFAULT_SETTINGS } from '../../src/settings/settingsSchema';
 import type { SaveProgress } from '../../src/types';
 import type { TranscriptionModalOptions } from '../../src/ui/TranscriptionModal';
 

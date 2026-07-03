@@ -5,8 +5,8 @@
  */
 /** @jest-environment jsdom */
 
-import type { AudioRecorderSettings } from '../../src/settings/Settings';
-import { DEFAULT_SETTINGS } from '../../src/settings/Settings';
+import type { AudioRecorderSettings } from '../../src/settings/settingsSchema';
+import { DEFAULT_SETTINGS } from '../../src/settings/settingsSchema';
 import type { RecordingTarget } from '../../src/types';
 
 // Mock obsidian module

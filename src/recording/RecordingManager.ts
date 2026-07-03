@@ -27,7 +27,10 @@ import {
 	type RecordingMarkerDraft,
 	type RecordingMarkerHandle,
 } from './recordingMarkers';
-import type { AudioRecorderSettings, OutputMode } from '../settings/Settings';
+import type {
+	AudioRecorderSettings,
+	OutputMode,
+} from '../settings/settingsSchema';
 import {
 	getAudioStreams,
 	getAudioSourceName,

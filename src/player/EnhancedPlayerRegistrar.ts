@@ -37,7 +37,7 @@ import type {
 	WorkspaceLeaf,
 } from 'obsidian';
 import { AUDIO_EXTENSIONS, PLUGIN_LOG_PREFIX } from '../constants';
-import { type AudioRecorderSettings } from '../settings/Settings';
+import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import {
 	resolvePlayerSettings,
 	playerSettingsEqual,

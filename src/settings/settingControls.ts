@@ -7,7 +7,8 @@
  */
 
 import { Setting } from 'obsidian';
-import type { AudioRecorderSettings, LabeledOption } from './Settings';
+import type { AudioRecorderSettings } from './settingsSchema';
+import type { LabeledOption } from './labels';
 import {
 	addModelToList,
 	ensureSelectedInList,
