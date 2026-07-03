@@ -40,6 +40,7 @@ import {
 	WaveformPeakCache,
 	type AudioDecoder,
 } from './WaveformData';
+import { playbackKey } from './AudioPlayerRegistry';
 import type {
 	AudioPlayerRegistry,
 	SeekablePlayer,
@@ -113,15 +114,24 @@ export interface AudioPlayerOptions {
  * Renders and drives a single enhanced audio player instance.
  */
 export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
-	/** Shared per-file audio element, acquired from the registry on render so
-	 * every view mode controls the same playback. */
+	/** Shared audio element for this embed's playback key, acquired from the
+	 * registry on render so the same embed across view modes controls one
+	 * playback while distinct embeds of the file stay independent. */
 	private audio!: HTMLAudioElement;
 	/**
+	 * Identity key of this embed's shared audio element: the file path plus
+	 * the #t= start (see playbackKey). Distinct embeds of one file get
+	 * different keys and so independent playback; the same embed re-created
+	 * across a view-mode switch re-acquires its element under this key.
+	 */
+	private readonly audioKey: string;
+	/**
 	 * The #t= start position to show for THIS embed until its playback engages.
-	 * The audio element is shared per file, so moving its currentTime would drag
-	 * every other embed of the same file; instead each embed shows its own start
-	 * here (display only) and seeks the shared element to it just-in-time when
-	 * the user plays or skips this embed. Null when the embed has no #t= offset.
+	 * The audio element can be shared with the same embed in another view/pane,
+	 * so moving its currentTime eagerly would drag that copy; instead the embed
+	 * shows its start here (display only) and seeks the shared element to it
+	 * just-in-time when the user plays or skips this embed. Null when the embed
+	 * has no #t= offset.
 	 */
 	private startHint: number | null = null;
 	private playButton!: HTMLElement;
@@ -192,6 +202,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		private readonly options: AudioPlayerOptions,
 	) {
 		super(containerEl);
+		this.audioKey = playbackKey(file.path, options.startSeconds);
 	}
 
 	/**
@@ -345,11 +356,12 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			this.runRenderCleanups();
 		});
 
-		// Bind to the file's shared audio element so every view mode controls
-		// the same playback; the registry releases it once the last player
-		// unloads
+		// Bind to this embed's shared audio element (keyed by file path plus
+		// #t= start) so the same embed across view modes controls one playback
+		// while other embeds of the file stay independent; the registry
+		// releases it once the last player unloads
 		const { audio, isNew } = this.registry.acquireAudio(
-			this.file.path,
+			this.audioKey,
 			this.app.vault.getResourcePath(this.file),
 		);
 		this.audio = audio;
@@ -361,7 +373,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			this.audio.playbackRate = PLAYER_PLAYBACK_RATE;
 		}
 		this.register(() => {
-			this.registry.releaseAudio(this.file.path);
+			this.registry.releaseAudio(this.audioKey);
 		});
 
 		this.registerAudioEvents();
@@ -963,8 +975,9 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			this.updateProgress();
 		});
 		this.registerDomEvent(this.audio, 'play', () => {
-			// Any play (this embed or another) makes the timeline live, so a
-			// per-embed #t= start hint must not reappear afterwards
+			// Any play (this player or the same embed in another view/pane)
+			// makes the timeline live, so the #t= start hint must not
+			// reappear afterwards
 			this.engageTimeline();
 			setIcon(this.playButton, 'pause');
 		});
@@ -1035,17 +1048,17 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	}
 
 	/**
-	 * The position to display for this embed: its #t= start hint while the
+	 * The position to display for this embed: its #t= start hint while its
 	 * shared audio is still untouched (at the very start, paused), otherwise the
-	 * real shared playback position. This is what lets two embeds of one file
-	 * show different start positions even though they share one audio element.
+	 * real playback position. The hint keeps the displayed start correct even
+	 * though the element itself is not moved until the user engages this embed.
 	 */
 	private currentPosition(): number {
 		if (
 			this.startHint !== null &&
 			this.audio.currentTime === 0 &&
 			this.audio.paused &&
-			!this.registry.isAudioEngaged(this.file.path)
+			!this.registry.isAudioEngaged(this.audioKey)
 		) {
 			return Number.isFinite(this.audio.duration)
 				? Math.min(this.startHint, this.audio.duration)
@@ -1074,14 +1087,15 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	}
 
 	/**
-	 * Records that the user has engaged this file's shared playback (played or
-	 * sought it). Consumes this embed's #t= start hint and marks the shared
-	 * timeline engaged in the registry, so the hint never reappears on any
-	 * embed of the file - even after playback later returns to 0.
+	 * Records that the user has engaged this embed's shared playback (played or
+	 * sought it). Consumes the #t= start hint and marks the timeline engaged in
+	 * the registry, so the hint never reappears on this embed (or its copy in
+	 * another view/pane) - even after playback later returns to 0. Other embeds
+	 * of the same file have their own playback and keep their own hints.
 	 */
 	private engageTimeline(): void {
 		this.startHint = null;
-		this.registry.markAudioEngaged(this.file.path);
+		this.registry.markAudioEngaged(this.audioKey);
 	}
 
 	/**

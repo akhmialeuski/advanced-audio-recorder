@@ -1,15 +1,43 @@
 /**
- * Registry of live enhanced audio players, keyed by the vault path of
- * the file they play. Timecode links use it to seek an already-rendered
- * player instead of opening a fresh one, and a settings change uses it to
- * re-apply the player layout in place (no view re-render).
+ * Registry of live enhanced audio players. Player registrations are keyed
+ * by the vault path of the file they play (timecode links use them to seek
+ * an already-rendered player, marker edits to sync the other views, and a
+ * settings change to re-apply the player layout in place). The shared audio
+ * elements are keyed more finely, by playback key (path + #t= start), so
+ * distinct embeds of one file play independently while the same embed keeps
+ * its playback across a view-mode switch.
  * @module player/AudioPlayerRegistry
  */
 
 import { SHARED_AUDIO_GRACE_MS } from '../constants';
 import type { ResolvedPlayerSettings } from '../player/playerSettings';
 
-/** A reference-counted audio element shared by every player of one file. */
+/**
+ * Separates the path from the #t= start inside a playback key. U+0000 cannot
+ * appear in a vault path, so a file whose name spells out the suffix (e.g.
+ * "rec.wav#t=3") can never collide with a real #t= embed key.
+ */
+const PLAYBACK_KEY_SEPARATOR = '\u0000';
+
+/**
+ * Builds the identity key a player's shared audio element is stored under:
+ * the file path plus the embed's parsed #t= start. Distinct embeds of one
+ * file (a plain embed and a #t= embed, or two different #t= offsets) get
+ * different keys and therefore independent playback, while the same embed
+ * re-created across a view-mode switch or an in-place re-render maps to the
+ * same key and so keeps its element (and running playback). Byte-identical
+ * embeds share a key by design: without a stable source position they are
+ * indistinguishable from the same embed re-rendered, and keeping them on one
+ * element is what preserves cross-view continuity.
+ * @param path - Vault-relative path of the audio file
+ * @param startSeconds - Parsed #t= start of the embed, or null when absent
+ */
+export function playbackKey(path: string, startSeconds: number | null): string {
+	return `${path}${PLAYBACK_KEY_SEPARATOR}t=${startSeconds === null ? '' : String(startSeconds)}`;
+}
+
+/** A reference-counted audio element shared by every player of one
+ * playback key (the same embed shown in several views/panes). */
 interface SharedAudio {
 	audio: HTMLAudioElement;
 	/** Number of live players currently bound to this element. */
@@ -20,9 +48,10 @@ interface SharedAudio {
 	resumeOnReacquire: boolean;
 	/**
 	 * Whether the user has engaged this playback (played or sought it). Once
-	 * engaged, a per-embed #t= start hint is no longer meaningful and must not
-	 * reappear, so it is tracked here (shared across every embed of the file)
-	 * rather than per player.
+	 * engaged, the embed's #t= start hint is no longer meaningful and must not
+	 * reappear, so it is tracked here (shared across every player of the same
+	 * playback key, e.g. the same embed in another pane) rather than per
+	 * player instance.
 	 */
 	engaged: boolean;
 }
@@ -49,26 +78,28 @@ export interface SeekablePlayer {
  */
 export class AudioPlayerRegistry {
 	private readonly playersByPath = new Map<string, Set<SeekablePlayer>>();
-	/** One shared audio element per file path, so every view mode controls
-	 * the same playback (a player in Reading view and one in Live Preview are
-	 * never independent). */
-	private readonly audioByPath = new Map<string, SharedAudio>();
+	/** One shared audio element per playback key (see playbackKey), so the
+	 * same embed across view modes controls one playback while distinct
+	 * embeds of the same file stay independent. */
+	private readonly audioByKey = new Map<string, SharedAudio>();
 
 	/**
-	 * Returns the shared audio element for a file, creating it on first use.
-	 * Every player for the same path gets the SAME element, so playing,
-	 * pausing or seeking from any view mode affects the one playback. A
-	 * re-acquire during the release grace period cancels the release and
-	 * resumes playback if it was running, making a mode switch seamless.
-	 * @param path - Vault-relative path of the file
+	 * Returns the shared audio element for a playback key, creating it on
+	 * first use. Every player for the same key (the same embed across view
+	 * modes/panes) gets the SAME element, so playing, pausing or seeking it
+	 * anywhere affects that one playback - while a different embed of the
+	 * same file has a different key and is untouched. A re-acquire during
+	 * the release grace period cancels the release and resumes playback if
+	 * it was running, making a mode switch seamless.
+	 * @param key - Playback key of the embed (see playbackKey)
 	 * @param src - Resource URL to play (used only when creating)
 	 * @returns The shared element and whether it was just created
 	 */
 	acquireAudio(
-		path: string,
+		key: string,
 		src: string,
 	): { audio: HTMLAudioElement; isNew: boolean } {
-		const existing = this.audioByPath.get(path);
+		const existing = this.audioByKey.get(key);
 		if (existing) {
 			if (existing.releaseTimer !== 0) {
 				window.clearTimeout(existing.releaseTimer);
@@ -86,7 +117,7 @@ export class AudioPlayerRegistry {
 		const audio = new Audio();
 		audio.preload = 'metadata';
 		audio.src = src;
-		this.audioByPath.set(path, {
+		this.audioByKey.set(key, {
 			audio,
 			refs: 1,
 			releaseTimer: 0,
@@ -97,14 +128,14 @@ export class AudioPlayerRegistry {
 	}
 
 	/**
-	 * Releases one player's hold on a file's shared audio. When the last
+	 * Releases one player's hold on its embed's shared audio. When the last
 	 * player lets go, playback is paused immediately (so no audio outlives a
 	 * closed note) but the element is kept for a short grace period, so a
 	 * view-mode switch can re-acquire and resume it instead of restarting.
-	 * @param path - Vault-relative path the audio was acquired under
+	 * @param key - Playback key the audio was acquired under
 	 */
-	releaseAudio(path: string): void {
-		const entry = this.audioByPath.get(path);
+	releaseAudio(key: string): void {
+		const entry = this.audioByKey.get(key);
 		if (!entry) {
 			return;
 		}
@@ -117,7 +148,7 @@ export class AudioPlayerRegistry {
 		entry.releaseTimer = window.setTimeout(() => {
 			entry.audio.removeAttribute('src');
 			entry.audio.load();
-			this.audioByPath.delete(path);
+			this.audioByKey.delete(key);
 		}, SHARED_AUDIO_GRACE_MS);
 	}
 
@@ -153,12 +184,17 @@ export class AudioPlayerRegistry {
 	}
 
 	/**
-	 * Seeks every connected player for a path to the given offset.
-	 * Disconnected players are pruned in passing so a closed view never
-	 * holds a stale registration.
+	 * Seeks the FIRST connected player for a path to the given offset.
+	 * Players of one file drive independent playback elements (one per
+	 * embed), so seeking every player would start several overlapping
+	 * playbacks from a single timecode click; only one is targeted
+	 * (registration order, which follows document order). The same embed
+	 * shown in another view mode shares that player's element, so it stays
+	 * in sync anyway. Disconnected players are pruned in passing so a
+	 * closed view never holds a stale registration.
 	 * @param path - Vault-relative path of the target file
 	 * @param seconds - Offset in seconds to seek to
-	 * @returns True when at least one connected player was seeked
+	 * @returns True when a connected player was seeked
 	 */
 	seek(path: string, seconds: number): boolean {
 		const players = this.playersByPath.get(path);
@@ -171,8 +207,10 @@ export class AudioPlayerRegistry {
 				players.delete(player);
 				continue;
 			}
-			player.seekTo(seconds);
-			seeked = true;
+			if (!seeked) {
+				player.seekTo(seconds);
+				seeked = true;
+			}
 		}
 		if (players.size === 0) {
 			this.playersByPath.delete(path);
@@ -227,27 +265,28 @@ export class AudioPlayerRegistry {
 	}
 
 	/**
-	 * Marks a file's shared playback as engaged: the user has played or sought
-	 * it, so a per-embed #t= start hint is no longer meaningful and must not
+	 * Marks an embed's shared playback as engaged: the user has played or
+	 * sought it, so its #t= start hint is no longer meaningful and must not
 	 * reappear (e.g. when playback later returns to 0). Shared across every
-	 * embed of the file, so engaging from one clears the hint on all of them.
-	 * @param path - Vault-relative path of the file
+	 * player of the same playback key (the same embed in another view/pane),
+	 * while a different embed of the file keeps its own hint.
+	 * @param key - Playback key of the embed (see playbackKey)
 	 */
-	markAudioEngaged(path: string): void {
-		const entry = this.audioByPath.get(path);
+	markAudioEngaged(key: string): void {
+		const entry = this.audioByKey.get(key);
 		if (entry) {
 			entry.engaged = true;
 		}
 	}
 
 	/**
-	 * Whether a file's shared playback has been engaged (played or sought).
-	 * Defaults to false for an unknown path or a freshly created element, so a
-	 * #t= embed shows its start until the timeline actually moves.
-	 * @param path - Vault-relative path of the file
+	 * Whether an embed's shared playback has been engaged (played or sought).
+	 * Defaults to false for an unknown key or a freshly created element, so a
+	 * #t= embed shows its start until its timeline actually moves.
+	 * @param key - Playback key of the embed (see playbackKey)
 	 */
-	isAudioEngaged(path: string): boolean {
-		return this.audioByPath.get(path)?.engaged ?? false;
+	isAudioEngaged(key: string): boolean {
+		return this.audioByKey.get(key)?.engaged ?? false;
 	}
 
 	/**
@@ -255,7 +294,7 @@ export class AudioPlayerRegistry {
 	 * feature is torn down.
 	 */
 	clear(): void {
-		for (const entry of this.audioByPath.values()) {
+		for (const entry of this.audioByKey.values()) {
 			if (entry.releaseTimer !== 0) {
 				window.clearTimeout(entry.releaseTimer);
 			}
@@ -263,7 +302,7 @@ export class AudioPlayerRegistry {
 			entry.audio.removeAttribute('src');
 			entry.audio.load();
 		}
-		this.audioByPath.clear();
+		this.audioByKey.clear();
 		this.playersByPath.clear();
 	}
 }
