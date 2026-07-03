@@ -13,14 +13,11 @@ import type { TranscriptionModalOptions } from '../ui/TranscriptionModal';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 
 /**
- * Primes freshly written files for the enhanced player so a cleaned or
- * converted file is upgraded immediately instead of after the note is
- * reopened.
+ * Primes freshly written files for the enhanced player: starts their
+ * media probe right away so the embeds are built enhanced (or upgraded
+ * in place) instead of waiting for a lazily started probe.
  */
-export type EnhancementPrimer = (
-	paths: string[],
-	notePath: string | null,
-) => void;
+export type EnhancementPrimer = (paths: string[]) => void;
 
 /**
  * Everything an action handler may need, injected by the plugin at

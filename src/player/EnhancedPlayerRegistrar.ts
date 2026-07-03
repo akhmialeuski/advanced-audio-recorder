@@ -14,19 +14,22 @@
  *
  * The media kind is always determined by probing the actual content (the
  * extension is never trusted, since a container can carry a video track):
- * each file is probed once and cached per path. When a probe reveals an
- * audio-only file, the open views are re-rendered so the embed is rebuilt
- * as the enhanced player. Settings changes use the SAME re-render,
- * so any player setting applies immediately and identically in both modes -
- * Reading view via previewMode.rerender, Live Preview via the current
- * sub-view's set(get(), true). When the internal registry API is
- * unavailable, a Markdown post-processor takes over embeds (Reading view
- * only). A document-level click handler routes timecode links to a live
- * player. All paths respect the feature toggle.
+ * each file is probed once per session and cached per path, and confident
+ * results persist across sessions (MediaKindStore, validated by
+ * mtime/size). A not-yet-probed file renders inside a MediaEmbedShell
+ * that hosts the native embed and upgrades to the enhanced player IN
+ * PLACE when the probe confirms audio - the embedding note is never
+ * re-rendered, so a large note is not lagged by a short recording
+ * (issue #39). Only the master toggle flip re-renders open views
+ * (leaf.rebuildView), because it changes what every embed is in both
+ * modes at once. When the internal registry API is unavailable, a
+ * Markdown post-processor takes over embeds (Reading view only). A
+ * document-level click handler routes timecode links to a live player.
+ * All paths respect the feature toggle.
  * @module player/EnhancedPlayerRegistrar
  */
 
-import { TFile, MarkdownView, debounce, getLinkpath } from 'obsidian';
+import { TFile, MarkdownView, debounce } from 'obsidian';
 import type {
 	App,
 	MarkdownPostProcessorContext,
@@ -49,6 +52,8 @@ import {
 	parseTimecodeSubpath,
 } from './timecodeLinks';
 import { probeMediaKind, type MediaKind } from './mediaProbe';
+import { MediaEmbedShell } from './MediaEmbedShell';
+import type { MediaKindStore } from './MediaKindStore';
 import { shouldEnhance } from './playerMode';
 import type { MarkerStore } from '../markers/MarkerStore';
 import {
@@ -63,16 +68,9 @@ const ENHANCED_FLAG = 'aarEnhanced';
 
 /**
  * Debounce window for re-rendering open views. Coalesces a burst of
- * settings changes (e.g. dragging a slider) or simultaneous probe results
- * into a single re-render.
+ * settings changes (e.g. dragging a slider) into a single re-render.
  */
 const RERENDER_DEBOUNCE_MS = 50;
-
-/**
- * Number of extra scoped re-render attempts for a freshly inserted embed
- * whose metadata cache entry may lag behind the editor update.
- */
-const SCOPED_RERENDER_RETRY_LIMIT = 5;
 
 /**
  * Registers and owns the enhanced player integration.
@@ -86,23 +84,12 @@ export class EnhancedPlayerRegistrar {
 	private embedOverride: EmbedRegistryOverride | null = null;
 	/** Probed media kind per file path, shared so each file is probed once. */
 	private readonly mediaKindCache = new Map<string, MediaKind>();
-	/** File paths with a probe in flight, to avoid concurrent probes. */
-	private readonly probing = new Set<string>();
+	/** In-flight probe per file path, shared by every embed of the file. */
+	private readonly probes = new Map<string, Promise<MediaKind>>();
 	/** Last seen feature-enabled state, so refresh re-renders only on a flip. */
 	private lastEnabled = false;
 	/** Last applied resolved layout, so an unchanged save re-applies nothing. */
 	private lastResolved: ResolvedPlayerSettings | null = null;
-	/** Paths pending a scoped re-render (probe upgrades of specific files). */
-	private readonly pendingRerenderPaths = new Set<string>();
-	/** Retry count per scoped path while metadata catches up. */
-	private readonly pendingRerenderRetries = new Map<string, number>();
-	/** Notes to rebuild directly once a saved recording probes as audio. */
-	private readonly pendingDirectRerenderNotePaths = new Map<
-		string,
-		Set<string>
-	>();
-	/** Notes that should receive a direct rebuild after the current probe. */
-	private readonly pendingProbeNotePaths = new Map<string, Set<string>>();
 	/** Whether every leaf must re-render (master toggle flip). */
 	private pendingRerenderAll = false;
 	/** Debounced flush that coalesces a burst of re-render requests. */
@@ -117,12 +104,14 @@ export class EnhancedPlayerRegistrar {
 	 * @param app - Obsidian App instance
 	 * @param getSettings - Returns the current plugin settings
 	 * @param markerStore - Persistence for markers and chapters
+	 * @param mediaKindStore - Cross-session media-kind cache, if any
 	 */
 	constructor(
 		private readonly plugin: Plugin,
 		private readonly app: App,
 		private readonly getSettings: () => AudioRecorderSettings,
 		private readonly markerStore: MarkerStore,
+		private readonly mediaKindStore: MediaKindStore | null = null,
 	) {}
 
 	/**
@@ -131,6 +120,9 @@ export class EnhancedPlayerRegistrar {
 	 * handlers. Safe to call once during plugin load.
 	 */
 	register(): void {
+		// Loading later just means early embeds probe instead of hitting
+		// the persisted cache, so plugin load is never delayed by it
+		void this.mediaKindStore?.load();
 		this.lastEnabled = this.getSettings().enhancedPlayerEnabled;
 		this.lastResolved = this.lastEnabled
 			? resolvePlayerSettings(this.getSettings())
@@ -163,12 +155,18 @@ export class EnhancedPlayerRegistrar {
 			{ capture: true },
 		);
 
-		// Keep each recording's marker sidecar attached to the file: move
-		// it on rename/move and remove it on delete
+		// Keep each recording's marker sidecar and media-kind cache entries
+		// attached to the file: move them on rename/move, drop them on delete
 		this.plugin.registerEvent(
 			this.app.vault.on('rename', (file, oldPath) => {
 				if (file instanceof TFile && isAudioFile(file)) {
 					void this.markerStore.handleRename(oldPath, file.path);
+					const kind = this.mediaKindCache.get(oldPath);
+					if (kind) {
+						this.mediaKindCache.delete(oldPath);
+						this.mediaKindCache.set(file.path, kind);
+					}
+					this.mediaKindStore?.handleRename(oldPath, file.path);
 				}
 			}),
 		);
@@ -176,6 +174,8 @@ export class EnhancedPlayerRegistrar {
 			this.app.vault.on('delete', (file) => {
 				if (file instanceof TFile && isAudioFile(file)) {
 					void this.markerStore.handleDelete(file.path);
+					this.mediaKindCache.delete(file.path);
+					this.mediaKindStore?.handleDelete(file.path);
 				}
 			}),
 		);
@@ -194,11 +194,9 @@ export class EnhancedPlayerRegistrar {
 		this.registry.clear();
 		this.peakCache.clear();
 		this.mediaKindCache.clear();
-		this.probing.clear();
-		this.pendingRerenderPaths.clear();
-		this.pendingRerenderRetries.clear();
-		this.pendingDirectRerenderNotePaths.clear();
-		this.pendingProbeNotePaths.clear();
+		this.probes.clear();
+		// Persist any probe results from the final debounce window
+		this.mediaKindStore?.flush();
 		this.markerStore.clearCache();
 		void this.decoder.close().catch(() => {
 			// Closing a context that never opened or already failed is
@@ -243,19 +241,15 @@ export class EnhancedPlayerRegistrar {
 	}
 
 	/**
-	 * Primes freshly saved recordings for enhancement after the recording
-	 * pipeline inserts their embeds into a note. This avoids depending on
-	 * Obsidian first creating a native embed and starting the lazy probe: once
-	 * the file is proven audio-only, the note that received the embed is
-	 * rebuilt directly.
+	 * Primes freshly saved recordings for enhancement by starting their
+	 * media probe right away. When Obsidian then creates the embed, the
+	 * kind is either already cached (the embed is built enhanced from the
+	 * start) or the embed's shell joins the in-flight probe and upgrades
+	 * in place - no note re-render in either case.
 	 * @param audioPaths - Vault paths written by the recording finalizer
-	 * @param notePath - Note that received the embed links, if any
 	 */
-	primeSavedRecordingsForEnhancement(
-		audioPaths: string[],
-		notePath: string | null,
-	): void {
-		if (!this.getSettings().enhancedPlayerEnabled || !notePath) {
+	primeSavedRecordingsForEnhancement(audioPaths: string[]): void {
+		if (!this.getSettings().enhancedPlayerEnabled) {
 			return;
 		}
 		for (const audioPath of audioPaths) {
@@ -263,7 +257,7 @@ export class EnhancedPlayerRegistrar {
 			if (!(file instanceof TFile) || !isAudioFile(file)) {
 				continue;
 			}
-			void this.probeAndUpgrade(file, notePath);
+			void this.probeKind(file);
 		}
 	}
 
@@ -304,8 +298,9 @@ export class EnhancedPlayerRegistrar {
 	 * for files probed as audio-only when the feature is on, and otherwise
 	 * Obsidian's own native embed unwrapped (so video and unsupported files
 	 * render exactly as Obsidian would, in both view modes). A not-yet-probed
-	 * file renders native now and is probed; if it is audio-only, a re-render
-	 * upgrades it.
+	 * file renders inside a MediaEmbedShell: the native embed shows now,
+	 * the content is probed in the background, and an audio-only verdict
+	 * upgrades this one embed in place - the note is never re-rendered.
 	 * @param info - Embed context from Obsidian
 	 * @param file - Media file to embed
 	 * @param subpath - Embed subpath (timecode, if any)
@@ -327,11 +322,21 @@ export class EnhancedPlayerRegistrar {
 				return this.buildAudioPlayer(info, file, subpath);
 			}
 
-			// Not (yet) known to be audio: render Obsidian's own embed. If the
-			// file has not been probed yet, probe its content in the background
-			// and re-render to upgrade it if it turns out audio-only.
+			// Not yet probed: host Obsidian's own embed in a shell that
+			// upgrades to the enhanced player in place if the probe finds
+			// audio. Video and unsupported files never leave the native
+			// embed, and no probe verdict ever re-renders the note.
 			if (enabled && kind === null && nativeCreator) {
-				void this.probeAndUpgrade(file);
+				return new MediaEmbedShell(
+					nativeCreator(info, file, subpath),
+					this.probeKind(file),
+					(probedKind) =>
+						shouldEnhance(
+							this.getSettings().enhancedPlayerEnabled,
+							probedKind,
+						),
+					() => this.buildAudioPlayer(info, file, subpath),
+				);
 			}
 			if (nativeCreator) {
 				return nativeCreator(info, file, subpath);
@@ -353,77 +358,56 @@ export class EnhancedPlayerRegistrar {
 	}
 
 	/**
-	 * The media kind already determined by a prior probe, or null when the
-	 * file has not been probed yet. The extension is never trusted: a
-	 * container (even one usually holding audio) can carry a video track, so
-	 * audio-vs-video is always decided by probing the actual content.
+	 * The media kind already determined by a prior probe - this session's
+	 * cache first, then the persisted store (validated by mtime/size) -
+	 * or null when the file has not been probed yet. The extension is
+	 * never trusted: a container (even one usually holding audio) can
+	 * carry a video track, so audio-vs-video is always decided by probing
+	 * the actual content.
 	 * @param file - Media file
 	 */
 	private knownKind(file: TFile): MediaKind | null {
-		return this.mediaKindCache.get(file.path) ?? null;
+		const cached = this.mediaKindCache.get(file.path);
+		if (cached) {
+			return cached;
+		}
+		const stored = this.mediaKindStore?.get(file) ?? null;
+		if (stored) {
+			this.mediaKindCache.set(file.path, stored);
+		}
+		return stored;
 	}
 
 	/**
-	 * Probes a media file's content once and, if it is audio-only, re-renders
-	 * open views so the embed is rebuilt as the enhanced player.
-	 * @param file - Media file to probe
+	 * The file's media kind: cached if known, otherwise probed. One probe
+	 * runs per path at a time and every caller (each embed shell of the
+	 * file, the saved-recording primer) shares its promise. Confident
+	 * results are persisted so later sessions skip the probe entirely;
+	 * a timeout fallback is kept for this session only.
+	 * @param file - Media file to classify
 	 */
-	private async probeAndUpgrade(
-		file: TFile,
-		notePath?: string,
-	): Promise<void> {
-		if (notePath) {
-			this.addPendingProbeNotePath(file.path, notePath);
+	private probeKind(file: TFile): Promise<MediaKind> {
+		const known = this.knownKind(file);
+		if (known) {
+			return Promise.resolve(known);
 		}
-		const knownKind = this.mediaKindCache.get(file.path);
-		if (knownKind) {
-			if (
-				shouldEnhance(
-					this.getSettings().enhancedPlayerEnabled,
-					knownKind,
-				)
-			) {
-				this.requestRerenderForFile(file.path, notePath);
-			}
-			return;
+		const inFlight = this.probes.get(file.path);
+		if (inFlight) {
+			return inFlight;
 		}
-		if (this.probing.has(file.path)) {
-			return;
-		}
-		this.probing.add(file.path);
-		try {
-			const kind = await probeMediaKind(
-				this.app.vault.getResourcePath(file),
-			);
-			this.mediaKindCache.set(file.path, kind);
-			if (shouldEnhance(this.getSettings().enhancedPlayerEnabled, kind)) {
-				const notePaths = this.pendingProbeNotePaths.get(file.path);
-				if (notePaths && notePaths.size > 0) {
-					for (const pendingNotePath of notePaths) {
-						this.requestRerenderForFile(file.path, pendingNotePath);
-					}
-				} else {
-					// Only the notes that actually embed this file need rebuilding,
-					// so a large note that does not embed it is never re-rendered
-					this.requestRerenderForFile(file.path);
+		const probe = probeMediaKind(this.app.vault.getResourcePath(file))
+			.then((result) => {
+				this.mediaKindCache.set(file.path, result.kind);
+				if (result.confident) {
+					this.mediaKindStore?.set(file, result.kind);
 				}
-			}
-		} finally {
-			this.pendingProbeNotePaths.delete(file.path);
-			this.probing.delete(file.path);
-		}
-	}
-
-	/**
-	 * Remembers that a saved recording should rebuild a known note after its
-	 * media probe completes.
-	 * @param path - Vault path of the recording
-	 * @param notePath - Note that received the embed link
-	 */
-	private addPendingProbeNotePath(path: string, notePath: string): void {
-		const notePaths = this.pendingProbeNotePaths.get(path) ?? new Set();
-		notePaths.add(notePath);
-		this.pendingProbeNotePaths.set(path, notePaths);
+				return result.kind;
+			})
+			.finally(() => {
+				this.probes.delete(file.path);
+			});
+		this.probes.set(file.path, probe);
+		return probe;
 	}
 
 	/**
@@ -463,142 +447,19 @@ export class EnhancedPlayerRegistrar {
 	}
 
 	/**
-	 * Requests a re-render of only the leaves that embed the given file, so a
-	 * probe upgrade never re-renders unrelated (possibly large) notes.
-	 * @param path - Vault path of the upgraded file
-	 */
-	private requestRerenderForFile(path: string, notePath?: string): void {
-		this.pendingRerenderPaths.add(path);
-		if (notePath) {
-			const notePaths =
-				this.pendingDirectRerenderNotePaths.get(path) ?? new Set();
-			notePaths.add(notePath);
-			this.pendingDirectRerenderNotePaths.set(path, notePaths);
-		}
-		if (!this.pendingRerenderRetries.has(path)) {
-			this.pendingRerenderRetries.set(path, 0);
-		}
-		this.scheduleRerender();
-	}
-
-	/**
-	 * Flushes the coalesced re-render requests: rebuilds every leaf on a full
-	 * request, otherwise only the leaves whose note embeds a pending file.
+	 * Flushes the coalesced re-render request by rebuilding every open
+	 * markdown leaf. Only the master toggle flip requests this: probe
+	 * upgrades happen inside the embed's own shell and never re-render a
+	 * note, which is what keeps a large note from lagging on the first
+	 * probe of a short recording.
 	 */
 	private flushRerender(): void {
-		const all = this.pendingRerenderAll;
-		const paths = new Set(this.pendingRerenderPaths);
+		if (!this.pendingRerenderAll) {
+			return;
+		}
 		this.pendingRerenderAll = false;
-		this.pendingRerenderPaths.clear();
-		if (!all && paths.size === 0) {
-			return;
-		}
-		const leaves = this.app.workspace.getLeavesOfType('markdown');
-		if (all) {
-			for (const leaf of leaves) {
-				this.rerenderLeaf(leaf);
-			}
-			for (const path of paths) {
-				this.pendingRerenderRetries.delete(path);
-				this.pendingDirectRerenderNotePaths.delete(path);
-			}
-			return;
-		}
-		const unmatchedPaths = new Set(paths);
-		const matchedRerenderPaths = new Set<string>();
-		for (const leaf of leaves) {
-			const matchedPaths = new Set([
-				...this.leafDirectRerenderPaths(leaf, paths),
-				...this.leafEmbeddedPaths(leaf, paths),
-			]);
-			if (matchedPaths.size > 0) {
-				this.rerenderLeaf(leaf);
-				for (const path of matchedPaths) {
-					unmatchedPaths.delete(path);
-					matchedRerenderPaths.add(path);
-				}
-			}
-		}
-		for (const path of matchedRerenderPaths) {
-			this.pendingRerenderRetries.delete(path);
-			this.pendingDirectRerenderNotePaths.delete(path);
-		}
-		this.rescheduleUnmatchedRerenders(unmatchedPaths);
-	}
-
-	/**
-	 * Returns probed file paths that should rebuild this exact note because
-	 * the recording pipeline just inserted their embeds there.
-	 * @param leaf - Workspace leaf to test
-	 * @param paths - Candidate embedded file paths
-	 */
-	private leafDirectRerenderPaths(
-		leaf: WorkspaceLeaf,
-		paths: Set<string>,
-	): Set<string> {
-		const matchedPaths = new Set<string>();
-		const view = leaf.view;
-		if (!(view instanceof MarkdownView) || !view.file) {
-			return matchedPaths;
-		}
-		for (const path of paths) {
-			const notePaths = this.pendingDirectRerenderNotePaths.get(path);
-			if (notePaths?.has(view.file.path)) {
-				matchedPaths.add(path);
-			}
-		}
-		return matchedPaths;
-	}
-
-	/**
-	 * Returns the given file paths embedded by a leaf's note, resolved through
-	 * the metadata cache. A note with no matching embed is left untouched.
-	 * @param leaf - Workspace leaf to test
-	 * @param paths - Candidate embedded file paths
-	 */
-	private leafEmbeddedPaths(
-		leaf: WorkspaceLeaf,
-		paths: Set<string>,
-	): Set<string> {
-		const matchedPaths = new Set<string>();
-		const view = leaf.view;
-		if (!(view instanceof MarkdownView) || !view.file) {
-			return matchedPaths;
-		}
-		const embeds = this.app.metadataCache.getFileCache(view.file)?.embeds;
-		if (!embeds) {
-			return matchedPaths;
-		}
-		for (const embed of embeds) {
-			const dest = this.app.metadataCache.getFirstLinkpathDest(
-				getLinkpath(embed.link),
-				view.file.path,
-			);
-			if (dest && paths.has(dest.path)) {
-				matchedPaths.add(dest.path);
-			}
-		}
-		return matchedPaths;
-	}
-
-	/**
-	 * Keeps a scoped upgrade alive briefly when the media probe finished before
-	 * Obsidian indexed the newly inserted embed in metadataCache.
-	 * @param unmatchedPaths - Probed audio paths not found in open note caches
-	 */
-	private rescheduleUnmatchedRerenders(unmatchedPaths: Set<string>): void {
-		for (const path of unmatchedPaths) {
-			const retryCount = this.pendingRerenderRetries.get(path) ?? 0;
-			if (retryCount >= SCOPED_RERENDER_RETRY_LIMIT) {
-				this.pendingRerenderRetries.delete(path);
-				this.pendingDirectRerenderNotePaths.delete(path);
-				continue;
-			}
-			this.pendingRerenderRetries.set(path, retryCount + 1);
-			this.pendingRerenderPaths.add(path);
-		}
-		if (this.pendingRerenderPaths.size > 0) {
-			this.scheduleRerender();
+		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+			this.rerenderLeaf(leaf);
 		}
 	}
 
