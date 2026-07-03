@@ -11,22 +11,11 @@ import type {
 	RecordingSaveResult,
 	RecordingTarget,
 	SaveProgress,
-	TrackFileGroup,
 } from '../types';
 import { MarkerStore } from '../markers/MarkerStore';
-import {
-	MARKER_KIND,
-	removeMarker,
-	sortMarkers,
-	updateMarker,
-	type MarkerKind,
-} from '../markers/markerModel';
-import { defaultMarkerLabel, generateMarkerId } from '../markers/markerFactory';
-import {
-	groupMarkersByFile,
-	type RecordingMarkerDraft,
-	type RecordingMarkerHandle,
-} from './recordingMarkers';
+import type { MarkerKind } from '../markers/markerModel';
+import type { RecordingMarkerHandle } from './recordingMarkers';
+import { RecordingMarkerCoordinator } from './RecordingMarkerCoordinator';
 import type {
 	AudioRecorderSettings,
 	OutputMode,
@@ -39,7 +28,6 @@ import {
 } from './AudioStreamHandler';
 import {
 	PLUGIN_LOG_PREFIX,
-	CHUNK_TIMESLICE_MS,
 	RECORDER_STOP_TIMEOUT_MS,
 	MOBILE_BUFFER_LIMIT_BYTES,
 	PCM_FLUSH_THRESHOLD_BYTES,
@@ -55,7 +43,12 @@ import {
 	buildMimeType,
 	validateRecordingCapability,
 } from '../audio/AudioCapabilityDetector';
-import { PcmStreamRecorder } from './PcmStreamRecorder';
+import type { PcmStreamRecorder } from './PcmStreamRecorder';
+import {
+	createAndStartMediaRecorders,
+	createPcmRecorders,
+} from './RecorderFactory';
+import { describeRecordingError } from './recordingErrors';
 import { InputLevelMonitor } from './InputLevelMonitor';
 import { resolveRecorderFormat } from '../audio/AudioFormatConverter';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
@@ -114,17 +107,8 @@ export class RecordingManager {
 	private readonly finalizer: RecordingFinalizer;
 	/** Auto-split part rotation (timing, reentry, part finalization). */
 	private readonly rotation: PartRotationController;
-	/** Markers captured during the current session, flushed at stop. */
-	private markerBuffer: RecordingMarkerDraft[] = [];
-	/** Last marker kind chosen in the modal, preselected next time. */
-	private lastMarkerKind: MarkerKind = MARKER_KIND.bookmark;
-	/**
-	 * Sidecar paths each persisted marker landed in, keyed by draft id.
-	 * Populated at stop so a naming modal still open when the session ends
-	 * can edit or discard the already-saved marker rather than silently
-	 * losing the change. Reset when a new session starts.
-	 */
-	private readonly persistedMarkerPaths = new Map<string, string[]>();
+	/** Marker drafts and their persistence for the current session. */
+	private readonly markers: RecordingMarkerCoordinator;
 
 	/**
 	 * Creates a new RecordingManager.
@@ -146,11 +130,12 @@ export class RecordingManager {
 		private readonly onRecordingSaved?: (
 			result: RecordingSaveResult,
 		) => void,
-		private readonly markerStore: MarkerStore = new MarkerStore(app),
+		markerStore: MarkerStore = new MarkerStore(app),
 		getWorkerClient: () => EncodingWorkerClient | null = () => null,
 	) {
 		this.onStatusChange = onStatusChange;
 		this.debugLogger = new DebugLogger(settings);
+		this.markers = new RecordingMarkerCoordinator(markerStore);
 		this.writeQueue = new TrackWriteQueue(app, settings, journal);
 		this.finalizer = new RecordingFinalizer(
 			app,
@@ -253,160 +238,7 @@ export class RecordingManager {
 			return null;
 		}
 		const position = this.rotation.getCurrentPartPosition(this.status);
-		const kind = preselectKind ?? this.lastMarkerKind;
-		const draft: RecordingMarkerDraft = {
-			id: generateMarkerId(),
-			partOrdinal: position.partOrdinal,
-			offsetSeconds: position.offsetSeconds,
-			kind,
-			label: this.nextMarkerLabel(kind, null),
-		};
-		this.markerBuffer.push(draft);
-		return {
-			initialKind: draft.kind,
-			defaultLabelFor: (kind: MarkerKind) =>
-				this.nextMarkerLabel(kind, draft.id),
-			commit: (label: string, kind: MarkerKind) => {
-				draft.kind = kind;
-				const trimmed = label.trim();
-				draft.label =
-					trimmed.length > 0
-						? trimmed
-						: this.nextMarkerLabel(kind, draft.id);
-				this.lastMarkerKind = kind;
-				// If the session finalized while the modal was open the draft
-				// was already persisted with its default label; push the edit
-				// through to the sidecar so the user's name/kind is not lost.
-				void this.syncPersistedMarker(draft);
-			},
-			cancel: () => {
-				const index = this.markerBuffer.findIndex(
-					(entry) => entry.id === draft.id,
-				);
-				if (index !== -1) {
-					this.markerBuffer.splice(index, 1);
-				}
-				// Same race: a draft persisted before the modal closed must be
-				// removed from its sidecar so cancelling truly discards it.
-				void this.removePersistedMarker(draft.id);
-			},
-		};
-	}
-
-	/**
-	 * Default label for a new marker of the given kind, numbered after the
-	 * markers already buffered this session (excluding the given draft so it
-	 * never counts itself).
-	 * @param kind - Marker kind being labelled
-	 * @param excludeId - Draft id to exclude from the count, or null
-	 */
-	private nextMarkerLabel(
-		kind: MarkerKind,
-		excludeId: string | null,
-	): string {
-		const others = this.markerBuffer.filter(
-			(entry) => entry.id !== excludeId,
-		);
-		return defaultMarkerLabel(others, kind);
-	}
-
-	/**
-	 * Writes the session's buffered markers into the sidecars of the final
-	 * files. Each marker resolves to its part's file per track and fans out
-	 * to every track (they share one timeline). Never throws: a marker write
-	 * failure must not break the stop sequence.
-	 * @param result - The finalized save result with per-track file groups
-	 */
-	private async persistMarkers(result: RecordingSaveResult): Promise<void> {
-		if (this.markerBuffer.length === 0) {
-			return;
-		}
-		const groups: TrackFileGroup[] = result.trackFiles ?? [
-			{ trackIndex: 0, files: result.audioPaths },
-		];
-		const writes = groupMarkersByFile(this.markerBuffer, groups);
-		// Record where each draft landed before any await runs, so a modal
-		// still open can reach its persisted marker by id. Done in one
-		// synchronous pass: no commit/cancel can interleave mid-write.
-		for (const { path, markers } of writes) {
-			for (const marker of markers) {
-				const paths = this.persistedMarkerPaths.get(marker.id) ?? [];
-				paths.push(path);
-				this.persistedMarkerPaths.set(marker.id, paths);
-			}
-		}
-		for (const { path, markers } of writes) {
-			try {
-				const existing = await this.markerStore.get(path);
-				await this.markerStore.set(
-					path,
-					sortMarkers([...existing, ...markers]),
-				);
-			} catch (error) {
-				console.error(
-					`${PLUGIN_LOG_PREFIX} Failed to persist recording markers for ${path}:`,
-					error,
-				);
-			}
-		}
-	}
-
-	/**
-	 * Pushes a draft's edited label and kind onto every sidecar it was
-	 * already persisted to. No-op while the session is still active (the
-	 * draft is then edited in place in the buffer instead). Never throws: a
-	 * sidecar write failure must not surface from a UI commit handler.
-	 * @param draft - The edited draft
-	 */
-	private async syncPersistedMarker(
-		draft: RecordingMarkerDraft,
-	): Promise<void> {
-		const paths = this.persistedMarkerPaths.get(draft.id);
-		if (!paths) {
-			return;
-		}
-		for (const path of paths) {
-			try {
-				const existing = await this.markerStore.get(path);
-				await this.markerStore.set(
-					path,
-					updateMarker(existing, draft.id, {
-						label: draft.label,
-						kind: draft.kind,
-					}),
-				);
-			} catch (error) {
-				console.error(
-					`${PLUGIN_LOG_PREFIX} Failed to update persisted marker for ${path}:`,
-					error,
-				);
-			}
-		}
-	}
-
-	/**
-	 * Removes an already-persisted marker from every sidecar it landed in.
-	 * No-op while the session is still active (the draft is just dropped from
-	 * the buffer instead). Never throws.
-	 * @param id - The draft/marker id to remove
-	 */
-	private async removePersistedMarker(id: string): Promise<void> {
-		const paths = this.persistedMarkerPaths.get(id);
-		if (!paths) {
-			return;
-		}
-		this.persistedMarkerPaths.delete(id);
-		for (const path of paths) {
-			try {
-				const existing = await this.markerStore.get(path);
-				await this.markerStore.set(path, removeMarker(existing, id));
-			} catch (error) {
-				console.error(
-					`${PLUGIN_LOG_PREFIX} Failed to remove persisted marker for ${path}:`,
-					error,
-				);
-			}
-		}
+		return this.markers.captureDraft(position, preselectKind);
 	}
 
 	/**
@@ -516,8 +348,7 @@ export class RecordingManager {
 				.toISOString()
 				.replace(/[:.]/g, '-');
 			this.totalChunks = 0;
-			this.markerBuffer = [];
-			this.persistedMarkerPaths.clear();
+			this.markers.beginSession();
 			this.recordedBytes = 0;
 			this.startLevelMonitor();
 
@@ -607,7 +438,7 @@ export class RecordingManager {
 		this.trackOrder = [];
 		this.recordingTimestamp = null;
 		this.insertionContext = null;
-		this.markerBuffer = [];
+		this.markers.clearBuffer();
 	}
 
 	/**
@@ -721,15 +552,12 @@ export class RecordingManager {
 	private async initPcmRecording(): Promise<void> {
 		this.chunkTargets = await this.createChunkTargets(this.streams.length);
 
-		this.pcmRecorders = this.streams.map(
-			(stream, index) =>
-				new PcmStreamRecorder(
-					stream,
-					this.settings.sampleRate,
-					(data: ArrayBuffer) => {
-						void this.handlePcmChunk(index, data);
-					},
-				),
+		this.pcmRecorders = createPcmRecorders(
+			this.streams,
+			this.settings.sampleRate,
+			(index, data) => {
+				void this.handlePcmChunk(index, data);
+			},
 		);
 
 		await Promise.all(
@@ -748,64 +576,44 @@ export class RecordingManager {
 	 */
 	private async initMediaRecording(): Promise<void> {
 		this.chunkTargets = await this.createChunkTargets(this.streams.length);
-		this.createAndStartMediaRecorders();
+		this.startMediaRecorders();
 	}
 
 	/**
-	 * Creates MediaRecorder instances on the current streams, attaches
-	 * chunk/error handlers, and starts them with the chunk timeslice.
-	 * Used at recording start and after each auto-split part rotation.
+	 * Creates and starts MediaRecorders on the current streams via the
+	 * recorder factory. Used at recording start and after each auto-split
+	 * part rotation.
 	 */
-	private createAndStartMediaRecorders(): void {
-		const mimeType = buildMimeType(this.activeRecorderFormat);
-		this.recorders = this.streams.map(
-			(stream) =>
-				new MediaRecorder(stream, {
-					mimeType,
-					audioBitsPerSecond: this.sessionBitrate,
-				}),
+	private startMediaRecorders(): void {
+		this.recorders = createAndStartMediaRecorders(
+			this.streams,
+			{
+				mimeType: buildMimeType(this.activeRecorderFormat),
+				bitrate: this.sessionBitrate,
+			},
+			{
+				onChunk: (index, data) => {
+					void this.handleChunk(index, data);
+					this.debugLogger.logChunkSize(index, data.size);
+				},
+				onError: (_index, event) => {
+					console.error(
+						`${PLUGIN_LOG_PREFIX} Recorder error:`,
+						event,
+					);
+					new Notice(
+						'Recording error occurred. Check console for details.',
+					);
+				},
+			},
 		);
-
-		this.recorders.forEach((recorder, index) => {
-			recorder.ondataavailable = (event: BlobEvent): void => {
-				if (event.data.size > 0) {
-					void this.handleChunk(index, event.data);
-					this.debugLogger.logChunkSize(index, event.data.size);
-				}
-			};
-			recorder.onerror = (event: Event): void => {
-				console.error(`${PLUGIN_LOG_PREFIX} Recorder error:`, event);
-				new Notice(
-					'Recording error occurred. Check console for details.',
-				);
-			};
-			recorder.start(CHUNK_TIMESLICE_MS);
-		});
 	}
 
 	/**
 	 * Handles errors during recording start with user-friendly messages.
 	 */
 	private handleStartRecordingError(error: unknown): void {
-		if (error instanceof DOMException) {
-			if (error.name === 'NotAllowedError') {
-				new Notice(
-					'Microphone access denied. Please grant permission in browser settings.',
-				);
-			} else if (error.name === 'NotFoundError') {
-				new Notice(
-					'No microphone found. Please connect an audio input device.',
-				);
-			} else if (error.name === 'NotReadableError') {
-				new Notice('Microphone is in use by another application.');
-			} else {
-				new Notice(`Recording error: ${error.message}`);
-			}
-		} else {
-			const message =
-				error instanceof Error ? error.message : String(error);
-			new Notice(`Error starting recording: ${message}`);
-		}
+		new Notice(describeRecordingError(error));
 		console.error(`${PLUGIN_LOG_PREFIX} Error in startRecording:`, error);
 	}
 
@@ -851,7 +659,7 @@ export class RecordingManager {
 			);
 			// Persist live markers before the hook so they are on disk when a
 			// post-save action (e.g. opening the player) reads the sidecar
-			await this.persistMarkers(saveResult);
+			await this.markers.persistMarkers(saveResult);
 			if (saveResult.audioPaths.length > 0) {
 				// Fire-and-forget post-save hook (e.g. transcribe-on-save);
 				// failures must never break the stop sequence
@@ -894,7 +702,7 @@ export class RecordingManager {
 			this.isWavPcmRecording = false;
 			this.insertionContext = null;
 			this.sessionSplitEnabled = false;
-			this.markerBuffer = [];
+			this.markers.clearBuffer();
 			this.setStatus(RecordingStatus.Idle);
 		}
 	}
@@ -1114,7 +922,7 @@ export class RecordingManager {
 	 */
 	private restartMediaRecorders(): void {
 		try {
-			this.createAndStartMediaRecorders();
+			this.startMediaRecorders();
 			if (this.status === RecordingStatus.Paused) {
 				this.recorders.forEach((recorder) => recorder.pause());
 			}
