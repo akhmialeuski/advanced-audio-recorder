@@ -2,10 +2,9 @@
  * Unit tests for EncodingWorkerClient module.
  * @module tests/unit/EncodingWorkerClient.test
  */
-/** @jest-environment jsdom */
 
-import { EncodingWorkerClient } from '../../src/audio/EncodingWorkerClient';
-import type { WorkerResponse } from '../../src/audio/encodingWorker';
+import { EncodingWorkerClient } from 'src/audio/EncodingWorkerClient';
+import type { WorkerResponse } from 'src/audio/encodingWorker';
 
 /** Captured worker doubles created by the client. */
 interface WorkerDouble {

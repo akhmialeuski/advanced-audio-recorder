@@ -17,11 +17,9 @@ import {
 	Conversion,
 } from 'mediabunny';
 import type { AudioCodec } from 'mediabunny';
-import {
-	ensureEncoderRegistered,
-	createOutputFormat,
-	FORMAT_CODEC_MAP,
-} from './AudioEncoder';
+import { ensureEncoderRegistered, createOutputFormat } from './AudioEncoder';
+import { getFormatDescriptor } from './formatRegistry';
+import { disposableOf } from '../utils/disposables';
 
 /**
  * Converts a compressed audio blob to the target format using the
@@ -46,31 +44,30 @@ export async function runStreamingConversion(
 	allowRemux: boolean,
 	onProgress?: (percent: number) => void,
 ): Promise<ArrayBuffer> {
-	const codec: AudioCodec | undefined = FORMAT_CODEC_MAP[targetFormat];
+	const codec: AudioCodec | undefined =
+		getFormatDescriptor(targetFormat)?.codec;
 	if (!codec) {
 		throw new Error(`No codec mapping for format "${targetFormat}"`);
 	}
 
 	await ensureEncoderRegistered(targetFormat);
 
-	const input = new Input({
-		source: new BlobSource(recordedBlob),
-		formats: ALL_FORMATS,
-	});
-	try {
-		return await convertWithInput(
-			input,
-			targetFormat,
-			codec,
-			bitrate,
-			allowRemux,
-			onProgress,
-		);
-	} finally {
-		// The Input holds readers over the blob; free them on success
-		// and on every throw path alike
-		input.dispose();
-	}
+	// The Input holds readers over the blob; `using` frees them on
+	// success and on every throw path alike
+	using input = disposableOf(
+		new Input({
+			source: new BlobSource(recordedBlob),
+			formats: ALL_FORMATS,
+		}),
+	);
+	return await convertWithInput(
+		input,
+		targetFormat,
+		codec,
+		bitrate,
+		allowRemux,
+		onProgress,
+	);
 }
 
 /**

@@ -4,12 +4,12 @@
  */
 
 import { App } from 'obsidian';
-import AudioRecorderPlugin from '../../src/main';
-import { DEFAULT_SETTINGS } from '../../src/settings/Settings';
-import type { SaveProgress } from '../../src/types';
-import type { TranscriptionModalOptions } from '../../src/ui/TranscriptionModal';
+import AudioRecorderPlugin from 'src/main';
+import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
+import type { SaveProgress } from 'src/types';
+import type { TranscriptionModalOptions } from 'src/ui/TranscriptionModal';
 
-jest.mock('../../src/recording/RecordingManager', () => ({
+jest.mock('src/recording/RecordingManager', () => ({
 	RecordingManager: jest.fn().mockImplementation(() => ({
 		toggleRecording: jest.fn(),
 		togglePauseResume: jest.fn(),
@@ -20,13 +20,13 @@ jest.mock('../../src/recording/RecordingManager', () => ({
 	})),
 }));
 
-jest.mock('../../src/ui/ContextMenu', () => ({
+jest.mock('src/ui/ContextMenu', () => ({
 	ContextMenu: jest.fn().mockImplementation(() => ({
 		register: jest.fn(),
 	})),
 }));
 
-jest.mock('../../src/player/EnhancedPlayerRegistrar', () => ({
+jest.mock('src/player/EnhancedPlayerRegistrar', () => ({
 	EnhancedPlayerRegistrar: jest.fn().mockImplementation(() => ({
 		register: jest.fn(),
 		dispose: jest.fn(),
@@ -35,22 +35,22 @@ jest.mock('../../src/player/EnhancedPlayerRegistrar', () => ({
 	})),
 }));
 
-jest.mock('../../src/ui/StatusBar', () => ({
+jest.mock('src/ui/StatusBar', () => ({
 	updateStatusBar: jest.fn(),
 	initializeStatusBar: jest.fn(),
 	renderTranscriptionStatusBar: jest.fn(),
 }));
 
-jest.mock('../../src/ui/RibbonIcon', () => ({
+jest.mock('src/ui/RibbonIcon', () => ({
 	updateRibbonIcon: jest.fn(),
 	initializeRibbonIcon: jest.fn(),
 }));
 
-jest.mock('../../src/ui/DeviceSelectionModal', () => ({
+jest.mock('src/ui/DeviceSelectionModal', () => ({
 	showDeviceSelectionModal: jest.fn(),
 }));
 
-jest.mock('../../src/recording/RecoveryService', () => ({
+jest.mock('src/recording/RecoveryService', () => ({
 	collectRecoverableSessions: jest.fn().mockResolvedValue([]),
 	recoverSession: jest
 		.fn()
@@ -58,7 +58,7 @@ jest.mock('../../src/recording/RecoveryService', () => ({
 	discardSession: jest.fn().mockResolvedValue([]),
 }));
 
-jest.mock('../../src/ui/RecoveryModal', () => ({
+jest.mock('src/ui/RecoveryModal', () => ({
 	RecoveryModal: jest.fn().mockImplementation(() => ({
 		open: jest.fn(),
 	})),
@@ -96,7 +96,7 @@ interface PluginHarness {
  */
 function createPlugin(loadDataResults: LoadDataResult[]): PluginHarness {
 	const app = new App();
-	const plugin = new AudioRecorderPlugin(app, MANIFEST as never);
+	const plugin = new AudioRecorderPlugin(app, MANIFEST);
 
 	const loadData = jest.fn();
 	for (const result of loadDataResults) {
@@ -321,7 +321,7 @@ describe('AudioRecorderPlugin settings persistence', () => {
 		await onloadWithTimers(plugin);
 
 		const { RecordingManager } = jest.requireMock(
-			'../../src/recording/RecordingManager',
+			'src/recording/RecordingManager',
 		);
 		const manager = (RecordingManager as jest.Mock).mock.results[0]
 			.value as { updateSettings: jest.Mock };
@@ -343,7 +343,7 @@ describe('AudioRecorderPlugin settings persistence', () => {
 		await onloadWithTimers(plugin);
 
 		const { RecordingManager } = jest.requireMock(
-			'../../src/recording/RecordingManager',
+			'src/recording/RecordingManager',
 		);
 		const onRecordingSaved = (RecordingManager as jest.Mock).mock
 			.calls[0][4] as (result: {
@@ -351,7 +351,7 @@ describe('AudioRecorderPlugin settings persistence', () => {
 			notePath: string | null;
 		}) => void;
 		const { EnhancedPlayerRegistrar } = jest.requireMock(
-			'../../src/player/EnhancedPlayerRegistrar',
+			'src/player/EnhancedPlayerRegistrar',
 		);
 		const registrar = (EnhancedPlayerRegistrar as jest.Mock).mock.results[0]
 			.value as {
@@ -480,7 +480,7 @@ describe('AudioRecorderPlugin crash recovery wiring', () => {
 		await onloadWithTimers(plugin);
 
 		const { RecordingManager } = jest.requireMock(
-			'../../src/recording/RecordingManager',
+			'src/recording/RecordingManager',
 		);
 		const journalArg = (RecordingManager as jest.Mock).mock.calls[0][3] as {
 			readJournal?: unknown;
@@ -494,15 +494,13 @@ describe('AudioRecorderPlugin crash recovery wiring', () => {
 		await onloadWithTimers(plugin);
 		await jest.advanceTimersByTimeAsync(0);
 
-		const { RecoveryModal } = jest.requireMock(
-			'../../src/ui/RecoveryModal',
-		);
+		const { RecoveryModal } = jest.requireMock('src/ui/RecoveryModal');
 		expect(RecoveryModal).not.toHaveBeenCalled();
 	});
 
 	it('opens the recovery modal for recoverable sessions', async () => {
 		const { collectRecoverableSessions } = jest.requireMock(
-			'../../src/recording/RecoveryService',
+			'src/recording/RecoveryService',
 		);
 		const session = createTestSession();
 		collectRecoverableSessions.mockResolvedValueOnce([session]);
@@ -511,9 +509,7 @@ describe('AudioRecorderPlugin crash recovery wiring', () => {
 		await onloadWithTimers(plugin);
 		await jest.advanceTimersByTimeAsync(0);
 
-		const { RecoveryModal } = jest.requireMock(
-			'../../src/ui/RecoveryModal',
-		);
+		const { RecoveryModal } = jest.requireMock('src/ui/RecoveryModal');
 		expect(RecoveryModal).toHaveBeenCalledWith(
 			plugin.app,
 			[session],
@@ -529,7 +525,7 @@ describe('AudioRecorderPlugin crash recovery wiring', () => {
 
 	it('recovers every offered session through the callback', async () => {
 		const { collectRecoverableSessions, recoverSession } = jest.requireMock(
-			'../../src/recording/RecoveryService',
+			'src/recording/RecoveryService',
 		);
 		const sessions = [createTestSession(), createTestSession()];
 		collectRecoverableSessions.mockResolvedValueOnce(sessions);
@@ -538,9 +534,7 @@ describe('AudioRecorderPlugin crash recovery wiring', () => {
 		await onloadWithTimers(plugin);
 		await jest.advanceTimersByTimeAsync(0);
 
-		const { RecoveryModal } = jest.requireMock(
-			'../../src/ui/RecoveryModal',
-		);
+		const { RecoveryModal } = jest.requireMock('src/ui/RecoveryModal');
 		const callbacks = (RecoveryModal as jest.Mock).mock.calls[0][2] as {
 			onRecover: () => Promise<void>;
 		};
@@ -554,7 +548,7 @@ describe('AudioRecorderPlugin crash recovery wiring', () => {
 			.spyOn(console, 'error')
 			.mockImplementation();
 		const { collectRecoverableSessions } = jest.requireMock(
-			'../../src/recording/RecoveryService',
+			'src/recording/RecoveryService',
 		);
 		collectRecoverableSessions.mockRejectedValueOnce(
 			new Error('journal exploded'),
@@ -606,7 +600,7 @@ describe('AudioRecorderPlugin background transcription status bar', () => {
 		await onloadWithTimers(plugin);
 
 		const { renderTranscriptionStatusBar, updateStatusBar } =
-			jest.requireMock('../../src/ui/StatusBar');
+			jest.requireMock('src/ui/StatusBar');
 		(renderTranscriptionStatusBar as jest.Mock).mockClear();
 
 		const first = buildBackgroundProgress(plugin);
@@ -643,9 +637,8 @@ describe('AudioRecorderPlugin background transcription status bar', () => {
 		const { plugin } = createPlugin([null]);
 		await onloadWithTimers(plugin);
 
-		const { renderTranscriptionStatusBar } = jest.requireMock(
-			'../../src/ui/StatusBar',
-		);
+		const { renderTranscriptionStatusBar } =
+			jest.requireMock('src/ui/StatusBar');
 
 		const first = buildBackgroundProgress(plugin);
 		const second = buildBackgroundProgress(plugin);

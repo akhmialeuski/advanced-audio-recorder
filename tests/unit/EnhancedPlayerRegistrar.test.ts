@@ -1,4 +1,3 @@
-/** @jest-environment jsdom */
 /**
  * Regression guard for two recurring defect families in the enhanced
  * player integration:
@@ -28,8 +27,8 @@ import { probeMediaKind } from 'src/player/mediaProbe';
 import type { MediaKind, MediaProbeResult } from 'src/player/mediaProbe';
 import type { MediaKindStore } from 'src/player/MediaKindStore';
 import { AUDIO_EXTENSIONS } from 'src/constants';
-import { DEFAULT_SETTINGS } from 'src/settings/Settings';
-import type { AudioRecorderSettings } from 'src/settings/Settings';
+import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import type { EmbedInfo } from 'src/obsidian/embedRegistry';
 import type { MarkerStore } from 'src/markers/MarkerStore';
 
@@ -167,7 +166,7 @@ function setup(
 		embedRegistry: { embedByExtension },
 		vault: {
 			getResourcePath: () => 'app://media',
-			getAbstractFileByPath: (path: string) => fileFromPath(path),
+			getFileByPath: (path: string) => fileFromPath(path),
 			on: jest.fn(() => ({})),
 		},
 		metadataCache: {

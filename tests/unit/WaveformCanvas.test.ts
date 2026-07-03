@@ -1,4 +1,3 @@
-/** @jest-environment jsdom */
 /**
  * Unit tests for the waveform renderer. The central regression guard is that
  * moving the playhead (setProgress) does no canvas work - it only updates the

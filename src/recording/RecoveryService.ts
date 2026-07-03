@@ -176,7 +176,11 @@ export async function recoverSession(
 				extension = session.recorderFormat;
 			}
 
-			const directory = directoryOf(track.segmentPaths[0]);
+			const firstSegmentPath = track.segmentPaths[0];
+			if (firstSegmentPath === undefined) {
+				continue;
+			}
+			const directory = directoryOf(firstSegmentPath);
 			const outputPath = await resolveUniquePathInDirectory(
 				directory,
 				`${track.fileBaseName}-recovered.${extension}`,

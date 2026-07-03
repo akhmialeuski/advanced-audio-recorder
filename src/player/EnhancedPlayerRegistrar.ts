@@ -37,7 +37,7 @@ import type {
 	WorkspaceLeaf,
 } from 'obsidian';
 import { AUDIO_EXTENSIONS, PLUGIN_LOG_PREFIX } from '../constants';
-import { type AudioRecorderSettings } from '../settings/Settings';
+import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import {
 	resolvePlayerSettings,
 	playerSettingsEqual,
@@ -253,8 +253,8 @@ export class EnhancedPlayerRegistrar {
 			return;
 		}
 		for (const audioPath of audioPaths) {
-			const file = this.app.vault.getAbstractFileByPath(audioPath);
-			if (!(file instanceof TFile) || !isAudioFile(file)) {
+			const file = this.app.vault.getFileByPath(audioPath);
+			if (!file || !isAudioFile(file)) {
 				continue;
 			}
 			void this.probeKind(file);

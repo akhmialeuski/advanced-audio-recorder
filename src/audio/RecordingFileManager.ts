@@ -6,7 +6,7 @@
 
 import { normalizePath } from 'obsidian';
 import type { App } from 'obsidian';
-import type { AudioRecorderSettings } from '../settings/Settings';
+import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import type { RecordingTarget } from '../types';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 

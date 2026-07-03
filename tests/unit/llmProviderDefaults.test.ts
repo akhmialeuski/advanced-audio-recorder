@@ -5,7 +5,8 @@
  * switched here - each provider keeps its own selected model.
  */
 
-import { applyLlmProviderDefaults, mergeSettings } from 'src/settings/Settings';
+import { applyLlmProviderDefaults } from 'src/settings/settingsSchema';
+import { mergeSettings } from 'src/settings/settingsSerialization';
 import {
 	DEFAULT_LLM_OPENAI_BASE_URL,
 	DEFAULT_LLM_ANTHROPIC_BASE_URL,

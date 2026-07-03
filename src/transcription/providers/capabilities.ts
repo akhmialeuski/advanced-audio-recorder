@@ -15,7 +15,7 @@ import {
 	TRANSCRIPTION_PROVIDER_IDS,
 	WHISPER_API_MAX_REQUEST_BYTES,
 } from '../../constants';
-import type { TranscriptionProviderId } from '../../settings/Settings';
+import type { TranscriptionProviderId } from '../../settings/settingsSchema';
 import type { ProviderCapabilities } from './TranscriptionProvider';
 
 /**

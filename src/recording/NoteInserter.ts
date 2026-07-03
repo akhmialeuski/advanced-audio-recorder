@@ -130,19 +130,19 @@ export async function insertProcessedAudioEmbed(
 				note.path,
 			)?.path === sourceFile.path,
 	);
-	if (matches.length === 0) {
+	const firstMatch = matches[0];
+	if (!firstMatch) {
 		return null;
 	}
-	const processedFile = app.vault.getAbstractFileByPath(processedPath);
-	const link =
-		processedFile instanceof TFile
-			? app.fileManager.generateMarkdownLink(processedFile, note.path)
-			: `[[${processedPath.split('/').pop() ?? processedPath}]]`;
+	const processedFile = app.vault.getFileByPath(processedPath);
+	const link = processedFile
+		? app.fileManager.generateMarkdownLink(processedFile, note.path)
+		: `[[${processedPath.split('/').pop() ?? processedPath}]]`;
 	const newEmbed = `!${link}`;
 	await app.vault.process(note, (content) =>
 		replaceSource
 			? replaceSourceEmbeds(content, matches, newEmbed)
-			: insertEmbedAfterSource(content, matches[0].original, newEmbed),
+			: insertEmbedAfterSource(content, firstMatch.original, newEmbed),
 	);
 	return note.path;
 }

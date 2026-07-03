@@ -139,7 +139,10 @@ export class AudioPlayerRegistry {
 		if (!entry) {
 			return;
 		}
-		entry.refs -= 1;
+		// Clamp at zero so a double release (a defensive caller running its
+		// cleanup twice) cannot push the count negative and make the next
+		// acquire/release pairing skip the actual teardown.
+		entry.refs = Math.max(0, entry.refs - 1);
 		if (entry.refs > 0) {
 			return;
 		}

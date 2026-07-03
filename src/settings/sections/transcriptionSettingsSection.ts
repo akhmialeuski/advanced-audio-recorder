@@ -25,13 +25,15 @@ import {
 } from '../../constants';
 import {
 	applyLlmProviderDefaults,
+	type TranscriptionProviderId,
+} from '../settingsSchema';
+import {
 	LLM_PROVIDER_OPTIONS,
 	LLM_TASK_OPTIONS,
 	TRANSCRIPT_DESTINATION_OPTIONS,
 	TRANSCRIPT_FILE_FORMAT_OPTIONS,
 	TRANSCRIPTION_PROVIDER_OPTIONS,
-	type TranscriptionProviderId,
-} from '../Settings';
+} from '../labels';
 import {
 	addDropdown,
 	addHeading,

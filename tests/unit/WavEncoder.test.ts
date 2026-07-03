@@ -2,7 +2,6 @@
  * Unit tests for WavEncoder module.
  * @module tests/unit/WavEncoder.test
  */
-/** @jest-environment jsdom */
 
 import type { App } from 'obsidian';
 import {
@@ -10,7 +9,7 @@ import {
 	createWavHeader,
 	assembleWavFromPcmSegments,
 	assembleWavFromPcmSegmentFiles,
-} from '../../src/audio/WavEncoder';
+} from 'src/audio/WavEncoder';
 
 describe('WavEncoder', () => {
 	describe('getWavHeaderInfo', () => {

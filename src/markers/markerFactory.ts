@@ -7,6 +7,7 @@
  */
 
 import { MARKER_KIND, type MarkerKind } from './markerModel';
+import { randomToken } from '../utils/ids';
 
 /**
  * Generates a short, collision-resistant marker id. Uses crypto.randomUUID
@@ -19,7 +20,7 @@ export function generateMarkerId(): string {
 	if (cryptoApi?.randomUUID) {
 		return cryptoApi.randomUUID();
 	}
-	return `${String(Date.now())}-${Math.random().toString(36).slice(2)}`;
+	return `${String(Date.now())}-${randomToken()}`;
 }
 
 /**

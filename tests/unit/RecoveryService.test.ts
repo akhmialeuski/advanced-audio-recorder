@@ -4,29 +4,25 @@
  * discard semantics.
  * @module tests/unit/RecoveryService.test
  */
-/** @jest-environment jsdom */
 
 import {
 	collectRecoverableSessions,
 	recoverSession,
 	discardSession,
-} from '../../src/recording/RecoveryService';
-import {
-	SessionJournal,
-	JOURNAL_VERSION,
-} from '../../src/recording/SessionJournal';
+} from 'src/recording/RecoveryService';
+import { SessionJournal, JOURNAL_VERSION } from 'src/recording/SessionJournal';
 import type {
 	JournalFile,
 	JournalSession,
 	JournalTrack,
-} from '../../src/recording/SessionJournal';
+} from 'src/recording/SessionJournal';
 import type { App } from 'obsidian';
 
 jest.mock('obsidian', () => ({
 	normalizePath: (path: string) => path.replace(/\\/g, '/'),
 }));
 
-jest.mock('../../src/audio/WavEncoder', () => ({
+jest.mock('src/audio/WavEncoder', () => ({
 	assembleWavFromPcmSegmentFiles: jest.fn((segmentPaths: string[]) =>
 		Promise.resolve(new Uint8Array(44 + segmentPaths.length).buffer),
 	),
@@ -240,7 +236,7 @@ describe('RecoveryService', () => {
 			const result = await recoverSession(session, journal, mockApp);
 
 			const { assembleWavFromPcmSegmentFiles } = jest.requireMock(
-				'../../src/audio/WavEncoder',
+				'src/audio/WavEncoder',
 			);
 			// Streamed straight from the segment files: recovery must not
 			// read the whole track into memory before assembly

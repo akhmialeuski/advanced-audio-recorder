@@ -1,4 +1,3 @@
-/** @jest-environment jsdom */
 /**
  * Tests for the embed-to-actions association the context menu uses to drive
  * a live player without importing the DOM-heavy player module. The link is a

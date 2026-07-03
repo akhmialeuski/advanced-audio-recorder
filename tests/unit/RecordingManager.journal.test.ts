@@ -3,13 +3,12 @@
  * gets journaled on start, flush, stop, failure, and cleanup.
  * @module tests/unit/RecordingManager.journal.test
  */
-/** @jest-environment jsdom */
 
-import { RecordingManager } from '../../src/recording/RecordingManager';
+import { RecordingManager } from 'src/recording/RecordingManager';
 import {
 	DEFAULT_SETTINGS,
 	AudioRecorderSettings,
-} from '../../src/settings/Settings';
+} from 'src/settings/settingsSchema';
 import type { App } from 'obsidian';
 import {
 	createDesktopRecorder,
@@ -29,7 +28,7 @@ jest.mock('obsidian', () => ({
 }));
 
 // Mock AudioStreamHandler
-jest.mock('../../src/recording/AudioStreamHandler', () => ({
+jest.mock('src/recording/AudioStreamHandler', () => ({
 	getAudioStreams: jest.fn(),
 	getAudioSourceName: jest.fn().mockResolvedValue('TestDevice'),
 	stopAllStreams: jest.fn(),
@@ -37,7 +36,7 @@ jest.mock('../../src/recording/AudioStreamHandler', () => ({
 }));
 
 // Mock AudioEncoder module to avoid mediabunny TextDecoder requirement
-jest.mock('../../src/audio/AudioEncoder', () => ({
+jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest
 		.fn()
 		.mockResolvedValue(new Blob(['encoded'], { type: 'audio/webm' })),
@@ -49,14 +48,14 @@ jest.mock('../../src/audio/AudioEncoder', () => ({
 }));
 
 // Mock WavEncoder
-jest.mock('../../src/audio/WavEncoder', () => ({
+jest.mock('src/audio/WavEncoder', () => ({
 	assembleWavFromPcmSegmentFiles: jest
 		.fn()
 		.mockResolvedValue(new ArrayBuffer(44)),
 }));
 
 // Mock PcmStreamRecorder
-jest.mock('../../src/recording/PcmStreamRecorder', () => ({
+jest.mock('src/recording/PcmStreamRecorder', () => ({
 	PcmStreamRecorder: jest.fn().mockImplementation(() => ({
 		channels: 1,
 		sampleRate: 44100,
@@ -253,7 +252,7 @@ describe('RecordingManager', () => {
 			manager.cleanup();
 
 			const { PcmStreamRecorder } = jest.requireMock(
-				'../../src/recording/PcmStreamRecorder',
+				'src/recording/PcmStreamRecorder',
 			);
 			const recorderInstance = (PcmStreamRecorder as jest.Mock).mock
 				.results[0].value as { stop: jest.Mock };

@@ -15,6 +15,7 @@ import type { TranscriptSegment } from '../TranscriptTypes';
 import { LOCAL_WHISPER_CAPABILITIES } from './capabilities';
 import type { WhisperResult } from './whisperResponse';
 import { isRecord, num } from './responseUtils';
+import { randomToken } from '../../utils/ids';
 import type {
 	AudioPayload,
 	ProviderCapabilities,
@@ -133,7 +134,7 @@ export class LocalWhisperProvider implements TranscriptionProvider {
 		}
 		const base = node.path.join(
 			node.os.tmpdir(),
-			`aar-whisper-${String(Date.now())}-${Math.random().toString(16).slice(2)}`,
+			`aar-whisper-${String(Date.now())}-${randomToken()}`,
 		);
 		const wavPath = `${base}.wav`;
 		const jsonPath = `${base}.json`;

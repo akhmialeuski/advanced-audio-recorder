@@ -8,6 +8,7 @@
 
 import { Notice } from 'obsidian';
 import type { App } from 'obsidian';
+import { sessionTimestamp } from '../utils/ids';
 import type {
 	InsertionContext,
 	RecordingSaveResult,
@@ -16,7 +17,7 @@ import type {
 	SaveProgress,
 	TrackFileGroup,
 } from '../types';
-import type { AudioRecorderSettings } from '../settings/Settings';
+import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import { PLUGIN_LOG_PREFIX, FORMAT_WAV } from '../constants';
 import { DebugLogger } from '../utils/DebugLogger';
 import { assembleWavFromPcmSegmentFiles } from '../audio/WavEncoder';
@@ -29,8 +30,8 @@ import {
 } from '../audio/RecordingFileManager';
 import {
 	isOfflineOnlyFormat,
-	convertBlobToWav,
-	convertBlobToFormat,
+	convertBlobToWavBuffer,
+	convertBlobToFormatBuffer,
 	mergeAudioTracks,
 } from '../audio/AudioFormatConverter';
 import { buildMimeType } from '../audio/AudioCapabilityDetector';
@@ -142,18 +143,17 @@ export class RecordingFinalizer {
 		insertionContext: InsertionContext | null,
 	): Promise<RecordingSaveResult> {
 		const session = this.requireSession();
-		const effectiveTimestamp =
-			timestamp ?? new Date().toISOString().replace(/[:.]/g, '-');
+		const effectiveTimestamp = timestamp ?? sessionTimestamp();
 		const fileLinks: string[] = [];
 		const trackFiles: TrackFileGroup[] = [];
 
 		this.reportProgress(20, 'Flushing buffers...');
 
+		const soloTarget = targets.length === 1 ? targets[0] : undefined;
 		if (session.outputMode === 'single') {
-			if (targets.length === 1) {
-				const target = targets[0];
-				const paths = await this.finalizeTrackFiles(target);
-				const files = [...target.partPaths, ...paths];
+			if (soloTarget) {
+				const paths = await this.finalizeTrackFiles(soloTarget);
+				const files = [...soloTarget.partPaths, ...paths];
 				fileLinks.push(...files);
 				trackFiles.push({ trackIndex: 0, files });
 			} else {
@@ -279,6 +279,9 @@ export class RecordingFinalizer {
 				trackIndex++
 			) {
 				const target = targets[trackIndex];
+				if (!target) {
+					continue;
+				}
 				const paths = await this.finalizeTrackFiles(target);
 				const files = [...target.partPaths, ...paths];
 				fileLinks.push(...files);
@@ -438,22 +441,19 @@ export class RecordingFinalizer {
 			if (reportProgress) {
 				this.reportProgress(40, 'Assembling audio...');
 			}
-			const wavBlob = await convertBlobToWav(blob, {
+			const wavData = await convertBlobToWavBuffer(blob, {
 				workerClient: this.getWorkerClient(),
 			});
 			if (reportProgress) {
 				this.reportProgress(60, 'Writing file...');
 			}
-			await this.app.vault.createBinary(
-				filePath,
-				await wavBlob.arrayBuffer(),
-			);
+			await this.app.vault.createBinary(filePath, wavData);
 		} else if (isOfflineOnlyFormat(outputFormat, session.recorderFormat)) {
 			// Offline-only format: decode intermediate blob, re-encode to target
 			if (reportProgress) {
 				this.reportProgress(40, 'Encoding audio...');
 			}
-			const outputBlob = await convertBlobToFormat(
+			const outputData = await convertBlobToFormatBuffer(
 				blob,
 				outputFormat,
 				session.bitrate,
@@ -472,10 +472,7 @@ export class RecordingFinalizer {
 			if (reportProgress) {
 				this.reportProgress(60, 'Writing file...');
 			}
-			await this.app.vault.createBinary(
-				filePath,
-				await outputBlob.arrayBuffer(),
-			);
+			await this.app.vault.createBinary(filePath, outputData);
 		} else {
 			if (reportProgress) {
 				this.reportProgress(60, 'Writing file...');

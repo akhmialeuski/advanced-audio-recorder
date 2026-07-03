@@ -57,10 +57,11 @@ export async function computeWaveformPeaksProgressive(
 		options.chunkBuckets ?? WAVEFORM_PROGRESSIVE_CHUNK_BUCKETS;
 	const yieldControl = options.yieldControl ?? defaultYield;
 
-	if (bucketCount <= 0 || channels.length === 0) {
+	const firstChannel = channels[0];
+	if (bucketCount <= 0 || !firstChannel) {
 		return [];
 	}
-	const frameCount = channels[0].length;
+	const frameCount = firstChannel.length;
 	if (frameCount === 0) {
 		return new Array<number>(bucketCount).fill(0);
 	}
@@ -131,7 +132,7 @@ function bucketPeak(
 	for (let frame = start; frame < end; frame++) {
 		let mixed = 0;
 		for (let channel = 0; channel < channelCount; channel++) {
-			mixed += channels[channel][frame];
+			mixed += channels[channel]?.[frame] ?? 0;
 		}
 		const amplitude = Math.abs(mixed / channelCount);
 		if (amplitude > maxAmplitude) {
@@ -148,7 +149,7 @@ function bucketPeak(
 function normalizePeaks(peaks: number[], max: number): number[] {
 	if (max > 0) {
 		for (let i = 0; i < peaks.length; i++) {
-			peaks[i] /= max;
+			peaks[i] = (peaks[i] ?? 0) / max;
 		}
 	}
 	return peaks;
@@ -207,8 +208,9 @@ export function downsamplePeaks(peaks: number[], target: number): number[] {
 			i === target - 1 ? peaks.length : Math.floor((i + 1) * perBucket);
 		let max = 0;
 		for (let j = start; j < end; j++) {
-			if (peaks[j] > max) {
-				max = peaks[j];
+			const peak = peaks[j] ?? 0;
+			if (peak > max) {
+				max = peak;
 			}
 		}
 		result[i] = max;

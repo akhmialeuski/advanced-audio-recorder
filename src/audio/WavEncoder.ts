@@ -49,6 +49,12 @@ export const WAV_HEADER_SIZE = 44;
  */
 const BITS_PER_SAMPLE = 16;
 
+/** Size in bytes of the PCM "fmt " subchunk body (WAV spec). */
+const WAV_FMT_CHUNK_SIZE = 16;
+
+/** WAV format tag for uncompressed integer PCM (WAV spec). */
+const WAV_FORMAT_PCM = 1;
+
 /**
  * Creates a 44-byte WAV file header for raw int16 PCM data.
  * @param numChannels - Number of audio channels
@@ -78,9 +84,9 @@ export function createWavHeader(
 	// fmt subchunk
 	writeString(view, offset, 'fmt ');
 	offset += 4;
-	view.setUint32(offset, 16, true); // Subchunk1Size
+	view.setUint32(offset, WAV_FMT_CHUNK_SIZE, true);
 	offset += 4;
-	view.setUint16(offset, 1, true); // AudioFormat (PCM)
+	view.setUint16(offset, WAV_FORMAT_PCM, true);
 	offset += 2;
 	view.setUint16(offset, numChannels, true);
 	offset += 2;

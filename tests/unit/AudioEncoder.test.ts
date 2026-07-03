@@ -2,15 +2,13 @@
  * Unit tests for AudioEncoder module.
  * @module tests/unit/AudioEncoder.test
  */
-/** @jest-environment jsdom */
 
 import {
 	encodeAudioBuffer,
 	isOfflineEncodingSupported,
-	getEncoderDescription,
-} from '../../src/audio/AudioEncoder';
-import type { EncodingOptions } from '../../src/audio/AudioEncoder';
-import { EncodingError } from '../../src/errors';
+} from 'src/audio/AudioEncoder';
+import type { EncodingOptions } from 'src/audio/AudioEncoder';
+import { EncodingError } from 'src/errors';
 import { createMockAudioBuffer } from '../helpers/createMockAudioBuffer';
 
 // Mock WavEncoder
@@ -382,50 +380,6 @@ describe('AudioEncoder', () => {
 
 		it('should return false for unknown formats', () => {
 			expect(isOfflineEncodingSupported('xyz')).toBe(false);
-		});
-	});
-
-	describe('getEncoderDescription', () => {
-		it('should return correct description for WAV', () => {
-			expect(getEncoderDescription('wav')).toBe('PCM (built-in)');
-		});
-
-		it('should return correct description for WebM', () => {
-			expect(getEncoderDescription('webm')).toBe(
-				'AudioEncoder (Opus) + Mediabunny',
-			);
-		});
-
-		it('should return correct description for OGG', () => {
-			expect(getEncoderDescription('ogg')).toBe(
-				'AudioEncoder (Opus) + Mediabunny',
-			);
-		});
-
-		it('should return correct description for MP4/M4A/AAC', () => {
-			expect(getEncoderDescription('mp4')).toBe(
-				'AudioEncoder (AAC) + Mediabunny',
-			);
-			expect(getEncoderDescription('m4a')).toBe(
-				'AudioEncoder (AAC) + Mediabunny',
-			);
-			expect(getEncoderDescription('aac')).toBe(
-				'AudioEncoder (AAC) + Mediabunny',
-			);
-		});
-
-		it('should return correct description for MP3', () => {
-			expect(getEncoderDescription('mp3')).toBe('Mediabunny MP3 Encoder');
-		});
-
-		it('should return correct description for FLAC', () => {
-			expect(getEncoderDescription('flac')).toBe(
-				'Mediabunny FLAC Encoder',
-			);
-		});
-
-		it('should return Unknown for unsupported formats', () => {
-			expect(getEncoderDescription('xyz')).toBe('Unknown');
 		});
 	});
 });

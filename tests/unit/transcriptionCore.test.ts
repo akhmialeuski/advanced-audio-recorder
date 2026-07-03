@@ -19,7 +19,7 @@ import {
 	parseArgs,
 	ProviderConfigError,
 } from 'src/transcription/factories';
-import { mergeSettings } from 'src/settings/Settings';
+import { mergeSettings } from 'src/settings/settingsSerialization';
 import {
 	TRANSCRIBE_BYTES_PER_SEC,
 	DEFAULT_LLM_CLEANUP_PROMPT,

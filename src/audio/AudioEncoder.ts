@@ -11,14 +11,10 @@ import {
 	AudioBufferSource,
 	canEncodeAudio,
 } from 'mediabunny';
-import type { OutputFormat, AudioCodec } from 'mediabunny';
+import type { OutputFormat } from 'mediabunny';
 import { EncodingError } from '../errors';
 import { FORMAT_MP3, FORMAT_FLAC } from '../constants';
-import {
-	AUDIO_FORMAT_IDS,
-	FORMAT_REGISTRY,
-	getFormatDescriptor,
-} from './formatRegistry';
+import { FORMAT_REGISTRY, getFormatDescriptor } from './formatRegistry';
 
 /**
  * Options for offline audio encoding.
@@ -34,15 +30,6 @@ export interface EncodingOptions {
  * Progress callback receiving percentage (0-100).
  */
 export type ProgressCallback = (percent: number) => void;
-
-/**
- * Codec used per format in Mediabunny AudioBufferSource. A view over
- * the format registry, kept as an export because the streaming
- * conversion pipeline (and its worker) resolve codecs through it.
- */
-export const FORMAT_CODEC_MAP: Record<string, AudioCodec> = Object.fromEntries(
-	AUDIO_FORMAT_IDS.map((id) => [id, FORMAT_REGISTRY[id].codec]),
-);
 
 /**
  * Creates the appropriate Mediabunny OutputFormat for the given format.
@@ -176,13 +163,4 @@ export function isOfflineEncodingSupported(format: string): boolean {
 		return typeof AudioEncoder !== 'undefined';
 	}
 	return true;
-}
-
-/**
- * Returns a human-readable description of the encoder used for the format.
- * @param format - Audio format
- * @returns Encoder description string
- */
-export function getEncoderDescription(format: string): string {
-	return getFormatDescriptor(format)?.encoderDescription ?? 'Unknown';
 }

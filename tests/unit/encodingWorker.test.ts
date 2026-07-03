@@ -3,13 +3,9 @@
  * thin wrapper; the handler is tested directly with mocked mediabunny.
  * @module tests/unit/encodingWorker.test
  */
-/** @jest-environment jsdom */
 
-import { handleEncodingMessage } from '../../src/audio/encodingWorker';
-import type {
-	WorkerRequest,
-	WorkerResponse,
-} from '../../src/audio/encodingWorker';
+import { handleEncodingMessage } from 'src/audio/encodingWorker';
+import type { WorkerRequest, WorkerResponse } from 'src/audio/encodingWorker';
 
 const mockConversionExecute = jest.fn().mockResolvedValue(undefined);
 const mockConversionInit = jest.fn();
@@ -33,7 +29,7 @@ jest.mock('mediabunny', () => ({
 	},
 }));
 
-jest.mock('../../src/audio/AudioEncoder', () => ({
+jest.mock('src/audio/AudioEncoder', () => ({
 	ensureEncoderRegistered: jest.fn().mockResolvedValue(undefined),
 	createOutputFormat: jest.fn().mockReturnValue({}),
 	FORMAT_CODEC_MAP: {

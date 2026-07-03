@@ -1,5 +1,4 @@
 /**
- * @jest-environment jsdom
  */
 
 /**
@@ -11,7 +10,7 @@ import {
 	getAudioInputDevices,
 	findDefaultDevice,
 	getDefaultDeviceId,
-} from '../../src/utils/DeviceUtils';
+} from 'src/utils/DeviceUtils';
 
 // Mock navigator.mediaDevices
 const mockEnumerateDevices = jest.fn();

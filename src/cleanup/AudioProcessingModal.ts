@@ -33,7 +33,7 @@ import {
 	resolveAudioDspConfig,
 	type AudioDspConfig,
 } from './audioDsp';
-import type { AudioRecorderSettings } from '../settings/Settings';
+import type { AudioRecorderSettings } from '../settings/settingsSchema';
 
 /**
  * Audio-cleanup dialog for a single file.

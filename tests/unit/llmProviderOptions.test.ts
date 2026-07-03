@@ -5,12 +5,9 @@
  * @module tests/unit/llmProviderOptions.test
  */
 
-import {
-	LLM_PROVIDER_LABELS,
-	LLM_PROVIDER_OPTIONS,
-	mergeSettings,
-	type LlmProviderId,
-} from 'src/settings/Settings';
+import type { LlmProviderId } from 'src/settings/settingsSchema';
+import { mergeSettings } from 'src/settings/settingsSerialization';
+import { LLM_PROVIDER_LABELS, LLM_PROVIDER_OPTIONS } from 'src/settings/labels';
 import { createLlmProvider } from 'src/transcription/factories';
 
 describe('LLM provider options (single source of truth)', () => {

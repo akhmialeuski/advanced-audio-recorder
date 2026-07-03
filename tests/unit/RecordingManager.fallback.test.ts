@@ -4,16 +4,15 @@
  * partially opened session.
  * @module tests/unit/RecordingManager.fallback.test
  */
-/** @jest-environment jsdom */
 
-import { RecordingManager } from '../../src/recording/RecordingManager';
-import { RecordingStatus } from '../../src/types';
+import { RecordingManager } from 'src/recording/RecordingManager';
+import { RecordingStatus } from 'src/types';
 import {
 	DEFAULT_SETTINGS,
 	AudioRecorderSettings,
-} from '../../src/settings/Settings';
-import { AudioStreamError } from '../../src/errors';
-import { PLUGIN_LOG_PREFIX } from '../../src/constants';
+} from 'src/settings/settingsSchema';
+import { AudioStreamError } from 'src/errors';
+import { PLUGIN_LOG_PREFIX } from 'src/constants';
 import type { App } from 'obsidian';
 import {
 	createRecordingMockApp,
@@ -50,7 +49,7 @@ jest.mock('obsidian', () => ({
 }));
 
 // Mock WavEncoder
-jest.mock('../../src/audio/WavEncoder', () => ({
+jest.mock('src/audio/WavEncoder', () => ({
 	assembleWavFromPcmSegmentFiles: jest
 		.fn()
 		.mockResolvedValue(new ArrayBuffer(44)),

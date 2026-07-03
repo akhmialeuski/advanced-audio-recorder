@@ -3,9 +3,8 @@
  * the main-thread pipeline and the encoding worker.
  * @module tests/unit/streamingConversion.test
  */
-/** @jest-environment jsdom */
 
-import { runStreamingConversion } from '../../src/audio/streamingConversion';
+import { runStreamingConversion } from 'src/audio/streamingConversion';
 
 const mockConversionExecute = jest.fn().mockResolvedValue(undefined);
 const mockConversionInit = jest.fn();
@@ -29,7 +28,7 @@ jest.mock('mediabunny', () => ({
 	},
 }));
 
-jest.mock('../../src/audio/AudioEncoder', () => ({
+jest.mock('src/audio/AudioEncoder', () => ({
 	ensureEncoderRegistered: jest.fn().mockResolvedValue(undefined),
 	createOutputFormat: jest.fn().mockReturnValue({}),
 	FORMAT_CODEC_MAP: {

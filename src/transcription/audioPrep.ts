@@ -78,7 +78,7 @@ export interface PreparedPayload {
 	 */
 	endSeconds?: number;
 	/** Builds the upload bytes; invoked once, right before uploading. */
-	createData(): ArrayBuffer;
+	createData(): ArrayBuffer | Promise<ArrayBuffer>;
 	/**
 	 * Splits this payload into smaller payloads covering the same audio, for a
 	 * provider that overran its output token budget on this part. Present only on
@@ -197,6 +197,13 @@ export async function prepareAudio(
 		};
 	}
 
+	// The full decoded PCM stays alive for the whole run (~230 MB for an
+	// hour at 16 kHz mono, audit finding 6.8): each chunk's WAV is
+	// materialized lazily from a non-copying subarray view, and keeping the
+	// samples is what lets a part be re-split on demand when a provider
+	// overruns its output token budget. A decode-per-chunk scheme would
+	// drop the retention but re-decode the file once per chunk; revisit if
+	// long-recording memory pressure ever outweighs that trade.
 	const samples = await decodeToMono16k(raw);
 	const totalSeconds = samples.length / TRANSCRIBE_SAMPLE_RATE;
 	const plans = planChunks(totalSeconds, options.chunkBytes);

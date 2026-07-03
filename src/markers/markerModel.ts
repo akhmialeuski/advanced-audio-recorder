@@ -295,7 +295,11 @@ export function activeMarkerIndex(
 ): number {
 	let index = -1;
 	for (let i = 0; i < sortedMarkers.length; i++) {
-		if (sortedMarkers[i].time <= time + TIME_EPSILON_SECONDS) {
+		const marker = sortedMarkers[i];
+		if (!marker) {
+			break;
+		}
+		if (marker.time <= time + TIME_EPSILON_SECONDS) {
 			index = i;
 		} else {
 			break;

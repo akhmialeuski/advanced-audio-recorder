@@ -304,6 +304,9 @@ export function detachTrailingBytes(
 	let remaining = trailingBytes;
 	while (remaining > 0 && buffers.length > 0) {
 		const last = buffers[buffers.length - 1];
+		if (!last) {
+			break;
+		}
 		if (last.byteLength <= remaining) {
 			buffers.pop();
 			carry.unshift(last);

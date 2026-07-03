@@ -47,6 +47,9 @@ export const RECORDER_STOP_TIMEOUT_MS = 5000;
  */
 export const PCM_FLUSH_TIMEOUT_MS = 5000;
 
+/** Bytes in one megabyte (binary), for size settings expressed in MB. */
+export const BYTES_PER_MB = 1024 * 1024;
+
 /** Maximum in-memory buffer size for mobile recordings before flushing to disk. */
 export const MOBILE_BUFFER_LIMIT_BYTES = 50 * 1024 * 1024;
 

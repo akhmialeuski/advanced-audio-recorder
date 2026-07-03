@@ -1,9 +1,13 @@
 /**
  * Data structures and utilities for extracting audio file metadata.
+ * Metadata is read through mediabunny's container probe, which parses
+ * headers instead of decoding the whole file to PCM; the full decode is
+ * kept only as a fallback for containers the probe cannot parse.
  * @module utils/AudioFileAnalyzer
  */
 
 import { App, Notice, TFile } from 'obsidian';
+import { ALL_FORMATS, BufferSource, Input } from 'mediabunny';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import {
 	audioMimeForExtension,
@@ -11,6 +15,7 @@ import {
 } from '../audio/formatRegistry';
 import { formatByteSize } from './formatBytes';
 import { formatTimecode } from './TimeUtils';
+import { autoClosing, disposableOf } from './disposables';
 
 /**
  * Represents detailed information about an audio file.
@@ -26,6 +31,13 @@ export interface AudioFileInfo {
 	channels: string;
 }
 
+/** The raw numbers the info dialog is built from. */
+interface ProbedAudioMetadata {
+	durationSeconds: number;
+	sampleRate: number;
+	channels: number;
+}
+
 /**
  * Extracts metadata from an audio file.
  * @param app - The Obsidian App instance.
@@ -39,43 +51,15 @@ export async function getAudioFileInfo(
 	try {
 		const arrayBuffer = await app.vault.readBinary(file);
 
-		// Attempt to decode the audio data using the browser's native AudioContext.
-		// Use window.AudioContext or window.webkitAudioContext for cross-browser compatibility.
-		const AudioContextClass =
-			window.AudioContext ||
-			(window as unknown as { webkitAudioContext?: typeof AudioContext })
-				.webkitAudioContext;
-		if (!AudioContextClass) {
-			console.error(
-				`${PLUGIN_LOG_PREFIX} AudioContext is not supported in this environment.`,
-			);
-			new Notice(
-				'Audio context is not supported. Cannot extract audio metadata.',
-			);
+		const metadata =
+			(await probeMetadata(arrayBuffer, file.path)) ??
+			(await decodeMetadata(arrayBuffer));
+		if (!metadata) {
 			return null;
-		}
-
-		const audioContext = new AudioContextClass();
-		let audioBuffer: AudioBuffer;
-
-		try {
-			audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-		} catch (e) {
-			console.error(
-				`${PLUGIN_LOG_PREFIX} Failed to decode audio data:`,
-				e,
-			);
-			new Notice('Failed to decode audio file data.');
-			return null;
-		} finally {
-			// Ensure we release the context resources after decoding
-			if (audioContext.state !== 'closed') {
-				await audioContext.close();
-			}
 		}
 
 		const fileSizeInBytes = file.stat.size;
-		const durationInSeconds = audioBuffer.duration;
+		const durationInSeconds = metadata.durationSeconds;
 
 		// Calculate bitrate in kbps
 		// bitRate = (fileSizeInBytes * 8 bits) / durationInSeconds
@@ -99,8 +83,8 @@ export async function getAudioFileInfo(
 			containerFormat: audioMimeForExtension(extension),
 			audioCodec: getFormatDescriptor(extension)?.codecLabel ?? 'unknown',
 			bitrate: `${bitrateKbps} kbps`,
-			sampleRate: `${audioBuffer.sampleRate} Hz`,
-			channels: formatChannels(audioBuffer.numberOfChannels),
+			sampleRate: `${metadata.sampleRate} Hz`,
+			channels: formatChannels(metadata.channels),
 		};
 	} catch (error) {
 		console.error(
@@ -108,6 +92,82 @@ export async function getAudioFileInfo(
 			error,
 		);
 		new Notice('An error occurred while analyzing the audio file.');
+		return null;
+	}
+}
+
+/**
+ * Reads duration, sample rate, and channel count from the container
+ * headers via mediabunny - no PCM decode, so the cost stays flat no
+ * matter how long the recording is. Returns null when the container
+ * cannot be parsed, letting the caller fall back to a full decode.
+ * @param data - The file's bytes
+ * @param path - Vault path, for the warning log only
+ */
+async function probeMetadata(
+	data: ArrayBuffer,
+	path: string,
+): Promise<ProbedAudioMetadata | null> {
+	using input = disposableOf(
+		new Input({
+			source: new BufferSource(data),
+			formats: ALL_FORMATS,
+		}),
+	);
+	try {
+		const track = await input.getPrimaryAudioTrack();
+		if (!track) {
+			return null;
+		}
+		return {
+			durationSeconds: await input.computeDuration(),
+			sampleRate: await track.getSampleRate(),
+			channels: await track.getNumberOfChannels(),
+		};
+	} catch (error) {
+		console.warn(
+			`${PLUGIN_LOG_PREFIX} Container probe failed for ${path}; falling back to a full decode:`,
+			error,
+		);
+		return null;
+	}
+}
+
+/**
+ * Fallback metadata path: fully decodes the file through the Web Audio
+ * API. Expensive for long recordings, so it only runs when the container
+ * probe could not parse the file.
+ * @param data - The file's bytes
+ */
+async function decodeMetadata(
+	data: ArrayBuffer,
+): Promise<ProbedAudioMetadata | null> {
+	// Use window.AudioContext or window.webkitAudioContext for
+	// cross-browser compatibility.
+	const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+	if (!AudioContextClass) {
+		console.error(
+			`${PLUGIN_LOG_PREFIX} AudioContext is not supported in this environment.`,
+		);
+		new Notice(
+			'Audio context is not supported. Cannot extract audio metadata.',
+		);
+		return null;
+	}
+
+	// The context is released after decoding - autoClosing skips a
+	// context that is already closed
+	await using audioContext = autoClosing(new AudioContextClass());
+	try {
+		const audioBuffer = await audioContext.decodeAudioData(data);
+		return {
+			durationSeconds: audioBuffer.duration,
+			sampleRate: audioBuffer.sampleRate,
+			channels: audioBuffer.numberOfChannels,
+		};
+	} catch (e) {
+		console.error(`${PLUGIN_LOG_PREFIX} Failed to decode audio data:`, e);
+		new Notice('Failed to decode audio file data.');
 		return null;
 	}
 }

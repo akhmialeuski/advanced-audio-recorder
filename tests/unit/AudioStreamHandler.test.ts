@@ -6,9 +6,9 @@
 import {
 	getAudioStreams,
 	getOrderedTrackSources,
-} from '../../src/recording/AudioStreamHandler';
-import { AudioStreamError } from '../../src/errors';
-import { DEFAULT_SETTINGS } from '../../src/settings/Settings';
+} from 'src/recording/AudioStreamHandler';
+import { AudioStreamError } from 'src/errors';
+import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 
 /** Builds a MediaStream stub whose tracks record stop() calls. */
 function fakeStream(): { stream: MediaStream; stop: jest.Mock } {

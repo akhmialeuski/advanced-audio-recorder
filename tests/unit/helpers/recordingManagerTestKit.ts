@@ -8,9 +8,9 @@
  */
 
 import type { App } from 'obsidian';
-import type { RecordingManager } from '../../../src/recording/RecordingManager';
-import type { MarkerStore } from '../../../src/markers/MarkerStore';
-import type { PlayerMarker } from '../../../src/markers/markerModel';
+import type { RecordingManager } from 'src/recording/RecordingManager';
+import type { MarkerStore } from 'src/markers/MarkerStore';
+import type { PlayerMarker } from 'src/markers/markerModel';
 
 /**
  * Installs the AudioContext, OfflineAudioContext, and AudioBuffer
@@ -129,7 +129,7 @@ export const createDesktopRecorder = (): MockMediaRecorder => {
 		.fn()
 		.mockReturnValue(true);
 	const { getAudioStreams } = jest.requireMock(
-		'../../../src/recording/AudioStreamHandler',
+		'src/recording/AudioStreamHandler',
 	);
 	getAudioStreams.mockResolvedValue({
 		streams: [{ getTracks: () => [{ stop: jest.fn() }] }],

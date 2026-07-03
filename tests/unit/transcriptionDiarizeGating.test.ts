@@ -14,10 +14,8 @@ import type {
 	TranscribeOptions,
 	TranscriptionProvider,
 } from 'src/transcription/providers/TranscriptionProvider';
-import {
-	mergeSettings,
-	type TranscriptionProviderId,
-} from 'src/settings/Settings';
+import type { TranscriptionProviderId } from 'src/settings/settingsSchema';
+import { mergeSettings } from 'src/settings/settingsSerialization';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import type {
 	Transcript,

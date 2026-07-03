@@ -1,4 +1,3 @@
-/** @jest-environment jsdom */
 /**
  * Regression guards for the enhanced player's two long-standing defects:
  *

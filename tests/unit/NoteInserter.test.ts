@@ -3,9 +3,8 @@
  * Tests cursor context capture and audio link insertion into notes.
  * @module tests/unit/NoteInserter.test
  */
-/** @jest-environment jsdom */
 
-import type { InsertionContext } from '../../src/types';
+import type { InsertionContext } from 'src/types';
 import type { App } from 'obsidian';
 
 // Mock MarkdownView class used for instanceof checks
@@ -39,7 +38,7 @@ import {
 	captureInsertionContext,
 	insertFileLinks,
 	insertProcessedAudioEmbed,
-} from '../../src/recording/NoteInserter';
+} from 'src/recording/NoteInserter';
 import type { TFile } from 'obsidian';
 
 // DebugLogger mock
@@ -436,7 +435,7 @@ describe('NoteInserter', () => {
 					},
 				},
 				vault: {
-					getAbstractFileByPath: (path: string): MockTFile =>
+					getFileByPath: (path: string): MockTFile =>
 						new MockTFile(path),
 					process: (
 						_note: unknown,

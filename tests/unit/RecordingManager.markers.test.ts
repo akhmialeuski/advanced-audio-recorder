@@ -3,16 +3,15 @@
  * cancel, and persistence to the marker sidecar around session stop.
  * @module tests/unit/RecordingManager.markers.test
  */
-/** @jest-environment jsdom */
 
-import { RecordingManager } from '../../src/recording/RecordingManager';
-import { RecordingStatus } from '../../src/types';
-import { MARKER_KIND } from '../../src/markers/markerModel';
-import type { PlayerMarker } from '../../src/markers/markerModel';
+import { RecordingManager } from 'src/recording/RecordingManager';
+import { RecordingStatus } from 'src/types';
+import { MARKER_KIND } from 'src/markers/markerModel';
+import type { PlayerMarker } from 'src/markers/markerModel';
 import {
 	DEFAULT_SETTINGS,
 	AudioRecorderSettings,
-} from '../../src/settings/Settings';
+} from 'src/settings/settingsSchema';
 import type { App } from 'obsidian';
 import {
 	createRecordingMockApp,
@@ -33,7 +32,7 @@ jest.mock('obsidian', () => ({
 }));
 
 // Mock AudioStreamHandler
-jest.mock('../../src/recording/AudioStreamHandler', () => ({
+jest.mock('src/recording/AudioStreamHandler', () => ({
 	getAudioStreams: jest.fn(),
 	getAudioSourceName: jest.fn().mockResolvedValue('TestDevice'),
 	stopAllStreams: jest.fn(),
@@ -41,7 +40,7 @@ jest.mock('../../src/recording/AudioStreamHandler', () => ({
 }));
 
 // Mock AudioEncoder module to avoid mediabunny TextDecoder requirement
-jest.mock('../../src/audio/AudioEncoder', () => ({
+jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest
 		.fn()
 		.mockResolvedValue(new Blob(['encoded'], { type: 'audio/webm' })),
@@ -53,14 +52,14 @@ jest.mock('../../src/audio/AudioEncoder', () => ({
 }));
 
 // Mock WavEncoder
-jest.mock('../../src/audio/WavEncoder', () => ({
+jest.mock('src/audio/WavEncoder', () => ({
 	assembleWavFromPcmSegmentFiles: jest
 		.fn()
 		.mockResolvedValue(new ArrayBuffer(44)),
 }));
 
 // Mock PcmStreamRecorder
-jest.mock('../../src/recording/PcmStreamRecorder', () => ({
+jest.mock('src/recording/PcmStreamRecorder', () => ({
 	PcmStreamRecorder: jest.fn().mockImplementation(() => ({
 		channels: 1,
 		sampleRate: 44100,
@@ -141,7 +140,7 @@ describe('RecordingManager', () => {
 				jest.fn().mockReturnValue(true);
 
 			const { getAudioStreams } = jest.requireMock(
-				'../../src/recording/AudioStreamHandler',
+				'src/recording/AudioStreamHandler',
 			);
 			getAudioStreams.mockResolvedValue({
 				streams: [{ getTracks: () => [{ stop: jest.fn() }] }],

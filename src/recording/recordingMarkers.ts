@@ -163,6 +163,9 @@ export function groupMarkersByFile(
 				continue;
 			}
 			const path = group.files[fileIndex];
+			if (path === undefined) {
+				continue;
+			}
 			let entry = byPath.get(path);
 			if (!entry) {
 				entry = { path, markers: [] };

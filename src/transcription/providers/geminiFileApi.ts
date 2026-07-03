@@ -113,6 +113,7 @@ export async function uploadFile(
 	mimeType: string,
 	displayName: string,
 	maxTimeoutMs?: number,
+	signal?: AbortSignal,
 ): Promise<GeminiFile> {
 	const base = trimTrailingSlash(baseUrl);
 	const numBytes = String(data.byteLength);
@@ -130,6 +131,7 @@ export async function uploadFile(
 		},
 		contentType: 'application/json',
 		body: JSON.stringify({ file: { display_name: displayName } }),
+		signal,
 	});
 	const uploadUrl = readHeader(start.headers, 'x-goog-upload-url');
 	if (!uploadUrl) {
@@ -148,6 +150,7 @@ export async function uploadFile(
 		},
 		body: data,
 		timeoutMs: uploadTimeoutMs(data.byteLength, maxTimeoutMs),
+		signal,
 	});
 	return parseFile(finalized);
 }

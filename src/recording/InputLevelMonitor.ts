@@ -21,7 +21,8 @@ export function computeRms(samples: Float32Array): number {
 	}
 	let sumSquares = 0;
 	for (let i = 0; i < samples.length; i++) {
-		sumSquares += samples[i] * samples[i];
+		const sample = samples[i] ?? 0;
+		sumSquares += sample * sample;
 	}
 	return Math.sqrt(sumSquares / samples.length);
 }

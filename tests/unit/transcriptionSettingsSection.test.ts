@@ -8,16 +8,15 @@
  * drops the disabled flag on any of these controls.
  * @module tests/unit/transcriptionSettingsSection.test
  */
-/** @jest-environment jsdom */
 
-import { renderTranscriptionSection } from '../../src/settings/sections/transcriptionSettingsSection';
-import {
-	mergeSettings,
-	type AudioRecorderSettings,
-	type TranscriptionProviderId,
-} from '../../src/settings/Settings';
-import type { SettingsSectionContext } from '../../src/settings/settingControls';
-import { TRANSCRIPTION_PROVIDER_IDS } from '../../src/constants';
+import { renderTranscriptionSection } from 'src/settings/sections/transcriptionSettingsSection';
+import type {
+	AudioRecorderSettings,
+	TranscriptionProviderId,
+} from 'src/settings/settingsSchema';
+import { mergeSettings } from 'src/settings/settingsSerialization';
+import type { SettingsSectionContext } from 'src/settings/settingControls';
+import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import {
 	capturedSettings,
 	isSettingDisabled,

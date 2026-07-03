@@ -13,10 +13,11 @@
 import { Notice } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import {
+	BYTES_PER_MB,
 	PLUGIN_LOG_PREFIX,
 	TRANSCRIBE_CHUNK_PROGRESS_CEILING,
 } from '../constants';
-import type { AudioRecorderSettings } from '../settings/Settings';
+import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import {
 	audioMimeFromExtension,
 	audioPrepOptions,
@@ -51,6 +52,12 @@ import type { Transcript } from './TranscriptTypes';
 /** Cooperative cancellation signal checked between chunks. */
 export interface CancellationToken {
 	isCancelled(): boolean;
+	/**
+	 * Optional abort signal that fires when the run is cancelled, so
+	 * in-flight HTTP requests can be aborted immediately instead of only
+	 * being checked between chunks.
+	 */
+	signal?: AbortSignal;
 }
 
 /** A token that is never cancelled. */
@@ -144,6 +151,9 @@ export class TranscriptionService {
 					: undefined,
 			diarize,
 			wordTimestamps: settings.transcriptionWordTimestamps,
+			// Providers on abortable transports stop the in-flight request
+			// the moment the user cancels, not at the next chunk boundary.
+			signal: token.signal,
 		};
 
 		options.onProgress?.(0, 'Preparing audio...');
@@ -155,7 +165,7 @@ export class TranscriptionService {
 			audioPrepOptions(
 				provider.capabilities,
 				provider.requiresNetwork,
-				Math.max(1, settings.transcriptionChunkMb) * 1024 * 1024,
+				Math.max(1, settings.transcriptionChunkMb) * BYTES_PER_MB,
 				transcribeOptions.diarize,
 			),
 		);
@@ -179,17 +189,19 @@ export class TranscriptionService {
 		const failedParts: { label: string; message: string }[] = [];
 		for (let i = 0; i < partCount; i++) {
 			this.throwIfCancelled(token);
+			const payload = payloads[i];
+			if (!payload) {
+				continue;
+			}
 			const partLabel =
-				partCount > 1
-					? this.describePart(payloads[i], i, partCount)
-					: '';
+				partCount > 1 ? this.describePart(payload, i, partCount) : '';
 			options.onProgress?.(
 				(i / partCount) * TRANSCRIBE_CHUNK_PROGRESS_CEILING,
 				partLabel ? `Transcribing ${partLabel}...` : 'Transcribing...',
 			);
 			await this.transcribePart(
 				provider,
-				payloads[i],
+				payload,
 				transcribeOptions,
 				token,
 				partLabel,
@@ -251,7 +263,7 @@ export class TranscriptionService {
 			new Notice(
 				`Some audio could not be transcribed (${labels}) and is missing ` +
 					'from the transcript; saving the parts that succeeded. ' +
-					failedParts[0].message,
+					(failedParts[0]?.message ?? ''),
 			);
 		}
 
@@ -323,7 +335,7 @@ export class TranscriptionService {
 		// Materialize this payload's bytes only now, so a multi-chunk job never
 		// holds more than one chunk's WAV in memory at a time.
 		const payload: AudioPayload = {
-			data: prepared.createData(),
+			data: await prepared.createData(),
 			contentType: prepared.contentType,
 			filename: prepared.filename,
 			offsetSeconds: prepared.offsetSeconds,
@@ -340,9 +352,14 @@ export class TranscriptionService {
 				}),
 			});
 		} catch (error) {
-			// A cancel aborts the whole run; never salvage past it.
+			// A cancel aborts the whole run; never salvage past it. An abort
+			// of the in-flight request surfaces as a transport error, so map
+			// it back to the cancellation the user asked for.
 			if (error instanceof TranscriptionCancelledError) {
 				throw error;
+			}
+			if (token.isCancelled()) {
+				throw new TranscriptionCancelledError();
 			}
 			// The part overran the provider's output token budget. Retrying it as
 			// smaller pieces keeps each piece's output under the cap, so a dense

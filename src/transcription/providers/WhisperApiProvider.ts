@@ -94,6 +94,7 @@ export class WhisperApiProvider implements TranscriptionProvider {
 				body.byteLength,
 				this.config.requestTimeoutMs,
 			),
+			signal: options.signal,
 		});
 		return mapWhisperResponse(json);
 	}

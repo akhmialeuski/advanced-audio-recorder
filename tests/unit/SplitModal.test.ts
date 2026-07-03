@@ -2,13 +2,12 @@
  * Unit tests for SplitModal module.
  * @module tests/unit/SplitModal.test
  */
-/** @jest-environment jsdom */
 
-import { SplitModal } from '../../src/ui/SplitModal';
+import { SplitModal } from 'src/ui/SplitModal';
 import { App, Notice, TFile } from 'obsidian';
-import { createWavHeader } from '../../src/audio/WavEncoder';
+import { createWavHeader } from 'src/audio/WavEncoder';
 import { createMockAudioBuffer } from '../helpers/createMockAudioBuffer';
-import type { AudioRecorderSettings } from '../../src/settings/Settings';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 
 /**
  * Extends an HTMLElement with Obsidian's custom DOM methods.
@@ -182,28 +181,27 @@ jest.mock('obsidian', () => ({
 }));
 
 // Mock AudioEncoder
-jest.mock('../../src/audio/AudioEncoder', () => ({
+jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest
 		.fn()
 		.mockResolvedValue(new Blob(['encoded'], { type: 'audio/webm' })),
 	isOfflineEncodingSupported: jest.fn().mockReturnValue(true),
-	getEncoderDescription: jest.fn().mockReturnValue('Test Encoder'),
 }));
 
 // Mock AudioCapabilityDetector
-jest.mock('../../src/audio/AudioCapabilityDetector', () => ({
+jest.mock('src/audio/AudioCapabilityDetector', () => ({
 	getSupportedBitrates: jest
 		.fn()
 		.mockReturnValue([64000, 96000, 128000, 192000, 256000, 320000]),
 }));
 
 // Mock the decoder: the compressed path decodes once via this function
-jest.mock('../../src/audio/AudioFormatConverter', () => ({
+jest.mock('src/audio/AudioFormatConverter', () => ({
 	decodeAudioBlob: jest.fn(),
 }));
 
 // Mock the vault-wide link updater
-jest.mock('../../src/utils/LinkUpdater', () => ({
+jest.mock('src/utils/LinkUpdater', () => ({
 	updateLinksInVault: jest.fn().mockResolvedValue({
 		updatedNotes: 1,
 		skippedReferences: 0,
@@ -211,9 +209,9 @@ jest.mock('../../src/utils/LinkUpdater', () => ({
 	}),
 }));
 
-import { encodeAudioBuffer } from '../../src/audio/AudioEncoder';
-import { decodeAudioBlob } from '../../src/audio/AudioFormatConverter';
-import { updateLinksInVault } from '../../src/utils/LinkUpdater';
+import { encodeAudioBuffer } from 'src/audio/AudioEncoder';
+import { decodeAudioBlob } from 'src/audio/AudioFormatConverter';
+import { updateLinksInVault } from 'src/utils/LinkUpdater';
 
 /** WAV header size produced by createWavHeader. */
 const WAV_HEADER_SIZE = 44;
@@ -253,7 +251,7 @@ interface SplitModalInternals {
 }
 
 function internals(modal: SplitModal): SplitModalInternals {
-	return modal as unknown as SplitModalInternals;
+	return modal;
 }
 
 describe('SplitModal', () => {
@@ -345,7 +343,7 @@ describe('SplitModal', () => {
 		const modal = new SplitModal(mockApp, mockFile, {
 			...mockSettings,
 			conversionLinkAction: 'after',
-		} as unknown as AudioRecorderSettings);
+		});
 
 		expect(internals(modal).linkAction).toBe('after');
 	});
@@ -385,7 +383,7 @@ describe('SplitModal', () => {
 
 	it('should show the WAV extension in the example when encoding falls back', () => {
 		const { isOfflineEncodingSupported } = jest.requireMock(
-			'../../src/audio/AudioEncoder',
+			'src/audio/AudioEncoder',
 		);
 		(isOfflineEncodingSupported as jest.Mock).mockReturnValue(false);
 		configureFile('recording.webm', 'webm');
@@ -455,27 +453,29 @@ describe('SplitModal', () => {
 		expect(notice.hide).toHaveBeenCalled();
 	});
 
-	it('should fall back to the default suffix for an invalid configured suffix', () => {
+	it.each([
+		['an invalid configured suffix', 'bad/suffix', 'part'],
+		['a blank configured suffix', '', 'part'],
+		['a valid configured suffix (kept)', 'track', 'track'],
+	])('normalizes %s', (_case, splitPartSuffix, expected) => {
 		const modal = new SplitModal(mockApp, mockFile, {
 			...mockSettings,
-			splitPartSuffix: 'bad/suffix',
+			splitPartSuffix,
 		});
 
-		expect(internals(modal).partSuffix).toBe('part');
+		expect(internals(modal).partSuffix).toBe(expected);
 	});
 
-	it('should clamp out-of-range configured part durations', () => {
-		const tooLarge = new SplitModal(mockApp, mockFile, {
+	it.each([
+		['an oversized duration', 10000, 180],
+		['a non-finite duration', Number.NaN, 15],
+		['a zero duration', 0, 1],
+	])('clamps %s', (_case, splitChunkMinutes, expected) => {
+		const modal = new SplitModal(mockApp, mockFile, {
 			...mockSettings,
-			splitChunkMinutes: 10000,
+			splitChunkMinutes,
 		});
-		expect(internals(tooLarge).partMinutes).toBe(180);
-
-		const nonFinite = new SplitModal(mockApp, mockFile, {
-			...mockSettings,
-			splitChunkMinutes: Number.NaN,
-		});
-		expect(internals(nonFinite).partMinutes).toBe(15);
+		expect(internals(modal).partMinutes).toBe(expected);
 	});
 
 	it('should render source file info on open and clear on close', () => {
@@ -510,30 +510,22 @@ describe('SplitModal', () => {
 		expect(internals(modal).linkAction).toBe('after');
 	});
 
-	it('should toggle the invalid-input class on the suffix field', () => {
+	it.each([
+		['an invalid suffix', 'bad/suffix', true],
+		['a valid suffix', 'good-suffix', false],
+		// Empty input is valid: it falls back to the default suffix
+		['a blank suffix', '', false],
+	])('toggles the invalid-input class for %s', (_case, input, invalid) => {
 		const modal = new SplitModal(mockApp, mockFile, mockSettings);
 		modal.onOpen();
 
 		const handler = mockCapturedControls.texts[0];
 		const inputEl = mockCapturedControls.textInputs[0];
 
-		handler('bad/suffix');
+		handler(input);
 		expect(inputEl.toggleClass).toHaveBeenLastCalledWith(
 			'aar-input-invalid',
-			true,
-		);
-
-		handler('good-suffix');
-		expect(inputEl.toggleClass).toHaveBeenLastCalledWith(
-			'aar-input-invalid',
-			false,
-		);
-
-		// Empty input is valid: it falls back to the default suffix
-		handler('');
-		expect(inputEl.toggleClass).toHaveBeenLastCalledWith(
-			'aar-input-invalid',
-			false,
+			invalid,
 		);
 	});
 
@@ -1041,7 +1033,7 @@ describe('SplitModal', () => {
 
 		it('should fall back to WAV when the source format cannot be encoded', async () => {
 			const { isOfflineEncodingSupported } = jest.requireMock(
-				'../../src/audio/AudioEncoder',
+				'src/audio/AudioEncoder',
 			);
 			(isOfflineEncodingSupported as jest.Mock).mockReturnValue(false);
 			const modal = new SplitModal(mockApp, mockFile, mockSettings);

@@ -190,8 +190,8 @@ export async function updateLinksInVault(
 		.map(([notePath]) => notePath);
 
 	for (const notePath of referencingPaths) {
-		const note = app.vault.getAbstractFileByPath(notePath);
-		if (!(note instanceof TFile)) {
+		const note = app.vault.getFileByPath(notePath);
+		if (!note) {
 			continue;
 		}
 		result.frontmatterReferences += countFrontmatterReferences(

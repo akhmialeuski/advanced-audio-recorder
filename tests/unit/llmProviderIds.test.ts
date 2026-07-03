@@ -7,7 +7,7 @@
  */
 
 import { LLM_PROVIDER_IDS } from 'src/constants';
-import { LLM_PROVIDER_LABELS } from 'src/settings/Settings';
+import { LLM_PROVIDER_LABELS } from 'src/settings/labels';
 import {
 	AnthropicLlmProvider,
 	GeminiLlmProvider,

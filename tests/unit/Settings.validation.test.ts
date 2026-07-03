@@ -6,9 +6,9 @@
 import {
 	AudioRecorderSettings,
 	DEFAULT_SETTINGS,
-	validateSettings,
-} from '../../src/settings/Settings';
-import { SettingsValidationError } from '../../src/errors';
+} from 'src/settings/settingsSchema';
+import { validateSettings } from 'src/settings/settingsValidation';
+import { SettingsValidationError } from 'src/errors';
 
 describe('validateSettings', () => {
 	it('should throw SettingsValidationError when audioDeviceId is empty', () => {

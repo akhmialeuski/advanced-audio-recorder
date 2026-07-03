@@ -1,4 +1,3 @@
-/** @jest-environment jsdom */
 /**
  * Tests for the media-kind probe that decides whether the enhanced player
  * takes over a file (audio) or Obsidian's built-in embed is left in place

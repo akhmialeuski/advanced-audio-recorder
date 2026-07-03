@@ -271,8 +271,10 @@ export class MarkdownRenderChild extends Component {
 /**
  * Adds Obsidian DOM extension methods to an HTMLElement.
  * Obsidian extends HTMLElement with helper methods like createEl, setText, etc.
+ * Exported so DOM-driven tests can extend elements Obsidian extends at
+ * runtime (e.g. document.body for body-mounted UI like RecordingBanner).
  */
-function addObsidianDomExtensions(el: HTMLElement): HTMLElement {
+export function addObsidianDomExtensions(el: HTMLElement): HTMLElement {
 	// Use unknown cast to avoid TypeScript's overloaded HTMLElement extension conflicts
 	const extended = el as unknown as Record<string, unknown>;
 
@@ -845,6 +847,56 @@ export const Platform = {
 	isMobile: false,
 	isMobileApp: false,
 };
+
+/** Mock of obsidian's module-level API version export. */
+export const apiVersion = '1.12.3';
+
+/**
+ * Mock AbstractInputSuggest: enough surface for components that attach
+ * popover suggestions to a text input (e.g. FolderSuggest). Suggestions
+ * never open in tests; the constructor and the value plumbing suffice.
+ */
+export abstract class AbstractInputSuggest<T> {
+	limit = 100;
+
+	constructor(
+		public app: App,
+		protected inputEl: HTMLInputElement | HTMLDivElement,
+	) {}
+
+	protected abstract getSuggestions(query: string): T[] | Promise<T[]>;
+	abstract renderSuggestion(value: T, el: HTMLElement): void;
+
+	setValue(value: string): void {
+		if (this.inputEl instanceof HTMLInputElement) {
+			this.inputEl.value = value;
+		}
+	}
+
+	getValue(): string {
+		return this.inputEl instanceof HTMLInputElement
+			? this.inputEl.value
+			: '';
+	}
+
+	selectSuggestion(_value: T, _evt: MouseEvent | KeyboardEvent): void {
+		// Mock implementation
+	}
+
+	onSelect(
+		_callback: (value: T, evt: MouseEvent | KeyboardEvent) => unknown,
+	): this {
+		return this;
+	}
+
+	open(): void {
+		// Mock implementation
+	}
+
+	close(): void {
+		// Mock implementation
+	}
+}
 
 /**
  * Debounced function type returned by the debounce mock.

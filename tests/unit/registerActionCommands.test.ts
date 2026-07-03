@@ -11,42 +11,38 @@ import type { App, Plugin } from 'obsidian';
 import {
 	registerFileActionCommands,
 	registerRecordingActionCommands,
-} from '../../src/actions/registerActionCommands';
-import { FILE_ACTIONS } from '../../src/actions/fileActions';
-import { createRecordingMarkerActions } from '../../src/actions/recordingMarkerActions';
-import { COMMAND_IDS } from '../../src/constants';
-import { MARKER_KIND } from '../../src/markers/markerModel';
-import type {
-	ActionServices,
-	FileAction,
-} from '../../src/actions/PluginAction';
-import type { AudioRecorderSettings } from '../../src/settings/Settings';
+} from 'src/actions/registerActionCommands';
+import { FILE_ACTIONS } from 'src/actions/fileActions';
+import { createRecordingMarkerActions } from 'src/actions/recordingMarkerActions';
+import { COMMAND_IDS } from 'src/constants';
+import { MARKER_KIND } from 'src/markers/markerModel';
+import type { ActionServices, FileAction } from 'src/actions/PluginAction';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 
-jest.mock('../../src/ui/AudioFileInfoModal', () => ({
+jest.mock('src/ui/AudioFileInfoModal', () => ({
 	AudioFileInfoModal: jest
 		.fn()
 		.mockImplementation(() => ({ open: jest.fn() })),
 }));
-jest.mock('../../src/ui/ConversionModal', () => ({
+jest.mock('src/ui/ConversionModal', () => ({
 	ConversionModal: jest.fn().mockImplementation(() => ({ open: jest.fn() })),
 }));
-jest.mock('../../src/ui/SplitModal', () => ({
+jest.mock('src/ui/SplitModal', () => ({
 	SplitModal: jest.fn().mockImplementation(() => ({ open: jest.fn() })),
 }));
-jest.mock('../../src/ui/TranscriptionModal', () => ({
+jest.mock('src/ui/TranscriptionModal', () => ({
 	TranscriptionModal: jest
 		.fn()
 		.mockImplementation(() => ({ open: jest.fn() })),
 }));
-jest.mock('../../src/cleanup/AudioProcessingModal', () => ({
+jest.mock('src/cleanup/AudioProcessingModal', () => ({
 	AudioProcessingModal: jest
 		.fn()
 		.mockImplementation(() => ({ open: jest.fn() })),
 }));
-jest.mock('../../src/audio/AudioEncoder', () => ({
+jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest.fn(),
 	isOfflineEncodingSupported: jest.fn().mockReturnValue(true),
-	getEncoderDescription: jest.fn().mockReturnValue('Test Encoder'),
 }));
 
 /** Command registered through the plugin double. */

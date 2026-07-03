@@ -3,7 +3,6 @@
  * generation reused by both the player and recording-time marker capture.
  * @module tests/unit/markerFactory.test
  */
-/** @jest-environment jsdom */
 
 import {
 	defaultMarkerLabel,

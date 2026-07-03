@@ -3,7 +3,7 @@
  * @module tests/unit/LinkUpdater.test
  */
 
-import { updateLinksInVault } from '../../src/utils/LinkUpdater';
+import { updateLinksInVault } from 'src/utils/LinkUpdater';
 import { App, TFile } from 'obsidian';
 
 jest.mock('obsidian', () => ({
@@ -130,7 +130,7 @@ describe('updateLinksInVault', () => {
 				),
 			},
 			vault: {
-				getAbstractFileByPath: jest.fn((path: string) =>
+				getFileByPath: jest.fn((path: string) =>
 					path in notes ? createFile(path) : null,
 				),
 				process: processMock,

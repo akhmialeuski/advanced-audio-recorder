@@ -3,13 +3,9 @@
  * Mixes synthetic PCM fixtures and verifies exact sample values.
  * @module tests/unit/StreamingMixer.test
  */
-/** @jest-environment jsdom */
 
-import {
-	canStreamMix,
-	mixPcmTracksToWav,
-} from '../../src/recording/StreamingMixer';
-import type { PcmMixTrack } from '../../src/recording/StreamingMixer';
+import { canStreamMix, mixPcmTracksToWav } from 'src/recording/StreamingMixer';
+import type { PcmMixTrack } from 'src/recording/StreamingMixer';
 import type { App } from 'obsidian';
 
 jest.mock('obsidian', () => ({

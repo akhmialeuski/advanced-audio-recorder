@@ -5,7 +5,8 @@
  * the rest.
  */
 
-import { DEFAULT_SETTINGS, mergeSettings } from 'src/settings/Settings';
+import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
+import { mergeSettings } from 'src/settings/settingsSerialization';
 import {
 	resolvePlayerSettings,
 	playerSettingsEqual,

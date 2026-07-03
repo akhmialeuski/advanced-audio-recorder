@@ -4,22 +4,20 @@
  */
 
 import { App, Modal, Notice, Setting, TFile } from 'obsidian';
-import {
-	isOfflineEncodingSupported,
-	getEncoderDescription,
-} from '../audio/AudioEncoder';
+import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
 import { AUDIO_EXTENSIONS, FORMAT_WAV } from '../constants';
 import {
 	addBitrateSetting,
 	addDeleteSourceSetting,
 	addLinkActionSetting,
 } from './settingHelpers';
-import { ConversionService } from '../recording/ConversionService';
+import { getEncoderDescription } from './formatDescriptions';
+import { ConversionService } from '../recording/api';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import type {
 	AudioRecorderSettings,
 	ConversionLinkAction,
-} from '../settings/Settings';
+} from '../settings/settingsSchema';
 
 /**
  * Modal for converting an audio file to a different format.
@@ -85,9 +83,10 @@ export class ConversionModal extends Modal {
 						`${format.toUpperCase()} (${encoder})`,
 					);
 				});
-				if (availableFormats.length > 0) {
-					this.targetFormat = availableFormats[0];
-					dropdown.setValue(this.targetFormat);
+				const firstFormat = availableFormats[0];
+				if (firstFormat) {
+					this.targetFormat = firstFormat;
+					dropdown.setValue(firstFormat);
 				}
 				dropdown.onChange((value) => {
 					this.targetFormat = value;

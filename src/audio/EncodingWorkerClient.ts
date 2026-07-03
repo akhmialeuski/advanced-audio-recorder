@@ -93,6 +93,10 @@ export class EncodingWorkerClient {
 	 */
 	terminate(): void {
 		if (this.worker) {
+			// Detach the handlers before terminating so a message already
+			// queued cannot fire into a client that is tearing down.
+			this.worker.onmessage = null;
+			this.worker.onerror = null;
 			this.worker.terminate();
 			this.worker = null;
 		}

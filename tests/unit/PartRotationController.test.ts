@@ -4,19 +4,16 @@
  * and part finalization error paths.
  * @module tests/unit/PartRotationController.test
  */
-/** @jest-environment jsdom */
 
-import { PartRotationController } from '../../src/recording/PartRotationController';
-import type { TrackWriteQueue } from '../../src/recording/TrackWriteQueue';
-import type { RecordingFinalizer } from '../../src/recording/RecordingFinalizer';
-import { DebugLogger } from '../../src/utils/DebugLogger';
-import { RecordingStatus } from '../../src/types';
-import type { RecordingSessionConfig, RecordingTarget } from '../../src/types';
+import { PartRotationController } from 'src/recording/PartRotationController';
+import { DebugLogger } from 'src/utils/DebugLogger';
+import { RecordingStatus } from 'src/types';
+import type { RecordingSessionConfig, RecordingTarget } from 'src/types';
 import {
 	DEFAULT_SETTINGS,
 	AudioRecorderSettings,
-} from '../../src/settings/Settings';
-import { MS_PER_MINUTE } from '../../src/constants';
+} from 'src/settings/settingsSchema';
+import { MS_PER_MINUTE } from 'src/constants';
 import type { App } from 'obsidian';
 
 jest.mock('obsidian', () => ({
@@ -85,8 +82,8 @@ describe('PartRotationController', () => {
 		controller = new PartRotationController(
 			mockApp,
 			mockSettings,
-			writeQueue as unknown as TrackWriteQueue,
-			finalizer as unknown as RecordingFinalizer,
+			writeQueue,
+			finalizer,
 			new DebugLogger(mockSettings),
 			hooks,
 		);

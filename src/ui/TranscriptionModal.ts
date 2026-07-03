@@ -11,36 +11,34 @@
 
 import { MarkdownView, Modal, Notice, Setting } from 'obsidian';
 import type { App, ButtonComponent, TFile } from 'obsidian';
+import type {
+	AudioRecorderSettings,
+	TranscriptionProviderId,
+} from '../settings/settingsSchema';
 import {
 	LLM_TASK_OPTIONS,
 	TRANSCRIPT_DESTINATION_OPTIONS,
 	TRANSCRIPT_FILE_FORMAT_OPTIONS,
 	TRANSCRIPTION_PROVIDER_OPTIONS,
-	type AudioRecorderSettings,
-	type TranscriptionProviderId,
-} from '../settings/Settings';
-import type {
-	TranscriptDestination,
-	TranscriptFileFormat,
-} from '../transcription/TranscriptTypes';
-import type { LlmTask } from '../transcription/llmPostProcess';
+} from '../settings/labels';
 import {
 	addDropdown,
 	addText,
 	addToggle,
 	type SettingsSectionContext,
 } from '../settings/settingControls';
-import { transcribeFile } from '../transcription/runTranscription';
 import { formatTimecode } from '../utils/TimeUtils';
 import {
 	effectiveDiarize,
+	effectiveTranscriptDestination,
 	providerSupportsDiarization,
-} from '../transcription/providers/capabilities';
-import { effectiveTranscriptDestination } from '../transcription/transcriptOutput';
-import {
+	transcribeFile,
 	TranscriptionCancelledError,
 	type CancellationToken,
-} from '../transcription/TranscriptionService';
+	type LlmTask,
+	type TranscriptDestination,
+	type TranscriptFileFormat,
+} from '../transcription/api';
 import type { SaveProgress } from '../types';
 
 /** Default status label shown before the engine reports a finer-grained stage. */
@@ -70,6 +68,8 @@ export type TranscriptionModalOptions = {
  */
 export class TranscriptionModal extends Modal {
 	private cancelled = false;
+	/** Aborts the in-flight run's HTTP requests when cancelled. */
+	private abortController: AbortController | null = null;
 	private running = false;
 	private statusEl: HTMLElement | null = null;
 	private elapsedEl: HTMLElement | null = null;
@@ -175,7 +175,7 @@ export class TranscriptionModal extends Modal {
 				this.secondaryButton = button;
 				button.setButtonText('Close').onClick(() => {
 					if (this.running) {
-						this.cancelled = true;
+						this.cancelRun();
 					} else {
 						this.close();
 					}
@@ -335,7 +335,13 @@ export class TranscriptionModal extends Modal {
 		// Snapshot the options so a control toggled mid-run cannot change an
 		// in-flight job; edits only affect the next attempt after a failure.
 		const settings = { ...this.runSettings };
-		const token: CancellationToken = { isCancelled: () => this.cancelled };
+		this.abortController = new AbortController();
+		const token: CancellationToken = {
+			isCancelled: () => this.cancelled,
+			// Lets abort-capable providers stop an in-flight upload at once;
+			// requestUrl-only endpoints still finish or time out on their own.
+			signal: this.abortController.signal,
+		};
 		try {
 			await transcribeFile(this.app, () => settings, this.file, {
 				notePathForLinks: this.notePath,
@@ -372,6 +378,15 @@ export class TranscriptionModal extends Modal {
 			}
 			this.clearBackgroundProgress();
 		}
+	}
+
+	/**
+	 * Cancels the in-flight run: flags the cooperative token and aborts the
+	 * current HTTP request where the transport supports it.
+	 */
+	private cancelRun(): void {
+		this.cancelled = true;
+		this.abortController?.abort();
 	}
 
 	/**
@@ -492,7 +507,7 @@ export class TranscriptionModal extends Modal {
 			return;
 		}
 		if (this.running) {
-			this.cancelled = true;
+			this.cancelRun();
 		}
 		this.stopElapsedTimer();
 		this.clearBackgroundProgress();
