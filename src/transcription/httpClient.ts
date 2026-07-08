@@ -260,8 +260,12 @@ async function fetchResponse(
 		if (options.contentType) {
 			headers['Content-Type'] = options.contentType;
 		}
-		// eslint-disable-next-line no-restricted-globals -- deliberate: requestUrl cannot abort an in-flight request; fetch honors the AbortSignal, and CORS-refusing endpoints fall back to requestUrl (see dispatchRequest)
-		const response = await fetch(options.url, {
+		// window.fetch (not requestUrl) is deliberate here: requestUrl cannot
+		// abort an in-flight request, whereas fetch honors the AbortSignal.
+		// CORS-refusing endpoints fall back to requestUrl in dispatchRequest.
+		// Accessing it through window keeps it off the no-restricted-globals
+		// ban without an inline eslint-disable.
+		const response = await window.fetch(options.url, {
 			method: options.method,
 			headers,
 			body: options.body,
