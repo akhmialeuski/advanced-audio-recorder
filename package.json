@@ -1,6 +1,6 @@
 {
 	"name": "advanced-audio-recorder",
-	"version": "2.0.0",
+	"version": "2.0.1",
 	"description": "Record, play, clean up, and transcribe audio in Obsidian: multi-track recording, a waveform player with bookmarks and chapters, format conversion, splitting, and speech-to-text (Whisper, Deepgram, Gemini, offline whisper.cpp).",
 	"main": "main.js",
 	"scripts": {
