@@ -664,7 +664,7 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * redundant and multiply API cost), and an auto-split session would
 	 * otherwise fire one transcription request per part. For those cases the
 	 * user transcribes the desired file explicitly via the context menu or
-	 * the "Transcribe active audio file" command.
+	 * the "Transcribe audio" command.
 	 * @param result - The saved audio paths and the note the links landed in
 	 */
 	private handleRecordingSaved(result: RecordingSaveResult): void {

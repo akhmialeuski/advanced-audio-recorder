@@ -11,6 +11,7 @@ import {
 	TFolder,
 	Vault,
 	debounce,
+	setIcon,
 } from 'obsidian';
 import type { Plugin } from 'obsidian';
 import type {
@@ -41,6 +42,7 @@ import {
 	CLEANUP_HIGHPASS_STEP_HZ,
 	CLEANUP_GATE_STEP_DB,
 	CLEANUP_LEVELING_STEP_DB,
+	DOCS_URL,
 	FORMAT_WAV,
 } from '../constants';
 import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
@@ -165,6 +167,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				this.deviceChangeHandler,
 			);
 		}
+
+		// Quick access to the full documentation, so users do not have to
+		// hunt through the GitHub repository for the guides.
+		this.renderDocumentationLink(containerEl);
 
 		// Audio input
 		new Setting(containerEl).setName('Audio input').setHeading();
@@ -603,6 +609,39 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					}),
 			);
+	}
+
+	/**
+	 * Renders a compact callout at the top of the settings tab linking to the
+	 * full online documentation, so the per-feature guides and use-case
+	 * walkthroughs are one click away instead of requiring the user to find
+	 * them in the GitHub repository.
+	 * @param containerEl - The settings container element
+	 */
+	private renderDocumentationLink(containerEl: HTMLElement): void {
+		const callout = containerEl.createDiv({ cls: 'aar-doc-callout' });
+		const icon = callout.createSpan({ cls: 'aar-doc-callout-icon' });
+		setIcon(icon, 'book-open');
+
+		const body = callout.createDiv({ cls: 'aar-doc-callout-body' });
+		body.createSpan({
+			text:
+				'New here or stuck on a setting? The full guides, setup ' +
+				'walkthroughs, and use cases live in the docs. ',
+		});
+		const link = body.createEl('a', {
+			text: 'Open the documentation',
+			cls: 'aar-doc-callout-link',
+			attr: {
+				href: DOCS_URL,
+				target: '_blank',
+				rel: 'noopener',
+			},
+		});
+		link.setAttribute(
+			'aria-label',
+			'Open the documentation in your browser',
+		);
 	}
 
 	/**

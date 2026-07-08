@@ -2,15 +2,24 @@
 
 This guide explains how to collect the information needed to report a bug effectively. The more detail you provide, the faster the issue can be diagnosed and fixed.
 
+- [Before reporting](#before-reporting)
+- [Steps to reproduce](#steps-to-reproduce)
+- [Expected vs actual behavior](#expected-vs-actual-behavior)
+- [System diagnostics](#system-diagnostics)
+- [Audio file info](#audio-file-info)
+- [Console logs](#console-logs)
+- [Screenshots](#screenshots)
+- [Example bug report](#example-bug-report)
+- [Where to report](#where-to-report)
+- [Related pages](#related-pages)
+
 ## Before reporting
 
 1. **Update the plugin** to the latest version and check if the issue persists.
 2. **Disable other plugins** temporarily to rule out conflicts.
 3. **Restart Obsidian** to ensure a clean state.
 
-## What to include in a bug report
-
-### 1. Steps to reproduce
+## Steps to reproduce
 
 Write the exact steps someone else can follow to trigger the bug. Be specific:
 
@@ -19,13 +28,16 @@ Write the exact steps someone else can follow to trigger the bug. Be specific:
 - How long was the recording?
 - What did you click or which command did you run?
 
-### 2. Expected vs actual behavior
+## Expected vs actual behavior
 
 Describe what you expected to happen and what actually happened instead.
 
-### 3. System diagnostics
+## System diagnostics
 
 The plugin includes a built-in diagnostics tool that collects all relevant environment information in one step.
+
+![System info modal showing diagnostics output and a Copy to clipboard button](images/modal-system-info.png)
+_Figure: The System info modal opened from the Diagnostics settings section._
 
 **How to collect:**
 
@@ -36,15 +48,19 @@ The plugin includes a built-in diagnostics tool that collects all relevant envir
 5. Paste the copied JSON into your bug report.
 
 The diagnostics output includes:
+
 - Plugin settings (format, bitrate, sample rate, save folder, multi-track config).
 - Environment info (Obsidian version, Electron version, platform, architecture).
 - Audio devices (all detected input and output devices).
 - Audio capabilities (supported formats, sample rates, bitrates, codec support).
 - Active recording configuration (the exact format, MIME type, and codec that would be used for recording).
 
-### 4. Audio file info (when applicable)
+## Audio file info
 
 If the bug involves a specific audio file (e.g., playback issues, corruption, wrong format), collect the file metadata:
+
+![Audio file info modal showing file metadata and a Copy as Markdown button](images/modal-audio-file-info.png)
+_Figure: The Audio file info modal opened from the file context menu._
 
 1. In the **File Explorer** or in the **Editor**, right-click on the audio file.
 2. Select **Audio file info** from the context menu.
@@ -53,7 +69,7 @@ If the bug involves a specific audio file (e.g., playback issues, corruption, wr
 
 The output includes file name, size, duration, container format, audio codec, bitrate, sample rate, and channel count.
 
-### 5. Console logs (for advanced users)
+## Console logs
 
 If **Debug mode** is enabled, the plugin writes detailed logs to the developer console:
 
@@ -63,7 +79,7 @@ If **Debug mode** is enabled, the plugin writes detailed logs to the developer c
 4. Look for log entries starting with `[AudioRecorder]`.
 5. Copy the relevant log lines and include them in your bug report.
 
-### 6. Screenshots or screen recordings
+## Screenshots
 
 If the issue is visual (e.g., status bar glitch, modal rendering problem), attach a screenshot or screen recording.
 
@@ -72,6 +88,7 @@ If the issue is visual (e.g., status bar glitch, modal rendering problem), attac
 > **Title:** Recording produces empty file when using FLAC format
 >
 > **Steps to reproduce:**
+>
 > 1. Set recording format to FLAC in plugin settings.
 > 2. Start a recording and speak for 10 seconds.
 > 3. Stop the recording.
@@ -82,6 +99,7 @@ If the issue is visual (e.g., status bar glitch, modal rendering problem), attac
 > **Actual:** The file is empty (0 bytes). No error message is shown.
 >
 > **Audio file info:**
+>
 > - File Name: `recording-1710000000000.flac`
 > - File Size: `0 Bytes`
 > - Duration: `00:00:00`
@@ -91,10 +109,16 @@ If the issue is visual (e.g., status bar glitch, modal rendering problem), attac
 > - Sample Rate: `0 Hz`
 > - Channels: `unknown`
 >
-> **System diagnostics:** *(JSON pasted here)*
+> **System diagnostics:** _(JSON pasted here)_
 
 ## Where to report
 
 Open an issue on GitHub: [Advanced Audio Recorder Issues](https://github.com/akhmialeuski/advanced-audio-recorder/issues)
 
 Use the **Bug report** template when creating a new issue. It includes all the sections described above.
+
+## Related pages
+
+- [Troubleshooting](troubleshooting.md)
+- [Settings reference (Diagnostics)](settings-reference.md#diagnostics)
+- [Features](features.md)
