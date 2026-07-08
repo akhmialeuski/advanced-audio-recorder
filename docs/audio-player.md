@@ -180,8 +180,15 @@ A link with a `#t=` offset jumps a rendered player to that position instead of o
 
 When a matching player is already visible in the note, **clicking the link seeks it** and starts playback. When no live player for that file is on screen, the link **behaves normally** (Obsidian opens the file as usual). A single embed with a `#t=` offset displays that start position until you engage playback, without dragging other embeds of the same file.
 
-![Note showing a transcript line as a clickable timecode link that seeks the player above it](images/player-timecode-link.png)
-_Figure: a timecode link in a note seeking the player to the linked position._
+A note with the recording embedded above a transcript line rendered this way looks like this:
+
+```markdown
+![[meeting-notes.webm]]
+
+[[meeting-notes.webm#t=1:30]] **Speaker 1** Let's start with the budget review for next quarter.
+```
+
+Clicking the `[[meeting-notes.webm#t=1:30]]` link seeks the embedded player above it to `1:30` instead of opening the file.
 
 Timecode links are also how transcripts become clickable: when **Timestamps as player links** is on, each transcript timestamp is rendered as a `#t=` link that seeks the player to that moment - click a line to hear it. See [Transcription > output formatting](transcription.md#output-where-the-transcript-goes) for how those links are generated, and [Copy timestamp link](#copy-timestamp-link) above to create one by hand.
 

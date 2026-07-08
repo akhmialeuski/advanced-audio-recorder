@@ -60,9 +60,6 @@ You need the `whisper.cpp` command-line program. There are two ways to get it: d
 
 > Prebuilt assets are not always published for every platform on every release. If there is no asset for your system, use Option B.
 
-![GitHub releases page for whisper.cpp with platform download assets highlighted](../images/local-whisper-releases-page.png)
-_Figure: the whisper.cpp GitHub releases page - pick the asset that matches your OS and CPU._
-
 ### Option B: build from source
 
 Building takes a few minutes and gives you a binary tuned for your machine (including optional GPU/Metal acceleration). You need `git` and a C/C++ toolchain (`cmake` plus a compiler - Visual Studio Build Tools on Windows, Xcode command-line tools on macOS, `build-essential` on Linux).
@@ -86,9 +83,6 @@ Building takes a few minutes and gives you a binary tuned for your machine (incl
     - **macOS / Linux:** `whisper.cpp/build/bin/whisper-cli`
 
 4. Note that full path - it goes into the plugin in Step 3.
-
-![Terminal showing a successful whisper.cpp CMake build producing the whisper-cli binary](../images/local-whisper-build-terminal.png)
-_Figure: a finished source build - note where the `whisper-cli` executable lands under `build/bin/`._
 
 > The plugin only ever invokes the binary you point it at, with the arguments described in [Step 3](#step-3-configure-the-plugin). It does not download, update, or manage the binary for you - that is yours to maintain.
 
@@ -120,9 +114,6 @@ The settings tab lists the model names the plugin recognizes as guidance (the pl
 
 **Recommendation:** start with **`base`** (or `base.en` for English) to confirm the whole pipeline works, then step up to **`small`** if you want better accuracy. Only move to `medium` or `large-v3` once you know your machine is fast enough.
 
-![Hugging Face model list for whisper.cpp showing ggml .bin files](../images/local-whisper-model-download.png)
-_Figure: the Hugging Face whisper.cpp model repository - download one ggml-<name>.bin file._
-
 ---
 
 ## Step 3: Configure the plugin
@@ -143,15 +134,6 @@ Both paths must be **absolute** (full) paths. Use the OS-native form: backslashe
 
 ![Transcription settings with Engine set to Local whisper.cpp and the binary path, model path, and extra arguments fields](../images/local-whisper-settings-engine.png)
 _Figure: the Transcription settings with the local engine selected._
-
-![whisper.cpp binary path field with an absolute path entered](../images/local-whisper-settings-binary-path.png)
-_Figure: the binary path field - enter the absolute path to the whisper.cpp executable._
-
-![Model path field with an absolute path to a ggml .bin model and the download-models link](../images/local-whisper-settings-model-path.png)
-_Figure: the model path field - enter the absolute path to the .bin model; the link opens the model repository._
-
-![Extra arguments field for optional whisper.cpp CLI flags](../images/local-whisper-settings-extra-args.png)
-_Figure: the optional extra-arguments field for additional whisper.cpp CLI flags._
 
 You can also set **Language** (an ISO code like `en`, `ru`, `es`, or `auto` to detect) here - it is shared with the other engines. The plugin passes a chosen language to the binary; with `auto` it lets `whisper.cpp` detect the language.
 
@@ -176,9 +158,6 @@ The settings are stored on this device. Because the local engine needs nothing e
 3. Run **Transcribe audio** from the command palette, or right-click the audio file (or its embed/player) and choose **Transcribe audio** - see the [three ways to run it](../transcription.md#three-ways-to-run-it). The palette command is available only while transcription is enabled and the active file is an audio file; the right-click action always works.
 4. A progress dialog appears. It shows a progress bar and an elapsed timer, with **Cancel** and **Minimize** buttons. Wait for it to finish - the first run is slower because the model is loaded and warmed up.
 5. The transcript is written to wherever your **Transcript output** destination points (in-note, a sidecar file, or both).
-
-![Transcription progress dialog with a progress bar, elapsed timer, Cancel, and Minimize buttons](../images/local-whisper-progress-dialog.png)
-_Figure: the transcription progress dialog while whisper.cpp runs locally._
 
 **To prove it is truly offline**, disconnect your network (turn off Wi-Fi or unplug the cable) and run the transcription again. It will still complete - local `whisper.cpp` never touches the network. This is the simplest way to confirm your audio is staying on your machine.
 

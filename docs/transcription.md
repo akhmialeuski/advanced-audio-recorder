@@ -36,9 +36,6 @@ Open **Settings > Advanced Audio Recorder > Transcription** and turn on **Enable
 8. **Transcript output** - destination, file format, and in-note formatting.
 9. **LLM post-processing** - optional, documented separately in [LLM post-processing](llm-post-processing.md).
 
-![Transcription settings section with Enable transcription on, the Engine dropdown, Language, and diarization toggles](images/settings-transcription.png)
-_Figure: the Transcription settings section after enabling it, showing the engine and global options._
-
 ---
 
 ## Three ways to run it
@@ -164,7 +161,7 @@ Behavior and limits:
 
 Setup walkthrough: [Local whisper.cpp](use-cases/local-whisper-cpp.md). The download link in the model-path description points at the [whisper.cpp models on Hugging Face](https://huggingface.co/ggerganov/whisper.cpp).
 
-![Local whisper.cpp engine settings: binary path, model path, and extra arguments fields](images/settings-transcription-local-whisper.png)
+![Local whisper.cpp engine settings: binary path, model path, and extra arguments fields](images/local-whisper-settings-engine.png)
 _Figure: the local whisper.cpp engine fields for an offline transcription setup._
 
 ---
@@ -231,8 +228,16 @@ When you ask for in-note output but the note is not open in an editable view (re
 
 The sidecar is written **next to the audio file**, sharing its base name (JSON uses a `.transcript.json` suffix so it is not mistaken for other JSON). If a file with that name already exists, a numeric suffix is appended to avoid overwriting it. **Word-level timestamps** (the global toggle) only appear in the **JSON** output, and only some engines populate them: **Whisper API** requests per-word timings when the toggle is on, **Deepgram** always returns them regardless of the toggle, while **Google Gemini** and **local whisper.cpp** return segment-level timing only, so the toggle has no effect for those three.
 
-![A note showing an inserted transcript under the Transcript heading, with clickable timestamp links and speaker labels](images/transcription-rendered-transcript.png)
-_Figure: a rendered transcript inserted into a note, with timestamp player links and speaker labels._
+With the default templates and timestamp links on, a diarized transcript renders like this:
+
+```markdown
+## Transcript
+
+[[recording.webm#t=0:00]] **Speaker 1** Thanks everyone for joining today's sync.
+[[recording.webm#t=0:04]] **Speaker 2** Happy to be here, let's get started.
+```
+
+Each timestamp is a clickable link that seeks the [enhanced player](audio-player.md#timecode-links) embedded above it to that position.
 
 ---
 
@@ -287,9 +292,6 @@ While a transcription runs, the dialog shows a **progress bar**, a live **elapse
 - **Cancel** - stops the run. For endpoints that accept direct browser requests (the normal case), pressing **Cancel** aborts the in-flight request immediately and releases the connection. Only when an endpoint refuses browser (CORS) requests and the plugin falls back to Obsidian's own request channel does cancellation wait until that request returns or hits the timeout. The [LLM post-processing](llm-post-processing.md) step is the exception: once the LLM request is in flight it runs to completion (bounded by its fixed 5-minute timeout) and the transcript is still written.
 - **Minimize** - sends the job to the status bar so you can keep working. The status bar then shows live transcription progress; **click it** (or focus it and press Enter) to reopen the dialog. **Closing** the dialog instead of minimizing **cancels** the running job.
 - **Recording takes precedence** in the status bar, so an active recording's status is shown first and the transcription progress reappears once recording finishes.
-
-![Status bar showing a minimized transcription job with its progress percentage](images/status-bar-transcription.png)
-_Figure: a minimized transcription reporting progress in the status bar; click it to reopen the dialog._
 
 Each network request - one part of a long recording, or a whole-file upload - is bounded by the **Request timeout** (default **10 minutes**, range **1-60**), so a stalled request fails that part and is reported rather than hanging the run. Underneath this cap, a whole-file upload scales its own timeout with payload size, so a large but healthy upload is not aborted prematurely; the **Request timeout** value is the ceiling.
 

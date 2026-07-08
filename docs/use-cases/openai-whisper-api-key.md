@@ -47,9 +47,6 @@ You only need to do this once per OpenAI account.
 5. **Copy the key now.** OpenAI shows the full secret value **only once**. If you close the dialog without copying it, you cannot retrieve it later - you must delete the key and create a new one. The key starts with `sk-`.
 6. Paste it somewhere safe for a moment (you will move it into the plugin in [Step 4](#step-4-configure-the-plugin)).
 
-![The OpenAI platform API keys page with the Create new secret key button](../images/openai-api-keys-page.png)
-_Figure: the OpenAI API keys page where you create and copy a new secret key._
-
 > **Keep the key secret.** Anyone with this key can spend against your account. Never paste it into a note, a screenshot, or a shared file. The plugin stores it locally on your device - see [Limits and behavior](#limits-and-behavior).
 
 ## Step 3: Set up billing
@@ -87,9 +84,6 @@ _Figure: the Transcription settings configured for the OpenAI Whisper API engine
 3. Open the audio file so it is the **active file** (click its name in the embed, or its File Explorer entry), then run **Transcribe audio** from the command palette - or simply right-click the recording (or its embed/player) and choose **Transcribe audio**, which works regardless of which file is active. (Opening the note that embeds the audio leaves the _note_ active, so the palette command stays hidden.)
 4. A progress dialog opens with a progress bar, an elapsed timer, **Cancel**, and **Minimize** (which sends the job to the status bar so you can keep working - click the status bar to reopen it). Closing the dialog cancels the job.
 5. When it finishes, the transcript is written to the destination you chose. Read it back to confirm it matches what you said.
-
-![The transcription progress dialog with a progress bar, elapsed timer, Cancel, and Minimize](../images/transcription-progress-dialog.png)
-_Figure: the transcription progress dialog while a Whisper API request runs._
 
 If the test works, your key, billing, and model are all correct.
 

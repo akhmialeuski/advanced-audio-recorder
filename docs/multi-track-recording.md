@@ -73,9 +73,6 @@ _Figure: the Output mode dropdown set to Single file._
 
 Each track is saved as its **own separate file** - no mixing happens. You get one file per track, each at your configured format and bitrate, and a link to **each** part file is inserted into the note when the recording stops. This mode keeps memory low (nothing is decoded for a mixdown) and is the recommended choice for long multi-track sessions.
 
-![Multiple-files output mode selected in the Output mode dropdown](images/settings-multi-track-multiple.png)
-_Figure: the Output mode dropdown set to Multiple files._
-
 ### File naming in Multiple files mode
 
 In **Multiple files** mode, each track's file is named from the **source device name** by default, so you can tell the tracks apart at a glance. The name is built as:
@@ -92,9 +89,6 @@ In **Multiple files** mode, each track's file is named from the **source device 
 When **two tracks use the same device**, their source names would be identical and the files would collide. To prevent that, the plugin **appends the track number** to disambiguate them - for example `recording-BuiltinMicrophone-1-...` and `recording-BuiltinMicrophone-2-...`. The suffix is only added to the tracks that actually clash; uniquely named tracks keep their plain source name.
 
 > **There is no toggle for this.** Using the source/device name (with the track number appended to disambiguate) is the **default and only** behavior in the current version. You do not need to enable anything, and there is no "use source names" setting in the UI.
-
-![File Explorer showing several per-track recording files named after their source devices](images/multi-track-files-explorer.png)
-_Figure: per-track files in the File Explorer, each named after its source device._
 
 ---
 

@@ -49,9 +49,6 @@ Before automatic transcription can do anything useful, you need a transcription 
 
 All of this lives under **Settings > Advanced Audio Recorder > Transcription**.
 
-![The Transcription settings section with the Enable transcription and Transcribe after recording toggles](../images/settings-transcription-after-recording.png)
-_Figure: the two toggles at the top of the Transcription section that drive the automatic workflow._
-
 ### 1. Enable transcription
 
 Turn on **Enable transcription**. This reveals the rest of the transcription settings, including the engine picker, language, diarization, output destination, and the **LLM post-processing** subsection. Without this toggle on, nothing transcribes - manually or automatically.
@@ -89,9 +86,6 @@ Record as you normally would - see [Recording](../recording.md) for the full wor
 
 The recording saves, the audio embed link (`![[recording-….webm]]`) is inserted into your active note, and the automatic transcription begins.
 
-![The status bar showing the save-progress stages before transcription begins](../images/status-bar-saving.png)
-_Figure: the recording is flushed and written to the vault first; transcription starts once the save completes._
-
 ### 5. Watch the transcription dialog auto-start
 
 As soon as the first file is saved, the **Transcribe audio** dialog opens and starts running on its own. You did not have to click **Transcribe** - the run auto-starts. The dialog gives you full visibility and control:
@@ -100,9 +94,6 @@ As soon as the first file is saved, the **Transcribe audio** dialog opens and st
 - A live **elapsed-time** counter (`Elapsed m:ss`).
 - A **Cancel** button to stop the job. Closing the dialog while a run is in progress also cancels it.
 - A **Minimize** button to send the job to the status bar and keep working (see [Tips](#tips)).
-
-![The Transcribe audio dialog auto-running with progress bar, elapsed timer, Cancel, and Minimize](../images/transcription-dialog-autostart.png)
-_Figure: the dialog opens and runs by itself after a recording is saved; you can cancel or minimize at any time._
 
 When the job finishes, the dialog closes (or, if you minimized it, the status-bar entry clears) and the transcript is written to the configured destination.
 
@@ -119,8 +110,15 @@ This matters for two reasons:
 
 If the target note cannot be written to - for example the recording was made while no Markdown note was active, so there is no note to insert into - a note-only destination is automatically downgraded to a file so the transcript is never lost. The sidecar transcript file is written next to the audio instead.
 
-![A note showing the recording embed followed by the inserted transcript under its heading](../images/note-with-transcript.png)
-_Figure: the transcript lands under its heading in the same note as the recording, with clickable timecode links._
+The recording link and its transcript end up in the same note, embed first and transcript below it under its heading:
+
+```markdown
+![[recording-1710000000000.webm]]
+
+## Transcript
+
+[[recording-1710000000000.webm#t=0:00]] Thanks for the quick voice note, here is the plan for tomorrow.
+```
 
 ---
 
@@ -149,9 +147,6 @@ Both open the same **Transcribe audio** dialog - the difference is that you pres
 ## Tips
 
 - **Minimize and keep working.** Press **Minimize** in the dialog to send the running job to the status bar. Click the status-bar entry to reopen the full dialog. This is ideal for long recordings on a paid engine - you do not have to sit and watch.
-
-    ![The status bar showing a minimized transcription job with its progress](../images/status-bar-transcription-progress.png)
-    _Figure: a minimized transcription reports its progress in the status bar; click it to restore the dialog._
 
 - **Recording takes precedence in the status bar.** If you start a new recording while a previous transcription is minimized, the status bar shows the **recording controls** instead of the transcription progress, because the recording controls need to be reachable. The transcription keeps running in the background and its status-bar entry returns once recording goes back to idle.
 

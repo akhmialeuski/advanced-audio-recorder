@@ -30,9 +30,6 @@ When **Enable LLM post-processing** is on, the plugin runs the LLM pass at the v
 
 It changes the **text** of the transcript, not the audio. It runs on every transcription while it is enabled - automatic [transcribe-after-recording](use-cases/transcribe-after-recording.md) runs, the **Transcribe audio** command, and the right-click **Transcribe audio** action all go through the same step.
 
-![LLM post-processing settings with the enable toggle, task dropdown, prompt editor, provider, base URL, key, model, and token slider](images/settings-llm-post-processing.png)
-_Figure: the LLM post-processing subsection inside Settings > Transcription._
-
 > **It is a separate, paid API call.** The cloud providers (OpenAI, Anthropic, Google Gemini) bill for the tokens this step uses, on top of the transcription engine's cost. The local whisper.cpp transcription engine is offline, but LLM post-processing always uses one of the three cloud LLM providers.
 
 ---

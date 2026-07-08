@@ -149,7 +149,7 @@ _Figure: The System info modal collects full diagnostics with a copy button._
 
 Learn more: [Troubleshooting](troubleshooting.md) and [Bug reporting guide](BUG_REPORTING_GUIDE.md)
 
-![Audio file context menu showing Audio file info, Convert audio format, Split audio into parts, Clean up audio, Transcribe audio, and Delete actions](images/features-context-menu.png)
+![Audio file context menu showing Audio file info, Convert audio format, Split audio into parts, Clean up audio, Transcribe audio, and Delete actions](images/context-menu-file-explorer.png)
 _Figure: The right-click context menu collects most per-file actions in one place._
 
 ---

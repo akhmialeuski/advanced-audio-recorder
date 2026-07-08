@@ -41,12 +41,6 @@ You can install the plugin from Obsidian's built-in plugin browser (recommended)
 5. Click **Install**.
 6. Click **Enable**.
 
-![Community plugins browser showing Advanced Audio Recorder in the search results with an Install button](images/install-community-plugins-browse.png)
-_Figure: Searching for the plugin in the Community plugins browser._
-
-![The installed plugin entry under Settings > Community plugins > Installed plugins with its toggle enabled](images/install-enabled-plugin.png)
-_Figure: The plugin enabled in the installed-plugins list._
-
 Once enabled, a **microphone icon** appears in the left ribbon and a new **Advanced Audio Recorder** entry appears in your settings.
 
 ### Manual installation
@@ -73,9 +67,6 @@ The plugin records through your operating system's microphone, so the OS must gr
 - **macOS** - open **System Settings > Privacy & Security > Microphone** and enable **Obsidian**. You may need to quit and reopen Obsidian for the change to take effect.
 - **Linux** - make sure your audio server (PipeWire or PulseAudio) exposes the input device and that no other application holds it exclusively. Use your distribution's sound settings to verify the input is active.
 
-![Operating system microphone permission prompt asking whether to allow Obsidian to use the microphone](images/getting-started-mic-permission.png)
-_Figure: The OS-level microphone permission prompt shown on first use._
-
 If recording produces no sound:
 
 1. Confirm the correct **Input device** is selected in **Settings > Advanced Audio Recorder > Audio input** (see [Audio input](settings-reference.md#audio-input)).
@@ -99,16 +90,10 @@ With the plugin enabled and your microphone allowed, record your first clip:
 4. To pause, click **Pause** in the status bar (or run **Pause/resume recording**); the status bar then reads `Recording paused`. Click **Resume** to continue.
 5. To finish, click the ribbon icon again (or run **Start/stop recording** again), or click **Stop** in the status bar.
 
-![Left ribbon showing the microphone icon used to start and stop recording](images/getting-started-ribbon-mic.png)
-_Figure: The microphone icon in the left ribbon._
-
 ![Status bar reading Recording with Pause, Stop, and Add marker buttons and a live input level meter](images/status-bar-recording.png)
 _Figure: The status bar while a recording is in progress._
 
 When you stop, the plugin flushes the audio buffers, assembles the final file, writes it to your save location, and inserts an embed link (`![[filename.ext]]`) into the active note. For longer recordings, saving can take a moment; the status bar shows a progress bar that walks through `Saving... > Flushing buffers... > Assembling audio... > Writing file... > Cleaning up... > Saved`, and the ribbon switches to a **save** icon while saving runs.
-
-![Note showing an automatically inserted audio embed link after a recording was saved](images/getting-started-inserted-link.png)
-_Figure: The audio embed link inserted into the note after saving._
 
 For the full recording workflow - markers, pause/resume, automatic splitting, and crash recovery - see [Recording](recording.md).
 
@@ -126,7 +111,7 @@ For a richer experience, turn on the **Enhanced audio player**:
 
 The enhanced player applies to **audio-only** files. Files that carry a video track, and any file the app cannot decode, keep Obsidian's built-in player. See [Audio player](audio-player.md) for the full control reference, markers and chapters, and timecode links.
 
-![Enhanced audio player showing the waveform seek bar and the transport controls](images/player-waveform-controls.png)
+![Enhanced audio player showing the waveform seek bar and the transport controls](images/player-overview.png)
 _Figure: The enhanced audio player with its waveform seek bar._
 
 ---
@@ -160,9 +145,6 @@ Run through these once to tailor the plugin to your setup. Every item links to t
 6. **(Optional) Verify your setup.** **Settings > Advanced Audio Recorder > Diagnostics > Test recording** records a five-second clip and plays it back without saving anything.
 
 The settings tab opens with a **documentation callout** at the very top - a quick link to these guides, so you never have to hunt through the repository.
-
-![Documentation callout at the top of the Advanced Audio Recorder settings tab linking to the online docs](images/settings-documentation-callout.png)
-_Figure: The documentation callout shown at the top of the settings tab._
 
 ---
 

@@ -24,9 +24,6 @@ Groq runs the same Whisper models OpenAI exposes, but on its own fast inference 
 
 The trade-off is the same as OpenAI's Whisper API: there is **no speaker diarization**, and each request is capped at **25 MB** (the plugin handles larger files automatically - see [What Groq does and does not do](#what-groq-does-and-does-not-do)).
 
-![Settings > Transcription with Engine set to Whisper API and the Groq base URL filled in](../images/usecase-groq-overview.png)
-_Figure: The Whisper API engine pointed at Groq - base URL, key, and model are the only fields you change._
-
 ---
 
 ## Before you start
@@ -49,9 +46,6 @@ This whole setup is the same **Whisper API** engine documented in the [OpenAI / 
 
 The free tier is active immediately; you do not need to add billing to start transcribing.
 
-![The Groq Console sign-in page](../images/usecase-groq-signup.png)
-_Figure: Create or sign in to your Groq account at console.groq.com._
-
 ---
 
 ## Step 2: Create an API key
@@ -60,9 +54,6 @@ _Figure: Create or sign in to your Groq account at console.groq.com._
 2. Click **Create API Key** (Groq may ask you to name the key - call it `obsidian` or similar so you can recognize it later).
 3. **Copy the key immediately.** Groq shows the full key only once. It starts with `gsk_`.
 4. Store it somewhere safe (a password manager). If you lose it, delete the old key and create a new one.
-
-![The Groq Console API Keys page with a Create API Key button](../images/usecase-groq-create-key.png)
-_Figure: Create a key on the Groq Console API Keys page and copy it before closing the dialog._
 
 > Treat the key like a password. Anyone with it can spend against your Groq account.
 
@@ -87,9 +78,6 @@ The exact field labels, order, and conditional rows are described in the [Transc
 | **Whisper API key** | your `gsk_…` key                               | Created in [Step 2](#step-2-create-an-api-key).                                  |
 | **Model**           | `whisper-large-v3` or `whisper-large-v3-turbo` | Pick from the list or add a custom id - see [Step 4](#step-4-pick-a-groq-model). |
 
-![The Transcription settings showing the Whisper API base URL, key field, and model picker](../images/usecase-groq-settings-fields.png)
-_Figure: Enter the Groq base URL, paste the key, and select a Groq Whisper model._
-
 > The **Language** field defaults to `auto` (auto-detect). Set an ISO code such as `en`, `ru`, or `es` if auto-detection picks the wrong language. **Speaker diarization** stays disabled and greyed out for the Whisper API engine - Groq does not return speakers.
 
 ---
@@ -106,9 +94,6 @@ The model picker seeds a few suggested ids and lets you **Add custom model** or 
 
 `whisper-large-v3` and `whisper-large-v3-turbo` are pre-seeded in the model list, so you can usually select one directly. If a model you want is not listed, click **Add custom model**, type the exact id (for example `whisper-large-v3-turbo`), and select it. If Groq later renames or adds a model, use **Add custom model** with the new id; the model catalogue link in settings opens the OpenAI speech-to-text reference (<https://platform.openai.com/docs/guides/speech-to-text>) for the API shape, while Groq's own model list is on the Groq Console.
 
-![The Whisper API model picker with Add custom model and Remove selected actions](../images/usecase-groq-model-picker.png)
-_Figure: Select a seeded Groq model or add a custom id, then remove ones you do not use._
-
 > **Important:** The model must return `verbose_json` **with timestamps**. The plugin relies on timed segments to build clickable timecode links and sidecar files. The large Whisper models above all qualify; OpenAI's newer `gpt-4o-transcribe` family does **not** and is intentionally not offered.
 
 ---
@@ -119,9 +104,6 @@ _Figure: Select a seeded Groq model or add a custom id, then remove ones you do 
 2. With the audio file active, run **Transcribe audio** from the command palette - or enable **Transcribe after recording** in settings so new recordings transcribe automatically.
 3. The transcription progress dialog appears with a progress bar, an elapsed timer, **Cancel**, and **Minimize** (sending the job to the status bar so you can keep working; click the status bar to reopen it).
 4. When it finishes, the transcript is inserted into the note and/or written as a sidecar file, according to your **Transcript output** settings.
-
-![The transcription progress dialog with a progress bar, elapsed timer, Cancel, and Minimize](../images/usecase-groq-progress-dialog.png)
-_Figure: The progress dialog runs the Groq transcription; minimize it to the status bar to keep working._
 
 If the transcript looks right, Groq is configured. For output formatting, destinations, timecode links, and optional LLM cleanup or summary, see [Transcription](../transcription.md) and [LLM post-processing](../llm-post-processing.md).
 

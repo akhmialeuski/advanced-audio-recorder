@@ -20,9 +20,6 @@ This guide helps you diagnose and fix problems with Advanced Audio Recorder. It 
 
 All three diagnostics tools live at the bottom of the settings tab, under **Settings > Advanced Audio Recorder > Diagnostics**.
 
-![The Diagnostics section of the settings tab with Test recording, System info, and Debug mode](images/settings-diagnostics.png)
-_Figure: the Diagnostics section, with the Test recording control, the System info "Show info" button, and the Debug mode toggle._
-
 ---
 
 ## Diagnostics tools
@@ -89,9 +86,6 @@ Notes:
 
 - Leave Debug mode **off** for everyday use - verbose logging adds noise and a small overhead. Turn it on only while reproducing an issue, then turn it back off.
 - If your environment blocks the developer console, capture the System info JSON instead and describe the symptoms in detail; that is usually enough for a first diagnosis.
-
-![The developer console filtered to entries beginning with the AudioRecorder tag](images/diagnostics-debug-console.png)
-_Figure: the developer console showing verbose log lines prefixed with [AudioRecorder] after Debug mode is enabled._
 
 ---
 
@@ -195,9 +189,6 @@ Other tips:
 - **API keys** are stored in the plugin's `data.json` on this device and are never written into diagnostics. Avoid syncing `data.json` to untrusted locations. The local `whisper.cpp` engine keeps everything offline.
 
 See also: [Transcription](transcription.md), [LLM post-processing](llm-post-processing.md), and the per-engine guides: [OpenAI / Whisper API](use-cases/openai-whisper-api-key.md), [Groq](use-cases/groq-whisper-setup.md), [Deepgram](use-cases/deepgram-api-key.md), [Gemini](use-cases/gemini-api-key.md), [Anthropic / Claude](use-cases/anthropic-api-key.md), [Local whisper.cpp](use-cases/local-whisper-cpp.md).
-
-![The transcription progress dialog with a progress bar, elapsed timer, Cancel, and Minimize buttons](images/transcription-progress-dialog.png)
-_Figure: the transcription progress dialog showing the progress bar, elapsed timer, and the Cancel and Minimize buttons._
 
 ### Audio cleanup errors
 

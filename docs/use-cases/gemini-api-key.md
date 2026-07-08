@@ -45,9 +45,6 @@ _Figure: The Transcription settings section after you pick Google Gemini as the 
 4. When the key appears, click **Copy**. The key is a long string; treat it like a password.
 5. Keep the AI Studio tab open until you have pasted the key into Obsidian - for security, Google may not show the full key again later.
 
-![Google AI Studio API keys page with the Create API key button and a generated key](../images/gemini-aistudio-create-key.png)
-_Figure: Creating and copying a Gemini API key in Google AI Studio._
-
 > Your free-tier usage and any billing live in Google AI Studio / Google Cloud. If a request is rejected for quota, check your usage there.
 
 ---
@@ -93,9 +90,6 @@ A few behaviors are specific to Gemini and worth knowing before you transcribe a
 - **Request timeout.** Each request honors the **Request timeout** setting (default 10 minutes, range 1-60). A whole, healthy upload scales its timeout with size; a genuinely hung request is aborted and reported.
 - **Word-level timestamps** appear in **JSON** file output only, not in the in-note transcript.
 
-![Transcription progress dialog with a progress bar, elapsed timer, Cancel, and Minimize buttons](../images/transcription-progress-dialog.png)
-_Figure: The transcription progress dialog; Minimize sends the job to the status bar so you can keep working._
-
 ---
 
 ## Reuse the same key for LLM post-processing
@@ -123,9 +117,6 @@ See the [LLM post-processing guide](../llm-post-processing.md) for the full set 
 2. Make sure Gemini is the selected engine and your key is pasted in.
 3. With an audio file active, run **Transcribe audio** from the command palette (this command appears only when transcription is enabled and the active file is audio).
 4. Watch the progress dialog. When it finishes, the transcript is inserted into the note and/or written to a sidecar file, depending on your **Transcript output** settings.
-
-![Status bar showing a minimized transcription job in progress](../images/status-bar-transcribing.png)
-_Figure: A transcription job minimized to the status bar; click it to reopen the dialog._
 
 If a transcript appears with speaker labels (when diarization is on) and clickable timecodes, Gemini is working.
 

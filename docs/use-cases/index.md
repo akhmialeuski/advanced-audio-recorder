@@ -9,9 +9,6 @@ This is the hub for the step-by-step guides. The reference docs describe _what_ 
 - [Which engine should I choose?](#which-engine-should-i-choose)
 - [Related reference docs](#related-reference-docs)
 
-![The Advanced Audio Recorder settings tab open on the Transcription section, with the engine dropdown and API key field visible](../images/use-cases-overview.png)
-_Figure: Most how-to guides end in the same place - the Transcription section of the settings tab, where you pick an engine and paste a key._
-
 ## Where to start
 
 - **You just want to dictate or record** - you do not need any of these guides. See [Getting started](../getting-started.md) and [Recording](../recording.md).
@@ -33,8 +30,7 @@ Cloud transcription engines (and the LLM post-processing providers) authenticate
 | [Google Gemini](gemini-api-key.md)                | Google AI Studio         | The **Gemini** engine for long files and LLM reuse.       |
 | [Anthropic / Claude](anthropic-api-key.md)        | Anthropic                | **LLM post-processing** with Claude (clean up/summarize). |
 
-![A provider console showing an API key being copied, next to the plugin's API key field where it is pasted](../images/use-cases-api-key-flow.png)
-_Figure: Every API-key guide follows the same shape - generate the key on the provider site, then paste it into the matching field in the Transcription settings._
+Every API-key guide follows the same shape: generate the key on the provider's site, then paste it into the matching field in the Transcription settings.
 
 > **Heads-up on shared keys.** The plugin reuses keys where the same vendor serves both jobs: the OpenAI **LLM post-processing** provider reuses your Whisper API key, and the Gemini LLM provider reuses your Gemini key. Anthropic/Claude has its own dedicated key. See [LLM post-processing](../llm-post-processing.md) for details.
 
@@ -48,7 +44,7 @@ _Figure: Every API-key guide follows the same shape - generate the key on the pr
 
 The **Local whisper.cpp** engine runs a binary you install yourself and a GGML model file you download once. Nothing leaves your machine. This guide covers the binary path, the model path (an absolute path to a GGML `.bin` file), extra CLI arguments, and which model size to pick.
 
-![The Transcription settings with the Local whisper.cpp engine selected, showing the binary path, model path, and extra CLI args fields](../images/use-cases-whisper-cpp-settings.png)
+![The Transcription settings with the Local whisper.cpp engine selected, showing the binary path, model path, and extra CLI args fields](../images/local-whisper-settings-engine.png)
 _Figure: The Local whisper.cpp engine adds binary-path, model-path, and extra-args fields instead of an API key._
 
 ---
@@ -62,8 +58,7 @@ These guides combine several features into one end-to-end procedure.
 | [Transcribe automatically after recording](transcribe-after-recording.md) | Turn on **Transcribe after recording** so every clip produces a transcript. |
 | [Record and summarize a meeting](meeting-notes-workflow.md)               | Record a meeting, transcribe it with diarization, and add an LLM summary.   |
 
-![A note containing an embedded recording, its transcript, and an LLM-generated summary heading below it](../images/use-cases-meeting-result.png)
-_Figure: The meeting-notes workflow produces a single note with the recording, a diarized transcript, and an LLM summary._
+The meeting-notes workflow produces a single note with the recording, a diarized transcript, and an LLM summary - see the finished example in that guide.
 
 ---
 

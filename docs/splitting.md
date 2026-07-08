@@ -56,8 +56,14 @@ How exactly a part lands on the configured boundary depends on the recording for
 - **Not for merged multi-track.** A multi-track recording with **Output mode** set to `Single file` is mixed into one file and cannot be auto-split; the plugin shows a notice and saves the single merged file. To auto-split a multi-track session, use **Multiple files** output mode, where each track is recorded independently. See [Multi-track recording](multi-track-recording.md).
 - **Changes apply next session.** Split settings changed during an active recording take effect on the **next** recording, not the one in progress.
 
-![A note showing four embedded audio links inserted after an automatic split: recording-part1 through recording-part4](images/splitting-auto-part-links.png)
-_Figure: after an automatically split recording stops, an embed link for every part is inserted into the active note._
+After an automatically split recording stops, an embed link for every part is inserted into the active note:
+
+```markdown
+![[lecture-part1.webm]]
+![[lecture-part2.webm]]
+![[lecture-part3.webm]]
+![[lecture-part4.webm]]
+```
 
 ---
 
@@ -128,8 +134,19 @@ How the replacement is laid out depends on whether the link is alone on its line
 
 If you chose **Delete source file** but some links could not be updated (a stale reference was skipped), the plugin **keeps the source file** rather than leave those links broken, and shows a notice explaining why.
 
-![A note before and after a split, showing one source embed replaced by three stacked part embeds when alone on a line](images/splitting-link-replacement.png)
-_Figure: a source embed alone on its line is replaced by one embed per part, each on its own line._
+A source embed alone on its line is replaced by one embed per part, each on its own line. Before the split:
+
+```markdown
+![[meeting.webm]]
+```
+
+After splitting into three parts with **Replace source link**:
+
+```markdown
+![[meeting-part1.webm]]
+![[meeting-part2.webm]]
+![[meeting-part3.webm]]
+```
 
 ---
 

@@ -44,9 +44,6 @@ Player settings apply live: changing **Show waveform** or **Markers and chapters
 
 At the very top of the settings tab is a callout with a book icon linking to the online documentation, so the guides and use-case walkthroughs are one click away instead of buried in the GitHub repository.
 
-![Documentation callout at the top of the Advanced Audio Recorder settings tab with a book icon and an Open the documentation link](images/settings-documentation-callout.png)
-_Figure: The documentation callout pinned above the first settings section._
-
 | Control                    | What it does                                                                 | Options / range | Default |
 | -------------------------- | ---------------------------------------------------------------------------- | --------------- | ------- |
 | **Open the documentation** | Opens the plugin's `docs/` folder on GitHub in your browser (a static link). | Link            | -       |
@@ -57,7 +54,7 @@ _Figure: The documentation callout pinned above the first settings section._
 
 Pick the microphone and sample rate used for single-track recordings. The device dropdown auto-refreshes when you plug or unplug a device while the tab is open. See [Recording](recording.md) for how these are used.
 
-![Audio input settings section showing the input device dropdown and the sample rate dropdown](images/settings-audio-input.png)
+![Audio input settings section showing the input device dropdown and the sample rate dropdown](images/features-settings-overview.png)
 _Figure: The Audio input section with the device picker and sample-rate selector._
 
 | Setting          | What it does                                                                                                                                                                                                                                                                         | Options / range                                                   | Default                                                                                                                |
@@ -71,7 +68,7 @@ _Figure: The Audio input section with the device picker and sample-rate selector
 
 Choose the final file format and quality for recordings, and how conversions handle the source file and its links. Offline formats are labelled `(offline)` in the dropdown. See [Formats and containers](formats.md) and [File operations](file-operations.md).
 
-![Output format settings section with recording format dropdown, bitrate dropdown, read-only output summary, and conversion toggles](images/settings-output-format.png)
+![Output format settings section with recording format dropdown, bitrate dropdown, read-only output summary, and conversion toggles](images/features-settings-overview.png)
 _Figure: The Output format section, including the read-only Output summary line._
 
 | Setting                            | What it does                                                                                             | Options / range                                             | Default             |
@@ -88,7 +85,7 @@ _Figure: The Output format section, including the read-only Output summary line.
 
 Decide where recordings are saved, what they are named, and where the embed link is inserted. See [Recording](recording.md) and [File operations](file-operations.md).
 
-![File storage settings section showing save folder, save near active file toggle, file prefix, and insert at original position toggle](images/settings-file-storage.png)
+![File storage settings section showing save folder, save near active file toggle, file prefix, and insert at original position toggle](images/features-settings-overview.png)
 _Figure: The File storage section. The Active file subfolder field appears only when Save near active file is on._
 
 | Setting                              | What it does                                                                                                                                                                      | Options / range                      | Default     |
@@ -104,9 +101,6 @@ _Figure: The File storage section. The Active file subfolder field appears only 
 ## Audio splitting
 
 Split a long recording into fixed-duration parts, and set the defaults the manual split dialog starts from. Auto-split is desktop only and is not applied to merged multi-track recordings. See [Splitting](splitting.md).
-
-![Audio splitting settings section with the auto-split toggle, part duration slider, part name suffix field, and delete source toggle](images/settings-audio-splitting.png)
-_Figure: The Audio splitting section with the Part duration slider._
 
 | Setting                            | What it does                                                                                                                                                                                                 | Options / range                          | Default |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------- | ------- |
@@ -152,9 +146,6 @@ _Figure: The Audio player section with the two window toggles revealed._
 
 Turn recordings (and existing audio files) into text. Only **Enable transcription** is visible until you turn it on; then the engine fields, transcript output, and LLM sub-section appear. The fields below the engine dropdown change with the selected **Engine**. See [Transcription](transcription.md) for the full feature guide and [Speakers and diarization](transcription.md#speakers-and-diarization) for diarization behavior.
 
-![Transcription settings section with enable toggle, transcribe after recording toggle, engine dropdown, language field, diarization toggle, and word timestamps toggle](images/settings-transcription-core.png)
-_Figure: The shared Transcription controls shown for every engine._
-
 These controls are shown for every engine (once transcription is enabled), except **Request timeout**, which is hidden for Local whisper.cpp:
 
 | Setting                        | What it does                                                                                                                                                                                                                             | Options / range                                                                          | Default     |
@@ -171,9 +162,6 @@ These controls are shown for every engine (once transcription is enabled), excep
 
 Shown when **Engine** is **Whisper API (OpenAI-compatible)**. Works with OpenAI and any compatible host (for example Groq) by setting the base URL, key, and model. The 25 MB per-request limit is enforced by the API; files at or under it are uploaded in their original container, while larger files are resampled to 16 kHz mono, split into upload-sized WAV chunks, and stitched onto one timeline. No diarization. See [OpenAI Whisper API key](use-cases/openai-whisper-api-key.md) and [Groq Whisper setup](use-cases/groq-whisper-setup.md).
 
-![Whisper API engine fields with upload chunk size slider, base URL, API key, and model picker](images/settings-transcription-whisper.png)
-_Figure: The Whisper API engine fields._
-
 | Setting                  | What it does                                                                                                                                                 | Options / range                                                                                                 | Default                     |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- | --------------------------- |
 | **Upload chunk size**    | Megabytes per WAV chunk when a recording is too large to upload whole. Files under the limit are sent untouched. The API limit is 25 MB.                     | Slider, 1-24 MB                                                                                                 | 24 MB                       |
@@ -187,9 +175,6 @@ Every model picker in this tab (Whisper, Deepgram, Gemini, and the LLM model bel
 
 Shown when **Engine** is **Deepgram**. Deepgram's official pre-recorded API. Files up to 2 GB are sent whole, so diarization keeps consistent speaker numbering across the entire recording. A free account includes a starter credit, then pay-as-you-go. See [Deepgram API key](use-cases/deepgram-api-key.md).
 
-![Deepgram engine fields with base URL, API key, and model picker](images/settings-transcription-deepgram.png)
-_Figure: The Deepgram engine fields._
-
 | Setting               | What it does                                                                                                                              | Options / range                                                 | Default                       |
 | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | ----------------------------- |
 | **Deepgram base URL** | Deepgram API base.                                                                                                                        | URL                                                             | `https://api.deepgram.com/v1` |
@@ -199,9 +184,6 @@ _Figure: The Deepgram engine fields._
 ### Engine: Google Gemini
 
 Shown when **Engine** is **Google Gemini**. Google's multimodal `generateContent` plus the File API. Files up to 2 GB are uploaded whole. Containers Gemini does not accept (for example `webm`, `m4a`) are decoded to 16 kHz mono WAV first. Recordings longer than 15 minutes are split into parts and stitched; a diarized split resets speaker numbering and surfaces a warning. See [Gemini API key](use-cases/gemini-api-key.md).
-
-![Gemini engine fields with base URL, API key, and model picker](images/settings-transcription-gemini.png)
-_Figure: The Google Gemini engine fields._
 
 | Setting             | What it does                                                                        | Options / range                                                                                           | Default                                     |
 | ------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
@@ -213,9 +195,6 @@ _Figure: The Google Gemini engine fields._
 
 Shown when **Engine** is **Local whisper.cpp (desktop)**. Runs a local `whisper.cpp` binary fully offline - no network request, so **Request timeout** is hidden and there is no diarization. See [Local whisper.cpp](use-cases/local-whisper-cpp.md).
 
-![Local whisper.cpp engine fields with binary path, model path, and extra arguments](images/settings-transcription-local-whisper.png)
-_Figure: The Local whisper.cpp engine fields._
-
 | Setting                     | What it does                                                                                                                           | Options / range                                                                                                                         | Default   |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | **whisper.cpp binary path** | Absolute path to the `whisper.cpp` executable.                                                                                         | File path                                                                                                                               | - (empty) |
@@ -225,9 +204,6 @@ _Figure: The Local whisper.cpp engine fields._
 ### Transcript output
 
 Shown for every engine, below the engine fields. Controls where the transcript goes and how it is formatted in the note. The **File format** dropdown appears only when **Destination** is not "Insert into note". The speaker-related controls (**Include speakers**, **Merge speaker turns**, **Speaker format**) are disabled and greyed out whenever diarization is not in effect - that is, with an engine that cannot diarize, or with diarization turned off - because there are no speaker labels for them to act on.
-
-![Transcript output settings with destination dropdown, file format, note heading, timestamp toggles, speaker toggles, and the format templates](images/settings-transcript-output.png)
-_Figure: The Transcript output controls and template fields._
 
 | Setting                        | What it does                                                                                                                                                      | Options / range                                                                        | Default                        |
 | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------ |
@@ -245,9 +221,6 @@ _Figure: The Transcript output controls and template fields._
 ### LLM post-processing
 
 Sub-section inside Transcription, below Transcript output. Optionally pass the transcript through an LLM to clean up, summarize, or apply a custom instruction. Only **Enable LLM post-processing** is visible until it is on; then the task, prompt, provider, key, model, and token controls appear. The prompt field changes with the **Task**, and the API key field and model picker change with the **LLM provider**. See [LLM post-processing](llm-post-processing.md) and [Anthropic API key](use-cases/anthropic-api-key.md).
-
-![LLM post-processing settings with enable toggle, task dropdown, prompt editor, provider dropdown, base URL, API key, model picker, and max output tokens slider](images/settings-llm-post-processing.png)
-_Figure: The LLM post-processing sub-section with the Clean up task selected._
 
 | Setting                                        | What it does                                                                                                                                                                                                              | Options / range                                                                                                                                                                                                                                                    | Default                                                |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------ |
@@ -267,9 +240,6 @@ _Figure: The LLM post-processing sub-section with the Clean up task selected._
 ## Audio processing & feedback
 
 Control the browser's input processing applied while recording, plus the live recording feedback shown in the status bar and on mobile. These input filters are applied during recording (and to the diagnostics test recording), unlike the after-the-fact [Audio cleanup](audio-cleanup.md) action. See [Recording](recording.md).
-
-![Audio processing and feedback settings with noise suppression, echo cancellation, automatic gain control, input level meter, recording stats, and mobile recording banner toggles](images/settings-audio-processing-feedback.png)
-_Figure: The Audio processing & feedback section._
 
 | Setting                     | What it does                                                                          | Options / range | Default |
 | --------------------------- | ------------------------------------------------------------------------------------- | --------------- | ------- |
@@ -300,9 +270,6 @@ _Figure: The Audio cleanup defaults, each a slider-plus-toggle pair._
 ## Diagnostics
 
 Tools for verifying your setup and gathering information for bug reports. See [Troubleshooting](troubleshooting.md) and the [Bug reporting guide](BUG_REPORTING_GUIDE.md).
-
-![Diagnostics settings with the Start test button, Show info button, and Debug mode toggle](images/settings-diagnostics.png)
-_Figure: The Diagnostics section._
 
 | Setting            | What it does                                                                                                                                                                                                                                                                                                                                                                                                       | Options / range         | Default |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------- | ------- |

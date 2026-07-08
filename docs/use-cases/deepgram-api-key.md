@@ -33,9 +33,6 @@ If you only ever record a single speaker and want a fully free, offline option, 
 
 A new account includes a **free starter credit**, so you do not need to add a payment method before your first transcription. You can add billing later when the starter credit runs out.
 
-![Deepgram Console sign-up page in a web browser](../images/use-case-deepgram-signup.png)
-_Figure: The Deepgram Console sign-up page at console.deepgram.com/signup._
-
 ## Step 2: Create an API key
 
 1. In the **Deepgram Console**, open the **API Keys** page from the left-hand navigation.
@@ -43,9 +40,6 @@ _Figure: The Deepgram Console sign-up page at console.deepgram.com/signup._
 3. Give the key a recognizable name, such as `obsidian-advanced-audio-recorder`.
 4. Create the key, then **copy it immediately**. Deepgram shows the full key value **only once** - if you navigate away without copying it, you must create a new one.
 5. Paste the key somewhere safe for the next step (you will put it into the plugin's settings).
-
-![Deepgram Console API Keys page with a Create a New API Key button](../images/use-case-deepgram-api-keys.png)
-_Figure: The API Keys page in the Deepgram Console, where you create and copy a key._
 
 Treat the key like a password. Anyone who has it can spend your Deepgram credit. If a key leaks, return to the **API Keys** page and revoke it.
 
@@ -97,13 +91,14 @@ Confirm everything works end to end with a short clip that has two distinct voic
 4. A progress dialog opens with a progress bar, an elapsed timer, **Cancel**, and **Minimize**. Let it finish.
 5. Read the transcript. With diarization on, lines are grouped and labelled by speaker - you should see at least two distinct speakers (for example **Speaker 1** and **Speaker 2**, rendered per your **Speaker format**).
 
-![Transcription progress dialog with a progress bar, elapsed timer, Cancel, and Minimize buttons](../images/transcription-progress-dialog.png)
-_Figure: The transcription progress dialog; click Minimize to send the job to the status bar and keep working._
+A working diarized transcript looks like this:
+
+```markdown
+[[interview.webm#t=0:00]] **Speaker 1** So, tell me a bit about the project you're working on.
+[[interview.webm#t=0:05]] **Speaker 2** Sure, it's a plugin for recording and transcribing audio in Obsidian.
+```
 
 If both speakers appear with their own labels, diarization is working. If everything is attributed to one speaker, see [Troubleshooting](#troubleshooting).
-
-![A diarized transcript in a note showing two labelled speakers with timestamps](../images/use-case-deepgram-diarized-transcript.png)
-_Figure: A finished diarized transcript with two speakers labelled._
 
 ## Choosing a model
 

@@ -26,9 +26,6 @@ The plugin does not assign a default hotkey to any command, so if you want a key
 
 The moment you start, the plugin captures the **active note and cursor position** so the finished audio link can be placed exactly where you began - see [Insert at original position](#insert-at-original-position) for when this matters. A short `Recording started` notice confirms the session is live.
 
-![Ribbon microphone icon highlighted in the Obsidian left sidebar](images/ribbon-microphone-icon.png)
-_Figure: The microphone icon in the left ribbon starts and stops a recording._
-
 If the recording cannot start, the plugin shows a specific notice instead of failing silently:
 
 | Cause                                       | Notice                                                                   |
@@ -45,9 +42,6 @@ If recording does not work, run **Test recording** from settings and check **Sys
 ## Switching the input device
 
 You do not have to open the settings tab to change which microphone records. Run the **Select audio input device** command from the command palette (`Ctrl/Cmd + P`) and a quick-pick modal opens, listing every input the plugin detected. Choose one and it is saved to your settings **immediately** - a confirmation notice reports the device that is now selected, and the next recording uses it.
-
-![The Select audio input device modal listing detected microphones](images/modal-select-input-device.png)
-_Figure: The Select audio input device modal listing detected microphones._
 
 This is the quickest way to switch mics between recordings - for example, moving from a laptop's built-in microphone to a headset before a meeting. The same choice is also available, alongside the sample rate, under [Audio input settings](settings-reference.md#audio-input).
 
@@ -77,9 +71,6 @@ The **Add marker** button only renders when the **Markers and chapters** option 
 ## Live feedback
 
 Alongside the control buttons, the status bar shows live indicators that confirm the microphone is working and the recording is growing. Both are configurable under **Settings > Audio processing & feedback**.
-
-![Status bar input level meter reacting to microphone input next to the elapsed time and size](images/status-bar-live-feedback.png)
-_Figure: The live input meter, elapsed time, and recorded size update continuously while you record._
 
 - **Input level meter** - a live VU meter that fills in response to the microphone signal, so you can see at a glance that sound is actually being picked up. Controlled by **Input level meter** (default On).
 - **Recording stats** - two figures that update continuously:
@@ -125,9 +116,6 @@ You can pause a recording without losing progress and resume it later in the sam
 
 The **Pause/resume recording** command is available only while a recording is active; running it with no session shows `No active recording to pause or resume`.
 
-![Status bar in the paused state showing Resume and Stop buttons](images/status-bar-paused.png)
-_Figure: While paused the status bar shows Resume and Stop, and the elapsed timer stops advancing._
-
 Paused intervals do not count toward the elapsed time, and the recorded size stops growing while paused. You can add markers while paused, too.
 
 ---
@@ -160,9 +148,6 @@ For longer recordings the save can take a noticeable moment. The status bar show
 
 While saving is in progress the ribbon icon switches from the recording indicator to a **save** icon, then returns to the plain microphone once the file is written.
 
-![Status bar save progress bar at the Writing file stage with the ribbon save icon](images/status-bar-saving.png)
-_Figure: The save-progress bar and the ribbon save icon shown while a recording is being written._
-
 A recording that is slow to save is expected behaviour for long captures, not an error. For multi-part recordings, see [Automatic splitting](#automatic-splitting); for the full list of output formats and how each is encoded, see [Formats](formats.md).
 
 ---
@@ -170,9 +155,6 @@ A recording that is slow to save is expected behaviour for long captures, not an
 ## Insert at original position
 
 By default the embed link is inserted at the cursor in whatever note is active when the recording **stops**. Enable **Insert at original position** (under **Settings > File storage**, default Off) to instead remember the note and cursor position from when the recording **started** and place the link there - even if you scrolled, switched notes, or navigated away during the recording.
-
-![File storage settings showing the Insert at original position toggle](images/settings-insert-at-original-position.png)
-_Figure: The Insert at original position toggle in the File storage settings._
 
 The position is captured as a snapshot at the moment recording begins. One caveat follows from that: if you **edit the original note while recording** - adding or deleting text above the saved spot - the remembered position can shift, because it is an offset into the note as it was when recording started. For predictable placement, avoid editing the target note's earlier content during a recording, or simply leave this option off and let the link land at your cursor on stop.
 
@@ -183,9 +165,6 @@ This setting works together with the [file storage options](file-operations.md) 
 ## Crash recovery
 
 Desktop recordings are crash-resilient. While a session is active the plugin journals its temporary segment files in `recording-journal.json` (in the plugin folder) and flushes audio to disk as it goes. If Obsidian crashes, the machine loses power, or the plugin is disabled mid-recording, the next launch detects the interrupted session and opens a recovery dialog.
-
-![Recovery dialog listing an interrupted session with Recover audio, Discard, and Decide later buttons](images/modal-crash-recovery.png)
-_Figure: The recovery dialog offered on the next launch after an interrupted recording._
 
 The dialog lists each interrupted session (start time, track count, and number of temporary segments) and offers three choices:
 
@@ -207,9 +186,6 @@ Notes on what can and cannot be recovered:
 ## Mobile recording banner
 
 Advanced Audio Recorder is a **desktop-only** plugin. The **Mobile recording banner** option (under **Settings > Audio processing & feedback**, default On) governs a floating on-screen banner intended for mobile, where there is no ribbon icon to show that a recording is in progress. When shown, the banner displays a recording indicator, the elapsed time, and a stop button so the session is always visible and stoppable.
-
-![Floating recording banner with a red dot, elapsed time, and a stop button](images/recording-banner.png)
-_Figure: The floating recording banner, which surfaces an active recording where the ribbon is unavailable._
 
 On the desktop app the ribbon indicator and the status bar already make the recording obvious, so the banner is rarely needed there; the toggle remains available if you prefer the extra cue.
 

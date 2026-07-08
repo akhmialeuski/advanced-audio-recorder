@@ -29,9 +29,6 @@ The default Claude model is **`claude-opus-4-8`**. Requests use Anthropic's Mess
 
 > Anthropic charges per token. The plugin makes one request per transcript (long transcripts may be split into several requests), so cost depends on the length of your recordings and how often you transcribe. Start with a small credit and watch your usage.
 
-![Settings tab with LLM post-processing set to the Anthropic (Claude) provider, showing the Anthropic key field, base URL, and model picker](../images/use-case-anthropic-settings.png)
-_Figure: The Anthropic provider configured under Settings > Transcription > LLM post-processing._
-
 ## Before you start
 
 | Requirement               | Detail                                                                                  |
@@ -50,9 +47,6 @@ _Figure: The Anthropic provider configured under Settings > Transcription > LLM 
 2. Sign up with an email address or a Google account, and verify your email.
 3. Complete any organization setup prompts (you can use the personal default).
 
-![Anthropic Console sign-in page](../images/use-case-anthropic-console-signin.png)
-_Figure: The Anthropic Console landing page where you create your account._
-
 ## Step 2: Set up billing and credits
 
 The API requires prepaid credit or a billing method before it will answer requests.
@@ -60,9 +54,6 @@ The API requires prepaid credit or a billing method before it will answer reques
 1. In the Console, open **Settings > Billing** (or **Plans & Billing**).
 2. Add a payment method and purchase credit, or enable pay-as-you-go.
 3. Confirm a positive balance is shown.
-
-![Anthropic Console billing page showing a credit balance](../images/use-case-anthropic-billing.png)
-_Figure: Add credit on the Billing page so the API can answer requests._
 
 > If you skip this step, the plugin's requests fail with a credit/balance error. See [Troubleshooting](#troubleshooting).
 
@@ -72,9 +63,6 @@ _Figure: Add credit on the Billing page so the API can answer requests._
 2. Click **Create Key**, give it a recognizable name (e.g. `obsidian-aar`), and create it.
 3. **Copy the key now.** Anthropic shows the full key only once. Keys typically start with `sk-ant-`.
 4. Store it somewhere safe. If you lose it, delete it and create a new one.
-
-![Anthropic Console API Keys page with a Create Key button](../images/use-case-anthropic-create-key.png)
-_Figure: Generate a new key on the API Keys page and copy it immediately._
 
 > Treat the key like a password. Anyone who has it can spend your credit. Never paste it into a note, commit it to a repository, or share it. The plugin stores it locally in `data.json` (see [Settings summary](#settings-summary)).
 
@@ -89,9 +77,6 @@ _Figure: Generate a new key on the API Keys page and copy it immediately._
 7. Pick a **model** (see [Choosing a model](#choosing-a-model)).
 8. Pick a **Task** and review its prompt (see [Choosing a task](#choosing-a-task)).
 9. Optionally adjust **Max output tokens** (default `4096`, range `512`-`32000`).
-
-![LLM post-processing subsection expanded with provider Anthropic, the Anthropic key field, model picker, and Max output tokens slider](../images/use-case-anthropic-llm-fields.png)
-_Figure: The Anthropic provider fields inside the LLM post-processing subsection._
 
 > **Shared vs. own keys.** OpenAI's LLM provider reuses the Whisper API key, and Gemini's LLM provider reuses the Gemini transcription key. **Anthropic does not** - it has a dedicated key field, because there is no Anthropic transcription engine to borrow a key from. See [Shared API keys](../llm-post-processing.md#shared-api-keys).
 
@@ -108,9 +93,6 @@ The model picker is seeded with the current Claude family and is editable - use 
 - **Catalogue:** the authoritative, current Claude model list is at `https://docs.anthropic.com/en/docs/about-claude/models`.
 - Model ids change over time. If a seeded id is retired, use **Add custom model** to enter the new id exactly as Anthropic publishes it.
 
-![Model picker dropdown for the Anthropic provider with Add custom model and Remove selected actions](../images/use-case-anthropic-model-picker.png)
-_Figure: Pick a Claude model, or add a custom id with the catalogue link._
-
 ## Choosing a task
 
 The **Task** dropdown selects what Claude does with the transcript. Each task has its own editable prompt.
@@ -124,9 +106,6 @@ The **Task** dropdown selects what Claude does with the transcript. Each task ha
 - The cleanup and summary prompts are editable but ship with sensible defaults. The plugin appends the transcript's language to them automatically, so the result stays in the source language.
 - The custom instruction is sent **verbatim** in a larger editor - include any language, tone, or formatting directives yourself.
 
-![Task dropdown set to Clean up with the editable prompt field visible](../images/use-case-anthropic-task.png)
-_Figure: Choose Clean up, Summarize, or Custom; each has its own editable prompt._
-
 For a deeper explanation of the tasks and prompts, see [LLM post-processing](../llm-post-processing.md).
 
 ## Step 5: Verify on a sample transcript
@@ -136,9 +115,6 @@ For a deeper explanation of the tasks and prompts, see [LLM post-processing](../
 3. Open it, then run **Transcribe audio** from the command palette - or right-click the file in the **File Explorer** and choose the transcription action.
 4. Watch the progress dialog. Transcription runs first; the final band of the progress bar is the LLM post-processing pass.
 5. When it finishes, open the resulting note/transcript and confirm Claude cleaned up or summarized the text as expected.
-
-![Transcription progress dialog showing the LLM post-processing stage near the end of the bar](../images/use-case-anthropic-progress.png)
-_Figure: The progress dialog; the final segment of the bar is Claude's post-processing pass._
 
 > If the result looks truncated or empty, raise **Max output tokens** and try again - Claude's reply is capped by that value. See [Troubleshooting](#troubleshooting).
 

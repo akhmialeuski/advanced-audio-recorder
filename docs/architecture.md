@@ -42,6 +42,7 @@ flowchart TB
     subgraph Play["Player subsystem"]
         REG[EnhancedPlayerRegistrar]
         PLY[AudioPlayer]
+        MKS[MediaKindStore]
     end
 
     subgraph Mark["Markers domain"]
@@ -92,6 +93,7 @@ flowchart TB
     RM --> VAULT
 
     REG --> PLY
+    REG --> MKS
     PLY --> MRK
     REG --> WS
 
@@ -111,9 +113,6 @@ What to notice:
 - **One `MarkerStore` is shared** by the recording subsystem (which writes markers captured during a session) and the player subsystem (which reads and edits them), so their cache and serialized write chain stay unified. Markers are a standalone domain (`src/markers/`), owned by neither subsystem.
 - **File actions are defined once, in a shared action registry** (`src/actions/`). The same declarative list - info, convert, split, clean up, transcribe, delete - is rendered into the file and editor context menus and registered as palette commands, so every action can also be assigned a hotkey. See [File operations](file-operations.md).
 - **Settings persist to `data.json`** with an automatic `data.json.bak` next to it, described in [Settings load and backup](#settings-load-and-backup).
-
-![System overview diagram with Obsidian host, plugin entry, and the recording, player, transcription, cleanup, settings, and UI subsystems](images/architecture-system-overview.png)
-_Figure: high-level component map showing how the plugin entry point coordinates each subsystem and the Obsidian host._
 
 ---
 
@@ -150,9 +149,6 @@ Notes on the lifecycle:
 - **Commands come from two places.** Four session commands are registered directly (`Start/stop recording`, `Pause/resume recording`, `Add marker/chapter at current position` - gated on markers being enabled and a session being active - and `Select audio input device`), and the shared action registry adds the rest: `Add bookmark at current recording position` and `Add chapter at current recording position` (same recording gate), plus one command per file action (`Audio file info`, `Convert audio format`, `Split audio into parts`, `Clean up audio`, `Transcribe audio`, `Delete recording`), each gated on the active file being audio. No default hotkeys are assigned - see [Recording](recording.md) and [Settings reference](settings-reference.md).
 - **Recovery runs after layout is ready**, never during load, and a failure there is caught and logged so it can never break the plugin.
 - **Unload restores Obsidian's native embeds first** (so disabling the plugin never leaves overridden media embeds behind), then flushes recording buffers best-effort. The crash-recovery journal is deliberately _not_ ended on unload - an unload mid-recording is exactly the case the next launch should offer to recover.
-
-![Plugin lifecycle diagram showing the onload registration order and the onunload teardown order](images/architecture-plugin-lifecycle.png)
-_Figure: the ordered steps performed when the plugin loads and when it unloads._
 
 ---
 
@@ -210,9 +206,6 @@ Key decisions in this pipeline:
 - **Multi-track output.** In `Single file` mode the tracks are mixed into one file; in `Multiple files` mode each track is saved separately, with the source/device name (and the track number appended to disambiguate when tracks share a device). See [Multi-track recording](multi-track-recording.md).
 - **Transcribe-on-save.** When `Transcribe after recording` is enabled, the hook transcribes only the first saved file - a multi-track session records the same audio per track, and an auto-split session would otherwise fire one request per part. See [Transcription](transcription.md) and [Transcribe after recording](use-cases/transcribe-after-recording.md).
 
-![Recording pipeline sequence from start through capture, finalize, write, and the transcribe-on-save hook](images/architecture-recording-pipeline.png)
-_Figure: the sequence of calls from pressing record to writing the file and firing the post-save hook._
-
 ---
 
 ## Transcription pipeline
@@ -261,9 +254,6 @@ How the stages map to behavior:
 - **LLM post-processing is best-effort.** A failure falls back to the raw transcript rather than discarding completed (and possibly already-billed) work. See [LLM post-processing](llm-post-processing.md).
 - **Output is rendered then written.** Markdown is built with optional clickable `#t=` timecode links, and `runTranscription.ts` writes the sidecar file and/or inserts into the note per the `Destination` setting. If in-note insertion is the only requested destination but it fails (note not open, reading mode), a sidecar file is written as a safety net so a completed transcript is never silently dropped.
 
-![Transcription pipeline flowchart from reading audio through preparation, the four engines, stitching, optional LLM post-processing, formatting, and destinations](images/architecture-transcription-pipeline.png)
-_Figure: the decision flow that turns an audio file into a written transcript across the four engines._
-
 ---
 
 ## Enhanced player takeover
@@ -299,9 +289,6 @@ What this buys you:
 - **Markers live in a sidecar.** Each recording's bookmarks and chapters are stored in a `recording.ext.markers.json` sidecar next to it; the registrar moves the sidecar on rename and removes it on delete so markers stay attached. Edits are allowed in Live Preview and read-only in Reading view. See [Markers and chapters](audio-player.md#markers-and-chapters).
 - **Timecode links seek a live player.** A document-level click handler intercepts `#t=` links that point to an audio file with a live player and seeks it instead of opening the file.
 
-![Enhanced player takeover flowchart deciding between the enhanced player and the native embed, then waveform decode and markers](images/architecture-player-takeover.png)
-_Figure: how the registrar classifies each embed and builds the enhanced player, waveform, and markers._
-
 ---
 
 ## Crash recovery
@@ -329,9 +316,6 @@ Important details:
 - **Pruning self-clears.** `collectRecoverableSessions` drops segments (and tracks, and sessions) whose files no longer exist and persists the pruned journal, so a crash before the first flush self-clears without ever prompting. A corrupt journal is deleted; a journal written by a newer plugin version is left untouched so a downgrade never destroys recovery data it cannot interpret.
 - **MediaRecorder header rule.** A compressed track is only playable from its first segment (which carries the container header); if that segment was lost, the track is marked discard-only rather than producing an unplayable file.
 - **Recover, Discard, Decide later.** Recover reassembles surviving segments and removes the consumed temp files. Discard deletes the temp segments but never touches finalized auto-split part files. Decide later leaves everything in place and the prompt returns next launch. See [Crash recovery](recording.md#crash-recovery) in the recording guide.
-
-![Crash recovery flowchart from the session journal through pruning to the recover, discard, and decide-later modal choices](images/architecture-crash-recovery.png)
-_Figure: how an interrupted recording is journaled and offered for recovery on the next launch._
 
 ---
 
@@ -369,33 +353,31 @@ Why it works this way:
 
 See [Settings reference](settings-reference.md) for every individual setting and its default.
 
-![Settings load and backup flowchart distinguishing first install, backup restore, retry, and blocked saving](images/architecture-settings-backup.png)
-_Figure: how settings are loaded, restored from backup, and protected when the stored file cannot be read._
-
 ---
 
 ## Module map
 
 The `src/` tree groups code by concern. The table below maps each area to its key directory and responsibility; file names are real and can be opened directly.
 
-| Area             | Key directory under `src/`                                               | Responsibility                                                                                              |
-| ---------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
-| Entry point      | `main.ts`                                                                | Loads settings, builds managers, registers commands, ribbon, status bar, context menu, player, recovery     |
-| Recording        | `recording/` (`RecordingManager`, `RecordingFinalizer`, `TestRecorder`)  | Stream capture, PCM/MediaRecorder paths, write queue, auto-split rotation, finalization, the test recording |
-| Crash recovery   | `recording/` (`SessionJournal`, `RecoveryService`)                       | Journals temp segments and offers recovery, discard, or decide-later on next launch                         |
-| Audio encoding   | `audio/` (`AudioEncoder`, `AudioFormatConverter`, `formatRegistry`)      | Format registry, capability detection, PCM/WAV encoding, conversion, and the Web Worker encoding offload    |
-| Actions          | `actions/` (`fileActions`, `PluginAction`, `registerActionCommands`)     | Single declarative list of file/recording actions, rendered into every menu and registered as commands      |
-| Player           | `player/` (`EnhancedPlayerRegistrar`, `AudioPlayer`, controllers, views) | Embed takeover, container probing (persisted in `MediaKindStore`), waveform decode/cache, playback controls |
-| Markers          | `markers/` (`MarkerStore`, `markerModel`, `markerFactory`)               | Reads, edits, and persists per-recording marker sidecars; follows rename, move, and delete                  |
-| Transcription    | `transcription/` (`TranscriptionService`, `api`)                         | Audio preparation, provider dispatch, cancellation, stitching, output formatting and destinations           |
-| Providers        | `transcription/providers/`                                               | Whisper API, Deepgram, Gemini, and local whisper.cpp engine implementations                                 |
-| LLM post-process | `transcription/llm/`, `llmPostProcess.ts`                                | Clean up, summarize, or apply a custom instruction to a finished transcript                                 |
-| Cleanup          | `cleanup/` (`AudioProcessingService`, `audioDsp`)                        | On-demand offline DSP: high-pass filter, noise gate, loudness leveling                                      |
-| Settings         | `settings/` (`settingsSchema`, `SettingsTab`, `sections/`)               | Settings model and defaults (`settingsSchema`), serialization, validation, and the rendered settings tab    |
-| UI surfaces      | `ui/` (`StatusBar`, `RibbonIcon`, modals)                                | Status bar, ribbon icon, recording banner, context menu, and every modal dialog                             |
-| Diagnostics      | `diagnostics/` (`SystemDiagnostics`, `SystemInfoModal`)                  | Environment, device, codec, and settings info collection and the read-only copyable JSON snapshot modal     |
-| Obsidian glue    | `obsidian/` (`embedRegistry`)                                            | Thin wrappers over Obsidian's internal embed registry API                                                   |
-| Utilities        | `utils/`                                                                 | Time formatting, byte formatting, device helpers, link updating, debug logging                              |
-| Constants        | `constants.ts`                                                           | Format ids, limits, thresholds, defaults, and catalogue links used across the plugin                        |
+| Area             | Key directory under `src/`                                               | Responsibility                                                                                                                                          |
+| ---------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Entry point      | `main.ts`                                                                | Loads settings, builds managers, registers commands, ribbon, status bar, context menu, player, recovery                                                 |
+| Recording        | `recording/` (`RecordingManager`, `RecordingFinalizer`, `TestRecorder`)  | Stream capture, PCM/MediaRecorder paths, write queue, auto-split rotation, finalization, the test recording                                             |
+| Crash recovery   | `recording/` (`SessionJournal`, `RecoveryService`)                       | Journals temp segments and offers recovery, discard, or decide-later on next launch                                                                     |
+| Audio encoding   | `audio/` (`AudioEncoder`, `AudioFormatConverter`, `formatRegistry`)      | Format registry, capability detection, PCM/WAV encoding, conversion, and the Web Worker encoding offload                                                |
+| Actions          | `actions/` (`fileActions`, `PluginAction`, `registerActionCommands`)     | Single declarative list of file/recording actions, rendered into every menu and registered as commands                                                  |
+| Player           | `player/` (`EnhancedPlayerRegistrar`, `AudioPlayer`, controllers, views) | Embed takeover, container probing (persisted in `MediaKindStore`), waveform decode/cache, playback controls                                             |
+| Markers          | `markers/` (`MarkerStore`, `markerModel`, `markerFactory`)               | Reads, edits, and persists per-recording marker sidecars; follows rename, move, and delete                                                              |
+| Transcription    | `transcription/` (`TranscriptionService`, `api`)                         | Audio preparation, provider dispatch, cancellation, stitching, output formatting and destinations                                                       |
+| Providers        | `transcription/providers/`                                               | Whisper API, Deepgram, Gemini, and local whisper.cpp engine implementations                                                                             |
+| LLM post-process | `transcription/llm/`, `llmPostProcess.ts`                                | Clean up, summarize, or apply a custom instruction to a finished transcript                                                                             |
+| Cleanup          | `cleanup/` (`AudioProcessingService`, `audioDsp`)                        | On-demand offline DSP: high-pass filter, noise gate, loudness leveling                                                                                  |
+| Settings         | `settings/` (`settingsSchema`, `SettingsTab`, `sections/`)               | Settings model and defaults (`settingsSchema`), serialization, validation, and the rendered settings tab                                                |
+| UI surfaces      | `ui/` (`StatusBar`, `RibbonIcon`, modals)                                | Status bar, ribbon icon, recording banner, context menu, and every modal dialog                                                                         |
+| Diagnostics      | `diagnostics/` (`SystemDiagnostics`, `SystemInfoModal`)                  | Environment, device, codec, and settings info collection and the read-only copyable JSON snapshot modal                                                 |
+| Obsidian glue    | `obsidian/` (`embedRegistry`)                                            | Thin wrappers over Obsidian's internal embed registry API                                                                                               |
+| Utilities        | `utils/`                                                                 | Time formatting, byte formatting, device helpers, link updating, debug logging                                                                          |
+| Constants        | `constants.ts`                                                           | Format ids, limits, thresholds, defaults, and catalogue links used across the plugin                                                                    |
+| Errors           | `errors.ts`                                                              | Shared error classes (`AudioStreamError`, `SettingsValidationError`, `RecordingError`, `EncodingError`) thrown across recording, settings, and encoding |
 
 For the user-facing tour of each capability, see the [Features overview](features.md); for the exact controls and defaults, see the [Settings reference](settings-reference.md). If you hit a bug, the [Troubleshooting](troubleshooting.md) guide and the [Bug reporting guide](BUG_REPORTING_GUIDE.md) explain how to collect diagnostics.
