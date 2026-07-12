@@ -209,10 +209,17 @@ export class PcmStreamRecorder {
 			this.sourceNode = this.audioContext.createMediaStreamSource(
 				this.stream,
 			);
-			// The worklet input keeps every source channel (a mono mode
-			// mixes or picks inside the worklet); only the delivered PCM
-			// - and therefore the WAV header - drops to one channel
-			const sourceChannels = this.sourceNode.channelCount;
+			// MediaStreamAudioSourceNode.channelCount is an input-mixing
+			// attribute and stays at its default (commonly 2) even when
+			// the source track is mono. Prefer the negotiated track
+			// setting so the AudioWorklet width and WAV header describe
+			// the samples the source actually delivers.
+			const trackChannels =
+				this.stream.getAudioTracks()[0]?.getSettings().channelCount;
+			const sourceChannels =
+				typeof trackChannels === 'number' && trackChannels > 0
+					? trackChannels
+					: this.sourceNode.channelCount;
 			this.channelCount = isMonoChannelMode(this.channelMode)
 				? 1
 				: sourceChannels;
