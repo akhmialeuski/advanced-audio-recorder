@@ -170,8 +170,8 @@ describe('RecordingManager mono channel wiring', () => {
 		getAudioStreams.mockResolvedValue({
 			streams: [streamA, streamB],
 			trackOrder: [
-				{ trackNumber: 1, deviceId: 'a' },
-				{ trackNumber: 2, deviceId: 'b' },
+				{ trackNumber: 1, deviceId: 'a', channelMode: 'mono-left' },
+				{ trackNumber: 2, deviceId: 'b', channelMode: 'mono-mix' },
 			],
 		});
 		mockSettings.trackAudioSources = new Map([
@@ -193,6 +193,47 @@ describe('RecordingManager mono channel wiring', () => {
 		expect(createdBridges[1].release).toHaveBeenCalled();
 	});
 
+	it('does not reread a changed track mode after stream acquisition', async () => {
+		createDesktopRecorder();
+		const { getAudioStreams } = jest.requireMock(
+			'src/recording/AudioStreamHandler',
+		);
+		const stream = { getTracks: () => [{ stop: jest.fn() }] };
+		mockSettings.trackAudioSources = new Map([
+			[
+				1,
+				{
+					deviceId: 'device-before',
+					channelMode: 'mono-left' as const,
+				},
+			],
+		]);
+		getAudioStreams.mockImplementation(async () => {
+			// Simulate a settings edit while getUserMedia/permission was pending.
+			mockSettings.trackAudioSources.set(1, {
+				deviceId: 'device-after',
+				channelMode: 'mono-right',
+			});
+			return {
+				streams: [stream],
+				trackOrder: [
+					{
+						trackNumber: 1,
+						deviceId: 'device-before',
+						channelMode: 'mono-left',
+					},
+				],
+			};
+		});
+
+		await manager.startRecording();
+
+		expect(createdBridges).toHaveLength(1);
+		expect(createdBridges[0].stream).toBe(stream);
+		expect(createdBridges[0].mode).toBe('mono-left');
+		await manager.stopRecording();
+	});
+
 	it('bridges only the mono tracks of a mixed multi-track session', async () => {
 		createDesktopRecorder();
 		const { getAudioStreams } = jest.requireMock(
@@ -203,8 +244,8 @@ describe('RecordingManager mono channel wiring', () => {
 		getAudioStreams.mockResolvedValue({
 			streams: [streamA, streamB],
 			trackOrder: [
-				{ trackNumber: 1, deviceId: 'a' },
-				{ trackNumber: 2, deviceId: 'b' },
+				{ trackNumber: 1, deviceId: 'a', channelMode: 'mono-left' },
+				{ trackNumber: 2, deviceId: 'b', channelMode: 'source' },
 			],
 		});
 		// Track 1: microphone hard-panned left; track 2: a genuine
@@ -237,7 +278,9 @@ describe('RecordingManager mono channel wiring', () => {
 		);
 		getAudioStreams.mockResolvedValue({
 			streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
-			trackOrder: [{ trackNumber: 1, deviceId: 'a' }],
+			trackOrder: [
+				{ trackNumber: 1, deviceId: 'a', channelMode: 'source' },
+			],
 		});
 		// The global mono setting must not leak into a multi-track
 		// session whose track asks for the source layout
@@ -310,8 +353,8 @@ describe('RecordingManager mono channel wiring', () => {
 				{ getTracks: () => [{ stop: jest.fn() }] },
 			],
 			trackOrder: [
-				{ trackNumber: 1, deviceId: 'a' },
-				{ trackNumber: 2, deviceId: 'b' },
+				{ trackNumber: 1, deviceId: 'a', channelMode: 'mono-right' },
+				{ trackNumber: 2, deviceId: 'b', channelMode: 'source' },
 			],
 		});
 		mockSettings.recordingFormat = 'wav';

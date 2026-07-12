@@ -7,10 +7,25 @@ import { PLUGIN_LOG_PREFIX } from '../constants';
 import { AudioStreamError } from '../errors';
 import { delay } from '../utils/TimeUtils';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
+import { normalizeChannelMode, type ChannelMode } from '../audio/downmix';
 
 export interface TrackAudioSource {
 	trackNumber: number;
 	deviceId: string;
+	/** Channel mode captured atomically with the selected device. */
+	channelMode: ChannelMode;
+}
+
+/**
+ * One coherent view of the currently enumerated audio inputs and their
+ * reported channel limits. `enumerationSucceeded` distinguishes a selected
+ * device that is genuinely absent from a platform that could not enumerate
+ * devices at all.
+ */
+export interface AudioInputDeviceSnapshot {
+	readonly enumerationSucceeded: boolean;
+	readonly devices: readonly MediaDeviceInfo[];
+	readonly channelLimits: ReadonlyMap<string, number | null>;
 }
 
 /**
@@ -59,24 +74,30 @@ export function deviceMaxChannels(
 }
 
 /**
- * Collects the maximum channel counts of every audio input device.
- * An enumeration failure yields an empty map, whose misses read as
- * unknown capability downstream.
- * @returns Map of deviceId to maximum channels (null when unknown)
+ * Enumerates audio inputs once and derives every channel limit from that
+ * exact device list. The explicit success flag lets consumers distinguish
+ * an unplugged device from an enumeration failure.
+ * @returns Coherent device/capability snapshot
  */
-export async function getDeviceChannelLimits(): Promise<
-	Map<string, number | null>
-> {
+export async function getAudioInputDeviceSnapshot(): Promise<AudioInputDeviceSnapshot> {
 	const limits = new Map<string, number | null>();
 	try {
 		const devices = await getAudioInputDevices();
 		for (const device of devices) {
 			limits.set(device.deviceId, deviceMaxChannels(device));
 		}
+		return {
+			enumerationSucceeded: true,
+			devices,
+			channelLimits: limits,
+		};
 	} catch {
-		// Devices unavailable: leave the map empty
+		return {
+			enumerationSucceeded: false,
+			devices: [],
+			channelLimits: limits,
+		};
 	}
-	return limits;
 }
 
 /**
@@ -242,7 +263,11 @@ export function getOrderedTrackSources(
 	for (let i = 1; i <= settings.maxTracks; i++) {
 		const source = settings.trackAudioSources.get(i);
 		if (source?.deviceId) {
-			sources.push({ trackNumber: i, deviceId: source.deviceId });
+			sources.push({
+				trackNumber: i,
+				deviceId: source.deviceId,
+				channelMode: normalizeChannelMode(source.channelMode),
+			});
 		}
 	}
 	return sources;

@@ -33,7 +33,8 @@ import {
 } from '../audio/downmix';
 import {
 	channelSelectionAvailable,
-	getDeviceChannelLimits,
+	getAudioInputDeviceSnapshot,
+	type AudioInputDeviceSnapshot,
 } from '../recording/AudioStreamHandler';
 import { getEncoderDescription } from '../ui/formatDescriptions';
 import { TestRecorder } from '../recording/TestRecorder';
@@ -73,12 +74,23 @@ interface AudioRecorderPluginInterface extends Plugin {
 	saveSettings(): Promise<void>;
 }
 
+interface DeviceDropdownBinding {
+	readonly dropdown: DropdownComponent;
+	readonly getSelectedDeviceId: () => string;
+}
+
+const EMPTY_DEVICE_SNAPSHOT: AudioInputDeviceSnapshot = {
+	enumerationSucceeded: false,
+	devices: [],
+	channelLimits: new Map(),
+};
+
 /**
  * Settings tab for the Audio Recorder plugin.
  */
 export class AudioRecorderSettingTab extends PluginSettingTab {
 	plugin: AudioRecorderPluginInterface;
-	private deviceDropdowns: DropdownComponent[] = [];
+	private deviceDropdowns: DeviceDropdownBinding[] = [];
 	private readonly bitrateOptionsKbps = [64, 96, 128, 160, 192, 256, 320];
 	private readonly testRecorder = new TestRecorder();
 	private testAudioElement: HTMLAudioElement | null = null;
@@ -95,7 +107,11 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * selectors consult this to grey themselves out for devices that
 	 * positively report a single channel.
 	 */
-	private deviceChannelLimits: Map<string, number | null> = new Map();
+	private deviceSnapshot: AudioInputDeviceSnapshot = EMPTY_DEVICE_SNAPSHOT;
+	/** Latest device refresh generation; older async results are discarded. */
+	private deviceRefreshGeneration = 0;
+	/** Prevents a refresh from updating controls after the tab is hidden. */
+	private isDisplayed = false;
 	/**
 	 * Re-evaluators for every channel-mode dropdown on the tab. Run
 	 * after the capability map loads, after a device selection changes,
@@ -123,14 +139,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	constructor(app: App, plugin: AudioRecorderPluginInterface) {
 		super(app, plugin);
 		this.plugin = plugin;
-	}
-
-	/**
-	 * Gets all available audio input devices.
-	 */
-	async getAudioInputDevices(): Promise<MediaDeviceInfo[]> {
-		const devices = await navigator.mediaDevices.enumerateDevices();
-		return devices.filter((device) => device.kind === 'audioinput');
 	}
 
 	/**
@@ -179,15 +187,11 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 */
 	display(): void {
 		const { containerEl } = this;
+		this.isDisplayed = true;
 		containerEl.empty();
 		this.deviceDropdowns = [];
 		this.channelDropdownUpdaters = [];
-		// Capability detection is async; selectors render enabled and
-		// re-evaluate once the per-device channel limits arrive
-		void getDeviceChannelLimits().then((limits) => {
-			this.deviceChannelLimits = limits;
-			this.runChannelDropdownUpdaters();
-		});
+		this.deviceSnapshot = EMPTY_DEVICE_SNAPSHOT;
 		if (!this.deviceChangeHandler) {
 			this.deviceChangeHandler = (): void => {
 				void this.refreshDeviceList();
@@ -211,9 +215,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				'Select the default input device for single-track recordings. You can also change it from the command palette.',
 			)
 			.addDropdown((dropdown) => {
-				this.deviceDropdowns.push(dropdown);
-				void this.populateAudioDevices(dropdown).then(() => {
-					dropdown.setValue(this.plugin.settings.audioDeviceId || '');
+				this.deviceDropdowns.push({
+					dropdown,
+					getSelectedDeviceId: () =>
+						this.plugin.settings.audioDeviceId || '',
 				});
 				dropdown.onChange(async (value) => {
 					this.plugin.settings.audioDeviceId = value;
@@ -574,19 +579,18 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 						`Select the input device assigned to track ${String(i)}`,
 					)
 					.addDropdown((dropdown) => {
-						this.deviceDropdowns.push(dropdown);
-						void this.populateAudioDevices(dropdown).then(() => {
-							dropdown.setValue(
+						this.deviceDropdowns.push({
+							dropdown,
+							getSelectedDeviceId: () =>
 								this.plugin.settings.trackAudioSources.get(i)
 									?.deviceId || '',
-							);
 						});
 						dropdown.onChange(async (value) => {
 							if (value) {
 								// Keep the track's channel mode across a
-								// device swap; the channel selector's
-								// evaluator resets it when the new device
-								// cannot use it
+								// device swap. Capability observation only
+								// disables the selector; it never rewrites
+								// the user's persistent choice.
 								this.plugin.settings.trackAudioSources.set(i, {
 									deviceId: value,
 									channelMode:
@@ -709,6 +713,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					}),
 			);
+
+		// Populate every device dropdown and capability lookup from one
+		// coherent enumeration after all bindings have been registered.
+		void this.refreshDeviceList();
 	}
 
 	/**
@@ -986,13 +994,14 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 
 	/**
 	 * Fills a channel-mode dropdown and binds it to a device selection.
-	 * The dropdown greys itself out - forcing the pass-through mode -
-	 * when the bound device positively reports a single capture channel
+	 * The dropdown greys itself out when the bound device positively reports
+	 * a single capture channel
 	 * (every mono option would be an identity or a fallback there) or
-	 * when no device is selected at all. Unknown capability keeps the
-	 * selection enabled: disabling on unknown would block the feature
-	 * exactly on the platforms that need it. The evaluator registers
-	 * itself for re-runs on capability loads and device changes.
+	 * when no device is selected at all. An id missing from a successful
+	 * enumeration is treated as unplugged, while an enumeration failure or
+	 * a present device with unknown capability keeps the selection enabled.
+	 * Capability observation never changes the saved mode. The evaluator
+	 * registers itself for re-runs on capability loads and device changes.
 	 * @param dropdown - Dropdown to fill and manage
 	 * @param binding - Accessors for the bound device and stored mode
 	 */
@@ -1019,53 +1028,48 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			await binding.setMode(normalizeChannelMode(value));
 		});
 		const update = (): void => {
-			const available =
-				binding.hasDevice() &&
-				channelSelectionAvailable(
-					this.deviceChannelLimits.get(binding.getDeviceId()),
-				);
-			dropdown.setDisabled(!available);
-			if (!available && binding.getMode() !== CHANNEL_MODE_SOURCE) {
-				// A mono mode stored for a device that cannot use it is
-				// misleading state; reset it visibly and persistently
-				dropdown.setValue(CHANNEL_MODE_SOURCE);
-				void binding.setMode(CHANNEL_MODE_SOURCE);
-			} else {
-				dropdown.setValue(binding.getMode());
+			const deviceId = binding.getDeviceId();
+			let available = binding.hasDevice();
+			if (available && deviceId) {
+				const { enumerationSucceeded, channelLimits } =
+					this.deviceSnapshot;
+				available =
+					!enumerationSucceeded ||
+					(channelLimits.has(deviceId) &&
+						channelSelectionAvailable(channelLimits.get(deviceId)));
 			}
+			dropdown.setDisabled(!available);
+			// Runtime capability data is advisory and may be incomplete.
+			// Never rewrite a persistent user choice merely because a device
+			// is mono, unplugged, or temporarily absent from enumeration.
+			dropdown.setValue(binding.getMode());
 		};
 		this.channelDropdownUpdaters.push(update);
 		update();
 	}
 
-	/**
-	 * Populates dropdown with audio devices.
-	 * @param dropdown - The dropdown component
-	 */
-	async populateAudioDevices(dropdown: DropdownComponent): Promise<void> {
-		dropdown.selectEl.empty();
-		const devices = await this.getAudioInputDevices();
-		devices.forEach((device) => {
-			const label =
-				device.label ||
-				`Audio device ${device.deviceId.substring(0, 8)}`;
-			dropdown.addOption(device.deviceId, label);
-		});
-	}
-
 	private async refreshDeviceList(): Promise<void> {
-		const refreshes = this.deviceDropdowns.map(async (dropdown) => {
-			const selectedValue = dropdown.getValue();
-			await this.populateAudioDevices(dropdown);
-			const hasOption = Array.from(dropdown.selectEl.options).some(
-				(option) => option.value === selectedValue,
-			);
-			dropdown.setValue(hasOption ? selectedValue : '');
-		});
-		await Promise.all(refreshes);
-		// Plugged/unplugged devices change the capability picture the
-		// channel selectors are bound to
-		this.deviceChannelLimits = await getDeviceChannelLimits();
+		const generation = ++this.deviceRefreshGeneration;
+		const snapshot = await getAudioInputDeviceSnapshot();
+		if (!this.isDisplayed || generation !== this.deviceRefreshGeneration) {
+			return;
+		}
+		this.deviceSnapshot = snapshot;
+		if (snapshot.enumerationSucceeded) {
+			for (const binding of this.deviceDropdowns) {
+				const { dropdown } = binding;
+				dropdown.selectEl.empty();
+				for (const device of snapshot.devices) {
+					const label =
+						device.label ||
+						`Audio device ${device.deviceId.substring(0, 8)}`;
+					dropdown.addOption(device.deviceId, label);
+				}
+				const selectedDeviceId = binding.getSelectedDeviceId();
+				const isPresent = snapshot.channelLimits.has(selectedDeviceId);
+				dropdown.setValue(isPresent ? selectedDeviceId : '');
+			}
+		}
 		this.runChannelDropdownUpdaters();
 	}
 
@@ -1199,6 +1203,11 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * device-change listener registered in display().
 	 */
 	override hide(): void {
+		this.isDisplayed = false;
+		// Invalidate every in-flight enumeration before detaching controls.
+		this.deviceRefreshGeneration++;
+		this.deviceDropdowns = [];
+		this.channelDropdownUpdaters = [];
 		this.saveTextSettingDebounced.run();
 		this.cleanupTestRecording();
 		if (this.deviceChangeHandler) {

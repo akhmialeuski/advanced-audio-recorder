@@ -26,6 +26,7 @@ import {
 	stopAllStreams,
 	validateSelectedDevices,
 } from './AudioStreamHandler';
+import type { TrackAudioSource } from './AudioStreamHandler';
 import {
 	PLUGIN_LOG_PREFIX,
 	RECORDER_STOP_TIMEOUT_MS,
@@ -90,7 +91,7 @@ export class RecordingManager {
 	 * track's own mode; single-track sessions read the global setting.
 	 */
 	private sessionChannelModes: ChannelMode[] = [];
-	private trackOrder: { trackNumber: number; deviceId: string }[] = [];
+	private trackOrder: TrackAudioSource[] = [];
 	private status: RecordingStatus = RecordingStatus.Idle;
 	private onStatusChange: (
 		status: RecordingStatus,
@@ -484,17 +485,15 @@ export class RecordingManager {
 		this.sessionBitrate = this.settings.bitrate;
 		// Normalized once per session: capture primitives branch on the
 		// modes, and a hand-edited data.json must not leave them split
-		// between mono and pass-through behavior. Multi-track sessions
-		// (trackOrder is populated) take each track's own mode; the
-		// global setting covers the single-track session.
+		// between mono and pass-through behavior. Multi-track device ids
+		// and channel modes were captured together before getUserMedia,
+		// so a settings edit while permission is pending cannot combine
+		// one device with another device's mode. The global setting covers
+		// the single-track session.
 		this.sessionChannelModes =
 			this.trackOrder.length > 0
 				? this.trackOrder.map((source) =>
-						normalizeChannelMode(
-							this.settings.trackAudioSources.get(
-								source.trackNumber,
-							)?.channelMode,
-						),
+						normalizeChannelMode(source.channelMode),
 					)
 				: Array.from({ length: streamCount }, () =>
 						normalizeChannelMode(this.settings.recordingChannels),

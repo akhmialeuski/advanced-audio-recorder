@@ -64,7 +64,7 @@ Notes:
 
 - The downmix happens **during capture**, on every format: WAV records mono samples directly (half the file size), and compressed formats encode a mono stream, so the whole bitrate serves one channel. There is no extra re-encode.
 - The setting applies to **single-track** recordings and to the **Test recording** button in settings. Each track of a [multi-track session](multi-track-recording.md) has its own **Channels for track N** selector instead, so a hard-panned microphone track can go mono while a genuine stereo track stays untouched.
-- The selector is **disabled (greyed out)** when the selected device reports a mono-only input - every mono option would be pointless there. Devices whose capabilities the platform does not report keep the selection available.
+- The selector is **disabled (greyed out)** when the selected device reports a mono-only input or is no longer connected - every mono option would be pointless until a multichannel device is available. The saved channel choice is preserved, so reconnecting the device restores it. Devices whose capabilities the platform does not report keep the selection available.
 - If a mono option is active while the device actually delivers mono, the recording still works - the picked-channel options fall back to the only channel available.
 - Existing stereo files can be fixed after the fact with the **Channels** option in the [Convert audio format dialog](file-operations.md#convert-audio-format).
 
