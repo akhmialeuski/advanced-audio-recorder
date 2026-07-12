@@ -32,6 +32,7 @@ describe('AudioRecorderSettingTab', () => {
 	let addEventListenerMock: jest.Mock;
 	let removeEventListenerMock: jest.Mock;
 	let getUserMediaMock: jest.Mock;
+	let saveSettingsMock: jest.Mock;
 
 	beforeEach(() => {
 		jest.clearAllMocks();
@@ -60,9 +61,10 @@ describe('AudioRecorderSettingTab', () => {
 		).isTypeSupported = jest.fn().mockReturnValue(true);
 
 		mockSettings = { ...DEFAULT_SETTINGS };
+		saveSettingsMock = jest.fn().mockResolvedValue(undefined);
 		const mockPlugin = {
 			settings: mockSettings,
-			saveSettings: jest.fn().mockResolvedValue(undefined),
+			saveSettings: saveSettingsMock,
 		};
 		tab = new AudioRecorderSettingTab(new App(), mockPlugin);
 	});
@@ -283,6 +285,246 @@ describe('AudioRecorderSettingTab', () => {
 			const audio = tab.containerEl.querySelector('.aar-test-audio');
 			expect(audio).not.toBeNull();
 			expect(audio?.getAttribute('src')).toBe('blob:test-url');
+		});
+	});
+
+	describe('channel selectors and device capabilities', () => {
+		function fakeInputDevice(
+			deviceId: string,
+			maxChannels?: number,
+		): MediaDeviceInfo {
+			return {
+				deviceId,
+				kind: 'audioinput',
+				label: deviceId,
+				groupId: '',
+				getCapabilities:
+					maxChannels === undefined
+						? undefined
+						: (): { channelCount: { max: number } } => ({
+								channelCount: { max: maxChannels },
+							}),
+			} as unknown as MediaDeviceInfo;
+		}
+
+		function installDevices(devices: MediaDeviceInfo[]): void {
+			(
+				navigator.mediaDevices.enumerateDevices as jest.Mock
+			).mockResolvedValue(devices);
+		}
+
+		/** display() plus the async capability load and device fills. */
+		async function renderAndSettle(): Promise<void> {
+			tab.display();
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		}
+
+		/**
+		 * The channel selectors are the only dropdowns offering the
+		 * mono-mix option: the global one first, then one per track.
+		 */
+		function channelSelects(): HTMLSelectElement[] {
+			return Array.from(
+				tab.containerEl.querySelectorAll<HTMLSelectElement>('select'),
+			).filter((select) =>
+				Array.from(select.options).some(
+					(option) => option.value === 'mono-mix',
+				),
+			);
+		}
+
+		it('keeps the global selector enabled for a stereo device', async () => {
+			installDevices([fakeInputDevice('stereo-dev', 2)]);
+			mockSettings.audioDeviceId = 'stereo-dev';
+			mockSettings.recordingChannels = 'mono-left';
+
+			await renderAndSettle();
+
+			expect(channelSelects()[0].disabled).toBe(false);
+			expect(mockSettings.recordingChannels).toBe('mono-left');
+		});
+
+		it('uses one enumeration for all device dropdowns and capabilities', async () => {
+			installDevices([fakeInputDevice('stereo-dev', 2)]);
+			mockSettings.enableMultiTrack = true;
+			mockSettings.maxTracks = 3;
+
+			await renderAndSettle();
+
+			expect(
+				navigator.mediaDevices.enumerateDevices,
+			).toHaveBeenCalledTimes(1);
+		});
+
+		it('disables the global selector without rewriting the mode for a known-mono device', async () => {
+			installDevices([fakeInputDevice('mono-dev', 1)]);
+			mockSettings.audioDeviceId = 'mono-dev';
+			mockSettings.recordingChannels = 'mono-left';
+
+			await renderAndSettle();
+
+			expect(channelSelects()[0].disabled).toBe(true);
+			expect(mockSettings.recordingChannels).toBe('mono-left');
+			expect(saveSettingsMock).not.toHaveBeenCalled();
+		});
+
+		it('keeps the global selector enabled when capability is unknown', async () => {
+			installDevices([fakeInputDevice('opaque-dev')]);
+			mockSettings.audioDeviceId = 'opaque-dev';
+
+			await renderAndSettle();
+
+			expect(channelSelects()[0].disabled).toBe(false);
+		});
+
+		it('disables per-track selectors by each track device capability', async () => {
+			installDevices([
+				fakeInputDevice('stereo-dev', 2),
+				fakeInputDevice('mono-dev', 1),
+			]);
+			mockSettings.enableMultiTrack = true;
+			mockSettings.maxTracks = 3;
+			mockSettings.trackAudioSources = new Map([
+				[1, { deviceId: 'stereo-dev', channelMode: 'mono-left' }],
+				[2, { deviceId: 'mono-dev', channelMode: 'mono-right' }],
+			]);
+
+			await renderAndSettle();
+
+			const selects = channelSelects();
+			// Global + three track selectors
+			expect(selects).toHaveLength(4);
+			expect(selects[1].disabled).toBe(false);
+			expect(selects[2].disabled).toBe(true);
+			// Track 3 has no device: nothing to bind the mode to
+			expect(selects[3].disabled).toBe(true);
+			// Runtime capability observation never rewrites either mode.
+			expect(mockSettings.trackAudioSources.get(1)?.channelMode).toBe(
+				'mono-left',
+			);
+			expect(mockSettings.trackAudioSources.get(2)?.channelMode).toBe(
+				'mono-right',
+			);
+		});
+
+		it('treats an unplugged selected device as absent without losing its mode', async () => {
+			installDevices([fakeInputDevice('selected-dev', 2)]);
+			mockSettings.enableMultiTrack = true;
+			mockSettings.maxTracks = 1;
+			mockSettings.trackAudioSources = new Map([
+				[1, { deviceId: 'selected-dev', channelMode: 'mono-left' }],
+			]);
+			await renderAndSettle();
+			expect(channelSelects()[1].disabled).toBe(false);
+
+			installDevices([]);
+			const deviceChange = addEventListenerMock.mock
+				.calls[0][1] as () => void;
+			deviceChange();
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			expect(channelSelects()[1].disabled).toBe(true);
+			expect(mockSettings.trackAudioSources.get(1)).toEqual({
+				deviceId: 'selected-dev',
+				channelMode: 'mono-left',
+			});
+			expect(saveSettingsMock).not.toHaveBeenCalled();
+		});
+
+		it('ignores a stale capability refresh that resolves last', async () => {
+			let resolveOlder:
+				| ((devices: MediaDeviceInfo[]) => void)
+				| undefined;
+			let resolveNewer:
+				| ((devices: MediaDeviceInfo[]) => void)
+				| undefined;
+			const older = new Promise<MediaDeviceInfo[]>((resolve) => {
+				resolveOlder = resolve;
+			});
+			const newer = new Promise<MediaDeviceInfo[]>((resolve) => {
+				resolveNewer = resolve;
+			});
+			(navigator.mediaDevices.enumerateDevices as jest.Mock)
+				.mockImplementationOnce(() => older)
+				.mockImplementationOnce(() => newer);
+			mockSettings.audioDeviceId = 'selected-dev';
+			mockSettings.recordingChannels = 'mono-left';
+
+			tab.display();
+			const deviceChange = addEventListenerMock.mock
+				.calls[0][1] as () => void;
+			deviceChange();
+			resolveNewer?.([fakeInputDevice('selected-dev', 2)]);
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			expect(channelSelects()[0].disabled).toBe(false);
+
+			resolveOlder?.([fakeInputDevice('selected-dev', 1)]);
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			// The older mono result must not overwrite the newer stereo view.
+			expect(channelSelects()[0].disabled).toBe(false);
+			expect(mockSettings.recordingChannels).toBe('mono-left');
+			expect(saveSettingsMock).not.toHaveBeenCalled();
+		});
+
+		it('persists a per-track channel mode change', async () => {
+			installDevices([fakeInputDevice('stereo-dev', 2)]);
+			mockSettings.enableMultiTrack = true;
+			mockSettings.maxTracks = 1;
+			mockSettings.trackAudioSources = new Map([
+				[1, { deviceId: 'stereo-dev', channelMode: 'source' }],
+			]);
+
+			await renderAndSettle();
+
+			const trackChannelSelect = channelSelects()[1];
+			expect(trackChannelSelect.disabled).toBe(false);
+			trackChannelSelect.value = 'mono-right';
+			trackChannelSelect.dispatchEvent(new Event('change'));
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			expect(mockSettings.trackAudioSources.get(1)).toEqual({
+				deviceId: 'stereo-dev',
+				channelMode: 'mono-right',
+			});
+		});
+
+		it('preserves the track channel mode across a device swap', async () => {
+			installDevices([
+				fakeInputDevice('stereo-dev', 2),
+				fakeInputDevice('other-stereo', 2),
+			]);
+			mockSettings.enableMultiTrack = true;
+			mockSettings.maxTracks = 1;
+			mockSettings.trackAudioSources = new Map([
+				[1, { deviceId: 'stereo-dev', channelMode: 'mono-left' }],
+			]);
+
+			await renderAndSettle();
+
+			// The device dropdowns are every select that is not a channel
+			// selector; the track device dropdown is the last one
+			const channels = new Set(channelSelects());
+			const deviceSelects = Array.from(
+				tab.containerEl.querySelectorAll<HTMLSelectElement>('select'),
+			).filter(
+				(select) =>
+					!channels.has(select) &&
+					Array.from(select.options).some(
+						(option) => option.value === 'other-stereo',
+					),
+			);
+			const trackDeviceSelect = deviceSelects[deviceSelects.length - 1];
+			trackDeviceSelect.value = 'other-stereo';
+			trackDeviceSelect.dispatchEvent(new Event('change'));
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			expect(mockSettings.trackAudioSources.get(1)).toEqual({
+				deviceId: 'other-stereo',
+				channelMode: 'mono-left',
+			});
 		});
 	});
 });

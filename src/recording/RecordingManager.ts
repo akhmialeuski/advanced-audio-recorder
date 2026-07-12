@@ -26,6 +26,7 @@ import {
 	stopAllStreams,
 	validateSelectedDevices,
 } from './AudioStreamHandler';
+import type { TrackAudioSource } from './AudioStreamHandler';
 import {
 	PLUGIN_LOG_PREFIX,
 	RECORDER_STOP_TIMEOUT_MS,
@@ -84,9 +85,13 @@ export class RecordingManager {
 	private monoBridges: MonoCaptureBridge[] = [];
 	/** Streams the MediaRecorders record from (bridged or raw). */
 	private captureStreams: MediaStream[] = [];
-	/** Channel mode for the current session (snapshot). */
-	private sessionChannelMode: ChannelMode = CHANNEL_MODE_SOURCE;
-	private trackOrder: { trackNumber: number; deviceId: string }[] = [];
+	/**
+	 * Channel mode per stream for the current session (snapshot,
+	 * aligned with the streams array). Multi-track sessions read each
+	 * track's own mode; single-track sessions read the global setting.
+	 */
+	private sessionChannelModes: ChannelMode[] = [];
+	private trackOrder: TrackAudioSource[] = [];
 	private status: RecordingStatus = RecordingStatus.Idle;
 	private onStatusChange: (
 		status: RecordingStatus,
@@ -479,11 +484,20 @@ export class RecordingManager {
 		this.sessionOutputMode = this.settings.outputMode;
 		this.sessionBitrate = this.settings.bitrate;
 		// Normalized once per session: capture primitives branch on the
-		// mode, and a hand-edited data.json must not leave them split
-		// between mono and pass-through behavior
-		this.sessionChannelMode = normalizeChannelMode(
-			this.settings.recordingChannels,
-		);
+		// modes, and a hand-edited data.json must not leave them split
+		// between mono and pass-through behavior. Multi-track device ids
+		// and channel modes were captured together before getUserMedia,
+		// so a settings edit while permission is pending cannot combine
+		// one device with another device's mode. The global setting covers
+		// the single-track session.
+		this.sessionChannelModes =
+			this.trackOrder.length > 0
+				? this.trackOrder.map((source) =>
+						normalizeChannelMode(source.channelMode),
+					)
+				: Array.from({ length: streamCount }, () =>
+						normalizeChannelMode(this.settings.recordingChannels),
+					);
 		this.sessionPartMinutes = clampSplitMinutes(
 			this.settings.splitChunkMinutes,
 		);
@@ -583,7 +597,7 @@ export class RecordingManager {
 			(index, data) => {
 				void this.handlePcmChunk(index, data);
 			},
-			this.sessionChannelMode,
+			this.sessionChannelModes,
 		);
 
 		await Promise.all(
@@ -607,24 +621,26 @@ export class RecordingManager {
 	 */
 	private async initMediaRecording(): Promise<void> {
 		this.chunkTargets = await this.createChunkTargets(this.streams.length);
-		if (isMonoChannelMode(this.sessionChannelMode)) {
-			// Every bridge registers before any starts, so a failed start
-			// (e.g. an audio context stuck in the suspended state) still
-			// releases all acquired contexts via releasePartialSession
-			this.monoBridges = this.streams.map(
-				(stream) =>
-					new MonoCaptureBridge(
-						stream,
-						this.sessionChannelMode,
-						this.settings.sampleRate,
-					),
-			);
-			this.captureStreams = await Promise.all(
-				this.monoBridges.map((bridge) => bridge.start()),
-			);
-		} else {
-			this.captureStreams = this.streams;
-		}
+		// One bridge per mono-mode stream, aligned by index; tracks in
+		// the source mode record their raw stream. Every bridge
+		// registers before any starts, so a failed start (e.g. an audio
+		// context stuck in the suspended state) still releases all
+		// acquired contexts via releasePartialSession.
+		const bridgeByStream = this.streams.map((stream, index) => {
+			const mode = this.sessionChannelModes[index] ?? CHANNEL_MODE_SOURCE;
+			return isMonoChannelMode(mode)
+				? new MonoCaptureBridge(stream, mode, this.settings.sampleRate)
+				: null;
+		});
+		this.monoBridges = bridgeByStream.filter(
+			(bridge): bridge is MonoCaptureBridge => bridge !== null,
+		);
+		this.captureStreams = await Promise.all(
+			this.streams.map(
+				(stream, index) =>
+					bridgeByStream[index]?.start() ?? Promise.resolve(stream),
+			),
+		);
 		this.startMediaRecorders();
 	}
 

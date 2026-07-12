@@ -635,11 +635,25 @@ export class DropdownComponent {
 
 	setDisabled(disabled: boolean): this {
 		this.disabled = disabled;
+		// Mirrored onto the element like real Obsidian, so DOM-level
+		// assertions see the state
+		this.selectEl.disabled = disabled;
 		return this;
 	}
 
+	/** Guards the DOM listener so repeated onChange calls attach once. */
+	private changeListenerAttached = false;
+
 	onChange(callback: (value: string) => void): this {
 		this.changeCallback = callback;
+		if (!this.changeListenerAttached) {
+			this.changeListenerAttached = true;
+			// Real Obsidian dropdowns fire onChange from the select's
+			// change event; wiring it lets tests drive them via the DOM
+			this.selectEl.addEventListener('change', () => {
+				this.changeCallback?.(this.selectEl.value);
+			});
+		}
 		return this;
 	}
 }

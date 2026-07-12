@@ -14,12 +14,16 @@ import {
 	type AudioRecorderSettingsInput,
 	type AudioSource,
 	type SerializedAudioRecorderSettings,
+	type SerializedAudioSource,
 	type TrackAudioSources,
 	type TrackAudioSourcesRecord,
 } from './settingsSchema';
 
 /**
- * Normalizes track audio sources into a Map.
+ * Normalizes track audio sources into a Map. Accepts the current
+ * object form, the bare device-id string older versions persisted,
+ * and Map values that predate the channel mode field; every entry
+ * comes out with a valid channel mode.
  */
 export function normalizeTrackAudioSources(
 	trackAudioSources?: TrackAudioSources | TrackAudioSourcesRecord,
@@ -28,24 +32,29 @@ export function normalizeTrackAudioSources(
 		return new Map();
 	}
 
-	if (trackAudioSources instanceof Map) {
-		return new Map(trackAudioSources);
-	}
-
 	const sources = new Map<number, AudioSource>();
-	for (const [key, value] of Object.entries(trackAudioSources)) {
+	const entries =
+		trackAudioSources instanceof Map
+			? trackAudioSources.entries()
+			: Object.entries(trackAudioSources);
+	for (const [key, value] of entries) {
 		const trackNumber = Number(key);
 		if (Number.isNaN(trackNumber)) {
 			continue;
 		}
 		if (typeof value === 'string') {
-			sources.set(trackNumber, { deviceId: value });
+			// Pre-channel-mode persisted shape: a bare device id
+			sources.set(trackNumber, {
+				deviceId: value,
+				channelMode: normalizeChannelMode(undefined),
+			});
 			continue;
 		}
 		if (value && typeof value === 'object' && 'deviceId' in value) {
-			const deviceId = (value as { deviceId?: unknown }).deviceId;
+			const { deviceId, channelMode } = value;
 			sources.set(trackNumber, {
 				deviceId: typeof deviceId === 'string' ? deviceId : '',
+				channelMode: normalizeChannelMode(channelMode),
 			});
 		}
 	}
@@ -57,10 +66,13 @@ export function normalizeTrackAudioSources(
  */
 export function serializeTrackAudioSources(
 	trackAudioSources: TrackAudioSources,
-): Record<number, string> {
-	const serialized: Record<number, string> = {};
+): Record<number, SerializedAudioSource> {
+	const serialized: Record<number, SerializedAudioSource> = {};
 	for (const [trackNumber, source] of trackAudioSources.entries()) {
-		serialized[trackNumber] = source.deviceId;
+		serialized[trackNumber] = {
+			deviceId: source.deviceId,
+			channelMode: source.channelMode,
+		};
 	}
 	return serialized;
 }
