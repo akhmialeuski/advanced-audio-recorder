@@ -170,6 +170,16 @@ describe('ConversionModal', () => {
 		expect(modal).toBeDefined();
 	});
 
+	it('initializes the channel preset through named options', () => {
+		const modal = new ConversionModal(mockApp, mockFile, mockSettings, {
+			initialChannelMode: 'mono-right',
+		});
+
+		expect((modal as unknown as { channelMode: string }).channelMode).toBe(
+			'mono-right',
+		);
+	});
+
 	it('should set up content on open', () => {
 		const modal = new ConversionModal(mockApp, mockFile, mockSettings);
 		modal.onOpen();

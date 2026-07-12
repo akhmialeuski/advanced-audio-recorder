@@ -66,7 +66,13 @@ Notes:
 - The setting applies to **single-track** recordings and to the **Test recording** button in settings. Each track of a [multi-track session](multi-track-recording.md) has its own **Channels for track N** selector instead, so a hard-panned microphone track can go mono while a genuine stereo track stays untouched.
 - The selector is **disabled (greyed out)** when the selected device reports a mono-only input or is no longer connected - every mono option would be pointless until a multichannel device is available. The saved channel choice is preserved, so reconnecting the device restores it. Devices whose capabilities the platform does not report keep the selection available.
 - If a mono option is active while the device actually delivers mono, the recording still works - the picked-channel options fall back to the only channel available.
-- Existing stereo files can be fixed after the fact with the **Channels** option in the [Convert audio format dialog](file-operations.md#convert-audio-format).
+- Existing stereo files can be fixed after the fact with the **Channels** option in the [Convert audio format dialog](file-operations.md#convert-audio-format) or the [Clean up audio dialog](audio-cleanup.md#channels).
+
+### Automatic silent-channel prompt
+
+If you forget to set the channel mode, the plugin can catch a lopsided recording after the fact. With **Detect silent channel after recording** on (**Settings > Audio processing & feedback**, default on), one file from every output track is checked for the stereo-with-one-silent-channel pattern (for auto-split sessions, the first part of each track). When it is found, a notice identifies the affected file and offers a **Convert to mono** action that opens the [conversion dialog](file-operations.md#convert-audio-format) already preset to keep the channel that carries audio. You still confirm the format and link handling before it runs.
+
+The active recording duration is checked before the file is read, so long sessions (over 20 minutes) are skipped without a decode. Shorter files are metadata-probed before decoding, and the signal check uses short RMS windows instead of one whole-file average: a brief but real sound on a channel is preserved instead of being diluted by a long quiet stretch. Turn the setting off to silence the prompt entirely.
 
 ---
 

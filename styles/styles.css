@@ -725,3 +725,21 @@ input.aar-input-invalid {
 .aar-doc-callout-link {
     font-weight: var(--font-semibold);
 }
+
+/* Native button semantics make the persistent post-recording action keyboard
+   accessible; link styling keeps it compact inside an Obsidian Notice. */
+.aar-silent-channel-convert {
+    appearance: none;
+    border: 0;
+    padding: 0;
+    background: none;
+    color: var(--text-accent);
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.aar-silent-channel-convert:focus-visible {
+    outline: 2px solid var(--background-modifier-border-focus);
+    outline-offset: 2px;
+}

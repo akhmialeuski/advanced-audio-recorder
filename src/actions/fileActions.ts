@@ -47,18 +47,15 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		showInEditorMenu: true,
 		isAvailable: always,
 		run: (file: TFile, services: ActionServices): void => {
-			new ConversionModal(
-				services.app,
-				file,
-				services.getSettings(),
-				(convertedPath) => {
+			new ConversionModal(services.app, file, services.getSettings(), {
+				onConverted: (convertedPath) => {
 					// The note link is already rewritten by the conversion's
 					// linkAction; prime the converted file so its embed
 					// becomes the enhanced player at once.
 					services.primeForEnhancement([convertedPath]);
 				},
-				services.getWorkerClient,
-			).open();
+				getWorkerClient: services.getWorkerClient,
+			}).open();
 		},
 	},
 	{

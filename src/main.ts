@@ -4,6 +4,7 @@
  */
 
 import { Notice, Platform, Plugin } from 'obsidian';
+import type { TFile } from 'obsidian';
 import { RecordingStatus } from './types';
 import type {
 	SaveProgress,
@@ -18,6 +19,9 @@ import {
 } from './settings/settingsSerialization';
 import { AudioRecorderSettingTab } from './settings/SettingsTab';
 import { RecordingManager } from './recording/RecordingManager';
+import { detectSilentChannel } from './recording/silentChannelDetector';
+import type { ChannelMode } from './audio/downmix';
+import { ConversionModal } from './ui/ConversionModal';
 import { SessionJournal, JOURNAL_FILE_NAME } from './recording/SessionJournal';
 import {
 	collectRecoverableSessions,
@@ -101,6 +105,12 @@ interface BackgroundTranscriptionProgress {
 	restore: () => void;
 }
 
+interface SilentChannelSuggestion {
+	file: TFile;
+	keepMode: ChannelMode;
+	silentSide: 'left' | 'right';
+}
+
 /**
  * Advanced Audio Recorder plugin for Obsidian.
  */
@@ -127,6 +137,10 @@ export default class AudioRecorderPlugin extends Plugin {
 		BackgroundTranscriptionProgress
 	>();
 	private nextBackgroundTranscriptionId = 0;
+	/** Current actionable silent-channel notice, replaced per save. */
+	private silentChannelNotice: Notice | null = null;
+	/** Invalidates an older asynchronous analysis when a newer save starts. */
+	private silentChannelSuggestionGeneration = 0;
 	/**
 	 * True when data.json exists on disk but could not be read at load
 	 * time. While set, saveSettings refuses to write so the possibly
@@ -284,6 +298,9 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * Called when the plugin is unloaded.
 	 */
 	override onunload(): void {
+		this.silentChannelSuggestionGeneration++;
+		this.silentChannelNotice?.hide();
+		this.silentChannelNotice = null;
 		this.recordingManager.cleanup();
 		this.recordingBanner.hide();
 		this.playerRegistrar.dispose();
@@ -672,6 +689,15 @@ export default class AudioRecorderPlugin extends Plugin {
 			result.audioPaths,
 		);
 
+		// Fire-and-forget lopsided-stereo check; failures never touch the
+		// stop sequence and are contained at this orchestration boundary.
+		void this.maybeSuggestMonoConversion(result).catch((error: unknown) => {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Silent-channel suggestion failed:`,
+				error,
+			);
+		});
+
 		if (
 			!this.settings.transcriptionEnabled ||
 			!this.settings.transcribeOnSave ||
@@ -696,6 +722,132 @@ export default class AudioRecorderPlugin extends Plugin {
 			...this.createTranscriptionModalOptions(),
 			autoStart: true,
 			notePath: result.notePath ?? undefined,
+		}).open();
+	}
+
+	/**
+	 * Checks a freshly saved recording for the lopsided-stereo pattern
+	 * (one silent channel, a single mic through a dual-input interface)
+	 * and, when found, shows a Notice offering a one-click conversion to
+	 * mono that keeps the channel with audio. One file per output track is
+	 * inspected (the first part for auto-split), sequentially to bound peak
+	 * decode memory. Gated by the setting; a no-op when disabled or when
+	 * nothing lopsided is found.
+	 * @param result - The saved audio paths
+	 */
+	private async maybeSuggestMonoConversion(
+		result: RecordingSaveResult,
+	): Promise<void> {
+		const generation = ++this.silentChannelSuggestionGeneration;
+		this.silentChannelNotice?.hide();
+		this.silentChannelNotice = null;
+		if (
+			!this.settings.detectSilentChannelOnSave ||
+			result.audioPaths.length === 0
+		) {
+			return;
+		}
+		const perTrackPaths = result.trackFiles
+			?.map((group) => group.files[0])
+			.filter((path): path is string => Boolean(path));
+		const candidates = Array.from(
+			new Set(
+				perTrackPaths && perTrackPaths.length > 0
+					? perTrackPaths
+					: result.audioPaths.slice(0, 1),
+			),
+		);
+		const suggestions: SilentChannelSuggestion[] = [];
+		for (const path of candidates) {
+			if (generation !== this.silentChannelSuggestionGeneration) {
+				return;
+			}
+			const file = this.app.vault.getFileByPath(path);
+			if (!file) {
+				continue;
+			}
+			const detection = await detectSilentChannel(this.app, file, {
+				knownDurationSeconds: result.durationSeconds,
+			});
+			if (detection) {
+				suggestions.push({
+					file,
+					keepMode: detection.keepMode,
+					silentSide:
+						detection.silentChannel === 1 ? 'right' : 'left',
+				});
+			}
+		}
+		if (
+			generation !== this.silentChannelSuggestionGeneration ||
+			!this.settings.detectSilentChannelOnSave ||
+			suggestions.length === 0
+		) {
+			return;
+		}
+		this.showSilentChannelNotice(suggestions);
+	}
+
+	/**
+	 * Shows the actionable lopsided-stereo Notice. Clicking "Convert to
+	 * mono" opens the conversion dialog preset to the channel that
+	 * carries audio, so the user confirms format/links and runs it.
+	 * @param suggestions - Lopsided files and the channel each should keep
+	 */
+	private showSilentChannelNotice(
+		suggestions: SilentChannelSuggestion[],
+	): void {
+		this.silentChannelNotice?.hide();
+		const fragment = activeDocument.createDocumentFragment();
+		if (suggestions.length > 1) {
+			fragment.append(
+				`${String(suggestions.length)} recordings have a silent channel: `,
+			);
+		}
+		for (const [index, suggestion] of suggestions.entries()) {
+			if (index > 0) {
+				fragment.append(' ');
+			}
+			if (suggestions.length === 1) {
+				fragment.append(
+					`Recording's ${suggestion.silentSide} channel is silent. `,
+				);
+			}
+			const button = activeDocument.createElement('button');
+			button.type = 'button';
+			button.textContent =
+				suggestions.length === 1
+					? 'Convert to mono'
+					: `Convert ${suggestion.file.name}`;
+			button.className = 'aar-silent-channel-convert';
+			button.addEventListener('click', () => {
+				if (suggestions.length === 1) {
+					this.silentChannelNotice?.hide();
+					this.silentChannelNotice = null;
+				}
+				this.openMonoConversion(suggestion.file, suggestion.keepMode);
+			});
+			fragment.append(button);
+		}
+		this.silentChannelNotice = new Notice(fragment, 0);
+	}
+
+	/**
+	 * Opens the conversion dialog preset to the given channel mode and
+	 * primes the converted file for the enhanced player. Extracted so
+	 * the silent-channel prompt's action is testable without the Notice.
+	 * @param file - The file to convert
+	 * @param keepMode - Channel mode to preselect in the dialog
+	 */
+	private openMonoConversion(file: TFile, keepMode: ChannelMode): void {
+		new ConversionModal(this.app, file, this.settings, {
+			onConverted: (convertedPath) => {
+				this.playerRegistrar.primeSavedRecordingsForEnhancement([
+					convertedPath,
+				]);
+			},
+			getWorkerClient: () => this.encodingWorker,
+			initialChannelMode: keepMode,
 		}).open();
 	}
 

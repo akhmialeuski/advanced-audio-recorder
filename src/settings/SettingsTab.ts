@@ -871,6 +871,20 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
+			.setName('Detect silent channel after recording')
+			.setDesc(
+				'After saving a recording, check whether it is a stereo file with one silent channel - the typical result of a single microphone on a dual-input audio interface - and offer to convert it to mono. Long recordings are skipped.',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(s.detectSilentChannelOnSave)
+					.onChange(async (v) => {
+						s.detectSilentChannelOnSave = v;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
 			.setName('Mobile recording banner')
 			.setDesc(
 				'Show a prominent recording banner on mobile, where there is no ribbon indicator.',

@@ -3,7 +3,7 @@
  * @module tests/unit/main
  */
 
-import { App } from 'obsidian';
+import { App, Notice } from 'obsidian';
 import AudioRecorderPlugin from 'src/main';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { SaveProgress } from 'src/types';
@@ -63,6 +63,37 @@ jest.mock('src/ui/RecoveryModal', () => ({
 		open: jest.fn(),
 	})),
 }));
+
+jest.mock('src/recording/silentChannelDetector', () => ({
+	detectSilentChannel: jest.fn(),
+}));
+
+const mockConversionModalOpen = jest.fn();
+jest.mock('src/ui/ConversionModal', () => ({
+	ConversionModal: jest.fn().mockImplementation(() => ({
+		open: mockConversionModalOpen,
+	})),
+}));
+
+interface SilentChannelHooks {
+	settings: typeof DEFAULT_SETTINGS;
+	playerRegistrar: { primeSavedRecordingsForEnhancement: jest.Mock };
+	encodingWorker: unknown;
+	maybeSuggestMonoConversion(result: {
+		audioPaths: string[];
+		notePath: null;
+		trackFiles?: { trackIndex: number; files: string[] }[];
+		durationSeconds?: number;
+	}): Promise<void>;
+	showSilentChannelNotice(
+		suggestions: {
+			file: { path: string; name: string };
+			keepMode: string;
+			silentSide: string;
+		}[],
+	): void;
+	openMonoConversion(file: unknown, keepMode: string): void;
+}
 
 // Fixture path: in production the directory comes from manifest.dir
 const PLUGIN_DIR = 'config-dir/plugins/advanced-audio-recorder';
@@ -655,5 +686,246 @@ describe('AudioRecorderPlugin background transcription status bar', () => {
 			progress(60, 'Second job'),
 			expect.objectContaining({ onActivate: restoreSecond }),
 		);
+	});
+});
+
+describe('AudioRecorderPlugin silent-channel suggestion', () => {
+	const { detectSilentChannel } = jest.requireMock(
+		'src/recording/silentChannelDetector',
+	);
+	const { ConversionModal } = jest.requireMock('src/ui/ConversionModal');
+
+	function primedPlugin(overrides?: Partial<typeof DEFAULT_SETTINGS>): {
+		plugin: AudioRecorderPlugin;
+		hooks: SilentChannelHooks;
+		file: unknown;
+	} {
+		const { plugin } = createPlugin([{}]);
+		const file = { path: 'rec.wav', name: 'rec.wav' };
+		plugin.app.vault.getFileByPath = jest.fn().mockReturnValue(file);
+		const hooks = plugin as unknown as SilentChannelHooks;
+		hooks.settings = {
+			...DEFAULT_SETTINGS,
+			detectSilentChannelOnSave: true,
+			...overrides,
+		};
+		hooks.playerRegistrar = {
+			primeSavedRecordingsForEnhancement: jest.fn(),
+		};
+		hooks.encodingWorker = null;
+		return { plugin, hooks, file };
+	}
+
+	beforeEach(() => {
+		(detectSilentChannel as jest.Mock).mockReset();
+		mockConversionModalOpen.mockClear();
+		(ConversionModal as jest.Mock).mockClear();
+	});
+
+	it('prompts a mono conversion for a lopsided stereo recording', async () => {
+		const { hooks, file } = primedPlugin();
+		(detectSilentChannel as jest.Mock).mockResolvedValue({
+			silentChannel: 1,
+			audioChannel: 0,
+			keepMode: 'mono-left',
+		});
+		// The Notice/DOM path is exercised through showSilentChannelNotice;
+		// here we assert the detection-to-prompt wiring without the Notice
+		const noticeSpy = jest
+			.spyOn(hooks, 'showSilentChannelNotice')
+			.mockImplementation(() => undefined);
+
+		await hooks.maybeSuggestMonoConversion({
+			audioPaths: ['rec.wav'],
+			notePath: null,
+		});
+
+		expect(detectSilentChannel).toHaveBeenCalledWith(
+			expect.anything(),
+			file,
+			{ knownDurationSeconds: undefined },
+		);
+		expect(noticeSpy).toHaveBeenCalledWith([
+			{ file, keepMode: 'mono-left', silentSide: 'right' },
+		]);
+	});
+
+	it('labels a silent left channel and keeps the right', async () => {
+		const { hooks, file } = primedPlugin();
+		(detectSilentChannel as jest.Mock).mockResolvedValue({
+			silentChannel: 0,
+			audioChannel: 1,
+			keepMode: 'mono-right',
+		});
+		const noticeSpy = jest
+			.spyOn(hooks, 'showSilentChannelNotice')
+			.mockImplementation(() => undefined);
+
+		await hooks.maybeSuggestMonoConversion({
+			audioPaths: ['rec.wav'],
+			notePath: null,
+		});
+
+		expect(noticeSpy).toHaveBeenCalledWith([
+			{ file, keepMode: 'mono-right', silentSide: 'left' },
+		]);
+	});
+
+	it('checks the first saved file of every track sequentially', async () => {
+		const { plugin, hooks } = primedPlugin();
+		const first = { path: 'loopback.webm', name: 'loopback.webm' };
+		const second = { path: 'mic.webm', name: 'mic.webm' };
+		plugin.app.vault.getFileByPath = jest.fn((path: string) =>
+			path === first.path ? first : second,
+		);
+		(detectSilentChannel as jest.Mock)
+			.mockResolvedValueOnce(null)
+			.mockResolvedValueOnce({
+				silentChannel: 1,
+				audioChannel: 0,
+				keepMode: 'mono-left',
+			});
+		const noticeSpy = jest
+			.spyOn(hooks, 'showSilentChannelNotice')
+			.mockImplementation(() => undefined);
+
+		await hooks.maybeSuggestMonoConversion({
+			audioPaths: [first.path, second.path],
+			notePath: null,
+			durationSeconds: 30,
+			trackFiles: [
+				{ trackIndex: 0, files: [first.path, 'loopback-part2.webm'] },
+				{ trackIndex: 1, files: [second.path, 'mic-part2.webm'] },
+			],
+		});
+
+		expect(detectSilentChannel).toHaveBeenNthCalledWith(
+			1,
+			expect.anything(),
+			first,
+			{ knownDurationSeconds: 30 },
+		);
+		expect(detectSilentChannel).toHaveBeenNthCalledWith(
+			2,
+			expect.anything(),
+			second,
+			{ knownDurationSeconds: 30 },
+		);
+		expect(noticeSpy).toHaveBeenCalledWith([
+			{ file: second, keepMode: 'mono-left', silentSide: 'right' },
+		]);
+	});
+
+	it('does nothing when the setting is disabled', async () => {
+		const { hooks } = primedPlugin({ detectSilentChannelOnSave: false });
+
+		await hooks.maybeSuggestMonoConversion({
+			audioPaths: ['rec.wav'],
+			notePath: null,
+		});
+
+		expect(detectSilentChannel).not.toHaveBeenCalled();
+	});
+
+	it('does nothing when no lopsided channel is detected', async () => {
+		const { hooks } = primedPlugin();
+		(detectSilentChannel as jest.Mock).mockResolvedValue(null);
+		const noticeSpy = jest.spyOn(hooks, 'showSilentChannelNotice');
+
+		await hooks.maybeSuggestMonoConversion({
+			audioPaths: ['rec.wav'],
+			notePath: null,
+		});
+
+		expect(noticeSpy).not.toHaveBeenCalled();
+	});
+
+	it('does nothing when there are no saved files', async () => {
+		const { hooks } = primedPlugin();
+
+		await hooks.maybeSuggestMonoConversion({
+			audioPaths: [],
+			notePath: null,
+		});
+
+		expect(detectSilentChannel).not.toHaveBeenCalled();
+	});
+
+	it('opens the conversion dialog preset to the kept channel', () => {
+		const { hooks, file } = primedPlugin();
+
+		hooks.openMonoConversion(file, 'mono-left');
+
+		expect(ConversionModal).toHaveBeenCalledTimes(1);
+		expect((ConversionModal as jest.Mock).mock.calls[0][3]).toEqual(
+			expect.objectContaining({ initialChannelMode: 'mono-left' }),
+		);
+		expect(mockConversionModalOpen).toHaveBeenCalled();
+	});
+
+	it('renders a native keyboard-accessible action and hides a single notice on click', () => {
+		const { hooks, file } = primedPlugin();
+		const openSpy = jest
+			.spyOn(hooks, 'openMonoConversion')
+			.mockImplementation(() => undefined);
+
+		hooks.showSilentChannelNotice([
+			{ file, keepMode: 'mono-left', silentSide: 'right' },
+		]);
+
+		const notice = (Notice as jest.Mock).mock.instances.at(-1) as {
+			message: DocumentFragment;
+			hide: jest.Mock;
+		};
+		const button = notice.message.querySelector<HTMLButtonElement>(
+			'.aar-silent-channel-convert',
+		);
+		expect(button?.tagName).toBe('BUTTON');
+		expect(button?.type).toBe('button');
+		button?.click();
+		expect(notice.hide).toHaveBeenCalled();
+		expect(openSpy).toHaveBeenCalledWith(file, 'mono-left');
+	});
+
+	it('replaces a previous persistent silent-channel notice', () => {
+		const { hooks, file } = primedPlugin();
+		hooks.showSilentChannelNotice([
+			{ file, keepMode: 'mono-left', silentSide: 'right' },
+		]);
+		const first = (Notice as jest.Mock).mock.instances.at(-1) as {
+			hide: jest.Mock;
+		};
+
+		hooks.showSilentChannelNotice([
+			{ file, keepMode: 'mono-left', silentSide: 'right' },
+		]);
+
+		expect(first.hide).toHaveBeenCalled();
+	});
+
+	it('renders one conversion action per affected track', () => {
+		const { hooks, file } = primedPlugin();
+		const second = { path: 'mic-2.wav', name: 'mic-2.wav' };
+		const openSpy = jest
+			.spyOn(hooks, 'openMonoConversion')
+			.mockImplementation(() => undefined);
+
+		hooks.showSilentChannelNotice([
+			{ file, keepMode: 'mono-left', silentSide: 'right' },
+			{ file: second, keepMode: 'mono-right', silentSide: 'left' },
+		]);
+
+		const notice = (Notice as jest.Mock).mock.instances.at(-1) as {
+			message: DocumentFragment;
+			hide: jest.Mock;
+		};
+		const buttons = notice.message.querySelectorAll<HTMLButtonElement>(
+			'.aar-silent-channel-convert',
+		);
+		expect(buttons).toHaveLength(2);
+		buttons[1]?.click();
+		expect(openSpy).toHaveBeenCalledWith(second, 'mono-right');
+		// Keep the aggregate notice available so the other file can be fixed.
+		expect(notice.hide).not.toHaveBeenCalled();
 	});
 });

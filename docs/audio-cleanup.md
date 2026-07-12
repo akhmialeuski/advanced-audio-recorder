@@ -36,10 +36,24 @@ _Figure: the Clean up audio dialog with per-stage toggles and parameters._
     - an **embedded audio player**.
 2. Choose **Clean up audio**.
 3. In the dialog, toggle the stages you want and adjust their parameters. The toggles and values start from your settings defaults but can be changed per run.
-4. (Optional) Enable **Delete source after processing** to move the original to the system trash once the cleaned copy is written.
-5. Click **Process**. A notice reports the path of the written file.
+4. (Optional) Set **Channels** to downmix the cleaned copy to mono - see [Channels](#channels) below.
+5. (Optional) Enable **Delete source after processing** to move the original to the system trash once the cleaned copy is written.
+6. Click **Process**. A notice reports the path of the written file.
 
-At least one stage must be enabled, or the dialog asks you to enable one.
+At least one stage must be enabled, or a mono **Channels** option chosen, or the dialog asks you to pick one.
+
+### Channels
+
+The **Channels** dropdown downmixes the cleaned copy to mono during processing, in addition to (or instead of) the DSP stages:
+
+| Option                      | What it writes                                            |
+| --------------------------- | -------------------------------------------------------- |
+| **Same as source**          | The source channel layout (default).                     |
+| **Mono (mix all channels)** | The average of every channel - the standard downmix.     |
+| **Mono (left channel)**     | Only the left channel, at full level.                    |
+| **Mono (right channel)**    | Only the right channel, at full level.                   |
+
+The left/right options rescue a stereo recording where only one channel carries audio - the typical result of a single microphone on a dual-input audio interface. Because the downmix happens before the DSP stages, choosing a mono option is enough on its own: you can clean up **and** collapse to mono in one pass, or run a pure mono downmix with every stage off. See [Recording in mono](recording.md#recording-in-mono) for the capture-time equivalent and the automatic [silent-channel prompt](recording.md#recording-in-mono).
 
 ## Processing stages
 
@@ -79,7 +93,7 @@ The compressor itself uses fixed, speech-friendly settings (threshold -24 dB, ra
 
 ## Output
 
-- The cleaned file is always written as **16-bit PCM WAV**, regardless of the source format, because the cleanup re-encodes the decoded audio. The source's channel layout (mono/stereo) is preserved; the sample rate is the one the Obsidian audio engine decodes to, which may differ from the source.
+- The cleaned file is always written as **16-bit PCM WAV**, regardless of the source format, because the cleanup re-encodes the decoded audio. The source's channel layout (mono/stereo) is preserved unless you pick a mono **Channels** option; the sample rate is the one the Obsidian audio engine decodes to, which may differ from the source.
 - The file is saved **next to the source**, named `<source-name>-processed.wav`. If that name is taken, a numeric suffix is appended (`…-processed_1.wav`).
 - The original file is left untouched unless you enable **Delete source after processing**. If processing succeeds but deleting the source fails, the cleaned copy is still kept and a notice explains what happened.
 - **Linking into your note.** When you start the cleanup from an embed or player **inside a note**, the cleaned copy is linked into that note automatically: with **Delete source after processing** on, the source's embed is _replaced_ with the cleaned file (so no broken link is left behind); with it off, the cleaned file's embed is _inserted on the line right after_ the source, keeping both. The new links follow your link-format preferences, and the [enhanced player](audio-player.md) picks up the cleaned file straight away. Running cleanup from the **File Explorer** (where the active note does not embed the file) writes the copy but adds no link.

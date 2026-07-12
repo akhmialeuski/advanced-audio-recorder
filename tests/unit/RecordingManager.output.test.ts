@@ -1083,9 +1083,11 @@ describe('RecordingManager', () => {
 			const result = onRecordingSaved.mock.calls[0][0] as {
 				audioPaths: string[];
 				notePath: string | null;
+				durationSeconds?: number;
 			};
 			expect(result.audioPaths.length).toBeGreaterThan(0);
 			expect(result.notePath).toBe('Notes/active.md');
+			expect(result.durationSeconds).toEqual(expect.any(Number));
 		});
 
 		it('should use replaceRange at stored position when insertAtOriginalPosition is enabled', async () => {

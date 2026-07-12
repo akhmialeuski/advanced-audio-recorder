@@ -113,8 +113,9 @@ See also: [Recording](recording.md), [Settings reference](settings-reference.md#
 
 The recording plays back entirely in one ear. This is the normal result of recording a single microphone through an audio interface with two mono inputs: the operating system exposes the interface as one stereo device, so the mic on input 1 lands in the left channel and input 2 (silent) becomes the right channel.
 
-- For **new recordings**, set **Settings > Audio input > Recording channels** to **Mono (left channel)** (or right, depending on which input the microphone uses). The recording keeps the full level of that channel and saves a mono file. **Mono (mix all channels)** also produces mono but folds in the silent channel, which lowers the voice by 6 dB. See [Recording in mono](recording.md#recording-in-mono).
-- For **existing files**, right-click the file, choose **Convert audio format**, and set **Channels** to **Mono (left channel)** / **Mono (right channel)**. Converting to the same format writes a `<name>-mono` copy. See [Convert audio format](file-operations.md#convert-audio-format).
+- The plugin usually **catches this for you**: with **Detect silent channel after recording** on (the default), a notice appears right after saving with a **Convert to mono** action preset to the channel that has audio. See [Automatic silent-channel prompt](recording.md#automatic-silent-channel-prompt).
+- For **new recordings**, set **Settings > Audio input > Recording channels** to **Mono (left channel)** (or right, depending on which input the microphone uses). The recording keeps the full level of that channel and saves a mono file. In a [multi-track session](multi-track-recording.md) use the per-track **Channels for track N** selector instead. **Mono (mix all channels)** also produces mono but folds in the silent channel, which lowers the voice by 6 dB. See [Recording in mono](recording.md#recording-in-mono).
+- For **existing files**, right-click the file, choose **Convert audio format** (or **Clean up audio**), and set **Channels** to **Mono (left channel)** / **Mono (right channel)**. Converting to the same format writes a `<name>-mono` copy. See [Convert audio format](file-operations.md#convert-audio-format) and [Audio cleanup](audio-cleanup.md#channels).
 
 ### A recording format is not available
 

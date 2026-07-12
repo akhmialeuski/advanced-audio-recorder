@@ -89,6 +89,10 @@ export class Vault {
 		// Mock implementation
 	}
 
+	getFileByPath(_path: string): TFile | null {
+		return null;
+	}
+
 	getRoot(): TFolder {
 		return new TFolder('');
 	}
@@ -121,11 +125,12 @@ export class Workspace {
  * The global clearMocks option resets the calls between tests.
  */
 export const Notice = jest.fn(function (
-	this: { message: string },
-	message: string,
+	this: { message: string | DocumentFragment; hide: jest.Mock },
+	message: string | DocumentFragment,
 	_timeout?: number,
 ) {
 	this.message = message;
+	this.hide = jest.fn();
 });
 
 /**
