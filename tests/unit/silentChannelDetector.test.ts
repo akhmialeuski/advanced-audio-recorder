@@ -10,6 +10,12 @@ import {
 } from 'src/recording/silentChannelDetector';
 import type { App, TFile } from 'obsidian';
 
+jest.mock('src/utils/AudioFileAnalyzer', () => ({
+	probeAudioMetadata: jest.fn(),
+}));
+
+const { probeAudioMetadata } = jest.requireMock('src/utils/AudioFileAnalyzer');
+
 /** Full-scale-ish tone; RMS ~0.35 (about -9 dBFS). */
 function loud(length = 2048): Float32Array {
 	const data = new Float32Array(length);
@@ -79,8 +85,29 @@ describe('analyzeChannelBalance', () => {
 	it('honors custom floor and gap thresholds', () => {
 		const quiet = new Float32Array(2048).fill(0.02);
 		// Raise the floor above the quiet channel and shrink the gap
-		const result = analyzeChannelBalance([loud(), quiet], -30, 10);
+		const result = analyzeChannelBalance([loud(), quiet], {
+			floorDb: -30,
+			minGapDb: 10,
+		});
 		expect(result?.silentChannel).toBe(1);
+	});
+
+	it('preserves a channel containing a short real signal', () => {
+		const continuous = new Float32Array(4096).fill(0.3);
+		const sparse = new Float32Array(4096);
+		sparse.set(new Float32Array(256).fill(0.2), 2048);
+
+		expect(
+			analyzeChannelBalance([continuous, sparse], { windowFrames: 256 }),
+		).toBeNull();
+	});
+
+	it('does not treat tiny device noise as the audio channel', () => {
+		const almostSilent = new Float32Array(2048).fill(
+			Math.pow(10, -59 / 20),
+		);
+
+		expect(analyzeChannelBalance([almostSilent, silent()])).toBeNull();
 	});
 });
 
@@ -90,6 +117,7 @@ describe('detectSilentChannel', () => {
 			public numberOfChannels: number,
 			public duration: number,
 			private readonly channels: Float32Array[],
+			public sampleRate = 44100,
 		) {}
 		getChannelData(index: number): Float32Array {
 			return this.channels[index] ?? new Float32Array();
@@ -108,6 +136,11 @@ describe('detectSilentChannel', () => {
 	const file = { path: 'rec.wav' } as unknown as TFile;
 
 	beforeEach(() => {
+		(probeAudioMetadata as jest.Mock).mockReset().mockResolvedValue({
+			durationSeconds: 5,
+			sampleRate: 44100,
+			channels: 2,
+		});
 		decodeAudioData = jest.fn();
 		close = jest.fn().mockResolvedValue(undefined);
 		(global as Record<string, unknown>).AudioContext = jest
@@ -127,22 +160,64 @@ describe('detectSilentChannel', () => {
 	});
 
 	it('returns null and closes the context for a mono file', async () => {
-		decodeAudioData.mockResolvedValue(new FakeAudioBuffer(1, 5, [loud()]));
+		(probeAudioMetadata as jest.Mock).mockResolvedValue({
+			durationSeconds: 5,
+			sampleRate: 44100,
+			channels: 1,
+		});
+		const app = makeApp();
 
-		expect(await detectSilentChannel(makeApp(), file)).toBeNull();
-		expect(close).toHaveBeenCalled();
+		expect(await detectSilentChannel(app, file)).toBeNull();
+		expect(decodeAudioData).not.toHaveBeenCalled();
+		expect(close).not.toHaveBeenCalled();
 	});
 
-	it('skips files longer than the decode cap', async () => {
+	it('skips a known long recording before reading or decoding it', async () => {
+		const app = makeApp();
+
+		expect(
+			await detectSilentChannel(app, file, {
+				knownDurationSeconds: 3600,
+				maxDecodeSeconds: 60,
+			}),
+		).toBeNull();
+		expect(app.vault.readBinary).not.toHaveBeenCalled();
+		expect(probeAudioMetadata).not.toHaveBeenCalled();
+		expect(decodeAudioData).not.toHaveBeenCalled();
+	});
+
+	it('skips a long file from metadata before full decode', async () => {
+		(probeAudioMetadata as jest.Mock).mockResolvedValue({
+			durationSeconds: 3600,
+			sampleRate: 44100,
+			channels: 2,
+		});
+
+		expect(
+			await detectSilentChannel(makeApp(), file, {
+				maxDecodeSeconds: 60,
+			}),
+		).toBeNull();
+		expect(decodeAudioData).not.toHaveBeenCalled();
+	});
+
+	it('keeps the decoded-duration guard when metadata is unavailable', async () => {
+		(probeAudioMetadata as jest.Mock).mockResolvedValue(null);
 		decodeAudioData.mockResolvedValue(
 			new FakeAudioBuffer(2, 3600, [loud(), silent()]),
 		);
 
-		expect(await detectSilentChannel(makeApp(), file, 60)).toBeNull();
+		expect(
+			await detectSilentChannel(makeApp(), file, {
+				maxDecodeSeconds: 60,
+			}),
+		).toBeNull();
+		expect(close).toHaveBeenCalled();
 	});
 
 	it('returns null and closes the context when decoding fails', async () => {
 		const warn = jest.spyOn(console, 'warn').mockImplementation();
+		(probeAudioMetadata as jest.Mock).mockResolvedValue(null);
 		decodeAudioData.mockRejectedValue(new Error('bad data'));
 
 		expect(await detectSilentChannel(makeApp(), file)).toBeNull();

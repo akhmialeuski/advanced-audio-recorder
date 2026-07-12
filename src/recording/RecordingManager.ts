@@ -695,6 +695,11 @@ export class RecordingManager {
 		if (!this.rotation.requestStop()) {
 			return;
 		}
+		// Snapshot active audio time before recorder shutdown and saving add
+		// wall-clock latency. The post-save detector uses this to reject long
+		// sessions before reading or decoding their files.
+		const activeDurationSeconds =
+			this.rotation.getSessionActiveMs(this.status) / 1000;
 
 		try {
 			// Let an in-flight part rotation finish before tearing down:
@@ -721,11 +726,15 @@ export class RecordingManager {
 			const durationMs = Date.now() - this.recordingStartTime;
 			this.debugLogger.logRecordingStats(durationMs, this.totalChunks);
 
-			const saveResult = await this.finalizer.saveRecording(
+			const finalized = await this.finalizer.saveRecording(
 				this.chunkTargets,
 				this.recordingTimestamp,
 				this.insertionContext,
 			);
+			const saveResult: RecordingSaveResult = {
+				...finalized,
+				durationSeconds: activeDurationSeconds,
+			};
 			// Persist live markers before the hook so they are on disk when a
 			// post-save action (e.g. opening the player) reads the sidecar
 			await this.markers.persistMarkers(saveResult);

@@ -32,7 +32,7 @@ export interface AudioFileInfo {
 }
 
 /** The raw numbers the info dialog is built from. */
-interface ProbedAudioMetadata {
+export interface ProbedAudioMetadata {
 	durationSeconds: number;
 	sampleRate: number;
 	channels: number;
@@ -52,7 +52,7 @@ export async function getAudioFileInfo(
 		const arrayBuffer = await app.vault.readBinary(file);
 
 		const metadata =
-			(await probeMetadata(arrayBuffer, file.path)) ??
+			(await probeAudioMetadata(arrayBuffer, file.path)) ??
 			(await decodeMetadata(arrayBuffer));
 		if (!metadata) {
 			return null;
@@ -104,7 +104,7 @@ export async function getAudioFileInfo(
  * @param data - The file's bytes
  * @param path - Vault path, for the warning log only
  */
-async function probeMetadata(
+export async function probeAudioMetadata(
 	data: ArrayBuffer,
 	path: string,
 ): Promise<ProbedAudioMetadata | null> {

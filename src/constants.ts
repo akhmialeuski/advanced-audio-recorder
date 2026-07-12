@@ -89,6 +89,20 @@ export const SILENT_CHANNEL_FLOOR_DB = -60;
 export const SILENT_CHANNEL_MIN_GAP_DB = 40;
 
 /**
+ * Minimum peak-window level that counts as real audio on the channel we
+ * propose to keep. This prevents a nearly empty recording with tiny device
+ * noise just above the silence floor from producing a conversion prompt.
+ */
+export const SILENT_CHANNEL_MIN_AUDIO_DB = -45;
+
+/**
+ * Window length used by silent-channel analysis. Peak window RMS is used
+ * instead of whole-file RMS so a short but real sound on one channel is not
+ * diluted by minutes of silence and incorrectly discarded.
+ */
+export const SILENT_CHANNEL_ANALYSIS_WINDOW_SECONDS = 0.25;
+
+/**
  * Maximum recording duration, in seconds, that the post-save
  * silent-channel check will decode. A full decode is the only way to
  * read per-channel levels; capping it keeps a long session from paying

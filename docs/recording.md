@@ -70,9 +70,9 @@ Notes:
 
 ### Automatic silent-channel prompt
 
-If you forget to set the channel mode, the plugin can catch a lopsided recording after the fact. With **Detect silent channel after recording** on (**Settings > Audio processing & feedback**, default on), each saved recording is checked for the stereo-with-one-silent-channel pattern. When it is found, a notice appears - "Recording's right channel is silent" - with a **Convert to mono** action that opens the [conversion dialog](file-operations.md#convert-audio-format) already preset to keep the channel that carries audio. You still confirm the format and link handling before it runs.
+If you forget to set the channel mode, the plugin can catch a lopsided recording after the fact. With **Detect silent channel after recording** on (**Settings > Audio processing & feedback**, default on), one file from every output track is checked for the stereo-with-one-silent-channel pattern (for auto-split sessions, the first part of each track). When it is found, a notice identifies the affected file and offers a **Convert to mono** action that opens the [conversion dialog](file-operations.md#convert-audio-format) already preset to keep the channel that carries audio. You still confirm the format and link handling before it runs.
 
-The check decodes the file, so it is skipped for long recordings (over 20 minutes) to keep saving fast, and it only fires for genuine stereo files where one channel is essentially silent - a normal stereo mix never triggers it. Turn the setting off to silence the prompt entirely.
+The active recording duration is checked before the file is read, so long sessions (over 20 minutes) are skipped without a decode. Shorter files are metadata-probed before decoding, and the signal check uses short RMS windows instead of one whole-file average: a brief but real sound on a channel is preserved instead of being diluted by a long quiet stretch. Turn the setting off to silence the prompt entirely.
 
 ---
 

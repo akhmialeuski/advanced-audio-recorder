@@ -70,6 +70,10 @@ export interface RecordingSaveResult {
 	 * markers can be resolved to the right file. Absent only when a caller
 	 * (e.g. a test mock) does not provide it. */
 	trackFiles?: TrackFileGroup[];
+	/** Active recording duration in seconds, excluding paused intervals.
+	 * Runtime recording results always include it; optional for compatibility
+	 * with recovery paths and external/test callers. */
+	durationSeconds?: number;
 }
 
 /**

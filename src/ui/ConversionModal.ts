@@ -27,6 +27,13 @@ import type {
 	ConversionLinkAction,
 } from '../settings/settingsSchema';
 
+/** Optional collaborators and initial form state for ConversionModal. */
+export interface ConversionModalOptions {
+	onConverted?: (convertedPath: string) => void;
+	getWorkerClient?: () => EncodingWorkerClient | null;
+	initialChannelMode?: ChannelMode;
+}
+
 /**
  * Modal for converting an audio file to a different format.
  */
@@ -45,32 +52,32 @@ export class ConversionModal extends Modal {
 	private progressNotice: Notice | null = null;
 	/** Conversion pipeline behind the form. */
 	private readonly conversionService: ConversionService;
+	private readonly onConverted?: (convertedPath: string) => void;
 
 	/**
 	 * @param app - Obsidian app handle
 	 * @param sourceFile - Audio file to convert
 	 * @param settings - Plugin settings (seed format/bitrate/link defaults)
-	 * @param onConverted - Called with the converted file's path after a
-	 *   successful run, so a caller can prime it for the enhanced player.
-	 * @param getWorkerClient - Supplies the encoding worker, if any
-	 * @param initialChannelMode - Preselects the Channels option, so a
-	 *   caller (e.g. the silent-channel prompt) can open the dialog
-	 *   already set to the recommended mono downmix
+	 * @param options - Optional callback, worker supplier, and initial channel
+	 * mode. A named object keeps future callers from depending on positional
+	 * argument order.
 	 */
 	constructor(
 		app: App,
 		sourceFile: TFile,
 		settings: AudioRecorderSettings,
-		private readonly onConverted?: (convertedPath: string) => void,
-		getWorkerClient: () => EncodingWorkerClient | null = () => null,
-		initialChannelMode: ChannelMode = CHANNEL_MODE_SOURCE,
+		options: ConversionModalOptions = {},
 	) {
 		super(app);
 		this.sourceFile = sourceFile;
 		this.deleteSource = settings.deleteSourceAfterConversion;
 		this.linkAction = settings.conversionLinkAction;
-		this.channelMode = normalizeChannelMode(initialChannelMode);
-		this.conversionService = new ConversionService(app, getWorkerClient);
+		this.channelMode = normalizeChannelMode(options.initialChannelMode);
+		this.onConverted = options.onConverted;
+		this.conversionService = new ConversionService(
+			app,
+			options.getWorkerClient ?? (() => null),
+		);
 	}
 
 	override onOpen(): void {
