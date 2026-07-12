@@ -83,7 +83,7 @@ export class TestRecorder {
 					channelMode,
 					settings.sampleRate,
 				);
-				captureStream = monoBridge.start();
+				captureStream = await monoBridge.start();
 			}
 
 			const chunks: Blob[] = [];

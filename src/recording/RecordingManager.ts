@@ -608,18 +608,20 @@ export class RecordingManager {
 	private async initMediaRecording(): Promise<void> {
 		this.chunkTargets = await this.createChunkTargets(this.streams.length);
 		if (isMonoChannelMode(this.sessionChannelMode)) {
-			// Bridges register as they are created, so a failure while
-			// starting a later one still releases the earlier contexts
-			// via releasePartialSession
-			this.captureStreams = this.streams.map((stream) => {
-				const bridge = new MonoCaptureBridge(
-					stream,
-					this.sessionChannelMode,
-					this.settings.sampleRate,
-				);
-				this.monoBridges.push(bridge);
-				return bridge.start();
-			});
+			// Every bridge registers before any starts, so a failed start
+			// (e.g. an audio context stuck in the suspended state) still
+			// releases all acquired contexts via releasePartialSession
+			this.monoBridges = this.streams.map(
+				(stream) =>
+					new MonoCaptureBridge(
+						stream,
+						this.sessionChannelMode,
+						this.settings.sampleRate,
+					),
+			);
+			this.captureStreams = await Promise.all(
+				this.monoBridges.map((bridge) => bridge.start()),
+			);
 		} else {
 			this.captureStreams = this.streams;
 		}

@@ -211,6 +211,44 @@ describe('ConversionService', () => {
 		);
 	});
 
+	it('should treat an uppercase source extension as the same format', async () => {
+		// A .WAV source converting to wav differs from the source path
+		// only in case - still the same format, so it must get the
+		// -mono name instead of colliding on Windows or creating a
+		// case-twin file on case-sensitive systems
+		const outcome = await service.convert(
+			createRequest({
+				sourceFile: createSourceFile('WAV'),
+				targetFormat: 'wav',
+				channelMode: 'mono-right',
+			}),
+			jest.fn(),
+		);
+
+		expect(outcome).toEqual({
+			status: 'completed',
+			newFileName: 'recording-mono.wav',
+			newPath: 'Audio/recording-mono.wav',
+		});
+	});
+
+	it('should refuse an uppercase same-format conversion without a mono mode', async () => {
+		const outcome = await service.convert(
+			createRequest({
+				sourceFile: createSourceFile('WAV'),
+				targetFormat: 'wav',
+			}),
+			jest.fn(),
+		);
+
+		expect(outcome).toEqual({ status: 'aborted' });
+		expect(
+			getNotices().some((message) =>
+				message.includes('requires a mono channels option'),
+			),
+		).toBe(true);
+	});
+
 	it('should abort when the target file already exists', async () => {
 		(mockApp.vault.adapter.exists as jest.Mock).mockResolvedValue(true);
 

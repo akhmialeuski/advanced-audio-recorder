@@ -58,13 +58,48 @@ export function extractChannelSample(
 }
 
 /**
+ * Builds a mono AudioSample holding the plain average of every channel
+ * of the input sample. Used as the mediabunny `process` hook for the
+ * mono mix mode so the conversion downmix is sample-identical to the
+ * PCM capture worklet and downmixChannelData - mediabunny's own
+ * numberOfChannels remixing follows the Web Audio speaker rules
+ * instead, which weight 5.1 layouts and drop the LFE. Exported for
+ * unit tests.
+ * @param sample - Decoded input sample (any channel count)
+ * @returns Mono sample at the input's rate and timestamp
+ */
+export function averageChannelsSample(sample: AudioSample): AudioSample {
+	const frames = sample.numberOfFrames;
+	const channels = sample.numberOfChannels;
+	const interleaved = new Float32Array(frames * channels);
+	sample.copyTo(interleaved, { planeIndex: 0, format: 'f32' });
+	const mono = new Float32Array(frames);
+	for (let frame = 0; frame < frames; frame++) {
+		let sum = 0;
+		for (let channel = 0; channel < channels; channel++) {
+			sum += interleaved[frame * channels + channel] ?? 0;
+		}
+		mono[frame] = sum / channels;
+	}
+	return new AudioSample({
+		data: mono,
+		format: 'f32',
+		numberOfChannels: 1,
+		sampleRate: sample.sampleRate,
+		timestamp: sample.timestamp,
+	});
+}
+
+/**
  * Converts a compressed audio blob to the target format using the
  * streaming mediabunny Conversion pipeline. With allowRemux, packets
  * of an input whose codec already matches the target codec are copied
  * without re-encoding. A mono channel mode downmixes during the
- * conversion: the mix uses mediabunny's Web Audio remix rules, the
- * left/right modes keep one picked channel (both force a transcode
- * for multichannel input by mediabunny's own copy conditions).
+ * conversion through custom process hooks: the mix averages every
+ * channel and the left/right modes keep one picked channel, both
+ * sample-identical to the capture-time downmix. Multichannel mono
+ * conversions therefore always transcode; already-mono input keeps
+ * its remux eligibility.
  * @param recordedBlob - Input audio blob
  * @param targetFormat - Desired output format
  * @param bitrate - Bitrate in bits per second (ignored for PCM targets)
@@ -142,32 +177,43 @@ async function convertWithInput(
 	// when the caller knows the input is already at the requested
 	// bitrate. Discarded tracks are handled explicitly below, so
 	// mediabunny's own console warnings about them are disabled.
-	const inputCodec = await audioTrack.getCodec();
-	// PCM targets are uncompressed: a bitrate option is invalid there
-	const isPcmTarget = codec.startsWith('pcm-');
-	let audio: ConversionAudioOptions =
-		(allowRemux && inputCodec === codec) || isPcmTarget
-			? { codec }
-			: { codec, bitrate };
+	// Resolve the mono processing hook first: it decides remux
+	// eligibility below. Already-mono input needs no mix hook (and
+	// keeps its remux eligibility); picked-channel modes always hook,
+	// with the pick clamped into the channels that exist.
+	let monoProcess: ((sample: AudioSample) => AudioSample) | null = null;
 	if (channelMode === CHANNEL_MODE_MONO_MIX) {
-		// Differing channel counts force a transcode inside mediabunny;
-		// already-mono input keeps its remux eligibility
-		audio = { ...audio, numberOfChannels: 1 };
+		if ((await audioTrack.getNumberOfChannels()) > 1) {
+			monoProcess = averageChannelsSample;
+		}
 	} else if (channelMode !== CHANNEL_MODE_SOURCE) {
 		const pick = monoPickIndex(
 			channelMode,
 			await audioTrack.getNumberOfChannels(),
 		);
 		if (pick !== null) {
-			// A process hook always forces a transcode, so the picked
-			// channel can never be skipped by a packet copy
-			audio = {
-				...audio,
-				process: (sample: AudioSample) =>
-					extractChannelSample(sample, pick),
-				processedNumberOfChannels: 1,
-			};
+			monoProcess = (sample: AudioSample): AudioSample =>
+				extractChannelSample(sample, pick);
 		}
+	}
+
+	const inputCodec = await audioTrack.getCodec();
+	// PCM targets are uncompressed: a bitrate option is invalid there
+	const isPcmTarget = codec.startsWith('pcm-');
+	// A mono hook forces a transcode inside mediabunny, so the packet
+	// copy is off the table and the bitrate must be sent along -
+	// otherwise the forced re-encode would run at mediabunny's default
+	// quality instead of the configured one
+	const remuxEligible =
+		allowRemux && inputCodec === codec && monoProcess === null;
+	let audio: ConversionAudioOptions =
+		remuxEligible || isPcmTarget ? { codec } : { codec, bitrate };
+	if (monoProcess) {
+		audio = {
+			...audio,
+			process: monoProcess,
+			processedNumberOfChannels: 1,
+		};
 	}
 	const conversion = await Conversion.init({
 		input,

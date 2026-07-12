@@ -89,7 +89,14 @@ export class ConversionService {
 		let newPath = normalizePath(
 			directory ? `${directory}/${newFileName}` : newFileName,
 		);
-		if (newPath === request.sourceFile.path) {
+		// Compared case-insensitively on the extension, not by path
+		// equality: a `.WAV` source converting to `wav` produces a path
+		// that differs only in case, which still collides on Windows and
+		// would create a case-twin file on case-sensitive systems
+		const isSameFormat =
+			request.targetFormat.toLowerCase() ===
+			request.sourceFile.extension.toLowerCase();
+		if (isSameFormat) {
 			// Same-format conversion exists only to downmix (the dialog
 			// offers the source format for the mono modes alone); the
 			// output gets its own name instead of colliding with the

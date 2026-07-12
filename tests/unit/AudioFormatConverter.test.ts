@@ -162,6 +162,7 @@ describe('AudioFormatConverter', () => {
 		mockGetPrimaryAudioTrack.mockResolvedValue({
 			getCodec: jest.fn().mockResolvedValue('opus'),
 			isAudioTrack: (): boolean => true,
+			getNumberOfChannels: jest.fn().mockResolvedValue(2),
 		});
 	});
 
@@ -321,7 +322,10 @@ describe('AudioFormatConverter', () => {
 
 			expect(mockConversionInit).toHaveBeenCalledWith(
 				expect.objectContaining({
-					audio: expect.objectContaining({ numberOfChannels: 1 }),
+					audio: expect.objectContaining({
+						process: expect.any(Function),
+						processedNumberOfChannels: 1,
+					}),
 				}),
 			);
 		});

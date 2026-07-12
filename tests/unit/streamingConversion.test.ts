@@ -5,6 +5,7 @@
  */
 
 import {
+	averageChannelsSample,
 	extractChannelSample,
 	runStreamingConversion,
 } from 'src/audio/streamingConversion';
@@ -235,7 +236,7 @@ describe('runStreamingConversion', () => {
 			expect(audio.process).toBeUndefined();
 		});
 
-		it('should request one output channel for the mono mix', async () => {
+		it('should install an averaging process hook for the mono mix', async () => {
 			await runStreamingConversion(
 				inputBlob,
 				'mp3',
@@ -245,18 +246,27 @@ describe('runStreamingConversion', () => {
 				'mono-mix',
 			);
 
-			expect(mockConversionInit).toHaveBeenCalledWith(
-				expect.objectContaining({
+			const audio = (
+				mockConversionInit.mock.calls[0][0] as {
 					audio: {
-						codec: 'mp3',
-						bitrate: 96000,
-						numberOfChannels: 1,
-					},
-				}),
-			);
+						codec: string;
+						bitrate?: number;
+						process?: (sample: unknown) => unknown;
+						processedNumberOfChannels?: number;
+						numberOfChannels?: number;
+					};
+				}
+			).audio;
+			expect(audio.codec).toBe('mp3');
+			expect(audio.bitrate).toBe(96000);
+			expect(audio.processedNumberOfChannels).toBe(1);
+			expect(typeof audio.process).toBe('function');
+			// mediabunny's own remixing (Web Audio speaker rules) is not
+			// used - the hook keeps the mix identical to the capture paths
+			expect(audio.numberOfChannels).toBeUndefined();
 		});
 
-		it('should keep the mono mix on a remux-eligible codec match', async () => {
+		it('should send the bitrate for a mono mix even on a codec match', async () => {
 			mockGetPrimaryAudioTrack.mockResolvedValue({
 				getCodec: jest.fn().mockResolvedValue('mp3'),
 				isAudioTrack: (): boolean => true,
@@ -272,13 +282,70 @@ describe('runStreamingConversion', () => {
 				'mono-mix',
 			);
 
-			// The channel request survives; mediabunny itself decides that
-			// a differing channel count forces the transcode
+			// The hook forces a transcode, so the remux bitrate omission
+			// must not apply - otherwise the re-encode would run at
+			// mediabunny's default quality
+			const audio = (
+				mockConversionInit.mock.calls[0][0] as {
+					audio: { bitrate?: number; process?: unknown };
+				}
+			).audio;
+			expect(audio.bitrate).toBe(96000);
+			expect(typeof audio.process).toBe('function');
+		});
+
+		it('should keep remux eligibility for a mono mix of already-mono input', async () => {
+			mockGetPrimaryAudioTrack.mockResolvedValue({
+				getCodec: jest.fn().mockResolvedValue('mp3'),
+				isAudioTrack: (): boolean => true,
+				getNumberOfChannels: jest.fn().mockResolvedValue(1),
+			});
+
+			await runStreamingConversion(
+				inputBlob,
+				'mp3',
+				96000,
+				true,
+				undefined,
+				'mono-mix',
+			);
+
+			// Nothing to mix: the packets can be copied untouched
 			expect(mockConversionInit).toHaveBeenCalledWith(
 				expect.objectContaining({
-					audio: { codec: 'mp3', numberOfChannels: 1 },
+					audio: { codec: 'mp3' },
 				}),
 			);
+		});
+
+		it('should average all channels inside the mix hook', async () => {
+			await runStreamingConversion(
+				inputBlob,
+				'mp3',
+				96000,
+				false,
+				undefined,
+				'mono-mix',
+			);
+
+			const audio = (
+				mockConversionInit.mock.calls[0][0] as {
+					audio: { process?: (sample: unknown) => unknown };
+				}
+			).audio;
+			// Interleaved stereo: frames [0.5, -0.5] and [1, 0]
+			const interleaved = Float32Array.from([0.5, -0.5, 1, 0]);
+			const result = audio.process?.({
+				numberOfChannels: 2,
+				numberOfFrames: 2,
+				sampleRate: 44100,
+				timestamp: 0.5,
+				copyTo: (destination: Float32Array): void => {
+					destination.set(interleaved);
+				},
+			}) as { data: Float32Array; numberOfChannels: number };
+			expect(Array.from(result.data)).toEqual([0, 0.5]);
+			expect(result.numberOfChannels).toBe(1);
 		});
 
 		it.each([
@@ -418,5 +485,64 @@ describe('extractChannelSample', () => {
 		) as unknown as { data: Float32Array };
 
 		expect(Array.from(result.data)).toEqual([0.5]);
+	});
+});
+
+describe('averageChannelsSample', () => {
+	function fakeInterleavedSample(
+		interleaved: number[],
+		channels: number,
+	): {
+		numberOfChannels: number;
+		numberOfFrames: number;
+		sampleRate: number;
+		timestamp: number;
+		copyTo: (destination: Float32Array) => void;
+	} {
+		return {
+			numberOfChannels: channels,
+			numberOfFrames: interleaved.length / channels,
+			sampleRate: 48000,
+			timestamp: 1.25,
+			copyTo: (destination): void => {
+				destination.set(interleaved);
+			},
+		};
+	}
+
+	it('averages a stereo sample per frame', () => {
+		const result = averageChannelsSample(
+			fakeInterleavedSample([0.5, -0.5, 1, 0], 2) as never,
+		) as unknown as {
+			data: Float32Array;
+			format: string;
+			numberOfChannels: number;
+			sampleRate: number;
+			timestamp: number;
+		};
+
+		expect(Array.from(result.data)).toEqual([0, 0.5]);
+		expect(result.format).toBe('f32');
+		expect(result.numberOfChannels).toBe(1);
+		expect(result.sampleRate).toBe(48000);
+		expect(result.timestamp).toBe(1.25);
+	});
+
+	it('includes every lane of a 5.1-style sample in the average', () => {
+		// One frame of six channels; the plain average keeps the LFE,
+		// unlike the Web Audio speaker-rules downmix
+		const result = averageChannelsSample(
+			fakeInterleavedSample([0.6, 0.6, 0.6, 0.6, 0.6, 0.0], 6) as never,
+		) as unknown as { data: Float32Array };
+
+		expect(result.data[0]).toBeCloseTo(0.5);
+	});
+
+	it('copies a mono sample through unchanged', () => {
+		const result = averageChannelsSample(
+			fakeInterleavedSample([0.25, -0.25], 1) as never,
+		) as unknown as { data: Float32Array };
+
+		expect(Array.from(result.data)).toEqual([0.25, -0.25]);
 	});
 });

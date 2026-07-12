@@ -7,9 +7,16 @@
  * The dedicated left/right modes exist because audio interfaces with
  * two mono inputs expose themselves as one stereo device; a voice
  * recorded through such an interface sits entirely in one channel, and
- * averaging it with the silent channel would lose 6 dB of level. Mixing
- * uses the plain average of all input channels, matching the Web Audio
- * stereo-to-mono rule of 0.5*(L+R).
+ * averaging it with the silent channel would lose 6 dB of level.
+ *
+ * The mix mode is defined as the plain average of all input channels,
+ * and every pipeline implements exactly that definition: this module's
+ * helpers, the PCM capture worklet (PcmStreamRecorder), the live
+ * MediaRecorder bridge (MonoCaptureBridge), and the streaming
+ * conversion hook (averageChannelsSample). For stereo it equals the
+ * Web Audio speaker rule of 0.5*(L+R); for 5.1-style layouts it
+ * deliberately differs from the speaker rules, which weight channels
+ * and drop the LFE.
  * @module audio/downmix
  */
 

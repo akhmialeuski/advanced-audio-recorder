@@ -4,11 +4,14 @@
  * encoded as mono directly - no second lossy generation, and the
  * encoder spends its whole bitrate on one channel.
  *
- * Graph: MediaStreamAudioSourceNode -> (optional ChannelSplitterNode
- * for the picked-channel modes) -> MediaStreamAudioDestinationNode
- * constrained to one channel. The mix mode relies on the destination's
- * speaker-rules downmix (0.5*(L+R) for stereo); the left/right modes
- * route exactly one source channel. The PCM/WAV path does not use this
+ * Graph: MediaStreamAudioSourceNode -> ChannelSplitterNode -> (a 1/N
+ * GainNode for the mix mode, or a direct route for the picked-channel
+ * modes) -> MediaStreamAudioDestinationNode constrained to one channel.
+ * The mix mode computes the plain average of every input channel -
+ * identical to the PCM capture worklet and the downmix helpers - by
+ * summing the split mono lanes and scaling by 1/N, instead of relying
+ * on the destination's speaker-rules downmix (which weights 5.1
+ * layouts and drops the LFE). The PCM/WAV path does not use this
  * bridge - its capture worklet downmixes itself (see PcmStreamRecorder).
  * @module recording/MonoCaptureBridge
  */
@@ -27,6 +30,7 @@ export class MonoCaptureBridge {
 	private context: AudioContext | null = null;
 	private sourceNode: MediaStreamAudioSourceNode | null = null;
 	private splitterNode: ChannelSplitterNode | null = null;
+	private gainNode: GainNode | null = null;
 	private destinationNode: MediaStreamAudioDestinationNode | null = null;
 
 	/**
@@ -50,23 +54,31 @@ export class MonoCaptureBridge {
 
 	/**
 	 * Builds the audio graph and returns the mono stream to record.
-	 * A failure releases everything acquired so far: the caller has no
-	 * handle to clean a partially started bridge, and an unreleased
-	 * AudioContext counts against a global limit.
+	 * The context resume is awaited and verified: a context stuck in
+	 * the suspended state would feed the recorder pure silence while
+	 * the input-level meter (which taps the raw stream) still shows a
+	 * live signal, so failing the recording start is the only outcome
+	 * the user can notice in time. A failure releases everything
+	 * acquired so far: the caller has no handle to clean a partially
+	 * started bridge, and an unreleased AudioContext counts against a
+	 * global limit.
 	 * @returns Mono MediaStream for the MediaRecorder
+	 * @throws Error when the audio context cannot reach the running
+	 * state or the graph cannot be built
 	 */
-	start(): MediaStream {
+	async start(): Promise<MediaStream> {
 		try {
 			this.context = new AudioContext({
 				sampleRate: this.requestedSampleRate,
 			});
-			// A context may start suspended until a user gesture; resume
-			// so the destination receives audio instead of silence
+			// A context may start suspended until a user gesture
 			if (this.context.state === 'suspended') {
-				void this.context.resume().catch(() => {
-					// Non-fatal here; the recorder would capture silence,
-					// which the user notices immediately
-				});
+				await this.context.resume();
+			}
+			if (this.context.state !== 'running') {
+				throw new Error(
+					'The mono recording bridge could not start its audio context; the recording would be silent.',
+				);
 			}
 			this.sourceNode = this.context.createMediaStreamSource(this.stream);
 			this.destinationNode = this.context.createMediaStreamDestination();
@@ -76,11 +88,7 @@ export class MonoCaptureBridge {
 
 			const sourceChannels = this.resolveSourceChannels();
 			const pick = monoPickIndex(this.mode, sourceChannels);
-			if (pick === null) {
-				// Mix: the destination's one-channel constraint downmixes
-				// by the Web Audio speaker rules
-				this.sourceNode.connect(this.destinationNode);
-			} else {
+			if (pick !== null) {
 				// The splitter's channelInterpretation is 'discrete', so
 				// its size must cover the real source channels: padded
 				// outputs are silence, and monoPickIndex already clamps
@@ -90,6 +98,22 @@ export class MonoCaptureBridge {
 				);
 				this.sourceNode.connect(this.splitterNode);
 				this.splitterNode.connect(this.destinationNode, pick, 0);
+			} else if (sourceChannels <= 1) {
+				// Already mono: nothing to mix
+				this.sourceNode.connect(this.destinationNode);
+			} else {
+				// Mix: split into mono lanes, sum them at the gain input,
+				// and scale by 1/N - the exact average of every channel,
+				// matching the PCM capture worklet and downmixChannelData
+				this.splitterNode =
+					this.context.createChannelSplitter(sourceChannels);
+				this.gainNode = this.context.createGain();
+				this.gainNode.gain.value = 1 / sourceChannels;
+				this.sourceNode.connect(this.splitterNode);
+				for (let channel = 0; channel < sourceChannels; channel++) {
+					this.splitterNode.connect(this.gainNode, channel, 0);
+				}
+				this.gainNode.connect(this.destinationNode);
 			}
 			return this.destinationNode.stream;
 		} catch (error) {
@@ -127,6 +151,10 @@ export class MonoCaptureBridge {
 		if (this.splitterNode) {
 			this.splitterNode.disconnect();
 			this.splitterNode = null;
+		}
+		if (this.gainNode) {
+			this.gainNode.disconnect();
+			this.gainNode = null;
 		}
 		if (this.destinationNode) {
 			for (const track of this.destinationNode.stream.getTracks()) {
