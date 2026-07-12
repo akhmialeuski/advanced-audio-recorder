@@ -214,8 +214,9 @@ export class PcmStreamRecorder {
 			// the source track is mono. Prefer the negotiated track
 			// setting so the AudioWorklet width and WAV header describe
 			// the samples the source actually delivers.
-			const trackChannels =
-				this.stream.getAudioTracks()[0]?.getSettings().channelCount;
+			const trackChannels = this.stream
+				.getAudioTracks()[0]
+				?.getSettings().channelCount;
 			const sourceChannels =
 				typeof trackChannels === 'number' && trackChannels > 0
 					? trackChannels
