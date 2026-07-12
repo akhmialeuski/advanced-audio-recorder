@@ -4,7 +4,10 @@
  */
 
 import {
+	channelSelectionAvailable,
+	deviceMaxChannels,
 	getAudioStreams,
+	getDeviceChannelLimits,
 	getOrderedTrackSources,
 } from 'src/recording/AudioStreamHandler';
 import { AudioStreamError } from 'src/errors';
@@ -127,6 +130,150 @@ describe('AudioStreamHandler', () => {
 			const ordered = getOrderedTrackSources(settings);
 
 			expect(ordered.map((source) => source.trackNumber)).toEqual([1]);
+		});
+	});
+
+	describe('device channel capabilities', () => {
+		function fakeInputDevice(options: {
+			deviceId: string;
+			channelCount?: number | { max?: number };
+			throwOnCapabilities?: boolean;
+			withoutCapabilities?: boolean;
+		}): MediaDeviceInfo {
+			const device: Record<string, unknown> = {
+				deviceId: options.deviceId,
+				kind: 'audioinput',
+				label: options.deviceId,
+				groupId: '',
+			};
+			if (!options.withoutCapabilities) {
+				device.getCapabilities = (): { channelCount?: unknown } => {
+					if (options.throwOnCapabilities) {
+						throw new Error('no permission');
+					}
+					return options.channelCount === undefined
+						? {}
+						: { channelCount: options.channelCount };
+				};
+			}
+			return device as unknown as MediaDeviceInfo;
+		}
+
+		describe('deviceMaxChannels', () => {
+			it('reads the maximum of a channel-count range', () => {
+				const device = fakeInputDevice({
+					deviceId: 'stereo',
+					channelCount: { max: 2 },
+				});
+
+				expect(deviceMaxChannels(device)).toBe(2);
+			});
+
+			it('accepts a plain numeric channel count', () => {
+				const device = fakeInputDevice({
+					deviceId: 'mono',
+					channelCount: 1,
+				});
+
+				expect(deviceMaxChannels(device)).toBe(1);
+			});
+
+			it.each([
+				[
+					'a device without getCapabilities',
+					fakeInputDevice({
+						deviceId: 'plain',
+						withoutCapabilities: true,
+					}),
+				],
+				['empty capabilities', fakeInputDevice({ deviceId: 'empty' })],
+				[
+					'a range without max',
+					fakeInputDevice({
+						deviceId: 'openrange',
+						channelCount: {},
+					}),
+				],
+				['a missing device', undefined],
+			])('returns null for %s', (_case, device) => {
+				expect(deviceMaxChannels(device)).toBeNull();
+			});
+
+			it('returns null when getCapabilities throws', () => {
+				const device = fakeInputDevice({
+					deviceId: 'locked',
+					throwOnCapabilities: true,
+				});
+
+				expect(deviceMaxChannels(device)).toBeNull();
+			});
+		});
+
+		describe('channelSelectionAvailable', () => {
+			it('keeps the selection for multichannel and unknown devices', () => {
+				expect(channelSelectionAvailable(2)).toBe(true);
+				expect(channelSelectionAvailable(6)).toBe(true);
+				expect(channelSelectionAvailable(null)).toBe(true);
+				expect(channelSelectionAvailable(undefined)).toBe(true);
+			});
+
+			it('removes the selection only for known-mono devices', () => {
+				expect(channelSelectionAvailable(1)).toBe(false);
+			});
+		});
+
+		describe('getDeviceChannelLimits', () => {
+			const originalMediaDevices = navigator.mediaDevices;
+
+			afterEach(() => {
+				Object.defineProperty(navigator, 'mediaDevices', {
+					value: originalMediaDevices,
+					configurable: true,
+				});
+			});
+
+			it('maps every audio input to its channel limit', async () => {
+				Object.defineProperty(navigator, 'mediaDevices', {
+					value: {
+						enumerateDevices: jest.fn().mockResolvedValue([
+							fakeInputDevice({
+								deviceId: 'stereo',
+								channelCount: { max: 2 },
+							}),
+							fakeInputDevice({
+								deviceId: 'mono',
+								channelCount: { max: 1 },
+							}),
+							{
+								deviceId: 'camera',
+								kind: 'videoinput',
+							},
+						]),
+					},
+					configurable: true,
+				});
+
+				const limits = await getDeviceChannelLimits();
+
+				expect(limits.get('stereo')).toBe(2);
+				expect(limits.get('mono')).toBe(1);
+				expect(limits.has('camera')).toBe(false);
+			});
+
+			it('returns an empty map when enumeration fails', async () => {
+				Object.defineProperty(navigator, 'mediaDevices', {
+					value: {
+						enumerateDevices: jest
+							.fn()
+							.mockRejectedValue(new Error('unavailable')),
+					},
+					configurable: true,
+				});
+
+				const limits = await getDeviceChannelLimits();
+
+				expect(limits.size).toBe(0);
+			});
 		});
 	});
 });

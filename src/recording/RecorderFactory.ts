@@ -81,15 +81,16 @@ export function detachRecorderHandlers(recorders: MediaRecorder[]): void {
  * @param streams - Audio streams to capture
  * @param sampleRate - Requested capture sample rate in Hz
  * @param onChunk - Called with each captured PCM chunk
- * @param channelMode - Channel layout applied by every recorder's
- * capture worklet (source pass-through or a mono downmix)
+ * @param channelModes - Channel layout per stream (aligned by index)
+ * applied by each recorder's capture worklet; a missing entry keeps
+ * the source pass-through
  * @returns The created recorders, in stream order
  */
 export function createPcmRecorders(
 	streams: MediaStream[],
 	sampleRate: number,
 	onChunk: (index: number, data: ArrayBuffer) => void,
-	channelMode: ChannelMode = CHANNEL_MODE_SOURCE,
+	channelModes: ChannelMode[] = [],
 ): PcmStreamRecorder[] {
 	return streams.map(
 		(stream, index) =>
@@ -99,7 +100,7 @@ export function createPcmRecorders(
 				(data: ArrayBuffer) => {
 					onChunk(index, data);
 				},
-				channelMode,
+				channelModes[index] ?? CHANNEL_MODE_SOURCE,
 			),
 	);
 }

@@ -41,6 +41,7 @@ Multi-track recording is configured under **Settings > Advanced Audio Recorder >
 3. Set **Maximum tracks** with the slider - the number of simultaneous tracks, from **1 to 8** (default **2**). Use only what you need; each extra track is another live recorder.
 4. Choose the **Output mode**: **Single file** (all tracks mixed into one) or **Multiple files** (one file per track). Default is **Single file**.
 5. For each track, assign an **Audio source for track N** - pick the input device from the dropdown. There is one dropdown per track, numbered up to the **Maximum tracks** value. The device list auto-populates and refreshes as devices are connected or disconnected.
+6. Optionally set **Channels for track N** - the channel layout for that track's capture, bound to the track's device: keep the device layout (default), **Mono (mix all channels)**, **Mono (left channel)**, or **Mono (right channel)**. Because the choice is per track, a microphone that arrives hard-panned through a dual-input audio interface can be reduced to mono while a genuine stereo source on another track (for example a system-loopback device) keeps both channels. The selector is disabled when the track has no device yet or its device reports a mono-only input. See [Recording in mono](recording.md#recording-in-mono) for how each mode sounds.
 
 ![Multi-track recording settings with the enable toggle on, the Maximum tracks slider, the Output mode dropdown, and several "Audio source for track N" device dropdowns](images/settings-multi-track.png)
 _Figure: the Multi-track recording settings section with multiple per-track device dropdowns shown._
@@ -62,7 +63,7 @@ The **Output mode** dropdown decides what happens when you stop the session.
 
 ### Single file (mixed)
 
-Every track is combined into a single mixed file at your configured [format](formats.md) and bitrate. Mono inputs are duplicated into both channels; the output is mono only when every input is mono, and stereo otherwise. A mono [Recording channels](recording.md#recording-in-mono) setting applies to **every** track, so with it the merged output is always mono. The mix runs **after** you stop recording, so a longer session takes a moment to assemble (the status bar shows the [save progress](recording.md#save-progress-in-the-status-bar)). One embed link is inserted into your note.
+Every track is combined into a single mixed file at your configured [format](formats.md) and bitrate. Mono inputs are duplicated into both channels; the output is mono only when every input is mono, and stereo otherwise. Tracks reduced to mono by their **Channels for track N** setting count as mono inputs here - give every track a mono mode and the merged file is mono too. The mix runs **after** you stop recording, so a longer session takes a moment to assemble (the status bar shows the [save progress](recording.md#save-progress-in-the-status-bar)). One embed link is inserted into your note.
 
 Because the tracks are mixed only once at stop, **merged output cannot be auto-split** - see [Interaction with automatic splitting](#interaction-with-automatic-splitting). For very long mixed sessions, mind the [memory notes](#memory-notes-for-merged-output) below.
 
@@ -94,7 +95,7 @@ When **two tracks use the same device**, their source names would be identical a
 
 ## Behavior
 
-- **Each track is its own recorder.** Every track runs an independent recorder on its assigned stream, using the **same [recording format](formats.md) and [bitrate](settings-reference.md#output-format)** you have configured. There is no per-track format or bitrate.
+- **Each track is its own recorder.** Every track runs an independent recorder on its assigned stream, using the **same [recording format](formats.md) and [bitrate](settings-reference.md#output-format)** you have configured. There is no per-track format or bitrate; the **channel layout is per track** (see **Channels for track N** above). The global [Recording channels](settings-reference.md#audio-input) setting does not apply to multi-track sessions.
 - **All tracks start and stop together.** Starting the session starts every track at once; stopping stops them all. **Pause/resume** and **markers/chapters** apply to the whole session, across every track, on one shared timeline.
 - **Recording stats sum across tracks.** The live size shown in the status bar is the **total across all tracks and parts**, so a multi-track session grows faster on disk than a single-track one. See [Recording feedback](recording.md#live-feedback).
 - **Same device on several tracks is allowed.** Files are kept from colliding by the track-number suffix described above.
@@ -140,6 +141,7 @@ All multi-track controls live under **Settings > Advanced Audio Recorder > Multi
 | **Maximum tracks**               | Number of simultaneous tracks (slider, 1-8).                                             | 2           |
 | **Output mode**                  | `Single file` mixes all tracks into one file. `Multiple files` saves one file per track. | Single file |
 | **Audio source for track N**     | Input device assigned to each track. One dropdown per track, up to **Maximum tracks**.   | -           |
+| **Channels for track N**         | Channel layout for that track's capture: device layout, mono mix, or one picked channel. Disabled without a device or for mono-only devices. | Same as input device |
 
 Settings that also shape multi-track output:
 

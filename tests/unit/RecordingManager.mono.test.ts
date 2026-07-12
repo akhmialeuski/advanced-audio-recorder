@@ -160,7 +160,7 @@ describe('RecordingManager mono channel wiring', () => {
 		expect(bridge.release).toHaveBeenCalled();
 	});
 
-	it('creates one bridge per stream for multi-track sessions', async () => {
+	it('applies each track its own channel mode in multi-track sessions', async () => {
 		createDesktopRecorder();
 		const { getAudioStreams } = jest.requireMock(
 			'src/recording/AudioStreamHandler',
@@ -174,18 +174,82 @@ describe('RecordingManager mono channel wiring', () => {
 				{ trackNumber: 2, deviceId: 'b' },
 			],
 		});
-		mockSettings.recordingChannels = 'mono-mix';
+		mockSettings.trackAudioSources = new Map([
+			[1, { deviceId: 'a', channelMode: 'mono-left' as const }],
+			[2, { deviceId: 'b', channelMode: 'mono-mix' as const }],
+		]);
 		mockSettings.outputMode = 'multiple';
 
 		await manager.startRecording();
 
 		expect(createdBridges).toHaveLength(2);
 		expect(createdBridges[0].stream).toBe(streamA);
+		expect(createdBridges[0].mode).toBe('mono-left');
 		expect(createdBridges[1].stream).toBe(streamB);
+		expect(createdBridges[1].mode).toBe('mono-mix');
 
 		await manager.stopRecording();
 		expect(createdBridges[0].release).toHaveBeenCalled();
 		expect(createdBridges[1].release).toHaveBeenCalled();
+	});
+
+	it('bridges only the mono tracks of a mixed multi-track session', async () => {
+		createDesktopRecorder();
+		const { getAudioStreams } = jest.requireMock(
+			'src/recording/AudioStreamHandler',
+		);
+		const streamA = { getTracks: () => [{ stop: jest.fn() }] };
+		const streamB = { getTracks: () => [{ stop: jest.fn() }] };
+		getAudioStreams.mockResolvedValue({
+			streams: [streamA, streamB],
+			trackOrder: [
+				{ trackNumber: 1, deviceId: 'a' },
+				{ trackNumber: 2, deviceId: 'b' },
+			],
+		});
+		// Track 1: microphone hard-panned left; track 2: a genuine
+		// stereo source (e.g. system loopback) that must stay untouched
+		mockSettings.trackAudioSources = new Map([
+			[1, { deviceId: 'a', channelMode: 'mono-left' as const }],
+			[2, { deviceId: 'b', channelMode: 'source' as const }],
+		]);
+
+		await manager.startRecording();
+
+		expect(createdBridges).toHaveLength(1);
+		expect(createdBridges[0].stream).toBe(streamA);
+		expect(createdBridges[0].mode).toBe('mono-left');
+		// The source-mode track records its raw stream; the mono track
+		// records its bridged stream
+		const recorderCtor = global.MediaRecorder as unknown as jest.Mock;
+		expect(recorderCtor.mock.calls[0][0]).toBe(
+			createdBridges[0].monoStream,
+		);
+		expect(recorderCtor.mock.calls[1][0]).toBe(streamB);
+
+		await manager.stopRecording();
+	});
+
+	it('ignores the global channel setting for multi-track sessions', async () => {
+		createDesktopRecorder();
+		const { getAudioStreams } = jest.requireMock(
+			'src/recording/AudioStreamHandler',
+		);
+		getAudioStreams.mockResolvedValue({
+			streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
+			trackOrder: [{ trackNumber: 1, deviceId: 'a' }],
+		});
+		// The global mono setting must not leak into a multi-track
+		// session whose track asks for the source layout
+		mockSettings.recordingChannels = 'mono-mix';
+		mockSettings.trackAudioSources = new Map([
+			[1, { deviceId: 'a', channelMode: 'source' as const }],
+		]);
+
+		await manager.startRecording();
+
+		expect(createdBridges).toHaveLength(0);
+		await manager.stopRecording();
 	});
 
 	it('releases already-started bridges when a later bridge fails to start', async () => {
@@ -231,6 +295,37 @@ describe('RecordingManager mono channel wiring', () => {
 		expect(createdBridges).toHaveLength(0);
 		expect(pcmRecorderCtorArgs).toHaveLength(1);
 		expect(pcmRecorderCtorArgs[0][3]).toBe('mono-left');
+
+		await manager.stopRecording();
+	});
+
+	it('passes per-track modes to the PCM recorders in multi-track WAV sessions', async () => {
+		createDesktopRecorder();
+		const { getAudioStreams } = jest.requireMock(
+			'src/recording/AudioStreamHandler',
+		);
+		getAudioStreams.mockResolvedValue({
+			streams: [
+				{ getTracks: () => [{ stop: jest.fn() }] },
+				{ getTracks: () => [{ stop: jest.fn() }] },
+			],
+			trackOrder: [
+				{ trackNumber: 1, deviceId: 'a' },
+				{ trackNumber: 2, deviceId: 'b' },
+			],
+		});
+		mockSettings.recordingFormat = 'wav';
+		mockSettings.trackAudioSources = new Map([
+			[1, { deviceId: 'a', channelMode: 'mono-right' as const }],
+			[2, { deviceId: 'b', channelMode: 'source' as const }],
+		]);
+
+		await manager.startRecording();
+
+		expect(createdBridges).toHaveLength(0);
+		expect(pcmRecorderCtorArgs).toHaveLength(2);
+		expect(pcmRecorderCtorArgs[0][3]).toBe('mono-right');
+		expect(pcmRecorderCtorArgs[1][3]).toBe('source');
 
 		await manager.stopRecording();
 	});

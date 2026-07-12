@@ -6,7 +6,10 @@
 
 import { apiVersion } from 'obsidian';
 import type { App } from 'obsidian';
-import type { AudioRecorderSettings } from '../settings/settingsSchema';
+import type {
+	AudioRecorderSettings,
+	SerializedAudioSource,
+} from '../settings/settingsSchema';
 import { serializeTrackAudioSources } from '../settings/settingsSerialization';
 import {
 	detectCapabilities,
@@ -32,7 +35,7 @@ export interface DiagnosticsPluginSettings {
 	enableMultiTrack: boolean;
 	maxTracks: number;
 	outputMode: string;
-	trackAudioSources: Record<number, string>;
+	trackAudioSources: Record<number, SerializedAudioSource>;
 	audioDeviceId: string;
 	debug: boolean;
 }

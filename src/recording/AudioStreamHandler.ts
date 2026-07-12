@@ -23,6 +23,78 @@ export async function getAudioInputDevices(): Promise<MediaDeviceInfo[]> {
 }
 
 /**
+ * Maximum capture channel count a device reports, or null when the
+ * platform does not expose it. Read from InputDeviceInfo capabilities
+ * (available on already-enumerated devices once microphone permission
+ * exists), so no stream is opened. Exported for the settings UI, which
+ * greys out the channel selectors for known-mono devices.
+ * @param device - Enumerated device, or undefined when not found
+ * @returns Maximum channels, or null when unknown
+ */
+export function deviceMaxChannels(
+	device: MediaDeviceInfo | undefined,
+): number | null {
+	if (!device || !('getCapabilities' in device)) {
+		return null;
+	}
+	try {
+		const capabilities = (device as InputDeviceInfo).getCapabilities();
+		const channelCount = capabilities.channelCount;
+		if (typeof channelCount === 'number' && channelCount > 0) {
+			return channelCount;
+		}
+		if (
+			channelCount &&
+			typeof channelCount === 'object' &&
+			typeof channelCount.max === 'number' &&
+			channelCount.max > 0
+		) {
+			return channelCount.max;
+		}
+		return null;
+	} catch {
+		// Some engines throw for devices without granted permission
+		return null;
+	}
+}
+
+/**
+ * Collects the maximum channel counts of every audio input device.
+ * An enumeration failure yields an empty map, whose misses read as
+ * unknown capability downstream.
+ * @returns Map of deviceId to maximum channels (null when unknown)
+ */
+export async function getDeviceChannelLimits(): Promise<
+	Map<string, number | null>
+> {
+	const limits = new Map<string, number | null>();
+	try {
+		const devices = await getAudioInputDevices();
+		for (const device of devices) {
+			limits.set(device.deviceId, deviceMaxChannels(device));
+		}
+	} catch {
+		// Devices unavailable: leave the map empty
+	}
+	return limits;
+}
+
+/**
+ * Whether the mono channel options make sense for a device: true for
+ * known multichannel devices and for unknown capability (disabling on
+ * unknown would block the feature exactly on the platforms that need
+ * it most). Only a device that positively reports a single capture
+ * channel loses the selection - every mono mode would be an identity
+ * or a fallback there.
+ * @param maxChannels - Maximum channels, or null when unknown
+ */
+export function channelSelectionAvailable(
+	maxChannels: number | null | undefined,
+): boolean {
+	return maxChannels === null || maxChannels === undefined || maxChannels > 1;
+}
+
+/**
  * Maximum number of retry attempts for temporary errors.
  */
 const MAX_RETRIES = 2;

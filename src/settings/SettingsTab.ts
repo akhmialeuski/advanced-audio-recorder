@@ -27,9 +27,14 @@ import {
 import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
 import {
 	CHANNEL_MODES,
+	CHANNEL_MODE_SOURCE,
 	normalizeChannelMode,
 	type ChannelMode,
 } from '../audio/downmix';
+import {
+	channelSelectionAvailable,
+	getDeviceChannelLimits,
+} from '../recording/AudioStreamHandler';
 import { getEncoderDescription } from '../ui/formatDescriptions';
 import { TestRecorder } from '../recording/TestRecorder';
 import { FolderSuggest } from './FolderSuggest';
@@ -84,6 +89,19 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * outlive the tab (or the plugin).
 	 */
 	private deviceChangeHandler: (() => void) | null = null;
+	/**
+	 * Maximum capture channels per device id (null = unknown), read
+	 * from device capabilities without opening the microphone. Channel
+	 * selectors consult this to grey themselves out for devices that
+	 * positively report a single channel.
+	 */
+	private deviceChannelLimits: Map<string, number | null> = new Map();
+	/**
+	 * Re-evaluators for every channel-mode dropdown on the tab. Run
+	 * after the capability map loads, after a device selection changes,
+	 * and on devicechange events.
+	 */
+	private channelDropdownUpdaters: (() => void)[] = [];
 	/**
 	 * Debounced settings save shared by the text fields, which fire
 	 * onChange on every keystroke and would otherwise rewrite data.json
@@ -163,6 +181,13 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 		this.deviceDropdowns = [];
+		this.channelDropdownUpdaters = [];
+		// Capability detection is async; selectors render enabled and
+		// re-evaluate once the per-device channel limits arrive
+		void getDeviceChannelLimits().then((limits) => {
+			this.deviceChannelLimits = limits;
+			this.runChannelDropdownUpdaters();
+		});
 		if (!this.deviceChangeHandler) {
 			this.deviceChangeHandler = (): void => {
 				void this.refreshDeviceList();
@@ -193,6 +218,8 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				dropdown.onChange(async (value) => {
 					this.plugin.settings.audioDeviceId = value;
 					await this.plugin.saveSettings();
+					// The channel selector is bound to this device
+					this.runChannelDropdownUpdaters();
 				});
 			});
 
@@ -214,23 +241,19 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Recording channels')
 			.setDesc(
-				'Record with the device channel layout, or reduce to mono during capture. The left/right channel options suit audio interfaces whose two mono inputs show up as one stereo device: a single microphone is kept at full level instead of being mixed with a silent channel.',
+				'Channel layout for single-track recordings: keep the device layout, or reduce to mono during capture. The left/right channel options suit audio interfaces whose two mono inputs show up as one stereo device: a single microphone is kept at full level instead of being mixed with a silent channel. Disabled when the selected device reports a mono-only input. Multi-track sessions use the per-track selectors below instead.',
 			)
 			.addDropdown((dropdown) => {
-				const labels: Record<ChannelMode, string> = {
-					source: 'Same as input device',
-					'mono-mix': 'Mono (mix all channels)',
-					'mono-left': 'Mono (left channel)',
-					'mono-right': 'Mono (right channel)',
-				};
-				CHANNEL_MODES.forEach((mode) => {
-					dropdown.addOption(mode, labels[mode]);
-				});
-				dropdown.setValue(this.plugin.settings.recordingChannels);
-				dropdown.onChange(async (value) => {
-					this.plugin.settings.recordingChannels =
-						normalizeChannelMode(value);
-					await this.plugin.saveSettings();
+				this.bindChannelModeDropdown(dropdown, {
+					getDeviceId: () => this.plugin.settings.audioDeviceId,
+					// An empty id means the platform default device,
+					// whose capability is not knowable here: keep enabled
+					hasDevice: () => true,
+					getMode: () => this.plugin.settings.recordingChannels,
+					setMode: async (mode) => {
+						this.plugin.settings.recordingChannels = mode;
+						await this.plugin.saveSettings();
+					},
 				});
 			});
 
@@ -560,8 +583,16 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 						});
 						dropdown.onChange(async (value) => {
 							if (value) {
+								// Keep the track's channel mode across a
+								// device swap; the channel selector's
+								// evaluator resets it when the new device
+								// cannot use it
 								this.plugin.settings.trackAudioSources.set(i, {
 									deviceId: value,
+									channelMode:
+										this.plugin.settings.trackAudioSources.get(
+											i,
+										)?.channelMode ?? CHANNEL_MODE_SOURCE,
 								});
 							} else {
 								this.plugin.settings.trackAudioSources.delete(
@@ -569,6 +600,47 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 								);
 							}
 							await this.plugin.saveSettings();
+							// The track's channel selector is bound to
+							// this device
+							this.runChannelDropdownUpdaters();
+						});
+					});
+
+				new Setting(containerEl)
+					.setName(`Channels for track ${String(i)}`)
+					.setDesc(
+						`Channel layout for track ${String(i)}: keep the device layout, or reduce this track to mono during capture. Disabled when the track has no device or its device reports a mono-only input.`,
+					)
+					.addDropdown((dropdown) => {
+						this.bindChannelModeDropdown(dropdown, {
+							getDeviceId: () =>
+								this.plugin.settings.trackAudioSources.get(i)
+									?.deviceId ?? '',
+							hasDevice: () =>
+								Boolean(
+									this.plugin.settings.trackAudioSources.get(
+										i,
+									)?.deviceId,
+								),
+							getMode: () =>
+								this.plugin.settings.trackAudioSources.get(i)
+									?.channelMode ?? CHANNEL_MODE_SOURCE,
+							setMode: async (mode) => {
+								const source =
+									this.plugin.settings.trackAudioSources.get(
+										i,
+									);
+								if (!source) {
+									// No device selected: nothing to bind
+									// the mode to
+									return;
+								}
+								this.plugin.settings.trackAudioSources.set(i, {
+									...source,
+									channelMode: mode,
+								});
+								await this.plugin.saveSettings();
+							},
 						});
 					});
 			}
@@ -904,6 +976,69 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	}
 
 	/**
+	 * Runs every registered channel-dropdown re-evaluator.
+	 */
+	private runChannelDropdownUpdaters(): void {
+		for (const update of this.channelDropdownUpdaters) {
+			update();
+		}
+	}
+
+	/**
+	 * Fills a channel-mode dropdown and binds it to a device selection.
+	 * The dropdown greys itself out - forcing the pass-through mode -
+	 * when the bound device positively reports a single capture channel
+	 * (every mono option would be an identity or a fallback there) or
+	 * when no device is selected at all. Unknown capability keeps the
+	 * selection enabled: disabling on unknown would block the feature
+	 * exactly on the platforms that need it. The evaluator registers
+	 * itself for re-runs on capability loads and device changes.
+	 * @param dropdown - Dropdown to fill and manage
+	 * @param binding - Accessors for the bound device and stored mode
+	 */
+	private bindChannelModeDropdown(
+		dropdown: DropdownComponent,
+		binding: {
+			getDeviceId: () => string;
+			hasDevice: () => boolean;
+			getMode: () => ChannelMode;
+			setMode: (mode: ChannelMode) => Promise<void>;
+		},
+	): void {
+		const labels: Record<ChannelMode, string> = {
+			source: 'Same as input device',
+			'mono-mix': 'Mono (mix all channels)',
+			'mono-left': 'Mono (left channel)',
+			'mono-right': 'Mono (right channel)',
+		};
+		CHANNEL_MODES.forEach((mode) => {
+			dropdown.addOption(mode, labels[mode]);
+		});
+		dropdown.setValue(binding.getMode());
+		dropdown.onChange(async (value) => {
+			await binding.setMode(normalizeChannelMode(value));
+		});
+		const update = (): void => {
+			const available =
+				binding.hasDevice() &&
+				channelSelectionAvailable(
+					this.deviceChannelLimits.get(binding.getDeviceId()),
+				);
+			dropdown.setDisabled(!available);
+			if (!available && binding.getMode() !== CHANNEL_MODE_SOURCE) {
+				// A mono mode stored for a device that cannot use it is
+				// misleading state; reset it visibly and persistently
+				dropdown.setValue(CHANNEL_MODE_SOURCE);
+				void binding.setMode(CHANNEL_MODE_SOURCE);
+			} else {
+				dropdown.setValue(binding.getMode());
+			}
+		};
+		this.channelDropdownUpdaters.push(update);
+		update();
+	}
+
+	/**
 	 * Populates dropdown with audio devices.
 	 * @param dropdown - The dropdown component
 	 */
@@ -928,6 +1063,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			dropdown.setValue(hasOption ? selectedValue : '');
 		});
 		await Promise.all(refreshes);
+		// Plugged/unplugged devices change the capability picture the
+		// channel selectors are bound to
+		this.deviceChannelLimits = await getDeviceChannelLimits();
+		this.runChannelDropdownUpdaters();
 	}
 
 	/**

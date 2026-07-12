@@ -64,6 +64,13 @@ export type { ConversionLinkAction } from '../types';
 export interface AudioSource {
 	/** Selected device ID for the track. */
 	deviceId: string;
+	/**
+	 * Channel layout for this track's capture: keep the device layout
+	 * or reduce to mono (mix or one picked channel). Bound to the
+	 * track's device because it describes that device's own channels;
+	 * the settings UI disables the selection for known-mono devices.
+	 */
+	channelMode: ChannelMode;
 }
 
 /**
@@ -72,9 +79,15 @@ export interface AudioSource {
 export type TrackAudioSources = Map<number, AudioSource>;
 
 /**
- * Serialized track audio sources mapping (track number -> device ID).
+ * Track audio sources as accepted from storage: the current object
+ * form, or the bare device-id string older versions persisted. The
+ * channel mode may be missing or invalid in hand-edited data; the
+ * deserializer normalizes it.
  */
-export type TrackAudioSourcesRecord = Record<number, string | AudioSource>;
+export type TrackAudioSourcesRecord = Record<
+	number,
+	string | { deviceId?: unknown; channelMode?: unknown }
+>;
 
 /**
  * Plugin settings interface.
@@ -101,10 +114,11 @@ export interface AudioRecorderSettings {
 	/** Audio sample rate in Hz */
 	sampleRate: number;
 	/**
-	 * Channel layout for new recordings: keep the device layout or
-	 * reduce to mono by mixing or picking one input channel. The
-	 * left/right picks target audio interfaces whose two mono inputs
-	 * appear as one stereo device.
+	 * Channel layout for single-track recordings: keep the device
+	 * layout or reduce to mono by mixing or picking one input channel.
+	 * The left/right picks target audio interfaces whose two mono
+	 * inputs appear as one stereo device. Multi-track sessions ignore
+	 * this - each track carries its own mode in trackAudioSources.
 	 */
 	recordingChannels: ChannelMode;
 	/** Audio bitrate in bps */
@@ -286,13 +300,22 @@ export interface AudioRecorderSettingsInput extends Partial<
 }
 
 /**
+ * One track source as persisted to disk. Older versions stored a bare
+ * device-id string; the deserializer accepts both shapes.
+ */
+export interface SerializedAudioSource {
+	deviceId: string;
+	channelMode: ChannelMode;
+}
+
+/**
  * Settings shape as persisted to disk (track sources flattened to a record).
  */
 export interface SerializedAudioRecorderSettings extends Omit<
 	AudioRecorderSettings,
 	'trackAudioSources'
 > {
-	trackAudioSources: Record<number, string>;
+	trackAudioSources: Record<number, SerializedAudioSource>;
 }
 
 /**

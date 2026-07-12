@@ -38,8 +38,8 @@ function makeSettings(
 		outputMode: 'single',
 		useSourceNamesForTracks: true,
 		trackAudioSources: new Map([
-			[1, { deviceId: 'dev-a' }],
-			[2, { deviceId: 'dev-b' }],
+			[1, { deviceId: 'dev-a', channelMode: 'source' as const }],
+			[2, { deviceId: 'dev-b', channelMode: 'mono-left' as const }],
 		]),
 		debug: true,
 		...overrides,
@@ -79,7 +79,10 @@ describe('SystemDiagnostics.collectPluginSettings', () => {
 		const settings = makeSettings();
 		const result = SystemDiagnostics.collectPluginSettings(settings);
 
-		expect(result.trackAudioSources).toEqual({ 1: 'dev-a', 2: 'dev-b' });
+		expect(result.trackAudioSources).toEqual({
+			1: { deviceId: 'dev-a', channelMode: 'source' },
+			2: { deviceId: 'dev-b', channelMode: 'mono-left' },
+		});
 	});
 
 	it('handles empty trackAudioSources', () => {

@@ -202,6 +202,49 @@ describe('Settings', () => {
 			);
 		});
 
+		it('should default legacy string track sources to the source channel mode', () => {
+			const result = mergeSettings({
+				trackAudioSources: { 1: 'device-id-1' },
+			});
+
+			expect(result.trackAudioSources.get(1)?.channelMode).toBe('source');
+		});
+
+		it('should keep a stored per-track channel mode', () => {
+			const result = mergeSettings({
+				trackAudioSources: {
+					1: { deviceId: 'device-id-1', channelMode: 'mono-left' },
+				},
+			});
+
+			expect(result.trackAudioSources.get(1)?.channelMode).toBe(
+				'mono-left',
+			);
+		});
+
+		it('should normalize a missing or invalid per-track channel mode', () => {
+			const result = mergeSettings({
+				trackAudioSources: {
+					1: { deviceId: 'device-id-1' },
+					2: { deviceId: 'device-id-2', channelMode: 'quad' },
+				},
+			});
+
+			expect(result.trackAudioSources.get(1)?.channelMode).toBe('source');
+			expect(result.trackAudioSources.get(2)?.channelMode).toBe('source');
+		});
+
+		it('should normalize channel modes of Map-form track sources', () => {
+			// A Map built by pre-channel-mode plugin code lacks the field
+			const legacyMap = new Map([
+				[1, { deviceId: 'device-id-1' }],
+			]) as unknown as AudioRecorderSettings['trackAudioSources'];
+
+			const result = mergeSettings({ trackAudioSources: legacyMap });
+
+			expect(result.trackAudioSources.get(1)?.channelMode).toBe('source');
+		});
+
 		it('should handle output mode changes', () => {
 			const modes: OutputMode[] = ['single', 'multiple'];
 
@@ -230,8 +273,11 @@ describe('Settings', () => {
 				outputMode: 'multiple',
 				useSourceNamesForTracks: false,
 				trackAudioSources: new Map([
-					[1, { deviceId: 'dev1' }],
-					[2, { deviceId: 'dev2' }],
+					[1, { deviceId: 'dev1', channelMode: 'source' as const }],
+					[
+						2,
+						{ deviceId: 'dev2', channelMode: 'mono-left' as const },
+					],
 				]),
 				debug: true,
 				insertAtOriginalPosition: true,
