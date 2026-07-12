@@ -173,6 +173,24 @@ describe('PcmStreamRecorder', () => {
 			expect(mockGainNode.gain.value).toBe(0);
 		});
 
+		it('should prefer the negotiated track channel count over the source node default', async () => {
+			// MediaStreamAudioSourceNode.channelCount commonly stays at
+			// its default of 2 even though the track actually delivers mono.
+			mockSourceNode.channelCount = 2;
+			const stream = createMockStream(1);
+			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
+
+			await recorder.start();
+
+			expect(recorder.channels).toBe(1);
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any -- mock global constructor
+			expect((global as any).AudioWorkletNode).toHaveBeenCalledWith(
+				mockAudioContext,
+				'pcm-capture-processor',
+				expect.objectContaining({ channelCount: 1 }),
+			);
+		});
+
 		it('should pass the mono channel mode to the worklet and keep the full input width', async () => {
 			mockSourceNode.channelCount = 2;
 			const stream = createMockStream(2);
