@@ -178,19 +178,18 @@ async function convertWithInput(
 	// bitrate. Discarded tracks are handled explicitly below, so
 	// mediabunny's own console warnings about them are disabled.
 	// Resolve the mono processing hook first: it decides remux
-	// eligibility below. Already-mono input needs no mix hook (and
-	// keeps its remux eligibility); picked-channel modes always hook,
-	// with the pick clamped into the channels that exist.
+	// eligibility below. Every mono mode is already satisfied by a
+	// one-channel input, including a right-channel pick (which falls
+	// back to that only channel), so a no-op transcode is unnecessary.
+	const sourceChannels = await audioTrack.getNumberOfChannels();
 	let monoProcess: ((sample: AudioSample) => AudioSample) | null = null;
-	if (channelMode === CHANNEL_MODE_MONO_MIX) {
-		if ((await audioTrack.getNumberOfChannels()) > 1) {
-			monoProcess = averageChannelsSample;
-		}
-	} else if (channelMode !== CHANNEL_MODE_SOURCE) {
-		const pick = monoPickIndex(
-			channelMode,
-			await audioTrack.getNumberOfChannels(),
-		);
+	if (sourceChannels > 1 && channelMode === CHANNEL_MODE_MONO_MIX) {
+		monoProcess = averageChannelsSample;
+	} else if (
+		sourceChannels > 1 &&
+		channelMode !== CHANNEL_MODE_SOURCE
+	) {
+		const pick = monoPickIndex(channelMode, sourceChannels);
 		if (pick !== null) {
 			monoProcess = (sample: AudioSample): AudioSample =>
 				extractChannelSample(sample, pick);
