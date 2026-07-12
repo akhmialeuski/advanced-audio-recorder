@@ -185,10 +185,7 @@ async function convertWithInput(
 	let monoProcess: ((sample: AudioSample) => AudioSample) | null = null;
 	if (sourceChannels > 1 && channelMode === CHANNEL_MODE_MONO_MIX) {
 		monoProcess = averageChannelsSample;
-	} else if (
-		sourceChannels > 1 &&
-		channelMode !== CHANNEL_MODE_SOURCE
-	) {
+	} else if (sourceChannels > 1 && channelMode !== CHANNEL_MODE_SOURCE) {
 		const pick = monoPickIndex(channelMode, sourceChannels);
 		if (pick !== null) {
 			monoProcess = (sample: AudioSample): AudioSample =>
