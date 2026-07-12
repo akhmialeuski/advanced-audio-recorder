@@ -103,13 +103,15 @@ The dialog header shows the source file name. Below it are these controls:
 | Control                   | Description                                                           | Default              |
 | ------------------------- | --------------------------------------------------------------------- | -------------------- |
 | **Target format**         | The output format (every offline-encodable format except the source). | First format in list |
+| **Channels**              | Keep the source channel layout, or downmix to mono.                   | Keep source channels |
 | **Bitrate**               | Bitrate for compressed targets. Ignored for WAV (PCM has no bitrate). | `128` kbps           |
 | **Delete source file**    | Move the original to the system trash after a successful conversion.  | From settings        |
 | **Update links in notes** | How to rewrite links to the source file in your notes.                | From settings        |
 
 Details on the controls:
 
-- **Target format** lists each format with its encoder, e.g. `MP3 (Mediabunny MP3 Encoder)`, `FLAC (Mediabunny FLAC Encoder)`, `OGG (…)`. The source's own format is excluded, so you always pick a different one.
+- **Target format** lists each format with its encoder, e.g. `MP3 (Mediabunny MP3 Encoder)`, `FLAC (Mediabunny FLAC Encoder)`, `OGG (…)`. The source's own format is excluded for channel-preserving conversions, so you always pick a different one; selecting a mono **Channels** option adds the source's own format back to the list (see below).
+- **Channels** offers `Keep source channels`, `Mono (mix all channels)` (the average of every channel - the standard downmix), `Mono (left channel)`, and `Mono (right channel)` (exactly one channel, at full level). The left/right options rescue stereo files where only one channel carries audio - the typical result of recording one microphone through an audio interface whose two mono inputs appear as a single stereo device. See [Recording in mono](recording.md#recording-in-mono) for the capture-time equivalent.
 - **Bitrate** offers `64`, `96`, `128`, `160`, `192`, `256`, and `320` kbps.
 - **Update links in notes** offers `Do nothing`, `Replace source link`, and `Insert after source link` (see [Link updates and source deletion](#link-updates-and-source-deletion) below).
 
@@ -122,7 +124,9 @@ Click **Convert** to run. Progress text appears in the dialog (`Reading source f
 - The source bytes are read once, then transcoded to the target format through the **streaming Mediabunny pipeline**: the audio is processed in chunks instead of being decoded fully into memory, and it is **always re-encoded at the bitrate you selected** (the conversion never copies packets, so your bitrate choice is always honored).
 - If the source container cannot be processed by the streaming pipeline, the plugin **falls back to a full decode and re-encode**, so every supported format keeps working even when its container is not stream-readable.
 - **Converting to WAV always performs a full decode** first, because the streaming pipeline only targets compressed formats.
+- A mono **Channels** option downmixes inside the same pipeline: the mix is the plain average of every channel - sample-identical to the [recording-time downmix](recording.md#recording-in-mono) - and the left/right options keep one channel untouched. A right-channel pick on a file that is already mono falls back to the only channel instead of producing silence.
 - The converted file is written **next to the source** as `<source-name>.<target-format>`. If a file with that name already exists, the conversion is **aborted** with a notice - choose a different format or rename the existing file.
+- A **same-format mono downmix** (for example stereo `WAV` to mono `WAV`) is written as `<source-name>-mono.<format>`, so it never collides with the source. Same-format conversion without a mono option is refused - it would only re-encode the file into itself.
 
 ### Link updates and source deletion
 

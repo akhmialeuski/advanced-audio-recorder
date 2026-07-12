@@ -47,6 +47,28 @@ This is the quickest way to switch mics between recordings - for example, moving
 
 ---
 
+## Recording in mono
+
+By default a recording keeps whatever channel layout the input device delivers - a stereo device produces a stereo file. The **Recording channels** setting under [Audio input](settings-reference.md#audio-input) can reduce the recording to mono during capture instead:
+
+| Option                     | What it records                                                                 |
+| -------------------------- | ------------------------------------------------------------------------------- |
+| **Same as input device**   | The device's own layout (default; previous behaviour).                          |
+| **Mono (mix all channels)** | The average of every input channel - the standard stereo-to-mono downmix.      |
+| **Mono (left channel)**    | Only the first input channel, at full level.                                    |
+| **Mono (right channel)**   | Only the second input channel, at full level.                                   |
+
+The left/right options exist for a common piece of hardware: audio interfaces with two mono inputs (mic on input 1, instrument on input 2) that the operating system exposes as one **stereo** device. Recording a single microphone through such an interface yields a stereo file with the voice hard-panned to one side. Picking **Mono (left channel)** (or right, depending on the input used) records just that channel with no level loss - whereas mixing would also fold in the silent channel and land the voice 6 dB quieter.
+
+Notes:
+
+- The downmix happens **during capture**, on every format: WAV records mono samples directly (half the file size), and compressed formats encode a mono stream, so the whole bitrate serves one channel. There is no extra re-encode.
+- The setting applies to every track of a [multi-track session](multi-track-recording.md) and to the **Test recording** button in settings.
+- If a mono option is selected while the device is actually mono, the recording works as usual - the picked-channel options fall back to the only channel available.
+- Existing stereo files can be fixed after the fact with the **Channels** option in the [Convert audio format dialog](file-operations.md#convert-audio-format).
+
+---
+
 ## The status bar while recording
 
 Once a session is active, the ribbon icon changes from a plain microphone to an active recording indicator, and the **status bar** (bottom-right of the Obsidian window) shows the live recording controls.
@@ -213,6 +235,7 @@ These settings shape the recording workflow. See the [settings reference](settin
 | ------------------------------------ | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
 | **Input device**                     | Which microphone or input the recording captures.                                                  | [Audio input](settings-reference.md#audio-input)                                |
 | **Sample rate**                      | Capture sample rate in Hz (default 44100).                                                         | [Audio input](settings-reference.md#audio-input)                                |
+| **Recording channels**               | Keep the device channel layout, or record mono (mix all channels, or keep only the left/right channel). | [Audio input](settings-reference.md#audio-input)                                |
 | **Recording format**                 | The output container/codec (default WebM); offline formats are labelled `(offline)`.               | [Output format](settings-reference.md#output-format)                            |
 | **Audio bitrate**                    | Compression quality for the recording (default 128 kbps).                                          | [Output format](settings-reference.md#output-format)                            |
 | **Save folder**                      | The vault folder recordings are written to (default vault root).                                   | [File storage](settings-reference.md#file-storage)                              |

@@ -16,13 +16,13 @@ The full documentation lives in the [docs](docs/index.md) folder, and the same l
 
 ## Features
 
-- Recording: one-click capture with pause, resume, live status feedback, automatic splitting of long sessions, and crash recovery.
+- Recording: one-click capture with pause, resume, live status feedback, automatic splitting of long sessions, and crash recovery. Record in stereo or mono - including keeping just one channel of a dual-input audio interface.
 - Multi-track recording: capture up to eight input devices at once for multi-microphone interviews.
 - Enhanced audio player: inline waveform with adjustable speed, skip, loop, volume, per-recording bookmarks, chapters, and clickable timestamp links.
 - Transcription: OpenAI-compatible Whisper API, Deepgram, Google Gemini, or fully offline whisper.cpp, with speaker diarization and JSON, SRT, WebVTT, or plain-text output.
 - LLM post-processing: optionally clean up or summarize any transcript with OpenAI, Anthropic, or Gemini.
 - Audio cleanup: high-pass filter, noise gate, and loudness leveling, written to a fresh copy.
-- Formats and file operations: convert between WAV, WebM, OGG, MP3, MP4, M4A, AAC, and FLAC, and split long files from the right-click menu.
+- Formats and file operations: convert between WAV, WebM, OGG, MP3, MP4, M4A, AAC, and FLAC (with an optional mono downmix), and split long files from the right-click menu.
 
 Recording is fast and forgiving. Start and stop from the ribbon or a command, follow live feedback in the status bar, and pause or resume without losing anything. Capture up to eight input devices at once for multi-microphone interviews, let long sessions split into fixed-length parts automatically, and recover the audio on the next launch if Obsidian closes mid-recording. See [Recording](docs/recording.md) and [Multi-track recording](docs/multi-track-recording.md).
 

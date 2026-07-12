@@ -44,6 +44,15 @@ jest.mock('src/audio/AudioEncoder', () => ({
 	},
 }));
 
+// Mock downmix: keep the real mode helpers, spy on the buffer downmix
+jest.mock('src/audio/downmix', () => {
+	const actual: object = jest.requireActual('src/audio/downmix');
+	return {
+		...actual,
+		downmixAudioBuffer: jest.fn((buffer: AudioBuffer) => buffer),
+	};
+});
+
 // Mock mediabunny Conversion pipeline
 const mockConversionExecute = jest.fn().mockResolvedValue(undefined);
 const mockConversionInit = jest.fn();
@@ -153,6 +162,7 @@ describe('AudioFormatConverter', () => {
 		mockGetPrimaryAudioTrack.mockResolvedValue({
 			getCodec: jest.fn().mockResolvedValue('opus'),
 			isAudioTrack: (): boolean => true,
+			getNumberOfChannels: jest.fn().mockResolvedValue(2),
 		});
 	});
 
@@ -280,6 +290,45 @@ describe('AudioFormatConverter', () => {
 			);
 			warnSpy.mockRestore();
 		});
+
+		it('should downmix on the decode fallback when a mono mode is requested', async () => {
+			const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
+			mockConversionInit.mockRejectedValueOnce(
+				new Error('unreadable container'),
+			);
+			const { downmixAudioBuffer } =
+				jest.requireMock('src/audio/downmix');
+
+			const inputBlob = new Blob(['audio-data'], { type: 'audio/webm' });
+			await convertBlobToFormat(inputBlob, 'wav', 0, undefined, {
+				channelMode: 'mono-mix',
+			});
+
+			expect(downmixAudioBuffer).toHaveBeenCalledWith(
+				expect.objectContaining({ sampleRate: 44100 }),
+				'mono-mix',
+			);
+			warnSpy.mockRestore();
+		});
+
+		it('should pass the channel mode into the streaming conversion options', async () => {
+			await convertBlobToFormat(
+				new Blob(['audio-data'], { type: 'audio/webm' }),
+				'mp3',
+				128000,
+				undefined,
+				{ channelMode: 'mono-mix' },
+			);
+
+			expect(mockConversionInit).toHaveBeenCalledWith(
+				expect.objectContaining({
+					audio: expect.objectContaining({
+						process: expect.any(Function),
+						processedNumberOfChannels: 1,
+					}),
+				}),
+			);
+		});
 	});
 
 	// ---------------------------------------------------------------
@@ -350,11 +399,38 @@ describe('AudioFormatConverter', () => {
 				'mp3',
 				192000,
 				true,
+				'source',
 				undefined,
 			);
 			// The main-thread pipeline is never touched
 			expect(mockConversionInit).not.toHaveBeenCalled();
 			expect(result.type).toBe('audio/mp3');
+		});
+
+		it('should pass the channel mode through to the encoding worker', async () => {
+			const workerClient = {
+				isAvailable: () => true,
+				convertBlob: jest
+					.fn()
+					.mockResolvedValue(
+						new Blob(['worker'], { type: 'audio/mp3' }),
+					),
+			};
+			const blob = new Blob(['test'], { type: 'audio/webm' });
+
+			await convertBlobToFormat(blob, 'mp3', 192000, undefined, {
+				workerClient: workerClient as unknown as EncodingWorkerClient,
+				channelMode: 'mono-left',
+			});
+
+			expect(workerClient.convertBlob).toHaveBeenCalledWith(
+				blob,
+				'mp3',
+				192000,
+				false,
+				'mono-left',
+				undefined,
+			);
 		});
 
 		it('should fall back to the main thread when the worker fails', async () => {

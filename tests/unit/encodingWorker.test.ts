@@ -74,6 +74,7 @@ describe('handleEncodingMessage', () => {
 		mockGetPrimaryAudioTrack.mockResolvedValue({
 			getCodec: jest.fn().mockResolvedValue('opus'),
 			isAudioTrack: (): boolean => true,
+			getNumberOfChannels: jest.fn().mockResolvedValue(2),
 		});
 	});
 
@@ -137,6 +138,39 @@ describe('handleEncodingMessage', () => {
 				audio: { codec: 'opus' },
 			}),
 		);
+	});
+
+	it('should apply the requested channel mode', async () => {
+		await handleEncodingMessage(
+			createRequest({ channelMode: 'mono-mix' }),
+			post,
+		);
+
+		expect(mockConversionInit).toHaveBeenCalledWith(
+			expect.objectContaining({
+				audio: expect.objectContaining({
+					process: expect.any(Function),
+					processedNumberOfChannels: 1,
+				}),
+			}),
+		);
+	});
+
+	it('should normalize an unknown channel mode to the source layout', async () => {
+		await handleEncodingMessage(
+			createRequest({
+				channelMode: 'bogus' as WorkerRequest['channelMode'],
+			}),
+			post,
+		);
+
+		const audio = (
+			mockConversionInit.mock.calls[0][0] as {
+				audio: Record<string, unknown>;
+			}
+		).audio;
+		expect(audio.numberOfChannels).toBeUndefined();
+		expect(audio.process).toBeUndefined();
 	});
 
 	it('should post an error for an unmapped format', async () => {

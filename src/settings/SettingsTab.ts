@@ -25,6 +25,11 @@ import {
 	buildMimeType,
 } from '../audio/AudioCapabilityDetector';
 import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
+import {
+	CHANNEL_MODES,
+	normalizeChannelMode,
+	type ChannelMode,
+} from '../audio/downmix';
 import { getEncoderDescription } from '../ui/formatDescriptions';
 import { TestRecorder } from '../recording/TestRecorder';
 import { FolderSuggest } from './FolderSuggest';
@@ -202,6 +207,29 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				dropdown.setValue(String(this.plugin.settings.sampleRate));
 				dropdown.onChange(async (value) => {
 					this.plugin.settings.sampleRate = parseInt(value, 10);
+					await this.plugin.saveSettings();
+				});
+			});
+
+		new Setting(containerEl)
+			.setName('Recording channels')
+			.setDesc(
+				'Record with the device channel layout, or reduce to mono during capture. The left/right channel options suit audio interfaces whose two mono inputs show up as one stereo device: a single microphone is kept at full level instead of being mixed with a silent channel.',
+			)
+			.addDropdown((dropdown) => {
+				const labels: Record<ChannelMode, string> = {
+					source: 'Same as input device',
+					'mono-mix': 'Mono (mix all channels)',
+					'mono-left': 'Mono (left channel)',
+					'mono-right': 'Mono (right channel)',
+				};
+				CHANNEL_MODES.forEach((mode) => {
+					dropdown.addOption(mode, labels[mode]);
+				});
+				dropdown.setValue(this.plugin.settings.recordingChannels);
+				dropdown.onChange(async (value) => {
+					this.plugin.settings.recordingChannels =
+						normalizeChannelMode(value);
 					await this.plugin.saveSettings();
 				});
 			});

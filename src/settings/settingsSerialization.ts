@@ -5,6 +5,7 @@
  */
 
 import { LLM_PROVIDER_IDS } from '../constants';
+import { normalizeChannelMode } from '../audio/downmix';
 import { isRecord } from '../utils/objects';
 import { getDefaultDeviceId } from '../utils/DeviceUtils';
 import {
@@ -93,6 +94,9 @@ export function mergeSettings(
 			userSettings.trackAudioSources,
 		),
 	};
+	// A hand-edited or future-version data.json may hold an unknown
+	// channel mode; capture paths branch on it, so coerce it here once
+	merged.recordingChannels = normalizeChannelMode(merged.recordingChannels);
 	migrateLegacyLlmSettings(merged, userSettings);
 	return merged;
 }

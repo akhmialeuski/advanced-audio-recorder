@@ -109,6 +109,13 @@ The recording finishes but the file is silent, or **Test recording** plays back 
 
 See also: [Recording](recording.md), [Settings reference](settings-reference.md#audio-input).
 
+### Voice only in one channel (hard-panned left or right)
+
+The recording plays back entirely in one ear. This is the normal result of recording a single microphone through an audio interface with two mono inputs: the operating system exposes the interface as one stereo device, so the mic on input 1 lands in the left channel and input 2 (silent) becomes the right channel.
+
+- For **new recordings**, set **Settings > Audio input > Recording channels** to **Mono (left channel)** (or right, depending on which input the microphone uses). The recording keeps the full level of that channel and saves a mono file. **Mono (mix all channels)** also produces mono but folds in the silent channel, which lowers the voice by 6 dB. See [Recording in mono](recording.md#recording-in-mono).
+- For **existing files**, right-click the file, choose **Convert audio format**, and set **Channels** to **Mono (left channel)** / **Mono (right channel)**. Converting to the same format writes a `<name>-mono` copy. See [Convert audio format](file-operations.md#convert-audio-format).
+
 ### A recording format is not available
 
 The format dropdown is missing an option, **Test recording** reports `Format "<format>" is not supported in this browser.`, or a recording produces an empty file.

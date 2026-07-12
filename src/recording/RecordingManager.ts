@@ -43,6 +43,13 @@ import {
 	buildMimeType,
 	validateRecordingCapability,
 } from '../audio/AudioCapabilityDetector';
+import {
+	CHANNEL_MODE_SOURCE,
+	isMonoChannelMode,
+	normalizeChannelMode,
+	type ChannelMode,
+} from '../audio/downmix';
+import { MonoCaptureBridge } from './MonoCaptureBridge';
 import type { PcmStreamRecorder } from './PcmStreamRecorder';
 import {
 	createAndStartMediaRecorders,
@@ -73,6 +80,12 @@ export class RecordingManager {
 	private pcmRecorders: PcmStreamRecorder[] = [];
 	private chunkTargets: RecordingTarget[] = [];
 	private streams: MediaStream[] = [];
+	/** Mono bridges wrapping the raw streams (MediaRecorder path only). */
+	private monoBridges: MonoCaptureBridge[] = [];
+	/** Streams the MediaRecorders record from (bridged or raw). */
+	private captureStreams: MediaStream[] = [];
+	/** Channel mode for the current session (snapshot). */
+	private sessionChannelMode: ChannelMode = CHANNEL_MODE_SOURCE;
 	private trackOrder: { trackNumber: number; deviceId: string }[] = [];
 	private status: RecordingStatus = RecordingStatus.Idle;
 	private onStatusChange: (
@@ -434,6 +447,7 @@ export class RecordingManager {
 				);
 			}
 		}
+		this.releaseMonoBridges();
 		stopAllStreams(this.streams);
 		this.streams = [];
 		detachRecorderHandlers(this.recorders);
@@ -464,6 +478,12 @@ export class RecordingManager {
 		this.sessionOutputFormat = this.settings.recordingFormat;
 		this.sessionOutputMode = this.settings.outputMode;
 		this.sessionBitrate = this.settings.bitrate;
+		// Normalized once per session: capture primitives branch on the
+		// mode, and a hand-edited data.json must not leave them split
+		// between mono and pass-through behavior
+		this.sessionChannelMode = normalizeChannelMode(
+			this.settings.recordingChannels,
+		);
 		this.sessionPartMinutes = clampSplitMinutes(
 			this.settings.splitChunkMinutes,
 		);
@@ -563,6 +583,7 @@ export class RecordingManager {
 			(index, data) => {
 				void this.handlePcmChunk(index, data);
 			},
+			this.sessionChannelMode,
 		);
 
 		await Promise.all(
@@ -580,10 +601,30 @@ export class RecordingManager {
 
 	/**
 	 * Initializes MediaRecorder-based recording for non-WAV formats
-	 * and mobile WAV.
+	 * and mobile WAV. A mono channel mode wraps every raw stream in a
+	 * MonoCaptureBridge so the recorders encode mono at capture time,
+	 * without a second lossy generation at finalization.
 	 */
 	private async initMediaRecording(): Promise<void> {
 		this.chunkTargets = await this.createChunkTargets(this.streams.length);
+		if (isMonoChannelMode(this.sessionChannelMode)) {
+			// Every bridge registers before any starts, so a failed start
+			// (e.g. an audio context stuck in the suspended state) still
+			// releases all acquired contexts via releasePartialSession
+			this.monoBridges = this.streams.map(
+				(stream) =>
+					new MonoCaptureBridge(
+						stream,
+						this.sessionChannelMode,
+						this.settings.sampleRate,
+					),
+			);
+			this.captureStreams = await Promise.all(
+				this.monoBridges.map((bridge) => bridge.start()),
+			);
+		} else {
+			this.captureStreams = this.streams;
+		}
 		this.startMediaRecorders();
 	}
 
@@ -598,7 +639,7 @@ export class RecordingManager {
 		// new part's accounting.
 		detachRecorderHandlers(this.recorders);
 		this.recorders = createAndStartMediaRecorders(
-			this.streams,
+			this.captureStreams,
 			{
 				mimeType: buildMimeType(this.activeRecorderFormat),
 				bitrate: this.sessionBitrate,
@@ -702,6 +743,7 @@ export class RecordingManager {
 			);
 		} finally {
 			this.stopLevelMonitor();
+			this.releaseMonoBridges();
 			stopAllStreams(this.streams);
 			this.streams = [];
 			detachRecorderHandlers(this.recorders);
@@ -851,6 +893,7 @@ export class RecordingManager {
 				await this.writeQueue.flushPcmBuffer(target);
 			});
 		}
+		this.releaseMonoBridges();
 		stopAllStreams(this.streams);
 		detachRecorderHandlers(this.recorders);
 		this.recorders = [];
@@ -861,6 +904,19 @@ export class RecordingManager {
 		this.totalChunks = 0;
 		this.isWavPcmRecording = false;
 		this.insertionContext = null;
+	}
+
+	/**
+	 * Releases the mono capture bridges and clears the capture-stream
+	 * list. Runs on every teardown path (stop, unload, failed start);
+	 * bridge release never throws, so teardown always completes.
+	 */
+	private releaseMonoBridges(): void {
+		for (const bridge of this.monoBridges) {
+			bridge.release();
+		}
+		this.monoBridges = [];
+		this.captureStreams = [];
 	}
 
 	private setStatus(

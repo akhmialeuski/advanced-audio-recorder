@@ -157,6 +157,21 @@ describe('Settings', () => {
 			expect(result.debug).toBe(DEFAULT_SETTINGS.debug);
 		});
 
+		it('should keep a valid stored recording channel mode', () => {
+			const result = mergeSettings({ recordingChannels: 'mono-left' });
+
+			expect(result.recordingChannels).toBe('mono-left');
+		});
+
+		it('should normalize an unknown recording channel mode to source', () => {
+			const result = mergeSettings({
+				recordingChannels:
+					'stereo-wide' as AudioRecorderSettings['recordingChannels'],
+			});
+
+			expect(result.recordingChannels).toBe('source');
+		});
+
 		it('should merge track audio sources', () => {
 			const trackSources: TrackAudioSources = new Map([
 				[1, { deviceId: 'device-id-1' }],
@@ -208,6 +223,7 @@ describe('Settings', () => {
 				resumeHotkey: 'Ctrl+E',
 				audioDeviceId: 'test-device',
 				sampleRate: 22050,
+				recordingChannels: 'mono-left',
 				bitrate: 64000,
 				enableMultiTrack: true,
 				maxTracks: 4,

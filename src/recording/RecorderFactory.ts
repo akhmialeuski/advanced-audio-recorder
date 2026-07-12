@@ -7,6 +7,7 @@
  */
 
 import { CHUNK_TIMESLICE_MS } from '../constants';
+import { CHANNEL_MODE_SOURCE, type ChannelMode } from '../audio/downmix';
 import { PcmStreamRecorder } from './PcmStreamRecorder';
 
 /** Configuration for a batch of MediaRecorders. */
@@ -80,17 +81,25 @@ export function detachRecorderHandlers(recorders: MediaRecorder[]): void {
  * @param streams - Audio streams to capture
  * @param sampleRate - Requested capture sample rate in Hz
  * @param onChunk - Called with each captured PCM chunk
+ * @param channelMode - Channel layout applied by every recorder's
+ * capture worklet (source pass-through or a mono downmix)
  * @returns The created recorders, in stream order
  */
 export function createPcmRecorders(
 	streams: MediaStream[],
 	sampleRate: number,
 	onChunk: (index: number, data: ArrayBuffer) => void,
+	channelMode: ChannelMode = CHANNEL_MODE_SOURCE,
 ): PcmStreamRecorder[] {
 	return streams.map(
 		(stream, index) =>
-			new PcmStreamRecorder(stream, sampleRate, (data: ArrayBuffer) => {
-				onChunk(index, data);
-			}),
+			new PcmStreamRecorder(
+				stream,
+				sampleRate,
+				(data: ArrayBuffer) => {
+					onChunk(index, data);
+				},
+				channelMode,
+			),
 	);
 }

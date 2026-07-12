@@ -8,6 +8,7 @@
  */
 
 import { PLUGIN_LOG_PREFIX } from '../constants';
+import { CHANNEL_MODE_SOURCE, type ChannelMode } from './downmix';
 import type { WorkerRequest, WorkerResponse } from './encodingWorker';
 
 /** Pending request bookkeeping. */
@@ -53,6 +54,7 @@ export class EncodingWorkerClient {
 	 * @param targetFormat - Desired output format
 	 * @param bitrate - Bitrate in bits per second
 	 * @param allowRemux - Allow packet copy when the codecs match
+	 * @param channelMode - Channel layout for the output audio
 	 * @param onProgress - Optional progress callback (0-100)
 	 * @returns Converted blob
 	 * @throws Error when the worker is unavailable or the conversion
@@ -63,6 +65,7 @@ export class EncodingWorkerClient {
 		targetFormat: string,
 		bitrate: number,
 		allowRemux: boolean,
+		channelMode: ChannelMode = CHANNEL_MODE_SOURCE,
 		onProgress?: (percent: number) => void,
 	): Promise<Blob> {
 		const worker = this.ensureWorker();
@@ -82,6 +85,7 @@ export class EncodingWorkerClient {
 				targetFormat,
 				bitrate,
 				allowRemux,
+				channelMode,
 			};
 			worker.postMessage(request);
 		});

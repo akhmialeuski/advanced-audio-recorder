@@ -74,6 +74,8 @@ describe('EncodingWorkerClient', () => {
 				targetFormat: 'mp3',
 				bitrate: 128000,
 				allowRemux: true,
+				// The channel mode defaults to the source pass-through
+				channelMode: 'source',
 			}),
 		);
 
@@ -92,6 +94,20 @@ describe('EncodingWorkerClient', () => {
 		expect(blob.size).toBe(3);
 	});
 
+	it('should include the requested channel mode in the worker request', () => {
+		const client = new EncodingWorkerClient('worker-source');
+		void client
+			.convertBlob(new Blob(['audio']), 'mp3', 128000, false, 'mono-mix')
+			.catch(() => {
+				// The request is never answered in this test
+			});
+
+		const worker = createdWorkers[0];
+		expect(worker.postMessage).toHaveBeenCalledWith(
+			expect.objectContaining({ channelMode: 'mono-mix' }),
+		);
+	});
+
 	it('should forward progress updates', async () => {
 		const client = new EncodingWorkerClient('worker-source');
 		const onProgress = jest.fn();
@@ -100,6 +116,7 @@ describe('EncodingWorkerClient', () => {
 			'mp3',
 			128000,
 			false,
+			'source',
 			onProgress,
 		);
 		const worker = createdWorkers[0];

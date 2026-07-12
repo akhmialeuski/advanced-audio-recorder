@@ -9,6 +9,12 @@ import type { App, TFile } from 'obsidian';
 import { encodeAudioBuffer } from '../audio/AudioEncoder';
 import { FORMAT_WAV } from '../constants';
 import {
+	CHANNEL_MODE_SOURCE,
+	downmixAudioBuffer,
+	isMonoChannelMode,
+	type ChannelMode,
+} from '../audio/downmix';
+import {
 	decodeAudioBlob,
 	convertBlobToFormatBuffer,
 } from '../audio/AudioFormatConverter';
@@ -27,6 +33,12 @@ export interface ConversionRequest {
 	targetFormat: string;
 	/** Bitrate for compressed targets. */
 	bitrate: number;
+	/**
+	 * Channel layout for the converted file: keep the source layout or
+	 * downmix to mono (mix or one picked channel). Optional so existing
+	 * callers keep their channel-preserving behavior.
+	 */
+	channelMode?: ChannelMode;
 	/** Whether to delete the source file after a successful conversion. */
 	deleteSource: boolean;
 	/** How to rewrite links to the source file. */
@@ -73,10 +85,36 @@ export class ConversionService {
 	): Promise<ConversionOutcome> {
 		const baseName = request.sourceFile.basename;
 		const directory = request.sourceFile.parent?.path ?? '';
-		const newFileName = `${baseName}.${request.targetFormat}`;
-		const newPath = normalizePath(
+		let newFileName = `${baseName}.${request.targetFormat}`;
+		let newPath = normalizePath(
 			directory ? `${directory}/${newFileName}` : newFileName,
 		);
+		// Compared case-insensitively on the extension, not by path
+		// equality: a `.WAV` source converting to `wav` produces a path
+		// that differs only in case, which still collides on Windows and
+		// would create a case-twin file on case-sensitive systems
+		const isSameFormat =
+			request.targetFormat.toLowerCase() ===
+			request.sourceFile.extension.toLowerCase();
+		if (isSameFormat) {
+			// Same-format conversion exists only to downmix (the dialog
+			// offers the source format for the mono modes alone); the
+			// output gets its own name instead of colliding with the
+			// source, and a channel-preserving request is refused because
+			// it would just re-encode the file into itself
+			if (
+				!isMonoChannelMode(request.channelMode ?? CHANNEL_MODE_SOURCE)
+			) {
+				new Notice(
+					'Converting to the same format requires a mono channels option.',
+				);
+				return { status: 'aborted' };
+			}
+			newFileName = `${baseName}-mono.${request.targetFormat}`;
+			newPath = normalizePath(
+				directory ? `${directory}/${newFileName}` : newFileName,
+			);
+		}
 
 		let createdFile: TFile;
 		try {
@@ -93,6 +131,7 @@ export class ConversionService {
 				request.sourceFile.path,
 			);
 
+			const channelMode = request.channelMode ?? CHANNEL_MODE_SOURCE;
 			let data: ArrayBuffer;
 			if (request.targetFormat === FORMAT_WAV) {
 				// WAV needs a full decode; the streaming pipeline only
@@ -101,7 +140,7 @@ export class ConversionService {
 				const audioBuffer = await decodeAudioBlob(arrayBuffer);
 				onProgress('Encoding...');
 				const blob = await encodeAudioBuffer(
-					audioBuffer,
+					downmixAudioBuffer(audioBuffer, channelMode),
 					{
 						format: request.targetFormat,
 						bitrate: request.bitrate,
@@ -123,7 +162,7 @@ export class ConversionService {
 					(percent) => {
 						onProgress(`Converting... ${String(percent)}%`);
 					},
-					{ workerClient: this.getWorkerClient() },
+					{ workerClient: this.getWorkerClient(), channelMode },
 				);
 			}
 

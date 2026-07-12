@@ -14,6 +14,7 @@
  */
 
 import { runStreamingConversion } from './streamingConversion';
+import { normalizeChannelMode, type ChannelMode } from './downmix';
 import { MIME_TYPE_AUDIO_PREFIX } from '../constants';
 
 /**
@@ -31,6 +32,8 @@ export interface WorkerRequest {
 	bitrate: number;
 	/** Allow packet copy when the codecs match. */
 	allowRemux: boolean;
+	/** Channel layout for the output audio (source kept when absent). */
+	channelMode?: ChannelMode;
 }
 
 /**
@@ -62,6 +65,9 @@ export async function handleEncodingMessage(
 			(percent) => {
 				post({ id: request.id, kind: 'progress', percent });
 			},
+			// Structured-clone delivers plain data; normalize so an
+			// unexpected value degrades to the source layout
+			normalizeChannelMode(request.channelMode),
 		);
 		post(
 			{
