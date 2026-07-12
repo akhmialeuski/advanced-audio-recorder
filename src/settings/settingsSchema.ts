@@ -45,6 +45,8 @@ import type {
 	TranscriptFileFormat,
 } from '../transcription/TranscriptTypes';
 import type { LlmTask } from '../transcription/llmPostProcess';
+import { CHANNEL_MODE_SOURCE } from '../audio/downmix';
+import type { ChannelMode } from '../audio/downmix';
 
 export type { OutputMode } from '../types';
 
@@ -98,6 +100,13 @@ export interface AudioRecorderSettings {
 	audioDeviceId: string;
 	/** Audio sample rate in Hz */
 	sampleRate: number;
+	/**
+	 * Channel layout for new recordings: keep the device layout or
+	 * reduce to mono by mixing or picking one input channel. The
+	 * left/right picks target audio interfaces whose two mono inputs
+	 * appear as one stereo device.
+	 */
+	recordingChannels: ChannelMode;
 	/** Audio bitrate in bps */
 	bitrate: number;
 	/** Enable multi-track recording */
@@ -300,6 +309,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	resumeHotkey: '',
 	audioDeviceId: '',
 	sampleRate: DEFAULT_SAMPLE_RATE,
+	recordingChannels: CHANNEL_MODE_SOURCE,
 	bitrate: DEFAULT_BITRATE,
 	enableMultiTrack: false,
 	maxTracks: 2,

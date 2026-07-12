@@ -4,7 +4,10 @@
  * @module tests/unit/PcmStreamRecorder.test
  */
 
-import { PcmStreamRecorder } from 'src/recording/PcmStreamRecorder';
+import {
+	PcmStreamRecorder,
+	WORKLET_PROCESSOR_SOURCE,
+} from 'src/recording/PcmStreamRecorder';
 
 // Track messages sent to the worklet port
 let workletPortMessages: Array<{ type: string }> = [];
@@ -163,11 +166,57 @@ describe('PcmStreamRecorder', () => {
 					numberOfInputs: 1,
 					numberOfOutputs: 1,
 					channelCount: 1,
+					processorOptions: { channelMode: 'source' },
 				},
 			);
 			expect(mockAudioContext.createGain).toHaveBeenCalled();
 			expect(mockGainNode.gain.value).toBe(0);
 		});
+
+		it('should pass the mono channel mode to the worklet and keep the full input width', async () => {
+			mockSourceNode.channelCount = 2;
+			const stream = createMockStream(2);
+			const recorder = new PcmStreamRecorder(
+				stream,
+				44100,
+				onChunkMock,
+				'mono-mix',
+			);
+
+			await recorder.start();
+
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any -- mock global constructor
+			expect((global as any).AudioWorkletNode).toHaveBeenCalledWith(
+				mockAudioContext,
+				'pcm-capture-processor',
+				{
+					numberOfInputs: 1,
+					numberOfOutputs: 1,
+					// All source channels still reach the worklet; the
+					// downmix happens inside it
+					channelCount: 2,
+					processorOptions: { channelMode: 'mono-mix' },
+				},
+			);
+		});
+
+		it.each(['mono-mix', 'mono-left', 'mono-right'] as const)(
+			'should report one channel for the %s mode on a stereo source',
+			async (mode) => {
+				mockSourceNode.channelCount = 2;
+				const stream = createMockStream(2);
+				const recorder = new PcmStreamRecorder(
+					stream,
+					44100,
+					onChunkMock,
+					mode,
+				);
+
+				await recorder.start();
+
+				expect(recorder.channels).toBe(1);
+			},
+		);
 
 		it('should expose actual channels and sampleRate from AudioContext', async () => {
 			mockSourceNode.channelCount = 2;
@@ -417,5 +466,143 @@ describe('PcmStreamRecorder', () => {
 
 			expect(onChunkMock).not.toHaveBeenCalled();
 		});
+	});
+});
+
+/**
+ * Runs the real inline worklet source against stub AudioWorkletProcessor
+ * globals, so the capture math (interleave, downmix modes, pause, flush)
+ * is tested as it ships, not through a reimplementation.
+ */
+describe('PcmCaptureProcessor worklet logic', () => {
+	interface WorkletPort {
+		onmessage: ((event: { data: { type: string } }) => void) | null;
+		postMessage: (message: unknown, transfer?: unknown[]) => void;
+	}
+
+	interface WorkletProcessor {
+		port: WorkletPort;
+		process: (inputs: Float32Array[][]) => boolean;
+	}
+
+	function instantiate(channelMode?: string): {
+		processor: WorkletProcessor;
+		posted: unknown[];
+	} {
+		const posted: unknown[] = [];
+		class FakeAudioWorkletProcessor {
+			port: WorkletPort = {
+				onmessage: null,
+				postMessage: (message: unknown): void => {
+					posted.push(message);
+				},
+			};
+		}
+		let registered: (new (options?: unknown) => WorkletProcessor) | null =
+			null;
+		const registerProcessor = (
+			_name: string,
+			ctor: new (options?: unknown) => WorkletProcessor,
+		): void => {
+			registered = ctor;
+		};
+
+		const factory = new Function(
+			'AudioWorkletProcessor',
+			'registerProcessor',
+			WORKLET_PROCESSOR_SOURCE,
+		);
+		factory(FakeAudioWorkletProcessor, registerProcessor);
+		if (!registered) {
+			throw new Error('Worklet source did not register a processor');
+		}
+		const processor = new registered(
+			channelMode ? { processorOptions: { channelMode } } : undefined,
+		);
+		return { processor, posted };
+	}
+
+	/** Feeds one render quantum and flushes, returning the posted PCM. */
+	function captureOnce(
+		channelMode: string | undefined,
+		input: Float32Array[],
+	): Int16Array {
+		const { processor, posted } = instantiate(channelMode);
+		expect(processor.process([input])).toBe(true);
+		processor.port.onmessage?.({ data: { type: 'flush' } });
+		const chunk = posted.find((message) => message instanceof ArrayBuffer);
+		expect(chunk).toBeDefined();
+		expect(posted).toContainEqual({ type: 'flushed' });
+		return new Int16Array(chunk ?? new ArrayBuffer(0));
+	}
+
+	const left = Float32Array.from([0.5, 0.5]);
+	const right = Float32Array.from([-0.5, 0.0]);
+
+	it('interleaves all channels in the source mode', () => {
+		const pcm = captureOnce('source', [left, right]);
+
+		expect(Array.from(pcm)).toEqual([16383, -16384, 16383, 0]);
+	});
+
+	it('defaults to the source mode when no options are provided', () => {
+		const pcm = captureOnce(undefined, [left, right]);
+
+		expect(Array.from(pcm)).toEqual([16383, -16384, 16383, 0]);
+	});
+
+	it('averages every channel in the mono-mix mode', () => {
+		const pcm = captureOnce('mono-mix', [left, right]);
+
+		// (0.5 + -0.5)/2 = 0 and (0.5 + 0)/2 = 0.25
+		expect(Array.from(pcm)).toEqual([0, 8191]);
+	});
+
+	it('keeps only the left channel in the mono-left mode', () => {
+		const pcm = captureOnce('mono-left', [left, right]);
+
+		expect(Array.from(pcm)).toEqual([16383, 16383]);
+	});
+
+	it('keeps only the right channel in the mono-right mode', () => {
+		const pcm = captureOnce('mono-right', [left, right]);
+
+		expect(Array.from(pcm)).toEqual([-16384, 0]);
+	});
+
+	it('falls back to the only channel for mono-right on mono input', () => {
+		const pcm = captureOnce('mono-right', [left]);
+
+		expect(Array.from(pcm)).toEqual([16383, 16383]);
+	});
+
+	it('averages more than two channels in the mono-mix mode', () => {
+		const third = Float32Array.from([0.25, 0.25]);
+		const pcm = captureOnce('mono-mix', [left, right, third]);
+
+		// (0.5 - 0.5 + 0.25)/3 = 0.0833..., (0.5 + 0 + 0.25)/3 = 0.25
+		expect(Array.from(pcm)).toEqual([2730, 8191]);
+	});
+
+	it('discards input while paused and resumes cleanly', () => {
+		const { processor, posted } = instantiate('mono-mix');
+		processor.port.onmessage?.({ data: { type: 'pause' } });
+		processor.process([[left]]);
+		processor.port.onmessage?.({ data: { type: 'resume' } });
+		processor.process([[left]]);
+		processor.port.onmessage?.({ data: { type: 'flush' } });
+
+		const chunk = posted.find(
+			(message) => message instanceof ArrayBuffer,
+		) as ArrayBuffer;
+		// Only the post-resume quantum (2 samples) was captured
+		expect(new Int16Array(chunk)).toHaveLength(2);
+	});
+
+	it('clamps out-of-range samples to the int16 rails', () => {
+		const loud = Float32Array.from([1.5, -1.5]);
+		const pcm = captureOnce('mono-left', [loud]);
+
+		expect(Array.from(pcm)).toEqual([32767, -32768]);
 	});
 });

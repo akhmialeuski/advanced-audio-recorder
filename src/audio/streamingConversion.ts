@@ -14,23 +14,63 @@ import {
 	BlobSource,
 	BufferTarget,
 	ALL_FORMATS,
+	AudioSample,
 	Conversion,
 } from 'mediabunny';
-import type { AudioCodec } from 'mediabunny';
+import type { AudioCodec, ConversionAudioOptions } from 'mediabunny';
 import { ensureEncoderRegistered, createOutputFormat } from './AudioEncoder';
 import { getFormatDescriptor } from './formatRegistry';
+import {
+	CHANNEL_MODE_SOURCE,
+	CHANNEL_MODE_MONO_MIX,
+	monoPickIndex,
+	type ChannelMode,
+} from './downmix';
 import { disposableOf } from '../utils/disposables';
+
+/**
+ * Builds a mono AudioSample holding one picked channel of the input
+ * sample. Used as the mediabunny `process` hook for the left/right
+ * channel modes; mediabunny closes the input sample itself after the
+ * hook returns. The pick is clamped so a right pick on mono input
+ * returns that channel instead of failing. Exported for unit tests.
+ * @param sample - Decoded input sample (any channel count)
+ * @param channelIndex - Zero-based channel to keep
+ * @returns Mono sample at the input's rate and timestamp
+ */
+export function extractChannelSample(
+	sample: AudioSample,
+	channelIndex: number,
+): AudioSample {
+	const pick = Math.max(
+		0,
+		Math.min(channelIndex, sample.numberOfChannels - 1),
+	);
+	const data = new Float32Array(sample.numberOfFrames);
+	sample.copyTo(data, { planeIndex: pick, format: 'f32-planar' });
+	return new AudioSample({
+		data,
+		format: 'f32',
+		numberOfChannels: 1,
+		sampleRate: sample.sampleRate,
+		timestamp: sample.timestamp,
+	});
+}
 
 /**
  * Converts a compressed audio blob to the target format using the
  * streaming mediabunny Conversion pipeline. With allowRemux, packets
  * of an input whose codec already matches the target codec are copied
- * without re-encoding.
+ * without re-encoding. A mono channel mode downmixes during the
+ * conversion: the mix uses mediabunny's Web Audio remix rules, the
+ * left/right modes keep one picked channel (both force a transcode
+ * for multichannel input by mediabunny's own copy conditions).
  * @param recordedBlob - Input audio blob
  * @param targetFormat - Desired output format
  * @param bitrate - Bitrate in bits per second (ignored for PCM targets)
  * @param allowRemux - Allow packet copy when the codecs match
  * @param onProgress - Optional progress callback (0-100, deduplicated)
+ * @param channelMode - Channel layout for the output audio
  * @returns Bytes of the converted file
  * @throws Error when the target format has no codec mapping, the
  * input has no audio track, the conversion cannot process the audio
@@ -43,6 +83,7 @@ export async function runStreamingConversion(
 	bitrate: number,
 	allowRemux: boolean,
 	onProgress?: (percent: number) => void,
+	channelMode: ChannelMode = CHANNEL_MODE_SOURCE,
 ): Promise<ArrayBuffer> {
 	const codec: AudioCodec | undefined =
 		getFormatDescriptor(targetFormat)?.codec;
@@ -67,6 +108,7 @@ export async function runStreamingConversion(
 		bitrate,
 		allowRemux,
 		onProgress,
+		channelMode,
 	);
 }
 
@@ -81,6 +123,7 @@ async function convertWithInput(
 	bitrate: number,
 	allowRemux: boolean,
 	onProgress?: (percent: number) => void,
+	channelMode: ChannelMode = CHANNEL_MODE_SOURCE,
 ): Promise<ArrayBuffer> {
 	const audioTrack = await input.getPrimaryAudioTrack();
 	if (!audioTrack) {
@@ -102,13 +145,34 @@ async function convertWithInput(
 	const inputCodec = await audioTrack.getCodec();
 	// PCM targets are uncompressed: a bitrate option is invalid there
 	const isPcmTarget = codec.startsWith('pcm-');
+	let audio: ConversionAudioOptions =
+		(allowRemux && inputCodec === codec) || isPcmTarget
+			? { codec }
+			: { codec, bitrate };
+	if (channelMode === CHANNEL_MODE_MONO_MIX) {
+		// Differing channel counts force a transcode inside mediabunny;
+		// already-mono input keeps its remux eligibility
+		audio = { ...audio, numberOfChannels: 1 };
+	} else if (channelMode !== CHANNEL_MODE_SOURCE) {
+		const pick = monoPickIndex(
+			channelMode,
+			await audioTrack.getNumberOfChannels(),
+		);
+		if (pick !== null) {
+			// A process hook always forces a transcode, so the picked
+			// channel can never be skipped by a packet copy
+			audio = {
+				...audio,
+				process: (sample: AudioSample) =>
+					extractChannelSample(sample, pick),
+				processedNumberOfChannels: 1,
+			};
+		}
+	}
 	const conversion = await Conversion.init({
 		input,
 		output,
-		audio:
-			(allowRemux && inputCodec === codec) || isPcmTarget
-				? { codec }
-				: { codec, bitrate },
+		audio,
 		showWarnings: false,
 	});
 

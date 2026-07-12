@@ -8,6 +8,11 @@ import type { RecordingTarget } from '../types';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import { encodeAudioBuffer, isOfflineEncodingSupported } from './AudioEncoder';
 import { runStreamingConversion } from './streamingConversion';
+import {
+	CHANNEL_MODE_SOURCE,
+	downmixAudioBuffer,
+	type ChannelMode,
+} from './downmix';
 import { autoClosing } from '../utils/disposables';
 import {
 	MIME_TYPE_AUDIO_PREFIX,
@@ -156,6 +161,12 @@ export interface BlobConversionOptions {
 	 * unavailable, the conversion runs on the main thread.
 	 */
 	workerClient?: EncodingWorkerClient | null;
+	/**
+	 * Channel layout for the converted audio: keep the source layout
+	 * or downmix to mono (mix or one picked channel). Applied by every
+	 * execution path - worker, streaming, and decode fallback.
+	 */
+	channelMode?: ChannelMode;
 }
 
 /**
@@ -178,6 +189,7 @@ async function convertBlobWithConversion(
 	bitrate: number,
 	allowRemux: boolean,
 	onProgress?: FormatProgressCallback,
+	channelMode: ChannelMode = CHANNEL_MODE_SOURCE,
 ): Promise<Blob> {
 	const resultBuffer = await runStreamingConversion(
 		recordedBlob,
@@ -185,6 +197,7 @@ async function convertBlobWithConversion(
 		bitrate,
 		allowRemux,
 		onProgress,
+		channelMode,
 	);
 	return new Blob([resultBuffer], {
 		type: `${MIME_TYPE_AUDIO_PREFIX}${targetFormat}`,
@@ -212,6 +225,7 @@ export async function convertBlobToFormat(
 ): Promise<Blob> {
 	// Worker first: the demux/transcode/mux loop is pure computation
 	// and runs off the UI thread when the worker is available
+	const channelMode = options.channelMode ?? CHANNEL_MODE_SOURCE;
 	const workerClient =
 		options.workerClient && options.workerClient.isAvailable()
 			? options.workerClient
@@ -223,6 +237,7 @@ export async function convertBlobToFormat(
 				targetFormat,
 				bitrate,
 				options.allowRemux ?? false,
+				channelMode,
 				onProgress,
 			);
 		} catch (error) {
@@ -240,6 +255,7 @@ export async function convertBlobToFormat(
 			bitrate,
 			options.allowRemux ?? false,
 			onProgress,
+			channelMode,
 		);
 	} catch (error) {
 		console.warn(
@@ -252,7 +268,7 @@ export async function convertBlobToFormat(
 	const decodedBuffer = await decodeAudioBlob(arrayBuffer);
 
 	return encodeAudioBuffer(
-		decodedBuffer,
+		downmixAudioBuffer(decodedBuffer, channelMode),
 		{ format: targetFormat, bitrate },
 		onProgress,
 	);
@@ -280,6 +296,7 @@ export async function convertBlobToFormatBuffer(
 	onProgress?: FormatProgressCallback,
 	options: BlobConversionOptions = {},
 ): Promise<ArrayBuffer> {
+	const channelMode = options.channelMode ?? CHANNEL_MODE_SOURCE;
 	const workerClient =
 		options.workerClient && options.workerClient.isAvailable()
 			? options.workerClient
@@ -291,6 +308,7 @@ export async function convertBlobToFormatBuffer(
 				targetFormat,
 				bitrate,
 				options.allowRemux ?? false,
+				channelMode,
 				onProgress,
 			);
 			return await converted.arrayBuffer();
@@ -309,6 +327,7 @@ export async function convertBlobToFormatBuffer(
 			bitrate,
 			options.allowRemux ?? false,
 			onProgress,
+			channelMode,
 		);
 	} catch (error) {
 		console.warn(
@@ -320,7 +339,7 @@ export async function convertBlobToFormatBuffer(
 	const arrayBuffer = await recordedBlob.arrayBuffer();
 	const decodedBuffer = await decodeAudioBlob(arrayBuffer);
 	const encoded = await encodeAudioBuffer(
-		decodedBuffer,
+		downmixAudioBuffer(decodedBuffer, channelMode),
 		{ format: targetFormat, bitrate },
 		onProgress,
 	);

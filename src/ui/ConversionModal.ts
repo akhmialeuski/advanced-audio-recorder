@@ -4,7 +4,15 @@
  */
 
 import { App, Modal, Notice, Setting, TFile } from 'obsidian';
+import type { DropdownComponent } from 'obsidian';
 import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
+import {
+	CHANNEL_MODE_SOURCE,
+	CHANNEL_MODES,
+	isMonoChannelMode,
+	normalizeChannelMode,
+	type ChannelMode,
+} from '../audio/downmix';
 import { AUDIO_EXTENSIONS, FORMAT_WAV } from '../constants';
 import {
 	addBitrateSetting,
@@ -26,8 +34,11 @@ export class ConversionModal extends Modal {
 	private readonly sourceFile: TFile;
 	private targetFormat: string = FORMAT_WAV;
 	private bitrate: number = 128000;
+	private channelMode: ChannelMode = CHANNEL_MODE_SOURCE;
 	private deleteSource: boolean;
 	private linkAction: ConversionLinkAction;
+	/** Target-format dropdown, rebuilt when the channel mode changes. */
+	private formatDropdown: DropdownComponent | null = null;
 	/** Whether the conversion pipeline is currently running. */
 	private isConverting = false;
 	/** Progress notice shown when the modal is closed mid-conversion. */
@@ -66,30 +77,36 @@ export class ConversionModal extends Modal {
 			cls: 'aar-conversion-source',
 		});
 
-		const availableFormats = AUDIO_EXTENSIONS.filter(
-			(format) =>
-				isOfflineEncodingSupported(format) &&
-				format !== this.sourceFile.extension.toLowerCase(),
-		);
-
 		new Setting(contentEl)
 			.setName('Target format')
 			.setDesc('Select the output format.')
 			.addDropdown((dropdown) => {
-				availableFormats.forEach((format) => {
-					const encoder = getEncoderDescription(format);
-					dropdown.addOption(
-						format,
-						`${format.toUpperCase()} (${encoder})`,
-					);
-				});
-				const firstFormat = availableFormats[0];
-				if (firstFormat) {
-					this.targetFormat = firstFormat;
-					dropdown.setValue(firstFormat);
-				}
+				this.formatDropdown = dropdown;
+				this.rebuildFormatOptions();
 				dropdown.onChange((value) => {
 					this.targetFormat = value;
+				});
+			});
+
+		new Setting(contentEl)
+			.setName('Channels')
+			.setDesc(
+				'Keep the source channel layout, or downmix to mono. The left/right channel options rescue stereo files where only one channel carries audio (common with dual-input audio interfaces). A mono option also allows converting to the same format.',
+			)
+			.addDropdown((dropdown) => {
+				const labels: Record<ChannelMode, string> = {
+					source: 'Keep source channels',
+					'mono-mix': 'Mono (mix all channels)',
+					'mono-left': 'Mono (left channel)',
+					'mono-right': 'Mono (right channel)',
+				};
+				CHANNEL_MODES.forEach((mode) => {
+					dropdown.addOption(mode, labels[mode]);
+				});
+				dropdown.setValue(this.channelMode);
+				dropdown.onChange((value) => {
+					this.channelMode = normalizeChannelMode(value);
+					this.rebuildFormatOptions();
 				});
 			});
 
@@ -134,6 +151,45 @@ export class ConversionModal extends Modal {
 		});
 	}
 
+	/**
+	 * Formats offered as conversion targets. The source's own format is
+	 * excluded for channel-preserving conversions (same format in and
+	 * out would be a pointless lossy re-encode) but offered for the mono
+	 * modes, so a stereo file can become a mono file of the same format.
+	 */
+	private availableFormats(): string[] {
+		const sourceFormat = this.sourceFile.extension.toLowerCase();
+		return AUDIO_EXTENSIONS.filter(
+			(format) =>
+				isOfflineEncodingSupported(format) &&
+				(format !== sourceFormat ||
+					isMonoChannelMode(this.channelMode)),
+		);
+	}
+
+	/**
+	 * Rebuilds the target-format dropdown options for the current
+	 * channel mode, keeping the selection when it is still offered and
+	 * falling back to the first available format when it is not.
+	 */
+	private rebuildFormatOptions(): void {
+		const dropdown = this.formatDropdown;
+		if (!dropdown) {
+			return;
+		}
+		const formats = this.availableFormats();
+		dropdown.selectEl.empty();
+		formats.forEach((format) => {
+			const encoder = getEncoderDescription(format);
+			dropdown.addOption(format, `${format.toUpperCase()} (${encoder})`);
+		});
+		const first = formats[0];
+		if (!formats.includes(this.targetFormat) && first) {
+			this.targetFormat = first;
+		}
+		dropdown.setValue(this.targetFormat);
+	}
+
 	override onClose(): void {
 		if (this.isConverting && !this.progressNotice) {
 			// Timeout 0 keeps the notice visible until hidden explicitly;
@@ -169,6 +225,7 @@ export class ConversionModal extends Modal {
 					sourceFile: this.sourceFile,
 					targetFormat: this.targetFormat,
 					bitrate: this.bitrate,
+					channelMode: this.channelMode,
 					deleteSource: this.deleteSource,
 					linkAction: this.linkAction,
 				},

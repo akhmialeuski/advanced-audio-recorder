@@ -139,6 +139,36 @@ describe('handleEncodingMessage', () => {
 		);
 	});
 
+	it('should apply the requested channel mode', async () => {
+		await handleEncodingMessage(
+			createRequest({ channelMode: 'mono-mix' }),
+			post,
+		);
+
+		expect(mockConversionInit).toHaveBeenCalledWith(
+			expect.objectContaining({
+				audio: expect.objectContaining({ numberOfChannels: 1 }),
+			}),
+		);
+	});
+
+	it('should normalize an unknown channel mode to the source layout', async () => {
+		await handleEncodingMessage(
+			createRequest({
+				channelMode: 'bogus' as WorkerRequest['channelMode'],
+			}),
+			post,
+		);
+
+		const audio = (
+			mockConversionInit.mock.calls[0][0] as {
+				audio: Record<string, unknown>;
+			}
+		).audio;
+		expect(audio.numberOfChannels).toBeUndefined();
+		expect(audio.process).toBeUndefined();
+	});
+
 	it('should post an error for an unmapped format', async () => {
 		await handleEncodingMessage(
 			createRequest({ targetFormat: 'xyz' }),

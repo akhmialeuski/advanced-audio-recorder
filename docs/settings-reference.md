@@ -52,7 +52,7 @@ At the very top of the settings tab is a callout with a book icon linking to the
 
 ## Audio input
 
-Pick the microphone and sample rate used for single-track recordings. The device dropdown auto-refreshes when you plug or unplug a device while the tab is open. See [Recording](recording.md) for how these are used.
+Pick the microphone, sample rate, and channel layout used for recordings. The device dropdown auto-refreshes when you plug or unplug a device while the tab is open. See [Recording](recording.md) for how these are used.
 
 ![Audio input settings section showing the input device dropdown and the sample rate dropdown](images/features-settings-overview.png)
 _Figure: The Audio input section with the device picker and sample-rate selector._
@@ -61,6 +61,7 @@ _Figure: The Audio input section with the device picker and sample-rate selector
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | **Input device** | Default input device for single-track recordings. The dropdown lists every detected device and refreshes on device change. The **Select audio input device** command opens a quick device-picker modal; choosing a device saves it here immediately and shows a confirmation notice. | Auto-detected device list                                         | None - pick one before recording (the dropdown shows the first detected device, but nothing is saved until you choose) |
 | **Sample rate**  | Audio sample rate in hertz. The exact options come from runtime detection of what your hardware supports.                                                                                                                                                                            | Detected rates (commonly 8000 / 16000 / 22050 / 44100 / 48000 Hz) | 44100 Hz                                                                                                               |
+| **Recording channels** | Channel layout for new recordings. `Same as input device` keeps whatever the device delivers. The mono options downmix during capture: `Mono (mix all channels)` averages every input channel, while `Mono (left channel)` / `Mono (right channel)` keep exactly one channel at full level - the right choice for audio interfaces whose two mono inputs appear as a single stereo device, where a mix would sound 6 dB quieter. Applies to every track of a multi-track session and to the settings test recording. | Same as input device / Mono (mix all channels) / Mono (left channel) / Mono (right channel) | Same as input device |
 
 ---
 

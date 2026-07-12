@@ -353,5 +353,100 @@ describe('ConversionModal', () => {
 				),
 			).toBe(false);
 		});
+
+		it('should pass the selected channel mode into the conversion', async () => {
+			const { convertBlobToFormatBuffer } = jest.requireMock(
+				'src/audio/AudioFormatConverter',
+			);
+			const { modal, progressEl } = createModal();
+			(modal as unknown as { channelMode: string }).channelMode =
+				'mono-left';
+
+			await runConversion(modal, progressEl);
+
+			expect(convertBlobToFormatBuffer).toHaveBeenCalledWith(
+				expect.any(Blob),
+				'webm',
+				expect.any(Number),
+				expect.any(Function),
+				expect.objectContaining({ channelMode: 'mono-left' }),
+			);
+		});
+	});
+
+	describe('target format options', () => {
+		/** Dropdown double capturing the rebuilt option list. */
+		interface DropdownDouble {
+			selectEl: { empty: jest.Mock };
+			addOption: jest.Mock;
+			setValue: jest.Mock;
+		}
+
+		const withFormatDropdown = (modal: ConversionModal): DropdownDouble => {
+			const dropdown: DropdownDouble = {
+				selectEl: { empty: jest.fn() },
+				addOption: jest.fn(),
+				setValue: jest.fn(),
+			};
+			(
+				modal as unknown as { formatDropdown: DropdownDouble }
+			).formatDropdown = dropdown;
+			return dropdown;
+		};
+
+		const rebuild = (modal: ConversionModal): void => {
+			(
+				modal as unknown as { rebuildFormatOptions(): void }
+			).rebuildFormatOptions();
+		};
+
+		const offeredFormats = (dropdown: DropdownDouble): string[] =>
+			dropdown.addOption.mock.calls.map((call) => String(call[0]));
+
+		it('excludes the source format for channel-preserving conversions', () => {
+			const modal = new ConversionModal(mockApp, mockFile, mockSettings);
+			const dropdown = withFormatDropdown(modal);
+
+			rebuild(modal);
+
+			expect(offeredFormats(dropdown)).not.toContain('wav');
+		});
+
+		it('offers the source format for mono downmixes', () => {
+			const modal = new ConversionModal(mockApp, mockFile, mockSettings);
+			(modal as unknown as { channelMode: string }).channelMode =
+				'mono-mix';
+			const dropdown = withFormatDropdown(modal);
+
+			rebuild(modal);
+
+			expect(offeredFormats(dropdown)).toContain('wav');
+		});
+
+		it('falls back to the first offered format when the selection disappears', () => {
+			const modal = new ConversionModal(mockApp, mockFile, mockSettings);
+			(modal as unknown as { targetFormat: string }).targetFormat = 'wav';
+			const dropdown = withFormatDropdown(modal);
+
+			// Channel mode is 'source', so wav (the source format) is gone
+			rebuild(modal);
+
+			expect(
+				(modal as unknown as { targetFormat: string }).targetFormat,
+			).not.toBe('wav');
+			expect(dropdown.setValue).toHaveBeenCalledWith(
+				(modal as unknown as { targetFormat: string }).targetFormat,
+			);
+		});
+
+		it('keeps the current selection when it is still offered', () => {
+			const modal = new ConversionModal(mockApp, mockFile, mockSettings);
+			(modal as unknown as { targetFormat: string }).targetFormat = 'mp3';
+			const dropdown = withFormatDropdown(modal);
+
+			rebuild(modal);
+
+			expect(dropdown.setValue).toHaveBeenCalledWith('mp3');
+		});
 	});
 });

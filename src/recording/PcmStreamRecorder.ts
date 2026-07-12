@@ -11,6 +11,13 @@ import {
 	PCM_FLUSH_TIMEOUT_MS,
 	PLUGIN_LOG_PREFIX,
 } from '../constants';
+import {
+	CHANNEL_MODE_SOURCE,
+	CHANNEL_MODE_MONO_MIX,
+	CHANNEL_MODE_MONO_RIGHT,
+	isMonoChannelMode,
+	type ChannelMode,
+} from '../audio/downmix';
 
 /**
  * Number of interleaved int16 samples to accumulate before posting.
@@ -25,18 +32,24 @@ const WORKLET_BUFFER_SIZE = 4096;
  * Runs on the audio rendering thread, converts float32 input
  * to interleaved int16 PCM, buffers it, and posts full chunks
  * back via MessagePort. Supports pause/resume/flush via port
- * messages.
+ * messages. A mono channel mode (via processorOptions.channelMode)
+ * downmixes during capture: averaging all input channels or keeping
+ * one picked channel, so segments and the final WAV are mono at the
+ * source. Exported for the worklet-logic unit tests, which evaluate
+ * this source against a stub AudioWorkletProcessor.
  */
-const WORKLET_PROCESSOR_SOURCE = `
+export const WORKLET_PROCESSOR_SOURCE = `
 const BUFFER_SIZE = ${String(WORKLET_BUFFER_SIZE)};
 
 class PcmCaptureProcessor extends AudioWorkletProcessor {
-	constructor() {
+	constructor(options) {
 		super();
 		this._paused = false;
 		this._buffer = null;
 		this._writeIndex = 0;
 		this._channels = 0;
+		const opts = (options && options.processorOptions) || {};
+		this._mode = opts.channelMode || '${CHANNEL_MODE_SOURCE}';
 		this.port.onmessage = (e) => {
 			if (e.data.type === 'pause') this._paused = true;
 			if (e.data.type === 'resume') this._paused = false;
@@ -53,6 +66,11 @@ class PcmCaptureProcessor extends AudioWorkletProcessor {
 		this.port.postMessage({ type: 'flushed' });
 	}
 
+	_toInt16(sample) {
+		const clamped = Math.max(-1, Math.min(1, sample));
+		return clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff;
+	}
+
 	process(inputs) {
 		if (this._paused) return true;
 		const input = inputs[0];
@@ -60,24 +78,47 @@ class PcmCaptureProcessor extends AudioWorkletProcessor {
 
 		const numChannels = input.length;
 		const numSamples = input[0].length;
+		const outChannels =
+			this._mode === '${CHANNEL_MODE_SOURCE}' ? numChannels : 1;
 
-		if (!this._buffer || this._channels !== numChannels) {
-			this._channels = numChannels;
-			this._buffer = new Int16Array(BUFFER_SIZE * numChannels);
+		if (!this._buffer || this._channels !== outChannels) {
+			this._channels = outChannels;
+			this._buffer = new Int16Array(BUFFER_SIZE * outChannels);
 			this._writeIndex = 0;
 		}
 
-		for (let i = 0; i < numSamples; i++) {
-			for (let ch = 0; ch < numChannels; ch++) {
-				const sample = Math.max(-1, Math.min(1, input[ch][i]));
+		if (this._mode === '${CHANNEL_MODE_SOURCE}') {
+			for (let i = 0; i < numSamples; i++) {
+				for (let ch = 0; ch < numChannels; ch++) {
+					this._buffer[this._writeIndex++] =
+						this._toInt16(input[ch][i]);
+				}
+			}
+		} else if (this._mode === '${CHANNEL_MODE_MONO_MIX}') {
+			for (let i = 0; i < numSamples; i++) {
+				let sum = 0;
+				for (let ch = 0; ch < numChannels; ch++) {
+					sum += input[ch][i];
+				}
 				this._buffer[this._writeIndex++] =
-					sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+					this._toInt16(sum / numChannels);
+			}
+		} else {
+			// Picked channel, clamped so a right pick on a mono
+			// input records that input instead of silence
+			const pick = Math.min(
+				this._mode === '${CHANNEL_MODE_MONO_RIGHT}' ? 1 : 0,
+				numChannels - 1,
+			);
+			const channel = input[pick];
+			for (let i = 0; i < numSamples; i++) {
+				this._buffer[this._writeIndex++] = this._toInt16(channel[i]);
 			}
 		}
 
 		if (this._writeIndex >= this._buffer.length) {
 			this.port.postMessage(this._buffer.buffer, [this._buffer.buffer]);
-			this._buffer = new Int16Array(BUFFER_SIZE * numChannels);
+			this._buffer = new Int16Array(BUFFER_SIZE * outChannels);
 			this._writeIndex = 0;
 		}
 
@@ -118,11 +159,14 @@ export class PcmStreamRecorder {
 	 * @param stream - MediaStream to capture audio from
 	 * @param requestedSampleRate - Desired sample rate in Hz
 	 * @param onChunk - Callback for receiving interleaved int16 PCM data
+	 * @param channelMode - Channel layout: pass the source through or
+	 * downmix to mono in the capture worklet
 	 */
 	constructor(
 		private stream: MediaStream,
 		private requestedSampleRate: number,
 		private onChunk: PcmChunkCallback,
+		private readonly channelMode: ChannelMode = CHANNEL_MODE_SOURCE,
 	) {}
 
 	/**
@@ -165,7 +209,13 @@ export class PcmStreamRecorder {
 			this.sourceNode = this.audioContext.createMediaStreamSource(
 				this.stream,
 			);
-			this.channelCount = this.sourceNode.channelCount;
+			// The worklet input keeps every source channel (a mono mode
+			// mixes or picks inside the worklet); only the delivered PCM
+			// - and therefore the WAV header - drops to one channel
+			const sourceChannels = this.sourceNode.channelCount;
+			this.channelCount = isMonoChannelMode(this.channelMode)
+				? 1
+				: sourceChannels;
 
 			this.workletNode = new AudioWorkletNode(
 				this.audioContext,
@@ -173,7 +223,8 @@ export class PcmStreamRecorder {
 				{
 					numberOfInputs: 1,
 					numberOfOutputs: 1,
-					channelCount: this.channelCount,
+					channelCount: sourceChannels,
+					processorOptions: { channelMode: this.channelMode },
 				},
 			);
 

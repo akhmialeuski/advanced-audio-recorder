@@ -41,13 +41,21 @@ jest.mock('src/utils/LinkUpdater', () => ({
 	}),
 }));
 
-const createSourceFile = (): TFile => {
+jest.mock('src/audio/downmix', () => {
+	const actual: object = jest.requireActual('src/audio/downmix');
+	return {
+		...actual,
+		downmixAudioBuffer: jest.fn((buffer: AudioBuffer) => buffer),
+	};
+});
+
+const createSourceFile = (extension = 'wav'): TFile => {
 	const file = new TFile();
 	Object.assign(file, {
-		path: 'Audio/recording.wav',
-		name: 'recording.wav',
+		path: `Audio/recording.${extension}`,
+		name: `recording.${extension}`,
 		basename: 'recording',
-		extension: 'wav',
+		extension,
 		parent: { path: 'Audio' },
 	});
 	return file;
@@ -119,7 +127,10 @@ describe('ConversionService', () => {
 		);
 
 		await service.convert(
-			createRequest({ targetFormat: 'wav' }),
+			createRequest({
+				sourceFile: createSourceFile('webm'),
+				targetFormat: 'wav',
+			}),
 			jest.fn(),
 		);
 
@@ -128,6 +139,75 @@ describe('ConversionService', () => {
 			expect.anything(),
 			{ format: 'wav', bitrate: 128000 },
 			expect.any(Function),
+		);
+	});
+
+	it('should downmix on the WAV decode path when a mono mode is requested', async () => {
+		const { downmixAudioBuffer } = jest.requireMock('src/audio/downmix');
+
+		await service.convert(
+			createRequest({
+				sourceFile: createSourceFile('webm'),
+				targetFormat: 'wav',
+				channelMode: 'mono-left',
+			}),
+			jest.fn(),
+		);
+
+		expect(downmixAudioBuffer).toHaveBeenCalledWith(
+			expect.anything(),
+			'mono-left',
+		);
+	});
+
+	it('should pass the channel mode to the streaming conversion', async () => {
+		const { convertBlobToFormatBuffer } = jest.requireMock(
+			'src/audio/AudioFormatConverter',
+		);
+
+		await service.convert(
+			createRequest({ channelMode: 'mono-mix' }),
+			jest.fn(),
+		);
+
+		expect(convertBlobToFormatBuffer).toHaveBeenCalledWith(
+			expect.any(Blob),
+			'webm',
+			128000,
+			expect.any(Function),
+			expect.objectContaining({ channelMode: 'mono-mix' }),
+		);
+	});
+
+	it('should refuse a same-format conversion without a mono mode', async () => {
+		const outcome = await service.convert(
+			createRequest({ targetFormat: 'wav' }),
+			jest.fn(),
+		);
+
+		expect(outcome).toEqual({ status: 'aborted' });
+		expect(mockApp.vault.createBinary).not.toHaveBeenCalled();
+		expect(
+			getNotices().some((message) =>
+				message.includes('requires a mono channels option'),
+			),
+		).toBe(true);
+	});
+
+	it('should write a -mono file for a same-format mono downmix', async () => {
+		const outcome = await service.convert(
+			createRequest({ targetFormat: 'wav', channelMode: 'mono-left' }),
+			jest.fn(),
+		);
+
+		expect(outcome).toEqual({
+			status: 'completed',
+			newFileName: 'recording-mono.wav',
+			newPath: 'Audio/recording-mono.wav',
+		});
+		expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
+			'Audio/recording-mono.wav',
+			expect.any(ArrayBuffer),
 		);
 	});
 

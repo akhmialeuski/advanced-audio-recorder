@@ -8,6 +8,8 @@
 
 import { buildMimeType } from '../audio/AudioCapabilityDetector';
 import { FORMAT_WAV, FORMAT_WEBM, MIME_TYPE_AUDIO_PREFIX } from '../constants';
+import { isMonoChannelMode, normalizeChannelMode } from '../audio/downmix';
+import { MonoCaptureBridge } from './MonoCaptureBridge';
 import { getProcessingConstraints } from './AudioStreamHandler';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 
@@ -45,6 +47,7 @@ export class TestRecorder {
 		onStarted?: () => void,
 	): Promise<TestRecordingResult> {
 		let stream: MediaStream | null = null;
+		let monoBridge: MonoCaptureBridge | null = null;
 		try {
 			this.cancel();
 
@@ -68,10 +71,25 @@ export class TestRecorder {
 				},
 			});
 
+			// Capture through the same mono bridge real recordings use,
+			// so the played-back test reflects the channel setting
+			const channelMode = normalizeChannelMode(
+				settings.recordingChannels,
+			);
+			let captureStream: MediaStream = stream;
+			if (isMonoChannelMode(channelMode)) {
+				monoBridge = new MonoCaptureBridge(
+					stream,
+					channelMode,
+					settings.sampleRate,
+				);
+				captureStream = monoBridge.start();
+			}
+
 			const chunks: Blob[] = [];
 			// Local reference: cancel() may null this.recorder at any
 			// await point below
-			const recorder = new MediaRecorder(stream, {
+			const recorder = new MediaRecorder(captureStream, {
 				mimeType,
 				audioBitsPerSecond: settings.bitrate,
 			});
@@ -120,6 +138,7 @@ export class TestRecorder {
 				}),
 			};
 		} finally {
+			monoBridge?.release();
 			if (stream) {
 				for (const track of stream.getTracks()) {
 					track.stop();
