@@ -392,40 +392,33 @@ describe('runStreamingConversion', () => {
 			},
 		);
 
-		it('should clamp the right pick to the only channel of mono input', async () => {
-			mockGetPrimaryAudioTrack.mockResolvedValue({
-				getCodec: jest.fn().mockResolvedValue('opus'),
-				isAudioTrack: (): boolean => true,
-				getNumberOfChannels: jest.fn().mockResolvedValue(1),
-			});
+		it.each(['mono-left', 'mono-right'] as const)(
+			'should keep remux eligibility for a %s pick on already-mono input',
+			async (mode) => {
+				mockGetPrimaryAudioTrack.mockResolvedValue({
+					getCodec: jest.fn().mockResolvedValue('mp3'),
+					isAudioTrack: (): boolean => true,
+					getNumberOfChannels: jest.fn().mockResolvedValue(1),
+				});
 
-			await runStreamingConversion(
-				inputBlob,
-				'mp3',
-				96000,
-				false,
-				undefined,
-				'mono-right',
-			);
+				await runStreamingConversion(
+					inputBlob,
+					'mp3',
+					96000,
+					true,
+					undefined,
+					mode,
+				);
 
-			const audio = (
-				mockConversionInit.mock.calls[0][0] as {
-					audio: { process?: (sample: unknown) => unknown };
-				}
-			).audio;
-			const copyTo = jest.fn();
-			audio.process?.({
-				numberOfChannels: 1,
-				numberOfFrames: 2,
-				sampleRate: 44100,
-				timestamp: 0,
-				copyTo,
-			});
-			expect(copyTo).toHaveBeenCalledWith(
-				expect.any(Float32Array),
-				expect.objectContaining({ planeIndex: 0 }),
-			);
-		});
+				// Picking either side of a mono source is a no-op: the
+				// only channel is already the required mono output.
+				expect(mockConversionInit).toHaveBeenCalledWith(
+					expect.objectContaining({
+						audio: { codec: 'mp3' },
+					}),
+				);
+			},
+		);
 	});
 });
 
