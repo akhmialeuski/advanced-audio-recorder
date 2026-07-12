@@ -4,6 +4,7 @@
  */
 
 import { Notice, Platform, Plugin } from 'obsidian';
+import type { TFile } from 'obsidian';
 import { RecordingStatus } from './types';
 import type {
 	SaveProgress,
@@ -18,6 +19,9 @@ import {
 } from './settings/settingsSerialization';
 import { AudioRecorderSettingTab } from './settings/SettingsTab';
 import { RecordingManager } from './recording/RecordingManager';
+import { detectSilentChannel } from './recording/silentChannelDetector';
+import type { ChannelMode } from './audio/downmix';
+import { ConversionModal } from './ui/ConversionModal';
 import { SessionJournal, JOURNAL_FILE_NAME } from './recording/SessionJournal';
 import {
 	collectRecoverableSessions,
@@ -672,6 +676,10 @@ export default class AudioRecorderPlugin extends Plugin {
 			result.audioPaths,
 		);
 
+		// Fire-and-forget lopsided-stereo check; failures never touch the
+		// stop sequence (the detector itself already swallows its errors)
+		void this.maybeSuggestMonoConversion(result);
+
 		if (
 			!this.settings.transcriptionEnabled ||
 			!this.settings.transcribeOnSave ||
@@ -697,6 +705,90 @@ export default class AudioRecorderPlugin extends Plugin {
 			autoStart: true,
 			notePath: result.notePath ?? undefined,
 		}).open();
+	}
+
+	/**
+	 * Checks a freshly saved recording for the lopsided-stereo pattern
+	 * (one silent channel, a single mic through a dual-input interface)
+	 * and, when found, shows a Notice offering a one-click conversion to
+	 * mono that keeps the channel with audio. Only the first saved file
+	 * is inspected: a multi-track or auto-split session produces several
+	 * files, and one prompt is enough to alert the user. Gated by the
+	 * setting; a no-op when disabled or when nothing lopsided is found.
+	 * @param result - The saved audio paths
+	 */
+	private async maybeSuggestMonoConversion(
+		result: RecordingSaveResult,
+	): Promise<void> {
+		if (
+			!this.settings.detectSilentChannelOnSave ||
+			result.audioPaths.length === 0
+		) {
+			return;
+		}
+		const [firstAudioPath] = result.audioPaths;
+		if (!firstAudioPath) {
+			return;
+		}
+		const file = this.app.vault.getFileByPath(firstAudioPath);
+		if (!file) {
+			return;
+		}
+		const detection = await detectSilentChannel(this.app, file);
+		if (!detection) {
+			return;
+		}
+		const silentSide = detection.silentChannel === 1 ? 'right' : 'left';
+		this.showSilentChannelNotice(file, detection.keepMode, silentSide);
+	}
+
+	/**
+	 * Shows the actionable lopsided-stereo Notice. Clicking "Convert to
+	 * mono" opens the conversion dialog preset to the channel that
+	 * carries audio, so the user confirms format/links and runs it.
+	 * @param file - The recorded file
+	 * @param keepMode - Channel mode that keeps the audio channel
+	 * @param silentSide - Human-readable label of the silent side
+	 */
+	private showSilentChannelNotice(
+		file: TFile,
+		keepMode: ChannelMode,
+		silentSide: string,
+	): void {
+		const fragment = activeDocument.createDocumentFragment();
+		fragment.append(`Recording's ${silentSide} channel is silent. `);
+		const link = activeDocument.createElement('a');
+		link.textContent = 'Convert to mono';
+		link.className = 'aar-silent-channel-convert';
+		link.setAttribute('role', 'button');
+		fragment.append(link);
+		const notice = new Notice(fragment, 0);
+		link.addEventListener('click', () => {
+			notice.hide();
+			this.openMonoConversion(file, keepMode);
+		});
+	}
+
+	/**
+	 * Opens the conversion dialog preset to the given channel mode and
+	 * primes the converted file for the enhanced player. Extracted so
+	 * the silent-channel prompt's action is testable without the Notice.
+	 * @param file - The file to convert
+	 * @param keepMode - Channel mode to preselect in the dialog
+	 */
+	private openMonoConversion(file: TFile, keepMode: ChannelMode): void {
+		new ConversionModal(
+			this.app,
+			file,
+			this.settings,
+			(convertedPath) => {
+				this.playerRegistrar.primeSavedRecordingsForEnhancement([
+					convertedPath,
+				]);
+			},
+			() => this.encodingWorker,
+			keepMode,
+		).open();
 	}
 
 	/**

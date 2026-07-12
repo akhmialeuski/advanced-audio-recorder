@@ -123,6 +123,7 @@ const ALL_STAGES: AudioDspConfig = {
 	highPass: { enabled: true, hz: 80 },
 	gate: { enabled: true, thresholdDb: -50 },
 	leveling: { enabled: true, makeupDb: 6 },
+	channelMode: 'source',
 };
 
 /** Parses the channel count / sample rate / frame count from a WAV blob. */
@@ -167,6 +168,32 @@ describe('AudioProcessingService.process (e2e pipeline)', () => {
 		expect(header.dataBytes).toBe(sampleRate * 2 * 2); // frames * ch * 2 bytes
 	});
 
+	it('downmixes a stereo source to mono when a mono mode is chosen', async () => {
+		const sampleRate = 8000;
+		const left = new Float32Array(sampleRate).fill(0.6);
+		const right = new Float32Array(sampleRate).fill(0);
+		decodeAudioData.mockResolvedValue(
+			fakeBuffer([left, right], sampleRate),
+		);
+		const { app, written } = makeApp();
+		const service = new AudioProcessingService(app);
+
+		const path = await service.process(fakeFile('voice/rec.wav'), {
+			highPass: { enabled: false, hz: 80 },
+			gate: { enabled: false, thresholdDb: -50 },
+			leveling: { enabled: false, makeupDb: 0 },
+			channelMode: 'mono-left',
+		});
+
+		const buffer = written.get(path) as ArrayBuffer;
+		const header = readWavHeader(buffer);
+		// One channel out, and it carries the loud left channel untouched
+		expect(header.channels).toBe(1);
+		expect(header.dataBytes).toBe(sampleRate * 2);
+		const pcm = new DataView(buffer, 44);
+		expect(pcm.getInt16(0, true)).toBeGreaterThan(0);
+	});
+
 	it('processes a gate-only run without invoking the offline graph', async () => {
 		const sampleRate = 16000;
 		decodeAudioData.mockResolvedValue(
@@ -178,6 +205,7 @@ describe('AudioProcessingService.process (e2e pipeline)', () => {
 			highPass: { enabled: false, hz: 80 },
 			gate: { enabled: true, thresholdDb: -50 },
 			leveling: { enabled: false, makeupDb: 0 },
+			channelMode: 'source',
 		});
 		expect(path).toBe('voice/rec-processed.wav');
 		expect(readWavHeader(written.get(path) as ArrayBuffer).channels).toBe(
@@ -198,6 +226,7 @@ describe('AudioProcessingService.process (e2e pipeline)', () => {
 			highPass: { enabled: false, hz: 80 },
 			gate: { enabled: true, thresholdDb: -50 },
 			leveling: { enabled: false, makeupDb: 0 },
+			channelMode: 'source',
 		});
 		const buffer = written.get(path) as ArrayBuffer;
 		expect(readWavHeader(buffer).dataBytes).toBe(numFrames * 2);

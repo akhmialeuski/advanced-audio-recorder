@@ -342,6 +342,7 @@ describe('Settings', () => {
 				inputEchoCancellation: false,
 				inputAutoGainControl: false,
 				showInputLevelMeter: false,
+				detectSilentChannelOnSave: false,
 				showRecordingStats: false,
 				mobileRecordingBanner: false,
 				cleanupHighPassEnabled: false,

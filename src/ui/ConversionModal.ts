@@ -52,6 +52,10 @@ export class ConversionModal extends Modal {
 	 * @param settings - Plugin settings (seed format/bitrate/link defaults)
 	 * @param onConverted - Called with the converted file's path after a
 	 *   successful run, so a caller can prime it for the enhanced player.
+	 * @param getWorkerClient - Supplies the encoding worker, if any
+	 * @param initialChannelMode - Preselects the Channels option, so a
+	 *   caller (e.g. the silent-channel prompt) can open the dialog
+	 *   already set to the recommended mono downmix
 	 */
 	constructor(
 		app: App,
@@ -59,11 +63,13 @@ export class ConversionModal extends Modal {
 		settings: AudioRecorderSettings,
 		private readonly onConverted?: (convertedPath: string) => void,
 		getWorkerClient: () => EncodingWorkerClient | null = () => null,
+		initialChannelMode: ChannelMode = CHANNEL_MODE_SOURCE,
 	) {
 		super(app);
 		this.sourceFile = sourceFile;
 		this.deleteSource = settings.deleteSourceAfterConversion;
 		this.linkAction = settings.conversionLinkAction;
+		this.channelMode = normalizeChannelMode(initialChannelMode);
 		this.conversionService = new ConversionService(app, getWorkerClient);
 	}
 

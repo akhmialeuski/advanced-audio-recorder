@@ -74,6 +74,28 @@ export const MIME_TYPE_AUDIO_PREFIX = 'audio/';
 /** Default audio sample rate in Hz. */
 export const DEFAULT_SAMPLE_RATE = 44100;
 
+/**
+ * A channel whose RMS is at or below this level (dBFS) is treated as
+ * silent by the post-recording lopsided-stereo check. -60 dBFS is deep
+ * below usable speech, so a channel this quiet carries no real content.
+ */
+export const SILENT_CHANNEL_FLOOR_DB = -60;
+
+/**
+ * Minimum gap, in dB, between the loud and quiet channels of a stereo
+ * recording before the quiet one is reported as silent. Keeps a merely
+ * off-center mix (both channels present) from triggering the prompt.
+ */
+export const SILENT_CHANNEL_MIN_GAP_DB = 40;
+
+/**
+ * Maximum recording duration, in seconds, that the post-save
+ * silent-channel check will decode. A full decode is the only way to
+ * read per-channel levels; capping it keeps a long session from paying
+ * that cost on every save. Longer files are skipped silently.
+ */
+export const SILENT_CHANNEL_MAX_DECODE_SECONDS = 20 * 60;
+
 /** Default encoder bitrate in bits per second. */
 export const DEFAULT_BITRATE = 128000;
 

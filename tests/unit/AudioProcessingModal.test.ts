@@ -131,7 +131,35 @@ describe('AudioProcessingModal', () => {
 
 		expect(processMock).not.toHaveBeenCalled();
 		expect(Notice).toHaveBeenCalledWith(
-			'Enable at least one processing stage.',
+			'Enable at least one processing stage, or choose a mono channel option.',
+		);
+	});
+
+	it('runs a pure mono downmix with no DSP stage enabled', async () => {
+		processMock.mockResolvedValue('recordings/take-processed.wav');
+		const { modal, processButton } = openModal(
+			makeApp(),
+			settingsWithStages(false),
+		);
+		jest.spyOn(modal, 'close').mockImplementation();
+
+		// Pick a mono mode via the Channels dropdown
+		const channelsSelect = settingRowByName(
+			modal.contentEl,
+			'Channels',
+		).querySelector<HTMLSelectElement>('select');
+		if (!channelsSelect) {
+			throw new Error('channels dropdown not rendered');
+		}
+		channelsSelect.value = 'mono-left';
+		channelsSelect.dispatchEvent(new Event('change'));
+
+		processButton.click();
+		await settle();
+
+		expect(processMock).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ channelMode: 'mono-left' }),
 		);
 	});
 

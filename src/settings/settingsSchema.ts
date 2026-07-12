@@ -263,6 +263,12 @@ export interface AudioRecorderSettings {
 	inputAutoGainControl: boolean;
 	/** Show a live input-level meter while recording */
 	showInputLevelMeter: boolean;
+	/**
+	 * After saving a recording, check whether it is a stereo file with
+	 * one silent channel (a single mic through a dual-input interface)
+	 * and offer to convert it to mono.
+	 */
+	detectSilentChannelOnSave: boolean;
 	/** Show live elapsed time and file size while recording */
 	showRecordingStats: boolean;
 	/** Show a prominent recording banner on mobile */
@@ -402,6 +408,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	inputEchoCancellation: true,
 	inputAutoGainControl: true,
 	showInputLevelMeter: true,
+	detectSilentChannelOnSave: true,
 	showRecordingStats: true,
 	mobileRecordingBanner: true,
 	cleanupHighPassEnabled: true,

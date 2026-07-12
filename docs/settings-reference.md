@@ -250,6 +250,7 @@ Control the browser's input processing applied while recording, plus the live re
 | **Automatic gain control**  | Let the browser normalize the input level automatically.                              | On / Off        | On      |
 | **Input level meter**       | Show a live input-level (VU) meter in the status bar while recording.                 | On / Off        | On      |
 | **Recording stats**         | Show the live elapsed time and total recorded size in the status bar while recording. | On / Off        | On      |
+| **Detect silent channel after recording** | After a recording is saved, check whether it is a stereo file with one silent channel (a single mic on a dual-input interface) and show a notice offering a one-click mono conversion. Skipped for recordings longer than 20 minutes. See [Automatic silent-channel prompt](recording.md#automatic-silent-channel-prompt). | On / Off        | On      |
 | **Mobile recording banner** | Show a prominent recording banner on mobile, where there is no ribbon indicator.      | On / Off        | On      |
 
 ---

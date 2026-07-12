@@ -7,6 +7,7 @@ import {
 	applyNoiseGateToChannel,
 	dbToGain,
 	gateShouldOpen,
+	hasActiveChange,
 	hasActiveStage,
 	resolveAudioDspConfig,
 } from 'src/cleanup/audioDsp';
@@ -42,17 +43,55 @@ describe('dbToGain', () => {
 });
 
 describe('hasActiveStage', () => {
+	const off = {
+		highPass: { enabled: false, hz: 80 },
+		gate: { enabled: false, thresholdDb: -50 },
+		leveling: { enabled: false, makeupDb: 6 },
+		channelMode: 'source' as const,
+	};
+
 	it('is false only when every stage is disabled', () => {
-		const off = {
-			highPass: { enabled: false, hz: 80 },
-			gate: { enabled: false, thresholdDb: -50 },
-			leveling: { enabled: false, makeupDb: 6 },
-		};
 		expect(hasActiveStage(off)).toBe(false);
 		expect(
 			hasActiveStage({
 				...off,
 				gate: { enabled: true, thresholdDb: -50 },
+			}),
+		).toBe(true);
+	});
+
+	it('ignores the channel mode', () => {
+		// A mono downmix is a change, but not a DSP stage
+		expect(hasActiveStage({ ...off, channelMode: 'mono-left' })).toBe(
+			false,
+		);
+	});
+});
+
+describe('hasActiveChange', () => {
+	const off = {
+		highPass: { enabled: false, hz: 80 },
+		gate: { enabled: false, thresholdDb: -50 },
+		leveling: { enabled: false, makeupDb: 6 },
+		channelMode: 'source' as const,
+	};
+
+	it('is false when nothing changes the audio', () => {
+		expect(hasActiveChange(off)).toBe(false);
+	});
+
+	it('is true for a mono downmix with no DSP stage', () => {
+		expect(hasActiveChange({ ...off, channelMode: 'mono-mix' })).toBe(true);
+		expect(hasActiveChange({ ...off, channelMode: 'mono-right' })).toBe(
+			true,
+		);
+	});
+
+	it('is true when a DSP stage is enabled', () => {
+		expect(
+			hasActiveChange({
+				...off,
+				highPass: { enabled: true, hz: 80 },
 			}),
 		).toBe(true);
 	});

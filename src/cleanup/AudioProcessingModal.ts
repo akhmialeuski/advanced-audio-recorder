@@ -29,10 +29,15 @@ import {
 } from '../constants';
 import { AudioProcessingService } from './AudioProcessingService';
 import {
-	hasActiveStage,
+	hasActiveChange,
 	resolveAudioDspConfig,
 	type AudioDspConfig,
 } from './audioDsp';
+import {
+	CHANNEL_MODES,
+	normalizeChannelMode,
+	type ChannelMode,
+} from '../audio/downmix';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 
 /**
@@ -118,6 +123,27 @@ export class AudioProcessingModal extends Modal {
 		);
 
 		new Setting(contentEl)
+			.setName('Channels')
+			.setDesc(
+				'Keep the source channel layout, or downmix the cleaned copy to mono. The left/right options keep one channel at full level - useful when only one channel carries audio.',
+			)
+			.addDropdown((dropdown) => {
+				const labels: Record<ChannelMode, string> = {
+					source: 'Same as source',
+					'mono-mix': 'Mono (mix all channels)',
+					'mono-left': 'Mono (left channel)',
+					'mono-right': 'Mono (right channel)',
+				};
+				CHANNEL_MODES.forEach((mode) => {
+					dropdown.addOption(mode, labels[mode]);
+				});
+				dropdown.setValue(this.config.channelMode);
+				dropdown.onChange((value) => {
+					this.config.channelMode = normalizeChannelMode(value);
+				});
+			});
+
+		new Setting(contentEl)
 			.setName('Delete source after processing')
 			.addToggle((toggle) =>
 				toggle.setValue(this.deleteSource).onChange((v) => {
@@ -189,8 +215,10 @@ export class AudioProcessingModal extends Modal {
 		if (this.processing) {
 			return;
 		}
-		if (!hasActiveStage(this.config)) {
-			new Notice('Enable at least one processing stage.');
+		if (!hasActiveChange(this.config)) {
+			new Notice(
+				'Enable at least one processing stage, or choose a mono channel option.',
+			);
 			return;
 		}
 		this.processing = true;

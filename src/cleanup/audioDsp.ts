@@ -18,12 +18,19 @@ import {
 	MIN_CLEANUP_LEVELING_MAKEUP_DB,
 } from '../constants';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
+import { CHANNEL_MODE_SOURCE, type ChannelMode } from '../audio/downmix';
 
 /** Resolved, clamped audio-cleanup configuration. */
 export interface AudioDspConfig {
 	highPass: { enabled: boolean; hz: number };
 	gate: { enabled: boolean; thresholdDb: number };
 	leveling: { enabled: boolean; makeupDb: number };
+	/**
+	 * Channel layout for the cleaned copy: keep the source layout or
+	 * downmix to mono (mix or one picked channel). A per-run choice,
+	 * not seeded from settings.
+	 */
+	channelMode: ChannelMode;
 }
 
 /** Clamps a value into a range, falling back when non-finite. */
@@ -76,12 +83,15 @@ export function resolveAudioDspConfig(
 				DEFAULT_CLEANUP_LEVELING_MAKEUP_DB,
 			),
 		},
+		channelMode: CHANNEL_MODE_SOURCE,
 	};
 }
 
 /**
- * True when at least one stage is enabled (processing would change the
- * audio).
+ * True when at least one DSP stage is enabled (a filter, gate, or
+ * leveling pass would change the audio). A mono downmix is a change too
+ * but is tracked separately, since it depends on the source channel
+ * count the config does not carry - see {@link hasActiveChange}.
  * @param config - Resolved config
  */
 export function hasActiveStage(config: AudioDspConfig): boolean {
@@ -90,6 +100,17 @@ export function hasActiveStage(config: AudioDspConfig): boolean {
 		config.gate.enabled ||
 		config.leveling.enabled
 	);
+}
+
+/**
+ * True when processing would change the audio at all: any DSP stage, or
+ * a mono channel mode (a downmix, or a channel pick, that alters the
+ * output). Used by the dialog to allow a pure mono downmix with no DSP
+ * stage enabled.
+ * @param config - Resolved config
+ */
+export function hasActiveChange(config: AudioDspConfig): boolean {
+	return hasActiveStage(config) || config.channelMode !== CHANNEL_MODE_SOURCE;
 }
 
 /**

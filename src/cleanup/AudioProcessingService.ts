@@ -16,6 +16,7 @@ import {
 } from '../constants';
 import { createWavFileBuffer, WAV_HEADER_SIZE } from '../audio/WavEncoder';
 import { floatToInt16 } from '../audio/pcm';
+import { downmixChannelData, isMonoChannelMode } from '../audio/downmix';
 import { directoryOf } from '../utils/paths';
 import { resolveUniquePathInDirectory } from '../audio/RecordingFileManager';
 import { delay } from '../utils/TimeUtils';
@@ -95,7 +96,16 @@ export class AudioProcessingService {
 			);
 		}
 		const data = await this.app.vault.readBinary(file);
-		const { sampleRate, data: channels } = await this.decodeChannels(data);
+		const { sampleRate, data: decoded } = await this.decodeChannels(data);
+		// Downmix to mono up front, before the DSP stages: the rest of the
+		// pipeline is channel-count agnostic, so a mono mode simply leaves
+		// one channel to filter/gate/level (and to write), halving that
+		// work for a stereo source. Multichannel input only; an already
+		// mono file is left as-is.
+		const channels =
+			isMonoChannelMode(config.channelMode) && decoded.length > 1
+				? [downmixChannelData(decoded, config.channelMode)]
+				: decoded;
 		const numChannels = channels.length;
 		// decodeChannels rejects empty audio, so the first channel exists
 		const numFrames = channels[0]?.length ?? 0;
