@@ -10,7 +10,13 @@
  */
 
 import { SHARED_AUDIO_GRACE_MS } from '../constants';
+import type { MarkerKind } from '../markers/markerModel';
 import type { ResolvedPlayerSettings } from '../player/playerSettings';
+import type {
+	PlaybackControlsListener,
+	PlaybackControlsState,
+	PlaybackController,
+} from './playbackControls';
 
 /**
  * Separates the path from the #t= start inside a playback key. U+0000 cannot
@@ -54,6 +60,10 @@ interface SharedAudio {
 	 * player instance.
 	 */
 	engaged: boolean;
+	/** Players that can persist markers for this playback key. */
+	playbackControllers: Set<PlaybackController>;
+	/** Detaches the registry's one set of media lifecycle listeners. */
+	detachPlaybackEvents: () => void;
 }
 
 /**
@@ -82,6 +92,10 @@ export class AudioPlayerRegistry {
 	 * same embed across view modes controls one playback while distinct
 	 * embeds of the same file stay independent. */
 	private readonly audioByKey = new Map<string, SharedAudio>();
+	/** Playback key currently represented in the status bar. */
+	private activePlaybackKey: string | null = null;
+	/** Consumers interested in the active status-bar playback snapshot. */
+	private readonly playbackListeners = new Set<PlaybackControlsListener>();
 
 	/**
 	 * Returns the shared audio element for a playback key, creating it on
@@ -117,13 +131,17 @@ export class AudioPlayerRegistry {
 		const audio = new Audio();
 		audio.preload = 'metadata';
 		audio.src = src;
-		this.audioByKey.set(key, {
+		const detachPlaybackEvents = this.attachPlaybackEvents(key, audio);
+		const entry: SharedAudio = {
 			audio,
 			refs: 1,
 			releaseTimer: 0,
 			resumeOnReacquire: false,
 			engaged: false,
-		});
+			playbackControllers: new Set<PlaybackController>(),
+			detachPlaybackEvents,
+		};
+		this.audioByKey.set(key, entry);
 		return { audio, isNew: true };
 	}
 
@@ -149,10 +167,57 @@ export class AudioPlayerRegistry {
 		entry.resumeOnReacquire = !entry.audio.paused;
 		entry.audio.pause();
 		entry.releaseTimer = window.setTimeout(() => {
+			if (this.activePlaybackKey === key) {
+				this.activePlaybackKey = null;
+				this.emitPlaybackState();
+			}
+			entry.detachPlaybackEvents();
 			entry.audio.removeAttribute('src');
 			entry.audio.load();
 			this.audioByKey.delete(key);
 		}, SHARED_AUDIO_GRACE_MS);
+	}
+
+	/**
+	 * Registers the existing player actions associated with a shared audio
+	 * element, so the status bar delegates to the same implementation as the
+	 * embedded control row.
+	 * @param key - Playback key returned by {@link playbackKey}
+	 * @param controller - Existing transport, volume, and marker actions
+	 * @returns Cleanup that removes this player from the playback key
+	 */
+	registerPlaybackController(
+		key: string,
+		controller: PlaybackController,
+	): () => void {
+		const entry = this.audioByKey.get(key);
+		if (!entry) {
+			return () => undefined;
+		}
+		entry.playbackControllers.add(controller);
+		if (this.activePlaybackKey === key) {
+			this.emitPlaybackState();
+		}
+		return () => {
+			entry.playbackControllers.delete(controller);
+			if (this.activePlaybackKey === key) {
+				this.emitPlaybackState();
+			}
+		};
+	}
+
+	/**
+	 * Subscribes to the active playback shown in the status bar. The listener
+	 * receives the current snapshot immediately, including null when idle.
+	 * @param listener - Playback state consumer
+	 * @returns Cleanup that removes the listener
+	 */
+	subscribePlayback(listener: PlaybackControlsListener): () => void {
+		this.playbackListeners.add(listener);
+		listener(this.currentPlaybackState());
+		return () => {
+			this.playbackListeners.delete(listener);
+		};
 	}
 
 	/**
@@ -301,11 +366,219 @@ export class AudioPlayerRegistry {
 			if (entry.releaseTimer !== 0) {
 				window.clearTimeout(entry.releaseTimer);
 			}
+			entry.detachPlaybackEvents();
 			entry.audio.pause();
 			entry.audio.removeAttribute('src');
 			entry.audio.load();
 		}
 		this.audioByKey.clear();
 		this.playersByPath.clear();
+		this.activePlaybackKey = null;
+		this.emitPlaybackState();
+		this.playbackListeners.clear();
+	}
+
+	/**
+	 * Adds the one registry-level set of listeners that drives the global
+	 * status-bar controls for a shared audio element.
+	 * @param key - Playback key represented by the audio
+	 * @param audio - Shared media element
+	 * @returns Cleanup that removes all listeners
+	 */
+	private attachPlaybackEvents(
+		key: string,
+		audio: HTMLAudioElement,
+	): () => void {
+		const activate = (): void => {
+			this.activePlaybackKey = key;
+			this.emitPlaybackState();
+		};
+		const refresh = (): void => {
+			if (this.activePlaybackKey === key) {
+				this.emitPlaybackState();
+			}
+		};
+		const finish = (): void => {
+			if (this.activePlaybackKey === key) {
+				this.activePlaybackKey = null;
+				this.emitPlaybackState();
+			}
+		};
+
+		audio.addEventListener('play', activate);
+		audio.addEventListener('pause', refresh);
+		audio.addEventListener('timeupdate', refresh);
+		audio.addEventListener('loadedmetadata', refresh);
+		audio.addEventListener('durationchange', refresh);
+		audio.addEventListener('volumechange', refresh);
+		audio.addEventListener('ended', finish);
+
+		return () => {
+			audio.removeEventListener('play', activate);
+			audio.removeEventListener('pause', refresh);
+			audio.removeEventListener('timeupdate', refresh);
+			audio.removeEventListener('loadedmetadata', refresh);
+			audio.removeEventListener('durationchange', refresh);
+			audio.removeEventListener('volumechange', refresh);
+			audio.removeEventListener('ended', finish);
+		};
+	}
+
+	/** Emits a fresh snapshot to every status-bar subscriber. */
+	private emitPlaybackState(): void {
+		const state = this.currentPlaybackState();
+		for (const listener of this.playbackListeners) {
+			listener(state);
+		}
+	}
+
+	/**
+	 * Builds the controls for the active playback key. Commands capture the key
+	 * so a stale DOM event can never affect a newer playback that replaced it.
+	 * @returns Current playback controls, or null while no audio is active
+	 */
+	private currentPlaybackState(): PlaybackControlsState | null {
+		const key = this.activePlaybackKey;
+		if (key === null) {
+			return null;
+		}
+		const entry = this.audioByKey.get(key);
+		if (!entry) {
+			return null;
+		}
+		const { audio } = entry;
+		const duration =
+			Number.isFinite(audio.duration) && audio.duration > 0
+				? audio.duration
+				: 0;
+		const currentTime = Number.isFinite(audio.currentTime)
+			? Math.max(0, audio.currentTime)
+			: 0;
+		const markerController = this.markerController(entry);
+
+		return {
+			currentTime,
+			duration,
+			paused: audio.paused,
+			volume: audio.volume,
+			muted: audio.muted,
+			markersEnabled: markerController !== null,
+			onTogglePlay: () => {
+				this.runPlaybackCommand(key, (controller) => {
+					controller.togglePlay();
+				});
+			},
+			onStop: () => {
+				this.stopPlayback(key);
+			},
+			onSkip: (deltaSeconds) => {
+				this.runPlaybackCommand(key, (controller) => {
+					controller.skip(deltaSeconds);
+				});
+			},
+			onToggleMute: () => {
+				this.runPlaybackCommand(key, (controller) => {
+					controller.toggleMute();
+				});
+			},
+			onVolumeInput: (volume) => {
+				this.runPlaybackCommand(key, (controller) => {
+					controller.setVolume(volume);
+				});
+			},
+			onAddMarker: (kind) => {
+				this.addPlaybackMarker(key, kind);
+			},
+		};
+	}
+
+	/**
+	 * Returns the newest live player that currently permits marker creation.
+	 * @param entry - Shared audio entry whose players are considered
+	 * @returns Eligible marker controller, or null when marker creation is off
+	 */
+	private markerController(entry: SharedAudio): PlaybackController | null {
+		const controllers = [...entry.playbackControllers];
+		for (let index = controllers.length - 1; index >= 0; index--) {
+			const controller = controllers[index];
+			if (controller?.canAddMarkers()) {
+				return controller;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Returns the newest live player for a playback key.
+	 * @param entry - Shared audio entry whose players are considered
+	 * @returns Newest playback controller, or null during lifecycle handoff
+	 */
+	private playbackController(entry: SharedAudio): PlaybackController | null {
+		const controllers = [...entry.playbackControllers];
+		return controllers[controllers.length - 1] ?? null;
+	}
+
+	/**
+	 * Stops a playback, resets its position, and dismisses the status controls.
+	 * @param key - Playback key captured by the status snapshot
+	 */
+	private stopPlayback(key: string): void {
+		const entry = this.activeEntry(key);
+		if (!entry) {
+			return;
+		}
+		this.activePlaybackKey = null;
+		const controller = this.playbackController(entry);
+		if (controller) {
+			controller.stop();
+		} else {
+			entry.audio.pause();
+			entry.audio.currentTime = 0;
+		}
+		this.emitPlaybackState();
+	}
+
+	/**
+	 * Delegates a command to the existing player implementation and publishes
+	 * the resulting shared-audio state without waiting for a media event.
+	 * @param key - Playback key captured by the status snapshot
+	 * @param command - Operation to run against the newest live player
+	 */
+	private runPlaybackCommand(
+		key: string,
+		command: (controller: PlaybackController) => void,
+	): void {
+		const entry = this.activeEntry(key);
+		if (!entry) {
+			return;
+		}
+		const controller = this.playbackController(entry);
+		if (controller) {
+			command(controller);
+			this.emitPlaybackState();
+		}
+	}
+
+	/**
+	 * Delegates marker creation to the newest eligible live player.
+	 * @param key - Playback key captured by the status snapshot
+	 * @param kind - Marker or chapter kind to persist
+	 */
+	private addPlaybackMarker(key: string, kind: MarkerKind): void {
+		const entry = this.activeEntry(key);
+		if (entry) {
+			this.markerController(entry)?.addMarker(kind);
+		}
+	}
+
+	/**
+	 * Returns an entry only while its key is still the active playback.
+	 * @param key - Playback key captured by the status snapshot
+	 * @returns Matching active entry, or null after playback was replaced
+	 */
+	private activeEntry(key: string): SharedAudio | null {
+		return this.activePlaybackKey === key
+			? (this.audioByKey.get(key) ?? null)
+			: null;
 	}
 }

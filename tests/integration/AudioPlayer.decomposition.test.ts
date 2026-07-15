@@ -96,6 +96,8 @@ function makeRegistry(...audios: FakeAudio[]): AudioPlayerRegistry {
 		seek: jest.fn(),
 		applySettings: jest.fn(),
 		clear: jest.fn(),
+		registerPlaybackController: jest.fn(() => jest.fn()),
+		subscribePlayback: jest.fn(() => jest.fn()),
 		markAudioEngaged: jest.fn((key: string) => {
 			const entry = entries.get(key);
 			if (entry) {
@@ -470,6 +472,42 @@ describe('marker CRUD stays player-driven and persisted (PlayerMarkerController 
 		expect(saved[0].kind).toBe('bookmark');
 		// Other live players of the file are refreshed after the persist
 		expect(registry.reloadMarkers).toHaveBeenCalledWith('rec.wav', player);
+	});
+
+	it('status-bar marker actions reuse the player marker controller', async () => {
+		const audio = makeFakeAudio();
+		audio.currentTime = 24;
+		const store = makeMarkerStore();
+		const registry = makeRegistry(audio);
+		const container = makeContainer();
+		makePlayer(container, registry, WITH_MARKERS, store).onload();
+		await tick();
+		const registration = jest.mocked(registry.registerPlaybackController)
+			.mock.calls[0];
+		const controller = registration?.[1];
+
+		expect(registration?.[0]).toContain('rec.wav');
+		expect(controller?.canAddMarkers()).toBe(true);
+		controller?.skip(10);
+		expect(audio.currentTime).toBe(34);
+		controller?.toggleMute();
+		expect(audio.muted).toBe(true);
+		controller?.setVolume(0.5);
+		expect(audio.volume).toBe(0.5);
+		expect(audio.muted).toBe(false);
+		controller?.addMarker('chapter');
+		await tick();
+
+		const saved = store.data.get('rec.wav') ?? [];
+		expect(saved).toHaveLength(1);
+		expect(saved[0]).toEqual(
+			expect.objectContaining({ time: 34, kind: 'chapter' }),
+		);
+		controller?.togglePlay();
+		expect(audio.play).toHaveBeenCalled();
+		controller?.stop();
+		expect(audio.pause).toHaveBeenCalled();
+		expect(audio.currentTime).toBe(0);
 	});
 
 	it('reloadMarkers re-reads the store so views stay in sync', async () => {

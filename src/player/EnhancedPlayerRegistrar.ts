@@ -44,6 +44,7 @@ import {
 	type ResolvedPlayerSettings,
 } from '../player/playerSettings';
 import { AudioPlayerRegistry } from './AudioPlayerRegistry';
+import type { PlaybackControlsListener } from './playbackControls';
 import { WaveformPeakCache, SharedAudioDecoder } from './WaveformData';
 import { AudioPlayer } from './AudioPlayer';
 import {
@@ -179,6 +180,15 @@ export class EnhancedPlayerRegistrar {
 				}
 			}),
 		);
+	}
+
+	/**
+	 * Subscribes the shared status bar to active enhanced-player playback.
+	 * The registry owns the subscription and releases it during dispose.
+	 * @param listener - Consumer for active playback snapshots
+	 */
+	subscribePlayback(listener: PlaybackControlsListener): void {
+		this.registry.subscribePlayback(listener);
 	}
 
 	/**

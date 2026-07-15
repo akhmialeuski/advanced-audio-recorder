@@ -6,7 +6,9 @@
 import { App, Notice } from 'obsidian';
 import AudioRecorderPlugin from 'src/main';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
+import { RecordingStatus } from 'src/types';
 import type { SaveProgress } from 'src/types';
+import type { PlaybackControlsState } from 'src/player/playbackControls';
 import type { TranscriptionModalOptions } from 'src/ui/TranscriptionModal';
 
 jest.mock('src/recording/RecordingManager', () => ({
@@ -31,6 +33,7 @@ jest.mock('src/player/EnhancedPlayerRegistrar', () => ({
 		register: jest.fn(),
 		dispose: jest.fn(),
 		refresh: jest.fn(),
+		subscribePlayback: jest.fn(),
 		primeSavedRecordingsForEnhancement: jest.fn(),
 	})),
 }));
@@ -38,6 +41,7 @@ jest.mock('src/player/EnhancedPlayerRegistrar', () => ({
 jest.mock('src/ui/StatusBar', () => ({
 	updateStatusBar: jest.fn(),
 	initializeStatusBar: jest.fn(),
+	renderPlaybackStatusBar: jest.fn(),
 	renderTranscriptionStatusBar: jest.fn(),
 }));
 
@@ -685,6 +689,74 @@ describe('AudioRecorderPlugin background transcription status bar', () => {
 			expect.anything(),
 			progress(60, 'Second job'),
 			expect.objectContaining({ onActivate: restoreSecond }),
+		);
+	});
+
+	it('prioritizes recording, then playback, then minimized transcription', async () => {
+		const { plugin } = createPlugin([null]);
+		await onloadWithTimers(plugin);
+		const { EnhancedPlayerRegistrar } = jest.requireMock(
+			'src/player/EnhancedPlayerRegistrar',
+		);
+		const registrar = (EnhancedPlayerRegistrar as jest.Mock).mock.results[0]
+			.value as { subscribePlayback: jest.Mock };
+		const onPlayback = registrar.subscribePlayback.mock.calls[0][0] as (
+			state: PlaybackControlsState | null,
+		) => void;
+		const { renderPlaybackStatusBar, renderTranscriptionStatusBar } =
+			jest.requireMock('src/ui/StatusBar');
+		const playbackState: PlaybackControlsState = {
+			currentTime: 5,
+			duration: 60,
+			paused: false,
+			volume: 1,
+			muted: false,
+			markersEnabled: true,
+			onTogglePlay: jest.fn(),
+			onStop: jest.fn(),
+			onSkip: jest.fn(),
+			onToggleMute: jest.fn(),
+			onVolumeInput: jest.fn(),
+			onAddMarker: jest.fn(),
+		};
+
+		onPlayback(playbackState);
+		expect(renderPlaybackStatusBar).toHaveBeenLastCalledWith(
+			expect.anything(),
+			playbackState,
+		);
+
+		const background = buildBackgroundProgress(plugin);
+		background.show(progress(40, 'Background job'), jest.fn());
+		expect(renderPlaybackStatusBar).toHaveBeenLastCalledWith(
+			expect.anything(),
+			playbackState,
+		);
+
+		const hooks = plugin as unknown as {
+			handleStatusChange(status: RecordingStatus): void;
+		};
+		hooks.handleStatusChange(RecordingStatus.Recording);
+		const { updateStatusBar } = jest.requireMock('src/ui/StatusBar');
+		expect(updateStatusBar).toHaveBeenLastCalledWith(
+			expect.anything(),
+			RecordingStatus.Recording,
+			undefined,
+			expect.anything(),
+			expect.anything(),
+		);
+
+		hooks.handleStatusChange(RecordingStatus.Idle);
+		expect(renderPlaybackStatusBar).toHaveBeenLastCalledWith(
+			expect.anything(),
+			playbackState,
+		);
+
+		onPlayback(null);
+		expect(renderTranscriptionStatusBar).toHaveBeenLastCalledWith(
+			expect.anything(),
+			progress(40, 'Background job'),
+			expect.anything(),
 		);
 	});
 });

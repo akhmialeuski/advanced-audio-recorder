@@ -505,6 +505,23 @@ describe('EnhancedPlayerRegistrar re-renders only when needed', () => {
 });
 
 describe('EnhancedPlayerRegistrar persistent media kinds', () => {
+	it('forwards playback subscriptions to the shared registry', () => {
+		const subscribe = jest.spyOn(
+			AudioPlayerRegistry.prototype,
+			'subscribePlayback',
+		);
+		try {
+			const { registrar } = setup(true);
+			const listener = jest.fn();
+
+			registrar.subscribePlayback(listener);
+
+			expect(subscribe).toHaveBeenCalledWith(listener);
+		} finally {
+			subscribe.mockRestore();
+		}
+	});
+
 	it('loads the persisted store on register', () => {
 		const kindStore = kindStoreStub();
 		setup(true, kindStore);

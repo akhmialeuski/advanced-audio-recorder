@@ -387,6 +387,29 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 			this.audio.loop = PLAYER_LOOP;
 			this.audio.playbackRate = PLAYER_PLAYBACK_RATE;
 		}
+		const unregisterPlaybackController =
+			this.registry.registerPlaybackController(this.audioKey, {
+				canAddMarkers: () => this.settings.enableMarkers,
+				togglePlay: () => {
+					this.togglePlay();
+				},
+				stop: () => {
+					this.stopPlayback();
+				},
+				skip: (deltaSeconds) => {
+					this.skip(deltaSeconds);
+				},
+				toggleMute: () => {
+					this.toggleMute();
+				},
+				setVolume: (volume) => {
+					this.setVolume(volume);
+				},
+				addMarker: (kind) => {
+					void this.markerCtl.addAt(this.audio.currentTime, kind);
+				},
+			});
+		this.register(unregisterPlaybackController);
 		this.register(() => {
 			this.registry.releaseAudio(this.audioKey);
 		});
@@ -627,11 +650,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 					this.toggleMute();
 				},
 				onVolumeInput: (volume) => {
-					this.audio.volume = volume;
-					if (this.audio.muted && volume > 0) {
-						this.audio.muted = false;
-						this.controls?.setMuted(false);
-					}
+					this.setVolume(volume);
 				},
 				onToggleLoop: () => {
 					this.audio.loop = !this.audio.loop;
@@ -921,6 +940,13 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		}
 	}
 
+	/** Stops playback, resets the timeline, and refreshes the embedded player. */
+	private stopPlayback(): void {
+		this.audio.pause();
+		this.audio.currentTime = 0;
+		this.updateProgress();
+	}
+
 	/**
 	 * Skips playback by a relative number of seconds, clamped to the
 	 * track bounds.
@@ -979,6 +1005,18 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	private toggleMute(): void {
 		this.audio.muted = !this.audio.muted;
 		this.controls?.setMuted(this.audio.muted);
+	}
+
+	/**
+	 * Applies a volume value and unmutes when the requested level is audible.
+	 * @param volume - Volume in the inclusive 0..1 range
+	 */
+	private setVolume(volume: number): void {
+		this.audio.volume = volume;
+		if (this.audio.muted && volume > 0) {
+			this.audio.muted = false;
+			this.controls?.setMuted(false);
+		}
 	}
 
 	/**

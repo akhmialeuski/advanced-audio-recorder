@@ -34,6 +34,7 @@ import {
 	updateStatusBar,
 	updateRecordingLiveStats,
 	initializeStatusBar,
+	renderPlaybackStatusBar,
 	renderTranscriptionStatusBar,
 } from './ui/StatusBar';
 import { RecordingBanner } from './ui/RecordingBanner';
@@ -55,6 +56,7 @@ import { TranscriptionModal } from './ui/TranscriptionModal';
 import type { TranscriptionModalOptions } from './ui/TranscriptionModal';
 import { COMMAND_IDS } from './constants';
 import type { MarkerKind } from './markers/markerModel';
+import type { PlaybackControlsState } from './player/playbackControls';
 import { delay } from './utils/TimeUtils';
 
 /** Delay before retrying a failed settings read, in milliseconds. */
@@ -126,6 +128,8 @@ export default class AudioRecorderPlugin extends Plugin {
 	private encodingWorker: EncodingWorkerClient | null = null;
 	private recordingStatus: RecordingStatus = RecordingStatus.Idle;
 	private recordingSaveProgress: SaveProgress | undefined;
+	/** Active enhanced-player playback represented in the shared status bar. */
+	private playbackState: PlaybackControlsState | null = null;
 	/**
 	 * Minimized transcriptions reporting progress in the status bar, keyed by
 	 * a per-modal id. Insertion order is preserved, so the most recently
@@ -223,6 +227,10 @@ export default class AudioRecorderPlugin extends Plugin {
 			markerStore,
 			mediaKindStore,
 		);
+		this.playerRegistrar.subscribePlayback((state) => {
+			this.playbackState = state;
+			this.renderStatusBar();
+		});
 		this.playerRegistrar.register();
 
 		// Recovery runs after the workspace is ready so plugin load is
@@ -896,11 +904,18 @@ export default class AudioRecorderPlugin extends Plugin {
 	}
 
 	/**
-	 * Renders the shared status bar. Recording states take precedence over
-	 * minimized transcription progress because they carry recording controls.
+	 * Renders the shared status bar. Recording and saving take precedence,
+	 * followed by active playback and minimized transcription progress.
 	 */
 	private renderStatusBar(): void {
 		const active = this.activeBackgroundTranscription();
+		if (
+			this.recordingStatus === RecordingStatus.Idle &&
+			this.playbackState
+		) {
+			renderPlaybackStatusBar(this.statusBarItem, this.playbackState);
+			return;
+		}
 		if (this.recordingStatus === RecordingStatus.Idle && active) {
 			renderTranscriptionStatusBar(this.statusBarItem, active.progress, {
 				onActivate: active.restore,
