@@ -397,7 +397,11 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		}
 		const unregisterPlaybackController =
 			this.registry.registerPlaybackController(this.audioKey, {
-				canAddMarkers: () => this.settings.enableMarkers,
+				// Adding markers is edit-only, exactly as the embedded control
+				// row and the context menu gate it, so a Reading-view player
+				// never offers the status-bar marker actions or writes a sidecar
+				canAddMarkers: () =>
+					this.settings.enableMarkers && this.editable,
 				togglePlay: () => {
 					this.togglePlay();
 				},

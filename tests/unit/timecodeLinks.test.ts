@@ -107,4 +107,13 @@ describe('wikiLinkTargetAtCursor', () => {
 		expect(wikiLinkTargetAtCursor(many, 3)).toBe('a.mp4#t=1');
 		expect(wikiLinkTargetAtCursor(many, 26)).toBe('b.mp4#t=2');
 	});
+
+	it('treats the position just past the closing ]] as outside the link', () => {
+		// '[[rec.mp4#t=5]]' spans indices 0..14; index 15 is the next character,
+		// so a click there must not resolve to the preceding link
+		const link = '[[rec.mp4#t=5]]';
+		expect(link.length).toBe(15);
+		expect(wikiLinkTargetAtCursor(link, 14)).toBe('rec.mp4#t=5');
+		expect(wikiLinkTargetAtCursor(link, 15)).toBeNull();
+	});
 });

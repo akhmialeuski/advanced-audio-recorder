@@ -759,6 +759,51 @@ describe('AudioRecorderPlugin background transcription status bar', () => {
 			expect.anything(),
 		);
 	});
+
+	it('does not rebuild recording controls when playback updates mid-recording', async () => {
+		const { plugin } = createPlugin([null]);
+		await onloadWithTimers(plugin);
+		const { EnhancedPlayerRegistrar } = jest.requireMock(
+			'src/player/EnhancedPlayerRegistrar',
+		);
+		const registrar = (EnhancedPlayerRegistrar as jest.Mock).mock.results[0]
+			.value as { subscribePlayback: jest.Mock };
+		const onPlayback = registrar.subscribePlayback.mock.calls[0][0] as (
+			state: PlaybackControlsState | null,
+		) => void;
+		const { renderPlaybackStatusBar, updateStatusBar } =
+			jest.requireMock('src/ui/StatusBar');
+
+		const hooks = plugin as unknown as {
+			handleStatusChange(status: RecordingStatus): void;
+		};
+		hooks.handleStatusChange(RecordingStatus.Recording);
+		(updateStatusBar as jest.Mock).mockClear();
+		(renderPlaybackStatusBar as jest.Mock).mockClear();
+
+		// A timeupdate-driven playback snapshot arrives while recording owns the
+		// status bar. It must be stored without repainting, so the recording
+		// controls (and their live stats) are never rebuilt out from under the
+		// 200 ms live-stat cadence.
+		const playbackState: PlaybackControlsState = {
+			currentTime: 5,
+			duration: 60,
+			paused: false,
+			volume: 1,
+			muted: false,
+			markersEnabled: false,
+			onTogglePlay: jest.fn(),
+			onStop: jest.fn(),
+			onSkip: jest.fn(),
+			onToggleMute: jest.fn(),
+			onVolumeInput: jest.fn(),
+			onAddMarker: jest.fn(),
+		};
+		onPlayback(playbackState);
+
+		expect(updateStatusBar).not.toHaveBeenCalled();
+		expect(renderPlaybackStatusBar).not.toHaveBeenCalled();
+	});
 });
 
 describe('AudioRecorderPlugin silent-channel suggestion', () => {

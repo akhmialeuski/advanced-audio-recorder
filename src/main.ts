@@ -229,7 +229,14 @@ export default class AudioRecorderPlugin extends Plugin {
 		);
 		this.playerRegistrar.subscribePlayback((state) => {
 			this.playbackState = state;
-			this.renderStatusBar();
+			// Recording and saving own the status bar and repaint their live
+			// stats on their own cadence. A playback snapshot arrives on every
+			// timeupdate, so rendering it here while recording would rebuild the
+			// recording controls between those updates and flicker the stats.
+			// Store it and let the recording state render it once it goes idle.
+			if (this.recordingStatus === RecordingStatus.Idle) {
+				this.renderStatusBar();
+			}
 		});
 		this.playerRegistrar.register();
 

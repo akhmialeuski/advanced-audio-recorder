@@ -730,7 +730,7 @@ describe('AudioPlayerRegistry', () => {
 		).toBe(false);
 	});
 
-	it('cancels a pending release when the shared element is seeked in grace', () => {
+	it('declines to seek a released element in its grace window', () => {
 		jest.useFakeTimers();
 		const harness = installMockAudio();
 		Object.defineProperty(harness.audio, 'readyState', {
@@ -744,8 +744,41 @@ describe('AudioPlayerRegistry', () => {
 			// Last holder releases: the element lingers for the grace window
 			registry.releaseAudio(key);
 
-			// A timecode seek during grace keeps the element alive to reuse it
+			// A timecode seek during grace finds no live holder, so it declines
+			// rather than reviving ownerless playback: the reuse must go through
+			// a fresh acquire (the DetachedPlayback path) that takes a reference.
+			expect(registry.seekSharedAudio(key, 12)).toBe(false);
+			expect(harness.play).not.toHaveBeenCalled();
+
+			// Since nothing re-acquired it, the grace release still tears it down
+			jest.advanceTimersByTime(1000);
+			expect(registry.hasSharedAudio(key)).toBe(false);
+		} finally {
+			harness.restore();
+			jest.useRealTimers();
+		}
+	});
+
+	it('reuses a grace-window element when an owner re-acquires it', () => {
+		jest.useFakeTimers();
+		const harness = installMockAudio();
+		Object.defineProperty(harness.audio, 'readyState', {
+			configurable: true,
+			get: () => 1,
+		});
+		try {
+			const registry = new AudioPlayerRegistry();
+			const key = playbackKey('rec.wav', null);
+			registry.acquireAudio(key, 'app://rec');
+			registry.releaseAudio(key);
+
+			// An owning re-acquire (what DetachedPlayback.start does) revives the
+			// element with a reference and cancels the pending release, so it is
+			// now seekable in place and survives past the grace window
+			const { isNew } = registry.acquireAudio(key, 'app://rec');
+			expect(isNew).toBe(false);
 			expect(registry.seekSharedAudio(key, 12)).toBe(true);
+
 			jest.advanceTimersByTime(1000);
 			expect(registry.hasSharedAudio(key)).toBe(true);
 			expect(harness.audio.currentTime).toBe(12);

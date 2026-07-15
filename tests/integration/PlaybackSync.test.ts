@@ -101,6 +101,11 @@ const PLAIN: ResolvedPlayerSettings = {
 	enableMarkers: false,
 };
 
+const WITH_MARKERS: ResolvedPlayerSettings = {
+	showWaveform: false,
+	enableMarkers: true,
+};
+
 /** In-memory marker store the players can read without persistence. */
 function makeMarkerStore(): MarkerStore {
 	const data = new Map<string, PlayerMarker[]>();
@@ -142,6 +147,32 @@ function mountPlayer(registry: AudioPlayerRegistry): HTMLElement {
 		{ startSeconds: null, sourcePath: 'note.md', immediate: true },
 	).onload();
 	return container;
+}
+
+/** A container nested in a CodeMirror editor, so the player is editable. */
+function makeEditableContainer(): HTMLElement {
+	const editor = makeContainer();
+	editor.addClass('cm-editor');
+	return editor.createDiv();
+}
+
+/** Mounts a markers-enabled real AudioPlayer into the given container. */
+function mountMarkerPlayer(
+	registry: AudioPlayerRegistry,
+	store: MarkerStore,
+	container: HTMLElement,
+): void {
+	new AudioPlayer(
+		container,
+		app,
+		makeFile(),
+		WITH_MARKERS,
+		registry,
+		new WaveformPeakCache(),
+		decoder,
+		store,
+		{ startSeconds: null, sourcePath: 'note.md', immediate: true },
+	).onload();
 }
 
 /** Reads the elapsed / total text the player renders. */
@@ -226,6 +257,64 @@ describe('timecode seek stays in sync with the embedded player', () => {
 					paused: false,
 				}),
 			);
+		} finally {
+			shared.restore();
+		}
+	});
+});
+
+describe('status-bar markers follow the player edit mode', () => {
+	it('withholds markers and persists nothing for a read-only player', async () => {
+		const shared = installSharedAudio();
+		try {
+			const registry = new AudioPlayerRegistry();
+			const snapshots: (PlaybackControlsState | null)[] = [];
+			registry.subscribePlayback((state) => {
+				snapshots.push(state);
+			});
+			// Reading view container (not inside a CodeMirror editor)
+			const store = makeMarkerStore();
+			mountMarkerPlayer(registry, store, makeContainer());
+			await tick();
+			shared.audio.setReady(1);
+			shared.audio.setDuration(600);
+
+			registry.seekSharedAudio(playbackKey('rec.mp4', null), 30);
+
+			const state = snapshots[snapshots.length - 1];
+			expect(state?.markersEnabled).toBe(false);
+			// A stale add-marker command must not write a sidecar from a
+			// read-only view
+			state?.onAddMarker('bookmark');
+			await tick();
+			expect(store.set).not.toHaveBeenCalled();
+		} finally {
+			shared.restore();
+		}
+	});
+
+	it('offers markers and persists them for an editable player', async () => {
+		const shared = installSharedAudio();
+		try {
+			const registry = new AudioPlayerRegistry();
+			const snapshots: (PlaybackControlsState | null)[] = [];
+			registry.subscribePlayback((state) => {
+				snapshots.push(state);
+			});
+			// Live Preview container (inside a CodeMirror editor)
+			const store = makeMarkerStore();
+			mountMarkerPlayer(registry, store, makeEditableContainer());
+			await tick();
+			shared.audio.setReady(1);
+			shared.audio.setDuration(600);
+
+			registry.seekSharedAudio(playbackKey('rec.mp4', null), 42);
+
+			const state = snapshots[snapshots.length - 1];
+			expect(state?.markersEnabled).toBe(true);
+			state?.onAddMarker('chapter');
+			await tick();
+			expect(store.set).toHaveBeenCalled();
 		} finally {
 			shared.restore();
 		}

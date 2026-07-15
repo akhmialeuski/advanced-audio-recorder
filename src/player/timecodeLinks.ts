@@ -55,8 +55,10 @@ export function wikiLinkTargetAtCursor(
 	let match: RegExpExecArray | null;
 	while ((match = internalLinkRegex.exec(lineText)) !== null) {
 		const start = match.index;
+		// end is the exclusive position just past the closing ]]; a cursor there
+		// sits on the next character, not on this link, so compare with < end.
 		const end = start + match[0].length;
-		if (match[1] !== undefined && cursorCh >= start && cursorCh <= end) {
+		if (match[1] !== undefined && cursorCh >= start && cursorCh < end) {
 			return match[1];
 		}
 	}

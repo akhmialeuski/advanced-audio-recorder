@@ -12,7 +12,11 @@
 import { SHARED_AUDIO_GRACE_MS } from '../constants';
 import type { MarkerKind } from '../markers/markerModel';
 import type { ResolvedPlayerSettings } from '../player/playerSettings';
-import { readPlaybackSnapshot, seekAudio } from './playbackCommands';
+import {
+	readPlaybackSnapshot,
+	resetPlayback,
+	seekAudio,
+} from './playbackCommands';
 import type {
 	PlaybackControlsListener,
 	PlaybackControlsState,
@@ -155,24 +159,23 @@ export class AudioPlayerRegistry {
 	}
 
 	/**
-	 * Seeks the file's existing shared element to an offset and resumes
-	 * playback, cancelling a pending release so a click during the grace window
-	 * keeps the element. Reusing the one element per key is what keeps a
-	 * timecode click and the file's embed on a single playback: any embed bound
-	 * to this element follows the seek through its own media listeners, so no
-	 * second, out-of-sync element is ever created.
+	 * Seeks a file's live shared element to an offset and resumes playback,
+	 * for a timecode click that races an embed's player registration: the
+	 * element already exists and is still held, so any embed bound to it
+	 * follows the seek through its own media listeners and no second,
+	 * out-of-sync element is ever created. Only an element with a live holder
+	 * (refs > 0) is reused this way; a released element sitting in its grace
+	 * window has no owner, so it is left for a {@link DetachedPlayback} to
+	 * re-acquire (which takes a reference and installs a controller) rather
+	 * than being revived here as ownerless playback.
 	 * @param key - Playback key (see {@link playbackKey})
 	 * @param seconds - Offset in seconds to seek to
-	 * @returns True when a shared element existed and was seeked
+	 * @returns True when a still-held shared element existed and was seeked
 	 */
 	seekSharedAudio(key: string, seconds: number): boolean {
 		const entry = this.audioByKey.get(key);
-		if (!entry) {
+		if (!entry || entry.refs === 0) {
 			return false;
-		}
-		if (entry.releaseTimer !== 0) {
-			window.clearTimeout(entry.releaseTimer);
-			entry.releaseTimer = 0;
 		}
 		seekAudio(entry.audio, seconds, { autoplay: true });
 		return true;
@@ -558,8 +561,9 @@ export class AudioPlayerRegistry {
 		if (controller) {
 			controller.stop();
 		} else {
-			entry.audio.pause();
-			entry.audio.currentTime = 0;
+			// No live player (e.g. a handoff between embeds): reset the element
+			// directly through the shared command so the stop behaves identically
+			resetPlayback(entry.audio);
 		}
 		this.emitPlaybackState();
 	}

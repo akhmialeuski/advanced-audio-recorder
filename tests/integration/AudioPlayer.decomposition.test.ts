@@ -153,6 +153,16 @@ function makeContainer(): HTMLElement {
 	return el;
 }
 
+/**
+ * A container nested in a CodeMirror editor, so the player resolves to the
+ * editable (Live Preview) mode where marker creation is allowed.
+ */
+function makeEditableContainer(): HTMLElement {
+	const editor = makeContainer();
+	editor.addClass('cm-editor');
+	return editor.createDiv();
+}
+
 const PLAIN: ResolvedPlayerSettings = {
 	showWaveform: false,
 	enableMarkers: false,
@@ -479,7 +489,8 @@ describe('marker CRUD stays player-driven and persisted (PlayerMarkerController 
 		audio.currentTime = 24;
 		const store = makeMarkerStore();
 		const registry = makeRegistry(audio);
-		const container = makeContainer();
+		// Editable (Live Preview) context: marker creation is allowed
+		const container = makeEditableContainer();
 		makePlayer(container, registry, WITH_MARKERS, store).onload();
 		await tick();
 		const registration = jest.mocked(registry.registerPlaybackController)
@@ -508,6 +519,26 @@ describe('marker CRUD stays player-driven and persisted (PlayerMarkerController 
 		controller?.stop();
 		expect(audio.pause).toHaveBeenCalled();
 		expect(audio.currentTime).toBe(0);
+	});
+
+	it('a read-only player reports no marker eligibility to the status bar', async () => {
+		const audio = makeFakeAudio();
+		audio.currentTime = 24;
+		const store = makeMarkerStore();
+		const registry = makeRegistry(audio);
+		// Reading view: not inside a CodeMirror editor, so it is read-only
+		const container = makeContainer();
+		makePlayer(container, registry, WITH_MARKERS, store).onload();
+		await tick();
+		const controller = jest.mocked(registry.registerPlaybackController).mock
+			.calls[0]?.[1];
+
+		// Markers are enabled in settings, but the read-only mode still gates
+		// the status-bar controls off, exactly as the embedded row and the
+		// context menu do. The registry uses this to withhold the add-marker
+		// controls, so a read-only view never writes a sidecar (see the real
+		// registry proof in tests/integration/PlaybackSync.test.ts).
+		expect(controller?.canAddMarkers()).toBe(false);
 	});
 
 	it('reloadMarkers re-reads the store so views stay in sync', async () => {

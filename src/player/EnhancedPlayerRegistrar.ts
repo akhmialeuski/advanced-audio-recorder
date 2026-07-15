@@ -55,7 +55,7 @@ import {
 	parseTimecodeSubpath,
 	wikiLinkTargetAtCursor,
 } from './timecodeLinks';
-import { probeMediaKind, type MediaKind } from './mediaProbe';
+import { probeMediaKind, MEDIA_KIND, type MediaKind } from './mediaProbe';
 import { MediaEmbedShell } from './MediaEmbedShell';
 import type { MediaKindStore } from './MediaKindStore';
 import { shouldEnhance } from './playerMode';
@@ -242,6 +242,13 @@ export class EnhancedPlayerRegistrar {
 			this.lastResolved = enabled
 				? resolvePlayerSettings(this.getSettings())
 				: null;
+			if (!enabled) {
+				// Detached timecode playback has no embed to unload and release
+				// it, so disabling the feature must stop it here; otherwise the
+				// audio and its status-bar controls outlive the switch-off.
+				this.detachedPlayback?.dispose();
+				this.detachedPlayback = null;
+			}
 			// A flip changes what every embed is (native vs enhanced), so
 			// every leaf must re-render
 			this.requestRerenderAll();
@@ -591,6 +598,13 @@ export class EnhancedPlayerRegistrar {
 		if (!(file instanceof TFile) || !isAudioFile(file)) {
 			return;
 		}
+		// isAudioFile trusts only the extension, but a container (.mp4/.webm)
+		// can hold a video track. When a prior probe classified this file as
+		// video it keeps Obsidian's own player, so never consume the click into
+		// audio-only detached playback; let Obsidian open it with its video UI.
+		if (this.knownKind(file) === MEDIA_KIND.video) {
+			return;
+		}
 		// An on-screen embed for the file seeks in place; otherwise start a
 		// detached playback from the timecode so clicking a transcript
 		// timestamp always plays from that moment instead of opening the file.
@@ -663,13 +677,17 @@ export class EnhancedPlayerRegistrar {
 				anchor.getAttribute('data-href') ?? anchor.getAttribute('href')
 			);
 		}
-		// Live Preview: only clicks inside the editor can resolve from source.
-		// Any position that is not inside a wikilink yields null and is left
-		// for Obsidian, so a broad match here is safe.
-		if (!target.closest('.cm-editor')) {
+		// Live Preview renders a wikilink as a .cm-hmd-internal-link token that
+		// carries no data-href. Resolve from source ONLY when the click is on
+		// that token; otherwise a click on a rendered embed's widget, another
+		// decoration, or plain line text would also fall through here and,
+		// because posAtDOM snaps to the token, hijack a nearby timecode link -
+		// so a player button or ordinary text would seek instead of acting.
+		const linkToken = target.closest<HTMLElement>('.cm-hmd-internal-link');
+		if (!linkToken) {
 			return null;
 		}
-		return this.resolveEditorLinkTarget(target);
+		return this.resolveEditorLinkTarget(linkToken);
 	}
 
 	/**
