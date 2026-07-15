@@ -192,7 +192,7 @@ Markers can also be added **while recording**, before the file even exists as a 
 
 ## Timecode links
 
-A link with a `#t=` offset jumps a rendered player to that position instead of opening the file. The offset accepts several formats:
+A link with a `#t=` offset plays the recording from that position instead of opening the file. The offset accepts several formats:
 
 | Format    | Example      | Meaning                |
 | --------- | ------------ | ---------------------- |
@@ -200,7 +200,7 @@ A link with a `#t=` offset jumps a rendered player to that position instead of o
 | `m:ss`    | `#t=1:30`    | 1 minute 30 seconds    |
 | `h:mm:ss` | `#t=1:02:03` | 1 hour 2 min 3 seconds |
 
-When a matching player is already visible in the note, **clicking the link seeks it** and starts playback. When no live player for that file is on screen, the link **behaves normally** (Obsidian opens the file as usual). A single embed with a `#t=` offset displays that start position until you engage playback, without dragging other embeds of the same file.
+When a matching player is visible in the note, **clicking the link seeks it** and starts playback in place. When no player for that file is on screen - for example the embed is scrolled out of view, so Live Preview has unloaded it - the click starts playback from that moment anyway, driven straight from the file and controlled through the [status-bar playback controls](#playback-controls-in-the-status-bar), so a transcript timestamp never dumps you onto the raw file in a new tab. A single embed with a `#t=` offset displays that start position until you engage playback, without dragging other embeds of the same file.
 
 A note with the recording embedded above a transcript line rendered this way looks like this:
 
@@ -214,7 +214,13 @@ Clicking the `[[meeting-notes.webm#t=1:30]]` link seeks the embedded player abov
 
 Timecode links are also how transcripts become clickable: when **Timestamps as player links** is on, each transcript timestamp is rendered as a `#t=` link that seeks the player to that moment - click a line to hear it. See [Transcription > output formatting](transcription.md#output-where-the-transcript-goes) for how those links are generated, and [Copy timestamp link](#copy-timestamp-link) above to create one by hand.
 
-This makes reviewing a transcript hands-off. Start the recording playing, from the embed or by clicking a first timestamp, then click any later timestamp to **jump playback straight to that line** instead of scrubbing the seek bar. Each timestamp carries an alias so it renders as the readable time while still pointing at the exact offset, for example a line written as `[[meeting-notes.webm#t=6:33|6:33]] **Speaker 3** ...that's a lot of progress.` shows a clickable `6:33` that seeks the player to 6 minutes 33 seconds. The [status-bar playback controls](#playback-controls-in-the-status-bar) follow every jump, so you can pause, skip, or drop a marker from the bottom of the window as you read, without returning to the embed.
+This makes reviewing a transcript hands-off. Start the recording playing, from the embed or by clicking a first timestamp, then click any later timestamp to **jump playback straight to that line** instead of scrubbing the seek bar. Each transcript line carries an alias, so the timestamp renders as the readable time while still pointing at the exact offset:
+
+```markdown
+[[meeting-notes.webm#t=6:33|6:33]] **Speaker 3** That's a lot of progress.
+```
+
+Here the visible `6:33` is clickable and seeks the player to 6 minutes 33 seconds. The [status-bar playback controls](#playback-controls-in-the-status-bar) follow every jump, so you can pause, skip, or drop a marker from the bottom of the window as you read, without returning to the embed.
 
 ---
 

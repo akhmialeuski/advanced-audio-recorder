@@ -44,6 +44,7 @@ import {
 	type ResolvedPlayerSettings,
 } from '../player/playerSettings';
 import { AudioPlayerRegistry } from './AudioPlayerRegistry';
+import { DetachedPlayback } from './DetachedPlayback';
 import type { PlaybackControlsListener } from './playbackControls';
 import { WaveformPeakCache, SharedAudioDecoder } from './WaveformData';
 import { AudioPlayer } from './AudioPlayer';
@@ -93,6 +94,13 @@ export class EnhancedPlayerRegistrar {
 	private lastResolved: ResolvedPlayerSettings | null = null;
 	/** Whether every leaf must re-render (master toggle flip). */
 	private pendingRerenderAll = false;
+	/**
+	 * Active timecode playback started when no embedded player was on screen,
+	 * or null. Controlled through the status-bar controls, it plays the file's
+	 * shared audio directly so a transcript timestamp always plays from that
+	 * moment instead of opening the raw file.
+	 */
+	private detachedPlayback: DetachedPlayback | null = null;
 	/** Debounced flush that coalesces a burst of re-render requests. */
 	private readonly scheduleRerender = debounce(
 		() => this.flushRerender(),
@@ -201,6 +209,9 @@ export class EnhancedPlayerRegistrar {
 		this.embedOverride?.restore();
 		this.embedOverride = null;
 		this.scheduleRerender.cancel();
+		// Stop any timecode playback that has no embed to unload it
+		this.detachedPlayback?.dispose();
+		this.detachedPlayback = null;
 		this.registry.clear();
 		this.peakCache.clear();
 		this.mediaKindCache.clear();
@@ -581,9 +592,44 @@ export class EnhancedPlayerRegistrar {
 		if (!(file instanceof TFile) || !isAudioFile(file)) {
 			return;
 		}
+		// An on-screen embed for the file seeks in place; otherwise start a
+		// detached playback from the timecode so clicking a transcript
+		// timestamp always plays from that moment instead of opening the file.
 		if (this.registry.seek(file.path, startSeconds)) {
-			event.preventDefault();
-			event.stopPropagation();
+			// An embed now owns this file's playback; drop any detached one so
+			// only one surface controls the (shared) audio element.
+			if (this.detachedPlayback?.path === file.path) {
+				this.detachedPlayback.dispose();
+			}
+		} else {
+			this.playFromTimecode(file, startSeconds);
 		}
+		event.preventDefault();
+		event.stopPropagation();
+	}
+
+	/**
+	 * Plays a file's shared audio from a timecode without an on-screen embed,
+	 * surfaced through the status-bar controls. Reuses the current detached
+	 * playback when it already targets this file (a second click just seeks),
+	 * and replaces one that targets a different file.
+	 * @param file - Audio file to play
+	 * @param seconds - Offset in seconds to start playback from
+	 */
+	private playFromTimecode(file: TFile, seconds: number): void {
+		if (this.detachedPlayback?.path === file.path) {
+			this.detachedPlayback.seek(seconds);
+			return;
+		}
+		this.detachedPlayback?.dispose();
+		this.detachedPlayback = DetachedPlayback.start(
+			this.registry,
+			this.app,
+			file,
+			seconds,
+			() => {
+				this.detachedPlayback = null;
+			},
+		);
 	}
 }
