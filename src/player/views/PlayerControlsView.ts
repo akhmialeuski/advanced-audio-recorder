@@ -8,8 +8,13 @@
  */
 
 import { setIcon } from 'obsidian';
-import { PLAYER_SKIP_SECONDS } from '../../constants';
+import {
+	PLAYER_ICONS,
+	PLAYER_SKIP_SECONDS,
+	PLAYER_VOLUME_SLIDER_STEP,
+} from '../../constants';
 import { MARKER_KIND, type MarkerKind } from '../../markers/markerModel';
+import { formatTimecode } from '../../utils/TimeUtils';
 import { formatPlaybackRate } from '../playbackRate';
 
 /**
@@ -84,7 +89,7 @@ export class PlayerControlsView {
 			// Reflect the shared audio's current state, so a player rendered
 			// while playback is already running (e.g. after a mode switch)
 			// shows the pause icon rather than a stale play icon
-			state.paused ? 'play' : 'pause',
+			state.paused ? PLAYER_ICONS.play : PLAYER_ICONS.pause,
 			'Play / pause',
 			() => {
 				this.callbacks.onTogglePlay();
@@ -93,7 +98,7 @@ export class PlayerControlsView {
 
 		this.createIconButton(
 			controls,
-			'rewind',
+			PLAYER_ICONS.skipBack,
 			`Back ${String(PLAYER_SKIP_SECONDS)}s`,
 			() => {
 				this.callbacks.onSkip(-PLAYER_SKIP_SECONDS);
@@ -101,7 +106,7 @@ export class PlayerControlsView {
 		);
 		this.createIconButton(
 			controls,
-			'fast-forward',
+			PLAYER_ICONS.skipForward,
 			`Forward ${String(PLAYER_SKIP_SECONDS)}s`,
 			() => {
 				this.callbacks.onSkip(PLAYER_SKIP_SECONDS);
@@ -121,7 +126,7 @@ export class PlayerControlsView {
 
 		this.muteButton = this.createIconButton(
 			controls,
-			'volume-2',
+			PLAYER_ICONS.volume,
 			'Mute / unmute',
 			() => {
 				this.callbacks.onToggleMute();
@@ -135,7 +140,7 @@ export class PlayerControlsView {
 				type: 'range',
 				min: '0',
 				max: '1',
-				step: '0.05',
+				step: String(PLAYER_VOLUME_SLIDER_STEP),
 				// Reflect the shared audio's current volume on re-render
 				value: String(state.volume),
 				'aria-label': 'Volume',
@@ -147,7 +152,7 @@ export class PlayerControlsView {
 
 		const loopButton = this.createIconButton(
 			controls,
-			'repeat',
+			PLAYER_ICONS.loop,
 			'Loop',
 			() => {
 				loopButton.toggleClass(
@@ -162,7 +167,7 @@ export class PlayerControlsView {
 			// Adding markers/chapters is edit-only; hidden in reading view
 			this.createIconButton(
 				controls,
-				'bookmark-plus',
+				PLAYER_ICONS.addBookmark,
 				'Add marker at current position',
 				() => {
 					this.callbacks.onAddMarker(MARKER_KIND.bookmark);
@@ -170,7 +175,7 @@ export class PlayerControlsView {
 			).addClass('aar-player-edit-only');
 			this.createIconButton(
 				controls,
-				'list-plus',
+				PLAYER_ICONS.addChapter,
 				'Add chapter at current position',
 				() => {
 					this.callbacks.onAddMarker(MARKER_KIND.chapter);
@@ -178,7 +183,7 @@ export class PlayerControlsView {
 			).addClass('aar-player-edit-only');
 			this.createIconButton(
 				controls,
-				'chevron-first',
+				PLAYER_ICONS.previousChapter,
 				'Previous chapter',
 				() => {
 					this.callbacks.onPreviousChapter();
@@ -186,7 +191,7 @@ export class PlayerControlsView {
 			);
 			this.createIconButton(
 				controls,
-				'chevron-last',
+				PLAYER_ICONS.nextChapter,
 				'Next chapter',
 				() => {
 					this.callbacks.onNextChapter();
@@ -195,11 +200,18 @@ export class PlayerControlsView {
 		}
 
 		this.timeEl = controls.createDiv({ cls: 'aar-player-time' });
-		this.timeEl.setText('0:00 / 0:00');
+		this.timeEl.setText(
+			`${formatTimecode(0, 0)} / ${formatTimecode(0, 0)}`,
+		);
 
-		this.createIconButton(controls, 'link', 'Copy timestamp link', () => {
-			this.callbacks.onCopyTimestampLink();
-		});
+		this.createIconButton(
+			controls,
+			PLAYER_ICONS.copyLink,
+			'Copy timestamp link',
+			() => {
+				this.callbacks.onCopyTimestampLink();
+			},
+		);
 	}
 
 	/**
@@ -208,7 +220,10 @@ export class PlayerControlsView {
 	 */
 	setPlaying(playing: boolean): void {
 		if (this.playButton) {
-			setIcon(this.playButton, playing ? 'pause' : 'play');
+			setIcon(
+				this.playButton,
+				playing ? PLAYER_ICONS.pause : PLAYER_ICONS.play,
+			);
 		}
 	}
 
@@ -226,7 +241,10 @@ export class PlayerControlsView {
 	 */
 	setMuted(muted: boolean): void {
 		if (this.muteButton) {
-			setIcon(this.muteButton, muted ? 'volume-x' : 'volume-2');
+			setIcon(
+				this.muteButton,
+				muted ? PLAYER_ICONS.muted : PLAYER_ICONS.volume,
+			);
 			this.muteButton.toggleClass('is-active', muted);
 		}
 	}

@@ -83,9 +83,59 @@ If your plugin does not need CSS, delete this file.
     background-color: var(--background-modifier-hover);
 }
 
+.aar-control-btn:focus-visible {
+    opacity: 1;
+    outline: 1px solid var(--color-accent);
+    outline-offset: 1px;
+}
+
+.aar-control-btn.is-active {
+    color: var(--color-accent);
+    background-color: var(--background-modifier-hover);
+}
+
 .aar-control-btn svg {
     width: 14px;
     height: 14px;
+}
+
+/* Active playback controls in the status bar */
+.is-playback {
+    color: var(--text-normal);
+}
+
+.aar-playback-controls,
+.aar-playback-buttons,
+.aar-playback-audio-controls,
+.aar-playback-marker-controls {
+    display: inline-flex;
+    align-items: center;
+}
+
+.aar-playback-controls {
+    gap: 6px;
+    min-height: 20px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.aar-playback-buttons,
+.aar-playback-audio-controls,
+.aar-playback-marker-controls {
+    gap: 2px;
+}
+
+.aar-playback-volume {
+    width: 64px;
+    min-width: 48px;
+    height: 16px;
+    margin: 0 2px;
+}
+
+.aar-playback-time {
+    min-width: 76px;
+    color: var(--text-muted);
+    text-align: right;
 }
 
 /* Add-marker modal */

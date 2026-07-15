@@ -23,7 +23,8 @@ import { EnhancedPlayerRegistrar } from 'src/player/EnhancedPlayerRegistrar';
 import { MediaEmbedShell } from 'src/player/MediaEmbedShell';
 import { AudioPlayer } from 'src/player/AudioPlayer';
 import { AudioPlayerRegistry } from 'src/player/AudioPlayerRegistry';
-import { probeMediaKind } from 'src/player/mediaProbe';
+import { DetachedPlayback } from 'src/player/DetachedPlayback';
+import { probeMediaKind, MEDIA_KIND } from 'src/player/mediaProbe';
 import type { MediaKind, MediaProbeResult } from 'src/player/mediaProbe';
 import type { MediaKindStore } from 'src/player/MediaKindStore';
 import { AUDIO_EXTENSIONS } from 'src/constants';
@@ -46,8 +47,13 @@ jest.mock('src/player/mediaProbe', () => ({
 	probeMediaKind: jest.fn(),
 }));
 
+jest.mock('src/player/DetachedPlayback', () => ({
+	DetachedPlayback: { start: jest.fn() },
+}));
+
 const probeMock = jest.mocked(probeMediaKind);
 const audioPlayerMock = jest.mocked(AudioPlayer);
+const detachedStartMock = jest.mocked(DetachedPlayback.start);
 
 /** Builds a probe result; probes are confident unless stated otherwise. */
 function probeResult(kind: MediaKind, confident = true): MediaProbeResult {
@@ -136,6 +142,8 @@ function setup(
 	settings: AudioRecorderSettings;
 	leaves: { preview: WorkspaceLeaf; source: WorkspaceLeaf };
 	getLeaves: jest.Mock;
+	plugin: Plugin;
+	app: App;
 } {
 	const settings: AudioRecorderSettings = {
 		...DEFAULT_SETTINGS,
@@ -171,11 +179,12 @@ function setup(
 		},
 		metadataCache: {
 			getFileCache: () => ({ embeds: [] }),
-			getFirstLinkpathDest: (linkPath: string) => ({ path: linkPath }),
+			getFirstLinkpathDest: (linkPath: string) => fileFromPath(linkPath),
 		},
 		workspace: {
 			getActiveFile: () => ({ path: 'note.md' }),
 			getLeavesOfType: getLeaves,
+			getActiveViewOfType: jest.fn(() => null),
 		},
 	} as unknown as App;
 
@@ -213,6 +222,8 @@ function setup(
 		settings,
 		leaves: { preview: previewLeaf, source: sourceLeaf },
 		getLeaves,
+		plugin,
+		app,
 	};
 }
 
@@ -243,6 +254,7 @@ const info: EmbedInfo = {
 beforeEach(() => {
 	probeMock.mockReset();
 	audioPlayerMock.mockClear();
+	detachedStartMock.mockReset();
 });
 
 describe('EnhancedPlayerRegistrar embed creation', () => {
@@ -505,6 +517,23 @@ describe('EnhancedPlayerRegistrar re-renders only when needed', () => {
 });
 
 describe('EnhancedPlayerRegistrar persistent media kinds', () => {
+	it('forwards playback subscriptions to the shared registry', () => {
+		const subscribe = jest.spyOn(
+			AudioPlayerRegistry.prototype,
+			'subscribePlayback',
+		);
+		try {
+			const { registrar } = setup(true);
+			const listener = jest.fn();
+
+			registrar.subscribePlayback(listener);
+
+			expect(subscribe).toHaveBeenCalledWith(listener);
+		} finally {
+			subscribe.mockRestore();
+		}
+	});
+
 	it('loads the persisted store on register', () => {
 		const kindStore = kindStoreStub();
 		setup(true, kindStore);
@@ -561,5 +590,295 @@ describe('EnhancedPlayerRegistrar persistent media kinds', () => {
 		registrar.dispose();
 
 		expect(kindStore.flush).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('EnhancedPlayerRegistrar timecode links', () => {
+	/** Returns the document click handler the registrar installed on register. */
+	function clickHandler(plugin: Plugin): (event: MouseEvent) => void {
+		const call = (plugin.registerDomEvent as jest.Mock).mock.calls.find(
+			(args) => args[1] === 'click',
+		);
+		if (!call) {
+			throw new Error('Expected a click handler registration');
+		}
+		return call[2] as (event: MouseEvent) => void;
+	}
+
+	/** Builds a click event whose target is a timecode internal link. */
+	function timecodeClick(href: string): MouseEvent {
+		const anchor = document.createElement('a');
+		anchor.className = 'internal-link';
+		anchor.setAttribute('data-href', href);
+		const event = new MouseEvent('click', { bubbles: true });
+		Object.defineProperty(event, 'target', { value: anchor });
+		return event;
+	}
+
+	/** A detached-playback stub with the file path and spied commands. */
+	function detachedStub(path: string): {
+		path: string;
+		seek: jest.Mock;
+		dispose: jest.Mock;
+	} {
+		return { path, seek: jest.fn(), dispose: jest.fn() };
+	}
+
+	it('seeks an on-screen player and never opens the file', () => {
+		const seek = jest
+			.spyOn(AudioPlayerRegistry.prototype, 'seek')
+			.mockReturnValue(true);
+		try {
+			const { plugin } = setup(true);
+			const event = timecodeClick('rec.mp4#t=30');
+			const prevent = jest.spyOn(event, 'preventDefault');
+
+			clickHandler(plugin)(event);
+
+			expect(seek).toHaveBeenCalledWith('rec.mp4', 30);
+			expect(detachedStartMock).not.toHaveBeenCalled();
+			expect(prevent).toHaveBeenCalled();
+		} finally {
+			seek.mockRestore();
+		}
+	});
+
+	it('plays from the timecode when no player is on screen', () => {
+		const seek = jest
+			.spyOn(AudioPlayerRegistry.prototype, 'seek')
+			.mockReturnValue(false);
+		detachedStartMock.mockReturnValue(detachedStub('rec.mp4'));
+		try {
+			const { plugin } = setup(true);
+			const event = timecodeClick('rec.mp4#t=30');
+			const prevent = jest.spyOn(event, 'preventDefault');
+
+			clickHandler(plugin)(event);
+
+			expect(detachedStartMock).toHaveBeenCalledWith(
+				expect.anything(),
+				expect.anything(),
+				expect.objectContaining({ path: 'rec.mp4' }),
+				30,
+				expect.any(Function),
+			);
+			expect(prevent).toHaveBeenCalled();
+		} finally {
+			seek.mockRestore();
+		}
+	});
+
+	it('reuses the detached playback for another timestamp of the same file', () => {
+		const seek = jest
+			.spyOn(AudioPlayerRegistry.prototype, 'seek')
+			.mockReturnValue(false);
+		const detached = detachedStub('rec.mp4');
+		detachedStartMock.mockReturnValue(detached);
+		try {
+			const { plugin } = setup(true);
+			const handle = clickHandler(plugin);
+
+			handle(timecodeClick('rec.mp4#t=30'));
+			handle(timecodeClick('rec.mp4#t=90'));
+
+			expect(detachedStartMock).toHaveBeenCalledTimes(1);
+			expect(detached.seek).toHaveBeenCalledWith(90);
+		} finally {
+			seek.mockRestore();
+		}
+	});
+
+	it('ignores a timecode link to a non-audio file', () => {
+		const seek = jest.spyOn(AudioPlayerRegistry.prototype, 'seek');
+		try {
+			const { plugin } = setup(true);
+			const event = timecodeClick('notes.md#t=30');
+			const prevent = jest.spyOn(event, 'preventDefault');
+
+			clickHandler(plugin)(event);
+
+			expect(seek).not.toHaveBeenCalled();
+			expect(detachedStartMock).not.toHaveBeenCalled();
+			expect(prevent).not.toHaveBeenCalled();
+		} finally {
+			seek.mockRestore();
+		}
+	});
+
+	it('leaves non-timecode links to Obsidian', () => {
+		const seek = jest.spyOn(AudioPlayerRegistry.prototype, 'seek');
+		try {
+			const { plugin } = setup(true);
+			const event = timecodeClick('rec.mp4');
+
+			clickHandler(plugin)(event);
+
+			expect(seek).not.toHaveBeenCalled();
+			expect(detachedStartMock).not.toHaveBeenCalled();
+		} finally {
+			seek.mockRestore();
+		}
+	});
+
+	it('does not intercept timecode links when the player is disabled', () => {
+		const seek = jest.spyOn(AudioPlayerRegistry.prototype, 'seek');
+		try {
+			const { plugin } = setup(false);
+			const event = timecodeClick('rec.mp4#t=30');
+
+			clickHandler(plugin)(event);
+
+			expect(seek).not.toHaveBeenCalled();
+			expect(detachedStartMock).not.toHaveBeenCalled();
+		} finally {
+			seek.mockRestore();
+		}
+	});
+
+	/** A Live Preview link element inside a CodeMirror editor (no data-href). */
+	function livePreviewClick(): MouseEvent {
+		const editor = document.createElement('div');
+		editor.className = 'cm-editor';
+		const linkEl = document.createElement('span');
+		linkEl.className = 'cm-hmd-internal-link';
+		editor.appendChild(linkEl);
+		const event = new MouseEvent('click', { bubbles: true });
+		Object.defineProperty(event, 'target', { value: linkEl });
+		return event;
+	}
+
+	/** Stubs the active editor so a click resolves to a source line. */
+	function stubActiveEditor(app: App, line: string): void {
+		const view = {
+			editor: {
+				cm: { posAtDOM: jest.fn(() => 5) },
+				offsetToPos: jest.fn(() => ({ line: 0, ch: 5 })),
+				getLine: jest.fn(() => line),
+			},
+		};
+		(app.workspace.getActiveViewOfType as jest.Mock).mockReturnValue(view);
+	}
+
+	it('plays a Live Preview timecode link read from the editor source', () => {
+		const seek = jest
+			.spyOn(AudioPlayerRegistry.prototype, 'seek')
+			.mockReturnValue(false);
+		detachedStartMock.mockReturnValue(detachedStub('rec.mp4'));
+		try {
+			const { plugin, app } = setup(true);
+			stubActiveEditor(app, '[[rec.mp4#t=30|0:30]] - Speaker 1');
+			const event = livePreviewClick();
+			const prevent = jest.spyOn(event, 'preventDefault');
+
+			clickHandler(plugin)(event);
+
+			expect(detachedStartMock).toHaveBeenCalledWith(
+				expect.anything(),
+				expect.anything(),
+				expect.objectContaining({ path: 'rec.mp4' }),
+				30,
+				expect.any(Function),
+			);
+			expect(prevent).toHaveBeenCalled();
+		} finally {
+			seek.mockRestore();
+		}
+	});
+
+	it('leaves a Live Preview click that is not on a wikilink to Obsidian', () => {
+		const seek = jest.spyOn(AudioPlayerRegistry.prototype, 'seek');
+		try {
+			const { plugin, app } = setup(true);
+			stubActiveEditor(app, 'just plain text, no link at all');
+			const event = livePreviewClick();
+			const prevent = jest.spyOn(event, 'preventDefault');
+
+			clickHandler(plugin)(event);
+
+			expect(seek).not.toHaveBeenCalled();
+			expect(detachedStartMock).not.toHaveBeenCalled();
+			expect(prevent).not.toHaveBeenCalled();
+		} finally {
+			seek.mockRestore();
+		}
+	});
+
+	/** A Live Preview click inside the editor but NOT on a wikilink token. */
+	function livePreviewNonLinkClick(): MouseEvent {
+		const editor = document.createElement('div');
+		editor.className = 'cm-editor';
+		// A rendered embed widget or plain line text: inside .cm-editor, but
+		// carrying no .cm-hmd-internal-link token
+		const widget = document.createElement('span');
+		widget.className = 'cm-widget';
+		editor.appendChild(widget);
+		const event = new MouseEvent('click', { bubbles: true });
+		Object.defineProperty(event, 'target', { value: widget });
+		return event;
+	}
+
+	it('ignores a Live Preview click that is not on an internal-link token', () => {
+		const seek = jest.spyOn(AudioPlayerRegistry.prototype, 'seek');
+		try {
+			const { plugin, app } = setup(true);
+			// The source line DOES hold a timecode link, and posAtDOM snaps to
+			// it, but the click was on a widget, not the link: it must be left
+			// alone so player buttons and plain text keep their own behaviour
+			stubActiveEditor(app, '[[rec.mp4#t=30|0:30]] - Speaker 1');
+			const event = livePreviewNonLinkClick();
+			const prevent = jest.spyOn(event, 'preventDefault');
+
+			clickHandler(plugin)(event);
+
+			expect(seek).not.toHaveBeenCalled();
+			expect(detachedStartMock).not.toHaveBeenCalled();
+			expect(prevent).not.toHaveBeenCalled();
+		} finally {
+			seek.mockRestore();
+		}
+	});
+
+	it('leaves a timecode link to a probed video file to Obsidian', () => {
+		const seek = jest.spyOn(AudioPlayerRegistry.prototype, 'seek');
+		const kindStore = kindStoreStub();
+		// A prior probe classified this .mp4 as carrying a video track
+		kindStore.get.mockReturnValue(MEDIA_KIND.video);
+		try {
+			const { plugin } = setup(true, kindStore);
+			const event = timecodeClick('rec.mp4#t=30');
+			const prevent = jest.spyOn(event, 'preventDefault');
+
+			clickHandler(plugin)(event);
+
+			// The click keeps Obsidian's own player instead of hijacking into
+			// audio-only detached playback
+			expect(seek).not.toHaveBeenCalled();
+			expect(detachedStartMock).not.toHaveBeenCalled();
+			expect(prevent).not.toHaveBeenCalled();
+		} finally {
+			seek.mockRestore();
+		}
+	});
+
+	it('disposes detached playback when the player is disabled', () => {
+		const seek = jest
+			.spyOn(AudioPlayerRegistry.prototype, 'seek')
+			.mockReturnValue(false);
+		const detached = detachedStub('rec.mp4');
+		detachedStartMock.mockReturnValue(detached);
+		try {
+			const { plugin, registrar, settings } = setup(true);
+			clickHandler(plugin)(timecodeClick('rec.mp4#t=30'));
+			expect(detachedStartMock).toHaveBeenCalledTimes(1);
+
+			// Turning the feature off has no embed to unload the detached
+			// playback, so refresh must stop it directly
+			settings.enhancedPlayerEnabled = false;
+			registrar.refresh();
+
+			expect(detached.dispose).toHaveBeenCalled();
+		} finally {
+			seek.mockRestore();
+		}
 	});
 });

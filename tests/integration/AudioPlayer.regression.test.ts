@@ -114,6 +114,8 @@ function makeRegistry(...audios: FakeAudio[]): AudioPlayerRegistry {
 		seek: jest.fn(),
 		applySettings: jest.fn(),
 		clear: jest.fn(),
+		registerPlaybackController: jest.fn(() => jest.fn()),
+		subscribePlayback: jest.fn(() => jest.fn()),
 		markAudioEngaged: jest.fn((key: string) => {
 			const entry = entries.get(key);
 			if (entry) {

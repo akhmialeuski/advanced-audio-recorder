@@ -7,8 +7,10 @@
 import {
 	updateStatusBar,
 	initializeStatusBar,
+	renderPlaybackStatusBar,
 	renderTranscriptionStatusBar,
 } from 'src/ui/StatusBar';
+import type { PlaybackControlsState } from 'src/player/playbackControls';
 import { RecordingStatus } from 'src/types';
 import type { RecordingControls } from 'src/types';
 
@@ -36,6 +38,28 @@ function addObsidianElementMethods(el: HTMLElement): HTMLElement {
 		this.appendChild(span);
 		return span;
 	};
+	obsEl.createEl = function (
+		tag: string,
+		opts?: {
+			cls?: string;
+			text?: string;
+			attr?: Record<string, string>;
+		},
+	) {
+		const child = document.createElement(tag);
+		if (opts?.cls) {
+			child.className = opts.cls;
+		}
+		if (opts?.text) {
+			child.textContent = opts.text;
+		}
+		for (const [key, value] of Object.entries(opts?.attr ?? {})) {
+			child.setAttribute(key, value);
+		}
+		addObsidianElementMethods(child);
+		this.appendChild(child);
+		return child;
+	};
 	obsEl.createDiv = function (opts?: { cls?: string }) {
 		const div = document.createElement('div');
 		if (opts?.cls) {
@@ -50,7 +74,41 @@ function addObsidianElementMethods(el: HTMLElement): HTMLElement {
 			this.style.setProperty(key, value);
 		}
 	};
+	obsEl.setText = function (text: string) {
+		this.textContent = text;
+	};
+	obsEl.addClass = function (...classes: string[]) {
+		this.classList.add(...classes);
+	};
+	obsEl.toggleClass = function (cls: string, force?: boolean) {
+		this.classList.toggle(cls, force);
+	};
 	return el;
+}
+
+/**
+ * Builds a complete playback snapshot with jest-backed commands.
+ * @param overrides - State fields to replace for a specific assertion
+ * @returns Playback state accepted by the status-bar renderer
+ */
+function makePlaybackState(
+	overrides: Partial<PlaybackControlsState> = {},
+): PlaybackControlsState {
+	return {
+		currentTime: 65,
+		duration: 222,
+		paused: false,
+		volume: 0.75,
+		muted: false,
+		markersEnabled: true,
+		onTogglePlay: jest.fn(),
+		onStop: jest.fn(),
+		onSkip: jest.fn(),
+		onToggleMute: jest.fn(),
+		onVolumeInput: jest.fn(),
+		onAddMarker: jest.fn(),
+		...overrides,
+	};
 }
 
 describe('StatusBar', () => {
@@ -322,6 +380,214 @@ describe('StatusBar', () => {
 			);
 
 			expect(onActivate).toHaveBeenCalledTimes(2);
+		});
+	});
+
+	describe('playback controls', () => {
+		it('should handle a missing status bar element', () => {
+			expect(() => {
+				renderPlaybackStatusBar(null, makePlaybackState());
+			}).not.toThrow();
+		});
+
+		it('should render transport, volume, markers, chapters, and time without speed controls', () => {
+			renderPlaybackStatusBar(statusBarItem, makePlaybackState());
+
+			expect(statusBarItem.classList.contains('is-playback')).toBe(true);
+			expect(
+				statusBarItem.querySelector('[aria-label="Back 10s"]'),
+			).not.toBeNull();
+			expect(
+				statusBarItem.querySelector('[aria-label="Pause playback"]'),
+			).not.toBeNull();
+			expect(
+				statusBarItem.querySelector('[aria-label="Stop playback"]'),
+			).not.toBeNull();
+			expect(
+				statusBarItem.querySelector('[aria-label="Forward 10s"]'),
+			).not.toBeNull();
+			expect(
+				statusBarItem.querySelector('[aria-label="Mute / unmute"]'),
+			).not.toBeNull();
+			expect(
+				statusBarItem.querySelector('[aria-label="Volume"]'),
+			).not.toBeNull();
+			expect(
+				statusBarItem.querySelector(
+					'[aria-label="Add marker at current position"]',
+				),
+			).not.toBeNull();
+			expect(
+				statusBarItem.querySelector(
+					'[aria-label="Add chapter at current position"]',
+				),
+			).not.toBeNull();
+			expect(
+				statusBarItem.querySelector('.aar-playback-time')?.textContent,
+			).toBe('1:05 / 3:42');
+			expect(
+				statusBarItem.querySelector('[aria-label="Playback speed"]'),
+			).toBeNull();
+			expect(statusBarItem.querySelector('.aar-player-speed')).toBeNull();
+		});
+
+		it('should dispatch every playback command from mouse and volume input', () => {
+			const state = makePlaybackState();
+			renderPlaybackStatusBar(statusBarItem, state);
+
+			statusBarItem
+				.querySelector<HTMLElement>('[aria-label="Back 10s"]')
+				?.click();
+			statusBarItem
+				.querySelector<HTMLElement>('[aria-label="Pause playback"]')
+				?.click();
+			statusBarItem
+				.querySelector<HTMLElement>('[aria-label="Stop playback"]')
+				?.click();
+			statusBarItem
+				.querySelector<HTMLElement>('[aria-label="Forward 10s"]')
+				?.click();
+			statusBarItem
+				.querySelector<HTMLElement>('[aria-label="Mute / unmute"]')
+				?.click();
+			statusBarItem
+				.querySelector<HTMLElement>(
+					'[aria-label="Add marker at current position"]',
+				)
+				?.click();
+			statusBarItem
+				.querySelector<HTMLElement>(
+					'[aria-label="Add chapter at current position"]',
+				)
+				?.click();
+			const volume = statusBarItem.querySelector<HTMLInputElement>(
+				'.aar-playback-volume',
+			);
+			if (!volume) {
+				throw new Error('Expected playback volume input');
+			}
+			volume.value = '0.4';
+			volume.dispatchEvent(new Event('input'));
+
+			expect(state.onSkip).toHaveBeenNthCalledWith(1, -10);
+			expect(state.onSkip).toHaveBeenNthCalledWith(2, 10);
+			expect(state.onTogglePlay).toHaveBeenCalledTimes(1);
+			expect(state.onStop).toHaveBeenCalledTimes(1);
+			expect(state.onToggleMute).toHaveBeenCalledTimes(1);
+			expect(state.onVolumeInput).toHaveBeenCalledWith(0.4);
+			expect(state.onAddMarker).toHaveBeenNthCalledWith(1, 'bookmark');
+			expect(state.onAddMarker).toHaveBeenNthCalledWith(2, 'chapter');
+		});
+
+		it('should keep the controls DOM while updating pause, mute, markers, volume, and time', () => {
+			renderPlaybackStatusBar(statusBarItem, makePlaybackState());
+			const controls = statusBarItem.querySelector(
+				'.aar-playback-controls',
+			);
+
+			renderPlaybackStatusBar(
+				statusBarItem,
+				makePlaybackState({
+					currentTime: 5,
+					duration: 0,
+					paused: true,
+					muted: true,
+					volume: 0.2,
+					markersEnabled: false,
+				}),
+			);
+
+			expect(statusBarItem.querySelector('.aar-playback-controls')).toBe(
+				controls,
+			);
+			expect(
+				statusBarItem.querySelector('[aria-label="Play audio"]'),
+			).not.toBeNull();
+			expect(
+				statusBarItem
+					.querySelector('.aar-playback-mute')
+					?.classList.contains('is-active'),
+			).toBe(true);
+			expect(
+				statusBarItem.querySelector<HTMLInputElement>(
+					'.aar-playback-volume',
+				)?.value,
+			).toBe('0.2');
+			expect(
+				statusBarItem.querySelector<HTMLElement>(
+					'.aar-playback-marker-controls',
+				)?.hidden,
+			).toBe(true);
+			expect(
+				statusBarItem.querySelector('.aar-playback-time')?.textContent,
+			).toBe('0:05 / 0:00');
+		});
+
+		it('should preserve a focused volume input during playback updates', () => {
+			document.body.appendChild(statusBarItem);
+			renderPlaybackStatusBar(statusBarItem, makePlaybackState());
+			const volume = statusBarItem.querySelector<HTMLInputElement>(
+				'.aar-playback-volume',
+			);
+			if (!volume) {
+				throw new Error('Expected playback volume input');
+			}
+			volume.value = '0.3';
+			volume.focus();
+
+			renderPlaybackStatusBar(
+				statusBarItem,
+				makePlaybackState({ volume: 0.9 }),
+			);
+
+			expect(volume.value).toBe('0.3');
+			statusBarItem.remove();
+		});
+
+		it('should tolerate controls removed by an external status-bar refresh', () => {
+			renderPlaybackStatusBar(statusBarItem, makePlaybackState());
+			const controls = statusBarItem.querySelector<HTMLElement>(
+				'.aar-playback-controls',
+			);
+			controls?.querySelector('.aar-playback-toggle')?.remove();
+			controls?.querySelector('.aar-playback-mute')?.remove();
+			controls?.querySelector('.aar-playback-volume')?.remove();
+			controls?.querySelector('.aar-playback-marker-controls')?.remove();
+			controls?.querySelector('.aar-playback-time')?.remove();
+
+			expect(() => {
+				renderPlaybackStatusBar(statusBarItem, makePlaybackState());
+			}).not.toThrow();
+		});
+
+		it('should activate transport controls with Enter and Space only', () => {
+			const state = makePlaybackState();
+			renderPlaybackStatusBar(statusBarItem, state);
+			const toggle = statusBarItem.querySelector<HTMLElement>(
+				'.aar-playback-toggle',
+			);
+
+			toggle?.dispatchEvent(
+				new KeyboardEvent('keydown', { key: 'Enter' }),
+			);
+			toggle?.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }));
+			toggle?.dispatchEvent(
+				new KeyboardEvent('keydown', { key: 'ArrowRight' }),
+			);
+
+			expect(state.onTogglePlay).toHaveBeenCalledTimes(2);
+		});
+
+		it('should clear playback controls when recording takes precedence', () => {
+			renderPlaybackStatusBar(statusBarItem, makePlaybackState());
+
+			updateStatusBar(statusBarItem, RecordingStatus.Recording);
+
+			expect(
+				statusBarItem.querySelector('.aar-playback-controls'),
+			).toBeNull();
+			expect(statusBarItem.classList.contains('is-playback')).toBe(false);
+			expect(statusBarItem.textContent).toContain('Recording...');
 		});
 	});
 

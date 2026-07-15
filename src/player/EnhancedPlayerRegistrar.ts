@@ -32,6 +32,7 @@
 import { TFile, MarkdownView, debounce } from 'obsidian';
 import type {
 	App,
+	Editor,
 	MarkdownPostProcessorContext,
 	Plugin,
 	WorkspaceLeaf,
@@ -43,15 +44,18 @@ import {
 	playerSettingsEqual,
 	type ResolvedPlayerSettings,
 } from '../player/playerSettings';
-import { AudioPlayerRegistry } from './AudioPlayerRegistry';
+import { AudioPlayerRegistry, playbackKey } from './AudioPlayerRegistry';
+import { DetachedPlayback } from './DetachedPlayback';
+import type { PlaybackControlsListener } from './playbackControls';
 import { WaveformPeakCache, SharedAudioDecoder } from './WaveformData';
 import { AudioPlayer } from './AudioPlayer';
 import {
 	parseAudioLinkTarget,
 	isAudioFile,
 	parseTimecodeSubpath,
+	wikiLinkTargetAtCursor,
 } from './timecodeLinks';
-import { probeMediaKind, type MediaKind } from './mediaProbe';
+import { probeMediaKind, MEDIA_KIND, type MediaKind } from './mediaProbe';
 import { MediaEmbedShell } from './MediaEmbedShell';
 import type { MediaKindStore } from './MediaKindStore';
 import { shouldEnhance } from './playerMode';
@@ -92,6 +96,13 @@ export class EnhancedPlayerRegistrar {
 	private lastResolved: ResolvedPlayerSettings | null = null;
 	/** Whether every leaf must re-render (master toggle flip). */
 	private pendingRerenderAll = false;
+	/**
+	 * Active timecode playback started when no embedded player was on screen,
+	 * or null. Controlled through the status-bar controls, it plays the file's
+	 * shared audio directly so a transcript timestamp always plays from that
+	 * moment instead of opening the raw file.
+	 */
+	private detachedPlayback: DetachedPlayback | null = null;
 	/** Debounced flush that coalesces a burst of re-render requests. */
 	private readonly scheduleRerender = debounce(
 		() => this.flushRerender(),
@@ -182,6 +193,15 @@ export class EnhancedPlayerRegistrar {
 	}
 
 	/**
+	 * Subscribes the shared status bar to active enhanced-player playback.
+	 * The registry owns the subscription and releases it during dispose.
+	 * @param listener - Consumer for active playback snapshots
+	 */
+	subscribePlayback(listener: PlaybackControlsListener): void {
+		this.registry.subscribePlayback(listener);
+	}
+
+	/**
 	 * Releases retained players and cached peaks. Called on unload so
 	 * nothing outlives the plugin.
 	 */
@@ -191,6 +211,9 @@ export class EnhancedPlayerRegistrar {
 		this.embedOverride?.restore();
 		this.embedOverride = null;
 		this.scheduleRerender.cancel();
+		// Stop any timecode playback that has no embed to unload it
+		this.detachedPlayback?.dispose();
+		this.detachedPlayback = null;
 		this.registry.clear();
 		this.peakCache.clear();
 		this.mediaKindCache.clear();
@@ -219,6 +242,13 @@ export class EnhancedPlayerRegistrar {
 			this.lastResolved = enabled
 				? resolvePlayerSettings(this.getSettings())
 				: null;
+			if (!enabled) {
+				// Detached timecode playback has no embed to unload and release
+				// it, so disabling the feature must stop it here; otherwise the
+				// audio and its status-bar controls outlive the switch-off.
+				this.detachedPlayback?.dispose();
+				this.detachedPlayback = null;
+			}
 			// A flip changes what every embed is (native vs enhanced), so
 			// every leaf must re-render
 			this.requestRerenderAll();
@@ -538,9 +568,12 @@ export class EnhancedPlayerRegistrar {
 	}
 
 	/**
-	 * Intercepts clicks on internal timecode links (`...#t=...`) that
-	 * point to an audio file with a live player, seeking that player
-	 * instead of letting Obsidian open the file.
+	 * Intercepts clicks on internal timecode links (`...#t=...`) that point to
+	 * an audio file, playing that file from the offset instead of letting
+	 * Obsidian open it. Works the same in Reading view and Live Preview: the
+	 * former exposes a rendered `a.internal-link`, the latter renders the link
+	 * through CodeMirror with no `data-href`, so its target is read from the
+	 * editor source under the click.
 	 * @param event - The captured click event
 	 */
 	private handleTimecodeClick(event: MouseEvent): void {
@@ -549,13 +582,7 @@ export class EnhancedPlayerRegistrar {
 		if (!this.getSettings().enhancedPlayerEnabled) {
 			return;
 		}
-		const target = event.target as HTMLElement | null;
-		const anchor = target?.closest<HTMLElement>('a.internal-link');
-		if (!anchor) {
-			return;
-		}
-		const href =
-			anchor.getAttribute('data-href') ?? anchor.getAttribute('href');
+		const href = this.resolveTimecodeHref(event);
 		if (!href || !href.includes('#t=')) {
 			return;
 		}
@@ -571,9 +598,133 @@ export class EnhancedPlayerRegistrar {
 		if (!(file instanceof TFile) || !isAudioFile(file)) {
 			return;
 		}
+		// isAudioFile trusts only the extension, but a container (.mp4/.webm)
+		// can hold a video track. When a prior probe classified this file as
+		// video it keeps Obsidian's own player, so never consume the click into
+		// audio-only detached playback; let Obsidian open it with its video UI.
+		if (this.knownKind(file) === MEDIA_KIND.video) {
+			return;
+		}
+		// An on-screen embed for the file seeks in place; otherwise start a
+		// detached playback from the timecode so clicking a transcript
+		// timestamp always plays from that moment instead of opening the file.
 		if (this.registry.seek(file.path, startSeconds)) {
-			event.preventDefault();
-			event.stopPropagation();
+			// An embed now owns this file's playback; drop any detached one so
+			// only one surface controls the (shared) audio element.
+			if (this.detachedPlayback?.path === file.path) {
+				this.detachedPlayback.dispose();
+			}
+		} else {
+			this.playFromTimecode(file, startSeconds);
+		}
+		event.preventDefault();
+		event.stopPropagation();
+	}
+
+	/**
+	 * Plays a file's shared audio from a timecode without an on-screen embed,
+	 * surfaced through the status-bar controls. Reuses the current detached
+	 * playback when it already targets this file (a second click just seeks),
+	 * and replaces one that targets a different file.
+	 * @param file - Audio file to play
+	 * @param seconds - Offset in seconds to start playback from
+	 */
+	private playFromTimecode(file: TFile, seconds: number): void {
+		// Reuse this timecode playback if it already targets the file
+		if (this.detachedPlayback?.path === file.path) {
+			this.detachedPlayback.seek(seconds);
+			return;
+		}
+		// Reuse the file's existing shared element (an embed's) if one is still
+		// alive, so a click that races the embed's registration never spawns a
+		// second, out-of-sync element. Drop a detached playback of another file.
+		if (
+			this.registry.seekSharedAudio(playbackKey(file.path, null), seconds)
+		) {
+			this.detachedPlayback?.dispose();
+			return;
+		}
+		// No element for the file exists: start a fresh detached playback
+		this.detachedPlayback?.dispose();
+		this.detachedPlayback = DetachedPlayback.start(
+			this.registry,
+			this.app,
+			file,
+			seconds,
+			() => {
+				this.detachedPlayback = null;
+			},
+		);
+	}
+
+	/**
+	 * Resolves the link target under a click, in either view mode. Reading view
+	 * (and the post-processor fallback) exposes a rendered `a.internal-link`
+	 * with the target in an attribute; Live Preview renders the link through
+	 * CodeMirror with no attribute, so its target is read from the editor
+	 * source at the clicked position.
+	 * @param event - The captured click event
+	 * @returns The link target (with any `#t=` subpath), or null when none
+	 */
+	private resolveTimecodeHref(event: MouseEvent): string | null {
+		const target = event.target as HTMLElement | null;
+		if (!target) {
+			return null;
+		}
+		const anchor = target.closest<HTMLElement>('a.internal-link');
+		if (anchor) {
+			return (
+				anchor.getAttribute('data-href') ?? anchor.getAttribute('href')
+			);
+		}
+		// Live Preview renders a wikilink as a .cm-hmd-internal-link token that
+		// carries no data-href. Resolve from source ONLY when the click is on
+		// that token; otherwise a click on a rendered embed's widget, another
+		// decoration, or plain line text would also fall through here and,
+		// because posAtDOM snaps to the token, hijack a nearby timecode link -
+		// so a player button or ordinary text would seek instead of acting.
+		const linkToken = target.closest<HTMLElement>('.cm-hmd-internal-link');
+		if (!linkToken) {
+			return null;
+		}
+		return this.resolveEditorLinkTarget(linkToken);
+	}
+
+	/**
+	 * Reads the wikilink target at a clicked node from the active editor's
+	 * source. Uses CodeMirror's DOM-to-offset mapping (the same internal API
+	 * the context menu uses) to find the line and column, then extracts the
+	 * link there. Returns null when the click is not on a wikilink or the
+	 * editor internals are unavailable.
+	 * @param node - The clicked DOM node inside the editor
+	 * @returns The wikilink target, or null when none is under the click
+	 */
+	private resolveEditorLinkTarget(node: Node): string | null {
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (!view) {
+			return null;
+		}
+		const cm = (view.editor as EditorWithCodeMirror).cm;
+		if (!cm?.posAtDOM) {
+			return null;
+		}
+		try {
+			const cursor = view.editor.offsetToPos(cm.posAtDOM(node));
+			return wikiLinkTargetAtCursor(
+				view.editor.getLine(cursor.line),
+				cursor.ch,
+			);
+		} catch (error) {
+			console.error(
+				`${PLUGIN_LOG_PREFIX} Failed to resolve a timecode link in the editor.`,
+				error,
+			);
+			return null;
 		}
 	}
+}
+
+/** CodeMirror view attached to an Obsidian Editor (internal API). */
+interface EditorWithCodeMirror extends Editor {
+	cm?: { posAtDOM?(node: Node): number };
 }
