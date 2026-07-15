@@ -29,6 +29,14 @@ import {
 import { formatTimecode } from '../utils/TimeUtils';
 import { playbackProgress } from './playbackProgress';
 import {
+	playAudio,
+	resetPlayback,
+	seekAudio,
+	setAudioVolume,
+	skipAudio,
+	toggleAudioMuted,
+} from './playbackCommands';
+import {
 	playerSettingsEqual,
 	type ResolvedPlayerSettings,
 } from '../player/playerSettings';
@@ -527,27 +535,16 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	seekTo(seconds: number, autoplay = true): void {
 		// A user seek (timecode link, marker jump) engages the shared timeline
 		this.engageTimeline();
-		const target = Math.max(0, seconds);
-		const apply = (): void => {
-			this.audio.currentTime = Number.isFinite(this.audio.duration)
-				? Math.min(target, this.audio.duration)
-				: target;
-			if (autoplay) {
-				void this.audio.play().catch(() => {
-					// Autoplay can be blocked; the user can press play
-				});
-			}
+		seekAudio(this.audio, seconds, {
+			autoplay,
 			// Reflect the new position immediately, since a paused jump fires
 			// no timeupdate to refresh the seek visuals
-			this.updateProgress();
-		};
-		if (this.audio.readyState >= 1) {
-			apply();
-		} else {
-			this.audio.addEventListener('loadedmetadata', apply, {
-				once: true,
-			});
-		}
+			onApplied: () => {
+				this.updateProgress();
+			},
+			// Autoplay can be blocked; the user can press play
+			onError: () => undefined,
+		});
 	}
 
 	/**
@@ -929,12 +926,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		if (this.audio.paused) {
 			// Begin from this embed's #t= start (if pending) rather than 0
 			this.engageStart();
-			void this.audio.play().catch((error: unknown) => {
-				console.warn(
-					`${PLUGIN_LOG_PREFIX} Playback could not start:`,
-					error,
-				);
-			});
+			playAudio(this.audio);
 		} else {
 			this.audio.pause();
 		}
@@ -942,8 +934,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 
 	/** Stops playback, resets the timeline, and refreshes the embedded player. */
 	private stopPlayback(): void {
-		this.audio.pause();
-		this.audio.currentTime = 0;
+		resetPlayback(this.audio);
 		this.updateProgress();
 	}
 
@@ -956,13 +947,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		// Engage the #t= start first so a skip is relative to the shown position
 		this.engageStart();
 		this.engageTimeline();
-		const max = Number.isFinite(this.audio.duration)
-			? this.audio.duration
-			: this.audio.currentTime + Math.abs(deltaSeconds);
-		this.audio.currentTime = Math.min(
-			max,
-			Math.max(0, this.audio.currentTime + deltaSeconds),
-		);
+		skipAudio(this.audio, deltaSeconds);
 		this.updateProgress();
 	}
 
@@ -1003,8 +988,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * Toggles the muted state and refreshes the mute button icon.
 	 */
 	private toggleMute(): void {
-		this.audio.muted = !this.audio.muted;
-		this.controls?.setMuted(this.audio.muted);
+		this.controls?.setMuted(toggleAudioMuted(this.audio));
 	}
 
 	/**
@@ -1012,9 +996,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * @param volume - Volume in the inclusive 0..1 range
 	 */
 	private setVolume(volume: number): void {
-		this.audio.volume = volume;
-		if (this.audio.muted && volume > 0) {
-			this.audio.muted = false;
+		if (setAudioVolume(this.audio, volume)) {
 			this.controls?.setMuted(false);
 		}
 	}

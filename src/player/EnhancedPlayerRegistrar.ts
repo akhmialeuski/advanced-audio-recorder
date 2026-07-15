@@ -44,7 +44,7 @@ import {
 	playerSettingsEqual,
 	type ResolvedPlayerSettings,
 } from '../player/playerSettings';
-import { AudioPlayerRegistry } from './AudioPlayerRegistry';
+import { AudioPlayerRegistry, playbackKey } from './AudioPlayerRegistry';
 import { DetachedPlayback } from './DetachedPlayback';
 import type { PlaybackControlsListener } from './playbackControls';
 import { WaveformPeakCache, SharedAudioDecoder } from './WaveformData';
@@ -616,10 +616,21 @@ export class EnhancedPlayerRegistrar {
 	 * @param seconds - Offset in seconds to start playback from
 	 */
 	private playFromTimecode(file: TFile, seconds: number): void {
+		// Reuse this timecode playback if it already targets the file
 		if (this.detachedPlayback?.path === file.path) {
 			this.detachedPlayback.seek(seconds);
 			return;
 		}
+		// Reuse the file's existing shared element (an embed's) if one is still
+		// alive, so a click that races the embed's registration never spawns a
+		// second, out-of-sync element. Drop a detached playback of another file.
+		if (
+			this.registry.seekSharedAudio(playbackKey(file.path, null), seconds)
+		) {
+			this.detachedPlayback?.dispose();
+			return;
+		}
+		// No element for the file exists: start a fresh detached playback
 		this.detachedPlayback?.dispose();
 		this.detachedPlayback = DetachedPlayback.start(
 			this.registry,

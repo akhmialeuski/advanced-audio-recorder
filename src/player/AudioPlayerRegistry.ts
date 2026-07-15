@@ -12,6 +12,7 @@
 import { SHARED_AUDIO_GRACE_MS } from '../constants';
 import type { MarkerKind } from '../markers/markerModel';
 import type { ResolvedPlayerSettings } from '../player/playerSettings';
+import { readPlaybackSnapshot, seekAudio } from './playbackCommands';
 import type {
 	PlaybackControlsListener,
 	PlaybackControlsState,
@@ -143,6 +144,38 @@ export class AudioPlayerRegistry {
 		};
 		this.audioByKey.set(key, entry);
 		return { audio, isNew: true };
+	}
+
+	/**
+	 * Whether a shared audio element currently exists for a playback key.
+	 * @param key - Playback key (see {@link playbackKey})
+	 */
+	hasSharedAudio(key: string): boolean {
+		return this.audioByKey.has(key);
+	}
+
+	/**
+	 * Seeks the file's existing shared element to an offset and resumes
+	 * playback, cancelling a pending release so a click during the grace window
+	 * keeps the element. Reusing the one element per key is what keeps a
+	 * timecode click and the file's embed on a single playback: any embed bound
+	 * to this element follows the seek through its own media listeners, so no
+	 * second, out-of-sync element is ever created.
+	 * @param key - Playback key (see {@link playbackKey})
+	 * @param seconds - Offset in seconds to seek to
+	 * @returns True when a shared element existed and was seeked
+	 */
+	seekSharedAudio(key: string, seconds: number): boolean {
+		const entry = this.audioByKey.get(key);
+		if (!entry) {
+			return false;
+		}
+		if (entry.releaseTimer !== 0) {
+			window.clearTimeout(entry.releaseTimer);
+			entry.releaseTimer = 0;
+		}
+		seekAudio(entry.audio, seconds, { autoplay: true });
+		return true;
 	}
 
 	/**
@@ -446,22 +479,15 @@ export class AudioPlayerRegistry {
 		if (!entry) {
 			return null;
 		}
-		const { audio } = entry;
-		const duration =
-			Number.isFinite(audio.duration) && audio.duration > 0
-				? audio.duration
-				: 0;
-		const currentTime = Number.isFinite(audio.currentTime)
-			? Math.max(0, audio.currentTime)
-			: 0;
+		const snapshot = readPlaybackSnapshot(entry.audio);
 		const markerController = this.markerController(entry);
 
 		return {
-			currentTime,
-			duration,
-			paused: audio.paused,
-			volume: audio.volume,
-			muted: audio.muted,
+			currentTime: snapshot.currentTime,
+			duration: snapshot.duration,
+			paused: snapshot.paused,
+			volume: snapshot.volume,
+			muted: snapshot.muted,
 			markersEnabled: markerController !== null,
 			onTogglePlay: () => {
 				this.runPlaybackCommand(key, (controller) => {

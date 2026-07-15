@@ -6,13 +6,24 @@
  * audio element for the file directly and is controlled through the status-bar
  * playback controls. It reuses the plain-embed playback key, so an embed of the
  * same file that later renders shares one audio element and one playback instead
- * of starting a second, overlapping one.
+ * of starting a second, overlapping one. Every command routes through the shared
+ * playbackCommands helpers, so its behavior can never drift from the embedded
+ * player or the status bar.
  * @module player/DetachedPlayback
  */
 
 import type { App, TFile } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { AudioPlayerRegistry, playbackKey } from './AudioPlayerRegistry';
+import { DurationProbe } from './DurationProbe';
+import {
+	resetPlayback,
+	seekAudio,
+	setAudioVolume,
+	skipAudio,
+	toggleAudioMuted,
+	togglePlayback,
+} from './playbackCommands';
 
 /**
  * Drives one detached playback for a file's shared audio element.
@@ -20,9 +31,25 @@ import { AudioPlayerRegistry, playbackKey } from './AudioPlayerRegistry';
 export class DetachedPlayback {
 	private disposed = false;
 	private unregisterController: () => void = () => undefined;
-	/** Stable listener reference so it can be detached on teardown. */
+	/** Offset to start from once the duration is known and the probe settles. */
+	private pendingSeek: number | null = null;
+	/** Coaxes a real duration out of a stream that loads without one. */
+	private readonly durationProbe: DurationProbe;
+
+	/** Logs an autoplay-policy rejection specific to detached playback. */
+	private readonly onPlayError = (error: unknown): void => {
+		console.warn(
+			`${PLUGIN_LOG_PREFIX} Detached playback could not start:`,
+			error,
+		);
+	};
+
+	/** Stable listener references so they can be detached on teardown. */
 	private readonly handleEnded = (): void => {
 		this.dispose();
+	};
+	private readonly handleLoadedMetadata = (): void => {
+		this.startPendingSeek();
 	};
 
 	/**
@@ -38,7 +65,13 @@ export class DetachedPlayback {
 		private readonly key: string,
 		private readonly audio: HTMLAudioElement,
 		private readonly onDispose: () => void,
-	) {}
+	) {
+		// Once the far-seek probe resolves the real duration it restores the
+		// start, so the pending offset is applied afterwards - never mid-probe
+		this.durationProbe = new DurationProbe(audio, () => {
+			this.applyPendingSeek();
+		});
+	}
 
 	/**
 	 * Starts a detached playback for a file at a given offset and wires it to
@@ -76,47 +109,47 @@ export class DetachedPlayback {
 	}
 
 	/**
-	 * Seeks the shared audio to an offset and resumes playback. Waits for
-	 * metadata when the duration is not yet known, so a just-created element
-	 * still starts at the requested position.
+	 * Seeks to an offset and resumes playback. When the duration is not yet
+	 * usable the offset is deferred: metadata is probed first (which restores
+	 * the start), then the offset is applied, so a stream that loads without a
+	 * length still starts at the right place and shows a real total.
 	 * @param seconds - Offset in seconds to seek to
 	 */
 	seek(seconds: number): void {
 		if (this.disposed) {
 			return;
 		}
-		const target = Math.max(0, seconds);
-		const apply = (): void => {
-			this.audio.currentTime = Number.isFinite(this.audio.duration)
-				? Math.min(target, this.audio.duration)
-				: target;
-			this.play();
-		};
-		if (this.audio.readyState >= 1) {
-			apply();
-		} else {
-			this.audio.addEventListener('loadedmetadata', apply, {
-				once: true,
-			});
+		this.pendingSeek = seconds;
+		if (this.durationKnown()) {
+			this.applyPendingSeek();
+		} else if (this.audio.readyState >= 1) {
+			// Metadata is present but the length is unusable: probe for it now
+			this.durationProbe.probe();
 		}
+		// Otherwise startPendingSeek runs once metadata loads
 	}
 
 	/**
-	 * Tears down the playback: stops the media listener, removes the status-bar
-	 * controller, and releases the shared audio hold. Idempotent.
+	 * Tears down the playback: stops the media listeners, removes the
+	 * status-bar controller, and releases the shared audio hold. Idempotent.
 	 */
 	dispose(): void {
 		if (this.disposed) {
 			return;
 		}
 		this.disposed = true;
+		this.durationProbe.cancel();
 		this.audio.removeEventListener('ended', this.handleEnded);
+		this.audio.removeEventListener(
+			'loadedmetadata',
+			this.handleLoadedMetadata,
+		);
 		this.unregisterController();
 		this.registry.releaseAudio(this.key);
 		this.onDispose();
 	}
 
-	/** Registers the status-bar controller and the end-of-media teardown. */
+	/** Registers the status-bar controller and the media lifecycle listeners. */
 	private register(): void {
 		this.unregisterController = this.registry.registerPlaybackController(
 			this.key,
@@ -124,79 +157,66 @@ export class DetachedPlayback {
 				// No marker UI is attached to a detached playback
 				canAddMarkers: () => false,
 				togglePlay: () => {
-					this.togglePlay();
+					togglePlayback(this.audio, this.onPlayError);
 				},
 				stop: () => {
 					this.stop();
 				},
 				skip: (deltaSeconds) => {
-					this.skip(deltaSeconds);
+					skipAudio(this.audio, deltaSeconds);
 				},
 				toggleMute: () => {
-					this.toggleMute();
+					toggleAudioMuted(this.audio);
 				},
 				setVolume: (volume) => {
-					this.setVolume(volume);
+					setAudioVolume(this.audio, volume);
 				},
 				addMarker: () => undefined,
 			},
 		);
 		this.audio.addEventListener('ended', this.handleEnded);
+		this.audio.addEventListener(
+			'loadedmetadata',
+			this.handleLoadedMetadata,
+		);
 	}
 
-	/** Toggles play/pause on the shared audio. */
-	private togglePlay(): void {
-		if (this.audio.paused) {
-			this.play();
-		} else {
-			this.audio.pause();
+	/** Whether the element reports a usable, positive duration. */
+	private durationKnown(): boolean {
+		return Number.isFinite(this.audio.duration) && this.audio.duration > 0;
+	}
+
+	/**
+	 * Runs when metadata first loads: applies the offset directly when the
+	 * length is usable, otherwise probes for the real length first.
+	 */
+	private startPendingSeek(): void {
+		if (this.pendingSeek === null) {
+			return;
 		}
+		if (this.durationKnown()) {
+			this.applyPendingSeek();
+		} else {
+			this.durationProbe.probe();
+		}
+	}
+
+	/** Applies the deferred offset and starts playback, then clears it. */
+	private applyPendingSeek(): void {
+		if (this.disposed || this.pendingSeek === null) {
+			return;
+		}
+		const seconds = this.pendingSeek;
+		this.pendingSeek = null;
+		seekAudio(this.audio, seconds, {
+			autoplay: true,
+			onError: this.onPlayError,
+		});
 	}
 
 	/** Stops playback, resets the position, and dismisses the controls. */
 	private stop(): void {
-		this.audio.pause();
-		this.audio.currentTime = 0;
+		resetPlayback(this.audio);
 		this.dispose();
-	}
-
-	/**
-	 * Skips playback by a relative number of seconds, clamped to the track.
-	 * @param deltaSeconds - Signed number of seconds to skip
-	 */
-	private skip(deltaSeconds: number): void {
-		const max = Number.isFinite(this.audio.duration)
-			? this.audio.duration
-			: this.audio.currentTime + Math.abs(deltaSeconds);
-		this.audio.currentTime = Math.min(
-			max,
-			Math.max(0, this.audio.currentTime + deltaSeconds),
-		);
-	}
-
-	/** Toggles muted output on the shared audio. */
-	private toggleMute(): void {
-		this.audio.muted = !this.audio.muted;
-	}
-
-	/**
-	 * Applies a volume value and unmutes when the requested level is audible.
-	 * @param volume - Volume in the inclusive 0..1 range
-	 */
-	private setVolume(volume: number): void {
-		this.audio.volume = volume;
-		if (this.audio.muted && volume > 0) {
-			this.audio.muted = false;
-		}
-	}
-
-	/** Starts playback, swallowing autoplay-policy rejections. */
-	private play(): void {
-		void this.audio.play().catch((error: unknown) => {
-			console.warn(
-				`${PLUGIN_LOG_PREFIX} Detached playback could not start:`,
-				error,
-			);
-		});
 	}
 }

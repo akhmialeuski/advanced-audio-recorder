@@ -695,4 +695,63 @@ describe('AudioPlayerRegistry', () => {
 			harness.restore();
 		}
 	});
+
+	it('reports whether a shared element exists for a key', () => {
+		const registry = new AudioPlayerRegistry();
+		const key = playbackKey('rec.wav', null);
+		expect(registry.hasSharedAudio(key)).toBe(false);
+		registry.acquireAudio(key, 'app://rec');
+		expect(registry.hasSharedAudio(key)).toBe(true);
+	});
+
+	it('seeks the existing shared element so any embed stays in sync', () => {
+		const harness = installMockAudio();
+		Object.defineProperty(harness.audio, 'readyState', {
+			configurable: true,
+			get: () => 1,
+		});
+		try {
+			const registry = new AudioPlayerRegistry();
+			const key = playbackKey('rec.wav', null);
+			registry.acquireAudio(key, 'app://rec');
+
+			expect(registry.seekSharedAudio(key, 42)).toBe(true);
+			expect(harness.audio.currentTime).toBe(42);
+			expect(harness.play).toHaveBeenCalledTimes(1);
+		} finally {
+			harness.restore();
+		}
+	});
+
+	it('returns false when seeking a key with no shared element', () => {
+		const registry = new AudioPlayerRegistry();
+		expect(
+			registry.seekSharedAudio(playbackKey('missing.wav', null), 10),
+		).toBe(false);
+	});
+
+	it('cancels a pending release when the shared element is seeked in grace', () => {
+		jest.useFakeTimers();
+		const harness = installMockAudio();
+		Object.defineProperty(harness.audio, 'readyState', {
+			configurable: true,
+			get: () => 1,
+		});
+		try {
+			const registry = new AudioPlayerRegistry();
+			const key = playbackKey('rec.wav', null);
+			registry.acquireAudio(key, 'app://rec');
+			// Last holder releases: the element lingers for the grace window
+			registry.releaseAudio(key);
+
+			// A timecode seek during grace keeps the element alive to reuse it
+			expect(registry.seekSharedAudio(key, 12)).toBe(true);
+			jest.advanceTimersByTime(1000);
+			expect(registry.hasSharedAudio(key)).toBe(true);
+			expect(harness.audio.currentTime).toBe(12);
+		} finally {
+			harness.restore();
+			jest.useRealTimers();
+		}
+	});
 });

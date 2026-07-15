@@ -18,6 +18,8 @@ interface MockAudioHarness {
 	pause: jest.SpyInstance<void, []>;
 	/** Sets the reported readyState so metadata can be made available late. */
 	setReadyState(value: number): void;
+	/** Sets the duration and emits durationchange, as a resolved probe would. */
+	setDuration(value: number): void;
 	restore(): void;
 }
 
@@ -33,6 +35,7 @@ function installMockAudio(duration = 120, readyState = 1): MockAudioHarness {
 	let paused = true;
 	let currentTime = 0;
 	let ready = readyState;
+	let length = duration;
 	Object.defineProperties(audio, {
 		paused: { configurable: true, get: () => paused },
 		currentTime: {
@@ -42,7 +45,7 @@ function installMockAudio(duration = 120, readyState = 1): MockAudioHarness {
 				currentTime = value;
 			},
 		},
-		duration: { configurable: true, get: () => duration },
+		duration: { configurable: true, get: () => length },
 		readyState: { configurable: true, get: () => ready },
 	});
 	const play = jest.spyOn(audio, 'play').mockImplementation(() => {
@@ -65,6 +68,10 @@ function installMockAudio(duration = 120, readyState = 1): MockAudioHarness {
 		pause,
 		setReadyState: (value: number) => {
 			ready = value;
+		},
+		setDuration: (value: number) => {
+			length = value;
+			audio.dispatchEvent(new Event('durationchange'));
 		},
 		restore: () => {
 			audioConstructor.mockRestore();
@@ -304,6 +311,38 @@ describe('DetachedPlayback', () => {
 			expect(harness.pause).toHaveBeenCalledTimes(1);
 			listener.mock.lastCall?.[0]?.onTogglePlay();
 			expect(harness.play).toHaveBeenCalledTimes(2);
+		} finally {
+			harness.restore();
+		}
+	});
+
+	it('probes for a real duration before seeking a stream that loads without one', () => {
+		// A multitrack mp4 that reports Infinity until probed: the offset is
+		// deferred until the probe restores a real length, so the status bar
+		// and any embed show a real total instead of 0:00
+		const harness = installMockAudio(Number.POSITIVE_INFINITY, 1);
+		try {
+			const registry = new AudioPlayerRegistry();
+			const listener = jest.fn<void, [PlaybackControlsState | null]>();
+			registry.subscribePlayback(listener);
+			DetachedPlayback.start(
+				registry,
+				appStub(),
+				fileStub(),
+				30,
+				jest.fn(),
+			);
+
+			// Nothing plays while the length is still unknown
+			expect(harness.play).not.toHaveBeenCalled();
+
+			// The far-seek probe coaxes out the real duration, which restores
+			// the start and then applies the deferred offset
+			harness.setDuration(3600);
+
+			expect(harness.audio.currentTime).toBe(30);
+			expect(harness.play).toHaveBeenCalledTimes(1);
+			expect(listener.mock.lastCall?.[0]?.duration).toBe(3600);
 		} finally {
 			harness.restore();
 		}
