@@ -7,6 +7,7 @@ import {
 	parseAudioLinkTarget,
 	parseTimecodeSubpath,
 	isAudioFile,
+	wikiLinkTargetAtCursor,
 } from 'src/player/timecodeLinks';
 
 describe('parseAudioLinkTarget', () => {
@@ -74,5 +75,36 @@ describe('parseTimecodeSubpath', () => {
 		expect(parseTimecodeSubpath('')).toBeNull();
 		expect(parseTimecodeSubpath('heading')).toBeNull();
 		expect(parseTimecodeSubpath('t=abc')).toBeNull();
+	});
+});
+
+describe('wikiLinkTargetAtCursor', () => {
+	const line = '[[rec.mp4#t=30|0:30]] - Speaker 1: hello there';
+
+	it('returns the link target without the alias when the cursor is inside', () => {
+		// Cursor on the alias text still resolves to the underlying target
+		expect(wikiLinkTargetAtCursor(line, 16)).toBe('rec.mp4#t=30');
+		// Cursor at the very start of the link
+		expect(wikiLinkTargetAtCursor(line, 0)).toBe('rec.mp4#t=30');
+	});
+
+	it('returns null when the cursor is outside every link', () => {
+		expect(wikiLinkTargetAtCursor(line, 30)).toBeNull();
+		expect(wikiLinkTargetAtCursor('no link here', 3)).toBeNull();
+	});
+
+	it('handles an embed link and a link without an alias', () => {
+		expect(wikiLinkTargetAtCursor('![[rec.mp4#t=5]]', 6)).toBe(
+			'rec.mp4#t=5',
+		);
+		expect(wikiLinkTargetAtCursor('[[rec.mp4#t=5]]', 5)).toBe(
+			'rec.mp4#t=5',
+		);
+	});
+
+	it('picks the link under the cursor when a line has several', () => {
+		const many = '[[a.mp4#t=1|0:01]] and [[b.mp4#t=2|0:02]]';
+		expect(wikiLinkTargetAtCursor(many, 3)).toBe('a.mp4#t=1');
+		expect(wikiLinkTargetAtCursor(many, 26)).toBe('b.mp4#t=2');
 	});
 });

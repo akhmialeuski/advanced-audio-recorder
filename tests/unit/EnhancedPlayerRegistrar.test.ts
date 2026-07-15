@@ -143,6 +143,7 @@ function setup(
 	leaves: { preview: WorkspaceLeaf; source: WorkspaceLeaf };
 	getLeaves: jest.Mock;
 	plugin: Plugin;
+	app: App;
 } {
 	const settings: AudioRecorderSettings = {
 		...DEFAULT_SETTINGS,
@@ -183,6 +184,7 @@ function setup(
 		workspace: {
 			getActiveFile: () => ({ path: 'note.md' }),
 			getLeavesOfType: getLeaves,
+			getActiveViewOfType: jest.fn(() => null),
 		},
 	} as unknown as App;
 
@@ -221,6 +223,7 @@ function setup(
 		leaves: { preview: previewLeaf, source: sourceLeaf },
 		getLeaves,
 		plugin,
+		app,
 	};
 }
 
@@ -727,6 +730,74 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 
 			expect(seek).not.toHaveBeenCalled();
 			expect(detachedStartMock).not.toHaveBeenCalled();
+		} finally {
+			seek.mockRestore();
+		}
+	});
+
+	/** A Live Preview link element inside a CodeMirror editor (no data-href). */
+	function livePreviewClick(): MouseEvent {
+		const editor = document.createElement('div');
+		editor.className = 'cm-editor';
+		const linkEl = document.createElement('span');
+		linkEl.className = 'cm-hmd-internal-link';
+		editor.appendChild(linkEl);
+		const event = new MouseEvent('click', { bubbles: true });
+		Object.defineProperty(event, 'target', { value: linkEl });
+		return event;
+	}
+
+	/** Stubs the active editor so a click resolves to a source line. */
+	function stubActiveEditor(app: App, line: string): void {
+		const view = {
+			editor: {
+				cm: { posAtDOM: jest.fn(() => 5) },
+				offsetToPos: jest.fn(() => ({ line: 0, ch: 5 })),
+				getLine: jest.fn(() => line),
+			},
+		};
+		(app.workspace.getActiveViewOfType as jest.Mock).mockReturnValue(view);
+	}
+
+	it('plays a Live Preview timecode link read from the editor source', () => {
+		const seek = jest
+			.spyOn(AudioPlayerRegistry.prototype, 'seek')
+			.mockReturnValue(false);
+		detachedStartMock.mockReturnValue(detachedStub('rec.mp4'));
+		try {
+			const { plugin, app } = setup(true);
+			stubActiveEditor(app, '[[rec.mp4#t=30|0:30]] - Speaker 1');
+			const event = livePreviewClick();
+			const prevent = jest.spyOn(event, 'preventDefault');
+
+			clickHandler(plugin)(event);
+
+			expect(detachedStartMock).toHaveBeenCalledWith(
+				expect.anything(),
+				expect.anything(),
+				expect.objectContaining({ path: 'rec.mp4' }),
+				30,
+				expect.any(Function),
+			);
+			expect(prevent).toHaveBeenCalled();
+		} finally {
+			seek.mockRestore();
+		}
+	});
+
+	it('leaves a Live Preview click that is not on a wikilink to Obsidian', () => {
+		const seek = jest.spyOn(AudioPlayerRegistry.prototype, 'seek');
+		try {
+			const { plugin, app } = setup(true);
+			stubActiveEditor(app, 'just plain text, no link at all');
+			const event = livePreviewClick();
+			const prevent = jest.spyOn(event, 'preventDefault');
+
+			clickHandler(plugin)(event);
+
+			expect(seek).not.toHaveBeenCalled();
+			expect(detachedStartMock).not.toHaveBeenCalled();
+			expect(prevent).not.toHaveBeenCalled();
 		} finally {
 			seek.mockRestore();
 		}

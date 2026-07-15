@@ -32,6 +32,7 @@
 import { TFile, MarkdownView, debounce } from 'obsidian';
 import type {
 	App,
+	Editor,
 	MarkdownPostProcessorContext,
 	Plugin,
 	WorkspaceLeaf,
@@ -52,6 +53,7 @@ import {
 	parseAudioLinkTarget,
 	isAudioFile,
 	parseTimecodeSubpath,
+	wikiLinkTargetAtCursor,
 } from './timecodeLinks';
 import { probeMediaKind, type MediaKind } from './mediaProbe';
 import { MediaEmbedShell } from './MediaEmbedShell';
@@ -559,9 +561,12 @@ export class EnhancedPlayerRegistrar {
 	}
 
 	/**
-	 * Intercepts clicks on internal timecode links (`...#t=...`) that
-	 * point to an audio file with a live player, seeking that player
-	 * instead of letting Obsidian open the file.
+	 * Intercepts clicks on internal timecode links (`...#t=...`) that point to
+	 * an audio file, playing that file from the offset instead of letting
+	 * Obsidian open it. Works the same in Reading view and Live Preview: the
+	 * former exposes a rendered `a.internal-link`, the latter renders the link
+	 * through CodeMirror with no `data-href`, so its target is read from the
+	 * editor source under the click.
 	 * @param event - The captured click event
 	 */
 	private handleTimecodeClick(event: MouseEvent): void {
@@ -570,13 +575,7 @@ export class EnhancedPlayerRegistrar {
 		if (!this.getSettings().enhancedPlayerEnabled) {
 			return;
 		}
-		const target = event.target as HTMLElement | null;
-		const anchor = target?.closest<HTMLElement>('a.internal-link');
-		if (!anchor) {
-			return;
-		}
-		const href =
-			anchor.getAttribute('data-href') ?? anchor.getAttribute('href');
+		const href = this.resolveTimecodeHref(event);
 		if (!href || !href.includes('#t=')) {
 			return;
 		}
@@ -632,4 +631,71 @@ export class EnhancedPlayerRegistrar {
 			},
 		);
 	}
+
+	/**
+	 * Resolves the link target under a click, in either view mode. Reading view
+	 * (and the post-processor fallback) exposes a rendered `a.internal-link`
+	 * with the target in an attribute; Live Preview renders the link through
+	 * CodeMirror with no attribute, so its target is read from the editor
+	 * source at the clicked position.
+	 * @param event - The captured click event
+	 * @returns The link target (with any `#t=` subpath), or null when none
+	 */
+	private resolveTimecodeHref(event: MouseEvent): string | null {
+		const target = event.target as HTMLElement | null;
+		if (!target) {
+			return null;
+		}
+		const anchor = target.closest<HTMLElement>('a.internal-link');
+		if (anchor) {
+			return (
+				anchor.getAttribute('data-href') ?? anchor.getAttribute('href')
+			);
+		}
+		// Live Preview: only clicks inside the editor can resolve from source.
+		// Any position that is not inside a wikilink yields null and is left
+		// for Obsidian, so a broad match here is safe.
+		if (!target.closest('.cm-editor')) {
+			return null;
+		}
+		return this.resolveEditorLinkTarget(target);
+	}
+
+	/**
+	 * Reads the wikilink target at a clicked node from the active editor's
+	 * source. Uses CodeMirror's DOM-to-offset mapping (the same internal API
+	 * the context menu uses) to find the line and column, then extracts the
+	 * link there. Returns null when the click is not on a wikilink or the
+	 * editor internals are unavailable.
+	 * @param node - The clicked DOM node inside the editor
+	 * @returns The wikilink target, or null when none is under the click
+	 */
+	private resolveEditorLinkTarget(node: Node): string | null {
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (!view) {
+			return null;
+		}
+		const cm = (view.editor as EditorWithCodeMirror).cm;
+		if (!cm?.posAtDOM) {
+			return null;
+		}
+		try {
+			const cursor = view.editor.offsetToPos(cm.posAtDOM(node));
+			return wikiLinkTargetAtCursor(
+				view.editor.getLine(cursor.line),
+				cursor.ch,
+			);
+		} catch (error) {
+			console.error(
+				`${PLUGIN_LOG_PREFIX} Failed to resolve a timecode link in the editor.`,
+				error,
+			);
+			return null;
+		}
+	}
+}
+
+/** CodeMirror view attached to an Obsidian Editor (internal API). */
+interface EditorWithCodeMirror extends Editor {
+	cm?: { posAtDOM?(node: Node): number };
 }
