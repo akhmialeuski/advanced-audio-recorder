@@ -171,6 +171,11 @@ Once the setup above is done, each meeting is fast.
     [[team-standup.webm#t=0:03]] **Speaker 2** I finished the API integration yesterday.
     ```
 
+    Start the recording playing and then click any later timestamp to jump playback straight to that line, so you can skim the transcript and drop into the audio wherever something needs a second listen. While it plays, the **status-bar playback controls** appear at the bottom-right of the window, letting you pause, skip 10 seconds either way, stop, adjust volume, or drop a marker or chapter without scrolling back to the embed. The controls dismiss when you stop playback. See [Playback controls in the status bar](../audio-player.md#playback-controls-in-the-status-bar).
+
+    ![Status-bar playback controls shown while reviewing a meeting recording, with skip, play or pause, stop, volume, marker, chapter, and the elapsed over total time](../images/status-bar-playback-controls.png)
+    _Figure: reviewing the transcript, the status-bar controls drive playback while you read and click timestamps._
+
 8. **Read the summary and action items.** Because **LLM post-processing** is on with the **Summarize** task, the LLM-written summary is produced alongside the transcript. Read the key points and action items, then assign owners or copy them into your task tracker.
 
 ---

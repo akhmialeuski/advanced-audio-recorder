@@ -1,6 +1,6 @@
 # Enhanced audio player
 
-The **Enhanced audio player** replaces Obsidian's built-in audio embed with a richer player wherever an audio file is embedded (`![[recording.webm]]`). It adds a waveform seek bar, playback-speed control, skip buttons, volume and mute, a loop toggle, a time display, per-file markers and chapters, and a copy-timestamp-link action. The takeover is opt-in, applies in both Reading view and Live Preview, and falls back cleanly to Obsidian's native embed for video files, undecodable files, or when the feature is off.
+The **Enhanced audio player** replaces Obsidian's built-in audio embed with a richer player wherever an audio file is embedded (`![[recording.webm]]`). It adds a waveform seek bar, playback-speed control, skip buttons, volume and mute, a loop toggle, a time display, per-file markers and chapters, and a copy-timestamp-link action. While a recording plays, a companion strip of playback controls also appears in the status bar so you can drive it without scrolling back to the embed. The takeover is opt-in, applies in both Reading view and Live Preview, and falls back cleanly to Obsidian's native embed for video files, undecodable files, or when the feature is off.
 
 - [Enabling the player](#enabling-the-player)
 - [How the takeover works](#how-the-takeover-works)
@@ -12,6 +12,7 @@ The **Enhanced audio player** replaces Obsidian's built-in audio embed with a ri
     - [Loop](#loop)
     - [Time display](#time-display)
     - [Copy timestamp link](#copy-timestamp-link)
+- [Playback controls in the status bar](#playback-controls-in-the-status-bar)
 - [Markers and chapters](#markers-and-chapters)
 - [Timecode links](#timecode-links)
 - [Audio, video, and unsupported files](#audio-video-and-unsupported-files)
@@ -109,6 +110,27 @@ The **link** button copies a [timecode link](#timecode-links) to the **current p
 
 ---
 
+## Playback controls in the status bar
+
+Whenever an enhanced player is playing, a compact set of **playback controls appears in the status bar** at the bottom-right of the Obsidian window, so you can drive the recording without scrolling back up to the embed. This is the same status-bar slot that shows `Recording...` while you capture; during playback it switches to the transport strip shown below.
+
+![Status-bar playback controls with skip back, play or pause, stop, skip forward, mute, a volume slider, add marker, add chapter, and the elapsed over total time](images/status-bar-playback-controls.png)
+_Figure: the status-bar playback controls shown while a recording plays, with transport, volume, marker, chapter, and time._
+
+The strip carries:
+
+- **Skip back and skip forward** by 10 seconds, the same step as the embed's skip buttons.
+- **Play or pause** and **stop**. The button reflects the live state, and stop resets the position to the start.
+- **Mute** and a **volume slider** from 0 to 1. Dragging the slider above 0 while muted unmutes it, matching the embed.
+- **Add marker** and **add chapter** at the current position. These two appear only when **Markers and chapters** is enabled for the playing recording.
+- The **elapsed over total time** readout, formatted the same way as the embed.
+
+Playback speed is deliberately left out here to keep the strip compact; change the speed from the embed's speed button instead. Every button drives the **same playback** as the embedded control row, because both delegate to one shared audio element per recording, so an action in one surface is reflected in the other.
+
+The strip **appears when playback starts** and **disappears when you stop it** - with the stop button here, with the stop action in the embed, or when the recording reaches its end. Pausing keeps the strip visible, showing the play icon, so you can resume from the status bar; only stopping or reaching the end dismisses it. Recording and saving always take precedence: starting a recording while a player is paused shows the recording controls instead, and the playback strip returns once recording stops if the audio is still active.
+
+---
+
 ## Markers and chapters
 
 With **Markers and chapters** enabled, each recording can carry per-file **bookmarks** (jump points) and **chapters** (named segments). These are extra navigation aids stored alongside the recording; they do not change the audio.
@@ -191,6 +213,8 @@ A note with the recording embedded above a transcript line rendered this way loo
 Clicking the `[[meeting-notes.webm#t=1:30]]` link seeks the embedded player above it to `1:30` instead of opening the file.
 
 Timecode links are also how transcripts become clickable: when **Timestamps as player links** is on, each transcript timestamp is rendered as a `#t=` link that seeks the player to that moment - click a line to hear it. See [Transcription > output formatting](transcription.md#output-where-the-transcript-goes) for how those links are generated, and [Copy timestamp link](#copy-timestamp-link) above to create one by hand.
+
+This makes reviewing a transcript hands-off. Start the recording playing, from the embed or by clicking a first timestamp, then click any later timestamp to **jump playback straight to that line** instead of scrubbing the seek bar. Each timestamp carries an alias so it renders as the readable time while still pointing at the exact offset, for example a line written as `[[meeting-notes.webm#t=6:33|6:33]] **Speaker 3** ...that's a lot of progress.` shows a clickable `6:33` that seeks the player to 6 minutes 33 seconds. The [status-bar playback controls](#playback-controls-in-the-status-bar) follow every jump, so you can pause, skip, or drop a marker from the bottom of the window as you read, without returning to the embed.
 
 ---
 

@@ -4,7 +4,11 @@
  */
 
 import { setIcon } from 'obsidian';
-import { PLAYER_SKIP_SECONDS } from '../constants';
+import {
+	PLAYER_ICONS,
+	PLAYER_SKIP_SECONDS,
+	PLAYER_VOLUME_SLIDER_STEP,
+} from '../constants';
 import { MARKER_KIND } from '../markers/markerModel';
 import type { PlaybackControlsState } from '../player/playbackControls';
 import { RecordingStatus } from '../types';
@@ -14,6 +18,18 @@ import { formatByteSize } from '../utils/formatBytes';
 
 /** Latest command snapshot used by the persistent playback controls DOM. */
 const playbackStates = new WeakMap<HTMLElement, PlaybackControlsState>();
+
+/**
+ * Class names of the persistent playback controls. Each is referenced both
+ * where the element is built and where it is updated or queried, so a single
+ * source of truth keeps the two in sync (a typo becomes a compile error).
+ */
+const PLAYBACK_CONTROLS_CLASS = 'aar-playback-controls';
+const PLAYBACK_TOGGLE_CLASS = 'aar-playback-toggle';
+const PLAYBACK_MUTE_CLASS = 'aar-playback-mute';
+const PLAYBACK_VOLUME_CLASS = 'aar-playback-volume';
+const PLAYBACK_MARKER_CONTROLS_CLASS = 'aar-playback-marker-controls';
+const PLAYBACK_TIME_CLASS = 'aar-playback-time';
 
 /** Which live indicators to render in the recording state. */
 export interface RecordingLiveOptions {
@@ -236,7 +252,7 @@ export function renderPlaybackStatusBar(
 	statusBarItem.classList.add('is-playback');
 
 	let container = statusBarItem.querySelector<HTMLElement>(
-		'.aar-playback-controls',
+		`.${PLAYBACK_CONTROLS_CLASS}`,
 	);
 	if (!container) {
 		statusBarItem.empty();
@@ -252,26 +268,26 @@ export function renderPlaybackStatusBar(
  */
 function buildPlaybackControls(statusBarItem: HTMLElement): HTMLElement {
 	const container = statusBarItem.createDiv({
-		cls: 'aar-playback-controls',
+		cls: PLAYBACK_CONTROLS_CLASS,
 	});
 	const transport = container.createSpan({ cls: 'aar-playback-buttons' });
 	createControlButton(
 		transport,
-		'rewind',
+		PLAYER_ICONS.skipBack,
 		`Back ${String(PLAYER_SKIP_SECONDS)}s`,
 		() => {
 			playbackStates.get(statusBarItem)?.onSkip(-PLAYER_SKIP_SECONDS);
 		},
 	);
-	createControlButton(transport, 'pause', 'Pause playback', () => {
+	createControlButton(transport, PLAYER_ICONS.pause, 'Pause playback', () => {
 		playbackStates.get(statusBarItem)?.onTogglePlay();
-	}).addClass('aar-playback-toggle');
-	createControlButton(transport, 'square', 'Stop playback', () => {
+	}).addClass(PLAYBACK_TOGGLE_CLASS);
+	createControlButton(transport, PLAYER_ICONS.stop, 'Stop playback', () => {
 		playbackStates.get(statusBarItem)?.onStop();
 	});
 	createControlButton(
 		transport,
-		'fast-forward',
+		PLAYER_ICONS.skipForward,
 		`Forward ${String(PLAYER_SKIP_SECONDS)}s`,
 		() => {
 			playbackStates.get(statusBarItem)?.onSkip(PLAYER_SKIP_SECONDS);
@@ -281,16 +297,21 @@ function buildPlaybackControls(statusBarItem: HTMLElement): HTMLElement {
 	const audioControls = container.createSpan({
 		cls: 'aar-playback-audio-controls',
 	});
-	createControlButton(audioControls, 'volume-2', 'Mute / unmute', () => {
-		playbackStates.get(statusBarItem)?.onToggleMute();
-	}).addClass('aar-playback-mute');
+	createControlButton(
+		audioControls,
+		PLAYER_ICONS.volume,
+		'Mute / unmute',
+		() => {
+			playbackStates.get(statusBarItem)?.onToggleMute();
+		},
+	).addClass(PLAYBACK_MUTE_CLASS);
 	const volume = audioControls.createEl('input', {
-		cls: 'aar-playback-volume',
+		cls: PLAYBACK_VOLUME_CLASS,
 		attr: {
 			type: 'range',
 			min: '0',
 			max: '1',
-			step: '0.05',
+			step: String(PLAYER_VOLUME_SLIDER_STEP),
 			value: '1',
 			'aria-label': 'Volume',
 		},
@@ -300,11 +321,11 @@ function buildPlaybackControls(statusBarItem: HTMLElement): HTMLElement {
 	});
 
 	const markerControls = container.createSpan({
-		cls: 'aar-playback-marker-controls',
+		cls: PLAYBACK_MARKER_CONTROLS_CLASS,
 	});
 	createControlButton(
 		markerControls,
-		'bookmark-plus',
+		PLAYER_ICONS.addBookmark,
 		'Add marker at current position',
 		() => {
 			playbackStates
@@ -314,7 +335,7 @@ function buildPlaybackControls(statusBarItem: HTMLElement): HTMLElement {
 	);
 	createControlButton(
 		markerControls,
-		'list-plus',
+		PLAYER_ICONS.addChapter,
 		'Add chapter at current position',
 		() => {
 			playbackStates.get(statusBarItem)?.onAddMarker(MARKER_KIND.chapter);
@@ -322,8 +343,8 @@ function buildPlaybackControls(statusBarItem: HTMLElement): HTMLElement {
 	);
 
 	container.createSpan({
-		cls: 'aar-playback-time',
-		text: '0:00 / 0:00',
+		cls: PLAYBACK_TIME_CLASS,
+		text: `${formatTimecode(0, 0)} / ${formatTimecode(0, 0)}`,
 	});
 	return container;
 }
@@ -337,38 +358,44 @@ function updatePlaybackControls(
 	container: HTMLElement,
 	state: PlaybackControlsState,
 ): void {
-	const toggle = container.querySelector<HTMLElement>('.aar-playback-toggle');
+	const toggle = container.querySelector<HTMLElement>(
+		`.${PLAYBACK_TOGGLE_CLASS}`,
+	);
 	if (toggle) {
-		setIcon(toggle, state.paused ? 'play' : 'pause');
+		setIcon(toggle, state.paused ? PLAYER_ICONS.play : PLAYER_ICONS.pause);
 		toggle.setAttribute(
 			'aria-label',
 			state.paused ? 'Play audio' : 'Pause playback',
 		);
 	}
 
-	const mute = container.querySelector<HTMLElement>('.aar-playback-mute');
+	const mute = container.querySelector<HTMLElement>(
+		`.${PLAYBACK_MUTE_CLASS}`,
+	);
 	if (mute) {
-		setIcon(mute, state.muted ? 'volume-x' : 'volume-2');
+		setIcon(mute, state.muted ? PLAYER_ICONS.muted : PLAYER_ICONS.volume);
 		mute.toggleClass('is-active', state.muted);
 		mute.setAttribute('aria-pressed', String(state.muted));
 	}
 
 	const volume = container.querySelector<HTMLInputElement>(
-		'.aar-playback-volume',
+		`.${PLAYBACK_VOLUME_CLASS}`,
 	);
 	if (volume && activeDocument.activeElement !== volume) {
 		volume.value = String(state.volume);
 	}
 
 	const markerControls = container.querySelector<HTMLElement>(
-		'.aar-playback-marker-controls',
+		`.${PLAYBACK_MARKER_CONTROLS_CLASS}`,
 	);
 	if (markerControls) {
 		markerControls.hidden = !state.markersEnabled;
 	}
 
 	const total = state.duration > 0 ? state.duration : 0;
-	const time = container.querySelector<HTMLElement>('.aar-playback-time');
+	const time = container.querySelector<HTMLElement>(
+		`.${PLAYBACK_TIME_CLASS}`,
+	);
 	time?.setText(
 		`${formatTimecode(state.currentTime, total)} / ${formatTimecode(total, total)}`,
 	);

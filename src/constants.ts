@@ -155,6 +155,33 @@ export const PLAYER_WAVEFORM_HEIGHT = 48;
 /** Seconds skipped by the player's skip-forward/back buttons. */
 export const PLAYER_SKIP_SECONDS = 10;
 
+/**
+ * Step of the player volume sliders, shared by the embedded control row and
+ * the status-bar playback controls so both offer the same granularity.
+ */
+export const PLAYER_VOLUME_SLIDER_STEP = 0.05;
+
+/**
+ * Obsidian icon names for the shared player transport, used by both the
+ * embedded control row and the status-bar playback controls so the two
+ * surfaces stay visually consistent and no icon name is duplicated inline.
+ */
+export const PLAYER_ICONS = {
+	play: 'play',
+	pause: 'pause',
+	stop: 'square',
+	skipBack: 'rewind',
+	skipForward: 'fast-forward',
+	volume: 'volume-2',
+	muted: 'volume-x',
+	loop: 'repeat',
+	addBookmark: 'bookmark-plus',
+	addChapter: 'list-plus',
+	previousChapter: 'chevron-first',
+	nextChapter: 'chevron-last',
+	copyLink: 'link',
+} as const;
+
 /** Playback rate applied to new players. */
 export const PLAYER_PLAYBACK_RATE = 1;
 

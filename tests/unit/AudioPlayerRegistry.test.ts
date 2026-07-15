@@ -637,4 +637,62 @@ describe('AudioPlayerRegistry', () => {
 
 		expect(listener).toHaveBeenCalledWith(null);
 	});
+
+	it('resumes playback when the same key is re-acquired within the grace period', () => {
+		jest.useFakeTimers();
+		const harness = installMockAudio();
+		try {
+			const registry = new AudioPlayerRegistry();
+			const key = playbackKey('rec.wav', null);
+			registry.acquireAudio(key, 'app://rec');
+			void harness.audio.play();
+			expect(harness.play).toHaveBeenCalledTimes(1);
+
+			// The last holder releases while playback was running: the element
+			// is paused but kept alive for the grace window
+			registry.releaseAudio(key);
+			expect(harness.pause).toHaveBeenCalledTimes(1);
+
+			// Re-acquiring within grace (a view-mode switch) resumes the same
+			// element instead of starting a fresh one from the beginning
+			jest.advanceTimersByTime(100);
+			const reacquired = registry.acquireAudio(key, 'app://rec');
+			expect(reacquired.isNew).toBe(false);
+			expect(reacquired.audio).toBe(harness.audio);
+			expect(harness.play).toHaveBeenCalledTimes(2);
+		} finally {
+			harness.restore();
+			jest.useRealTimers();
+		}
+	});
+
+	it('ignores releasing an audio key that was never acquired', () => {
+		const registry = new AudioPlayerRegistry();
+		expect(() => {
+			registry.releaseAudio(playbackKey('missing.wav', null));
+		}).not.toThrow();
+	});
+
+	it('refreshes the status snapshot on volume, duration, and metadata changes', () => {
+		const harness = installMockAudio();
+		try {
+			const registry = new AudioPlayerRegistry();
+			const listener = jest.fn<void, [PlaybackControlsState | null]>();
+			const key = playbackKey('rec.wav', null);
+			registry.subscribePlayback(listener);
+			registry.acquireAudio(key, 'app://rec');
+			void harness.audio.play();
+			const before = listener.mock.calls.length;
+
+			// Each media event on the active key republishes a fresh snapshot,
+			// so the status bar reflects volume, duration, and metadata updates
+			harness.audio.dispatchEvent(new Event('volumechange'));
+			harness.audio.dispatchEvent(new Event('durationchange'));
+			harness.audio.dispatchEvent(new Event('loadedmetadata'));
+
+			expect(listener.mock.calls.length).toBe(before + 3);
+		} finally {
+			harness.restore();
+		}
+	});
 });
