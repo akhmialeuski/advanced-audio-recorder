@@ -466,12 +466,26 @@ input.aar-input-invalid {
     height: 100%;
 }
 
-/* Accent-colored copy of the waveform, revealed up to the playhead by
-   clipping from the right. Updating --aar-progress only repaints this layer
-   (no layout, no canvas reallocation), so the playing position moves cheaply
-   on every timeupdate instead of redrawing the whole waveform. */
+/* Accent-colored copy of the waveform, revealed up to the playhead by a
+   hard-edged mask: opaque up to --aar-progress, transparent past it. Updating
+   --aar-progress only repaints this layer (no layout, no canvas reallocation),
+   so the playing position moves cheaply on every timeupdate instead of
+   redrawing the whole waveform. A mask is used instead of clip-path because
+   clip-path is flagged as only partially supported, while masks are fully
+   supported on Obsidian's Chromium, for the same reveal effect. */
 .aar-player-canvas-played {
-    clip-path: inset(0 calc(100% - var(--aar-progress, 0%)) 0 0);
+    -webkit-mask-image: linear-gradient(
+        to right,
+        #000 0,
+        #000 var(--aar-progress, 0%),
+        transparent var(--aar-progress, 0%)
+    );
+    mask-image: linear-gradient(
+        to right,
+        #000 0,
+        #000 var(--aar-progress, 0%),
+        transparent var(--aar-progress, 0%)
+    );
 }
 
 /* Plain progress bar shown when the waveform is off. Framed with vertical
