@@ -63,7 +63,7 @@ import {
 import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
 import { SystemInfoModal } from '../diagnostics/SystemInfoModal';
 import { renderTranscriptionSection } from './sections/transcriptionSettingsSection';
-import { SETTING_DISABLED_CLASS } from './settingControls';
+import { addNumberInputTo, SETTING_DISABLED_CLASS } from './settingControls';
 import {
 	isAutoSplitSupported,
 	isChannelModeSelectionSupported,
@@ -634,24 +634,23 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			autoSplitSetting.settingEl.addClass(SETTING_DISABLED_CLASS);
 		}
 
-		new Setting(containerEl)
-			.setName('Part duration')
-			.setDesc(
-				'Length of each part in minutes. Also used as the default for manual splitting from the context menu.',
-			)
-			.addSlider((slider) =>
-				slider
-					.setLimits(
-						MIN_SPLIT_CHUNK_MINUTES,
-						MAX_SPLIT_CHUNK_MINUTES,
-						1,
-					)
-					.setValue(this.plugin.settings.splitChunkMinutes)
-					.onChange(async (value) => {
-						this.plugin.settings.splitChunkMinutes = value;
-						await this.plugin.saveSettings();
-					}),
-			);
+		addNumberInputTo(
+			new Setting(containerEl)
+				.setName('Part duration')
+				.setDesc(
+					'Length of each part in minutes. Also used as the default for manual splitting from the context menu.',
+				),
+			{
+				min: MIN_SPLIT_CHUNK_MINUTES,
+				max: MAX_SPLIT_CHUNK_MINUTES,
+				step: 1,
+				get: () => this.plugin.settings.splitChunkMinutes,
+				set: async (value) => {
+					this.plugin.settings.splitChunkMinutes = value;
+					await this.plugin.saveSettings();
+				},
+			},
+		);
 
 		new Setting(containerEl)
 			.setName('Part name suffix')
@@ -732,21 +731,24 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		}
 
 		if (this.plugin.settings.enableMultiTrack && multiTrackAvailable) {
-			new Setting(containerEl)
-				.setName('Maximum tracks')
-				.setDesc(
-					'Set the number of simultaneous tracks (1-8). Use only what you need to keep configuration simple.',
-				)
-				.addSlider((slider) =>
-					slider
-						.setLimits(1, 8, 1)
-						.setValue(this.plugin.settings.maxTracks)
-						.onChange(async (value) => {
-							this.plugin.settings.maxTracks = value;
-							await this.plugin.saveSettings();
-							this.rerender();
-						}),
-				);
+			addNumberInputTo(
+				new Setting(containerEl)
+					.setName('Maximum tracks')
+					.setDesc(
+						'Set the number of simultaneous tracks (1-8). Use only what you need to keep configuration simple.',
+					),
+				{
+					min: 1,
+					max: 8,
+					step: 1,
+					get: () => this.plugin.settings.maxTracks,
+					set: async (value) => {
+						this.plugin.settings.maxTracks = value;
+						await this.plugin.saveSettings();
+						this.rerender();
+					},
+				},
+			);
 
 			new Setting(containerEl)
 				.setName('Output mode')
@@ -1107,84 +1109,71 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			)
 			.setHeading();
 
-		new Setting(containerEl)
+		const highPassSetting = new Setting(containerEl)
 			.setName('High-pass filter')
-			.setDesc('Remove low-frequency rumble below the cutoff by default.')
-			.addSlider((slider) =>
-				slider
-					.setLimits(
-						MIN_CLEANUP_HIGHPASS_HZ,
-						MAX_CLEANUP_HIGHPASS_HZ,
-						CLEANUP_HIGHPASS_STEP_HZ,
-					)
-					.setValue(s.cleanupHighPassHz)
-					.onChange(async (v) => {
-						s.cleanupHighPassHz = v;
-						await this.plugin.saveSettings();
-					}),
-			)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(s.cleanupHighPassEnabled)
-					.onChange(async (v) => {
-						s.cleanupHighPassEnabled = v;
-						await this.plugin.saveSettings();
-					}),
+			.setDesc(
+				'Remove low-frequency rumble below the cutoff by default.',
 			);
+		addNumberInputTo(highPassSetting, {
+			min: MIN_CLEANUP_HIGHPASS_HZ,
+			max: MAX_CLEANUP_HIGHPASS_HZ,
+			step: CLEANUP_HIGHPASS_STEP_HZ,
+			get: () => s.cleanupHighPassHz,
+			set: async (v) => {
+				s.cleanupHighPassHz = v;
+				await this.plugin.saveSettings();
+			},
+		});
+		highPassSetting.addToggle((toggle) =>
+			toggle.setValue(s.cleanupHighPassEnabled).onChange(async (v) => {
+				s.cleanupHighPassEnabled = v;
+				await this.plugin.saveSettings();
+			}),
+		);
 
-		new Setting(containerEl)
+		const noiseGateSetting = new Setting(containerEl)
 			.setName('Noise gate')
 			.setDesc(
 				'Silence the signal below the threshold (dBFS) by default.',
-			)
-			.addSlider((slider) =>
-				slider
-					.setLimits(
-						MIN_CLEANUP_GATE_THRESHOLD_DB,
-						MAX_CLEANUP_GATE_THRESHOLD_DB,
-						CLEANUP_GATE_STEP_DB,
-					)
-					.setValue(s.cleanupNoiseGateThresholdDb)
-					.onChange(async (v) => {
-						s.cleanupNoiseGateThresholdDb = v;
-						await this.plugin.saveSettings();
-					}),
-			)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(s.cleanupNoiseGateEnabled)
-					.onChange(async (v) => {
-						s.cleanupNoiseGateEnabled = v;
-						await this.plugin.saveSettings();
-					}),
 			);
+		addNumberInputTo(noiseGateSetting, {
+			min: MIN_CLEANUP_GATE_THRESHOLD_DB,
+			max: MAX_CLEANUP_GATE_THRESHOLD_DB,
+			step: CLEANUP_GATE_STEP_DB,
+			get: () => s.cleanupNoiseGateThresholdDb,
+			set: async (v) => {
+				s.cleanupNoiseGateThresholdDb = v;
+				await this.plugin.saveSettings();
+			},
+		});
+		noiseGateSetting.addToggle((toggle) =>
+			toggle.setValue(s.cleanupNoiseGateEnabled).onChange(async (v) => {
+				s.cleanupNoiseGateEnabled = v;
+				await this.plugin.saveSettings();
+			}),
+		);
 
-		new Setting(containerEl)
+		const levelingSetting = new Setting(containerEl)
 			.setName('Loudness leveling')
 			.setDesc(
 				'Even out quiet and loud passages (compressor); makeup gain (dB).',
-			)
-			.addSlider((slider) =>
-				slider
-					.setLimits(
-						MIN_CLEANUP_LEVELING_MAKEUP_DB,
-						MAX_CLEANUP_LEVELING_MAKEUP_DB,
-						CLEANUP_LEVELING_STEP_DB,
-					)
-					.setValue(s.cleanupLevelingMakeupDb)
-					.onChange(async (v) => {
-						s.cleanupLevelingMakeupDb = v;
-						await this.plugin.saveSettings();
-					}),
-			)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(s.cleanupLevelingEnabled)
-					.onChange(async (v) => {
-						s.cleanupLevelingEnabled = v;
-						await this.plugin.saveSettings();
-					}),
 			);
+		addNumberInputTo(levelingSetting, {
+			min: MIN_CLEANUP_LEVELING_MAKEUP_DB,
+			max: MAX_CLEANUP_LEVELING_MAKEUP_DB,
+			step: CLEANUP_LEVELING_STEP_DB,
+			get: () => s.cleanupLevelingMakeupDb,
+			set: async (v) => {
+				s.cleanupLevelingMakeupDb = v;
+				await this.plugin.saveSettings();
+			},
+		});
+		levelingSetting.addToggle((toggle) =>
+			toggle.setValue(s.cleanupLevelingEnabled).onChange(async (v) => {
+				s.cleanupLevelingEnabled = v;
+				await this.plugin.saveSettings();
+			}),
+		);
 	}
 
 	/**

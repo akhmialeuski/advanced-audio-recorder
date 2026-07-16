@@ -8,8 +8,10 @@
  * @module tests/unit/settingControls.test
  */
 
+import { Setting } from 'obsidian';
 import {
 	addDropdown,
+	addNumberInputTo,
 	addText,
 	addToggle,
 	SETTING_DISABLED_CLASS,
@@ -143,5 +145,77 @@ describe('addDropdown blocked options', () => {
 
 		const options = capturedSettings[0].dropdownOptions ?? [];
 		expect(options.every((option) => !option.disabled)).toBe(true);
+	});
+});
+
+describe('addNumberInputTo', () => {
+	beforeEach(() => {
+		capturedSettings.length = 0;
+	});
+
+	function build(
+		overrides: Partial<{
+			min: number;
+			max: number;
+			step: number;
+			get: () => number;
+		}> = {},
+	): { input: HTMLInputElement; set: jest.Mock } {
+		const set = jest.fn();
+		const component = addNumberInputTo(
+			new Setting(document.createElement('div')),
+			{ min: 0, max: 100, step: 5, get: () => 20, set, ...overrides },
+		);
+		return { input: component.inputEl, set };
+	}
+
+	function commit(input: HTMLInputElement, value: string): void {
+		input.value = value;
+		input.dispatchEvent(new Event('change'));
+	}
+
+	it('renders a number input seeded with the current value and bounds', () => {
+		const { input } = build();
+
+		expect(input.type).toBe('number');
+		expect(input.value).toBe('20');
+		expect(input.min).toBe('0');
+		expect(input.max).toBe('100');
+		expect(input.step).toBe('5');
+	});
+
+	it('clamps a value above the max and writes it back', () => {
+		const { input, set } = build();
+
+		commit(input, '250');
+
+		expect(set).toHaveBeenLastCalledWith(100);
+		expect(input.value).toBe('100');
+	});
+
+	it('clamps a value below the min', () => {
+		const { input, set } = build({ min: 1 });
+
+		commit(input, '-5');
+
+		expect(set).toHaveBeenLastCalledWith(1);
+	});
+
+	it('snaps an off-step value to the nearest step', () => {
+		const { input, set } = build();
+
+		commit(input, '23');
+
+		expect(set).toHaveBeenLastCalledWith(25);
+	});
+
+	it('falls back to the current value when the field is empty or not a number', () => {
+		const { input, set } = build({ get: () => 20 });
+
+		commit(input, '');
+		expect(set).toHaveBeenLastCalledWith(20);
+
+		commit(input, 'abc');
+		expect(set).toHaveBeenLastCalledWith(20);
 	});
 });

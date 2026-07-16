@@ -816,3 +816,11 @@ input.aar-input-invalid {
     outline: 2px solid var(--background-modifier-border-focus);
     outline-offset: 2px;
 }
+
+/* Numeric setting input (manual entry plus the browser's native up/down
+   stepper), the replacement for the old slider control. Kept compact so the
+   value and its stepper sit neatly at the right of the setting row. */
+.aar-number-input {
+    width: 6em;
+    text-align: right;
+}

@@ -38,7 +38,7 @@ import {
 	addDropdown,
 	addHeading,
 	addModelPicker,
-	addSlider,
+	addNumberInput,
 	addText,
 	addTextArea,
 	addToggle,
@@ -126,7 +126,7 @@ export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
 	// Cloud engines only: a hung network request is bounded by this limit. Local
 	// whisper.cpp runs no HTTP request, so the timeout does not apply to it.
 	if (s.transcriptionProvider !== TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER) {
-		addSlider(ctx, {
+		addNumberInput(ctx, {
 			name: 'Request timeout',
 			desc: 'Minutes before a single transcription request (one part of a long recording) is aborted and reported as failed, so a stalled request cannot hang the run indefinitely.',
 			min: MIN_TRANSCRIPTION_TIMEOUT_MINUTES,
@@ -156,7 +156,7 @@ export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
 /** Whisper API engine fields (chunk size, base URL, key, model). */
 function renderWhisperApiSettings(ctx: SettingsSectionContext): void {
 	const s = ctx.settings;
-	addSlider(ctx, {
+	addNumberInput(ctx, {
 		name: 'Upload chunk size',
 		desc: 'Megabytes per WAV chunk when a recording is too large to upload whole (the API limit is 25 MB). Files under the limit are sent untouched.',
 		min: MIN_TRANSCRIBE_CHUNK_MB,
@@ -480,7 +480,7 @@ function renderLlmProviderFields(ctx: SettingsSectionContext): void {
 	});
 	renderLlmKeyField(ctx);
 	renderLlmModelPicker(ctx);
-	addSlider(ctx, {
+	addNumberInput(ctx, {
 		name: 'Max output tokens',
 		desc: 'Upper bound on the LLM response length.',
 		min: MIN_LLM_MAX_TOKENS,

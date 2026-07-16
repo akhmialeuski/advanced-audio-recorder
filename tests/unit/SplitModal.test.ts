@@ -49,9 +49,9 @@ function addObsidianDomMethods(el: HTMLElement): HTMLElement {
 
 /** Captured UI control handlers, filled while onOpen runs. */
 const mockCapturedControls = {
-	sliders: [] as ((value: number) => void)[],
+	numberInputs: [] as HTMLInputElement[],
 	texts: [] as ((value: string) => void)[],
-	textInputs: [] as { toggleClass: jest.Mock }[],
+	textInputs: [] as (HTMLInputElement & { toggleClass: jest.Mock })[],
 	toggles: [] as ((value: boolean) => void)[],
 	dropdowns: [] as ((value: string) => void)[],
 	buttons: [] as { click: () => void; setDisabled: jest.Mock }[],
@@ -85,7 +85,6 @@ jest.mock('obsidian', () => ({
 			setName: jest.fn(),
 			setDesc: jest.fn(),
 			setHeading: jest.fn(),
-			addSlider: jest.fn(),
 			addText: jest.fn(),
 			addToggle: jest.fn(),
 			addDropdown: jest.fn(),
@@ -94,35 +93,40 @@ jest.mock('obsidian', () => ({
 		chain.setName.mockReturnValue(chain);
 		chain.setDesc.mockReturnValue(chain);
 		chain.setHeading.mockReturnValue(chain);
-		chain.addSlider.mockImplementation((cb: (slider: unknown) => void) => {
-			const slider = {
-				setLimits: jest.fn(),
-				setValue: jest.fn(),
-				onChange: jest.fn((handler: (value: number) => void) => {
-					mockCapturedControls.sliders.push(handler);
-					return slider;
-				}),
-			};
-			slider.setLimits.mockReturnValue(slider);
-			slider.setValue.mockReturnValue(slider);
-			cb(slider);
-			return chain;
-		});
 		chain.addText.mockImplementation((cb: (text: unknown) => void) => {
+			// A real input so the number-input control can set type/min/max and
+			// attach a change listener; addClass and toggleClass are the only
+			// Obsidian helpers the production code calls on it.
+			const inputEl = document.createElement(
+				'input',
+			) as HTMLInputElement & {
+				addClass: (cls: string) => void;
+				toggleClass: jest.Mock;
+			};
+			inputEl.addClass = (cls: string): void =>
+				inputEl.classList.add(cls);
+			inputEl.toggleClass = jest.fn();
 			const text = {
-				// onChange validation feedback toggles a CSS class here
-				inputEl: { toggleClass: jest.fn() },
+				inputEl,
 				setPlaceholder: jest.fn(),
-				setValue: jest.fn(),
+				setValue: jest.fn((value: unknown) => {
+					inputEl.value = String(value);
+					return text;
+				}),
+				setDisabled: jest.fn(),
 				onChange: jest.fn((handler: (value: string) => void) => {
 					mockCapturedControls.texts.push(handler);
-					mockCapturedControls.textInputs.push(text.inputEl);
+					mockCapturedControls.textInputs.push(inputEl);
 					return text;
 				}),
 			};
 			text.setPlaceholder.mockReturnValue(text);
-			text.setValue.mockReturnValue(text);
 			cb(text);
+			// The number input registers its own change listener instead of
+			// calling onChange, so capture number-type inputs separately.
+			if (inputEl.type === 'number') {
+				mockCapturedControls.numberInputs.push(inputEl);
+			}
 			return chain;
 		});
 		chain.addToggle.mockImplementation((cb: (toggle: unknown) => void) => {
@@ -298,7 +302,7 @@ describe('SplitModal', () => {
 
 	beforeEach(() => {
 		jest.clearAllMocks();
-		mockCapturedControls.sliders.length = 0;
+		mockCapturedControls.numberInputs.length = 0;
 		mockCapturedControls.texts.length = 0;
 		mockCapturedControls.textInputs.length = 0;
 		mockCapturedControls.toggles.length = 0;
@@ -496,11 +500,13 @@ describe('SplitModal', () => {
 		const modal = new SplitModal(mockApp, mockFile, mockSettings);
 		modal.onOpen();
 
-		// WAV source: one slider, one suffix text, one delete toggle,
-		// one link-action dropdown (no bitrate dropdown)
+		// WAV source: one duration number input, one suffix text, one delete
+		// toggle, one link-action dropdown (no bitrate dropdown)
 		expect(mockCapturedControls.dropdowns).toHaveLength(1);
 
-		mockCapturedControls.sliders[0](5);
+		const durationInput = mockCapturedControls.numberInputs[0];
+		durationInput.value = '5';
+		durationInput.dispatchEvent(new Event('change'));
 		expect(internals(modal).partMinutes).toBe(5);
 
 		mockCapturedControls.texts[0]('seg');

@@ -20,6 +20,7 @@ import {
 	addDeleteSourceSetting,
 	addLinkActionSetting,
 } from './settingHelpers';
+import { addNumberInputTo } from '../settings/settingControls';
 import {
 	clampSplitMinutes,
 	sanitizePartSuffix,
@@ -68,21 +69,20 @@ export class SplitModal extends Modal {
 			cls: 'aar-split-source',
 		});
 
-		new Setting(contentEl)
-			.setName('Part duration')
-			.setDesc('Length of each part in minutes.')
-			.addSlider((slider) =>
-				slider
-					.setLimits(
-						MIN_SPLIT_CHUNK_MINUTES,
-						MAX_SPLIT_CHUNK_MINUTES,
-						1,
-					)
-					.setValue(this.partMinutes)
-					.onChange((value) => {
-						this.partMinutes = value;
-					}),
-			);
+		addNumberInputTo(
+			new Setting(contentEl)
+				.setName('Part duration')
+				.setDesc('Length of each part in minutes.'),
+			{
+				min: MIN_SPLIT_CHUNK_MINUTES,
+				max: MAX_SPLIT_CHUNK_MINUTES,
+				step: 1,
+				get: () => this.partMinutes,
+				set: (value) => {
+					this.partMinutes = value;
+				},
+			},
+		);
 
 		const suffixSetting = new Setting(contentEl).setName(
 			'Part name suffix',
