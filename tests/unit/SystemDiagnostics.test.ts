@@ -22,9 +22,7 @@ jest.mock('src/audio/AudioEncoder', () => ({
 	probeOfflineEncodingSupport: jest.fn(() => Promise.resolve(false)),
 }));
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 function makeSettings(
 	overrides: Partial<AudioRecorderSettings> = {},
@@ -60,9 +58,7 @@ function makeApp(apiVersion = '1.5.0') {
 	>[0];
 }
 
-// ---------------------------------------------------------------------------
 // collectPluginSettings
-// ---------------------------------------------------------------------------
 
 describe('SystemDiagnostics.collectPluginSettings', () => {
 	it('serializes all scalar settings fields', () => {
@@ -101,9 +97,7 @@ describe('SystemDiagnostics.collectPluginSettings', () => {
 	});
 });
 
-// ---------------------------------------------------------------------------
 // collectEnvironment
-// ---------------------------------------------------------------------------
 
 describe('SystemDiagnostics.collectEnvironment', () => {
 	const originalProcess = global.process;
@@ -161,9 +155,7 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 	});
 });
 
-// ---------------------------------------------------------------------------
 // collectAudioDevices
-// ---------------------------------------------------------------------------
 
 describe('SystemDiagnostics.collectAudioDevices', () => {
 	const mockEnumerate = jest.fn();
@@ -238,9 +230,7 @@ describe('SystemDiagnostics.collectAudioDevices', () => {
 	});
 });
 
-// ---------------------------------------------------------------------------
 // collectAudioCapabilities
-// ---------------------------------------------------------------------------
 
 describe('SystemDiagnostics.collectAudioCapabilities', () => {
 	// Spies are created per test: the global restoreMocks option
@@ -402,24 +392,24 @@ describe('SystemDiagnostics.collectActiveRecordingConfig', () => {
 		expect(result.validationResult.valid).toBe(false);
 	});
 
-	it('reports the real intermediate recorder for an unencodable format', async () => {
+	it('reports the effective fallback format for an unencodable stored format', async () => {
 		// ogg is not directly recordable in this mock and its encoder
-		// probe fails: the recorder resolution still shows what capture
-		// would use (webm), while validation reports the format as
-		// unrecordable - diagnostics mirror the recording pipeline.
+		// probe fails, so recording falls back to webm. The output and
+		// recorder resolution show that effective format (webm), while
+		// validation still reports the stored ogg as unrecordable, so the
+		// fallback's cause stays visible: diagnostics mirror the pipeline.
 		const settings = makeSettings({ recordingFormat: FORMAT_OGG });
 		const result =
 			await SystemDiagnostics.collectActiveRecordingConfig(settings);
 
+		expect(result.outputFormat).toBe(FORMAT_WEBM);
 		expect(result.recorderFormat).toBe(FORMAT_WEBM);
 		expect(result.mimeTypeSupported).toBe(true);
 		expect(result.validationResult.valid).toBe(false);
 	});
 });
 
-// ---------------------------------------------------------------------------
 // collect (integration)
-// ---------------------------------------------------------------------------
 
 describe('SystemDiagnostics.collect', () => {
 	const mockEnumerate = jest.fn();

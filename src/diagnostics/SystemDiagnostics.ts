@@ -16,6 +16,7 @@ import {
 	detectCodecSupport,
 	getExpectedCodec,
 	buildMimeType,
+	resolveEffectiveOutputFormat,
 	validateRecordingCapability,
 } from '../audio/AudioCapabilityDetector';
 import type { CodecSupportEntry } from '../audio/AudioCapabilityDetector';
@@ -78,7 +79,12 @@ export interface DiagnosticsAudioCapabilities {
  * Active recording configuration resolved from current settings.
  */
 export interface ActiveRecordingConfig {
-	/** User-selected output format (e.g. 'mp4', 'wav'). */
+	/**
+	 * The output format recording will actually use: the stored preference
+	 * when the device can record it, otherwise the platform fallback. The
+	 * stored preference itself stays under pluginSettings.recordingFormat,
+	 * so a difference between the two surfaces a fallback.
+	 */
 	outputFormat: string;
 	/** The format actually given to MediaRecorder (handles wav -> 'webm' intermediary). */
 	recorderFormat: string;
@@ -207,18 +213,35 @@ export class SystemDiagnostics {
 
 	/**
 	 * Resolves the active recording configuration for the given settings
-	 * through the same resolver the recording pipeline uses
-	 * (resolveRecorderFormat), so diagnostics can never drift from what
-	 * recording actually does.
+	 * through the same steps the recording pipeline uses
+	 * (resolveEffectiveOutputFormat, then resolveRecorderFormat), so the
+	 * reported output format, recorder, and MIME reflect what recording
+	 * would actually do - the platform fallback included when the stored
+	 * format cannot be recorded here. The validation result is of the
+	 * stored preference, so the cause of a fallback stays visible.
 	 * @param settings - Current plugin settings
 	 * @returns Active recording configuration
 	 */
 	static async collectActiveRecordingConfig(
 		settings: AudioRecorderSettings,
 	): Promise<ActiveRecordingConfig> {
-		const outputFormat = settings.recordingFormat.toLowerCase();
+		const requestedFormat = settings.recordingFormat.toLowerCase();
+		// Validate the stored preference so a fallback's cause (why the
+		// requested format is unrecordable here) stays in the report.
 		const validationResult =
-			await validateRecordingCapability(outputFormat);
+			await validateRecordingCapability(requestedFormat);
+
+		// Resolve the format recording will actually use: the request when
+		// recordable, else the platform fallback. Diagnostics then mirror
+		// the effective session instead of an unrecordable preference.
+		let outputFormat = requestedFormat;
+		try {
+			outputFormat = (await resolveEffectiveOutputFormat(requestedFormat))
+				.format;
+		} catch {
+			// Nothing is recordable here; keep the requested format so the
+			// unsupported branch below reports it honestly.
+		}
 
 		try {
 			const resolved = resolveRecorderFormat(outputFormat);
@@ -235,7 +258,7 @@ export class SystemDiagnostics {
 			};
 		} catch {
 			// No recorder format available: report the direct MIME type of
-			// the requested output as unsupported.
+			// the effective output as unsupported.
 			return {
 				outputFormat,
 				recorderFormat: outputFormat,

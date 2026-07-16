@@ -722,6 +722,15 @@ input.aar-input-invalid {
     pointer-events: none;
 }
 
+/* Note appended under the recording-format setting when the stored format
+   cannot be recorded here, naming the format recordings fall back to. Reads
+   as a warning so the blocked selection is not mistaken for the outcome. */
+.aar-format-fallback-note {
+    margin-top: var(--size-4-1);
+    font-size: 0.85em;
+    color: var(--text-warning);
+}
+
 /* "Learn more" link appended to a setting description. */
 .aar-doc-link {
     font-size: 0.85em;
