@@ -8,6 +8,10 @@ import { AudioStreamError } from '../errors';
 import { delay } from '../utils/TimeUtils';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import { normalizeChannelMode, type ChannelMode } from '../audio/downmix';
+import {
+	isDeviceSelectionSupported,
+	isMultiTrackCaptureSupported,
+} from '../platform/capabilities';
 
 export interface TrackAudioSource {
 	trackNumber: number;
@@ -208,6 +212,38 @@ export async function getAudioStream(
 }
 
 /**
+ * Whether the current session records multiple tracks: the setting must
+ * be on AND the platform must support multi-device capture. A stored
+ * "on" synced from a desktop config silently degrades to a single-track
+ * session where multi-track capture is unavailable (mobile).
+ * @param settings - Plugin settings
+ * @returns True when a multi-track session should be started
+ */
+export function isMultiTrackSessionEnabled(
+	settings: AudioRecorderSettings,
+): boolean {
+	return settings.enableMultiTrack && isMultiTrackCaptureSupported();
+}
+
+/**
+ * The device id capture should request for a single-track session, or
+ * undefined for the system default microphone. Stored device ids are
+ * ignored where device selection is unavailable (mobile): ids are
+ * randomized per install, so a configured id could never be satisfied
+ * with an `exact` constraint there.
+ * @param settings - Plugin settings
+ * @returns Device id to request, or undefined for the default device
+ */
+export function resolveCaptureDeviceId(
+	settings: AudioRecorderSettings,
+): string | undefined {
+	if (!isDeviceSelectionSupported()) {
+		return undefined;
+	}
+	return settings.audioDeviceId || undefined;
+}
+
+/**
  * Gets audio streams based on settings configuration.
  * @param settings - Plugin settings
  * @returns Promise resolving to array of MediaStreams
@@ -216,7 +252,7 @@ export async function getAudioStreams(
 	settings: AudioRecorderSettings,
 ): Promise<{ streams: MediaStream[]; trackOrder: TrackAudioSource[] }> {
 	const processing = getProcessingConstraints(settings);
-	if (settings.enableMultiTrack) {
+	if (isMultiTrackSessionEnabled(settings)) {
 		const trackOrder = getOrderedTrackSources(settings);
 		const streamPromises = trackOrder.map((source) =>
 			getAudioStream(source.deviceId, settings.sampleRate, processing),
@@ -243,7 +279,7 @@ export async function getAudioStreams(
 		return { streams: opened, trackOrder };
 	}
 	const stream = await getAudioStream(
-		settings.audioDeviceId,
+		resolveCaptureDeviceId(settings),
 		settings.sampleRate,
 		processing,
 	);
@@ -274,17 +310,24 @@ export function getOrderedTrackSources(
 }
 
 /**
- * Validates that selected audio devices are still available.
+ * Validates that selected audio devices are still available. A no-op
+ * where device selection is unavailable (mobile): stored ids are not
+ * used for capture there (see {@link resolveCaptureDeviceId}), so their
+ * absence - e.g. desktop ids arriving through a synced data.json - must
+ * not block recording on the default microphone.
  */
 export async function validateSelectedDevices(
 	settings: AudioRecorderSettings,
 ): Promise<void> {
+	if (!isDeviceSelectionSupported()) {
+		return;
+	}
 	const devices = await getAudioInputDevices();
 	const availableDeviceIds = new Set(
 		devices.map((device) => device.deviceId),
 	);
 
-	if (settings.enableMultiTrack) {
+	if (isMultiTrackSessionEnabled(settings)) {
 		const missingTracks = getOrderedTrackSources(settings)
 			.filter((source) => !availableDeviceIds.has(source.deviceId))
 			.map((source) => source.trackNumber);

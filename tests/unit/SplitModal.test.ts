@@ -61,6 +61,7 @@ const mockCapturedControls = {
 // onChange/onClick wiring inside onOpen can be exercised by tests
 jest.mock('obsidian', () => ({
 	App: jest.fn(),
+	Platform: { isMobile: false, isMobileApp: false },
 	Modal: class {
 		app: unknown;
 		contentEl: HTMLElement;
@@ -289,6 +290,10 @@ describe('SplitModal', () => {
 		});
 		Object.defineProperty(mockFile, 'parent', {
 			value: { path: 'Recordings' },
+			configurable: true,
+		});
+		Object.defineProperty(mockFile, 'stat', {
+			value: { size: 64, ctime: 0, mtime: 0 },
 			configurable: true,
 		});
 	}

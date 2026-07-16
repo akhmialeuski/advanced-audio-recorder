@@ -20,10 +20,13 @@ import type {
 	ConversionLinkAction,
 } from './settingsSchema';
 import {
-	detectSupportedFormats,
 	getSupportedSampleRates,
 	buildMimeType,
+	listFormatAvailability,
+	resolveEffectiveOutputFormat,
+	type FormatAvailabilityEntry,
 } from '../audio/AudioCapabilityDetector';
+import { AUDIO_FORMAT_IDS } from '../audio/formatRegistry';
 import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
 import {
 	CHANNEL_MODES,
@@ -59,6 +62,14 @@ import {
 import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
 import { SystemInfoModal } from '../diagnostics/SystemInfoModal';
 import { renderTranscriptionSection } from './sections/transcriptionSettingsSection';
+import { SETTING_DISABLED_CLASS } from './settingControls';
+import {
+	isAutoSplitSupported,
+	isChannelModeSelectionSupported,
+	isDeviceSelectionSupported,
+	isMultiTrackCaptureSupported,
+	isSampleRateSelectionSupported,
+} from '../platform/capabilities';
 
 /** Debounce delay for saving text settings, in milliseconds. */
 const TEXT_SETTING_SAVE_DEBOUNCE_MS = 500;
@@ -110,6 +121,8 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	private deviceSnapshot: AudioInputDeviceSnapshot = EMPTY_DEVICE_SNAPSHOT;
 	/** Latest device refresh generation; older async results are discarded. */
 	private deviceRefreshGeneration = 0;
+	/** Latest format-availability probe; older async results are discarded. */
+	private formatAvailabilityGeneration = 0;
 	/** Prevents a refresh from updating controls after the tab is hidden. */
 	private isDisplayed = false;
 	/**
@@ -139,13 +152,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	constructor(app: App, plugin: AudioRecorderPluginInterface) {
 		super(app, plugin);
 		this.plugin = plugin;
-	}
-
-	/**
-	 * Gets supported audio formats using runtime detection.
-	 */
-	getSupportedFormats(): string[] {
-		return detectSupportedFormats();
 	}
 
 	private getCompressionDescription(format: string): string {
@@ -209,12 +215,19 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		// Audio input
 		new Setting(containerEl).setName('Audio input').setHeading();
 
-		new Setting(containerEl)
+		const deviceSelectable = isDeviceSelectionSupported();
+		const deviceSetting = new Setting(containerEl)
 			.setName('Input device')
 			.setDesc(
-				'Select the default input device for single-track recordings. You can also change it from the command palette.',
+				deviceSelectable
+					? 'Select the default input device for single-track recordings. You can also change it from the command palette.'
+					: 'Not selectable on this device; recording uses the system default microphone.',
 			)
 			.addDropdown((dropdown) => {
+				if (!deviceSelectable) {
+					dropdown.setDisabled(true);
+					return;
+				}
 				this.deviceDropdowns.push({
 					dropdown,
 					getSelectedDeviceId: () =>
@@ -227,21 +240,36 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					this.runChannelDropdownUpdaters();
 				});
 			});
+		if (!deviceSelectable) {
+			deviceSetting.settingEl.addClass(SETTING_DISABLED_CLASS);
+		}
 
-		new Setting(containerEl)
+		const sampleRateSelectable = isSampleRateSelectionSupported();
+		const sampleRateSetting = new Setting(containerEl)
 			.setName('Sample rate')
-			.setDesc('Audio sample rate in hertz.')
+			.setDesc(
+				sampleRateSelectable
+					? 'Audio sample rate in hertz.'
+					: 'Not selectable on this device; the system capture rate is used.',
+			)
 			.addDropdown((dropdown) => {
 				const sampleRates = getSupportedSampleRates();
 				sampleRates.forEach((rate) => {
 					dropdown.addOption(String(rate), String(rate));
 				});
 				dropdown.setValue(String(this.plugin.settings.sampleRate));
+				if (!sampleRateSelectable) {
+					dropdown.setDisabled(true);
+					return;
+				}
 				dropdown.onChange(async (value) => {
 					this.plugin.settings.sampleRate = parseInt(value, 10);
 					await this.plugin.saveSettings();
 				});
 			});
+		if (!sampleRateSelectable) {
+			sampleRateSetting.settingEl.addClass(SETTING_DISABLED_CLASS);
+		}
 
 		new Setting(containerEl)
 			.setName('Recording channels')
@@ -265,7 +293,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		// Output format
 		new Setting(containerEl).setName('Output format').setHeading();
 
-		const supportedFormats = this.getSupportedFormats();
 		const selectedBitrateKbps = Math.round(
 			this.plugin.settings.bitrate / 1000,
 		);
@@ -275,27 +302,33 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			);
 		};
 		let summaryEl: HTMLElement | null = null;
-		new Setting(containerEl)
+		const formatSetting = new Setting(containerEl)
 			.setName('Recording format')
 			.setDesc(
-				'Select the final file format. The selected format is applied when files are saved.',
-			)
-			.addDropdown((dropdown) => {
-				supportedFormats.forEach((format) => {
-					const label = this.isMediaRecorderFormat(format)
-						? format.toUpperCase()
-						: `${format.toUpperCase()} (offline)`;
-					dropdown.addOption(format, label);
-				});
-				dropdown.setValue(this.plugin.settings.recordingFormat);
-				dropdown.onChange(async (value) => {
-					this.plugin.settings.recordingFormat = value;
-					await this.plugin.saveSettings();
-					if (summaryEl) {
-						updateOutputSummary(summaryEl);
-					}
-				});
+				'Select the final file format. The selected format is applied when files are saved. Formats this device cannot record are shown blocked.',
+			);
+		formatSetting.addDropdown((dropdown) => {
+			// Render the full registry immediately; the async encoder
+			// probe then blocks the options this device cannot record.
+			for (const format of AUDIO_FORMAT_IDS) {
+				dropdown.addOption(format, format.toUpperCase());
+			}
+			// A stored format outside the registry (hand-edited or from a
+			// future version) still needs an option so setValue holds it.
+			const stored = this.plugin.settings.recordingFormat;
+			if (!AUDIO_FORMAT_IDS.some((format) => format === stored)) {
+				dropdown.addOption(stored, stored.toUpperCase());
+			}
+			dropdown.setValue(stored);
+			dropdown.onChange(async (value) => {
+				this.plugin.settings.recordingFormat = value;
+				await this.plugin.saveSettings();
+				if (summaryEl) {
+					updateOutputSummary(summaryEl);
+				}
 			});
+			void this.applyFormatAvailability(dropdown, formatSetting.descEl);
+		});
 
 		new Setting(containerEl)
 			.setName('Audio bitrate')
@@ -440,19 +473,33 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		// Audio splitting
 		new Setting(containerEl).setName('Audio splitting').setHeading();
 
-		new Setting(containerEl)
+		const autoSplitAvailable = isAutoSplitSupported();
+		const autoSplitSetting = new Setting(containerEl)
 			.setName('Split recordings automatically')
 			.setDesc(
-				'Save the recording as separate part files of fixed duration instead of one long file. Desktop only; not applied to merged multi-track recordings.',
+				autoSplitAvailable
+					? 'Save the recording as separate part files of fixed duration instead of one long file. Not applied to merged multi-track recordings.'
+					: 'Not available on this device. Recordings are saved as one file; manual splitting from the context menu still works.',
 			)
-			.addToggle((toggle) =>
+			.addToggle((toggle) => {
+				// Reflect the effective state: a stored "on" synced from
+				// another platform reads as off where auto-split cannot run.
 				toggle
-					.setValue(this.plugin.settings.autoSplitEnabled)
+					.setValue(
+						this.plugin.settings.autoSplitEnabled &&
+							autoSplitAvailable,
+					)
 					.onChange(async (value) => {
 						this.plugin.settings.autoSplitEnabled = value;
 						await this.plugin.saveSettings();
-					}),
-			);
+					});
+				if (!autoSplitAvailable) {
+					toggle.setDisabled(true);
+				}
+			});
+		if (!autoSplitAvailable) {
+			autoSplitSetting.settingEl.addClass(SETTING_DISABLED_CLASS);
+		}
 
 		new Setting(containerEl)
 			.setName('Part duration')
@@ -522,22 +569,37 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		// Multi-track recording
 		new Setting(containerEl).setName('Multi-track recording').setHeading();
 
-		new Setting(containerEl)
+		const multiTrackAvailable = isMultiTrackCaptureSupported();
+		const multiTrackSetting = new Setting(containerEl)
 			.setName('Enable multi-track recording')
 			.setDesc(
-				'Enable recording from multiple input devices at the same time.',
+				multiTrackAvailable
+					? 'Enable recording from multiple input devices at the same time.'
+					: 'Not available on this device. Recording captures a single track from the default microphone.',
 			)
-			.addToggle((toggle) =>
+			.addToggle((toggle) => {
+				// Reflect the effective state: a stored "on" synced from
+				// another platform reads as off where multi-track capture
+				// is unavailable, and the toggle cannot be switched on.
 				toggle
-					.setValue(this.plugin.settings.enableMultiTrack)
+					.setValue(
+						this.plugin.settings.enableMultiTrack &&
+							multiTrackAvailable,
+					)
 					.onChange(async (value) => {
 						this.plugin.settings.enableMultiTrack = value;
 						await this.plugin.saveSettings();
 						this.display();
-					}),
-			);
+					});
+				if (!multiTrackAvailable) {
+					toggle.setDisabled(true);
+				}
+			});
+		if (!multiTrackAvailable) {
+			multiTrackSetting.settingEl.addClass(SETTING_DISABLED_CLASS);
+		}
 
-		if (this.plugin.settings.enableMultiTrack) {
+		if (this.plugin.settings.enableMultiTrack && multiTrackAvailable) {
 			new Setting(containerEl)
 				.setName('Maximum tracks')
 				.setDesc(
@@ -998,6 +1060,78 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	}
 
 	/**
+	 * Applies the probed per-format recordability to the format
+	 * dropdown: unavailable formats are blocked (visible but
+	 * unselectable) and every option gets its accurate label. When the
+	 * STORED format itself is blocked (a synced or stale preference),
+	 * a note under the setting names the format recordings will fall
+	 * back to, so the disabled selection never reads as "this is what
+	 * you will get". Async because encoder support is probed for real;
+	 * guarded by the display generation so a probe that resolves after
+	 * the tab re-rendered or closed never touches stale controls.
+	 * @param dropdown - The recording-format dropdown to annotate
+	 * @param descEl - The setting's description element for the note
+	 */
+	private async applyFormatAvailability(
+		dropdown: DropdownComponent,
+		descEl: HTMLElement,
+	): Promise<void> {
+		const generation = ++this.formatAvailabilityGeneration;
+		let entries: FormatAvailabilityEntry[];
+		try {
+			entries = await listFormatAvailability();
+		} catch {
+			// Probing failed entirely: leave the options selectable, the
+			// recording-start validation still guards the session
+			return;
+		}
+		if (
+			!this.isDisplayed ||
+			generation !== this.formatAvailabilityGeneration
+		) {
+			return;
+		}
+		for (const option of Array.from(dropdown.selectEl.options)) {
+			const entry = entries.find(
+				(candidate) => candidate.format === option.value,
+			);
+			if (!entry) {
+				continue;
+			}
+			option.disabled = !entry.available;
+			option.textContent = !entry.available
+				? `${entry.format.toUpperCase()} (not supported on this device)`
+				: entry.direct
+					? entry.format.toUpperCase()
+					: `${entry.format.toUpperCase()} (offline)`;
+		}
+
+		const stored = this.plugin.settings.recordingFormat;
+		const storedEntry = entries.find((entry) => entry.format === stored);
+		descEl.querySelector('.aar-format-fallback-note')?.remove();
+		if (!storedEntry || storedEntry.available) {
+			return;
+		}
+		// Created through the setting's own document so the note lands in
+		// the right window when settings render in a popout.
+		const note = descEl.ownerDocument.createElement('div');
+		note.className = 'aar-format-fallback-note';
+		try {
+			const effective = await resolveEffectiveOutputFormat(stored);
+			note.textContent = `This device cannot record ${stored.toUpperCase()}; recordings are saved as ${effective.format.toUpperCase()} instead.`;
+		} catch {
+			note.textContent = `This device cannot record ${stored.toUpperCase()}. Select a different format.`;
+		}
+		if (
+			!this.isDisplayed ||
+			generation !== this.formatAvailabilityGeneration
+		) {
+			return;
+		}
+		descEl.appendChild(note);
+	}
+
+	/**
 	 * Runs every registered channel-dropdown re-evaluator.
 	 */
 	private runChannelDropdownUpdaters(): void {
@@ -1043,7 +1177,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		});
 		const update = (): void => {
 			const deviceId = binding.getDeviceId();
-			let available = binding.hasDevice();
+			// Where the platform offers no channel layout choice (mobile),
+			// every channel dropdown stays blocked regardless of devices.
+			let available =
+				isChannelModeSelectionSupported() && binding.hasDevice();
 			if (available && deviceId) {
 				const { enumerationSucceeded, channelLimits } =
 					this.deviceSnapshot;
@@ -1218,8 +1355,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 */
 	override hide(): void {
 		this.isDisplayed = false;
-		// Invalidate every in-flight enumeration before detaching controls.
+		// Invalidate every in-flight enumeration and probe before
+		// detaching controls.
 		this.deviceRefreshGeneration++;
+		this.formatAvailabilityGeneration++;
 		this.deviceDropdowns = [];
 		this.channelDropdownUpdaters = [];
 		this.saveTextSettingDebounced.run();

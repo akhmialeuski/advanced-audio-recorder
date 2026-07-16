@@ -8,7 +8,7 @@ The plugin also includes [built-in transcription](docs/transcription.md). You ca
 
 All audio and generated files stay in your vault. API keys are stored locally and are never sent anywhere except to the transcription provider you choose.
 
-Desktop only. Requires Obsidian 1.6.6 or newer. MIT licensed.
+Works on desktop and mobile. Some features are desktop-only (multi-track recording, automatic splitting, local whisper.cpp transcription, input device selection); see [Recording on mobile](docs/recording.md#recording-on-mobile) for the platform differences. Requires Obsidian 1.6.6 or newer. MIT licensed.
 
 The full documentation lives in the [docs](docs/index.md) folder, and the same link is built into the plugin's settings tab.
 

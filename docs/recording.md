@@ -11,6 +11,7 @@ Recording is the core of Advanced Audio Recorder: start a capture from the ribbo
 - [Stopping and saving](#stopping-and-saving)
 - [Insert at original position](#insert-at-original-position)
 - [Crash recovery](#crash-recovery)
+- [Recording on mobile](#recording-on-mobile)
 - [Mobile recording banner](#mobile-recording-banner)
 - [Automatic splitting](#automatic-splitting)
 - [Related settings](#related-settings)
@@ -212,11 +213,23 @@ Notes on what can and cannot be recovered:
 
 ---
 
+## Recording on mobile
+
+Recording works in the Obsidian mobile app, with platform limits the plugin applies automatically (blocked options are shown greyed out in settings, never hidden):
+
+- **Single track from the default microphone.** Phones expose one microphone to the app, so multi-track recording and input device selection are desktop-only; a multi-track configuration synced from desktop silently records a normal single-track session on the phone.
+- **Formats follow the device.** The format dropdown blocks formats the device genuinely cannot produce (recording support and encoder support are both probed at runtime). On iOS the system records AAC (`mp4`, and `m4a` - the same container under its audio extension) natively; other formats are produced by converting that recording when it is saved, where a working encoder exists. On Android, Opus (`webm`/`ogg`) is recorded natively as on desktop. If the stored format cannot be recorded on this device (for example a config synced from desktop), recording does not fail: it falls back to the platform's best recordable format and says so.
+- **Long recordings are saved as parts.** When a mobile recording exceeds the in-memory buffer limit (about 50 MB), the recorder is rotated: the finished chunk is saved as a complete, playable part file (`-part1`, `-part2`, ...) and capture continues seamlessly into the next part.
+- **Time-based auto-split and crash recovery are desktop-only.** On mobile, audio still buffered in memory at the moment the OS kills the app cannot be recovered; already-saved parts are unaffected.
+- **Local whisper.cpp transcription is desktop-only** (it runs an external program). The cloud engines - Whisper API, Deepgram, Gemini - work on mobile; if a synced config selects the local engine, automatic transcription after recording is skipped with a notice.
+- **The OS pauses background apps.** Locking the screen, switching apps, or an incoming call can suspend Obsidian and interrupt the capture. This is a mobile OS limitation, not a plugin setting: keep the app in the foreground and the screen on for long recordings.
+- Device-bound settings (input device, channel layouts) are stored **per platform**, so a vault synced between desktop and phone keeps each device's configuration intact.
+
 ## Mobile recording banner
 
-Advanced Audio Recorder is a **desktop-only** plugin. The **Mobile recording banner** option (under **Settings > Audio processing & feedback**, default On) governs a floating on-screen banner intended for mobile, where there is no ribbon icon to show that a recording is in progress. When shown, the banner displays a recording indicator, the elapsed time, and a stop button so the session is always visible and stoppable.
+The **Mobile recording banner** option (under **Settings > Audio processing & feedback**, default On) governs a floating on-screen banner shown on mobile, where there is no ribbon icon to show that a recording is in progress. When shown, the banner displays a recording indicator, the elapsed time, and a stop button so the session is always visible and stoppable.
 
-On the desktop app the ribbon indicator and the status bar already make the recording obvious, so the banner is rarely needed there; the toggle remains available if you prefer the extra cue.
+On the desktop app the ribbon indicator and the status bar already make the recording obvious, so the banner is not shown there.
 
 ---
 

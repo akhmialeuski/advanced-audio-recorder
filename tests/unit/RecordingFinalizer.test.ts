@@ -43,9 +43,6 @@ jest.mock('src/audio/AudioFormatConverter', () => ({
 		(format: string, recorderFormat: string) =>
 			format !== 'wav' && format !== recorderFormat,
 	),
-	buildOutputBlob: jest
-		.fn()
-		.mockResolvedValue(new Blob(['output'], { type: 'audio/webm' })),
 }));
 
 jest.mock('src/recording/NoteInserter', () => ({

@@ -11,10 +11,10 @@ import type { App, TFile } from 'obsidian';
 import {
 	PLUGIN_LOG_PREFIX,
 	WAVEFORM_CACHE_BUCKETS,
-	WAVEFORM_MAX_DECODE_BYTES,
 	PLAYER_WAVEFORM_REDRAW_RETRIES,
 	PLAYER_WAVEFORM_PREFETCH_MARGIN_PX,
 } from '../constants';
+import { getMaxDecodeBytes } from '../platform/capabilities';
 import {
 	computeWaveformPeaksProgressive,
 	waveformCacheKey,
@@ -52,14 +52,15 @@ export class WaveformController {
 
 	/**
 	 * Whether the waveform should be drawn for this file. It is shown for files
-	 * up to a high safety ceiling; a pathological multi-gigabyte file falls back
-	 * to the plain (still seekable) bar instead, because decoding it for a
-	 * cosmetic waveform would risk an out-of-memory spike. Realistic recordings
-	 * stay well under the ceiling and are still drawn progressively.
+	 * up to a platform-dependent safety ceiling (far lower on mobile, whose
+	 * WebView gets a small memory budget); an oversized file falls back to the
+	 * plain (still seekable) bar instead, because decoding it for a cosmetic
+	 * waveform would risk an out-of-memory spike. Realistic recordings stay
+	 * well under the ceiling and are still drawn progressively.
 	 * @param showWaveform - The waveform window toggle from settings
 	 */
 	shouldRender(showWaveform: boolean): boolean {
-		return showWaveform && this.file.stat.size <= WAVEFORM_MAX_DECODE_BYTES;
+		return showWaveform && this.file.stat.size <= getMaxDecodeBytes();
 	}
 
 	/**

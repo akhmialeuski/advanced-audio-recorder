@@ -15,7 +15,6 @@ import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { concatArrayBuffers } from '../utils/buffers';
 import { resolveUniquePath } from '../audio/RecordingFileManager';
-import { buildOutputBlob } from '../audio/AudioFormatConverter';
 import { buildMimeType } from '../audio/AudioCapabilityDetector';
 import { SessionJournal } from './SessionJournal';
 
@@ -122,10 +121,16 @@ export class TrackWriteQueue {
 	}
 
 	/**
-	 * Flushes buffered MediaRecorder chunks of a target to a segment
-	 * file. Desktop writes the raw chunks as a `.tmp` segment; mobile
-	 * converts them through the buildOutputBlob pipeline into a final
-	 * file in the live output format (matching pre-split behavior).
+	 * Flushes buffered MediaRecorder chunks of a target to a raw `.tmp`
+	 * segment file in the recorder container. Segments are byte
+	 * fragments of one continuous recorder stream; the finalization
+	 * paths concatenate them back into a whole container before any
+	 * conversion, so a flush is valid at any point of the stream. On
+	 * platforms whose flushes must produce standalone files instead
+	 * (mobile, no recovery journal), the rotation controller stops the
+	 * recorders before calling this, so the flushed segment is a
+	 * complete container that finalization immediately converts and
+	 * removes. Journaling is a no-op where no journal session is active.
 	 * @param target - Recording target to flush
 	 */
 	async flushChunkBuffer(target: RecordingTarget): Promise<void> {
@@ -136,49 +141,25 @@ export class TrackWriteQueue {
 		// The index is committed only after a successful write so a
 		// failed flush retries under the same segment number
 		const segmentIndex = target.segmentIndex + 1;
-
-		if (session.isMobile) {
-			// Mobile: encode/convert chunks via buildOutputBlob pipeline
-			const segmentName = `${target.fileBaseName}-part${String(
-				segmentIndex,
-			)}.${this.settings.recordingFormat}`;
-			const segmentPath = await resolveUniquePath(
-				segmentName,
-				this.app,
-				this.settings,
-			);
-			const outputBlob = await buildOutputBlob(
-				target.bufferedChunks,
-				buildMimeType(session.recorderFormat),
-				this.settings.recordingFormat,
-			);
-			await this.app.vault.createBinary(
-				segmentPath,
-				await outputBlob.arrayBuffer(),
-			);
-			target.segmentPaths.push(segmentPath);
-		} else {
-			// Desktop: write raw chunks as a single segment file
-			const segmentName = `${target.fileBaseName}-part${String(segmentIndex)}.${session.recorderFormat}.tmp`;
-			const segmentPath = await resolveUniquePath(
-				segmentName,
-				this.app,
-				this.settings,
-			);
-			const combined = new Blob(target.bufferedChunks, {
-				type: buildMimeType(session.recorderFormat),
-			});
-			// Temporary segment: a plain adapter write skips
-			// createBinary's synchronous vault-index update and event
-			// dispatch on the hot recording path (the watcher
-			// reconciles the file later); final files use createBinary
-			await this.app.vault.adapter.writeBinary(
-				segmentPath,
-				await combined.arrayBuffer(),
-			);
-			target.segmentPaths.push(segmentPath);
-			this.journal.addSegment(target.fileBaseName, segmentPath);
-		}
+		const segmentName = `${target.fileBaseName}-part${String(segmentIndex)}.${session.recorderFormat}.tmp`;
+		const segmentPath = await resolveUniquePath(
+			segmentName,
+			this.app,
+			this.settings,
+		);
+		const combined = new Blob(target.bufferedChunks, {
+			type: buildMimeType(session.recorderFormat),
+		});
+		// Temporary segment: a plain adapter write skips
+		// createBinary's synchronous vault-index update and event
+		// dispatch on the hot recording path (the watcher
+		// reconciles the file later); final files use createBinary
+		await this.app.vault.adapter.writeBinary(
+			segmentPath,
+			await combined.arrayBuffer(),
+		);
+		target.segmentPaths.push(segmentPath);
+		this.journal.addSegment(target.fileBaseName, segmentPath);
 
 		target.segmentIndex = segmentIndex;
 		target.bufferedChunks = [];

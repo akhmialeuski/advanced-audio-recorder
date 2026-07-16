@@ -9,6 +9,7 @@
  */
 
 import {
+	addDropdown,
 	addText,
 	addToggle,
 	SETTING_DISABLED_CLASS,
@@ -103,5 +104,44 @@ describe('addText disabled rendering', () => {
 		);
 		expect(setting.text?.disabled).toBe(false);
 		expect(setting.text?.value).toBe('**{speaker}**');
+	});
+});
+
+describe('addDropdown blocked options', () => {
+	beforeEach(() => {
+		capturedSettings.length = 0;
+	});
+
+	it('renders options marked disabled as blocked, the rest selectable', () => {
+		addDropdown(makeCtx(), {
+			name: 'Engine',
+			options: [
+				{ value: 'cloud', label: 'Cloud' },
+				{ value: 'local', label: 'Local', disabled: true },
+			],
+			get: () => 'cloud',
+			set: () => undefined,
+		});
+
+		const options = capturedSettings[0].dropdownOptions ?? [];
+		expect(options).toEqual([
+			{ value: 'cloud', disabled: false },
+			{ value: 'local', disabled: true },
+		]);
+	});
+
+	it('leaves options without the flag selectable', () => {
+		addDropdown(makeCtx(), {
+			name: 'Engine',
+			options: [
+				{ value: 'a', label: 'A' },
+				{ value: 'b', label: 'B' },
+			],
+			get: () => 'a',
+			set: () => undefined,
+		});
+
+		const options = capturedSettings[0].dropdownOptions ?? [];
+		expect(options.every((option) => !option.disabled)).toBe(true);
 	});
 });

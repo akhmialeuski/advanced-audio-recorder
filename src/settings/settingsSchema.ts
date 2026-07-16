@@ -47,6 +47,7 @@ import type {
 import type { LlmTask } from '../transcription/llmPostProcess';
 import { CHANNEL_MODE_SOURCE } from '../audio/downmix';
 import type { ChannelMode } from '../audio/downmix';
+import type { PlatformKind } from '../platform/platformKind';
 
 export type { OutputMode } from '../types';
 
@@ -90,6 +91,73 @@ export type TrackAudioSourcesRecord = Record<
 >;
 
 /**
+ * Settings bound to the hardware of one platform. Device ids are
+ * randomized per install and never match across devices, and the channel
+ * layout describes the selected device's own inputs - syncing them
+ * between a desktop and a phone through data.json would break recording
+ * on both. Each platform therefore keeps its own branch under
+ * {@link AudioRecorderSettings.perPlatform}; the flat fields of the same
+ * name on {@link AudioRecorderSettings} hold the *active* platform's
+ * values at runtime and are written back to that platform's branch when
+ * settings are persisted.
+ */
+export interface PlatformScopedSettings {
+	/** Selected audio device ID */
+	audioDeviceId: string;
+	/** Channel layout for single-track recordings */
+	recordingChannels: ChannelMode;
+	/** Audio source mapping for each track */
+	trackAudioSources: TrackAudioSources;
+}
+
+/** One platform-scoped settings branch per platform. */
+export type PlatformScopedSettingsMap = Record<
+	PlatformKind,
+	PlatformScopedSettings
+>;
+
+/**
+ * A platform-scoped branch as accepted from storage: every field
+ * optional and possibly hand-edited; the deserializer normalizes it.
+ */
+export interface PlatformScopedSettingsInput {
+	audioDeviceId?: unknown;
+	recordingChannels?: unknown;
+	trackAudioSources?: TrackAudioSources | TrackAudioSourcesRecord;
+}
+
+/** A platform-scoped branch as persisted to disk. */
+export interface SerializedPlatformScopedSettings {
+	audioDeviceId: string;
+	recordingChannels: ChannelMode;
+	trackAudioSources: Record<number, SerializedAudioSource>;
+}
+
+/**
+ * Creates a fresh default platform-scoped branch. A factory (not a
+ * constant) because each branch owns a mutable Map.
+ * @returns Default platform-scoped settings
+ */
+export function createPlatformScopedDefaults(): PlatformScopedSettings {
+	return {
+		audioDeviceId: '',
+		recordingChannels: CHANNEL_MODE_SOURCE,
+		trackAudioSources: new Map(),
+	};
+}
+
+/**
+ * Creates a fresh default per-platform settings map.
+ * @returns Default branches for every platform
+ */
+export function createPerPlatformDefaults(): PlatformScopedSettingsMap {
+	return {
+		desktop: createPlatformScopedDefaults(),
+		mobile: createPlatformScopedDefaults(),
+	};
+}
+
+/**
  * Plugin settings interface.
  */
 export interface AudioRecorderSettings {
@@ -109,7 +177,10 @@ export interface AudioRecorderSettings {
 	pauseHotkey: string;
 	/** Hotkey for resume */
 	resumeHotkey: string;
-	/** Selected audio device ID */
+	/**
+	 * Selected audio device ID of the *active* platform (see
+	 * {@link PlatformScopedSettings}); persisted under `perPlatform`.
+	 */
 	audioDeviceId: string;
 	/** Audio sample rate in Hz */
 	sampleRate: number;
@@ -119,6 +190,7 @@ export interface AudioRecorderSettings {
 	 * The left/right picks target audio interfaces whose two mono
 	 * inputs appear as one stereo device. Multi-track sessions ignore
 	 * this - each track carries its own mode in trackAudioSources.
+	 * Holds the *active* platform's value; persisted under `perPlatform`.
 	 */
 	recordingChannels: ChannelMode;
 	/** Audio bitrate in bps */
@@ -131,8 +203,19 @@ export interface AudioRecorderSettings {
 	outputMode: OutputMode;
 	/** Use source names for track file names */
 	useSourceNamesForTracks: boolean;
-	/** Audio source mapping for each track */
+	/**
+	 * Audio source mapping for each track of the *active* platform
+	 * (shares its Map with the platform's `perPlatform` branch);
+	 * persisted under `perPlatform`.
+	 */
 	trackAudioSources: TrackAudioSources;
+	/**
+	 * Platform-scoped settings branches. The active platform's branch is
+	 * mirrored into the flat fields above; the other platform's branch is
+	 * carried through load/save untouched, so a synced data.json never
+	 * mixes device configuration between platforms.
+	 */
+	perPlatform: PlatformScopedSettingsMap;
 	/** Enable debug logging */
 	debug: boolean;
 	/** Insert recording link at the note and cursor position where recording started */
@@ -297,12 +380,14 @@ export type LlmProviderId =
 
 /**
  * Partial settings as accepted from storage or callers; track sources may
- * arrive as a Map or as the serialized record form.
+ * arrive as a Map or as the serialized record form, and the per-platform
+ * branches may be missing entirely (legacy flat data.json) or partial.
  */
 export interface AudioRecorderSettingsInput extends Partial<
-	Omit<AudioRecorderSettings, 'trackAudioSources'>
+	Omit<AudioRecorderSettings, 'trackAudioSources' | 'perPlatform'>
 > {
 	trackAudioSources?: TrackAudioSources | TrackAudioSourcesRecord;
+	perPlatform?: Partial<Record<PlatformKind, PlatformScopedSettingsInput>>;
 }
 
 /**
@@ -315,13 +400,16 @@ export interface SerializedAudioSource {
 }
 
 /**
- * Settings shape as persisted to disk (track sources flattened to a record).
+ * Settings shape as persisted to disk. Platform-scoped values live only
+ * under `perPlatform` (their flat legacy counterparts are dropped so the
+ * platforms can never clobber each other through a synced data.json);
+ * track sources are flattened to records.
  */
 export interface SerializedAudioRecorderSettings extends Omit<
 	AudioRecorderSettings,
-	'trackAudioSources'
+	'trackAudioSources' | 'audioDeviceId' | 'recordingChannels' | 'perPlatform'
 > {
-	trackAudioSources: Record<number, SerializedAudioSource>;
+	perPlatform: Record<PlatformKind, SerializedPlatformScopedSettings>;
 }
 
 /**
@@ -345,6 +433,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	outputMode: 'single',
 	useSourceNamesForTracks: true,
 	trackAudioSources: new Map(),
+	perPlatform: createPerPlatformDefaults(),
 	debug: false,
 	insertAtOriginalPosition: false,
 	deleteSourceAfterConversion: false,

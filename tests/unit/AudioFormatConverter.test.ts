@@ -4,8 +4,6 @@
  * @module tests/unit/AudioFormatConverter.test
  */
 
-import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
-import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { RecordingTarget } from 'src/types';
 
 // Mock obsidian module
@@ -133,7 +131,6 @@ import {
 	convertBlobToWav,
 	convertBlobToFormat,
 	decodeAudioBlob,
-	buildOutputBlob,
 	mergeAudioTracks,
 } from 'src/audio/AudioFormatConverter';
 import type { EncodingWorkerClient } from 'src/audio/EncodingWorkerClient';
@@ -178,11 +175,7 @@ describe('AudioFormatConverter', () => {
 		])(
 			'resolves %s to the %s recorder',
 			(_case, recordingFormat, expected) => {
-				const settings: AudioRecorderSettings = {
-					...DEFAULT_SETTINGS,
-					recordingFormat,
-				};
-				expect(resolveRecorderFormat(settings)).toEqual({
+				expect(resolveRecorderFormat(recordingFormat)).toEqual({
 					recorderFormat: expected,
 					mimeType: `audio/${expected}`,
 				});
@@ -195,28 +188,44 @@ describe('AudioFormatConverter', () => {
 		])(
 			'falls back to %s for an unsupported native format',
 			(_case, supportedMime, expected) => {
-				const settings: AudioRecorderSettings = {
-					...DEFAULT_SETTINGS,
-					recordingFormat: 'mp4',
-				};
 				(MediaRecorder.isTypeSupported as jest.Mock).mockImplementation(
 					(mime: string) => mime === supportedMime,
 				);
-				expect(resolveRecorderFormat(settings)).toEqual({
+				expect(resolveRecorderFormat('mp4')).toEqual({
 					recorderFormat: expected,
 					mimeType: supportedMime,
 				});
 			},
 		);
 
-		it('should throw when neither WebM nor OGG is supported', () => {
-			const settings: AudioRecorderSettings = {
-				...DEFAULT_SETTINGS,
-				recordingFormat: 'mp4',
-			};
+		it('falls back to MP4 when only audio/mp4 is recordable (iOS)', () => {
+			// iOS WKWebView: MediaRecorder records audio/mp4 only
+			(MediaRecorder.isTypeSupported as jest.Mock).mockImplementation(
+				(mime: string) => mime === 'audio/mp4',
+			);
+			expect(resolveRecorderFormat('wav')).toEqual({
+				recorderFormat: 'mp4',
+				mimeType: 'audio/mp4',
+			});
+		});
+
+		it('records m4a directly through its canonical audio/mp4 MIME (iOS)', () => {
+			// audio/m4a probes false on iOS, but m4a IS an mp4 container:
+			// the recorder captures audio/mp4 and the file keeps the .m4a
+			// extension without any re-encode
+			(MediaRecorder.isTypeSupported as jest.Mock).mockImplementation(
+				(mime: string) => mime === 'audio/mp4',
+			);
+			expect(resolveRecorderFormat('m4a')).toEqual({
+				recorderFormat: 'm4a',
+				mimeType: 'audio/mp4',
+			});
+		});
+
+		it('should throw when no intermediate format is supported', () => {
 			(MediaRecorder.isTypeSupported as jest.Mock).mockReturnValue(false);
-			expect(() => resolveRecorderFormat(settings)).toThrow(
-				/neither WebM nor OGG is supported/,
+			expect(() => resolveRecorderFormat('mp4')).toThrow(
+				/none of webm, ogg, mp4 is supported/,
 			);
 		});
 	});
@@ -715,50 +724,6 @@ describe('AudioFormatConverter', () => {
 				progressFn,
 			);
 			warnSpy.mockRestore();
-		});
-	});
-
-	// ---------------------------------------------------------------
-	// buildOutputBlob
-	// ---------------------------------------------------------------
-	describe('buildOutputBlob', () => {
-		it('should return raw blob for non-WAV format', async () => {
-			const chunks = [
-				new Blob(['chunk1'], { type: 'audio/webm' }),
-				new Blob(['chunk2'], { type: 'audio/webm' }),
-			];
-			const result = await buildOutputBlob(chunks, 'audio/webm', 'webm');
-			expect(result.type).toBe('audio/webm');
-		});
-
-		it('should combine multiple chunks into a single blob', async () => {
-			const chunks = [
-				new Blob(['chunk1'], { type: 'audio/ogg' }),
-				new Blob(['chunk2'], { type: 'audio/ogg' }),
-			];
-			const result = await buildOutputBlob(chunks, 'audio/ogg', 'ogg');
-			// Blob should have the combined size
-			expect(result.size).toBe(chunks[0].size + chunks[1].size);
-		});
-
-		it('should convert to WAV when recording format is wav', async () => {
-			const chunks = [new Blob(['audio-data'], { type: 'audio/webm' })];
-			const result = await buildOutputBlob(chunks, 'audio/webm', 'wav');
-
-			expect(mockConversionInit).toHaveBeenCalledTimes(1);
-			expect(result.type).toBe('audio/wav');
-		});
-
-		it('should not convert to WAV for mp4 format', async () => {
-			const chunks = [new Blob(['data'], { type: 'audio/mp4' })];
-			await buildOutputBlob(chunks, 'audio/mp4', 'mp4');
-			expect(mockConversionInit).not.toHaveBeenCalled();
-		});
-
-		it('should handle empty chunks array for non-WAV', async () => {
-			const result = await buildOutputBlob([], 'audio/webm', 'webm');
-			expect(result.size).toBe(0);
-			expect(result.type).toBe('audio/webm');
 		});
 	});
 

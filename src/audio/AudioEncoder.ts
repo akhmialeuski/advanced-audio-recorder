@@ -147,12 +147,17 @@ async function encodeWithMediabunny(
 }
 
 /**
- * Checks whether offline encoding is supported for the given format.
- * WAV is always available; MP3 and FLAC are always available through
- * the bundled Mediabunny extension encoders; WebCodecs formats
- * require the AudioEncoder global.
+ * Synchronous heuristic for offline-encoding support: WAV always, MP3
+ * and FLAC through the bundled extension encoders, WebCodecs formats
+ * when the AudioEncoder global exists. The global alone does not prove
+ * the codec is encodable (a browser may ship WebCodecs without an AAC
+ * or Opus encoder), so this is only for cosmetic decisions - extension
+ * pickers and description labels - where a wrong guess degrades to a
+ * handled runtime error. Anything that ADVERTISES recordability (the
+ * settings format list, recording-start validation) must use
+ * {@link probeOfflineEncodingSupport} instead.
  * @param format - Audio format to check
- * @returns true if offline encoding to this format is possible
+ * @returns true if offline encoding to this format is plausible
  */
 export function isOfflineEncodingSupported(format: string): boolean {
 	const descriptor = getFormatDescriptor(format);
@@ -163,4 +168,31 @@ export function isOfflineEncodingSupported(format: string): boolean {
 		return typeof AudioEncoder !== 'undefined';
 	}
 	return true;
+}
+
+/**
+ * Definitive offline-encoding probe: registers the bundled extension
+ * encoder for the format when needed, then asks Mediabunny whether the
+ * format's codec is actually encodable here - for WebCodecs codecs
+ * that includes the browser's own `isConfigSupported` answer, so a
+ * WebView that ships the AudioEncoder global without an AAC or Opus
+ * encoder is reported honestly. This is the source of truth behind
+ * every recordability claim.
+ * @param format - Audio format to check
+ * @returns Whether offline encoding to this format will actually work
+ */
+export async function probeOfflineEncodingSupport(
+	format: string,
+): Promise<boolean> {
+	const descriptor = getFormatDescriptor(format);
+	if (!descriptor) {
+		return false;
+	}
+	try {
+		await ensureEncoderRegistered(format);
+		return await canEncodeAudio(descriptor.codec);
+	} catch {
+		// A failed registration or probe means encoding cannot work
+		return false;
+	}
 }

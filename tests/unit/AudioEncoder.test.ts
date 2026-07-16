@@ -6,6 +6,7 @@
 import {
 	encodeAudioBuffer,
 	isOfflineEncodingSupported,
+	probeOfflineEncodingSupport,
 } from 'src/audio/AudioEncoder';
 import type { EncodingOptions } from 'src/audio/AudioEncoder';
 import { EncodingError } from 'src/errors';
@@ -380,6 +381,65 @@ describe('AudioEncoder', () => {
 
 		it('should return false for unknown formats', () => {
 			expect(isOfflineEncodingSupported('xyz')).toBe(false);
+		});
+	});
+
+	describe('probeOfflineEncodingSupport', () => {
+		it('returns the real canEncodeAudio answer for a WebCodecs codec', async () => {
+			const { canEncodeAudio } = jest.requireMock('mediabunny');
+			(canEncodeAudio as jest.Mock).mockResolvedValueOnce(true);
+
+			await expect(probeOfflineEncodingSupport('webm')).resolves.toBe(
+				true,
+			);
+			expect(canEncodeAudio).toHaveBeenCalledWith('opus');
+		});
+
+		it('reports false when the browser cannot encode the codec', async () => {
+			// The AudioEncoder global may exist while the codec is still
+			// unencodable - the probe must not be fooled by the global
+			const { canEncodeAudio } = jest.requireMock('mediabunny');
+			(canEncodeAudio as jest.Mock).mockResolvedValue(false);
+
+			await expect(probeOfflineEncodingSupport('m4a')).resolves.toBe(
+				false,
+			);
+		});
+
+		it('registers the bundled extension encoder before probing mp3', async () => {
+			const { canEncodeAudio } = jest.requireMock('mediabunny');
+			const { registerMp3Encoder } = jest.requireMock(
+				'@mediabunny/mp3-encoder',
+			);
+			// Unencodable before registration, encodable after
+			(canEncodeAudio as jest.Mock)
+				.mockResolvedValueOnce(false)
+				.mockResolvedValueOnce(true);
+
+			await expect(probeOfflineEncodingSupport('mp3')).resolves.toBe(
+				true,
+			);
+			expect(registerMp3Encoder).toHaveBeenCalled();
+		});
+
+		it('returns false for unknown formats without probing', async () => {
+			const { canEncodeAudio } = jest.requireMock('mediabunny');
+
+			await expect(probeOfflineEncodingSupport('xyz')).resolves.toBe(
+				false,
+			);
+			expect(canEncodeAudio).not.toHaveBeenCalled();
+		});
+
+		it('maps a probe failure to false instead of throwing', async () => {
+			const { canEncodeAudio } = jest.requireMock('mediabunny');
+			(canEncodeAudio as jest.Mock).mockRejectedValueOnce(
+				new Error('probe exploded'),
+			);
+
+			await expect(probeOfflineEncodingSupport('ogg')).resolves.toBe(
+				false,
+			);
 		});
 	});
 });

@@ -23,6 +23,7 @@ import {
 } from '../helpers/captureSettings';
 
 jest.mock('obsidian', () => ({
+	Platform: { isMobile: false, isMobileApp: false },
 	Setting: jest.requireActual<typeof import('../helpers/captureSettings')>(
 		'../helpers/captureSettings',
 	).CapturingSetting,
@@ -83,5 +84,63 @@ describe('renderTranscriptionSection speaker control gating', () => {
 			expect(isSettingDisabled(name)).toBe(false);
 		}
 		expect(isSettingDisabled('Speaker diarization')).toBe(false);
+	});
+});
+
+describe('renderTranscriptionSection platform gating', () => {
+	const { Platform } = jest.requireMock<{
+		Platform: { isMobile: boolean; isMobileApp: boolean };
+	}>('obsidian');
+
+	afterEach(() => {
+		Platform.isMobile = false;
+		Platform.isMobileApp = false;
+	});
+
+	/** The rendered engine dropdown's option list. */
+	function engineOptions(): { value: string; disabled: boolean }[] {
+		const row = capturedSettings.find(
+			(setting) => setting.name === 'Engine',
+		);
+		expect(row).toBeDefined();
+		return row?.dropdownOptions ?? [];
+	}
+
+	it('offers every engine on desktop', () => {
+		renderFor(TRANSCRIPTION_PROVIDER_IDS.WHISPER_API, false);
+		for (const option of engineOptions()) {
+			expect(option.disabled).toBe(false);
+		}
+	});
+
+	it('blocks the local whisper.cpp engine option on mobile', () => {
+		Platform.isMobile = true;
+		renderFor(TRANSCRIPTION_PROVIDER_IDS.WHISPER_API, false);
+		const options = new Map(
+			engineOptions().map((option) => [option.value, option.disabled]),
+		);
+		expect(options.get(TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER)).toBe(
+			true,
+		);
+		expect(options.get(TRANSCRIPTION_PROVIDER_IDS.WHISPER_API)).toBe(false);
+		expect(options.get(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM)).toBe(false);
+		expect(options.get(TRANSCRIPTION_PROVIDER_IDS.GEMINI)).toBe(false);
+	});
+
+	it('blocks the local whisper.cpp path fields on mobile when selected', () => {
+		// A synced desktop config may arrive with local whisper selected:
+		// its fields stay visible but read as unavailable.
+		Platform.isMobile = true;
+		renderFor(TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER, false);
+		expect(isSettingDisabled('whisper.cpp binary path')).toBe(true);
+		expect(isSettingDisabled('Model path')).toBe(true);
+		expect(isSettingDisabled('Extra arguments')).toBe(true);
+	});
+
+	it('keeps the local whisper.cpp path fields editable on desktop', () => {
+		renderFor(TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER, false);
+		expect(isSettingDisabled('whisper.cpp binary path')).toBe(false);
+		expect(isSettingDisabled('Model path')).toBe(false);
+		expect(isSettingDisabled('Extra arguments')).toBe(false);
 	});
 });

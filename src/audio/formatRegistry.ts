@@ -138,7 +138,12 @@ export const FORMAT_REGISTRY = {
 		requiresWebCodecs: true,
 		offlineOnly: false,
 		mediaRecorderCandidate: true,
-		compressedIntermediate: false,
+		// iOS WKWebView's MediaRecorder supports neither WebM nor OGG -
+		// audio/mp4 (AAC) is its only container, so mp4 must be usable as
+		// the intermediate for WAV and the offline-only formats there.
+		// Listed after webm/ogg (registry order), so platforms that can
+		// record opus keep preferring it.
+		compressedIntermediate: true,
 		probeCodecs: ['mp4a.40.2', 'mp4a.40.5', 'opus'],
 		mime: `${MIME_TYPE_AUDIO_PREFIX}mp4`,
 		codecLabel: 'aac',

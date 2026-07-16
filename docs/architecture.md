@@ -2,7 +2,7 @@
 
 This document is a technical map of how **Advanced Audio Recorder** is put together: how the plugin loads, how a recording flows from microphone to file, how transcription and the enhanced player work, and how crash recovery and settings backup keep your data safe. It is written for contributors and curious power users. If you only want to _use_ the plugin, start with [Getting started](getting-started.md) and the [Features overview](features.md); come back here when you want to know _why_ something behaves the way it does, or where in the source a behavior lives.
 
-Everything below is verified against the plugin source under `src/`. The plugin is **desktop-first** (it requires Obsidian `1.6.6+` and is marked desktop-only), though several read-side features - transcription preparation, the enhanced player - also work where Obsidian renders on mobile.
+Everything below is verified against the plugin source under `src/`. The plugin runs on **desktop and mobile** (it requires Obsidian `1.6.6+`). Platform differences are decided in one low-level policy layer, `src/platform/` (`platformKind.ts` detects the platform; `capabilities.ts` answers "is this feature available here?" and "which limit applies here?"). Feature code and the settings UI branch on named capabilities - multi-track capture, device selection, auto-split, PCM WAV capture, recovery journaling, local transcription, memory ceilings - never on the platform itself. Device-bound settings (input device ids, channel layouts) are stored per platform under a `perPlatform` branch in `data.json`, so a vault synced between a desktop and a phone never mixes their hardware configuration.
 
 - [System overview](#system-overview)
 - [Plugin lifecycle](#plugin-lifecycle)

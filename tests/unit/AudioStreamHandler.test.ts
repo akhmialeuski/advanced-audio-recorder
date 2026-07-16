@@ -3,12 +3,16 @@
  * @module tests/unit/AudioStreamHandler.test
  */
 
+import { Platform } from 'obsidian';
 import {
 	channelSelectionAvailable,
 	deviceMaxChannels,
 	getAudioInputDeviceSnapshot,
 	getAudioStreams,
 	getOrderedTrackSources,
+	isMultiTrackSessionEnabled,
+	resolveCaptureDeviceId,
+	validateSelectedDevices,
 } from 'src/recording/AudioStreamHandler';
 import { AudioStreamError } from 'src/errors';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
@@ -355,6 +359,104 @@ describe('AudioStreamHandler', () => {
 				expect(snapshot.devices).toEqual([]);
 				expect(snapshot.channelLimits.size).toBe(0);
 			});
+		});
+	});
+
+	describe('platform gating of devices and multi-track', () => {
+		const originalMediaDevices = navigator.mediaDevices;
+		let getUserMedia: jest.Mock;
+		let enumerateDevices: jest.Mock;
+
+		const multiTrackSettings = {
+			...DEFAULT_SETTINGS,
+			enableMultiTrack: true,
+			maxTracks: 2,
+			audioDeviceId: 'configured-mic',
+			trackAudioSources: new Map([
+				[1, { deviceId: 'device-1', channelMode: 'source' as const }],
+				[2, { deviceId: 'device-2', channelMode: 'source' as const }],
+			]),
+		};
+
+		beforeEach(() => {
+			getUserMedia = jest.fn().mockResolvedValue(fakeStream().stream);
+			enumerateDevices = jest.fn().mockResolvedValue([]);
+			Object.defineProperty(navigator, 'mediaDevices', {
+				value: { getUserMedia, enumerateDevices },
+				configurable: true,
+			});
+		});
+
+		afterEach(() => {
+			Platform.isMobile = false;
+			Platform.isMobileApp = false;
+			Object.defineProperty(navigator, 'mediaDevices', {
+				value: originalMediaDevices,
+				configurable: true,
+			});
+		});
+
+		it('isMultiTrackSessionEnabled honors the setting on desktop', () => {
+			expect(isMultiTrackSessionEnabled(multiTrackSettings)).toBe(true);
+			expect(isMultiTrackSessionEnabled(DEFAULT_SETTINGS)).toBe(false);
+		});
+
+		it('isMultiTrackSessionEnabled degrades a stored "on" on mobile', () => {
+			Platform.isMobile = true;
+			expect(isMultiTrackSessionEnabled(multiTrackSettings)).toBe(false);
+		});
+
+		it('resolveCaptureDeviceId uses the configured device on desktop', () => {
+			expect(resolveCaptureDeviceId(multiTrackSettings)).toBe(
+				'configured-mic',
+			);
+			expect(resolveCaptureDeviceId(DEFAULT_SETTINGS)).toBeUndefined();
+		});
+
+		it('resolveCaptureDeviceId ignores stored device ids on mobile', () => {
+			// Ids are randomized per install; a synced desktop id could
+			// never satisfy an exact-match constraint on the phone
+			Platform.isMobile = true;
+			expect(resolveCaptureDeviceId(multiTrackSettings)).toBeUndefined();
+		});
+
+		it('getAudioStreams opens one default-mic stream on mobile despite multi-track config', async () => {
+			Platform.isMobile = true;
+
+			const { streams, trackOrder } =
+				await getAudioStreams(multiTrackSettings);
+
+			expect(streams).toHaveLength(1);
+			expect(trackOrder).toEqual([]);
+			expect(getUserMedia).toHaveBeenCalledTimes(1);
+			const constraints = getUserMedia.mock.calls[0][0] as {
+				audio: { deviceId?: unknown };
+			};
+			expect(constraints.audio.deviceId).toBeUndefined();
+		});
+
+		it('validateSelectedDevices rejects a missing device on desktop', async () => {
+			await expect(
+				validateSelectedDevices({
+					...DEFAULT_SETTINGS,
+					audioDeviceId: 'gone-device',
+				}),
+			).rejects.toThrow(/no longer available/);
+			expect(enumerateDevices).toHaveBeenCalled();
+		});
+
+		it('validateSelectedDevices is a no-op on mobile', async () => {
+			// A synced desktop device id must not block recording on the
+			// default microphone
+			Platform.isMobile = true;
+
+			await expect(
+				validateSelectedDevices({
+					...DEFAULT_SETTINGS,
+					audioDeviceId: 'desktop-only-device',
+				}),
+			).resolves.toBeUndefined();
+			expect(enumerateDevices).not.toHaveBeenCalled();
 		});
 	});
 });

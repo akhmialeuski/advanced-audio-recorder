@@ -334,12 +334,6 @@ export class RecordingFinalizer {
 	): Promise<string[]> {
 		const session = this.requireSession();
 		const fileLinks: string[] = [];
-		if (session.isMobile) {
-			await this.writeQueue.flushChunkBuffer(target);
-			fileLinks.push(...target.segmentPaths);
-			return fileLinks;
-		}
-
 		if (session.isWavPcm) {
 			this.reportProgress(20, 'Flushing buffers...');
 			await this.writeQueue.flushPcmBuffer(target);

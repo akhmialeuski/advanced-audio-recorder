@@ -36,7 +36,9 @@ jest.mock('src/recording/AudioStreamHandler', () => ({
 	validateSelectedDevices: jest.fn(),
 }));
 
-// Mock AudioEncoder module to avoid mediabunny TextDecoder requirement
+// Mock AudioEncoder module to avoid mediabunny TextDecoder requirement.
+// The async probe answers false: these suites exercise recording flows,
+// so a format is recordable only when MediaRecorder supports it.
 jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest
 		.fn()
@@ -46,6 +48,7 @@ jest.mock('src/audio/AudioEncoder', () => ({
 			format,
 		);
 	}),
+	probeOfflineEncodingSupport: jest.fn(() => Promise.resolve(false)),
 }));
 
 // Mock WavEncoder
@@ -529,15 +532,73 @@ describe('RecordingManager', () => {
 			);
 		});
 
-		it('should handle unsupported format', async () => {
-			(global as Record<string, unknown>).MediaRecorder = {
-				isTypeSupported: jest.fn().mockReturnValue(false),
+		it('falls back to a recordable format when the configured one is unsupported', async () => {
+			// iOS profile: only audio/mp4 is recordable and no offline
+			// encoder works - the configured webm cannot be produced, so
+			// the session records mp4 instead and tells the user
+			const mockMediaRecorder = {
+				start: jest.fn(),
+				stop: jest.fn(),
+				pause: jest.fn(),
+				resume: jest.fn(),
+				ondataavailable: null as ((event: BlobEvent) => void) | null,
+				onerror: null as ((event: Event) => void) | null,
+				addEventListener: jest.fn(
+					(event: string, handler: () => void) => {
+						if (event === 'stop') {
+							handler();
+						}
+					},
+				),
 			};
+			(global as Record<string, unknown>).MediaRecorder = jest.fn(
+				() => mockMediaRecorder,
+			);
+			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
+				jest.fn((type: string) => type === 'audio/mp4');
+			const { getAudioStreams } = jest.requireMock(
+				'src/recording/AudioStreamHandler',
+			);
+			getAudioStreams.mockResolvedValue({
+				streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
+				trackOrder: [],
+			});
 
 			await manager.startRecording();
 
-			// Should remain idle on error
-			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+			expect(manager.getStatus()).toBe(RecordingStatus.Recording);
+			expect(global.MediaRecorder).toHaveBeenCalledWith(
+				expect.anything(),
+				expect.objectContaining({ mimeType: 'audio/mp4' }),
+			);
+			const { Notice } = jest.requireMock('obsidian');
+			expect(
+				(Notice as jest.Mock).mock.calls.some((call) =>
+					String(call[0]).includes('Recording in MP4 instead'),
+				),
+			).toBe(true);
+
+			await manager.stopRecording();
+		});
+
+		it('stays idle when no format can be recorded at all', async () => {
+			// No MediaRecorder format, no offline encoder, and no
+			// AudioContext for PCM capture: there is nothing to fall
+			// back to, so the start fails with a clear error
+			(global as Record<string, unknown>).MediaRecorder = {
+				isTypeSupported: jest.fn().mockReturnValue(false),
+			};
+			const savedAudioContext = (global as Record<string, unknown>)
+				.AudioContext;
+			delete (global as Record<string, unknown>).AudioContext;
+			try {
+				await manager.startRecording();
+
+				expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+			} finally {
+				(global as Record<string, unknown>).AudioContext =
+					savedAudioContext;
+			}
 		});
 
 		it('should handle stream acquisition error', async () => {

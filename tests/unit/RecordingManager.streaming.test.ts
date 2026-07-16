@@ -178,7 +178,7 @@ describe('RecordingManager', () => {
 			);
 		});
 
-		it('should flush mobile buffer when limit reached', async () => {
+		it('rotates the recorder at the mobile size boundary and writes a converted part', async () => {
 			const { Platform } = jest.requireMock('obsidian');
 			Platform.isMobile = true;
 			Platform.isMobileApp = true;
@@ -216,6 +216,9 @@ describe('RecordingManager', () => {
 				],
 				trackOrder: [],
 			});
+			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
+				new Uint8Array([1, 2, 3]).buffer,
+			);
 
 			await manager.startRecording();
 
@@ -231,9 +234,29 @@ describe('RecordingManager', () => {
 			});
 			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
 
-			await manager.stopRecording();
+			// Let the size rotation run to completion: it stops the
+			// recorders, flushes a self-contained raw segment, restarts
+			// capture, and converts the segment into a final part file
+			for (let i = 0; i < 10; i++) {
+				await flushAsync();
+			}
 
-			expect(mockApp.vault.createBinary).toHaveBeenCalled();
+			// The flush wrote a raw recorder-container segment...
+			expect(mockApp.vault.adapter.writeBinary).toHaveBeenCalledWith(
+				expect.stringMatching(/-part1\.webm\.tmp$/),
+				expect.any(ArrayBuffer),
+			);
+			// ...that was finalized into a real part file...
+			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
+				expect.stringMatching(/-part1\.webm$/),
+				expect.any(ArrayBuffer),
+			);
+			// ...and capture continued on a fresh recorder (stop + restart),
+			// so the next part starts with its own container header
+			expect(mockMediaRecorder.stop).toHaveBeenCalled();
+			expect(global.MediaRecorder).toHaveBeenCalledTimes(2);
+
+			await manager.stopRecording();
 		});
 
 		it('should buffer multiple chunks into a single segment file and clean up after finalization', async () => {
@@ -708,7 +731,7 @@ describe('RecordingManager', () => {
 
 			const { Notice } = jest.requireMock('obsidian');
 			expect(Notice).toHaveBeenCalledWith(
-				'Auto-split is not available in the mobile app.',
+				'Auto-split is not available on this device.',
 			);
 			await manager.stopRecording();
 		});

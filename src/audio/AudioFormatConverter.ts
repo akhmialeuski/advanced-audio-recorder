@@ -5,7 +5,6 @@
  */
 
 import type { RecordingTarget } from '../types';
-import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import { encodeAudioBuffer, isOfflineEncodingSupported } from './AudioEncoder';
 import { runStreamingConversion } from './streamingConversion';
 import {
@@ -17,11 +16,13 @@ import { autoClosing } from '../utils/disposables';
 import {
 	MIME_TYPE_AUDIO_PREFIX,
 	PLUGIN_LOG_PREFIX,
-	FORMAT_WEBM,
-	FORMAT_OGG,
 	FORMAT_WAV,
 } from '../constants';
-import { buildMimeType } from './AudioCapabilityDetector';
+import { COMPRESSED_INTERMEDIATE_FORMATS } from './formatRegistry';
+import {
+	buildMimeType,
+	directRecordingMimeType,
+} from './AudioCapabilityDetector';
 import type { EncodingWorkerClient } from './EncodingWorkerClient';
 
 /**
@@ -39,35 +40,36 @@ export type TrackBlobBuilder = (
 /**
  * Resolves the recorder format and MIME type for MediaRecorder.
  * If the output format is not natively supported, selects an
- * intermediate compressed format (WebM or OGG).
- * @param settings - Plugin settings
+ * intermediate compressed format (WebM, OGG, or MP4 - in registry
+ * order, so opus containers are preferred where they exist and iOS
+ * falls back to its only recordable container, audio/mp4).
+ * @param format - Effective output format of the session
  * @returns Recorder format string and MIME type
  */
-export function resolveRecorderFormat(settings: AudioRecorderSettings): {
+export function resolveRecorderFormat(format: string): {
 	recorderFormat: string;
 	mimeType: string;
 } {
-	const outputFormat = settings.recordingFormat.toLowerCase();
+	const outputFormat = format.toLowerCase();
 
-	// Check if MediaRecorder natively supports this format
-	const nativeMime = buildMimeType(outputFormat);
-	if (
-		outputFormat !== FORMAT_WAV &&
-		MediaRecorder.isTypeSupported(nativeMime)
-	) {
+	// Check if MediaRecorder supports this format directly (via its
+	// plain or canonical container MIME - m4a records as audio/mp4)
+	const nativeMime = directRecordingMimeType(outputFormat);
+	if (outputFormat !== FORMAT_WAV && nativeMime !== null) {
 		return { recorderFormat: outputFormat, mimeType: nativeMime };
 	}
 
 	// WAV and offline-only formats need an intermediate compressed format
-	const preferredCompressedFormats = [FORMAT_WEBM, FORMAT_OGG];
-	for (const format of preferredCompressedFormats) {
+	for (const format of COMPRESSED_INTERMEDIATE_FORMATS) {
 		const mimeType = buildMimeType(format);
 		if (MediaRecorder.isTypeSupported(mimeType)) {
 			return { recorderFormat: format, mimeType };
 		}
 	}
 	throw new Error(
-		`Output format "${outputFormat}" requires an intermediate compressed format, but neither WebM nor OGG is supported in this browser.`,
+		`Output format "${outputFormat}" requires an intermediate compressed format, but none of ${COMPRESSED_INTERMEDIATE_FORMATS.join(
+			', ',
+		)} is supported in this browser.`,
 	);
 }
 
@@ -344,26 +346,6 @@ export async function convertBlobToFormatBuffer(
 		onProgress,
 	);
 	return encoded.arrayBuffer();
-}
-
-/**
- * Combines buffered chunks into a single blob, optionally converting
- * to WAV if the recording format requires it.
- * @param chunks - Buffered audio chunks
- * @param recorderMediaType - MIME type of the recorder
- * @param recordingFormat - Target recording format from settings
- * @returns Combined audio blob
- */
-export async function buildOutputBlob(
-	chunks: Blob[],
-	recorderMediaType: string,
-	recordingFormat: string,
-): Promise<Blob> {
-	const recordedBlob = new Blob(chunks, { type: recorderMediaType });
-	if (recordingFormat !== FORMAT_WAV) {
-		return recordedBlob;
-	}
-	return convertBlobToWav(recordedBlob);
 }
 
 /**

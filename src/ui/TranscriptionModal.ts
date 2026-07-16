@@ -31,6 +31,7 @@ import { formatTimecode } from '../utils/TimeUtils';
 import {
 	effectiveDiarize,
 	effectiveTranscriptDestination,
+	isProviderAvailableOnPlatform,
 	providerSupportsDiarization,
 	transcribeFile,
 	TranscriptionCancelledError,
@@ -183,6 +184,9 @@ export class TranscriptionModal extends Modal {
 			});
 
 		this.rendered = true;
+		// The first renderConfig() ran before the button existed; set its
+		// initial state now so a stored unavailable engine reads as blocked.
+		this.refreshRunButtonState();
 
 		if (this.options.autoStart) {
 			// Auto-run for the transcribe-on-save hook: the modal still shows
@@ -218,7 +222,20 @@ export class TranscriptionModal extends Modal {
 
 		addDropdown(ctx, {
 			name: 'Engine',
-			options: TRANSCRIPTION_PROVIDER_OPTIONS,
+			// Explain the blocked run when the stored engine cannot execute
+			// here (a local whisper.cpp selection synced to mobile), so the
+			// disabled Transcribe button below is self-evident.
+			desc: this.isSelectedEngineAvailable()
+				? undefined
+				: 'The selected engine is not available on this device. Pick a cloud engine to transcribe here.',
+			// Engines the platform cannot run stay listed but blocked,
+			// matching the settings tab.
+			options: TRANSCRIPTION_PROVIDER_OPTIONS.map((option) => ({
+				...option,
+				disabled: !isProviderAvailableOnPlatform(
+					option.value as TranscriptionProviderId,
+				),
+			})),
 			get: () => s.transcriptionProvider,
 			set: (v) =>
 				(s.transcriptionProvider = v as TranscriptionProviderId),
@@ -321,6 +338,32 @@ export class TranscriptionModal extends Modal {
 				set: (v) => (s.llmPostProcessTask = v as LlmTask),
 			});
 		}
+		// Re-evaluated on every rerender (the Engine dropdown triggers one),
+		// so the Transcribe button tracks the freshly selected engine.
+		this.refreshRunButtonState();
+	}
+
+	/**
+	 * Whether the engine selected for this run can execute on this
+	 * platform. A stored engine synced from another platform (local
+	 * whisper.cpp on mobile) stays visible but cannot transcribe here.
+	 * @returns True when the selected engine is usable on this platform
+	 */
+	private isSelectedEngineAvailable(): boolean {
+		return isProviderAvailableOnPlatform(
+			this.runSettings.transcriptionProvider,
+		);
+	}
+
+	/**
+	 * Disables the Transcribe button while a run is in flight or when the
+	 * selected engine cannot run on this platform, so a stored engine
+	 * synced from another device cannot be launched into a doomed run.
+	 */
+	private refreshRunButtonState(): void {
+		this.runButton?.setDisabled(
+			this.running || !this.isSelectedEngineAvailable(),
+		);
 	}
 
 	/**
@@ -328,6 +371,16 @@ export class TranscriptionModal extends Modal {
 	 */
 	private async startRun(): Promise<void> {
 		if (this.running) {
+			return;
+		}
+		// Guard the run itself, not just the option's disabled state: a
+		// stored engine that cannot execute here (local whisper.cpp on
+		// mobile) stays the selected value, so without this a click would
+		// launch a doomed run that only fails with a generic error.
+		if (!this.isSelectedEngineAvailable()) {
+			new Notice(
+				'The selected engine is not available on this device. Pick a cloud engine to transcribe here.',
+			);
 			return;
 		}
 		this.setRunning(true);
@@ -403,7 +456,11 @@ export class TranscriptionModal extends Modal {
 		} else {
 			this.stopElapsedTimer();
 		}
-		this.runButton?.setDisabled(running);
+		// Also stays disabled when the selected engine cannot run here, so
+		// finishing a run does not re-enable a doomed one.
+		this.runButton?.setDisabled(
+			running || !this.isSelectedEngineAvailable(),
+		);
 		this.minimizeButton?.setDisabled(!running);
 		this.secondaryButton?.setButtonText(running ? 'Cancel' : 'Close');
 		this.configEl?.toggleClass('aar-transcribe-options-disabled', running);

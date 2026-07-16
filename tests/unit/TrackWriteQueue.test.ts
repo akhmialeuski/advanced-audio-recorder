@@ -14,15 +14,8 @@ import type { App } from 'obsidian';
 
 jest.mock('obsidian', () => ({
 	Notice: jest.fn(),
+	Platform: { isMobile: false, isMobileApp: false },
 	normalizePath: (path: string) => path.replace(/\\/g, '/'),
-}));
-
-// Mock AudioFormatConverter: the mobile flush pipeline has its own suite
-jest.mock('src/audio/AudioFormatConverter', () => ({
-	buildOutputBlob: jest
-		.fn()
-		.mockResolvedValue(new Blob(['output'], { type: 'audio/webm' })),
-	getRecorderMediaType: jest.fn((format: string) => `audio/${format}`),
 }));
 
 const createTarget = (): RecordingTarget => ({
@@ -45,7 +38,7 @@ const createTarget = (): RecordingTarget => ({
 const createSession = (
 	overrides: Partial<RecordingSessionConfig> = {},
 ): RecordingSessionConfig => ({
-	isMobile: false,
+	chunkRotationBytes: null,
 	isWavPcm: false,
 	recorderFormat: 'webm',
 	outputFormat: 'webm',
@@ -256,7 +249,7 @@ describe('TrackWriteQueue', () => {
 			expect(mockApp.vault.createBinary).not.toHaveBeenCalled();
 		});
 
-		it('should write raw chunks as a .tmp segment on desktop', async () => {
+		it('should write raw chunks as a .tmp segment in the recorder container', async () => {
 			const target = createTarget();
 			target.bufferedChunks = [new Blob(['chunk'])];
 			target.bufferedBytes = 5;
@@ -272,32 +265,25 @@ describe('TrackWriteQueue', () => {
 			expect(target.segmentIndex).toBe(1);
 		});
 
-		it('should convert chunks through buildOutputBlob on mobile using live settings', async () => {
-			queue.beginSession(createSession({ isMobile: true }));
+		it('names the segment from the session snapshot, not live settings', async () => {
+			// A settings change mid-recording must not switch the segment
+			// container: the chunks were captured in the session's format
+			queue.beginSession(createSession({ recorderFormat: 'mp4' }));
 			queue.updateSettings({
 				...DEFAULT_SETTINGS,
 				recordingFormat: 'mp3',
 			});
 			const target = createTarget();
-			const chunks = [new Blob(['chunk'])];
-			target.bufferedChunks = chunks;
+			target.bufferedChunks = [new Blob(['chunk'])];
 			target.bufferedBytes = 5;
 
 			await queue.flushChunkBuffer(target);
 
-			const { buildOutputBlob } = jest.requireMock(
-				'src/audio/AudioFormatConverter',
-			);
-			expect(buildOutputBlob).toHaveBeenCalledWith(
-				chunks,
-				'audio/webm',
-				'mp3',
-			);
-			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
-				expect.stringMatching(/-part1\.mp3$/),
+			expect(mockApp.vault.adapter.writeBinary).toHaveBeenCalledWith(
+				expect.stringMatching(/-part1\.mp4\.tmp$/),
 				expect.any(ArrayBuffer),
 			);
-			expect(mockApp.vault.adapter.writeBinary).not.toHaveBeenCalled();
+			expect(mockApp.vault.createBinary).not.toHaveBeenCalled();
 		});
 
 		it('should throw when used outside a session', async () => {

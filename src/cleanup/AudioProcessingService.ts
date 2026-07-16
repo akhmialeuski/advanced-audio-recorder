@@ -7,13 +7,13 @@
  */
 
 import type { App, TFile } from 'obsidian';
+import { CLEANUP_SEGMENT_SECONDS, CLEANUP_WARMUP_SECONDS } from '../constants';
 import {
-	CLEANUP_SEGMENT_SECONDS,
-	CLEANUP_WARMUP_SECONDS,
-	MAX_AUDIO_CLEANUP_BYTES,
-	MAX_AUDIO_CLEANUP_SECONDS,
-	MAX_AUDIO_CLEANUP_DECODED_SAMPLES,
-} from '../constants';
+	getMaxCleanupDecodedSamples,
+	getMaxCleanupSeconds,
+	getMaxDecodeBytes,
+} from '../platform/capabilities';
+import { probeAudioMetadata } from '../utils/AudioFileAnalyzer';
 import { createWavFileBuffer, WAV_HEADER_SIZE } from '../audio/WavEncoder';
 import { floatToInt16 } from '../audio/pcm';
 import { downmixChannelData, isMonoChannelMode } from '../audio/downmix';
@@ -90,12 +90,21 @@ export class AudioProcessingService {
 	 * @returns Vault path of the written file
 	 */
 	async process(file: TFile, config: AudioDspConfig): Promise<string> {
-		if (file.stat.size > MAX_AUDIO_CLEANUP_BYTES) {
+		// Platform-dependent ceiling: mobile WebViews get a far smaller
+		// memory budget than the desktop renderer.
+		if (file.stat.size > getMaxDecodeBytes()) {
 			throw new Error(
 				'Audio file is too large to clean up here. Split it into parts first.',
 			);
 		}
 		const data = await this.app.vault.readBinary(file);
+		// Estimate the decoded working set from container metadata BEFORE
+		// decodeAudioData materializes the whole PCM: a compact compressed
+		// file can pass the byte guard yet decode to an allocation that
+		// gets the mobile WebView killed by the OS instead of surfacing a
+		// readable error. The post-decode checks stay as the backstop for
+		// containers the probe cannot parse.
+		await this.rejectOversizedByMetadata(data, file.path);
 		const { sampleRate, data: decoded } = await this.decodeChannels(data);
 		// Downmix to mono up front, before the DSP stages: the rest of the
 		// pipeline is channel-count agnostic, so a mono mode simply leaves
@@ -193,6 +202,41 @@ export class AudioProcessingService {
 	}
 
 	/**
+	 * Rejects a file whose DECODED size would blow the platform budget,
+	 * using container metadata (duration, sample rate, channels) read
+	 * without decoding any PCM. Files whose container the probe cannot
+	 * parse pass through - the post-decode checks in decodeChannels
+	 * still guard them, at the cost of the decode allocation.
+	 * @param data - Encoded file bytes
+	 * @param path - Vault path, for the probe's warning log
+	 */
+	private async rejectOversizedByMetadata(
+		data: ArrayBuffer,
+		path: string,
+	): Promise<void> {
+		const metadata = await probeAudioMetadata(data, path);
+		if (!metadata) {
+			return;
+		}
+		const maxSeconds = getMaxCleanupSeconds();
+		if (metadata.durationSeconds > maxSeconds) {
+			throw new Error(
+				`Audio is too long to clean up here (limit ${String(
+					Math.round(maxSeconds / 60),
+				)} minutes). Split it into parts first.`,
+			);
+		}
+		const estimatedSamples =
+			Math.ceil(metadata.durationSeconds * metadata.sampleRate) *
+			metadata.channels;
+		if (estimatedSamples > getMaxCleanupDecodedSamples()) {
+			throw new Error(
+				'Audio file is too large to clean up here. Split it into parts first.',
+			);
+		}
+	}
+
+	/**
 	 * Decodes encoded audio into per-channel Float32 sample arrays.
 	 */
 	private async decodeChannels(
@@ -204,10 +248,11 @@ export class AudioProcessingService {
 			// because `data` is not reused after this call, and avoiding a
 			// defensive copy halves peak memory for near-cap files.
 			const decoded = await context.decodeAudioData(data);
-			if (decoded.duration > MAX_AUDIO_CLEANUP_SECONDS) {
+			const maxSeconds = getMaxCleanupSeconds();
+			if (decoded.duration > maxSeconds) {
 				throw new Error(
 					`Audio is too long to clean up here (limit ${String(
-						Math.round(MAX_AUDIO_CLEANUP_SECONDS / 60),
+						Math.round(maxSeconds / 60),
 					)} minutes). Split it into parts first.`,
 				);
 			}
@@ -218,7 +263,7 @@ export class AudioProcessingService {
 			// clear message rather than an out-of-memory error mid-pipeline.
 			if (
 				decoded.length * decoded.numberOfChannels >
-				MAX_AUDIO_CLEANUP_DECODED_SAMPLES
+				getMaxCleanupDecodedSamples()
 			) {
 				throw new Error(
 					'Audio file is too large to clean up here. Split it into parts first.',

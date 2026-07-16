@@ -3,7 +3,7 @@
  * @module main
  */
 
-import { Notice, Platform, Plugin } from 'obsidian';
+import { Notice, Plugin } from 'obsidian';
 import type { TFile } from 'obsidian';
 import { RecordingStatus } from './types';
 import type {
@@ -12,6 +12,10 @@ import type {
 	RecordingSaveResult,
 } from './types';
 import { PLUGIN_LOG_PREFIX } from './constants';
+import {
+	isDeviceSelectionSupported,
+	isRecordingBannerSupported,
+} from './platform/capabilities';
 import { AudioRecorderSettings } from './settings/settingsSchema';
 import {
 	mergeSettingsAsync,
@@ -54,6 +58,7 @@ import { MarkerStore } from './markers/MarkerStore';
 import { RecordingMarkerModal } from './ui/MarkerModal';
 import { TranscriptionModal } from './ui/TranscriptionModal';
 import type { TranscriptionModalOptions } from './ui/TranscriptionModal';
+import { isProviderAvailableOnPlatform } from './transcription/api';
 import { COMMAND_IDS } from './constants';
 import type { MarkerKind } from './markers/markerModel';
 import type { PlaybackControlsState } from './player/playbackControls';
@@ -658,14 +663,22 @@ export default class AudioRecorderPlugin extends Plugin {
 		this.addCommand({
 			id: COMMAND_IDS.selectAudioInputDevice,
 			name: 'Select audio input device',
-			callback: () => {
-				void showDeviceSelectionModal(
-					this.app,
-					async (deviceId: string) => {
-						this.settings.audioDeviceId = deviceId;
-						await this.saveSettings();
-					},
-				);
+			// Hidden from the palette where device selection is
+			// unavailable (mobile records from the default microphone).
+			checkCallback: (checking: boolean) => {
+				if (!isDeviceSelectionSupported()) {
+					return false;
+				}
+				if (!checking) {
+					void showDeviceSelectionModal(
+						this.app,
+						async (deviceId: string) => {
+							this.settings.audioDeviceId = deviceId;
+							await this.saveSettings();
+						},
+					);
+				}
+				return true;
 			},
 		});
 
@@ -718,6 +731,17 @@ export default class AudioRecorderPlugin extends Plugin {
 			!this.settings.transcribeOnSave ||
 			result.audioPaths.length === 0
 		) {
+			return;
+		}
+		// A synced desktop config may select an engine this platform
+		// cannot run (local whisper.cpp on mobile): auto-starting would
+		// pop a doomed transcription after every recording.
+		if (
+			!isProviderAvailableOnPlatform(this.settings.transcriptionProvider)
+		) {
+			new Notice(
+				'Transcription was skipped: the selected engine is not available on this device. Pick a cloud engine in settings.',
+			);
 			return;
 		}
 		const [firstAudioPath] = result.audioPaths;
@@ -1029,7 +1053,7 @@ export default class AudioRecorderPlugin extends Plugin {
 			status === RecordingStatus.Paused;
 		if (
 			active &&
-			Platform.isMobile &&
+			isRecordingBannerSupported() &&
 			this.settings.mobileRecordingBanner
 		) {
 			this.recordingBanner.show(status === RecordingStatus.Paused);
