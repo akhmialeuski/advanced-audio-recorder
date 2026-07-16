@@ -9,6 +9,7 @@
 export { transcribeFile } from './runTranscription';
 export {
 	effectiveDiarize,
+	isProviderAvailableOnPlatform,
 	providerSupportsDiarization,
 } from './providers/capabilities';
 export { effectiveTranscriptDestination } from './transcriptOutput';

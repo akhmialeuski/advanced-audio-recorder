@@ -13,7 +13,10 @@ import {
 	isOfflineEncodingSupported,
 } from '../audio/AudioEncoder';
 import { FORMAT_WAV, PLUGIN_LOG_PREFIX } from '../constants';
-import { getMaxDecodeBytes } from '../platform/capabilities';
+import {
+	getMaxDecodeBytes,
+	getMaxSplitSourceBytes,
+} from '../platform/capabilities';
 import { decodeAudioBlob } from '../audio/AudioFormatConverter';
 import {
 	parseWavLayout,
@@ -109,6 +112,18 @@ export class SplitService {
 		let partCount: number;
 		let firstPartName: string;
 		try {
+			// Platform ceiling on the full-file read itself, checked
+			// BEFORE the bytes are materialized: on mobile, even holding
+			// the source (plus one part copy) can get the WebView killed.
+			// Desktop is unbounded here - the lossless WAV byte path must
+			// keep splitting files beyond the decode ceiling.
+			if (request.sourceFile.stat.size > getMaxSplitSourceBytes()) {
+				new Notice(
+					'File is too large to split on this device. Split it on desktop instead.',
+				);
+				onProgress('');
+				return { status: 'aborted' };
+			}
 			onProgress('Reading source file...');
 			const sourceBytes = await this.app.vault.adapter.readBinary(
 				request.sourceFile.path,

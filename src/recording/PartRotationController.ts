@@ -189,9 +189,21 @@ export class PartRotationController {
 	}
 
 	/**
-	 * Launches a part rotation when the session reached the part
-	 * boundary. Runs outside the per-target pendingWrite chains and is
-	 * guarded against reentry.
+	 * The session's size-rotation boundary in bytes, or null when plain
+	 * buffer flushes are allowed (journaled desktop pipeline). The chunk
+	 * handler consults this to decide between a plain flush and leaving
+	 * the boundary to a rotation.
+	 */
+	sizeRotationBytes(): number | null {
+		return this.session?.chunkRotationBytes ?? null;
+	}
+
+	/**
+	 * Launches a part rotation when the session reached a part
+	 * boundary - the auto-split time boundary, or the platform's
+	 * chunk-buffer size boundary (platforms whose flushes must produce
+	 * standalone files). Runs outside the per-target pendingWrite
+	 * chains and is guarded against reentry.
 	 */
 	maybeRotate(): void {
 		if (!this.shouldRotate()) {
@@ -214,15 +226,17 @@ export class PartRotationController {
 	}
 
 	/**
-	 * Checks whether the MediaRecorder-based recording reached the
-	 * auto-split part boundary. PCM/WAV recordings split by exact byte
-	 * count instead (see finalizePcmPart).
+	 * Checks whether the MediaRecorder-based recording reached a part
+	 * boundary: the auto-split time boundary, or the chunk-buffer size
+	 * boundary on platforms whose flushes must produce standalone files
+	 * (see {@link RecordingSessionConfig.chunkRotationBytes}). PCM/WAV
+	 * recordings split by exact byte count instead (see
+	 * finalizePcmPart).
 	 */
 	private shouldRotate(): boolean {
 		const session = this.session;
 		if (
 			!session ||
-			!session.splitEnabled ||
 			session.isWavPcm ||
 			this.isStopping ||
 			this.rotationPromise !== null ||
@@ -230,8 +244,20 @@ export class PartRotationController {
 		) {
 			return false;
 		}
-		const activeMs = this.partActiveMs + (Date.now() - this.activeAnchor);
-		return activeMs >= session.partMinutes * MS_PER_MINUTE;
+		if (session.splitEnabled) {
+			const activeMs =
+				this.partActiveMs + (Date.now() - this.activeAnchor);
+			if (activeMs >= session.partMinutes * MS_PER_MINUTE) {
+				return true;
+			}
+		}
+		const sizeBoundary = session.chunkRotationBytes;
+		if (sizeBoundary !== null) {
+			return this.hooks
+				.getTargets()
+				.some((target) => target.bufferedBytes >= sizeBoundary);
+		}
+		return false;
 	}
 
 	/**
@@ -307,7 +333,8 @@ export class PartRotationController {
 	}
 
 	/**
-	 * Rotates MediaRecorder-based recording at an auto-split boundary:
+	 * Rotates MediaRecorder-based recording at a part boundary (the
+	 * auto-split time boundary, or the platform size boundary):
 	 * stops the recorders to obtain a complete container, detaches the
 	 * buffered data of each track as a snapshot of plain segment files,
 	 * restarts the recorders on the same streams, and only then

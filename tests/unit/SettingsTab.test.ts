@@ -12,12 +12,15 @@ import {
 } from 'src/settings/settingsSchema';
 import { DOCS_URL } from 'src/constants';
 
-// Mock AudioEncoder to avoid loading mediabunny in jsdom
+// Mock AudioEncoder to avoid loading mediabunny in jsdom. The async
+// probe defaults to "no offline encoder works"; individual tests
+// override it to model richer profiles.
 jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest.fn(),
 	isOfflineEncodingSupported: jest.fn((format: string) =>
 		['mp3', 'flac', 'wav', 'webm', 'ogg', 'mp4', 'm4a'].includes(format),
 	),
+	probeOfflineEncodingSupport: jest.fn(() => Promise.resolve(false)),
 }));
 
 // Mock SystemDiagnostics: pulled in by the settings tab but exercised
@@ -628,9 +631,9 @@ describe('AudioRecorderSettingTab', () => {
 			expect(rows).toContain('Audio source for track 2');
 		});
 
-		it('blocks recording formats the device cannot produce (iOS profile)', () => {
+		it('blocks recording formats the device cannot produce (iOS profile)', async () => {
 			// iOS WKWebView: MediaRecorder records audio/mp4 only; with no
-			// offline encoders, everything else must be blocked.
+			// working offline encoders, everything unrecordable is blocked.
 			Platform.isMobile = true;
 			(
 				(global as Record<string, unknown>).MediaRecorder as {
@@ -639,11 +642,10 @@ describe('AudioRecorderSettingTab', () => {
 			).isTypeSupported.mockImplementation(
 				(type: string) => type === 'audio/mp4',
 			);
-			const { isOfflineEncodingSupported } = jest.requireMock<{
-				isOfflineEncodingSupported: jest.Mock;
-			}>('src/audio/AudioEncoder');
-			isOfflineEncodingSupported.mockReturnValue(false);
 			tab.display();
+			// The availability probe is async: let it annotate the options
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			await new Promise((resolve) => setTimeout(resolve, 0));
 
 			const options = new Map(
 				Array.from(rowSelect('Recording format').options).map(
@@ -651,22 +653,56 @@ describe('AudioRecorderSettingTab', () => {
 				),
 			);
 			expect(options.get('mp4')).toBe(false);
+			// m4a IS an mp4 container: recordable via the canonical
+			// audio/mp4 MIME and saved with the .m4a extension
+			expect(options.get('m4a')).toBe(false);
 			// WAV still works: recorded via the mp4 intermediate, encoded
 			// by the plugin's own WAV writer
 			expect(options.get('wav')).toBe(false);
-			for (const format of ['webm', 'ogg', 'mp3', 'm4a', 'flac', 'aac']) {
+			for (const format of ['webm', 'ogg', 'mp3', 'flac', 'aac']) {
 				expect(options.get(format)).toBe(true);
 			}
 		});
 
-		it('keeps every recordable format selectable on a permissive desktop profile', () => {
+		it('names the fallback format when the stored format is blocked (iOS profile)', async () => {
+			// The plugin default (webm) synced onto an iOS-like device:
+			// the note must say what recordings actually produce
+			Platform.isMobile = true;
+			mockSettings.recordingFormat = 'webm';
+			(
+				(global as Record<string, unknown>).MediaRecorder as {
+					isTypeSupported: jest.Mock;
+				}
+			).isTypeSupported.mockImplementation(
+				(type: string) => type === 'audio/mp4',
+			);
 			tab.display();
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			const note = settingRow('Recording format').querySelector(
+				'.aar-format-fallback-note',
+			);
+			expect(note).not.toBeNull();
+			expect(note?.textContent).toContain('cannot record WEBM');
+			expect(note?.textContent).toContain('MP4');
+		});
+
+		it('keeps every recordable format selectable on a permissive desktop profile', async () => {
+			tab.display();
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			await new Promise((resolve) => setTimeout(resolve, 0));
 
 			const options = Array.from(rowSelect('Recording format').options);
 			expect(options.length).toBeGreaterThan(0);
 			for (const option of options) {
 				expect(option.disabled).toBe(false);
 			}
+			expect(
+				settingRow('Recording format').querySelector(
+					'.aar-format-fallback-note',
+				),
+			).toBeNull();
 		});
 	});
 });

@@ -23,7 +23,10 @@ import {
 	getSupportedSampleRates,
 	buildMimeType,
 	listFormatAvailability,
+	resolveEffectiveOutputFormat,
+	type FormatAvailabilityEntry,
 } from '../audio/AudioCapabilityDetector';
+import { AUDIO_FORMAT_IDS } from '../audio/formatRegistry';
 import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
 import {
 	CHANNEL_MODES,
@@ -118,6 +121,8 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	private deviceSnapshot: AudioInputDeviceSnapshot = EMPTY_DEVICE_SNAPSHOT;
 	/** Latest device refresh generation; older async results are discarded. */
 	private deviceRefreshGeneration = 0;
+	/** Latest format-availability probe; older async results are discarded. */
+	private formatAvailabilityGeneration = 0;
 	/** Prevents a refresh from updating controls after the tab is hidden. */
 	private isDisplayed = false;
 	/**
@@ -297,45 +302,33 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			);
 		};
 		let summaryEl: HTMLElement | null = null;
-		new Setting(containerEl)
+		const formatSetting = new Setting(containerEl)
 			.setName('Recording format')
 			.setDesc(
 				'Select the final file format. The selected format is applied when files are saved. Formats this device cannot record are shown blocked.',
-			)
-			.addDropdown((dropdown) => {
-				const entries = listFormatAvailability();
-				for (const entry of entries) {
-					const label = !entry.available
-						? `${entry.format.toUpperCase()} (not supported on this device)`
-						: entry.direct
-							? entry.format.toUpperCase()
-							: `${entry.format.toUpperCase()} (offline)`;
-					dropdown.addOption(entry.format, label);
+			);
+		formatSetting.addDropdown((dropdown) => {
+			// Render the full registry immediately; the async encoder
+			// probe then blocks the options this device cannot record.
+			for (const format of AUDIO_FORMAT_IDS) {
+				dropdown.addOption(format, format.toUpperCase());
+			}
+			// A stored format outside the registry (hand-edited or from a
+			// future version) still needs an option so setValue holds it.
+			const stored = this.plugin.settings.recordingFormat;
+			if (!AUDIO_FORMAT_IDS.some((format) => format === stored)) {
+				dropdown.addOption(stored, stored.toUpperCase());
+			}
+			dropdown.setValue(stored);
+			dropdown.onChange(async (value) => {
+				this.plugin.settings.recordingFormat = value;
+				await this.plugin.saveSettings();
+				if (summaryEl) {
+					updateOutputSummary(summaryEl);
 				}
-				// A stored format outside the registry (hand-edited or from a
-				// future version) still needs an option so setValue holds it.
-				const stored = this.plugin.settings.recordingFormat;
-				if (!entries.some((entry) => entry.format === stored)) {
-					dropdown.addOption(stored, stored.toUpperCase());
-				}
-				// Block the formats this device cannot record: they stay
-				// visible (so the full format list reads the same on every
-				// platform) but cannot be selected.
-				for (const option of Array.from(dropdown.selectEl.options)) {
-					const entry = entries.find(
-						(candidate) => candidate.format === option.value,
-					);
-					option.disabled = entry ? !entry.available : false;
-				}
-				dropdown.setValue(stored);
-				dropdown.onChange(async (value) => {
-					this.plugin.settings.recordingFormat = value;
-					await this.plugin.saveSettings();
-					if (summaryEl) {
-						updateOutputSummary(summaryEl);
-					}
-				});
 			});
+			void this.applyFormatAvailability(dropdown, formatSetting.descEl);
+		});
 
 		new Setting(containerEl)
 			.setName('Audio bitrate')
@@ -1067,6 +1060,78 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	}
 
 	/**
+	 * Applies the probed per-format recordability to the format
+	 * dropdown: unavailable formats are blocked (visible but
+	 * unselectable) and every option gets its accurate label. When the
+	 * STORED format itself is blocked (a synced or stale preference),
+	 * a note under the setting names the format recordings will fall
+	 * back to, so the disabled selection never reads as "this is what
+	 * you will get". Async because encoder support is probed for real;
+	 * guarded by the display generation so a probe that resolves after
+	 * the tab re-rendered or closed never touches stale controls.
+	 * @param dropdown - The recording-format dropdown to annotate
+	 * @param descEl - The setting's description element for the note
+	 */
+	private async applyFormatAvailability(
+		dropdown: DropdownComponent,
+		descEl: HTMLElement,
+	): Promise<void> {
+		const generation = ++this.formatAvailabilityGeneration;
+		let entries: FormatAvailabilityEntry[];
+		try {
+			entries = await listFormatAvailability();
+		} catch {
+			// Probing failed entirely: leave the options selectable, the
+			// recording-start validation still guards the session
+			return;
+		}
+		if (
+			!this.isDisplayed ||
+			generation !== this.formatAvailabilityGeneration
+		) {
+			return;
+		}
+		for (const option of Array.from(dropdown.selectEl.options)) {
+			const entry = entries.find(
+				(candidate) => candidate.format === option.value,
+			);
+			if (!entry) {
+				continue;
+			}
+			option.disabled = !entry.available;
+			option.textContent = !entry.available
+				? `${entry.format.toUpperCase()} (not supported on this device)`
+				: entry.direct
+					? entry.format.toUpperCase()
+					: `${entry.format.toUpperCase()} (offline)`;
+		}
+
+		const stored = this.plugin.settings.recordingFormat;
+		const storedEntry = entries.find((entry) => entry.format === stored);
+		descEl.querySelector('.aar-format-fallback-note')?.remove();
+		if (!storedEntry || storedEntry.available) {
+			return;
+		}
+		// Created through the setting's own document so the note lands in
+		// the right window when settings render in a popout.
+		const note = descEl.ownerDocument.createElement('div');
+		note.className = 'aar-format-fallback-note';
+		try {
+			const effective = await resolveEffectiveOutputFormat(stored);
+			note.textContent = `This device cannot record ${stored.toUpperCase()}; recordings are saved as ${effective.format.toUpperCase()} instead.`;
+		} catch {
+			note.textContent = `This device cannot record ${stored.toUpperCase()}. Select a different format.`;
+		}
+		if (
+			!this.isDisplayed ||
+			generation !== this.formatAvailabilityGeneration
+		) {
+			return;
+		}
+		descEl.appendChild(note);
+	}
+
+	/**
 	 * Runs every registered channel-dropdown re-evaluator.
 	 */
 	private runChannelDropdownUpdaters(): void {
@@ -1290,8 +1355,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 */
 	override hide(): void {
 		this.isDisplayed = false;
-		// Invalidate every in-flight enumeration before detaching controls.
+		// Invalidate every in-flight enumeration and probe before
+		// detaching controls.
 		this.deviceRefreshGeneration++;
+		this.formatAvailabilityGeneration++;
 		this.deviceDropdowns = [];
 		this.channelDropdownUpdaters = [];
 		this.saveTextSettingDebounced.run();

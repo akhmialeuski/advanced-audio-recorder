@@ -31,6 +31,7 @@ import { formatTimecode } from '../utils/TimeUtils';
 import {
 	effectiveDiarize,
 	effectiveTranscriptDestination,
+	isProviderAvailableOnPlatform,
 	providerSupportsDiarization,
 	transcribeFile,
 	TranscriptionCancelledError,
@@ -218,7 +219,14 @@ export class TranscriptionModal extends Modal {
 
 		addDropdown(ctx, {
 			name: 'Engine',
-			options: TRANSCRIPTION_PROVIDER_OPTIONS,
+			// Engines the platform cannot run stay listed but blocked,
+			// matching the settings tab.
+			options: TRANSCRIPTION_PROVIDER_OPTIONS.map((option) => ({
+				...option,
+				disabled: !isProviderAvailableOnPlatform(
+					option.value as TranscriptionProviderId,
+				),
+			})),
 			get: () => s.transcriptionProvider,
 			set: (v) =>
 				(s.transcriptionProvider = v as TranscriptionProviderId),

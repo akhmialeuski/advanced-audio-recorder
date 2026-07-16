@@ -48,6 +48,7 @@ jest.mock('src/platform/capabilities', () => {
 	return {
 		...actual,
 		getMaxDecodeBytes: jest.fn(actual.getMaxDecodeBytes),
+		getMaxSplitSourceBytes: jest.fn(actual.getMaxSplitSourceBytes),
 	};
 });
 
@@ -77,6 +78,7 @@ const createSourceFile = (extension: string): TFile => {
 		basename: 'recording',
 		extension,
 		parent: { path: 'Audio' },
+		stat: { size: 64, ctime: 0, mtime: 0 },
 	});
 	return file;
 };
@@ -158,6 +160,29 @@ describe('SplitService', () => {
 				'Audio/recording-part1.mp3',
 				'Audio/recording-part2.mp3',
 			]);
+		});
+
+		it('aborts BEFORE reading a source over the platform read ceiling', async () => {
+			// On mobile even materializing the source bytes can get the
+			// WebView killed, so the size gate must run on stat.size,
+			// before adapter.readBinary
+			const { getMaxSplitSourceBytes } = jest.requireMock<{
+				getMaxSplitSourceBytes: jest.Mock;
+			}>('src/platform/capabilities');
+			getMaxSplitSourceBytes.mockReturnValueOnce(16);
+
+			const outcome = await service.split(createRequest(), jest.fn());
+
+			expect(outcome).toEqual({ status: 'aborted' });
+			expect(mockApp.vault.adapter.readBinary).not.toHaveBeenCalled();
+			const { Notice } = jest.requireMock('obsidian');
+			expect(
+				(Notice as jest.Mock).mock.calls.some((call) =>
+					String(call[0]).includes(
+						'too large to split on this device',
+					),
+				),
+			).toBe(true);
 		});
 
 		it('aborts the decode path when the file exceeds the platform decode ceiling', async () => {

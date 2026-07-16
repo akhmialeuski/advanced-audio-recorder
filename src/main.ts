@@ -58,6 +58,7 @@ import { MarkerStore } from './markers/MarkerStore';
 import { RecordingMarkerModal } from './ui/MarkerModal';
 import { TranscriptionModal } from './ui/TranscriptionModal';
 import type { TranscriptionModalOptions } from './ui/TranscriptionModal';
+import { isProviderAvailableOnPlatform } from './transcription/api';
 import { COMMAND_IDS } from './constants';
 import type { MarkerKind } from './markers/markerModel';
 import type { PlaybackControlsState } from './player/playbackControls';
@@ -730,6 +731,17 @@ export default class AudioRecorderPlugin extends Plugin {
 			!this.settings.transcribeOnSave ||
 			result.audioPaths.length === 0
 		) {
+			return;
+		}
+		// A synced desktop config may select an engine this platform
+		// cannot run (local whisper.cpp on mobile): auto-starting would
+		// pop a doomed transcription after every recording.
+		if (
+			!isProviderAvailableOnPlatform(this.settings.transcriptionProvider)
+		) {
+			new Notice(
+				'Transcription was skipped: the selected engine is not available on this device. Pick a cloud engine in settings.',
+			);
 			return;
 		}
 		const [firstAudioPath] = result.audioPaths;

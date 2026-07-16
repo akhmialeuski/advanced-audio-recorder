@@ -6,11 +6,14 @@
  * @module recording/TestRecorder
  */
 
-import { buildMimeType } from '../audio/AudioCapabilityDetector';
-import { FORMAT_WAV, FORMAT_WEBM, MIME_TYPE_AUDIO_PREFIX } from '../constants';
+import { MIME_TYPE_AUDIO_PREFIX } from '../constants';
+import { resolveRecorderFormat } from '../audio/AudioFormatConverter';
 import { isMonoChannelMode, normalizeChannelMode } from '../audio/downmix';
 import { MonoCaptureBridge } from './MonoCaptureBridge';
-import { getProcessingConstraints } from './AudioStreamHandler';
+import {
+	getProcessingConstraints,
+	resolveCaptureDeviceId,
+} from './AudioStreamHandler';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 
 /** Outcome of one test capture. */
@@ -51,21 +54,25 @@ export class TestRecorder {
 		try {
 			this.cancel();
 
-			const format = settings.recordingFormat;
-			// WAV records through a compressed intermediate here; the
-			// test only verifies device capture works
-			const recorderFormat = format === FORMAT_WAV ? FORMAT_WEBM : format;
-			const mimeType = buildMimeType(recorderFormat);
-
-			if (!MediaRecorder.isTypeSupported(mimeType)) {
+			// Resolve the capture container exactly like a real session
+			// (native format, or the platform's intermediate), so the test
+			// exercises the same recorder path recording would use.
+			let recorderFormat: string;
+			let mimeType: string;
+			try {
+				({ recorderFormat, mimeType } = resolveRecorderFormat(
+					settings.recordingFormat,
+				));
+			} catch {
 				return { kind: 'unsupported' };
 			}
 
+			// The same device resolution real capture uses: stored ids are
+			// ignored where device selection is unavailable (mobile).
+			const deviceId = resolveCaptureDeviceId(settings);
 			stream = await navigator.mediaDevices.getUserMedia({
 				audio: {
-					deviceId: settings.audioDeviceId
-						? { exact: settings.audioDeviceId }
-						: undefined,
+					deviceId: deviceId ? { exact: deviceId } : undefined,
 					sampleRate: settings.sampleRate,
 					...getProcessingConstraints(settings),
 				},

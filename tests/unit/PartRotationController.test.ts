@@ -44,7 +44,7 @@ const createTarget = (
 const createSession = (
 	overrides: Partial<RecordingSessionConfig> = {},
 ): RecordingSessionConfig => ({
-	isMobile: false,
+	chunkRotationBytes: null,
 	isWavPcm: false,
 	recorderFormat: 'webm',
 	outputFormat: 'webm',
@@ -217,6 +217,78 @@ describe('PartRotationController', () => {
 			expect(hooks.stopRecorders).toHaveBeenCalledTimes(1);
 			releaseStop();
 			await controller.waitForPendingRotation();
+		});
+	});
+
+	describe('size-boundary rotation', () => {
+		it('exposes the session size boundary to the chunk handler', () => {
+			buildController(
+				createSession({
+					chunkRotationBytes: 1024,
+					splitEnabled: false,
+				}),
+			);
+			expect(controller.sizeRotationBytes()).toBe(1024);
+
+			buildController(createSession({ chunkRotationBytes: null }));
+			expect(controller.sizeRotationBytes()).toBeNull();
+		});
+
+		it('reports no size boundary outside a session', () => {
+			controller = new PartRotationController(
+				mockApp,
+				mockSettings,
+				writeQueue,
+				finalizer,
+				new DebugLogger(mockSettings),
+				hooks,
+			);
+			expect(controller.sizeRotationBytes()).toBeNull();
+		});
+
+		it('rotates when a target buffer reaches the size boundary without auto-split', async () => {
+			buildController(
+				createSession({
+					chunkRotationBytes: 1024,
+					splitEnabled: false,
+				}),
+			);
+			targets[0].bufferedBytes = 1024;
+
+			controller.maybeRotate();
+			await controller.waitForPendingRotation();
+
+			expect(hooks.stopRecorders).toHaveBeenCalled();
+			expect(writeQueue.flushChunkBuffer).toHaveBeenCalled();
+			expect(hooks.restartRecorders).toHaveBeenCalled();
+		});
+
+		it('does not rotate below the size boundary', () => {
+			buildController(
+				createSession({
+					chunkRotationBytes: 1024,
+					splitEnabled: false,
+				}),
+			);
+			targets[0].bufferedBytes = 1023;
+
+			controller.maybeRotate();
+
+			expect(hooks.stopRecorders).not.toHaveBeenCalled();
+		});
+
+		it('never size-rotates when the session allows plain flushes', () => {
+			buildController(
+				createSession({
+					chunkRotationBytes: null,
+					splitEnabled: false,
+				}),
+			);
+			targets[0].bufferedBytes = Number.MAX_SAFE_INTEGER;
+
+			controller.maybeRotate();
+
+			expect(hooks.stopRecorders).not.toHaveBeenCalled();
 		});
 	});
 

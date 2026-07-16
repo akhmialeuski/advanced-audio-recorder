@@ -3,8 +3,9 @@
  * @module tests/unit/TranscriptionModal.test
  */
 
-import { App, TFile } from 'obsidian';
+import { App, Platform, TFile } from 'obsidian';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
+import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { TranscriptionModal } from 'src/ui/TranscriptionModal';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 
@@ -104,5 +105,55 @@ describe('TranscriptionModal minimize behavior', () => {
 		expect(internals.cancelled).toBe(true);
 		expect(callbacks.clear).toHaveBeenCalledTimes(1);
 		expect(modal.contentEl.textContent).toBe('');
+	});
+});
+
+describe('TranscriptionModal platform gating', () => {
+	afterEach(() => {
+		Platform.isMobile = false;
+		Platform.isMobileApp = false;
+	});
+
+	/** The rendered engine select and its options, from the modal DOM. */
+	function engineOptions(modal: TranscriptionModal): HTMLOptionElement[] {
+		const selects = Array.from(modal.contentEl.querySelectorAll('select'));
+		const engineSelect = selects.find((select) =>
+			Array.from(select.options).some(
+				(option) =>
+					option.value === TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+			),
+		);
+		expect(engineSelect).toBeDefined();
+		return Array.from(engineSelect?.options ?? []);
+	}
+
+	it('blocks the local whisper.cpp engine option on mobile', () => {
+		// The per-run dialog must gate engines exactly like the settings
+		// tab: a doomed local run should not be selectable on mobile
+		Platform.isMobile = true;
+		const modal = createModal({ show: jest.fn(), clear: jest.fn() });
+		modal.onOpen();
+
+		const options = new Map(
+			engineOptions(modal).map((option) => [
+				option.value,
+				option.disabled,
+			]),
+		);
+		expect(options.get(TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER)).toBe(
+			true,
+		);
+		expect(options.get(TRANSCRIPTION_PROVIDER_IDS.WHISPER_API)).toBe(false);
+		expect(options.get(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM)).toBe(false);
+		expect(options.get(TRANSCRIPTION_PROVIDER_IDS.GEMINI)).toBe(false);
+	});
+
+	it('keeps every engine selectable on desktop', () => {
+		const modal = createModal({ show: jest.fn(), clear: jest.fn() });
+		modal.onOpen();
+
+		for (const option of engineOptions(modal)) {
+			expect(option.disabled).toBe(false);
+		}
 	});
 });

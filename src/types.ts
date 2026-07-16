@@ -97,13 +97,19 @@ export interface TrackFileGroup {
  * snapshot, a settings change mid-recording could switch formats
  * between parts or reroute the finalization topology (outputMode
  * decides whether a multi-track session merges, and the auto-split
- * decision already depended on it at start). The mobile flush path
- * deliberately keeps reading live settings (see
- * TrackWriteQueue.flushChunkBuffer).
+ * decision already depended on it at start).
  */
 export interface RecordingSessionConfig {
-	/** Whether the session runs in the mobile app. */
-	isMobile: boolean;
+	/**
+	 * Chunk-buffer size that forces a part rotation, or null where a
+	 * plain buffer flush may write raw mid-stream segments instead.
+	 * Mid-stream segments are only usable where a guaranteed
+	 * concatenate-and-finalize step follows (the journaled desktop
+	 * pipeline); platforms without the recovery journal (mobile) must
+	 * produce a self-contained container per flush, which requires
+	 * stopping and restarting the recorders - a rotation.
+	 */
+	chunkRotationBytes: number | null;
 	/** Whether the session captures raw PCM for WAV output (desktop). */
 	isWavPcm: boolean;
 	/** Container format produced by the MediaRecorders. */

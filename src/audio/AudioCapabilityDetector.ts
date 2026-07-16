@@ -13,13 +13,12 @@ import {
 	DEFAULT_SAMPLE_RATE,
 	DEFAULT_BITRATE,
 } from '../constants';
-import { isOfflineEncodingSupported } from './AudioEncoder';
+import { probeOfflineEncodingSupport } from './AudioEncoder';
 import { isPcmWavCaptureSupported } from '../platform/capabilities';
 import {
 	AUDIO_FORMAT_IDS,
 	COMPRESSED_INTERMEDIATE_FORMATS,
 	MEDIA_RECORDER_CANDIDATE_FORMATS,
-	OFFLINE_ONLY_FORMATS,
 	getFormatDescriptor,
 	type AudioFormatId,
 } from './formatRegistry';
@@ -99,16 +98,48 @@ export function buildMimeType(format: string): string {
 }
 
 /**
- * Detects which audio formats the current browser supports
- * for MediaRecorder output or offline encoding.
+ * The MIME type MediaRecorder accepts for recording this format
+ * directly, or null when it cannot. Probes the plain `audio/<ext>`
+ * MIME first (certain Chromium builds require it), then the registry's
+ * canonical container MIME - iOS WKWebView answers true only for
+ * `audio/mp4`, which also covers m4a: the recording is an MP4
+ * container saved with the .m4a extension, which is exactly what an
+ * m4a file is.
+ * @param format - Audio format identifier
+ * @returns The MIME type to record with, or null
+ */
+export function directRecordingMimeType(format: string): string | null {
+	if (typeof MediaRecorder === 'undefined') {
+		return null;
+	}
+	const plain = buildMimeType(format);
+	if (MediaRecorder.isTypeSupported(plain)) {
+		return plain;
+	}
+	const canonical = getFormatDescriptor(format)?.mime;
+	if (
+		canonical &&
+		canonical !== plain &&
+		MediaRecorder.isTypeSupported(canonical)
+	) {
+		return canonical;
+	}
+	return null;
+}
+
+/**
+ * Detects which audio formats can actually be recorded here: directly
+ * by MediaRecorder, or through a recordable intermediate followed by a
+ * probed offline encode. Async because encoder support is probed for
+ * real (see {@link probeOfflineEncodingSupport}), not guessed from the
+ * presence of a WebCodecs global.
  * @returns Array of supported format strings
  */
-export function detectSupportedFormats(): string[] {
+export async function detectSupportedFormats(): Promise<string[]> {
 	const supported: string[] = [];
 
 	for (const format of CANDIDATE_FORMATS) {
-		const mimeType = buildMimeType(format);
-		if (MediaRecorder.isTypeSupported(mimeType)) {
+		if (directRecordingMimeType(format) !== null) {
 			supported.push(format);
 		}
 	}
@@ -125,11 +156,17 @@ export function detectSupportedFormats(): string[] {
 		supported.push(FORMAT_WAV);
 	}
 
-	// Add offline-only formats if their encoder is available
-	// and they weren't already added via MediaRecorder support
-	for (const format of OFFLINE_ONLY_FORMATS) {
-		if (!supported.includes(format) && isOfflineEncodingSupported(format)) {
-			supported.push(format);
+	// A format that MediaRecorder cannot produce directly is reachable
+	// through an intermediate recording plus an offline encode - when
+	// the encoder genuinely works here
+	if (hasCompressedIntermediate) {
+		for (const format of AUDIO_FORMAT_IDS) {
+			if (format === FORMAT_WAV || supported.includes(format)) {
+				continue;
+			}
+			if (await probeOfflineEncodingSupport(format)) {
+				supported.push(format);
+			}
 		}
 	}
 
@@ -155,12 +192,16 @@ export function getSupportedBitrates(): number[] {
 }
 
 /**
- * Validates that a recording configuration is viable.
- * Checks MediaRecorder format support and offline encoding availability.
+ * Validates that a recording configuration is viable. Checks direct
+ * MediaRecorder support, and for everything else the pair the indirect
+ * path really needs: a recordable intermediate AND a probed working
+ * offline encoder for the target format.
  * @param format - Audio format to validate
  * @returns Validation result with diagnostic info
  */
-export function validateRecordingCapability(format: string): ValidationResult {
+export async function validateRecordingCapability(
+	format: string,
+): Promise<ValidationResult> {
 	if (format === FORMAT_WAV) {
 		// WAV records via direct PCM capture where the platform allows it
 		// (desktop), or via a compressed intermediate plus offline
@@ -179,31 +220,32 @@ export function validateRecordingCapability(format: string): ValidationResult {
 		return { valid: true, reason: '' };
 	}
 
-	const mimeType = buildMimeType(format);
-	if (MediaRecorder.isTypeSupported(mimeType)) {
+	if (directRecordingMimeType(format) !== null) {
 		return { valid: true, reason: '' };
 	}
 
-	// Format not supported by MediaRecorder - check if offline encoding
-	// is available and an intermediate recording format exists
-	if (isOfflineEncodingSupported(format)) {
-		const hasIntermediate = COMPRESSED_INTERMEDIATES.some((f) =>
-			MediaRecorder.isTypeSupported(buildMimeType(f)),
-		);
-		if (hasIntermediate) {
-			return { valid: true, reason: '' };
-		}
+	// Format not directly recordable - the indirect path needs an
+	// intermediate recording format plus a genuinely working encoder
+	const hasIntermediate = COMPRESSED_INTERMEDIATES.some((f) =>
+		MediaRecorder.isTypeSupported(buildMimeType(f)),
+	);
+	if (!hasIntermediate) {
 		return {
 			valid: false,
-			reason: `The format "${format}" requires offline encoding with an intermediate recording format, but none of ${COMPRESSED_INTERMEDIATES.join(
+			reason: `The format "${format}" requires an intermediate recording format, but none of ${COMPRESSED_INTERMEDIATES.join(
 				', ',
 			)} is supported on this device.`,
 		};
 	}
+	if (await probeOfflineEncodingSupport(format)) {
+		return { valid: true, reason: '' };
+	}
 
 	return {
 		valid: false,
-		reason: `The format "${format}" (${mimeType}) is not supported for recording on this device.`,
+		reason: `The format "${format}" (${buildMimeType(
+			format,
+		)}) cannot be recorded or encoded on this device.`,
 	};
 }
 
@@ -223,17 +265,53 @@ export interface FormatAvailabilityEntry {
  * Reports the recordability of every registry format on this device, in
  * registry (display) order. The settings UI renders all of them and
  * blocks the unavailable ones, so users see the full format list with
- * the subset their platform supports enabled.
+ * the subset their platform supports enabled. Async because encoder
+ * support is probed for real.
  * @returns One availability entry per registry format
  */
-export function listFormatAvailability(): FormatAvailabilityEntry[] {
-	return AUDIO_FORMAT_IDS.map((format) => ({
-		format,
-		available: validateRecordingCapability(format).valid,
-		direct:
-			typeof MediaRecorder !== 'undefined' &&
-			MediaRecorder.isTypeSupported(buildMimeType(format)),
-	}));
+export async function listFormatAvailability(): Promise<
+	FormatAvailabilityEntry[]
+> {
+	const entries: FormatAvailabilityEntry[] = [];
+	for (const format of AUDIO_FORMAT_IDS) {
+		entries.push({
+			format,
+			available: (await validateRecordingCapability(format)).valid,
+			direct: directRecordingMimeType(format) !== null,
+		});
+	}
+	return entries;
+}
+
+/**
+ * The output format a recording session should actually use: the
+ * requested (stored) format when this device can record it, otherwise
+ * the platform's best recordable format. Keeps a synced or stale
+ * preference from silently producing a failed - or worse, corrupt -
+ * recording: the session records something that genuinely works here
+ * and the caller tells the user about the substitution.
+ * @param requested - The stored output format preference
+ * @returns The effective format and whether it is a fallback
+ * @throws Error when this device cannot record any format at all
+ */
+export async function resolveEffectiveOutputFormat(
+	requested: string,
+): Promise<{ format: string; fellBack: boolean; reason: string }> {
+	const normalized = requested.toLowerCase();
+	const validation = await validateRecordingCapability(normalized);
+	if (validation.valid) {
+		return { format: normalized, fellBack: false, reason: '' };
+	}
+	const capabilities = await detectCapabilities();
+	const fallback = capabilities.supportedFormats.includes(
+		capabilities.defaultFormat,
+	)
+		? capabilities.defaultFormat
+		: capabilities.supportedFormats[0];
+	if (!fallback) {
+		throw new Error(validation.reason);
+	}
+	return { format: fallback, fellBack: true, reason: validation.reason };
 }
 
 /**
@@ -292,8 +370,8 @@ export function detectCodecSupport(): CodecSupportEntry[] {
  * Detects all audio capabilities of the current environment.
  * @returns Full capability report
  */
-export function detectCapabilities(): AudioCapabilities {
-	const supportedFormats = detectSupportedFormats();
+export async function detectCapabilities(): Promise<AudioCapabilities> {
+	const supportedFormats = await detectSupportedFormats();
 	const supportedSampleRates = getSupportedSampleRates();
 	const supportedBitrates = getSupportedBitrates();
 

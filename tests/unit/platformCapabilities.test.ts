@@ -19,6 +19,7 @@ import {
 	getMaxCleanupDecodedSamples,
 	getMaxCleanupSeconds,
 	getMaxDecodeBytes,
+	getMaxSplitSourceBytes,
 	getPlatformCapabilities,
 	isAutoSplitSupported,
 	isChannelModeSelectionSupported,
@@ -125,8 +126,10 @@ describe('platform capability table', () => {
 			MAX_AUDIO_CLEANUP_DECODED_SAMPLES,
 		);
 		expect(desktop.maxCleanupSeconds).toBe(MAX_AUDIO_CLEANUP_SECONDS);
+		expect(desktop.maxSplitSourceBytes).toBe(Number.POSITIVE_INFINITY);
 		expect(mobile.chunkFlushThresholdBytes).toBe(MOBILE_BUFFER_LIMIT_BYTES);
 		expect(mobile.maxDecodeBytes).toBe(MOBILE_MAX_DECODE_BYTES);
+		expect(mobile.maxSplitSourceBytes).toBe(MOBILE_MAX_DECODE_BYTES);
 		expect(mobile.maxCleanupDecodedSamples).toBe(
 			MOBILE_MAX_CLEANUP_DECODED_SAMPLES,
 		);
@@ -193,6 +196,10 @@ describe('capability helper functions', () => {
 		);
 		expect(getMaxDecodeBytes('desktop')).toBe(WAVEFORM_MAX_DECODE_BYTES);
 		expect(getMaxDecodeBytes('mobile')).toBe(MOBILE_MAX_DECODE_BYTES);
+		expect(getMaxSplitSourceBytes('desktop')).toBe(
+			Number.POSITIVE_INFINITY,
+		);
+		expect(getMaxSplitSourceBytes('mobile')).toBe(MOBILE_MAX_DECODE_BYTES);
 		expect(getMaxCleanupDecodedSamples('desktop')).toBe(
 			MAX_AUDIO_CLEANUP_DECODED_SAMPLES,
 		);

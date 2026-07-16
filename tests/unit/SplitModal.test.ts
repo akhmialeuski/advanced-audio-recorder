@@ -292,6 +292,10 @@ describe('SplitModal', () => {
 			value: { path: 'Recordings' },
 			configurable: true,
 		});
+		Object.defineProperty(mockFile, 'stat', {
+			value: { size: 64, ctime: 0, mtime: 0 },
+			configurable: true,
+		});
 	}
 
 	beforeEach(() => {

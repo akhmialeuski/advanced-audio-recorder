@@ -17,6 +17,13 @@ import {
 	MAX_AUDIO_CLEANUP_DECODED_SAMPLES,
 } from 'src/constants';
 
+// Controllable container probe: null (the default) means "container not
+// parseable", which sends the pipeline down the plain decode path the
+// existing tests exercise. The pre-decode guard tests override it.
+jest.mock('src/utils/AudioFileAnalyzer', () => ({
+	probeAudioMetadata: jest.fn(() => Promise.resolve(null)),
+}));
+
 /** A writable fake AudioBuffer. */
 function fakeBuffer(channels: Float32Array[], sampleRate: number): unknown {
 	return {
@@ -308,6 +315,73 @@ describe('AudioProcessingService.process (e2e pipeline)', () => {
 				ALL_STAGES,
 			),
 		).rejects.toThrow(/decode/i);
+	});
+
+	it('rejects an oversized decode from container metadata BEFORE decoding', async () => {
+		// A compact compressed file passes the byte guard, but its
+		// metadata reveals a decoded working set over the cap: the guard
+		// must fire before decodeAudioData materializes the whole PCM
+		// (on mobile that allocation gets the WebView killed).
+		const { probeAudioMetadata } = jest.requireMock<{
+			probeAudioMetadata: jest.Mock;
+		}>('src/utils/AudioFileAnalyzer');
+		probeAudioMetadata.mockResolvedValueOnce({
+			durationSeconds: MAX_AUDIO_CLEANUP_DECODED_SAMPLES / 2 / 48000 + 1,
+			sampleRate: 48000,
+			channels: 2,
+		});
+		const { app } = makeApp();
+
+		await expect(
+			new AudioProcessingService(app).process(
+				fakeFile('dense.opus'),
+				ALL_STAGES,
+			),
+		).rejects.toThrow(/too large/i);
+		expect(decodeAudioData).not.toHaveBeenCalled();
+	});
+
+	it('rejects an over-long file from container metadata BEFORE decoding', async () => {
+		const { probeAudioMetadata } = jest.requireMock<{
+			probeAudioMetadata: jest.Mock;
+		}>('src/utils/AudioFileAnalyzer');
+		probeAudioMetadata.mockResolvedValueOnce({
+			durationSeconds: MAX_AUDIO_CLEANUP_SECONDS + 60,
+			sampleRate: 16000,
+			channels: 1,
+		});
+		const { app } = makeApp();
+
+		await expect(
+			new AudioProcessingService(app).process(
+				fakeFile('long.opus'),
+				ALL_STAGES,
+			),
+		).rejects.toThrow(/too long/i);
+		expect(decodeAudioData).not.toHaveBeenCalled();
+	});
+
+	it('proceeds to decode when metadata stays within the limits', async () => {
+		const { probeAudioMetadata } = jest.requireMock<{
+			probeAudioMetadata: jest.Mock;
+		}>('src/utils/AudioFileAnalyzer');
+		probeAudioMetadata.mockResolvedValueOnce({
+			durationSeconds: 1,
+			sampleRate: 16000,
+			channels: 1,
+		});
+		decodeAudioData.mockResolvedValue(
+			fakeBuffer([new Float32Array(16000)], 16000),
+		);
+		const { app, written } = makeApp();
+
+		await new AudioProcessingService(app).process(
+			fakeFile('short.wav'),
+			ALL_STAGES,
+		);
+
+		expect(decodeAudioData).toHaveBeenCalled();
+		expect(written.size).toBe(1);
 	});
 });
 

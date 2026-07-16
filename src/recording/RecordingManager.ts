@@ -37,7 +37,6 @@ import {
 	FORMAT_WEBM,
 	FORMAT_WAV,
 } from '../constants';
-import { isMobilePlatform } from '../platform/platformKind';
 import {
 	getChunkFlushThresholdBytes,
 	isAutoSplitSupported,
@@ -47,7 +46,7 @@ import {
 import { DebugLogger } from '../utils/DebugLogger';
 import {
 	buildMimeType,
-	validateRecordingCapability,
+	resolveEffectiveOutputFormat,
 } from '../audio/AudioCapabilityDetector';
 import {
 	CHANNEL_MODE_SOURCE,
@@ -110,7 +109,6 @@ export class RecordingManager {
 	private recordedBytes: number = 0;
 	/** Live input-level meter for the primary stream, when enabled. */
 	private levelMonitor: InputLevelMonitor | null = null;
-	private isMobileRecording: boolean = false;
 	private isWavPcmRecording: boolean = false;
 	private activeRecorderFormat: string = FORMAT_WEBM;
 	private insertionContext: InsertionContext | null = null;
@@ -320,19 +318,35 @@ export class RecordingManager {
 	 */
 	async startRecording(): Promise<void> {
 		try {
-			this.isMobileRecording = isMobilePlatform();
+			// Resolve the format this session actually records in: the
+			// stored preference when this device can record it, otherwise
+			// the platform's best recordable format. Probes real encoder
+			// support, so a format that would only fail at save time is
+			// never silently accepted.
+			const effectiveFormat = await resolveEffectiveOutputFormat(
+				this.settings.recordingFormat,
+			);
+			if (effectiveFormat.fellBack) {
+				new Notice(
+					`The format "${this.settings.recordingFormat.toUpperCase()}" cannot be recorded on this device. Recording in ${effectiveFormat.format.toUpperCase()} instead.`,
+				);
+				this.debugLogger.log('Recording format fallback', {
+					requested: this.settings.recordingFormat,
+					effective: effectiveFormat.format,
+					reason: effectiveFormat.reason,
+				});
+			}
+			const outputFormat = effectiveFormat.format;
 			this.isWavPcmRecording =
-				this.settings.recordingFormat === FORMAT_WAV &&
-				isPcmWavCaptureSupported();
+				outputFormat === FORMAT_WAV && isPcmWavCaptureSupported();
 
 			if (!this.isWavPcmRecording) {
-				const { recorderFormat, mimeType } = resolveRecorderFormat(
-					this.settings,
-				);
+				const { recorderFormat, mimeType } =
+					resolveRecorderFormat(outputFormat);
 				this.activeRecorderFormat = recorderFormat;
 				this.debugLogger.logMimeType(mimeType);
 				this.debugLogger.log('Recording format configuration', {
-					outputFormat: this.settings.recordingFormat,
+					outputFormat,
 					recorderFormat,
 					bitrate: this.settings.bitrate,
 				});
@@ -342,13 +356,6 @@ export class RecordingManager {
 				});
 			}
 
-			const validation = validateRecordingCapability(
-				this.settings.recordingFormat,
-			);
-			if (!validation.valid) {
-				throw new Error(validation.reason);
-			}
-
 			await validateSelectedDevices(this.settings);
 			const { streams, trackOrder } = await getAudioStreams(
 				this.settings,
@@ -356,9 +363,14 @@ export class RecordingManager {
 			this.streams = streams;
 			this.trackOrder = trackOrder;
 
-			this.snapshotSessionSettings(streams.length);
+			this.snapshotSessionSettings(streams.length, outputFormat);
 			const sessionConfig = {
-				isMobile: this.isMobileRecording,
+				// Platforms without the recovery journal must never leave
+				// raw mid-stream segments behind, so their buffer flushes
+				// run as full part rotations at this size boundary.
+				chunkRotationBytes: isRecoveryJournalSupported()
+					? null
+					: getChunkFlushThresholdBytes(),
 				isWavPcm: this.isWavPcmRecording,
 				recorderFormat: this.activeRecorderFormat,
 				outputFormat: this.sessionOutputFormat,
@@ -386,8 +398,9 @@ export class RecordingManager {
 			}
 
 			if (isRecoveryJournalSupported()) {
-				// Mobile flushes write final files, never .tmp segments,
-				// so there is nothing to journal for recovery there
+				// Where the journal is unavailable (mobile), flushes run as
+				// rotations whose segments are converted and removed right
+				// away, so there is nothing lasting to journal
 				this.journal.startSession({
 					sessionId:
 						this.recordingTimestamp ??
@@ -478,14 +491,18 @@ export class RecordingManager {
 	 * recording, and without the snapshot each rotation could produce
 	 * a part in a different format, or an outputMode change could
 	 * reroute a split session into the merged finalization and drop
-	 * its part files from the inserted links. The mobile flush path
-	 * still reads live settings, matching its pre-split behavior.
+	 * its part files from the inserted links.
 	 * Auto-split is skipped for merged multi-track output because the
 	 * tracks are mixed only once at stop.
 	 * @param streamCount - Number of acquired audio streams
+	 * @param outputFormat - Effective output format resolved for this
+	 *   session (the stored preference, or the platform fallback)
 	 */
-	private snapshotSessionSettings(streamCount: number): void {
-		this.sessionOutputFormat = this.settings.recordingFormat;
+	private snapshotSessionSettings(
+		streamCount: number,
+		outputFormat: string,
+	): void {
+		this.sessionOutputFormat = outputFormat;
 		this.sessionOutputMode = this.settings.outputMode;
 		this.sessionBitrate = this.settings.bitrate;
 		// Normalized once per session: capture primitives branch on the
@@ -969,14 +986,24 @@ export class RecordingManager {
 		await this.writeQueue.enqueue(target, async () => {
 			target.bufferedChunks.push(data);
 			target.bufferedBytes += data.size;
-			if (target.bufferedBytes >= flushThreshold) {
+			// A plain flush writes a raw mid-stream segment, which is only
+			// usable where the journaled finalization later concatenates
+			// the segments (desktop). Where flushes must produce
+			// standalone files instead (mobile), the size boundary is
+			// handled by the rotation below, which stops the recorders
+			// first so the flushed container is complete.
+			if (
+				this.rotation.sizeRotationBytes() === null &&
+				target.bufferedBytes >= flushThreshold
+			) {
 				await this.writeQueue.flushChunkBuffer(target);
 			}
 		});
 
 		// Rotation spans all tracks and restarts the recorders, so it
 		// runs outside the per-target pendingWrite chain, guarded
-		// against reentry inside the controller
+		// against reentry inside the controller. It fires on the
+		// auto-split time boundary and on the platform's size boundary.
 		this.rotation.maybeRotate();
 	}
 

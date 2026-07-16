@@ -57,6 +57,15 @@ export interface PlatformCapabilities {
 	 * cleanup, split) will load into memory.
 	 */
 	readonly maxDecodeBytes: number;
+	/**
+	 * Largest source file the splitter will read into memory at all.
+	 * Desktop is unbounded: the lossless WAV byte path splits files far
+	 * beyond the decode ceiling without decoding (and cleanup points
+	 * users at split for oversized files, so split must accept them).
+	 * Mobile bounds every full-file read, because just holding the bytes
+	 * (plus one part copy) can get the WebView killed.
+	 */
+	readonly maxSplitSourceBytes: number;
 	/** Largest decoded working set (frames x channels) cleanup accepts. */
 	readonly maxCleanupDecodedSamples: number;
 	/** Longest recording duration cleanup accepts, in seconds. */
@@ -75,6 +84,7 @@ const DESKTOP_CAPABILITIES: PlatformCapabilities = {
 	recordingBanner: false,
 	chunkFlushThresholdBytes: DESKTOP_FLUSH_THRESHOLD_BYTES,
 	maxDecodeBytes: WAVEFORM_MAX_DECODE_BYTES,
+	maxSplitSourceBytes: Number.POSITIVE_INFINITY,
 	maxCleanupDecodedSamples: MAX_AUDIO_CLEANUP_DECODED_SAMPLES,
 	maxCleanupSeconds: MAX_AUDIO_CLEANUP_SECONDS,
 };
@@ -91,6 +101,7 @@ const MOBILE_CAPABILITIES: PlatformCapabilities = {
 	recordingBanner: true,
 	chunkFlushThresholdBytes: MOBILE_BUFFER_LIMIT_BYTES,
 	maxDecodeBytes: MOBILE_MAX_DECODE_BYTES,
+	maxSplitSourceBytes: MOBILE_MAX_DECODE_BYTES,
 	maxCleanupDecodedSamples: MOBILE_MAX_CLEANUP_DECODED_SAMPLES,
 	maxCleanupSeconds: MOBILE_MAX_AUDIO_CLEANUP_SECONDS,
 };
@@ -166,6 +177,11 @@ export function getChunkFlushThresholdBytes(kind?: PlatformKind): number {
 /** Largest encoded file decode-heavy features load on this platform. */
 export function getMaxDecodeBytes(kind?: PlatformKind): number {
 	return getPlatformCapabilities(kind).maxDecodeBytes;
+}
+
+/** Largest source file the splitter reads into memory on this platform. */
+export function getMaxSplitSourceBytes(kind?: PlatformKind): number {
+	return getPlatformCapabilities(kind).maxSplitSourceBytes;
 }
 
 /** Largest decoded working set cleanup accepts on this platform. */
