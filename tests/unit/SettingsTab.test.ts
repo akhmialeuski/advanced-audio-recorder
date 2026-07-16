@@ -72,6 +72,50 @@ describe('AudioRecorderSettingTab', () => {
 		tab = new AudioRecorderSettingTab(new App(), mockPlugin);
 	});
 
+	describe('getSettingDefinitions (declarative settings, Obsidian 1.13+)', () => {
+		it('returns one render definition carrying the setting names as search aliases', () => {
+			const defs = tab.getSettingDefinitions();
+
+			expect(defs).toHaveLength(1);
+			const def = defs[0] as {
+				name: string;
+				aliases?: string[];
+				render?: unknown;
+			};
+			expect(def.name).toBeTruthy();
+			expect(def.aliases).toEqual(
+				expect.arrayContaining([
+					'Recording format',
+					'Enable multi-track recording',
+					'Enable transcription',
+				]),
+			);
+			expect(typeof def.render).toBe('function');
+		});
+
+		it('renders the settings body into the group and drops the anchor row', () => {
+			const def = tab.getSettingDefinitions()[0] as {
+				render: (setting: unknown, group: unknown) => void;
+			};
+			const listEl = createDiv();
+			const anchorEl = createDiv();
+			listEl.appendChild(anchorEl);
+
+			def.render({ settingEl: anchorEl }, { listEl });
+
+			// The empty anchor row the framework creates for a render item is
+			// removed, and the real controls land in the group's list element.
+			expect(listEl.contains(anchorEl)).toBe(false);
+			expect(
+				listEl.querySelector('.aar-doc-callout-link'),
+			).not.toBeNull();
+			expect(addEventListenerMock).toHaveBeenCalledWith(
+				'devicechange',
+				expect.any(Function),
+			);
+		});
+	});
+
 	describe('documentation link', () => {
 		it('should render a documentation callout linking to the docs', () => {
 			tab.display();

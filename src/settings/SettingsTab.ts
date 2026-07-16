@@ -14,6 +14,7 @@ import {
 	setIcon,
 } from 'obsidian';
 import type { Plugin } from 'obsidian';
+import type { SettingDefinitionItem, SettingGroup } from 'obsidian';
 import type {
 	AudioRecorderSettings,
 	OutputMode,
@@ -95,6 +96,77 @@ const EMPTY_DEVICE_SNAPSHOT: AudioInputDeviceSnapshot = {
 	devices: [],
 	channelLimits: new Map(),
 };
+
+/**
+ * Individual setting names carried as search aliases on the single declarative
+ * render definition. The tab renders imperatively (it drives live device
+ * enumeration, async format probing, and per-track rows that do not fit the
+ * declarative control model), so this list is what lets Obsidian's settings
+ * search (1.13+) surface the tab by an individual setting's name.
+ */
+const SETTINGS_SEARCH_ALIASES: string[] = [
+	'Audio input',
+	'Input device',
+	'Sample rate',
+	'Recording channels',
+	'Output format',
+	'Recording format',
+	'Audio bitrate',
+	'Output summary',
+	'Delete source after conversion',
+	'Update links after conversion',
+	'File storage',
+	'Save folder',
+	'Save recordings near active file',
+	'Active file subfolder',
+	'File prefix',
+	'Insert at original position',
+	'Audio splitting',
+	'Split recordings automatically',
+	'Part duration',
+	'Part name suffix',
+	'Delete source after split',
+	'Multi-track recording',
+	'Enable multi-track recording',
+	'Maximum tracks',
+	'Output mode',
+	'Audio source for track',
+	'Channels for track',
+	'Audio player',
+	'Enhanced audio player',
+	'Show waveform',
+	'Markers and chapters',
+	'Transcription',
+	'Enable transcription',
+	'Transcribe after recording',
+	'Engine',
+	'Language',
+	'Speaker diarization',
+	'Word-level timestamps',
+	'Request timeout',
+	'Upload chunk size',
+	'Whisper API key',
+	'Whisper model',
+	'Deepgram API key',
+	'Deepgram model',
+	'Gemini API key',
+	'Audio processing & feedback',
+	'Noise suppression',
+	'Echo cancellation',
+	'Automatic gain control',
+	'Input level meter',
+	'Recording stats',
+	'Detect silent channel after recording',
+	'Mobile recording banner',
+	'Audio cleanup defaults',
+	'High-pass filter',
+	'Noise gate',
+	'Loudness leveling',
+	'Diagnostics',
+	'Test recording',
+	'System info',
+	'Debug mode',
+];
 
 /**
  * Settings tab for the Audio Recorder plugin.
@@ -191,10 +263,61 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	/**
 	 * Displays the settings UI.
 	 */
-	display(): void {
-		const { containerEl } = this;
+	override display(): void {
 		this.isDisplayed = true;
-		containerEl.empty();
+		this.containerEl.empty();
+		this.renderSettingsInto(this.containerEl);
+	}
+
+	/**
+	 * Declarative settings entry (Obsidian 1.13+). This tab is highly dynamic
+	 * (live device enumeration, async format probing, per-track rows) and does
+	 * not fit the declarative control model, so it renders imperatively through
+	 * a single render hook. The setting names travel as `aliases` so the
+	 * settings search still surfaces the tab by an individual setting's name.
+	 * On older Obsidian this method is not part of the API and display() renders
+	 * instead; both paths funnel through renderSettingsInto().
+	 */
+	override getSettingDefinitions(): SettingDefinitionItem[] {
+		return [
+			{
+				name: 'Advanced Audio Recorder',
+				aliases: SETTINGS_SEARCH_ALIASES,
+				render: (setting: Setting, group: SettingGroup): void => {
+					this.isDisplayed = true;
+					// Drop the empty anchor row the framework creates for a
+					// render item; the real controls are built into the group.
+					setting.settingEl.remove();
+					// eslint-disable-next-line obsidianmd/no-unsupported-api -- SettingGroup.listEl (1.11+) is reached only through getSettingDefinitions(), which Obsidian calls on 1.13+ only
+					this.renderSettingsInto(group.listEl);
+				},
+			},
+		];
+	}
+
+	/**
+	 * Re-renders the tab after a change that adds or removes settings (for
+	 * example toggling multi-track or Save near active file). Uses the
+	 * declarative update() on Obsidian 1.13+ (where display() is not the render
+	 * path) and falls back to display() on older versions.
+	 */
+	private rerender(): void {
+		const update = (this as unknown as { update?: () => void }).update;
+		if (typeof update === 'function') {
+			update.call(this);
+		} else {
+			// eslint-disable-next-line @typescript-eslint/no-deprecated -- display() is the intentional fallback for Obsidian < 1.13, which does not call getSettingDefinitions()
+			this.display();
+		}
+	}
+
+	/**
+	 * Builds the full settings body into the given host element. Shared by the
+	 * imperative display() fallback and the declarative render hook; the caller
+	 * owns clearing the host and toggling isDisplayed.
+	 * @param containerEl - Host element the settings are rendered into
+	 */
+	private renderSettingsInto(containerEl: HTMLElement): void {
 		this.deviceDropdowns = [];
 		this.channelDropdownUpdaters = [];
 		this.deviceSnapshot = EMPTY_DEVICE_SNAPSHOT;
@@ -422,7 +545,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.saveNearActiveFile = value;
 						await this.plugin.saveSettings();
-						this.display();
+						this.rerender();
 					}),
 			);
 
@@ -514,6 +637,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 						1,
 					)
 					.setValue(this.plugin.settings.splitChunkMinutes)
+					// eslint-disable-next-line @typescript-eslint/no-deprecated -- kept for the slider value tooltip on Obsidian < 1.13; a no-op on 1.13+ where the value shows inline
 					.setDynamicTooltip()
 					.onChange(async (value) => {
 						this.plugin.settings.splitChunkMinutes = value;
@@ -589,7 +713,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.enableMultiTrack = value;
 						await this.plugin.saveSettings();
-						this.display();
+						this.rerender();
 					});
 				if (!multiTrackAvailable) {
 					toggle.setDisabled(true);
@@ -609,11 +733,12 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					slider
 						.setLimits(1, 8, 1)
 						.setValue(this.plugin.settings.maxTracks)
+						// eslint-disable-next-line @typescript-eslint/no-deprecated -- kept for the slider value tooltip on Obsidian < 1.13; a no-op on 1.13+ where the value shows inline
 						.setDynamicTooltip()
 						.onChange(async (value) => {
 							this.plugin.settings.maxTracks = value;
 							await this.plugin.saveSettings();
-							this.display();
+							this.rerender();
 						}),
 				);
 
@@ -721,7 +846,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			settings: this.plugin.settings,
 			save: () => this.plugin.saveSettings(),
 			rerender: () => {
-				this.display();
+				this.rerender();
 			},
 			saveDebounced: () => {
 				this.saveTextSettingDebounced();
@@ -834,7 +959,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.enhancedPlayerEnabled = value;
 						await this.plugin.saveSettings();
-						this.display();
+						this.rerender();
 					}),
 			);
 
@@ -987,6 +1112,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 						CLEANUP_HIGHPASS_STEP_HZ,
 					)
 					.setValue(s.cleanupHighPassHz)
+					// eslint-disable-next-line @typescript-eslint/no-deprecated -- kept for the slider value tooltip on Obsidian < 1.13; a no-op on 1.13+ where the value shows inline
 					.setDynamicTooltip()
 					.onChange(async (v) => {
 						s.cleanupHighPassHz = v;
@@ -1015,6 +1141,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 						CLEANUP_GATE_STEP_DB,
 					)
 					.setValue(s.cleanupNoiseGateThresholdDb)
+					// eslint-disable-next-line @typescript-eslint/no-deprecated -- kept for the slider value tooltip on Obsidian < 1.13; a no-op on 1.13+ where the value shows inline
 					.setDynamicTooltip()
 					.onChange(async (v) => {
 						s.cleanupNoiseGateThresholdDb = v;
@@ -1043,6 +1170,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 						CLEANUP_LEVELING_STEP_DB,
 					)
 					.setValue(s.cleanupLevelingMakeupDb)
+					// eslint-disable-next-line @typescript-eslint/no-deprecated -- kept for the slider value tooltip on Obsidian < 1.13; a no-op on 1.13+ where the value shows inline
 					.setDynamicTooltip()
 					.onChange(async (v) => {
 						s.cleanupLevelingMakeupDb = v;
@@ -1112,10 +1240,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		if (!storedEntry || storedEntry.available) {
 			return;
 		}
-		// Created through the setting's own document so the note lands in
-		// the right window when settings render in a popout.
-		const note = descEl.ownerDocument.createElement('div');
-		note.className = 'aar-format-fallback-note';
+		// Built detached with createDiv, then appended to descEl below so the
+		// note lands in the setting's own window (including a settings popout);
+		// appendChild adopts the detached node into descEl's document.
+		const note = createDiv({ cls: 'aar-format-fallback-note' });
 		try {
 			const effective = await resolveEffectiveOutputFormat(stored);
 			note.textContent = `This device cannot record ${stored.toUpperCase()}; recordings are saved as ${effective.format.toUpperCase()} instead.`;
