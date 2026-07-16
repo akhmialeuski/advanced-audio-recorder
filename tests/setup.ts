@@ -5,6 +5,8 @@
 
 import { TextDecoder, TextEncoder } from 'util';
 
+import { addObsidianDomExtensions } from './mocks/obsidian';
+
 // Explicit resource management (`using`/`await using`) lowers through
 // tslib helpers that require the well-known dispose symbols; jest's
 // sandboxed global may lack them.
@@ -95,5 +97,77 @@ if (!Blob.prototype.arrayBuffer) {
 			reader.onerror = (): void => reject(reader.error);
 			reader.readAsArrayBuffer(this as Blob);
 		});
+	};
+}
+
+// Obsidian injects global element factories (createEl/createDiv/createSpan/
+// createFragment) that build DETACHED elements with DomElementInfo applied;
+// jsdom does not. Mirror the element-method handling from the obsidian mock so
+// production code that uses the globals behaves the same under test.
+type DomElementInfoLike =
+	| string
+	| {
+			cls?: string | string[];
+			text?: string;
+			attr?: Record<string, string | number | boolean | null>;
+	  };
+
+function applyDomElementInfo(el: HTMLElement, info?: DomElementInfoLike): void {
+	if (!info) {
+		return;
+	}
+	if (typeof info === 'string') {
+		el.className = info;
+		return;
+	}
+	if (typeof info.text === 'string') {
+		el.textContent = info.text;
+	}
+	if (info.cls) {
+		const classes = Array.isArray(info.cls)
+			? info.cls
+			: info.cls.split(' ');
+		classes.filter(Boolean).forEach((c) => el.classList.add(c));
+	}
+	if (info.attr) {
+		for (const [key, value] of Object.entries(info.attr)) {
+			if (value !== null) {
+				el.setAttribute(key, String(value));
+			}
+		}
+	}
+}
+
+if (typeof (globalThis as { createEl?: unknown }).createEl === 'undefined') {
+	const createElGlobal = (
+		tag: string,
+		info?: DomElementInfoLike,
+		callback?: (el: HTMLElement) => void,
+	): HTMLElement => {
+		const el = document.createElement(tag);
+		addObsidianDomExtensions(el);
+		applyDomElementInfo(el, info);
+		callback?.(el);
+		return el;
+	};
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- globalThis augmentation requires any
+	(globalThis as any).createEl = createElGlobal;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- globalThis augmentation requires any
+	(globalThis as any).createDiv = (
+		info?: DomElementInfoLike,
+		callback?: (el: HTMLElement) => void,
+	): HTMLElement => createElGlobal('div', info, callback);
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- globalThis augmentation requires any
+	(globalThis as any).createSpan = (
+		info?: DomElementInfoLike,
+		callback?: (el: HTMLElement) => void,
+	): HTMLElement => createElGlobal('span', info, callback);
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- globalThis augmentation requires any
+	(globalThis as any).createFragment = (
+		callback?: (el: DocumentFragment) => void,
+	): DocumentFragment => {
+		const fragment = document.createDocumentFragment();
+		callback?.(fragment);
+		return fragment;
 	};
 }
