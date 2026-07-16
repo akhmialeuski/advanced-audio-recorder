@@ -1,6 +1,6 @@
 # Features overview
 
-Advanced Audio Recorder is a desktop-only recording plugin for [Obsidian](https://obsidian.md) that captures audio from one or many input devices, saves it in the format you choose, and layers on an enhanced player, transcription, on-demand cleanup, and diagnostics. This page is a complete catalog of every feature in the plugin: each one gets a short summary and a **Learn more** link to its deep-dive doc. Use it as a map - start anywhere, then follow the links for full procedures, settings, and limitations.
+Advanced Audio Recorder is a recording plugin for [Obsidian](https://obsidian.md) that runs on desktop and mobile, captures audio from one or many input devices, saves it in the format you choose, and layers on an enhanced player, transcription, on-demand cleanup, and diagnostics. This page is a complete catalog of every feature in the plugin: each one gets a short summary and a **Learn more** link to its deep-dive doc. Use it as a map - start anywhere, then follow the links for full procedures, settings, and limitations. A few features are desktop-only; see [Mobile support](mobile-support.md).
 
 - [Recording](#recording)
 - [Pause and resume](#pause-and-resume)

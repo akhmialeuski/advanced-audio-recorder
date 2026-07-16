@@ -15,11 +15,11 @@ This guide takes you from zero to your first recording with **Advanced Audio Rec
 
 ## Requirements
 
-Advanced Audio Recorder is a **desktop-only** plugin. Before you start, make sure you have:
+Advanced Audio Recorder runs on both **desktop and mobile** (iOS and Android); this guide is written for the desktop app, and [Mobile support](mobile-support.md) covers the platform differences. Before you start, make sure you have:
 
 | Requirement               | Detail                                                                                                                                   |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| **Platform**              | The Obsidian **desktop** app (Windows, macOS, or Linux). The plugin does not load on mobile.                                             |
+| **Platform**              | The Obsidian **desktop** app (Windows, macOS, or Linux) or the **mobile** app (iOS or Android); a few features are desktop-only.         |
 | **Obsidian version**      | App version **1.6.6 or newer**. Update Obsidian from **Settings > About > Check for updates** if you are on an older build.              |
 | **A microphone**          | Any built-in or external input device that your operating system recognizes.                                                             |
 | **Microphone permission** | Your operating system must allow the Obsidian app to use the microphone (see [Granting microphone access](#granting-microphone-access)). |
@@ -153,6 +153,7 @@ The settings tab opens with a **documentation callout** at the very top - a quic
 You are ready to record. From here:
 
 - [Features](features.md) - a tour of everything the plugin can do.
+- [Mobile support](mobile-support.md) - what works on iOS and Android, and what stays desktop-only.
 - [Recording](recording.md) - pause/resume, markers, automatic splitting, save progress, and crash recovery.
 - [Multi-track recording](multi-track-recording.md) - capture several input devices at once.
 - [Formats](formats.md) - the eight output formats and when to use each.

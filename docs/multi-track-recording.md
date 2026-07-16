@@ -1,6 +1,6 @@
 # Multi-track recording
 
-**Multi-track recording** captures from up to **eight input devices at the same time** in a single recording session. Every track is its own recorder running at the format and bitrate you have configured; they all start, pause, resume, and stop together. When you stop, the plugin either **mixes** every track into one file or saves **one file per track**, depending on the output mode you pick. This is desktop-only, like the rest of the plugin.
+**Multi-track recording** captures from up to **eight input devices at the same time** in a single recording session. Every track is its own recorder running at the format and bitrate you have configured; they all start, pause, resume, and stop together. When you stop, the plugin either **mixes** every track into one file or saves **one file per track**, depending on the output mode you pick. This feature is **desktop-only**: capturing several input devices at once needs access the mobile app does not provide, so the phone records a single track instead.
 
 - [What it is and when to use it](#what-it-is-and-when-to-use-it)
 - [Setup](#setup)
@@ -28,7 +28,7 @@ Use it when:
 
 If you only ever record from one device, leave multi-track off - single-device recording is the default and needs no setup. See [Recording](recording.md) for the basics.
 
-> **Desktop only.** Multi-track recording, like the whole plugin, runs only in the Obsidian desktop app.
+> **Desktop only.** Multi-track recording runs only in the Obsidian desktop app; the mobile app records a single track from its default microphone. See [Mobile support](mobile-support.md).
 
 ---
 

@@ -14,6 +14,7 @@ This is the hub for the step-by-step guides. The reference docs describe _what_ 
 - **You just want to dictate or record** - you do not need any of these guides. See [Getting started](../getting-started.md) and [Recording](../recording.md).
 - **You want to turn speech into text** - pick a transcription engine first using the [comparison table](#which-engine-should-i-choose) below, then follow that engine's API-key guide.
 - **You want everything to stay offline** - go straight to [Set up local whisper.cpp](#local-and-offline).
+- **You are recording on a phone or tablet** - follow [Record a voice memo or lecture on your phone](record-on-mobile.md).
 - **You want a complete real-world workflow** - jump to [Workflows](#workflows).
 
 ---
@@ -57,6 +58,7 @@ These guides combine several features into one end-to-end procedure.
 | ------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
 | [Transcribe automatically after recording](transcribe-after-recording.md) | Turn on **Transcribe after recording** so every clip produces a transcript. |
 | [Record and summarize a meeting](meeting-notes-workflow.md)               | Record a meeting, transcribe it with diarization, and add an LLM summary.   |
+| [Record a voice memo or lecture on your phone](record-on-mobile.md)       | Record on the Obsidian mobile app and optionally transcribe in the cloud.   |
 
 The meeting-notes workflow produces a single note with the recording, a diarized transcript, and an LLM summary - see the finished example in that guide.
 
