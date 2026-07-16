@@ -4,7 +4,7 @@
  * @module tests/unit/SettingsTab.test
  */
 
-import { App } from 'obsidian';
+import { App, Platform } from 'obsidian';
 import { AudioRecorderSettingTab } from 'src/settings/SettingsTab';
 import {
 	DEFAULT_SETTINGS,
@@ -525,6 +525,148 @@ describe('AudioRecorderSettingTab', () => {
 				deviceId: 'other-stereo',
 				channelMode: 'mono-left',
 			});
+		});
+	});
+
+	describe('platform gating of the settings UI', () => {
+		afterEach(() => {
+			Platform.isMobile = false;
+			Platform.isMobileApp = false;
+		});
+
+		/** Finds a rendered setting row by its displayed name. */
+		function settingRow(name: string): HTMLElement {
+			const rows = Array.from(
+				tab.containerEl.querySelectorAll<HTMLElement>('.setting-item'),
+			);
+			const row = rows.find(
+				(el) =>
+					el.querySelector('.setting-item-name')?.textContent ===
+					name,
+			);
+			if (!row) {
+				throw new Error(`Setting row not rendered: ${name}`);
+			}
+			return row;
+		}
+
+		/** Whether a row is rendered dimmed (blocked on this platform). */
+		function rowDimmed(name: string): boolean {
+			return settingRow(name).classList.contains('aar-setting-disabled');
+		}
+
+		/** The row's select element, when its control is a dropdown. */
+		function rowSelect(name: string): HTMLSelectElement {
+			const select = settingRow(name).querySelector('select');
+			if (!select) {
+				throw new Error(`No dropdown in setting row: ${name}`);
+			}
+			return select;
+		}
+
+		it('keeps the hardware rows interactive on desktop', () => {
+			tab.display();
+
+			expect(rowDimmed('Input device')).toBe(false);
+			expect(rowDimmed('Sample rate')).toBe(false);
+			expect(rowDimmed('Split recordings automatically')).toBe(false);
+			expect(rowDimmed('Enable multi-track recording')).toBe(false);
+			expect(rowSelect('Input device').disabled).toBe(false);
+			expect(rowSelect('Sample rate').disabled).toBe(false);
+		});
+
+		it('blocks device, sample-rate, and channel selection on mobile', () => {
+			Platform.isMobile = true;
+			tab.display();
+
+			expect(rowDimmed('Input device')).toBe(true);
+			expect(rowSelect('Input device').disabled).toBe(true);
+			expect(rowDimmed('Sample rate')).toBe(true);
+			expect(rowSelect('Sample rate').disabled).toBe(true);
+			expect(rowSelect('Recording channels').disabled).toBe(true);
+		});
+
+		it('blocks auto-split on mobile and shows the effective off state', async () => {
+			Platform.isMobile = true;
+			mockSettings.autoSplitEnabled = true;
+			tab.display();
+
+			expect(rowDimmed('Split recordings automatically')).toBe(true);
+			// The disabled toggle cannot be flipped: a click must not save
+			const toggleEl = settingRow(
+				'Split recordings automatically',
+			).querySelector<HTMLElement>('.checkbox-container');
+			toggleEl?.click();
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			expect(saveSettingsMock).not.toHaveBeenCalled();
+			expect(mockSettings.autoSplitEnabled).toBe(true);
+		});
+
+		it('blocks multi-track on mobile and hides the per-track rows', () => {
+			Platform.isMobile = true;
+			mockSettings.enableMultiTrack = true;
+			tab.display();
+
+			expect(rowDimmed('Enable multi-track recording')).toBe(true);
+			// Even a stored "on" renders no per-track configuration
+			const rows = Array.from(
+				tab.containerEl.querySelectorAll('.setting-item-name'),
+			).map((el) => el.textContent);
+			expect(rows).not.toContain('Audio source for track 1');
+			expect(rows).not.toContain('Maximum tracks');
+		});
+
+		it('renders the per-track rows on desktop when multi-track is on', () => {
+			mockSettings.enableMultiTrack = true;
+			mockSettings.maxTracks = 2;
+			tab.display();
+
+			const rows = Array.from(
+				tab.containerEl.querySelectorAll('.setting-item-name'),
+			).map((el) => el.textContent);
+			expect(rows).toContain('Audio source for track 1');
+			expect(rows).toContain('Audio source for track 2');
+		});
+
+		it('blocks recording formats the device cannot produce (iOS profile)', () => {
+			// iOS WKWebView: MediaRecorder records audio/mp4 only; with no
+			// offline encoders, everything else must be blocked.
+			Platform.isMobile = true;
+			(
+				(global as Record<string, unknown>).MediaRecorder as {
+					isTypeSupported: jest.Mock;
+				}
+			).isTypeSupported.mockImplementation(
+				(type: string) => type === 'audio/mp4',
+			);
+			const { isOfflineEncodingSupported } = jest.requireMock<{
+				isOfflineEncodingSupported: jest.Mock;
+			}>('src/audio/AudioEncoder');
+			isOfflineEncodingSupported.mockReturnValue(false);
+			tab.display();
+
+			const options = new Map(
+				Array.from(rowSelect('Recording format').options).map(
+					(option) => [option.value, option.disabled],
+				),
+			);
+			expect(options.get('mp4')).toBe(false);
+			// WAV still works: recorded via the mp4 intermediate, encoded
+			// by the plugin's own WAV writer
+			expect(options.get('wav')).toBe(false);
+			for (const format of ['webm', 'ogg', 'mp3', 'm4a', 'flac', 'aac']) {
+				expect(options.get(format)).toBe(true);
+			}
+		});
+
+		it('keeps every recordable format selectable on a permissive desktop profile', () => {
+			tab.display();
+
+			const options = Array.from(rowSelect('Recording format').options);
+			expect(options.length).toBeGreaterThan(0);
+			for (const option of options) {
+				expect(option.disabled).toBe(false);
+			}
 		});
 	});
 });

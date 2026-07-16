@@ -62,6 +62,30 @@ export const BYTES_PER_MB = 1024 * 1024;
 /** Maximum in-memory buffer size for mobile recordings before flushing to disk. */
 export const MOBILE_BUFFER_LIMIT_BYTES = 50 * 1024 * 1024;
 
+/**
+ * Upper bound on the encoded file size decode-heavy features (waveform,
+ * cleanup, split) will load on mobile. The mobile WebView gets a far
+ * smaller memory budget than the desktop renderer before the OS kills
+ * the app outright, so the desktop ceiling
+ * ({@link WAVEFORM_MAX_DECODE_BYTES}) is unusable there.
+ */
+export const MOBILE_MAX_DECODE_BYTES = 256 * 1024 * 1024;
+
+/**
+ * Mobile counterpart of {@link MAX_AUDIO_CLEANUP_DECODED_SAMPLES}: caps the
+ * decoded working set (frames x channels) of the on-demand cleanup. At 4
+ * bytes per decoded sample plus the 16-bit WAV output this keeps the peak
+ * allocation near ~400 MB, inside a phone WebView's budget.
+ */
+export const MOBILE_MAX_CLEANUP_DECODED_SAMPLES = 64 * 1024 * 1024;
+
+/**
+ * Mobile counterpart of {@link MAX_AUDIO_CLEANUP_SECONDS}. The cleanup DSP
+ * runs on the main thread of a WebView that the OS may terminate when it
+ * stays busy too long, so mobile gets a shorter duration ceiling.
+ */
+export const MOBILE_MAX_AUDIO_CLEANUP_SECONDS = 45 * 60;
+
 /** PCM buffer flush threshold for WAV desktop recordings. */
 export const PCM_FLUSH_THRESHOLD_BYTES = 50 * 1024 * 1024;
 

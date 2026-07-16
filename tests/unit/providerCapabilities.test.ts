@@ -8,10 +8,12 @@
  * @module tests/unit/providerCapabilities.test
  */
 
+import { Platform } from 'obsidian';
 import {
 	DEEPGRAM_CAPABILITIES,
 	effectiveDiarize,
 	GEMINI_CAPABILITIES,
+	isProviderAvailableOnPlatform,
 	LOCAL_WHISPER_CAPABILITIES,
 	providerSupportsDiarization,
 	TRANSCRIPTION_PROVIDER_CAPABILITIES,
@@ -108,5 +110,44 @@ describe('transcription engine id constants', () => {
 			ids,
 		);
 		expect(Object.keys(TRANSCRIPTION_PROVIDER_LABELS).sort()).toEqual(ids);
+	});
+
+	describe('isProviderAvailableOnPlatform', () => {
+		afterEach(() => {
+			Platform.isMobile = false;
+			Platform.isMobileApp = false;
+		});
+
+		it('offers every engine on desktop', () => {
+			for (const id of Object.values(TRANSCRIPTION_PROVIDER_IDS)) {
+				expect(isProviderAvailableOnPlatform(id)).toBe(true);
+			}
+		});
+
+		it('blocks only local whisper.cpp on mobile', () => {
+			// It shells out to a binary through Node, which the mobile app
+			// does not provide; the cloud engines work everywhere.
+			Platform.isMobile = true;
+			expect(
+				isProviderAvailableOnPlatform(
+					TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+				),
+			).toBe(false);
+			expect(
+				isProviderAvailableOnPlatform(
+					TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+				),
+			).toBe(true);
+			expect(
+				isProviderAvailableOnPlatform(
+					TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				),
+			).toBe(true);
+			expect(
+				isProviderAvailableOnPlatform(
+					TRANSCRIPTION_PROVIDER_IDS.GEMINI,
+				),
+			).toBe(true);
+		});
 	});
 });

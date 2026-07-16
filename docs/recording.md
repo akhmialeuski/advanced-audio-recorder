@@ -11,6 +11,7 @@ Recording is the core of Advanced Audio Recorder: start a capture from the ribbo
 - [Stopping and saving](#stopping-and-saving)
 - [Insert at original position](#insert-at-original-position)
 - [Crash recovery](#crash-recovery)
+- [Recording on mobile](#recording-on-mobile)
 - [Mobile recording banner](#mobile-recording-banner)
 - [Automatic splitting](#automatic-splitting)
 - [Related settings](#related-settings)
@@ -212,11 +213,22 @@ Notes on what can and cannot be recovered:
 
 ---
 
+## Recording on mobile
+
+Recording works in the Obsidian mobile app, with platform limits the plugin applies automatically (blocked options are shown greyed out in settings, never hidden):
+
+- **Single track from the default microphone.** Phones expose one microphone to the app, so multi-track recording and input device selection are desktop-only; a multi-track configuration synced from desktop silently records a normal single-track session on the phone.
+- **Formats follow the device.** The format dropdown blocks formats the device cannot produce. On iOS the system records AAC (`m4a`/`mp4`) natively; WAV, MP3, and FLAC are produced by converting that recording when it is saved. On Android, Opus (`webm`/`ogg`) is recorded natively as on desktop.
+- **Auto-split and crash recovery are desktop-only.** On mobile every buffer flush already writes a playable final file, so an interrupted session keeps its flushed parts without a recovery journal.
+- **Local whisper.cpp transcription is desktop-only** (it runs an external program). The cloud engines - Whisper API, Deepgram, Gemini - work on mobile.
+- **The OS pauses background apps.** Locking the screen, switching apps, or an incoming call can suspend Obsidian and interrupt the capture. This is a mobile OS limitation, not a plugin setting: keep the app in the foreground and the screen on for long recordings.
+- Device-bound settings (input device, channel layouts) are stored **per platform**, so a vault synced between desktop and phone keeps each device's configuration intact.
+
 ## Mobile recording banner
 
-Advanced Audio Recorder is a **desktop-only** plugin. The **Mobile recording banner** option (under **Settings > Audio processing & feedback**, default On) governs a floating on-screen banner intended for mobile, where there is no ribbon icon to show that a recording is in progress. When shown, the banner displays a recording indicator, the elapsed time, and a stop button so the session is always visible and stoppable.
+The **Mobile recording banner** option (under **Settings > Audio processing & feedback**, default On) governs a floating on-screen banner shown on mobile, where there is no ribbon icon to show that a recording is in progress. When shown, the banner displays a recording indicator, the elapsed time, and a stop button so the session is always visible and stoppable.
 
-On the desktop app the ribbon indicator and the status bar already make the recording obvious, so the banner is rarely needed there; the toggle remains available if you prefer the extra cue.
+On the desktop app the ribbon indicator and the status bar already make the recording obvious, so the banner is not shown there.
 
 ---
 

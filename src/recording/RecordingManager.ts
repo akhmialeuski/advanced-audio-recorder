@@ -3,7 +3,7 @@
  * @module recording/RecordingManager
  */
 
-import { Notice, Platform } from 'obsidian';
+import { Notice } from 'obsidian';
 import type { App } from 'obsidian';
 import { RecordingStatus } from '../types';
 import type {
@@ -30,15 +30,20 @@ import type { TrackAudioSource } from './AudioStreamHandler';
 import {
 	PLUGIN_LOG_PREFIX,
 	RECORDER_STOP_TIMEOUT_MS,
-	MOBILE_BUFFER_LIMIT_BYTES,
 	PCM_FLUSH_THRESHOLD_BYTES,
-	DESKTOP_FLUSH_THRESHOLD_BYTES,
 	DEFAULT_SPLIT_CHUNK_MINUTES,
 	DEFAULT_SPLIT_PART_SUFFIX,
 	DEFAULT_BITRATE,
 	FORMAT_WEBM,
 	FORMAT_WAV,
 } from '../constants';
+import { isMobilePlatform } from '../platform/platformKind';
+import {
+	getChunkFlushThresholdBytes,
+	isAutoSplitSupported,
+	isPcmWavCaptureSupported,
+	isRecoveryJournalSupported,
+} from '../platform/capabilities';
 import { DebugLogger } from '../utils/DebugLogger';
 import {
 	buildMimeType,
@@ -315,10 +320,10 @@ export class RecordingManager {
 	 */
 	async startRecording(): Promise<void> {
 		try {
-			this.isMobileRecording = Platform.isMobileApp || Platform.isMobile;
+			this.isMobileRecording = isMobilePlatform();
 			this.isWavPcmRecording =
 				this.settings.recordingFormat === FORMAT_WAV &&
-				!this.isMobileRecording;
+				isPcmWavCaptureSupported();
 
 			if (!this.isWavPcmRecording) {
 				const { recorderFormat, mimeType } = resolveRecorderFormat(
@@ -380,7 +385,7 @@ export class RecordingManager {
 				await this.initMediaRecording();
 			}
 
-			if (!this.isMobileRecording) {
+			if (isRecoveryJournalSupported()) {
 				// Mobile flushes write final files, never .tmp segments,
 				// so there is nothing to journal for recovery there
 				this.journal.startSession({
@@ -505,9 +510,9 @@ export class RecordingManager {
 			this.settings.splitPartSuffix,
 		);
 		this.sessionSplitEnabled =
-			this.settings.autoSplitEnabled && !this.isMobileRecording;
-		if (this.settings.autoSplitEnabled && this.isMobileRecording) {
-			new Notice('Auto-split is not available in the mobile app.');
+			this.settings.autoSplitEnabled && isAutoSplitSupported();
+		if (this.settings.autoSplitEnabled && !isAutoSplitSupported()) {
+			new Notice('Auto-split is not available on this device.');
 		}
 
 		if (
@@ -959,9 +964,7 @@ export class RecordingManager {
 		}
 		this.totalChunks += 1;
 		this.recordedBytes += data.size;
-		const flushThreshold = this.isMobileRecording
-			? MOBILE_BUFFER_LIMIT_BYTES
-			: DESKTOP_FLUSH_THRESHOLD_BYTES;
+		const flushThreshold = getChunkFlushThresholdBytes();
 
 		await this.writeQueue.enqueue(target, async () => {
 			target.bufferedChunks.push(data);

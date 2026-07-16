@@ -14,11 +14,14 @@ import {
 	DEFAULT_BITRATE,
 } from '../constants';
 import { isOfflineEncodingSupported } from './AudioEncoder';
+import { isPcmWavCaptureSupported } from '../platform/capabilities';
 import {
+	AUDIO_FORMAT_IDS,
 	COMPRESSED_INTERMEDIATE_FORMATS,
 	MEDIA_RECORDER_CANDIDATE_FORMATS,
 	OFFLINE_ONLY_FORMATS,
 	getFormatDescriptor,
+	type AudioFormatId,
 } from './formatRegistry';
 
 const CANDIDATE_FORMATS = MEDIA_RECORDER_CANDIDATE_FORMATS;
@@ -110,13 +113,15 @@ export function detectSupportedFormats(): string[] {
 		}
 	}
 
-	// WAV is always available on desktop via direct PCM capture,
-	// and available on mobile if a compressed intermediate is supported
+	// WAV is available via direct PCM capture where the platform allows
+	// it (desktop), and everywhere a compressed intermediate can be
+	// recorded and offline-converted afterwards (mobile)
 	const hasCompressedIntermediate = COMPRESSED_INTERMEDIATES.some((format) =>
 		MediaRecorder.isTypeSupported(buildMimeType(format)),
 	);
-	const hasAudioContext = typeof AudioContext !== 'undefined';
-	if (hasAudioContext || hasCompressedIntermediate) {
+	const hasPcmCapture =
+		isPcmWavCaptureSupported() && typeof AudioContext !== 'undefined';
+	if (hasPcmCapture || hasCompressedIntermediate) {
 		supported.push(FORMAT_WAV);
 	}
 
@@ -157,16 +162,18 @@ export function getSupportedBitrates(): number[] {
  */
 export function validateRecordingCapability(format: string): ValidationResult {
 	if (format === FORMAT_WAV) {
-		// WAV is available via direct PCM capture (AudioContext) on desktop,
-		// or via compressed intermediate on mobile
-		const hasAudioContext = typeof AudioContext !== 'undefined';
+		// WAV records via direct PCM capture where the platform allows it
+		// (desktop), or via a compressed intermediate plus offline
+		// conversion elsewhere (mobile)
+		const hasPcmCapture =
+			isPcmWavCaptureSupported() && typeof AudioContext !== 'undefined';
 		const hasIntermediate = COMPRESSED_INTERMEDIATES.some((f) =>
 			MediaRecorder.isTypeSupported(buildMimeType(f)),
 		);
-		if (!hasAudioContext && !hasIntermediate) {
+		if (!hasPcmCapture && !hasIntermediate) {
 			return {
 				valid: false,
-				reason: 'WAV output requires AudioContext or an intermediate compressed format, but neither is available in this browser.',
+				reason: 'WAV output requires direct PCM capture or an intermediate compressed format, but neither is available on this device.',
 			};
 		}
 		return { valid: true, reason: '' };
@@ -188,14 +195,45 @@ export function validateRecordingCapability(format: string): ValidationResult {
 		}
 		return {
 			valid: false,
-			reason: `The format "${format}" requires offline encoding with an intermediate recording format, but neither WebM nor OGG is supported.`,
+			reason: `The format "${format}" requires offline encoding with an intermediate recording format, but none of ${COMPRESSED_INTERMEDIATES.join(
+				', ',
+			)} is supported on this device.`,
 		};
 	}
 
 	return {
 		valid: false,
-		reason: `The format "${format}" (${mimeType}) is not supported for recording in this browser.`,
+		reason: `The format "${format}" (${mimeType}) is not supported for recording on this device.`,
 	};
+}
+
+/**
+ * Availability of one registry format for recording on this device.
+ */
+export interface FormatAvailabilityEntry {
+	/** Registry format id. */
+	format: AudioFormatId;
+	/** Whether the format can be recorded here (directly or offline). */
+	available: boolean;
+	/** Whether MediaRecorder records it directly (no offline encoding). */
+	direct: boolean;
+}
+
+/**
+ * Reports the recordability of every registry format on this device, in
+ * registry (display) order. The settings UI renders all of them and
+ * blocks the unavailable ones, so users see the full format list with
+ * the subset their platform supports enabled.
+ * @returns One availability entry per registry format
+ */
+export function listFormatAvailability(): FormatAvailabilityEntry[] {
+	return AUDIO_FORMAT_IDS.map((format) => ({
+		format,
+		available: validateRecordingCapability(format).valid,
+		direct:
+			typeof MediaRecorder !== 'undefined' &&
+			MediaRecorder.isTypeSupported(buildMimeType(format)),
+	}));
 }
 
 /**

@@ -46,6 +46,7 @@ import {
 } from '../settingControls';
 import {
 	effectiveDiarize,
+	isProviderAvailableOnPlatform,
 	providerSupportsDiarization,
 } from '../../transcription/providers/capabilities';
 
@@ -77,8 +78,15 @@ export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
 
 	addDropdown(ctx, {
 		name: 'Engine',
-		desc: 'Whisper API, Deepgram, or Google Gemini (cloud), or a local whisper.cpp binary (desktop).',
-		options: TRANSCRIPTION_PROVIDER_OPTIONS,
+		desc: 'Whisper API, Deepgram, or Google Gemini (cloud), or a local whisper.cpp binary (desktop). Engines this device cannot run are shown blocked.',
+		// Engines the platform cannot run stay listed but blocked, so the
+		// dropdown reads the same on every device.
+		options: TRANSCRIPTION_PROVIDER_OPTIONS.map((option) => ({
+			...option,
+			disabled: !isProviderAvailableOnPlatform(
+				option.value as TranscriptionProviderId,
+			),
+		})),
 		get: () => s.transcriptionProvider,
 		set: (v) => (s.transcriptionProvider = v as TranscriptionProviderId),
 		rerender: true,
@@ -247,11 +255,22 @@ function renderGeminiSettings(ctx: SettingsSectionContext): void {
 /** Local whisper.cpp engine fields (binary path, model path, extra args). */
 function renderLocalWhisperSettings(ctx: SettingsSectionContext): void {
 	const s = ctx.settings;
+	// A stored local-whisper selection synced to a platform that cannot
+	// run it (mobile) keeps its fields visible but blocked, so the user
+	// sees why transcription will not run instead of editable settings
+	// that quietly do nothing.
+	const unavailable = !isProviderAvailableOnPlatform(
+		TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+	);
+	const unavailableHint = unavailable
+		? ' Local whisper.cpp is not available on this device; pick a cloud engine to transcribe here.'
+		: '';
 	addText(ctx, {
 		name: 'whisper.cpp binary path',
-		desc: 'Absolute path to the whisper.cpp executable.',
+		desc: `Absolute path to the whisper.cpp executable.${unavailableHint}`,
 		get: () => s.localWhisperBinaryPath,
 		set: (v) => (s.localWhisperBinaryPath = v),
+		disabled: unavailable,
 	});
 	addText(ctx, {
 		name: 'Model path',
@@ -262,12 +281,14 @@ function renderLocalWhisperSettings(ctx: SettingsSectionContext): void {
 		},
 		get: () => s.localWhisperModelPath,
 		set: (v) => (s.localWhisperModelPath = v),
+		disabled: unavailable,
 	});
 	addText(ctx, {
 		name: 'Extra arguments',
 		desc: 'Optional extra CLI arguments, space-separated.',
 		get: () => s.localWhisperExtraArgs,
 		set: (v) => (s.localWhisperExtraArgs = v),
+		disabled: unavailable,
 	});
 }
 

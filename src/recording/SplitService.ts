@@ -13,6 +13,7 @@ import {
 	isOfflineEncodingSupported,
 } from '../audio/AudioEncoder';
 import { FORMAT_WAV, PLUGIN_LOG_PREFIX } from '../constants';
+import { getMaxDecodeBytes } from '../platform/capabilities';
 import { decodeAudioBlob } from '../audio/AudioFormatConverter';
 import {
 	parseWavLayout,
@@ -267,6 +268,16 @@ export class SplitService {
 				}));
 			}
 			// Non-raw WAV (compressed codec inside): fall through to decode
+		}
+
+		// Platform-dependent decode ceiling (far lower on mobile): the
+		// decode path expands the file to full PCM in memory. The lossless
+		// WAV byte path above never decodes, so it is not capped here.
+		if (sourceBytes.byteLength > getMaxDecodeBytes()) {
+			new Notice(
+				'File is too large to split on this device. Convert or split it on desktop instead.',
+			);
+			return null;
 		}
 
 		onProgress('Decoding audio...');

@@ -63,6 +63,8 @@ export const LLM_PROVIDER_LABELS: Record<LlmProviderId, string> = {
 export interface LabeledOption {
 	value: string;
 	label: string;
+	/** Render the option visible but unselectable (blocked on this device). */
+	disabled?: boolean;
 }
 
 /**

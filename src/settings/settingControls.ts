@@ -240,6 +240,15 @@ export function addDropdown(
 		for (const option of config.options) {
 			dropdown.addOption(option.value, option.label);
 		}
+		// Block the options the caller marked unavailable: they stay
+		// visible (so every platform shows the same list) but cannot be
+		// selected.
+		for (const optionEl of Array.from(dropdown.selectEl.options)) {
+			const option = config.options.find(
+				(candidate) => candidate.value === optionEl.value,
+			);
+			optionEl.disabled = option?.disabled ?? false;
+		}
 		dropdown.setValue(config.get()).onChange(async (value) => {
 			config.set(value);
 			await ctx.save();

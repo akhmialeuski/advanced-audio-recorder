@@ -11,6 +11,7 @@ jest.mock('src/audio/AudioEncoder', () => ({
 	}),
 }));
 
+import { Platform } from 'obsidian';
 import {
 	buildMimeType,
 	detectSupportedFormats,
@@ -19,6 +20,7 @@ import {
 	validateRecordingCapability,
 	detectCapabilities,
 	detectCodecSupport,
+	listFormatAvailability,
 	FORMAT_FLAC,
 } from 'src/audio/AudioCapabilityDetector';
 
@@ -302,6 +304,135 @@ describe('AudioCapabilityDetector', () => {
 					expect(v.supported).toBe(false);
 				});
 			});
+		});
+	});
+
+	describe('platform-aware WAV availability', () => {
+		afterEach(() => {
+			Platform.isMobile = false;
+			Platform.isMobileApp = false;
+			delete (global as Record<string, unknown>).AudioContext;
+		});
+
+		it('offers WAV on desktop via PCM capture without any intermediate', () => {
+			(global as Record<string, unknown>).MediaRecorder = {
+				isTypeSupported: jest.fn().mockReturnValue(false),
+			};
+			(global as Record<string, unknown>).AudioContext = jest.fn();
+
+			expect(detectSupportedFormats()).toContain('wav');
+			expect(validateRecordingCapability('wav').valid).toBe(true);
+		});
+
+		it('blocks WAV on mobile when no intermediate is recordable', () => {
+			// PCM capture is desktop-only, so AudioContext alone is not
+			// enough on mobile - an intermediate recording format is needed
+			Platform.isMobile = true;
+			(global as Record<string, unknown>).MediaRecorder = {
+				isTypeSupported: jest.fn().mockReturnValue(false),
+			};
+			(global as Record<string, unknown>).AudioContext = jest.fn();
+
+			expect(detectSupportedFormats()).not.toContain('wav');
+			const result = validateRecordingCapability('wav');
+			expect(result.valid).toBe(false);
+			expect(result.reason).toMatch(/neither is available/);
+		});
+
+		it('offers WAV on mobile through the mp4 intermediate (iOS)', () => {
+			// iOS WKWebView records audio/mp4 only
+			Platform.isMobile = true;
+			(global as Record<string, unknown>).MediaRecorder = {
+				isTypeSupported: jest.fn(
+					(type: string) => type === 'audio/mp4',
+				),
+			};
+
+			expect(detectSupportedFormats()).toContain('wav');
+			expect(validateRecordingCapability('wav').valid).toBe(true);
+			// Offline-only formats ride the same intermediate
+			expect(validateRecordingCapability('mp3').valid).toBe(true);
+		});
+	});
+
+	describe('listFormatAvailability', () => {
+		afterEach(() => {
+			Platform.isMobile = false;
+			Platform.isMobileApp = false;
+		});
+
+		it('reports every registry format with its availability (iOS profile)', () => {
+			Platform.isMobile = true;
+			(global as Record<string, unknown>).MediaRecorder = {
+				isTypeSupported: jest.fn(
+					(type: string) => type === 'audio/mp4',
+				),
+			};
+
+			const entries = listFormatAvailability();
+			const byFormat = new Map(
+				entries.map((entry) => [entry.format, entry]),
+			);
+
+			// The list covers the full registry, in registry order
+			expect(entries.map((entry) => entry.format)).toEqual([
+				'wav',
+				'webm',
+				'ogg',
+				'mp3',
+				'm4a',
+				'mp4',
+				'flac',
+				'aac',
+			]);
+			// audio/mp4 is directly recordable
+			expect(byFormat.get('mp4')).toMatchObject({
+				available: true,
+				direct: true,
+			});
+			// WAV and mp3 work through the mp4 intermediate + offline encode
+			expect(byFormat.get('wav')).toMatchObject({
+				available: true,
+				direct: false,
+			});
+			expect(byFormat.get('mp3')).toMatchObject({
+				available: true,
+				direct: false,
+			});
+			// Opus containers cannot be produced at all on this profile
+			// (no direct support, and webm/ogg offline encoders are absent
+			// in this suite's AudioEncoder mock)
+			expect(byFormat.get('webm')).toMatchObject({
+				available: false,
+				direct: false,
+			});
+			expect(byFormat.get('ogg')).toMatchObject({
+				available: false,
+				direct: false,
+			});
+		});
+
+		it('marks direct MediaRecorder formats on a desktop profile', () => {
+			(global as Record<string, unknown>).MediaRecorder = {
+				isTypeSupported: jest.fn(
+					(type: string) =>
+						type === 'audio/webm' || type === 'audio/ogg',
+				),
+			};
+			(global as Record<string, unknown>).AudioContext = jest.fn();
+
+			const byFormat = new Map(
+				listFormatAvailability().map((entry) => [entry.format, entry]),
+			);
+			expect(byFormat.get('webm')).toMatchObject({
+				available: true,
+				direct: true,
+			});
+			expect(byFormat.get('wav')).toMatchObject({
+				available: true,
+				direct: false,
+			});
+			delete (global as Record<string, unknown>).AudioContext;
 		});
 	});
 });

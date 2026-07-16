@@ -255,7 +255,7 @@ describe('Settings', () => {
 		});
 
 		it('should preserve all user settings when fully specified', () => {
-			const fullSettings: AudioRecorderSettings = {
+			const fullSettings: Omit<AudioRecorderSettings, 'perPlatform'> = {
 				recordingFormat: 'mp3',
 				saveFolder: '/recordings',
 				saveNearActiveFile: true,
@@ -355,7 +355,23 @@ describe('Settings', () => {
 
 			const result = mergeSettings(fullSettings);
 
-			expect(result).toEqual(fullSettings);
+			// The flat device fields are platform-scoped now: they migrate
+			// into the desktop branch and stay mirrored as the active values.
+			expect(result).toEqual({
+				...fullSettings,
+				perPlatform: {
+					desktop: {
+						audioDeviceId: fullSettings.audioDeviceId,
+						recordingChannels: fullSettings.recordingChannels,
+						trackAudioSources: fullSettings.trackAudioSources,
+					},
+					mobile: {
+						audioDeviceId: '',
+						recordingChannels: 'source',
+						trackAudioSources: new Map(),
+					},
+				},
+			});
 		});
 
 		it('should not modify the default settings object', () => {

@@ -12,6 +12,7 @@ import { TFile, App } from 'obsidian';
 jest.mock('obsidian', () => ({
 	App: jest.fn(),
 	Notice: jest.fn(),
+	Platform: { isMobile: false, isMobileApp: false },
 	TFile: class {
 		path = '';
 		name = '';
@@ -39,6 +40,16 @@ jest.mock('src/audio/AudioFormatConverter', () => ({
 		getChannelData: jest.fn().mockReturnValue(new Float32Array(882000)),
 	}),
 }));
+
+jest.mock('src/platform/capabilities', () => {
+	const actual = jest.requireActual<
+		typeof import('src/platform/capabilities')
+	>('src/platform/capabilities');
+	return {
+		...actual,
+		getMaxDecodeBytes: jest.fn(actual.getMaxDecodeBytes),
+	};
+});
 
 jest.mock('src/recording/AudioSplitter', () => {
 	const actual = jest.requireActual<
@@ -147,6 +158,32 @@ describe('SplitService', () => {
 				'Audio/recording-part1.mp3',
 				'Audio/recording-part2.mp3',
 			]);
+		});
+
+		it('aborts the decode path when the file exceeds the platform decode ceiling', async () => {
+			// Decoding expands the file to full PCM in memory; the ceiling
+			// comes from the platform capability layer (far lower on mobile)
+			const { getMaxDecodeBytes } = jest.requireMock<{
+				getMaxDecodeBytes: jest.Mock;
+			}>('src/platform/capabilities');
+			getMaxDecodeBytes.mockReturnValueOnce(16);
+			const { decodeAudioBlob } = jest.requireMock<{
+				decodeAudioBlob: jest.Mock;
+			}>('src/audio/AudioFormatConverter');
+
+			const outcome = await service.split(createRequest(), jest.fn());
+
+			expect(outcome).toEqual({ status: 'aborted' });
+			expect(decodeAudioBlob).not.toHaveBeenCalled();
+			expect(createdFiles).toEqual([]);
+			const { Notice } = jest.requireMock('obsidian');
+			expect(
+				(Notice as jest.Mock).mock.calls.some((call) =>
+					String(call[0]).includes(
+						'too large to split on this device',
+					),
+				),
+			).toBe(true);
 		});
 
 		it('should abort on a name collision before writing anything', async () => {

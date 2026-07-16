@@ -708,7 +708,7 @@ describe('RecordingManager', () => {
 
 			const { Notice } = jest.requireMock('obsidian');
 			expect(Notice).toHaveBeenCalledWith(
-				'Auto-split is not available in the mobile app.',
+				'Auto-split is not available on this device.',
 			);
 			await manager.stopRecording();
 		});

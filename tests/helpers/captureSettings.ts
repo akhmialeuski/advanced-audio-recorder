@@ -15,12 +15,19 @@ export interface CapturedControl {
 	disabled: boolean;
 }
 
+/** Captured state of one rendered dropdown option. */
+export interface CapturedDropdownOption {
+	value: string;
+	disabled: boolean;
+}
+
 /** One rendered setting row captured through the Setting mock. */
 export interface CapturedSetting {
 	name: string;
 	el: HTMLElement;
 	toggle: CapturedControl | null;
 	text: CapturedControl | null;
+	dropdownOptions: CapturedDropdownOption[] | null;
 }
 
 /** Rows captured by the mock, in render order. Clear it in `beforeEach`. */
@@ -51,7 +58,13 @@ export class CapturingSetting {
 			el.classList.add(c);
 		this.settingEl = el;
 		this.descEl = { createEl: () => ({}) };
-		this.cap = { name: '', el, toggle: null, text: null };
+		this.cap = {
+			name: '',
+			el,
+			toggle: null,
+			text: null,
+			dropdownOptions: null,
+		};
 		capturedSettings.push(this.cap);
 	}
 
@@ -110,11 +123,20 @@ export class CapturingSetting {
 		return this;
 	}
 	addDropdown(callback: (dropdown: unknown) => void): this {
+		// Mirrors DropdownComponent closely enough for per-option disabling:
+		// addOption appends to selectEl.options, which the production code
+		// mutates to block options unavailable on the platform.
+		const options: CapturedDropdownOption[] = [];
 		const dropdown = {
-			addOption() {
+			selectEl: { options },
+			addOption(value: string) {
+				options.push({ value, disabled: false });
 				return this;
 			},
 			setValue() {
+				return this;
+			},
+			setDisabled() {
 				return this;
 			},
 			onChange() {
@@ -122,6 +144,7 @@ export class CapturingSetting {
 			},
 		};
 		callback(dropdown);
+		this.cap.dropdownOptions = options;
 		return this;
 	}
 	addSlider(callback: (slider: unknown) => void): this {

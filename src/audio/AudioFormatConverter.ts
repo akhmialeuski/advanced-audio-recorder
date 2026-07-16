@@ -17,10 +17,9 @@ import { autoClosing } from '../utils/disposables';
 import {
 	MIME_TYPE_AUDIO_PREFIX,
 	PLUGIN_LOG_PREFIX,
-	FORMAT_WEBM,
-	FORMAT_OGG,
 	FORMAT_WAV,
 } from '../constants';
+import { COMPRESSED_INTERMEDIATE_FORMATS } from './formatRegistry';
 import { buildMimeType } from './AudioCapabilityDetector';
 import type { EncodingWorkerClient } from './EncodingWorkerClient';
 
@@ -39,7 +38,9 @@ export type TrackBlobBuilder = (
 /**
  * Resolves the recorder format and MIME type for MediaRecorder.
  * If the output format is not natively supported, selects an
- * intermediate compressed format (WebM or OGG).
+ * intermediate compressed format (WebM, OGG, or MP4 - in registry
+ * order, so opus containers are preferred where they exist and iOS
+ * falls back to its only recordable container, audio/mp4).
  * @param settings - Plugin settings
  * @returns Recorder format string and MIME type
  */
@@ -59,15 +60,16 @@ export function resolveRecorderFormat(settings: AudioRecorderSettings): {
 	}
 
 	// WAV and offline-only formats need an intermediate compressed format
-	const preferredCompressedFormats = [FORMAT_WEBM, FORMAT_OGG];
-	for (const format of preferredCompressedFormats) {
+	for (const format of COMPRESSED_INTERMEDIATE_FORMATS) {
 		const mimeType = buildMimeType(format);
 		if (MediaRecorder.isTypeSupported(mimeType)) {
 			return { recorderFormat: format, mimeType };
 		}
 	}
 	throw new Error(
-		`Output format "${outputFormat}" requires an intermediate compressed format, but neither WebM nor OGG is supported in this browser.`,
+		`Output format "${outputFormat}" requires an intermediate compressed format, but none of ${COMPRESSED_INTERMEDIATE_FORMATS.join(
+			', ',
+		)} is supported in this browser.`,
 	);
 }
 

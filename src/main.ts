@@ -3,7 +3,7 @@
  * @module main
  */
 
-import { Notice, Platform, Plugin } from 'obsidian';
+import { Notice, Plugin } from 'obsidian';
 import type { TFile } from 'obsidian';
 import { RecordingStatus } from './types';
 import type {
@@ -12,6 +12,10 @@ import type {
 	RecordingSaveResult,
 } from './types';
 import { PLUGIN_LOG_PREFIX } from './constants';
+import {
+	isDeviceSelectionSupported,
+	isRecordingBannerSupported,
+} from './platform/capabilities';
 import { AudioRecorderSettings } from './settings/settingsSchema';
 import {
 	mergeSettingsAsync,
@@ -658,14 +662,22 @@ export default class AudioRecorderPlugin extends Plugin {
 		this.addCommand({
 			id: COMMAND_IDS.selectAudioInputDevice,
 			name: 'Select audio input device',
-			callback: () => {
-				void showDeviceSelectionModal(
-					this.app,
-					async (deviceId: string) => {
-						this.settings.audioDeviceId = deviceId;
-						await this.saveSettings();
-					},
-				);
+			// Hidden from the palette where device selection is
+			// unavailable (mobile records from the default microphone).
+			checkCallback: (checking: boolean) => {
+				if (!isDeviceSelectionSupported()) {
+					return false;
+				}
+				if (!checking) {
+					void showDeviceSelectionModal(
+						this.app,
+						async (deviceId: string) => {
+							this.settings.audioDeviceId = deviceId;
+							await this.saveSettings();
+						},
+					);
+				}
+				return true;
 			},
 		});
 
@@ -1029,7 +1041,7 @@ export default class AudioRecorderPlugin extends Plugin {
 			status === RecordingStatus.Paused;
 		if (
 			active &&
-			Platform.isMobile &&
+			isRecordingBannerSupported() &&
 			this.settings.mobileRecordingBanner
 		) {
 			this.recordingBanner.show(status === RecordingStatus.Paused);

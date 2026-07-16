@@ -15,6 +15,7 @@ import {
 	TRANSCRIPTION_PROVIDER_IDS,
 	WHISPER_API_MAX_REQUEST_BYTES,
 } from '../../constants';
+import { isLocalTranscriptionSupported } from '../../platform/capabilities';
 import type { TranscriptionProviderId } from '../../settings/settingsSchema';
 import type { ProviderCapabilities } from './TranscriptionProvider';
 
@@ -98,4 +99,22 @@ export function effectiveDiarize(
 	requested: boolean,
 ): boolean {
 	return requested && providerSupportsDiarization(id);
+}
+
+/**
+ * Whether the engine can run at all on this platform. Cloud engines work
+ * everywhere; local whisper.cpp shells out to a binary through Node,
+ * which only the desktop app provides. The UI uses this to block the
+ * engine option (and its configuration) on platforms that cannot run it,
+ * without knowing which platform it is on.
+ * @param id - Transcription engine id
+ * @returns True when the engine is usable on this platform
+ */
+export function isProviderAvailableOnPlatform(
+	id: TranscriptionProviderId,
+): boolean {
+	if (id === TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER) {
+		return isLocalTranscriptionSupported();
+	}
+	return true;
 }

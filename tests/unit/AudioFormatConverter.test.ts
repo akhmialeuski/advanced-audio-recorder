@@ -209,14 +209,29 @@ describe('AudioFormatConverter', () => {
 			},
 		);
 
-		it('should throw when neither WebM nor OGG is supported', () => {
+		it('falls back to MP4 when only audio/mp4 is recordable (iOS)', () => {
+			// iOS WKWebView: MediaRecorder records audio/mp4 only
+			const settings: AudioRecorderSettings = {
+				...DEFAULT_SETTINGS,
+				recordingFormat: 'wav',
+			};
+			(MediaRecorder.isTypeSupported as jest.Mock).mockImplementation(
+				(mime: string) => mime === 'audio/mp4',
+			);
+			expect(resolveRecorderFormat(settings)).toEqual({
+				recorderFormat: 'mp4',
+				mimeType: 'audio/mp4',
+			});
+		});
+
+		it('should throw when no intermediate format is supported', () => {
 			const settings: AudioRecorderSettings = {
 				...DEFAULT_SETTINGS,
 				recordingFormat: 'mp4',
 			};
 			(MediaRecorder.isTypeSupported as jest.Mock).mockReturnValue(false);
 			expect(() => resolveRecorderFormat(settings)).toThrow(
-				/neither WebM nor OGG is supported/,
+				/none of webm, ogg, mp4 is supported/,
 			);
 		});
 	});

@@ -20,9 +20,9 @@ import type {
 	ConversionLinkAction,
 } from './settingsSchema';
 import {
-	detectSupportedFormats,
 	getSupportedSampleRates,
 	buildMimeType,
+	listFormatAvailability,
 } from '../audio/AudioCapabilityDetector';
 import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
 import {
@@ -59,6 +59,14 @@ import {
 import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
 import { SystemInfoModal } from '../diagnostics/SystemInfoModal';
 import { renderTranscriptionSection } from './sections/transcriptionSettingsSection';
+import { SETTING_DISABLED_CLASS } from './settingControls';
+import {
+	isAutoSplitSupported,
+	isChannelModeSelectionSupported,
+	isDeviceSelectionSupported,
+	isMultiTrackCaptureSupported,
+	isSampleRateSelectionSupported,
+} from '../platform/capabilities';
 
 /** Debounce delay for saving text settings, in milliseconds. */
 const TEXT_SETTING_SAVE_DEBOUNCE_MS = 500;
@@ -141,13 +149,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
-	/**
-	 * Gets supported audio formats using runtime detection.
-	 */
-	getSupportedFormats(): string[] {
-		return detectSupportedFormats();
-	}
-
 	private getCompressionDescription(format: string): string {
 		const encoder = getEncoderDescription(format);
 		if (format === FORMAT_WAV) {
@@ -209,12 +210,19 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		// Audio input
 		new Setting(containerEl).setName('Audio input').setHeading();
 
-		new Setting(containerEl)
+		const deviceSelectable = isDeviceSelectionSupported();
+		const deviceSetting = new Setting(containerEl)
 			.setName('Input device')
 			.setDesc(
-				'Select the default input device for single-track recordings. You can also change it from the command palette.',
+				deviceSelectable
+					? 'Select the default input device for single-track recordings. You can also change it from the command palette.'
+					: 'Not selectable on this device; recording uses the system default microphone.',
 			)
 			.addDropdown((dropdown) => {
+				if (!deviceSelectable) {
+					dropdown.setDisabled(true);
+					return;
+				}
 				this.deviceDropdowns.push({
 					dropdown,
 					getSelectedDeviceId: () =>
@@ -227,21 +235,36 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					this.runChannelDropdownUpdaters();
 				});
 			});
+		if (!deviceSelectable) {
+			deviceSetting.settingEl.addClass(SETTING_DISABLED_CLASS);
+		}
 
-		new Setting(containerEl)
+		const sampleRateSelectable = isSampleRateSelectionSupported();
+		const sampleRateSetting = new Setting(containerEl)
 			.setName('Sample rate')
-			.setDesc('Audio sample rate in hertz.')
+			.setDesc(
+				sampleRateSelectable
+					? 'Audio sample rate in hertz.'
+					: 'Not selectable on this device; the system capture rate is used.',
+			)
 			.addDropdown((dropdown) => {
 				const sampleRates = getSupportedSampleRates();
 				sampleRates.forEach((rate) => {
 					dropdown.addOption(String(rate), String(rate));
 				});
 				dropdown.setValue(String(this.plugin.settings.sampleRate));
+				if (!sampleRateSelectable) {
+					dropdown.setDisabled(true);
+					return;
+				}
 				dropdown.onChange(async (value) => {
 					this.plugin.settings.sampleRate = parseInt(value, 10);
 					await this.plugin.saveSettings();
 				});
 			});
+		if (!sampleRateSelectable) {
+			sampleRateSetting.settingEl.addClass(SETTING_DISABLED_CLASS);
+		}
 
 		new Setting(containerEl)
 			.setName('Recording channels')
@@ -265,7 +288,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		// Output format
 		new Setting(containerEl).setName('Output format').setHeading();
 
-		const supportedFormats = this.getSupportedFormats();
 		const selectedBitrateKbps = Math.round(
 			this.plugin.settings.bitrate / 1000,
 		);
@@ -278,16 +300,34 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Recording format')
 			.setDesc(
-				'Select the final file format. The selected format is applied when files are saved.',
+				'Select the final file format. The selected format is applied when files are saved. Formats this device cannot record are shown blocked.',
 			)
 			.addDropdown((dropdown) => {
-				supportedFormats.forEach((format) => {
-					const label = this.isMediaRecorderFormat(format)
-						? format.toUpperCase()
-						: `${format.toUpperCase()} (offline)`;
-					dropdown.addOption(format, label);
-				});
-				dropdown.setValue(this.plugin.settings.recordingFormat);
+				const entries = listFormatAvailability();
+				for (const entry of entries) {
+					const label = !entry.available
+						? `${entry.format.toUpperCase()} (not supported on this device)`
+						: entry.direct
+							? entry.format.toUpperCase()
+							: `${entry.format.toUpperCase()} (offline)`;
+					dropdown.addOption(entry.format, label);
+				}
+				// A stored format outside the registry (hand-edited or from a
+				// future version) still needs an option so setValue holds it.
+				const stored = this.plugin.settings.recordingFormat;
+				if (!entries.some((entry) => entry.format === stored)) {
+					dropdown.addOption(stored, stored.toUpperCase());
+				}
+				// Block the formats this device cannot record: they stay
+				// visible (so the full format list reads the same on every
+				// platform) but cannot be selected.
+				for (const option of Array.from(dropdown.selectEl.options)) {
+					const entry = entries.find(
+						(candidate) => candidate.format === option.value,
+					);
+					option.disabled = entry ? !entry.available : false;
+				}
+				dropdown.setValue(stored);
 				dropdown.onChange(async (value) => {
 					this.plugin.settings.recordingFormat = value;
 					await this.plugin.saveSettings();
@@ -440,19 +480,33 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		// Audio splitting
 		new Setting(containerEl).setName('Audio splitting').setHeading();
 
-		new Setting(containerEl)
+		const autoSplitAvailable = isAutoSplitSupported();
+		const autoSplitSetting = new Setting(containerEl)
 			.setName('Split recordings automatically')
 			.setDesc(
-				'Save the recording as separate part files of fixed duration instead of one long file. Desktop only; not applied to merged multi-track recordings.',
+				autoSplitAvailable
+					? 'Save the recording as separate part files of fixed duration instead of one long file. Not applied to merged multi-track recordings.'
+					: 'Not available on this device. Recordings are saved as one file; manual splitting from the context menu still works.',
 			)
-			.addToggle((toggle) =>
+			.addToggle((toggle) => {
+				// Reflect the effective state: a stored "on" synced from
+				// another platform reads as off where auto-split cannot run.
 				toggle
-					.setValue(this.plugin.settings.autoSplitEnabled)
+					.setValue(
+						this.plugin.settings.autoSplitEnabled &&
+							autoSplitAvailable,
+					)
 					.onChange(async (value) => {
 						this.plugin.settings.autoSplitEnabled = value;
 						await this.plugin.saveSettings();
-					}),
-			);
+					});
+				if (!autoSplitAvailable) {
+					toggle.setDisabled(true);
+				}
+			});
+		if (!autoSplitAvailable) {
+			autoSplitSetting.settingEl.addClass(SETTING_DISABLED_CLASS);
+		}
 
 		new Setting(containerEl)
 			.setName('Part duration')
@@ -522,22 +576,37 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		// Multi-track recording
 		new Setting(containerEl).setName('Multi-track recording').setHeading();
 
-		new Setting(containerEl)
+		const multiTrackAvailable = isMultiTrackCaptureSupported();
+		const multiTrackSetting = new Setting(containerEl)
 			.setName('Enable multi-track recording')
 			.setDesc(
-				'Enable recording from multiple input devices at the same time.',
+				multiTrackAvailable
+					? 'Enable recording from multiple input devices at the same time.'
+					: 'Not available on this device. Recording captures a single track from the default microphone.',
 			)
-			.addToggle((toggle) =>
+			.addToggle((toggle) => {
+				// Reflect the effective state: a stored "on" synced from
+				// another platform reads as off where multi-track capture
+				// is unavailable, and the toggle cannot be switched on.
 				toggle
-					.setValue(this.plugin.settings.enableMultiTrack)
+					.setValue(
+						this.plugin.settings.enableMultiTrack &&
+							multiTrackAvailable,
+					)
 					.onChange(async (value) => {
 						this.plugin.settings.enableMultiTrack = value;
 						await this.plugin.saveSettings();
 						this.display();
-					}),
-			);
+					});
+				if (!multiTrackAvailable) {
+					toggle.setDisabled(true);
+				}
+			});
+		if (!multiTrackAvailable) {
+			multiTrackSetting.settingEl.addClass(SETTING_DISABLED_CLASS);
+		}
 
-		if (this.plugin.settings.enableMultiTrack) {
+		if (this.plugin.settings.enableMultiTrack && multiTrackAvailable) {
 			new Setting(containerEl)
 				.setName('Maximum tracks')
 				.setDesc(
@@ -1043,7 +1112,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		});
 		const update = (): void => {
 			const deviceId = binding.getDeviceId();
-			let available = binding.hasDevice();
+			// Where the platform offers no channel layout choice (mobile),
+			// every channel dropdown stays blocked regardless of devices.
+			let available =
+				isChannelModeSelectionSupported() && binding.hasDevice();
 			if (available && deviceId) {
 				const { enumerationSucceeded, channelLimits } =
 					this.deviceSnapshot;

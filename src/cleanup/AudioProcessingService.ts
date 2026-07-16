@@ -7,13 +7,12 @@
  */
 
 import type { App, TFile } from 'obsidian';
+import { CLEANUP_SEGMENT_SECONDS, CLEANUP_WARMUP_SECONDS } from '../constants';
 import {
-	CLEANUP_SEGMENT_SECONDS,
-	CLEANUP_WARMUP_SECONDS,
-	MAX_AUDIO_CLEANUP_BYTES,
-	MAX_AUDIO_CLEANUP_SECONDS,
-	MAX_AUDIO_CLEANUP_DECODED_SAMPLES,
-} from '../constants';
+	getMaxCleanupDecodedSamples,
+	getMaxCleanupSeconds,
+	getMaxDecodeBytes,
+} from '../platform/capabilities';
 import { createWavFileBuffer, WAV_HEADER_SIZE } from '../audio/WavEncoder';
 import { floatToInt16 } from '../audio/pcm';
 import { downmixChannelData, isMonoChannelMode } from '../audio/downmix';
@@ -90,7 +89,9 @@ export class AudioProcessingService {
 	 * @returns Vault path of the written file
 	 */
 	async process(file: TFile, config: AudioDspConfig): Promise<string> {
-		if (file.stat.size > MAX_AUDIO_CLEANUP_BYTES) {
+		// Platform-dependent ceiling: mobile WebViews get a far smaller
+		// memory budget than the desktop renderer.
+		if (file.stat.size > getMaxDecodeBytes()) {
 			throw new Error(
 				'Audio file is too large to clean up here. Split it into parts first.',
 			);
@@ -204,10 +205,11 @@ export class AudioProcessingService {
 			// because `data` is not reused after this call, and avoiding a
 			// defensive copy halves peak memory for near-cap files.
 			const decoded = await context.decodeAudioData(data);
-			if (decoded.duration > MAX_AUDIO_CLEANUP_SECONDS) {
+			const maxSeconds = getMaxCleanupSeconds();
+			if (decoded.duration > maxSeconds) {
 				throw new Error(
 					`Audio is too long to clean up here (limit ${String(
-						Math.round(MAX_AUDIO_CLEANUP_SECONDS / 60),
+						Math.round(maxSeconds / 60),
 					)} minutes). Split it into parts first.`,
 				);
 			}
@@ -218,7 +220,7 @@ export class AudioProcessingService {
 			// clear message rather than an out-of-memory error mid-pipeline.
 			if (
 				decoded.length * decoded.numberOfChannels >
-				MAX_AUDIO_CLEANUP_DECODED_SAMPLES
+				getMaxCleanupDecodedSamples()
 			) {
 				throw new Error(
 					'Audio file is too large to clean up here. Split it into parts first.',
