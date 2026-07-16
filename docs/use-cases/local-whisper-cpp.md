@@ -137,7 +137,7 @@ _Figure: the Transcription settings with the local engine selected._
 
 You can also set **Language** (an ISO code like `en`, `ru`, `es`, or `auto` to detect) here - it is shared with the other engines. The plugin passes a chosen language to the binary; with `auto` it lets `whisper.cpp` detect the language.
 
-> **Note:** the **Speaker diarization** toggle is greyed out for this engine because local `whisper.cpp` cannot produce speaker labels. The cloud-only **Request timeout** slider is also hidden - there is no network request to time out.
+> **Note:** the **Speaker diarization** toggle is greyed out for this engine because local `whisper.cpp` cannot produce speaker labels. The cloud-only **Request timeout** number field is also hidden - there is no network request to time out.
 
 Example paths to use as a template:
 
