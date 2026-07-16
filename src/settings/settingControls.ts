@@ -283,8 +283,6 @@ export function addSlider(
 		slider
 			.setLimits(config.min, config.max, config.step)
 			.setValue(config.get())
-			// eslint-disable-next-line @typescript-eslint/no-deprecated -- kept for the slider value tooltip on Obsidian < 1.13; a no-op on 1.13+ where the value shows inline
-			.setDynamicTooltip()
 			.onChange(async (value) => {
 				config.set(value);
 				await ctx.save();

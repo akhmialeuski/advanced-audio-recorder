@@ -95,13 +95,13 @@ describe('AudioRecorderSettingTab', () => {
 
 		it('renders the settings body into the group and drops the anchor row', () => {
 			const def = tab.getSettingDefinitions()[0] as {
-				render: (setting: unknown, group: unknown) => void;
+				render: (setting: unknown) => void;
 			};
 			const listEl = createDiv();
 			const anchorEl = createDiv();
 			listEl.appendChild(anchorEl);
 
-			def.render({ settingEl: anchorEl }, { listEl });
+			def.render({ settingEl: anchorEl });
 
 			// The empty anchor row the framework creates for a render item is
 			// removed, and the real controls land in the group's list element.

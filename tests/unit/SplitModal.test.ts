@@ -98,7 +98,6 @@ jest.mock('obsidian', () => ({
 			const slider = {
 				setLimits: jest.fn(),
 				setValue: jest.fn(),
-				setDynamicTooltip: jest.fn(),
 				onChange: jest.fn((handler: (value: number) => void) => {
 					mockCapturedControls.sliders.push(handler);
 					return slider;
@@ -106,7 +105,6 @@ jest.mock('obsidian', () => ({
 			};
 			slider.setLimits.mockReturnValue(slider);
 			slider.setValue.mockReturnValue(slider);
-			slider.setDynamicTooltip.mockReturnValue(slider);
 			cb(slider);
 			return chain;
 		});

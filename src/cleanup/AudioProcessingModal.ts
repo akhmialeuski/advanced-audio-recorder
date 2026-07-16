@@ -193,8 +193,6 @@ export class AudioProcessingModal extends Modal {
 				sliderComponent = s
 					.setLimits(slider.min, slider.max, slider.step)
 					.setValue(slider.value)
-					// eslint-disable-next-line @typescript-eslint/no-deprecated -- kept for the slider value tooltip on Obsidian < 1.13; a no-op on 1.13+ where the value shows inline
-					.setDynamicTooltip()
 					.onChange(slider.onChange);
 				s.setDisabled(!enabled);
 			})

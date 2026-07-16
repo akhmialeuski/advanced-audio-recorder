@@ -14,7 +14,7 @@ import {
 	setIcon,
 } from 'obsidian';
 import type { Plugin } from 'obsidian';
-import type { SettingDefinitionItem, SettingGroup } from 'obsidian';
+import type { SettingDefinitionItem } from 'obsidian';
 import type {
 	AudioRecorderSettings,
 	OutputMode,
@@ -265,8 +265,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 */
 	override display(): void {
 		this.isDisplayed = true;
-		this.containerEl.empty();
-		this.renderSettingsInto(this.containerEl);
+		this.renderFull();
 	}
 
 	/**
@@ -283,13 +282,15 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			{
 				name: 'Advanced Audio Recorder',
 				aliases: SETTINGS_SEARCH_ALIASES,
-				render: (setting: Setting, group: SettingGroup): void => {
+				render: (setting: Setting): void => {
 					this.isDisplayed = true;
-					// Drop the empty anchor row the framework creates for a
-					// render item; the real controls are built into the group.
+					// The framework appends this render item's row to the
+					// group's list element; render the real controls into that
+					// same host, then drop the empty anchor row itself.
+					const host =
+						setting.settingEl.parentElement ?? this.containerEl;
 					setting.settingEl.remove();
-					// eslint-disable-next-line obsidianmd/no-unsupported-api -- SettingGroup.listEl (1.11+) is reached only through getSettingDefinitions(), which Obsidian calls on 1.13+ only
-					this.renderSettingsInto(group.listEl);
+					this.renderSettingsInto(host);
 				},
 			},
 		];
@@ -306,9 +307,18 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		if (typeof update === 'function') {
 			update.call(this);
 		} else {
-			// eslint-disable-next-line @typescript-eslint/no-deprecated -- display() is the intentional fallback for Obsidian < 1.13, which does not call getSettingDefinitions()
-			this.display();
+			this.renderFull();
 		}
+	}
+
+	/**
+	 * Clears the container and rebuilds the settings body. Shared by display()
+	 * and by the pre-1.13 re-render path, which cannot call the framework's
+	 * update() and must re-render imperatively.
+	 */
+	private renderFull(): void {
+		this.containerEl.empty();
+		this.renderSettingsInto(this.containerEl);
 	}
 
 	/**
@@ -637,8 +647,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 						1,
 					)
 					.setValue(this.plugin.settings.splitChunkMinutes)
-					// eslint-disable-next-line @typescript-eslint/no-deprecated -- kept for the slider value tooltip on Obsidian < 1.13; a no-op on 1.13+ where the value shows inline
-					.setDynamicTooltip()
 					.onChange(async (value) => {
 						this.plugin.settings.splitChunkMinutes = value;
 						await this.plugin.saveSettings();
@@ -733,8 +741,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					slider
 						.setLimits(1, 8, 1)
 						.setValue(this.plugin.settings.maxTracks)
-						// eslint-disable-next-line @typescript-eslint/no-deprecated -- kept for the slider value tooltip on Obsidian < 1.13; a no-op on 1.13+ where the value shows inline
-						.setDynamicTooltip()
 						.onChange(async (value) => {
 							this.plugin.settings.maxTracks = value;
 							await this.plugin.saveSettings();
@@ -1112,8 +1118,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 						CLEANUP_HIGHPASS_STEP_HZ,
 					)
 					.setValue(s.cleanupHighPassHz)
-					// eslint-disable-next-line @typescript-eslint/no-deprecated -- kept for the slider value tooltip on Obsidian < 1.13; a no-op on 1.13+ where the value shows inline
-					.setDynamicTooltip()
 					.onChange(async (v) => {
 						s.cleanupHighPassHz = v;
 						await this.plugin.saveSettings();
@@ -1141,8 +1145,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 						CLEANUP_GATE_STEP_DB,
 					)
 					.setValue(s.cleanupNoiseGateThresholdDb)
-					// eslint-disable-next-line @typescript-eslint/no-deprecated -- kept for the slider value tooltip on Obsidian < 1.13; a no-op on 1.13+ where the value shows inline
-					.setDynamicTooltip()
 					.onChange(async (v) => {
 						s.cleanupNoiseGateThresholdDb = v;
 						await this.plugin.saveSettings();
@@ -1170,8 +1172,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 						CLEANUP_LEVELING_STEP_DB,
 					)
 					.setValue(s.cleanupLevelingMakeupDb)
-					// eslint-disable-next-line @typescript-eslint/no-deprecated -- kept for the slider value tooltip on Obsidian < 1.13; a no-op on 1.13+ where the value shows inline
-					.setDynamicTooltip()
 					.onChange(async (v) => {
 						s.cleanupLevelingMakeupDb = v;
 						await this.plugin.saveSettings();
