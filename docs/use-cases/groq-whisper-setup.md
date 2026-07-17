@@ -30,7 +30,7 @@ The trade-off is the same as OpenAI's Whisper API: there is **no speaker diariza
 
 You need:
 
-- The plugin installed and enabled on the Obsidian **desktop** app (the plugin is desktop only). See [Getting started](../getting-started.md).
+- The plugin installed and enabled in Obsidian on **desktop or mobile** (the Whisper API engine is a cloud engine, so it works on both). See [Getting started](../getting-started.md).
 - Transcription enabled: open **Settings > Advanced Audio Recorder > Transcription** and turn **Enable transcription** on. See [Transcription](../transcription.md).
 - A web browser to reach the Groq Console.
 

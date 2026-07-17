@@ -49,7 +49,7 @@ The player integrates with Obsidian's own embed rendering rather than bolting on
 
 A single audio element is shared per file across view modes, so the same playback is controlled whether you are in Reading view or Live Preview, and switching modes does not stop and restart playback.
 
-> **Desktop only.** The plugin is marked desktop-only, so Obsidian does not load it - including the enhanced player - in the mobile app. On desktop the player works wherever Obsidian renders audio embeds; waveform extraction relies on the Web Audio API available in the app.
+> **Desktop and mobile.** The enhanced player works in both the Obsidian desktop app and the mobile app (iOS and Android), taking over audio embeds wherever Obsidian renders them; waveform extraction relies on the Web Audio API available in both. See [Mobile support](mobile-support.md).
 
 ---
 

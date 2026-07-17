@@ -28,14 +28,14 @@ A two-hour lecture or an all-day meeting recorded as one file is awkward to work
 
 When **Split recordings automatically** is enabled, a recording is saved as a series of fixed-duration part files (`recording-…-part1.webm`, `recording-…-part2.webm`, …) instead of one long file. Each finished part is written to disk while the recording continues, and the remainder recorded after the last boundary becomes the final part. Links to **all** parts are inserted into the note when the recording stops.
 
-![Settings panel showing the Split recordings automatically toggle, Part duration slider, Part name suffix field, and Delete source after split toggle](images/settings-audio-splitting.png)
+![Settings panel showing the Split recordings automatically toggle, Part duration number field, Part name suffix field, and Delete source after split toggle](images/settings-audio-splitting.png)
 _Figure: the Audio splitting section of the plugin settings, where automatic splitting is enabled and the part duration and suffix are configured._
 
 ### Enabling it
 
 1. Open **Settings > Advanced Audio Recorder > Audio splitting**.
 2. Turn on **Split recordings automatically**.
-3. Set **Part duration** (the slider runs from `1` to `180` minutes; the default is `15`). This value is the target length of every part.
+3. Set **Part duration** (the number field accepts `1` to `180` minutes; the default is `15`). This value is the target length of every part.
 4. Optionally set the **Part name suffix** (default `part`) that is appended with the part number - see [Part naming](#part-naming).
 5. Record as usual. When you stop, the part files are written and all of their links are inserted into the active note.
 
@@ -79,14 +79,14 @@ To open the split dialog, right-click the target audio in any of these places an
 
 ### The split dialog
 
-![The Split audio into parts dialog showing the source file name, Part duration slider, Part name suffix field, Bitrate dropdown, Delete source toggle, Update links dropdown, and the Split button](images/modal-split-audio.png)
+![The Split audio into parts dialog showing the source file name, Part duration number field, Part name suffix field, Bitrate dropdown, Delete source toggle, Update links dropdown, and the Split button](images/modal-split-audio.png)
 _Figure: the Split audio into parts dialog, with the per-run options that override your saved defaults for a single split._
 
 The dialog header shows the **Source** file name and exposes these options. Each starts from your saved settings but can be changed for this one run:
 
 | Option                    | What it does                                                                                                                                                                   | Range / values                                                    | Default                                                                |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| **Part duration**         | Length of each part in minutes. A live tooltip shows the current value as you drag the slider.                                                                                 | `1`-`180` minutes                                                 | Your **Part duration** setting (`15`)                                  |
+| **Part duration**         | Length of each part in minutes. Type the value directly or adjust it with the up/down stepper.                                                                                 | `1`-`180` minutes                                                 | Your **Part duration** setting (`15`)                                  |
 | **Part name suffix**      | Text appended with the part number to name each file. The description previews the resulting file name as you type. Invalid characters mark the field red and block the split. | Letters, digits, hyphens, and underscores only                    | Your **Part name suffix** setting (`part`)                             |
 | **Bitrate**               | Bitrate used when re-encoding parts of a compressed source. **Hidden for WAV sources**, which are split without re-encoding.                                                   | `64`, `96`, `128`, `160`, `192`, `256`, `320` kbps                | Your **Audio bitrate** setting (`128`)                                 |
 | **Delete source file**    | Move the original file to the system trash after a successful split.                                                                                                           | On / Off                                                          | Your **Delete source after split** setting (`Off`)                     |

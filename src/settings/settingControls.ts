@@ -7,6 +7,7 @@
  */
 
 import { Setting } from 'obsidian';
+import type { TextComponent } from 'obsidian';
 import type { AudioRecorderSettings } from './settingsSchema';
 import type { LabeledOption } from './labels';
 import {
@@ -259,8 +260,78 @@ export function addDropdown(
 	});
 }
 
-/** Configuration for a slider control. */
-export interface SliderControlConfig {
+/** Configuration for a numeric input control. */
+export interface NumberInputConfig {
+	/** Minimum accepted value. */
+	min: number;
+	/** Maximum accepted value. */
+	max: number;
+	/** Step the value snaps to (matching the old slider granularity). */
+	step: number;
+	/** Reads the current value. */
+	get: () => number;
+	/** Persists a new value. */
+	set: (value: number) => void | Promise<void>;
+}
+
+/**
+ * Snaps a raw field value to the nearest step and clamps it to [min, max], so
+ * the stored value stays as valid as the slider's used to be. An empty or
+ * non-numeric field falls back to the current stored value.
+ *
+ * The snap runs before the clamp so a max that is not itself on the step grid
+ * (for example 32000 with step 512 anchored at 512, where the last grid point
+ * is 32256) can never be rounded past the max and persisted out of range.
+ * @param raw - The input's raw string value
+ * @param config - The numeric bounds and current-value accessor
+ */
+function normalizeNumber(raw: string, config: NumberInputConfig): number {
+	const parsed = Number(raw);
+	const base =
+		raw.trim() === '' || Number.isNaN(parsed) ? config.get() : parsed;
+	const snapped =
+		config.min +
+		Math.round((base - config.min) / config.step) * config.step;
+	const clamped = Math.min(config.max, Math.max(config.min, snapped));
+	// Trim floating-point drift introduced by the snap arithmetic.
+	return Number(clamped.toFixed(6));
+}
+
+/**
+ * Adds a numeric input (manual entry plus the browser's native up/down
+ * stepper) to an existing setting, replacing the slider control. The value
+ * commits on change - Enter, blur, or a stepper click - where it is clamped to
+ * [min, max], snapped to the step, written back to the field, and persisted.
+ * Returns the text component so callers can toggle its disabled state.
+ * @param setting - The setting row to add the input to
+ * @param config - The numeric bounds and getter/setter
+ */
+export function addNumberInputTo(
+	setting: Setting,
+	config: NumberInputConfig,
+): TextComponent {
+	let component!: TextComponent;
+	setting.addText((text) => {
+		component = text;
+		const input = text.inputEl;
+		input.type = 'number';
+		input.inputMode = 'numeric';
+		input.min = String(config.min);
+		input.max = String(config.max);
+		input.step = String(config.step);
+		input.addClass('aar-number-input');
+		text.setValue(String(config.get()));
+		input.addEventListener('change', () => {
+			const value = normalizeNumber(input.value, config);
+			input.value = String(value);
+			void config.set(value);
+		});
+	});
+	return component;
+}
+
+/** Configuration for a numeric setting row (label plus numeric input). */
+export interface NumberSettingConfig {
 	name: string;
 	desc?: string;
 	min: number;
@@ -270,25 +341,30 @@ export interface SliderControlConfig {
 	set: (value: number) => void;
 }
 
-/** Adds a slider bound to a getter/setter that saves immediately. */
-export function addSlider(
+/**
+ * Adds a labelled numeric-input row bound to a getter/setter that saves
+ * immediately, the numeric-field replacement for the old slider row.
+ * @param ctx - The section context (container plus save hook)
+ * @param config - The row label and numeric bounds/accessors
+ */
+export function addNumberInput(
 	ctx: SettingsSectionContext,
-	config: SliderControlConfig,
+	config: NumberSettingConfig,
 ): void {
 	const setting = new Setting(ctx.containerEl).setName(config.name);
 	if (config.desc) {
 		setting.setDesc(config.desc);
 	}
-	setting.addSlider((slider) =>
-		slider
-			.setLimits(config.min, config.max, config.step)
-			.setValue(config.get())
-			.setDynamicTooltip()
-			.onChange(async (value) => {
-				config.set(value);
-				await ctx.save();
-			}),
-	);
+	addNumberInputTo(setting, {
+		min: config.min,
+		max: config.max,
+		step: config.step,
+		get: config.get,
+		set: async (value) => {
+			config.set(value);
+			await ctx.save();
+		},
+	});
 }
 
 /** Configuration for a model picker (pick from a saved, user-editable list). */

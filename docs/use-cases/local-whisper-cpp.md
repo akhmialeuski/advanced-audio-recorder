@@ -25,7 +25,7 @@ Pick the local engine when privacy, cost, or connectivity matter more than raw s
 
 ### Trade-offs
 
-- **Desktop only.** The engine shells out to a native binary through Node, which the mobile app cannot do. Like the rest of the plugin, it runs only in the Obsidian **desktop** app.
+- **Desktop only.** The engine shells out to a native binary through Node, which the mobile app cannot do, so it runs only in the Obsidian **desktop** app. The rest of the plugin - including cloud transcription - works on mobile too; see [Mobile support](../mobile-support.md).
 - **It uses your hardware.** Transcription runs on your CPU (or GPU, if you built/downloaded a build with acceleration). A large model on a laptop CPU can be several times slower than real time.
 - **Accuracy scales with model size.** Bigger models are more accurate but slower and use more memory. Smaller models are fast but make more mistakes.
 - **No speaker labels.** Local `whisper.cpp` does not do diarization, so it produces no "who said what" labels. If you need speaker labels, use Deepgram or Gemini instead - see [Speakers and diarization](../transcription.md#speakers-and-diarization).
@@ -36,7 +36,7 @@ Pick the local engine when privacy, cost, or connectivity matter more than raw s
 
 | Item                       | Detail                                                                      |
 | -------------------------- | --------------------------------------------------------------------------- |
-| **Obsidian desktop**       | The plugin (and this engine) is desktop only; requires Obsidian **1.6.6+**. |
+| **Obsidian desktop**       | This engine is desktop-only; requires Obsidian **1.6.6+**.                  |
 | **A `whisper.cpp` binary** | The command-line executable, downloaded or built (Step 1).                  |
 | **A GGML model file**      | One `.bin` model file, e.g. `ggml-base.bin` (Step 2).                       |
 | **Disk space**             | A few hundred MB for a small/medium model; ~3 GB for a `large-v3` model.    |
@@ -137,7 +137,7 @@ _Figure: the Transcription settings with the local engine selected._
 
 You can also set **Language** (an ISO code like `en`, `ru`, `es`, or `auto` to detect) here - it is shared with the other engines. The plugin passes a chosen language to the binary; with `auto` it lets `whisper.cpp` detect the language.
 
-> **Note:** the **Speaker diarization** toggle is greyed out for this engine because local `whisper.cpp` cannot produce speaker labels. The cloud-only **Request timeout** slider is also hidden - there is no network request to time out.
+> **Note:** the **Speaker diarization** toggle is greyed out for this engine because local `whisper.cpp` cannot produce speaker labels. The cloud-only **Request timeout** number field is also hidden - there is no network request to time out.
 
 Example paths to use as a template:
 

@@ -6,15 +6,8 @@
  * @module cleanup/AudioProcessingModal
  */
 
-import {
-	App,
-	ButtonComponent,
-	Modal,
-	Notice,
-	Setting,
-	SliderComponent,
-	TFile,
-} from 'obsidian';
+import { App, ButtonComponent, Modal, Notice, Setting, TFile } from 'obsidian';
+import { addNumberInputTo } from '../settings/settingControls';
 import {
 	MIN_CLEANUP_HIGHPASS_HZ,
 	MAX_CLEANUP_HIGHPASS_HZ,
@@ -79,7 +72,7 @@ export class AudioProcessingModal extends Modal {
 			text: 'Produces a processed WAV copy next to the source.',
 		});
 
-		this.addStageWithSlider(
+		this.addStageWithNumber(
 			contentEl,
 			'High-pass filter',
 			'Remove low-frequency rumble below the cutoff (Hz).',
@@ -93,7 +86,7 @@ export class AudioProcessingModal extends Modal {
 				onChange: (v) => (this.config.highPass.hz = v),
 			},
 		);
-		this.addStageWithSlider(
+		this.addStageWithNumber(
 			contentEl,
 			'Noise gate',
 			'Silence the signal below the threshold (dBFS).',
@@ -107,7 +100,7 @@ export class AudioProcessingModal extends Modal {
 				onChange: (v) => (this.config.gate.thresholdDb = v),
 			},
 		);
-		this.addStageWithSlider(
+		this.addStageWithNumber(
 			contentEl,
 			'Loudness leveling',
 			'Even out quiet and loud passages; makeup gain (dB).',
@@ -167,17 +160,17 @@ export class AudioProcessingModal extends Modal {
 	}
 
 	/**
-	 * Adds a stage toggle with a parameter slider on the same row. The
-	 * slider is greyed out while the stage is off so it is clear the
-	 * parameter only takes effect once the stage is enabled.
+	 * Adds a stage toggle with a parameter number input on the same row. The
+	 * input is greyed out while the stage is off so it is clear the parameter
+	 * only takes effect once the stage is enabled.
 	 */
-	private addStageWithSlider(
+	private addStageWithNumber(
 		container: HTMLElement,
 		name: string,
 		desc: string,
 		enabled: boolean,
 		onToggle: (value: boolean) => void,
-		slider: {
+		field: {
 			min: number;
 			max: number;
 			step: number;
@@ -185,24 +178,21 @@ export class AudioProcessingModal extends Modal {
 			onChange: (value: number) => void;
 		},
 	): void {
-		let sliderComponent!: SliderComponent;
-		new Setting(container)
-			.setName(name)
-			.setDesc(desc)
-			.addSlider((s) => {
-				sliderComponent = s
-					.setLimits(slider.min, slider.max, slider.step)
-					.setValue(slider.value)
-					.setDynamicTooltip()
-					.onChange(slider.onChange);
-				s.setDisabled(!enabled);
-			})
-			.addToggle((toggle) =>
-				toggle.setValue(enabled).onChange((value) => {
-					onToggle(value);
-					sliderComponent.setDisabled(!value);
-				}),
-			);
+		const setting = new Setting(container).setName(name).setDesc(desc);
+		const numberInput = addNumberInputTo(setting, {
+			min: field.min,
+			max: field.max,
+			step: field.step,
+			get: () => field.value,
+			set: field.onChange,
+		});
+		numberInput.setDisabled(!enabled);
+		setting.addToggle((toggle) =>
+			toggle.setValue(enabled).onChange((value) => {
+				onToggle(value);
+				numberInput.setDisabled(!value);
+			}),
+		);
 	}
 
 	/**

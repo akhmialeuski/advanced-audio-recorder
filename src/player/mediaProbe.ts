@@ -46,7 +46,7 @@ export interface MediaProbeResult {
  */
 export function probeMediaKind(resourceUrl: string): Promise<MediaProbeResult> {
 	return new Promise((resolve) => {
-		const el = activeDocument.createElement('video');
+		const el = createEl('video');
 		el.preload = 'metadata';
 		el.muted = true;
 		let settled = false;

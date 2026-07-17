@@ -1,6 +1,6 @@
 # Multi-track recording
 
-**Multi-track recording** captures from up to **eight input devices at the same time** in a single recording session. Every track is its own recorder running at the format and bitrate you have configured; they all start, pause, resume, and stop together. When you stop, the plugin either **mixes** every track into one file or saves **one file per track**, depending on the output mode you pick. This is desktop-only, like the rest of the plugin.
+**Multi-track recording** captures from up to **eight input devices at the same time** in a single recording session. Every track is its own recorder running at the format and bitrate you have configured; they all start, pause, resume, and stop together. When you stop, the plugin either **mixes** every track into one file or saves **one file per track**, depending on the output mode you pick. This feature is **desktop-only**: capturing several input devices at once needs access the mobile app does not provide, so the phone records a single track instead.
 
 - [What it is and when to use it](#what-it-is-and-when-to-use-it)
 - [Setup](#setup)
@@ -28,7 +28,7 @@ Use it when:
 
 If you only ever record from one device, leave multi-track off - single-device recording is the default and needs no setup. See [Recording](recording.md) for the basics.
 
-> **Desktop only.** Multi-track recording, like the whole plugin, runs only in the Obsidian desktop app.
+> **Desktop only.** Multi-track recording runs only in the Obsidian desktop app; the mobile app records a single track from its default microphone. See [Mobile support](mobile-support.md).
 
 ---
 
@@ -38,12 +38,12 @@ Multi-track recording is configured under **Settings > Advanced Audio Recorder >
 
 1. Open **Settings > Advanced Audio Recorder** and scroll to the **Multi-track recording** heading.
 2. Turn on **Enable multi-track recording**. (Default: **Off**.) The track options below appear.
-3. Set **Maximum tracks** with the slider - the number of simultaneous tracks, from **1 to 8** (default **2**). Use only what you need; each extra track is another live recorder.
+3. Set **Maximum tracks** in the number field - the number of simultaneous tracks, from **1 to 8** (default **2**). Use only what you need; each extra track is another live recorder.
 4. Choose the **Output mode**: **Single file** (all tracks mixed into one) or **Multiple files** (one file per track). Default is **Single file**.
 5. For each track, assign an **Audio source for track N** - pick the input device from the dropdown. There is one dropdown per track, numbered up to the **Maximum tracks** value. The device list auto-populates and refreshes as devices are connected or disconnected.
 6. Optionally set **Channels for track N** - the channel layout for that track's capture, bound to the track's device: keep the device layout (default), **Mono (mix all channels)**, **Mono (left channel)**, or **Mono (right channel)**. Because the choice is per track, a microphone that arrives hard-panned through a dual-input audio interface can be reduced to mono while a genuine stereo source on another track (for example a system-loopback device) keeps both channels. The selector is disabled when the track has no device yet, its device reports a mono-only input, or the selected device has been disconnected. The saved choice is retained and becomes available again after reconnecting a capable device. See [Recording in mono](recording.md#recording-in-mono) for how each mode sounds.
 
-![Multi-track recording settings with the enable toggle on, the Maximum tracks slider, the Output mode dropdown, and several "Audio source for track N" device dropdowns](images/settings-multi-track.png)
+![Multi-track recording settings with the enable toggle on, the Maximum tracks number field, the Output mode dropdown, and several "Audio source for track N" device dropdowns](images/settings-multi-track.png)
 _Figure: the Multi-track recording settings section with multiple per-track device dropdowns shown._
 
 Once configured, start recording exactly as you normally do - the **microphone ribbon icon** or the **Start/stop recording** command. All assigned tracks begin together. See [Recording](recording.md) for the recording workflow, status bar, and save behavior.
@@ -138,7 +138,7 @@ All multi-track controls live under **Settings > Advanced Audio Recorder > Multi
 | Setting                          | Description                                                                              | Default     |
 | -------------------------------- | ---------------------------------------------------------------------------------------- | ----------- |
 | **Enable multi-track recording** | Record from multiple input devices at the same time. Reveals the options below.          | Off         |
-| **Maximum tracks**               | Number of simultaneous tracks (slider, 1-8).                                             | 2           |
+| **Maximum tracks**               | Number of simultaneous tracks (number field, 1-8).                                       | 2           |
 | **Output mode**                  | `Single file` mixes all tracks into one file. `Multiple files` saves one file per track. | Single file |
 | **Audio source for track N**     | Input device assigned to each track. One dropdown per track, up to **Maximum tracks**.   | -           |
 | **Channels for track N**         | Channel layout for that track's capture: device layout, mono mix, or one picked channel. Disabled without a device or for mono-only devices. | Same as input device |

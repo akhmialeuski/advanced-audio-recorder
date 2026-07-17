@@ -1,6 +1,6 @@
 # Advanced Audio Recorder - Documentation
 
-**Advanced Audio Recorder** is a desktop-only [Obsidian](https://obsidian.md) plugin that turns your vault into a full-featured voice recorder, dictation tool, and meeting recorder. Record audio straight into a note, capture several microphones at once, save in any of eight formats, convert and split files, play recordings back in an enhanced waveform player with markers and chapters, clean up noisy audio on demand, and transcribe speech to text with four engines (OpenAI-compatible Whisper, Deepgram, Google Gemini, or a fully offline local whisper.cpp) - with optional LLM post-processing to clean up or summarize the transcript. It requires Obsidian **1.6.6 or newer**.
+**Advanced Audio Recorder** is an [Obsidian](https://obsidian.md) plugin that turns your vault into a full-featured voice recorder, dictation tool, and meeting recorder. Record audio straight into a note, capture several microphones at once, save in any of eight formats, convert and split files, play recordings back in an enhanced waveform player with markers and chapters, clean up noisy audio on demand, and transcribe speech to text with four engines (OpenAI-compatible Whisper, Deepgram, Google Gemini, or a fully offline local whisper.cpp) - with optional LLM post-processing to clean up or summarize the transcript. It runs on **desktop and mobile** (iOS and Android) and requires Obsidian **1.6.6 or newer**; a few features are desktop-only (see [Mobile support](mobile-support.md)).
 
 ![The enhanced audio player embedded in a note, showing the waveform seek bar, transport controls, and a marker list](images/player-overview.png)
 _Figure: A recording playing back in the enhanced waveform player with markers and chapters._
@@ -29,7 +29,7 @@ What it does:
 - **Post-processes transcripts with an LLM** to clean up punctuation, summarize into key points and action items, or apply a custom instruction.
 - **Ships diagnostics** - a test recording, a system-info report, and a debug mode - for troubleshooting devices, codecs, and the runtime environment.
 
-It is **desktop only** and requires Obsidian **1.6.6+**. Search terms people use for this plugin include: voice recorder, dictation, meeting recorder, audio notes, speech-to-text, transcription, Whisper, Deepgram, and Gemini.
+It runs on **desktop and mobile** (iOS and Android) and requires Obsidian **1.6.6+**, with a few features desktop-only (multi-track recording, automatic splitting, input device selection, and local whisper.cpp transcription) - see [Mobile support](mobile-support.md). Search terms people use for this plugin include: voice recorder, dictation, meeting recorder, audio notes, speech-to-text, transcription, Whisper, Deepgram, and Gemini.
 
 ---
 
@@ -44,6 +44,7 @@ It is **desktop only** and requires Obsidian **1.6.6+**. Search terms people use
 - **Speech-to-text with four engines** - Whisper API, Deepgram, Gemini, or offline local whisper.cpp, with speaker diarization on Deepgram and Gemini. See [Transcription](transcription.md).
 - **LLM post-processing** - clean up, summarize, or run a custom instruction over the transcript. See [LLM post-processing](llm-post-processing.md).
 - **Crash recovery and settings backup** - interrupted recordings can be recovered, and settings are auto-restored from a backup. See [Recording](recording.md) and [Settings reference](settings-reference.md).
+- **Desktop and mobile** - record, play back in the enhanced player, convert, split, and transcribe with a cloud engine on iOS and Android, with a few features desktop-only. See [Mobile support](mobile-support.md).
 - **Built-in diagnostics** - a 5-second test recording, a full system-info report, and a verbose debug mode. See [Troubleshooting](troubleshooting.md).
 
 ---
@@ -58,6 +59,7 @@ Everything in this documentation set, grouped by topic. Each page is self-contai
 | ------------------------------------- | ------------------------------------------------------------------------------- |
 | [Getting started](getting-started.md) | Install the plugin, make your first recording, and find your way around the UI. |
 | [Features](features.md)               | A tour of every feature with pointers to the detailed page for each one.        |
+| [Mobile support](mobile-support.md)   | What works on iOS and Android, the platform limits, formats, and setup.         |
 
 ### Recording
 

@@ -122,7 +122,9 @@ interface SilentChannelSuggestion {
  * Advanced Audio Recorder plugin for Obsidian.
  */
 export default class AudioRecorderPlugin extends Plugin {
-	settings!: AudioRecorderSettings;
+	// Obsidian 1.13 declares `settings?: unknown` on the base Plugin; narrow it
+	// to the plugin's own type. Assigned in onload via loadSettings().
+	declare settings: AudioRecorderSettings;
 	private recordingManager!: RecordingManager;
 	private statusBarItem: HTMLElement | null = null;
 	private ribbonIconEl: HTMLElement | null = null;
@@ -837,7 +839,7 @@ export default class AudioRecorderPlugin extends Plugin {
 		suggestions: SilentChannelSuggestion[],
 	): void {
 		this.silentChannelNotice?.hide();
-		const fragment = activeDocument.createDocumentFragment();
+		const fragment = createFragment();
 		if (suggestions.length > 1) {
 			fragment.append(
 				`${String(suggestions.length)} recordings have a silent channel: `,
@@ -852,13 +854,14 @@ export default class AudioRecorderPlugin extends Plugin {
 					`Recording's ${suggestion.silentSide} channel is silent. `,
 				);
 			}
-			const button = activeDocument.createElement('button');
-			button.type = 'button';
-			button.textContent =
-				suggestions.length === 1
-					? 'Convert to mono'
-					: `Convert ${suggestion.file.name}`;
-			button.className = 'aar-silent-channel-convert';
+			const button = createEl('button', {
+				cls: 'aar-silent-channel-convert',
+				text:
+					suggestions.length === 1
+						? 'Convert to mono'
+						: `Convert ${suggestion.file.name}`,
+				attr: { type: 'button' },
+			});
 			button.addEventListener('click', () => {
 				if (suggestions.length === 1) {
 					this.silentChannelNotice?.hide();

@@ -89,8 +89,8 @@ Behavior and limits:
 
 Getting a key: [OpenAI Whisper API key](use-cases/openai-whisper-api-key.md) · [Groq Whisper setup](use-cases/groq-whisper-setup.md). The catalogue link next to the model picker points at the [OpenAI speech-to-text guide](https://platform.openai.com/docs/guides/speech-to-text).
 
-![Whisper API engine settings: upload chunk size slider, base URL, API key, and model picker](images/settings-transcription-whisper.png)
-_Figure: the Whisper API engine fields, with the upload chunk-size slider and the model picker._
+![Whisper API engine settings: upload chunk size number field, base URL, API key, and model picker](images/settings-transcription-whisper.png)
+_Figure: the Whisper API engine fields, with the upload chunk-size number field and the model picker._
 
 ### Deepgram
 

@@ -14,6 +14,7 @@ import {
 	setIcon,
 } from 'obsidian';
 import type { Plugin } from 'obsidian';
+import type { SettingDefinitionItem } from 'obsidian';
 import type {
 	AudioRecorderSettings,
 	OutputMode,
@@ -62,7 +63,7 @@ import {
 import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
 import { SystemInfoModal } from '../diagnostics/SystemInfoModal';
 import { renderTranscriptionSection } from './sections/transcriptionSettingsSection';
-import { SETTING_DISABLED_CLASS } from './settingControls';
+import { addNumberInputTo, SETTING_DISABLED_CLASS } from './settingControls';
 import {
 	isAutoSplitSupported,
 	isChannelModeSelectionSupported,
@@ -95,6 +96,77 @@ const EMPTY_DEVICE_SNAPSHOT: AudioInputDeviceSnapshot = {
 	devices: [],
 	channelLimits: new Map(),
 };
+
+/**
+ * Individual setting names carried as search aliases on the single declarative
+ * render definition. The tab renders imperatively (it drives live device
+ * enumeration, async format probing, and per-track rows that do not fit the
+ * declarative control model), so this list is what lets Obsidian's settings
+ * search (1.13+) surface the tab by an individual setting's name.
+ */
+const SETTINGS_SEARCH_ALIASES: string[] = [
+	'Audio input',
+	'Input device',
+	'Sample rate',
+	'Recording channels',
+	'Output format',
+	'Recording format',
+	'Audio bitrate',
+	'Output summary',
+	'Delete source after conversion',
+	'Update links after conversion',
+	'File storage',
+	'Save folder',
+	'Save recordings near active file',
+	'Active file subfolder',
+	'File prefix',
+	'Insert at original position',
+	'Audio splitting',
+	'Split recordings automatically',
+	'Part duration',
+	'Part name suffix',
+	'Delete source after split',
+	'Multi-track recording',
+	'Enable multi-track recording',
+	'Maximum tracks',
+	'Output mode',
+	'Audio source for track',
+	'Channels for track',
+	'Audio player',
+	'Enhanced audio player',
+	'Show waveform',
+	'Markers and chapters',
+	'Transcription',
+	'Enable transcription',
+	'Transcribe after recording',
+	'Engine',
+	'Language',
+	'Speaker diarization',
+	'Word-level timestamps',
+	'Request timeout',
+	'Upload chunk size',
+	'Whisper API key',
+	'Whisper model',
+	'Deepgram API key',
+	'Deepgram model',
+	'Gemini API key',
+	'Audio processing & feedback',
+	'Noise suppression',
+	'Echo cancellation',
+	'Automatic gain control',
+	'Input level meter',
+	'Recording stats',
+	'Detect silent channel after recording',
+	'Mobile recording banner',
+	'Audio cleanup defaults',
+	'High-pass filter',
+	'Noise gate',
+	'Loudness leveling',
+	'Diagnostics',
+	'Test recording',
+	'System info',
+	'Debug mode',
+];
 
 /**
  * Settings tab for the Audio Recorder plugin.
@@ -191,10 +263,78 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	/**
 	 * Displays the settings UI.
 	 */
-	display(): void {
-		const { containerEl } = this;
+	override display(): void {
 		this.isDisplayed = true;
-		containerEl.empty();
+		this.renderFull();
+	}
+
+	/**
+	 * Declarative settings entry (Obsidian 1.13+). This tab is highly dynamic
+	 * (live device enumeration, async format probing, per-track rows) and does
+	 * not fit the declarative control model, so it renders imperatively through
+	 * a single render hook. The setting names travel as `aliases` so the
+	 * settings search still surfaces the tab by an individual setting's name.
+	 * On older Obsidian this method is not part of the API and display() renders
+	 * instead; both paths funnel through renderSettingsInto().
+	 */
+	override getSettingDefinitions(): SettingDefinitionItem[] {
+		return [
+			{
+				name: 'Advanced Audio Recorder',
+				aliases: SETTINGS_SEARCH_ALIASES,
+				render: (setting: Setting): void => {
+					this.isDisplayed = true;
+					// The framework appends this render item's row to the
+					// group's list element; render the real controls into that
+					// same host, then drop the empty anchor row itself.
+					const host =
+						setting.settingEl.parentElement ?? this.containerEl;
+					setting.settingEl.remove();
+					// Clear the host before rendering. getSettingDefinitions()
+					// returns a single item, so the group's list element holds
+					// only this item's row; emptying it keeps a re-render via
+					// update() from stacking a second copy of the body if the
+					// framework reuses the same list element instead of clearing
+					// the container first.
+					host.empty();
+					this.renderSettingsInto(host);
+				},
+			},
+		];
+	}
+
+	/**
+	 * Re-renders the tab after a change that adds or removes settings (for
+	 * example toggling multi-track or Save near active file). Uses the
+	 * declarative update() on Obsidian 1.13+ (where display() is not the render
+	 * path) and falls back to display() on older versions.
+	 */
+	private rerender(): void {
+		const update = (this as unknown as { update?: () => void }).update;
+		if (typeof update === 'function') {
+			update.call(this);
+		} else {
+			this.renderFull();
+		}
+	}
+
+	/**
+	 * Clears the container and rebuilds the settings body. Shared by display()
+	 * and by the pre-1.13 re-render path, which cannot call the framework's
+	 * update() and must re-render imperatively.
+	 */
+	private renderFull(): void {
+		this.containerEl.empty();
+		this.renderSettingsInto(this.containerEl);
+	}
+
+	/**
+	 * Builds the full settings body into the given host element. Shared by the
+	 * imperative display() fallback and the declarative render hook; the caller
+	 * owns clearing the host and toggling isDisplayed.
+	 * @param containerEl - Host element the settings are rendered into
+	 */
+	private renderSettingsInto(containerEl: HTMLElement): void {
 		this.deviceDropdowns = [];
 		this.channelDropdownUpdaters = [];
 		this.deviceSnapshot = EMPTY_DEVICE_SNAPSHOT;
@@ -422,7 +562,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.saveNearActiveFile = value;
 						await this.plugin.saveSettings();
-						this.display();
+						this.rerender();
 					}),
 			);
 
@@ -501,25 +641,23 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			autoSplitSetting.settingEl.addClass(SETTING_DISABLED_CLASS);
 		}
 
-		new Setting(containerEl)
-			.setName('Part duration')
-			.setDesc(
-				'Length of each part in minutes. Also used as the default for manual splitting from the context menu.',
-			)
-			.addSlider((slider) =>
-				slider
-					.setLimits(
-						MIN_SPLIT_CHUNK_MINUTES,
-						MAX_SPLIT_CHUNK_MINUTES,
-						1,
-					)
-					.setValue(this.plugin.settings.splitChunkMinutes)
-					.setDynamicTooltip()
-					.onChange(async (value) => {
-						this.plugin.settings.splitChunkMinutes = value;
-						await this.plugin.saveSettings();
-					}),
-			);
+		addNumberInputTo(
+			new Setting(containerEl)
+				.setName('Part duration')
+				.setDesc(
+					'Length of each part in minutes. Also used as the default for manual splitting from the context menu.',
+				),
+			{
+				min: MIN_SPLIT_CHUNK_MINUTES,
+				max: MAX_SPLIT_CHUNK_MINUTES,
+				step: 1,
+				get: () => this.plugin.settings.splitChunkMinutes,
+				set: async (value) => {
+					this.plugin.settings.splitChunkMinutes = value;
+					await this.plugin.saveSettings();
+				},
+			},
+		);
 
 		new Setting(containerEl)
 			.setName('Part name suffix')
@@ -589,7 +727,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.enableMultiTrack = value;
 						await this.plugin.saveSettings();
-						this.display();
+						this.rerender();
 					});
 				if (!multiTrackAvailable) {
 					toggle.setDisabled(true);
@@ -600,22 +738,24 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		}
 
 		if (this.plugin.settings.enableMultiTrack && multiTrackAvailable) {
-			new Setting(containerEl)
-				.setName('Maximum tracks')
-				.setDesc(
-					'Set the number of simultaneous tracks (1-8). Use only what you need to keep configuration simple.',
-				)
-				.addSlider((slider) =>
-					slider
-						.setLimits(1, 8, 1)
-						.setValue(this.plugin.settings.maxTracks)
-						.setDynamicTooltip()
-						.onChange(async (value) => {
-							this.plugin.settings.maxTracks = value;
-							await this.plugin.saveSettings();
-							this.display();
-						}),
-				);
+			addNumberInputTo(
+				new Setting(containerEl)
+					.setName('Maximum tracks')
+					.setDesc(
+						'Set the number of simultaneous tracks (1-8). Use only what you need to keep configuration simple.',
+					),
+				{
+					min: 1,
+					max: 8,
+					step: 1,
+					get: () => this.plugin.settings.maxTracks,
+					set: async (value) => {
+						this.plugin.settings.maxTracks = value;
+						await this.plugin.saveSettings();
+						this.rerender();
+					},
+				},
+			);
 
 			new Setting(containerEl)
 				.setName('Output mode')
@@ -721,7 +861,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			settings: this.plugin.settings,
 			save: () => this.plugin.saveSettings(),
 			rerender: () => {
-				this.display();
+				this.rerender();
 			},
 			saveDebounced: () => {
 				this.saveTextSettingDebounced();
@@ -834,7 +974,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.enhancedPlayerEnabled = value;
 						await this.plugin.saveSettings();
-						this.display();
+						this.rerender();
 					}),
 			);
 
@@ -976,87 +1116,71 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			)
 			.setHeading();
 
-		new Setting(containerEl)
+		const highPassSetting = new Setting(containerEl)
 			.setName('High-pass filter')
-			.setDesc('Remove low-frequency rumble below the cutoff by default.')
-			.addSlider((slider) =>
-				slider
-					.setLimits(
-						MIN_CLEANUP_HIGHPASS_HZ,
-						MAX_CLEANUP_HIGHPASS_HZ,
-						CLEANUP_HIGHPASS_STEP_HZ,
-					)
-					.setValue(s.cleanupHighPassHz)
-					.setDynamicTooltip()
-					.onChange(async (v) => {
-						s.cleanupHighPassHz = v;
-						await this.plugin.saveSettings();
-					}),
-			)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(s.cleanupHighPassEnabled)
-					.onChange(async (v) => {
-						s.cleanupHighPassEnabled = v;
-						await this.plugin.saveSettings();
-					}),
+			.setDesc(
+				'Remove low-frequency rumble below the cutoff by default.',
 			);
+		addNumberInputTo(highPassSetting, {
+			min: MIN_CLEANUP_HIGHPASS_HZ,
+			max: MAX_CLEANUP_HIGHPASS_HZ,
+			step: CLEANUP_HIGHPASS_STEP_HZ,
+			get: () => s.cleanupHighPassHz,
+			set: async (v) => {
+				s.cleanupHighPassHz = v;
+				await this.plugin.saveSettings();
+			},
+		});
+		highPassSetting.addToggle((toggle) =>
+			toggle.setValue(s.cleanupHighPassEnabled).onChange(async (v) => {
+				s.cleanupHighPassEnabled = v;
+				await this.plugin.saveSettings();
+			}),
+		);
 
-		new Setting(containerEl)
+		const noiseGateSetting = new Setting(containerEl)
 			.setName('Noise gate')
 			.setDesc(
 				'Silence the signal below the threshold (dBFS) by default.',
-			)
-			.addSlider((slider) =>
-				slider
-					.setLimits(
-						MIN_CLEANUP_GATE_THRESHOLD_DB,
-						MAX_CLEANUP_GATE_THRESHOLD_DB,
-						CLEANUP_GATE_STEP_DB,
-					)
-					.setValue(s.cleanupNoiseGateThresholdDb)
-					.setDynamicTooltip()
-					.onChange(async (v) => {
-						s.cleanupNoiseGateThresholdDb = v;
-						await this.plugin.saveSettings();
-					}),
-			)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(s.cleanupNoiseGateEnabled)
-					.onChange(async (v) => {
-						s.cleanupNoiseGateEnabled = v;
-						await this.plugin.saveSettings();
-					}),
 			);
+		addNumberInputTo(noiseGateSetting, {
+			min: MIN_CLEANUP_GATE_THRESHOLD_DB,
+			max: MAX_CLEANUP_GATE_THRESHOLD_DB,
+			step: CLEANUP_GATE_STEP_DB,
+			get: () => s.cleanupNoiseGateThresholdDb,
+			set: async (v) => {
+				s.cleanupNoiseGateThresholdDb = v;
+				await this.plugin.saveSettings();
+			},
+		});
+		noiseGateSetting.addToggle((toggle) =>
+			toggle.setValue(s.cleanupNoiseGateEnabled).onChange(async (v) => {
+				s.cleanupNoiseGateEnabled = v;
+				await this.plugin.saveSettings();
+			}),
+		);
 
-		new Setting(containerEl)
+		const levelingSetting = new Setting(containerEl)
 			.setName('Loudness leveling')
 			.setDesc(
 				'Even out quiet and loud passages (compressor); makeup gain (dB).',
-			)
-			.addSlider((slider) =>
-				slider
-					.setLimits(
-						MIN_CLEANUP_LEVELING_MAKEUP_DB,
-						MAX_CLEANUP_LEVELING_MAKEUP_DB,
-						CLEANUP_LEVELING_STEP_DB,
-					)
-					.setValue(s.cleanupLevelingMakeupDb)
-					.setDynamicTooltip()
-					.onChange(async (v) => {
-						s.cleanupLevelingMakeupDb = v;
-						await this.plugin.saveSettings();
-					}),
-			)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(s.cleanupLevelingEnabled)
-					.onChange(async (v) => {
-						s.cleanupLevelingEnabled = v;
-						await this.plugin.saveSettings();
-					}),
 			);
+		addNumberInputTo(levelingSetting, {
+			min: MIN_CLEANUP_LEVELING_MAKEUP_DB,
+			max: MAX_CLEANUP_LEVELING_MAKEUP_DB,
+			step: CLEANUP_LEVELING_STEP_DB,
+			get: () => s.cleanupLevelingMakeupDb,
+			set: async (v) => {
+				s.cleanupLevelingMakeupDb = v;
+				await this.plugin.saveSettings();
+			},
+		});
+		levelingSetting.addToggle((toggle) =>
+			toggle.setValue(s.cleanupLevelingEnabled).onChange(async (v) => {
+				s.cleanupLevelingEnabled = v;
+				await this.plugin.saveSettings();
+			}),
+		);
 	}
 
 	/**
@@ -1112,10 +1236,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		if (!storedEntry || storedEntry.available) {
 			return;
 		}
-		// Created through the setting's own document so the note lands in
-		// the right window when settings render in a popout.
-		const note = descEl.ownerDocument.createElement('div');
-		note.className = 'aar-format-fallback-note';
+		// Built detached with createDiv, then appended to descEl below so the
+		// note lands in the setting's own window (including a settings popout);
+		// appendChild adopts the detached node into descEl's document.
+		const note = createDiv({ cls: 'aar-format-fallback-note' });
 		try {
 			const effective = await resolveEffectiveOutputFormat(stored);
 			note.textContent = `This device cannot record ${stored.toUpperCase()}; recordings are saved as ${effective.format.toUpperCase()} instead.`;

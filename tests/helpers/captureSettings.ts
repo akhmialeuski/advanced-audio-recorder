@@ -99,15 +99,23 @@ export class CapturingSetting {
 		return this;
 	}
 	addText(callback: (text: unknown) => void): this {
+		// A real input element so number-input controls can set type/min/max
+		// and attach a change listener; addClass is the only Obsidian helper
+		// the production code calls on it, so stub just that.
+		const inputEl = document.createElement('input') as HTMLInputElement & {
+			addClass: (cls: string) => void;
+		};
+		inputEl.addClass = (cls: string): void => inputEl.classList.add(cls);
 		const text = {
 			value: '' as unknown,
 			disabled: false,
-			inputEl: { type: 'text' },
+			inputEl,
 			setPlaceholder() {
 				return this;
 			},
 			setValue(v: unknown) {
 				this.value = v;
+				inputEl.value = String(v);
 				return this;
 			},
 			onChange() {

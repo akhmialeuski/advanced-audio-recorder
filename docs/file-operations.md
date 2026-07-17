@@ -30,8 +30,8 @@ Which actions appear depends on where you click and on your settings:
 | ----------------------------------- | ------------- | ---------- | ------ | --------------------------------------- |
 | **Audio file info**                 | Yes           | Yes        | Yes    | Always                                  |
 | **Convert audio format**            | Yes           | Yes        | Yes    | Always                                  |
-| **Split audio into parts**          | Yes           | Yes        | Yes    | Always (desktop only)                   |
-| **Clean up audio**                  | Yes           | Yes        | Yes    | Always (desktop only)                   |
+| **Split audio into parts**          | Yes           | Yes        | Yes    | Always                                  |
+| **Clean up audio**                  | Yes           | Yes        | Yes    | Always                                  |
 | **Transcribe audio**                | Yes           | Yes        | Yes    | When transcription is enabled           |
 | **Delete recording**                | Yes           | No         | Yes    | Always                                  |
 | **Delete recording & link to file** | No            | Yes        | Yes    | When a link to the file is at the click |

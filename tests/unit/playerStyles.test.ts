@@ -78,12 +78,14 @@ describe('read-only player styles', () => {
 		expect(canvas).toMatch(/position:\s*absolute/);
 	});
 
-	it('reveals the played waveform by clipping from the progress variable, not by redrawing', () => {
+	it('reveals the played waveform with a progress-driven mask, not by redrawing', () => {
 		const played = ruleBody('.aar-player-canvas-played');
 		expect(played).not.toBeNull();
-		// The played layer is clipped from the right by the progress variable,
-		// so moving the playhead only repaints the clip (no canvas work)
-		expect(played).toMatch(/clip-path:\s*inset\(/);
+		// The played layer is revealed up to the progress variable by a
+		// hard-edged mask, so moving the playhead only repaints the mask (no
+		// canvas work). A mask replaces clip-path, which is flagged as only
+		// partially supported.
+		expect(played).toMatch(/mask-image:\s*linear-gradient\(/);
 		expect(played).toMatch(/var\(--aar-progress/);
 	});
 });
