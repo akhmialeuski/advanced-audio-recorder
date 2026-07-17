@@ -114,6 +114,28 @@ describe('AudioRecorderSettingTab', () => {
 				expect.any(Function),
 			);
 		});
+
+		it('carries every default-visible setting and heading name as a search alias', () => {
+			// The tab renders imperatively, so the alias list is maintained by
+			// hand. Guard against it drifting from the real names: every name
+			// rendered with the default settings must be a search alias, or the
+			// setting becomes unfindable in Obsidian's settings search.
+			const aliases = new Set(
+				(tab.getSettingDefinitions()[0] as { aliases: string[] })
+					.aliases,
+			);
+			tab.display();
+
+			const rendered = Array.from(
+				tab.containerEl.querySelectorAll('.setting-item-name'),
+			)
+				.map((el) => el.textContent?.trim() ?? '')
+				.filter((name) => name.length > 0);
+
+			expect(rendered.length).toBeGreaterThan(0);
+			const missing = rendered.filter((name) => !aliases.has(name));
+			expect(missing).toEqual([]);
+		});
 	});
 
 	describe('documentation link', () => {

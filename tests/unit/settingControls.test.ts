@@ -218,4 +218,20 @@ describe('addNumberInputTo', () => {
 		commit(input, 'abc');
 		expect(set).toHaveBeenLastCalledWith(20);
 	});
+
+	it('keeps an off-grid max within bounds so snapping cannot exceed it', () => {
+		// Max output tokens: the last step-512 grid point above 512 is 32256,
+		// so a naive clamp-then-snap would persist 32256 for an entry of 32000.
+		const { input, set } = build({
+			min: 512,
+			max: 32000,
+			step: 512,
+			get: () => 4096,
+		});
+
+		commit(input, '32000');
+
+		expect(set).toHaveBeenLastCalledWith(32000);
+		expect(Number(input.value)).toBeLessThanOrEqual(32000);
+	});
 });

@@ -275,9 +275,13 @@ export interface NumberInputConfig {
 }
 
 /**
- * Clamps a raw field value to [min, max] and snaps it to the nearest step, so
+ * Snaps a raw field value to the nearest step and clamps it to [min, max], so
  * the stored value stays as valid as the slider's used to be. An empty or
  * non-numeric field falls back to the current stored value.
+ *
+ * The snap runs before the clamp so a max that is not itself on the step grid
+ * (for example 32000 with step 512 anchored at 512, where the last grid point
+ * is 32256) can never be rounded past the max and persisted out of range.
  * @param raw - The input's raw string value
  * @param config - The numeric bounds and current-value accessor
  */
@@ -285,12 +289,12 @@ function normalizeNumber(raw: string, config: NumberInputConfig): number {
 	const parsed = Number(raw);
 	const base =
 		raw.trim() === '' || Number.isNaN(parsed) ? config.get() : parsed;
-	const clamped = Math.min(config.max, Math.max(config.min, base));
 	const snapped =
 		config.min +
-		Math.round((clamped - config.min) / config.step) * config.step;
+		Math.round((base - config.min) / config.step) * config.step;
+	const clamped = Math.min(config.max, Math.max(config.min, snapped));
 	// Trim floating-point drift introduced by the snap arithmetic.
-	return Number(snapped.toFixed(6));
+	return Number(clamped.toFixed(6));
 }
 
 /**

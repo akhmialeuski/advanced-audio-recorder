@@ -290,6 +290,13 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					const host =
 						setting.settingEl.parentElement ?? this.containerEl;
 					setting.settingEl.remove();
+					// Clear the host before rendering. getSettingDefinitions()
+					// returns a single item, so the group's list element holds
+					// only this item's row; emptying it keeps a re-render via
+					// update() from stacking a second copy of the body if the
+					// framework reuses the same list element instead of clearing
+					// the container first.
+					host.empty();
 					this.renderSettingsInto(host);
 				},
 			},
