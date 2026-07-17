@@ -107,4 +107,46 @@ describe('DeepgramProvider dictionary biasing', () => {
 		expect(params.has('keyterm')).toBe(false);
 		expect(params.has('keywords')).toBe(false);
 	});
+
+	it('sends neither param for a hosted Whisper model that cannot bias', async () => {
+		const calls = capture();
+		const provider = new DeepgramProvider({
+			baseUrl: BASE_URL,
+			apiKey: 'k',
+			model: 'whisper-medium',
+		});
+
+		await provider.transcribe(payload(), {
+			diarize: false,
+			wordTimestamps: false,
+			dictionary: ['Kubernetes', 'gRPC'],
+		});
+
+		const params = queryOf(calls);
+		expect(params.has('keyterm')).toBe(false);
+		expect(params.has('keywords')).toBe(false);
+	});
+
+	it('caps keyterms at the provider limit on nova-3', async () => {
+		const calls = capture();
+		const provider = new DeepgramProvider({
+			baseUrl: BASE_URL,
+			apiKey: 'k',
+			model: 'nova-3',
+		});
+
+		const dictionary = Array.from(
+			{ length: 130 },
+			(_v, i) => `term-${String(i)}`,
+		);
+		await provider.transcribe(payload(), {
+			diarize: false,
+			wordTimestamps: false,
+			dictionary,
+		});
+
+		// Deepgram accepts at most 100 keyterms; the provider trims defensively
+		// even when handed a longer list.
+		expect(queryOf(calls).getAll('keyterm')).toHaveLength(100);
+	});
 });

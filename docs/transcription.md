@@ -11,6 +11,7 @@
     - [Local whisper.cpp (desktop)](#local-whispercpp-desktop)
 - [Model picker and language](#model-picker-and-language)
 - [Speakers and diarization](#speakers-and-diarization)
+- [Biasing recognition toward your own terms](#biasing-recognition-toward-your-own-terms)
 - [Output: where the transcript goes](#output-where-the-transcript-goes)
 - [In-note formatting](#in-note-formatting)
 - [The Transcribe dialog (per-run overrides)](#the-transcribe-dialog-per-run-overrides)
@@ -110,6 +111,7 @@ Behavior and limits:
 - **Diarization supported.** Turn on **Speaker diarization** to request speaker labels.
 - **Billing.** A free Deepgram account includes a generous starter credit; beyond that, usage is pay-as-you-go.
 - The picker is seeded with the Nova, Enhanced, and Base families; add your own ids if needed.
+- **Custom dictionary support depends on the model.** Nova-3 biases with keyterm prompting and Nova-2 and older with keyword boosting, while the hosted Whisper models cannot bias; see [Biasing recognition toward your own terms](#biasing-recognition-toward-your-own-terms).
 
 Getting a key: [Deepgram API key](use-cases/deepgram-api-key.md). The catalogue link points at the [Deepgram model list](https://developers.deepgram.com/docs/model).
 
@@ -201,6 +203,29 @@ Because there are no labels to act on without diarization, these output controls
 
 ![Speaker diarization toggle enabled for Deepgram, with the speaker output controls active below](images/settings-transcription-diarization.png)
 _Figure: with Deepgram and diarization on, the speaker-related output controls become editable._
+
+---
+
+## Biasing recognition toward your own terms
+
+Names, abbreviations, and domain jargon are the words an engine mishears most often. **Transcription dictionary** (under **Settings > Advanced Audio Recorder > Transcription**) is a multi-line field, one term per line, whose contents travel with every transcription request so recognition is biased toward those spellings. A term may contain spaces, so a full name or a multi-word product stays intact, while blank lines and case-insensitive duplicates are ignored. The field is offered for every current engine, and the same list is applied wherever you start a run, including the per-run **Transcribe audio** dialog.
+
+Each engine consumes the list the way its own API supports:
+
+- **Deepgram Nova-3** sends each term as a `keyterm` query parameter, Deepgram's keyterm prompting.
+- **Deepgram Nova-2 and older** (Nova, Enhanced, Base) send each term as a `keywords` parameter, Deepgram's keyword boosting.
+- **Whisper API and local whisper.cpp** send the terms as the recognition prompt, the OpenAI `prompt` field and the whisper.cpp `--prompt` flag respectively; for the local engine that flag is placed before your extra args, so a `--prompt` you supply yourself still wins.
+- **Google Gemini** folds the terms into the instruction text sent alongside the audio.
+
+Two provider limits are enforced so a request never carries terms the engine would reject or silently ignore, and whenever some terms are left out a notice tells you it happened:
+
+- **Deepgram accepts at most 100 keyterms** in one request on Nova-3, so a longer glossary is trimmed to the first 100 terms.
+- **The Whisper prompt holds only about 224 tokens**, so a long list is trimmed to the terms that fit; the OpenAI API and local whisper.cpp share this bound.
+
+Deepgram's biasing depends on the selected **Deepgram model**, which is worth remembering when you change it:
+
+- **The hosted Whisper models on Deepgram** (for example `whisper`, `whisper-medium`) support neither keyterm nor keywords, so the dictionary is not applied and a notice says so; choose a Nova model to bias recognition.
+- **Keyterm prompting on Nova-3 targets English and Deepgram's multilingual configuration**, so biasing a specific non-English **Language** on Nova-3 may have no effect. See the [Deepgram keyterm documentation](https://developers.deepgram.com/docs/keyterm) for the current language coverage.
 
 ---
 

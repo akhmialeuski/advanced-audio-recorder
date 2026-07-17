@@ -147,6 +147,7 @@ async function runWithSpeaker(
 async function runWithDictionary(
 	engineId: TranscriptionProviderId,
 	dictionary: string,
+	deepgramModel?: string,
 ): Promise<TranscriptionProvider & { lastOptions: TranscribeOptions | null }> {
 	const provider = makeProvider();
 	const service = new TranscriptionService(
@@ -155,6 +156,7 @@ async function runWithDictionary(
 			mergeSettings({
 				transcriptionProvider: engineId,
 				transcriptionDictionary: dictionary,
+				...(deepgramModel ? { deepgramModel } : {}),
 			}),
 		{ createProvider: () => provider },
 	);
@@ -180,6 +182,28 @@ describe('TranscriptionService dictionary passthrough', () => {
 			'   \n\t\n',
 		);
 		expect(provider.lastOptions?.dictionary).toBeUndefined();
+	});
+
+	it('drops the dictionary for a Deepgram model that cannot bias', async () => {
+		const provider = await runWithDictionary(
+			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			'Kubernetes\ngRPC',
+			'whisper-medium',
+		);
+		expect(provider.lastOptions?.dictionary).toBeUndefined();
+	});
+
+	it('caps the dictionary at the Deepgram keyterm limit on nova-3', async () => {
+		const many = Array.from(
+			{ length: 130 },
+			(_v, i) => `term-${String(i)}`,
+		).join('\n');
+		const provider = await runWithDictionary(
+			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			many,
+			'nova-3',
+		);
+		expect(provider.lastOptions?.dictionary).toHaveLength(100);
 	});
 });
 

@@ -11,6 +11,10 @@
 
 import { TRANSCRIPTION_PROVIDER_IDS } from '../../constants';
 import {
+	DICTIONARY_JOIN_SEPARATOR,
+	termsWithinWhisperPrompt,
+} from '../dictionaryBias';
+import {
 	buildMultipart,
 	requestJson,
 	trimTrailingSlash,
@@ -83,13 +87,18 @@ export class WhisperApiProvider implements TranscriptionProvider {
 			});
 		}
 		if (options.dictionary?.length) {
-			// OpenAI's `prompt` seeds recognition with preferred spellings. It is
-			// capped near 224 tokens, so a comma-joined list keeps it compact.
-			fields.push({
-				type: 'text' as const,
-				name: 'prompt',
-				value: options.dictionary.join(', '),
-			});
+			// OpenAI's `prompt` seeds recognition with preferred spellings, but
+			// Whisper only reads the last ~224 tokens, so terms beyond the window
+			// are bounded out here. The service applies the same bound and warns
+			// about the dropped terms; this keeps a directly used provider safe.
+			const terms = termsWithinWhisperPrompt(options.dictionary);
+			if (terms.length) {
+				fields.push({
+					type: 'text' as const,
+					name: 'prompt',
+					value: terms.join(DICTIONARY_JOIN_SEPARATOR),
+				});
+			}
 		}
 
 		const { body, contentType } = buildMultipart(fields);

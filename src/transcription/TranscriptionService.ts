@@ -45,11 +45,12 @@ import {
 } from './transcriptFormat';
 import { buildPostProcessPrompt } from './llmPostProcess';
 import { parseDictionary } from './dictionary';
-import { createLlmProvider, createTranscriptionProvider } from './factories';
 import {
-	effectiveDiarize,
-	effectiveDictionary,
-} from './providers/capabilities';
+	describeDictionaryOmission,
+	planDictionaryBias,
+} from './dictionaryBias';
+import { createLlmProvider, createTranscriptionProvider } from './factories';
+import { effectiveDiarize } from './providers/capabilities';
 import type { LlmProvider } from './llm/LlmProvider';
 import type { Transcript } from './TranscriptTypes';
 
@@ -147,13 +148,23 @@ export class TranscriptionService {
 			settings.transcriptionProvider,
 			settings.transcriptionDiarize,
 		);
-		// Gate the dictionary the same way as diarize: terms stored while a
-		// biasing engine was selected are dropped for an engine that cannot bias,
-		// so a request never carries terms the provider would silently ignore.
-		const dictionary = effectiveDictionary(
+		// Plan the dictionary once: the terms actually sent depend on the engine
+		// and, for Deepgram, the model. Terms stored while a biasing engine was
+		// selected are dropped for one that cannot bias, an over-limit list is
+		// trimmed to the provider's cap, and a Whisper prompt is bounded to its
+		// token window, so a request never carries terms the provider would
+		// reject or silently ignore. Whatever is dropped is surfaced below.
+		const dictionaryPlan = planDictionaryBias(
 			settings.transcriptionProvider,
+			settings.deepgramModel,
 			parseDictionary(settings.transcriptionDictionary),
 		);
+		const dictionaryNotice = describeDictionaryOmission(dictionaryPlan);
+		if (dictionaryNotice) {
+			// Tell the user which terms will not bias this run instead of
+			// implying every configured term was applied.
+			new Notice(dictionaryNotice);
+		}
 		const transcribeOptions = {
 			language:
 				settings.transcriptionLanguage &&
@@ -162,7 +173,9 @@ export class TranscriptionService {
 					: undefined,
 			diarize,
 			wordTimestamps: settings.transcriptionWordTimestamps,
-			dictionary: dictionary.length ? dictionary : undefined,
+			dictionary: dictionaryPlan.applied.length
+				? dictionaryPlan.applied
+				: undefined,
 			// Providers on abortable transports stop the in-flight request
 			// the moment the user cancels, not at the next chunk boundary.
 			signal: token.signal,

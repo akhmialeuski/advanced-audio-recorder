@@ -122,11 +122,13 @@ export function providerSupportsDictionary(
 }
 
 /**
- * The dictionary terms actually sent for a run: the user's terms AND the
- * engine's capability. The single place this AND-gate lives, so the settings
- * tab, the per-run dialog, and the service never diverge - terms stored while a
- * biasing engine was selected are dropped for an engine that cannot bias,
- * instead of being sent and silently ignored.
+ * The provider-level dictionary gate: the user's terms AND the engine's
+ * capability. Terms stored while a biasing engine was selected are dropped for
+ * an engine that cannot bias at all, instead of being sent and silently
+ * ignored. This is only the coarse per-engine gate; the per-model Deepgram
+ * rules and the provider request limits live in {@link planDictionaryBias},
+ * which calls this first. The service runs every dictionary through that plan,
+ * so the terms it sends and the terms it warns about never diverge.
  * @param id - Selected transcription engine id
  * @param terms - The user's parsed dictionary terms
  * @returns The terms to send, empty when the engine cannot bias
