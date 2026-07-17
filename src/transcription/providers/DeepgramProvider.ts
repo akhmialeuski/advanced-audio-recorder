@@ -9,6 +9,10 @@
  */
 
 import { TRANSCRIPTION_PROVIDER_IDS } from '../../constants';
+import {
+	DEEPGRAM_KEYTERM_LIMIT,
+	deepgramBiasMechanism,
+} from '../dictionaryBias';
 import { requestJson, trimTrailingSlash, uploadTimeoutMs } from '../httpClient';
 import { DEEPGRAM_CAPABILITIES } from './capabilities';
 import { mapDeepgramResponse } from './deepgramResponse';
@@ -58,6 +62,23 @@ export class DeepgramProvider implements TranscriptionProvider {
 			params.set('language', options.language);
 		} else {
 			params.set('detect_language', 'true');
+		}
+		if (options.dictionary?.length) {
+			// The mechanism is model-specific: nova-3 uses keyterm prompting,
+			// nova-2 and older use keywords boosting, and the hosted Whisper
+			// models support neither, so they send nothing. keyterm is capped at
+			// the provider limit; the service already trims to it, and this
+			// guards a provider used directly with a longer list.
+			const mechanism = deepgramBiasMechanism(this.config.model);
+			if (mechanism) {
+				const terms =
+					mechanism === 'keyterm'
+						? options.dictionary.slice(0, DEEPGRAM_KEYTERM_LIMIT)
+						: options.dictionary;
+				for (const term of terms) {
+					params.append(mechanism, term);
+				}
+			}
 		}
 
 		const url = `${trimTrailingSlash(this.config.baseUrl)}/listen?${params.toString()}`;

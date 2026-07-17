@@ -162,6 +162,7 @@ function makeProvider(transcribe: jest.Mock): TranscriptionProvider {
 			maxRequestSeconds: Number.POSITIVE_INFINITY,
 			acceptsOriginalContainer: true,
 			supportsDiarization: false,
+			supportsDictionary: false,
 		},
 		transcribe,
 	};

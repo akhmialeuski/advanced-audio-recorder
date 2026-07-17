@@ -129,6 +129,11 @@ function buildInstruction(options: TranscribeOptions): string {
 			? 'Identify distinct speakers and label each segment (e.g. "Speaker 1", "Speaker 2"); use real names when clearly stated.'
 			: 'Do not include speaker labels.',
 	];
+	if (options.dictionary?.length) {
+		lines.push(
+			`Prefer these spellings for names and terms when you hear them: ${options.dictionary.join(', ')}.`,
+		);
+	}
 	return lines.join(' ');
 }
 

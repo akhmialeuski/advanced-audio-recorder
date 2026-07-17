@@ -11,6 +11,10 @@ import {
 	LOCAL_WHISPER_MAX_BUFFER_BYTES,
 	TRANSCRIPTION_PROVIDER_IDS,
 } from '../../constants';
+import {
+	DICTIONARY_JOIN_SEPARATOR,
+	termsWithinWhisperPrompt,
+} from '../dictionaryBias';
 import type { TranscriptSegment } from '../TranscriptTypes';
 import { LOCAL_WHISPER_CAPABILITIES } from './capabilities';
 import type { WhisperResult } from './whisperResponse';
@@ -140,6 +144,11 @@ export class LocalWhisperProvider implements TranscriptionProvider {
 		const jsonPath = `${base}.json`;
 		node.fs.writeFileSync(wavPath, new Uint8Array(payload.data));
 
+		// whisper.cpp shares Whisper's ~224-token prompt window, so bound the
+		// dictionary the same way the service does before building the flag.
+		const promptTerms = options.dictionary?.length
+			? termsWithinWhisperPrompt(options.dictionary)
+			: [];
 		const args = [
 			'-m',
 			this.config.modelPath,
@@ -149,6 +158,11 @@ export class LocalWhisperProvider implements TranscriptionProvider {
 			'-of',
 			base,
 			...(options.language ? ['-l', options.language] : []),
+			// whisper.cpp seeds recognition from --prompt. Placed before extraArgs
+			// so a user-supplied --prompt in extraArgs can still override it.
+			...(promptTerms.length
+				? ['--prompt', promptTerms.join(DICTIONARY_JOIN_SEPARATOR)]
+				: []),
 			...this.config.extraArgs,
 		];
 

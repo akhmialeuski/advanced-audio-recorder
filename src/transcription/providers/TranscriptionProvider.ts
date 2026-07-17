@@ -24,6 +24,14 @@ export interface TranscribeOptions {
 	 * the local CLI) ignore it and remain cancel-between-chunks only.
 	 */
 	signal?: AbortSignal;
+	/**
+	 * Domain terms (names, abbreviations, jargon) to bias recognition toward,
+	 * already parsed and de-duplicated. Each provider injects them the way its
+	 * API supports: Deepgram keyterm/keywords, Whisper prompt, Gemini
+	 * instruction text. Undefined or empty when the user set no dictionary or
+	 * the engine cannot bias, so a provider sends nothing extra.
+	 */
+	dictionary?: string[];
 }
 
 /**
@@ -76,6 +84,14 @@ export interface ProviderCapabilities {
 	 * since the request would be silently ignored and mislead the user.
 	 */
 	supportsDiarization: boolean;
+	/**
+	 * Whether the engine can bias recognition toward user-supplied terms
+	 * (a custom dictionary). Gates the dictionary field the same way
+	 * {@link supportsDiarization} gates the diarization toggle: an engine
+	 * that cannot bias must not offer an enabled field, since the terms
+	 * would be silently dropped and mislead the user.
+	 */
+	supportsDictionary: boolean;
 }
 
 /** A provider that transcribes a single audio payload. */
