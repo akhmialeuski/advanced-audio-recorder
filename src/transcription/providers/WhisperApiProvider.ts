@@ -82,6 +82,15 @@ export class WhisperApiProvider implements TranscriptionProvider {
 				value: options.language,
 			});
 		}
+		if (options.dictionary?.length) {
+			// OpenAI's `prompt` seeds recognition with preferred spellings. It is
+			// capped near 224 tokens, so a comma-joined list keeps it compact.
+			fields.push({
+				type: 'text' as const,
+				name: 'prompt',
+				value: options.dictionary.join(', '),
+			});
+		}
 
 		const { body, contentType } = buildMultipart(fields);
 		const json = await requestJson({

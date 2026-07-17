@@ -130,6 +130,40 @@ export class CapturingSetting {
 		this.cap.text = { value: text.value, disabled: text.disabled };
 		return this;
 	}
+	addTextArea(callback: (text: unknown) => void): this {
+		// Mirrors addText but exposes a textarea inputEl so the production
+		// builder can set `rows`; captures value/disabled the same way so the
+		// dictionary row's dimmed state is assertable by name.
+		const inputEl = document.createElement(
+			'textarea',
+		) as HTMLTextAreaElement & {
+			addClass: (cls: string) => void;
+		};
+		inputEl.addClass = (cls: string): void => inputEl.classList.add(cls);
+		const text = {
+			value: '' as unknown,
+			disabled: false,
+			inputEl,
+			setPlaceholder() {
+				return this;
+			},
+			setValue(v: unknown) {
+				this.value = v;
+				inputEl.value = String(v);
+				return this;
+			},
+			onChange() {
+				return this;
+			},
+			setDisabled(d: boolean) {
+				this.disabled = d;
+				return this;
+			},
+		};
+		callback(text);
+		this.cap.text = { value: text.value, disabled: text.disabled };
+		return this;
+	}
 	addDropdown(callback: (dropdown: unknown) => void): this {
 		// Mirrors DropdownComponent closely enough for per-option disabling:
 		// addOption appends to selectEl.options, which the production code

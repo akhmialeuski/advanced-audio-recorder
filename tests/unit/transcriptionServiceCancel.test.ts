@@ -40,6 +40,7 @@ function makeProvider(onTranscribe: () => void): TranscriptionProvider {
 			maxRequestSeconds: Number.POSITIVE_INFINITY,
 			acceptsOriginalContainer: true,
 			supportsDiarization: false,
+			supportsDictionary: false,
 		},
 		transcribe: jest.fn(async () => {
 			onTranscribe();

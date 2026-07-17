@@ -48,6 +48,7 @@ import {
 	effectiveDiarize,
 	isProviderAvailableOnPlatform,
 	providerSupportsDiarization,
+	providerSupportsDictionary,
 } from '../../transcription/providers/capabilities';
 
 /**
@@ -121,6 +122,23 @@ export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
 		desc: 'Request per-word timing when the provider supports it. Recorded in JSON file output only.',
 		get: () => s.transcriptionWordTimestamps,
 		set: (v) => (s.transcriptionWordTimestamps = v),
+	});
+
+	// A custom dictionary biases recognition toward the listed names and terms.
+	// Greyed out for an engine that cannot bias, so the terms are never sent and
+	// silently dropped - the same disable-and-explain treatment as diarization.
+	const canUseDictionary = providerSupportsDictionary(
+		s.transcriptionProvider,
+	);
+	addTextArea(ctx, {
+		name: 'Transcription dictionary',
+		desc: canUseDictionary
+			? 'One term per line: names, abbreviations, and domain terms the engine should prefer. Injected into each transcription request to bias recognition.'
+			: 'Not supported by the selected engine.',
+		get: () => s.transcriptionDictionary,
+		set: (v) => (s.transcriptionDictionary = v),
+		rows: 6,
+		disabled: !canUseDictionary,
 	});
 
 	// Cloud engines only: a hung network request is bounded by this limit. Local

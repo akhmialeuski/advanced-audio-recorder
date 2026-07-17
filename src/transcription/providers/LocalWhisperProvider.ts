@@ -149,6 +149,11 @@ export class LocalWhisperProvider implements TranscriptionProvider {
 			'-of',
 			base,
 			...(options.language ? ['-l', options.language] : []),
+			// whisper.cpp seeds recognition from --prompt. Placed before extraArgs
+			// so a user-supplied --prompt in extraArgs can still override it.
+			...(options.dictionary?.length
+				? ['--prompt', options.dictionary.join(', ')]
+				: []),
 			...this.config.extraArgs,
 		];
 

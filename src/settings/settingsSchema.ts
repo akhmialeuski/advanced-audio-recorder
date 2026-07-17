@@ -250,6 +250,11 @@ export interface AudioRecorderSettings {
 	transcriptionDiarize: boolean;
 	/** Request word-level timestamps when supported */
 	transcriptionWordTimestamps: boolean;
+	/**
+	 * Custom dictionary: names, abbreviations, and domain terms (one per line)
+	 * injected into each transcription request to bias recognition toward them.
+	 */
+	transcriptionDictionary: string;
 	/** Upload size limit per chunk, in megabytes (Whisper API) */
 	transcriptionChunkMb: number;
 	/** Per-request transcription timeout, in minutes (a hung request fails after this) */
@@ -451,6 +456,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	transcriptionLanguage: 'auto',
 	transcriptionDiarize: false,
 	transcriptionWordTimestamps: false,
+	transcriptionDictionary: '',
 	transcriptionChunkMb: DEFAULT_TRANSCRIBE_CHUNK_MB,
 	transcriptionTimeoutMinutes: DEFAULT_TRANSCRIPTION_TIMEOUT_MINUTES,
 	whisperApiBaseUrl: DEFAULT_WHISPER_API_BASE_URL,

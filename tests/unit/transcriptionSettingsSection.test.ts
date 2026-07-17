@@ -87,6 +87,17 @@ describe('renderTranscriptionSection speaker control gating', () => {
 	});
 });
 
+describe('renderTranscriptionSection dictionary control', () => {
+	it('renders an enabled dictionary field for every engine that supports biasing', () => {
+		for (const provider of Object.values(TRANSCRIPTION_PROVIDER_IDS)) {
+			renderFor(provider, false);
+			// The row must exist (throws otherwise) and, since every current
+			// engine can bias, stay enabled rather than dimmed.
+			expect(isSettingDisabled('Transcription dictionary')).toBe(false);
+		}
+	});
+});
+
 describe('renderTranscriptionSection platform gating', () => {
 	const { Platform } = jest.requireMock<{
 		Platform: { isMobile: boolean; isMobileApp: boolean };

@@ -296,6 +296,7 @@ describe('Settings', () => {
 				transcriptionLanguage: 'ru',
 				transcriptionDiarize: true,
 				transcriptionWordTimestamps: true,
+				transcriptionDictionary: '',
 				transcriptionChunkMb: 10,
 				transcriptionTimeoutMinutes: 15,
 				whisperApiBaseUrl: 'https://api.groq.com/openai/v1',

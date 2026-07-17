@@ -44,8 +44,12 @@ import {
 	type TranscriptMarkdownOptions,
 } from './transcriptFormat';
 import { buildPostProcessPrompt } from './llmPostProcess';
+import { parseDictionary } from './dictionary';
 import { createLlmProvider, createTranscriptionProvider } from './factories';
-import { effectiveDiarize } from './providers/capabilities';
+import {
+	effectiveDiarize,
+	effectiveDictionary,
+} from './providers/capabilities';
 import type { LlmProvider } from './llm/LlmProvider';
 import type { Transcript } from './TranscriptTypes';
 
@@ -143,6 +147,13 @@ export class TranscriptionService {
 			settings.transcriptionProvider,
 			settings.transcriptionDiarize,
 		);
+		// Gate the dictionary the same way as diarize: terms stored while a
+		// biasing engine was selected are dropped for an engine that cannot bias,
+		// so a request never carries terms the provider would silently ignore.
+		const dictionary = effectiveDictionary(
+			settings.transcriptionProvider,
+			parseDictionary(settings.transcriptionDictionary),
+		);
 		const transcribeOptions = {
 			language:
 				settings.transcriptionLanguage &&
@@ -151,6 +162,7 @@ export class TranscriptionService {
 					: undefined,
 			diarize,
 			wordTimestamps: settings.transcriptionWordTimestamps,
+			dictionary: dictionary.length ? dictionary : undefined,
 			// Providers on abortable transports stop the in-flight request
 			// the moment the user cancels, not at the next chunk boundary.
 			signal: token.signal,

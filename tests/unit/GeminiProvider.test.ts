@@ -172,6 +172,42 @@ describe('GeminiProvider.transcribe', () => {
 		).toBe(true);
 	});
 
+	it('folds dictionary terms into the instruction text', async () => {
+		const flow = scriptFlow(
+			transcriptBody({ segments: [{ start: 0, text: 'hi' }] }),
+		);
+
+		await provider().transcribe(payload('audio/wav'), {
+			diarize: false,
+			wordTimestamps: false,
+			dictionary: ['Kubernetes', 'gRPC'],
+		});
+
+		// The instruction is the text part sent alongside the audio file part.
+		const instruction = flow
+			.generateBody()
+			.contents[0].parts.map((p) => p.text ?? '')
+			.join(' ');
+		expect(instruction).toContain('Kubernetes, gRPC');
+	});
+
+	it('omits the dictionary sentence when no terms are given', async () => {
+		const flow = scriptFlow(
+			transcriptBody({ segments: [{ start: 0, text: 'hi' }] }),
+		);
+
+		await provider().transcribe(payload('audio/wav'), {
+			diarize: false,
+			wordTimestamps: false,
+		});
+
+		const instruction = flow
+			.generateBody()
+			.contents[0].parts.map((p) => p.text ?? '')
+			.join(' ');
+		expect(instruction).not.toContain('Prefer these spellings');
+	});
+
 	it('decodes an unsupported container to WAV before upload', async () => {
 		const flow = scriptFlow(
 			transcriptBody({ segments: [{ start: 0, text: 'hi' }] }),

@@ -12,10 +12,12 @@ import { Platform } from 'obsidian';
 import {
 	DEEPGRAM_CAPABILITIES,
 	effectiveDiarize,
+	effectiveDictionary,
 	GEMINI_CAPABILITIES,
 	isProviderAvailableOnPlatform,
 	LOCAL_WHISPER_CAPABILITIES,
 	providerSupportsDiarization,
+	providerSupportsDictionary,
 	TRANSCRIPTION_PROVIDER_CAPABILITIES,
 	WHISPER_API_CAPABILITIES,
 } from 'src/transcription/providers/capabilities';
@@ -69,6 +71,35 @@ describe('transcription provider capabilities', () => {
 		expect(providerSupportsDiarization('local-whisper')).toBe(false);
 		expect(providerSupportsDiarization('deepgram')).toBe(true);
 		expect(providerSupportsDiarization('gemini')).toBe(true);
+	});
+
+	it('advertises dictionary biasing for every current engine', () => {
+		// All four engines accept a bias hint (Deepgram keyterm/keywords,
+		// Whisper prompt, Gemini instruction text), so the field is offered
+		// for each; the gate exists for a future engine that cannot bias.
+		expect(WHISPER_API_CAPABILITIES.supportsDictionary).toBe(true);
+		expect(LOCAL_WHISPER_CAPABILITIES.supportsDictionary).toBe(true);
+		expect(DEEPGRAM_CAPABILITIES.supportsDictionary).toBe(true);
+		expect(GEMINI_CAPABILITIES.supportsDictionary).toBe(true);
+	});
+
+	it('exposes dictionary support through the UI helper', () => {
+		expect(providerSupportsDictionary('whisper-api')).toBe(true);
+		expect(providerSupportsDictionary('local-whisper')).toBe(true);
+		expect(providerSupportsDictionary('deepgram')).toBe(true);
+		expect(providerSupportsDictionary('gemini')).toBe(true);
+	});
+});
+
+describe('effectiveDictionary', () => {
+	it('passes the terms through for an engine that can bias', () => {
+		expect(effectiveDictionary('deepgram', ['Kubernetes', 'gRPC'])).toEqual(
+			['Kubernetes', 'gRPC'],
+		);
+	});
+
+	it('returns an empty list for an empty dictionary', () => {
+		expect(effectiveDictionary('whisper-api', [])).toEqual([]);
 	});
 });
 

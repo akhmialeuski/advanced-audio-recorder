@@ -59,6 +59,16 @@ export class DeepgramProvider implements TranscriptionProvider {
 		} else {
 			params.set('detect_language', 'true');
 		}
+		if (options.dictionary?.length) {
+			// nova-3 uses keyterm prompting; nova-2 and older use keywords
+			// boosting. Both are multi-valued, so append one entry per term.
+			const param = this.config.model.startsWith('nova-3')
+				? 'keyterm'
+				: 'keywords';
+			for (const term of options.dictionary) {
+				params.append(param, term);
+			}
+		}
 
 		const url = `${trimTrailingSlash(this.config.baseUrl)}/listen?${params.toString()}`;
 		const json = await requestJson({

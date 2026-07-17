@@ -28,6 +28,8 @@ export const WHISPER_API_CAPABILITIES: ProviderCapabilities = {
 	maxRequestSeconds: Number.POSITIVE_INFINITY,
 	acceptsOriginalContainer: true,
 	supportsDiarization: false,
+	// OpenAI Whisper accepts a `prompt` that seeds recognition with spellings.
+	supportsDictionary: true,
 };
 
 /** Deepgram pre-recorded API: diarizes a whole request with stable labels. */
@@ -36,6 +38,8 @@ export const DEEPGRAM_CAPABILITIES: ProviderCapabilities = {
 	maxRequestSeconds: Number.POSITIVE_INFINITY,
 	acceptsOriginalContainer: true,
 	supportsDiarization: true,
+	// Deepgram biases via keyterm (nova-3) or keywords (nova-2 and older).
+	supportsDictionary: true,
 };
 
 /** Local whisper.cpp: no upload limit, needs decoded WAV, no diarization. */
@@ -44,6 +48,8 @@ export const LOCAL_WHISPER_CAPABILITIES: ProviderCapabilities = {
 	maxRequestSeconds: Number.POSITIVE_INFINITY,
 	acceptsOriginalContainer: false,
 	supportsDiarization: false,
+	// whisper.cpp accepts an initial prompt via the --prompt CLI flag.
+	supportsDictionary: true,
 };
 
 /**
@@ -60,6 +66,8 @@ export const GEMINI_CAPABILITIES: ProviderCapabilities = {
 	maxRequestSeconds: GEMINI_MAX_WHOLE_FILE_SECONDS,
 	acceptsOriginalContainer: true,
 	supportsDiarization: true,
+	// Gemini biases via the instruction text sent alongside the audio.
+	supportsDictionary: true,
 };
 
 /** Capabilities for every engine, keyed by its settings id. */
@@ -99,6 +107,35 @@ export function effectiveDiarize(
 	requested: boolean,
 ): boolean {
 	return requested && providerSupportsDiarization(id);
+}
+
+/**
+ * Whether the engine can bias recognition toward a custom dictionary. The UI
+ * uses this to enable or disable the dictionary field for the selected engine.
+ * @param id - Selected transcription engine id
+ * @returns True when the engine accepts biasing terms
+ */
+export function providerSupportsDictionary(
+	id: TranscriptionProviderId,
+): boolean {
+	return TRANSCRIPTION_PROVIDER_CAPABILITIES[id].supportsDictionary;
+}
+
+/**
+ * The dictionary terms actually sent for a run: the user's terms AND the
+ * engine's capability. The single place this AND-gate lives, so the settings
+ * tab, the per-run dialog, and the service never diverge - terms stored while a
+ * biasing engine was selected are dropped for an engine that cannot bias,
+ * instead of being sent and silently ignored.
+ * @param id - Selected transcription engine id
+ * @param terms - The user's parsed dictionary terms
+ * @returns The terms to send, empty when the engine cannot bias
+ */
+export function effectiveDictionary(
+	id: TranscriptionProviderId,
+	terms: string[],
+): string[] {
+	return providerSupportsDictionary(id) ? terms : [];
 }
 
 /**

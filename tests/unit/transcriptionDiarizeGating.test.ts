@@ -47,6 +47,7 @@ function makeProvider(
 			maxRequestSeconds: Number.POSITIVE_INFINITY,
 			acceptsOriginalContainer: true,
 			supportsDiarization: true,
+			supportsDictionary: true,
 		},
 		lastOptions: null as TranscribeOptions | null,
 		transcribe: jest.fn(async (_payload, options: TranscribeOptions) => {
@@ -142,6 +143,45 @@ async function runWithSpeaker(
 	);
 	return service.run(audioFile, { notePathForLinks: 'note.md' });
 }
+
+async function runWithDictionary(
+	engineId: TranscriptionProviderId,
+	dictionary: string,
+): Promise<TranscriptionProvider & { lastOptions: TranscribeOptions | null }> {
+	const provider = makeProvider();
+	const service = new TranscriptionService(
+		makeApp(),
+		() =>
+			mergeSettings({
+				transcriptionProvider: engineId,
+				transcriptionDictionary: dictionary,
+			}),
+		{ createProvider: () => provider },
+	);
+	await service.run(audioFile, { notePathForLinks: 'note.md' });
+	return provider;
+}
+
+describe('TranscriptionService dictionary passthrough', () => {
+	it('forwards the parsed, de-duplicated dictionary to the provider', async () => {
+		const provider = await runWithDictionary(
+			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			'Kubernetes\ngRPC\nkubernetes\n',
+		);
+		expect(provider.lastOptions?.dictionary).toEqual([
+			'Kubernetes',
+			'gRPC',
+		]);
+	});
+
+	it('leaves the dictionary undefined when the setting is empty', async () => {
+		const provider = await runWithDictionary(
+			TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			'   \n\t\n',
+		);
+		expect(provider.lastOptions?.dictionary).toBeUndefined();
+	});
+});
 
 describe('TranscriptionService speaker output gating', () => {
 	it('omits speaker labels for a non-diarizing engine, even if the provider returns one', async () => {
