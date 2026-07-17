@@ -28,16 +28,24 @@ import {
 	type SettingsSectionContext,
 } from '../settings/settingControls';
 import { formatTimecode } from '../utils/TimeUtils';
+import { probeAudioMetadata } from '../utils/AudioFileAnalyzer';
+import { TRANSCRIPTION_PROVIDER_IDS } from '../constants';
 import {
+	describeCostEstimate,
 	effectiveDiarize,
 	effectiveTranscriptDestination,
+	estimateTranscriptionCost,
+	formatUsd,
 	isProviderAvailableOnPlatform,
 	providerSupportsDiarization,
 	providerSupportsDictionary,
+	selectedEngineModel,
 	transcribeFile,
 	TranscriptionCancelledError,
 	type CancellationToken,
 	type LlmTask,
+	type SessionCostTracker,
+	type TranscribeRunCost,
 	type TranscriptDestination,
 	type TranscriptFileFormat,
 } from '../transcription/api';
@@ -66,6 +74,11 @@ export type TranscriptionModalOptions = {
 	backgroundProgress?: TranscriptionBackgroundProgressCallbacks;
 	/** Persists the run's dictionary-profile choice so it defaults next time. */
 	onProfileSelected?: (id: string) => Promise<void>;
+	/**
+	 * Session-wide per-engine cost accumulator owned by the plugin, so the
+	 * dialog can add this run's cost and show the running session total.
+	 */
+	costTracker?: SessionCostTracker;
 };
 
 /**
@@ -84,6 +97,14 @@ export class TranscriptionModal extends Modal {
 	private runStartedAt = 0;
 	private progressFillEl: HTMLElement | null = null;
 	private configEl: HTMLElement | null = null;
+	/** Container for the pre-run estimate and the session total lines. */
+	private costEstimateEl: HTMLElement | null = null;
+	/** Live "cost so far" line while a multi-part run is in flight. */
+	private runningCostEl: HTMLElement | null = null;
+	/** Probed audio duration in seconds; null when unknown/unreadable. */
+	private durationSeconds: number | null = null;
+	/** True once the duration probe finished (successfully or not). */
+	private probeFinished = false;
 	private runButton: ButtonComponent | null = null;
 	private minimizeButton: ButtonComponent | null = null;
 	private secondaryButton: ButtonComponent | null = null;
@@ -145,6 +166,15 @@ export class TranscriptionModal extends Modal {
 		this.configEl = contentEl.createDiv({ cls: 'aar-transcribe-options' });
 		this.renderConfig();
 
+		// Pre-run cost estimate and session total; refreshed on every config
+		// re-render (the engine dropdown triggers one) and when the duration
+		// probe finishes.
+		this.costEstimateEl = contentEl.createDiv({
+			cls: 'aar-transcribe-cost',
+		});
+		this.updateCostEstimate();
+		void this.probeDuration();
+
 		this.statusEl = contentEl.createDiv({ cls: 'aar-modal-status' });
 		this.statusEl.setText('Ready.');
 		const progress = contentEl.createDiv({
@@ -156,6 +186,10 @@ export class TranscriptionModal extends Modal {
 		// Live elapsed-time counter; hidden until a run starts so an idle dialog
 		// shows no stray "0:00".
 		this.elapsedEl = contentEl.createDiv({ cls: 'aar-transcribe-elapsed' });
+		// Live cumulative cost while a multi-part run is in flight.
+		this.runningCostEl = contentEl.createDiv({
+			cls: 'aar-transcribe-cost-running',
+		});
 
 		new Setting(contentEl)
 			.addButton((button) => {
@@ -374,6 +408,109 @@ export class TranscriptionModal extends Modal {
 		// Re-evaluated on every rerender (the Engine dropdown triggers one),
 		// so the Transcribe button tracks the freshly selected engine.
 		this.refreshRunButtonState();
+		// The estimate depends on the engine/model picked for this run, so it
+		// tracks the config re-render too.
+		this.updateCostEstimate();
+	}
+
+	/**
+	 * Probes the audio duration from the container headers (no PCM decode)
+	 * so the estimate can price the run by its length. Failure leaves the
+	 * duration unknown; the estimate line degrades instead of blocking the
+	 * dialog.
+	 */
+	private async probeDuration(): Promise<void> {
+		try {
+			const bytes = await this.app.vault.readBinary(this.file);
+			const metadata = await probeAudioMetadata(bytes, this.file.path);
+			this.durationSeconds = metadata?.durationSeconds ?? null;
+		} catch {
+			this.durationSeconds = null;
+		}
+		this.probeFinished = true;
+		this.updateCostEstimate();
+	}
+
+	/**
+	 * Renders the pre-run estimate for the currently selected engine/model
+	 * and the running session total. Hidden entirely when the user turned
+	 * cost estimates off.
+	 */
+	private updateCostEstimate(): void {
+		const el = this.costEstimateEl;
+		if (!el) {
+			return;
+		}
+		el.empty();
+		const s = this.runSettings;
+		if (!s.transcriptionShowCostEstimates) {
+			return;
+		}
+		const estimate = this.probeFinished
+			? describeCostEstimate(
+					s.transcriptionProvider,
+					selectedEngineModel(s, s.transcriptionProvider),
+					this.durationSeconds,
+				)
+			: 'Estimating cost...';
+		el.createDiv({ text: estimate });
+		const tracker = this.options.costTracker;
+		if (tracker?.hasEntries()) {
+			const unpriced = tracker.unpricedRuns();
+			const suffix =
+				unpriced > 0
+					? ` (${String(unpriced)} run${unpriced > 1 ? 's' : ''} not priced)`
+					: '';
+			el.createDiv({
+				text: `Spent this session: ~${formatUsd(tracker.totalUsd())}${suffix}`,
+			});
+		}
+	}
+
+	/**
+	 * Records a finished run in the session tracker and reports its cost.
+	 * Prefers the provider-reported actuals; when the run could not be
+	 * priced from usage, falls back to the duration-based estimate so the
+	 * session counter does not silently under-count. The local engine is
+	 * free and never recorded.
+	 * @param settings - The run's settings snapshot
+	 * @param cost - Cost summary returned by the run
+	 */
+	private recordRunCost(
+		settings: AudioRecorderSettings,
+		cost: TranscribeRunCost,
+	): void {
+		if (
+			!settings.transcriptionShowCostEstimates ||
+			cost.engineId === TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER
+		) {
+			return;
+		}
+		const usd =
+			cost.usd ??
+			(this.durationSeconds !== null
+				? estimateTranscriptionCost(
+						settings.transcriptionProvider,
+						selectedEngineModel(
+							settings,
+							settings.transcriptionProvider,
+						),
+						this.durationSeconds,
+					)
+				: null);
+		this.options.costTracker?.add(cost.engineId, usd);
+		if (usd !== null) {
+			const total = this.options.costTracker?.totalUsd();
+			new Notice(
+				`Transcription cost ~${formatUsd(usd)}` +
+					(total !== undefined
+						? ` (session total ~${formatUsd(total)})`
+						: '') +
+					'.',
+			);
+		}
+		// Refresh the session line so a follow-up run sees the new total.
+		this.updateCostEstimate();
 	}
 
 	/**
@@ -428,14 +565,34 @@ export class TranscriptionModal extends Modal {
 			// requestUrl-only endpoints still finish or time out on their own.
 			signal: this.abortController.signal,
 		};
+		this.runningCostEl?.setText('');
 		try {
-			await transcribeFile(this.app, () => settings, this.file, {
-				notePathForLinks: this.notePath,
-				token,
-				onProgress: (fraction, label) => {
-					this.updateProgress(fraction, label);
+			const result = await transcribeFile(
+				this.app,
+				() => settings,
+				this.file,
+				{
+					notePathForLinks: this.notePath,
+					token,
+					onProgress: (fraction, label) => {
+						this.updateProgress(fraction, label);
+					},
+					onCost: (cost) => {
+						// Live spending line: only when the parts completed so
+						// far actually priced to something.
+						if (
+							settings.transcriptionShowCostEstimates &&
+							cost.usd !== null &&
+							cost.usd > 0
+						) {
+							this.runningCostEl?.setText(
+								`Cost so far: ~${formatUsd(cost.usd)}`,
+							);
+						}
+					},
 				},
-			});
+			);
+			this.recordRunCost(settings, result.cost);
 			this.setRunning(false);
 			this.clearBackgroundProgress();
 			if (this.minimized) {

@@ -726,6 +726,21 @@ input.aar-input-invalid {
     font-variant-numeric: tabular-nums;
 }
 
+/* Pre-run cost estimate and session-total lines in the transcribe dialog. */
+.aar-transcribe-cost {
+    margin-bottom: 8px;
+    font-size: 0.8em;
+    color: var(--text-muted);
+}
+
+/* Live cumulative cost while a multi-part run is in flight. */
+.aar-transcribe-cost-running {
+    margin-top: 2px;
+    font-size: 0.8em;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
 /* A setting rendered disabled: dimmed and non-interactive so an option the
    current selection cannot use reads clearly as off, not merely unset. */
 .aar-setting-disabled {

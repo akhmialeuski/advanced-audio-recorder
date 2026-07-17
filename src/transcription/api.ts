@@ -15,7 +15,17 @@ export {
 } from './providers/capabilities';
 export { effectiveTranscriptDestination } from './transcriptOutput';
 export { TranscriptionCancelledError } from './TranscriptionService';
-export type { CancellationToken } from './TranscriptionService';
+export type {
+	CancellationToken,
+	TranscribeRunCost,
+} from './TranscriptionService';
+export {
+	describeCostEstimate,
+	estimateTranscriptionCost,
+	formatUsd,
+	selectedEngineModel,
+} from './costs';
+export { SessionCostTracker } from './SessionCostTracker';
 export type {
 	TranscriptDestination,
 	TranscriptFileFormat,

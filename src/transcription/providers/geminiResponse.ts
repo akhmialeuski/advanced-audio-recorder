@@ -8,12 +8,37 @@
  * @module transcription/providers/geminiResponse
  */
 
-import type { TranscriptSegment } from '../TranscriptTypes';
+import type { TranscriptSegment, TranscriptionUsage } from '../TranscriptTypes';
 import { parseTimecode } from '../../utils/TimeUtils';
 import { PLUGIN_LOG_PREFIX } from '../../constants';
 import type { WhisperResult } from './whisperResponse';
-import { geminiCandidateText } from './geminiShared';
+import { geminiCandidateText, geminiUsage } from './geminiShared';
 import { isRecord } from './responseUtils';
+
+/**
+ * Maps Gemini's `usageMetadata` token counts to billing usage: prompt
+ * tokens (which include the audio) as input, candidate plus thinking
+ * tokens as output - both are billed at the output rate. Undefined when
+ * the response reported no counts at all.
+ */
+function usageFromGemini(body: unknown): TranscriptionUsage | undefined {
+	const counts = geminiUsage(body);
+	if (
+		counts.promptTokenCount === undefined &&
+		counts.candidatesTokenCount === undefined &&
+		counts.thoughtsTokenCount === undefined
+	) {
+		return undefined;
+	}
+	const output =
+		(counts.candidatesTokenCount ?? 0) + (counts.thoughtsTokenCount ?? 0);
+	return {
+		...(counts.promptTokenCount !== undefined
+			? { inputTokens: counts.promptTokenCount }
+			: {}),
+		outputTokens: output,
+	};
+}
 
 /** Max characters of an unparseable candidate excerpt logged for diagnosis. */
 const RESPONSE_EXCERPT_LENGTH = 200;
@@ -50,10 +75,13 @@ export function mapGeminiResponse(
 	body: unknown,
 	diarize: boolean,
 ): WhisperResult {
+	// Tokens are billed even when the candidate turns out empty or
+	// unparseable, so usage is attached to every return path.
+	const usage = usageFromGemini(body);
 	const text = geminiCandidateText(body);
 	if (text.trim() === '') {
 		// A legitimately empty candidate (no content); nothing to warn about.
-		return { segments: [] };
+		return { segments: [], ...(usage ? { usage } : {}) };
 	}
 	let parsed: unknown;
 	try {
@@ -66,13 +94,13 @@ export function mapGeminiResponse(
 			`${PLUGIN_LOG_PREFIX} Gemini returned non-JSON transcript text; treating as empty:`,
 			text.slice(0, RESPONSE_EXCERPT_LENGTH),
 		);
-		return { segments: [] };
+		return { segments: [], ...(usage ? { usage } : {}) };
 	}
 	if (!isRecord(parsed) || !Array.isArray(parsed.segments)) {
 		console.warn(
 			`${PLUGIN_LOG_PREFIX} Gemini transcript JSON had no segments array; treating as empty.`,
 		);
-		return { segments: [] };
+		return { segments: [], ...(usage ? { usage } : {}) };
 	}
 	const language =
 		typeof parsed.language === 'string' ? parsed.language : undefined;
@@ -100,5 +128,5 @@ export function mapGeminiResponse(
 			...(speaker ? { speaker } : {}),
 		});
 	}
-	return { language, segments };
+	return { language, segments, ...(usage ? { usage } : {}) };
 }

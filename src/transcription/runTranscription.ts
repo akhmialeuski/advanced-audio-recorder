@@ -11,6 +11,7 @@ import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import {
 	TranscriptionService,
 	type CancellationToken,
+	type TranscribeRunCost,
 	type TranscribeRunResult,
 	type TranscriptionServiceDeps,
 } from './TranscriptionService';
@@ -27,6 +28,8 @@ export interface TranscribeFileOptions {
 	notePathForLinks: string;
 	/** Progress callback. */
 	onProgress?: (fraction: number, label: string) => void;
+	/** Running-cost callback (cumulative, after each completed part). */
+	onCost?: (cost: TranscribeRunCost) => void;
 	/** Cancellation token. */
 	token?: CancellationToken;
 }
@@ -52,6 +55,7 @@ export async function transcribeFile(
 	const result = await service.run(file, {
 		notePathForLinks: options.notePathForLinks,
 		onProgress: options.onProgress,
+		onCost: options.onCost,
 		token: options.token,
 	});
 

@@ -292,6 +292,7 @@ describe('Settings', () => {
 				playerEnableMarkers: false,
 				transcriptionEnabled: true,
 				transcribeOnSave: true,
+				transcriptionShowCostEstimates: true,
 				transcriptionProvider: 'local-whisper',
 				transcriptionLanguage: 'ru',
 				transcriptionDiarize: true,

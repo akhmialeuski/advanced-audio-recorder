@@ -309,12 +309,18 @@ export function addObsidianDomExtensions(el: HTMLElement): HTMLElement {
 		return child;
 	};
 
-	extended['createDiv'] = (opts?: { cls?: string }): HTMLElement => {
+	extended['createDiv'] = (opts?: {
+		cls?: string;
+		text?: string;
+	}): HTMLElement => {
 		const createEl = extended['createEl'] as (
 			tag: string,
-			opts?: { cls?: string },
+			opts?: { cls?: string; text?: string },
 		) => HTMLElement;
-		return createEl('div', opts ? { cls: opts.cls } : undefined);
+		return createEl(
+			'div',
+			opts ? { cls: opts.cls, text: opts.text } : undefined,
+		);
 	};
 
 	extended['setText'] = (text: string): void => {
