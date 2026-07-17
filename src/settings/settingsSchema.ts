@@ -268,6 +268,12 @@ export interface AudioRecorderSettings {
 	transcriptionDictionaryProfiles: DictionaryProfile[];
 	/** Id of the profile applied to a run; '' means None (no biasing terms). */
 	transcriptionDictionaryProfileId: string;
+	/**
+	 * Participant registry: known participant names (one per line) suggested
+	 * when renaming speakers. Names applied in the rename dialog are added
+	 * automatically.
+	 */
+	transcriptionParticipants: string;
 	/** Upload size limit per chunk, in megabytes (Whisper API) */
 	transcriptionChunkMb: number;
 	/** Per-request transcription timeout, in minutes (a hung request fails after this) */
@@ -471,6 +477,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	transcriptionWordTimestamps: false,
 	transcriptionDictionaryProfiles: [],
 	transcriptionDictionaryProfileId: '',
+	transcriptionParticipants: '',
 	transcriptionChunkMb: DEFAULT_TRANSCRIBE_CHUNK_MB,
 	transcriptionTimeoutMinutes: DEFAULT_TRANSCRIPTION_TIMEOUT_MINUTES,
 	whisperApiBaseUrl: DEFAULT_WHISPER_API_BASE_URL,

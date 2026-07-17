@@ -55,6 +55,7 @@ import {
 import { EnhancedPlayerRegistrar } from './player/EnhancedPlayerRegistrar';
 import { MediaKindStore, MEDIA_KIND_STORE_FILE } from './player/MediaKindStore';
 import { MarkerStore } from './markers/MarkerStore';
+import { SpeakerNameStore } from './speakers/SpeakerNameStore';
 import { RecordingMarkerModal } from './ui/MarkerModal';
 import { TranscriptionModal } from './ui/TranscriptionModal';
 import type { TranscriptionModalOptions } from './ui/TranscriptionModal';
@@ -131,6 +132,7 @@ export default class AudioRecorderPlugin extends Plugin {
 	private contextMenu!: ContextMenu;
 	private recordingBanner!: RecordingBanner;
 	private playerRegistrar!: EnhancedPlayerRegistrar;
+	private speakerNameStore!: SpeakerNameStore;
 	private journal!: SessionJournal;
 	private encodingWorker: EncodingWorkerClient | null = null;
 	private recordingStatus: RecordingStatus = RecordingStatus.Idle;
@@ -186,6 +188,10 @@ export default class AudioRecorderPlugin extends Plugin {
 		// at stop) and the player registrar (which reads/edits them), so
 		// their cache and serialized write chain stay unified.
 		const markerStore = new MarkerStore(this.app);
+		// One SpeakerNameStore is shared by transcription (applies stored
+		// names, remembers the detected roster) and the rename dialog, so
+		// their cache and serialized write chain stay unified.
+		this.speakerNameStore = new SpeakerNameStore(this.app);
 		this.recordingBanner = new RecordingBanner(() => {
 			void this.recordingManager.stopRecording();
 		});
@@ -233,6 +239,7 @@ export default class AudioRecorderPlugin extends Plugin {
 			() => this.settings,
 			markerStore,
 			mediaKindStore,
+			this.speakerNameStore,
 		);
 		this.playerRegistrar.subscribePlayback((state) => {
 			this.playbackState = state;
@@ -617,11 +624,13 @@ export default class AudioRecorderPlugin extends Plugin {
 		return {
 			app: this.app,
 			getSettings: () => this.settings,
+			saveSettings: () => this.saveSettings(),
 			createTranscriptionModalOptions: () =>
 				this.createTranscriptionModalOptions(),
 			primeForEnhancement: (paths) =>
 				this.playerRegistrar.primeSavedRecordingsForEnhancement(paths),
 			getWorkerClient: () => this.encodingWorker,
+			speakerNameStore: this.speakerNameStore,
 		};
 	}
 
@@ -907,6 +916,7 @@ export default class AudioRecorderPlugin extends Plugin {
 				this.settings.transcriptionDictionaryProfileId = profileId;
 				await this.saveSettings();
 			},
+			transcriptionDeps: { speakerNames: this.speakerNameStore },
 			backgroundProgress: {
 				show: (progress: SaveProgress, restore: () => void) => {
 					// Re-insert so the most recently updated job sorts last and

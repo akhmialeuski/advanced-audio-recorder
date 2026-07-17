@@ -9,6 +9,7 @@ import {
 	normalizeWhitespace,
 	offsetSegment,
 	plainText,
+	renameSpeakers,
 	stitchChunks,
 	stripSpeakers,
 } from 'src/transcription/transcriptModel';
@@ -150,5 +151,57 @@ describe('plainText', () => {
 	it('joins all segment text into one normalized string', () => {
 		const transcript = buildTranscript([seg(0, 1, 'a'), seg(1, 2, 'b')]);
 		expect(plainText(transcript)).toBe('a b');
+	});
+});
+
+describe('renameSpeakers', () => {
+	const transcript = (): Transcript =>
+		buildTranscript([
+			seg(0, 1, 'hi', 'Speaker 1'),
+			seg(1, 2, 'hello', 'Speaker 2'),
+			seg(2, 3, 'unlabeled'),
+		]);
+
+	it('renames mapped speakers and re-derives the speaker list', () => {
+		const renamed = renameSpeakers(transcript(), { 'Speaker 1': 'Alex' });
+		expect(renamed.segments.map((s) => s.speaker)).toEqual([
+			'Alex',
+			'Speaker 2',
+			undefined,
+		]);
+		expect(renamed.speakers).toEqual(['Alex', 'Speaker 2']);
+	});
+
+	it('merges two labels renamed to the same name into one speaker', () => {
+		const renamed = renameSpeakers(transcript(), {
+			'Speaker 1': 'Alex',
+			'Speaker 2': 'Alex',
+		});
+		expect(renamed.speakers).toEqual(['Alex']);
+	});
+
+	it('returns the transcript unchanged for an empty mapping', () => {
+		const source = transcript();
+		expect(renameSpeakers(source, {})).toBe(source);
+	});
+
+	it('does not mutate the source transcript', () => {
+		const source = transcript();
+		renameSpeakers(source, { 'Speaker 1': 'Alex' });
+		expect(source.segments[0]?.speaker).toBe('Speaker 1');
+		expect(source.speakers).toEqual(['Speaker 1', 'Speaker 2']);
+	});
+
+	it('preserves word-level timings on renamed segments', () => {
+		const source = buildTranscript([
+			{
+				...seg(0, 1, 'hi', 'Speaker 1'),
+				words: [{ start: 0, end: 1, text: 'hi' }],
+			},
+		]);
+		const renamed = renameSpeakers(source, { 'Speaker 1': 'Alex' });
+		expect(renamed.segments[0]?.words).toEqual([
+			{ start: 0, end: 1, text: 'hi' },
+		]);
 	});
 });

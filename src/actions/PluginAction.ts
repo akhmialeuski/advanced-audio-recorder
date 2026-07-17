@@ -11,6 +11,7 @@ import type { App, TFile } from 'obsidian';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import type { TranscriptionModalOptions } from '../ui/TranscriptionModal';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
+import type { SpeakerNameStore } from '../speakers/SpeakerNameStore';
 
 /**
  * Primes freshly written files for the enhanced player: starts their
@@ -26,9 +27,13 @@ export type EnhancementPrimer = (paths: string[]) => void;
 export interface ActionServices {
 	readonly app: App;
 	readonly getSettings: () => AudioRecorderSettings;
+	/** Persists the (mutated) settings, e.g. after registry updates. */
+	readonly saveSettings: () => Promise<void>;
 	readonly createTranscriptionModalOptions: () => TranscriptionModalOptions;
 	readonly primeForEnhancement: EnhancementPrimer;
 	readonly getWorkerClient: () => EncodingWorkerClient | null;
+	/** Shared per-recording speaker-name persistence. */
+	readonly speakerNameStore: SpeakerNameStore;
 }
 
 /**

@@ -12,6 +12,7 @@ import { ContextMenu } from 'src/ui/ContextMenu';
 import { FILE_ACTIONS } from 'src/actions/fileActions';
 import { AUDIO_EXTENSIONS } from 'src/constants';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
+import type { SpeakerNameStore } from 'src/speakers/SpeakerNameStore';
 import * as AudioFileAnalyzer from 'src/utils/AudioFileAnalyzer';
 import {
 	App,
@@ -104,6 +105,12 @@ jest.mock('src/ui/SplitModal', () => ({
 	})),
 }));
 
+jest.mock('src/ui/SpeakerRenameModal', () => ({
+	SpeakerRenameModal: jest.fn().mockImplementation(() => ({
+		open: jest.fn(),
+	})),
+}));
+
 jest.mock('src/cleanup/AudioProcessingModal', () => ({
 	AudioProcessingModal: jest.fn().mockImplementation(() => ({
 		open: jest.fn(),
@@ -184,9 +191,11 @@ describe('ContextMenu', () => {
 						deleteSourceAfterConversion: true,
 						conversionLinkAction: 'replace',
 					}) as unknown as AudioRecorderSettings,
+				saveSettings: () => Promise.resolve(),
 				createTranscriptionModalOptions: () => ({}),
 				primeForEnhancement: () => {},
 				getWorkerClient: () => null,
+				speakerNameStore: {} as unknown as SpeakerNameStore,
 			},
 			FILE_ACTIONS,
 		);

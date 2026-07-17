@@ -300,6 +300,7 @@ describe('Settings', () => {
 					{ id: 'p1', name: 'General', terms: 'Foo\nBar' },
 				],
 				transcriptionDictionaryProfileId: 'p1',
+				transcriptionParticipants: '',
 				transcriptionChunkMb: 10,
 				transcriptionTimeoutMinutes: 15,
 				whisperApiBaseUrl: 'https://api.groq.com/openai/v1',

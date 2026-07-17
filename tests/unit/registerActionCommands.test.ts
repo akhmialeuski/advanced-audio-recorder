@@ -18,6 +18,7 @@ import { COMMAND_IDS } from 'src/constants';
 import { MARKER_KIND } from 'src/markers/markerModel';
 import type { ActionServices, FileAction } from 'src/actions/PluginAction';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
+import type { SpeakerNameStore } from 'src/speakers/SpeakerNameStore';
 
 jest.mock('src/ui/AudioFileInfoModal', () => ({
 	AudioFileInfoModal: jest
@@ -69,9 +70,11 @@ function makeServices(activeFile: TFile | null): ActionServices {
 			({
 				transcriptionEnabled: true,
 			}) as unknown as AudioRecorderSettings,
+		saveSettings: () => Promise.resolve(),
 		createTranscriptionModalOptions: () => ({}),
 		primeForEnhancement: () => {},
 		getWorkerClient: () => null,
+		speakerNameStore: {} as unknown as SpeakerNameStore,
 	};
 }
 
@@ -98,6 +101,7 @@ describe('registerFileActionCommands', () => {
 			COMMAND_IDS.splitAudio,
 			COMMAND_IDS.cleanupAudio,
 			COMMAND_IDS.transcribeAudio,
+			COMMAND_IDS.renameSpeakers,
 			COMMAND_IDS.deleteRecording,
 		]);
 	});

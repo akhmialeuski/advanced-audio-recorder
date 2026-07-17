@@ -14,6 +14,7 @@ import { AudioFileInfoModal } from '../ui/AudioFileInfoModal';
 import { ConversionModal } from '../ui/ConversionModal';
 import { SplitModal } from '../ui/SplitModal';
 import { TranscriptionModal } from '../ui/TranscriptionModal';
+import { SpeakerRenameModal } from '../ui/SpeakerRenameModal';
 import { AudioProcessingModal } from '../cleanup/AudioProcessingModal';
 import { insertProcessedAudioEmbed } from '../recording/NoteInserter';
 import type { ActionServices, FileAction } from './PluginAction';
@@ -23,8 +24,9 @@ const always = (): boolean => true;
 
 /**
  * All per-file actions in menu order: info, convert, split, clean up,
- * transcribe, delete. "Delete recording" is excluded from the editor
- * menu, which offers the link-aware delete variant instead.
+ * transcribe, rename speakers, delete. "Delete recording" is excluded
+ * from the editor menu, which offers the link-aware delete variant
+ * instead.
  */
 export const FILE_ACTIONS: readonly FileAction[] = [
 	{
@@ -108,6 +110,21 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 				services.getSettings,
 				services.createTranscriptionModalOptions(),
 			).open();
+		},
+	},
+	{
+		commandId: COMMAND_IDS.renameSpeakers,
+		title: 'Rename speakers',
+		icon: 'users',
+		showInEditorMenu: true,
+		isAvailable: (_file: TFile, services: ActionServices): boolean =>
+			services.getSettings().transcriptionEnabled,
+		run: (file: TFile, services: ActionServices): void => {
+			new SpeakerRenameModal(services.app, file, {
+				store: services.speakerNameStore,
+				getSettings: services.getSettings,
+				saveSettings: services.saveSettings,
+			}).open();
 		},
 	},
 	{

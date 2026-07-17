@@ -15,7 +15,10 @@ export {
 } from './providers/capabilities';
 export { effectiveTranscriptDestination } from './transcriptOutput';
 export { TranscriptionCancelledError } from './TranscriptionService';
-export type { CancellationToken } from './TranscriptionService';
+export type {
+	CancellationToken,
+	TranscriptionServiceDeps,
+} from './TranscriptionService';
 export type {
 	TranscriptDestination,
 	TranscriptFileFormat,

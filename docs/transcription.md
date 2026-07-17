@@ -11,6 +11,7 @@
     - [Local whisper.cpp (desktop)](#local-whispercpp-desktop)
 - [Model picker and language](#model-picker-and-language)
 - [Speakers and diarization](#speakers-and-diarization)
+    - [Naming speakers](#naming-speakers)
 - [Biasing recognition toward your own terms](#biasing-recognition-toward-your-own-terms)
 - [Output: where the transcript goes](#output-where-the-transcript-goes)
 - [In-note formatting](#in-note-formatting)
@@ -203,6 +204,17 @@ Because there are no labels to act on without diarization, these output controls
 
 ![Speaker diarization toggle enabled for Deepgram, with the speaker output controls active below](images/settings-transcription-diarization.png)
 _Figure: with Deepgram and diarization on, the speaker-related output controls become editable._
+
+### Naming speakers
+
+Generic `Speaker 1` / `Speaker 2` labels are rarely what you want in a meeting note. **Rename speakers** (in the context menu of any recording, in the editor menu of its embed, and in the command palette) assigns real display names to the speakers a diarized transcription detected:
+
+- The dialog lists the recording's detected speakers - one text field per label - with popover suggestions from the **Participants** registry (see below). Leave a field empty to keep the original label.
+- Applying the names **rewrites the outputs that already exist**: the transcript rendered into notes that reference the recording, and the sidecar transcript file next to it (JSON, SRT, WebVTT, or plain text). Two names can even be swapped in one apply - replacements never chain through each other.
+- The mapping is stored in a **sidecar file next to the recording** (`recording.wav.speakers.json`), so it travels with the vault and survives a plugin reinstall. Renaming or deleting the recording moves or removes the sidecar automatically, like marker sidecars.
+- **Re-transcribing the recording applies the stored names automatically** - every output format (note Markdown, JSON, SRT, VTT, plain text) comes back with the display names instead of `Speaker N`.
+
+**Participants** (under **Settings > Advanced Audio Recorder > Transcription**, one name per line) is a per-vault registry of known names. Every name you apply in the rename dialog is added automatically, so the next recording's dialog suggests your regular meeting participants as you type.
 
 ---
 
