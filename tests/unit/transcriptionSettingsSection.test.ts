@@ -87,14 +87,62 @@ describe('renderTranscriptionSection speaker control gating', () => {
 	});
 });
 
-describe('renderTranscriptionSection dictionary control', () => {
-	it('renders an enabled dictionary field for every engine that supports biasing', () => {
+/** Renders the section for an engine with a seeded profile list. */
+function renderWithProfiles(
+	provider: TranscriptionProviderId,
+	profiles: { id: string; name: string; terms: string }[],
+	selectedId: string,
+): void {
+	capturedSettings.length = 0;
+	renderTranscriptionSection(
+		makeCtx(
+			mergeSettings({
+				transcriptionEnabled: true,
+				transcriptionProvider: provider,
+				transcriptionDictionaryProfiles: profiles,
+				transcriptionDictionaryProfileId: selectedId,
+			}),
+		),
+	);
+}
+
+describe('renderTranscriptionSection dictionary profiles', () => {
+	it('renders the profiles heading and selector for every engine', () => {
 		for (const provider of Object.values(TRANSCRIPTION_PROVIDER_IDS)) {
 			renderFor(provider, false);
-			// The row must exist (throws otherwise) and, since every current
-			// engine can bias, stay enabled rather than dimmed.
-			expect(isSettingDisabled('Transcription dictionary')).toBe(false);
+			const names = capturedSettings.map((setting) => setting.name);
+			expect(names).toContain('Dictionary profiles');
+			expect(names).toContain('Profile');
 		}
+	});
+
+	it('renders no terms editor when there are no profiles', () => {
+		renderFor(TRANSCRIPTION_PROVIDER_IDS.WHISPER_API, false);
+		const names = capturedSettings.map((setting) => setting.name);
+		expect(names).not.toContain('Terms');
+	});
+
+	it('opens the selected profile in an engine-independent editor', () => {
+		// Whisper API can bias, but even so the editor is never disabled by
+		// engine: a profile is just stored text, gated at transcription time.
+		renderWithProfiles(
+			TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			[
+				{ id: 'a', name: 'Standup', terms: 'gRPC' },
+				{ id: 'b', name: 'Legal', terms: 'affidavit' },
+			],
+			'a',
+		);
+		const names = capturedSettings.map((setting) => setting.name);
+		expect(names).toContain('Profile name');
+		expect(names).toContain('Terms');
+		expect(isSettingDisabled('Terms')).toBe(false);
+		const selector = capturedSettings.find(
+			(setting) => setting.name === 'Profile',
+		);
+		expect(
+			selector?.dropdownOptions?.map((option) => option.value),
+		).toEqual(['a', 'b']);
 	});
 });
 

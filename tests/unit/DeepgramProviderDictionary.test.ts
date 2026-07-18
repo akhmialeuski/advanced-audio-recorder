@@ -9,6 +9,12 @@
 import { DeepgramProvider } from 'src/transcription/providers/DeepgramProvider';
 import type { AudioPayload } from 'src/transcription/providers/TranscriptionProvider';
 import {
+	DEEPGRAM_KEYTERM_LIMIT,
+	DEEPGRAM_KEYTERM_TOKEN_LIMIT,
+	DEEPGRAM_KEYWORDS_LIMIT,
+	tokenUpperBound,
+} from 'src/transcription/dictionaryBias';
+import {
 	__setRequestUrlHandler,
 	type MockRequestUrlParam,
 	type MockRequestUrlResponse,
@@ -127,7 +133,7 @@ describe('DeepgramProvider dictionary biasing', () => {
 		expect(params.has('keywords')).toBe(false);
 	});
 
-	it('caps keyterms at the provider limit on nova-3', async () => {
+	it('trims keyterms to the entry and token limits on nova-3', async () => {
 		const calls = capture();
 		const provider = new DeepgramProvider({
 			baseUrl: BASE_URL,
@@ -136,7 +142,7 @@ describe('DeepgramProvider dictionary biasing', () => {
 		});
 
 		const dictionary = Array.from(
-			{ length: 130 },
+			{ length: 200 },
 			(_v, i) => `term-${String(i)}`,
 		);
 		await provider.transcribe(payload(), {
@@ -145,8 +151,38 @@ describe('DeepgramProvider dictionary biasing', () => {
 			dictionary,
 		});
 
-		// Deepgram accepts at most 100 keyterms; the provider trims defensively
-		// even when handed a longer list.
-		expect(queryOf(calls).getAll('keyterm')).toHaveLength(100);
+		// The provider trims defensively even when handed a longer list: at most
+		// 100 keyterms and no more than the aggregate token budget Deepgram allows.
+		const keyterms = queryOf(calls).getAll('keyterm');
+		expect(keyterms.length).toBeGreaterThan(0);
+		expect(keyterms.length).toBeLessThanOrEqual(DEEPGRAM_KEYTERM_LIMIT);
+		const aggregate = keyterms.reduce(
+			(sum, term) => sum + tokenUpperBound(term),
+			0,
+		);
+		expect(aggregate).toBeLessThanOrEqual(DEEPGRAM_KEYTERM_TOKEN_LIMIT);
+	});
+
+	it('caps keywords at the provider limit on nova-2', async () => {
+		const calls = capture();
+		const provider = new DeepgramProvider({
+			baseUrl: BASE_URL,
+			apiKey: 'k',
+			model: 'nova-2',
+		});
+
+		const dictionary = Array.from(
+			{ length: DEEPGRAM_KEYWORDS_LIMIT + 30 },
+			(_v, i) => `term-${String(i)}`,
+		);
+		await provider.transcribe(payload(), {
+			diarize: false,
+			wordTimestamps: false,
+			dictionary,
+		});
+
+		expect(queryOf(calls).getAll('keywords')).toHaveLength(
+			DEEPGRAM_KEYWORDS_LIMIT,
+		);
 	});
 });

@@ -33,6 +33,7 @@ import {
 	effectiveTranscriptDestination,
 	isProviderAvailableOnPlatform,
 	providerSupportsDiarization,
+	providerSupportsDictionary,
 	transcribeFile,
 	TranscriptionCancelledError,
 	type CancellationToken,
@@ -40,6 +41,7 @@ import {
 	type TranscriptDestination,
 	type TranscriptFileFormat,
 } from '../transcription/api';
+import { findProfile } from '../settings/dictionaryProfiles';
 import type { SaveProgress } from '../types';
 
 /** Default status label shown before the engine reports a finer-grained stage. */
@@ -62,6 +64,8 @@ export type TranscriptionModalOptions = {
 	autoStart?: boolean;
 	notePath?: string;
 	backgroundProgress?: TranscriptionBackgroundProgressCallbacks;
+	/** Persists the run's dictionary-profile choice so it defaults next time. */
+	onProfileSelected?: (id: string) => Promise<void>;
 };
 
 /**
@@ -279,6 +283,35 @@ export class TranscriptionModal extends Modal {
 			desc: 'Request per-word timing (recorded in JSON file output only).',
 			get: () => s.transcriptionWordTimestamps,
 			set: (v) => (s.transcriptionWordTimestamps = v),
+		});
+
+		const profiles = s.transcriptionDictionaryProfiles;
+		// A stored id whose profile was removed reads as None here.
+		const selectedProfileId = findProfile(
+			profiles,
+			s.transcriptionDictionaryProfileId,
+		)
+			? s.transcriptionDictionaryProfileId
+			: '';
+		addDropdown(ctx, {
+			name: 'Dictionary',
+			desc: providerSupportsDictionary(s.transcriptionProvider)
+				? 'Bias recognition toward a named glossary, or None.'
+				: 'The selected engine cannot bias recognition; the dictionary is ignored.',
+			options: [
+				{ value: '', label: 'None' },
+				...profiles.map((profile) => ({
+					value: profile.id,
+					label: profile.name,
+				})),
+			],
+			get: () => selectedProfileId,
+			set: (v) => {
+				// Affects this run (runSettings clone); persist as the remembered
+				// choice for the next dialog and for transcribe-on-save.
+				s.transcriptionDictionaryProfileId = v;
+				void this.options.onProfileSelected?.(v);
+			},
 		});
 
 		addDropdown(ctx, {

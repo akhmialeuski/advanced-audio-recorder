@@ -217,3 +217,76 @@ describe('TranscriptionModal platform gating', () => {
 		expect(runButton(modal)?.disabled).toBe(false);
 	});
 });
+
+/** The Dictionary select is the one carrying a None option. */
+function dictionarySelect(modal: TranscriptionModal): HTMLSelectElement {
+	const selects = Array.from(modal.contentEl.querySelectorAll('select'));
+	const select = selects.find((el) =>
+		Array.from(el.options).some((option) => option.textContent === 'None'),
+	);
+	if (!select) {
+		throw new Error('Dictionary select not rendered');
+	}
+	return select;
+}
+
+describe('TranscriptionModal dictionary profile selection', () => {
+	function settingsWithProfiles(selectedId: string): AudioRecorderSettings {
+		return {
+			...DEFAULT_SETTINGS,
+			transcriptionDictionaryProfiles: [
+				{ id: 'a', name: 'Standup', terms: 'gRPC' },
+				{ id: 'b', name: 'Legal', terms: 'affidavit' },
+			],
+			transcriptionDictionaryProfileId: selectedId,
+		};
+	}
+
+	it('lists None plus each profile in the Dictionary dropdown', () => {
+		const settings = settingsWithProfiles('a');
+		const modal = new TranscriptionModal(
+			new App(),
+			createAudioFile(),
+			() => settings,
+			{},
+		);
+		modal.onOpen();
+
+		const select = dictionarySelect(modal);
+		expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
+			'None',
+			'Standup',
+			'Legal',
+		]);
+		expect(Array.from(select.options).map((o) => o.value)).toEqual([
+			'',
+			'a',
+			'b',
+		]);
+	});
+
+	it('persists the picked profile and updates the run snapshot', () => {
+		const settings = settingsWithProfiles('');
+		const onProfileSelected = jest.fn().mockResolvedValue(undefined);
+		const modal = new TranscriptionModal(
+			new App(),
+			createAudioFile(),
+			() => settings,
+			{ onProfileSelected },
+		);
+		modal.onOpen();
+
+		const select = dictionarySelect(modal);
+		select.value = 'a';
+		select.dispatchEvent(new Event('change'));
+
+		expect(onProfileSelected).toHaveBeenCalledWith('a');
+		const runSettings = (
+			modal as unknown as { runSettings: AudioRecorderSettings }
+		).runSettings;
+		expect(runSettings.transcriptionDictionaryProfileId).toBe('a');
+		// The saved settings object stays untouched: persistence rides on the
+		// callback, not on mutating the shared settings from the dialog.
+		expect(settings.transcriptionDictionaryProfileId).toBe('');
+	});
+});

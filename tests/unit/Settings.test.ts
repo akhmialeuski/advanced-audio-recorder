@@ -296,7 +296,10 @@ describe('Settings', () => {
 				transcriptionLanguage: 'ru',
 				transcriptionDiarize: true,
 				transcriptionWordTimestamps: true,
-				transcriptionDictionary: '',
+				transcriptionDictionaryProfiles: [
+					{ id: 'p1', name: 'General', terms: 'Foo\nBar' },
+				],
+				transcriptionDictionaryProfileId: 'p1',
 				transcriptionChunkMb: 10,
 				transcriptionTimeoutMinutes: 15,
 				whisperApiBaseUrl: 'https://api.groq.com/openai/v1',
@@ -420,6 +423,50 @@ describe('Settings', () => {
 			});
 
 			expect(result.geminiApiKey).toBe('gm-current');
+		});
+
+		it('migrates a legacy single dictionary into one seeded General profile', () => {
+			// Pre-profiles data held one flat dictionary string.
+			const legacy = {
+				transcriptionDictionary: 'Foo\nBar',
+			} as unknown as AudioRecorderSettingsInput;
+
+			const result = mergeSettings(legacy);
+
+			expect(result.transcriptionDictionaryProfiles).toHaveLength(1);
+			const profile = result.transcriptionDictionaryProfiles[0];
+			expect(profile?.name).toBe('General');
+			expect(profile?.terms).toBe('Foo\nBar');
+			expect(result.transcriptionDictionaryProfileId).toBe(profile?.id);
+			// The superseded flat field must not linger in the merged object.
+			const record = result as unknown as Record<string, unknown>;
+			expect(record.transcriptionDictionary).toBeUndefined();
+		});
+
+		it('does not seed a profile from an empty legacy dictionary', () => {
+			const result = mergeSettings({
+				transcriptionDictionary: '   \n\t',
+			} as unknown as AudioRecorderSettingsInput);
+
+			expect(result.transcriptionDictionaryProfiles).toEqual([]);
+			expect(result.transcriptionDictionaryProfileId).toBe('');
+		});
+
+		it('leaves existing profiles untouched when a legacy dictionary is present', () => {
+			const result = mergeSettings({
+				transcriptionDictionary: 'Legacy',
+				transcriptionDictionaryProfiles: [
+					{ id: 'keep', name: 'Kept', terms: 'X' },
+				],
+				transcriptionDictionaryProfileId: 'keep',
+			} as unknown as AudioRecorderSettingsInput);
+
+			expect(result.transcriptionDictionaryProfiles).toEqual([
+				{ id: 'keep', name: 'Kept', terms: 'X' },
+			]);
+			expect(result.transcriptionDictionaryProfileId).toBe('keep');
+			const record = result as unknown as Record<string, unknown>;
+			expect(record.transcriptionDictionary).toBeUndefined();
 		});
 
 		it('should handle boolean settings correctly', () => {

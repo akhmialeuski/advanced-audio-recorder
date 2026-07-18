@@ -901,6 +901,12 @@ export default class AudioRecorderPlugin extends Plugin {
 	private createTranscriptionModalOptions(): TranscriptionModalOptions {
 		const id = ++this.nextBackgroundTranscriptionId;
 		return {
+			// Remember the run's dictionary-profile choice so it defaults next
+			// time and applies to transcribe-on-save.
+			onProfileSelected: async (profileId: string) => {
+				this.settings.transcriptionDictionaryProfileId = profileId;
+				await this.saveSettings();
+			},
 			backgroundProgress: {
 				show: (progress: SaveProgress, restore: () => void) => {
 					// Re-insert so the most recently updated job sorts last and

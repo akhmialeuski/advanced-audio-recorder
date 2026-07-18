@@ -208,19 +208,28 @@ _Figure: with Deepgram and diarization on, the speaker-related output controls b
 
 ## Biasing recognition toward your own terms
 
-Names, abbreviations, and domain jargon are the words an engine mishears most often. **Transcription dictionary** (under **Settings > Advanced Audio Recorder > Transcription**) is a multi-line field, one term per line, whose contents travel with every transcription request so recognition is biased toward those spellings. A term may contain spaces, so a full name or a multi-word product stays intact, while blank lines and case-insensitive duplicates are ignored. The field is offered for every current engine, and the same list is applied wherever you start a run, including the per-run **Transcribe audio** dialog.
+Names, abbreviations, and domain jargon are the words an engine mishears most often. **Dictionary profiles** (under **Settings > Advanced Audio Recorder > Transcription**) are named glossaries, one term per line, so you can keep separate lists for different meeting types (standup, legal, medical) instead of one merged glossary that dilutes the bias. Manage them in the settings tab: the selector picks which profile to edit, and its name and terms appear below with buttons to add a new profile or remove the selected one. A term may contain spaces, so a full name or a multi-word product stays intact, while blank lines and case-insensitive duplicates are ignored. In the per-run **Transcribe audio** dialog you choose which profile to apply for that run, or **None**; the last choice is remembered and becomes the default for the next dialog and for transcribe-on-save.
+
+![The Dictionary profiles settings section with a Profile selector, add and remove buttons, a Profile name field, and a Terms text area](images/settings-dictionary-profiles.png)
+_Figure: the Dictionary profiles section under Settings > Advanced Audio Recorder > Transcription, editing a profile's name and terms._
+
+![The Transcribe audio dialog with a Dictionary dropdown for choosing a named profile or None](images/transcribe-dialog-dictionary.png)
+_Figure: the per-run Transcribe audio dialog, where the Dictionary control selects which profile biases that run, or None._
 
 Each engine consumes the list the way its own API supports:
 
 - **Deepgram Nova-3** sends each term as a `keyterm` query parameter, Deepgram's keyterm prompting.
-- **Deepgram Nova-2 and older** (Nova, Enhanced, Base) send each term as a `keywords` parameter, Deepgram's keyword boosting.
+- **Deepgram Nova-2 and older** (Nova, Enhanced, Base) send each term as a `keywords` parameter, Deepgram's keyword boosting. Keyword boosting favors single words, so multi-word entries bias most reliably on Nova-3, Gemini, and Whisper rather than here.
 - **Whisper API and local whisper.cpp** send the terms as the recognition prompt, the OpenAI `prompt` field and the whisper.cpp `--prompt` flag respectively; for the local engine that flag is placed before your extra args, so a `--prompt` you supply yourself still wins.
 - **Google Gemini** folds the terms into the instruction text sent alongside the audio.
 
-Two provider limits are enforced so a request never carries terms the engine would reject or silently ignore, and whenever some terms are left out a notice tells you it happened:
+Provider request limits are enforced so a request never carries terms the engine would reject or silently ignore, and whenever some terms are left out a notice tells you it happened:
 
-- **Deepgram accepts at most 100 keyterms** in one request on Nova-3, so a longer glossary is trimmed to the first 100 terms.
+- **Deepgram Nova-3 accepts at most 100 keyterms and 500 keyterm tokens** in one request, so a longer glossary is trimmed to the first terms that fit both bounds; several long multi-word terms can reach the token limit well before 100 entries.
+- **Deepgram Nova-2 and older accept at most 100 keywords** in one request, so a longer glossary is trimmed to the first 100 terms.
 - **The Whisper prompt holds only about 224 tokens**, so a long list is trimmed to the terms that fit; the OpenAI API and local whisper.cpp share this bound.
+
+Term length is measured conservatively (by byte count) so a glossary is never reported as applied while the engine quietly rejects or drops it. Short abbreviations, punctuation, and non-Latin scripts such as Cyrillic cost more tokens than their character count suggests, so with those a few terms fewer may fit than a plain character count would imply.
 
 Deepgram's biasing depends on the selected **Deepgram model**, which is worth remembering when you change it:
 

@@ -18,6 +18,7 @@ import {
 	TRANSCRIPTION_PROVIDER_IDS,
 } from '../../constants';
 import { decodeToMono16k, encodeMonoWav } from '../audioChunks';
+import { DICTIONARY_JOIN_SEPARATOR } from '../dictionaryBias';
 import { requestJson, uploadTimeoutMs } from '../httpClient';
 import { GEMINI_CAPABILITIES } from './capabilities';
 import {
@@ -131,7 +132,7 @@ function buildInstruction(options: TranscribeOptions): string {
 	];
 	if (options.dictionary?.length) {
 		lines.push(
-			`Prefer these spellings for names and terms when you hear them: ${options.dictionary.join(', ')}.`,
+			`Prefer these spellings for names and terms when you hear them: ${options.dictionary.join(DICTIONARY_JOIN_SEPARATOR)}.`,
 		);
 	}
 	return lines.join(' ');

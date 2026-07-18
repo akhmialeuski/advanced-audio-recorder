@@ -17,6 +17,7 @@ import {
 	type AudioRecorderSettings,
 	type AudioRecorderSettingsInput,
 	type AudioSource,
+	type DictionaryProfile,
 	type PlatformScopedSettings,
 	type PlatformScopedSettingsInput,
 	type PlatformScopedSettingsMap,
@@ -215,7 +216,46 @@ export function mergeSettings(
 		perPlatform,
 	};
 	migrateLegacyLlmSettings(merged, userSettings);
+	migrateLegacyTranscriptionDictionary(merged, userSettings);
 	return merged;
+}
+
+/**
+ * Carries a pre-profiles single dictionary string forward into one seeded
+ * 'General' profile and selects it, then drops the flat field so a later save
+ * does not re-persist it. The only-when-empty guard mirrors the LLM migration:
+ * a config that already has profiles is left untouched. The delete runs
+ * unconditionally, since even an empty legacy string must be stripped from the
+ * merged object (which spread `...userSettings`) so serializeSettings never
+ * writes it again.
+ * @param merged - The merged settings to migrate in place
+ * @param raw - The raw user settings as loaded from disk
+ */
+function migrateLegacyTranscriptionDictionary(
+	merged: AudioRecorderSettings,
+	raw: AudioRecorderSettingsInput,
+): void {
+	const legacy: Record<string, unknown> = isRecord(raw) ? raw : {};
+	const legacyTerms =
+		typeof legacy.transcriptionDictionary === 'string'
+			? legacy.transcriptionDictionary
+			: '';
+	if (
+		legacyTerms.trim() !== '' &&
+		merged.transcriptionDictionaryProfiles.length === 0
+	) {
+		const profile: DictionaryProfile = {
+			id: crypto.randomUUID(),
+			name: 'General',
+			// Keep the raw multi-line text; parsing happens at run time.
+			terms: legacyTerms,
+		};
+		merged.transcriptionDictionaryProfiles = [profile];
+		merged.transcriptionDictionaryProfileId = profile.id;
+	}
+	if (isRecord(merged)) {
+		delete merged.transcriptionDictionary;
+	}
 }
 
 /**

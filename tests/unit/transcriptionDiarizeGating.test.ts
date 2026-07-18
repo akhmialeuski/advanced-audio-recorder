@@ -155,8 +155,34 @@ async function runWithDictionary(
 		() =>
 			mergeSettings({
 				transcriptionProvider: engineId,
-				transcriptionDictionary: dictionary,
+				// The dictionary now travels through the selected profile.
+				transcriptionDictionaryProfiles: [
+					{ id: 'p1', name: 'Test', terms: dictionary },
+				],
+				transcriptionDictionaryProfileId: 'p1',
 				...(deepgramModel ? { deepgramModel } : {}),
+			}),
+		{ createProvider: () => provider },
+	);
+	await service.run(audioFile, { notePathForLinks: 'note.md' });
+	return provider;
+}
+
+/** Runs a transcription with an explicit selected profile id. */
+async function runWithProfileId(
+	engineId: TranscriptionProviderId,
+	profileId: string,
+): Promise<TranscriptionProvider & { lastOptions: TranscribeOptions | null }> {
+	const provider = makeProvider();
+	const service = new TranscriptionService(
+		makeApp(),
+		() =>
+			mergeSettings({
+				transcriptionProvider: engineId,
+				transcriptionDictionaryProfiles: [
+					{ id: 'p1', name: 'Test', terms: 'Kubernetes' },
+				],
+				transcriptionDictionaryProfileId: profileId,
 			}),
 		{ createProvider: () => provider },
 	);
@@ -193,10 +219,12 @@ describe('TranscriptionService dictionary passthrough', () => {
 		expect(provider.lastOptions?.dictionary).toBeUndefined();
 	});
 
-	it('caps the dictionary at the Deepgram keyterm limit on nova-3', async () => {
+	it('caps the dictionary at the Deepgram keyterm entry limit on nova-3', async () => {
+		// Short terms stay under the aggregate token budget, so the 100-entry
+		// cap is the bound that bites.
 		const many = Array.from(
 			{ length: 130 },
-			(_v, i) => `term-${String(i)}`,
+			(_v, i) => `t${String(i)}`,
 		).join('\n');
 		const provider = await runWithDictionary(
 			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
@@ -204,6 +232,39 @@ describe('TranscriptionService dictionary passthrough', () => {
 			'nova-3',
 		);
 		expect(provider.lastOptions?.dictionary).toHaveLength(100);
+	});
+
+	it('caps the dictionary at the Deepgram keyterm token budget on nova-3', async () => {
+		// Longer multi-word terms breach the 500-token aggregate well before the
+		// 100-entry cap, so fewer than 100 terms reach the provider.
+		const many = Array.from(
+			{ length: 130 },
+			(_v, i) => `distributed consensus protocol term ${String(i)}`,
+		).join('\n');
+		const provider = await runWithDictionary(
+			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			many,
+			'nova-3',
+		);
+		const applied = provider.lastOptions?.dictionary ?? [];
+		expect(applied.length).toBeGreaterThan(0);
+		expect(applied.length).toBeLessThan(100);
+	});
+
+	it('sends no dictionary when None is selected', async () => {
+		const provider = await runWithProfileId(
+			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			'',
+		);
+		expect(provider.lastOptions?.dictionary).toBeUndefined();
+	});
+
+	it('sends no dictionary when the selected profile no longer exists', async () => {
+		const provider = await runWithProfileId(
+			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			'missing',
+		);
+		expect(provider.lastOptions?.dictionary).toBeUndefined();
 	});
 });
 

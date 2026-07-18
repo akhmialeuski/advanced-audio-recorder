@@ -11,6 +11,7 @@ export {
 	effectiveDiarize,
 	isProviderAvailableOnPlatform,
 	providerSupportsDiarization,
+	providerSupportsDictionary,
 } from './providers/capabilities';
 export { effectiveTranscriptDestination } from './transcriptOutput';
 export { TranscriptionCancelledError } from './TranscriptionService';
