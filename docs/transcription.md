@@ -210,6 +210,12 @@ _Figure: with Deepgram and diarization on, the speaker-related output controls b
 
 Names, abbreviations, and domain jargon are the words an engine mishears most often. **Dictionary profiles** (under **Settings > Advanced Audio Recorder > Transcription**) are named glossaries, one term per line, so you can keep separate lists for different meeting types (standup, legal, medical) instead of one merged glossary that dilutes the bias. Manage them in the settings tab: the selector picks which profile to edit, and its name and terms appear below with buttons to add a new profile or remove the selected one. A term may contain spaces, so a full name or a multi-word product stays intact, while blank lines and case-insensitive duplicates are ignored. In the per-run **Transcribe audio** dialog you choose which profile to apply for that run, or **None**; the last choice is remembered and becomes the default for the next dialog and for transcribe-on-save.
 
+![The Dictionary profiles settings section with a Profile selector, add and remove buttons, a Profile name field, and a Terms text area](images/settings-dictionary-profiles.png)
+_Figure: the Dictionary profiles section under Settings > Advanced Audio Recorder > Transcription, editing a profile's name and terms._
+
+![The Transcribe audio dialog with a Dictionary dropdown for choosing a named profile or None](images/transcribe-dialog-dictionary.png)
+_Figure: the per-run Transcribe audio dialog, where the Dictionary control selects which profile biases that run, or None._
+
 Each engine consumes the list the way its own API supports:
 
 - **Deepgram Nova-3** sends each term as a `keyterm` query parameter, Deepgram's keyterm prompting.
