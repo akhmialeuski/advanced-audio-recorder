@@ -133,7 +133,7 @@ export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
 	addTextArea(ctx, {
 		name: 'Transcription dictionary',
 		desc: canUseDictionary
-			? 'One term per line: names, abbreviations, and domain terms the engine should prefer. Injected into each transcription request to bias recognition.'
+			? 'One term per line: names, abbreviations, and domain terms the engine should prefer. Injected into each transcription request to bias recognition. For Deepgram this also depends on the model, and a run reports any terms it could not apply.'
 			: 'Not supported by the selected engine.',
 		get: () => s.transcriptionDictionary,
 		set: (v) => (s.transcriptionDictionary = v),

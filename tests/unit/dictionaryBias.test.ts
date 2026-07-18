@@ -2,25 +2,41 @@
  * Tests the dictionary biasing planner: the single place that decides which
  * terms each engine actually sends and which are dropped. It covers Deepgram's
  * per-model mechanism (keyterm for Nova-3, keywords for Nova-2 and older, none
- * for the hosted Whisper models), the Deepgram keyterm count limit, and the
- * Whisper prompt token window shared by the OpenAI API and local whisper.cpp.
+ * for the hosted Whisper models), the Deepgram keyterm entry and aggregate
+ * token limits, the Deepgram keywords entry limit, and the Whisper prompt token
+ * window shared by the OpenAI API and local whisper.cpp.
  * @module tests/unit/dictionaryBias.test
  */
 
 import {
 	DEEPGRAM_KEYTERM_LIMIT,
+	DEEPGRAM_KEYTERM_TOKEN_LIMIT,
+	DEEPGRAM_KEYWORDS_LIMIT,
 	WHISPER_PROMPT_TOKEN_LIMIT,
 	deepgramBiasMechanism,
 	describeDictionaryOmission,
-	estimateTokens,
 	planDictionaryBias,
 	termsWithinWhisperPrompt,
+	tokenUpperBound,
 } from 'src/transcription/dictionaryBias';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 
 /** Builds n unique terms, wide enough to blow past the prompt window. */
 function manyTerms(n: number): string[] {
 	return Array.from({ length: n }, (_v, i) => `Kubernetes-${String(i)}`);
+}
+
+/** Builds n very short terms so an entry count limit bites before a token one. */
+function shortTerms(n: number): string[] {
+	return Array.from({ length: n }, (_v, i) => `t${String(i)}`);
+}
+
+/** Builds n long multi-word terms so the keyterm token budget bites first. */
+function longTerms(n: number): string[] {
+	return Array.from(
+		{ length: n },
+		(_v, i) => `Distributed systems consensus protocol term ${String(i)}`,
+	);
 }
 
 describe('deepgramBiasMechanism', () => {
@@ -44,11 +60,16 @@ describe('deepgramBiasMechanism', () => {
 	});
 });
 
-describe('estimateTokens', () => {
-	it('rounds up on the four-characters-per-token heuristic', () => {
-		expect(estimateTokens('')).toBe(0);
-		expect(estimateTokens('abcd')).toBe(1);
-		expect(estimateTokens('abcde')).toBe(2);
+describe('tokenUpperBound', () => {
+	it('counts UTF-8 bytes so it never undershoots the real token count', () => {
+		expect(tokenUpperBound('')).toBe(0);
+		expect(tokenUpperBound('abcd')).toBe(4);
+	});
+
+	it('counts multi-byte scripts by byte length, not character count', () => {
+		// Each Cyrillic code point is two UTF-8 bytes, so a four-character term
+		// is eight bytes; a chars/4 average would have reported just one token.
+		expect(tokenUpperBound('тест')).toBe(8);
 	});
 });
 
@@ -63,7 +84,21 @@ describe('termsWithinWhisperPrompt', () => {
 	it('stops before the joined prompt exceeds the token window', () => {
 		const applied = termsWithinWhisperPrompt(manyTerms(400));
 		expect(applied.length).toBeLessThan(400);
-		expect(estimateTokens(applied.join(', '))).toBeLessThanOrEqual(
+		expect(tokenUpperBound(applied.join(', '))).toBeLessThanOrEqual(
+			WHISPER_PROMPT_TOKEN_LIMIT,
+		);
+	});
+
+	it('bounds a non-Latin dictionary by its real byte length', () => {
+		// Cyrillic terms cost about two bytes per character, so a modest count
+		// still overflows the 224-token window; the chars/4 average undershot it.
+		const terms = Array.from(
+			{ length: 80 },
+			(_v, i) => `Термин${String(i)}`,
+		);
+		const applied = termsWithinWhisperPrompt(terms);
+		expect(applied.length).toBeLessThan(terms.length);
+		expect(tokenUpperBound(applied.join(', '))).toBeLessThanOrEqual(
 			WHISPER_PROMPT_TOKEN_LIMIT,
 		);
 	});
@@ -93,8 +128,10 @@ describe('planDictionaryBias', () => {
 		expect(plan.reason).toBeUndefined();
 	});
 
-	it('caps Deepgram Nova-3 keyterms at the provider limit', () => {
-		const input = manyTerms(DEEPGRAM_KEYTERM_LIMIT + 25);
+	it('caps Deepgram Nova-3 keyterms at the entry limit', () => {
+		// Short terms stay well under the aggregate token budget, so the entry
+		// count is the bound that bites.
+		const input = shortTerms(DEEPGRAM_KEYTERM_LIMIT + 25);
 		const plan = planDictionaryBias(
 			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 			'nova-3',
@@ -105,15 +142,36 @@ describe('planDictionaryBias', () => {
 		expect(plan.reason).toBe('term-limit');
 	});
 
-	it('does not cap Deepgram keywords models by term count', () => {
-		const input = manyTerms(DEEPGRAM_KEYTERM_LIMIT + 25);
+	it('caps Deepgram Nova-3 keyterms at the aggregate token budget', () => {
+		// A few dozen long multi-word terms breach the 500-token aggregate well
+		// before the 100-entry count, so the token budget is the binding limit.
+		const input = longTerms(60);
+		const plan = planDictionaryBias(
+			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			'nova-3',
+			input,
+		);
+		expect(plan.applied.length).toBeGreaterThan(0);
+		expect(plan.applied.length).toBeLessThan(DEEPGRAM_KEYTERM_LIMIT);
+		expect(plan.omitted.length).toBeGreaterThan(0);
+		expect(plan.reason).toBe('keyterm-token-budget');
+		const aggregate = plan.applied.reduce(
+			(sum, term) => sum + tokenUpperBound(term),
+			0,
+		);
+		expect(aggregate).toBeLessThanOrEqual(DEEPGRAM_KEYTERM_TOKEN_LIMIT);
+	});
+
+	it('caps Deepgram keywords models at the entry limit', () => {
+		const input = manyTerms(DEEPGRAM_KEYWORDS_LIMIT + 25);
 		const plan = planDictionaryBias(
 			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 			'nova-2',
 			input,
 		);
-		expect(plan.applied).toEqual(input);
-		expect(plan.omitted).toEqual([]);
+		expect(plan.applied).toHaveLength(DEEPGRAM_KEYWORDS_LIMIT);
+		expect(plan.omitted).toHaveLength(25);
+		expect(plan.reason).toBe('term-limit');
 	});
 
 	it('drops the whole dictionary for a Deepgram Whisper model', () => {
@@ -148,7 +206,7 @@ describe('planDictionaryBias', () => {
 			input,
 		);
 		expect(plan.reason).toBe('prompt-window');
-		expect(estimateTokens(plan.applied.join(', '))).toBeLessThanOrEqual(
+		expect(tokenUpperBound(plan.applied.join(', '))).toBeLessThanOrEqual(
 			WHISPER_PROMPT_TOKEN_LIMIT,
 		);
 	});
@@ -189,6 +247,15 @@ describe('describeDictionaryOmission', () => {
 		});
 		expect(message).toContain(String(DEEPGRAM_KEYTERM_LIMIT));
 		expect(message).toContain(String(DEEPGRAM_KEYTERM_LIMIT + 5));
+	});
+
+	it('names the keyterm token budget when long terms did not fit', () => {
+		const message = describeDictionaryOmission({
+			applied: ['a'],
+			omitted: ['b'],
+			reason: 'keyterm-token-budget',
+		});
+		expect(message).toContain(String(DEEPGRAM_KEYTERM_TOKEN_LIMIT));
 	});
 
 	it('explains the prompt window when terms did not fit', () => {

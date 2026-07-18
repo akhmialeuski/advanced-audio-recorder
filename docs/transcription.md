@@ -213,14 +213,17 @@ Names, abbreviations, and domain jargon are the words an engine mishears most of
 Each engine consumes the list the way its own API supports:
 
 - **Deepgram Nova-3** sends each term as a `keyterm` query parameter, Deepgram's keyterm prompting.
-- **Deepgram Nova-2 and older** (Nova, Enhanced, Base) send each term as a `keywords` parameter, Deepgram's keyword boosting.
+- **Deepgram Nova-2 and older** (Nova, Enhanced, Base) send each term as a `keywords` parameter, Deepgram's keyword boosting. Keyword boosting favors single words, so multi-word entries bias most reliably on Nova-3, Gemini, and Whisper rather than here.
 - **Whisper API and local whisper.cpp** send the terms as the recognition prompt, the OpenAI `prompt` field and the whisper.cpp `--prompt` flag respectively; for the local engine that flag is placed before your extra args, so a `--prompt` you supply yourself still wins.
 - **Google Gemini** folds the terms into the instruction text sent alongside the audio.
 
-Two provider limits are enforced so a request never carries terms the engine would reject or silently ignore, and whenever some terms are left out a notice tells you it happened:
+Provider request limits are enforced so a request never carries terms the engine would reject or silently ignore, and whenever some terms are left out a notice tells you it happened:
 
-- **Deepgram accepts at most 100 keyterms** in one request on Nova-3, so a longer glossary is trimmed to the first 100 terms.
+- **Deepgram Nova-3 accepts at most 100 keyterms and 500 keyterm tokens** in one request, so a longer glossary is trimmed to the first terms that fit both bounds; several long multi-word terms can reach the token limit well before 100 entries.
+- **Deepgram Nova-2 and older accept at most 100 keywords** in one request, so a longer glossary is trimmed to the first 100 terms.
 - **The Whisper prompt holds only about 224 tokens**, so a long list is trimmed to the terms that fit; the OpenAI API and local whisper.cpp share this bound.
+
+Term length is measured conservatively (by byte count) so a glossary is never reported as applied while the engine quietly rejects or drops it. Short abbreviations, punctuation, and non-Latin scripts such as Cyrillic cost more tokens than their character count suggests, so with those a few terms fewer may fit than a plain character count would imply.
 
 Deepgram's biasing depends on the selected **Deepgram model**, which is worth remembering when you change it:
 
