@@ -222,4 +222,25 @@ export class CapturingSetting {
 		callback(button);
 		return this;
 	}
+	addExtraButton(callback: (button: unknown) => void): this {
+		// Icon-only action button (e.g. add/remove profile). Chainable no-op:
+		// the callback wires setIcon/setTooltip/onClick, none of which the
+		// render tests assert, so the stub only needs to be invokable.
+		const button = {
+			setIcon() {
+				return this;
+			},
+			setTooltip() {
+				return this;
+			},
+			setDisabled() {
+				return this;
+			},
+			onClick() {
+				return this;
+			},
+		};
+		callback(button);
+		return this;
+	}
 }

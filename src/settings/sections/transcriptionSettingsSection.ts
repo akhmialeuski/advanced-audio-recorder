@@ -48,8 +48,13 @@ import {
 	effectiveDiarize,
 	isProviderAvailableOnPlatform,
 	providerSupportsDiarization,
-	providerSupportsDictionary,
 } from '../../transcription/providers/capabilities';
+import {
+	createDictionaryProfile,
+	findProfile,
+	removeProfile,
+} from '../dictionaryProfiles';
+import { Setting } from 'obsidian';
 
 /**
  * Renders the full transcription settings section.
@@ -124,22 +129,7 @@ export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
 		set: (v) => (s.transcriptionWordTimestamps = v),
 	});
 
-	// A custom dictionary biases recognition toward the listed names and terms.
-	// Greyed out for an engine that cannot bias, so the terms are never sent and
-	// silently dropped - the same disable-and-explain treatment as diarization.
-	const canUseDictionary = providerSupportsDictionary(
-		s.transcriptionProvider,
-	);
-	addTextArea(ctx, {
-		name: 'Transcription dictionary',
-		desc: canUseDictionary
-			? 'One term per line: names, abbreviations, and domain terms the engine should prefer. Injected into each transcription request to bias recognition. For Deepgram this also depends on the model, and a run reports any terms it could not apply.'
-			: 'Not supported by the selected engine.',
-		get: () => s.transcriptionDictionary,
-		set: (v) => (s.transcriptionDictionary = v),
-		rows: 6,
-		disabled: !canUseDictionary,
-	});
+	renderDictionaryProfiles(ctx);
 
 	// Cloud engines only: a hung network request is bounded by this limit. Local
 	// whisper.cpp runs no HTTP request, so the timeout does not apply to it.
@@ -169,6 +159,97 @@ export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
 
 	renderTranscriptOutputSection(ctx);
 	renderLlmSection(ctx);
+}
+
+/**
+ * Renders the dictionary-profile manager: a selector plus a single editor for
+ * the chosen profile's name and terms, with add and remove. The editor is
+ * engine-independent (a profile is just stored text); whether and how the terms
+ * bias recognition is decided at transcription time by planDictionaryBias. The
+ * per-run profile (or None) is chosen in the Transcribe dialog and remembered.
+ * @param ctx - The section context (container plus save/rerender hooks)
+ */
+function renderDictionaryProfiles(ctx: SettingsSectionContext): void {
+	const s = ctx.settings;
+	const profiles = s.transcriptionDictionaryProfiles;
+	addHeading(ctx, 'Dictionary profiles');
+
+	// The profile edited here is the persisted run selection when that is a real
+	// profile, otherwise the first profile (shown for editing without changing a
+	// stored None default until the user actually picks from the selector).
+	const editingId = findProfile(profiles, s.transcriptionDictionaryProfileId)
+		? s.transcriptionDictionaryProfileId
+		: (profiles[0]?.id ?? '');
+
+	const selector = new Setting(ctx.containerEl)
+		.setName('Profile')
+		.setDesc(
+			'Named glossaries of names, abbreviations, and domain terms. Pick one, ' +
+				'or None, per run in the Transcribe dialog; the last pick is remembered. ' +
+				'Whether the terms bias recognition depends on the selected engine, and ' +
+				'for Deepgram on the model; a run reports any terms it could not apply.',
+		);
+	if (profiles.length > 0) {
+		selector.addDropdown((dropdown) => {
+			for (const profile of profiles) {
+				dropdown.addOption(profile.id, profile.name);
+			}
+			dropdown.setValue(editingId).onChange(async (id) => {
+				// Selecting a profile to edit also makes it the run default.
+				s.transcriptionDictionaryProfileId = id;
+				await ctx.save();
+				ctx.rerender();
+			});
+		});
+	}
+	selector.addExtraButton((button) =>
+		button
+			.setIcon('plus')
+			.setTooltip('Add profile')
+			.onClick(async () => {
+				const created = createDictionaryProfile('New profile');
+				s.transcriptionDictionaryProfiles = [...profiles, created];
+				// Select the new profile so its fields open for editing.
+				s.transcriptionDictionaryProfileId = created.id;
+				await ctx.save();
+				ctx.rerender();
+			}),
+	);
+	if (profiles.length > 0) {
+		selector.addExtraButton((button) =>
+			button
+				.setIcon('trash')
+				.setTooltip('Remove profile')
+				.onClick(async () => {
+					const next = removeProfile(profiles, editingId);
+					s.transcriptionDictionaryProfiles = next;
+					// Fall back to the first remaining profile, or None.
+					s.transcriptionDictionaryProfileId = next[0]?.id ?? '';
+					await ctx.save();
+					ctx.rerender();
+				}),
+		);
+	}
+
+	const selected = findProfile(profiles, editingId);
+	if (!selected) {
+		// Empty list: the Add button above creates the first profile.
+		return;
+	}
+	addText(ctx, {
+		name: 'Profile name',
+		// Name and terms edits mutate the live profile and save debounced, so the
+		// caret is kept; the selector label refreshes on the next re-render.
+		get: () => selected.name,
+		set: (v) => (selected.name = v),
+	});
+	addTextArea(ctx, {
+		name: 'Terms',
+		desc: 'One term per line. A term may contain spaces; blank lines and case-insensitive duplicates are ignored.',
+		get: () => selected.terms,
+		set: (v) => (selected.terms = v),
+		rows: 6,
+	});
 }
 
 /** Whisper API engine fields (chunk size, base URL, key, model). */

@@ -143,7 +143,7 @@ const SETTINGS_SEARCH_ALIASES: string[] = [
 	'Language',
 	'Speaker diarization',
 	'Word-level timestamps',
-	'Transcription dictionary',
+	'Dictionary profiles',
 	'Request timeout',
 	'Upload chunk size',
 	'Whisper API key',

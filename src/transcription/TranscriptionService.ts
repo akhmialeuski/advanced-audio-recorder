@@ -49,6 +49,7 @@ import {
 	describeDictionaryOmission,
 	planDictionaryBias,
 } from './dictionaryBias';
+import { resolveDictionaryTerms } from '../settings/dictionaryProfiles';
 import { createLlmProvider, createTranscriptionProvider } from './factories';
 import { effectiveDiarize } from './providers/capabilities';
 import type { LlmProvider } from './llm/LlmProvider';
@@ -148,16 +149,17 @@ export class TranscriptionService {
 			settings.transcriptionProvider,
 			settings.transcriptionDiarize,
 		);
-		// Plan the dictionary once: the terms actually sent depend on the engine
-		// and, for Deepgram, the model. Terms stored while a biasing engine was
-		// selected are dropped for one that cannot bias, an over-limit list is
-		// trimmed to the provider's cap, and a Whisper prompt is bounded to its
-		// token window, so a request never carries terms the provider would
-		// reject or silently ignore. Whatever is dropped is surfaced below.
+		// Plan the dictionary once: resolve the selected profile's terms (empty
+		// for None or a stale id), then decide what the engine actually sends.
+		// The terms depend on the engine and, for Deepgram, the model. Terms are
+		// dropped for an engine that cannot bias, an over-limit list is trimmed
+		// to the provider's cap, and a Whisper prompt is bounded to its token
+		// window, so a request never carries terms the provider would reject or
+		// silently ignore. Whatever is dropped is surfaced below.
 		const dictionaryPlan = planDictionaryBias(
 			settings.transcriptionProvider,
 			settings.deepgramModel,
-			parseDictionary(settings.transcriptionDictionary),
+			parseDictionary(resolveDictionaryTerms(settings)),
 		);
 		const dictionaryNotice = describeDictionaryOmission(dictionaryPlan);
 		if (dictionaryNotice) {

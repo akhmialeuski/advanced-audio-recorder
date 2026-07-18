@@ -158,6 +158,20 @@ export function createPerPlatformDefaults(): PlatformScopedSettingsMap {
 }
 
 /**
+ * A named custom-dictionary glossary selectable per transcription run. Several
+ * profiles let a user keep separate term lists for different meeting types
+ * (standup, legal, medical) instead of one merged glossary that dilutes the bias.
+ */
+export interface DictionaryProfile {
+	/** Stable id (crypto.randomUUID); selection persists by id, not by name. */
+	id: string;
+	/** Display name shown in the settings editor and the run dialog. */
+	name: string;
+	/** One term per line; parsed and biased exactly like the legacy field. */
+	terms: string;
+}
+
+/**
  * Plugin settings interface.
  */
 export interface AudioRecorderSettings {
@@ -250,11 +264,10 @@ export interface AudioRecorderSettings {
 	transcriptionDiarize: boolean;
 	/** Request word-level timestamps when supported */
 	transcriptionWordTimestamps: boolean;
-	/**
-	 * Custom dictionary: names, abbreviations, and domain terms (one per line)
-	 * injected into each transcription request to bias recognition toward them.
-	 */
-	transcriptionDictionary: string;
+	/** Named custom-dictionary profiles (add/edit/remove in the settings tab). */
+	transcriptionDictionaryProfiles: DictionaryProfile[];
+	/** Id of the profile applied to a run; '' means None (no biasing terms). */
+	transcriptionDictionaryProfileId: string;
 	/** Upload size limit per chunk, in megabytes (Whisper API) */
 	transcriptionChunkMb: number;
 	/** Per-request transcription timeout, in minutes (a hung request fails after this) */
@@ -456,7 +469,8 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	transcriptionLanguage: 'auto',
 	transcriptionDiarize: false,
 	transcriptionWordTimestamps: false,
-	transcriptionDictionary: '',
+	transcriptionDictionaryProfiles: [],
+	transcriptionDictionaryProfileId: '',
 	transcriptionChunkMb: DEFAULT_TRANSCRIBE_CHUNK_MB,
 	transcriptionTimeoutMinutes: DEFAULT_TRANSCRIPTION_TIMEOUT_MINUTES,
 	whisperApiBaseUrl: DEFAULT_WHISPER_API_BASE_URL,

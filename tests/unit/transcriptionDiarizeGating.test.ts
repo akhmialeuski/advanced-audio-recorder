@@ -155,8 +155,34 @@ async function runWithDictionary(
 		() =>
 			mergeSettings({
 				transcriptionProvider: engineId,
-				transcriptionDictionary: dictionary,
+				// The dictionary now travels through the selected profile.
+				transcriptionDictionaryProfiles: [
+					{ id: 'p1', name: 'Test', terms: dictionary },
+				],
+				transcriptionDictionaryProfileId: 'p1',
 				...(deepgramModel ? { deepgramModel } : {}),
+			}),
+		{ createProvider: () => provider },
+	);
+	await service.run(audioFile, { notePathForLinks: 'note.md' });
+	return provider;
+}
+
+/** Runs a transcription with an explicit selected profile id. */
+async function runWithProfileId(
+	engineId: TranscriptionProviderId,
+	profileId: string,
+): Promise<TranscriptionProvider & { lastOptions: TranscribeOptions | null }> {
+	const provider = makeProvider();
+	const service = new TranscriptionService(
+		makeApp(),
+		() =>
+			mergeSettings({
+				transcriptionProvider: engineId,
+				transcriptionDictionaryProfiles: [
+					{ id: 'p1', name: 'Test', terms: 'Kubernetes' },
+				],
+				transcriptionDictionaryProfileId: profileId,
 			}),
 		{ createProvider: () => provider },
 	);
@@ -223,6 +249,22 @@ describe('TranscriptionService dictionary passthrough', () => {
 		const applied = provider.lastOptions?.dictionary ?? [];
 		expect(applied.length).toBeGreaterThan(0);
 		expect(applied.length).toBeLessThan(100);
+	});
+
+	it('sends no dictionary when None is selected', async () => {
+		const provider = await runWithProfileId(
+			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			'',
+		);
+		expect(provider.lastOptions?.dictionary).toBeUndefined();
+	});
+
+	it('sends no dictionary when the selected profile no longer exists', async () => {
+		const provider = await runWithProfileId(
+			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			'missing',
+		);
+		expect(provider.lastOptions?.dictionary).toBeUndefined();
 	});
 });
 
