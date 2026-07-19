@@ -482,22 +482,22 @@ function renderTranscriptOutputSection(ctx: SettingsSectionContext): void {
 		set: (v) => (s.transcriptSpeakerFormat = v || '**{speaker}**'),
 		disabled: !diarizes,
 	});
-	// Not gated on diarization: the registry is vault-level data used by the
-	// Rename speakers dialog, which also works on recordings transcribed
-	// before the engine or the toggle changed.
-	addTextArea(ctx, {
-		name: 'Participants',
-		desc: 'Known participant names (one per line), suggested when renaming speakers. Names applied in the rename dialog are added automatically.',
-		get: () => s.transcriptionParticipants,
-		set: (v) => (s.transcriptionParticipants = v),
-		rows: 4,
-	});
 	addText(ctx, {
 		name: 'Line format',
 		desc: 'Arrangement of {timestamp} {speaker} {text}.',
 		get: () => s.transcriptLineFormat,
 		set: (v) =>
 			(s.transcriptLineFormat = v || '{timestamp} {speaker} {text}'),
+	});
+	// Not gated on diarization: renaming acts on transcripts that already
+	// exist, including recordings transcribed before the engine changed.
+	// Participant profiles are created and filled from the dialog, so no
+	// roster field lives here.
+	addToggle(ctx, {
+		name: 'Rename speakers',
+		desc: 'Add a "Rename speakers" action to replace diarized labels (Speaker 1) with participant names in an existing transcript.',
+		get: () => s.transcriptionSpeakerRenameEnabled,
+		set: (v) => (s.transcriptionSpeakerRenameEnabled = v),
 	});
 }
 

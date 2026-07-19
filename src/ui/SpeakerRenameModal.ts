@@ -1,38 +1,42 @@
 /**
- * Modal that assigns display names to the speakers of a diarized
- * recording ("Speaker 1" -> "Alex"). The roster comes from the recording's
- * speaker sidecar (written by the last diarized transcription), one text
- * input per speaker with suggestions from the per-vault participant
- * registry. Applying persists the mapping to the sidecar, rewrites the
- * transcript outputs that already exist (notes and JSON/SRT/VTT/TXT
- * sidecar files), and adds new names to the registry so they are
- * suggested for the next recording.
+ * Manual dialog that replaces the diarized labels of one recording
+ * ("Speaker 1" -> "Alex") with participant names. It reads the current
+ * speakers straight out of the recording's existing transcript outputs (no
+ * stored state), offers a participant profile whose names feed the input
+ * suggestions, and on apply rewrites only this recording's transcript: the
+ * lines in referencing notes whose timecode link resolves to this audio, plus
+ * the transcript sidecar files next to it. Merging two speakers into one name
+ * is rejected for now, and a note without timecode links is only touched after
+ * the user opts in.
  * @module ui/SpeakerRenameModal
  */
 
 import { Modal, Notice, Setting } from 'obsidian';
-import type { App, TFile } from 'obsidian';
+import type { App, DropdownComponent, TFile } from 'obsidian';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
-import type { SpeakerNameStore } from '../speakers/SpeakerNameStore';
 import {
-	addParticipants,
-	parseParticipants,
-	speakerRenames,
-	type SpeakerNames,
-} from '../speakers/speakerNameModel';
+	addParticipantsToProfile,
+	addSpeakerProfile,
+	findSpeakerProfile,
+} from '../settings/speakerProfiles';
+import {
+	buildSpeakerRenames,
+	duplicateAssignedNames,
+	type SpeakerNameEntry,
+} from '../speakers/speakerRename';
 import {
 	applySpeakerRenamesToVault,
+	inspectAudioTranscript,
+	type AudioTranscriptInspection,
 	type SpeakerRenameApplyResult,
 } from '../speakers/applySpeakerRenames';
 import { ParticipantSuggest } from './ParticipantSuggest';
 
 /** Collaborators the dialog needs, injected by the action registry. */
 export interface SpeakerRenameModalOptions {
-	/** Speaker-name persistence shared with transcription and the player. */
-	store: SpeakerNameStore;
 	/** Returns current plugin settings. */
 	getSettings: () => AudioRecorderSettings;
-	/** Persists settings after the participant registry gained new names. */
+	/** Persists settings after a profile was created or extended. */
 	saveSettings: () => Promise<void>;
 }
 
@@ -40,11 +44,17 @@ export interface SpeakerRenameModalOptions {
  * Speaker naming dialog for a single recording.
  */
 export class SpeakerRenameModal extends Modal {
-	/** Sidecar state loaded on open; null until the async load finishes. */
-	private stored: SpeakerNames | null = null;
-	/** Name input per original speaker label, in roster order. */
+	/** Transcript inspection loaded on open; null until the async load runs. */
+	private inspection: AudioTranscriptInspection | null = null;
+	/** Name input per detected speaker, in roster order. */
 	private readonly inputs = new Map<string, HTMLInputElement>();
+	/** Id of the participant profile feeding suggestions ('' means none). */
+	private selectedProfileId = '';
+	/** Whether to rewrite notes that carry no timecode links to scope by. */
+	private allowBroad = false;
 	private applying = false;
+	private profileDropdown: DropdownComponent | null = null;
+	private newProfileInput: HTMLInputElement | null = null;
 
 	constructor(
 		app: App,
@@ -60,13 +70,18 @@ export class SpeakerRenameModal extends Modal {
 	}
 
 	/**
-	 * Loads the sidecar and builds the dialog: one name field per detected
-	 * speaker, or an explanation when the recording has no speaker roster
-	 * yet.
+	 * Reads the recording's current speakers and builds the dialog: a profile
+	 * picker plus one name field per speaker, or an explanation when the
+	 * recording has no diarized transcript to rename.
 	 */
 	private async render(): Promise<void> {
-		const stored = await this.options.store.get(this.file.path);
-		this.stored = stored;
+		const settings = this.options.getSettings();
+		const inspection = await inspectAudioTranscript(
+			this.app,
+			this.file,
+			settings.transcriptSpeakerFormat,
+		);
+		this.inspection = inspection;
 		const { contentEl } = this;
 		contentEl.empty();
 		this.inputs.clear();
@@ -75,10 +90,10 @@ export class SpeakerRenameModal extends Modal {
 			text: `Source: ${this.file.name}`,
 		});
 
-		if (stored.speakers.length === 0) {
+		if (inspection.roster.length === 0) {
 			contentEl.createEl('p', {
 				text:
-					'No speakers are recorded for this audio file yet. ' +
+					'No speakers were found in this recording transcript. ' +
 					'Transcribe it with speaker diarization first.',
 			});
 			const actions = contentEl.createDiv({
@@ -91,18 +106,33 @@ export class SpeakerRenameModal extends Modal {
 			return;
 		}
 
-		for (const label of stored.speakers) {
+		this.renderProfilePicker(settings);
+
+		for (const label of inspection.roster) {
 			new Setting(contentEl)
 				.setName(label)
 				.setDesc('Leave empty to keep the original label.')
 				.addText((text) => {
-					text.setValue(stored.names[label] ?? '').setPlaceholder(
-						label,
-					);
+					text.setPlaceholder(label);
 					this.inputs.set(label, text.inputEl);
 					new ParticipantSuggest(this.app, text.inputEl, () =>
-						this.participantPool(),
+						this.suggestionPool(),
 					);
+				});
+		}
+
+		if (inspection.hasUnscopableNote) {
+			new Setting(contentEl)
+				.setName('Rename in notes without timecodes')
+				.setDesc(
+					'A transcript here has no timecode links to identify this ' +
+						'recording, so enabling this rewrites every matching ' +
+						'label in those notes.',
+				)
+				.addToggle((toggle) => {
+					toggle
+						.setValue(this.allowBroad)
+						.onChange((value) => (this.allowBroad = value));
 				});
 		}
 
@@ -121,71 +151,123 @@ export class SpeakerRenameModal extends Modal {
 	}
 
 	/**
-	 * Names offered by the input suggestions: the per-vault participant
-	 * registry plus any names already stored for this recording.
+	 * Renders the participant-profile picker and the inline profile creator.
+	 * The chosen profile's names feed the per-speaker input suggestions.
+	 * @param settings - Current plugin settings
 	 */
-	private participantPool(): string[] {
-		const settings = this.options.getSettings();
-		const pool = parseParticipants(settings.transcriptionParticipants);
-		const known = new Set(pool);
-		for (const name of Object.values(this.stored?.names ?? {})) {
-			if (!known.has(name)) {
-				known.add(name);
-				pool.push(name);
-			}
-		}
-		return pool;
+	private renderProfilePicker(settings: AudioRecorderSettings): void {
+		new Setting(this.contentEl)
+			.setName('Participant profile')
+			.setDesc(
+				'Suggests names as you type; applied names are added to it.',
+			)
+			.addDropdown((dropdown) => {
+				dropdown.addOption('', 'None');
+				for (const profile of settings.transcriptionSpeakerProfiles) {
+					dropdown.addOption(profile.id, profile.name);
+				}
+				dropdown.setValue(this.selectedProfileId);
+				dropdown.onChange((value) => (this.selectedProfileId = value));
+				this.profileDropdown = dropdown;
+			});
+		new Setting(this.contentEl)
+			.setName('New profile')
+			.addText((text) => {
+				text.setPlaceholder('Profile name');
+				this.newProfileInput = text.inputEl;
+			})
+			.addButton((button) => {
+				button.setButtonText('Create').onClick(() => {
+					void this.createProfile();
+				});
+			});
 	}
 
 	/**
-	 * Persists the entered names, rewrites existing outputs (notes and
-	 * transcript sidecar files), and records new names in the participant
-	 * registry. Reports what was updated in a notice.
+	 * Names offered by the input suggestions: the participants of the selected
+	 * profile, or none when "None" is picked.
+	 */
+	private suggestionPool(): string[] {
+		const settings = this.options.getSettings();
+		return (
+			findSpeakerProfile(
+				settings.transcriptionSpeakerProfiles,
+				this.selectedProfileId,
+			)?.participants ?? []
+		);
+	}
+
+	/**
+	 * Creates a participant profile from the inline name field, selects it, and
+	 * adds it to the picker without rebuilding the dialog (so typed names are
+	 * kept).
+	 */
+	private async createProfile(): Promise<void> {
+		const name = this.newProfileInput?.value.trim() ?? '';
+		if (!name) {
+			return;
+		}
+		const settings = this.options.getSettings();
+		const profiles = addSpeakerProfile(
+			settings.transcriptionSpeakerProfiles,
+			name,
+		);
+		const created = profiles[profiles.length - 1];
+		if (!created) {
+			return;
+		}
+		settings.transcriptionSpeakerProfiles = profiles;
+		await this.options.saveSettings();
+		this.selectedProfileId = created.id;
+		this.profileDropdown?.addOption(created.id, created.name);
+		this.profileDropdown?.setValue(created.id);
+		if (this.newProfileInput) {
+			this.newProfileInput.value = '';
+		}
+		new Notice(`Profile "${created.name}" created.`);
+	}
+
+	/**
+	 * Validates the entered names, adds them to the selected profile, and
+	 * rewrites the recording's existing outputs. Reports what changed.
 	 */
 	private async apply(): Promise<void> {
-		const stored = this.stored;
-		if (!stored || this.applying) {
+		if (!this.inspection || this.applying) {
 			return;
 		}
 		this.applying = true;
 		try {
-			const names: Record<string, string> = {};
+			const entries: SpeakerNameEntry[] = [];
 			for (const [label, input] of this.inputs) {
-				const value = input.value.trim();
-				// An empty or identity value reverts to the original label.
-				if (value && value !== label) {
-					names[label] = value;
-				}
+				entries.push({ label, name: input.value });
 			}
-			const next: SpeakerNames = { speakers: stored.speakers, names };
-			const renames = speakerRenames(stored, next);
-			await this.options.store.set(this.file.path, next);
+			const duplicates = duplicateAssignedNames(entries);
+			if (duplicates.length > 0) {
+				new Notice(
+					`Two speakers cannot share a name (${duplicates.join(
+						', ',
+					)}). Give each a distinct name.`,
+				);
+				return;
+			}
+			const renames = buildSpeakerRenames(entries);
+			await this.rememberNames(entries);
+
+			if (renames.length === 0) {
+				new Notice('No speaker names to change.');
+				this.close();
+				return;
+			}
 
 			const settings = this.options.getSettings();
-			let applied: SpeakerRenameApplyResult = {
-				updatedNotes: 0,
-				updatedTranscriptFiles: 0,
-			};
-			if (renames.length > 0) {
-				applied = await applySpeakerRenamesToVault(
-					this.app,
-					this.file,
-					renames,
-					settings.transcriptSpeakerFormat,
-				);
-			}
-
-			// Names applied here become suggestions for the next recording.
-			const registry = addParticipants(
-				settings.transcriptionParticipants,
-				Object.values(names),
+			const applied = await applySpeakerRenamesToVault(
+				this.app,
+				this.file,
+				renames,
+				settings.transcriptSpeakerFormat,
+				{ allowBroad: this.allowBroad },
 			);
-			if (registry !== settings.transcriptionParticipants) {
-				settings.transcriptionParticipants = registry;
-				await this.options.saveSettings();
-			}
-
-			new Notice(this.describeOutcome(renames.length, applied));
+			new Notice(this.describeOutcome(applied));
 			this.close();
 		} catch (error) {
 			const message =
@@ -197,18 +279,39 @@ export class SpeakerRenameModal extends Modal {
 	}
 
 	/**
-	 * Builds the outcome notice: what was saved and how many existing
-	 * outputs were rewritten.
-	 * @param renameCount - Number of display-name changes
-	 * @param applied - Counts of rewritten notes and transcript files
+	 * Adds the entered names to the selected profile so they are suggested next
+	 * time. A no-op when no profile is selected or nothing new was entered.
+	 * @param entries - The dialog's per-speaker entries
 	 */
-	private describeOutcome(
-		renameCount: number,
-		applied: SpeakerRenameApplyResult,
-	): string {
-		if (renameCount === 0) {
-			return 'Speaker names saved.';
+	private async rememberNames(
+		entries: readonly SpeakerNameEntry[],
+	): Promise<void> {
+		if (!this.selectedProfileId) {
+			return;
 		}
+		const names = entries
+			.map((entry) => entry.name.trim())
+			.filter((name) => name.length > 0);
+		if (names.length === 0) {
+			return;
+		}
+		const settings = this.options.getSettings();
+		const profiles = addParticipantsToProfile(
+			settings.transcriptionSpeakerProfiles,
+			this.selectedProfileId,
+			names,
+		);
+		if (profiles !== settings.transcriptionSpeakerProfiles) {
+			settings.transcriptionSpeakerProfiles = profiles;
+			await this.options.saveSettings();
+		}
+	}
+
+	/**
+	 * Builds the outcome notice from what the rename actually touched.
+	 * @param applied - Counts of rewritten notes and files
+	 */
+	private describeOutcome(applied: SpeakerRenameApplyResult): string {
 		const targets: string[] = [];
 		if (applied.updatedNotes > 0) {
 			const plural = applied.updatedNotes > 1 ? 's' : '';
@@ -220,10 +323,16 @@ export class SpeakerRenameModal extends Modal {
 				`${String(applied.updatedTranscriptFiles)} transcript file${plural}`,
 			);
 		}
+		const failed =
+			applied.failed > 0
+				? ` ${String(applied.failed)} output${
+						applied.failed > 1 ? 's' : ''
+					} could not be updated.`
+				: '';
 		if (targets.length === 0) {
-			return 'Speaker names saved. They will apply to the next transcription.';
+			return `No matching speaker labels were found to rename.${failed}`;
 		}
-		return `Speaker names saved; updated ${targets.join(' and ')}.`;
+		return `Renamed speakers in ${targets.join(' and ')}.${failed}`;
 	}
 
 	override onClose(): void {

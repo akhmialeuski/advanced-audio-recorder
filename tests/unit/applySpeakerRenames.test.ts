@@ -1,51 +1,177 @@
 /**
- * Tests for applying speaker renames across the vault: transcript sidecar
- * files next to the recording and notes that reference the recording.
+ * Tests for the vault-side speaker rename: reading a recording's roster out of
+ * its outputs and applying renames scoped to the recording (a note's lines
+ * whose timecode link resolves to the audio) plus its sidecar files.
  */
 
-import type { App, TFile } from 'obsidian';
-import { applySpeakerRenamesToVault } from 'src/speakers/applySpeakerRenames';
+import type { App, CachedMetadata, TFile } from 'obsidian';
+import {
+	applySpeakerRenamesToVault,
+	inspectAudioTranscript,
+} from 'src/speakers/applySpeakerRenames';
 
-const SPEAKER_FORMAT = '**{speaker}**';
+const FORMAT = '**{speaker}**';
+
+interface Ref {
+	link: string;
+	position: { start: { line: number }; end: { line: number } };
+}
+interface Cache {
+	links?: Ref[];
+	embeds?: Ref[];
+}
+
+const tf = (path: string): TFile =>
+	({ path, name: path.split('/').pop() ?? path }) as unknown as TFile;
 
 /**
- * Builds a fake App over an in-memory file map: getFileByPath resolves
- * paths present in the map, vault.process rewrites their content, and
- * resolvedLinks names the notes that reference the audio file.
+ * Builds a fake App over an in-memory file map with a metadata cache. Files
+ * resolve by basename, notes carry the given link/embed caches, and paths in
+ * `failPaths` throw on write to exercise the per-output resilience.
  */
 function makeApp(
 	files: Map<string, string>,
-	resolvedLinks: Record<string, Record<string, number>> = {},
+	opts: {
+		resolvedLinks?: Record<string, Record<string, number>>;
+		caches?: Record<string, Cache>;
+		failPaths?: Set<string>;
+	} = {},
 ): App {
+	const { resolvedLinks = {}, caches = {}, failPaths = new Set() } = opts;
 	return {
 		vault: {
-			getFileByPath: (path: string) =>
-				files.has(path) ? ({ path } as unknown as TFile) : null,
+			getFiles: (): TFile[] => [...files.keys()].map(tf),
+			getFileByPath: (path: string): TFile | null =>
+				files.has(path) ? tf(path) : null,
+			read: async (file: TFile): Promise<string> =>
+				files.get(file.path) ?? '',
 			process: async (
 				file: TFile,
 				fn: (content: string) => string,
 			): Promise<string> => {
+				if (failPaths.has(file.path)) {
+					throw new Error(`write failed: ${file.path}`);
+				}
 				const next = fn(files.get(file.path) ?? '');
 				files.set(file.path, next);
 				return next;
 			},
 		},
-		metadataCache: { resolvedLinks },
+		metadataCache: {
+			resolvedLinks,
+			getFileCache: (file: TFile): CachedMetadata | null =>
+				(caches[file.path] as CachedMetadata | undefined) ?? null,
+			getFirstLinkpathDest: (linkpath: string): TFile | null => {
+				for (const path of files.keys()) {
+					if (
+						path.split('/').pop() === linkpath ||
+						path === linkpath
+					) {
+						return tf(path);
+					}
+				}
+				return null;
+			},
+		},
 	} as unknown as App;
 }
 
-const audioFile = { path: 'audio/rec.wav' } as unknown as TFile;
-const renames = [{ from: 'Speaker 1', to: 'Alex' }];
+const audioFile = tf('audio/rec.wav');
+const renames = [
+	{ from: 'Speaker 1', to: 'Alex' },
+	{ from: 'Speaker 2', to: 'Bob' },
+];
+
+/** A note holding this recording's transcript plus another recording's. */
+function meetingNote(): { content: string; cache: Cache } {
+	const content = [
+		'![[rec.wav]]', // 0
+		'', // 1
+		'[00:00](rec.wav#t=0) **Speaker 1** hello', // 2
+		'[00:05](rec.wav#t=5) **Speaker 2** hi', // 3
+		'', // 4
+		'[00:00](other.wav#t=0) **Speaker 1** unrelated', // 5
+	].join('\n');
+	const cache: Cache = {
+		embeds: [
+			{
+				link: 'rec.wav',
+				position: { start: { line: 0 }, end: { line: 0 } },
+			},
+		],
+		links: [
+			{
+				link: 'rec.wav#t=0',
+				position: { start: { line: 2 }, end: { line: 2 } },
+			},
+			{
+				link: 'rec.wav#t=5',
+				position: { start: { line: 3 }, end: { line: 3 } },
+			},
+			{
+				link: 'other.wav#t=0',
+				position: { start: { line: 5 }, end: { line: 5 } },
+			},
+		],
+	};
+	return { content, cache };
+}
+
+describe('inspectAudioTranscript', () => {
+	it('reads the roster from sidecar files and scoped note lines', async () => {
+		const { content, cache } = meetingNote();
+		const files = new Map<string, string>([
+			['audio/rec.wav', ''],
+			['other.wav', ''],
+			['meeting.md', content],
+			['audio/rec.txt', '[0:00] Speaker 1: hi\n[0:05] Speaker 3: extra'],
+		]);
+		const app = makeApp(files, {
+			resolvedLinks: { 'meeting.md': { 'audio/rec.wav': 1 } },
+			caches: { 'meeting.md': cache },
+		});
+
+		const result = await inspectAudioTranscript(app, audioFile, FORMAT);
+		expect(result.roster).toEqual(['Speaker 1', 'Speaker 3', 'Speaker 2']);
+		expect(result.hasUnscopableNote).toBe(false);
+	});
+
+	it('flags a note whose transcript carries no timecode links', async () => {
+		const content = '![[rec.wav]]\n\n**Speaker 1** hi\n**Speaker 2** yo';
+		const cache: Cache = {
+			embeds: [
+				{
+					link: 'rec.wav',
+					position: { start: { line: 0 }, end: { line: 0 } },
+				},
+			],
+		};
+		const files = new Map<string, string>([
+			['audio/rec.wav', ''],
+			['meeting.md', content],
+		]);
+		const app = makeApp(files, {
+			resolvedLinks: { 'meeting.md': { 'audio/rec.wav': 1 } },
+			caches: { 'meeting.md': cache },
+		});
+
+		const result = await inspectAudioTranscript(app, audioFile, FORMAT);
+		expect(result.roster).toEqual(['Speaker 1', 'Speaker 2']);
+		expect(result.hasUnscopableNote).toBe(true);
+	});
+});
 
 describe('applySpeakerRenamesToVault', () => {
-	it('rewrites every existing transcript sidecar format', async () => {
+	it('rewrites sidecar files (including collision names) and scoped note lines', async () => {
+		const { content, cache } = meetingNote();
 		const files = new Map<string, string>([
+			['audio/rec.wav', ''],
+			['other.wav', ''],
+			['meeting.md', content],
 			[
 				'audio/rec.transcript.json',
 				JSON.stringify({
-					segments: [
-						{ start: 0, end: 1, text: 'hi', speaker: 'Speaker 1' },
-					],
+					segments: [{ speaker: 'Speaker 1', text: 'hi' }],
 					speakers: ['Speaker 1'],
 				}),
 			],
@@ -54,68 +180,110 @@ describe('applySpeakerRenamesToVault', () => {
 				'1\n00:00:00,000 --> 00:00:01,000\nSpeaker 1: hi',
 			],
 			[
-				'audio/rec.vtt',
-				'WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nSpeaker 1: hi',
+				'audio/rec_1.srt',
+				'1\n00:00:00,000 --> 00:00:01,000\nSpeaker 2: yo',
+			],
+		]);
+		const app = makeApp(files, {
+			resolvedLinks: { 'meeting.md': { 'audio/rec.wav': 1 } },
+			caches: { 'meeting.md': cache },
+		});
+
+		const result = await applySpeakerRenamesToVault(
+			app,
+			audioFile,
+			renames,
+			FORMAT,
+			{ allowBroad: false },
+		);
+
+		expect(result.updatedTranscriptFiles).toBe(3);
+		expect(result.updatedNotes).toBe(1);
+		expect(result.failed).toBe(0);
+		expect(files.get('audio/rec.transcript.json')).toContain('"Alex"');
+		expect(files.get('audio/rec.srt')).toContain('Alex: hi');
+		expect(files.get('audio/rec_1.srt')).toContain('Bob: yo');
+		const note = files.get('meeting.md') ?? '';
+		expect(note).toContain('**Alex** hello');
+		expect(note).toContain('**Bob** hi');
+		// The other recording's transcript in the same note is untouched.
+		expect(note).toContain('**Speaker 1** unrelated');
+	});
+
+	it('leaves an untimecoded note alone unless broad rewrite is allowed', async () => {
+		const content = '![[rec.wav]]\n\n**Speaker 1** hi';
+		const cache: Cache = {
+			embeds: [
+				{
+					link: 'rec.wav',
+					position: { start: { line: 0 }, end: { line: 0 } },
+				},
+			],
+		};
+		const build = (): Map<string, string> =>
+			new Map<string, string>([
+				['audio/rec.wav', ''],
+				['meeting.md', content],
+			]);
+
+		const scopedFiles = build();
+		const scoped = await applySpeakerRenamesToVault(
+			makeApp(scopedFiles, {
+				resolvedLinks: { 'meeting.md': { 'audio/rec.wav': 1 } },
+				caches: { 'meeting.md': cache },
+			}),
+			audioFile,
+			renames,
+			FORMAT,
+			{ allowBroad: false },
+		);
+		expect(scoped.updatedNotes).toBe(0);
+		expect(scopedFiles.get('meeting.md')).toBe(content);
+
+		const broadFiles = build();
+		const broad = await applySpeakerRenamesToVault(
+			makeApp(broadFiles, {
+				resolvedLinks: { 'meeting.md': { 'audio/rec.wav': 1 } },
+				caches: { 'meeting.md': cache },
+			}),
+			audioFile,
+			renames,
+			FORMAT,
+			{ allowBroad: true },
+		);
+		expect(broad.updatedNotes).toBe(1);
+		expect(broadFiles.get('meeting.md')).toContain('**Alex** hi');
+	});
+
+	it('logs and skips a failing output without aborting the rest', async () => {
+		const files = new Map<string, string>([
+			['audio/rec.wav', ''],
+			[
+				'audio/rec.srt',
+				'1\n00:00:00,000 --> 00:00:01,000\nSpeaker 1: hi',
 			],
 			['audio/rec.txt', '[0:00] Speaker 1: hi'],
 		]);
-		const app = makeApp(files);
+		const app = makeApp(files, { failPaths: new Set(['audio/rec.srt']) });
+		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
 		const result = await applySpeakerRenamesToVault(
 			app,
 			audioFile,
 			renames,
-			SPEAKER_FORMAT,
+			FORMAT,
+			{ allowBroad: false },
 		);
 
-		expect(result.updatedTranscriptFiles).toBe(4);
-		expect(files.get('audio/rec.transcript.json')).toContain('"Alex"');
-		expect(files.get('audio/rec.srt')).toContain('Alex: hi');
-		expect(files.get('audio/rec.vtt')).toContain('Alex: hi');
+		expect(result.failed).toBe(1);
+		expect(result.updatedTranscriptFiles).toBe(1);
 		expect(files.get('audio/rec.txt')).toBe('[0:00] Alex: hi');
-	});
-
-	it('rewrites notes that reference the audio and counts only changed ones', async () => {
-		const files = new Map<string, string>([
-			['meeting.md', '![[rec.wav]]\n\n[[rec#t=0|0:00]] **Speaker 1** hi'],
-			['linked-only.md', 'See ![[rec.wav]]'],
-		]);
-		const app = makeApp(files, {
-			'meeting.md': { 'audio/rec.wav': 1 },
-			'linked-only.md': { 'audio/rec.wav': 1 },
-			'unrelated.md': { 'other.wav': 1 },
-		});
-
-		const result = await applySpeakerRenamesToVault(
-			app,
-			audioFile,
-			renames,
-			SPEAKER_FORMAT,
-		);
-
-		expect(result.updatedNotes).toBe(1);
-		expect(files.get('meeting.md')).toContain('**Alex** hi');
-		expect(files.get('linked-only.md')).toBe('See ![[rec.wav]]');
-	});
-
-	it('skips missing sidecars and notes without touching anything', async () => {
-		const app = makeApp(new Map(), {
-			'gone.md': { 'audio/rec.wav': 1 },
-		});
-		const result = await applySpeakerRenamesToVault(
-			app,
-			audioFile,
-			renames,
-			SPEAKER_FORMAT,
-		);
-		expect(result).toEqual({
-			updatedNotes: 0,
-			updatedTranscriptFiles: 0,
-		});
+		warn.mockRestore();
 	});
 
 	it('is a no-op for an empty rename list', async () => {
 		const files = new Map<string, string>([
+			['audio/rec.wav', ''],
 			['audio/rec.txt', '[0:00] Speaker 1: hi'],
 		]);
 		const app = makeApp(files);
@@ -123,7 +291,8 @@ describe('applySpeakerRenamesToVault', () => {
 			app,
 			audioFile,
 			[],
-			SPEAKER_FORMAT,
+			FORMAT,
+			{ allowBroad: false },
 		);
 		expect(result.updatedTranscriptFiles).toBe(0);
 		expect(files.get('audio/rec.txt')).toBe('[0:00] Speaker 1: hi');

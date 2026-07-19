@@ -60,7 +60,6 @@ import { MediaEmbedShell } from './MediaEmbedShell';
 import type { MediaKindStore } from './MediaKindStore';
 import { shouldEnhance } from './playerMode';
 import type { MarkerStore } from '../markers/MarkerStore';
-import type { SpeakerNameStore } from '../speakers/SpeakerNameStore';
 import {
 	getEmbedRegistry,
 	EmbedRegistryOverride,
@@ -117,7 +116,6 @@ export class EnhancedPlayerRegistrar {
 	 * @param getSettings - Returns the current plugin settings
 	 * @param markerStore - Persistence for markers and chapters
 	 * @param mediaKindStore - Cross-session media-kind cache, if any
-	 * @param speakerNameStore - Persistence for speaker names, if any
 	 */
 	constructor(
 		private readonly plugin: Plugin,
@@ -125,7 +123,6 @@ export class EnhancedPlayerRegistrar {
 		private readonly getSettings: () => AudioRecorderSettings,
 		private readonly markerStore: MarkerStore,
 		private readonly mediaKindStore: MediaKindStore | null = null,
-		private readonly speakerNameStore: SpeakerNameStore | null = null,
 	) {}
 
 	/**
@@ -175,10 +172,6 @@ export class EnhancedPlayerRegistrar {
 			this.app.vault.on('rename', (file, oldPath) => {
 				if (file instanceof TFile && isAudioFile(file)) {
 					void this.markerStore.handleRename(oldPath, file.path);
-					void this.speakerNameStore?.handleRename(
-						oldPath,
-						file.path,
-					);
 					const kind = this.mediaKindCache.get(oldPath);
 					if (kind) {
 						this.mediaKindCache.delete(oldPath);
@@ -192,7 +185,6 @@ export class EnhancedPlayerRegistrar {
 			this.app.vault.on('delete', (file) => {
 				if (file instanceof TFile && isAudioFile(file)) {
 					void this.markerStore.handleDelete(file.path);
-					void this.speakerNameStore?.handleDelete(file.path);
 					this.mediaKindCache.delete(file.path);
 					this.mediaKindStore?.handleDelete(file.path);
 				}
@@ -229,7 +221,6 @@ export class EnhancedPlayerRegistrar {
 		// Persist any probe results from the final debounce window
 		this.mediaKindStore?.flush();
 		this.markerStore.clearCache();
-		this.speakerNameStore?.clearCache();
 		void this.decoder.close().catch(() => {
 			// Closing a context that never opened or already failed is
 			// non-fatal during teardown

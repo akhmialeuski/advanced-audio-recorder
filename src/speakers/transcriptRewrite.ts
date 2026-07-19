@@ -1,15 +1,18 @@
 /**
- * Pure rewriting of speaker names inside already-written transcript
- * outputs: note Markdown (rendered speaker fragments), SRT/VTT subtitle
- * bodies, plain-text transcripts, and transcript JSON sidecars. All
+ * Pure rewriting and reading of speaker names inside already-written
+ * transcript outputs: note Markdown (rendered speaker fragments), SRT/VTT
+ * subtitle bodies, plain-text transcripts, and transcript JSON sidecars. Note
+ * rewriting is line-scoped, so only the lines that belong to a given
+ * recording (identified by the caller through their timecode link) are
+ * touched, which keeps a second transcript in the same note untouched. All
  * replacements within one document happen simultaneously, so swapping two
- * names (A -> B while B -> A) can never chain one rename through another.
- * No DOM or I/O - everything here is unit tested directly.
+ * names (A -> B while B -> A) can never chain. No DOM or I/O; unit tested
+ * directly.
  * @module speakers/transcriptRewrite
  */
 
 import { renderSpeakerFragment } from '../transcription/transcriptFormat';
-import type { SpeakerRename } from './speakerNameModel';
+import type { SpeakerRename } from './speakerRename';
 
 /** Escapes a literal string for embedding in a RegExp. */
 function escapeRegExp(value: string): string {
@@ -17,9 +20,8 @@ function escapeRegExp(value: string): string {
 }
 
 /**
- * Builds a longest-first alternation of the mapped keys, so a name that
- * is a prefix of another ("Anna" / "Anna Lee") can never shadow the
- * longer match.
+ * Builds a longest-first alternation of the given keys, so a name that is a
+ * prefix of another ("Anna" / "Anna Lee") can never shadow the longer match.
  */
 function alternation(keys: Iterable<string>): string {
 	return [...keys]
@@ -40,11 +42,64 @@ function renameMap(renames: readonly SpeakerRename[]): Map<string, string> {
 }
 
 /**
- * Rewrites rendered speaker fragments in note Markdown. Each rename is
- * matched as the fully rendered fragment (the speaker template applied to
- * the old name, e.g. `**Speaker 1**`), so ordinary prose mentioning a
- * name is only touched when it looks exactly like a rendered speaker
- * label.
+ * Maps each rename onto its fully rendered speaker fragment (the speaker
+ * template applied to the name, e.g. `**Speaker 1**`), so ordinary prose is
+ * only touched when it looks exactly like a rendered speaker label.
+ */
+function fragmentMap(
+	speakerFormat: string,
+	renames: readonly SpeakerRename[],
+): Map<string, string> {
+	const fragments = new Map<string, string>();
+	for (const [from, to] of renameMap(renames)) {
+		const fromFragment = renderSpeakerFragment(speakerFormat, from);
+		const toFragment = renderSpeakerFragment(speakerFormat, to);
+		if (fromFragment && fromFragment !== toFragment) {
+			fragments.set(fromFragment, toFragment);
+		}
+	}
+	return fragments;
+}
+
+/**
+ * Rewrites rendered speaker fragments in note Markdown, but only on the lines
+ * the caller marks as belonging to this recording (the lines whose timecode
+ * link resolves to the audio). A second transcript in the same note, and any
+ * prose that merely looks like a speaker label, is left untouched.
+ * @param content - Note Markdown
+ * @param speakerFormat - Speaker template the transcript was rendered with
+ * @param renames - Display-name renames to apply
+ * @param audioLines - Zero-based indices of lines that belong to the audio
+ * @returns The rewritten content (unchanged when nothing matched)
+ */
+export function renameSpeakersInNoteLines(
+	content: string,
+	speakerFormat: string,
+	renames: readonly SpeakerRename[],
+	audioLines: ReadonlySet<number>,
+): string {
+	const fragments = fragmentMap(speakerFormat, renames);
+	if (fragments.size === 0 || audioLines.size === 0) {
+		return content;
+	}
+	const regex = new RegExp(alternation(fragments.keys()), 'g');
+	const lines = content.split('\n');
+	for (let index = 0; index < lines.length; index++) {
+		const line = lines[index];
+		if (line !== undefined && audioLines.has(index)) {
+			lines[index] = line.replace(
+				regex,
+				(match) => fragments.get(match) ?? match,
+			);
+		}
+	}
+	return lines.join('\n');
+}
+
+/**
+ * Rewrites rendered speaker fragments across the whole note, used only after
+ * the user confirms a rename on a transcript that carries no timecode links
+ * and therefore cannot be scoped to a single recording.
  * @param content - Note Markdown
  * @param speakerFormat - Speaker template the transcript was rendered with
  * @param renames - Display-name renames to apply
@@ -55,15 +110,7 @@ export function renameSpeakersInMarkdown(
 	speakerFormat: string,
 	renames: readonly SpeakerRename[],
 ): string {
-	const fragments = new Map<string, string>();
-	for (const rename of renameMap(renames)) {
-		const [from, to] = rename;
-		const fromFragment = renderSpeakerFragment(speakerFormat, from);
-		const toFragment = renderSpeakerFragment(speakerFormat, to);
-		if (fromFragment && fromFragment !== toFragment) {
-			fragments.set(fromFragment, toFragment);
-		}
-	}
+	const fragments = fragmentMap(speakerFormat, renames);
 	if (fragments.size === 0) {
 		return content;
 	}
@@ -95,9 +142,9 @@ export function renameSpeakersInSubtitles(
 }
 
 /**
- * Rewrites `[time] Speaker: ` prefixes in plain-text transcripts, anchored
- * to the timecode that starts each line so names inside spoken text are
- * left alone.
+ * Rewrites `[time] Speaker: ` prefixes in plain-text transcripts, anchored to
+ * the timecode that starts each line so names inside spoken text are left
+ * alone.
  * @param content - Plain-text transcript content
  * @param renames - Display-name renames to apply
  * @returns The rewritten content (unchanged when nothing matched)
@@ -135,23 +182,13 @@ export function renameSpeakersInTranscriptJson(
 	renames: readonly SpeakerRename[],
 ): string | null {
 	const map = renameMap(renames);
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(raw);
-	} catch {
-		return null;
-	}
-	if (
-		typeof parsed !== 'object' ||
-		parsed === null ||
-		!Array.isArray((parsed as { segments?: unknown }).segments)
-	) {
+	const document = parseTranscriptJson(raw);
+	if (!document) {
 		return null;
 	}
 	if (map.size === 0) {
 		return raw;
 	}
-	const document = parsed as Record<string, unknown>;
 	// Entries are handled defensively (a sidecar can be hand-edited): only
 	// object segments with a mapped string speaker are rewritten, everything
 	// else passes through untouched.
@@ -166,24 +203,185 @@ export function renameSpeakersInTranscriptJson(
 		}
 		return entry;
 	});
-	const speakers: string[] = [];
-	const seen = new Set<string>();
+	// Preserve the original key layout: only segments (and, when present, the
+	// derived speaker list) change.
+	const output: Record<string, unknown> = {
+		...document,
+		segments,
+		...(Array.isArray(document.speakers)
+			? { speakers: distinctSegmentSpeakers(segments) }
+			: {}),
+	};
+	return JSON.stringify(output, null, 2);
+}
+
+/**
+ * Builds a global regex that captures the speaker name out of a rendered
+ * speaker fragment, derived from the speaker template. Returns null when the
+ * template has no `{speaker}` token or no surrounding delimiter to bound the
+ * capture (a bare `{speaker}` cannot be located unambiguously).
+ * @param speakerFormat - Speaker template with a `{speaker}` token
+ */
+export function speakerFragmentExtractor(speakerFormat: string): RegExp | null {
+	const token = '{speaker}';
+	const index = speakerFormat.indexOf(token);
+	if (index < 0) {
+		return null;
+	}
+	const before = speakerFormat.slice(0, index);
+	const after = speakerFormat.slice(index + token.length);
+	if (before === '' && after === '') {
+		return null;
+	}
+	return new RegExp(
+		`${escapeRegExp(before)}(.+?)${escapeRegExp(after)}`,
+		'g',
+	);
+}
+
+/**
+ * Collects the distinct speaker names rendered on the note lines that belong
+ * to a recording, so the rename dialog can list the current speakers without
+ * any stored roster. Passing null for the line set scans the whole note, used
+ * for a transcript without timecode links that cannot be scoped. Empty when
+ * the speaker template carries no locatable delimiter.
+ * @param content - Note Markdown
+ * @param speakerFormat - Speaker template the transcript was rendered with
+ * @param audioLines - Zero-based indices of lines that belong to the audio, or
+ *   null to scan every line
+ * @returns Distinct speaker names in first-seen order
+ */
+export function extractNoteSpeakers(
+	content: string,
+	speakerFormat: string,
+	audioLines: ReadonlySet<number> | null,
+): string[] {
+	const extractor = speakerFragmentExtractor(speakerFormat);
+	if (!extractor) {
+		return [];
+	}
+	const speakers = new OrderedSet();
+	const lines = content.split('\n');
+	for (let index = 0; index < lines.length; index++) {
+		const line = lines[index];
+		if (
+			line === undefined ||
+			(audioLines !== null && !audioLines.has(index))
+		) {
+			continue;
+		}
+		extractor.lastIndex = 0;
+		let match: RegExpExecArray | null;
+		while ((match = extractor.exec(line)) !== null) {
+			const name = match[1]?.trim();
+			if (name) {
+				speakers.add(name);
+			}
+		}
+	}
+	return speakers.values();
+}
+
+/**
+ * Collects the distinct speaker names from an SRT/VTT subtitle body by reading
+ * the `Speaker: ` prefix off each cue text line (the line after a `-->` timing
+ * line).
+ * @param content - SRT or VTT file content
+ * @returns Distinct speaker names in first-seen order
+ */
+export function extractSubtitleSpeakers(content: string): string[] {
+	const speakers = new OrderedSet();
+	const lines = content.split('\n');
+	for (let index = 0; index < lines.length; index++) {
+		if (!(lines[index] ?? '').includes(' --> ')) {
+			continue;
+		}
+		const match = /^([^:\n]+): /.exec(lines[index + 1] ?? '');
+		if (match?.[1]) {
+			speakers.add(match[1]);
+		}
+	}
+	return speakers.values();
+}
+
+/**
+ * Collects the distinct speaker names from a plain-text transcript by reading
+ * the `[time] Speaker: ` prefix off each line.
+ * @param content - Plain-text transcript content
+ * @returns Distinct speaker names in first-seen order
+ */
+export function extractPlainTextSpeakers(content: string): string[] {
+	const speakers = new OrderedSet();
+	for (const line of content.split('\n')) {
+		const match = /^\[[^\]\n]*\] ([^:\n]+): /.exec(line);
+		if (match?.[1]) {
+			speakers.add(match[1]);
+		}
+	}
+	return speakers.values();
+}
+
+/**
+ * Collects the distinct speaker names from a transcript JSON sidecar, or null
+ * when the content is not a transcript-shaped document.
+ * @param raw - Raw JSON sidecar content
+ * @returns Distinct speaker names, or null when not a transcript JSON
+ */
+export function extractJsonSpeakers(raw: string): string[] | null {
+	const document = parseTranscriptJson(raw);
+	if (!document) {
+		return null;
+	}
+	return distinctSegmentSpeakers(document.segments as unknown[]);
+}
+
+/**
+ * Parses raw JSON and returns it only when it is a transcript-shaped document
+ * (an object with a `segments` array), otherwise null.
+ */
+function parseTranscriptJson(raw: string): Record<string, unknown> | null {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		return null;
+	}
+	if (
+		typeof parsed !== 'object' ||
+		parsed === null ||
+		!Array.isArray((parsed as { segments?: unknown }).segments)
+	) {
+		return null;
+	}
+	return parsed as Record<string, unknown>;
+}
+
+/** Distinct string speakers across segments, in first-seen order. */
+function distinctSegmentSpeakers(segments: readonly unknown[]): string[] {
+	const speakers = new OrderedSet();
 	for (const entry of segments) {
 		if (typeof entry !== 'object' || entry === null) {
 			continue;
 		}
 		const speaker = (entry as Record<string, unknown>).speaker;
-		if (typeof speaker === 'string' && !seen.has(speaker)) {
-			seen.add(speaker);
-			speakers.push(speaker);
+		if (typeof speaker === 'string') {
+			speakers.add(speaker);
 		}
 	}
-	// Preserve the original key layout: only segments (and, when present,
-	// the derived speaker list) change.
-	const output: Record<string, unknown> = {
-		...document,
-		segments,
-		...(Array.isArray(document.speakers) ? { speakers } : {}),
-	};
-	return JSON.stringify(output, null, 2);
+	return speakers.values();
+}
+
+/** Small insertion-ordered de-duplicating string collector. */
+class OrderedSet {
+	private readonly seen = new Set<string>();
+	private readonly order: string[] = [];
+	add(value: string): void {
+		if (!this.seen.has(value)) {
+			this.seen.add(value);
+			this.order.push(value);
+		}
+	}
+	values(): string[] {
+		return [...this.order];
+	}
 }

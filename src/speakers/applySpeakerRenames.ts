@@ -1,18 +1,30 @@
 /**
- * Applies speaker renames to outputs that already exist in the vault: the
- * transcript sidecar files next to the recording (JSON/SRT/VTT/TXT) and
- * every note that links or embeds the recording (found through the
- * metadata cache, so closed notes are covered too). Uses vault.process
- * for atomic note modification, mirroring the link-updater flow.
+ * Vault-side orchestration for the manual speaker rename. It discovers a
+ * recording's transcript outputs (the sidecar files next to it and the notes
+ * that reference it), reads the current speaker roster out of them so the
+ * dialog needs no stored state, and applies renames scoped to the recording:
+ * a note is rewritten only on the lines whose timecode link resolves to this
+ * audio. A transcript without such links cannot be scoped, so a broad rewrite
+ * of the whole note is offered only after the caller confirms. Each output is
+ * rewritten independently, so one failure is logged and skipped rather than
+ * aborting the rest.
  * @module speakers/applySpeakerRenames
  */
 
+import { parseLinktext } from 'obsidian';
 import type { App, TFile } from 'obsidian';
+import { PLUGIN_LOG_PREFIX } from '../constants';
 import { buildTranscriptFilePath } from '../transcription/transcriptOutput';
 import type { TranscriptFileFormat } from '../transcription/TranscriptTypes';
-import type { SpeakerRename } from './speakerNameModel';
+import { directoryOf } from '../utils/paths';
+import type { SpeakerRename } from './speakerRename';
 import {
+	extractJsonSpeakers,
+	extractNoteSpeakers,
+	extractPlainTextSpeakers,
+	extractSubtitleSpeakers,
 	renameSpeakersInMarkdown,
+	renameSpeakersInNoteLines,
 	renameSpeakersInPlainText,
 	renameSpeakersInSubtitles,
 	renameSpeakersInTranscriptJson,
@@ -26,20 +38,149 @@ const TRANSCRIPT_FILE_FORMATS: readonly TranscriptFileFormat[] = [
 	'txt',
 ];
 
+/** A transcript sidecar file discovered next to a recording. */
+interface TranscriptSidecar {
+	file: TFile;
+	format: TranscriptFileFormat;
+}
+
 /** Counts of what a vault-wide rename application actually touched. */
 export interface SpeakerRenameApplyResult {
 	/** Notes whose rendered transcript was updated. */
 	updatedNotes: number;
 	/** Transcript sidecar files that were updated. */
 	updatedTranscriptFiles: number;
+	/** Outputs whose rewrite threw and were skipped. */
+	failed: number;
+}
+
+/** Escapes a literal string for embedding in a RegExp. */
+function escapeRegExp(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Whether a parsed link subpath is a timecode subpath (`#t=<seconds>`). */
+function isTimecodeSubpath(subpath: string): boolean {
+	return subpath.replace(/^#/, '').startsWith('t=');
 }
 
 /**
- * Rewrites one transcript sidecar file for its format. JSON is parsed and
- * renamed structurally; subtitle and plain-text formats rewrite their
- * speaker prefixes.
+ * Returns the zero-based line indices of a note that belong to a recording,
+ * meaning a link or embed on that line resolves to the audio through a
+ * timecode subpath. The player embed itself (no timecode) is deliberately
+ * excluded, so a note that only embeds the recording yields no lines.
+ * @param app - Obsidian App
+ * @param note - Note to inspect
+ * @param audioPath - Vault path of the audio file
  */
-function rewriteTranscriptContent(
+function audioLineIndices(
+	app: App,
+	note: TFile,
+	audioPath: string,
+): Set<number> {
+	const lines = new Set<number>();
+	const cache = app.metadataCache.getFileCache(note);
+	if (!cache) {
+		return lines;
+	}
+	const refs = [...(cache.links ?? []), ...(cache.embeds ?? [])];
+	for (const ref of refs) {
+		const { path, subpath } = parseLinktext(ref.link);
+		if (!isTimecodeSubpath(subpath)) {
+			continue;
+		}
+		const dest = app.metadataCache.getFirstLinkpathDest(path, note.path);
+		if (dest?.path !== audioPath) {
+			continue;
+		}
+		for (
+			let line = ref.position.start.line;
+			line <= ref.position.end.line;
+			line++
+		) {
+			lines.add(line);
+		}
+	}
+	return lines;
+}
+
+/**
+ * Finds the notes that reference a recording (through the metadata cache, so
+ * closed notes are covered too).
+ * @param app - Obsidian App
+ * @param audioPath - Vault path of the audio file
+ */
+function findReferencingNotes(app: App, audioPath: string): TFile[] {
+	const notes: TFile[] = [];
+	for (const [notePath, links] of Object.entries(
+		app.metadataCache.resolvedLinks,
+	)) {
+		if (audioPath in links) {
+			const note = app.vault.getFileByPath(notePath);
+			if (note) {
+				notes.push(note);
+			}
+		}
+	}
+	return notes;
+}
+
+/**
+ * Finds the transcript sidecar files a recording actually has next to it,
+ * matching the canonical name and the `_<n>` collision suffix the writer uses,
+ * so a transcript written to a deduplicated path is still found.
+ * @param app - Obsidian App
+ * @param audioFile - Recording whose sidecars are sought
+ */
+function findTranscriptSidecarFiles(
+	app: App,
+	audioFile: TFile,
+): TranscriptSidecar[] {
+	const files = app.vault.getFiles();
+	const sidecars: TranscriptSidecar[] = [];
+	for (const format of TRANSCRIPT_FILE_FORMATS) {
+		const canonical = buildTranscriptFilePath(audioFile.path, format);
+		const dir = directoryOf(canonical);
+		const canonicalName = canonical.slice(dir ? dir.length + 1 : 0);
+		const dot = canonicalName.lastIndexOf('.');
+		const stem = canonicalName.slice(0, dot);
+		const ext = canonicalName.slice(dot + 1);
+		const pattern = new RegExp(
+			`^${escapeRegExp(stem)}(_\\d+)?\\.${escapeRegExp(ext)}$`,
+		);
+		for (const file of files) {
+			if (directoryOf(file.path) === dir && pattern.test(file.name)) {
+				sidecars.push({ file, format });
+			}
+		}
+	}
+	return sidecars;
+}
+
+/** Reads the speaker names out of one sidecar file's content by format. */
+function speakersFromSidecar(
+	format: TranscriptFileFormat,
+	content: string,
+): string[] {
+	switch (format) {
+		case 'json':
+			return extractJsonSpeakers(content) ?? [];
+		case 'srt':
+		case 'vtt':
+			return extractSubtitleSpeakers(content);
+		case 'txt':
+			return extractPlainTextSpeakers(content);
+		default: {
+			const exhaustive: never = format;
+			throw new Error(
+				`Unsupported transcript file format: ${String(exhaustive)}`,
+			);
+		}
+	}
+}
+
+/** Rewrites one sidecar file's content by format, no-op on a parse mismatch. */
+function rewriteSidecar(
 	format: TranscriptFileFormat,
 	content: string,
 	renames: readonly SpeakerRename[],
@@ -53,8 +194,6 @@ function rewriteTranscriptContent(
 		case 'txt':
 			return renameSpeakersInPlainText(content, renames);
 		default: {
-			// Compile-time exhaustiveness: a new format becomes a type error
-			// here instead of silently passing through unrewritten.
 			const exhaustive: never = format;
 			throw new Error(
 				`Unsupported transcript file format: ${String(exhaustive)}`,
@@ -63,74 +202,152 @@ function rewriteTranscriptContent(
 	}
 }
 
+/** What the rename dialog needs to know about a recording's transcript. */
+export interface AudioTranscriptInspection {
+	/** Distinct speaker display names currently in the outputs, in order. */
+	roster: string[];
+	/**
+	 * Whether some referencing note carries the transcript but no timecode
+	 * links to scope by, so renaming it would rewrite every matching label in
+	 * that note. The dialog surfaces this so the user opts in.
+	 */
+	hasUnscopableNote: boolean;
+}
+
 /**
- * Applies speaker renames to the recording's transcript sidecar files and
- * to every note that references the recording. A failure on one file is
- * logged and skipped so the remaining outputs are still updated.
- * @param app - Obsidian App instance
- * @param audioFile - Recording whose outputs are being renamed
+ * Reads a recording's current speaker roster out of its existing transcript
+ * outputs, with no stored state: the sidecar files next to it and the notes
+ * that reference it, scoped to this audio's lines when the transcript carries
+ * timecode links and read whole otherwise. Also reports whether any note is
+ * unscopable, so the dialog can warn before a broad rewrite.
+ * @param app - Obsidian App
+ * @param audioFile - Recording whose transcript is inspected
+ * @param speakerFormat - Speaker template notes were rendered with
+ */
+export async function inspectAudioTranscript(
+	app: App,
+	audioFile: TFile,
+	speakerFormat: string,
+): Promise<AudioTranscriptInspection> {
+	const seen = new Set<string>();
+	const roster: string[] = [];
+	let hasUnscopableNote = false;
+	const add = (names: readonly string[]): void => {
+		for (const name of names) {
+			if (!seen.has(name)) {
+				seen.add(name);
+				roster.push(name);
+			}
+		}
+	};
+	for (const { file, format } of findTranscriptSidecarFiles(app, audioFile)) {
+		try {
+			add(speakersFromSidecar(format, await app.vault.read(file)));
+		} catch (error) {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Failed to read speakers from ${file.path}:`,
+				error,
+			);
+		}
+	}
+	for (const note of findReferencingNotes(app, audioFile.path)) {
+		try {
+			const lines = audioLineIndices(app, note, audioFile.path);
+			const content = await app.vault.read(note);
+			// With timecode links, read only this audio's lines; without them
+			// the note cannot be scoped, so read the whole note.
+			const scoped = lines.size > 0 ? lines : null;
+			const names = extractNoteSpeakers(content, speakerFormat, scoped);
+			add(names);
+			if (scoped === null && names.length > 0) {
+				hasUnscopableNote = true;
+			}
+		} catch (error) {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Failed to read speakers from ${note.path}:`,
+				error,
+			);
+		}
+	}
+	return { roster, hasUnscopableNote };
+}
+
+/**
+ * Applies speaker renames to a recording's transcript sidecar files and to the
+ * notes that reference it. Notes are rewritten only on the lines that resolve
+ * to this audio; a note without such links is rewritten whole only when
+ * `allowBroad` is set (the caller having confirmed). A failure on one output
+ * is logged and counted, not thrown, so the remaining outputs still update.
+ * @param app - Obsidian App
+ * @param audioFile - Recording whose outputs are renamed
  * @param renames - Display-name renames to apply
  * @param speakerFormat - Speaker template notes were rendered with
- * @returns Counts of updated notes and transcript files
+ * @param options - `allowBroad` permits whole-note rewrites for untimecoded
+ *   transcripts
+ * @returns Counts of updated notes and files, and failures
  */
 export async function applySpeakerRenamesToVault(
 	app: App,
 	audioFile: TFile,
 	renames: readonly SpeakerRename[],
 	speakerFormat: string,
+	options: { allowBroad: boolean },
 ): Promise<SpeakerRenameApplyResult> {
 	const result: SpeakerRenameApplyResult = {
 		updatedNotes: 0,
 		updatedTranscriptFiles: 0,
+		failed: 0,
 	};
 	if (renames.length === 0) {
 		return result;
 	}
 
-	for (const format of TRANSCRIPT_FILE_FORMATS) {
-		const path = buildTranscriptFilePath(audioFile.path, format);
-		const file = app.vault.getFileByPath(path);
-		if (!file) {
-			continue;
-		}
-		let changed = false;
-		await app.vault.process(file, (content) => {
-			const rewritten = rewriteTranscriptContent(
-				format,
-				content,
-				renames,
+	for (const { file, format } of findTranscriptSidecarFiles(app, audioFile)) {
+		try {
+			const content = await app.vault.read(file);
+			const rewritten = rewriteSidecar(format, content, renames);
+			if (rewritten !== content) {
+				await app.vault.process(file, () => rewritten);
+				result.updatedTranscriptFiles++;
+			}
+		} catch (error) {
+			result.failed++;
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Failed to rewrite ${file.path}:`,
+				error,
 			);
-			changed = rewritten !== content;
-			return rewritten;
-		});
-		if (changed) {
-			result.updatedTranscriptFiles++;
 		}
 	}
 
-	// Notes are found through resolvedLinks so closed notes are covered;
-	// the rename touches only rendered speaker fragments, so a note that
-	// merely links the audio without a transcript comes back unchanged.
-	const referencingPaths = Object.entries(app.metadataCache.resolvedLinks)
-		.filter(([, links]) => audioFile.path in links)
-		.map(([notePath]) => notePath);
-	for (const notePath of referencingPaths) {
-		const note = app.vault.getFileByPath(notePath);
-		if (!note) {
-			continue;
-		}
-		let changed = false;
-		await app.vault.process(note, (content) => {
-			const rewritten = renameSpeakersInMarkdown(
-				content,
-				speakerFormat,
-				renames,
+	for (const note of findReferencingNotes(app, audioFile.path)) {
+		try {
+			const lines = audioLineIndices(app, note, audioFile.path);
+			const content = await app.vault.read(note);
+			let rewritten = content;
+			if (lines.size > 0) {
+				rewritten = renameSpeakersInNoteLines(
+					content,
+					speakerFormat,
+					renames,
+					lines,
+				);
+			} else if (options.allowBroad) {
+				rewritten = renameSpeakersInMarkdown(
+					content,
+					speakerFormat,
+					renames,
+				);
+			}
+			if (rewritten !== content) {
+				await app.vault.process(note, () => rewritten);
+				result.updatedNotes++;
+			}
+		} catch (error) {
+			result.failed++;
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Failed to rewrite ${note.path}:`,
+				error,
 			);
-			changed = rewritten !== content;
-			return rewritten;
-		});
-		if (changed) {
-			result.updatedNotes++;
 		}
 	}
 	return result;

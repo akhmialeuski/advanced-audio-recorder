@@ -34,12 +34,9 @@ import { formatTimecode } from '../utils/TimeUtils';
 import {
 	buildTranscript,
 	plainText,
-	renameSpeakers,
 	stitchChunks,
 	stripSpeakers,
 } from './transcriptModel';
-import { SpeakerNameStore } from '../speakers/SpeakerNameStore';
-import type { SpeakerNames } from '../speakers/speakerNameModel';
 import {
 	DEFAULT_TRANSCRIPT_MARKDOWN_OPTIONS,
 	formatTranscriptMarkdown,
@@ -100,17 +97,6 @@ export class TranscriptionCancelledError extends Error {
 }
 
 /**
- * The speaker-name persistence surface the service needs: read the stored
- * mapping before rendering and remember the detected roster afterwards.
- * Satisfied by {@link SpeakerNameStore}; injectable so tests can observe
- * the roster write.
- */
-export interface SpeakerNameSource {
-	get(path: string): Promise<SpeakerNames>;
-	set(path: string, value: SpeakerNames): Promise<void>;
-}
-
-/**
  * Provider factories the service depends on. Injectable so tests can supply
  * deterministic providers; defaults build the real providers from settings.
  */
@@ -119,12 +105,6 @@ export interface TranscriptionServiceDeps {
 	createProvider?: (settings: AudioRecorderSettings) => TranscriptionProvider;
 	/** Builds the LLM post-processing provider from settings. */
 	createLlm?: (settings: AudioRecorderSettings) => LlmProvider;
-	/**
-	 * Speaker-name persistence. The plugin passes its shared store so the
-	 * rename dialog and transcription see one cache; defaults to a private
-	 * store over the same sidecar files.
-	 */
-	speakerNames?: SpeakerNameSource;
 }
 
 /**
@@ -137,7 +117,6 @@ export class TranscriptionService {
 	private readonly createLlm: (
 		settings: AudioRecorderSettings,
 	) => LlmProvider;
-	private readonly speakerNames: SpeakerNameSource;
 
 	constructor(
 		private readonly app: App,
@@ -147,7 +126,6 @@ export class TranscriptionService {
 		this.createProvider =
 			deps.createProvider ?? createTranscriptionProvider;
 		this.createLlm = deps.createLlm ?? createLlmProvider;
-		this.speakerNames = deps.speakerNames ?? new SpeakerNameStore(app);
 	}
 
 	/**
@@ -288,13 +266,7 @@ export class TranscriptionService {
 		// JSON) shows a label the user did not ask for. Doing it once here, on
 		// the canonical transcript, keeps every consumer consistent rather than
 		// gating each renderer separately.
-		let transcript = diarize ? stitched : stripSpeakers(stitched);
-		if (diarize && transcript.speakers.length > 0) {
-			// Same single-point principle as the strip above: applying stored
-			// display names to the canonical transcript sends them into every
-			// output (note Markdown, JSON/SRT/VTT/TXT sidecars, LLM input).
-			transcript = await this.applySpeakerNames(file.path, transcript);
-		}
+		const transcript = diarize ? stitched : stripSpeakers(stitched);
 
 		const markdownOptions = this.markdownOptions(settings);
 		let markdown = formatTranscriptMarkdown(
@@ -464,31 +436,6 @@ export class TranscriptionService {
 			}
 			failedParts.push({ label, message: detail });
 		}
-	}
-
-	/**
-	 * Applies stored display names to the transcript's speakers and
-	 * remembers the freshly detected roster in the sidecar, so the rename
-	 * dialog can list this recording's speakers even when the transcript
-	 * went into a note only. Existing names are kept: a re-transcription
-	 * must not silently discard names the user already assigned. Both the
-	 * read and the write are best-effort (the store maps failures to an
-	 * empty state / a logged warning), so speaker naming can never fail a
-	 * completed - and, on a paid API, already billed - transcription.
-	 * @param path - Vault path of the audio file
-	 * @param transcript - Canonical transcript with original labels
-	 * @returns The transcript with display names applied
-	 */
-	private async applySpeakerNames(
-		path: string,
-		transcript: Transcript,
-	): Promise<Transcript> {
-		const stored = await this.speakerNames.get(path);
-		await this.speakerNames.set(path, {
-			speakers: transcript.speakers,
-			names: stored.names,
-		});
-		return renameSpeakers(transcript, stored.names);
 	}
 
 	/**

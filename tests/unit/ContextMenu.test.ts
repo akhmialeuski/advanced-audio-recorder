@@ -12,7 +12,6 @@ import { ContextMenu } from 'src/ui/ContextMenu';
 import { FILE_ACTIONS } from 'src/actions/fileActions';
 import { AUDIO_EXTENSIONS } from 'src/constants';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
-import type { SpeakerNameStore } from 'src/speakers/SpeakerNameStore';
 import * as AudioFileAnalyzer from 'src/utils/AudioFileAnalyzer';
 import {
 	App,
@@ -195,7 +194,6 @@ describe('ContextMenu', () => {
 				createTranscriptionModalOptions: () => ({}),
 				primeForEnhancement: () => {},
 				getWorkerClient: () => null,
-				speakerNameStore: {} as unknown as SpeakerNameStore,
 			},
 			FILE_ACTIONS,
 		);

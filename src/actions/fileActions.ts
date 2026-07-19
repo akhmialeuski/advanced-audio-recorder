@@ -118,10 +118,9 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		icon: 'users',
 		showInEditorMenu: true,
 		isAvailable: (_file: TFile, services: ActionServices): boolean =>
-			services.getSettings().transcriptionEnabled,
+			services.getSettings().transcriptionSpeakerRenameEnabled,
 		run: (file: TFile, services: ActionServices): void => {
 			new SpeakerRenameModal(services.app, file, {
-				store: services.speakerNameStore,
 				getSettings: services.getSettings,
 				saveSettings: services.saveSettings,
 			}).open();

@@ -40,7 +40,6 @@ import {
 	type LlmTask,
 	type TranscriptDestination,
 	type TranscriptFileFormat,
-	type TranscriptionServiceDeps,
 } from '../transcription/api';
 import { findProfile } from '../settings/dictionaryProfiles';
 import type { SaveProgress } from '../types';
@@ -67,12 +66,6 @@ export type TranscriptionModalOptions = {
 	backgroundProgress?: TranscriptionBackgroundProgressCallbacks;
 	/** Persists the run's dictionary-profile choice so it defaults next time. */
 	onProfileSelected?: (id: string) => Promise<void>;
-	/**
-	 * Service collaborators injected by the plugin (notably the shared
-	 * speaker-name store, so transcription and the rename dialog share one
-	 * cache).
-	 */
-	transcriptionDeps?: TranscriptionServiceDeps;
 };
 
 /**
@@ -436,19 +429,13 @@ export class TranscriptionModal extends Modal {
 			signal: this.abortController.signal,
 		};
 		try {
-			await transcribeFile(
-				this.app,
-				() => settings,
-				this.file,
-				{
-					notePathForLinks: this.notePath,
-					token,
-					onProgress: (fraction, label) => {
-						this.updateProgress(fraction, label);
-					},
+			await transcribeFile(this.app, () => settings, this.file, {
+				notePathForLinks: this.notePath,
+				token,
+				onProgress: (fraction, label) => {
+					this.updateProgress(fraction, label);
 				},
-				this.options.transcriptionDeps ?? {},
-			);
+			});
 			this.setRunning(false);
 			this.clearBackgroundProgress();
 			if (this.minimized) {

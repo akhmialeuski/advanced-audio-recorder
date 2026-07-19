@@ -144,7 +144,6 @@ const SETTINGS_SEARCH_ALIASES: string[] = [
 	'Speaker diarization',
 	'Word-level timestamps',
 	'Dictionary profiles',
-	'Participants',
 	'Rename speakers',
 	'Request timeout',
 	'Upload chunk size',

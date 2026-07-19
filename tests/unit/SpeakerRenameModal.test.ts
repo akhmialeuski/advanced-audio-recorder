@@ -1,22 +1,36 @@
 /**
- * Tests for the speaker rename dialog: rendering the roster, persisting
- * entered names, rewriting existing outputs, and growing the participant
- * registry.
+ * Tests for the manual speaker rename dialog: the empty state, rendering one
+ * field per detected speaker, rejecting a duplicate name, applying renames,
+ * and creating and growing a participant profile.
  */
 
 import type { App, TFile } from 'obsidian';
 import { Notice } from 'obsidian';
 import { SpeakerRenameModal } from 'src/ui/SpeakerRenameModal';
-import type { SpeakerNameStore } from 'src/speakers/SpeakerNameStore';
-import type { SpeakerNames } from 'src/speakers/speakerNameModel';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { mergeSettings } from 'src/settings/settingsSerialization';
+import {
+	applySpeakerRenamesToVault,
+	inspectAudioTranscript,
+} from 'src/speakers/applySpeakerRenames';
+
+jest.mock('src/speakers/applySpeakerRenames', () => ({
+	inspectAudioTranscript: jest.fn(),
+	applySpeakerRenamesToVault: jest.fn(),
+}));
+
+const inspectMock = inspectAudioTranscript as jest.Mock;
+const applyMock = applySpeakerRenamesToVault as jest.Mock;
 
 /** Internal surface the tests drive directly. */
 interface ModalInternals {
 	render(): Promise<void>;
 	apply(): Promise<void>;
+	createProfile(): Promise<void>;
 	inputs: Map<string, HTMLInputElement>;
+	selectedProfileId: string;
+	allowBroad: boolean;
+	newProfileInput: HTMLInputElement | null;
 }
 
 const audioFile = {
@@ -24,55 +38,15 @@ const audioFile = {
 	path: 'audio/rec.wav',
 } as unknown as TFile;
 
-/** In-memory stand-in for the speaker-name store. */
-function makeStore(initial: SpeakerNames): SpeakerNameStore & {
-	saved: SpeakerNames | null;
-} {
-	const store = {
-		saved: null as SpeakerNames | null,
-		get: jest.fn(async () => initial),
-		set: jest.fn(async (_path: string, value: SpeakerNames) => {
-			store.saved = value;
-		}),
-	};
-	return store as unknown as SpeakerNameStore & {
-		saved: SpeakerNames | null;
-	};
-}
+const app = {} as unknown as App;
 
-function makeApp(
-	files: Map<string, string>,
-	resolvedLinks: Record<string, Record<string, number>> = {},
-): App {
-	return {
-		vault: {
-			getFileByPath: (path: string) =>
-				files.has(path) ? ({ path } as unknown as TFile) : null,
-			process: async (
-				file: TFile,
-				fn: (content: string) => string,
-			): Promise<string> => {
-				const next = fn(files.get(file.path) ?? '');
-				files.set(file.path, next);
-				return next;
-			},
-		},
-		metadataCache: { resolvedLinks },
-	} as unknown as App;
-}
-
-function makeModal(
-	app: App,
-	store: SpeakerNameStore,
-	settings: AudioRecorderSettings,
-): {
+function makeModal(settings: AudioRecorderSettings): {
 	modal: SpeakerRenameModal;
 	internals: ModalInternals;
 	saveSettings: jest.Mock;
 } {
 	const saveSettings = jest.fn().mockResolvedValue(undefined);
 	const modal = new SpeakerRenameModal(app, audioFile, {
-		store,
 		getSettings: () => settings,
 		saveSettings,
 	});
@@ -83,32 +57,20 @@ function makeModal(
 	};
 }
 
-describe('SpeakerRenameModal', () => {
-	it('renders one input per roster speaker, prefilled with stored names', async () => {
-		const store = makeStore({
-			speakers: ['Speaker 1', 'Speaker 2'],
-			names: { 'Speaker 1': 'Alex' },
-		});
-		const { modal, internals } = makeModal(
-			makeApp(new Map()),
-			store,
-			mergeSettings({}),
-		);
-		modal.open();
-		await internals.render();
-
-		expect(internals.inputs.size).toBe(2);
-		expect(internals.inputs.get('Speaker 1')?.value).toBe('Alex');
-		expect(internals.inputs.get('Speaker 2')?.value).toBe('');
+beforeEach(() => {
+	inspectMock.mockReset();
+	applyMock.mockReset();
+	applyMock.mockResolvedValue({
+		updatedNotes: 1,
+		updatedTranscriptFiles: 1,
+		failed: 0,
 	});
+});
 
-	it('explains when the recording has no speaker roster yet', async () => {
-		const store = makeStore({ speakers: [], names: {} });
-		const { modal, internals } = makeModal(
-			makeApp(new Map()),
-			store,
-			mergeSettings({}),
-		);
+describe('SpeakerRenameModal', () => {
+	it('explains when the recording has no diarized transcript', async () => {
+		inspectMock.mockResolvedValue({ roster: [], hasUnscopableNote: false });
+		const { modal, internals } = makeModal(mergeSettings({}));
 		modal.open();
 		await internals.render();
 
@@ -118,22 +80,28 @@ describe('SpeakerRenameModal', () => {
 		expect(internals.inputs.size).toBe(0);
 	});
 
-	it('persists entered names and rewrites existing outputs on apply', async () => {
-		const files = new Map<string, string>([
-			['audio/rec.txt', '[0:00] Speaker 1: hi'],
-			['meeting.md', '[[rec#t=0|0:00]] **Speaker 1** hi'],
-		]);
-		const app = makeApp(files, { 'meeting.md': { 'audio/rec.wav': 1 } });
-		const store = makeStore({
-			speakers: ['Speaker 1', 'Speaker 2'],
-			names: {},
+	it('renders one empty field per detected speaker', async () => {
+		inspectMock.mockResolvedValue({
+			roster: ['Speaker 1', 'Speaker 2'],
+			hasUnscopableNote: false,
 		});
-		const settings = mergeSettings({});
-		const { modal, internals, saveSettings } = makeModal(
-			app,
-			store,
-			settings,
+		const { modal, internals } = makeModal(mergeSettings({}));
+		modal.open();
+		await internals.render();
+
+		expect(internals.inputs.size).toBe(2);
+		expect(internals.inputs.get('Speaker 1')?.value).toBe('');
+		expect(internals.inputs.get('Speaker 2')?.placeholder).toBe(
+			'Speaker 2',
 		);
+	});
+
+	it('applies renames scoped, without broad rewrite by default', async () => {
+		inspectMock.mockResolvedValue({
+			roster: ['Speaker 1', 'Speaker 2'],
+			hasUnscopableNote: false,
+		});
+		const { modal, internals } = makeModal(mergeSettings({}));
 		modal.open();
 		await internals.render();
 
@@ -144,66 +112,104 @@ describe('SpeakerRenameModal', () => {
 		input.value = ' Alex ';
 		await internals.apply();
 
-		expect(store.saved).toEqual({
-			speakers: ['Speaker 1', 'Speaker 2'],
-			names: { 'Speaker 1': 'Alex' },
-		});
-		expect(files.get('audio/rec.txt')).toBe('[0:00] Alex: hi');
-		expect(files.get('meeting.md')).toContain('**Alex** hi');
-		// The applied name joins the participant registry and is persisted.
-		expect(settings.transcriptionParticipants).toBe('Alex');
-		expect(saveSettings).toHaveBeenCalled();
+		expect(applyMock).toHaveBeenCalledWith(
+			app,
+			audioFile,
+			[{ from: 'Speaker 1', to: 'Alex' }],
+			expect.any(String),
+			{ allowBroad: false },
+		);
 		expect(Notice).toHaveBeenCalledWith(
-			expect.stringContaining('updated 1 note and 1 transcript file'),
+			expect.stringContaining(
+				'Renamed speakers in 1 note and 1 transcript file',
+			),
 		);
 	});
 
-	it('reverts a cleared name to the original label in outputs', async () => {
-		const files = new Map<string, string>([
-			['audio/rec.txt', '[0:00] Alex: hi'],
-		]);
-		const store = makeStore({
-			speakers: ['Speaker 1'],
-			names: { 'Speaker 1': 'Alex' },
+	it('rejects assigning one name to two speakers', async () => {
+		inspectMock.mockResolvedValue({
+			roster: ['Speaker 1', 'Speaker 2'],
+			hasUnscopableNote: false,
 		});
-		const { modal, internals } = makeModal(
-			makeApp(files),
-			store,
-			mergeSettings({}),
+		const { modal, internals } = makeModal(mergeSettings({}));
+		modal.open();
+		await internals.render();
+
+		const first = internals.inputs.get('Speaker 1');
+		const second = internals.inputs.get('Speaker 2');
+		if (!first || !second) {
+			throw new Error('missing inputs');
+		}
+		first.value = 'Alex';
+		second.value = 'Alex';
+		await internals.apply();
+
+		expect(applyMock).not.toHaveBeenCalled();
+		expect(Notice).toHaveBeenCalledWith(
+			expect.stringContaining('Two speakers cannot share a name'),
 		);
+	});
+
+	it('passes broad rewrite through when the user opts in', async () => {
+		inspectMock.mockResolvedValue({
+			roster: ['Speaker 1'],
+			hasUnscopableNote: true,
+		});
+		const { modal, internals } = makeModal(mergeSettings({}));
 		modal.open();
 		await internals.render();
 
 		const input = internals.inputs.get('Speaker 1');
 		if (!input) {
-			throw new Error('missing input for Speaker 1');
+			throw new Error('missing input');
 		}
-		input.value = '';
+		input.value = 'Alex';
+		internals.allowBroad = true;
 		await internals.apply();
 
-		expect(store.saved).toEqual({ speakers: ['Speaker 1'], names: {} });
-		expect(files.get('audio/rec.txt')).toBe('[0:00] Speaker 1: hi');
+		expect(applyMock).toHaveBeenCalledWith(
+			app,
+			audioFile,
+			[{ from: 'Speaker 1', to: 'Alex' }],
+			expect.any(String),
+			{ allowBroad: true },
+		);
 	});
 
-	it('does not rewrite anything when the names are unchanged', async () => {
-		const files = new Map<string, string>([
-			['audio/rec.txt', '[0:00] Alex: hi'],
-		]);
-		const app = makeApp(files);
-		const processSpy = jest.spyOn(app.vault, 'process');
-		const store = makeStore({
-			speakers: ['Speaker 1'],
-			names: { 'Speaker 1': 'Alex' },
+	it('creates a profile and adds applied names to it', async () => {
+		inspectMock.mockResolvedValue({
+			roster: ['Speaker 1'],
+			hasUnscopableNote: false,
 		});
-		const { modal, internals } = makeModal(app, store, mergeSettings({}));
+		const settings = mergeSettings({});
+		const { modal, internals, saveSettings } = makeModal(settings);
 		modal.open();
 		await internals.render();
+
+		if (!internals.newProfileInput) {
+			throw new Error('missing new-profile input');
+		}
+		internals.newProfileInput.value = 'Weekly sync';
+		await internals.createProfile();
+
+		expect(settings.transcriptionSpeakerProfiles).toHaveLength(1);
+		expect(settings.transcriptionSpeakerProfiles[0]?.name).toBe(
+			'Weekly sync',
+		);
+		expect(internals.selectedProfileId).toBe(
+			settings.transcriptionSpeakerProfiles[0]?.id,
+		);
+
+		const input = internals.inputs.get('Speaker 1');
+		if (!input) {
+			throw new Error('missing input');
+		}
+		input.value = 'Alex';
 		await internals.apply();
 
-		expect(processSpy).not.toHaveBeenCalled();
-		expect(store.saved).toEqual({
-			speakers: ['Speaker 1'],
-			names: { 'Speaker 1': 'Alex' },
-		});
+		expect(settings.transcriptionSpeakerProfiles[0]?.participants).toEqual([
+			'Alex',
+		]);
+		expect(saveSettings).toHaveBeenCalled();
 	});
 });

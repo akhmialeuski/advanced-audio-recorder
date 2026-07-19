@@ -207,14 +207,12 @@ _Figure: with Deepgram and diarization on, the speaker-related output controls b
 
 ### Naming speakers
 
-Generic `Speaker 1` / `Speaker 2` labels are rarely what you want in a meeting note. **Rename speakers** (in the context menu of any recording, in the editor menu of its embed, and in the command palette) assigns real display names to the speakers a diarized transcription detected:
+Generic `Speaker 1` / `Speaker 2` labels are rarely what you want in a meeting note. **Rename speakers** is a manual action that replaces those labels with real participant names in a transcript that already exists. Turn it on with the **Rename speakers** toggle under **Settings > Advanced Audio Recorder > Transcription**; the action then appears in the context menu of any recording, in the editor menu of its embed, and in the command palette. Nothing happens automatically: transcription always writes `Speaker N`, and names are applied only when you run this dialog.
 
-- The dialog lists the recording's detected speakers - one text field per label - with popover suggestions from the **Participants** registry (see below). Leave a field empty to keep the original label.
-- Applying the names **rewrites the outputs that already exist**: the transcript rendered into notes that reference the recording, and the sidecar transcript file next to it (JSON, SRT, WebVTT, or plain text). Two names can even be swapped in one apply - replacements never chain through each other.
-- The mapping is stored in a **sidecar file next to the recording** (`recording.wav.speakers.json`), so it travels with the vault and survives a plugin reinstall. Renaming or deleting the recording moves or removes the sidecar automatically, like marker sidecars.
-- **Re-transcribing the recording applies the stored names automatically** - every output format (note Markdown, JSON, SRT, VTT, plain text) comes back with the display names instead of `Speaker N`.
-
-**Participants** (under **Settings > Advanced Audio Recorder > Transcription**, one name per line) is a per-vault registry of known names. Every name you apply in the rename dialog is added automatically, so the next recording's dialog suggests your regular meeting participants as you type.
+- The dialog reads the recording's current speakers straight from its existing transcript, one text field per speaker. If the recording has no diarized transcript yet, it says so and does nothing, so transcribe it with speaker diarization first.
+- Renaming touches **only this recording's transcript**. In a note, every transcript line carries a timecode link to its own audio, so a second recording's transcript in the same note is left untouched, and only the lines that belong to this recording are rewritten. The transcript sidecar files next to the recording (JSON, SRT, WebVTT, plain text) are rewritten as well. Two names can be swapped in one apply, and replacements never chain through each other.
+- Choose a **participant profile** to get name suggestions as you type. You can create a profile and add names to it right in the dialog, and the names you apply join the selected profile so the next recording suggests them. Two speakers cannot be given the same name, because merging speakers is not supported yet.
+- When a transcript has no timecode links to identify the recording (for example with timestamp links turned off), the dialog cannot pin its lines to this audio. It warns you, and only after you opt in does it rewrite every matching label in those notes.
 
 ---
 

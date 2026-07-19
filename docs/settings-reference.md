@@ -220,7 +220,7 @@ Shown for every engine, below the engine fields. Controls where the transcript g
 | **Timestamp format**           | Template for the timestamp fragment; `{time}` is the timecode/link. Avoid wrapping `{time}` in `[ ]` when timestamp links are on. Empty resets to `{time}`.       | Template with `{time}`                                                                 | `{time}`                       |
 | **Speaker format**             | Template for the speaker label; `{speaker}` is the name. **Diarization-gated.** Empty resets to `**{speaker}**`.                                                  | Template with `{speaker}`                                                              | `**{speaker}**`                |
 | **Line format**                | Arrangement of `{timestamp}`, `{speaker}`, and `{text}` on each line. Empty resets to the default.                                                                | Template with `{timestamp} {speaker} {text}`                                           | `{timestamp} {speaker} {text}` |
-| **Participants**               | Per-vault registry of known participant names (one per line), suggested when renaming speakers. Names applied in the **Rename speakers** dialog are added automatically. | Multi-line text                                                                        | Empty                          |
+| **Rename speakers**            | Add a **Rename speakers** action (context menu, editor menu, command palette) to replace diarized labels with participant names in an existing transcript. Manual | On / Off                                                                               | Off                            |
 
 ### LLM post-processing
 
