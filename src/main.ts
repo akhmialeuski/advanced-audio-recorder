@@ -617,6 +617,7 @@ export default class AudioRecorderPlugin extends Plugin {
 		return {
 			app: this.app,
 			getSettings: () => this.settings,
+			saveSettings: () => this.saveSettings(),
 			createTranscriptionModalOptions: () =>
 				this.createTranscriptionModalOptions(),
 			primeForEnhancement: (paths) =>

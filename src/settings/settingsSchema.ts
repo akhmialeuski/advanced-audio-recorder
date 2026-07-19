@@ -172,6 +172,21 @@ export interface DictionaryProfile {
 }
 
 /**
+ * A named roster of participant names, reused across recordings. A recurring
+ * meeting with the same attendees is entered once and picked in the rename
+ * dialog, whose speaker fields then suggest the profile's names. Managed from
+ * the rename dialog, not the settings tab; stored here so it survives reloads.
+ */
+export interface SpeakerProfile {
+	/** Stable id (crypto.randomUUID); selection persists by id, not by name. */
+	id: string;
+	/** Display name shown in the rename dialog's profile picker. */
+	name: string;
+	/** Participant names, one per entry, offered as rename suggestions. */
+	participants: string[];
+}
+
+/**
  * Plugin settings interface.
  */
 export interface AudioRecorderSettings {
@@ -268,6 +283,13 @@ export interface AudioRecorderSettings {
 	transcriptionDictionaryProfiles: DictionaryProfile[];
 	/** Id of the profile applied to a run; '' means None (no biasing terms). */
 	transcriptionDictionaryProfileId: string;
+	/** Whether the "Rename speakers" action and command are offered. */
+	transcriptionSpeakerRenameEnabled: boolean;
+	/**
+	 * Participant-name profiles reused when renaming speakers. Created and
+	 * filled from the rename dialog rather than the settings tab.
+	 */
+	transcriptionSpeakerProfiles: SpeakerProfile[];
 	/** Upload size limit per chunk, in megabytes (Whisper API) */
 	transcriptionChunkMb: number;
 	/** Per-request transcription timeout, in minutes (a hung request fails after this) */
@@ -471,6 +493,8 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	transcriptionWordTimestamps: false,
 	transcriptionDictionaryProfiles: [],
 	transcriptionDictionaryProfileId: '',
+	transcriptionSpeakerRenameEnabled: false,
+	transcriptionSpeakerProfiles: [],
 	transcriptionChunkMb: DEFAULT_TRANSCRIBE_CHUNK_MB,
 	transcriptionTimeoutMinutes: DEFAULT_TRANSCRIPTION_TIMEOUT_MINUTES,
 	whisperApiBaseUrl: DEFAULT_WHISPER_API_BASE_URL,

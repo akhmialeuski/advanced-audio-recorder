@@ -104,6 +104,12 @@ jest.mock('src/ui/SplitModal', () => ({
 	})),
 }));
 
+jest.mock('src/ui/SpeakerRenameModal', () => ({
+	SpeakerRenameModal: jest.fn().mockImplementation(() => ({
+		open: jest.fn(),
+	})),
+}));
+
 jest.mock('src/cleanup/AudioProcessingModal', () => ({
 	AudioProcessingModal: jest.fn().mockImplementation(() => ({
 		open: jest.fn(),
@@ -184,6 +190,7 @@ describe('ContextMenu', () => {
 						deleteSourceAfterConversion: true,
 						conversionLinkAction: 'replace',
 					}) as unknown as AudioRecorderSettings,
+				saveSettings: () => Promise.resolve(),
 				createTranscriptionModalOptions: () => ({}),
 				primeForEnhancement: () => {},
 				getWorkerClient: () => null,

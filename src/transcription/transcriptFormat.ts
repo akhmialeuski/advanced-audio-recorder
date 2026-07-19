@@ -133,6 +133,24 @@ function neutralizeWikilinks(text: string): string {
 }
 
 /**
+ * Renders the speaker fragment exactly as {@link formatTranscriptMarkdown}
+ * does: the speaker template applied to the wikilink-neutralized label.
+ * Exported so the rename flow can locate previously rendered speaker
+ * fragments in a note and rewrite them without re-rendering the whole
+ * transcript.
+ * @param speakerFormat - Speaker template with a `{speaker}` token
+ * @param speaker - Speaker display name
+ */
+export function renderSpeakerFragment(
+	speakerFormat: string,
+	speaker: string,
+): string {
+	return applyTemplate(speakerFormat, {
+		speaker: neutralizeWikilinks(speaker),
+	});
+}
+
+/**
  * Renders a transcript to Markdown lines using the configured templates.
  * Each speaker turn (or segment) becomes one line.
  * @param transcript - Source transcript

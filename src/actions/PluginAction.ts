@@ -26,6 +26,8 @@ export type EnhancementPrimer = (paths: string[]) => void;
 export interface ActionServices {
 	readonly app: App;
 	readonly getSettings: () => AudioRecorderSettings;
+	/** Persists the (mutated) settings, e.g. after registry updates. */
+	readonly saveSettings: () => Promise<void>;
 	readonly createTranscriptionModalOptions: () => TranscriptionModalOptions;
 	readonly primeForEnhancement: EnhancementPrimer;
 	readonly getWorkerClient: () => EncodingWorkerClient | null;

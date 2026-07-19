@@ -11,6 +11,7 @@
     - [Local whisper.cpp (desktop)](#local-whispercpp-desktop)
 - [Model picker and language](#model-picker-and-language)
 - [Speakers and diarization](#speakers-and-diarization)
+    - [Naming speakers](#naming-speakers)
 - [Biasing recognition toward your own terms](#biasing-recognition-toward-your-own-terms)
 - [Output: where the transcript goes](#output-where-the-transcript-goes)
 - [In-note formatting](#in-note-formatting)
@@ -203,6 +204,15 @@ Because there are no labels to act on without diarization, these output controls
 
 ![Speaker diarization toggle enabled for Deepgram, with the speaker output controls active below](images/settings-transcription-diarization.png)
 _Figure: with Deepgram and diarization on, the speaker-related output controls become editable._
+
+### Naming speakers
+
+Generic `Speaker 1` / `Speaker 2` labels are rarely what you want in a meeting note. **Rename speakers** is a manual action that replaces those labels with real participant names in a transcript that already exists. Turn it on with the **Rename speakers** toggle under **Settings > Advanced Audio Recorder > Transcription**; the action then appears in the context menu of any recording, in the editor menu of its embed, and in the command palette. Nothing happens automatically: transcription always writes `Speaker N`, and names are applied only when you run this dialog.
+
+- The dialog reads the recording's current speakers straight from its existing transcript, one text field per speaker. If the recording has no diarized transcript yet, it says so and does nothing, so transcribe it with speaker diarization first.
+- Renaming touches **only this recording's transcript**. In a note, every transcript line carries a timecode link to its own audio, so a second recording's transcript in the same note is left untouched, and only the lines that belong to this recording are rewritten. The transcript sidecar files next to the recording (JSON, SRT, WebVTT, plain text) are rewritten as well. Two names can be swapped in one apply, and replacements never chain through each other.
+- Choose a **participant profile** to get name suggestions as you type. You can create a profile and add names to it right in the dialog, and the names you apply join the selected profile so the next recording suggests them. Two speakers cannot be given the same name, because merging speakers is not supported yet.
+- When a transcript has no timecode links to identify the recording (for example with timestamp links turned off), the dialog cannot pin its lines to this audio. It warns you, and only after you opt in does it rewrite every matching label in those notes.
 
 ---
 

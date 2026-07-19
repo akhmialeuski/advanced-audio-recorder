@@ -917,5 +917,6 @@ export const COMMAND_IDS = {
 	splitAudio: 'split-audio-into-parts',
 	cleanupAudio: 'clean-up-audio',
 	transcribeAudio: 'transcribe-active-audio',
+	renameSpeakers: 'rename-transcript-speakers',
 	deleteRecording: 'delete-recording',
 } as const;

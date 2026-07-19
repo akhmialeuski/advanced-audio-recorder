@@ -68,7 +68,9 @@ function makeServices(activeFile: TFile | null): ActionServices {
 		getSettings: () =>
 			({
 				transcriptionEnabled: true,
+				transcriptionSpeakerRenameEnabled: true,
 			}) as unknown as AudioRecorderSettings,
+		saveSettings: () => Promise.resolve(),
 		createTranscriptionModalOptions: () => ({}),
 		primeForEnhancement: () => {},
 		getWorkerClient: () => null,
@@ -98,6 +100,7 @@ describe('registerFileActionCommands', () => {
 			COMMAND_IDS.splitAudio,
 			COMMAND_IDS.cleanupAudio,
 			COMMAND_IDS.transcribeAudio,
+			COMMAND_IDS.renameSpeakers,
 			COMMAND_IDS.deleteRecording,
 		]);
 	});

@@ -805,6 +805,25 @@ export function getLinkpath(linktext: string): string {
 }
 
 /**
+ * Splits a link text into its file path and subpath (`#...`), mirroring
+ * Obsidian's parseLinktext. The alias (`|...`) is assumed already stripped, as
+ * it is in the metadata cache's `link` field.
+ */
+export function parseLinktext(linktext: string): {
+	path: string;
+	subpath: string;
+} {
+	const hashIndex = linktext.indexOf('#');
+	if (hashIndex < 0) {
+		return { path: linktext, subpath: '' };
+	}
+	return {
+		path: linktext.slice(0, hashIndex),
+		subpath: linktext.slice(hashIndex),
+	};
+}
+
+/**
  * Minimal request parameter the {@link requestUrl} mock receives. Mirrors the
  * fields the HTTP client passes (Obsidian's real `RequestUrlParam` has more).
  */

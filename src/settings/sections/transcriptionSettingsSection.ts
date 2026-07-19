@@ -489,6 +489,16 @@ function renderTranscriptOutputSection(ctx: SettingsSectionContext): void {
 		set: (v) =>
 			(s.transcriptLineFormat = v || '{timestamp} {speaker} {text}'),
 	});
+	// Not gated on diarization: renaming acts on transcripts that already
+	// exist, including recordings transcribed before the engine changed.
+	// Participant profiles are created and filled from the dialog, so no
+	// roster field lives here.
+	addToggle(ctx, {
+		name: 'Rename speakers',
+		desc: 'Add a "Rename speakers" action to replace diarized labels (Speaker 1) with participant names in an existing transcript.',
+		get: () => s.transcriptionSpeakerRenameEnabled,
+		set: (v) => (s.transcriptionSpeakerRenameEnabled = v),
+	});
 }
 
 /** Optional LLM post-processing of the transcript. */
