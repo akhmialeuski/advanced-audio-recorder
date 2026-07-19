@@ -44,10 +44,21 @@ export function buildSpeakerRenames(
 }
 
 /**
- * Returns the display names that two or more distinct labels were assigned,
+ * The effective display name an entry resolves to once applied: the trimmed
+ * typed name, or the original label when the field is left blank (blank keeps
+ * the label rather than clearing it).
+ */
+function effectiveName(entry: SpeakerNameEntry): string {
+	return entry.name.trim() || entry.label;
+}
+
+/**
+ * Returns the display names that two or more distinct labels would resolve to,
  * which would merge those speakers in every output. Merging is out of scope
  * for now, so the dialog blocks it; an empty result means the entries are
- * safe to apply.
+ * safe to apply. A blank field counts as its original label, so assigning one
+ * speaker's label as another speaker's name (while leaving the first blank) is
+ * still detected as a merge.
  * @param entries - One entry per detected speaker
  * @returns The offending names, in first-seen order (empty when none)
  */
@@ -56,10 +67,7 @@ export function duplicateAssignedNames(
 ): string[] {
 	const labelsByName = new Map<string, Set<string>>();
 	for (const entry of entries) {
-		const name = entry.name.trim();
-		if (!name) {
-			continue;
-		}
+		const name = effectiveName(entry);
 		const labels = labelsByName.get(name) ?? new Set<string>();
 		labels.add(entry.label);
 		labelsByName.set(name, labels);

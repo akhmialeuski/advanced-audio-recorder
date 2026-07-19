@@ -11,6 +11,11 @@ import {
 } from 'src/speakers/applySpeakerRenames';
 
 const FORMAT = '**{speaker}**';
+const TEMPLATES = {
+	lineFormat: '{timestamp} {speaker} {text}',
+	speakerFormat: FORMAT,
+	includeTimestamps: true,
+};
 
 interface Ref {
 	link: string;
@@ -21,8 +26,12 @@ interface Cache {
 	embeds?: Ref[];
 }
 
-const tf = (path: string): TFile =>
-	({ path, name: path.split('/').pop() ?? path }) as unknown as TFile;
+const tf = (path: string): TFile => {
+	const name = path.split('/').pop() ?? path;
+	const dot = name.lastIndexOf('.');
+	const extension = dot >= 0 ? name.slice(dot + 1) : '';
+	return { path, name, extension } as unknown as TFile;
+};
 
 /**
  * Builds a fake App over an in-memory file map with a metadata cache. Files
@@ -131,7 +140,7 @@ describe('inspectAudioTranscript', () => {
 			caches: { 'meeting.md': cache },
 		});
 
-		const result = await inspectAudioTranscript(app, audioFile, FORMAT);
+		const result = await inspectAudioTranscript(app, audioFile, TEMPLATES);
 		expect(result.roster).toEqual(['Speaker 1', 'Speaker 3', 'Speaker 2']);
 		expect(result.hasUnscopableNote).toBe(false);
 	});
@@ -155,7 +164,12 @@ describe('inspectAudioTranscript', () => {
 			caches: { 'meeting.md': cache },
 		});
 
-		const result = await inspectAudioTranscript(app, audioFile, FORMAT);
+		// This note carries no timecode links and no timestamps, so extraction
+		// must read the un-timestamped rendering.
+		const result = await inspectAudioTranscript(app, audioFile, {
+			...TEMPLATES,
+			includeTimestamps: false,
+		});
 		expect(result.roster).toEqual(['Speaker 1', 'Speaker 2']);
 		expect(result.hasUnscopableNote).toBe(true);
 	});
@@ -279,6 +293,81 @@ describe('applySpeakerRenamesToVault', () => {
 		expect(result.updatedTranscriptFiles).toBe(1);
 		expect(files.get('audio/rec.txt')).toBe('[0:00] Alex: hi');
 		warn.mockRestore();
+	});
+
+	it("leaves a sibling recording's collision-named sidecar untouched", async () => {
+		// rec_1.srt is rec_1.wav's own canonical sidecar, not a collision copy
+		// of rec.srt, so renaming rec.wav must not read or rewrite it.
+		const files = new Map<string, string>([
+			['audio/rec.wav', ''],
+			['audio/rec_1.wav', ''],
+			[
+				'audio/rec.srt',
+				'1\n00:00:00,000 --> 00:00:01,000\nSpeaker 1: mine',
+			],
+			[
+				'audio/rec_1.srt',
+				'1\n00:00:00,000 --> 00:00:01,000\nSpeaker 1: sibling',
+			],
+		]);
+		const app = makeApp(files);
+
+		const result = await applySpeakerRenamesToVault(
+			app,
+			audioFile,
+			renames,
+			FORMAT,
+			{ allowBroad: false },
+		);
+
+		expect(result.updatedTranscriptFiles).toBe(1);
+		expect(files.get('audio/rec.srt')).toContain('Alex: mine');
+		expect(files.get('audio/rec_1.srt')).toBe(
+			'1\n00:00:00,000 --> 00:00:01,000\nSpeaker 1: sibling',
+		);
+	});
+
+	it('rewrites the content vault.process supplies, not a stale read', async () => {
+		const live = new Map<string, string>([
+			['audio/rec.wav', ''],
+			['audio/rec.txt', '[0:00] Speaker 1: live edit'],
+		]);
+		// read returns a stale snapshot while process operates on the current
+		// content, mimicking an edit landing between the two calls.
+		const app = {
+			vault: {
+				getFiles: (): TFile[] => [...live.keys()].map(tf),
+				getFileByPath: (path: string): TFile | null =>
+					live.has(path) ? tf(path) : null,
+				read: async (): Promise<string> =>
+					'[0:00] Speaker 1: stale snapshot',
+				process: async (
+					file: TFile,
+					fn: (content: string) => string,
+				): Promise<string> => {
+					const next = fn(live.get(file.path) ?? '');
+					live.set(file.path, next);
+					return next;
+				},
+			},
+			metadataCache: {
+				resolvedLinks: {},
+				getFileCache: (): null => null,
+				getFirstLinkpathDest: (): null => null,
+			},
+		} as unknown as App;
+
+		const result = await applySpeakerRenamesToVault(
+			app,
+			audioFile,
+			[{ from: 'Speaker 1', to: 'Alex' }],
+			FORMAT,
+			{ allowBroad: false },
+		);
+
+		expect(result.updatedTranscriptFiles).toBe(1);
+		// The concurrent "live edit" survives; only the speaker label changed.
+		expect(live.get('audio/rec.txt')).toBe('[0:00] Alex: live edit');
 	});
 
 	it('is a no-op for an empty rename list', async () => {

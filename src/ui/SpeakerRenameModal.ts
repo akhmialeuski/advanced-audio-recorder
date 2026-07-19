@@ -76,11 +76,11 @@ export class SpeakerRenameModal extends Modal {
 	 */
 	private async render(): Promise<void> {
 		const settings = this.options.getSettings();
-		const inspection = await inspectAudioTranscript(
-			this.app,
-			this.file,
-			settings.transcriptSpeakerFormat,
-		);
+		const inspection = await inspectAudioTranscript(this.app, this.file, {
+			lineFormat: settings.transcriptLineFormat,
+			speakerFormat: settings.transcriptSpeakerFormat,
+			includeTimestamps: settings.transcriptIncludeTimestamps,
+		});
 		this.inspection = inspection;
 		const { contentEl } = this;
 		contentEl.empty();

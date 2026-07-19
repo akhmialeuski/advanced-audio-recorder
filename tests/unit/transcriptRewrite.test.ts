@@ -6,6 +6,7 @@
 
 import type { SpeakerRename } from 'src/speakers/speakerRename';
 import {
+	buildNoteLineSpeakerExtractor,
 	extractJsonSpeakers,
 	extractNoteSpeakers,
 	extractPlainTextSpeakers,
@@ -15,10 +16,17 @@ import {
 	renameSpeakersInPlainText,
 	renameSpeakersInSubtitles,
 	renameSpeakersInTranscriptJson,
-	speakerFragmentExtractor,
+	type NoteSpeakerTemplates,
 } from 'src/speakers/transcriptRewrite';
 
 const FORMAT = '**{speaker}**';
+
+/** Default render templates: timestamped lines with a two-sided speaker. */
+const TEMPLATES: NoteSpeakerTemplates = {
+	lineFormat: '{timestamp} {speaker} {text}',
+	speakerFormat: FORMAT,
+	includeTimestamps: true,
+};
 
 const NOTE = [
 	'![[rec.wav]]', // 0
@@ -118,20 +126,69 @@ describe('sidecar rewriters', () => {
 });
 
 describe('speaker extraction', () => {
-	it('builds a capturing extractor only for a delimited template', () => {
-		expect(speakerFragmentExtractor('**{speaker}**')).not.toBeNull();
-		expect(speakerFragmentExtractor('no token')).toBeNull();
-		expect(speakerFragmentExtractor('{speaker}')).toBeNull();
+	it('builds an extractor only when the speaker can be located', () => {
+		expect(buildNoteLineSpeakerExtractor(TEMPLATES)).not.toBeNull();
+		expect(
+			buildNoteLineSpeakerExtractor({
+				...TEMPLATES,
+				speakerFormat: 'no token',
+			}),
+		).toBeNull();
+		// A bare {speaker} is bounded only by whitespace in the default line, so
+		// a multi-word label cannot be delimited: decline rather than guess.
+		expect(
+			buildNoteLineSpeakerExtractor({
+				...TEMPLATES,
+				speakerFormat: '{speaker}',
+			}),
+		).toBeNull();
+		// A one-sided template is fine: the trailing ":" bounds the name.
+		expect(
+			buildNoteLineSpeakerExtractor({
+				...TEMPLATES,
+				speakerFormat: '{speaker}:',
+			}),
+		).not.toBeNull();
 	});
 
 	it('reads scoped note speakers, or all lines when unscoped', () => {
-		expect(extractNoteSpeakers(NOTE, FORMAT, new Set([2, 4]))).toEqual([
+		expect(extractNoteSpeakers(NOTE, TEMPLATES, new Set([2, 4]))).toEqual([
 			'Speaker 1',
 			'Speaker 2',
 		]);
-		expect(extractNoteSpeakers(NOTE, FORMAT, null)).toEqual([
+		expect(extractNoteSpeakers(NOTE, TEMPLATES, null)).toEqual([
 			'Speaker 1',
 			'Speaker 2',
+		]);
+	});
+
+	it('reads a one-sided speaker template, with and without timestamps', () => {
+		const colon: NoteSpeakerTemplates = {
+			lineFormat: '{timestamp} {speaker} {text}',
+			speakerFormat: '{speaker}:',
+			includeTimestamps: true,
+		};
+		// The colon inside the timecode does not fool the capture.
+		expect(
+			extractNoteSpeakers(
+				'[00:00](rec.wav#t=0) Speaker 1: hello',
+				colon,
+				null,
+			),
+		).toEqual(['Speaker 1']);
+		expect(
+			extractNoteSpeakers(
+				'Speaker 1: hello\nSpeaker 2: hi',
+				{ ...colon, includeTimestamps: false },
+				null,
+			),
+		).toEqual(['Speaker 1', 'Speaker 2']);
+	});
+
+	it('ignores bold text that is not the speaker label', () => {
+		const line = '[00:00](rec.wav#t=0) **Speaker 1** the **key** point';
+		expect(extractNoteSpeakers(line, TEMPLATES, null)).toEqual([
+			'Speaker 1',
 		]);
 	});
 

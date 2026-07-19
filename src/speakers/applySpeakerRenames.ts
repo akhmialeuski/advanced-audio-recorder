@@ -16,6 +16,7 @@ import type { App, TFile } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { buildTranscriptFilePath } from '../transcription/transcriptOutput';
 import type { TranscriptFileFormat } from '../transcription/TranscriptTypes';
+import { isAudioFile } from '../utils/audioFile';
 import { directoryOf } from '../utils/paths';
 import type { SpeakerRename } from './speakerRename';
 import {
@@ -28,6 +29,7 @@ import {
 	renameSpeakersInPlainText,
 	renameSpeakersInSubtitles,
 	renameSpeakersInTranscriptJson,
+	type NoteSpeakerTemplates,
 } from './transcriptRewrite';
 
 /** Every transcript sidecar format a recording may have next to it. */
@@ -128,7 +130,10 @@ function findReferencingNotes(app: App, audioPath: string): TFile[] {
 /**
  * Finds the transcript sidecar files a recording actually has next to it,
  * matching the canonical name and the `_<n>` collision suffix the writer uses,
- * so a transcript written to a deduplicated path is still found.
+ * so a transcript written to a deduplicated path is still found. A `_<n>`
+ * candidate that is instead a sibling recording's own canonical sidecar
+ * (`rec_1.srt` next to `rec_1.wav`) is excluded, so renaming `rec.wav` never
+ * reads or rewrites another recording's transcript.
  * @param app - Obsidian App
  * @param audioFile - Recording whose sidecars are sought
  */
@@ -137,10 +142,18 @@ function findTranscriptSidecarFiles(
 	audioFile: TFile,
 ): TranscriptSidecar[] {
 	const files = app.vault.getFiles();
+	const dir = directoryOf(audioFile.path);
+	// Other recordings sharing the directory own their own canonical sidecars;
+	// those paths must not be attributed to this recording as collisions.
+	const siblingAudio = files.filter(
+		(file) =>
+			file.path !== audioFile.path &&
+			directoryOf(file.path) === dir &&
+			isAudioFile(file),
+	);
 	const sidecars: TranscriptSidecar[] = [];
 	for (const format of TRANSCRIPT_FILE_FORMATS) {
 		const canonical = buildTranscriptFilePath(audioFile.path, format);
-		const dir = directoryOf(canonical);
 		const canonicalName = canonical.slice(dir ? dir.length + 1 : 0);
 		const dot = canonicalName.lastIndexOf('.');
 		const stem = canonicalName.slice(0, dot);
@@ -148,8 +161,17 @@ function findTranscriptSidecarFiles(
 		const pattern = new RegExp(
 			`^${escapeRegExp(stem)}(_\\d+)?\\.${escapeRegExp(ext)}$`,
 		);
+		const ownedByOthers = new Set(
+			siblingAudio.map((file) =>
+				buildTranscriptFilePath(file.path, format),
+			),
+		);
 		for (const file of files) {
-			if (directoryOf(file.path) === dir && pattern.test(file.name)) {
+			if (
+				directoryOf(file.path) === dir &&
+				pattern.test(file.name) &&
+				!ownedByOthers.has(file.path)
+			) {
 				sidecars.push({ file, format });
 			}
 		}
@@ -222,12 +244,13 @@ export interface AudioTranscriptInspection {
  * unscopable, so the dialog can warn before a broad rewrite.
  * @param app - Obsidian App
  * @param audioFile - Recording whose transcript is inspected
- * @param speakerFormat - Speaker template notes were rendered with
+ * @param templates - Render templates the notes were written with, used to
+ *   locate speaker labels by the same shape they were rendered in
  */
 export async function inspectAudioTranscript(
 	app: App,
 	audioFile: TFile,
-	speakerFormat: string,
+	templates: NoteSpeakerTemplates,
 ): Promise<AudioTranscriptInspection> {
 	const seen = new Set<string>();
 	const roster: string[] = [];
@@ -257,7 +280,7 @@ export async function inspectAudioTranscript(
 			// With timecode links, read only this audio's lines; without them
 			// the note cannot be scoped, so read the whole note.
 			const scoped = lines.size > 0 ? lines : null;
-			const names = extractNoteSpeakers(content, speakerFormat, scoped);
+			const names = extractNoteSpeakers(content, templates, scoped);
 			add(names);
 			if (scoped === null && names.length > 0) {
 				hasUnscopableNote = true;
@@ -304,10 +327,20 @@ export async function applySpeakerRenamesToVault(
 
 	for (const { file, format } of findTranscriptSidecarFiles(app, audioFile)) {
 		try {
-			const content = await app.vault.read(file);
-			const rewritten = rewriteSidecar(format, content, renames);
-			if (rewritten !== content) {
-				await app.vault.process(file, () => rewritten);
+			// Skip untouched files with a cheap read, but perform the rewrite
+			// against the content vault.process supplies so a concurrent edit
+			// between this read and the write is never clobbered.
+			const current = await app.vault.read(file);
+			if (rewriteSidecar(format, current, renames) === current) {
+				continue;
+			}
+			let changed = false;
+			await app.vault.process(file, (data) => {
+				const rewritten = rewriteSidecar(format, data, renames);
+				changed = rewritten !== data;
+				return rewritten;
+			});
+			if (changed) {
 				result.updatedTranscriptFiles++;
 			}
 		} catch (error) {
@@ -322,24 +355,35 @@ export async function applySpeakerRenamesToVault(
 	for (const note of findReferencingNotes(app, audioFile.path)) {
 		try {
 			const lines = audioLineIndices(app, note, audioFile.path);
-			const content = await app.vault.read(note);
-			let rewritten = content;
-			if (lines.size > 0) {
-				rewritten = renameSpeakersInNoteLines(
-					content,
-					speakerFormat,
-					renames,
-					lines,
-				);
-			} else if (options.allowBroad) {
-				rewritten = renameSpeakersInMarkdown(
-					content,
-					speakerFormat,
-					renames,
-				);
+			const rewriteNote = (data: string): string => {
+				if (lines.size > 0) {
+					return renameSpeakersInNoteLines(
+						data,
+						speakerFormat,
+						renames,
+						lines,
+					);
+				}
+				if (options.allowBroad) {
+					return renameSpeakersInMarkdown(
+						data,
+						speakerFormat,
+						renames,
+					);
+				}
+				return data;
+			};
+			const current = await app.vault.read(note);
+			if (rewriteNote(current) === current) {
+				continue;
 			}
-			if (rewritten !== content) {
-				await app.vault.process(note, () => rewritten);
+			let changed = false;
+			await app.vault.process(note, (data) => {
+				const rewritten = rewriteNote(data);
+				changed = rewritten !== data;
+				return rewritten;
+			});
+			if (changed) {
 				result.updatedNotes++;
 			}
 		} catch (error) {

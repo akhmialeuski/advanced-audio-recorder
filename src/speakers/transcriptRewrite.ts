@@ -215,48 +215,139 @@ export function renameSpeakersInTranscriptJson(
 	return JSON.stringify(output, null, 2);
 }
 
+/** The render templates a note's transcript lines were produced with. */
+export interface NoteSpeakerTemplates {
+	/** Arrangement of `{timestamp}`, `{speaker}`, and `{text}` on each line. */
+	lineFormat: string;
+	/** Speaker template with a `{speaker}` token. */
+	speakerFormat: string;
+	/** Whether a timestamp fragment was written on each line. */
+	includeTimestamps: boolean;
+}
+
 /**
- * Builds a global regex that captures the speaker name out of a rendered
- * speaker fragment, derived from the speaker template. Returns null when the
- * template has no `{speaker}` token or no surrounding delimiter to bound the
- * capture (a bare `{speaker}` cannot be located unambiguously).
- * @param speakerFormat - Speaker template with a `{speaker}` token
+ * ASCII sentinels standing in for the render tokens while rebuilding the line.
+ * They carry no whitespace, so they survive the collapse and trim, and are
+ * distinctive enough not to occur inside a real line template.
  */
-export function speakerFragmentExtractor(speakerFormat: string): RegExp | null {
+const RENDER_TOKEN = {
+	timestamp: '@@aar-render-timestamp@@',
+	speaker: '@@aar-render-speaker@@',
+	text: '@@aar-render-text@@',
+} as const;
+
+/** Splits a structural line on the render-token sentinels, keeping them. */
+const RENDER_TOKEN_SPLIT = /(@@aar-render-(?:timestamp|speaker|text)@@)/;
+
+/** Escapes a literal template fragment, matching whitespace runs loosely. */
+function literalToPattern(literal: string): string {
+	return literal
+		.split(/\s+/)
+		.map((part) => escapeRegExp(part))
+		.join('\\s+');
+}
+
+/** Splits a speaker template into the text around its `{speaker}` token. */
+function speakerDelimiters(
+	speakerFormat: string,
+): { before: string; after: string } | null {
 	const token = '{speaker}';
 	const index = speakerFormat.indexOf(token);
 	if (index < 0) {
 		return null;
 	}
-	const before = speakerFormat.slice(0, index);
-	const after = speakerFormat.slice(index + token.length);
-	if (before === '' && after === '') {
+	return {
+		before: speakerFormat.slice(0, index),
+		after: speakerFormat.slice(index + token.length),
+	};
+}
+
+/**
+ * Builds a per-line regex that captures the speaker name exactly where the
+ * line template renders it, reconstructed from the same templates that wrote
+ * the note. The timestamp and text slots become bounded wildcards and the
+ * speaker slot a lazy capture, so the speaker is read from its rendered
+ * position rather than by guessing at delimiters, which fixes both one-sided
+ * speaker templates (`{speaker}:`) and lookalike bold text elsewhere on the
+ * line. Returns null when the speaker cannot be located reliably: no
+ * `{speaker}` token at all, or a right boundary that is only whitespace or the
+ * line end, where a multi-word label like `Speaker 1` cannot be delimited (the
+ * dialog then reports rather than guessing a partial name).
+ * @param templates - The line, speaker, and timestamp render settings
+ */
+export function buildNoteLineSpeakerExtractor(
+	templates: NoteSpeakerTemplates,
+): RegExp | null {
+	const delimiters = speakerDelimiters(templates.speakerFormat);
+	if (!delimiters) {
 		return null;
 	}
-	return new RegExp(
-		`${escapeRegExp(before)}(.+?)${escapeRegExp(after)}`,
-		'g',
+	// Rebuild the rendered line structurally: drop the timestamp token when it
+	// is not written, then apply the same whitespace collapse and trim
+	// formatTranscriptMarkdown does, so the pattern matches the line as
+	// rendered even when a leading empty token removed its separator.
+	const structural = templates.lineFormat
+		.replace(
+			/\{timestamp\}/g,
+			templates.includeTimestamps ? RENDER_TOKEN.timestamp : '',
+		)
+		.replace(/\{speaker\}/g, RENDER_TOKEN.speaker)
+		.replace(/\{text\}/g, RENDER_TOKEN.text)
+		.replace(/[ \t]{2,}/g, ' ')
+		.trim();
+	const speakerAt = structural.indexOf(RENDER_TOKEN.speaker);
+	if (speakerAt < 0) {
+		return null;
+	}
+	// The name is delimited on the right by the speaker template's own trailing
+	// text plus the line literal up to the next token. If that is only
+	// whitespace (or the line end), a multi-word label cannot be bounded.
+	const afterSpeaker = structural.slice(
+		speakerAt + RENDER_TOKEN.speaker.length,
 	);
+	const followingLiteral = afterSpeaker.split(RENDER_TOKEN_SPLIT)[0] ?? '';
+	if (`${delimiters.after}${followingLiteral}`.trim() === '') {
+		return null;
+	}
+	const speakerPattern = `${literalToPattern(
+		delimiters.before,
+	)}(.+?)${literalToPattern(delimiters.after)}`;
+	let pattern = '^';
+	for (const part of structural.split(RENDER_TOKEN_SPLIT)) {
+		if (part === RENDER_TOKEN.timestamp) {
+			pattern += '.*?';
+		} else if (part === RENDER_TOKEN.speaker) {
+			pattern += speakerPattern;
+		} else if (part === RENDER_TOKEN.text) {
+			pattern += '.*';
+		} else if (part) {
+			pattern += literalToPattern(part);
+		}
+	}
+	pattern += '$';
+	return new RegExp(pattern);
 }
 
 /**
  * Collects the distinct speaker names rendered on the note lines that belong
  * to a recording, so the rename dialog can list the current speakers without
- * any stored roster. Passing null for the line set scans the whole note, used
- * for a transcript without timecode links that cannot be scoped. Empty when
- * the speaker template carries no locatable delimiter.
+ * any stored roster. Each line is parsed once with the reconstructed line
+ * pattern, so only the speaker slot is read and lookalike text elsewhere on
+ * the line is ignored. Passing null for the line set scans the whole note,
+ * used for a transcript without timecode links that cannot be scoped. Empty
+ * when the speaker cannot be located reliably for the given templates.
  * @param content - Note Markdown
- * @param speakerFormat - Speaker template the transcript was rendered with
+ * @param templates - The templates the transcript was rendered with
  * @param audioLines - Zero-based indices of lines that belong to the audio, or
  *   null to scan every line
  * @returns Distinct speaker names in first-seen order
  */
 export function extractNoteSpeakers(
 	content: string,
-	speakerFormat: string,
+	templates: NoteSpeakerTemplates,
 	audioLines: ReadonlySet<number> | null,
 ): string[] {
-	const extractor = speakerFragmentExtractor(speakerFormat);
+	const extractor = buildNoteLineSpeakerExtractor(templates);
 	if (!extractor) {
 		return [];
 	}
@@ -270,13 +361,9 @@ export function extractNoteSpeakers(
 		) {
 			continue;
 		}
-		extractor.lastIndex = 0;
-		let match: RegExpExecArray | null;
-		while ((match = extractor.exec(line)) !== null) {
-			const name = match[1]?.trim();
-			if (name) {
-				speakers.add(name);
-			}
+		const name = extractor.exec(line)?.[1]?.trim();
+		if (name) {
+			speakers.add(name);
 		}
 	}
 	return speakers.values();
