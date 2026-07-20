@@ -207,6 +207,14 @@ export function geminiUsage(body: unknown): GeminiUsage {
  * out for modality pricing, and candidate plus thinking tokens as output
  * (both billed at the output rate). Returns undefined when the response
  * reported no counts at all, so a caller can fall back to an estimate.
+ *
+ * This mapper only ever runs for a transcription request, whose prompt is
+ * the recording plus a short instruction and so is audio-dominated. When
+ * Gemini omits the modality breakdown, the whole prompt is attributed to
+ * audio rather than left unsplit: an unsplit prompt is billed by the cost
+ * model at the cheaper text rate, which for a transcription under-counts
+ * the audio (billed higher, and the bulk of the prompt) far more than
+ * assuming all-audio over-counts the tiny instruction.
  * @param body - Parsed JSON `generateContent` response
  */
 export function usageFromGemini(body: unknown): TranscriptionUsage | undefined {
@@ -220,13 +228,12 @@ export function usageFromGemini(body: unknown): TranscriptionUsage | undefined {
 	}
 	const output =
 		(counts.candidatesTokenCount ?? 0) + (counts.thoughtsTokenCount ?? 0);
+	const audioInput = counts.promptAudioTokenCount ?? counts.promptTokenCount;
 	return {
 		...(counts.promptTokenCount !== undefined
 			? { inputTokens: counts.promptTokenCount }
 			: {}),
-		...(counts.promptAudioTokenCount !== undefined
-			? { audioInputTokens: counts.promptAudioTokenCount }
-			: {}),
+		...(audioInput !== undefined ? { audioInputTokens: audioInput } : {}),
 		outputTokens: output,
 	};
 }

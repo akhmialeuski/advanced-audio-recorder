@@ -76,7 +76,10 @@ describe('mapGeminiResponse usage', () => {
 		};
 	}
 
-	it('maps prompt tokens to input and candidate+thinking tokens to output', () => {
+	it('attributes an unsplit prompt to audio and maps candidate+thinking tokens to output', () => {
+		// No promptTokensDetails: a transcription prompt is audio-dominated, so
+		// the whole prompt is attributed to audio input rather than left
+		// unsplit and billed at the cheaper text rate.
 		const result = mapGeminiResponse(
 			body({
 				promptTokenCount: 20000,
@@ -87,6 +90,7 @@ describe('mapGeminiResponse usage', () => {
 		);
 		expect(result.usage).toEqual({
 			inputTokens: 20000,
+			audioInputTokens: 20000,
 			outputTokens: 1000,
 		});
 	});
@@ -124,6 +128,10 @@ describe('mapGeminiResponse usage', () => {
 			false,
 		);
 		expect(result.segments).toEqual([]);
-		expect(result.usage).toEqual({ inputTokens: 50, outputTokens: 0 });
+		expect(result.usage).toEqual({
+			inputTokens: 50,
+			audioInputTokens: 50,
+			outputTokens: 0,
+		});
 	});
 });

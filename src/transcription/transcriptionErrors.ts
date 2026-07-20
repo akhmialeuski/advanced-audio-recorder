@@ -1,3 +1,11 @@
+/**
+ * Shared transcription error types that the pipeline reacts to by type rather
+ * than by matching message text. Kept provider-neutral so both the provider
+ * implementations that throw them and the orchestrating service that catches
+ * them depend on this module, not on each other.
+ * @module transcription/transcriptionErrors
+ */
+
 import type { TranscriptionUsage } from './TranscriptTypes';
 
 /**
