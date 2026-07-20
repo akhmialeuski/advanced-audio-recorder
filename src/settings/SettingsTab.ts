@@ -145,6 +145,7 @@ const SETTINGS_SEARCH_ALIASES: string[] = [
 	'Word-level timestamps',
 	'Dictionary profiles',
 	'Rename speakers',
+	'Show cost estimates',
 	'Request timeout',
 	'Upload chunk size',
 	'Whisper API key',

@@ -17,6 +17,7 @@
 - [In-note formatting](#in-note-formatting)
 - [The Transcribe dialog (per-run overrides)](#the-transcribe-dialog-per-run-overrides)
 - [Progress and minimizing](#progress-and-minimizing)
+- [Cost estimates](#cost-estimates)
 - [LLM post-processing](#llm-post-processing)
 - [Security and storage](#security-and-storage)
 - [Settings reference](#settings-reference)
@@ -342,6 +343,18 @@ Each network request - one part of a long recording, or a whole-file upload - is
 When a long recording is split into several parts, parts that fail are reported and the parts that succeeded are still kept - a `> [!warning]` callout names the missing stretch in the inserted Markdown, and a notice explains what was lost. Only if **every** part fails does the whole run fail with the first error.
 
 A part whose transcript overruns the model's **output-token limit** (which Gemini can hit on dense speech) is not discarded: it is automatically split into smaller halves and retried, down to a minimum segment length of one minute. Each retry is a separate, normally billed API request; only a segment that is truncated even at the minimum length is reported as missing.
+
+---
+
+## Cost estimates
+
+Cloud transcription is a paid API call, and nobody likes a surprise bill. With **Show cost estimates** on (the default, under **Settings > Advanced Audio Recorder > Transcription**), the **Transcribe audio** dialog makes the spending visible:
+
+- **Before the run**, the dialog shows an **Estimated cost** breakdown priced from the recording's duration (read cheaply from the container headers, no decoding). It lists one line per billed part - the transcription itself, and, when [LLM post-processing](llm-post-processing.md) is enabled, that pass as a second line - and sums them into an estimated total, so the number reflects the whole run rather than just one stage. Deepgram and the Whisper API are priced per audio minute; Gemini is priced from its audio-token rate (about 32 tokens per second of audio); the LLM pass is priced from the transcript's token size and the selected task. Switching the engine or task in the dialog re-prices the estimate immediately.
+- **During a long multi-part run**, a live "Cost so far" line accumulates what the completed transcription parts actually billed.
+- **After the run**, a notice reports the transcription cost together with the running session total, and the dialog shows **"Spent this session"** - a per-session counter of everything transcribed since Obsidian started, kept per engine.
+
+Below the breakdown, a **Check current pricing** line links straight to the pricing page of each provider the run uses, so the built-in rates are one click from the authoritative numbers. The transcription cost is computed from what the provider **actually reported billing for** - Deepgram's and OpenAI's billed audio duration, Gemini's token counts split by modality (audio input and the text prompt are billed at different rates) - and falls back to the duration-based estimate when a provider reports nothing. Estimates use **built-in, approximate pay-as-you-go rates** for the common models (`whisper-1`, Groq's `whisper-large-v3`(-turbo) and `distil-whisper`, Deepgram `nova`/`enhanced`/`base`, Gemini 2.x, and the OpenAI, Anthropic, and Gemini post-processing models); providers change prices, so always verify against the linked pricing page. A model the plugin has no rate for shows "no built-in rate" instead of a wrong number, and such runs are counted separately in the session total rather than silently added as zero. The **local whisper.cpp engine is free** and shows no cost. The LLM pass is included in the pre-run **estimate**, but because its provider returns no usage to measure, it is billed separately and is not added to the "Spent this session" counter.
 
 ---
 

@@ -12,7 +12,7 @@ import type { TranscriptSegment } from '../TranscriptTypes';
 import { parseTimecode } from '../../utils/TimeUtils';
 import { PLUGIN_LOG_PREFIX } from '../../constants';
 import type { WhisperResult } from './whisperResponse';
-import { geminiCandidateText } from './geminiShared';
+import { geminiCandidateText, usageFromGemini } from './geminiShared';
 import { isRecord } from './responseUtils';
 
 /** Max characters of an unparseable candidate excerpt logged for diagnosis. */
@@ -50,10 +50,13 @@ export function mapGeminiResponse(
 	body: unknown,
 	diarize: boolean,
 ): WhisperResult {
+	// Tokens are billed even when the candidate turns out empty or
+	// unparseable, so usage is attached to every return path.
+	const usage = usageFromGemini(body);
 	const text = geminiCandidateText(body);
 	if (text.trim() === '') {
 		// A legitimately empty candidate (no content); nothing to warn about.
-		return { segments: [] };
+		return { segments: [], ...(usage ? { usage } : {}) };
 	}
 	let parsed: unknown;
 	try {
@@ -66,13 +69,13 @@ export function mapGeminiResponse(
 			`${PLUGIN_LOG_PREFIX} Gemini returned non-JSON transcript text; treating as empty:`,
 			text.slice(0, RESPONSE_EXCERPT_LENGTH),
 		);
-		return { segments: [] };
+		return { segments: [], ...(usage ? { usage } : {}) };
 	}
 	if (!isRecord(parsed) || !Array.isArray(parsed.segments)) {
 		console.warn(
 			`${PLUGIN_LOG_PREFIX} Gemini transcript JSON had no segments array; treating as empty.`,
 		);
-		return { segments: [] };
+		return { segments: [], ...(usage ? { usage } : {}) };
 	}
 	const language =
 		typeof parsed.language === 'string' ? parsed.language : undefined;
@@ -100,5 +103,5 @@ export function mapGeminiResponse(
 			...(speaker ? { speaker } : {}),
 		});
 	}
-	return { language, segments };
+	return { language, segments, ...(usage ? { usage } : {}) };
 }

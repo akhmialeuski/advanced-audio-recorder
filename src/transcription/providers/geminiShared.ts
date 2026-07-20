@@ -14,6 +14,7 @@ import {
 	GEMINI_THINKING_BUDGET_OFF,
 } from '../../constants';
 import { TranscriptTruncatedError } from '../transcriptionErrors';
+import type { TranscriptionUsage } from '../TranscriptTypes';
 
 /** Finish reason set when the model stops because it hit the output token cap. */
 export const GEMINI_FINISH_MAX_TOKENS = 'MAX_TOKENS';
@@ -140,6 +141,41 @@ export interface GeminiUsage {
 	candidatesTokenCount?: number;
 	totalTokenCount?: number;
 	thoughtsTokenCount?: number;
+	/**
+	 * Audio-modality portion of `promptTokenCount`, summed from
+	 * `promptTokensDetails`. Audio input is billed at a higher rate than the
+	 * text prompt, so keeping the split lets the cost model price each
+	 * modality correctly. Undefined when the response omits the breakdown.
+	 */
+	promptAudioTokenCount?: number;
+}
+
+/** Modality string Gemini uses for audio input in `promptTokensDetails`. */
+const GEMINI_AUDIO_MODALITY = 'AUDIO';
+
+/**
+ * Sums the audio-modality token count from Gemini's `promptTokensDetails`
+ * array, when present. Returns undefined when the breakdown is absent so a
+ * caller can tell "no split reported" from a real zero.
+ * @param meta - The `usageMetadata` record
+ */
+function promptAudioTokens(meta: Record<string, unknown>): number | undefined {
+	const details = meta.promptTokensDetails;
+	if (!Array.isArray(details)) {
+		return undefined;
+	}
+	let audio: number | undefined;
+	for (const detail of details) {
+		if (
+			isRecord(detail) &&
+			detail.modality === GEMINI_AUDIO_MODALITY &&
+			typeof detail.tokenCount === 'number' &&
+			Number.isFinite(detail.tokenCount)
+		) {
+			audio = (audio ?? 0) + detail.tokenCount;
+		}
+	}
+	return audio;
 }
 
 /**
@@ -161,6 +197,44 @@ export function geminiUsage(body: unknown): GeminiUsage {
 		candidatesTokenCount: finite(meta.candidatesTokenCount),
 		totalTokenCount: finite(meta.totalTokenCount),
 		thoughtsTokenCount: finite(meta.thoughtsTokenCount),
+		promptAudioTokenCount: promptAudioTokens(meta),
+	};
+}
+
+/**
+ * Maps Gemini's `usageMetadata` token counts to billing usage: prompt
+ * tokens (which include the audio) as input with the audio portion split
+ * out for modality pricing, and candidate plus thinking tokens as output
+ * (both billed at the output rate). Returns undefined when the response
+ * reported no counts at all, so a caller can fall back to an estimate.
+ *
+ * This mapper only ever runs for a transcription request, whose prompt is
+ * the recording plus a short instruction and so is audio-dominated. When
+ * Gemini omits the modality breakdown, the whole prompt is attributed to
+ * audio rather than left unsplit: an unsplit prompt is billed by the cost
+ * model at the cheaper text rate, which for a transcription under-counts
+ * the audio (billed higher, and the bulk of the prompt) far more than
+ * assuming all-audio over-counts the tiny instruction.
+ * @param body - Parsed JSON `generateContent` response
+ */
+export function usageFromGemini(body: unknown): TranscriptionUsage | undefined {
+	const counts = geminiUsage(body);
+	if (
+		counts.promptTokenCount === undefined &&
+		counts.candidatesTokenCount === undefined &&
+		counts.thoughtsTokenCount === undefined
+	) {
+		return undefined;
+	}
+	const output =
+		(counts.candidatesTokenCount ?? 0) + (counts.thoughtsTokenCount ?? 0);
+	const audioInput = counts.promptAudioTokenCount ?? counts.promptTokenCount;
+	return {
+		...(counts.promptTokenCount !== undefined
+			? { inputTokens: counts.promptTokenCount }
+			: {}),
+		...(audioInput !== undefined ? { audioInputTokens: audioInput } : {}),
+		outputTokens: output,
 	};
 }
 
@@ -209,10 +283,15 @@ function geminiUsageDetail(body: unknown): string {
  */
 export function assertGeminiNotTruncated(body: unknown, remedy: string): void {
 	if (geminiFinishReason(body) === GEMINI_FINISH_MAX_TOKENS) {
+		// The truncated response was still billed for its prompt (audio) and
+		// the output tokens it produced, so carry that usage on the error:
+		// the run subdivides and retries, and the discarded parent request
+		// must still count toward the run's cost.
 		throw new TranscriptTruncatedError(
 			'Gemini stopped because it reached its output token limit' +
 				`${geminiUsageDetail(body)}, so the response is incomplete. ` +
 				remedy,
+			usageFromGemini(body),
 		);
 	}
 }

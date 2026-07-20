@@ -271,6 +271,11 @@ export interface AudioRecorderSettings {
 	transcriptionEnabled: boolean;
 	/** Automatically transcribe a recording after it is saved */
 	transcribeOnSave: boolean;
+	/**
+	 * Show API cost estimates and the running session cost counter in the
+	 * transcribe dialog (built-in approximate rates; cloud engines only).
+	 */
+	transcriptionShowCostEstimates: boolean;
 	/** Transcription engine: Whisper API or local whisper.cpp */
 	transcriptionProvider: TranscriptionProviderId;
 	/** Language hint ('auto' to detect) */
@@ -487,6 +492,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	playerEnableMarkers: true,
 	transcriptionEnabled: false,
 	transcribeOnSave: false,
+	transcriptionShowCostEstimates: true,
 	transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
 	transcriptionLanguage: 'auto',
 	transcriptionDiarize: false,

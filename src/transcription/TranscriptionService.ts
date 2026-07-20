@@ -53,7 +53,13 @@ import { resolveDictionaryTerms } from '../settings/dictionaryProfiles';
 import { createLlmProvider, createTranscriptionProvider } from './factories';
 import { effectiveDiarize } from './providers/capabilities';
 import type { LlmProvider } from './llm/LlmProvider';
-import type { Transcript } from './TranscriptTypes';
+import type { Transcript, TranscriptionUsage } from './TranscriptTypes';
+import {
+	costFromUsage,
+	resolveEnginePricing,
+	selectedEngineModel,
+	sumUsage,
+} from './costs';
 
 /** Cooperative cancellation signal checked between chunks. */
 export interface CancellationToken {
@@ -77,8 +83,37 @@ export interface TranscribeRunOptions {
 	notePathForLinks: string;
 	/** Progress callback: fraction 0..1 and a short stage label. */
 	onProgress?: (fraction: number, label: string) => void;
+	/**
+	 * Running-cost callback, invoked after each completed part with the
+	 * cumulative cost so far, so a long multi-part run can show spending
+	 * live rather than only at the end.
+	 */
+	onCost?: (cost: TranscribeRunCost) => void;
+	/**
+	 * Pre-read audio bytes to transcribe. When the caller already holds the
+	 * file's bytes - the dialog reads them to probe the duration for the cost
+	 * estimate - passing them here avoids reading the whole file a second
+	 * time. Omitted, the service reads the file itself.
+	 */
+	audioBytes?: ArrayBuffer;
 	/** Cancellation token. */
 	token?: CancellationToken;
+}
+
+/**
+ * Cost summary of a (partial or finished) transcription run, computed
+ * from what the provider actually reported billing for.
+ */
+export interface TranscribeRunCost {
+	/** Engine that ran. */
+	engineId: string;
+	/**
+	 * Cost in USD, or null when it could not be priced (no built-in rate
+	 * for the model, or the provider reported no billable usage).
+	 */
+	usd: number | null;
+	/** Summed usage every completed part reported. */
+	usage: TranscriptionUsage;
 }
 
 /** Result of a transcription run. */
@@ -86,6 +121,8 @@ export interface TranscribeRunResult {
 	transcript: Transcript;
 	/** Rendered Markdown for insertion into a note. */
 	markdown: string;
+	/** Cost of the run, from provider-reported usage. */
+	cost: TranscribeRunCost;
 }
 
 /** Raised when a run is cancelled. */
@@ -184,7 +221,11 @@ export class TranscriptionService {
 		};
 
 		options.onProgress?.(0, 'Preparing audio...');
-		const raw = await this.app.vault.readBinary(file);
+		// Reuse the caller's already-read bytes when provided (the dialog reads
+		// them to probe the duration), so a manual run never reads the whole
+		// file twice.
+		const raw =
+			options.audioBytes ?? (await this.app.vault.readBinary(file));
 		const prepared = await prepareAudio(
 			raw,
 			file.name,
@@ -212,8 +253,34 @@ export class TranscriptionService {
 
 		const payloads = prepared.payloads;
 		const partCount = payloads.length;
-		const results: { offsetSeconds: number; transcript: Transcript }[] = [];
+		const results: {
+			offsetSeconds: number;
+			transcript: Transcript;
+			usage?: TranscriptionUsage;
+		}[] = [];
 		const failedParts: { label: string; message: string }[] = [];
+		// Usage from requests that were billed but whose transcript was
+		// discarded (a truncated Gemini part that gets subdivided and
+		// retried): kept apart from `results` so it counts toward the cost
+		// without being mistaken for a successful part in the failure check.
+		const discardedUsage: TranscriptionUsage[] = [];
+		// Priced once per run so every per-part update and the final result
+		// use the same rate for the same engine and model.
+		const pricing = resolveEnginePricing(
+			settings.transcriptionProvider,
+			selectedEngineModel(settings, settings.transcriptionProvider),
+		);
+		const runCost = (): TranscribeRunCost => {
+			const usage = sumUsage([
+				...results.map((entry) => entry.usage),
+				...discardedUsage,
+			]);
+			return {
+				engineId: settings.transcriptionProvider,
+				usd: pricing ? costFromUsage(pricing, usage) : null,
+				usage,
+			};
+		};
 		for (let i = 0; i < partCount; i++) {
 			this.throwIfCancelled(token);
 			const payload = payloads[i];
@@ -234,7 +301,9 @@ export class TranscriptionService {
 				partLabel,
 				results,
 				failedParts,
+				discardedUsage,
 			);
+			options.onCost?.(runCost());
 		}
 
 		// Every part failed: there is no transcript to keep, so surface the
@@ -328,7 +397,7 @@ export class TranscriptionService {
 		markdown = incompleteWarning + markdown;
 
 		options.onProgress?.(1, 'Done');
-		return { transcript, markdown };
+		return { transcript, markdown, cost: runCost() };
 	}
 
 	/**
@@ -348,6 +417,9 @@ export class TranscriptionService {
 	 * @param label - Human label for the part ('' for a single indivisible job)
 	 * @param results - Accumulates successful per-part transcripts (mutated)
 	 * @param failedParts - Accumulates recoverable per-part failures (mutated)
+	 * @param discardedUsage - Accumulates usage from billed-but-discarded
+	 *   truncated attempts, so their cost is counted even though their
+	 *   transcript is thrown away and retried (mutated)
 	 */
 	private async transcribePart(
 		provider: TranscriptionProvider,
@@ -355,8 +427,13 @@ export class TranscriptionService {
 		providerOptions: TranscribeOptions,
 		token: CancellationToken,
 		label: string,
-		results: { offsetSeconds: number; transcript: Transcript }[],
+		results: {
+			offsetSeconds: number;
+			transcript: Transcript;
+			usage?: TranscriptionUsage;
+		}[],
 		failedParts: { label: string; message: string }[],
+		discardedUsage: TranscriptionUsage[],
 	): Promise<void> {
 		this.throwIfCancelled(token);
 		// Materialize this payload's bytes only now, so a multi-chunk job never
@@ -377,6 +454,9 @@ export class TranscriptionService {
 				transcript: buildTranscript(chunkResult.segments, {
 					language: chunkResult.language,
 				}),
+				// Carried per part so the run's cost sums what the provider
+				// actually reported billing for, across chunks and retries.
+				...(chunkResult.usage ? { usage: chunkResult.usage } : {}),
 			});
 		} catch (error) {
 			// A cancel aborts the whole run; never salvage past it. An abort
@@ -395,6 +475,12 @@ export class TranscriptionService {
 			// the recursion is bounded only by the MIN_SUBDIVIDE_SECONDS floor, so
 			// a consistently dense part can fan out into several extra requests.
 			if (error instanceof TranscriptTruncatedError) {
+				// The truncated request was already billed, so account its
+				// reported usage before discarding the transcript and retrying;
+				// otherwise the run total omits every truncated ancestor.
+				if (error.usage) {
+					discardedUsage.push(error.usage);
+				}
 				const halves = prepared.subdivide?.() ?? [];
 				if (halves.length > 0) {
 					console.debug(
@@ -411,6 +497,7 @@ export class TranscriptionService {
 							this.partTimeLabel(half),
 							results,
 							failedParts,
+							discardedUsage,
 						);
 					}
 					return;

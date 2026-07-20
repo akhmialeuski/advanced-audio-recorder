@@ -8,9 +8,35 @@
  * @module transcription/providers/deepgramResponse
  */
 
-import type { TranscriptSegment, TranscriptWord } from '../TranscriptTypes';
+import type {
+	TranscriptSegment,
+	TranscriptWord,
+	TranscriptionUsage,
+} from '../TranscriptTypes';
 import type { WhisperResult } from './whisperResponse';
 import { isRecord, num } from './responseUtils';
+
+/**
+ * Reads the billed audio duration from Deepgram's `metadata.duration`
+ * (seconds), when present and finite, so the run's actual cost can be
+ * computed.
+ */
+function deepgramUsage(
+	body: Record<string, unknown>,
+): TranscriptionUsage | undefined {
+	if (!isRecord(body.metadata)) {
+		return undefined;
+	}
+	const duration = body.metadata.duration;
+	if (
+		typeof duration !== 'number' ||
+		!Number.isFinite(duration) ||
+		duration < 0
+	) {
+		return undefined;
+	}
+	return { audioSeconds: duration };
+}
 
 /** Formats a Deepgram speaker index (0-based) as a label, when present. */
 function speakerLabel(value: unknown, diarize: boolean): string | undefined {
@@ -122,6 +148,7 @@ export function mapDeepgramResponse(
 		return { segments: [] };
 	}
 	const results = body.results;
+	const usage = deepgramUsage(body);
 
 	const channels = results.channels;
 	const channel0 =
@@ -142,7 +169,7 @@ export function mapDeepgramResponse(
 			}
 		}
 		if (segments.length > 0) {
-			return { language, segments };
+			return { language, segments, ...(usage ? { usage } : {}) };
 		}
 	}
 
@@ -157,15 +184,23 @@ export function mapDeepgramResponse(
 		if (diarize) {
 			const grouped = groupWordsBySpeaker(alt.words, true);
 			if (grouped.length > 0) {
-				return { language, segments: grouped };
+				return {
+					language,
+					segments: grouped,
+					...(usage ? { usage } : {}),
+				};
 			}
 		}
 		const text =
 			typeof alt.transcript === 'string' ? alt.transcript.trim() : '';
 		if (text !== '') {
-			return { language, segments: [{ start: 0, end: 0, text }] };
+			return {
+				language,
+				segments: [{ start: 0, end: 0, text }],
+				...(usage ? { usage } : {}),
+			};
 		}
 	}
 
-	return { language, segments: [] };
+	return { language, segments: [], ...(usage ? { usage } : {}) };
 }

@@ -82,6 +82,13 @@ export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
 		set: (v) => (s.transcribeOnSave = v),
 	});
 
+	addToggle(ctx, {
+		name: 'Show cost estimates',
+		desc: 'Show an approximate API cost estimate before a run and a running session total in the Transcribe dialog (built-in rates; cloud engines only).',
+		get: () => s.transcriptionShowCostEstimates,
+		set: (v) => (s.transcriptionShowCostEstimates = v),
+	});
+
 	addDropdown(ctx, {
 		name: 'Engine',
 		desc: 'Whisper API, Deepgram, or Google Gemini (cloud), or a local whisper.cpp binary (desktop). Engines this device cannot run are shown blocked.',

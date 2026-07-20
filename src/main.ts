@@ -58,7 +58,10 @@ import { MarkerStore } from './markers/MarkerStore';
 import { RecordingMarkerModal } from './ui/MarkerModal';
 import { TranscriptionModal } from './ui/TranscriptionModal';
 import type { TranscriptionModalOptions } from './ui/TranscriptionModal';
-import { isProviderAvailableOnPlatform } from './transcription/api';
+import {
+	isProviderAvailableOnPlatform,
+	SessionCostTracker,
+} from './transcription/api';
 import { COMMAND_IDS } from './constants';
 import type { MarkerKind } from './markers/markerModel';
 import type { PlaybackControlsState } from './player/playbackControls';
@@ -148,6 +151,12 @@ export default class AudioRecorderPlugin extends Plugin {
 		BackgroundTranscriptionProgress
 	>();
 	private nextBackgroundTranscriptionId = 0;
+	/**
+	 * Session-wide per-engine transcription spending. Lives on the plugin
+	 * (transcription services are per-run) so the running totals survive
+	 * across dialogs until Obsidian restarts.
+	 */
+	private readonly transcriptionCostTracker = new SessionCostTracker();
 	/** Current actionable silent-channel notice, replaced per save. */
 	private silentChannelNotice: Notice | null = null;
 	/** Invalidates an older asynchronous analysis when a newer save starts. */
@@ -908,6 +917,7 @@ export default class AudioRecorderPlugin extends Plugin {
 				this.settings.transcriptionDictionaryProfileId = profileId;
 				await this.saveSettings();
 			},
+			costTracker: this.transcriptionCostTracker,
 			backgroundProgress: {
 				show: (progress: SaveProgress, restore: () => void) => {
 					// Re-insert so the most recently updated job sorts last and

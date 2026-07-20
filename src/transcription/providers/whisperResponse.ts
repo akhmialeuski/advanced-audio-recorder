@@ -6,13 +6,30 @@
  * @module transcription/providers/whisperResponse
  */
 
-import type { TranscriptSegment, TranscriptWord } from '../TranscriptTypes';
+import type {
+	TranscriptSegment,
+	TranscriptWord,
+	TranscriptionUsage,
+} from '../TranscriptTypes';
 import { isRecord, num } from './responseUtils';
 
 /** Parsed result of one transcription request. */
 export interface WhisperResult {
 	language?: string;
 	segments: TranscriptSegment[];
+	/** Billing-relevant usage the provider reported, when any. */
+	usage?: TranscriptionUsage;
+}
+
+/**
+ * Reads the billed audio duration a `verbose_json` response carries at
+ * the top level, when present and finite.
+ */
+function billedSeconds(value: unknown): TranscriptionUsage | undefined {
+	if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+		return undefined;
+	}
+	return { audioSeconds: value };
 }
 
 /**
@@ -52,6 +69,9 @@ export function mapWhisperResponse(body: unknown): WhisperResult {
 	}
 	const language =
 		typeof body.language === 'string' ? body.language : undefined;
+	// OpenAI's verbose_json reports the billed audio duration in seconds;
+	// carry it out so the run's actual cost can be computed.
+	const usage = billedSeconds(body.duration);
 
 	const rawSegments = body.segments;
 	if (Array.isArray(rawSegments) && rawSegments.length > 0) {
@@ -76,7 +96,7 @@ export function mapWhisperResponse(body: unknown): WhisperResult {
 				...(words ? { words } : {}),
 			});
 		}
-		return { language, segments };
+		return { language, segments, ...(usage ? { usage } : {}) };
 	}
 
 	// No segment array: fall back to the flat transcript text.
@@ -84,5 +104,6 @@ export function mapWhisperResponse(body: unknown): WhisperResult {
 	return {
 		language,
 		segments: text === '' ? [] : [{ start: 0, end: 0, text }],
+		...(usage ? { usage } : {}),
 	};
 }

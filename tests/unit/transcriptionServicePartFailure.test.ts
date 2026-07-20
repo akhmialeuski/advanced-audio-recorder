@@ -276,6 +276,63 @@ describe('TranscriptionService multi-part salvage', () => {
 		expect(mockNotice).not.toHaveBeenCalled();
 	});
 
+	it('counts the billed usage of a truncated part it discards and retries', async () => {
+		prepareSubdividingPart();
+		const transcribe = jest
+			.fn()
+			// The whole part is billed for its audio and truncated output, then
+			// discarded; its usage must still count toward the run cost.
+			.mockRejectedValueOnce(
+				new TranscriptTruncatedError(
+					'Gemini stopped because it reached its output token limit',
+					{
+						inputTokens: 60000,
+						audioInputTokens: 60000,
+						outputTokens: 500,
+					},
+				),
+			)
+			.mockResolvedValueOnce({
+				segments: [{ start: 0, end: 1, text: 'first half' }],
+				usage: {
+					inputTokens: 30000,
+					audioInputTokens: 30000,
+					outputTokens: 800,
+				},
+			})
+			.mockResolvedValueOnce({
+				segments: [{ start: 0, end: 1, text: 'second half' }],
+				usage: {
+					inputTokens: 30000,
+					audioInputTokens: 30000,
+					outputTokens: 800,
+				},
+			});
+		const service = new TranscriptionService(
+			makeApp(),
+			() => mergeSettings(baseSettings),
+			{ createProvider: () => makeProvider(transcribe) },
+		);
+
+		const result = await service.run(audioFile, {
+			notePathForLinks: 'note.md',
+			token: NEVER_CANCELLED,
+		});
+
+		// Discarded truncated parent (60k/500) plus both halves (2 x 30k/800).
+		expect(result.cost.usage).toEqual({
+			inputTokens: 120000,
+			audioInputTokens: 120000,
+			outputTokens: 2100,
+		});
+		// Priced at gemini-2.5-flash: 120k audio input at $1/M plus 2.1k output
+		// at $2.5/M.
+		expect(result.cost.usd).toBeCloseTo(
+			0.12 + (2100 * 2.5) / 1_000_000,
+			10,
+		);
+	});
+
 	it('fails, naming the timeline span, when every subdivision still truncates', async () => {
 		prepareSubdividingPart();
 		const truncated = (): TranscriptTruncatedError =>
