@@ -20,11 +20,13 @@ export type {
 	TranscribeRunCost,
 } from './TranscriptionService';
 export {
-	describeCostEstimate,
+	buildCostEstimate,
+	costEstimateNeedsDuration,
 	estimateTranscriptionCost,
 	formatUsd,
 	selectedEngineModel,
 } from './costs';
+export type { CostEstimate, CostEstimateLine } from './costs';
 export { SessionCostTracker } from './SessionCostTracker';
 export type {
 	TranscriptDestination,

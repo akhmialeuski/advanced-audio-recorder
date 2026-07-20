@@ -8,37 +8,12 @@
  * @module transcription/providers/geminiResponse
  */
 
-import type { TranscriptSegment, TranscriptionUsage } from '../TranscriptTypes';
+import type { TranscriptSegment } from '../TranscriptTypes';
 import { parseTimecode } from '../../utils/TimeUtils';
 import { PLUGIN_LOG_PREFIX } from '../../constants';
 import type { WhisperResult } from './whisperResponse';
-import { geminiCandidateText, geminiUsage } from './geminiShared';
+import { geminiCandidateText, usageFromGemini } from './geminiShared';
 import { isRecord } from './responseUtils';
-
-/**
- * Maps Gemini's `usageMetadata` token counts to billing usage: prompt
- * tokens (which include the audio) as input, candidate plus thinking
- * tokens as output - both are billed at the output rate. Undefined when
- * the response reported no counts at all.
- */
-function usageFromGemini(body: unknown): TranscriptionUsage | undefined {
-	const counts = geminiUsage(body);
-	if (
-		counts.promptTokenCount === undefined &&
-		counts.candidatesTokenCount === undefined &&
-		counts.thoughtsTokenCount === undefined
-	) {
-		return undefined;
-	}
-	const output =
-		(counts.candidatesTokenCount ?? 0) + (counts.thoughtsTokenCount ?? 0);
-	return {
-		...(counts.promptTokenCount !== undefined
-			? { inputTokens: counts.promptTokenCount }
-			: {}),
-		outputTokens: output,
-	};
-}
 
 /** Max characters of an unparseable candidate excerpt logged for diagnosis. */
 const RESPONSE_EXCERPT_LENGTH = 200;

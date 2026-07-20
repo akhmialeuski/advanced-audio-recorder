@@ -733,6 +733,36 @@ input.aar-input-invalid {
     color: var(--text-muted);
 }
 
+/* "Estimated cost" heading above the per-part breakdown. */
+.aar-transcribe-cost-title {
+    font-weight: var(--font-semibold);
+    color: var(--text-normal);
+}
+
+/* Per-part breakdown list (transcription, post-processing). */
+.aar-transcribe-cost-list {
+    margin: 2px 0;
+    padding-left: 1.2em;
+    list-style: disc;
+}
+
+/* Combined estimated total below the breakdown. */
+.aar-transcribe-cost-total {
+    color: var(--text-normal);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Approximate-rate caveat with the per-provider pricing links. */
+.aar-transcribe-cost-note {
+    margin-top: 2px;
+}
+
+/* Running per-session spending line. */
+.aar-transcribe-cost-session {
+    margin-top: 4px;
+    font-variant-numeric: tabular-nums;
+}
+
 /* Live cumulative cost while a multi-part run is in flight. */
 .aar-transcribe-cost-running {
     margin-top: 2px;

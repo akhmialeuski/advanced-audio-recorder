@@ -59,6 +59,33 @@ export const LLM_PROVIDER_LABELS: Record<LlmProviderId, string> = {
 	[LLM_PROVIDER_IDS.GEMINI]: 'Google Gemini',
 };
 
+/**
+ * Public pricing pages per transcription engine, linked from the cost
+ * estimate so the user can check the current rates against the plugin's
+ * built-in approximations. Kept in one place (not inlined at the call
+ * site) so a moved page is a single edit; the free local engine has no
+ * entry. These are external URLs owned by the providers and can change.
+ */
+export const TRANSCRIPTION_PROVIDER_PRICING_URLS: Partial<
+	Record<TranscriptionProviderId, string>
+> = {
+	[TRANSCRIPTION_PROVIDER_IDS.WHISPER_API]: 'https://openai.com/api/pricing/',
+	[TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM]: 'https://deepgram.com/pricing',
+	[TRANSCRIPTION_PROVIDER_IDS.GEMINI]:
+		'https://ai.google.dev/gemini-api/docs/pricing',
+};
+
+/**
+ * Public pricing pages per LLM post-processing provider, linked from the
+ * cost estimate. Centralized for the same reason as
+ * {@link TRANSCRIPTION_PROVIDER_PRICING_URLS}.
+ */
+export const LLM_PROVIDER_PRICING_URLS: Record<LlmProviderId, string> = {
+	[LLM_PROVIDER_IDS.OPENAI_COMPATIBLE]: 'https://openai.com/api/pricing/',
+	[LLM_PROVIDER_IDS.ANTHROPIC]: 'https://www.anthropic.com/pricing',
+	[LLM_PROVIDER_IDS.GEMINI]: 'https://ai.google.dev/gemini-api/docs/pricing',
+};
+
 /** A value/label pair for a dropdown control (single source for the UI). */
 export interface LabeledOption {
 	value: string;

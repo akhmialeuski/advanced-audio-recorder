@@ -89,6 +89,13 @@ export interface TranscribeRunOptions {
 	 * live rather than only at the end.
 	 */
 	onCost?: (cost: TranscribeRunCost) => void;
+	/**
+	 * Pre-read audio bytes to transcribe. When the caller already holds the
+	 * file's bytes - the dialog reads them to probe the duration for the cost
+	 * estimate - passing them here avoids reading the whole file a second
+	 * time. Omitted, the service reads the file itself.
+	 */
+	audioBytes?: ArrayBuffer;
 	/** Cancellation token. */
 	token?: CancellationToken;
 }
@@ -214,7 +221,11 @@ export class TranscriptionService {
 		};
 
 		options.onProgress?.(0, 'Preparing audio...');
-		const raw = await this.app.vault.readBinary(file);
+		// Reuse the caller's already-read bytes when provided (the dialog reads
+		// them to probe the duration), so a manual run never reads the whole
+		// file twice.
+		const raw =
+			options.audioBytes ?? (await this.app.vault.readBinary(file));
 		const prepared = await prepareAudio(
 			raw,
 			file.name,
@@ -248,6 +259,11 @@ export class TranscriptionService {
 			usage?: TranscriptionUsage;
 		}[] = [];
 		const failedParts: { label: string; message: string }[] = [];
+		// Usage from requests that were billed but whose transcript was
+		// discarded (a truncated Gemini part that gets subdivided and
+		// retried): kept apart from `results` so it counts toward the cost
+		// without being mistaken for a successful part in the failure check.
+		const discardedUsage: TranscriptionUsage[] = [];
 		// Priced once per run so every per-part update and the final result
 		// use the same rate for the same engine and model.
 		const pricing = resolveEnginePricing(
@@ -255,7 +271,10 @@ export class TranscriptionService {
 			selectedEngineModel(settings, settings.transcriptionProvider),
 		);
 		const runCost = (): TranscribeRunCost => {
-			const usage = sumUsage(results.map((entry) => entry.usage));
+			const usage = sumUsage([
+				...results.map((entry) => entry.usage),
+				...discardedUsage,
+			]);
 			return {
 				engineId: settings.transcriptionProvider,
 				usd: pricing ? costFromUsage(pricing, usage) : null,
@@ -282,6 +301,7 @@ export class TranscriptionService {
 				partLabel,
 				results,
 				failedParts,
+				discardedUsage,
 			);
 			options.onCost?.(runCost());
 		}
@@ -397,6 +417,9 @@ export class TranscriptionService {
 	 * @param label - Human label for the part ('' for a single indivisible job)
 	 * @param results - Accumulates successful per-part transcripts (mutated)
 	 * @param failedParts - Accumulates recoverable per-part failures (mutated)
+	 * @param discardedUsage - Accumulates usage from billed-but-discarded
+	 *   truncated attempts, so their cost is counted even though their
+	 *   transcript is thrown away and retried (mutated)
 	 */
 	private async transcribePart(
 		provider: TranscriptionProvider,
@@ -410,6 +433,7 @@ export class TranscriptionService {
 			usage?: TranscriptionUsage;
 		}[],
 		failedParts: { label: string; message: string }[],
+		discardedUsage: TranscriptionUsage[],
 	): Promise<void> {
 		this.throwIfCancelled(token);
 		// Materialize this payload's bytes only now, so a multi-chunk job never
@@ -451,6 +475,12 @@ export class TranscriptionService {
 			// the recursion is bounded only by the MIN_SUBDIVIDE_SECONDS floor, so
 			// a consistently dense part can fan out into several extra requests.
 			if (error instanceof TranscriptTruncatedError) {
+				// The truncated request was already billed, so account its
+				// reported usage before discarding the transcript and retrying;
+				// otherwise the run total omits every truncated ancestor.
+				if (error.usage) {
+					discardedUsage.push(error.usage);
+				}
 				const halves = prepared.subdivide?.() ?? [];
 				if (halves.length > 0) {
 					console.debug(
@@ -467,6 +497,7 @@ export class TranscriptionService {
 							this.partTimeLabel(half),
 							results,
 							failedParts,
+							discardedUsage,
 						);
 					}
 					return;

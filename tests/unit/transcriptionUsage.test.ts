@@ -91,6 +91,26 @@ describe('mapGeminiResponse usage', () => {
 		});
 	});
 
+	it('splits the audio portion of the prompt out for modality pricing', () => {
+		const result = mapGeminiResponse(
+			body({
+				promptTokenCount: 20000,
+				promptTokensDetails: [
+					{ modality: 'AUDIO', tokenCount: 19000 },
+					{ modality: 'TEXT', tokenCount: 1000 },
+				],
+				candidatesTokenCount: 900,
+				thoughtsTokenCount: 100,
+			}),
+			false,
+		);
+		expect(result.usage).toEqual({
+			inputTokens: 20000,
+			audioInputTokens: 19000,
+			outputTokens: 1000,
+		});
+	});
+
 	it('omits usage when the response reports no counts', () => {
 		expect(mapGeminiResponse(body(), false).usage).toBeUndefined();
 	});

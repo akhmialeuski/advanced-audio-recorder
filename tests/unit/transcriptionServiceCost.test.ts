@@ -77,11 +77,15 @@ describe('TranscriptionService run cost', () => {
 		expect(cost.usd).toBeCloseTo(0.043, 10);
 	});
 
-	it('prices reported tokens with the Gemini rates', async () => {
+	it('prices reported audio-input tokens with the Gemini audio rate', async () => {
 		const cost = await runWith(
 			{
 				segments,
-				usage: { inputTokens: 1_000_000, outputTokens: 0 },
+				usage: {
+					inputTokens: 1_000_000,
+					audioInputTokens: 1_000_000,
+					outputTokens: 0,
+				},
 			},
 			{
 				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
@@ -89,6 +93,26 @@ describe('TranscriptionService run cost', () => {
 			},
 		);
 		expect(cost.usd).toBeCloseTo(1.0, 10);
+	});
+
+	it('prices the text portion of the Gemini prompt at the cheaper text rate', async () => {
+		// 1M audio input at $1/M plus 100k text prompt at $0.30/M plus 10k
+		// output at $2.50/M.
+		const cost = await runWith(
+			{
+				segments,
+				usage: {
+					inputTokens: 1_100_000,
+					audioInputTokens: 1_000_000,
+					outputTokens: 10_000,
+				},
+			},
+			{
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
+				geminiModel: 'gemini-2.5-flash',
+			},
+		);
+		expect(cost.usd).toBeCloseTo(1.0 + 0.03 + 0.025, 10);
 	});
 
 	it('returns a null cost for a model with no built-in rate', async () => {
@@ -124,6 +148,58 @@ describe('TranscriptionService run cost', () => {
 			},
 		);
 		expect(cost.usd).toBe(0);
+	});
+
+	it('reuses caller-provided audio bytes instead of reading the file', async () => {
+		const readBinary = jest.fn(async () => new ArrayBuffer(4));
+		const app = {
+			vault: { readBinary },
+			fileManager: {
+				generateMarkdownLink: jest.fn(() => '[[rec#t=0|0:00]]'),
+			},
+		} as unknown as App;
+		const service = new TranscriptionService(
+			app,
+			() =>
+				mergeSettings({
+					transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+					deepgramModel: 'nova-3',
+				}),
+			{
+				createProvider: () =>
+					makeProvider({ segments, usage: { audioSeconds: 60 } }),
+			},
+		);
+		await service.run(audioFile, {
+			notePathForLinks: 'note.md',
+			audioBytes: new ArrayBuffer(8),
+		});
+		// The pre-read bytes are used, so the service never reads the file again.
+		expect(readBinary).not.toHaveBeenCalled();
+	});
+
+	it('reads the file itself when no bytes are provided', async () => {
+		const readBinary = jest.fn(async () => new ArrayBuffer(4));
+		const app = {
+			vault: { readBinary },
+			fileManager: {
+				generateMarkdownLink: jest.fn(() => '[[rec#t=0|0:00]]'),
+			},
+		} as unknown as App;
+		const service = new TranscriptionService(
+			app,
+			() =>
+				mergeSettings({
+					transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+					deepgramModel: 'nova-3',
+				}),
+			{
+				createProvider: () =>
+					makeProvider({ segments, usage: { audioSeconds: 60 } }),
+			},
+		);
+		await service.run(audioFile, { notePathForLinks: 'note.md' });
+		expect(readBinary).toHaveBeenCalledTimes(1);
 	});
 
 	it('invokes onCost with the cumulative cost after each part', async () => {

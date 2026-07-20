@@ -30,6 +30,11 @@ export interface TranscribeFileOptions {
 	onProgress?: (fraction: number, label: string) => void;
 	/** Running-cost callback (cumulative, after each completed part). */
 	onCost?: (cost: TranscribeRunCost) => void;
+	/**
+	 * Pre-read audio bytes, passed through to the service so a caller that
+	 * already holds the file's bytes avoids a second full-file read.
+	 */
+	audioBytes?: ArrayBuffer;
 	/** Cancellation token. */
 	token?: CancellationToken;
 }
@@ -56,6 +61,7 @@ export async function transcribeFile(
 		notePathForLinks: options.notePathForLinks,
 		onProgress: options.onProgress,
 		onCost: options.onCost,
+		audioBytes: options.audioBytes,
 		token: options.token,
 	});
 

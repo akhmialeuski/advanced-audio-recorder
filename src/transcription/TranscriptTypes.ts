@@ -66,8 +66,17 @@ export interface Transcript {
 export interface TranscriptionUsage {
 	/** Billed audio duration in seconds, when the provider reports it. */
 	audioSeconds?: number;
-	/** Billed input (prompt/audio) tokens, when the provider reports them. */
+	/** Total billed input (prompt) tokens, when the provider reports them. */
 	inputTokens?: number;
+	/**
+	 * Portion of {@link inputTokens} that is audio-modality, when the
+	 * provider breaks the prompt down by modality (Gemini reports this in
+	 * `usageMetadata.promptTokensDetails`). Audio tokens are billed at a
+	 * different rate than the text prompt, so the split lets the cost model
+	 * price each modality correctly instead of charging the whole prompt at
+	 * the audio rate. Undefined means the split is unknown.
+	 */
+	audioInputTokens?: number;
 	/** Billed output tokens, when the provider reports them. */
 	outputTokens?: number;
 }
