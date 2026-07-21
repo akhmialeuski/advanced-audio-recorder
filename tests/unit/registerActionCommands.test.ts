@@ -69,11 +69,15 @@ function makeServices(activeFile: TFile | null): ActionServices {
 			({
 				transcriptionEnabled: true,
 				transcriptionSpeakerRenameEnabled: true,
+				transcriptionAutoChaptersEnabled: true,
 			}) as unknown as AudioRecorderSettings,
 		saveSettings: () => Promise.resolve(),
 		createTranscriptionModalOptions: () => ({}),
 		primeForEnhancement: () => {},
 		getWorkerClient: () => null,
+		autoChapters: {
+			generate: jest.fn(),
+		} as unknown as ActionServices['autoChapters'],
 	};
 }
 
@@ -101,6 +105,7 @@ describe('registerFileActionCommands', () => {
 			COMMAND_IDS.cleanupAudio,
 			COMMAND_IDS.transcribeAudio,
 			COMMAND_IDS.renameSpeakers,
+			COMMAND_IDS.generateChapters,
 			COMMAND_IDS.deleteRecording,
 		]);
 	});

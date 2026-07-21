@@ -16,6 +16,7 @@ This is the exhaustive reference for every setting in **Advanced Audio Recorder*
     - [Engine: Google Gemini](#engine-google-gemini)
     - [Engine: Local whisper.cpp](#engine-local-whispercpp)
     - [Transcript output](#transcript-output)
+    - [Auto chapters](#auto-chapters)
     - [LLM post-processing](#llm-post-processing)
 - [Audio processing & feedback](#audio-processing--feedback)
 - [Audio cleanup defaults](#audio-cleanup-defaults)
@@ -35,6 +36,7 @@ A few settings reveal or hide other controls when toggled, so the tab redraws in
 - Turning **Enhanced audio player** on reveals **Show waveform** and **Markers and chapters**.
 - Turning **Enable transcription** on reveals the engine fields, transcript output, and LLM sub-sections; the **Engine** dropdown then swaps in that engine's own fields.
 - Turning **Enable LLM post-processing** on reveals the task, prompt, provider, key, model, and token controls.
+- Turning **Auto chapters** on reveals **Generate after transcription** and keeps the LLM provider controls visible even while LLM post-processing is off.
 
 Player settings apply live: changing **Show waveform** or **Markers and chapters** rebuilds any enhanced player already open in a note, so you do not have to reopen the embed. Other changes (for example a new recording format or save folder) take effect on the next action that uses them.
 
@@ -223,9 +225,18 @@ Shown for every engine, below the engine fields. Controls where the transcript g
 | **Line format**                | Arrangement of `{timestamp}`, `{speaker}`, and `{text}` on each line. Empty resets to the default.                                                                | Template with `{timestamp} {speaker} {text}`                                           | `{timestamp} {speaker} {text}` |
 | **Rename speakers**            | Add a **Rename speakers** action (context menu, editor menu, command palette) to replace diarized labels with participant names in an existing transcript.        | On / Off                                                                               | Off                            |
 
+### Auto chapters
+
+Sub-section inside Transcription, between Transcript output and LLM post-processing. Asks the configured LLM to divide a transcribed recording into titled chapters, written to the recording's marker sidecar and shown in the enhanced player's [markers and chapters](audio-player.md#markers-and-chapters) window. The action refuses to run when the recording has no transcript yet (sidecar file or in-note transcript with timecode links) and asks you to transcribe first. Re-running replaces only previously generated chapters; bookmarks and manually added chapters are kept. Uses the LLM provider configured under **LLM post-processing**, whose provider fields stay visible while this feature is on.
+
+| Setting                          | What it does                                                                                                                             | Options / range | Default |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | --------------- | ------- |
+| **Auto chapters**                | Add a **Generate chapters from transcript** action (context menu, editor menu, command palette). Reveals the toggle below.               | On / Off        | Off     |
+| **Generate after transcription** | Automatically generate chapters each time a recording is transcribed (also offered per run in the Transcribe dialog).                    | On / Off        | Off     |
+
 ### LLM post-processing
 
-Sub-section inside Transcription, below Transcript output. Optionally pass the transcript through an LLM to clean up, summarize, or apply a custom instruction. Only **Enable LLM post-processing** is visible until it is on; then the task, prompt, provider, key, model, and token controls appear. The prompt field changes with the **Task**, and the API key field and model picker change with the **LLM provider**. See [LLM post-processing](llm-post-processing.md) and [Anthropic API key](use-cases/anthropic-api-key.md).
+Sub-section inside Transcription, below Auto chapters. Optionally pass the transcript through an LLM to clean up, summarize, or apply a custom instruction. Only **Enable LLM post-processing** is visible until it is on; then the task, prompt, provider, key, model, and token controls appear (the provider, key, model, and token controls also stay visible while **Auto chapters** is on, since chapters use the same provider). The prompt field changes with the **Task**, and the API key field and model picker change with the **LLM provider**. See [LLM post-processing](llm-post-processing.md) and [Anthropic API key](use-cases/anthropic-api-key.md).
 
 | Setting                                        | What it does                                                                                                                                                                                                              | Options / range                                                                                                                                                                                                                                                    | Default                                                |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------ |

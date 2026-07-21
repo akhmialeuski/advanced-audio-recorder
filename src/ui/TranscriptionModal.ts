@@ -52,6 +52,7 @@ import {
 	type TranscriptDestination,
 	type TranscriptFileFormat,
 } from '../transcription/api';
+import type { Transcript } from '../transcription/TranscriptTypes';
 import { findProfile } from '../settings/dictionaryProfiles';
 import type { SaveProgress } from '../types';
 
@@ -82,6 +83,12 @@ export type TranscriptionModalOptions = {
 	 * dialog can add this run's cost and show the running session total.
 	 */
 	costTracker?: SessionCostTracker;
+	/**
+	 * Generates auto chapters from a finished run's transcript. Invoked
+	 * fire-and-forget when the run's auto-chapters toggle is on; the
+	 * implementation reports its own progress and errors via Notices.
+	 */
+	generateChapters?: (file: TFile, transcript: Transcript) => Promise<void>;
 };
 
 /**
@@ -436,6 +443,14 @@ export class TranscriptionModal extends Modal {
 				set: (v) => (s.llmPostProcessTask = v as LlmTask),
 			});
 		}
+		if (s.transcriptionAutoChaptersEnabled) {
+			addToggle(ctx, {
+				name: 'Generate chapters',
+				desc: 'After transcribing, ask the LLM to add titled chapters to the enhanced player.',
+				get: () => s.transcriptionAutoChaptersOnTranscribe,
+				set: (v) => (s.transcriptionAutoChaptersOnTranscribe = v),
+			});
+		}
 		// Re-evaluated on every rerender (the Engine dropdown triggers one),
 		// so the Transcribe button tracks the freshly selected engine.
 		this.refreshRunButtonState();
@@ -748,6 +763,18 @@ export class TranscriptionModal extends Modal {
 			);
 			const usd = this.accountRunCost(settings, result.cost);
 			accounted = true;
+			if (
+				settings.transcriptionAutoChaptersEnabled &&
+				settings.transcriptionAutoChaptersOnTranscribe
+			) {
+				// Fire-and-forget on the fresh in-memory transcript: the
+				// dialog closes normally while chapters generate in the
+				// background, reporting through their own Notices.
+				void this.options.generateChapters?.(
+					this.file,
+					result.transcript,
+				);
+			}
 			if (usd !== null) {
 				const total = this.options.costTracker?.totalUsd();
 				new Notice(

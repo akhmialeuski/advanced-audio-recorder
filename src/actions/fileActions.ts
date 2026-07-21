@@ -24,7 +24,7 @@ const always = (): boolean => true;
 
 /**
  * All per-file actions in menu order: info, convert, split, clean up,
- * transcribe, rename speakers, delete. "Delete recording" is excluded
+ * transcribe, rename speakers, generate chapters, delete. "Delete recording" is excluded
  * from the editor menu, which offers the link-aware delete variant
  * instead.
  */
@@ -124,6 +124,17 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 				getSettings: services.getSettings,
 				saveSettings: services.saveSettings,
 			}).open();
+		},
+	},
+	{
+		commandId: COMMAND_IDS.generateChapters,
+		title: 'Generate chapters from transcript',
+		icon: 'sparkles',
+		showInEditorMenu: true,
+		isAvailable: (_file: TFile, services: ActionServices): boolean =>
+			services.getSettings().transcriptionAutoChaptersEnabled,
+		run: async (file: TFile, services: ActionServices): Promise<void> => {
+			await services.autoChapters.generate(file);
 		},
 	},
 	{

@@ -41,7 +41,7 @@ const TRANSCRIPT_FILE_FORMATS: readonly TranscriptFileFormat[] = [
 ];
 
 /** A transcript sidecar file discovered next to a recording. */
-interface TranscriptSidecar {
+export interface TranscriptSidecar {
 	file: TFile;
 	format: TranscriptFileFormat;
 }
@@ -108,11 +108,12 @@ function audioLineIndices(
 
 /**
  * Finds the notes that reference a recording (through the metadata cache, so
- * closed notes are covered too).
+ * closed notes are covered too). Exported for reuse by other transcript
+ * consumers (e.g. auto chapters).
  * @param app - Obsidian App
  * @param audioPath - Vault path of the audio file
  */
-function findReferencingNotes(app: App, audioPath: string): TFile[] {
+export function findReferencingNotes(app: App, audioPath: string): TFile[] {
 	const notes: TFile[] = [];
 	for (const [notePath, links] of Object.entries(
 		app.metadataCache.resolvedLinks,
@@ -134,10 +135,11 @@ function findReferencingNotes(app: App, audioPath: string): TFile[] {
  * candidate that is instead a sibling recording's own canonical sidecar
  * (`rec_1.srt` next to `rec_1.wav`) is excluded, so renaming `rec.wav` never
  * reads or rewrites another recording's transcript.
+ * Exported for reuse by other transcript consumers (e.g. auto chapters).
  * @param app - Obsidian App
  * @param audioFile - Recording whose sidecars are sought
  */
-function findTranscriptSidecarFiles(
+export function findTranscriptSidecarFiles(
 	app: App,
 	audioFile: TFile,
 ): TranscriptSidecar[] {

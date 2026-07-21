@@ -165,7 +165,40 @@ export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
 	}
 
 	renderTranscriptOutputSection(ctx);
+	renderAutoChaptersSection(ctx);
 	renderLlmSection(ctx);
+}
+
+/**
+ * LLM-generated chapters. The feature toggle offers the per-file action
+ * and command; the sub-toggle also runs it automatically after each
+ * transcription. Both paths use the LLM provider configured in the LLM
+ * post-processing section, whose provider fields are revealed whenever
+ * either feature needs them.
+ * @param ctx - Section context
+ */
+function renderAutoChaptersSection(ctx: SettingsSectionContext): void {
+	const s = ctx.settings;
+	addHeading(ctx, 'Auto chapters');
+
+	addToggle(ctx, {
+		name: 'Auto chapters',
+		desc: 'Add a "Generate chapters from transcript" action that asks the LLM (configured below) to divide a transcribed recording into titled chapters, shown in the enhanced player.',
+		get: () => s.transcriptionAutoChaptersEnabled,
+		set: (v) => (s.transcriptionAutoChaptersEnabled = v),
+		// Re-render so the sub-toggle and the LLM provider fields below
+		// appear or hide in step with the feature.
+		rerender: true,
+	});
+	if (!s.transcriptionAutoChaptersEnabled) {
+		return;
+	}
+	addToggle(ctx, {
+		name: 'Generate after transcription',
+		desc: 'Automatically generate chapters each time a recording is transcribed.',
+		get: () => s.transcriptionAutoChaptersOnTranscribe,
+		set: (v) => (s.transcriptionAutoChaptersOnTranscribe = v),
+	});
 }
 
 /**
@@ -520,20 +553,24 @@ function renderLlmSection(ctx: SettingsSectionContext): void {
 		set: (v) => (s.llmPostProcessEnabled = v),
 		rerender: true,
 	});
-	if (!s.llmPostProcessEnabled) {
+	// The provider fields stay visible while auto chapters needs them, so
+	// enabling that feature alone still exposes the key/model to configure.
+	if (!s.llmPostProcessEnabled && !s.transcriptionAutoChaptersEnabled) {
 		return;
 	}
 
-	addDropdown(ctx, {
-		name: 'Task',
-		desc: 'Clean up punctuation/formatting, summarize into key points, or apply a custom instruction.',
-		options: LLM_TASK_OPTIONS,
-		get: () => s.llmPostProcessTask,
-		set: (v) => (s.llmPostProcessTask = v as typeof s.llmPostProcessTask),
-		rerender: true,
-	});
-
-	renderLlmPromptField(ctx);
+	if (s.llmPostProcessEnabled) {
+		addDropdown(ctx, {
+			name: 'Task',
+			desc: 'Clean up punctuation/formatting, summarize into key points, or apply a custom instruction.',
+			options: LLM_TASK_OPTIONS,
+			get: () => s.llmPostProcessTask,
+			set: (v) =>
+				(s.llmPostProcessTask = v as typeof s.llmPostProcessTask),
+			rerender: true,
+		});
+		renderLlmPromptField(ctx);
+	}
 	renderLlmProviderFields(ctx);
 }
 

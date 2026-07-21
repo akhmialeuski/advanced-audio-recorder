@@ -291,6 +291,13 @@ export interface AudioRecorderSettings {
 	/** Whether the "Rename speakers" action and command are offered. */
 	transcriptionSpeakerRenameEnabled: boolean;
 	/**
+	 * Whether the "Generate chapters from transcript" action and command
+	 * are offered (LLM-derived chapters written to the player's markers).
+	 */
+	transcriptionAutoChaptersEnabled: boolean;
+	/** Automatically generate chapters after each transcription run. */
+	transcriptionAutoChaptersOnTranscribe: boolean;
+	/**
 	 * Participant-name profiles reused when renaming speakers. Created and
 	 * filled from the rename dialog rather than the settings tab.
 	 */
@@ -500,6 +507,8 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	transcriptionDictionaryProfiles: [],
 	transcriptionDictionaryProfileId: '',
 	transcriptionSpeakerRenameEnabled: false,
+	transcriptionAutoChaptersEnabled: false,
+	transcriptionAutoChaptersOnTranscribe: false,
 	transcriptionSpeakerProfiles: [],
 	transcriptionChunkMb: DEFAULT_TRANSCRIBE_CHUNK_MB,
 	transcriptionTimeoutMinutes: DEFAULT_TRANSCRIPTION_TIMEOUT_MINUTES,

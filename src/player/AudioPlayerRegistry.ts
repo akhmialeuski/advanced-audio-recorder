@@ -328,9 +328,11 @@ export class AudioPlayerRegistry {
 	 * (e.g. Reading view) without re-opening the note. Disconnected players
 	 * are pruned in passing.
 	 * @param path - Vault-relative path whose markers changed
-	 * @param source - The player that made the change (skipped)
+	 * @param source - The player that made the change (skipped), or null
+	 *   when the change came from outside any player (e.g. auto chapters)
+	 *   so every connected player reloads
 	 */
-	reloadMarkers(path: string, source: SeekablePlayer): void {
+	reloadMarkers(path: string, source: SeekablePlayer | null): void {
 		const players = this.playersByPath.get(path);
 		if (!players) {
 			return;

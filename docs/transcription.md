@@ -19,6 +19,7 @@
 - [Progress and minimizing](#progress-and-minimizing)
 - [Cost estimates](#cost-estimates)
 - [LLM post-processing](#llm-post-processing)
+- [Auto chapters](#auto-chapters)
 - [Security and storage](#security-and-storage)
 - [Settings reference](#settings-reference)
 - [Troubleshooting](#troubleshooting)
@@ -37,7 +38,8 @@ Open **Settings > Advanced Audio Recorder > Transcription** and turn on **Enable
 6. **Request timeout** - the per-request network deadline (cloud engines only).
 7. **Per-engine fields** - base URL, API key, and model picker for the chosen engine.
 8. **Transcript output** - destination, file format, and in-note formatting.
-9. **LLM post-processing** - optional, documented separately in [LLM post-processing](llm-post-processing.md).
+9. **Auto chapters** - optional LLM-generated chapters for the enhanced player (see [Auto chapters](#auto-chapters)).
+10. **LLM post-processing** - optional, documented separately in [LLM post-processing](llm-post-processing.md).
 
 ---
 
@@ -365,6 +367,21 @@ After transcription, you can optionally pass the transcript through an LLM to **
 LLM post-processing is **best-effort**: a failure (bad key, network, timeout) falls back to the raw transcript rather than discarding completed work.
 
 This is a feature in its own right - see the full guide: **[LLM post-processing](llm-post-processing.md)**.
+
+---
+
+## Auto chapters
+
+With **Auto chapters** enabled (under **Settings > Advanced Audio Recorder > Transcription > Auto chapters**), the plugin can ask the configured LLM to divide a transcribed recording into titled chapters. The chapters are written to the recording's marker sidecar and appear in the enhanced player's [markers and chapters](audio-player.md#markers-and-chapters) window, where they behave exactly like chapters you add by hand (seek-bar boundaries, prev/next navigation, rename, delete).
+
+Two ways to run it:
+
+- **On demand** - the **Generate chapters from transcript** action in the recording's context menu, the editor menu of its embed, and the command palette. It requires an existing transcript: the transcript sidecar file next to the recording (JSON, SRT, VTT, or plain text) or an in-note transcript whose timecode links resolve to the recording. Without one, the action stops and asks you to transcribe first.
+- **After each transcription** - turn on **Generate after transcription** (also offered as a per-run toggle in the Transcribe dialog). Chapters are then generated in the background from the fresh transcript once each run finishes, without delaying the transcript output.
+
+The LLM's response is validated before anything is written: chapter times must fall inside the recording's transcript, empty or malformed entries are dropped, and an unusable response leaves the markers untouched. Re-running replaces only the previously **generated** chapters - bookmarks and chapters you created manually are never modified, and a generated chapter landing on top of a manual one is skipped.
+
+Auto chapters uses the same LLM provider, key, and model as [LLM post-processing](llm-post-processing.md); enabling the feature reveals those provider fields even when post-processing itself is off.
 
 ---
 

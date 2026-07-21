@@ -302,6 +302,8 @@ describe('Settings', () => {
 				],
 				transcriptionDictionaryProfileId: 'p1',
 				transcriptionSpeakerRenameEnabled: false,
+				transcriptionAutoChaptersEnabled: true,
+				transcriptionAutoChaptersOnTranscribe: true,
 				transcriptionSpeakerProfiles: [],
 				transcriptionChunkMb: 10,
 				transcriptionTimeoutMinutes: 15,
