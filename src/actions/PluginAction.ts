@@ -11,6 +11,7 @@ import type { App, TFile } from 'obsidian';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import type { TranscriptionModalOptions } from '../ui/TranscriptionModal';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
+import type { AutoChapterService } from '../chapters/AutoChapterService';
 
 /**
  * Primes freshly written files for the enhanced player: starts their
@@ -31,6 +32,8 @@ export interface ActionServices {
 	readonly createTranscriptionModalOptions: () => TranscriptionModalOptions;
 	readonly primeForEnhancement: EnhancementPrimer;
 	readonly getWorkerClient: () => EncodingWorkerClient | null;
+	/** Generates LLM chapters from a recording's transcript. */
+	readonly autoChapters: AutoChapterService;
 }
 
 /**

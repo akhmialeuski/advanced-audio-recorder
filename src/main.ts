@@ -55,6 +55,7 @@ import {
 import { EnhancedPlayerRegistrar } from './player/EnhancedPlayerRegistrar';
 import { MediaKindStore, MEDIA_KIND_STORE_FILE } from './player/MediaKindStore';
 import { MarkerStore } from './markers/MarkerStore';
+import { AutoChapterService } from './chapters/AutoChapterService';
 import { RecordingMarkerModal } from './ui/MarkerModal';
 import { TranscriptionModal } from './ui/TranscriptionModal';
 import type { TranscriptionModalOptions } from './ui/TranscriptionModal';
@@ -134,6 +135,7 @@ export default class AudioRecorderPlugin extends Plugin {
 	private contextMenu!: ContextMenu;
 	private recordingBanner!: RecordingBanner;
 	private playerRegistrar!: EnhancedPlayerRegistrar;
+	private autoChapterService!: AutoChapterService;
 	private journal!: SessionJournal;
 	private encodingWorker: EncodingWorkerClient | null = null;
 	private recordingStatus: RecordingStatus = RecordingStatus.Idle;
@@ -195,6 +197,16 @@ export default class AudioRecorderPlugin extends Plugin {
 		// at stop) and the player registrar (which reads/edits them), so
 		// their cache and serialized write chain stay unified.
 		const markerStore = new MarkerStore(this.app);
+		// Auto chapters write into the same store; the player registrar is
+		// created later, so the refresh closure resolves it lazily.
+		this.autoChapterService = new AutoChapterService(
+			this.app,
+			() => this.settings,
+			markerStore,
+			(path) => {
+				this.playerRegistrar.reloadMarkersFor(path);
+			},
+		);
 		this.recordingBanner = new RecordingBanner(() => {
 			void this.recordingManager.stopRecording();
 		});
@@ -632,6 +644,7 @@ export default class AudioRecorderPlugin extends Plugin {
 			primeForEnhancement: (paths) =>
 				this.playerRegistrar.primeSavedRecordingsForEnhancement(paths),
 			getWorkerClient: () => this.encodingWorker,
+			autoChapters: this.autoChapterService,
 		};
 	}
 
@@ -917,7 +930,18 @@ export default class AudioRecorderPlugin extends Plugin {
 				this.settings.transcriptionDictionaryProfileId = profileId;
 				await this.saveSettings();
 			},
+			// Remember the run's chapter-profile choice so it defaults next
+			// time and applies to the after-transcription generation.
+			onChapterProfileSelected: async (profileId: string) => {
+				this.settings.transcriptionChapterPromptProfileId = profileId;
+				await this.saveSettings();
+			},
 			costTracker: this.transcriptionCostTracker,
+			// After-transcription auto chapters: runs on the fresh in-memory
+			// transcript, reporting through its own Notices.
+			generateChapters: async (file, transcript) => {
+				await this.autoChapterService.generate(file, transcript);
+			},
 			backgroundProgress: {
 				show: (progress: SaveProgress, restore: () => void) => {
 					// Re-insert so the most recently updated job sorts last and

@@ -54,6 +54,11 @@ import {
 	findProfile,
 	removeProfile,
 } from '../dictionaryProfiles';
+import {
+	createChapterPromptProfile,
+	findChapterPromptProfile,
+	removeChapterPromptProfile,
+} from '../chapterPromptProfiles';
 import { Setting } from 'obsidian';
 
 /**
@@ -165,7 +170,139 @@ export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
 	}
 
 	renderTranscriptOutputSection(ctx);
+	renderAutoChaptersSection(ctx);
 	renderLlmSection(ctx);
+}
+
+/**
+ * LLM-generated chapters. The feature toggle offers the per-file action
+ * and command; the sub-toggle also runs it automatically after each
+ * transcription. Both paths use the LLM provider configured in the LLM
+ * post-processing section, whose provider fields are revealed whenever
+ * either feature needs them.
+ * @param ctx - Section context
+ */
+function renderAutoChaptersSection(ctx: SettingsSectionContext): void {
+	const s = ctx.settings;
+	addHeading(ctx, 'Auto chapters');
+
+	addToggle(ctx, {
+		name: 'Auto chapters',
+		desc: 'Add a "Generate chapters from transcript" action that asks the LLM (configured below) to divide a transcribed recording into titled chapters, shown in the enhanced player.',
+		get: () => s.transcriptionAutoChaptersEnabled,
+		set: (v) => (s.transcriptionAutoChaptersEnabled = v),
+		// Re-render so the sub-toggle and the LLM provider fields below
+		// appear or hide in step with the feature.
+		rerender: true,
+	});
+	if (!s.transcriptionAutoChaptersEnabled) {
+		return;
+	}
+	addToggle(ctx, {
+		name: 'Generate after transcription',
+		desc: 'Automatically generate chapters each time a recording is transcribed.',
+		get: () => s.transcriptionAutoChaptersOnTranscribe,
+		set: (v) => (s.transcriptionAutoChaptersOnTranscribe = v),
+	});
+	renderChapterPromptProfiles(ctx);
+}
+
+/**
+ * Renders the chapter-guidance profile manager: a selector plus a single
+ * editor for the chosen profile's name and prompt, with add and remove. The
+ * selected profile's prompt is appended to the fixed chapter base prompt at
+ * generation time; the base rules and the JSON contract are never edited here,
+ * so a customized or added profile cannot break response parsing. The list is
+ * seeded with a built-in default that the user can edit, clone, or replace.
+ * @param ctx - The section context (container plus save/rerender hooks)
+ */
+function renderChapterPromptProfiles(ctx: SettingsSectionContext): void {
+	const s = ctx.settings;
+	const profiles = s.transcriptionChapterPromptProfiles;
+	addHeading(ctx, 'Chapter guidance profiles');
+
+	// Edit the persisted selection when it is a real profile, otherwise the
+	// first profile, so the editor always shows something to edit without
+	// silently changing a stored "no guidance" default.
+	const editingId = findChapterPromptProfile(
+		profiles,
+		s.transcriptionChapterPromptProfileId,
+	)
+		? s.transcriptionChapterPromptProfileId
+		: (profiles[0]?.id ?? '');
+
+	const selector = new Setting(ctx.containerEl)
+		.setName('Profile')
+		.setDesc(
+			'Named prompts describing how to divide a recording into chapters. ' +
+				'Pick one to steer chaptering for a given case; the guidance is ' +
+				'appended to the built-in chapter prompt. The response format is ' +
+				'fixed and not part of a profile, so editing one is safe.',
+		);
+	if (profiles.length > 0) {
+		selector.addDropdown((dropdown) => {
+			for (const profile of profiles) {
+				dropdown.addOption(profile.id, profile.name);
+			}
+			dropdown.setValue(editingId).onChange(async (id) => {
+				// Selecting a profile to edit also makes it the run default.
+				s.transcriptionChapterPromptProfileId = id;
+				await ctx.save();
+				ctx.rerender();
+			});
+		});
+	}
+	selector.addExtraButton((button) =>
+		button
+			.setIcon('plus')
+			.setTooltip('Add profile')
+			.onClick(async () => {
+				const created = createChapterPromptProfile('New profile');
+				s.transcriptionChapterPromptProfiles = [...profiles, created];
+				// Select the new profile so its fields open for editing.
+				s.transcriptionChapterPromptProfileId = created.id;
+				await ctx.save();
+				ctx.rerender();
+			}),
+	);
+	if (profiles.length > 0) {
+		selector.addExtraButton((button) =>
+			button
+				.setIcon('trash')
+				.setTooltip('Remove profile')
+				.onClick(async () => {
+					const next = removeChapterPromptProfile(
+						profiles,
+						editingId,
+					);
+					s.transcriptionChapterPromptProfiles = next;
+					// Fall back to the first remaining profile, or no guidance.
+					s.transcriptionChapterPromptProfileId = next[0]?.id ?? '';
+					await ctx.save();
+					ctx.rerender();
+				}),
+		);
+	}
+
+	const selected = findChapterPromptProfile(profiles, editingId);
+	if (!selected) {
+		// Empty list: the Add button above creates the first profile.
+		return;
+	}
+	addText(ctx, {
+		name: 'Profile name',
+		// Name and prompt edits mutate the live profile and save debounced, so
+		// the caret is kept; the selector label refreshes on the next re-render.
+		get: () => selected.name,
+		set: (v) => (selected.name = v),
+	});
+	addTextArea(ctx, {
+		name: 'Guidance prompt',
+		desc: 'How to divide the recording into chapters. Appended to the fixed base prompt; leave blank for the base behavior only.',
+		get: () => selected.prompt,
+		set: (v) => (selected.prompt = v),
+		rows: 6,
+	});
 }
 
 /**
@@ -520,20 +657,24 @@ function renderLlmSection(ctx: SettingsSectionContext): void {
 		set: (v) => (s.llmPostProcessEnabled = v),
 		rerender: true,
 	});
-	if (!s.llmPostProcessEnabled) {
+	// The provider fields stay visible while auto chapters needs them, so
+	// enabling that feature alone still exposes the key/model to configure.
+	if (!s.llmPostProcessEnabled && !s.transcriptionAutoChaptersEnabled) {
 		return;
 	}
 
-	addDropdown(ctx, {
-		name: 'Task',
-		desc: 'Clean up punctuation/formatting, summarize into key points, or apply a custom instruction.',
-		options: LLM_TASK_OPTIONS,
-		get: () => s.llmPostProcessTask,
-		set: (v) => (s.llmPostProcessTask = v as typeof s.llmPostProcessTask),
-		rerender: true,
-	});
-
-	renderLlmPromptField(ctx);
+	if (s.llmPostProcessEnabled) {
+		addDropdown(ctx, {
+			name: 'Task',
+			desc: 'Clean up punctuation/formatting, summarize into key points, or apply a custom instruction.',
+			options: LLM_TASK_OPTIONS,
+			get: () => s.llmPostProcessTask,
+			set: (v) =>
+				(s.llmPostProcessTask = v as typeof s.llmPostProcessTask),
+			rerender: true,
+		});
+		renderLlmPromptField(ctx);
+	}
 	renderLlmProviderFields(ctx);
 }
 

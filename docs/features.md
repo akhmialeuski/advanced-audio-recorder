@@ -19,6 +19,7 @@ Advanced Audio Recorder is a recording plugin for [Obsidian](https://obsidian.md
 - [Input processing and live feedback](#input-processing-and-live-feedback)
 - [Transcription](#transcription)
 - [LLM post-processing](#llm-post-processing)
+- [Auto chapters](#auto-chapters)
 - [Diagnostics](#diagnostics)
 - [Feature matrix](#feature-matrix)
 
@@ -140,6 +141,12 @@ Optionally pass a finished transcript through an LLM to **clean up** punctuation
 
 Learn more: [LLM post-processing](llm-post-processing.md)
 
+## Auto chapters
+
+With **Auto chapters** enabled, the **Generate chapters from transcript** action (context menu, editor menu, command palette) asks the configured LLM to divide a transcribed recording into titled chapters, written to the recording's marker sidecar and shown in the enhanced player. It requires an existing transcript (sidecar file or in-note transcript with timecode links) and asks you to transcribe first when none is found. How the recording is split follows a selectable **chapter guidance profile**: a built-in **Default** is seeded and editable, and you can add profiles for specific cases and pick the right one per recording. An optional **Generate after transcription** toggle runs it automatically after each transcription. Re-running replaces only previously generated chapters - bookmarks and manual chapters are kept.
+
+Learn more: [Transcription](transcription.md#auto-chapters)
+
 ## Diagnostics
 
 Three tools under **Diagnostics** help you verify your setup and report problems. **Test recording** captures a 5-second clip with your current settings and plays it back; nothing is saved. **System info** opens a modal with full diagnostics (Obsidian and Electron versions, platform, devices, supported formats and codecs, active configuration, and all settings) plus a **Copy to clipboard** button. **Debug mode** enables verbose console logs prefixed with `[AudioRecorder]`.
@@ -176,6 +183,7 @@ _Figure: The right-click context menu collects most per-file actions in one plac
 | Input processing and feedback | Noise/echo/AGC toggles, input meter, stats, mobile banner         | Settings > Audio processing & feedback          | [Recording](recording.md#live-feedback)                        |
 | Transcription                 | Speech-to-text via 4 engines, diarization, output formats         | Settings > Transcription                        | [Transcription](transcription.md)                              |
 | LLM post-processing           | Clean up, summarize, or custom-process a transcript with an LLM   | Settings > Transcription > LLM post-processing  | [LLM post-processing](llm-post-processing.md)                  |
+| Auto chapters                 | LLM-generated titled chapters from an existing transcript         | Settings > Transcription > Auto chapters        | [Transcription](transcription.md#auto-chapters)                |
 | Diagnostics                   | Test recording, system info, debug mode                           | Settings > Diagnostics                          | [Troubleshooting](troubleshooting.md)                          |
 
 ---

@@ -194,6 +194,9 @@ describe('ContextMenu', () => {
 				createTranscriptionModalOptions: () => ({}),
 				primeForEnhancement: () => {},
 				getWorkerClient: () => null,
+				autoChapters: {
+					generate: jest.fn(),
+				} as unknown as ActionServices['autoChapters'],
 			},
 			FILE_ACTIONS,
 		);

@@ -202,6 +202,22 @@ export class EnhancedPlayerRegistrar {
 	}
 
 	/**
+	 * Tells every connected player of a recording to re-read its markers.
+	 * Used when markers change outside any player (e.g. generated chapters
+	 * were written to the sidecar), so open players show them at once.
+	 * @param path - Vault-relative recording path whose markers changed
+	 */
+	reloadMarkersFor(path: string): void {
+		// The change came from outside any player (generated chapters), so pass
+		// a null source to reach every registered player of the file. This is
+		// the same purpose-built marker-reload the registry uses to keep views
+		// in sync when a marker is added in one of them: each player re-reads
+		// the store and re-renders only its own marker view, nothing else on
+		// the page.
+		this.registry.reloadMarkers(path, null);
+	}
+
+	/**
 	 * Releases retained players and cached peaks. Called on unload so
 	 * nothing outlives the plugin.
 	 */

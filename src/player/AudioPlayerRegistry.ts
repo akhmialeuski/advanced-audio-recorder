@@ -323,29 +323,33 @@ export class AudioPlayerRegistry {
 	}
 
 	/**
-	 * Tells every other connected player for a path to re-read its markers,
+	 * Tells every other registered player for a path to re-read its markers,
 	 * so a change made in one view (e.g. Live Preview) shows in the others
-	 * (e.g. Reading view) without re-opening the note. Disconnected players
-	 * are pruned in passing.
+	 * (e.g. Reading view) without re-opening the note.
+	 *
+	 * A momentarily disconnected player is reloaded too, and deliberately not
+	 * pruned here: Live Preview detaches and reattaches an embed's widget as
+	 * the editor viewport changes, so an external write (e.g. generated auto
+	 * chapters) that lands while the widget is detached would otherwise be
+	 * missed and the reattached widget would show stale markers. Reloading a
+	 * detached-but-live player updates its view so the reattached widget is
+	 * current; a truly gone player unregisters itself on unload, and an
+	 * unloaded player's reload is a guarded no-op, so nothing renders into a
+	 * dead view.
 	 * @param path - Vault-relative path whose markers changed
-	 * @param source - The player that made the change (skipped)
+	 * @param source - The player that made the change (skipped), or null
+	 *   when the change came from outside any player (e.g. auto chapters)
+	 *   so every other registered player reloads
 	 */
-	reloadMarkers(path: string, source: SeekablePlayer): void {
+	reloadMarkers(path: string, source: SeekablePlayer | null): void {
 		const players = this.playersByPath.get(path);
 		if (!players) {
 			return;
 		}
 		for (const player of [...players]) {
-			if (!player.isConnected()) {
-				players.delete(player);
-				continue;
-			}
 			if (player !== source) {
 				player.reloadMarkers();
 			}
-		}
-		if (players.size === 0) {
-			this.playersByPath.delete(path);
 		}
 	}
 

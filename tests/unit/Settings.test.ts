@@ -135,6 +135,19 @@ describe('Settings', () => {
 				expect(DEFAULT_SETTINGS).toHaveProperty(key);
 			});
 		});
+
+		it('seeds one selected default chapter guidance profile', () => {
+			const profiles =
+				DEFAULT_SETTINGS.transcriptionChapterPromptProfiles;
+			expect(profiles).toHaveLength(1);
+			expect(profiles[0]?.name).toBe('Default');
+			expect(profiles[0]?.prompt.length).toBeGreaterThan(0);
+			// The selection points at the seeded profile so guidance applies
+			// out of the box, and the id is a stable literal (not a uuid).
+			expect(DEFAULT_SETTINGS.transcriptionChapterPromptProfileId).toBe(
+				profiles[0]?.id,
+			);
+		});
 	});
 
 	describe('mergeSettings', () => {
@@ -302,6 +315,16 @@ describe('Settings', () => {
 				],
 				transcriptionDictionaryProfileId: 'p1',
 				transcriptionSpeakerRenameEnabled: false,
+				transcriptionAutoChaptersEnabled: true,
+				transcriptionAutoChaptersOnTranscribe: true,
+				transcriptionChapterPromptProfiles: [
+					{
+						id: 'c1',
+						name: 'Agenda',
+						prompt: 'Split by agenda item.',
+					},
+				],
+				transcriptionChapterPromptProfileId: 'c1',
 				transcriptionSpeakerProfiles: [],
 				transcriptionChunkMb: 10,
 				transcriptionTimeoutMinutes: 15,
