@@ -19,7 +19,7 @@ import { resolveChapterGuidance } from '../settings/chapterPromptProfiles';
 import { createLlmProvider } from '../transcription/factories';
 import type { LlmProvider } from '../transcription/llm/LlmProvider';
 import type { Transcript } from '../transcription/TranscriptTypes';
-import type { MarkerStore } from '../markers/MarkerStore';
+import type { RecordingSidecarStore } from '../sidecar/RecordingSidecarStore';
 import { generateMarkerId } from '../markers/markerFactory';
 import {
 	applyGeneratedChapters,
@@ -116,7 +116,7 @@ export class AutoChapterService {
 	constructor(
 		private readonly app: App,
 		private readonly getSettings: () => AudioRecorderSettings,
-		private readonly markerStore: MarkerStore,
+		private readonly markerStore: RecordingSidecarStore,
 		private readonly onChaptersWritten?: (path: string) => void,
 		deps: AutoChapterServiceDeps = {},
 	) {
@@ -134,7 +134,7 @@ export class AutoChapterService {
 	 */
 	async hasExistingChapters(file: TFile): Promise<boolean> {
 		try {
-			const existing = await this.markerStore.get(file.path);
+			const existing = await this.markerStore.getMarkers(file.path);
 			return existing.some((marker) => isAutoChapterId(marker.id));
 		} catch {
 			return false;
@@ -230,13 +230,13 @@ export class AutoChapterService {
 				);
 				return false;
 			}
-			const existing = await this.markerStore.get(file.path);
+			const existing = await this.markerStore.getMarkers(file.path);
 			const merged = applyGeneratedChapters(
 				existing,
 				chapters,
 				generateMarkerId,
 			);
-			await this.markerStore.set(file.path, merged);
+			await this.markerStore.setMarkers(file.path, merged);
 			this.onChaptersWritten?.(file.path);
 			new Notice(
 				`Added ${String(chapters.length)} chapter` +

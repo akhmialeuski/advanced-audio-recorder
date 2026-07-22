@@ -9,7 +9,7 @@
 
 import type { App } from 'obsidian';
 import type { RecordingManager } from 'src/recording/RecordingManager';
-import type { MarkerStore } from 'src/markers/MarkerStore';
+import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { PlayerMarker } from 'src/markers/markerModel';
 
 /**
@@ -169,25 +169,25 @@ export const getChunkTarget = (
 	];
 
 /**
- * Builds a MarkerStore double that accepts writes and remembers none.
+ * Builds a marker-store double that accepts writes and remembers none.
  * @returns The store double and its set spy
  */
 export const makeFakeMarkerStore = (): {
-	store: MarkerStore;
+	store: RecordingSidecarStore;
 	set: jest.Mock;
 } => {
 	const set = jest.fn().mockResolvedValue(undefined);
 	const store = {
-		get: jest.fn().mockResolvedValue([]),
-		set,
-	} as unknown as MarkerStore;
+		getMarkers: jest.fn().mockResolvedValue([]),
+		setMarkers: set,
+	} as unknown as RecordingSidecarStore;
 	return { store, set };
 };
 
 // A store that actually remembers what was written, so reach-through
 // edits/removals after stop can be asserted against the final state.
 export const makeStatefulMarkerStore = (): {
-	store: MarkerStore;
+	store: RecordingSidecarStore;
 	set: jest.Mock;
 	read: (path: string) => PlayerMarker[];
 } => {
@@ -197,8 +197,10 @@ export const makeStatefulMarkerStore = (): {
 		return Promise.resolve();
 	});
 	const store = {
-		get: jest.fn((path: string) => Promise.resolve(data.get(path) ?? [])),
-		set,
-	} as unknown as MarkerStore;
+		getMarkers: jest.fn((path: string) =>
+			Promise.resolve(data.get(path) ?? []),
+		),
+		setMarkers: set,
+	} as unknown as RecordingSidecarStore;
 	return { store, set, read: (path) => data.get(path) ?? [] };
 };

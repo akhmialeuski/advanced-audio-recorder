@@ -13,7 +13,7 @@ import { App, Modal } from 'obsidian';
 import { AudioPlayer } from 'src/player/AudioPlayer';
 import { WaveformPeakCache, type AudioDecoder } from 'src/player/WaveformData';
 import type { AudioPlayerRegistry } from 'src/player/AudioPlayerRegistry';
-import type { MarkerStore } from 'src/markers/MarkerStore';
+import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { ResolvedPlayerSettings } from 'src/player/playerSettings';
 import type { PlayerMarker } from 'src/markers/markerModel';
 import { PLAYER_SKIP_SECONDS } from 'src/constants';
@@ -125,17 +125,21 @@ const decoder: AudioDecoder = {
 };
 
 /** An in-memory marker store the tests can inspect. */
-function makeMarkerStore(): MarkerStore & {
+function makeMarkerStore(): RecordingSidecarStore & {
 	data: Map<string, PlayerMarker[]>;
 } {
 	const data = new Map<string, PlayerMarker[]>();
 	return {
 		data,
-		get: jest.fn((path: string) => Promise.resolve(data.get(path) ?? [])),
-		set: jest.fn((path: string, markers: PlayerMarker[]) => {
+		getMarkers: jest.fn((path: string) =>
+			Promise.resolve(data.get(path) ?? []),
+		),
+		setMarkers: jest.fn((path: string, markers: PlayerMarker[]) => {
 			data.set(path, markers);
 			return Promise.resolve();
 		}),
+	} as unknown as RecordingSidecarStore & {
+		data: Map<string, PlayerMarker[]>;
 	};
 }
 
@@ -172,7 +176,7 @@ function makePlayer(
 	container: HTMLElement,
 	registry: AudioPlayerRegistry,
 	settings: ResolvedPlayerSettings = PLAIN,
-	markerStore: MarkerStore = makeMarkerStore(),
+	markerStore: RecordingSidecarStore = makeMarkerStore(),
 	startSeconds: number | null = null,
 ): AudioPlayer {
 	return new AudioPlayer(
@@ -604,6 +608,6 @@ describe('marker CRUD stays player-driven and persisted (PlayerMarkerController 
 				'[aria-label="Add marker at current position"]',
 			),
 		).toBeNull();
-		expect(store.get).not.toHaveBeenCalled();
+		expect(store.getMarkers).not.toHaveBeenCalled();
 	});
 });

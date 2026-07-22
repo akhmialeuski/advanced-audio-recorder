@@ -59,7 +59,7 @@ import { probeMediaKind, MEDIA_KIND, type MediaKind } from './mediaProbe';
 import { MediaEmbedShell } from './MediaEmbedShell';
 import type { MediaKindStore } from './MediaKindStore';
 import { shouldEnhance } from './playerMode';
-import type { MarkerStore } from '../markers/MarkerStore';
+import type { RecordingSidecarStore } from '../sidecar/RecordingSidecarStore';
 import {
 	getEmbedRegistry,
 	EmbedRegistryOverride,
@@ -121,7 +121,7 @@ export class EnhancedPlayerRegistrar {
 		private readonly plugin: Plugin,
 		private readonly app: App,
 		private readonly getSettings: () => AudioRecorderSettings,
-		private readonly markerStore: MarkerStore,
+		private readonly markerStore: RecordingSidecarStore,
 		private readonly mediaKindStore: MediaKindStore | null = null,
 	) {}
 

@@ -9,7 +9,7 @@
 import { Notice } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { formatTimecode } from '../utils/TimeUtils';
-import type { MarkerStore } from '../markers/MarkerStore';
+import type { RecordingSidecarStore } from '../sidecar/RecordingSidecarStore';
 import {
 	addMarker,
 	chapters,
@@ -48,7 +48,7 @@ export class PlayerMarkerController {
 	private markers: PlayerMarker[] = [];
 
 	constructor(
-		private readonly markerStore: MarkerStore,
+		private readonly markerStore: RecordingSidecarStore,
 		private readonly filePath: string,
 		private readonly host: PlayerMarkerHost,
 	) {}
@@ -68,7 +68,7 @@ export class PlayerMarkerController {
 	 */
 	async load(): Promise<void> {
 		try {
-			const stored = await this.markerStore.get(this.filePath);
+			const stored = await this.markerStore.getMarkers(this.filePath);
 			if (this.host.isUnloaded()) {
 				return;
 			}
@@ -147,7 +147,7 @@ export class PlayerMarkerController {
 	 */
 	private async persist(): Promise<void> {
 		try {
-			await this.markerStore.set(this.filePath, this.markers);
+			await this.markerStore.setMarkers(this.filePath, this.markers);
 			// Refresh other live players of this file (e.g. the reading-view
 			// copy) so the change shows everywhere without re-opening
 			this.host.notifyOthers();

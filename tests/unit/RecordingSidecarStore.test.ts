@@ -198,8 +198,44 @@ describe('RecordingSidecarStore', () => {
 		});
 	});
 
+	describe('markers', () => {
+		it('returns an empty list for recordings without a sidecar', async () => {
+			const { app } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			expect(await store.getMarkers('missing.wav')).toEqual([]);
+		});
+
+		it('persists next to the recording and reloads time-sorted', async () => {
+			const { app, files } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setMarkers('folder/rec.wav', [
+				marker('a', 10),
+				marker('b', 5),
+			]);
+			expect(files.has('folder/rec.wav.markers.json')).toBe(true);
+
+			const reloaded = new RecordingSidecarStore(app);
+			const markers = await reloaded.getMarkers('folder/rec.wav');
+			expect(markers.map((m) => m.id)).toEqual(['b', 'a']);
+		});
+
+		it('caches the first read and ignores later on-disk changes', async () => {
+			const { app, files } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setMarkers('rec.wav', [marker('a', 1)]);
+			// Mutate the file behind the cache; the read must stay cached.
+			files.set(
+				'rec.wav.markers.json',
+				JSON.stringify({ version: 2, markers: [] }),
+			);
+			expect(
+				(await store.getMarkers('rec.wav')).map((m) => m.id),
+			).toEqual(['a']);
+		});
+	});
+
 	describe('file lifecycle', () => {
-		it('keeps the file while either section still holds data', async () => {
+		it('keeps the file while the transcript section still holds data', async () => {
 			const { app, files } = makeApp();
 			const store = new RecordingSidecarStore(app);
 			await store.setMarkers('rec.wav', [marker('a', 1)]);
@@ -207,15 +243,13 @@ describe('RecordingSidecarStore', () => {
 
 			await store.setMarkers('rec.wav', []);
 			expect(files.has('rec.wav.markers.json')).toBe(true);
+		});
 
-			// Clearing the whole transcript section too leaves nothing worth
-			// persisting, so only now does the file go away.
-			await store.setTranscript('rec.wav', {
-				speakers: [],
-				noteOutputs: [],
-				fileOutputs: [],
-				history: [],
-			});
+		it('removes the file when a markers-only sidecar is emptied', async () => {
+			const { app, files } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setMarkers('rec.wav', [marker('a', 1)]);
+			await store.setMarkers('rec.wav', []);
 			expect(files.has('rec.wav.markers.json')).toBe(false);
 		});
 
@@ -251,6 +285,14 @@ describe('RecordingSidecarStore', () => {
 			await store.setSpeakers('rec.wav', [{ label: 'Speaker 1' }]);
 			await store.handleDelete('rec.wav');
 			expect(files.has('rec.wav.markers.json')).toBe(false);
+		});
+
+		it('rename and delete are no-ops when no sidecar exists', async () => {
+			const { app, files } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.handleRename('a.wav', 'b.wav');
+			await store.handleDelete('a.wav');
+			expect(files.size).toBe(0);
 		});
 	});
 

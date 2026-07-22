@@ -8,7 +8,7 @@
  */
 
 import { PLUGIN_LOG_PREFIX } from '../constants';
-import { MarkerStore } from '../markers/MarkerStore';
+import type { RecordingSidecarStore } from '../sidecar/RecordingSidecarStore';
 import {
 	MARKER_KIND,
 	removeMarker,
@@ -51,7 +51,7 @@ export class RecordingMarkerCoordinator {
 	/**
 	 * @param markerStore - Sidecar store the persisted markers are written to
 	 */
-	constructor(private readonly markerStore: MarkerStore) {}
+	constructor(private readonly markerStore: RecordingSidecarStore) {}
 
 	/**
 	 * Resets the draft buffer and the persisted-path index for a new session.
@@ -149,8 +149,8 @@ export class RecordingMarkerCoordinator {
 		}
 		for (const { path, markers } of writes) {
 			try {
-				const existing = await this.markerStore.get(path);
-				await this.markerStore.set(
+				const existing = await this.markerStore.getMarkers(path);
+				await this.markerStore.setMarkers(
 					path,
 					sortMarkers([...existing, ...markers]),
 				);
@@ -189,8 +189,8 @@ export class RecordingMarkerCoordinator {
 		}
 		for (const path of paths) {
 			try {
-				const existing = await this.markerStore.get(path);
-				await this.markerStore.set(
+				const existing = await this.markerStore.getMarkers(path);
+				await this.markerStore.setMarkers(
 					path,
 					updateMarker(existing, draft.id, {
 						label: draft.label,
@@ -220,8 +220,11 @@ export class RecordingMarkerCoordinator {
 		this.persistedPaths.delete(id);
 		for (const path of paths) {
 			try {
-				const existing = await this.markerStore.get(path);
-				await this.markerStore.set(path, removeMarker(existing, id));
+				const existing = await this.markerStore.getMarkers(path);
+				await this.markerStore.setMarkers(
+					path,
+					removeMarker(existing, id),
+				);
 			} catch (error) {
 				console.error(
 					`${PLUGIN_LOG_PREFIX} Failed to remove persisted marker for ${path}:`,

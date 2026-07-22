@@ -28,7 +28,7 @@ import {
 } from './recordingSidecarModel';
 
 /** Suffix appended to a recording's path to form its sidecar path. */
-export const SIDECAR_SUFFIX = '.markers.json';
+const SIDECAR_SUFFIX = '.markers.json';
 
 /**
  * Loads and saves per-recording sidecar documents (markers + transcript).
@@ -76,21 +76,6 @@ export class RecordingSidecarStore {
 	 */
 	async getTranscript(path: string): Promise<TranscriptSection> {
 		return (await this.load(path)).transcript;
-	}
-
-	/**
-	 * Replaces the whole transcript section for a recording, leaving the
-	 * markers untouched.
-	 * @param path - Vault-relative recording path
-	 * @param section - Section to store
-	 */
-	async setTranscript(
-		path: string,
-		section: TranscriptSection,
-	): Promise<void> {
-		return this.mutate(path, (sidecar) => {
-			sidecar.transcript = section;
-		});
 	}
 
 	/**

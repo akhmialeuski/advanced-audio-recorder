@@ -23,7 +23,7 @@ import { App, Modal } from 'obsidian';
 import { AudioPlayer } from 'src/player/AudioPlayer';
 import { WaveformPeakCache, type AudioDecoder } from 'src/player/WaveformData';
 import type { AudioPlayerRegistry } from 'src/player/AudioPlayerRegistry';
-import type { MarkerStore } from 'src/markers/MarkerStore';
+import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { ResolvedPlayerSettings } from 'src/player/playerSettings';
 import type { TFile } from 'obsidian';
 
@@ -146,9 +146,9 @@ const decoder: AudioDecoder = {
 };
 
 const markerStore = {
-	get: () => Promise.resolve([]),
-	set: () => Promise.resolve(),
-} as unknown as MarkerStore;
+	getMarkers: () => Promise.resolve([]),
+	setMarkers: () => Promise.resolve(),
+} as unknown as RecordingSidecarStore;
 
 function makeFile(size = 1000, extension = 'webm'): TFile {
 	return {

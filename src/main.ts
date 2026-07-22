@@ -54,7 +54,6 @@ import {
 } from './actions/registerActionCommands';
 import { EnhancedPlayerRegistrar } from './player/EnhancedPlayerRegistrar';
 import { MediaKindStore, MEDIA_KIND_STORE_FILE } from './player/MediaKindStore';
-import { MarkerStore } from './markers/MarkerStore';
 import { RecordingSidecarStore } from './sidecar/RecordingSidecarStore';
 import { AutoChapterService } from './chapters/AutoChapterService';
 import { RecordingMarkerModal } from './ui/MarkerModal';
@@ -199,18 +198,16 @@ export default class AudioRecorderPlugin extends Plugin {
 		// One sidecar store owns every `<recording>.markers.json`: markers and
 		// transcript data live in the same document, so a single cache and
 		// serialized write chain keep the two sections from clobbering each
-		// other. The MarkerStore facade shares it between recording (which
-		// writes live markers at stop) and the player registrar (which
-		// reads/edits them); transcription and the rename dialog use the
-		// store directly.
+		// other. It is shared by recording (which writes live markers at
+		// stop), the player registrar (which reads/edits them), auto
+		// chapters, transcription, and the rename dialog.
 		this.sidecarStore = new RecordingSidecarStore(this.app);
-		const markerStore = new MarkerStore(this.sidecarStore);
 		// Auto chapters write into the same store; the player registrar is
 		// created later, so the refresh closure resolves it lazily.
 		this.autoChapterService = new AutoChapterService(
 			this.app,
 			() => this.settings,
-			markerStore,
+			this.sidecarStore,
 			(path) => {
 				this.playerRegistrar.reloadMarkersFor(path);
 			},
@@ -228,7 +225,7 @@ export default class AudioRecorderPlugin extends Plugin {
 			(result: RecordingSaveResult) => {
 				this.handleRecordingSaved(result);
 			},
-			markerStore,
+			this.sidecarStore,
 			() => this.encodingWorker,
 		);
 
@@ -260,7 +257,7 @@ export default class AudioRecorderPlugin extends Plugin {
 			this,
 			this.app,
 			() => this.settings,
-			markerStore,
+			this.sidecarStore,
 			mediaKindStore,
 		);
 		this.playerRegistrar.subscribePlayback((state) => {

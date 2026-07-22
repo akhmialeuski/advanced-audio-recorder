@@ -19,7 +19,7 @@ import {
 import type { TranscriptFileFormat } from '../transcription/TranscriptTypes';
 
 /** Current on-disk sidecar schema version. */
-export const SIDECAR_VERSION = 2;
+const SIDECAR_VERSION = 2;
 
 /** Maximum number of retained rename-history entries (oldest dropped first). */
 export const SIDECAR_HISTORY_LIMIT = 10;

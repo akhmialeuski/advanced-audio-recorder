@@ -31,7 +31,7 @@ import { AUDIO_EXTENSIONS } from 'src/constants';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import type { EmbedInfo } from 'src/obsidian/embedRegistry';
-import type { MarkerStore } from 'src/markers/MarkerStore';
+import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 
 jest.mock('src/player/AudioPlayer', () => ({
 	AudioPlayer: jest.fn().mockImplementation(() => ({
@@ -198,7 +198,7 @@ function setup(
 		handleRename: jest.fn(),
 		handleDelete: jest.fn(),
 		clearCache: jest.fn(),
-	} as unknown as MarkerStore;
+	} as unknown as RecordingSidecarStore;
 
 	const registrar = new EnhancedPlayerRegistrar(
 		plugin,

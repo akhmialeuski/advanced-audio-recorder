@@ -12,7 +12,6 @@ import type {
 	RecordingTarget,
 	SaveProgress,
 } from '../types';
-import { MarkerStore } from '../markers/MarkerStore';
 import { RecordingSidecarStore } from '../sidecar/RecordingSidecarStore';
 import type { MarkerKind } from '../markers/markerModel';
 import type { RecordingMarkerHandle } from './recordingMarkers';
@@ -154,9 +153,7 @@ export class RecordingManager {
 		private readonly onRecordingSaved?: (
 			result: RecordingSaveResult,
 		) => void,
-		markerStore: MarkerStore = new MarkerStore(
-			new RecordingSidecarStore(app),
-		),
+		markerStore: RecordingSidecarStore = new RecordingSidecarStore(app),
 		getWorkerClient: () => EncodingWorkerClient | null = () => null,
 	) {
 		this.onStatusChange = onStatusChange;
