@@ -34,9 +34,14 @@ import { formatTimecode } from '../utils/TimeUtils';
 import {
 	buildTranscript,
 	plainText,
+	renameSpeakers,
 	stitchChunks,
 	stripSpeakers,
 } from './transcriptModel';
+import type {
+	SpeakerEntry,
+	TranscriptSection,
+} from '../sidecar/recordingSidecarModel';
 import {
 	DEFAULT_TRANSCRIPT_MARKDOWN_OPTIONS,
 	formatTranscriptMarkdown,
@@ -134,6 +139,19 @@ export class TranscriptionCancelledError extends Error {
 }
 
 /**
+ * The narrow slice of the recording sidecar store the service needs: read the
+ * stored transcript section (for previously assigned speaker names) and write
+ * the refreshed roster back. Kept structural so tests can stub it without the
+ * real store.
+ */
+export interface TranscriptionSidecarAccess {
+	/** Returns the stored transcript section for a recording path. */
+	getTranscript(path: string): Promise<TranscriptSection>;
+	/** Replaces the speaker roster for a recording path. */
+	setSpeakers(path: string, entries: readonly SpeakerEntry[]): Promise<void>;
+}
+
+/**
  * Provider factories the service depends on. Injectable so tests can supply
  * deterministic providers; defaults build the real providers from settings.
  */
@@ -142,6 +160,12 @@ export interface TranscriptionServiceDeps {
 	createProvider?: (settings: AudioRecorderSettings) => TranscriptionProvider;
 	/** Builds the LLM post-processing provider from settings. */
 	createLlm?: (settings: AudioRecorderSettings) => LlmProvider;
+	/**
+	 * Recording sidecar access for speaker-name continuity. Absent (tests,
+	 * callers without a store), stored names are not applied and the roster
+	 * is not recorded - the run behaves exactly as before.
+	 */
+	sidecar?: TranscriptionSidecarAccess;
 }
 
 /**
@@ -154,6 +178,7 @@ export class TranscriptionService {
 	private readonly createLlm: (
 		settings: AudioRecorderSettings,
 	) => LlmProvider;
+	private readonly sidecar: TranscriptionSidecarAccess | null;
 
 	constructor(
 		private readonly app: App,
@@ -163,6 +188,7 @@ export class TranscriptionService {
 		this.createProvider =
 			deps.createProvider ?? createTranscriptionProvider;
 		this.createLlm = deps.createLlm ?? createLlmProvider;
+		this.sidecar = deps.sidecar ?? null;
 	}
 
 	/**
@@ -335,7 +361,13 @@ export class TranscriptionService {
 		// JSON) shows a label the user did not ask for. Doing it once here, on
 		// the canonical transcript, keeps every consumer consistent rather than
 		// gating each renderer separately.
-		const transcript = diarize ? stitched : stripSpeakers(stitched);
+		const canonical = diarize ? stitched : stripSpeakers(stitched);
+		// A diarized re-transcription re-applies the names the user assigned
+		// earlier (stored in the recording's sidecar) and refreshes the stored
+		// roster, so renamed speakers survive a re-run without user action.
+		const transcript = diarize
+			? await this.applyStoredSpeakerNames(file.path, canonical)
+			: canonical;
 
 		const markdownOptions = this.markdownOptions(settings);
 		let markdown = formatTranscriptMarkdown(
@@ -398,6 +430,62 @@ export class TranscriptionService {
 
 		options.onProgress?.(1, 'Done');
 		return { transcript, markdown, cost: runCost() };
+	}
+
+	/**
+	 * Applies the speaker names stored in the recording's sidecar to a fresh
+	 * diarized transcript and writes the refreshed roster back: labels that
+	 * reappeared keep their assigned names, new labels join unnamed, and
+	 * labels that vanished keep their stored entries for a future run. When
+	 * the label composition changed against the stored roster, the user is
+	 * warned - engines number speakers per run, so "Speaker 2" may not be the
+	 * same person as last time. Best-effort: any sidecar failure leaves the
+	 * transcript untouched rather than failing a paid run.
+	 * @param path - Vault path of the transcribed recording
+	 * @param transcript - Fresh diarized transcript with original labels
+	 * @returns The transcript with stored names applied (or unchanged)
+	 */
+	private async applyStoredSpeakerNames(
+		path: string,
+		transcript: Transcript,
+	): Promise<Transcript> {
+		if (!this.sidecar || transcript.speakers.length === 0) {
+			return transcript;
+		}
+		try {
+			const section = await this.sidecar.getTranscript(path);
+			const storedNames: Record<string, string> = {};
+			for (const entry of section.speakers) {
+				if (entry.name) {
+					storedNames[entry.label] = entry.name;
+				}
+			}
+			const renamed = renameSpeakers(transcript, storedNames);
+			await this.sidecar.setSpeakers(
+				path,
+				transcript.speakers.map((label) => {
+					const name = storedNames[label];
+					return name ? { label, name } : { label };
+				}),
+			);
+			const previousLabels = section.speakers.map((entry) => entry.label);
+			if (
+				previousLabels.length > 0 &&
+				!sameLabelComposition(previousLabels, transcript.speakers)
+			) {
+				new Notice(
+					'Speaker labels changed since the last transcription; ' +
+						'check the assigned names.',
+				);
+			}
+			return renamed;
+		} catch (error) {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Failed to apply stored speaker names for ${path}:`,
+				error,
+			);
+			return transcript;
+		}
 	}
 
 	/**
@@ -641,4 +729,16 @@ export class TranscriptionService {
 			throw new TranscriptionCancelledError();
 		}
 	}
+}
+
+/** Whether two label lists contain the same labels, order-insensitive. */
+function sameLabelComposition(
+	previous: readonly string[],
+	current: readonly string[],
+): boolean {
+	if (previous.length !== current.length) {
+		return false;
+	}
+	const set = new Set(previous);
+	return current.every((label) => set.has(label));
 }

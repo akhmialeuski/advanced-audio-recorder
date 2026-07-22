@@ -51,6 +51,7 @@ import {
 	type TranscribeRunCost,
 	type TranscriptDestination,
 	type TranscriptFileFormat,
+	type TranscriptOutputSidecar,
 } from '../transcription/api';
 import type { Transcript } from '../transcription/TranscriptTypes';
 import { findProfile } from '../settings/dictionaryProfiles';
@@ -96,6 +97,11 @@ export type TranscriptionModalOptions = {
 	 * implementation reports its own progress and errors via Notices.
 	 */
 	generateChapters?: (file: TFile, transcript: Transcript) => Promise<void>;
+	/**
+	 * Recording sidecar store, passed through to the run so stored speaker
+	 * names are re-applied and the written outputs are registered.
+	 */
+	sidecar?: TranscriptOutputSidecar;
 };
 
 /**
@@ -777,6 +783,7 @@ export class TranscriptionModal extends Modal {
 				{
 					notePathForLinks: this.notePath,
 					token,
+					sidecar: this.options.sidecar,
 					// Reuse the bytes read for the estimate probe so a manual run
 					// does not read the whole file twice (undefined on an auto-run,
 					// which never probes).
