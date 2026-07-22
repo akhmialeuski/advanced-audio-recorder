@@ -383,7 +383,7 @@ How the recording is divided is steered by a selected **chapter guidance profile
 
 The LLM's response is validated before anything is written, and the validation is a real check on the times rather than blind trust in the model. Chapter times must fall inside the recording's transcript, and the model is told the recording's length so it spreads chapters across the whole timeline instead of bunching them at the start. Chapters that land closer together than a minimum spacing (about twenty seconds on a normal recording, relaxed for a short clip) are dropped, so a model that returns a run of one- or two-second chapters cannot produce them. Empty or malformed entries are dropped, and an unusable response leaves the markers untouched. Re-running replaces only the previously **generated** chapters - bookmarks and chapters you created manually are never modified, and a generated chapter landing on top of a manual one is skipped.
 
-Auto chapters uses the same LLM provider, key, and model as [LLM post-processing](llm-post-processing.md); enabling the feature reveals those provider fields even when post-processing itself is off. The on-demand dialog also exposes the provider and model, so you can switch the LLM for a run without leaving the dialog, and the choice persists as the shared configuration.
+Auto chapters uses the same LLM provider, key, and model as [LLM post-processing](llm-post-processing.md); enabling the feature reveals those provider fields even when post-processing itself is off. The on-demand dialog also exposes the provider and model, so you can switch the LLM for a run without leaving the dialog; generating commits that choice as the shared configuration, while cancelling leaves the shared configuration unchanged.
 
 ---
 

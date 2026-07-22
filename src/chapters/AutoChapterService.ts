@@ -32,6 +32,7 @@ import {
 import {
 	loadTranscriptLines,
 	timedLinesFromTranscript,
+	type TranscriptLinesSource,
 } from './transcriptSources';
 
 /** Dependencies injectable for tests; defaults build the real LLM provider. */
@@ -147,14 +148,25 @@ export class AutoChapterService {
 	 * @param file - The audio file to chapter
 	 * @param transcript - In-memory transcript from a just-finished run;
 	 *   omitted, the recording's existing outputs are searched
+	 * @param preloaded - Transcript lines the caller already located (the
+	 *   on-demand dialog loads them to show the source and cost estimate), so
+	 *   the sidecar/notes are not read a second time here
 	 * @returns True when chapters were written
 	 */
-	async generate(file: TFile, transcript?: Transcript): Promise<boolean> {
+	async generate(
+		file: TFile,
+		transcript?: Transcript,
+		preloaded?: TranscriptLinesSource,
+	): Promise<boolean> {
 		try {
 			// The transcription check: without a transcript (given or found)
 			// there is nothing to derive chapters from, so stop with guidance
 			// instead of sending an empty prompt to a paid API.
-			const resolved = await this.resolveLines(file, transcript);
+			const resolved = await this.resolveLines(
+				file,
+				transcript,
+				preloaded,
+			);
 			if (!resolved || resolved.lines.length === 0) {
 				new Notice(
 					`No transcript found for ${file.name}. Transcribe the ` +
@@ -246,14 +258,16 @@ export class AutoChapterService {
 
 	/**
 	 * Resolves the timed transcript lines and their language: from the
-	 * in-memory transcript when one was handed over, otherwise from the
-	 * recording's existing transcript outputs. The language rides along so
-	 * the prompt can request titles in the transcript's language even on the
-	 * on-demand path, where only the JSON sidecar carries one.
+	 * in-memory transcript when one was handed over, then from lines the caller
+	 * already located, otherwise from the recording's existing transcript
+	 * outputs. The language rides along so the prompt can request titles in the
+	 * transcript's language even on the on-demand path, where only the JSON
+	 * sidecar carries one.
 	 */
 	private async resolveLines(
 		file: TFile,
 		transcript?: Transcript,
+		preloaded?: TranscriptLinesSource,
 	): Promise<ResolvedLines | null> {
 		if (transcript) {
 			return {
@@ -261,6 +275,12 @@ export class AutoChapterService {
 				...(transcript.language
 					? { language: transcript.language }
 					: {}),
+			};
+		}
+		if (preloaded) {
+			return {
+				lines: preloaded.lines,
+				...(preloaded.language ? { language: preloaded.language } : {}),
 			};
 		}
 		const found = await loadTranscriptLines(this.app, file);

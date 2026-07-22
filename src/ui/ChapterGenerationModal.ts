@@ -32,6 +32,16 @@ interface LlmModelAccess {
 	setSelected: (id: string) => void;
 }
 
+/** The shared LLM and chapter-profile fields the run pickers edit in place. */
+type RunSettingsSnapshot = Pick<
+	AudioRecorderSettings,
+	| 'llmProvider'
+	| 'llmAnthropicModel'
+	| 'llmGeminiModel'
+	| 'llmOpenAiModel'
+	| 'transcriptionChapterPromptProfileId'
+>;
+
 /** Collaborators the dialog needs, injected by the action registry. */
 export interface ChapterGenerationModalOptions {
 	/** Returns current plugin settings. */
@@ -52,6 +62,16 @@ export class ChapterGenerationModal extends Modal {
 	private hasExistingChapters = false;
 	private loaded = false;
 	private generating = false;
+	/** Set once the user generates, so onClose keeps the committed choice. */
+	private committed = false;
+	/**
+	 * The shared LLM and chapter-profile settings as they were when the dialog
+	 * opened. The pickers below edit the live settings so the model list and
+	 * cost estimate can follow the choice, but the change is persisted only when
+	 * the user generates; closing without generating restores this, so Cancel
+	 * does not silently repoint the shared LLM configuration used elsewhere.
+	 */
+	private readonly initialRunSettings: RunSettingsSnapshot;
 
 	constructor(
 		app: App,
@@ -59,6 +79,15 @@ export class ChapterGenerationModal extends Modal {
 		private readonly options: ChapterGenerationModalOptions,
 	) {
 		super(app);
+		const s = options.getSettings();
+		this.initialRunSettings = {
+			llmProvider: s.llmProvider,
+			llmAnthropicModel: s.llmAnthropicModel,
+			llmGeminiModel: s.llmGeminiModel,
+			llmOpenAiModel: s.llmOpenAiModel,
+			transcriptionChapterPromptProfileId:
+				s.transcriptionChapterPromptProfileId,
+		};
 	}
 
 	override onOpen(): void {
@@ -147,9 +176,10 @@ export class ChapterGenerationModal extends Modal {
 				for (const profile of profiles) {
 					dropdown.addOption(profile.id, profile.name);
 				}
-				dropdown.setValue(current).onChange(async (id) => {
+				dropdown.setValue(current).onChange((id) => {
+					// Applied in place; persisted only when the user generates
+					// (see runGeneration), reverted on cancel (see onClose).
 					settings.transcriptionChapterPromptProfileId = id;
-					await this.options.saveSettings();
 				});
 			});
 	}
@@ -199,10 +229,11 @@ export class ChapterGenerationModal extends Modal {
 				for (const option of LLM_PROVIDER_OPTIONS) {
 					dropdown.addOption(option.value, option.label);
 				}
-				dropdown.setValue(settings.llmProvider).onChange(async (id) => {
+				dropdown.setValue(settings.llmProvider).onChange((id) => {
+					// Applied in place so the model list and cost estimate
+					// follow; persisted only on generate, reverted on cancel.
 					settings.llmProvider =
 						id as AudioRecorderSettings['llmProvider'];
-					await this.options.saveSettings();
 					void this.render();
 				});
 			});
@@ -213,9 +244,10 @@ export class ChapterGenerationModal extends Modal {
 			for (const model of models) {
 				dropdown.addOption(model, model);
 			}
-			dropdown.setValue(access.selected).onChange(async (id) => {
+			dropdown.setValue(access.selected).onChange((id) => {
+				// Applied in place; persisted only on generate, reverted on
+				// cancel, matching the provider picker above.
 				access.setSelected(id);
-				await this.options.saveSettings();
 				void this.render();
 			});
 		});
@@ -283,7 +315,34 @@ export class ChapterGenerationModal extends Modal {
 			return;
 		}
 		this.generating = true;
+		// Commit the run's LLM/profile choice now that the user is generating,
+		// so it persists as the shared default; onClose keeps it (committed).
+		this.committed = true;
+		void this.options.saveSettings();
 		this.close();
-		void this.options.autoChapters.generate(this.file);
+		// Reuse the transcript already located for the dialog, so the service
+		// does not read the sidecar (or scan the notes) a second time.
+		void this.options.autoChapters.generate(
+			this.file,
+			undefined,
+			this.source ?? undefined,
+		);
+	}
+
+	override onClose(): void {
+		// The pickers edit the shared LLM/profile settings in place so the model
+		// list and cost estimate can follow the choice. Unless the user
+		// generated, restore them, so cancelling (or closing) never leaves the
+		// shared LLM configuration silently repointed.
+		if (!this.committed) {
+			const s = this.options.getSettings();
+			s.llmProvider = this.initialRunSettings.llmProvider;
+			s.llmAnthropicModel = this.initialRunSettings.llmAnthropicModel;
+			s.llmGeminiModel = this.initialRunSettings.llmGeminiModel;
+			s.llmOpenAiModel = this.initialRunSettings.llmOpenAiModel;
+			s.transcriptionChapterPromptProfileId =
+				this.initialRunSettings.transcriptionChapterPromptProfileId;
+		}
+		this.contentEl.empty();
 	}
 }

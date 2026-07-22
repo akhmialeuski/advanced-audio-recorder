@@ -147,6 +147,32 @@ describe('AutoChapterService.generate', () => {
 		);
 	});
 
+	it('uses preloaded transcript lines without re-reading the recording', async () => {
+		const llm = makeLlm(
+			'[{"time": 0, "title": "Intro"}, {"time": 60, "title": "Main topic"}]',
+		);
+		const { store, saved } = makeStore();
+		// An app with no sidecars and no referencing notes: if the service fell
+		// back to loadTranscriptLines it would find nothing and refuse to run.
+		const service = makeService({ llm, store });
+
+		const ok = await service.generate(tf('rec.wav'), undefined, {
+			lines: [
+				{ time: 0, text: 'intro talk' },
+				{ time: 60, text: 'main topic' },
+			],
+			origin: 'rec.json',
+			language: 'en',
+		});
+
+		expect(ok).toBe(true);
+		expect(saved()?.map((m) => m.label)).toEqual(['Intro', 'Main topic']);
+		// The preloaded language reaches the prompt.
+		expect(requestedSystemPrompt(llm)).toContain(
+			'transcript language is en',
+		);
+	});
+
 	it('replaces old auto chapters but keeps manual markers', async () => {
 		const manual: PlayerMarker = {
 			id: 'manual',
