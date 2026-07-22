@@ -7,13 +7,16 @@
  */
 
 import type { App, TFile } from 'obsidian';
+import { PLUGIN_LOG_PREFIX } from '../constants';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
+import type { FileOutput, NoteOutput } from '../sidecar/recordingSidecarModel';
 import {
 	TranscriptionService,
 	type CancellationToken,
 	type TranscribeRunCost,
 	type TranscribeRunResult,
 	type TranscriptionServiceDeps,
+	type TranscriptionSidecarAccess,
 } from './TranscriptionService';
 import {
 	insertTranscriptFileLink,
@@ -21,6 +24,19 @@ import {
 	notifyTranscriptWritten,
 	writeTranscriptFile,
 } from './transcriptOutput';
+
+/**
+ * The sidecar surface a transcribe-and-write run needs: the service's name
+ * continuity plus registration of the outputs this run actually wrote (with
+ * the exact paths and the render templates in effect). Implemented by
+ * `RecordingSidecarStore`; structural so tests can stub it.
+ */
+export interface TranscriptOutputSidecar extends TranscriptionSidecarAccess {
+	/** Records (or refreshes) a note this run inserted the transcript into. */
+	recordNoteOutput(path: string, output: NoteOutput): Promise<void>;
+	/** Records (or refreshes) a transcript file this run wrote. */
+	recordFileOutput(path: string, output: FileOutput): Promise<void>;
+}
 
 /** Options for a full transcribe-and-write run. */
 export interface TranscribeFileOptions {
@@ -37,6 +53,12 @@ export interface TranscribeFileOptions {
 	audioBytes?: ArrayBuffer;
 	/** Cancellation token. */
 	token?: CancellationToken;
+	/**
+	 * Recording sidecar store: lets the run re-apply stored speaker names and
+	 * register the outputs it wrote. Absent, the run is fully stateless as
+	 * before.
+	 */
+	sidecar?: TranscriptOutputSidecar;
 }
 
 /**
@@ -56,7 +78,10 @@ export async function transcribeFile(
 	deps: TranscriptionServiceDeps = {},
 ): Promise<TranscribeRunResult> {
 	const settings = getSettings();
-	const service = new TranscriptionService(app, getSettings, deps);
+	const service = new TranscriptionService(app, getSettings, {
+		...deps,
+		sidecar: deps.sidecar ?? options.sidecar,
+	});
 	const result = await service.run(file, {
 		notePathForLinks: options.notePathForLinks,
 		onProgress: options.onProgress,
@@ -113,6 +138,51 @@ export async function transcribeFile(
 			settings.transcriptFileFormat,
 		);
 		savedAsFallback = true;
+	}
+	// Register what this run actually wrote in the recording's sidecar - the
+	// exact file path (collision suffix included) and, for the note, the
+	// render templates of this run's settings snapshot - so a later rename
+	// rewrites by recorded fact instead of guessing from current settings.
+	// Only a diarized transcript has speakers to rename, so a run without
+	// speakers registers nothing. Best-effort: a sidecar failure never fails
+	// a completed (and possibly billed) transcription.
+	if (options.sidecar && result.transcript.speakers.length > 0) {
+		try {
+			const writtenAt = new Date().toISOString();
+			if (transcriptFile) {
+				await options.sidecar.recordFileOutput(file.path, {
+					path: transcriptFile.path,
+					format: settings.transcriptFileFormat,
+					writtenAt,
+				});
+			}
+			if (inserted) {
+				await options.sidecar.recordNoteOutput(file.path, {
+					path: options.notePathForLinks,
+					templates: {
+						lineFormat: settings.transcriptLineFormat,
+						speakerFormat: settings.transcriptSpeakerFormat,
+						includeTimestamps: settings.transcriptIncludeTimestamps,
+						timestampLinks: settings.transcriptTimestampLinks,
+						mergeConsecutiveSpeaker:
+							settings.transcriptMergeConsecutiveSpeaker,
+					},
+					// Cleanup/custom replace the transcript body, so a
+					// line-scoped rename can no longer find it; a summary is
+					// prepended above the intact body and does not count.
+					llmProcessed:
+						settings.llmPostProcessEnabled &&
+						(settings.llmPostProcessTask === 'cleanup' ||
+							settings.llmPostProcessTask === 'custom'),
+					writtenAt,
+				});
+			}
+		} catch (error) {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Failed to record transcript outputs for ${file.path}:`,
+				error,
+			);
+		}
 	}
 	notifyTranscriptWritten({
 		inserted,

@@ -55,6 +55,7 @@ import {
 import { EnhancedPlayerRegistrar } from './player/EnhancedPlayerRegistrar';
 import { MediaKindStore, MEDIA_KIND_STORE_FILE } from './player/MediaKindStore';
 import { MarkerStore } from './markers/MarkerStore';
+import { RecordingSidecarStore } from './sidecar/RecordingSidecarStore';
 import { AutoChapterService } from './chapters/AutoChapterService';
 import { RecordingMarkerModal } from './ui/MarkerModal';
 import { TranscriptionModal } from './ui/TranscriptionModal';
@@ -136,6 +137,8 @@ export default class AudioRecorderPlugin extends Plugin {
 	private recordingBanner!: RecordingBanner;
 	private playerRegistrar!: EnhancedPlayerRegistrar;
 	private autoChapterService!: AutoChapterService;
+	/** Shared per-recording sidecar store (markers + transcript data). */
+	private sidecarStore!: RecordingSidecarStore;
 	private journal!: SessionJournal;
 	private encodingWorker: EncodingWorkerClient | null = null;
 	private recordingStatus: RecordingStatus = RecordingStatus.Idle;
@@ -193,10 +196,15 @@ export default class AudioRecorderPlugin extends Plugin {
 			this.getPluginFilePath(JOURNAL_FILE_NAME),
 			this.app,
 		);
-		// One MarkerStore is shared by recording (which writes live markers
-		// at stop) and the player registrar (which reads/edits them), so
-		// their cache and serialized write chain stay unified.
-		const markerStore = new MarkerStore(this.app);
+		// One sidecar store owns every `<recording>.markers.json`: markers and
+		// transcript data live in the same document, so a single cache and
+		// serialized write chain keep the two sections from clobbering each
+		// other. The MarkerStore facade shares it between recording (which
+		// writes live markers at stop) and the player registrar (which
+		// reads/edits them); transcription and the rename dialog use the
+		// store directly.
+		this.sidecarStore = new RecordingSidecarStore(this.app);
+		const markerStore = new MarkerStore(this.sidecarStore);
 		// Auto chapters write into the same store; the player registrar is
 		// created later, so the refresh closure resolves it lazily.
 		this.autoChapterService = new AutoChapterService(
@@ -645,6 +653,7 @@ export default class AudioRecorderPlugin extends Plugin {
 				this.playerRegistrar.primeSavedRecordingsForEnhancement(paths),
 			getWorkerClient: () => this.encodingWorker,
 			autoChapters: this.autoChapterService,
+			recordingSidecar: this.sidecarStore,
 		};
 	}
 
@@ -937,6 +946,9 @@ export default class AudioRecorderPlugin extends Plugin {
 				await this.saveSettings();
 			},
 			costTracker: this.transcriptionCostTracker,
+			// Speaker-name continuity: the run re-applies stored names and
+			// registers the outputs it writes in the recording's sidecar.
+			sidecar: this.sidecarStore,
 			// After-transcription auto chapters: runs on the fresh in-memory
 			// transcript, reporting through its own Notices.
 			generateChapters: async (file, transcript) => {

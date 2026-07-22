@@ -7,8 +7,15 @@
 import type { App, CachedMetadata, TFile } from 'obsidian';
 import {
 	applySpeakerRenamesToVault,
+	applySpeakerRenamesWithSidecar,
+	hasUnscopableRecordedNote,
 	inspectAudioTranscript,
 } from 'src/speakers/applySpeakerRenames';
+import {
+	emptyTranscriptSection,
+	type NoteOutput,
+	type TranscriptSection,
+} from 'src/sidecar/recordingSidecarModel';
 
 const FORMAT = '**{speaker}**';
 const TEMPLATES = {
@@ -385,5 +392,217 @@ describe('applySpeakerRenamesToVault', () => {
 		);
 		expect(result.updatedTranscriptFiles).toBe(0);
 		expect(files.get('audio/rec.txt')).toBe('[0:00] Speaker 1: hi');
+	});
+});
+
+/** Builds a recorded note output with the given speaker template. */
+function recordedNote(
+	path: string,
+	speakerFormat = FORMAT,
+	llmProcessed = false,
+): NoteOutput {
+	return {
+		path,
+		templates: {
+			lineFormat: '{timestamp} {speaker} {text}',
+			speakerFormat,
+			includeTimestamps: true,
+			timestampLinks: true,
+			mergeConsecutiveSpeaker: true,
+		},
+		llmProcessed,
+		writtenAt: '2026-07-21T10:00:00Z',
+	};
+}
+
+describe('applySpeakerRenamesWithSidecar', () => {
+	it('rewrites recorded file outputs at their exact (collision) paths only', async () => {
+		// The recorded output lives at a collision path; the canonical-name
+		// discovery heuristic must not run, so the unrecorded canonical file
+		// stays untouched.
+		const files = new Map<string, string>([
+			['audio/rec.wav', ''],
+			[
+				'audio/rec_1.srt',
+				'1\n00:00:00,000 --> 00:00:01,000\nSpeaker 1: hi',
+			],
+			[
+				'audio/rec.srt',
+				'1\n00:00:00,000 --> 00:00:01,000\nSpeaker 1: old copy',
+			],
+		]);
+		const app = makeApp(files);
+		const section: TranscriptSection = {
+			...emptyTranscriptSection(),
+			fileOutputs: [
+				{ path: 'audio/rec_1.srt', format: 'srt', writtenAt: 't' },
+			],
+		};
+
+		const result = await applySpeakerRenamesWithSidecar(
+			app,
+			audioFile,
+			section,
+			renames,
+			FORMAT,
+			{ allowBroad: false },
+		);
+		expect(result.updatedTranscriptFiles).toBe(1);
+		expect(files.get('audio/rec_1.srt')).toContain('Alex: hi');
+		expect(files.get('audio/rec.srt')).toContain('Speaker 1: old copy');
+	});
+
+	it('skips recorded outputs whose path no longer resolves', async () => {
+		const files = new Map<string, string>([['audio/rec.wav', '']]);
+		const app = makeApp(files);
+		const section: TranscriptSection = {
+			...emptyTranscriptSection(),
+			noteOutputs: [recordedNote('gone.md')],
+			fileOutputs: [
+				{ path: 'audio/gone.srt', format: 'srt', writtenAt: 't' },
+			],
+		};
+		const result = await applySpeakerRenamesWithSidecar(
+			app,
+			audioFile,
+			section,
+			renames,
+			FORMAT,
+			{ allowBroad: false },
+		);
+		expect(result.missingOutputs).toBe(2);
+		expect(result.failed).toBe(0);
+	});
+
+	it('rewrites a recorded note with its recorded template, not the current one', async () => {
+		// The note was written with an underscore speaker template; the
+		// current settings use the bold default. The rewrite must match the
+		// note as written.
+		const content = [
+			'![[rec.wav]]',
+			'',
+			'[00:00](rec.wav#t=0) __Speaker 1__ hello',
+		].join('\n');
+		const cache: Cache = {
+			links: [
+				{
+					link: 'rec.wav#t=0',
+					position: { start: { line: 2 }, end: { line: 2 } },
+				},
+			],
+		};
+		const files = new Map<string, string>([
+			['audio/rec.wav', ''],
+			['meeting.md', content],
+		]);
+		const app = makeApp(files, { caches: { 'meeting.md': cache } });
+		const section: TranscriptSection = {
+			...emptyTranscriptSection(),
+			noteOutputs: [recordedNote('meeting.md', '__{speaker}__')],
+		};
+
+		const result = await applySpeakerRenamesWithSidecar(
+			app,
+			audioFile,
+			section,
+			renames,
+			FORMAT,
+			{ allowBroad: false },
+		);
+		expect(result.updatedNotes).toBe(1);
+		expect(files.get('meeting.md')).toContain('__Alex__ hello');
+	});
+
+	it('skips an LLM-processed note, and never rewrites it via the fallback', async () => {
+		const content = 'Cleaned up prose mentioning **Speaker 1** somewhere.';
+		const files = new Map<string, string>([
+			['audio/rec.wav', ''],
+			['cleaned.md', content],
+		]);
+		const app = makeApp(files, {
+			// The note also resolves a link to the audio, so without the
+			// exclusion the resolvedLinks fallback would rewrite it broadly.
+			resolvedLinks: { 'cleaned.md': { 'audio/rec.wav': 1 } },
+			caches: { 'cleaned.md': {} },
+		});
+		const section: TranscriptSection = {
+			...emptyTranscriptSection(),
+			noteOutputs: [recordedNote('cleaned.md', FORMAT, true)],
+		};
+
+		const result = await applySpeakerRenamesWithSidecar(
+			app,
+			audioFile,
+			section,
+			renames,
+			FORMAT,
+			{ allowBroad: true },
+		);
+		expect(result.skippedLlmNotes).toBe(1);
+		expect(result.updatedNotes).toBe(0);
+		expect(files.get('cleaned.md')).toBe(content);
+	});
+
+	it('handles unrecorded referencing notes through the stateless fallback', async () => {
+		const { content, cache } = meetingNote();
+		const files = new Map<string, string>([
+			['audio/rec.wav', ''],
+			['other.wav', ''],
+			['meeting.md', content],
+		]);
+		const app = makeApp(files, {
+			resolvedLinks: { 'meeting.md': { 'audio/rec.wav': 1 } },
+			caches: { 'meeting.md': cache },
+		});
+
+		const result = await applySpeakerRenamesWithSidecar(
+			app,
+			audioFile,
+			emptyTranscriptSection(),
+			renames,
+			FORMAT,
+			{ allowBroad: false },
+		);
+		expect(result.updatedNotes).toBe(1);
+		expect(files.get('meeting.md')).toContain('**Alex** hello');
+		// The other recording's transcript in the same note is untouched.
+		expect(files.get('meeting.md')).toContain('**Speaker 1** unrelated');
+	});
+});
+
+describe('hasUnscopableRecordedNote', () => {
+	it('flags an existing recorded note without timecode-scoped lines', () => {
+		const files = new Map<string, string>([
+			['audio/rec.wav', ''],
+			['plain.md', '**Speaker 1** hi'],
+		]);
+		const app = makeApp(files, { caches: { 'plain.md': {} } });
+		const section: TranscriptSection = {
+			...emptyTranscriptSection(),
+			noteOutputs: [recordedNote('plain.md')],
+		};
+		expect(hasUnscopableRecordedNote(app, audioFile, section)).toBe(true);
+	});
+
+	it('ignores missing, LLM-processed, and properly scoped notes', () => {
+		const { content, cache } = meetingNote();
+		const files = new Map<string, string>([
+			['audio/rec.wav', ''],
+			['other.wav', ''],
+			['meeting.md', content],
+			['cleaned.md', 'llm text'],
+		]);
+		const app = makeApp(files, {
+			caches: { 'meeting.md': cache, 'cleaned.md': {} },
+		});
+		const section: TranscriptSection = {
+			...emptyTranscriptSection(),
+			noteOutputs: [
+				recordedNote('meeting.md'),
+				recordedNote('gone.md'),
+				recordedNote('cleaned.md', FORMAT, true),
+			],
+		};
+		expect(hasUnscopableRecordedNote(app, audioFile, section)).toBe(false);
 	});
 });

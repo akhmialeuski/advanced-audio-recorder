@@ -68,6 +68,33 @@ export function stripSpeakers(transcript: Transcript): Transcript {
 }
 
 /**
+ * Returns a copy of the transcript with speaker labels renamed through the
+ * given mapping: every segment whose speaker has a mapped name gets that
+ * name, unmapped speakers keep their label, and the speaker list is
+ * re-derived. Applied once on the canonical transcript so every output path
+ * - note Markdown, sidecar file, or JSON - renders the same names.
+ * @param transcript - Source transcript
+ * @param names - Mapping from original label to display name
+ */
+export function renameSpeakers(
+	transcript: Transcript,
+	names: Record<string, string>,
+): Transcript {
+	if (Object.keys(names).length === 0) {
+		return transcript;
+	}
+	const segments = transcript.segments.map((segment) => {
+		const mapped = segment.speaker ? names[segment.speaker] : undefined;
+		return mapped ? { ...segment, speaker: mapped } : segment;
+	});
+	return {
+		...transcript,
+		segments,
+		speakers: collectSpeakers(segments),
+	};
+}
+
+/**
  * Sorts segments by start time (stable for equal starts) and normalizes
  * each segment's text whitespace. Returns a new array.
  * @param segments - Transcript segments

@@ -7,6 +7,7 @@
  */
 
 export { transcribeFile } from './runTranscription';
+export type { TranscriptOutputSidecar } from './runTranscription';
 export {
 	effectiveDiarize,
 	isProviderAvailableOnPlatform,

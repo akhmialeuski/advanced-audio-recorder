@@ -12,6 +12,7 @@ import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import type { TranscriptionModalOptions } from '../ui/TranscriptionModal';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import type { AutoChapterService } from '../chapters/AutoChapterService';
+import type { RecordingSidecarStore } from '../sidecar/RecordingSidecarStore';
 
 /**
  * Primes freshly written files for the enhanced player: starts their
@@ -34,6 +35,8 @@ export interface ActionServices {
 	readonly getWorkerClient: () => EncodingWorkerClient | null;
 	/** Generates LLM chapters from a recording's transcript. */
 	readonly autoChapters: AutoChapterService;
+	/** Shared per-recording sidecar store (markers + transcript data). */
+	readonly recordingSidecar: RecordingSidecarStore;
 }
 
 /**
