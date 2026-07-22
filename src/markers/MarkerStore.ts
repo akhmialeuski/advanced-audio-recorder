@@ -1,47 +1,26 @@
 /**
- * Persistence for player markers and chapters. Each recording stores its
- * markers in a sidecar file next to it in the vault, named
- * `<recording><suffix>` (for example `rec.wav.markers.json`). Living in
- * the vault means the markers survive a plugin reinstall and travel with
- * the vault; rename and delete of the recording are mirrored onto the
- * sidecar so the markers stay attached and do not orphan. Reads are
- * cached per path and writes are serialized through a promise chain so
- * concurrent edits from several players cannot interleave.
+ * Marker-facing facade over the shared per-recording sidecar store. The
+ * sidecar file next to each recording (`<recording>.markers.json`) now holds
+ * markers and transcript data together; this class keeps the marker API its
+ * callers were built against (`get`/`set`/`handleRename`/`handleDelete`/
+ * `clearCache`) while delegating storage to the one
+ * {@link RecordingSidecarStore} instance the plugin owns, so marker edits and
+ * transcript writes share a cache and a serialized write chain and can never
+ * clobber each other.
  * @module markers/MarkerStore
  */
 
-import type { App } from 'obsidian';
-import { PLUGIN_LOG_PREFIX } from '../constants';
-import {
-	parseMarkers,
-	serializeMarkers,
-	type PlayerMarker,
-} from './markerModel';
-
-/** Suffix appended to a recording's path to form its sidecar path. */
-const SIDECAR_SUFFIX = '.markers.json';
-
-/** Current on-disk sidecar schema version. */
-const SIDECAR_VERSION = 1;
-
-/** Shape of a persisted sidecar file. */
-interface MarkerSidecarFile {
-	version: number;
-	markers: PlayerMarker[];
-}
+import type { RecordingSidecarStore } from '../sidecar/RecordingSidecarStore';
+import type { PlayerMarker } from './markerModel';
 
 /**
- * Loads and saves per-recording marker lists as sidecar JSON files.
+ * Loads and saves per-recording marker lists through the shared sidecar store.
  */
 export class MarkerStore {
-	private readonly cache = new Map<string, PlayerMarker[]>();
-	/** Serializes writes so concurrent saves never interleave. */
-	private writeChain: Promise<void> = Promise.resolve();
-
 	/**
-	 * @param app - Obsidian App instance
+	 * @param store - The plugin's shared recording sidecar store
 	 */
-	constructor(private readonly app: App) {}
+	constructor(private readonly store: RecordingSidecarStore) {}
 
 	/**
 	 * Returns the markers stored for a recording path, or an empty array
@@ -49,49 +28,18 @@ export class MarkerStore {
 	 * @param path - Vault-relative recording path
 	 */
 	async get(path: string): Promise<PlayerMarker[]> {
-		const cached = this.cache.get(path);
-		if (cached) {
-			return cached;
-		}
-		const markers = await this.read(path);
-		this.cache.set(path, markers);
-		return markers;
+		return this.store.getMarkers(path);
 	}
 
 	/**
-	 * Replaces the markers for a recording and persists its sidecar. An
-	 * empty list removes the sidecar so the vault is not left with empty
-	 * files.
+	 * Replaces the markers for a recording and persists its sidecar. The
+	 * sidecar file is removed only when the whole document (markers and
+	 * transcript data) is empty, so the vault is not left with empty files.
 	 * @param path - Vault-relative recording path
 	 * @param markers - Markers to store
 	 */
 	async set(path: string, markers: readonly PlayerMarker[]): Promise<void> {
-		const serialized = serializeMarkers(markers);
-		this.cache.set(path, serialized);
-		return this.enqueue(async () => {
-			const sidecar = this.sidecarPath(path);
-			try {
-				if (serialized.length === 0) {
-					if (await this.app.vault.adapter.exists(sidecar)) {
-						await this.app.vault.adapter.remove(sidecar);
-					}
-					return;
-				}
-				const payload: MarkerSidecarFile = {
-					version: SIDECAR_VERSION,
-					markers: serialized,
-				};
-				await this.app.vault.adapter.write(
-					sidecar,
-					JSON.stringify(payload),
-				);
-			} catch (error) {
-				console.warn(
-					`${PLUGIN_LOG_PREFIX} Failed to write markers for ${path}:`,
-					error,
-				);
-			}
-		});
+		return this.store.setMarkers(path, markers);
 	}
 
 	/**
@@ -101,25 +49,7 @@ export class MarkerStore {
 	 * @param newPath - New recording path
 	 */
 	async handleRename(oldPath: string, newPath: string): Promise<void> {
-		const cached = this.cache.get(oldPath);
-		this.cache.delete(oldPath);
-		if (cached) {
-			this.cache.set(newPath, cached);
-		}
-		return this.enqueue(async () => {
-			const from = this.sidecarPath(oldPath);
-			const to = this.sidecarPath(newPath);
-			try {
-				if (await this.app.vault.adapter.exists(from)) {
-					await this.app.vault.adapter.rename(from, to);
-				}
-			} catch (error) {
-				console.warn(
-					`${PLUGIN_LOG_PREFIX} Failed to move markers ${oldPath} -> ${newPath}:`,
-					error,
-				);
-			}
-		});
+		return this.store.handleRename(oldPath, newPath);
 	}
 
 	/**
@@ -128,20 +58,7 @@ export class MarkerStore {
 	 * @param path - Deleted recording path
 	 */
 	async handleDelete(path: string): Promise<void> {
-		this.cache.delete(path);
-		return this.enqueue(async () => {
-			const sidecar = this.sidecarPath(path);
-			try {
-				if (await this.app.vault.adapter.exists(sidecar)) {
-					await this.app.vault.adapter.remove(sidecar);
-				}
-			} catch (error) {
-				console.warn(
-					`${PLUGIN_LOG_PREFIX} Failed to delete markers for ${path}:`,
-					error,
-				);
-			}
-		});
+		return this.store.handleDelete(path);
 	}
 
 	/**
@@ -149,46 +66,6 @@ export class MarkerStore {
 	 * the feature is torn down.
 	 */
 	clearCache(): void {
-		this.cache.clear();
-	}
-
-	/**
-	 * Resolves the sidecar path for a recording.
-	 * @param path - Vault-relative recording path
-	 */
-	private sidecarPath(path: string): string {
-		return `${path}${SIDECAR_SUFFIX}`;
-	}
-
-	/**
-	 * Reads and parses a recording's sidecar, mapping a missing or
-	 * unreadable file to an empty list.
-	 * @param path - Vault-relative recording path
-	 */
-	private async read(path: string): Promise<PlayerMarker[]> {
-		const sidecar = this.sidecarPath(path);
-		try {
-			if (await this.app.vault.adapter.exists(sidecar)) {
-				const raw = await this.app.vault.adapter.read(sidecar);
-				const parsed = JSON.parse(raw) as Partial<MarkerSidecarFile>;
-				return parseMarkers(parsed.markers);
-			}
-		} catch (error) {
-			console.warn(
-				`${PLUGIN_LOG_PREFIX} Failed to read markers for ${path}; starting empty:`,
-				error,
-			);
-		}
-		return [];
-	}
-
-	/**
-	 * Queues a write behind any in-flight write so concurrent saves never
-	 * interleave.
-	 * @param task - Async write to run
-	 */
-	private enqueue(task: () => Promise<void>): Promise<void> {
-		this.writeChain = this.writeChain.then(task);
-		return this.writeChain;
+		this.store.clearCache();
 	}
 }
