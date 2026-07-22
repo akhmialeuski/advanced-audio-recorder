@@ -54,6 +54,7 @@ import {
 } from '../transcription/api';
 import type { Transcript } from '../transcription/TranscriptTypes';
 import { findProfile } from '../settings/dictionaryProfiles';
+import { findChapterPromptProfile } from '../settings/chapterPromptProfiles';
 import type { SaveProgress } from '../types';
 
 /** Default status label shown before the engine reports a finer-grained stage. */
@@ -78,6 +79,12 @@ export type TranscriptionModalOptions = {
 	backgroundProgress?: TranscriptionBackgroundProgressCallbacks;
 	/** Persists the run's dictionary-profile choice so it defaults next time. */
 	onProfileSelected?: (id: string) => Promise<void>;
+	/**
+	 * Persists the run's chapter guidance profile choice so it defaults next
+	 * time and reaches the after-transcription generation (which reads the
+	 * plugin settings).
+	 */
+	onChapterProfileSelected?: (id: string) => Promise<void>;
 	/**
 	 * Session-wide per-engine cost accumulator owned by the plugin, so the
 	 * dialog can add this run's cost and show the running session total.
@@ -449,7 +456,39 @@ export class TranscriptionModal extends Modal {
 				desc: 'After transcribing, ask the LLM to add titled chapters to the enhanced player.',
 				get: () => s.transcriptionAutoChaptersOnTranscribe,
 				set: (v) => (s.transcriptionAutoChaptersOnTranscribe = v),
+				// Re-render so the chapter-profile picker below appears or
+				// hides in step with the toggle.
+				rerender: true,
 			});
+			if (s.transcriptionAutoChaptersOnTranscribe) {
+				const chapterProfiles = s.transcriptionChapterPromptProfiles;
+				// A stored id whose profile was removed reads as None here.
+				const selectedChapterProfileId = findChapterPromptProfile(
+					chapterProfiles,
+					s.transcriptionChapterPromptProfileId,
+				)
+					? s.transcriptionChapterPromptProfileId
+					: '';
+				// Compact one-line picker (no description) so the section does
+				// not grow tall; the guidance profile steers the chaptering.
+				addDropdown(ctx, {
+					name: 'Chapter profile',
+					options: [
+						{ value: '', label: 'None (base prompt)' },
+						...chapterProfiles.map((profile) => ({
+							value: profile.id,
+							label: profile.name,
+						})),
+					],
+					get: () => selectedChapterProfileId,
+					set: (v) => {
+						// Affects this run and, persisted, the after-transcription
+						// generation which reads the plugin settings.
+						s.transcriptionChapterPromptProfileId = v;
+						void this.options.onChapterProfileSelected?.(v);
+					},
+				});
+			}
 		}
 		// Re-evaluated on every rerender (the Engine dropdown triggers one),
 		// so the Transcribe button tracks the freshly selected engine.

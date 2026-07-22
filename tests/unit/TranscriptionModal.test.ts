@@ -290,3 +290,75 @@ describe('TranscriptionModal dictionary profile selection', () => {
 		expect(settings.transcriptionDictionaryProfileId).toBe('');
 	});
 });
+
+/** The chapter-profile select is the one carrying the base-prompt option. */
+function chapterProfileSelect(
+	modal: TranscriptionModal,
+): HTMLSelectElement | null {
+	const selects = Array.from(modal.contentEl.querySelectorAll('select'));
+	return (
+		selects.find((el) =>
+			Array.from(el.options).some(
+				(option) => option.textContent === 'None (base prompt)',
+			),
+		) ?? null
+	);
+}
+
+describe('TranscriptionModal chapter profile selection', () => {
+	function settingsWithChapterProfiles(
+		onTranscribe: boolean,
+	): AudioRecorderSettings {
+		return {
+			...DEFAULT_SETTINGS,
+			transcriptionAutoChaptersEnabled: true,
+			transcriptionAutoChaptersOnTranscribe: onTranscribe,
+			transcriptionChapterPromptProfiles: [
+				{ id: 'c1', name: 'Agenda', prompt: 'Split by agenda item.' },
+				{ id: 'c2', name: 'Topic', prompt: 'Split by topic.' },
+			],
+			transcriptionChapterPromptProfileId: '',
+		};
+	}
+
+	it('shows the chapter-profile picker only when generate-after is on', () => {
+		const off = settingsWithChapterProfiles(false);
+		const modal = new TranscriptionModal(
+			new App(),
+			createAudioFile(),
+			() => off,
+			{},
+		);
+		modal.onOpen();
+		expect(chapterProfileSelect(modal)).toBeNull();
+	});
+
+	it('persists the picked chapter profile and updates the run snapshot', () => {
+		const settings = settingsWithChapterProfiles(true);
+		const onChapterProfileSelected = jest.fn().mockResolvedValue(undefined);
+		const modal = new TranscriptionModal(
+			new App(),
+			createAudioFile(),
+			() => settings,
+			{ onChapterProfileSelected },
+		);
+		modal.onOpen();
+
+		const select = chapterProfileSelect(modal);
+		expect(select).not.toBeNull();
+		expect(
+			Array.from(select?.options ?? []).map((o) => o.textContent),
+		).toEqual(['None (base prompt)', 'Agenda', 'Topic']);
+		(select as HTMLSelectElement).value = 'c1';
+		select?.dispatchEvent(new Event('change'));
+
+		expect(onChapterProfileSelected).toHaveBeenCalledWith('c1');
+		const runSettings = (
+			modal as unknown as { runSettings: AudioRecorderSettings }
+		).runSettings;
+		expect(runSettings.transcriptionChapterPromptProfileId).toBe('c1');
+		// The shared settings object stays untouched: persistence rides on the
+		// callback, matching the dictionary-profile flow.
+		expect(settings.transcriptionChapterPromptProfileId).toBe('');
+	});
+});

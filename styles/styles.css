@@ -729,8 +729,16 @@ input.aar-input-invalid {
 /* Pre-run cost estimate and session-total lines in the transcribe dialog. */
 .aar-transcribe-cost {
     margin-bottom: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--background-modifier-border);
     font-size: 0.8em;
     color: var(--text-muted);
+}
+
+/* Hide the divider when the cost block is empty (estimates disabled). */
+.aar-transcribe-cost:empty {
+    padding-top: 0;
+    border-top: none;
 }
 
 /* "Estimated cost" heading above the per-part breakdown. */

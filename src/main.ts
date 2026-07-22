@@ -930,6 +930,12 @@ export default class AudioRecorderPlugin extends Plugin {
 				this.settings.transcriptionDictionaryProfileId = profileId;
 				await this.saveSettings();
 			},
+			// Remember the run's chapter-profile choice so it defaults next
+			// time and applies to the after-transcription generation.
+			onChapterProfileSelected: async (profileId: string) => {
+				this.settings.transcriptionChapterPromptProfileId = profileId;
+				await this.saveSettings();
+			},
 			costTracker: this.transcriptionCostTracker,
 			// After-transcription auto chapters: runs on the fresh in-memory
 			// transcript, reporting through its own Notices.
