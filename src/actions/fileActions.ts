@@ -124,6 +124,7 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 			new SpeakerRenameModal(services.app, file, {
 				getSettings: services.getSettings,
 				saveSettings: services.saveSettings,
+				sidecar: services.recordingSidecar,
 			}).open();
 		},
 	},

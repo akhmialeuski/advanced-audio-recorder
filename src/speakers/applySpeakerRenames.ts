@@ -14,6 +14,7 @@
 import { parseLinktext } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
+import type { TranscriptSection } from '../sidecar/recordingSidecarModel';
 import { buildTranscriptFilePath } from '../transcription/transcriptOutput';
 import type { TranscriptFileFormat } from '../transcription/TranscriptTypes';
 import { isAudioFile } from '../utils/audioFile';
@@ -54,6 +55,10 @@ export interface SpeakerRenameApplyResult {
 	updatedTranscriptFiles: number;
 	/** Outputs whose rewrite threw and were skipped. */
 	failed: number;
+	/** Recorded notes skipped because an LLM pass replaced their body. */
+	skippedLlmNotes: number;
+	/** Recorded outputs whose path no longer resolves to a file. */
+	missingOutputs: number;
 }
 
 /** Escapes a literal string for embedding in a RegExp. */
@@ -297,12 +302,114 @@ export async function inspectAudioTranscript(
 	return { roster, hasUnscopableNote };
 }
 
+/** Returns a zeroed apply result. */
+function emptyApplyResult(): SpeakerRenameApplyResult {
+	return {
+		updatedNotes: 0,
+		updatedTranscriptFiles: 0,
+		failed: 0,
+		skippedLlmNotes: 0,
+		missingOutputs: 0,
+	};
+}
+
+/**
+ * Rewrites one transcript sidecar file, counting the outcome into the shared
+ * result. A failure is logged and counted, never thrown.
+ */
+async function rewriteTranscriptFileOutput(
+	app: App,
+	file: TFile,
+	format: TranscriptFileFormat,
+	renames: readonly SpeakerRename[],
+	result: SpeakerRenameApplyResult,
+): Promise<void> {
+	try {
+		// Skip untouched files with a cheap read, but perform the rewrite
+		// against the content vault.process supplies so a concurrent edit
+		// between this read and the write is never clobbered.
+		const current = await app.vault.read(file);
+		if (rewriteSidecar(format, current, renames) === current) {
+			return;
+		}
+		let changed = false;
+		await app.vault.process(file, (data) => {
+			const rewritten = rewriteSidecar(format, data, renames);
+			changed = rewritten !== data;
+			return rewritten;
+		});
+		if (changed) {
+			result.updatedTranscriptFiles++;
+		}
+	} catch (error) {
+		result.failed++;
+		console.warn(
+			`${PLUGIN_LOG_PREFIX} Failed to rewrite ${file.path}:`,
+			error,
+		);
+	}
+}
+
+/**
+ * Rewrites one note, scoped to the recording's lines when timecode links
+ * identify them and whole-note only under `allowBroad`, counting the outcome
+ * into the shared result. A failure is logged and counted, never thrown.
+ */
+async function rewriteNoteOutput(
+	app: App,
+	note: TFile,
+	audioPath: string,
+	speakerFormat: string,
+	renames: readonly SpeakerRename[],
+	allowBroad: boolean,
+	result: SpeakerRenameApplyResult,
+): Promise<void> {
+	try {
+		const lines = audioLineIndices(app, note, audioPath);
+		const rewriteNote = (data: string): string => {
+			if (lines.size > 0) {
+				return renameSpeakersInNoteLines(
+					data,
+					speakerFormat,
+					renames,
+					lines,
+				);
+			}
+			if (allowBroad) {
+				return renameSpeakersInMarkdown(data, speakerFormat, renames);
+			}
+			return data;
+		};
+		const current = await app.vault.read(note);
+		if (rewriteNote(current) === current) {
+			return;
+		}
+		let changed = false;
+		await app.vault.process(note, (data) => {
+			const rewritten = rewriteNote(data);
+			changed = rewritten !== data;
+			return rewritten;
+		});
+		if (changed) {
+			result.updatedNotes++;
+		}
+	} catch (error) {
+		result.failed++;
+		console.warn(
+			`${PLUGIN_LOG_PREFIX} Failed to rewrite ${note.path}:`,
+			error,
+		);
+	}
+}
+
 /**
  * Applies speaker renames to a recording's transcript sidecar files and to the
  * notes that reference it. Notes are rewritten only on the lines that resolve
  * to this audio; a note without such links is rewritten whole only when
  * `allowBroad` is set (the caller having confirmed). A failure on one output
  * is logged and counted, not thrown, so the remaining outputs still update.
+ * This is the stateless path, used for recordings without a sidecar transcript
+ * section (transcribed before the section existed).
  * @param app - Obsidian App
  * @param audioFile - Recording whose outputs are renamed
  * @param renames - Display-name renames to apply
@@ -318,83 +425,148 @@ export async function applySpeakerRenamesToVault(
 	speakerFormat: string,
 	options: { allowBroad: boolean },
 ): Promise<SpeakerRenameApplyResult> {
-	const result: SpeakerRenameApplyResult = {
-		updatedNotes: 0,
-		updatedTranscriptFiles: 0,
-		failed: 0,
-	};
+	const result = emptyApplyResult();
 	if (renames.length === 0) {
 		return result;
 	}
 
 	for (const { file, format } of findTranscriptSidecarFiles(app, audioFile)) {
-		try {
-			// Skip untouched files with a cheap read, but perform the rewrite
-			// against the content vault.process supplies so a concurrent edit
-			// between this read and the write is never clobbered.
-			const current = await app.vault.read(file);
-			if (rewriteSidecar(format, current, renames) === current) {
-				continue;
-			}
-			let changed = false;
-			await app.vault.process(file, (data) => {
-				const rewritten = rewriteSidecar(format, data, renames);
-				changed = rewritten !== data;
-				return rewritten;
-			});
-			if (changed) {
-				result.updatedTranscriptFiles++;
-			}
-		} catch (error) {
-			result.failed++;
-			console.warn(
-				`${PLUGIN_LOG_PREFIX} Failed to rewrite ${file.path}:`,
-				error,
-			);
-		}
+		await rewriteTranscriptFileOutput(app, file, format, renames, result);
 	}
-
 	for (const note of findReferencingNotes(app, audioFile.path)) {
-		try {
-			const lines = audioLineIndices(app, note, audioFile.path);
-			const rewriteNote = (data: string): string => {
-				if (lines.size > 0) {
-					return renameSpeakersInNoteLines(
-						data,
-						speakerFormat,
-						renames,
-						lines,
-					);
-				}
-				if (options.allowBroad) {
-					return renameSpeakersInMarkdown(
-						data,
-						speakerFormat,
-						renames,
-					);
-				}
-				return data;
-			};
-			const current = await app.vault.read(note);
-			if (rewriteNote(current) === current) {
-				continue;
-			}
-			let changed = false;
-			await app.vault.process(note, (data) => {
-				const rewritten = rewriteNote(data);
-				changed = rewritten !== data;
-				return rewritten;
-			});
-			if (changed) {
-				result.updatedNotes++;
-			}
-		} catch (error) {
-			result.failed++;
-			console.warn(
-				`${PLUGIN_LOG_PREFIX} Failed to rewrite ${note.path}:`,
-				error,
-			);
-		}
+		await rewriteNoteOutput(
+			app,
+			note,
+			audioFile.path,
+			speakerFormat,
+			renames,
+			options.allowBroad,
+			result,
+		);
 	}
 	return result;
+}
+
+/**
+ * Applies speaker renames driven by the recording's sidecar transcript
+ * section: file outputs are rewritten at their recorded paths and formats,
+ * and note outputs with the speaker template each note was actually written
+ * with (per-run overrides included), so changing the settings later never
+ * breaks a rename. A recorded note replaced by an LLM pass is skipped and
+ * counted (rewriting it would silently do nothing); a recorded path that no
+ * longer resolves is skipped and counted. Notes that reference the recording
+ * but are not recorded (older transcripts, or a recorded note found again
+ * under a new name) still go through the stateless mechanism with the current
+ * settings' template, so nothing regresses against the old behavior.
+ * @param app - Obsidian App
+ * @param audioFile - Recording whose outputs are renamed
+ * @param section - The recording's sidecar transcript section
+ * @param renames - Display-name renames to apply
+ * @param fallbackSpeakerFormat - Current speaker template, for unrecorded notes
+ * @param options - `allowBroad` permits whole-note rewrites for untimecoded
+ *   transcripts
+ * @returns Counts of updated, skipped, and failed outputs
+ */
+export async function applySpeakerRenamesWithSidecar(
+	app: App,
+	audioFile: TFile,
+	section: TranscriptSection,
+	renames: readonly SpeakerRename[],
+	fallbackSpeakerFormat: string,
+	options: { allowBroad: boolean },
+): Promise<SpeakerRenameApplyResult> {
+	const result = emptyApplyResult();
+	if (renames.length === 0) {
+		return result;
+	}
+
+	for (const output of section.fileOutputs) {
+		const file = app.vault.getFileByPath(output.path);
+		if (!file) {
+			result.missingOutputs++;
+			continue;
+		}
+		await rewriteTranscriptFileOutput(
+			app,
+			file,
+			output.format,
+			renames,
+			result,
+		);
+	}
+
+	for (const output of section.noteOutputs) {
+		const note = app.vault.getFileByPath(output.path);
+		if (!note) {
+			result.missingOutputs++;
+			continue;
+		}
+		if (output.llmProcessed) {
+			// The LLM replaced the rendered transcript body, so a line-scoped
+			// rewrite would silently find nothing; count it so the dialog can
+			// say the note was left as it is.
+			result.skippedLlmNotes++;
+			continue;
+		}
+		await rewriteNoteOutput(
+			app,
+			note,
+			audioFile.path,
+			output.templates.speakerFormat,
+			renames,
+			options.allowBroad,
+			result,
+		);
+	}
+
+	// Referencing notes the sidecar does not know (a transcript written before
+	// outputs were recorded, or a recorded note renamed since) keep working
+	// through the stateless mechanism with the current settings' template. A
+	// recorded path is excluded even when it was skipped above, so an
+	// LLM-processed note is never rewritten through the back door.
+	const recorded = new Set(section.noteOutputs.map((output) => output.path));
+	for (const note of findReferencingNotes(app, audioFile.path)) {
+		if (recorded.has(note.path)) {
+			continue;
+		}
+		await rewriteNoteOutput(
+			app,
+			note,
+			audioFile.path,
+			fallbackSpeakerFormat,
+			renames,
+			options.allowBroad,
+			result,
+		);
+	}
+	return result;
+}
+
+/**
+ * Whether any of a recording's recorded note outputs cannot be scoped by
+ * timecode links (the note exists, was not LLM-replaced, but carries no line
+ * whose link resolves to this audio), so the dialog can offer the broad
+ * whole-note rewrite opt-in.
+ * @param app - Obsidian App
+ * @param audioFile - Recording being renamed
+ * @param section - The recording's sidecar transcript section
+ */
+export function hasUnscopableRecordedNote(
+	app: App,
+	audioFile: TFile,
+	section: TranscriptSection,
+): boolean {
+	for (const output of section.noteOutputs) {
+		if (output.llmProcessed) {
+			continue;
+		}
+		const note = app.vault.getFileByPath(output.path);
+		if (!note) {
+			continue;
+		}
+		if (audioLineIndices(app, note, audioFile.path).size === 0) {
+			return true;
+		}
+	}
+	return false;
 }
