@@ -215,15 +215,18 @@ describe('AudioPlayerRegistry', () => {
 		expect(other.reloads).toBe(1);
 	});
 
-	it('skips disconnected players when reloading markers', () => {
+	it('reloads a momentarily disconnected player so a reattached widget is current', () => {
 		const registry = new AudioPlayerRegistry();
 		const source = makePlayer();
+		// Live Preview detaches an embed's widget as the viewport changes; a
+		// marker write landing then must still reach that player, or the
+		// reattached widget would show stale markers.
 		const disconnected = makePlayer(false);
 		registry.register('rec.wav', source);
 		registry.register('rec.wav', disconnected);
 
 		registry.reloadMarkers('rec.wav', source);
-		expect(disconnected.reloads).toBe(0);
+		expect(disconnected.reloads).toBe(1);
 	});
 
 	it('does nothing when reloading markers for an unknown path', () => {

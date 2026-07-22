@@ -320,3 +320,81 @@ describe('status-bar markers follow the player edit mode', () => {
 		}
 	});
 });
+
+/** Two generated chapters, as written to a recording's marker sidecar. */
+const CHAPTERS: PlayerMarker[] = [
+	{ id: 'auto-chapter-1', time: 0, label: 'Intro', kind: 'chapter' },
+	{ id: 'auto-chapter-2', time: 120, label: 'Middle', kind: 'chapter' },
+];
+
+/** Reads the chapter labels the player rendered, in list order. */
+function markerLabels(container: HTMLElement): string[] {
+	return [...container.querySelectorAll('.aar-player-marker-label')].map(
+		(el) => (el as HTMLInputElement).getAttribute('value') ?? '',
+	);
+}
+
+describe('generated chapters reach an already-open player', () => {
+	it('shows chapters in an open Live Preview player after an external write', async () => {
+		const shared = installSharedAudio();
+		try {
+			const registry = new AudioPlayerRegistry();
+			const store = makeMarkerStore();
+			// Live Preview container (inside a CodeMirror editor)
+			const container = makeEditableContainer();
+			mountMarkerPlayer(registry, store, container);
+			await tick();
+			shared.audio.setReady(1);
+			shared.audio.setDuration(600);
+
+			// Auto chapters write the sidecar, then the registrar reloads
+			// every open player of the file through the shared marker-reload
+			// path (source is null: the write came from outside any player)
+			await store.set('rec.mp4', CHAPTERS);
+			registry.reloadMarkers('rec.mp4', null);
+			await tick();
+
+			// The open embed shows the chapters at once, without a re-mount
+			expect(
+				container.querySelectorAll('.aar-player-marker-row'),
+			).toHaveLength(2);
+			expect(markerLabels(container)).toEqual(['Intro', 'Middle']);
+		} finally {
+			shared.restore();
+		}
+	});
+
+	it('recovers chapters written while the Live Preview widget was detached', async () => {
+		const shared = installSharedAudio();
+		try {
+			const registry = new AudioPlayerRegistry();
+			const store = makeMarkerStore();
+			const container = makeEditableContainer();
+			mountMarkerPlayer(registry, store, container);
+			await tick();
+			shared.audio.setReady(1);
+			shared.audio.setDuration(600);
+
+			// Live Preview detaches the embed's widget while the async
+			// generation runs, so the reload lands on a disconnected player
+			const parent = container.parentElement as HTMLElement;
+			container.remove();
+			expect(container.isConnected).toBe(false);
+
+			await store.set('rec.mp4', CHAPTERS);
+			registry.reloadMarkers('rec.mp4', null);
+			await tick();
+
+			// Obsidian reattaches the same widget DOM: the chapters written
+			// while it was detached must be there, not a stale empty list
+			parent.appendChild(container);
+			expect(container.isConnected).toBe(true);
+			expect(
+				container.querySelectorAll('.aar-player-marker-row'),
+			).toHaveLength(2);
+			expect(markerLabels(container)).toEqual(['Intro', 'Middle']);
+		} finally {
+			shared.restore();
+		}
+	});
+});

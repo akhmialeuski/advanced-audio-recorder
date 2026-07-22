@@ -565,9 +565,20 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * markers, so reading view and Live Preview stay in sync.
 	 */
 	reloadMarkers(): void {
-		if (this.settings.enableMarkers) {
-			void this.markerCtl.load();
+		if (this.unloaded || !this.settings.enableMarkers) {
+			return;
 		}
+		// Re-render the whole player in place through the same renderUi the
+		// live settings-apply uses, not only the marker list. In Live Preview
+		// CodeMirror can shuffle or orphan the embed's DOM, so re-drawing only
+		// the markers may paint into a detached marker view and never show;
+		// renderUi recreates the marker view in the current container and
+		// re-reads the store, so an external write (generated chapters) always
+		// appears. Only this player's own container is rebuilt, never the note
+		// or the page. Playback is not interrupted (the shared audio element is
+		// not rebuilt) and cached waveform peaks are reused, so there is no
+		// flicker.
+		this.renderUi();
 	}
 
 	/**
