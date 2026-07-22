@@ -26,3 +26,4 @@ coverage/
 
 # Claude Code local config
 CLAUDE.md
+.claude/scheduled_tasks.lock
