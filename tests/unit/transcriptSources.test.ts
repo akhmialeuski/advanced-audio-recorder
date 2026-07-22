@@ -109,6 +109,32 @@ describe('loadTranscriptLines', () => {
 		]);
 	});
 
+	it('carries the language from the JSON sidecar', async () => {
+		const transcript = {
+			language: 'ru',
+			segments: [{ start: 0, end: 3, text: 'привет' }],
+		};
+		const files = new Map([
+			['rec.wav', ''],
+			['rec.transcript.json', JSON.stringify(transcript)],
+		]);
+		const app = makeApp(files);
+		const found = await loadTranscriptLines(app, tf('rec.wav'));
+		expect(found?.language).toBe('ru');
+	});
+
+	it('leaves the language unset for a sidecar format that has none', async () => {
+		const srt = '1\n00:00:01,000 --> 00:00:02,000\nhello\n';
+		const files = new Map([
+			['rec.wav', ''],
+			['rec.srt', srt],
+		]);
+		const app = makeApp(files);
+		const found = await loadTranscriptLines(app, tf('rec.wav'));
+		expect(found?.lines).toHaveLength(1);
+		expect(found?.language).toBeUndefined();
+	});
+
 	it('parses SRT cues with speaker prefixes', async () => {
 		const srt =
 			'1\n00:00:01,500 --> 00:00:04,000\nSpeaker 1: hello\n\n' +

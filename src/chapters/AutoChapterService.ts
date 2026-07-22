@@ -15,6 +15,7 @@ import { Notice } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
+import { resolveChapterGuidance } from '../settings/chapterPromptProfiles';
 import { createLlmProvider } from '../transcription/factories';
 import type { LlmProvider } from '../transcription/llm/LlmProvider';
 import type { Transcript } from '../transcription/TranscriptTypes';
@@ -23,6 +24,8 @@ import { generateMarkerId } from '../markers/markerFactory';
 import {
 	applyGeneratedChapters,
 	buildChapterPrompt,
+	isAutoChapterId,
+	minChapterSecondsFor,
 	parseChapterResponse,
 	type TimedLine,
 } from './chapterGeneration';
@@ -35,6 +38,61 @@ import {
 export interface AutoChapterServiceDeps {
 	/** Builds the LLM provider from settings. */
 	createLlm?: (settings: AudioRecorderSettings) => LlmProvider;
+	/** Probes a recording's real duration in seconds (null when unknown). */
+	probeDuration?: (file: TFile) => Promise<number | null>;
+}
+
+/**
+ * Reads a recording's duration from its media metadata without decoding the
+ * whole file, by loading only metadata into an audio element. Resolves null
+ * on error or timeout so the caller falls back to the transcript extent.
+ * @param app - Obsidian App
+ * @param file - Recording to measure
+ */
+function probeAudioDurationSeconds(
+	app: App,
+	file: TFile,
+): Promise<number | null> {
+	return new Promise((resolve) => {
+		const audio = new Audio();
+		audio.preload = 'metadata';
+		const finish = (value: number | null): void => {
+			window.clearTimeout(timer);
+			audio.removeAttribute('src');
+			audio.load();
+			resolve(value);
+		};
+		const timer = window.setTimeout(() => finish(null), 15000);
+		audio.addEventListener('loadedmetadata', () => {
+			finish(
+				Number.isFinite(audio.duration) && audio.duration > 0
+					? audio.duration
+					: null,
+			);
+		});
+		audio.addEventListener('error', () => finish(null));
+		audio.src = app.vault.getResourcePath(file);
+	});
+}
+
+/** Timed lines plus the transcript language, when a source carried one. */
+interface ResolvedLines {
+	lines: TimedLine[];
+	language?: string;
+}
+
+/**
+ * The configured transcription language as an explicit prompt hint, or
+ * undefined when set to auto-detect. Used as a last resort so on-demand
+ * chapter generation still names the language for the model when neither the
+ * transcript object nor the sidecar carried a detected one.
+ * @param settings - Current plugin settings
+ */
+function languageHintFromSettings(
+	settings: AudioRecorderSettings,
+): string | undefined {
+	const hint = settings.transcriptionLanguage.trim();
+	return hint && hint.toLowerCase() !== 'auto' ? hint : undefined;
 }
 
 /**
@@ -44,6 +102,7 @@ export class AutoChapterService {
 	private readonly createLlm: (
 		settings: AudioRecorderSettings,
 	) => LlmProvider;
+	private readonly probeDuration: (file: TFile) => Promise<number | null>;
 
 	/**
 	 * @param app - Obsidian App
@@ -51,7 +110,7 @@ export class AutoChapterService {
 	 * @param markerStore - Marker sidecar store shared with the player
 	 * @param onChaptersWritten - Called with the recording path after a
 	 *   successful write, so open players can re-read their markers
-	 * @param deps - Optional provider factory (injected in tests)
+	 * @param deps - Optional provider factory and duration probe (for tests)
 	 */
 	constructor(
 		private readonly app: App,
@@ -61,6 +120,24 @@ export class AutoChapterService {
 		deps: AutoChapterServiceDeps = {},
 	) {
 		this.createLlm = deps.createLlm ?? createLlmProvider;
+		this.probeDuration =
+			deps.probeDuration ??
+			((file) => probeAudioDurationSeconds(this.app, file));
+	}
+
+	/**
+	 * Whether the recording already has generated (auto) chapters, so a
+	 * caller can warn that regenerating will replace them. Returns false on a
+	 * read error rather than blocking the flow.
+	 * @param file - The recording to check
+	 */
+	async hasExistingChapters(file: TFile): Promise<boolean> {
+		try {
+			const existing = await this.markerStore.get(file.path);
+			return existing.some((marker) => isAutoChapterId(marker.id));
+		} catch {
+			return false;
+		}
 	}
 
 	/**
@@ -77,30 +154,64 @@ export class AutoChapterService {
 			// The transcription check: without a transcript (given or found)
 			// there is nothing to derive chapters from, so stop with guidance
 			// instead of sending an empty prompt to a paid API.
-			const lines = await this.resolveLines(file, transcript);
-			if (!lines || lines.length === 0) {
+			const resolved = await this.resolveLines(file, transcript);
+			if (!resolved || resolved.lines.length === 0) {
 				new Notice(
 					`No transcript found for ${file.name}. Transcribe the ` +
 						'audio first, then generate chapters.',
 				);
 				return false;
 			}
+			const { lines } = resolved;
 			new Notice(`Generating chapters for ${file.name}...`);
 			const settings = this.getSettings();
 			const llm = this.createLlm(settings);
 			const lastSegment = transcript?.segments.at(-1);
-			// Bound the model's proposals by the transcript's known extent:
-			// the last segment's end when the transcript is in memory, else
-			// the last timed line.
-			const maxTime =
-				lastSegment?.end ?? lines[lines.length - 1]?.time ?? null;
+			// Bound everything by the recording's REAL length. Prefer the
+			// in-memory transcript's own end; otherwise probe the audio's
+			// duration; only as a last resort use the last transcript line,
+			// which can run past a trimmed recording and place a chapter
+			// beyond its end (the "last chapter shows 0:00" symptom).
+			const durationSeconds =
+				lastSegment?.end ??
+				(await this.probeDuration(file)) ??
+				lines[lines.length - 1]?.time ??
+				null;
+			// Keep chapters spread out and long enough: the prompt states this
+			// minimum and parseChapterResponse drops anything bunched closer.
+			const minGap = minChapterSecondsFor(durationSeconds);
+			// Snap starts onto real transcript lines that fall inside the
+			// recording, so a boundary lands on a spoken line and never past
+			// the audio's end.
+			const snapTimes =
+				durationSeconds === null
+					? lines.map((line) => line.time)
+					: lines
+							.map((line) => line.time)
+							.filter((time) => time <= durationSeconds);
+			// The prompt's language is the transcript's own when known (the
+			// in-memory run's detected language, else the JSON sidecar's).
+			// When neither carries one (note-derived lines, or a subtitle/text
+			// sidecar), fall back to the configured transcription language so
+			// generation still names the language instead of letting the model
+			// guess it, which otherwise produced wrong-language titles.
+			const language =
+				resolved.language ?? languageHintFromSettings(settings);
+			// The selected chapter profile steers how the recording is split;
+			// an empty selection appends no guidance and keeps the base prompt.
+			const guidance = resolveChapterGuidance(settings);
 			const prompt = buildChapterPrompt(lines, {
-				...(transcript?.language
-					? { language: transcript.language }
-					: {}),
+				...(language ? { language } : {}),
+				...(guidance ? { guidance } : {}),
+				...(durationSeconds !== null ? { durationSeconds } : {}),
 			});
 			const output = await llm.complete(prompt, settings.llmMaxTokens);
-			const chapters = parseChapterResponse(output, maxTime);
+			const chapters = parseChapterResponse(
+				output,
+				durationSeconds,
+				minGap,
+				snapTimes,
+			);
 			if (chapters.length === 0) {
 				new Notice(
 					'The LLM returned no usable chapters; markers were not changed.',
@@ -134,18 +245,31 @@ export class AutoChapterService {
 	}
 
 	/**
-	 * Resolves the timed transcript lines: from the in-memory transcript
-	 * when one was handed over, otherwise from the recording's existing
-	 * transcript outputs.
+	 * Resolves the timed transcript lines and their language: from the
+	 * in-memory transcript when one was handed over, otherwise from the
+	 * recording's existing transcript outputs. The language rides along so
+	 * the prompt can request titles in the transcript's language even on the
+	 * on-demand path, where only the JSON sidecar carries one.
 	 */
 	private async resolveLines(
 		file: TFile,
 		transcript?: Transcript,
-	): Promise<TimedLine[] | null> {
+	): Promise<ResolvedLines | null> {
 		if (transcript) {
-			return timedLinesFromTranscript(transcript);
+			return {
+				lines: timedLinesFromTranscript(transcript),
+				...(transcript.language
+					? { language: transcript.language }
+					: {}),
+			};
 		}
 		const found = await loadTranscriptLines(this.app, file);
-		return found?.lines ?? null;
+		if (!found) {
+			return null;
+		}
+		return {
+			lines: found.lines,
+			...(found.language ? { language: found.language } : {}),
+		};
 	}
 }

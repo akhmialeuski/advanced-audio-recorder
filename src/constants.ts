@@ -710,6 +710,27 @@ export const DEFAULT_LLM_CUSTOM_INSTRUCTION =
 	'result with no preamble.';
 
 /**
+ * Fixed id of the built-in chapter guidance profile seeded on first run. It is
+ * a stable literal (not a random uuid) so the default selection in
+ * DEFAULT_SETTINGS is deterministic and the profile stays identifiable after a
+ * settings reload.
+ */
+export const DEFAULT_CHAPTER_PROMPT_PROFILE_ID = 'default';
+
+/**
+ * Default chapter-splitting guidance, seeded as the first (selected) chapter
+ * prompt profile and freely editable. It steers HOW the recording is divided;
+ * the strict JSON response contract and the timecode rules live in the fixed
+ * base prompt (see {@link buildChapterPrompt}) and are never user-editable, so
+ * a customized or added profile cannot break response parsing.
+ */
+export const DEFAULT_CHAPTER_PROMPT =
+	'Divide the recording at the major topic shifts so each chapter covers ' +
+	'one coherent subject. Avoid splitting a single discussion across ' +
+	'chapters, keep chapter lengths reasonably balanced, and title each ' +
+	'chapter with the concrete subject discussed rather than a generic label.';
+
+/**
  * Floor timeout, in milliseconds, for a transcription HTTP request.
  * Obsidian's requestUrl exposes no abort signal, so the helper races the
  * request against a deadline to bound a hung endpoint (e.g. a misconfigured

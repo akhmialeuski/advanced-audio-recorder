@@ -60,6 +60,8 @@ function makeService(options: {
 	store: MarkerStore;
 	onWritten?: (path: string) => void;
 	app?: App;
+	settings?: Partial<AudioRecorderSettings>;
+	probeDuration?: () => Promise<number | null>;
 }): AutoChapterService {
 	const app =
 		options.app ??
@@ -69,12 +71,40 @@ function makeService(options: {
 		} as unknown as App);
 	return new AutoChapterService(
 		app,
-		() => ({ llmMaxTokens: 4096 }) as unknown as AudioRecorderSettings,
+		() =>
+			({
+				llmMaxTokens: 4096,
+				transcriptionLanguage: 'auto',
+				transcriptionChapterPromptProfiles: [],
+				transcriptionChapterPromptProfileId: '',
+				...options.settings,
+			}) as unknown as AudioRecorderSettings,
 		options.store,
 		options.onWritten,
-		{ createLlm: () => options.llm },
+		{
+			createLlm: () => options.llm,
+			probeDuration:
+				options.probeDuration ?? (() => Promise.resolve(null)),
+		},
 	);
 }
+
+/** The system prompt handed to the LLM on the first (only) request. */
+function requestedSystemPrompt(llm: LlmProvider): string {
+	const call = (llm.complete as jest.Mock).mock.calls[0] as [
+		{ system: string; user: string },
+	];
+	return call[0].system;
+}
+
+/** A transcript with no detected language (the diarizer returned none). */
+const TRANSCRIPT_NO_LANGUAGE: Transcript = {
+	segments: [
+		{ start: 0, end: 30, text: 'intro talk' },
+		{ start: 60, end: 200, text: 'main topic' },
+	],
+	speakers: [],
+};
 
 beforeEach(() => {
 	(Notice as unknown as jest.Mock).mockClear();
@@ -184,6 +214,103 @@ describe('AutoChapterService.generate', () => {
 				),
 			),
 		).toBe(true);
+	});
+
+	it("requests titles in the transcript's own language", async () => {
+		const llm = makeLlm('[{"time": 0, "title": "Intro"}]');
+		const { store } = makeStore();
+		const service = makeService({ llm, store });
+
+		await service.generate(tf('rec.wav'), TRANSCRIPT);
+
+		expect(requestedSystemPrompt(llm)).toContain(
+			'The transcript language is en',
+		);
+	});
+
+	it('falls back to the configured language when the transcript has none', async () => {
+		const llm = makeLlm('[{"time": 0, "title": "Intro"}]');
+		const { store } = makeStore();
+		const service = makeService({
+			llm,
+			store,
+			settings: { transcriptionLanguage: 'ru' },
+		});
+
+		await service.generate(tf('rec.wav'), TRANSCRIPT_NO_LANGUAGE);
+
+		expect(requestedSystemPrompt(llm)).toContain(
+			'The transcript language is ru',
+		);
+	});
+
+	it('leaves the language to the model when set to auto and none is known', async () => {
+		const llm = makeLlm('[{"time": 0, "title": "Intro"}]');
+		const { store } = makeStore();
+		const service = makeService({
+			llm,
+			store,
+			settings: { transcriptionLanguage: 'auto' },
+		});
+
+		await service.generate(tf('rec.wav'), TRANSCRIPT_NO_LANGUAGE);
+
+		const system = requestedSystemPrompt(llm);
+		expect(system).toContain(
+			'Write the titles in the same language as the transcript',
+		);
+		expect(system).not.toContain('The transcript language is');
+	});
+
+	it('applies the selected chapter guidance profile to the prompt', async () => {
+		const llm = makeLlm('[{"time": 0, "title": "Intro"}]');
+		const { store } = makeStore();
+		const service = makeService({
+			llm,
+			store,
+			settings: {
+				transcriptionChapterPromptProfiles: [
+					{
+						id: 'p',
+						name: 'Agenda',
+						prompt: 'Split by agenda item.',
+					},
+				],
+				transcriptionChapterPromptProfileId: 'p',
+			},
+		});
+
+		await service.generate(tf('rec.wav'), TRANSCRIPT);
+
+		expect(requestedSystemPrompt(llm)).toContain('Split by agenda item.');
+	});
+
+	it('enforces a minimum chapter gap on bunched model output', async () => {
+		const llm = makeLlm(
+			'[{"time": 0, "title": "A"}, {"time": 3, "title": "B"}, ' +
+				'{"time": 60, "title": "C"}]',
+		);
+		const { store, saved } = makeStore();
+		const service = makeService({ llm, store });
+
+		await service.generate(tf('rec.wav'), TRANSCRIPT);
+
+		// TRANSCRIPT ends at 200s, so the 20-second minimum applies and the
+		// 3-second chapter is dropped as too close to the first.
+		expect(saved()?.map((m) => m.time)).toEqual([0, 60]);
+	});
+
+	it("tells the model the recording's length", async () => {
+		const llm = makeLlm(
+			'[{"time": 0, "title": "A"}, {"time": 60, "title": "B"}]',
+		);
+		const { store } = makeStore();
+		const service = makeService({ llm, store });
+
+		await service.generate(tf('rec.wav'), TRANSCRIPT);
+
+		// TRANSCRIPT's last segment ends at 200 seconds, which is 3:20.
+		expect(requestedSystemPrompt(llm)).toContain('3:20');
 	});
 
 	it('drops chapters the model invents past the end of the transcript', async () => {

@@ -15,6 +15,7 @@ import { ConversionModal } from '../ui/ConversionModal';
 import { SplitModal } from '../ui/SplitModal';
 import { TranscriptionModal } from '../ui/TranscriptionModal';
 import { SpeakerRenameModal } from '../ui/SpeakerRenameModal';
+import { ChapterGenerationModal } from '../ui/ChapterGenerationModal';
 import { AudioProcessingModal } from '../cleanup/AudioProcessingModal';
 import { insertProcessedAudioEmbed } from '../recording/NoteInserter';
 import type { ActionServices, FileAction } from './PluginAction';
@@ -133,8 +134,14 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		showInEditorMenu: true,
 		isAvailable: (_file: TFile, services: ActionServices): boolean =>
 			services.getSettings().transcriptionAutoChaptersEnabled,
-		run: async (file: TFile, services: ActionServices): Promise<void> => {
-			await services.autoChapters.generate(file);
+		run: (file: TFile, services: ActionServices): void => {
+			// Open the dialog to pick the guidance profile and see the cost
+			// estimate before the run; it delegates to the shared service.
+			new ChapterGenerationModal(services.app, file, {
+				getSettings: services.getSettings,
+				saveSettings: services.saveSettings,
+				autoChapters: services.autoChapters,
+			}).open();
 		},
 	},
 	{

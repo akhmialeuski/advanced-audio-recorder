@@ -29,6 +29,19 @@ export interface TranscriptLinesSource {
 	lines: TimedLine[];
 	/** Human-readable origin, for log/notice context (e.g. a file path). */
 	origin: string;
+	/**
+	 * Detected/declared transcript language (BCP-47 / ISO code) when the
+	 * source carried one, which only the JSON sidecar does. Fed to the chapter
+	 * prompt so generated titles come out in the transcript's language instead
+	 * of a language the model guesses.
+	 */
+	language?: string;
+}
+
+/** Parsed sidecar content: timed lines and the language when the format has one. */
+interface SidecarParse {
+	lines: TimedLine[];
+	language?: string;
 }
 
 /**
@@ -51,24 +64,30 @@ export function timedLinesFromTranscript(transcript: Transcript): TimedLine[] {
 
 /**
  * Parses a JSON transcript sidecar (the shape written by
- * `serializeTranscriptFile`) into timed lines. Entries missing a numeric
- * start or a string text are skipped; a non-transcript JSON yields [].
+ * `serializeTranscriptFile`) into timed lines and its detected language.
+ * Entries missing a numeric start or a string text are skipped; a
+ * non-transcript JSON yields no lines.
  * @param content - Raw sidecar content
  */
-function linesFromTranscriptJson(content: string): TimedLine[] {
+function linesFromTranscriptJson(content: string): SidecarParse {
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(content);
 	} catch {
-		return [];
+		return { lines: [] };
 	}
 	if (typeof parsed !== 'object' || parsed === null) {
-		return [];
+		return { lines: [] };
 	}
-	const segments = (parsed as { segments?: unknown }).segments;
+	const record = parsed as { segments?: unknown; language?: unknown };
+	const segments = record.segments;
 	if (!Array.isArray(segments)) {
-		return [];
+		return { lines: [] };
 	}
+	const language =
+		typeof record.language === 'string' && record.language.trim()
+			? record.language.trim()
+			: undefined;
 	const lines: TimedLine[] = [];
 	for (const entry of segments) {
 		if (typeof entry !== 'object' || entry === null) {
@@ -89,7 +108,7 @@ function linesFromTranscriptJson(content: string): TimedLine[] {
 				: '';
 		lines.push({ time: Math.max(0, start), text: speaker + text.trim() });
 	}
-	return lines;
+	return { lines, ...(language ? { language } : {}) };
 }
 
 /** Matches a subtitle cue timing line, capturing the start time parts. */
@@ -158,19 +177,19 @@ function linesFromPlainText(content: string): TimedLine[] {
 	return lines;
 }
 
-/** Parses one sidecar's content into timed lines by its format. */
+/** Parses one sidecar's content into timed lines (and language) by format. */
 function linesFromSidecar(
 	format: TranscriptFileFormat,
 	content: string,
-): TimedLine[] {
+): SidecarParse {
 	switch (format) {
 		case 'json':
 			return linesFromTranscriptJson(content);
 		case 'srt':
 		case 'vtt':
-			return linesFromSubtitles(content);
+			return { lines: linesFromSubtitles(content) };
 		case 'txt':
-			return linesFromPlainText(content);
+			return { lines: linesFromPlainText(content) };
 		default: {
 			const exhaustive: never = format;
 			throw new Error(
@@ -287,10 +306,17 @@ export async function loadTranscriptLines(
 ): Promise<TranscriptLinesSource | null> {
 	for (const { file, format } of findTranscriptSidecarFiles(app, audioFile)) {
 		try {
-			const lines = linesFromSidecar(format, await app.vault.read(file));
+			const { lines, language } = linesFromSidecar(
+				format,
+				await app.vault.read(file),
+			);
 			if (lines.length > 0) {
 				lines.sort((a, b) => a.time - b.time);
-				return { lines, origin: file.path };
+				return {
+					lines,
+					origin: file.path,
+					...(language ? { language } : {}),
+				};
 			}
 		} catch (error) {
 			console.warn(

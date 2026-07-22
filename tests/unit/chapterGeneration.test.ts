@@ -9,6 +9,8 @@ import {
 	applyGeneratedChapters,
 	buildChapterPrompt,
 	isAutoChapterId,
+	MIN_CHAPTER_SECONDS,
+	minChapterSecondsFor,
 	parseChapterResponse,
 	type TimedLine,
 } from 'src/chapters/chapterGeneration';
@@ -43,6 +45,56 @@ describe('buildChapterPrompt', () => {
 		const prompt = buildChapterPrompt(LINES);
 		expect(prompt.system).toContain('same language as the transcript');
 	});
+
+	it('appends the profile guidance before the language clause', () => {
+		const prompt = buildChapterPrompt(LINES, {
+			language: 'en',
+			guidance: 'Split by agenda item.',
+		});
+		expect(prompt.system).toContain(
+			'Additional guidance on how to divide this recording into chapters: ' +
+				'Split by agenda item.',
+		);
+		// The fixed JSON contract still precedes any user guidance.
+		expect(prompt.system.indexOf('JSON array')).toBeLessThan(
+			prompt.system.indexOf('Additional guidance'),
+		);
+	});
+
+	it('appends no guidance clause for blank guidance', () => {
+		const prompt = buildChapterPrompt(LINES, { guidance: '   ' });
+		expect(prompt.system).not.toContain('Additional guidance');
+	});
+
+	it('states the recording length so chapters span the whole timeline', () => {
+		const prompt = buildChapterPrompt(LINES, { durationSeconds: 759 });
+		// 759 seconds is 12:39; the model is told the real length and a
+		// minimum chapter length so it does not bunch chapters at the start.
+		expect(prompt.system).toContain('12:39');
+		expect(prompt.system).toContain('759');
+		expect(prompt.system).toContain('at least about 20 seconds');
+	});
+
+	it('omits the length clause when the duration is unknown', () => {
+		const prompt = buildChapterPrompt(LINES);
+		expect(prompt.system).not.toContain('The recording is');
+	});
+});
+
+describe('minChapterSecondsFor', () => {
+	it('uses the full minimum on a normal-length recording', () => {
+		expect(minChapterSecondsFor(759)).toBe(MIN_CHAPTER_SECONDS);
+	});
+
+	it('relaxes the minimum for a short recording', () => {
+		// A one-minute clip must not demand 20-second chapters.
+		expect(minChapterSecondsFor(60)).toBe(10);
+	});
+
+	it('falls back to a tiny tolerance when the length is unknown', () => {
+		expect(minChapterSecondsFor(null)).toBe(1);
+		expect(minChapterSecondsFor(0)).toBe(1);
+	});
 });
 
 describe('parseChapterResponse', () => {
@@ -52,6 +104,43 @@ describe('parseChapterResponse', () => {
 		expect(parseChapterResponse(output, 4000)).toEqual([
 			{ time: 0, title: 'Intro' },
 			{ time: 65, title: 'Topic' },
+		]);
+	});
+
+	it('snaps chapter starts onto the nearest real transcript line', () => {
+		// The model returns times between lines; each snaps to the closest one.
+		const output =
+			'[{"time": 2, "title": "A"}, {"time": 118, "title": "B"}]';
+		const lineTimes = [0, 60, 120, 300];
+		expect(parseChapterResponse(output, 300, 1, lineTimes)).toEqual([
+			{ time: 0, title: 'A' },
+			{ time: 120, title: 'B' },
+		]);
+	});
+
+	it('discards a chapter past the recording length instead of clamping it', () => {
+		// 835s on a 759s recording is beyond the end; it must be dropped, not
+		// clamped to a zero-length final chapter.
+		const output =
+			'[{"time": 0, "title": "A"}, {"time": 835, "title": "Past"}]';
+		expect(
+			parseChapterResponse(output, 759, 20).map(
+				(chapter) => chapter.title,
+			),
+		).toEqual(['A']);
+	});
+
+	it('drops chapters bunched closer than the minimum gap', () => {
+		// A model that crams chapters into the opening seconds must not yield
+		// a run of one- and two-second chapters; the min gap keeps the first
+		// of each cluster and drops the rest.
+		const output =
+			'[{"time": 0, "title": "A"}, {"time": 3, "title": "B"}, ' +
+			'{"time": 5, "title": "C"}, {"time": 30, "title": "D"}, ' +
+			'{"time": 31, "title": "E"}]';
+		expect(parseChapterResponse(output, 759, 20)).toEqual([
+			{ time: 0, title: 'A' },
+			{ time: 30, title: 'D' },
 		]);
 	});
 

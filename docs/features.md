@@ -143,7 +143,7 @@ Learn more: [LLM post-processing](llm-post-processing.md)
 
 ## Auto chapters
 
-With **Auto chapters** enabled, the **Generate chapters from transcript** action (context menu, editor menu, command palette) asks the configured LLM to divide a transcribed recording into titled chapters, written to the recording's marker sidecar and shown in the enhanced player. It requires an existing transcript (sidecar file or in-note transcript with timecode links) and asks you to transcribe first when none is found. An optional **Generate after transcription** toggle runs it automatically after each transcription. Re-running replaces only previously generated chapters - bookmarks and manual chapters are kept.
+With **Auto chapters** enabled, the **Generate chapters from transcript** action (context menu, editor menu, command palette) asks the configured LLM to divide a transcribed recording into titled chapters, written to the recording's marker sidecar and shown in the enhanced player. It requires an existing transcript (sidecar file or in-note transcript with timecode links) and asks you to transcribe first when none is found. How the recording is split follows a selectable **chapter guidance profile**: a built-in **Default** is seeded and editable, and you can add profiles for specific cases and pick the right one per recording. An optional **Generate after transcription** toggle runs it automatically after each transcription. Re-running replaces only previously generated chapters - bookmarks and manual chapters are kept.
 
 Learn more: [Transcription](transcription.md#auto-chapters)
 

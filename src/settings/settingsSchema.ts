@@ -36,6 +36,8 @@ import {
 	DEFAULT_LLM_CLEANUP_PROMPT,
 	DEFAULT_LLM_SUMMARY_PROMPT,
 	DEFAULT_LLM_CUSTOM_INSTRUCTION,
+	DEFAULT_CHAPTER_PROMPT,
+	DEFAULT_CHAPTER_PROMPT_PROFILE_ID,
 	DEFAULT_CLEANUP_HIGHPASS_HZ,
 	DEFAULT_CLEANUP_GATE_THRESHOLD_DB,
 	DEFAULT_CLEANUP_LEVELING_MAKEUP_DB,
@@ -172,6 +174,23 @@ export interface DictionaryProfile {
 }
 
 /**
+ * A named chapter-splitting guidance prompt, selectable per case. Several
+ * profiles let a user keep separate instructions for different recording types
+ * (meeting by agenda, lecture by topic, interview by question) instead of one
+ * prompt that fits none well. The guidance steers HOW the LLM divides the
+ * recording; the strict JSON response contract lives in the fixed base prompt
+ * and is never part of a profile, so a customized profile cannot break parsing.
+ */
+export interface ChapterPromptProfile {
+	/** Stable id (crypto.randomUUID, or the seeded default's fixed id). */
+	id: string;
+	/** Display name shown in the settings editor and the profile picker. */
+	name: string;
+	/** Guidance text appended to the chapter system prompt. */
+	prompt: string;
+}
+
+/**
  * A named roster of participant names, reused across recordings. A recurring
  * meeting with the same attendees is entered once and picked in the rename
  * dialog, whose speaker fields then suggest the profile's names. Managed from
@@ -297,6 +316,17 @@ export interface AudioRecorderSettings {
 	transcriptionAutoChaptersEnabled: boolean;
 	/** Automatically generate chapters after each transcription run. */
 	transcriptionAutoChaptersOnTranscribe: boolean;
+	/**
+	 * Named chapter-splitting guidance prompts (add/edit/remove in the settings
+	 * tab). Seeded with one built-in default; the selected profile's guidance is
+	 * appended to the fixed chapter base prompt at generation time.
+	 */
+	transcriptionChapterPromptProfiles: ChapterPromptProfile[];
+	/**
+	 * Id of the selected chapter guidance profile; '' means no extra guidance
+	 * (the base prompt only). A stale id also resolves to no guidance.
+	 */
+	transcriptionChapterPromptProfileId: string;
 	/**
 	 * Participant-name profiles reused when renaming speakers. Created and
 	 * filled from the rename dialog rather than the settings tab.
@@ -509,6 +539,14 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	transcriptionSpeakerRenameEnabled: false,
 	transcriptionAutoChaptersEnabled: false,
 	transcriptionAutoChaptersOnTranscribe: false,
+	transcriptionChapterPromptProfiles: [
+		{
+			id: DEFAULT_CHAPTER_PROMPT_PROFILE_ID,
+			name: 'Default',
+			prompt: DEFAULT_CHAPTER_PROMPT,
+		},
+	],
+	transcriptionChapterPromptProfileId: DEFAULT_CHAPTER_PROMPT_PROFILE_ID,
 	transcriptionSpeakerProfiles: [],
 	transcriptionChunkMb: DEFAULT_TRANSCRIBE_CHUNK_MB,
 	transcriptionTimeoutMinutes: DEFAULT_TRANSCRIPTION_TIMEOUT_MINUTES,
