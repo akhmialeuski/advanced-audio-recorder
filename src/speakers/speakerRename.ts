@@ -1,9 +1,8 @@
 /**
- * Pure model for a manual speaker rename. The rename dialog collects one
- * entry per detected speaker (the label currently shown in the transcript and
- * the name the user typed) and turns them into the display-level replacements
- * the rewriters apply. Everything here is side-effect free so the diffing and
- * validation can be unit tested directly.
+ * Pure model for a manual speaker rename: the display-level replacement pair
+ * the rewriters apply, the dialog's per-speaker entry, and the validation
+ * that no two speakers resolve to the same name (merging is unsupported).
+ * Everything here is side-effect free so it can be unit tested directly.
  * @module speakers/speakerRename
  */
 
@@ -21,26 +20,6 @@ export interface SpeakerNameEntry {
 	label: string;
 	/** Name the user entered (empty keeps the original label). */
 	name: string;
-}
-
-/**
- * Turns dialog entries into the renames to apply: the trimmed name becomes the
- * replacement for its label, and an entry is dropped when the name is empty or
- * equal to the label, so an untouched or cleared field is a no-op.
- * @param entries - One entry per detected speaker
- * @returns The display-level renames to apply
- */
-export function buildSpeakerRenames(
-	entries: readonly SpeakerNameEntry[],
-): SpeakerRename[] {
-	const renames: SpeakerRename[] = [];
-	for (const entry of entries) {
-		const to = entry.name.trim();
-		if (to && to !== entry.label) {
-			renames.push({ from: entry.label, to });
-		}
-	}
-	return renames;
 }
 
 /**

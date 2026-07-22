@@ -12,16 +12,107 @@
 import { parseLinktext } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
-import {
-	findReferencingNotes,
-	findTranscriptSidecarFiles,
-} from '../speakers/applySpeakerRenames';
+import { buildTranscriptFilePath } from '../transcription/transcriptOutput';
 import type {
 	Transcript,
 	TranscriptFileFormat,
 } from '../transcription/TranscriptTypes';
+import { isAudioFile } from '../utils/audioFile';
+import { directoryOf } from '../utils/paths';
 import { parseTimecode } from '../utils/TimeUtils';
 import type { TimedLine } from './chapterGeneration';
+
+/** Every transcript sidecar format a recording may have next to it. */
+const TRANSCRIPT_FILE_FORMATS: readonly TranscriptFileFormat[] = [
+	'json',
+	'srt',
+	'vtt',
+	'txt',
+];
+
+/** A transcript sidecar file discovered next to a recording. */
+interface TranscriptSidecar {
+	file: TFile;
+	format: TranscriptFileFormat;
+}
+
+/** Escapes a literal string for embedding in a RegExp. */
+function escapeRegExp(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Finds the notes that reference a recording (through the metadata cache, so
+ * closed notes are covered too).
+ * @param app - Obsidian App
+ * @param audioPath - Vault path of the audio file
+ */
+function findReferencingNotes(app: App, audioPath: string): TFile[] {
+	const notes: TFile[] = [];
+	for (const [notePath, links] of Object.entries(
+		app.metadataCache.resolvedLinks,
+	)) {
+		if (audioPath in links) {
+			const note = app.vault.getFileByPath(notePath);
+			if (note) {
+				notes.push(note);
+			}
+		}
+	}
+	return notes;
+}
+
+/**
+ * Finds the transcript sidecar files a recording actually has next to it,
+ * matching the canonical name and the `_<n>` collision suffix the writer uses,
+ * so a transcript written to a deduplicated path is still found. A `_<n>`
+ * candidate that is instead a sibling recording's own canonical sidecar
+ * (`rec_1.srt` next to `rec_1.wav`) is excluded, so chaptering `rec.wav`
+ * never reads another recording's transcript.
+ * @param app - Obsidian App
+ * @param audioFile - Recording whose sidecars are sought
+ */
+function findTranscriptSidecarFiles(
+	app: App,
+	audioFile: TFile,
+): TranscriptSidecar[] {
+	const files = app.vault.getFiles();
+	const dir = directoryOf(audioFile.path);
+	// Other recordings sharing the directory own their own canonical sidecars;
+	// those paths must not be attributed to this recording as collisions.
+	const siblingAudio = files.filter(
+		(file) =>
+			file.path !== audioFile.path &&
+			directoryOf(file.path) === dir &&
+			isAudioFile(file),
+	);
+	const sidecars: TranscriptSidecar[] = [];
+	for (const format of TRANSCRIPT_FILE_FORMATS) {
+		const canonical = buildTranscriptFilePath(audioFile.path, format);
+		const canonicalName = canonical.slice(dir ? dir.length + 1 : 0);
+		const dot = canonicalName.lastIndexOf('.');
+		const stem = canonicalName.slice(0, dot);
+		const ext = canonicalName.slice(dot + 1);
+		const pattern = new RegExp(
+			`^${escapeRegExp(stem)}(_\\d+)?\\.${escapeRegExp(ext)}$`,
+		);
+		const ownedByOthers = new Set(
+			siblingAudio.map((file) =>
+				buildTranscriptFilePath(file.path, format),
+			),
+		);
+		for (const file of files) {
+			if (
+				directoryOf(file.path) === dir &&
+				pattern.test(file.name) &&
+				!ownedByOthers.has(file.path)
+			) {
+				sidecars.push({ file, format });
+			}
+		}
+	}
+	return sidecars;
+}
 
 /** A located transcript, as timed lines plus where they came from. */
 export interface TranscriptLinesSource {
