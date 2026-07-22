@@ -315,6 +315,58 @@ describe('SpeakerRenameModal', () => {
 		);
 	});
 
+	it('reports skipped missing outputs in the outcome notice', async () => {
+		applyMock.mockResolvedValue({
+			...cleanApplyResult,
+			updatedNotes: 0,
+			updatedTranscriptFiles: 1,
+			missingOutputs: 2,
+		});
+		const sidecar = makeSidecar(rosterSection());
+		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+		modal.open();
+		await internals.render();
+
+		const first = internals.inputs.get('Speaker 1');
+		if (!first) {
+			throw new Error('missing input');
+		}
+		first.value = 'Bob';
+		await internals.apply();
+
+		expect(Notice).toHaveBeenCalledWith(
+			expect.stringContaining(
+				'2 recorded output(s) no longer exist and were skipped',
+			),
+		);
+	});
+
+	it('does not report success when every recorded output is missing', async () => {
+		applyMock.mockResolvedValue({
+			...cleanApplyResult,
+			updatedNotes: 0,
+			updatedTranscriptFiles: 0,
+			missingOutputs: 1,
+		});
+		const sidecar = makeSidecar(rosterSection());
+		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+		modal.open();
+		await internals.render();
+
+		const first = internals.inputs.get('Speaker 1');
+		if (!first) {
+			throw new Error('missing input');
+		}
+		first.value = 'Bob';
+		await internals.apply();
+
+		expect(Notice).toHaveBeenCalledWith(
+			expect.stringContaining(
+				'No speaker labels were rewritten. 1 recorded output(s) no longer exist',
+			),
+		);
+	});
+
 	it('creates a profile and adds applied names to it', async () => {
 		const settings = mergeSettings({});
 		const { modal, internals, saveSettings } = makeModal(

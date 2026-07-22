@@ -495,10 +495,20 @@ export class SpeakerRenameModal extends Modal {
 				? ` ${String(applied.skippedLlmNotes)} note(s) were ` +
 					'post-processed by an LLM and were not updated.'
 				: '';
+		// A recorded output whose path no longer resolves (the note or file
+		// was renamed or deleted) is skipped; say so instead of reporting an
+		// unqualified success, since the next transcription is what re-records
+		// the current outputs.
+		const missing =
+			applied.missingOutputs > 0
+				? ` ${String(applied.missingOutputs)} recorded output(s) no ` +
+					'longer exist and were skipped; transcribe again to ' +
+					'refresh them.'
+				: '';
 		if (targets.length === 0) {
-			return `No matching speaker labels were found to rename.${llmSkipped}${failed}`;
+			return `No speaker labels were rewritten.${llmSkipped}${missing}${failed}`;
 		}
-		return `Renamed speakers in ${targets.join(' and ')}.${llmSkipped}${failed}`;
+		return `Renamed speakers in ${targets.join(' and ')}.${llmSkipped}${missing}${failed}`;
 	}
 
 	override onClose(): void {
