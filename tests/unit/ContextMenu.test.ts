@@ -24,6 +24,7 @@ import {
 	MetadataCache,
 	Vault,
 	FileManager,
+	MarkdownView,
 } from 'obsidian';
 
 /** The shape of a recorded menu item (see the Menu fake below). */
@@ -163,6 +164,7 @@ describe('ContextMenu', () => {
 			trigger: jest.fn(),
 			getActiveFile: jest.fn(),
 			getActiveViewOfType: jest.fn(),
+			iterateAllLeaves: jest.fn(),
 		} as unknown as Workspace;
 
 		mockMetadataCache = {
@@ -724,6 +726,51 @@ describe('ContextMenu', () => {
 				'',
 			);
 			expect(mockWorkspace.trigger).toHaveBeenCalled();
+		});
+
+		it('resolves the embed against the note that contains it, not the active file', () => {
+			// The embed lives inside a specific view's container (a pop-out or a
+			// background split), whose note differs from the globally active file.
+			const containerEl = document.createElement('div');
+			const embed = document.createElement('div');
+			embed.className = 'internal-embed';
+			embed.setAttribute('src', 'audio.mp3');
+			const target = document.createElement('span');
+			embed.appendChild(target);
+			containerEl.appendChild(embed);
+
+			const owningView = Object.assign(
+				Object.create(
+					(MarkdownView as unknown as { prototype: object })
+						.prototype,
+				),
+				{ containerEl, file: { path: 'owner.md' }, editor: {} },
+			);
+			(mockWorkspace.iterateAllLeaves as jest.Mock).mockImplementation(
+				(cb: (leaf: { view: unknown }) => void) =>
+					cb({ view: owningView }),
+			);
+			// A DIFFERENT note is active; it must not be used for resolution.
+			(mockWorkspace.getActiveFile as jest.Mock).mockReturnValue({
+				path: 'active.md',
+			});
+			(
+				mockMetadataCache.getFirstLinkpathDest as jest.Mock
+			).mockReturnValue(makeAudioFile());
+
+			playerMenuCallback({
+				target,
+				pageX: 10,
+				pageY: 20,
+				preventDefault: jest.fn(),
+				stopPropagation: jest.fn(),
+			} as unknown as MouseEvent);
+
+			expect(mockMetadataCache.getFirstLinkpathDest).toHaveBeenCalledWith(
+				'audio.mp3',
+				'owner.md',
+			);
+			expect(mockWorkspace.getActiveFile).not.toHaveBeenCalled();
 		});
 
 		it('offers "Delete recording & link to file" when the embed maps to an editor link', () => {
