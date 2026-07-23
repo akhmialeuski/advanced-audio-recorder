@@ -111,12 +111,20 @@ function makeMarkerStore(): RecordingSidecarStore {
 	const data = new Map<string, PlayerMarker[]>();
 	return {
 		getMarkers: jest.fn((path: string) =>
-			Promise.resolve(data.get(path) ?? []),
+			Promise.resolve([...(data.get(path) ?? [])]),
 		),
-		setMarkers: jest.fn((path: string, markers: PlayerMarker[]) => {
-			data.set(path, markers);
-			return Promise.resolve();
-		}),
+		updateMarkers: jest.fn(
+			(
+				path: string,
+				change: (
+					existing: readonly PlayerMarker[],
+				) => readonly PlayerMarker[],
+			) => {
+				const merged = [...change(data.get(path) ?? [])];
+				data.set(path, merged);
+				return Promise.resolve(merged);
+			},
+		),
 	} as unknown as RecordingSidecarStore;
 }
 
@@ -289,7 +297,7 @@ describe('status-bar markers follow the player edit mode', () => {
 			// read-only view
 			state?.onAddMarker('bookmark');
 			await tick();
-			expect(store.setMarkers).not.toHaveBeenCalled();
+			expect(store.updateMarkers).not.toHaveBeenCalled();
 		} finally {
 			shared.restore();
 		}
@@ -316,7 +324,7 @@ describe('status-bar markers follow the player edit mode', () => {
 			expect(state?.markersEnabled).toBe(true);
 			state?.onAddMarker('chapter');
 			await tick();
-			expect(store.setMarkers).toHaveBeenCalled();
+			expect(store.updateMarkers).toHaveBeenCalled();
 		} finally {
 			shared.restore();
 		}
@@ -352,7 +360,7 @@ describe('generated chapters reach an already-open player', () => {
 			// Auto chapters write the sidecar, then the registrar reloads
 			// every open player of the file through the shared marker-reload
 			// path (source is null: the write came from outside any player)
-			await store.setMarkers('rec.mp4', CHAPTERS);
+			await store.updateMarkers('rec.mp4', () => CHAPTERS);
 			registry.reloadMarkers('rec.mp4', null);
 			await tick();
 
@@ -383,7 +391,7 @@ describe('generated chapters reach an already-open player', () => {
 			container.remove();
 			expect(container.isConnected).toBe(false);
 
-			await store.setMarkers('rec.mp4', CHAPTERS);
+			await store.updateMarkers('rec.mp4', () => CHAPTERS);
 			registry.reloadMarkers('rec.mp4', null);
 			await tick();
 

@@ -34,6 +34,7 @@ function noteOutput(path: string): NoteOutput {
 			mergeConsecutiveSpeaker: true,
 		},
 		llmProcessed: false,
+		heading: 'Transcript',
 		writtenAt: '2026-07-21T10:00:00Z',
 	};
 }
@@ -100,6 +101,11 @@ describe('parseRecordingSidecar', () => {
 						names: { 'Speaker 1': 'Alex' },
 					},
 				],
+				provenance: {
+					language: 'en',
+					model: 'nova-2',
+					createdAt: '2026-07-21T10:00:00Z',
+				},
 			},
 		};
 		const parsed = parseRecordingSidecar(
@@ -180,6 +186,43 @@ describe('parseTranscriptSection normalization', () => {
 			{ path: 'rec.srt', format: 'srt', writtenAt: 't1' },
 			{ path: 'rec.txt', format: 'txt', writtenAt: '' },
 		]);
+	});
+
+	it('keeps only usable provenance fields and omits an empty provenance', () => {
+		expect(
+			parseTranscriptSection({
+				provenance: { language: ' en ', model: 42, createdAt: '' },
+			}).provenance,
+		).toEqual({ language: 'en' });
+		expect(
+			parseTranscriptSection({ provenance: {} }).provenance,
+		).toBeUndefined();
+		expect(
+			parseTranscriptSection({ provenance: 'garbage' }).provenance,
+		).toBeUndefined();
+	});
+
+	it('keeps hostile history labels as plain data instead of prototype keys', () => {
+		const section = parseTranscriptSection({
+			history: [
+				{
+					at: 't',
+					names: {
+						['__proto__']: 'Evil',
+						constructor: 'Sneaky',
+						'Speaker 1': 'Alex',
+					},
+				},
+			],
+		});
+		const names = section.history[0]?.names ?? {};
+		// The hostile labels are ordinary own keys on a null-prototype map...
+		expect(Object.hasOwn(names, '__proto__')).toBe(true);
+		expect(Object.hasOwn(names, 'constructor')).toBe(true);
+		expect(names['Speaker 1']).toBe('Alex');
+		// ...and nothing leaked onto Object.prototype.
+		expect(({} as Record<string, unknown>).Evil).toBeUndefined();
+		expect(Object.getPrototypeOf(names)).toBeNull();
 	});
 
 	it('keeps only string name values in history and caps the entries', () => {

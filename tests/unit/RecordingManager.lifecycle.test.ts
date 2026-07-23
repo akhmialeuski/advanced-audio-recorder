@@ -15,6 +15,7 @@ import type { App } from 'obsidian';
 import {
 	createRecordingMockApp,
 	installRecordingMediaStubs,
+	makeFakeMarkerStore,
 } from './helpers/recordingManagerTestKit';
 
 // Mock obsidian module
@@ -98,6 +99,7 @@ describe('RecordingManager', () => {
 			mockApp,
 			mockSettings,
 			statusChangeCallback,
+			makeFakeMarkerStore().store,
 		);
 	});
 
@@ -486,6 +488,7 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
+				makeFakeMarkerStore().store,
 			);
 
 			const mockMediaRecorder = {

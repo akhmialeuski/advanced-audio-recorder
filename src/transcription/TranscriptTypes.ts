@@ -85,6 +85,19 @@ export interface TranscriptionUsage {
 export type TranscriptFileFormat = 'json' | 'srt' | 'vtt' | 'txt';
 
 /**
+ * Every transcript file format, in output preference order (JSON first: it
+ * is lossless and carries the detected language). The single source both
+ * discovery and sidecar validation enumerate, so adding a member to the
+ * union only needs this one list updated alongside it.
+ */
+export const TRANSCRIPT_FILE_FORMATS: readonly TranscriptFileFormat[] = [
+	'json',
+	'srt',
+	'vtt',
+	'txt',
+];
+
+/**
  * Where the transcript output is written.
  * - `note`: render the full transcript Markdown into the active note.
  * - `file`: write a sidecar transcript file next to the audio.

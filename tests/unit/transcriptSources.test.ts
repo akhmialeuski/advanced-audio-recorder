@@ -1,15 +1,23 @@
 /**
- * Tests for transcript discovery/parsing for auto chapters: reading timed
- * lines out of sidecar files (JSON, SRT, VTT, TXT) and out of notes whose
- * timecode links resolve to the recording, and reporting "no transcript"
- * as null.
+ * Tests for locating a recording's transcript for auto chapters: the
+ * sidecar-recorded outputs are authoritative when present (files in format
+ * preference order, then notes scoped by timecode links, with the recorded
+ * provenance language riding along), while a recording without recorded
+ * outputs falls back to legacy discovery (files next to the audio by name,
+ * then referencing notes). "No transcript" is reported as null.
  */
 
 import type { App, CachedMetadata, TFile } from 'obsidian';
 import {
 	loadTranscriptLines,
 	timedLinesFromTranscript,
+	type TranscriptSectionReader,
 } from 'src/chapters/transcriptSources';
+import {
+	emptyTranscriptSection,
+	type NoteOutput,
+	type TranscriptSection,
+} from 'src/sidecar/recordingSidecarModel';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
 
 interface Ref {
@@ -226,5 +234,188 @@ describe('loadTranscriptLines', () => {
 		]);
 		const app = makeApp(files);
 		expect(await loadTranscriptLines(app, tf('rec.wav'))).toBeNull();
+	});
+});
+
+describe('loadTranscriptLines with a recorded sidecar section', () => {
+	const sidecarWith = (
+		section: TranscriptSection,
+	): TranscriptSectionReader => ({
+		getTranscript: () => Promise.resolve(section),
+	});
+
+	function recordedNote(path: string, llmProcessed = false): NoteOutput {
+		return {
+			path,
+			templates: {
+				lineFormat: '{timestamp} {speaker} {text}',
+				speakerFormat: '**{speaker}**',
+				includeTimestamps: true,
+				timestampLinks: true,
+				mergeConsecutiveSpeaker: true,
+			},
+			llmProcessed,
+			heading: 'Transcript',
+			writtenAt: 't',
+		};
+	}
+
+	it('reads the recorded file output instead of scanning for candidates', async () => {
+		// The recorded output lives at a collision path; the decoy at the
+		// canonical name would win a discovery scan but must not be touched.
+		const files = new Map([
+			['rec.wav', ''],
+			['rec_1.txt', '[0:05] recorded output'],
+			['rec.txt', '[0:05] decoy at the canonical path'],
+		]);
+		const app = makeApp(files);
+		const section: TranscriptSection = {
+			...emptyTranscriptSection(),
+			fileOutputs: [{ path: 'rec_1.txt', format: 'txt', writtenAt: 't' }],
+		};
+		const found = await loadTranscriptLines(
+			app,
+			tf('rec.wav'),
+			sidecarWith(section),
+		);
+		expect(found?.origin).toBe('rec_1.txt');
+		expect(found?.lines).toEqual([{ time: 5, text: 'recorded output' }]);
+	});
+
+	it('prefers the recorded JSON output over other recorded formats', async () => {
+		const transcript = {
+			language: 'ru',
+			segments: [{ start: 0, end: 3, text: 'привет' }],
+		};
+		const files = new Map([
+			['rec.wav', ''],
+			['rec.srt', '1\n00:00:00,000 --> 00:00:01,000\nsubtitle line'],
+			['rec.transcript.json', JSON.stringify(transcript)],
+		]);
+		const app = makeApp(files);
+		const section: TranscriptSection = {
+			...emptyTranscriptSection(),
+			fileOutputs: [
+				{ path: 'rec.srt', format: 'srt', writtenAt: 't' },
+				{ path: 'rec.transcript.json', format: 'json', writtenAt: 't' },
+			],
+		};
+		const found = await loadTranscriptLines(
+			app,
+			tf('rec.wav'),
+			sidecarWith(section),
+		);
+		expect(found?.origin).toBe('rec.transcript.json');
+		expect(found?.language).toBe('ru');
+	});
+
+	it('falls back to the recorded provenance language for non-JSON outputs', async () => {
+		const files = new Map([
+			['rec.wav', ''],
+			['rec.srt', '1\n00:00:00,000 --> 00:00:01,000\nsubtitle line'],
+		]);
+		const app = makeApp(files);
+		const section: TranscriptSection = {
+			...emptyTranscriptSection(),
+			fileOutputs: [{ path: 'rec.srt', format: 'srt', writtenAt: 't' }],
+			provenance: { language: 'de' },
+		};
+		const found = await loadTranscriptLines(
+			app,
+			tf('rec.wav'),
+			sidecarWith(section),
+		);
+		expect(found?.origin).toBe('rec.srt');
+		expect(found?.language).toBe('de');
+	});
+
+	it('reads a recorded note, skipping LLM-replaced ones', async () => {
+		const note =
+			'# Meeting\n' +
+			'[[rec.wav#t=0|0:00]] **Speaker 1** welcome\n' +
+			'[[rec.wav#t=65|1:05]] **Speaker 2** first topic\n';
+		const files = new Map([
+			['rec.wav', ''],
+			['note.md', note],
+			['cleaned.md', 'llm prose without timecodes'],
+		]);
+		const refs: Ref[] = [
+			{
+				link: 'rec.wav#t=0',
+				position: { start: { line: 1 }, end: { line: 1 } },
+			},
+			{
+				link: 'rec.wav#t=65',
+				position: { start: { line: 2 }, end: { line: 2 } },
+			},
+		];
+		const app = makeApp(files, { caches: { 'note.md': { links: refs } } });
+		const section: TranscriptSection = {
+			...emptyTranscriptSection(),
+			noteOutputs: [
+				recordedNote('cleaned.md', true),
+				recordedNote('note.md'),
+			],
+			provenance: { language: 'en' },
+		};
+		const found = await loadTranscriptLines(
+			app,
+			tf('rec.wav'),
+			sidecarWith(section),
+		);
+		expect(found?.origin).toBe('note.md');
+		expect(found?.language).toBe('en');
+		expect(found?.lines).toEqual([
+			{ time: 0, text: '0:00 Speaker 1 welcome' },
+			{ time: 65, text: '1:05 Speaker 2 first topic' },
+		]);
+	});
+
+	it('does not guess when every recorded output is gone', async () => {
+		// The section records outputs, so their paths are authoritative: a
+		// discoverable decoy must not be silently substituted for them.
+		const files = new Map([
+			['rec.wav', ''],
+			['rec.txt', '[0:05] decoy'],
+		]);
+		const app = makeApp(files);
+		const section: TranscriptSection = {
+			...emptyTranscriptSection(),
+			fileOutputs: [{ path: 'gone.txt', format: 'txt', writtenAt: 't' }],
+		};
+		expect(
+			await loadTranscriptLines(app, tf('rec.wav'), sidecarWith(section)),
+		).toBeNull();
+	});
+
+	it('discovers legacy transcripts when the section records no outputs', async () => {
+		const files = new Map([
+			['rec.wav', ''],
+			['rec.txt', '[0:05] legacy transcript'],
+		]);
+		const app = makeApp(files);
+		const found = await loadTranscriptLines(
+			app,
+			tf('rec.wav'),
+			sidecarWith(emptyTranscriptSection()),
+		);
+		expect(found?.origin).toBe('rec.txt');
+	});
+
+	it('falls back to discovery when the sidecar read fails', async () => {
+		const files = new Map([
+			['rec.wav', ''],
+			['rec.txt', '[0:05] discovered'],
+		]);
+		const app = makeApp(files);
+		const warn = jest
+			.spyOn(console, 'warn')
+			.mockImplementation(() => undefined);
+		const failing: TranscriptSectionReader = {
+			getTranscript: () => Promise.reject(new Error('io error')),
+		};
+		const found = await loadTranscriptLines(app, tf('rec.wav'), failing);
+		expect(found?.origin).toBe('rec.txt');
+		warn.mockRestore();
 	});
 });

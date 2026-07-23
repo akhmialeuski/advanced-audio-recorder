@@ -35,9 +35,23 @@ function makeStore(initial: PlayerMarker[] = []): {
 	let written: PlayerMarker[] | null = null;
 	const store = {
 		getMarkers: jest.fn(async () => initial),
-		setMarkers: jest.fn(async (_path: string, markers: PlayerMarker[]) => {
-			written = markers;
-		}),
+		getTranscript: jest.fn(async () => ({
+			speakers: [],
+			noteOutputs: [],
+			fileOutputs: [],
+			history: [],
+		})),
+		updateMarkers: jest.fn(
+			async (
+				_path: string,
+				change: (
+					existing: readonly PlayerMarker[],
+				) => readonly PlayerMarker[],
+			) => {
+				written = [...change(initial)];
+				return written;
+			},
+		),
 	} as unknown as RecordingSidecarStore;
 	return { store, saved: () => written };
 }

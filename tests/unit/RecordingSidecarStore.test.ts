@@ -1,9 +1,11 @@
 /**
  * Tests for the shared per-recording sidecar store: reading version-1 files,
  * migrating to version 2 on write, keeping markers and transcript data from
- * clobbering each other, output upserts, the history cap, deleting the file
- * only when fully empty, rename/delete mirroring, and concurrent writes to
- * both sections.
+ * clobbering each other, output upserts, the history cap and undo pop,
+ * deleting the file only when fully empty, rename/delete mirroring (including
+ * mutations racing them through the write chain), recorded-output renames,
+ * snapshot isolation, atomic marker updates, corrupt-file protection, and
+ * concurrent writes to both sections.
  */
 
 import type { App } from 'obsidian';
@@ -39,7 +41,12 @@ function makeApp(): { app: App; files: Map<string, string> } {
 			return Promise.resolve();
 		},
 	};
-	const app = { vault: { adapter } } as unknown as App;
+	const app = {
+		vault: {
+			adapter,
+			getFiles: () => [...files.keys()].map((path) => ({ path })),
+		},
+	} as unknown as App;
 	return { app, files };
 }
 
@@ -58,6 +65,7 @@ function noteOutput(path: string, llmProcessed = false): NoteOutput {
 			mergeConsecutiveSpeaker: true,
 		},
 		llmProcessed,
+		heading: 'Transcript',
 		writtenAt: '2026-07-21T10:00:00Z',
 	};
 }
@@ -198,6 +206,32 @@ describe('RecordingSidecarStore', () => {
 		});
 	});
 
+	describe('popHistory', () => {
+		it('removes only the newest entry, so each undo steps one back', async () => {
+			const { app } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.pushHistory('rec.wav', { 'Speaker 1': 'Alex' });
+			await store.pushHistory('rec.wav', { 'Speaker 1': 'Bob' });
+
+			await store.popHistory('rec.wav');
+			let history = (await store.getTranscript('rec.wav')).history;
+			expect(history.map((entry) => entry.names)).toEqual([
+				{ 'Speaker 1': 'Alex' },
+			]);
+
+			await store.popHistory('rec.wav');
+			history = (await store.getTranscript('rec.wav')).history;
+			expect(history).toHaveLength(0);
+		});
+
+		it('is a write-free no-op on an empty history', async () => {
+			const { app, files } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.popHistory('rec.wav');
+			expect(files.size).toBe(0);
+		});
+	});
+
 	describe('markers', () => {
 		it('returns an empty list for recordings without a sidecar', async () => {
 			const { app } = makeApp();
@@ -293,6 +327,245 @@ describe('RecordingSidecarStore', () => {
 			await store.handleRename('a.wav', 'b.wav');
 			await store.handleDelete('a.wav');
 			expect(files.size).toBe(0);
+		});
+	});
+
+	describe('rename/delete racing queued mutations', () => {
+		it('carries a mutation queued before the rename into the new path', async () => {
+			const { app, files } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setSpeakers('rec.wav', [{ label: 'Speaker 1' }]);
+
+			// The mutation is queued first, the rename right behind it - the
+			// interleaving of a rename event landing while a write is pending.
+			const mutation = store.pushHistory('rec.wav', {
+				'Speaker 1': 'Alex',
+			});
+			const rename = store.handleRename('rec.wav', 'renamed.wav');
+			await Promise.all([mutation, rename]);
+
+			expect(files.has('rec.wav.markers.json')).toBe(false);
+			expect(files.has('renamed.wav.markers.json')).toBe(true);
+			// The new path serves the post-mutation document, not a stale copy.
+			const section = await store.getTranscript('renamed.wav');
+			expect(section.history.map((entry) => entry.names)).toEqual([
+				{ 'Speaker 1': 'Alex' },
+			]);
+			// No zombie document lingers under the old path.
+			expect((await store.getTranscript('rec.wav')).history).toHaveLength(
+				0,
+			);
+		});
+
+		it('does not resurrect a document from a mutation queued before the delete', async () => {
+			const { app, files } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setSpeakers('rec.wav', [{ label: 'Speaker 1' }]);
+
+			const mutation = store.pushHistory('rec.wav', {
+				'Speaker 1': 'Alex',
+			});
+			const removal = store.handleDelete('rec.wav');
+			await Promise.all([mutation, removal]);
+
+			expect(files.has('rec.wav.markers.json')).toBe(false);
+			// A recording re-created at this path starts from a clean slate.
+			expect((await store.getTranscript('rec.wav')).history).toHaveLength(
+				0,
+			);
+		});
+	});
+
+	describe('handleOutputRename', () => {
+		it('updates the recorded paths in a cached sidecar', async () => {
+			const { app } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.recordNoteOutput('rec.wav', noteOutput('meeting.md'));
+			await store.recordFileOutput('rec.wav', {
+				path: 'rec.srt',
+				format: 'srt',
+				writtenAt: 't',
+			});
+
+			await store.handleOutputRename('meeting.md', 'archive/meeting.md');
+			await store.handleOutputRename('rec.srt', 'rec-renamed.srt');
+
+			const section = await store.getTranscript('rec.wav');
+			expect(section.noteOutputs.map((o) => o.path)).toEqual([
+				'archive/meeting.md',
+			]);
+			expect(section.fileOutputs.map((o) => o.path)).toEqual([
+				'rec-renamed.srt',
+			]);
+		});
+
+		it('updates an on-disk sidecar that was never loaded into the cache', async () => {
+			const { app, files } = makeApp();
+			const seed = new RecordingSidecarStore(app);
+			await seed.recordNoteOutput('rec.wav', noteOutput('meeting.md'));
+
+			// A fresh store (plugin restart) has nothing cached; the rename
+			// must still find the sidecar on disk and update it.
+			const store = new RecordingSidecarStore(app);
+			await store.handleOutputRename('meeting.md', 'moved.md');
+
+			expect(files.get('rec.wav.markers.json')).toContain('"moved.md"');
+			const section = await store.getTranscript('rec.wav');
+			expect(section.noteOutputs.map((o) => o.path)).toEqual([
+				'moved.md',
+			]);
+		});
+
+		it('drops the stale entry when the new path is already recorded', async () => {
+			const { app } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.recordNoteOutput('rec.wav', noteOutput('a.md'));
+			await store.recordNoteOutput('rec.wav', noteOutput('b.md'));
+
+			await store.handleOutputRename('a.md', 'b.md');
+
+			const section = await store.getTranscript('rec.wav');
+			expect(section.noteOutputs.map((o) => o.path)).toEqual(['b.md']);
+		});
+
+		it('ignores sidecar files and unrelated paths', async () => {
+			const { app, files } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.recordNoteOutput('rec.wav', noteOutput('meeting.md'));
+			const before = files.get('rec.wav.markers.json');
+
+			// Sidecar renames follow their recording through handleRename.
+			await store.handleOutputRename(
+				'rec.wav.markers.json',
+				'x.markers.json',
+			);
+			// A rename of a path no sidecar records must not rewrite anything.
+			await store.handleOutputRename('unrelated.md', 'elsewhere.md');
+
+			expect(files.get('rec.wav.markers.json')).toBe(before);
+		});
+	});
+
+	describe('snapshot isolation', () => {
+		it('hands out marker snapshots the caller cannot mutate the cache through', async () => {
+			const { app } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setMarkers('rec.wav', [marker('a', 1)]);
+
+			const leaked = await store.getMarkers('rec.wav');
+			leaked.push(marker('evil', 99));
+			leaked[0].label = 'tampered';
+
+			const clean = await store.getMarkers('rec.wav');
+			expect(clean).toEqual([marker('a', 1)]);
+		});
+
+		it('hands out transcript snapshots the caller cannot mutate the cache through', async () => {
+			const { app } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setSpeakers('rec.wav', [
+				{ label: 'Speaker 1', name: 'Alex' },
+			]);
+
+			const leaked = await store.getTranscript('rec.wav');
+			leaked.speakers[0].name = 'tampered';
+			leaked.speakers.push({ label: 'Injected' });
+
+			const clean = await store.getTranscript('rec.wav');
+			expect(clean.speakers).toEqual([
+				{ label: 'Speaker 1', name: 'Alex' },
+			]);
+		});
+
+		it('copies its inputs, so later caller-side mutation changes nothing', async () => {
+			const { app } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			const output = noteOutput('a.md');
+			await store.recordNoteOutput('rec.wav', output);
+			output.path = 'tampered.md';
+			output.templates.speakerFormat = 'tampered';
+
+			const section = await store.getTranscript('rec.wav');
+			expect(section.noteOutputs[0]?.path).toBe('a.md');
+			expect(section.noteOutputs[0]?.templates.speakerFormat).toBe(
+				'**{speaker}**',
+			);
+		});
+	});
+
+	describe('updateMarkers', () => {
+		it('merges concurrent updates instead of losing one', async () => {
+			const { app } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			// The classic lost-update interleaving: both writers start from the
+			// same state; with get-merge-set one append would vanish.
+			await Promise.all([
+				store.updateMarkers('rec.wav', (existing) => [
+					...existing,
+					marker('a', 1),
+				]),
+				store.updateMarkers('rec.wav', (existing) => [
+					...existing,
+					marker('b', 2),
+				]),
+			]);
+			const markers = await store.getMarkers('rec.wav');
+			expect(markers.map((m) => m.id).sort()).toEqual(['a', 'b']);
+		});
+
+		it('returns the merged snapshot the update produced', async () => {
+			const { app } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setMarkers('rec.wav', [marker('a', 1)]);
+			const result = await store.updateMarkers('rec.wav', (existing) => [
+				...existing,
+				marker('b', 2),
+			]);
+			expect(result.map((m) => m.id)).toEqual(['a', 'b']);
+		});
+	});
+
+	describe('corrupt sidecar protection', () => {
+		it('flags the path corrupt and refuses to overwrite the file', async () => {
+			const { app, files } = makeApp();
+			files.set('rec.wav.markers.json', 'not json');
+			const warn = jest
+				.spyOn(console, 'warn')
+				.mockImplementation(() => undefined);
+			const store = new RecordingSidecarStore(app);
+
+			expect(await store.getMarkers('rec.wav')).toEqual([]);
+			expect(store.isSidecarCorrupt('rec.wav')).toBe(true);
+			expect(store.isSidecarCorrupt('other.wav')).toBe(false);
+
+			// The write is dropped: the possibly intact file must survive.
+			await store.setSpeakers('rec.wav', [{ label: 'Speaker 1' }]);
+			expect(files.get('rec.wav.markers.json')).toBe('not json');
+			warn.mockRestore();
+		});
+
+		it('recovers once the file is readable again', async () => {
+			const { app, files } = makeApp();
+			files.set('rec.wav.markers.json', 'not json');
+			const warn = jest
+				.spyOn(console, 'warn')
+				.mockImplementation(() => undefined);
+			const store = new RecordingSidecarStore(app);
+			await store.getMarkers('rec.wav');
+			expect(store.isSidecarCorrupt('rec.wav')).toBe(true);
+
+			// The user restored the file; nothing was cached for the corrupt
+			// path, so the next read sees the fix and lifts the write block.
+			files.set(
+				'rec.wav.markers.json',
+				JSON.stringify({ version: 2, markers: [marker('a', 1)] }),
+			);
+			expect(await store.getMarkers('rec.wav')).toEqual([marker('a', 1)]);
+			expect(store.isSidecarCorrupt('rec.wav')).toBe(false);
+
+			await store.setSpeakers('rec.wav', [{ label: 'Speaker 1' }]);
+			expect(files.get('rec.wav.markers.json')).toContain('Speaker 1');
+			warn.mockRestore();
 		});
 	});
 

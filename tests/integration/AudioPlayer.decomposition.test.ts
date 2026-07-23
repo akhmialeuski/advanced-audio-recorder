@@ -132,12 +132,20 @@ function makeMarkerStore(): RecordingSidecarStore & {
 	return {
 		data,
 		getMarkers: jest.fn((path: string) =>
-			Promise.resolve(data.get(path) ?? []),
+			Promise.resolve([...(data.get(path) ?? [])]),
 		),
-		setMarkers: jest.fn((path: string, markers: PlayerMarker[]) => {
-			data.set(path, markers);
-			return Promise.resolve();
-		}),
+		updateMarkers: jest.fn(
+			(
+				path: string,
+				change: (
+					existing: readonly PlayerMarker[],
+				) => readonly PlayerMarker[],
+			) => {
+				const merged = [...change(data.get(path) ?? [])];
+				data.set(path, merged);
+				return Promise.resolve(merged);
+			},
+		),
 	} as unknown as RecordingSidecarStore & {
 		data: Map<string, PlayerMarker[]>;
 	};

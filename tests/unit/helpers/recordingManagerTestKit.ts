@@ -168,39 +168,68 @@ export const getChunkTarget = (
 		index
 	];
 
+/** One atomic marker write observed by a marker-store double. */
+export interface MarkerWrite {
+	path: string;
+	markers: PlayerMarker[];
+}
+
 /**
- * Builds a marker-store double that accepts writes and remembers none.
- * @returns The store double and its set spy
+ * Builds a marker-store double whose atomic updates always start from an
+ * empty sidecar and remember nothing between writes.
+ * @returns The store double, its update spy, and the observed writes
  */
 export const makeFakeMarkerStore = (): {
 	store: RecordingSidecarStore;
-	set: jest.Mock;
+	update: jest.Mock;
+	writes: MarkerWrite[];
 } => {
-	const set = jest.fn().mockResolvedValue(undefined);
+	const writes: MarkerWrite[] = [];
+	const update = jest.fn(
+		(
+			path: string,
+			change: (
+				existing: readonly PlayerMarker[],
+			) => readonly PlayerMarker[],
+		) => {
+			const merged = [...change([])];
+			writes.push({ path, markers: merged });
+			return Promise.resolve(merged);
+		},
+	);
 	const store = {
 		getMarkers: jest.fn().mockResolvedValue([]),
-		setMarkers: set,
+		updateMarkers: update,
 	} as unknown as RecordingSidecarStore;
-	return { store, set };
+	return { store, update, writes };
 };
 
 // A store that actually remembers what was written, so reach-through
 // edits/removals after stop can be asserted against the final state.
 export const makeStatefulMarkerStore = (): {
 	store: RecordingSidecarStore;
-	set: jest.Mock;
+	writes: MarkerWrite[];
 	read: (path: string) => PlayerMarker[];
 } => {
 	const data = new Map<string, PlayerMarker[]>();
-	const set = jest.fn((path: string, markers: PlayerMarker[]) => {
-		data.set(path, [...markers]);
-		return Promise.resolve();
-	});
+	const writes: MarkerWrite[] = [];
 	const store = {
 		getMarkers: jest.fn((path: string) =>
-			Promise.resolve(data.get(path) ?? []),
+			Promise.resolve([...(data.get(path) ?? [])]),
 		),
-		setMarkers: set,
+		updateMarkers: jest.fn(
+			(
+				path: string,
+				change: (
+					existing: readonly PlayerMarker[],
+				) => readonly PlayerMarker[],
+			) => {
+				const merged = [...change(data.get(path) ?? [])];
+				data.set(path, merged);
+				writes.push({ path, markers: merged });
+				return Promise.resolve(merged);
+			},
+		),
 	} as unknown as RecordingSidecarStore;
-	return { store, set, read: (path) => data.get(path) ?? [] };
+	return { store, writes, read: (path) => data.get(path) ?? [] };
 };

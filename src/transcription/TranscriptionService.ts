@@ -103,6 +103,12 @@ export interface TranscribeRunOptions {
 	audioBytes?: ArrayBuffer;
 	/** Cancellation token. */
 	token?: CancellationToken;
+	/**
+	 * Recording sidecar access for speaker-name continuity: stored names are
+	 * re-applied to a fresh diarized transcript and the roster is refreshed.
+	 * Absent, the run is stateless and its speakers keep the engine labels.
+	 */
+	sidecar?: TranscriptionSidecarAccess;
 }
 
 /**
@@ -160,12 +166,6 @@ export interface TranscriptionServiceDeps {
 	createProvider?: (settings: AudioRecorderSettings) => TranscriptionProvider;
 	/** Builds the LLM post-processing provider from settings. */
 	createLlm?: (settings: AudioRecorderSettings) => LlmProvider;
-	/**
-	 * Recording sidecar access for speaker-name continuity. Absent (tests,
-	 * callers without a store), stored names are not applied and the roster
-	 * is not recorded - the run behaves exactly as before.
-	 */
-	sidecar?: TranscriptionSidecarAccess;
 }
 
 /**
@@ -178,7 +178,6 @@ export class TranscriptionService {
 	private readonly createLlm: (
 		settings: AudioRecorderSettings,
 	) => LlmProvider;
-	private readonly sidecar: TranscriptionSidecarAccess | null;
 
 	constructor(
 		private readonly app: App,
@@ -188,7 +187,6 @@ export class TranscriptionService {
 		this.createProvider =
 			deps.createProvider ?? createTranscriptionProvider;
 		this.createLlm = deps.createLlm ?? createLlmProvider;
-		this.sidecar = deps.sidecar ?? null;
 	}
 
 	/**
@@ -366,7 +364,11 @@ export class TranscriptionService {
 		// earlier (stored in the recording's sidecar) and refreshes the stored
 		// roster, so renamed speakers survive a re-run without user action.
 		const transcript = diarize
-			? await this.applyStoredSpeakerNames(file.path, canonical)
+			? await this.applyStoredSpeakerNames(
+					options.sidecar ?? null,
+					file.path,
+					canonical,
+				)
 			: canonical;
 
 		const markdownOptions = this.markdownOptions(settings);
@@ -446,14 +448,15 @@ export class TranscriptionService {
 	 * @returns The transcript with stored names applied (or unchanged)
 	 */
 	private async applyStoredSpeakerNames(
+		sidecar: TranscriptionSidecarAccess | null,
 		path: string,
 		transcript: Transcript,
 	): Promise<Transcript> {
-		if (!this.sidecar || transcript.speakers.length === 0) {
+		if (!sidecar || transcript.speakers.length === 0) {
 			return transcript;
 		}
 		try {
-			const section = await this.sidecar.getTranscript(path);
+			const section = await sidecar.getTranscript(path);
 			const storedNames: Record<string, string> = {};
 			for (const entry of section.speakers) {
 				if (entry.name) {
@@ -461,7 +464,7 @@ export class TranscriptionService {
 				}
 			}
 			const renamed = renameSpeakers(transcript, storedNames);
-			await this.sidecar.setSpeakers(
+			await sidecar.setSpeakers(
 				path,
 				transcript.speakers.map((label) => {
 					const name = storedNames[label];

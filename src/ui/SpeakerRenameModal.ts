@@ -28,8 +28,8 @@ import type {
 } from '../sidecar/recordingSidecarModel';
 import {
 	duplicateAssignedNames,
+	planSpeakerRename,
 	type SpeakerNameEntry,
-	type SpeakerRename,
 } from '../speakers/speakerRename';
 import {
 	applySpeakerRenamesWithSidecar,
@@ -46,10 +46,14 @@ import { ParticipantSuggest } from './ParticipantSuggest';
 export interface SpeakerRenameSidecarAccess {
 	/** Returns the stored transcript section for a recording path. */
 	getTranscript(path: string): Promise<TranscriptSection>;
+	/** Whether the sidecar file exists but could not be read (after a read). */
+	isSidecarCorrupt(path: string): boolean;
 	/** Replaces the speaker roster for a recording path. */
 	setSpeakers(path: string, entries: readonly SpeakerEntry[]): Promise<void>;
 	/** Appends an applied name mapping to the rename history. */
 	pushHistory(path: string, names: Record<string, string>): Promise<void>;
+	/** Removes the newest history entry (an undo consumed it). */
+	popHistory(path: string): Promise<void>;
 }
 
 /** Collaborators the dialog needs, injected by the action registry. */
@@ -104,7 +108,7 @@ export class SpeakerRenameModal extends Modal {
 	private async render(): Promise<void> {
 		const settings = this.options.getSettings();
 		this.section = await this.loadSection();
-		const roster = this.section?.speakers ?? [];
+		const section = this.section;
 		const { contentEl } = this;
 		contentEl.empty();
 		this.inputs.clear();
@@ -113,7 +117,28 @@ export class SpeakerRenameModal extends Modal {
 			text: `Source: ${this.file.name}`,
 		});
 
-		if (roster.length === 0) {
+		// An unreadable sidecar is not an empty one: the stored names may be
+		// intact on disk, so do not tell the user to re-transcribe.
+		if (this.options.sidecar.isSidecarCorrupt(this.file.path)) {
+			contentEl.createEl('p', {
+				text:
+					'The sidecar file of this recording could not be read, ' +
+					'so its stored speaker data is unreachable. Restore or ' +
+					'remove the .markers.json file next to the recording ' +
+					'(writes to it are paused to protect it), then reopen ' +
+					'this dialog.',
+			});
+			const actions = contentEl.createDiv({
+				cls: 'modal-button-container',
+			});
+			const closeButton = actions.createEl('button', { text: 'Close' });
+			closeButton.addEventListener('click', () => {
+				this.close();
+			});
+			return;
+		}
+
+		if (!section || section.speakers.length === 0) {
 			contentEl.createEl('p', {
 				text:
 					'No speakers are stored for this recording. Transcribe ' +
@@ -133,7 +158,7 @@ export class SpeakerRenameModal extends Modal {
 
 		this.renderProfilePicker(settings);
 
-		for (const { label, name } of roster) {
+		for (const { label, name } of section.speakers) {
 			new Setting(contentEl)
 				.setName(label)
 				.setDesc('Leave empty to keep the original label.')
@@ -149,10 +174,7 @@ export class SpeakerRenameModal extends Modal {
 				});
 		}
 
-		if (
-			this.section &&
-			hasUnscopableRecordedNote(this.app, this.file, this.section)
-		) {
+		if (hasUnscopableRecordedNote(this.app, this.file, section)) {
 			new Setting(contentEl)
 				.setName('Rename in notes without timecodes')
 				.setDesc(
@@ -175,7 +197,7 @@ export class SpeakerRenameModal extends Modal {
 		applyButton.addEventListener('click', () => {
 			void this.apply();
 		});
-		if (this.section && this.section.history.length > 0) {
+		if (section.history.length > 0) {
 			const undoButton = actions.createEl('button', {
 				text: 'Undo last rename',
 			});
@@ -283,9 +305,11 @@ export class SpeakerRenameModal extends Modal {
 	}
 
 	/**
-	 * Validates the entered names, adds them to the selected profile, persists
-	 * the new mapping (roster + history) in the sidecar, and rewrites the
-	 * recorded outputs. Reports what changed.
+	 * Validates the entered names, plans the rename against the stored
+	 * roster, rewrites the recorded outputs, and only then commits the new
+	 * roster and history - so the sidecar never asserts names the outputs
+	 * were not even attempted with. The plan's replacements also target the
+	 * original engine labels, healing outputs an earlier rewrite missed.
 	 */
 	private async apply(): Promise<void> {
 		const section = this.section;
@@ -307,49 +331,33 @@ export class SpeakerRenameModal extends Modal {
 				);
 				return;
 			}
-			await this.rememberNames(entries);
-
-			const storedNames = new Map(
-				section.speakers
-					.filter((entry) => entry.name)
-					.map((entry) => [entry.label, entry.name ?? '']),
+			const typed = new Map(
+				entries.map((entry) => [entry.label, entry.name]),
 			);
-			const renames: SpeakerRename[] = [];
-			const nextEntries: SpeakerEntry[] = [];
-			const nextNames: Record<string, string> = {};
-			for (const entry of entries) {
-				const typed = entry.name.trim();
-				const name = typed && typed !== entry.label ? typed : '';
-				nextEntries.push(
-					name
-						? { label: entry.label, name }
-						: { label: entry.label },
-				);
-				if (name) {
-					nextNames[entry.label] = name;
-				}
-				// The rename goes from what the outputs currently show (the
-				// stored name, or the label while unnamed) to the new effective
-				// name; a cleared field reverts the speaker to its label.
-				const from = storedNames.get(entry.label) ?? entry.label;
-				const to = name || entry.label;
-				if (from !== to) {
-					renames.push({ from, to });
-				}
-			}
-			if (renames.length === 0) {
+			const plan = planSpeakerRename(
+				section.speakers,
+				(label) => typed.get(label) ?? '',
+			);
+			if (!plan.changed) {
 				new Notice('No speaker names to change.');
 				this.close();
 				return;
 			}
-			await this.options.sidecar.setSpeakers(this.file.path, nextEntries);
-			await this.options.sidecar.pushHistory(this.file.path, nextNames);
+			await this.rememberNames(entries);
 			const applied = await applySpeakerRenamesWithSidecar(
 				this.app,
 				this.file,
 				section,
-				renames,
+				plan.renames,
 				{ allowBroad: this.allowBroad },
+			);
+			await this.options.sidecar.setSpeakers(
+				this.file.path,
+				plan.nextEntries,
+			);
+			await this.options.sidecar.pushHistory(
+				this.file.path,
+				plan.nextNames,
 			);
 			console.debug(
 				`${PLUGIN_LOG_PREFIX} Renamed speakers: ` +
@@ -367,11 +375,12 @@ export class SpeakerRenameModal extends Modal {
 	}
 
 	/**
-	 * Reverts the last applied rename: the roster returns to the mapping
-	 * before it (the second-newest history entry, or no names at all when the
-	 * history holds a single apply), the outputs are rewritten through the
-	 * same sidecar path, and the reverted state is recorded as a new history
-	 * entry.
+	 * Reverts the last applied rename: the roster returns to the assignment
+	 * before it (the second-newest history entry, or the bare engine labels
+	 * when the history holds a single apply), the outputs are rewritten
+	 * through the same plan/apply path, and the undone entry is removed from
+	 * the history - so each press walks one step further back and the button
+	 * disappears once the history is exhausted, instead of ping-ponging.
 	 */
 	private async undo(): Promise<void> {
 		const section = this.section;
@@ -384,40 +393,28 @@ export class SpeakerRenameModal extends Modal {
 				section.history.length >= 2
 					? (section.history[section.history.length - 2]?.names ?? {})
 					: {};
-			const renames: SpeakerRename[] = [];
-			const nextEntries: SpeakerEntry[] = [];
-			const nextNames: Record<string, string> = {};
-			for (const entry of section.speakers) {
-				const target = previous[entry.label];
-				const name = target && target !== entry.label ? target : '';
-				nextEntries.push(
-					name
-						? { label: entry.label, name }
-						: { label: entry.label },
-				);
-				if (name) {
-					nextNames[entry.label] = name;
-				}
-				const from = entry.name ?? entry.label;
-				const to = name || entry.label;
-				if (from !== to) {
-					renames.push({ from, to });
-				}
-			}
-			if (renames.length === 0) {
-				new Notice('Nothing to undo: the names are already the same.');
-				return;
-			}
-			await this.options.sidecar.setSpeakers(this.file.path, nextEntries);
-			await this.options.sidecar.pushHistory(this.file.path, nextNames);
-			const applied = await applySpeakerRenamesWithSidecar(
-				this.app,
-				this.file,
-				section,
-				renames,
-				{ allowBroad: this.allowBroad },
+			const plan = planSpeakerRename(section.speakers, (label) =>
+				Object.hasOwn(previous, label) ? (previous[label] ?? '') : '',
 			);
-			new Notice(this.describeOutcome(applied));
+			if (plan.changed) {
+				const applied = await applySpeakerRenamesWithSidecar(
+					this.app,
+					this.file,
+					section,
+					plan.renames,
+					{ allowBroad: this.allowBroad },
+				);
+				await this.options.sidecar.setSpeakers(
+					this.file.path,
+					plan.nextEntries,
+				);
+				new Notice(this.describeOutcome(applied));
+			} else {
+				new Notice('Nothing to undo: the names are already the same.');
+			}
+			// The undone entry is consumed either way, so the next undo steps
+			// further back instead of replaying this one.
+			await this.options.sidecar.popHistory(this.file.path);
 			this.close();
 		} catch (error) {
 			const message =

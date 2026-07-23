@@ -138,6 +138,8 @@ export class RecordingManager {
 	 * @param app - The Obsidian App instance
 	 * @param settings - Plugin settings
 	 * @param onStatusChange - Callback for status changes
+	 * @param markerStore - The plugin's single sidecar store, shared with the
+	 *   player and transcription so all writers serialize on one write chain
 	 */
 	constructor(
 		private app: App,
@@ -146,6 +148,7 @@ export class RecordingManager {
 			status: RecordingStatus,
 			saveProgress?: SaveProgress,
 		) => void,
+		markerStore: RecordingSidecarStore,
 		private readonly journal: SessionJournal = new SessionJournal(
 			null,
 			app,
@@ -153,7 +156,6 @@ export class RecordingManager {
 		private readonly onRecordingSaved?: (
 			result: RecordingSaveResult,
 		) => void,
-		markerStore: RecordingSidecarStore = new RecordingSidecarStore(app),
 		getWorkerClient: () => EncodingWorkerClient | null = () => null,
 	) {
 		this.onStatusChange = onStatusChange;

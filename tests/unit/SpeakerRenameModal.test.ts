@@ -49,15 +49,22 @@ const audioFile = {
 const app = {} as unknown as App;
 
 /** A sidecar stub whose getTranscript resolves to the given section. */
-function makeSidecar(section: TranscriptSection): {
+function makeSidecar(
+	section: TranscriptSection,
+	corrupt = false,
+): {
 	getTranscript: jest.Mock;
+	isSidecarCorrupt: jest.Mock;
 	setSpeakers: jest.Mock;
 	pushHistory: jest.Mock;
+	popHistory: jest.Mock;
 } {
 	return {
 		getTranscript: jest.fn().mockResolvedValue(section),
+		isSidecarCorrupt: jest.fn().mockReturnValue(corrupt),
 		setSpeakers: jest.fn().mockResolvedValue(undefined),
 		pushHistory: jest.fn().mockResolvedValue(undefined),
+		popHistory: jest.fn().mockResolvedValue(undefined),
 	};
 }
 
@@ -141,6 +148,23 @@ describe('SpeakerRenameModal', () => {
 		warn.mockRestore();
 	});
 
+	it('distinguishes a corrupt sidecar from an empty one', async () => {
+		// An unreadable sidecar must not tell the user to re-transcribe: the
+		// stored names may be intact on disk.
+		const { modal, internals } = makeModal(
+			mergeSettings({}),
+			makeSidecar(emptyTranscriptSection(), true),
+		);
+		modal.open();
+		await internals.render();
+
+		expect(internals.inputs.size).toBe(0);
+		expect(modal.contentEl.textContent).toContain('could not be read');
+		expect(modal.contentEl.textContent).not.toContain(
+			'Transcribe it with speaker diarization first',
+		);
+	});
+
 	it('prefills one field per speaker with the stored names', async () => {
 		const { modal, internals } = makeModal(
 			mergeSettings({}),
@@ -182,14 +206,16 @@ describe('SpeakerRenameModal', () => {
 			'Speaker 1': 'Bob',
 			'Speaker 2': 'Cleo',
 		});
-		// The note shows "Alex" (the stored name), so the rename goes from
-		// it, not from the engine label; the unnamed speaker renames from its
-		// label.
+		// Self-healing rules: each speaker's replacement targets both the
+		// stored name ("Alex", what a rewritten output shows) and the engine
+		// label ("Speaker 1", what an output missed by an earlier rewrite
+		// still shows).
 		expect(applyMock).toHaveBeenCalledWith(
 			app,
 			audioFile,
 			section,
 			[
+				{ from: 'Speaker 1', to: 'Bob' },
 				{ from: 'Alex', to: 'Bob' },
 				{ from: 'Speaker 2', to: 'Cleo' },
 			],
@@ -199,6 +225,51 @@ describe('SpeakerRenameModal', () => {
 			expect.stringContaining(
 				'Renamed speakers in 1 note and 1 transcript file',
 			),
+		);
+	});
+
+	it('rewrites the outputs before committing the roster and history', async () => {
+		// If the roster were stored first, a failing rewrite would leave the
+		// sidecar asserting names the outputs never received.
+		const sidecar = makeSidecar(rosterSection());
+		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+		modal.open();
+		await internals.render();
+
+		const first = internals.inputs.get('Speaker 1');
+		if (!first) {
+			throw new Error('missing input');
+		}
+		first.value = 'Bob';
+		await internals.apply();
+
+		const applyOrder = applyMock.mock.invocationCallOrder[0] ?? 0;
+		const rosterOrder =
+			sidecar.setSpeakers.mock.invocationCallOrder[0] ?? 0;
+		const historyOrder =
+			sidecar.pushHistory.mock.invocationCallOrder[0] ?? 0;
+		expect(applyOrder).toBeLessThan(rosterOrder);
+		expect(rosterOrder).toBeLessThan(historyOrder);
+	});
+
+	it('keeps the sidecar untouched when the output rewrite throws', async () => {
+		applyMock.mockRejectedValue(new Error('vault write failed'));
+		const sidecar = makeSidecar(rosterSection());
+		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+		modal.open();
+		await internals.render();
+
+		const first = internals.inputs.get('Speaker 1');
+		if (!first) {
+			throw new Error('missing input');
+		}
+		first.value = 'Bob';
+		await internals.apply();
+
+		expect(sidecar.setSpeakers).not.toHaveBeenCalled();
+		expect(sidecar.pushHistory).not.toHaveBeenCalled();
+		expect(Notice).toHaveBeenCalledWith(
+			expect.stringContaining('Failed to rename speakers'),
 		);
 	});
 
@@ -285,7 +356,12 @@ describe('SpeakerRenameModal', () => {
 			app,
 			audioFile,
 			expect.anything(),
-			[{ from: 'Speaker 2', to: 'Bob' }],
+			[
+				// The unchanged "Alex" assignment still contributes its healing
+				// rule for outputs that missed an earlier rewrite.
+				{ from: 'Speaker 1', to: 'Alex' },
+				{ from: 'Speaker 2', to: 'Bob' },
+			],
 			{ allowBroad: true },
 		);
 	});
@@ -430,7 +506,7 @@ describe('SpeakerRenameModal', () => {
 		);
 	});
 
-	it('undo reverts to the second-newest history state and records it', async () => {
+	it('undo reverts to the second-newest history state and pops the entry', async () => {
 		const section = rosterSection({
 			speakers: [{ label: 'Speaker 1', name: 'Bob' }],
 			history: [
@@ -447,16 +523,20 @@ describe('SpeakerRenameModal', () => {
 		expect(sidecar.setSpeakers).toHaveBeenCalledWith('audio/rec.wav', [
 			{ label: 'Speaker 1', name: 'Alex' },
 		]);
-		expect(sidecar.pushHistory).toHaveBeenCalledWith('audio/rec.wav', {
-			'Speaker 1': 'Alex',
-		});
 		expect(applyMock).toHaveBeenCalledWith(
 			app,
 			audioFile,
 			section,
-			[{ from: 'Bob', to: 'Alex' }],
+			[
+				{ from: 'Speaker 1', to: 'Alex' },
+				{ from: 'Bob', to: 'Alex' },
+			],
 			{ allowBroad: false },
 		);
+		// True undo: the undone entry is removed, never re-appended, so the
+		// next undo steps further back instead of ping-ponging.
+		expect(sidecar.popHistory).toHaveBeenCalledWith('audio/rec.wav');
+		expect(sidecar.pushHistory).not.toHaveBeenCalled();
 	});
 
 	it('undo of the only apply reverts to the original labels', async () => {
@@ -473,7 +553,6 @@ describe('SpeakerRenameModal', () => {
 			{ label: 'Speaker 1' },
 			{ label: 'Speaker 2' },
 		]);
-		expect(sidecar.pushHistory).toHaveBeenCalledWith('audio/rec.wav', {});
 		expect(applyMock).toHaveBeenCalledWith(
 			app,
 			audioFile,
@@ -481,5 +560,28 @@ describe('SpeakerRenameModal', () => {
 			[{ from: 'Alex', to: 'Speaker 1' }],
 			{ allowBroad: false },
 		);
+		expect(sidecar.popHistory).toHaveBeenCalledWith('audio/rec.wav');
+		expect(sidecar.pushHistory).not.toHaveBeenCalled();
+	});
+
+	it('undo pops the entry even when nothing needed rewriting', async () => {
+		// The stored roster already matches the previous history state; the
+		// entry is still consumed so the next undo walks further back.
+		const section = rosterSection({
+			speakers: [{ label: 'Speaker 1', name: 'Alex' }],
+			history: [
+				{ at: 't1', names: { 'Speaker 1': 'Alex' } },
+				{ at: 't2', names: { 'Speaker 1': 'Alex' } },
+			],
+		});
+		const sidecar = makeSidecar(section);
+		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+		modal.open();
+		await internals.render();
+		await internals.undo();
+
+		expect(applyMock).not.toHaveBeenCalled();
+		expect(sidecar.setSpeakers).not.toHaveBeenCalled();
+		expect(sidecar.popHistory).toHaveBeenCalledWith('audio/rec.wav');
 	});
 });

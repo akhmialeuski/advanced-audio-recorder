@@ -10,9 +10,9 @@
  * @module speakers/applySpeakerRenames
  */
 
-import { parseLinktext } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
+import { audioTimecodeRefs } from '../obsidian/timecodeRefs';
 import type { TranscriptSection } from '../sidecar/recordingSidecarModel';
 import type { TranscriptFileFormat } from '../transcription/TranscriptTypes';
 import type { SpeakerRename } from './speakerRename';
@@ -38,16 +38,10 @@ export interface SpeakerRenameApplyResult {
 	missingOutputs: number;
 }
 
-/** Whether a parsed link subpath is a timecode subpath (`#t=<seconds>`). */
-function isTimecodeSubpath(subpath: string): boolean {
-	return subpath.replace(/^#/, '').startsWith('t=');
-}
-
 /**
  * Returns the zero-based line indices of a note that belong to a recording,
  * meaning a link or embed on that line resolves to the audio through a
- * timecode subpath. The player embed itself (no timecode) is deliberately
- * excluded, so a note that only embeds the recording yields no lines.
+ * timecode subpath.
  * @param app - Obsidian App
  * @param note - Note to inspect
  * @param audioPath - Vault path of the audio file
@@ -58,25 +52,8 @@ function audioLineIndices(
 	audioPath: string,
 ): Set<number> {
 	const lines = new Set<number>();
-	const cache = app.metadataCache.getFileCache(note);
-	if (!cache) {
-		return lines;
-	}
-	const refs = [...(cache.links ?? []), ...(cache.embeds ?? [])];
-	for (const ref of refs) {
-		const { path, subpath } = parseLinktext(ref.link);
-		if (!isTimecodeSubpath(subpath)) {
-			continue;
-		}
-		const dest = app.metadataCache.getFirstLinkpathDest(path, note.path);
-		if (dest?.path !== audioPath) {
-			continue;
-		}
-		for (
-			let line = ref.position.start.line;
-			line <= ref.position.end.line;
-			line++
-		) {
+	for (const ref of audioTimecodeRefs(app, note, audioPath)) {
+		for (let line = ref.startLine; line <= ref.endLine; line++) {
 			lines.add(line);
 		}
 	}

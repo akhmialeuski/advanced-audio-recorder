@@ -11,12 +11,8 @@
  */
 
 import { renderSpeakerFragment } from '../transcription/transcriptFormat';
+import { escapeRegExp } from '../utils/regex';
 import type { SpeakerRename } from './speakerRename';
-
-/** Escapes a literal string for embedding in a RegExp. */
-function escapeRegExp(value: string): string {
-	return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 /**
  * Builds a longest-first alternation of the given keys, so a name that is a
@@ -237,7 +233,8 @@ function parseTranscriptJson(raw: string): Record<string, unknown> | null {
 
 /** Distinct string speakers across segments, in first-seen order. */
 function distinctSegmentSpeakers(segments: readonly unknown[]): string[] {
-	const speakers = new OrderedSet();
+	// A native Set preserves insertion order, so first-seen order is free.
+	const speakers = new Set<string>();
 	for (const entry of segments) {
 		if (typeof entry !== 'object' || entry === null) {
 			continue;
@@ -247,20 +244,5 @@ function distinctSegmentSpeakers(segments: readonly unknown[]): string[] {
 			speakers.add(speaker);
 		}
 	}
-	return speakers.values();
-}
-
-/** Small insertion-ordered de-duplicating string collector. */
-class OrderedSet {
-	private readonly seen = new Set<string>();
-	private readonly order: string[] = [];
-	add(value: string): void {
-		if (!this.seen.has(value)) {
-			this.seen.add(value);
-			this.order.push(value);
-		}
-	}
-	values(): string[] {
-		return [...this.order];
-	}
+	return [...speakers];
 }

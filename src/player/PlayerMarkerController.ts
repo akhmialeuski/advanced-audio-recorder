@@ -92,14 +92,15 @@ export class PlayerMarkerController {
 	async addAt(time: number, kind: MarkerKind): Promise<void> {
 		const safeTime = Math.max(0, time);
 		const label = defaultMarkerLabel(this.markers, kind);
-		this.markers = addMarker(this.markers, {
+		const marker = {
 			id: generateMarkerId(),
 			time: safeTime,
 			label,
 			kind,
-		});
+		};
+		this.markers = addMarker(this.markers, marker);
 		this.host.renderMarkers();
-		await this.persist();
+		await this.persist((stored) => addMarker(stored, marker));
 		new Notice(`${label} added at ${formatTimecode(safeTime)}`);
 	}
 
@@ -110,7 +111,7 @@ export class PlayerMarkerController {
 	async remove(id: string): Promise<void> {
 		this.markers = removeMarker(this.markers, id);
 		this.host.renderMarkers();
-		await this.persist();
+		await this.persist((stored) => removeMarker(stored, id));
 	}
 
 	/**
@@ -122,7 +123,7 @@ export class PlayerMarkerController {
 	async rename(id: string, label: string): Promise<void> {
 		this.markers = updateMarker(this.markers, id, { label });
 		this.host.refreshTicks();
-		await this.persist();
+		await this.persist((stored) => updateMarker(stored, id, { label }));
 	}
 
 	/**
@@ -143,11 +144,30 @@ export class PlayerMarkerController {
 	}
 
 	/**
-	 * Persists the current markers for this file.
+	 * Persists one marker operation through the store's atomic
+	 * read-modify-write, so a concurrent writer (a recording-session flush,
+	 * auto chapters) merged between this player's read and write is never
+	 * clobbered. The merged result becomes the authoritative list; a change
+	 * another writer contributed triggers a re-render.
+	 * @param update - The same pure operation, applied to the stored list
 	 */
-	private async persist(): Promise<void> {
+	private async persist(
+		update: (stored: PlayerMarker[]) => readonly PlayerMarker[],
+	): Promise<void> {
 		try {
-			await this.markerStore.setMarkers(this.filePath, this.markers);
+			const merged = await this.markerStore.updateMarkers(
+				this.filePath,
+				update,
+			);
+			if (this.host.isUnloaded()) {
+				return;
+			}
+			if (!sameMarkers(this.markers, merged)) {
+				this.markers = merged;
+				this.host.renderMarkers();
+			} else {
+				this.markers = merged;
+			}
 			// Refresh other live players of this file (e.g. the reading-view
 			// copy) so the change shows everywhere without re-opening
 			this.host.notifyOthers();
@@ -158,4 +178,24 @@ export class PlayerMarkerController {
 			);
 		}
 	}
+}
+
+/** Whether two marker lists are identical in ids, times, labels, and kinds. */
+function sameMarkers(
+	a: readonly PlayerMarker[],
+	b: readonly PlayerMarker[],
+): boolean {
+	if (a.length !== b.length) {
+		return false;
+	}
+	return a.every((marker, index) => {
+		const other = b[index];
+		return (
+			other !== undefined &&
+			marker.id === other.id &&
+			marker.time === other.time &&
+			marker.label === other.label &&
+			marker.kind === other.kind
+		);
+	});
 }

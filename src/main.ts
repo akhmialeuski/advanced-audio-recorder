@@ -221,11 +221,11 @@ export default class AudioRecorderPlugin extends Plugin {
 			(status: RecordingStatus, saveProgress?: SaveProgress) => {
 				this.handleStatusChange(status, saveProgress);
 			},
+			this.sidecarStore,
 			this.journal,
 			(result: RecordingSaveResult) => {
 				this.handleRecordingSaved(result);
 			},
-			this.sidecarStore,
 			() => this.encodingWorker,
 		);
 

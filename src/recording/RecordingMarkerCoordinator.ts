@@ -149,9 +149,9 @@ export class RecordingMarkerCoordinator {
 		}
 		for (const { path, markers } of writes) {
 			try {
-				const existing = await this.markerStore.getMarkers(path);
-				await this.markerStore.setMarkers(
-					path,
+				// Atomic read-modify-write: a marker another writer persisted
+				// between this read and write is merged, not clobbered.
+				await this.markerStore.updateMarkers(path, (existing) =>
 					sortMarkers([...existing, ...markers]),
 				);
 			} catch (error) {
@@ -189,9 +189,7 @@ export class RecordingMarkerCoordinator {
 		}
 		for (const path of paths) {
 			try {
-				const existing = await this.markerStore.getMarkers(path);
-				await this.markerStore.setMarkers(
-					path,
+				await this.markerStore.updateMarkers(path, (existing) =>
 					updateMarker(existing, draft.id, {
 						label: draft.label,
 						kind: draft.kind,
@@ -220,9 +218,7 @@ export class RecordingMarkerCoordinator {
 		this.persistedPaths.delete(id);
 		for (const path of paths) {
 			try {
-				const existing = await this.markerStore.getMarkers(path);
-				await this.markerStore.setMarkers(
-					path,
+				await this.markerStore.updateMarkers(path, (existing) =>
 					removeMarker(existing, id),
 				);
 			} catch (error) {

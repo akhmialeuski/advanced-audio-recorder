@@ -230,13 +230,11 @@ export class AutoChapterService {
 				);
 				return false;
 			}
-			const existing = await this.markerStore.getMarkers(file.path);
-			const merged = applyGeneratedChapters(
-				existing,
-				chapters,
-				generateMarkerId,
+			// Atomic read-modify-write: a bookmark added while the LLM was
+			// generating is merged into the result, not clobbered by it.
+			await this.markerStore.updateMarkers(file.path, (existing) =>
+				applyGeneratedChapters(existing, chapters, generateMarkerId),
 			);
-			await this.markerStore.setMarkers(file.path, merged);
 			this.onChaptersWritten?.(file.path);
 			new Notice(
 				`Added ${String(chapters.length)} chapter` +
@@ -283,7 +281,11 @@ export class AutoChapterService {
 				...(preloaded.language ? { language: preloaded.language } : {}),
 			};
 		}
-		const found = await loadTranscriptLines(this.app, file);
+		const found = await loadTranscriptLines(
+			this.app,
+			file,
+			this.markerStore,
+		);
 		if (!found) {
 			return null;
 		}

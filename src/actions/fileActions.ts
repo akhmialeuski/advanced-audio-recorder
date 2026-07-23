@@ -142,6 +142,7 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 				getSettings: services.getSettings,
 				saveSettings: services.saveSettings,
 				autoChapters: services.autoChapters,
+				sidecar: services.recordingSidecar,
 			}).open();
 		},
 	},

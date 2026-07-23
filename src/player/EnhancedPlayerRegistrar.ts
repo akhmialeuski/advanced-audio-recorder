@@ -167,10 +167,16 @@ export class EnhancedPlayerRegistrar {
 		);
 
 		// Keep each recording's marker sidecar and media-kind cache entries
-		// attached to the file: move them on rename/move, drop them on delete
+		// attached to the file: move them on rename/move, drop them on delete.
+		// Renames of other files update the transcript-output paths recorded
+		// in the sidecars, so a moved note or transcript file stays reachable
+		// for speaker renaming instead of orphaning.
 		this.plugin.registerEvent(
 			this.app.vault.on('rename', (file, oldPath) => {
-				if (file instanceof TFile && isAudioFile(file)) {
+				if (!(file instanceof TFile)) {
+					return;
+				}
+				if (isAudioFile(file)) {
 					void this.markerStore.handleRename(oldPath, file.path);
 					const kind = this.mediaKindCache.get(oldPath);
 					if (kind) {
@@ -178,7 +184,9 @@ export class EnhancedPlayerRegistrar {
 						this.mediaKindCache.set(file.path, kind);
 					}
 					this.mediaKindStore?.handleRename(oldPath, file.path);
+					return;
 				}
+				void this.markerStore.handleOutputRename(oldPath, file.path);
 			}),
 		);
 		this.plugin.registerEvent(

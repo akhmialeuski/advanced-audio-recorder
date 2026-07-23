@@ -50,7 +50,6 @@ function makeApp(
 	const { caches = {}, failPaths = new Set() } = opts;
 	return {
 		vault: {
-			getFiles: (): TFile[] => [...files.keys()].map(tf),
 			getFileByPath: (path: string): TFile | null =>
 				files.has(path) ? tf(path) : null,
 			read: async (file: TFile): Promise<string> =>
@@ -68,7 +67,6 @@ function makeApp(
 			},
 		},
 		metadataCache: {
-			resolvedLinks: {},
 			getFileCache: (file: TFile): CachedMetadata | null =>
 				(caches[file.path] as CachedMetadata | undefined) ?? null,
 			getFirstLinkpathDest: (linkpath: string): TFile | null => {
@@ -143,6 +141,7 @@ function recordedNote(
 			mergeConsecutiveSpeaker: true,
 		},
 		llmProcessed,
+		heading: 'Transcript',
 		writtenAt: '2026-07-21T10:00:00Z',
 	};
 }
@@ -404,7 +403,6 @@ describe('applySpeakerRenamesWithSidecar', () => {
 		// content, mimicking an edit landing between the two calls.
 		const app = {
 			vault: {
-				getFiles: (): TFile[] => [...live.keys()].map(tf),
 				getFileByPath: (path: string): TFile | null =>
 					live.has(path) ? tf(path) : null,
 				read: async (): Promise<string> =>
@@ -419,7 +417,6 @@ describe('applySpeakerRenamesWithSidecar', () => {
 				},
 			},
 			metadataCache: {
-				resolvedLinks: {},
 				getFileCache: (): null => null,
 				getFirstLinkpathDest: (): null => null,
 			},

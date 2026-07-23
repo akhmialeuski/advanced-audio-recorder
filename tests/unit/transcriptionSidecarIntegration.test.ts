@@ -3,8 +3,10 @@
  * names are re-applied to a fresh diarized transcript (so a re-transcription
  * keeps "Alex" without user action), the stored roster is refreshed with
  * names preserved, a changed label composition warns the user, the written
- * outputs are registered with the run's template snapshot, and everything is
- * a strict no-op without diarization, without speakers, or without a store.
+ * outputs are registered (with the run's template snapshot, heading, and
+ * provenance) for every run - diarized or not - and the name continuity is a
+ * strict no-op without diarization, without speakers, or without a store.
+ * The store reaches the run through a single channel: the run options.
  */
 
 import type { App, TFile } from 'obsidian';
@@ -79,12 +81,14 @@ function makeSidecar(section: TranscriptSection): {
 	setSpeakers: jest.Mock;
 	recordNoteOutput: jest.Mock;
 	recordFileOutput: jest.Mock;
+	recordProvenance: jest.Mock;
 } {
 	return {
 		getTranscript: jest.fn().mockResolvedValue(section),
 		setSpeakers: jest.fn().mockResolvedValue(undefined),
 		recordNoteOutput: jest.fn().mockResolvedValue(undefined),
 		recordFileOutput: jest.fn().mockResolvedValue(undefined),
+		recordProvenance: jest.fn().mockResolvedValue(undefined),
 	};
 }
 
@@ -112,10 +116,11 @@ describe('TranscriptionService stored speaker names', () => {
 		const service = new TranscriptionService(
 			makeApp(),
 			() => diarizedSettings(),
-			{ createProvider: () => makeProvider(twoSpeakerSegments), sidecar },
+			{ createProvider: () => makeProvider(twoSpeakerSegments) },
 		);
 		const { transcript, markdown } = await service.run(audioFile, {
 			notePathForLinks: 'note.md',
+			sidecar,
 		});
 
 		expect(transcript.speakers).toEqual(['Alex', 'Speaker 2']);
@@ -141,9 +146,9 @@ describe('TranscriptionService stored speaker names', () => {
 		const service = new TranscriptionService(
 			makeApp(),
 			() => diarizedSettings(),
-			{ createProvider: () => makeProvider(twoSpeakerSegments), sidecar },
+			{ createProvider: () => makeProvider(twoSpeakerSegments) },
 		);
-		await service.run(audioFile, { notePathForLinks: 'note.md' });
+		await service.run(audioFile, { notePathForLinks: 'note.md', sidecar });
 		expect(Notice).toHaveBeenCalledWith(
 			expect.stringContaining('Speaker labels changed'),
 		);
@@ -160,9 +165,9 @@ describe('TranscriptionService stored speaker names', () => {
 		const service = new TranscriptionService(
 			makeApp(),
 			() => diarizedSettings(),
-			{ createProvider: () => makeProvider(twoSpeakerSegments), sidecar },
+			{ createProvider: () => makeProvider(twoSpeakerSegments) },
 		);
-		await service.run(audioFile, { notePathForLinks: 'note.md' });
+		await service.run(audioFile, { notePathForLinks: 'note.md', sidecar });
 		expect(Notice).not.toHaveBeenCalledWith(
 			expect.stringContaining('Speaker labels changed'),
 		);
@@ -173,10 +178,11 @@ describe('TranscriptionService stored speaker names', () => {
 		const service = new TranscriptionService(
 			makeApp(),
 			() => diarizedSettings({ transcriptionDiarize: false }),
-			{ createProvider: () => makeProvider(twoSpeakerSegments), sidecar },
+			{ createProvider: () => makeProvider(twoSpeakerSegments) },
 		);
 		const { transcript } = await service.run(audioFile, {
 			notePathForLinks: 'note.md',
+			sidecar,
 		});
 		expect(transcript.speakers).toEqual([]);
 		expect(sidecar.getTranscript).not.toHaveBeenCalled();
@@ -191,15 +197,14 @@ describe('TranscriptionService stored speaker names', () => {
 			{
 				createProvider: () =>
 					makeProvider([{ start: 0, end: 1, text: 'hi' }]),
-				sidecar,
 			},
 		);
-		await service.run(audioFile, { notePathForLinks: 'note.md' });
+		await service.run(audioFile, { notePathForLinks: 'note.md', sidecar });
 		expect(sidecar.getTranscript).not.toHaveBeenCalled();
 		expect(sidecar.setSpeakers).not.toHaveBeenCalled();
 	});
 
-	it('runs unchanged without a sidecar dependency', async () => {
+	it('runs unchanged without a sidecar in the run options', async () => {
 		const service = new TranscriptionService(
 			makeApp(),
 			() => diarizedSettings(),
@@ -220,10 +225,11 @@ describe('TranscriptionService stored speaker names', () => {
 		const service = new TranscriptionService(
 			makeApp(),
 			() => diarizedSettings(),
-			{ createProvider: () => makeProvider(twoSpeakerSegments), sidecar },
+			{ createProvider: () => makeProvider(twoSpeakerSegments) },
 		);
 		const { transcript } = await service.run(audioFile, {
 			notePathForLinks: 'note.md',
+			sidecar,
 		});
 		expect(transcript.speakers).toEqual(['Speaker 1', 'Speaker 2']);
 		warn.mockRestore();
@@ -278,7 +284,14 @@ describe('transcribeFile output registration', () => {
 						settings.transcriptMergeConsecutiveSpeaker,
 				},
 				llmProcessed: false,
+				heading: settings.transcriptHeading,
 			}),
+		);
+		// The run's provenance is recorded alongside the outputs, so the
+		// sidecar can answer when (and by what) the transcript was produced.
+		expect(sidecar.recordProvenance).toHaveBeenCalledWith(
+			'audio/rec.webm',
+			expect.objectContaining({ createdAt: expect.any(String) }),
 		);
 	});
 
@@ -334,7 +347,9 @@ describe('transcribeFile output registration', () => {
 		);
 	});
 
-	it('registers nothing for a run without speakers', async () => {
+	it('registers the outputs of a non-diarized run too', async () => {
+		// The sidecar is the general transcript ledger: an absent record must
+		// mean "no transcript", never "a transcript this feature ignored".
 		const sidecar = makeSidecar(emptyTranscriptSection());
 		insertMock.mockReturnValue(true);
 		const settings = diarizedSettings({
@@ -348,8 +363,29 @@ describe('transcribeFile output registration', () => {
 			{ notePathForLinks: 'note.md', sidecar },
 			{ createProvider: () => makeProvider(twoSpeakerSegments) },
 		);
+		expect(sidecar.recordNoteOutput).toHaveBeenCalledWith(
+			'audio/rec.webm',
+			expect.objectContaining({ path: 'note.md' }),
+		);
+		expect(sidecar.recordProvenance).toHaveBeenCalled();
+		expect(sidecar.recordFileOutput).not.toHaveBeenCalled();
+	});
+
+	it('registers nothing when no output was written', async () => {
+		const sidecar = makeSidecar(emptyTranscriptSection());
+		insertMock.mockReturnValue(false);
+		const settings = diarizedSettings({ transcriptDestination: 'note' });
+		writeFileMock.mockResolvedValue(null);
+		await transcribeFile(
+			makeApp(),
+			() => settings,
+			audioFile,
+			{ notePathForLinks: 'note.md', sidecar },
+			{ createProvider: () => makeProvider(twoSpeakerSegments) },
+		);
 		expect(sidecar.recordNoteOutput).not.toHaveBeenCalled();
 		expect(sidecar.recordFileOutput).not.toHaveBeenCalled();
+		expect(sidecar.recordProvenance).not.toHaveBeenCalled();
 	});
 
 	it('does not fail the run when output registration throws', async () => {
