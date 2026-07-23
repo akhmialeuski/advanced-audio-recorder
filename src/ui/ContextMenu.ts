@@ -16,6 +16,7 @@ import {
 import type { MarkdownFileInfo } from 'obsidian';
 import type { MenuItem } from 'obsidian';
 import { AAR_MENU_SECTION, PLUGIN_LOG_PREFIX } from '../constants';
+import { registerDomEventOnAllWindows } from '../utils/multiWindowDomEvents';
 import { getPlayerEmbedActions } from '../player/playerEmbedActions';
 import { MARKER_KIND, type MarkerKind } from '../markers/markerModel';
 import { isAudioFile } from '../utils/audioFile';
@@ -80,12 +81,16 @@ export class ContextMenu {
 	}
 
 	/**
-	 * Registers a global context menu event for audio players.
-	 * Detects right-clicks on standard Obsidian audio embeds and shows the file menu.
+	 * Registers a context menu event for audio players on every Obsidian
+	 * window. Detects right-clicks on standard Obsidian audio embeds and shows
+	 * the file menu. Binding per window (not once to activeDocument) is what
+	 * keeps the menu working after a note is moved into a pop-out window, whose
+	 * document does not share events with the main window.
 	 */
 	private registerPlayerMenu(): void {
-		this.plugin.registerDomEvent(
-			activeDocument,
+		registerDomEventOnAllWindows(
+			this.plugin,
+			this.app,
 			'contextmenu',
 			(event: MouseEvent) => {
 				const target = event.target as HTMLElement;

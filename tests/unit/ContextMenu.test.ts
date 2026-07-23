@@ -86,6 +86,14 @@ jest.mock('obsidian', () => {
 	};
 });
 
+// The player menu binds through registerDomEventOnAllWindows (one listener
+// per Obsidian window). These unit tests exercise the handler itself, so the
+// primitive is mocked to capture the registered handler; its own cross-window
+// behavior is covered in tests/unit/multiWindowDomEvents.test.ts.
+jest.mock('src/utils/multiWindowDomEvents', () => ({
+	registerDomEventOnAllWindows: jest.fn(),
+}));
+
 jest.mock('src/ui/AudioFileInfoModal', () => ({
 	AudioFileInfoModal: jest.fn().mockImplementation(() => ({
 		open: jest.fn(),
@@ -221,8 +229,12 @@ describe('ContextMenu', () => {
 				'editor-menu',
 				expect.any(Function),
 			);
-			expect(mockPlugin.registerDomEvent).toHaveBeenCalledWith(
-				document,
+			const { registerDomEventOnAllWindows } = jest.requireMock(
+				'src/utils/multiWindowDomEvents',
+			);
+			expect(registerDomEventOnAllWindows).toHaveBeenCalledWith(
+				mockPlugin,
+				mockApp,
 				'contextmenu',
 				expect.any(Function),
 				{ capture: true },
@@ -580,10 +592,13 @@ describe('ContextMenu', () => {
 
 		beforeEach(() => {
 			contextMenu.register();
+			const { registerDomEventOnAllWindows } = jest.requireMock(
+				'src/utils/multiWindowDomEvents',
+			);
 			const call = (
-				mockPlugin.registerDomEvent as jest.Mock
-			).mock.calls.find((c) => c[1] === 'contextmenu');
-			playerMenuCallback = call[2];
+				registerDomEventOnAllWindows as jest.Mock
+			).mock.calls.find((c) => c[2] === 'contextmenu');
+			playerMenuCallback = call[3];
 		});
 
 		function makeEmbedEvent(src = 'audio.mp3'): MouseEvent {

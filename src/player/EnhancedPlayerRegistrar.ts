@@ -23,9 +23,9 @@
  * (issue #39). Only the master toggle flip re-renders open views
  * (leaf.rebuildView), because it changes what every embed is in both
  * modes at once. When the internal registry API is unavailable, a
- * Markdown post-processor takes over embeds (Reading view only). A
- * document-level click handler routes timecode links to a live player.
- * All paths respect the feature toggle.
+ * Markdown post-processor takes over embeds (Reading view only). A click
+ * handler bound on every window's document (main and pop-out) routes timecode
+ * links to a live player. All paths respect the feature toggle.
  * @module player/EnhancedPlayerRegistrar
  */
 
@@ -56,6 +56,7 @@ import {
 	wikiLinkTargetAtCursor,
 } from './timecodeLinks';
 import { probeMediaKind, MEDIA_KIND, type MediaKind } from './mediaProbe';
+import { registerDomEventOnAllWindows } from '../utils/multiWindowDomEvents';
 import { MediaEmbedShell } from './MediaEmbedShell';
 import type { MediaKindStore } from './MediaKindStore';
 import { shouldEnhance } from './playerMode';
@@ -157,8 +158,14 @@ export class EnhancedPlayerRegistrar {
 			}
 		});
 
-		this.plugin.registerDomEvent(
-			activeDocument,
+		// Bind the timecode-link click handler on every window's document,
+		// including pop-out windows, so a transcript timestamp clicked in a
+		// popped-out note routes to a live player instead of being ignored
+		// (a pop-out has its own document that never shares events with the
+		// main window).
+		registerDomEventOnAllWindows(
+			this.plugin,
+			this.app,
 			'click',
 			(event) => {
 				this.handleTimecodeClick(event);
