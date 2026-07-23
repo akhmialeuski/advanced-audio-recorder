@@ -14,6 +14,7 @@ import {
 	createDesktopRecorder,
 	createRecordingMockApp,
 	installRecordingMediaStubs,
+	makeFakeMarkerStore,
 } from './helpers/recordingManagerTestKit';
 
 // Mock obsidian module
@@ -94,6 +95,7 @@ describe('RecordingManager', () => {
 			mockApp,
 			mockSettings,
 			statusChangeCallback,
+			makeFakeMarkerStore().store,
 		);
 	});
 
@@ -117,6 +119,7 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
+				makeFakeMarkerStore().store,
 				// eslint-disable-next-line @typescript-eslint/no-explicit-any -- journal double
 				mockJournal as any,
 			);

@@ -1,27 +1,110 @@
 /**
  * Locates and reads a recording's existing transcript as timed lines for
- * chapter generation, with no stored state: the transcript sidecar files
- * next to the recording (JSON, SRT, VTT, TXT) and, failing those, the
- * notes whose timecode links resolve to this audio (the default "insert
- * into the note" destination writes no sidecar). Returning null means the
- * recording has no readable transcript anywhere - the caller's cue to ask
- * the user to transcribe first instead of sending an empty prompt.
+ * chapter generation. The recording's sidecar is the source of truth: when
+ * it records written outputs, those exact paths are read (transcript files
+ * first, JSON preferred, then notes scoped by their timecode links). Only a
+ * recording with no recorded outputs (transcribed before outputs were
+ * recorded) falls back to discovering transcript files next to the audio
+ * and scanning referencing notes. Returning null means the recording has no
+ * readable transcript anywhere - the caller's cue to ask the user to
+ * transcribe first instead of sending an empty prompt.
  * @module chapters/transcriptSources
  */
 
-import { parseLinktext } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
+import { audioTimecodeRefs } from '../obsidian/timecodeRefs';
+import type { TranscriptSection } from '../sidecar/recordingSidecarModel';
+import { buildTranscriptFilePath } from '../transcription/transcriptOutput';
 import {
-	findReferencingNotes,
-	findTranscriptSidecarFiles,
-} from '../speakers/applySpeakerRenames';
-import type {
-	Transcript,
-	TranscriptFileFormat,
+	TRANSCRIPT_FILE_FORMATS,
+	type Transcript,
+	type TranscriptFileFormat,
 } from '../transcription/TranscriptTypes';
+import { isAudioFile } from '../utils/audioFile';
+import { directoryOf } from '../utils/paths';
+import { escapeRegExp } from '../utils/regex';
 import { parseTimecode } from '../utils/TimeUtils';
 import type { TimedLine } from './chapterGeneration';
+
+/** A transcript sidecar file discovered next to a recording. */
+interface TranscriptSidecar {
+	file: TFile;
+	format: TranscriptFileFormat;
+}
+
+/**
+ * Finds the notes that reference a recording (through the metadata cache, so
+ * closed notes are covered too).
+ * @param app - Obsidian App
+ * @param audioPath - Vault path of the audio file
+ */
+function findReferencingNotes(app: App, audioPath: string): TFile[] {
+	const notes: TFile[] = [];
+	for (const [notePath, links] of Object.entries(
+		app.metadataCache.resolvedLinks,
+	)) {
+		if (audioPath in links) {
+			const note = app.vault.getFileByPath(notePath);
+			if (note) {
+				notes.push(note);
+			}
+		}
+	}
+	return notes;
+}
+
+/**
+ * Finds the transcript sidecar files a recording actually has next to it,
+ * matching the canonical name and the `_<n>` collision suffix the writer uses,
+ * so a transcript written to a deduplicated path is still found. A `_<n>`
+ * candidate that is instead a sibling recording's own canonical sidecar
+ * (`rec_1.srt` next to `rec_1.wav`) is excluded, so chaptering `rec.wav`
+ * never reads another recording's transcript.
+ * @param app - Obsidian App
+ * @param audioFile - Recording whose sidecars are sought
+ */
+function findTranscriptSidecarFiles(
+	app: App,
+	audioFile: TFile,
+): TranscriptSidecar[] {
+	const files = app.vault.getFiles();
+	const dir = directoryOf(audioFile.path);
+	// Other recordings sharing the directory own their own canonical sidecars;
+	// those paths must not be attributed to this recording as collisions.
+	const siblingAudio = files.filter(
+		(file) =>
+			file.path !== audioFile.path &&
+			directoryOf(file.path) === dir &&
+			isAudioFile(file),
+	);
+	const sidecars: TranscriptSidecar[] = [];
+	for (const format of TRANSCRIPT_FILE_FORMATS) {
+		const canonical = buildTranscriptFilePath(audioFile.path, format);
+		const canonicalName = canonical.slice(dir ? dir.length + 1 : 0);
+		const dot = canonicalName.lastIndexOf('.');
+		const stem = canonicalName.slice(0, dot);
+		const ext = canonicalName.slice(dot + 1);
+		const pattern = new RegExp(
+			`^${escapeRegExp(stem)}(_\\d+)?\\.${escapeRegExp(ext)}$`,
+		);
+		const ownedByOthers = new Set(
+			siblingAudio.map((file) =>
+				buildTranscriptFilePath(file.path, format),
+			),
+		);
+		for (const file of files) {
+			if (
+				directoryOf(file.path) === dir &&
+				pattern.test(file.name) &&
+				!ownedByOthers.has(file.path)
+			) {
+				sidecars.push({ file, format });
+			}
+		}
+	}
+	return sidecars;
+}
 
 /** A located transcript, as timed lines plus where they came from. */
 export interface TranscriptLinesSource {
@@ -199,16 +282,6 @@ function linesFromSidecar(
 	}
 }
 
-/** Whether a parsed link subpath is a timecode subpath (`#t=<seconds>`). */
-function timecodeSubpathSeconds(subpath: string): number | null {
-	const stripped = subpath.replace(/^#/, '');
-	if (!stripped.startsWith('t=')) {
-		return null;
-	}
-	const seconds = Number(stripped.slice(2));
-	return Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
-}
-
 /**
  * Maps each note line that carries a timecode link resolving to the audio
  * onto that link's seconds (the earliest when a line carries several).
@@ -222,25 +295,13 @@ function audioLineTimes(
 	audioPath: string,
 ): Map<number, number> {
 	const times = new Map<number, number>();
-	const cache = app.metadataCache.getFileCache(note);
-	if (!cache) {
-		return times;
-	}
-	const refs = [...(cache.links ?? []), ...(cache.embeds ?? [])];
-	for (const ref of refs) {
-		const { path, subpath } = parseLinktext(ref.link);
-		const seconds = timecodeSubpathSeconds(subpath);
-		if (seconds === null) {
+	for (const ref of audioTimecodeRefs(app, note, audioPath)) {
+		if (ref.seconds === null) {
 			continue;
 		}
-		const dest = app.metadataCache.getFirstLinkpathDest(path, note.path);
-		if (dest?.path !== audioPath) {
-			continue;
-		}
-		const line = ref.position.start.line;
-		const existing = times.get(line);
-		if (existing === undefined || seconds < existing) {
-			times.set(line, seconds);
+		const existing = times.get(ref.startLine);
+		if (existing === undefined || ref.seconds < existing) {
+			times.set(ref.startLine, ref.seconds);
 		}
 	}
 	return times;
@@ -290,17 +351,148 @@ async function linesFromNote(
 	return lines;
 }
 
+/** The slice of the recording sidecar store this module reads. */
+export interface TranscriptSectionReader {
+	/** Returns the stored transcript section for a recording path. */
+	getTranscript(path: string): Promise<TranscriptSection>;
+}
+
 /**
- * Finds a recording's existing transcript and returns it as timed lines,
- * or null when no transcript exists anywhere. Sidecar files are preferred
- * (canonical, in format order JSON > SRT > VTT > TXT); when none parses to
- * any lines, the referencing notes are searched and the note with the most
- * timecode-linked transcript lines wins. Unreadable outputs are logged and
- * skipped rather than failing the search.
+ * Finds a recording's existing transcript and returns it as timed lines, or
+ * null when no readable transcript exists. When the recording's sidecar
+ * records written outputs, those exact paths are read first: transcript
+ * files in preference order (JSON preferred, so the detected language rides
+ * along), then recorded notes scoped by their timecode links. Only when the
+ * recorded outputs yield nothing - none recorded, or every one is missing,
+ * unreadable, or LLM-replaced - does the legacy discovery scan run
+ * (transcript files next to the audio by name, then every referencing
+ * note), so a transcript the sidecar never recorded is still found instead
+ * of reporting "no transcript". Unreadable outputs are logged and skipped
+ * rather than failing the search.
  * @param app - Obsidian App
  * @param audioFile - Recording whose transcript is sought
+ * @param sidecar - Recording sidecar access; null falls back to discovery
  */
 export async function loadTranscriptLines(
+	app: App,
+	audioFile: TFile,
+	sidecar: TranscriptSectionReader | null = null,
+): Promise<TranscriptLinesSource | null> {
+	const section = await readSection(sidecar, audioFile.path);
+	if (
+		section &&
+		(section.fileOutputs.length > 0 || section.noteOutputs.length > 0)
+	) {
+		const recorded = await loadFromRecordedOutputs(app, audioFile, section);
+		if (recorded) {
+			return recorded;
+		}
+		// Every recorded output is gone, unreadable, or LLM-replaced; a
+		// transcript the sidecar never recorded may still sit on disk, so
+		// fall through to discovery rather than reporting "no transcript".
+	}
+	return loadByDiscovery(app, audioFile);
+}
+
+/** Reads the sidecar section, mapping any failure to null (fall back). */
+async function readSection(
+	sidecar: TranscriptSectionReader | null,
+	audioPath: string,
+): Promise<TranscriptSection | null> {
+	if (!sidecar) {
+		return null;
+	}
+	try {
+		return await sidecar.getTranscript(audioPath);
+	} catch (error) {
+		console.warn(
+			`${PLUGIN_LOG_PREFIX} Failed to read the sidecar for ${audioPath}; falling back to transcript discovery:`,
+			error,
+		);
+		return null;
+	}
+}
+
+/**
+ * Loads the transcript from the outputs the sidecar recorded: transcript
+ * files in format-preference order (JSON first, its declared language
+ * winning over the recorded provenance), then recorded notes (LLM-replaced
+ * ones skipped - their body no longer parses as a transcript), the note
+ * with the most timecode-linked lines winning.
+ */
+async function loadFromRecordedOutputs(
+	app: App,
+	audioFile: TFile,
+	section: TranscriptSection,
+): Promise<TranscriptLinesSource | null> {
+	const byPreference = [...section.fileOutputs].sort(
+		(a, b) =>
+			TRANSCRIPT_FILE_FORMATS.indexOf(a.format) -
+			TRANSCRIPT_FILE_FORMATS.indexOf(b.format),
+	);
+	for (const output of byPreference) {
+		const file = app.vault.getFileByPath(output.path);
+		if (!file) {
+			continue;
+		}
+		try {
+			const { lines, language } = linesFromSidecar(
+				output.format,
+				await app.vault.read(file),
+			);
+			if (lines.length > 0) {
+				lines.sort((a, b) => a.time - b.time);
+				const resolved = language ?? section.provenance?.language;
+				return {
+					lines,
+					origin: file.path,
+					...(resolved ? { language: resolved } : {}),
+				};
+			}
+		} catch (error) {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Failed to read transcript from ${file.path}:`,
+				error,
+			);
+		}
+	}
+	let best: TranscriptLinesSource | null = null;
+	for (const output of section.noteOutputs) {
+		if (output.llmProcessed) {
+			continue;
+		}
+		const note = app.vault.getFileByPath(output.path);
+		if (!note) {
+			continue;
+		}
+		try {
+			const lines = await linesFromNote(app, note, audioFile.path);
+			if (lines.length > (best?.lines.length ?? 0)) {
+				lines.sort((a, b) => a.time - b.time);
+				best = {
+					lines,
+					origin: note.path,
+					...(section.provenance?.language
+						? { language: section.provenance.language }
+						: {}),
+				};
+			}
+		} catch (error) {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Failed to read transcript from ${note.path}:`,
+				error,
+			);
+		}
+	}
+	return best;
+}
+
+/**
+ * Legacy discovery for recordings whose sidecar records no outputs
+ * (transcribed before outputs were recorded): transcript files next to the
+ * audio by canonical name, then every referencing note.
+ */
+async function loadByDiscovery(
 	app: App,
 	audioFile: TFile,
 ): Promise<TranscriptLinesSource | null> {

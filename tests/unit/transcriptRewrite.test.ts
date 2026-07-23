@@ -1,32 +1,18 @@
 /**
- * Tests for the pure speaker-rewriting and speaker-reading helpers: note
- * Markdown scoped by line, subtitle/plain-text/JSON sidecars, and the roster
- * extraction each output supports.
+ * Tests for the pure speaker-rewriting helpers: note Markdown scoped by
+ * line, and subtitle/plain-text/JSON sidecar bodies.
  */
 
 import type { SpeakerRename } from 'src/speakers/speakerRename';
 import {
-	buildNoteLineSpeakerExtractor,
-	extractJsonSpeakers,
-	extractNoteSpeakers,
-	extractPlainTextSpeakers,
-	extractSubtitleSpeakers,
 	renameSpeakersInMarkdown,
 	renameSpeakersInNoteLines,
 	renameSpeakersInPlainText,
 	renameSpeakersInSubtitles,
 	renameSpeakersInTranscriptJson,
-	type NoteSpeakerTemplates,
 } from 'src/speakers/transcriptRewrite';
 
 const FORMAT = '**{speaker}**';
-
-/** Default render templates: timestamped lines with a two-sided speaker. */
-const TEMPLATES: NoteSpeakerTemplates = {
-	lineFormat: '{timestamp} {speaker} {text}',
-	speakerFormat: FORMAT,
-	includeTimestamps: true,
-};
 
 const NOTE = [
 	'![[rec.wav]]', // 0
@@ -122,100 +108,5 @@ describe('sidecar rewriters', () => {
 
 	it('returns null for non-transcript JSON', () => {
 		expect(renameSpeakersInTranscriptJson('{"foo":1}', renames)).toBeNull();
-	});
-});
-
-describe('speaker extraction', () => {
-	it('builds an extractor only when the speaker can be located', () => {
-		expect(buildNoteLineSpeakerExtractor(TEMPLATES)).not.toBeNull();
-		expect(
-			buildNoteLineSpeakerExtractor({
-				...TEMPLATES,
-				speakerFormat: 'no token',
-			}),
-		).toBeNull();
-		// A bare {speaker} is bounded only by whitespace in the default line, so
-		// a multi-word label cannot be delimited: decline rather than guess.
-		expect(
-			buildNoteLineSpeakerExtractor({
-				...TEMPLATES,
-				speakerFormat: '{speaker}',
-			}),
-		).toBeNull();
-		// A one-sided template is fine: the trailing ":" bounds the name.
-		expect(
-			buildNoteLineSpeakerExtractor({
-				...TEMPLATES,
-				speakerFormat: '{speaker}:',
-			}),
-		).not.toBeNull();
-	});
-
-	it('reads scoped note speakers, or all lines when unscoped', () => {
-		expect(extractNoteSpeakers(NOTE, TEMPLATES, new Set([2, 4]))).toEqual([
-			'Speaker 1',
-			'Speaker 2',
-		]);
-		expect(extractNoteSpeakers(NOTE, TEMPLATES, null)).toEqual([
-			'Speaker 1',
-			'Speaker 2',
-		]);
-	});
-
-	it('reads a one-sided speaker template, with and without timestamps', () => {
-		const colon: NoteSpeakerTemplates = {
-			lineFormat: '{timestamp} {speaker} {text}',
-			speakerFormat: '{speaker}:',
-			includeTimestamps: true,
-		};
-		// The colon inside the timecode does not fool the capture.
-		expect(
-			extractNoteSpeakers(
-				'[00:00](rec.wav#t=0) Speaker 1: hello',
-				colon,
-				null,
-			),
-		).toEqual(['Speaker 1']);
-		expect(
-			extractNoteSpeakers(
-				'Speaker 1: hello\nSpeaker 2: hi',
-				{ ...colon, includeTimestamps: false },
-				null,
-			),
-		).toEqual(['Speaker 1', 'Speaker 2']);
-	});
-
-	it('ignores bold text that is not the speaker label', () => {
-		const line = '[00:00](rec.wav#t=0) **Speaker 1** the **key** point';
-		expect(extractNoteSpeakers(line, TEMPLATES, null)).toEqual([
-			'Speaker 1',
-		]);
-	});
-
-	it('reads speakers from subtitle, plain-text, and JSON outputs', () => {
-		const srt =
-			'1\n00:00:00,000 --> 00:00:01,000\nSpeaker 1: hi\n\n' +
-			'2\n00:00:01,000 --> 00:00:02,000\nSpeaker 2: yes';
-		expect(extractSubtitleSpeakers(srt)).toEqual([
-			'Speaker 1',
-			'Speaker 2',
-		]);
-		expect(
-			extractPlainTextSpeakers(
-				'[0:00] Speaker 1: hi\n[0:05] Speaker 2: no',
-			),
-		).toEqual(['Speaker 1', 'Speaker 2']);
-		expect(
-			extractJsonSpeakers(
-				JSON.stringify({
-					segments: [
-						{ speaker: 'Speaker 1' },
-						{ speaker: 'Speaker 2' },
-						{ speaker: 'Speaker 1' },
-					],
-				}),
-			),
-		).toEqual(['Speaker 1', 'Speaker 2']);
-		expect(extractJsonSpeakers('not json')).toBeNull();
 	});
 });

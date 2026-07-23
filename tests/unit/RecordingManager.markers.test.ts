@@ -7,7 +7,6 @@
 import { RecordingManager } from 'src/recording/RecordingManager';
 import { RecordingStatus } from 'src/types';
 import { MARKER_KIND } from 'src/markers/markerModel';
-import type { PlayerMarker } from 'src/markers/markerModel';
 import {
 	DEFAULT_SETTINGS,
 	AudioRecorderSettings,
@@ -98,6 +97,7 @@ describe('RecordingManager', () => {
 			mockApp,
 			mockSettings,
 			statusChangeCallback,
+			makeFakeMarkerStore().store,
 		);
 	});
 
@@ -152,8 +152,8 @@ describe('RecordingManager', () => {
 			);
 		});
 
-		// A commit/cancel queues fire-and-forget sidecar writes (get -> set is
-		// two microtask hops); draining a few turns lets them settle.
+		// A commit/cancel queues fire-and-forget atomic sidecar updates;
+		// draining a few microtask turns lets them settle.
 		const flushMicrotasks = async (): Promise<void> => {
 			for (let i = 0; i < 5; i++) {
 				await Promise.resolve();
@@ -170,7 +170,7 @@ describe('RecordingManager', () => {
 		};
 
 		it('persists a marker dropped during recording to the sidecar at stop', async () => {
-			const { store, set } = makeFakeMarkerStore();
+			const { store, writes } = makeFakeMarkerStore();
 			mockSettings = {
 				...DEFAULT_SETTINGS,
 				playerEnableMarkers: true,
@@ -180,8 +180,6 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				undefined,
-				undefined,
 				store,
 			);
 
@@ -191,11 +189,8 @@ describe('RecordingManager', () => {
 			handle?.commit('Intro', MARKER_KIND.bookmark);
 			await feedChunkAndStop();
 
-			expect(set).toHaveBeenCalledTimes(1);
-			const [path, markers] = set.mock.calls[0] as [
-				string,
-				PlayerMarker[],
-			];
+			expect(writes).toHaveLength(1);
+			const { path, markers } = writes[0];
 			expect(typeof path).toBe('string');
 			expect(markers).toHaveLength(1);
 			expect(markers[0]).toMatchObject({
@@ -217,8 +212,6 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				undefined,
-				undefined,
 				store,
 			);
 
@@ -236,7 +229,7 @@ describe('RecordingManager', () => {
 		});
 
 		it('numbers default marker labels sequentially within a session', async () => {
-			const { store, set } = makeFakeMarkerStore();
+			const { store, writes } = makeFakeMarkerStore();
 			mockSettings = {
 				...DEFAULT_SETTINGS,
 				playerEnableMarkers: true,
@@ -246,8 +239,6 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				undefined,
-				undefined,
 				store,
 			);
 
@@ -257,15 +248,22 @@ describe('RecordingManager', () => {
 			manager.captureMarkerDraft()?.commit('', MARKER_KIND.bookmark);
 			await feedChunkAndStop();
 
-			const markers = set.mock.calls[0][1] as PlayerMarker[];
+			const markers = writes[0].markers;
 			expect(markers.map((marker) => marker.label).sort()).toEqual([
 				'Marker 1',
 				'Marker 2',
 			]);
 		});
 
-		it('discards a cancelled marker so it is never persisted', async () => {
-			const { store, set } = makeFakeMarkerStore();
+		it('says out loud when the session markers could not be saved', async () => {
+			// A corrupt sidecar refuses the write; the loss of a whole
+			// session's markers must reach the user, not just the console.
+			const store = {
+				getMarkers: jest.fn().mockResolvedValue([]),
+				updateMarkers: jest
+					.fn()
+					.mockRejectedValue(new Error('sidecar could not be read')),
+			} as unknown as import('src/sidecar/RecordingSidecarStore').RecordingSidecarStore;
 			mockSettings = {
 				...DEFAULT_SETTINGS,
 				playerEnableMarkers: true,
@@ -275,8 +273,31 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				undefined,
-				undefined,
+				store,
+			);
+
+			await manager.startRecording();
+			manager.captureMarkerDraft()?.commit('Intro', MARKER_KIND.bookmark);
+			await feedChunkAndStop();
+
+			const { Notice } = jest.requireMock('obsidian');
+			expect(Notice).toHaveBeenCalledWith(
+				expect.stringContaining('could not be saved'),
+			);
+			expect(consoleErrorSpy).toHaveBeenCalled();
+		});
+
+		it('discards a cancelled marker so it is never persisted', async () => {
+			const { store, update } = makeFakeMarkerStore();
+			mockSettings = {
+				...DEFAULT_SETTINGS,
+				playerEnableMarkers: true,
+				insertAtOriginalPosition: false,
+			};
+			manager = new RecordingManager(
+				mockApp,
+				mockSettings,
+				statusChangeCallback,
 				store,
 			);
 
@@ -284,11 +305,11 @@ describe('RecordingManager', () => {
 			manager.captureMarkerDraft()?.cancel();
 			await feedChunkAndStop();
 
-			expect(set).not.toHaveBeenCalled();
+			expect(update).not.toHaveBeenCalled();
 		});
 
 		it('applies a label edit committed after the session has stopped', async () => {
-			const { store, set, read } = makeStatefulMarkerStore();
+			const { store, writes, read } = makeStatefulMarkerStore();
 			mockSettings = {
 				...DEFAULT_SETTINGS,
 				playerEnableMarkers: true,
@@ -298,8 +319,6 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				undefined,
-				undefined,
 				store,
 			);
 
@@ -311,7 +330,7 @@ describe('RecordingManager', () => {
 			handle?.commit('Renamed live', MARKER_KIND.chapter);
 			await flushMicrotasks();
 
-			const path = set.mock.calls[0][0] as string;
+			const path = writes[0].path;
 			const final = read(path);
 			expect(final).toHaveLength(1);
 			expect(final[0]).toMatchObject({
@@ -321,7 +340,7 @@ describe('RecordingManager', () => {
 		});
 
 		it('removes a marker cancelled after the session has stopped', async () => {
-			const { store, set, read } = makeStatefulMarkerStore();
+			const { store, writes, read } = makeStatefulMarkerStore();
 			mockSettings = {
 				...DEFAULT_SETTINGS,
 				playerEnableMarkers: true,
@@ -331,15 +350,13 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				undefined,
-				undefined,
 				store,
 			);
 
 			await manager.startRecording();
 			const handle = manager.captureMarkerDraft();
 			await feedChunkAndStop();
-			const path = set.mock.calls[0][0] as string;
+			const path = writes[0].path;
 			expect(read(path)).toHaveLength(1);
 
 			handle?.cancel();
@@ -354,6 +371,7 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
+				makeFakeMarkerStore().store,
 			);
 
 			expect(manager.canDropMarker()).toBe(false);
@@ -366,6 +384,7 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
+				makeFakeMarkerStore().store,
 			);
 
 			await manager.startRecording();
@@ -380,6 +399,7 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
+				makeFakeMarkerStore().store,
 			);
 
 			await manager.startRecording();

@@ -9,7 +9,7 @@
 
 import type { App } from 'obsidian';
 import type { RecordingManager } from 'src/recording/RecordingManager';
-import type { MarkerStore } from 'src/markers/MarkerStore';
+import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { PlayerMarker } from 'src/markers/markerModel';
 
 /**
@@ -168,37 +168,68 @@ export const getChunkTarget = (
 		index
 	];
 
+/** One atomic marker write observed by a marker-store double. */
+export interface MarkerWrite {
+	path: string;
+	markers: PlayerMarker[];
+}
+
 /**
- * Builds a MarkerStore double that accepts writes and remembers none.
- * @returns The store double and its set spy
+ * Builds a marker-store double whose atomic updates always start from an
+ * empty sidecar and remember nothing between writes.
+ * @returns The store double, its update spy, and the observed writes
  */
 export const makeFakeMarkerStore = (): {
-	store: MarkerStore;
-	set: jest.Mock;
+	store: RecordingSidecarStore;
+	update: jest.Mock;
+	writes: MarkerWrite[];
 } => {
-	const set = jest.fn().mockResolvedValue(undefined);
+	const writes: MarkerWrite[] = [];
+	const update = jest.fn(
+		(
+			path: string,
+			change: (
+				existing: readonly PlayerMarker[],
+			) => readonly PlayerMarker[],
+		) => {
+			const merged = [...change([])];
+			writes.push({ path, markers: merged });
+			return Promise.resolve(merged);
+		},
+	);
 	const store = {
-		get: jest.fn().mockResolvedValue([]),
-		set,
-	} as unknown as MarkerStore;
-	return { store, set };
+		getMarkers: jest.fn().mockResolvedValue([]),
+		updateMarkers: update,
+	} as unknown as RecordingSidecarStore;
+	return { store, update, writes };
 };
 
 // A store that actually remembers what was written, so reach-through
 // edits/removals after stop can be asserted against the final state.
 export const makeStatefulMarkerStore = (): {
-	store: MarkerStore;
-	set: jest.Mock;
+	store: RecordingSidecarStore;
+	writes: MarkerWrite[];
 	read: (path: string) => PlayerMarker[];
 } => {
 	const data = new Map<string, PlayerMarker[]>();
-	const set = jest.fn((path: string, markers: PlayerMarker[]) => {
-		data.set(path, [...markers]);
-		return Promise.resolve();
-	});
+	const writes: MarkerWrite[] = [];
 	const store = {
-		get: jest.fn((path: string) => Promise.resolve(data.get(path) ?? [])),
-		set,
-	} as unknown as MarkerStore;
-	return { store, set, read: (path) => data.get(path) ?? [] };
+		getMarkers: jest.fn((path: string) =>
+			Promise.resolve([...(data.get(path) ?? [])]),
+		),
+		updateMarkers: jest.fn(
+			(
+				path: string,
+				change: (
+					existing: readonly PlayerMarker[],
+				) => readonly PlayerMarker[],
+			) => {
+				const merged = [...change(data.get(path) ?? [])];
+				data.set(path, merged);
+				writes.push({ path, markers: merged });
+				return Promise.resolve(merged);
+			},
+		),
+	} as unknown as RecordingSidecarStore;
+	return { store, writes, read: (path) => data.get(path) ?? [] };
 };

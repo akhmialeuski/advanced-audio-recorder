@@ -45,8 +45,8 @@ flowchart TB
         MKS[MediaKindStore]
     end
 
-    subgraph Mark["Markers domain"]
-        MRK[MarkerStore]
+    subgraph Mark["Recording sidecar domain"]
+        MRK[RecordingSidecarStore]
     end
 
     subgraph Act["Action registry"]
@@ -110,7 +110,7 @@ flowchart TB
 What to notice:
 
 - **The plugin object is a thin coordinator.** `main.ts` builds the managers, wires their callbacks, and forwards UI events to them. The real work lives in the subsystem classes.
-- **One `MarkerStore` is shared** by the recording subsystem (which writes markers captured during a session) and the player subsystem (which reads and edits them), so their cache and serialized write chain stay unified. Markers are a standalone domain (`src/markers/`), owned by neither subsystem.
+- **One `RecordingSidecarStore` is shared** by the recording subsystem (which writes markers captured during a session), the player subsystem (which reads and edits them), auto chapters, and the transcription feature (which stores the speaker roster and written outputs in the same sidecar document), so their cache and serialized write chain stay unified. The marker data model is a standalone domain (`src/markers/`), owned by neither subsystem; the sidecar persistence lives in `src/sidecar/`.
 - **File actions are defined once, in a shared action registry** (`src/actions/`). The same declarative list - info, convert, split, clean up, transcribe, delete - is rendered into the file and editor context menus and registered as palette commands, so every action can also be assigned a hotkey. See [File operations](file-operations.md).
 - **Settings persist to `data.json`** with an automatic `data.json.bak` next to it, described in [Settings load and backup](#settings-load-and-backup).
 
@@ -124,7 +124,7 @@ What to notice:
 flowchart TD
     START([onload]) --> LS[loadSettings: read data.json,<br/>restore from backup, write backup]
     LS --> EW[Create encoding Web Worker client]
-    EW --> JR[Create SessionJournal + MarkerStore]
+    EW --> JR[Create SessionJournal + RecordingSidecarStore]
     JR --> MGR[Build RecordingManager + RecordingBanner]
     MGR --> TAB[Add settings tab]
     TAB --> CMDS[Register commands]
@@ -368,7 +368,8 @@ The `src/` tree groups code by concern. The table below maps each area to its ke
 | Audio encoding   | `audio/` (`AudioEncoder`, `AudioFormatConverter`, `formatRegistry`)      | Format registry, capability detection, PCM/WAV encoding, conversion, and the Web Worker encoding offload                                                |
 | Actions          | `actions/` (`fileActions`, `PluginAction`, `registerActionCommands`)     | Single declarative list of file/recording actions, rendered into every menu and registered as commands                                                  |
 | Player           | `player/` (`EnhancedPlayerRegistrar`, `AudioPlayer`, controllers, views) | Embed takeover, container probing (persisted in `MediaKindStore`), waveform decode/cache, playback controls                                             |
-| Markers          | `markers/` (`MarkerStore`, `markerModel`, `markerFactory`)               | Reads, edits, and persists per-recording marker sidecars; follows rename, move, and delete                                                              |
+| Markers          | `markers/` (`markerModel`, `markerFactory`)                              | Pure marker/chapter data model: ordering, navigation, (de)serialization                                                                                 |
+| Recording sidecar | `sidecar/` (`RecordingSidecarStore`, `recordingSidecarModel`)           | Persists the per-recording sidecar (markers + transcript roster/outputs/history); follows rename, move, and delete                                      |
 | Transcription    | `transcription/` (`TranscriptionService`, `api`)                         | Audio preparation, provider dispatch, cancellation, stitching, output formatting and destinations                                                       |
 | Providers        | `transcription/providers/`                                               | Whisper API, Deepgram, Gemini, and local whisper.cpp engine implementations                                                                             |
 | LLM post-process | `transcription/llm/`, `llmPostProcess.ts`                                | Clean up, summarize, or apply a custom instruction to a finished transcript                                                                             |

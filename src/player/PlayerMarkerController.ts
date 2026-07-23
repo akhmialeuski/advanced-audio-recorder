@@ -9,7 +9,7 @@
 import { Notice } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { formatTimecode } from '../utils/TimeUtils';
-import type { MarkerStore } from '../markers/MarkerStore';
+import type { RecordingSidecarStore } from '../sidecar/RecordingSidecarStore';
 import {
 	addMarker,
 	chapters,
@@ -48,7 +48,7 @@ export class PlayerMarkerController {
 	private markers: PlayerMarker[] = [];
 
 	constructor(
-		private readonly markerStore: MarkerStore,
+		private readonly markerStore: RecordingSidecarStore,
 		private readonly filePath: string,
 		private readonly host: PlayerMarkerHost,
 	) {}
@@ -68,7 +68,7 @@ export class PlayerMarkerController {
 	 */
 	async load(): Promise<void> {
 		try {
-			const stored = await this.markerStore.get(this.filePath);
+			const stored = await this.markerStore.getMarkers(this.filePath);
 			if (this.host.isUnloaded()) {
 				return;
 			}
@@ -92,15 +92,19 @@ export class PlayerMarkerController {
 	async addAt(time: number, kind: MarkerKind): Promise<void> {
 		const safeTime = Math.max(0, time);
 		const label = defaultMarkerLabel(this.markers, kind);
-		this.markers = addMarker(this.markers, {
+		const marker = {
 			id: generateMarkerId(),
 			time: safeTime,
 			label,
 			kind,
-		});
+		};
+		this.markers = addMarker(this.markers, marker);
 		this.host.renderMarkers();
-		await this.persist();
-		new Notice(`${label} added at ${formatTimecode(safeTime)}`);
+		// The success notice is earned by the persist: announcing an add whose
+		// write was refused would report a marker that does not exist.
+		if (await this.persist((stored) => addMarker(stored, marker))) {
+			new Notice(`${label} added at ${formatTimecode(safeTime)}`);
+		}
 	}
 
 	/**
@@ -110,7 +114,7 @@ export class PlayerMarkerController {
 	async remove(id: string): Promise<void> {
 		this.markers = removeMarker(this.markers, id);
 		this.host.renderMarkers();
-		await this.persist();
+		await this.persist((stored) => removeMarker(stored, id));
 	}
 
 	/**
@@ -122,7 +126,7 @@ export class PlayerMarkerController {
 	async rename(id: string, label: string): Promise<void> {
 		this.markers = updateMarker(this.markers, id, { label });
 		this.host.refreshTicks();
-		await this.persist();
+		await this.persist((stored) => updateMarker(stored, id, { label }));
 	}
 
 	/**
@@ -143,19 +147,70 @@ export class PlayerMarkerController {
 	}
 
 	/**
-	 * Persists the current markers for this file.
+	 * Persists one marker operation through the store's atomic
+	 * read-modify-write, so a concurrent writer (a recording-session flush,
+	 * auto chapters) merged between this player's read and write is never
+	 * clobbered. The merged result becomes the authoritative list; a change
+	 * another writer contributed triggers a re-render. A refused write (the
+	 * store rejects for a corrupt sidecar) is surfaced with a Notice and the
+	 * view is re-synced with the store, so an optimistic edit never stays on
+	 * screen pretending it was saved.
+	 * @param update - The same pure operation, applied to the stored list
+	 * @returns True when the operation was persisted
 	 */
-	private async persist(): Promise<void> {
+	private async persist(
+		update: (stored: PlayerMarker[]) => readonly PlayerMarker[],
+	): Promise<boolean> {
 		try {
-			await this.markerStore.set(this.filePath, this.markers);
+			const merged = await this.markerStore.updateMarkers(
+				this.filePath,
+				update,
+			);
+			if (this.host.isUnloaded()) {
+				return true;
+			}
+			if (!sameMarkers(this.markers, merged)) {
+				this.markers = merged;
+				this.host.renderMarkers();
+			} else {
+				this.markers = merged;
+			}
 			// Refresh other live players of this file (e.g. the reading-view
 			// copy) so the change shows everywhere without re-opening
 			this.host.notifyOthers();
+			return true;
 		} catch (error) {
 			console.warn(
 				`${PLUGIN_LOG_PREFIX} Failed to save markers for ${this.filePath}:`,
 				error,
 			);
+			if (!this.host.isUnloaded()) {
+				const message =
+					error instanceof Error ? error.message : String(error);
+				new Notice(`Markers could not be saved: ${message}`);
+				await this.load();
+			}
+			return false;
 		}
 	}
+}
+
+/** Whether two marker lists are identical in ids, times, labels, and kinds. */
+function sameMarkers(
+	a: readonly PlayerMarker[],
+	b: readonly PlayerMarker[],
+): boolean {
+	if (a.length !== b.length) {
+		return false;
+	}
+	return a.every((marker, index) => {
+		const other = b[index];
+		return (
+			other !== undefined &&
+			marker.id === other.id &&
+			marker.time === other.time &&
+			marker.label === other.label &&
+			marker.kind === other.kind
+		);
+	});
 }

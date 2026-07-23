@@ -17,6 +17,7 @@ import type { App } from 'obsidian';
 import {
 	createRecordingMockApp,
 	installRecordingMediaStubs,
+	makeFakeMarkerStore,
 } from './helpers/recordingManagerTestKit';
 
 // Mock AudioContext, OfflineAudioContext, and AudioBuffer. The kit's
@@ -74,6 +75,7 @@ describe('AudioStreamHandler: Error Handling', () => {
 			mockApp,
 			mockSettings,
 			statusChangeCallback,
+			makeFakeMarkerStore().store,
 		);
 
 		// Mock MediaRecorder
@@ -257,6 +259,7 @@ describe('Start failure after stream acquisition', () => {
 			mockApp,
 			mockSettings,
 			statusChangeCallback,
+			makeFakeMarkerStore().store,
 		);
 
 		trackStop = jest.fn();
@@ -317,6 +320,7 @@ describe('Start failure after stream acquisition', () => {
 			mockApp,
 			mockSettings,
 			statusChangeCallback,
+			makeFakeMarkerStore().store,
 		);
 
 		await manager.startRecording();

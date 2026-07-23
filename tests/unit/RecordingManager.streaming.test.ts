@@ -18,6 +18,7 @@ import {
 	flushAsync,
 	getChunkTarget,
 	installRecordingMediaStubs,
+	makeFakeMarkerStore,
 	setDesktopPlatform,
 	type MutableTarget,
 } from './helpers/recordingManagerTestKit';
@@ -112,6 +113,7 @@ describe('RecordingManager', () => {
 			mockApp,
 			mockSettings,
 			statusChangeCallback,
+			makeFakeMarkerStore().store,
 		);
 	});
 
@@ -341,6 +343,7 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
+				makeFakeMarkerStore().store,
 			);
 
 			(global as Record<string, unknown>).MediaRecorder = jest.fn();
@@ -489,6 +492,7 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
+				makeFakeMarkerStore().store,
 			);
 
 			const { getAudioStreams } = jest.requireMock(
@@ -593,6 +597,7 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
+				makeFakeMarkerStore().store,
 			);
 		}
 

@@ -8,7 +8,7 @@ import { Notice } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import { AutoChapterService } from 'src/chapters/AutoChapterService';
 import { AUTO_CHAPTER_ID_PREFIX } from 'src/chapters/chapterGeneration';
-import type { MarkerStore } from 'src/markers/MarkerStore';
+import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import { MARKER_KIND, type PlayerMarker } from 'src/markers/markerModel';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
@@ -29,16 +29,30 @@ const TRANSCRIPT: Transcript = {
 };
 
 function makeStore(initial: PlayerMarker[] = []): {
-	store: MarkerStore;
+	store: RecordingSidecarStore;
 	saved: () => PlayerMarker[] | null;
 } {
 	let written: PlayerMarker[] | null = null;
 	const store = {
-		get: jest.fn(async () => initial),
-		set: jest.fn(async (_path: string, markers: PlayerMarker[]) => {
-			written = markers;
-		}),
-	} as unknown as MarkerStore;
+		getMarkers: jest.fn(async () => initial),
+		getTranscript: jest.fn(async () => ({
+			speakers: [],
+			noteOutputs: [],
+			fileOutputs: [],
+			history: [],
+		})),
+		updateMarkers: jest.fn(
+			async (
+				_path: string,
+				change: (
+					existing: readonly PlayerMarker[],
+				) => readonly PlayerMarker[],
+			) => {
+				written = [...change(initial)];
+				return written;
+			},
+		),
+	} as unknown as RecordingSidecarStore;
 	return { store, saved: () => written };
 }
 
@@ -57,7 +71,7 @@ function makeLlm(output: string | Error): LlmProvider {
 
 function makeService(options: {
 	llm: LlmProvider;
-	store: MarkerStore;
+	store: RecordingSidecarStore;
 	onWritten?: (path: string) => void;
 	app?: App;
 	settings?: Partial<AudioRecorderSettings>;

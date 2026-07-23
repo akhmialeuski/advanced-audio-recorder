@@ -7,8 +7,9 @@
  * @module recording/RecordingMarkerCoordinator
  */
 
+import { Notice } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
-import { MarkerStore } from '../markers/MarkerStore';
+import type { RecordingSidecarStore } from '../sidecar/RecordingSidecarStore';
 import {
 	MARKER_KIND,
 	removeMarker,
@@ -51,7 +52,7 @@ export class RecordingMarkerCoordinator {
 	/**
 	 * @param markerStore - Sidecar store the persisted markers are written to
 	 */
-	constructor(private readonly markerStore: MarkerStore) {}
+	constructor(private readonly markerStore: RecordingSidecarStore) {}
 
 	/**
 	 * Resets the draft buffer and the persisted-path index for a new session.
@@ -147,19 +148,30 @@ export class RecordingMarkerCoordinator {
 				this.persistedPaths.set(marker.id, paths);
 			}
 		}
+		let failed = 0;
 		for (const { path, markers } of writes) {
 			try {
-				const existing = await this.markerStore.get(path);
-				await this.markerStore.set(
-					path,
+				// Atomic read-modify-write: a marker another writer persisted
+				// between this read and write is merged, not clobbered.
+				await this.markerStore.updateMarkers(path, (existing) =>
 					sortMarkers([...existing, ...markers]),
 				);
 			} catch (error) {
+				failed++;
 				console.error(
 					`${PLUGIN_LOG_PREFIX} Failed to persist recording markers for ${path}:`,
 					error,
 				);
 			}
+		}
+		// The session's markers exist only in this buffer; losing a write
+		// must be said out loud, not just logged, or the user discovers the
+		// loss days later when the player shows nothing.
+		if (failed > 0) {
+			new Notice(
+				`Markers of this recording could not be saved for ${String(failed)} ` +
+					'file(s); see the developer console for details.',
+			);
 		}
 	}
 
@@ -189,9 +201,7 @@ export class RecordingMarkerCoordinator {
 		}
 		for (const path of paths) {
 			try {
-				const existing = await this.markerStore.get(path);
-				await this.markerStore.set(
-					path,
+				await this.markerStore.updateMarkers(path, (existing) =>
 					updateMarker(existing, draft.id, {
 						label: draft.label,
 						kind: draft.kind,
@@ -220,8 +230,9 @@ export class RecordingMarkerCoordinator {
 		this.persistedPaths.delete(id);
 		for (const path of paths) {
 			try {
-				const existing = await this.markerStore.get(path);
-				await this.markerStore.set(path, removeMarker(existing, id));
+				await this.markerStore.updateMarkers(path, (existing) =>
+					removeMarker(existing, id),
+				);
 			} catch (error) {
 				console.error(
 					`${PLUGIN_LOG_PREFIX} Failed to remove persisted marker for ${path}:`,

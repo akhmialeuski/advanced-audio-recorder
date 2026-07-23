@@ -15,6 +15,7 @@ import {
 	createDesktopRecorder,
 	createRecordingMockApp,
 	installRecordingMediaStubs,
+	makeFakeMarkerStore,
 	setDesktopPlatform,
 } from './helpers/recordingManagerTestKit';
 
@@ -124,7 +125,12 @@ describe('RecordingManager mono channel wiring', () => {
 		setDesktopPlatform();
 		mockApp = createRecordingMockApp();
 		mockSettings = { ...DEFAULT_SETTINGS };
-		manager = new RecordingManager(mockApp, mockSettings, jest.fn());
+		manager = new RecordingManager(
+			mockApp,
+			mockSettings,
+			jest.fn(),
+			makeFakeMarkerStore().store,
+		);
 	});
 
 	afterEach(() => {

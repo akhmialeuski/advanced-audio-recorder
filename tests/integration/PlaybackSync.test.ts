@@ -15,7 +15,7 @@ import {
 	playbackKey,
 } from 'src/player/AudioPlayerRegistry';
 import { WaveformPeakCache, type AudioDecoder } from 'src/player/WaveformData';
-import type { MarkerStore } from 'src/markers/MarkerStore';
+import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { PlayerMarker } from 'src/markers/markerModel';
 import type { ResolvedPlayerSettings } from 'src/player/playerSettings';
 import type { PlaybackControlsState } from 'src/player/playbackControls';
@@ -107,15 +107,25 @@ const WITH_MARKERS: ResolvedPlayerSettings = {
 };
 
 /** In-memory marker store the players can read without persistence. */
-function makeMarkerStore(): MarkerStore {
+function makeMarkerStore(): RecordingSidecarStore {
 	const data = new Map<string, PlayerMarker[]>();
 	return {
-		get: jest.fn((path: string) => Promise.resolve(data.get(path) ?? [])),
-		set: jest.fn((path: string, markers: PlayerMarker[]) => {
-			data.set(path, markers);
-			return Promise.resolve();
-		}),
-	} as unknown as MarkerStore;
+		getMarkers: jest.fn((path: string) =>
+			Promise.resolve([...(data.get(path) ?? [])]),
+		),
+		updateMarkers: jest.fn(
+			(
+				path: string,
+				change: (
+					existing: readonly PlayerMarker[],
+				) => readonly PlayerMarker[],
+			) => {
+				const merged = [...change(data.get(path) ?? [])];
+				data.set(path, merged);
+				return Promise.resolve(merged);
+			},
+		),
+	} as unknown as RecordingSidecarStore;
 }
 
 function makeFile(): TFile {
@@ -159,7 +169,7 @@ function makeEditableContainer(): HTMLElement {
 /** Mounts a markers-enabled real AudioPlayer into the given container. */
 function mountMarkerPlayer(
 	registry: AudioPlayerRegistry,
-	store: MarkerStore,
+	store: RecordingSidecarStore,
 	container: HTMLElement,
 ): void {
 	new AudioPlayer(
@@ -287,7 +297,7 @@ describe('status-bar markers follow the player edit mode', () => {
 			// read-only view
 			state?.onAddMarker('bookmark');
 			await tick();
-			expect(store.set).not.toHaveBeenCalled();
+			expect(store.updateMarkers).not.toHaveBeenCalled();
 		} finally {
 			shared.restore();
 		}
@@ -314,7 +324,7 @@ describe('status-bar markers follow the player edit mode', () => {
 			expect(state?.markersEnabled).toBe(true);
 			state?.onAddMarker('chapter');
 			await tick();
-			expect(store.set).toHaveBeenCalled();
+			expect(store.updateMarkers).toHaveBeenCalled();
 		} finally {
 			shared.restore();
 		}
@@ -350,7 +360,7 @@ describe('generated chapters reach an already-open player', () => {
 			// Auto chapters write the sidecar, then the registrar reloads
 			// every open player of the file through the shared marker-reload
 			// path (source is null: the write came from outside any player)
-			await store.set('rec.mp4', CHAPTERS);
+			await store.updateMarkers('rec.mp4', () => CHAPTERS);
 			registry.reloadMarkers('rec.mp4', null);
 			await tick();
 
@@ -381,7 +391,7 @@ describe('generated chapters reach an already-open player', () => {
 			container.remove();
 			expect(container.isConnected).toBe(false);
 
-			await store.set('rec.mp4', CHAPTERS);
+			await store.updateMarkers('rec.mp4', () => CHAPTERS);
 			registry.reloadMarkers('rec.mp4', null);
 			await tick();
 

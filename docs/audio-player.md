@@ -185,6 +185,7 @@ Markers are stored in a **sidecar file** next to each recording, named `<recordi
 - Markers **survive a plugin reinstall**.
 - They **travel with the vault**.
 - Renaming, moving, or deleting the recording **moves or removes its sidecar automatically**, so markers stay attached and never orphan. Deleting all of a recording's markers removes the sidecar once it holds no transcript data either, so the vault is not left with empty files.
+- A sidecar file that exists but **cannot be read** (damaged JSON, a sync conflict) is treated as unreachable rather than empty: the plugin pauses writes to it so the possibly intact data is never overwritten, and re-reads the file on every access, so fixing or removing it recovers without a restart. A marker edit refused this way is **said out loud**: the player shows why the save failed and rolls the view back instead of pretending the marker was added.
 
 Markers can also be added **while recording**, before the file even exists as a player - see [Marking moments while recording](recording.md#marking-moments-while-recording). Those markers attach to the recording's sidecar at save and show up in the player once the recording stops.
 

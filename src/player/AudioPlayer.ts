@@ -46,7 +46,7 @@ import type {
 	AudioPlayerRegistry,
 	SeekablePlayer,
 } from './AudioPlayerRegistry';
-import type { MarkerStore } from '../markers/MarkerStore';
+import type { RecordingSidecarStore } from '../sidecar/RecordingSidecarStore';
 import type { MarkerKind } from '../markers/markerModel';
 import { speedMenuItems } from './playbackRate';
 import { isEditableContext } from './playerMode';
@@ -174,7 +174,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		private readonly registry: AudioPlayerRegistry,
 		peakCache: WaveformPeakCache,
 		decoder: AudioDecoder,
-		markerStore: MarkerStore,
+		markerStore: RecordingSidecarStore,
 		private readonly options: AudioPlayerOptions,
 	) {
 		super(containerEl);

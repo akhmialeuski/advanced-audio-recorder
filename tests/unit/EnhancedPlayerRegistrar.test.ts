@@ -31,7 +31,7 @@ import { AUDIO_EXTENSIONS } from 'src/constants';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import type { EmbedInfo } from 'src/obsidian/embedRegistry';
-import type { MarkerStore } from 'src/markers/MarkerStore';
+import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 
 jest.mock('src/player/AudioPlayer', () => ({
 	AudioPlayer: jest.fn().mockImplementation(() => ({
@@ -144,6 +144,12 @@ function setup(
 	getLeaves: jest.Mock;
 	plugin: Plugin;
 	app: App;
+	markerStore: {
+		handleRename: jest.Mock;
+		handleDelete: jest.Mock;
+		handleOutputRename: jest.Mock;
+		clearCache: jest.Mock;
+	};
 } {
 	const settings: AudioRecorderSettings = {
 		...DEFAULT_SETTINGS,
@@ -195,16 +201,17 @@ function setup(
 	} as unknown as Plugin;
 
 	const markerStore = {
-		handleRename: jest.fn(),
-		handleDelete: jest.fn(),
+		handleRename: jest.fn().mockResolvedValue(undefined),
+		handleDelete: jest.fn().mockResolvedValue(undefined),
+		handleOutputRename: jest.fn().mockResolvedValue(undefined),
 		clearCache: jest.fn(),
-	} as unknown as MarkerStore;
+	};
 
 	const registrar = new EnhancedPlayerRegistrar(
 		plugin,
 		app,
 		() => settings,
-		markerStore,
+		markerStore as unknown as RecordingSidecarStore,
 		kindStore,
 	);
 	registrar.register();
@@ -224,6 +231,7 @@ function setup(
 		getLeaves,
 		plugin,
 		app,
+		markerStore,
 	};
 }
 
@@ -590,6 +598,78 @@ describe('EnhancedPlayerRegistrar persistent media kinds', () => {
 		registrar.dispose();
 
 		expect(kindStore.flush).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('EnhancedPlayerRegistrar vault rename/delete wiring', () => {
+	/** Returns a vault event handler the registrar installed on register. */
+	function vaultHandler(
+		app: App,
+		event: 'rename' | 'delete',
+	): (...args: unknown[]) => void {
+		const call = (app.vault.on as unknown as jest.Mock).mock.calls.find(
+			(args: unknown[]) => args[0] === event,
+		);
+		if (!call) {
+			throw new Error(`Expected a vault ${event} handler registration`);
+		}
+		return call[1] as (...args: unknown[]) => void;
+	}
+
+	it('routes an audio rename to the sidecar move, never the output scan', () => {
+		const kindStore = kindStoreStub();
+		const { app, markerStore } = setup(true, kindStore);
+
+		vaultHandler(app, 'rename')(fileFromPath('new.wav'), 'old.wav');
+
+		expect(markerStore.handleRename).toHaveBeenCalledWith(
+			'old.wav',
+			'new.wav',
+		);
+		expect(markerStore.handleOutputRename).not.toHaveBeenCalled();
+		expect(kindStore.handleRename).toHaveBeenCalledWith(
+			'old.wav',
+			'new.wav',
+		);
+	});
+
+	it('routes a non-audio rename to the recorded-output update', () => {
+		const { app, markerStore } = setup(true);
+
+		vaultHandler(app, 'rename')(
+			fileFromPath('archive/meeting.md'),
+			'meeting.md',
+		);
+
+		expect(markerStore.handleOutputRename).toHaveBeenCalledWith(
+			'meeting.md',
+			'archive/meeting.md',
+		);
+		expect(markerStore.handleRename).not.toHaveBeenCalled();
+	});
+
+	it('ignores a rename of something that is not a file (folder)', () => {
+		const { app, markerStore } = setup(true);
+
+		vaultHandler(app, 'rename')({ path: 'folder-b' }, 'folder-a');
+
+		expect(markerStore.handleRename).not.toHaveBeenCalled();
+		expect(markerStore.handleOutputRename).not.toHaveBeenCalled();
+	});
+
+	it('removes the sidecar only for a deleted audio file', () => {
+		const kindStore = kindStoreStub();
+		const { app, markerStore } = setup(true, kindStore);
+		const handler = vaultHandler(app, 'delete');
+
+		handler(fileFromPath('rec.wav'));
+		expect(markerStore.handleDelete).toHaveBeenCalledWith('rec.wav');
+		expect(kindStore.handleDelete).toHaveBeenCalledWith('rec.wav');
+
+		markerStore.handleDelete.mockClear();
+		handler(fileFromPath('note.md'));
+		handler({ path: 'folder' });
+		expect(markerStore.handleDelete).not.toHaveBeenCalled();
 	});
 });
 

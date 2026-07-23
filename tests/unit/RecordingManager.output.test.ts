@@ -15,6 +15,7 @@ import type { App } from 'obsidian';
 import {
 	createRecordingMockApp,
 	installRecordingMediaStubs,
+	makeFakeMarkerStore,
 } from './helpers/recordingManagerTestKit';
 
 // Mock obsidian module
@@ -107,6 +108,7 @@ describe('RecordingManager', () => {
 			mockApp,
 			mockSettings,
 			statusChangeCallback,
+			makeFakeMarkerStore().store,
 		);
 	});
 
@@ -130,6 +132,7 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
+				makeFakeMarkerStore().store,
 			);
 
 			(global as Record<string, unknown>).MediaRecorder = jest.fn();
@@ -243,6 +246,7 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
+				makeFakeMarkerStore().store,
 			);
 			setupTwoTrackRecording([
 				{ trackNumber: 1, deviceId: 'shared-device' },
@@ -278,6 +282,7 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
+				makeFakeMarkerStore().store,
 			);
 			setupTwoTrackRecording([
 				{ trackNumber: 1, deviceId: 'device-a' },
@@ -314,6 +319,7 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
+				makeFakeMarkerStore().store,
 			);
 
 			const mockMediaRecorders = [0, 1].map(() => ({
@@ -405,6 +411,7 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
+				makeFakeMarkerStore().store,
 			);
 
 			const mockMediaRecorders = [0, 1].map(() => ({
@@ -525,6 +532,7 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
+				makeFakeMarkerStore().store,
 			);
 
 			const mockMediaRecorders = [0, 1].map(() => ({
@@ -602,6 +610,7 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
+				makeFakeMarkerStore().store,
 			);
 
 			(global as Record<string, unknown>).MediaRecorder = jest.fn();
@@ -652,6 +661,7 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
+				makeFakeMarkerStore().store,
 			);
 			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
 				path: 'Meetings/2026/Meeting Note.md',
@@ -715,6 +725,7 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
+				makeFakeMarkerStore().store,
 			);
 			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
 				path: 'Meetings/2026/Meeting Note.md',
@@ -782,6 +793,7 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
+				makeFakeMarkerStore().store,
 			);
 			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
 				path: 'Meetings/2026/Meeting Note.md',
@@ -906,6 +918,7 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
+				makeFakeMarkerStore().store,
 			);
 			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
 				path: 'Projects/Notes/Daily.md',
@@ -1034,6 +1047,7 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
+				makeFakeMarkerStore().store,
 			);
 
 			await manager.startRecording();
@@ -1067,6 +1081,7 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
+				makeFakeMarkerStore().store,
 				undefined,
 				onRecordingSaved,
 			);
@@ -1129,6 +1144,7 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
+				makeFakeMarkerStore().store,
 			);
 
 			await manager.startRecording();
@@ -1172,6 +1188,7 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
+				makeFakeMarkerStore().store,
 			);
 
 			await manager.startRecording();
@@ -1208,6 +1225,7 @@ describe('RecordingManager', () => {
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
+				makeFakeMarkerStore().store,
 			);
 
 			await manager.startRecording();

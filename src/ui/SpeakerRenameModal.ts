@@ -1,15 +1,15 @@
 /**
  * Manual dialog that replaces the diarized labels of one recording
- * ("Speaker 1" -> "Alex") with participant names. The speaker roster comes
- * from the recording's sidecar transcript section when one exists - labels
- * with their already-assigned names prefilled, applied against the outputs
- * and render templates the sidecar recorded - and falls back to reading the
- * speakers straight out of the existing transcript outputs for recordings
- * transcribed before the section existed. A participant profile feeds the
- * input suggestions, applied mappings are kept in the sidecar history so the
- * last rename can be undone, merging two speakers into one name is rejected
- * for now, and a note without timecode links is only touched after the user
- * opts in.
+ * ("Speaker 1" -> "Alex") with participant names. The speaker roster lives in
+ * the recording's sidecar transcript section - labels with their assigned
+ * names prefilled - and renames are applied to the outputs the sidecar
+ * recorded, with the render templates each output was written with. A
+ * recording without a stored roster (transcribed before the roster existed,
+ * or never diarized) has nothing to rename until it is transcribed with
+ * diarization. A participant profile feeds the input suggestions, applied
+ * mappings are kept in the sidecar history so the last rename can be undone,
+ * merging two speakers into one name is rejected for now, and a note without
+ * timecode links is only touched after the user opts in.
  * @module ui/SpeakerRenameModal
  */
 
@@ -27,17 +27,13 @@ import type {
 	TranscriptSection,
 } from '../sidecar/recordingSidecarModel';
 import {
-	buildSpeakerRenames,
 	duplicateAssignedNames,
+	planSpeakerRename,
 	type SpeakerNameEntry,
-	type SpeakerRename,
 } from '../speakers/speakerRename';
 import {
-	applySpeakerRenamesToVault,
 	applySpeakerRenamesWithSidecar,
 	hasUnscopableRecordedNote,
-	inspectAudioTranscript,
-	type AudioTranscriptInspection,
 	type SpeakerRenameApplyResult,
 } from '../speakers/applySpeakerRenames';
 import { ParticipantSuggest } from './ParticipantSuggest';
@@ -50,10 +46,21 @@ import { ParticipantSuggest } from './ParticipantSuggest';
 export interface SpeakerRenameSidecarAccess {
 	/** Returns the stored transcript section for a recording path. */
 	getTranscript(path: string): Promise<TranscriptSection>;
-	/** Replaces the speaker roster for a recording path. */
+	/** Whether the sidecar file exists but could not be read (after a read). */
+	isSidecarCorrupt(path: string): boolean;
+	/**
+	 * Commits an applied rename atomically: roster and history entry in one
+	 * write, so neither can ever be persisted without the other.
+	 */
+	commitRename(
+		path: string,
+		entries: readonly SpeakerEntry[],
+		names: Record<string, string>,
+	): Promise<void>;
+	/** Replaces the speaker roster for a recording path (undo). */
 	setSpeakers(path: string, entries: readonly SpeakerEntry[]): Promise<void>;
-	/** Appends an applied name mapping to the rename history. */
-	pushHistory(path: string, names: Record<string, string>): Promise<void>;
+	/** Removes the newest history entry (an undo consumed it). */
+	popHistory(path: string): Promise<void>;
 }
 
 /** Collaborators the dialog needs, injected by the action registry. */
@@ -62,22 +69,17 @@ export interface SpeakerRenameModalOptions {
 	getSettings: () => AudioRecorderSettings;
 	/** Persists settings after a profile was created or extended. */
 	saveSettings: () => Promise<void>;
-	/**
-	 * Recording sidecar access. Absent (or without a stored roster), the
-	 * dialog works statelessly off the existing outputs as before.
-	 */
-	sidecar?: SpeakerRenameSidecarAccess;
+	/** Recording sidecar access: the roster and outputs to rename. */
+	sidecar: SpeakerRenameSidecarAccess;
 }
 
 /**
  * Speaker naming dialog for a single recording.
  */
 export class SpeakerRenameModal extends Modal {
-	/** Transcript inspection loaded on open; null until the async load runs. */
-	private inspection: AudioTranscriptInspection | null = null;
 	/**
-	 * The recording's sidecar transcript section when it carries a roster;
-	 * null puts the dialog on the stateless fallback path.
+	 * The recording's sidecar transcript section, loaded on open; null until
+	 * the async load runs (or after it failed).
 	 */
 	private section: TranscriptSection | null = null;
 	/** Name input per detected speaker, in roster order. */
@@ -104,40 +106,16 @@ export class SpeakerRenameModal extends Modal {
 	}
 
 	/**
-	 * Loads the roster - from the sidecar when it has one, otherwise from the
-	 * recording's outputs - and builds the dialog: a profile picker plus one
-	 * name field per speaker (prefilled with the stored name, when any), or
-	 * an explanation when the recording has no diarized transcript to rename.
+	 * Loads the stored roster and builds the dialog: a profile picker plus one
+	 * name field per speaker (prefilled with the stored name, when any), or an
+	 * explanation when no roster is stored - the recording has to be
+	 * transcribed with diarization first (recordings transcribed before the
+	 * roster existed need one new transcription).
 	 */
 	private async render(): Promise<void> {
 		const settings = this.options.getSettings();
 		this.section = await this.loadSection();
-		let roster: SpeakerEntry[];
-		if (this.section) {
-			roster = this.section.speakers;
-			this.inspection = {
-				roster: roster.map((entry) => entry.label),
-				hasUnscopableNote: hasUnscopableRecordedNote(
-					this.app,
-					this.file,
-					this.section,
-				),
-			};
-		} else {
-			// Stateless fallback for recordings transcribed before the sidecar
-			// section existed: extract the roster from the outputs with the
-			// current settings' templates.
-			this.inspection = await inspectAudioTranscript(
-				this.app,
-				this.file,
-				{
-					lineFormat: settings.transcriptLineFormat,
-					speakerFormat: settings.transcriptSpeakerFormat,
-					includeTimestamps: settings.transcriptIncludeTimestamps,
-				},
-			);
-			roster = this.inspection.roster.map((label) => ({ label }));
-		}
+		const section = this.section;
 		const { contentEl } = this;
 		contentEl.empty();
 		this.inputs.clear();
@@ -146,11 +124,34 @@ export class SpeakerRenameModal extends Modal {
 			text: `Source: ${this.file.name}`,
 		});
 
-		if (roster.length === 0) {
+		// An unreadable sidecar is not an empty one: the stored names may be
+		// intact on disk, so do not tell the user to re-transcribe.
+		if (this.options.sidecar.isSidecarCorrupt(this.file.path)) {
 			contentEl.createEl('p', {
 				text:
-					'No speakers were found in this recording transcript. ' +
-					'Transcribe it with speaker diarization first.',
+					'The sidecar file of this recording could not be read, ' +
+					'so its stored speaker data is unreachable. Restore or ' +
+					'remove the .markers.json file next to the recording ' +
+					'(writes to it are paused to protect it), then reopen ' +
+					'this dialog.',
+			});
+			const actions = contentEl.createDiv({
+				cls: 'modal-button-container',
+			});
+			const closeButton = actions.createEl('button', { text: 'Close' });
+			closeButton.addEventListener('click', () => {
+				this.close();
+			});
+			return;
+		}
+
+		if (!section || section.speakers.length === 0) {
+			contentEl.createEl('p', {
+				text:
+					'No speakers are stored for this recording. Transcribe ' +
+					'it with speaker diarization first; a recording ' +
+					'transcribed before speaker names were stored needs one ' +
+					'new transcription.',
 			});
 			const actions = contentEl.createDiv({
 				cls: 'modal-button-container',
@@ -164,7 +165,7 @@ export class SpeakerRenameModal extends Modal {
 
 		this.renderProfilePicker(settings);
 
-		for (const { label, name } of roster) {
+		for (const { label, name } of section.speakers) {
 			new Setting(contentEl)
 				.setName(label)
 				.setDesc('Leave empty to keep the original label.')
@@ -180,7 +181,7 @@ export class SpeakerRenameModal extends Modal {
 				});
 		}
 
-		if (this.inspection.hasUnscopableNote) {
+		if (hasUnscopableRecordedNote(this.app, this.file, section)) {
 			new Setting(contentEl)
 				.setName('Rename in notes without timecodes')
 				.setDesc(
@@ -203,7 +204,7 @@ export class SpeakerRenameModal extends Modal {
 		applyButton.addEventListener('click', () => {
 			void this.apply();
 		});
-		if (this.section && this.section.history.length > 0) {
+		if (section.history.length > 0) {
 			const undoButton = actions.createEl('button', {
 				text: 'Undo last rename',
 			});
@@ -218,22 +219,15 @@ export class SpeakerRenameModal extends Modal {
 	}
 
 	/**
-	 * Reads the recording's sidecar transcript section, returning it only
-	 * when it carries a roster to drive the dialog with. Any failure logs
-	 * and degrades to the stateless path.
+	 * Reads the recording's sidecar transcript section. Any failure logs and
+	 * degrades to the empty state rather than crashing the dialog.
 	 */
 	private async loadSection(): Promise<TranscriptSection | null> {
-		if (!this.options.sidecar) {
-			return null;
-		}
 		try {
-			const section = await this.options.sidecar.getTranscript(
-				this.file.path,
-			);
-			return section.speakers.length > 0 ? section : null;
+			return await this.options.sidecar.getTranscript(this.file.path);
 		} catch (error) {
 			console.warn(
-				`${PLUGIN_LOG_PREFIX} Failed to read the sidecar roster for ${this.file.path}; falling back to output inspection:`,
+				`${PLUGIN_LOG_PREFIX} Failed to read the sidecar roster for ${this.file.path}:`,
 				error,
 			);
 			return null;
@@ -318,13 +312,15 @@ export class SpeakerRenameModal extends Modal {
 	}
 
 	/**
-	 * Validates the entered names, adds them to the selected profile, and
-	 * rewrites the recording's existing outputs - through the sidecar's
-	 * recorded outputs and templates when a roster is stored, statelessly
-	 * otherwise. Reports what changed.
+	 * Validates the entered names, plans the rename against the stored
+	 * roster, rewrites the recorded outputs, and only then commits the new
+	 * roster and history - so the sidecar never asserts names the outputs
+	 * were not even attempted with. The plan's replacements also target the
+	 * original engine labels, healing outputs an earlier rewrite missed.
 	 */
 	private async apply(): Promise<void> {
-		if (!this.inspection || this.applying) {
+		const section = this.section;
+		if (!section || this.applying) {
 			return;
 		}
 		this.applying = true;
@@ -335,23 +331,58 @@ export class SpeakerRenameModal extends Modal {
 			}
 			const duplicates = duplicateAssignedNames(entries);
 			if (duplicates.length > 0) {
+				// Naming a speaker after another speaker's engine label is a
+				// distinct mistake (it would make their lines textually
+				// indistinguishable forever), so it gets its own explanation
+				// instead of the generic shared-name message.
+				const labels = new Set(entries.map((entry) => entry.label));
+				const labelCollisions = duplicates.filter((name) =>
+					labels.has(name),
+				);
 				new Notice(
-					`Two speakers cannot share a name (${duplicates.join(
-						', ',
-					)}). Give each a distinct name.`,
+					labelCollisions.length > 0
+						? `A name cannot equal another speaker's label ` +
+								`(${labelCollisions.join(', ')}): their lines ` +
+								'would become indistinguishable in the outputs. ' +
+								'Give the speakers real, distinct names instead.'
+						: `Two speakers cannot share a name (${duplicates.join(
+								', ',
+							)}). Give each a distinct name.`,
 				);
 				return;
 			}
-			await this.rememberNames(entries);
-
-			const applied = this.section
-				? await this.applyWithSidecar(this.section, entries)
-				: await this.applyStateless(entries);
-			if (!applied) {
+			const typed = new Map(
+				entries.map((entry) => [entry.label, entry.name]),
+			);
+			const plan = planSpeakerRename(
+				section.speakers,
+				(label) => typed.get(label) ?? '',
+			);
+			if (!plan.changed) {
 				new Notice('No speaker names to change.');
 				this.close();
 				return;
 			}
+			await this.rememberNames(entries);
+			const applied = await applySpeakerRenamesWithSidecar(
+				this.app,
+				this.file,
+				section,
+				plan.renames,
+				{ allowBroad: this.allowBroad },
+			);
+			// One atomic commit: the roster and its history entry can never
+			// be persisted without each other, so the undo baseline always
+			// matches what was actually applied.
+			await this.options.sidecar.commitRename(
+				this.file.path,
+				plan.nextEntries,
+				plan.nextNames,
+			);
+			console.debug(
+				`${PLUGIN_LOG_PREFIX} Renamed speakers: ` +
+					this.describeCounts(applied),
+			);
 			new Notice(this.describeOutcome(applied));
 			this.close();
 		} catch (error) {
@@ -364,109 +395,16 @@ export class SpeakerRenameModal extends Modal {
 	}
 
 	/**
-	 * Stateless apply for recordings without a stored roster: renames go from
-	 * the labels currently rendered in the outputs, with the current settings'
-	 * speaker template.
-	 * @param entries - The dialog's per-speaker entries
-	 * @returns The apply result, or null when nothing would change
-	 */
-	private async applyStateless(
-		entries: readonly SpeakerNameEntry[],
-	): Promise<SpeakerRenameApplyResult | null> {
-		const renames = buildSpeakerRenames(entries);
-		if (renames.length === 0) {
-			return null;
-		}
-		const settings = this.options.getSettings();
-		const applied = await applySpeakerRenamesToVault(
-			this.app,
-			this.file,
-			renames,
-			settings.transcriptSpeakerFormat,
-			{ allowBroad: this.allowBroad },
-		);
-		console.debug(
-			`${PLUGIN_LOG_PREFIX} Renamed speakers via output inspection ` +
-				`(no sidecar roster): ${this.describeCounts(applied)}`,
-		);
-		return applied;
-	}
-
-	/**
-	 * Sidecar-driven apply: renames are the diff between each label's stored
-	 * display name and the entered one, the roster and history are persisted
-	 * first, and the rewrite targets the recorded outputs with the templates
-	 * each was written with.
-	 * @param section - The recording's sidecar transcript section
-	 * @param entries - The dialog's per-speaker entries
-	 * @returns The apply result, or null when nothing would change
-	 */
-	private async applyWithSidecar(
-		section: TranscriptSection,
-		entries: readonly SpeakerNameEntry[],
-	): Promise<SpeakerRenameApplyResult | null> {
-		const sidecar = this.options.sidecar;
-		if (!sidecar) {
-			return null;
-		}
-		const storedNames = new Map(
-			section.speakers
-				.filter((entry) => entry.name)
-				.map((entry) => [entry.label, entry.name ?? '']),
-		);
-		const renames: SpeakerRename[] = [];
-		const nextEntries: SpeakerEntry[] = [];
-		const nextNames: Record<string, string> = {};
-		for (const entry of entries) {
-			const typed = entry.name.trim();
-			const name = typed && typed !== entry.label ? typed : '';
-			nextEntries.push(
-				name ? { label: entry.label, name } : { label: entry.label },
-			);
-			if (name) {
-				nextNames[entry.label] = name;
-			}
-			// The rename goes from what the outputs currently show (the stored
-			// name, or the label while unnamed) to the new effective name; a
-			// cleared field reverts the speaker to its original label.
-			const from = storedNames.get(entry.label) ?? entry.label;
-			const to = name || entry.label;
-			if (from !== to) {
-				renames.push({ from, to });
-			}
-		}
-		if (renames.length === 0) {
-			return null;
-		}
-		await sidecar.setSpeakers(this.file.path, nextEntries);
-		await sidecar.pushHistory(this.file.path, nextNames);
-		const settings = this.options.getSettings();
-		const applied = await applySpeakerRenamesWithSidecar(
-			this.app,
-			this.file,
-			section,
-			renames,
-			settings.transcriptSpeakerFormat,
-			{ allowBroad: this.allowBroad },
-		);
-		console.debug(
-			`${PLUGIN_LOG_PREFIX} Renamed speakers via the sidecar roster: ` +
-				this.describeCounts(applied),
-		);
-		return applied;
-	}
-
-	/**
-	 * Reverts the last applied rename: the roster returns to the mapping
-	 * before it (the second-newest history entry, or no names at all when the
-	 * history holds a single apply), the outputs are rewritten through the
-	 * same sidecar path, and the reverted state is recorded as a new history
-	 * entry.
+	 * Reverts the last applied rename: the roster returns to the assignment
+	 * before it (the second-newest history entry, or the bare engine labels
+	 * when the history holds a single apply), the outputs are rewritten
+	 * through the same plan/apply path, and the undone entry is removed from
+	 * the history - so each press walks one step further back and the button
+	 * disappears once the history is exhausted, instead of ping-ponging.
 	 */
 	private async undo(): Promise<void> {
 		const section = this.section;
-		const sidecar = this.options.sidecar;
-		if (!section || !sidecar || this.applying) {
+		if (!section || this.applying) {
 			return;
 		}
 		this.applying = true;
@@ -475,42 +413,32 @@ export class SpeakerRenameModal extends Modal {
 				section.history.length >= 2
 					? (section.history[section.history.length - 2]?.names ?? {})
 					: {};
-			const renames: SpeakerRename[] = [];
-			const nextEntries: SpeakerEntry[] = [];
-			const nextNames: Record<string, string> = {};
-			for (const entry of section.speakers) {
-				const target = previous[entry.label];
-				const name = target && target !== entry.label ? target : '';
-				nextEntries.push(
-					name
-						? { label: entry.label, name }
-						: { label: entry.label },
-				);
-				if (name) {
-					nextNames[entry.label] = name;
-				}
-				const from = entry.name ?? entry.label;
-				const to = name || entry.label;
-				if (from !== to) {
-					renames.push({ from, to });
-				}
-			}
-			if (renames.length === 0) {
-				new Notice('Nothing to undo: the names are already the same.');
-				return;
-			}
-			await sidecar.setSpeakers(this.file.path, nextEntries);
-			await sidecar.pushHistory(this.file.path, nextNames);
-			const settings = this.options.getSettings();
-			const applied = await applySpeakerRenamesWithSidecar(
-				this.app,
-				this.file,
-				section,
-				renames,
-				settings.transcriptSpeakerFormat,
-				{ allowBroad: this.allowBroad },
+			const plan = planSpeakerRename(section.speakers, (label) =>
+				Object.hasOwn(previous, label) ? (previous[label] ?? '') : '',
 			);
-			new Notice(this.describeOutcome(applied));
+			if (plan.changed) {
+				const applied = await applySpeakerRenamesWithSidecar(
+					this.app,
+					this.file,
+					section,
+					plan.renames,
+					{ allowBroad: this.allowBroad },
+				);
+				await this.options.sidecar.setSpeakers(
+					this.file.path,
+					plan.nextEntries,
+				);
+				new Notice(this.describeOutcome(applied));
+			} else {
+				new Notice('Nothing to undo: the names are already the same.');
+			}
+			// The undone entry is consumed either way, so the next undo steps
+			// further back instead of replaying this one. Unlike apply, the
+			// two writes need no atomic commit: if this pop fails after the
+			// roster reverted, the next undo finds the roster already equal
+			// to the entry's state, plans no change, and only pops - the
+			// tear heals itself instead of corrupting the baseline.
+			await this.options.sidecar.popHistory(this.file.path);
 			this.close();
 		} catch (error) {
 			const message =
@@ -588,10 +516,20 @@ export class SpeakerRenameModal extends Modal {
 				? ` ${String(applied.skippedLlmNotes)} note(s) were ` +
 					'post-processed by an LLM and were not updated.'
 				: '';
+		// A recorded output whose path no longer resolves (the note or file
+		// was renamed or deleted) is skipped; say so instead of reporting an
+		// unqualified success, since the next transcription is what re-records
+		// the current outputs.
+		const missing =
+			applied.missingOutputs > 0
+				? ` ${String(applied.missingOutputs)} recorded output(s) no ` +
+					'longer exist and were skipped; transcribe again to ' +
+					'refresh them.'
+				: '';
 		if (targets.length === 0) {
-			return `No matching speaker labels were found to rename.${llmSkipped}${failed}`;
+			return `No speaker labels were rewritten.${llmSkipped}${missing}${failed}`;
 		}
-		return `Renamed speakers in ${targets.join(' and ')}.${llmSkipped}${failed}`;
+		return `Renamed speakers in ${targets.join(' and ')}.${llmSkipped}${missing}${failed}`;
 	}
 
 	override onClose(): void {

@@ -16,6 +16,7 @@ import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import type { AutoChapterService } from '../chapters/AutoChapterService';
 import {
 	loadTranscriptLines,
+	type TranscriptSectionReader,
 	type TranscriptLinesSource,
 } from '../chapters/transcriptSources';
 import { findChapterPromptProfile } from '../settings/chapterPromptProfiles';
@@ -50,6 +51,8 @@ export interface ChapterGenerationModalOptions {
 	saveSettings: () => Promise<void>;
 	/** Shared service that validates and writes the chapters. */
 	autoChapters: AutoChapterService;
+	/** Recording sidecar access: the recorded transcript outputs to read. */
+	sidecar: TranscriptSectionReader;
 }
 
 /**
@@ -102,7 +105,11 @@ export class ChapterGenerationModal extends Modal {
 	 */
 	private async render(): Promise<void> {
 		if (!this.loaded) {
-			this.source = await loadTranscriptLines(this.app, this.file);
+			this.source = await loadTranscriptLines(
+				this.app,
+				this.file,
+				this.options.sidecar,
+			);
 			this.hasExistingChapters =
 				await this.options.autoChapters.hasExistingChapters(this.file);
 			this.loaded = true;

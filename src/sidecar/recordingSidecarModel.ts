@@ -16,10 +16,13 @@ import {
 	serializeMarkers,
 	type PlayerMarker,
 } from '../markers/markerModel';
-import type { TranscriptFileFormat } from '../transcription/TranscriptTypes';
+import {
+	TRANSCRIPT_FILE_FORMATS,
+	type TranscriptFileFormat,
+} from '../transcription/TranscriptTypes';
 
 /** Current on-disk sidecar schema version. */
-export const SIDECAR_VERSION = 2;
+const SIDECAR_VERSION = 2;
 
 /** Maximum number of retained rename-history entries (oldest dropped first). */
 export const SIDECAR_HISTORY_LIMIT = 10;
@@ -54,6 +57,8 @@ export interface NoteOutput {
 	templates: NoteOutputTemplates;
 	/** True when an LLM pass (cleanup/custom) replaced the transcript body. */
 	llmProcessed: boolean;
+	/** Heading the transcript was inserted under ('' when none). */
+	heading: string;
 	/** ISO-8601 timestamp of the write. */
 	writtenAt: string;
 }
@@ -66,6 +71,16 @@ export interface FileOutput {
 	format: TranscriptFileFormat;
 	/** ISO-8601 timestamp of the write. */
 	writtenAt: string;
+}
+
+/** Provenance of the last transcription run that wrote outputs. */
+export interface TranscriptProvenance {
+	/** Detected/declared transcript language (BCP-47 / ISO code), if known. */
+	language?: string;
+	/** Engine/model identifier that produced the transcript, if known. */
+	model?: string;
+	/** ISO-8601 timestamp of the run, if known. */
+	createdAt?: string;
 }
 
 /** One applied name mapping, recorded for undo. */
@@ -86,6 +101,8 @@ export interface TranscriptSection {
 	fileOutputs: FileOutput[];
 	/** Applied name mappings, oldest first, capped at the history limit. */
 	history: RenameHistoryEntry[];
+	/** Provenance of the last run that wrote outputs; absent until recorded. */
+	provenance?: TranscriptProvenance;
 }
 
 /** The full parsed sidecar document for one recording. */
@@ -93,14 +110,6 @@ export interface RecordingSidecar {
 	markers: PlayerMarker[];
 	transcript: TranscriptSection;
 }
-
-/** Every transcript file format a file output may record. */
-const FILE_OUTPUT_FORMATS: readonly TranscriptFileFormat[] = [
-	'json',
-	'srt',
-	'vtt',
-	'txt',
-];
 
 /** Returns a fresh, empty transcript section. */
 export function emptyTranscriptSection(): TranscriptSection {
@@ -112,7 +121,13 @@ export function emptyRecordingSidecar(): RecordingSidecar {
 	return { markers: [], transcript: emptyTranscriptSection() };
 }
 
-/** Whether a transcript section carries no data at all. */
+/**
+ * Whether a transcript section carries no data worth keeping. Provenance is
+ * deliberately not counted: it only describes the run behind the section's
+ * substantive lists, so once those are empty there is nothing left for it to
+ * describe - counting it would keep an otherwise-empty sidecar file on disk
+ * forever after any transcription.
+ */
 export function isTranscriptSectionEmpty(section: TranscriptSection): boolean {
 	return (
 		section.speakers.length === 0 &&
@@ -223,6 +238,7 @@ function parseNoteOutputs(value: unknown): NoteOutput[] {
 			path,
 			templates,
 			llmProcessed: record.llmProcessed === true,
+			heading: typeof record.heading === 'string' ? record.heading : '',
 			writtenAt:
 				typeof record.writtenAt === 'string' ? record.writtenAt : '',
 		});
@@ -247,7 +263,7 @@ function parseFileOutputs(value: unknown): FileOutput[] {
 		if (
 			!path ||
 			seen.has(path) ||
-			!FILE_OUTPUT_FORMATS.includes(format as TranscriptFileFormat)
+			!TRANSCRIPT_FILE_FORMATS.includes(format as TranscriptFileFormat)
 		) {
 			continue;
 		}
@@ -277,7 +293,9 @@ function parseHistory(value: unknown): RenameHistoryEntry[] {
 		if (typeof names !== 'object' || names === null) {
 			continue;
 		}
-		const mapping: Record<string, string> = {};
+		// A null-prototype object keeps hostile labels ("__proto__",
+		// "constructor") plain data keys instead of touching the prototype.
+		const mapping: Record<string, string> = emptyNameMap();
 		for (const [label, name] of Object.entries(names)) {
 			if (typeof name === 'string') {
 				mapping[label] = name;
@@ -301,11 +319,72 @@ export function parseTranscriptSection(value: unknown): TranscriptSection {
 		return emptyTranscriptSection();
 	}
 	const record = value as Record<string, unknown>;
+	const provenance = parseProvenance(record.provenance);
 	return {
 		speakers: parseSpeakers(record.speakers),
 		noteOutputs: parseNoteOutputs(record.noteOutputs),
 		fileOutputs: parseFileOutputs(record.fileOutputs),
 		history: parseHistory(record.history),
+		...(provenance ? { provenance } : {}),
+	};
+}
+
+/** Parses the run provenance, or null when absent or not object-shaped. */
+function parseProvenance(value: unknown): TranscriptProvenance | null {
+	if (typeof value !== 'object' || value === null) {
+		return null;
+	}
+	const record = value as Record<string, unknown>;
+	const provenance: TranscriptProvenance = {};
+	const language = trimmedString(record.language);
+	const model = trimmedString(record.model);
+	const createdAt = trimmedString(record.createdAt);
+	if (language) {
+		provenance.language = language;
+	}
+	if (model) {
+		provenance.model = model;
+	}
+	if (createdAt) {
+		provenance.createdAt = createdAt;
+	}
+	return Object.keys(provenance).length > 0 ? provenance : null;
+}
+
+/**
+ * Returns a null-prototype label-to-name map, so speaker labels can never
+ * collide with inherited Object.prototype members.
+ */
+export function emptyNameMap(): Record<string, string> {
+	return Object.create(null) as Record<string, string>;
+}
+
+/**
+ * Returns a deep copy of a transcript section, so callers can hold a stable
+ * snapshot while the store keeps mutating its cached document.
+ * @param section - Section to clone
+ */
+export function cloneTranscriptSection(
+	section: TranscriptSection,
+): TranscriptSection {
+	return {
+		speakers: section.speakers.map((entry) =>
+			entry.name
+				? { label: entry.label, name: entry.name }
+				: { label: entry.label },
+		),
+		noteOutputs: section.noteOutputs.map((output) => ({
+			...output,
+			templates: { ...output.templates },
+		})),
+		fileOutputs: section.fileOutputs.map((output) => ({ ...output })),
+		history: section.history.map((entry) => ({
+			at: entry.at,
+			names: Object.assign(emptyNameMap(), entry.names),
+		})),
+		...(section.provenance
+			? { provenance: { ...section.provenance } }
+			: {}),
 	};
 }
 
@@ -352,6 +431,7 @@ export function serializeRecordingSidecar(
 				path: output.path,
 				templates: { ...output.templates },
 				llmProcessed: output.llmProcessed,
+				heading: output.heading,
 				writtenAt: output.writtenAt,
 			})),
 			fileOutputs: sidecar.transcript.fileOutputs.map((output) => ({
@@ -363,6 +443,9 @@ export function serializeRecordingSidecar(
 				at: entry.at,
 				names: { ...entry.names },
 			})),
+			...(sidecar.transcript.provenance
+				? { provenance: { ...sidecar.transcript.provenance } }
+				: {}),
 		};
 	}
 	return payload;

@@ -381,7 +381,7 @@ describe('AudioRecorderPlugin settings persistence', () => {
 			'src/recording/RecordingManager',
 		);
 		const onRecordingSaved = (RecordingManager as jest.Mock).mock
-			.calls[0][4] as (result: {
+			.calls[0][5] as (result: {
 			audioPaths: string[];
 			notePath: string | null;
 		}) => void;
@@ -517,10 +517,32 @@ describe('AudioRecorderPlugin crash recovery wiring', () => {
 		const { RecordingManager } = jest.requireMock(
 			'src/recording/RecordingManager',
 		);
-		const journalArg = (RecordingManager as jest.Mock).mock.calls[0][3] as {
+		const journalArg = (RecordingManager as jest.Mock).mock.calls[0][4] as {
 			readJournal?: unknown;
 		};
 		expect(typeof journalArg.readJournal).toBe('function');
+	});
+
+	it('passes one shared sidecar store to every consumer', async () => {
+		// A second RecordingSidecarStore would mean a second cache and a
+		// second write chain clobbering the same files, so the manager and
+		// the player registrar must receive the very same instance.
+		const { plugin } = createPlugin([null]);
+
+		await onloadWithTimers(plugin);
+
+		const { RecordingManager } = jest.requireMock(
+			'src/recording/RecordingManager',
+		);
+		const { EnhancedPlayerRegistrar } = jest.requireMock(
+			'src/player/EnhancedPlayerRegistrar',
+		);
+		const managerStore = (RecordingManager as jest.Mock).mock
+			.calls[0][3] as unknown;
+		const registrarStore = (EnhancedPlayerRegistrar as jest.Mock).mock
+			.calls[0][3] as unknown;
+		expect(managerStore).toBeDefined();
+		expect(managerStore).toBe(registrarStore);
 	});
 
 	it('does not open the recovery modal when nothing is recoverable', async () => {

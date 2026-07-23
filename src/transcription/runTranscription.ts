@@ -9,7 +9,11 @@
 import type { App, TFile } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
-import type { FileOutput, NoteOutput } from '../sidecar/recordingSidecarModel';
+import type {
+	FileOutput,
+	NoteOutput,
+	TranscriptProvenance,
+} from '../sidecar/recordingSidecarModel';
 import {
 	TranscriptionService,
 	type CancellationToken,
@@ -36,6 +40,11 @@ export interface TranscriptOutputSidecar extends TranscriptionSidecarAccess {
 	recordNoteOutput(path: string, output: NoteOutput): Promise<void>;
 	/** Records (or refreshes) a transcript file this run wrote. */
 	recordFileOutput(path: string, output: FileOutput): Promise<void>;
+	/** Records the provenance (language/engine/timestamp) of this run. */
+	recordProvenance(
+		path: string,
+		provenance: TranscriptProvenance,
+	): Promise<void>;
 }
 
 /** Options for a full transcribe-and-write run. */
@@ -55,8 +64,8 @@ export interface TranscribeFileOptions {
 	token?: CancellationToken;
 	/**
 	 * Recording sidecar store: lets the run re-apply stored speaker names and
-	 * register the outputs it wrote. Absent, the run is fully stateless as
-	 * before.
+	 * register the outputs it wrote. Without it, speaker names are neither
+	 * re-applied nor renamable later, and no output record is kept.
 	 */
 	sidecar?: TranscriptOutputSidecar;
 }
@@ -78,16 +87,16 @@ export async function transcribeFile(
 	deps: TranscriptionServiceDeps = {},
 ): Promise<TranscribeRunResult> {
 	const settings = getSettings();
-	const service = new TranscriptionService(app, getSettings, {
-		...deps,
-		sidecar: deps.sidecar ?? options.sidecar,
-	});
+	const service = new TranscriptionService(app, getSettings, deps);
 	const result = await service.run(file, {
 		notePathForLinks: options.notePathForLinks,
 		onProgress: options.onProgress,
 		onCost: options.onCost,
 		audioBytes: options.audioBytes,
 		token: options.token,
+		// One injection channel: the same store serves speaker-name
+		// continuity inside the run and output registration below.
+		sidecar: options.sidecar,
 	});
 
 	const destination = settings.transcriptDestination;
@@ -141,12 +150,13 @@ export async function transcribeFile(
 	}
 	// Register what this run actually wrote in the recording's sidecar - the
 	// exact file path (collision suffix included) and, for the note, the
-	// render templates of this run's settings snapshot - so a later rename
-	// rewrites by recorded fact instead of guessing from current settings.
-	// Only a diarized transcript has speakers to rename, so a run without
-	// speakers registers nothing. Best-effort: a sidecar failure never fails
-	// a completed (and possibly billed) transcription.
-	if (options.sidecar && result.transcript.speakers.length > 0) {
+	// render templates and heading of this run's settings snapshot - so a
+	// later rename rewrites by recorded fact instead of guessing from current
+	// settings, and any consumer can tell where the transcript lives. Every
+	// run registers, diarized or not: absence of records must always mean "no
+	// transcript", never "a transcript this feature ignored". Best-effort: a
+	// sidecar failure never fails a completed (and possibly billed) run.
+	if (options.sidecar && (transcriptFile || inserted)) {
 		try {
 			const writtenAt = new Date().toISOString();
 			if (transcriptFile) {
@@ -174,9 +184,20 @@ export async function transcribeFile(
 						settings.llmPostProcessEnabled &&
 						(settings.llmPostProcessTask === 'cleanup' ||
 							settings.llmPostProcessTask === 'custom'),
+					heading: settings.transcriptHeading,
 					writtenAt,
 				});
 			}
+			const provenance: TranscriptProvenance = {
+				...(result.transcript.language
+					? { language: result.transcript.language }
+					: {}),
+				...(result.transcript.model
+					? { model: result.transcript.model }
+					: {}),
+				createdAt: result.transcript.createdAt ?? writtenAt,
+			};
+			await options.sidecar.recordProvenance(file.path, provenance);
 		} catch (error) {
 			console.warn(
 				`${PLUGIN_LOG_PREFIX} Failed to record transcript outputs for ${file.path}:`,

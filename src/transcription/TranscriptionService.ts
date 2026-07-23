@@ -38,6 +38,7 @@ import {
 	stitchChunks,
 	stripSpeakers,
 } from './transcriptModel';
+import { emptyNameMap } from '../sidecar/recordingSidecarModel';
 import type {
 	SpeakerEntry,
 	TranscriptSection,
@@ -103,6 +104,12 @@ export interface TranscribeRunOptions {
 	audioBytes?: ArrayBuffer;
 	/** Cancellation token. */
 	token?: CancellationToken;
+	/**
+	 * Recording sidecar access for speaker-name continuity: stored names are
+	 * re-applied to a fresh diarized transcript and the roster is refreshed.
+	 * Absent, the run is stateless and its speakers keep the engine labels.
+	 */
+	sidecar?: TranscriptionSidecarAccess;
 }
 
 /**
@@ -160,12 +167,6 @@ export interface TranscriptionServiceDeps {
 	createProvider?: (settings: AudioRecorderSettings) => TranscriptionProvider;
 	/** Builds the LLM post-processing provider from settings. */
 	createLlm?: (settings: AudioRecorderSettings) => LlmProvider;
-	/**
-	 * Recording sidecar access for speaker-name continuity. Absent (tests,
-	 * callers without a store), stored names are not applied and the roster
-	 * is not recorded - the run behaves exactly as before.
-	 */
-	sidecar?: TranscriptionSidecarAccess;
 }
 
 /**
@@ -178,7 +179,6 @@ export class TranscriptionService {
 	private readonly createLlm: (
 		settings: AudioRecorderSettings,
 	) => LlmProvider;
-	private readonly sidecar: TranscriptionSidecarAccess | null;
 
 	constructor(
 		private readonly app: App,
@@ -188,7 +188,6 @@ export class TranscriptionService {
 		this.createProvider =
 			deps.createProvider ?? createTranscriptionProvider;
 		this.createLlm = deps.createLlm ?? createLlmProvider;
-		this.sidecar = deps.sidecar ?? null;
 	}
 
 	/**
@@ -366,7 +365,11 @@ export class TranscriptionService {
 		// earlier (stored in the recording's sidecar) and refreshes the stored
 		// roster, so renamed speakers survive a re-run without user action.
 		const transcript = diarize
-			? await this.applyStoredSpeakerNames(file.path, canonical)
+			? await this.applyStoredSpeakerNames(
+					options.sidecar ?? null,
+					file.path,
+					canonical,
+				)
 			: canonical;
 
 		const markdownOptions = this.markdownOptions(settings);
@@ -439,35 +442,61 @@ export class TranscriptionService {
 	 * labels that vanished keep their stored entries for a future run. When
 	 * the label composition changed against the stored roster, the user is
 	 * warned - engines number speakers per run, so "Speaker 2" may not be the
-	 * same person as last time. Best-effort: any sidecar failure leaves the
+	 * same person as last time. A stored name that collides with another
+	 * label of this run is dropped (applying it would render two speakers
+	 * identically and merge them beyond repair) and the user is told to
+	 * re-check the names. Best-effort: any sidecar failure leaves the
 	 * transcript untouched rather than failing a paid run.
 	 * @param path - Vault path of the transcribed recording
 	 * @param transcript - Fresh diarized transcript with original labels
 	 * @returns The transcript with stored names applied (or unchanged)
 	 */
 	private async applyStoredSpeakerNames(
+		sidecar: TranscriptionSidecarAccess | null,
 		path: string,
 		transcript: Transcript,
 	): Promise<Transcript> {
-		if (!this.sidecar || transcript.speakers.length === 0) {
+		if (!sidecar || transcript.speakers.length === 0) {
 			return transcript;
 		}
 		try {
-			const section = await this.sidecar.getTranscript(path);
-			const storedNames: Record<string, string> = {};
+			const section = await sidecar.getTranscript(path);
+			const runLabels = new Set(transcript.speakers);
+			// A null-prototype map keeps hostile engine labels ("toString",
+			// "__proto__") plain data keys instead of resolving to inherited
+			// Object.prototype members.
+			const storedNames = emptyNameMap();
+			let droppedCollisions = false;
 			for (const entry of section.speakers) {
-				if (entry.name) {
-					storedNames[entry.label] = entry.name;
+				if (!entry.name) {
+					continue;
 				}
+				// A stored name equal to a DIFFERENT label of this run would
+				// render two speakers identically and merge them in every
+				// output - the ambiguity no later rename can undo. Such a
+				// name is neither applied nor carried into the refreshed
+				// roster.
+				if (runLabels.has(entry.name)) {
+					droppedCollisions = true;
+					continue;
+				}
+				storedNames[entry.label] = entry.name;
 			}
 			const renamed = renameSpeakers(transcript, storedNames);
-			await this.sidecar.setSpeakers(
+			await sidecar.setSpeakers(
 				path,
 				transcript.speakers.map((label) => {
 					const name = storedNames[label];
 					return name ? { label, name } : { label };
 				}),
 			);
+			if (droppedCollisions) {
+				new Notice(
+					"A stored speaker name matched another speaker's label " +
+						'in this run and was not applied; check the assigned ' +
+						'names.',
+				);
+			}
 			const previousLabels = section.speakers.map((entry) => entry.label);
 			if (
 				previousLabels.length > 0 &&

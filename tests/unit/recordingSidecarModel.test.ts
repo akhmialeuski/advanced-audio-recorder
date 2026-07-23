@@ -34,6 +34,7 @@ function noteOutput(path: string): NoteOutput {
 			mergeConsecutiveSpeaker: true,
 		},
 		llmProcessed: false,
+		heading: 'Transcript',
 		writtenAt: '2026-07-21T10:00:00Z',
 	};
 }
@@ -100,6 +101,11 @@ describe('parseRecordingSidecar', () => {
 						names: { 'Speaker 1': 'Alex' },
 					},
 				],
+				provenance: {
+					language: 'en',
+					model: 'nova-2',
+					createdAt: '2026-07-21T10:00:00Z',
+				},
 			},
 		};
 		const parsed = parseRecordingSidecar(
@@ -182,6 +188,43 @@ describe('parseTranscriptSection normalization', () => {
 		]);
 	});
 
+	it('keeps only usable provenance fields and omits an empty provenance', () => {
+		expect(
+			parseTranscriptSection({
+				provenance: { language: ' en ', model: 42, createdAt: '' },
+			}).provenance,
+		).toEqual({ language: 'en' });
+		expect(
+			parseTranscriptSection({ provenance: {} }).provenance,
+		).toBeUndefined();
+		expect(
+			parseTranscriptSection({ provenance: 'garbage' }).provenance,
+		).toBeUndefined();
+	});
+
+	it('keeps hostile history labels as plain data instead of prototype keys', () => {
+		const section = parseTranscriptSection({
+			history: [
+				{
+					at: 't',
+					names: {
+						['__proto__']: 'Evil',
+						constructor: 'Sneaky',
+						'Speaker 1': 'Alex',
+					},
+				},
+			],
+		});
+		const names = section.history[0]?.names ?? {};
+		// The hostile labels are ordinary own keys on a null-prototype map...
+		expect(Object.hasOwn(names, '__proto__')).toBe(true);
+		expect(Object.hasOwn(names, 'constructor')).toBe(true);
+		expect(names['Speaker 1']).toBe('Alex');
+		// ...and nothing leaked onto Object.prototype.
+		expect(({} as Record<string, unknown>).Evil).toBeUndefined();
+		expect(Object.getPrototypeOf(names)).toBeNull();
+	});
+
 	it('keeps only string name values in history and caps the entries', () => {
 		const entries = Array.from({ length: 15 }, (_v, i) => ({
 			at: `t${String(i)}`,
@@ -237,5 +280,23 @@ describe('serializeRecordingSidecar', () => {
 		expect(payload.version).toBe(2);
 		expect(payload.markers).toEqual([marker]);
 		expect('transcript' in payload).toBe(false);
+	});
+});
+
+describe('provenance and emptiness', () => {
+	it('treats a provenance-only section as empty (deletable sidecar)', () => {
+		// Provenance describes the run behind the section's lists; once
+		// those are empty there is nothing left to describe, and counting
+		// it would keep an emptied sidecar file on disk forever.
+		const section = {
+			...emptyTranscriptSection(),
+			provenance: { language: 'en', createdAt: 't' },
+		};
+		expect(isTranscriptSectionEmpty(section)).toBe(true);
+		expect(isSidecarEmpty({ markers: [], transcript: section })).toBe(true);
+		// With markers present the document is still worth persisting.
+		expect(isSidecarEmpty({ markers: [marker], transcript: section })).toBe(
+			false,
+		);
 	});
 });
