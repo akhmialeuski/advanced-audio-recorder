@@ -14,6 +14,7 @@ import {
 	deepgramBiasMechanism,
 	termsWithinDeepgramKeyterm,
 } from '../dictionaryBias';
+import { dedupeTerms } from '../dictionary';
 import { requestJson, trimTrailingSlash, uploadTimeoutMs } from '../httpClient';
 import { DEEPGRAM_CAPABILITIES } from './capabilities';
 import { mapDeepgramResponse } from './deepgramResponse';
@@ -64,7 +65,16 @@ export class DeepgramProvider implements TranscriptionProvider {
 		} else {
 			params.set('detect_language', 'true');
 		}
-		if (options.dictionary?.length) {
+		// Generated keyterms (the advanced second pass) go ahead of the user's
+		// dictionary in one combined list, so when the per-model limits bite,
+		// the generated context - mined from this very recording - wins over
+		// the static glossary. Case-insensitive de-duplication keeps a term the
+		// pipeline and the dictionary both carry from being sent twice.
+		const biasTerms = dedupeTerms([
+			...(options.keyterms ?? []),
+			...(options.dictionary ?? []),
+		]);
+		if (biasTerms.length) {
 			// The mechanism is model-specific: nova-3 uses keyterm prompting,
 			// nova-2 and older use keywords boosting, and the hosted Whisper
 			// models support neither, so they send nothing. Each mechanism has a
@@ -76,8 +86,8 @@ export class DeepgramProvider implements TranscriptionProvider {
 			if (mechanism) {
 				const terms =
 					mechanism === 'keyterm'
-						? termsWithinDeepgramKeyterm(options.dictionary)
-						: options.dictionary.slice(0, DEEPGRAM_KEYWORDS_LIMIT);
+						? termsWithinDeepgramKeyterm(biasTerms)
+						: biasTerms.slice(0, DEEPGRAM_KEYWORDS_LIMIT);
 				for (const term of terms) {
 					params.append(mechanism, term);
 				}

@@ -92,7 +92,7 @@ _Figure: the per-task prompt editor; the Custom instruction field is taller and 
 
 ## Default prompts
 
-These ship with the plugin and are used whenever the matching prompt field is empty. The transcript-language sentence is appended to the cleanup and summary prompts automatically.
+These ship with the plugin and are used whenever the matching prompt field is empty. The transcript-language sentence is appended to the cleanup and summary prompts automatically. The cleanup prompt also gets a glossary clause automatically whenever a dictionary profile or the advanced-mode domain glossary has terms: the canonical spellings are listed so the model corrects garbled names and acronyms ("кубернетис" to `Kubernetes`) without inserting terms that were not spoken.
 
 **Default Clean up prompt:**
 

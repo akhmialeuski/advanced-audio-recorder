@@ -86,7 +86,19 @@ export class WhisperApiProvider implements TranscriptionProvider {
 				value: options.language,
 			});
 		}
-		if (options.dictionary?.length) {
+		// The advanced second pass supplies a full bias sentence that already
+		// folds the relevant terms in; it takes the `prompt` slot over the plain
+		// dictionary join (only one prompt field can be sent). Whisper reads the
+		// last ~224 tokens of the prompt and the sentence puts its most valuable
+		// tokens last, so an over-long sentence degrades from the front.
+		const biasPrompt = options.biasPrompt?.trim();
+		if (biasPrompt) {
+			fields.push({
+				type: 'text' as const,
+				name: 'prompt',
+				value: biasPrompt,
+			});
+		} else if (options.dictionary?.length) {
 			// OpenAI's `prompt` seeds recognition with preferred spellings, but
 			// Whisper only reads the last ~224 tokens, so terms beyond the window
 			// are bounded out here. The service applies the same bound and warns

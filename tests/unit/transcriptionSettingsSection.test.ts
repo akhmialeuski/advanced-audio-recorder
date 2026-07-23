@@ -146,6 +146,68 @@ describe('renderTranscriptionSection dictionary profiles', () => {
 	});
 });
 
+/** Renders the section with the advanced two-pass mode on or off. */
+function renderAdvanced(enabled: boolean): void {
+	capturedSettings.length = 0;
+	renderTranscriptionSection(
+		makeCtx(
+			mergeSettings({
+				transcriptionEnabled: true,
+				transcriptionAdvancedEnabled: enabled,
+			}),
+		),
+	);
+}
+
+describe('renderTranscriptionSection advanced two-pass mode', () => {
+	const TOGGLE = 'Advanced two-pass transcription (experimental)';
+
+	it('renders the master toggle off by default with an explicit cost warning', () => {
+		renderAdvanced(false);
+		const row = capturedSettings.find((setting) => setting.name === TOGGLE);
+		expect(row).toBeDefined();
+		expect(row?.toggle?.value).toBe(false);
+		// The trade-off must be spelled out in the description: two engine
+		// passes plus LLM calls.
+		expect(row?.desc).toContain('2x the engine cost');
+		expect(row?.desc).toContain('LLM calls');
+	});
+
+	it('hides the advanced sub-fields while the mode is off', () => {
+		renderAdvanced(false);
+		const names = capturedSettings.map((setting) => setting.name);
+		expect(names).not.toContain('Domain glossary');
+		expect(names).not.toContain('Second-pass length safeguard');
+	});
+
+	it('reveals the glossary and length safeguard when the mode is on', () => {
+		renderAdvanced(true);
+		const names = capturedSettings.map((setting) => setting.name);
+		expect(names).toContain('Domain glossary');
+		expect(names).toContain('Second-pass length safeguard');
+		const row = capturedSettings.find((setting) => setting.name === TOGGLE);
+		expect(row?.toggle?.value).toBe(true);
+	});
+
+	it('shows the LLM provider fields when only the advanced mode needs them', () => {
+		capturedSettings.length = 0;
+		renderTranscriptionSection(
+			makeCtx(
+				mergeSettings({
+					transcriptionEnabled: true,
+					transcriptionAdvancedEnabled: true,
+					llmPostProcessEnabled: false,
+					transcriptionAutoChaptersEnabled: false,
+				}),
+			),
+		);
+		const names = capturedSettings.map((setting) => setting.name);
+		// The agents run on the configured LLM provider, so its fields must
+		// be reachable while the mode is on even with post-processing off.
+		expect(names).toContain('LLM provider');
+	});
+});
+
 describe('renderTranscriptionSection platform gating', () => {
 	const { Platform } = jest.requireMock<{
 		Platform: { isMobile: boolean; isMobileApp: boolean };

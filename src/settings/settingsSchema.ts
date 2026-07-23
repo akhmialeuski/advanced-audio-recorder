@@ -41,6 +41,7 @@ import {
 	DEFAULT_CLEANUP_HIGHPASS_HZ,
 	DEFAULT_CLEANUP_GATE_THRESHOLD_DB,
 	DEFAULT_CLEANUP_LEVELING_MAKEUP_DB,
+	DEFAULT_ADVANCED_SECOND_PASS_MIN_RATIO,
 } from '../constants';
 import type {
 	TranscriptDestination,
@@ -307,6 +308,29 @@ export interface AudioRecorderSettings {
 	transcriptionDictionaryProfiles: DictionaryProfile[];
 	/** Id of the profile applied to a run; '' means None (no biasing terms). */
 	transcriptionDictionaryProfileId: string;
+	/**
+	 * Advanced two-pass transcription: the recording is transcribed twice,
+	 * with LLM agents mining the first draft for the meeting's names, jargon,
+	 * and English acronyms and biasing the second pass's decoding toward
+	 * them. Roughly doubles the engine cost and adds several LLM calls per
+	 * file, so it is off by default and enabled deliberately per vault.
+	 */
+	transcriptionAdvancedEnabled: boolean;
+	/**
+	 * Optional domain glossary for the advanced mode, one term or name per
+	 * line. Generalizes the paper's fixed roster: the terms are candidates
+	 * for the second pass's bias, kept only when the first pass's draft gives
+	 * evidence they were spoken. Empty means the agents rely on the draft
+	 * alone.
+	 */
+	advancedGlossary: string;
+	/**
+	 * Length safeguard for the advanced mode: the biased second pass is kept
+	 * only when its plain text is at least this fraction of the first
+	 * pass's; shorter output means content was lost, so the run reverts to
+	 * the baseline transcript.
+	 */
+	advancedSecondPassMinRatio: number;
 	/** Whether the "Rename speakers" action and command are offered. */
 	transcriptionSpeakerRenameEnabled: boolean;
 	/**
@@ -536,6 +560,9 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	transcriptionWordTimestamps: false,
 	transcriptionDictionaryProfiles: [],
 	transcriptionDictionaryProfileId: '',
+	transcriptionAdvancedEnabled: false,
+	advancedGlossary: '',
+	advancedSecondPassMinRatio: DEFAULT_ADVANCED_SECOND_PASS_MIN_RATIO,
 	transcriptionSpeakerRenameEnabled: false,
 	transcriptionAutoChaptersEnabled: false,
 	transcriptionAutoChaptersOnTranscribe: false,

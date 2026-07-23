@@ -259,6 +259,25 @@ Deepgram's biasing depends on the selected **Deepgram model**, which is worth re
 
 ---
 
+## Advanced two-pass transcription
+
+**Advanced two-pass transcription (experimental)** (under **Settings > Advanced Audio Recorder > Transcription**) applies the method from *Whisper: Courtside Edition* (arXiv:2602.18966) inside the plugin: instead of one recognition pass, the recording is transcribed twice. Between the passes a team of LLM agents mines the first (draft) transcript for the meeting's domain context - the topic, proper names, domain jargon, and especially English technical terms and acronyms spoken inside another language - and assembles it into a compact hint that the second pass receives as a decoding bias. The second pass re-decodes the same audio leaning toward the right names and spellings while still checking against the acoustics; unlike an LLM edit of the text, it actually re-listens to the recording.
+
+The mode targets the words a single pass gets wrong most stubbornly in, for example, Russian technical meetings: Russian proper names (rare, inflected, easily invented), professional jargon, and English terms and acronyms that a single pass transliterates ("кубернетис", "си ай си ди") or spells out. The agents put the canonical spellings (`Kubernetes`, `CI/CD`) into the second pass's hint, and the second pass's language is always pinned to the language detected on the first pass, so an English-heavy hint can never flip a Russian recording into English.
+
+**It is off by default and costs real money and time when on:** every file runs two engine passes (roughly 2x the engine cost and duration) plus five to six sequential LLM calls on the provider configured under [LLM post-processing](#llm-post-processing) (whose provider fields stay visible while this mode is on). On a cheap LLM model the money is small, but the sequential calls add latency. Turn it on for the recordings where names and terminology matter, and leave the normal single pass for everything else. The regular LLM post-processing still runs afterwards, on top of whichever pass won.
+
+How the engines receive the bias mirrors the [dictionary](#biasing-recognition-toward-your-own-terms) plumbing: the Whisper API and local whisper.cpp get one natural sentence in the audio's language (their prompt weights its last tokens most, so the most valuable terms go at the end), Deepgram Nova models get the terms as keyterms/keywords ahead of your dictionary profile's terms, and Gemini gets the context folded into its instruction text. A Deepgram hosted Whisper model cannot bias at all, so the mode degrades to a normal single pass and a notice says so - before any LLM is called.
+
+Sub-settings while the mode is on:
+
+- **Domain glossary** - optional names and terms of your domain, one per line. They generalize the paper's fixed roster: the terms join the generated context as candidates, but only those the first draft gives evidence for are used, so an off-topic glossary cannot inject words into a transcript. Your per-run dictionary profile's terms join the candidates the same way.
+- **Second-pass length safeguard** - the biased pass is kept only when its text is at least this fraction (default 0.8) of the first pass's. Over-correction - a biased decode dropping content - is the method's main failure mode, and a suspiciously short second pass is discarded in favor of the baseline.
+
+The whole mode is best-effort by construction: a failed agent, a failed second pass, or a too-short result all keep the first pass's transcript, so it can never lose a completed (and paid) transcription. Diarization, speaker grouping, and `#t=` timecode links work on top of whichever transcript is kept.
+
+---
+
 ## Output: where the transcript goes
 
 Pick where the transcript lands with **Destination**:
@@ -416,6 +435,7 @@ All transcription settings live under **Settings > Advanced Audio Recorder > Tra
 | **Speaker diarization**        | Request speaker labels (Deepgram and Gemini only).                                                 | Off                            |
 | **Word-level timestamps**      | Per-word timing, recorded in JSON file output only.                                                | Off                            |
 | **Request timeout**            | Minutes before one request is aborted and reported (cloud engines only). Range 1-60.               | 10                             |
+| **Advanced two-pass transcription** | Two engine passes with LLM-generated context biasing the second (roughly 2x cost; experimental).   | Off                            |
 | **Destination**                | Insert into note / Save to file / Note and file / Save to file and link it in the note.            | Insert into note               |
 | **File format**                | JSON / SubRip (.srt) / WebVTT (.vtt) / Plain text (.txt). Shown when destination is not note-only. | JSON                           |
 | **Note heading**               | Heading inserted above the transcript (empty for none).                                            | `## Transcript`                |

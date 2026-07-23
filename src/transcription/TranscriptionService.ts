@@ -50,11 +50,17 @@ import {
 	type TranscriptMarkdownOptions,
 } from './transcriptFormat';
 import { buildPostProcessPrompt } from './llmPostProcess';
-import { parseDictionary } from './dictionary';
+import { dedupeTerms, parseDictionary } from './dictionary';
 import {
 	describeDictionaryOmission,
 	planDictionaryBias,
 } from './dictionaryBias';
+import {
+	advancedBiasUnsupportedReason,
+	meetsLengthSafeguard,
+	planAdvancedBias,
+} from './advanced/advancedBias';
+import { generateContext } from './advanced/contextPipeline';
 import { resolveDictionaryTerms } from '../settings/dictionaryProfiles';
 import { createLlmProvider, createTranscriptionProvider } from './factories';
 import { effectiveDiarize } from './providers/capabilities';
@@ -284,6 +290,11 @@ export class TranscriptionService {
 			usage?: TranscriptionUsage;
 		}[] = [];
 		const failedParts: { label: string; message: string }[] = [];
+		// Billed results of the advanced second pass. Kept apart from the
+		// first pass's `results` (which remain the fallback transcript) but
+		// summed into the same run cost, since both passes are real - and on
+		// a paid API, billed - requests.
+		const secondPassResults: typeof results = [];
 		// Usage from requests that were billed but whose transcript was
 		// discarded (a truncated Gemini part that gets subdivided and
 		// retried): kept apart from `results` so it counts toward the cost
@@ -298,6 +309,7 @@ export class TranscriptionService {
 		const runCost = (): TranscribeRunCost => {
 			const usage = sumUsage([
 				...results.map((entry) => entry.usage),
+				...secondPassResults.map((entry) => entry.usage),
 				...discardedUsage,
 			]);
 			return {
@@ -306,30 +318,62 @@ export class TranscriptionService {
 				usage,
 			};
 		};
-		for (let i = 0; i < partCount; i++) {
-			this.throwIfCancelled(token);
-			const payload = payloads[i];
-			if (!payload) {
-				continue;
+		// The advanced mode transcribes everything twice, so it splits the
+		// chunk progress band between the passes; the normal path keeps the
+		// whole band for its single pass.
+		const advancedRequested = settings.transcriptionAdvancedEnabled;
+		const firstPassCeiling = advancedRequested
+			? TRANSCRIBE_CHUNK_PROGRESS_CEILING / 2
+			: TRANSCRIBE_CHUNK_PROGRESS_CEILING;
+		/**
+		 * Transcribes every prepared part once with the given options,
+		 * reporting progress inside [progressBase, progressBase + span).
+		 * Shared by both passes so their behavior (labels, per-part salvage,
+		 * billing) cannot diverge.
+		 */
+		const transcribePass = async (
+			passOptions: TranscribeOptions,
+			passResults: typeof results,
+			passFailed: typeof failedParts,
+			progressBase: number,
+			progressSpan: number,
+			verb: string,
+		): Promise<void> => {
+			for (let i = 0; i < partCount; i++) {
+				this.throwIfCancelled(token);
+				const payload = payloads[i];
+				if (!payload) {
+					continue;
+				}
+				const partLabel =
+					partCount > 1
+						? this.describePart(payload, i, partCount)
+						: '';
+				options.onProgress?.(
+					progressBase + (i / partCount) * progressSpan,
+					partLabel ? `${verb} ${partLabel}...` : `${verb}...`,
+				);
+				await this.transcribePart(
+					provider,
+					payload,
+					passOptions,
+					token,
+					partLabel,
+					passResults,
+					passFailed,
+					discardedUsage,
+				);
+				options.onCost?.(runCost());
 			}
-			const partLabel =
-				partCount > 1 ? this.describePart(payload, i, partCount) : '';
-			options.onProgress?.(
-				(i / partCount) * TRANSCRIBE_CHUNK_PROGRESS_CEILING,
-				partLabel ? `Transcribing ${partLabel}...` : 'Transcribing...',
-			);
-			await this.transcribePart(
-				provider,
-				payload,
-				transcribeOptions,
-				token,
-				partLabel,
-				results,
-				failedParts,
-				discardedUsage,
-			);
-			options.onCost?.(runCost());
-		}
+		};
+		await transcribePass(
+			transcribeOptions,
+			results,
+			failedParts,
+			0,
+			firstPassCeiling,
+			'Transcribing',
+		);
 
 		// Every part failed: there is no transcript to keep, so surface the
 		// first failure (named like the per-part error) rather than writing
@@ -355,12 +399,145 @@ export class TranscriptionService {
 			createdAt: new Date().toISOString(),
 			sourcePath: file.path,
 		});
+
+		// Advanced two-pass mode: LLM agents mine the first pass's draft for
+		// domain context (topic, names, jargon, English acronyms), and the
+		// same audio is decoded again with that context as a bias and the
+		// language pinned to the first pass's. Strictly best-effort: an
+		// engine that cannot bias, a failed agent, a failed second pass, or a
+		// suspiciously short result all keep the first pass's transcript, so
+		// the mode can never lose a completed (and paid) transcription.
+		let working = stitched;
+		let missingParts = failedParts;
+		if (advancedRequested) {
+			const unsupported = advancedBiasUnsupportedReason(
+				settings.transcriptionProvider,
+				settings.deepgramModel,
+			);
+			if (unsupported) {
+				// Degrade to the normal single pass up front - before any LLM
+				// spend - and say so, instead of silently ignoring the toggle.
+				new Notice(
+					`Advanced two-pass transcription skipped: ${unsupported}. ` +
+						'Keeping the single-pass transcript.',
+				);
+			} else {
+				try {
+					options.onProgress?.(
+						firstPassCeiling,
+						'Analyzing transcript context...',
+					);
+					// The agents run on the configured LLM post-processing
+					// provider. The advanced glossary and this run's applied
+					// dictionary terms join as bias candidates, vetted against
+					// the draft so an off-topic term is not injected.
+					const llm = this.createLlm(settings);
+					const context = await generateContext(stitched, llm, {
+						language:
+							transcribeOptions.language ?? stitched.language,
+						glossary: dedupeTerms([
+							...parseDictionary(settings.advancedGlossary),
+							...dictionaryPlan.applied,
+						]),
+						isCancelled: () => token.isCancelled(),
+					});
+					const bias = context
+						? planAdvancedBias(
+								settings.transcriptionProvider,
+								context,
+							)
+						: {};
+					if (!bias.biasPrompt && !bias.keyterms?.length) {
+						new Notice(
+							'Advanced two-pass transcription found no usable ' +
+								'context; keeping the single-pass transcript.',
+						);
+					} else {
+						// Pin the second pass's language to the first pass's:
+						// the bias is dense with English tokens, and left to
+						// auto-detect it can flip a Russian recording into
+						// English - the documented failure mode this guards
+						// against.
+						const secondPassOptions: TranscribeOptions = {
+							...transcribeOptions,
+							language:
+								transcribeOptions.language ?? stitched.language,
+							...bias,
+						};
+						const secondFailed: typeof failedParts = [];
+						await transcribePass(
+							secondPassOptions,
+							secondPassResults,
+							secondFailed,
+							firstPassCeiling,
+							TRANSCRIBE_CHUNK_PROGRESS_CEILING -
+								firstPassCeiling,
+							'Second pass: transcribing',
+						);
+						this.throwIfCancelled(token);
+						const secondPass = stitchChunks(secondPassResults, {
+							model: provider.id,
+							createdAt: new Date().toISOString(),
+							sourcePath: file.path,
+						});
+						if (
+							secondFailed.length > 0 ||
+							secondPassResults.length === 0
+						) {
+							new Notice(
+								'Advanced second pass failed; keeping the ' +
+									'first-pass transcript.',
+							);
+						} else if (
+							!meetsLengthSafeguard(
+								plainText(stitched),
+								plainText(secondPass),
+								settings.advancedSecondPassMinRatio,
+							)
+						) {
+							// The over-correction guard from the paper: a
+							// biased decode that lost this much text is
+							// discarded in favor of the baseline.
+							new Notice(
+								'Advanced second pass came back too short; ' +
+									'keeping the first-pass transcript.',
+							);
+						} else {
+							working = secondPass;
+							// The adopted pass succeeded on every part,
+							// including any the first pass lost, so the
+							// incomplete-transcription warning follows it.
+							missingParts = secondFailed;
+						}
+					}
+				} catch (error) {
+					if (error instanceof TranscriptionCancelledError) {
+						throw error;
+					}
+					// Cancellation inside context generation surfaces as an
+					// ordinary error; map it back to the cancel the user asked
+					// for instead of a best-effort fallback.
+					if (token.isCancelled()) {
+						throw new TranscriptionCancelledError();
+					}
+					console.warn(
+						`${PLUGIN_LOG_PREFIX} Advanced two-pass transcription failed; keeping the single-pass transcript.`,
+						error,
+					);
+					new Notice(
+						'Advanced two-pass transcription failed; keeping ' +
+							'the single-pass transcript.',
+					);
+				}
+			}
+		}
+
 		// Without effective diarization there are no speakers; drop any the
 		// provider returned so no output path (note Markdown, sidecar file, or
 		// JSON) shows a label the user did not ask for. Doing it once here, on
 		// the canonical transcript, keeps every consumer consistent rather than
 		// gating each renderer separately.
-		const canonical = diarize ? stitched : stripSpeakers(stitched);
+		const canonical = diarize ? working : stripSpeakers(working);
 		// A diarized re-transcription re-applies the names the user assigned
 		// earlier (stored in the recording's sidecar) and refreshes the stored
 		// roster, so renamed speakers survive a re-run without user action.
@@ -385,16 +562,16 @@ export class TranscriptionService {
 		// after post-processing (below), because an LLM cleanup/custom pass
 		// replaces the whole body and would otherwise strip the warning.
 		let incompleteWarning = '';
-		if (failedParts.length > 0) {
-			const labels = failedParts.map((part) => part.label).join(', ');
-			const verb = failedParts.length > 1 ? 'are' : 'is';
+		if (missingParts.length > 0) {
+			const labels = missingParts.map((part) => part.label).join(', ');
+			const verb = missingParts.length > 1 ? 'are' : 'is';
 			incompleteWarning =
 				`> [!warning] Transcription incomplete: ${labels} could not ` +
 				`be transcribed and ${verb} missing below.\n\n`;
 			new Notice(
 				`Some audio could not be transcribed (${labels}) and is missing ` +
 					'from the transcript; saving the parts that succeeded. ' +
-					(failedParts[0]?.message ?? ''),
+					(missingParts[0]?.message ?? ''),
 			);
 		}
 
@@ -701,6 +878,13 @@ export class TranscriptionService {
 				cleanupPrompt: settings.llmCleanupPrompt,
 				summaryPrompt: settings.llmSummaryPrompt,
 				customInstruction: settings.llmCustomInstruction,
+				// The user's dictionary and advanced glossary give the cleanup
+				// pass the canonical spellings, so even a single-pass run
+				// corrects garbled names and acronyms.
+				glossary: dedupeTerms([
+					...parseDictionary(resolveDictionaryTerms(settings)),
+					...parseDictionary(settings.advancedGlossary),
+				]),
 			},
 		);
 		const output = await llm.complete(prompt, settings.llmMaxTokens);

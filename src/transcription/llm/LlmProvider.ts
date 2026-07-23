@@ -25,6 +25,19 @@ import {
 	geminiThinkingConfig,
 } from '../providers/geminiShared';
 
+/**
+ * Per-call generation options. Every field is optional; an omitted field
+ * leaves the provider's API default in place, so existing callers are
+ * unaffected.
+ */
+export interface LlmCompleteOptions {
+	/**
+	 * Sampling temperature. The advanced transcription context agents pin it
+	 * to 0 so the same recording yields the same bias prompt on every run.
+	 */
+	temperature?: number;
+}
+
 /** A provider that completes a single prompt and returns text. */
 export interface LlmProvider {
 	readonly id: string;
@@ -33,8 +46,13 @@ export interface LlmProvider {
 	 * Completes a prompt and returns the assistant's text.
 	 * @param prompt - System + user prompt
 	 * @param maxTokens - Maximum output tokens
+	 * @param options - Optional generation options (temperature)
 	 */
-	complete(prompt: LlmPrompt, maxTokens: number): Promise<string>;
+	complete(
+		prompt: LlmPrompt,
+		maxTokens: number,
+		options?: LlmCompleteOptions,
+	): Promise<string>;
 }
 
 /** Configuration shared by HTTP LLM providers. */
@@ -55,7 +73,11 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
 
 	constructor(private readonly config: LlmConfig) {}
 
-	async complete(prompt: LlmPrompt, maxTokens: number): Promise<string> {
+	async complete(
+		prompt: LlmPrompt,
+		maxTokens: number,
+		options?: LlmCompleteOptions,
+	): Promise<string> {
 		const headers: Record<string, string> = {};
 		if (this.config.apiKey) {
 			headers.Authorization = `Bearer ${this.config.apiKey}`;
@@ -68,6 +90,9 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
 			body: JSON.stringify({
 				model: this.config.model,
 				max_tokens: maxTokens,
+				...(options?.temperature !== undefined
+					? { temperature: options.temperature }
+					: {}),
 				messages: [
 					{ role: 'system', content: prompt.system },
 					{ role: 'user', content: prompt.user },
@@ -89,7 +114,11 @@ export class AnthropicLlmProvider implements LlmProvider {
 
 	constructor(private readonly config: LlmConfig) {}
 
-	async complete(prompt: LlmPrompt, maxTokens: number): Promise<string> {
+	async complete(
+		prompt: LlmPrompt,
+		maxTokens: number,
+		options?: LlmCompleteOptions,
+	): Promise<string> {
 		const json = await requestJson({
 			url: `${trimTrailingSlash(this.config.baseUrl)}/messages`,
 			method: 'POST',
@@ -102,6 +131,9 @@ export class AnthropicLlmProvider implements LlmProvider {
 			body: JSON.stringify({
 				model: this.config.model,
 				max_tokens: maxTokens,
+				...(options?.temperature !== undefined
+					? { temperature: options.temperature }
+					: {}),
 				system: prompt.system,
 				messages: [{ role: 'user', content: prompt.user }],
 			}),
@@ -122,7 +154,11 @@ export class GeminiLlmProvider implements LlmProvider {
 
 	constructor(private readonly config: LlmConfig) {}
 
-	async complete(prompt: LlmPrompt, maxTokens: number): Promise<string> {
+	async complete(
+		prompt: LlmPrompt,
+		maxTokens: number,
+		options?: LlmCompleteOptions,
+	): Promise<string> {
 		const url = geminiGenerateContentUrl(
 			this.config.baseUrl,
 			this.config.model,
@@ -142,6 +178,9 @@ export class GeminiLlmProvider implements LlmProvider {
 				contents: [{ role: 'user', parts: [{ text: prompt.user }] }],
 				generationConfig: {
 					maxOutputTokens: maxTokens,
+					...(options?.temperature !== undefined
+						? { temperature: options.temperature }
+						: {}),
 					...(thinkingConfig ? { thinkingConfig } : {}),
 				},
 			}),

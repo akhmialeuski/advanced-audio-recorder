@@ -135,6 +135,17 @@ function buildInstruction(options: TranscribeOptions): string {
 			`Prefer these spellings for names and terms when you hear them: ${options.dictionary.join(DICTIONARY_JOIN_SEPARATOR)}.`,
 		);
 	}
+	const biasPrompt = options.biasPrompt?.trim();
+	if (biasPrompt) {
+		// The advanced second pass folds its generated context (topic, names,
+		// jargon, canonical English acronyms) into the instruction text - the
+		// only biasing channel Gemini offers. Framed as context about the
+		// recording, not as text to reproduce, so the model still transcribes
+		// from the audio.
+		lines.push(
+			`Context about this recording (topic, speaker names, domain terms, and canonical acronym spellings heard in it): ${biasPrompt}`,
+		);
+	}
 	return lines.join(' ');
 }
 
