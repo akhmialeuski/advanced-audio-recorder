@@ -48,10 +48,17 @@ export interface SpeakerRenameSidecarAccess {
 	getTranscript(path: string): Promise<TranscriptSection>;
 	/** Whether the sidecar file exists but could not be read (after a read). */
 	isSidecarCorrupt(path: string): boolean;
-	/** Replaces the speaker roster for a recording path. */
+	/**
+	 * Commits an applied rename atomically: roster and history entry in one
+	 * write, so neither can ever be persisted without the other.
+	 */
+	commitRename(
+		path: string,
+		entries: readonly SpeakerEntry[],
+		names: Record<string, string>,
+	): Promise<void>;
+	/** Replaces the speaker roster for a recording path (undo). */
 	setSpeakers(path: string, entries: readonly SpeakerEntry[]): Promise<void>;
-	/** Appends an applied name mapping to the rename history. */
-	pushHistory(path: string, names: Record<string, string>): Promise<void>;
 	/** Removes the newest history entry (an undo consumed it). */
 	popHistory(path: string): Promise<void>;
 }
@@ -324,10 +331,23 @@ export class SpeakerRenameModal extends Modal {
 			}
 			const duplicates = duplicateAssignedNames(entries);
 			if (duplicates.length > 0) {
+				// Naming a speaker after another speaker's engine label is a
+				// distinct mistake (it would make their lines textually
+				// indistinguishable forever), so it gets its own explanation
+				// instead of the generic shared-name message.
+				const labels = new Set(entries.map((entry) => entry.label));
+				const labelCollisions = duplicates.filter((name) =>
+					labels.has(name),
+				);
 				new Notice(
-					`Two speakers cannot share a name (${duplicates.join(
-						', ',
-					)}). Give each a distinct name.`,
+					labelCollisions.length > 0
+						? `A name cannot equal another speaker's label ` +
+								`(${labelCollisions.join(', ')}): their lines ` +
+								'would become indistinguishable in the outputs. ' +
+								'Give the speakers real, distinct names instead.'
+						: `Two speakers cannot share a name (${duplicates.join(
+								', ',
+							)}). Give each a distinct name.`,
 				);
 				return;
 			}
@@ -351,12 +371,12 @@ export class SpeakerRenameModal extends Modal {
 				plan.renames,
 				{ allowBroad: this.allowBroad },
 			);
-			await this.options.sidecar.setSpeakers(
+			// One atomic commit: the roster and its history entry can never
+			// be persisted without each other, so the undo baseline always
+			// matches what was actually applied.
+			await this.options.sidecar.commitRename(
 				this.file.path,
 				plan.nextEntries,
-			);
-			await this.options.sidecar.pushHistory(
-				this.file.path,
 				plan.nextNames,
 			);
 			console.debug(
@@ -413,7 +433,11 @@ export class SpeakerRenameModal extends Modal {
 				new Notice('Nothing to undo: the names are already the same.');
 			}
 			// The undone entry is consumed either way, so the next undo steps
-			// further back instead of replaying this one.
+			// further back instead of replaying this one. Unlike apply, the
+			// two writes need no atomic commit: if this pop fails after the
+			// roster reverted, the next undo finds the roster already equal
+			// to the entry's state, plans no change, and only pops - the
+			// tear heals itself instead of corrupting the baseline.
 			await this.options.sidecar.popHistory(this.file.path);
 			this.close();
 		} catch (error) {

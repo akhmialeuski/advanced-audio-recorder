@@ -360,13 +360,15 @@ export interface TranscriptSectionReader {
 /**
  * Finds a recording's existing transcript and returns it as timed lines, or
  * null when no readable transcript exists. When the recording's sidecar
- * records written outputs, those exact paths are authoritative: transcript
- * files are read first (JSON preferred, so the detected language rides
- * along), then recorded notes scoped by their timecode links; nothing else
- * is guessed. Only a recording without recorded outputs falls back to the
- * legacy discovery scan (transcript files next to the audio by name, then
- * every referencing note). Unreadable outputs are logged and skipped rather
- * than failing the search.
+ * records written outputs, those exact paths are read first: transcript
+ * files in preference order (JSON preferred, so the detected language rides
+ * along), then recorded notes scoped by their timecode links. Only when the
+ * recorded outputs yield nothing - none recorded, or every one is missing,
+ * unreadable, or LLM-replaced - does the legacy discovery scan run
+ * (transcript files next to the audio by name, then every referencing
+ * note), so a transcript the sidecar never recorded is still found instead
+ * of reporting "no transcript". Unreadable outputs are logged and skipped
+ * rather than failing the search.
  * @param app - Obsidian App
  * @param audioFile - Recording whose transcript is sought
  * @param sidecar - Recording sidecar access; null falls back to discovery
@@ -381,7 +383,13 @@ export async function loadTranscriptLines(
 		section &&
 		(section.fileOutputs.length > 0 || section.noteOutputs.length > 0)
 	) {
-		return loadFromRecordedOutputs(app, audioFile, section);
+		const recorded = await loadFromRecordedOutputs(app, audioFile, section);
+		if (recorded) {
+			return recorded;
+		}
+		// Every recorded output is gone, unreadable, or LLM-replaced; a
+		// transcript the sidecar never recorded may still sit on disk, so
+		// fall through to discovery rather than reporting "no transcript".
 	}
 	return loadByDiscovery(app, audioFile);
 }

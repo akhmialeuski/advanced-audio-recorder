@@ -7,6 +7,7 @@
  * @module recording/RecordingMarkerCoordinator
  */
 
+import { Notice } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import type { RecordingSidecarStore } from '../sidecar/RecordingSidecarStore';
 import {
@@ -147,6 +148,7 @@ export class RecordingMarkerCoordinator {
 				this.persistedPaths.set(marker.id, paths);
 			}
 		}
+		let failed = 0;
 		for (const { path, markers } of writes) {
 			try {
 				// Atomic read-modify-write: a marker another writer persisted
@@ -155,11 +157,21 @@ export class RecordingMarkerCoordinator {
 					sortMarkers([...existing, ...markers]),
 				);
 			} catch (error) {
+				failed++;
 				console.error(
 					`${PLUGIN_LOG_PREFIX} Failed to persist recording markers for ${path}:`,
 					error,
 				);
 			}
+		}
+		// The session's markers exist only in this buffer; losing a write
+		// must be said out loud, not just logged, or the user discovers the
+		// loss days later when the player shows nothing.
+		if (failed > 0) {
+			new Notice(
+				`Markers of this recording could not be saved for ${String(failed)} ` +
+					'file(s); see the developer console for details.',
+			);
 		}
 	}
 

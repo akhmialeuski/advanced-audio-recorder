@@ -18,6 +18,7 @@ import type { App } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import type { PlayerMarker } from '../markers/markerModel';
 import { serializeMarkers } from '../markers/markerModel';
+import { TRANSCRIPT_FILE_FORMATS } from '../transcription/TranscriptTypes';
 import {
 	cloneTranscriptSection,
 	emptyRecordingSidecar,
@@ -37,6 +38,25 @@ import {
 const SIDECAR_SUFFIX = '.markers.json';
 
 /**
+ * File extensions a recorded output can have: notes plus the transcript file
+ * formats. Renames of any other file can never touch a recorded path, so the
+ * output-rename hook skips them without scanning anything.
+ */
+const RECORDABLE_OUTPUT_EXTENSIONS = new Set<string>([
+	'md',
+	...TRANSCRIPT_FILE_FORMATS,
+]);
+
+/** Whether a vault path could be a recorded transcript output. */
+function isRecordableOutputPath(path: string): boolean {
+	const dot = path.lastIndexOf('.');
+	return (
+		dot >= 0 &&
+		RECORDABLE_OUTPUT_EXTENSIONS.has(path.slice(dot + 1).toLowerCase())
+	);
+}
+
+/**
  * Loads and saves per-recording sidecar documents (markers + transcript).
  */
 export class RecordingSidecarStore {
@@ -44,9 +64,11 @@ export class RecordingSidecarStore {
 	/**
 	 * Recording paths whose sidecar file exists but could not be read. While
 	 * flagged, reads retry the file on every access (nothing is cached) and
-	 * mutations refuse to persist, so the possibly intact file is never
-	 * overwritten with a document derived from the empty fallback - the same
-	 * protection the settings loader applies to an unreadable data.json.
+	 * mutations reject instead of persisting, so the possibly intact file is
+	 * never overwritten with a document derived from the empty fallback - the
+	 * same protection the settings loader applies to an unreadable data.json.
+	 * Invariant: a path with a cached document is never flagged (a stray flag
+	 * next to valid cached data would silently drop every write forever).
 	 */
 	private readonly corruptPaths = new Set<string>();
 	/** Serializes mutations so concurrent saves never interleave. */
@@ -88,7 +110,9 @@ export class RecordingSidecarStore {
 	 * stale base and lose each other (the get-merge-set pattern would).
 	 * @param path - Vault-relative recording path
 	 * @param update - Pure update over the current markers
-	 * @returns A snapshot of the markers after the update
+	 * @returns A snapshot of the markers after the update; rejects when the
+	 *   write was refused (corrupt sidecar), so a caller can never mistake a
+	 *   dropped update for an empty marker list
 	 */
 	async updateMarkers(
 		path: string,
@@ -139,18 +163,30 @@ export class RecordingSidecarStore {
 		entries: readonly SpeakerEntry[],
 	): Promise<void> {
 		return this.mutate(path, (sidecar) => {
-			const mentioned = new Set(entries.map((entry) => entry.label));
-			const kept = sidecar.transcript.speakers.filter(
-				(entry) => !mentioned.has(entry.label),
-			);
-			sidecar.transcript.speakers = [
-				...entries.map((entry) =>
-					entry.name
-						? { label: entry.label, name: entry.name }
-						: { label: entry.label },
-				),
-				...kept,
-			];
+			replaceSpeakers(sidecar, entries);
+		});
+	}
+
+	/**
+	 * Commits an applied rename atomically: the new roster and its history
+	 * entry are written in one mutation, so a failure can never persist the
+	 * roster without the history entry (which would corrupt the undo
+	 * baseline) or vice versa.
+	 * @param path - Vault-relative recording path
+	 * @param entries - New roster in first-seen order
+	 * @param names - Full label-to-name assignment after the apply
+	 */
+	async commitRename(
+		path: string,
+		entries: readonly SpeakerEntry[],
+		names: Record<string, string>,
+	): Promise<void> {
+		return this.mutate(path, (sidecar) => {
+			replaceSpeakers(sidecar, entries);
+			sidecar.transcript.history = [
+				...sidecar.transcript.history,
+				{ at: new Date().toISOString(), names: { ...names } },
+			].slice(-SIDECAR_HISTORY_LIMIT);
 		});
 	}
 
@@ -195,24 +231,6 @@ export class RecordingSidecarStore {
 	): Promise<void> {
 		return this.mutate(path, (sidecar) => {
 			sidecar.transcript.provenance = { ...provenance };
-		});
-	}
-
-	/**
-	 * Appends an applied name mapping to the rename history, dropping the
-	 * oldest entries beyond the cap.
-	 * @param path - Vault-relative recording path
-	 * @param names - Full label-to-name assignment after the apply
-	 */
-	async pushHistory(
-		path: string,
-		names: Record<string, string>,
-	): Promise<void> {
-		return this.mutate(path, (sidecar) => {
-			sidecar.transcript.history = [
-				...sidecar.transcript.history,
-				{ at: new Date().toISOString(), names: { ...names } },
-			].slice(-SIDECAR_HISTORY_LIMIT);
 		});
 	}
 
@@ -292,7 +310,11 @@ export class RecordingSidecarStore {
 					error,
 				);
 			}
+			// Purge both again: a mutation queued before this delete may have
+			// re-established either (the corrupt flag included - its load of
+			// the now-deleted path can have failed and re-flagged it).
 			this.cache.delete(path);
+			this.corruptPaths.delete(path);
 		});
 	}
 
@@ -309,29 +331,47 @@ export class RecordingSidecarStore {
 		if (oldPath.endsWith(SIDECAR_SUFFIX)) {
 			return;
 		}
+		// Only notes and transcript files can ever be recorded outputs; a
+		// rename of anything else (image, PDF, ...) can be skipped without
+		// scanning a single sidecar.
+		if (
+			!isRecordableOutputPath(oldPath) &&
+			!isRecordableOutputPath(newPath)
+		) {
+			return;
+		}
 		for (const recording of await this.recordingsReferencing(oldPath)) {
-			await this.mutate(recording, (sidecar) => {
-				const notes = renameOutputPath(
-					sidecar.transcript.noteOutputs,
-					oldPath,
-					newPath,
+			try {
+				await this.mutate(recording, (sidecar) => {
+					const notes = renameOutputPath(
+						sidecar.transcript.noteOutputs,
+						oldPath,
+						newPath,
+					);
+					const files = renameOutputPath(
+						sidecar.transcript.fileOutputs,
+						oldPath,
+						newPath,
+					);
+					if (!notes && !files) {
+						return false;
+					}
+					if (notes) {
+						sidecar.transcript.noteOutputs = notes;
+					}
+					if (files) {
+						sidecar.transcript.fileOutputs = files;
+					}
+					return true;
+				});
+			} catch (error) {
+				// Path maintenance is best-effort: one corrupt sidecar must
+				// not stop the rename from reaching the other recordings.
+				console.warn(
+					`${PLUGIN_LOG_PREFIX} Failed to update the recorded output path in the sidecar of ${recording}:`,
+					error,
 				);
-				const files = renameOutputPath(
-					sidecar.transcript.fileOutputs,
-					oldPath,
-					newPath,
-				);
-				if (!notes && !files) {
-					return false;
-				}
-				if (notes) {
-					sidecar.transcript.noteOutputs = notes;
-				}
-				if (files) {
-					sidecar.transcript.fileOutputs = files;
-				}
-				return true;
-			});
+			}
 		}
 	}
 
@@ -346,22 +386,21 @@ export class RecordingSidecarStore {
 
 	/**
 	 * Finds the recordings whose sidecar (cached or on disk) records the
-	 * given output path. On-disk candidates are probed with a cheap raw
-	 * containment check before parsing; the mutation re-checks by exact path,
-	 * so a false positive only costs a no-op.
+	 * given output path. On-disk candidates are read through {@link load}, so
+	 * each sidecar is parsed and cached at most once - later scans check the
+	 * cache only and never touch the disk again.
 	 * @param outputPath - Output path to search for
 	 */
 	private async recordingsReferencing(outputPath: string): Promise<string[]> {
 		const hits = new Set<string>();
+		const references = (doc: RecordingSidecar): boolean =>
+			doc.transcript.noteOutputs.some((o) => o.path === outputPath) ||
+			doc.transcript.fileOutputs.some((o) => o.path === outputPath);
 		for (const [recording, doc] of this.cache) {
-			if (
-				doc.transcript.noteOutputs.some((o) => o.path === outputPath) ||
-				doc.transcript.fileOutputs.some((o) => o.path === outputPath)
-			) {
+			if (references(doc)) {
 				hits.add(recording);
 			}
 		}
-		const needle = JSON.stringify(outputPath);
 		for (const file of this.app.vault.getFiles()) {
 			if (!file.path.endsWith(SIDECAR_SUFFIX)) {
 				continue;
@@ -370,16 +409,8 @@ export class RecordingSidecarStore {
 			if (this.cache.has(recording) || hits.has(recording)) {
 				continue;
 			}
-			try {
-				const raw = await this.app.vault.adapter.read(file.path);
-				if (raw.includes(needle)) {
-					hits.add(recording);
-				}
-			} catch (error) {
-				console.warn(
-					`${PLUGIN_LOG_PREFIX} Failed to probe sidecar ${file.path}:`,
-					error,
-				);
+			if (references(await this.load(recording))) {
+				hits.add(recording);
 			}
 		}
 		return [...hits];
@@ -387,15 +418,20 @@ export class RecordingSidecarStore {
 
 	/**
 	 * Moves the cache entry (and the corrupt flag) from one recording path to
-	 * another, keeping whichever document is newest under the old path.
+	 * another, keeping whichever document is newest under the old path. The
+	 * invariant "a cached document is never flagged corrupt" is preserved: a
+	 * document moved into place is authoritative for its new path, and the
+	 * flag is only carried over when the new path holds no document (a stray
+	 * flag next to a valid cache entry would silently drop every write).
 	 */
 	private moveCacheEntry(oldPath: string, newPath: string): void {
 		const cached = this.cache.get(oldPath);
 		this.cache.delete(oldPath);
+		const wasCorrupt = this.corruptPaths.delete(oldPath);
 		if (cached) {
 			this.cache.set(newPath, cached);
-		}
-		if (this.corruptPaths.delete(oldPath)) {
+			this.corruptPaths.delete(newPath);
+		} else if (wasCorrupt && !this.cache.has(newPath)) {
 			this.corruptPaths.add(newPath);
 		}
 	}
@@ -419,6 +455,10 @@ export class RecordingSidecarStore {
 	private async load(path: string): Promise<RecordingSidecar> {
 		const cached = this.cache.get(path);
 		if (cached) {
+			// A cached document is authoritative, so any corrupt flag next to
+			// it is stale (e.g. left by a read that lost a race against a
+			// successful one) and must not keep dropping writes.
+			this.corruptPaths.delete(path);
 			return cached;
 		}
 		const file = this.sidecarPath(path);
@@ -429,6 +469,14 @@ export class RecordingSidecarStore {
 				sidecar = parseRecordingSidecar(JSON.parse(raw));
 			}
 		} catch (error) {
+			// A concurrent load may have read the file successfully while
+			// this one failed (reads are not serialized on the write chain);
+			// its cached document wins and the path must not be flagged, or
+			// every later write would be dropped despite valid cached data.
+			const raced = this.cache.get(path);
+			if (raced) {
+				return raced;
+			}
 			console.warn(
 				`${PLUGIN_LOG_PREFIX} Sidecar for ${path} exists but could not be read; treating as empty and protecting the file from writes:`,
 				error,
@@ -453,22 +501,24 @@ export class RecordingSidecarStore {
 	 * write all happen inside the chain so two concurrent mutations of
 	 * different sections can never lose each other's change. A mutation
 	 * returning false is a no-op and skips the write. While the sidecar is
-	 * flagged corrupt the change is dropped with a warning instead of
-	 * overwriting the possibly intact file.
+	 * flagged corrupt the change is refused and the returned promise
+	 * rejects: the mutation did not happen, and pretending otherwise would
+	 * let callers present unsaved state as saved. (A failed disk write after
+	 * a successful mutation only warns - the cache did change, so reads stay
+	 * consistent and the next write retries the file.)
 	 * @param path - Vault-relative recording path
 	 * @param change - Mutation applied to the cached document; return false
 	 *   to signal nothing changed
 	 */
-	private mutate(
+	private async mutate(
 		path: string,
 		change: (sidecar: RecordingSidecar) => void | boolean,
 	): Promise<void> {
-		return this.enqueue(async () => {
+		let blocked = false;
+		await this.enqueue(async () => {
 			const sidecar = await this.load(path);
 			if (this.corruptPaths.has(path)) {
-				console.warn(
-					`${PLUGIN_LOG_PREFIX} Dropping a sidecar write for ${path}: the existing file could not be read and will not be overwritten.`,
-				);
+				blocked = true;
 				return;
 			}
 			if (change(sidecar) === false) {
@@ -493,6 +543,15 @@ export class RecordingSidecarStore {
 				);
 			}
 		});
+		// Thrown outside the queued task, so the write chain itself stays
+		// alive while the caller receives the rejection.
+		if (blocked) {
+			throw new Error(
+				`The sidecar file ${this.sidecarPath(path)} exists but could not be read; ` +
+					'writes to it are paused so the stored data is not overwritten. ' +
+					'Restore or remove the file to resume.',
+			);
+		}
 	}
 
 	/**
@@ -506,6 +565,31 @@ export class RecordingSidecarStore {
 		});
 		return this.writeChain;
 	}
+}
+
+/**
+ * Replaces the roster inside a sidecar document: the given entries become the
+ * head of the roster in their order (each replacing any stored entry with the
+ * same label, name included or removed as given), while stored entries whose
+ * labels are not mentioned are kept after them - a label that vanished from
+ * the last transcription keeps its assigned name for the future.
+ */
+function replaceSpeakers(
+	sidecar: RecordingSidecar,
+	entries: readonly SpeakerEntry[],
+): void {
+	const mentioned = new Set(entries.map((entry) => entry.label));
+	const kept = sidecar.transcript.speakers.filter(
+		(entry) => !mentioned.has(entry.label),
+	);
+	sidecar.transcript.speakers = [
+		...entries.map((entry) =>
+			entry.name
+				? { label: entry.label, name: entry.name }
+				: { label: entry.label },
+		),
+		...kept,
+	];
 }
 
 /** Replaces the entry with the same path, or appends when absent. */

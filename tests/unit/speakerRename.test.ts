@@ -129,6 +129,33 @@ describe('speakerRename', () => {
 			expect(plan.renames).toEqual([]);
 		});
 
+		it('never emits two rules for the same source text (legacy collision roster)', () => {
+			// A legacy sidecar can hold a stored name equal to another
+			// entry's engine label. Both entries then claim the text
+			// "Speaker 2"; letting both rules through would make the rewrite
+			// outcome depend on rule order (last-write-wins in the rename
+			// map) and silently merge the speakers. The label-owner keeps
+			// the rule; the stale-name healing rule is dropped.
+			const plan = planSpeakerRename(
+				[
+					{ label: 'Speaker 1', name: 'Speaker 2' },
+					{ label: 'Speaker 2' },
+				],
+				(label) => (label === 'Speaker 1' ? 'Alice' : 'Bob'),
+			);
+
+			const froms = plan.renames.map((rename) => rename.from);
+			expect(new Set(froms).size).toBe(froms.length);
+			expect(plan.renames).toEqual([
+				{ from: 'Speaker 1', to: 'Alice' },
+				{ from: 'Speaker 2', to: 'Bob' },
+			]);
+			expect(plan.nextEntries).toEqual([
+				{ label: 'Speaker 1', name: 'Alice' },
+				{ label: 'Speaker 2', name: 'Bob' },
+			]);
+		});
+
 		it('keeps hostile labels as plain data in the next-names map', () => {
 			const plan = planSpeakerRename(
 				[{ label: '__proto__' }, { label: 'constructor' }],

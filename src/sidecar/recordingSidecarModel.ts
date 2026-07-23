@@ -121,14 +121,19 @@ export function emptyRecordingSidecar(): RecordingSidecar {
 	return { markers: [], transcript: emptyTranscriptSection() };
 }
 
-/** Whether a transcript section carries no data at all. */
+/**
+ * Whether a transcript section carries no data worth keeping. Provenance is
+ * deliberately not counted: it only describes the run behind the section's
+ * substantive lists, so once those are empty there is nothing left for it to
+ * describe - counting it would keep an otherwise-empty sidecar file on disk
+ * forever after any transcription.
+ */
 export function isTranscriptSectionEmpty(section: TranscriptSection): boolean {
 	return (
 		section.speakers.length === 0 &&
 		section.noteOutputs.length === 0 &&
 		section.fileOutputs.length === 0 &&
-		section.history.length === 0 &&
-		section.provenance === undefined
+		section.history.length === 0
 	);
 }
 

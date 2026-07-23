@@ -45,8 +45,12 @@ function effectiveName(entry: SpeakerNameEntry): string {
  * are safe to apply. A blank field counts as its original label, so assigning
  * one speaker's label as another speaker's name (while leaving the first
  * blank) is still detected. A name equal to any other entry's label is
- * rejected outright: the outputs could then no longer tell that speaker's
- * lines apart from the other one's unrenamed lines.
+ * rejected outright - deliberately even for a "swap" where both fields are
+ * reassigned: the rewrite itself could swap simultaneously, but the stored
+ * roster would then carry names equal to other entries' labels, making the
+ * rendered text of two speakers indistinguishable for every later rewrite,
+ * re-transcription, and healing pass. Blocking here prevents that ambiguous
+ * state from ever being created.
  * @param entries - One entry per detected speaker
  * @returns The offending names, in first-seen order (empty when none)
  */
@@ -104,6 +108,14 @@ export interface SpeakerRenamePlan {
  * output that missed an earlier rewrite is healed by this one rather than
  * silently skipped forever. Targets are trimmed; an empty or label-equal
  * target reverts the speaker to its engine label.
+ *
+ * Two entries can claim the same source text (a stale stored name equal to
+ * another entry's engine label - a state older sidecars can carry). Such
+ * occurrences are textually indistinguishable, so no rule order could
+ * rewrite them correctly for both speakers; instead of letting the last
+ * rule win nondeterministically, the entry whose engine label IS that text
+ * keeps its rule (its claim on its own label is the one the dialog shows)
+ * and the stale-name healing rule is dropped.
  * @param roster - The stored speaker roster
  * @param targetFor - Target display name per label ('' reverts to the label)
  */
@@ -112,9 +124,10 @@ export function planSpeakerRename(
 	targetFor: (label: string) => string,
 ): SpeakerRenamePlan {
 	let changed = false;
-	const renames: SpeakerRename[] = [];
 	const nextEntries: SpeakerEntry[] = [];
 	const nextNames = emptyNameMap();
+	/** Rule per source text; ownsLabel marks the label-owner's claim. */
+	const byFrom = new Map<string, { to: string; ownsLabel: boolean }>();
 	for (const entry of roster) {
 		const target = targetFor(entry.label).trim();
 		const name = target && target !== entry.label ? target : '';
@@ -134,10 +147,22 @@ export function planSpeakerRename(
 		// so the extra rule can never chain.
 		const candidates = new Set([entry.label, entry.name ?? entry.label]);
 		for (const from of candidates) {
-			if (from !== to) {
-				renames.push({ from, to });
+			if (from === to) {
+				continue;
+			}
+			const ownsLabel = from === entry.label;
+			const existing = byFrom.get(from);
+			if (!existing) {
+				byFrom.set(from, { to, ownsLabel });
+			} else if (!existing.ownsLabel && ownsLabel) {
+				existing.to = to;
+				existing.ownsLabel = true;
 			}
 		}
 	}
+	const renames = [...byFrom].map(([from, rule]) => ({
+		from,
+		to: rule.to,
+	}));
 	return { changed, renames, nextEntries, nextNames };
 }

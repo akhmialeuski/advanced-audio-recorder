@@ -371,13 +371,50 @@ describe('loadTranscriptLines with a recorded sidecar section', () => {
 		]);
 	});
 
-	it('does not guess when every recorded output is gone', async () => {
-		// The section records outputs, so their paths are authoritative: a
-		// discoverable decoy must not be silently substituted for them.
+	it('falls back to discovery when every recorded output is gone', async () => {
+		// The recorded output was deleted, but an unrecorded transcript sits
+		// next to the audio: reporting "no transcript" would hide it.
 		const files = new Map([
 			['rec.wav', ''],
-			['rec.txt', '[0:05] decoy'],
+			['rec.txt', '[0:05] unrecorded transcript'],
 		]);
+		const app = makeApp(files);
+		const section: TranscriptSection = {
+			...emptyTranscriptSection(),
+			fileOutputs: [{ path: 'gone.txt', format: 'txt', writtenAt: 't' }],
+		};
+		const found = await loadTranscriptLines(
+			app,
+			tf('rec.wav'),
+			sidecarWith(section),
+		);
+		expect(found?.origin).toBe('rec.txt');
+		expect(found?.lines).toEqual([
+			{ time: 5, text: 'unrecorded transcript' },
+		]);
+	});
+
+	it('falls back to discovery when the only recorded note is LLM-replaced', async () => {
+		const files = new Map([
+			['rec.wav', ''],
+			['cleaned.md', 'llm prose, no transcript lines'],
+			['rec.srt', '1\n00:00:00,000 --> 00:00:05,000\nfrom disk'],
+		]);
+		const app = makeApp(files);
+		const section: TranscriptSection = {
+			...emptyTranscriptSection(),
+			noteOutputs: [recordedNote('cleaned.md', true)],
+		};
+		const found = await loadTranscriptLines(
+			app,
+			tf('rec.wav'),
+			sidecarWith(section),
+		);
+		expect(found?.origin).toBe('rec.srt');
+	});
+
+	it('still returns null when neither records nor discovery find anything', async () => {
+		const files = new Map([['rec.wav', '']]);
 		const app = makeApp(files);
 		const section: TranscriptSection = {
 			...emptyTranscriptSection(),

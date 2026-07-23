@@ -100,8 +100,11 @@ export class PlayerMarkerController {
 		};
 		this.markers = addMarker(this.markers, marker);
 		this.host.renderMarkers();
-		await this.persist((stored) => addMarker(stored, marker));
-		new Notice(`${label} added at ${formatTimecode(safeTime)}`);
+		// The success notice is earned by the persist: announcing an add whose
+		// write was refused would report a marker that does not exist.
+		if (await this.persist((stored) => addMarker(stored, marker))) {
+			new Notice(`${label} added at ${formatTimecode(safeTime)}`);
+		}
 	}
 
 	/**
@@ -148,19 +151,23 @@ export class PlayerMarkerController {
 	 * read-modify-write, so a concurrent writer (a recording-session flush,
 	 * auto chapters) merged between this player's read and write is never
 	 * clobbered. The merged result becomes the authoritative list; a change
-	 * another writer contributed triggers a re-render.
+	 * another writer contributed triggers a re-render. A refused write (the
+	 * store rejects for a corrupt sidecar) is surfaced with a Notice and the
+	 * view is re-synced with the store, so an optimistic edit never stays on
+	 * screen pretending it was saved.
 	 * @param update - The same pure operation, applied to the stored list
+	 * @returns True when the operation was persisted
 	 */
 	private async persist(
 		update: (stored: PlayerMarker[]) => readonly PlayerMarker[],
-	): Promise<void> {
+	): Promise<boolean> {
 		try {
 			const merged = await this.markerStore.updateMarkers(
 				this.filePath,
 				update,
 			);
 			if (this.host.isUnloaded()) {
-				return;
+				return true;
 			}
 			if (!sameMarkers(this.markers, merged)) {
 				this.markers = merged;
@@ -171,11 +178,19 @@ export class PlayerMarkerController {
 			// Refresh other live players of this file (e.g. the reading-view
 			// copy) so the change shows everywhere without re-opening
 			this.host.notifyOthers();
+			return true;
 		} catch (error) {
 			console.warn(
 				`${PLUGIN_LOG_PREFIX} Failed to save markers for ${this.filePath}:`,
 				error,
 			);
+			if (!this.host.isUnloaded()) {
+				const message =
+					error instanceof Error ? error.message : String(error);
+				new Notice(`Markers could not be saved: ${message}`);
+				await this.load();
+			}
+			return false;
 		}
 	}
 }

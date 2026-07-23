@@ -282,3 +282,21 @@ describe('serializeRecordingSidecar', () => {
 		expect('transcript' in payload).toBe(false);
 	});
 });
+
+describe('provenance and emptiness', () => {
+	it('treats a provenance-only section as empty (deletable sidecar)', () => {
+		// Provenance describes the run behind the section's lists; once
+		// those are empty there is nothing left to describe, and counting
+		// it would keep an emptied sidecar file on disk forever.
+		const section = {
+			...emptyTranscriptSection(),
+			provenance: { language: 'en', createdAt: 't' },
+		};
+		expect(isTranscriptSectionEmpty(section)).toBe(true);
+		expect(isSidecarEmpty({ markers: [], transcript: section })).toBe(true);
+		// With markers present the document is still worth persisting.
+		expect(isSidecarEmpty({ markers: [marker], transcript: section })).toBe(
+			false,
+		);
+	});
+});

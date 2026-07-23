@@ -189,12 +189,12 @@ describe('RecordingSidecarStore', () => {
 		});
 	});
 
-	describe('pushHistory', () => {
+	describe('commitRename history', () => {
 		it('appends entries and caps the history at ten', async () => {
 			const { app } = makeApp();
 			const store = new RecordingSidecarStore(app);
 			for (let i = 0; i < 12; i++) {
-				await store.pushHistory('rec.wav', {
+				await store.commitRename('rec.wav', [], {
 					'Speaker 1': `Name ${String(i)}`,
 				});
 			}
@@ -210,8 +210,8 @@ describe('RecordingSidecarStore', () => {
 		it('removes only the newest entry, so each undo steps one back', async () => {
 			const { app } = makeApp();
 			const store = new RecordingSidecarStore(app);
-			await store.pushHistory('rec.wav', { 'Speaker 1': 'Alex' });
-			await store.pushHistory('rec.wav', { 'Speaker 1': 'Bob' });
+			await store.commitRename('rec.wav', [], { 'Speaker 1': 'Alex' });
+			await store.commitRename('rec.wav', [], { 'Speaker 1': 'Bob' });
 
 			await store.popHistory('rec.wav');
 			let history = (await store.getTranscript('rec.wav')).history;
@@ -338,7 +338,7 @@ describe('RecordingSidecarStore', () => {
 
 			// The mutation is queued first, the rename right behind it - the
 			// interleaving of a rename event landing while a write is pending.
-			const mutation = store.pushHistory('rec.wav', {
+			const mutation = store.commitRename('rec.wav', [], {
 				'Speaker 1': 'Alex',
 			});
 			const rename = store.handleRename('rec.wav', 'renamed.wav');
@@ -362,7 +362,7 @@ describe('RecordingSidecarStore', () => {
 			const store = new RecordingSidecarStore(app);
 			await store.setSpeakers('rec.wav', [{ label: 'Speaker 1' }]);
 
-			const mutation = store.pushHistory('rec.wav', {
+			const mutation = store.commitRename('rec.wav', [], {
 				'Speaker 1': 'Alex',
 			});
 			const removal = store.handleDelete('rec.wav');
@@ -538,8 +538,18 @@ describe('RecordingSidecarStore', () => {
 			expect(store.isSidecarCorrupt('rec.wav')).toBe(true);
 			expect(store.isSidecarCorrupt('other.wav')).toBe(false);
 
-			// The write is dropped: the possibly intact file must survive.
-			await store.setSpeakers('rec.wav', [{ label: 'Speaker 1' }]);
+			// The write is refused loudly: the caller gets a rejection (so it
+			// can never present unsaved state as saved) and the possibly
+			// intact file survives.
+			await expect(
+				store.setSpeakers('rec.wav', [{ label: 'Speaker 1' }]),
+			).rejects.toThrow('could not be read');
+			await expect(
+				store.updateMarkers('rec.wav', (existing) => [
+					...existing,
+					marker('a', 1),
+				]),
+			).rejects.toThrow('could not be read');
 			expect(files.get('rec.wav.markers.json')).toBe('not json');
 			warn.mockRestore();
 		});
@@ -566,6 +576,202 @@ describe('RecordingSidecarStore', () => {
 			await store.setSpeakers('rec.wav', [{ label: 'Speaker 1' }]);
 			expect(files.get('rec.wav.markers.json')).toContain('Speaker 1');
 			warn.mockRestore();
+		});
+	});
+
+	describe('commitRename atomicity', () => {
+		it('persists the roster and the history entry in one write', async () => {
+			const { app, files } = makeApp();
+			const writeSpy = jest.spyOn(app.vault.adapter, 'write');
+			const store = new RecordingSidecarStore(app);
+
+			await store.commitRename(
+				'rec.wav',
+				[{ label: 'Speaker 1', name: 'Alex' }],
+				{ 'Speaker 1': 'Alex' },
+			);
+
+			// One mutation, one file write: a failure can never persist the
+			// roster without its history entry or vice versa.
+			expect(writeSpy).toHaveBeenCalledTimes(1);
+			const written = rawSidecar(files);
+			const transcript = written.transcript as {
+				speakers: unknown;
+				history: { names: unknown }[];
+			};
+			expect(transcript.speakers).toEqual([
+				{ label: 'Speaker 1', name: 'Alex' },
+			]);
+			expect(transcript.history.map((entry) => entry.names)).toEqual([
+				{ 'Speaker 1': 'Alex' },
+			]);
+			writeSpy.mockRestore();
+		});
+	});
+
+	describe('corrupt-flag/cache invariant', () => {
+		it('adopts a concurrently cached document instead of flagging corrupt', async () => {
+			// Interleave two real loads: the first read resolves fine, the
+			// second read (started before the first cached) throws. The
+			// failing load must return the winner's document, not flag.
+			const { app } = makeApp();
+			const reads: Array<() => void> = [];
+			let calls = 0;
+			app.vault.adapter.exists = () => Promise.resolve(true);
+			app.vault.adapter.read = jest.fn(
+				() =>
+					new Promise<string>((resolve, reject) => {
+						const index = calls++;
+						reads.push(() => {
+							if (index === 1) {
+								reject(new Error('transient I/O'));
+							} else {
+								resolve(
+									JSON.stringify({
+										version: 2,
+										markers: [marker('a', 1)],
+									}),
+								);
+							}
+						});
+					}),
+			) as typeof app.vault.adapter.read;
+			const store = new RecordingSidecarStore(app);
+
+			const loadA = store.getMarkers('rec.wav');
+			const loadB = store.getMarkers('rec.wav');
+			// Drain microtasks until both loads sit inside their read().
+			for (let i = 0; i < 100 && reads.length < 2; i++) {
+				await Promise.resolve();
+			}
+			expect(reads).toHaveLength(2);
+			// A resolves first and caches; B then fails its read.
+			reads[0]?.();
+			await loadA;
+			reads[1]?.();
+			const fromB = await loadB;
+
+			expect(fromB.map((m) => m.id)).toEqual(['a']);
+			expect(store.isSidecarCorrupt('rec.wav')).toBe(false);
+			// Writes keep working - nothing froze.
+			await store.setMarkers('rec.wav', [marker('b', 2)]);
+			expect(
+				(await store.getMarkers('rec.wav')).map((m) => m.id),
+			).toEqual(['b']);
+		});
+
+		it('does not strand the corrupt flag on a renamed path holding a cached document', async () => {
+			// The recording is cached valid, its file corrupts on disk, a
+			// mutation is queued, then the rename lands. The queued
+			// mutation's load of the old path fails and flags it; the rename
+			// task's second cache move must not carry that flag onto the new
+			// path, which holds the valid cached document.
+			const { app, files } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setSpeakers('rec.wav', [{ label: 'Speaker 1' }]);
+
+			// Corrupt the file on disk behind the cache.
+			files.set('rec.wav.markers.json', 'not json');
+			const warn = jest
+				.spyOn(console, 'warn')
+				.mockImplementation(() => undefined);
+
+			// moveCacheEntry (sync, inside handleRename) relocates the cache
+			// before the queued mutation runs; the mutation then re-reads the
+			// old path from disk and fails.
+			const rename = store.handleRename('rec.wav', 'renamed.wav');
+			const mutation = store
+				.setSpeakers('rec.wav', [{ label: 'Speaker 2' }])
+				.catch(() => undefined);
+			await Promise.all([rename, mutation]);
+
+			expect(store.isSidecarCorrupt('renamed.wav')).toBe(false);
+			// The renamed recording accepts writes; nothing is frozen.
+			await store.setSpeakers('renamed.wav', [
+				{ label: 'Speaker 1', name: 'Alex' },
+			]);
+			expect(
+				(await store.getTranscript('renamed.wav')).speakers[0]?.name,
+			).toBe('Alex');
+			warn.mockRestore();
+		});
+
+		it('clears a corrupt flag re-added by a mutation racing a delete', async () => {
+			const { app, files } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setSpeakers('rec.wav', [{ label: 'Speaker 1' }]);
+			files.set('rec.wav.markers.json', 'not json');
+			const warn = jest
+				.spyOn(console, 'warn')
+				.mockImplementation(() => undefined);
+
+			const removal = store.handleDelete('rec.wav');
+			const mutation = store
+				.setSpeakers('rec.wav', [{ label: 'Speaker 2' }])
+				.catch(() => undefined);
+			await Promise.all([removal, mutation]);
+
+			// The queued task purges the flag the racing mutation re-added,
+			// so a recording re-created at this path starts clean.
+			expect(store.isSidecarCorrupt('rec.wav')).toBe(false);
+			warn.mockRestore();
+		});
+	});
+
+	describe('provenance emptiness', () => {
+		it('deletes a sidecar whose only remaining data is provenance', async () => {
+			const { app, files } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setMarkers('rec.wav', [marker('a', 1)]);
+			await store.recordProvenance('rec.wav', {
+				language: 'en',
+				createdAt: 't',
+			});
+			expect(files.has('rec.wav.markers.json')).toBe(true);
+
+			// Deleting the last marker leaves only provenance, which
+			// describes nothing once every substantive list is empty - the
+			// file must go instead of lingering forever after a
+			// transcription.
+			await store.setMarkers('rec.wav', []);
+			expect(files.has('rec.wav.markers.json')).toBe(false);
+		});
+	});
+
+	describe('output-rename scan bounds', () => {
+		it('never touches the disk for a rename that cannot be a recorded output', async () => {
+			const { app, files } = makeApp();
+			const seed = new RecordingSidecarStore(app);
+			await seed.recordNoteOutput('rec.wav', noteOutput('meeting.md'));
+
+			const store = new RecordingSidecarStore(app);
+			const readSpy = jest.spyOn(app.vault.adapter, 'read');
+			await store.handleOutputRename('photo.png', 'photo2.png');
+			await store.handleOutputRename('doc.pdf', 'doc2.pdf');
+
+			expect(readSpy).not.toHaveBeenCalled();
+			expect(files.get('rec.wav.markers.json')).toContain('meeting.md');
+			readSpy.mockRestore();
+		});
+
+		it('reads each on-disk sidecar at most once across repeated renames', async () => {
+			const { app } = makeApp();
+			const seed = new RecordingSidecarStore(app);
+			await seed.recordNoteOutput('rec.wav', noteOutput('a.md'));
+			await seed.recordNoteOutput('other.wav', noteOutput('b.md'));
+
+			const store = new RecordingSidecarStore(app);
+			const readSpy = jest.spyOn(app.vault.adapter, 'read');
+			await store.handleOutputRename('a.md', 'a2.md');
+			const readsAfterFirst = readSpy.mock.calls.length;
+			expect(readsAfterFirst).toBeGreaterThan(0);
+
+			// The first scan cached every sidecar it parsed; later renames
+			// resolve from the cache without re-reading the vault.
+			await store.handleOutputRename('b.md', 'b2.md');
+			await store.handleOutputRename('a2.md', 'a3.md');
+			expect(readSpy.mock.calls.length).toBe(readsAfterFirst);
+			readSpy.mockRestore();
 		});
 	});
 
@@ -614,7 +820,7 @@ describe('RecordingSidecarStore', () => {
 					{ label: 'Speaker 1', name: 'Alex' },
 				]),
 				store.recordNoteOutput('rec.wav', noteOutput('a.md')),
-				store.pushHistory('rec.wav', { 'Speaker 1': 'Alex' }),
+				store.commitRename('rec.wav', [], { 'Speaker 1': 'Alex' }),
 			]);
 
 			const reloaded = new RecordingSidecarStore(app);

@@ -255,6 +255,38 @@ describe('RecordingManager', () => {
 			]);
 		});
 
+		it('says out loud when the session markers could not be saved', async () => {
+			// A corrupt sidecar refuses the write; the loss of a whole
+			// session's markers must reach the user, not just the console.
+			const store = {
+				getMarkers: jest.fn().mockResolvedValue([]),
+				updateMarkers: jest
+					.fn()
+					.mockRejectedValue(new Error('sidecar could not be read')),
+			} as unknown as import('src/sidecar/RecordingSidecarStore').RecordingSidecarStore;
+			mockSettings = {
+				...DEFAULT_SETTINGS,
+				playerEnableMarkers: true,
+				insertAtOriginalPosition: false,
+			};
+			manager = new RecordingManager(
+				mockApp,
+				mockSettings,
+				statusChangeCallback,
+				store,
+			);
+
+			await manager.startRecording();
+			manager.captureMarkerDraft()?.commit('Intro', MARKER_KIND.bookmark);
+			await feedChunkAndStop();
+
+			const { Notice } = jest.requireMock('obsidian');
+			expect(Notice).toHaveBeenCalledWith(
+				expect.stringContaining('could not be saved'),
+			);
+			expect(consoleErrorSpy).toHaveBeenCalled();
+		});
+
 		it('discards a cancelled marker so it is never persisted', async () => {
 			const { store, update } = makeFakeMarkerStore();
 			mockSettings = {

@@ -173,6 +173,76 @@ describe('TranscriptionService stored speaker names', () => {
 		);
 	});
 
+	it('drops a stored name that collides with another label of the run', async () => {
+		// Round 1 named the only speaker "Speaker 2"; round 2 detects a real
+		// Speaker 2. Applying the stored name would render both speakers as
+		// "Speaker 2" and merge them in every output beyond repair, so it is
+		// neither applied nor kept in the refreshed roster.
+		const sidecar = makeSidecar({
+			...emptyTranscriptSection(),
+			speakers: [{ label: 'Speaker 1', name: 'Speaker 2' }],
+		});
+		const service = new TranscriptionService(
+			makeApp(),
+			() => diarizedSettings(),
+			{ createProvider: () => makeProvider(twoSpeakerSegments) },
+		);
+		const { transcript } = await service.run(audioFile, {
+			notePathForLinks: 'note.md',
+			sidecar,
+		});
+
+		expect(transcript.speakers).toEqual(['Speaker 1', 'Speaker 2']);
+		expect(sidecar.setSpeakers).toHaveBeenCalledWith('audio/rec.webm', [
+			{ label: 'Speaker 1' },
+			{ label: 'Speaker 2' },
+		]);
+		expect(Notice).toHaveBeenCalledWith(
+			expect.stringContaining("matched another speaker's label"),
+		);
+	});
+
+	it('keeps hostile engine labels as plain data (no prototype lookups)', async () => {
+		// A provider label colliding with an Object.prototype member must not
+		// resolve to the inherited function and pollute the stored roster.
+		const sidecar = makeSidecar(emptyTranscriptSection());
+		const service = new TranscriptionService(
+			makeApp(),
+			() => diarizedSettings(),
+			{
+				createProvider: () =>
+					makeProvider([
+						{
+							start: 0,
+							end: 1,
+							text: 'hello',
+							speaker: 'toString',
+						},
+						{
+							start: 1,
+							end: 2,
+							text: 'hi',
+							speaker: 'constructor',
+						},
+					]),
+			},
+		);
+		const { transcript } = await service.run(audioFile, {
+			notePathForLinks: 'note.md',
+			sidecar,
+		});
+
+		expect(transcript.speakers).toEqual(['toString', 'constructor']);
+		expect(transcript.segments.map((segment) => segment.speaker)).toEqual([
+			'toString',
+			'constructor',
+		]);
+		expect(sidecar.setSpeakers).toHaveBeenCalledWith('audio/rec.webm', [
+			{ label: 'toString' },
+			{ label: 'constructor' },
+		]);
+	});
+
 	it('does not touch the sidecar without effective diarization', async () => {
 		const sidecar = makeSidecar(emptyTranscriptSection());
 		const service = new TranscriptionService(

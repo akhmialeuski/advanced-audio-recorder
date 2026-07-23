@@ -55,15 +55,15 @@ function makeSidecar(
 ): {
 	getTranscript: jest.Mock;
 	isSidecarCorrupt: jest.Mock;
+	commitRename: jest.Mock;
 	setSpeakers: jest.Mock;
-	pushHistory: jest.Mock;
 	popHistory: jest.Mock;
 } {
 	return {
 		getTranscript: jest.fn().mockResolvedValue(section),
 		isSidecarCorrupt: jest.fn().mockReturnValue(corrupt),
+		commitRename: jest.fn().mockResolvedValue(undefined),
 		setSpeakers: jest.fn().mockResolvedValue(undefined),
-		pushHistory: jest.fn().mockResolvedValue(undefined),
 		popHistory: jest.fn().mockResolvedValue(undefined),
 	};
 }
@@ -198,14 +198,14 @@ describe('SpeakerRenameModal', () => {
 		second.value = ' Cleo ';
 		await internals.apply();
 
-		expect(sidecar.setSpeakers).toHaveBeenCalledWith('audio/rec.wav', [
-			{ label: 'Speaker 1', name: 'Bob' },
-			{ label: 'Speaker 2', name: 'Cleo' },
-		]);
-		expect(sidecar.pushHistory).toHaveBeenCalledWith('audio/rec.wav', {
-			'Speaker 1': 'Bob',
-			'Speaker 2': 'Cleo',
-		});
+		expect(sidecar.commitRename).toHaveBeenCalledWith(
+			'audio/rec.wav',
+			[
+				{ label: 'Speaker 1', name: 'Bob' },
+				{ label: 'Speaker 2', name: 'Cleo' },
+			],
+			{ 'Speaker 1': 'Bob', 'Speaker 2': 'Cleo' },
+		);
 		// Self-healing rules: each speaker's replacement targets both the
 		// stored name ("Alex", what a rewritten output shows) and the engine
 		// label ("Speaker 1", what an output missed by an earlier rewrite
@@ -244,12 +244,10 @@ describe('SpeakerRenameModal', () => {
 		await internals.apply();
 
 		const applyOrder = applyMock.mock.invocationCallOrder[0] ?? 0;
-		const rosterOrder =
-			sidecar.setSpeakers.mock.invocationCallOrder[0] ?? 0;
-		const historyOrder =
-			sidecar.pushHistory.mock.invocationCallOrder[0] ?? 0;
-		expect(applyOrder).toBeLessThan(rosterOrder);
-		expect(rosterOrder).toBeLessThan(historyOrder);
+		const commitOrder =
+			sidecar.commitRename.mock.invocationCallOrder[0] ?? 0;
+		expect(applyOrder).toBeGreaterThan(0);
+		expect(applyOrder).toBeLessThan(commitOrder);
 	});
 
 	it('keeps the sidecar untouched when the output rewrite throws', async () => {
@@ -266,8 +264,7 @@ describe('SpeakerRenameModal', () => {
 		first.value = 'Bob';
 		await internals.apply();
 
-		expect(sidecar.setSpeakers).not.toHaveBeenCalled();
-		expect(sidecar.pushHistory).not.toHaveBeenCalled();
+		expect(sidecar.commitRename).not.toHaveBeenCalled();
 		expect(Notice).toHaveBeenCalledWith(
 			expect.stringContaining('Failed to rename speakers'),
 		);
@@ -286,11 +283,11 @@ describe('SpeakerRenameModal', () => {
 		first.value = '';
 		await internals.apply();
 
-		expect(sidecar.setSpeakers).toHaveBeenCalledWith('audio/rec.wav', [
-			{ label: 'Speaker 1' },
-			{ label: 'Speaker 2' },
-		]);
-		expect(sidecar.pushHistory).toHaveBeenCalledWith('audio/rec.wav', {});
+		expect(sidecar.commitRename).toHaveBeenCalledWith(
+			'audio/rec.wav',
+			[{ label: 'Speaker 1' }, { label: 'Speaker 2' }],
+			{},
+		);
 		expect(applyMock).toHaveBeenCalledWith(
 			app,
 			audioFile,
@@ -316,9 +313,34 @@ describe('SpeakerRenameModal', () => {
 		await internals.apply();
 
 		expect(applyMock).not.toHaveBeenCalled();
-		expect(sidecar.setSpeakers).not.toHaveBeenCalled();
+		expect(sidecar.commitRename).not.toHaveBeenCalled();
 		expect(Notice).toHaveBeenCalledWith(
 			expect.stringContaining('Two speakers cannot share a name'),
+		);
+	});
+
+	it("explains why a name equal to another speaker's label is rejected", async () => {
+		// Swapping raw engine labels (or naming one speaker after another's
+		// label) would make their lines textually indistinguishable forever,
+		// so the block is deliberate - and the message says which collision.
+		const sidecar = makeSidecar(rosterSection());
+		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+		modal.open();
+		await internals.render();
+
+		const first = internals.inputs.get('Speaker 1');
+		if (!first) {
+			throw new Error('missing input');
+		}
+		first.value = 'Speaker 2';
+		await internals.apply();
+
+		expect(applyMock).not.toHaveBeenCalled();
+		expect(sidecar.commitRename).not.toHaveBeenCalled();
+		expect(Notice).toHaveBeenCalledWith(
+			expect.stringContaining(
+				"A name cannot equal another speaker's label (Speaker 2)",
+			),
 		);
 	});
 
@@ -329,7 +351,7 @@ describe('SpeakerRenameModal', () => {
 		await internals.render();
 		await internals.apply();
 
-		expect(sidecar.setSpeakers).not.toHaveBeenCalled();
+		expect(sidecar.commitRename).not.toHaveBeenCalled();
 		expect(applyMock).not.toHaveBeenCalled();
 		expect(Notice).toHaveBeenCalledWith('No speaker names to change.');
 	});
@@ -536,7 +558,7 @@ describe('SpeakerRenameModal', () => {
 		// True undo: the undone entry is removed, never re-appended, so the
 		// next undo steps further back instead of ping-ponging.
 		expect(sidecar.popHistory).toHaveBeenCalledWith('audio/rec.wav');
-		expect(sidecar.pushHistory).not.toHaveBeenCalled();
+		expect(sidecar.commitRename).not.toHaveBeenCalled();
 	});
 
 	it('undo of the only apply reverts to the original labels', async () => {
@@ -561,7 +583,7 @@ describe('SpeakerRenameModal', () => {
 			{ allowBroad: false },
 		);
 		expect(sidecar.popHistory).toHaveBeenCalledWith('audio/rec.wav');
-		expect(sidecar.pushHistory).not.toHaveBeenCalled();
+		expect(sidecar.commitRename).not.toHaveBeenCalled();
 	});
 
 	it('undo pops the entry even when nothing needed rewriting', async () => {
