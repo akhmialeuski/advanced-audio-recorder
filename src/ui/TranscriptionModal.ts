@@ -1,7 +1,8 @@
 /**
  * Modal that configures and runs transcription for a single audio file.
  * The per-run options (engine, language, diarization, destination, file
- * format, in-note toggles, and LLM post-processing) default from settings
+ * format, in-note toggles, advanced two-pass transcription, and LLM
+ * post-processing) default from settings
  * and can be overridden here for this run only - the saved settings are
  * never mutated. Shows progress and allows cancellation; the detailed
  * in-note templates (heading, timestamp/speaker/line format) remain in the
@@ -397,6 +398,17 @@ export class TranscriptionModal extends Modal {
 				s.transcriptionDictionaryProfileId = v;
 				void this.options.onProfileSelected?.(v);
 			},
+		});
+
+		// Advanced two-pass mode: a per-run override of the saved setting, so a
+		// pricier context-biased run can be enabled (or skipped) for this file
+		// without changing the default. The glossary and length safeguard stay
+		// in the settings tab; only the on/off decision is per-run here.
+		addToggle(ctx, {
+			name: 'Advanced two-pass transcription',
+			desc: 'Transcribe twice and bias the second pass with LLM-generated context (names, jargon, English acronyms). Roughly 2x the engine cost plus LLM calls. The glossary and length safeguard stay in settings.',
+			get: () => s.transcriptionAdvancedEnabled,
+			set: (v) => (s.transcriptionAdvancedEnabled = v),
 		});
 
 		addDropdown(ctx, {

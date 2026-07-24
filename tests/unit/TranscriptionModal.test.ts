@@ -362,3 +362,72 @@ describe('TranscriptionModal chapter profile selection', () => {
 		expect(settings.transcriptionChapterPromptProfileId).toBe('');
 	});
 });
+
+/**
+ * Finds the toggle (checkbox container) of the setting row with the given
+ * name, so a test can flip a specific toggle among the many the dialog renders.
+ */
+function toggleByName(modal: TranscriptionModal, name: string): HTMLElement {
+	const items = Array.from(modal.contentEl.querySelectorAll('.setting-item'));
+	const item = items.find(
+		(el) => el.querySelector('.setting-item-name')?.textContent === name,
+	);
+	if (!item) {
+		throw new Error(`Setting "${name}" not rendered`);
+	}
+	const toggle = item.querySelector<HTMLElement>('.checkbox-container');
+	if (!toggle) {
+		throw new Error(`Toggle for "${name}" not rendered`);
+	}
+	return toggle;
+}
+
+function runSettingsOf(modal: TranscriptionModal): AudioRecorderSettings {
+	return (modal as unknown as { runSettings: AudioRecorderSettings })
+		.runSettings;
+}
+
+describe('TranscriptionModal advanced two-pass toggle', () => {
+	it('overrides the advanced mode for this run without mutating saved settings', () => {
+		// The saved default is off; enabling it in the dialog must affect only
+		// the run snapshot the transcription reads, never the persisted settings.
+		const settings: AudioRecorderSettings = {
+			...DEFAULT_SETTINGS,
+			transcriptionAdvancedEnabled: false,
+		};
+		const modal = new TranscriptionModal(
+			new App(),
+			createAudioFile(),
+			() => settings,
+			{},
+		);
+		modal.onOpen();
+
+		toggleByName(modal, 'Advanced two-pass transcription').click();
+
+		expect(runSettingsOf(modal).transcriptionAdvancedEnabled).toBe(true);
+		expect(settings.transcriptionAdvancedEnabled).toBe(false);
+	});
+
+	it('defaults the toggle from the saved setting', () => {
+		// With the mode on in settings, the dialog toggle starts on; a single
+		// click therefore turns it off for this run, proving it mirrored the
+		// saved value rather than a hardcoded default.
+		const settings: AudioRecorderSettings = {
+			...DEFAULT_SETTINGS,
+			transcriptionAdvancedEnabled: true,
+		};
+		const modal = new TranscriptionModal(
+			new App(),
+			createAudioFile(),
+			() => settings,
+			{},
+		);
+		modal.onOpen();
+
+		toggleByName(modal, 'Advanced two-pass transcription').click();
+
+		expect(runSettingsOf(modal).transcriptionAdvancedEnabled).toBe(false);
+		expect(settings.transcriptionAdvancedEnabled).toBe(true);
+	});
+});
