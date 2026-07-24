@@ -360,9 +360,12 @@ export const DEFAULT_WHISPER_API_MODEL = 'whisper-1';
  * model picker on first run and can be extended with custom ids in settings.
  * All return `verbose_json` with segment timestamps, which the provider
  * relies on: `whisper-1` is OpenAI's; the `*-v3*` ids are served by Groq and
- * other compatible hosts. (OpenAI's newer `gpt-4o-transcribe` models are
- * omitted: they do not support `verbose_json`, so they are incompatible with
- * the timed output the plugin requests.)
+ * other compatible hosts. (OpenAI's newer `gpt-4o-transcribe`,
+ * `gpt-4o-mini-transcribe`, and `gpt-4o-transcribe-diarize` models are
+ * omitted: none of them return `verbose_json` - the diarize variant has its
+ * own `diarized_json` format without segment timecodes - so they are
+ * incompatible with the timed output the plugin requests. As of July 2026,
+ * `whisper-1` remains OpenAI's only model that supports it.)
  */
 export const WHISPER_API_MODEL_SUGGESTIONS = [
 	'whisper-1',
@@ -373,7 +376,7 @@ export const WHISPER_API_MODEL_SUGGESTIONS = [
 
 /** Where to find the model list for the configured Whisper API host. */
 export const WHISPER_API_MODELS_DOC_URL =
-	'https://platform.openai.com/docs/guides/speech-to-text';
+	'https://developers.openai.com/api/docs/guides/speech-to-text';
 
 /**
  * Hard per-request upload ceiling for the OpenAI Whisper API, in bytes
@@ -395,9 +398,11 @@ export const DEFAULT_DEEPGRAM_MODEL = 'nova-3';
  * in settings. Grouped by family: Nova-3, Nova-2 and its named variants,
  * Nova, Enhanced (`enhanced`, `enhanced-meeting`, `enhanced-phonecall`,
  * `enhanced-finance`), Base, and the hosted Whisper sizes. The real-time
- * Flux family is omitted - it targets streaming voice agents, not the
- * pre-recorded transcription this plugin uses. See
- * {@link DEEPGRAM_MODELS_DOC_URL} for the authoritative, current list.
+ * Flux family (`flux-general-en`, `flux-general-multi`) is omitted - even
+ * after gaining word-level timestamps in July 2026 it remains a streaming
+ * conversational model for voice agents, not part of the pre-recorded API
+ * this plugin uses. See {@link DEEPGRAM_MODELS_DOC_URL} for the
+ * authoritative, current list.
  */
 export const DEEPGRAM_MODEL_SUGGESTIONS = [
 	'nova-3',
@@ -458,16 +463,28 @@ export const DEEPGRAM_MAX_REQUEST_BYTES = 2 * 1024 * 1024 * 1024;
 export const DEFAULT_GEMINI_BASE_URL =
 	'https://generativelanguage.googleapis.com';
 
-/** Default Gemini transcription model id. */
-export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+/**
+ * Default Gemini transcription model id. Moved from `gemini-2.5-flash` to
+ * `gemini-3.5-flash` (GA May 2026): the strongest Flash generation, accepts
+ * audio, and priced in the same tier as the 2.5 Flash it replaces.
+ */
+export const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash';
 
 /**
  * Seed Gemini model ids for the model picker on first run; the list is
  * user-editable. Flash models are cheaper and fast enough for transcription;
- * Pro is better for difficult audio. See {@link GEMINI_MODELS_DOC_URL} for the
- * authoritative, current list.
+ * the GA 3.x generation (all accept audio) leads the list, with the 2.5
+ * generation kept while it stays in the catalog. Deliberately excluded as of
+ * July 2026: `gemini-3.5-pro` (announced but not released - no public API
+ * id), `gemini-3.1-pro-preview` (preview, not GA), the Live and TTS models
+ * (live audio-to-audio dialog and speech synthesis, not file transcription),
+ * and `gemini-3.5-flash-cyber` (restricted-access pilot). See
+ * {@link GEMINI_MODELS_DOC_URL} for the authoritative, current list.
  */
 export const GEMINI_MODEL_SUGGESTIONS = [
+	'gemini-3.6-flash',
+	'gemini-3.5-flash',
+	'gemini-3.5-flash-lite',
 	'gemini-2.5-flash',
 	'gemini-2.5-pro',
 	'gemini-2.5-flash-lite',
@@ -612,8 +629,14 @@ export const LLM_PROVIDER_IDS = {
 /** Default OpenAI-compatible chat base URL for LLM post-processing. */
 export const DEFAULT_LLM_OPENAI_BASE_URL = 'https://api.openai.com/v1';
 
-/** Default OpenAI-compatible chat model for LLM post-processing. */
-export const DEFAULT_LLM_OPENAI_MODEL = 'gpt-4o-mini';
+/**
+ * Default OpenAI-compatible chat model for LLM post-processing. Moved from
+ * `gpt-4o-mini` (dropped from the current catalog) to the GPT-5.6 flagship,
+ * matching the Anthropic default, which is also that provider's flagship;
+ * `gpt-5.6-terra` and `gpt-5.6-luna` stay in the seed list as the cheaper
+ * picks.
+ */
+export const DEFAULT_LLM_OPENAI_MODEL = 'gpt-5.6-sol';
 
 /** Default Anthropic Messages API base URL. */
 export const DEFAULT_LLM_ANTHROPIC_BASE_URL = 'https://api.anthropic.com/v1';
@@ -621,7 +644,12 @@ export const DEFAULT_LLM_ANTHROPIC_BASE_URL = 'https://api.anthropic.com/v1';
 /** Anthropic API version header value. */
 export const ANTHROPIC_API_VERSION = '2023-06-01';
 
-/** Default Anthropic model for transcript post-processing. */
+/**
+ * Default Anthropic model for transcript post-processing. Kept at
+ * `claude-opus-4-8` after the July 2026 catalog review: it is still a current
+ * model and the provider's recommended default, while `claude-fable-5` above
+ * it is priced for the most demanding work rather than everyday cleanup.
+ */
 export const DEFAULT_LLM_ANTHROPIC_MODEL = 'claude-opus-4-8';
 
 /**
@@ -632,8 +660,13 @@ export const DEFAULT_LLM_ANTHROPIC_MODEL = 'claude-opus-4-8';
 export const DEFAULT_LLM_GEMINI_BASE_URL =
 	'https://generativelanguage.googleapis.com';
 
-/** Default Gemini model for transcript post-processing. */
-export const DEFAULT_LLM_GEMINI_MODEL = 'gemini-2.5-flash';
+/**
+ * Default Gemini model for transcript post-processing. Moved from
+ * `gemini-2.5-flash` to `gemini-3.5-flash` together with
+ * {@link DEFAULT_GEMINI_MODEL}, so transcription and post-processing default
+ * to the same current Flash generation.
+ */
+export const DEFAULT_LLM_GEMINI_MODEL = 'gemini-3.5-flash';
 
 /** Minimum configurable transcription chunk size in megabytes. */
 export const MIN_TRANSCRIBE_CHUNK_MB = 1;
@@ -655,43 +688,60 @@ export const MAX_LLM_MAX_TOKENS = 32000;
 
 /**
  * Seed OpenAI chat model ids for the LLM model picker on first run; the list
- * is user-editable. Chat/completions models suitable for transcript cleanup
- * and summarization. See {@link OPENAI_MODELS_DOC_URL} for the current list.
+ * is user-editable. The GPT-5.6 family (released July 2026) is the current
+ * text-model catalog: `gpt-5.6-sol` is the flagship (alias `gpt-5.6`),
+ * `gpt-5.6-terra` balances intelligence and price, and `gpt-5.6-luna` is the
+ * cheapest for high volume. The previous `gpt-4o*` / `gpt-4.1*` / `o4-mini`
+ * seeds were removed: they no longer appear in the current catalog (`o4-mini`
+ * was retired on February 13, 2026, and the 4.x block left the text-model
+ * pages with the GPT-5.6 launch), though ids a user saved keep working while
+ * the API still serves them. See {@link OPENAI_MODELS_DOC_URL} for the
+ * current list.
  */
 export const LLM_OPENAI_MODEL_SUGGESTIONS = [
-	'gpt-4o-mini',
-	'gpt-4o',
-	'gpt-4.1',
-	'gpt-4.1-mini',
-	'o4-mini',
+	'gpt-5.6-sol',
+	'gpt-5.6-terra',
+	'gpt-5.6-luna',
 ];
 
 /**
  * Seed Anthropic model ids for the LLM model picker on first run; the list is
- * user-editable. See {@link ANTHROPIC_MODELS_DOC_URL} for the current list.
+ * user-editable. `claude-sonnet-5` (GA June 2026) replaces
+ * `claude-sonnet-4-6`, which the catalog moved to the legacy tier;
+ * `claude-fable-5` is the most capable current model but is priced above the
+ * Opus tier, so it is listed after the everyday picks. See
+ * {@link ANTHROPIC_MODELS_DOC_URL} for the current list.
  */
 export const LLM_ANTHROPIC_MODEL_SUGGESTIONS = [
 	'claude-opus-4-8',
-	'claude-sonnet-4-6',
+	'claude-sonnet-5',
 	'claude-haiku-4-5',
+	'claude-fable-5',
 ];
 
 /**
  * Seed Gemini model ids for the LLM model picker on first run; the list is
- * user-editable. See {@link GEMINI_MODELS_DOC_URL} for the current list.
+ * user-editable. The GA 3.x generation leads the list (the same models as the
+ * transcription seeds, since they accept text as well as audio); the 2.5
+ * generation stays while it remains in the catalog. See
+ * {@link GEMINI_MODELS_DOC_URL} for the current list.
  */
 export const LLM_GEMINI_MODEL_SUGGESTIONS = [
+	'gemini-3.6-flash',
+	'gemini-3.5-flash',
+	'gemini-3.5-flash-lite',
 	'gemini-2.5-flash',
 	'gemini-2.5-pro',
 	'gemini-2.5-flash-lite',
 ];
 
 /** Where to find the OpenAI model catalog. */
-export const OPENAI_MODELS_DOC_URL = 'https://platform.openai.com/docs/models';
+export const OPENAI_MODELS_DOC_URL =
+	'https://developers.openai.com/api/docs/models';
 
 /** Where to find the Anthropic (Claude) model catalog. */
 export const ANTHROPIC_MODELS_DOC_URL =
-	'https://docs.anthropic.com/en/docs/about-claude/models';
+	'https://platform.claude.com/docs/en/about-claude/models/overview';
 
 /**
  * Default editable system prompt for the cleanup task. The language clause is

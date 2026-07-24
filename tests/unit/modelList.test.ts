@@ -16,6 +16,10 @@ import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import {
 	DEEPGRAM_MODEL_SUGGESTIONS,
+	GEMINI_MODEL_SUGGESTIONS,
+	LLM_ANTHROPIC_MODEL_SUGGESTIONS,
+	LLM_GEMINI_MODEL_SUGGESTIONS,
+	LLM_OPENAI_MODEL_SUGGESTIONS,
 	WHISPER_API_MODEL_SUGGESTIONS,
 } from 'src/constants';
 
@@ -82,6 +86,39 @@ describe('model list settings defaults', () => {
 		);
 		expect(DEFAULT_SETTINGS.deepgramModels).toEqual(
 			DEEPGRAM_MODEL_SUGGESTIONS,
+		);
+		expect(DEFAULT_SETTINGS.geminiModels).toEqual(GEMINI_MODEL_SUGGESTIONS);
+		expect(DEFAULT_SETTINGS.llmOpenAiModels).toEqual(
+			LLM_OPENAI_MODEL_SUGGESTIONS,
+		);
+		expect(DEFAULT_SETTINGS.llmAnthropicModels).toEqual(
+			LLM_ANTHROPIC_MODEL_SUGGESTIONS,
+		);
+		expect(DEFAULT_SETTINGS.llmGeminiModels).toEqual(
+			LLM_GEMINI_MODEL_SUGGESTIONS,
+		);
+	});
+
+	it('selects a default model that is present in its own seed list', () => {
+		// A default outside its list would surface only through the
+		// ensureSelectedInList fallback; the seeds should stay consistent.
+		expect(WHISPER_API_MODEL_SUGGESTIONS).toContain(
+			DEFAULT_SETTINGS.whisperApiModel,
+		);
+		expect(DEEPGRAM_MODEL_SUGGESTIONS).toContain(
+			DEFAULT_SETTINGS.deepgramModel,
+		);
+		expect(GEMINI_MODEL_SUGGESTIONS).toContain(
+			DEFAULT_SETTINGS.geminiModel,
+		);
+		expect(LLM_OPENAI_MODEL_SUGGESTIONS).toContain(
+			DEFAULT_SETTINGS.llmOpenAiModel,
+		);
+		expect(LLM_ANTHROPIC_MODEL_SUGGESTIONS).toContain(
+			DEFAULT_SETTINGS.llmAnthropicModel,
+		);
+		expect(LLM_GEMINI_MODEL_SUGGESTIONS).toContain(
+			DEFAULT_SETTINGS.llmGeminiModel,
 		);
 	});
 

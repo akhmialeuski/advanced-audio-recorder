@@ -132,7 +132,7 @@ Settings to fill:
 | ------------------- | --------------------------------------------------------------------- | ------------------------------------------- |
 | **Gemini base URL** | Gemini API base (no version segment).                                 | `https://generativelanguage.googleapis.com` |
 | **Gemini API key**  | Your Gemini key. Stored in plugin data on this device.                | -                                           |
-| **Gemini model**    | Model id from the picker (e.g. `gemini-2.5-flash`, `gemini-2.5-pro`). | `gemini-2.5-flash`                          |
+| **Gemini model**    | Model id from the picker (e.g. `gemini-3.5-flash`, `gemini-2.5-pro`). | `gemini-3.5-flash`                          |
 
 Behavior and limits:
 
@@ -391,7 +391,7 @@ Below the breakdown, a **Check current pricing** line links straight to the pric
 
 ## LLM post-processing
 
-After transcription, you can optionally pass the transcript through an LLM to **clean up** punctuation and formatting (preserving wording, timestamps, and speakers), **summarize** it into key points and action items, or apply a **custom instruction**. The provider defaults to OpenAI (`gpt-4o-mini`), with Anthropic (`claude-opus-4-8`) and Google Gemini (`gemini-2.5-flash`) also available; the OpenAI and Gemini keys are shared with the matching transcription engines.
+After transcription, you can optionally pass the transcript through an LLM to **clean up** punctuation and formatting (preserving wording, timestamps, and speakers), **summarize** it into key points and action items, or apply a **custom instruction**. The provider defaults to OpenAI (`gpt-5.6-sol`), with Anthropic (`claude-opus-4-8`) and Google Gemini (`gemini-3.5-flash`) also available; the OpenAI and Gemini keys are shared with the matching transcription engines.
 
 LLM post-processing is **best-effort**: a failure (bad key, network, timeout) falls back to the raw transcript rather than discarding completed work.
 

@@ -85,6 +85,34 @@ describe('resolveEnginePricing', () => {
 		});
 	});
 
+	it('prices the Gemini 3.x generation with one rate for every input modality', () => {
+		expect(
+			resolveEnginePricing(
+				TRANSCRIPTION_PROVIDER_IDS.GEMINI,
+				'gemini-3.5-flash',
+			),
+		).toEqual({
+			kind: 'perToken',
+			usdPerMillionAudioInput: 1.5,
+			usdPerMillionTextInput: 1.5,
+			usdPerMillionOutput: 9,
+		});
+	});
+
+	it('prices gemini-3.5-flash-lite as its own model, not the full Flash rate', () => {
+		expect(
+			resolveEnginePricing(
+				TRANSCRIPTION_PROVIDER_IDS.GEMINI,
+				'gemini-3.5-flash-lite',
+			),
+		).toEqual({
+			kind: 'perToken',
+			usdPerMillionAudioInput: 0.3,
+			usdPerMillionTextInput: 0.3,
+			usdPerMillionOutput: 2.5,
+		});
+	});
+
 	it('prices distil-whisper as its own cheaper model, not the full v3 rate', () => {
 		expect(
 			resolveEnginePricing(
@@ -127,6 +155,61 @@ describe('resolveLlmPricing', () => {
 			usdPerMillionAudioInput: 0.3,
 			usdPerMillionTextInput: 0.3,
 			usdPerMillionOutput: 2.5,
+		});
+	});
+
+	it('prices the seeded GPT-5.6 family', () => {
+		expect(
+			resolveLlmPricing(
+				LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+				'gpt-5.6-sol',
+			),
+		).toEqual({
+			kind: 'perToken',
+			usdPerMillionAudioInput: 5,
+			usdPerMillionTextInput: 5,
+			usdPerMillionOutput: 30,
+		});
+		expect(
+			resolveLlmPricing(
+				LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+				'gpt-5.6-luna',
+			),
+		).toEqual({
+			kind: 'perToken',
+			usdPerMillionAudioInput: 1,
+			usdPerMillionTextInput: 1,
+			usdPerMillionOutput: 6,
+		});
+	});
+
+	it('prices current Anthropic models, keeping the legacy Opus 4.0/4.1 rate apart', () => {
+		expect(
+			resolveLlmPricing(LLM_PROVIDER_IDS.ANTHROPIC, 'claude-sonnet-5'),
+		).toEqual({
+			kind: 'perToken',
+			usdPerMillionAudioInput: 3,
+			usdPerMillionTextInput: 3,
+			usdPerMillionOutput: 15,
+		});
+		// Opus 4.5-4.8 bill $5/$25 via the bare claude-opus-4 fragment...
+		expect(
+			resolveLlmPricing(LLM_PROVIDER_IDS.ANTHROPIC, 'claude-opus-4-8'),
+		).toEqual({
+			kind: 'perToken',
+			usdPerMillionAudioInput: 5,
+			usdPerMillionTextInput: 5,
+			usdPerMillionOutput: 25,
+		});
+		// ...while the longer claude-opus-4-1 fragment wins the longest-match
+		// rule and keeps the legacy $15/$75 rate.
+		expect(
+			resolveLlmPricing(LLM_PROVIDER_IDS.ANTHROPIC, 'claude-opus-4-1'),
+		).toEqual({
+			kind: 'perToken',
+			usdPerMillionAudioInput: 15,
+			usdPerMillionTextInput: 15,
+			usdPerMillionOutput: 75,
 		});
 	});
 

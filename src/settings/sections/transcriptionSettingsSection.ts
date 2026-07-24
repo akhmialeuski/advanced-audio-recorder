@@ -567,7 +567,7 @@ function renderGeminiSettings(ctx: SettingsSectionContext): void {
 	});
 	addModelPicker(ctx, {
 		name: 'Gemini model',
-		desc: 'Pick a Gemini model (e.g. gemini-2.5-flash, gemini-2.5-pro). The whole recording is uploaded via the File API for consistent speaker labels.',
+		desc: 'Pick a Gemini model (e.g. gemini-3.5-flash, gemini-2.5-pro). The whole recording is uploaded via the File API for consistent speaker labels.',
 		helpLink: {
 			label: 'Gemini model list',
 			url: GEMINI_MODELS_DOC_URL,
@@ -880,7 +880,7 @@ function renderLlmModelPicker(ctx: SettingsSectionContext): void {
 	if (s.llmProvider === LLM_PROVIDER_IDS.ANTHROPIC) {
 		addModelPicker(ctx, {
 			name: 'LLM model',
-			desc: 'Pick an Anthropic model (e.g. claude-opus-4-8, claude-sonnet-4-6).',
+			desc: 'Pick an Anthropic model (e.g. claude-opus-4-8, claude-sonnet-5).',
 			helpLink: {
 				label: 'Anthropic models',
 				url: ANTHROPIC_MODELS_DOC_URL,
@@ -895,7 +895,7 @@ function renderLlmModelPicker(ctx: SettingsSectionContext): void {
 	if (s.llmProvider === LLM_PROVIDER_IDS.GEMINI) {
 		addModelPicker(ctx, {
 			name: 'LLM model',
-			desc: 'Pick a Gemini model (e.g. gemini-2.5-flash, gemini-2.5-pro).',
+			desc: 'Pick a Gemini model (e.g. gemini-3.5-flash, gemini-2.5-pro).',
 			helpLink: {
 				label: 'Gemini model list',
 				url: GEMINI_MODELS_DOC_URL,
@@ -909,7 +909,7 @@ function renderLlmModelPicker(ctx: SettingsSectionContext): void {
 	}
 	addModelPicker(ctx, {
 		name: 'LLM model',
-		desc: 'Pick an OpenAI model (e.g. gpt-4o-mini, gpt-4o).',
+		desc: 'Pick an OpenAI model (e.g. gpt-5.6-sol, gpt-5.6-luna).',
 		helpLink: {
 			label: 'OpenAI models',
 			url: OPENAI_MODELS_DOC_URL,

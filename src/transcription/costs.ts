@@ -137,11 +137,14 @@ interface TokenRate {
 }
 
 /**
- * Approximate Gemini transcription rates. Audio input is billed higher than
- * text input on the Flash tier, so the two are kept apart; the Pro tier
- * bills both alike.
+ * Approximate Gemini transcription rates. On the 2.5 Flash tier audio input
+ * is billed higher than text input, so the two are kept apart; the 2.5 Pro
+ * tier and the whole 3.x generation bill every input modality at one rate.
  */
 const GEMINI_RATES: readonly [string, TokenRate][] = [
+	['gemini-3.6-flash', { audioInput: 1.5, textInput: 1.5, output: 7.5 }],
+	['gemini-3.5-flash', { audioInput: 1.5, textInput: 1.5, output: 9 }],
+	['gemini-3.5-flash-lite', { audioInput: 0.3, textInput: 0.3, output: 2.5 }],
 	['gemini-2.5-flash-lite', { audioInput: 0.3, textInput: 0.1, output: 0.4 }],
 	['gemini-2.5-flash', { audioInput: 1.0, textInput: 0.3, output: 2.5 }],
 	['gemini-2.5-pro', { audioInput: 1.25, textInput: 1.25, output: 10 }],
@@ -154,8 +157,16 @@ interface LlmRate {
 	output: number;
 }
 
-/** Approximate OpenAI chat rates for post-processing, USD per million tokens. */
+/**
+ * Approximate OpenAI chat rates for post-processing, USD per million tokens.
+ * The GPT-5.6 family is the current seeded generation; the 4.x and o-series
+ * entries below it were dropped from the seed list but stay priced because
+ * the API still serves them for user-saved model lists.
+ */
 const LLM_OPENAI_RATES: readonly [string, LlmRate][] = [
+	['gpt-5.6-sol', { input: 5, output: 30 }],
+	['gpt-5.6-terra', { input: 2.5, output: 15 }],
+	['gpt-5.6-luna', { input: 1, output: 6 }],
 	['gpt-4o-mini', { input: 0.15, output: 0.6 }],
 	['gpt-4.1-mini', { input: 0.4, output: 1.6 }],
 	['gpt-4.1', { input: 2.0, output: 8.0 }],
@@ -163,9 +174,18 @@ const LLM_OPENAI_RATES: readonly [string, LlmRate][] = [
 	['o4-mini', { input: 1.1, output: 4.4 }],
 ];
 
-/** Approximate Anthropic rates for post-processing, USD per million tokens. */
+/**
+ * Approximate Anthropic rates for post-processing, USD per million tokens.
+ * The bare `claude-opus-4` fragment prices the $5/$25 Opus 4.5-4.8 tier; the
+ * longer `claude-opus-4-1`/`claude-opus-4-0` fragments win the longest-match
+ * rule for the legacy $15/$75 models so they do not inherit the cheaper rate.
+ */
 const LLM_ANTHROPIC_RATES: readonly [string, LlmRate][] = [
-	['claude-opus-4', { input: 15, output: 75 }],
+	['claude-fable-5', { input: 10, output: 50 }],
+	['claude-sonnet-5', { input: 3, output: 15 }],
+	['claude-opus-4-1', { input: 15, output: 75 }],
+	['claude-opus-4-0', { input: 15, output: 75 }],
+	['claude-opus-4', { input: 5, output: 25 }],
 	['claude-sonnet-4', { input: 3, output: 15 }],
 	['claude-haiku-4', { input: 1, output: 5 }],
 ];
@@ -176,6 +196,9 @@ const LLM_ANTHROPIC_RATES: readonly [string, LlmRate][] = [
  * transcription {@link GEMINI_RATES} the text-input rate applies.
  */
 const LLM_GEMINI_RATES: readonly [string, LlmRate][] = [
+	['gemini-3.6-flash', { input: 1.5, output: 7.5 }],
+	['gemini-3.5-flash', { input: 1.5, output: 9 }],
+	['gemini-3.5-flash-lite', { input: 0.3, output: 2.5 }],
 	['gemini-2.5-flash-lite', { input: 0.1, output: 0.4 }],
 	['gemini-2.5-flash', { input: 0.3, output: 2.5 }],
 	['gemini-2.5-pro', { input: 1.25, output: 10 }],
