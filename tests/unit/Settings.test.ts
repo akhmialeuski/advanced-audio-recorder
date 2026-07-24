@@ -498,6 +498,52 @@ describe('Settings', () => {
 			expect(record.transcriptionDictionary).toBeUndefined();
 		});
 
+		it('enables the advanced master switch on upgrade for a config with a dictionary profile', () => {
+			// A release that had profiles but not the advanced switch stored no
+			// flag; without the migration it would merge to the false default and
+			// silently stop biasing the selected profile.
+			const result = mergeSettings({
+				transcriptionDictionaryProfiles: [
+					{ id: 'p1', name: 'Standup', terms: 'gRPC' },
+				],
+				transcriptionDictionaryProfileId: 'p1',
+			});
+
+			expect(result.transcriptionAdvancedSettingsEnabled).toBe(true);
+			expect(result.transcriptionDictionaryProfileId).toBe('p1');
+		});
+
+		it('enables the advanced master switch when migrating a legacy flat dictionary', () => {
+			// The legacy string is seeded into a profile, so the biasing it drove
+			// before the switch existed must keep working after the upgrade.
+			const result = mergeSettings({
+				transcriptionDictionary: 'Foo\nBar',
+			} as unknown as AudioRecorderSettingsInput);
+
+			expect(result.transcriptionAdvancedSettingsEnabled).toBe(true);
+			expect(result.transcriptionDictionaryProfiles).toHaveLength(1);
+		});
+
+		it('respects a stored advanced master switch left off', () => {
+			// A config that already stored the flag made a deliberate choice; the
+			// migration must not flip it on just because a profile exists.
+			const result = mergeSettings({
+				transcriptionAdvancedSettingsEnabled: false,
+				transcriptionDictionaryProfiles: [
+					{ id: 'p1', name: 'Standup', terms: 'gRPC' },
+				],
+				transcriptionDictionaryProfileId: 'p1',
+			});
+
+			expect(result.transcriptionAdvancedSettingsEnabled).toBe(false);
+		});
+
+		it('leaves the advanced master switch off for a fresh install', () => {
+			const result = mergeSettings({});
+
+			expect(result.transcriptionAdvancedSettingsEnabled).toBe(false);
+		});
+
 		it('should handle boolean settings correctly', () => {
 			const result1 = mergeSettings({ debug: true });
 			const result2 = mergeSettings({ enableMultiTrack: true });

@@ -453,6 +453,31 @@ describe('buildCostEstimate', () => {
 		expect(estimate.lines[0]?.label).toBe('Transcription');
 	});
 
+	it('prices a single pass with no context agents for a non-biasing two-pass model', () => {
+		// A Deepgram hosted Whisper model cannot bias, so the service degrades to
+		// one plain pass with no context agents before any LLM spend. The
+		// estimate must follow suit and not show a phantom second pass or an
+		// agents line the user would never be charged for.
+		const estimate = buildCostEstimate(
+			mergeSettings({
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				deepgramModel: 'whisper',
+				transcriptionAdvancedSettingsEnabled: true,
+				transcriptionAdvancedEnabled: true,
+				llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+				llmOpenAiModel: 'gpt-4o-mini',
+			}),
+			600,
+		);
+		expect(estimate.lines).toHaveLength(1);
+		expect(estimate.lines[0]?.label).toBe('Transcription');
+		expect(
+			estimate.lines.some(
+				(line) => line.label === 'Advanced context agents',
+			),
+		).toBe(false);
+	});
+
 	it('adds an auto-chapters line when chapters run after transcription', () => {
 		const estimate = buildCostEstimate(
 			mergeSettings({

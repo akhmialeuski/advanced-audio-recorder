@@ -19,6 +19,7 @@ import {
 	filterHeardTerms,
 	generateContext,
 	parseTermList,
+	sentenceRetainsTerms,
 	similarity,
 	withinPromptWindow,
 } from 'src/transcription/advanced/contextPipeline';
@@ -220,6 +221,41 @@ describe('buildFallbackPrompt', () => {
 		expect(prompt).toContain('term-number-119');
 		expect(prompt).not.toContain('term-number-0,');
 	});
+
+	it('drops an oversized topic but keeps the valuable terms', () => {
+		// A topic that alone overruns the window must not take the mined terms
+		// down with it: the names and acronyms are the second pass's real payoff.
+		const hugeTopic = Array.from({ length: 80 }, () => 'topic').join(' ');
+		expect(withinPromptWindow(`${hugeTopic}.`)).toBe(false);
+		const prompt = buildFallbackPrompt(hugeTopic, ['Иванов', 'Kubernetes']);
+		expect(withinPromptWindow(prompt)).toBe(true);
+		expect(prompt).toContain('Kubernetes');
+		expect(prompt).toContain('Иванов');
+		expect(prompt).not.toContain('topic');
+	});
+});
+
+describe('sentenceRetainsTerms', () => {
+	it('accepts a sentence carrying every term, case-insensitively', () => {
+		expect(
+			sentenceRetainsTerms('We deploy kubernetes with CI/CD daily.', [
+				'Kubernetes',
+				'CI/CD',
+			]),
+		).toBe(true);
+	});
+
+	it('rejects a sentence that dropped or re-spelled a term', () => {
+		expect(
+			sentenceRetainsTerms('We ship services with pipelines.', [
+				'Kubernetes',
+			]),
+		).toBe(false);
+	});
+
+	it('accepts any sentence when there are no terms to retain', () => {
+		expect(sentenceRetainsTerms('A topic-only prompt.', [])).toBe(true);
+	});
 });
 
 describe('generateContext', () => {
@@ -299,6 +335,25 @@ describe('generateContext', () => {
 			'Технический митинг о развертывании сервисов. ' +
 				'ревью, деплой, Петров, Иванов, CI/CD, Kubernetes.',
 		);
+		expect(withinPromptWindow(context?.promptSentence ?? '')).toBe(true);
+	});
+
+	it('rejects an in-window sentence that dropped a mined term', async () => {
+		// A fluent, in-window sentence that silently omits Kubernetes, the
+		// highest-value acronym the pipeline mined. Accepting it would strip that
+		// canonical spelling from the only bias a prompt-biased engine receives.
+		const droppedSentence =
+			'Митинг про деплой и ревью, участвуют Иванов и Петров.';
+		const { llm } = scriptedLlm({ ...replies, sentence: droppedSentence });
+		const context = await generateContext(russianBaseline(), llm, {
+			language: 'ru',
+			glossary: ['gRPC', 'Kafka'],
+		});
+		expect(context?.keyterms).toContain('Kubernetes');
+		// The sentence is discarded for the deterministic assembly, which lists
+		// every mined term with its canonical spelling.
+		expect(context?.promptSentence).not.toBe(droppedSentence);
+		expect(context?.promptSentence.toLowerCase()).toContain('kubernetes');
 		expect(withinPromptWindow(context?.promptSentence ?? '')).toBe(true);
 	});
 

@@ -12,9 +12,15 @@
 
 import {
 	DEFAULT_ADVANCED_SECOND_PASS_MIN_RATIO,
+	MIN_ADVANCED_SECOND_PASS_MIN_RATIO,
+	MAX_ADVANCED_SECOND_PASS_MIN_RATIO,
 	TRANSCRIPTION_PROVIDER_IDS,
 } from '../../constants';
-import type { TranscriptionProviderId } from '../../settings/settingsSchema';
+import type {
+	AudioRecorderSettings,
+	TranscriptionProviderId,
+} from '../../settings/settingsSchema';
+import { advancedTwoPassEnabled } from '../../settings/settingsSchema';
 import { deepgramBiasMechanism } from '../dictionaryBias';
 import { providerSupportsDictionary } from '../providers/capabilities';
 import type { GeneratedContext } from './contextPipeline';
@@ -52,6 +58,34 @@ export function advancedBiasUnsupportedReason(
 }
 
 /**
+ * Whether a run will actually perform the biased second pass: the two-pass mode
+ * is enabled AND the selected engine/model can carry a bias. The service
+ * degrades an unsupported engine (e.g. a Deepgram hosted Whisper model) to a
+ * single plain pass before any LLM spend, so the cost estimate and the session
+ * accounting read this predicate - not the bare toggle - and never price a
+ * second pass or context agents that will not run.
+ * @param settings - The run's settings snapshot
+ * @returns True when the biased second pass and its context agents will run
+ */
+export function advancedTwoPassWillRun(
+	settings: Pick<
+		AudioRecorderSettings,
+		| 'transcriptionAdvancedSettingsEnabled'
+		| 'transcriptionAdvancedEnabled'
+		| 'transcriptionProvider'
+		| 'deepgramModel'
+	>,
+): boolean {
+	return (
+		advancedTwoPassEnabled(settings) &&
+		advancedBiasUnsupportedReason(
+			settings.transcriptionProvider,
+			settings.deepgramModel,
+		) === null
+	);
+}
+
+/**
  * Maps the generated context onto the engine's biasing channel. Deepgram
  * biases by keyword list, so it gets the flat keyterms; every other biasing
  * engine gets the prompt sentence. A plan with neither field set (e.g. the
@@ -75,9 +109,11 @@ export function planAdvancedBias(
  * The paper's length safeguard against over-correction: whether the biased
  * second pass kept enough text to be trusted over the baseline. A biased
  * decode that came back much shorter almost certainly dropped content, so
- * the run reverts to the first pass below the ratio. A hand-edited or
- * out-of-range ratio falls back to the shipped default rather than silently
- * disabling the guard (ratio 0) or the whole mode (ratio > 1).
+ * the run reverts to the first pass below the ratio. A synced or hand-edited
+ * ratio outside the settings range falls back to the shipped default rather
+ * than weakening the guard: a value below the configured minimum (0 would let
+ * an empty second pass through) or above 1 (which would disable the mode) is
+ * rejected, matching what the settings-tab input allows.
  * @param baselineText - Plain text of the first pass's transcript
  * @param secondPassText - Plain text of the biased second pass
  * @param minRatio - Configured minimum second-to-first length ratio
@@ -89,7 +125,9 @@ export function meetsLengthSafeguard(
 	minRatio: number,
 ): boolean {
 	const ratio =
-		Number.isFinite(minRatio) && minRatio >= 0 && minRatio <= 1
+		Number.isFinite(minRatio) &&
+		minRatio >= MIN_ADVANCED_SECOND_PASS_MIN_RATIO &&
+		minRatio <= MAX_ADVANCED_SECOND_PASS_MIN_RATIO
 			? minRatio
 			: DEFAULT_ADVANCED_SECOND_PASS_MIN_RATIO;
 	return secondPassText.length >= baselineText.length * ratio;

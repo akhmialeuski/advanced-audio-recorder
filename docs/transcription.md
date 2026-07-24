@@ -428,26 +428,28 @@ Auto chapters uses the same LLM provider, key, and model as [LLM post-processing
 
 All transcription settings live under **Settings > Advanced Audio Recorder > Transcription**. The global and output settings:
 
-| Setting                        | Description                                                                                        | Default                        |
-| ------------------------------ | -------------------------------------------------------------------------------------------------- | ------------------------------ |
-| **Enable transcription**       | Master toggle that reveals the rest of the section.                                                | Off                            |
-| **Transcribe after recording** | Auto-transcribe each saved recording (first file only).                                            | Off                            |
-| **Engine**                     | Whisper API / Deepgram / Google Gemini / Local whisper.cpp.                                        | Whisper API                    |
-| **Language**                   | `auto` to detect, or an ISO code (`en`, `ru`, `es`).                                               | `auto`                         |
-| **Speaker diarization**        | Request speaker labels (Deepgram and Gemini only).                                                 | Off                            |
-| **Word-level timestamps**      | Per-word timing, recorded in JSON file output only.                                                | Off                            |
-| **Request timeout**            | Minutes before one request is aborted and reported (cloud engines only). Range 1-60.               | 10                             |
-| **Advanced two-pass transcription** | Two engine passes with LLM-generated context biasing the second (roughly 2x cost; experimental).   | Off                            |
-| **Destination**                | Insert into note / Save to file / Note and file / Save to file and link it in the note.            | Insert into note               |
-| **File format**                | JSON / SubRip (.srt) / WebVTT (.vtt) / Plain text (.txt). Shown when destination is not note-only. | JSON                           |
-| **Note heading**               | Heading inserted above the transcript (empty for none).                                            | `## Transcript`                |
-| **Include timestamps**         | Render timestamps on each line.                                                                    | On                             |
-| **Timestamps as player links** | Render each timestamp as a `#t=` player link.                                                      | On                             |
-| **Include speakers**           | Render speaker labels (diarization-gated).                                                         | On                             |
-| **Merge speaker turns**        | Merge consecutive same-speaker segments (diarization-gated).                                       | On                             |
-| **Timestamp format**           | Template wrapping `{time}`.                                                                        | `{time}`                       |
-| **Speaker format**             | Template wrapping `{speaker}` (diarization-gated).                                                 | `**{speaker}**`                |
-| **Line format**                | Arrangement of `{timestamp} {speaker} {text}`.                                                     | `{timestamp} {speaker} {text}` |
+| Setting                             | Description                                                                                             | Default                        |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| **Enable transcription**            | Master toggle that reveals the rest of the section.                                                     | Off                            |
+| **Transcribe after recording**      | Auto-transcribe each saved recording (first file only).                                                 | Off                            |
+| **Engine**                          | Whisper API / Deepgram / Google Gemini / Local whisper.cpp.                                             | Whisper API                    |
+| **Language**                        | `auto` to detect, or an ISO code (`en`, `ru`, `es`).                                                    | `auto`                         |
+| **Speaker diarization**             | Request speaker labels (Deepgram and Gemini only).                                                      | Off                            |
+| **Word-level timestamps**           | Per-word timing, recorded in JSON file output only.                                                     | Off                            |
+| **Request timeout**                 | Minutes before one request is aborted and reported (cloud engines only). Range 1-60.                    | 10                             |
+| **Advanced settings**               | Master switch revealing the dictionary and the two-pass mode; off keeps one plain pass with no biasing. | Off                            |
+| **Advanced two-pass transcription** | Two engine passes with LLM-generated context biasing the second (roughly 2x cost; experimental).        | Off                            |
+| **Second-pass length safeguard**    | Keep the biased second pass only when its text is at least this fraction of the first pass.             | 0.8                            |
+| **Destination**                     | Insert into note / Save to file / Note and file / Save to file and link it in the note.                 | Insert into note               |
+| **File format**                     | JSON / SubRip (.srt) / WebVTT (.vtt) / Plain text (.txt). Shown when destination is not note-only.      | JSON                           |
+| **Note heading**                    | Heading inserted above the transcript (empty for none).                                                 | `## Transcript`                |
+| **Include timestamps**              | Render timestamps on each line.                                                                         | On                             |
+| **Timestamps as player links**      | Render each timestamp as a `#t=` player link.                                                           | On                             |
+| **Include speakers**                | Render speaker labels (diarization-gated).                                                              | On                             |
+| **Merge speaker turns**             | Merge consecutive same-speaker segments (diarization-gated).                                            | On                             |
+| **Timestamp format**                | Template wrapping `{time}`.                                                                             | `{time}`                       |
+| **Speaker format**                  | Template wrapping `{speaker}` (diarization-gated).                                                      | `**{speaker}**`                |
+| **Line format**                     | Arrangement of `{timestamp} {speaker} {text}`.                                                          | `{timestamp} {speaker} {text}` |
 
 Per-engine fields (base URL, key, model picker, upload chunk size) are documented in [Engines](#engines) above.
 

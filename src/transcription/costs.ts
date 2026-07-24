@@ -18,10 +18,8 @@ import type {
 	LlmProviderId,
 	TranscriptionProviderId,
 } from '../settings/settingsSchema';
-import {
-	advancedTwoPassEnabled,
-	autoChaptersAfterTranscribe,
-} from '../settings/settingsSchema';
+import { autoChaptersAfterTranscribe } from '../settings/settingsSchema';
+import { advancedTwoPassWillRun } from './advanced/advancedBias';
 import {
 	LLM_PROVIDER_LABELS,
 	LLM_PROVIDER_PRICING_URLS,
@@ -680,15 +678,18 @@ interface RunCostStage {
 /**
  * The billable steps of a run, in execution order, assembled automatically from
  * the enabled transcription service and LLM features: the transcription
- * pass(es) always (two when the advanced mode is on), then the advanced context
- * agents, the LLM post-processing, and the auto chapters, each only when its
- * feature is on. Both the estimate breakdown and the duration-probe decision
+ * pass(es) always (two when the advanced mode will run), then the advanced
+ * context agents, the LLM post-processing, and the auto chapters, each only when
+ * its feature is on. Both the estimate breakdown and the duration-probe decision
  * read this one list, so a new billable feature is priced everywhere by adding
  * a single entry rather than by touching each consumer.
  * @param settings - The run's settings snapshot
  */
 function runCostStages(settings: AudioRecorderSettings): RunCostStage[] {
-	const twoPass = advancedTwoPassEnabled(settings);
+	// Capability-gated, not the bare toggle: an engine that cannot bias (e.g. a
+	// Deepgram hosted Whisper model) degrades to one plain pass with no context
+	// agents at run time, so the estimate must not price a phantom second pass.
+	const twoPass = advancedTwoPassWillRun(settings);
 	const enginePricing = resolveEnginePricing(
 		settings.transcriptionProvider,
 		selectedEngineModel(settings, settings.transcriptionProvider),

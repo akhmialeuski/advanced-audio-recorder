@@ -29,7 +29,6 @@ import { PLUGIN_LOG_PREFIX } from '../../constants';
 import { dedupeTerms } from '../dictionary';
 import { WHISPER_PROMPT_TOKEN_LIMIT, tokenUpperBound } from '../dictionaryBias';
 import type { LlmProvider } from '../llm/LlmProvider';
-import { plainText } from '../transcriptModel';
 import type { Transcript } from '../TranscriptTypes';
 
 /**
@@ -310,16 +309,35 @@ export function withinPromptWindow(sentence: string): boolean {
 }
 
 /**
- * Deterministic bias-prompt assembly used when the sentence agent fails or
- * overruns the prompt window: the topic sentence followed by the terms in
- * ascending value order, so the most valuable tokens sit at the end where
- * Whisper weights them most. Terms are dropped from the least-valuable front
- * until the result fits the window.
+ * Whether the sentence agent's reply kept every mined term verbatim
+ * (case-insensitive). The agent is told to weave in each term with its exact
+ * spelling; if it dropped or re-spelled one, prompt-biased engines (Whisper,
+ * whisper.cpp, Gemini) - which receive only this sentence - would silently
+ * lose that canonical name or acronym, the whole point of the mode. When a
+ * term is missing the caller falls back to {@link buildFallbackPrompt}, which
+ * lists the terms exactly.
+ * @param sentence - The agent's candidate sentence
+ * @param terms - The mined terms that must all appear
+ * @returns True when every term is a case-insensitive substring of the sentence
+ */
+export function sentenceRetainsTerms(
+	sentence: string,
+	terms: readonly string[],
+): boolean {
+	const haystack = sentence.toLowerCase();
+	return terms.every((term) => haystack.includes(term.toLowerCase()));
+}
+
+/**
+ * Assembles "<topic>. <terms>." and drops the least-valuable (front) terms
+ * until it fits the Whisper prompt window, since the terms are in ascending
+ * value order and Whisper weights the last tokens most. Returns '' when
+ * nothing - not even the topic alone - fits.
  * @param topic - Topic sentence in the audio's language ('' for none)
  * @param termsAscending - Terms in ascending order of value
  * @returns A prompt within the window, or '' when nothing fits
  */
-export function buildFallbackPrompt(
+function fitPromptWithinWindow(
 	topic: string,
 	termsAscending: readonly string[],
 ): string {
@@ -339,12 +357,34 @@ export function buildFallbackPrompt(
 		if (withinPromptWindow(prompt)) {
 			return prompt;
 		}
-		if (terms.length === 0) {
-			// Even the topic alone overruns; no usable prompt.
-			return '';
-		}
 	}
 	return '';
+}
+
+/**
+ * Deterministic bias-prompt assembly used when the sentence agent fails,
+ * overruns the prompt window, or drops a mined term: the topic sentence
+ * followed by the terms in ascending value order, so the most valuable tokens
+ * sit at the end where Whisper weights them most.
+ *
+ * First it tries topic plus as many terms as fit; if the topic alone already
+ * overruns the window, the topic is dropped and a terms-only prompt is built
+ * instead, because the mined names and acronyms are the second pass's real
+ * payoff and must not be discarded to keep an oversized topic.
+ * @param topic - Topic sentence in the audio's language ('' for none)
+ * @param termsAscending - Terms in ascending order of value
+ * @returns A prompt within the window, or '' when nothing fits
+ */
+export function buildFallbackPrompt(
+	topic: string,
+	termsAscending: readonly string[],
+): string {
+	const withTopic = fitPromptWithinWindow(topic, termsAscending);
+	if (withTopic) {
+		return withTopic;
+	}
+	// The topic overran the window on its own; keep the valuable terms.
+	return fitPromptWithinWindow('', termsAscending);
 }
 
 /** Collapses an agent reply to one clean line (first non-empty line). */
@@ -515,7 +555,12 @@ export async function generateContext(
 	);
 
 	const topic = firstLine(topicRaw ?? '');
-	const textWords = tokenizeWords(plainText(baseline));
+	// Verify against the same condensed sample the agents read, not the whole
+	// transcript: an agent can only faithfully list terms from what it saw, and
+	// bounding the corpus keeps the fuzzy sliding-window match off the main
+	// thread for a long recording (the sample is capped at
+	// CONTEXT_SAMPLE_MAX_CHARS).
+	const textWords = tokenizeWords(sample);
 	const names = filterHeardTerms(
 		parseTermList(namesRaw ?? ''),
 		textWords,
@@ -586,10 +631,17 @@ export async function generateContext(
 			CONTEXT_SENTENCE_MAX_TOKENS,
 		);
 		const built = firstLine(builtRaw ?? '');
-		promptSentence =
-			built && withinPromptWindow(built)
-				? built
-				: buildFallbackPrompt(topic, termsAscending);
+		// Accept the sentence only when it fits the window AND still carries
+		// every mined term; a sentence that dropped or re-spelled one loses that
+		// bias for prompt-biased engines, so fall back to the exact-spelling
+		// deterministic assembly instead.
+		const accepted =
+			built &&
+			withinPromptWindow(built) &&
+			sentenceRetainsTerms(built, keyterms);
+		promptSentence = accepted
+			? built
+			: buildFallbackPrompt(topic, termsAscending);
 	}
 	if (!promptSentence && keyterms.length === 0) {
 		return null;

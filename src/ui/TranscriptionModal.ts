@@ -16,10 +16,7 @@ import type {
 	AudioRecorderSettings,
 	TranscriptionProviderId,
 } from '../settings/settingsSchema';
-import {
-	advancedTwoPassEnabled,
-	autoChaptersAfterTranscribe,
-} from '../settings/settingsSchema';
+import { autoChaptersAfterTranscribe } from '../settings/settingsSchema';
 import {
 	LLM_TASK_OPTIONS,
 	TRANSCRIPT_DESTINATION_OPTIONS,
@@ -36,6 +33,7 @@ import { formatTimecode } from '../utils/TimeUtils';
 import { probeAudioMetadata } from '../utils/AudioFileAnalyzer';
 import { TRANSCRIPTION_PROVIDER_IDS } from '../constants';
 import {
+	advancedTwoPassWillRun,
 	buildCostEstimate,
 	costEstimateNeedsDuration,
 	effectiveDiarize,
@@ -732,9 +730,13 @@ export class TranscriptionModal extends Modal {
 			return null;
 		}
 		// Fall back to a duration estimate when the provider reported no usage,
-		// scaling it by the passes actually run: the advanced two-pass mode
-		// decodes the audio twice, so a single-pass estimate would undercount.
-		const passes = advancedTwoPassEnabled(settings) ? 2 : 1;
+		// scaling it by the passes that will actually run: the advanced two-pass
+		// mode decodes the audio twice, so a single-pass estimate would
+		// undercount. Capability-gated, so an engine that cannot bias - which
+		// degrades to one pass - is not counted as two. Actual multi-pass
+		// billing still flows through the summed usage in cost.usd; this branch
+		// only estimates when the provider reported no usage to price from.
+		const passes = advancedTwoPassWillRun(settings) ? 2 : 1;
 		const perPass =
 			this.durationSeconds !== null
 				? estimateTranscriptionCost(
