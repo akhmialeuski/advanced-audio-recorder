@@ -1,9 +1,10 @@
 /**
- * Cost model for the cloud transcription engines and the LLM
- * post-processing pass: built-in approximate rates per engine/provider and
- * model, a pre-run estimate that combines the transcription and every
- * post-processing part into one breakdown, and conversion of
- * provider-reported usage (billed seconds or tokens) into dollars. Rates
+ * Cost model for the cloud transcription engines and every LLM step of a run:
+ * built-in approximate rates per engine/provider and model, a pre-run estimate
+ * that assembles one breakdown line per billable step actually enabled (the
+ * transcription pass or passes, the advanced context agents, the LLM
+ * post-processing, and the auto chapters), and conversion of provider-reported
+ * usage (billed seconds or tokens) into dollars. Rates
  * are pay-as-you-go list prices at the time of writing and are inherently
  * approximate - providers change pricing, so every figure is presented as
  * an estimate, and an unknown model yields "no estimate" rather than a
@@ -16,6 +17,10 @@ import type {
 	AudioRecorderSettings,
 	LlmProviderId,
 	TranscriptionProviderId,
+} from '../settings/settingsSchema';
+import {
+	advancedTwoPassEnabled,
+	autoChaptersAfterTranscribe,
 } from '../settings/settingsSchema';
 import {
 	LLM_PROVIDER_LABELS,
@@ -67,6 +72,31 @@ const LLM_OUTPUT_RATIO: Record<LlmTask, number> = {
 	summary: 0.25,
 	custom: 1,
 };
+
+/**
+ * The advanced two-pass mode runs a fixed team of sequential LLM agents
+ * between the passes (topic, names, jargon, acronyms, a decider, and the
+ * sentence builder). A representative call count for the estimate; the actual
+ * count varies slightly because the decider only runs when there are
+ * candidates to vet.
+ */
+export const CONTEXT_AGENT_CALL_ESTIMATE = 6;
+
+/**
+ * Each context agent reads a condensed sample of the first draft, which the
+ * pipeline caps well below a long transcript (about 12k characters, roughly
+ * 3000 tokens), and emits a short list or sentence. Representative per-call
+ * sizes for the estimate, so the agents' cost stays roughly flat per run
+ * instead of scaling with the whole recording.
+ */
+export const CONTEXT_AGENT_INPUT_TOKENS = 3000;
+export const CONTEXT_AGENT_OUTPUT_TOKENS = 200;
+
+/**
+ * Auto chapters read the transcript and emit a short list of titled
+ * timestamps, so the output is a small fraction of the input.
+ */
+export const CHAPTERS_OUTPUT_TOKEN_RATIO = 0.1;
 
 /**
  * Approximate per-minute rates by model-id fragment, matched longest
@@ -373,6 +403,48 @@ function estimatedLlmUsage(
 }
 
 /**
+ * Synthesizes the LLM usage the advanced two-pass context agents are expected
+ * to bill: a fixed number of calls, each reading a bounded sample of the draft
+ * and emitting a short answer. The sample is capped by the pipeline, so a
+ * longer recording does not proportionally raise this cost.
+ * @param durationSeconds - Audio duration in seconds
+ */
+function estimatedContextAgentsUsage(
+	durationSeconds: number,
+): TranscriptionUsage {
+	const transcriptTokens = Math.ceil(
+		durationSeconds * ESTIMATED_OUTPUT_TOKENS_PER_SECOND,
+	);
+	const perCallInput = Math.min(transcriptTokens, CONTEXT_AGENT_INPUT_TOKENS);
+	return {
+		inputTokens: perCallInput * CONTEXT_AGENT_CALL_ESTIMATE,
+		outputTokens: CONTEXT_AGENT_OUTPUT_TOKENS * CONTEXT_AGENT_CALL_ESTIMATE,
+	};
+}
+
+/**
+ * Synthesizes the LLM usage an auto-chapters pass over a transcript of the
+ * given duration is expected to bill: the transcript is the input and the
+ * titled-timestamp list is a small fraction of it, capped by the output-token
+ * budget.
+ * @param settings - Plugin settings
+ * @param durationSeconds - Audio duration in seconds
+ */
+function estimatedChaptersUsage(
+	settings: AudioRecorderSettings,
+	durationSeconds: number,
+): TranscriptionUsage {
+	const transcriptTokens = Math.ceil(
+		durationSeconds * ESTIMATED_OUTPUT_TOKENS_PER_SECOND,
+	);
+	const outputTokens = Math.min(
+		Math.ceil(transcriptTokens * CHAPTERS_OUTPUT_TOKEN_RATIO),
+		settings.llmMaxTokens,
+	);
+	return { inputTokens: transcriptTokens, outputTokens };
+}
+
+/**
  * Estimates the cost of transcribing the given duration on an engine and
  * model. Returns null when no built-in rate matches the model.
  * @param engineId - Transcription engine id
@@ -462,9 +534,12 @@ export function formatUsd(usd: number): string {
 /** Why a cost-estimate line could not be priced. */
 export type CostEstimateUnpricedReason = 'no-rate' | 'no-duration';
 
-/** One line of the pre-run cost estimate (transcription or a post-processing pass). */
+/** One line of the pre-run cost estimate (a transcription pass or an LLM step). */
 export interface CostEstimateLine {
-	/** What this line prices, e.g. "Transcription" or "Post-processing (Clean up)". */
+	/**
+	 * What this line prices, e.g. "Transcription", "Advanced context agents",
+	 * "Post-processing (Clean up)", or "Auto chapters".
+	 */
 	label: string;
 	/** Provider display name, shown as the pricing link. */
 	providerName: string;
@@ -480,9 +555,13 @@ export interface CostEstimateLine {
 	reason?: CostEstimateUnpricedReason;
 }
 
-/** The pre-run estimate: one line per billed part plus their combined total. */
+/** The pre-run estimate: one line per billed step plus their combined total. */
 export interface CostEstimate {
-	/** Transcription first, then the post-processing pass when enabled. */
+	/**
+	 * The billed steps in execution order: the transcription pass(es) first,
+	 * then whichever LLM steps are enabled (advanced context agents,
+	 * post-processing, auto chapters).
+	 */
 	lines: CostEstimateLine[];
 	/** Sum of the priced lines; null when no line could be priced. */
 	totalUsd: number | null;
@@ -490,16 +569,28 @@ export interface CostEstimate {
 	hasUnpriced: boolean;
 }
 
-/** Builds the transcription line of the estimate. */
+/**
+ * Builds the transcription line of the estimate. The advanced two-pass mode
+ * decodes the same audio twice, so `passes` scales the model's per-run cost -
+ * the estimate always reflects the enabled feature, for any engine or model.
+ * @param settings - The run's settings snapshot
+ * @param durationSeconds - Probed audio duration, or null when unknown
+ * @param passes - How many times the engine transcribes the audio (1 or 2)
+ */
 function transcriptionEstimateLine(
 	settings: AudioRecorderSettings,
 	durationSeconds: number | null,
+	passes: number,
 ): CostEstimateLine {
 	const engineId = settings.transcriptionProvider;
 	const model = selectedEngineModel(settings, engineId);
 	const providerName = TRANSCRIPTION_PROVIDER_LABELS[engineId];
 	const pricingUrl = TRANSCRIPTION_PROVIDER_PRICING_URLS[engineId];
-	const base = { label: 'Transcription', providerName, model, pricingUrl };
+	const label =
+		passes > 1
+			? `Transcription (${String(passes)} passes)`
+			: 'Transcription';
+	const base = { label, providerName, model, pricingUrl };
 	const pricing = resolveEnginePricing(engineId, model);
 	if (pricing?.kind === 'free') {
 		return { ...base, pricingUrl: undefined, usd: 0, free: true };
@@ -510,21 +601,24 @@ function transcriptionEstimateLine(
 	if (durationSeconds === null) {
 		return { ...base, usd: null, reason: 'no-duration' };
 	}
-	return {
-		...base,
-		usd: costFromUsage(pricing, estimatedUsage(pricing, durationSeconds)),
-	};
+	const perPass = costFromUsage(
+		pricing,
+		estimatedUsage(pricing, durationSeconds),
+	);
+	return { ...base, usd: perPass === null ? null : perPass * passes };
 }
 
-/** Builds the LLM post-processing line of the estimate. */
-function llmEstimateLine(
+/** Builds an LLM estimate line (an LLM provider call) with a given label and usage. */
+function llmLine(
 	settings: AudioRecorderSettings,
 	durationSeconds: number | null,
+	label: string,
+	usage: (durationSeconds: number) => TranscriptionUsage,
 ): CostEstimateLine {
 	const providerId = settings.llmProvider;
 	const model = selectedLlmModel(settings);
 	const base = {
-		label: `Post-processing (${LLM_TASK_LABELS[settings.llmPostProcessTask]})`,
+		label,
 		providerName: LLM_PROVIDER_LABELS[providerId],
 		model,
 		pricingUrl: LLM_PROVIDER_PRICING_URLS[providerId],
@@ -536,20 +630,109 @@ function llmEstimateLine(
 	if (durationSeconds === null) {
 		return { ...base, usd: null, reason: 'no-duration' };
 	}
-	return {
-		...base,
-		usd: costFromUsage(
-			pricing,
-			estimatedLlmUsage(settings, durationSeconds),
-		),
-	};
+	return { ...base, usd: costFromUsage(pricing, usage(durationSeconds)) };
+}
+
+/** Builds the LLM post-processing line of the estimate. */
+function llmEstimateLine(
+	settings: AudioRecorderSettings,
+	durationSeconds: number | null,
+): CostEstimateLine {
+	return llmLine(
+		settings,
+		durationSeconds,
+		`Post-processing (${LLM_TASK_LABELS[settings.llmPostProcessTask]})`,
+		(seconds) => estimatedLlmUsage(settings, seconds),
+	);
+}
+
+/** Builds the advanced context-agents line: the LLM calls between the two passes. */
+function contextAgentsEstimateLine(
+	settings: AudioRecorderSettings,
+	durationSeconds: number | null,
+): CostEstimateLine {
+	return llmLine(
+		settings,
+		durationSeconds,
+		'Advanced context agents',
+		(seconds) => estimatedContextAgentsUsage(seconds),
+	);
+}
+
+/** Builds the auto-chapters line: the LLM call that titles the transcript. */
+function autoChaptersEstimateLine(
+	settings: AudioRecorderSettings,
+	durationSeconds: number | null,
+): CostEstimateLine {
+	return llmLine(settings, durationSeconds, 'Auto chapters', (seconds) =>
+		estimatedChaptersUsage(settings, seconds),
+	);
+}
+
+/** One billable step of a run: its estimate line and whether pricing it needs the duration. */
+interface RunCostStage {
+	/** Builds this step's line for the probed (or still unknown) duration. */
+	line: (durationSeconds: number | null) => CostEstimateLine;
+	/** True when this step is priced and its usage depends on the duration. */
+	needsDuration: boolean;
 }
 
 /**
- * Builds the combined pre-run cost estimate: the transcription plus, when
- * enabled, the LLM post-processing pass, each priced as its own line, with
- * the priced lines summed into a total. Pure so the numbers and wording
- * are unit tested; the dialog only decides how to render the result.
+ * The billable steps of a run, in execution order, assembled automatically from
+ * the enabled transcription service and LLM features: the transcription
+ * pass(es) always (two when the advanced mode is on), then the advanced context
+ * agents, the LLM post-processing, and the auto chapters, each only when its
+ * feature is on. Both the estimate breakdown and the duration-probe decision
+ * read this one list, so a new billable feature is priced everywhere by adding
+ * a single entry rather than by touching each consumer.
+ * @param settings - The run's settings snapshot
+ */
+function runCostStages(settings: AudioRecorderSettings): RunCostStage[] {
+	const twoPass = advancedTwoPassEnabled(settings);
+	const enginePricing = resolveEnginePricing(
+		settings.transcriptionProvider,
+		selectedEngineModel(settings, settings.transcriptionProvider),
+	);
+	// A priced LLM step needs the duration because its usage scales with the
+	// transcript length; an unpriced one reports "no built-in rate" without it.
+	const llmPriced =
+		resolveLlmPricing(settings.llmProvider, selectedLlmModel(settings)) !==
+		null;
+	const stages: RunCostStage[] = [
+		{
+			line: (seconds) =>
+				transcriptionEstimateLine(settings, seconds, twoPass ? 2 : 1),
+			needsDuration:
+				enginePricing !== null && enginePricing.kind !== 'free',
+		},
+	];
+	if (twoPass) {
+		stages.push({
+			line: (seconds) => contextAgentsEstimateLine(settings, seconds),
+			needsDuration: llmPriced,
+		});
+	}
+	if (settings.llmPostProcessEnabled) {
+		stages.push({
+			line: (seconds) => llmEstimateLine(settings, seconds),
+			needsDuration: llmPriced,
+		});
+	}
+	if (autoChaptersAfterTranscribe(settings)) {
+		stages.push({
+			line: (seconds) => autoChaptersEstimateLine(settings, seconds),
+			needsDuration: llmPriced,
+		});
+	}
+	return stages;
+}
+
+/**
+ * Builds the combined pre-run cost estimate by assembling one line per billable
+ * step of the run (see {@link runCostStages}) and summing the priced ones. Pure
+ * so the numbers and wording are unit tested; the dialog only renders the
+ * result. The breakdown follows the enabled features, so toggling the advanced
+ * two-pass mode, post-processing, or auto chapters changes it.
  * @param settings - The run's settings snapshot
  * @param durationSeconds - Probed audio duration, or null when unknown
  */
@@ -557,12 +740,9 @@ export function buildCostEstimate(
 	settings: AudioRecorderSettings,
 	durationSeconds: number | null,
 ): CostEstimate {
-	const lines: CostEstimateLine[] = [
-		transcriptionEstimateLine(settings, durationSeconds),
-	];
-	if (settings.llmPostProcessEnabled) {
-		lines.push(llmEstimateLine(settings, durationSeconds));
-	}
+	const lines = runCostStages(settings).map((stage) =>
+		stage.line(durationSeconds),
+	);
 	let total = 0;
 	let anyPriced = false;
 	let hasUnpriced = false;
@@ -579,21 +759,13 @@ export function buildCostEstimate(
 
 /**
  * Whether the estimate for these settings needs the audio duration to be
- * priced. False when the only billed part is the free local engine and no
- * post-processing runs, letting the dialog skip the audio probe entirely.
+ * priced: true when any billable step is priced and duration-dependent. False
+ * when the only step is the free local engine and no LLM feature runs, letting
+ * the dialog skip the audio probe entirely.
  * @param settings - The run's settings snapshot
  */
 export function costEstimateNeedsDuration(
 	settings: AudioRecorderSettings,
 ): boolean {
-	const engine = resolveEnginePricing(
-		settings.transcriptionProvider,
-		selectedEngineModel(settings, settings.transcriptionProvider),
-	);
-	const engineNeeds = engine !== null && engine.kind !== 'free';
-	const llmNeeds =
-		settings.llmPostProcessEnabled &&
-		resolveLlmPricing(settings.llmProvider, selectedLlmModel(settings)) !==
-			null;
-	return engineNeeds || llmNeeds;
+	return runCostStages(settings).some((stage) => stage.needsDuration);
 }

@@ -27,6 +27,7 @@ import {
 	LOCAL_WHISPER_MODELS_DOC_URL,
 } from '../../constants';
 import {
+	advancedTwoPassEnabled,
 	applyLlmProviderDefaults,
 	type TranscriptionProviderId,
 } from '../settingsSchema';
@@ -747,10 +748,7 @@ function renderLlmSection(ctx: SettingsSectionContext): void {
 	if (
 		!s.llmPostProcessEnabled &&
 		!s.transcriptionAutoChaptersEnabled &&
-		!(
-			s.transcriptionAdvancedSettingsEnabled &&
-			s.transcriptionAdvancedEnabled
-		)
+		!advancedTwoPassEnabled(s)
 	) {
 		return;
 	}

@@ -133,10 +133,10 @@ describe('TranscriptionModal cost estimate', () => {
 
 		const text = internals.costEstimateEl?.textContent ?? '';
 		expect(text).toContain('Post-processing (Clean up) - OpenAI');
-		// The post-processing pass is billed separately, so the estimate says so
-		// to match the smaller "Transcription cost" reported after the run.
+		// The LLM steps are billed separately, so the estimate says so to match
+		// the smaller "Transcription cost" reported after the run.
 		expect(text).toContain(
-			'Post-processing is billed separately by its provider and is not added to the session total',
+			'The LLM steps above are billed separately by their provider and are not added to the session total',
 		);
 		// Both providers are linked for pricing.
 		const links = internals.costEstimateEl?.querySelectorAll('a') ?? [];

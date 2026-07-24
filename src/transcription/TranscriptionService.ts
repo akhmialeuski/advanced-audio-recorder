@@ -18,6 +18,7 @@ import {
 	TRANSCRIBE_CHUNK_PROGRESS_CEILING,
 } from '../constants';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
+import { advancedTwoPassEnabled } from '../settings/settingsSchema';
 import {
 	audioMimeFromExtension,
 	audioPrepOptions,
@@ -322,9 +323,7 @@ export class TranscriptionService {
 		// whole band for its single pass. Two-pass needs both the advanced
 		// settings master switch and its own toggle: the toggle lives under the
 		// master, so the master being off means no two-pass regardless.
-		const advancedRequested =
-			settings.transcriptionAdvancedSettingsEnabled &&
-			settings.transcriptionAdvancedEnabled;
+		const advancedRequested = advancedTwoPassEnabled(settings);
 		const firstPassCeiling = advancedRequested
 			? TRANSCRIBE_CHUNK_PROGRESS_CEILING / 2
 			: TRANSCRIBE_CHUNK_PROGRESS_CEILING;

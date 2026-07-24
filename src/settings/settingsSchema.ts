@@ -680,3 +680,44 @@ export function applyLlmProviderDefaults(
 	}
 	return settings;
 }
+
+/**
+ * Whether a run performs the advanced two-pass transcription: both the advanced
+ * settings master switch and the two-pass toggle beneath it are on. The single
+ * predicate every surface reads - the run itself, the settings-tab field
+ * gating, and the cost estimate - so the "master gates the toggle" rule lives
+ * in one place instead of being re-derived at each call site.
+ * @param settings - The active settings
+ * @returns True when the biased second pass runs
+ */
+export function advancedTwoPassEnabled(
+	settings: Pick<
+		AudioRecorderSettings,
+		'transcriptionAdvancedSettingsEnabled' | 'transcriptionAdvancedEnabled'
+	>,
+): boolean {
+	return (
+		settings.transcriptionAdvancedSettingsEnabled &&
+		settings.transcriptionAdvancedEnabled
+	);
+}
+
+/**
+ * Whether a run generates auto chapters right after transcribing: the feature
+ * is enabled and its run-after toggle is on. The single predicate the run and
+ * the cost estimate share, so the extra LLM call is priced wherever it fires.
+ * @param settings - The active settings
+ * @returns True when chapters are generated after the transcription
+ */
+export function autoChaptersAfterTranscribe(
+	settings: Pick<
+		AudioRecorderSettings,
+		| 'transcriptionAutoChaptersEnabled'
+		| 'transcriptionAutoChaptersOnTranscribe'
+	>,
+): boolean {
+	return (
+		settings.transcriptionAutoChaptersEnabled &&
+		settings.transcriptionAutoChaptersOnTranscribe
+	);
+}

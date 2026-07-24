@@ -17,6 +17,10 @@ import type {
 	TranscriptionProviderId,
 } from '../settings/settingsSchema';
 import {
+	advancedTwoPassEnabled,
+	autoChaptersAfterTranscribe,
+} from '../settings/settingsSchema';
+import {
 	LLM_TASK_OPTIONS,
 	TRANSCRIPT_DESTINATION_OPTIONS,
 	TRANSCRIPT_FILE_FORMAT_OPTIONS,
@@ -625,15 +629,16 @@ export class TranscriptionModal extends Modal {
 				text: `Estimated total: ~${formatUsd(estimate.totalUsd)}${suffix}`,
 			});
 		}
-		// buildCostEstimate adds a second line only for the post-processing pass.
-		// That pass is billed by its own provider, which reports no usage, so it
-		// is priced in this pre-run estimate but never added to the session
-		// counter or the post-run "Transcription cost" notice. Say so here so the
-		// smaller amount reported after the run does not read as a discrepancy.
+		// Every line past the transcription one is an LLM step (context agents,
+		// post-processing, chapters), billed by the LLM provider, which reports
+		// no usage. Those are priced in this pre-run estimate but never added to
+		// the session counter or the post-run "Transcription cost" notice, so say
+		// so here to keep the smaller amount reported after the run from reading
+		// as a discrepancy.
 		if (estimate.lines.length > 1) {
 			el.createDiv({
 				cls: 'aar-transcribe-cost-note',
-				text: 'Post-processing is billed separately by its provider and is not added to the session total.',
+				text: 'The LLM steps above are billed separately by their provider and are not added to the session total.',
 			});
 		}
 		this.renderPricingLinks(el, estimate);
@@ -726,9 +731,12 @@ export class TranscriptionModal extends Modal {
 		) {
 			return null;
 		}
-		const usd =
-			cost.usd ??
-			(this.durationSeconds !== null
+		// Fall back to a duration estimate when the provider reported no usage,
+		// scaling it by the passes actually run: the advanced two-pass mode
+		// decodes the audio twice, so a single-pass estimate would undercount.
+		const passes = advancedTwoPassEnabled(settings) ? 2 : 1;
+		const perPass =
+			this.durationSeconds !== null
 				? estimateTranscriptionCost(
 						settings.transcriptionProvider,
 						selectedEngineModel(
@@ -737,7 +745,8 @@ export class TranscriptionModal extends Modal {
 						),
 						this.durationSeconds,
 					)
-				: null);
+				: null;
+		const usd = cost.usd ?? (perPass === null ? null : perPass * passes);
 		this.options.costTracker?.add(cost.engineId, usd);
 		// Refresh the session line so a follow-up run sees the new total.
 		this.updateCostEstimate();
@@ -836,10 +845,7 @@ export class TranscriptionModal extends Modal {
 			);
 			const usd = this.accountRunCost(settings, result.cost);
 			accounted = true;
-			if (
-				settings.transcriptionAutoChaptersEnabled &&
-				settings.transcriptionAutoChaptersOnTranscribe
-			) {
+			if (autoChaptersAfterTranscribe(settings)) {
 				// Fire-and-forget on the fresh in-memory transcript: the
 				// dialog closes normally while chapters generate in the
 				// background, reporting through their own Notices.
