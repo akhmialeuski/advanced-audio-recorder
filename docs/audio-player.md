@@ -49,6 +49,8 @@ The player integrates with Obsidian's own embed rendering rather than bolting on
 
 A single audio element is shared per file across view modes, so the same playback is controlled whether you are in Reading view or Live Preview, and switching modes does not stop and restart playback.
 
+The player also keeps working in **pop-out windows**: moving a note that embeds a recording into its own window preserves the right-click menu and timecode-link playback there, because the plugin binds those handlers to each window's own document rather than only the main one.
+
 > **Desktop and mobile.** The enhanced player works in both the Obsidian desktop app and the mobile app (iOS and Android), taking over audio embeds wherever Obsidian renders them; waveform extraction relies on the Web Audio API available in both. See [Mobile support](mobile-support.md).
 
 ---

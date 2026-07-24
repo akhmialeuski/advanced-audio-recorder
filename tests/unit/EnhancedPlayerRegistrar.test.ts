@@ -42,6 +42,15 @@ jest.mock('src/player/AudioPlayer', () => ({
 	})),
 }));
 
+// The timecode click handler binds through registerDomEventOnAllWindows (one
+// listener per Obsidian window). These tests exercise the handler itself, so
+// the primitive is mocked to capture the registered handler; its cross-window
+// behavior is covered in tests/unit/multiWindowDomEvents.test.ts and the
+// pop-out integration test.
+jest.mock('src/utils/multiWindowDomEvents', () => ({
+	registerDomEventOnAllWindows: jest.fn(),
+}));
+
 jest.mock('src/player/mediaProbe', () => ({
 	...jest.requireActual('src/player/mediaProbe'),
 	probeMediaKind: jest.fn(),
@@ -191,6 +200,10 @@ function setup(
 			getActiveFile: () => ({ path: 'note.md' }),
 			getLeavesOfType: getLeaves,
 			getActiveViewOfType: jest.fn(() => null),
+			// The timecode resolver locates the note owning the clicked node
+			// across windows; no leaf owns the detached test nodes, so the
+			// lookup finds nothing and falls back to the active view/file.
+			iterateAllLeaves: jest.fn(),
 		},
 	} as unknown as App;
 
@@ -675,14 +688,17 @@ describe('EnhancedPlayerRegistrar vault rename/delete wiring', () => {
 
 describe('EnhancedPlayerRegistrar timecode links', () => {
 	/** Returns the document click handler the registrar installed on register. */
-	function clickHandler(plugin: Plugin): (event: MouseEvent) => void {
-		const call = (plugin.registerDomEvent as jest.Mock).mock.calls.find(
-			(args) => args[1] === 'click',
+	function clickHandler(_plugin: Plugin): (event: MouseEvent) => void {
+		const { registerDomEventOnAllWindows } = jest.requireMock(
+			'src/utils/multiWindowDomEvents',
 		);
+		const call = (
+			registerDomEventOnAllWindows as jest.Mock
+		).mock.calls.find((args: unknown[]) => args[2] === 'click');
 		if (!call) {
 			throw new Error('Expected a click handler registration');
 		}
-		return call[2] as (event: MouseEvent) => void;
+		return call[3] as (event: MouseEvent) => void;
 	}
 
 	/** Builds a click event whose target is a timecode internal link. */

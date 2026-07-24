@@ -23,9 +23,9 @@
  * (issue #39). Only the master toggle flip re-renders open views
  * (leaf.rebuildView), because it changes what every embed is in both
  * modes at once. When the internal registry API is unavailable, a
- * Markdown post-processor takes over embeds (Reading view only). A
- * document-level click handler routes timecode links to a live player.
- * All paths respect the feature toggle.
+ * Markdown post-processor takes over embeds (Reading view only). A click
+ * handler bound on every window's document (main and pop-out) routes timecode
+ * links to a live player. All paths respect the feature toggle.
  * @module player/EnhancedPlayerRegistrar
  */
 
@@ -56,6 +56,8 @@ import {
 	wikiLinkTargetAtCursor,
 } from './timecodeLinks';
 import { probeMediaKind, MEDIA_KIND, type MediaKind } from './mediaProbe';
+import { registerDomEventOnAllWindows } from '../utils/multiWindowDomEvents';
+import { markdownViewContaining } from '../utils/windowScopedViews';
 import { MediaEmbedShell } from './MediaEmbedShell';
 import type { MediaKindStore } from './MediaKindStore';
 import { shouldEnhance } from './playerMode';
@@ -157,8 +159,14 @@ export class EnhancedPlayerRegistrar {
 			}
 		});
 
-		this.plugin.registerDomEvent(
-			activeDocument,
+		// Bind the timecode-link click handler on every window's document,
+		// including pop-out windows, so a transcript timestamp clicked in a
+		// popped-out note routes to a live player instead of being ignored
+		// (a pop-out has its own document that never shares events with the
+		// main window).
+		registerDomEventOnAllWindows(
+			this.plugin,
+			this.app,
 			'click',
 			(event) => {
 				this.handleTimecodeClick(event);
@@ -614,7 +622,19 @@ export class EnhancedPlayerRegistrar {
 		if (startSeconds === null) {
 			return;
 		}
-		const sourcePath = this.app.workspace.getActiveFile()?.path ?? '';
+		// Resolve the link against the note that actually contains the clicked
+		// timecode link, located from the DOM rather than the globally active
+		// file, so a relative link stays correct when the note lives in a
+		// pop-out window or a background split whose note is not the active one.
+		// This mirrors the resolution the player context menu uses.
+		const target = event.target as Node | null;
+		const owningView = target
+			? markdownViewContaining(this.app, target)
+			: null;
+		const sourcePath =
+			owningView?.file?.path ??
+			this.app.workspace.getActiveFile()?.path ??
+			'';
 		const file = this.app.metadataCache.getFirstLinkpathDest(
 			linkPath,
 			sourcePath,
@@ -715,16 +735,22 @@ export class EnhancedPlayerRegistrar {
 	}
 
 	/**
-	 * Reads the wikilink target at a clicked node from the active editor's
-	 * source. Uses CodeMirror's DOM-to-offset mapping (the same internal API
-	 * the context menu uses) to find the line and column, then extracts the
-	 * link there. Returns null when the click is not on a wikilink or the
-	 * editor internals are unavailable.
+	 * Reads the wikilink target at a clicked node from the editor of the note
+	 * that actually contains the node, so a Live Preview timecode link clicked
+	 * in a pop-out window or a background split reads from that note's editor
+	 * rather than the globally active one, whose CodeMirror instance does not
+	 * own this node. Uses CodeMirror's DOM-to-offset mapping (the same internal
+	 * API the context menu uses) to find the line and column, then extracts the
+	 * link there. Falls back to the active view for a detached render, and
+	 * returns null when the click is not on a wikilink or the editor internals
+	 * are unavailable.
 	 * @param node - The clicked DOM node inside the editor
 	 * @returns The wikilink target, or null when none is under the click
 	 */
 	private resolveEditorLinkTarget(node: Node): string | null {
-		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		const view =
+			markdownViewContaining(this.app, node) ??
+			this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!view) {
 			return null;
 		}

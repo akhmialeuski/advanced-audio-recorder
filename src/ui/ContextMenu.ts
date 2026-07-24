@@ -16,6 +16,8 @@ import {
 import type { MarkdownFileInfo } from 'obsidian';
 import type { MenuItem } from 'obsidian';
 import { AAR_MENU_SECTION, PLUGIN_LOG_PREFIX } from '../constants';
+import { registerDomEventOnAllWindows } from '../utils/multiWindowDomEvents';
+import { markdownViewContaining } from '../utils/windowScopedViews';
 import { getPlayerEmbedActions } from '../player/playerEmbedActions';
 import { MARKER_KIND, type MarkerKind } from '../markers/markerModel';
 import { isAudioFile } from '../utils/audioFile';
@@ -80,12 +82,16 @@ export class ContextMenu {
 	}
 
 	/**
-	 * Registers a global context menu event for audio players.
-	 * Detects right-clicks on standard Obsidian audio embeds and shows the file menu.
+	 * Registers a context menu event for audio players on every Obsidian
+	 * window. Detects right-clicks on standard Obsidian audio embeds and shows
+	 * the file menu. Binding per window (not once to activeDocument) is what
+	 * keeps the menu working after a note is moved into a pop-out window, whose
+	 * document does not share events with the main window.
 	 */
 	private registerPlayerMenu(): void {
-		this.plugin.registerDomEvent(
-			activeDocument,
+		registerDomEventOnAllWindows(
+			this.plugin,
+			this.app,
 			'contextmenu',
 			(event: MouseEvent) => {
 				const target = event.target as HTMLElement;
@@ -103,10 +109,13 @@ export class ContextMenu {
 					return;
 				}
 
-				// Resolve the file from the link text.
-				// We use the active file as the source path to handle relative links correctly.
-				const activeFile = this.app.workspace.getActiveFile();
-				const sourcePath = activeFile ? activeFile.path : '';
+				// Resolve the file from the link text against the note that
+				// actually contains this embed, located from the DOM rather than
+				// the globally active file. This is what keeps a relative link
+				// correct when the embed lives in a pop-out window or a
+				// background split, whose note is not the active one.
+				const { sourcePath, view: owningView } =
+					this.resolveEmbedSource(embed as HTMLElement);
 				const file = this.app.metadataCache.getFirstLinkpathDest(
 					src,
 					sourcePath,
@@ -123,11 +132,11 @@ export class ContextMenu {
 
 					const menu = new Menu();
 
-					// Attempt to find the link in the editor to offer "Delete recording & link"
-					const activeView =
-						this.app.workspace.getActiveViewOfType(MarkdownView);
-					if (activeView) {
-						const editor = activeView.editor;
+					// Offer "Delete recording & link" from the same note the embed
+					// belongs to, so the editor lookup targets the pop-out or
+					// split that was right-clicked, not the active pane.
+					if (owningView) {
+						const editor = owningView.editor;
 						const editorView = (editor as EditorWithCM).cm;
 						if (editorView && editorView.posAtDOM) {
 							try {
@@ -179,6 +188,35 @@ export class ContextMenu {
 			},
 			{ capture: true },
 		);
+	}
+
+	/**
+	 * Resolves the note that contains an audio embed and its source path. The
+	 * embed is matched to the MarkdownView whose container holds it, so a
+	 * right-click resolves against the note the embed is actually in - a
+	 * pop-out window or a background split as well as the active pane - rather
+	 * than the globally active file. Falls back to the active file and view
+	 * when the embed cannot be tied to a view (e.g. a detached render).
+	 * @param embed - The right-clicked `.internal-embed` element
+	 * @returns The resolved source path and owning MarkdownView, or the active
+	 *   file and view as a fallback
+	 */
+	private resolveEmbedSource(embed: HTMLElement): {
+		sourcePath: string;
+		view: MarkdownView | null;
+	} {
+		const owningView = markdownViewContaining(this.app, embed);
+		if (owningView) {
+			return {
+				sourcePath: owningView.file?.path ?? '',
+				view: owningView,
+			};
+		}
+		const activeFile = this.app.workspace.getActiveFile();
+		return {
+			sourcePath: activeFile ? activeFile.path : '',
+			view: this.app.workspace.getActiveViewOfType(MarkdownView),
+		};
 	}
 
 	/**
