@@ -50,7 +50,6 @@ import {
 	type TranscriptMarkdownOptions,
 } from './transcriptFormat';
 import { buildPostProcessPrompt } from './llmPostProcess';
-import { dedupeTerms, parseDictionary } from './dictionary';
 import {
 	describeDictionaryOmission,
 	planDictionaryBias,
@@ -61,7 +60,7 @@ import {
 	planAdvancedBias,
 } from './advanced/advancedBias';
 import { generateContext } from './advanced/contextPipeline';
-import { resolveDictionaryTerms } from '../settings/dictionaryProfiles';
+import { resolveDictionaryTermList } from '../settings/dictionaryProfiles';
 import { createLlmProvider, createTranscriptionProvider } from './factories';
 import { effectiveDiarize } from './providers/capabilities';
 import type { LlmProvider } from './llm/LlmProvider';
@@ -227,7 +226,7 @@ export class TranscriptionService {
 		const dictionaryPlan = planDictionaryBias(
 			settings.transcriptionProvider,
 			settings.deepgramModel,
-			parseDictionary(resolveDictionaryTerms(settings)),
+			resolveDictionaryTermList(settings),
 		);
 		const dictionaryNotice = describeDictionaryOmission(dictionaryPlan);
 		if (dictionaryNotice) {
@@ -428,17 +427,15 @@ export class TranscriptionService {
 						'Analyzing transcript context...',
 					);
 					// The agents run on the configured LLM post-processing
-					// provider. The advanced glossary and this run's applied
-					// dictionary terms join as bias candidates, vetted against
-					// the draft so an off-topic term is not injected.
+					// provider. This run's Dictionary terms join as bias
+					// candidates, vetted against the draft so an off-topic term
+					// is not injected. The advanced mode reuses the same terms
+					// the single pass biases toward, not a second glossary.
 					const llm = this.createLlm(settings);
 					const context = await generateContext(stitched, llm, {
 						language:
 							transcribeOptions.language ?? stitched.language,
-						glossary: dedupeTerms([
-							...parseDictionary(settings.advancedGlossary),
-							...dictionaryPlan.applied,
-						]),
+						glossary: resolveDictionaryTermList(settings),
 						isCancelled: () => token.isCancelled(),
 					});
 					const bias = context
@@ -878,13 +875,10 @@ export class TranscriptionService {
 				cleanupPrompt: settings.llmCleanupPrompt,
 				summaryPrompt: settings.llmSummaryPrompt,
 				customInstruction: settings.llmCustomInstruction,
-				// The user's dictionary and advanced glossary give the cleanup
-				// pass the canonical spellings, so even a single-pass run
-				// corrects garbled names and acronyms.
-				glossary: dedupeTerms([
-					...parseDictionary(resolveDictionaryTerms(settings)),
-					...parseDictionary(settings.advancedGlossary),
-				]),
+				// The user's Dictionary terms give the cleanup pass the canonical
+				// spellings, so even a single-pass run corrects garbled names and
+				// acronyms.
+				glossary: resolveDictionaryTermList(settings),
 			},
 		);
 		const output = await llm.complete(prompt, settings.llmMaxTokens);

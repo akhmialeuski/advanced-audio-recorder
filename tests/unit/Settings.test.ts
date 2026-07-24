@@ -315,7 +315,6 @@ describe('Settings', () => {
 				],
 				transcriptionDictionaryProfileId: 'p1',
 				transcriptionAdvancedEnabled: true,
-				advancedGlossary: 'Kubernetes\ngRPC',
 				advancedSecondPassMinRatio: 0.7,
 				transcriptionSpeakerRenameEnabled: false,
 				transcriptionAutoChaptersEnabled: true,

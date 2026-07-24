@@ -120,10 +120,10 @@ export interface ContextPipelineOptions {
 	/** Language detected on the first pass (ISO code), when known. */
 	language?: string;
 	/**
-	 * User-curated glossary terms (the advanced glossary and the run's
-	 * dictionary). Candidates like any other: the decider drops the ones the
-	 * draft gives no evidence for, so an off-topic glossary cannot inject
-	 * terms into a recording that never mentions them.
+	 * User-curated glossary terms: the run's selected Dictionary profile, the
+	 * same terms the single pass biases toward. Candidates like any other, so
+	 * the decider drops the ones the draft gives no evidence for and an
+	 * off-topic term cannot be injected into a recording that never mentions it.
 	 */
 	glossary?: string[];
 	/** Cancellation probe checked before each agent call. */

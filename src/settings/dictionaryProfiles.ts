@@ -11,6 +11,7 @@ import type {
 	AudioRecorderSettings,
 	DictionaryProfile,
 } from './settingsSchema';
+import { parseDictionary } from '../transcription/dictionary';
 
 /**
  * Builds a profile with a fresh id and empty terms. The name is trimmed so a
@@ -89,4 +90,22 @@ export function resolveDictionaryTerms(
 			settings.transcriptionDictionaryProfileId,
 		)?.terms ?? ''
 	);
+}
+
+/**
+ * Resolves the run's dictionary terms as a clean, de-duplicated list. The
+ * single source of the terms a run biases toward: the single-pass dictionary
+ * plan, the advanced two-pass context candidates, and the LLM cleanup hint all
+ * read from here, so the same profile drives every term-aware stage and there
+ * is no second, parallel glossary to keep in sync.
+ * @param settings - The active settings (profiles plus the selected id)
+ * @returns The selected profile's terms, de-duplicated; empty when none applies
+ */
+export function resolveDictionaryTermList(
+	settings: Pick<
+		AudioRecorderSettings,
+		'transcriptionDictionaryProfiles' | 'transcriptionDictionaryProfileId'
+	>,
+): string[] {
+	return parseDictionary(resolveDictionaryTerms(settings));
 }

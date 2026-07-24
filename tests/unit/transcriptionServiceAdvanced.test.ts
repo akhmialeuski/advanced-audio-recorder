@@ -300,6 +300,28 @@ describe('TranscriptionService advanced two-pass mode', () => {
 		);
 	});
 
+	it("reuses the run's Dictionary terms as advanced context candidates", async () => {
+		const { provider } = makeProvider();
+		const { llm, calls: llmCalls } = makeLlm();
+		const service = makeService(provider, llm, {
+			transcriptionAdvancedEnabled: true,
+			transcriptionDictionaryProfiles: [
+				{ id: 'p1', name: 'Infra', terms: 'gRPC' },
+			],
+			transcriptionDictionaryProfileId: 'p1',
+		});
+
+		await service.run(audioFile, { notePathForLinks: 'note.md' });
+
+		// The selected Dictionary term is fed to the pipeline's decider agent as
+		// a candidate, proving the advanced mode reuses the same terms the single
+		// pass biases toward instead of a separate, removed glossary.
+		const deciderCall = llmCalls.find((call) =>
+			call.system.includes('verify candidate terms'),
+		);
+		expect(deciderCall?.user).toContain('gRPC');
+	});
+
 	it('keeps the first pass when a broken LLM factory throws', async () => {
 		const { provider, calls } = makeProvider();
 		const settings = mergeSettings({

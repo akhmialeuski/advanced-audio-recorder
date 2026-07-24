@@ -181,8 +181,10 @@ export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
 /**
  * The advanced two-pass transcription mode (LLM-driven context biasing, after
  * "Whisper: Courtside Edition"): off by default, with the cost trade-off
- * spelled out in the master toggle's description. The sub-fields (domain
- * glossary, length safeguard) render only while the mode is on, mirroring the
+ * spelled out in the master toggle's description. It is the advanced mode of
+ * the same dictionary-biasing feature - it reuses the Dictionary terms picked
+ * above as its context candidates rather than a second glossary. The only
+ * sub-field (the length safeguard) renders while the mode is on, mirroring the
  * other gated sections. The agents run on the LLM provider configured in the
  * LLM post-processing section, whose fields stay visible while this mode
  * needs them (see {@link renderLlmSection}).
@@ -195,34 +197,23 @@ function renderAdvancedTwoPassSection(ctx: SettingsSectionContext): void {
 	addToggle(ctx, {
 		name: 'Advanced two-pass transcription (experimental)',
 		desc:
-			'Transcribes each recording twice: LLM agents mine the first draft ' +
-			"for the meeting's proper names, jargon, and English terms and " +
-			'acronyms, and the second pass re-decodes the audio biased toward ' +
-			'them. Warning: roughly 2x the engine cost and time, plus several ' +
-			'LLM calls per file (configured below). Best for e.g. Russian ' +
-			'meetings dense with English terminology (Kubernetes, CI/CD); for ' +
-			'everyday recordings keep this off and use the normal single pass.',
+			'The advanced mode of dictionary biasing: transcribes each recording ' +
+			'twice. LLM agents mine the first draft for the proper names, jargon, ' +
+			'and English terms and acronyms, reusing your selected Dictionary ' +
+			'terms as candidates, and the second pass re-decodes the audio biased ' +
+			'toward them. Warning: roughly 2x the engine cost and time, plus ' +
+			'several LLM calls per file. Best for e.g. Russian meetings dense ' +
+			'with English terminology (Kubernetes, CI/CD); for everyday ' +
+			'recordings keep this off and use the normal single pass.',
 		get: () => s.transcriptionAdvancedEnabled,
 		set: (v) => (s.transcriptionAdvancedEnabled = v),
-		// Re-render so the sub-fields below and the LLM provider fields appear
+		// Re-render so the sub-field below and the LLM provider fields appear
 		// or hide in step with the mode.
 		rerender: true,
 	});
 	if (!s.transcriptionAdvancedEnabled) {
 		return;
 	}
-
-	addTextArea(ctx, {
-		name: 'Domain glossary',
-		desc:
-			'Optional names and terms of your domain, one per line. They join ' +
-			"the generated context as candidates for the second pass's bias, " +
-			'but only those the first draft gives evidence for are used, so an ' +
-			'off-topic glossary cannot inject words into a transcript.',
-		get: () => s.advancedGlossary,
-		set: (v) => (s.advancedGlossary = v),
-		rows: 6,
-	});
 
 	addNumberInput(ctx, {
 		name: 'Second-pass length safeguard',

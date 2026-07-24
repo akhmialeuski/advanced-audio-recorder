@@ -40,10 +40,10 @@ export interface PostProcessOptions {
 	/** Custom instruction, sent verbatim, used when task is 'custom'. */
 	customInstruction?: string;
 	/**
-	 * Canonical spellings of domain names, terms, and acronyms (the user's
-	 * dictionary and advanced glossary). Appended to the cleanup prompt so
-	 * even a single-pass run corrects "кубернетис" to "Kubernetes"; other
-	 * tasks ignore it (a summary rewords anyway, and custom is verbatim).
+	 * Canonical spellings of domain names, terms, and acronyms, from the run's
+	 * Dictionary terms. Appended to the cleanup prompt so even a single-pass run
+	 * corrects "кубернетис" to "Kubernetes"; other tasks ignore it (a summary
+	 * rewords anyway, and custom is verbatim).
 	 */
 	glossary?: string[];
 }

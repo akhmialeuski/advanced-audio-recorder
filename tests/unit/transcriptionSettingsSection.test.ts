@@ -171,20 +171,26 @@ describe('renderTranscriptionSection advanced two-pass mode', () => {
 		// passes plus LLM calls.
 		expect(row?.desc).toContain('2x the engine cost');
 		expect(row?.desc).toContain('LLM calls');
+		// It is the advanced mode of dictionary biasing and reuses those terms,
+		// not a second glossary, so the description ties it to the Dictionary.
+		expect(row?.desc).toContain('Dictionary');
 	});
 
-	it('hides the advanced sub-fields while the mode is off', () => {
+	it('hides the length safeguard while the mode is off', () => {
 		renderAdvanced(false);
 		const names = capturedSettings.map((setting) => setting.name);
-		expect(names).not.toContain('Domain glossary');
 		expect(names).not.toContain('Second-pass length safeguard');
+		// The mode reuses the Dictionary terms, so there is no separate glossary
+		// field to reveal.
+		expect(names).not.toContain('Domain glossary');
 	});
 
-	it('reveals the glossary and length safeguard when the mode is on', () => {
+	it('reveals only the length safeguard when the mode is on', () => {
 		renderAdvanced(true);
 		const names = capturedSettings.map((setting) => setting.name);
-		expect(names).toContain('Domain glossary');
 		expect(names).toContain('Second-pass length safeguard');
+		// No separate glossary: the advanced mode reuses the Dictionary terms.
+		expect(names).not.toContain('Domain glossary');
 		const row = capturedSettings.find((setting) => setting.name === TOGGLE);
 		expect(row?.toggle?.value).toBe(true);
 	});

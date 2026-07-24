@@ -317,14 +317,6 @@ export interface AudioRecorderSettings {
 	 */
 	transcriptionAdvancedEnabled: boolean;
 	/**
-	 * Optional domain glossary for the advanced mode, one term or name per
-	 * line. Generalizes the paper's fixed roster: the terms are candidates
-	 * for the second pass's bias, kept only when the first pass's draft gives
-	 * evidence they were spoken. Empty means the agents rely on the draft
-	 * alone.
-	 */
-	advancedGlossary: string;
-	/**
 	 * Length safeguard for the advanced mode: the biased second pass is kept
 	 * only when its plain text is at least this fraction of the first
 	 * pass's; shorter output means content was lost, so the run reverts to
@@ -561,7 +553,6 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	transcriptionDictionaryProfiles: [],
 	transcriptionDictionaryProfileId: '',
 	transcriptionAdvancedEnabled: false,
-	advancedGlossary: '',
 	advancedSecondPassMinRatio: DEFAULT_ADVANCED_SECOND_PASS_MIN_RATIO,
 	transcriptionSpeakerRenameEnabled: false,
 	transcriptionAutoChaptersEnabled: false,

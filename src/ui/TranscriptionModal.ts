@@ -400,13 +400,15 @@ export class TranscriptionModal extends Modal {
 			},
 		});
 
-		// Advanced two-pass mode: a per-run override of the saved setting, so a
-		// pricier context-biased run can be enabled (or skipped) for this file
-		// without changing the default. The glossary and length safeguard stay
-		// in the settings tab; only the on/off decision is per-run here.
+		// Advanced two-pass mode: the advanced mode of the dictionary biasing
+		// above, offered as a per-run override of the saved setting so a pricier
+		// context-biased run can be enabled (or skipped) for this file without
+		// changing the default. It reuses the Dictionary terms picked above; the
+		// length safeguard stays in the settings tab, so only the on/off
+		// decision is per-run here.
 		addToggle(ctx, {
 			name: 'Advanced two-pass transcription',
-			desc: 'Transcribe twice and bias the second pass with LLM-generated context (names, jargon, English acronyms). Roughly 2x the engine cost plus LLM calls. The glossary and length safeguard stay in settings.',
+			desc: 'Advanced mode of the dictionary above: transcribe twice and bias the second pass with LLM-generated context (names, jargon, English acronyms), reusing the selected Dictionary terms. Roughly 2x the engine cost plus LLM calls. The length safeguard stays in settings.',
 			get: () => s.transcriptionAdvancedEnabled,
 			set: (v) => (s.transcriptionAdvancedEnabled = v),
 		});
