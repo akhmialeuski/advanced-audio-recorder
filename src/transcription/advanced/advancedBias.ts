@@ -34,6 +34,29 @@ export interface AdvancedBiasPlan {
 }
 
 /**
+ * How an engine carries the generated bias: a Whisper-style prompt sentence, or
+ * a flat keyterm list.
+ */
+export type AdvancedBiasChannel = 'prompt' | 'keyterm';
+
+/**
+ * The biasing channel an engine reads. The single source of truth shared by the
+ * context pipeline - which only builds the representation the channel needs, so
+ * a keyword-biased engine does not pay for a prompt sentence it would discard -
+ * and the routing in {@link planAdvancedBias}. Deepgram biases by keyword list;
+ * every other biasing engine reads a prompt sentence.
+ * @param engineId - Selected transcription engine id
+ * @returns The channel the engine biases through
+ */
+export function advancedBiasChannel(
+	engineId: TranscriptionProviderId,
+): AdvancedBiasChannel {
+	return engineId === TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM
+		? 'keyterm'
+		: 'prompt';
+}
+
+/**
  * Why the selected engine cannot run a biased second pass, or null when it
  * can. Checked before context generation so an unsupported engine degrades to
  * the normal single pass without spending any LLM calls.
@@ -99,7 +122,7 @@ export function planAdvancedBias(
 	engineId: TranscriptionProviderId,
 	context: GeneratedContext,
 ): AdvancedBiasPlan {
-	if (engineId === TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM) {
+	if (advancedBiasChannel(engineId) === 'keyterm') {
 		return context.keyterms.length ? { keyterms: context.keyterms } : {};
 	}
 	return context.promptSentence ? { biasPrompt: context.promptSentence } : {};

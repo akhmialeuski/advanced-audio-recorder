@@ -439,6 +439,42 @@ describe('buildCostEstimate', () => {
 		expect(agents?.usd).not.toBeNull();
 	});
 
+	it('prices fewer context agents for a keyword-biased engine than a prompt-biased one', () => {
+		const base = {
+			transcriptionAdvancedSettingsEnabled: true,
+			transcriptionAdvancedEnabled: true,
+			llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+			llmOpenAiModel: 'gpt-4o-mini',
+		};
+		const promptEngine = buildCostEstimate(
+			mergeSettings({
+				...base,
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			}),
+			600,
+		);
+		const keytermEngine = buildCostEstimate(
+			mergeSettings({
+				...base,
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				deepgramModel: 'nova-3',
+			}),
+			600,
+		);
+		const agentsUsd = (estimate: typeof promptEngine): number =>
+			estimate.lines.find(
+				(line) => line.label === 'Advanced context agents',
+			)?.usd ?? 0;
+		// Deepgram reads only the keyterm list, so the pipeline runs four agents
+		// where a prompt-biased engine runs six (it skips the topic and sentence
+		// agents); the estimate follows suit at two-thirds the cost.
+		expect(agentsUsd(promptEngine)).toBeGreaterThan(0);
+		expect(agentsUsd(keytermEngine)).toBeCloseTo(
+			agentsUsd(promptEngine) * (4 / 6),
+			10,
+		);
+	});
+
 	it('does not double the transcription when the master is on but two-pass is off', () => {
 		const estimate = buildCostEstimate(
 			mergeSettings({

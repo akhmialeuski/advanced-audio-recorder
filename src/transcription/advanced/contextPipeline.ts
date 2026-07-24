@@ -91,7 +91,10 @@ const EMPTY_ANSWER_PATTERN =
 
 /** The context mined from the first pass, ready to bias the second. */
 export interface GeneratedContext {
-	/** One-sentence topic/domain description in the audio's language. */
+	/**
+	 * One-sentence topic/domain description in the audio's language. Empty for
+	 * keyword-biased engines, where the prompt sentence is not built.
+	 */
 	topic: string;
 	/** Proper names heard in the recording, in base (nominative) form. */
 	names: string[];
@@ -125,6 +128,14 @@ export interface ContextPipelineOptions {
 	 * off-topic term cannot be injected into a recording that never mentions it.
 	 */
 	glossary?: string[];
+	/**
+	 * Whether to build the prompt-bias sentence (the topic and the woven
+	 * sentence). True for prompt-biased engines (Whisper, whisper.cpp, Gemini);
+	 * false for keyword-biased engines (Deepgram), which read only the keyterm
+	 * list, so the topic and sentence agents are skipped rather than run for
+	 * output that would be discarded. Defaults to true.
+	 */
+	buildPromptSentence?: boolean;
 	/** Cancellation probe checked before each agent call. */
 	isCancelled?: () => boolean;
 }
@@ -328,49 +339,80 @@ export function sentenceRetainsTerms(
 	return terms.every((term) => haystack.includes(term.toLowerCase()));
 }
 
+/** Assembles the "<topic>. <terms>." bias prompt from a topic and term list. */
+function assemblePrompt(topic: string, terms: readonly string[]): string {
+	const parts: string[] = [];
+	if (topic) {
+		parts.push(topic.endsWith('.') ? topic : `${topic}.`);
+	}
+	if (terms.length) {
+		parts.push(`${terms.join(', ')}.`);
+	}
+	return parts.join(' ').trim();
+}
+
 /**
- * Assembles "<topic>. <terms>." and drops the least-valuable (front) terms
- * until it fits the Whisper prompt window, since the terms are in ascending
- * value order and Whisper weights the last tokens most. Returns '' when
- * nothing - not even the topic alone - fits.
+ * The largest-value suffix of the ascending-value terms whose "<topic>.
+ * <terms>." assembly fits the Whisper prompt window, dropping the least
+ * valuable terms from the front until it fits. Returns null when nothing fits:
+ * an empty assembly, or a topic that overruns the window on its own.
+ * @param topic - Topic sentence ('' to fit the terms alone)
+ * @param termsAscending - Terms in ascending order of value
+ * @returns The fitting term suffix, or null when nothing fits
+ */
+function largestFittingSuffix(
+	topic: string,
+	termsAscending: readonly string[],
+): string[] | null {
+	for (let start = 0; start <= termsAscending.length; start++) {
+		const terms = termsAscending.slice(start);
+		const prompt = assemblePrompt(topic, terms);
+		if (!prompt) {
+			return null;
+		}
+		if (withinPromptWindow(prompt)) {
+			return terms;
+		}
+	}
+	return null;
+}
+
+/**
+ * Fits the topic and ascending-value terms into the Whisper prompt window,
+ * returning both the terms that made it in and the assembled prompt. Drops the
+ * least valuable terms from the front until it fits, since Whisper weights the
+ * last tokens most; if the topic alone overruns the window it is dropped and
+ * the terms are kept, because the mined names and acronyms are the second
+ * pass's real payoff and must not go down with an oversized topic. Both fields
+ * are empty when nothing - not even the topic alone - fits.
  * @param topic - Topic sentence in the audio's language ('' for none)
  * @param termsAscending - Terms in ascending order of value
- * @returns A prompt within the window, or '' when nothing fits
+ * @returns The fitting terms and their assembled prompt
  */
 function fitPromptWithinWindow(
 	topic: string,
 	termsAscending: readonly string[],
-): string {
-	for (let start = 0; start <= termsAscending.length; start++) {
-		const terms = termsAscending.slice(start);
-		const parts: string[] = [];
-		if (topic) {
-			parts.push(topic.endsWith('.') ? topic : `${topic}.`);
-		}
-		if (terms.length) {
-			parts.push(`${terms.join(', ')}.`);
-		}
-		const prompt = parts.join(' ').trim();
-		if (!prompt) {
-			return '';
-		}
-		if (withinPromptWindow(prompt)) {
-			return prompt;
-		}
+): { terms: string[]; prompt: string } {
+	const withTopic = largestFittingSuffix(topic, termsAscending);
+	if (withTopic !== null) {
+		return { terms: withTopic, prompt: assemblePrompt(topic, withTopic) };
 	}
-	return '';
+	const withoutTopic = largestFittingSuffix('', termsAscending);
+	if (withoutTopic !== null) {
+		return {
+			terms: withoutTopic,
+			prompt: assemblePrompt('', withoutTopic),
+		};
+	}
+	return { terms: [], prompt: '' };
 }
 
 /**
  * Deterministic bias-prompt assembly used when the sentence agent fails,
  * overruns the prompt window, or drops a mined term: the topic sentence
  * followed by the terms in ascending value order, so the most valuable tokens
- * sit at the end where Whisper weights them most.
- *
- * First it tries topic plus as many terms as fit; if the topic alone already
- * overruns the window, the topic is dropped and a terms-only prompt is built
- * instead, because the mined names and acronyms are the second pass's real
- * payoff and must not be discarded to keep an oversized topic.
+ * sit at the end where Whisper weights them most. When the topic alone already
+ * overruns the window it is dropped so the valuable terms still survive.
  * @param topic - Topic sentence in the audio's language ('' for none)
  * @param termsAscending - Terms in ascending order of value
  * @returns A prompt within the window, or '' when nothing fits
@@ -379,12 +421,7 @@ export function buildFallbackPrompt(
 	topic: string,
 	termsAscending: readonly string[],
 ): string {
-	const withTopic = fitPromptWithinWindow(topic, termsAscending);
-	if (withTopic) {
-		return withTopic;
-	}
-	// The topic overran the window on its own; keep the valuable terms.
-	return fitPromptWithinWindow('', termsAscending);
+	return fitPromptWithinWindow(topic, termsAscending).prompt;
 }
 
 /** Collapses an agent reply to one clean line (first non-empty line). */
@@ -469,12 +506,72 @@ const SENTENCE_SYSTEM_SUFFIX =
 	'importance; place the later (more important) ones toward the end of ' +
 	'the sentence. Reply with the sentence only - no preamble, no quotes.';
 
+/** A best-effort agent runner: returns the reply, or null when the call failed. */
+type AgentRunner = (
+	label: string,
+	system: string,
+	user: string,
+	maxTokens: number,
+) => Promise<string | null>;
+
 /**
- * Runs the multi-agent context pipeline over the first pass's transcript:
- * topic, name, jargon, and acronym extraction, code-level and LLM deciders
- * against over-correction, and assembly of the bias sentence and keyterm
- * list. Sequential LLM calls: 5 (no candidates for the decider) to 6, each
- * pinned to temperature 0.
+ * Builds the prompt-bias sentence for prompt-biased engines. Only the suffix of
+ * the terms that fits the Whisper prompt window can ever reach the engine (the
+ * window physically bounds it, whatever the representation), so the sentence
+ * agent is asked to weave in - and is checked against - exactly those fitting
+ * terms, never the full list that overruns the window: checking against the
+ * whole list would reject every sentence once the terms outnumber the window
+ * (the common case in a term-dense meeting) and waste the call. The agent's
+ * sentence is accepted only when it fits the window and kept every fitting term
+ * (a dropped or re-spelled one loses that bias, since prompt-biased engines see
+ * only this sentence); otherwise it falls back to the deterministic
+ * exact-spelling assembly. When only the topic fits, that topic is already a
+ * natural sentence, so it is used directly without spending a sentence call.
+ * @param topic - Topic sentence in the audio's language ('' for none)
+ * @param keyterms - Mined terms, most valuable first
+ * @param language - Detected language, for the sentence-agent language clause
+ * @param agent - The pipeline's best-effort agent runner
+ * @returns A within-window bias sentence, or '' when nothing fits
+ */
+async function buildBiasSentence(
+	topic: string,
+	keyterms: readonly string[],
+	language: string | undefined,
+	agent: AgentRunner,
+): Promise<string> {
+	// Whisper weights the last tokens of its prompt most, so order the terms
+	// with the most valuable last, then keep only the suffix that fits.
+	const termsAscending = [...keyterms].reverse();
+	const fit = fitPromptWithinWindow(topic, termsAscending);
+	if (!fit.prompt || fit.terms.length === 0) {
+		// Nothing fits, or only the topic does (already a natural sentence).
+		return fit.prompt;
+	}
+	const builtRaw = await agent(
+		'sentence',
+		SENTENCE_SYSTEM_PREFIX +
+			languageClause(language) +
+			SENTENCE_SYSTEM_SUFFIX,
+		`Topic: ${topic || '(unknown)'}\n\nTerms in ascending order of importance:\n${fit.terms.join('\n')}`,
+		CONTEXT_SENTENCE_MAX_TOKENS,
+	);
+	const built = firstLine(builtRaw ?? '');
+	const accepted =
+		Boolean(built) &&
+		withinPromptWindow(built) &&
+		sentenceRetainsTerms(built, fit.terms);
+	return accepted ? built : fit.prompt;
+}
+
+/**
+ * Runs the multi-agent context pipeline over the first pass's transcript: name,
+ * jargon, and acronym extraction, code-level and LLM deciders against
+ * over-correction, and the keyterm list, plus - only for prompt-biased engines
+ * (see {@link ContextPipelineOptions.buildPromptSentence}) - a topic sentence
+ * and the woven bias sentence. Sequential LLM calls pinned to temperature 0:
+ * three to four for a keyword-biased engine (names, jargon, acronyms, and the
+ * decider when there are candidates), four to six for a prompt-biased one (the
+ * topic and sentence agents on top).
  *
  * Best-effort by construction: a failed agent degrades its own stage, and a
  * pipeline that finds nothing to bias returns null so the caller keeps the
@@ -482,7 +579,7 @@ const SENTENCE_SYSTEM_SUFFIX =
  * ({@link ContextGenerationCancelledError}).
  * @param baseline - The first (draft) pass's transcript
  * @param llm - The configured LLM provider the agents run on
- * @param options - Language, glossary, and cancellation options
+ * @param options - Language, glossary, prompt-sentence, and cancellation options
  * @returns The generated context, or null when there is nothing to bias
  */
 export async function generateContext(
@@ -524,29 +621,26 @@ export async function generateContext(
 		}
 	};
 
-	const topicRaw = await agent(
-		'topic',
-		TOPIC_SYSTEM + languageClause(options.language) + '.',
-		sample,
-		CONTEXT_TOPIC_MAX_TOKENS,
-	);
+	const buildPromptSentence = options.buildPromptSentence ?? true;
+
+	// The name and jargon extractors run first: two consecutive failures mean
+	// the LLM itself is unreachable (bad key, network), so stop before burning
+	// timeouts on the rest of the team.
 	const namesRaw = await agent(
 		'names',
 		NAMES_SYSTEM,
 		sample,
 		CONTEXT_LIST_MAX_TOKENS,
 	);
-	if (topicRaw === null && namesRaw === null) {
-		// Two consecutive failures mean the LLM itself is unreachable (bad
-		// key, network); stop burning timeouts on the remaining agents.
-		return null;
-	}
 	const jargonRaw = await agent(
 		'jargon',
 		JARGON_SYSTEM,
 		sample,
 		CONTEXT_LIST_MAX_TOKENS,
 	);
+	if (namesRaw === null && jargonRaw === null) {
+		return null;
+	}
 	const acronymsRaw = await agent(
 		'acronyms',
 		ACRONYMS_SYSTEM,
@@ -554,7 +648,6 @@ export async function generateContext(
 		CONTEXT_LIST_MAX_TOKENS,
 	);
 
-	const topic = firstLine(topicRaw ?? '');
 	// Verify against the same condensed sample the agents read, not the whole
 	// transcript: an agent can only faithfully list terms from what it saw, and
 	// bounding the corpus keeps the fuzzy sliding-window match off the main
@@ -613,37 +706,31 @@ export async function generateContext(
 		...names,
 		...jargon,
 	]);
-	if (keyterms.length === 0 && !topic) {
-		return null;
+
+	// The topic and the woven sentence bias only prompt-biased engines; a
+	// keyword-biased engine (Deepgram) reads the keyterm list alone, so skip
+	// both agents rather than pay for output it would discard.
+	let topic = '';
+	let promptSentence = '';
+	if (buildPromptSentence) {
+		const topicRaw = await agent(
+			'topic',
+			TOPIC_SYSTEM + languageClause(options.language) + '.',
+			sample,
+			CONTEXT_TOPIC_MAX_TOKENS,
+		);
+		topic = firstLine(topicRaw ?? '');
+		promptSentence = await buildBiasSentence(
+			topic,
+			keyterms,
+			options.language,
+			agent,
+		);
 	}
 
-	// The sentence wants the same order reversed: Whisper weights the last
-	// tokens of its prompt most, so the most valuable terms go at the end.
-	const termsAscending = [...keyterms].reverse();
-	let promptSentence = '';
-	if (termsAscending.length > 0 || topic) {
-		const builtRaw = await agent(
-			'sentence',
-			SENTENCE_SYSTEM_PREFIX +
-				languageClause(options.language) +
-				SENTENCE_SYSTEM_SUFFIX,
-			`Topic: ${topic || '(unknown)'}\n\nTerms in ascending order of importance:\n${termsAscending.join('\n')}`,
-			CONTEXT_SENTENCE_MAX_TOKENS,
-		);
-		const built = firstLine(builtRaw ?? '');
-		// Accept the sentence only when it fits the window AND still carries
-		// every mined term; a sentence that dropped or re-spelled one loses that
-		// bias for prompt-biased engines, so fall back to the exact-spelling
-		// deterministic assembly instead.
-		const accepted =
-			built &&
-			withinPromptWindow(built) &&
-			sentenceRetainsTerms(built, keyterms);
-		promptSentence = accepted
-			? built
-			: buildFallbackPrompt(topic, termsAscending);
-	}
-	if (!promptSentence && keyterms.length === 0) {
+	// Nothing to bias: no keyterms for a keyword engine, and no prompt sentence
+	// (nor a topic that yielded one) for a prompt engine.
+	if (keyterms.length === 0 && !promptSentence) {
 		return null;
 	}
 

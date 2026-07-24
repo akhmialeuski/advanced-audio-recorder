@@ -19,7 +19,10 @@ import type {
 	TranscriptionProviderId,
 } from '../settings/settingsSchema';
 import { autoChaptersAfterTranscribe } from '../settings/settingsSchema';
-import { advancedTwoPassWillRun } from './advanced/advancedBias';
+import {
+	advancedBiasChannel,
+	advancedTwoPassWillRun,
+} from './advanced/advancedBias';
 import {
 	LLM_PROVIDER_LABELS,
 	LLM_PROVIDER_PRICING_URLS,
@@ -72,13 +75,17 @@ const LLM_OUTPUT_RATIO: Record<LlmTask, number> = {
 };
 
 /**
- * The advanced two-pass mode runs a fixed team of sequential LLM agents
- * between the passes (topic, names, jargon, acronyms, a decider, and the
- * sentence builder). A representative call count for the estimate; the actual
- * count varies slightly because the decider only runs when there are
- * candidates to vet.
+ * The advanced two-pass mode runs a fixed team of sequential LLM agents between
+ * the passes. A prompt-biased engine runs six (names, jargon, acronyms, a
+ * decider, the topic, and the sentence builder); a keyword-biased engine
+ * (Deepgram) reads only the keyterm list, so the pipeline skips the topic and
+ * sentence agents and runs four. Representative call counts for the estimate;
+ * the actual count varies slightly because the decider only runs when there are
+ * candidates to vet. Kept in step with the pipeline in
+ * {@link generateContext}.
  */
-export const CONTEXT_AGENT_CALL_ESTIMATE = 6;
+export const CONTEXT_AGENT_CALL_ESTIMATE_PROMPT = 6;
+export const CONTEXT_AGENT_CALL_ESTIMATE_KEYTERM = 4;
 
 /**
  * Each context agent reads a condensed sample of the first draft, which the
@@ -402,21 +409,23 @@ function estimatedLlmUsage(
 
 /**
  * Synthesizes the LLM usage the advanced two-pass context agents are expected
- * to bill: a fixed number of calls, each reading a bounded sample of the draft
- * and emitting a short answer. The sample is capped by the pipeline, so a
- * longer recording does not proportionally raise this cost.
+ * to bill: `callCount` calls, each reading a bounded sample of the draft and
+ * emitting a short answer. The sample is capped by the pipeline, so a longer
+ * recording does not proportionally raise this cost.
  * @param durationSeconds - Audio duration in seconds
+ * @param callCount - Number of sequential agent calls the pipeline runs
  */
 function estimatedContextAgentsUsage(
 	durationSeconds: number,
+	callCount: number,
 ): TranscriptionUsage {
 	const transcriptTokens = Math.ceil(
 		durationSeconds * ESTIMATED_OUTPUT_TOKENS_PER_SECOND,
 	);
 	const perCallInput = Math.min(transcriptTokens, CONTEXT_AGENT_INPUT_TOKENS);
 	return {
-		inputTokens: perCallInput * CONTEXT_AGENT_CALL_ESTIMATE,
-		outputTokens: CONTEXT_AGENT_OUTPUT_TOKENS * CONTEXT_AGENT_CALL_ESTIMATE,
+		inputTokens: perCallInput * callCount,
+		outputTokens: CONTEXT_AGENT_OUTPUT_TOKENS * callCount,
 	};
 }
 
@@ -649,11 +658,17 @@ function contextAgentsEstimateLine(
 	settings: AudioRecorderSettings,
 	durationSeconds: number | null,
 ): CostEstimateLine {
+	// A keyword-biased engine skips the topic and sentence agents, so it runs
+	// fewer calls than a prompt-biased one; price the count the run will make.
+	const callCount =
+		advancedBiasChannel(settings.transcriptionProvider) === 'keyterm'
+			? CONTEXT_AGENT_CALL_ESTIMATE_KEYTERM
+			: CONTEXT_AGENT_CALL_ESTIMATE_PROMPT;
 	return llmLine(
 		settings,
 		durationSeconds,
 		'Advanced context agents',
-		(seconds) => estimatedContextAgentsUsage(seconds),
+		(seconds) => estimatedContextAgentsUsage(seconds, callCount),
 	);
 }
 
