@@ -13,6 +13,9 @@ import {
 	MAX_TRANSCRIPTION_TIMEOUT_MINUTES,
 	MIN_LLM_MAX_TOKENS,
 	MAX_LLM_MAX_TOKENS,
+	MIN_ADVANCED_SECOND_PASS_MIN_RATIO,
+	MAX_ADVANCED_SECOND_PASS_MIN_RATIO,
+	ADVANCED_SECOND_PASS_RATIO_STEP,
 	TRANSCRIPTION_PROVIDER_IDS,
 	LLM_PROVIDER_IDS,
 	WHISPER_API_MODELS_DOC_URL,
@@ -24,6 +27,7 @@ import {
 	LOCAL_WHISPER_MODELS_DOC_URL,
 } from '../../constants';
 import {
+	advancedTwoPassEnabled,
 	applyLlmProviderDefaults,
 	type TranscriptionProviderId,
 } from '../settingsSchema';
@@ -141,8 +145,6 @@ export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
 		set: (v) => (s.transcriptionWordTimestamps = v),
 	});
 
-	renderDictionaryProfiles(ctx);
-
 	// Cloud engines only: a hung network request is bounded by this limit. Local
 	// whisper.cpp runs no HTTP request, so the timeout does not apply to it.
 	if (s.transcriptionProvider !== TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER) {
@@ -169,9 +171,91 @@ export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
 		renderLocalWhisperSettings(ctx);
 	}
 
+	renderAdvancedSection(ctx);
 	renderTranscriptOutputSection(ctx);
 	renderAutoChaptersSection(ctx);
 	renderLlmSection(ctx);
+}
+
+/**
+ * The advanced transcription settings: a master switch that, when on, reveals
+ * the dictionary term biasing and the two-pass mode beneath it. Off by default,
+ * so a plain run needs no term biasing; turning it on surfaces the dictionary
+ * profiles (the shared term set) first and then the two-pass toggle that reuses
+ * those terms. Mirrors the per-run nesting in the Transcribe dialog.
+ * @param ctx - Section context
+ */
+function renderAdvancedSection(ctx: SettingsSectionContext): void {
+	const s = ctx.settings;
+	addHeading(ctx, 'Advanced');
+	addToggle(ctx, {
+		name: 'Advanced settings',
+		desc:
+			'Reveal the dictionary term biasing and the experimental two-pass ' +
+			'mode below. Off by default: with it off, a recording transcribes ' +
+			'in a single plain pass with no term biasing.',
+		get: () => s.transcriptionAdvancedSettingsEnabled,
+		set: (v) => (s.transcriptionAdvancedSettingsEnabled = v),
+		// Re-render so the dictionary and two-pass sub-sections appear or hide
+		// in step with the master switch.
+		rerender: true,
+	});
+	if (!s.transcriptionAdvancedSettingsEnabled) {
+		return;
+	}
+	renderDictionaryProfiles(ctx);
+	renderAdvancedTwoPassSection(ctx);
+}
+
+/**
+ * The advanced two-pass transcription mode (LLM-driven context biasing, after
+ * "Whisper: Courtside Edition"): off by default, with the cost trade-off
+ * spelled out in the master toggle's description. It is the advanced mode of
+ * the same dictionary-biasing feature - it reuses the Dictionary terms picked
+ * above as its context candidates rather than a second glossary. The only
+ * sub-field (the length safeguard) renders while the mode is on, mirroring the
+ * other gated sections. The agents run on the LLM provider configured in the
+ * LLM post-processing section, whose fields stay visible while this mode
+ * needs them (see {@link renderLlmSection}).
+ * @param ctx - Section context
+ */
+function renderAdvancedTwoPassSection(ctx: SettingsSectionContext): void {
+	const s = ctx.settings;
+	addHeading(ctx, 'Advanced two-pass transcription');
+
+	addToggle(ctx, {
+		name: 'Advanced two-pass transcription (experimental)',
+		desc:
+			'The advanced mode of dictionary biasing: transcribes each recording ' +
+			'twice. LLM agents mine the first draft for the proper names, jargon, ' +
+			'and English terms and acronyms, reusing your selected Dictionary ' +
+			'terms as candidates, and the second pass re-decodes the audio biased ' +
+			'toward them. Warning: roughly 2x the engine cost and time, plus ' +
+			'several LLM calls per file. Best for e.g. Russian meetings dense ' +
+			'with English terminology (Kubernetes, CI/CD); for everyday ' +
+			'recordings keep this off and use the normal single pass.',
+		get: () => s.transcriptionAdvancedEnabled,
+		set: (v) => (s.transcriptionAdvancedEnabled = v),
+		// Re-render so the sub-field below and the LLM provider fields appear
+		// or hide in step with the mode.
+		rerender: true,
+	});
+	if (!s.transcriptionAdvancedEnabled) {
+		return;
+	}
+
+	addNumberInput(ctx, {
+		name: 'Second-pass length safeguard',
+		desc:
+			'Keep the second pass only when its text is at least this fraction ' +
+			'of the first pass. A biased decode that came back shorter lost ' +
+			'content, so the run falls back to the first-pass transcript.',
+		min: MIN_ADVANCED_SECOND_PASS_MIN_RATIO,
+		max: MAX_ADVANCED_SECOND_PASS_MIN_RATIO,
+		step: ADVANCED_SECOND_PASS_RATIO_STEP,
+		get: () => s.advancedSecondPassMinRatio,
+		set: (v) => (s.advancedSecondPassMinRatio = v),
+	});
 }
 
 /**
@@ -657,9 +741,15 @@ function renderLlmSection(ctx: SettingsSectionContext): void {
 		set: (v) => (s.llmPostProcessEnabled = v),
 		rerender: true,
 	});
-	// The provider fields stay visible while auto chapters needs them, so
-	// enabling that feature alone still exposes the key/model to configure.
-	if (!s.llmPostProcessEnabled && !s.transcriptionAutoChaptersEnabled) {
+	// The provider fields stay visible while auto chapters or the advanced
+	// two-pass mode needs them, so enabling either feature alone still
+	// exposes the key/model to configure. Two-pass counts only when its master
+	// switch is also on, since a stale toggle under an off master does nothing.
+	if (
+		!s.llmPostProcessEnabled &&
+		!s.transcriptionAutoChaptersEnabled &&
+		!advancedTwoPassEnabled(s)
+	) {
 		return;
 	}
 

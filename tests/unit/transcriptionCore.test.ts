@@ -148,6 +148,25 @@ describe('buildPostProcessPrompt', () => {
 		expect(prompt.system).toBe('Bullet it');
 	});
 
+	it('appends the glossary spellings to the cleanup prompt only', () => {
+		const cleanup = buildPostProcessPrompt('t', {
+			task: 'cleanup',
+			glossary: ['Kubernetes', 'CI/CD'],
+		});
+		expect(cleanup.system).toContain('Kubernetes, CI/CD');
+		// A summary rewords anyway, so the glossary clause stays out of it.
+		const summary = buildPostProcessPrompt('t', {
+			task: 'summary',
+			glossary: ['Kubernetes'],
+		});
+		expect(summary.system).not.toContain('Kubernetes');
+	});
+
+	it('omits the glossary clause when no terms are configured', () => {
+		const prompt = buildPostProcessPrompt('t', { task: 'cleanup' });
+		expect(prompt.system).not.toContain('canonical spelling');
+	});
+
 	it('uses the provided cleanup template and appends the language', () => {
 		const prompt = buildPostProcessPrompt('t', {
 			task: 'cleanup',

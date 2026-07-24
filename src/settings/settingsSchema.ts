@@ -41,6 +41,7 @@ import {
 	DEFAULT_CLEANUP_HIGHPASS_HZ,
 	DEFAULT_CLEANUP_GATE_THRESHOLD_DB,
 	DEFAULT_CLEANUP_LEVELING_MAKEUP_DB,
+	DEFAULT_ADVANCED_SECOND_PASS_MIN_RATIO,
 } from '../constants';
 import type {
 	TranscriptDestination,
@@ -303,10 +304,33 @@ export interface AudioRecorderSettings {
 	transcriptionDiarize: boolean;
 	/** Request word-level timestamps when supported */
 	transcriptionWordTimestamps: boolean;
+	/**
+	 * Master switch for the advanced transcription settings: the dictionary
+	 * term biasing and the two-pass mode below it. Off by default, and while
+	 * off a run transcribes in a single plain pass with no term biasing at all.
+	 * Turning it on reveals the dictionary profiles and the two-pass toggle.
+	 */
+	transcriptionAdvancedSettingsEnabled: boolean;
 	/** Named custom-dictionary profiles (add/edit/remove in the settings tab). */
 	transcriptionDictionaryProfiles: DictionaryProfile[];
 	/** Id of the profile applied to a run; '' means None (no biasing terms). */
 	transcriptionDictionaryProfileId: string;
+	/**
+	 * Advanced two-pass transcription: the recording is transcribed twice,
+	 * with LLM agents mining the first draft for the meeting's names, jargon,
+	 * and English acronyms and biasing the second pass's decoding toward them,
+	 * reusing the selected dictionary terms as candidates. Roughly doubles the
+	 * engine cost and adds several LLM calls per file, so it is off by default
+	 * and lives under the advanced settings master switch.
+	 */
+	transcriptionAdvancedEnabled: boolean;
+	/**
+	 * Length safeguard for the advanced mode: the biased second pass is kept
+	 * only when its plain text is at least this fraction of the first
+	 * pass's; shorter output means content was lost, so the run reverts to
+	 * the baseline transcript.
+	 */
+	advancedSecondPassMinRatio: number;
 	/** Whether the "Rename speakers" action and command are offered. */
 	transcriptionSpeakerRenameEnabled: boolean;
 	/**
@@ -534,8 +558,11 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	transcriptionLanguage: 'auto',
 	transcriptionDiarize: false,
 	transcriptionWordTimestamps: false,
+	transcriptionAdvancedSettingsEnabled: false,
 	transcriptionDictionaryProfiles: [],
 	transcriptionDictionaryProfileId: '',
+	transcriptionAdvancedEnabled: false,
+	advancedSecondPassMinRatio: DEFAULT_ADVANCED_SECOND_PASS_MIN_RATIO,
 	transcriptionSpeakerRenameEnabled: false,
 	transcriptionAutoChaptersEnabled: false,
 	transcriptionAutoChaptersOnTranscribe: false,
@@ -652,4 +679,45 @@ export function applyLlmProviderDefaults(
 		settings.llmBaseUrl = DEFAULT_LLM_OPENAI_BASE_URL;
 	}
 	return settings;
+}
+
+/**
+ * Whether a run performs the advanced two-pass transcription: both the advanced
+ * settings master switch and the two-pass toggle beneath it are on. The single
+ * predicate every surface reads - the run itself, the settings-tab field
+ * gating, and the cost estimate - so the "master gates the toggle" rule lives
+ * in one place instead of being re-derived at each call site.
+ * @param settings - The active settings
+ * @returns True when the biased second pass runs
+ */
+export function advancedTwoPassEnabled(
+	settings: Pick<
+		AudioRecorderSettings,
+		'transcriptionAdvancedSettingsEnabled' | 'transcriptionAdvancedEnabled'
+	>,
+): boolean {
+	return (
+		settings.transcriptionAdvancedSettingsEnabled &&
+		settings.transcriptionAdvancedEnabled
+	);
+}
+
+/**
+ * Whether a run generates auto chapters right after transcribing: the feature
+ * is enabled and its run-after toggle is on. The single predicate the run and
+ * the cost estimate share, so the extra LLM call is priced wherever it fires.
+ * @param settings - The active settings
+ * @returns True when chapters are generated after the transcription
+ */
+export function autoChaptersAfterTranscribe(
+	settings: Pick<
+		AudioRecorderSettings,
+		| 'transcriptionAutoChaptersEnabled'
+		| 'transcriptionAutoChaptersOnTranscribe'
+	>,
+): boolean {
+	return (
+		settings.transcriptionAutoChaptersEnabled &&
+		settings.transcriptionAutoChaptersOnTranscribe
+	);
 }

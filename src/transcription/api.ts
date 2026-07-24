@@ -28,6 +28,7 @@ export {
 	selectedEngineModel,
 } from './costs';
 export type { CostEstimate, CostEstimateLine } from './costs';
+export { advancedTwoPassWillRun } from './advanced/advancedBias';
 export { SessionCostTracker } from './SessionCostTracker';
 export type {
 	TranscriptDestination,

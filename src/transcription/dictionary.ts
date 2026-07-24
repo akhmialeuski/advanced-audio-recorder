@@ -14,10 +14,22 @@
  * duplicates
  */
 export function parseDictionary(raw: string): string[] {
+	return dedupeTerms(raw.split(/\r?\n/));
+}
+
+/**
+ * Trims terms and drops blanks and case-insensitive duplicates, keeping the
+ * first spelling seen. Shared by the dictionary parser and every place two
+ * term lists are combined (e.g. generated keyterms ahead of the dictionary),
+ * so "kubernetes" and "Kubernetes" never both reach a provider.
+ * @param terms - Raw terms, possibly overlapping
+ * @returns Terms in first-seen order, without blanks or duplicates
+ */
+export function dedupeTerms(terms: readonly string[]): string[] {
 	const seen = new Set<string>();
-	const terms: string[] = [];
-	for (const line of raw.split(/\r?\n/)) {
-		const term = line.trim();
+	const result: string[] = [];
+	for (const raw of terms) {
+		const term = raw.trim();
 		if (!term) {
 			continue;
 		}
@@ -26,7 +38,7 @@ export function parseDictionary(raw: string): string[] {
 			continue;
 		}
 		seen.add(key);
-		terms.push(term);
+		result.push(term);
 	}
-	return terms;
+	return result;
 }

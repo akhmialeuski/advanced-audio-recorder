@@ -144,11 +144,21 @@ export class LocalWhisperProvider implements TranscriptionProvider {
 		const jsonPath = `${base}.json`;
 		node.fs.writeFileSync(wavPath, new Uint8Array(payload.data));
 
-		// whisper.cpp shares Whisper's ~224-token prompt window, so bound the
-		// dictionary the same way the service does before building the flag.
-		const promptTerms = options.dictionary?.length
-			? termsWithinWhisperPrompt(options.dictionary)
-			: [];
+		// The advanced second pass supplies a full bias sentence that already
+		// folds the relevant terms in; it takes the --prompt slot over the plain
+		// dictionary join. Otherwise, whisper.cpp shares Whisper's ~224-token
+		// prompt window, so bound the dictionary the same way the service does
+		// before building the flag.
+		const biasPrompt = options.biasPrompt?.trim();
+		const promptTerms =
+			!biasPrompt && options.dictionary?.length
+				? termsWithinWhisperPrompt(options.dictionary)
+				: [];
+		const promptValue =
+			biasPrompt ??
+			(promptTerms.length
+				? promptTerms.join(DICTIONARY_JOIN_SEPARATOR)
+				: undefined);
 		const args = [
 			'-m',
 			this.config.modelPath,
@@ -160,9 +170,7 @@ export class LocalWhisperProvider implements TranscriptionProvider {
 			...(options.language ? ['-l', options.language] : []),
 			// whisper.cpp seeds recognition from --prompt. Placed before extraArgs
 			// so a user-supplied --prompt in extraArgs can still override it.
-			...(promptTerms.length
-				? ['--prompt', promptTerms.join(DICTIONARY_JOIN_SEPARATOR)]
-				: []),
+			...(promptValue ? ['--prompt', promptValue] : []),
 			...this.config.extraArgs,
 		];
 

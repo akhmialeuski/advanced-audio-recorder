@@ -217,7 +217,37 @@ export function mergeSettings(
 	};
 	migrateLegacyLlmSettings(merged, userSettings);
 	migrateLegacyTranscriptionDictionary(merged, userSettings);
+	migrateAdvancedDictionaryGate(merged, userSettings);
 	return merged;
+}
+
+/**
+ * Enables the advanced-settings master switch for configs that already had the
+ * dictionary in use before the switch existed. The switch is new and gates the
+ * dictionary term biasing, so on upgrade a stored config that selected a
+ * profile (or held a legacy flat dictionary, now migrated into one) would
+ * otherwise merge to the `false` default and silently stop biasing, its editor
+ * hidden. When the flag is absent from the stored data and any dictionary
+ * profile is present, turn it on to preserve the pre-upgrade behavior. A
+ * pristine config (no profiles, flag absent) stays `false`, the fresh-install
+ * default. Runs after {@link migrateLegacyTranscriptionDictionary} so a
+ * legacy-seeded profile already shows up in `merged`.
+ * @param merged - The merged settings to migrate in place
+ * @param raw - The raw user settings as loaded from disk
+ */
+function migrateAdvancedDictionaryGate(
+	merged: AudioRecorderSettings,
+	raw: AudioRecorderSettingsInput,
+): void {
+	const legacy: Record<string, unknown> = isRecord(raw) ? raw : {};
+	// Only a config saved before the switch existed lacks the flag; a config
+	// that already stored it (on or off) reflects a deliberate choice.
+	if (legacy.transcriptionAdvancedSettingsEnabled !== undefined) {
+		return;
+	}
+	if (merged.transcriptionDictionaryProfiles.length > 0) {
+		merged.transcriptionAdvancedSettingsEnabled = true;
+	}
 }
 
 /**

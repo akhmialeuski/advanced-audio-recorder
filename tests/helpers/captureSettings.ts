@@ -24,6 +24,8 @@ export interface CapturedDropdownOption {
 /** One rendered setting row captured through the Setting mock. */
 export interface CapturedSetting {
 	name: string;
+	/** Description text passed to setDesc ('' when none or non-string). */
+	desc: string;
 	el: HTMLElement;
 	toggle: CapturedControl | null;
 	text: CapturedControl | null;
@@ -60,6 +62,7 @@ export class CapturingSetting {
 		this.descEl = { createEl: () => ({}) };
 		this.cap = {
 			name: '',
+			desc: '',
 			el,
 			toggle: null,
 			text: null,
@@ -72,7 +75,8 @@ export class CapturingSetting {
 		this.cap.name = name;
 		return this;
 	}
-	setDesc(): this {
+	setDesc(desc?: unknown): this {
+		this.cap.desc = typeof desc === 'string' ? desc : '';
 		return this;
 	}
 	setHeading(): this {

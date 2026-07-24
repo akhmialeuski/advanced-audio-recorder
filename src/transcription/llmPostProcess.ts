@@ -39,6 +39,13 @@ export interface PostProcessOptions {
 	summaryPrompt?: string;
 	/** Custom instruction, sent verbatim, used when task is 'custom'. */
 	customInstruction?: string;
+	/**
+	 * Canonical spellings of domain names, terms, and acronyms, from the run's
+	 * Dictionary terms. Appended to the cleanup prompt so even a single-pass run
+	 * corrects "кубернетис" to "Kubernetes"; other tasks ignore it (a summary
+	 * rewords anyway, and custom is verbatim).
+	 */
+	glossary?: string[];
 }
 
 /**
@@ -50,6 +57,23 @@ function cleanupLanguageClause(language?: string): string {
 	return language
 		? ` The transcript language is ${language}; respond in that same language.`
 		: ' Respond in the same language as the transcript.';
+}
+
+/**
+ * Builds the glossary clause appended to the cleanup prompt: prefer the
+ * canonical spellings where the transcript garbled them, without inserting
+ * terms that were not spoken.
+ * @param glossary - Canonical terms, when any are configured
+ */
+function cleanupGlossaryClause(glossary?: string[]): string {
+	if (!glossary?.length) {
+		return '';
+	}
+	return (
+		' Where the transcript garbles one of these names, terms, or ' +
+		`acronyms, prefer this canonical spelling: ${glossary.join(', ')}. ` +
+		'Do not insert terms that were not spoken.'
+	);
 }
 
 /**
@@ -81,6 +105,7 @@ export function buildPostProcessPrompt(
 				system:
 					(options.cleanupPrompt?.trim() ||
 						DEFAULT_LLM_CLEANUP_PROMPT) +
+					cleanupGlossaryClause(options.glossary) +
 					cleanupLanguageClause(options.language),
 				user: text,
 			};

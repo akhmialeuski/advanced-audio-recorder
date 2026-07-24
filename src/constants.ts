@@ -576,6 +576,26 @@ export const GEMINI_MAX_WHOLE_FILE_SECONDS = 15 * 60;
  */
 export const MIN_SUBDIVIDE_SECONDS = 60;
 
+// Advanced two-pass transcription (LLM-driven context biasing)
+
+/**
+ * Default second-pass length safeguard for advanced two-pass transcription:
+ * the second (context-biased) pass is kept only when its plain text is at
+ * least this fraction of the first pass's length. A biased decode that came
+ * back much shorter almost certainly dropped content (the over-correction
+ * failure mode), so the run falls back to the baseline transcript.
+ */
+export const DEFAULT_ADVANCED_SECOND_PASS_MIN_RATIO = 0.8;
+
+/** Smallest configurable second-pass length safeguard ratio. */
+export const MIN_ADVANCED_SECOND_PASS_MIN_RATIO = 0.5;
+
+/** Largest configurable second-pass length safeguard ratio. */
+export const MAX_ADVANCED_SECOND_PASS_MIN_RATIO = 1;
+
+/** Step of the second-pass length safeguard ratio input. */
+export const ADVANCED_SECOND_PASS_RATIO_STEP = 0.05;
+
 /**
  * LLM post-processing provider ids. The single source for the string values
  * used as the provider `id`, the settings discriminator, and the keys of the

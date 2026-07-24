@@ -405,6 +405,97 @@ describe('buildCostEstimate', () => {
 		expect(estimate.lines[0]?.usd).toBeNull();
 		expect(estimate.lines[0]?.reason).toBe('no-duration');
 	});
+
+	it('doubles the transcription and adds a context-agents line for the two-pass mode', () => {
+		const single = buildCostEstimate(
+			mergeSettings({
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				deepgramModel: 'nova-3',
+			}),
+			600,
+		);
+		const estimate = buildCostEstimate(
+			mergeSettings({
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				deepgramModel: 'nova-3',
+				transcriptionAdvancedSettingsEnabled: true,
+				transcriptionAdvancedEnabled: true,
+				llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+				llmOpenAiModel: 'gpt-4o-mini',
+			}),
+			600,
+		);
+		// The transcription line names the two passes and costs twice a single.
+		expect(estimate.lines[0]?.label).toBe('Transcription (2 passes)');
+		expect(estimate.lines[0]?.usd).toBeCloseTo(
+			(single.lines[0]?.usd ?? 0) * 2,
+			10,
+		);
+		// A distinct LLM line prices the context agents that run between passes.
+		const agents = estimate.lines.find(
+			(line) => line.label === 'Advanced context agents',
+		);
+		expect(agents?.providerName).toBe('OpenAI');
+		expect(agents?.usd).not.toBeNull();
+	});
+
+	it('does not double the transcription when the master is on but two-pass is off', () => {
+		const estimate = buildCostEstimate(
+			mergeSettings({
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				deepgramModel: 'nova-3',
+				transcriptionAdvancedSettingsEnabled: true,
+				transcriptionAdvancedEnabled: false,
+			}),
+			600,
+		);
+		expect(estimate.lines).toHaveLength(1);
+		expect(estimate.lines[0]?.label).toBe('Transcription');
+	});
+
+	it('prices a single pass with no context agents for a non-biasing two-pass model', () => {
+		// A Deepgram hosted Whisper model cannot bias, so the service degrades to
+		// one plain pass with no context agents before any LLM spend. The
+		// estimate must follow suit and not show a phantom second pass or an
+		// agents line the user would never be charged for.
+		const estimate = buildCostEstimate(
+			mergeSettings({
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				deepgramModel: 'whisper',
+				transcriptionAdvancedSettingsEnabled: true,
+				transcriptionAdvancedEnabled: true,
+				llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+				llmOpenAiModel: 'gpt-4o-mini',
+			}),
+			600,
+		);
+		expect(estimate.lines).toHaveLength(1);
+		expect(estimate.lines[0]?.label).toBe('Transcription');
+		expect(
+			estimate.lines.some(
+				(line) => line.label === 'Advanced context agents',
+			),
+		).toBe(false);
+	});
+
+	it('adds an auto-chapters line when chapters run after transcription', () => {
+		const estimate = buildCostEstimate(
+			mergeSettings({
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				deepgramModel: 'nova-3',
+				transcriptionAutoChaptersEnabled: true,
+				transcriptionAutoChaptersOnTranscribe: true,
+				llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+				llmOpenAiModel: 'gpt-4o-mini',
+			}),
+			600,
+		);
+		const chapters = estimate.lines.find(
+			(line) => line.label === 'Auto chapters',
+		);
+		expect(chapters?.providerName).toBe('OpenAI');
+		expect(chapters?.usd).not.toBeNull();
+	});
 });
 
 describe('costEstimateNeedsDuration', () => {
@@ -439,6 +530,23 @@ describe('costEstimateNeedsDuration', () => {
 					transcriptionProvider:
 						TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
 					llmPostProcessEnabled: true,
+					llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+					llmOpenAiModel: 'gpt-4o-mini',
+				}),
+			),
+		).toBe(true);
+	});
+
+	it('is true for a free local run whose advanced context agents are priced', () => {
+		// The two-pass agents are an LLM step, so even a free engine needs the
+		// duration to price them.
+		expect(
+			costEstimateNeedsDuration(
+				mergeSettings({
+					transcriptionProvider:
+						TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+					transcriptionAdvancedSettingsEnabled: true,
+					transcriptionAdvancedEnabled: true,
 					llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
 					llmOpenAiModel: 'gpt-4o-mini',
 				}),
