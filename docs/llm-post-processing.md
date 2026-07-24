@@ -112,19 +112,19 @@ These ship with the plugin and are used whenever the matching prompt field is em
 
 LLM post-processing supports three providers, chosen from the **LLM provider** dropdown. Each has its own default model and its own user-editable model list.
 
-| Provider               | Dropdown label       | Default model      | Model catalogue                                                            |
-| ---------------------- | -------------------- | ------------------ | -------------------------------------------------------------------------- |
-| **OpenAI**             | `OpenAI`             | `gpt-4o-mini`      | [OpenAI models](https://platform.openai.com/docs/models)                   |
-| **Anthropic (Claude)** | `Anthropic (Claude)` | `claude-opus-4-8`  | [Anthropic models](https://docs.anthropic.com/en/docs/about-claude/models) |
-| **Google Gemini**      | `Google Gemini`      | `gemini-2.5-flash` | [Gemini models](https://ai.google.dev/gemini-api/docs/models)              |
+| Provider               | Dropdown label       | Default model      | Model catalogue                                                                        |
+| ---------------------- | -------------------- | ------------------ | -------------------------------------------------------------------------------------- |
+| **OpenAI**             | `OpenAI`             | `gpt-5.6-sol`      | [OpenAI models](https://developers.openai.com/api/docs/models)                         |
+| **Anthropic (Claude)** | `Anthropic (Claude)` | `claude-opus-4-8`  | [Anthropic models](https://platform.claude.com/docs/en/about-claude/models/overview)   |
+| **Google Gemini**      | `Google Gemini`      | `gemini-3.5-flash` | [Gemini models](https://ai.google.dev/gemini-api/docs/models)                          |
 
 The **LLM model** picker is the same control used for transcription models: pick one from the saved list, type a new id under **Add custom model** to add it, use **Remove selected** to prune one, and follow the catalogue link next to the field to the provider's model list. The list is seeded with common models for the selected provider:
 
-| Provider      | Seeded model ids                                              |
-| ------------- | ------------------------------------------------------------- |
-| **OpenAI**    | `gpt-4o-mini`, `gpt-4o`, `gpt-4.1`, `gpt-4.1-mini`, `o4-mini` |
-| **Anthropic** | `claude-opus-4-8`, `claude-sonnet-4-6`, `claude-haiku-4-5`    |
-| **Gemini**    | `gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-2.5-flash-lite` |
+| Provider      | Seeded model ids                                                                                                      |
+| ------------- | --------------------------------------------------------------------------------------------------------------------- |
+| **OpenAI**    | `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`                                                                        |
+| **Anthropic** | `claude-opus-4-8`, `claude-sonnet-5`, `claude-haiku-4-5`, `claude-fable-5`                                            |
+| **Gemini**    | `gemini-3.6-flash`, `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-2.5-flash-lite` |
 
 The model list is per-provider, so switching the **LLM provider** dropdown swaps both the picker contents and the selected model to that provider's list - your OpenAI choice is remembered separately from your Anthropic and Gemini choices.
 

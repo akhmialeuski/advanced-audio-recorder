@@ -84,13 +84,14 @@ The API requires prepaid credit or a billing method before it will answer reques
 
 The model picker is seeded with the current Claude family and is editable - use **Add custom model** to add a newer id, and **Remove selected** to drop one. The catalogue link opens Anthropic's model list.
 
-| Model               | Notes                                                                           |
-| ------------------- | ------------------------------------------------------------------------------- |
-| `claude-opus-4-8`   | **Default.** Most capable; best for nuanced cleanup and high-quality summaries. |
-| `claude-sonnet-4-6` | Balanced quality and cost; a strong everyday choice for cleanup.                |
-| `claude-haiku-4-5`  | Fastest and cheapest; good for short transcripts and bulk processing.           |
+| Model              | Notes                                                                                |
+| ------------------ | ------------------------------------------------------------------------------------ |
+| `claude-opus-4-8`  | **Default.** The recommended flagship; best for nuanced cleanup and quality summaries. |
+| `claude-sonnet-5`  | Balanced quality and cost; a strong everyday choice for cleanup.                     |
+| `claude-haiku-4-5` | Fastest and cheapest; good for short transcripts and bulk processing.                |
+| `claude-fable-5`   | The most capable current model, priced above Opus; for the hardest material.         |
 
-- **Catalogue:** the authoritative, current Claude model list is at `https://docs.anthropic.com/en/docs/about-claude/models`.
+- **Catalogue:** the authoritative, current Claude model list is at `https://platform.claude.com/docs/en/about-claude/models/overview`.
 - Model ids change over time. If a seeded id is retired, use **Add custom model** to enter the new id exactly as Anthropic publishes it.
 
 ## Choosing a task
@@ -127,7 +128,7 @@ For a deeper explanation of the tasks and prompts, see [LLM post-processing](../
 | **LLM provider**               | `Anthropic (Claude)`                                                   |
 | **LLM base URL**               | `https://api.anthropic.com/v1` (auto-filled default)                   |
 | **Anthropic API key**          | Your `sk-ant-…` key (Anthropic's own field; not shared)                |
-| **Model**                      | `claude-opus-4-8` (default) / `claude-sonnet-4-6` / `claude-haiku-4-5` |
+| **Model**                      | `claude-opus-4-8` (default) / `claude-sonnet-5` / `claude-haiku-4-5` / `claude-fable-5` |
 | **Task**                       | `Clean up` (default) / `Summarize` / `Custom`                          |
 | **Max output tokens**          | `4096` default; range `512`-`32000`                                    |
 

@@ -70,7 +70,7 @@ For a multi-hour meeting, Deepgram sends the whole file in one request, so speak
 
 1. Set **Engine** to **Deepgram** or **Google Gemini**.
 2. Paste the **API key** for that engine (follow the linked guide above).
-3. Leave **Model** on its default (`nova-3` for Deepgram, `gemini-2.5-flash` for Gemini) unless you have a reason to change it.
+3. Leave **Model** on its default (`nova-3` for Deepgram, `gemini-3.5-flash` for Gemini) unless you have a reason to change it.
 
 ### 2. Enable speaker diarization
 
@@ -128,7 +128,7 @@ This is what turns a wall of transcript text into a usable summary with action i
     - **Anthropic (Claude)** has its **own** dedicated key - see [Anthropic / Claude](anthropic-api-key.md).
 6. Leave **Max output tokens** at its default of **4096** (range 512-32000) unless your summaries are getting cut off, in which case raise it.
 
-Provider model defaults are **OpenAI** `gpt-4o-mini`, **Anthropic** `claude-opus-4-8`, and **Gemini** `gemini-2.5-flash`. The **LLM base URL** auto-switches to the provider default unless you have typed a custom one.
+Provider model defaults are **OpenAI** `gpt-5.6-sol`, **Anthropic** `claude-opus-4-8`, and **Gemini** `gemini-3.5-flash`. The **LLM base URL** auto-switches to the provider default unless you have typed a custom one.
 
 A practical pairing: use **Gemini** for both transcription and the summary so one key covers everything, or **Deepgram** for the diarized transcript plus **OpenAI** or **Anthropic** for the summary. See [LLM post-processing](../llm-post-processing.md) for the full reference.
 

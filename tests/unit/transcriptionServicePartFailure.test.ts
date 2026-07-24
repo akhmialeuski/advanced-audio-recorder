@@ -325,12 +325,9 @@ describe('TranscriptionService multi-part salvage', () => {
 			audioInputTokens: 120000,
 			outputTokens: 2100,
 		});
-		// Priced at gemini-2.5-flash: 120k audio input at $1/M plus 2.1k output
-		// at $2.5/M.
-		expect(result.cost.usd).toBeCloseTo(
-			0.12 + (2100 * 2.5) / 1_000_000,
-			10,
-		);
+		// Priced at the default gemini-3.5-flash: 120k audio input at $1.5/M
+		// plus 2.1k output at $9/M.
+		expect(result.cost.usd).toBeCloseTo(0.18 + (2100 * 9) / 1_000_000, 10);
 	});
 
 	it('fails, naming the timeline span, when every subdivision still truncates', async () => {
