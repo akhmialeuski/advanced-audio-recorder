@@ -24,6 +24,7 @@ import type { LlmPrompt } from 'src/transcription/llmPostProcess';
 import type { TranscriptSegment } from 'src/transcription/TranscriptTypes';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import type { AudioRecorderSettingsInput } from 'src/settings/settingsSchema';
+import { TRANSCRIBE_CHUNK_PROGRESS_CEILING } from 'src/constants';
 
 jest.mock('obsidian', () => {
 	const actual = jest.requireActual('../mocks/obsidian');
@@ -70,6 +71,19 @@ function prepareOnePart(): void {
 				createData: () => new ArrayBuffer(4),
 			},
 		],
+		diarizationSplitWarning: false,
+	});
+}
+
+/** Two prepared parts, so the chunk progress band is split across them. */
+function prepareTwoParts(): void {
+	mockPrepareAudio.mockResolvedValue({
+		payloads: [0, 5].map((offsetSeconds) => ({
+			contentType: 'audio/wav',
+			filename: `audio-${String(offsetSeconds)}.wav`,
+			offsetSeconds,
+			createData: () => new ArrayBuffer(4),
+		})),
 		diarizationSplitWarning: false,
 	});
 }
@@ -246,9 +260,9 @@ describe('TranscriptionService advanced two-pass mode', () => {
 		);
 	});
 
-	it('sends keyterms instead of a prompt sentence on Deepgram', async () => {
+	it('sends keyterms instead of a prompt sentence on Deepgram, skipping the prompt-only agents', async () => {
 		const { provider, calls } = makeProvider('deepgram');
-		const { llm } = makeLlm();
+		const { llm, calls: llmCalls } = makeLlm();
 		const service = makeService(provider, llm, {
 			transcriptionAdvancedEnabled: true,
 			transcriptionProvider: 'deepgram',
@@ -260,6 +274,13 @@ describe('TranscriptionService advanced two-pass mode', () => {
 		expect(calls).toHaveLength(2);
 		expect(calls[1]?.biasPrompt).toBeUndefined();
 		expect(calls[1]?.keyterms).toEqual(['Kubernetes', 'Иванов', 'деплой']);
+		// A keyword-biased engine reads only the keyterm list, so the topic and
+		// sentence agents that build the prompt sentence are skipped: four LLM
+		// calls (names, jargon, acronyms, decider), not six.
+		expect(llmCalls).toHaveLength(4);
+		const systems = llmCalls.map((call) => call.system);
+		expect(systems.some((s) => s.includes('domain and topic'))).toBe(false);
+		expect(systems.some((s) => s.includes('context prompt'))).toBe(false);
 	});
 
 	it('degrades to a single pass, before any LLM spend, on a non-biasing model', async () => {
@@ -281,6 +302,38 @@ describe('TranscriptionService advanced two-pass mode', () => {
 		expect(result.markdown).toContain('кубернетис');
 		expect(mockNotice).toHaveBeenCalledWith(
 			expect.stringContaining('skipped'),
+		);
+	});
+
+	it('keeps the whole progress band for the single pass a non-biasing engine degrades to', async () => {
+		// Two-pass is toggled on, but the engine cannot bias, so only one pass
+		// runs. The chunk progress band must not be halved for a second pass
+		// that never comes: with two parts the second is reported at half the
+		// full ceiling, not a quarter (which a wrongly-split band would give).
+		prepareTwoParts();
+		const { provider } = makeProvider('deepgram');
+		const { llm } = makeLlm();
+		const service = makeService(provider, llm, {
+			transcriptionAdvancedEnabled: true,
+			transcriptionProvider: 'deepgram',
+			deepgramModel: 'whisper',
+		});
+
+		const progress: { pct: number; label: string }[] = [];
+		await service.run(audioFile, {
+			notePathForLinks: 'note.md',
+			onProgress: (pct, label) => progress.push({ pct, label }),
+		});
+
+		const transcribing = progress.filter((entry) =>
+			entry.label.startsWith('Transcribing'),
+		);
+		const maxTranscribing = Math.max(
+			...transcribing.map((entry) => entry.pct),
+		);
+		expect(maxTranscribing).toBeCloseTo(
+			TRANSCRIBE_CHUNK_PROGRESS_CEILING / 2,
+			5,
 		);
 	});
 

@@ -56,6 +56,7 @@ import {
 	planDictionaryBias,
 } from './dictionaryBias';
 import {
+	advancedBiasChannel,
 	advancedBiasUnsupportedReason,
 	meetsLengthSafeguard,
 	planAdvancedBias,
@@ -321,10 +322,21 @@ export class TranscriptionService {
 		// The advanced mode transcribes everything twice, so it splits the
 		// chunk progress band between the passes; the normal path keeps the
 		// whole band for its single pass. Two-pass needs both the advanced
-		// settings master switch and its own toggle: the toggle lives under the
-		// master, so the master being off means no two-pass regardless.
+		// settings master switch and its own toggle (the toggle lives under the
+		// master), AND an engine that can carry a bias - a non-biasing engine
+		// degrades to one plain pass. Decide it once here, capability-gated, so
+		// the progress band is only split when the second pass will actually run
+		// (otherwise the band's upper half would stay unfilled).
 		const advancedRequested = advancedTwoPassEnabled(settings);
-		const firstPassCeiling = advancedRequested
+		const advancedUnsupportedReason = advancedRequested
+			? advancedBiasUnsupportedReason(
+					settings.transcriptionProvider,
+					settings.deepgramModel,
+				)
+			: null;
+		const willTwoPass =
+			advancedRequested && advancedUnsupportedReason === null;
+		const firstPassCeiling = willTwoPass
 			? TRANSCRIBE_CHUNK_PROGRESS_CEILING / 2
 			: TRANSCRIBE_CHUNK_PROGRESS_CEILING;
 		/**
@@ -412,15 +424,11 @@ export class TranscriptionService {
 		let working = stitched;
 		let missingParts = failedParts;
 		if (advancedRequested) {
-			const unsupported = advancedBiasUnsupportedReason(
-				settings.transcriptionProvider,
-				settings.deepgramModel,
-			);
-			if (unsupported) {
+			if (advancedUnsupportedReason !== null) {
 				// Degrade to the normal single pass up front - before any LLM
 				// spend - and say so, instead of silently ignoring the toggle.
 				new Notice(
-					`Advanced two-pass transcription skipped: ${unsupported}. ` +
+					`Advanced two-pass transcription skipped: ${advancedUnsupportedReason}. ` +
 						'Keeping the single-pass transcript.',
 				);
 			} else {
@@ -433,12 +441,18 @@ export class TranscriptionService {
 					// provider. This run's Dictionary terms join as bias
 					// candidates, vetted against the draft so an off-topic term
 					// is not injected. The advanced mode reuses the same terms
-					// the single pass biases toward, not a second glossary.
+					// the single pass biases toward, not a second glossary. A
+					// keyword-biased engine (Deepgram) reads only the keyterm
+					// list, so the pipeline skips the prompt-sentence agents.
 					const llm = this.createLlm(settings);
 					const context = await generateContext(stitched, llm, {
 						language:
 							transcribeOptions.language ?? stitched.language,
 						glossary: resolveDictionaryTermList(settings),
+						buildPromptSentence:
+							advancedBiasChannel(
+								settings.transcriptionProvider,
+							) === 'prompt',
 						isCancelled: () => token.isCancelled(),
 					});
 					const bias = context

@@ -357,18 +357,23 @@ describe('generateContext', () => {
 		expect(withinPromptWindow(context?.promptSentence ?? '')).toBe(true);
 	});
 
-	it('stops after two failed agents and returns null', async () => {
+	it('stops after the first two agents fail and returns null', async () => {
 		const failure = new Error('LLM unreachable');
 		const { llm, calls } = scriptedLlm({
-			topic: failure,
 			names: failure,
 			jargon: failure,
 			acronyms: failure,
+			topic: failure,
 		});
 		const context = await generateContext(russianBaseline(), llm);
 		expect(context).toBeNull();
-		// Early abort: no further agents burn timeouts on a dead provider.
+		// The names and jargon extractors run first; two consecutive failures
+		// abort before any further agent burns a timeout on a dead provider.
 		expect(calls).toHaveLength(2);
+		expect(calls.map((call) => agentKeyOf(call.system))).toEqual([
+			'names',
+			'jargon',
+		]);
 	});
 
 	it('returns null for an empty draft without calling the LLM', async () => {
@@ -402,5 +407,78 @@ describe('generateContext', () => {
 				CONTEXT_SAMPLE_MAX_CHARS + 500,
 			);
 		}
+	});
+
+	it('skips the topic and sentence agents when no prompt sentence is needed', async () => {
+		// A keyword-biased engine reads only the keyterm list, so the caller
+		// asks the pipeline not to build the prompt sentence. The topic and
+		// sentence agents, whose only output feeds that sentence, must not run.
+		const { llm, calls } = scriptedLlm(replies);
+		const context = await generateContext(russianBaseline(), llm, {
+			language: 'ru',
+			glossary: ['gRPC', 'Kafka'],
+			buildPromptSentence: false,
+		});
+
+		expect(context).not.toBeNull();
+		// The keyterms are mined and vetted exactly as on the prompt path.
+		expect(context?.keyterms).toEqual([
+			'Kubernetes',
+			'CI/CD',
+			'gRPC',
+			'Иванов',
+			'Петров',
+			'деплой',
+			'ревью',
+		]);
+		// The prompt-only outputs are empty and their agents never ran: four
+		// calls (names, jargon, acronyms, decider), not six.
+		expect(context?.topic).toBe('');
+		expect(context?.promptSentence).toBe('');
+		expect(calls.map((call) => agentKeyOf(call.system))).toEqual([
+			'names',
+			'jargon',
+			'acronyms',
+			'decider',
+		]);
+	});
+
+	it('accepts a sentence covering the window-fitting terms when the full list overflows', async () => {
+		// Twenty-five short terms whose ascending list overruns the ~224-byte
+		// Whisper prompt window, so only its high-value suffix can reach the
+		// engine and the rest are trimmed.
+		const terms = Array.from(
+			{ length: 25 },
+			(_, i) => `kterm${String(i).padStart(2, '0')}`,
+		);
+		const topic = 'Технический митинг.';
+		// The terms the fallback keeps are exactly the window-fitting suffix.
+		const termsAscending = [...terms].reverse();
+		const fitting = terms.filter((term) =>
+			buildFallbackPrompt(topic, termsAscending).includes(term),
+		);
+		// The list genuinely overflows: some terms fit, some are trimmed.
+		expect(fitting.length).toBeGreaterThan(0);
+		expect(fitting.length).toBeLessThan(terms.length);
+		// A natural sentence carrying only the fitting terms (space-joined so it
+		// stays within the window), distinct from the comma-joined fallback.
+		const sentence = `${topic} ${fitting.join(' ')}.`;
+		expect(withinPromptWindow(sentence)).toBe(true);
+
+		const { llm } = scriptedLlm({
+			topic,
+			names: '',
+			jargon: '',
+			acronyms: terms.join('\n'),
+			decider: terms.join('\n'),
+			sentence,
+		});
+		const context = await generateContext(russianBaseline(), llm, {
+			language: 'ru',
+		});
+		// The sentence retains every term that could reach the engine, so it is
+		// adopted as-is; checking retention against the full (overflowing) list
+		// would have wrongly rejected it for the terms the window dropped anyway.
+		expect(context?.promptSentence).toBe(sentence);
 	});
 });
