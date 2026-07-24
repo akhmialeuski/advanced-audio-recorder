@@ -166,6 +166,9 @@ function makeService(
 ): TranscriptionService {
 	const settings = mergeSettings({
 		transcriptionEnabled: true,
+		// These suites exercise the advanced behavior, so the master switch is
+		// on by default; individual tests still gate the two-pass sub-toggle.
+		transcriptionAdvancedSettingsEnabled: true,
 		...settingsInput,
 	});
 	return new TranscriptionService(makeApp(), () => settings, {
@@ -326,6 +329,7 @@ describe('TranscriptionService advanced two-pass mode', () => {
 		const { provider, calls } = makeProvider();
 		const settings = mergeSettings({
 			transcriptionEnabled: true,
+			transcriptionAdvancedSettingsEnabled: true,
 			transcriptionAdvancedEnabled: true,
 		});
 		const service = new TranscriptionService(makeApp(), () => settings, {

@@ -304,6 +304,13 @@ export interface AudioRecorderSettings {
 	transcriptionDiarize: boolean;
 	/** Request word-level timestamps when supported */
 	transcriptionWordTimestamps: boolean;
+	/**
+	 * Master switch for the advanced transcription settings: the dictionary
+	 * term biasing and the two-pass mode below it. Off by default, and while
+	 * off a run transcribes in a single plain pass with no term biasing at all.
+	 * Turning it on reveals the dictionary profiles and the two-pass toggle.
+	 */
+	transcriptionAdvancedSettingsEnabled: boolean;
 	/** Named custom-dictionary profiles (add/edit/remove in the settings tab). */
 	transcriptionDictionaryProfiles: DictionaryProfile[];
 	/** Id of the profile applied to a run; '' means None (no biasing terms). */
@@ -311,9 +318,10 @@ export interface AudioRecorderSettings {
 	/**
 	 * Advanced two-pass transcription: the recording is transcribed twice,
 	 * with LLM agents mining the first draft for the meeting's names, jargon,
-	 * and English acronyms and biasing the second pass's decoding toward
-	 * them. Roughly doubles the engine cost and adds several LLM calls per
-	 * file, so it is off by default and enabled deliberately per vault.
+	 * and English acronyms and biasing the second pass's decoding toward them,
+	 * reusing the selected dictionary terms as candidates. Roughly doubles the
+	 * engine cost and adds several LLM calls per file, so it is off by default
+	 * and lives under the advanced settings master switch.
 	 */
 	transcriptionAdvancedEnabled: boolean;
 	/**
@@ -550,6 +558,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	transcriptionLanguage: 'auto',
 	transcriptionDiarize: false,
 	transcriptionWordTimestamps: false,
+	transcriptionAdvancedSettingsEnabled: false,
 	transcriptionDictionaryProfiles: [],
 	transcriptionDictionaryProfileId: '',
 	transcriptionAdvancedEnabled: false,

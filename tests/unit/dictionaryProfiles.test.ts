@@ -134,6 +134,7 @@ describe('resolveDictionaryTermList', () => {
 		// the cleanup hint, with blanks and case-insensitive duplicates dropped.
 		expect(
 			resolveDictionaryTermList({
+				transcriptionAdvancedSettingsEnabled: true,
 				transcriptionDictionaryProfiles: profiles,
 				transcriptionDictionaryProfileId: 'a',
 			}),
@@ -143,14 +144,28 @@ describe('resolveDictionaryTermList', () => {
 	it('returns an empty list when none is selected or the profile is gone', () => {
 		expect(
 			resolveDictionaryTermList({
+				transcriptionAdvancedSettingsEnabled: true,
 				transcriptionDictionaryProfiles: profiles,
 				transcriptionDictionaryProfileId: '',
 			}),
 		).toEqual([]);
 		expect(
 			resolveDictionaryTermList({
+				transcriptionAdvancedSettingsEnabled: true,
 				transcriptionDictionaryProfiles: profiles,
 				transcriptionDictionaryProfileId: 'gone',
+			}),
+		).toEqual([]);
+	});
+
+	it('returns an empty list when the advanced settings are off', () => {
+		// The dictionary lives under the advanced master switch, so a plain run
+		// applies no terms even with a profile selected.
+		expect(
+			resolveDictionaryTermList({
+				transcriptionAdvancedSettingsEnabled: false,
+				transcriptionDictionaryProfiles: profiles,
+				transcriptionDictionaryProfileId: 'a',
 			}),
 		).toEqual([]);
 	});

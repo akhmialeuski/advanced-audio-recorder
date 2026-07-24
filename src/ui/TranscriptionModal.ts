@@ -1,8 +1,8 @@
 /**
  * Modal that configures and runs transcription for a single audio file.
  * The per-run options (engine, language, diarization, destination, file
- * format, in-note toggles, advanced two-pass transcription, and LLM
- * post-processing) default from settings
+ * format, in-note toggles, the advanced settings that reveal the dictionary
+ * and two-pass mode, and LLM post-processing) default from settings
  * and can be overridden here for this run only - the saved settings are
  * never mutated. Shows progress and allows cancellation; the detailed
  * in-note templates (heading, timestamp/speaker/line format) remain in the
@@ -371,47 +371,60 @@ export class TranscriptionModal extends Modal {
 			set: (v) => (s.transcriptionWordTimestamps = v),
 		});
 
-		const profiles = s.transcriptionDictionaryProfiles;
-		// A stored id whose profile was removed reads as None here.
-		const selectedProfileId = findProfile(
-			profiles,
-			s.transcriptionDictionaryProfileId,
-		)
-			? s.transcriptionDictionaryProfileId
-			: '';
-		addDropdown(ctx, {
-			name: 'Dictionary',
-			desc: providerSupportsDictionary(s.transcriptionProvider)
-				? 'Bias recognition toward a named glossary, or None.'
-				: 'The selected engine cannot bias recognition; the dictionary is ignored.',
-			options: [
-				{ value: '', label: 'None' },
-				...profiles.map((profile) => ({
-					value: profile.id,
-					label: profile.name,
-				})),
-			],
-			get: () => selectedProfileId,
-			set: (v) => {
-				// Affects this run (runSettings clone); persist as the remembered
-				// choice for the next dialog and for transcribe-on-save.
-				s.transcriptionDictionaryProfileId = v;
-				void this.options.onProfileSelected?.(v);
-			},
-		});
-
-		// Advanced two-pass mode: the advanced mode of the dictionary biasing
-		// above, offered as a per-run override of the saved setting so a pricier
-		// context-biased run can be enabled (or skipped) for this file without
-		// changing the default. It reuses the Dictionary terms picked above; the
-		// length safeguard stays in the settings tab, so only the on/off
-		// decision is per-run here.
+		// Advanced settings: a per-run master switch mirroring the settings tab.
+		// It reveals the dictionary term biasing and the two-pass mode; off keeps
+		// a single plain pass with no biasing. Defaults from the saved setting
+		// and, like every dialog control, never persists to plugin data.
 		addToggle(ctx, {
-			name: 'Advanced two-pass transcription',
-			desc: 'Advanced mode of the dictionary above: transcribe twice and bias the second pass with LLM-generated context (names, jargon, English acronyms), reusing the selected Dictionary terms. Roughly 2x the engine cost plus LLM calls. The length safeguard stays in settings.',
-			get: () => s.transcriptionAdvancedEnabled,
-			set: (v) => (s.transcriptionAdvancedEnabled = v),
+			name: 'Advanced settings',
+			desc: 'Reveal the dictionary and the experimental two-pass mode for this run. Off keeps a single plain pass with no term biasing.',
+			get: () => s.transcriptionAdvancedSettingsEnabled,
+			set: (v) => (s.transcriptionAdvancedSettingsEnabled = v),
+			// Re-render so the dictionary and two-pass controls appear or hide.
+			rerender: true,
 		});
+		if (s.transcriptionAdvancedSettingsEnabled) {
+			const profiles = s.transcriptionDictionaryProfiles;
+			// A stored id whose profile was removed reads as None here.
+			const selectedProfileId = findProfile(
+				profiles,
+				s.transcriptionDictionaryProfileId,
+			)
+				? s.transcriptionDictionaryProfileId
+				: '';
+			addDropdown(ctx, {
+				name: 'Dictionary',
+				desc: providerSupportsDictionary(s.transcriptionProvider)
+					? 'Bias recognition toward a named glossary, or None.'
+					: 'The selected engine cannot bias recognition; the dictionary is ignored.',
+				options: [
+					{ value: '', label: 'None' },
+					...profiles.map((profile) => ({
+						value: profile.id,
+						label: profile.name,
+					})),
+				],
+				get: () => selectedProfileId,
+				set: (v) => {
+					// Affects this run (runSettings clone); persist as the
+					// remembered choice for the next dialog and transcribe-on-save.
+					s.transcriptionDictionaryProfileId = v;
+					void this.options.onProfileSelected?.(v);
+				},
+			});
+
+			// Advanced two-pass mode: the sub-toggle under the advanced settings,
+			// a per-run override of the saved setting so a pricier context-biased
+			// run can be enabled (or skipped) for this file. It reuses the
+			// Dictionary terms picked above; the length safeguard stays in the
+			// settings tab, so only the on/off decision is per-run here.
+			addToggle(ctx, {
+				name: 'Advanced two-pass transcription',
+				desc: 'Transcribe twice and bias the second pass with LLM-generated context (names, jargon, English acronyms), reusing the Dictionary terms above. Roughly 2x the engine cost plus LLM calls. The length safeguard stays in settings.',
+				get: () => s.transcriptionAdvancedEnabled,
+				set: (v) => (s.transcriptionAdvancedEnabled = v),
+			});
+		}
 
 		addDropdown(ctx, {
 			name: 'Destination',

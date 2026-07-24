@@ -155,6 +155,8 @@ async function runWithDictionary(
 		() =>
 			mergeSettings({
 				transcriptionProvider: engineId,
+				// The dictionary lives under the advanced settings master switch.
+				transcriptionAdvancedSettingsEnabled: true,
 				// The dictionary now travels through the selected profile.
 				transcriptionDictionaryProfiles: [
 					{ id: 'p1', name: 'Test', terms: dictionary },
@@ -179,6 +181,7 @@ async function runWithProfileId(
 		() =>
 			mergeSettings({
 				transcriptionProvider: engineId,
+				transcriptionAdvancedSettingsEnabled: true,
 				transcriptionDictionaryProfiles: [
 					{ id: 'p1', name: 'Test', terms: 'Kubernetes' },
 				],

@@ -319,8 +319,12 @@ export class TranscriptionService {
 		};
 		// The advanced mode transcribes everything twice, so it splits the
 		// chunk progress band between the passes; the normal path keeps the
-		// whole band for its single pass.
-		const advancedRequested = settings.transcriptionAdvancedEnabled;
+		// whole band for its single pass. Two-pass needs both the advanced
+		// settings master switch and its own toggle: the toggle lives under the
+		// master, so the master being off means no two-pass regardless.
+		const advancedRequested =
+			settings.transcriptionAdvancedSettingsEnabled &&
+			settings.transcriptionAdvancedEnabled;
 		const firstPassCeiling = advancedRequested
 			? TRANSCRIBE_CHUNK_PROGRESS_CEILING / 2
 			: TRANSCRIBE_CHUNK_PROGRESS_CEILING;

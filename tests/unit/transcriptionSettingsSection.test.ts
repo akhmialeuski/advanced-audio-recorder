@@ -49,6 +49,9 @@ function renderFor(provider: TranscriptionProviderId, diarize: boolean): void {
 				transcriptionEnabled: true,
 				transcriptionProvider: provider,
 				transcriptionDiarize: diarize,
+				// The dictionary lives under the advanced master switch, so it is
+				// on here for the dictionary-profile assertions to reach it.
+				transcriptionAdvancedSettingsEnabled: true,
 			}),
 		),
 	);
@@ -99,6 +102,7 @@ function renderWithProfiles(
 			mergeSettings({
 				transcriptionEnabled: true,
 				transcriptionProvider: provider,
+				transcriptionAdvancedSettingsEnabled: true,
 				transcriptionDictionaryProfiles: profiles,
 				transcriptionDictionaryProfileId: selectedId,
 			}),
@@ -146,23 +150,61 @@ describe('renderTranscriptionSection dictionary profiles', () => {
 	});
 });
 
-/** Renders the section with the advanced two-pass mode on or off. */
-function renderAdvanced(enabled: boolean): void {
+/** Renders the section with the advanced master on and two-pass on or off. */
+function renderAdvanced(twoPass: boolean): void {
 	capturedSettings.length = 0;
 	renderTranscriptionSection(
 		makeCtx(
 			mergeSettings({
 				transcriptionEnabled: true,
-				transcriptionAdvancedEnabled: enabled,
+				transcriptionAdvancedSettingsEnabled: true,
+				transcriptionAdvancedEnabled: twoPass,
 			}),
 		),
 	);
 }
 
+/** Renders the section with the advanced master switch off (a plain run). */
+function renderPlain(): void {
+	capturedSettings.length = 0;
+	renderTranscriptionSection(
+		makeCtx(mergeSettings({ transcriptionEnabled: true })),
+	);
+}
+
+describe('renderTranscriptionSection advanced master switch', () => {
+	const MASTER = 'Advanced settings';
+	const TWO_PASS = 'Advanced two-pass transcription (experimental)';
+
+	it('renders the master switch off by default', () => {
+		renderPlain();
+		const row = capturedSettings.find((setting) => setting.name === MASTER);
+		expect(row).toBeDefined();
+		expect(row?.toggle?.value).toBe(false);
+	});
+
+	it('hides the dictionary and two-pass while the master is off', () => {
+		renderPlain();
+		const names = capturedSettings.map((setting) => setting.name);
+		expect(names).not.toContain('Dictionary profiles');
+		expect(names).not.toContain(TWO_PASS);
+		expect(names).not.toContain('Second-pass length safeguard');
+	});
+
+	it('reveals the dictionary and the two-pass toggle when the master is on', () => {
+		renderAdvanced(false);
+		const names = capturedSettings.map((setting) => setting.name);
+		expect(names).toContain('Dictionary profiles');
+		expect(names).toContain(TWO_PASS);
+		// Two-pass itself is still off, so its safeguard stays hidden.
+		expect(names).not.toContain('Second-pass length safeguard');
+	});
+});
+
 describe('renderTranscriptionSection advanced two-pass mode', () => {
 	const TOGGLE = 'Advanced two-pass transcription (experimental)';
 
-	it('renders the master toggle off by default with an explicit cost warning', () => {
+	it('renders the two-pass toggle off by default with an explicit cost warning', () => {
 		renderAdvanced(false);
 		const row = capturedSettings.find((setting) => setting.name === TOGGLE);
 		expect(row).toBeDefined();
@@ -171,12 +213,12 @@ describe('renderTranscriptionSection advanced two-pass mode', () => {
 		// passes plus LLM calls.
 		expect(row?.desc).toContain('2x the engine cost');
 		expect(row?.desc).toContain('LLM calls');
-		// It is the advanced mode of dictionary biasing and reuses those terms,
-		// not a second glossary, so the description ties it to the Dictionary.
+		// It reuses the dictionary terms above, not a second glossary, so the
+		// description ties it to the Dictionary.
 		expect(row?.desc).toContain('Dictionary');
 	});
 
-	it('hides the length safeguard while the mode is off', () => {
+	it('hides the length safeguard while the two-pass mode is off', () => {
 		renderAdvanced(false);
 		const names = capturedSettings.map((setting) => setting.name);
 		expect(names).not.toContain('Second-pass length safeguard');
@@ -185,7 +227,7 @@ describe('renderTranscriptionSection advanced two-pass mode', () => {
 		expect(names).not.toContain('Domain glossary');
 	});
 
-	it('reveals only the length safeguard when the mode is on', () => {
+	it('reveals only the length safeguard when the two-pass mode is on', () => {
 		renderAdvanced(true);
 		const names = capturedSettings.map((setting) => setting.name);
 		expect(names).toContain('Second-pass length safeguard');
@@ -201,6 +243,7 @@ describe('renderTranscriptionSection advanced two-pass mode', () => {
 			makeCtx(
 				mergeSettings({
 					transcriptionEnabled: true,
+					transcriptionAdvancedSettingsEnabled: true,
 					transcriptionAdvancedEnabled: true,
 					llmPostProcessEnabled: false,
 					transcriptionAutoChaptersEnabled: false,

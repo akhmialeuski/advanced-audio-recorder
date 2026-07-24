@@ -144,8 +144,6 @@ export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
 		set: (v) => (s.transcriptionWordTimestamps = v),
 	});
 
-	renderDictionaryProfiles(ctx);
-
 	// Cloud engines only: a hung network request is bounded by this limit. Local
 	// whisper.cpp runs no HTTP request, so the timeout does not apply to it.
 	if (s.transcriptionProvider !== TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER) {
@@ -172,10 +170,40 @@ export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
 		renderLocalWhisperSettings(ctx);
 	}
 
-	renderAdvancedTwoPassSection(ctx);
+	renderAdvancedSection(ctx);
 	renderTranscriptOutputSection(ctx);
 	renderAutoChaptersSection(ctx);
 	renderLlmSection(ctx);
+}
+
+/**
+ * The advanced transcription settings: a master switch that, when on, reveals
+ * the dictionary term biasing and the two-pass mode beneath it. Off by default,
+ * so a plain run needs no term biasing; turning it on surfaces the dictionary
+ * profiles (the shared term set) first and then the two-pass toggle that reuses
+ * those terms. Mirrors the per-run nesting in the Transcribe dialog.
+ * @param ctx - Section context
+ */
+function renderAdvancedSection(ctx: SettingsSectionContext): void {
+	const s = ctx.settings;
+	addHeading(ctx, 'Advanced');
+	addToggle(ctx, {
+		name: 'Advanced settings',
+		desc:
+			'Reveal the dictionary term biasing and the experimental two-pass ' +
+			'mode below. Off by default: with it off, a recording transcribes ' +
+			'in a single plain pass with no term biasing.',
+		get: () => s.transcriptionAdvancedSettingsEnabled,
+		set: (v) => (s.transcriptionAdvancedSettingsEnabled = v),
+		// Re-render so the dictionary and two-pass sub-sections appear or hide
+		// in step with the master switch.
+		rerender: true,
+	});
+	if (!s.transcriptionAdvancedSettingsEnabled) {
+		return;
+	}
+	renderDictionaryProfiles(ctx);
+	renderAdvancedTwoPassSection(ctx);
 }
 
 /**
@@ -714,11 +742,15 @@ function renderLlmSection(ctx: SettingsSectionContext): void {
 	});
 	// The provider fields stay visible while auto chapters or the advanced
 	// two-pass mode needs them, so enabling either feature alone still
-	// exposes the key/model to configure.
+	// exposes the key/model to configure. Two-pass counts only when its master
+	// switch is also on, since a stale toggle under an off master does nothing.
 	if (
 		!s.llmPostProcessEnabled &&
 		!s.transcriptionAutoChaptersEnabled &&
-		!s.transcriptionAdvancedEnabled
+		!(
+			s.transcriptionAdvancedSettingsEnabled &&
+			s.transcriptionAdvancedEnabled
+		)
 	) {
 		return;
 	}

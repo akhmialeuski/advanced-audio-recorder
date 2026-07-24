@@ -310,6 +310,7 @@ describe('Settings', () => {
 				transcriptionLanguage: 'ru',
 				transcriptionDiarize: true,
 				transcriptionWordTimestamps: true,
+				transcriptionAdvancedSettingsEnabled: true,
 				transcriptionDictionaryProfiles: [
 					{ id: 'p1', name: 'General', terms: 'Foo\nBar' },
 				],
