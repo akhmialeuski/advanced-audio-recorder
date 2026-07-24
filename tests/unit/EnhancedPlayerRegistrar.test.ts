@@ -200,6 +200,10 @@ function setup(
 			getActiveFile: () => ({ path: 'note.md' }),
 			getLeavesOfType: getLeaves,
 			getActiveViewOfType: jest.fn(() => null),
+			// The timecode resolver locates the note owning the clicked node
+			// across windows; no leaf owns the detached test nodes, so the
+			// lookup finds nothing and falls back to the active view/file.
+			iterateAllLeaves: jest.fn(),
 		},
 	} as unknown as App;
 

@@ -29,6 +29,7 @@ import {
 	makeApp,
 	makeFile,
 	makePopoutDoc,
+	makePopoutLivePreview,
 } from '../helpers/popoutHarness';
 
 afterEach(() => {
@@ -99,6 +100,78 @@ describe('timecode clicks work inside a pop-out window', () => {
 
 			// The click reached the handler bound to the pop-out's own document
 			// and seeked the embed there - it shows 1:30, not a dead 0:00.
+			expect(timeText(embed)).toBe('1:30 / 10:00');
+			expect(shared.audio.paused).toBe(false);
+		} finally {
+			shared.restore();
+		}
+	});
+
+	it('seeks the popped-out embed from a Live Preview timecode link resolved against its own note', async () => {
+		const shared = installSharedAudio();
+		try {
+			const file = makeFile();
+			const plugin = new FakePlugin();
+			plugin.app = makeApp(plugin, file);
+			// The recording resolves only against the popped-out note. Resolving
+			// against the active note (a different file) would return null, so a
+			// passing seek proves the click used the owning view, not the active
+			// one. Without the window-scoped fix, both the editor lookup (active
+			// view is null) and the source-path lookup (active file is note.md)
+			// miss and the embed stays dead at 0:00.
+			plugin.app.metadataCache.getFirstLinkpathDest = (
+				linkPath: string,
+				sourcePath: string,
+			) =>
+				linkPath.startsWith('rec') && sourcePath === 'popout-note.md'
+					? file
+					: null;
+
+			const settings: AudioRecorderSettings = {
+				...DEFAULT_SETTINGS,
+				enhancedPlayerEnabled: true,
+				playerShowWaveform: false,
+				playerEnableMarkers: false,
+			};
+
+			const registrar = new EnhancedPlayerRegistrar(
+				plugin as unknown as Plugin,
+				plugin.app,
+				() => settings,
+				makeMarkerStore(),
+				null,
+			);
+			plugin.load();
+			registrar.register();
+
+			const popoutDoc = makePopoutDoc();
+			plugin.emit('window-open', popoutDoc);
+
+			// The popped-out note in Live Preview: a MarkdownView whose editor
+			// resolves the wikilink from source, registered as an open leaf.
+			const { linkToken, embedHost, embed } = makePopoutLivePreview(
+				plugin,
+				popoutDoc,
+				'popout-note.md',
+				'[[rec.mp4#t=90|1:30]] Speaker 1',
+			);
+
+			// Mount a real player into the pop-out embed so a seek has a display.
+			const ctx = {
+				sourcePath: 'popout-note.md',
+				addChild: (child: Component) => child.load(),
+			} as unknown as MarkdownPostProcessorContext;
+			void plugin.postProcessors[0](embedHost, ctx);
+			await tick();
+			shared.audio.setReady(1);
+			shared.audio.setDuration(600);
+
+			// The Live Preview wikilink clicked in the pop-out, while the active
+			// view is null and the active file is a different, main-window note.
+			linkToken.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+			// The editor target and the source path both resolved against the
+			// popped-out note, so the click seeked the embed there to 1:30.
 			expect(timeText(embed)).toBe('1:30 / 10:00');
 			expect(shared.audio.paused).toBe(false);
 		} finally {

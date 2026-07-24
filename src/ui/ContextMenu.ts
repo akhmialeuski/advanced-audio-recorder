@@ -17,6 +17,7 @@ import type { MarkdownFileInfo } from 'obsidian';
 import type { MenuItem } from 'obsidian';
 import { AAR_MENU_SECTION, PLUGIN_LOG_PREFIX } from '../constants';
 import { registerDomEventOnAllWindows } from '../utils/multiWindowDomEvents';
+import { markdownViewContaining } from '../utils/windowScopedViews';
 import { getPlayerEmbedActions } from '../player/playerEmbedActions';
 import { MARKER_KIND, type MarkerKind } from '../markers/markerModel';
 import { isAudioFile } from '../utils/audioFile';
@@ -204,7 +205,7 @@ export class ContextMenu {
 		sourcePath: string;
 		view: MarkdownView | null;
 	} {
-		const owningView = this.markdownViewContaining(embed);
+		const owningView = markdownViewContaining(this.app, embed);
 		if (owningView) {
 			return {
 				sourcePath: owningView.file?.path ?? '',
@@ -216,28 +217,6 @@ export class ContextMenu {
 			sourcePath: activeFile ? activeFile.path : '',
 			view: this.app.workspace.getActiveViewOfType(MarkdownView),
 		};
-	}
-
-	/**
-	 * Finds the open MarkdownView whose container holds the given embed.
-	 * `Node.contains` is scoped to the element's own document, so an embed
-	 * matches only the view in its own window, which is what makes the lookup
-	 * correct across pop-out windows.
-	 * @param embed - The embed element to locate
-	 * @returns The owning MarkdownView, or null when none holds it
-	 */
-	private markdownViewContaining(embed: HTMLElement): MarkdownView | null {
-		const owning: MarkdownView[] = [];
-		this.app.workspace.iterateAllLeaves((leaf) => {
-			const view = leaf.view;
-			if (
-				view instanceof MarkdownView &&
-				view.containerEl.contains(embed)
-			) {
-				owning.push(view);
-			}
-		});
-		return owning[0] ?? null;
 	}
 
 	/**
