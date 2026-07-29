@@ -20,7 +20,7 @@ import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import {
 	addParticipantsToProfile,
 	addSpeakerProfile,
-	findSpeakerProfile,
+	participantsOf,
 } from '../settings/speakerProfiles';
 import type {
 	SpeakerEntry,
@@ -272,12 +272,9 @@ export class SpeakerRenameModal extends Modal {
 	 * profile, or none when "None" is picked.
 	 */
 	private suggestionPool(): string[] {
-		const settings = this.options.getSettings();
-		return (
-			findSpeakerProfile(
-				settings.transcriptionSpeakerProfiles,
-				this.selectedProfileId,
-			)?.participants ?? []
+		return participantsOf(
+			this.options.getSettings(),
+			this.selectedProfileId,
 		);
 	}
 

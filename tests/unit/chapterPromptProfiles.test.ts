@@ -1,18 +1,18 @@
 /**
- * Tests the pure chapter-guidance profile helpers: creating a profile with a
- * fresh id, removing and finding by id, and resolving the selected profile's
- * guidance for a run. Resolving must return '' for no selection, a removed
- * profile, or an empty list, since that empty string is the single guard that
- * makes buildChapterPrompt append no guidance clause.
+ * Tests what is specific to the chapter-guidance profile kind: building a
+ * profile and resolving the selected one's guidance for a run. Resolving must
+ * return '' for no selection, a removed profile, or an empty list, since that
+ * empty string is the single guard that makes buildChapterPrompt append no
+ * guidance clause. The shared list mechanics are covered in profiles.test.
  * @module tests/unit/chapterPromptProfiles.test
  */
 
 import {
+	CHAPTER_PROMPT_PROFILES,
 	createChapterPromptProfile,
-	findChapterPromptProfile,
-	removeChapterPromptProfile,
 	resolveChapterGuidance,
 } from 'src/settings/chapterPromptProfiles';
+import { mergeSettings } from 'src/settings/settingsSerialization';
 import type { ChapterPromptProfile } from 'src/settings/settingsSchema';
 
 describe('createChapterPromptProfile', () => {
@@ -22,43 +22,6 @@ describe('createChapterPromptProfile', () => {
 		expect(profile.prompt).toBe('');
 		expect(profile.id).toMatch(/[0-9a-f-]{36}/);
 	});
-
-	it('gives distinct ids to same-named profiles', () => {
-		const a = createChapterPromptProfile('Lecture');
-		const b = createChapterPromptProfile('Lecture');
-		expect(a.id).not.toBe(b.id);
-	});
-});
-
-describe('removeChapterPromptProfile', () => {
-	it('drops the profile with the id and leaves the rest untouched', () => {
-		const profiles: ChapterPromptProfile[] = [
-			{ id: 'a', name: 'A', prompt: 'x' },
-			{ id: 'b', name: 'B', prompt: 'y' },
-		];
-		expect(removeChapterPromptProfile(profiles, 'a')).toEqual([
-			{ id: 'b', name: 'B', prompt: 'y' },
-		]);
-	});
-
-	it('returns an unchanged copy when the id is absent', () => {
-		const profiles: ChapterPromptProfile[] = [
-			{ id: 'a', name: 'A', prompt: 'x' },
-		];
-		const next = removeChapterPromptProfile(profiles, 'missing');
-		expect(next).toEqual(profiles);
-		expect(next).not.toBe(profiles);
-	});
-});
-
-describe('findChapterPromptProfile', () => {
-	it('returns the matching profile or undefined', () => {
-		const profiles: ChapterPromptProfile[] = [
-			{ id: 'a', name: 'A', prompt: 'x' },
-		];
-		expect(findChapterPromptProfile(profiles, 'a')?.name).toBe('A');
-		expect(findChapterPromptProfile(profiles, 'z')).toBeUndefined();
-	});
 });
 
 describe('resolveChapterGuidance', () => {
@@ -66,30 +29,34 @@ describe('resolveChapterGuidance', () => {
 		{ id: 'a', name: 'Agenda', prompt: 'Split by agenda item.' },
 	];
 
+	/** Settings holding the given profiles and selection. */
+	const withSelection = (id: string, list = profiles) =>
+		mergeSettings({
+			transcriptionChapterPromptProfiles: list,
+			transcriptionChapterPromptProfileId: id,
+		});
+
 	it("returns the selected profile's guidance", () => {
-		expect(
-			resolveChapterGuidance({
-				transcriptionChapterPromptProfiles: profiles,
-				transcriptionChapterPromptProfileId: 'a',
-			}),
-		).toBe('Split by agenda item.');
+		expect(resolveChapterGuidance(withSelection('a'))).toBe(
+			'Split by agenda item.',
+		);
 	});
 
 	it('returns empty for no selection', () => {
-		expect(
-			resolveChapterGuidance({
-				transcriptionChapterPromptProfiles: profiles,
-				transcriptionChapterPromptProfileId: '',
-			}),
-		).toBe('');
+		expect(resolveChapterGuidance(withSelection(''))).toBe('');
 	});
 
 	it('returns empty for a stale selection that was removed', () => {
-		expect(
-			resolveChapterGuidance({
-				transcriptionChapterPromptProfiles: profiles,
-				transcriptionChapterPromptProfileId: 'gone',
-			}),
-		).toBe('');
+		expect(resolveChapterGuidance(withSelection('gone'))).toBe('');
+	});
+
+	it('returns empty for an empty profile list', () => {
+		expect(resolveChapterGuidance(withSelection('a', []))).toBe('');
+	});
+
+	it('is bound to the settings fields the descriptor names', () => {
+		const settings = withSelection('a');
+		expect(CHAPTER_PROMPT_PROFILES.get(settings)).toEqual(profiles);
+		expect(CHAPTER_PROMPT_PROFILES.selectedId(settings)).toBe('a');
 	});
 });

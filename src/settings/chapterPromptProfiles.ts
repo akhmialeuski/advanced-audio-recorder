@@ -1,10 +1,8 @@
 /**
- * Pure helpers for the user-editable chapter guidance profiles. Each profile
- * is a named prompt describing how to divide a recording into chapters; the
- * user adds, edits, and removes profiles in the settings tab and picks one per
- * case. These functions are side-effect free (they return new arrays) so the
- * settings UI never mutates the stored array in place, and the run resolver
- * tolerates a selection that no longer exists.
+ * The chapter-guidance profile list: named prompts describing how to divide a
+ * recording into chapters. The list mechanics come from the shared profile
+ * module; this file only describes where the list lives and how a run resolves
+ * its guidance.
  * @module settings/chapterPromptProfiles
  */
 
@@ -12,6 +10,7 @@ import type {
 	AudioRecorderSettings,
 	ChapterPromptProfile,
 } from './settingsSchema';
+import { selectedProfile, type ProfileList } from './profiles';
 
 /**
  * Builds a profile with a fresh id and empty guidance. The name is trimmed so a
@@ -23,32 +22,14 @@ export function createChapterPromptProfile(name: string): ChapterPromptProfile {
 	return { id: crypto.randomUUID(), name: name.trim(), prompt: '' };
 }
 
-/**
- * Removes the profile with the given id. Returns a copy without it (or an
- * unchanged copy when the id is absent).
- * @param profiles - Current profiles
- * @param id - Id of the profile to remove
- * @returns A new list without the profile
- */
-export function removeChapterPromptProfile(
-	profiles: ChapterPromptProfile[],
-	id: string,
-): ChapterPromptProfile[] {
-	return profiles.filter((profile) => profile.id !== id);
-}
-
-/**
- * Finds a profile by id.
- * @param profiles - Current profiles
- * @param id - Id to look up
- * @returns The matching profile, or undefined
- */
-export function findChapterPromptProfile(
-	profiles: ChapterPromptProfile[],
-	id: string,
-): ChapterPromptProfile | undefined {
-	return profiles.find((profile) => profile.id === id);
-}
+/** Where the chapter guidance profiles and their selection live in settings. */
+export const CHAPTER_PROMPT_PROFILES: ProfileList<ChapterPromptProfile> = {
+	get: (s) => s.transcriptionChapterPromptProfiles,
+	set: (s, profiles) => (s.transcriptionChapterPromptProfiles = profiles),
+	selectedId: (s) => s.transcriptionChapterPromptProfileId,
+	setSelectedId: (s, id) => (s.transcriptionChapterPromptProfileId = id),
+	create: createChapterPromptProfile,
+};
 
 /**
  * Resolves the chapter guidance to append to the prompt for a run: the
@@ -60,16 +41,7 @@ export function findChapterPromptProfile(
  * @returns The selected profile's guidance, or '' when none applies
  */
 export function resolveChapterGuidance(
-	settings: Pick<
-		AudioRecorderSettings,
-		| 'transcriptionChapterPromptProfiles'
-		| 'transcriptionChapterPromptProfileId'
-	>,
+	settings: AudioRecorderSettings,
 ): string {
-	return (
-		findChapterPromptProfile(
-			settings.transcriptionChapterPromptProfiles,
-			settings.transcriptionChapterPromptProfileId,
-		)?.prompt ?? ''
-	);
+	return selectedProfile(CHAPTER_PROMPT_PROFILES, settings)?.prompt ?? '';
 }

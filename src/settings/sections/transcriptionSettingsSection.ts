@@ -52,16 +52,16 @@ import {
 	isProviderAvailableOnPlatform,
 	providerSupportsDiarization,
 } from '../../transcription/providers/capabilities';
+import { DICTIONARY_PROFILES } from '../dictionaryProfiles';
+import { CHAPTER_PROMPT_PROFILES } from '../chapterPromptProfiles';
 import {
-	createDictionaryProfile,
+	addAndSelectProfile,
+	editingProfileId,
 	findProfile,
-	removeProfile,
-} from '../dictionaryProfiles';
-import {
-	createChapterPromptProfile,
-	findChapterPromptProfile,
-	removeChapterPromptProfile,
-} from '../chapterPromptProfiles';
+	removeAndReselectProfile,
+	type Profile,
+	type ProfileList,
+} from '../profiles';
 import { Setting } from 'obsidian';
 
 /**
@@ -293,131 +293,55 @@ function renderAutoChaptersSection(ctx: SettingsSectionContext): void {
 }
 
 /**
- * Renders the chapter-guidance profile manager: a selector plus a single
- * editor for the chosen profile's name and prompt, with add and remove. The
- * selected profile's prompt is appended to the fixed chapter base prompt at
- * generation time; the base rules and the JSON contract are never edited here,
- * so a customized or added profile cannot break response parsing. The list is
- * seeded with a built-in default that the user can edit, clone, or replace.
- * @param ctx - The section context (container plus save/rerender hooks)
+ * How one profile-manager section reads: its heading, the selector's help text,
+ * and the two editable fields of the selected profile. Everything else about
+ * the section - selecting, adding, removing, falling back when the selection is
+ * stale - is identical for every profile kind and lives in
+ * {@link renderProfileManager}.
  */
-function renderChapterPromptProfiles(ctx: SettingsSectionContext): void {
-	const s = ctx.settings;
-	const profiles = s.transcriptionChapterPromptProfiles;
-	addHeading(ctx, 'Chapter guidance profiles');
-
-	// Edit the persisted selection when it is a real profile, otherwise the
-	// first profile, so the editor always shows something to edit without
-	// silently changing a stored "no guidance" default.
-	const editingId = findChapterPromptProfile(
-		profiles,
-		s.transcriptionChapterPromptProfileId,
-	)
-		? s.transcriptionChapterPromptProfileId
-		: (profiles[0]?.id ?? '');
-
-	const selector = new Setting(ctx.containerEl)
-		.setName('Profile')
-		.setDesc(
-			'Named prompts describing how to divide a recording into chapters. ' +
-				'Pick one to steer chaptering for a given case; the guidance is ' +
-				'appended to the built-in chapter prompt. The response format is ' +
-				'fixed and not part of a profile, so editing one is safe.',
-		);
-	if (profiles.length > 0) {
-		selector.addDropdown((dropdown) => {
-			for (const profile of profiles) {
-				dropdown.addOption(profile.id, profile.name);
-			}
-			dropdown.setValue(editingId).onChange(async (id) => {
-				// Selecting a profile to edit also makes it the run default.
-				s.transcriptionChapterPromptProfileId = id;
-				await ctx.save();
-				ctx.rerender();
-			});
-		});
-	}
-	selector.addExtraButton((button) =>
-		button
-			.setIcon('plus')
-			.setTooltip('Add profile')
-			.onClick(async () => {
-				const created = createChapterPromptProfile('New profile');
-				s.transcriptionChapterPromptProfiles = [...profiles, created];
-				// Select the new profile so its fields open for editing.
-				s.transcriptionChapterPromptProfileId = created.id;
-				await ctx.save();
-				ctx.rerender();
-			}),
-	);
-	if (profiles.length > 0) {
-		selector.addExtraButton((button) =>
-			button
-				.setIcon('trash')
-				.setTooltip('Remove profile')
-				.onClick(async () => {
-					const next = removeChapterPromptProfile(
-						profiles,
-						editingId,
-					);
-					s.transcriptionChapterPromptProfiles = next;
-					// Fall back to the first remaining profile, or no guidance.
-					s.transcriptionChapterPromptProfileId = next[0]?.id ?? '';
-					await ctx.save();
-					ctx.rerender();
-				}),
-		);
-	}
-
-	const selected = findChapterPromptProfile(profiles, editingId);
-	if (!selected) {
-		// Empty list: the Add button above creates the first profile.
-		return;
-	}
-	addText(ctx, {
-		name: 'Profile name',
-		// Name and prompt edits mutate the live profile and save debounced, so
-		// the caret is kept; the selector label refreshes on the next re-render.
-		get: () => selected.name,
-		set: (v) => (selected.name = v),
-	});
-	addTextArea(ctx, {
-		name: 'Guidance prompt',
-		desc: 'How to divide the recording into chapters. Appended to the fixed base prompt; leave blank for the base behavior only.',
-		get: () => selected.prompt,
-		set: (v) => (selected.prompt = v),
-		rows: 6,
-	});
+interface ProfileManagerCopy<T extends Profile> {
+	/** Section heading, e.g. "Dictionary profiles". */
+	heading: string;
+	/** Description on the selector row. */
+	selectorDesc: string;
+	/** Default name given to a profile created from the add button. */
+	newProfileName: string;
+	/** Label and description of the profile's body field. */
+	bodyName: string;
+	bodyDesc: string;
+	/** Reads the profile's body text. */
+	body: (profile: T) => string;
+	/** Writes the profile's body text. */
+	setBody: (profile: T, value: string) => void;
 }
 
 /**
- * Renders the dictionary-profile manager: a selector plus a single editor for
- * the chosen profile's name and terms, with add and remove. The editor is
- * engine-independent (a profile is just stored text); whether and how the terms
- * bias recognition is decided at transcription time by planDictionaryBias. The
- * per-run profile (or None) is chosen in the Transcribe dialog and remembered.
+ * Renders a profile manager: a selector with add/remove buttons plus an editor
+ * for the selected profile's name and body. Shared by the dictionary and
+ * chapter-guidance sections, which differ only in their copy and in what their
+ * body field is called - the selection, fallback, and list mechanics are
+ * identical and were previously duplicated line for line.
  * @param ctx - The section context (container plus save/rerender hooks)
+ * @param list - Where this kind of profile lives in settings
+ * @param copy - The section's headings, descriptions, and body field
  */
-function renderDictionaryProfiles(ctx: SettingsSectionContext): void {
+function renderProfileManager<T extends Profile>(
+	ctx: SettingsSectionContext,
+	list: ProfileList<T>,
+	copy: ProfileManagerCopy<T>,
+): void {
 	const s = ctx.settings;
-	const profiles = s.transcriptionDictionaryProfiles;
-	addHeading(ctx, 'Dictionary profiles');
+	const profiles = list.get(s);
+	addHeading(ctx, copy.heading);
 
-	// The profile edited here is the persisted run selection when that is a real
-	// profile, otherwise the first profile (shown for editing without changing a
-	// stored None default until the user actually picks from the selector).
-	const editingId = findProfile(profiles, s.transcriptionDictionaryProfileId)
-		? s.transcriptionDictionaryProfileId
-		: (profiles[0]?.id ?? '');
+	// Edit the persisted run selection when it is a real profile, otherwise the
+	// first profile, so the editor always shows something without silently
+	// changing a stored "none" default.
+	const editingId = editingProfileId(profiles, list.selectedId(s));
 
 	const selector = new Setting(ctx.containerEl)
 		.setName('Profile')
-		.setDesc(
-			'Named glossaries of names, abbreviations, and domain terms. Pick one, ' +
-				'or None, per run in the Transcribe dialog; the last pick is remembered. ' +
-				'Whether the terms bias recognition depends on the selected engine, and ' +
-				'for Deepgram on the model; a run reports any terms it could not apply.',
-		);
+		.setDesc(copy.selectorDesc);
 	if (profiles.length > 0) {
 		selector.addDropdown((dropdown) => {
 			for (const profile of profiles) {
@@ -425,7 +349,7 @@ function renderDictionaryProfiles(ctx: SettingsSectionContext): void {
 			}
 			dropdown.setValue(editingId).onChange(async (id) => {
 				// Selecting a profile to edit also makes it the run default.
-				s.transcriptionDictionaryProfileId = id;
+				list.setSelectedId(s, id);
 				await ctx.save();
 				ctx.rerender();
 			});
@@ -436,10 +360,8 @@ function renderDictionaryProfiles(ctx: SettingsSectionContext): void {
 			.setIcon('plus')
 			.setTooltip('Add profile')
 			.onClick(async () => {
-				const created = createDictionaryProfile('New profile');
-				s.transcriptionDictionaryProfiles = [...profiles, created];
-				// Select the new profile so its fields open for editing.
-				s.transcriptionDictionaryProfileId = created.id;
+				// Selects the new profile so its fields open for editing.
+				addAndSelectProfile(list, s, copy.newProfileName);
 				await ctx.save();
 				ctx.rerender();
 			}),
@@ -450,10 +372,8 @@ function renderDictionaryProfiles(ctx: SettingsSectionContext): void {
 				.setIcon('trash')
 				.setTooltip('Remove profile')
 				.onClick(async () => {
-					const next = removeProfile(profiles, editingId);
-					s.transcriptionDictionaryProfiles = next;
-					// Fall back to the first remaining profile, or None.
-					s.transcriptionDictionaryProfileId = next[0]?.id ?? '';
+					// Falls back to the first remaining profile, or to none.
+					removeAndReselectProfile(list, s, editingId);
 					await ctx.save();
 					ctx.rerender();
 				}),
@@ -467,17 +387,65 @@ function renderDictionaryProfiles(ctx: SettingsSectionContext): void {
 	}
 	addText(ctx, {
 		name: 'Profile name',
-		// Name and terms edits mutate the live profile and save debounced, so the
+		// Name and body edits mutate the live profile and save debounced, so the
 		// caret is kept; the selector label refreshes on the next re-render.
 		get: () => selected.name,
 		set: (v) => (selected.name = v),
 	});
 	addTextArea(ctx, {
-		name: 'Terms',
-		desc: 'One term per line. A term may contain spaces; blank lines and case-insensitive duplicates are ignored.',
-		get: () => selected.terms,
-		set: (v) => (selected.terms = v),
+		name: copy.bodyName,
+		desc: copy.bodyDesc,
+		get: () => copy.body(selected),
+		set: (v) => copy.setBody(selected, v),
 		rows: 6,
+	});
+}
+
+/**
+ * The chapter-guidance profile manager. The selected profile's prompt is
+ * appended to the fixed chapter base prompt at generation time; the base rules
+ * and the JSON contract are never edited here, so a customized or added profile
+ * cannot break response parsing.
+ * @param ctx - The section context
+ */
+function renderChapterPromptProfiles(ctx: SettingsSectionContext): void {
+	renderProfileManager(ctx, CHAPTER_PROMPT_PROFILES, {
+		heading: 'Chapter guidance profiles',
+		selectorDesc:
+			'Named prompts describing how to divide a recording into chapters. ' +
+			'Pick one to steer chaptering for a given case; the guidance is ' +
+			'appended to the built-in chapter prompt. The response format is ' +
+			'fixed and not part of a profile, so editing one is safe.',
+		newProfileName: 'New profile',
+		bodyName: 'Guidance prompt',
+		bodyDesc:
+			'How to divide the recording into chapters. Appended to the fixed base prompt; leave blank for the base behavior only.',
+		body: (profile) => profile.prompt,
+		setBody: (profile, value) => (profile.prompt = value),
+	});
+}
+
+/**
+ * The dictionary-profile manager. The editor is engine-independent (a profile
+ * is just stored text); whether and how the terms bias recognition is decided
+ * at transcription time by planDictionaryBias. The per-run profile (or None) is
+ * chosen in the Transcribe dialog and remembered.
+ * @param ctx - The section context
+ */
+function renderDictionaryProfiles(ctx: SettingsSectionContext): void {
+	renderProfileManager(ctx, DICTIONARY_PROFILES, {
+		heading: 'Dictionary profiles',
+		selectorDesc:
+			'Named glossaries of names, abbreviations, and domain terms. Pick one, ' +
+			'or None, per run in the Transcribe dialog; the last pick is remembered. ' +
+			'Whether the terms bias recognition depends on the selected engine, and ' +
+			'for Deepgram on the model; a run reports any terms it could not apply.',
+		newProfileName: 'New profile',
+		bodyName: 'Terms',
+		bodyDesc:
+			'One term per line. A term may contain spaces; blank lines and case-insensitive duplicates are ignored.',
+		body: (profile) => profile.terms,
+		setBody: (profile, value) => (profile.terms = value),
 	});
 }
 

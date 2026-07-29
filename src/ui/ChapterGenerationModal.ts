@@ -18,7 +18,8 @@ import {
 	type TranscriptSectionReader,
 	type TranscriptLinesSource,
 } from '../chapters/transcriptSources';
-import { findChapterPromptProfile } from '../settings/chapterPromptProfiles';
+import { CHAPTER_PROMPT_PROFILES } from '../settings/chapterPromptProfiles';
+import { effectiveProfileId } from '../settings/profiles';
 import { ensureSelectedInList } from '../settings/modelList';
 import { ConfirmModal } from './ConfirmModal';
 import { LLM_PROVIDER_OPTIONS } from '../settings/labels';
@@ -158,13 +159,11 @@ export class ChapterGenerationModal extends Modal {
 	 * @param settings - Current plugin settings
 	 */
 	private renderProfilePicker(settings: AudioRecorderSettings): void {
-		const profiles = settings.transcriptionChapterPromptProfiles;
-		const current = findChapterPromptProfile(
+		const profiles = CHAPTER_PROMPT_PROFILES.get(settings);
+		const current = effectiveProfileId(
 			profiles,
-			settings.transcriptionChapterPromptProfileId,
-		)
-			? settings.transcriptionChapterPromptProfileId
-			: '';
+			CHAPTER_PROMPT_PROFILES.selectedId(settings),
+		);
 		new Setting(this.contentEl)
 			.setName('Chapter guidance profile')
 			.setDesc(
@@ -179,7 +178,7 @@ export class ChapterGenerationModal extends Modal {
 				dropdown.setValue(current).onChange((id) => {
 					// Applied in place; persisted only when the user generates
 					// (see runGeneration), reverted on cancel (see onClose).
-					settings.transcriptionChapterPromptProfileId = id;
+					CHAPTER_PROMPT_PROFILES.setSelectedId(settings, id);
 				});
 			});
 	}

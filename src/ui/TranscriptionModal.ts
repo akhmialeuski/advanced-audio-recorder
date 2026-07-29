@@ -55,8 +55,9 @@ import {
 	type TranscriptOutputSidecar,
 } from '../transcription/api';
 import type { Transcript } from '../transcription/TranscriptTypes';
-import { findProfile } from '../settings/dictionaryProfiles';
-import { findChapterPromptProfile } from '../settings/chapterPromptProfiles';
+import { DICTIONARY_PROFILES } from '../settings/dictionaryProfiles';
+import { CHAPTER_PROMPT_PROFILES } from '../settings/chapterPromptProfiles';
+import { effectiveProfileId } from '../settings/profiles';
 import type { SaveProgress } from '../types';
 
 /** Default status label shown before the engine reports a finer-grained stage. */
@@ -384,14 +385,12 @@ export class TranscriptionModal extends Modal {
 			rerender: true,
 		});
 		if (s.transcriptionAdvancedSettingsEnabled) {
-			const profiles = s.transcriptionDictionaryProfiles;
+			const profiles = DICTIONARY_PROFILES.get(s);
 			// A stored id whose profile was removed reads as None here.
-			const selectedProfileId = findProfile(
+			const selectedProfileId = effectiveProfileId(
 				profiles,
-				s.transcriptionDictionaryProfileId,
-			)
-				? s.transcriptionDictionaryProfileId
-				: '';
+				DICTIONARY_PROFILES.selectedId(s),
+			);
 			addDropdown(ctx, {
 				name: 'Dictionary',
 				desc: providerSupportsDictionary(s.transcriptionProvider)
@@ -408,7 +407,7 @@ export class TranscriptionModal extends Modal {
 				set: (v) => {
 					// Affects this run (runSettings clone); persist as the
 					// remembered choice for the next dialog and transcribe-on-save.
-					s.transcriptionDictionaryProfileId = v;
+					DICTIONARY_PROFILES.setSelectedId(s, v);
 					void this.options.onProfileSelected?.(v);
 				},
 			});
@@ -494,14 +493,12 @@ export class TranscriptionModal extends Modal {
 				rerender: true,
 			});
 			if (s.transcriptionAutoChaptersOnTranscribe) {
-				const chapterProfiles = s.transcriptionChapterPromptProfiles;
+				const chapterProfiles = CHAPTER_PROMPT_PROFILES.get(s);
 				// A stored id whose profile was removed reads as None here.
-				const selectedChapterProfileId = findChapterPromptProfile(
+				const selectedChapterProfileId = effectiveProfileId(
 					chapterProfiles,
-					s.transcriptionChapterPromptProfileId,
-				)
-					? s.transcriptionChapterPromptProfileId
-					: '';
+					CHAPTER_PROMPT_PROFILES.selectedId(s),
+				);
 				// Compact one-line picker (no description) so the section does
 				// not grow tall; the guidance profile steers the chaptering.
 				addDropdown(ctx, {
@@ -517,7 +514,7 @@ export class TranscriptionModal extends Modal {
 					set: (v) => {
 						// Affects this run and, persisted, the after-transcription
 						// generation which reads the plugin settings.
-						s.transcriptionChapterPromptProfileId = v;
+						CHAPTER_PROMPT_PROFILES.setSelectedId(s, v);
 						void this.options.onChapterProfileSelected?.(v);
 					},
 				});

@@ -7,10 +7,10 @@ import {
 	addParticipantsToProfile,
 	addSpeakerProfile,
 	createSpeakerProfile,
-	findSpeakerProfile,
 	normalizeParticipants,
-	removeSpeakerProfile,
+	participantsOf,
 } from 'src/settings/speakerProfiles';
+import { mergeSettings } from 'src/settings/settingsSerialization';
 
 describe('speakerProfiles', () => {
 	describe('normalizeParticipants', () => {
@@ -40,13 +40,24 @@ describe('speakerProfiles', () => {
 		});
 	});
 
-	describe('findSpeakerProfile / removeSpeakerProfile', () => {
-		it('finds and removes by id', () => {
-			const profiles = addSpeakerProfile([], 'Standup');
-			const id = profiles[0]?.id ?? '';
-			expect(findSpeakerProfile(profiles, id)?.name).toBe('Standup');
-			expect(removeSpeakerProfile(profiles, id)).toEqual([]);
-			expect(findSpeakerProfile(profiles, 'missing')).toBeUndefined();
+	describe('participantsOf', () => {
+		it("returns the named profile's participants", () => {
+			const settings = mergeSettings({
+				transcriptionSpeakerProfiles: [
+					{ id: 'p1', name: 'Sync', participants: ['Alex', 'Maria'] },
+				],
+			});
+			expect(participantsOf(settings, 'p1')).toEqual(['Alex', 'Maria']);
+		});
+
+		it('returns no suggestions for none or a removed profile', () => {
+			const settings = mergeSettings({
+				transcriptionSpeakerProfiles: [
+					{ id: 'p1', name: 'Sync', participants: ['Alex'] },
+				],
+			});
+			expect(participantsOf(settings, '')).toEqual([]);
+			expect(participantsOf(settings, 'gone')).toEqual([]);
 		});
 	});
 
