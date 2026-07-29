@@ -37,7 +37,7 @@ import {
 	hasUnscopableRecordedNote,
 	type SpeakerRenameApplyResult,
 } from '../speakers/applySpeakerRenames';
-import { ParticipantSuggest } from './ParticipantSuggest';
+import { TextInputSuggest } from './TextInputSuggest';
 
 /**
  * The slice of the recording sidecar store the dialog needs: read the
@@ -156,7 +156,7 @@ export class SpeakerRenameModal extends PluginModal {
 						text.setValue(name);
 					}
 					this.inputs.set(label, text.inputEl);
-					new ParticipantSuggest(this.app, text.inputEl, () =>
+					new TextInputSuggest(this.app, text.inputEl, () =>
 						this.suggestionPool(),
 					);
 				});

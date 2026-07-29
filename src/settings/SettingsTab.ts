@@ -52,7 +52,7 @@ import {
 } from '../recording/AudioStreamHandler';
 import { getEncoderDescription } from '../ui/formatDescriptions';
 import { TestRecorder } from '../recording/TestRecorder';
-import { FolderSuggest } from './FolderSuggest';
+import { TextInputSuggest } from '../ui/TextInputSuggest';
 import {
 	DEFAULT_SPLIT_PART_SUFFIX,
 	MIN_SPLIT_CHUNK_MINUTES,
@@ -548,15 +548,15 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		addHeading(storageCtx, 'File storage');
 
 		// The save folder keeps its own builder: the field carries a
-		// FolderSuggest bound to the live vault folder list, which the shared
-		// text control has no hook for.
+		// TextInputSuggest bound to the live vault folder list, which the
+		// shared text control has no hook for.
 		new Setting(containerEl)
 			.setName('Save folder')
 			.setDesc(
 				'Specify where recordings are saved in your vault. Existing folders are suggested as you type.',
 			)
 			.addText((text) => {
-				new FolderSuggest(this.app, text.inputEl, () =>
+				new TextInputSuggest(this.app, text.inputEl, () =>
 					this.getFolderOptions(),
 				);
 				text.setValue(settings.saveFolder);
