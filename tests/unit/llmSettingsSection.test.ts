@@ -11,7 +11,7 @@
 import { renderLlmSection } from 'src/settings/sections/llmSettingsSection';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { LLM_PROVIDER_IDS } from 'src/constants';
-import { DEFAULT_LLM_BASE_URLS } from 'src/transcription/llm/vendors';
+import { llmVendor } from 'src/transcription/llm/vendors';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import type { SettingsSectionContext } from 'src/settings/settingControls';
 import {
@@ -200,8 +200,8 @@ describe('renderLlmSection vendor binding', () => {
 		const { settings, ctx } = render({
 			llmPostProcessEnabled: true,
 			llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
-			llmBaseUrl:
-				DEFAULT_LLM_BASE_URLS[LLM_PROVIDER_IDS.OPENAI_COMPATIBLE],
+			llmBaseUrl: llmVendor(LLM_PROVIDER_IDS.OPENAI_COMPATIBLE)
+				.defaultBaseUrl,
 		});
 
 		await changeSetting(
@@ -214,7 +214,7 @@ describe('renderLlmSection vendor binding', () => {
 		// Leaving the OpenAI URL behind would point Anthropic requests at the
 		// wrong host, with a confusing 404 as the only symptom.
 		expect(settings.llmBaseUrl).toBe(
-			DEFAULT_LLM_BASE_URLS[LLM_PROVIDER_IDS.ANTHROPIC],
+			llmVendor(LLM_PROVIDER_IDS.ANTHROPIC).defaultBaseUrl,
 		);
 		expect(ctx.rerender).toHaveBeenCalled();
 	});

@@ -21,7 +21,7 @@ import {
 } from 'src/constants';
 import { decodeAudioBlob } from 'src/audio/AudioFormatConverter';
 import { createMockAudioBuffer } from '../helpers/createMockAudioBuffer';
-import { at } from '../helpers/assertions';
+import { at, defined } from '../helpers/assertions';
 
 jest.mock('src/audio/AudioFormatConverter', () => ({
 	decodeAudioBlob: jest.fn(),
@@ -229,7 +229,7 @@ describe('decodeToMono16k', () => {
 
 		const samples = await decodeToMono16k(new ArrayBuffer(8));
 
-		const context = at([FakeOfflineAudioContext.last], 0, 'context');
+		const context = defined(FakeOfflineAudioContext.last, 'context');
 		expect(context.channels).toBe(1);
 		expect(context.sampleRate).toBe(TRANSCRIBE_SAMPLE_RATE);
 		// 2 s of 48 kHz stereo resamples to 2 s of 16 kHz mono.
