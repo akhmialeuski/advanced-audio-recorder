@@ -70,7 +70,9 @@ describe('WhisperApiProvider advanced bias', () => {
 			biasPrompt: BIAS_SENTENCE,
 		});
 
-		const decoded = new TextDecoder().decode(calls[0].body as ArrayBuffer);
+		const decoded = new TextDecoder().decode(
+			at(calls, 0).body as ArrayBuffer,
+		);
 		expect(decoded).toContain('name="prompt"');
 		expect(decoded).toContain(BIAS_SENTENCE);
 		// The sentence replaces the comma-joined dictionary prompt; only one
@@ -116,7 +118,7 @@ describe('DeepgramProvider advanced bias', () => {
 			keyterms: ['Kubernetes', 'CI/CD'],
 		});
 
-		const params = new URL(calls[0].url).searchParams;
+		const params = new URL(at(calls, 0).url).searchParams;
 		// Generated context first (it wins when limits trim), the dictionary
 		// after it, and the case-insensitive duplicate sent only once.
 		expect(params.getAll('keyterm')).toEqual([
@@ -135,7 +137,7 @@ describe('DeepgramProvider advanced bias', () => {
 			keyterms: ['Kubernetes', 'CI/CD'],
 		});
 
-		const params = new URL(calls[0].url).searchParams;
+		const params = new URL(at(calls, 0).url).searchParams;
 		expect(params.getAll('keywords')).toEqual(['Kubernetes', 'CI/CD']);
 		expect(params.getAll('keyterm')).toEqual([]);
 	});

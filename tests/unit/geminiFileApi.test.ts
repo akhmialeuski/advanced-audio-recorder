@@ -12,6 +12,7 @@ import {
 	uploadFile,
 	waitUntilActive,
 } from 'src/transcription/providers/geminiFileApi';
+import { at } from '../helpers/assertions';
 import {
 	GEMINI_FILE_MAX_WAIT_MS,
 	GEMINI_FILE_MIN_WAIT_MS,
@@ -71,10 +72,10 @@ describe('uploadFile', () => {
 			uri: 'https://files.example/abc',
 			state: 'ACTIVE',
 		});
-		expect(calls[0].url).toBe(`${BASE_URL}/upload/v1beta/files`);
-		expect(calls[0].headers?.['X-Goog-Upload-Command']).toBe('start');
-		expect(calls[1].url).toBe('https://upload.example/session');
-		expect(calls[1].headers?.['X-Goog-Upload-Command']).toBe(
+		expect(at(calls, 0).url).toBe(`${BASE_URL}/upload/v1beta/files`);
+		expect(at(calls, 0).headers?.['X-Goog-Upload-Command']).toBe('start');
+		expect(at(calls, 1).url).toBe('https://upload.example/session');
+		expect(at(calls, 1).headers?.['X-Goog-Upload-Command']).toBe(
 			'upload, finalize',
 		);
 	});

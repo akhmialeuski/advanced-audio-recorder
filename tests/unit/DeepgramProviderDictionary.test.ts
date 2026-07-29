@@ -7,6 +7,7 @@
  */
 
 import { DeepgramProvider } from 'src/transcription/providers/DeepgramProvider';
+import { at } from '../helpers/assertions';
 import type { AudioPayload } from 'src/transcription/providers/TranscriptionProvider';
 import {
 	DEEPGRAM_KEYTERM_LIMIT,
@@ -53,7 +54,7 @@ function capture(): MockRequestUrlParam[] {
 }
 
 function queryOf(calls: MockRequestUrlParam[]): URLSearchParams {
-	return new URL(calls[0].url).searchParams;
+	return new URL(at(calls, 0).url).searchParams;
 }
 
 afterEach(() => {

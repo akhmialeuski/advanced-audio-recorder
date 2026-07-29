@@ -383,7 +383,7 @@ describe('SplitModal', () => {
 			expect.stringContaining('"recording-part1.wav"'),
 		);
 
-		mockCapturedControls.texts[0]('seg');
+		at(mockCapturedControls.texts, 0)('seg');
 		expect(collectDescs()).toContainEqual(
 			expect.stringContaining('"recording-seg1.wav"'),
 		);
@@ -510,13 +510,13 @@ describe('SplitModal', () => {
 		durationInput.dispatchEvent(new Event('change'));
 		expect(internals(modal).partMinutes).toBe(5);
 
-		mockCapturedControls.texts[0]('seg');
+		at(mockCapturedControls.texts, 0)('seg');
 		expect(internals(modal).partSuffix).toBe('seg');
 
-		mockCapturedControls.toggles[0](true);
+		at(mockCapturedControls.toggles, 0)(true);
 		expect(internals(modal).deleteSource).toBe(true);
 
-		mockCapturedControls.dropdowns[0]('after');
+		at(mockCapturedControls.dropdowns, 0)('after');
 		expect(internals(modal).linkAction).toBe('after');
 	});
 
@@ -547,7 +547,7 @@ describe('SplitModal', () => {
 		// Compressed source: bitrate dropdown plus link-action dropdown
 		expect(mockCapturedControls.dropdowns).toHaveLength(2);
 
-		mockCapturedControls.dropdowns[0]('192000');
+		at(mockCapturedControls.dropdowns, 0)('192000');
 		expect((modal as unknown as { bitrate: number }).bitrate).toBe(192000);
 	});
 
