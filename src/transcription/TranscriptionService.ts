@@ -64,6 +64,7 @@ import { resolveDictionaryTermList } from '../settings/dictionaryProfiles';
 import { createLlmProvider, createTranscriptionProvider } from './factories';
 import { effectiveDiarize } from './providers/capabilities';
 import type { LlmProvider } from './llm/LlmProvider';
+import { runLlmStep, type LlmCostSink } from './llm/llmStep';
 import type { Transcript, TranscriptionUsage } from './TranscriptTypes';
 import {
 	costFromUsage,
@@ -168,6 +169,12 @@ export interface TranscriptionSidecarAccess {
  * deterministic providers; defaults build the real providers from settings.
  */
 export interface TranscriptionServiceDeps {
+	/**
+	 * Where the run reports the estimated cost of each LLM call it makes (the
+	 * post-processing pass and the advanced context agents). Absent, the run
+	 * still works and simply accounts nothing.
+	 */
+	costSink?: LlmCostSink;
 	/** Builds the transcription provider from settings. */
 	createProvider?: (settings: AudioRecorderSettings) => TranscriptionProvider;
 	/** Builds the LLM post-processing provider from settings. */
@@ -184,6 +191,8 @@ export class TranscriptionService {
 	private readonly createLlm: (
 		settings: AudioRecorderSettings,
 	) => LlmProvider;
+	/** Where LLM spending is reported; undefined when nothing accounts it. */
+	private readonly costSink: LlmCostSink | undefined;
 
 	constructor(
 		private readonly app: App,
@@ -193,6 +202,7 @@ export class TranscriptionService {
 		this.createProvider =
 			deps.createProvider ?? createTranscriptionProvider;
 		this.createLlm = deps.createLlm ?? createLlmProvider;
+		this.costSink = deps.costSink;
 	}
 
 	/**
@@ -452,6 +462,9 @@ export class TranscriptionService {
 								settings.transcriptionProvider,
 							) === 'prompt',
 						isCancelled: () => token.isCancelled(),
+						settings,
+						durationSeconds: stitched.segments.at(-1)?.end ?? null,
+						costSink: this.costSink,
 					});
 					const bias = context
 						? planAdvancedBias(
@@ -896,7 +909,17 @@ export class TranscriptionService {
 				glossary: resolveDictionaryTermList(settings),
 			},
 		);
-		const output = await llm.complete(prompt, settings.llmMaxTokens);
+		const output = await runLlmStep({
+			step: 'postProcess',
+			llm,
+			prompt,
+			maxTokens: settings.llmMaxTokens,
+			settings,
+			// The transcript is what the pass reads, so its extent sizes the
+			// estimate exactly as the pre-run breakdown does.
+			durationSeconds: transcript.segments.at(-1)?.end ?? null,
+			costSink: this.costSink,
+		});
 		if (!output) {
 			return markdown;
 		}

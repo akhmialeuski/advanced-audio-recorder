@@ -44,7 +44,9 @@ export class AudioProcessingModal extends PluginModal {
 	/**
 	 * @param app - Obsidian app handle
 	 * @param file - Source audio file to clean up
-	 * @param settings - Plugin settings (seed the default stage config)
+	 * @param getSettings - Returns plugin settings (seed the default stage
+	 *   config). A live accessor rather than a snapshot, so every dialog reads
+	 *   settings the same way.
 	 * @param onProcessed - Called after a successful write, before the source is
 	 *   trashed, so a caller can link the result into the note while the source
 	 *   embed still resolves. `replaceSource` mirrors the delete-source choice.
@@ -52,14 +54,14 @@ export class AudioProcessingModal extends PluginModal {
 	constructor(
 		app: App,
 		private readonly file: TFile,
-		settings: AudioRecorderSettings,
+		getSettings: () => AudioRecorderSettings,
 		private readonly onProcessed?: (result: {
 			outputPath: string;
 			replaceSource: boolean;
 		}) => void | Promise<void>,
 	) {
 		super(app);
-		this.config = resolveAudioDspConfig(settings);
+		this.config = resolveAudioDspConfig(getSettings());
 	}
 
 	override onOpen(): void {

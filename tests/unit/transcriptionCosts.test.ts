@@ -429,6 +429,13 @@ describe('formatUsd', () => {
 		expect(formatUsd(0.043)).toBe('$0.04');
 		expect(formatUsd(1.5)).toBe('$1.50');
 	});
+
+	it('does not render a negative amount as sub-cent', () => {
+		// The sub-cent form is about small positive amounts; a bare `< 0.005`
+		// test also caught negatives and would have shown -$5.00 as "<$0.01".
+		expect(formatUsd(-5)).toBe('$-5.00');
+		expect(formatUsd(-0.001)).toBe('$-0.00');
+	});
 });
 
 describe('estimateStepCost: postProcess', () => {

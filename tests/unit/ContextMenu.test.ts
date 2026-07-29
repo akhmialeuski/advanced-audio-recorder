@@ -13,6 +13,7 @@ import { FILE_ACTIONS } from 'src/actions/fileActions';
 import { AUDIO_EXTENSIONS } from 'src/constants';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import * as AudioFileAnalyzer from 'src/utils/AudioFileAnalyzer';
+import { at } from '../helpers/assertions';
 import {
 	App,
 	Menu,
@@ -333,7 +334,7 @@ describe('ContextMenu', () => {
 			).toHaveLength(1);
 		});
 
-		it('opens SplitModal with the current settings from "Split audio into parts"', async () => {
+		it('opens SplitModal with a live settings accessor from "Split audio into parts"', async () => {
 			const { SplitModal } = jest.requireMock('src/ui/SplitModal');
 			const menu = new Menu();
 			const file = makeAudioFile();
@@ -344,9 +345,16 @@ describe('ContextMenu', () => {
 			expect(SplitModal).toHaveBeenCalledWith(
 				mockApp,
 				file,
-				expect.objectContaining({
-					deleteSourceAfterConversion: true,
-				}),
+				expect.any(Function),
+			);
+			// Every dialog takes an accessor rather than a snapshot, so it reads
+			// the settings that are current when it opens.
+			const getSettings = at(
+				(SplitModal as jest.Mock).mock.calls,
+				0,
+			)[2] as () => AudioRecorderSettings;
+			expect(getSettings()).toEqual(
+				expect.objectContaining({ deleteSourceAfterConversion: true }),
 			);
 		});
 
@@ -363,7 +371,7 @@ describe('ContextMenu', () => {
 			expect(AudioProcessingModal).toHaveBeenCalledWith(
 				mockApp,
 				file,
-				expect.any(Object),
+				expect.any(Function),
 				expect.any(Function),
 			);
 		});

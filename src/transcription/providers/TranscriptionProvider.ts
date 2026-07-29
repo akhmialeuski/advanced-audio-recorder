@@ -7,6 +7,7 @@
  * @module transcription/providers/TranscriptionProvider
  */
 
+import type { TranscriptionProviderId } from '../../settings/settingsSchema';
 import type { WhisperResult } from './whisperResponse';
 
 /** Options for a single transcription call. */
@@ -128,8 +129,12 @@ export interface ProviderCapabilities {
 
 /** A provider that transcribes a single audio payload. */
 export interface TranscriptionProvider {
-	/** Stable identifier for diagnostics. */
-	readonly id: string;
+	/**
+	 * The engine this provider implements. Typed as the settings id rather
+	 * than a bare string, so an implementation cannot claim an id the settings
+	 * (and therefore the engine registry) do not know about.
+	 */
+	readonly id: TranscriptionProviderId;
 	/** Human-readable label. */
 	readonly label: string;
 	/** Whether the provider makes network calls (affects availability). */

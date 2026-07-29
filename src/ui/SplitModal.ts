@@ -49,8 +49,13 @@ export class SplitModal extends PluginModal {
 	/** Split pipeline behind the form. */
 	private readonly splitService: SplitService;
 
-	constructor(app: App, sourceFile: TFile, settings: AudioRecorderSettings) {
+	constructor(
+		app: App,
+		sourceFile: TFile,
+		getSettings: () => AudioRecorderSettings,
+	) {
 		super(app);
+		const settings = getSettings();
 		this.splitService = new SplitService(app);
 		this.sourceFile = sourceFile;
 		this.partMinutes = clampSplitMinutes(settings.splitChunkMinutes);

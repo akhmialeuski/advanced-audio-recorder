@@ -29,6 +29,8 @@ import { PLUGIN_LOG_PREFIX } from '../../constants';
 import { dedupeTerms } from '../dictionary';
 import { WHISPER_PROMPT_TOKEN_LIMIT, tokenUpperBound } from '../dictionaryBias';
 import type { LlmProvider } from '../llm/LlmProvider';
+import { runLlmStep, type LlmCostSink } from '../llm/llmStep';
+import type { AudioRecorderSettings } from '../../settings/settingsSchema';
 import type { Transcript } from '../TranscriptTypes';
 
 /**
@@ -138,6 +140,16 @@ export interface ContextPipelineOptions {
 	buildPromptSentence?: boolean;
 	/** Cancellation probe checked before each agent call. */
 	isCancelled?: () => boolean;
+	/**
+	 * The run's settings, used to price each agent call. Required to account
+	 * the agents' spending; without it the calls still run and are simply not
+	 * recorded.
+	 */
+	settings?: AudioRecorderSettings;
+	/** Extent of the draft the agents read, in seconds, for that pricing. */
+	durationSeconds?: number | null;
+	/** Where each agent call reports its estimated cost. */
+	costSink?: LlmCostSink;
 }
 
 /** Raised when the caller's cancellation probe fires between agent calls. */
@@ -609,8 +621,26 @@ export async function generateContext(
 	): Promise<string | null> => {
 		throwIfCancelled();
 		try {
-			return await llm.complete({ system, user }, maxTokens, {
-				temperature: CONTEXT_AGENT_TEMPERATURE,
+			// Through the accounted step, so the agents' spend reaches the
+			// session total instead of being invisible after the run.
+			const settings = options.settings;
+			if (!settings) {
+				// No settings to price from: run the call unaccounted rather
+				// than refuse it, so a caller that does not track spending
+				// (tests, and any future non-run use) still works.
+				return await llm.complete({ system, user }, maxTokens, {
+					temperature: CONTEXT_AGENT_TEMPERATURE,
+				});
+			}
+			return await runLlmStep({
+				step: 'contextAgents',
+				llm,
+				prompt: { system, user },
+				maxTokens,
+				options: { temperature: CONTEXT_AGENT_TEMPERATURE },
+				settings,
+				durationSeconds: options.durationSeconds ?? null,
+				costSink: options.costSink,
 			});
 		} catch (error) {
 			console.warn(

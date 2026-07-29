@@ -53,7 +53,7 @@ function openModal(
 	const modal = new AudioProcessingModal(
 		app,
 		makeFile(),
-		settings,
+		() => settings,
 		onProcessed,
 	);
 	modal.onOpen();

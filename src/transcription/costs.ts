@@ -326,7 +326,11 @@ export function formatUsd(usd: number): string {
 	if (usd === 0) {
 		return '$0.00';
 	}
-	if (usd < 0.005) {
+	// The sub-cent form applies to small *positive* amounts. Testing `usd <
+	// 0.005` alone also caught negatives, so a -$5.00 would have rendered as
+	// "<$0.01" - unreachable today, but the kind of silent wrong number this
+	// module exists to avoid.
+	if (usd > 0 && usd < 0.005) {
 		return '<$0.01';
 	}
 	return `$${usd.toFixed(2)}`;

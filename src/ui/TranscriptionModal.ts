@@ -625,14 +625,14 @@ export class TranscriptionModal extends PluginModal {
 		}
 		// Every line past the transcription one is an LLM step (context agents,
 		// post-processing, chapters), billed by the LLM provider, which reports
-		// no usage. Those are priced in this pre-run estimate but never added to
-		// the session counter or the post-run "Transcription cost" notice, so say
-		// so here to keep the smaller amount reported after the run from reading
-		// as a discrepancy.
+		// no usage. They are priced from the same step model both here and when
+		// they run, and they do reach the session total - so the only caveat
+		// left is that their share of it is an estimate rather than a
+		// provider-reported figure.
 		if (estimate.lines.length > 1) {
 			el.createDiv({
 				cls: 'aar-transcribe-cost-note',
-				text: 'The LLM steps above are billed separately by their provider and are not added to the session total.',
+				text: 'The LLM steps above are billed by their own provider, which reports no usage, so their share of the session total is estimated.',
 			});
 		}
 		this.renderPricingLinks(el, estimate);
@@ -830,6 +830,10 @@ export class TranscriptionModal extends PluginModal {
 						}
 					},
 				},
+				// The run's LLM steps (context agents, post-processing) bill the
+				// LLM provider, which reports no usage; they report their
+				// estimated cost to the same session counter.
+				{ costSink: this.options.costTracker },
 			);
 			const usd = this.accountRunCost(settings, result.cost);
 			accounted = true;

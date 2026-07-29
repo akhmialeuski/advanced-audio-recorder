@@ -58,7 +58,9 @@ export class ConversionModal extends PluginModal {
 	/**
 	 * @param app - Obsidian app handle
 	 * @param sourceFile - Audio file to convert
-	 * @param settings - Plugin settings (seed format/bitrate/link defaults)
+	 * @param getSettings - Returns plugin settings (seed format/bitrate/link
+	 * defaults). A live accessor rather than a snapshot, so every dialog reads
+	 * settings the same way.
 	 * @param options - Optional callback, worker supplier, and initial channel
 	 * mode. A named object keeps future callers from depending on positional
 	 * argument order.
@@ -66,10 +68,11 @@ export class ConversionModal extends PluginModal {
 	constructor(
 		app: App,
 		sourceFile: TFile,
-		settings: AudioRecorderSettings,
+		getSettings: () => AudioRecorderSettings,
 		options: ConversionModalOptions = {},
 	) {
 		super(app);
+		const settings = getSettings();
 		this.sourceFile = sourceFile;
 		this.deleteSource = settings.deleteSourceAfterConversion;
 		this.linkAction = settings.conversionLinkAction;
