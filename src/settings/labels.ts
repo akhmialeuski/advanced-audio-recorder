@@ -14,7 +14,11 @@ import type {
 	TranscriptFileFormat,
 } from '../transcription/TranscriptTypes';
 import type { LlmTask } from '../transcription/llmPostProcess';
-import type { LlmProviderId, TranscriptionProviderId } from './settingsSchema';
+import type {
+	ConversionLinkAction,
+	LlmProviderId,
+	TranscriptionProviderId,
+} from './settingsSchema';
 
 /**
  * Display labels for each transcription engine, derived from the engine
@@ -48,6 +52,20 @@ export const TRANSCRIPT_FILE_FORMAT_LABELS: Record<
 	srt: 'SubRip (.srt)',
 	vtt: 'WebVTT (.vtt)',
 	txt: 'Plain text (.txt)',
+};
+
+/**
+ * Display labels for what a conversion or split does to the source file's
+ * links in notes. Shared by the settings tab and the two dialogs, which each
+ * used to hard-code the same three value/label pairs.
+ */
+export const CONVERSION_LINK_ACTION_LABELS: Record<
+	ConversionLinkAction,
+	string
+> = {
+	none: 'Do nothing',
+	replace: 'Replace source link',
+	after: 'Insert after source link',
 };
 
 /** Display labels for each LLM post-processing task (single source for UI). */
@@ -137,3 +155,8 @@ export const LLM_TASK_OPTIONS = optionsFromLabels(LLM_TASK_LABELS);
 
 /** LLM-provider dropdown options, derived from the provider label map. */
 export const LLM_PROVIDER_OPTIONS = optionsFromLabels(LLM_PROVIDER_LABELS);
+
+/** Link-action dropdown options, derived from the link-action label map. */
+export const CONVERSION_LINK_ACTION_OPTIONS = optionsFromLabels(
+	CONVERSION_LINK_ACTION_LABELS,
+);

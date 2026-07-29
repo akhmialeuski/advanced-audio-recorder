@@ -63,6 +63,7 @@ import {
 import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
 import { SystemInfoModal } from '../diagnostics/SystemInfoModal';
 import { renderTranscriptionSection } from './sections/transcriptionSettingsSection';
+import { CONVERSION_LINK_ACTION_OPTIONS } from './labels';
 import { addNumberInputTo, SETTING_DISABLED_CLASS } from './settingControls';
 import {
 	isAutoSplitSupported,
@@ -524,9 +525,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				'How to handle links to the source file in notes after conversion.',
 			)
 			.addDropdown((dropdown) => {
-				dropdown.addOption('none', 'Do nothing');
-				dropdown.addOption('replace', 'Replace source link');
-				dropdown.addOption('after', 'Insert after source link');
+				for (const option of CONVERSION_LINK_ACTION_OPTIONS) {
+					dropdown.addOption(option.value, option.label);
+				}
 				dropdown.setValue(this.plugin.settings.conversionLinkAction);
 				dropdown.onChange(async (value) => {
 					this.plugin.settings.conversionLinkAction =

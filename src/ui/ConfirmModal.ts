@@ -5,8 +5,8 @@
  * @module ui/ConfirmModal
  */
 
-import { Modal } from 'obsidian';
 import type { App } from 'obsidian';
+import { PluginModal } from './PluginModal';
 
 /** Text and callback for the confirmation dialog. */
 export interface ConfirmModalOptions {
@@ -23,7 +23,7 @@ export interface ConfirmModalOptions {
 /**
  * Yes/no confirmation dialog.
  */
-export class ConfirmModal extends Modal {
+export class ConfirmModal extends PluginModal {
 	constructor(
 		app: App,
 		private readonly options: ConfirmModalOptions,
@@ -32,26 +32,23 @@ export class ConfirmModal extends Modal {
 	}
 
 	override onOpen(): void {
-		this.setTitle(this.options.title);
+		this.setDialogTitle(this.options.title);
 		this.contentEl.createEl('p', { text: this.options.message });
-		const actions = this.contentEl.createDiv({
-			cls: 'modal-button-container',
-		});
-		const confirmButton = actions.createEl('button', {
-			cls: 'mod-warning',
-			text: this.options.confirmText,
-		});
-		confirmButton.addEventListener('click', () => {
-			this.close();
-			this.options.onConfirm();
-		});
-		const cancelButton = actions.createEl('button', { text: 'Cancel' });
-		cancelButton.addEventListener('click', () => {
-			this.close();
-		});
-	}
-
-	override onClose(): void {
-		this.contentEl.empty();
+		this.renderActions(
+			{
+				text: this.options.confirmText,
+				destructive: true,
+				onClick: () => {
+					this.close();
+					this.options.onConfirm();
+				},
+			},
+			{
+				text: 'Cancel',
+				onClick: () => {
+					this.close();
+				},
+			},
+		);
 	}
 }

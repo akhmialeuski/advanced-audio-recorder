@@ -6,7 +6,8 @@
  * @module cleanup/AudioProcessingModal
  */
 
-import { App, ButtonComponent, Modal, Notice, Setting, TFile } from 'obsidian';
+import { App, ButtonComponent, Notice, Setting, TFile } from 'obsidian';
+import { PluginModal } from '../ui/PluginModal';
 import { addNumberInputTo } from '../settings/settingControls';
 import {
 	MIN_CLEANUP_HIGHPASS_HZ,
@@ -36,10 +37,9 @@ import type { AudioRecorderSettings } from '../settings/settingsSchema';
 /**
  * Audio-cleanup dialog for a single file.
  */
-export class AudioProcessingModal extends Modal {
+export class AudioProcessingModal extends PluginModal {
 	private readonly config: AudioDspConfig;
 	private deleteSource = false;
-	private processing = false;
 
 	/**
 	 * @param app - Obsidian app handle
@@ -65,8 +65,8 @@ export class AudioProcessingModal extends Modal {
 	override onOpen(): void {
 		const { contentEl } = this;
 		contentEl.empty();
-		new Setting(contentEl).setName('Clean up audio').setHeading();
-		contentEl.createEl('p', { text: `Source: ${this.file.name}` });
+		this.setDialogTitle('Clean up audio');
+		this.renderSource(this.file);
 		contentEl.createEl('p', {
 			cls: 'aar-modal-config',
 			text: 'Produces a processed WAV copy next to the source.',
@@ -145,18 +145,29 @@ export class AudioProcessingModal extends Modal {
 			);
 
 		const status = contentEl.createDiv({ cls: 'aar-modal-status' });
-		new Setting(contentEl)
-			.addButton((button) =>
-				button
-					.setButtonText('Process')
-					.setCta()
-					.onClick(() => {
-						void this.run(status, button);
-					}),
-			)
-			.addButton((button) =>
-				button.setButtonText('Cancel').onClick(() => this.close()),
-			);
+		let processButton: ButtonComponent | null = null;
+		this.renderActions(
+			{
+				text: 'Process',
+				cta: true,
+				ref: (button) => {
+					processButton = button;
+				},
+				onClick: async () => {
+					// The ref runs while the row is built, so the button always
+					// exists by the time a click can reach this.
+					if (processButton) {
+						await this.run(status, processButton);
+					}
+				},
+			},
+			{
+				text: 'Cancel',
+				onClick: () => {
+					this.close();
+				},
+			},
+		);
 	}
 
 	/**
@@ -202,69 +213,65 @@ export class AudioProcessingModal extends Modal {
 		status: HTMLElement,
 		button: ButtonComponent,
 	): Promise<void> {
-		if (this.processing) {
-			return;
-		}
 		if (!hasActiveChange(this.config)) {
 			new Notice(
 				'Enable at least one processing stage, or choose a mono channel option.',
 			);
 			return;
 		}
-		this.processing = true;
-		button.setDisabled(true);
-		status.setText('Processing...');
-		// Yield once so the "Processing..." label paints before the
-		// synchronous decode/gate work briefly occupies the main thread.
-		await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
-		try {
-			const service = new AudioProcessingService(this.app);
-			const outputPath = await service.process(this.file, this.config);
-			// Link the result into the note before the source is trashed, so the
-			// source embed still resolves when it is matched and replaced. A
-			// failure here is non-fatal: the processed file is already written.
-			if (this.onProcessed) {
-				try {
-					await this.onProcessed({
-						outputPath,
-						replaceSource: this.deleteSource,
-					});
-				} catch (linkError) {
-					console.warn(
-						`${PLUGIN_LOG_PREFIX} Failed to link the processed file into the note:`,
-						linkError,
-					);
+		await this.runExclusive(async () => {
+			button.setDisabled(true);
+			status.setText('Processing...');
+			// Yield once so the "Processing..." label paints before the
+			// synchronous decode/gate work briefly occupies the main thread.
+			await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+			try {
+				const service = new AudioProcessingService(this.app);
+				const outputPath = await service.process(
+					this.file,
+					this.config,
+				);
+				// Link the result into the note before the source is trashed, so the
+				// source embed still resolves when it is matched and replaced. A
+				// failure here is non-fatal: the processed file is already written.
+				if (this.onProcessed) {
+					try {
+						await this.onProcessed({
+							outputPath,
+							replaceSource: this.deleteSource,
+						});
+					} catch (linkError) {
+						console.warn(
+							`${PLUGIN_LOG_PREFIX} Failed to link the processed file into the note:`,
+							linkError,
+						);
+					}
 				}
-			}
-			if (this.deleteSource) {
-				try {
-					await this.app.fileManager.trashFile(this.file);
-				} catch (deleteError) {
-					console.warn(
-						`${PLUGIN_LOG_PREFIX} Failed to delete source after processing:`,
-						deleteError,
-					);
-					new Notice(
-						`Processed audio saved to ${outputPath}, but the source could not be deleted.`,
-					);
-					this.close();
-					return;
+				if (this.deleteSource) {
+					try {
+						await this.app.fileManager.trashFile(this.file);
+					} catch (deleteError) {
+						console.warn(
+							`${PLUGIN_LOG_PREFIX} Failed to delete source after processing:`,
+							deleteError,
+						);
+						new Notice(
+							`Processed audio saved to ${outputPath}, but the source could not be deleted.`,
+						);
+						this.close();
+						return;
+					}
 				}
+				new Notice(`Processed audio saved to ${outputPath}`);
+				this.close();
+			} catch (error) {
+				const message =
+					error instanceof Error ? error.message : String(error);
+				new Notice(`Audio processing failed: ${message}`);
+				status.setText(`Failed: ${message}`);
+			} finally {
+				button.setDisabled(false);
 			}
-			new Notice(`Processed audio saved to ${outputPath}`);
-			this.close();
-		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : String(error);
-			new Notice(`Audio processing failed: ${message}`);
-			status.setText(`Failed: ${message}`);
-		} finally {
-			this.processing = false;
-			button.setDisabled(false);
-		}
-	}
-
-	override onClose(): void {
-		this.contentEl.empty();
+		});
 	}
 }

@@ -10,8 +10,9 @@
  * @module ui/TranscriptionModal
  */
 
-import { MarkdownView, Modal, Notice, Setting } from 'obsidian';
+import { MarkdownView, Notice } from 'obsidian';
 import type { App, ButtonComponent, TFile } from 'obsidian';
+import { PluginModal } from './PluginModal';
 import type {
 	AudioRecorderSettings,
 	TranscriptionProviderId,
@@ -127,11 +128,10 @@ function formatCostLine(line: CostEstimateLine): string {
 /**
  * Transcription dialog for a single audio file.
  */
-export class TranscriptionModal extends Modal {
+export class TranscriptionModal extends PluginModal {
 	private cancelled = false;
 	/** Aborts the in-flight run's HTTP requests when cancelled. */
 	private abortController: AbortController | null = null;
-	private running = false;
 	private statusEl: HTMLElement | null = null;
 	private elapsedEl: HTMLElement | null = null;
 	/** Interval handle for the live elapsed-time counter (null when stopped). */
@@ -208,11 +208,8 @@ export class TranscriptionModal extends Modal {
 
 		const { contentEl } = this;
 		contentEl.empty();
-		new Setting(contentEl).setName('Transcribe audio').setHeading();
-		contentEl.createEl('p', {
-			cls: 'aar-modal-config',
-			text: `Source: ${this.file.name}`,
-		});
+		this.setDialogTitle('Transcribe audio');
+		this.renderSource(this.file);
 
 		this.configEl = contentEl.createDiv({ cls: 'aar-transcribe-options' });
 		this.renderConfig();
@@ -244,35 +241,39 @@ export class TranscriptionModal extends Modal {
 			cls: 'aar-transcribe-cost-running',
 		});
 
-		new Setting(contentEl)
-			.addButton((button) => {
-				this.runButton = button;
-				button
-					.setButtonText('Transcribe')
-					.setCta()
-					.onClick(() => {
-						void this.startRun();
-					});
-			})
-			.addButton((button) => {
-				this.minimizeButton = button;
-				button
-					.setButtonText('Minimize')
-					.setDisabled(true)
-					.onClick(() => {
-						this.minimize();
-					});
-			})
-			.addButton((button) => {
-				this.secondaryButton = button;
-				button.setButtonText('Close').onClick(() => {
-					if (this.running) {
+		this.renderActions(
+			{
+				text: 'Transcribe',
+				cta: true,
+				ref: (button) => {
+					this.runButton = button;
+				},
+				onClick: () => this.startRun(),
+			},
+			{
+				text: 'Minimize',
+				disabled: true,
+				ref: (button) => {
+					this.minimizeButton = button;
+				},
+				onClick: () => {
+					this.minimize();
+				},
+			},
+			{
+				text: 'Close',
+				ref: (button) => {
+					this.secondaryButton = button;
+				},
+				onClick: () => {
+					if (this.busy) {
 						this.cancelRun();
 					} else {
 						this.close();
 					}
-				});
-			});
+				},
+			},
+		);
 
 		this.rendered = true;
 		// The first renderConfig() ran before the button existed; set its
@@ -759,7 +760,7 @@ export class TranscriptionModal extends Modal {
 	 */
 	private refreshRunButtonState(): void {
 		this.runButton?.setDisabled(
-			this.running || !this.isSelectedEngineAvailable(),
+			this.busy || !this.isSelectedEngineAvailable(),
 		);
 	}
 
@@ -767,7 +768,7 @@ export class TranscriptionModal extends Modal {
 	 * Runs the transcription, updating progress and handling errors.
 	 */
 	private async startRun(): Promise<void> {
-		if (this.running) {
+		if (this.busy) {
 			return;
 		}
 		// Guard the run itself, not just the option's disabled state: a
@@ -882,7 +883,7 @@ export class TranscriptionModal extends Modal {
 				this.restore();
 			}
 		} finally {
-			if (this.running) {
+			if (this.busy) {
 				this.setRunning(false);
 			}
 			this.clearBackgroundProgress();
@@ -908,7 +909,7 @@ export class TranscriptionModal extends Modal {
 	 * @param running - Whether a transcription is in progress
 	 */
 	private setRunning(running: boolean): void {
-		this.running = running;
+		this.busy = running;
 		if (running) {
 			this.cancelled = false;
 			this.startElapsedTimer();
@@ -979,7 +980,7 @@ export class TranscriptionModal extends Modal {
 	 * Minimizes the modal while keeping the current transcription running.
 	 */
 	private minimize(): void {
-		if (!this.running || this.minimized) {
+		if (!this.busy || this.minimized) {
 			return;
 		}
 		this.minimized = true;
@@ -1019,17 +1020,17 @@ export class TranscriptionModal extends Modal {
 	}
 
 	override onClose(): void {
-		if (this.minimized && this.running) {
+		if (this.minimized && this.busy) {
 			return;
 		}
-		if (this.running) {
+		if (this.busy) {
 			this.cancelRun();
 		}
 		this.stopElapsedTimer();
 		this.clearBackgroundProgress();
 		// Release any bytes cached for the estimate probe on close.
 		this.probedBytes = null;
-		this.contentEl.empty();
+		super.onClose();
 		this.rendered = false;
 	}
 }

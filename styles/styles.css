@@ -683,6 +683,17 @@ input.aar-input-invalid {
 }
 
 /* Modal text shared by the transcription and audio-cleanup dialogs */
+.aar-modal-actions {
+	/* The shared dialog action row: no label column, buttons right-aligned,
+	   and no top border so it reads as a footer rather than another setting. */
+	border-top: none;
+	padding-bottom: 0;
+}
+
+.aar-modal-actions .setting-item-info {
+	display: none;
+}
+
 .aar-modal-config {
     color: var(--text-muted);
     font-size: 0.9em;

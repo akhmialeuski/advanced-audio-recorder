@@ -7,7 +7,7 @@ import {
 	addBitrateSetting,
 	addDeleteSourceSetting,
 	addLinkActionSetting,
-} from 'src/ui/settingHelpers';
+} from 'src/settings/settingControls';
 
 /** Captured dropdowns and toggles rendered through the Setting mock. */
 interface DropdownCapture {

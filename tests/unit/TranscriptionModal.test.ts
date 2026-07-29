@@ -17,7 +17,7 @@ type TranscriptionModalInternals = {
 	restore: () => void;
 	cancelled: boolean;
 	minimized: boolean;
-	running: boolean;
+	busy: boolean;
 };
 
 function createAudioFile(): TFile {
@@ -204,7 +204,7 @@ describe('TranscriptionModal platform gating', () => {
 
 		await internals.startRun();
 
-		expect(internals.running).toBe(false);
+		expect(internals.busy).toBe(false);
 		expect(notice).toHaveBeenCalledWith(
 			expect.stringContaining('not available on this device'),
 		);

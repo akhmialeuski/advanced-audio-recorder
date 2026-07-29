@@ -3,7 +3,8 @@
  * @module ui/ConversionModal
  */
 
-import { App, Modal, Notice, Setting, TFile } from 'obsidian';
+import { App, Notice, Setting, TFile } from 'obsidian';
+import { PluginModal } from './PluginModal';
 import type { DropdownComponent } from 'obsidian';
 import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
 import {
@@ -18,7 +19,7 @@ import {
 	addBitrateSetting,
 	addDeleteSourceSetting,
 	addLinkActionSetting,
-} from './settingHelpers';
+} from '../settings/settingControls';
 import { getEncoderDescription } from './formatDescriptions';
 import { ConversionService } from '../recording/api';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
@@ -37,7 +38,7 @@ export interface ConversionModalOptions {
 /**
  * Modal for converting an audio file to a different format.
  */
-export class ConversionModal extends Modal {
+export class ConversionModal extends PluginModal {
 	private readonly sourceFile: TFile;
 	private targetFormat: string = FORMAT_WAV;
 	private bitrate: number = 128000;

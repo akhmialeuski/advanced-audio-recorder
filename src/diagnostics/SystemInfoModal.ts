@@ -3,7 +3,8 @@
  * @module diagnostics/SystemInfoModal
  */
 
-import { App, Modal, Setting } from 'obsidian';
+import type { App } from 'obsidian';
+import { PluginModal } from '../ui/PluginModal';
 import type { DiagnosticsData } from './SystemDiagnostics';
 
 /** Duration in milliseconds to show the "Copied!" confirmation. */
@@ -13,7 +14,7 @@ const COPY_CONFIRM_MS = 2000;
  * Modal that displays a formatted JSON snapshot of system diagnostics.
  * Includes a "Copy to clipboard" button with transient confirmation feedback.
  */
-export class SystemInfoModal extends Modal {
+export class SystemInfoModal extends PluginModal {
 	private readonly data: DiagnosticsData;
 
 	/**
@@ -31,35 +32,33 @@ export class SystemInfoModal extends Modal {
 	 */
 	override onOpen(): void {
 		const { contentEl } = this;
-
-		new Setting(contentEl).setName('System diagnostics').setHeading();
+		this.setDialogTitle('System diagnostics');
 
 		const json = JSON.stringify(this.data, null, 2);
 
-		const copyButton = contentEl.createEl('button', {
+		this.renderActions({
 			text: 'Copy to clipboard',
-			cls: 'mod-cta',
-		});
-
-		copyButton.addEventListener('click', () => {
-			void navigator.clipboard.writeText(json).then(() => {
-				copyButton.setText('Copied!');
-				copyButton.addClass('aar-system-info-copied');
-				window.setTimeout(() => {
-					copyButton.setText('Copy to clipboard');
-					copyButton.removeClass('aar-system-info-copied');
-				}, COPY_CONFIRM_MS);
-			});
+			cta: true,
+			ref: (button) => {
+				button.onClick(() => {
+					void navigator.clipboard.writeText(json).then(() => {
+						button.setButtonText('Copied!');
+						button.buttonEl.addClass('aar-system-info-copied');
+						window.setTimeout(() => {
+							button.setButtonText('Copy to clipboard');
+							button.buttonEl.removeClass(
+								'aar-system-info-copied',
+							);
+						}, COPY_CONFIRM_MS);
+					});
+				});
+			},
+			onClick: () => {
+				/* the ref above owns the copy handler and its feedback */
+			},
 		});
 
 		const pre = contentEl.createEl('pre', { cls: 'aar-system-info-json' });
 		pre.setText(json);
-	}
-
-	/**
-	 * Cleans up modal content on close.
-	 */
-	override onClose(): void {
-		this.contentEl.empty();
 	}
 }

@@ -3,7 +3,8 @@
  * @module ui/AudioFileInfoModal
  */
 
-import { App, Modal, Setting } from 'obsidian';
+import type { App } from 'obsidian';
+import { PluginModal } from './PluginModal';
 import type { AudioFileInfo } from '../utils/AudioFileAnalyzer';
 
 /** Duration in milliseconds to show the "Copied!" confirmation. */
@@ -13,7 +14,7 @@ const COPY_CONFIRM_MS = 2000;
  * Modal that displays detailed information about an audio file.
  * Includes a "Copy as Markdown" button with transient confirmation feedback.
  */
-export class AudioFileInfoModal extends Modal {
+export class AudioFileInfoModal extends PluginModal {
 	private readonly info: AudioFileInfo;
 
 	/**
@@ -32,7 +33,7 @@ export class AudioFileInfoModal extends Modal {
 	override onOpen(): void {
 		const { contentEl } = this;
 
-		new Setting(contentEl).setName('Audio file info').setHeading();
+		this.setDialogTitle('Audio file info');
 
 		// Content definition matching the required Markdown output
 		const markdownLines = [
@@ -47,21 +48,28 @@ export class AudioFileInfoModal extends Modal {
 		];
 		const markdownOutput = markdownLines.join('\n');
 
-		// Create a copy button
-		const copyButton = contentEl.createEl('button', {
+		this.renderActions({
 			text: 'Copy as Markdown',
-			cls: 'mod-cta',
-		});
-
-		copyButton.addEventListener('click', () => {
-			void navigator.clipboard.writeText(markdownOutput).then(() => {
-				copyButton.setText('Copied!');
-				copyButton.addClass('aar-audio-info-copied');
-				window.setTimeout(() => {
-					copyButton.setText('Copy as Markdown');
-					copyButton.removeClass('aar-audio-info-copied');
-				}, COPY_CONFIRM_MS);
-			});
+			cta: true,
+			ref: (button) => {
+				button.onClick(() => {
+					void navigator.clipboard
+						.writeText(markdownOutput)
+						.then(() => {
+							button.setButtonText('Copied!');
+							button.buttonEl.addClass('aar-audio-info-copied');
+							window.setTimeout(() => {
+								button.setButtonText('Copy as Markdown');
+								button.buttonEl.removeClass(
+									'aar-audio-info-copied',
+								);
+							}, COPY_CONFIRM_MS);
+						});
+				});
+			},
+			onClick: () => {
+				/* the ref above owns the copy handler and its feedback */
+			},
 		});
 
 		// Render the readable list in HTML for the user interface
@@ -90,7 +98,4 @@ export class AudioFileInfoModal extends Modal {
 	/**
 	 * Cleans up modal content on close.
 	 */
-	override onClose(): void {
-		this.contentEl.empty();
-	}
 }

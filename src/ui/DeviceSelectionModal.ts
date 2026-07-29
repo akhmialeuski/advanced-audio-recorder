@@ -3,7 +3,9 @@
  * @module ui/DeviceSelectionModal
  */
 
-import { App, Modal, Notice, Setting } from 'obsidian';
+import { Notice } from 'obsidian';
+import type { App } from 'obsidian';
+import { PluginModal } from './PluginModal';
 
 /**
  * Callback type for when a device is selected.
@@ -16,7 +18,7 @@ export type DeviceSelectedCallback = (
 /**
  * Modal for selecting an audio input device.
  */
-export class DeviceSelectionModal extends Modal {
+export class DeviceSelectionModal extends PluginModal {
 	private devices: MediaDeviceInfo[];
 	private onDeviceSelected: DeviceSelectedCallback;
 
@@ -42,9 +44,7 @@ export class DeviceSelectionModal extends Modal {
 	override onOpen(): void {
 		const { contentEl } = this;
 
-		new Setting(contentEl)
-			.setName('Select audio input device')
-			.setHeading();
+		this.setDialogTitle('Select audio input device');
 
 		const dropdown = contentEl.createEl('select');
 		dropdown.addClass('audio-device-dropdown');
@@ -56,29 +56,18 @@ export class DeviceSelectionModal extends Modal {
 				device.label || `Device ${device.deviceId.substring(0, 8)}`;
 		}
 
-		const button = contentEl.createEl('button', { text: 'Select' });
-		button.addClass('mod-cta');
-
-		button.addEventListener('click', () => {
-			const selectedDeviceId = dropdown.value;
-			const selectedOption = dropdown.selectedOptions[0];
-			const selectedLabel = selectedOption?.text ?? 'Unknown device';
-
-			void this.onDeviceSelected(selectedDeviceId, selectedLabel).then(
-				() => {
-					new Notice(`Selected audio device: ${selectedLabel}`);
-					this.close();
-				},
-			);
+		this.renderActions({
+			text: 'Select',
+			cta: true,
+			onClick: async () => {
+				const selectedDeviceId = dropdown.value;
+				const selectedOption = dropdown.selectedOptions[0];
+				const selectedLabel = selectedOption?.text ?? 'Unknown device';
+				await this.onDeviceSelected(selectedDeviceId, selectedLabel);
+				new Notice(`Selected audio device: ${selectedLabel}`);
+				this.close();
+			},
 		});
-	}
-
-	/**
-	 * Called when the modal is closed.
-	 */
-	override onClose(): void {
-		const { contentEl } = this;
-		contentEl.empty();
 	}
 }
 

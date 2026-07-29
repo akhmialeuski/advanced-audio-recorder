@@ -423,6 +423,29 @@ export class ButtonComponent {
 	}
 
 	setCta(): this {
+		// Mirrors Obsidian, which marks the primary button with mod-cta; tests
+		// locate the primary action by that class.
+		this.buttonEl.classList.add('mod-cta');
+		return this;
+	}
+
+	setWarning(): this {
+		this.buttonEl.classList.add('mod-warning');
+		return this;
+	}
+
+	setDestructive(): this {
+		this.buttonEl.classList.add('mod-destructive');
+		return this;
+	}
+
+	setTooltip(tooltip: string): this {
+		this.buttonEl.setAttribute('aria-label', tooltip);
+		return this;
+	}
+
+	setIcon(icon: string): this {
+		this.buttonEl.setAttribute('data-icon', icon);
 		return this;
 	}
 

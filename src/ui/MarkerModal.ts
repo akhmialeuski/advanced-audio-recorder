@@ -6,7 +6,8 @@
  * @module ui/MarkerModal
  */
 
-import { App, Modal, setIcon } from 'obsidian';
+import { App, setIcon } from 'obsidian';
+import { PluginModal } from './PluginModal';
 import { MARKER_KIND, type MarkerKind } from '../markers/markerModel';
 import type { RecordingMarkerHandle } from '../recording/api';
 
@@ -25,7 +26,7 @@ const KIND_OPTIONS: KindOption[] = [
 /**
  * Naming dialog for a recording-time marker.
  */
-export class RecordingMarkerModal extends Modal {
+export class RecordingMarkerModal extends PluginModal {
 	private readonly handle: RecordingMarkerHandle;
 	private kind: MarkerKind;
 	private label: string;
@@ -51,7 +52,7 @@ export class RecordingMarkerModal extends Modal {
 	override onOpen(): void {
 		const { contentEl } = this;
 		contentEl.addClass('aar-marker-modal');
-		this.setTitle('Add marker');
+		this.setDialogTitle('Add marker');
 
 		const toggle = contentEl.createDiv({ cls: 'aar-marker-type' });
 		for (const option of KIND_OPTIONS) {
@@ -81,18 +82,21 @@ export class RecordingMarkerModal extends Modal {
 			}
 		});
 
-		const actions = contentEl.createDiv({ cls: 'modal-button-container' });
-		const addButton = actions.createEl('button', {
-			cls: 'mod-cta',
-			text: 'Add',
-		});
-		addButton.addEventListener('click', () => {
-			this.confirm();
-		});
-		const cancelButton = actions.createEl('button', { text: 'Cancel' });
-		cancelButton.addEventListener('click', () => {
-			this.close();
-		});
+		this.renderActions(
+			{
+				text: 'Add',
+				cta: true,
+				onClick: () => {
+					this.confirm();
+				},
+			},
+			{
+				text: 'Cancel',
+				onClick: () => {
+					this.close();
+				},
+			},
+		);
 
 		this.refreshKindButtons();
 		// Defer focus until the modal is in the DOM so select() works
