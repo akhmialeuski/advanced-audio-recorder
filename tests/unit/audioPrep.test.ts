@@ -21,6 +21,7 @@ import {
 	shouldWarnDiarizationSplit,
 	withinDurationCap,
 } from 'src/transcription/audioPrep';
+import { at } from '../helpers/assertions';
 import { decodeToMono16k } from 'src/transcription/audioChunks';
 import {
 	TRANSCRIBE_BYTES_PER_SEC,
@@ -192,10 +193,10 @@ describe('prepareAudio (whole-file path)', () => {
 			diarize: false,
 		});
 		expect(result.payloads).toHaveLength(1);
-		expect(result.payloads[0].createData()).toBe(raw);
-		expect(result.payloads[0].contentType).toBe('audio/webm');
-		expect(result.payloads[0].filename).toBe('rec.webm');
-		expect(result.payloads[0].offsetSeconds).toBe(0);
+		expect(at(result.payloads, 0).createData()).toBe(raw);
+		expect(at(result.payloads, 0).contentType).toBe('audio/webm');
+		expect(at(result.payloads, 0).filename).toBe('rec.webm');
+		expect(at(result.payloads, 0).offsetSeconds).toBe(0);
 		expect(decodeMock).not.toHaveBeenCalled();
 	});
 
@@ -221,7 +222,7 @@ describe('prepareAudio (whole-file path)', () => {
 			diarize: true,
 		});
 		expect(result.payloads).toHaveLength(1);
-		expect(result.payloads[0].createData()).toBe(raw);
+		expect(at(result.payloads, 0).createData()).toBe(raw);
 		expect(result.diarizationSplitWarning).toBe(false);
 		expect(decodeMock).not.toHaveBeenCalled();
 	});
@@ -248,7 +249,7 @@ describe('prepareAudio (duration-cap decode path)', () => {
 			'audio-1.wav',
 			'audio-2.wav',
 		]);
-		expect(result.payloads[0].contentType).toBe('audio/wav');
+		expect(at(result.payloads, 0).contentType).toBe('audio/wav');
 		expect(result.diarizationSplitWarning).toBe(true);
 	});
 
@@ -281,7 +282,7 @@ describe('prepareAudio (duration-cap decode path)', () => {
 		});
 		expect(decodeMock).toHaveBeenCalledTimes(1);
 		expect(result.payloads).toHaveLength(1);
-		expect(result.payloads[0].filename).toBe('audio.wav');
+		expect(at(result.payloads, 0).filename).toBe('audio.wav');
 		expect(result.diarizationSplitWarning).toBe(false);
 	});
 });

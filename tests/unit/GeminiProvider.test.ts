@@ -9,14 +9,18 @@ import {
 	GeminiProvider,
 	geminiGenerateTimeoutMs,
 } from 'src/transcription/providers/GeminiProvider';
+import { at, jsonBody } from '../helpers/assertions';
 import type { AudioPayload } from 'src/transcription/providers/TranscriptionProvider';
 import { uploadTimeoutMs } from 'src/transcription/httpClient';
 import { GEMINI_GENERATE_MIN_TIMEOUT_MS } from 'src/constants';
+// Mock-only surface: these exist on the test double, not on Obsidian's
+// API, so they are imported from the mock by path. Jest maps 'obsidian'
+// to the same module, so both imports share one instance.
 import {
 	__setRequestUrlHandler,
 	type MockRequestUrlParam,
 	type MockRequestUrlResponse,
-} from 'obsidian';
+} from '../mocks/obsidian';
 
 // Decoding an unsupported container needs OfflineAudioContext, which jsdom
 // lacks; mock the audio helpers so the decode branch is testable by eye.
@@ -124,7 +128,7 @@ function scriptFlow(generateText: string): ScriptedFlow {
 		calls,
 		generateBody: (): GenerateBody => {
 			const gen = calls.find((c) => c.url.includes(':generateContent'));
-			return JSON.parse(String(gen?.body)) as GenerateBody;
+			return jsonBody<GenerateBody>(gen);
 		},
 	};
 }
@@ -154,7 +158,7 @@ describe('GeminiProvider.transcribe', () => {
 			{ start: 0, end: 1, text: 'Hello.', speaker: 'Speaker 1' },
 		]);
 		const body = flow.generateBody();
-		const part = body.contents[0].parts[0];
+		const part = at(body.contents, 0).parts[0];
 		// The generateContent request references the uploaded file as audio/wav.
 		expect(part.fileData?.mimeType).toBe('audio/wav');
 		expect(part.fileData?.fileUri).toBe('https://files.example/abc');
@@ -220,7 +224,7 @@ describe('GeminiProvider.transcribe', () => {
 
 		// webm is not accepted, so it is decoded and uploaded as WAV.
 		expect(
-			flow.generateBody().contents[0].parts[0].fileData?.mimeType,
+			at(at(flow.generateBody().contents, 0).parts, 0).fileData?.mimeType,
 		).toBe('audio/wav');
 		const start = flow.calls.find((c) =>
 			c.url.endsWith('/upload/v1beta/files'),

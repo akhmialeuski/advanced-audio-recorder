@@ -5,6 +5,7 @@
  */
 
 import { mapDeepgramResponse } from 'src/transcription/providers/deepgramResponse';
+import { at } from '../helpers/assertions';
 
 describe('mapDeepgramResponse', () => {
 	it('maps utterances with speaker labels when diarizing', () => {
@@ -35,10 +36,10 @@ describe('mapDeepgramResponse', () => {
 		);
 		expect(result.language).toBe('en');
 		expect(result.segments).toHaveLength(2);
-		expect(result.segments[0].text).toBe('Hello there.');
-		expect(result.segments[0].speaker).toBe('Speaker 1');
-		expect(result.segments[0].words?.[0].text).toBe('Hello');
-		expect(result.segments[1].speaker).toBe('Speaker 2');
+		expect(at(result.segments, 0).text).toBe('Hello there.');
+		expect(at(result.segments, 0).speaker).toBe('Speaker 1');
+		expect(at(result.segments, 0).words?.[0].text).toBe('Hello');
+		expect(at(result.segments, 1).speaker).toBe('Speaker 2');
 	});
 
 	it('omits speaker labels when diarization is off', () => {
@@ -52,7 +53,7 @@ describe('mapDeepgramResponse', () => {
 			},
 			false,
 		);
-		expect(result.segments[0].speaker).toBeUndefined();
+		expect(at(result.segments, 0).speaker).toBeUndefined();
 	});
 
 	it('skips empty utterances', () => {
@@ -68,7 +69,7 @@ describe('mapDeepgramResponse', () => {
 			false,
 		);
 		expect(result.segments).toHaveLength(1);
-		expect(result.segments[0].text).toBe('kept');
+		expect(at(result.segments, 0).text).toBe('kept');
 	});
 
 	it('groups words by speaker when diarizing without utterances', () => {
@@ -109,10 +110,10 @@ describe('mapDeepgramResponse', () => {
 			true,
 		);
 		expect(result.segments).toHaveLength(2);
-		expect(result.segments[0].text).toBe('A b');
-		expect(result.segments[0].speaker).toBe('Speaker 1');
-		expect(result.segments[1].text).toBe('C');
-		expect(result.segments[1].speaker).toBe('Speaker 2');
+		expect(at(result.segments, 0).text).toBe('A b');
+		expect(at(result.segments, 0).speaker).toBe('Speaker 1');
+		expect(at(result.segments, 1).text).toBe('C');
+		expect(at(result.segments, 1).speaker).toBe('Speaker 2');
 	});
 
 	it('falls back to the flat transcript without utterances or diarization', () => {

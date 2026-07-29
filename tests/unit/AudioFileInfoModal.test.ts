@@ -4,6 +4,7 @@
  */
 
 import { AudioFileInfoModal } from 'src/ui/AudioFileInfoModal';
+import { at } from '../helpers/assertions';
 import type { AudioFileInfo } from 'src/utils/AudioFileAnalyzer';
 import { App } from 'obsidian';
 
@@ -51,14 +52,16 @@ describe('AudioFileInfoModal.onOpen', () => {
 		const listItems = modal.contentEl.querySelectorAll('li');
 		expect(listItems.length).toBe(8);
 
-		expect(listItems[0].textContent).toBe('File Name: test.webm');
-		expect(listItems[1].textContent).toBe('File Size: 1.5 MB');
-		expect(listItems[2].textContent).toBe('Duration: 00:01:30');
-		expect(listItems[3].textContent).toBe('Container Format: audio/webm');
-		expect(listItems[4].textContent).toBe('Audio Codec: opus');
-		expect(listItems[5].textContent).toBe('Bitrate: 128 kbps');
-		expect(listItems[6].textContent).toBe('Sample Rate: 48000 Hz');
-		expect(listItems[7].textContent).toBe('Channels: 2 (Stereo)');
+		expect(at(listItems, 0).textContent).toBe('File Name: test.webm');
+		expect(at(listItems, 1).textContent).toBe('File Size: 1.5 MB');
+		expect(at(listItems, 2).textContent).toBe('Duration: 00:01:30');
+		expect(at(listItems, 3).textContent).toBe(
+			'Container Format: audio/webm',
+		);
+		expect(at(listItems, 4).textContent).toBe('Audio Codec: opus');
+		expect(at(listItems, 5).textContent).toBe('Bitrate: 128 kbps');
+		expect(at(listItems, 6).textContent).toBe('Sample Rate: 48000 Hz');
+		expect(at(listItems, 7).textContent).toBe('Channels: 2 (Stereo)');
 	});
 
 	it('list element has the aar-audio-info-list CSS class', () => {

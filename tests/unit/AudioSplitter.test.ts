@@ -17,6 +17,7 @@ import {
 	detachTrailingBytes,
 	type WavLayout,
 } from 'src/recording/AudioSplitter';
+import { at } from '../helpers/assertions';
 import { PCM_BYTES_PER_SAMPLE } from 'src/audio/pcm';
 import { createWavHeader } from 'src/audio/WavEncoder';
 
@@ -134,7 +135,7 @@ class FakeAudioBuffer {
 	}
 
 	copyToChannel(source: Float32Array, channel: number): void {
-		this.channels[channel].set(source.subarray(0, this.length));
+		at(this.channels, channel).set(source.subarray(0, this.length));
 	}
 }
 
@@ -588,7 +589,7 @@ describe('detachTrailingBytes', () => {
 
 		expect(carry).toEqual([]);
 		expect(buffers).toHaveLength(1);
-		expect(buffers[0].byteLength).toBe(4);
+		expect(at(buffers, 0).byteLength).toBe(4);
 	});
 
 	it('should return an empty carry for an empty list', () => {

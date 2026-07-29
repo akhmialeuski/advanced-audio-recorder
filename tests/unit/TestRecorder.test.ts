@@ -5,6 +5,7 @@
  */
 
 import { TestRecorder } from 'src/recording/TestRecorder';
+import { at } from '../helpers/assertions';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 
@@ -115,10 +116,12 @@ describe('TestRecorder', () => {
 
 		expect(result.kind).toBe('recorded');
 		expect(createdBridges).toHaveLength(1);
-		const bridge = createdBridges[0];
+		const bridge = at(createdBridges, 0);
 		expect(bridge.mode).toBe('mono-right');
 		expect(bridge.sampleRate).toBe(48000);
-		expect(MockMediaRecorder.instances[0].stream).toBe(bridge.monoStream);
+		expect(at(MockMediaRecorder.instances, 0).stream).toBe(
+			bridge.monoStream,
+		);
 		expect(bridge.release).toHaveBeenCalled();
 		// The microphone stream is still stopped by the recorder itself
 		expect(rawTrackStop).toHaveBeenCalled();
@@ -134,7 +137,7 @@ describe('TestRecorder', () => {
 			'recorder failed',
 		);
 
-		expect(createdBridges[0].release).toHaveBeenCalled();
+		expect(at(createdBridges, 0).release).toHaveBeenCalled();
 		expect(rawTrackStop).toHaveBeenCalled();
 	});
 

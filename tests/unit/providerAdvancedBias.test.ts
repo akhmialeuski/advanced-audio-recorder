@@ -10,15 +10,19 @@
  */
 
 import { WhisperApiProvider } from 'src/transcription/providers/WhisperApiProvider';
+import { at, jsonBody } from '../helpers/assertions';
 import { DeepgramProvider } from 'src/transcription/providers/DeepgramProvider';
 import { GeminiProvider } from 'src/transcription/providers/GeminiProvider';
 import { LocalWhisperProvider } from 'src/transcription/providers/LocalWhisperProvider';
 import type { AudioPayload } from 'src/transcription/providers/TranscriptionProvider';
+// Mock-only surface: these exist on the test double, not on Obsidian's
+// API, so they are imported from the mock by path. Jest maps 'obsidian'
+// to the same module, so both imports share one instance.
 import {
 	__setRequestUrlHandler,
 	type MockRequestUrlParam,
 	type MockRequestUrlResponse,
-} from 'obsidian';
+} from '../mocks/obsidian';
 
 const BIAS_SENTENCE =
 	'Митинг про деплой и ревью, обсуждаются gRPC, CI/CD и Kubernetes.';
@@ -211,11 +215,11 @@ describe('GeminiProvider advanced bias', () => {
 				const gen = calls.find((call) =>
 					call.url.includes(':generateContent'),
 				);
-				const body = JSON.parse(String(gen?.body)) as {
+				const body = jsonBody<{
 					contents: { parts: { text?: string }[] }[];
-				};
-				return body.contents[0].parts
-					.map((part) => part.text ?? '')
+				}>(gen);
+				return at(body.contents, 0)
+					.parts.map((part) => part.text ?? '')
 					.join(' ');
 			},
 		};

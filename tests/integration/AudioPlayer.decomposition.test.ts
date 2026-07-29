@@ -10,6 +10,7 @@
  */
 
 import { App, Modal } from 'obsidian';
+import { at } from '../helpers/assertions';
 import { AudioPlayer } from 'src/player/AudioPlayer';
 import { WaveformPeakCache, type AudioDecoder } from 'src/player/WaveformData';
 import type { AudioPlayerRegistry } from 'src/player/AudioPlayerRegistry';
@@ -490,8 +491,8 @@ describe('marker CRUD stays player-driven and persisted (PlayerMarkerController 
 
 		const saved = store.data.get('rec.wav') ?? [];
 		expect(saved).toHaveLength(1);
-		expect(saved[0].time).toBe(12);
-		expect(saved[0].kind).toBe('bookmark');
+		expect(at(saved, 0).time).toBe(12);
+		expect(at(saved, 0).kind).toBe('bookmark');
 		// Other live players of the file are refreshed after the persist
 		expect(registry.reloadMarkers).toHaveBeenCalledWith('rec.wav', player);
 	});

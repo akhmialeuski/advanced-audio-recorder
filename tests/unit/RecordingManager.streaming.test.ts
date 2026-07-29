@@ -6,6 +6,7 @@
  */
 
 import { RecordingManager } from 'src/recording/RecordingManager';
+import { at } from '../helpers/assertions';
 import { RecordingStatus } from 'src/types';
 import {
 	DEFAULT_SETTINGS,
@@ -663,9 +664,9 @@ describe('RecordingManager', () => {
 
 			// Part limit: 1 min * 60 s * 44100 Hz * 1 ch * 2 B = 5,292,000 B
 			capturedPcmChunkCallback?.(new ArrayBuffer(3_000_000));
-			await getInternals(manager).chunkTargets[0].pendingWrite;
+			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
 			capturedPcmChunkCallback?.(new ArrayBuffer(3_000_000));
-			await getInternals(manager).chunkTargets[0].pendingWrite;
+			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
 
 			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
 				expect.stringMatching(/-part1\.wav$/),
@@ -694,7 +695,7 @@ describe('RecordingManager', () => {
 			await manager.startRecording();
 
 			capturedPcmChunkCallback?.(new ArrayBuffer(6_000_000));
-			await getInternals(manager).chunkTargets[0].pendingWrite;
+			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
 
 			const partCalls = (
 				mockApp.vault.createBinary as jest.Mock
@@ -715,7 +716,7 @@ describe('RecordingManager', () => {
 			await manager.startRecording();
 
 			capturedPcmChunkCallback?.(new ArrayBuffer(6_000_000));
-			await getInternals(manager).chunkTargets[0].pendingWrite;
+			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
 
 			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
 				expect.stringMatching(/-chunk1\.wav$/),
@@ -755,7 +756,7 @@ describe('RecordingManager', () => {
 			await manager.startRecording();
 
 			capturedPcmChunkCallback?.(new ArrayBuffer(6_000_000));
-			await getInternals(manager).chunkTargets[0].pendingWrite;
+			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
 
 			// The assembled part is kept: the removed segments would
 			// otherwise be the only copy of the audio
@@ -781,7 +782,7 @@ describe('RecordingManager', () => {
 			await manager.startRecording();
 
 			capturedPcmChunkCallback?.(new ArrayBuffer(6_000_000));
-			await getInternals(manager).chunkTargets[0].pendingWrite;
+			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
 
 			// Changing the prefix mid-session must not affect this session
 			manager.updateSettings({
@@ -817,7 +818,7 @@ describe('RecordingManager', () => {
 				type: 'audio/webm',
 			});
 			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
-			await getInternals(manager).chunkTargets[0].pendingWrite;
+			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
 			await flushMicrotasks();
 
 			const rotation = getInternals(manager).rotationPromise;
@@ -831,13 +832,13 @@ describe('RecordingManager', () => {
 			);
 			expect(global.MediaRecorder).toHaveBeenCalledTimes(2);
 			expect(
-				getInternals(manager).chunkTargets[0].partPaths,
+				at(getInternals(manager).chunkTargets, 0).partPaths,
 			).toHaveLength(1);
 
 			// Residual data recorded after rotation becomes the next part
 			jest.setSystemTime(70_000);
 			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
-			await getInternals(manager).chunkTargets[0].pendingWrite;
+			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
 			await manager.stopRecording();
 
 			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
@@ -868,14 +869,14 @@ describe('RecordingManager', () => {
 				type: 'audio/webm',
 			});
 			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
-			await getInternals(manager).chunkTargets[0].pendingWrite;
+			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
 			await flushMicrotasks();
 			expect(getInternals(manager).rotationPromise).toBeNull();
 
 			// Active time reaches 30 s + 35 s = 65 s, beyond the boundary
 			jest.setSystemTime(165_000);
 			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
-			await getInternals(manager).chunkTargets[0].pendingWrite;
+			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
 			await flushMicrotasks();
 
 			const rotation = getInternals(manager).rotationPromise;
@@ -924,7 +925,7 @@ describe('RecordingManager', () => {
 				type: 'audio/webm',
 			});
 			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
-			await getInternals(manager).chunkTargets[0].pendingWrite;
+			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
 			await flushMicrotasks();
 			await getInternals(manager).rotationPromise;
 
@@ -958,7 +959,7 @@ describe('RecordingManager', () => {
 
 			// Part limit: 1 min * 60 s * 44100 Hz * 1 ch * 2 B = 5,292,000 B
 			capturedPcmChunkCallback?.(new ArrayBuffer(6_000_000));
-			await getInternals(manager).chunkTargets[0].pendingWrite;
+			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
 
 			const { Notice } = jest.requireMock('obsidian');
 			expect(Notice).toHaveBeenCalledWith(
@@ -1029,7 +1030,7 @@ describe('RecordingManager', () => {
 				type: 'audio/webm',
 			});
 			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
-			await getInternals(manager).chunkTargets[0].pendingWrite;
+			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
 			await flushMicrotasks();
 			await getInternals(manager).rotationPromise;
 
@@ -1098,7 +1099,7 @@ describe('RecordingManager', () => {
 				type: 'audio/webm',
 			});
 			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
-			await getInternals(manager).chunkTargets[0].pendingWrite;
+			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
 			await flushMicrotasks();
 			await getInternals(manager).rotationPromise;
 
@@ -1140,7 +1141,7 @@ describe('RecordingManager', () => {
 				type: 'audio/webm',
 			});
 			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
-			await getInternals(manager).chunkTargets[0].pendingWrite;
+			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
 			await flushMicrotasks();
 			await getInternals(manager).rotationPromise;
 
@@ -1168,7 +1169,7 @@ describe('RecordingManager', () => {
 				type: 'audio/webm',
 			});
 			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
-			await getInternals(manager).chunkTargets[0].pendingWrite;
+			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
 
 			// Second concurrent call must return without a second save
 			const firstStop = manager.stopRecording();
@@ -1216,7 +1217,7 @@ describe('RecordingManager', () => {
 				type: 'audio/webm',
 			});
 			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
-			await getInternals(manager).chunkTargets[0].pendingWrite;
+			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
 			await flushMicrotasks();
 			expect(getInternals(manager).rotationPromise).not.toBeNull();
 

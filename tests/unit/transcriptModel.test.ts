@@ -12,6 +12,7 @@ import {
 	stitchChunks,
 	stripSpeakers,
 } from 'src/transcription/transcriptModel';
+import { at } from '../helpers/assertions';
 import type {
 	Transcript,
 	TranscriptSegment,
@@ -77,17 +78,17 @@ describe('stripSpeakers', () => {
 		const stripped = stripSpeakers(transcript);
 		expect(stripped.language).toBe('en');
 		expect(stripped.model).toBe('fake');
-		expect(stripped.segments[0].words).toEqual([
+		expect(at(stripped.segments, 0).words).toEqual([
 			{ start: 0, end: 1, text: 'hi' },
 		]);
-		expect(stripped.segments[0].speaker).toBeUndefined();
+		expect(at(stripped.segments, 0).speaker).toBeUndefined();
 	});
 
 	it('does not mutate the source transcript', () => {
 		const transcript = buildTranscript([seg(0, 1, 'a', 'A')]);
 		stripSpeakers(transcript);
 		expect(transcript.speakers).toEqual(['A']);
-		expect(transcript.segments[0].speaker).toBe('A');
+		expect(at(transcript.segments, 0).speaker).toBe('A');
 	});
 });
 

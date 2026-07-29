@@ -6,6 +6,7 @@
  */
 
 import { App, Modal } from 'obsidian';
+import { at } from '../helpers/assertions';
 import { WaveformCanvas } from 'src/player/views/WaveformCanvas';
 import * as WaveformData from 'src/player/WaveformData';
 
@@ -28,10 +29,12 @@ describe('WaveformCanvas', () => {
 		expect(seekEl.querySelector('.aar-player-waveform')).not.toBeNull();
 		const canvases = seekEl.querySelectorAll('canvas');
 		expect(canvases).toHaveLength(2);
-		expect(canvases[0].classList.contains('aar-player-canvas')).toBe(true);
-		expect(canvases[1].classList.contains('aar-player-canvas-played')).toBe(
+		expect(at(canvases, 0).classList.contains('aar-player-canvas')).toBe(
 			true,
 		);
+		expect(
+			at(canvases, 1).classList.contains('aar-player-canvas-played'),
+		).toBe(true);
 	});
 
 	it('updates only the progress variable on setProgress (no canvas work)', () => {

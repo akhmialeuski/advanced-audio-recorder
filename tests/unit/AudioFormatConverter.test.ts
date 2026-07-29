@@ -5,6 +5,7 @@
  */
 
 import type { RecordingTarget } from 'src/types';
+import { at } from '../helpers/assertions';
 
 // Mock obsidian module
 jest.mock('obsidian', () => ({
@@ -349,8 +350,10 @@ describe('AudioFormatConverter', () => {
 			await decodeAudioBlob(buffer);
 
 			expect(AudioContext).toHaveBeenCalledTimes(1);
-			const ctx = (AudioContext as unknown as jest.Mock).mock.results[0]
-				.value;
+			const ctx = at(
+				(AudioContext as unknown as jest.Mock).mock.results,
+				0,
+			).value;
 			expect(ctx.decodeAudioData).toHaveBeenCalledTimes(1);
 			expect(ctx.close).toHaveBeenCalledTimes(1);
 			// No second decode through an OfflineAudioContext
@@ -370,8 +373,10 @@ describe('AudioFormatConverter', () => {
 			);
 
 			// The AudioContext must not leak on corrupted input
-			const ctx = (AudioContext as unknown as jest.Mock).mock.results[0]
-				.value;
+			const ctx = at(
+				(AudioContext as unknown as jest.Mock).mock.results,
+				0,
+			).value;
 			expect(ctx.close).toHaveBeenCalledTimes(1);
 		});
 	});
@@ -509,7 +514,7 @@ describe('AudioFormatConverter', () => {
 
 			await convertBlobToFormat(blob, 'mp4', 128000, progressFn);
 
-			const instance = (await mockConversionInit.mock.results[0]
+			const instance = (await at(mockConversionInit.mock.results, 0)
 				.value) as {
 				onProgress?: (progress: number) => void;
 			};

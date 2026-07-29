@@ -6,6 +6,7 @@
  */
 
 import { RecordingManager } from 'src/recording/RecordingManager';
+import { at } from '../helpers/assertions';
 import { RecordingStatus } from 'src/types';
 import {
 	DEFAULT_SETTINGS,
@@ -257,9 +258,11 @@ describe('RecordingManager', () => {
 
 			const targets = getTargets();
 			expect(targets).toHaveLength(2);
-			expect(targets[0].sourceName).toBe('TestDevice-1');
-			expect(targets[1].sourceName).toBe('TestDevice-2');
-			expect(targets[0].fileBaseName).not.toBe(targets[1].fileBaseName);
+			expect(at(targets, 0).sourceName).toBe('TestDevice-1');
+			expect(at(targets, 1).sourceName).toBe('TestDevice-2');
+			expect(at(targets, 0).fileBaseName).not.toBe(
+				at(targets, 1).fileBaseName,
+			);
 
 			await manager.stopRecording();
 		});
@@ -292,8 +295,8 @@ describe('RecordingManager', () => {
 			await manager.startRecording();
 
 			const targets = getTargets();
-			expect(targets[0].sourceName).toBe('DeviceA');
-			expect(targets[1].sourceName).toBe('DeviceB');
+			expect(at(targets, 0).sourceName).toBe('DeviceA');
+			expect(at(targets, 1).sourceName).toBe('DeviceB');
 
 			await manager.stopRecording();
 		});

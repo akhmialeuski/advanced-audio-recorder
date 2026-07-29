@@ -4,6 +4,7 @@
  */
 
 import { SystemDiagnostics } from 'src/diagnostics/SystemDiagnostics';
+import { at } from '../helpers/assertions';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import * as AudioCapabilityDetector from 'src/audio/AudioCapabilityDetector';
 import {
@@ -481,7 +482,7 @@ describe('SystemDiagnostics.collect', () => {
 		);
 
 		expect(result.audioDevices).toHaveLength(1);
-		expect(result.audioDevices[0].deviceId).toBe('in-1');
+		expect(at(result.audioDevices, 0).deviceId).toBe('in-1');
 	});
 
 	it('activeRecordingConfig reflects current settings format', async () => {

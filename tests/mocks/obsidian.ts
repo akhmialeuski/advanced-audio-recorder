@@ -627,7 +627,9 @@ export class TFile extends TAbstractFile {
 	constructor(path: string) {
 		super(path);
 		const parts = path.split('/');
-		const filename = parts[parts.length - 1];
+		// split() always yields at least one element, so the last one is the
+		// filename; the fallback only satisfies the index-safety check.
+		const filename = parts[parts.length - 1] ?? path;
 		const nameParts = filename.split('.');
 		this.extension = nameParts.pop() ?? '';
 		this.basename = nameParts.join('.');

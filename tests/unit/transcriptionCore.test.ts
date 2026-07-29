@@ -5,6 +5,7 @@
  */
 
 import { planChunks } from 'src/transcription/audioChunks';
+import { at } from '../helpers/assertions';
 import { mapWhisperResponse } from 'src/transcription/providers/whisperResponse';
 import { mapWhisperCppJson } from 'src/transcription/providers/LocalWhisperProvider';
 import {
@@ -78,9 +79,9 @@ describe('mapWhisperResponse', () => {
 		});
 		expect(result.language).toBe('en');
 		expect(result.segments).toHaveLength(1);
-		expect(result.segments[0].text).toBe('Hello');
-		expect(result.segments[0].speaker).toBe('SPEAKER_00');
-		expect(result.segments[0].words?.[0].text).toBe('Hello');
+		expect(at(result.segments, 0).text).toBe('Hello');
+		expect(at(result.segments, 0).speaker).toBe('SPEAKER_00');
+		expect(at(result.segments, 0).words?.[0].text).toBe('Hello');
 	});
 
 	it('falls back to the flat text when no segments are present', () => {

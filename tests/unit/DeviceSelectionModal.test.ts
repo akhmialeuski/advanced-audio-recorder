@@ -7,6 +7,7 @@
  */
 
 import { App, Notice } from 'obsidian';
+import { at } from '../helpers/assertions';
 import {
 	DeviceSelectionModal,
 	showDeviceSelectionModal,
@@ -69,7 +70,7 @@ describe('DeviceSelectionModal', () => {
 	it('falls back to a truncated device id when the label is empty', () => {
 		const { modal } = openModal([makeDevice('abcdefgh-1234-5678', '')]);
 
-		expect(dropdownOf(modal).options[0].text).toBe('Device abcdefgh');
+		expect(at(dropdownOf(modal).options, 0).text).toBe('Device abcdefgh');
 	});
 
 	it('invokes the callback with the selected device and closes on success', async () => {

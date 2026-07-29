@@ -12,12 +12,16 @@ import {
 	GeminiLlmProvider,
 	OpenAiCompatibleLlmProvider,
 } from 'src/transcription/llm/LlmProvider';
+import { jsonBody } from '../helpers/assertions';
 import type { LlmPrompt } from 'src/transcription/llmPostProcess';
+// Mock-only surface: these exist on the test double, not on Obsidian's
+// API, so they are imported from the mock by path. Jest maps 'obsidian'
+// to the same module, so both imports share one instance.
 import {
 	__setRequestUrlHandler,
 	type MockRequestUrlParam,
 	type MockRequestUrlResponse,
-} from 'obsidian';
+} from '../mocks/obsidian';
 
 const PROMPT: LlmPrompt = { system: 'You extract terms.', user: 'hello' };
 
@@ -32,7 +36,7 @@ function capture(responseText: string): {
 	});
 	return {
 		body: (): Record<string, unknown> =>
-			JSON.parse(String(seen?.body)) as Record<string, unknown>,
+			jsonBody<Record<string, unknown>>(seen),
 	};
 }
 

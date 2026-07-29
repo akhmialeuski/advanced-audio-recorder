@@ -9,6 +9,7 @@
  */
 
 import type { App, TFile } from 'obsidian';
+import { at } from '../helpers/assertions';
 import {
 	NEVER_CANCELLED,
 	TranscriptionCancelledError,
@@ -85,7 +86,7 @@ describe('TranscriptionService cancellation', () => {
 			token: NEVER_CANCELLED,
 		});
 
-		expect(result.transcript.segments[0].text).toBe('hi');
+		expect(at(result.transcript.segments, 0).text).toBe('hi');
 		expect(result.markdown).toContain('hi');
 	});
 

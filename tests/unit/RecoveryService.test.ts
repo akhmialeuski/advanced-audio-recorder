@@ -10,6 +10,7 @@ import {
 	recoverSession,
 	discardSession,
 } from 'src/recording/RecoveryService';
+import { at } from '../helpers/assertions';
 import { SessionJournal, JOURNAL_VERSION } from 'src/recording/SessionJournal';
 import type {
 	JournalFile,
@@ -188,7 +189,7 @@ describe('RecoveryService', () => {
 			const sessions = await collectRecoverableSessions(journal, mockApp);
 
 			expect(sessions).toHaveLength(1);
-			expect(sessions[0].tracks[0].segmentPaths).toEqual([
+			expect(at(at(sessions, 0).tracks, 0).segmentPaths).toEqual([
 				'Audio/rec-part1.webm.tmp',
 			]);
 		});
@@ -210,7 +211,7 @@ describe('RecoveryService', () => {
 
 			const sessions = await collectRecoverableSessions(journal, mockApp);
 
-			expect(sessions[0].tracks[0].headerLost).toBe(true);
+			expect(at(at(sessions, 0).tracks, 0).headerLost).toBe(true);
 		});
 	});
 

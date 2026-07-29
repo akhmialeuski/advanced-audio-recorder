@@ -18,6 +18,7 @@
  */
 
 import { Component, MarkdownView, TFile } from 'obsidian';
+import { at } from '../helpers/assertions';
 import type { App, Plugin, WorkspaceLeaf } from 'obsidian';
 import { EnhancedPlayerRegistrar } from 'src/player/EnhancedPlayerRegistrar';
 import { MediaEmbedShell } from 'src/player/MediaEmbedShell';
@@ -305,10 +306,10 @@ describe('EnhancedPlayerRegistrar embed creation', () => {
 
 		// The shell swapped this one embed: the native child was unloaded
 		// (stopping any playback) and the player took over the container
-		const native = nativeCreator.mock.results[0].value as NativeEmbed;
+		const native = at(nativeCreator.mock.results, 0).value as NativeEmbed;
 		expect(native.unloaded).toBe(true);
 		expect(audioPlayerMock).toHaveBeenCalledTimes(1);
-		const player = audioPlayerMock.mock.results[0]
+		const player = at(audioPlayerMock.mock.results, 0)
 			.value as unknown as EnhancedInstance;
 		expect(player.load).toHaveBeenCalled();
 		// The core of issue #39: no leaf was inspected or rebuilt, so a
@@ -329,7 +330,7 @@ describe('EnhancedPlayerRegistrar embed creation', () => {
 
 		await flush();
 
-		const native = nativeCreator.mock.results[0].value as NativeEmbed;
+		const native = at(nativeCreator.mock.results, 0).value as NativeEmbed;
 		expect(native.unloaded).toBe(false);
 		expect(audioPlayerMock).not.toHaveBeenCalled();
 		expect(getLeaves).not.toHaveBeenCalled();
@@ -442,14 +443,14 @@ describe('EnhancedPlayerRegistrar embed creation', () => {
 		const file = fileOf('wav');
 		void shell.loadFile(file);
 
-		const native = nativeCreator.mock.results[0].value as NativeEmbed;
+		const native = at(nativeCreator.mock.results, 0).value as NativeEmbed;
 		expect(native.loadFile).toHaveBeenCalledWith(file);
 
 		await flush();
 
 		// Live Preview drove the old child through loadFile, so the new
 		// child gets the same call and renders
-		const player = audioPlayerMock.mock.results[0]
+		const player = at(audioPlayerMock.mock.results, 0)
 			.value as unknown as EnhancedInstance;
 		expect(player.loadFile).toHaveBeenCalledWith(file);
 	});

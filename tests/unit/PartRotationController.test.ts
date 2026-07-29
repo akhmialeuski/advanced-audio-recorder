@@ -6,6 +6,7 @@
  */
 
 import { PartRotationController } from 'src/recording/PartRotationController';
+import { at } from '../helpers/assertions';
 import { DebugLogger } from 'src/utils/DebugLogger';
 import { RecordingStatus } from 'src/types';
 import type { RecordingSessionConfig, RecordingTarget } from 'src/types';
@@ -253,7 +254,7 @@ describe('PartRotationController', () => {
 					splitEnabled: false,
 				}),
 			);
-			targets[0].bufferedBytes = 1024;
+			at(targets, 0).bufferedBytes = 1024;
 
 			controller.maybeRotate();
 			await controller.waitForPendingRotation();
@@ -270,7 +271,7 @@ describe('PartRotationController', () => {
 					splitEnabled: false,
 				}),
 			);
-			targets[0].bufferedBytes = 1023;
+			at(targets, 0).bufferedBytes = 1023;
 
 			controller.maybeRotate();
 
@@ -284,7 +285,7 @@ describe('PartRotationController', () => {
 					splitEnabled: false,
 				}),
 			);
-			targets[0].bufferedBytes = Number.MAX_SAFE_INTEGER;
+			at(targets, 0).bufferedBytes = Number.MAX_SAFE_INTEGER;
 
 			controller.maybeRotate();
 
@@ -348,10 +349,10 @@ describe('PartRotationController', () => {
 				['seg1.tmp', 'seg2.tmp'],
 				expect.stringMatching(/-part1\.webm$/),
 			);
-			expect(targets[0].partIndex).toBe(1);
-			expect(targets[0].partPaths).toEqual(['/part.webm']);
-			expect(targets[0].segmentPaths).toEqual([]);
-			expect(targets[0].segmentIndex).toBe(0);
+			expect(at(targets, 0).partIndex).toBe(1);
+			expect(at(targets, 0).partPaths).toEqual(['/part.webm']);
+			expect(at(targets, 0).segmentPaths).toEqual([]);
+			expect(at(targets, 0).segmentIndex).toBe(0);
 		});
 
 		it('should not restart when a stop arrived mid-rotation but still finalize', async () => {
@@ -380,12 +381,12 @@ describe('PartRotationController', () => {
 			writeQueue.flushChunkBuffer.mockRejectedValue(
 				new Error('disk full'),
 			);
-			targets[0].bufferedChunks = [new Blob(['chunk'])];
+			at(targets, 0).bufferedChunks = [new Blob(['chunk'])];
 
 			controller.maybeRotate();
 			await controller.waitForPendingRotation();
 
-			expect(targets[0].bufferedChunks).toHaveLength(1);
+			expect(at(targets, 0).bufferedChunks).toHaveLength(1);
 			expect(hooks.restartRecorders).toHaveBeenCalled();
 			expect(finalizer.finalizeSegmentsToFile).not.toHaveBeenCalled();
 		});
@@ -403,9 +404,9 @@ describe('PartRotationController', () => {
 			controller.maybeRotate();
 			await controller.waitForPendingRotation();
 
-			expect(targets[0].partIndex).toBe(0);
+			expect(at(targets, 0).partIndex).toBe(0);
 			// Snapshot segments are re-attached in front of newer data
-			expect(targets[0].segmentPaths).toEqual(['seg1.tmp']);
+			expect(at(targets, 0).segmentPaths).toEqual(['seg1.tmp']);
 			const { Notice } = jest.requireMock('obsidian');
 			expect(
 				(Notice as jest.Mock).mock.calls.some((call) =>

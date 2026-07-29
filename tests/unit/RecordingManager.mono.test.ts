@@ -6,6 +6,7 @@
  */
 
 import { RecordingManager } from 'src/recording/RecordingManager';
+import { at } from '../helpers/assertions';
 import {
 	DEFAULT_SETTINGS,
 	AudioRecorderSettings,
@@ -155,7 +156,7 @@ describe('RecordingManager mono channel wiring', () => {
 		await manager.startRecording();
 
 		expect(createdBridges).toHaveLength(1);
-		const bridge = createdBridges[0];
+		const bridge = at(createdBridges, 0);
 		expect(bridge.mode).toBe('mono-left');
 		expect(bridge.sampleRate).toBe(48000);
 		// The MediaRecorder consumes the bridged stream, not the raw one
@@ -189,14 +190,14 @@ describe('RecordingManager mono channel wiring', () => {
 		await manager.startRecording();
 
 		expect(createdBridges).toHaveLength(2);
-		expect(createdBridges[0].stream).toBe(streamA);
-		expect(createdBridges[0].mode).toBe('mono-left');
-		expect(createdBridges[1].stream).toBe(streamB);
-		expect(createdBridges[1].mode).toBe('mono-mix');
+		expect(at(createdBridges, 0).stream).toBe(streamA);
+		expect(at(createdBridges, 0).mode).toBe('mono-left');
+		expect(at(createdBridges, 1).stream).toBe(streamB);
+		expect(at(createdBridges, 1).mode).toBe('mono-mix');
 
 		await manager.stopRecording();
-		expect(createdBridges[0].release).toHaveBeenCalled();
-		expect(createdBridges[1].release).toHaveBeenCalled();
+		expect(at(createdBridges, 0).release).toHaveBeenCalled();
+		expect(at(createdBridges, 1).release).toHaveBeenCalled();
 	});
 
 	it('does not reread a changed track mode after stream acquisition', async () => {
@@ -235,8 +236,8 @@ describe('RecordingManager mono channel wiring', () => {
 		await manager.startRecording();
 
 		expect(createdBridges).toHaveLength(1);
-		expect(createdBridges[0].stream).toBe(stream);
-		expect(createdBridges[0].mode).toBe('mono-left');
+		expect(at(createdBridges, 0).stream).toBe(stream);
+		expect(at(createdBridges, 0).mode).toBe('mono-left');
 		await manager.stopRecording();
 	});
 
@@ -264,13 +265,13 @@ describe('RecordingManager mono channel wiring', () => {
 		await manager.startRecording();
 
 		expect(createdBridges).toHaveLength(1);
-		expect(createdBridges[0].stream).toBe(streamA);
-		expect(createdBridges[0].mode).toBe('mono-left');
+		expect(at(createdBridges, 0).stream).toBe(streamA);
+		expect(at(createdBridges, 0).mode).toBe('mono-left');
 		// The source-mode track records its raw stream; the mono track
 		// records its bridged stream
 		const recorderCtor = global.MediaRecorder as unknown as jest.Mock;
 		expect(recorderCtor.mock.calls[0][0]).toBe(
-			createdBridges[0].monoStream,
+			at(createdBridges, 0).monoStream,
 		);
 		expect(recorderCtor.mock.calls[1][0]).toBe(streamB);
 
@@ -319,8 +320,8 @@ describe('RecordingManager mono channel wiring', () => {
 		await manager.startRecording();
 
 		expect(createdBridges).toHaveLength(2);
-		expect(createdBridges[0].release).toHaveBeenCalled();
-		expect(createdBridges[1].release).toHaveBeenCalled();
+		expect(at(createdBridges, 0).release).toHaveBeenCalled();
+		expect(at(createdBridges, 1).release).toHaveBeenCalled();
 		expect(stopAllStreams).toHaveBeenCalled();
 	});
 
@@ -331,7 +332,7 @@ describe('RecordingManager mono channel wiring', () => {
 		await manager.startRecording();
 		manager.cleanup();
 
-		expect(createdBridges[0].release).toHaveBeenCalled();
+		expect(at(createdBridges, 0).release).toHaveBeenCalled();
 	});
 
 	it('passes the channel mode to the PCM recorders instead of bridging', async () => {
@@ -343,7 +344,7 @@ describe('RecordingManager mono channel wiring', () => {
 
 		expect(createdBridges).toHaveLength(0);
 		expect(pcmRecorderCtorArgs).toHaveLength(1);
-		expect(pcmRecorderCtorArgs[0][3]).toBe('mono-left');
+		expect(at(pcmRecorderCtorArgs, 0)[3]).toBe('mono-left');
 
 		await manager.stopRecording();
 	});
@@ -373,8 +374,8 @@ describe('RecordingManager mono channel wiring', () => {
 
 		expect(createdBridges).toHaveLength(0);
 		expect(pcmRecorderCtorArgs).toHaveLength(2);
-		expect(pcmRecorderCtorArgs[0][3]).toBe('mono-right');
-		expect(pcmRecorderCtorArgs[1][3]).toBe('source');
+		expect(at(pcmRecorderCtorArgs, 0)[3]).toBe('mono-right');
+		expect(at(pcmRecorderCtorArgs, 1)[3]).toBe('source');
 
 		await manager.stopRecording();
 	});

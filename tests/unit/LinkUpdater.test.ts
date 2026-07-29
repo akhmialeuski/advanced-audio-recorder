@@ -4,6 +4,7 @@
  */
 
 import { updateLinksInVault } from 'src/utils/LinkUpdater';
+import { at } from '../helpers/assertions';
 import { App, TFile } from 'obsidian';
 
 jest.mock('obsidian', () => ({
@@ -111,7 +112,7 @@ describe('updateLinksInVault', () => {
 			metadataCache: {
 				resolvedLinks,
 				getFileCache: jest.fn((note: TFile) => {
-					const entry = notes[note.path];
+					const entry = at(notes, note.path);
 					if (
 						!entry.links &&
 						!entry.embeds &&

@@ -20,6 +20,7 @@
  */
 
 import { App, Modal } from 'obsidian';
+import { at } from '../helpers/assertions';
 import { AudioPlayer } from 'src/player/AudioPlayer';
 import { WaveformPeakCache, type AudioDecoder } from 'src/player/WaveformData';
 import type { AudioPlayerRegistry } from 'src/player/AudioPlayerRegistry';
@@ -750,7 +751,7 @@ describe('lazy waveform decode (B2)', () => {
 		expect(MockIntersectionObserver.instances).toHaveLength(1);
 		expect(decode).not.toHaveBeenCalled();
 
-		MockIntersectionObserver.instances[0].triggerIntersect();
+		at(MockIntersectionObserver.instances, 0).triggerIntersect();
 		await tick();
 
 		expect(decode).toHaveBeenCalledTimes(1);
@@ -759,7 +760,7 @@ describe('lazy waveform decode (B2)', () => {
 	it('decodes only once and stops observing after the first intersection', async () => {
 		const decode = rejectingDecode();
 		makeWaveformPlayer(decode).onload();
-		const observer = MockIntersectionObserver.instances[0];
+		const observer = at(MockIntersectionObserver.instances, 0);
 
 		observer.triggerIntersect();
 		await tick();
@@ -777,7 +778,7 @@ describe('lazy waveform decode (B2)', () => {
 		// load() (not onload()) so the mock marks the child loaded and runs the
 		// registered unload cleanups
 		player.load();
-		const observer = MockIntersectionObserver.instances[0];
+		const observer = at(MockIntersectionObserver.instances, 0);
 
 		player.unload();
 

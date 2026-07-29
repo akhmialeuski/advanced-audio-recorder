@@ -4,6 +4,7 @@
  */
 
 import { SplitModal } from 'src/ui/SplitModal';
+import { at } from '../helpers/assertions';
 import { App, Notice, TFile } from 'obsidian';
 import { createWavHeader } from 'src/audio/WavEncoder';
 import { createMockAudioBuffer } from '../helpers/createMockAudioBuffer';
@@ -452,7 +453,7 @@ describe('SplitModal', () => {
 		);
 		expect(backgroundIndex).toBeGreaterThanOrEqual(0);
 		// The notice mirrors pipeline progress and is hidden at the end
-		const notice = (Notice as jest.Mock).mock.results[backgroundIndex]
+		const notice = at((Notice as jest.Mock).mock.results, backgroundIndex)
 			.value as { setMessage: jest.Mock; hide: jest.Mock };
 		expect(notice.setMessage).toHaveBeenCalledWith(
 			expect.stringContaining('Writing part'),
@@ -504,7 +505,7 @@ describe('SplitModal', () => {
 		// toggle, one link-action dropdown (no bitrate dropdown)
 		expect(mockCapturedControls.dropdowns).toHaveLength(1);
 
-		const durationInput = mockCapturedControls.numberInputs[0];
+		const durationInput = at(mockCapturedControls.numberInputs, 0);
 		durationInput.value = '5';
 		durationInput.dispatchEvent(new Event('change'));
 		expect(internals(modal).partMinutes).toBe(5);
@@ -529,7 +530,7 @@ describe('SplitModal', () => {
 		modal.onOpen();
 
 		const handler = mockCapturedControls.texts[0];
-		const inputEl = mockCapturedControls.textInputs[0];
+		const inputEl = at(mockCapturedControls.textInputs, 0);
 
 		handler(input);
 		expect(inputEl.toggleClass).toHaveBeenLastCalledWith(
@@ -557,7 +558,7 @@ describe('SplitModal', () => {
 		const modal = new SplitModal(mockApp, mockFile, mockSettings);
 		modal.onOpen();
 
-		const button = mockCapturedControls.buttons[0];
+		const button = at(mockCapturedControls.buttons, 0);
 		button.click();
 		// The click handler runs the async pipeline in the background;
 		// the button is re-enabled in its finally block, so wait for that
@@ -610,8 +611,8 @@ describe('SplitModal', () => {
 
 			const calls = (mockApp.vault.createBinary as jest.Mock).mock
 				.calls as [string, ArrayBuffer][];
-			const firstPart = calls[0][1];
-			const lastPart = calls[2][1];
+			const firstPart = at(calls, 0)[1];
+			const lastPart = at(calls, 2)[1];
 			expect(firstPart.byteLength).toBe(WAV_HEADER_SIZE + 120000);
 			expect(lastPart.byteLength).toBe(WAV_HEADER_SIZE + 10000);
 			expect(new DataView(lastPart).getUint32(40, true)).toBe(10000);
@@ -750,8 +751,8 @@ describe('SplitModal', () => {
 			expect(mockApp.vault.createBinary).toHaveBeenCalledTimes(2);
 			const calls = (mockApp.vault.createBinary as jest.Mock).mock
 				.calls as [string, ArrayBuffer][];
-			expect(calls[0][1].byteLength).toBe(WAV_HEADER_SIZE + 216000);
-			expect(calls[1][1].byteLength).toBe(WAV_HEADER_SIZE + 34000);
+			expect(at(calls, 0)[1].byteLength).toBe(WAV_HEADER_SIZE + 216000);
+			expect(at(calls, 1)[1].byteLength).toBe(WAV_HEADER_SIZE + 34000);
 		});
 
 		it('should abort when a target part file already exists', async () => {

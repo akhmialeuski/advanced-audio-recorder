@@ -9,6 +9,7 @@
  */
 
 import type { App } from 'obsidian';
+import { at } from '../helpers/assertions';
 import type { PlayerMarker } from 'src/markers/markerModel';
 import { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { NoteOutput } from 'src/sidecar/recordingSidecarModel';
@@ -454,7 +455,7 @@ describe('RecordingSidecarStore', () => {
 
 			const leaked = await store.getMarkers('rec.wav');
 			leaked.push(marker('evil', 99));
-			leaked[0].label = 'tampered';
+			at(leaked, 0).label = 'tampered';
 
 			const clean = await store.getMarkers('rec.wav');
 			expect(clean).toEqual([marker('a', 1)]);
@@ -468,7 +469,7 @@ describe('RecordingSidecarStore', () => {
 			]);
 
 			const leaked = await store.getTranscript('rec.wav');
-			leaked.speakers[0].name = 'tampered';
+			at(leaked.speakers, 0).name = 'tampered';
 			leaked.speakers.push({ label: 'Injected' });
 
 			const clean = await store.getTranscript('rec.wav');

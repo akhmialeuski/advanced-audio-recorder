@@ -4,6 +4,7 @@
  */
 
 import { App, Notice } from 'obsidian';
+import { at } from '../helpers/assertions';
 import AudioRecorderPlugin from 'src/main';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import { RecordingStatus } from 'src/types';
@@ -358,7 +359,7 @@ describe('AudioRecorderPlugin settings persistence', () => {
 		const { RecordingManager } = jest.requireMock(
 			'src/recording/RecordingManager',
 		);
-		const manager = (RecordingManager as jest.Mock).mock.results[0]
+		const manager = at((RecordingManager as jest.Mock).mock.results, 0)
 			.value as { updateSettings: jest.Mock };
 
 		// The settings tab mutates the in-memory settings before
@@ -388,8 +389,10 @@ describe('AudioRecorderPlugin settings persistence', () => {
 		const { EnhancedPlayerRegistrar } = jest.requireMock(
 			'src/player/EnhancedPlayerRegistrar',
 		);
-		const registrar = (EnhancedPlayerRegistrar as jest.Mock).mock.results[0]
-			.value as {
+		const registrar = at(
+			(EnhancedPlayerRegistrar as jest.Mock).mock.results,
+			0,
+		).value as {
 			primeSavedRecordingsForEnhancement: jest.Mock;
 		};
 
@@ -575,7 +578,7 @@ describe('AudioRecorderPlugin crash recovery wiring', () => {
 				onDiscard: expect.any(Function),
 			}),
 		);
-		const modalInstance = (RecoveryModal as jest.Mock).mock.results[0]
+		const modalInstance = at((RecoveryModal as jest.Mock).mock.results, 0)
 			.value as { open: jest.Mock };
 		expect(modalInstance.open).toHaveBeenCalled();
 	});
@@ -720,8 +723,10 @@ describe('AudioRecorderPlugin background transcription status bar', () => {
 		const { EnhancedPlayerRegistrar } = jest.requireMock(
 			'src/player/EnhancedPlayerRegistrar',
 		);
-		const registrar = (EnhancedPlayerRegistrar as jest.Mock).mock.results[0]
-			.value as { subscribePlayback: jest.Mock };
+		const registrar = at(
+			(EnhancedPlayerRegistrar as jest.Mock).mock.results,
+			0,
+		).value as { subscribePlayback: jest.Mock };
 		const onPlayback = registrar.subscribePlayback.mock.calls[0][0] as (
 			state: PlaybackControlsState | null,
 		) => void;
@@ -788,8 +793,10 @@ describe('AudioRecorderPlugin background transcription status bar', () => {
 		const { EnhancedPlayerRegistrar } = jest.requireMock(
 			'src/player/EnhancedPlayerRegistrar',
 		);
-		const registrar = (EnhancedPlayerRegistrar as jest.Mock).mock.results[0]
-			.value as { subscribePlayback: jest.Mock };
+		const registrar = at(
+			(EnhancedPlayerRegistrar as jest.Mock).mock.results,
+			0,
+		).value as { subscribePlayback: jest.Mock };
 		const onPlayback = registrar.subscribePlayback.mock.calls[0][0] as (
 			state: PlaybackControlsState | null,
 		) => void;

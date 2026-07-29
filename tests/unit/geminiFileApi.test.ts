@@ -16,7 +16,13 @@ import {
 	GEMINI_FILE_MAX_WAIT_MS,
 	GEMINI_FILE_MIN_WAIT_MS,
 } from 'src/constants';
-import { __setRequestUrlHandler, type MockRequestUrlParam } from 'obsidian';
+// Mock-only surface: these exist on the test double, not on Obsidian's
+// API, so they are imported from the mock by path. Jest maps 'obsidian'
+// to the same module, so both imports share one instance.
+import {
+	__setRequestUrlHandler,
+	type MockRequestUrlParam,
+} from '../mocks/obsidian';
 
 const BASE_URL = 'https://gemini.example';
 const API_KEY = 'gm-test';

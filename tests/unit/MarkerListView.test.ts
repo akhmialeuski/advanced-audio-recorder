@@ -6,6 +6,7 @@
  */
 
 import { App, Modal } from 'obsidian';
+import { at } from '../helpers/assertions';
 import {
 	MarkerListView,
 	type MarkerListCallbacks,
@@ -159,8 +160,8 @@ describe('MarkerListView active highlight and tick refresh', () => {
 		view.updateActive(15);
 		const rows = listContainer.querySelectorAll('.aar-player-marker-row');
 		// 15s falls in the first marker's segment (10s..30s)
-		expect(rows[0].classList.contains('is-active')).toBe(true);
-		expect(rows[1].classList.contains('is-active')).toBe(false);
+		expect(at(rows, 0).classList.contains('is-active')).toBe(true);
+		expect(at(rows, 1).classList.contains('is-active')).toBe(false);
 	});
 
 	it('refreshes ticks without rebuilding the list', () => {

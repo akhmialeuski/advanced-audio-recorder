@@ -17,6 +17,7 @@ jest.mock('src/audio/AudioEncoder', () => ({
 }));
 
 import { Platform } from 'obsidian';
+import { FORMAT_FLAC } from 'src/constants';
 import {
 	buildMimeType,
 	detectSupportedFormats,
@@ -27,7 +28,6 @@ import {
 	detectCodecSupport,
 	listFormatAvailability,
 	resolveEffectiveOutputFormat,
-	FORMAT_FLAC,
 } from 'src/audio/AudioCapabilityDetector';
 
 describe('AudioCapabilityDetector', () => {

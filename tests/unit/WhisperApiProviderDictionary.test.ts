@@ -8,11 +8,14 @@
 
 import { WhisperApiProvider } from 'src/transcription/providers/WhisperApiProvider';
 import type { AudioPayload } from 'src/transcription/providers/TranscriptionProvider';
+// Mock-only surface: these exist on the test double, not on Obsidian's
+// API, so they are imported from the mock by path. Jest maps 'obsidian'
+// to the same module, so both imports share one instance.
 import {
 	__setRequestUrlHandler,
 	type MockRequestUrlParam,
 	type MockRequestUrlResponse,
-} from 'obsidian';
+} from '../mocks/obsidian';
 
 const BASE_URL = 'https://whisper.example';
 

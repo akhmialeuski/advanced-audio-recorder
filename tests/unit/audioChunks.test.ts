@@ -7,6 +7,7 @@
  */
 
 import { splitChunkPlan, type ChunkPlan } from 'src/transcription/audioChunks';
+import { at } from '../helpers/assertions';
 
 const MIN_SECONDS = 60;
 
@@ -15,11 +16,11 @@ describe('splitChunkPlan', () => {
 		const chunk: ChunkPlan = { index: 1, startSeconds: 0, endSeconds: 900 };
 		const halves = splitChunkPlan(chunk, MIN_SECONDS);
 		expect(halves).toHaveLength(2);
-		expect(halves[0].startSeconds).toBe(0);
-		expect(halves[0].endSeconds).toBe(450);
+		expect(at(halves, 0).startSeconds).toBe(0);
+		expect(at(halves, 0).endSeconds).toBe(450);
 		// The second half starts exactly where the first ends: no gap, no overlap.
-		expect(halves[1].startSeconds).toBe(450);
-		expect(halves[1].endSeconds).toBe(900);
+		expect(at(halves, 1).startSeconds).toBe(450);
+		expect(at(halves, 1).endSeconds).toBe(900);
 	});
 
 	it('carries the offset so an inner part keeps its place on the timeline', () => {

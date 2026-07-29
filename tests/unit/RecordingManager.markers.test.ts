@@ -5,6 +5,7 @@
  */
 
 import { RecordingManager } from 'src/recording/RecordingManager';
+import { at } from '../helpers/assertions';
 import { RecordingStatus } from 'src/types';
 import { MARKER_KIND } from 'src/markers/markerModel';
 import {
@@ -248,7 +249,7 @@ describe('RecordingManager', () => {
 			manager.captureMarkerDraft()?.commit('', MARKER_KIND.bookmark);
 			await feedChunkAndStop();
 
-			const markers = writes[0].markers;
+			const markers = at(writes, 0).markers;
 			expect(markers.map((marker) => marker.label).sort()).toEqual([
 				'Marker 1',
 				'Marker 2',
@@ -330,7 +331,7 @@ describe('RecordingManager', () => {
 			handle?.commit('Renamed live', MARKER_KIND.chapter);
 			await flushMicrotasks();
 
-			const path = writes[0].path;
+			const path = at(writes, 0).path;
 			const final = read(path);
 			expect(final).toHaveLength(1);
 			expect(final[0]).toMatchObject({
@@ -356,7 +357,7 @@ describe('RecordingManager', () => {
 			await manager.startRecording();
 			const handle = manager.captureMarkerDraft();
 			await feedChunkAndStop();
-			const path = writes[0].path;
+			const path = at(writes, 0).path;
 			expect(read(path)).toHaveLength(1);
 
 			handle?.cancel();

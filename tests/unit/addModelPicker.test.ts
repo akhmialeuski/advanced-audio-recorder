@@ -11,6 +11,7 @@ import {
 	addModelPicker,
 	type SettingsSectionContext,
 } from 'src/settings/settingControls';
+import { at } from '../helpers/assertions';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 
 interface DropdownCapture {
@@ -225,8 +226,8 @@ describe('addModelPicker', () => {
 
 	it('adds a typed custom model, selects it, and re-renders', async () => {
 		const { state, ctx, addRow } = setup(['nova-3'], 'nova-3');
-		addRow.texts[0].onChange('  my-model ');
-		await addRow.buttons[0].onClick(); // "Add"
+		at(addRow.texts, 0).onChange('  my-model ');
+		await at(addRow.buttons, 0).onClick(); // "Add"
 		expect(state.models).toEqual(['nova-3', 'my-model']);
 		expect(state.selected).toBe('my-model');
 		expect(ctx.save).toHaveBeenCalled();
@@ -235,22 +236,22 @@ describe('addModelPicker', () => {
 
 	it('does not add an empty model id', async () => {
 		const { state, addRow } = setup(['nova-3'], 'nova-3');
-		addRow.texts[0].onChange('   ');
-		await addRow.buttons[0].onClick();
+		at(addRow.texts, 0).onChange('   ');
+		await at(addRow.buttons, 0).onClick();
 		expect(state.models).toEqual(['nova-3']);
 	});
 
 	it('removes the selected model and falls back to the first remaining', async () => {
 		const { state, addRow } = setup(['nova-3', 'nova-2'], 'nova-2');
-		await addRow.buttons[1].onClick(); // "Remove selected"
+		await at(addRow.buttons, 1).onClick(); // "Remove selected"
 		expect(state.models).toEqual(['nova-3']);
 		expect(state.selected).toBe('nova-3');
 	});
 
 	it('disables remove when only one model remains', () => {
 		const { addRow } = setup(['nova-3'], 'nova-3');
-		expect(addRow.buttons[1].text).toBe('Remove selected');
-		expect(addRow.buttons[1].disabled).toBe(true);
+		expect(at(addRow.buttons, 1).text).toBe('Remove selected');
+		expect(at(addRow.buttons, 1).disabled).toBe(true);
 	});
 
 	it('persists a fallback selection when the stored model id is empty', () => {

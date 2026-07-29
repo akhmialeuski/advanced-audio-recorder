@@ -5,6 +5,7 @@
  */
 
 import { App, Platform } from 'obsidian';
+import { at } from '../helpers/assertions';
 import { AudioRecorderSettingTab } from 'src/settings/SettingsTab';
 import {
 	DEFAULT_SETTINGS,
@@ -410,7 +411,7 @@ describe('AudioRecorderSettingTab', () => {
 
 			await renderAndSettle();
 
-			expect(channelSelects()[0].disabled).toBe(false);
+			expect(at(channelSelects(), 0).disabled).toBe(false);
 			expect(mockSettings.recordingChannels).toBe('mono-left');
 		});
 
@@ -433,7 +434,7 @@ describe('AudioRecorderSettingTab', () => {
 
 			await renderAndSettle();
 
-			expect(channelSelects()[0].disabled).toBe(true);
+			expect(at(channelSelects(), 0).disabled).toBe(true);
 			expect(mockSettings.recordingChannels).toBe('mono-left');
 			expect(saveSettingsMock).not.toHaveBeenCalled();
 		});
@@ -444,7 +445,7 @@ describe('AudioRecorderSettingTab', () => {
 
 			await renderAndSettle();
 
-			expect(channelSelects()[0].disabled).toBe(false);
+			expect(at(channelSelects(), 0).disabled).toBe(false);
 		});
 
 		it('disables per-track selectors by each track device capability', async () => {
@@ -464,10 +465,10 @@ describe('AudioRecorderSettingTab', () => {
 			const selects = channelSelects();
 			// Global + three track selectors
 			expect(selects).toHaveLength(4);
-			expect(selects[1].disabled).toBe(false);
-			expect(selects[2].disabled).toBe(true);
+			expect(at(selects, 1).disabled).toBe(false);
+			expect(at(selects, 2).disabled).toBe(true);
 			// Track 3 has no device: nothing to bind the mode to
-			expect(selects[3].disabled).toBe(true);
+			expect(at(selects, 3).disabled).toBe(true);
 			// Runtime capability observation never rewrites either mode.
 			expect(mockSettings.trackAudioSources.get(1)?.channelMode).toBe(
 				'mono-left',
@@ -485,7 +486,7 @@ describe('AudioRecorderSettingTab', () => {
 				[1, { deviceId: 'selected-dev', channelMode: 'mono-left' }],
 			]);
 			await renderAndSettle();
-			expect(channelSelects()[1].disabled).toBe(false);
+			expect(at(channelSelects(), 1).disabled).toBe(false);
 
 			installDevices([]);
 			const deviceChange = addEventListenerMock.mock
@@ -494,7 +495,7 @@ describe('AudioRecorderSettingTab', () => {
 			await new Promise((resolve) => setTimeout(resolve, 0));
 			await new Promise((resolve) => setTimeout(resolve, 0));
 
-			expect(channelSelects()[1].disabled).toBe(true);
+			expect(at(channelSelects(), 1).disabled).toBe(true);
 			expect(mockSettings.trackAudioSources.get(1)).toEqual({
 				deviceId: 'selected-dev',
 				channelMode: 'mono-left',
@@ -527,13 +528,13 @@ describe('AudioRecorderSettingTab', () => {
 			deviceChange();
 			resolveNewer?.([fakeInputDevice('selected-dev', 2)]);
 			await new Promise((resolve) => setTimeout(resolve, 0));
-			expect(channelSelects()[0].disabled).toBe(false);
+			expect(at(channelSelects(), 0).disabled).toBe(false);
 
 			resolveOlder?.([fakeInputDevice('selected-dev', 1)]);
 			await new Promise((resolve) => setTimeout(resolve, 0));
 
 			// The older mono result must not overwrite the newer stereo view.
-			expect(channelSelects()[0].disabled).toBe(false);
+			expect(at(channelSelects(), 0).disabled).toBe(false);
 			expect(mockSettings.recordingChannels).toBe('mono-left');
 			expect(saveSettingsMock).not.toHaveBeenCalled();
 		});
@@ -585,7 +586,10 @@ describe('AudioRecorderSettingTab', () => {
 						(option) => option.value === 'other-stereo',
 					),
 			);
-			const trackDeviceSelect = deviceSelects[deviceSelects.length - 1];
+			const trackDeviceSelect = at(
+				deviceSelects,
+				deviceSelects.length - 1,
+			);
 			trackDeviceSelect.value = 'other-stereo';
 			trackDeviceSelect.dispatchEvent(new Event('change'));
 			await new Promise((resolve) => setTimeout(resolve, 0));
