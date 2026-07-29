@@ -65,7 +65,7 @@ export interface LlmStepRequest {
 	/** Optional generation options (temperature). */
 	options?: LlmCompleteOptions;
 	/** Where to report the call's estimated cost. */
-	costSink?: LlmCostSink;
+	costSink?: LlmCostSink | undefined;
 }
 
 /**

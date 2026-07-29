@@ -186,7 +186,7 @@ export function addTextArea(
 /** Configuration for a toggle control. */
 export interface ToggleControlConfig {
 	name: string;
-	desc?: string;
+	desc?: string | undefined;
 	get: () => boolean;
 	set: (value: boolean) => void;
 	/** Re-render the tab after the change (to reveal/hide dependent settings). */
@@ -230,7 +230,7 @@ export function addToggle(
 /** Configuration for a dropdown control. */
 export interface DropdownControlConfig {
 	name: string;
-	desc?: string;
+	desc?: string | undefined;
 	/** Value/label option pairs (see {@link LabeledOption}). */
 	options: LabeledOption[];
 	get: () => string;

@@ -37,7 +37,7 @@ interface AgentCall {
 	system: string;
 	user: string;
 	maxTokens: number;
-	options?: LlmCompleteOptions;
+	options?: LlmCompleteOptions | undefined;
 }
 
 /**

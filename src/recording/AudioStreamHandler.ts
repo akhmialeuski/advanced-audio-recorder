@@ -172,8 +172,8 @@ async function getAudioStream(
 		try {
 			return await navigator.mediaDevices.getUserMedia({
 				audio: {
-					deviceId: deviceId ? { exact: deviceId } : undefined,
-					sampleRate: sampleRate,
+					...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+					...(sampleRate === undefined ? {} : { sampleRate }),
 					...(processing
 						? {
 								noiseSuppression: processing.noiseSuppression,

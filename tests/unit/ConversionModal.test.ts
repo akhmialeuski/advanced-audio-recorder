@@ -45,7 +45,7 @@ function addObsidianDomMethods(el: HTMLElement): HTMLElement {
 /** Captured Notice instances for assertions on setMessage/hide. */
 interface NoticeInstance {
 	message: string;
-	timeout?: number;
+	timeout?: number | undefined;
 	setMessage: jest.Mock;
 	hide: jest.Mock;
 }

@@ -26,7 +26,7 @@ export interface PostProcessOptions {
 	/** The task to perform. */
 	task: LlmTask;
 	/** Detected/declared language name or code, when known. */
-	language?: string;
+	language?: string | undefined;
 	/**
 	 * Editable cleanup system prompt (base text, before the language clause).
 	 * Falls back to {@link DEFAULT_LLM_CLEANUP_PROMPT} when empty.

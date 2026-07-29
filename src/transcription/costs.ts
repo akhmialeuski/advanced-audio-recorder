@@ -349,7 +349,7 @@ export interface CostEstimateLine {
 	/** Provider display name, shown as the pricing link. */
 	providerName: string;
 	/** Provider pricing page, absent for the free local engine. */
-	pricingUrl?: string;
+	pricingUrl?: string | undefined;
 	/** Selected model id (empty for the free local engine). */
 	model: string;
 	/** Estimated cost in USD, or null when it cannot be priced. */

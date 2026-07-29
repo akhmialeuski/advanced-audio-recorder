@@ -8,7 +8,7 @@ import { TrackWriteQueue } from 'src/recording/TrackWriteQueue';
 import type { RecordingSessionConfig, RecordingTarget } from 'src/types';
 import {
 	DEFAULT_SETTINGS,
-	AudioRecorderSettings,
+	type AudioRecorderSettings,
 } from 'src/settings/settingsSchema';
 import type { App } from 'obsidian';
 

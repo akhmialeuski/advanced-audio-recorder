@@ -9,7 +9,7 @@ import { at } from '../helpers/assertions';
 import { AudioRecorderSettingTab } from 'src/settings/SettingsTab';
 import {
 	DEFAULT_SETTINGS,
-	AudioRecorderSettings,
+	type AudioRecorderSettings,
 } from 'src/settings/settingsSchema';
 import { DOCS_URL } from 'src/constants';
 import type { AudioRecorderPluginInterface } from 'src/settings/SettingsTab';

@@ -20,7 +20,7 @@ import type { TranscriptionUsage } from './TranscriptTypes';
  */
 export class TranscriptTruncatedError extends Error {
 	/** Usage the truncated (billed but discarded) request reported, when any. */
-	readonly usage?: TranscriptionUsage;
+	readonly usage?: TranscriptionUsage | undefined;
 
 	constructor(message: string, usage?: TranscriptionUsage) {
 		super(message);

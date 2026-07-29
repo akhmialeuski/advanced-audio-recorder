@@ -53,7 +53,10 @@ const createRequest = (
 });
 
 describe('handleEncodingMessage', () => {
-	let responses: { response: WorkerResponse; transfer?: Transferable[] }[];
+	let responses: {
+		response: WorkerResponse;
+		transfer?: Transferable[] | undefined;
+	}[];
 	const post = (
 		response: WorkerResponse,
 		transfer?: Transferable[],

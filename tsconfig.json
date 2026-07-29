@@ -18,6 +18,8 @@
 		"noUnusedParameters": true,
 		"noImplicitOverride": true,
 		"noUncheckedIndexedAccess": true,
+		"exactOptionalPropertyTypes": true,
+		"verbatimModuleSyntax": true,
 		"useUnknownInCatchVariables": true,
 		"esModuleInterop": true,
 		"moduleResolution": "bundler",

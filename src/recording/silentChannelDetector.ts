@@ -49,7 +49,7 @@ export interface ChannelBalanceOptions {
 
 /** Early-bound recording metadata used to avoid opening large files. */
 export interface SilentChannelDetectionOptions {
-	knownDurationSeconds?: number;
+	knownDurationSeconds?: number | undefined;
 	maxDecodeSeconds?: number;
 }
 

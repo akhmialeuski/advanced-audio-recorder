@@ -321,7 +321,7 @@ describe('SharedAudioDecoder', () => {
 
 	afterEach(() => {
 		(
-			globalThis as { OfflineAudioContext?: OfflineCtor }
+			globalThis as { OfflineAudioContext?: OfflineCtor | undefined }
 		).OfflineAudioContext = original;
 	});
 

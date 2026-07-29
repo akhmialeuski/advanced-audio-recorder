@@ -122,7 +122,7 @@ export interface GeneratedContext {
 /** Options for {@link generateContext}. */
 export interface ContextPipelineOptions {
 	/** Language detected on the first pass (ISO code), when known. */
-	language?: string;
+	language?: string | undefined;
 	/**
 	 * User-curated glossary terms: the run's selected Dictionary profile, the
 	 * same terms the single pass biases toward. Candidates like any other, so
@@ -139,7 +139,7 @@ export interface ContextPipelineOptions {
 	 */
 	buildPromptSentence?: boolean;
 	/** Cancellation probe checked before each agent call. */
-	isCancelled?: () => boolean;
+	isCancelled?: (() => boolean) | undefined;
 	/**
 	 * The run's settings, used to price each agent call. Required to account
 	 * the agents' spending; without it the calls still run and are simply not
@@ -149,7 +149,7 @@ export interface ContextPipelineOptions {
 	/** Extent of the draft the agents read, in seconds, for that pricing. */
 	durationSeconds?: number | null;
 	/** Where each agent call reports its estimated cost. */
-	costSink?: LlmCostSink;
+	costSink?: LlmCostSink | undefined;
 }
 
 /** Raised when the caller's cancellation probe fires between agent calls. */

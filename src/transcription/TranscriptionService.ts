@@ -94,28 +94,28 @@ export interface TranscribeRunOptions {
 	/** Source note path used to generate relative timecode links. */
 	notePathForLinks: string;
 	/** Progress callback: fraction 0..1 and a short stage label. */
-	onProgress?: (fraction: number, label: string) => void;
+	onProgress?: ((fraction: number, label: string) => void) | undefined;
 	/**
 	 * Running-cost callback, invoked after each completed part with the
 	 * cumulative cost so far, so a long multi-part run can show spending
 	 * live rather than only at the end.
 	 */
-	onCost?: (cost: TranscribeRunCost) => void;
+	onCost?: ((cost: TranscribeRunCost) => void) | undefined;
 	/**
 	 * Pre-read audio bytes to transcribe. When the caller already holds the
 	 * file's bytes - the dialog reads them to probe the duration for the cost
 	 * estimate - passing them here avoids reading the whole file a second
 	 * time. Omitted, the service reads the file itself.
 	 */
-	audioBytes?: ArrayBuffer;
+	audioBytes?: ArrayBuffer | undefined;
 	/** Cancellation token. */
-	token?: CancellationToken;
+	token?: CancellationToken | undefined;
 	/**
 	 * Recording sidecar access for speaker-name continuity: stored names are
 	 * re-applied to a fresh diarized transcript and the roster is refreshed.
 	 * Absent, the run is stateless and its speakers keep the engine labels.
 	 */
-	sidecar?: TranscriptionSidecarAccess;
+	sidecar?: TranscriptionSidecarAccess | undefined;
 }
 
 /**
@@ -174,7 +174,7 @@ export interface TranscriptionServiceDeps {
 	 * post-processing pass and the advanced context agents). Absent, the run
 	 * still works and simply accounts nothing.
 	 */
-	costSink?: LlmCostSink;
+	costSink?: LlmCostSink | undefined;
 	/** Builds the transcription provider from settings. */
 	createProvider?: (settings: AudioRecorderSettings) => TranscriptionProvider;
 	/** Builds the LLM post-processing provider from settings. */

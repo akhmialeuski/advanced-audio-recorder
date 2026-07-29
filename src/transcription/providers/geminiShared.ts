@@ -137,17 +137,17 @@ export function geminiFinishReason(body: unknown): string | undefined {
  * than zero.
  */
 export interface GeminiUsage {
-	promptTokenCount?: number;
-	candidatesTokenCount?: number;
-	totalTokenCount?: number;
-	thoughtsTokenCount?: number;
+	promptTokenCount?: number | undefined;
+	candidatesTokenCount?: number | undefined;
+	totalTokenCount?: number | undefined;
+	thoughtsTokenCount?: number | undefined;
 	/**
 	 * Audio-modality portion of `promptTokenCount`, summed from
 	 * `promptTokensDetails`. Audio input is billed at a higher rate than the
 	 * text prompt, so keeping the split lets the cost model price each
 	 * modality correctly. Undefined when the response omits the breakdown.
 	 */
-	promptAudioTokenCount?: number;
+	promptAudioTokenCount?: number | undefined;
 }
 
 /** Modality string Gemini uses for audio input in `promptTokensDetails`. */

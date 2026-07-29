@@ -30,7 +30,7 @@ import type {
 
 /** Optional collaborators and initial form state for ConversionModal. */
 export interface ConversionModalOptions {
-	onConverted?: (convertedPath: string) => void;
+	onConverted?: ((convertedPath: string) => void) | undefined;
 	getWorkerClient?: () => EncodingWorkerClient | null;
 	initialChannelMode?: ChannelMode;
 }
@@ -53,7 +53,9 @@ export class ConversionModal extends PluginModal {
 	private progressNotice: Notice | null = null;
 	/** Conversion pipeline behind the form. */
 	private readonly conversionService: ConversionService;
-	private readonly onConverted?: (convertedPath: string) => void;
+	private readonly onConverted?:
+		| ((convertedPath: string) => void)
+		| undefined;
 
 	/**
 	 * @param app - Obsidian app handle

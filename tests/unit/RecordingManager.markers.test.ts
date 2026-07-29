@@ -10,7 +10,7 @@ import { RecordingStatus } from 'src/types';
 import { MARKER_KIND } from 'src/markers/markerModel';
 import {
 	DEFAULT_SETTINGS,
-	AudioRecorderSettings,
+	type AudioRecorderSettings,
 } from 'src/settings/settingsSchema';
 import type { App } from 'obsidian';
 import {

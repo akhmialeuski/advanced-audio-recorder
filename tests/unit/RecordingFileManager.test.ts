@@ -7,7 +7,7 @@
 import type { App } from 'obsidian';
 import {
 	DEFAULT_SETTINGS,
-	AudioRecorderSettings,
+	type AudioRecorderSettings,
 } from 'src/settings/settingsSchema';
 import type { RecordingTarget } from 'src/types';
 import {

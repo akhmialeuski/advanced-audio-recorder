@@ -7,11 +7,11 @@
  */
 
 import {
-	AudioRecorderSettings,
-	AudioRecorderSettingsInput,
+	type AudioRecorderSettings,
+	type AudioRecorderSettingsInput,
 	DEFAULT_SETTINGS,
-	OutputMode,
-	TrackAudioSources,
+	type OutputMode,
+	type TrackAudioSources,
 } from 'src/settings/settingsSchema';
 import {
 	mergeSettings,

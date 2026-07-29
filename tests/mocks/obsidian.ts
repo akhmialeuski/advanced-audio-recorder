@@ -319,7 +319,12 @@ export function addObsidianDomExtensions<T extends HTMLElement>(el: T): T {
 		) => HTMLElement;
 		return createEl(
 			'div',
-			opts ? { cls: opts.cls, text: opts.text } : undefined,
+			opts
+				? {
+						...(opts.cls === undefined ? {} : { cls: opts.cls }),
+						...(opts.text === undefined ? {} : { text: opts.text }),
+					}
+				: undefined,
 		);
 	};
 

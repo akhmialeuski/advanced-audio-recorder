@@ -11,7 +11,7 @@ import { DebugLogger } from 'src/utils/DebugLogger';
 import type { RecordingSessionConfig, RecordingTarget } from 'src/types';
 import {
 	DEFAULT_SETTINGS,
-	AudioRecorderSettings,
+	type AudioRecorderSettings,
 } from 'src/settings/settingsSchema';
 import type { App } from 'obsidian';
 import { at, defined } from '../helpers/assertions';

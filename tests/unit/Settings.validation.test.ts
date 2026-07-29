@@ -4,7 +4,7 @@
  */
 
 import {
-	AudioRecorderSettings,
+	type AudioRecorderSettings,
 	DEFAULT_SETTINGS,
 } from 'src/settings/settingsSchema';
 import { validateSettings } from 'src/settings/settingsValidation';

@@ -16,7 +16,7 @@ import {
 	isDeviceSelectionSupported,
 	isRecordingBannerSupported,
 } from './platform/capabilities';
-import { AudioRecorderSettings } from './settings/settingsSchema';
+import type { AudioRecorderSettings } from './settings/settingsSchema';
 import {
 	mergeSettingsAsync,
 	serializeSettings,

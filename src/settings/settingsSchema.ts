@@ -125,7 +125,7 @@ export type PlatformScopedSettingsMap = Record<
 export interface PlatformScopedSettingsInput {
 	audioDeviceId?: unknown;
 	recordingChannels?: unknown;
-	trackAudioSources?: TrackAudioSources | TrackAudioSourcesRecord;
+	trackAudioSources?: TrackAudioSources | TrackAudioSourcesRecord | undefined;
 }
 
 /** A platform-scoped branch as persisted to disk. */

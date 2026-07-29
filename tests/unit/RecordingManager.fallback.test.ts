@@ -9,7 +9,7 @@ import { RecordingManager } from 'src/recording/RecordingManager';
 import { RecordingStatus } from 'src/types';
 import {
 	DEFAULT_SETTINGS,
-	AudioRecorderSettings,
+	type AudioRecorderSettings,
 } from 'src/settings/settingsSchema';
 import { AudioStreamError } from 'src/errors';
 import { PLUGIN_LOG_PREFIX } from 'src/constants';

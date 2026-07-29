@@ -44,7 +44,7 @@ export interface TranscriptSegment {
  */
 export interface Transcript {
 	/** Detected or requested language as a BCP-47 / ISO code, when known. */
-	language?: string;
+	language?: string | undefined;
 	/** Ordered, non-overlapping (by start) segments. */
 	segments: TranscriptSegment[];
 	/** Distinct speaker labels present in the segments, in first-seen order. */

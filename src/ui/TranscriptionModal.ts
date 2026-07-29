@@ -79,7 +79,7 @@ export type TranscriptionBackgroundProgressCallbacks = {
  */
 export type TranscriptionModalOptions = {
 	autoStart?: boolean;
-	notePath?: string;
+	notePath?: string | undefined;
 	backgroundProgress?: TranscriptionBackgroundProgressCallbacks;
 	/** Persists the run's dictionary-profile choice so it defaults next time. */
 	onProfileSelected?: (id: string) => Promise<void>;
@@ -93,7 +93,7 @@ export type TranscriptionModalOptions = {
 	 * Session-wide per-engine cost accumulator owned by the plugin, so the
 	 * dialog can add this run's cost and show the running session total.
 	 */
-	costTracker?: SessionCostTracker;
+	costTracker?: SessionCostTracker | undefined;
 	/**
 	 * Generates auto chapters from a finished run's transcript. Invoked
 	 * fire-and-forget when the run's auto-chapters toggle is on; the
