@@ -6,12 +6,16 @@
  */
 
 import { GeminiLlmProvider } from 'src/transcription/llm/LlmProvider';
+import { jsonBody } from '../helpers/assertions';
 import type { LlmPrompt } from 'src/transcription/llmPostProcess';
+// Mock-only surface: these exist on the test double, not on Obsidian's
+// API, so they are imported from the mock by path. Jest maps 'obsidian'
+// to the same module, so both imports share one instance.
 import {
 	__setRequestUrlHandler,
 	type MockRequestUrlParam,
 	type MockRequestUrlResponse,
-} from 'obsidian';
+} from '../mocks/obsidian';
 
 const BASE_URL = 'https://gemini.example';
 const API_KEY = 'gm-test';
@@ -57,7 +61,7 @@ describe('GeminiLlmProvider.complete', () => {
 			`${BASE_URL}/v1beta/models/${MODEL}:generateContent`,
 		);
 		expect(seen?.headers?.['x-goog-api-key']).toBe(API_KEY);
-		const body = JSON.parse(String(seen?.body)) as LlmGenerateBody;
+		const body = jsonBody<LlmGenerateBody>(seen);
 		expect(body.generationConfig.maxOutputTokens).toBe(MAX_TOKENS);
 		expect(body.generationConfig.thinkingConfig).toEqual({
 			thinkingBudget: 0,
@@ -73,7 +77,7 @@ describe('GeminiLlmProvider.complete', () => {
 
 		await provider('gemini-2.5-pro').complete(PROMPT, MAX_TOKENS);
 
-		const body = JSON.parse(String(seen?.body)) as LlmGenerateBody;
+		const body = jsonBody<LlmGenerateBody>(seen);
 		expect(body.generationConfig.thinkingConfig?.thinkingBudget).toBe(128);
 	});
 
@@ -87,7 +91,7 @@ describe('GeminiLlmProvider.complete', () => {
 		await provider('gemini-2.0-flash').complete(PROMPT, MAX_TOKENS);
 
 		// 2.0 rejects thinkingConfig, so the key must be absent entirely.
-		const body = JSON.parse(String(seen?.body)) as LlmGenerateBody;
+		const body = jsonBody<LlmGenerateBody>(seen);
 		expect('thinkingConfig' in body.generationConfig).toBe(false);
 	});
 

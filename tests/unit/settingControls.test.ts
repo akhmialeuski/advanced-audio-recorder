@@ -9,6 +9,7 @@
  */
 
 import { Setting } from 'obsidian';
+import { at } from '../helpers/assertions';
 import {
 	addDropdown,
 	addNumberInputTo,
@@ -50,7 +51,7 @@ describe('addToggle disabled rendering', () => {
 			disabled: true,
 		});
 
-		const setting = capturedSettings[0];
+		const setting = at(capturedSettings, 0);
 		expect(setting.el.classList.contains(SETTING_DISABLED_CLASS)).toBe(
 			true,
 		);
@@ -64,7 +65,7 @@ describe('addToggle disabled rendering', () => {
 			set: () => undefined,
 		});
 
-		const setting = capturedSettings[0];
+		const setting = at(capturedSettings, 0);
 		expect(setting.el.classList.contains(SETTING_DISABLED_CLASS)).toBe(
 			false,
 		);
@@ -86,7 +87,7 @@ describe('addText disabled rendering', () => {
 			disabled: true,
 		});
 
-		const setting = capturedSettings[0];
+		const setting = at(capturedSettings, 0);
 		expect(setting.el.classList.contains(SETTING_DISABLED_CLASS)).toBe(
 			true,
 		);
@@ -100,7 +101,7 @@ describe('addText disabled rendering', () => {
 			set: () => undefined,
 		});
 
-		const setting = capturedSettings[0];
+		const setting = at(capturedSettings, 0);
 		expect(setting.el.classList.contains(SETTING_DISABLED_CLASS)).toBe(
 			false,
 		);
@@ -125,7 +126,7 @@ describe('addDropdown blocked options', () => {
 			set: () => undefined,
 		});
 
-		const options = capturedSettings[0].dropdownOptions ?? [];
+		const options = at(capturedSettings, 0).dropdownOptions ?? [];
 		expect(options).toEqual([
 			{ value: 'cloud', disabled: false },
 			{ value: 'local', disabled: true },
@@ -143,7 +144,7 @@ describe('addDropdown blocked options', () => {
 			set: () => undefined,
 		});
 
-		const options = capturedSettings[0].dropdownOptions ?? [];
+		const options = at(capturedSettings, 0).dropdownOptions ?? [];
 		expect(options.every((option) => !option.disabled)).toBe(true);
 	});
 });

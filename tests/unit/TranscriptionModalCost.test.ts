@@ -28,6 +28,7 @@ jest.mock('src/transcription/api', () => {
 
 import { probeAudioMetadata } from 'src/utils/AudioFileAnalyzer';
 import { transcribeFile } from 'src/transcription/api';
+import { createFile } from '../helpers/createApp';
 
 type ModalInternals = {
 	updateCostEstimate: () => void;
@@ -50,7 +51,7 @@ function flush(): Promise<void> {
 }
 
 function createAudioFile(): TFile {
-	const file = new TFile('Audio/meeting.webm');
+	const file = createFile('Audio/meeting.webm');
 	Object.defineProperty(file, 'name', { value: 'meeting.webm' });
 	return file;
 }
@@ -133,11 +134,10 @@ describe('TranscriptionModal cost estimate', () => {
 
 		const text = internals.costEstimateEl?.textContent ?? '';
 		expect(text).toContain('Post-processing (Clean up) - OpenAI');
-		// The LLM steps are billed separately, so the estimate says so to match
-		// the smaller "Transcription cost" reported after the run.
-		expect(text).toContain(
-			'The LLM steps above are billed separately by their provider and are not added to the session total',
-		);
+		// The LLM steps do reach the session total now; what the note has to
+		// say is that their share of it is an estimate, because their provider
+		// reports no usage to price from.
+		expect(text).toContain('their share of the session total is estimated');
 		// Both providers are linked for pricing.
 		const links = internals.costEstimateEl?.querySelectorAll('a') ?? [];
 		expect(links.length).toBe(2);

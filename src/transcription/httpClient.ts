@@ -268,7 +268,7 @@ async function fetchResponse(
 		const response = await window.fetch(options.url, {
 			method: options.method,
 			headers,
-			body: options.body,
+			...(options.body === undefined ? {} : { body: options.body }),
 			signal: controller.signal,
 		});
 		const text = await response.text();
@@ -325,9 +325,13 @@ async function dispatchRequest(
 		requestUrl({
 			url: options.url,
 			method: options.method,
-			headers: options.headers,
-			body: options.body,
-			contentType: options.contentType,
+			...(options.headers === undefined
+				? {}
+				: { headers: options.headers }),
+			...(options.body === undefined ? {} : { body: options.body }),
+			...(options.contentType === undefined
+				? {}
+				: { contentType: options.contentType }),
 			throw: false,
 		}),
 		timeoutMs,
@@ -393,7 +397,7 @@ export interface RequestOptions {
 	 * requests fall back to `requestUrl`, which cannot abort - there the
 	 * request keeps running until the timeout, as before.
 	 */
-	signal?: AbortSignal;
+	signal?: AbortSignal | undefined;
 }
 
 /**

@@ -10,9 +10,11 @@
 
 import { ContextMenu } from 'src/ui/ContextMenu';
 import { FILE_ACTIONS } from 'src/actions/fileActions';
+import type { ActionServices } from 'src/actions/PluginAction';
 import { AUDIO_EXTENSIONS } from 'src/constants';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import * as AudioFileAnalyzer from 'src/utils/AudioFileAnalyzer';
+import { at } from '../helpers/assertions';
 import {
 	App,
 	Menu,
@@ -207,6 +209,10 @@ describe('ContextMenu', () => {
 				autoChapters: {
 					generate: jest.fn(),
 				} as unknown as ActionServices['autoChapters'],
+				recordingSidecar: {
+					getTranscript: jest.fn().mockResolvedValue(null),
+					updateTranscript: jest.fn().mockResolvedValue(undefined),
+				} as unknown as ActionServices['recordingSidecar'],
 			},
 			FILE_ACTIONS,
 		);
@@ -286,7 +292,16 @@ describe('ContextMenu', () => {
 			);
 			const menu = new Menu();
 			const file = makeAudioFile();
-			const info = { name: 'audio.mp3', size: 1024 };
+			const info = {
+				fileName: 'audio.mp3',
+				fileSize: '1 KB',
+				duration: '0:10',
+				containerFormat: 'MP3',
+				audioCodec: 'mp3',
+				bitrate: '128 kbps',
+				sampleRate: '44.1 kHz',
+				channels: 'Stereo',
+			};
 			jest.spyOn(AudioFileAnalyzer, 'getAudioFileInfo').mockResolvedValue(
 				info,
 			);
@@ -333,7 +348,7 @@ describe('ContextMenu', () => {
 			).toHaveLength(1);
 		});
 
-		it('opens SplitModal with the current settings from "Split audio into parts"', async () => {
+		it('opens SplitModal with a live settings accessor from "Split audio into parts"', async () => {
 			const { SplitModal } = jest.requireMock('src/ui/SplitModal');
 			const menu = new Menu();
 			const file = makeAudioFile();
@@ -344,9 +359,16 @@ describe('ContextMenu', () => {
 			expect(SplitModal).toHaveBeenCalledWith(
 				mockApp,
 				file,
-				expect.objectContaining({
-					deleteSourceAfterConversion: true,
-				}),
+				expect.any(Function),
+			);
+			// Every dialog takes an accessor rather than a snapshot, so it reads
+			// the settings that are current when it opens.
+			const getSettings = at(
+				(SplitModal as jest.Mock).mock.calls,
+				0,
+			)[2] as () => AudioRecorderSettings;
+			expect(getSettings()).toEqual(
+				expect.objectContaining({ deleteSourceAfterConversion: true }),
 			);
 		});
 
@@ -363,7 +385,7 @@ describe('ContextMenu', () => {
 			expect(AudioProcessingModal).toHaveBeenCalledWith(
 				mockApp,
 				file,
-				expect.any(Object),
+				expect.any(Function),
 				expect.any(Function),
 			);
 		});

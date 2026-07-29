@@ -8,8 +8,7 @@ import {
 	buildCostEstimate,
 	costEstimateNeedsDuration,
 	costFromUsage,
-	estimateLlmCost,
-	estimateTranscriptionCost,
+	estimateStepCost,
 	formatUsd,
 	GEMINI_AUDIO_TOKENS_PER_SECOND,
 	resolveEnginePricing,
@@ -17,6 +16,7 @@ import {
 	selectedEngineModel,
 	selectedLlmModel,
 	sumUsage,
+	type RunCostStepId,
 } from 'src/transcription/costs';
 import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { mergeSettings } from 'src/settings/settingsSerialization';
@@ -315,45 +315,87 @@ describe('costFromUsage', () => {
 	});
 });
 
-describe('estimateTranscriptionCost', () => {
+describe('estimateStepCost: transcription', () => {
 	it('estimates a per-minute engine from the duration', () => {
-		const usd = estimateTranscriptionCost(
-			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-			'nova-3',
-			600,
-		);
-		expect(usd).toBeCloseTo(0.043, 10);
+		const settings = mergeSettings({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			deepgramModel: 'nova-3',
+		});
+		expect(
+			estimateStepCost('transcription', settings, 600).usd,
+		).toBeCloseTo(0.043, 10);
 	});
 
 	it('estimates a token engine from synthesized token counts', () => {
-		const usd = estimateTranscriptionCost(
-			TRANSCRIPTION_PROVIDER_IDS.GEMINI,
-			'gemini-2.5-flash',
-			60,
-		);
+		const settings = mergeSettings({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
+			geminiModel: 'gemini-2.5-flash',
+		});
 		// 60s -> 1920 audio tokens at $1/1M plus 480 output tokens at $2.5/1M.
-		expect(usd).toBeCloseTo(
+		expect(estimateStepCost('transcription', settings, 60).usd).toBeCloseTo(
 			(60 * GEMINI_AUDIO_TOKENS_PER_SECOND) / 1_000_000 +
 				(60 * 8 * 2.5) / 1_000_000,
 			10,
 		);
 	});
 
-	it('is zero for the local engine and null for unknown models', () => {
-		expect(
-			estimateTranscriptionCost(
-				TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
-				'',
-				600,
-			),
-		).toBe(0);
-		expect(
-			estimateTranscriptionCost(
-				TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
-				'mystery',
-				600,
-			),
-		).toBeNull();
+	it('is free for the local engine and unpriced for unknown models', () => {
+		const local = estimateStepCost(
+			'transcription',
+			mergeSettings({
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+			}),
+			600,
+		);
+		expect(local.usd).toBe(0);
+		expect(local.free).toBe(true);
+
+		const unknown = estimateStepCost(
+			'transcription',
+			mergeSettings({
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+				whisperApiModel: 'mystery',
+			}),
+			600,
+		);
+		expect(unknown.usd).toBeNull();
+		expect(unknown.reason).toBe('no-rate');
+	});
+
+	it('doubles the engine cost when the advanced two-pass mode will run', () => {
+		const base = {
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			deepgramModel: 'nova-3',
+		};
+		const single = estimateStepCost(
+			'transcription',
+			mergeSettings(base),
+			600,
+		);
+		const twoPass = estimateStepCost(
+			'transcription',
+			mergeSettings({
+				...base,
+				transcriptionAdvancedSettingsEnabled: true,
+				transcriptionAdvancedEnabled: true,
+			}),
+			600,
+		);
+		expect(twoPass.usd).toBeCloseTo((single.usd ?? 0) * 2, 10);
+		expect(twoPass.label).toBe('Transcription (2 passes)');
+	});
+
+	it('reports the missing duration rather than a wrong number', () => {
+		const line = estimateStepCost(
+			'transcription',
+			mergeSettings({
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				deepgramModel: 'nova-3',
+			}),
+			null,
+		);
+		expect(line.usd).toBeNull();
+		expect(line.reason).toBe('no-duration');
 	});
 });
 
@@ -387,9 +429,16 @@ describe('formatUsd', () => {
 		expect(formatUsd(0.043)).toBe('$0.04');
 		expect(formatUsd(1.5)).toBe('$1.50');
 	});
+
+	it('does not render a negative amount as sub-cent', () => {
+		// The sub-cent form is about small positive amounts; a bare `< 0.005`
+		// test also caught negatives and would have shown -$5.00 as "<$0.01".
+		expect(formatUsd(-5)).toBe('$-5.00');
+		expect(formatUsd(-0.001)).toBe('$-0.00');
+	});
 });
 
-describe('estimateLlmCost', () => {
+describe('estimateStepCost: postProcess', () => {
 	it('estimates a cleanup pass from the transcript token size', () => {
 		const settings = mergeSettings({
 			llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
@@ -399,19 +448,104 @@ describe('estimateLlmCost', () => {
 		});
 		// 600s -> 4800 transcript tokens in, cleanup output capped at the 4096
 		// token budget. Input at $0.15/M, output at $0.60/M.
-		const usd = estimateLlmCost(settings, 600);
-		expect(usd).toBeCloseTo(
+		expect(estimateStepCost('postProcess', settings, 600).usd).toBeCloseTo(
 			(4800 * 0.15) / 1_000_000 + (4096 * 0.6) / 1_000_000,
 			10,
 		);
 	});
 
-	it('is null for an LLM model with no built-in rate', () => {
+	it('is unpriced for an LLM model with no built-in rate', () => {
 		const settings = mergeSettings({
 			llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
 			llmOpenAiModel: 'mystery-model',
 		});
-		expect(estimateLlmCost(settings, 600)).toBeNull();
+		const line = estimateStepCost('postProcess', settings, 600);
+		expect(line.usd).toBeNull();
+		expect(line.reason).toBe('no-rate');
+	});
+});
+
+describe('estimateStepCost: autoChapters', () => {
+	it('sizes the output as a small fraction of the transcript', () => {
+		const settings = mergeSettings({
+			llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+			llmOpenAiModel: 'gpt-4o-mini',
+			llmMaxTokens: 32000,
+		});
+		// 600s -> 4800 transcript tokens in, chapters emit a 10% titled list.
+		expect(estimateStepCost('autoChapters', settings, 600).usd).toBeCloseTo(
+			(4800 * 0.15) / 1_000_000 + (480 * 0.6) / 1_000_000,
+			10,
+		);
+	});
+
+	it('does not move with the unrelated post-processing task', () => {
+		const of = (task: 'cleanup' | 'summary' | 'custom'): number | null =>
+			estimateStepCost(
+				'autoChapters',
+				mergeSettings({
+					llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+					llmOpenAiModel: 'gpt-4o-mini',
+					llmMaxTokens: 32000,
+					llmPostProcessTask: task,
+				}),
+				600,
+			).usd;
+		expect(of('summary')).toBe(of('cleanup'));
+		expect(of('custom')).toBe(of('cleanup'));
+	});
+});
+
+describe('one step is priced identically wherever it is read', () => {
+	// The chapter dialog prices the auto-chapters step on its own while the
+	// transcribe dialog prices it as part of the run. Both go through
+	// estimateStepCost, so the two numbers can never drift apart again.
+	const settings = mergeSettings({
+		transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+		llmProvider: LLM_PROVIDER_IDS.GEMINI,
+		llmGeminiModel: 'gemini-2.5-flash',
+		llmMaxTokens: 32000,
+		llmPostProcessTask: 'cleanup',
+		transcriptionAutoChaptersEnabled: true,
+		transcriptionAutoChaptersOnTranscribe: true,
+	});
+
+	it('matches between the standalone step and the run breakdown', () => {
+		const standalone = estimateStepCost('autoChapters', settings, 3600);
+		const inRun = buildCostEstimate(settings, 3600).lines.find(
+			(line) => line.label === 'Auto chapters',
+		);
+		expect(inRun).toBeDefined();
+		expect(inRun?.usd).toBe(standalone.usd);
+		expect(inRun?.model).toBe(standalone.model);
+		expect(inRun?.providerName).toBe(standalone.providerName);
+	});
+
+	it('matches for every step the run performs', () => {
+		const full = mergeSettings({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			deepgramModel: 'nova-3',
+			llmProvider: LLM_PROVIDER_IDS.GEMINI,
+			llmGeminiModel: 'gemini-2.5-flash',
+			llmPostProcessEnabled: true,
+			transcriptionAdvancedSettingsEnabled: true,
+			transcriptionAdvancedEnabled: true,
+			transcriptionAutoChaptersEnabled: true,
+			transcriptionAutoChaptersOnTranscribe: true,
+		});
+		const steps: RunCostStepId[] = [
+			'transcription',
+			'contextAgents',
+			'postProcess',
+			'autoChapters',
+		];
+		const lines = buildCostEstimate(full, 1800).lines;
+		expect(lines).toHaveLength(steps.length);
+		steps.forEach((step, index) => {
+			expect(lines[index]?.usd).toBe(
+				estimateStepCost(step, full, 1800).usd,
+			);
+		});
 	});
 });
 

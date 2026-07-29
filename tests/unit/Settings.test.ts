@@ -7,11 +7,11 @@
  */
 
 import {
-	AudioRecorderSettings,
-	AudioRecorderSettingsInput,
+	type AudioRecorderSettings,
+	type AudioRecorderSettingsInput,
 	DEFAULT_SETTINGS,
-	OutputMode,
-	TrackAudioSources,
+	type OutputMode,
+	type TrackAudioSources,
 } from 'src/settings/settingsSchema';
 import {
 	mergeSettings,
@@ -187,8 +187,8 @@ describe('Settings', () => {
 
 		it('should merge track audio sources', () => {
 			const trackSources: TrackAudioSources = new Map([
-				[1, { deviceId: 'device-id-1' }],
-				[2, { deviceId: 'device-id-2' }],
+				[1, { deviceId: 'device-id-1', channelMode: 'source' }],
+				[2, { deviceId: 'device-id-2', channelMode: 'source' }],
 			]);
 
 			const result = mergeSettings({ trackAudioSources: trackSources });
@@ -250,7 +250,7 @@ describe('Settings', () => {
 		it('should normalize channel modes of Map-form track sources', () => {
 			// A Map built by pre-channel-mode plugin code lacks the field
 			const legacyMap = new Map([
-				[1, { deviceId: 'device-id-1' }],
+				[1, { deviceId: 'device-id-1', channelMode: 'source' }],
 			]) as unknown as AudioRecorderSettings['trackAudioSources'];
 
 			const result = mergeSettings({ trackAudioSources: legacyMap });
@@ -475,7 +475,7 @@ describe('Settings', () => {
 		it('does not seed a profile from an empty legacy dictionary', () => {
 			const result = mergeSettings({
 				transcriptionDictionary: '   \n\t',
-			} as unknown as AudioRecorderSettingsInput);
+			});
 
 			expect(result.transcriptionDictionaryProfiles).toEqual([]);
 			expect(result.transcriptionDictionaryProfileId).toBe('');
@@ -488,7 +488,7 @@ describe('Settings', () => {
 					{ id: 'keep', name: 'Kept', terms: 'X' },
 				],
 				transcriptionDictionaryProfileId: 'keep',
-			} as unknown as AudioRecorderSettingsInput);
+			});
 
 			expect(result.transcriptionDictionaryProfiles).toEqual([
 				{ id: 'keep', name: 'Kept', terms: 'X' },
@@ -496,6 +496,58 @@ describe('Settings', () => {
 			expect(result.transcriptionDictionaryProfileId).toBe('keep');
 			const record = result as unknown as Record<string, unknown>;
 			expect(record.transcriptionDictionary).toBeUndefined();
+		});
+
+		it('ignores a non-string legacy dictionary instead of throwing on load', () => {
+			// A hand-edited or corrupted data.json can hold a non-string where
+			// the old schema expected text. Reading it as a string would throw on
+			// .trim() and, through the load-time fallback, reset every setting.
+			const corrupt = {
+				transcriptionDictionary: 123,
+			} as unknown as AudioRecorderSettingsInput;
+
+			const result = mergeSettings(corrupt);
+
+			expect(result.transcriptionDictionaryProfiles).toEqual([]);
+			const record = result as unknown as Record<string, unknown>;
+			expect(record.transcriptionDictionary).toBeUndefined();
+		});
+
+		it('ignores a non-string legacy LLM key and model instead of throwing', () => {
+			const corrupt = {
+				llmProvider: 'gemini',
+				llmApiKey: 42,
+				llmModel: { nested: true },
+			} as unknown as AudioRecorderSettingsInput;
+
+			const result = mergeSettings(corrupt);
+
+			// Nothing is migrated from the malformed fields, and they are dropped.
+			expect(result.geminiApiKey).toBe('');
+			const record = result as unknown as Record<string, unknown>;
+			expect(record.llmApiKey).toBeUndefined();
+			expect(record.llmModel).toBeUndefined();
+		});
+
+		it('skips the LLM migration for an unknown stored provider without throwing', () => {
+			// An unrecognized provider id names no vendor descriptor; the
+			// migration must not dereference the absent descriptor and crash the
+			// whole load.
+			const corrupt = {
+				llmProvider: 'no-such-vendor',
+				llmApiKey: 'k',
+				llmModel: 'm',
+				filePrefix: 'kept',
+			} as unknown as AudioRecorderSettingsInput;
+
+			const result = mergeSettings(corrupt);
+
+			// The rest of the config still loads, and the superseded flat fields
+			// are dropped rather than persisted again.
+			expect(result.filePrefix).toBe('kept');
+			const record = result as unknown as Record<string, unknown>;
+			expect(record.llmApiKey).toBeUndefined();
+			expect(record.llmModel).toBeUndefined();
 		});
 
 		it('enables the advanced master switch on upgrade for a config with a dictionary profile', () => {
@@ -518,7 +570,7 @@ describe('Settings', () => {
 			// before the switch existed must keep working after the upgrade.
 			const result = mergeSettings({
 				transcriptionDictionary: 'Foo\nBar',
-			} as unknown as AudioRecorderSettingsInput);
+			});
 
 			expect(result.transcriptionAdvancedSettingsEnabled).toBe(true);
 			expect(result.transcriptionDictionaryProfiles).toHaveLength(1);
@@ -573,9 +625,9 @@ describe('Settings', () => {
 
 		it('TrackAudioSources should map numbers to device IDs', () => {
 			const sources: TrackAudioSources = new Map([
-				[1, { deviceId: 'device-1' }],
-				[2, { deviceId: 'device-2' }],
-				[3, { deviceId: 'device-3' }],
+				[1, { deviceId: 'device-1', channelMode: 'source' }],
+				[2, { deviceId: 'device-2', channelMode: 'source' }],
+				[3, { deviceId: 'device-3', channelMode: 'source' }],
 			]);
 
 			expect(sources.size).toBe(3);

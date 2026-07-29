@@ -21,7 +21,7 @@ const audioFile = {
 
 function makeProvider(result: WhisperResult): TranscriptionProvider {
 	return {
-		id: 'fake',
+		id: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
 		label: 'Fake',
 		requiresNetwork: false,
 		capabilities: {
@@ -30,6 +30,7 @@ function makeProvider(result: WhisperResult): TranscriptionProvider {
 			acceptsOriginalContainer: true,
 			supportsDiarization: true,
 			supportsDictionary: true,
+			biasChannel: 'prompt',
 		},
 		transcribe: jest.fn(async () => result),
 	};

@@ -91,7 +91,7 @@ export interface ActiveRecordingConfig {
 	/** MIME type passed to MediaRecorder (no codec suffix). */
 	mimeType: string;
 	/** The expected codec that the browser will select for this format. */
-	expectedCodec?: string;
+	expectedCodec?: string | undefined;
 	/** Whether MediaRecorder.isTypeSupported() returns true for the mimeType. */
 	mimeTypeSupported: boolean;
 	/** Pre-recording validation result. */

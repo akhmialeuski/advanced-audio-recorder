@@ -6,6 +6,7 @@
 import { ConversionModal } from 'src/ui/ConversionModal';
 import { App, TFile } from 'obsidian';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
+import { mergeSettings } from 'src/settings/settingsSerialization';
 
 /**
  * Extends an HTMLElement with Obsidian's custom DOM methods.
@@ -44,7 +45,7 @@ function addObsidianDomMethods(el: HTMLElement): HTMLElement {
 /** Captured Notice instances for assertions on setMessage/hide. */
 interface NoticeInstance {
 	message: string;
-	timeout?: number;
+	timeout?: number | undefined;
 	setMessage: jest.Mock;
 	hide: jest.Mock;
 }
@@ -79,6 +80,7 @@ jest.mock('obsidian', () => ({
 		return instance;
 	}),
 	normalizePath: (path: string) => path.replace(/\\/g, '/'),
+	Platform: { isMobile: false, isMobileApp: false },
 	Setting: jest.fn().mockImplementation(() => ({
 		setName: jest.fn().mockReturnThis(),
 		setDesc: jest.fn().mockReturnThis(),
@@ -123,10 +125,13 @@ jest.mock('src/audio/AudioCapabilityDetector', () => ({
 		.mockReturnValue([8000, 16000, 22050, 44100, 48000]),
 }));
 
-const mockSettings = {
+// Real settings rather than a two-field cast: the dialog seeds format,
+// bitrate, and link action from them, so a partial fixture only type-checks
+// by lying about what the modal actually reads.
+const mockSettings = mergeSettings({
 	deleteSourceAfterConversion: true,
 	conversionLinkAction: 'replace',
-};
+});
 
 describe('ConversionModal', () => {
 	let mockApp: App;
@@ -166,14 +171,23 @@ describe('ConversionModal', () => {
 	});
 
 	it('should instantiate with source file', () => {
-		const modal = new ConversionModal(mockApp, mockFile, mockSettings);
+		const modal = new ConversionModal(
+			mockApp,
+			mockFile,
+			() => mockSettings,
+		);
 		expect(modal).toBeDefined();
 	});
 
 	it('initializes the channel preset through named options', () => {
-		const modal = new ConversionModal(mockApp, mockFile, mockSettings, {
-			initialChannelMode: 'mono-right',
-		});
+		const modal = new ConversionModal(
+			mockApp,
+			mockFile,
+			() => mockSettings,
+			{
+				initialChannelMode: 'mono-right',
+			},
+		);
 
 		expect((modal as unknown as { channelMode: string }).channelMode).toBe(
 			'mono-right',
@@ -181,7 +195,11 @@ describe('ConversionModal', () => {
 	});
 
 	it('should set up content on open', () => {
-		const modal = new ConversionModal(mockApp, mockFile, mockSettings);
+		const modal = new ConversionModal(
+			mockApp,
+			mockFile,
+			() => mockSettings,
+		);
 		modal.onOpen();
 
 		// Heading is rendered via Setting.setHeading(); source file info is a <p>
@@ -191,7 +209,11 @@ describe('ConversionModal', () => {
 	});
 
 	it('should show source file name', () => {
-		const modal = new ConversionModal(mockApp, mockFile, mockSettings);
+		const modal = new ConversionModal(
+			mockApp,
+			mockFile,
+			() => mockSettings,
+		);
 		modal.onOpen();
 
 		const source = modal.contentEl.querySelector('.aar-conversion-source');
@@ -199,7 +221,11 @@ describe('ConversionModal', () => {
 	});
 
 	it('should clear content on close', () => {
-		const modal = new ConversionModal(mockApp, mockFile, mockSettings);
+		const modal = new ConversionModal(
+			mockApp,
+			mockFile,
+			() => mockSettings,
+		);
 		modal.onOpen();
 		modal.onClose();
 
@@ -220,10 +246,10 @@ describe('ConversionModal', () => {
 		const createModal = (
 			settings: Partial<AudioRecorderSettings> = {},
 		): { modal: ConversionModal; progressEl: HTMLElement } => {
-			const modal = new ConversionModal(mockApp, mockFile, {
+			const modal = new ConversionModal(mockApp, mockFile, () => ({
 				...mockSettings,
 				...settings,
-			});
+			}));
 			modal.onOpen();
 			// The Setting mock never invokes dropdown callbacks, so the
 			// format selection from onOpen does not run; pick the target
@@ -414,7 +440,11 @@ describe('ConversionModal', () => {
 			dropdown.addOption.mock.calls.map((call) => String(call[0]));
 
 		it('excludes the source format for channel-preserving conversions', () => {
-			const modal = new ConversionModal(mockApp, mockFile, mockSettings);
+			const modal = new ConversionModal(
+				mockApp,
+				mockFile,
+				() => mockSettings,
+			);
 			const dropdown = withFormatDropdown(modal);
 
 			rebuild(modal);
@@ -423,7 +453,11 @@ describe('ConversionModal', () => {
 		});
 
 		it('offers the source format for mono downmixes', () => {
-			const modal = new ConversionModal(mockApp, mockFile, mockSettings);
+			const modal = new ConversionModal(
+				mockApp,
+				mockFile,
+				() => mockSettings,
+			);
 			(modal as unknown as { channelMode: string }).channelMode =
 				'mono-mix';
 			const dropdown = withFormatDropdown(modal);
@@ -434,7 +468,11 @@ describe('ConversionModal', () => {
 		});
 
 		it('falls back to the first offered format when the selection disappears', () => {
-			const modal = new ConversionModal(mockApp, mockFile, mockSettings);
+			const modal = new ConversionModal(
+				mockApp,
+				mockFile,
+				() => mockSettings,
+			);
 			(modal as unknown as { targetFormat: string }).targetFormat = 'wav';
 			const dropdown = withFormatDropdown(modal);
 
@@ -450,7 +488,11 @@ describe('ConversionModal', () => {
 		});
 
 		it('keeps the current selection when it is still offered', () => {
-			const modal = new ConversionModal(mockApp, mockFile, mockSettings);
+			const modal = new ConversionModal(
+				mockApp,
+				mockFile,
+				() => mockSettings,
+			);
 			(modal as unknown as { targetFormat: string }).targetFormat = 'mp3';
 			const dropdown = withFormatDropdown(modal);
 

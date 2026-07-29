@@ -16,7 +16,7 @@ import {
 	isDeviceSelectionSupported,
 	isRecordingBannerSupported,
 } from './platform/capabilities';
-import { AudioRecorderSettings } from './settings/settingsSchema';
+import type { AudioRecorderSettings } from './settings/settingsSchema';
 import {
 	mergeSettingsAsync,
 	serializeSettings,
@@ -211,6 +211,9 @@ export default class AudioRecorderPlugin extends Plugin {
 			(path) => {
 				this.playerRegistrar.reloadMarkersFor(path);
 			},
+			// Chapter generation bills the LLM provider, so its estimated cost
+			// joins the same session counter the transcription runs report to.
+			{ costSink: this.transcriptionCostTracker },
 		);
 		this.recordingBanner = new RecordingBanner(() => {
 			void this.recordingManager.stopRecording();
@@ -911,7 +914,7 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * @param keepMode - Channel mode to preselect in the dialog
 	 */
 	private openMonoConversion(file: TFile, keepMode: ChannelMode): void {
-		new ConversionModal(this.app, file, this.settings, {
+		new ConversionModal(this.app, file, () => this.settings, {
 			onConverted: (convertedPath) => {
 				this.playerRegistrar.primeSavedRecordingsForEnhancement([
 					convertedPath,

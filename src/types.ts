@@ -39,7 +39,7 @@ export type RecordingControls = {
 	isPaused: boolean;
 	/** Drops a marker/chapter at the current position; absent when markers
 	 * are disabled, so the button is hidden. */
-	onAddMarker?: () => void;
+	onAddMarker?: (() => void) | undefined;
 };
 
 /**

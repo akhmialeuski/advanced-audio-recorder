@@ -12,6 +12,7 @@ import {
 	LLM_REQUEST_TIMEOUT_MS,
 } from '../../constants';
 import { requestJson, trimTrailingSlash } from '../httpClient';
+import type { LlmProviderId } from '../../settings/settingsSchema';
 import type { LlmPrompt } from '../llmPostProcess';
 import {
 	extractAnthropicText,
@@ -40,7 +41,12 @@ export interface LlmCompleteOptions {
 
 /** A provider that completes a single prompt and returns text. */
 export interface LlmProvider {
-	readonly id: string;
+	/**
+	 * The vendor this provider implements. Typed as the settings id rather
+	 * than a bare string, so an implementation cannot claim an id the settings
+	 * (and therefore the vendor registry) do not know about.
+	 */
+	readonly id: LlmProviderId;
 	readonly label: string;
 	/**
 	 * Completes a prompt and returns the assistant's text.

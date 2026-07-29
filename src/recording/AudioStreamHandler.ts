@@ -161,7 +161,7 @@ export function getProcessingConstraints(
  * @returns Promise resolving to MediaStream
  * @throws AudioStreamError if device access fails after all retries
  */
-export async function getAudioStream(
+async function getAudioStream(
 	deviceId?: string,
 	sampleRate?: number,
 	processing?: AudioProcessingConstraints,
@@ -172,8 +172,8 @@ export async function getAudioStream(
 		try {
 			return await navigator.mediaDevices.getUserMedia({
 				audio: {
-					deviceId: deviceId ? { exact: deviceId } : undefined,
-					sampleRate: sampleRate,
+					...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+					...(sampleRate === undefined ? {} : { sampleRate }),
 					...(processing
 						? {
 								noiseSuppression: processing.noiseSuppression,

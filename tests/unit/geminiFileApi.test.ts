@@ -12,11 +12,19 @@ import {
 	uploadFile,
 	waitUntilActive,
 } from 'src/transcription/providers/geminiFileApi';
+import { at } from '../helpers/assertions';
 import {
 	GEMINI_FILE_MAX_WAIT_MS,
 	GEMINI_FILE_MIN_WAIT_MS,
 } from 'src/constants';
-import { __setRequestUrlHandler, type MockRequestUrlParam } from 'obsidian';
+// Mock-only surface: these exist on the test double, not on Obsidian's
+// API, so they are imported from the mock by path. Jest maps 'obsidian'
+// to the same module, so both imports share one instance.
+import {
+	__setRequestUrlHandler,
+	type MockRequestUrlParam,
+	type MockRequestUrlResponse,
+} from '../mocks/obsidian';
 
 const BASE_URL = 'https://gemini.example';
 const API_KEY = 'gm-test';
@@ -28,7 +36,7 @@ afterEach(() => {
 describe('uploadFile', () => {
 	it('starts a resumable session then finalizes, returning the file', async () => {
 		const calls: MockRequestUrlParam[] = [];
-		__setRequestUrlHandler((param) => {
+		__setRequestUrlHandler((param): MockRequestUrlResponse => {
 			calls.push(param);
 			if (param.url.endsWith('/upload/v1beta/files')) {
 				return {
@@ -65,16 +73,16 @@ describe('uploadFile', () => {
 			uri: 'https://files.example/abc',
 			state: 'ACTIVE',
 		});
-		expect(calls[0].url).toBe(`${BASE_URL}/upload/v1beta/files`);
-		expect(calls[0].headers?.['X-Goog-Upload-Command']).toBe('start');
-		expect(calls[1].url).toBe('https://upload.example/session');
-		expect(calls[1].headers?.['X-Goog-Upload-Command']).toBe(
+		expect(at(calls, 0).url).toBe(`${BASE_URL}/upload/v1beta/files`);
+		expect(at(calls, 0).headers?.['X-Goog-Upload-Command']).toBe('start');
+		expect(at(calls, 1).url).toBe('https://upload.example/session');
+		expect(at(calls, 1).headers?.['X-Goog-Upload-Command']).toBe(
 			'upload, finalize',
 		);
 	});
 
 	it('reads the upload URL header case-insensitively and defaults a missing state', async () => {
-		__setRequestUrlHandler((param) => {
+		__setRequestUrlHandler((param): MockRequestUrlResponse => {
 			if (param.url.includes('/upload/')) {
 				return {
 					status: 200,
@@ -126,7 +134,7 @@ describe('uploadFile', () => {
 
 describe('waitUntilActive', () => {
 	it('resolves once the file reports ACTIVE', async () => {
-		__setRequestUrlHandler((param) => {
+		__setRequestUrlHandler((param): MockRequestUrlResponse => {
 			expect(param.method).toBe('GET');
 			expect(param.url).toBe(`${BASE_URL}/v1beta/files/x`);
 			return {
@@ -165,7 +173,7 @@ describe('waitUntilActive', () => {
 describe('deleteFile', () => {
 	it('issues a DELETE for the file resource', async () => {
 		let seen: MockRequestUrlParam | undefined;
-		__setRequestUrlHandler((param) => {
+		__setRequestUrlHandler((param): MockRequestUrlResponse => {
 			seen = param;
 			return { status: 200, headers: {}, text: '' };
 		});

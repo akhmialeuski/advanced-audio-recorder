@@ -18,6 +18,7 @@ import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import { resolveChapterGuidance } from '../settings/chapterPromptProfiles';
 import { createLlmProvider } from '../transcription/factories';
 import type { LlmProvider } from '../transcription/llm/LlmProvider';
+import { runLlmStep, type LlmCostSink } from '../transcription/llm/llmStep';
 import type { Transcript } from '../transcription/TranscriptTypes';
 import type { RecordingSidecarStore } from '../sidecar/RecordingSidecarStore';
 import { generateMarkerId } from '../markers/markerFactory';
@@ -37,6 +38,11 @@ import {
 
 /** Dependencies injectable for tests; defaults build the real LLM provider. */
 export interface AutoChapterServiceDeps {
+	/**
+	 * Where the generation reports its estimated cost. Absent, chapters still
+	 * generate and simply account nothing.
+	 */
+	costSink?: LlmCostSink;
 	/** Builds the LLM provider from settings. */
 	createLlm?: (settings: AudioRecorderSettings) => LlmProvider;
 	/** Probes a recording's real duration in seconds (null when unknown). */
@@ -104,6 +110,8 @@ export class AutoChapterService {
 		settings: AudioRecorderSettings,
 	) => LlmProvider;
 	private readonly probeDuration: (file: TFile) => Promise<number | null>;
+	/** Where LLM spending is reported; undefined when nothing accounts it. */
+	private readonly costSink: LlmCostSink | undefined;
 
 	/**
 	 * @param app - Obsidian App
@@ -124,6 +132,7 @@ export class AutoChapterService {
 		this.probeDuration =
 			deps.probeDuration ??
 			((file) => probeAudioDurationSeconds(this.app, file));
+		this.costSink = deps.costSink;
 	}
 
 	/**
@@ -217,7 +226,15 @@ export class AutoChapterService {
 				...(guidance ? { guidance } : {}),
 				...(durationSeconds !== null ? { durationSeconds } : {}),
 			});
-			const output = await llm.complete(prompt, settings.llmMaxTokens);
+			const output = await runLlmStep({
+				step: 'autoChapters',
+				llm,
+				prompt,
+				maxTokens: settings.llmMaxTokens,
+				settings,
+				durationSeconds,
+				costSink: this.costSink,
+			});
 			const chapters = parseChapterResponse(
 				output,
 				durationSeconds,

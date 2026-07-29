@@ -9,6 +9,7 @@ import {
 	detectSilentChannel,
 } from 'src/recording/silentChannelDetector';
 import type { App, TFile } from 'obsidian';
+import { createMockApp } from '../helpers/createApp';
 
 jest.mock('src/utils/AudioFileAnalyzer', () => ({
 	probeAudioMetadata: jest.fn(),
@@ -128,9 +129,9 @@ describe('detectSilentChannel', () => {
 	let close: jest.Mock;
 
 	function makeApp(bytes = new ArrayBuffer(64)): App {
-		return {
+		return createMockApp({
 			vault: { readBinary: jest.fn().mockResolvedValue(bytes) },
-		} as unknown as App;
+		}).app;
 	}
 
 	const file = { path: 'rec.wav' } as unknown as TFile;

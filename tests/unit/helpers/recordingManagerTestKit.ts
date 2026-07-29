@@ -12,6 +12,47 @@ import type { RecordingManager } from 'src/recording/RecordingManager';
 import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { PlayerMarker } from 'src/markers/markerModel';
 
+/** The MediaRecorder constructor double, with its static format probe. */
+export type MediaRecorderCtorMock = jest.Mock & {
+	isTypeSupported: jest.Mock;
+};
+
+/**
+ * Installs a MediaRecorder constructor returning the given recorder double.
+ *
+ * Assigning the global by hand needs a cast that erases the constructor's
+ * type, which is why the static `isTypeSupported` used to be attached through
+ * an `unknown` object. Doing it once here keeps the assignment typed and gives
+ * the suites one place to change when the recorder surface grows.
+ * @param recorder - The instance every `new MediaRecorder(...)` returns
+ * @param isTypeSupported - Which MIME types the browser claims to record;
+ *   defaults to all, which is what the recording-flow suites want
+ * @returns The constructor mock, for call assertions
+ */
+export function installMediaRecorder(
+	recorder?: unknown,
+	isTypeSupported: (mimeType: string) => boolean = () => true,
+): MediaRecorderCtorMock {
+	return installMediaRecorderFactory(() => recorder, isTypeSupported);
+}
+
+/**
+ * Installs a MediaRecorder constructor that builds a fresh double per call, for
+ * the multi-track suites where each track gets its own recorder.
+ * @param create - Called for each `new MediaRecorder(...)`
+ * @param isTypeSupported - Which MIME types the browser claims to record
+ * @returns The constructor mock, for call assertions
+ */
+export function installMediaRecorderFactory(
+	create: () => unknown,
+	isTypeSupported: (mimeType: string) => boolean = () => true,
+): MediaRecorderCtorMock {
+	const ctor = jest.fn(create) as MediaRecorderCtorMock;
+	ctor.isTypeSupported = jest.fn(isTypeSupported);
+	global.MediaRecorder = ctor;
+	return ctor;
+}
+
 /**
  * Installs the AudioContext, OfflineAudioContext, and AudioBuffer
  * stubs the recording pipeline touches; jsdom provides none of them.
@@ -122,12 +163,7 @@ export const createDesktopRecorder = (): MockMediaRecorder => {
 			}
 		}),
 	};
-	(global as Record<string, unknown>).MediaRecorder = jest.fn(
-		() => mockMediaRecorder,
-	);
-	(global as Record<string, unknown>).MediaRecorder.isTypeSupported = jest
-		.fn()
-		.mockReturnValue(true);
+	installMediaRecorder(mockMediaRecorder);
 	const { getAudioStreams } = jest.requireMock(
 		'src/recording/AudioStreamHandler',
 	);
@@ -163,10 +199,18 @@ export interface MutableTarget {
 export const getChunkTarget = (
 	manager: RecordingManager,
 	index: number,
-): MutableTarget =>
-	(manager as unknown as { chunkTargets: MutableTarget[] }).chunkTargets[
-		index
-	];
+): MutableTarget => {
+	const targets = (manager as unknown as { chunkTargets: MutableTarget[] })
+		.chunkTargets;
+	const target = targets[index];
+	if (!target) {
+		throw new Error(
+			`No chunk target at index ${String(index)}; the manager has ` +
+				`${String(targets.length)}`,
+		);
+	}
+	return target;
+};
 
 /** One atomic marker write observed by a marker-store double. */
 export interface MarkerWrite {

@@ -13,14 +13,15 @@
  * @module ui/SpeakerRenameModal
  */
 
-import { Modal, Notice, Setting } from 'obsidian';
+import { Notice, Setting } from 'obsidian';
 import type { App, DropdownComponent, TFile } from 'obsidian';
+import { PluginModal } from './PluginModal';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import {
 	addParticipantsToProfile,
 	addSpeakerProfile,
-	findSpeakerProfile,
+	participantsOf,
 } from '../settings/speakerProfiles';
 import type {
 	SpeakerEntry,
@@ -36,7 +37,7 @@ import {
 	hasUnscopableRecordedNote,
 	type SpeakerRenameApplyResult,
 } from '../speakers/applySpeakerRenames';
-import { ParticipantSuggest } from './ParticipantSuggest';
+import { TextInputSuggest } from './TextInputSuggest';
 
 /**
  * The slice of the recording sidecar store the dialog needs: read the
@@ -76,7 +77,7 @@ export interface SpeakerRenameModalOptions {
 /**
  * Speaker naming dialog for a single recording.
  */
-export class SpeakerRenameModal extends Modal {
+export class SpeakerRenameModal extends PluginModal {
 	/**
 	 * The recording's sidecar transcript section, loaded on open; null until
 	 * the async load runs (or after it failed).
@@ -88,7 +89,6 @@ export class SpeakerRenameModal extends Modal {
 	private selectedProfileId = '';
 	/** Whether to rewrite notes that carry no timecode links to scope by. */
 	private allowBroad = false;
-	private applying = false;
 	private profileDropdown: DropdownComponent | null = null;
 	private newProfileInput: HTMLInputElement | null = null;
 
@@ -101,7 +101,7 @@ export class SpeakerRenameModal extends Modal {
 	}
 
 	override onOpen(): void {
-		this.setTitle('Rename speakers');
+		this.setDialogTitle('Rename speakers');
 		void this.render();
 	}
 
@@ -119,47 +119,28 @@ export class SpeakerRenameModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 		this.inputs.clear();
-		contentEl.createEl('p', {
-			cls: 'aar-modal-config',
-			text: `Source: ${this.file.name}`,
-		});
+		this.renderSource(this.file);
 
 		// An unreadable sidecar is not an empty one: the stored names may be
 		// intact on disk, so do not tell the user to re-transcribe.
 		if (this.options.sidecar.isSidecarCorrupt(this.file.path)) {
-			contentEl.createEl('p', {
-				text:
-					'The sidecar file of this recording could not be read, ' +
+			this.renderEmptyState(
+				'The sidecar file of this recording could not be read, ' +
 					'so its stored speaker data is unreachable. Restore or ' +
 					'remove the .markers.json file next to the recording ' +
 					'(writes to it are paused to protect it), then reopen ' +
 					'this dialog.',
-			});
-			const actions = contentEl.createDiv({
-				cls: 'modal-button-container',
-			});
-			const closeButton = actions.createEl('button', { text: 'Close' });
-			closeButton.addEventListener('click', () => {
-				this.close();
-			});
+			);
 			return;
 		}
 
 		if (!section || section.speakers.length === 0) {
-			contentEl.createEl('p', {
-				text:
-					'No speakers are stored for this recording. Transcribe ' +
+			this.renderEmptyState(
+				'No speakers are stored for this recording. Transcribe ' +
 					'it with speaker diarization first; a recording ' +
 					'transcribed before speaker names were stored needs one ' +
 					'new transcription.',
-			});
-			const actions = contentEl.createDiv({
-				cls: 'modal-button-container',
-			});
-			const closeButton = actions.createEl('button', { text: 'Close' });
-			closeButton.addEventListener('click', () => {
-				this.close();
-			});
+			);
 			return;
 		}
 
@@ -175,7 +156,7 @@ export class SpeakerRenameModal extends Modal {
 						text.setValue(name);
 					}
 					this.inputs.set(label, text.inputEl);
-					new ParticipantSuggest(this.app, text.inputEl, () =>
+					new TextInputSuggest(this.app, text.inputEl, () =>
 						this.suggestionPool(),
 					);
 				});
@@ -196,26 +177,18 @@ export class SpeakerRenameModal extends Modal {
 				});
 		}
 
-		const actions = contentEl.createDiv({ cls: 'modal-button-container' });
-		const applyButton = actions.createEl('button', {
-			cls: 'mod-cta',
-			text: 'Apply',
-		});
-		applyButton.addEventListener('click', () => {
-			void this.apply();
-		});
-		if (section.history.length > 0) {
-			const undoButton = actions.createEl('button', {
-				text: 'Undo last rename',
-			});
-			undoButton.addEventListener('click', () => {
-				void this.undo();
-			});
-		}
-		const cancelButton = actions.createEl('button', { text: 'Cancel' });
-		cancelButton.addEventListener('click', () => {
-			this.close();
-		});
+		this.renderActions(
+			{ text: 'Apply', cta: true, onClick: () => this.apply() },
+			...(section.history.length > 0
+				? [{ text: 'Undo last rename', onClick: () => this.undo() }]
+				: []),
+			{
+				text: 'Cancel',
+				onClick: () => {
+					this.close();
+				},
+			},
+		);
 	}
 
 	/**
@@ -272,12 +245,9 @@ export class SpeakerRenameModal extends Modal {
 	 * profile, or none when "None" is picked.
 	 */
 	private suggestionPool(): string[] {
-		const settings = this.options.getSettings();
-		return (
-			findSpeakerProfile(
-				settings.transcriptionSpeakerProfiles,
-				this.selectedProfileId,
-			)?.participants ?? []
+		return participantsOf(
+			this.options.getSettings(),
+			this.selectedProfileId,
 		);
 	}
 
@@ -320,78 +290,77 @@ export class SpeakerRenameModal extends Modal {
 	 */
 	private async apply(): Promise<void> {
 		const section = this.section;
-		if (!section || this.applying) {
+		if (!section) {
 			return;
 		}
-		this.applying = true;
-		try {
-			const entries: SpeakerNameEntry[] = [];
-			for (const [label, input] of this.inputs) {
-				entries.push({ label, name: input.value });
-			}
-			const duplicates = duplicateAssignedNames(entries);
-			if (duplicates.length > 0) {
-				// Naming a speaker after another speaker's engine label is a
-				// distinct mistake (it would make their lines textually
-				// indistinguishable forever), so it gets its own explanation
-				// instead of the generic shared-name message.
-				const labels = new Set(entries.map((entry) => entry.label));
-				const labelCollisions = duplicates.filter((name) =>
-					labels.has(name),
+		await this.runExclusive(async () => {
+			try {
+				const entries: SpeakerNameEntry[] = [];
+				for (const [label, input] of this.inputs) {
+					entries.push({ label, name: input.value });
+				}
+				const duplicates = duplicateAssignedNames(entries);
+				if (duplicates.length > 0) {
+					// Naming a speaker after another speaker's engine label is a
+					// distinct mistake (it would make their lines textually
+					// indistinguishable forever), so it gets its own explanation
+					// instead of the generic shared-name message.
+					const labels = new Set(entries.map((entry) => entry.label));
+					const labelCollisions = duplicates.filter((name) =>
+						labels.has(name),
+					);
+					new Notice(
+						labelCollisions.length > 0
+							? `A name cannot equal another speaker's label ` +
+									`(${labelCollisions.join(', ')}): their lines ` +
+									'would become indistinguishable in the outputs. ' +
+									'Give the speakers real, distinct names instead.'
+							: `Two speakers cannot share a name (${duplicates.join(
+									', ',
+								)}). Give each a distinct name.`,
+					);
+					return;
+				}
+				const typed = new Map(
+					entries.map((entry) => [entry.label, entry.name]),
 				);
-				new Notice(
-					labelCollisions.length > 0
-						? `A name cannot equal another speaker's label ` +
-								`(${labelCollisions.join(', ')}): their lines ` +
-								'would become indistinguishable in the outputs. ' +
-								'Give the speakers real, distinct names instead.'
-						: `Two speakers cannot share a name (${duplicates.join(
-								', ',
-							)}). Give each a distinct name.`,
+				const plan = planSpeakerRename(
+					section.speakers,
+					(label) => typed.get(label) ?? '',
 				);
-				return;
-			}
-			const typed = new Map(
-				entries.map((entry) => [entry.label, entry.name]),
-			);
-			const plan = planSpeakerRename(
-				section.speakers,
-				(label) => typed.get(label) ?? '',
-			);
-			if (!plan.changed) {
-				new Notice('No speaker names to change.');
+				if (!plan.changed) {
+					new Notice('No speaker names to change.');
+					this.close();
+					return;
+				}
+				await this.rememberNames(entries);
+				const applied = await applySpeakerRenamesWithSidecar(
+					this.app,
+					this.file,
+					section,
+					plan.renames,
+					{ allowBroad: this.allowBroad },
+				);
+				// One atomic commit: the roster and its history entry can never
+				// be persisted without each other, so the undo baseline always
+				// matches what was actually applied.
+				await this.options.sidecar.commitRename(
+					this.file.path,
+					plan.nextEntries,
+					plan.nextNames,
+				);
+				console.debug(
+					`${PLUGIN_LOG_PREFIX} Renamed speakers: ` +
+						this.describeCounts(applied),
+				);
+				new Notice(this.describeOutcome(applied));
 				this.close();
-				return;
+			} catch (error) {
+				const message =
+					error instanceof Error ? error.message : String(error);
+				new Notice(`Failed to rename speakers: ${message}`);
 			}
-			await this.rememberNames(entries);
-			const applied = await applySpeakerRenamesWithSidecar(
-				this.app,
-				this.file,
-				section,
-				plan.renames,
-				{ allowBroad: this.allowBroad },
-			);
-			// One atomic commit: the roster and its history entry can never
-			// be persisted without each other, so the undo baseline always
-			// matches what was actually applied.
-			await this.options.sidecar.commitRename(
-				this.file.path,
-				plan.nextEntries,
-				plan.nextNames,
-			);
-			console.debug(
-				`${PLUGIN_LOG_PREFIX} Renamed speakers: ` +
-					this.describeCounts(applied),
-			);
-			new Notice(this.describeOutcome(applied));
-			this.close();
-		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : String(error);
-			new Notice(`Failed to rename speakers: ${message}`);
-		} finally {
-			this.applying = false;
-		}
+		});
 	}
 
 	/**
@@ -404,49 +373,53 @@ export class SpeakerRenameModal extends Modal {
 	 */
 	private async undo(): Promise<void> {
 		const section = this.section;
-		if (!section || this.applying) {
+		if (!section) {
 			return;
 		}
-		this.applying = true;
-		try {
-			const previous =
-				section.history.length >= 2
-					? (section.history[section.history.length - 2]?.names ?? {})
-					: {};
-			const plan = planSpeakerRename(section.speakers, (label) =>
-				Object.hasOwn(previous, label) ? (previous[label] ?? '') : '',
-			);
-			if (plan.changed) {
-				const applied = await applySpeakerRenamesWithSidecar(
-					this.app,
-					this.file,
-					section,
-					plan.renames,
-					{ allowBroad: this.allowBroad },
+		await this.runExclusive(async () => {
+			try {
+				const previous =
+					section.history.length >= 2
+						? (section.history[section.history.length - 2]?.names ??
+							{})
+						: {};
+				const plan = planSpeakerRename(section.speakers, (label) =>
+					Object.hasOwn(previous, label)
+						? (previous[label] ?? '')
+						: '',
 				);
-				await this.options.sidecar.setSpeakers(
-					this.file.path,
-					plan.nextEntries,
-				);
-				new Notice(this.describeOutcome(applied));
-			} else {
-				new Notice('Nothing to undo: the names are already the same.');
+				if (plan.changed) {
+					const applied = await applySpeakerRenamesWithSidecar(
+						this.app,
+						this.file,
+						section,
+						plan.renames,
+						{ allowBroad: this.allowBroad },
+					);
+					await this.options.sidecar.setSpeakers(
+						this.file.path,
+						plan.nextEntries,
+					);
+					new Notice(this.describeOutcome(applied));
+				} else {
+					new Notice(
+						'Nothing to undo: the names are already the same.',
+					);
+				}
+				// The undone entry is consumed either way, so the next undo steps
+				// further back instead of replaying this one. Unlike apply, the
+				// two writes need no atomic commit: if this pop fails after the
+				// roster reverted, the next undo finds the roster already equal
+				// to the entry's state, plans no change, and only pops - the
+				// tear heals itself instead of corrupting the baseline.
+				await this.options.sidecar.popHistory(this.file.path);
+				this.close();
+			} catch (error) {
+				const message =
+					error instanceof Error ? error.message : String(error);
+				new Notice(`Failed to undo the rename: ${message}`);
 			}
-			// The undone entry is consumed either way, so the next undo steps
-			// further back instead of replaying this one. Unlike apply, the
-			// two writes need no atomic commit: if this pop fails after the
-			// roster reverted, the next undo finds the roster already equal
-			// to the entry's state, plans no change, and only pops - the
-			// tear heals itself instead of corrupting the baseline.
-			await this.options.sidecar.popHistory(this.file.path);
-			this.close();
-		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : String(error);
-			new Notice(`Failed to undo the rename: ${message}`);
-		} finally {
-			this.applying = false;
-		}
+		});
 	}
 
 	/**
@@ -533,7 +506,7 @@ export class SpeakerRenameModal extends Modal {
 	}
 
 	override onClose(): void {
-		this.contentEl.empty();
+		super.onClose();
 		this.inputs.clear();
 	}
 }

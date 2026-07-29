@@ -2,10 +2,11 @@
  * Shared App double for unit tests. Builds the vault/workspace/
  * metadataCache/fileManager surface most suites hand-roll, with every
  * method a fresh jest.fn per call, so tests only override what they
- * assert on.
+ * assert on. Also builds the TFile doubles those suites need.
  * @module tests/helpers/createApp
  */
 
+import { TFile } from 'obsidian';
 import type { App } from 'obsidian';
 
 /** The mutable double returned by createMockApp. */
@@ -120,4 +121,27 @@ function stripNested(
 	}
 	const { [key]: _nested, ...rest } = overrides;
 	return rest;
+}
+
+/**
+ * Builds a TFile for a vault path, with the derived name/basename/extension
+ * Obsidian fills in.
+ *
+ * Obsidian's own `TFile` takes no constructor arguments (a real one is minted
+ * by the vault), so a test cannot build one directly and type-check against the
+ * published API. This produces the same shape through the mock's prototype, so
+ * `instanceof TFile` still holds for the production code that checks it.
+ * @param path - Vault path, e.g. 'Recordings/take.webm'
+ * @returns A file with path, name, basename, and extension set
+ */
+export function createFile(path: string): TFile {
+	const name = path.split('/').at(-1) ?? path;
+	const parts = name.split('.');
+	const extension = parts.length > 1 ? (parts.pop() ?? '') : '';
+	return Object.assign(Object.create(TFile.prototype) as TFile, {
+		path,
+		name,
+		basename: parts.join('.'),
+		extension,
+	});
 }

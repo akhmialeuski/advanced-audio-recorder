@@ -18,6 +18,7 @@ import {
 	MAX_CLEANUP_HIGHPASS_HZ,
 	MIN_CLEANUP_LEVELING_MAKEUP_DB,
 } from 'src/constants';
+import { defined } from '../helpers/assertions';
 
 describe('gateShouldOpen', () => {
 	it('opens at or above the threshold', () => {
@@ -149,10 +150,10 @@ describe('applyNoiseGateToChannel', () => {
 
 		// Mid-point of the loud region is essentially unchanged
 		const loudIndex = Math.floor(samples.length / 4);
-		expect(Math.abs(gated[loudIndex])).toBeGreaterThan(0.45);
+		expect(Math.abs(defined(gated[loudIndex]))).toBeGreaterThan(0.45);
 		// End of the silent region is gated to near zero
 		const lastSample = gated[gated.length - 1];
-		expect(Math.abs(lastSample)).toBeLessThan(0.00005);
+		expect(Math.abs(defined(lastSample))).toBeLessThan(0.00005);
 	});
 
 	it('returns an empty array for empty input', () => {

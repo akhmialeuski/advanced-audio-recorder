@@ -61,7 +61,7 @@ export type TimecodeLinkBuilder = (seconds: number, label: string) => string;
 /** A speaker-grouped run of text for rendering one Markdown line. */
 interface RenderRow {
 	start: number;
-	speaker?: string;
+	speaker?: string | undefined;
 	text: string;
 }
 

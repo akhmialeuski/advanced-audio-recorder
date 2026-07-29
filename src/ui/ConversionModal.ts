@@ -3,7 +3,8 @@
  * @module ui/ConversionModal
  */
 
-import { App, Modal, Notice, Setting, TFile } from 'obsidian';
+import { App, Notice, Setting, TFile } from 'obsidian';
+import { PluginModal } from './PluginModal';
 import type { DropdownComponent } from 'obsidian';
 import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
 import {
@@ -18,7 +19,7 @@ import {
 	addBitrateSetting,
 	addDeleteSourceSetting,
 	addLinkActionSetting,
-} from './settingHelpers';
+} from '../settings/settingControls';
 import { getEncoderDescription } from './formatDescriptions';
 import { ConversionService } from '../recording/api';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
@@ -29,7 +30,7 @@ import type {
 
 /** Optional collaborators and initial form state for ConversionModal. */
 export interface ConversionModalOptions {
-	onConverted?: (convertedPath: string) => void;
+	onConverted?: ((convertedPath: string) => void) | undefined;
 	getWorkerClient?: () => EncodingWorkerClient | null;
 	initialChannelMode?: ChannelMode;
 }
@@ -37,7 +38,7 @@ export interface ConversionModalOptions {
 /**
  * Modal for converting an audio file to a different format.
  */
-export class ConversionModal extends Modal {
+export class ConversionModal extends PluginModal {
 	private readonly sourceFile: TFile;
 	private targetFormat: string = FORMAT_WAV;
 	private bitrate: number = 128000;
@@ -52,12 +53,16 @@ export class ConversionModal extends Modal {
 	private progressNotice: Notice | null = null;
 	/** Conversion pipeline behind the form. */
 	private readonly conversionService: ConversionService;
-	private readonly onConverted?: (convertedPath: string) => void;
+	private readonly onConverted?:
+		| ((convertedPath: string) => void)
+		| undefined;
 
 	/**
 	 * @param app - Obsidian app handle
 	 * @param sourceFile - Audio file to convert
-	 * @param settings - Plugin settings (seed format/bitrate/link defaults)
+	 * @param getSettings - Returns plugin settings (seed format/bitrate/link
+	 * defaults). A live accessor rather than a snapshot, so every dialog reads
+	 * settings the same way.
 	 * @param options - Optional callback, worker supplier, and initial channel
 	 * mode. A named object keeps future callers from depending on positional
 	 * argument order.
@@ -65,10 +70,11 @@ export class ConversionModal extends Modal {
 	constructor(
 		app: App,
 		sourceFile: TFile,
-		settings: AudioRecorderSettings,
+		getSettings: () => AudioRecorderSettings,
 		options: ConversionModalOptions = {},
 	) {
 		super(app);
+		const settings = getSettings();
 		this.sourceFile = sourceFile;
 		this.deleteSource = settings.deleteSourceAfterConversion;
 		this.linkAction = settings.conversionLinkAction;

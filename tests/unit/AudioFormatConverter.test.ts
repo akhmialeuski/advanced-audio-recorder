@@ -5,6 +5,7 @@
  */
 
 import type { RecordingTarget } from 'src/types';
+import { at } from '../helpers/assertions';
 
 // Mock obsidian module
 jest.mock('obsidian', () => ({
@@ -349,8 +350,10 @@ describe('AudioFormatConverter', () => {
 			await decodeAudioBlob(buffer);
 
 			expect(AudioContext).toHaveBeenCalledTimes(1);
-			const ctx = (AudioContext as unknown as jest.Mock).mock.results[0]
-				.value;
+			const ctx = at(
+				(AudioContext as unknown as jest.Mock).mock.results,
+				0,
+			).value;
 			expect(ctx.decodeAudioData).toHaveBeenCalledTimes(1);
 			expect(ctx.close).toHaveBeenCalledTimes(1);
 			// No second decode through an OfflineAudioContext
@@ -370,8 +373,10 @@ describe('AudioFormatConverter', () => {
 			);
 
 			// The AudioContext must not leak on corrupted input
-			const ctx = (AudioContext as unknown as jest.Mock).mock.results[0]
-				.value;
+			const ctx = at(
+				(AudioContext as unknown as jest.Mock).mock.results,
+				0,
+			).value;
 			expect(ctx.close).toHaveBeenCalledTimes(1);
 		});
 	});
@@ -509,7 +514,7 @@ describe('AudioFormatConverter', () => {
 
 			await convertBlobToFormat(blob, 'mp4', 128000, progressFn);
 
-			const instance = (await mockConversionInit.mock.results[0]
+			const instance = (await at(mockConversionInit.mock.results, 0)
 				.value) as {
 				onProgress?: (progress: number) => void;
 			};
@@ -743,6 +748,9 @@ describe('AudioFormatConverter', () => {
 			pcmBufferedBytes: 0,
 			pcmChannels: 1,
 			pcmSampleRate: 44100,
+			partIndex: 0,
+			partPaths: [],
+			partPcmBytes: 0,
 		});
 
 		it('should merge multiple tracks using buildTrackBlob', async () => {
@@ -876,9 +884,10 @@ describe('AudioFormatConverter', () => {
 				),
 			).rejects.toThrow('No audio data recorded');
 
-			const contextInstance = (
-				global.AudioContext as unknown as jest.Mock
-			).mock.results[0].value as { close: jest.Mock };
+			const contextInstance = at(
+				(global.AudioContext as unknown as jest.Mock).mock.results,
+				0,
+			).value as { close: jest.Mock };
 			expect(contextInstance.close).toHaveBeenCalled();
 		});
 
@@ -909,9 +918,10 @@ describe('AudioFormatConverter', () => {
 				),
 			).rejects.toThrow('corrupted track');
 
-			const contextInstance = (
-				global.AudioContext as unknown as jest.Mock
-			).mock.results[0].value as { close: jest.Mock };
+			const contextInstance = at(
+				(global.AudioContext as unknown as jest.Mock).mock.results,
+				0,
+			).value as { close: jest.Mock };
 			expect(contextInstance.close).toHaveBeenCalled();
 		});
 
@@ -973,8 +983,10 @@ describe('AudioFormatConverter', () => {
 
 			expect(result).toBeInstanceOf(Blob);
 			// 2 valid buffers decoded, null one skipped
-			const ctxInstance = (AudioContext as unknown as jest.Mock).mock
-				.results[0].value;
+			const ctxInstance = at(
+				(AudioContext as unknown as jest.Mock).mock.results,
+				0,
+			).value;
 			expect(ctxInstance.decodeAudioData).toHaveBeenCalledTimes(2);
 		});
 
@@ -1105,8 +1117,10 @@ describe('AudioFormatConverter', () => {
 				buildTrackBlob,
 			);
 
-			const ctxInstance = (AudioContext as unknown as jest.Mock).mock
-				.results[0].value;
+			const ctxInstance = at(
+				(AudioContext as unknown as jest.Mock).mock.results,
+				0,
+			).value;
 			expect(ctxInstance.close).toHaveBeenCalledTimes(1);
 		});
 	});

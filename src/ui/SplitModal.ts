@@ -5,7 +5,8 @@
  * @module ui/SplitModal
  */
 
-import { App, Modal, Notice, Setting, TFile } from 'obsidian';
+import { App, Notice, Setting, TFile } from 'obsidian';
+import { PluginModal } from './PluginModal';
 import {
 	FORMAT_WAV,
 	MIN_SPLIT_CHUNK_MINUTES,
@@ -19,8 +20,8 @@ import {
 	addBitrateSetting,
 	addDeleteSourceSetting,
 	addLinkActionSetting,
-} from './settingHelpers';
-import { addNumberInputTo } from '../settings/settingControls';
+	addNumberInputTo,
+} from '../settings/settingControls';
 import {
 	clampSplitMinutes,
 	sanitizePartSuffix,
@@ -34,7 +35,7 @@ import type {
 /**
  * Modal for splitting an audio file into parts of a fixed duration.
  */
-export class SplitModal extends Modal {
+export class SplitModal extends PluginModal {
 	private readonly sourceFile: TFile;
 	private partMinutes: number;
 	private partSuffix: string;
@@ -48,8 +49,13 @@ export class SplitModal extends Modal {
 	/** Split pipeline behind the form. */
 	private readonly splitService: SplitService;
 
-	constructor(app: App, sourceFile: TFile, settings: AudioRecorderSettings) {
+	constructor(
+		app: App,
+		sourceFile: TFile,
+		getSettings: () => AudioRecorderSettings,
+	) {
 		super(app);
+		const settings = getSettings();
 		this.splitService = new SplitService(app);
 		this.sourceFile = sourceFile;
 		this.partMinutes = clampSplitMinutes(settings.splitChunkMinutes);

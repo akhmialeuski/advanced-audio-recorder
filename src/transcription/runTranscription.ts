@@ -59,7 +59,7 @@ export interface TranscribeFileOptions {
 	 * Pre-read audio bytes, passed through to the service so a caller that
 	 * already holds the file's bytes avoids a second full-file read.
 	 */
-	audioBytes?: ArrayBuffer;
+	audioBytes?: ArrayBuffer | undefined;
 	/** Cancellation token. */
 	token?: CancellationToken;
 	/**
@@ -67,7 +67,7 @@ export interface TranscribeFileOptions {
 	 * register the outputs it wrote. Without it, speaker names are neither
 	 * re-applied nor renamable later, and no output record is kept.
 	 */
-	sidecar?: TranscriptOutputSidecar;
+	sidecar?: TranscriptOutputSidecar | undefined;
 }
 
 /**

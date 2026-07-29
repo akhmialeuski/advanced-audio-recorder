@@ -16,6 +16,7 @@ import {
 	MAX_AUDIO_CLEANUP_SECONDS,
 	MAX_AUDIO_CLEANUP_DECODED_SAMPLES,
 } from 'src/constants';
+import { at } from '../helpers/assertions';
 
 // Controllable container probe: null (the default) means "container not
 // parseable", which sends the pipeline down the plain decode path the
@@ -31,7 +32,7 @@ function fakeBuffer(channels: Float32Array[], sampleRate: number): unknown {
 		length: channels[0]?.length ?? 0,
 		sampleRate,
 		duration: (channels[0]?.length ?? 0) / sampleRate,
-		getChannelData: (i: number): Float32Array => channels[i],
+		getChannelData: (i: number): Float32Array => at(channels, i),
 	};
 }
 

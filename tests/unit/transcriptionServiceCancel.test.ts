@@ -9,6 +9,7 @@
  */
 
 import type { App, TFile } from 'obsidian';
+import { at } from '../helpers/assertions';
 import {
 	NEVER_CANCELLED,
 	TranscriptionCancelledError,
@@ -17,6 +18,7 @@ import {
 import { transcribeFile } from 'src/transcription/runTranscription';
 import type { TranscriptionProvider } from 'src/transcription/providers/TranscriptionProvider';
 import { mergeSettings } from 'src/settings/settingsSerialization';
+import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 
 const audioFile = {
 	name: 'rec.webm',
@@ -32,7 +34,7 @@ const audioFile = {
  */
 function makeProvider(onTranscribe: () => void): TranscriptionProvider {
 	return {
-		id: 'fake',
+		id: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
 		label: 'Fake',
 		requiresNetwork: false,
 		capabilities: {
@@ -41,6 +43,7 @@ function makeProvider(onTranscribe: () => void): TranscriptionProvider {
 			acceptsOriginalContainer: true,
 			supportsDiarization: false,
 			supportsDictionary: false,
+			biasChannel: 'prompt',
 		},
 		transcribe: jest.fn(async () => {
 			onTranscribe();
@@ -85,7 +88,7 @@ describe('TranscriptionService cancellation', () => {
 			token: NEVER_CANCELLED,
 		});
 
-		expect(result.transcript.segments[0].text).toBe('hi');
+		expect(at(result.transcript.segments, 0).text).toBe('hi');
 		expect(result.markdown).toContain('hi');
 	});
 

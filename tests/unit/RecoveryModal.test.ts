@@ -4,6 +4,7 @@
  */
 
 import { RecoveryModal } from 'src/ui/RecoveryModal';
+import { at } from '../helpers/assertions';
 import type { JournalSession } from 'src/recording/SessionJournal';
 import { App } from 'obsidian';
 
@@ -135,7 +136,7 @@ describe('RecoveryModal', () => {
 
 	it('should omit the parts note when no parts were saved', () => {
 		const session = createSession();
-		session.tracks[0].partPaths = [];
+		at(session.tracks, 0).partPaths = [];
 		const modal = openModal([session]);
 
 		const line = modal.contentEl.querySelector('.aar-recovery-session');

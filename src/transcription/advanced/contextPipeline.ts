@@ -29,6 +29,8 @@ import { PLUGIN_LOG_PREFIX } from '../../constants';
 import { dedupeTerms } from '../dictionary';
 import { WHISPER_PROMPT_TOKEN_LIMIT, tokenUpperBound } from '../dictionaryBias';
 import type { LlmProvider } from '../llm/LlmProvider';
+import { runLlmStep, type LlmCostSink } from '../llm/llmStep';
+import type { AudioRecorderSettings } from '../../settings/settingsSchema';
 import type { Transcript } from '../TranscriptTypes';
 
 /**
@@ -55,20 +57,20 @@ export const JARGON_MATCH_THRESHOLD = 0.9;
 export const CONTEXT_SAMPLE_MAX_CHARS = 12000;
 
 /** Output-token budget for the list-producing agents. */
-export const CONTEXT_LIST_MAX_TOKENS = 512;
+const CONTEXT_LIST_MAX_TOKENS = 512;
 
 /** Output-token budget for the one-sentence topic agent. */
-export const CONTEXT_TOPIC_MAX_TOKENS = 128;
+const CONTEXT_TOPIC_MAX_TOKENS = 128;
 
 /** Output-token budget for the sentence-builder agent. */
-export const CONTEXT_SENTENCE_MAX_TOKENS = 300;
+const CONTEXT_SENTENCE_MAX_TOKENS = 300;
 
 /**
  * Cap on the terms kept per category after filtering. The prompt window and
  * the provider keyterm limits bound the final output anyway; this only stops
  * a runaway list from a misbehaving model from dominating the pipeline.
  */
-export const CONTEXT_MAX_TERMS_PER_CATEGORY = 25;
+const CONTEXT_MAX_TERMS_PER_CATEGORY = 25;
 
 /**
  * Longest candidate line accepted from a list agent. Anything longer is not
@@ -120,7 +122,7 @@ export interface GeneratedContext {
 /** Options for {@link generateContext}. */
 export interface ContextPipelineOptions {
 	/** Language detected on the first pass (ISO code), when known. */
-	language?: string;
+	language?: string | undefined;
 	/**
 	 * User-curated glossary terms: the run's selected Dictionary profile, the
 	 * same terms the single pass biases toward. Candidates like any other, so
@@ -137,7 +139,17 @@ export interface ContextPipelineOptions {
 	 */
 	buildPromptSentence?: boolean;
 	/** Cancellation probe checked before each agent call. */
-	isCancelled?: () => boolean;
+	isCancelled?: (() => boolean) | undefined;
+	/**
+	 * The run's settings, used to price each agent call. Required, so there is
+	 * no way to reach the agents without pricing them: an unaccounted branch
+	 * here is spending the session total would never show.
+	 */
+	settings: AudioRecorderSettings;
+	/** Extent of the draft the agents read, in seconds, for that pricing. */
+	durationSeconds?: number | null;
+	/** Where each agent call reports its estimated cost. */
+	costSink?: LlmCostSink | undefined;
 }
 
 /** Raised when the caller's cancellation probe fires between agent calls. */
@@ -579,13 +591,14 @@ async function buildBiasSentence(
  * ({@link ContextGenerationCancelledError}).
  * @param baseline - The first (draft) pass's transcript
  * @param llm - The configured LLM provider the agents run on
- * @param options - Language, glossary, prompt-sentence, and cancellation options
+ * @param options - Settings to price by, plus language, glossary,
+ *   prompt-sentence, and cancellation options
  * @returns The generated context, or null when there is nothing to bias
  */
 export async function generateContext(
 	baseline: Transcript,
 	llm: LlmProvider,
-	options: ContextPipelineOptions = {},
+	options: ContextPipelineOptions,
 ): Promise<GeneratedContext | null> {
 	const sample = condenseTranscript(baseline, CONTEXT_SAMPLE_MAX_CHARS);
 	if (!sample.trim()) {
@@ -609,8 +622,17 @@ export async function generateContext(
 	): Promise<string | null> => {
 		throwIfCancelled();
 		try {
-			return await llm.complete({ system, user }, maxTokens, {
-				temperature: CONTEXT_AGENT_TEMPERATURE,
+			// Every agent call goes through the accounted step, so their spend
+			// reaches the session total instead of being invisible after the run.
+			return await runLlmStep({
+				step: 'contextAgents',
+				llm,
+				prompt: { system, user },
+				maxTokens,
+				options: { temperature: CONTEXT_AGENT_TEMPERATURE },
+				settings: options.settings,
+				durationSeconds: options.durationSeconds ?? null,
+				costSink: options.costSink,
 			});
 		} catch (error) {
 			console.warn(

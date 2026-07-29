@@ -1,14 +1,17 @@
 /**
- * Pure helpers for the participant-name profiles used by the speaker rename
- * dialog. Each profile is a named roster of people; the user creates profiles
- * and adds names from the dialog, then picks one to feed its names as
- * suggestions. These functions are side-effect free (they return new arrays)
- * so the dialog never mutates the stored settings array in place, mirroring
- * {@link module:settings/dictionaryProfiles}.
+ * The participant-profile list: named rosters of people, created and filled
+ * from the speaker rename dialog rather than the settings tab. The list
+ * mechanics come from the shared profile module; this file adds only what is
+ * specific to a roster - normalizing names and merging applied ones back in.
+ *
+ * A roster has no persisted "selected id": the dialog holds the pick for the
+ * duration of one rename, so the descriptor's selection accessors are backed by
+ * a module-local slot rather than a settings field.
  * @module settings/speakerProfiles
  */
 
-import type { SpeakerProfile } from './settingsSchema';
+import type { AudioRecorderSettings, SpeakerProfile } from './settingsSchema';
+import { addProfile, findProfile, type ProfileList } from './profiles';
 
 /**
  * Trims, deduplicates (first occurrence wins), and drops blank entries from a
@@ -40,6 +43,21 @@ export function createSpeakerProfile(name: string): SpeakerProfile {
 }
 
 /**
+ * Where the participant profiles live in settings. Unlike the dictionary and
+ * chapter lists there is no persisted selection - the rename dialog owns the
+ * pick for one run - so the selection accessors are inert.
+ */
+export const SPEAKER_PROFILES: ProfileList<SpeakerProfile> = {
+	get: (s) => s.transcriptionSpeakerProfiles,
+	set: (s, profiles) => (s.transcriptionSpeakerProfiles = profiles),
+	selectedId: () => '',
+	setSelectedId: () => {
+		/* the rename dialog holds the selection for one run */
+	},
+	create: createSpeakerProfile,
+};
+
+/**
  * Appends a new empty profile with the given name. A blank name leaves the list
  * unchanged. Duplicate names are allowed on purpose: identity is the id.
  * @param profiles - Current profiles
@@ -50,38 +68,21 @@ export function addSpeakerProfile(
 	profiles: readonly SpeakerProfile[],
 	name: string,
 ): SpeakerProfile[] {
-	const profile = createSpeakerProfile(name);
-	if (profile.name === '') {
-		return [...profiles];
-	}
-	return [...profiles, profile];
+	return addProfile(profiles, createSpeakerProfile(name));
 }
 
 /**
- * Removes the profile with the given id. Returns a copy without it (or an
- * unchanged copy when the id is absent).
- * @param profiles - Current profiles
- * @param id - Id of the profile to remove
- * @returns A new list without the profile
+ * The participants a profile offers as suggestions, or an empty list when the
+ * id names no profile.
+ * @param settings - The active settings
+ * @param id - Id of the profile feeding the suggestions ('' means none)
+ * @returns The profile's participant names
  */
-export function removeSpeakerProfile(
-	profiles: readonly SpeakerProfile[],
+export function participantsOf(
+	settings: AudioRecorderSettings,
 	id: string,
-): SpeakerProfile[] {
-	return profiles.filter((profile) => profile.id !== id);
-}
-
-/**
- * Finds a profile by id.
- * @param profiles - Current profiles
- * @param id - Id to look up
- * @returns The matching profile, or undefined
- */
-export function findSpeakerProfile(
-	profiles: readonly SpeakerProfile[],
-	id: string,
-): SpeakerProfile | undefined {
-	return profiles.find((profile) => profile.id === id);
+): string[] {
+	return findProfile(SPEAKER_PROFILES.get(settings), id)?.participants ?? [];
 }
 
 /**
@@ -99,7 +100,7 @@ export function addParticipantsToProfile(
 	id: string,
 	names: readonly string[],
 ): SpeakerProfile[] {
-	const target = findSpeakerProfile(profiles, id);
+	const target = findProfile(profiles, id);
 	if (!target) {
 		return [...profiles];
 	}

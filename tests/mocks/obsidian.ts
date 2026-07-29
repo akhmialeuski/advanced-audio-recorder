@@ -93,6 +93,10 @@ export class Vault {
 		return null;
 	}
 
+	getResourcePath(file: TFile): string {
+		return `app://vault/${file.path}`;
+	}
+
 	getRoot(): TFolder {
 		return new TFolder('');
 	}
@@ -279,7 +283,7 @@ export class MarkdownRenderChild extends Component {
  * Exported so DOM-driven tests can extend elements Obsidian extends at
  * runtime (e.g. document.body for body-mounted UI like RecordingBanner).
  */
-export function addObsidianDomExtensions(el: HTMLElement): HTMLElement {
+export function addObsidianDomExtensions<T extends HTMLElement>(el: T): T {
 	// Use unknown cast to avoid TypeScript's overloaded HTMLElement extension conflicts
 	const extended = el as unknown as Record<string, unknown>;
 
@@ -319,7 +323,12 @@ export function addObsidianDomExtensions(el: HTMLElement): HTMLElement {
 		) => HTMLElement;
 		return createEl(
 			'div',
-			opts ? { cls: opts.cls, text: opts.text } : undefined,
+			opts
+				? {
+						...(opts.cls === undefined ? {} : { cls: opts.cls }),
+						...(opts.text === undefined ? {} : { text: opts.text }),
+					}
+				: undefined,
 		);
 	};
 
@@ -423,6 +432,29 @@ export class ButtonComponent {
 	}
 
 	setCta(): this {
+		// Mirrors Obsidian, which marks the primary button with mod-cta; tests
+		// locate the primary action by that class.
+		this.buttonEl.classList.add('mod-cta');
+		return this;
+	}
+
+	setWarning(): this {
+		this.buttonEl.classList.add('mod-warning');
+		return this;
+	}
+
+	setDestructive(): this {
+		this.buttonEl.classList.add('mod-destructive');
+		return this;
+	}
+
+	setTooltip(tooltip: string): this {
+		this.buttonEl.setAttribute('aria-label', tooltip);
+		return this;
+	}
+
+	setIcon(icon: string): this {
+		this.buttonEl.setAttribute('data-icon', icon);
 		return this;
 	}
 
@@ -604,7 +636,9 @@ export class TFile extends TAbstractFile {
 	constructor(path: string) {
 		super(path);
 		const parts = path.split('/');
-		const filename = parts[parts.length - 1];
+		// split() always yields at least one element, so the last one is the
+		// filename; the fallback only satisfies the index-safety check.
+		const filename = parts[parts.length - 1] ?? path;
 		const nameParts = filename.split('.');
 		this.extension = nameParts.pop() ?? '';
 		this.basename = nameParts.join('.');
@@ -897,7 +931,7 @@ export const apiVersion = '1.12.3';
 
 /**
  * Mock AbstractInputSuggest: enough surface for components that attach
- * popover suggestions to a text input (e.g. FolderSuggest). Suggestions
+ * popover suggestions to a text input (TextInputSuggest). Suggestions
  * never open in tests; the constructor and the value plumbing suffice.
  */
 export abstract class AbstractInputSuggest<T> {

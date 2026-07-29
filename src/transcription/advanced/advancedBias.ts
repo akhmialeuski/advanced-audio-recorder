@@ -14,15 +14,17 @@ import {
 	DEFAULT_ADVANCED_SECOND_PASS_MIN_RATIO,
 	MIN_ADVANCED_SECOND_PASS_MIN_RATIO,
 	MAX_ADVANCED_SECOND_PASS_MIN_RATIO,
-	TRANSCRIPTION_PROVIDER_IDS,
 } from '../../constants';
 import type {
 	AudioRecorderSettings,
 	TranscriptionProviderId,
 } from '../../settings/settingsSchema';
 import { advancedTwoPassEnabled } from '../../settings/settingsSchema';
-import { deepgramBiasMechanism } from '../dictionaryBias';
-import { providerSupportsDictionary } from '../providers/capabilities';
+import {
+	providerBiasChannel,
+	providerSupportsDictionary,
+} from '../providers/capabilities';
+import { transcriptionEngine } from '../providers/engines';
 import type { GeneratedContext } from './contextPipeline';
 
 /** The bias fields to add to the second pass's transcription options. */
@@ -35,9 +37,10 @@ export interface AdvancedBiasPlan {
 
 /**
  * How an engine carries the generated bias: a Whisper-style prompt sentence, or
- * a flat keyterm list.
+ * a flat keyterm list. Declared with the rest of an engine's capabilities.
  */
-export type AdvancedBiasChannel = 'prompt' | 'keyterm';
+export type { AdvancedBiasChannel } from '../providers/TranscriptionProvider';
+import type { AdvancedBiasChannel } from '../providers/TranscriptionProvider';
 
 /**
  * The biasing channel an engine reads. The single source of truth shared by the
@@ -51,9 +54,7 @@ export type AdvancedBiasChannel = 'prompt' | 'keyterm';
 export function advancedBiasChannel(
 	engineId: TranscriptionProviderId,
 ): AdvancedBiasChannel {
-	return engineId === TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM
-		? 'keyterm'
-		: 'prompt';
+	return providerBiasChannel(engineId);
 }
 
 /**
@@ -71,13 +72,9 @@ export function advancedBiasUnsupportedReason(
 	if (!providerSupportsDictionary(engineId)) {
 		return 'the selected engine cannot bias recognition';
 	}
-	if (
-		engineId === TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM &&
-		deepgramBiasMechanism(deepgramModel) === null
-	) {
-		return `the Deepgram model "${deepgramModel}" cannot bias recognition (choose a Nova model)`;
-	}
-	return null;
+	// Whether a specific model can carry a bias is an engine-level rule (only
+	// Deepgram has one today), so the descriptor answers it.
+	return transcriptionEngine(engineId).biasUnsupportedReason(deepgramModel);
 }
 
 /**

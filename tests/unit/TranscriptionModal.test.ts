@@ -8,6 +8,7 @@ import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { TranscriptionModal } from 'src/ui/TranscriptionModal';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
+import { createFile } from '../helpers/createApp';
 
 type TranscriptionModalInternals = {
 	setRunning: (running: boolean) => void;
@@ -17,11 +18,11 @@ type TranscriptionModalInternals = {
 	restore: () => void;
 	cancelled: boolean;
 	minimized: boolean;
-	running: boolean;
+	busy: boolean;
 };
 
 function createAudioFile(): TFile {
-	const file = new TFile('Audio/meeting.webm');
+	const file = createFile('Audio/meeting.webm');
 	Object.defineProperty(file, 'name', { value: 'meeting.webm' });
 	return file;
 }
@@ -204,7 +205,7 @@ describe('TranscriptionModal platform gating', () => {
 
 		await internals.startRun();
 
-		expect(internals.running).toBe(false);
+		expect(internals.busy).toBe(false);
 		expect(notice).toHaveBeenCalledWith(
 			expect.stringContaining('not available on this device'),
 		);

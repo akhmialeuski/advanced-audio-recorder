@@ -5,7 +5,8 @@
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
-		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+		"typecheck": "tsc -p tsconfig.eslint.json --noEmit",
+		"build": "npm run typecheck && node esbuild.config.mjs production",
 		"test": "jest",
 		"test:coverage": "jest --coverage",
 		"lint": "eslint .",
@@ -110,10 +111,10 @@
 		],
 		"coverageThreshold": {
 			"global": {
-				"statements": 80,
-				"branches": 71,
-				"functions": 70,
-				"lines": 80
+				"statements": 91,
+				"branches": 83,
+				"functions": 86,
+				"lines": 91
 			},
 			"src/platform/": {
 				"statements": 90,

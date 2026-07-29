@@ -7,7 +7,8 @@
  * @module ui/RecoveryModal
  */
 
-import { App, Modal, Notice, Setting } from 'obsidian';
+import { App, Notice, Setting } from 'obsidian';
+import { PluginModal } from './PluginModal';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import type { JournalSession } from '../recording/api';
 
@@ -25,7 +26,7 @@ export interface RecoveryModalCallbacks {
  * Modal listing interrupted recording sessions with recover/discard
  * actions.
  */
-export class RecoveryModal extends Modal {
+export class RecoveryModal extends PluginModal {
 	/** Guards against double-clicking an action button. */
 	private isRunning = false;
 

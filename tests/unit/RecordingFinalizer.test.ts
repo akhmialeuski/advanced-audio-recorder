@@ -11,9 +11,10 @@ import { DebugLogger } from 'src/utils/DebugLogger';
 import type { RecordingSessionConfig, RecordingTarget } from 'src/types';
 import {
 	DEFAULT_SETTINGS,
-	AudioRecorderSettings,
+	type AudioRecorderSettings,
 } from 'src/settings/settingsSchema';
 import type { App } from 'obsidian';
+import { at, defined } from '../helpers/assertions';
 
 jest.mock('obsidian', () => ({
 	Notice: jest.fn(),
@@ -77,7 +78,7 @@ const createTarget = (
 const createSession = (
 	overrides: Partial<RecordingSessionConfig> = {},
 ): RecordingSessionConfig => ({
-	isMobile: false,
+	chunkRotationBytes: null,
 	isWavPcm: false,
 	recorderFormat: 'webm',
 	outputFormat: 'webm',
@@ -441,8 +442,10 @@ describe('RecordingFinalizer', () => {
 			);
 
 			expect(result.trackFiles).toHaveLength(1);
-			expect(result.trackFiles?.[0].trackIndex).toBe(0);
-			expect(result.trackFiles?.[0].files[0]).toBe('rec-part1.webm');
+			expect(at(defined(result.trackFiles), 0).trackIndex).toBe(0);
+			expect(at(at(defined(result.trackFiles), 0).files, 0)).toBe(
+				'rec-part1.webm',
+			);
 			expect(flattenTrackFiles(result.trackFiles)).toEqual(
 				result.audioPaths,
 			);
@@ -465,7 +468,7 @@ describe('RecordingFinalizer', () => {
 			);
 
 			expect(result.trackFiles).toHaveLength(1);
-			expect(result.trackFiles?.[0].trackIndex).toBe(0);
+			expect(at(defined(result.trackFiles), 0).trackIndex).toBe(0);
 			expect(result.audioPaths).toHaveLength(1);
 			expect(flattenTrackFiles(result.trackFiles)).toEqual(
 				result.audioPaths,

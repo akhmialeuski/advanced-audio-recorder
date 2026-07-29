@@ -213,7 +213,3 @@ export const MEDIA_RECORDER_CANDIDATE_FORMATS: readonly AudioFormatId[] =
 /** Compressed formats usable as recording intermediates. */
 export const COMPRESSED_INTERMEDIATE_FORMATS: readonly AudioFormatId[] =
 	AUDIO_FORMAT_IDS.filter((id) => FORMAT_REGISTRY[id].compressedIntermediate);
-
-/** Formats reachable only through offline encoding. */
-export const OFFLINE_ONLY_FORMATS: readonly AudioFormatId[] =
-	AUDIO_FORMAT_IDS.filter((id) => FORMAT_REGISTRY[id].offlineOnly);

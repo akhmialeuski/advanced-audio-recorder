@@ -25,9 +25,7 @@ import {
 	LLM_PROVIDER_IDS,
 	DEFAULT_LLM_OPENAI_BASE_URL,
 	DEFAULT_LLM_OPENAI_MODEL,
-	DEFAULT_LLM_ANTHROPIC_BASE_URL,
 	DEFAULT_LLM_ANTHROPIC_MODEL,
-	DEFAULT_LLM_GEMINI_BASE_URL,
 	DEFAULT_LLM_GEMINI_MODEL,
 	DEFAULT_LLM_MAX_TOKENS,
 	LLM_OPENAI_MODEL_SUGGESTIONS,
@@ -51,6 +49,7 @@ import type { LlmTask } from '../transcription/llmPostProcess';
 import { CHANNEL_MODE_SOURCE } from '../audio/downmix';
 import type { ChannelMode } from '../audio/downmix';
 import type { PlatformKind } from '../platform/platformKind';
+import { DEFAULT_LLM_BASE_URLS, llmVendor } from '../transcription/llm/vendors';
 
 export type { OutputMode } from '../types';
 
@@ -126,7 +125,7 @@ export type PlatformScopedSettingsMap = Record<
 export interface PlatformScopedSettingsInput {
 	audioDeviceId?: unknown;
 	recordingChannels?: unknown;
-	trackAudioSources?: TrackAudioSources | TrackAudioSourcesRecord;
+	trackAudioSources?: TrackAudioSources | TrackAudioSourcesRecord | undefined;
 }
 
 /** A platform-scoped branch as persisted to disk. */
@@ -153,7 +152,7 @@ export function createPlatformScopedDefaults(): PlatformScopedSettings {
  * Creates a fresh default per-platform settings map.
  * @returns Default branches for every platform
  */
-export function createPerPlatformDefaults(): PlatformScopedSettingsMap {
+function createPerPlatformDefaults(): PlatformScopedSettingsMap {
 	return {
 		desktop: createPlatformScopedDefaults(),
 		mobile: createPlatformScopedDefaults(),
@@ -485,13 +484,36 @@ export type LlmProviderId =
 	(typeof LLM_PROVIDER_IDS)[keyof typeof LLM_PROVIDER_IDS];
 
 /**
+ * Fields the plugin no longer stores but still reads once when loading a
+ * data.json written by an older version, so the value migrates onto its
+ * replacement instead of being silently dropped. Declared here rather than
+ * reached for through a `Record<string, unknown>` cast at each migration, so
+ * the set of fields a load still understands is one list a reader can check
+ * against - and removing one becomes a compile error at its migration.
+ */
+export interface LegacyAudioRecorderSettings {
+	/**
+	 * Pre-vendor-split single LLM key, moved onto the selected vendor's own key
+	 * field (OpenAI reuses the Whisper key, Gemini its transcription key).
+	 */
+	llmApiKey?: string;
+	/** Pre-vendor-split single LLM model, moved onto the vendor's model. */
+	llmModel?: string;
+	/** Pre-profile single dictionary text, moved into a "General" profile. */
+	transcriptionDictionary?: string;
+}
+
+/**
  * Partial settings as accepted from storage or callers; track sources may
  * arrive as a Map or as the serialized record form, and the per-platform
  * branches may be missing entirely (legacy flat data.json) or partial.
  */
-export interface AudioRecorderSettingsInput extends Partial<
-	Omit<AudioRecorderSettings, 'trackAudioSources' | 'perPlatform'>
-> {
+export interface AudioRecorderSettingsInput
+	extends
+		Partial<
+			Omit<AudioRecorderSettings, 'trackAudioSources' | 'perPlatform'>
+		>,
+		LegacyAudioRecorderSettings {
 	trackAudioSources?: TrackAudioSources | TrackAudioSourcesRecord;
 	perPlatform?: Partial<Record<PlatformKind, PlatformScopedSettingsInput>>;
 }
@@ -633,22 +655,13 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 };
 
 /**
- * Base URLs that ship as provider defaults. Auto-switching only replaces a
- * value still equal to one of these, so a custom endpoint the user typed is
- * never clobbered when the provider changes.
- */
-const DEFAULT_LLM_BASE_URLS: ReadonlySet<string> = new Set([
-	DEFAULT_LLM_OPENAI_BASE_URL,
-	DEFAULT_LLM_ANTHROPIC_BASE_URL,
-	DEFAULT_LLM_GEMINI_BASE_URL,
-]);
-
-/**
- * Aligns the LLM base URL with the target provider's default when the current
- * value is still a provider default; a custom URL the user entered is
- * preserved. The model is not switched here - each provider keeps its own
- * selected model in a dedicated field. Mutates and returns `settings` so the
- * settings tab can switch the base URL in one step when the provider changes.
+ * Aligns the LLM base URL with the target vendor's default when the current
+ * value is still some vendor's shipped default; a custom URL the user entered
+ * is preserved. Switching to a vendor whose own default is already in place is
+ * a no-op, so an OpenAI-compatible endpoint the user typed survives. The model
+ * is not switched here - each vendor keeps its own selected model in a
+ * dedicated field. Mutates and returns `settings` so the settings tab can
+ * switch the base URL in one step when the provider changes.
  * @param settings - Settings to adjust in place
  * @param provider - The provider being switched to
  * @returns The same settings object, adjusted
@@ -657,26 +670,8 @@ export function applyLlmProviderDefaults(
 	settings: AudioRecorderSettings,
 	provider: LlmProviderId,
 ): AudioRecorderSettings {
-	if (provider === LLM_PROVIDER_IDS.ANTHROPIC) {
-		if (DEFAULT_LLM_BASE_URLS.has(settings.llmBaseUrl)) {
-			settings.llmBaseUrl = DEFAULT_LLM_ANTHROPIC_BASE_URL;
-		}
-		return settings;
-	}
-	if (provider === LLM_PROVIDER_IDS.GEMINI) {
-		if (DEFAULT_LLM_BASE_URLS.has(settings.llmBaseUrl)) {
-			settings.llmBaseUrl = DEFAULT_LLM_GEMINI_BASE_URL;
-		}
-		return settings;
-	}
-	// OpenAI: only move off another provider's shipped default base URL
-	// (Anthropic or Gemini), leaving any other OpenAI-compatible endpoint the
-	// user entered intact.
-	if (
-		settings.llmBaseUrl === DEFAULT_LLM_ANTHROPIC_BASE_URL ||
-		settings.llmBaseUrl === DEFAULT_LLM_GEMINI_BASE_URL
-	) {
-		settings.llmBaseUrl = DEFAULT_LLM_OPENAI_BASE_URL;
+	if (DEFAULT_LLM_BASE_URLS.has(settings.llmBaseUrl)) {
+		settings.llmBaseUrl = llmVendor(provider).defaultBaseUrl;
 	}
 	return settings;
 }

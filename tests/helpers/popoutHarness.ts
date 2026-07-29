@@ -7,12 +7,11 @@
  * @module tests/helpers/popoutHarness
  */
 
-import {
-	Component,
-	MarkdownView,
-	TFile,
-	addObsidianDomExtensions,
-} from 'obsidian';
+import { Component, MarkdownView, TFile } from 'obsidian';
+// Mock-only surface: these exist on the test double, not on Obsidian's
+// API, so they are imported from the mock by path. Jest maps 'obsidian'
+// to the same module, so both imports share one instance.
+import { addObsidianDomExtensions } from '../mocks/obsidian';
 import type { App, MarkdownPostProcessor, WorkspaceLeaf } from 'obsidian';
 
 /** A pop-out-like window handle, as workspace window events carry it. */

@@ -7,6 +7,7 @@
  */
 
 import { TFile } from 'obsidian';
+import { at } from '../helpers/assertions';
 import type { App, Plugin } from 'obsidian';
 import {
 	registerFileActionCommands,
@@ -78,6 +79,10 @@ function makeServices(activeFile: TFile | null): ActionServices {
 		autoChapters: {
 			generate: jest.fn(),
 		} as unknown as ActionServices['autoChapters'],
+		recordingSidecar: {
+			getTranscript: jest.fn().mockResolvedValue(null),
+			updateTranscript: jest.fn().mockResolvedValue(undefined),
+		} as unknown as ActionServices['recordingSidecar'],
 	};
 }
 
@@ -162,7 +167,7 @@ describe('registerFileActionCommands', () => {
 		};
 		registerFileActionCommands(makePlugin(commands), [gated], services);
 
-		expect(commands[0].checkCallback(true)).toBe(false);
+		expect(at(commands, 0).checkCallback(true)).toBe(false);
 	});
 
 	it('runs the action with the active file when invoked', () => {
@@ -180,7 +185,7 @@ describe('registerFileActionCommands', () => {
 		};
 		registerFileActionCommands(makePlugin(commands), [action], services);
 
-		expect(commands[0].checkCallback(false)).toBe(true);
+		expect(at(commands, 0).checkCallback(false)).toBe(true);
 		expect(run).toHaveBeenCalledWith(file, services);
 	});
 
@@ -201,7 +206,7 @@ describe('registerFileActionCommands', () => {
 			makeServices(audioFile()),
 		);
 
-		commands[0].checkCallback(true);
+		at(commands, 0).checkCallback(true);
 		expect(run).not.toHaveBeenCalled();
 	});
 });
@@ -221,9 +226,9 @@ describe('registerRecordingActionCommands', () => {
 			COMMAND_IDS.addRecordingChapter,
 		]);
 
-		commands[0].checkCallback(false);
+		at(commands, 0).checkCallback(false);
 		expect(openMarkerModal).toHaveBeenLastCalledWith(MARKER_KIND.bookmark);
-		commands[1].checkCallback(false);
+		at(commands, 1).checkCallback(false);
 		expect(openMarkerModal).toHaveBeenLastCalledWith(MARKER_KIND.chapter);
 	});
 

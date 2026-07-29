@@ -4,7 +4,7 @@
  */
 
 import {
-	AudioRecorderSettings,
+	type AudioRecorderSettings,
 	DEFAULT_SETTINGS,
 } from 'src/settings/settingsSchema';
 import { validateSettings } from 'src/settings/settingsValidation';
@@ -94,8 +94,8 @@ describe('validateSettings', () => {
 			audioDeviceId: 'valid-device',
 			enableMultiTrack: true,
 			trackAudioSources: new Map([
-				[1, { deviceId: 'device-1' }],
-				[2, { deviceId: '' }],
+				[1, { deviceId: 'device-1', channelMode: 'source' }],
+				[2, { deviceId: '', channelMode: 'source' }],
 			]),
 		};
 		expect(() => validateSettings(settings)).toThrow(
@@ -209,8 +209,8 @@ describe('validateSettings', () => {
 			audioDeviceId: 'valid-device',
 			enableMultiTrack: true,
 			trackAudioSources: new Map([
-				[1, { deviceId: 'device-1' }],
-				[2, { deviceId: 'device-2' }],
+				[1, { deviceId: 'device-1', channelMode: 'source' }],
+				[2, { deviceId: 'device-2', channelMode: 'source' }],
 			]),
 		};
 		expect(() => validateSettings(settings)).not.toThrow();

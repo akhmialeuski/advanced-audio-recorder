@@ -5,15 +5,17 @@
  */
 
 import { RecordingManager } from 'src/recording/RecordingManager';
+import { at } from '../helpers/assertions';
 import { RecordingStatus } from 'src/types';
 import { MARKER_KIND } from 'src/markers/markerModel';
 import {
 	DEFAULT_SETTINGS,
-	AudioRecorderSettings,
+	type AudioRecorderSettings,
 } from 'src/settings/settingsSchema';
 import type { App } from 'obsidian';
 import {
 	createRecordingMockApp,
+	installMediaRecorder,
 	installRecordingMediaStubs,
 	makeFakeMarkerStore,
 	makeStatefulMarkerStore,
@@ -133,11 +135,7 @@ describe('RecordingManager', () => {
 				),
 			};
 
-			(global as Record<string, unknown>).MediaRecorder = jest.fn(
-				() => mockMediaRecorder,
-			);
-			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
-				jest.fn().mockReturnValue(true);
+			installMediaRecorder(mockMediaRecorder);
 
 			const { getAudioStreams } = jest.requireMock(
 				'src/recording/AudioStreamHandler',
@@ -190,15 +188,15 @@ describe('RecordingManager', () => {
 			await feedChunkAndStop();
 
 			expect(writes).toHaveLength(1);
-			const { path, markers } = writes[0];
+			const { path, markers } = at(writes, 0);
 			expect(typeof path).toBe('string');
 			expect(markers).toHaveLength(1);
 			expect(markers[0]).toMatchObject({
 				label: 'Intro',
 				kind: MARKER_KIND.bookmark,
 			});
-			expect(markers[0].time).toBeGreaterThanOrEqual(0);
-			expect(markers[0].id.length).toBeGreaterThan(0);
+			expect(at(markers, 0).time).toBeGreaterThanOrEqual(0);
+			expect(at(markers, 0).id.length).toBeGreaterThan(0);
 		});
 
 		it('fixes the draft kind up front when a preselect kind is passed', async () => {
@@ -248,7 +246,7 @@ describe('RecordingManager', () => {
 			manager.captureMarkerDraft()?.commit('', MARKER_KIND.bookmark);
 			await feedChunkAndStop();
 
-			const markers = writes[0].markers;
+			const markers = at(writes, 0).markers;
 			expect(markers.map((marker) => marker.label).sort()).toEqual([
 				'Marker 1',
 				'Marker 2',
@@ -330,7 +328,7 @@ describe('RecordingManager', () => {
 			handle?.commit('Renamed live', MARKER_KIND.chapter);
 			await flushMicrotasks();
 
-			const path = writes[0].path;
+			const path = at(writes, 0).path;
 			const final = read(path);
 			expect(final).toHaveLength(1);
 			expect(final[0]).toMatchObject({
@@ -356,7 +354,7 @@ describe('RecordingManager', () => {
 			await manager.startRecording();
 			const handle = manager.captureMarkerDraft();
 			await feedChunkAndStop();
-			const path = writes[0].path;
+			const path = at(writes, 0).path;
 			expect(read(path)).toHaveLength(1);
 
 			handle?.cancel();

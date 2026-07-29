@@ -52,7 +52,7 @@ const inputBlob = new Blob(['audio'], { type: 'audio/webm' });
 describe('runStreamingConversion', () => {
 	let conversionStub: {
 		execute: jest.Mock;
-		onProgress?: (progress: number) => void;
+		onProgress?: ((progress: number) => void) | undefined;
 		isValid: boolean;
 		discardedTracks: { track: { isAudioTrack: () => boolean } }[];
 	};

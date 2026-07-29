@@ -1,20 +1,20 @@
 /**
- * Tests the pure dictionary-profile helpers: creating a profile with a fresh
- * id, appending and removing by id, and resolving the selected profile's terms
- * for a run. Resolving must return '' for None, a removed profile, or an empty
- * list, since that empty string is the single guard that keeps the downstream
- * bias pipeline safe.
+ * Tests what is specific to the dictionary profile kind: building a profile and
+ * resolving the selected one's terms for a run, raw and parsed. Resolving must
+ * return nothing for None, a removed profile, an empty list, or an advanced
+ * master switch that is off, since that is the single guard keeping the
+ * downstream bias pipeline safe. The shared list mechanics are covered in
+ * profiles.test.
  * @module tests/unit/dictionaryProfiles.test
  */
 
 import {
-	addProfile,
+	DICTIONARY_PROFILES,
 	createDictionaryProfile,
-	findProfile,
-	removeProfile,
 	resolveDictionaryTerms,
 	resolveDictionaryTermList,
 } from 'src/settings/dictionaryProfiles';
+import { mergeSettings } from 'src/settings/settingsSerialization';
 import type { DictionaryProfile } from 'src/settings/settingsSchema';
 
 describe('createDictionaryProfile', () => {
@@ -24,61 +24,6 @@ describe('createDictionaryProfile', () => {
 		expect(profile.terms).toBe('');
 		expect(profile.id).toMatch(/[0-9a-f-]{36}/);
 	});
-
-	it('gives distinct ids to same-named profiles', () => {
-		const a = createDictionaryProfile('Legal');
-		const b = createDictionaryProfile('Legal');
-		expect(a.id).not.toBe(b.id);
-	});
-});
-
-describe('addProfile', () => {
-	it('appends a new profile', () => {
-		const next = addProfile([], 'Standup');
-		expect(next).toHaveLength(1);
-		expect(next[0]?.name).toBe('Standup');
-	});
-
-	it('is a no-op for a blank or whitespace-only name', () => {
-		expect(addProfile([], '   ')).toEqual([]);
-	});
-
-	it('allows two profiles with the same name (distinct ids)', () => {
-		const next = addProfile(addProfile([], 'Legal'), 'Legal');
-		expect(next).toHaveLength(2);
-		expect(next[0]?.id).not.toBe(next[1]?.id);
-	});
-});
-
-describe('removeProfile', () => {
-	const profiles: DictionaryProfile[] = [
-		{ id: 'a', name: 'A', terms: '' },
-		{ id: 'b', name: 'B', terms: '' },
-	];
-
-	it('removes the profile with the given id', () => {
-		expect(removeProfile(profiles, 'a')).toEqual([
-			{ id: 'b', name: 'B', terms: '' },
-		]);
-	});
-
-	it('returns an unchanged copy for an absent id', () => {
-		const next = removeProfile(profiles, 'missing');
-		expect(next).toEqual(profiles);
-		expect(next).not.toBe(profiles);
-	});
-});
-
-describe('findProfile', () => {
-	const profiles: DictionaryProfile[] = [{ id: 'a', name: 'A', terms: 'x' }];
-
-	it('returns the matching profile', () => {
-		expect(findProfile(profiles, 'a')?.name).toBe('A');
-	});
-
-	it('returns undefined for a missing id', () => {
-		expect(findProfile(profiles, 'b')).toBeUndefined();
-	});
 });
 
 describe('resolveDictionaryTerms', () => {
@@ -86,40 +31,35 @@ describe('resolveDictionaryTerms', () => {
 		{ id: 'a', name: 'A', terms: 'Kubernetes\ngRPC' },
 	];
 
+	/** Settings holding the given profiles and selection. */
+	const withSelection = (id: string, list = profiles) =>
+		mergeSettings({
+			transcriptionDictionaryProfiles: list,
+			transcriptionDictionaryProfileId: id,
+		});
+
 	it('returns the selected profile terms', () => {
-		expect(
-			resolveDictionaryTerms({
-				transcriptionDictionaryProfiles: profiles,
-				transcriptionDictionaryProfileId: 'a',
-			}),
-		).toBe('Kubernetes\ngRPC');
+		expect(resolveDictionaryTerms(withSelection('a'))).toBe(
+			'Kubernetes\ngRPC',
+		);
 	});
 
 	it('returns an empty string when None is selected', () => {
-		expect(
-			resolveDictionaryTerms({
-				transcriptionDictionaryProfiles: profiles,
-				transcriptionDictionaryProfileId: '',
-			}),
-		).toBe('');
+		expect(resolveDictionaryTerms(withSelection(''))).toBe('');
 	});
 
 	it('returns an empty string when the selected profile was removed', () => {
-		expect(
-			resolveDictionaryTerms({
-				transcriptionDictionaryProfiles: profiles,
-				transcriptionDictionaryProfileId: 'gone',
-			}),
-		).toBe('');
+		expect(resolveDictionaryTerms(withSelection('gone'))).toBe('');
 	});
 
 	it('returns an empty string for an empty profile list', () => {
-		expect(
-			resolveDictionaryTerms({
-				transcriptionDictionaryProfiles: [],
-				transcriptionDictionaryProfileId: 'a',
-			}),
-		).toBe('');
+		expect(resolveDictionaryTerms(withSelection('a', []))).toBe('');
+	});
+
+	it('is bound to the settings fields the descriptor names', () => {
+		const settings = withSelection('a');
+		expect(DICTIONARY_PROFILES.get(settings)).toEqual(profiles);
+		expect(DICTIONARY_PROFILES.selectedId(settings)).toBe('a');
 	});
 });
 
@@ -128,45 +68,34 @@ describe('resolveDictionaryTermList', () => {
 		{ id: 'a', name: 'A', terms: 'Kubernetes\ngRPC\n\nkubernetes\n' },
 	];
 
+	/** Settings with the advanced switch in the given state. */
+	const withAdvanced = (advanced: boolean, id: string) =>
+		mergeSettings({
+			transcriptionAdvancedSettingsEnabled: advanced,
+			transcriptionDictionaryProfiles: profiles,
+			transcriptionDictionaryProfileId: id,
+		});
+
 	it('parses the selected profile terms into a de-duplicated list', () => {
 		// The single source every term-aware stage reads: the same profile that
 		// biases the single pass also feeds the advanced context candidates and
 		// the cleanup hint, with blanks and case-insensitive duplicates dropped.
-		expect(
-			resolveDictionaryTermList({
-				transcriptionAdvancedSettingsEnabled: true,
-				transcriptionDictionaryProfiles: profiles,
-				transcriptionDictionaryProfileId: 'a',
-			}),
-		).toEqual(['Kubernetes', 'gRPC']);
+		expect(resolveDictionaryTermList(withAdvanced(true, 'a'))).toEqual([
+			'Kubernetes',
+			'gRPC',
+		]);
 	});
 
 	it('returns an empty list when none is selected or the profile is gone', () => {
-		expect(
-			resolveDictionaryTermList({
-				transcriptionAdvancedSettingsEnabled: true,
-				transcriptionDictionaryProfiles: profiles,
-				transcriptionDictionaryProfileId: '',
-			}),
-		).toEqual([]);
-		expect(
-			resolveDictionaryTermList({
-				transcriptionAdvancedSettingsEnabled: true,
-				transcriptionDictionaryProfiles: profiles,
-				transcriptionDictionaryProfileId: 'gone',
-			}),
-		).toEqual([]);
+		expect(resolveDictionaryTermList(withAdvanced(true, ''))).toEqual([]);
+		expect(resolveDictionaryTermList(withAdvanced(true, 'gone'))).toEqual(
+			[],
+		);
 	});
 
 	it('returns an empty list when the advanced settings are off', () => {
 		// The dictionary lives under the advanced master switch, so a plain run
 		// applies no terms even with a profile selected.
-		expect(
-			resolveDictionaryTermList({
-				transcriptionAdvancedSettingsEnabled: false,
-				transcriptionDictionaryProfiles: profiles,
-				transcriptionDictionaryProfileId: 'a',
-			}),
-		).toEqual([]);
+		expect(resolveDictionaryTermList(withAdvanced(false, 'a'))).toEqual([]);
 	});
 });

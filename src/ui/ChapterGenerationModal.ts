@@ -2,16 +2,15 @@
  * On-demand dialog for generating LLM chapters for one recording. It confirms
  * a transcript exists (reading the recording's existing outputs, the same
  * discovery the fire-and-forget action uses), lets the user pick the chapter
- * guidance profile for this run, and shows an up-front cost estimate for the
- * LLM pass before anything is sent. Generation itself is delegated to the
+ * guidance profile and the LLM for this run, and shows an up-front cost
+ * estimate before anything is sent. Generation itself is delegated to the
  * shared AutoChapterService so the response validation and marker merge are
  * identical to the automatic path.
  * @module ui/ChapterGenerationModal
  */
 
-import { Modal, Setting } from 'obsidian';
+import { Setting } from 'obsidian';
 import type { App, TFile } from 'obsidian';
-import { LLM_PROVIDER_IDS } from '../constants';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import type { AutoChapterService } from '../chapters/AutoChapterService';
 import {
@@ -19,35 +18,26 @@ import {
 	type TranscriptSectionReader,
 	type TranscriptLinesSource,
 } from '../chapters/transcriptSources';
-import { findChapterPromptProfile } from '../settings/chapterPromptProfiles';
+import { CHAPTER_PROMPT_PROFILES } from '../settings/chapterPromptProfiles';
+import { effectiveProfileId } from '../settings/profiles';
 import { ensureSelectedInList } from '../settings/modelList';
 import { ConfirmModal } from './ConfirmModal';
+import { PluginModal } from './PluginModal';
 import { LLM_PROVIDER_OPTIONS } from '../settings/labels';
-import { estimateLlmCost, formatUsd } from '../transcription/costs';
+import {
+	estimateStepCost,
+	formatUsd,
+	LLM_VENDOR_IDS,
+	LLM_VENDORS,
+	selectedLlmVendor,
+} from '../transcription/api';
 import { formatTimecode } from '../utils/TimeUtils';
-
-/** Read/write access to the model list of the currently selected LLM provider. */
-interface LlmModelAccess {
-	models: string[];
-	selected: string;
-	setSelected: (id: string) => void;
-}
-
-/** The shared LLM and chapter-profile fields the run pickers edit in place. */
-type RunSettingsSnapshot = Pick<
-	AudioRecorderSettings,
-	| 'llmProvider'
-	| 'llmAnthropicModel'
-	| 'llmGeminiModel'
-	| 'llmOpenAiModel'
-	| 'transcriptionChapterPromptProfileId'
->;
 
 /** Collaborators the dialog needs, injected by the action registry. */
 export interface ChapterGenerationModalOptions {
 	/** Returns current plugin settings. */
 	getSettings: () => AudioRecorderSettings;
-	/** Persists settings after the run profile is changed. */
+	/** Persists settings after the run's choices are committed. */
 	saveSettings: () => Promise<void>;
 	/** Shared service that validates and writes the chapters. */
 	autoChapters: AutoChapterService;
@@ -58,23 +48,25 @@ export interface ChapterGenerationModalOptions {
 /**
  * Chapter generation dialog for a single recording.
  */
-export class ChapterGenerationModal extends Modal {
+export class ChapterGenerationModal extends PluginModal {
 	/** Located transcript, loaded on open; null until the async load runs. */
 	private source: TranscriptLinesSource | null = null;
 	/** Whether the recording already has generated chapters (warn before replacing). */
 	private hasExistingChapters = false;
 	private loaded = false;
-	private generating = false;
-	/** Set once the user generates, so onClose keeps the committed choice. */
-	private committed = false;
 	/**
-	 * The shared LLM and chapter-profile settings as they were when the dialog
-	 * opened. The pickers below edit the live settings so the model list and
-	 * cost estimate can follow the choice, but the change is persisted only when
-	 * the user generates; closing without generating restores this, so Cancel
-	 * does not silently repoint the shared LLM configuration used elsewhere.
+	 * Per-run settings copy, edited by the pickers below. The dialog never
+	 * touches the live settings until the user actually generates, at which
+	 * point {@link commitRunSettings} writes the choices back and persists them.
+	 *
+	 * Mutating the live object and restoring it in onClose (the previous
+	 * approach) left the shared LLM configuration silently repointed whenever
+	 * that restore did not run - a throw between the edit and the close, or a
+	 * save triggered from elsewhere while the dialog was open. A copy cannot
+	 * have that failure mode, and it matches how the Transcribe dialog already
+	 * handled per-run overrides.
 	 */
-	private readonly initialRunSettings: RunSettingsSnapshot;
+	private readonly runSettings: AudioRecorderSettings;
 
 	constructor(
 		app: App,
@@ -82,25 +74,18 @@ export class ChapterGenerationModal extends Modal {
 		private readonly options: ChapterGenerationModalOptions,
 	) {
 		super(app);
-		const s = options.getSettings();
-		this.initialRunSettings = {
-			llmProvider: s.llmProvider,
-			llmAnthropicModel: s.llmAnthropicModel,
-			llmGeminiModel: s.llmGeminiModel,
-			llmOpenAiModel: s.llmOpenAiModel,
-			transcriptionChapterPromptProfileId:
-				s.transcriptionChapterPromptProfileId,
-		};
+		// Shallow copy is enough: every field the pickers edit is a primitive.
+		this.runSettings = { ...options.getSettings() };
 	}
 
 	override onOpen(): void {
-		this.setTitle('Generate chapters');
+		this.setDialogTitle('Generate chapters');
 		void this.render();
 	}
 
 	/**
-	 * Loads the recording's transcript and builds the dialog: a profile
-	 * picker and a cost estimate with a Generate action, or an explanation
+	 * Loads the recording's transcript and builds the dialog: the profile and
+	 * LLM pickers with a cost estimate and a Generate action, or an explanation
 	 * when the recording has no transcript to chapter yet.
 	 */
 	private async render(): Promise<void> {
@@ -114,64 +99,53 @@ export class ChapterGenerationModal extends Modal {
 				await this.options.autoChapters.hasExistingChapters(this.file);
 			this.loaded = true;
 		}
-		const settings = this.options.getSettings();
-		const { contentEl } = this;
-		contentEl.empty();
-		contentEl.createEl('p', {
-			cls: 'aar-modal-config',
-			text: `Source: ${this.file.name}`,
-		});
+		this.contentEl.empty();
+		this.renderSource(this.file);
 
 		if (!this.source || this.source.lines.length === 0) {
-			contentEl.createEl('p', {
-				text:
-					'No transcript found for this recording. Transcribe it ' +
+			this.renderEmptyState(
+				'No transcript found for this recording. Transcribe it ' +
 					'first, then generate chapters.',
-			});
-			const actions = contentEl.createDiv({
-				cls: 'modal-button-container',
-			});
-			const closeButton = actions.createEl('button', { text: 'Close' });
-			closeButton.addEventListener('click', () => {
-				this.close();
-			});
+			);
 			return;
 		}
 
 		const durationSeconds =
 			this.source.lines[this.source.lines.length - 1]?.time ?? 0;
-		this.renderProfilePicker(settings);
-		this.renderLlmPicker(settings);
-		this.renderCostEstimate(settings, durationSeconds);
+		this.renderProfilePicker();
+		this.renderLlmPicker();
+		this.renderCostEstimate(durationSeconds);
 
-		const actions = contentEl.createDiv({ cls: 'modal-button-container' });
-		const generateButton = actions.createEl('button', {
-			cls: 'mod-cta',
-			text: this.hasExistingChapters ? 'Regenerate' : 'Generate',
-		});
-		generateButton.disabled = this.generating;
-		generateButton.addEventListener('click', () => {
-			this.generate();
-		});
-		const cancelButton = actions.createEl('button', { text: 'Cancel' });
-		cancelButton.addEventListener('click', () => {
-			this.close();
-		});
+		this.renderActions(
+			{
+				text: this.hasExistingChapters ? 'Regenerate' : 'Generate',
+				cta: true,
+				disabled: this.busy,
+				onClick: () => {
+					this.generate();
+				},
+			},
+			{
+				text: 'Cancel',
+				onClick: () => {
+					this.close();
+				},
+			},
+		);
 	}
 
 	/**
-	 * Renders the run profile picker. Changing it persists the selection so
-	 * the shared service, which reads the profile from settings, uses it.
-	 * @param settings - Current plugin settings
+	 * Renders the run's chapter-guidance profile picker. Edits the run copy;
+	 * committed to settings only when the user generates, because the shared
+	 * service reads the profile from there.
 	 */
-	private renderProfilePicker(settings: AudioRecorderSettings): void {
-		const profiles = settings.transcriptionChapterPromptProfiles;
-		const current = findChapterPromptProfile(
+	private renderProfilePicker(): void {
+		const s = this.runSettings;
+		const profiles = CHAPTER_PROMPT_PROFILES.get(s);
+		const current = effectiveProfileId(
 			profiles,
-			settings.transcriptionChapterPromptProfileId,
-		)
-			? settings.transcriptionChapterPromptProfileId
-			: '';
+			CHAPTER_PROMPT_PROFILES.selectedId(s),
+		);
 		new Setting(this.contentEl)
 			.setName('Chapter guidance profile')
 			.setDesc(
@@ -184,48 +158,19 @@ export class ChapterGenerationModal extends Modal {
 					dropdown.addOption(profile.id, profile.name);
 				}
 				dropdown.setValue(current).onChange((id) => {
-					// Applied in place; persisted only when the user generates
-					// (see runGeneration), reverted on cancel (see onClose).
-					settings.transcriptionChapterPromptProfileId = id;
+					CHAPTER_PROMPT_PROFILES.setSelectedId(s, id);
 				});
 			});
 	}
 
 	/**
-	 * Read/write access to the model list of the selected LLM provider, so the
-	 * model picker edits the right provider's list and selection.
-	 * @param settings - Current plugin settings
+	 * Renders the LLM provider and model pickers for this run. Chapters use the
+	 * same provider, key, and model as LLM post-processing, so generating
+	 * commits this choice as that shared configuration; the dialog re-renders on
+	 * a change so the model list and the cost estimate follow the provider.
 	 */
-	private llmModelAccess(settings: AudioRecorderSettings): LlmModelAccess {
-		if (settings.llmProvider === LLM_PROVIDER_IDS.ANTHROPIC) {
-			return {
-				models: settings.llmAnthropicModels,
-				selected: settings.llmAnthropicModel,
-				setSelected: (id) => (settings.llmAnthropicModel = id),
-			};
-		}
-		if (settings.llmProvider === LLM_PROVIDER_IDS.GEMINI) {
-			return {
-				models: settings.llmGeminiModels,
-				selected: settings.llmGeminiModel,
-				setSelected: (id) => (settings.llmGeminiModel = id),
-			};
-		}
-		return {
-			models: settings.llmOpenAiModels,
-			selected: settings.llmOpenAiModel,
-			setSelected: (id) => (settings.llmOpenAiModel = id),
-		};
-	}
-
-	/**
-	 * Renders the LLM provider and model pickers for this run. Chapters use
-	 * the same provider, key, and model as LLM post-processing, so changing
-	 * them here changes that shared configuration; the dialog re-renders on a
-	 * change so the model list and the cost estimate follow the provider.
-	 * @param settings - Current plugin settings
-	 */
-	private renderLlmPicker(settings: AudioRecorderSettings): void {
+	private renderLlmPicker(): void {
+		const s = this.runSettings;
 		new Setting(this.contentEl)
 			.setName('LLM')
 			.setDesc(
@@ -236,25 +181,26 @@ export class ChapterGenerationModal extends Modal {
 				for (const option of LLM_PROVIDER_OPTIONS) {
 					dropdown.addOption(option.value, option.label);
 				}
-				dropdown.setValue(settings.llmProvider).onChange((id) => {
-					// Applied in place so the model list and cost estimate
-					// follow; persisted only on generate, reverted on cancel.
-					settings.llmProvider =
-						id as AudioRecorderSettings['llmProvider'];
+				dropdown.setValue(s.llmProvider).onChange((id) => {
+					s.llmProvider = id as AudioRecorderSettings['llmProvider'];
 					void this.render();
 				});
 			});
 
-		const access = this.llmModelAccess(settings);
-		const models = ensureSelectedInList(access.models, access.selected);
+		// Which fields hold the vendor's model and model list comes from the
+		// registry, so this picker cannot drift from the settings tab's.
+		const vendor = selectedLlmVendor(s);
+		const selected = vendor.settings.model(s);
+		const models = ensureSelectedInList(
+			vendor.settings.models(s),
+			selected,
+		);
 		new Setting(this.contentEl).setName('Model').addDropdown((dropdown) => {
 			for (const model of models) {
 				dropdown.addOption(model, model);
 			}
-			dropdown.setValue(access.selected).onChange((id) => {
-				// Applied in place; persisted only on generate, reverted on
-				// cancel, matching the provider picker above.
-				access.setSelected(id);
+			dropdown.setValue(selected).onChange((id) => {
+				vendor.settings.setModel(s, id);
 				void this.render();
 			});
 		});
@@ -262,28 +208,28 @@ export class ChapterGenerationModal extends Modal {
 
 	/**
 	 * Renders the up-front LLM cost estimate line, when cost estimates are
-	 * enabled. The estimate is approximate: it prices the transcript as the
-	 * LLM input the same way the post-processing estimate does.
-	 * @param settings - Current plugin settings
+	 * enabled. Priced through the shared 'autoChapters' step, so this dialog
+	 * shows exactly the number the Transcribe dialog shows for the same work;
+	 * pricing it here with the post-processing formula instead made the two
+	 * disagree by up to 4x and made this estimate move with the unrelated LLM
+	 * task setting.
 	 * @param durationSeconds - Transcript extent used to size the estimate
 	 */
-	private renderCostEstimate(
-		settings: AudioRecorderSettings,
-		durationSeconds: number,
-	): void {
-		if (!settings.transcriptionShowCostEstimates) {
+	private renderCostEstimate(durationSeconds: number): void {
+		if (!this.runSettings.transcriptionShowCostEstimates) {
 			return;
 		}
-		const cost = estimateLlmCost(settings, durationSeconds);
+		const line = estimateStepCost(
+			'autoChapters',
+			this.runSettings,
+			durationSeconds,
+		);
 		const length = formatTimecode(Math.round(durationSeconds));
 		const text =
-			cost === null
+			line.usd === null
 				? `Estimated cost: not available for the selected LLM model (${length} transcript).`
-				: `Estimated cost: about ${formatUsd(cost)} for this ${length} transcript (approximate).`;
-		this.contentEl.createEl('p', {
-			cls: 'aar-modal-config',
-			text,
-		});
+				: `Estimated cost: about ${formatUsd(line.usd)} for this ${length} transcript (approximate).`;
+		this.contentEl.createEl('p', { cls: 'aar-modal-config', text });
 	}
 
 	/**
@@ -292,7 +238,7 @@ export class ChapterGenerationModal extends Modal {
 	 * them. Confirming proceeds; cancelling leaves this dialog open.
 	 */
 	private generate(): void {
-		if (this.generating) {
+		if (this.busy) {
 			return;
 		}
 		if (this.hasExistingChapters) {
@@ -313,18 +259,41 @@ export class ChapterGenerationModal extends Modal {
 	}
 
 	/**
-	 * Delegates generation to the shared service and closes. The service
-	 * reports every outcome with a Notice and never throws, so the dialog
-	 * closes immediately and lets it run in the background.
+	 * Writes the run's choices into the live settings. Driven by the vendor
+	 * registry rather than a hand-listed field set, so a vendor added later is
+	 * committed without another edit here.
+	 */
+	private commitRunSettings(): void {
+		const live = this.options.getSettings();
+		live.llmProvider = this.runSettings.llmProvider;
+		for (const id of LLM_VENDOR_IDS) {
+			const vendor = LLM_VENDORS[id];
+			vendor.settings.setModel(
+				live,
+				vendor.settings.model(this.runSettings),
+			);
+		}
+		CHAPTER_PROMPT_PROFILES.setSelectedId(
+			live,
+			CHAPTER_PROMPT_PROFILES.selectedId(this.runSettings),
+		);
+	}
+
+	/**
+	 * Commits the run's choices, delegates generation to the shared service,
+	 * and closes. The service reports every outcome with a Notice and never
+	 * throws, so the dialog closes immediately and lets it run in the
+	 * background.
 	 */
 	private runGeneration(): void {
-		if (this.generating) {
+		if (this.busy) {
 			return;
 		}
-		this.generating = true;
-		// Commit the run's LLM/profile choice now that the user is generating,
-		// so it persists as the shared default; onClose keeps it (committed).
-		this.committed = true;
+		this.busy = true;
+		// The shared service reads the LLM and profile from the plugin settings,
+		// so the run's choices become the stored defaults at this point - and
+		// only at this point, because the user committed to a run.
+		this.commitRunSettings();
 		void this.options.saveSettings();
 		this.close();
 		// Reuse the transcript already located for the dialog, so the service
@@ -334,22 +303,5 @@ export class ChapterGenerationModal extends Modal {
 			undefined,
 			this.source ?? undefined,
 		);
-	}
-
-	override onClose(): void {
-		// The pickers edit the shared LLM/profile settings in place so the model
-		// list and cost estimate can follow the choice. Unless the user
-		// generated, restore them, so cancelling (or closing) never leaves the
-		// shared LLM configuration silently repointed.
-		if (!this.committed) {
-			const s = this.options.getSettings();
-			s.llmProvider = this.initialRunSettings.llmProvider;
-			s.llmAnthropicModel = this.initialRunSettings.llmAnthropicModel;
-			s.llmGeminiModel = this.initialRunSettings.llmGeminiModel;
-			s.llmOpenAiModel = this.initialRunSettings.llmOpenAiModel;
-			s.transcriptionChapterPromptProfileId =
-				this.initialRunSettings.transcriptionChapterPromptProfileId;
-		}
-		this.contentEl.empty();
 	}
 }

@@ -6,9 +6,11 @@
 import { PLUGIN_LOG_PREFIX } from './constants';
 
 /**
- * Base class for plugin errors.
+ * Base class for plugin errors. Not exported: nothing outside this module
+ * catches the base type, and the concrete errors below carry the meaning
+ * callers actually match on.
  */
-export class AudioRecorderError extends Error {
+class AudioRecorderError extends Error {
 	constructor(message: string) {
 		super(`${PLUGIN_LOG_PREFIX} ${message}`);
 		this.name = 'AudioRecorderError';
@@ -43,19 +45,6 @@ export class SettingsValidationError extends AudioRecorderError {
 	) {
 		super(`Invalid setting "${field}": ${reason}`);
 		this.name = 'SettingsValidationError';
-	}
-}
-
-/**
- * Error thrown during recording process.
- */
-export class RecordingError extends AudioRecorderError {
-	constructor(
-		message: string,
-		public readonly originalError?: unknown,
-	) {
-		super(message);
-		this.name = 'RecordingError';
 	}
 }
 

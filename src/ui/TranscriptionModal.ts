@@ -10,8 +10,9 @@
  * @module ui/TranscriptionModal
  */
 
-import { MarkdownView, Modal, Notice, Setting } from 'obsidian';
+import { MarkdownView, Notice } from 'obsidian';
 import type { App, ButtonComponent, TFile } from 'obsidian';
+import { PluginModal } from './PluginModal';
 import type {
 	AudioRecorderSettings,
 	TranscriptionProviderId,
@@ -33,17 +34,15 @@ import { formatTimecode } from '../utils/TimeUtils';
 import { probeAudioMetadata } from '../utils/AudioFileAnalyzer';
 import { TRANSCRIPTION_PROVIDER_IDS } from '../constants';
 import {
-	advancedTwoPassWillRun,
 	buildCostEstimate,
 	costEstimateNeedsDuration,
 	effectiveDiarize,
 	effectiveTranscriptDestination,
-	estimateTranscriptionCost,
+	estimateStepCost,
 	formatUsd,
 	isProviderAvailableOnPlatform,
 	providerSupportsDiarization,
 	providerSupportsDictionary,
-	selectedEngineModel,
 	transcribeFile,
 	TranscriptionCancelledError,
 	type CancellationToken,
@@ -54,11 +53,12 @@ import {
 	type TranscribeRunCost,
 	type TranscriptDestination,
 	type TranscriptFileFormat,
+	type Transcript,
 	type TranscriptOutputSidecar,
 } from '../transcription/api';
-import type { Transcript } from '../transcription/TranscriptTypes';
-import { findProfile } from '../settings/dictionaryProfiles';
-import { findChapterPromptProfile } from '../settings/chapterPromptProfiles';
+import { DICTIONARY_PROFILES } from '../settings/dictionaryProfiles';
+import { CHAPTER_PROMPT_PROFILES } from '../settings/chapterPromptProfiles';
+import { effectiveProfileId } from '../settings/profiles';
 import type { SaveProgress } from '../types';
 
 /** Default status label shown before the engine reports a finer-grained stage. */
@@ -79,7 +79,7 @@ export type TranscriptionBackgroundProgressCallbacks = {
  */
 export type TranscriptionModalOptions = {
 	autoStart?: boolean;
-	notePath?: string;
+	notePath?: string | undefined;
 	backgroundProgress?: TranscriptionBackgroundProgressCallbacks;
 	/** Persists the run's dictionary-profile choice so it defaults next time. */
 	onProfileSelected?: (id: string) => Promise<void>;
@@ -93,7 +93,7 @@ export type TranscriptionModalOptions = {
 	 * Session-wide per-engine cost accumulator owned by the plugin, so the
 	 * dialog can add this run's cost and show the running session total.
 	 */
-	costTracker?: SessionCostTracker;
+	costTracker?: SessionCostTracker | undefined;
 	/**
 	 * Generates auto chapters from a finished run's transcript. Invoked
 	 * fire-and-forget when the run's auto-chapters toggle is on; the
@@ -128,11 +128,10 @@ function formatCostLine(line: CostEstimateLine): string {
 /**
  * Transcription dialog for a single audio file.
  */
-export class TranscriptionModal extends Modal {
+export class TranscriptionModal extends PluginModal {
 	private cancelled = false;
 	/** Aborts the in-flight run's HTTP requests when cancelled. */
 	private abortController: AbortController | null = null;
-	private running = false;
 	private statusEl: HTMLElement | null = null;
 	private elapsedEl: HTMLElement | null = null;
 	/** Interval handle for the live elapsed-time counter (null when stopped). */
@@ -209,11 +208,8 @@ export class TranscriptionModal extends Modal {
 
 		const { contentEl } = this;
 		contentEl.empty();
-		new Setting(contentEl).setName('Transcribe audio').setHeading();
-		contentEl.createEl('p', {
-			cls: 'aar-modal-config',
-			text: `Source: ${this.file.name}`,
-		});
+		this.setDialogTitle('Transcribe audio');
+		this.renderSource(this.file);
 
 		this.configEl = contentEl.createDiv({ cls: 'aar-transcribe-options' });
 		this.renderConfig();
@@ -245,35 +241,39 @@ export class TranscriptionModal extends Modal {
 			cls: 'aar-transcribe-cost-running',
 		});
 
-		new Setting(contentEl)
-			.addButton((button) => {
-				this.runButton = button;
-				button
-					.setButtonText('Transcribe')
-					.setCta()
-					.onClick(() => {
-						void this.startRun();
-					});
-			})
-			.addButton((button) => {
-				this.minimizeButton = button;
-				button
-					.setButtonText('Minimize')
-					.setDisabled(true)
-					.onClick(() => {
-						this.minimize();
-					});
-			})
-			.addButton((button) => {
-				this.secondaryButton = button;
-				button.setButtonText('Close').onClick(() => {
-					if (this.running) {
+		this.renderActions(
+			{
+				text: 'Transcribe',
+				cta: true,
+				ref: (button) => {
+					this.runButton = button;
+				},
+				onClick: () => this.startRun(),
+			},
+			{
+				text: 'Minimize',
+				disabled: true,
+				ref: (button) => {
+					this.minimizeButton = button;
+				},
+				onClick: () => {
+					this.minimize();
+				},
+			},
+			{
+				text: 'Close',
+				ref: (button) => {
+					this.secondaryButton = button;
+				},
+				onClick: () => {
+					if (this.busy) {
 						this.cancelRun();
 					} else {
 						this.close();
 					}
-				});
-			});
+				},
+			},
+		);
 
 		this.rendered = true;
 		// The first renderConfig() ran before the button existed; set its
@@ -386,14 +386,12 @@ export class TranscriptionModal extends Modal {
 			rerender: true,
 		});
 		if (s.transcriptionAdvancedSettingsEnabled) {
-			const profiles = s.transcriptionDictionaryProfiles;
+			const profiles = DICTIONARY_PROFILES.get(s);
 			// A stored id whose profile was removed reads as None here.
-			const selectedProfileId = findProfile(
+			const selectedProfileId = effectiveProfileId(
 				profiles,
-				s.transcriptionDictionaryProfileId,
-			)
-				? s.transcriptionDictionaryProfileId
-				: '';
+				DICTIONARY_PROFILES.selectedId(s),
+			);
 			addDropdown(ctx, {
 				name: 'Dictionary',
 				desc: providerSupportsDictionary(s.transcriptionProvider)
@@ -410,7 +408,7 @@ export class TranscriptionModal extends Modal {
 				set: (v) => {
 					// Affects this run (runSettings clone); persist as the
 					// remembered choice for the next dialog and transcribe-on-save.
-					s.transcriptionDictionaryProfileId = v;
+					DICTIONARY_PROFILES.setSelectedId(s, v);
 					void this.options.onProfileSelected?.(v);
 				},
 			});
@@ -496,14 +494,12 @@ export class TranscriptionModal extends Modal {
 				rerender: true,
 			});
 			if (s.transcriptionAutoChaptersOnTranscribe) {
-				const chapterProfiles = s.transcriptionChapterPromptProfiles;
+				const chapterProfiles = CHAPTER_PROMPT_PROFILES.get(s);
 				// A stored id whose profile was removed reads as None here.
-				const selectedChapterProfileId = findChapterPromptProfile(
+				const selectedChapterProfileId = effectiveProfileId(
 					chapterProfiles,
-					s.transcriptionChapterPromptProfileId,
-				)
-					? s.transcriptionChapterPromptProfileId
-					: '';
+					CHAPTER_PROMPT_PROFILES.selectedId(s),
+				);
 				// Compact one-line picker (no description) so the section does
 				// not grow tall; the guidance profile steers the chaptering.
 				addDropdown(ctx, {
@@ -519,7 +515,7 @@ export class TranscriptionModal extends Modal {
 					set: (v) => {
 						// Affects this run and, persisted, the after-transcription
 						// generation which reads the plugin settings.
-						s.transcriptionChapterPromptProfileId = v;
+						CHAPTER_PROMPT_PROFILES.setSelectedId(s, v);
 						void this.options.onChapterProfileSelected?.(v);
 					},
 				});
@@ -629,14 +625,14 @@ export class TranscriptionModal extends Modal {
 		}
 		// Every line past the transcription one is an LLM step (context agents,
 		// post-processing, chapters), billed by the LLM provider, which reports
-		// no usage. Those are priced in this pre-run estimate but never added to
-		// the session counter or the post-run "Transcription cost" notice, so say
-		// so here to keep the smaller amount reported after the run from reading
-		// as a discrepancy.
+		// no usage. They are priced from the same step model both here and when
+		// they run, and they do reach the session total - so the only caveat
+		// left is that their share of it is an estimate rather than a
+		// provider-reported figure.
 		if (estimate.lines.length > 1) {
 			el.createDiv({
 				cls: 'aar-transcribe-cost-note',
-				text: 'The LLM steps above are billed separately by their provider and are not added to the session total.',
+				text: 'The LLM steps above are billed by their own provider, which reports no usage, so their share of the session total is estimated.',
 			});
 		}
 		this.renderPricingLinks(el, estimate);
@@ -710,11 +706,13 @@ export class TranscriptionModal extends Modal {
 	 * amount recorded. Prefers the provider-reported actuals; when the run
 	 * could not be priced from usage, falls back to the duration-based
 	 * transcription estimate so the session counter does not silently
-	 * under-count. The free local engine is never recorded. This only
-	 * accounts the transcription cost; any LLM post-processing is billed by
-	 * its own provider, which returns no usage, so it is left out of the
-	 * session total (the pre-run estimate still shows it). The caller decides
-	 * whether to surface a notice and calls this exactly once per run.
+	 * under-count. The free local engine is never recorded.
+	 *
+	 * This accounts the transcription only. The run's LLM steps report
+	 * themselves through the cost sink as they happen (see runLlmStep), so the
+	 * session total already carries their estimated share by the time this
+	 * runs - adding them here would double-count. The caller decides whether to
+	 * surface a notice and calls this exactly once per run.
 	 * @param settings - The run's settings snapshot
 	 * @param cost - Cost summary reported for the run
 	 * @returns The USD recorded, or null when the run could not be priced
@@ -729,26 +727,16 @@ export class TranscriptionModal extends Modal {
 		) {
 			return null;
 		}
-		// Fall back to a duration estimate when the provider reported no usage,
-		// scaling it by the passes that will actually run: the advanced two-pass
-		// mode decodes the audio twice, so a single-pass estimate would
-		// undercount. Capability-gated, so an engine that cannot bias - which
-		// degrades to one pass - is not counted as two. Actual multi-pass
+		// Fall back to a duration estimate when the provider reported no usage.
+		// This goes through the shared transcription step, which already scales
+		// by the passes the run actually makes, so the fallback can never drift
+		// from the pre-run estimate the user was shown. Actual multi-pass
 		// billing still flows through the summed usage in cost.usd; this branch
 		// only estimates when the provider reported no usage to price from.
-		const passes = advancedTwoPassWillRun(settings) ? 2 : 1;
-		const perPass =
-			this.durationSeconds !== null
-				? estimateTranscriptionCost(
-						settings.transcriptionProvider,
-						selectedEngineModel(
-							settings,
-							settings.transcriptionProvider,
-						),
-						this.durationSeconds,
-					)
-				: null;
-		const usd = cost.usd ?? (perPass === null ? null : perPass * passes);
+		const usd =
+			cost.usd ??
+			estimateStepCost('transcription', settings, this.durationSeconds)
+				.usd;
 		this.options.costTracker?.add(cost.engineId, usd);
 		// Refresh the session line so a follow-up run sees the new total.
 		this.updateCostEstimate();
@@ -774,7 +762,7 @@ export class TranscriptionModal extends Modal {
 	 */
 	private refreshRunButtonState(): void {
 		this.runButton?.setDisabled(
-			this.running || !this.isSelectedEngineAvailable(),
+			this.busy || !this.isSelectedEngineAvailable(),
 		);
 	}
 
@@ -782,7 +770,7 @@ export class TranscriptionModal extends Modal {
 	 * Runs the transcription, updating progress and handling errors.
 	 */
 	private async startRun(): Promise<void> {
-		if (this.running) {
+		if (this.busy) {
 			return;
 		}
 		// Guard the run itself, not just the option's disabled state: a
@@ -844,6 +832,10 @@ export class TranscriptionModal extends Modal {
 						}
 					},
 				},
+				// The run's LLM steps (context agents, post-processing) bill the
+				// LLM provider, which reports no usage; they report their
+				// estimated cost to the same session counter.
+				{ costSink: this.options.costTracker },
 			);
 			const usd = this.accountRunCost(settings, result.cost);
 			accounted = true;
@@ -897,7 +889,7 @@ export class TranscriptionModal extends Modal {
 				this.restore();
 			}
 		} finally {
-			if (this.running) {
+			if (this.busy) {
 				this.setRunning(false);
 			}
 			this.clearBackgroundProgress();
@@ -923,7 +915,7 @@ export class TranscriptionModal extends Modal {
 	 * @param running - Whether a transcription is in progress
 	 */
 	private setRunning(running: boolean): void {
-		this.running = running;
+		this.busy = running;
 		if (running) {
 			this.cancelled = false;
 			this.startElapsedTimer();
@@ -994,7 +986,7 @@ export class TranscriptionModal extends Modal {
 	 * Minimizes the modal while keeping the current transcription running.
 	 */
 	private minimize(): void {
-		if (!this.running || this.minimized) {
+		if (!this.busy || this.minimized) {
 			return;
 		}
 		this.minimized = true;
@@ -1034,17 +1026,17 @@ export class TranscriptionModal extends Modal {
 	}
 
 	override onClose(): void {
-		if (this.minimized && this.running) {
+		if (this.minimized && this.busy) {
 			return;
 		}
-		if (this.running) {
+		if (this.busy) {
 			this.cancelRun();
 		}
 		this.stopElapsedTimer();
 		this.clearBackgroundProgress();
 		// Release any bytes cached for the estimate probe on close.
 		this.probedBytes = null;
-		this.contentEl.empty();
+		super.onClose();
 		this.rendered = false;
 	}
 }

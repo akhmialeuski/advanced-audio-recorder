@@ -19,7 +19,9 @@ import type { SettingsSectionContext } from 'src/settings/settingControls';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import {
 	capturedSettings,
+	changeSetting,
 	isSettingDisabled,
+	settingRow,
 } from '../helpers/captureSettings';
 
 jest.mock('obsidian', () => ({
@@ -312,5 +314,163 @@ describe('renderTranscriptionSection platform gating', () => {
 		expect(isSettingDisabled('whisper.cpp binary path')).toBe(false);
 		expect(isSettingDisabled('Model path')).toBe(false);
 		expect(isSettingDisabled('Extra arguments')).toBe(false);
+	});
+});
+
+/** Renders the section over the given settings and returns them plus hooks. */
+function renderWith(overrides: Partial<AudioRecorderSettings>): {
+	settings: AudioRecorderSettings;
+	ctx: SettingsSectionContext;
+} {
+	capturedSettings.length = 0;
+	const settings = mergeSettings({
+		transcriptionEnabled: true,
+		...overrides,
+	});
+	const ctx = makeCtx(settings);
+	renderTranscriptionSection(ctx);
+	return { settings, ctx };
+}
+
+/** Names of the rows rendered by the last renderWith(). */
+function renderedRows(): string[] {
+	return capturedSettings.map((row) => row.name);
+}
+
+describe('renderTranscriptionSection reveals', () => {
+	it('shows only the master toggle while transcription is off', () => {
+		renderWith({ transcriptionEnabled: false });
+
+		expect(renderedRows()).toEqual([
+			'Transcription',
+			'Enable transcription',
+		]);
+	});
+
+	it('keeps the advanced sub-sections hidden behind their master switch', () => {
+		renderWith({ transcriptionAdvancedSettingsEnabled: false });
+
+		const rows = renderedRows();
+		expect(rows).toContain('Advanced settings');
+		// A plain run needs no term biasing, so neither the dictionary nor the
+		// two-pass mode is on screen to configure.
+		expect(rows).not.toContain('Dictionary profiles');
+		expect(rows).not.toContain(
+			'Advanced two-pass transcription (experimental)',
+		);
+	});
+
+	it('reveals the two-pass safeguard only while the mode is on', () => {
+		renderWith({
+			transcriptionAdvancedSettingsEnabled: true,
+			transcriptionAdvancedEnabled: false,
+		});
+		expect(renderedRows()).not.toContain('Second-pass length safeguard');
+
+		renderWith({
+			transcriptionAdvancedSettingsEnabled: true,
+			transcriptionAdvancedEnabled: true,
+		});
+		expect(renderedRows()).toContain('Second-pass length safeguard');
+	});
+
+	it('reveals the chapter sub-toggle and profiles only with the feature on', () => {
+		renderWith({ transcriptionAutoChaptersEnabled: false });
+		expect(renderedRows()).not.toContain('Generate after transcription');
+
+		renderWith({ transcriptionAutoChaptersEnabled: true });
+		const rows = renderedRows();
+		expect(rows).toContain('Generate after transcription');
+		expect(rows).toContain('Chapter guidance profiles');
+	});
+
+	it('offers the request timeout for cloud engines but not the local one', () => {
+		renderWith({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+		});
+		expect(renderedRows()).toContain('Request timeout');
+
+		renderWith({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+		});
+		// whisper.cpp runs no HTTP request, so a timeout row would be a setting
+		// that quietly does nothing.
+		expect(renderedRows()).not.toContain('Request timeout');
+	});
+
+	it('offers the sidecar format only when a file is actually written', () => {
+		renderWith({ transcriptDestination: 'note' });
+		expect(renderedRows()).not.toContain('File format');
+
+		for (const destination of ['file', 'both', 'link'] as const) {
+			renderWith({ transcriptDestination: destination });
+			expect(renderedRows()).toContain('File format');
+		}
+	});
+});
+
+describe('renderTranscriptionSection edits', () => {
+	it('normalizes a blank language back to auto-detect', () => {
+		const { settings } = renderWith({ transcriptionLanguage: 'ru' });
+
+		changeSetting('Language', 'text', '   ');
+
+		// An empty language field means "detect", not "send an empty hint".
+		expect(settings.transcriptionLanguage).toBe('auto');
+	});
+
+	it('trims a typed language code', () => {
+		const { settings } = renderWith({});
+
+		changeSetting('Language', 'text', '  es ');
+
+		expect(settings.transcriptionLanguage).toBe('es');
+	});
+
+	it.each([
+		['Timestamp format', 'transcriptTimestampFormat', '{time}'],
+		['Speaker format', 'transcriptSpeakerFormat', '**{speaker}**'],
+		['Line format', 'transcriptLineFormat', '{timestamp} {speaker} {text}'],
+	] as const)(
+		'restores the default %s when the field is cleared',
+		(row, property, fallback) => {
+			const { settings } = renderWith({
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+				transcriptionDiarize: true,
+			});
+
+			changeSetting(row, 'text', '');
+
+			// An empty template would render every line as nothing at all.
+			expect(settings[property]).toBe(fallback);
+		},
+	);
+
+	it('records the picked engine and redraws for its own fields', async () => {
+		const { settings, ctx } = renderWith({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+		});
+
+		await changeSetting(
+			'Engine',
+			'dropdown',
+			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+		);
+
+		expect(settings.transcriptionProvider).toBe(
+			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+		);
+		expect(ctx.rerender).toHaveBeenCalled();
+	});
+
+	it('blocks the engines this platform cannot run without hiding them', () => {
+		renderWith({});
+
+		const options = settingRow('Engine').dropdownOptions ?? [];
+		// Every engine stays listed so the dropdown reads the same on every
+		// device; the unavailable ones are blocked instead of missing.
+		expect(options.map((option) => option.value).sort()).toEqual(
+			Object.values(TRANSCRIPTION_PROVIDER_IDS).sort(),
+		);
 	});
 });

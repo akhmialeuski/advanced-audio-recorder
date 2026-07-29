@@ -6,15 +6,18 @@
  */
 
 import { PartRotationController } from 'src/recording/PartRotationController';
+import { at } from '../helpers/assertions';
 import { DebugLogger } from 'src/utils/DebugLogger';
 import { RecordingStatus } from 'src/types';
 import type { RecordingSessionConfig, RecordingTarget } from 'src/types';
 import {
 	DEFAULT_SETTINGS,
-	AudioRecorderSettings,
+	type AudioRecorderSettings,
 } from 'src/settings/settingsSchema';
 import { MS_PER_MINUTE } from 'src/constants';
 import type { App } from 'obsidian';
+import type { TrackWriteQueue } from 'src/recording/TrackWriteQueue';
+import type { RecordingFinalizer } from 'src/recording/RecordingFinalizer';
 
 jest.mock('obsidian', () => ({
 	Notice: jest.fn(),
@@ -82,8 +85,8 @@ describe('PartRotationController', () => {
 		controller = new PartRotationController(
 			mockApp,
 			mockSettings,
-			writeQueue,
-			finalizer,
+			writeQueue as unknown as TrackWriteQueue,
+			finalizer as unknown as RecordingFinalizer,
 			new DebugLogger(mockSettings),
 			hooks,
 		);
@@ -238,8 +241,8 @@ describe('PartRotationController', () => {
 			controller = new PartRotationController(
 				mockApp,
 				mockSettings,
-				writeQueue,
-				finalizer,
+				writeQueue as unknown as TrackWriteQueue,
+				finalizer as unknown as RecordingFinalizer,
 				new DebugLogger(mockSettings),
 				hooks,
 			);
@@ -253,7 +256,7 @@ describe('PartRotationController', () => {
 					splitEnabled: false,
 				}),
 			);
-			targets[0].bufferedBytes = 1024;
+			at(targets, 0).bufferedBytes = 1024;
 
 			controller.maybeRotate();
 			await controller.waitForPendingRotation();
@@ -270,7 +273,7 @@ describe('PartRotationController', () => {
 					splitEnabled: false,
 				}),
 			);
-			targets[0].bufferedBytes = 1023;
+			at(targets, 0).bufferedBytes = 1023;
 
 			controller.maybeRotate();
 
@@ -284,7 +287,7 @@ describe('PartRotationController', () => {
 					splitEnabled: false,
 				}),
 			);
-			targets[0].bufferedBytes = Number.MAX_SAFE_INTEGER;
+			at(targets, 0).bufferedBytes = Number.MAX_SAFE_INTEGER;
 
 			controller.maybeRotate();
 
@@ -348,10 +351,10 @@ describe('PartRotationController', () => {
 				['seg1.tmp', 'seg2.tmp'],
 				expect.stringMatching(/-part1\.webm$/),
 			);
-			expect(targets[0].partIndex).toBe(1);
-			expect(targets[0].partPaths).toEqual(['/part.webm']);
-			expect(targets[0].segmentPaths).toEqual([]);
-			expect(targets[0].segmentIndex).toBe(0);
+			expect(at(targets, 0).partIndex).toBe(1);
+			expect(at(targets, 0).partPaths).toEqual(['/part.webm']);
+			expect(at(targets, 0).segmentPaths).toEqual([]);
+			expect(at(targets, 0).segmentIndex).toBe(0);
 		});
 
 		it('should not restart when a stop arrived mid-rotation but still finalize', async () => {
@@ -380,12 +383,12 @@ describe('PartRotationController', () => {
 			writeQueue.flushChunkBuffer.mockRejectedValue(
 				new Error('disk full'),
 			);
-			targets[0].bufferedChunks = [new Blob(['chunk'])];
+			at(targets, 0).bufferedChunks = [new Blob(['chunk'])];
 
 			controller.maybeRotate();
 			await controller.waitForPendingRotation();
 
-			expect(targets[0].bufferedChunks).toHaveLength(1);
+			expect(at(targets, 0).bufferedChunks).toHaveLength(1);
 			expect(hooks.restartRecorders).toHaveBeenCalled();
 			expect(finalizer.finalizeSegmentsToFile).not.toHaveBeenCalled();
 		});
@@ -403,9 +406,9 @@ describe('PartRotationController', () => {
 			controller.maybeRotate();
 			await controller.waitForPendingRotation();
 
-			expect(targets[0].partIndex).toBe(0);
+			expect(at(targets, 0).partIndex).toBe(0);
 			// Snapshot segments are re-attached in front of newer data
-			expect(targets[0].segmentPaths).toEqual(['seg1.tmp']);
+			expect(at(targets, 0).segmentPaths).toEqual(['seg1.tmp']);
 			const { Notice } = jest.requireMock('obsidian');
 			expect(
 				(Notice as jest.Mock).mock.calls.some((call) =>
@@ -450,9 +453,9 @@ describe('PartRotationController', () => {
 			expect(target.partPaths).toHaveLength(1);
 			expect(target.pcmBufferedBytes).toBe(2);
 			expect(target.partPcmBytes).toBe(2);
-			expect(Array.from(new Uint8Array(target.pcmBuffers[0]))).toEqual([
-				7, 8,
-			]);
+			expect(
+				Array.from(new Uint8Array(at(target.pcmBuffers, 0))),
+			).toEqual([7, 8]);
 		});
 
 		it('should restore buffers with the carry re-attached on failure', async () => {

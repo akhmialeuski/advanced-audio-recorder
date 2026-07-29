@@ -1,5 +1,15 @@
 /**
  * Settings tab UI for the Audio Recorder plugin.
+ *
+ * Rows that are plain toggles, dropdowns, text fields, or numeric inputs go
+ * through the shared builders in `settingControls`, bound to the tab's save
+ * hooks by {@link AudioRecorderSettingTab.sectionContext}. What stays
+ * imperative here is what the declarative model does not cover: the device
+ * dropdowns fed by live enumeration, the recording-format dropdown whose
+ * options are blocked by an async encoder probe, the output summary that
+ * recomputes from two other controls, the per-track rows built from a Map, the
+ * part-suffix field with its own validation feedback, and the diagnostics
+ * actions. The transcription settings live in their own section modules.
  * @module settings/SettingsTab
  */
 
@@ -42,7 +52,7 @@ import {
 } from '../recording/AudioStreamHandler';
 import { getEncoderDescription } from '../ui/formatDescriptions';
 import { TestRecorder } from '../recording/TestRecorder';
-import { FolderSuggest } from './FolderSuggest';
+import { TextInputSuggest } from '../ui/TextInputSuggest';
 import {
 	DEFAULT_SPLIT_PART_SUFFIX,
 	MIN_SPLIT_CHUNK_MINUTES,
@@ -63,7 +73,18 @@ import {
 import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
 import { SystemInfoModal } from '../diagnostics/SystemInfoModal';
 import { renderTranscriptionSection } from './sections/transcriptionSettingsSection';
-import { addNumberInputTo, SETTING_DISABLED_CLASS } from './settingControls';
+import { CONVERSION_LINK_ACTION_OPTIONS } from './labels';
+import {
+	addDropdown,
+	addHeading,
+	addNumberInput,
+	addNumberInputTo,
+	addStageRowTo,
+	addText,
+	addToggle,
+	SETTING_DISABLED_CLASS,
+	type SettingsSectionContext,
+} from './settingControls';
 import {
 	isAutoSplitSupported,
 	isChannelModeSelectionSupported,
@@ -81,7 +102,7 @@ const TEST_RECORDING_DURATION_MS = 5000;
 /**
  * Plugin interface for settings tab.
  */
-interface AudioRecorderPluginInterface extends Plugin {
+export interface AudioRecorderPluginInterface extends Plugin {
 	settings: AudioRecorderSettings;
 	saveSettings(): Promise<void>;
 }
@@ -503,119 +524,36 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		summaryEl = outputSummarySetting.descEl.createDiv();
 		updateOutputSummary(summaryEl);
 
-		new Setting(containerEl)
-			.setName('Delete source after conversion')
-			.setDesc(
-				'When converting audio via the context menu, delete the original file after a successful conversion.',
-			)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.deleteSourceAfterConversion)
-					.onChange(async (value) => {
-						this.plugin.settings.deleteSourceAfterConversion =
-							value;
-						await this.plugin.saveSettings();
-					}),
-			);
+		const outputCtx = this.sectionContext(containerEl);
+		addToggle(outputCtx, {
+			name: 'Delete source after conversion',
+			desc: 'When converting audio via the context menu, delete the original file after a successful conversion.',
+			get: () => this.plugin.settings.deleteSourceAfterConversion,
+			set: (v) => (this.plugin.settings.deleteSourceAfterConversion = v),
+		});
 
-		new Setting(containerEl)
-			.setName('Update links after conversion')
-			.setDesc(
-				'How to handle links to the source file in notes after conversion.',
-			)
-			.addDropdown((dropdown) => {
-				dropdown.addOption('none', 'Do nothing');
-				dropdown.addOption('replace', 'Replace source link');
-				dropdown.addOption('after', 'Insert after source link');
-				dropdown.setValue(this.plugin.settings.conversionLinkAction);
-				dropdown.onChange(async (value) => {
-					this.plugin.settings.conversionLinkAction =
-						value as ConversionLinkAction;
-					await this.plugin.saveSettings();
-				});
-			});
+		addDropdown(outputCtx, {
+			name: 'Update links after conversion',
+			desc: 'How to handle links to the source file in notes after conversion.',
+			options: CONVERSION_LINK_ACTION_OPTIONS,
+			get: () => this.plugin.settings.conversionLinkAction,
+			set: (v) =>
+				(this.plugin.settings.conversionLinkAction =
+					v as ConversionLinkAction),
+		});
 
-		// File storage
-		new Setting(containerEl).setName('File storage').setHeading();
-
-		new Setting(containerEl)
-			.setName('Save folder')
-			.setDesc(
-				'Specify where recordings are saved in your vault. Existing folders are suggested as you type.',
-			)
-			.addText((text) => {
-				new FolderSuggest(this.app, text.inputEl, () =>
-					this.getFolderOptions(),
-				);
-				text.setValue(this.plugin.settings.saveFolder);
-				text.onChange((value) => {
-					this.plugin.settings.saveFolder = value;
-					this.saveTextSettingDebounced();
-				});
-			});
-
-		new Setting(containerEl)
-			.setName('Save recordings near active file')
-			.setDesc(
-				'Save recordings in the same directory as the currently active Markdown file. This mode has priority over save folder.',
-			)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.saveNearActiveFile)
-					.onChange(async (value) => {
-						this.plugin.settings.saveNearActiveFile = value;
-						await this.plugin.saveSettings();
-						this.rerender();
-					}),
-			);
-
-		if (this.plugin.settings.saveNearActiveFile) {
-			new Setting(containerEl)
-				.setName('Active file subfolder')
-				.setDesc(
-					'Optional subfolder relative to the active file directory (for example: audio). Created automatically if missing.',
-				)
-				.addText((text) =>
-					text
-						.setPlaceholder('Audio')
-						.setValue(this.plugin.settings.activeFileSubfolder)
-						.onChange((value) => {
-							this.plugin.settings.activeFileSubfolder = value;
-							this.saveTextSettingDebounced();
-						}),
-				);
-		}
-
-		new Setting(containerEl)
-			.setName('File prefix')
-			.setDesc('Set the filename prefix used for exported recordings.')
-			.addText((text) =>
-				text
-					.setPlaceholder('Enter file prefix')
-					.setValue(this.plugin.settings.filePrefix)
-					.onChange((value) => {
-						this.plugin.settings.filePrefix = value;
-						this.saveTextSettingDebounced();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName('Insert at original position')
-			.setDesc(
-				'When enabled, the plugin remembers the note and insertion position where recording started. The audio link is inserted at that location, even if you navigate away during recording. Note: if the original note is edited during recording, the insertion position may shift.',
-			)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.insertAtOriginalPosition)
-					.onChange(async (value) => {
-						this.plugin.settings.insertAtOriginalPosition = value;
-						await this.plugin.saveSettings();
-					}),
-			);
+		// File storage: "Save near active file" reveals the subfolder row and
+		// nothing else, so the section redraws itself.
+		this.renderScopedSection(containerEl, (ctx) => {
+			this.renderFileStorageRows(ctx);
+		});
 
 		// Audio splitting
 		new Setting(containerEl).setName('Audio splitting').setHeading();
 
+		// Splitting rows reveal nothing, so they stay on the tab-wide context.
+		const splitCtx = this.sectionContext(containerEl);
+		const settings = this.plugin.settings;
 		const autoSplitAvailable = isAutoSplitSupported();
 		const autoSplitSetting = new Setting(containerEl)
 			.setName('Split recordings automatically')
@@ -644,23 +582,15 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			autoSplitSetting.settingEl.addClass(SETTING_DISABLED_CLASS);
 		}
 
-		addNumberInputTo(
-			new Setting(containerEl)
-				.setName('Part duration')
-				.setDesc(
-					'Length of each part in minutes. Also used as the default for manual splitting from the context menu.',
-				),
-			{
-				min: MIN_SPLIT_CHUNK_MINUTES,
-				max: MAX_SPLIT_CHUNK_MINUTES,
-				step: 1,
-				get: () => this.plugin.settings.splitChunkMinutes,
-				set: async (value) => {
-					this.plugin.settings.splitChunkMinutes = value;
-					await this.plugin.saveSettings();
-				},
-			},
-		);
+		addNumberInput(splitCtx, {
+			name: 'Part duration',
+			desc: 'Length of each part in minutes. Also used as the default for manual splitting from the context menu.',
+			min: MIN_SPLIT_CHUNK_MINUTES,
+			max: MAX_SPLIT_CHUNK_MINUTES,
+			step: 1,
+			get: () => settings.splitChunkMinutes,
+			set: (v) => (settings.splitChunkMinutes = v),
+		});
 
 		new Setting(containerEl)
 			.setName('Part name suffix')
@@ -693,19 +623,12 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		new Setting(containerEl)
-			.setName('Delete source after split')
-			.setDesc(
-				'Default state of the delete source file option in the manual split dialog.',
-			)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.deleteSourceAfterSplit)
-					.onChange(async (value) => {
-						this.plugin.settings.deleteSourceAfterSplit = value;
-						await this.plugin.saveSettings();
-					}),
-			);
+		addToggle(splitCtx, {
+			name: 'Delete source after split',
+			desc: 'Default state of the delete source file option in the manual split dialog.',
+			get: () => settings.deleteSourceAfterSplit,
+			set: (v) => (settings.deleteSourceAfterSplit = v),
+		});
 
 		// Multi-track recording
 		new Setting(containerEl).setName('Multi-track recording').setHeading();
@@ -858,18 +781,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		// Audio player
 		this.renderAudioPlayerSettings(containerEl);
 
-		// Transcription
-		renderTranscriptionSection({
-			containerEl,
-			settings: this.plugin.settings,
-			save: () => this.plugin.saveSettings(),
-			rerender: () => {
-				this.rerender();
-			},
-			saveDebounced: () => {
-				this.saveTextSettingDebounced();
-			},
-		});
+		// Transcription: its many reveal/hide toggles (engine, advanced mode,
+		// chapters, LLM task) and its model-list add/remove buttons affect
+		// nothing outside the section.
+		this.renderScopedSection(containerEl, renderTranscriptionSection);
 
 		// Audio processing & feedback
 		this.renderInputProcessingSettings(containerEl);
@@ -905,19 +820,12 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				}),
 			);
 
-		new Setting(containerEl)
-			.setName('Debug mode')
-			.setDesc(
-				'Enable verbose logs for troubleshooting recording issues.',
-			)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.debug)
-					.onChange(async (value) => {
-						this.plugin.settings.debug = value;
-						await this.plugin.saveSettings();
-					}),
-			);
+		addToggle(this.sectionContext(containerEl), {
+			name: 'Debug mode',
+			desc: 'Enable verbose logs for troubleshooting recording issues.',
+			get: () => this.plugin.settings.debug,
+			set: (v) => (this.plugin.settings.debug = v),
+		});
 
 		// Populate every device dropdown and capability lookup from one
 		// coherent enumeration after all bindings have been registered.
@@ -963,53 +871,163 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * (speed, skip, volume, time, mute, loop, timecode links) are fixed.
 	 * @param containerEl - The settings container element
 	 */
-	private renderAudioPlayerSettings(containerEl: HTMLElement): void {
-		new Setting(containerEl).setName('Audio player').setHeading();
+	/**
+	 * Builds the section context the shared control builders bind to: the live
+	 * settings object plus this tab's save, debounced-save, and re-render hooks.
+	 * Sections that are plain toggles, dropdowns, text fields, and numeric inputs
+	 * go through these builders, so they get the tab's save conventions (and the
+	 * disabled/help-link rendering) instead of restating them per row.
+	 *
+	 * The sections that stay imperative are the ones the declarative model does
+	 * not cover: live device enumeration, the async format-availability probe,
+	 * and the per-track rows built from a Map.
+	 * @param containerEl - Element the section renders into
+	 */
+	private sectionContext(containerEl: HTMLElement): SettingsSectionContext {
+		return {
+			containerEl,
+			settings: this.plugin.settings,
+			save: () => this.plugin.saveSettings(),
+			rerender: () => {
+				this.rerender();
+			},
+			saveDebounced: () => {
+				this.saveTextSettingDebounced();
+			},
+		};
+	}
 
-		new Setting(containerEl)
-			.setName('Enhanced audio player')
+	/**
+	 * Renders a section into a container of its own, so a reveal/hide toggle
+	 * inside it redraws only that section.
+	 *
+	 * The tab-wide rerender rebuilds every row and, with them, restarts the
+	 * device enumeration and the async format-availability probe. That is the
+	 * right response to a setting those depend on (multi-track, track count),
+	 * and pure waste for one whose effect is confined to its own section - the
+	 * transcription reveals, the player's sub-options, the save-folder mode.
+	 * Sections whose visible rows depend only on their own settings render
+	 * through here.
+	 * @param containerEl - Element to host the section's own container
+	 * @param render - Draws the section into the context it is given
+	 */
+	private renderScopedSection(
+		containerEl: HTMLElement,
+		render: (ctx: SettingsSectionContext) => void,
+	): void {
+		const sectionEl = containerEl.createDiv();
+		const draw = (): void => {
+			sectionEl.empty();
+			render({
+				containerEl: sectionEl,
+				settings: this.plugin.settings,
+				save: () => this.plugin.saveSettings(),
+				rerender: draw,
+				saveDebounced: () => {
+					this.saveTextSettingDebounced();
+				},
+			});
+		};
+		draw();
+	}
+
+	/**
+	 * The file-storage rows: where a recording is written and how it is named.
+	 * @param ctx - The section context (its own container and hooks)
+	 */
+	private renderFileStorageRows(ctx: SettingsSectionContext): void {
+		const settings = this.plugin.settings;
+		addHeading(ctx, 'File storage');
+
+		// The save folder keeps its own builder: the field carries a
+		// TextInputSuggest bound to the live vault folder list, which the
+		// shared text control has no hook for.
+		new Setting(ctx.containerEl)
+			.setName('Save folder')
 			.setDesc(
-				'Replace the built-in audio embed with a richer player (waveform, speed, skip, volume, loop, timecode links, markers and chapters). Video files keep the built-in player.',
+				'Specify where recordings are saved in your vault. Existing folders are suggested as you type.',
 			)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.enhancedPlayerEnabled)
-					.onChange(async (value) => {
-						this.plugin.settings.enhancedPlayerEnabled = value;
-						await this.plugin.saveSettings();
-						this.rerender();
-					}),
-			);
+			.addText((text) => {
+				new TextInputSuggest(this.app, text.inputEl, () =>
+					this.getFolderOptions(),
+				);
+				text.setValue(settings.saveFolder);
+				text.onChange((value) => {
+					settings.saveFolder = value;
+					this.saveTextSettingDebounced();
+				});
+			});
 
-		if (!this.plugin.settings.enhancedPlayerEnabled) {
+		addToggle(ctx, {
+			name: 'Save recordings near active file',
+			desc: 'Save recordings in the same directory as the currently active Markdown file. This mode has priority over save folder.',
+			get: () => settings.saveNearActiveFile,
+			set: (v) => (settings.saveNearActiveFile = v),
+			rerender: true,
+		});
+
+		if (settings.saveNearActiveFile) {
+			addText(ctx, {
+				name: 'Active file subfolder',
+				desc: 'Optional subfolder relative to the active file directory (for example: audio). Created automatically if missing.',
+				get: () => settings.activeFileSubfolder,
+				set: (v) => (settings.activeFileSubfolder = v),
+			});
+		}
+
+		addText(ctx, {
+			name: 'File prefix',
+			desc: 'Set the filename prefix used for exported recordings.',
+			get: () => settings.filePrefix,
+			set: (v) => (settings.filePrefix = v),
+		});
+
+		addToggle(ctx, {
+			name: 'Insert at original position',
+			desc: 'When enabled, the plugin remembers the note and insertion position where recording started. The audio link is inserted at that location, even if you navigate away during recording. Note: if the original note is edited during recording, the insertion position may shift.',
+			get: () => settings.insertAtOriginalPosition,
+			set: (v) => (settings.insertAtOriginalPosition = v),
+		});
+	}
+
+	private renderAudioPlayerSettings(containerEl: HTMLElement): void {
+		this.renderScopedSection(containerEl, (ctx) => {
+			this.renderAudioPlayerRows(ctx);
+		});
+	}
+
+	/**
+	 * The audio-player rows: the master toggle plus the sub-options it reveals.
+	 * @param ctx - The section context (its own container and hooks)
+	 */
+	private renderAudioPlayerRows(ctx: SettingsSectionContext): void {
+		const s = this.plugin.settings;
+		addHeading(ctx, 'Audio player');
+
+		addToggle(ctx, {
+			name: 'Enhanced audio player',
+			desc: 'Replace the built-in audio embed with a richer player (waveform, speed, skip, volume, loop, timecode links, markers and chapters). Video files keep the built-in player.',
+			get: () => s.enhancedPlayerEnabled,
+			set: (v) => (s.enhancedPlayerEnabled = v),
+			rerender: true,
+		});
+		if (!s.enhancedPlayerEnabled) {
 			return;
 		}
 
-		new Setting(containerEl)
-			.setName('Show waveform')
-			.setDesc('Draw a waveform behind the seek bar.')
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.playerShowWaveform)
-					.onChange(async (value) => {
-						this.plugin.settings.playerShowWaveform = value;
-						await this.plugin.saveSettings();
-					}),
-			);
+		addToggle(ctx, {
+			name: 'Show waveform',
+			desc: 'Draw a waveform behind the seek bar.',
+			get: () => s.playerShowWaveform,
+			set: (v) => (s.playerShowWaveform = v),
+		});
 
-		new Setting(containerEl)
-			.setName('Markers and chapters')
-			.setDesc(
-				'Show the markers and chapters list below the player. Markers are stored next to the recording, not in your vault.',
-			)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.playerEnableMarkers)
-					.onChange(async (value) => {
-						this.plugin.settings.playerEnableMarkers = value;
-						await this.plugin.saveSettings();
-					}),
-			);
+		addToggle(ctx, {
+			name: 'Markers and chapters',
+			desc: 'Show the markers and chapters list below the player. Markers are stored next to the recording, not in your vault.',
+			get: () => s.playerEnableMarkers,
+			set: (v) => (s.playerEnableMarkers = v),
+		});
 	}
 
 	/**
@@ -1018,88 +1036,52 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * @param containerEl - The settings container element
 	 */
 	private renderInputProcessingSettings(containerEl: HTMLElement): void {
+		const ctx = this.sectionContext(containerEl);
 		const s = this.plugin.settings;
-		new Setting(containerEl)
-			.setName('Audio processing & feedback')
-			.setHeading();
+		addHeading(ctx, 'Audio processing & feedback');
 
-		new Setting(containerEl)
-			.setName('Noise suppression')
-			.setDesc('Apply the browser noise-suppression filter to the input.')
-			.addToggle((toggle) =>
-				toggle.setValue(s.inputNoiseSuppression).onChange(async (v) => {
-					s.inputNoiseSuppression = v;
-					await this.plugin.saveSettings();
-				}),
-			);
-
-		new Setting(containerEl)
-			.setName('Echo cancellation')
-			.setDesc('Apply the browser echo-cancellation filter to the input.')
-			.addToggle((toggle) =>
-				toggle.setValue(s.inputEchoCancellation).onChange(async (v) => {
-					s.inputEchoCancellation = v;
-					await this.plugin.saveSettings();
-				}),
-			);
-
-		new Setting(containerEl)
-			.setName('Automatic gain control')
-			.setDesc('Let the browser normalize the input level automatically.')
-			.addToggle((toggle) =>
-				toggle.setValue(s.inputAutoGainControl).onChange(async (v) => {
-					s.inputAutoGainControl = v;
-					await this.plugin.saveSettings();
-				}),
-			);
-
-		new Setting(containerEl)
-			.setName('Input level meter')
-			.setDesc('Show a live input-level meter while recording.')
-			.addToggle((toggle) =>
-				toggle.setValue(s.showInputLevelMeter).onChange(async (v) => {
-					s.showInputLevelMeter = v;
-					await this.plugin.saveSettings();
-				}),
-			);
-
-		new Setting(containerEl)
-			.setName('Recording stats')
-			.setDesc(
-				'Show the live elapsed time and total recorded size while recording.',
-			)
-			.addToggle((toggle) =>
-				toggle.setValue(s.showRecordingStats).onChange(async (v) => {
-					s.showRecordingStats = v;
-					await this.plugin.saveSettings();
-				}),
-			);
-
-		new Setting(containerEl)
-			.setName('Detect silent channel after recording')
-			.setDesc(
-				'After saving a recording, check whether it is a stereo file with one silent channel - the typical result of a single microphone on a dual-input audio interface - and offer to convert it to mono. Long recordings are skipped.',
-			)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(s.detectSilentChannelOnSave)
-					.onChange(async (v) => {
-						s.detectSilentChannelOnSave = v;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName('Mobile recording banner')
-			.setDesc(
-				'Show a prominent recording banner on mobile, where there is no ribbon indicator.',
-			)
-			.addToggle((toggle) =>
-				toggle.setValue(s.mobileRecordingBanner).onChange(async (v) => {
-					s.mobileRecordingBanner = v;
-					await this.plugin.saveSettings();
-				}),
-			);
+		addToggle(ctx, {
+			name: 'Noise suppression',
+			desc: 'Apply the browser noise-suppression filter to the input.',
+			get: () => s.inputNoiseSuppression,
+			set: (v) => (s.inputNoiseSuppression = v),
+		});
+		addToggle(ctx, {
+			name: 'Echo cancellation',
+			desc: 'Apply the browser echo-cancellation filter to the input.',
+			get: () => s.inputEchoCancellation,
+			set: (v) => (s.inputEchoCancellation = v),
+		});
+		addToggle(ctx, {
+			name: 'Automatic gain control',
+			desc: 'Let the browser normalize the input level automatically.',
+			get: () => s.inputAutoGainControl,
+			set: (v) => (s.inputAutoGainControl = v),
+		});
+		addToggle(ctx, {
+			name: 'Input level meter',
+			desc: 'Show a live input-level meter while recording.',
+			get: () => s.showInputLevelMeter,
+			set: (v) => (s.showInputLevelMeter = v),
+		});
+		addToggle(ctx, {
+			name: 'Recording stats',
+			desc: 'Show the live elapsed time and total recorded size while recording.',
+			get: () => s.showRecordingStats,
+			set: (v) => (s.showRecordingStats = v),
+		});
+		addToggle(ctx, {
+			name: 'Detect silent channel after recording',
+			desc: 'After saving a recording, check whether it is a stereo file with one silent channel - the typical result of a single microphone on a dual-input audio interface - and offer to convert it to mono. Long recordings are skipped.',
+			get: () => s.detectSilentChannelOnSave,
+			set: (v) => (s.detectSilentChannelOnSave = v),
+		});
+		addToggle(ctx, {
+			name: 'Mobile recording banner',
+			desc: 'Show a prominent recording banner on mobile, where there is no ribbon indicator.',
+			get: () => s.mobileRecordingBanner,
+			set: (v) => (s.mobileRecordingBanner = v),
+		});
 
 		this.renderAudioCleanupSettings(containerEl);
 	}
@@ -1112,6 +1094,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 */
 	private renderAudioCleanupSettings(containerEl: HTMLElement): void {
 		const s = this.plugin.settings;
+		const save = (): void => {
+			void this.plugin.saveSettings();
+		};
 		new Setting(containerEl)
 			.setName('Audio cleanup defaults')
 			.setDesc(
@@ -1119,71 +1104,65 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			)
 			.setHeading();
 
-		const highPassSetting = new Setting(containerEl)
-			.setName('High-pass filter')
-			.setDesc(
-				'Remove low-frequency rumble below the cutoff by default.',
-			);
-		addNumberInputTo(highPassSetting, {
-			min: MIN_CLEANUP_HIGHPASS_HZ,
-			max: MAX_CLEANUP_HIGHPASS_HZ,
-			step: CLEANUP_HIGHPASS_STEP_HZ,
-			get: () => s.cleanupHighPassHz,
-			set: async (v) => {
-				s.cleanupHighPassHz = v;
-				await this.plugin.saveSettings();
-			},
-		});
-		highPassSetting.addToggle((toggle) =>
-			toggle.setValue(s.cleanupHighPassEnabled).onChange(async (v) => {
+		// The same three stage rows the cleanup dialog renders, through the same
+		// builder, so the two cannot drift in layout or disabled behaviour.
+		addStageRowTo(containerEl, {
+			name: 'High-pass filter',
+			desc: 'Remove low-frequency rumble below the cutoff by default.',
+			getEnabled: () => s.cleanupHighPassEnabled,
+			setEnabled: (v) => {
 				s.cleanupHighPassEnabled = v;
-				await this.plugin.saveSettings();
-			}),
-		);
-
-		const noiseGateSetting = new Setting(containerEl)
-			.setName('Noise gate')
-			.setDesc(
-				'Silence the signal below the threshold (dBFS) by default.',
-			);
-		addNumberInputTo(noiseGateSetting, {
-			min: MIN_CLEANUP_GATE_THRESHOLD_DB,
-			max: MAX_CLEANUP_GATE_THRESHOLD_DB,
-			step: CLEANUP_GATE_STEP_DB,
-			get: () => s.cleanupNoiseGateThresholdDb,
-			set: async (v) => {
-				s.cleanupNoiseGateThresholdDb = v;
-				await this.plugin.saveSettings();
+				save();
+			},
+			value: {
+				min: MIN_CLEANUP_HIGHPASS_HZ,
+				max: MAX_CLEANUP_HIGHPASS_HZ,
+				step: CLEANUP_HIGHPASS_STEP_HZ,
+				get: () => s.cleanupHighPassHz,
+				set: (v) => {
+					s.cleanupHighPassHz = v;
+					save();
+				},
 			},
 		});
-		noiseGateSetting.addToggle((toggle) =>
-			toggle.setValue(s.cleanupNoiseGateEnabled).onChange(async (v) => {
+		addStageRowTo(containerEl, {
+			name: 'Noise gate',
+			desc: 'Silence the signal below the threshold (dBFS) by default.',
+			getEnabled: () => s.cleanupNoiseGateEnabled,
+			setEnabled: (v) => {
 				s.cleanupNoiseGateEnabled = v;
-				await this.plugin.saveSettings();
-			}),
-		);
-
-		const levelingSetting = new Setting(containerEl)
-			.setName('Loudness leveling')
-			.setDesc(
-				'Even out quiet and loud passages (compressor); makeup gain (dB).',
-			);
-		addNumberInputTo(levelingSetting, {
-			min: MIN_CLEANUP_LEVELING_MAKEUP_DB,
-			max: MAX_CLEANUP_LEVELING_MAKEUP_DB,
-			step: CLEANUP_LEVELING_STEP_DB,
-			get: () => s.cleanupLevelingMakeupDb,
-			set: async (v) => {
-				s.cleanupLevelingMakeupDb = v;
-				await this.plugin.saveSettings();
+				save();
+			},
+			value: {
+				min: MIN_CLEANUP_GATE_THRESHOLD_DB,
+				max: MAX_CLEANUP_GATE_THRESHOLD_DB,
+				step: CLEANUP_GATE_STEP_DB,
+				get: () => s.cleanupNoiseGateThresholdDb,
+				set: (v) => {
+					s.cleanupNoiseGateThresholdDb = v;
+					save();
+				},
 			},
 		});
-		levelingSetting.addToggle((toggle) =>
-			toggle.setValue(s.cleanupLevelingEnabled).onChange(async (v) => {
+		addStageRowTo(containerEl, {
+			name: 'Loudness leveling',
+			desc: 'Even out quiet and loud passages (compressor); makeup gain (dB).',
+			getEnabled: () => s.cleanupLevelingEnabled,
+			setEnabled: (v) => {
 				s.cleanupLevelingEnabled = v;
-				await this.plugin.saveSettings();
-			}),
-		);
+				save();
+			},
+			value: {
+				min: MIN_CLEANUP_LEVELING_MAKEUP_DB,
+				max: MAX_CLEANUP_LEVELING_MAKEUP_DB,
+				step: CLEANUP_LEVELING_STEP_DB,
+				get: () => s.cleanupLevelingMakeupDb,
+				set: (v) => {
+					s.cleanupLevelingMakeupDb = v;
+					save();
+				},
+			},
+		});
 	}
 
 	/**

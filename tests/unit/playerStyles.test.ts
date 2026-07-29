@@ -20,7 +20,7 @@ function ruleBody(selector: string): string | null {
 	const match = new RegExp(`${escapeRegExp(selector)}\\s*\\{([^}]*)\\}`).exec(
 		css,
 	);
-	return match ? match[1] : null;
+	return match?.[1] ?? null;
 }
 
 describe('read-only player styles', () => {

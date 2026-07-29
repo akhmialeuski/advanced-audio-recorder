@@ -5,6 +5,7 @@
  */
 
 import { SessionJournal, JOURNAL_VERSION } from 'src/recording/SessionJournal';
+import { at } from '../helpers/assertions';
 import type { JournalFile, JournalSession } from 'src/recording/SessionJournal';
 import type { App } from 'obsidian';
 
@@ -90,7 +91,7 @@ describe('SessionJournal', () => {
 			const stored = readStoredJournal();
 			expect(stored.version).toBe(JOURNAL_VERSION);
 			expect(stored.sessions).toHaveLength(1);
-			expect(stored.sessions[0].sessionId).toBe(
+			expect(at(stored.sessions, 0).sessionId).toBe(
 				'2026-06-12T10-00-00-000Z',
 			);
 		});
@@ -108,14 +109,14 @@ describe('SessionJournal', () => {
 			await journal.flush();
 
 			expect(
-				readStoredJournal().sessions[0].tracks[0].segmentPaths,
+				at(at(readStoredJournal().sessions, 0).tracks, 0).segmentPaths,
 			).toEqual(['rec-part1.webm.tmp', 'rec-part2.webm.tmp']);
 
 			journal.removeSegments(['rec-part1.webm.tmp']);
 			await journal.flush();
 
 			expect(
-				readStoredJournal().sessions[0].tracks[0].segmentPaths,
+				at(at(readStoredJournal().sessions, 0).tracks, 0).segmentPaths,
 			).toEqual(['rec-part2.webm.tmp']);
 		});
 
@@ -127,9 +128,9 @@ describe('SessionJournal', () => {
 			);
 			await journal.flush();
 
-			expect(readStoredJournal().sessions[0].tracks[0].partPaths).toEqual(
-				['rec-part1.webm'],
-			);
+			expect(
+				at(at(readStoredJournal().sessions, 0).tracks, 0).partPaths,
+			).toEqual(['rec-part1.webm']);
 		});
 
 		it('should remove the file when the last session ends', async () => {
@@ -185,7 +186,7 @@ describe('SessionJournal', () => {
 
 			expect(writeMock).toHaveBeenCalledTimes(1);
 			expect(
-				readStoredJournal().sessions[0].tracks[0].segmentPaths,
+				at(at(readStoredJournal().sessions, 0).tracks, 0).segmentPaths,
 			).toEqual(['a.tmp', 'b.tmp']);
 		});
 

@@ -4,6 +4,7 @@
  */
 
 import { updateLinksInVault } from 'src/utils/LinkUpdater';
+import { defined } from '../helpers/assertions';
 import { App, TFile } from 'obsidian';
 
 jest.mock('obsidian', () => ({
@@ -104,14 +105,14 @@ describe('updateLinksInVault', () => {
 		const generateMarkdownLink = jest.fn();
 		const processMock = jest.fn(
 			async (note: TFile, transform: (content: string) => string) => {
-				contents[note.path] = transform(contents[note.path]);
+				contents[note.path] = transform(defined(contents[note.path]));
 			},
 		);
 		const app = {
 			metadataCache: {
 				resolvedLinks,
 				getFileCache: jest.fn((note: TFile) => {
-					const entry = notes[note.path];
+					const entry = defined(notes[note.path]);
 					if (
 						!entry.links &&
 						!entry.embeds &&

@@ -7,7 +7,7 @@
 import type { App } from 'obsidian';
 import {
 	DEFAULT_SETTINGS,
-	AudioRecorderSettings,
+	type AudioRecorderSettings,
 } from 'src/settings/settingsSchema';
 import type { RecordingTarget } from 'src/types';
 import {
@@ -628,6 +628,9 @@ describe('RecordingFileManager', () => {
 				pcmBufferedBytes: 0,
 				pcmChannels: 1,
 				pcmSampleRate: 44100,
+				partIndex: 0,
+				partPaths: [],
+				partPcmBytes: 0,
 			};
 		}
 

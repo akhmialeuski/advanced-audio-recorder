@@ -68,15 +68,18 @@ function findTranscriptSidecarFiles(
 	app: App,
 	audioFile: TFile,
 ): TranscriptSidecar[] {
-	const files = app.vault.getFiles();
 	const dir = directoryOf(audioFile.path);
+	// One pass over the vault to collect the recording's own directory. A
+	// transcript sidecar always sits next to its recording, so nothing outside
+	// this directory can match - and scanning every file once per format
+	// instead made the cost four full vault walks per chapter generation.
+	const inDirectory = app.vault
+		.getFiles()
+		.filter((file) => directoryOf(file.path) === dir);
 	// Other recordings sharing the directory own their own canonical sidecars;
 	// those paths must not be attributed to this recording as collisions.
-	const siblingAudio = files.filter(
-		(file) =>
-			file.path !== audioFile.path &&
-			directoryOf(file.path) === dir &&
-			isAudioFile(file),
+	const siblingAudio = inDirectory.filter(
+		(file) => file.path !== audioFile.path && isAudioFile(file),
 	);
 	const sidecars: TranscriptSidecar[] = [];
 	for (const format of TRANSCRIPT_FILE_FORMATS) {
@@ -93,12 +96,8 @@ function findTranscriptSidecarFiles(
 				buildTranscriptFilePath(file.path, format),
 			),
 		);
-		for (const file of files) {
-			if (
-				directoryOf(file.path) === dir &&
-				pattern.test(file.name) &&
-				!ownedByOthers.has(file.path)
-			) {
+		for (const file of inDirectory) {
+			if (pattern.test(file.name) && !ownedByOthers.has(file.path)) {
 				sidecars.push({ file, format });
 			}
 		}

@@ -1,6 +1,6 @@
 /**
  * Unit tests for AudioFileAnalyzer.
- * @module tests/unit/AudioFileAnalyzer
+ * @module tests/unit/AudioFileAnalyzer.test
  */
 
 import { getAudioFileInfo } from 'src/utils/AudioFileAnalyzer';
@@ -11,6 +11,11 @@ jest.mock('obsidian', () => ({
 	App: jest.fn().mockImplementation(() => ({
 		vault: {
 			readBinary: jest.fn(),
+			// The ranged probe reads through the resource URL; only the
+			// fallback path touches readBinary.
+			getResourcePath: jest.fn(
+				(file: { path: string }) => `app://vault/${file.path}`,
+			),
 		},
 	})),
 	Notice: jest.fn(),
@@ -34,6 +39,7 @@ const mockDispose = jest.fn();
 jest.mock('mediabunny', () => ({
 	ALL_FORMATS: [],
 	BufferSource: jest.fn(),
+	UrlSource: jest.fn(),
 	Input: jest.fn().mockImplementation(() => ({
 		getPrimaryAudioTrack: (): unknown => mockGetPrimaryAudioTrack(),
 		computeDuration: (): unknown => mockComputeDuration(),
@@ -108,6 +114,48 @@ describe('getAudioFileInfo', () => {
 		// The probe answered, so the expensive full decode never ran
 		expect(mockDecodeAudioData).not.toHaveBeenCalled();
 		expect(mockDispose).toHaveBeenCalled();
+	});
+
+	it('reads only ranges, never the whole file, when the probe parses', async () => {
+		mockGetPrimaryAudioTrack.mockResolvedValue({
+			getSampleRate: () => 48000,
+			getNumberOfChannels: () => 2,
+		});
+		mockComputeDuration.mockResolvedValue(90);
+
+		await getAudioFileInfo(app, file);
+
+		// The vault adapter has no ranged read, so going through it would hold
+		// a multi-hour recording in memory to look at its header. The resource
+		// URL serves ranges, and mediabunny fetches only what it parses.
+		const { UrlSource } = jest.requireMock<{ UrlSource: jest.Mock }>(
+			'mediabunny',
+		);
+		expect(UrlSource).toHaveBeenCalledWith('app://vault/test.webm');
+		expect(app.vault.readBinary).not.toHaveBeenCalled();
+	});
+
+	it('falls back to the whole-file read when the ranged probe cannot parse', async () => {
+		const warn = jest.spyOn(console, 'warn').mockImplementation();
+		try {
+			mockGetPrimaryAudioTrack
+				.mockRejectedValueOnce(new Error('range request refused'))
+				.mockResolvedValue({
+					getSampleRate: () => 48000,
+					getNumberOfChannels: () => 2,
+				});
+			mockComputeDuration.mockResolvedValue(90);
+
+			const result = await getAudioFileInfo(app, file);
+
+			// An environment that does not honor the range request still gets
+			// its metadata, from the bytes rather than from a decode.
+			expect(result?.duration).toBe('1:30');
+			expect(app.vault.readBinary).toHaveBeenCalled();
+			expect(mockDecodeAudioData).not.toHaveBeenCalled();
+		} finally {
+			warn.mockRestore();
+		}
 	});
 
 	it('disposes the probe input even when parsing fails', async () => {

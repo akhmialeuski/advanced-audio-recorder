@@ -1,9 +1,8 @@
 /**
- * Pure helpers for the user-editable transcription dictionary profiles. Each
- * profile is a named glossary; the user adds, edits, and removes profiles in
- * the settings tab and picks one per run. These functions are side-effect free
- * (they return new arrays) so the settings UI never mutates the stored array in
- * place, and the run resolver tolerates a selection that no longer exists.
+ * The dictionary-profile list: named glossaries the user manages in the
+ * settings tab and picks one of per run. The list mechanics (add, remove,
+ * find, resolve a stale selection) come from the shared profile module; this
+ * file only describes where the list lives and how a run resolves its terms.
  * @module settings/dictionaryProfiles
  */
 
@@ -11,6 +10,7 @@ import type {
 	AudioRecorderSettings,
 	DictionaryProfile,
 } from './settingsSchema';
+import { selectedProfile, type ProfileList } from './profiles';
 import { parseDictionary } from '../transcription/dictionary';
 
 /**
@@ -23,51 +23,14 @@ export function createDictionaryProfile(name: string): DictionaryProfile {
 	return { id: crypto.randomUUID(), name: name.trim(), terms: '' };
 }
 
-/**
- * Appends a new profile with the given name. A blank or whitespace-only name
- * leaves the list unchanged. Duplicate names are allowed on purpose: identity
- * is the id, so two same-named profiles still resolve to distinct terms.
- * @param profiles - Current profiles
- * @param name - Name for the new profile
- * @returns A new list including the profile (or an unchanged copy)
- */
-export function addProfile(
-	profiles: DictionaryProfile[],
-	name: string,
-): DictionaryProfile[] {
-	const profile = createDictionaryProfile(name);
-	if (profile.name === '') {
-		return [...profiles];
-	}
-	return [...profiles, profile];
-}
-
-/**
- * Removes the profile with the given id. Returns a copy without it (or an
- * unchanged copy when the id is absent).
- * @param profiles - Current profiles
- * @param id - Id of the profile to remove
- * @returns A new list without the profile
- */
-export function removeProfile(
-	profiles: DictionaryProfile[],
-	id: string,
-): DictionaryProfile[] {
-	return profiles.filter((profile) => profile.id !== id);
-}
-
-/**
- * Finds a profile by id.
- * @param profiles - Current profiles
- * @param id - Id to look up
- * @returns The matching profile, or undefined
- */
-export function findProfile(
-	profiles: DictionaryProfile[],
-	id: string,
-): DictionaryProfile | undefined {
-	return profiles.find((profile) => profile.id === id);
-}
+/** Where the dictionary profiles and their selection live in settings. */
+export const DICTIONARY_PROFILES: ProfileList<DictionaryProfile> = {
+	get: (s) => s.transcriptionDictionaryProfiles,
+	set: (s, profiles) => (s.transcriptionDictionaryProfiles = profiles),
+	selectedId: (s) => s.transcriptionDictionaryProfileId,
+	setSelectedId: (s, id) => (s.transcriptionDictionaryProfileId = id),
+	create: createDictionaryProfile,
+};
 
 /**
  * Resolves the raw dictionary text to bias with for a run: the selected
@@ -79,17 +42,9 @@ export function findProfile(
  * @returns The selected profile's terms, or '' when none applies
  */
 export function resolveDictionaryTerms(
-	settings: Pick<
-		AudioRecorderSettings,
-		'transcriptionDictionaryProfiles' | 'transcriptionDictionaryProfileId'
-	>,
+	settings: AudioRecorderSettings,
 ): string {
-	return (
-		findProfile(
-			settings.transcriptionDictionaryProfiles,
-			settings.transcriptionDictionaryProfileId,
-		)?.terms ?? ''
-	);
+	return selectedProfile(DICTIONARY_PROFILES, settings)?.terms ?? '';
 }
 
 /**
@@ -105,12 +60,7 @@ export function resolveDictionaryTerms(
  *   settings are off, none is selected, or the selected profile is gone
  */
 export function resolveDictionaryTermList(
-	settings: Pick<
-		AudioRecorderSettings,
-		| 'transcriptionAdvancedSettingsEnabled'
-		| 'transcriptionDictionaryProfiles'
-		| 'transcriptionDictionaryProfileId'
-	>,
+	settings: AudioRecorderSettings,
 ): string[] {
 	if (!settings.transcriptionAdvancedSettingsEnabled) {
 		return [];

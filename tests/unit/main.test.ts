@@ -1,15 +1,18 @@
 /**
  * Tests for the plugin entry point: settings load/save resilience.
- * @module tests/unit/main
+ * @module tests/unit/main.test
  */
 
 import { App, Notice } from 'obsidian';
+import { at } from '../helpers/assertions';
 import AudioRecorderPlugin from 'src/main';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import { RecordingStatus } from 'src/types';
 import type { SaveProgress } from 'src/types';
 import type { PlaybackControlsState } from 'src/player/playbackControls';
 import type { TranscriptionModalOptions } from 'src/ui/TranscriptionModal';
+import type { PluginManifest, TFile } from 'obsidian';
+import { createFile } from '../helpers/createApp';
 
 jest.mock('src/recording/RecordingManager', () => ({
 	RecordingManager: jest.fn().mockImplementation(() => ({
@@ -131,7 +134,10 @@ interface PluginHarness {
  */
 function createPlugin(loadDataResults: LoadDataResult[]): PluginHarness {
 	const app = new App();
-	const plugin = new AudioRecorderPlugin(app, MANIFEST);
+	const plugin = new AudioRecorderPlugin(
+		app,
+		MANIFEST as unknown as PluginManifest,
+	);
 
 	const loadData = jest.fn();
 	for (const result of loadDataResults) {
@@ -358,7 +364,7 @@ describe('AudioRecorderPlugin settings persistence', () => {
 		const { RecordingManager } = jest.requireMock(
 			'src/recording/RecordingManager',
 		);
-		const manager = (RecordingManager as jest.Mock).mock.results[0]
+		const manager = at((RecordingManager as jest.Mock).mock.results, 0)
 			.value as { updateSettings: jest.Mock };
 
 		// The settings tab mutates the in-memory settings before
@@ -388,8 +394,10 @@ describe('AudioRecorderPlugin settings persistence', () => {
 		const { EnhancedPlayerRegistrar } = jest.requireMock(
 			'src/player/EnhancedPlayerRegistrar',
 		);
-		const registrar = (EnhancedPlayerRegistrar as jest.Mock).mock.results[0]
-			.value as {
+		const registrar = at(
+			(EnhancedPlayerRegistrar as jest.Mock).mock.results,
+			0,
+		).value as {
 			primeSavedRecordingsForEnhancement: jest.Mock;
 		};
 
@@ -575,7 +583,7 @@ describe('AudioRecorderPlugin crash recovery wiring', () => {
 				onDiscard: expect.any(Function),
 			}),
 		);
-		const modalInstance = (RecoveryModal as jest.Mock).mock.results[0]
+		const modalInstance = at((RecoveryModal as jest.Mock).mock.results, 0)
 			.value as { open: jest.Mock };
 		expect(modalInstance.open).toHaveBeenCalled();
 	});
@@ -720,8 +728,10 @@ describe('AudioRecorderPlugin background transcription status bar', () => {
 		const { EnhancedPlayerRegistrar } = jest.requireMock(
 			'src/player/EnhancedPlayerRegistrar',
 		);
-		const registrar = (EnhancedPlayerRegistrar as jest.Mock).mock.results[0]
-			.value as { subscribePlayback: jest.Mock };
+		const registrar = at(
+			(EnhancedPlayerRegistrar as jest.Mock).mock.results,
+			0,
+		).value as { subscribePlayback: jest.Mock };
 		const onPlayback = registrar.subscribePlayback.mock.calls[0][0] as (
 			state: PlaybackControlsState | null,
 		) => void;
@@ -788,8 +798,10 @@ describe('AudioRecorderPlugin background transcription status bar', () => {
 		const { EnhancedPlayerRegistrar } = jest.requireMock(
 			'src/player/EnhancedPlayerRegistrar',
 		);
-		const registrar = (EnhancedPlayerRegistrar as jest.Mock).mock.results[0]
-			.value as { subscribePlayback: jest.Mock };
+		const registrar = at(
+			(EnhancedPlayerRegistrar as jest.Mock).mock.results,
+			0,
+		).value as { subscribePlayback: jest.Mock };
 		const onPlayback = registrar.subscribePlayback.mock.calls[0][0] as (
 			state: PlaybackControlsState | null,
 		) => void;
@@ -837,10 +849,10 @@ describe('AudioRecorderPlugin silent-channel suggestion', () => {
 	function primedPlugin(overrides?: Partial<typeof DEFAULT_SETTINGS>): {
 		plugin: AudioRecorderPlugin;
 		hooks: SilentChannelHooks;
-		file: unknown;
+		file: TFile;
 	} {
 		const { plugin } = createPlugin([{}]);
-		const file = { path: 'rec.wav', name: 'rec.wav' };
+		const file = createFile('rec.wav');
 		plugin.app.vault.getFileByPath = jest.fn().mockReturnValue(file);
 		const hooks = plugin as unknown as SilentChannelHooks;
 		hooks.settings = {
@@ -916,7 +928,7 @@ describe('AudioRecorderPlugin silent-channel suggestion', () => {
 		const second = { path: 'mic.webm', name: 'mic.webm' };
 		plugin.app.vault.getFileByPath = jest.fn((path: string) =>
 			path === first.path ? first : second,
-		);
+		) as unknown as (path: string) => TFile | null;
 		(detectSilentChannel as jest.Mock)
 			.mockResolvedValueOnce(null)
 			.mockResolvedValueOnce({
@@ -1012,7 +1024,9 @@ describe('AudioRecorderPlugin silent-channel suggestion', () => {
 			{ file, keepMode: 'mono-left', silentSide: 'right' },
 		]);
 
-		const notice = (Notice as jest.Mock).mock.instances.at(-1) as {
+		const notice = (Notice as jest.Mock).mock.instances.at(
+			-1,
+		) as unknown as {
 			message: DocumentFragment;
 			hide: jest.Mock;
 		};
@@ -1031,7 +1045,9 @@ describe('AudioRecorderPlugin silent-channel suggestion', () => {
 		hooks.showSilentChannelNotice([
 			{ file, keepMode: 'mono-left', silentSide: 'right' },
 		]);
-		const first = (Notice as jest.Mock).mock.instances.at(-1) as {
+		const first = (Notice as jest.Mock).mock.instances.at(
+			-1,
+		) as unknown as {
 			hide: jest.Mock;
 		};
 
@@ -1054,7 +1070,9 @@ describe('AudioRecorderPlugin silent-channel suggestion', () => {
 			{ file: second, keepMode: 'mono-right', silentSide: 'left' },
 		]);
 
-		const notice = (Notice as jest.Mock).mock.instances.at(-1) as {
+		const notice = (Notice as jest.Mock).mock.instances.at(
+			-1,
+		) as unknown as {
 			message: DocumentFragment;
 			hide: jest.Mock;
 		};

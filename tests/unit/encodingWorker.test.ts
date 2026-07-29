@@ -5,6 +5,7 @@
  */
 
 import { handleEncodingMessage } from 'src/audio/encodingWorker';
+import { at } from '../helpers/assertions';
 import type { WorkerRequest, WorkerResponse } from 'src/audio/encodingWorker';
 
 const mockConversionExecute = jest.fn().mockResolvedValue(undefined);
@@ -52,7 +53,10 @@ const createRequest = (
 });
 
 describe('handleEncodingMessage', () => {
-	let responses: { response: WorkerResponse; transfer?: Transferable[] }[];
+	let responses: {
+		response: WorkerResponse;
+		transfer?: Transferable[] | undefined;
+	}[];
 	const post = (
 		response: WorkerResponse,
 		transfer?: Transferable[],
@@ -97,7 +101,8 @@ describe('handleEncodingMessage', () => {
 	it('should forward whole-percent progress updates', async () => {
 		await handleEncodingMessage(createRequest(), post);
 
-		const conversion = (await mockConversionInit.mock.results[0].value) as {
+		const conversion = (await at(mockConversionInit.mock.results, 0)
+			.value) as {
 			onProgress?: (progress: number) => void;
 		};
 		conversion.onProgress?.(0.5);
@@ -107,7 +112,7 @@ describe('handleEncodingMessage', () => {
 			(entry) => entry.response.kind === 'progress',
 		);
 		expect(progress).toHaveLength(1);
-		expect(progress[0].response).toEqual({
+		expect(at(progress, 0).response).toEqual({
 			id: 1,
 			kind: 'progress',
 			percent: 50,

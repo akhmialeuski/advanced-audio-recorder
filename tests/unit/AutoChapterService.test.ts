@@ -13,6 +13,7 @@ import { MARKER_KIND, type PlayerMarker } from 'src/markers/markerModel';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
 import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
+import { LLM_PROVIDER_IDS } from 'src/constants';
 
 const tf = (path: string): TFile => {
 	const name = path.split('/').pop() ?? path;
@@ -58,7 +59,7 @@ function makeStore(initial: PlayerMarker[] = []): {
 
 function makeLlm(output: string | Error): LlmProvider {
 	return {
-		id: 'fake',
+		id: LLM_PROVIDER_IDS.GEMINI,
 		label: 'Fake',
 		complete: jest.fn(async () => {
 			if (output instanceof Error) {

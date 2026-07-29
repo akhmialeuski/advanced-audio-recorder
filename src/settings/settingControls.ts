@@ -3,13 +3,24 @@
  * They wrap Obsidian's `Setting` with the plugin's save conventions
  * (immediate save for toggles/dropdowns/sliders, debounced save for text)
  * so individual sections stay declarative and free of repeated wiring.
+ *
+ * Two shapes live here, deliberately. The `ctx`-based builders bind a control
+ * to the live settings object and its save hooks, for the settings tab and the
+ * per-run dialog that mirrors it. The `containerEl`-based builders at the
+ * bottom take an initial value and a change callback instead, for the dialogs
+ * whose choices apply to one run and are never persisted. They used to live in
+ * a second module (`ui/settingHelpers`), which left two parallel families of
+ * builders with no shared option lists - the link-action dropdown, for one, was
+ * spelled out separately here and in the settings tab.
  * @module settings/settingControls
  */
 
 import { Setting } from 'obsidian';
 import type { TextComponent } from 'obsidian';
 import type { AudioRecorderSettings } from './settingsSchema';
-import type { LabeledOption } from './labels';
+import { CONVERSION_LINK_ACTION_OPTIONS, type LabeledOption } from './labels';
+import { getSupportedBitrates } from '../audio/AudioCapabilityDetector';
+import type { ConversionLinkAction } from './settingsSchema';
 import {
 	addModelToList,
 	ensureSelectedInList,
@@ -21,10 +32,10 @@ import {
 export const SETTING_DISABLED_CLASS = 'aar-setting-disabled';
 
 /** Class applied to a "learn more" link appended to a setting description. */
-export const SETTING_DOC_LINK_CLASS = 'aar-doc-link';
+const SETTING_DOC_LINK_CLASS = 'aar-doc-link';
 
 /** Class applied to a setting whose control is a full-width, stacked text area. */
-export const SETTING_STACKED_CLASS = 'aar-setting-stacked';
+const SETTING_STACKED_CLASS = 'aar-setting-stacked';
 
 /** Default visible row count for a multi-line text-area control. */
 const DEFAULT_TEXTAREA_ROWS = 6;
@@ -175,7 +186,7 @@ export function addTextArea(
 /** Configuration for a toggle control. */
 export interface ToggleControlConfig {
 	name: string;
-	desc?: string;
+	desc?: string | undefined;
 	get: () => boolean;
 	set: (value: boolean) => void;
 	/** Re-render the tab after the change (to reveal/hide dependent settings). */
@@ -219,7 +230,7 @@ export function addToggle(
 /** Configuration for a dropdown control. */
 export interface DropdownControlConfig {
 	name: string;
-	desc?: string;
+	desc?: string | undefined;
 	/** Value/label option pairs (see {@link LabeledOption}). */
 	options: LabeledOption[];
 	get: () => string;
@@ -238,6 +249,11 @@ export function addDropdown(
 		setting.setDesc(config.desc);
 	}
 	setting.addDropdown((dropdown) => {
+		// Index by value first: the disabled pass below is a lookup per rendered
+		// option, not a linear scan of the option list for each one.
+		const byValue = new Map(
+			config.options.map((option) => [option.value, option]),
+		);
 		for (const option of config.options) {
 			dropdown.addOption(option.value, option.label);
 		}
@@ -245,10 +261,7 @@ export function addDropdown(
 		// visible (so every platform shows the same list) but cannot be
 		// selected.
 		for (const optionEl of Array.from(dropdown.selectEl.options)) {
-			const option = config.options.find(
-				(candidate) => candidate.value === optionEl.value,
-			);
-			optionEl.disabled = option?.disabled ?? false;
+			optionEl.disabled = byValue.get(optionEl.value)?.disabled ?? false;
 		}
 		dropdown.setValue(config.get()).onChange(async (value) => {
 			config.set(value);
@@ -367,6 +380,45 @@ export function addNumberInput(
 	});
 }
 
+/** A stage row: an on/off toggle and its one numeric parameter, side by side. */
+export interface StageRowConfig {
+	name: string;
+	desc: string;
+	/** Reads and writes the stage's enabled flag. */
+	getEnabled: () => boolean;
+	setEnabled: (value: boolean) => void | Promise<void>;
+	/** The stage's numeric parameter. */
+	value: NumberInputConfig;
+}
+
+/**
+ * Adds a stage toggle with its parameter's numeric input on the same row. The
+ * input is greyed out while the stage is off, so it is clear the parameter only
+ * takes effect once the stage is enabled.
+ *
+ * Shared by the audio-cleanup defaults in the settings tab and the per-run
+ * cleanup dialog, which render the same three stages: without one builder the
+ * two drifted, and only the dialog disabled the input of a stage that was off.
+ * @param containerEl - Container to render the row into
+ * @param config - The stage's label, enabled flag, and numeric parameter
+ */
+export function addStageRowTo(
+	containerEl: HTMLElement,
+	config: StageRowConfig,
+): void {
+	const setting = new Setting(containerEl)
+		.setName(config.name)
+		.setDesc(config.desc);
+	const numberInput = addNumberInputTo(setting, config.value);
+	numberInput.setDisabled(!config.getEnabled());
+	setting.addToggle((toggle) =>
+		toggle.setValue(config.getEnabled()).onChange((value) => {
+			void config.setEnabled(value);
+			numberInput.setDisabled(!value);
+		}),
+	);
+}
+
 /** Configuration for a model picker (pick from a saved, user-editable list). */
 export interface ModelPickerConfig {
 	/** Label for the picker row (e.g. "Deepgram model"). */
@@ -461,5 +513,99 @@ export function addModelPicker(
 					await ctx.save();
 					ctx.rerender();
 				});
+		});
+}
+
+/**
+ * Adds a bitrate dropdown listing the supported bitrates. The initial
+ * value is snapped to the closest supported entry so the dropdown
+ * always shows the bitrate actually used for encoding.
+ * @param containerEl - Container to render the setting into
+ * @param options - Labels, initial value, and change callback
+ * @returns The effective (possibly snapped) initial bitrate
+ */
+export function addBitrateSetting(
+	containerEl: HTMLElement,
+	options: {
+		desc: string;
+		initialBitrate: number;
+		onChange: (bitrate: number) => void;
+	},
+): number {
+	const bitrates = getSupportedBitrates();
+	let effectiveBitrate = options.initialBitrate;
+	if (bitrates.length > 0 && !bitrates.includes(effectiveBitrate)) {
+		effectiveBitrate = bitrates.reduce((closest, bps) =>
+			Math.abs(bps - options.initialBitrate) <
+			Math.abs(closest - options.initialBitrate)
+				? bps
+				: closest,
+		);
+	}
+
+	new Setting(containerEl)
+		.setName('Bitrate')
+		.setDesc(options.desc)
+		.addDropdown((dropdown) => {
+			bitrates.forEach((bps) => {
+				const kbps = Math.round(bps / 1000);
+				dropdown.addOption(String(bps), `${String(kbps)} kbps`);
+			});
+			dropdown.setValue(String(effectiveBitrate));
+			dropdown.onChange((value) => {
+				options.onChange(parseInt(value, 10));
+			});
+		});
+
+	return effectiveBitrate;
+}
+
+/**
+ * Adds the delete-source toggle shared by the conversion and split
+ * dialogs.
+ * @param containerEl - Container to render the setting into
+ * @param options - Description, initial value, and change callback
+ */
+export function addDeleteSourceSetting(
+	containerEl: HTMLElement,
+	options: {
+		desc: string;
+		initialValue: boolean;
+		onChange: (value: boolean) => void;
+	},
+): void {
+	new Setting(containerEl)
+		.setName('Delete source file')
+		.setDesc(options.desc)
+		.addToggle((toggle) =>
+			toggle.setValue(options.initialValue).onChange(options.onChange),
+		);
+}
+
+/**
+ * Adds the link-action dropdown (do nothing / replace / insert after)
+ * shared by the conversion and split dialogs.
+ * @param containerEl - Container to render the setting into
+ * @param options - Description, initial value, and change callback
+ */
+export function addLinkActionSetting(
+	containerEl: HTMLElement,
+	options: {
+		desc: string;
+		initialValue: ConversionLinkAction;
+		onChange: (value: ConversionLinkAction) => void;
+	},
+): void {
+	new Setting(containerEl)
+		.setName('Update links in notes')
+		.setDesc(options.desc)
+		.addDropdown((dropdown) => {
+			for (const option of CONVERSION_LINK_ACTION_OPTIONS) {
+				dropdown.addOption(option.value, option.label);
+			}
+			dropdown.setValue(options.initialValue);
+			dropdown.onChange((value) => {
+				options.onChange(value as ConversionLinkAction);
+			});
 		});
 }

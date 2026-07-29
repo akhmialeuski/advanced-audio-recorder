@@ -15,7 +15,7 @@ import type { WorkerRequest, WorkerResponse } from './encodingWorker';
 interface PendingRequest {
 	resolve: (blob: Blob) => void;
 	reject: (error: Error) => void;
-	onProgress?: (percent: number) => void;
+	onProgress?: ((percent: number) => void) | undefined;
 }
 
 /**

@@ -10,6 +10,7 @@ import {
 	renderPlaybackStatusBar,
 	renderTranscriptionStatusBar,
 } from 'src/ui/StatusBar';
+import { at } from '../helpers/assertions';
 import type { PlaybackControlsState } from 'src/player/playbackControls';
 import { RecordingStatus } from 'src/types';
 import type { RecordingControls } from 'src/types';
@@ -639,10 +640,10 @@ describe('StatusBar', () => {
 			expect(buttons.length).toBe(2);
 
 			// First button should have aria-label "Resume recording"
-			expect(buttons[0].getAttribute('aria-label')).toBe(
+			expect(at(buttons, 0).getAttribute('aria-label')).toBe(
 				'Resume recording',
 			);
-			expect(buttons[1].getAttribute('aria-label')).toBe(
+			expect(at(buttons, 1).getAttribute('aria-label')).toBe(
 				'Stop recording',
 			);
 		});
@@ -662,11 +663,11 @@ describe('StatusBar', () => {
 			);
 
 			const buttons = statusBarItem.querySelectorAll('.aar-control-btn');
-			expect(buttons[0].getAttribute('aria-label')).toBe(
+			expect(at(buttons, 0).getAttribute('aria-label')).toBe(
 				'Pause recording',
 			);
 
-			buttons[0].dispatchEvent(
+			at(buttons, 0).dispatchEvent(
 				new MouseEvent('click', { bubbles: true }),
 			);
 			expect(controls.onPauseResume).toHaveBeenCalledTimes(1);
@@ -687,7 +688,7 @@ describe('StatusBar', () => {
 			);
 
 			const buttons = statusBarItem.querySelectorAll('.aar-control-btn');
-			buttons[1].dispatchEvent(
+			at(buttons, 1).dispatchEvent(
 				new MouseEvent('click', { bubbles: true }),
 			);
 			expect(controls.onStop).toHaveBeenCalledTimes(1);
@@ -744,7 +745,7 @@ describe('StatusBar', () => {
 			const event = new MouseEvent('click', { bubbles: true });
 			const stopPropSpy = jest.spyOn(event, 'stopPropagation');
 
-			buttons[0].dispatchEvent(event);
+			at(buttons, 0).dispatchEvent(event);
 			expect(stopPropSpy).toHaveBeenCalled();
 		});
 

@@ -2,13 +2,13 @@
  * Tests for the pure audio-link parsing helpers.
  */
 
-import { TFile } from 'obsidian';
 import {
 	parseAudioLinkTarget,
 	parseTimecodeSubpath,
 	isAudioFile,
 	wikiLinkTargetAtCursor,
 } from 'src/player/timecodeLinks';
+import { createFile } from '../helpers/createApp';
 
 describe('parseAudioLinkTarget', () => {
 	it('returns the path and no offset when there is no subpath', () => {
@@ -49,14 +49,14 @@ describe('parseAudioLinkTarget', () => {
 
 describe('isAudioFile', () => {
 	it('accepts supported audio extensions regardless of case', () => {
-		expect(isAudioFile(new TFile('a/rec.WEBM'))).toBe(true);
-		expect(isAudioFile(new TFile('a/rec.mp3'))).toBe(true);
-		expect(isAudioFile(new TFile('a/rec.flac'))).toBe(true);
+		expect(isAudioFile(createFile('a/rec.WEBM'))).toBe(true);
+		expect(isAudioFile(createFile('a/rec.mp3'))).toBe(true);
+		expect(isAudioFile(createFile('a/rec.flac'))).toBe(true);
 	});
 
 	it('rejects non-audio extensions', () => {
-		expect(isAudioFile(new TFile('a/note.md'))).toBe(false);
-		expect(isAudioFile(new TFile('a/image.png'))).toBe(false);
+		expect(isAudioFile(createFile('a/note.md'))).toBe(false);
+		expect(isAudioFile(createFile('a/image.png'))).toBe(false);
 	});
 });
 

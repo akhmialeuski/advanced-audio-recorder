@@ -15,9 +15,19 @@ export interface DebugLoggingSettings {
 }
 
 /**
+ * The generic logging method most callers need. Structural, so a helper that
+ * only writes free-form debug lines states that in its signature instead of
+ * demanding the whole logger - which is also what lets a test pass a one-method
+ * double without claiming to be a DebugLogger.
+ */
+export interface DebugLogSink {
+	log(message: string, ...args: unknown[]): void;
+}
+
+/**
  * DebugLogger provides conditional logging based on settings.debug flag.
  */
-export class DebugLogger {
+export class DebugLogger implements DebugLogSink {
 	private enabled: boolean;
 
 	constructor(settings: DebugLoggingSettings) {

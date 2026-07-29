@@ -5,12 +5,14 @@
  */
 
 import { App, Platform } from 'obsidian';
+import { at } from '../helpers/assertions';
 import { AudioRecorderSettingTab } from 'src/settings/SettingsTab';
 import {
 	DEFAULT_SETTINGS,
-	AudioRecorderSettings,
+	type AudioRecorderSettings,
 } from 'src/settings/settingsSchema';
 import { DOCS_URL } from 'src/constants';
+import type { AudioRecorderPluginInterface } from 'src/settings/SettingsTab';
 
 // Mock AudioEncoder to avoid loading mediabunny in jsdom. The async
 // probe defaults to "no offline encoder works"; individual tests
@@ -69,7 +71,10 @@ describe('AudioRecorderSettingTab', () => {
 			settings: mockSettings,
 			saveSettings: saveSettingsMock,
 		};
-		tab = new AudioRecorderSettingTab(new App(), mockPlugin);
+		tab = new AudioRecorderSettingTab(
+			new App(),
+			mockPlugin as unknown as AudioRecorderPluginInterface,
+		);
 	});
 
 	describe('getSettingDefinitions (declarative settings, Obsidian 1.13+)', () => {
@@ -77,7 +82,7 @@ describe('AudioRecorderSettingTab', () => {
 			const defs = tab.getSettingDefinitions();
 
 			expect(defs).toHaveLength(1);
-			const def = defs[0] as {
+			const def = at(defs, 0) as unknown as {
 				name: string;
 				aliases?: string[];
 				render?: unknown;
@@ -94,7 +99,7 @@ describe('AudioRecorderSettingTab', () => {
 		});
 
 		it('renders the settings body into the group and drops the anchor row', () => {
-			const def = tab.getSettingDefinitions()[0] as {
+			const def = at(tab.getSettingDefinitions(), 0) as unknown as {
 				render: (setting: unknown) => void;
 			};
 			const listEl = createDiv();
@@ -410,7 +415,7 @@ describe('AudioRecorderSettingTab', () => {
 
 			await renderAndSettle();
 
-			expect(channelSelects()[0].disabled).toBe(false);
+			expect(at(channelSelects(), 0).disabled).toBe(false);
 			expect(mockSettings.recordingChannels).toBe('mono-left');
 		});
 
@@ -433,7 +438,7 @@ describe('AudioRecorderSettingTab', () => {
 
 			await renderAndSettle();
 
-			expect(channelSelects()[0].disabled).toBe(true);
+			expect(at(channelSelects(), 0).disabled).toBe(true);
 			expect(mockSettings.recordingChannels).toBe('mono-left');
 			expect(saveSettingsMock).not.toHaveBeenCalled();
 		});
@@ -444,7 +449,7 @@ describe('AudioRecorderSettingTab', () => {
 
 			await renderAndSettle();
 
-			expect(channelSelects()[0].disabled).toBe(false);
+			expect(at(channelSelects(), 0).disabled).toBe(false);
 		});
 
 		it('disables per-track selectors by each track device capability', async () => {
@@ -464,10 +469,10 @@ describe('AudioRecorderSettingTab', () => {
 			const selects = channelSelects();
 			// Global + three track selectors
 			expect(selects).toHaveLength(4);
-			expect(selects[1].disabled).toBe(false);
-			expect(selects[2].disabled).toBe(true);
+			expect(at(selects, 1).disabled).toBe(false);
+			expect(at(selects, 2).disabled).toBe(true);
 			// Track 3 has no device: nothing to bind the mode to
-			expect(selects[3].disabled).toBe(true);
+			expect(at(selects, 3).disabled).toBe(true);
 			// Runtime capability observation never rewrites either mode.
 			expect(mockSettings.trackAudioSources.get(1)?.channelMode).toBe(
 				'mono-left',
@@ -485,7 +490,7 @@ describe('AudioRecorderSettingTab', () => {
 				[1, { deviceId: 'selected-dev', channelMode: 'mono-left' }],
 			]);
 			await renderAndSettle();
-			expect(channelSelects()[1].disabled).toBe(false);
+			expect(at(channelSelects(), 1).disabled).toBe(false);
 
 			installDevices([]);
 			const deviceChange = addEventListenerMock.mock
@@ -494,7 +499,7 @@ describe('AudioRecorderSettingTab', () => {
 			await new Promise((resolve) => setTimeout(resolve, 0));
 			await new Promise((resolve) => setTimeout(resolve, 0));
 
-			expect(channelSelects()[1].disabled).toBe(true);
+			expect(at(channelSelects(), 1).disabled).toBe(true);
 			expect(mockSettings.trackAudioSources.get(1)).toEqual({
 				deviceId: 'selected-dev',
 				channelMode: 'mono-left',
@@ -527,13 +532,13 @@ describe('AudioRecorderSettingTab', () => {
 			deviceChange();
 			resolveNewer?.([fakeInputDevice('selected-dev', 2)]);
 			await new Promise((resolve) => setTimeout(resolve, 0));
-			expect(channelSelects()[0].disabled).toBe(false);
+			expect(at(channelSelects(), 0).disabled).toBe(false);
 
 			resolveOlder?.([fakeInputDevice('selected-dev', 1)]);
 			await new Promise((resolve) => setTimeout(resolve, 0));
 
 			// The older mono result must not overwrite the newer stereo view.
-			expect(channelSelects()[0].disabled).toBe(false);
+			expect(at(channelSelects(), 0).disabled).toBe(false);
 			expect(mockSettings.recordingChannels).toBe('mono-left');
 			expect(saveSettingsMock).not.toHaveBeenCalled();
 		});
@@ -548,7 +553,7 @@ describe('AudioRecorderSettingTab', () => {
 
 			await renderAndSettle();
 
-			const trackChannelSelect = channelSelects()[1];
+			const trackChannelSelect = at(channelSelects(), 1);
 			expect(trackChannelSelect.disabled).toBe(false);
 			trackChannelSelect.value = 'mono-right';
 			trackChannelSelect.dispatchEvent(new Event('change'));
@@ -585,7 +590,10 @@ describe('AudioRecorderSettingTab', () => {
 						(option) => option.value === 'other-stereo',
 					),
 			);
-			const trackDeviceSelect = deviceSelects[deviceSelects.length - 1];
+			const trackDeviceSelect = at(
+				deviceSelects,
+				deviceSelects.length - 1,
+			);
 			trackDeviceSelect.value = 'other-stereo';
 			trackDeviceSelect.dispatchEvent(new Event('change'));
 			await new Promise((resolve) => setTimeout(resolve, 0));
@@ -594,6 +602,90 @@ describe('AudioRecorderSettingTab', () => {
 				deviceId: 'other-stereo',
 				channelMode: 'mono-left',
 			});
+		});
+	});
+
+	describe('section-scoped re-rendering', () => {
+		/** display() plus the async capability load and device fills. */
+		async function renderAndSettle(): Promise<void> {
+			tab.display();
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		}
+
+		/** Toggles the named setting the way a click would. */
+		function toggleSetting(name: string): void {
+			const row = Array.from(
+				tab.containerEl.querySelectorAll<HTMLElement>('.setting-item'),
+			).find(
+				(el) =>
+					el.querySelector('.setting-item-name')?.textContent ===
+					name,
+			);
+			if (!row) {
+				throw new Error(`setting row "${name}" not rendered`);
+			}
+			const toggle = row.querySelector<HTMLElement>(
+				'.checkbox-container',
+			);
+			if (!toggle) {
+				throw new Error(`toggle in "${name}" not rendered`);
+			}
+			toggle.click();
+		}
+
+		it('redraws only its own section when a reveal toggle flips', async () => {
+			await renderAndSettle();
+			const enumerateCalls = (
+				navigator.mediaDevices.enumerateDevices as jest.Mock
+			).mock.calls.length;
+
+			// "Save near active file" reveals one row inside the storage
+			// section. Sending it through the tab-wide rerender would rebuild
+			// every row and restart the device enumeration behind the input
+			// dropdowns, which no storage setting can affect.
+			toggleSetting('Save recordings near active file');
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			expect(mockSettings.saveNearActiveFile).toBe(true);
+			expect(
+				(navigator.mediaDevices.enumerateDevices as jest.Mock).mock
+					.calls.length,
+			).toBe(enumerateCalls);
+		});
+
+		it('reveals the newly applicable row in the redrawn section', async () => {
+			await renderAndSettle();
+
+			toggleSetting('Save recordings near active file');
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			const names = Array.from(
+				tab.containerEl.querySelectorAll<HTMLElement>(
+					'.setting-item-name',
+				),
+			).map((el) => el.textContent);
+			expect(names).toContain('Active file subfolder');
+			// The section is redrawn, not appended to.
+			expect(
+				names.filter((n) => n === 'Save recordings near active file'),
+			).toHaveLength(1);
+		});
+
+		it('keeps the sections it did not redraw on screen', async () => {
+			await renderAndSettle();
+
+			toggleSetting('Save recordings near active file');
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			const names = Array.from(
+				tab.containerEl.querySelectorAll<HTMLElement>(
+					'.setting-item-name',
+				),
+			).map((el) => el.textContent);
+			expect(names).toContain('File prefix');
+			expect(names).toContain('Enhanced audio player');
+			expect(names).toContain('Debug mode');
 		});
 	});
 

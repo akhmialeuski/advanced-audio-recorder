@@ -1,15 +1,16 @@
 {
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "rootDir": ".",
-    "noEmit": true
-  },
-  "include": [
-    "src/**/*.ts",
-    "tests/**/*.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist"
-  ]
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"rootDir": ".",
+		"noEmit": true,
+		// The test suites run on Jest's globals (describe/it/expect/jest). Without
+		// them in scope this program does not compile, which would silently
+		// degrade every type-aware ESLint rule over tests/ to `any` and leave the
+		// suites with no type checking at all: tsconfig.json excludes tests, and
+		// `isolatedModules` puts ts-jest in transpile-only mode, so this config is
+		// the only place tests are type-checked. `npm run typecheck` runs it.
+		"types": ["node", "jest"]
+	},
+	"include": ["src/**/*.ts", "tests/**/*.ts"],
+	"exclude": ["node_modules", "dist"]
 }

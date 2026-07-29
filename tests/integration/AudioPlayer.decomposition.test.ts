@@ -10,6 +10,7 @@
  */
 
 import { App, Modal } from 'obsidian';
+import { at } from '../helpers/assertions';
 import { AudioPlayer } from 'src/player/AudioPlayer';
 import { WaveformPeakCache, type AudioDecoder } from 'src/player/WaveformData';
 import type { AudioPlayerRegistry } from 'src/player/AudioPlayerRegistry';
@@ -73,6 +74,13 @@ function makeFakeAudio(): FakeAudio {
 }
 
 function makeRegistry(...audios: FakeAudio[]): AudioPlayerRegistry {
+	// A partial double: these suites drive only the acquire/release surface,
+	// so the cast at the boundary is the honest statement of that.
+	return makePartialRegistry(...audios) as unknown as AudioPlayerRegistry;
+}
+
+/** The methods {@link makeRegistry} actually implements. */
+function makePartialRegistry(...audios: FakeAudio[]): object {
 	const entries = new Map<string, { audio: FakeAudio; engaged: boolean }>();
 	let nextAudio = 0;
 	return {
@@ -490,8 +498,8 @@ describe('marker CRUD stays player-driven and persisted (PlayerMarkerController 
 
 		const saved = store.data.get('rec.wav') ?? [];
 		expect(saved).toHaveLength(1);
-		expect(saved[0].time).toBe(12);
-		expect(saved[0].kind).toBe('bookmark');
+		expect(at(saved, 0).time).toBe(12);
+		expect(at(saved, 0).kind).toBe('bookmark');
 		// Other live players of the file are refreshed after the persist
 		expect(registry.reloadMarkers).toHaveBeenCalledWith('rec.wav', player);
 	});

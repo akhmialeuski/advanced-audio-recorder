@@ -4,6 +4,7 @@
  */
 
 import { EncodingWorkerClient } from 'src/audio/EncodingWorkerClient';
+import { at } from '../helpers/assertions';
 import type { WorkerResponse } from 'src/audio/encodingWorker';
 
 /** Captured worker doubles created by the client. */
@@ -67,7 +68,7 @@ describe('EncodingWorkerClient', () => {
 		);
 
 		expect(createdWorkers).toHaveLength(1);
-		const worker = createdWorkers[0];
+		const worker = at(createdWorkers, 0);
 		expect(worker.postMessage).toHaveBeenCalledWith(
 			expect.objectContaining({
 				kind: 'convertBlob',
@@ -80,7 +81,7 @@ describe('EncodingWorkerClient', () => {
 		);
 
 		const requestId = (
-			worker.postMessage.mock.calls[0][0] as { id: number }
+			at(worker.postMessage.mock.calls, 0)[0] as { id: number }
 		).id;
 		respond(worker, {
 			id: requestId,
@@ -102,7 +103,7 @@ describe('EncodingWorkerClient', () => {
 				// The request is never answered in this test
 			});
 
-		const worker = createdWorkers[0];
+		const worker = at(createdWorkers, 0);
 		expect(worker.postMessage).toHaveBeenCalledWith(
 			expect.objectContaining({ channelMode: 'mono-mix' }),
 		);
@@ -119,9 +120,9 @@ describe('EncodingWorkerClient', () => {
 			'source',
 			onProgress,
 		);
-		const worker = createdWorkers[0];
+		const worker = at(createdWorkers, 0);
 		const requestId = (
-			worker.postMessage.mock.calls[0][0] as { id: number }
+			at(worker.postMessage.mock.calls, 0)[0] as { id: number }
 		).id;
 
 		respond(worker, { id: requestId, kind: 'progress', percent: 42 });
@@ -144,9 +145,9 @@ describe('EncodingWorkerClient', () => {
 			128000,
 			false,
 		);
-		const worker = createdWorkers[0];
+		const worker = at(createdWorkers, 0);
 		const requestId = (
-			worker.postMessage.mock.calls[0][0] as { id: number }
+			at(worker.postMessage.mock.calls, 0)[0] as { id: number }
 		).id;
 
 		respond(worker, {
@@ -168,7 +169,7 @@ describe('EncodingWorkerClient', () => {
 			128000,
 			false,
 		);
-		const worker = createdWorkers[0];
+		const worker = at(createdWorkers, 0);
 
 		worker.onerror?.({ message: 'worker crashed' } as ErrorEvent);
 
@@ -198,7 +199,7 @@ describe('EncodingWorkerClient', () => {
 			128000,
 			false,
 		);
-		const worker = createdWorkers[0];
+		const worker = at(createdWorkers, 0);
 
 		client.terminate();
 

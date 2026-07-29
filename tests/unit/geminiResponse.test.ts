@@ -9,6 +9,7 @@ import {
 	mapGeminiResponse,
 	timecodeToSeconds,
 } from 'src/transcription/providers/geminiResponse';
+import { at } from '../helpers/assertions';
 
 /** Wraps a structured transcript object as a Gemini generateContent body. */
 function geminiBody(structured: unknown): unknown {
@@ -55,9 +56,9 @@ describe('mapGeminiResponse', () => {
 		);
 		expect(result.language).toBe('en');
 		expect(result.segments).toHaveLength(2);
-		expect(result.segments[0].text).toBe('Hello there.');
-		expect(result.segments[0].speaker).toBe('Speaker 1');
-		expect(result.segments[1].speaker).toBe('Speaker 2');
+		expect(at(result.segments, 0).text).toBe('Hello there.');
+		expect(at(result.segments, 0).speaker).toBe('Speaker 1');
+		expect(at(result.segments, 1).speaker).toBe('Speaker 2');
 	});
 
 	it('omits speaker labels when diarization is off', () => {
@@ -69,7 +70,7 @@ describe('mapGeminiResponse', () => {
 			}),
 			false,
 		);
-		expect(result.segments[0].speaker).toBeUndefined();
+		expect(at(result.segments, 0).speaker).toBeUndefined();
 	});
 
 	it('skips empty segments and defaults end to start', () => {
@@ -83,9 +84,9 @@ describe('mapGeminiResponse', () => {
 			false,
 		);
 		expect(result.segments).toHaveLength(1);
-		expect(result.segments[0].text).toBe('kept');
-		expect(result.segments[0].start).toBe(3);
-		expect(result.segments[0].end).toBe(3);
+		expect(at(result.segments, 0).text).toBe('kept');
+		expect(at(result.segments, 0).start).toBe(3);
+		expect(at(result.segments, 0).end).toBe(3);
 	});
 
 	it('parses string timecodes (HH:MM:SS / MM:SS) defensively', () => {
@@ -98,9 +99,9 @@ describe('mapGeminiResponse', () => {
 			}),
 			false,
 		);
-		expect(result.segments[0].start).toBe(90);
-		expect(result.segments[0].end).toBe(92);
-		expect(result.segments[1].start).toBe(125);
+		expect(at(result.segments, 0).start).toBe(90);
+		expect(at(result.segments, 0).end).toBe(92);
+		expect(at(result.segments, 1).start).toBe(125);
 	});
 
 	it('tolerates malformed bodies', () => {

@@ -11,6 +11,7 @@ import {
 	findDefaultDevice,
 	getDefaultDeviceId,
 } from 'src/utils/DeviceUtils';
+import { at } from '../helpers/assertions';
 
 // Mock navigator.mediaDevices
 const mockEnumerateDevices = jest.fn();
@@ -62,8 +63,8 @@ describe('DeviceUtils', () => {
 			const result = await getAudioInputDevices();
 
 			expect(result).toHaveLength(1);
-			expect(result[0].deviceId).toBe('default');
-			expect(result[0].kind).toBe('audioinput');
+			expect(at(result, 0).deviceId).toBe('default');
+			expect(at(result, 0).kind).toBe('audioinput');
 		});
 
 		it('should return empty array when no audio input devices exist', async () => {

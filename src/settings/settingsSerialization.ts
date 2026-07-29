@@ -5,12 +5,12 @@
  * @module settings/settingsSerialization
  */
 
-import { LLM_PROVIDER_IDS } from '../constants';
 import { normalizeChannelMode } from '../audio/downmix';
 import { isRecord } from '../utils/objects';
 import { getDefaultDeviceId } from '../utils/DeviceUtils';
 import { getPlatformKind, type PlatformKind } from '../platform/platformKind';
 import { isDeviceSelectionSupported } from '../platform/capabilities';
+import { LLM_VENDORS, selectedLlmVendor } from '../transcription/llm/vendors';
 import {
 	DEFAULT_SETTINGS,
 	createPlatformScopedDefaults,
@@ -34,7 +34,7 @@ import {
  * and Map values that predate the channel mode field; every entry
  * comes out with a valid channel mode.
  */
-export function normalizeTrackAudioSources(
+function normalizeTrackAudioSources(
 	trackAudioSources?: TrackAudioSources | TrackAudioSourcesRecord,
 ): TrackAudioSources {
 	if (!trackAudioSources) {
@@ -251,6 +251,19 @@ function migrateAdvancedDictionaryGate(
 }
 
 /**
+ * Reads a legacy string field from the raw disk data, which is not
+ * type-checked: a hand-edited or corrupted data.json can hold a non-string
+ * where the old schema expected text, and reading it as a string would throw on
+ * the next `.trim()` and, through the load-time fallback, reset every setting to
+ * its default. A non-string legacy value is treated as absent.
+ * @param value - The raw field value as loaded from disk
+ * @returns The value when it is a string, otherwise ''
+ */
+function legacyString(value: unknown): string {
+	return typeof value === 'string' ? value : '';
+}
+
+/**
  * Carries a pre-profiles single dictionary string forward into one seeded
  * 'General' profile and selects it, then drops the flat field so a later save
  * does not re-persist it. The only-when-empty guard mirrors the LLM migration:
@@ -265,11 +278,7 @@ function migrateLegacyTranscriptionDictionary(
 	merged: AudioRecorderSettings,
 	raw: AudioRecorderSettingsInput,
 ): void {
-	const legacy: Record<string, unknown> = isRecord(raw) ? raw : {};
-	const legacyTerms =
-		typeof legacy.transcriptionDictionary === 'string'
-			? legacy.transcriptionDictionary
-			: '';
+	const legacyTerms = legacyString(raw.transcriptionDictionary);
 	if (
 		legacyTerms.trim() !== '' &&
 		merged.transcriptionDictionaryProfiles.length === 0
@@ -303,36 +312,24 @@ function migrateLegacyLlmSettings(
 	merged: AudioRecorderSettings,
 	raw: AudioRecorderSettingsInput,
 ): void {
-	const legacy: Record<string, unknown> = isRecord(raw) ? raw : {};
-	const legacyKey =
-		typeof legacy.llmApiKey === 'string' ? legacy.llmApiKey : '';
-	if (legacyKey) {
-		if (
-			merged.llmProvider === LLM_PROVIDER_IDS.ANTHROPIC &&
-			!merged.anthropicApiKey
-		) {
-			merged.anthropicApiKey = legacyKey;
-		} else if (
-			merged.llmProvider === LLM_PROVIDER_IDS.GEMINI &&
-			!merged.geminiApiKey
-		) {
-			merged.geminiApiKey = legacyKey;
-		} else if (
-			merged.llmProvider === LLM_PROVIDER_IDS.OPENAI_COMPATIBLE &&
-			!merged.whisperApiKey
-		) {
-			merged.whisperApiKey = legacyKey;
+	const legacyKey = legacyString(raw.llmApiKey);
+	const legacyModel = legacyString(raw.llmModel).trim();
+	// The stored provider decides which fields the legacy key and model map
+	// onto. A corrupted provider id (disk data is not type-checked) names no
+	// vendor, so skip the mapping rather than dereference an absent descriptor;
+	// the superseded flat fields are still dropped below.
+	if (merged.llmProvider in LLM_VENDORS) {
+		// Which fields hold the stored provider's key and model is a vendor
+		// fact, so the migration asks the registry instead of re-deriving the
+		// mapping.
+		const vendor = selectedLlmVendor(merged);
+		// A vendor key already set is never overwritten, so the migration
+		// cannot clobber a freshly entered token.
+		if (legacyKey && !vendor.settings.apiKey(merged)) {
+			vendor.settings.setApiKey(merged, legacyKey);
 		}
-	}
-	const legacyModel =
-		typeof legacy.llmModel === 'string' ? legacy.llmModel.trim() : '';
-	if (legacyModel) {
-		if (merged.llmProvider === LLM_PROVIDER_IDS.ANTHROPIC) {
-			merged.llmAnthropicModel = legacyModel;
-		} else if (merged.llmProvider === LLM_PROVIDER_IDS.GEMINI) {
-			merged.llmGeminiModel = legacyModel;
-		} else {
-			merged.llmOpenAiModel = legacyModel;
+		if (legacyModel) {
+			vendor.settings.setModel(merged, legacyModel);
 		}
 	}
 	// Drop the superseded flat fields so a later save does not persist them.

@@ -18,6 +18,7 @@
  */
 
 import { Component, MarkdownView, TFile } from 'obsidian';
+import { at } from '../helpers/assertions';
 import type { App, Plugin, WorkspaceLeaf } from 'obsidian';
 import { EnhancedPlayerRegistrar } from 'src/player/EnhancedPlayerRegistrar';
 import { MediaEmbedShell } from 'src/player/MediaEmbedShell';
@@ -225,7 +226,7 @@ function setup(
 		app,
 		() => settings,
 		markerStore as unknown as RecordingSidecarStore,
-		kindStore,
+		kindStore as unknown as MediaKindStore | null,
 	);
 	registrar.register();
 
@@ -305,10 +306,10 @@ describe('EnhancedPlayerRegistrar embed creation', () => {
 
 		// The shell swapped this one embed: the native child was unloaded
 		// (stopping any playback) and the player took over the container
-		const native = nativeCreator.mock.results[0].value as NativeEmbed;
+		const native = at(nativeCreator.mock.results, 0).value as NativeEmbed;
 		expect(native.unloaded).toBe(true);
 		expect(audioPlayerMock).toHaveBeenCalledTimes(1);
-		const player = audioPlayerMock.mock.results[0]
+		const player = at(audioPlayerMock.mock.results, 0)
 			.value as unknown as EnhancedInstance;
 		expect(player.load).toHaveBeenCalled();
 		// The core of issue #39: no leaf was inspected or rebuilt, so a
@@ -329,7 +330,7 @@ describe('EnhancedPlayerRegistrar embed creation', () => {
 
 		await flush();
 
-		const native = nativeCreator.mock.results[0].value as NativeEmbed;
+		const native = at(nativeCreator.mock.results, 0).value as NativeEmbed;
 		expect(native.unloaded).toBe(false);
 		expect(audioPlayerMock).not.toHaveBeenCalled();
 		expect(getLeaves).not.toHaveBeenCalled();
@@ -442,14 +443,14 @@ describe('EnhancedPlayerRegistrar embed creation', () => {
 		const file = fileOf('wav');
 		void shell.loadFile(file);
 
-		const native = nativeCreator.mock.results[0].value as NativeEmbed;
+		const native = at(nativeCreator.mock.results, 0).value as NativeEmbed;
 		expect(native.loadFile).toHaveBeenCalledWith(file);
 
 		await flush();
 
 		// Live Preview drove the old child through loadFile, so the new
 		// child gets the same call and renders
-		const player = audioPlayerMock.mock.results[0]
+		const player = at(audioPlayerMock.mock.results, 0)
 			.value as unknown as EnhancedInstance;
 		expect(player.loadFile).toHaveBeenCalledWith(file);
 	});
@@ -720,6 +721,14 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 		return { path, seek: jest.fn(), dispose: jest.fn() };
 	}
 
+	/**
+	 * The same stub as a DetachedPlayback. The registrar only ever calls seek
+	 * and dispose on it, so the cast at the boundary is what states that.
+	 */
+	function detachedStubOf(path: string): DetachedPlayback {
+		return detachedStub(path) as unknown as DetachedPlayback;
+	}
+
 	it('seeks an on-screen player and never opens the file', () => {
 		const seek = jest
 			.spyOn(AudioPlayerRegistry.prototype, 'seek')
@@ -743,7 +752,7 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 		const seek = jest
 			.spyOn(AudioPlayerRegistry.prototype, 'seek')
 			.mockReturnValue(false);
-		detachedStartMock.mockReturnValue(detachedStub('rec.mp4'));
+		detachedStartMock.mockReturnValue(detachedStubOf('rec.mp4'));
 		try {
 			const { plugin } = setup(true);
 			const event = timecodeClick('rec.mp4#t=30');
@@ -769,7 +778,9 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 			.spyOn(AudioPlayerRegistry.prototype, 'seek')
 			.mockReturnValue(false);
 		const detached = detachedStub('rec.mp4');
-		detachedStartMock.mockReturnValue(detached);
+		detachedStartMock.mockReturnValue(
+			detached as unknown as DetachedPlayback,
+		);
 		try {
 			const { plugin } = setup(true);
 			const handle = clickHandler(plugin);
@@ -859,7 +870,7 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 		const seek = jest
 			.spyOn(AudioPlayerRegistry.prototype, 'seek')
 			.mockReturnValue(false);
-		detachedStartMock.mockReturnValue(detachedStub('rec.mp4'));
+		detachedStartMock.mockReturnValue(detachedStubOf('rec.mp4'));
 		try {
 			const { plugin, app } = setup(true);
 			stubActiveEditor(app, '[[rec.mp4#t=30|0:30]] - Speaker 1');
@@ -961,7 +972,9 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 			.spyOn(AudioPlayerRegistry.prototype, 'seek')
 			.mockReturnValue(false);
 		const detached = detachedStub('rec.mp4');
-		detachedStartMock.mockReturnValue(detached);
+		detachedStartMock.mockReturnValue(
+			detached as unknown as DetachedPlayback,
+		);
 		try {
 			const { plugin, registrar, settings } = setup(true);
 			clickHandler(plugin)(timecodeClick('rec.mp4#t=30'));

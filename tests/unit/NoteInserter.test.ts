@@ -5,6 +5,7 @@
  */
 
 import type { InsertionContext } from 'src/types';
+import { at } from '../helpers/assertions';
 import type { App } from 'obsidian';
 
 // Mock MarkdownView class used for instanceof checks
@@ -31,7 +32,7 @@ jest.mock('obsidian', () => ({
 	MarkdownView: MockMarkdownView,
 	TFile: MockTFile,
 	getLinkpath: (link: string): string =>
-		link.split('#')[0].split('|')[0].trim(),
+		at(at(link.split('#'), 0).split('|'), 0).trim(),
 }));
 
 import {

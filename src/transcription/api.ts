@@ -23,11 +23,10 @@ export type {
 export {
 	buildCostEstimate,
 	costEstimateNeedsDuration,
-	estimateTranscriptionCost,
+	estimateStepCost,
 	formatUsd,
-	selectedEngineModel,
 } from './costs';
-export type { CostEstimate, CostEstimateLine } from './costs';
+export type { CostEstimate, CostEstimateLine, RunCostStepId } from './costs';
 export { advancedTwoPassWillRun } from './advanced/advancedBias';
 export { SessionCostTracker } from './SessionCostTracker';
 export type {
@@ -35,3 +34,12 @@ export type {
 	TranscriptFileFormat,
 } from './TranscriptTypes';
 export type { LlmTask } from './llmPostProcess';
+export type { Transcript } from './TranscriptTypes';
+/**
+ * The LLM vendor registry, re-exported for the dialogs that let the user pick
+ * the provider and model for one run. They read the descriptor rather than
+ * addressing settings fields directly, which is what keeps their pickers in
+ * step with the settings tab.
+ */
+export { LLM_VENDOR_IDS, LLM_VENDORS, selectedLlmVendor } from './llm/vendors';
+export type { LlmVendorDescriptor } from './llm/vendors';

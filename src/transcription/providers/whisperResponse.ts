@@ -15,7 +15,7 @@ import { isRecord, num } from './responseUtils';
 
 /** Parsed result of one transcription request. */
 export interface WhisperResult {
-	language?: string;
+	language?: string | undefined;
 	segments: TranscriptSegment[];
 	/** Billing-relevant usage the provider reported, when any. */
 	usage?: TranscriptionUsage;

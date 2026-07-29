@@ -50,7 +50,7 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		showInEditorMenu: true,
 		isAvailable: always,
 		run: (file: TFile, services: ActionServices): void => {
-			new ConversionModal(services.app, file, services.getSettings(), {
+			new ConversionModal(services.app, file, services.getSettings, {
 				onConverted: (convertedPath) => {
 					// The note link is already rewritten by the conversion's
 					// linkAction; prime the converted file so its embed
@@ -68,7 +68,7 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		showInEditorMenu: true,
 		isAvailable: always,
 		run: (file: TFile, services: ActionServices): void => {
-			new SplitModal(services.app, file, services.getSettings()).open();
+			new SplitModal(services.app, file, services.getSettings).open();
 		},
 	},
 	{
@@ -81,7 +81,7 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 			new AudioProcessingModal(
 				services.app,
 				file,
-				services.getSettings(),
+				services.getSettings,
 				async ({ outputPath, replaceSource }) => {
 					// Link the result into the note (replace the source embed
 					// when it is being deleted, else insert after), then prime

@@ -1,13 +1,14 @@
 /**
  * Unit tests for the shared setting builders.
- * @module tests/unit/settingHelpers.test
+ * @module tests/unit/dialogSettingControls.test
  */
 
 import {
 	addBitrateSetting,
 	addDeleteSourceSetting,
 	addLinkActionSetting,
-} from 'src/ui/settingHelpers';
+} from 'src/settings/settingControls';
+import { at } from '../helpers/assertions';
 
 /** Captured dropdowns and toggles rendered through the Setting mock. */
 interface DropdownCapture {
@@ -93,7 +94,7 @@ jest.mock('src/audio/AudioCapabilityDetector', () => ({
 		.mockReturnValue([64000, 96000, 128000, 192000]),
 }));
 
-describe('settingHelpers', () => {
+describe('dialog setting builders', () => {
 	let containerEl: HTMLElement;
 
 	beforeEach(() => {
@@ -111,13 +112,13 @@ describe('settingHelpers', () => {
 				onChange: jest.fn(),
 			});
 
-			expect(dropdowns[0].options).toEqual([
+			expect(at(dropdowns, 0).options).toEqual([
 				{ value: '64000', label: '64 kbps' },
 				{ value: '96000', label: '96 kbps' },
 				{ value: '128000', label: '128 kbps' },
 				{ value: '192000', label: '192 kbps' },
 			]);
-			expect(dropdowns[0].value).toBe('128000');
+			expect(at(dropdowns, 0).value).toBe('128000');
 		});
 
 		it('should snap an unsupported initial bitrate to the closest entry', () => {
@@ -128,7 +129,7 @@ describe('settingHelpers', () => {
 			});
 
 			expect(effective).toBe(96000);
-			expect(dropdowns[0].value).toBe('96000');
+			expect(at(dropdowns, 0).value).toBe('96000');
 		});
 
 		it('should report numeric bitrate changes', () => {
@@ -139,7 +140,7 @@ describe('settingHelpers', () => {
 				onChange,
 			});
 
-			dropdowns[0].onChange('192000');
+			at(dropdowns, 0).onChange('192000');
 
 			expect(onChange).toHaveBeenCalledWith(192000);
 		});
@@ -154,9 +155,9 @@ describe('settingHelpers', () => {
 				onChange,
 			});
 
-			expect(toggles[0].value).toBe(true);
+			expect(at(toggles, 0).value).toBe(true);
 
-			toggles[0].onChange(false);
+			at(toggles, 0).onChange(false);
 			expect(onChange).toHaveBeenCalledWith(false);
 		});
 	});
@@ -170,14 +171,12 @@ describe('settingHelpers', () => {
 				onChange,
 			});
 
-			expect(dropdowns[0].options.map((option) => option.value)).toEqual([
-				'none',
-				'replace',
-				'after',
-			]);
-			expect(dropdowns[0].value).toBe('replace');
+			expect(
+				at(dropdowns, 0).options.map((option) => option.value),
+			).toEqual(['none', 'replace', 'after']);
+			expect(at(dropdowns, 0).value).toBe('replace');
 
-			dropdowns[0].onChange('after');
+			at(dropdowns, 0).onChange('after');
 			expect(onChange).toHaveBeenCalledWith('after');
 		});
 	});

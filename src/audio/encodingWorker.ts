@@ -33,7 +33,7 @@ export interface WorkerRequest {
 	/** Allow packet copy when the codecs match. */
 	allowRemux: boolean;
 	/** Channel layout for the output audio (source kept when absent). */
-	channelMode?: ChannelMode;
+	channelMode?: ChannelMode | undefined;
 }
 
 /**

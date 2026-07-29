@@ -72,7 +72,7 @@ export class TestRecorder {
 			const deviceId = resolveCaptureDeviceId(settings);
 			stream = await navigator.mediaDevices.getUserMedia({
 				audio: {
-					deviceId: deviceId ? { exact: deviceId } : undefined,
+					...(deviceId ? { deviceId: { exact: deviceId } } : {}),
 					sampleRate: settings.sampleRate,
 					...getProcessingConstraints(settings),
 				},

@@ -6,8 +6,9 @@
  * @module cleanup/AudioProcessingModal
  */
 
-import { App, ButtonComponent, Modal, Notice, Setting, TFile } from 'obsidian';
-import { addNumberInputTo } from '../settings/settingControls';
+import { App, ButtonComponent, Notice, Setting, TFile } from 'obsidian';
+import { PluginModal } from '../ui/PluginModal';
+import { addStageRowTo } from '../settings/settingControls';
 import {
 	MIN_CLEANUP_HIGHPASS_HZ,
 	MAX_CLEANUP_HIGHPASS_HZ,
@@ -36,15 +37,16 @@ import type { AudioRecorderSettings } from '../settings/settingsSchema';
 /**
  * Audio-cleanup dialog for a single file.
  */
-export class AudioProcessingModal extends Modal {
+export class AudioProcessingModal extends PluginModal {
 	private readonly config: AudioDspConfig;
 	private deleteSource = false;
-	private processing = false;
 
 	/**
 	 * @param app - Obsidian app handle
 	 * @param file - Source audio file to clean up
-	 * @param settings - Plugin settings (seed the default stage config)
+	 * @param getSettings - Returns plugin settings (seed the default stage
+	 *   config). A live accessor rather than a snapshot, so every dialog reads
+	 *   settings the same way.
 	 * @param onProcessed - Called after a successful write, before the source is
 	 *   trashed, so a caller can link the result into the note while the source
 	 *   embed still resolves. `replaceSource` mirrors the delete-source choice.
@@ -52,68 +54,77 @@ export class AudioProcessingModal extends Modal {
 	constructor(
 		app: App,
 		private readonly file: TFile,
-		settings: AudioRecorderSettings,
+		getSettings: () => AudioRecorderSettings,
 		private readonly onProcessed?: (result: {
 			outputPath: string;
 			replaceSource: boolean;
 		}) => void | Promise<void>,
 	) {
 		super(app);
-		this.config = resolveAudioDspConfig(settings);
+		this.config = resolveAudioDspConfig(getSettings());
 	}
 
 	override onOpen(): void {
 		const { contentEl } = this;
 		contentEl.empty();
-		new Setting(contentEl).setName('Clean up audio').setHeading();
-		contentEl.createEl('p', { text: `Source: ${this.file.name}` });
+		this.setDialogTitle('Clean up audio');
+		this.renderSource(this.file);
 		contentEl.createEl('p', {
 			cls: 'aar-modal-config',
 			text: 'Produces a processed WAV copy next to the source.',
 		});
 
-		this.addStageWithNumber(
-			contentEl,
-			'High-pass filter',
-			'Remove low-frequency rumble below the cutoff (Hz).',
-			this.config.highPass.enabled,
-			(v) => (this.config.highPass.enabled = v),
-			{
+		addStageRowTo(contentEl, {
+			name: 'High-pass filter',
+			desc: 'Remove low-frequency rumble below the cutoff (Hz).',
+			getEnabled: () => this.config.highPass.enabled,
+			setEnabled: (v) => {
+				this.config.highPass.enabled = v;
+			},
+			value: {
 				min: MIN_CLEANUP_HIGHPASS_HZ,
 				max: MAX_CLEANUP_HIGHPASS_HZ,
 				step: CLEANUP_HIGHPASS_STEP_HZ,
-				value: this.config.highPass.hz,
-				onChange: (v) => (this.config.highPass.hz = v),
+				get: () => this.config.highPass.hz,
+				set: (v) => {
+					this.config.highPass.hz = v;
+				},
 			},
-		);
-		this.addStageWithNumber(
-			contentEl,
-			'Noise gate',
-			'Silence the signal below the threshold (dBFS).',
-			this.config.gate.enabled,
-			(v) => (this.config.gate.enabled = v),
-			{
+		});
+		addStageRowTo(contentEl, {
+			name: 'Noise gate',
+			desc: 'Silence the signal below the threshold (dBFS).',
+			getEnabled: () => this.config.gate.enabled,
+			setEnabled: (v) => {
+				this.config.gate.enabled = v;
+			},
+			value: {
 				min: MIN_CLEANUP_GATE_THRESHOLD_DB,
 				max: MAX_CLEANUP_GATE_THRESHOLD_DB,
 				step: CLEANUP_GATE_STEP_DB,
-				value: this.config.gate.thresholdDb,
-				onChange: (v) => (this.config.gate.thresholdDb = v),
+				get: () => this.config.gate.thresholdDb,
+				set: (v) => {
+					this.config.gate.thresholdDb = v;
+				},
 			},
-		);
-		this.addStageWithNumber(
-			contentEl,
-			'Loudness leveling',
-			'Even out quiet and loud passages; makeup gain (dB).',
-			this.config.leveling.enabled,
-			(v) => (this.config.leveling.enabled = v),
-			{
+		});
+		addStageRowTo(contentEl, {
+			name: 'Loudness leveling',
+			desc: 'Even out quiet and loud passages; makeup gain (dB).',
+			getEnabled: () => this.config.leveling.enabled,
+			setEnabled: (v) => {
+				this.config.leveling.enabled = v;
+			},
+			value: {
 				min: MIN_CLEANUP_LEVELING_MAKEUP_DB,
 				max: MAX_CLEANUP_LEVELING_MAKEUP_DB,
 				step: CLEANUP_LEVELING_STEP_DB,
-				value: this.config.leveling.makeupDb,
-				onChange: (v) => (this.config.leveling.makeupDb = v),
+				get: () => this.config.leveling.makeupDb,
+				set: (v) => {
+					this.config.leveling.makeupDb = v;
+				},
 			},
-		);
+		});
 
 		new Setting(contentEl)
 			.setName('Channels')
@@ -145,53 +156,28 @@ export class AudioProcessingModal extends Modal {
 			);
 
 		const status = contentEl.createDiv({ cls: 'aar-modal-status' });
-		new Setting(contentEl)
-			.addButton((button) =>
-				button
-					.setButtonText('Process')
-					.setCta()
-					.onClick(() => {
-						void this.run(status, button);
-					}),
-			)
-			.addButton((button) =>
-				button.setButtonText('Cancel').onClick(() => this.close()),
-			);
-	}
-
-	/**
-	 * Adds a stage toggle with a parameter number input on the same row. The
-	 * input is greyed out while the stage is off so it is clear the parameter
-	 * only takes effect once the stage is enabled.
-	 */
-	private addStageWithNumber(
-		container: HTMLElement,
-		name: string,
-		desc: string,
-		enabled: boolean,
-		onToggle: (value: boolean) => void,
-		field: {
-			min: number;
-			max: number;
-			step: number;
-			value: number;
-			onChange: (value: number) => void;
-		},
-	): void {
-		const setting = new Setting(container).setName(name).setDesc(desc);
-		const numberInput = addNumberInputTo(setting, {
-			min: field.min,
-			max: field.max,
-			step: field.step,
-			get: () => field.value,
-			set: field.onChange,
-		});
-		numberInput.setDisabled(!enabled);
-		setting.addToggle((toggle) =>
-			toggle.setValue(enabled).onChange((value) => {
-				onToggle(value);
-				numberInput.setDisabled(!value);
-			}),
+		let processButton: ButtonComponent | null = null;
+		this.renderActions(
+			{
+				text: 'Process',
+				cta: true,
+				ref: (button) => {
+					processButton = button;
+				},
+				onClick: async () => {
+					// The ref runs while the row is built, so the button always
+					// exists by the time a click can reach this.
+					if (processButton) {
+						await this.run(status, processButton);
+					}
+				},
+			},
+			{
+				text: 'Cancel',
+				onClick: () => {
+					this.close();
+				},
+			},
 		);
 	}
 
@@ -202,69 +188,65 @@ export class AudioProcessingModal extends Modal {
 		status: HTMLElement,
 		button: ButtonComponent,
 	): Promise<void> {
-		if (this.processing) {
-			return;
-		}
 		if (!hasActiveChange(this.config)) {
 			new Notice(
 				'Enable at least one processing stage, or choose a mono channel option.',
 			);
 			return;
 		}
-		this.processing = true;
-		button.setDisabled(true);
-		status.setText('Processing...');
-		// Yield once so the "Processing..." label paints before the
-		// synchronous decode/gate work briefly occupies the main thread.
-		await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
-		try {
-			const service = new AudioProcessingService(this.app);
-			const outputPath = await service.process(this.file, this.config);
-			// Link the result into the note before the source is trashed, so the
-			// source embed still resolves when it is matched and replaced. A
-			// failure here is non-fatal: the processed file is already written.
-			if (this.onProcessed) {
-				try {
-					await this.onProcessed({
-						outputPath,
-						replaceSource: this.deleteSource,
-					});
-				} catch (linkError) {
-					console.warn(
-						`${PLUGIN_LOG_PREFIX} Failed to link the processed file into the note:`,
-						linkError,
-					);
+		await this.runExclusive(async () => {
+			button.setDisabled(true);
+			status.setText('Processing...');
+			// Yield once so the "Processing..." label paints before the
+			// synchronous decode/gate work briefly occupies the main thread.
+			await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+			try {
+				const service = new AudioProcessingService(this.app);
+				const outputPath = await service.process(
+					this.file,
+					this.config,
+				);
+				// Link the result into the note before the source is trashed, so the
+				// source embed still resolves when it is matched and replaced. A
+				// failure here is non-fatal: the processed file is already written.
+				if (this.onProcessed) {
+					try {
+						await this.onProcessed({
+							outputPath,
+							replaceSource: this.deleteSource,
+						});
+					} catch (linkError) {
+						console.warn(
+							`${PLUGIN_LOG_PREFIX} Failed to link the processed file into the note:`,
+							linkError,
+						);
+					}
 				}
-			}
-			if (this.deleteSource) {
-				try {
-					await this.app.fileManager.trashFile(this.file);
-				} catch (deleteError) {
-					console.warn(
-						`${PLUGIN_LOG_PREFIX} Failed to delete source after processing:`,
-						deleteError,
-					);
-					new Notice(
-						`Processed audio saved to ${outputPath}, but the source could not be deleted.`,
-					);
-					this.close();
-					return;
+				if (this.deleteSource) {
+					try {
+						await this.app.fileManager.trashFile(this.file);
+					} catch (deleteError) {
+						console.warn(
+							`${PLUGIN_LOG_PREFIX} Failed to delete source after processing:`,
+							deleteError,
+						);
+						new Notice(
+							`Processed audio saved to ${outputPath}, but the source could not be deleted.`,
+						);
+						this.close();
+						return;
+					}
 				}
+				new Notice(`Processed audio saved to ${outputPath}`);
+				this.close();
+			} catch (error) {
+				const message =
+					error instanceof Error ? error.message : String(error);
+				new Notice(`Audio processing failed: ${message}`);
+				status.setText(`Failed: ${message}`);
+			} finally {
+				button.setDisabled(false);
 			}
-			new Notice(`Processed audio saved to ${outputPath}`);
-			this.close();
-		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : String(error);
-			new Notice(`Audio processing failed: ${message}`);
-			status.setText(`Failed: ${message}`);
-		} finally {
-			this.processing = false;
-			button.setDisabled(false);
-		}
-	}
-
-	override onClose(): void {
-		this.contentEl.empty();
+		});
 	}
 }
