@@ -498,6 +498,58 @@ describe('Settings', () => {
 			expect(record.transcriptionDictionary).toBeUndefined();
 		});
 
+		it('ignores a non-string legacy dictionary instead of throwing on load', () => {
+			// A hand-edited or corrupted data.json can hold a non-string where
+			// the old schema expected text. Reading it as a string would throw on
+			// .trim() and, through the load-time fallback, reset every setting.
+			const corrupt = {
+				transcriptionDictionary: 123,
+			} as unknown as AudioRecorderSettingsInput;
+
+			const result = mergeSettings(corrupt);
+
+			expect(result.transcriptionDictionaryProfiles).toEqual([]);
+			const record = result as unknown as Record<string, unknown>;
+			expect(record.transcriptionDictionary).toBeUndefined();
+		});
+
+		it('ignores a non-string legacy LLM key and model instead of throwing', () => {
+			const corrupt = {
+				llmProvider: 'gemini',
+				llmApiKey: 42,
+				llmModel: { nested: true },
+			} as unknown as AudioRecorderSettingsInput;
+
+			const result = mergeSettings(corrupt);
+
+			// Nothing is migrated from the malformed fields, and they are dropped.
+			expect(result.geminiApiKey).toBe('');
+			const record = result as unknown as Record<string, unknown>;
+			expect(record.llmApiKey).toBeUndefined();
+			expect(record.llmModel).toBeUndefined();
+		});
+
+		it('skips the LLM migration for an unknown stored provider without throwing', () => {
+			// An unrecognized provider id names no vendor descriptor; the
+			// migration must not dereference the absent descriptor and crash the
+			// whole load.
+			const corrupt = {
+				llmProvider: 'no-such-vendor',
+				llmApiKey: 'k',
+				llmModel: 'm',
+				filePrefix: 'kept',
+			} as unknown as AudioRecorderSettingsInput;
+
+			const result = mergeSettings(corrupt);
+
+			// The rest of the config still loads, and the superseded flat fields
+			// are dropped rather than persisted again.
+			expect(result.filePrefix).toBe('kept');
+			const record = result as unknown as Record<string, unknown>;
+			expect(record.llmApiKey).toBeUndefined();
+			expect(record.llmModel).toBeUndefined();
+		});
+
 		it('enables the advanced master switch on upgrade for a config with a dictionary profile', () => {
 			// A release that had profiles but not the advanced switch stored no
 			// flag; without the migration it would merge to the false default and
