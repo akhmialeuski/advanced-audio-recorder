@@ -7,7 +7,7 @@
  */
 
 import { App, Notice, TFile } from 'obsidian';
-import { ALL_FORMATS, BufferSource, Input } from 'mediabunny';
+import { ALL_FORMATS, BufferSource, Input, UrlSource } from 'mediabunny';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import {
 	audioMimeForExtension,
@@ -49,11 +49,7 @@ export async function getAudioFileInfo(
 	file: TFile,
 ): Promise<AudioFileInfo | null> {
 	try {
-		const arrayBuffer = await app.vault.readBinary(file);
-
-		const metadata =
-			(await probeAudioMetadata(arrayBuffer, file.path)) ??
-			(await decodeMetadata(arrayBuffer));
+		const metadata = await probeFileMetadata(app, file);
 		if (!metadata) {
 			return null;
 		}
@@ -97,6 +93,58 @@ export async function getAudioFileInfo(
 }
 
 /**
+ * Reads a recording's metadata without loading the whole file.
+ *
+ * The container probe only needs the header and the index, which for a
+ * multi-hour recording is a tiny fraction of the bytes - but the Obsidian
+ * vault adapter exposes no ranged read, so reading through it means holding
+ * the entire file in memory to look at its first few kilobytes. The resource
+ * URL does serve ranges (it is what the audio element seeks against), so the
+ * probe reads through that and mediabunny fetches only the ranges it needs.
+ *
+ * Falls back to the whole-file read when the ranged probe cannot parse the
+ * file - an environment that does not honor the range request, or a container
+ * mediabunny does not know, which then needs the full decode anyway.
+ * @param app - Obsidian App
+ * @param file - The recording to measure
+ * @returns The metadata, or null when neither path could read it
+ */
+async function probeFileMetadata(
+	app: App,
+	file: TFile,
+): Promise<ProbedAudioMetadata | null> {
+	const ranged = await probeAudioMetadataAt(
+		app.vault.getResourcePath(file),
+		file.path,
+	);
+	if (ranged) {
+		return ranged;
+	}
+	const bytes = await app.vault.readBinary(file);
+	return (
+		(await probeAudioMetadata(bytes, file.path)) ??
+		(await decodeMetadata(bytes))
+	);
+}
+
+/**
+ * Reads duration, sample rate, and channel count from the container headers at
+ * a URL, fetching only the byte ranges the parse needs.
+ * @param url - Resource URL of the audio file
+ * @param path - Vault path, for the warning log only
+ * @returns The metadata, or null when the container could not be parsed
+ */
+export async function probeAudioMetadataAt(
+	url: string,
+	path: string,
+): Promise<ProbedAudioMetadata | null> {
+	using input = disposableOf(
+		new Input({ source: new UrlSource(url), formats: ALL_FORMATS }),
+	);
+	return readTrackMetadata(input, path);
+}
+
+/**
  * Reads duration, sample rate, and channel count from the container
  * headers via mediabunny - no PCM decode, so the cost stays flat no
  * matter how long the recording is. Returns null when the container
@@ -114,6 +162,21 @@ export async function probeAudioMetadata(
 			formats: ALL_FORMATS,
 		}),
 	);
+	return readTrackMetadata(input, path);
+}
+
+/**
+ * Pulls the primary audio track's numbers out of an opened input. Shared by
+ * the buffered and ranged probes, which differ only in where their bytes come
+ * from - so a container the one can read, the other can too.
+ * @param input - An opened mediabunny input
+ * @param path - Vault path, for the warning log only
+ * @returns The metadata, or null when there is no audio track or the parse failed
+ */
+async function readTrackMetadata(
+	input: Input,
+	path: string,
+): Promise<ProbedAudioMetadata | null> {
 	try {
 		const track = await input.getPrimaryAudioTrack();
 		if (!track) {

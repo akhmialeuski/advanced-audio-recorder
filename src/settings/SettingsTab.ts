@@ -542,64 +542,18 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					v as ConversionLinkAction),
 		});
 
-		// File storage
-		const storageCtx = this.sectionContext(containerEl);
-		const settings = this.plugin.settings;
-		addHeading(storageCtx, 'File storage');
-
-		// The save folder keeps its own builder: the field carries a
-		// TextInputSuggest bound to the live vault folder list, which the
-		// shared text control has no hook for.
-		new Setting(containerEl)
-			.setName('Save folder')
-			.setDesc(
-				'Specify where recordings are saved in your vault. Existing folders are suggested as you type.',
-			)
-			.addText((text) => {
-				new TextInputSuggest(this.app, text.inputEl, () =>
-					this.getFolderOptions(),
-				);
-				text.setValue(settings.saveFolder);
-				text.onChange((value) => {
-					settings.saveFolder = value;
-					this.saveTextSettingDebounced();
-				});
-			});
-
-		addToggle(storageCtx, {
-			name: 'Save recordings near active file',
-			desc: 'Save recordings in the same directory as the currently active Markdown file. This mode has priority over save folder.',
-			get: () => settings.saveNearActiveFile,
-			set: (v) => (settings.saveNearActiveFile = v),
-			rerender: true,
-		});
-
-		if (settings.saveNearActiveFile) {
-			addText(storageCtx, {
-				name: 'Active file subfolder',
-				desc: 'Optional subfolder relative to the active file directory (for example: audio). Created automatically if missing.',
-				get: () => settings.activeFileSubfolder,
-				set: (v) => (settings.activeFileSubfolder = v),
-			});
-		}
-
-		addText(storageCtx, {
-			name: 'File prefix',
-			desc: 'Set the filename prefix used for exported recordings.',
-			get: () => settings.filePrefix,
-			set: (v) => (settings.filePrefix = v),
-		});
-
-		addToggle(storageCtx, {
-			name: 'Insert at original position',
-			desc: 'When enabled, the plugin remembers the note and insertion position where recording started. The audio link is inserted at that location, even if you navigate away during recording. Note: if the original note is edited during recording, the insertion position may shift.',
-			get: () => settings.insertAtOriginalPosition,
-			set: (v) => (settings.insertAtOriginalPosition = v),
+		// File storage: "Save near active file" reveals the subfolder row and
+		// nothing else, so the section redraws itself.
+		this.renderScopedSection(containerEl, (ctx) => {
+			this.renderFileStorageRows(ctx);
 		});
 
 		// Audio splitting
 		new Setting(containerEl).setName('Audio splitting').setHeading();
 
+		// Splitting rows reveal nothing, so they stay on the tab-wide context.
+		const splitCtx = this.sectionContext(containerEl);
+		const settings = this.plugin.settings;
 		const autoSplitAvailable = isAutoSplitSupported();
 		const autoSplitSetting = new Setting(containerEl)
 			.setName('Split recordings automatically')
@@ -628,7 +582,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			autoSplitSetting.settingEl.addClass(SETTING_DISABLED_CLASS);
 		}
 
-		addNumberInput(storageCtx, {
+		addNumberInput(splitCtx, {
 			name: 'Part duration',
 			desc: 'Length of each part in minutes. Also used as the default for manual splitting from the context menu.',
 			min: MIN_SPLIT_CHUNK_MINUTES,
@@ -669,7 +623,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		addToggle(storageCtx, {
+		addToggle(splitCtx, {
 			name: 'Delete source after split',
 			desc: 'Default state of the delete source file option in the manual split dialog.',
 			get: () => settings.deleteSourceAfterSplit,
@@ -827,26 +781,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		// Audio player
 		this.renderAudioPlayerSettings(containerEl);
 
-		// Transcription. Rendered into a container of its own so its many
-		// reveal/hide toggles (engine, advanced mode, chapters, LLM task) and
-		// its model-list add/remove buttons re-render just this section. Sending
-		// them through the tab-wide rerender rebuilt every row and restarted the
-		// device enumeration and the async format probe, neither of which any
-		// transcription setting can affect.
-		const transcriptionEl = containerEl.createDiv();
-		const renderTranscription = (): void => {
-			transcriptionEl.empty();
-			renderTranscriptionSection({
-				containerEl: transcriptionEl,
-				settings: this.plugin.settings,
-				save: () => this.plugin.saveSettings(),
-				rerender: renderTranscription,
-				saveDebounced: () => {
-					this.saveTextSettingDebounced();
-				},
-			});
-		};
-		renderTranscription();
+		// Transcription: its many reveal/hide toggles (engine, advanced mode,
+		// chapters, LLM task) and its model-list add/remove buttons affect
+		// nothing outside the section.
+		this.renderScopedSection(containerEl, renderTranscriptionSection);
 
 		// Audio processing & feedback
 		this.renderInputProcessingSettings(containerEl);
@@ -959,8 +897,110 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		};
 	}
 
+	/**
+	 * Renders a section into a container of its own, so a reveal/hide toggle
+	 * inside it redraws only that section.
+	 *
+	 * The tab-wide rerender rebuilds every row and, with them, restarts the
+	 * device enumeration and the async format-availability probe. That is the
+	 * right response to a setting those depend on (multi-track, track count),
+	 * and pure waste for one whose effect is confined to its own section - the
+	 * transcription reveals, the player's sub-options, the save-folder mode.
+	 * Sections whose visible rows depend only on their own settings render
+	 * through here.
+	 * @param containerEl - Element to host the section's own container
+	 * @param render - Draws the section into the context it is given
+	 */
+	private renderScopedSection(
+		containerEl: HTMLElement,
+		render: (ctx: SettingsSectionContext) => void,
+	): void {
+		const sectionEl = containerEl.createDiv();
+		const draw = (): void => {
+			sectionEl.empty();
+			render({
+				containerEl: sectionEl,
+				settings: this.plugin.settings,
+				save: () => this.plugin.saveSettings(),
+				rerender: draw,
+				saveDebounced: () => {
+					this.saveTextSettingDebounced();
+				},
+			});
+		};
+		draw();
+	}
+
+	/**
+	 * The file-storage rows: where a recording is written and how it is named.
+	 * @param ctx - The section context (its own container and hooks)
+	 */
+	private renderFileStorageRows(ctx: SettingsSectionContext): void {
+		const settings = this.plugin.settings;
+		addHeading(ctx, 'File storage');
+
+		// The save folder keeps its own builder: the field carries a
+		// TextInputSuggest bound to the live vault folder list, which the
+		// shared text control has no hook for.
+		new Setting(ctx.containerEl)
+			.setName('Save folder')
+			.setDesc(
+				'Specify where recordings are saved in your vault. Existing folders are suggested as you type.',
+			)
+			.addText((text) => {
+				new TextInputSuggest(this.app, text.inputEl, () =>
+					this.getFolderOptions(),
+				);
+				text.setValue(settings.saveFolder);
+				text.onChange((value) => {
+					settings.saveFolder = value;
+					this.saveTextSettingDebounced();
+				});
+			});
+
+		addToggle(ctx, {
+			name: 'Save recordings near active file',
+			desc: 'Save recordings in the same directory as the currently active Markdown file. This mode has priority over save folder.',
+			get: () => settings.saveNearActiveFile,
+			set: (v) => (settings.saveNearActiveFile = v),
+			rerender: true,
+		});
+
+		if (settings.saveNearActiveFile) {
+			addText(ctx, {
+				name: 'Active file subfolder',
+				desc: 'Optional subfolder relative to the active file directory (for example: audio). Created automatically if missing.',
+				get: () => settings.activeFileSubfolder,
+				set: (v) => (settings.activeFileSubfolder = v),
+			});
+		}
+
+		addText(ctx, {
+			name: 'File prefix',
+			desc: 'Set the filename prefix used for exported recordings.',
+			get: () => settings.filePrefix,
+			set: (v) => (settings.filePrefix = v),
+		});
+
+		addToggle(ctx, {
+			name: 'Insert at original position',
+			desc: 'When enabled, the plugin remembers the note and insertion position where recording started. The audio link is inserted at that location, even if you navigate away during recording. Note: if the original note is edited during recording, the insertion position may shift.',
+			get: () => settings.insertAtOriginalPosition,
+			set: (v) => (settings.insertAtOriginalPosition = v),
+		});
+	}
+
 	private renderAudioPlayerSettings(containerEl: HTMLElement): void {
-		const ctx = this.sectionContext(containerEl);
+		this.renderScopedSection(containerEl, (ctx) => {
+			this.renderAudioPlayerRows(ctx);
+		});
+	}
+
+	/**
+	 * The audio-player rows: the master toggle plus the sub-options it reveals.
+	 * @param ctx - The section context (its own container and hooks)
+	 */
+	private renderAudioPlayerRows(ctx: SettingsSectionContext): void {
 		const s = this.plugin.settings;
 		addHeading(ctx, 'Audio player');
 

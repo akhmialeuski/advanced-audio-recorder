@@ -605,6 +605,90 @@ describe('AudioRecorderSettingTab', () => {
 		});
 	});
 
+	describe('section-scoped re-rendering', () => {
+		/** display() plus the async capability load and device fills. */
+		async function renderAndSettle(): Promise<void> {
+			tab.display();
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		}
+
+		/** Toggles the named setting the way a click would. */
+		function toggleSetting(name: string): void {
+			const row = Array.from(
+				tab.containerEl.querySelectorAll<HTMLElement>('.setting-item'),
+			).find(
+				(el) =>
+					el.querySelector('.setting-item-name')?.textContent ===
+					name,
+			);
+			if (!row) {
+				throw new Error(`setting row "${name}" not rendered`);
+			}
+			const toggle = row.querySelector<HTMLElement>(
+				'.checkbox-container',
+			);
+			if (!toggle) {
+				throw new Error(`toggle in "${name}" not rendered`);
+			}
+			toggle.click();
+		}
+
+		it('redraws only its own section when a reveal toggle flips', async () => {
+			await renderAndSettle();
+			const enumerateCalls = (
+				navigator.mediaDevices.enumerateDevices as jest.Mock
+			).mock.calls.length;
+
+			// "Save near active file" reveals one row inside the storage
+			// section. Sending it through the tab-wide rerender would rebuild
+			// every row and restart the device enumeration behind the input
+			// dropdowns, which no storage setting can affect.
+			toggleSetting('Save recordings near active file');
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			expect(mockSettings.saveNearActiveFile).toBe(true);
+			expect(
+				(navigator.mediaDevices.enumerateDevices as jest.Mock).mock
+					.calls.length,
+			).toBe(enumerateCalls);
+		});
+
+		it('reveals the newly applicable row in the redrawn section', async () => {
+			await renderAndSettle();
+
+			toggleSetting('Save recordings near active file');
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			const names = Array.from(
+				tab.containerEl.querySelectorAll<HTMLElement>(
+					'.setting-item-name',
+				),
+			).map((el) => el.textContent);
+			expect(names).toContain('Active file subfolder');
+			// The section is redrawn, not appended to.
+			expect(
+				names.filter((n) => n === 'Save recordings near active file'),
+			).toHaveLength(1);
+		});
+
+		it('keeps the sections it did not redraw on screen', async () => {
+			await renderAndSettle();
+
+			toggleSetting('Save recordings near active file');
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			const names = Array.from(
+				tab.containerEl.querySelectorAll<HTMLElement>(
+					'.setting-item-name',
+				),
+			).map((el) => el.textContent);
+			expect(names).toContain('File prefix');
+			expect(names).toContain('Enhanced audio player');
+			expect(names).toContain('Debug mode');
+		});
+	});
+
 	describe('platform gating of the settings UI', () => {
 		afterEach(() => {
 			Platform.isMobile = false;

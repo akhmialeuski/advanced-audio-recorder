@@ -93,6 +93,10 @@ export class Vault {
 		return null;
 	}
 
+	getResourcePath(file: TFile): string {
+		return `app://vault/${file.path}`;
+	}
+
 	getRoot(): TFolder {
 		return new TFolder('');
 	}
