@@ -139,7 +139,7 @@ describe('planDictionaryBias', () => {
 		);
 		expect(plan.applied).toHaveLength(DEEPGRAM_KEYTERM_LIMIT);
 		expect(plan.omitted).toHaveLength(25);
-		expect(plan.reason).toBe('term-limit');
+		expect(plan.reason).toBe('keyterm-limit');
 	});
 
 	it('caps Deepgram Nova-3 keyterms at the aggregate token budget', () => {
@@ -171,7 +171,7 @@ describe('planDictionaryBias', () => {
 		);
 		expect(plan.applied).toHaveLength(DEEPGRAM_KEYWORDS_LIMIT);
 		expect(plan.omitted).toHaveLength(25);
-		expect(plan.reason).toBe('term-limit');
+		expect(plan.reason).toBe('keywords-limit');
 	});
 
 	it('drops the whole dictionary for a Deepgram Whisper model', () => {
@@ -243,10 +243,25 @@ describe('describeDictionaryOmission', () => {
 		const message = describeDictionaryOmission({
 			applied: manyTerms(DEEPGRAM_KEYTERM_LIMIT),
 			omitted: manyTerms(5),
-			reason: 'term-limit',
+			reason: 'keyterm-limit',
 		});
 		expect(message).toContain(String(DEEPGRAM_KEYTERM_LIMIT));
 		expect(message).toContain(String(DEEPGRAM_KEYTERM_LIMIT + 5));
+		expect(message).toContain('keyterms');
+	});
+
+	it('names the keywords limit for keyword-boosting models', () => {
+		// The two Deepgram entry caps are separate provider limits on separate
+		// mechanisms. This message must quote the keywords cap, not the keyterm
+		// one, even while the two constants happen to hold the same value.
+		const message = describeDictionaryOmission({
+			applied: manyTerms(DEEPGRAM_KEYWORDS_LIMIT),
+			omitted: manyTerms(5),
+			reason: 'keywords-limit',
+		});
+		expect(message).toContain(String(DEEPGRAM_KEYWORDS_LIMIT));
+		expect(message).toContain(String(DEEPGRAM_KEYWORDS_LIMIT + 5));
+		expect(message).toContain('keywords');
 	});
 
 	it('names the keyterm token budget when long terms did not fit', () => {

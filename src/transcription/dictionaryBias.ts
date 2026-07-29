@@ -54,10 +54,18 @@ const UTF8_ENCODER = new TextEncoder();
 /** How a Deepgram model biases recognition, or null when it cannot bias. */
 export type DeepgramBiasMechanism = 'keyterm' | 'keywords' | null;
 
-/** Why some dictionary terms were left out of a run, when any were. */
+/**
+ * Why some dictionary terms were left out of a run, when any were. The two
+ * Deepgram entry caps are distinct reasons rather than one shared
+ * "term-limit": they are separate provider limits on separate mechanisms
+ * (Nova-3 keyterm prompting vs. Nova-2-and-older keyword boosting), so one
+ * reason would have to name a single constant and would misreport the other
+ * cap the moment the two values diverge.
+ */
 export type DictionaryOmissionReason =
 	| 'model-unsupported'
-	| 'term-limit'
+	| 'keyterm-limit'
+	| 'keywords-limit'
 	| 'keyterm-token-budget'
 	| 'prompt-window';
 
@@ -219,7 +227,7 @@ export function planDictionaryBias(
 					// earlier means the aggregate token budget did.
 					reason:
 						applied.length >= DEEPGRAM_KEYTERM_LIMIT
-							? 'term-limit'
+							? 'keyterm-limit'
 							: 'keyterm-token-budget',
 				};
 			}
@@ -230,7 +238,7 @@ export function planDictionaryBias(
 			return {
 				applied: gated.slice(0, DEEPGRAM_KEYWORDS_LIMIT),
 				omitted: gated.slice(DEEPGRAM_KEYWORDS_LIMIT),
-				reason: 'term-limit',
+				reason: 'keywords-limit',
 			};
 		}
 		return { applied: gated, omitted: [] };
@@ -274,10 +282,15 @@ export function describeDictionaryOmission(
 				'Custom dictionary was not applied: the selected Deepgram model ' +
 				'does not support biasing. Choose a Nova model to bias recognition.'
 			);
-		case 'term-limit':
+		case 'keyterm-limit':
 			return (
 				`Custom dictionary: only the first ${plan.applied.length} of ${total} ` +
-				`terms were sent (Deepgram accepts at most ${DEEPGRAM_KEYTERM_LIMIT} terms per request).`
+				`terms were sent (Deepgram accepts at most ${DEEPGRAM_KEYTERM_LIMIT} keyterms per request).`
+			);
+		case 'keywords-limit':
+			return (
+				`Custom dictionary: only the first ${plan.applied.length} of ${total} ` +
+				`terms were sent (this Deepgram model accepts at most ${DEEPGRAM_KEYWORDS_LIMIT} keywords per request).`
 			);
 		case 'keyterm-token-budget':
 			return (
