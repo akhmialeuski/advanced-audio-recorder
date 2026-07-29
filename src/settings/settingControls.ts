@@ -380,6 +380,45 @@ export function addNumberInput(
 	});
 }
 
+/** A stage row: an on/off toggle and its one numeric parameter, side by side. */
+export interface StageRowConfig {
+	name: string;
+	desc: string;
+	/** Reads and writes the stage's enabled flag. */
+	getEnabled: () => boolean;
+	setEnabled: (value: boolean) => void | Promise<void>;
+	/** The stage's numeric parameter. */
+	value: NumberInputConfig;
+}
+
+/**
+ * Adds a stage toggle with its parameter's numeric input on the same row. The
+ * input is greyed out while the stage is off, so it is clear the parameter only
+ * takes effect once the stage is enabled.
+ *
+ * Shared by the audio-cleanup defaults in the settings tab and the per-run
+ * cleanup dialog, which render the same three stages: without one builder the
+ * two drifted, and only the dialog disabled the input of a stage that was off.
+ * @param containerEl - Container to render the row into
+ * @param config - The stage's label, enabled flag, and numeric parameter
+ */
+export function addStageRowTo(
+	containerEl: HTMLElement,
+	config: StageRowConfig,
+): void {
+	const setting = new Setting(containerEl)
+		.setName(config.name)
+		.setDesc(config.desc);
+	const numberInput = addNumberInputTo(setting, config.value);
+	numberInput.setDisabled(!config.getEnabled());
+	setting.addToggle((toggle) =>
+		toggle.setValue(config.getEnabled()).onChange((value) => {
+			void config.setEnabled(value);
+			numberInput.setDisabled(!value);
+		}),
+	);
+}
+
 /** Configuration for a model picker (pick from a saved, user-editable list). */
 export interface ModelPickerConfig {
 	/** Label for the picker row (e.g. "Deepgram model"). */
