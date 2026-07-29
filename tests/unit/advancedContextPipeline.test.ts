@@ -32,6 +32,9 @@ import { buildTranscript } from 'src/transcription/transcriptModel';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
 import { LLM_PROVIDER_IDS } from 'src/constants';
 import { mergeSettings } from 'src/settings/settingsSerialization';
+import { SessionCostTracker } from 'src/transcription/SessionCostTracker';
+import { estimateLlmCallCost, estimateStepCost } from 'src/transcription/costs';
+import { at, defined } from '../helpers/assertions';
 
 /**
  * Settings the agents are priced against. Required by the pipeline: there is
@@ -319,6 +322,41 @@ describe('generateContext', () => {
 		// so the most valuable token is listed last.
 		const sentenceCall = calls[calls.length - 1];
 		expect(sentenceCall?.user.trim().endsWith('Kubernetes')).toBe(true);
+	});
+
+	it('bills each agent one share, summing to the pre-run team line', async () => {
+		const { llm, calls } = scriptedLlm(replies);
+		const tracker = new SessionCostTracker();
+		const durationSeconds = 600;
+
+		await generateContext(russianBaseline(), llm, {
+			settings: RUN_SETTINGS,
+			language: 'ru',
+			glossary: ['gRPC', 'Kafka'],
+			durationSeconds,
+			costSink: tracker,
+		});
+
+		// The prompt-biased run makes exactly the six agent calls the estimate
+		// assumes for it.
+		expect(calls).toHaveLength(6);
+		// Each call is billed its own share, so the six charges add back up to
+		// the single 'contextAgents' line the pre-run breakdown shows. Charging
+		// the whole team per call (the prior bug) made the total six times this.
+		const teamLine = defined(
+			estimateStepCost('contextAgents', RUN_SETTINGS, durationSeconds)
+				.usd,
+		);
+		const perCall = defined(
+			estimateLlmCallCost('contextAgents', RUN_SETTINGS, durationSeconds),
+		);
+		expect(tracker.totalUsd()).toBeCloseTo(teamLine, 10);
+		expect(tracker.totalUsd()).toBeCloseTo(perCall * calls.length, 10);
+		// One vendor row, six priced calls, none unpriced.
+		const totals = tracker.engineTotals();
+		expect(totals).toHaveLength(1);
+		expect(at(totals, 0).runs).toBe(6);
+		expect(at(totals, 0).unpricedRuns).toBe(0);
 	});
 
 	it('keeps unvetted candidates when the decider call itself fails', async () => {

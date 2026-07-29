@@ -10,9 +10,12 @@
  * total".
  *
  * Running every call through here fixes that at the source: the step names
- * itself, the shared cost model prices it (the same {@link estimateStepCost}
- * the pre-run breakdown uses, so the estimate and the accounting cannot
- * disagree), and the result is reported to whatever sink the caller wired in.
+ * itself, the shared cost model prices the call ({@link estimateLlmCallCost},
+ * derived from the same step model the pre-run breakdown uses, so the estimate
+ * and the accounting cannot disagree), and the result is reported to whatever
+ * sink the caller wired in. Pricing is per call, so a step that makes several
+ * calls (the context agents) charges each call one member's share rather than
+ * the whole team's cost.
  *
  * Error handling stays with the caller on purpose - the three steps want
  * different things from a failure (post-processing falls back to the raw
@@ -22,7 +25,7 @@
  */
 
 import type { AudioRecorderSettings } from '../../settings/settingsSchema';
-import { estimateStepCost, type RunCostStepId } from '../costs';
+import { estimateLlmCallCost, type RunCostStepId } from '../costs';
 import type { LlmPrompt } from '../llmPostProcess';
 import type { LlmCompleteOptions, LlmProvider } from './LlmProvider';
 
@@ -86,15 +89,17 @@ export async function runLlmStep(request: LlmStepRequest): Promise<string> {
 		request.options,
 	);
 	// Reported only after the call returns: a failed call was not billed, and
-	// the caller's own error handling decides what happens next.
+	// the caller's own error handling decides what happens next. Priced per
+	// call, not per step: a step that makes several calls (the context agents)
+	// must not charge each call the whole team's cost.
 	request.costSink?.recordLlmCall(
 		request.llm.id,
 		request.step,
-		estimateStepCost(
+		estimateLlmCallCost(
 			request.step,
 			request.settings,
 			request.durationSeconds,
-		).usd,
+		),
 	);
 	return text;
 }

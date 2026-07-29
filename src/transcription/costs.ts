@@ -83,6 +83,9 @@ const CONTEXT_AGENT_CALL_ESTIMATE_KEYTERM = 4;
 const CONTEXT_AGENT_INPUT_TOKENS = 3000;
 const CONTEXT_AGENT_OUTPUT_TOKENS = 200;
 
+/** Label shared by the context-agents breakdown line and its per-call price. */
+const CONTEXT_AGENTS_ESTIMATE_LABEL = 'Advanced context agents';
+
 /**
  * Auto chapters read the transcript and emit a short list of titled
  * timestamps, so the output is a small fraction of the input.
@@ -517,7 +520,7 @@ const RUN_COST_STEPS: Record<RunCostStepId, RunCostStep> = {
 			return llmLine(
 				settings,
 				durationSeconds,
-				'Advanced context agents',
+				CONTEXT_AGENTS_ESTIMATE_LABEL,
 				(seconds) => estimatedContextAgentsUsage(seconds, callCount),
 			);
 		},
@@ -571,6 +574,40 @@ export function estimateStepCost(
 	durationSeconds: number | null,
 ): CostEstimateLine {
 	return RUN_COST_STEPS[step].line(settings, durationSeconds);
+}
+
+/**
+ * Prices one LLM call of a step, which is the unit {@link LlmCostSink} records:
+ * `recordLlmCall` fires once per completed call, so it must be given the cost of
+ * that one call, not of the whole step.
+ *
+ * For post-processing and auto chapters a run makes exactly one call, so a
+ * call's cost is the step's cost - {@link estimateStepCost} answers directly.
+ * The advanced context agents are the exception: the step is a team of
+ * `callCount` sequential calls, so its {@link estimateStepCost} line prices the
+ * whole team. Charging that per call would multiply the team cost by the number
+ * of calls in the session total. This prices one member instead (callCount = 1),
+ * so the per-call amounts summed across the run add back up to the team line the
+ * pre-run breakdown shows.
+ * @param step - Which billable step made the call
+ * @param settings - The run's settings snapshot
+ * @param durationSeconds - Material extent in seconds, null when unknown
+ * @returns The single call's cost in USD, or null when it cannot be priced
+ */
+export function estimateLlmCallCost(
+	step: RunCostStepId,
+	settings: AudioRecorderSettings,
+	durationSeconds: number | null,
+): number | null {
+	if (step === 'contextAgents') {
+		return llmLine(
+			settings,
+			durationSeconds,
+			CONTEXT_AGENTS_ESTIMATE_LABEL,
+			(seconds) => estimatedContextAgentsUsage(seconds, 1),
+		).usd;
+	}
+	return estimateStepCost(step, settings, durationSeconds).usd;
 }
 
 /**

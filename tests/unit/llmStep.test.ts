@@ -8,7 +8,7 @@
 
 import { runLlmStep, type LlmCostSink } from 'src/transcription/llm/llmStep';
 import { SessionCostTracker } from 'src/transcription/SessionCostTracker';
-import { estimateStepCost } from 'src/transcription/costs';
+import { estimateLlmCallCost, estimateStepCost } from 'src/transcription/costs';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { LLM_PROVIDER_IDS } from 'src/constants';
 import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
@@ -188,5 +188,50 @@ describe('SessionCostTracker as an LLM cost sink', () => {
 
 		expect(tracker.totalUsd()).toBe(0);
 		expect(tracker.unpricedRuns()).toBe(1);
+	});
+});
+
+describe('estimateLlmCallCost prices one call, not the whole step', () => {
+	it('equals the step cost for the single-call steps', () => {
+		// Post-processing and auto chapters each make one call, so a call's cost
+		// is the step's cost.
+		for (const step of ['postProcess', 'autoChapters'] as const) {
+			expect(estimateLlmCallCost(step, settings, 600)).toBe(
+				estimateStepCost(step, settings, 600).usd,
+			);
+		}
+	});
+
+	it('bills a context-agent call one member share, below the team line', () => {
+		const perCall = defined(
+			estimateLlmCallCost('contextAgents', settings, 600),
+		);
+		const team = defined(
+			estimateStepCost('contextAgents', settings, 600).usd,
+		);
+		// The team is several sequential calls, so one call must cost a fraction
+		// of it; charging the team per call is what multiplied the session total.
+		expect(perCall).toBeGreaterThan(0);
+		expect(perCall).toBeLessThan(team);
+	});
+
+	it('records one call as one member share, so N calls sum to N shares', async () => {
+		const CALLS = 3;
+		const tracker = new SessionCostTracker();
+		for (let i = 0; i < CALLS; i++) {
+			await runLlmStep({
+				step: 'contextAgents',
+				llm: stubLlm(),
+				prompt: { system: 's', user: 'u' },
+				maxTokens: 100,
+				settings,
+				durationSeconds: 600,
+				costSink: tracker,
+			});
+		}
+		const perCall = defined(
+			estimateLlmCallCost('contextAgents', settings, 600),
+		);
+		expect(tracker.totalUsd()).toBeCloseTo(perCall * CALLS, 10);
 	});
 });
