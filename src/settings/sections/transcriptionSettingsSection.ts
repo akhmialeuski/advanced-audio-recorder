@@ -17,13 +17,14 @@ import {
 	MAX_ADVANCED_SECOND_PASS_MIN_RATIO,
 	ADVANCED_SECOND_PASS_RATIO_STEP,
 	TRANSCRIPTION_PROVIDER_IDS,
-	WHISPER_API_MODELS_DOC_URL,
-	DEEPGRAM_MODELS_DOC_URL,
-	GEMINI_MODELS_DOC_URL,
 	LOCAL_WHISPER_MODEL_NAMES,
 	LOCAL_WHISPER_MODELS_DOC_URL,
 } from '../../constants';
 import { selectedLlmVendor } from '../../transcription/llm/vendors';
+import {
+	selectedTranscriptionEngine,
+	type EngineCredentials,
+} from '../../transcription/providers/engines';
 import {
 	advancedTwoPassEnabled,
 	applyLlmProviderDefaults,
@@ -157,14 +158,16 @@ export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
 		});
 	}
 
+	// The chunk size precedes the engine's own fields, matching the order the
+	// Whisper API section has always had.
 	if (s.transcriptionProvider === TRANSCRIPTION_PROVIDER_IDS.WHISPER_API) {
-		renderWhisperApiSettings(ctx);
-	} else if (
-		s.transcriptionProvider === TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM
-	) {
-		renderDeepgramSettings(ctx);
-	} else if (s.transcriptionProvider === TRANSCRIPTION_PROVIDER_IDS.GEMINI) {
-		renderGeminiSettings(ctx);
+		renderWhisperChunkSize(ctx);
+	}
+	// A cloud engine renders base URL, key, and model picker from its
+	// descriptor; the local engine has file paths instead of credentials.
+	const credentials = selectedTranscriptionEngine(s).credentials;
+	if (credentials) {
+		renderCloudEngineSettings(ctx, credentials);
 	} else {
 		renderLocalWhisperSettings(ctx);
 	}
@@ -478,8 +481,51 @@ function renderDictionaryProfiles(ctx: SettingsSectionContext): void {
 	});
 }
 
-/** Whisper API engine fields (chunk size, base URL, key, model). */
-function renderWhisperApiSettings(ctx: SettingsSectionContext): void {
+/**
+ * The cloud-engine fields: base URL, API key, and model picker, all bound
+ * through the selected engine's descriptor. The three cloud engines differ only
+ * in their labels and which settings fields they address, both of which the
+ * registry owns, so one renderer covers them all.
+ * @param ctx - Section context
+ */
+function renderCloudEngineSettings(
+	ctx: SettingsSectionContext,
+	credentials: EngineCredentials,
+): void {
+	const s = ctx.settings;
+	addText(ctx, {
+		name: credentials.baseUrlFieldName,
+		desc: credentials.baseUrlFieldDesc,
+		get: () => credentials.baseUrl(s),
+		set: (v) => credentials.setBaseUrl(s, v),
+	});
+	addText(ctx, {
+		name: credentials.keyFieldName,
+		desc: credentials.keyFieldDesc,
+		get: () => credentials.apiKey(s),
+		set: (v) => credentials.setApiKey(s, v),
+		secret: true,
+	});
+	addModelPicker(ctx, {
+		name: credentials.modelPickerName,
+		desc: credentials.modelPickerDesc,
+		helpLink: {
+			label: credentials.modelsDocLabel,
+			url: credentials.modelsDocUrl,
+		},
+		getModels: () => credentials.models(s),
+		setModels: (models) => credentials.setModels(s, models),
+		getSelected: () => selectedTranscriptionEngine(s).model(s),
+		setSelected: (id) => credentials.setModel(s, id),
+	});
+}
+
+/**
+ * The upload chunk size, offered only for the Whisper API: it is the one engine
+ * with a per-request byte ceiling low enough that long recordings are split.
+ * @param ctx - Section context
+ */
+function renderWhisperChunkSize(ctx: SettingsSectionContext): void {
 	const s = ctx.settings;
 	addNumberInput(ctx, {
 		name: 'Upload chunk size',
@@ -489,91 +535,6 @@ function renderWhisperApiSettings(ctx: SettingsSectionContext): void {
 		step: 1,
 		get: () => s.transcriptionChunkMb,
 		set: (v) => (s.transcriptionChunkMb = v),
-	});
-	addText(ctx, {
-		name: 'Whisper API base URL',
-		desc: 'OpenAI-compatible endpoint base (e.g. https://api.openai.com/v1 or a Groq URL).',
-		get: () => s.whisperApiBaseUrl,
-		set: (v) => (s.whisperApiBaseUrl = v),
-	});
-	addText(ctx, {
-		name: 'Whisper API key',
-		desc: 'Stored in plugin data on this device. Avoid syncing data.json to untrusted locations.',
-		get: () => s.whisperApiKey,
-		set: (v) => (s.whisperApiKey = v),
-		secret: true,
-	});
-	addModelPicker(ctx, {
-		name: 'Whisper model',
-		desc: 'OpenAI: whisper-1. Groq and other hosts: whisper-large-v3, whisper-large-v3-turbo. The model must support verbose_json with timestamps.',
-		helpLink: {
-			label: 'Whisper API models',
-			url: WHISPER_API_MODELS_DOC_URL,
-		},
-		getModels: () => s.whisperApiModels,
-		setModels: (models) => (s.whisperApiModels = models),
-		getSelected: () => s.whisperApiModel,
-		setSelected: (id) => (s.whisperApiModel = id),
-	});
-}
-
-/** Deepgram engine fields (base URL, key, model). */
-function renderDeepgramSettings(ctx: SettingsSectionContext): void {
-	const s = ctx.settings;
-	addText(ctx, {
-		name: 'Deepgram base URL',
-		desc: 'Deepgram API base (default https://api.deepgram.com/v1).',
-		get: () => s.deepgramBaseUrl,
-		set: (v) => (s.deepgramBaseUrl = v),
-	});
-	addText(ctx, {
-		name: 'Deepgram API key',
-		desc: 'Stored in plugin data on this device. Avoid syncing data.json to untrusted locations.',
-		get: () => s.deepgramApiKey,
-		set: (v) => (s.deepgramApiKey = v),
-		secret: true,
-	});
-	addModelPicker(ctx, {
-		name: 'Deepgram model',
-		desc: 'Pick a Deepgram model (e.g. nova-3, nova-2-meeting, enhanced-phonecall). Files up to 2 GB are sent whole for consistent speaker labels.',
-		helpLink: {
-			label: 'Deepgram model list',
-			url: DEEPGRAM_MODELS_DOC_URL,
-		},
-		getModels: () => s.deepgramModels,
-		setModels: (models) => (s.deepgramModels = models),
-		getSelected: () => s.deepgramModel,
-		setSelected: (id) => (s.deepgramModel = id),
-	});
-}
-
-/** Google Gemini engine fields (base URL, key, model). */
-function renderGeminiSettings(ctx: SettingsSectionContext): void {
-	const s = ctx.settings;
-	addText(ctx, {
-		name: 'Gemini base URL',
-		desc: 'Gemini API base (default https://generativelanguage.googleapis.com).',
-		get: () => s.geminiBaseUrl,
-		set: (v) => (s.geminiBaseUrl = v),
-	});
-	addText(ctx, {
-		name: 'Gemini API key',
-		desc: 'Stored in plugin data on this device. Avoid syncing data.json to untrusted locations.',
-		get: () => s.geminiApiKey,
-		set: (v) => (s.geminiApiKey = v),
-		secret: true,
-	});
-	addModelPicker(ctx, {
-		name: 'Gemini model',
-		desc: 'Pick a Gemini model (e.g. gemini-3.5-flash, gemini-2.5-pro). The whole recording is uploaded via the File API for consistent speaker labels.',
-		helpLink: {
-			label: 'Gemini model list',
-			url: GEMINI_MODELS_DOC_URL,
-		},
-		getModels: () => s.geminiModels,
-		setModels: (models) => (s.geminiModels = models),
-		getSelected: () => s.geminiModel,
-		setSelected: (id) => (s.geminiModel = id),
 	});
 }
 

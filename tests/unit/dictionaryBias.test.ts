@@ -15,10 +15,10 @@ import {
 	WHISPER_PROMPT_TOKEN_LIMIT,
 	deepgramBiasMechanism,
 	describeDictionaryOmission,
-	planDictionaryBias,
 	termsWithinWhisperPrompt,
 	tokenUpperBound,
 } from 'src/transcription/dictionaryBias';
+import { planDictionaryBias } from 'src/transcription/providers/engines';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 
 /** Builds n unique terms, wide enough to blow past the prompt window. */

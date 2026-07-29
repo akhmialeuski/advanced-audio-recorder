@@ -17,7 +17,10 @@ import {
 } from '../../constants';
 import { isLocalTranscriptionSupported } from '../../platform/capabilities';
 import type { TranscriptionProviderId } from '../../settings/settingsSchema';
-import type { ProviderCapabilities } from './TranscriptionProvider';
+import type {
+	AdvancedBiasChannel,
+	ProviderCapabilities,
+} from './TranscriptionProvider';
 
 /**
  * OpenAI-compatible Whisper API. OpenAI's `whisper-1` does not return speaker
@@ -30,6 +33,7 @@ export const WHISPER_API_CAPABILITIES: ProviderCapabilities = {
 	supportsDiarization: false,
 	// OpenAI Whisper accepts a `prompt` that seeds recognition with spellings.
 	supportsDictionary: true,
+	biasChannel: 'prompt',
 };
 
 /** Deepgram pre-recorded API: diarizes a whole request with stable labels. */
@@ -40,6 +44,7 @@ export const DEEPGRAM_CAPABILITIES: ProviderCapabilities = {
 	supportsDiarization: true,
 	// Deepgram biases via keyterm (nova-3) or keywords (nova-2 and older).
 	supportsDictionary: true,
+	biasChannel: 'keyterm',
 };
 
 /** Local whisper.cpp: no upload limit, needs decoded WAV, no diarization. */
@@ -50,6 +55,7 @@ export const LOCAL_WHISPER_CAPABILITIES: ProviderCapabilities = {
 	supportsDiarization: false,
 	// whisper.cpp accepts an initial prompt via the --prompt CLI flag.
 	supportsDictionary: true,
+	biasChannel: 'prompt',
 };
 
 /**
@@ -68,6 +74,7 @@ export const GEMINI_CAPABILITIES: ProviderCapabilities = {
 	supportsDiarization: true,
 	// Gemini biases via the instruction text sent alongside the audio.
 	supportsDictionary: true,
+	biasChannel: 'prompt',
 };
 
 /** Capabilities for every engine, keyed by its settings id. */
@@ -107,6 +114,19 @@ export function effectiveDiarize(
 	requested: boolean,
 ): boolean {
 	return requested && providerSupportsDiarization(id);
+}
+
+/**
+ * The representation of generated biasing context this engine reads. The
+ * single source of truth shared by the context pipeline (which builds only
+ * what the channel needs) and the second pass's bias routing.
+ * @param id - Selected transcription engine id
+ * @returns The channel the engine biases through
+ */
+export function providerBiasChannel(
+	id: TranscriptionProviderId,
+): AdvancedBiasChannel {
+	return TRANSCRIPTION_PROVIDER_CAPABILITIES[id].biasChannel;
 }
 
 /**

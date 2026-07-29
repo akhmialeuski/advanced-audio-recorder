@@ -71,6 +71,13 @@ export interface AudioPayload {
 }
 
 /**
+ * How an engine carries biasing terms: a Whisper-style prompt sentence, or a
+ * flat keyword list. A property of the engine's API, so it lives with the rest
+ * of its capabilities rather than as a hard-coded id check at the call site.
+ */
+export type AdvancedBiasChannel = 'prompt' | 'keyterm';
+
+/**
  * What a provider can accept in a single request. The service uses these
  * to decide whether to send the original file untouched or to decode and
  * split it into chunks that stay within the provider's limit.
@@ -110,6 +117,13 @@ export interface ProviderCapabilities {
 	 * would be silently dropped and mislead the user.
 	 */
 	supportsDictionary: boolean;
+	/**
+	 * Which representation of the advanced mode's generated context this engine
+	 * reads. The context pipeline builds only what the channel needs, so a
+	 * keyword-biased engine never pays for a prompt sentence it would discard,
+	 * and the second pass routes the context onto the matching request field.
+	 */
+	biasChannel: AdvancedBiasChannel;
 }
 
 /** A provider that transcribes a single audio payload. */

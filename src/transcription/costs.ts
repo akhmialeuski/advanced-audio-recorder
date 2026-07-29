@@ -12,7 +12,6 @@
  * @module transcription/costs
  */
 
-import { TRANSCRIPTION_PROVIDER_IDS } from '../constants';
 import type {
 	AudioRecorderSettings,
 	LlmProviderId,
@@ -23,30 +22,18 @@ import {
 	advancedBiasChannel,
 	advancedTwoPassWillRun,
 } from './advanced/advancedBias';
-import {
-	LLM_TASK_LABELS,
-	TRANSCRIPTION_PROVIDER_LABELS,
-	TRANSCRIPTION_PROVIDER_PRICING_URLS,
-} from '../settings/labels';
+import { LLM_TASK_LABELS } from '../settings/labels';
 import { llmVendor, selectedLlmVendor } from './llm/vendors';
+import {
+	matchRate,
+	selectedTranscriptionEngine,
+	transcriptionEngine,
+	type EnginePricing,
+} from './providers/engines';
+
+export type { EnginePricing } from './providers/engines';
 import type { LlmTask } from './llmPostProcess';
 import type { TranscriptionUsage } from './TranscriptTypes';
-
-/**
- * How an engine bills a transcription (or post-processing) request. A
- * token-billed engine prices the audio and text portions of the prompt
- * separately, because providers such as Gemini charge audio input at a
- * higher rate than text input.
- */
-export type EnginePricing =
-	| { kind: 'free' }
-	| { kind: 'perMinute'; usdPerMinute: number }
-	| {
-			kind: 'perToken';
-			usdPerMillionAudioInput: number;
-			usdPerMillionTextInput: number;
-			usdPerMillionOutput: number;
-	  };
 
 /**
  * Audio tokens per second for Gemini models (Google's documented rate for
@@ -103,91 +90,9 @@ export const CONTEXT_AGENT_OUTPUT_TOKENS = 200;
 export const CHAPTERS_OUTPUT_TOKEN_RATIO = 0.1;
 
 /**
- * Approximate per-minute rates by model-id fragment, matched longest
- * fragment first so `whisper-large-v3-turbo` never resolves through
- * `whisper-large-v3` and `distil-whisper-large-v3-en` (a distinct, cheaper
- * model) never resolves through the full `whisper-large-v3` rate. Values
- * are USD per audio minute.
- */
-const WHISPER_API_RATES: readonly [string, number][] = [
-	// Groq-hosted Whisper models (priced per hour: $0.02 / $0.04 / $0.111).
-	['distil-whisper-large-v3-en', 0.02 / 60],
-	['whisper-large-v3-turbo', 0.04 / 60],
-	['whisper-large-v3', 0.111 / 60],
-	// OpenAI whisper-1.
-	['whisper-1', 0.006],
-];
-
-/** Approximate Deepgram pre-recorded pay-as-you-go rates, USD per minute. */
-const DEEPGRAM_RATES: readonly [string, number][] = [
-	['enhanced', 0.0145],
-	['whisper', 0.0048],
-	['nova-3', 0.0043],
-	['nova-2', 0.0043],
-	['nova', 0.0043],
-	['base', 0.0125],
-];
-
-/** A token-billed rate: USD per million audio-input, text-input, and output tokens. */
-interface TokenRate {
-	audioInput: number;
-	textInput: number;
-	output: number;
-}
-
-/**
- * Approximate Gemini transcription rates. On the 2.5 Flash tier audio input
- * is billed higher than text input, so the two are kept apart; the 2.5 Pro
- * tier and the whole 3.x generation bill every input modality at one rate.
- */
-const GEMINI_RATES: readonly [string, TokenRate][] = [
-	['gemini-3.6-flash', { audioInput: 1.5, textInput: 1.5, output: 7.5 }],
-	['gemini-3.5-flash', { audioInput: 1.5, textInput: 1.5, output: 9 }],
-	['gemini-3.5-flash-lite', { audioInput: 0.3, textInput: 0.3, output: 2.5 }],
-	['gemini-2.5-flash-lite', { audioInput: 0.3, textInput: 0.1, output: 0.4 }],
-	['gemini-2.5-flash', { audioInput: 1.0, textInput: 0.3, output: 2.5 }],
-	['gemini-2.5-pro', { audioInput: 1.25, textInput: 1.25, output: 10 }],
-	['gemini-2.0-flash', { audioInput: 0.7, textInput: 0.1, output: 0.4 }],
-];
-
-/**
- * Finds the rate whose model-id fragment appears in the (normalized)
- * model id, preferring the longest fragment so more specific entries win.
- */
-function matchRate<T>(
-	rates: readonly [string, T][],
-	model: string,
-): T | undefined {
-	const normalized = model.trim().toLowerCase();
-	let best: { length: number; value: T } | undefined;
-	for (const [fragment, value] of rates) {
-		if (
-			normalized.includes(fragment) &&
-			(!best || fragment.length > best.length)
-		) {
-			best = { length: fragment.length, value };
-		}
-	}
-	return best?.value;
-}
-
-/** Wraps a matched {@link TokenRate} as per-token pricing, or null when unmatched. */
-function perTokenPricing(rate: TokenRate | undefined): EnginePricing | null {
-	return rate === undefined
-		? null
-		: {
-				kind: 'perToken',
-				usdPerMillionAudioInput: rate.audioInput,
-				usdPerMillionTextInput: rate.textInput,
-				usdPerMillionOutput: rate.output,
-			};
-}
-
-/**
- * Resolves the pricing for a transcription engine and model. Model ids are
- * free-form user-editable strings, so an id no built-in rate matches
- * yields null ("no estimate") instead of a wrong number. The local engine
- * is always free.
+ * Resolves the pricing for a transcription engine and model, from the engine's
+ * own rate table. Model ids are free-form user-editable strings, so an id no
+ * built-in rate matches yields null ("no estimate") instead of a wrong number.
  * @param engineId - Transcription engine id
  * @param model - Selected model id for that engine
  */
@@ -195,26 +100,7 @@ export function resolveEnginePricing(
 	engineId: TranscriptionProviderId,
 	model: string,
 ): EnginePricing | null {
-	switch (engineId) {
-		case TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER:
-			return { kind: 'free' };
-		case TRANSCRIPTION_PROVIDER_IDS.WHISPER_API: {
-			const rate = matchRate(WHISPER_API_RATES, model);
-			return rate === undefined
-				? null
-				: { kind: 'perMinute', usdPerMinute: rate };
-		}
-		case TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM: {
-			const rate = matchRate(DEEPGRAM_RATES, model);
-			return rate === undefined
-				? null
-				: { kind: 'perMinute', usdPerMinute: rate };
-		}
-		case TRANSCRIPTION_PROVIDER_IDS.GEMINI:
-			return perTokenPricing(matchRate(GEMINI_RATES, model));
-		default:
-			return null;
-	}
+	return transcriptionEngine(engineId).pricing(model);
 }
 
 /**
@@ -229,13 +115,15 @@ export function resolveLlmPricing(
 	model: string,
 ): EnginePricing | null {
 	const rate = matchRate(llmVendor(providerId).rates, model);
-	return perTokenPricing(
-		rate && {
-			audioInput: rate.input,
-			textInput: rate.input,
-			output: rate.output,
-		},
-	);
+	if (rate === undefined) {
+		return null;
+	}
+	return {
+		kind: 'perToken',
+		usdPerMillionAudioInput: rate.input,
+		usdPerMillionTextInput: rate.input,
+		usdPerMillionOutput: rate.output,
+	};
 }
 
 /**
@@ -248,16 +136,7 @@ export function selectedEngineModel(
 	settings: AudioRecorderSettings,
 	engineId: TranscriptionProviderId,
 ): string {
-	switch (engineId) {
-		case TRANSCRIPTION_PROVIDER_IDS.WHISPER_API:
-			return settings.whisperApiModel;
-		case TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM:
-			return settings.deepgramModel;
-		case TRANSCRIPTION_PROVIDER_IDS.GEMINI:
-			return settings.geminiModel;
-		default:
-			return '';
-	}
+	return transcriptionEngine(engineId).model(settings);
 }
 
 /**
@@ -525,17 +404,17 @@ function transcriptionEstimateLine(
 	settings: AudioRecorderSettings,
 	durationSeconds: number | null,
 ): CostEstimateLine {
-	const engineId = settings.transcriptionProvider;
-	const model = selectedEngineModel(settings, engineId);
-	const providerName = TRANSCRIPTION_PROVIDER_LABELS[engineId];
-	const pricingUrl = TRANSCRIPTION_PROVIDER_PRICING_URLS[engineId];
+	const engine = selectedTranscriptionEngine(settings);
+	const model = engine.model(settings);
+	const providerName = engine.label;
+	const pricingUrl = engine.pricingUrl;
 	const passes = transcriptionPasses(settings);
 	const label =
 		passes > 1
 			? `Transcription (${String(passes)} passes)`
 			: 'Transcription';
 	const base = { label, providerName, model, pricingUrl };
-	const pricing = resolveEnginePricing(engineId, model);
+	const pricing = engine.pricing(model);
 	if (pricing?.kind === 'free') {
 		return { ...base, pricingUrl: undefined, usd: 0, free: true };
 	}
@@ -617,10 +496,8 @@ const RUN_COST_STEPS: Record<RunCostStepId, RunCostStep> = {
 		// The audio is always transcribed; only the pass count varies.
 		enabled: () => true,
 		needsDuration: (settings) => {
-			const pricing = resolveEnginePricing(
-				settings.transcriptionProvider,
-				selectedEngineModel(settings, settings.transcriptionProvider),
-			);
+			const engine = selectedTranscriptionEngine(settings);
+			const pricing = engine.pricing(engine.model(settings));
 			return pricing !== null && pricing.kind !== 'free';
 		},
 	},

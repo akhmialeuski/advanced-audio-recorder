@@ -7,16 +7,14 @@
  * and older bias with keyword boosting (at most {@link DEEPGRAM_KEYWORDS_LIMIT}
  * terms), Deepgram's hosted Whisper models support neither, and the Whisper
  * prompt used by the OpenAI API and local whisper.cpp is bounded by a
- * ~{@link WHISPER_PROMPT_TOKEN_LIMIT} token window. This module is the single
- * place those rules live, so the service applies exactly the terms it tells the
- * user about and no provider silently drops, over-sends, or over-tokenizes
- * terms in a way the engine would reject.
+ * ~{@link WHISPER_PROMPT_TOKEN_LIMIT} token window. This module holds the
+ * limits and the term-window primitives; each engine descriptor composes them
+ * into its own plan (see `planDictionaryBias` in providers/engines), so the
+ * service applies exactly the terms it tells the user about and no provider
+ * silently drops, over-sends, or over-tokenizes terms in a way the engine
+ * would reject.
  * @module transcription/dictionaryBias
  */
-
-import { TRANSCRIPTION_PROVIDER_IDS } from '../constants';
-import type { TranscriptionProviderId } from '../settings/settingsSchema';
-import { effectiveDictionary } from './providers/capabilities';
 
 /**
  * Deepgram accepts at most this many keyterms in a single pre-recorded request
@@ -188,79 +186,6 @@ export function termsWithinDeepgramKeyterm(terms: string[]): string[] {
 		false,
 		DEEPGRAM_KEYTERM_LIMIT,
 	);
-}
-
-/**
- * Plans the dictionary biasing for a run: which terms are sent to the provider
- * and which are dropped because the engine cannot bias or a request limit is
- * exceeded. The provider-level capability gate is applied first (a future
- * engine that cannot bias at all), then the per-model Deepgram rules and the
- * Whisper prompt window.
- * @param engineId - Selected transcription engine id
- * @param deepgramModel - Configured Deepgram model id (consulted only for Deepgram)
- * @param terms - The user's parsed, de-duplicated dictionary terms
- * @returns The applied and omitted terms, with the reason when any were dropped
- */
-export function planDictionaryBias(
-	engineId: TranscriptionProviderId,
-	deepgramModel: string,
-	terms: string[],
-): DictionaryBiasPlan {
-	// A future engine with supportsDictionary=false drops everything here.
-	const gated = effectiveDictionary(engineId, terms);
-	if (!gated.length) {
-		return { applied: [], omitted: [] };
-	}
-
-	if (engineId === TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM) {
-		const mechanism = deepgramBiasMechanism(deepgramModel);
-		if (mechanism === null) {
-			return { applied: [], omitted: gated, reason: 'model-unsupported' };
-		}
-		if (mechanism === 'keyterm') {
-			const applied = termsWithinDeepgramKeyterm(gated);
-			if (applied.length < gated.length) {
-				return {
-					applied,
-					omitted: gated.slice(applied.length),
-					// Stopping at the entry cap means the count bound bit; stopping
-					// earlier means the aggregate token budget did.
-					reason:
-						applied.length >= DEEPGRAM_KEYTERM_LIMIT
-							? 'keyterm-limit'
-							: 'keyterm-token-budget',
-				};
-			}
-			return { applied, omitted: [] };
-		}
-		// Nova-2 and older keyword boosting: bounded by entry count only.
-		if (gated.length > DEEPGRAM_KEYWORDS_LIMIT) {
-			return {
-				applied: gated.slice(0, DEEPGRAM_KEYWORDS_LIMIT),
-				omitted: gated.slice(DEEPGRAM_KEYWORDS_LIMIT),
-				reason: 'keywords-limit',
-			};
-		}
-		return { applied: gated, omitted: [] };
-	}
-
-	if (
-		engineId === TRANSCRIPTION_PROVIDER_IDS.WHISPER_API ||
-		engineId === TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER
-	) {
-		const applied = termsWithinWhisperPrompt(gated);
-		if (applied.length < gated.length) {
-			return {
-				applied,
-				omitted: gated.slice(applied.length),
-				reason: 'prompt-window',
-			};
-		}
-		return { applied, omitted: [] };
-	}
-
-	// Gemini folds terms into a large instruction context with no hard cap.
-	return { applied: gated, omitted: [] };
 }
 
 /**

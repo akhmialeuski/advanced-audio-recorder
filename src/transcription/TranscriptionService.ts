@@ -51,10 +51,8 @@ import {
 	type TranscriptMarkdownOptions,
 } from './transcriptFormat';
 import { buildPostProcessPrompt } from './llmPostProcess';
-import {
-	describeDictionaryOmission,
-	planDictionaryBias,
-} from './dictionaryBias';
+import { describeDictionaryOmission } from './dictionaryBias';
+import { planDictionaryBias } from './providers/engines';
 import {
 	advancedBiasChannel,
 	advancedBiasUnsupportedReason,

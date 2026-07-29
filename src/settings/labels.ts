@@ -4,8 +4,11 @@
  * @module settings/labels
  */
 
-import { TRANSCRIPTION_PROVIDER_IDS } from '../constants';
 import { LLM_VENDOR_IDS, LLM_VENDORS } from '../transcription/llm/vendors';
+import {
+	TRANSCRIPTION_ENGINE_IDS,
+	TRANSCRIPTION_ENGINES,
+} from '../transcription/providers/engines';
 import type {
 	TranscriptDestination,
 	TranscriptFileFormat,
@@ -13,16 +16,17 @@ import type {
 import type { LlmTask } from '../transcription/llmPostProcess';
 import type { LlmProviderId, TranscriptionProviderId } from './settingsSchema';
 
-/** Display labels for each transcription engine (single source for UI). */
+/**
+ * Display labels for each transcription engine, derived from the engine
+ * registry so the dropdown, the cost estimate, and the provider itself can
+ * never disagree about an engine's name.
+ */
 export const TRANSCRIPTION_PROVIDER_LABELS: Record<
 	TranscriptionProviderId,
 	string
-> = {
-	[TRANSCRIPTION_PROVIDER_IDS.WHISPER_API]: 'Whisper API (OpenAI-compatible)',
-	[TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM]: 'Deepgram',
-	[TRANSCRIPTION_PROVIDER_IDS.GEMINI]: 'Google Gemini',
-	[TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER]: 'Local whisper.cpp (desktop)',
-};
+> = Object.fromEntries(
+	TRANSCRIPTION_ENGINE_IDS.map((id) => [id, TRANSCRIPTION_ENGINES[id].label]),
+) as Record<TranscriptionProviderId, string>;
 
 /** Display labels for each transcript destination (single source for UI). */
 export const TRANSCRIPT_DESTINATION_LABELS: Record<
@@ -64,20 +68,20 @@ export const LLM_PROVIDER_LABELS: Record<LlmProviderId, string> =
 	) as Record<LlmProviderId, string>;
 
 /**
- * Public pricing pages per transcription engine, linked from the cost
- * estimate so the user can check the current rates against the plugin's
- * built-in approximations. Kept in one place (not inlined at the call
- * site) so a moved page is a single edit; the free local engine has no
- * entry. These are external URLs owned by the providers and can change.
+ * Public pricing pages per transcription engine, linked from the cost estimate
+ * so the user can check the current rates against the plugin's built-in
+ * approximations. Derived from the engine registry, which owns the URL
+ * alongside the rate table it should be checked against; the free local engine
+ * has no entry.
  */
 export const TRANSCRIPTION_PROVIDER_PRICING_URLS: Partial<
 	Record<TranscriptionProviderId, string>
-> = {
-	[TRANSCRIPTION_PROVIDER_IDS.WHISPER_API]: 'https://openai.com/api/pricing/',
-	[TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM]: 'https://deepgram.com/pricing',
-	[TRANSCRIPTION_PROVIDER_IDS.GEMINI]:
-		'https://ai.google.dev/gemini-api/docs/pricing',
-};
+> = Object.fromEntries(
+	TRANSCRIPTION_ENGINE_IDS.flatMap((id) => {
+		const url = TRANSCRIPTION_ENGINES[id].pricingUrl;
+		return url ? [[id, url] as const] : [];
+	}),
+);
 
 /**
  * Public pricing pages per LLM post-processing provider, linked from the cost
