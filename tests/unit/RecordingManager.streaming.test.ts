@@ -455,16 +455,23 @@ describe('RecordingManager', () => {
 			writeBinary.mockRejectedValueOnce(new Error('disk full'));
 			sendChunk();
 			await flushAsync();
+			// Await the write chain itself rather than trusting flushAsync's
+			// fixed macrotask count: under load the failure handler (which emits
+			// the Notice) can settle a turn later, which would otherwise leave
+			// this at 0 and leak the Notice into the next test.
+			await expect(target.pendingWrite).resolves.toBeUndefined();
 			expect(getWriteFailureNotices()).toHaveLength(1);
 
 			// Successful flush ends the failure streak
 			sendChunk();
 			await flushAsync();
+			await expect(target.pendingWrite).resolves.toBeUndefined();
 
 			// New streak: a second Notice is allowed again
 			writeBinary.mockRejectedValueOnce(new Error('disk full'));
 			sendChunk();
 			await flushAsync();
+			await expect(target.pendingWrite).resolves.toBeUndefined();
 			expect(getWriteFailureNotices()).toHaveLength(2);
 
 			await manager.stopRecording();
