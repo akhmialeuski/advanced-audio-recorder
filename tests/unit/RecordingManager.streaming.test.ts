@@ -18,6 +18,8 @@ import {
 	createRecordingMockApp,
 	flushAsync,
 	getChunkTarget,
+	installMediaRecorder,
+	installMediaRecorderFactory,
 	installRecordingMediaStubs,
 	makeFakeMarkerStore,
 	setDesktopPlatform,
@@ -144,11 +146,7 @@ describe('RecordingManager', () => {
 				),
 			};
 
-			(global as Record<string, unknown>).MediaRecorder = jest.fn(
-				() => mockMediaRecorder,
-			);
-			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
-				jest.fn().mockReturnValue(true);
+			installMediaRecorder(mockMediaRecorder);
 
 			const { getAudioStreams } = jest.requireMock(
 				'src/recording/AudioStreamHandler',
@@ -202,11 +200,7 @@ describe('RecordingManager', () => {
 				),
 			};
 
-			(global as Record<string, unknown>).MediaRecorder = jest.fn(
-				() => mockMediaRecorder,
-			);
-			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
-				jest.fn().mockReturnValue(true);
+			installMediaRecorder(mockMediaRecorder);
 
 			const { getAudioStreams } = jest.requireMock(
 				'src/recording/AudioStreamHandler',
@@ -225,11 +219,14 @@ describe('RecordingManager', () => {
 
 			await manager.startRecording();
 
-			const target = (
-				manager as unknown as {
-					chunkTargets: Array<{ bufferedBytes: number }>;
-				}
-			).chunkTargets[0];
+			const target = at(
+				(
+					manager as unknown as {
+						chunkTargets: Array<{ bufferedBytes: number }>;
+					}
+				).chunkTargets,
+				0,
+			);
 			target.bufferedBytes = 50 * 1024 * 1024 - 1;
 
 			const chunk = new Blob([new Uint8Array([1])], {
@@ -283,11 +280,7 @@ describe('RecordingManager', () => {
 				),
 			};
 
-			(global as Record<string, unknown>).MediaRecorder = jest.fn(
-				() => mockMediaRecorder,
-			);
-			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
-				jest.fn().mockReturnValue(true);
+			installMediaRecorder(mockMediaRecorder);
 
 			const { getAudioStreams } = jest.requireMock(
 				'src/recording/AudioStreamHandler',
@@ -347,13 +340,7 @@ describe('RecordingManager', () => {
 				makeFakeMarkerStore().store,
 			);
 
-			(global as Record<string, unknown>).MediaRecorder = jest.fn();
-			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
-				jest
-					.fn()
-					.mockImplementation(
-						(mime: string) => mime === 'audio/webm',
-					);
+			installMediaRecorder(undefined, (mime) => mime === 'audio/webm');
 
 			const { getAudioStreams } = jest.requireMock(
 				'src/recording/AudioStreamHandler',
@@ -636,11 +623,7 @@ describe('RecordingManager', () => {
 				),
 			};
 
-			(global as Record<string, unknown>).MediaRecorder = jest.fn(
-				() => mockMediaRecorder,
-			);
-			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
-				jest.fn().mockReturnValue(true);
+			installMediaRecorder(mockMediaRecorder);
 
 			setupStreams(1);
 
@@ -672,7 +655,7 @@ describe('RecordingManager', () => {
 				expect.stringMatching(/-part1\.wav$/),
 				expect.anything(),
 			);
-			const target = getInternals(manager).chunkTargets[0];
+			const target = at(getInternals(manager).chunkTargets, 0);
 			expect(target.partIndex).toBe(1);
 			expect(target.partPaths).toHaveLength(1);
 
@@ -760,7 +743,7 @@ describe('RecordingManager', () => {
 
 			// The assembled part is kept: the removed segments would
 			// otherwise be the only copy of the audio
-			const target = getInternals(manager).chunkTargets[0];
+			const target = at(getInternals(manager).chunkTargets, 0);
 			expect(target.partIndex).toBe(1);
 			expect(target.partPaths).toHaveLength(1);
 			const { Notice } = jest.requireMock('obsidian');
@@ -933,7 +916,7 @@ describe('RecordingManager', () => {
 			expect(Notice).toHaveBeenCalledWith(
 				'Failed to save recording part. Recording continues; data is kept for the next part.',
 			);
-			const target = getInternals(manager).chunkTargets[0];
+			const target = at(getInternals(manager).chunkTargets, 0);
 			expect(target.partIndex).toBe(0);
 			expect(target.partPaths).toHaveLength(0);
 			// Recorders were restarted despite the failure
@@ -965,7 +948,7 @@ describe('RecordingManager', () => {
 			expect(Notice).toHaveBeenCalledWith(
 				'Failed to save recording part. Recording continues; data is kept for the next part.',
 			);
-			const target = getInternals(manager).chunkTargets[0];
+			const target = at(getInternals(manager).chunkTargets, 0);
 			expect(target.partIndex).toBe(0);
 			expect(target.partPaths).toHaveLength(0);
 			// All captured bytes stay buffered: front portion plus the
@@ -1008,12 +991,10 @@ describe('RecordingManager', () => {
 
 			// Shared log capturing recorder construction vs part writes
 			const callLog: string[] = [];
-			(global as Record<string, unknown>).MediaRecorder = jest.fn(() => {
+			installMediaRecorderFactory(() => {
 				callLog.push('recorder-created');
 				return mockMediaRecorder;
 			});
-			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
-				jest.fn().mockReturnValue(true);
 			(mockApp.vault.createBinary as jest.Mock).mockImplementation(
 				(path: string) => {
 					if (/-part1\.webm$/.test(path)) {

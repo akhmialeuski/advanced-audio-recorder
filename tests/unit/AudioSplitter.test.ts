@@ -17,7 +17,7 @@ import {
 	detachTrailingBytes,
 	type WavLayout,
 } from 'src/recording/AudioSplitter';
-import { at } from '../helpers/assertions';
+import { at, defined } from '../helpers/assertions';
 import { PCM_BYTES_PER_SAMPLE } from 'src/audio/pcm';
 import { createWavHeader } from 'src/audio/WavEncoder';
 
@@ -261,7 +261,7 @@ describe('computeWavPartBytes', () => {
 		const wav = buildTestWav(1, 1000, 12000);
 		const layout = parseWavLayout(wav);
 
-		expect(computeWavPartBytes(layout, 2)).toBe(4000);
+		expect(computeWavPartBytes(defined(layout), 2)).toBe(4000);
 	});
 
 	it('should align the part size down to blockAlign', () => {
@@ -294,7 +294,7 @@ describe('buildWavPart', () => {
 		const wav = buildTestWav(1, 1000, 12000);
 		const layout = parseWavLayout(wav);
 
-		const parts = splitWav(wav, layout, 2);
+		const parts = splitWav(wav, defined(layout), 2);
 
 		expect(parts).toHaveLength(3);
 		for (const part of parts) {
@@ -307,12 +307,12 @@ describe('buildWavPart', () => {
 		const wav = buildTestWav(1, 1000, 10000);
 		const layout = parseWavLayout(wav);
 
-		const parts = splitWav(wav, layout, 2);
+		const parts = splitWav(wav, defined(layout), 2);
 
 		expect(parts).toHaveLength(3);
-		expect(parseWavLayout(parts[0])?.dataLength).toBe(4000);
-		expect(parseWavLayout(parts[1])?.dataLength).toBe(4000);
-		expect(parseWavLayout(parts[2])?.dataLength).toBe(2000);
+		expect(parseWavLayout(defined(parts[0]))?.dataLength).toBe(4000);
+		expect(parseWavLayout(defined(parts[1]))?.dataLength).toBe(4000);
+		expect(parseWavLayout(defined(parts[2]))?.dataLength).toBe(2000);
 	});
 
 	it('should cut on blockAlign boundaries for stereo data', () => {
@@ -321,7 +321,7 @@ describe('buildWavPart', () => {
 		const layout = parseWavLayout(wav);
 
 		// 1.5 s -> raw 6000 B, already aligned to 4
-		const parts = splitWav(wav, layout, 1.5);
+		const parts = splitWav(wav, defined(layout), 1.5);
 
 		expect(parts).toHaveLength(3);
 		for (const part of parts) {
@@ -334,7 +334,7 @@ describe('buildWavPart', () => {
 		const wav = buildTestWav(1, 1000, 6000);
 		const layout = parseWavLayout(wav);
 
-		const parts = splitWav(wav, layout, 1.5);
+		const parts = splitWav(wav, defined(layout), 1.5);
 
 		const reassembled: number[] = [];
 		for (const part of parts) {
@@ -354,7 +354,7 @@ describe('buildWavPart', () => {
 		const wav = buildTestWav(1, 1000, 6000);
 		const layout = parseWavLayout(wav);
 
-		const parts = splitWav(wav, layout, 2);
+		const parts = splitWav(wav, defined(layout), 2);
 
 		for (const part of parts) {
 			const view = new DataView(part);
@@ -366,7 +366,7 @@ describe('buildWavPart', () => {
 		const wav = buildTestWav(1, 1000, 10000);
 		const layout = parseWavLayout(wav);
 
-		const parts = splitWav(wav, layout, 2);
+		const parts = splitWav(wav, defined(layout), 2);
 
 		const expectedSizes = [4000, 4000, 2000];
 		parts.forEach((part, index) => {
@@ -384,7 +384,7 @@ describe('buildWavPart', () => {
 		const layout = parseWavLayout(wav);
 		expect(layout?.dataOffset).toBe(WAV_HEADER_SIZE + 18);
 
-		const parts = splitWav(wav, layout, 0.0025);
+		const parts = splitWav(wav, defined(layout), 0.0025);
 
 		expect(parts).toHaveLength(3);
 		const reassembled: number[] = [];
@@ -407,7 +407,7 @@ describe('buildWavPart', () => {
 		const wav = buildTestWav(1, 1000, 6000);
 		const layout = parseWavLayout(wav);
 
-		expect(splitWav(wav, layout, 0)).toEqual([]);
+		expect(splitWav(wav, defined(layout), 0)).toEqual([]);
 	});
 
 	it('should build a header-only part when the index starts at the data end', () => {
@@ -415,7 +415,7 @@ describe('buildWavPart', () => {
 		const layout = parseWavLayout(wav);
 
 		// start = 2 * 3000 = dataLength, so the part holds zero sample bytes
-		const part = buildWavPart(wav, layout, 3000, 2);
+		const part = buildWavPart(wav, defined(layout), 3000, 2);
 
 		expect(part.byteLength).toBe(WAV_HEADER_SIZE);
 		const view = new DataView(part);

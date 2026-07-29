@@ -15,6 +15,7 @@ import {
 import type { App } from 'obsidian';
 import {
 	createRecordingMockApp,
+	installMediaRecorder,
 	installRecordingMediaStubs,
 	makeFakeMarkerStore,
 	makeStatefulMarkerStore,
@@ -134,11 +135,7 @@ describe('RecordingManager', () => {
 				),
 			};
 
-			(global as Record<string, unknown>).MediaRecorder = jest.fn(
-				() => mockMediaRecorder,
-			);
-			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
-				jest.fn().mockReturnValue(true);
+			installMediaRecorder(mockMediaRecorder);
 
 			const { getAudioStreams } = jest.requireMock(
 				'src/recording/AudioStreamHandler',

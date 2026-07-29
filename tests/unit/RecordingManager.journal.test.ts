@@ -16,6 +16,7 @@ import {
 	installRecordingMediaStubs,
 	makeFakeMarkerStore,
 } from './helpers/recordingManagerTestKit';
+import { at } from '../helpers/assertions';
 
 // Mock obsidian module
 jest.mock('obsidian', () => ({
@@ -203,11 +204,14 @@ describe('RecordingManager', () => {
 			);
 
 			await manager.startRecording();
-			const target = (
-				manager as unknown as {
-					chunkTargets: { bufferedBytes: number }[];
-				}
-			).chunkTargets[0];
+			const target = at(
+				(
+					manager as unknown as {
+						chunkTargets: { bufferedBytes: number }[];
+					}
+				).chunkTargets,
+				0,
+			);
 			target.bufferedBytes = 50 * 1024 * 1024 - 1;
 			recorder.ondataavailable?.({
 				data: new Blob([new Uint8Array([1])], { type: 'audio/webm' }),
@@ -257,8 +261,10 @@ describe('RecordingManager', () => {
 			const { PcmStreamRecorder } = jest.requireMock(
 				'src/recording/PcmStreamRecorder',
 			);
-			const recorderInstance = (PcmStreamRecorder as jest.Mock).mock
-				.results[0].value as { stop: jest.Mock };
+			const recorderInstance = at(
+				(PcmStreamRecorder as jest.Mock).mock.results,
+				0,
+			).value as { stop: jest.Mock };
 			expect(recorderInstance.stop).toHaveBeenCalled();
 			expect(mockJournal.endSession).not.toHaveBeenCalled();
 		});

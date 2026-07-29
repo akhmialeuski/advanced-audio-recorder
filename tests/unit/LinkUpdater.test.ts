@@ -4,7 +4,7 @@
  */
 
 import { updateLinksInVault } from 'src/utils/LinkUpdater';
-import { at } from '../helpers/assertions';
+import { at, defined } from '../helpers/assertions';
 import { App, TFile } from 'obsidian';
 
 jest.mock('obsidian', () => ({
@@ -105,7 +105,7 @@ describe('updateLinksInVault', () => {
 		const generateMarkdownLink = jest.fn();
 		const processMock = jest.fn(
 			async (note: TFile, transform: (content: string) => string) => {
-				contents[note.path] = transform(contents[note.path]);
+				contents[note.path] = transform(defined(contents[note.path]));
 			},
 		);
 		const app = {

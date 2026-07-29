@@ -15,6 +15,8 @@ import {
 import type { App } from 'obsidian';
 import {
 	createRecordingMockApp,
+	installMediaRecorder,
+	installMediaRecorderFactory,
 	installRecordingMediaStubs,
 	makeFakeMarkerStore,
 } from './helpers/recordingManagerTestKit';
@@ -136,13 +138,7 @@ describe('RecordingManager', () => {
 				makeFakeMarkerStore().store,
 			);
 
-			(global as Record<string, unknown>).MediaRecorder = jest.fn();
-			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
-				jest
-					.fn()
-					.mockImplementation(
-						(mime: string) => mime === 'audio/webm',
-					);
+			installMediaRecorder(undefined, (mime) => mime === 'audio/webm');
 
 			const { getAudioStreams } = jest.requireMock(
 				'src/recording/AudioStreamHandler',
@@ -208,11 +204,7 @@ describe('RecordingManager', () => {
 					},
 				),
 			};
-			(global as Record<string, unknown>).MediaRecorder = jest.fn(
-				() => mockMediaRecorder,
-			);
-			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
-				jest.fn().mockReturnValue(true);
+			installMediaRecorder(mockMediaRecorder);
 
 			const { getAudioStreams } = jest.requireMock(
 				'src/recording/AudioStreamHandler',
@@ -342,14 +334,12 @@ describe('RecordingManager', () => {
 			}));
 			let recorderIndex = 0;
 
-			(global as Record<string, unknown>).MediaRecorder = jest.fn(() => {
+			installMediaRecorderFactory(() => {
 				const recorder =
 					mockMediaRecorders[recorderIndex] ?? mockMediaRecorders[0];
 				recorderIndex += 1;
 				return recorder;
 			});
-			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
-				jest.fn().mockReturnValue(true);
 
 			const { getAudioStreams } = jest.requireMock(
 				'src/recording/AudioStreamHandler',
@@ -434,14 +424,12 @@ describe('RecordingManager', () => {
 			}));
 			let recorderIndex = 0;
 
-			(global as Record<string, unknown>).MediaRecorder = jest.fn(() => {
+			installMediaRecorderFactory(() => {
 				const recorder =
 					mockMediaRecorders[recorderIndex] ?? mockMediaRecorders[0];
 				recorderIndex += 1;
 				return recorder;
 			});
-			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
-				jest.fn().mockReturnValue(true);
 
 			const { getAudioStreams } = jest.requireMock(
 				'src/recording/AudioStreamHandler',
@@ -555,14 +543,12 @@ describe('RecordingManager', () => {
 			}));
 			let recorderIndex = 0;
 
-			(global as Record<string, unknown>).MediaRecorder = jest.fn(() => {
+			installMediaRecorderFactory(() => {
 				const recorder =
 					mockMediaRecorders[recorderIndex] ?? mockMediaRecorders[0];
 				recorderIndex += 1;
 				return recorder;
 			});
-			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
-				jest.fn().mockReturnValue(true);
 
 			const { getAudioStreams } = jest.requireMock(
 				'src/recording/AudioStreamHandler',
@@ -616,13 +602,7 @@ describe('RecordingManager', () => {
 				makeFakeMarkerStore().store,
 			);
 
-			(global as Record<string, unknown>).MediaRecorder = jest.fn();
-			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
-				jest
-					.fn()
-					.mockImplementation(
-						(mime: string) => mime === 'audio/webm',
-					);
+			installMediaRecorder(undefined, (mime) => mime === 'audio/webm');
 
 			const { getAudioStreams } = jest.requireMock(
 				'src/recording/AudioStreamHandler',
@@ -686,11 +666,7 @@ describe('RecordingManager', () => {
 				),
 			};
 
-			(global as Record<string, unknown>).MediaRecorder = jest.fn(
-				() => mockMediaRecorder,
-			);
-			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
-				jest.fn().mockReturnValue(true);
+			installMediaRecorder(mockMediaRecorder);
 
 			const { getAudioStreams } = jest.requireMock(
 				'src/recording/AudioStreamHandler',
@@ -750,11 +726,7 @@ describe('RecordingManager', () => {
 				),
 			};
 
-			(global as Record<string, unknown>).MediaRecorder = jest.fn(
-				() => mockMediaRecorder,
-			);
-			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
-				jest.fn().mockReturnValue(true);
+			installMediaRecorder(mockMediaRecorder);
 
 			const { getAudioStreams } = jest.requireMock(
 				'src/recording/AudioStreamHandler',
@@ -818,11 +790,7 @@ describe('RecordingManager', () => {
 				),
 			};
 
-			(global as Record<string, unknown>).MediaRecorder = jest.fn(
-				() => mockMediaRecorder,
-			);
-			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
-				jest.fn().mockReturnValue(true);
+			installMediaRecorder(mockMediaRecorder);
 
 			const { getAudioStreams } = jest.requireMock(
 				'src/recording/AudioStreamHandler',
@@ -876,11 +844,7 @@ describe('RecordingManager', () => {
 				),
 			};
 
-			(global as Record<string, unknown>).MediaRecorder = jest.fn(
-				() => mockMediaRecorder,
-			);
-			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
-				jest.fn().mockReturnValue(true);
+			installMediaRecorder(mockMediaRecorder);
 
 			const { getAudioStreams } = jest.requireMock(
 				'src/recording/AudioStreamHandler',
@@ -950,11 +914,7 @@ describe('RecordingManager', () => {
 				),
 			};
 
-			(global as Record<string, unknown>).MediaRecorder = jest.fn(
-				() => mockMediaRecorder,
-			);
-			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
-				jest.fn().mockReturnValue(true);
+			installMediaRecorder(mockMediaRecorder);
 
 			const { getAudioStreams } = jest.requireMock(
 				'src/recording/AudioStreamHandler',
@@ -1015,11 +975,7 @@ describe('RecordingManager', () => {
 				),
 			};
 
-			(global as Record<string, unknown>).MediaRecorder = jest.fn(
-				() => mockMediaRecorder,
-			);
-			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
-				jest.fn().mockReturnValue(true);
+			installMediaRecorder(mockMediaRecorder);
 
 			const { getAudioStreams } = jest.requireMock(
 				'src/recording/AudioStreamHandler',

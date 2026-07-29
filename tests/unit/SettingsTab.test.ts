@@ -549,7 +549,7 @@ describe('AudioRecorderSettingTab', () => {
 
 			await renderAndSettle();
 
-			const trackChannelSelect = channelSelects()[1];
+			const trackChannelSelect = at(channelSelects(), 1);
 			expect(trackChannelSelect.disabled).toBe(false);
 			trackChannelSelect.value = 'mono-right';
 			trackChannelSelect.dispatchEvent(new Event('change'));

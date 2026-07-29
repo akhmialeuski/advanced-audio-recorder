@@ -184,7 +184,12 @@ function setup(models: string[], selected: string) {
 		getSelected: () => state.selected,
 		setSelected: (id) => (state.selected = id),
 	});
-	return { state, ctx, picker: rendered[0], addRow: rendered[1] };
+	return {
+		state,
+		ctx,
+		picker: at(rendered, 0, 'model picker row'),
+		addRow: at(rendered, 1, 'add-model row'),
+	};
 }
 
 describe('addModelPicker', () => {
