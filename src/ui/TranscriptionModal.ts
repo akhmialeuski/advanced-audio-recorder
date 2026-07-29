@@ -33,17 +33,15 @@ import { formatTimecode } from '../utils/TimeUtils';
 import { probeAudioMetadata } from '../utils/AudioFileAnalyzer';
 import { TRANSCRIPTION_PROVIDER_IDS } from '../constants';
 import {
-	advancedTwoPassWillRun,
 	buildCostEstimate,
 	costEstimateNeedsDuration,
 	effectiveDiarize,
 	effectiveTranscriptDestination,
-	estimateTranscriptionCost,
+	estimateStepCost,
 	formatUsd,
 	isProviderAvailableOnPlatform,
 	providerSupportsDiarization,
 	providerSupportsDictionary,
-	selectedEngineModel,
 	transcribeFile,
 	TranscriptionCancelledError,
 	type CancellationToken,
@@ -729,26 +727,16 @@ export class TranscriptionModal extends Modal {
 		) {
 			return null;
 		}
-		// Fall back to a duration estimate when the provider reported no usage,
-		// scaling it by the passes that will actually run: the advanced two-pass
-		// mode decodes the audio twice, so a single-pass estimate would
-		// undercount. Capability-gated, so an engine that cannot bias - which
-		// degrades to one pass - is not counted as two. Actual multi-pass
+		// Fall back to a duration estimate when the provider reported no usage.
+		// This goes through the shared transcription step, which already scales
+		// by the passes the run actually makes, so the fallback can never drift
+		// from the pre-run estimate the user was shown. Actual multi-pass
 		// billing still flows through the summed usage in cost.usd; this branch
 		// only estimates when the provider reported no usage to price from.
-		const passes = advancedTwoPassWillRun(settings) ? 2 : 1;
-		const perPass =
-			this.durationSeconds !== null
-				? estimateTranscriptionCost(
-						settings.transcriptionProvider,
-						selectedEngineModel(
-							settings,
-							settings.transcriptionProvider,
-						),
-						this.durationSeconds,
-					)
-				: null;
-		const usd = cost.usd ?? (perPass === null ? null : perPass * passes);
+		const usd =
+			cost.usd ??
+			estimateStepCost('transcription', settings, this.durationSeconds)
+				.usd;
 		this.options.costTracker?.add(cost.engineId, usd);
 		// Refresh the session line so a follow-up run sees the new total.
 		this.updateCostEstimate();

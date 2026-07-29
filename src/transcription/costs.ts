@@ -475,46 +475,6 @@ function estimatedChaptersUsage(
 }
 
 /**
- * Estimates the cost of transcribing the given duration on an engine and
- * model. Returns null when no built-in rate matches the model.
- * @param engineId - Transcription engine id
- * @param model - Selected model id
- * @param durationSeconds - Audio duration in seconds
- */
-export function estimateTranscriptionCost(
-	engineId: TranscriptionProviderId,
-	model: string,
-	durationSeconds: number,
-): number | null {
-	const pricing = resolveEnginePricing(engineId, model);
-	if (!pricing) {
-		return null;
-	}
-	return costFromUsage(pricing, estimatedUsage(pricing, durationSeconds));
-}
-
-/**
- * Estimates the cost of the configured LLM post-processing pass over a
- * transcript of the given duration. Returns null when no built-in rate
- * matches the LLM model.
- * @param settings - Plugin settings
- * @param durationSeconds - Audio duration in seconds
- */
-export function estimateLlmCost(
-	settings: AudioRecorderSettings,
-	durationSeconds: number,
-): number | null {
-	const pricing = resolveLlmPricing(
-		settings.llmProvider,
-		selectedLlmModel(settings),
-	);
-	if (!pricing) {
-		return null;
-	}
-	return costFromUsage(pricing, estimatedLlmUsage(settings, durationSeconds));
-}
-
-/**
  * Sums the usage several parts reported into one total. A field appears
  * in the total only when at least one part reported it, preserving the
  * "missing means not reported" convention.
@@ -600,22 +560,44 @@ export interface CostEstimate {
 }
 
 /**
- * Builds the transcription line of the estimate. The advanced two-pass mode
- * decodes the same audio twice, so `passes` scales the model's per-run cost -
- * the estimate always reflects the enabled feature, for any engine or model.
+ * A billable step of a transcription run. Every place that prices work -
+ * the pre-run breakdown, a single-purpose dialog, the post-run accounting -
+ * names the step it means and goes through {@link estimateStepCost}, so one
+ * step can never be priced by two different formulas.
+ */
+export type RunCostStepId =
+	| 'transcription'
+	| 'contextAgents'
+	| 'postProcess'
+	| 'autoChapters';
+
+/**
+ * How many times the engine decodes the audio for a run. The advanced
+ * two-pass mode transcribes twice; it is capability-gated rather than read
+ * off the bare toggle, because an engine that cannot bias (e.g. a Deepgram
+ * hosted Whisper model) degrades to one plain pass at run time and must not
+ * be priced for a phantom second pass.
+ * @param settings - The run's settings snapshot
+ */
+function transcriptionPasses(settings: AudioRecorderSettings): number {
+	return advancedTwoPassWillRun(settings) ? 2 : 1;
+}
+
+/**
+ * Builds the transcription line of the estimate, scaled by the passes the run
+ * will actually make, so the number is pass-aware wherever it is read.
  * @param settings - The run's settings snapshot
  * @param durationSeconds - Probed audio duration, or null when unknown
- * @param passes - How many times the engine transcribes the audio (1 or 2)
  */
 function transcriptionEstimateLine(
 	settings: AudioRecorderSettings,
 	durationSeconds: number | null,
-	passes: number,
 ): CostEstimateLine {
 	const engineId = settings.transcriptionProvider;
 	const model = selectedEngineModel(settings, engineId);
 	const providerName = TRANSCRIPTION_PROVIDER_LABELS[engineId];
 	const pricingUrl = TRANSCRIPTION_PROVIDER_PRICING_URLS[engineId];
+	const passes = transcriptionPasses(settings);
 	const label =
 		passes > 1
 			? `Transcription (${String(passes)} passes)`
@@ -663,115 +645,137 @@ function llmLine(
 	return { ...base, usd: costFromUsage(pricing, usage(durationSeconds)) };
 }
 
-/** Builds the LLM post-processing line of the estimate. */
-function llmEstimateLine(
-	settings: AudioRecorderSettings,
-	durationSeconds: number | null,
-): CostEstimateLine {
-	return llmLine(
-		settings,
-		durationSeconds,
-		`Post-processing (${LLM_TASK_LABELS[settings.llmPostProcessTask]})`,
-		(seconds) => estimatedLlmUsage(settings, seconds),
-	);
-}
-
-/** Builds the advanced context-agents line: the LLM calls between the two passes. */
-function contextAgentsEstimateLine(
-	settings: AudioRecorderSettings,
-	durationSeconds: number | null,
-): CostEstimateLine {
-	// A keyword-biased engine skips the topic and sentence agents, so it runs
-	// fewer calls than a prompt-biased one; price the count the run will make.
-	const callCount =
-		advancedBiasChannel(settings.transcriptionProvider) === 'keyterm'
-			? CONTEXT_AGENT_CALL_ESTIMATE_KEYTERM
-			: CONTEXT_AGENT_CALL_ESTIMATE_PROMPT;
-	return llmLine(
-		settings,
-		durationSeconds,
-		'Advanced context agents',
-		(seconds) => estimatedContextAgentsUsage(seconds, callCount),
-	);
-}
-
-/** Builds the auto-chapters line: the LLM call that titles the transcript. */
-function autoChaptersEstimateLine(
-	settings: AudioRecorderSettings,
-	durationSeconds: number | null,
-): CostEstimateLine {
-	return llmLine(settings, durationSeconds, 'Auto chapters', (seconds) =>
-		estimatedChaptersUsage(settings, seconds),
-	);
-}
-
-/** One billable step of a run: its estimate line and whether pricing it needs the duration. */
-interface RunCostStage {
-	/** Builds this step's line for the probed (or still unknown) duration. */
-	line: (durationSeconds: number | null) => CostEstimateLine;
-	/** True when this step is priced and its usage depends on the duration. */
-	needsDuration: boolean;
-}
-
 /**
- * The billable steps of a run, in execution order, assembled automatically from
- * the enabled transcription service and LLM features: the transcription
- * pass(es) always (two when the advanced mode will run), then the advanced
- * context agents, the LLM post-processing, and the auto chapters, each only when
- * its feature is on. Both the estimate breakdown and the duration-probe decision
- * read this one list, so a new billable feature is priced everywhere by adding
- * a single entry rather than by touching each consumer.
+ * How a run's LLM steps are priced: every one bills the configured LLM
+ * provider, so pricing them needs the duration exactly when that provider's
+ * model has a built-in rate at all.
  * @param settings - The run's settings snapshot
  */
-function runCostStages(settings: AudioRecorderSettings): RunCostStage[] {
-	// Capability-gated, not the bare toggle: an engine that cannot bias (e.g. a
-	// Deepgram hosted Whisper model) degrades to one plain pass with no context
-	// agents at run time, so the estimate must not price a phantom second pass.
-	const twoPass = advancedTwoPassWillRun(settings);
-	const enginePricing = resolveEnginePricing(
-		settings.transcriptionProvider,
-		selectedEngineModel(settings, settings.transcriptionProvider),
-	);
-	// A priced LLM step needs the duration because its usage scales with the
-	// transcript length; an unpriced one reports "no built-in rate" without it.
-	const llmPriced =
+function llmStepIsPriced(settings: AudioRecorderSettings): boolean {
+	return (
 		resolveLlmPricing(settings.llmProvider, selectedLlmModel(settings)) !==
-		null;
-	const stages: RunCostStage[] = [
-		{
-			line: (seconds) =>
-				transcriptionEstimateLine(settings, seconds, twoPass ? 2 : 1),
-			needsDuration:
-				enginePricing !== null && enginePricing.kind !== 'free',
-		},
-	];
-	if (twoPass) {
-		stages.push({
-			line: (seconds) => contextAgentsEstimateLine(settings, seconds),
-			needsDuration: llmPriced,
-		});
-	}
-	if (settings.llmPostProcessEnabled) {
-		stages.push({
-			line: (seconds) => llmEstimateLine(settings, seconds),
-			needsDuration: llmPriced,
-		});
-	}
-	if (autoChaptersAfterTranscribe(settings)) {
-		stages.push({
-			line: (seconds) => autoChaptersEstimateLine(settings, seconds),
-			needsDuration: llmPriced,
-		});
-	}
-	return stages;
+		null
+	);
+}
+
+/** How one billable step is labelled, priced, and gated. */
+interface RunCostStep {
+	/** Builds this step's line for the probed (or still unknown) duration. */
+	line: (
+		settings: AudioRecorderSettings,
+		durationSeconds: number | null,
+	) => CostEstimateLine;
+	/** Whether this step runs at all for the given settings. */
+	enabled: (settings: AudioRecorderSettings) => boolean;
+	/** Whether pricing this step is duration-dependent (it is priced at all). */
+	needsDuration: (settings: AudioRecorderSettings) => boolean;
 }
 
 /**
- * Builds the combined pre-run cost estimate by assembling one line per billable
- * step of the run (see {@link runCostStages}) and summing the priced ones. Pure
- * so the numbers and wording are unit tested; the dialog only renders the
- * result. The breakdown follows the enabled features, so toggling the advanced
- * two-pass mode, post-processing, or auto chapters changes it.
+ * Every billable step of a run, in execution order. This table is the single
+ * definition of what a run costs: the pre-run breakdown, the duration-probe
+ * decision, and every dialog that prices one step in isolation all read it
+ * through {@link estimateStepCost} or {@link buildCostEstimate}. Adding a
+ * billable feature means adding one entry here, and it is then priced
+ * identically everywhere - no consumer carries its own formula.
+ */
+const RUN_COST_STEPS: Record<RunCostStepId, RunCostStep> = {
+	transcription: {
+		line: transcriptionEstimateLine,
+		// The audio is always transcribed; only the pass count varies.
+		enabled: () => true,
+		needsDuration: (settings) => {
+			const pricing = resolveEnginePricing(
+				settings.transcriptionProvider,
+				selectedEngineModel(settings, settings.transcriptionProvider),
+			);
+			return pricing !== null && pricing.kind !== 'free';
+		},
+	},
+	contextAgents: {
+		line: (settings, durationSeconds) => {
+			// A keyword-biased engine skips the topic and sentence agents, so it
+			// runs fewer calls than a prompt-biased one; price what will run.
+			const callCount =
+				advancedBiasChannel(settings.transcriptionProvider) ===
+				'keyterm'
+					? CONTEXT_AGENT_CALL_ESTIMATE_KEYTERM
+					: CONTEXT_AGENT_CALL_ESTIMATE_PROMPT;
+			return llmLine(
+				settings,
+				durationSeconds,
+				'Advanced context agents',
+				(seconds) => estimatedContextAgentsUsage(seconds, callCount),
+			);
+		},
+		enabled: advancedTwoPassWillRun,
+		needsDuration: llmStepIsPriced,
+	},
+	postProcess: {
+		line: (settings, durationSeconds) =>
+			llmLine(
+				settings,
+				durationSeconds,
+				`Post-processing (${LLM_TASK_LABELS[settings.llmPostProcessTask]})`,
+				(seconds) => estimatedLlmUsage(settings, seconds),
+			),
+		enabled: (settings) => settings.llmPostProcessEnabled,
+		needsDuration: llmStepIsPriced,
+	},
+	autoChapters: {
+		line: (settings, durationSeconds) =>
+			llmLine(settings, durationSeconds, 'Auto chapters', (seconds) =>
+				estimatedChaptersUsage(settings, seconds),
+			),
+		enabled: autoChaptersAfterTranscribe,
+		needsDuration: llmStepIsPriced,
+	},
+};
+
+/** The steps in execution order, independent of which are enabled. */
+const RUN_COST_STEP_ORDER: readonly RunCostStepId[] = [
+	'transcription',
+	'contextAgents',
+	'postProcess',
+	'autoChapters',
+];
+
+/**
+ * Prices one billable step on its own. The single entry point for any caller
+ * that shows the cost of a single step rather than of a whole run - the
+ * on-demand chapter dialog, the post-run session accounting - so those numbers
+ * are by construction the same ones the pre-run breakdown shows for that step.
+ * The step is priced whether or not it is currently enabled, since a caller
+ * asking for it is about to run it.
+ * @param step - Which billable step to price
+ * @param settings - The run's settings snapshot
+ * @param durationSeconds - Audio (or transcript) duration, null when unknown
+ * @returns The step's estimate line, unpriced when there is no built-in rate
+ */
+export function estimateStepCost(
+	step: RunCostStepId,
+	settings: AudioRecorderSettings,
+	durationSeconds: number | null,
+): CostEstimateLine {
+	return RUN_COST_STEPS[step].line(settings, durationSeconds);
+}
+
+/**
+ * The billable steps a run will actually perform, in execution order.
+ * @param settings - The run's settings snapshot
+ */
+function enabledRunCostSteps(settings: AudioRecorderSettings): RunCostStepId[] {
+	return RUN_COST_STEP_ORDER.filter((step) =>
+		RUN_COST_STEPS[step].enabled(settings),
+	);
+}
+
+/**
+ * Builds the combined pre-run cost estimate: one line per enabled billable
+ * step (see {@link RUN_COST_STEPS}), with the priced ones summed. Pure so the
+ * numbers and wording are unit tested; the dialog only renders the result. The
+ * breakdown follows the enabled features, so toggling the advanced two-pass
+ * mode, post-processing, or auto chapters changes it.
  * @param settings - The run's settings snapshot
  * @param durationSeconds - Probed audio duration, or null when unknown
  */
@@ -779,8 +783,8 @@ export function buildCostEstimate(
 	settings: AudioRecorderSettings,
 	durationSeconds: number | null,
 ): CostEstimate {
-	const lines = runCostStages(settings).map((stage) =>
-		stage.line(durationSeconds),
+	const lines = enabledRunCostSteps(settings).map((step) =>
+		estimateStepCost(step, settings, durationSeconds),
 	);
 	let total = 0;
 	let anyPriced = false;
@@ -806,5 +810,7 @@ export function buildCostEstimate(
 export function costEstimateNeedsDuration(
 	settings: AudioRecorderSettings,
 ): boolean {
-	return runCostStages(settings).some((stage) => stage.needsDuration);
+	return enabledRunCostSteps(settings).some((step) =>
+		RUN_COST_STEPS[step].needsDuration(settings),
+	);
 }

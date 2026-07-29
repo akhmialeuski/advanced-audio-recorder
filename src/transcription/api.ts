@@ -23,11 +23,10 @@ export type {
 export {
 	buildCostEstimate,
 	costEstimateNeedsDuration,
-	estimateTranscriptionCost,
+	estimateStepCost,
 	formatUsd,
-	selectedEngineModel,
 } from './costs';
-export type { CostEstimate, CostEstimateLine } from './costs';
+export type { CostEstimate, CostEstimateLine, RunCostStepId } from './costs';
 export { advancedTwoPassWillRun } from './advanced/advancedBias';
 export { SessionCostTracker } from './SessionCostTracker';
 export type {

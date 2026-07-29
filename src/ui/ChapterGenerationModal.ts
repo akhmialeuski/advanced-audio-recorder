@@ -23,7 +23,7 @@ import { findChapterPromptProfile } from '../settings/chapterPromptProfiles';
 import { ensureSelectedInList } from '../settings/modelList';
 import { ConfirmModal } from './ConfirmModal';
 import { LLM_PROVIDER_OPTIONS } from '../settings/labels';
-import { estimateLlmCost, formatUsd } from '../transcription/costs';
+import { estimateStepCost, formatUsd } from '../transcription/api';
 import { formatTimecode } from '../utils/TimeUtils';
 
 /** Read/write access to the model list of the currently selected LLM provider. */
@@ -262,8 +262,11 @@ export class ChapterGenerationModal extends Modal {
 
 	/**
 	 * Renders the up-front LLM cost estimate line, when cost estimates are
-	 * enabled. The estimate is approximate: it prices the transcript as the
-	 * LLM input the same way the post-processing estimate does.
+	 * enabled. Priced through the shared 'autoChapters' step, so this dialog
+	 * shows exactly the number the Transcribe dialog shows for the same work;
+	 * pricing it here with the post-processing formula instead made the two
+	 * disagree by up to 4x and made this estimate move with the unrelated LLM
+	 * task setting.
 	 * @param settings - Current plugin settings
 	 * @param durationSeconds - Transcript extent used to size the estimate
 	 */
@@ -274,12 +277,16 @@ export class ChapterGenerationModal extends Modal {
 		if (!settings.transcriptionShowCostEstimates) {
 			return;
 		}
-		const cost = estimateLlmCost(settings, durationSeconds);
+		const line = estimateStepCost(
+			'autoChapters',
+			settings,
+			durationSeconds,
+		);
 		const length = formatTimecode(Math.round(durationSeconds));
 		const text =
-			cost === null
+			line.usd === null
 				? `Estimated cost: not available for the selected LLM model (${length} transcript).`
-				: `Estimated cost: about ${formatUsd(cost)} for this ${length} transcript (approximate).`;
+				: `Estimated cost: about ${formatUsd(line.usd)} for this ${length} transcript (approximate).`;
 		this.contentEl.createEl('p', {
 			cls: 'aar-modal-config',
 			text,
