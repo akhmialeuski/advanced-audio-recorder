@@ -28,6 +28,7 @@ jest.mock('src/transcription/api', () => {
 
 import { probeAudioMetadata } from 'src/utils/AudioFileAnalyzer';
 import { transcribeFile } from 'src/transcription/api';
+import { createFile } from '../helpers/createApp';
 
 type ModalInternals = {
 	updateCostEstimate: () => void;
@@ -50,7 +51,7 @@ function flush(): Promise<void> {
 }
 
 function createAudioFile(): TFile {
-	const file = new TFile('Audio/meeting.webm');
+	const file = createFile('Audio/meeting.webm');
 	Object.defineProperty(file, 'name', { value: 'meeting.webm' });
 	return file;
 }

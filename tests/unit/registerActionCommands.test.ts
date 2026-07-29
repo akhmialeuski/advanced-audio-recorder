@@ -79,6 +79,10 @@ function makeServices(activeFile: TFile | null): ActionServices {
 		autoChapters: {
 			generate: jest.fn(),
 		} as unknown as ActionServices['autoChapters'],
+		recordingSidecar: {
+			getTranscript: jest.fn().mockResolvedValue(null),
+			updateTranscript: jest.fn().mockResolvedValue(undefined),
+		} as unknown as ActionServices['recordingSidecar'],
 	};
 }
 

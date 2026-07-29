@@ -10,6 +10,7 @@
 
 import { ContextMenu } from 'src/ui/ContextMenu';
 import { FILE_ACTIONS } from 'src/actions/fileActions';
+import type { ActionServices } from 'src/actions/PluginAction';
 import { AUDIO_EXTENSIONS } from 'src/constants';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import * as AudioFileAnalyzer from 'src/utils/AudioFileAnalyzer';
@@ -208,6 +209,10 @@ describe('ContextMenu', () => {
 				autoChapters: {
 					generate: jest.fn(),
 				} as unknown as ActionServices['autoChapters'],
+				recordingSidecar: {
+					getTranscript: jest.fn().mockResolvedValue(null),
+					updateTranscript: jest.fn().mockResolvedValue(undefined),
+				} as unknown as ActionServices['recordingSidecar'],
 			},
 			FILE_ACTIONS,
 		);
@@ -287,7 +292,16 @@ describe('ContextMenu', () => {
 			);
 			const menu = new Menu();
 			const file = makeAudioFile();
-			const info = { name: 'audio.mp3', size: 1024 };
+			const info = {
+				fileName: 'audio.mp3',
+				fileSize: '1 KB',
+				duration: '0:10',
+				containerFormat: 'MP3',
+				audioCodec: 'mp3',
+				bitrate: '128 kbps',
+				sampleRate: '44.1 kHz',
+				channels: 'Stereo',
+			};
 			jest.spyOn(AudioFileAnalyzer, 'getAudioFileInfo').mockResolvedValue(
 				info,
 			);

@@ -8,7 +8,7 @@
 import { MarkdownView, TFile, getLinkpath } from 'obsidian';
 import type { App, EmbedCache } from 'obsidian';
 import type { InsertionContext } from '../types';
-import type { DebugLogger } from '../utils/DebugLogger';
+import type { DebugLogSink } from '../utils/DebugLogger';
 
 /**
  * Captures the active note path and cursor position for later
@@ -21,7 +21,7 @@ import type { DebugLogger } from '../utils/DebugLogger';
 export function captureInsertionContext(
 	app: App,
 	insertAtOriginalPosition: boolean,
-	debugLogger: DebugLogger,
+	debugLogger: DebugLogSink,
 ): InsertionContext | null {
 	if (!insertAtOriginalPosition) {
 		return null;

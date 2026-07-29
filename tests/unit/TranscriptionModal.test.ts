@@ -8,6 +8,7 @@ import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { TranscriptionModal } from 'src/ui/TranscriptionModal';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
+import { createFile } from '../helpers/createApp';
 
 type TranscriptionModalInternals = {
 	setRunning: (running: boolean) => void;
@@ -21,7 +22,7 @@ type TranscriptionModalInternals = {
 };
 
 function createAudioFile(): TFile {
-	const file = new TFile('Audio/meeting.webm');
+	const file = createFile('Audio/meeting.webm');
 	Object.defineProperty(file, 'name', { value: 'meeting.webm' });
 	return file;
 }

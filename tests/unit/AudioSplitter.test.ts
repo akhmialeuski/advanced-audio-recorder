@@ -131,7 +131,7 @@ class FakeAudioBuffer {
 	}
 
 	getChannelData(channel: number): Float32Array {
-		return this.channels[channel];
+		return at(this.channels, channel);
 	}
 
 	copyToChannel(source: Float32Array, channel: number): void {
@@ -605,9 +605,9 @@ describe('detachTrailingBytes', () => {
 		const carry = detachTrailingBytes(buffers, 4);
 
 		expect(buffers).toHaveLength(1);
-		expect([...new Uint8Array(buffers[0])]).toEqual([0, 1, 2, 3, 4, 5]);
+		expect([...new Uint8Array(at(buffers, 0))]).toEqual([0, 1, 2, 3, 4, 5]);
 		expect(carry).toHaveLength(1);
-		expect([...new Uint8Array(carry[0])]).toEqual([6, 7, 8, 9]);
+		expect([...new Uint8Array(at(carry, 0))]).toEqual([6, 7, 8, 9]);
 	});
 
 	it('should detach whole buffers plus a partial one across a boundary', () => {
@@ -616,12 +616,12 @@ describe('detachTrailingBytes', () => {
 		const carry = detachTrailingBytes(buffers, 6);
 
 		expect(buffers).toHaveLength(2);
-		expect([...new Uint8Array(buffers[0])]).toEqual([0, 1, 2, 3]);
-		expect([...new Uint8Array(buffers[1])]).toEqual([4, 5]);
+		expect([...new Uint8Array(at(buffers, 0))]).toEqual([0, 1, 2, 3]);
+		expect([...new Uint8Array(at(buffers, 1))]).toEqual([4, 5]);
 		// Carry preserves the original byte order: partial tail, then whole buffer
 		expect(carry).toHaveLength(2);
-		expect([...new Uint8Array(carry[0])]).toEqual([6, 7]);
-		expect([...new Uint8Array(carry[1])]).toEqual([8, 9, 10, 11]);
+		expect([...new Uint8Array(at(carry, 0))]).toEqual([6, 7]);
+		expect([...new Uint8Array(at(carry, 1))]).toEqual([8, 9, 10, 11]);
 	});
 
 	it('should detach everything when trailing bytes equal the total', () => {

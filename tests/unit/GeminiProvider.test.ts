@@ -158,7 +158,7 @@ describe('GeminiProvider.transcribe', () => {
 			{ start: 0, end: 1, text: 'Hello.', speaker: 'Speaker 1' },
 		]);
 		const body = flow.generateBody();
-		const part = at(body.contents, 0).parts[0];
+		const part = at(at(body.contents, 0).parts, 0);
 		// The generateContent request references the uploaded file as audio/wav.
 		expect(part.fileData?.mimeType).toBe('audio/wav');
 		expect(part.fileData?.fileUri).toBe('https://files.example/abc');
@@ -188,9 +188,8 @@ describe('GeminiProvider.transcribe', () => {
 		});
 
 		// The instruction is the text part sent alongside the audio file part.
-		const instruction = flow
-			.generateBody()
-			.contents[0].parts.map((p) => p.text ?? '')
+		const instruction = at(flow.generateBody().contents, 0)
+			.parts.map((p) => p.text ?? '')
 			.join(' ');
 		expect(instruction).toContain('Kubernetes, gRPC');
 	});
@@ -205,9 +204,8 @@ describe('GeminiProvider.transcribe', () => {
 			wordTimestamps: false,
 		});
 
-		const instruction = flow
-			.generateBody()
-			.contents[0].parts.map((p) => p.text ?? '')
+		const instruction = at(flow.generateBody().contents, 0)
+			.parts.map((p) => p.text ?? '')
 			.join(' ');
 		expect(instruction).not.toContain('Prefer these spellings');
 	});
