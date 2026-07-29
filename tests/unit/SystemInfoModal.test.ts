@@ -1,6 +1,6 @@
 /**
  * Unit tests for SystemInfoModal.
- * @module tests/unit/SystemInfoModal
+ * @module tests/unit/SystemInfoModal.test
  */
 
 import { SystemInfoModal } from 'src/diagnostics/SystemInfoModal';

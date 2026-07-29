@@ -1,6 +1,6 @@
 /**
  * Unit tests for the shared setting builders.
- * @module tests/unit/settingHelpers.test
+ * @module tests/unit/dialogSettingControls.test
  */
 
 import {
@@ -94,7 +94,7 @@ jest.mock('src/audio/AudioCapabilityDetector', () => ({
 		.mockReturnValue([64000, 96000, 128000, 192000]),
 }));
 
-describe('settingHelpers', () => {
+describe('dialog setting builders', () => {
 	let containerEl: HTMLElement;
 
 	beforeEach(() => {

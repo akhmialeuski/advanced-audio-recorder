@@ -1,6 +1,6 @@
 /**
  * Tests for the plugin entry point: settings load/save resilience.
- * @module tests/unit/main
+ * @module tests/unit/main.test
  */
 
 import { App, Notice } from 'obsidian';

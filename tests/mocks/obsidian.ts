@@ -931,7 +931,7 @@ export const apiVersion = '1.12.3';
 
 /**
  * Mock AbstractInputSuggest: enough surface for components that attach
- * popover suggestions to a text input (e.g. FolderSuggest). Suggestions
+ * popover suggestions to a text input (TextInputSuggest). Suggestions
  * never open in tests; the constructor and the value plumbing suffice.
  */
 export abstract class AbstractInputSuggest<T> {

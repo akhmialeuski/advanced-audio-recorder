@@ -706,11 +706,13 @@ export class TranscriptionModal extends PluginModal {
 	 * amount recorded. Prefers the provider-reported actuals; when the run
 	 * could not be priced from usage, falls back to the duration-based
 	 * transcription estimate so the session counter does not silently
-	 * under-count. The free local engine is never recorded. This only
-	 * accounts the transcription cost; any LLM post-processing is billed by
-	 * its own provider, which returns no usage, so it is left out of the
-	 * session total (the pre-run estimate still shows it). The caller decides
-	 * whether to surface a notice and calls this exactly once per run.
+	 * under-count. The free local engine is never recorded.
+	 *
+	 * This accounts the transcription only. The run's LLM steps report
+	 * themselves through the cost sink as they happen (see runLlmStep), so the
+	 * session total already carries their estimated share by the time this
+	 * runs - adding them here would double-count. The caller decides whether to
+	 * surface a notice and calls this exactly once per run.
 	 * @param settings - The run's settings snapshot
 	 * @param cost - Cost summary reported for the run
 	 * @returns The USD recorded, or null when the run could not be priced

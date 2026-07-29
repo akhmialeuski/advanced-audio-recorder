@@ -31,6 +31,16 @@ import type { LlmPrompt } from 'src/transcription/llmPostProcess';
 import { buildTranscript } from 'src/transcription/transcriptModel';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
 import { LLM_PROVIDER_IDS } from 'src/constants';
+import { mergeSettings } from 'src/settings/settingsSerialization';
+
+/**
+ * Settings the agents are priced against. Required by the pipeline: there is
+ * no unaccounted path to an LLM call, so a test cannot exercise one either.
+ */
+const RUN_SETTINGS = mergeSettings({
+	llmProvider: LLM_PROVIDER_IDS.GEMINI,
+	llmMaxTokens: 32000,
+});
 
 /** One recorded agent call made through the scripted provider. */
 interface AgentCall {
@@ -273,6 +283,7 @@ describe('generateContext', () => {
 	it('extracts, verifies, and assembles the context from a Russian draft', async () => {
 		const { llm, calls } = scriptedLlm(replies);
 		const context = await generateContext(russianBaseline(), llm, {
+			settings: RUN_SETTINGS,
 			language: 'ru',
 			glossary: ['gRPC', 'Kafka'],
 		});
@@ -316,6 +327,7 @@ describe('generateContext', () => {
 			decider: new Error('decider down'),
 		});
 		const context = await generateContext(russianBaseline(), llm, {
+			settings: RUN_SETTINGS,
 			glossary: ['Kafka'],
 		});
 		// Losing the acronyms would cost more than the over-correction risk
@@ -330,6 +342,7 @@ describe('generateContext', () => {
 			sentence: new Error('sentence down'),
 		});
 		const context = await generateContext(russianBaseline(), llm, {
+			settings: RUN_SETTINGS,
 			language: 'ru',
 		});
 		expect(context?.promptSentence).toBe(
@@ -347,6 +360,7 @@ describe('generateContext', () => {
 			'Митинг про деплой и ревью, участвуют Иванов и Петров.';
 		const { llm } = scriptedLlm({ ...replies, sentence: droppedSentence });
 		const context = await generateContext(russianBaseline(), llm, {
+			settings: RUN_SETTINGS,
 			language: 'ru',
 			glossary: ['gRPC', 'Kafka'],
 		});
@@ -366,7 +380,9 @@ describe('generateContext', () => {
 			acronyms: failure,
 			topic: failure,
 		});
-		const context = await generateContext(russianBaseline(), llm);
+		const context = await generateContext(russianBaseline(), llm, {
+			settings: RUN_SETTINGS,
+		});
 		expect(context).toBeNull();
 		// The names and jargon extractors run first; two consecutive failures
 		// abort before any further agent burns a timeout on a dead provider.
@@ -379,7 +395,9 @@ describe('generateContext', () => {
 
 	it('returns null for an empty draft without calling the LLM', async () => {
 		const { llm, calls } = scriptedLlm(replies);
-		const context = await generateContext(buildTranscript([]), llm);
+		const context = await generateContext(buildTranscript([]), llm, {
+			settings: RUN_SETTINGS,
+		});
 		expect(context).toBeNull();
 		expect(calls).toHaveLength(0);
 	});
@@ -388,6 +406,7 @@ describe('generateContext', () => {
 		const { llm } = scriptedLlm(replies);
 		await expect(
 			generateContext(russianBaseline(), llm, {
+				settings: RUN_SETTINGS,
 				isCancelled: () => true,
 			}),
 		).rejects.toBeInstanceOf(ContextGenerationCancelledError);
@@ -400,7 +419,9 @@ describe('generateContext', () => {
 			end: i + 1,
 			text: `Очень длинный сегмент номер ${String(i)} про деплой и ревью.`,
 		}));
-		await generateContext(buildTranscript(segments), llm);
+		await generateContext(buildTranscript(segments), llm, {
+			settings: RUN_SETTINGS,
+		});
 		for (const call of calls) {
 			expect(call.user.length).toBeLessThanOrEqual(
 				// The decider/sentence users add candidate lines on top of the
@@ -416,6 +437,7 @@ describe('generateContext', () => {
 		// sentence agents, whose only output feeds that sentence, must not run.
 		const { llm, calls } = scriptedLlm(replies);
 		const context = await generateContext(russianBaseline(), llm, {
+			settings: RUN_SETTINGS,
 			language: 'ru',
 			glossary: ['gRPC', 'Kafka'],
 			buildPromptSentence: false,
@@ -475,6 +497,7 @@ describe('generateContext', () => {
 			sentence,
 		});
 		const context = await generateContext(russianBaseline(), llm, {
+			settings: RUN_SETTINGS,
 			language: 'ru',
 		});
 		// The sentence retains every term that could reach the engine, so it is

@@ -1,6 +1,6 @@
 /**
  * Unit tests for AudioFileAnalyzer.
- * @module tests/unit/AudioFileAnalyzer
+ * @module tests/unit/AudioFileAnalyzer.test
  */
 
 import { getAudioFileInfo } from 'src/utils/AudioFileAnalyzer';

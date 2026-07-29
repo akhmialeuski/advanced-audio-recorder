@@ -1,6 +1,6 @@
 /**
  * Unit tests for AudioFileInfoModal.
- * @module tests/unit/AudioFileInfoModal
+ * @module tests/unit/AudioFileInfoModal.test
  */
 
 import { AudioFileInfoModal } from 'src/ui/AudioFileInfoModal';

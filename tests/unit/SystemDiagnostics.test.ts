@@ -1,6 +1,6 @@
 /**
  * Unit tests for SystemDiagnostics.
- * @module tests/unit/SystemDiagnostics
+ * @module tests/unit/SystemDiagnostics.test
  */
 
 import { SystemDiagnostics } from 'src/diagnostics/SystemDiagnostics';

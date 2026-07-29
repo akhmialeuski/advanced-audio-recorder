@@ -141,11 +141,11 @@ export interface ContextPipelineOptions {
 	/** Cancellation probe checked before each agent call. */
 	isCancelled?: (() => boolean) | undefined;
 	/**
-	 * The run's settings, used to price each agent call. Required to account
-	 * the agents' spending; without it the calls still run and are simply not
-	 * recorded.
+	 * The run's settings, used to price each agent call. Required, so there is
+	 * no way to reach the agents without pricing them: an unaccounted branch
+	 * here is spending the session total would never show.
 	 */
-	settings?: AudioRecorderSettings;
+	settings: AudioRecorderSettings;
 	/** Extent of the draft the agents read, in seconds, for that pricing. */
 	durationSeconds?: number | null;
 	/** Where each agent call reports its estimated cost. */
@@ -591,13 +591,14 @@ async function buildBiasSentence(
  * ({@link ContextGenerationCancelledError}).
  * @param baseline - The first (draft) pass's transcript
  * @param llm - The configured LLM provider the agents run on
- * @param options - Language, glossary, prompt-sentence, and cancellation options
+ * @param options - Settings to price by, plus language, glossary,
+ *   prompt-sentence, and cancellation options
  * @returns The generated context, or null when there is nothing to bias
  */
 export async function generateContext(
 	baseline: Transcript,
 	llm: LlmProvider,
-	options: ContextPipelineOptions = {},
+	options: ContextPipelineOptions,
 ): Promise<GeneratedContext | null> {
 	const sample = condenseTranscript(baseline, CONTEXT_SAMPLE_MAX_CHARS);
 	if (!sample.trim()) {
@@ -621,24 +622,15 @@ export async function generateContext(
 	): Promise<string | null> => {
 		throwIfCancelled();
 		try {
-			// Through the accounted step, so the agents' spend reaches the
-			// session total instead of being invisible after the run.
-			const settings = options.settings;
-			if (!settings) {
-				// No settings to price from: run the call unaccounted rather
-				// than refuse it, so a caller that does not track spending
-				// (tests, and any future non-run use) still works.
-				return await llm.complete({ system, user }, maxTokens, {
-					temperature: CONTEXT_AGENT_TEMPERATURE,
-				});
-			}
+			// Every agent call goes through the accounted step, so their spend
+			// reaches the session total instead of being invisible after the run.
 			return await runLlmStep({
 				step: 'contextAgents',
 				llm,
 				prompt: { system, user },
 				maxTokens,
 				options: { temperature: CONTEXT_AGENT_TEMPERATURE },
-				settings,
+				settings: options.settings,
 				durationSeconds: options.durationSeconds ?? null,
 				costSink: options.costSink,
 			});
