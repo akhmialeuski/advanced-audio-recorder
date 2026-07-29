@@ -178,10 +178,10 @@ describe('serializeSettings platform separation', () => {
 
 	it('drops the flat device fields from the persisted shape', () => {
 		const merged = mergeSettings(legacyStored(), 'desktop');
-		const serialized = serializeSettings(merged, 'desktop') as Record<
-			string,
-			unknown
-		>;
+		const serialized = serializeSettings(
+			merged,
+			'desktop',
+		) as unknown as Record<string, unknown>;
 		expect(serialized).not.toHaveProperty('audioDeviceId');
 		expect(serialized).not.toHaveProperty('recordingChannels');
 		expect(serialized).not.toHaveProperty('trackAudioSources');

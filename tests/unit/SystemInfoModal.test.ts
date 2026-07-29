@@ -4,15 +4,31 @@
  */
 
 import { SystemInfoModal } from 'src/diagnostics/SystemInfoModal';
-import type { DiagnosticsData } from 'src/diagnostics/SystemDiagnostics';
+import type {
+	ActiveRecordingConfig,
+	DiagnosticsData,
+} from 'src/diagnostics/SystemDiagnostics';
 import { App } from 'obsidian';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** The resolved recording config the modal renders under "Active config". */
+function makeActiveRecordingConfig(): ActiveRecordingConfig {
+	return {
+		outputFormat: 'webm',
+		recorderFormat: 'webm',
+		mimeType: 'audio/webm',
+		expectedCodec: 'opus',
+		mimeTypeSupported: true,
+		validationResult: { valid: true, reason: '' },
+	};
+}
+
 function makeData(overrides: Partial<DiagnosticsData> = {}): DiagnosticsData {
 	return {
+		activeRecordingConfig: makeActiveRecordingConfig(),
 		pluginSettings: {
 			recordingFormat: 'webm',
 			bitrate: 128000,
@@ -43,6 +59,19 @@ function makeData(overrides: Partial<DiagnosticsData> = {}): DiagnosticsData {
 			supportedFormats: ['webm'],
 			supportedSampleRates: [44100],
 			supportedBitrates: [128000],
+			codecSupport: [
+				{
+					mimeType: 'audio/webm',
+					supported: true,
+					withCodecs: [
+						{
+							codec: 'opus',
+							mimeType: 'audio/webm;codecs=opus',
+							supported: true,
+						},
+					],
+				},
+			],
 			mediaRecorderAvailable: true,
 			getUserMediaAvailable: true,
 		},

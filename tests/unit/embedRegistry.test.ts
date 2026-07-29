@@ -11,10 +11,11 @@ import {
 	type EmbedRegistry,
 	type EmbedCreator,
 } from 'src/obsidian/embedRegistry';
+import type { EmbedComponent } from 'src/obsidian/embedRegistry';
 
 /** Builds a uniquely identifiable creator stub. */
 function creator(tag: string): EmbedCreator {
-	return () => ({ tag });
+	return () => ({ tag }) as unknown as EmbedComponent;
 }
 
 /** Builds a mock registry backed by an in-memory extension map. */
@@ -32,7 +33,7 @@ describe('getEmbedRegistry', () => {
 	});
 
 	it('returns null when absent', () => {
-		expect(getEmbedRegistry({})).toBeNull();
+		expect(getEmbedRegistry({} as unknown as App)).toBeNull();
 	});
 });
 

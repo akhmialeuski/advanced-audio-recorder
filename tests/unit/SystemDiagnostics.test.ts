@@ -14,6 +14,7 @@ import {
 	DEFAULT_SAMPLE_RATE,
 	DEFAULT_BITRATE,
 } from 'src/constants';
+import { mergeSettings } from 'src/settings/settingsSerialization';
 
 // Deterministic encoder probing: this suite exercises the diagnostics
 // wiring, not the encoders. No offline encoder is available, so a
@@ -28,27 +29,27 @@ jest.mock('src/audio/AudioEncoder', () => ({
 function makeSettings(
 	overrides: Partial<AudioRecorderSettings> = {},
 ): AudioRecorderSettings {
+	// Built from the real defaults rather than a hand-listed 90-field literal,
+	// which drifted from the schema every time a setting was added and only
+	// type-checked because the drift was invisible behind Partial.
 	return {
-		recordingFormat: FORMAT_WEBM,
-		bitrate: DEFAULT_BITRATE,
-		sampleRate: DEFAULT_SAMPLE_RATE,
-		saveFolder: 'recordings',
-		saveNearActiveFile: false,
-		activeFileSubfolder: '',
-		filePrefix: 'recording',
-		startStopHotkey: '',
-		pauseHotkey: '',
-		resumeHotkey: '',
-		audioDeviceId: 'device-1',
-		enableMultiTrack: false,
-		maxTracks: 2,
-		outputMode: 'single',
-		useSourceNamesForTracks: true,
+		...mergeSettings({
+			recordingFormat: FORMAT_WEBM,
+			bitrate: DEFAULT_BITRATE,
+			sampleRate: DEFAULT_SAMPLE_RATE,
+			saveFolder: 'recordings',
+			filePrefix: 'recording',
+			audioDeviceId: 'device-1',
+			maxTracks: 2,
+			debug: true,
+		}),
 		trackAudioSources: new Map([
 			[1, { deviceId: 'dev-a', channelMode: 'source' as const }],
 			[2, { deviceId: 'dev-b', channelMode: 'mono-left' as const }],
 		]),
-		debug: true,
+		// Overrides land on the flat fields last: the platform-scoped ones
+		// (device, channels, track sources) are what diagnostics reports, and
+		// routing them through mergeSettings would file them under perPlatform.
 		...overrides,
 	};
 }

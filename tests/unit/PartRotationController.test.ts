@@ -16,6 +16,8 @@ import {
 } from 'src/settings/settingsSchema';
 import { MS_PER_MINUTE } from 'src/constants';
 import type { App } from 'obsidian';
+import type { TrackWriteQueue } from 'src/recording/TrackWriteQueue';
+import type { RecordingFinalizer } from 'src/recording/RecordingFinalizer';
 
 jest.mock('obsidian', () => ({
 	Notice: jest.fn(),
@@ -83,8 +85,8 @@ describe('PartRotationController', () => {
 		controller = new PartRotationController(
 			mockApp,
 			mockSettings,
-			writeQueue,
-			finalizer,
+			writeQueue as unknown as TrackWriteQueue,
+			finalizer as unknown as RecordingFinalizer,
 			new DebugLogger(mockSettings),
 			hooks,
 		);
@@ -239,8 +241,8 @@ describe('PartRotationController', () => {
 			controller = new PartRotationController(
 				mockApp,
 				mockSettings,
-				writeQueue,
-				finalizer,
+				writeQueue as unknown as TrackWriteQueue,
+				finalizer as unknown as RecordingFinalizer,
 				new DebugLogger(mockSettings),
 				hooks,
 			);
@@ -451,9 +453,9 @@ describe('PartRotationController', () => {
 			expect(target.partPaths).toHaveLength(1);
 			expect(target.pcmBufferedBytes).toBe(2);
 			expect(target.partPcmBytes).toBe(2);
-			expect(Array.from(new Uint8Array(target.pcmBuffers[0]))).toEqual([
-				7, 8,
-			]);
+			expect(
+				Array.from(new Uint8Array(at(target.pcmBuffers, 0))),
+			).toEqual([7, 8]);
 		});
 
 		it('should restore buffers with the carry re-attached on failure', async () => {

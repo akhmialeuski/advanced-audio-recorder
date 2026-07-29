@@ -195,8 +195,8 @@ describe('RecordingManager', () => {
 				label: 'Intro',
 				kind: MARKER_KIND.bookmark,
 			});
-			expect(markers[0].time).toBeGreaterThanOrEqual(0);
-			expect(markers[0].id.length).toBeGreaterThan(0);
+			expect(at(markers, 0).time).toBeGreaterThanOrEqual(0);
+			expect(at(markers, 0).id.length).toBeGreaterThan(0);
 		});
 
 		it('fixes the draft kind up front when a preselect kind is passed', async () => {

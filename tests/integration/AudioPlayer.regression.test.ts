@@ -93,6 +93,13 @@ function makeFakeAudio(): FakeAudio {
  * mounts several distinct embeds controls each element it asserts on.
  */
 function makeRegistry(...audios: FakeAudio[]): AudioPlayerRegistry {
+	// A partial double: these suites drive only the acquire/release surface,
+	// so the cast at the boundary is the honest statement of that.
+	return makePartialRegistry(...audios) as unknown as AudioPlayerRegistry;
+}
+
+/** The methods {@link makeRegistry} actually implements. */
+function makePartialRegistry(...audios: FakeAudio[]): object {
 	const entries = new Map<string, { audio: FakeAudio; engaged: boolean }>();
 	let nextAudio = 0;
 	const registry = {

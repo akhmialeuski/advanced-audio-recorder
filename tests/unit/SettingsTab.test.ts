@@ -12,6 +12,7 @@ import {
 	AudioRecorderSettings,
 } from 'src/settings/settingsSchema';
 import { DOCS_URL } from 'src/constants';
+import type { AudioRecorderPluginInterface } from 'src/settings/SettingsTab';
 
 // Mock AudioEncoder to avoid loading mediabunny in jsdom. The async
 // probe defaults to "no offline encoder works"; individual tests
@@ -70,7 +71,10 @@ describe('AudioRecorderSettingTab', () => {
 			settings: mockSettings,
 			saveSettings: saveSettingsMock,
 		};
-		tab = new AudioRecorderSettingTab(new App(), mockPlugin);
+		tab = new AudioRecorderSettingTab(
+			new App(),
+			mockPlugin as unknown as AudioRecorderPluginInterface,
+		);
 	});
 
 	describe('getSettingDefinitions (declarative settings, Obsidian 1.13+)', () => {
@@ -78,7 +82,7 @@ describe('AudioRecorderSettingTab', () => {
 			const defs = tab.getSettingDefinitions();
 
 			expect(defs).toHaveLength(1);
-			const def = defs[0] as {
+			const def = at(defs, 0) as unknown as {
 				name: string;
 				aliases?: string[];
 				render?: unknown;
@@ -95,7 +99,7 @@ describe('AudioRecorderSettingTab', () => {
 		});
 
 		it('renders the settings body into the group and drops the anchor row', () => {
-			const def = tab.getSettingDefinitions()[0] as {
+			const def = at(tab.getSettingDefinitions(), 0) as unknown as {
 				render: (setting: unknown) => void;
 			};
 			const listEl = createDiv();

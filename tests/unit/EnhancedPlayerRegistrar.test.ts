@@ -226,7 +226,7 @@ function setup(
 		app,
 		() => settings,
 		markerStore as unknown as RecordingSidecarStore,
-		kindStore,
+		kindStore as unknown as MediaKindStore | null,
 	);
 	registrar.register();
 
@@ -721,6 +721,14 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 		return { path, seek: jest.fn(), dispose: jest.fn() };
 	}
 
+	/**
+	 * The same stub as a DetachedPlayback. The registrar only ever calls seek
+	 * and dispose on it, so the cast at the boundary is what states that.
+	 */
+	function detachedStubOf(path: string): DetachedPlayback {
+		return detachedStub(path) as unknown as DetachedPlayback;
+	}
+
 	it('seeks an on-screen player and never opens the file', () => {
 		const seek = jest
 			.spyOn(AudioPlayerRegistry.prototype, 'seek')
@@ -744,7 +752,7 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 		const seek = jest
 			.spyOn(AudioPlayerRegistry.prototype, 'seek')
 			.mockReturnValue(false);
-		detachedStartMock.mockReturnValue(detachedStub('rec.mp4'));
+		detachedStartMock.mockReturnValue(detachedStubOf('rec.mp4'));
 		try {
 			const { plugin } = setup(true);
 			const event = timecodeClick('rec.mp4#t=30');
@@ -770,7 +778,9 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 			.spyOn(AudioPlayerRegistry.prototype, 'seek')
 			.mockReturnValue(false);
 		const detached = detachedStub('rec.mp4');
-		detachedStartMock.mockReturnValue(detached);
+		detachedStartMock.mockReturnValue(
+			detached as unknown as DetachedPlayback,
+		);
 		try {
 			const { plugin } = setup(true);
 			const handle = clickHandler(plugin);
@@ -860,7 +870,7 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 		const seek = jest
 			.spyOn(AudioPlayerRegistry.prototype, 'seek')
 			.mockReturnValue(false);
-		detachedStartMock.mockReturnValue(detachedStub('rec.mp4'));
+		detachedStartMock.mockReturnValue(detachedStubOf('rec.mp4'));
 		try {
 			const { plugin, app } = setup(true);
 			stubActiveEditor(app, '[[rec.mp4#t=30|0:30]] - Speaker 1');
@@ -962,7 +972,9 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 			.spyOn(AudioPlayerRegistry.prototype, 'seek')
 			.mockReturnValue(false);
 		const detached = detachedStub('rec.mp4');
-		detachedStartMock.mockReturnValue(detached);
+		detachedStartMock.mockReturnValue(
+			detached as unknown as DetachedPlayback,
+		);
 		try {
 			const { plugin, registrar, settings } = setup(true);
 			clickHandler(plugin)(timecodeClick('rec.mp4#t=30'));

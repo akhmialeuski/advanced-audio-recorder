@@ -102,7 +102,7 @@ const TEST_RECORDING_DURATION_MS = 5000;
 /**
  * Plugin interface for settings tab.
  */
-interface AudioRecorderPluginInterface extends Plugin {
+export interface AudioRecorderPluginInterface extends Plugin {
 	settings: AudioRecorderSettings;
 	saveSettings(): Promise<void>;
 }

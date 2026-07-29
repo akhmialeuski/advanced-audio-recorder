@@ -1092,8 +1092,11 @@ describe('RecordingManager', () => {
 				mockLeafView,
 				jest.requireMock('obsidian').MarkdownView.prototype,
 			);
-			(mockApp.workspace as Record<string, unknown>).getLeavesOfType =
-				jest.fn().mockReturnValue([{ view: mockLeafView }]);
+			(
+				mockApp.workspace as unknown as Record<string, unknown>
+			).getLeavesOfType = jest
+				.fn()
+				.mockReturnValue([{ view: mockLeafView }]);
 
 			mockSettings = {
 				...DEFAULT_SETTINGS,
@@ -1136,8 +1139,9 @@ describe('RecordingManager', () => {
 			});
 
 			// No matching leaf found
-			(mockApp.workspace as Record<string, unknown>).getLeavesOfType =
-				jest.fn().mockReturnValue([]);
+			(
+				mockApp.workspace as unknown as Record<string, unknown>
+			).getLeavesOfType = jest.fn().mockReturnValue([]);
 
 			mockSettings = {
 				...DEFAULT_SETTINGS,
@@ -1173,8 +1177,9 @@ describe('RecordingManager', () => {
 					replaceSelection: jest.fn(),
 				},
 			});
-			(mockApp.workspace as Record<string, unknown>).getLeavesOfType =
-				jest.fn().mockReturnValue([]);
+			(
+				mockApp.workspace as unknown as Record<string, unknown>
+			).getLeavesOfType = jest.fn().mockReturnValue([]);
 
 			mockSettings = {
 				...DEFAULT_SETTINGS,

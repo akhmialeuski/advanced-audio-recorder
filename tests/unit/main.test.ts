@@ -11,6 +11,8 @@ import { RecordingStatus } from 'src/types';
 import type { SaveProgress } from 'src/types';
 import type { PlaybackControlsState } from 'src/player/playbackControls';
 import type { TranscriptionModalOptions } from 'src/ui/TranscriptionModal';
+import type { PluginManifest, TFile } from 'obsidian';
+import { createFile } from '../helpers/createApp';
 
 jest.mock('src/recording/RecordingManager', () => ({
 	RecordingManager: jest.fn().mockImplementation(() => ({
@@ -132,7 +134,10 @@ interface PluginHarness {
  */
 function createPlugin(loadDataResults: LoadDataResult[]): PluginHarness {
 	const app = new App();
-	const plugin = new AudioRecorderPlugin(app, MANIFEST);
+	const plugin = new AudioRecorderPlugin(
+		app,
+		MANIFEST as unknown as PluginManifest,
+	);
 
 	const loadData = jest.fn();
 	for (const result of loadDataResults) {
@@ -844,10 +849,10 @@ describe('AudioRecorderPlugin silent-channel suggestion', () => {
 	function primedPlugin(overrides?: Partial<typeof DEFAULT_SETTINGS>): {
 		plugin: AudioRecorderPlugin;
 		hooks: SilentChannelHooks;
-		file: unknown;
+		file: TFile;
 	} {
 		const { plugin } = createPlugin([{}]);
-		const file = { path: 'rec.wav', name: 'rec.wav' };
+		const file = createFile('rec.wav');
 		plugin.app.vault.getFileByPath = jest.fn().mockReturnValue(file);
 		const hooks = plugin as unknown as SilentChannelHooks;
 		hooks.settings = {
@@ -923,7 +928,7 @@ describe('AudioRecorderPlugin silent-channel suggestion', () => {
 		const second = { path: 'mic.webm', name: 'mic.webm' };
 		plugin.app.vault.getFileByPath = jest.fn((path: string) =>
 			path === first.path ? first : second,
-		);
+		) as unknown as (path: string) => TFile | null;
 		(detectSilentChannel as jest.Mock)
 			.mockResolvedValueOnce(null)
 			.mockResolvedValueOnce({
@@ -1019,7 +1024,9 @@ describe('AudioRecorderPlugin silent-channel suggestion', () => {
 			{ file, keepMode: 'mono-left', silentSide: 'right' },
 		]);
 
-		const notice = (Notice as jest.Mock).mock.instances.at(-1) as {
+		const notice = (Notice as jest.Mock).mock.instances.at(
+			-1,
+		) as unknown as {
 			message: DocumentFragment;
 			hide: jest.Mock;
 		};
@@ -1038,7 +1045,9 @@ describe('AudioRecorderPlugin silent-channel suggestion', () => {
 		hooks.showSilentChannelNotice([
 			{ file, keepMode: 'mono-left', silentSide: 'right' },
 		]);
-		const first = (Notice as jest.Mock).mock.instances.at(-1) as {
+		const first = (Notice as jest.Mock).mock.instances.at(
+			-1,
+		) as unknown as {
 			hide: jest.Mock;
 		};
 
@@ -1061,7 +1070,9 @@ describe('AudioRecorderPlugin silent-channel suggestion', () => {
 			{ file: second, keepMode: 'mono-right', silentSide: 'left' },
 		]);
 
-		const notice = (Notice as jest.Mock).mock.instances.at(-1) as {
+		const notice = (Notice as jest.Mock).mock.instances.at(
+			-1,
+		) as unknown as {
 			message: DocumentFragment;
 			hide: jest.Mock;
 		};

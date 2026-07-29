@@ -23,6 +23,7 @@ import {
 import {
 	__setRequestUrlHandler,
 	type MockRequestUrlParam,
+	type MockRequestUrlResponse,
 } from '../mocks/obsidian';
 
 const BASE_URL = 'https://gemini.example';
@@ -35,7 +36,7 @@ afterEach(() => {
 describe('uploadFile', () => {
 	it('starts a resumable session then finalizes, returning the file', async () => {
 		const calls: MockRequestUrlParam[] = [];
-		__setRequestUrlHandler((param) => {
+		__setRequestUrlHandler((param): MockRequestUrlResponse => {
 			calls.push(param);
 			if (param.url.endsWith('/upload/v1beta/files')) {
 				return {
@@ -81,7 +82,7 @@ describe('uploadFile', () => {
 	});
 
 	it('reads the upload URL header case-insensitively and defaults a missing state', async () => {
-		__setRequestUrlHandler((param) => {
+		__setRequestUrlHandler((param): MockRequestUrlResponse => {
 			if (param.url.includes('/upload/')) {
 				return {
 					status: 200,
@@ -133,7 +134,7 @@ describe('uploadFile', () => {
 
 describe('waitUntilActive', () => {
 	it('resolves once the file reports ACTIVE', async () => {
-		__setRequestUrlHandler((param) => {
+		__setRequestUrlHandler((param): MockRequestUrlResponse => {
 			expect(param.method).toBe('GET');
 			expect(param.url).toBe(`${BASE_URL}/v1beta/files/x`);
 			return {
@@ -172,7 +173,7 @@ describe('waitUntilActive', () => {
 describe('deleteFile', () => {
 	it('issues a DELETE for the file resource', async () => {
 		let seen: MockRequestUrlParam | undefined;
-		__setRequestUrlHandler((param) => {
+		__setRequestUrlHandler((param): MockRequestUrlResponse => {
 			seen = param;
 			return { status: 200, headers: {}, text: '' };
 		});

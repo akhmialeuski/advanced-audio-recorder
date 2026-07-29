@@ -8,6 +8,7 @@ import {
 	PcmStreamRecorder,
 	WORKLET_PROCESSOR_SOURCE,
 } from 'src/recording/PcmStreamRecorder';
+import { defined } from '../helpers/assertions';
 
 // Track messages sent to the worklet port
 let workletPortMessages: Array<{ type: string }> = [];
@@ -516,13 +517,16 @@ describe('PcmCaptureProcessor worklet logic', () => {
 				},
 			};
 		}
-		let registered: (new (options?: unknown) => WorkletProcessor) | null =
-			null;
+		type ProcessorCtor = new (options?: unknown) => WorkletProcessor;
+		// Held on an object rather than in a `let`: the worklet source assigns it
+		// from inside the factory call, and a bare local would still read as
+		// `null` afterwards because that assignment is invisible to the compiler.
+		const captured: { ctor: ProcessorCtor | null } = { ctor: null };
 		const registerProcessor = (
 			_name: string,
-			ctor: new (options?: unknown) => WorkletProcessor,
+			ctor: ProcessorCtor,
 		): void => {
-			registered = ctor;
+			captured.ctor = ctor;
 		};
 
 		const factory = new Function(
@@ -531,10 +535,11 @@ describe('PcmCaptureProcessor worklet logic', () => {
 			WORKLET_PROCESSOR_SOURCE,
 		);
 		factory(FakeAudioWorkletProcessor, registerProcessor);
-		if (!registered) {
-			throw new Error('Worklet source did not register a processor');
-		}
-		const processor = new registered(
+		const Registered = defined(
+			captured.ctor,
+			'processor registered by the worklet source',
+		);
+		const processor = new Registered(
 			channelMode ? { processorOptions: { channelMode } } : undefined,
 		);
 		return { processor, posted };

@@ -42,7 +42,7 @@ function makeCallbacks(): jest.Mocked<MarkerListCallbacks> {
 		onDelete: jest.fn(),
 		onRename: jest.fn(),
 		onAddAt: jest.fn(),
-		timeAtClientX: jest.fn(() => 42),
+		timeAtClientX: jest.fn((_clientX: number): number | null => 42),
 	};
 }
 
