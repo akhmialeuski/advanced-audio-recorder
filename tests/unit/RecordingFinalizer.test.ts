@@ -77,7 +77,7 @@ const createTarget = (
 const createSession = (
 	overrides: Partial<RecordingSessionConfig> = {},
 ): RecordingSessionConfig => ({
-	isMobile: false,
+	chunkRotationBytes: null,
 	isWavPcm: false,
 	recorderFormat: 'webm',
 	outputFormat: 'webm',

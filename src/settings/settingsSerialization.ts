@@ -265,11 +265,7 @@ function migrateLegacyTranscriptionDictionary(
 	merged: AudioRecorderSettings,
 	raw: AudioRecorderSettingsInput,
 ): void {
-	const legacy: Record<string, unknown> = isRecord(raw) ? raw : {};
-	const legacyTerms =
-		typeof legacy.transcriptionDictionary === 'string'
-			? legacy.transcriptionDictionary
-			: '';
+	const legacyTerms = raw.transcriptionDictionary ?? '';
 	if (
 		legacyTerms.trim() !== '' &&
 		merged.transcriptionDictionaryProfiles.length === 0
@@ -303,19 +299,16 @@ function migrateLegacyLlmSettings(
 	merged: AudioRecorderSettings,
 	raw: AudioRecorderSettingsInput,
 ): void {
-	const legacy: Record<string, unknown> = isRecord(raw) ? raw : {};
 	// Which fields hold the stored provider's key and model is a vendor fact,
 	// so the migration asks the registry instead of re-deriving the mapping.
 	const vendor = selectedLlmVendor(merged);
-	const legacyKey =
-		typeof legacy.llmApiKey === 'string' ? legacy.llmApiKey : '';
+	const legacyKey = raw.llmApiKey ?? '';
 	// A vendor key already set is never overwritten, so the migration cannot
 	// clobber a freshly entered token.
 	if (legacyKey && !vendor.settings.apiKey(merged)) {
 		vendor.settings.setApiKey(merged, legacyKey);
 	}
-	const legacyModel =
-		typeof legacy.llmModel === 'string' ? legacy.llmModel.trim() : '';
+	const legacyModel = raw.llmModel?.trim() ?? '';
 	if (legacyModel) {
 		vendor.settings.setModel(merged, legacyModel);
 	}

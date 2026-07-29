@@ -484,13 +484,36 @@ export type LlmProviderId =
 	(typeof LLM_PROVIDER_IDS)[keyof typeof LLM_PROVIDER_IDS];
 
 /**
+ * Fields the plugin no longer stores but still reads once when loading a
+ * data.json written by an older version, so the value migrates onto its
+ * replacement instead of being silently dropped. Declared here rather than
+ * reached for through a `Record<string, unknown>` cast at each migration, so
+ * the set of fields a load still understands is one list a reader can check
+ * against - and removing one becomes a compile error at its migration.
+ */
+export interface LegacyAudioRecorderSettings {
+	/**
+	 * Pre-vendor-split single LLM key, moved onto the selected vendor's own key
+	 * field (OpenAI reuses the Whisper key, Gemini its transcription key).
+	 */
+	llmApiKey?: string;
+	/** Pre-vendor-split single LLM model, moved onto the vendor's model. */
+	llmModel?: string;
+	/** Pre-profile single dictionary text, moved into a "General" profile. */
+	transcriptionDictionary?: string;
+}
+
+/**
  * Partial settings as accepted from storage or callers; track sources may
  * arrive as a Map or as the serialized record form, and the per-platform
  * branches may be missing entirely (legacy flat data.json) or partial.
  */
-export interface AudioRecorderSettingsInput extends Partial<
-	Omit<AudioRecorderSettings, 'trackAudioSources' | 'perPlatform'>
-> {
+export interface AudioRecorderSettingsInput
+	extends
+		Partial<
+			Omit<AudioRecorderSettings, 'trackAudioSources' | 'perPlatform'>
+		>,
+		LegacyAudioRecorderSettings {
 	trackAudioSources?: TrackAudioSources | TrackAudioSourcesRecord;
 	perPlatform?: Partial<Record<PlatformKind, PlatformScopedSettingsInput>>;
 }

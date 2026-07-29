@@ -6,6 +6,7 @@
 import { ConversionModal } from 'src/ui/ConversionModal';
 import { App, TFile } from 'obsidian';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
+import { mergeSettings } from 'src/settings/settingsSerialization';
 
 /**
  * Extends an HTMLElement with Obsidian's custom DOM methods.
@@ -79,6 +80,7 @@ jest.mock('obsidian', () => ({
 		return instance;
 	}),
 	normalizePath: (path: string) => path.replace(/\\/g, '/'),
+	Platform: { isMobile: false, isMobileApp: false },
 	Setting: jest.fn().mockImplementation(() => ({
 		setName: jest.fn().mockReturnThis(),
 		setDesc: jest.fn().mockReturnThis(),
@@ -123,10 +125,13 @@ jest.mock('src/audio/AudioCapabilityDetector', () => ({
 		.mockReturnValue([8000, 16000, 22050, 44100, 48000]),
 }));
 
-const mockSettings = {
+// Real settings rather than a two-field cast: the dialog seeds format,
+// bitrate, and link action from them, so a partial fixture only type-checks
+// by lying about what the modal actually reads.
+const mockSettings = mergeSettings({
 	deleteSourceAfterConversion: true,
 	conversionLinkAction: 'replace',
-};
+});
 
 describe('ConversionModal', () => {
 	let mockApp: App;

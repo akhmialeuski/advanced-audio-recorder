@@ -57,6 +57,7 @@ function makeProvider(segments: TranscriptSegment[]): TranscriptionProvider {
 			acceptsOriginalContainer: true,
 			supportsDiarization: true,
 			supportsDictionary: true,
+			biasChannel: 'prompt',
 		},
 		transcribe: jest.fn(async () => ({ segments })),
 	};

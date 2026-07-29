@@ -42,6 +42,7 @@ function makeProvider(onTranscribe: () => void): TranscriptionProvider {
 			acceptsOriginalContainer: true,
 			supportsDiarization: false,
 			supportsDictionary: false,
+			biasChannel: 'prompt',
 		},
 		transcribe: jest.fn(async () => {
 			onTranscribe();

@@ -93,6 +93,7 @@ describe('audioPrepOptions', () => {
 		acceptsOriginalContainer: true,
 		supportsDiarization: false,
 		supportsDictionary: false,
+		biasChannel: 'prompt',
 	};
 
 	it('bounds the chunk size by the provider limit for network providers', () => {
@@ -125,6 +126,7 @@ describe('audioPrepOptions', () => {
 			acceptsOriginalContainer: false,
 			supportsDiarization: false,
 			supportsDictionary: false,
+			biasChannel: 'prompt',
 		};
 		const options = audioPrepOptions(
 			localCaps,
@@ -143,6 +145,7 @@ describe('audioPrepOptions', () => {
 			acceptsOriginalContainer: true,
 			supportsDiarization: true,
 			supportsDictionary: false,
+			biasChannel: 'prompt',
 		};
 		const options = audioPrepOptions(
 			cappedCaps,
@@ -161,6 +164,7 @@ describe('audioPrepOptions', () => {
 			acceptsOriginalContainer: true,
 			supportsDiarization: true,
 			supportsDictionary: false,
+			biasChannel: 'prompt',
 		};
 		const options = audioPrepOptions(diarizingCaps, true, 1000, true);
 		expect(options.diarize).toBe(true);

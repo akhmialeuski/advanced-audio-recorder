@@ -163,6 +163,7 @@ function makeProvider(transcribe: jest.Mock): TranscriptionProvider {
 			acceptsOriginalContainer: true,
 			supportsDiarization: false,
 			supportsDictionary: false,
+			biasChannel: 'prompt',
 		},
 		transcribe,
 	};

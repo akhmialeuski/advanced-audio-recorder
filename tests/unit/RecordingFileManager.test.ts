@@ -628,6 +628,9 @@ describe('RecordingFileManager', () => {
 				pcmBufferedBytes: 0,
 				pcmChannels: 1,
 				pcmSampleRate: 44100,
+				partIndex: 0,
+				partPaths: [],
+				partPcmBytes: 0,
 			};
 		}
 

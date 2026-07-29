@@ -475,7 +475,7 @@ describe('Settings', () => {
 		it('does not seed a profile from an empty legacy dictionary', () => {
 			const result = mergeSettings({
 				transcriptionDictionary: '   \n\t',
-			} as unknown as AudioRecorderSettingsInput);
+			});
 
 			expect(result.transcriptionDictionaryProfiles).toEqual([]);
 			expect(result.transcriptionDictionaryProfileId).toBe('');
@@ -488,7 +488,7 @@ describe('Settings', () => {
 					{ id: 'keep', name: 'Kept', terms: 'X' },
 				],
 				transcriptionDictionaryProfileId: 'keep',
-			} as unknown as AudioRecorderSettingsInput);
+			});
 
 			expect(result.transcriptionDictionaryProfiles).toEqual([
 				{ id: 'keep', name: 'Kept', terms: 'X' },
@@ -518,7 +518,7 @@ describe('Settings', () => {
 			// before the switch existed must keep working after the upgrade.
 			const result = mergeSettings({
 				transcriptionDictionary: 'Foo\nBar',
-			} as unknown as AudioRecorderSettingsInput);
+			});
 
 			expect(result.transcriptionAdvancedSettingsEnabled).toBe(true);
 			expect(result.transcriptionDictionaryProfiles).toHaveLength(1);

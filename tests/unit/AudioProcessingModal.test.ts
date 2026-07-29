@@ -36,7 +36,7 @@ function settingsWithStages(enabled: boolean): AudioRecorderSettings {
 	return {
 		...DEFAULT_SETTINGS,
 		cleanupHighPassEnabled: enabled,
-		cleanupGateEnabled: enabled,
+		cleanupNoiseGateEnabled: enabled,
 		cleanupLevelingEnabled: enabled,
 	};
 }

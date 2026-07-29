@@ -748,6 +748,9 @@ describe('AudioFormatConverter', () => {
 			pcmBufferedBytes: 0,
 			pcmChannels: 1,
 			pcmSampleRate: 44100,
+			partIndex: 0,
+			partPaths: [],
+			partPcmBytes: 0,
 		});
 
 		it('should merge multiple tracks using buildTrackBlob', async () => {

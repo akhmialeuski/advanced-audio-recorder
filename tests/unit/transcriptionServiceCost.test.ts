@@ -30,6 +30,7 @@ function makeProvider(result: WhisperResult): TranscriptionProvider {
 			acceptsOriginalContainer: true,
 			supportsDiarization: true,
 			supportsDictionary: true,
+			biasChannel: 'prompt',
 		},
 		transcribe: jest.fn(async () => result),
 	};

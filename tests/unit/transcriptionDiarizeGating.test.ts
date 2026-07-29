@@ -39,7 +39,7 @@ function makeProvider(
 	lastOptions: TranscribeOptions | null;
 } {
 	const provider = {
-		id: 'fake',
+		id: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 		label: 'Fake',
 		requiresNetwork: false,
 		capabilities: {
@@ -48,6 +48,7 @@ function makeProvider(
 			acceptsOriginalContainer: true,
 			supportsDiarization: true,
 			supportsDictionary: true,
+			biasChannel: 'prompt' as const,
 		},
 		lastOptions: null as TranscribeOptions | null,
 		transcribe: jest.fn(async (_payload, options: TranscribeOptions) => {

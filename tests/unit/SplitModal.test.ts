@@ -8,7 +8,6 @@ import { at } from '../helpers/assertions';
 import { App, Notice, TFile } from 'obsidian';
 import { createWavHeader } from 'src/audio/WavEncoder';
 import { createMockAudioBuffer } from '../helpers/createMockAudioBuffer';
-import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 
 /**
  * Extends an HTMLElement with Obsidian's custom DOM methods.
@@ -107,7 +106,12 @@ jest.mock('obsidian', () => ({
 			inputEl.addClass = (cls: string): void =>
 				inputEl.classList.add(cls);
 			inputEl.toggleClass = jest.fn();
-			const text = {
+			const text: Record<string, unknown> & {
+				setPlaceholder: jest.Mock;
+				setValue: jest.Mock;
+				setDisabled: jest.Mock;
+				onChange: jest.Mock;
+			} = {
 				inputEl,
 				setPlaceholder: jest.fn(),
 				setValue: jest.fn((value: unknown) => {
@@ -131,7 +135,7 @@ jest.mock('obsidian', () => ({
 			return chain;
 		});
 		chain.addToggle.mockImplementation((cb: (toggle: unknown) => void) => {
-			const toggle = {
+			const toggle: { setValue: jest.Mock; onChange: jest.Mock } = {
 				setValue: jest.fn(),
 				onChange: jest.fn((handler: (value: boolean) => void) => {
 					mockCapturedControls.toggles.push(handler);
@@ -144,7 +148,11 @@ jest.mock('obsidian', () => ({
 		});
 		chain.addDropdown.mockImplementation(
 			(cb: (dropdown: unknown) => void) => {
-				const dropdown = {
+				const dropdown: {
+					addOption: jest.Mock;
+					setValue: jest.Mock;
+					onChange: jest.Mock;
+				} = {
 					addOption: jest.fn(),
 					setValue: jest.fn(),
 					onChange: jest.fn((handler: (value: string) => void) => {
@@ -160,7 +168,12 @@ jest.mock('obsidian', () => ({
 		);
 		chain.addButton.mockImplementation((cb: (button: unknown) => void) => {
 			const setDisabled = jest.fn();
-			const button = {
+			const button: {
+				setButtonText: jest.Mock;
+				setCta: jest.Mock;
+				setDisabled: jest.Mock;
+				onClick: jest.Mock;
+			} = {
 				setButtonText: jest.fn(),
 				setCta: jest.fn(),
 				setDisabled,
@@ -216,6 +229,7 @@ jest.mock('src/utils/LinkUpdater', () => ({
 import { encodeAudioBuffer } from 'src/audio/AudioEncoder';
 import { decodeAudioBlob } from 'src/audio/AudioFormatConverter';
 import { updateLinksInVault } from 'src/utils/LinkUpdater';
+import { mergeSettings } from 'src/settings/settingsSerialization';
 
 /** WAV header size produced by createWavHeader. */
 const WAV_HEADER_SIZE = 44;
@@ -255,20 +269,25 @@ interface SplitModalInternals {
 }
 
 function internals(modal: SplitModal): SplitModalInternals {
-	return modal;
+	// Deliberately reaching past `private`: these tests assert the seeded
+	// state a user cannot observe until they act on the dialog.
+	return modal as unknown as SplitModalInternals;
 }
 
 describe('SplitModal', () => {
 	let mockApp: App;
 	let mockFile: TFile;
 	let progressEl: HTMLElement;
-	const mockSettings = {
+	// Real settings rather than a five-field cast: the dialog seeds its part
+	// duration, suffix, bitrate, and link action from them, and the cast hid
+	// which of the remaining fields it also reads.
+	const mockSettings = mergeSettings({
 		splitChunkMinutes: 1,
 		splitPartSuffix: 'part',
 		bitrate: 128000,
 		deleteSourceAfterSplit: false,
 		conversionLinkAction: 'replace',
-	} as unknown as AudioRecorderSettings;
+	});
 
 	/**
 	 * Configures the mock file as a WAV in a subdirectory.
@@ -373,11 +392,14 @@ describe('SplitModal', () => {
 		modal.onOpen();
 
 		const collectDescs = (): string[] =>
-			(Setting as jest.Mock).mock.results.flatMap(
-				(result: { value: { setDesc: jest.Mock } }) =>
-					result.value.setDesc.mock.calls.map((call: unknown[]) =>
-						String(call[0]),
-					),
+			(
+				(Setting as jest.Mock).mock.results as {
+					value: { setDesc: jest.Mock };
+				}[]
+			).flatMap((result) =>
+				result.value.setDesc.mock.calls.map((call: unknown[]) =>
+					String(call[0]),
+				),
 			);
 		expect(collectDescs()).toContainEqual(
 			expect.stringContaining('"recording-part1.wav"'),
@@ -399,11 +421,14 @@ describe('SplitModal', () => {
 		const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
 		modal.onOpen();
 
-		const descs = (Setting as jest.Mock).mock.results.flatMap(
-			(result: { value: { setDesc: jest.Mock } }) =>
-				result.value.setDesc.mock.calls.map((call: unknown[]) =>
-					String(call[0]),
-				),
+		const descs = (
+			(Setting as jest.Mock).mock.results as {
+				value: { setDesc: jest.Mock };
+			}[]
+		).flatMap((result) =>
+			result.value.setDesc.mock.calls.map((call: unknown[]) =>
+				String(call[0]),
+			),
 		);
 		expect(descs).toContainEqual(
 			expect.stringContaining('"recording-part1.wav"'),
@@ -529,7 +554,7 @@ describe('SplitModal', () => {
 		const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
 		modal.onOpen();
 
-		const handler = mockCapturedControls.texts[0];
+		const handler = at(mockCapturedControls.texts, 0);
 		const inputEl = at(mockCapturedControls.textInputs, 0);
 
 		handler(input);
