@@ -12,7 +12,7 @@
  * @module transcription/costs
  */
 
-import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from '../constants';
+import { TRANSCRIPTION_PROVIDER_IDS } from '../constants';
 import type {
 	AudioRecorderSettings,
 	LlmProviderId,
@@ -24,12 +24,11 @@ import {
 	advancedTwoPassWillRun,
 } from './advanced/advancedBias';
 import {
-	LLM_PROVIDER_LABELS,
-	LLM_PROVIDER_PRICING_URLS,
 	LLM_TASK_LABELS,
 	TRANSCRIPTION_PROVIDER_LABELS,
 	TRANSCRIPTION_PROVIDER_PRICING_URLS,
 } from '../settings/labels';
+import { llmVendor, selectedLlmVendor } from './llm/vendors';
 import type { LlmTask } from './llmPostProcess';
 import type { TranscriptionUsage } from './TranscriptTypes';
 
@@ -151,60 +150,6 @@ const GEMINI_RATES: readonly [string, TokenRate][] = [
 	['gemini-2.0-flash', { audioInput: 0.7, textInput: 0.1, output: 0.4 }],
 ];
 
-/** A text-billed LLM rate: USD per million input and output tokens. */
-interface LlmRate {
-	input: number;
-	output: number;
-}
-
-/**
- * Approximate OpenAI chat rates for post-processing, USD per million tokens.
- * The GPT-5.6 family is the current seeded generation; the 4.x and o-series
- * entries below it were dropped from the seed list but stay priced because
- * the API still serves them for user-saved model lists.
- */
-const LLM_OPENAI_RATES: readonly [string, LlmRate][] = [
-	['gpt-5.6-sol', { input: 5, output: 30 }],
-	['gpt-5.6-terra', { input: 2.5, output: 15 }],
-	['gpt-5.6-luna', { input: 1, output: 6 }],
-	['gpt-4o-mini', { input: 0.15, output: 0.6 }],
-	['gpt-4.1-mini', { input: 0.4, output: 1.6 }],
-	['gpt-4.1', { input: 2.0, output: 8.0 }],
-	['gpt-4o', { input: 2.5, output: 10 }],
-	['o4-mini', { input: 1.1, output: 4.4 }],
-];
-
-/**
- * Approximate Anthropic rates for post-processing, USD per million tokens.
- * The bare `claude-opus-4` fragment prices the $5/$25 Opus 4.5-4.8 tier; the
- * longer `claude-opus-4-1`/`claude-opus-4-0` fragments win the longest-match
- * rule for the legacy $15/$75 models so they do not inherit the cheaper rate.
- */
-const LLM_ANTHROPIC_RATES: readonly [string, LlmRate][] = [
-	['claude-fable-5', { input: 10, output: 50 }],
-	['claude-sonnet-5', { input: 3, output: 15 }],
-	['claude-opus-4-1', { input: 15, output: 75 }],
-	['claude-opus-4-0', { input: 15, output: 75 }],
-	['claude-opus-4', { input: 5, output: 25 }],
-	['claude-sonnet-4', { input: 3, output: 15 }],
-	['claude-haiku-4', { input: 1, output: 5 }],
-];
-
-/**
- * Approximate Gemini text rates for post-processing, USD per million
- * tokens. Post-processing input is text (the transcript), so unlike the
- * transcription {@link GEMINI_RATES} the text-input rate applies.
- */
-const LLM_GEMINI_RATES: readonly [string, LlmRate][] = [
-	['gemini-3.6-flash', { input: 1.5, output: 7.5 }],
-	['gemini-3.5-flash', { input: 1.5, output: 9 }],
-	['gemini-3.5-flash-lite', { input: 0.3, output: 2.5 }],
-	['gemini-2.5-flash-lite', { input: 0.1, output: 0.4 }],
-	['gemini-2.5-flash', { input: 0.3, output: 2.5 }],
-	['gemini-2.5-pro', { input: 1.25, output: 10 }],
-	['gemini-2.0-flash', { input: 0.1, output: 0.4 }],
-];
-
 /**
  * Finds the rate whose model-id fragment appears in the (normalized)
  * model id, preferring the longest fragment so more specific entries win.
@@ -283,13 +228,7 @@ export function resolveLlmPricing(
 	providerId: LlmProviderId,
 	model: string,
 ): EnginePricing | null {
-	const table =
-		providerId === LLM_PROVIDER_IDS.ANTHROPIC
-			? LLM_ANTHROPIC_RATES
-			: providerId === LLM_PROVIDER_IDS.GEMINI
-				? LLM_GEMINI_RATES
-				: LLM_OPENAI_RATES;
-	const rate = matchRate(table, model);
+	const rate = matchRate(llmVendor(providerId).rates, model);
 	return perTokenPricing(
 		rate && {
 			audioInput: rate.input,
@@ -326,14 +265,7 @@ export function selectedEngineModel(
  * @param settings - Plugin settings
  */
 export function selectedLlmModel(settings: AudioRecorderSettings): string {
-	switch (settings.llmProvider) {
-		case LLM_PROVIDER_IDS.ANTHROPIC:
-			return settings.llmAnthropicModel;
-		case LLM_PROVIDER_IDS.GEMINI:
-			return settings.llmGeminiModel;
-		default:
-			return settings.llmOpenAiModel;
-	}
+	return selectedLlmVendor(settings).settings.model(settings);
 }
 
 /**
@@ -627,15 +559,15 @@ function llmLine(
 	label: string,
 	usage: (durationSeconds: number) => TranscriptionUsage,
 ): CostEstimateLine {
-	const providerId = settings.llmProvider;
-	const model = selectedLlmModel(settings);
+	const vendor = selectedLlmVendor(settings);
+	const model = vendor.settings.model(settings);
 	const base = {
 		label,
-		providerName: LLM_PROVIDER_LABELS[providerId],
+		providerName: vendor.label,
 		model,
-		pricingUrl: LLM_PROVIDER_PRICING_URLS[providerId],
+		pricingUrl: vendor.pricingUrl,
 	};
-	const pricing = resolveLlmPricing(providerId, model);
+	const pricing = resolveLlmPricing(vendor.id, model);
 	if (!pricing) {
 		return { ...base, usd: null, reason: 'no-rate' };
 	}

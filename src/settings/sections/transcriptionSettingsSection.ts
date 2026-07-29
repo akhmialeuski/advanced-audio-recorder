@@ -17,15 +17,13 @@ import {
 	MAX_ADVANCED_SECOND_PASS_MIN_RATIO,
 	ADVANCED_SECOND_PASS_RATIO_STEP,
 	TRANSCRIPTION_PROVIDER_IDS,
-	LLM_PROVIDER_IDS,
 	WHISPER_API_MODELS_DOC_URL,
 	DEEPGRAM_MODELS_DOC_URL,
 	GEMINI_MODELS_DOC_URL,
-	OPENAI_MODELS_DOC_URL,
-	ANTHROPIC_MODELS_DOC_URL,
 	LOCAL_WHISPER_MODEL_NAMES,
 	LOCAL_WHISPER_MODELS_DOC_URL,
 } from '../../constants';
+import { selectedLlmVendor } from '../../transcription/llm/vendors';
 import {
 	advancedTwoPassEnabled,
 	applyLlmProviderDefaults,
@@ -839,84 +837,36 @@ function renderLlmProviderFields(ctx: SettingsSectionContext): void {
 }
 
 /**
- * API-key field bound to the shared per-vendor key. OpenAI and Gemini reuse the
- * transcription key (so a vendor token is entered once); Anthropic keeps its
- * own.
+ * API-key field bound to the selected vendor's key field. Which field that is
+ * (OpenAI and Gemini reuse their transcription keys so a vendor token is
+ * entered once; Anthropic keeps its own) comes from the vendor registry.
  */
 function renderLlmKeyField(ctx: SettingsSectionContext): void {
 	const s = ctx.settings;
-	if (s.llmProvider === LLM_PROVIDER_IDS.ANTHROPIC) {
-		addText(ctx, {
-			name: 'Anthropic API key',
-			desc: 'Stored in plugin data on this device.',
-			get: () => s.anthropicApiKey,
-			set: (v) => (s.anthropicApiKey = v),
-			secret: true,
-		});
-		return;
-	}
-	if (s.llmProvider === LLM_PROVIDER_IDS.GEMINI) {
-		addText(ctx, {
-			name: 'Google Gemini API key',
-			desc: 'Shared with the Gemini transcription engine - set it in either place.',
-			get: () => s.geminiApiKey,
-			set: (v) => (s.geminiApiKey = v),
-			secret: true,
-		});
-		return;
-	}
+	const vendor = selectedLlmVendor(s);
 	addText(ctx, {
-		name: 'OpenAI API key',
-		desc: 'Shared with the Whisper API transcription engine - set it in either place.',
-		get: () => s.whisperApiKey,
-		set: (v) => (s.whisperApiKey = v),
+		name: vendor.keyFieldName,
+		desc: vendor.keyFieldDesc,
+		get: () => vendor.settings.apiKey(s),
+		set: (v) => vendor.settings.setApiKey(s, v),
 		secret: true,
 	});
 }
 
-/** Model picker bound to the selected provider's saved, user-editable list. */
+/** Model picker bound to the selected vendor's saved, user-editable list. */
 function renderLlmModelPicker(ctx: SettingsSectionContext): void {
 	const s = ctx.settings;
-	if (s.llmProvider === LLM_PROVIDER_IDS.ANTHROPIC) {
-		addModelPicker(ctx, {
-			name: 'LLM model',
-			desc: 'Pick an Anthropic model (e.g. claude-opus-4-8, claude-sonnet-5).',
-			helpLink: {
-				label: 'Anthropic models',
-				url: ANTHROPIC_MODELS_DOC_URL,
-			},
-			getModels: () => s.llmAnthropicModels,
-			setModels: (models) => (s.llmAnthropicModels = models),
-			getSelected: () => s.llmAnthropicModel,
-			setSelected: (id) => (s.llmAnthropicModel = id),
-		});
-		return;
-	}
-	if (s.llmProvider === LLM_PROVIDER_IDS.GEMINI) {
-		addModelPicker(ctx, {
-			name: 'LLM model',
-			desc: 'Pick a Gemini model (e.g. gemini-3.5-flash, gemini-2.5-pro).',
-			helpLink: {
-				label: 'Gemini model list',
-				url: GEMINI_MODELS_DOC_URL,
-			},
-			getModels: () => s.llmGeminiModels,
-			setModels: (models) => (s.llmGeminiModels = models),
-			getSelected: () => s.llmGeminiModel,
-			setSelected: (id) => (s.llmGeminiModel = id),
-		});
-		return;
-	}
+	const vendor = selectedLlmVendor(s);
 	addModelPicker(ctx, {
 		name: 'LLM model',
-		desc: 'Pick an OpenAI model (e.g. gpt-5.6-sol, gpt-5.6-luna).',
+		desc: vendor.modelPickerDesc,
 		helpLink: {
-			label: 'OpenAI models',
-			url: OPENAI_MODELS_DOC_URL,
+			label: vendor.modelsDocLabel,
+			url: vendor.modelsDocUrl,
 		},
-		getModels: () => s.llmOpenAiModels,
-		setModels: (models) => (s.llmOpenAiModels = models),
-		getSelected: () => s.llmOpenAiModel,
-		setSelected: (id) => (s.llmOpenAiModel = id),
+		getModels: () => vendor.settings.models(s),
+		setModels: (models) => vendor.settings.setModels(s, models),
+		getSelected: () => vendor.settings.model(s),
+		setSelected: (id) => vendor.settings.setModel(s, id),
 	});
 }

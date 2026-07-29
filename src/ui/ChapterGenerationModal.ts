@@ -11,7 +11,6 @@
 
 import { Modal, Setting } from 'obsidian';
 import type { App, TFile } from 'obsidian';
-import { LLM_PROVIDER_IDS } from '../constants';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import type { AutoChapterService } from '../chapters/AutoChapterService';
 import {
@@ -24,14 +23,8 @@ import { ensureSelectedInList } from '../settings/modelList';
 import { ConfirmModal } from './ConfirmModal';
 import { LLM_PROVIDER_OPTIONS } from '../settings/labels';
 import { estimateStepCost, formatUsd } from '../transcription/api';
+import { selectedLlmVendor } from '../transcription/llm/vendors';
 import { formatTimecode } from '../utils/TimeUtils';
-
-/** Read/write access to the model list of the currently selected LLM provider. */
-interface LlmModelAccess {
-	models: string[];
-	selected: string;
-	setSelected: (id: string) => void;
-}
 
 /** The shared LLM and chapter-profile fields the run pickers edit in place. */
 type RunSettingsSnapshot = Pick<
@@ -192,33 +185,6 @@ export class ChapterGenerationModal extends Modal {
 	}
 
 	/**
-	 * Read/write access to the model list of the selected LLM provider, so the
-	 * model picker edits the right provider's list and selection.
-	 * @param settings - Current plugin settings
-	 */
-	private llmModelAccess(settings: AudioRecorderSettings): LlmModelAccess {
-		if (settings.llmProvider === LLM_PROVIDER_IDS.ANTHROPIC) {
-			return {
-				models: settings.llmAnthropicModels,
-				selected: settings.llmAnthropicModel,
-				setSelected: (id) => (settings.llmAnthropicModel = id),
-			};
-		}
-		if (settings.llmProvider === LLM_PROVIDER_IDS.GEMINI) {
-			return {
-				models: settings.llmGeminiModels,
-				selected: settings.llmGeminiModel,
-				setSelected: (id) => (settings.llmGeminiModel = id),
-			};
-		}
-		return {
-			models: settings.llmOpenAiModels,
-			selected: settings.llmOpenAiModel,
-			setSelected: (id) => (settings.llmOpenAiModel = id),
-		};
-	}
-
-	/**
 	 * Renders the LLM provider and model pickers for this run. Chapters use
 	 * the same provider, key, and model as LLM post-processing, so changing
 	 * them here changes that shared configuration; the dialog re-renders on a
@@ -245,16 +211,22 @@ export class ChapterGenerationModal extends Modal {
 				});
 			});
 
-		const access = this.llmModelAccess(settings);
-		const models = ensureSelectedInList(access.models, access.selected);
+		// Which fields hold the vendor's model and model list comes from the
+		// registry, so this picker cannot drift from the settings tab's.
+		const vendor = selectedLlmVendor(settings);
+		const selected = vendor.settings.model(settings);
+		const models = ensureSelectedInList(
+			vendor.settings.models(settings),
+			selected,
+		);
 		new Setting(this.contentEl).setName('Model').addDropdown((dropdown) => {
 			for (const model of models) {
 				dropdown.addOption(model, model);
 			}
-			dropdown.setValue(access.selected).onChange((id) => {
+			dropdown.setValue(selected).onChange((id) => {
 				// Applied in place; persisted only on generate, reverted on
 				// cancel, matching the provider picker above.
-				access.setSelected(id);
+				vendor.settings.setModel(settings, id);
 				void this.render();
 			});
 		});

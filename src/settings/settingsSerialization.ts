@@ -5,12 +5,12 @@
  * @module settings/settingsSerialization
  */
 
-import { LLM_PROVIDER_IDS } from '../constants';
 import { normalizeChannelMode } from '../audio/downmix';
 import { isRecord } from '../utils/objects';
 import { getDefaultDeviceId } from '../utils/DeviceUtils';
 import { getPlatformKind, type PlatformKind } from '../platform/platformKind';
 import { isDeviceSelectionSupported } from '../platform/capabilities';
+import { selectedLlmVendor } from '../transcription/llm/vendors';
 import {
 	DEFAULT_SETTINGS,
 	createPlatformScopedDefaults,
@@ -304,36 +304,20 @@ function migrateLegacyLlmSettings(
 	raw: AudioRecorderSettingsInput,
 ): void {
 	const legacy: Record<string, unknown> = isRecord(raw) ? raw : {};
+	// Which fields hold the stored provider's key and model is a vendor fact,
+	// so the migration asks the registry instead of re-deriving the mapping.
+	const vendor = selectedLlmVendor(merged);
 	const legacyKey =
 		typeof legacy.llmApiKey === 'string' ? legacy.llmApiKey : '';
-	if (legacyKey) {
-		if (
-			merged.llmProvider === LLM_PROVIDER_IDS.ANTHROPIC &&
-			!merged.anthropicApiKey
-		) {
-			merged.anthropicApiKey = legacyKey;
-		} else if (
-			merged.llmProvider === LLM_PROVIDER_IDS.GEMINI &&
-			!merged.geminiApiKey
-		) {
-			merged.geminiApiKey = legacyKey;
-		} else if (
-			merged.llmProvider === LLM_PROVIDER_IDS.OPENAI_COMPATIBLE &&
-			!merged.whisperApiKey
-		) {
-			merged.whisperApiKey = legacyKey;
-		}
+	// A vendor key already set is never overwritten, so the migration cannot
+	// clobber a freshly entered token.
+	if (legacyKey && !vendor.settings.apiKey(merged)) {
+		vendor.settings.setApiKey(merged, legacyKey);
 	}
 	const legacyModel =
 		typeof legacy.llmModel === 'string' ? legacy.llmModel.trim() : '';
 	if (legacyModel) {
-		if (merged.llmProvider === LLM_PROVIDER_IDS.ANTHROPIC) {
-			merged.llmAnthropicModel = legacyModel;
-		} else if (merged.llmProvider === LLM_PROVIDER_IDS.GEMINI) {
-			merged.llmGeminiModel = legacyModel;
-		} else {
-			merged.llmOpenAiModel = legacyModel;
-		}
+		vendor.settings.setModel(merged, legacyModel);
 	}
 	// Drop the superseded flat fields so a later save does not persist them.
 	if (isRecord(merged)) {

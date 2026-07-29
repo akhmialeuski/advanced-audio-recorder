@@ -4,7 +4,8 @@
  * @module settings/labels
  */
 
-import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from '../constants';
+import { TRANSCRIPTION_PROVIDER_IDS } from '../constants';
+import { LLM_VENDOR_IDS, LLM_VENDORS } from '../transcription/llm/vendors';
 import type {
 	TranscriptDestination,
 	TranscriptFileFormat,
@@ -52,12 +53,15 @@ export const LLM_TASK_LABELS: Record<LlmTask, string> = {
 	custom: 'Custom',
 };
 
-/** Display labels for each LLM provider (single source for the UI). */
-export const LLM_PROVIDER_LABELS: Record<LlmProviderId, string> = {
-	[LLM_PROVIDER_IDS.OPENAI_COMPATIBLE]: 'OpenAI',
-	[LLM_PROVIDER_IDS.ANTHROPIC]: 'Anthropic (Claude)',
-	[LLM_PROVIDER_IDS.GEMINI]: 'Google Gemini',
-};
+/**
+ * Display labels for each LLM provider, derived from the vendor registry so
+ * the dropdown, the cost estimate, and the provider itself can never disagree
+ * about a vendor's name.
+ */
+export const LLM_PROVIDER_LABELS: Record<LlmProviderId, string> =
+	Object.fromEntries(
+		LLM_VENDOR_IDS.map((id) => [id, LLM_VENDORS[id].label]),
+	) as Record<LlmProviderId, string>;
 
 /**
  * Public pricing pages per transcription engine, linked from the cost
@@ -76,15 +80,14 @@ export const TRANSCRIPTION_PROVIDER_PRICING_URLS: Partial<
 };
 
 /**
- * Public pricing pages per LLM post-processing provider, linked from the
- * cost estimate. Centralized for the same reason as
- * {@link TRANSCRIPTION_PROVIDER_PRICING_URLS}.
+ * Public pricing pages per LLM post-processing provider, linked from the cost
+ * estimate. Derived from the vendor registry, which owns the URL alongside the
+ * rate table it should be checked against.
  */
-export const LLM_PROVIDER_PRICING_URLS: Record<LlmProviderId, string> = {
-	[LLM_PROVIDER_IDS.OPENAI_COMPATIBLE]: 'https://openai.com/api/pricing/',
-	[LLM_PROVIDER_IDS.ANTHROPIC]: 'https://www.anthropic.com/pricing',
-	[LLM_PROVIDER_IDS.GEMINI]: 'https://ai.google.dev/gemini-api/docs/pricing',
-};
+export const LLM_PROVIDER_PRICING_URLS: Record<LlmProviderId, string> =
+	Object.fromEntries(
+		LLM_VENDOR_IDS.map((id) => [id, LLM_VENDORS[id].pricingUrl]),
+	) as Record<LlmProviderId, string>;
 
 /** A value/label pair for a dropdown control (single source for the UI). */
 export interface LabeledOption {

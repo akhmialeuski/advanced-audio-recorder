@@ -4,23 +4,15 @@
  * @module transcription/factories
  */
 
-import {
-	LLM_PROVIDER_IDS,
-	MS_PER_MINUTE,
-	TRANSCRIPTION_PROVIDER_IDS,
-} from '../constants';
+import { MS_PER_MINUTE, TRANSCRIPTION_PROVIDER_IDS } from '../constants';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import { WhisperApiProvider } from './providers/WhisperApiProvider';
 import { LocalWhisperProvider } from './providers/LocalWhisperProvider';
 import { DeepgramProvider } from './providers/DeepgramProvider';
 import { GeminiProvider } from './providers/GeminiProvider';
 import type { TranscriptionProvider } from './providers/TranscriptionProvider';
-import {
-	AnthropicLlmProvider,
-	GeminiLlmProvider,
-	OpenAiCompatibleLlmProvider,
-	type LlmProvider,
-} from './llm/LlmProvider';
+import type { LlmProvider } from './llm/LlmProvider';
+import { selectedLlmVendor } from './llm/vendors';
 
 /** Error raised when settings are insufficient to build a provider. */
 export class ProviderConfigError extends Error {
@@ -109,48 +101,24 @@ export function createTranscriptionProvider(
 }
 
 /**
- * Builds the configured LLM post-processing provider. The API key is the
- * shared per-vendor key (OpenAI reuses the Whisper API key, Gemini reuses the
- * Gemini transcription key, Anthropic uses its own), and the model is the
- * provider's own selected id. Every provider requires a key.
+ * Builds the configured LLM post-processing provider from the selected
+ * vendor's descriptor: which settings field holds its key and model, and how
+ * to construct it, are vendor facts owned by the registry rather than branches
+ * here. Every vendor requires a key.
  * @param settings - Plugin settings
  */
 export function createLlmProvider(
 	settings: AudioRecorderSettings,
 ): LlmProvider {
-	const baseUrl = settings.llmBaseUrl;
-	if (settings.llmProvider === LLM_PROVIDER_IDS.ANTHROPIC) {
-		if (!settings.anthropicApiKey) {
-			throw new ProviderConfigError(
-				'Set the Anthropic API key in settings.',
-			);
-		}
-		return new AnthropicLlmProvider({
-			baseUrl,
-			apiKey: settings.anthropicApiKey,
-			model: settings.llmAnthropicModel,
-		});
+	const vendor = selectedLlmVendor(settings);
+	const apiKey = vendor.settings.apiKey(settings);
+	if (!apiKey) {
+		throw new ProviderConfigError(vendor.missingKeyMessage);
 	}
-	if (settings.llmProvider === LLM_PROVIDER_IDS.GEMINI) {
-		if (!settings.geminiApiKey) {
-			throw new ProviderConfigError(
-				'Set the Google Gemini API key in settings.',
-			);
-		}
-		return new GeminiLlmProvider({
-			baseUrl,
-			apiKey: settings.geminiApiKey,
-			model: settings.llmGeminiModel,
-		});
-	}
-	// OpenAI reuses the Whisper API key as the shared OpenAI vendor key.
-	if (!settings.whisperApiKey) {
-		throw new ProviderConfigError('Set the OpenAI API key in settings.');
-	}
-	return new OpenAiCompatibleLlmProvider({
-		baseUrl,
-		apiKey: settings.whisperApiKey,
-		model: settings.llmOpenAiModel,
+	return vendor.create({
+		baseUrl: settings.llmBaseUrl,
+		apiKey,
+		model: vendor.settings.model(settings),
 	});
 }
 
