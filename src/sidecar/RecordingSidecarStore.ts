@@ -401,15 +401,25 @@ export class RecordingSidecarStore {
 				hits.add(recording);
 			}
 		}
-		for (const file of this.app.vault.getFiles()) {
-			if (!file.path.endsWith(SIDECAR_SUFFIX)) {
-				continue;
-			}
-			const recording = file.path.slice(0, -SIDECAR_SUFFIX.length);
-			if (this.cache.has(recording) || hits.has(recording)) {
-				continue;
-			}
-			if (references(await this.load(recording))) {
+		// Whether a sidecar records this output cannot be known without reading
+		// it, so every not-yet-cached one is read - but concurrently rather than
+		// one await at a time, which turned a rename in a vault with hundreds of
+		// recordings into hundreds of serialized disk round-trips. load() caches
+		// and is race-safe, so this costs one read per sidecar per session; a
+		// later rename finds them all cached and touches the disk not at all.
+		const uncached = this.app.vault
+			.getFiles()
+			.filter((file) => file.path.endsWith(SIDECAR_SUFFIX))
+			.map((file) => file.path.slice(0, -SIDECAR_SUFFIX.length))
+			.filter((recording) => !this.cache.has(recording));
+		const loaded = await Promise.all(
+			uncached.map(async (recording) => ({
+				recording,
+				doc: await this.load(recording),
+			})),
+		);
+		for (const { recording, doc } of loaded) {
+			if (references(doc)) {
 				hits.add(recording);
 			}
 		}

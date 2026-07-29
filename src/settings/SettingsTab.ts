@@ -859,18 +859,26 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		// Audio player
 		this.renderAudioPlayerSettings(containerEl);
 
-		// Transcription
-		renderTranscriptionSection({
-			containerEl,
-			settings: this.plugin.settings,
-			save: () => this.plugin.saveSettings(),
-			rerender: () => {
-				this.rerender();
-			},
-			saveDebounced: () => {
-				this.saveTextSettingDebounced();
-			},
-		});
+		// Transcription. Rendered into a container of its own so its many
+		// reveal/hide toggles (engine, advanced mode, chapters, LLM task) and
+		// its model-list add/remove buttons re-render just this section. Sending
+		// them through the tab-wide rerender rebuilt every row and restarted the
+		// device enumeration and the async format probe, neither of which any
+		// transcription setting can affect.
+		const transcriptionEl = containerEl.createDiv();
+		const renderTranscription = (): void => {
+			transcriptionEl.empty();
+			renderTranscriptionSection({
+				containerEl: transcriptionEl,
+				settings: this.plugin.settings,
+				save: () => this.plugin.saveSettings(),
+				rerender: renderTranscription,
+				saveDebounced: () => {
+					this.saveTextSettingDebounced();
+				},
+			});
+		};
+		renderTranscription();
 
 		// Audio processing & feedback
 		this.renderInputProcessingSettings(containerEl);

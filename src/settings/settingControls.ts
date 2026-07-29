@@ -249,6 +249,11 @@ export function addDropdown(
 		setting.setDesc(config.desc);
 	}
 	setting.addDropdown((dropdown) => {
+		// Index by value first: the disabled pass below is a lookup per rendered
+		// option, not a linear scan of the option list for each one.
+		const byValue = new Map(
+			config.options.map((option) => [option.value, option]),
+		);
 		for (const option of config.options) {
 			dropdown.addOption(option.value, option.label);
 		}
@@ -256,10 +261,7 @@ export function addDropdown(
 		// visible (so every platform shows the same list) but cannot be
 		// selected.
 		for (const optionEl of Array.from(dropdown.selectEl.options)) {
-			const option = config.options.find(
-				(candidate) => candidate.value === optionEl.value,
-			);
-			optionEl.disabled = option?.disabled ?? false;
+			optionEl.disabled = byValue.get(optionEl.value)?.disabled ?? false;
 		}
 		dropdown.setValue(config.get()).onChange(async (value) => {
 			config.set(value);
