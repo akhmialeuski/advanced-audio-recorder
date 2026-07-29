@@ -63,7 +63,7 @@ export type EnginePricing =
 	  };
 
 /** A token-billed rate: USD per million audio-input, text-input, and output tokens. */
-export interface TokenRate {
+interface TokenRate {
 	audioInput: number;
 	textInput: number;
 	output: number;

@@ -134,7 +134,7 @@ async function probeFileMetadata(
  * @param path - Vault path, for the warning log only
  * @returns The metadata, or null when the container could not be parsed
  */
-export async function probeAudioMetadataAt(
+async function probeAudioMetadataAt(
 	url: string,
 	path: string,
 ): Promise<ProbedAudioMetadata | null> {
