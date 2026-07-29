@@ -11,6 +11,7 @@ import { AudioProcessingModal } from 'src/cleanup/AudioProcessingModal';
 import { AudioProcessingService } from 'src/cleanup/AudioProcessingService';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
+import { createMockApp } from '../helpers/createApp';
 
 jest.mock('src/cleanup/AudioProcessingService');
 
@@ -26,9 +27,7 @@ function makeFile(): TFile {
 }
 
 function makeApp(): App {
-	return {
-		fileManager: { trashFile: jest.fn().mockResolvedValue(undefined) },
-	} as unknown as App;
+	return createMockApp().app;
 }
 
 /** Settings with the given cleanup stages enabled by default. */
