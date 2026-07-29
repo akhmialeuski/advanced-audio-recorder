@@ -152,7 +152,7 @@ export function createPlatformScopedDefaults(): PlatformScopedSettings {
  * Creates a fresh default per-platform settings map.
  * @returns Default branches for every platform
  */
-export function createPerPlatformDefaults(): PlatformScopedSettingsMap {
+function createPerPlatformDefaults(): PlatformScopedSettingsMap {
 	return {
 		desktop: createPlatformScopedDefaults(),
 		mobile: createPlatformScopedDefaults(),

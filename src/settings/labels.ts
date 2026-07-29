@@ -33,10 +33,7 @@ export const TRANSCRIPTION_PROVIDER_LABELS: Record<
 ) as Record<TranscriptionProviderId, string>;
 
 /** Display labels for each transcript destination (single source for UI). */
-export const TRANSCRIPT_DESTINATION_LABELS: Record<
-	TranscriptDestination,
-	string
-> = {
+const TRANSCRIPT_DESTINATION_LABELS: Record<TranscriptDestination, string> = {
 	note: 'Insert into note',
 	file: 'Save to file',
 	both: 'Note and file',
@@ -44,10 +41,7 @@ export const TRANSCRIPT_DESTINATION_LABELS: Record<
 };
 
 /** Display labels for each transcript file format (single source for UI). */
-export const TRANSCRIPT_FILE_FORMAT_LABELS: Record<
-	TranscriptFileFormat,
-	string
-> = {
+const TRANSCRIPT_FILE_FORMAT_LABELS: Record<TranscriptFileFormat, string> = {
 	json: 'JSON (full data + speakers)',
 	srt: 'SubRip (.srt)',
 	vtt: 'WebVTT (.vtt)',
@@ -59,10 +53,7 @@ export const TRANSCRIPT_FILE_FORMAT_LABELS: Record<
  * links in notes. Shared by the settings tab and the two dialogs, which each
  * used to hard-code the same three value/label pairs.
  */
-export const CONVERSION_LINK_ACTION_LABELS: Record<
-	ConversionLinkAction,
-	string
-> = {
+const CONVERSION_LINK_ACTION_LABELS: Record<ConversionLinkAction, string> = {
 	none: 'Do nothing',
 	replace: 'Replace source link',
 	after: 'Insert after source link',

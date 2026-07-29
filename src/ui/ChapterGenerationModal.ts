@@ -24,12 +24,13 @@ import { ensureSelectedInList } from '../settings/modelList';
 import { ConfirmModal } from './ConfirmModal';
 import { PluginModal } from './PluginModal';
 import { LLM_PROVIDER_OPTIONS } from '../settings/labels';
-import { estimateStepCost, formatUsd } from '../transcription/api';
 import {
+	estimateStepCost,
+	formatUsd,
 	LLM_VENDOR_IDS,
 	LLM_VENDORS,
 	selectedLlmVendor,
-} from '../transcription/llm/vendors';
+} from '../transcription/api';
 import { formatTimecode } from '../utils/TimeUtils';
 
 /** Collaborators the dialog needs, injected by the action registry. */

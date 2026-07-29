@@ -55,20 +55,20 @@ export const JARGON_MATCH_THRESHOLD = 0.9;
 export const CONTEXT_SAMPLE_MAX_CHARS = 12000;
 
 /** Output-token budget for the list-producing agents. */
-export const CONTEXT_LIST_MAX_TOKENS = 512;
+const CONTEXT_LIST_MAX_TOKENS = 512;
 
 /** Output-token budget for the one-sentence topic agent. */
-export const CONTEXT_TOPIC_MAX_TOKENS = 128;
+const CONTEXT_TOPIC_MAX_TOKENS = 128;
 
 /** Output-token budget for the sentence-builder agent. */
-export const CONTEXT_SENTENCE_MAX_TOKENS = 300;
+const CONTEXT_SENTENCE_MAX_TOKENS = 300;
 
 /**
  * Cap on the terms kept per category after filtering. The prompt window and
  * the provider keyterm limits bound the final output anyway; this only stops
  * a runaway list from a misbehaving model from dominating the pipeline.
  */
-export const CONTEXT_MAX_TERMS_PER_CATEGORY = 25;
+const CONTEXT_MAX_TERMS_PER_CATEGORY = 25;
 
 /**
  * Longest candidate line accepted from a list agent. Anything longer is not

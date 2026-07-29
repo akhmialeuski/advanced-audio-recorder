@@ -39,7 +39,7 @@ const GEMINI_THINKING_BUDGET_MODEL_MARKER = '2.5';
  * safety/recitation/policy stop rather than a normal completion). MAX_TOKENS is
  * handled separately by {@link assertGeminiNotTruncated}.
  */
-export const GEMINI_BLOCKING_FINISH_REASONS: ReadonlySet<string> = new Set([
+const GEMINI_BLOCKING_FINISH_REASONS: ReadonlySet<string> = new Set([
 	'SAFETY',
 	'RECITATION',
 	'BLOCKLIST',

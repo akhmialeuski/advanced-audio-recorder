@@ -53,9 +53,9 @@ import {
 	type TranscribeRunCost,
 	type TranscriptDestination,
 	type TranscriptFileFormat,
+	type Transcript,
 	type TranscriptOutputSidecar,
 } from '../transcription/api';
-import type { Transcript } from '../transcription/TranscriptTypes';
 import { DICTIONARY_PROFILES } from '../settings/dictionaryProfiles';
 import { CHAPTER_PROMPT_PROFILES } from '../settings/chapterPromptProfiles';
 import { effectiveProfileId } from '../settings/profiles';

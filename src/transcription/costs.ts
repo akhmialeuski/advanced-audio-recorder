@@ -47,7 +47,7 @@ export const GEMINI_AUDIO_TOKENS_PER_SECOND = 32;
  * transcription engine and as the input size of the LLM post-processing
  * pass, which reads that transcript back.
  */
-export const ESTIMATED_OUTPUT_TOKENS_PER_SECOND = 8;
+const ESTIMATED_OUTPUT_TOKENS_PER_SECOND = 8;
 
 /**
  * Fraction of the transcript an LLM task is expected to emit, used only for
@@ -70,8 +70,8 @@ const LLM_OUTPUT_RATIO: Record<LlmTask, number> = {
  * candidates to vet. Kept in step with the pipeline in
  * {@link generateContext}.
  */
-export const CONTEXT_AGENT_CALL_ESTIMATE_PROMPT = 6;
-export const CONTEXT_AGENT_CALL_ESTIMATE_KEYTERM = 4;
+const CONTEXT_AGENT_CALL_ESTIMATE_PROMPT = 6;
+const CONTEXT_AGENT_CALL_ESTIMATE_KEYTERM = 4;
 
 /**
  * Each context agent reads a condensed sample of the first draft, which the
@@ -80,14 +80,14 @@ export const CONTEXT_AGENT_CALL_ESTIMATE_KEYTERM = 4;
  * sizes for the estimate, so the agents' cost stays roughly flat per run
  * instead of scaling with the whole recording.
  */
-export const CONTEXT_AGENT_INPUT_TOKENS = 3000;
-export const CONTEXT_AGENT_OUTPUT_TOKENS = 200;
+const CONTEXT_AGENT_INPUT_TOKENS = 3000;
+const CONTEXT_AGENT_OUTPUT_TOKENS = 200;
 
 /**
  * Auto chapters read the transcript and emit a short list of titled
  * timestamps, so the output is a small fraction of the input.
  */
-export const CHAPTERS_OUTPUT_TOKEN_RATIO = 0.1;
+const CHAPTERS_OUTPUT_TOKEN_RATIO = 0.1;
 
 /**
  * Resolves the pricing for a transcription engine and model, from the engine's

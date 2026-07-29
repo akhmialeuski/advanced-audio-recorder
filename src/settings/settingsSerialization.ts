@@ -34,7 +34,7 @@ import {
  * and Map values that predate the channel mode field; every entry
  * comes out with a valid channel mode.
  */
-export function normalizeTrackAudioSources(
+function normalizeTrackAudioSources(
 	trackAudioSources?: TrackAudioSources | TrackAudioSourcesRecord,
 ): TrackAudioSources {
 	if (!trackAudioSources) {

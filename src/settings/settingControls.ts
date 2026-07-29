@@ -32,10 +32,10 @@ import {
 export const SETTING_DISABLED_CLASS = 'aar-setting-disabled';
 
 /** Class applied to a "learn more" link appended to a setting description. */
-export const SETTING_DOC_LINK_CLASS = 'aar-doc-link';
+const SETTING_DOC_LINK_CLASS = 'aar-doc-link';
 
 /** Class applied to a setting whose control is a full-width, stacked text area. */
-export const SETTING_STACKED_CLASS = 'aar-setting-stacked';
+const SETTING_STACKED_CLASS = 'aar-setting-stacked';
 
 /** Default visible row count for a multi-line text-area control. */
 const DEFAULT_TEXTAREA_ROWS = 6;
