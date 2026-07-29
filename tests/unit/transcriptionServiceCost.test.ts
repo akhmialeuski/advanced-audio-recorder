@@ -21,7 +21,7 @@ const audioFile = {
 
 function makeProvider(result: WhisperResult): TranscriptionProvider {
 	return {
-		id: 'fake',
+		id: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
 		label: 'Fake',
 		requiresNetwork: false,
 		capabilities: {

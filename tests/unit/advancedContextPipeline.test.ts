@@ -30,6 +30,7 @@ import type {
 import type { LlmPrompt } from 'src/transcription/llmPostProcess';
 import { buildTranscript } from 'src/transcription/transcriptModel';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
+import { LLM_PROVIDER_IDS } from 'src/constants';
 
 /** One recorded agent call made through the scripted provider. */
 interface AgentCall {
@@ -50,7 +51,7 @@ function scriptedLlm(replies: Partial<Record<AgentKey, string | Error>>): {
 } {
 	const calls: AgentCall[] = [];
 	const llm: LlmProvider = {
-		id: 'scripted',
+		id: LLM_PROVIDER_IDS.GEMINI,
 		label: 'Scripted',
 		complete: (
 			prompt: LlmPrompt,

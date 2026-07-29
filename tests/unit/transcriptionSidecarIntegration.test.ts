@@ -11,7 +11,7 @@
 
 import type { App, TFile } from 'obsidian';
 import { Notice } from 'obsidian';
-import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
+import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import {
@@ -48,7 +48,7 @@ const audioFile = {
 /** A whole-file provider returning the given diarized segments. */
 function makeProvider(segments: TranscriptSegment[]): TranscriptionProvider {
 	return {
-		id: 'fake',
+		id: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
 		label: 'Fake',
 		requiresNetwork: false,
 		capabilities: {
@@ -382,6 +382,8 @@ describe('transcribeFile output registration', () => {
 			{
 				createProvider: () => makeProvider(twoSpeakerSegments),
 				createLlm: () => ({
+					id: LLM_PROVIDER_IDS.GEMINI,
+					label: 'Fake LLM',
 					complete: jest.fn(async () => 'cleaned body'),
 				}),
 			},
@@ -408,6 +410,8 @@ describe('transcribeFile output registration', () => {
 			{
 				createProvider: () => makeProvider(twoSpeakerSegments),
 				createLlm: () => ({
+					id: LLM_PROVIDER_IDS.GEMINI,
+					label: 'Fake LLM',
 					complete: jest.fn(async () => 'a summary'),
 				}),
 			},

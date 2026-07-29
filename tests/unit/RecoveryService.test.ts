@@ -10,7 +10,7 @@ import {
 	recoverSession,
 	discardSession,
 } from 'src/recording/RecoveryService';
-import { at } from '../helpers/assertions';
+import { at, defined } from '../helpers/assertions';
 import { SessionJournal, JOURNAL_VERSION } from 'src/recording/SessionJournal';
 import type {
 	JournalFile,
@@ -363,9 +363,12 @@ describe('RecoveryService', () => {
 			expect(result.failedTracks).toEqual(['bad-track']);
 			expect(result.recoveredPaths).toHaveLength(1);
 			// The failed track stays journaled for the next launch
-			expect(readStoredJournal()?.sessions[0].tracks).toHaveLength(1);
 			expect(
-				readStoredJournal()?.sessions[0].tracks[0].fileBaseName,
+				at(defined(readStoredJournal()).sessions, 0).tracks,
+			).toHaveLength(1);
+			expect(
+				at(at(defined(readStoredJournal()).sessions, 0).tracks, 0)
+					.fileBaseName,
 			).toBe('bad-track');
 		});
 	});

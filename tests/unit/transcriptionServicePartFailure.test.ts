@@ -21,6 +21,7 @@ import { prepareAudio } from 'src/transcription/audioPrep';
 import { TranscriptTruncatedError } from 'src/transcription/transcriptionErrors';
 import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
 import { mergeSettings } from 'src/settings/settingsSerialization';
+import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 
 jest.mock('obsidian', () => {
 	const actual = jest.requireActual('../mocks/obsidian');
@@ -146,7 +147,7 @@ function prepareSubdividingPart(): void {
 /** A stub LLM provider whose cleanup output deliberately carries no callout. */
 function makeLlm(output: string): LlmProvider {
 	return {
-		id: 'fake-llm',
+		id: LLM_PROVIDER_IDS.GEMINI,
 		label: 'Fake LLM',
 		complete: jest.fn(async () => output),
 	};
@@ -154,7 +155,7 @@ function makeLlm(output: string): LlmProvider {
 
 function makeProvider(transcribe: jest.Mock): TranscriptionProvider {
 	return {
-		id: 'fake',
+		id: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
 		label: 'Fake',
 		requiresNetwork: false,
 		capabilities: {

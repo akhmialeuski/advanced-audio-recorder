@@ -188,7 +188,7 @@ describe('RecordingManager', () => {
 			await feedChunkAndStop();
 
 			expect(writes).toHaveLength(1);
-			const { path, markers } = writes[0];
+			const { path, markers } = at(writes, 0);
 			expect(typeof path).toBe('string');
 			expect(markers).toHaveLength(1);
 			expect(markers[0]).toMatchObject({

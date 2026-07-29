@@ -187,8 +187,8 @@ describe('Settings', () => {
 
 		it('should merge track audio sources', () => {
 			const trackSources: TrackAudioSources = new Map([
-				[1, { deviceId: 'device-id-1' }],
-				[2, { deviceId: 'device-id-2' }],
+				[1, { deviceId: 'device-id-1', channelMode: 'source' }],
+				[2, { deviceId: 'device-id-2', channelMode: 'source' }],
 			]);
 
 			const result = mergeSettings({ trackAudioSources: trackSources });
@@ -250,7 +250,7 @@ describe('Settings', () => {
 		it('should normalize channel modes of Map-form track sources', () => {
 			// A Map built by pre-channel-mode plugin code lacks the field
 			const legacyMap = new Map([
-				[1, { deviceId: 'device-id-1' }],
+				[1, { deviceId: 'device-id-1', channelMode: 'source' }],
 			]) as unknown as AudioRecorderSettings['trackAudioSources'];
 
 			const result = mergeSettings({ trackAudioSources: legacyMap });
@@ -573,9 +573,9 @@ describe('Settings', () => {
 
 		it('TrackAudioSources should map numbers to device IDs', () => {
 			const sources: TrackAudioSources = new Map([
-				[1, { deviceId: 'device-1' }],
-				[2, { deviceId: 'device-2' }],
-				[3, { deviceId: 'device-3' }],
+				[1, { deviceId: 'device-1', channelMode: 'source' }],
+				[2, { deviceId: 'device-2', channelMode: 'source' }],
+				[3, { deviceId: 'device-3', channelMode: 'source' }],
 			]);
 
 			expect(sources.size).toBe(3);

@@ -18,6 +18,7 @@ import {
 import { transcribeFile } from 'src/transcription/runTranscription';
 import type { TranscriptionProvider } from 'src/transcription/providers/TranscriptionProvider';
 import { mergeSettings } from 'src/settings/settingsSerialization';
+import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 
 const audioFile = {
 	name: 'rec.webm',
@@ -33,7 +34,7 @@ const audioFile = {
  */
 function makeProvider(onTranscribe: () => void): TranscriptionProvider {
 	return {
-		id: 'fake',
+		id: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
 		label: 'Fake',
 		requiresNetwork: false,
 		capabilities: {

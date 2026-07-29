@@ -24,7 +24,12 @@ import type { LlmPrompt } from 'src/transcription/llmPostProcess';
 import type { TranscriptSegment } from 'src/transcription/TranscriptTypes';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import type { AudioRecorderSettingsInput } from 'src/settings/settingsSchema';
-import { TRANSCRIBE_CHUNK_PROGRESS_CEILING } from 'src/constants';
+import {
+	LLM_PROVIDER_IDS,
+	TRANSCRIBE_CHUNK_PROGRESS_CEILING,
+	TRANSCRIPTION_PROVIDER_IDS,
+} from 'src/constants';
+import type { TranscriptionProviderId } from 'src/settings/settingsSchema';
 
 jest.mock('obsidian', () => {
 	const actual = jest.requireActual('../mocks/obsidian');
@@ -111,7 +116,7 @@ const PASS2_SEGMENTS: TranscriptSegment[] = [
  * (second) pass with the canonical-spelling transcript.
  */
 function makeProvider(
-	id = 'whisper-api',
+	id: TranscriptionProviderId = TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
 	secondPassSegments: TranscriptSegment[] = PASS2_SEGMENTS,
 ): { provider: TranscriptionProvider; calls: TranscribeOptions[] } {
 	const calls: TranscribeOptions[] = [];
@@ -151,7 +156,7 @@ const AGENT_REPLIES: [string, string][] = [
 function makeLlm(): { llm: LlmProvider; calls: LlmPrompt[] } {
 	const calls: LlmPrompt[] = [];
 	const llm: LlmProvider = {
-		id: 'fake-llm',
+		id: LLM_PROVIDER_IDS.GEMINI,
 		label: 'Fake LLM',
 		complete: (prompt: LlmPrompt): Promise<string> => {
 			calls.push(prompt);
@@ -167,7 +172,7 @@ function makeLlm(): { llm: LlmProvider; calls: LlmPrompt[] } {
 /** A fake LLM whose every call fails (unreachable endpoint, bad key). */
 function makeDeadLlm(): LlmProvider {
 	return {
-		id: 'dead-llm',
+		id: LLM_PROVIDER_IDS.GEMINI,
 		label: 'Dead LLM',
 		complete: () => Promise.reject(new Error('LLM unreachable')),
 	};

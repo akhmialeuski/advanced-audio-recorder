@@ -1063,15 +1063,13 @@ describe('RecordingManager', () => {
 			// The 2nd construction is the rotation restart; it fails as if
 			// the input device disappeared mid-session
 			let constructionCount = 0;
-			(global as Record<string, unknown>).MediaRecorder = jest.fn(() => {
+			installMediaRecorderFactory(() => {
 				constructionCount += 1;
 				if (constructionCount === 2) {
 					throw new Error('device disappeared');
 				}
 				return mockMediaRecorder;
 			});
-			(global as Record<string, unknown>).MediaRecorder.isTypeSupported =
-				jest.fn().mockReturnValue(true);
 
 			await manager.startRecording();
 

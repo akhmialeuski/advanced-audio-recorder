@@ -16,6 +16,7 @@ import {
 } from 'src/recording/AudioStreamHandler';
 import { AudioStreamError } from 'src/errors';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 
 /** Builds a MediaStream stub whose tracks record stop() calls. */
 function fakeStream(): { stream: MediaStream; stop: jest.Mock } {
@@ -84,7 +85,7 @@ describe('AudioStreamHandler', () => {
 				resolveStream = resolve;
 			});
 			getUserMedia.mockReturnValue(pendingStream);
-			const settings = {
+			const settings: AudioRecorderSettings = {
 				...multiTrackSettings,
 				maxTracks: 1,
 				trackAudioSources: new Map([
@@ -92,7 +93,7 @@ describe('AudioStreamHandler', () => {
 						1,
 						{
 							deviceId: 'device-before',
-							channelMode: 'mono-left' as const,
+							channelMode: 'mono-left',
 						},
 					],
 				]),
@@ -196,13 +197,13 @@ describe('AudioStreamHandler', () => {
 		});
 
 		it('should skip tracks without selected devices', () => {
-			const settings = {
+			const settings: AudioRecorderSettings = {
 				...DEFAULT_SETTINGS,
 				enableMultiTrack: true,
 				maxTracks: 3,
 				trackAudioSources: new Map([
-					[1, { deviceId: 'device-1' }],
-					[3, { deviceId: '' }],
+					[1, { deviceId: 'device-1', channelMode: 'source' }],
+					[3, { deviceId: '', channelMode: 'source' }],
 				]),
 			};
 

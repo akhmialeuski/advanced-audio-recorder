@@ -5,7 +5,7 @@
  */
 
 import { mapDeepgramResponse } from 'src/transcription/providers/deepgramResponse';
-import { at } from '../helpers/assertions';
+import { at, defined } from '../helpers/assertions';
 
 describe('mapDeepgramResponse', () => {
 	it('maps utterances with speaker labels when diarizing', () => {
@@ -38,7 +38,7 @@ describe('mapDeepgramResponse', () => {
 		expect(result.segments).toHaveLength(2);
 		expect(at(result.segments, 0).text).toBe('Hello there.');
 		expect(at(result.segments, 0).speaker).toBe('Speaker 1');
-		expect(at(result.segments, 0).words?.[0].text).toBe('Hello');
+		expect(at(defined(at(result.segments, 0).words), 0).text).toBe('Hello');
 		expect(at(result.segments, 1).speaker).toBe('Speaker 2');
 	});
 
