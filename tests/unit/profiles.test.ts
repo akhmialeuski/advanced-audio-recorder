@@ -176,9 +176,10 @@ describe.each(SELECTABLE_LISTS)('%s profile list', (_name, list) => {
 });
 
 describe('speaker profile list', () => {
-	// The roster has no persisted selection: the rename dialog holds the pick
-	// for one run, so the descriptor's selection accessors are inert.
-	it('stores profiles but carries no persisted selection', () => {
+	// The pick is persisted like the dictionary and chapter ones: a
+	// transcription records it with the recording, and the next run defaults
+	// to it.
+	it('stores profiles and persists the selection', () => {
 		const settings = mergeSettings();
 		SPEAKER_PROFILES.set(settings, []);
 		const created = SPEAKER_PROFILES.create('Weekly sync');
@@ -188,6 +189,7 @@ describe('speaker profile list', () => {
 		);
 		expect(SPEAKER_PROFILES.get(settings)).toHaveLength(1);
 		SPEAKER_PROFILES.setSelectedId(settings, created.id);
-		expect(SPEAKER_PROFILES.selectedId(settings)).toBe('');
+		expect(SPEAKER_PROFILES.selectedId(settings)).toBe(created.id);
+		expect(settings.transcriptionSpeakerProfileId).toBe(created.id);
 	});
 });

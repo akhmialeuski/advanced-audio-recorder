@@ -329,6 +329,7 @@ describe('Settings', () => {
 				],
 				transcriptionChapterPromptProfileId: 'c1',
 				transcriptionSpeakerProfiles: [],
+				transcriptionSpeakerProfileId: '',
 				transcriptionChunkMb: 10,
 				transcriptionTimeoutMinutes: 15,
 				whisperApiBaseUrl: 'https://api.groq.com/openai/v1',

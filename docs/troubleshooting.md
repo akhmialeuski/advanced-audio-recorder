@@ -189,6 +189,7 @@ Transcription stops with an error, or the progress dialog reports a failure.
 | File too large                                     | The **Whisper API** caps each request at **25 MB**. Files over that are automatically resampled to 16 kHz mono and split into upload-sized chunks. **Deepgram** and **Gemini** accept up to **2 GB**. |
 | `Speaker diarization` greyed out                   | Diarization is only supported by **Deepgram** and **Google Gemini**. It is disabled and greyed for **Whisper API** and **Local whisper.cpp** - switch engines if you need speaker labels.             |
 | Gemini diarization warning on long files           | Gemini splits recordings longer than 15 minutes into parts and stitches them; diarized splits reset speaker numbering, which the plugin surfaces as a warning.                                        |
+| Play buttons greyed out in **Rename speakers**     | That recording's roster was stored before speaker samples existed, so it carries no timings. Transcribe it once more with **Speaker diarization** on and the buttons come back.                       |
 | Local `whisper.cpp` fails to start                 | Check the **binary path** and **model path** (an absolute path to a GGML `.bin` file). Make sure the binary is executable and the model file exists.                                                  |
 
 Other tips:

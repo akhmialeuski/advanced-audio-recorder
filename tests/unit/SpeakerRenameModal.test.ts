@@ -1,12 +1,14 @@
 /**
  * Tests for the speaker rename dialog: the empty state (no stored roster),
- * prefilled name fields from the sidecar roster, rejecting a duplicate name,
- * applying renames through the recorded outputs (diffed against the stored
- * names, with roster and history persisted first), the LLM-skip notice,
- * undo, and creating and growing a participant profile.
+ * prefilled name fields from the sidecar roster, the per-speaker preview
+ * column, rejecting a duplicate name, applying renames through the recorded
+ * outputs (diffed against the stored names, with roster and history persisted
+ * first), the LLM-skip notice, undo, and the participant roster the recording
+ * carries alongside the settings profiles.
+ * @jest-environment jsdom
  */
 
-import type { App, TFile } from 'obsidian';
+import type { App, ButtonComponent, TFile } from 'obsidian';
 import { Notice } from 'obsidian';
 import { SpeakerRenameModal } from 'src/ui/SpeakerRenameModal';
 import type { SpeakerRenameSidecarAccess } from 'src/ui/SpeakerRenameModal';
@@ -20,6 +22,7 @@ import {
 	applySpeakerRenamesWithSidecar,
 	hasUnscopableRecordedNote,
 } from 'src/speakers/applySpeakerRenames';
+import { SpeakerPreviewPlayer } from 'src/player/SpeakerPreviewPlayer';
 
 jest.mock('src/speakers/applySpeakerRenames', () => ({
 	applySpeakerRenamesWithSidecar: jest.fn(),
@@ -35,7 +38,10 @@ interface ModalInternals {
 	apply(): Promise<void>;
 	undo(): Promise<void>;
 	createProfile(): Promise<void>;
+	suggestionPool(): string[];
 	inputs: Map<string, HTMLInputElement>;
+	previewButtons: Map<string, ButtonComponent>;
+	preview: SpeakerPreviewPlayer | null;
 	selectedProfileId: string;
 	allowBroad: boolean;
 	newProfileInput: HTMLInputElement | null;
@@ -46,7 +52,9 @@ const audioFile = {
 	path: 'audio/rec.wav',
 } as unknown as TFile;
 
-const app = {} as unknown as App;
+const app = {
+	vault: { getResourcePath: () => 'app://vault/audio/rec.wav' },
+} as unknown as App;
 
 /** A sidecar stub whose getTranscript resolves to the given section. */
 function makeSidecar(
@@ -100,6 +108,67 @@ function rosterSection(
 			{ label: 'Speaker 2' },
 		],
 		...overrides,
+	};
+}
+
+/** A controllable audio element installed as the global Audio factory. */
+interface PreviewAudioHarness {
+	element: HTMLAudioElement;
+	play: jest.SpyInstance<Promise<void>, []>;
+	pause: jest.SpyInstance<void, []>;
+	load: jest.SpyInstance<void, []>;
+	constructions(): number;
+	/** Moves the playhead and emits timeupdate, as playback would. */
+	advanceTo(seconds: number): void;
+	restore(): void;
+}
+
+/**
+ * Installs a deterministic audio element for the preview column, so pressing a
+ * play button exercises the real player instead of jsdom's unimplemented media.
+ */
+function installPreviewAudio(): PreviewAudioHarness {
+	const element = document.createElement('audio');
+	let paused = true;
+	let currentTime = 0;
+	Object.defineProperties(element, {
+		paused: { configurable: true, get: () => paused },
+		currentTime: {
+			configurable: true,
+			get: () => currentTime,
+			set: (value: number) => {
+				currentTime = value;
+			},
+		},
+		duration: { configurable: true, get: () => 600 },
+		readyState: { configurable: true, get: () => 1 },
+	});
+	const play = jest.spyOn(element, 'play').mockImplementation(() => {
+		paused = false;
+		return Promise.resolve();
+	});
+	const pause = jest.spyOn(element, 'pause').mockImplementation(() => {
+		paused = true;
+	});
+	const load = jest
+		.spyOn(element, 'load')
+		.mockImplementation(() => undefined);
+	const factory = jest
+		.spyOn(globalThis, 'Audio')
+		.mockImplementation(() => element);
+	return {
+		element,
+		play,
+		pause,
+		load,
+		constructions: () => factory.mock.calls.length,
+		advanceTo: (seconds: number) => {
+			currentTime = seconds;
+			element.dispatchEvent(new Event('timeupdate'));
+		},
+		restore: () => {
+			factory.mockRestore();
+		},
 	};
 }
 
@@ -205,6 +274,9 @@ describe('SpeakerRenameModal', () => {
 				{ label: 'Speaker 2', name: 'Cleo' },
 			],
 			{ 'Speaker 1': 'Bob', 'Speaker 2': 'Cleo' },
+			// The applied names join the recording's own roster, so the next
+			// rename suggests them without any profile being picked.
+			{ names: ['Bob', 'Cleo'], profileId: '' },
 		);
 		// Self-healing rules: each speaker's replacement targets both the
 		// stored name ("Alex", what a rewritten output shows) and the engine
@@ -287,6 +359,7 @@ describe('SpeakerRenameModal', () => {
 			'audio/rec.wav',
 			[{ label: 'Speaker 1' }, { label: 'Speaker 2' }],
 			{},
+			{ names: [], profileId: '' },
 		);
 		expect(applyMock).toHaveBeenCalledWith(
 			app,
@@ -605,5 +678,261 @@ describe('SpeakerRenameModal', () => {
 		expect(applyMock).not.toHaveBeenCalled();
 		expect(sidecar.setSpeakers).not.toHaveBeenCalled();
 		expect(sidecar.popHistory).toHaveBeenCalledWith('audio/rec.wav');
+	});
+
+	it('offers a preview button per speaker, disabled without stored offsets', async () => {
+		const sidecar = makeSidecar(
+			rosterSection({
+				speakers: [
+					{
+						label: 'Speaker 1',
+						name: 'Alex',
+						firstStart: 12,
+						firstEnd: 20,
+					},
+					// A roster written before the offsets existed.
+					{ label: 'Speaker 2' },
+				],
+			}),
+		);
+		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+		modal.open();
+		await internals.render();
+
+		// Only the speaker with a stored offset gets a live button; the other
+		// one is rendered disabled and never registers a toggle.
+		expect([...internals.previewButtons.keys()]).toEqual(['Speaker 1']);
+		const buttons = modal.contentEl.querySelectorAll(
+			'button.aar-speaker-preview',
+		);
+		expect(buttons).toHaveLength(2);
+		expect((buttons[0] as HTMLButtonElement).disabled).toBe(false);
+		expect((buttons[1] as HTMLButtonElement).disabled).toBe(true);
+		expect(modal.contentEl.textContent).toContain('First speaks at 0:12');
+	});
+
+	it('plays the speakers first turn and flips the button to stop', async () => {
+		const audio = installPreviewAudio();
+		const sidecar = makeSidecar(
+			rosterSection({
+				speakers: [
+					{ label: 'Speaker 1', firstStart: 12, firstEnd: 20 },
+					{ label: 'Speaker 2', firstStart: 40, firstEnd: 44 },
+				],
+			}),
+		);
+		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+		modal.open();
+		await internals.render();
+
+		const first = internals.previewButtons.get('Speaker 1');
+		const second = internals.previewButtons.get('Speaker 2');
+		if (!first || !second) {
+			throw new Error('missing preview buttons');
+		}
+		first.buttonEl.click();
+
+		expect(audio.element.currentTime).toBe(12);
+		expect(audio.play).toHaveBeenCalled();
+		expect(first.buttonEl.getAttribute('data-icon')).toBe('square');
+		expect(second.buttonEl.getAttribute('data-icon')).toBe('play');
+
+		// Starting the other speaker moves the stop affordance with it.
+		second.buttonEl.click();
+		expect(audio.element.currentTime).toBe(40);
+		expect(first.buttonEl.getAttribute('data-icon')).toBe('play');
+		expect(second.buttonEl.getAttribute('data-icon')).toBe('square');
+
+		// A second press stops, and reaching the end would too.
+		second.buttonEl.click();
+		expect(internals.preview?.playingId).toBeNull();
+		expect(second.buttonEl.getAttribute('data-icon')).toBe('play');
+		audio.restore();
+	});
+
+	it('resets the button when the excerpt ends on its own', async () => {
+		const audio = installPreviewAudio();
+		const sidecar = makeSidecar(
+			rosterSection({
+				speakers: [
+					{ label: 'Speaker 1', firstStart: 12, firstEnd: 20 },
+				],
+			}),
+		);
+		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+		modal.open();
+		await internals.render();
+
+		const button = internals.previewButtons.get('Speaker 1');
+		button?.buttonEl.click();
+		audio.advanceTo(20);
+
+		expect(internals.preview?.playingId).toBeNull();
+		expect(button?.buttonEl.getAttribute('data-icon')).toBe('play');
+		audio.restore();
+	});
+
+	it('builds no audio element until a preview is pressed', async () => {
+		const audio = installPreviewAudio();
+		const sidecar = makeSidecar(
+			rosterSection({
+				speakers: [
+					{ label: 'Speaker 1', firstStart: 12, firstEnd: 20 },
+				],
+			}),
+		);
+		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+		modal.open();
+		await internals.render();
+
+		expect(internals.preview).toBeNull();
+		expect(audio.constructions()).toBe(0);
+		audio.restore();
+	});
+
+	it('stops and releases the preview when the dialog closes', async () => {
+		const audio = installPreviewAudio();
+		const sidecar = makeSidecar(
+			rosterSection({
+				speakers: [
+					{ label: 'Speaker 1', firstStart: 12, firstEnd: 20 },
+				],
+			}),
+		);
+		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+		modal.open();
+		await internals.render();
+		internals.previewButtons.get('Speaker 1')?.buttonEl.click();
+
+		modal.close();
+
+		expect(audio.pause).toHaveBeenCalled();
+		expect(audio.load).toHaveBeenCalled();
+		expect(internals.preview).toBeNull();
+		audio.restore();
+	});
+
+	it('suggests the names the recording carries, with no profile picked', async () => {
+		const sidecar = makeSidecar(
+			rosterSection({ participants: ['Alex', 'Maria'] }),
+		);
+		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+		modal.open();
+		await internals.render();
+
+		expect(internals.selectedProfileId).toBe('');
+		expect(internals.suggestionPool()).toEqual(['Alex', 'Maria']);
+		expect(modal.contentEl.textContent).toContain(
+			'This recording suggests 2 stored names',
+		);
+	});
+
+	it('re-selects the profile the transcription recorded and widens the pool', async () => {
+		const settings = mergeSettings({
+			transcriptionSpeakerProfiles: [
+				{
+					id: 'p1',
+					name: 'Weekly sync',
+					participants: ['Maria', 'Ivan'],
+				},
+			],
+		});
+		const sidecar = makeSidecar(
+			rosterSection({
+				participants: ['Alex', 'Maria'],
+				participantProfileId: 'p1',
+			}),
+		);
+		const { modal, internals } = makeModal(settings, sidecar);
+		modal.open();
+		await internals.render();
+
+		expect(internals.selectedProfileId).toBe('p1');
+		// The recording's own names come first; the profile only widens.
+		expect(internals.suggestionPool()).toEqual(['Alex', 'Maria', 'Ivan']);
+	});
+
+	it('falls back to the recording when the recorded profile is gone', async () => {
+		const sidecar = makeSidecar(
+			rosterSection({
+				participants: ['Alex'],
+				participantProfileId: 'deleted',
+			}),
+		);
+		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+		modal.open();
+		await internals.render();
+
+		expect(internals.selectedProfileId).toBe('');
+		expect(internals.suggestionPool()).toEqual(['Alex']);
+	});
+
+	it('saves a name that is in neither the recording nor the profile to both', async () => {
+		const settings = mergeSettings({
+			transcriptionSpeakerProfiles: [
+				{ id: 'p1', name: 'Weekly sync', participants: ['Maria'] },
+			],
+		});
+		const sidecar = makeSidecar(
+			rosterSection({
+				speakers: [{ label: 'Speaker 1' }, { label: 'Speaker 2' }],
+				participants: ['Alex'],
+				participantProfileId: 'p1',
+			}),
+		);
+		const { modal, internals, saveSettings } = makeModal(settings, sidecar);
+		modal.open();
+		await internals.render();
+
+		const second = internals.inputs.get('Speaker 2');
+		if (!second) {
+			throw new Error('missing input');
+		}
+		second.value = 'Ivan';
+		await internals.apply();
+
+		// The recording's own roster grows in the same atomic commit...
+		expect(sidecar.commitRename).toHaveBeenCalledWith(
+			'audio/rec.wav',
+			[{ label: 'Speaker 1' }, { label: 'Speaker 2', name: 'Ivan' }],
+			{ 'Speaker 2': 'Ivan' },
+			{ names: ['Ivan'], profileId: 'p1' },
+		);
+		// ...and the picked profile learns the name too.
+		expect(settings.transcriptionSpeakerProfiles[0]?.participants).toEqual([
+			'Maria',
+			'Ivan',
+		]);
+		expect(saveSettings).toHaveBeenCalled();
+	});
+
+	it('records "no profile" when the recording roster is the only source', async () => {
+		const settings = mergeSettings({
+			transcriptionSpeakerProfiles: [
+				{ id: 'p1', name: 'Weekly sync', participants: ['Maria'] },
+			],
+		});
+		const sidecar = makeSidecar(rosterSection({ participants: ['Alex'] }));
+		const { modal, internals } = makeModal(settings, sidecar);
+		modal.open();
+		await internals.render();
+
+		const second = internals.inputs.get('Speaker 2');
+		if (!second) {
+			throw new Error('missing input');
+		}
+		second.value = 'Ivan';
+		await internals.apply();
+
+		expect(sidecar.commitRename).toHaveBeenCalledWith(
+			'audio/rec.wav',
+			expect.anything(),
+			expect.anything(),
+			{ names: ['Alex', 'Ivan'], profileId: '' },
+		);
+		// No profile was picked, so none of them learned the name.
+		expect(settings.transcriptionSpeakerProfiles[0]?.participants).toEqual([
+			'Maria',
+		]);
 	});
 });

@@ -4,6 +4,7 @@
 
 import {
 	buildTranscript,
+	collectFirstTurns,
 	collectSpeakers,
 	normalizeSegments,
 	normalizeWhitespace,
@@ -41,6 +42,79 @@ describe('collectSpeakers', () => {
 			seg(2, 3, 'c', 'B'),
 		];
 		expect(collectSpeakers(segments)).toEqual(['B', 'A']);
+	});
+});
+
+describe('collectFirstTurns', () => {
+	it('spans the whole opening turn, not just its first segment', () => {
+		// Engines cut one sentence into several segments; half a sentence
+		// identifies nobody, so the run is followed to its end.
+		const turns = collectFirstTurns([
+			seg(0, 2, 'a', 'A'),
+			seg(2, 5, 'b', 'A'),
+			seg(5, 7, 'c', 'B'),
+		]);
+		expect(turns.get('A')).toEqual({ start: 0, end: 5 });
+		expect(turns.get('B')).toEqual({ start: 5, end: 7 });
+	});
+
+	it('keeps the FIRST turn when a speaker returns later', () => {
+		const turns = collectFirstTurns([
+			seg(0, 2, 'a', 'A'),
+			seg(2, 4, 'b', 'B'),
+			seg(4, 30, 'c', 'A'),
+		]);
+		expect(turns.get('A')).toEqual({ start: 0, end: 2 });
+	});
+
+	it('does not merge a later turn into the first across a gap', () => {
+		const turns = collectFirstTurns([
+			seg(0, 2, 'a', 'A'),
+			seg(2, 4, 'b', 'B'),
+			seg(4, 6, 'c', 'A'),
+			seg(6, 8, 'd', 'A'),
+		]);
+		expect(turns.get('A')).toEqual({ start: 0, end: 2 });
+		expect(turns.get('B')).toEqual({ start: 2, end: 4 });
+	});
+
+	it('ends a run at a segment with no speaker', () => {
+		const turns = collectFirstTurns([
+			seg(0, 2, 'a', 'A'),
+			seg(2, 3, 'music'),
+			seg(3, 9, 'b', 'A'),
+		]);
+		expect(turns.get('A')).toEqual({ start: 0, end: 2 });
+	});
+
+	it('ignores segments without a speaker entirely', () => {
+		expect(collectFirstTurns([seg(0, 1, 'a'), seg(1, 2, 'b')]).size).toBe(
+			0,
+		);
+	});
+
+	it('clamps a negative start and an end before its start', () => {
+		const turns = collectFirstTurns([
+			seg(-5, 1, 'a', 'A'),
+			seg(9, 3, 'b', 'B'),
+		]);
+		expect(turns.get('A')).toEqual({ start: 0, end: 1 });
+		expect(turns.get('B')).toEqual({ start: 9, end: 9 });
+	});
+
+	it('returns an empty map for no segments', () => {
+		expect(collectFirstTurns([]).size).toBe(0);
+	});
+
+	it('keeps hostile speaker labels as plain keys', () => {
+		// A Map cannot resolve to an Object.prototype member, which is exactly
+		// why the turns are keyed in one rather than in a plain object.
+		const turns = collectFirstTurns([
+			seg(0, 1, 'a', '__proto__'),
+			seg(1, 2, 'b', 'toString'),
+		]);
+		expect(turns.get('__proto__')).toEqual({ start: 0, end: 1 });
+		expect(turns.get('toString')).toEqual({ start: 1, end: 2 });
 	});
 });
 

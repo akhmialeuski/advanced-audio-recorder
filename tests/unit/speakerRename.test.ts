@@ -156,6 +156,53 @@ describe('speakerRename', () => {
 			]);
 		});
 
+		it('carries the first-turn offsets into the next roster', () => {
+			// The offsets are what the dialog previews from; rebuilding the
+			// entry as { label, name } would silently cost the user their
+			// preview button on the first rename.
+			const plan = planSpeakerRename(
+				[
+					{
+						label: 'Speaker 1',
+						name: 'Alex',
+						firstStart: 3,
+						firstEnd: 9,
+					},
+					{ label: 'Speaker 2', firstStart: 12 },
+				],
+				(label) => (label === 'Speaker 1' ? 'Bob' : ''),
+			);
+
+			expect(plan.nextEntries).toEqual([
+				{
+					label: 'Speaker 1',
+					name: 'Bob',
+					firstStart: 3,
+					firstEnd: 9,
+				},
+				{ label: 'Speaker 2', firstStart: 12 },
+			]);
+		});
+
+		it('keeps the offsets when a name is cleared back to the label', () => {
+			const plan = planSpeakerRename(
+				[
+					{
+						label: 'Speaker 1',
+						name: 'Alex',
+						firstStart: 3,
+						firstEnd: 9,
+					},
+				],
+				() => '',
+			);
+
+			expect(plan.changed).toBe(true);
+			expect(plan.nextEntries).toEqual([
+				{ label: 'Speaker 1', firstStart: 3, firstEnd: 9 },
+			]);
+		});
+
 		it('keeps hostile labels as plain data in the next-names map', () => {
 			const plan = planSpeakerRename(
 				[{ label: '__proto__' }, { label: 'constructor' }],

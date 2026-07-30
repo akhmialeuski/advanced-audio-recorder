@@ -1,10 +1,10 @@
 /**
  * Modal that configures and runs transcription for a single audio file.
- * The per-run options (engine, language, diarization, destination, file
- * format, in-note toggles, the advanced settings that reveal the dictionary
- * and two-pass mode, and LLM post-processing) default from settings
- * and can be overridden here for this run only - the saved settings are
- * never mutated. Shows progress and allows cancellation; the detailed
+ * The per-run options (engine, language, diarization, the participant profile
+ * a diarized run stores with the recording, destination, file format, in-note
+ * toggles, the advanced settings that reveal the dictionary and two-pass mode,
+ * and LLM post-processing) default from settings and can be overridden here for
+ * this run only - the saved settings are never mutated. Shows progress and allows cancellation; the detailed
  * in-note templates (heading, timestamp/speaker/line format) remain in the
  * settings tab and are applied as configured there.
  * @module ui/TranscriptionModal
@@ -58,6 +58,7 @@ import {
 } from '../transcription/api';
 import { DICTIONARY_PROFILES } from '../settings/dictionaryProfiles';
 import { CHAPTER_PROMPT_PROFILES } from '../settings/chapterPromptProfiles';
+import { SPEAKER_PROFILES } from '../settings/speakerProfiles';
 import { effectiveProfileId } from '../settings/profiles';
 import type { SaveProgress } from '../types';
 
@@ -89,6 +90,11 @@ export type TranscriptionModalOptions = {
 	 * plugin settings).
 	 */
 	onChapterProfileSelected?: (id: string) => Promise<void>;
+	/**
+	 * Persists the run's participant-profile choice so it defaults next time
+	 * and reaches transcribe-on-save (which reads the plugin settings).
+	 */
+	onSpeakerProfileSelected?: (id: string) => Promise<void>;
 	/**
 	 * Session-wide per-engine cost accumulator owned by the plugin, so the
 	 * dialog can add this run's cost and show the running session total.
@@ -366,6 +372,35 @@ export class TranscriptionModal extends PluginModal {
 			// without diarization there are no speaker labels to include.
 			rerender: true,
 		});
+		if (diarizes) {
+			// Only meaningful with diarization: the roster this profile fills is
+			// written alongside the speakers the run detects, and there are none
+			// without it.
+			const speakerProfiles = SPEAKER_PROFILES.get(s);
+			// A stored id whose profile was removed reads as None here.
+			const selectedSpeakerProfileId = effectiveProfileId(
+				speakerProfiles,
+				SPEAKER_PROFILES.selectedId(s),
+			);
+			addDropdown(ctx, {
+				name: 'Participant profile',
+				desc: 'Names saved with this recording, so the Rename speakers dialog suggests them. Profiles are created there.',
+				options: [
+					{ value: '', label: 'None' },
+					...speakerProfiles.map((profile) => ({
+						value: profile.id,
+						label: profile.name,
+					})),
+				],
+				get: () => selectedSpeakerProfileId,
+				set: (v) => {
+					// Affects this run (runSettings clone); persist as the
+					// remembered choice for the next dialog and transcribe-on-save.
+					SPEAKER_PROFILES.setSelectedId(s, v);
+					void this.options.onSpeakerProfileSelected?.(v);
+				},
+			});
+		}
 		addToggle(ctx, {
 			name: 'Word-level timestamps',
 			desc: 'Request per-word timing (recorded in JSON file output only).',

@@ -2,12 +2,13 @@
  * Data model for the per-recording sidecar document (`<recording>.markers.json`).
  * Version 2 holds two independent sections: the player markers (unchanged from
  * version 1) and a `transcript` section that records the speaker roster of the
- * last diarized transcription, the outputs the plugin wrote (with the render
- * templates in effect at write time), and a short history of applied name
- * mappings for undo. Every function here is pure (no I/O) and parsing mirrors
- * the discipline of `markerModel.parseMarkers`: a broken part is dropped while
- * the rest survives, so a hand-edited or corrupt file can never crash a
- * feature or take the other section down with it.
+ * last diarized transcription, the participant names the recording carries, the
+ * outputs the plugin wrote (with the render templates in effect at write time),
+ * and a short history of applied name mappings for undo. Every function here is
+ * pure (no I/O) and parsing mirrors the discipline of
+ * `markerModel.parseMarkers`: a broken part is dropped while the rest survives,
+ * so a hand-edited or corrupt file can never crash a feature or take the other
+ * section down with it.
  * @module sidecar/recordingSidecarModel
  */
 
@@ -16,6 +17,7 @@ import {
 	serializeMarkers,
 	type PlayerMarker,
 } from '../markers/markerModel';
+import { normalizeParticipantNames } from '../speakers/participantRoster';
 import {
 	TRANSCRIPT_FILE_FORMATS,
 	type TranscriptFileFormat,
@@ -27,12 +29,65 @@ const SIDECAR_VERSION = 2;
 /** Maximum number of retained rename-history entries (oldest dropped first). */
 export const SIDECAR_HISTORY_LIMIT = 10;
 
-/** One diarized speaker: the engine's label and the user-assigned name. */
+/**
+ * One diarized speaker: the engine's label, the user-assigned name, and where
+ * on the timeline this speaker first talks - the offsets the rename dialog
+ * plays to identify them.
+ */
 export interface SpeakerEntry {
 	/** Original engine label, e.g. "Speaker 1". */
 	label: string;
 	/** Display name assigned by the user; absent until renamed. */
 	name?: string;
+	/**
+	 * Start of this speaker's first uninterrupted turn, in seconds. Absent on
+	 * a roster written before offsets were stored, which is why the dialog
+	 * treats its preview as unavailable rather than starting from zero.
+	 */
+	firstStart?: number;
+	/** End of that first turn, in seconds; absent when only the start is known. */
+	firstEnd?: number;
+}
+
+/**
+ * Copies a roster entry, keeping only the fields it actually carries. Every
+ * writer goes through this instead of rebuilding `{ label, name }` by hand,
+ * which is what silently dropped the preview offsets on the first rename after
+ * they were introduced.
+ * @param entry - Entry to copy
+ * @returns An independent copy
+ */
+export function cloneSpeakerEntry(entry: SpeakerEntry): SpeakerEntry {
+	return {
+		label: entry.label,
+		...(entry.name ? { name: entry.name } : {}),
+		...(entry.firstStart === undefined
+			? {}
+			: { firstStart: entry.firstStart }),
+		...(entry.firstEnd === undefined ? {} : { firstEnd: entry.firstEnd }),
+	};
+}
+
+/**
+ * Returns the entry carrying a different name, everything else preserved. A
+ * blank name clears the assignment (the speaker reverts to its engine label)
+ * while the timeline offsets stay, so reverting a name never costs the user
+ * their preview.
+ * @param entry - Entry to re-name
+ * @param name - New display name ('' clears it)
+ * @returns A copy with the new name
+ */
+export function withSpeakerName(
+	entry: SpeakerEntry,
+	name: string,
+): SpeakerEntry {
+	const next = cloneSpeakerEntry(entry);
+	if (name) {
+		next.name = name;
+	} else {
+		delete next.name;
+	}
+	return next;
 }
 
 /** The in-note render templates a transcript was written with. */
@@ -95,6 +150,20 @@ export interface RenameHistoryEntry {
 export interface TranscriptSection {
 	/** Speaker roster of the last diarized transcription, first-seen order. */
 	speakers: SpeakerEntry[];
+	/**
+	 * Participant names this recording carries: the names of the profile a
+	 * transcription ran with, grown by every name a rename applies. The rename
+	 * dialog suggests from here by default, so the roster travels with the
+	 * recording instead of only living in a settings profile the user has to
+	 * remember to pick.
+	 */
+	participants: string[];
+	/**
+	 * Id of the settings profile the participants came from ('' or absent when
+	 * none). Only a hint: it re-selects that profile in the rename dialog, and
+	 * a stale id (profile deleted since) simply falls back to "this recording".
+	 */
+	participantProfileId?: string;
 	/** Notes the plugin wrote a transcript into, unique by path. */
 	noteOutputs: NoteOutput[];
 	/** Transcript files the plugin wrote, unique by path. */
@@ -105,6 +174,18 @@ export interface TranscriptSection {
 	provenance?: TranscriptProvenance;
 }
 
+/**
+ * A participant-roster change carried alongside a roster write, so the names
+ * and the speakers they were assigned to are persisted in one mutation rather
+ * than in two writes that could tear.
+ */
+export interface ParticipantUpdate {
+	/** Names to merge into the recording's participant roster. */
+	names: readonly string[];
+	/** Id of the settings profile they came from ('' when none). */
+	profileId: string;
+}
+
 /** The full parsed sidecar document for one recording. */
 export interface RecordingSidecar {
 	markers: PlayerMarker[];
@@ -113,7 +194,13 @@ export interface RecordingSidecar {
 
 /** Returns a fresh, empty transcript section. */
 export function emptyTranscriptSection(): TranscriptSection {
-	return { speakers: [], noteOutputs: [], fileOutputs: [], history: [] };
+	return {
+		speakers: [],
+		participants: [],
+		noteOutputs: [],
+		fileOutputs: [],
+		history: [],
+	};
 }
 
 /** Returns a fresh, fully empty sidecar document. */
@@ -122,15 +209,18 @@ export function emptyRecordingSidecar(): RecordingSidecar {
 }
 
 /**
- * Whether a transcript section carries no data worth keeping. Provenance is
- * deliberately not counted: it only describes the run behind the section's
- * substantive lists, so once those are empty there is nothing left for it to
- * describe - counting it would keep an otherwise-empty sidecar file on disk
- * forever after any transcription.
+ * Whether a transcript section carries no data worth keeping. Provenance and
+ * the participant profile id are deliberately not counted: each only describes
+ * one of the section's substantive lists, so once those are empty there is
+ * nothing left for them to describe - counting them would keep an
+ * otherwise-empty sidecar file on disk forever after any transcription. The
+ * participant names themselves ARE counted: they are the user's own data and
+ * outlive the roster they were entered against.
  */
 export function isTranscriptSectionEmpty(section: TranscriptSection): boolean {
 	return (
 		section.speakers.length === 0 &&
+		section.participants.length === 0 &&
 		section.noteOutputs.length === 0 &&
 		section.fileOutputs.length === 0 &&
 		section.history.length === 0
@@ -158,10 +248,19 @@ function trimmedString(value: unknown): string | null {
 	return trimmed.length > 0 ? trimmed : null;
 }
 
+/** Reads a finite, non-negative number, or null when the value is neither. */
+function offsetSeconds(value: unknown): number | null {
+	return typeof value === 'number' && Number.isFinite(value) && value >= 0
+		? value
+		: null;
+}
+
 /**
  * Parses the speaker roster: non-object entries and entries without a usable
- * label are dropped, names equal to their label are omitted, and a duplicated
- * label keeps its first entry.
+ * label are dropped, names equal to their label are omitted, a duplicated
+ * label keeps its first entry, and the first-turn offsets are kept only when
+ * they describe a real forward span (an end without a start, or before it, is
+ * dropped while the entry survives).
  */
 function parseSpeakers(value: unknown): SpeakerEntry[] {
 	if (!Array.isArray(value)) {
@@ -180,7 +279,20 @@ function parseSpeakers(value: unknown): SpeakerEntry[] {
 		}
 		seen.add(label);
 		const name = trimmedString(record.name);
-		result.push(name && name !== label ? { label, name } : { label });
+		const firstStart = offsetSeconds(record.firstStart);
+		const firstEnd = offsetSeconds(record.firstEnd);
+		result.push({
+			label,
+			...(name && name !== label ? { name } : {}),
+			...(firstStart === null ? {} : { firstStart }),
+			// An end without a start locates nothing, and one before the start
+			// is not a span; either way the start alone still starts a preview.
+			...(firstStart !== null &&
+			firstEnd !== null &&
+			firstEnd >= firstStart
+				? { firstEnd }
+				: {}),
+		});
 	}
 	return result;
 }
@@ -320,8 +432,13 @@ export function parseTranscriptSection(value: unknown): TranscriptSection {
 	}
 	const record = value as Record<string, unknown>;
 	const provenance = parseProvenance(record.provenance);
+	const profileId = trimmedString(record.participantProfileId);
 	return {
 		speakers: parseSpeakers(record.speakers),
+		participants: Array.isArray(record.participants)
+			? normalizeParticipantNames(record.participants)
+			: [],
+		...(profileId ? { participantProfileId: profileId } : {}),
 		noteOutputs: parseNoteOutputs(record.noteOutputs),
 		fileOutputs: parseFileOutputs(record.fileOutputs),
 		history: parseHistory(record.history),
@@ -368,11 +485,11 @@ export function cloneTranscriptSection(
 	section: TranscriptSection,
 ): TranscriptSection {
 	return {
-		speakers: section.speakers.map((entry) =>
-			entry.name
-				? { label: entry.label, name: entry.name }
-				: { label: entry.label },
-		),
+		speakers: section.speakers.map(cloneSpeakerEntry),
+		participants: [...section.participants],
+		...(section.participantProfileId
+			? { participantProfileId: section.participantProfileId }
+			: {}),
 		noteOutputs: section.noteOutputs.map((output) => ({
 			...output,
 			templates: { ...output.templates },
@@ -422,11 +539,14 @@ export function serializeRecordingSidecar(
 	};
 	if (!isTranscriptSectionEmpty(sidecar.transcript)) {
 		payload.transcript = {
-			speakers: sidecar.transcript.speakers.map((entry) =>
-				entry.name
-					? { label: entry.label, name: entry.name }
-					: { label: entry.label },
-			),
+			speakers: sidecar.transcript.speakers.map(cloneSpeakerEntry),
+			participants: [...sidecar.transcript.participants],
+			...(sidecar.transcript.participantProfileId
+				? {
+						participantProfileId:
+							sidecar.transcript.participantProfileId,
+					}
+				: {}),
 			noteOutputs: sidecar.transcript.noteOutputs.map((output) => ({
 				path: output.path,
 				templates: { ...output.templates },

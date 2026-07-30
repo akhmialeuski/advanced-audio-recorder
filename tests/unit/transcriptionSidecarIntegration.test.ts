@@ -131,12 +131,22 @@ describe('TranscriptionService stored speaker names', () => {
 		]);
 		expect(markdown).toContain('**Alex**');
 		expect(markdown).not.toContain('Speaker 1');
-		// Roster refreshed with the run's labels; the matched name survives
-		// and the new label joins unnamed.
-		expect(sidecar.setSpeakers).toHaveBeenCalledWith('audio/rec.webm', [
-			{ label: 'Speaker 1', name: 'Alex' },
-			{ label: 'Speaker 2' },
-		]);
+		// Roster refreshed with the run's labels; the matched name survives,
+		// the new label joins unnamed, and each entry carries the span of its
+		// first turn so the rename dialog can play a sample of the speaker.
+		expect(sidecar.setSpeakers).toHaveBeenCalledWith(
+			'audio/rec.webm',
+			[
+				{
+					label: 'Speaker 1',
+					name: 'Alex',
+					firstStart: 0,
+					firstEnd: 1,
+				},
+				{ label: 'Speaker 2', firstStart: 1, firstEnd: 2 },
+			],
+			{ names: [], profileId: '' },
+		);
 	});
 
 	it('warns when the label composition changed against the stored roster', async () => {
@@ -194,10 +204,14 @@ describe('TranscriptionService stored speaker names', () => {
 		});
 
 		expect(transcript.speakers).toEqual(['Speaker 1', 'Speaker 2']);
-		expect(sidecar.setSpeakers).toHaveBeenCalledWith('audio/rec.webm', [
-			{ label: 'Speaker 1' },
-			{ label: 'Speaker 2' },
-		]);
+		expect(sidecar.setSpeakers).toHaveBeenCalledWith(
+			'audio/rec.webm',
+			[
+				{ label: 'Speaker 1', firstStart: 0, firstEnd: 1 },
+				{ label: 'Speaker 2', firstStart: 1, firstEnd: 2 },
+			],
+			{ names: [], profileId: '' },
+		);
 		expect(Notice).toHaveBeenCalledWith(
 			expect.stringContaining("matched another speaker's label"),
 		);
@@ -238,10 +252,86 @@ describe('TranscriptionService stored speaker names', () => {
 			'toString',
 			'constructor',
 		]);
-		expect(sidecar.setSpeakers).toHaveBeenCalledWith('audio/rec.webm', [
-			{ label: 'toString' },
-			{ label: 'constructor' },
-		]);
+		expect(sidecar.setSpeakers).toHaveBeenCalledWith(
+			'audio/rec.webm',
+			[
+				{ label: 'toString', firstStart: 0, firstEnd: 1 },
+				{ label: 'constructor', firstStart: 1, firstEnd: 2 },
+			],
+			{ names: [], profileId: '' },
+		);
+	});
+
+	it('records the run participant profile alongside the roster', async () => {
+		const sidecar = makeSidecar(emptyTranscriptSection());
+		const service = new TranscriptionService(
+			makeApp(),
+			() =>
+				diarizedSettings({
+					transcriptionSpeakerProfiles: [
+						{
+							id: 'p1',
+							name: 'Weekly sync',
+							participants: ['Alex', 'Maria'],
+						},
+					],
+					transcriptionSpeakerProfileId: 'p1',
+				}),
+			{ createProvider: () => makeProvider(twoSpeakerSegments) },
+		);
+		await service.run(audioFile, { notePathForLinks: 'note.md', sidecar });
+
+		expect(sidecar.setSpeakers).toHaveBeenCalledWith(
+			'audio/rec.webm',
+			expect.anything(),
+			{ names: ['Alex', 'Maria'], profileId: 'p1' },
+		);
+	});
+
+	it('records no participants when the profile selection is stale', async () => {
+		// A profile deleted since the last run must not carry a dangling id
+		// into the recording's sidecar.
+		const sidecar = makeSidecar(emptyTranscriptSection());
+		const service = new TranscriptionService(
+			makeApp(),
+			() => diarizedSettings({ transcriptionSpeakerProfileId: 'gone' }),
+			{ createProvider: () => makeProvider(twoSpeakerSegments) },
+		);
+		await service.run(audioFile, { notePathForLinks: 'note.md', sidecar });
+
+		expect(sidecar.setSpeakers).toHaveBeenCalledWith(
+			'audio/rec.webm',
+			expect.anything(),
+			{ names: [], profileId: '' },
+		);
+	});
+
+	it('spans a speakers whole opening turn in the stored offsets', async () => {
+		// Two consecutive segments are one turn; the preview must cover both.
+		const sidecar = makeSidecar(emptyTranscriptSection());
+		const service = new TranscriptionService(
+			makeApp(),
+			() => diarizedSettings(),
+			{
+				createProvider: () =>
+					makeProvider([
+						{ start: 0, end: 2, text: 'a', speaker: 'Speaker 1' },
+						{ start: 2, end: 5, text: 'b', speaker: 'Speaker 1' },
+						{ start: 5, end: 7, text: 'c', speaker: 'Speaker 2' },
+						{ start: 7, end: 40, text: 'd', speaker: 'Speaker 1' },
+					]),
+			},
+		);
+		await service.run(audioFile, { notePathForLinks: 'note.md', sidecar });
+
+		expect(sidecar.setSpeakers).toHaveBeenCalledWith(
+			'audio/rec.webm',
+			[
+				{ label: 'Speaker 1', firstStart: 0, firstEnd: 5 },
+				{ label: 'Speaker 2', firstStart: 5, firstEnd: 7 },
+			],
+			expect.anything(),
+		);
 	});
 
 	it('does not touch the sidecar without effective diarization', async () => {

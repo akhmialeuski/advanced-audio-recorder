@@ -11,7 +11,10 @@
  */
 
 import type { SpeakerEntry } from '../sidecar/recordingSidecarModel';
-import { emptyNameMap } from '../sidecar/recordingSidecarModel';
+import {
+	emptyNameMap,
+	withSpeakerName,
+} from '../sidecar/recordingSidecarModel';
 
 /** One display-level rename: the text currently shown and its replacement. */
 export interface SpeakerRename {
@@ -131,9 +134,9 @@ export function planSpeakerRename(
 	for (const entry of roster) {
 		const target = targetFor(entry.label).trim();
 		const name = target && target !== entry.label ? target : '';
-		nextEntries.push(
-			name ? { label: entry.label, name } : { label: entry.label },
-		);
+		// Re-name in place rather than rebuilding the entry, so the first-turn
+		// offsets the dialog previews from survive every rename and undo.
+		nextEntries.push(withSpeakerName(entry, name));
 		if (name) {
 			nextNames[entry.label] = name;
 		}

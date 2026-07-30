@@ -675,6 +675,10 @@ export class DropdownComponent {
 
 	setValue(value: string): this {
 		this.value = value;
+		// Mirrored onto the element like real Obsidian, so a test can read the
+		// rendered selection (including a stale id resolving to the first
+		// option) straight from the DOM
+		this.selectEl.value = value;
 		return this;
 	}
 
