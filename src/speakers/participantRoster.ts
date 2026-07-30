@@ -54,20 +54,3 @@ export function mergeParticipantNames(
 ): string[] {
 	return normalizeParticipantNames([...current, ...added]);
 }
-
-/**
- * Whether merging would actually change a roster, so a caller can skip a write
- * (and a settings save) when every name is already present.
- * @param current - The roster to grow
- * @param added - Names to merge in
- * @returns True when at least one name is new
- */
-export function addsParticipants(
-	current: readonly unknown[],
-	added: readonly unknown[],
-): boolean {
-	return (
-		mergeParticipantNames(current, added).length !==
-		normalizeParticipantNames(current).length
-	);
-}

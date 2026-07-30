@@ -5,7 +5,6 @@
  */
 
 import {
-	addsParticipants,
 	mergeParticipantNames,
 	normalizeParticipantNames,
 } from 'src/speakers/participantRoster';
@@ -78,20 +77,5 @@ describe('mergeParticipantNames', () => {
 		const merged = mergeParticipantNames(current, ['Bob']);
 		expect(current).toEqual(['Alex']);
 		expect(merged).toEqual(['Alex', 'Bob']);
-	});
-});
-
-describe('addsParticipants', () => {
-	it('is false when every name is already present', () => {
-		expect(addsParticipants(['Alex', 'Bob'], [' Bob ', 'Alex'])).toBe(
-			false,
-		);
-		expect(addsParticipants(['Alex'], ['', '   '])).toBe(false);
-		expect(addsParticipants(['Alex'], [])).toBe(false);
-	});
-
-	it('is true as soon as one name is new', () => {
-		expect(addsParticipants(['Alex'], ['Alex', 'Bob'])).toBe(true);
-		expect(addsParticipants([], ['Alex'])).toBe(true);
 	});
 });

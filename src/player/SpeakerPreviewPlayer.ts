@@ -30,6 +30,14 @@ export class SpeakerPreviewPlayer {
 	private currentId: string | null = null;
 	/** Offset the current excerpt stops at. */
 	private endSeconds = 0;
+	/**
+	 * Start offset waiting for the element's metadata, or null when none is
+	 * pending. A freshly built element reports readyState 0, so the very first
+	 * press always lands here; holding the offset in a field (rather than in a
+	 * deferred seek) is what makes it cancellable, so a stop pressed while the
+	 * file is still loading cannot be overtaken by its own start.
+	 */
+	private pendingStart: number | null = null;
 	private disposed = false;
 
 	/** Stops the excerpt once playback reaches its end. */
@@ -44,6 +52,11 @@ export class SpeakerPreviewPlayer {
 	/** The file ended before the excerpt did (a truncated recording). */
 	private readonly handleEnded = (): void => {
 		this.stop();
+	};
+
+	/** The element can seek now; start whatever press is still waiting. */
+	private readonly handleLoadedMetadata = (): void => {
+		this.startPending();
 	};
 
 	/**
@@ -81,17 +94,13 @@ export class SpeakerPreviewPlayer {
 		const audio = this.ensureAudio();
 		this.currentId = id;
 		this.endSeconds = range.end;
-		seekAudio(audio, range.start, {
-			autoplay: true,
-			onError: (error: unknown) => {
-				console.warn(
-					`${PLUGIN_LOG_PREFIX} Speaker preview could not start:`,
-					error,
-				);
-				// The excerpt is not playing, so the button must not claim it is.
-				this.stop();
-			},
-		});
+		this.pendingStart = range.start;
+		// Metadata already loaded (any press after the first): start at once.
+		// Otherwise handleLoadedMetadata picks the offset up, and a stop in the
+		// meantime simply clears it.
+		if (audio.readyState >= 1) {
+			this.startPending();
+		}
 		this.onChange(this.currentId);
 	}
 
@@ -101,8 +110,11 @@ export class SpeakerPreviewPlayer {
 			return;
 		}
 		// Cleared before the reset so the position change it emits is not read
-		// as the excerpt reaching its end and stopping a second time.
+		// as the excerpt reaching its end and stopping a second time. Dropping
+		// the pending offset is what stops a press that is still waiting for
+		// metadata from starting audio after the user already stopped it.
 		this.currentId = null;
+		this.pendingStart = null;
 		if (this.audio) {
 			resetPlayback(this.audio);
 		}
@@ -127,9 +139,35 @@ export class SpeakerPreviewPlayer {
 		}
 		audio.removeEventListener('timeupdate', this.handleTimeUpdate);
 		audio.removeEventListener('ended', this.handleEnded);
+		audio.removeEventListener('loadedmetadata', this.handleLoadedMetadata);
 		audio.pause();
 		audio.removeAttribute('src');
 		audio.load();
+	}
+
+	/**
+	 * Seeks to the pending start and plays. A no-op once the press it belongs
+	 * to was stopped or replaced, so a late-arriving metadata event can never
+	 * resurrect it.
+	 */
+	private startPending(): void {
+		const audio = this.audio;
+		const start = this.pendingStart;
+		if (!audio || start === null || this.currentId === null) {
+			return;
+		}
+		this.pendingStart = null;
+		seekAudio(audio, start, {
+			autoplay: true,
+			onError: (error: unknown) => {
+				console.warn(
+					`${PLUGIN_LOG_PREFIX} Speaker preview could not start:`,
+					error,
+				);
+				// The excerpt is not playing, so the button must not claim it is.
+				this.stop();
+			},
+		});
 	}
 
 	/** Returns the media element, creating and wiring it on first use. */
@@ -143,6 +181,9 @@ export class SpeakerPreviewPlayer {
 		audio.src = this.resolveSrc();
 		audio.addEventListener('timeupdate', this.handleTimeUpdate);
 		audio.addEventListener('ended', this.handleEnded);
+		// One persistent listener rather than one per press, so rapid presses
+		// cannot pile up seeks that all fire when the file finally loads.
+		audio.addEventListener('loadedmetadata', this.handleLoadedMetadata);
 		this.audio = audio;
 		return audio;
 	}

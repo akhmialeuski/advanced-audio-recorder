@@ -7,7 +7,6 @@ import {
 	addParticipantsToProfile,
 	addSpeakerProfile,
 	createSpeakerProfile,
-	normalizeParticipants,
 	participantsOf,
 	resolveRunParticipants,
 	SPEAKER_PROFILES,
@@ -15,14 +14,6 @@ import {
 import { mergeSettings } from 'src/settings/settingsSerialization';
 
 describe('speakerProfiles', () => {
-	describe('normalizeParticipants', () => {
-		it('trims, drops blanks, and deduplicates preserving order', () => {
-			expect(
-				normalizeParticipants([' Alex ', 'Maria', '', 'Alex', '  ']),
-			).toEqual(['Alex', 'Maria']);
-		});
-	});
-
 	describe('createSpeakerProfile', () => {
 		it('trims the name and starts with a unique id and no participants', () => {
 			const a = createSpeakerProfile('  Weekly sync ');

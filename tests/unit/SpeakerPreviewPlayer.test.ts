@@ -17,6 +17,8 @@ interface AudioHarness {
 	constructions(): number;
 	/** Moves the playhead and emits timeupdate, as playback would. */
 	advanceTo(seconds: number): void;
+	/** Makes the element seekable and emits loadedmetadata, as a load would. */
+	loadMetadata(): void;
 	/** Makes the next play() reject, as an autoplay policy would. */
 	blockPlayback(): void;
 	restore(): void;
@@ -25,12 +27,16 @@ interface AudioHarness {
 /**
  * Installs a deterministic audio element whose play/pause emit the matching
  * events and whose currentTime is observable, mirroring the other player suites.
+ * @param duration - Finite media duration in seconds
+ * @param readyState - Initial readyState (0 means metadata has not loaded yet,
+ *   which is what a freshly built element actually reports)
  */
-function installAudio(duration = 300): AudioHarness {
+function installAudio(duration = 300, readyState = 1): AudioHarness {
 	const audio = document.createElement('audio');
 	let paused = true;
 	let currentTime = 0;
 	let blocked = false;
+	let ready = readyState;
 	Object.defineProperties(audio, {
 		paused: { configurable: true, get: () => paused },
 		currentTime: {
@@ -41,7 +47,7 @@ function installAudio(duration = 300): AudioHarness {
 			},
 		},
 		duration: { configurable: true, get: () => duration },
-		readyState: { configurable: true, get: () => 1 },
+		readyState: { configurable: true, get: () => ready },
 	});
 	const play = jest.spyOn(audio, 'play').mockImplementation(() => {
 		if (blocked) {
@@ -69,6 +75,10 @@ function installAudio(duration = 300): AudioHarness {
 		advanceTo: (seconds: number) => {
 			currentTime = seconds;
 			audio.dispatchEvent(new Event('timeupdate'));
+		},
+		loadMetadata: () => {
+			ready = 1;
+			audio.dispatchEvent(new Event('loadedmetadata'));
 		},
 		blockPlayback: () => {
 			blocked = true;
@@ -181,6 +191,81 @@ describe('SpeakerPreviewPlayer', () => {
 
 		harness.advanceTo(60);
 		expect(player.playingId).toBeNull();
+	});
+
+	describe('while the file is still loading its metadata', () => {
+		// A freshly built element reports readyState 0, so the very first press
+		// always waits. Everything the user does in that window has to survive.
+		let loading: AudioHarness;
+
+		beforeEach(() => {
+			harness.restore();
+			loading = installAudio(300, 0);
+			harness = loading;
+		});
+
+		it('starts the excerpt once the metadata arrives', () => {
+			const { player, changes } = makePlayer(loading);
+			player.toggle('Speaker 1', { start: 12, end: 20 });
+
+			// Nothing can seek yet, but the button already reads as playing.
+			expect(loading.play).not.toHaveBeenCalled();
+			expect(player.playingId).toBe('Speaker 1');
+			expect(changes).toEqual(['Speaker 1']);
+
+			loading.loadMetadata();
+			expect(loading.audio.currentTime).toBe(12);
+			expect(loading.play).toHaveBeenCalled();
+		});
+
+		it('a stop pressed while loading is not overtaken by its own start', () => {
+			// The regression this guards: a deferred seek that fires after the
+			// user stopped would play on unbounded, with every button showing
+			// "play" and no way to stop it.
+			const { player, changes } = makePlayer(loading);
+			player.toggle('Speaker 1', { start: 12, end: 20 });
+			player.toggle('Speaker 1', { start: 12, end: 20 });
+			expect(player.playingId).toBeNull();
+
+			loading.loadMetadata();
+
+			expect(loading.play).not.toHaveBeenCalled();
+			expect(player.playingId).toBeNull();
+			expect(changes).toEqual(['Speaker 1', null]);
+		});
+
+		it('only the last excerpt pressed while loading starts', () => {
+			const { player } = makePlayer(loading);
+			player.toggle('Speaker 1', { start: 12, end: 20 });
+			player.toggle('Speaker 2', { start: 40, end: 50 });
+
+			loading.loadMetadata();
+
+			// One seek, to the excerpt that was actually pending.
+			expect(loading.play).toHaveBeenCalledTimes(1);
+			expect(loading.audio.currentTime).toBe(40);
+			expect(player.playingId).toBe('Speaker 2');
+		});
+
+		it('still bounds the excerpt that a late start began', () => {
+			const { player } = makePlayer(loading);
+			player.toggle('Speaker 1', { start: 12, end: 20 });
+			loading.loadMetadata();
+
+			loading.advanceTo(20);
+			expect(player.playingId).toBeNull();
+		});
+
+		it('a dispose while loading starts nothing afterwards', () => {
+			const { player } = makePlayer(loading);
+			player.toggle('Speaker 1', { start: 12, end: 20 });
+			player.dispose();
+
+			loading.loadMetadata();
+
+			expect(loading.play).not.toHaveBeenCalled();
+			expect(player.playingId).toBeNull();
+		});
 	});
 
 	it('stops when the file ends before the excerpt does', () => {

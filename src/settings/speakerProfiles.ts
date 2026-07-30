@@ -7,11 +7,7 @@
  * @module settings/speakerProfiles
  */
 
-import {
-	addsParticipants,
-	mergeParticipantNames,
-	normalizeParticipantNames,
-} from '../speakers/participantRoster';
+import { mergeParticipantNames } from '../speakers/participantRoster';
 import type { AudioRecorderSettings, SpeakerProfile } from './settingsSchema';
 import {
 	addProfile,
@@ -19,16 +15,6 @@ import {
 	selectedProfile,
 	type ProfileList,
 } from './profiles';
-
-/**
- * Trims, deduplicates (first occurrence wins), and drops blank entries from a
- * list of participant names, preserving order.
- * @param names - Raw participant names
- * @returns A clean, order-preserving list
- */
-export function normalizeParticipants(names: readonly string[]): string[] {
-	return normalizeParticipantNames(names);
-}
 
 /**
  * Builds a profile with a fresh id, a trimmed name, and no participants. The
@@ -113,10 +99,15 @@ export function addParticipantsToProfile(
 	names: readonly string[],
 ): SpeakerProfile[] {
 	const target = findProfile(profiles, id);
-	if (!target || !addsParticipants(target.participants, names)) {
+	if (!target) {
 		return [...profiles];
 	}
 	const merged = mergeParticipantNames(target.participants, names);
+	// A merge that added nothing comes back the same length; returning a copy
+	// then lets the caller skip the settings save on a reference comparison.
+	if (merged.length === target.participants.length) {
+		return [...profiles];
+	}
 	return profiles.map((profile) =>
 		profile.id === id ? { ...profile, participants: merged } : profile,
 	);
