@@ -704,6 +704,17 @@ input.aar-input-invalid {
     font-size: 0.9em;
 }
 
+/* Speaker rename dialog: the third column of each speaker row, one button
+   that plays where that speaker first talks and turns into stop while it does.
+   Fixed width so the buttons line up as a column under each other regardless
+   of the icon currently shown, and never stretched by the flex row. */
+.aar-speaker-preview {
+	flex: 0 0 auto;
+	width: var(--input-height, 30px);
+	padding-left: 0;
+	padding-right: 0;
+}
+
 /* Transcription modal */
 .aar-transcribe-options {
     margin: 8px 0;

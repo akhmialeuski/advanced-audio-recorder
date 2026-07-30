@@ -5,6 +5,8 @@
  */
 
 import {
+	cloneSpeakerEntry,
+	cloneTranscriptSection,
 	emptyTranscriptSection,
 	isSidecarEmpty,
 	isTranscriptSectionEmpty,
@@ -12,6 +14,7 @@ import {
 	parseTranscriptSection,
 	serializeRecordingSidecar,
 	SIDECAR_HISTORY_LIMIT,
+	withSpeakerName,
 	type NoteOutput,
 } from 'src/sidecar/recordingSidecarModel';
 import type { PlayerMarker } from 'src/markers/markerModel';
@@ -84,9 +87,16 @@ describe('parseRecordingSidecar', () => {
 			markers: [marker],
 			transcript: {
 				speakers: [
-					{ label: 'Speaker 1', name: 'Alex' },
+					{
+						label: 'Speaker 1',
+						name: 'Alex',
+						firstStart: 12.5,
+						firstEnd: 20,
+					},
 					{ label: 'Speaker 2' },
 				],
+				participants: ['Alex', 'Bob'],
+				participantProfileId: 'profile-1',
 				noteOutputs: [noteOutput('Meetings/note.md')],
 				fileOutputs: [
 					{
@@ -260,6 +270,9 @@ describe('isSidecarEmpty', () => {
 				],
 			},
 			{ history: [{ at: '', names: {} }] },
+			// The user's own names outlive the roster they were entered
+			// against, so they alone keep the sidecar worth persisting.
+			{ participants: ['Alex'] },
 		]) {
 			expect(
 				isSidecarEmpty({
@@ -283,7 +296,128 @@ describe('serializeRecordingSidecar', () => {
 	});
 });
 
+describe('speaker first-turn offsets', () => {
+	it('keeps a forward span and drops what cannot locate a speaker', () => {
+		const section = parseTranscriptSection({
+			speakers: [
+				{ label: 'Speaker 1', firstStart: 12.5, firstEnd: 20 },
+				// An end without a start locates nothing; the start alone is
+				// still enough to begin a preview.
+				{ label: 'Speaker 2', firstEnd: 30 },
+				{ label: 'Speaker 3', firstStart: 5 },
+				// Not a span: the end precedes the start.
+				{ label: 'Speaker 4', firstStart: 30, firstEnd: 10 },
+			],
+		});
+		expect(section.speakers).toEqual([
+			{ label: 'Speaker 1', firstStart: 12.5, firstEnd: 20 },
+			{ label: 'Speaker 2' },
+			{ label: 'Speaker 3', firstStart: 5 },
+			{ label: 'Speaker 4', firstStart: 30 },
+		]);
+	});
+
+	it('drops offsets that are not usable numbers, keeping the entry', () => {
+		const section = parseTranscriptSection({
+			speakers: [
+				{ label: 'Speaker 1', firstStart: '12', firstEnd: 20 },
+				{ label: 'Speaker 2', firstStart: -1 },
+				{ label: 'Speaker 3', firstStart: Number.NaN },
+				{ label: 'Speaker 4', firstStart: Number.POSITIVE_INFINITY },
+				{ label: 'Speaker 5', firstStart: 0, firstEnd: 0 },
+			],
+		});
+		expect(section.speakers).toEqual([
+			{ label: 'Speaker 1' },
+			{ label: 'Speaker 2' },
+			{ label: 'Speaker 3' },
+			{ label: 'Speaker 4' },
+			// Zero is a real offset, and a zero-length turn is a real span.
+			{ label: 'Speaker 5', firstStart: 0, firstEnd: 0 },
+		]);
+	});
+
+	it('survives a name change without losing the offsets', () => {
+		const entry = {
+			label: 'Speaker 1',
+			name: 'Alex',
+			firstStart: 3,
+			firstEnd: 9,
+		};
+		expect(withSpeakerName(entry, 'Bob')).toEqual({
+			label: 'Speaker 1',
+			name: 'Bob',
+			firstStart: 3,
+			firstEnd: 9,
+		});
+		// Clearing the name reverts the speaker to its label; the preview it
+		// was identified with must not be the price of that.
+		expect(withSpeakerName(entry, '')).toEqual({
+			label: 'Speaker 1',
+			firstStart: 3,
+			firstEnd: 9,
+		});
+	});
+
+	it('clones an entry independently of the original', () => {
+		const entry = { label: 'Speaker 1', firstStart: 3 };
+		const copy = cloneSpeakerEntry(entry);
+		copy.firstStart = 99;
+		expect(entry.firstStart).toBe(3);
+		expect(cloneSpeakerEntry({ label: 'Speaker 2' })).toEqual({
+			label: 'Speaker 2',
+		});
+	});
+});
+
+describe('participant roster', () => {
+	it('normalizes the stored names and keeps a usable profile id', () => {
+		const section = parseTranscriptSection({
+			participants: ['  Alex ', 'Bob', 'Alex', '', 42, 'Cleo'],
+			participantProfileId: '  profile-1  ',
+		});
+		expect(section.participants).toEqual(['Alex', 'Bob', 'Cleo']);
+		expect(section.participantProfileId).toBe('profile-1');
+	});
+
+	it('degrades a non-list roster and a blank profile id to nothing', () => {
+		const section = parseTranscriptSection({
+			participants: 'Alex',
+			participantProfileId: '   ',
+		});
+		expect(section.participants).toEqual([]);
+		expect(section.participantProfileId).toBeUndefined();
+	});
+
+	it('defaults to an empty roster for a section that has none', () => {
+		expect(parseTranscriptSection({}).participants).toEqual([]);
+		expect(emptyTranscriptSection().participants).toEqual([]);
+	});
+
+	it('clones the roster rather than aliasing it', () => {
+		const section = {
+			...emptyTranscriptSection(),
+			participants: ['Alex'],
+			participantProfileId: 'profile-1',
+		};
+		const copy = cloneTranscriptSection(section);
+		copy.participants.push('Bob');
+		expect(section.participants).toEqual(['Alex']);
+		expect(copy.participantProfileId).toBe('profile-1');
+	});
+});
+
 describe('provenance and emptiness', () => {
+	it('treats a profile-id-only section as empty (deletable sidecar)', () => {
+		// The id only names where the participants came from; with no
+		// participants left it describes nothing.
+		const section = {
+			...emptyTranscriptSection(),
+			participantProfileId: 'profile-1',
+		};
+		expect(isTranscriptSectionEmpty(section)).toBe(true);
+	});
+
 	it('treats a provenance-only section as empty (deletable sidecar)', () => {
 		// Provenance describes the run behind the section's lists; once
 		// those are empty there is nothing left to describe, and counting

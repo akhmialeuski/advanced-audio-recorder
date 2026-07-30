@@ -18,8 +18,10 @@ import type { App } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import type { PlayerMarker } from '../markers/markerModel';
 import { serializeMarkers } from '../markers/markerModel';
+import { mergeParticipantNames } from '../speakers/participantRoster';
 import { TRANSCRIPT_FILE_FORMATS } from '../transcription/TranscriptTypes';
 import {
+	cloneSpeakerEntry,
 	cloneTranscriptSection,
 	emptyRecordingSidecar,
 	isSidecarEmpty,
@@ -28,6 +30,7 @@ import {
 	SIDECAR_HISTORY_LIMIT,
 	type FileOutput,
 	type NoteOutput,
+	type ParticipantUpdate,
 	type RecordingSidecar,
 	type SpeakerEntry,
 	type TranscriptProvenance,
@@ -155,34 +158,46 @@ export class RecordingSidecarStore {
 	 * label, name included or removed as given), while stored entries whose
 	 * labels are not mentioned are kept after them - a label that vanished
 	 * from the last transcription keeps its assigned name for the future.
+	 *
+	 * A participant update is applied in the SAME mutation, so a transcription
+	 * that carries a profile's names into the recording persists the roster
+	 * and the names it was assigned from in one write.
 	 * @param path - Vault-relative recording path
 	 * @param entries - New roster in first-seen order
+	 * @param participants - Names to merge into the recording's roster, and the
+	 *   profile they came from; omitted leaves the participants untouched
 	 */
 	async setSpeakers(
 		path: string,
 		entries: readonly SpeakerEntry[],
+		participants?: ParticipantUpdate,
 	): Promise<void> {
 		return this.mutate(path, (sidecar) => {
 			replaceSpeakers(sidecar, entries);
+			applyParticipants(sidecar, participants);
 		});
 	}
 
 	/**
-	 * Commits an applied rename atomically: the new roster and its history
-	 * entry are written in one mutation, so a failure can never persist the
-	 * roster without the history entry (which would corrupt the undo
-	 * baseline) or vice versa.
+	 * Commits an applied rename atomically: the new roster, its history entry,
+	 * and any participant names the rename introduced are written in one
+	 * mutation, so a failure can never persist the roster without the history
+	 * entry (which would corrupt the undo baseline) or vice versa.
 	 * @param path - Vault-relative recording path
 	 * @param entries - New roster in first-seen order
 	 * @param names - Full label-to-name assignment after the apply
+	 * @param participants - Names to merge into the recording's roster, and the
+	 *   profile they came from; omitted leaves the participants untouched
 	 */
 	async commitRename(
 		path: string,
 		entries: readonly SpeakerEntry[],
 		names: Record<string, string>,
+		participants?: ParticipantUpdate,
 	): Promise<void> {
 		return this.mutate(path, (sidecar) => {
 			replaceSpeakers(sidecar, entries);
+			applyParticipants(sidecar, participants);
 			sidecar.transcript.history = [
 				...sidecar.transcript.history,
 				{ at: new Date().toISOString(), names: { ...names } },
@@ -592,14 +607,33 @@ function replaceSpeakers(
 	const kept = sidecar.transcript.speakers.filter(
 		(entry) => !mentioned.has(entry.label),
 	);
-	sidecar.transcript.speakers = [
-		...entries.map((entry) =>
-			entry.name
-				? { label: entry.label, name: entry.name }
-				: { label: entry.label },
-		),
-		...kept,
-	];
+	sidecar.transcript.speakers = [...entries.map(cloneSpeakerEntry), ...kept];
+}
+
+/**
+ * Merges a participant update into a sidecar document: names are added to the
+ * recording's roster (existing ones keep their order) and the originating
+ * profile id is recorded so the rename dialog can re-select it. Names are only
+ * ever added: a recording accumulates everyone who has been named in it, so
+ * switching profiles between runs never loses the names of an earlier one.
+ * A blank profile id clears the hint rather than storing an empty key.
+ */
+function applyParticipants(
+	sidecar: RecordingSidecar,
+	update: ParticipantUpdate | undefined,
+): void {
+	if (!update) {
+		return;
+	}
+	sidecar.transcript.participants = mergeParticipantNames(
+		sidecar.transcript.participants,
+		update.names,
+	);
+	if (update.profileId) {
+		sidecar.transcript.participantProfileId = update.profileId;
+	} else {
+		delete sidecar.transcript.participantProfileId;
+	}
 }
 
 /** Replaces the entry with the same path, or appends when absent. */

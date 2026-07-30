@@ -6,17 +6,26 @@
  * recorded, with the render templates each output was written with. A
  * recording without a stored roster (transcribed before the roster existed,
  * or never diarized) has nothing to rename until it is transcribed with
- * diarization. A participant profile feeds the input suggestions, applied
- * mappings are kept in the sidecar history so the last rename can be undone,
- * merging two speakers into one name is rejected for now, and a note without
- * timecode links is only touched after the user opts in.
+ * diarization.
+ *
+ * Each speaker is one row of three: its label, the name field, and a preview
+ * button that plays the stretch where that speaker first talks - the dialog
+ * covers the note it was opened over, so identifying a speaker cannot depend on
+ * reading the transcript behind it. Name suggestions come from the recording's
+ * own participant roster (stored in the same sidecar), optionally widened by a
+ * settings profile, and every applied name joins both. Applied mappings are
+ * kept in the sidecar history so the last rename can be undone, merging two
+ * speakers into one name is rejected for now, and a note without timecode links
+ * is only touched after the user opts in.
  * @module ui/SpeakerRenameModal
  */
 
 import { Notice, Setting } from 'obsidian';
-import type { App, DropdownComponent, TFile } from 'obsidian';
+import type { App, ButtonComponent, DropdownComponent, TFile } from 'obsidian';
 import { PluginModal } from './PluginModal';
 import { PLUGIN_LOG_PREFIX } from '../constants';
+import { SpeakerPreviewPlayer } from '../player/SpeakerPreviewPlayer';
+import { effectiveProfileId } from '../settings/profiles';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import {
 	addParticipantsToProfile,
@@ -24,9 +33,12 @@ import {
 	participantsOf,
 } from '../settings/speakerProfiles';
 import type {
+	ParticipantUpdate,
 	SpeakerEntry,
 	TranscriptSection,
 } from '../sidecar/recordingSidecarModel';
+import { mergeParticipantNames } from '../speakers/participantRoster';
+import { speakerPreviewRange } from '../speakers/speakerPreview';
 import {
 	duplicateAssignedNames,
 	planSpeakerRename,
@@ -37,7 +49,11 @@ import {
 	hasUnscopableRecordedNote,
 	type SpeakerRenameApplyResult,
 } from '../speakers/applySpeakerRenames';
+import { formatTimecode } from '../utils/TimeUtils';
 import { TextInputSuggest } from './TextInputSuggest';
+
+/** Value the profile dropdown uses for "the recording's own roster". */
+const RECORDING_ROSTER_OPTION = '';
 
 /**
  * The slice of the recording sidecar store the dialog needs: read the
@@ -50,13 +66,15 @@ export interface SpeakerRenameSidecarAccess {
 	/** Whether the sidecar file exists but could not be read (after a read). */
 	isSidecarCorrupt(path: string): boolean;
 	/**
-	 * Commits an applied rename atomically: roster and history entry in one
-	 * write, so neither can ever be persisted without the other.
+	 * Commits an applied rename atomically: roster, history entry, and the
+	 * names it added to the recording's participant roster in one write, so
+	 * none can ever be persisted without the others.
 	 */
 	commitRename(
 		path: string,
 		entries: readonly SpeakerEntry[],
 		names: Record<string, string>,
+		participants?: ParticipantUpdate,
 	): Promise<void>;
 	/** Replaces the speaker roster for a recording path (undo). */
 	setSpeakers(path: string, entries: readonly SpeakerEntry[]): Promise<void>;
@@ -85,12 +103,20 @@ export class SpeakerRenameModal extends PluginModal {
 	private section: TranscriptSection | null = null;
 	/** Name input per detected speaker, in roster order. */
 	private readonly inputs = new Map<string, HTMLInputElement>();
-	/** Id of the participant profile feeding suggestions ('' means none). */
+	/** Preview button per detected speaker, so its icon can be flipped. */
+	private readonly previewButtons = new Map<string, ButtonComponent>();
+	/**
+	 * Id of the settings profile widening the suggestions ('' means the
+	 * recording's own roster only). Seeded from the sidecar on the first
+	 * render, so the profile a transcription ran with re-selects itself.
+	 */
 	private selectedProfileId = '';
 	/** Whether to rewrite notes that carry no timecode links to scope by. */
 	private allowBroad = false;
 	private profileDropdown: DropdownComponent | null = null;
 	private newProfileInput: HTMLInputElement | null = null;
+	/** Plays a speaker's first turn; created lazily on the first preview. */
+	private preview: SpeakerPreviewPlayer | null = null;
 
 	constructor(
 		app: App,
@@ -107,10 +133,10 @@ export class SpeakerRenameModal extends PluginModal {
 
 	/**
 	 * Loads the stored roster and builds the dialog: a profile picker plus one
-	 * name field per speaker (prefilled with the stored name, when any), or an
-	 * explanation when no roster is stored - the recording has to be
-	 * transcribed with diarization first (recordings transcribed before the
-	 * roster existed need one new transcription).
+	 * row per speaker (its label, the name field prefilled with the stored
+	 * name, and the preview button), or an explanation when no roster is stored
+	 * - the recording has to be transcribed with diarization first (recordings
+	 * transcribed before the roster existed need one new transcription).
 	 */
 	private async render(): Promise<void> {
 		const settings = this.options.getSettings();
@@ -118,7 +144,9 @@ export class SpeakerRenameModal extends PluginModal {
 		const section = this.section;
 		const { contentEl } = this;
 		contentEl.empty();
+		this.stopPreview();
 		this.inputs.clear();
+		this.previewButtons.clear();
 		this.renderSource(this.file);
 
 		// An unreadable sidecar is not an empty one: the stored names may be
@@ -144,22 +172,17 @@ export class SpeakerRenameModal extends PluginModal {
 			return;
 		}
 
-		this.renderProfilePicker(settings);
+		// The profile a transcription recorded re-selects itself, so the names
+		// of that meeting are suggested without the user picking anything. A
+		// profile deleted since resolves to the recording's own roster.
+		this.selectedProfileId = effectiveProfileId(
+			settings.transcriptionSpeakerProfiles,
+			section.participantProfileId ?? '',
+		);
+		this.renderProfilePicker(settings, section);
 
-		for (const { label, name } of section.speakers) {
-			new Setting(contentEl)
-				.setName(label)
-				.setDesc('Leave empty to keep the original label.')
-				.addText((text) => {
-					text.setPlaceholder(label);
-					if (name) {
-						text.setValue(name);
-					}
-					this.inputs.set(label, text.inputEl);
-					new TextInputSuggest(this.app, text.inputEl, () =>
-						this.suggestionPool(),
-					);
-				});
+		for (const entry of section.speakers) {
+			this.renderSpeakerRow(entry);
 		}
 
 		if (hasUnscopableRecordedNote(this.app, this.file, section)) {
@@ -192,6 +215,105 @@ export class SpeakerRenameModal extends PluginModal {
 	}
 
 	/**
+	 * Renders one speaker's row: the engine label, the name field with its
+	 * suggestions, and the preview button. The three sit in one setting row, so
+	 * the labels, the fields, and the buttons line up as three columns.
+	 * @param entry - The stored roster entry for this speaker
+	 */
+	private renderSpeakerRow(entry: SpeakerEntry): void {
+		const { label, name } = entry;
+		const range = speakerPreviewRange(entry);
+		new Setting(this.contentEl)
+			.setName(label)
+			.setDesc(this.rowDescription(entry))
+			.addText((text) => {
+				text.setPlaceholder(label);
+				if (name) {
+					text.setValue(name);
+				}
+				this.inputs.set(label, text.inputEl);
+				new TextInputSuggest(this.app, text.inputEl, () =>
+					this.suggestionPool(),
+				);
+			})
+			.addButton((button) => {
+				button.setIcon('play').setTooltip(
+					range
+						? `Play where ${label} first speaks`
+						: // Rosters written before the offsets existed carry no
+							// timings; say what fixes it instead of a dead button.
+							'No sample stored for this speaker. Transcribe the ' +
+								'recording again with diarization to enable the preview.',
+				);
+				button.buttonEl.addClass('aar-speaker-preview');
+				if (!range) {
+					button.setDisabled(true);
+					return;
+				}
+				this.previewButtons.set(label, button);
+				button.onClick(() => {
+					this.previewPlayer().toggle(label, range);
+				});
+			});
+	}
+
+	/**
+	 * The row's help text: where the speaker first talks when the roster stores
+	 * it (so the preview button's target is visible without pressing it), plus
+	 * the reminder that a blank field keeps the engine label.
+	 * @param entry - The stored roster entry for this speaker
+	 */
+	private rowDescription(entry: SpeakerEntry): string {
+		const blank = 'Leave empty to keep the original label.';
+		return entry.firstStart === undefined
+			? blank
+			: `First speaks at ${formatTimecode(entry.firstStart)}. ${blank}`;
+	}
+
+	/**
+	 * The preview player, created on the first press so a dialog nobody
+	 * previews never resolves a media URL or builds an audio element.
+	 */
+	private previewPlayer(): SpeakerPreviewPlayer {
+		const existing = this.preview;
+		if (existing) {
+			return existing;
+		}
+		const player = new SpeakerPreviewPlayer(
+			() => this.app.vault.getResourcePath(this.file),
+			(playingId) => {
+				this.refreshPreviewButtons(playingId);
+			},
+		);
+		this.preview = player;
+		return player;
+	}
+
+	/**
+	 * Flips every preview button to match what is playing: the playing row
+	 * offers stop, every other row offers play. Driven by the player rather
+	 * than by the click, so an excerpt that ends on its own (or is cut short by
+	 * a blocked autoplay) leaves no button stuck showing stop.
+	 * @param playingId - Label of the speaker being previewed, or null
+	 */
+	private refreshPreviewButtons(playingId: string | null): void {
+		for (const [label, button] of this.previewButtons) {
+			const playing = label === playingId;
+			button.setIcon(playing ? 'square' : 'play');
+			button.setTooltip(
+				playing
+					? `Stop the ${label} sample`
+					: `Play where ${label} first speaks`,
+			);
+		}
+	}
+
+	/** Stops any excerpt in flight (a re-render or a close). */
+	private stopPreview(): void {
+		this.preview?.stop();
+	}
+
+	/**
 	 * Reads the recording's sidecar transcript section. Any failure logs and
 	 * degrades to the empty state rather than crashing the dialog.
 	 */
@@ -209,17 +331,27 @@ export class SpeakerRenameModal extends PluginModal {
 
 	/**
 	 * Renders the participant-profile picker and the inline profile creator.
-	 * The chosen profile's names feed the per-speaker input suggestions.
+	 * The recording's own roster always suggests; a profile picked here widens
+	 * the suggestions with its names, and both grow with what is applied.
 	 * @param settings - Current plugin settings
+	 * @param section - The recording's stored transcript section
 	 */
-	private renderProfilePicker(settings: AudioRecorderSettings): void {
+	private renderProfilePicker(
+		settings: AudioRecorderSettings,
+		section: TranscriptSection,
+	): void {
+		const stored = section.participants.length;
 		new Setting(this.contentEl)
 			.setName('Participant profile')
 			.setDesc(
-				'Suggests names as you type; applied names are added to it.',
+				`This recording suggests ${
+					stored > 0
+						? `${String(stored)} stored name${stored > 1 ? 's' : ''}`
+						: 'no names yet'
+				}. Pick a profile to add its names to the suggestions; every name you apply is saved to both.`,
 			)
 			.addDropdown((dropdown) => {
-				dropdown.addOption('', 'None');
+				dropdown.addOption(RECORDING_ROSTER_OPTION, 'This recording');
 				for (const profile of settings.transcriptionSpeakerProfiles) {
 					dropdown.addOption(profile.id, profile.name);
 				}
@@ -241,13 +373,15 @@ export class SpeakerRenameModal extends PluginModal {
 	}
 
 	/**
-	 * Names offered by the input suggestions: the participants of the selected
-	 * profile, or none when "None" is picked.
+	 * Names offered by the input suggestions: the roster this recording
+	 * carries, widened by the selected profile's names. The recording's own
+	 * names always come first, so the people actually in this meeting are
+	 * suggested ahead of everyone in a broad profile.
 	 */
 	private suggestionPool(): string[] {
-		return participantsOf(
-			this.options.getSettings(),
-			this.selectedProfileId,
+		return mergeParticipantNames(
+			this.section?.participants ?? [],
+			participantsOf(this.options.getSettings(), this.selectedProfileId),
 		);
 	}
 
@@ -341,13 +475,21 @@ export class SpeakerRenameModal extends PluginModal {
 					plan.renames,
 					{ allowBroad: this.allowBroad },
 				);
-				// One atomic commit: the roster and its history entry can never
-				// be persisted without each other, so the undo baseline always
-				// matches what was actually applied.
+				// One atomic commit: the roster, its history entry, and the
+				// names this apply introduced can never be persisted without
+				// each other, so the undo baseline always matches what was
+				// actually applied. A name that was in neither the recording's
+				// roster nor the picked profile joins the recording here (and
+				// the profile in rememberNames above), so it is suggested next
+				// time from the recording itself.
 				await this.options.sidecar.commitRename(
 					this.file.path,
 					plan.nextEntries,
 					plan.nextNames,
+					{
+						names: Object.values(plan.nextNames),
+						profileId: this.selectedProfileId,
+					},
 				);
 				console.debug(
 					`${PLUGIN_LOG_PREFIX} Renamed speakers: ` +
@@ -423,8 +565,10 @@ export class SpeakerRenameModal extends PluginModal {
 	}
 
 	/**
-	 * Adds the entered names to the selected profile so they are suggested next
-	 * time. A no-op when no profile is selected or nothing new was entered.
+	 * Adds the entered names to the selected settings profile, so they are
+	 * suggested for the next recording that picks it. A no-op when no profile
+	 * is selected or nothing new was entered - the recording's own roster grows
+	 * either way, in the atomic commit below.
 	 * @param entries - The dialog's per-speaker entries
 	 */
 	private async rememberNames(
@@ -507,6 +651,11 @@ export class SpeakerRenameModal extends PluginModal {
 
 	override onClose(): void {
 		super.onClose();
+		// Released before the maps are dropped, so no excerpt can outlive the
+		// dialog that started it.
+		this.preview?.dispose();
+		this.preview = null;
 		this.inputs.clear();
+		this.previewButtons.clear();
 	}
 }

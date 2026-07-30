@@ -34,6 +34,7 @@ import { TranscriptTruncatedError } from './transcriptionErrors';
 import { formatTimecode } from '../utils/TimeUtils';
 import {
 	buildTranscript,
+	collectFirstTurns,
 	plainText,
 	renameSpeakers,
 	stitchChunks,
@@ -41,6 +42,7 @@ import {
 } from './transcriptModel';
 import { emptyNameMap } from '../sidecar/recordingSidecarModel';
 import type {
+	ParticipantUpdate,
 	SpeakerEntry,
 	TranscriptSection,
 } from '../sidecar/recordingSidecarModel';
@@ -61,6 +63,11 @@ import {
 } from './advanced/advancedBias';
 import { generateContext } from './advanced/contextPipeline';
 import { resolveDictionaryTermList } from '../settings/dictionaryProfiles';
+import { effectiveProfileId } from '../settings/profiles';
+import {
+	resolveRunParticipants,
+	SPEAKER_PROFILES,
+} from '../settings/speakerProfiles';
 import { createLlmProvider, createTranscriptionProvider } from './factories';
 import { effectiveDiarize } from './providers/capabilities';
 import type { LlmProvider } from './llm/LlmProvider';
@@ -160,8 +167,15 @@ export class TranscriptionCancelledError extends Error {
 export interface TranscriptionSidecarAccess {
 	/** Returns the stored transcript section for a recording path. */
 	getTranscript(path: string): Promise<TranscriptSection>;
-	/** Replaces the speaker roster for a recording path. */
-	setSpeakers(path: string, entries: readonly SpeakerEntry[]): Promise<void>;
+	/**
+	 * Replaces the speaker roster for a recording path and, in the same write,
+	 * merges the run's participant roster into the recording's own.
+	 */
+	setSpeakers(
+		path: string,
+		entries: readonly SpeakerEntry[],
+		participants?: ParticipantUpdate,
+	): Promise<void>;
 }
 
 /**
@@ -571,6 +585,16 @@ export class TranscriptionService {
 					options.sidecar ?? null,
 					file.path,
 					canonical,
+					// The run's participant profile travels with the roster into
+					// the recording's sidecar, so the rename dialog can suggest
+					// this meeting's people without the user re-picking a profile.
+					{
+						names: resolveRunParticipants(settings),
+						profileId: effectiveProfileId(
+							SPEAKER_PROFILES.get(settings),
+							SPEAKER_PROFILES.selectedId(settings),
+						),
+					},
 				)
 			: canonical;
 
@@ -647,16 +671,23 @@ export class TranscriptionService {
 	 * same person as last time. A stored name that collides with another
 	 * label of this run is dropped (applying it would render two speakers
 	 * identically and merge them beyond repair) and the user is told to
-	 * re-check the names. Best-effort: any sidecar failure leaves the
-	 * transcript untouched rather than failing a paid run.
+	 * re-check the names. The refreshed roster also carries each speaker's
+	 * first-turn offsets, which is what lets the rename dialog play a sample of
+	 * a speaker instead of asking the user to remember who they were, and the
+	 * run's participant names, so the recording carries its own roster.
+	 * Best-effort: any sidecar failure leaves the transcript untouched rather
+	 * than failing a paid run.
 	 * @param path - Vault path of the transcribed recording
 	 * @param transcript - Fresh diarized transcript with original labels
+	 * @param participants - The run's participant profile, recorded with the
+	 *   roster
 	 * @returns The transcript with stored names applied (or unchanged)
 	 */
 	private async applyStoredSpeakerNames(
 		sidecar: TranscriptionSidecarAccess | null,
 		path: string,
 		transcript: Transcript,
+		participants: ParticipantUpdate,
 	): Promise<Transcript> {
 		if (!sidecar || transcript.speakers.length === 0) {
 			return transcript;
@@ -685,12 +716,23 @@ export class TranscriptionService {
 				storedNames[entry.label] = entry.name;
 			}
 			const renamed = renameSpeakers(transcript, storedNames);
+			// Measured on the original-label transcript, so the offsets are
+			// keyed by the same labels the roster stores.
+			const firstTurns = collectFirstTurns(transcript.segments);
 			await sidecar.setSpeakers(
 				path,
 				transcript.speakers.map((label) => {
 					const name = storedNames[label];
-					return name ? { label, name } : { label };
+					const turn = firstTurns.get(label);
+					return {
+						label,
+						...(name ? { name } : {}),
+						...(turn
+							? { firstStart: turn.start, firstEnd: turn.end }
+							: {}),
+					};
 				}),
+				participants,
 			);
 			if (droppedCollisions) {
 				new Notice(

@@ -39,6 +39,67 @@ export function collectSpeakers(
 	return order;
 }
 
+/** The timeline span of one speaker turn, in seconds. */
+export interface SpeakerTurn {
+	/** Offset the turn starts at. */
+	start: number;
+	/** Offset the turn ends at, never before the start. */
+	end: number;
+}
+
+/**
+ * Returns, per speaker, the span of their first uninterrupted turn: from the
+ * first segment they are attributed with through the last consecutive segment
+ * still theirs. This is what the rename dialog plays to answer "who is Speaker
+ * 2?" without uncovering the note behind it, so it deliberately spans the whole
+ * opening turn rather than one segment - engines cut a single sentence into
+ * several segments, and half a sentence identifies nobody.
+ *
+ * Segments are read in the order given (a built transcript is sorted by start),
+ * and a segment without a speaker ends the run in progress, so a later turn by
+ * the same speaker never merges into their first one across a gap.
+ * @param segments - Transcript segments, in timeline order
+ * @returns Each speaker's first turn, keyed by label
+ */
+export function collectFirstTurns(
+	segments: readonly TranscriptSegment[],
+): Map<string, SpeakerTurn> {
+	const turns = new Map<string, SpeakerTurn>();
+	/** Speaker of the run in progress, or null between runs. */
+	let runSpeaker: string | null = null;
+	/**
+	 * The recorded turn the run in progress extends, or null when this run is
+	 * a later one by a speaker whose first turn is already recorded.
+	 */
+	let openTurn: SpeakerTurn | null = null;
+	for (const segment of segments) {
+		const speaker = segment.speaker;
+		if (!speaker) {
+			runSpeaker = null;
+			openTurn = null;
+			continue;
+		}
+		const start = Math.max(0, segment.start);
+		const end = Math.max(start, segment.end);
+		if (speaker === runSpeaker) {
+			// Same run continuing: extend it in place (the object is the one
+			// stored in the map, so the recorded turn grows with it).
+			if (openTurn) {
+				openTurn.end = Math.max(openTurn.end, end);
+			}
+			continue;
+		}
+		runSpeaker = speaker;
+		// A speaker's first turn is the only one worth recording; later runs
+		// open no turn, so the recorded span stays the opening one.
+		openTurn = turns.get(speaker) ? null : { start, end };
+		if (openTurn) {
+			turns.set(speaker, openTurn);
+		}
+	}
+	return turns;
+}
+
 /**
  * Returns a copy of the transcript with all speaker attribution removed:
  * every segment drops its `speaker` and the speaker list is emptied, while

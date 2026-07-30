@@ -945,6 +945,12 @@ export default class AudioRecorderPlugin extends Plugin {
 				this.settings.transcriptionChapterPromptProfileId = profileId;
 				await this.saveSettings();
 			},
+			// Remember the run's participant-profile choice so it defaults next
+			// time and applies to transcribe-on-save.
+			onSpeakerProfileSelected: async (profileId: string) => {
+				this.settings.transcriptionSpeakerProfileId = profileId;
+				await this.saveSettings();
+			},
 			costTracker: this.transcriptionCostTracker,
 			// Speaker-name continuity: the run re-applies stored names and
 			// registers the outputs it writes in the recording's sidecar.

@@ -90,6 +90,7 @@ describe('RecordingSidecarStore', () => {
 		expect(await store.getMarkers('rec.wav')).toEqual([marker('a', 1)]);
 		expect(await store.getTranscript('rec.wav')).toEqual({
 			speakers: [],
+			participants: [],
 			noteOutputs: [],
 			fileOutputs: [],
 			history: [],
@@ -156,6 +157,113 @@ describe('RecordingSidecarStore', () => {
 				{ label: 'Speaker 3', name: 'Cleo' },
 				{ label: 'Speaker 2', name: 'Bob' },
 			]);
+		});
+
+		it('keeps the first-turn offsets of the entries it stores', async () => {
+			const { app } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setSpeakers('rec.wav', [
+				{
+					label: 'Speaker 1',
+					name: 'Alex',
+					firstStart: 3,
+					firstEnd: 9,
+				},
+			]);
+			expect((await store.getTranscript('rec.wav')).speakers).toEqual([
+				{
+					label: 'Speaker 1',
+					name: 'Alex',
+					firstStart: 3,
+					firstEnd: 9,
+				},
+			]);
+		});
+	});
+
+	describe('participant roster', () => {
+		it('merges names into the recording and records their profile', async () => {
+			const { app } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setSpeakers('rec.wav', [{ label: 'Speaker 1' }], {
+				names: ['Alex', 'Bob'],
+				profileId: 'profile-1',
+			});
+			// A second run with another profile ADDS to the roster: the
+			// recording accumulates everyone who has been named in it.
+			await store.setSpeakers('rec.wav', [{ label: 'Speaker 1' }], {
+				names: ['Bob', 'Cleo'],
+				profileId: 'profile-2',
+			});
+
+			const section = await store.getTranscript('rec.wav');
+			expect(section.participants).toEqual(['Alex', 'Bob', 'Cleo']);
+			expect(section.participantProfileId).toBe('profile-2');
+		});
+
+		it('clears the profile hint when a run picks none, keeping the names', async () => {
+			const { app } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setSpeakers('rec.wav', [{ label: 'Speaker 1' }], {
+				names: ['Alex'],
+				profileId: 'profile-1',
+			});
+			await store.setSpeakers('rec.wav', [{ label: 'Speaker 1' }], {
+				names: [],
+				profileId: '',
+			});
+
+			const section = await store.getTranscript('rec.wav');
+			expect(section.participants).toEqual(['Alex']);
+			expect(section.participantProfileId).toBeUndefined();
+		});
+
+		it('leaves the roster untouched when no update is given', async () => {
+			const { app } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setSpeakers('rec.wav', [{ label: 'Speaker 1' }], {
+				names: ['Alex'],
+				profileId: 'profile-1',
+			});
+			// The undo path re-writes the roster without touching participants.
+			await store.setSpeakers('rec.wav', [{ label: 'Speaker 1' }]);
+
+			const section = await store.getTranscript('rec.wav');
+			expect(section.participants).toEqual(['Alex']);
+			expect(section.participantProfileId).toBe('profile-1');
+		});
+
+		it('commitRename adds the applied names in the same write', async () => {
+			const { app } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.commitRename(
+				'rec.wav',
+				[{ label: 'Speaker 1', name: 'Alex' }],
+				{ 'Speaker 1': 'Alex' },
+				{ names: ['Alex'], profileId: '' },
+			);
+
+			const section = await store.getTranscript('rec.wav');
+			expect(section.participants).toEqual(['Alex']);
+			expect(section.history).toHaveLength(1);
+			expect(section.speakers).toEqual([
+				{ label: 'Speaker 1', name: 'Alex' },
+			]);
+		});
+
+		it('keeps a participants-only sidecar on disk', async () => {
+			// The names are the user's own data, so they alone are worth a file
+			// even after every roster and output record is gone.
+			const { app, files } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setSpeakers('rec.wav', [], {
+				names: ['Alex'],
+				profileId: '',
+			});
+			expect(files.has('rec.wav.markers.json')).toBe(true);
+			expect((await store.getTranscript('rec.wav')).participants).toEqual(
+				['Alex'],
+			);
 		});
 	});
 

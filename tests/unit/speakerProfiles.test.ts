@@ -7,20 +7,13 @@ import {
 	addParticipantsToProfile,
 	addSpeakerProfile,
 	createSpeakerProfile,
-	normalizeParticipants,
 	participantsOf,
+	resolveRunParticipants,
+	SPEAKER_PROFILES,
 } from 'src/settings/speakerProfiles';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 
 describe('speakerProfiles', () => {
-	describe('normalizeParticipants', () => {
-		it('trims, drops blanks, and deduplicates preserving order', () => {
-			expect(
-				normalizeParticipants([' Alex ', 'Maria', '', 'Alex', '  ']),
-			).toEqual(['Alex', 'Maria']);
-		});
-	});
-
 	describe('createSpeakerProfile', () => {
 		it('trims the name and starts with a unique id and no participants', () => {
 			const a = createSpeakerProfile('  Weekly sync ');
@@ -58,6 +51,26 @@ describe('speakerProfiles', () => {
 			});
 			expect(participantsOf(settings, '')).toEqual([]);
 			expect(participantsOf(settings, 'gone')).toEqual([]);
+		});
+	});
+
+	describe('resolveRunParticipants', () => {
+		const settings = mergeSettings({
+			transcriptionSpeakerProfiles: [
+				{ id: 'p1', name: 'Sync', participants: ['Alex', 'Maria'] },
+			],
+		});
+
+		it('returns the selected profile participants', () => {
+			SPEAKER_PROFILES.setSelectedId(settings, 'p1');
+			expect(resolveRunParticipants(settings)).toEqual(['Alex', 'Maria']);
+		});
+
+		it('returns nothing for None or a stale selection', () => {
+			SPEAKER_PROFILES.setSelectedId(settings, '');
+			expect(resolveRunParticipants(settings)).toEqual([]);
+			SPEAKER_PROFILES.setSelectedId(settings, 'gone');
+			expect(resolveRunParticipants(settings)).toEqual([]);
 		});
 	});
 

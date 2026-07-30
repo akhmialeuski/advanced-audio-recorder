@@ -1,36 +1,20 @@
 /**
- * The participant-profile list: named rosters of people, created and filled
- * from the speaker rename dialog rather than the settings tab. The list
- * mechanics come from the shared profile module; this file adds only what is
- * specific to a roster - normalizing names and merging applied ones back in.
- *
- * A roster has no persisted "selected id": the dialog holds the pick for the
- * duration of one rename, so the descriptor's selection accessors are backed by
- * a module-local slot rather than a settings field.
+ * The participant-profile list: named rosters of people, picked for a
+ * transcription run and in the speaker rename dialog. The list mechanics come
+ * from the shared profile module and the name normalization from the shared
+ * participant roster, so this file only describes where the list lives and how
+ * a run resolves its names.
  * @module settings/speakerProfiles
  */
 
+import { mergeParticipantNames } from '../speakers/participantRoster';
 import type { AudioRecorderSettings, SpeakerProfile } from './settingsSchema';
-import { addProfile, findProfile, type ProfileList } from './profiles';
-
-/**
- * Trims, deduplicates (first occurrence wins), and drops blank entries from a
- * list of participant names, preserving order.
- * @param names - Raw participant names
- * @returns A clean, order-preserving list
- */
-export function normalizeParticipants(names: readonly string[]): string[] {
-	const seen = new Set<string>();
-	const result: string[] = [];
-	for (const name of names) {
-		const trimmed = name.trim();
-		if (trimmed && !seen.has(trimmed)) {
-			seen.add(trimmed);
-			result.push(trimmed);
-		}
-	}
-	return result;
-}
+import {
+	addProfile,
+	findProfile,
+	selectedProfile,
+	type ProfileList,
+} from './profiles';
 
 /**
  * Builds a profile with a fresh id, a trimmed name, and no participants. The
@@ -43,17 +27,16 @@ export function createSpeakerProfile(name: string): SpeakerProfile {
 }
 
 /**
- * Where the participant profiles live in settings. Unlike the dictionary and
- * chapter lists there is no persisted selection - the rename dialog owns the
- * pick for one run - so the selection accessors are inert.
+ * Where the participant profiles and their selection live in settings. The
+ * selection is what a transcription run carries into the recording's sidecar,
+ * and it is remembered like the dictionary and chapter picks so the next run
+ * (and the next rename dialog) defaults to the same roster.
  */
 export const SPEAKER_PROFILES: ProfileList<SpeakerProfile> = {
 	get: (s) => s.transcriptionSpeakerProfiles,
 	set: (s, profiles) => (s.transcriptionSpeakerProfiles = profiles),
-	selectedId: () => '',
-	setSelectedId: () => {
-		/* the rename dialog holds the selection for one run */
-	},
+	selectedId: (s) => s.transcriptionSpeakerProfileId,
+	setSelectedId: (s, id) => (s.transcriptionSpeakerProfileId = id),
 	create: createSpeakerProfile,
 };
 
@@ -86,6 +69,21 @@ export function participantsOf(
 }
 
 /**
+ * The participant names a transcription run carries into the recording's
+ * sidecar: those of the selected profile, or an empty list when none is
+ * selected or the stored id points at a removed profile. Returning an empty
+ * list is the single guard that makes both "None" and a stale selection safe,
+ * since the run then records no participants at all.
+ * @param settings - The active settings (profiles plus the selected id)
+ * @returns The selected profile's participants, or an empty list
+ */
+export function resolveRunParticipants(
+	settings: AudioRecorderSettings,
+): string[] {
+	return selectedProfile(SPEAKER_PROFILES, settings)?.participants ?? [];
+}
+
+/**
  * Adds names to a profile's participant roster, skipping ones already present,
  * so names applied in the rename dialog become suggestions next time. Returns
  * the profiles unchanged (a copy) when the id is absent or nothing new was
@@ -104,7 +102,9 @@ export function addParticipantsToProfile(
 	if (!target) {
 		return [...profiles];
 	}
-	const merged = normalizeParticipants([...target.participants, ...names]);
+	const merged = mergeParticipantNames(target.participants, names);
+	// A merge that added nothing comes back the same length; returning a copy
+	// then lets the caller skip the settings save on a reference comparison.
 	if (merged.length === target.participants.length) {
 		return [...profiles];
 	}

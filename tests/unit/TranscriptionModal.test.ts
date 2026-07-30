@@ -219,12 +219,25 @@ describe('TranscriptionModal platform gating', () => {
 	});
 });
 
-/** The Dictionary select is the one carrying a None option. */
-function dictionarySelect(modal: TranscriptionModal): HTMLSelectElement {
-	const selects = Array.from(modal.contentEl.querySelectorAll('select'));
-	const select = selects.find((el) =>
-		Array.from(el.options).some((option) => option.textContent === 'None'),
+/**
+ * The dropdown of the setting row with the given name, or null when that row
+ * is not rendered. By name rather than by option text, since several pickers
+ * offer a "None" option.
+ */
+function selectByName(
+	modal: TranscriptionModal,
+	name: string,
+): HTMLSelectElement | null {
+	const items = Array.from(modal.contentEl.querySelectorAll('.setting-item'));
+	const item = items.find(
+		(el) => el.querySelector('.setting-item-name')?.textContent === name,
 	);
+	return item?.querySelector<HTMLSelectElement>('select') ?? null;
+}
+
+/** The Dictionary select, which must exist wherever it is asked for. */
+function dictionarySelect(modal: TranscriptionModal): HTMLSelectElement {
+	const select = selectByName(modal, 'Dictionary');
 	if (!select) {
 		throw new Error('Dictionary select not rendered');
 	}
@@ -291,6 +304,122 @@ describe('TranscriptionModal dictionary profile selection', () => {
 		// The saved settings object stays untouched: persistence rides on the
 		// callback, not on mutating the shared settings from the dialog.
 		expect(settings.transcriptionDictionaryProfileId).toBe('');
+	});
+});
+
+describe('TranscriptionModal participant profile selection', () => {
+	/** Settings whose engine and toggle actually produce speaker labels. */
+	function diarizingSettings(
+		overrides: Partial<AudioRecorderSettings> = {},
+	): AudioRecorderSettings {
+		return {
+			...DEFAULT_SETTINGS,
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			transcriptionDiarize: true,
+			transcriptionSpeakerProfiles: [
+				{ id: 's1', name: 'Weekly sync', participants: ['Alex'] },
+				{ id: 's2', name: 'Interviews', participants: [] },
+			],
+			transcriptionSpeakerProfileId: '',
+			...overrides,
+		};
+	}
+
+	it('lists None plus each profile when the run will diarize', () => {
+		const settings = diarizingSettings();
+		const modal = new TranscriptionModal(
+			new App(),
+			createAudioFile(),
+			() => settings,
+			{},
+		);
+		modal.onOpen();
+
+		const select = selectByName(modal, 'Participant profile');
+		expect(select).not.toBeNull();
+		expect(
+			Array.from(select?.options ?? []).map((o) => o.textContent),
+		).toEqual(['None', 'Weekly sync', 'Interviews']);
+	});
+
+	it('hides the picker when the run produces no speakers', () => {
+		// Nothing to name: without diarization the roster the profile fills is
+		// never written.
+		const withoutDiarize = diarizingSettings({
+			transcriptionDiarize: false,
+		});
+		const modal = new TranscriptionModal(
+			new App(),
+			createAudioFile(),
+			() => withoutDiarize,
+			{},
+		);
+		modal.onOpen();
+		expect(selectByName(modal, 'Participant profile')).toBeNull();
+
+		// Same for an engine that cannot diarize, even with the toggle stored on.
+		const nonDiarizing = diarizingSettings({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+		});
+		const other = new TranscriptionModal(
+			new App(),
+			createAudioFile(),
+			() => nonDiarizing,
+			{},
+		);
+		other.onOpen();
+		expect(selectByName(other, 'Participant profile')).toBeNull();
+	});
+
+	it('persists the picked profile and updates the run snapshot', () => {
+		const settings = diarizingSettings();
+		const onSpeakerProfileSelected = jest.fn().mockResolvedValue(undefined);
+		const modal = new TranscriptionModal(
+			new App(),
+			createAudioFile(),
+			() => settings,
+			{ onSpeakerProfileSelected },
+		);
+		modal.onOpen();
+
+		const select = selectByName(modal, 'Participant profile');
+		if (!select) {
+			throw new Error('Participant profile select not rendered');
+		}
+		select.value = 's1';
+		select.dispatchEvent(new Event('change'));
+
+		expect(onSpeakerProfileSelected).toHaveBeenCalledWith('s1');
+		expect(runSettingsOf(modal).transcriptionSpeakerProfileId).toBe('s1');
+		// The shared settings object stays untouched: persistence rides on the
+		// callback, matching the dictionary and chapter flows.
+		expect(settings.transcriptionSpeakerProfileId).toBe('');
+	});
+
+	it('shows a removed profile as None rather than a dangling selection', () => {
+		const stored = diarizingSettings({
+			transcriptionSpeakerProfileId: 's1',
+		});
+		const selected = new TranscriptionModal(
+			new App(),
+			createAudioFile(),
+			() => stored,
+			{},
+		);
+		selected.onOpen();
+		expect(selectByName(selected, 'Participant profile')?.value).toBe('s1');
+
+		const stale = diarizingSettings({
+			transcriptionSpeakerProfileId: 'gone',
+		});
+		const modal = new TranscriptionModal(
+			new App(),
+			createAudioFile(),
+			() => stale,
+			{},
+		);
+		modal.onOpen();
+		expect(selectByName(modal, 'Participant profile')?.value).toBe('');
 	});
 });
 

@@ -351,10 +351,15 @@ export interface AudioRecorderSettings {
 	 */
 	transcriptionChapterPromptProfileId: string;
 	/**
-	 * Participant-name profiles reused when renaming speakers. Created and
-	 * filled from the rename dialog rather than the settings tab.
+	 * Participant-name profiles reused across recordings. Created and filled
+	 * from the rename dialog rather than the settings tab.
 	 */
 	transcriptionSpeakerProfiles: SpeakerProfile[];
+	/**
+	 * Id of the participant profile a transcription run records into the
+	 * recording's sidecar; '' means none. A stale id also resolves to none.
+	 */
+	transcriptionSpeakerProfileId: string;
 	/** Upload size limit per chunk, in megabytes (Whisper API) */
 	transcriptionChunkMb: number;
 	/** Per-request transcription timeout, in minutes (a hung request fails after this) */
@@ -597,6 +602,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	],
 	transcriptionChapterPromptProfileId: DEFAULT_CHAPTER_PROMPT_PROFILE_ID,
 	transcriptionSpeakerProfiles: [],
+	transcriptionSpeakerProfileId: '',
 	transcriptionChunkMb: DEFAULT_TRANSCRIBE_CHUNK_MB,
 	transcriptionTimeoutMinutes: DEFAULT_TRANSCRIPTION_TIMEOUT_MINUTES,
 	whisperApiBaseUrl: DEFAULT_WHISPER_API_BASE_URL,

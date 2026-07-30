@@ -176,7 +176,11 @@ Once the setup above is done, each meeting is fast.
     ![Status-bar playback controls shown while reviewing a meeting recording, with skip, play or pause, stop, volume, marker, chapter, and the elapsed over total time](../images/status-bar-playback-controls.png)
     _Figure: reviewing the transcript, the status-bar controls drive playback while you read and click timestamps._
 
-8. **Read the summary and action items.** Because **LLM post-processing** is on with the **Summarize** task, the LLM-written summary is produced alongside the transcript. Read the key points and action items, then assign owners or copy them into your task tracker.
+8. **Put real names on the speakers.** With **Rename speakers** enabled (Settings > Transcription), right-click the recording and choose **Rename speakers**. Each speaker is one row: its label, a name field, and a **▶ button that plays where that speaker first talks** - so you identify `Speaker 2` by listening rather than by remembering, which matters because the dialog is covering the transcript. Press ▶ to hear the opening turn, ■ (the same button) to stop, type the name, and press **Apply**: every line in the note and in the transcript files is rewritten, and re-transcribing this recording later re-applies the names automatically.
+
+    The names are stored **with the recording**, so the next time you open the dialog they are suggested back to you. To carry a recurring team across meetings, create a **participant profile** in the dialog once and pick it under **Participant profile** in the Transcribe dialog - the roster is then written into each recording it transcribes, and any new name you apply is added to both the recording and the profile. See [Naming speakers](../transcription.md#naming-speakers).
+
+9. **Read the summary and action items.** Because **LLM post-processing** is on with the **Summarize** task, the LLM-written summary is produced alongside the transcript. Read the key points and action items, then assign owners or copy them into your task tracker.
 
 ---
 
@@ -206,9 +210,10 @@ Use this once to confirm your setup, then just record.
 3. **Speaker diarization** = On.
 4. **Transcript output > Destination** = **Note and file** (File format **JSON**).
 5. **LLM post-processing** = On, **Task** = **Summarize**, **LLM provider** chosen, **API key** confirmed.
-6. (Optional) **Transcribe after recording** = On for hands-off transcription.
-7. (Optional) **Audio player > Enhanced audio player** = On, then **Markers and chapters** = On (this toggle appears only after the enhanced player is enabled), to mark agenda items.
-8. (Optional) **Multi-track recording** = On (Single file) if you use several microphones.
+6. (Optional) **Rename speakers** = On, to replace `Speaker 1` with real names afterwards (with a play button per speaker so you can tell who is who).
+7. (Optional) **Transcribe after recording** = On for hands-off transcription.
+8. (Optional) **Audio player > Enhanced audio player** = On, then **Markers and chapters** = On (this toggle appears only after the enhanced player is enabled), to mark agenda items.
+9. (Optional) **Multi-track recording** = On (Single file) if you use several microphones.
 
 **Per meeting**
 
@@ -218,7 +223,8 @@ Use this once to confirm your setup, then just record.
 4. Stop recording (saves and inserts the embed).
 5. Transcription runs (auto, or run **Transcribe audio**).
 6. Review the diarized transcript and click timecodes to jump.
-7. Read the LLM summary and action items.
+7. Run **Rename speakers**, play each speaker's sample, and give them real names.
+8. Read the LLM summary and action items.
 
 ---
 
@@ -226,6 +232,7 @@ Use this once to confirm your setup, then just record.
 
 - **The Speaker diarization toggle is greyed out** - the selected engine cannot diarize. Switch **Engine** to **Deepgram** or **Google Gemini**.
 - **Speaker numbers reset partway through a long Gemini transcript** - Gemini splits recordings longer than 15 minutes into parts, and diarized splits restart speaker numbering at each boundary (surfaced as a warning). Use **Deepgram** for consistent labels across a long meeting.
+- **The play buttons in Rename speakers are greyed out** - that recording's roster predates speaker samples. Transcribe it once more with **Speaker diarization** on and the samples appear.
 - **No summary appeared** - confirm **Enable LLM post-processing** is on, **Task** is **Summarize**, and the LLM provider's **API key** is set (remember OpenAI reuses the Whisper key and Gemini reuses the Gemini key; Anthropic needs its own).
 - **The summary is cut off** - raise **Max output tokens** (default 4096, up to 32000).
 - **Transcription accuracy is poor in a noisy room** - run [Clean up audio](../audio-cleanup.md) first, or move to a better microphone.
