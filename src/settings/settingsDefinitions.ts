@@ -1494,24 +1494,35 @@ export function buildSettingsDefinitions(
 		audioSplittingGroup(),
 		multiTrackGroup(ctx.settings, ctx.devices),
 		audioPlayerGroup(ctx.settings),
-		transcriptionGroup(ctx.settings, ctx.transcriptionBlocks),
-		transcriptionEngineGroup(ctx.settings, ctx.transcriptionBlocks),
-		transcriptionAdvancedGroup(ctx.settings),
-		...profileGroups(ctx.settings, ctx.profiles.dictionary),
-		transcriptOutputGroup(ctx.settings),
-		autoChaptersGroup(ctx.settings),
-		...profileGroups(ctx.settings, ctx.profiles.chapters),
-		llmGroup(ctx.settings),
-		llmModelListGroup(ctx.settings, ctx.transcriptionBlocks),
-		imperativeBlockRow(
-			'LLM credentials',
-			ctx.transcriptionBlocks.renderLlmSection,
-			() =>
-				ctx.settings.transcriptionEnabled &&
-				(ctx.settings.llmPostProcessEnabled ||
-					ctx.settings.transcriptionAutoChaptersEnabled ||
-					advancedTwoPassEnabled(ctx.settings)),
-		),
+		{
+			// Forty-odd settings with a scope of their own: the style guide's
+			// case for a sub-page, and it keeps the main tab scannable.
+			type: 'page',
+			name: 'Transcription',
+			desc: 'Speech-to-text, transcript output, chapters, and LLM post-processing.',
+			displayValue: (): string =>
+				ctx.settings.transcriptionEnabled ? 'On' : 'Off',
+			items: [
+				transcriptionGroup(ctx.settings, ctx.transcriptionBlocks),
+				transcriptionEngineGroup(ctx.settings, ctx.transcriptionBlocks),
+				transcriptionAdvancedGroup(ctx.settings),
+				...profileGroups(ctx.settings, ctx.profiles.dictionary),
+				transcriptOutputGroup(ctx.settings),
+				autoChaptersGroup(ctx.settings),
+				...profileGroups(ctx.settings, ctx.profiles.chapters),
+				llmGroup(ctx.settings),
+				llmModelListGroup(ctx.settings, ctx.transcriptionBlocks),
+				imperativeBlockRow(
+					'LLM credentials',
+					ctx.transcriptionBlocks.renderLlmSection,
+					() =>
+						ctx.settings.transcriptionEnabled &&
+						(ctx.settings.llmPostProcessEnabled ||
+							ctx.settings.transcriptionAutoChaptersEnabled ||
+							advancedTwoPassEnabled(ctx.settings)),
+				),
+			],
+		},
 		audioProcessingGroup(),
 		audioCleanupGroup(ctx.settings),
 		diagnosticsGroup(ctx.diagnostics),

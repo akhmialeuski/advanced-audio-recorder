@@ -69,24 +69,29 @@ export const groupOf = (
 ): GroupDefinition => {
 	const search = (
 		entries: ReadonlyArray<RowDefinition | GroupDefinition>,
+		matches: (entry: GroupDefinition) => boolean,
 	): GroupDefinition | undefined => {
 		for (const entry of entries) {
 			if (!('type' in entry)) {
 				continue;
 			}
-			if (entry.heading === heading || entry.name === heading) {
+			if (matches(entry)) {
 				return entry;
 			}
-			const nested = search(entry.items ?? []);
+			const nested = search(entry.items ?? [], matches);
 			if (nested) {
 				return nested;
 			}
 		}
 		return undefined;
 	};
-	const found = search(
-		definitions as ReadonlyArray<RowDefinition | GroupDefinition>,
-	);
+	const tree = definitions as ReadonlyArray<RowDefinition | GroupDefinition>;
+	// A page and the group inside it can share a name - the transcription page
+	// opens with a group of the same name - so the group holding rows wins over
+	// the page holding groups.
+	const found =
+		search(tree, (entry) => entry.heading === heading) ??
+		search(tree, (entry) => entry.name === heading);
 	if (!found) {
 		throw new Error(`No settings group declared under "${heading}"`);
 	}

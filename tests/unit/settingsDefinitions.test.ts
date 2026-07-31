@@ -1,7 +1,7 @@
 /**
- * Unit tests for the tab's definition tree: what each migrated section declares,
- * and how the row hosting the not-yet-migrated sections behaves under the
- * framework that owns it.
+ * Unit tests for the tab's definition tree: what each section declares, and how
+ * the rows that keep a render callback - the ones no control type covers -
+ * behave under the framework that owns them.
  * @module tests/unit/settingsDefinitions.test
  */
 
@@ -169,6 +169,60 @@ describe('settings definitions', () => {
 				(renderDefinitionOf(build()) as { searchable?: boolean })
 					.searchable,
 			).toBe(false);
+		});
+	});
+
+	describe('the transcription sub-page', () => {
+		/** The page entry the tab declares at its top level. */
+		const pageOf = (): GroupDefinition & {
+			displayValue?: () => string;
+		} => {
+			const page = build().find(
+				(item): item is SettingDefinitionItem & { type: 'page' } =>
+					'type' in item && item.type === 'page',
+			);
+			if (!page) {
+				throw new Error('The tab declares no sub-page');
+			}
+			return page as unknown as GroupDefinition & {
+				displayValue?: () => string;
+			};
+		};
+
+		it('gathers the transcription groups behind one entry', () => {
+			const page = pageOf();
+
+			expect(page.name).toBe('Transcription');
+			// Every transcription group moved onto the page, so the main tab
+			// carries none of them.
+			expect(
+				page.items.map((item) => (item as GroupDefinition).heading),
+			).toEqual(
+				expect.arrayContaining([
+					'Transcription',
+					'Transcript output',
+					'Auto chapters',
+					'LLM post-processing',
+				]),
+			);
+			expect(
+				build().some(
+					(item) =>
+						'type' in item &&
+						item.type !== 'page' &&
+						item.heading === 'Transcript output',
+				),
+			).toBe(false);
+		});
+
+		it('reports on the entry whether transcription is on', () => {
+			settings.transcriptionEnabled = false;
+
+			expect(pageOf().displayValue?.()).toBe('Off');
+
+			settings.transcriptionEnabled = true;
+
+			expect(pageOf().displayValue?.()).toBe('On');
 		});
 	});
 

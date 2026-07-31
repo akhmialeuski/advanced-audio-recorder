@@ -72,11 +72,6 @@ export interface SettingsSectionContext {
 	saveDebounced: () => void;
 }
 
-/** Adds a section heading. */
-export function addHeading(ctx: SettingsSectionContext, name: string): void {
-	new Setting(ctx.containerEl).setName(name).setHeading();
-}
-
 /** Configuration for a debounced text control (optionally a password). */
 export interface TextControlConfig {
 	name: string;
