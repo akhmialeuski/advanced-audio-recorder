@@ -111,6 +111,34 @@ export function parseTrackControlKey(
 	};
 }
 
+/**
+ * Control key for one field of one profile. A profile is an entry in a stored
+ * list rather than a settings property, so the key carries the id of the entry
+ * it addresses, the way a track control key carries its track number.
+ * @param base - Key naming the field, e.g. `dictionaryProfile.terms`
+ * @param id - Id of the profile the field belongs to
+ */
+export const profileControlKey = (base: string, id: string): string =>
+	`${base}#${id}`;
+
+/**
+ * Reads a profile control key back into the field and the profile it addresses.
+ * @param key - A key produced by {@link profileControlKey}
+ * @returns The base key and the profile id, or undefined for any other key
+ */
+export function parseProfileControlKey(
+	key: string,
+): { base: string; id: string } | undefined {
+	const separator = key.indexOf('#');
+	if (separator <= 0 || separator === key.length - 1) {
+		return undefined;
+	}
+	return {
+		base: key.slice(0, separator),
+		id: key.slice(separator + 1),
+	};
+}
+
 /** Accepted shape of the transcription language field: an ISO code or empty. */
 const LANGUAGE_CODE_PATTERN = /^([a-z]{2,3}(-[a-z0-9]{2,8})?|auto)?$/i;
 
@@ -128,6 +156,16 @@ export const SETTINGS_ROOT_CLASS = 'aar-settings-root';
  * such a row wrap so the block starts on its own line.
  */
 export const SETTINGS_BLOCK_ROW_CLASS = 'aar-setting-block-row';
+
+/**
+ * Marks a group whose text areas are laid out under their name across the whole
+ * row. A glossary or a guidance prompt is edited in paragraphs, and the control
+ * column a row gives a text area by default is a few characters wide.
+ */
+export const STACKED_TEXT_CLASS = 'aar-stacked-text';
+
+/** Visible lines a profile body field opens with. */
+const PROFILE_BODY_ROWS = 8;
 
 /**
  * The live audio-input picture the device-bound rows are built from. The tab
@@ -209,6 +247,11 @@ export interface SettingsDefinitionContext {
 		readonly dictionary: ProfileCatalogue;
 		readonly chapters: ProfileCatalogue;
 	};
+	/**
+	 * Whether a list in this tree needs a labelled add row of its own. False
+	 * wherever the renderer already draws one, which the render mode answers.
+	 */
+	readonly declareListAddRow: boolean;
 	/** Capture sample rates this device offers. */
 	readonly sampleRates: readonly number[];
 	/** The two output-format rows the declarative controls cannot express. */
@@ -742,32 +785,42 @@ function llmGroup(settings: AudioRecorderSettings): SettingDefinitionItem {
 	};
 }
 
+/** One stored profile, as its entry in the catalogue presents it. */
+export interface ProfileEntry {
+	/** Stable id. Control keys and the edit actions address a profile by it. */
+	readonly id: string;
+	/** Display name, which is also the name of this profile's page. */
+	readonly name: string;
+	/** What the entry says about the profile without opening it. */
+	readonly summary: string;
+}
+
 /** One profile catalogue, as the definitions address it. */
 export interface ProfileCatalogue {
-	/** Heading of the catalogue list, e.g. "Dictionary profiles". */
+	/** Heading of the catalogue page, e.g. "Dictionary profiles". */
 	readonly heading: string;
-	/** Description of the selector row. */
+	/** Description of the entry that opens the catalogue. */
 	readonly selectorDesc: string;
 	/** Label and description of the profile body field. */
 	readonly bodyName: string;
 	readonly bodyDesc: string;
+	/** Label and description of the row that makes a profile the default one. */
+	readonly selectionName: string;
+	readonly selectionDesc: string;
 	/** Settings key holding the selected profile id. */
 	readonly selectionKey: string;
-	/** Control key of the selected profile's name. */
-	readonly nameKey: string;
-	/** Control key of the selected profile's body. */
+	/** Control key of a profile's body. */
 	readonly bodyKey: string;
-	/** The stored profiles, as id and name pairs. */
-	entries(settings: AudioRecorderSettings): ReadonlyArray<{
-		id: string;
-		name: string;
-	}>;
+	/** The stored profiles, in the order they are shown. */
+	entries(settings: AudioRecorderSettings): readonly ProfileEntry[];
 	/** Whether this catalogue is on screen at all. */
 	visible(settings: AudioRecorderSettings): boolean;
-	/** Adds a profile and selects it. */
+	/** Adds an empty profile under a free name. */
 	add(): void;
-	/** Removes the profile at a position. */
-	remove(index: number): void;
+	/** Asks for a new name for a profile and applies it. */
+	rename(id: string): void;
+	/** Removes a profile. */
+	remove(id: string): void;
 }
 
 /**
@@ -789,8 +842,103 @@ function nameFilter(placeholder: string): {
 }
 
 /**
- * A profile catalogue: the saved profiles as a list, and the editor for the one
- * in use, behind a single entry that names it.
+ * A labelled row repeating a list's add affordance, declared where the renderer
+ * draws only a plus icon in the list header. It sits beside the list rather
+ * than in it, since a row inside would be filtered away by the list's own
+ * search exactly when an empty result makes adding one the obvious next move.
+ * @param name - The label, which is also the icon's tooltip
+ * @param desc - What the row creates
+ * @param action - The list's own add action
+ */
+function addItemRow(
+	name: string,
+	desc: string,
+	action: () => void,
+): SettingDefinition {
+	return {
+		name,
+		desc,
+		action: (): void => {
+			action();
+		},
+	};
+}
+
+/**
+ * One saved profile, as a page of its own.
+ *
+ * A profile is an entity, not a setting: it has a name, a body that is edited
+ * in paragraphs, and a lifecycle. Giving each one a page means the collection
+ * reads as a list of names and nothing else, and every field belongs to the
+ * profile whose page it is on rather than to "whichever one is selected".
+ *
+ * The name is edited through a dialog rather than a field on the page, because
+ * the framework addresses an open page by its name: renaming under itself
+ * leaves the page unresolvable, so a rename applies and returns to the list.
+ * @param catalogue - The profile kind being declared
+ * @param entry - The profile this page belongs to
+ */
+function profilePage(
+	catalogue: ProfileCatalogue,
+	entry: ProfileEntry,
+): SettingGroupItem {
+	return {
+		type: 'page',
+		name: entry.name,
+		displayValue: entry.summary,
+		items: [
+			{
+				type: 'group',
+				cls: STACKED_TEXT_CLASS,
+				items: [
+					{
+						name: catalogue.selectionName,
+						desc: catalogue.selectionDesc,
+						control: {
+							type: 'toggle',
+							key: profileControlKey(
+								catalogue.selectionKey,
+								entry.id,
+							),
+						},
+					},
+					{
+						name: catalogue.bodyName,
+						desc: catalogue.bodyDesc,
+						control: {
+							type: 'textarea',
+							key: profileControlKey(catalogue.bodyKey, entry.id),
+							rows: PROFILE_BODY_ROWS,
+						},
+					},
+				],
+			},
+			{
+				type: 'group',
+				items: [
+					{
+						name: 'Rename profile',
+						desc: 'The name this profile is picked by. Applying a new one returns to the list, where it is shown.',
+						action: (): void => {
+							catalogue.rename(entry.id);
+						},
+					},
+					{
+						name: 'Delete profile',
+						desc: 'Removes this profile and returns to the list.',
+						action: (): void => {
+							catalogue.remove(entry.id);
+						},
+					},
+				],
+			},
+		],
+	};
+}
+
+/**
+ * A profile catalogue: the saved profiles as a list of pages, behind a single
+ * entry that names the one in use.
  *
  * A glossary runs to dozens of profiles and every one of them was a row on the
  * transcription page, pushing the settings after it off the screen. On a page
@@ -798,39 +946,43 @@ function nameFilter(placeholder: string): {
  * collection to read: the name of the thing, the value in use, and a way in.
  * @param settings - Live settings, read by the predicates
  * @param catalogue - The profile kind being declared
+ * @param declareAddRow - Whether this tree owes the list a labelled add row,
+ * which is the case wherever the renderer draws only a plus icon
  */
 function profileGroups(
 	settings: AudioRecorderSettings,
 	catalogue: ProfileCatalogue,
+	declareAddRow: boolean,
 ): SettingDefinitionItem[] {
 	const entries = catalogue.entries(settings);
-	const selected = settings[
-		catalogue.selectionKey as keyof AudioRecorderSettings
-	] as string;
 	const visible = (): boolean => catalogue.visible(settings);
-	const selectedEntry = (): { id: string; name: string } | undefined =>
-		catalogue
-			.entries(settings)
-			.find(
-				(entry) =>
-					entry.id ===
-					(settings[
-						catalogue.selectionKey as keyof AudioRecorderSettings
-					] as string),
-			);
-	const hasProfile = (): boolean =>
-		visible() && entries.some((entry) => entry.id === selected);
+	const selectedName = (): string => {
+		const selected = settings[
+			catalogue.selectionKey as keyof AudioRecorderSettings
+		] as string;
+		return (
+			catalogue.entries(settings).find((entry) => entry.id === selected)
+				?.name ?? 'None'
+		);
+	};
+	const addRow = addItemRow(
+		'Add profile',
+		'Creates an empty profile at the end of the list.',
+		() => {
+			catalogue.add();
+		},
+	);
 	return [
 		{
 			type: 'page',
 			name: catalogue.heading,
 			desc: catalogue.selectorDesc,
-			displayValue: (): string => selectedEntry()?.name ?? 'None',
+			displayValue: selectedName,
 			visible,
 			items: [
 				{
 					type: 'list',
-					emptyState: 'No profiles yet. Add one to start a glossary.',
+					emptyState: 'No profiles yet. Add one to start.',
 					search: nameFilter('Filter profiles'),
 					addItem: {
 						name: 'Add profile',
@@ -838,54 +990,14 @@ function profileGroups(
 							catalogue.add();
 						},
 					},
-					onDelete: (index): void => {
-						catalogue.remove(index);
-					},
-					items: entries.map(
-						(entry): SettingGroupItem => ({
-							name: entry.name,
-							...(entry.id === selected
-								? { desc: 'In use' }
-								: {}),
-						}),
+					items: entries.map((entry) =>
+						profilePage(catalogue, entry),
 					),
 				},
-				{
-					type: 'group',
-					heading: 'Selected profile',
-					items: [
-						{
-							name: 'Profile',
-							desc: 'The profile these fields edit, and the one offered by default in the Transcribe dialog.',
-							control: {
-								type: 'dropdown',
-								key: catalogue.selectionKey,
-								options: Object.fromEntries(
-									entries.map((entry) => [
-										entry.id,
-										entry.name,
-									]),
-								),
-							},
-						},
-						{
-							name: 'Profile name',
-							desc: 'Name shown wherever this profile is picked.',
-							visible: hasProfile,
-							control: { type: 'text', key: catalogue.nameKey },
-						},
-						{
-							name: catalogue.bodyName,
-							desc: catalogue.bodyDesc,
-							visible: hasProfile,
-							control: {
-								type: 'textarea',
-								key: catalogue.bodyKey,
-								rows: 6,
-							},
-						},
-					],
-				},
+				// Beside the list rather than in it: a row inside would be
+				// filtered away by the list's own search, exactly when an empty
+				// result makes adding one the obvious next move.
+				...(declareAddRow ? [addRow] : []),
 			],
 		},
 	];
@@ -901,6 +1013,7 @@ function profileGroups(
 function transcriptionEngineGroup(
 	settings: AudioRecorderSettings,
 	blocks: TranscriptionBlocks,
+	declareAddRow: boolean,
 ): SettingDefinitionItem {
 	const engine = selectedTranscriptionEngine(settings);
 	const credentials = engine.credentials;
@@ -943,6 +1056,17 @@ function transcriptionEngineGroup(
 					}),
 				),
 			},
+			...(declareAddRow
+				? [
+						addItemRow(
+							'Add model',
+							'Saves another model id for this engine.',
+							() => {
+								blocks.addModel();
+							},
+						),
+					]
+				: []),
 		],
 	};
 }
@@ -956,6 +1080,7 @@ function transcriptionEngineGroup(
 function llmModelListGroup(
 	settings: AudioRecorderSettings,
 	blocks: TranscriptionBlocks,
+	declareAddRow: boolean,
 ): SettingDefinitionItem {
 	const vendor = selectedLlmVendor(settings);
 	const models = vendor.settings.models(settings);
@@ -992,6 +1117,17 @@ function llmModelListGroup(
 					}),
 				),
 			},
+			...(declareAddRow
+				? [
+						addItemRow(
+							'Add model',
+							'Saves another model id for this vendor.',
+							() => {
+								blocks.addLlmModel();
+							},
+						),
+					]
+				: []),
 		],
 	};
 }
@@ -1592,14 +1728,30 @@ export function buildSettingsDefinitions(
 				ctx.settings.transcriptionEnabled ? 'On' : 'Off',
 			items: [
 				transcriptionGroup(ctx.settings, ctx.transcriptionBlocks),
-				transcriptionEngineGroup(ctx.settings, ctx.transcriptionBlocks),
+				transcriptionEngineGroup(
+					ctx.settings,
+					ctx.transcriptionBlocks,
+					ctx.declareListAddRow,
+				),
 				transcriptionAdvancedGroup(ctx.settings),
-				...profileGroups(ctx.settings, ctx.profiles.dictionary),
+				...profileGroups(
+					ctx.settings,
+					ctx.profiles.dictionary,
+					ctx.declareListAddRow,
+				),
 				transcriptOutputGroup(ctx.settings),
 				autoChaptersGroup(ctx.settings),
-				...profileGroups(ctx.settings, ctx.profiles.chapters),
+				...profileGroups(
+					ctx.settings,
+					ctx.profiles.chapters,
+					ctx.declareListAddRow,
+				),
 				llmGroup(ctx.settings),
-				llmModelListGroup(ctx.settings, ctx.transcriptionBlocks),
+				llmModelListGroup(
+					ctx.settings,
+					ctx.transcriptionBlocks,
+					ctx.declareListAddRow,
+				),
 				imperativeBlockRow({
 					name: 'LLM credentials',
 					aliases: ['api key', 'token', 'openai', 'anthropic'],

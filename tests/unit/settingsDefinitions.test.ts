@@ -34,6 +34,7 @@ import {
 import {
 	SETTINGS_BLOCK_ROW_CLASS,
 	SETTINGS_ROOT_CLASS,
+	STACKED_TEXT_CLASS,
 	buildSettingsDefinitions,
 	collectDebouncedControlKeys,
 	type DiagnosticsActions,
@@ -47,8 +48,10 @@ describe('settings definitions', () => {
 	let renderFormatRow: jest.Mock;
 	let addModel: jest.Mock;
 	let addProfile: jest.Mock;
+	let renameProfile: jest.Mock;
 	let removeProfile: jest.Mock;
-	let profileEntries: Array<{ id: string; name: string }>;
+	let profileEntries: Array<{ id: string; name: string; summary: string }>;
+	let declareListAddRow: boolean;
 	let removeModel: jest.Mock;
 	let renderSummaryRow: jest.Mock;
 	let renderTranscriptionRest: jest.Mock;
@@ -64,11 +67,13 @@ describe('settings definitions', () => {
 		renderFormatRow = jest.fn();
 		addModel = jest.fn();
 		addProfile = jest.fn();
+		renameProfile = jest.fn();
 		removeProfile = jest.fn();
 		profileEntries = [
-			{ id: 'a', name: 'Standup' },
-			{ id: 'b', name: 'Legal' },
+			{ id: 'a', name: 'Standup', summary: '3 terms' },
+			{ id: 'b', name: 'Legal', summary: 'In use, 12 terms' },
 		];
+		declareListAddRow = false;
 		removeModel = jest.fn();
 		renderSummaryRow = jest.fn();
 		renderTranscriptionRest = jest.fn((host: HTMLElement) => {
@@ -102,6 +107,7 @@ describe('settings definitions', () => {
 			dictionary: catalogue('Dictionary profiles', 'Terms'),
 			chapters: catalogue('Chapter guidance profiles', 'Guidance prompt'),
 		},
+		declareListAddRow,
 		transcriptionBlocks: {
 			renderEngineFields: renderTranscriptionRest as (
 				host: HTMLElement,
@@ -123,16 +129,18 @@ describe('settings definitions', () => {
 		selectorDesc: 'Pick the profile to use.',
 		bodyName,
 		bodyDesc: 'The profile body.',
+		selectionName: 'Use by default',
+		selectionDesc: 'Offer this profile in the Transcribe dialog.',
 		selectionKey:
 			heading === 'Dictionary profiles'
 				? 'transcriptionDictionaryProfileId'
 				: 'transcriptionChapterPromptProfileId',
-		nameKey: `${heading}.name`,
 		bodyKey: `${heading}.body`,
 		entries: () => profileEntries,
 		visible: () => true,
 		add: addProfile as () => void,
-		remove: removeProfile as (index: number) => void,
+		rename: renameProfile as (id: string) => void,
+		remove: removeProfile as (id: string) => void,
 	});
 
 	const build = (): SettingDefinitionItem[] =>
@@ -608,8 +616,7 @@ describe('settings definitions', () => {
 			items: Array<{ name: string; desc?: string }>;
 		} => listIn(pageOf(build(), heading)) as never;
 
-		it('declares the stored profiles as an editable list', () => {
-			settings.transcriptionDictionaryProfileId = 'b';
+		it('declares every stored profile as a page of its own', () => {
 			const list = listOf('Dictionary profiles');
 
 			expect(list.type).toBe('list');
@@ -617,41 +624,89 @@ describe('settings definitions', () => {
 				'Standup',
 				'Legal',
 			]);
-			// Which one a run uses is the selection, so a row says only whether
-			// it is that one.
-			expect(list.items[1]?.desc).toBe('In use');
+			// Each entry says what the profile holds and whether a run uses it,
+			// so opening one is a choice rather than the only way to see it.
+			expect(
+				list.items.map(
+					(item) => (item as { displayValue?: string }).displayValue,
+				),
+			).toEqual(['3 terms', 'In use, 12 terms']);
+			for (const item of list.items) {
+				expect((item as { type?: string }).type).toBe('page');
+			}
 		});
 
-		it('adds and deletes through the tab, which owns the profiles', () => {
-			const list = listOf('Chapter guidance profiles');
+		it('leaves the list without a per-row delete affordance', () => {
+			// Deleting belongs on the profile's own page: a cross on every row
+			// turns a list of names into a list of buttons.
+			expect(listOf('Dictionary profiles').onDelete).toBeUndefined();
+		});
 
-			list.addItem?.action(createDiv());
-			list.onDelete?.(1);
+		it('edits each profile on its own page, keyed by that profile', () => {
+			const page = pageOf(build(), 'Standup');
+
+			expect(rowIn(page, 'Terms').control).toEqual(
+				expect.objectContaining({
+					type: 'textarea',
+					key: 'Dictionary profiles.body#a',
+				}),
+			);
+			expect(rowIn(page, 'Use by default').control).toEqual(
+				expect.objectContaining({
+					type: 'toggle',
+					key: 'transcriptionDictionaryProfileId#a',
+				}),
+			);
+		});
+
+		it('lays the body out under its name across the row', () => {
+			// A glossary is edited in paragraphs; the control column a row gives
+			// a text area by default is a few characters wide.
+			const page = pageOf(build(), 'Legal');
+			const stacked = (page.items as GroupDefinition[]).find(
+				(item) => item.cls === STACKED_TEXT_CLASS,
+			);
+
+			expect(
+				stacked?.items.map((item) => (item as RowDefinition).name),
+			).toContain('Terms');
+		});
+
+		it('renames and deletes from the page of the profile itself', () => {
+			const page = pageOf(build(), 'Legal');
+
+			rowIn(page, 'Rename profile').action?.(createDiv(), 0);
+			rowIn(page, 'Delete profile').action?.(createDiv(), 0);
+
+			expect(renameProfile).toHaveBeenCalledWith('b');
+			expect(removeProfile).toHaveBeenCalledWith('b');
+		});
+
+		it('adds through the tab, which owns the profiles', () => {
+			listOf('Chapter guidance profiles').addItem?.action(createDiv());
 
 			expect(addProfile).toHaveBeenCalledTimes(1);
-			expect(removeProfile).toHaveBeenCalledWith(1);
 		});
 
-		it('edits the profile in use rather than repeating a row per profile', () => {
-			settings.transcriptionDictionaryProfileId = 'a';
+		/** Whether a page declares a row of its own under a name. */
+		const hasRow = (page: GroupDefinition, name: string): boolean =>
+			page.items.some((item) => !('type' in item) && item.name === name);
+
+		it('declares a labelled add row only where the renderer draws none', () => {
+			expect(
+				hasRow(pageOf(build(), 'Dictionary profiles'), 'Add profile'),
+			).toBe(false);
+
+			declareListAddRow = true;
 			const page = pageOf(build(), 'Dictionary profiles');
+			rowIn(page, 'Add profile').action?.(createDiv(), 0);
 
-			expect(rowIn(page, 'Profile').control?.options).toEqual({
-				a: 'Standup',
-				b: 'Legal',
-			});
-			expect(rowIn(page, 'Terms').control?.type).toBe('textarea');
-			expect(rowIn(page, 'Profile name').control?.type).toBe('text');
-		});
-
-		it('hides the editor while no profile is selected', () => {
-			settings.transcriptionDictionaryProfileId = '';
-			const visible = rowIn(
-				pageOf(build(), 'Dictionary profiles'),
-				'Terms',
-			).visible;
-
-			expect(typeof visible === 'function' && visible()).toBe(false);
+			expect(addProfile).toHaveBeenCalledTimes(1);
+			// Beside the list, not in it: a row inside would be filtered away
+			// by the list's own search exactly when nothing matches.
+			expect(listIn(page).items.map((item) => item.name)).not.toContain(
+				'Add profile',
+			);
 		});
 	});
 

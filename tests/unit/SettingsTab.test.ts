@@ -11,6 +11,7 @@ import {
 	pageOf,
 	renderDefinitionOf,
 	renderThroughFramework,
+	rowIn,
 	rowOf,
 	withoutFrameworkUpdate,
 	type DeclarativeFrame,
@@ -293,26 +294,26 @@ describe('AudioRecorderSettingTab', () => {
 			updateSpy.mockRestore();
 		});
 
-		it('repoints the profile editor when another profile is picked', async () => {
+		it('reads the tree again when another profile becomes the default', async () => {
 			mockSettings.transcriptionDictionaryProfiles = [
 				{ id: 'a', name: 'SWIFT', terms: 'vdura-api' },
 				{ id: 'b', name: 'Robot', terms: 'ros2, rclcpp' },
 			];
 			mockSettings.transcriptionDictionaryProfileId = 'a';
 
-			await tab.setControlValue('transcriptionDictionaryProfileId', 'b');
-
-			// The name and terms rows are the same two rows holding another
-			// profile's text, which no visible predicate can express - without
-			// reading the tree again they keep showing the profile left behind.
-			expect(tab.getControlValue('dictionaryProfile.name')).toBe('Robot');
-			expect(tab.getControlValue('dictionaryProfile.terms')).toBe(
-				'ros2, rclcpp',
+			await tab.setControlValue(
+				'transcriptionDictionaryProfileId#b',
+				true,
 			);
+
+			// Every entry of the catalogue says whether it is the one in use,
+			// which no visible predicate can express: without reading the tree
+			// again both entries keep the answer they were built with.
+			expect(mockSettings.transcriptionDictionaryProfileId).toBe('b');
 			expect(updateSpy).toHaveBeenCalled();
 		});
 
-		it('repoints the chapter editor the same way', async () => {
+		it('runs the chapter catalogue through the same mechanism', async () => {
 			mockSettings.transcriptionChapterPromptProfiles = [
 				{ id: 'a', name: 'Standup', prompt: 'by speaker' },
 				{ id: 'b', name: 'Lecture', prompt: 'by topic' },
@@ -320,13 +321,17 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.transcriptionChapterPromptProfileId = 'a';
 
 			await tab.setControlValue(
-				'transcriptionChapterPromptProfileId',
-				'b',
+				'transcriptionChapterPromptProfileId#b',
+				true,
 			);
+			await tab.setControlValue('chapterProfile.prompt#b', 'by chapter');
 
-			expect(tab.getControlValue('chapterProfile.prompt')).toBe(
-				'by topic',
-			);
+			// One catalogue, two kinds: the keys differ, the behaviour does not.
+			expect(mockSettings.transcriptionChapterPromptProfileId).toBe('b');
+			expect(
+				mockSettings.transcriptionChapterPromptProfiles[1]?.prompt,
+			).toBe('by chapter');
+			expect(updateSpy).toHaveBeenCalled();
 		});
 
 		it('moves the base URL to the vendor picked, leaving a typed one alone', async () => {
@@ -1060,7 +1065,7 @@ describe('AudioRecorderSettingTab', () => {
 			expect(mockSettings.llmOpenAiModel).toBe('gpt-4o-mini');
 		});
 
-		it('adds a dictionary profile and selects it', async () => {
+		it('adds the first dictionary profile and adopts it', async () => {
 			mockSettings.transcriptionDictionaryProfiles = [];
 
 			listOf('Dictionary profiles').addItem?.action();
@@ -1068,55 +1073,111 @@ describe('AudioRecorderSettingTab', () => {
 
 			const profiles = mockSettings.transcriptionDictionaryProfiles;
 			expect(profiles).toHaveLength(1);
+			// Nothing usable was selected, so the first one becomes the default.
 			expect(mockSettings.transcriptionDictionaryProfileId).toBe(
 				profiles[0]?.id,
 			);
 		});
 
-		it('removes a dictionary profile through its list', async () => {
-			listOf('Dictionary profiles').addItem?.action();
+		it('numbers a further profile and leaves the default alone', async () => {
+			mockSettings.transcriptionDictionaryProfiles = [];
+
 			listOf('Dictionary profiles').addItem?.action();
 			await flushAsync();
-			expect(mockSettings.transcriptionDictionaryProfiles).toHaveLength(
-				2,
-			);
-
-			listOf('Dictionary profiles').onDelete?.(0);
+			const first = mockSettings.transcriptionDictionaryProfileId;
+			listOf('Dictionary profiles').addItem?.action();
 			await flushAsync();
 
-			expect(mockSettings.transcriptionDictionaryProfiles).toHaveLength(
-				1,
-			);
+			// Names identify a profile's page, so a second one cannot repeat
+			// the first one's name; and adding a glossary must not silently
+			// change which one a run uses.
+			expect(
+				mockSettings.transcriptionDictionaryProfiles.map(
+					(profile) => profile.name,
+				),
+			).toEqual(['New profile', 'New profile 2']);
+			expect(mockSettings.transcriptionDictionaryProfileId).toBe(first);
 		});
 
-		it('edits the profile in use through the editor keys', async () => {
+		it('edits a profile through the keys of its own page', async () => {
+			listOf('Dictionary profiles').addItem?.action();
 			listOf('Dictionary profiles').addItem?.action();
 			await flushAsync();
+			const [first, second] =
+				mockSettings.transcriptionDictionaryProfiles;
+			const bodyKey = (id: string): string =>
+				`dictionaryProfile.terms#${id}`;
 
-			await tab.setControlValue('dictionaryProfile.name', 'Standup');
 			await tab.setControlValue(
-				'dictionaryProfile.terms',
+				bodyKey(second?.id ?? ''),
 				'Kubernetes, kubectl',
 			);
 
-			// One editor follows the selection instead of a row per profile, so
-			// its keys address whichever profile is selected.
-			const profile = mockSettings.transcriptionDictionaryProfiles[0];
-			expect(profile?.name).toBe('Standup');
-			expect(profile?.terms).toBe('Kubernetes, kubectl');
-			expect(tab.getControlValue('dictionaryProfile.name')).toBe(
-				'Standup',
+			// A row on one profile's page can never write to another's.
+			expect(second?.terms).toBe('Kubernetes, kubectl');
+			expect(first?.terms).toBe('');
+			expect(tab.getControlValue(bodyKey(second?.id ?? ''))).toBe(
+				'Kubernetes, kubectl',
 			);
 		});
 
-		it('reads the editor as empty while no profile is selected', () => {
-			mockSettings.transcriptionDictionaryProfiles = [];
-			mockSettings.transcriptionDictionaryProfileId = '';
-			tab.getSettingDefinitions();
+		it('moves the default through the toggle on a profile page', async () => {
+			listOf('Dictionary profiles').addItem?.action();
+			listOf('Dictionary profiles').addItem?.action();
+			await flushAsync();
+			const [, second] = mockSettings.transcriptionDictionaryProfiles;
+			const key = `transcriptionDictionaryProfileId#${second?.id ?? ''}`;
+			expect(tab.getControlValue(key)).toBe(false);
 
-			// The row is hidden with nothing selected, but its control is still
-			// built, and a text control handed undefined renders it.
-			expect(tab.getControlValue('dictionaryProfile.name')).toBe('');
+			await tab.setControlValue(key, true);
+
+			expect(mockSettings.transcriptionDictionaryProfileId).toBe(
+				second?.id,
+			);
+			expect(tab.getControlValue(key)).toBe(true);
+		});
+
+		it('clears the default when a profile stops being it', async () => {
+			listOf('Dictionary profiles').addItem?.action();
+			await flushAsync();
+			const [only] = mockSettings.transcriptionDictionaryProfiles;
+			const key = `transcriptionDictionaryProfileId#${only?.id ?? ''}`;
+
+			await tab.setControlValue(key, false);
+
+			// Off means "no default of this kind", which the run-time resolver
+			// reads as None.
+			expect(mockSettings.transcriptionDictionaryProfileId).toBe('');
+		});
+
+		it('deletes a profile from its own page', async () => {
+			listOf('Dictionary profiles').addItem?.action();
+			listOf('Dictionary profiles').addItem?.action();
+			await flushAsync();
+			const [first] = mockSettings.transcriptionDictionaryProfiles;
+
+			rowIn(
+				pageOf(tab.getSettingDefinitions(), 'New profile'),
+				'Delete profile',
+			).action?.(createDiv(), 0);
+			await flushAsync();
+
+			expect(
+				mockSettings.transcriptionDictionaryProfiles.map(
+					(profile) => profile.id,
+				),
+			).not.toContain(first?.id);
+		});
+
+		it('reads a body key of a profile that is gone as empty', async () => {
+			listOf('Dictionary profiles').addItem?.action();
+			await flushAsync();
+
+			// A profile deleted while its page was open leaves that page's
+			// controls standing until the page is torn down.
+			expect(tab.getControlValue('dictionaryProfile.terms#gone')).toBe(
+				'',
+			);
 		});
 
 		it('offers no model list for an engine that has none', () => {

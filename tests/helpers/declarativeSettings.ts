@@ -53,6 +53,8 @@ export interface GroupDefinition {
 	type: string;
 	heading?: string;
 	name?: string;
+	/** Classes the framework puts on the group element. */
+	cls?: string;
 	visible?: boolean | (() => boolean);
 	items: Array<RowDefinition | GroupDefinition>;
 }

@@ -704,6 +704,19 @@ input.aar-input-invalid {
     font-size: 0.9em;
 }
 
+/* Why a dialog cannot accept what was typed, shown under the field it belongs
+   to while the confirming button stays disabled. Holding no message is what
+   keeps it out of the layout, so nothing has to toggle it. */
+.aar-modal-error {
+    margin: 4px 0 0;
+    font-size: 0.9em;
+    color: var(--text-error);
+}
+
+.aar-modal-error:empty {
+    display: none;
+}
+
 /* Speaker rename dialog: the third column of each speaker row, one button
    that plays where that speaker first talks and turns into stop while it does.
    Fixed width so the buttons line up as a column under each other regardless
@@ -825,22 +838,27 @@ input.aar-input-invalid {
     font-size: 0.85em;
 }
 
-/* Multi-line prompt editor on Obsidian before 1.13, where every control sits in
-   the narrow right-hand column: stack the control under the label and let the
-   text area fill the row so long editable prompts have room to breathe. From
-   1.13 the framework lays a text area out this way itself, and the legacy
-   renderer is the only thing that sets this class. */
-.aar-setting-stacked {
+/* Multi-line editors - a glossary, a guidance prompt - on both Obsidians, which
+   put every control in the same narrow right-hand column a toggle lives in. A
+   text area is written in paragraphs, so the control moves under the label and
+   fills the row instead. The two selectors are the two ways such a row is
+   found: the legacy renderer marks the row itself, while from 1.13 the row
+   belongs to the framework and the tree can only mark the group around it, so
+   the rule reaches the row through the text area it holds. */
+.aar-setting-stacked,
+.aar-stacked-text .setting-item:has(> .setting-item-control > textarea) {
     display: block;
 }
 
-.aar-setting-stacked .setting-item-control {
+.aar-setting-stacked .setting-item-control,
+.aar-stacked-text .setting-item:has(> .setting-item-control > textarea) > .setting-item-control {
     width: 100%;
     padding-top: var(--size-4-2);
     justify-content: flex-start;
 }
 
-.aar-setting-stacked .setting-item-control textarea {
+.aar-setting-stacked .setting-item-control textarea,
+.aar-stacked-text .setting-item-control > textarea {
     width: 100%;
     min-height: 6em;
     resize: vertical;

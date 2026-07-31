@@ -35,6 +35,7 @@ import {
 	CONTROL_WRITE_EFFECTS,
 	buildSettingsDefinitions,
 	collectDebouncedControlKeys,
+	parseProfileControlKey,
 	parseTrackControlKey,
 	type ProfileCatalogue,
 } from './settingsDefinitions';
@@ -71,13 +72,18 @@ import { selectedTranscriptionEngine } from '../transcription/providers/engines'
 import { addModelToList, removeModelFromList } from './modelList';
 import { selectedLlmVendor } from '../transcription/llm/vendors';
 import {
-	addAndSelectProfile,
-	editingProfileId,
+	addProfile,
+	effectiveProfileId,
 	findProfile,
+	freeProfileName,
 	removeAndReselectProfile,
+	NEW_PROFILE_NAME,
 	type Profile,
 	type ProfileList,
 } from './profiles';
+import { ProfileNameModal } from '../ui/ProfileNameModal';
+import { closeSettingsPage } from '../obsidian/settingsNavigation';
+import { parseDictionary } from '../transcription/dictionary';
 import { DICTIONARY_PROFILES } from './dictionaryProfiles';
 import { CHAPTER_PROMPT_PROFILES } from './chapterPromptProfiles';
 
@@ -112,6 +118,30 @@ const TEST_RECORDING_DURATION_MS = 5000;
 export interface AudioRecorderPluginInterface extends Plugin {
 	settings: AudioRecorderSettings;
 	saveSettings(): Promise<void>;
+}
+
+/**
+ * What a dictionary profile's entry says about it without being opened: the
+ * number of terms a run would actually bias toward, counted the way the run
+ * counts them, so a body of blank lines does not read as a full glossary.
+ * @param terms - The profile's raw term text
+ */
+function termCountSummary(terms: string): string {
+	const count = parseDictionary(terms).length;
+	if (count === 0) {
+		return 'No terms';
+	}
+	return count === 1 ? '1 term' : `${String(count)} terms`;
+}
+
+/**
+ * What a chapter-guidance profile's entry says about it. The body is a
+ * paragraph of instructions, so the entry reports whether there is one rather
+ * than quoting the start of it.
+ * @param prompt - The profile's guidance prompt
+ */
+function promptSummary(prompt: string): string {
+	return prompt.trim() === '' ? 'No prompt' : 'Prompt set';
 }
 
 const EMPTY_DEVICE_SNAPSHOT: AudioInputDeviceSnapshot = {
@@ -196,9 +226,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	private debouncedControlKeys: ReadonlySet<string> = new Set();
 
 	/**
-	 * Control keys addressing a field of whichever profile is selected. A
-	 * profile is an entry in a list rather than a settings property, so its
-	 * editor rows are read and written through here.
+	 * Base control keys addressing the body of a profile. A profile is an entry
+	 * in a stored list rather than a settings property, so the key its page
+	 * carries names the field here and the profile by id.
 	 */
 	private readonly profileAccess = new Map<
 		string,
@@ -207,6 +237,16 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			read: (profile: Profile) => string;
 			write: (profile: Profile, value: string) => void;
 		}
+	>();
+
+	/**
+	 * Base control keys addressing whether a profile is the selected one. The
+	 * row is a toggle per profile, so the value is a comparison against the
+	 * stored selection rather than a field of the profile.
+	 */
+	private readonly profileSelections = new Map<
+		string,
+		ProfileList<Profile>
 	>();
 
 	/**
@@ -258,6 +298,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					this.renderSummaryRow(setting);
 				},
 			},
+			// Asked per build: the answer depends on the platform, which a tab
+			// outlives, and the tree is rebuilt for every pass anyway.
+			declareListAddRow: !this.renderMode.rendersListAddRow(),
 			renderDocumentationLink: (host): void => {
 				// The first row of every pass, and the one place that knows the
 				// tab is on screen on both render paths.
@@ -297,14 +340,17 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					bodyName: 'Terms',
 					bodyDesc:
 						'One term per line. A term may contain spaces; blank lines and case-insensitive duplicates are ignored.',
+					selectionName: 'Use by default',
+					selectionDesc:
+						'Offer this glossary in the Transcribe dialog. Turning it off leaves the run starting from None.',
 					selectionKey: 'transcriptionDictionaryProfileId',
-					nameKey: 'dictionaryProfile.name',
 					bodyKey: 'dictionaryProfile.terms',
 					visible: (settings) =>
 						settings.transcriptionEnabled &&
 						settings.transcriptionAdvancedSettingsEnabled,
 					body: (profile) => profile.terms,
 					setBody: (profile, value) => (profile.terms = value),
+					summary: (profile) => termCountSummary(profile.terms),
 				}),
 				chapters: this.profileCatalogue(CHAPTER_PROMPT_PROFILES, {
 					heading: 'Chapter guidance profiles',
@@ -313,14 +359,17 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					bodyName: 'Guidance prompt',
 					bodyDesc:
 						'How to divide the recording into chapters. Appended to the fixed base prompt; blank leaves the base behaviour.',
+					selectionName: 'Use by default',
+					selectionDesc:
+						'Offer this prompt in the Transcribe dialog. Turning it off leaves the run on the base behaviour.',
 					selectionKey: 'transcriptionChapterPromptProfileId',
-					nameKey: 'chapterProfile.name',
 					bodyKey: 'chapterProfile.prompt',
 					visible: (settings) =>
 						settings.transcriptionEnabled &&
 						settings.transcriptionAutoChaptersEnabled,
 					body: (profile) => profile.prompt,
 					setBody: (profile, value) => (profile.prompt = value),
+					summary: (profile) => promptSummary(profile.prompt),
 				}),
 			},
 			transcriptionBlocks: {
@@ -397,15 +446,18 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * @returns The stored value
 	 */
 	override getControlValue(key: string): unknown {
-		const profile = this.selectedProfileFor(key);
-		if (profile) {
-			return profile.access.read(profile.profile);
+		const field = this.profileFieldFor(key);
+		if (field) {
+			// A profile deleted while its page was open leaves the controls of
+			// that page standing until the page is torn down; an empty body is
+			// what they read then.
+			return field.profile ? field.access.read(field.profile) : '';
 		}
-		if (this.profileAccess.has(key)) {
-			// An editor key with nothing selected: the row is hidden, but the
-			// control is still built, and a text control handed undefined
-			// renders it.
-			return '';
+		const selection = this.profileSelectionFor(key);
+		if (selection) {
+			return (
+				selection.list.selectedId(this.plugin.settings) === selection.id
+			);
 		}
 		const track = parseTrackControlKey(key);
 		if (track) {
@@ -449,13 +501,32 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		key: string,
 		value: unknown,
 	): void | Promise<void> {
-		const profile = this.selectedProfileFor(key);
-		if (profile) {
-			profile.access.write(profile.profile, String(value));
-			// A profile name reads back into the list and the selector, so a
-			// rename is a changed tree rather than a changed value.
+		const field = this.profileFieldFor(key);
+		if (field) {
+			if (field.profile) {
+				field.access.write(field.profile, String(value));
+			}
+			// The body is a text area, so this fires per keystroke: the value
+			// is live in memory either way, only the write to disk waits.
 			this.saveTextSettingDebounced();
 			return;
+		}
+		const selection = this.profileSelectionFor(key);
+		if (selection) {
+			const settings = this.plugin.settings;
+			// Off means "no default of this kind", which is what the run-time
+			// resolver reads as None. Turning another profile on moves the
+			// selection; turning this one off only clears its own.
+			if (value === true) {
+				selection.list.setSelectedId(settings, selection.id);
+			} else if (selection.list.selectedId(settings) === selection.id) {
+				selection.list.setSelectedId(settings, '');
+			}
+			// Every entry of the catalogue says whether it is the one in use,
+			// so the tree is read again rather than re-evaluated in place.
+			return this.plugin.saveSettings().then(() => {
+				this.rerender();
+			});
 		}
 		const track = parseTrackControlKey(key);
 		if (track) {
@@ -520,32 +591,52 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * The profile a profile-editor control key addresses, which is whichever
-	 * profile of that kind is selected.
+	 * The profile body a control key addresses. The key names the field and the
+	 * profile it belongs to, so a row on one profile's page can never write to
+	 * another's.
 	 * @param key - The control key to resolve
+	 * @returns The field's accessors and the profile, or undefined for any
+	 * other key. The profile is undefined when the key resolves to a kind of
+	 * profile that no longer holds this id.
 	 */
-	private selectedProfileFor(key: string):
+	private profileFieldFor(key: string):
 		| {
-				profile: Profile;
+				profile: Profile | undefined;
 				access: {
 					read: (profile: Profile) => string;
 					write: (profile: Profile, value: string) => void;
 				};
 		  }
 		| undefined {
-		const access = this.profileAccess.get(key);
-		if (!access) {
+		const parsed = parseProfileControlKey(key);
+		const access = parsed && this.profileAccess.get(parsed.base);
+		if (!parsed || !access) {
 			return undefined;
 		}
-		const profiles = access.list.get(this.plugin.settings);
-		const profile = findProfile(
-			profiles,
-			editingProfileId(
-				profiles,
-				access.list.selectedId(this.plugin.settings),
+		return {
+			profile: findProfile(
+				access.list.get(this.plugin.settings),
+				parsed.id,
 			),
-		);
-		return profile ? { profile, access } : undefined;
+			access,
+		};
+	}
+
+	/**
+	 * The profile a selection toggle addresses.
+	 * @param key - The control key to resolve
+	 * @returns The profile list and the id the toggle speaks for, or undefined
+	 * for any other key
+	 */
+	private profileSelectionFor(
+		key: string,
+	): { list: ProfileList<Profile>; id: string } | undefined {
+		const parsed = parseProfileControlKey(key);
+		const list = parsed && this.profileSelections.get(parsed.base);
+		if (!parsed || !list) {
+			return undefined;
+		}
+		return { list, id: parsed.id };
 	}
 
 	/**
@@ -637,21 +728,16 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			selectorDesc: string;
 			bodyName: string;
 			bodyDesc: string;
+			selectionName: string;
+			selectionDesc: string;
 			selectionKey: string;
-			nameKey: string;
 			bodyKey: string;
 			visible: (settings: AudioRecorderSettings) => boolean;
 			body: (profile: T) => string;
 			setBody: (profile: T, value: string) => void;
+			summary: (profile: T) => string;
 		},
 	): ProfileCatalogue {
-		this.profileAccess.set(copy.nameKey, {
-			list: list,
-			read: (profile) => profile.name,
-			write: (profile, value) => {
-				profile.name = value;
-			},
-		});
 		this.profileAccess.set(copy.bodyKey, {
 			list: list,
 			read: (profile) => copy.body(profile as T),
@@ -659,28 +745,88 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				copy.setBody(profile as T, value);
 			},
 		});
+		this.profileSelections.set(copy.selectionKey, list);
+		const rejection = (id: string, name: string): string | undefined => {
+			if (name === '') {
+				return 'Give the profile a name.';
+			}
+			return list
+				.get(this.plugin.settings)
+				.some((profile) => profile.id !== id && profile.name === name)
+				? 'Another profile already uses this name.'
+				: undefined;
+		};
 		return {
 			heading: copy.heading,
 			selectorDesc: copy.selectorDesc,
 			bodyName: copy.bodyName,
 			bodyDesc: copy.bodyDesc,
+			selectionName: copy.selectionName,
+			selectionDesc: copy.selectionDesc,
 			selectionKey: copy.selectionKey,
-			nameKey: copy.nameKey,
 			bodyKey: copy.bodyKey,
 			entries: (settings) =>
 				list.get(settings).map((profile) => ({
 					id: profile.id,
 					name: profile.name,
+					summary:
+						profile.id === list.selectedId(settings)
+							? `In use, ${copy.summary(profile)}`
+							: copy.summary(profile),
 				})),
 			visible: copy.visible,
 			add: (): void => {
-				addAndSelectProfile(list, this.plugin.settings, 'New profile');
+				const created = addProfile(
+					list.get(this.plugin.settings),
+					list.create(
+						freeProfileName(
+							list.get(this.plugin.settings),
+							NEW_PROFILE_NAME,
+						),
+					),
+				);
+				list.set(this.plugin.settings, created);
+				// Adding a glossary must not silently change which one a run
+				// uses; only a catalogue with nothing usable selected adopts it.
+				if (
+					effectiveProfileId(
+						created,
+						list.selectedId(this.plugin.settings),
+					) === '' &&
+					created.length === 1
+				) {
+					list.setSelectedId(
+						this.plugin.settings,
+						created[0]?.id ?? '',
+					);
+				}
 				void this.plugin.saveSettings().then(() => {
 					this.rerender();
 				});
 			},
-			remove: (index): void => {
-				const profile = list.get(this.plugin.settings)[index];
+			rename: (id): void => {
+				const profile = findProfile(list.get(this.plugin.settings), id);
+				if (!profile) {
+					return;
+				}
+				new ProfileNameModal(this.app, {
+					title: 'Rename profile',
+					confirmText: 'Rename',
+					initial: profile.name,
+					rejection: (name) => rejection(id, name),
+					onSubmit: (name) => {
+						profile.name = name;
+						void this.plugin.saveSettings().then(() => {
+							this.rerender();
+							// The page is addressed by the name it just lost,
+							// so it cannot stay open on it.
+							closeSettingsPage(this.app);
+						});
+					},
+				}).open();
+			},
+			remove: (id): void => {
+				const profile = findProfile(list.get(this.plugin.settings), id);
 				if (!profile) {
 					return;
 				}
@@ -691,6 +837,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				);
 				void this.plugin.saveSettings().then(() => {
 					this.rerender();
+					// Deleted from its own page, which the framework addresses
+					// by a name that resolves to nothing now.
+					closeSettingsPage(this.app);
 				});
 			},
 		};

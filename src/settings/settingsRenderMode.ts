@@ -17,6 +17,7 @@
  */
 
 import type { SettingDefinitionItem } from 'obsidian';
+import { isSettingsListAddRowProvided } from '../platform/capabilities';
 
 /**
  * What a render mode needs from the tab it renders.
@@ -54,6 +55,14 @@ export interface SettingsRenderMode {
 	 * whichever terms the running Obsidian sets.
 	 */
 	rerender(): void;
+	/**
+	 * Whether this renderer already gives a list a labelled row for adding an
+	 * entry. The legacy renderer always draws one; the framework draws one on
+	 * mobile and only a plus icon in the list header on desktop. Where the
+	 * answer is false the tree declares an add row of its own, so the tab never
+	 * hides adding behind an unlabelled icon.
+	 */
+	rendersListAddRow(): boolean;
 }
 
 /**
@@ -72,6 +81,9 @@ function createImperativeRenderMode(
 		rerender: (): void => {
 			target.renderLegacy();
 		},
+		// The legacy renderer turns a list's addItem into a labelled row of its
+		// own, on every platform, so the tree must not declare a second one.
+		rendersListAddRow: (): boolean => true,
 	};
 }
 
@@ -91,6 +103,9 @@ function createDeclarativeRenderMode(
 		// The framework re-reads the definitions and re-renders the rows itself.
 		// Rebuilding a body here instead would just be thrown away by its pass.
 		rerender: frameworkUpdate,
+		// Resolved per call rather than captured: the platform answer is a
+		// runtime lookup, and a tab outlives any single render.
+		rendersListAddRow: (): boolean => isSettingsListAddRowProvided(),
 	};
 }
 
