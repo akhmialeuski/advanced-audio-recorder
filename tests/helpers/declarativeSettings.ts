@@ -51,6 +51,7 @@ export interface GroupDefinition {
 	type: string;
 	heading?: string;
 	name?: string;
+	visible?: boolean | (() => boolean);
 	items: Array<RowDefinition | GroupDefinition>;
 }
 

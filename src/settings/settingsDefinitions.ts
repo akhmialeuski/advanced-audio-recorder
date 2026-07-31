@@ -20,11 +20,15 @@
 
 import type {
 	Setting,
+	SettingDefinition,
 	SettingDefinitionItem,
 	SettingGroupItem,
 } from 'obsidian';
 import type { AudioRecorderSettings } from './settingsSchema';
 import {
+	ADVANCED_SECOND_PASS_RATIO_STEP,
+	MAX_ADVANCED_SECOND_PASS_MIN_RATIO,
+	MIN_ADVANCED_SECOND_PASS_MIN_RATIO,
 	MAX_TRANSCRIPTION_TIMEOUT_MINUTES,
 	MIN_TRANSCRIPTION_TIMEOUT_MINUTES,
 	TRANSCRIPTION_PROVIDER_IDS,
@@ -50,8 +54,14 @@ import {
 	isMultiTrackCaptureSupported,
 	isSampleRateSelectionSupported,
 } from '../platform/capabilities';
-import { CHANNEL_MODE_LABELS, CONVERSION_LINK_ACTION_OPTIONS } from './labels';
 import {
+	CHANNEL_MODE_LABELS,
+	CONVERSION_LINK_ACTION_OPTIONS,
+	TRANSCRIPT_DESTINATION_OPTIONS,
+	TRANSCRIPT_FILE_FORMAT_OPTIONS,
+} from './labels';
+import {
+	effectiveDiarize,
 	isProviderAvailableOnPlatform,
 	providerSupportsDiarization,
 } from '../transcription/providers/capabilities';
@@ -122,15 +132,31 @@ export interface DeviceOptions {
 }
 
 /**
+ * The transcription blocks still rendered by hand, each into the row its
+ * section keeps for it: the selected engine's own fields, and the two profile
+ * managers, which are collections with their own add and delete affordances.
+ */
+export interface TranscriptionBlocks {
+	/** The selected engine's endpoint, credentials, model, or file paths. */
+	readonly renderEngineFields: (host: HTMLElement) => void;
+	/** The dictionary profile manager. */
+	readonly renderDictionaryProfiles: (host: HTMLElement) => void;
+	/** The chapter-guidance profile manager. */
+	readonly renderChapterProfiles: (host: HTMLElement) => void;
+	/** The LLM post-processing block. */
+	readonly renderLlmSection: (host: HTMLElement) => void;
+}
+
+/**
  * The output-format rows that stay imperative. The format list is blocked per
  * option by an asynchronous encoder probe, which no control type expresses, and
  * the summary is derived from two other rows rather than stored.
  */
 export interface OutputFormatRows {
 	/** Fills the recording-format row and starts its availability probe. */
-	renderFormatRow(setting: Setting): void;
+	readonly renderFormatRow: (setting: Setting) => void;
 	/** Fills the row that summarises the effective output. */
-	renderSummaryRow(setting: Setting): void;
+	readonly renderSummaryRow: (setting: Setting) => void;
 }
 
 /**
@@ -164,11 +190,32 @@ export interface SettingsDefinitionContext {
 	renderDocumentationLink(host: HTMLElement): void;
 	/** Handlers for the diagnostics rows. */
 	readonly diagnostics: DiagnosticsActions;
-	/**
-	 * Draws the transcription settings that are not definitions yet, into the
-	 * row the transcription section keeps for them.
-	 */
-	renderTranscriptionRest(host: HTMLElement): void;
+	/** The transcription blocks that are not definitions yet. */
+	readonly transcriptionBlocks: TranscriptionBlocks;
+}
+
+/**
+ * A row whose body is still rendered by hand, hosted in the row itself, which
+ * is the only DOM a render definition owns.
+ * @param name - Row name, used by the settings search
+ * @param render - Draws the block into the row
+ * @param visible - When the row applies
+ */
+function imperativeBlockRow(
+	name: string,
+	render: (host: HTMLElement) => void,
+	visible: () => boolean,
+): SettingDefinition {
+	return {
+		name,
+		visible,
+		render: (setting: Setting): void => {
+			const host = setting.settingEl;
+			host.empty();
+			host.addClass(SETTINGS_ROOT_CLASS);
+			render(host);
+		},
+	};
 }
 
 /**
@@ -535,12 +582,11 @@ function audioPlayerGroup(
  * options an engine cannot deliver are disabled rather than hidden, so the user
  * can see the option exists and why it is unavailable.
  * @param settings - Live settings, read by the predicates
- * @param renderRest - Draws the parts of the section that are not definitions
- * yet, into the row the tree keeps for them
+ * @param blocks - The parts of the section that are not definitions yet
  */
 function transcriptionGroup(
 	settings: AudioRecorderSettings,
-	renderRest: (host: HTMLElement) => void,
+	blocks: TranscriptionBlocks,
 ): SettingDefinitionItem {
 	const enabled = (): boolean => settings.transcriptionEnabled;
 	const canDiarize = (): boolean =>
@@ -645,16 +691,241 @@ function transcriptionGroup(
 					step: 1,
 				},
 			},
+			imperativeBlockRow(
+				'Transcription engine settings',
+				blocks.renderEngineFields,
+				enabled,
+			),
+		],
+	};
+}
+
+/**
+ * The advanced transcription block: dictionary term biasing and the two-pass
+ * mode, both behind a master switch that is off for a plain run.
+ * @param settings - Live settings, read by the predicates
+ * @param blocks - The profile manager that is not a definition yet
+ */
+function transcriptionAdvancedGroup(
+	settings: AudioRecorderSettings,
+	blocks: TranscriptionBlocks,
+): SettingDefinitionItem {
+	const advanced = (): boolean =>
+		settings.transcriptionEnabled &&
+		settings.transcriptionAdvancedSettingsEnabled;
+	return {
+		type: 'group',
+		heading: 'Advanced',
+		visible: (): boolean => settings.transcriptionEnabled,
+		items: [
 			{
-				name: 'Transcription engine settings',
-				visible: enabled,
-				render: (setting: Setting): void => {
-					const host = setting.settingEl;
-					host.empty();
-					host.addClass(SETTINGS_ROOT_CLASS);
-					renderRest(host);
+				name: 'Advanced settings',
+				desc: 'Reveal dictionary term biasing and the experimental two-pass mode. Off by default: a recording then transcribes in a single plain pass.',
+				control: {
+					type: 'toggle',
+					key: 'transcriptionAdvancedSettingsEnabled',
 				},
 			},
+			imperativeBlockRow(
+				'Dictionary profiles',
+				blocks.renderDictionaryProfiles,
+				advanced,
+			),
+			{
+				name: 'Advanced two-pass transcription (experimental)',
+				desc: 'Transcribe twice: LLM agents mine the first draft for names and jargon, and the second pass re-decodes biased toward them. Roughly twice the engine cost and time, plus several LLM calls per file.',
+				visible: advanced,
+				control: {
+					type: 'toggle',
+					key: 'transcriptionAdvancedEnabled',
+				},
+			},
+			{
+				name: 'Second-pass length safeguard',
+				desc: 'Keep the second pass only when its text is at least this fraction of the first. A shorter biased decode lost content, so the run falls back.',
+				visible: (): boolean =>
+					advanced() && settings.transcriptionAdvancedEnabled,
+				control: {
+					type: 'number',
+					key: 'advancedSecondPassMinRatio',
+					min: MIN_ADVANCED_SECOND_PASS_MIN_RATIO,
+					max: MAX_ADVANCED_SECOND_PASS_MIN_RATIO,
+					step: ADVANCED_SECOND_PASS_RATIO_STEP,
+				},
+			},
+		],
+	};
+}
+
+/**
+ * Where a finished transcript goes and how it is written. The speaker-related
+ * rows are disabled without diarization in effect: they exist, the current
+ * engine and settings just produce no speaker labels for them to format.
+ * @param settings - Live settings, read by the predicates
+ */
+function transcriptOutputGroup(
+	settings: AudioRecorderSettings,
+): SettingDefinitionItem {
+	const diarizes = (): boolean =>
+		effectiveDiarize(
+			settings.transcriptionProvider,
+			settings.transcriptionDiarize,
+		);
+	const speakerHint =
+		'Available only with speaker diarization; the current engine and settings produce no speaker labels.';
+	const template = (
+		key: string,
+		name: string,
+		desc: string,
+		speakerOnly = false,
+	): SettingDefinition => ({
+		name,
+		desc: speakerOnly && !diarizes() ? speakerHint : desc,
+		control: {
+			type: 'text',
+			key,
+			validate: (value: string): string | undefined =>
+				value.trim() === '' ? 'A template cannot be empty.' : undefined,
+			...(speakerOnly ? { disabled: (): boolean => !diarizes() } : {}),
+		},
+	});
+	return {
+		type: 'group',
+		heading: 'Transcript output',
+		visible: (): boolean => settings.transcriptionEnabled,
+		items: [
+			{
+				name: 'Destination',
+				desc: 'Insert into the note, save as a sidecar file, both, or save a file and link it.',
+				control: {
+					type: 'dropdown',
+					key: 'transcriptDestination',
+					options: Object.fromEntries(
+						TRANSCRIPT_DESTINATION_OPTIONS.map((option) => [
+							option.value,
+							option.label,
+						]),
+					),
+				},
+			},
+			{
+				name: 'File format',
+				desc: 'Format for the transcript sidecar file.',
+				visible: (): boolean =>
+					settings.transcriptDestination !== 'note',
+				control: {
+					type: 'dropdown',
+					key: 'transcriptFileFormat',
+					options: Object.fromEntries(
+						TRANSCRIPT_FILE_FORMAT_OPTIONS.map((option) => [
+							option.value,
+							option.label,
+						]),
+					),
+				},
+			},
+			{
+				name: 'Note heading',
+				desc: 'Heading inserted above the transcript (empty for none).',
+				control: { type: 'text', key: 'transcriptHeading' },
+			},
+			{
+				name: 'Include timestamps',
+				control: {
+					type: 'toggle',
+					key: 'transcriptIncludeTimestamps',
+				},
+			},
+			{
+				name: 'Timestamps as player links',
+				desc: 'Render each timestamp as a #t= link that jumps the enhanced player.',
+				control: { type: 'toggle', key: 'transcriptTimestampLinks' },
+			},
+			{
+				name: 'Include speakers',
+				desc: speakerHint,
+				control: {
+					type: 'toggle',
+					key: 'transcriptIncludeSpeakers',
+					disabled: (): boolean => !diarizes(),
+				},
+			},
+			{
+				name: 'Merge speaker turns',
+				desc: 'Combine consecutive segments from the same speaker into one line.',
+				control: {
+					type: 'toggle',
+					key: 'transcriptMergeConsecutiveSpeaker',
+					disabled: (): boolean => !diarizes(),
+				},
+			},
+			template(
+				'transcriptTimestampFormat',
+				'Timestamp format',
+				'Template for the timestamp; {time} is the timecode or link.',
+			),
+			template(
+				'transcriptSpeakerFormat',
+				'Speaker format',
+				'Template for the speaker label; {speaker} is the name.',
+				true,
+			),
+			template(
+				'transcriptLineFormat',
+				'Line format',
+				'Arrangement of {timestamp} {speaker} {text}.',
+			),
+			{
+				name: 'Rename speakers',
+				desc: 'Add a "Rename speakers" action that replaces diarized labels with participant names in an existing transcript.',
+				control: {
+					type: 'toggle',
+					key: 'transcriptionSpeakerRenameEnabled',
+				},
+			},
+		],
+	};
+}
+
+/**
+ * LLM-generated chapters, and the guidance profiles they use.
+ * @param settings - Live settings, read by the predicates
+ * @param blocks - The profile manager that is not a definition yet
+ */
+function autoChaptersGroup(
+	settings: AudioRecorderSettings,
+	blocks: TranscriptionBlocks,
+): SettingDefinitionItem {
+	const chapters = (): boolean =>
+		settings.transcriptionEnabled &&
+		settings.transcriptionAutoChaptersEnabled;
+	return {
+		type: 'group',
+		heading: 'Auto chapters',
+		visible: (): boolean => settings.transcriptionEnabled,
+		items: [
+			{
+				name: 'Auto chapters',
+				desc: 'Add an action that asks the LLM to divide a transcribed recording into titled chapters, shown in the enhanced player.',
+				control: {
+					type: 'toggle',
+					key: 'transcriptionAutoChaptersEnabled',
+				},
+			},
+			{
+				name: 'Generate after transcription',
+				desc: 'Generate chapters each time a recording is transcribed.',
+				visible: chapters,
+				control: {
+					type: 'toggle',
+					key: 'transcriptionAutoChaptersOnTranscribe',
+				},
+			},
+			imperativeBlockRow(
+				'Chapter guidance profiles',
+				blocks.renderChapterProfiles,
+				chapters,
+			),
 		],
 	};
 }
@@ -848,9 +1119,15 @@ export function buildSettingsDefinitions(
 		audioSplittingGroup(),
 		multiTrackGroup(ctx.settings, ctx.devices),
 		audioPlayerGroup(ctx.settings),
-		transcriptionGroup(ctx.settings, (host) => {
-			ctx.renderTranscriptionRest(host);
-		}),
+		transcriptionGroup(ctx.settings, ctx.transcriptionBlocks),
+		transcriptionAdvancedGroup(ctx.settings, ctx.transcriptionBlocks),
+		transcriptOutputGroup(ctx.settings),
+		autoChaptersGroup(ctx.settings, ctx.transcriptionBlocks),
+		imperativeBlockRow(
+			'LLM post-processing',
+			ctx.transcriptionBlocks.renderLlmSection,
+			() => ctx.settings.transcriptionEnabled,
+		),
 		audioProcessingGroup(),
 		audioCleanupGroup(ctx.settings),
 		diagnosticsGroup(ctx.diagnostics),

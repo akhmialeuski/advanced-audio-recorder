@@ -80,9 +80,14 @@ describe('settings definitions', () => {
 				deviceId === 'iface-1',
 		},
 		diagnostics: diagnostics,
-		renderTranscriptionRest: renderTranscriptionRest as (
-			host: HTMLElement,
-		) => void,
+		transcriptionBlocks: {
+			renderEngineFields: renderTranscriptionRest as (
+				host: HTMLElement,
+			) => void,
+			renderDictionaryProfiles: jest.fn(),
+			renderChapterProfiles: jest.fn(),
+			renderLlmSection: jest.fn(),
+		},
 	});
 
 	const build = (): SettingDefinitionItem[] =>
@@ -335,6 +340,80 @@ describe('settings definitions', () => {
 					min: MIN_SPLIT_CHUNK_MINUTES,
 					max: MAX_SPLIT_CHUNK_MINUTES,
 				}),
+			);
+		});
+	});
+
+	describe('the transcript output section', () => {
+		const OUTPUT = 'Transcript output';
+
+		it('offers the file format only when a file is written', () => {
+			settings.transcriptDestination = 'note';
+			const visible = rowOf(build(), OUTPUT, 'File format').visible;
+
+			expect(typeof visible === 'function' && visible()).toBe(false);
+
+			settings.transcriptDestination = 'file';
+
+			expect(typeof visible === 'function' && visible()).toBe(true);
+		});
+
+		it.each(['Include speakers', 'Merge speaker turns', 'Speaker format'])(
+			'disables %s without diarization in effect',
+			(rowName) => {
+				// The row exists; this engine and these settings just produce no
+				// speaker labels for it to format.
+				settings.transcriptionProvider =
+					TRANSCRIPTION_PROVIDER_IDS.WHISPER_API;
+				settings.transcriptionDiarize = true;
+				const disabled = rowOf(build(), OUTPUT, rowName).control
+					?.disabled;
+
+				expect(typeof disabled === 'function' && disabled()).toBe(true);
+
+				settings.transcriptionProvider =
+					TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM;
+
+				expect(typeof disabled === 'function' && disabled()).toBe(
+					false,
+				);
+			},
+		);
+
+		it('refuses an empty output template', () => {
+			// An empty template would render every line as nothing at all.
+			const validate = rowOf(build(), OUTPUT, 'Line format').control
+				?.validate as (value: string) => string | undefined;
+
+			expect(validate('{timestamp} {text}')).toBeUndefined();
+			expect(validate('  ')).toBe('A template cannot be empty.');
+		});
+	});
+
+	describe('the advanced transcription section', () => {
+		it('keeps the two-pass safeguard behind both switches', () => {
+			settings.transcriptionEnabled = true;
+			settings.transcriptionAdvancedSettingsEnabled = true;
+			settings.transcriptionAdvancedEnabled = false;
+			const visible = rowOf(
+				build(),
+				'Advanced',
+				'Second-pass length safeguard',
+			).visible;
+
+			expect(typeof visible === 'function' && visible()).toBe(false);
+
+			settings.transcriptionAdvancedEnabled = true;
+
+			expect(typeof visible === 'function' && visible()).toBe(true);
+		});
+
+		it('hides the whole block while transcription is off', () => {
+			settings.transcriptionEnabled = false;
+			const group = groupOf(build(), 'Advanced');
+
+			expect(typeof group.visible === 'function' && group.visible()).toBe(
+				false,
 			);
 		});
 	});

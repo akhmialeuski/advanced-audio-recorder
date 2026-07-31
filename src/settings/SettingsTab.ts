@@ -57,7 +57,19 @@ import { TextInputSuggest } from '../ui/TextInputSuggest';
 import { DOCS_URL, FORMAT_WAV } from '../constants';
 import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
 import { SystemInfoModal } from '../diagnostics/SystemInfoModal';
-import { renderTranscriptionRemainder } from './sections/transcriptionSettingsSection';
+import {
+	renderCloudEngineSettings,
+	renderLocalWhisperSettings,
+	renderWhisperChunkSize,
+} from './sections/transcriptionEngineSection';
+import {
+	renderChapterPromptProfiles,
+	renderDictionaryProfiles,
+} from './sections/profileManagerSection';
+import { renderLlmSection } from './sections/llmSettingsSection';
+import { selectedTranscriptionEngine } from '../transcription/providers/engines';
+import { TRANSCRIPTION_PROVIDER_IDS } from '../constants';
+import type { SettingsSectionContext } from './settingControls';
 
 import {
 	isAutoSplitSupported,
@@ -251,8 +263,40 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					);
 				},
 			},
-			renderTranscriptionRest: (host): void => {
-				this.renderTranscriptionRest(host);
+			transcriptionBlocks: {
+				renderEngineFields: (host): void => {
+					this.renderTranscriptionBlock(host, (ctx) => {
+						const engine = selectedTranscriptionEngine(
+							ctx.settings,
+						);
+						if (
+							ctx.settings.transcriptionProvider ===
+							TRANSCRIPTION_PROVIDER_IDS.WHISPER_API
+						) {
+							renderWhisperChunkSize(ctx);
+						}
+						if (engine.credentials) {
+							renderCloudEngineSettings(ctx, engine.credentials);
+						} else {
+							renderLocalWhisperSettings(ctx);
+						}
+					});
+				},
+				renderDictionaryProfiles: (host): void => {
+					this.renderTranscriptionBlock(
+						host,
+						renderDictionaryProfiles,
+					);
+				},
+				renderChapterProfiles: (host): void => {
+					this.renderTranscriptionBlock(
+						host,
+						renderChapterPromptProfiles,
+					);
+				},
+				renderLlmSection: (host): void => {
+					this.renderTranscriptionBlock(host, renderLlmSection);
+				},
 			},
 			diagnostics: {
 				startTestRecording: (rowEl): void => {
@@ -450,15 +494,19 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * Renders the transcription settings that are not definitions yet, into the
-	 * row the transcription section keeps for them. Their own reveals still
-	 * redraw this block, which is confined to that row.
+	 * Renders one transcription block that is not a definition yet, into the row
+	 * its section keeps for it. A reveal inside the block redraws the block,
+	 * which is confined to that row.
 	 * @param host - The row element the block is rendered into
+	 * @param render - Draws the block into the section context it is given
 	 */
-	private renderTranscriptionRest(host: HTMLElement): void {
+	private renderTranscriptionBlock(
+		host: HTMLElement,
+		render: (ctx: SettingsSectionContext) => void,
+	): void {
 		const draw = (): void => {
 			host.empty();
-			renderTranscriptionRemainder({
+			render({
 				containerEl: host,
 				settings: this.plugin.settings,
 				save: () => this.plugin.saveSettings(),
