@@ -152,10 +152,6 @@ const SETTINGS_SEARCH_ALIASES: string[] = [
 	'Output mode',
 	'Audio source for track',
 	'Channels for track',
-	'Audio player',
-	'Enhanced audio player',
-	'Show waveform',
-	'Markers and chapters',
 	'Dictionary profiles',
 	'Rename speakers',
 	'Upload chunk size',
@@ -851,9 +847,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			}
 		}
 
-		// Audio player
-		this.renderAudioPlayerSettings(containerEl);
-
 		// Audio processing & feedback, the cleanup defaults, and Diagnostics
 		// follow here, from the definition tree.
 
@@ -895,12 +888,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		);
 	}
 
-	/**
-	 * Renders the enhanced audio player settings: the master toggle plus the
-	 * two window toggles (waveform, markers/chapters). The control buttons
-	 * (speed, skip, volume, time, mute, loop, timecode links) are fixed.
-	 * @param containerEl - The settings container element
-	 */
 	/**
 	 * Builds the section context the shared control builders bind to: the live
 	 * settings object plus this tab's save, debounced-save, and re-render hooks.
@@ -1017,46 +1004,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			desc: 'When enabled, the plugin remembers the note and insertion position where recording started. The audio link is inserted at that location, even if you navigate away during recording. Note: if the original note is edited during recording, the insertion position may shift.',
 			get: () => settings.insertAtOriginalPosition,
 			set: (v) => (settings.insertAtOriginalPosition = v),
-		});
-	}
-
-	private renderAudioPlayerSettings(containerEl: HTMLElement): void {
-		this.renderScopedSection(containerEl, (ctx) => {
-			this.renderAudioPlayerRows(ctx);
-		});
-	}
-
-	/**
-	 * The audio-player rows: the master toggle plus the sub-options it reveals.
-	 * @param ctx - The section context (its own container and hooks)
-	 */
-	private renderAudioPlayerRows(ctx: SettingsSectionContext): void {
-		const s = this.plugin.settings;
-		addHeading(ctx, 'Audio player');
-
-		addToggle(ctx, {
-			name: 'Enhanced audio player',
-			desc: 'Replace the built-in audio embed with a richer player (waveform, speed, skip, volume, loop, timecode links, markers and chapters). Video files keep the built-in player.',
-			get: () => s.enhancedPlayerEnabled,
-			set: (v) => (s.enhancedPlayerEnabled = v),
-			rerender: true,
-		});
-		if (!s.enhancedPlayerEnabled) {
-			return;
-		}
-
-		addToggle(ctx, {
-			name: 'Show waveform',
-			desc: 'Draw a waveform behind the seek bar.',
-			get: () => s.playerShowWaveform,
-			set: (v) => (s.playerShowWaveform = v),
-		});
-
-		addToggle(ctx, {
-			name: 'Markers and chapters',
-			desc: 'Show the markers and chapters list below the player. Markers are stored next to the recording, not in your vault.',
-			get: () => s.playerEnableMarkers,
-			set: (v) => (s.playerEnableMarkers = v),
 		});
 	}
 

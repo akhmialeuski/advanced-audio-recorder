@@ -129,6 +129,40 @@ function remainderDefinition(
 }
 
 /**
+ * The enhanced player and the two windows it can open. The sub-options are
+ * revealed by a predicate rather than by redrawing the section.
+ * @param settings - Live settings, read by the predicates
+ */
+function audioPlayerGroup(
+	settings: AudioRecorderSettings,
+): SettingDefinitionItem {
+	const enhanced = (): boolean => settings.enhancedPlayerEnabled;
+	return {
+		type: 'group',
+		heading: 'Audio player',
+		items: [
+			{
+				name: 'Enhanced audio player',
+				desc: 'Replace the built-in audio embed with a richer player (waveform, speed, skip, volume, loop, timecode links, markers and chapters). Video files keep the built-in player.',
+				control: { type: 'toggle', key: 'enhancedPlayerEnabled' },
+			},
+			{
+				name: 'Show waveform',
+				desc: 'Draw a waveform behind the seek bar.',
+				visible: enhanced,
+				control: { type: 'toggle', key: 'playerShowWaveform' },
+			},
+			{
+				name: 'Markers and chapters',
+				desc: 'Show the markers and chapters list below the player. Markers are stored next to the recording, not in your vault.',
+				visible: enhanced,
+				control: { type: 'toggle', key: 'playerEnableMarkers' },
+			},
+		],
+	};
+}
+
+/**
  * The transcription section. Everything below the section's own switch is
  * revealed by a predicate rather than by re-rendering the section, and the
  * options an engine cannot deliver are disabled rather than hidden, so the user
@@ -432,6 +466,7 @@ export function buildSettingsDefinitions(
 ): SettingDefinitionItem[] {
 	return [
 		remainderDefinition(ctx.remainder),
+		audioPlayerGroup(ctx.settings),
 		transcriptionGroup(ctx.settings, (host) => {
 			ctx.renderTranscriptionRest(host);
 		}),

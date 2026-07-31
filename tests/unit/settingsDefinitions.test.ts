@@ -272,6 +272,35 @@ describe('settings definitions', () => {
 		});
 	});
 
+	describe('the audio player section', () => {
+		const PLAYER = 'Audio player';
+
+		it('binds the player options to their settings keys', () => {
+			const group = groupOf(build(), PLAYER);
+
+			expect(group.items.map((item) => item.name)).toEqual([
+				'Enhanced audio player',
+				'Show waveform',
+				'Markers and chapters',
+			]);
+			expect(rowOf(build(), PLAYER, 'Show waveform').control).toEqual({
+				type: 'toggle',
+				key: 'playerShowWaveform',
+			});
+		});
+
+		it('reveals the player windows only while the player is on', () => {
+			settings.enhancedPlayerEnabled = false;
+			const visible = rowOf(build(), PLAYER, 'Show waveform').visible;
+
+			expect(typeof visible === 'function' && visible()).toBe(false);
+
+			settings.enhancedPlayerEnabled = true;
+
+			expect(typeof visible === 'function' && visible()).toBe(true);
+		});
+	});
+
 	describe('the audio processing section', () => {
 		it('binds every input option to its settings key', () => {
 			const group = groupOf(build(), 'Audio processing & feedback');
