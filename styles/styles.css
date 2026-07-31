@@ -900,6 +900,36 @@ input.aar-input-invalid {
     cursor: var(--cursor, pointer);
 }
 
+/* Obsidian before 1.13 has no group header to hang a list's filter and add
+   button on, so both become rows of their own. The filter has no label to sit
+   beside, so it takes the whole row instead of the narrow control column. */
+.setting-item.aar-search-row {
+    padding-block: var(--size-4-2);
+    border-top: none;
+}
+
+.setting-item.aar-search-row .setting-item-info {
+    display: none;
+}
+
+.setting-item.aar-search-row .setting-item-control,
+.setting-item.aar-search-row .search-input-container {
+    width: 100%;
+}
+
+/* An empty list says so in a row of its own. It reads as a note rather than as
+   a setting whose control failed to render. */
+.setting-item.aar-empty-state-row .setting-item-name {
+    color: var(--text-muted);
+    font-weight: normal;
+}
+
+/* The add affordance closes the list, so it carries no divider of its own. */
+.setting-item.aar-add-item-row {
+    border-top: none;
+    padding-top: 0;
+}
+
 /* The body's few blocks that are not setting rows have to line up with the rows
    around them: a row carries Obsidian's own horizontal inset, a plain element
    does not. The 0 fallback leaves pre-1.13 rendering, where the body is not
