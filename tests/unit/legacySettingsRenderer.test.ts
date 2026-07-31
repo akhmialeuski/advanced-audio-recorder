@@ -285,6 +285,92 @@ describe('LegacySettingsRenderer', () => {
 		});
 	});
 
+	describe('lists', () => {
+		const listTree = (
+			items: string[],
+			handlers: {
+				onDelete?: jest.Mock;
+				addItem?: jest.Mock;
+			} = {},
+		): SettingDefinitionItem[] => [
+			{
+				type: 'list',
+				heading: 'Whisper models',
+				emptyState: 'No models saved yet.',
+				...(handlers.onDelete ? { onDelete: handlers.onDelete } : {}),
+				...(handlers.addItem
+					? {
+							addItem: {
+								name: 'Add model',
+								action: handlers.addItem,
+							},
+						}
+					: {}),
+				search: {
+					placeholder: 'Filter models',
+					match: (def, query) =>
+						(def as { name: string }).name
+							.toLowerCase()
+							.includes(query.toLowerCase()),
+				},
+				items: items.map((name) => ({ name, searchable: true })),
+			},
+		];
+
+		it('shows the empty state in place of an empty list', () => {
+			renderer.render(containerEl, listTree([]));
+
+			expect(renderedNames()).toEqual([
+				'Whisper models',
+				'No models saved yet.',
+			]);
+		});
+
+		it('offers an add affordance that runs the list action', () => {
+			const addItem = jest.fn();
+			renderer.render(containerEl, listTree(['whisper-1'], { addItem }));
+
+			containerEl
+				.querySelector<HTMLElement>('.aar-add-item-row button')
+				?.click();
+
+			expect(addItem).toHaveBeenCalledTimes(1);
+		});
+
+		it('deletes an entry by its position in the list', () => {
+			const onDelete = jest.fn();
+			renderer.render(
+				containerEl,
+				listTree(['whisper-1', 'whisper-2'], { onDelete }),
+			);
+
+			rowFor('whisper-2')
+				.querySelector<HTMLElement>('.setting-item-control button')
+				?.click();
+
+			expect(onDelete).toHaveBeenCalledWith(1);
+		});
+
+		it('filters the list through the group search field', () => {
+			// The framework renders a search input in the group header and hides
+			// the rows its predicate rejects; the same filter reaches this
+			// Obsidian, which has no group header to put it in.
+			renderer.render(containerEl, listTree(['whisper-1', 'nova-2']));
+
+			const search = containerEl.querySelector<HTMLInputElement>(
+				'.aar-search-row input',
+			);
+			if (!search) {
+				throw new Error('No search field rendered');
+			}
+			search.value = 'nova';
+			search.dispatchEvent(new Event('input'));
+
+			expect(rowFor('whisper-1').style.display).toBe('none');
+			expect(rowFor('nova-2').style.display).toBe('');
+		});
+	});
+
 	describe('action rows', () => {
 		it('runs the action when the row is clicked', () => {
 			const action = jest.fn();

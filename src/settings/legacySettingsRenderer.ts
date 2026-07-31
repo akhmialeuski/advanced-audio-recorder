@@ -20,12 +20,23 @@ import { Setting, setIcon } from 'obsidian';
 import type {
 	SettingControl,
 	SettingDefinition,
+	SettingDefinitionGroup,
 	SettingDefinitionItem,
+	SettingDefinitionList,
 	SettingGroup,
 } from 'obsidian';
 
 /** Class applied to a row whose whole surface runs an action when clicked. */
 export const LEGACY_ACTION_ROW_CLASS = 'aar-action-row';
+
+/** Class applied to the row that adds an entry to a list. */
+export const LEGACY_ADD_ITEM_CLASS = 'aar-add-item-row';
+
+/** Class applied to the row shown in place of an empty list. */
+export const LEGACY_EMPTY_STATE_CLASS = 'aar-empty-state-row';
+
+/** Class applied to the row holding a group's search field. */
+export const LEGACY_SEARCH_ROW_CLASS = 'aar-search-row';
 
 /** Class applied to a text input holding a value its validator rejected. */
 const INVALID_INPUT_CLASS = 'aar-input-invalid';
@@ -91,6 +102,11 @@ function evaluate(
 export class LegacySettingsRenderer {
 	private rows: RenderedRow[] = [];
 
+	/** The group search field's current query, if one has been typed. */
+	private filter:
+		| { group: SettingDefinitionGroup; query: string }
+		| undefined;
+
 	/**
 	 * Creates a renderer bound to a settings store.
 	 * @param host - Where rendered controls read and write their values
@@ -110,6 +126,7 @@ export class LegacySettingsRenderer {
 		items: readonly SettingDefinitionItem[],
 	): void {
 		this.release();
+		this.filter = undefined;
 		containerEl.empty();
 		for (const item of items) {
 			this.renderItem(containerEl, item);
@@ -123,7 +140,9 @@ export class LegacySettingsRenderer {
 	 */
 	refreshState(): void {
 		for (const row of this.rows) {
-			const visible = evaluate(row.definition.visible, true);
+			const visible =
+				evaluate(row.definition.visible, true) &&
+				this.matchesFilter(row);
 			// Obsidian's own show()/hide() toggle the inline display, and doing
 			// the same keeps a hidden row out of the layout without needing a
 			// class the older stylesheets do not have.
@@ -131,6 +150,25 @@ export class LegacySettingsRenderer {
 			const disabled = evaluate(disabledPredicate(row.definition), false);
 			row.setDisabled?.(disabled);
 		}
+	}
+
+	/**
+	 * Whether a row passes the search field of the group it belongs to. Rows the
+	 * definition marks unsearchable always show, as they do in the framework.
+	 * @param row - The rendered row to test
+	 */
+	private matchesFilter(row: RenderedRow): boolean {
+		const filter = this.filter;
+		if (!filter || filter.query === '') {
+			return true;
+		}
+		if (!(filter.group.items ?? []).includes(row.definition)) {
+			return true;
+		}
+		if (!evaluate(row.definition.searchable, true)) {
+			return true;
+		}
+		return filter.group.search?.match(row.definition, filter.query) ?? true;
 	}
 
 	/**
@@ -171,15 +209,89 @@ export class LegacySettingsRenderer {
 		// name is its heading here, since there is nothing to navigate to.
 		const heading = item.type === 'page' ? item.name : item.heading;
 		if (heading) {
-			new Setting(containerEl).setName(heading).setHeading();
+			const headingRow = new Setting(containerEl)
+				.setName(heading)
+				.setHeading();
+			if (item.type !== 'page' && item.extraButtons) {
+				for (const build of item.extraButtons) {
+					headingRow.addExtraButton(build);
+				}
+			}
 		}
 		const items = item.items ?? [];
+		// Both group shapes declare type as 'group' | 'list', so the tag alone
+		// does not narrow the union: read the list affordances through the list
+		// shape once the tag says it is one.
+		const list =
+			item.type === 'list' ? (item as SettingDefinitionList) : undefined;
+		if (item.type !== 'page' && item.search && items.length > 0) {
+			this.renderGroupSearch(containerEl, item);
+		}
+		if (list && items.length === 0 && list.emptyState) {
+			new Setting(containerEl)
+				.setName(list.emptyState as string)
+				.settingEl.addClass(LEGACY_EMPTY_STATE_CLASS);
+		}
 		items.forEach((child, index) => {
 			if ('type' in child) {
 				this.renderItem(containerEl, child);
 				return;
 			}
-			this.renderDefinition(containerEl, child, index);
+			this.renderDefinition(containerEl, child, index, {
+				...(list?.onDelete ? { onDelete: list.onDelete } : {}),
+			});
+		});
+		if (list?.addItem) {
+			this.renderAddItemRow(containerEl, list.addItem);
+		}
+	}
+
+	/**
+	 * Renders a list's add affordance. Obsidian puts a plus button in the group
+	 * header from 1.13 on; this Obsidian has no group header, so it is a row of
+	 * its own at the end of the list, which is what the framework does on mobile.
+	 * @param containerEl - Element to render into
+	 * @param addItem - The list's add-entry configuration
+	 */
+	private renderAddItemRow(
+		containerEl: HTMLElement,
+		addItem: { name: string; action: (el: HTMLElement) => void },
+	): void {
+		const setting = new Setting(containerEl).setName(addItem.name);
+		setting.settingEl.addClass(LEGACY_ADD_ITEM_CLASS);
+		setting.addButton((button) =>
+			button.setIcon('lucide-plus').onClick(() => {
+				addItem.action(setting.settingEl);
+			}),
+		);
+	}
+
+	/**
+	 * Renders a group's search field, which filters its rows by the group's own
+	 * predicate. The framework keeps the query across re-renders; here the field
+	 * lives and dies with the rows it filters, which is the same behaviour for a
+	 * list that is only re-rendered when its own data changes.
+	 * @param containerEl - Element to render into
+	 * @param group - The group whose rows are filtered
+	 */
+	private renderGroupSearch(
+		containerEl: HTMLElement,
+		group: SettingDefinitionGroup,
+	): void {
+		const match = group.search?.match;
+		if (!match) {
+			return;
+		}
+		const setting = new Setting(containerEl);
+		setting.settingEl.addClass(LEGACY_SEARCH_ROW_CLASS);
+		setting.addSearch((search) => {
+			if (group.search?.placeholder) {
+				search.setPlaceholder(group.search.placeholder);
+			}
+			search.onChange((query) => {
+				this.filter = { group, query };
+				this.refreshState();
+			});
 		});
 	}
 
@@ -194,6 +306,7 @@ export class LegacySettingsRenderer {
 		containerEl: HTMLElement,
 		definition: SettingDefinition,
 		index: number,
+		list?: { onDelete?: (index: number) => void },
 	): void {
 		const setting = new Setting(containerEl).setName(definition.name);
 		if (definition.desc) {
@@ -205,6 +318,17 @@ export class LegacySettingsRenderer {
 			setDisabled: undefined,
 			cleanup: undefined,
 		};
+		if (list?.onDelete) {
+			const onDelete = list.onDelete;
+			setting.addExtraButton((button) =>
+				button
+					.setIcon('lucide-x')
+					.setTooltip('Delete')
+					.onClick(() => {
+						onDelete(index);
+					}),
+			);
+		}
 		if (definition.control) {
 			Object.assign(row, {
 				setDisabled: this.bindControl(setting, definition.control),

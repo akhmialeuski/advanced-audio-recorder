@@ -529,6 +529,8 @@ export class Setting {
 	components: Array<
 		| TextComponent
 		| TextAreaComponent
+		| SearchComponent
+		| ExtraButtonComponent
 		| ToggleComponent
 		| DropdownComponent
 		| SliderComponent
@@ -539,6 +541,8 @@ export class Setting {
 		T extends
 			| TextComponent
 			| TextAreaComponent
+			| SearchComponent
+			| ExtraButtonComponent
 			| ToggleComponent
 			| DropdownComponent
 			| SliderComponent
@@ -549,6 +553,7 @@ export class Setting {
 		// queries and clicks reach it
 		const el =
 			(component as { buttonEl?: HTMLElement }).buttonEl ??
+			(component as { extraSettingsEl?: HTMLElement }).extraSettingsEl ??
 			(component as { inputEl?: HTMLElement }).inputEl ??
 			(component as { selectEl?: HTMLElement }).selectEl ??
 			(component as { toggleEl?: HTMLElement }).toggleEl ??
@@ -566,6 +571,14 @@ export class Setting {
 
 	addTextArea(callback: (text: TextAreaComponent) => void): this {
 		return this.addComponent(new TextAreaComponent(), callback);
+	}
+
+	addSearch(callback: (search: SearchComponent) => void): this {
+		return this.addComponent(new SearchComponent(), callback);
+	}
+
+	addExtraButton(callback: (button: ExtraButtonComponent) => void): this {
+		return this.addComponent(new ExtraButtonComponent(), callback);
 	}
 
 	addToggle(callback: (toggle: ToggleComponent) => void): this {
@@ -777,6 +790,48 @@ export class TextComponent {
 
 	onChange(callback: (value: string) => void): this {
 		this.changeCallback = callback;
+		return this;
+	}
+}
+
+/**
+ * Mock SearchComponent: a text input with Obsidian's search contract, which is
+ * the same change wiring as a text field.
+ */
+export class SearchComponent extends TextComponent {
+	clear(): void {
+		this.setValue('');
+	}
+}
+
+/**
+ * Mock ExtraButtonComponent: the compact icon-only button beside a control.
+ */
+export class ExtraButtonComponent {
+	extraSettingsEl: HTMLElement = addObsidianDomExtensions(
+		document.createElement('button'),
+	);
+	disabled = false;
+
+	constructor() {
+		this.extraSettingsEl.classList.add('extra-setting-button');
+	}
+
+	setIcon(_icon: string): this {
+		return this;
+	}
+
+	setTooltip(_tooltip: string): this {
+		return this;
+	}
+
+	setDisabled(disabled: boolean): this {
+		this.disabled = disabled;
+		return this;
+	}
+
+	onClick(callback: () => void): this {
+		this.extraSettingsEl.addEventListener('click', callback);
 		return this;
 	}
 }
