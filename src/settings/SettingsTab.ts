@@ -32,6 +32,7 @@ import {
 	type SettingsRenderMode,
 } from './settingsRenderMode';
 import {
+	CONTROL_WRITE_EFFECTS,
 	buildSettingsDefinitions,
 	collectDebouncedControlKeys,
 	parseTrackControlKey,
@@ -461,15 +462,27 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			this.writeTrackSource(track.track, track.field, String(value));
 			return this.plugin.saveSettings();
 		}
+		const effect = CONTROL_WRITE_EFFECTS[key];
 		(this.plugin.settings as unknown as Record<string, unknown>)[key] =
-			value;
+			effect?.normalize && typeof value === 'string'
+				? effect.normalize(value)
+				: value;
+		effect?.follow?.(this.plugin.settings);
 		if (this.debouncedControlKeys.has(key)) {
 			// A text field changes on every keystroke. The value is live in
 			// memory either way; only the write to disk waits.
 			this.saveTextSettingDebounced();
 			return;
 		}
-		return this.plugin.saveSettings();
+		const saved = this.plugin.saveSettings();
+		if (!effect?.reshapesTree) {
+			return saved;
+		}
+		// The rows this write changed are the rows already on screen, holding
+		// something else now, so they are read again rather than re-evaluated.
+		return saved.then(() => {
+			this.rerender();
+		});
 	}
 
 	private getCompressionDescription(format: string): string {

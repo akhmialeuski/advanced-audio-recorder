@@ -101,6 +101,113 @@ export const groupOf = (
 };
 
 /**
+ * Finds a sub-page by the name on its entry.
+ *
+ * A page and the sections inside it can carry the same word, so this looks for
+ * the page shape specifically rather than for anything called that.
+ * @param definitions - The tree to search
+ * @param name - Name on the page's entry
+ * @returns The matching page
+ */
+export const pageOf = (
+	definitions: readonly SettingDefinitionItem[],
+	name: string,
+): GroupDefinition => {
+	const search = (
+		entries: ReadonlyArray<RowDefinition | GroupDefinition>,
+	): GroupDefinition | undefined => {
+		for (const entry of entries) {
+			if (!('type' in entry)) {
+				continue;
+			}
+			if (entry.type === 'page' && entry.name === name) {
+				return entry;
+			}
+			const nested = search(entry.items ?? []);
+			if (nested) {
+				return nested;
+			}
+		}
+		return undefined;
+	};
+	const found = search(
+		definitions as ReadonlyArray<RowDefinition | GroupDefinition>,
+	);
+	if (!found) {
+		throw new Error(`No settings page declared as "${name}"`);
+	}
+	return found;
+};
+
+/**
+ * The collection inside a page or group: the one entry carrying a list's add,
+ * delete, and filter affordances. A collection on a page of its own has no
+ * heading, since the page's own name is the heading.
+ * @param entry - The page or group holding it
+ * @returns The list
+ */
+export const listIn = (entry: GroupDefinition): GroupDefinition => {
+	const search = (
+		entries: ReadonlyArray<RowDefinition | GroupDefinition>,
+	): GroupDefinition | undefined => {
+		for (const candidate of entries) {
+			if (!('type' in candidate)) {
+				continue;
+			}
+			if (candidate.type === 'list') {
+				return candidate;
+			}
+			const nested = search(candidate.items ?? []);
+			if (nested) {
+				return nested;
+			}
+		}
+		return undefined;
+	};
+	const found = search(entry.items ?? []);
+	if (!found) {
+		throw new Error(
+			`No list declared under "${entry.name ?? entry.heading}"`,
+		);
+	}
+	return found;
+};
+
+/**
+ * Finds a row by name anywhere under a page or group, so a test names the row
+ * it means without also naming every section between.
+ * @param entry - The page or group to search under
+ * @param name - The row's name
+ * @returns The matching row
+ */
+export const rowIn = (entry: GroupDefinition, name: string): RowDefinition => {
+	const search = (
+		entries: ReadonlyArray<RowDefinition | GroupDefinition>,
+	): RowDefinition | undefined => {
+		for (const candidate of entries) {
+			if (!('type' in candidate)) {
+				if (candidate.name === name) {
+					return candidate;
+				}
+				continue;
+			}
+			const nested = search(candidate.items ?? []);
+			if (nested) {
+				return nested;
+			}
+		}
+		return undefined;
+	};
+	const found = search(entry.items ?? []);
+	if (!found) {
+		throw new Error(
+			`No "${name}" row under "${entry.name ?? entry.heading}"`,
+		);
+	}
+	return found;
+};
+
+/**
  * Finds a row by name inside a group.
  * @param definitions - The tree to search
  * @param heading - Heading of the group holding the row

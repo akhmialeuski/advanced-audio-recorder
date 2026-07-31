@@ -7,6 +7,8 @@
 import { App, Platform } from 'obsidian';
 import {
 	groupOf,
+	listIn,
+	pageOf,
 	renderDefinitionOf,
 	renderThroughFramework,
 	rowOf,
@@ -272,6 +274,102 @@ describe('AudioRecorderSettingTab', () => {
 			renderDeclaratively();
 			await flushAsync();
 
+			expect(updateSpy).not.toHaveBeenCalled();
+		});
+	});
+
+	describe('writes that mean more than storing a value', () => {
+		/** Whether the tab asked the framework to read the tree again. */
+		let updateSpy: jest.SpyInstance;
+
+		beforeEach(() => {
+			updateSpy = jest
+				.spyOn(tab, 'update')
+				.mockImplementation(() => undefined);
+			tab.getSettingDefinitions();
+		});
+
+		afterEach(() => {
+			updateSpy.mockRestore();
+		});
+
+		it('repoints the profile editor when another profile is picked', async () => {
+			mockSettings.transcriptionDictionaryProfiles = [
+				{ id: 'a', name: 'SWIFT', terms: 'vdura-api' },
+				{ id: 'b', name: 'Robot', terms: 'ros2, rclcpp' },
+			];
+			mockSettings.transcriptionDictionaryProfileId = 'a';
+
+			await tab.setControlValue('transcriptionDictionaryProfileId', 'b');
+
+			// The name and terms rows are the same two rows holding another
+			// profile's text, which no visible predicate can express - without
+			// reading the tree again they keep showing the profile left behind.
+			expect(tab.getControlValue('dictionaryProfile.name')).toBe('Robot');
+			expect(tab.getControlValue('dictionaryProfile.terms')).toBe(
+				'ros2, rclcpp',
+			);
+			expect(updateSpy).toHaveBeenCalled();
+		});
+
+		it('repoints the chapter editor the same way', async () => {
+			mockSettings.transcriptionChapterPromptProfiles = [
+				{ id: 'a', name: 'Standup', prompt: 'by speaker' },
+				{ id: 'b', name: 'Lecture', prompt: 'by topic' },
+			];
+			mockSettings.transcriptionChapterPromptProfileId = 'a';
+
+			await tab.setControlValue(
+				'transcriptionChapterPromptProfileId',
+				'b',
+			);
+
+			expect(tab.getControlValue('chapterProfile.prompt')).toBe(
+				'by topic',
+			);
+		});
+
+		it('moves the base URL to the vendor picked, leaving a typed one alone', async () => {
+			mockSettings.llmProvider = 'openai-compatible';
+			mockSettings.llmBaseUrl = 'https://api.openai.com/v1';
+
+			await tab.setControlValue('llmProvider', 'anthropic');
+
+			// Choosing Anthropic must not leave an OpenAI URL behind.
+			expect(mockSettings.llmBaseUrl).toBe(
+				'https://api.anthropic.com/v1',
+			);
+			expect(updateSpy).toHaveBeenCalled();
+
+			mockSettings.llmBaseUrl = 'https://llm.internal/v1';
+
+			await tab.setControlValue('llmProvider', 'gemini');
+
+			// A URL the user typed is not a default and is theirs to keep.
+			expect(mockSettings.llmBaseUrl).toBe('https://llm.internal/v1');
+		});
+
+		it('reads the tree again when the engine changes', async () => {
+			mockSettings.transcriptionEnabled = true;
+
+			await tab.setControlValue('transcriptionProvider', 'deepgram');
+
+			// The model catalogue and the credential fields are another
+			// engine's now, in the rows that were already there.
+			expect(updateSpy).toHaveBeenCalled();
+		});
+
+		it('stores a language code the way the engines receive it', () => {
+			// A text control write is debounced, so it returns nothing to await.
+			void tab.setControlValue('transcriptionLanguage', '  en  ');
+
+			expect(mockSettings.transcriptionLanguage).toBe('en');
+		});
+
+		it('leaves an ordinary value untouched and asks for no re-render', async () => {
+			await tab.setControlValue('debug', true);
+
+			expect(mockSettings.debug).toBe(true);
 			expect(updateSpy).not.toHaveBeenCalled();
 		});
 	});
@@ -848,15 +946,17 @@ describe('AudioRecorderSettingTab', () => {
 	});
 
 	describe('editing the native lists', () => {
-		/** The list group declared under a heading, with its edit affordances. */
+		/** The collection on the page of that name, with its edit affordances. */
 		const listOf = (
-			heading: string,
+			pageName: string,
 		): {
 			items: Array<{ name: string; desc?: string }>;
 			addItem?: { action: () => void };
 			onDelete?: (index: number) => void;
 		} =>
-			groupOf(tab.getSettingDefinitions(), heading) as unknown as {
+			listIn(
+				pageOf(tab.getSettingDefinitions(), pageName),
+			) as unknown as {
 				items: Array<{ name: string; desc?: string }>;
 				addItem?: { action: () => void };
 				onDelete?: (index: number) => void;
@@ -1025,12 +1125,12 @@ describe('AudioRecorderSettingTab', () => {
 			// The local engine runs a binary against a file on disk, so there
 			// is no catalogue of served ids to keep - the list stays hidden
 			// rather than being declared empty.
-			const list = groupOf(
+			const page = pageOf(
 				tab.getSettingDefinitions(),
 				'Models',
-			) as unknown as { visible?: () => boolean; items: unknown[] };
-			expect(list.visible?.()).toBe(false);
-			expect(list.items).toEqual([]);
+			) as unknown as { visible?: () => boolean };
+			expect(page.visible?.()).toBe(false);
+			expect(listOf('Models').items).toEqual([]);
 		});
 	});
 

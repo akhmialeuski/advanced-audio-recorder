@@ -9,7 +9,10 @@ import { Platform } from 'obsidian';
 import type { Setting, SettingDefinitionItem } from 'obsidian';
 import {
 	groupOf,
+	listIn,
+	pageOf,
 	renderDefinitionOf,
+	rowIn,
 	renderThroughFramework,
 	rowOf,
 	type GroupDefinition,
@@ -221,24 +224,13 @@ describe('settings definitions', () => {
 	});
 
 	describe('the transcription sub-page', () => {
-		/** The page entry the tab declares at its top level. */
-		const pageOf = (): GroupDefinition & {
+		/** The transcription page entry. */
+		const transcriptionPage = (): GroupDefinition & {
 			displayValue?: () => string;
-		} => {
-			const page = build().find(
-				(item): item is SettingDefinitionItem & { type: 'page' } =>
-					'type' in item && item.type === 'page',
-			);
-			if (!page) {
-				throw new Error('The tab declares no sub-page');
-			}
-			return page as unknown as GroupDefinition & {
-				displayValue?: () => string;
-			};
-		};
+		} => pageOf(build(), 'Transcription');
 
 		it('gathers the transcription groups behind one entry', () => {
-			const page = pageOf();
+			const page = transcriptionPage();
 
 			expect(page.name).toBe('Transcription');
 			// Every transcription group moved onto the page, so the main tab
@@ -263,14 +255,53 @@ describe('settings definitions', () => {
 			).toBe(false);
 		});
 
+		it('keeps a collection off the page that owns it', () => {
+			settings.transcriptionEnabled = true;
+			settings.whisperApiModels = ['whisper-1', 'whisper-large-v3'];
+			settings.whisperApiModel = 'whisper-1';
+
+			// A vendor catalogue runs to thirty-odd ids, and inline that is
+			// thirty rows between the engine and everything after it. Each
+			// collection sits on a page of its own, which costs one row.
+			const inline = transcriptionPage().items.filter(
+				(item) => (item as GroupDefinition).type !== 'page',
+			);
+			for (const section of inline) {
+				expect((section as GroupDefinition).type === 'list').toBe(
+					false,
+				);
+			}
+			expect(listIn(pageOf(build(), 'Whisper model')).items).toHaveLength(
+				2,
+			);
+		});
+
+		it('says on the entry which model and profile are in use', () => {
+			settings.transcriptionEnabled = true;
+			settings.whisperApiModels = ['whisper-1'];
+			settings.whisperApiModel = 'whisper-1';
+			settings.transcriptionDictionaryProfileId = 'b';
+
+			// The value a page holds belongs on the entry, so opening it is a
+			// choice rather than the only way to see what is set.
+			const displayValue = (name: string): string | undefined =>
+				(
+					pageOf(build(), name) as {
+						displayValue?: () => string;
+					}
+				).displayValue?.();
+			expect(displayValue('Whisper model')).toBe('whisper-1');
+			expect(displayValue('Dictionary profiles')).toBe('Legal');
+		});
+
 		it('reports on the entry whether transcription is on', () => {
 			settings.transcriptionEnabled = false;
 
-			expect(pageOf().displayValue?.()).toBe('Off');
+			expect(transcriptionPage().displayValue?.()).toBe('Off');
 
 			settings.transcriptionEnabled = true;
 
-			expect(pageOf().displayValue?.()).toBe('On');
+			expect(transcriptionPage().displayValue?.()).toBe('On');
 		});
 	});
 
@@ -505,7 +536,7 @@ describe('settings definitions', () => {
 			addItem?: { name: string; action: (el: HTMLElement) => void };
 			onDelete?: (index: number) => void;
 			items: Array<{ name: string; desc?: string }>;
-		} => groupOf(build(), 'Whisper model') as never;
+		} => listIn(pageOf(build(), 'Whisper model')) as never;
 
 		it('declares the saved models as a list the user can edit', () => {
 			seedModels();
@@ -558,7 +589,7 @@ describe('settings definitions', () => {
 			settings.transcriptionProvider =
 				TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER;
 			const visible = (
-				groupOf(build(), 'Models') as { visible?: () => boolean }
+				pageOf(build(), 'Models') as { visible?: () => boolean }
 			).visible;
 
 			expect(typeof visible === 'function' && visible()).toBe(false);
@@ -575,7 +606,7 @@ describe('settings definitions', () => {
 			addItem?: { action: (el: HTMLElement) => void };
 			onDelete?: (index: number) => void;
 			items: Array<{ name: string; desc?: string }>;
-		} => groupOf(build(), heading) as never;
+		} => listIn(pageOf(build(), heading)) as never;
 
 		it('declares the stored profiles as an editable list', () => {
 			settings.transcriptionDictionaryProfileId = 'b';
@@ -603,25 +634,20 @@ describe('settings definitions', () => {
 
 		it('edits the profile in use rather than repeating a row per profile', () => {
 			settings.transcriptionDictionaryProfileId = 'a';
-			const editor = 'Dictionary profiles: selected';
+			const page = pageOf(build(), 'Dictionary profiles');
 
-			expect(rowOf(build(), editor, 'Profile').control?.options).toEqual({
+			expect(rowIn(page, 'Profile').control?.options).toEqual({
 				a: 'Standup',
 				b: 'Legal',
 			});
-			expect(rowOf(build(), editor, 'Terms').control?.type).toBe(
-				'textarea',
-			);
-			expect(rowOf(build(), editor, 'Profile name').control?.type).toBe(
-				'text',
-			);
+			expect(rowIn(page, 'Terms').control?.type).toBe('textarea');
+			expect(rowIn(page, 'Profile name').control?.type).toBe('text');
 		});
 
 		it('hides the editor while no profile is selected', () => {
 			settings.transcriptionDictionaryProfileId = '';
-			const visible = rowOf(
-				build(),
-				'Dictionary profiles: selected',
+			const visible = rowIn(
+				pageOf(build(), 'Dictionary profiles'),
 				'Terms',
 			).visible;
 

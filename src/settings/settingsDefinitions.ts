@@ -28,6 +28,7 @@ import type {
 } from 'obsidian';
 import {
 	advancedTwoPassEnabled,
+	applyLlmProviderDefaults,
 	type AudioRecorderSettings,
 } from './settingsSchema';
 import {
@@ -788,9 +789,13 @@ function nameFilter(placeholder: string): {
 }
 
 /**
- * A profile catalogue and the editor for the profile in use: the collection is
- * a list, with the framework's own add, delete and filter affordances, and the
- * two editable fields follow the selection rather than repeating per profile.
+ * A profile catalogue: the saved profiles as a list, and the editor for the one
+ * in use, behind a single entry that names it.
+ *
+ * A glossary runs to dozens of profiles and every one of them was a row on the
+ * transcription page, pushing the settings after it off the screen. On a page
+ * of their own they cost one row, which reads the way the style guide wants a
+ * collection to read: the name of the thing, the value in use, and a way in.
  * @param settings - Live settings, read by the predicates
  * @param catalogue - The profile kind being declared
  */
@@ -803,62 +808,83 @@ function profileGroups(
 		catalogue.selectionKey as keyof AudioRecorderSettings
 	] as string;
 	const visible = (): boolean => catalogue.visible(settings);
+	const selectedEntry = (): { id: string; name: string } | undefined =>
+		catalogue
+			.entries(settings)
+			.find(
+				(entry) =>
+					entry.id ===
+					(settings[
+						catalogue.selectionKey as keyof AudioRecorderSettings
+					] as string),
+			);
 	const hasProfile = (): boolean =>
 		visible() && entries.some((entry) => entry.id === selected);
 	return [
 		{
-			type: 'list',
-			heading: catalogue.heading,
-			visible,
-			emptyState: 'No profiles yet. Add one to start a glossary.',
-			search: nameFilter('Filter profiles'),
-			addItem: {
-				name: 'Add profile',
-				action: (): void => {
-					catalogue.add();
-				},
-			},
-			onDelete: (index): void => {
-				catalogue.remove(index);
-			},
-			items: entries.map(
-				(entry): SettingGroupItem => ({
-					name: entry.name,
-					...(entry.id === selected ? { desc: 'In use' } : {}),
-				}),
-			),
-		},
-		{
-			type: 'group',
-			heading: `${catalogue.heading}: selected`,
+			type: 'page',
+			name: catalogue.heading,
+			desc: catalogue.selectorDesc,
+			displayValue: (): string => selectedEntry()?.name ?? 'None',
 			visible,
 			items: [
 				{
-					name: 'Profile',
-					desc: catalogue.selectorDesc,
-					control: {
-						type: 'dropdown',
-						key: catalogue.selectionKey,
-						options: Object.fromEntries(
-							entries.map((entry) => [entry.id, entry.name]),
-						),
+					type: 'list',
+					emptyState: 'No profiles yet. Add one to start a glossary.',
+					search: nameFilter('Filter profiles'),
+					addItem: {
+						name: 'Add profile',
+						action: (): void => {
+							catalogue.add();
+						},
 					},
+					onDelete: (index): void => {
+						catalogue.remove(index);
+					},
+					items: entries.map(
+						(entry): SettingGroupItem => ({
+							name: entry.name,
+							...(entry.id === selected
+								? { desc: 'In use' }
+								: {}),
+						}),
+					),
 				},
 				{
-					name: 'Profile name',
-					desc: 'Name shown wherever this profile is picked.',
-					visible: hasProfile,
-					control: { type: 'text', key: catalogue.nameKey },
-				},
-				{
-					name: catalogue.bodyName,
-					desc: catalogue.bodyDesc,
-					visible: hasProfile,
-					control: {
-						type: 'textarea',
-						key: catalogue.bodyKey,
-						rows: 6,
-					},
+					type: 'group',
+					heading: 'Selected profile',
+					items: [
+						{
+							name: 'Profile',
+							desc: 'The profile these fields edit, and the one offered by default in the Transcribe dialog.',
+							control: {
+								type: 'dropdown',
+								key: catalogue.selectionKey,
+								options: Object.fromEntries(
+									entries.map((entry) => [
+										entry.id,
+										entry.name,
+									]),
+								),
+							},
+						},
+						{
+							name: 'Profile name',
+							desc: 'Name shown wherever this profile is picked.',
+							visible: hasProfile,
+							control: { type: 'text', key: catalogue.nameKey },
+						},
+						{
+							name: catalogue.bodyName,
+							desc: catalogue.bodyDesc,
+							visible: hasProfile,
+							control: {
+								type: 'textarea',
+								key: catalogue.bodyKey,
+								rows: 6,
+							},
+						},
+					],
 				},
 			],
 		},
@@ -884,29 +910,40 @@ function transcriptionEngineGroup(
 	const models = credentials ? credentials.models(settings) : [];
 	const selected = credentials ? engine.model(settings) : '';
 	return {
-		type: 'list',
-		heading: credentials?.modelPickerName ?? 'Models',
+		// A vendor's catalogue runs to thirty-odd ids. Inline, that is thirty
+		// rows between the engine and everything configured after it; behind an
+		// entry, it is one row that already says which id is in use.
+		type: 'page',
+		name: credentials?.modelPickerName ?? 'Models',
+		desc: 'The model ids saved for this engine, and which one it transcribes with.',
+		displayValue: (): string => selected || 'None',
 		visible: cloud,
-		emptyState:
-			'No models saved yet. Add the model id your endpoint serves.',
-		search: nameFilter('Filter models'),
-		addItem: {
-			name: 'Add model',
-			action: (): void => {
-				blocks.addModel();
+		items: [
+			{
+				type: 'list',
+				emptyState:
+					'No models saved yet. Add the model id your endpoint serves.',
+				search: nameFilter('Filter models'),
+				addItem: {
+					name: 'Add model',
+					action: (): void => {
+						blocks.addModel();
+					},
+				},
+				onDelete: (index): void => {
+					blocks.removeModel(index);
+				},
+				items: models.map(
+					(id): SettingGroupItem => ({
+						name: id,
+						// The saved list is the catalogue; which one is in use
+						// is the selection, so a row says only whether it is
+						// that one.
+						...(id === selected ? { desc: 'In use' } : {}),
+					}),
+				),
 			},
-		},
-		onDelete: (index): void => {
-			blocks.removeModel(index);
-		},
-		items: models.map(
-			(id): SettingGroupItem => ({
-				name: id,
-				// The saved list is the catalogue; which one is in use is the
-				// selection above it, so a row says only whether it is that one.
-				...(id === selected ? { desc: 'In use' } : {}),
-			}),
-		),
+		],
 	};
 }
 
@@ -924,30 +961,38 @@ function llmModelListGroup(
 	const models = vendor.settings.models(settings);
 	const selected = vendor.settings.model(settings);
 	return {
-		type: 'list',
-		heading: 'LLM models',
+		type: 'page',
+		name: 'LLM models',
+		desc: 'The model ids saved for this vendor. The one in use is picked by the LLM model row, and each vendor keeps its own.',
+		displayValue: (): string => selected || 'None',
 		visible: (): boolean =>
 			settings.transcriptionEnabled &&
 			(settings.llmPostProcessEnabled ||
 				settings.transcriptionAutoChaptersEnabled ||
 				advancedTwoPassEnabled(settings)),
-		emptyState: 'No models saved yet. Add the model id your vendor serves.',
-		search: nameFilter('Filter models'),
-		addItem: {
-			name: 'Add model',
-			action: (): void => {
-				blocks.addLlmModel();
+		items: [
+			{
+				type: 'list',
+				emptyState:
+					'No models saved yet. Add the model id your vendor serves.',
+				search: nameFilter('Filter models'),
+				addItem: {
+					name: 'Add model',
+					action: (): void => {
+						blocks.addLlmModel();
+					},
+				},
+				onDelete: (index): void => {
+					blocks.removeLlmModel(index);
+				},
+				items: models.map(
+					(id): SettingGroupItem => ({
+						name: id,
+						...(id === selected ? { desc: 'In use' } : {}),
+					}),
+				),
 			},
-		},
-		onDelete: (index): void => {
-			blocks.removeLlmModel(index);
-		},
-		items: models.map(
-			(id): SettingGroupItem => ({
-				name: id,
-				...(id === selected ? { desc: 'In use' } : {}),
-			}),
-		),
+		],
 	};
 }
 
@@ -1572,6 +1617,53 @@ export function buildSettingsDefinitions(
 		diagnosticsGroup(ctx.diagnostics),
 	];
 }
+
+/**
+ * What writing a control means beyond storing its value.
+ *
+ * A `visible` predicate covers a setting that reveals another one, which is
+ * most of them. It cannot cover the rest of what a write can mean: a value the
+ * plugin wants in a canonical form, a second field that has to follow the
+ * first, or a choice that leaves the same rows on screen holding different
+ * things. Those three live here, next to the declarations they belong to,
+ * rather than as branches in the tab's write path.
+ */
+export interface ControlWriteEffect {
+	/** Rewrites the value before it is stored. */
+	readonly normalize?: (value: string) => string;
+	/** Adjusts the settings that follow this one, after it is stored. */
+	readonly follow?: (settings: AudioRecorderSettings) => void;
+	/**
+	 * Whether the write changes what other rows *show*, not merely whether they
+	 * show. Picking another engine swaps the model catalogue and the credential
+	 * fields; picking another profile repoints the editor below it. The rows
+	 * are the same rows with different contents, which no predicate expresses,
+	 * so the tree is read again.
+	 */
+	readonly reshapesTree?: boolean;
+}
+
+/** The writes that mean more than "store this". Keyed by control key. */
+export const CONTROL_WRITE_EFFECTS: Readonly<
+	Record<string, ControlWriteEffect>
+> = {
+	transcriptionLanguage: {
+		// Stored as the engines receive it: " en " is the same language as
+		// "en", and an untrimmed code reaches the request verbatim.
+		normalize: (value) => value.trim(),
+	},
+	transcriptionProvider: { reshapesTree: true },
+	llmProvider: {
+		// Choosing Anthropic must not leave an OpenAI URL behind. A URL the
+		// user typed is not a default and is left alone.
+		follow: (settings) => {
+			applyLlmProviderDefaults(settings, settings.llmProvider);
+		},
+		reshapesTree: true,
+	},
+	transcriptionDictionaryProfileId: { reshapesTree: true },
+	transcriptionChapterPromptProfileId: { reshapesTree: true },
+};
 
 /**
  * The control keys whose writes are worth debouncing: the text-bearing ones,
