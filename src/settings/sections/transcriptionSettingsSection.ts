@@ -1,6 +1,7 @@
 /**
- * The transcription settings section: engine selection, the advanced two-pass
- * mode, transcript output and formatting, and auto chapters. The parts with
+ * The transcription settings that are still rendered imperatively: the engine's
+ * own fields, the advanced two-pass mode, transcript output and formatting, and
+ * auto chapters. The parts with
  * their own subject matter live next to this file - the per-engine fields in
  * `transcriptionEngineSection`, the LLM vendor fields in `llmSettingsSection`,
  * and the dictionary and chapter-guidance managers in `profileManagerSection` -
@@ -12,19 +13,15 @@
  */
 
 import {
-	MIN_TRANSCRIPTION_TIMEOUT_MINUTES,
-	MAX_TRANSCRIPTION_TIMEOUT_MINUTES,
 	MIN_ADVANCED_SECOND_PASS_MIN_RATIO,
 	MAX_ADVANCED_SECOND_PASS_MIN_RATIO,
 	ADVANCED_SECOND_PASS_RATIO_STEP,
 	TRANSCRIPTION_PROVIDER_IDS,
 } from '../../constants';
 import { selectedTranscriptionEngine } from '../../transcription/providers/engines';
-import type { TranscriptionProviderId } from '../settingsSchema';
 import {
 	TRANSCRIPT_DESTINATION_OPTIONS,
 	TRANSCRIPT_FILE_FORMAT_OPTIONS,
-	TRANSCRIPTION_PROVIDER_OPTIONS,
 } from '../labels';
 import {
 	addDropdown,
@@ -34,11 +31,7 @@ import {
 	addToggle,
 	type SettingsSectionContext,
 } from '../settingControls';
-import {
-	effectiveDiarize,
-	isProviderAvailableOnPlatform,
-	providerSupportsDiarization,
-} from '../../transcription/providers/capabilities';
+import { effectiveDiarize } from '../../transcription/providers/capabilities';
 import {
 	renderChapterPromptProfiles,
 	renderDictionaryProfiles,
@@ -51,97 +44,19 @@ import {
 import { renderLlmSection } from './llmSettingsSection';
 
 /**
- * Renders the full transcription settings section.
+ * Renders the transcription settings that are not definitions yet: the engine's
+ * own fields, the advanced two-pass mode, the transcript output, auto chapters,
+ * and the LLM post-processing. The section's own switch, engine choice, and
+ * recognition options live in the definition tree; this runs inside the row
+ * that tree keeps for them, so the order the user knows is unchanged.
  * @param ctx - Section context (container, settings, save hooks)
  */
-export function renderTranscriptionSection(ctx: SettingsSectionContext): void {
+export function renderTranscriptionRemainder(
+	ctx: SettingsSectionContext,
+): void {
 	const s = ctx.settings;
-	addHeading(ctx, 'Transcription');
-
-	addToggle(ctx, {
-		name: 'Enable transcription',
-		desc: 'Transcribe recordings to text (speech-to-text), with optional speaker labels and LLM post-processing.',
-		get: () => s.transcriptionEnabled,
-		set: (v) => (s.transcriptionEnabled = v),
-		rerender: true,
-	});
 	if (!s.transcriptionEnabled) {
 		return;
-	}
-
-	addToggle(ctx, {
-		name: 'Transcribe after recording',
-		desc: 'Automatically transcribe each recording once it is saved.',
-		get: () => s.transcribeOnSave,
-		set: (v) => (s.transcribeOnSave = v),
-	});
-
-	addToggle(ctx, {
-		name: 'Show cost estimates',
-		desc: 'Show an approximate API cost estimate before a run and a running session total in the Transcribe dialog (built-in rates; cloud engines only).',
-		get: () => s.transcriptionShowCostEstimates,
-		set: (v) => (s.transcriptionShowCostEstimates = v),
-	});
-
-	addDropdown(ctx, {
-		name: 'Engine',
-		desc: 'Whisper API, Deepgram, or Google Gemini (cloud), or a local whisper.cpp binary (desktop). Engines this device cannot run are shown blocked.',
-		// Engines the platform cannot run stay listed but blocked, so the
-		// dropdown reads the same on every device.
-		options: TRANSCRIPTION_PROVIDER_OPTIONS.map((option) => ({
-			...option,
-			disabled: !isProviderAvailableOnPlatform(
-				option.value as TranscriptionProviderId,
-			),
-		})),
-		get: () => s.transcriptionProvider,
-		set: (v) => (s.transcriptionProvider = v as TranscriptionProviderId),
-		rerender: true,
-	});
-
-	addText(ctx, {
-		name: 'Language',
-		desc: 'ISO code (e.g. en, ru, es) or "auto" to detect.',
-		get: () => s.transcriptionLanguage,
-		set: (v) => (s.transcriptionLanguage = v.trim() || 'auto'),
-	});
-
-	const canDiarize = providerSupportsDiarization(s.transcriptionProvider);
-	addToggle(ctx, {
-		name: 'Speaker diarization',
-		desc: canDiarize
-			? 'Request speaker labels. Speaker count is detected automatically.'
-			: 'Not supported by the selected engine. Use Deepgram for speaker labels.',
-		// Reflect the effective state: a stored "on" reads as off for an engine
-		// that cannot diarize, so the control never claims a result it cannot give.
-		get: () =>
-			effectiveDiarize(s.transcriptionProvider, s.transcriptionDiarize),
-		set: (v) => (s.transcriptionDiarize = v),
-		disabled: !canDiarize,
-		// Re-render so the speaker-related output controls below enable or
-		// disable in step with diarization the moment this toggle changes.
-		rerender: true,
-	});
-
-	addToggle(ctx, {
-		name: 'Word-level timestamps',
-		desc: 'Request per-word timing when the provider supports it. Recorded in JSON file output only.',
-		get: () => s.transcriptionWordTimestamps,
-		set: (v) => (s.transcriptionWordTimestamps = v),
-	});
-
-	// Cloud engines only: a hung network request is bounded by this limit. Local
-	// whisper.cpp runs no HTTP request, so the timeout does not apply to it.
-	if (s.transcriptionProvider !== TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER) {
-		addNumberInput(ctx, {
-			name: 'Request timeout',
-			desc: 'Minutes before a single transcription request (one part of a long recording) is aborted and reported as failed, so a stalled request cannot hang the run indefinitely.',
-			min: MIN_TRANSCRIPTION_TIMEOUT_MINUTES,
-			max: MAX_TRANSCRIPTION_TIMEOUT_MINUTES,
-			step: 1,
-			get: () => s.transcriptionTimeoutMinutes,
-			set: (v) => (s.transcriptionTimeoutMinutes = v),
-		});
 	}
 
 	// The chunk size precedes the engine's own fields, matching the order the

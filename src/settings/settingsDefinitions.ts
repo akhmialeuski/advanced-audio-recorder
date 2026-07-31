@@ -21,6 +21,9 @@
 import type { Setting, SettingDefinitionItem } from 'obsidian';
 import type { AudioRecorderSettings } from './settingsSchema';
 import {
+	MAX_TRANSCRIPTION_TIMEOUT_MINUTES,
+	MIN_TRANSCRIPTION_TIMEOUT_MINUTES,
+	TRANSCRIPTION_PROVIDER_IDS,
 	CLEANUP_GATE_STEP_DB,
 	CLEANUP_HIGHPASS_STEP_HZ,
 	CLEANUP_LEVELING_STEP_DB,
@@ -31,6 +34,15 @@ import {
 	MIN_CLEANUP_HIGHPASS_HZ,
 	MIN_CLEANUP_LEVELING_MAKEUP_DB,
 } from '../constants';
+import { TRANSCRIPTION_PROVIDER_OPTIONS } from './labels';
+import {
+	isProviderAvailableOnPlatform,
+	providerSupportsDiarization,
+} from '../transcription/providers/capabilities';
+import type { TranscriptionProviderId } from './settingsSchema';
+
+/** Accepted shape of the transcription language field: an ISO code or empty. */
+const LANGUAGE_CODE_PATTERN = /^([a-z]{2,3}(-[a-z0-9]{2,8})?|auto)?$/i;
 
 /**
  * Marks the row that hosts the sections not described here yet. From 1.13 on,
@@ -84,6 +96,11 @@ export interface SettingsDefinitionContext {
 	readonly remainder: ImperativeRemainder;
 	/** Handlers for the diagnostics rows. */
 	readonly diagnostics: DiagnosticsActions;
+	/**
+	 * Draws the transcription settings that are not definitions yet, into the
+	 * row the transcription section keeps for them.
+	 */
+	renderTranscriptionRest(host: HTMLElement): void;
 }
 
 /**
@@ -108,6 +125,136 @@ function remainderDefinition(
 			host.addClass(SETTINGS_ROOT_CLASS);
 			remainder.render(host);
 		},
+	};
+}
+
+/**
+ * The transcription section. Everything below the section's own switch is
+ * revealed by a predicate rather than by re-rendering the section, and the
+ * options an engine cannot deliver are disabled rather than hidden, so the user
+ * can see the option exists and why it is unavailable.
+ * @param settings - Live settings, read by the predicates
+ * @param renderRest - Draws the parts of the section that are not definitions
+ * yet, into the row the tree keeps for them
+ */
+function transcriptionGroup(
+	settings: AudioRecorderSettings,
+	renderRest: (host: HTMLElement) => void,
+): SettingDefinitionItem {
+	const enabled = (): boolean => settings.transcriptionEnabled;
+	const canDiarize = (): boolean =>
+		providerSupportsDiarization(settings.transcriptionProvider);
+	return {
+		type: 'group',
+		heading: 'Transcription',
+		items: [
+			{
+				name: 'Enable transcription',
+				desc: 'Transcribe recordings to text, with optional speaker labels and LLM post-processing.',
+				control: { type: 'toggle', key: 'transcriptionEnabled' },
+			},
+			{
+				name: 'Transcribe after recording',
+				desc: 'Automatically transcribe each recording once it is saved.',
+				visible: enabled,
+				control: { type: 'toggle', key: 'transcribeOnSave' },
+			},
+			{
+				name: 'Show cost estimates',
+				desc: 'Show an approximate API cost before a run and a running session total (built-in rates; cloud engines only).',
+				visible: enabled,
+				control: {
+					type: 'toggle',
+					key: 'transcriptionShowCostEstimates',
+				},
+			},
+			{
+				name: 'Engine',
+				desc: 'Whisper API, Deepgram, or Google Gemini (cloud), or a local whisper.cpp binary (desktop).',
+				visible: enabled,
+				control: {
+					type: 'dropdown',
+					key: 'transcriptionProvider',
+					// Every device lists every engine, so the dropdown reads the
+					// same everywhere; picking one this device cannot run is
+					// refused with the reason instead of silently blocked.
+					options: Object.fromEntries(
+						TRANSCRIPTION_PROVIDER_OPTIONS.map((option) => [
+							option.value,
+							option.label,
+						]),
+					),
+					validate: (value: string): string | undefined =>
+						isProviderAvailableOnPlatform(
+							value as TranscriptionProviderId,
+						)
+							? undefined
+							: 'Not available on this device.',
+				},
+			},
+			{
+				name: 'Language',
+				desc: 'ISO code (e.g. en, ru, es). Leave empty, or write "auto", to detect it.',
+				visible: enabled,
+				control: {
+					type: 'text',
+					key: 'transcriptionLanguage',
+					placeholder: 'auto',
+					validate: (value: string): string | undefined =>
+						LANGUAGE_CODE_PATTERN.test(value.trim())
+							? undefined
+							: 'Use an ISO code such as en or ru, or "auto".',
+				},
+			},
+			{
+				name: 'Speaker diarization',
+				desc: 'Request speaker labels. Speaker count is detected automatically.',
+				visible: enabled,
+				control: {
+					type: 'toggle',
+					key: 'transcriptionDiarize',
+					// Kept visible on an engine that cannot diarize: the option
+					// exists, this engine just cannot deliver it.
+					disabled: (): boolean => !canDiarize(),
+				},
+			},
+			{
+				name: 'Word-level timestamps',
+				desc: 'Request per-word timing when the provider supports it. Recorded in JSON file output only.',
+				visible: enabled,
+				control: {
+					type: 'toggle',
+					key: 'transcriptionWordTimestamps',
+				},
+			},
+			{
+				name: 'Request timeout',
+				desc: 'Minutes before one transcription request is aborted, so a stalled request cannot hang the run.',
+				// Local whisper.cpp runs no HTTP request, so the timeout has
+				// nothing to bound there.
+				visible: (): boolean =>
+					enabled() &&
+					settings.transcriptionProvider !==
+						TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+				control: {
+					type: 'number',
+					key: 'transcriptionTimeoutMinutes',
+					min: MIN_TRANSCRIPTION_TIMEOUT_MINUTES,
+					max: MAX_TRANSCRIPTION_TIMEOUT_MINUTES,
+					step: 1,
+				},
+			},
+			{
+				name: 'Transcription engine settings',
+				visible: enabled,
+				render: (setting: Setting): void => {
+					const host = setting.settingEl;
+					host.empty();
+					host.addClass(SETTINGS_ROOT_CLASS);
+					renderRest(host);
+				},
+			},
+		],
 	};
 }
 
@@ -285,6 +432,9 @@ export function buildSettingsDefinitions(
 ): SettingDefinitionItem[] {
 	return [
 		remainderDefinition(ctx.remainder),
+		transcriptionGroup(ctx.settings, (host) => {
+			ctx.renderTranscriptionRest(host);
+		}),
 		audioProcessingGroup(),
 		audioCleanupGroup(ctx.settings),
 		diagnosticsGroup(ctx.diagnostics),

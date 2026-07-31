@@ -5,6 +5,7 @@
  * @module tests/unit/settingsDefinitions.test
  */
 
+import { Platform } from 'obsidian';
 import type { SettingDefinitionItem } from 'obsidian';
 import {
 	groupOf,
@@ -22,6 +23,7 @@ import {
 	CLEANUP_HIGHPASS_STEP_HZ,
 	MAX_CLEANUP_HIGHPASS_HZ,
 	MIN_CLEANUP_HIGHPASS_HZ,
+	TRANSCRIPTION_PROVIDER_IDS,
 } from 'src/constants';
 import {
 	SETTINGS_BLOCK_ROW_CLASS,
@@ -38,6 +40,7 @@ describe('settings definitions', () => {
 
 	let settings: AudioRecorderSettings;
 	let renderRemainder: jest.Mock;
+	let renderTranscriptionRest: jest.Mock;
 	let diagnostics: { [K in keyof DiagnosticsActions]: jest.Mock };
 
 	beforeEach(() => {
@@ -46,6 +49,9 @@ describe('settings definitions', () => {
 		// which host it was rendered into and whether it survived.
 		renderRemainder = jest.fn((host: HTMLElement) => {
 			host.createDiv({ cls: 'aar-body-marker' });
+		});
+		renderTranscriptionRest = jest.fn((host: HTMLElement) => {
+			host.createDiv({ cls: 'aar-transcription-rest' });
 		});
 		diagnostics = {
 			startTestRecording: jest.fn(),
@@ -64,6 +70,9 @@ describe('settings definitions', () => {
 			render: renderRemainder as (host: HTMLElement) => void,
 		},
 		diagnostics: diagnostics,
+		renderTranscriptionRest: renderTranscriptionRest as (
+			host: HTMLElement,
+		) => void,
 	});
 
 	const build = (aliases?: readonly string[]): SettingDefinitionItem[] =>
@@ -143,6 +152,123 @@ describe('settings definitions', () => {
 			expect(
 				frame.setting.settingEl.querySelectorAll('.aar-body-marker'),
 			).toHaveLength(1);
+		});
+	});
+
+	describe('the transcription section', () => {
+		const TRANSCRIPTION = 'Transcription';
+
+		/** Whether a row's visible predicate holds for the current settings. */
+		const isVisible = (name: string): boolean => {
+			const visible = rowOf(build(), TRANSCRIPTION, name).visible;
+			return typeof visible === 'function'
+				? visible()
+				: visible !== false;
+		};
+
+		it('keeps every option behind the section switch', () => {
+			// A predicate, not a re-render: the framework hides and shows these
+			// rows in place, and the legacy renderer does the same.
+			settings.transcriptionEnabled = false;
+
+			expect(isVisible('Enable transcription')).toBe(true);
+			expect(isVisible('Engine')).toBe(false);
+			expect(isVisible('Language')).toBe(false);
+
+			settings.transcriptionEnabled = true;
+
+			expect(isVisible('Engine')).toBe(true);
+			expect(isVisible('Language')).toBe(true);
+		});
+
+		it('offers the request timeout only to the engines it can bound', () => {
+			// Local whisper.cpp runs no HTTP request, so there is nothing for a
+			// request timeout to abort.
+			settings.transcriptionEnabled = true;
+			settings.transcriptionProvider =
+				TRANSCRIPTION_PROVIDER_IDS.WHISPER_API;
+			expect(isVisible('Request timeout')).toBe(true);
+
+			settings.transcriptionProvider =
+				TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER;
+
+			expect(isVisible('Request timeout')).toBe(false);
+		});
+
+		it('lists every engine and refuses the ones this device cannot run', () => {
+			// The list reads the same on every device; picking an engine this
+			// one cannot run is refused with the reason, rather than silently
+			// blocked or missing.
+			const control = rowOf(build(), TRANSCRIPTION, 'Engine').control;
+
+			expect(Object.keys(control?.options ?? {}).sort()).toEqual(
+				Object.values(TRANSCRIPTION_PROVIDER_IDS).sort(),
+			);
+			const validate = control?.validate as (
+				value: string,
+			) => string | undefined;
+			expect(
+				validate(TRANSCRIPTION_PROVIDER_IDS.WHISPER_API),
+			).toBeUndefined();
+
+			Platform.isMobile = true;
+
+			expect(validate(TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER)).toBe(
+				'Not available on this device.',
+			);
+			Platform.isMobile = false;
+		});
+
+		it('rejects a language that is not an ISO code', () => {
+			const validate = rowOf(build(), TRANSCRIPTION, 'Language').control
+				?.validate as (value: string) => string | undefined;
+
+			expect(validate('en')).toBeUndefined();
+			expect(validate('pt-BR')).toBeUndefined();
+			expect(validate('auto')).toBeUndefined();
+			// Empty means "detect", which is what the placeholder says.
+			expect(validate('  ')).toBeUndefined();
+			expect(validate('English please')).toBe(
+				'Use an ISO code such as en or ru, or "auto".',
+			);
+		});
+
+		it('keeps diarization visible but disabled on an engine without it', () => {
+			settings.transcriptionEnabled = true;
+			settings.transcriptionProvider =
+				TRANSCRIPTION_PROVIDER_IDS.WHISPER_API;
+			const disabled = rowOf(
+				build(),
+				TRANSCRIPTION,
+				'Speaker diarization',
+			).control?.disabled;
+
+			expect(isVisible('Speaker diarization')).toBe(true);
+			expect(typeof disabled === 'function' && disabled()).toBe(true);
+
+			settings.transcriptionProvider =
+				TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM;
+
+			expect(typeof disabled === 'function' && disabled()).toBe(false);
+		});
+
+		it('hosts the engine fields that are not definitions yet', () => {
+			settings.transcriptionEnabled = true;
+			const definition = rowOf(
+				build(),
+				TRANSCRIPTION,
+				'Transcription engine settings',
+			);
+			const { setting } = renderThroughFramework(
+				definition as RenderDefinition,
+			);
+
+			expect(renderTranscriptionRest).toHaveBeenCalledWith(
+				setting.settingEl,
+			);
+			expect(
+				setting.settingEl.querySelector('.aar-transcription-rest'),
+			).not.toBeNull();
 		});
 	});
 

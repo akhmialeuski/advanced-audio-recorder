@@ -179,10 +179,11 @@ describe('AudioRecorderSettingTab', () => {
 				expect.arrayContaining([
 					'Recording format',
 					'Enable multi-track recording',
-					'Enable transcription',
+					'Save folder',
 				]),
 			);
 			expect(groupOf(defs, 'Diagnostics').items).not.toHaveLength(0);
+			expect(groupOf(defs, 'Transcription').items).not.toHaveLength(0);
 		});
 
 		it('renders the settings body inside the row the framework keeps', () => {
@@ -276,6 +277,7 @@ describe('AudioRecorderSettingTab', () => {
 
 			expect(remainder.aliases).not.toContain('Debug mode');
 			expect(remainder.aliases).not.toContain('Diagnostics');
+			expect(remainder.aliases).not.toContain('Enable transcription');
 		});
 
 		it('re-renders through the framework when a toggle adds settings', async () => {

@@ -72,7 +72,7 @@ import {
 } from '../constants';
 import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
 import { SystemInfoModal } from '../diagnostics/SystemInfoModal';
-import { renderTranscriptionSection } from './sections/transcriptionSettingsSection';
+import { renderTranscriptionRemainder } from './sections/transcriptionSettingsSection';
 import { CONVERSION_LINK_ACTION_OPTIONS } from './labels';
 import {
 	addDropdown,
@@ -156,17 +156,8 @@ const SETTINGS_SEARCH_ALIASES: string[] = [
 	'Enhanced audio player',
 	'Show waveform',
 	'Markers and chapters',
-	'Transcription',
-	'Enable transcription',
-	'Transcribe after recording',
-	'Engine',
-	'Language',
-	'Speaker diarization',
-	'Word-level timestamps',
 	'Dictionary profiles',
 	'Rename speakers',
-	'Show cost estimates',
-	'Request timeout',
 	'Upload chunk size',
 	'Whisper API key',
 	'Whisper model',
@@ -295,6 +286,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				render: (host): void => {
 					this.renderSettingsInto(host);
 				},
+			},
+			renderTranscriptionRest: (host): void => {
+				this.renderScopedSection(host, renderTranscriptionRemainder);
 			},
 			diagnostics: {
 				startTestRecording: (rowEl): void => {
@@ -859,11 +853,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 
 		// Audio player
 		this.renderAudioPlayerSettings(containerEl);
-
-		// Transcription: its many reveal/hide toggles (engine, advanced mode,
-		// chapters, LLM task) and its model-list add/remove buttons affect
-		// nothing outside the section.
-		this.renderScopedSection(containerEl, renderTranscriptionSection);
 
 		// Audio processing & feedback, the cleanup defaults, and Diagnostics
 		// follow here, from the definition tree.

@@ -1,5 +1,5 @@
 /**
- * Regression tests for the wiring in renderTranscriptionSection: the three
+ * Regression tests for the wiring in renderTranscriptionRemainder: the three
  * speaker-related output controls (Include speakers, Merge speaker turns,
  * Speaker format) must be disabled exactly when diarization is not in effect
  * - the engine cannot diarize, or a capable engine has the toggle off. The
@@ -9,7 +9,7 @@
  * @module tests/unit/transcriptionSettingsSection.test
  */
 
-import { renderTranscriptionSection } from 'src/settings/sections/transcriptionSettingsSection';
+import { renderTranscriptionRemainder } from 'src/settings/sections/transcriptionSettingsSection';
 import type {
 	AudioRecorderSettings,
 	TranscriptionProviderId,
@@ -21,7 +21,6 @@ import {
 	capturedSettings,
 	changeSetting,
 	isSettingDisabled,
-	settingRow,
 } from '../helpers/captureSettings';
 
 jest.mock('obsidian', () => ({
@@ -45,7 +44,7 @@ function makeCtx(settings: AudioRecorderSettings): SettingsSectionContext {
 /** Renders the section for an engine/diarization combo. */
 function renderFor(provider: TranscriptionProviderId, diarize: boolean): void {
 	capturedSettings.length = 0;
-	renderTranscriptionSection(
+	renderTranscriptionRemainder(
 		makeCtx(
 			mergeSettings({
 				transcriptionEnabled: true,
@@ -66,14 +65,12 @@ const SPEAKER_ROWS = [
 	'Speaker format',
 ];
 
-describe('renderTranscriptionSection speaker control gating', () => {
+describe('renderTranscriptionRemainder speaker control gating', () => {
 	it('disables the speaker controls for an engine that cannot diarize', () => {
 		renderFor(TRANSCRIPTION_PROVIDER_IDS.WHISPER_API, true);
 		for (const name of SPEAKER_ROWS) {
 			expect(isSettingDisabled(name)).toBe(true);
 		}
-		// The diarization toggle itself is disabled for such an engine.
-		expect(isSettingDisabled('Speaker diarization')).toBe(true);
 	});
 
 	it('disables the speaker controls when a capable engine has diarization off', () => {
@@ -88,7 +85,6 @@ describe('renderTranscriptionSection speaker control gating', () => {
 		for (const name of SPEAKER_ROWS) {
 			expect(isSettingDisabled(name)).toBe(false);
 		}
-		expect(isSettingDisabled('Speaker diarization')).toBe(false);
 	});
 });
 
@@ -99,7 +95,7 @@ function renderWithProfiles(
 	selectedId: string,
 ): void {
 	capturedSettings.length = 0;
-	renderTranscriptionSection(
+	renderTranscriptionRemainder(
 		makeCtx(
 			mergeSettings({
 				transcriptionEnabled: true,
@@ -112,7 +108,7 @@ function renderWithProfiles(
 	);
 }
 
-describe('renderTranscriptionSection dictionary profiles', () => {
+describe('renderTranscriptionRemainder dictionary profiles', () => {
 	it('renders the profiles heading and selector for every engine', () => {
 		for (const provider of Object.values(TRANSCRIPTION_PROVIDER_IDS)) {
 			renderFor(provider, false);
@@ -155,7 +151,7 @@ describe('renderTranscriptionSection dictionary profiles', () => {
 /** Renders the section with the advanced master on and two-pass on or off. */
 function renderAdvanced(twoPass: boolean): void {
 	capturedSettings.length = 0;
-	renderTranscriptionSection(
+	renderTranscriptionRemainder(
 		makeCtx(
 			mergeSettings({
 				transcriptionEnabled: true,
@@ -169,12 +165,12 @@ function renderAdvanced(twoPass: boolean): void {
 /** Renders the section with the advanced master switch off (a plain run). */
 function renderPlain(): void {
 	capturedSettings.length = 0;
-	renderTranscriptionSection(
+	renderTranscriptionRemainder(
 		makeCtx(mergeSettings({ transcriptionEnabled: true })),
 	);
 }
 
-describe('renderTranscriptionSection advanced master switch', () => {
+describe('renderTranscriptionRemainder advanced master switch', () => {
 	const MASTER = 'Advanced settings';
 	const TWO_PASS = 'Advanced two-pass transcription (experimental)';
 
@@ -203,7 +199,7 @@ describe('renderTranscriptionSection advanced master switch', () => {
 	});
 });
 
-describe('renderTranscriptionSection advanced two-pass mode', () => {
+describe('renderTranscriptionRemainder advanced two-pass mode', () => {
 	const TOGGLE = 'Advanced two-pass transcription (experimental)';
 
 	it('renders the two-pass toggle off by default with an explicit cost warning', () => {
@@ -241,7 +237,7 @@ describe('renderTranscriptionSection advanced two-pass mode', () => {
 
 	it('shows the LLM provider fields when only the advanced mode needs them', () => {
 		capturedSettings.length = 0;
-		renderTranscriptionSection(
+		renderTranscriptionRemainder(
 			makeCtx(
 				mergeSettings({
 					transcriptionEnabled: true,
@@ -259,7 +255,7 @@ describe('renderTranscriptionSection advanced two-pass mode', () => {
 	});
 });
 
-describe('renderTranscriptionSection platform gating', () => {
+describe('renderTranscriptionRemainder platform gating', () => {
 	const { Platform } = jest.requireMock<{
 		Platform: { isMobile: boolean; isMobileApp: boolean };
 	}>('obsidian');
@@ -267,36 +263,6 @@ describe('renderTranscriptionSection platform gating', () => {
 	afterEach(() => {
 		Platform.isMobile = false;
 		Platform.isMobileApp = false;
-	});
-
-	/** The rendered engine dropdown's option list. */
-	function engineOptions(): { value: string; disabled: boolean }[] {
-		const row = capturedSettings.find(
-			(setting) => setting.name === 'Engine',
-		);
-		expect(row).toBeDefined();
-		return row?.dropdownOptions ?? [];
-	}
-
-	it('offers every engine on desktop', () => {
-		renderFor(TRANSCRIPTION_PROVIDER_IDS.WHISPER_API, false);
-		for (const option of engineOptions()) {
-			expect(option.disabled).toBe(false);
-		}
-	});
-
-	it('blocks the local whisper.cpp engine option on mobile', () => {
-		Platform.isMobile = true;
-		renderFor(TRANSCRIPTION_PROVIDER_IDS.WHISPER_API, false);
-		const options = new Map(
-			engineOptions().map((option) => [option.value, option.disabled]),
-		);
-		expect(options.get(TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER)).toBe(
-			true,
-		);
-		expect(options.get(TRANSCRIPTION_PROVIDER_IDS.WHISPER_API)).toBe(false);
-		expect(options.get(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM)).toBe(false);
-		expect(options.get(TRANSCRIPTION_PROVIDER_IDS.GEMINI)).toBe(false);
 	});
 
 	it('blocks the local whisper.cpp path fields on mobile when selected', () => {
@@ -328,7 +294,7 @@ function renderWith(overrides: Partial<AudioRecorderSettings>): {
 		...overrides,
 	});
 	const ctx = makeCtx(settings);
-	renderTranscriptionSection(ctx);
+	renderTranscriptionRemainder(ctx);
 	return { settings, ctx };
 }
 
@@ -337,14 +303,13 @@ function renderedRows(): string[] {
 	return capturedSettings.map((row) => row.name);
 }
 
-describe('renderTranscriptionSection reveals', () => {
-	it('shows only the master toggle while transcription is off', () => {
+describe('renderTranscriptionRemainder reveals', () => {
+	it('renders nothing while transcription is off', () => {
+		// The section's own switch is a definition; everything this renders
+		// hangs off it, so an off switch leaves no rows behind.
 		renderWith({ transcriptionEnabled: false });
 
-		expect(renderedRows()).toEqual([
-			'Transcription',
-			'Enable transcription',
-		]);
+		expect(renderedRows()).toEqual([]);
 	});
 
 	it('keeps the advanced sub-sections hidden behind their master switch', () => {
@@ -384,20 +349,6 @@ describe('renderTranscriptionSection reveals', () => {
 		expect(rows).toContain('Chapter guidance profiles');
 	});
 
-	it('offers the request timeout for cloud engines but not the local one', () => {
-		renderWith({
-			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-		});
-		expect(renderedRows()).toContain('Request timeout');
-
-		renderWith({
-			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
-		});
-		// whisper.cpp runs no HTTP request, so a timeout row would be a setting
-		// that quietly does nothing.
-		expect(renderedRows()).not.toContain('Request timeout');
-	});
-
 	it('offers the sidecar format only when a file is actually written', () => {
 		renderWith({ transcriptDestination: 'note' });
 		expect(renderedRows()).not.toContain('File format');
@@ -409,24 +360,7 @@ describe('renderTranscriptionSection reveals', () => {
 	});
 });
 
-describe('renderTranscriptionSection edits', () => {
-	it('normalizes a blank language back to auto-detect', () => {
-		const { settings } = renderWith({ transcriptionLanguage: 'ru' });
-
-		changeSetting('Language', 'text', '   ');
-
-		// An empty language field means "detect", not "send an empty hint".
-		expect(settings.transcriptionLanguage).toBe('auto');
-	});
-
-	it('trims a typed language code', () => {
-		const { settings } = renderWith({});
-
-		changeSetting('Language', 'text', '  es ');
-
-		expect(settings.transcriptionLanguage).toBe('es');
-	});
-
+describe('renderTranscriptionRemainder edits', () => {
 	it.each([
 		['Timestamp format', 'transcriptTimestampFormat', '{time}'],
 		['Speaker format', 'transcriptSpeakerFormat', '**{speaker}**'],
@@ -445,32 +379,4 @@ describe('renderTranscriptionSection edits', () => {
 			expect(settings[property]).toBe(fallback);
 		},
 	);
-
-	it('records the picked engine and redraws for its own fields', async () => {
-		const { settings, ctx } = renderWith({
-			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
-		});
-
-		await changeSetting(
-			'Engine',
-			'dropdown',
-			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-		);
-
-		expect(settings.transcriptionProvider).toBe(
-			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-		);
-		expect(ctx.rerender).toHaveBeenCalled();
-	});
-
-	it('blocks the engines this platform cannot run without hiding them', () => {
-		renderWith({});
-
-		const options = settingRow('Engine').dropdownOptions ?? [];
-		// Every engine stays listed so the dropdown reads the same on every
-		// device; the unavailable ones are blocked instead of missing.
-		expect(options.map((option) => option.value).sort()).toEqual(
-			Object.values(TRANSCRIPTION_PROVIDER_IDS).sort(),
-		);
-	});
 });
