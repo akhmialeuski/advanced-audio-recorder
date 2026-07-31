@@ -877,6 +877,26 @@ input.aar-input-invalid {
     margin-inline-end: 0;
 }
 
+/* A row whose render callback puts block content under its control - the test
+   recording's status line and playback element - rather than beside it. The row
+   is a flex line, so the block only starts on its own line once the row wraps
+   and the block claims the full width. */
+.setting-item.aar-setting-block-row {
+    flex-wrap: wrap;
+}
+
+.setting-item.aar-setting-block-row>.aar-test-status,
+.setting-item.aar-setting-block-row>.aar-test-audio {
+    flex-basis: 100%;
+    margin-inline: 0;
+}
+
+/* An action row runs its action when clicked anywhere. Obsidian styles its own
+   from 1.13 on; this is the same affordance on the versions below it. */
+.setting-item.aar-action-row {
+    cursor: var(--cursor, pointer);
+}
+
 /* The body's few blocks that are not setting rows have to line up with the rows
    around them: a row carries Obsidian's own horizontal inset, a plain element
    does not. The 0 fallback leaves pre-1.13 rendering, where the body is not

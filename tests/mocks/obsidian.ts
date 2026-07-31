@@ -528,6 +528,7 @@ export class Setting {
 	/** Components created by the add* methods, in creation order. */
 	components: Array<
 		| TextComponent
+		| TextAreaComponent
 		| ToggleComponent
 		| DropdownComponent
 		| SliderComponent
@@ -537,6 +538,7 @@ export class Setting {
 	private addComponent<
 		T extends
 			| TextComponent
+			| TextAreaComponent
 			| ToggleComponent
 			| DropdownComponent
 			| SliderComponent
@@ -560,6 +562,10 @@ export class Setting {
 
 	addText(callback: (text: TextComponent) => void): this {
 		return this.addComponent(new TextComponent(), callback);
+	}
+
+	addTextArea(callback: (text: TextAreaComponent) => void): this {
+		return this.addComponent(new TextAreaComponent(), callback);
 	}
 
 	addToggle(callback: (toggle: ToggleComponent) => void): this {
@@ -740,6 +746,64 @@ export class TextComponent {
 
 	/** Change handler, stored as Obsidian does for test triggering. */
 	changeCallback: ((value: string) => void) | null = null;
+
+	constructor() {
+		// Mirrors Obsidian: typing in the field fires the change handler, so a
+		// DOM-driven test reaches the same code path a user does.
+		this.inputEl.addEventListener('input', () => {
+			if (this.disabled) {
+				return;
+			}
+			this.value = this.inputEl.value;
+			this.changeCallback?.(this.inputEl.value);
+		});
+	}
+
+	setPlaceholder(placeholder: string): this {
+		this.inputEl.placeholder = placeholder;
+		return this;
+	}
+
+	setValue(value: string): this {
+		this.value = value;
+		this.inputEl.value = value;
+		return this;
+	}
+
+	setDisabled(disabled: boolean): this {
+		this.disabled = disabled;
+		return this;
+	}
+
+	onChange(callback: (value: string) => void): this {
+		this.changeCallback = callback;
+		return this;
+	}
+}
+
+/**
+ * Mock TextAreaComponent: the same contract as {@link TextComponent} over a
+ * textarea element, which is what Obsidian's own component is.
+ */
+export class TextAreaComponent {
+	inputEl: HTMLTextAreaElement = addObsidianDomExtensions(
+		document.createElement('textarea'),
+	);
+	value = '';
+	disabled = false;
+
+	/** Change handler, stored as Obsidian does for test triggering. */
+	changeCallback: ((value: string) => void) | null = null;
+
+	constructor() {
+		this.inputEl.addEventListener('input', () => {
+			if (this.disabled) {
+				return;
+			}
+			this.value = this.inputEl.value;
+			this.changeCallback?.(this.inputEl.value);
+		});
+	}
 
 	setPlaceholder(placeholder: string): this {
 		this.inputEl.placeholder = placeholder;

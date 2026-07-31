@@ -29,6 +29,11 @@ import {
 	createSettingsRenderMode,
 	type SettingsRenderMode,
 } from './settingsRenderMode';
+import {
+	buildSettingsDefinitions,
+	collectDebouncedControlKeys,
+} from './settingsDefinitions';
+import { LegacySettingsRenderer } from './legacySettingsRenderer';
 import type {
 	AudioRecorderSettings,
 	OutputMode,
@@ -190,10 +195,6 @@ const SETTINGS_SEARCH_ALIASES: string[] = [
 	'High-pass filter',
 	'Noise gate',
 	'Loudness leveling',
-	'Diagnostics',
-	'Test recording',
-	'System info',
-	'Debug mode',
 ];
 
 /**
@@ -253,6 +254,20 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	private readonly renderMode: SettingsRenderMode;
 
 	/**
+	 * Renders the definition tree on the Obsidian that has no declarative
+	 * settings API. Holds the rendered rows, so it can re-evaluate their
+	 * predicates and run their cleanups the way the framework does.
+	 */
+	private readonly legacyRenderer = new LegacySettingsRenderer(this);
+
+	/**
+	 * Keys whose control is a text field, collected from the definition tree on
+	 * every build. Their writes are debounced: a text control fires a change per
+	 * keystroke, and each one would otherwise rewrite data.json.
+	 */
+	private debouncedControlKeys: ReadonlySet<string> = new Set();
+
+	/**
 	 * Creates a new AudioRecorderSettingTab.
 	 * @param app - The Obsidian App instance
 	 * @param plugin - The plugin instance
@@ -270,27 +285,97 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			// eslint-disable-next-line obsidianmd/no-unsupported-api -- probing for the 1.13 API is how the pre-1.13 fallback is chosen; the call below is guarded by this result
 			typeof (this as Partial<SettingTab>).update === 'function';
 		this.renderMode = createSettingsRenderMode({
-			// The definition is the whole tab, so it is named after the plugin.
-			// Read from the manifest Obsidian already names the tab from, so a
-			// rename cannot leave the settings search index behind.
-			name: plugin.manifest.name,
-			aliases: SETTINGS_SEARCH_ALIASES,
 			frameworkUpdate: hasFrameworkUpdate
 				? (): void => {
 						// eslint-disable-next-line obsidianmd/no-unsupported-api -- reached only when the probe above found update(), i.e. on Obsidian 1.13+
 						this.update();
 					}
 				: undefined,
-			renderFull: (): void => {
-				this.renderFull();
-			},
-			renderBody: (host): void => {
-				this.renderSettingsInto(host);
-			},
-			releaseBody: (): void => {
-				this.cleanupTestRecording();
+			buildDefinitions: (): SettingDefinitionItem[] =>
+				this.buildDefinitions(),
+			renderLegacy: (): void => {
+				this.renderLegacy();
 			},
 		});
+	}
+
+	/**
+	 * Builds the tab's definition tree and notes which of its controls are text
+	 * fields, so their writes can be debounced.
+	 * @returns The definitions, in render order
+	 */
+	private buildDefinitions(): SettingDefinitionItem[] {
+		const definitions = buildSettingsDefinitions({
+			remainder: {
+				// The remainder is the whole tab until the migration finishes,
+				// so it is named after the plugin. Read from the manifest
+				// Obsidian already names the tab from, so a rename cannot leave
+				// the settings search index behind.
+				name: this.plugin.manifest.name,
+				aliases: SETTINGS_SEARCH_ALIASES,
+				render: (host): void => {
+					this.renderSettingsInto(host);
+				},
+			},
+			diagnostics: {
+				startTestRecording: (rowEl): void => {
+					void this.runTestRecording(rowEl);
+				},
+				releaseTestRecording: (): void => {
+					this.cleanupTestRecording();
+				},
+				showSystemInfo: (): void => {
+					void SystemDiagnostics.collect(
+						this.plugin.settings,
+						this.app,
+					).then((data) => {
+						new SystemInfoModal(this.app, data).open();
+					});
+				},
+			},
+		});
+		this.debouncedControlKeys = collectDebouncedControlKeys(definitions);
+		return definitions;
+	}
+
+	/**
+	 * Reads a control's value. Obsidian calls this on every render of a control
+	 * definition on 1.13+, and the legacy renderer calls it for the same reason.
+	 * @param key - The settings key the control is bound to
+	 * @returns The stored value
+	 */
+	override getControlValue(key: string): unknown {
+		return (this.plugin.settings as unknown as Record<string, unknown>)[
+			key
+		];
+	}
+
+	/**
+	 * Persists a control's value.
+	 *
+	 * The inherited implementation writes `plugin.settings[key]` and then calls
+	 * `plugin.saveData(settings)`, which is wrong for this plugin three times
+	 * over: the settings hold a Map that JSON would flatten to `{}`, the device
+	 * fields have to be written back into their per-platform branch, and the
+	 * recording manager and the player registrar have to be told that settings
+	 * changed. `saveSettings()` is what does all three, so every write goes
+	 * through it.
+	 * @param key - The settings key the control is bound to
+	 * @param value - The value the control produced
+	 */
+	override setControlValue(
+		key: string,
+		value: unknown,
+	): void | Promise<void> {
+		(this.plugin.settings as unknown as Record<string, unknown>)[key] =
+			value;
+		if (this.debouncedControlKeys.has(key)) {
+			// A text field changes on every keystroke. The value is live in
+			// memory either way; only the write to disk waits.
+			this.saveTextSettingDebounced();
+			return;
+		}
+		return this.plugin.saveSettings();
 	}
 
 	private getCompressionDescription(format: string): string {
@@ -328,26 +413,32 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * Renders the settings UI imperatively into the tab's own container. This
-	 * is Obsidian's render call before 1.13; from 1.13 on the framework renders
-	 * the tab from getSettingDefinitions() and never calls this.
+	 * Renders the tab into its own container. This is Obsidian's render call
+	 * before 1.13; from 1.13 on the framework renders the tab from
+	 * getSettingDefinitions() and never calls this.
 	 */
 	override display(): void {
-		this.renderFull();
+		this.renderLegacy();
 	}
 
 	/**
-	 * Declarative settings entry (Obsidian 1.13+). This tab is highly dynamic
-	 * (live device enumeration, async format probing, per-track rows) and does
-	 * not fit the declarative control model, so it renders imperatively through
-	 * a single render definition, whose row hosts the body. The setting names
-	 * travel as `aliases` so the settings search still surfaces the tab by an
-	 * individual setting's name. On older Obsidian the render mode returns no
-	 * definitions and display() renders instead; both paths funnel through
-	 * renderSettingsInto().
+	 * Declarative settings entry (Obsidian 1.13+): the tab's definition tree,
+	 * which the framework renders, indexes for the settings search, and reads
+	 * and writes values through. On older Obsidian the render mode returns no
+	 * definitions, which is what makes that Obsidian call display() instead;
+	 * both paths render the same tree.
 	 */
 	override getSettingDefinitions(): SettingDefinitionItem[] {
 		return this.renderMode.getDefinitions();
+	}
+
+	/**
+	 * Renders the definition tree with the pre-1.13 API. The render call on
+	 * older Obsidian, for the first render and for every re-render, since there
+	 * is no framework update() to hand the work back to.
+	 */
+	private renderLegacy(): void {
+		this.legacyRenderer.render(this.containerEl, this.buildDefinitions());
 	}
 
 	/**
@@ -360,19 +451,8 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * Clears the tab's own container and rebuilds the settings body into it.
-	 * The render call on Obsidian before 1.13, for the first render and for
-	 * every re-render, since there is no framework update() to ask.
-	 */
-	private renderFull(): void {
-		this.containerEl.empty();
-		this.renderSettingsInto(this.containerEl);
-	}
-
-	/**
-	 * Builds the full settings body into the given host element. Shared by the
-	 * imperative display() path and the declarative render definition; the
-	 * render mode owns clearing the host it hands over.
+	 * Builds the sections not migrated into the definition tree yet, into the
+	 * host their render definition owns. Shrinks with every migrated section.
 	 * @param containerEl - Host element the settings are rendered into
 	 */
 	private renderSettingsInto(containerEl: HTMLElement): void {
@@ -809,43 +889,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		// Audio processing & feedback
 		this.renderInputProcessingSettings(containerEl);
 
-		// Diagnostics
-		new Setting(containerEl).setName('Diagnostics').setHeading();
-
-		const testContainer = containerEl.createDiv();
-		new Setting(testContainer)
-			.setName('Test recording')
-			.setDesc(
-				'Records a 5-second test clip using your current settings and plays it back. Nothing is saved to your vault.',
-			)
-			.addButton((button) =>
-				button.setButtonText('Start test').onClick(() => {
-					void this.runTestRecording(testContainer);
-				}),
-			);
-
-		new Setting(containerEl)
-			.setName('System info')
-			.setDesc(
-				'Show full system diagnostics including plugin settings, audio devices, and browser capabilities.',
-			)
-			.addButton((button) =>
-				button.setButtonText('Show info').onClick(() => {
-					void SystemDiagnostics.collect(
-						this.plugin.settings,
-						this.app,
-					).then((data) => {
-						new SystemInfoModal(this.app, data).open();
-					});
-				}),
-			);
-
-		addToggle(this.sectionContext(containerEl), {
-			name: 'Debug mode',
-			desc: 'Enable verbose logs for troubleshooting recording issues.',
-			get: () => this.plugin.settings.debug,
-			set: (v) => (this.plugin.settings.debug = v),
-		});
+		// Diagnostics follows here, from the definition tree.
 
 		// Populate every device dropdown and capability lookup from one
 		// coherent enumeration after all bindings have been registered.
@@ -1488,6 +1532,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		this.deviceDropdowns = [];
 		this.channelDropdownUpdaters = [];
 		this.saveTextSettingDebounced.run();
+		// On the legacy path the renderer holds the rows and their cleanups;
+		// releasing it is what runs them when the tab is left. On 1.13 the
+		// framework runs them itself and this renderer holds nothing.
+		this.legacyRenderer.release();
 		this.cleanupTestRecording();
 		if (this.deviceChangeHandler) {
 			navigator.mediaDevices.removeEventListener(

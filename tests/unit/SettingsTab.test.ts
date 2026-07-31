@@ -11,6 +11,7 @@ import {
 	renderThroughFramework,
 	withoutFrameworkUpdate,
 	type DeclarativeFrame,
+	type RenderDefinition,
 } from '../helpers/declarativeSettings';
 import { AudioRecorderSettingTab } from 'src/settings/SettingsTab';
 import {
@@ -69,6 +70,20 @@ const settingRowIn = (host: HTMLElement, name: string): HTMLElement => {
 		throw new Error(`Setting row not rendered: ${name}`);
 	}
 	return row as HTMLElement;
+};
+
+/**
+ * The diagnostics row that owns the test capture, which is the definition
+ * holding the cleanup the framework runs before it replaces that row.
+ * @param tab - The tab to read the definition from
+ */
+const testRecordingDefinitionOf = (
+	tab: AudioRecorderSettingTab,
+): RenderDefinition => {
+	const diagnostics = at(tab.getSettingDefinitions(), 1) as unknown as {
+		items: RenderDefinition[];
+	};
+	return at(diagnostics.items, 0, 'diagnostics row');
 };
 
 /**
@@ -149,20 +164,25 @@ describe('AudioRecorderSettingTab', () => {
 				existing,
 			);
 
-		it('returns one render definition carrying the setting names as search aliases', () => {
+		it('declares the migrated sections, plus one row for the rest', () => {
 			const defs = tab.getSettingDefinitions();
 
-			expect(defs).toHaveLength(1);
-			const def = renderDefinitionOf(defs);
-			expect(def.name).toBe(PLUGIN_MANIFEST_NAME);
-			expect(def.aliases).toEqual(
+			// Sections migrate from the bottom of the tab upwards, so what is
+			// still rendered by hand stays one contiguous block at the top and
+			// the row order the user knows never changes.
+			const remainder = renderDefinitionOf(defs);
+			expect(remainder.name).toBe(PLUGIN_MANIFEST_NAME);
+			expect(remainder.aliases).toEqual(
 				expect.arrayContaining([
 					'Recording format',
 					'Enable multi-track recording',
 					'Enable transcription',
 				]),
 			);
-			expect(typeof def.render).toBe('function');
+			expect(at(defs, 1)).toMatchObject({
+				type: 'group',
+				heading: 'Diagnostics',
+			});
 		});
 
 		it('renders the settings body inside the row the framework keeps', () => {
@@ -216,26 +236,46 @@ describe('AudioRecorderSettingTab', () => {
 			).toHaveLength(1);
 		});
 
-		it('carries every default-visible setting and heading name as a search alias', () => {
-			// The tab renders imperatively, so the alias list is maintained by
-			// hand. Guard against it drifting from the real names: every name
-			// rendered with the default settings must be a search alias, or the
-			// setting becomes unfindable in Obsidian's settings search.
-			const aliases = new Set(
-				(tab.getSettingDefinitions()[0] as { aliases: string[] })
-					.aliases,
-			);
-			tab.display();
+		it('carries every name still rendered by hand as a search alias', () => {
+			// The settings inside the remainder are not definitions yet, so the
+			// search cannot index them individually; their names travel as
+			// aliases, and that hand-kept list drifts when a rename forgets it.
+			const remainder = renderDefinitionOf(tab.getSettingDefinitions());
+			const aliases = new Set(remainder.aliases);
+			const frame = renderThroughFramework(remainder);
 
-			const rendered = Array.from(
-				tab.containerEl.querySelectorAll('.setting-item-name'),
-			)
-				.map((el) => el.textContent?.trim() ?? '')
-				.filter((name) => name.length > 0);
+			const rendered = renderedNames(frame.setting.settingEl);
 
 			expect(rendered.length).toBeGreaterThan(0);
 			const missing = rendered.filter((name) => !aliases.has(name));
 			expect(missing).toEqual([]);
+		});
+
+		it('reads a control value straight from the live settings', () => {
+			mockSettings.debug = true;
+
+			expect(tab.getControlValue('debug')).toBe(true);
+		});
+
+		it('persists a control value through the plugin, not through saveData', async () => {
+			// The inherited implementation writes plugin.settings[key] and then
+			// calls saveData(settings). That would flatten the trackAudioSources
+			// Map to {}, skip the per-platform write-back, and leave the
+			// recording manager and the player registrar on stale settings.
+			await tab.setControlValue('debug', true);
+
+			expect(mockSettings.debug).toBe(true);
+			expect(saveSettingsMock).toHaveBeenCalledTimes(1);
+		});
+
+		it('drops the aliases of the sections that became definitions', () => {
+			// A migrated setting is indexed by its own definition. Leaving it in
+			// the alias list would list the tab twice for one query, and one of
+			// the two would scroll to the wrong row.
+			const remainder = renderDefinitionOf(tab.getSettingDefinitions());
+
+			expect(remainder.aliases).not.toContain('Debug mode');
+			expect(remainder.aliases).not.toContain('Diagnostics');
 		});
 
 		it('re-renders through the framework when a toggle adds settings', async () => {
@@ -295,18 +335,24 @@ describe('AudioRecorderSettingTab', () => {
 			).not.toBeNull();
 		});
 
-		it('leaves the declarative row class off the imperative host', () => {
+		it('renders the migrated sections from the same definitions', () => {
 			legacyTab.display();
 
-			// That class exists to strip a framework row's own layout. Nothing
-			// here is a framework row, so nothing may carry it - the stylesheet
-			// rules stay inert on this Obsidian.
-			expect(
-				legacyTab.containerEl.classList.contains('aar-settings-root'),
-			).toBe(false);
-			expect(
-				legacyTab.containerEl.querySelector('.aar-settings-root'),
-			).toBeNull();
+			// One tree, two renderers: a section migrated for 1.13 reaches this
+			// Obsidian too, instead of being kept as a second implementation.
+			const names = renderedNames(legacyTab.containerEl);
+			expect(names).toContain('Diagnostics');
+			expect(names).toContain('Test recording');
+			expect(names).toContain('System info');
+			expect(names).toContain('Debug mode');
+		});
+
+		it('hosts the sections still rendered by hand in a row of their own', () => {
+			legacyTab.display();
+
+			const host =
+				legacyTab.containerEl.querySelector('.aar-settings-root');
+			expect(host?.querySelector('.aar-doc-callout-link')).not.toBeNull();
 		});
 
 		it('rebuilds the container itself when a toggle adds settings', async () => {
@@ -618,8 +664,8 @@ describe('AudioRecorderSettingTab', () => {
 			expect(audio?.getAttribute('src')).toBe('blob:test-url');
 		});
 
-		it('releases the finished playback when update() re-renders the body', async () => {
-			const definition = renderDefinitionOf(tab.getSettingDefinitions());
+		it('releases the finished playback when update() re-renders the row', async () => {
+			const definition = testRecordingDefinitionOf(tab);
 			const frame = renderThroughFramework(definition);
 			await recordUntilPlayback(tab, frame.setting.settingEl);
 			expect(
