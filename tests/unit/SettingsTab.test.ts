@@ -4,8 +4,14 @@
  * @module tests/unit/SettingsTab.test
  */
 
-import { App, Platform, PluginSettingTab, Setting } from 'obsidian';
+import { App, Platform } from 'obsidian';
 import { at } from '../helpers/assertions';
+import {
+	renderDefinitionOf,
+	renderThroughFramework,
+	withoutFrameworkUpdate,
+	type DeclarativeFrame,
+} from '../helpers/declarativeSettings';
 import { AudioRecorderSettingTab } from 'src/settings/SettingsTab';
 import {
 	DEFAULT_SETTINGS,
@@ -30,6 +36,12 @@ jest.mock('src/audio/AudioEncoder', () => ({
 jest.mock('src/diagnostics/SystemDiagnostics', () => ({
 	SystemDiagnostics: { collect: jest.fn() },
 }));
+
+/**
+ * Plugin name as the manifest carries it. The tab names its declarative
+ * definition from there rather than from a copy of its own.
+ */
+const PLUGIN_MANIFEST_NAME = 'Advanced Audio Recorder';
 
 /** Lets pending promise callbacks (a save, then a re-render) run. */
 const flushAsync = (): Promise<void> =>
@@ -114,65 +126,35 @@ describe('AudioRecorderSettingTab', () => {
 		mockPlugin = {
 			settings: mockSettings,
 			saveSettings: saveSettingsMock,
+			manifest: {
+				id: 'advanced-audio-recorder',
+				name: PLUGIN_MANIFEST_NAME,
+			},
 		} as unknown as AudioRecorderPluginInterface;
 		tab = new AudioRecorderSettingTab(new App(), mockPlugin);
 	});
 
 	describe('getSettingDefinitions (declarative settings, Obsidian 1.13+)', () => {
-		interface DeclarativeFrame {
-			containerEl: HTMLElement;
-			groupEl: HTMLElement;
-			listEl: HTMLElement;
-			setting: Setting;
-		}
-
 		/**
-		 * Runs the tab's render definition the way Obsidian 1.13 runs it: the
-		 * framework creates the row inside the group's list element, writes the
-		 * definition's name and description into it, calls render(), and then
-		 * resets the list to exactly the rows it tracks and the tab container to
-		 * the group elements. That last pass is the one that matters: it drops
-		 * whatever the callback rendered outside its own row, and puts back a
-		 * row the callback removed.
-		 * @param existing - Frame from an earlier render, to model update()
-		 * re-rendering the row it already built
+		 * Runs the tab's definition through the framework harness, either into
+		 * a fresh row or into the row an earlier render already built, which is
+		 * what update() does.
+		 * @param existing - Frame from an earlier render
 		 */
 		const renderDeclaratively = (
 			existing?: DeclarativeFrame,
-		): DeclarativeFrame => {
-			let frame = existing;
-			if (!frame) {
-				const containerEl = createDiv();
-				const groupEl = containerEl.createDiv({ cls: 'setting-group' });
-				const listEl = groupEl.createDiv({ cls: 'setting-items' });
-				frame = {
-					containerEl,
-					groupEl,
-					listEl,
-					setting: new Setting(listEl),
-				};
-			}
-			const def = at(tab.getSettingDefinitions(), 0) as unknown as {
-				name: string;
-				render: (setting: Setting) => void;
-			};
-			frame.setting.setName(def.name).setDesc('');
-			def.render(frame.setting);
-			frame.listEl.replaceChildren(frame.setting.settingEl);
-			frame.containerEl.replaceChildren(frame.groupEl);
-			return frame;
-		};
+		): DeclarativeFrame =>
+			renderThroughFramework(
+				renderDefinitionOf(tab.getSettingDefinitions()),
+				existing,
+			);
 
 		it('returns one render definition carrying the setting names as search aliases', () => {
 			const defs = tab.getSettingDefinitions();
 
 			expect(defs).toHaveLength(1);
-			const def = at(defs, 0) as unknown as {
-				name: string;
-				aliases?: string[];
-				render?: unknown;
-			};
-			expect(def.name).toBeTruthy();
+			const def = renderDefinitionOf(defs);
+			expect(def.name).toBe(PLUGIN_MANIFEST_NAME);
 			expect(def.aliases).toEqual(
 				expect.arrayContaining([
 					'Recording format',
@@ -286,25 +268,13 @@ describe('AudioRecorderSettingTab', () => {
 
 	describe('Obsidian before 1.13 (imperative display path)', () => {
 		let legacyTab: AudioRecorderSettingTab;
-		let restoreFrameworkUpdate: () => void;
 
 		beforeEach(() => {
-			// SettingTab.update() arrived in 1.13 with the declarative render.
-			// Taking it off the base class is what an older Obsidian looks like
-			// to the tab, and the mode is picked when the tab is constructed.
-			const base = PluginSettingTab.prototype as { update?: () => void };
-			const update = base.update;
-			delete base.update;
-			restoreFrameworkUpdate = (): void => {
-				if (update) {
-					base.update = update;
-				}
-			};
-			legacyTab = new AudioRecorderSettingTab(new App(), mockPlugin);
-		});
-
-		afterEach(() => {
-			restoreFrameworkUpdate();
+			// The render mode is picked when the tab is constructed, so the
+			// older Obsidian only has to be modelled for that one call.
+			legacyTab = withoutFrameworkUpdate(
+				() => new AudioRecorderSettingTab(new App(), mockPlugin),
+			);
 		});
 
 		it('declares no settings, so Obsidian renders through display()', () => {
@@ -503,12 +473,56 @@ describe('AudioRecorderSettingTab', () => {
 			return recorder;
 		};
 
-		const runTest = (container: HTMLElement): Promise<void> =>
+		/**
+		 * Runs a tab's test recording into a container, the way its "Start
+		 * test" button does.
+		 * @param target - The tab whose recorder runs
+		 * @param container - Element the status and playback land in
+		 */
+		const runTestOn = (
+			target: AudioRecorderSettingTab,
+			container: HTMLElement,
+		): Promise<void> =>
 			(
-				tab as unknown as {
+				target as unknown as {
 					runTestRecording(c: HTMLElement): Promise<void>;
 				}
 			).runTestRecording(container);
+
+		const runTest = (container: HTMLElement): Promise<void> =>
+			runTestOn(tab, container);
+
+		/**
+		 * Installs a MediaRecorder the test drives by hand.
+		 * @param recorder - The recorder every construction returns
+		 */
+		const installRecorder = (recorder: RecorderMock): void => {
+			const constructor = jest.fn(
+				() => recorder,
+			) as unknown as jest.Mock & { isTypeSupported: jest.Mock };
+			constructor.isTypeSupported = jest.fn().mockReturnValue(true);
+			(global as Record<string, unknown>).MediaRecorder = constructor;
+		};
+
+		/**
+		 * Drives one capture to a finished playback element.
+		 * @param target - The tab whose recorder runs
+		 * @param container - Element the playback element lands in
+		 */
+		const recordUntilPlayback = async (
+			target: AudioRecorderSettingTab,
+			container: HTMLElement,
+		): Promise<void> => {
+			const recorder = createRecorderMock();
+			installRecorder(recorder);
+			jest.useFakeTimers();
+			const testPromise = runTestOn(target, container);
+			await jest.advanceTimersByTimeAsync(0);
+			recorder.ondataavailable?.({ data: new Blob(['audio-data']) });
+			await jest.advanceTimersByTimeAsync(5000);
+			await testPromise;
+			jest.useRealTimers();
+		};
 
 		let trackStop: jest.Mock;
 
@@ -602,6 +616,47 @@ describe('AudioRecorderSettingTab', () => {
 			const audio = tab.containerEl.querySelector('.aar-test-audio');
 			expect(audio).not.toBeNull();
 			expect(audio?.getAttribute('src')).toBe('blob:test-url');
+		});
+
+		it('releases the finished playback when update() re-renders the body', async () => {
+			const definition = renderDefinitionOf(tab.getSettingDefinitions());
+			const frame = renderThroughFramework(definition);
+			await recordUntilPlayback(tab, frame.setting.settingEl);
+			expect(
+				frame.setting.settingEl.querySelector('.aar-test-audio'),
+			).not.toBeNull();
+
+			renderThroughFramework(definition, frame);
+
+			// The framework runs the render definition's cleanup before it
+			// renders the row again, so the playback element leaves with the
+			// body it belonged to instead of outliving it detached, holding a
+			// blob URL until the tab is closed.
+			expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test-url');
+			expect(
+				frame.containerEl.querySelector('.aar-test-audio'),
+			).toBeNull();
+		});
+
+		it('releases the finished playback when the imperative path rebuilds', async () => {
+			const legacyTab = withoutFrameworkUpdate(
+				() => new AudioRecorderSettingTab(new App(), mockPlugin),
+			);
+			legacyTab.display();
+			await recordUntilPlayback(legacyTab, legacyTab.containerEl);
+
+			await clickToggleIn(
+				legacyTab.containerEl,
+				'Enable multi-track recording',
+			);
+
+			// No framework cleanup to lean on here: the mode releases the body
+			// itself before rebuilding the container, so the same blob URL is
+			// revoked on this Obsidian too.
+			expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test-url');
+			expect(
+				legacyTab.containerEl.querySelector('.aar-test-audio'),
+			).toBeNull();
 		});
 	});
 

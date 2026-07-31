@@ -12,10 +12,13 @@
  * survives, so that is where the body goes there.
  *
  * The two versions disagree in exactly two places - which element the body is
- * rendered into, and what re-renders it after a setting appears or disappears -
- * so each version gets one mode object, {@link createSettingsRenderMode} picks
- * one when the tab is constructed, and the tab asks the mode instead of asking
- * which Obsidian it is running on.
+ * rendered into, and who replaces that body after a setting appears or
+ * disappears - so each version gets one mode object,
+ * {@link createSettingsRenderMode} picks one when the tab is constructed, and
+ * the tab asks the mode instead of asking which Obsidian it is running on.
+ * Replacing a body means releasing the old one first, which is why a mode also
+ * decides where that release comes from: the cleanup a render definition hands
+ * back to the framework on 1.13, and the mode itself on the imperative path.
  * @module settings/settingsRenderMode
  */
 
@@ -48,6 +51,13 @@ export interface SettingsRenderTarget {
 	renderFull(): void;
 	/** Draws the settings body into a host the mode has already cleared. */
 	renderBody(host: HTMLElement): void;
+	/**
+	 * Releases what the body owns beyond its own DOM - the test recording and
+	 * the blob URL of its playback element - before that body is discarded.
+	 * Runs before every rebuild, so a body is never dropped while a capture it
+	 * started is still reporting into it.
+	 */
+	releaseBody(): void;
 }
 
 /**
@@ -80,6 +90,10 @@ function createImperativeRenderMode(
 		// in this mode on a newer Obsidian still renders its settings.
 		getDefinitions: (): SettingDefinitionItem[] => [],
 		rerender: (): void => {
+			// The declarative path gets this from the framework, which runs the
+			// render definition's cleanup before it renders the row again.
+			// Here the mode is the one replacing the body, so it releases it.
+			target.releaseBody();
 			target.renderFull();
 		},
 	};
@@ -104,7 +118,7 @@ function createDeclarativeRenderMode(
 				// which is what lets Obsidian's settings search find the tab by
 				// a single setting's name.
 				aliases: [...target.aliases],
-				render: (setting: Setting): void => {
+				render: (setting: Setting): (() => void) => {
 					// The row is the only DOM this definition owns; the tab
 					// container and the group's list are reset around it after
 					// every pass. Its name, description, and control elements
@@ -113,6 +127,13 @@ function createDeclarativeRenderMode(
 					host.empty();
 					host.addClass(SETTINGS_ROOT_CLASS);
 					target.renderBody(host);
+					// The framework keeps this cleanup and runs it before it
+					// renders the row again and before it drops the row. That
+					// is the only teardown hook this path has: hide() runs when
+					// the tab is left, not when update() rebuilds the body.
+					return (): void => {
+						target.releaseBody();
+					};
 				},
 			},
 		],

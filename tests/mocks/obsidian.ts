@@ -514,6 +514,17 @@ export class Setting {
 		return this;
 	}
 
+	/**
+	 * Obsidian's own clear(): drops the row's controls and the components
+	 * bound to them, leaving the name and description elements alone. The
+	 * framework calls this before it renders a row it already built again.
+	 */
+	clear(): this {
+		this.controlEl.empty();
+		this.components = [];
+		return this;
+	}
+
 	/** Components created by the add* methods, in creation order. */
 	components: Array<
 		| TextComponent

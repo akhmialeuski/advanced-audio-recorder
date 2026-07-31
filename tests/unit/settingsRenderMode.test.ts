@@ -1,12 +1,15 @@
 /**
  * Unit tests for the settings render mode: the factory's choice between the
- * two Obsidian settings APIs, and what each mode does with the host it renders
- * into and with a re-render request.
+ * two Obsidian settings APIs, what each mode does with the host it renders
+ * into, and how each releases a body before replacing it.
  * @module tests/unit/settingsRenderMode.test
  */
 
-import { Setting } from 'obsidian';
-import { at } from '../helpers/assertions';
+import {
+	renderDefinitionOf,
+	renderThroughFramework,
+	type RenderDefinition,
+} from '../helpers/declarativeSettings';
 import {
 	SETTINGS_ROOT_CLASS,
 	createSettingsRenderMode,
@@ -14,19 +17,13 @@ import {
 	type SettingsRenderTarget,
 } from 'src/settings/settingsRenderMode';
 
-/** The shape of the tab's single declarative definition. */
-interface RenderDefinition {
-	name: string;
-	aliases: string[];
-	render: (setting: Setting) => void;
-}
-
 describe('settings render mode', () => {
 	const TAB_NAME = 'Advanced Audio Recorder';
 	const ALIASES = ['Recording format', 'Debug mode'];
 
 	let renderFull: jest.Mock;
 	let renderBody: jest.Mock;
+	let releaseBody: jest.Mock;
 	let frameworkUpdate: jest.Mock;
 
 	beforeEach(() => {
@@ -36,6 +33,7 @@ describe('settings render mode', () => {
 		renderBody = jest.fn((host: HTMLElement) => {
 			host.createDiv({ cls: 'aar-body-marker' });
 		});
+		releaseBody = jest.fn();
 		frameworkUpdate = jest.fn();
 	});
 
@@ -54,34 +52,12 @@ describe('settings render mode', () => {
 		frameworkUpdate: hasFrameworkUpdate ? frameworkUpdate : undefined,
 		renderFull,
 		renderBody,
+		releaseBody,
 	});
 
 	/** The single declarative definition a mode returns. */
 	const definitionOf = (mode: SettingsRenderMode): RenderDefinition =>
-		at(mode.getDefinitions(), 0) as unknown as RenderDefinition;
-
-	/**
-	 * Runs a render definition the way Obsidian 1.13 does: the row is built in
-	 * the group's list element, the definition's name and description are
-	 * written into it, render() runs, and then the framework resets the list to
-	 * exactly the rows it tracks and the tab container to the group elements.
-	 * @param definition - The definition under test
-	 */
-	const renderThroughFramework = (
-		definition: RenderDefinition,
-	): { containerEl: HTMLElement; listEl: HTMLElement; setting: Setting } => {
-		const containerEl = createDiv();
-		const groupEl = containerEl.createDiv({ cls: 'setting-group' });
-		const listEl = groupEl.createDiv({ cls: 'setting-items' });
-		const setting = new Setting(listEl);
-		setting.setName(definition.name).setDesc('');
-
-		definition.render(setting);
-
-		listEl.replaceChildren(setting.settingEl);
-		containerEl.replaceChildren(groupEl);
-		return { containerEl, listEl, setting };
-	};
+		renderDefinitionOf(mode.getDefinitions());
 
 	describe('createSettingsRenderMode', () => {
 		it('renders declaratively when the host has the framework update', () => {
@@ -119,6 +95,18 @@ describe('settings render mode', () => {
 			expect(renderBody).not.toHaveBeenCalled();
 		});
 
+		it('releases the body it is about to replace, before replacing it', () => {
+			// Nothing hands this path a teardown hook, so the mode owns the
+			// release: a test recording started under the old body would
+			// otherwise keep reporting into a container that no longer exists.
+			mode.rerender();
+
+			expect(releaseBody).toHaveBeenCalledTimes(1);
+			const released = releaseBody.mock.invocationCallOrder[0] ?? 0;
+			const rebuilt = renderFull.mock.invocationCallOrder[0] ?? 0;
+			expect(released).toBeLessThan(rebuilt);
+		});
+
 		it('never reaches for a framework update it cannot have', () => {
 			mode.rerender();
 
@@ -146,7 +134,7 @@ describe('settings render mode', () => {
 				createSettingsRenderMode(createTarget(true, aliases)),
 			);
 
-			definition.aliases.push('Injected by the framework');
+			definition.aliases?.push('Injected by the framework');
 
 			expect(aliases).toEqual(ALIASES);
 		});
@@ -190,23 +178,51 @@ describe('settings render mode', () => {
 
 		it('replaces the body when the framework re-renders the same row', () => {
 			const definition = definitionOf(mode);
-			const { setting } = renderThroughFramework(definition);
+			const frame = renderThroughFramework(definition);
 
-			definition.render(setting);
+			renderThroughFramework(definition, frame);
 
 			expect(
-				setting.settingEl.querySelectorAll('.aar-body-marker'),
+				frame.setting.settingEl.querySelectorAll('.aar-body-marker'),
 			).toHaveLength(1);
+		});
+
+		it('hands the framework a cleanup that releases the rendered body', () => {
+			// The framework keeps this callback and runs it before it renders
+			// the row again and before it drops the row, which is the only
+			// teardown this path gets while the tab stays open.
+			const frame = renderThroughFramework(definitionOf(mode));
+
+			expect(frame.cleanup).toEqual(expect.any(Function));
+			expect(releaseBody).not.toHaveBeenCalled();
+
+			frame.cleanup?.();
+
+			expect(releaseBody).toHaveBeenCalledTimes(1);
+		});
+
+		it('releases the previous body exactly once per re-render', () => {
+			const definition = definitionOf(mode);
+			const frame = renderThroughFramework(definition);
+
+			renderThroughFramework(definition, frame);
+
+			expect(releaseBody).toHaveBeenCalledTimes(1);
+			const released = releaseBody.mock.invocationCallOrder[0] ?? 0;
+			const rerendered = renderBody.mock.invocationCallOrder[1] ?? 0;
+			expect(released).toBeLessThan(rerendered);
 		});
 
 		it('re-renders through the framework rather than by hand', () => {
 			mode.rerender();
 
 			// The framework re-invokes the definition; a body built here would
-			// be thrown away by its next pass.
+			// be thrown away by its next pass, and the release travels with the
+			// cleanup the framework already holds.
 			expect(frameworkUpdate).toHaveBeenCalledTimes(1);
 			expect(renderFull).not.toHaveBeenCalled();
 			expect(renderBody).not.toHaveBeenCalled();
+			expect(releaseBody).not.toHaveBeenCalled();
 		});
 	});
 });

@@ -850,11 +850,14 @@ input.aar-input-invalid {
    inside the single row element the framework tracks, and that row has to stop
    behaving like a setting row - no flex layout, padding, background, or
    divider - so the settings inside it read as an ordinary settings column. The
-   second selector is there for specificity: Obsidian's own
-   ".setting-group .setting-item" rules would otherwise keep the row's padding
-   and divider, insetting the whole body twice. */
+   second selector of each rule outweighs Obsidian's own
+   ".setting-group .setting-item:not(.setting-item-heading)" rules, which would
+   otherwise keep the row's padding and divider and inset the whole body twice.
+   It repeats that ":not" deliberately: matching the shape of the rule being
+   overridden wins on specificity rather than on stylesheet order, so a theme or
+   a snippet carrying the app's own weight cannot put the inset back. */
 .setting-item.aar-settings-root,
-.setting-group .setting-item.aar-settings-root {
+.setting-group .setting-item.aar-settings-root:not(.setting-item-heading) {
     display: block;
     padding: 0;
     margin: 0;
@@ -864,7 +867,7 @@ input.aar-input-invalid {
 }
 
 .setting-item.aar-settings-root::before,
-.setting-group .setting-item.aar-settings-root::before {
+.setting-group .setting-item.aar-settings-root:not(.setting-item-heading)::before {
     content: none;
 }
 

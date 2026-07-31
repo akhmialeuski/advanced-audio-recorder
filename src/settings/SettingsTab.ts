@@ -103,9 +103,6 @@ const TEXT_SETTING_SAVE_DEBOUNCE_MS = 500;
 /** Duration of the diagnostics test recording, in milliseconds. */
 const TEST_RECORDING_DURATION_MS = 5000;
 
-/** Name of the tab's declarative definition, and of the plugin it configures. */
-const SETTINGS_TAB_NAME = 'Advanced Audio Recorder';
-
 /**
  * Plugin interface for settings tab.
  */
@@ -273,7 +270,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			// eslint-disable-next-line obsidianmd/no-unsupported-api -- probing for the 1.13 API is how the pre-1.13 fallback is chosen; the call below is guarded by this result
 			typeof (this as Partial<SettingTab>).update === 'function';
 		this.renderMode = createSettingsRenderMode({
-			name: SETTINGS_TAB_NAME,
+			// The definition is the whole tab, so it is named after the plugin.
+			// Read from the manifest Obsidian already names the tab from, so a
+			// rename cannot leave the settings search index behind.
+			name: plugin.manifest.name,
 			aliases: SETTINGS_SEARCH_ALIASES,
 			frameworkUpdate: hasFrameworkUpdate
 				? (): void => {
@@ -286,6 +286,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			},
 			renderBody: (host): void => {
 				this.renderSettingsInto(host);
+			},
+			releaseBody: (): void => {
+				this.cleanupTestRecording();
 			},
 		});
 	}
