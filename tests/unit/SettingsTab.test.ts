@@ -7,8 +7,10 @@
 import { App, Platform } from 'obsidian';
 import { at } from '../helpers/assertions';
 import {
+	groupOf,
 	renderDefinitionOf,
 	renderThroughFramework,
+	rowOf,
 	withoutFrameworkUpdate,
 	type DeclarativeFrame,
 	type RenderDefinition,
@@ -80,10 +82,11 @@ const settingRowIn = (host: HTMLElement, name: string): HTMLElement => {
 const testRecordingDefinitionOf = (
 	tab: AudioRecorderSettingTab,
 ): RenderDefinition => {
-	const diagnostics = at(tab.getSettingDefinitions(), 1) as unknown as {
-		items: RenderDefinition[];
-	};
-	return at(diagnostics.items, 0, 'diagnostics row');
+	return rowOf(
+		tab.getSettingDefinitions(),
+		'Diagnostics',
+		'Test recording',
+	) as RenderDefinition;
 };
 
 /**
@@ -179,10 +182,7 @@ describe('AudioRecorderSettingTab', () => {
 					'Enable transcription',
 				]),
 			);
-			expect(at(defs, 1)).toMatchObject({
-				type: 'group',
-				heading: 'Diagnostics',
-			});
+			expect(groupOf(defs, 'Diagnostics').items).not.toHaveLength(0);
 		});
 
 		it('renders the settings body inside the row the framework keeps', () => {

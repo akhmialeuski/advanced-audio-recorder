@@ -29,6 +29,90 @@ export interface RenderDefinition {
 	render: (setting: Setting) => void | (() => void);
 }
 
+/** A setting row, in the shape a test reads it. */
+export interface RowDefinition {
+	name: string;
+	desc?: string;
+	visible?: boolean | (() => boolean);
+	control?: {
+		type: string;
+		key: string;
+		disabled?: boolean | (() => boolean);
+		options?: Record<string, string>;
+		validate?: (value: never) => string | void;
+		[option: string]: unknown;
+	};
+	action?: (el: HTMLElement, index: number) => void;
+	render?: (setting: Setting) => void | (() => void);
+}
+
+/** A group, list, or page definition, in the shape a test reads it. */
+export interface GroupDefinition {
+	type: string;
+	heading?: string;
+	name?: string;
+	items: Array<RowDefinition | GroupDefinition>;
+}
+
+/**
+ * Finds a group, list, or page by its heading, at any depth. Tests address the
+ * tree by what it says rather than by where a section currently sits, so a
+ * section added above one under test does not rewrite its assertions.
+ * @param definitions - The tree to search
+ * @param heading - Heading (or page name) to find
+ * @returns The matching group
+ */
+export const groupOf = (
+	definitions: readonly SettingDefinitionItem[],
+	heading: string,
+): GroupDefinition => {
+	const search = (
+		entries: ReadonlyArray<RowDefinition | GroupDefinition>,
+	): GroupDefinition | undefined => {
+		for (const entry of entries) {
+			if (!('type' in entry)) {
+				continue;
+			}
+			if (entry.heading === heading || entry.name === heading) {
+				return entry;
+			}
+			const nested = search(entry.items ?? []);
+			if (nested) {
+				return nested;
+			}
+		}
+		return undefined;
+	};
+	const found = search(
+		definitions as ReadonlyArray<RowDefinition | GroupDefinition>,
+	);
+	if (!found) {
+		throw new Error(`No settings group declared under "${heading}"`);
+	}
+	return found;
+};
+
+/**
+ * Finds a row by name inside a group.
+ * @param definitions - The tree to search
+ * @param heading - Heading of the group holding the row
+ * @param name - The row's name
+ * @returns The matching row
+ */
+export const rowOf = (
+	definitions: readonly SettingDefinitionItem[],
+	heading: string,
+	name: string,
+): RowDefinition => {
+	const row = groupOf(definitions, heading).items.find(
+		(item) => !('type' in item) && item.name === name,
+	);
+	if (!row) {
+		throw new Error(`No "${name}" row declared under "${heading}"`);
+	}
+	return row as RowDefinition;
+};
+
 /** The DOM the framework builds around one render definition. */
 export interface DeclarativeFrame {
 	/** Stands in for the tab's own container element. */

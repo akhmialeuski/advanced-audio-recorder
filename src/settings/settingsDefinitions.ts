@@ -19,6 +19,18 @@
  */
 
 import type { Setting, SettingDefinitionItem } from 'obsidian';
+import type { AudioRecorderSettings } from './settingsSchema';
+import {
+	CLEANUP_GATE_STEP_DB,
+	CLEANUP_HIGHPASS_STEP_HZ,
+	CLEANUP_LEVELING_STEP_DB,
+	MAX_CLEANUP_GATE_THRESHOLD_DB,
+	MAX_CLEANUP_HIGHPASS_HZ,
+	MAX_CLEANUP_LEVELING_MAKEUP_DB,
+	MIN_CLEANUP_GATE_THRESHOLD_DB,
+	MIN_CLEANUP_HIGHPASS_HZ,
+	MIN_CLEANUP_LEVELING_MAKEUP_DB,
+} from '../constants';
 
 /**
  * Marks the row that hosts the sections not described here yet. From 1.13 on,
@@ -63,6 +75,11 @@ export interface DiagnosticsActions {
  * What the definitions need from the tab that owns them.
  */
 export interface SettingsDefinitionContext {
+	/**
+	 * The live settings, read by the `visible` and `disabled` predicates. Values
+	 * themselves travel through the tab's control-value hooks, not from here.
+	 */
+	readonly settings: AudioRecorderSettings;
 	/** The sections not migrated into this tree yet. */
 	readonly remainder: ImperativeRemainder;
 	/** Handlers for the diagnostics rows. */
@@ -91,6 +108,121 @@ function remainderDefinition(
 			host.addClass(SETTINGS_ROOT_CLASS);
 			remainder.render(host);
 		},
+	};
+}
+
+/**
+ * The input-processing constraints and the live recording feedback.
+ */
+function audioProcessingGroup(): SettingDefinitionItem {
+	return {
+		type: 'group',
+		heading: 'Audio processing & feedback',
+		items: [
+			{
+				name: 'Noise suppression',
+				desc: 'Apply the browser noise-suppression filter to the input.',
+				control: { type: 'toggle', key: 'inputNoiseSuppression' },
+			},
+			{
+				name: 'Echo cancellation',
+				desc: 'Apply the browser echo-cancellation filter to the input.',
+				control: { type: 'toggle', key: 'inputEchoCancellation' },
+			},
+			{
+				name: 'Automatic gain control',
+				desc: 'Let the browser normalize the input level automatically.',
+				control: { type: 'toggle', key: 'inputAutoGainControl' },
+			},
+			{
+				name: 'Input level meter',
+				desc: 'Show a live input-level meter while recording.',
+				control: { type: 'toggle', key: 'showInputLevelMeter' },
+			},
+			{
+				name: 'Recording stats',
+				desc: 'Show the live elapsed time and total recorded size while recording.',
+				control: { type: 'toggle', key: 'showRecordingStats' },
+			},
+			{
+				name: 'Detect silent channel after recording',
+				desc: 'Check a saved stereo recording for a silent channel - the typical result of one microphone on a dual-input interface - and offer to convert it to mono.',
+				control: { type: 'toggle', key: 'detectSilentChannelOnSave' },
+			},
+			{
+				name: 'Mobile recording banner',
+				desc: 'Show a prominent recording banner on mobile, where there is no ribbon indicator.',
+				control: { type: 'toggle', key: 'mobileRecordingBanner' },
+			},
+		],
+	};
+}
+
+/**
+ * The defaults for the on-demand cleanup dialog. Each stage is a switch and the
+ * one number it takes, on rows of their own: a row holds a single control, and
+ * the number follows the switch that decides whether it is used at all.
+ * @param settings - Live settings, read by the disabled predicates
+ */
+function audioCleanupGroup(
+	settings: AudioRecorderSettings,
+): SettingDefinitionItem {
+	return {
+		type: 'group',
+		heading: 'Audio cleanup defaults',
+		items: [
+			{
+				name: 'High-pass filter',
+				desc: 'Remove low-frequency rumble below the cutoff. These defaults prefill the cleanup dialog; cleanup writes a processed copy and never changes a live recording.',
+				control: { type: 'toggle', key: 'cleanupHighPassEnabled' },
+			},
+			{
+				name: 'High-pass cutoff',
+				desc: 'Cutoff frequency in hertz.',
+				control: {
+					type: 'number',
+					key: 'cleanupHighPassHz',
+					min: MIN_CLEANUP_HIGHPASS_HZ,
+					max: MAX_CLEANUP_HIGHPASS_HZ,
+					step: CLEANUP_HIGHPASS_STEP_HZ,
+					disabled: (): boolean => !settings.cleanupHighPassEnabled,
+				},
+			},
+			{
+				name: 'Noise gate',
+				desc: 'Silence the signal below the threshold.',
+				control: { type: 'toggle', key: 'cleanupNoiseGateEnabled' },
+			},
+			{
+				name: 'Noise gate threshold',
+				desc: 'Level in dBFS below which the signal is silenced.',
+				control: {
+					type: 'number',
+					key: 'cleanupNoiseGateThresholdDb',
+					min: MIN_CLEANUP_GATE_THRESHOLD_DB,
+					max: MAX_CLEANUP_GATE_THRESHOLD_DB,
+					step: CLEANUP_GATE_STEP_DB,
+					disabled: (): boolean => !settings.cleanupNoiseGateEnabled,
+				},
+			},
+			{
+				name: 'Loudness leveling',
+				desc: 'Even out quiet and loud passages (compressor).',
+				control: { type: 'toggle', key: 'cleanupLevelingEnabled' },
+			},
+			{
+				name: 'Makeup gain',
+				desc: 'Gain in decibels applied after leveling.',
+				control: {
+					type: 'number',
+					key: 'cleanupLevelingMakeupDb',
+					min: MIN_CLEANUP_LEVELING_MAKEUP_DB,
+					max: MAX_CLEANUP_LEVELING_MAKEUP_DB,
+					step: CLEANUP_LEVELING_STEP_DB,
+					disabled: (): boolean => !settings.cleanupLevelingEnabled,
+				},
+			},
+		],
 	};
 }
 
@@ -153,6 +285,8 @@ export function buildSettingsDefinitions(
 ): SettingDefinitionItem[] {
 	return [
 		remainderDefinition(ctx.remainder),
+		audioProcessingGroup(),
+		audioCleanupGroup(ctx.settings),
 		diagnosticsGroup(ctx.diagnostics),
 	];
 }

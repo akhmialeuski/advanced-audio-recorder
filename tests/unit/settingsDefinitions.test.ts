@@ -5,13 +5,24 @@
  * @module tests/unit/settingsDefinitions.test
  */
 
-import type { Setting, SettingDefinitionItem } from 'obsidian';
-import { at } from '../helpers/assertions';
+import type { SettingDefinitionItem } from 'obsidian';
 import {
+	groupOf,
 	renderDefinitionOf,
 	renderThroughFramework,
+	rowOf,
+	type GroupDefinition,
 	type RenderDefinition,
 } from '../helpers/declarativeSettings';
+import {
+	DEFAULT_SETTINGS,
+	type AudioRecorderSettings,
+} from 'src/settings/settingsSchema';
+import {
+	CLEANUP_HIGHPASS_STEP_HZ,
+	MAX_CLEANUP_HIGHPASS_HZ,
+	MIN_CLEANUP_HIGHPASS_HZ,
+} from 'src/constants';
 import {
 	SETTINGS_BLOCK_ROW_CLASS,
 	SETTINGS_ROOT_CLASS,
@@ -21,27 +32,16 @@ import {
 	type SettingsDefinitionContext,
 } from 'src/settings/settingsDefinitions';
 
-/** A group definition, narrowed to what these tests read. */
-interface GroupDefinition {
-	type: string;
-	heading?: string;
-	items: Array<{
-		name: string;
-		desc?: string;
-		control?: { type: string; key: string };
-		action?: (el: HTMLElement, index: number) => void;
-		render?: (setting: Setting) => void | (() => void);
-	}>;
-}
-
 describe('settings definitions', () => {
 	const REMAINDER_NAME = 'Advanced Audio Recorder';
 	const ALIASES = ['Recording format', 'Save folder'];
 
+	let settings: AudioRecorderSettings;
 	let renderRemainder: jest.Mock;
 	let diagnostics: { [K in keyof DiagnosticsActions]: jest.Mock };
 
 	beforeEach(() => {
+		settings = { ...DEFAULT_SETTINGS };
 		// Stands in for the real body with one marker element, so a test can see
 		// which host it was rendered into and whether it survived.
 		renderRemainder = jest.fn((host: HTMLElement) => {
@@ -57,6 +57,7 @@ describe('settings definitions', () => {
 	const createContext = (
 		aliases: readonly string[] = ALIASES,
 	): SettingsDefinitionContext => ({
+		settings,
 		remainder: {
 			name: REMAINDER_NAME,
 			aliases,
@@ -73,11 +74,10 @@ describe('settings definitions', () => {
 		definitions: SettingDefinitionItem[],
 	): RenderDefinition => renderDefinitionOf(definitions);
 
-	/** The diagnostics group, narrowed to what these tests read. */
+	/** The diagnostics group of a built tree. */
 	const diagnosticsGroupOf = (
 		definitions: SettingDefinitionItem[],
-	): GroupDefinition =>
-		at(definitions, 1, 'definition') as unknown as GroupDefinition;
+	): GroupDefinition => groupOf(definitions, 'Diagnostics');
 
 	describe('the imperative remainder', () => {
 		it('is named after the plugin and carries the remaining names as aliases', () => {
@@ -146,6 +146,101 @@ describe('settings definitions', () => {
 		});
 	});
 
+	describe('the audio processing section', () => {
+		it('binds every input option to its settings key', () => {
+			const group = groupOf(build(), 'Audio processing & feedback');
+
+			expect(
+				group.items.map((item) => [
+					item.name,
+					(item as { control?: { type: string; key: string } })
+						.control,
+				]),
+			).toEqual([
+				[
+					'Noise suppression',
+					{ type: 'toggle', key: 'inputNoiseSuppression' },
+				],
+				[
+					'Echo cancellation',
+					{ type: 'toggle', key: 'inputEchoCancellation' },
+				],
+				[
+					'Automatic gain control',
+					{ type: 'toggle', key: 'inputAutoGainControl' },
+				],
+				[
+					'Input level meter',
+					{ type: 'toggle', key: 'showInputLevelMeter' },
+				],
+				[
+					'Recording stats',
+					{ type: 'toggle', key: 'showRecordingStats' },
+				],
+				[
+					'Detect silent channel after recording',
+					{ type: 'toggle', key: 'detectSilentChannelOnSave' },
+				],
+				[
+					'Mobile recording banner',
+					{ type: 'toggle', key: 'mobileRecordingBanner' },
+				],
+			]);
+		});
+	});
+
+	describe('the audio cleanup defaults', () => {
+		const CLEANUP = 'Audio cleanup defaults';
+
+		it('gives each stage a switch and its number on rows of their own', () => {
+			// One control per row: a toggle and a number field side by side stack
+			// vertically on mobile and break the rhythm of the tab.
+			const group = groupOf(build(), CLEANUP);
+
+			expect(group.items.map((item) => item.name)).toEqual([
+				'High-pass filter',
+				'High-pass cutoff',
+				'Noise gate',
+				'Noise gate threshold',
+				'Loudness leveling',
+				'Makeup gain',
+			]);
+		});
+
+		it('bounds each stage parameter the way its processor does', () => {
+			expect(rowOf(build(), CLEANUP, 'High-pass cutoff').control).toEqual(
+				expect.objectContaining({
+					type: 'number',
+					key: 'cleanupHighPassHz',
+					min: MIN_CLEANUP_HIGHPASS_HZ,
+					max: MAX_CLEANUP_HIGHPASS_HZ,
+					step: CLEANUP_HIGHPASS_STEP_HZ,
+				}),
+			);
+		});
+
+		it.each([
+			['High-pass cutoff', 'cleanupHighPassEnabled'],
+			['Noise gate threshold', 'cleanupNoiseGateEnabled'],
+			['Makeup gain', 'cleanupLevelingEnabled'],
+		])('disables %s while its stage is off', (rowName, enabledKey) => {
+			// The parameter only takes effect once the stage runs, so it
+			// reads as unavailable rather than as a value that does nothing.
+			const settingsRecord = settings as unknown as Record<
+				string,
+				unknown
+			>;
+			settingsRecord[enabledKey] = false;
+			const disabled = rowOf(build(), CLEANUP, rowName).control?.disabled;
+
+			expect(typeof disabled === 'function' && disabled()).toBe(true);
+
+			settingsRecord[enabledKey] = true;
+
+			expect(typeof disabled === 'function' && disabled()).toBe(false);
+		});
+	});
+
 	describe('the diagnostics section', () => {
 		it('declares its three rows under one heading', () => {
 			const group = diagnosticsGroupOf(build());
@@ -160,17 +255,16 @@ describe('settings definitions', () => {
 		});
 
 		it('binds debug mode to the settings key, so Obsidian owns the write', () => {
-			const group = diagnosticsGroupOf(build());
-
-			expect(at(group.items, 2).control).toEqual({
-				type: 'toggle',
-				key: 'debug',
-			});
+			expect(rowOf(build(), 'Diagnostics', 'Debug mode').control).toEqual(
+				{
+					type: 'toggle',
+					key: 'debug',
+				},
+			);
 		});
 
 		it('opens the system information dialog from an action row', () => {
-			const group = diagnosticsGroupOf(build());
-			const row = at(group.items, 1);
+			const row = rowOf(build(), 'Diagnostics', 'System info');
 
 			row.action?.(createDiv(), 1);
 
@@ -178,7 +272,7 @@ describe('settings definitions', () => {
 		});
 
 		it('starts the test capture in the row that reports it', () => {
-			const definition = at(diagnosticsGroupOf(build()).items, 0);
+			const definition = rowOf(build(), 'Diagnostics', 'Test recording');
 			const { setting } = renderThroughFramework(
 				definition as RenderDefinition,
 			);
@@ -201,7 +295,7 @@ describe('settings definitions', () => {
 			// The framework runs this before it renders the row again and before
 			// it drops the row, which is the only teardown a render row gets
 			// while the tab stays open.
-			const definition = at(diagnosticsGroupOf(build()).items, 0);
+			const definition = rowOf(build(), 'Diagnostics', 'Test recording');
 			const frame = renderThroughFramework(
 				definition as RenderDefinition,
 			);

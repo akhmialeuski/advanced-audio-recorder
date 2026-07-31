@@ -67,15 +67,6 @@ import {
 	MIN_SPLIT_CHUNK_MINUTES,
 	MAX_SPLIT_CHUNK_MINUTES,
 	SPLIT_PART_SUFFIX_PATTERN,
-	MIN_CLEANUP_HIGHPASS_HZ,
-	MAX_CLEANUP_HIGHPASS_HZ,
-	MIN_CLEANUP_GATE_THRESHOLD_DB,
-	MAX_CLEANUP_GATE_THRESHOLD_DB,
-	MIN_CLEANUP_LEVELING_MAKEUP_DB,
-	MAX_CLEANUP_LEVELING_MAKEUP_DB,
-	CLEANUP_HIGHPASS_STEP_HZ,
-	CLEANUP_GATE_STEP_DB,
-	CLEANUP_LEVELING_STEP_DB,
 	DOCS_URL,
 	FORMAT_WAV,
 } from '../constants';
@@ -88,7 +79,6 @@ import {
 	addHeading,
 	addNumberInput,
 	addNumberInputTo,
-	addStageRowTo,
 	addText,
 	addToggle,
 	SETTING_DISABLED_CLASS,
@@ -183,18 +173,6 @@ const SETTINGS_SEARCH_ALIASES: string[] = [
 	'Deepgram API key',
 	'Deepgram model',
 	'Gemini API key',
-	'Audio processing & feedback',
-	'Noise suppression',
-	'Echo cancellation',
-	'Automatic gain control',
-	'Input level meter',
-	'Recording stats',
-	'Detect silent channel after recording',
-	'Mobile recording banner',
-	'Audio cleanup defaults',
-	'High-pass filter',
-	'Noise gate',
-	'Loudness leveling',
 ];
 
 /**
@@ -306,6 +284,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 */
 	private buildDefinitions(): SettingDefinitionItem[] {
 		const definitions = buildSettingsDefinitions({
+			settings: this.plugin.settings,
 			remainder: {
 				// The remainder is the whole tab until the migration finishes,
 				// so it is named after the plugin. Read from the manifest
@@ -886,10 +865,8 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		// nothing outside the section.
 		this.renderScopedSection(containerEl, renderTranscriptionSection);
 
-		// Audio processing & feedback
-		this.renderInputProcessingSettings(containerEl);
-
-		// Diagnostics follows here, from the definition tree.
+		// Audio processing & feedback, the cleanup defaults, and Diagnostics
+		// follow here, from the definition tree.
 
 		// Populate every device dropdown and capability lookup from one
 		// coherent enumeration after all bindings have been registered.
@@ -1091,141 +1068,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			desc: 'Show the markers and chapters list below the player. Markers are stored next to the recording, not in your vault.',
 			get: () => s.playerEnableMarkers,
 			set: (v) => (s.playerEnableMarkers = v),
-		});
-	}
-
-	/**
-	 * Renders the audio input-processing constraints and the live
-	 * recording-feedback options.
-	 * @param containerEl - The settings container element
-	 */
-	private renderInputProcessingSettings(containerEl: HTMLElement): void {
-		const ctx = this.sectionContext(containerEl);
-		const s = this.plugin.settings;
-		addHeading(ctx, 'Audio processing & feedback');
-
-		addToggle(ctx, {
-			name: 'Noise suppression',
-			desc: 'Apply the browser noise-suppression filter to the input.',
-			get: () => s.inputNoiseSuppression,
-			set: (v) => (s.inputNoiseSuppression = v),
-		});
-		addToggle(ctx, {
-			name: 'Echo cancellation',
-			desc: 'Apply the browser echo-cancellation filter to the input.',
-			get: () => s.inputEchoCancellation,
-			set: (v) => (s.inputEchoCancellation = v),
-		});
-		addToggle(ctx, {
-			name: 'Automatic gain control',
-			desc: 'Let the browser normalize the input level automatically.',
-			get: () => s.inputAutoGainControl,
-			set: (v) => (s.inputAutoGainControl = v),
-		});
-		addToggle(ctx, {
-			name: 'Input level meter',
-			desc: 'Show a live input-level meter while recording.',
-			get: () => s.showInputLevelMeter,
-			set: (v) => (s.showInputLevelMeter = v),
-		});
-		addToggle(ctx, {
-			name: 'Recording stats',
-			desc: 'Show the live elapsed time and total recorded size while recording.',
-			get: () => s.showRecordingStats,
-			set: (v) => (s.showRecordingStats = v),
-		});
-		addToggle(ctx, {
-			name: 'Detect silent channel after recording',
-			desc: 'After saving a recording, check whether it is a stereo file with one silent channel - the typical result of a single microphone on a dual-input audio interface - and offer to convert it to mono. Long recordings are skipped.',
-			get: () => s.detectSilentChannelOnSave,
-			set: (v) => (s.detectSilentChannelOnSave = v),
-		});
-		addToggle(ctx, {
-			name: 'Mobile recording banner',
-			desc: 'Show a prominent recording banner on mobile, where there is no ribbon indicator.',
-			get: () => s.mobileRecordingBanner,
-			set: (v) => (s.mobileRecordingBanner = v),
-		});
-
-		this.renderAudioCleanupSettings(containerEl);
-	}
-
-	/**
-	 * Renders the default settings for the on-demand "Clean up audio"
-	 * dialog (high-pass, noise gate, loudness leveling). These prefill the
-	 * dialog opened from the context menu; each run can override them.
-	 * @param containerEl - The settings container element
-	 */
-	private renderAudioCleanupSettings(containerEl: HTMLElement): void {
-		const s = this.plugin.settings;
-		const save = (): void => {
-			void this.plugin.saveSettings();
-		};
-		new Setting(containerEl)
-			.setName('Audio cleanup defaults')
-			.setDesc(
-				'Defaults for the cleanup action in the file/embed context menu. Cleanup runs on demand and writes a processed copy; it does not change live recording.',
-			)
-			.setHeading();
-
-		// The same three stage rows the cleanup dialog renders, through the same
-		// builder, so the two cannot drift in layout or disabled behaviour.
-		addStageRowTo(containerEl, {
-			name: 'High-pass filter',
-			desc: 'Remove low-frequency rumble below the cutoff by default.',
-			getEnabled: () => s.cleanupHighPassEnabled,
-			setEnabled: (v) => {
-				s.cleanupHighPassEnabled = v;
-				save();
-			},
-			value: {
-				min: MIN_CLEANUP_HIGHPASS_HZ,
-				max: MAX_CLEANUP_HIGHPASS_HZ,
-				step: CLEANUP_HIGHPASS_STEP_HZ,
-				get: () => s.cleanupHighPassHz,
-				set: (v) => {
-					s.cleanupHighPassHz = v;
-					save();
-				},
-			},
-		});
-		addStageRowTo(containerEl, {
-			name: 'Noise gate',
-			desc: 'Silence the signal below the threshold (dBFS) by default.',
-			getEnabled: () => s.cleanupNoiseGateEnabled,
-			setEnabled: (v) => {
-				s.cleanupNoiseGateEnabled = v;
-				save();
-			},
-			value: {
-				min: MIN_CLEANUP_GATE_THRESHOLD_DB,
-				max: MAX_CLEANUP_GATE_THRESHOLD_DB,
-				step: CLEANUP_GATE_STEP_DB,
-				get: () => s.cleanupNoiseGateThresholdDb,
-				set: (v) => {
-					s.cleanupNoiseGateThresholdDb = v;
-					save();
-				},
-			},
-		});
-		addStageRowTo(containerEl, {
-			name: 'Loudness leveling',
-			desc: 'Even out quiet and loud passages (compressor); makeup gain (dB).',
-			getEnabled: () => s.cleanupLevelingEnabled,
-			setEnabled: (v) => {
-				s.cleanupLevelingEnabled = v;
-				save();
-			},
-			value: {
-				min: MIN_CLEANUP_LEVELING_MAKEUP_DB,
-				max: MAX_CLEANUP_LEVELING_MAKEUP_DB,
-				step: CLEANUP_LEVELING_STEP_DB,
-				get: () => s.cleanupLevelingMakeupDb,
-				set: (v) => {
-					s.cleanupLevelingMakeupDb = v;
-					save();
-				},
-			},
 		});
 	}
 
