@@ -32,11 +32,11 @@ import {
 import {
 	buildSettingsDefinitions,
 	collectDebouncedControlKeys,
+	parseTrackControlKey,
 } from './settingsDefinitions';
 import { LegacySettingsRenderer } from './legacySettingsRenderer';
 import type {
 	AudioRecorderSettings,
-	OutputMode,
 	ConversionLinkAction,
 } from './settingsSchema';
 import {
@@ -62,14 +62,7 @@ import {
 import { getEncoderDescription } from '../ui/formatDescriptions';
 import { TestRecorder } from '../recording/TestRecorder';
 import { TextInputSuggest } from '../ui/TextInputSuggest';
-import {
-	DEFAULT_SPLIT_PART_SUFFIX,
-	MIN_SPLIT_CHUNK_MINUTES,
-	MAX_SPLIT_CHUNK_MINUTES,
-	SPLIT_PART_SUFFIX_PATTERN,
-	DOCS_URL,
-	FORMAT_WAV,
-} from '../constants';
+import { DOCS_URL, FORMAT_WAV } from '../constants';
 import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
 import { SystemInfoModal } from '../diagnostics/SystemInfoModal';
 import { renderTranscriptionRemainder } from './sections/transcriptionSettingsSection';
@@ -77,8 +70,6 @@ import { CONVERSION_LINK_ACTION_OPTIONS } from './labels';
 import {
 	addDropdown,
 	addHeading,
-	addNumberInput,
-	addNumberInputTo,
 	addText,
 	addToggle,
 	SETTING_DISABLED_CLASS,
@@ -141,17 +132,6 @@ const SETTINGS_SEARCH_ALIASES: string[] = [
 	'Active file subfolder',
 	'File prefix',
 	'Insert at original position',
-	'Audio splitting',
-	'Split recordings automatically',
-	'Part duration',
-	'Part name suffix',
-	'Delete source after split',
-	'Multi-track recording',
-	'Enable multi-track recording',
-	'Maximum tracks',
-	'Output mode',
-	'Audio source for track',
-	'Channels for track',
 	'Dictionary profiles',
 	'Rename speakers',
 	'Upload chunk size',
@@ -185,6 +165,11 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * positively report a single channel.
 	 */
 	private deviceSnapshot: AudioInputDeviceSnapshot = EMPTY_DEVICE_SNAPSHOT;
+	/**
+	 * The device list the tree was last built from, as a comparable string. A
+	 * re-render enumerates again, so only a real change asks for another one.
+	 */
+	private deviceSignature = '';
 	/** Latest device refresh generation; older async results are discarded. */
 	private deviceRefreshGeneration = 0;
 	/** Latest format-availability probe; older async results are discarded. */
@@ -283,6 +268,31 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					this.renderSettingsInto(host);
 				},
 			},
+			devices: {
+				inputs: Object.fromEntries(
+					this.deviceSnapshot.devices.map((device) => [
+						device.deviceId,
+						device.label ||
+							`Audio device ${device.deviceId.substring(0, 8)}`,
+					]),
+				),
+				channelSelectable: (deviceId): boolean => {
+					if (!deviceId) {
+						return false;
+					}
+					const { enumerationSucceeded, channelLimits } =
+						this.deviceSnapshot;
+					// An enumeration that failed says nothing about the device,
+					// so the choice stays open rather than silently locked.
+					return (
+						!enumerationSucceeded ||
+						(channelLimits.has(deviceId) &&
+							channelSelectionAvailable(
+								channelLimits.get(deviceId),
+							))
+					);
+				},
+			},
 			renderTranscriptionRest: (host): void => {
 				this.renderScopedSection(host, renderTranscriptionRemainder);
 			},
@@ -314,9 +324,29 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * @returns The stored value
 	 */
 	override getControlValue(key: string): unknown {
-		return (this.plugin.settings as unknown as Record<string, unknown>)[
-			key
-		];
+		const track = parseTrackControlKey(key);
+		if (track) {
+			const source = this.plugin.settings.trackAudioSources.get(
+				track.track,
+			);
+			return track.field === 'deviceId'
+				? (source?.deviceId ?? '')
+				: (source?.channelMode ?? CHANNEL_MODE_SOURCE);
+		}
+		const stored = (
+			this.plugin.settings as unknown as Record<string, unknown>
+		)[key];
+		// A feature switched on where the platform cannot honour it reads as
+		// off, so the control never claims a result this device cannot give.
+		// The stored value is left alone, so the setting survives a sync back
+		// to a device that can.
+		if (key === 'enableMultiTrack') {
+			return stored === true && isMultiTrackCaptureSupported();
+		}
+		if (key === 'autoSplitEnabled') {
+			return stored === true && isAutoSplitSupported();
+		}
+		return stored;
 	}
 
 	/**
@@ -336,6 +366,11 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		key: string,
 		value: unknown,
 	): void | Promise<void> {
+		const track = parseTrackControlKey(key);
+		if (track) {
+			this.writeTrackSource(track.track, track.field, String(value));
+			return this.plugin.saveSettings();
+		}
 		(this.plugin.settings as unknown as Record<string, unknown>)[key] =
 			value;
 		if (this.debouncedControlKeys.has(key)) {
@@ -379,6 +414,43 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			}
 		});
 		return folders;
+	}
+
+	/**
+	 * Writes one field of a track's audio source. The sources live in a Map
+	 * keyed by track number, so a control key addresses an entry rather than a
+	 * settings property; clearing the device drops the entry entirely.
+	 * @param track - The track number the control belongs to
+	 * @param field - Which half of the source the control writes
+	 * @param value - The value the control produced
+	 */
+	private writeTrackSource(
+		track: number,
+		field: 'deviceId' | 'channelMode',
+		value: string,
+	): void {
+		const sources = this.plugin.settings.trackAudioSources;
+		const current = sources.get(track);
+		if (field === 'channelMode') {
+			if (!current) {
+				// No device on this track: there is nothing to bind a layout to.
+				return;
+			}
+			sources.set(track, {
+				...current,
+				channelMode: normalizeChannelMode(value),
+			});
+			return;
+		}
+		if (!value) {
+			sources.delete(track);
+			return;
+		}
+		// Keep the track's channel layout across a device swap.
+		sources.set(track, {
+			deviceId: value,
+			channelMode: current?.channelMode ?? CHANNEL_MODE_SOURCE,
+		});
 	}
 
 	/**
@@ -617,235 +689,8 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			this.renderFileStorageRows(ctx);
 		});
 
-		// Audio splitting
-		new Setting(containerEl).setName('Audio splitting').setHeading();
-
-		// Splitting rows reveal nothing, so they stay on the tab-wide context.
-		const splitCtx = this.sectionContext(containerEl);
-		const settings = this.plugin.settings;
-		const autoSplitAvailable = isAutoSplitSupported();
-		const autoSplitSetting = new Setting(containerEl)
-			.setName('Split recordings automatically')
-			.setDesc(
-				autoSplitAvailable
-					? 'Save the recording as separate part files of fixed duration instead of one long file. Not applied to merged multi-track recordings.'
-					: 'Not available on this device. Recordings are saved as one file; manual splitting from the context menu still works.',
-			)
-			.addToggle((toggle) => {
-				// Reflect the effective state: a stored "on" synced from
-				// another platform reads as off where auto-split cannot run.
-				toggle
-					.setValue(
-						this.plugin.settings.autoSplitEnabled &&
-							autoSplitAvailable,
-					)
-					.onChange(async (value) => {
-						this.plugin.settings.autoSplitEnabled = value;
-						await this.plugin.saveSettings();
-					});
-				if (!autoSplitAvailable) {
-					toggle.setDisabled(true);
-				}
-			});
-		if (!autoSplitAvailable) {
-			autoSplitSetting.settingEl.addClass(SETTING_DISABLED_CLASS);
-		}
-
-		addNumberInput(splitCtx, {
-			name: 'Part duration',
-			desc: 'Length of each part in minutes. Also used as the default for manual splitting from the context menu.',
-			min: MIN_SPLIT_CHUNK_MINUTES,
-			max: MAX_SPLIT_CHUNK_MINUTES,
-			step: 1,
-			get: () => settings.splitChunkMinutes,
-			set: (v) => (settings.splitChunkMinutes = v),
-		});
-
-		new Setting(containerEl)
-			.setName('Part name suffix')
-			.setDesc(
-				'Appended with the part number to part file names, e.g. "recording-part1.webm". Letters, digits, hyphens, and underscores only.',
-			)
-			.addText((text) =>
-				text
-					.setPlaceholder(DEFAULT_SPLIT_PART_SUFFIX)
-					.setValue(this.plugin.settings.splitPartSuffix)
-					.onChange((value) => {
-						// Mirror the manual split dialog: surrounding
-						// whitespace is ignored and an empty field means
-						// the default suffix. Only valid suffixes are
-						// persisted; the red border tells the user the
-						// last valid value is still in effect
-						const trimmed = value.trim();
-						const valid =
-							trimmed === '' ||
-							SPLIT_PART_SUFFIX_PATTERN.test(trimmed);
-						text.inputEl.toggleClass('aar-input-invalid', !valid);
-						if (!valid) {
-							return;
-						}
-						this.plugin.settings.splitPartSuffix =
-							trimmed === ''
-								? DEFAULT_SPLIT_PART_SUFFIX
-								: trimmed;
-						this.saveTextSettingDebounced();
-					}),
-			);
-
-		addToggle(splitCtx, {
-			name: 'Delete source after split',
-			desc: 'Default state of the delete source file option in the manual split dialog.',
-			get: () => settings.deleteSourceAfterSplit,
-			set: (v) => (settings.deleteSourceAfterSplit = v),
-		});
-
-		// Multi-track recording
-		new Setting(containerEl).setName('Multi-track recording').setHeading();
-
-		const multiTrackAvailable = isMultiTrackCaptureSupported();
-		const multiTrackSetting = new Setting(containerEl)
-			.setName('Enable multi-track recording')
-			.setDesc(
-				multiTrackAvailable
-					? 'Enable recording from multiple input devices at the same time.'
-					: 'Not available on this device. Recording captures a single track from the default microphone.',
-			)
-			.addToggle((toggle) => {
-				// Reflect the effective state: a stored "on" synced from
-				// another platform reads as off where multi-track capture
-				// is unavailable, and the toggle cannot be switched on.
-				toggle
-					.setValue(
-						this.plugin.settings.enableMultiTrack &&
-							multiTrackAvailable,
-					)
-					.onChange(async (value) => {
-						this.plugin.settings.enableMultiTrack = value;
-						await this.plugin.saveSettings();
-						this.rerender();
-					});
-				if (!multiTrackAvailable) {
-					toggle.setDisabled(true);
-				}
-			});
-		if (!multiTrackAvailable) {
-			multiTrackSetting.settingEl.addClass(SETTING_DISABLED_CLASS);
-		}
-
-		if (this.plugin.settings.enableMultiTrack && multiTrackAvailable) {
-			addNumberInputTo(
-				new Setting(containerEl)
-					.setName('Maximum tracks')
-					.setDesc(
-						'Set the number of simultaneous tracks (1-8). Use only what you need to keep configuration simple.',
-					),
-				{
-					min: 1,
-					max: 8,
-					step: 1,
-					get: () => this.plugin.settings.maxTracks,
-					set: async (value) => {
-						this.plugin.settings.maxTracks = value;
-						await this.plugin.saveSettings();
-						this.rerender();
-					},
-				},
-			);
-
-			new Setting(containerEl)
-				.setName('Output mode')
-				.setDesc(
-					'Choose whether multi-track output is exported as one combined file or one file per track.',
-				)
-				.addDropdown((dropdown) =>
-					dropdown
-						.addOption('single', 'Single file')
-						.addOption('multiple', 'Multiple files')
-						.setValue(this.plugin.settings.outputMode)
-						.onChange(async (value: string) => {
-							this.plugin.settings.outputMode =
-								value as OutputMode;
-							await this.plugin.saveSettings();
-						}),
-				);
-
-			for (let i = 1; i <= this.plugin.settings.maxTracks; i++) {
-				new Setting(containerEl)
-					.setName(`Audio source for track ${String(i)}`)
-					.setDesc(
-						`Select the input device assigned to track ${String(i)}`,
-					)
-					.addDropdown((dropdown) => {
-						this.deviceDropdowns.push({
-							dropdown,
-							getSelectedDeviceId: () =>
-								this.plugin.settings.trackAudioSources.get(i)
-									?.deviceId || '',
-						});
-						dropdown.onChange(async (value) => {
-							if (value) {
-								// Keep the track's channel mode across a
-								// device swap. Capability observation only
-								// disables the selector; it never rewrites
-								// the user's persistent choice.
-								this.plugin.settings.trackAudioSources.set(i, {
-									deviceId: value,
-									channelMode:
-										this.plugin.settings.trackAudioSources.get(
-											i,
-										)?.channelMode ?? CHANNEL_MODE_SOURCE,
-								});
-							} else {
-								this.plugin.settings.trackAudioSources.delete(
-									i,
-								);
-							}
-							await this.plugin.saveSettings();
-							// The track's channel selector is bound to
-							// this device
-							this.runChannelDropdownUpdaters();
-						});
-					});
-
-				new Setting(containerEl)
-					.setName(`Channels for track ${String(i)}`)
-					.setDesc(
-						`Channel layout for track ${String(i)}: keep the device layout, or reduce this track to mono during capture. Disabled when the track has no device or its device reports a mono-only input.`,
-					)
-					.addDropdown((dropdown) => {
-						this.bindChannelModeDropdown(dropdown, {
-							getDeviceId: () =>
-								this.plugin.settings.trackAudioSources.get(i)
-									?.deviceId ?? '',
-							hasDevice: () =>
-								Boolean(
-									this.plugin.settings.trackAudioSources.get(
-										i,
-									)?.deviceId,
-								),
-							getMode: () =>
-								this.plugin.settings.trackAudioSources.get(i)
-									?.channelMode ?? CHANNEL_MODE_SOURCE,
-							setMode: async (mode) => {
-								const source =
-									this.plugin.settings.trackAudioSources.get(
-										i,
-									);
-								if (!source) {
-									// No device selected: nothing to bind
-									// the mode to
-									return;
-								}
-								this.plugin.settings.trackAudioSources.set(i, {
-									...source,
-									channelMode: mode,
-								});
-								await this.plugin.saveSettings();
-							},
-						});
-					});
-			}
-		}
+		// Audio splitting and Multi-track recording follow here, from the
+		// definition tree.
 
 		// Audio processing & feedback, the cleanup defaults, and Diagnostics
 		// follow here, from the definition tree.
@@ -1154,6 +999,19 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			return;
 		}
 		this.deviceSnapshot = snapshot;
+		// The device-bound rows are built from this snapshot, so a changed
+		// device list is a changed tree: ask for a re-render, which is the
+		// documented way to react to state the settings tab does not own.
+		// Compared by content, because a render enumerates again and an
+		// unconditional re-render would never settle.
+		const signature = snapshot.devices
+			.map((device) => `${device.deviceId}:${device.label}`)
+			.join('|');
+		if (signature !== this.deviceSignature) {
+			this.deviceSignature = signature;
+			this.rerender();
+			return;
+		}
 		if (snapshot.enumerationSucceeded) {
 			for (const binding of this.deviceDropdowns) {
 				const { dropdown } = binding;

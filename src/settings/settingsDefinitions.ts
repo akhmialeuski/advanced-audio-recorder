@@ -18,7 +18,11 @@
  * @module settings/settingsDefinitions
  */
 
-import type { Setting, SettingDefinitionItem } from 'obsidian';
+import type {
+	Setting,
+	SettingDefinitionItem,
+	SettingGroupItem,
+} from 'obsidian';
 import type { AudioRecorderSettings } from './settingsSchema';
 import {
 	MAX_TRANSCRIPTION_TIMEOUT_MINUTES,
@@ -33,13 +37,50 @@ import {
 	MIN_CLEANUP_GATE_THRESHOLD_DB,
 	MIN_CLEANUP_HIGHPASS_HZ,
 	MIN_CLEANUP_LEVELING_MAKEUP_DB,
+	MIN_SPLIT_CHUNK_MINUTES,
+	MAX_SPLIT_CHUNK_MINUTES,
+	DEFAULT_SPLIT_PART_SUFFIX,
+	SPLIT_PART_SUFFIX_PATTERN,
 } from '../constants';
 import { TRANSCRIPTION_PROVIDER_OPTIONS } from './labels';
+import {
+	isAutoSplitSupported,
+	isChannelModeSelectionSupported,
+	isMultiTrackCaptureSupported,
+} from '../platform/capabilities';
+import { CHANNEL_MODE_LABELS } from './labels';
 import {
 	isProviderAvailableOnPlatform,
 	providerSupportsDiarization,
 } from '../transcription/providers/capabilities';
 import type { TranscriptionProviderId } from './settingsSchema';
+
+/** Highest track count the multi-track section offers. */
+export const MAX_TRACK_COUNT = 8;
+
+/** Control key for one field of one track's audio source. */
+export const trackControlKey = (
+	track: number,
+	field: 'deviceId' | 'channelMode',
+): string => `track.${String(track)}.${field}`;
+
+/**
+ * Reads a track control key back into the track and field it addresses.
+ * @param key - A key produced by {@link trackControlKey}
+ * @returns The track number and field, or undefined for any other key
+ */
+export function parseTrackControlKey(
+	key: string,
+): { track: number; field: 'deviceId' | 'channelMode' } | undefined {
+	const match = /^track\.(\d+)\.(deviceId|channelMode)$/.exec(key);
+	if (!match) {
+		return undefined;
+	}
+	return {
+		track: Number(match[1]),
+		field: match[2] as 'deviceId' | 'channelMode',
+	};
+}
 
 /** Accepted shape of the transcription language field: an ISO code or empty. */
 const LANGUAGE_CODE_PATTERN = /^([a-z]{2,3}(-[a-z0-9]{2,8})?|auto)?$/i;
@@ -58,6 +99,22 @@ export const SETTINGS_ROOT_CLASS = 'aar-settings-root';
  * such a row wrap so the block starts on its own line.
  */
 export const SETTINGS_BLOCK_ROW_CLASS = 'aar-setting-block-row';
+
+/**
+ * The live audio-input picture the device-bound rows are built from. The tab
+ * enumerates devices asynchronously and asks for a re-render when the list
+ * changes, so the definitions themselves only read what is already known.
+ */
+export interface DeviceOptions {
+	/** Device id to label, for the input dropdowns. */
+	readonly inputs: Record<string, string>;
+	/**
+	 * Whether a device offers a channel layout worth choosing. False for a
+	 * device that positively reports a single capture channel, and for no
+	 * device at all.
+	 */
+	channelSelectable(deviceId: string): boolean;
+}
 
 /**
  * The sections still rendered by the tab's own imperative body.
@@ -94,6 +151,8 @@ export interface SettingsDefinitionContext {
 	readonly settings: AudioRecorderSettings;
 	/** The sections not migrated into this tree yet. */
 	readonly remainder: ImperativeRemainder;
+	/** Input devices and their channel capability, as last enumerated. */
+	readonly devices: DeviceOptions;
 	/** Handlers for the diagnostics rows. */
 	readonly diagnostics: DiagnosticsActions;
 	/**
@@ -125,6 +184,156 @@ function remainderDefinition(
 			host.addClass(SETTINGS_ROOT_CLASS);
 			remainder.render(host);
 		},
+	};
+}
+
+/**
+ * Automatic splitting of a long recording into part files.
+ */
+function audioSplittingGroup(): SettingDefinitionItem {
+	const available = isAutoSplitSupported();
+	return {
+		type: 'group',
+		heading: 'Audio splitting',
+		items: [
+			{
+				name: 'Split recordings automatically',
+				desc: available
+					? 'Save the recording as separate part files of fixed duration instead of one long file. Not applied to merged multi-track recordings.'
+					: 'Not available on this device. Recordings are saved as one file; manual splitting from the context menu still works.',
+				control: {
+					type: 'toggle',
+					key: 'autoSplitEnabled',
+					disabled: !available,
+				},
+			},
+			{
+				name: 'Part duration',
+				desc: 'Length of each part in minutes. Also the default for manual splitting from the context menu.',
+				control: {
+					type: 'number',
+					key: 'splitChunkMinutes',
+					min: MIN_SPLIT_CHUNK_MINUTES,
+					max: MAX_SPLIT_CHUNK_MINUTES,
+					step: 1,
+				},
+			},
+			{
+				name: 'Part name suffix',
+				desc: `Appended with the part number to part file names, e.g. "recording-${DEFAULT_SPLIT_PART_SUFFIX}1.webm".`,
+				control: {
+					type: 'text',
+					key: 'splitPartSuffix',
+					placeholder: DEFAULT_SPLIT_PART_SUFFIX,
+					validate: (value: string): string | undefined =>
+						SPLIT_PART_SUFFIX_PATTERN.test(value.trim())
+							? undefined
+							: 'Letters, digits, hyphens and underscores only.',
+				},
+			},
+			{
+				name: 'Delete source after split',
+				desc: 'Default state of the delete source file option in the manual split dialog.',
+				control: { type: 'toggle', key: 'deleteSourceAfterSplit' },
+			},
+		],
+	};
+}
+
+/**
+ * Multi-track capture: the switch, how many tracks to offer, how they are
+ * exported, and one input plus channel layout per track. The per-track rows are
+ * declared for every track the section can offer and revealed by predicate, so
+ * changing the track count reveals rows instead of rebuilding the tab.
+ * @param settings - Live settings, read by the predicates
+ * @param devices - Input devices as last enumerated
+ */
+function multiTrackGroup(
+	settings: AudioRecorderSettings,
+	devices: DeviceOptions,
+): SettingDefinitionItem {
+	const available = isMultiTrackCaptureSupported();
+	const active = (): boolean => settings.enableMultiTrack && available;
+	const trackRows = (): SettingGroupItem[] => {
+		const rows: SettingGroupItem[] = [];
+		for (let track = 1; track <= MAX_TRACK_COUNT; track++) {
+			const offered = (): boolean =>
+				active() && track <= settings.maxTracks;
+			rows.push(
+				{
+					name: `Audio source for track ${String(track)}`,
+					desc: `Input device assigned to track ${String(track)}.`,
+					visible: offered,
+					control: {
+						type: 'dropdown',
+						key: trackControlKey(track, 'deviceId'),
+						options: devices.inputs,
+					},
+				},
+				{
+					name: `Channels for track ${String(track)}`,
+					desc: `Channel layout for track ${String(track)}: keep the device layout, or reduce this track to mono during capture.`,
+					visible: offered,
+					control: {
+						type: 'dropdown',
+						key: trackControlKey(track, 'channelMode'),
+						options: CHANNEL_MODE_LABELS,
+						// A track with no device, or one whose device reports a
+						// single capture channel, has no layout to choose.
+						disabled: (): boolean =>
+							!isChannelModeSelectionSupported() ||
+							!devices.channelSelectable(
+								settings.trackAudioSources.get(track)
+									?.deviceId ?? '',
+							),
+					},
+				},
+			);
+		}
+		return rows;
+	};
+	return {
+		type: 'group',
+		heading: 'Multi-track recording',
+		items: [
+			{
+				name: 'Enable multi-track recording',
+				desc: available
+					? 'Record from several input devices at the same time.'
+					: 'Not available on this device. Recording captures a single track from the default microphone.',
+				control: {
+					type: 'toggle',
+					key: 'enableMultiTrack',
+					disabled: !available,
+				},
+			},
+			{
+				name: 'Maximum tracks',
+				desc: 'Number of simultaneous tracks to configure. Use only what you need.',
+				visible: active,
+				control: {
+					type: 'number',
+					key: 'maxTracks',
+					min: 1,
+					max: MAX_TRACK_COUNT,
+					step: 1,
+				},
+			},
+			{
+				name: 'Output mode',
+				desc: 'Export multi-track output as one combined file or one file per track.',
+				visible: active,
+				control: {
+					type: 'dropdown',
+					key: 'outputMode',
+					options: {
+						single: 'Single file',
+						multiple: 'Multiple files',
+					},
+				},
+			},
+			...trackRows(),
+		],
 	};
 }
 
@@ -466,6 +675,8 @@ export function buildSettingsDefinitions(
 ): SettingDefinitionItem[] {
 	return [
 		remainderDefinition(ctx.remainder),
+		audioSplittingGroup(),
+		multiTrackGroup(ctx.settings, ctx.devices),
 		audioPlayerGroup(ctx.settings),
 		transcriptionGroup(ctx.settings, (host) => {
 			ctx.renderTranscriptionRest(host);

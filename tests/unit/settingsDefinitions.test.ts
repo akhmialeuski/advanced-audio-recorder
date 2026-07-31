@@ -23,6 +23,8 @@ import {
 	CLEANUP_HIGHPASS_STEP_HZ,
 	MAX_CLEANUP_HIGHPASS_HZ,
 	MIN_CLEANUP_HIGHPASS_HZ,
+	MIN_SPLIT_CHUNK_MINUTES,
+	MAX_SPLIT_CHUNK_MINUTES,
 	TRANSCRIPTION_PROVIDER_IDS,
 } from 'src/constants';
 import {
@@ -68,6 +70,14 @@ describe('settings definitions', () => {
 			name: REMAINDER_NAME,
 			aliases,
 			render: renderRemainder as (host: HTMLElement) => void,
+		},
+		devices: {
+			inputs: {
+				'mic-1': 'Built-in microphone',
+				'iface-1': 'Audio interface',
+			},
+			channelSelectable: (deviceId: string): boolean =>
+				deviceId === 'iface-1',
 		},
 		diagnostics: diagnostics,
 		renderTranscriptionRest: renderTranscriptionRest as (
@@ -269,6 +279,102 @@ describe('settings definitions', () => {
 			expect(
 				setting.settingEl.querySelector('.aar-transcription-rest'),
 			).not.toBeNull();
+		});
+	});
+
+	describe('the multi-track section', () => {
+		const MULTI = 'Multi-track recording';
+
+		/** Whether a row's visible predicate holds for the current settings. */
+		const isVisible = (name: string): boolean => {
+			const visible = rowOf(build(), MULTI, name).visible;
+			return typeof visible === 'function'
+				? visible()
+				: visible !== false;
+		};
+
+		it('offers a row per track and reveals only the configured ones', () => {
+			// Declared once for every track the section can offer and revealed
+			// by predicate: changing the count reveals rows instead of
+			// rebuilding the tab.
+			settings.enableMultiTrack = true;
+			settings.maxTracks = 2;
+
+			expect(isVisible('Audio source for track 2')).toBe(true);
+			expect(isVisible('Audio source for track 3')).toBe(false);
+
+			settings.maxTracks = 3;
+
+			expect(isVisible('Audio source for track 3')).toBe(true);
+		});
+
+		it('hides every track row while multi-track is off', () => {
+			settings.enableMultiTrack = false;
+
+			expect(isVisible('Audio source for track 1')).toBe(false);
+			expect(isVisible('Maximum tracks')).toBe(false);
+		});
+
+		it('lists the enumerated devices as the track input options', () => {
+			const control = rowOf(
+				build(),
+				MULTI,
+				'Audio source for track 1',
+			).control;
+
+			expect(control?.key).toBe('track.1.deviceId');
+			expect(control?.options).toEqual({
+				'mic-1': 'Built-in microphone',
+				'iface-1': 'Audio interface',
+			});
+		});
+
+		it('disables the channel layout of a track whose device has one channel', () => {
+			settings.enableMultiTrack = true;
+			settings.trackAudioSources.set(1, {
+				deviceId: 'mic-1',
+				channelMode: 'source',
+			});
+			const disabled = rowOf(build(), MULTI, 'Channels for track 1')
+				.control?.disabled;
+
+			expect(typeof disabled === 'function' && disabled()).toBe(true);
+
+			settings.trackAudioSources.set(1, {
+				deviceId: 'iface-1',
+				channelMode: 'source',
+			});
+
+			expect(typeof disabled === 'function' && disabled()).toBe(false);
+		});
+	});
+
+	describe('the audio splitting section', () => {
+		const SPLITTING = 'Audio splitting';
+
+		it('rejects a part suffix that would not make a valid file name', () => {
+			const validate = rowOf(build(), SPLITTING, 'Part name suffix')
+				.control?.validate as (value: string) => string | undefined;
+
+			expect(validate('part')).toBeUndefined();
+			expect(validate('take_2')).toBeUndefined();
+			expect(validate('bad suffix')).toBe(
+				'Letters, digits, hyphens and underscores only.',
+			);
+			expect(validate('')).toBe(
+				'Letters, digits, hyphens and underscores only.',
+			);
+		});
+
+		it('bounds the part duration', () => {
+			expect(rowOf(build(), SPLITTING, 'Part duration').control).toEqual(
+				expect.objectContaining({
+					type: 'number',
+					key: 'splitChunkMinutes',
+					min: MIN_SPLIT_CHUNK_MINUTES,
+					max: MAX_SPLIT_CHUNK_MINUTES,
+				}),
+			);
 		});
 	});
 

@@ -5,7 +5,6 @@
  */
 
 import { App, Platform } from 'obsidian';
-import { at } from '../helpers/assertions';
 import {
 	groupOf,
 	renderDefinitionOf,
@@ -60,21 +59,6 @@ const renderedNames = (host: HTMLElement): string[] =>
 		.filter((name) => name.length > 0);
 
 /**
- * The rendered row carrying a setting name.
- * @param host - Element the settings body was rendered into
- * @param name - Name shown on the row
- */
-const settingRowIn = (host: HTMLElement, name: string): HTMLElement => {
-	const row = Array.from(host.querySelectorAll('.setting-item')).find(
-		(el) => el.querySelector('.setting-item-name')?.textContent === name,
-	);
-	if (!row) {
-		throw new Error(`Setting row not rendered: ${name}`);
-	}
-	return row as HTMLElement;
-};
-
-/**
  * The diagnostics row that owns the test capture, which is the definition
  * holding the cleanup the framework runs before it replaces that row.
  * @param tab - The tab to read the definition from
@@ -87,21 +71,6 @@ const testRecordingDefinitionOf = (
 		'Diagnostics',
 		'Test recording',
 	) as RenderDefinition;
-};
-
-/**
- * Flips the toggle on a rendered row, as a click on it does.
- * @param host - Element the settings body was rendered into
- * @param name - Name of the row whose toggle to flip
- */
-const clickToggleIn = async (
-	host: HTMLElement,
-	name: string,
-): Promise<void> => {
-	settingRowIn(host, name)
-		.querySelector<HTMLElement>('.checkbox-container')
-		?.click();
-	await flushAsync();
 };
 
 describe('AudioRecorderSettingTab', () => {
@@ -176,14 +145,13 @@ describe('AudioRecorderSettingTab', () => {
 			const remainder = renderDefinitionOf(defs);
 			expect(remainder.name).toBe(PLUGIN_MANIFEST_NAME);
 			expect(remainder.aliases).toEqual(
-				expect.arrayContaining([
-					'Recording format',
-					'Enable multi-track recording',
-					'Save folder',
-				]),
+				expect.arrayContaining(['Recording format', 'Save folder']),
 			);
 			expect(groupOf(defs, 'Diagnostics').items).not.toHaveLength(0);
 			expect(groupOf(defs, 'Transcription').items).not.toHaveLength(0);
+			expect(
+				groupOf(defs, 'Multi-track recording').items,
+			).not.toHaveLength(0);
 		});
 
 		it('renders the settings body inside the row the framework keeps', () => {
@@ -280,31 +248,36 @@ describe('AudioRecorderSettingTab', () => {
 			expect(remainder.aliases).not.toContain('Enable transcription');
 		});
 
-		it('re-renders through the framework when a toggle adds settings', async () => {
-			const frame = renderDeclaratively();
-			// update() re-reads the definitions and re-invokes the render
-			// callback against the row it already built.
+		it('asks the framework to re-render when the device list changes', async () => {
+			// The device-bound rows are built from the last enumeration, so a
+			// changed device list is a changed tree. This is the documented way
+			// to react to state the settings tab does not own.
+			(
+				navigator.mediaDevices.enumerateDevices as jest.Mock
+			).mockResolvedValue([
+				{
+					deviceId: 'mic-1',
+					kind: 'audioinput',
+					label: 'Built-in microphone',
+					groupId: '',
+				},
+			]);
 			const updateSpy = jest
 				.spyOn(tab, 'update')
-				.mockImplementation(() => {
-					renderDeclaratively(frame);
-				});
+				.mockImplementation(() => undefined);
 
-			await clickToggleIn(
-				frame.setting.settingEl,
-				'Enable multi-track recording',
-			);
+			renderDeclaratively();
+			await flushAsync();
 
 			expect(updateSpy).toHaveBeenCalledTimes(1);
-			const names = renderedNames(frame.containerEl);
-			expect(names).toContain('Maximum tracks');
-			// Rebuilt in place, not stacked behind the previous body.
-			expect(
-				names.filter((name) => name === 'Input device'),
-			).toHaveLength(1);
-			expect(
-				frame.containerEl.querySelectorAll('.aar-doc-callout'),
-			).toHaveLength(1);
+
+			// A render enumerates again; an unchanged list must settle instead
+			// of asking for yet another render.
+			updateSpy.mockClear();
+			renderDeclaratively();
+			await flushAsync();
+
+			expect(updateSpy).not.toHaveBeenCalled();
 		});
 	});
 
@@ -357,18 +330,24 @@ describe('AudioRecorderSettingTab', () => {
 			expect(host?.querySelector('.aar-doc-callout-link')).not.toBeNull();
 		});
 
-		it('rebuilds the container itself when a toggle adds settings', async () => {
+		it('rebuilds the container itself when the device list changes', async () => {
+			// No framework update() to ask on this version: the tab renders the
+			// tree again into its own container, exactly once.
+			(
+				navigator.mediaDevices.enumerateDevices as jest.Mock
+			).mockResolvedValue([
+				{
+					deviceId: 'mic-1',
+					kind: 'audioinput',
+					label: 'Built-in microphone',
+					groupId: '',
+				},
+			]);
+
 			legacyTab.display();
+			await flushAsync();
 
-			await clickToggleIn(
-				legacyTab.containerEl,
-				'Enable multi-track recording',
-			);
-
-			// No framework update() to ask on this version: the tab clears its
-			// container and renders again, revealing the new rows exactly once.
 			const names = renderedNames(legacyTab.containerEl);
-			expect(names).toContain('Maximum tracks');
 			expect(
 				names.filter((name) => name === 'Input device'),
 			).toHaveLength(1);
@@ -693,261 +672,15 @@ describe('AudioRecorderSettingTab', () => {
 			legacyTab.display();
 			await recordUntilPlayback(legacyTab, legacyTab.containerEl);
 
-			await clickToggleIn(
-				legacyTab.containerEl,
-				'Enable multi-track recording',
-			);
+			legacyTab.display();
 
-			// No framework cleanup to lean on here: the mode releases the body
-			// itself before rebuilding the container, so the same blob URL is
-			// revoked on this Obsidian too.
+			// No framework cleanup to lean on here: the renderer releases the
+			// rows it is replacing before it rebuilds the container, so the
+			// same blob URL is revoked on this Obsidian too.
 			expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test-url');
 			expect(
 				legacyTab.containerEl.querySelector('.aar-test-audio'),
 			).toBeNull();
-		});
-	});
-
-	describe('channel selectors and device capabilities', () => {
-		function fakeInputDevice(
-			deviceId: string,
-			maxChannels?: number,
-		): MediaDeviceInfo {
-			return {
-				deviceId,
-				kind: 'audioinput',
-				label: deviceId,
-				groupId: '',
-				getCapabilities:
-					maxChannels === undefined
-						? undefined
-						: (): { channelCount: { max: number } } => ({
-								channelCount: { max: maxChannels },
-							}),
-			} as unknown as MediaDeviceInfo;
-		}
-
-		function installDevices(devices: MediaDeviceInfo[]): void {
-			(
-				navigator.mediaDevices.enumerateDevices as jest.Mock
-			).mockResolvedValue(devices);
-		}
-
-		/** display() plus the async capability load and device fills. */
-		async function renderAndSettle(): Promise<void> {
-			tab.display();
-			await new Promise((resolve) => setTimeout(resolve, 0));
-			await new Promise((resolve) => setTimeout(resolve, 0));
-		}
-
-		/**
-		 * The channel selectors are the only dropdowns offering the
-		 * mono-mix option: the global one first, then one per track.
-		 */
-		function channelSelects(): HTMLSelectElement[] {
-			return Array.from(
-				tab.containerEl.querySelectorAll<HTMLSelectElement>('select'),
-			).filter((select) =>
-				Array.from(select.options).some(
-					(option) => option.value === 'mono-mix',
-				),
-			);
-		}
-
-		it('keeps the global selector enabled for a stereo device', async () => {
-			installDevices([fakeInputDevice('stereo-dev', 2)]);
-			mockSettings.audioDeviceId = 'stereo-dev';
-			mockSettings.recordingChannels = 'mono-left';
-
-			await renderAndSettle();
-
-			expect(at(channelSelects(), 0).disabled).toBe(false);
-			expect(mockSettings.recordingChannels).toBe('mono-left');
-		});
-
-		it('uses one enumeration for all device dropdowns and capabilities', async () => {
-			installDevices([fakeInputDevice('stereo-dev', 2)]);
-			mockSettings.enableMultiTrack = true;
-			mockSettings.maxTracks = 3;
-
-			await renderAndSettle();
-
-			expect(
-				navigator.mediaDevices.enumerateDevices,
-			).toHaveBeenCalledTimes(1);
-		});
-
-		it('disables the global selector without rewriting the mode for a known-mono device', async () => {
-			installDevices([fakeInputDevice('mono-dev', 1)]);
-			mockSettings.audioDeviceId = 'mono-dev';
-			mockSettings.recordingChannels = 'mono-left';
-
-			await renderAndSettle();
-
-			expect(at(channelSelects(), 0).disabled).toBe(true);
-			expect(mockSettings.recordingChannels).toBe('mono-left');
-			expect(saveSettingsMock).not.toHaveBeenCalled();
-		});
-
-		it('keeps the global selector enabled when capability is unknown', async () => {
-			installDevices([fakeInputDevice('opaque-dev')]);
-			mockSettings.audioDeviceId = 'opaque-dev';
-
-			await renderAndSettle();
-
-			expect(at(channelSelects(), 0).disabled).toBe(false);
-		});
-
-		it('disables per-track selectors by each track device capability', async () => {
-			installDevices([
-				fakeInputDevice('stereo-dev', 2),
-				fakeInputDevice('mono-dev', 1),
-			]);
-			mockSettings.enableMultiTrack = true;
-			mockSettings.maxTracks = 3;
-			mockSettings.trackAudioSources = new Map([
-				[1, { deviceId: 'stereo-dev', channelMode: 'mono-left' }],
-				[2, { deviceId: 'mono-dev', channelMode: 'mono-right' }],
-			]);
-
-			await renderAndSettle();
-
-			const selects = channelSelects();
-			// Global + three track selectors
-			expect(selects).toHaveLength(4);
-			expect(at(selects, 1).disabled).toBe(false);
-			expect(at(selects, 2).disabled).toBe(true);
-			// Track 3 has no device: nothing to bind the mode to
-			expect(at(selects, 3).disabled).toBe(true);
-			// Runtime capability observation never rewrites either mode.
-			expect(mockSettings.trackAudioSources.get(1)?.channelMode).toBe(
-				'mono-left',
-			);
-			expect(mockSettings.trackAudioSources.get(2)?.channelMode).toBe(
-				'mono-right',
-			);
-		});
-
-		it('treats an unplugged selected device as absent without losing its mode', async () => {
-			installDevices([fakeInputDevice('selected-dev', 2)]);
-			mockSettings.enableMultiTrack = true;
-			mockSettings.maxTracks = 1;
-			mockSettings.trackAudioSources = new Map([
-				[1, { deviceId: 'selected-dev', channelMode: 'mono-left' }],
-			]);
-			await renderAndSettle();
-			expect(at(channelSelects(), 1).disabled).toBe(false);
-
-			installDevices([]);
-			const deviceChange = addEventListenerMock.mock
-				.calls[0][1] as () => void;
-			deviceChange();
-			await new Promise((resolve) => setTimeout(resolve, 0));
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
-			expect(at(channelSelects(), 1).disabled).toBe(true);
-			expect(mockSettings.trackAudioSources.get(1)).toEqual({
-				deviceId: 'selected-dev',
-				channelMode: 'mono-left',
-			});
-			expect(saveSettingsMock).not.toHaveBeenCalled();
-		});
-
-		it('ignores a stale capability refresh that resolves last', async () => {
-			let resolveOlder:
-				| ((devices: MediaDeviceInfo[]) => void)
-				| undefined;
-			let resolveNewer:
-				| ((devices: MediaDeviceInfo[]) => void)
-				| undefined;
-			const older = new Promise<MediaDeviceInfo[]>((resolve) => {
-				resolveOlder = resolve;
-			});
-			const newer = new Promise<MediaDeviceInfo[]>((resolve) => {
-				resolveNewer = resolve;
-			});
-			(navigator.mediaDevices.enumerateDevices as jest.Mock)
-				.mockImplementationOnce(() => older)
-				.mockImplementationOnce(() => newer);
-			mockSettings.audioDeviceId = 'selected-dev';
-			mockSettings.recordingChannels = 'mono-left';
-
-			tab.display();
-			const deviceChange = addEventListenerMock.mock
-				.calls[0][1] as () => void;
-			deviceChange();
-			resolveNewer?.([fakeInputDevice('selected-dev', 2)]);
-			await new Promise((resolve) => setTimeout(resolve, 0));
-			expect(at(channelSelects(), 0).disabled).toBe(false);
-
-			resolveOlder?.([fakeInputDevice('selected-dev', 1)]);
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
-			// The older mono result must not overwrite the newer stereo view.
-			expect(at(channelSelects(), 0).disabled).toBe(false);
-			expect(mockSettings.recordingChannels).toBe('mono-left');
-			expect(saveSettingsMock).not.toHaveBeenCalled();
-		});
-
-		it('persists a per-track channel mode change', async () => {
-			installDevices([fakeInputDevice('stereo-dev', 2)]);
-			mockSettings.enableMultiTrack = true;
-			mockSettings.maxTracks = 1;
-			mockSettings.trackAudioSources = new Map([
-				[1, { deviceId: 'stereo-dev', channelMode: 'source' }],
-			]);
-
-			await renderAndSettle();
-
-			const trackChannelSelect = at(channelSelects(), 1);
-			expect(trackChannelSelect.disabled).toBe(false);
-			trackChannelSelect.value = 'mono-right';
-			trackChannelSelect.dispatchEvent(new Event('change'));
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
-			expect(mockSettings.trackAudioSources.get(1)).toEqual({
-				deviceId: 'stereo-dev',
-				channelMode: 'mono-right',
-			});
-		});
-
-		it('preserves the track channel mode across a device swap', async () => {
-			installDevices([
-				fakeInputDevice('stereo-dev', 2),
-				fakeInputDevice('other-stereo', 2),
-			]);
-			mockSettings.enableMultiTrack = true;
-			mockSettings.maxTracks = 1;
-			mockSettings.trackAudioSources = new Map([
-				[1, { deviceId: 'stereo-dev', channelMode: 'mono-left' }],
-			]);
-
-			await renderAndSettle();
-
-			// The device dropdowns are every select that is not a channel
-			// selector; the track device dropdown is the last one
-			const channels = new Set(channelSelects());
-			const deviceSelects = Array.from(
-				tab.containerEl.querySelectorAll<HTMLSelectElement>('select'),
-			).filter(
-				(select) =>
-					!channels.has(select) &&
-					Array.from(select.options).some(
-						(option) => option.value === 'other-stereo',
-					),
-			);
-			const trackDeviceSelect = at(
-				deviceSelects,
-				deviceSelects.length - 1,
-			);
-			trackDeviceSelect.value = 'other-stereo';
-			trackDeviceSelect.dispatchEvent(new Event('change'));
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
-			expect(mockSettings.trackAudioSources.get(1)).toEqual({
-				deviceId: 'other-stereo',
-				channelMode: 'mono-left',
-			});
 		});
 	});
 
@@ -1091,48 +824,6 @@ describe('AudioRecorderSettingTab', () => {
 			expect(rowDimmed('Sample rate')).toBe(true);
 			expect(rowSelect('Sample rate').disabled).toBe(true);
 			expect(rowSelect('Recording channels').disabled).toBe(true);
-		});
-
-		it('blocks auto-split on mobile and shows the effective off state', async () => {
-			Platform.isMobile = true;
-			mockSettings.autoSplitEnabled = true;
-			tab.display();
-
-			expect(rowDimmed('Split recordings automatically')).toBe(true);
-			// The disabled toggle cannot be flipped: a click must not save
-			const toggleEl = settingRow(
-				'Split recordings automatically',
-			).querySelector<HTMLElement>('.checkbox-container');
-			toggleEl?.click();
-			await new Promise((resolve) => setTimeout(resolve, 0));
-			expect(saveSettingsMock).not.toHaveBeenCalled();
-			expect(mockSettings.autoSplitEnabled).toBe(true);
-		});
-
-		it('blocks multi-track on mobile and hides the per-track rows', () => {
-			Platform.isMobile = true;
-			mockSettings.enableMultiTrack = true;
-			tab.display();
-
-			expect(rowDimmed('Enable multi-track recording')).toBe(true);
-			// Even a stored "on" renders no per-track configuration
-			const rows = Array.from(
-				tab.containerEl.querySelectorAll('.setting-item-name'),
-			).map((el) => el.textContent);
-			expect(rows).not.toContain('Audio source for track 1');
-			expect(rows).not.toContain('Maximum tracks');
-		});
-
-		it('renders the per-track rows on desktop when multi-track is on', () => {
-			mockSettings.enableMultiTrack = true;
-			mockSettings.maxTracks = 2;
-			tab.display();
-
-			const rows = Array.from(
-				tab.containerEl.querySelectorAll('.setting-item-name'),
-			).map((el) => el.textContent);
-			expect(rows).toContain('Audio source for track 1');
-			expect(rows).toContain('Audio source for track 2');
 		});
 
 		it('blocks recording formats the device cannot produce (iOS profile)', async () => {

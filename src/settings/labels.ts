@@ -4,6 +4,7 @@
  * @module settings/labels
  */
 
+import type { ChannelMode } from '../audio/downmix';
 import { LLM_VENDOR_IDS, LLM_VENDORS } from '../transcription/llm/vendors';
 import {
 	TRANSCRIPTION_ENGINE_IDS,
@@ -151,3 +152,15 @@ export const LLM_PROVIDER_OPTIONS = optionsFromLabels(LLM_PROVIDER_LABELS);
 export const CONVERSION_LINK_ACTION_OPTIONS = optionsFromLabels(
 	CONVERSION_LINK_ACTION_LABELS,
 );
+
+/**
+ * Channel-layout labels, keyed by mode. The left/right options suit audio
+ * interfaces whose two mono inputs show up as one stereo device: a single
+ * microphone stays at full level instead of being mixed with a silent channel.
+ */
+export const CHANNEL_MODE_LABELS: Record<ChannelMode, string> = {
+	source: 'Same as input device',
+	'mono-mix': 'Mono (mix all channels)',
+	'mono-left': 'Mono (left channel)',
+	'mono-right': 'Mono (right channel)',
+};
