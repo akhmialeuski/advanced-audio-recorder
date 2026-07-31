@@ -731,9 +731,11 @@ describe('settings definitions', () => {
 
 		it.each([
 			'Audio splitting',
+			'Multi-track recording',
 			'Audio player',
 			'Audio processing & feedback',
 			'Audio cleanup defaults',
+			'Diagnostics',
 		])('declares %s behind an entry rather than inline', (name) => {
 			// Sections nobody reads on the way to something else: inline they
 			// are twenty rows between the recording settings and diagnostics.
@@ -750,6 +752,27 @@ describe('settings definitions', () => {
 			settings.splitChunkMinutes = 23;
 
 			expect(readValue('Audio splitting')).toBe('Every 23 min');
+		});
+
+		it('says on the multi-track entry how many tracks are configured', () => {
+			settings.enableMultiTrack = false;
+
+			expect(readValue('Multi-track recording')).toBe('Off');
+
+			settings.enableMultiTrack = true;
+			settings.maxTracks = 3;
+
+			expect(readValue('Multi-track recording')).toBe('3 tracks');
+		});
+
+		it('says on the diagnostics entry whether verbose logging is on', () => {
+			settings.debug = false;
+
+			expect(readValue('Diagnostics')).toBe('Debug off');
+
+			settings.debug = true;
+
+			expect(readValue('Diagnostics')).toBe('Debug on');
 		});
 
 		it('says on the player entry whether the enhanced embed is on', () => {
@@ -1009,11 +1032,13 @@ describe('settings definitions', () => {
 	});
 
 	describe('the diagnostics section', () => {
-		it('declares its three rows under one heading', () => {
+		it('declares its three rows behind one entry', () => {
 			const group = diagnosticsGroupOf(build());
 
-			expect(group.type).toBe('group');
-			expect(group.heading).toBe('Diagnostics');
+			// Opened when something is wrong rather than while a recording is
+			// being set up, so it costs the main tab one row.
+			expect(group.type).toBe('page');
+			expect(group.name).toBe('Diagnostics');
 			expect(group.items.map((item) => item.name)).toEqual([
 				'Test recording',
 				'System info',

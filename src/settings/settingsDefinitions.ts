@@ -583,13 +583,15 @@ function audioSplittingPage(
 
 /**
  * Multi-track capture: the switch, how many tracks to offer, how they are
- * exported, and one input plus channel layout per track. The per-track rows are
- * declared for every track the section can offer and revealed by predicate, so
- * changing the track count reveals rows instead of rebuilding the tab.
+ * exported, and one input plus channel layout per track. Behind an entry of its
+ * own, since two tracks alone are four device rows nobody configures twice. The
+ * per-track rows are declared for every track the section can offer and
+ * revealed by predicate, so changing the track count reveals rows instead of
+ * rebuilding the tab.
  * @param settings - Live settings, read by the predicates
  * @param devices - Input devices as last enumerated
  */
-function multiTrackGroup(
+function multiTrackPage(
 	settings: AudioRecorderSettings,
 	devices: DeviceOptions,
 ): SettingDefinitionItem {
@@ -634,8 +636,11 @@ function multiTrackGroup(
 		return rows;
 	};
 	return {
-		type: 'group',
-		heading: 'Multi-track recording',
+		type: 'page',
+		name: 'Multi-track recording',
+		desc: 'Recording several input devices at the same time.',
+		displayValue: (): string =>
+			active() ? `${String(settings.maxTracks)} tracks` : 'Off',
 		items: [
 			{
 				name: 'Enable multi-track recording',
@@ -1712,15 +1717,21 @@ function audioCleanupPage(
 
 /**
  * The diagnostics section: a test capture, the system-information dialog, and
- * the debug switch.
+ * the debug switch. Behind an entry of its own, since it is opened when
+ * something is wrong rather than while a recording is being set up, and its
+ * entry reports the one state it holds.
  * @param diagnostics - Handlers for the two action rows
+ * @param settings - Live settings, read by the entry's value
  */
-function diagnosticsGroup(
+function diagnosticsPage(
 	diagnostics: DiagnosticsActions,
+	settings: AudioRecorderSettings,
 ): SettingDefinitionItem {
 	return {
-		type: 'group',
-		heading: 'Diagnostics',
+		type: 'page',
+		name: 'Diagnostics',
+		desc: 'A test capture, the system report, and verbose logging.',
+		displayValue: (): string => (settings.debug ? 'Debug on' : 'Debug off'),
 		items: [
 			{
 				name: 'Test recording',
@@ -1785,7 +1796,7 @@ export function buildSettingsDefinitions(
 		outputFormatGroup(ctx.outputFormat),
 		fileStorageGroup(ctx.settings),
 		audioSplittingPage(ctx.settings),
-		multiTrackGroup(ctx.settings, ctx.devices),
+		multiTrackPage(ctx.settings, ctx.devices),
 		audioPlayerPage(ctx.settings),
 		{
 			// Forty-odd settings with a scope of their own: the style guide's
@@ -1835,7 +1846,7 @@ export function buildSettingsDefinitions(
 		},
 		audioProcessingPage(ctx.settings),
 		audioCleanupPage(ctx.settings),
-		diagnosticsGroup(ctx.diagnostics),
+		diagnosticsPage(ctx.diagnostics, ctx.settings),
 	];
 }
 
