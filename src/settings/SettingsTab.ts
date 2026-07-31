@@ -96,6 +96,13 @@ import {
 /** Debounce delay for saving text settings, in milliseconds. */
 const TEXT_SETTING_SAVE_DEBOUNCE_MS = 500;
 
+/**
+ * Marks the framework row the whole tab body is rendered into on Obsidian
+ * 1.13+. The stylesheet strips that row's own flex layout, padding, and
+ * divider so the body reads as an ordinary settings column.
+ */
+const SETTINGS_ROOT_CLASS = 'aar-settings-root';
+
 /** Duration of the diagnostics test recording, in milliseconds. */
 const TEST_RECORDING_DURATION_MS = 5000;
 
@@ -308,19 +315,18 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				aliases: SETTINGS_SEARCH_ALIASES,
 				render: (setting: Setting): void => {
 					this.isDisplayed = true;
-					// The framework appends this render item's row to the
-					// group's list element; render the real controls into that
-					// same host, then drop the empty anchor row itself.
-					const host =
-						setting.settingEl.parentElement ?? this.containerEl;
-					setting.settingEl.remove();
-					// Clear the host before rendering. getSettingDefinitions()
-					// returns a single item, so the group's list element holds
-					// only this item's row; emptying it keeps a re-render via
-					// update() from stacking a second copy of the body if the
-					// framework reuses the same list element instead of clearing
-					// the container first.
+					// The row element is the only DOM a render item owns. Once
+					// every item has rendered, the framework resets the group's
+					// list element to exactly the rows it tracks and the tab
+					// container to the group elements, so anything rendered
+					// into either is dropped again - and a row removed here is
+					// put straight back, which left the tab showing nothing but
+					// this item's name. Render the body into the row itself,
+					// after clearing the name, description, and control
+					// elements the framework put there.
+					const host = setting.settingEl;
 					host.empty();
+					host.addClass(SETTINGS_ROOT_CLASS);
 					this.renderSettingsInto(host);
 				},
 			},

@@ -4,7 +4,7 @@
  * @module tests/unit/SettingsTab.test
  */
 
-import { App, Platform } from 'obsidian';
+import { App, Platform, Setting } from 'obsidian';
 import { at } from '../helpers/assertions';
 import { AudioRecorderSettingTab } from 'src/settings/SettingsTab';
 import {
@@ -78,6 +78,50 @@ describe('AudioRecorderSettingTab', () => {
 	});
 
 	describe('getSettingDefinitions (declarative settings, Obsidian 1.13+)', () => {
+		interface DeclarativeFrame {
+			containerEl: HTMLElement;
+			groupEl: HTMLElement;
+			listEl: HTMLElement;
+			setting: Setting;
+		}
+
+		/**
+		 * Runs the tab's render definition the way Obsidian 1.13 runs it: the
+		 * framework creates the row inside the group's list element, writes the
+		 * definition's name and description into it, calls render(), and then
+		 * resets the list to exactly the rows it tracks and the tab container to
+		 * the group elements. That last pass is the one that matters: it drops
+		 * whatever the callback rendered outside its own row, and puts back a
+		 * row the callback removed.
+		 * @param existing - Frame from an earlier render, to model update()
+		 * re-rendering the row it already built
+		 */
+		const renderDeclaratively = (
+			existing?: DeclarativeFrame,
+		): DeclarativeFrame => {
+			let frame = existing;
+			if (!frame) {
+				const containerEl = createDiv();
+				const groupEl = containerEl.createDiv({ cls: 'setting-group' });
+				const listEl = groupEl.createDiv({ cls: 'setting-items' });
+				frame = {
+					containerEl,
+					groupEl,
+					listEl,
+					setting: new Setting(listEl),
+				};
+			}
+			const def = at(tab.getSettingDefinitions(), 0) as unknown as {
+				name: string;
+				render: (setting: Setting) => void;
+			};
+			frame.setting.setName(def.name).setDesc('');
+			def.render(frame.setting);
+			frame.listEl.replaceChildren(frame.setting.settingEl);
+			frame.containerEl.replaceChildren(frame.groupEl);
+			return frame;
+		};
+
 		it('returns one render definition carrying the setting names as search aliases', () => {
 			const defs = tab.getSettingDefinitions();
 
@@ -98,26 +142,55 @@ describe('AudioRecorderSettingTab', () => {
 			expect(typeof def.render).toBe('function');
 		});
 
-		it('renders the settings body into the group and drops the anchor row', () => {
-			const def = at(tab.getSettingDefinitions(), 0) as unknown as {
-				render: (setting: unknown) => void;
-			};
-			const listEl = createDiv();
-			const anchorEl = createDiv();
-			listEl.appendChild(anchorEl);
+		it('renders the settings body inside the row the framework keeps', () => {
+			const frame = renderDeclaratively();
 
-			def.render({ settingEl: anchorEl });
-
-			// The empty anchor row the framework creates for a render item is
-			// removed, and the real controls land in the group's list element.
-			expect(listEl.contains(anchorEl)).toBe(false);
+			// The body survives the framework's post-render pass because it
+			// lives inside the tracked row: rendering it into the group's list
+			// element (or the tab container) leaves the tab blank.
 			expect(
-				listEl.querySelector('.aar-doc-callout-link'),
+				frame.containerEl.querySelector('.aar-doc-callout-link'),
 			).not.toBeNull();
+			expect(
+				frame.setting.settingEl.querySelector('.aar-doc-callout-link'),
+			).not.toBeNull();
+			expect(
+				frame.setting.settingEl.classList.contains('aar-settings-root'),
+			).toBe(true);
 			expect(addEventListenerMock).toHaveBeenCalledWith(
 				'devicechange',
 				expect.any(Function),
 			);
+		});
+
+		it('clears the row the framework prefilled with the definition name', () => {
+			const frame = renderDeclaratively();
+
+			// The definition's name and description are search metadata, not a
+			// row of the tab: the body starts at the documentation callout.
+			expect(frame.setting.settingEl.contains(frame.setting.nameEl)).toBe(
+				false,
+			);
+			expect(frame.setting.settingEl.contains(frame.setting.descEl)).toBe(
+				false,
+			);
+			expect(
+				frame.setting.settingEl.firstElementChild?.classList.contains(
+					'aar-doc-callout',
+				),
+			).toBe(true);
+		});
+
+		it('replaces the body when update() re-renders the same row', () => {
+			const frame = renderDeclaratively();
+
+			renderDeclaratively(frame);
+
+			// update() re-runs the render callback against the row it already
+			// rendered into; a second copy of the body must not stack up.
+			expect(
+				frame.containerEl.querySelectorAll('.aar-doc-callout'),
+			).toHaveLength(1);
 		});
 
 		it('carries every default-visible setting and heading name as a search alias', () => {

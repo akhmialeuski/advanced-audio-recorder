@@ -844,6 +844,50 @@ input.aar-input-invalid {
     font-family: var(--font-monospace);
 }
 
+/* Obsidian 1.13+ renders the settings tab from getSettingDefinitions(), and the
+   framework owns the rows of a declarative group: it resets the group's list to
+   exactly the rows it tracks after every render. The tab body therefore lives
+   inside the single row element the framework tracks, and that row has to stop
+   behaving like a setting row - no flex layout, padding, background, or
+   divider - so the settings inside it read as an ordinary settings column. The
+   second selector is there for specificity: Obsidian's own
+   ".setting-group .setting-item" rules would otherwise keep the row's padding
+   and divider, insetting the whole body twice. */
+.setting-item.aar-settings-root,
+.setting-group .setting-item.aar-settings-root {
+    display: block;
+    padding: 0;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    background-color: transparent;
+}
+
+.setting-item.aar-settings-root::before,
+.setting-group .setting-item.aar-settings-root::before {
+    content: none;
+}
+
+/* Obsidian spaces a row's first child away from its control column; the body's
+   first section is not a control and must not inherit that gap. */
+.setting-item.aar-settings-root>*:first-child {
+    margin-inline-end: 0;
+}
+
+/* The body's few blocks that are not setting rows have to line up with the rows
+   around them: a row carries Obsidian's own horizontal inset, a plain element
+   does not. The 0 fallback leaves pre-1.13 rendering, where the body is not
+   inside a row at all, exactly as it was. */
+.aar-settings-root .aar-doc-callout,
+.aar-settings-root .aar-test-status {
+    margin-inline: var(--setting-items-padding-x, 0);
+}
+
+.aar-settings-root .aar-test-audio {
+    margin-inline: var(--setting-items-padding-x, 0);
+    width: calc(100% - 2 * var(--setting-items-padding-x, 0px));
+}
+
 /* Documentation callout at the top of the settings tab. A subtle, accent-bordered
    banner so the link to the full guides is the first thing the user sees. */
 .aar-doc-callout {
