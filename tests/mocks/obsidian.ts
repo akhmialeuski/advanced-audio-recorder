@@ -590,6 +590,16 @@ export class PluginSettingTab {
 	hide(): void {
 		// Mock implementation
 	}
+
+	/**
+	 * Obsidian 1.13's declarative re-render, which re-reads
+	 * getSettingDefinitions() and renders the tab from it. Present here because
+	 * the plugin builds against 1.13; a test that models an older Obsidian
+	 * deletes it from this prototype before constructing its tab.
+	 */
+	update(): void {
+		// Mock implementation
+	}
 }
 
 /**

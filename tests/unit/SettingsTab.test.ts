@@ -4,7 +4,7 @@
  * @module tests/unit/SettingsTab.test
  */
 
-import { App, Platform, Setting } from 'obsidian';
+import { App, Platform, PluginSettingTab, Setting } from 'obsidian';
 import { at } from '../helpers/assertions';
 import { AudioRecorderSettingTab } from 'src/settings/SettingsTab';
 import {
@@ -31,6 +31,49 @@ jest.mock('src/diagnostics/SystemDiagnostics', () => ({
 	SystemDiagnostics: { collect: jest.fn() },
 }));
 
+/** Lets pending promise callbacks (a save, then a re-render) run. */
+const flushAsync = (): Promise<void> =>
+	new Promise((resolve) => setTimeout(resolve, 0));
+
+/**
+ * Names of every setting row rendered under a host, in render order.
+ * @param host - Element the settings body was rendered into
+ */
+const renderedNames = (host: HTMLElement): string[] =>
+	Array.from(host.querySelectorAll('.setting-item-name'))
+		.map((el) => el.textContent?.trim() ?? '')
+		.filter((name) => name.length > 0);
+
+/**
+ * The rendered row carrying a setting name.
+ * @param host - Element the settings body was rendered into
+ * @param name - Name shown on the row
+ */
+const settingRowIn = (host: HTMLElement, name: string): HTMLElement => {
+	const row = Array.from(host.querySelectorAll('.setting-item')).find(
+		(el) => el.querySelector('.setting-item-name')?.textContent === name,
+	);
+	if (!row) {
+		throw new Error(`Setting row not rendered: ${name}`);
+	}
+	return row as HTMLElement;
+};
+
+/**
+ * Flips the toggle on a rendered row, as a click on it does.
+ * @param host - Element the settings body was rendered into
+ * @param name - Name of the row whose toggle to flip
+ */
+const clickToggleIn = async (
+	host: HTMLElement,
+	name: string,
+): Promise<void> => {
+	settingRowIn(host, name)
+		.querySelector<HTMLElement>('.checkbox-container')
+		?.click();
+	await flushAsync();
+};
+
 describe('AudioRecorderSettingTab', () => {
 	let tab: AudioRecorderSettingTab;
 	let mockSettings: AudioRecorderSettings;
@@ -38,6 +81,7 @@ describe('AudioRecorderSettingTab', () => {
 	let removeEventListenerMock: jest.Mock;
 	let getUserMediaMock: jest.Mock;
 	let saveSettingsMock: jest.Mock;
+	let mockPlugin: AudioRecorderPluginInterface;
 
 	beforeEach(() => {
 		jest.clearAllMocks();
@@ -67,14 +111,11 @@ describe('AudioRecorderSettingTab', () => {
 
 		mockSettings = { ...DEFAULT_SETTINGS };
 		saveSettingsMock = jest.fn().mockResolvedValue(undefined);
-		const mockPlugin = {
+		mockPlugin = {
 			settings: mockSettings,
 			saveSettings: saveSettingsMock,
-		};
-		tab = new AudioRecorderSettingTab(
-			new App(),
-			mockPlugin as unknown as AudioRecorderPluginInterface,
-		);
+		} as unknown as AudioRecorderPluginInterface;
+		tab = new AudioRecorderSettingTab(new App(), mockPlugin);
 	});
 
 	describe('getSettingDefinitions (declarative settings, Obsidian 1.13+)', () => {
@@ -213,6 +254,135 @@ describe('AudioRecorderSettingTab', () => {
 			expect(rendered.length).toBeGreaterThan(0);
 			const missing = rendered.filter((name) => !aliases.has(name));
 			expect(missing).toEqual([]);
+		});
+
+		it('re-renders through the framework when a toggle adds settings', async () => {
+			const frame = renderDeclaratively();
+			// update() re-reads the definitions and re-invokes the render
+			// callback against the row it already built.
+			const updateSpy = jest
+				.spyOn(tab, 'update')
+				.mockImplementation(() => {
+					renderDeclaratively(frame);
+				});
+
+			await clickToggleIn(
+				frame.setting.settingEl,
+				'Enable multi-track recording',
+			);
+
+			expect(updateSpy).toHaveBeenCalledTimes(1);
+			const names = renderedNames(frame.containerEl);
+			expect(names).toContain('Maximum tracks');
+			// Rebuilt in place, not stacked behind the previous body.
+			expect(
+				names.filter((name) => name === 'Input device'),
+			).toHaveLength(1);
+			expect(
+				frame.containerEl.querySelectorAll('.aar-doc-callout'),
+			).toHaveLength(1);
+		});
+	});
+
+	describe('Obsidian before 1.13 (imperative display path)', () => {
+		let legacyTab: AudioRecorderSettingTab;
+		let restoreFrameworkUpdate: () => void;
+
+		beforeEach(() => {
+			// SettingTab.update() arrived in 1.13 with the declarative render.
+			// Taking it off the base class is what an older Obsidian looks like
+			// to the tab, and the mode is picked when the tab is constructed.
+			const base = PluginSettingTab.prototype as { update?: () => void };
+			const update = base.update;
+			delete base.update;
+			restoreFrameworkUpdate = (): void => {
+				if (update) {
+					base.update = update;
+				}
+			};
+			legacyTab = new AudioRecorderSettingTab(new App(), mockPlugin);
+		});
+
+		afterEach(() => {
+			restoreFrameworkUpdate();
+		});
+
+		it('declares no settings, so Obsidian renders through display()', () => {
+			// An empty list is the signal: 1.13's renderTab() falls back to
+			// display() only while there is nothing to render declaratively.
+			expect(legacyTab.getSettingDefinitions()).toEqual([]);
+		});
+
+		it('renders the whole body into the tab container', () => {
+			legacyTab.display();
+
+			const names = renderedNames(legacyTab.containerEl);
+			expect(names).toContain('Input device');
+			expect(names).toContain('Recording format');
+			expect(names).toContain('Debug mode');
+			expect(
+				legacyTab.containerEl.querySelector('.aar-doc-callout-link'),
+			).not.toBeNull();
+		});
+
+		it('leaves the declarative row class off the imperative host', () => {
+			legacyTab.display();
+
+			// That class exists to strip a framework row's own layout. Nothing
+			// here is a framework row, so nothing may carry it - the stylesheet
+			// rules stay inert on this Obsidian.
+			expect(
+				legacyTab.containerEl.classList.contains('aar-settings-root'),
+			).toBe(false);
+			expect(
+				legacyTab.containerEl.querySelector('.aar-settings-root'),
+			).toBeNull();
+		});
+
+		it('rebuilds the container itself when a toggle adds settings', async () => {
+			legacyTab.display();
+
+			await clickToggleIn(
+				legacyTab.containerEl,
+				'Enable multi-track recording',
+			);
+
+			// No framework update() to ask on this version: the tab clears its
+			// container and renders again, revealing the new rows exactly once.
+			const names = renderedNames(legacyTab.containerEl);
+			expect(names).toContain('Maximum tracks');
+			expect(
+				names.filter((name) => name === 'Input device'),
+			).toHaveLength(1);
+			expect(
+				legacyTab.containerEl.querySelectorAll('.aar-doc-callout'),
+			).toHaveLength(1);
+		});
+
+		it('renders again after hide(), the way reopening the tab does', () => {
+			legacyTab.display();
+			legacyTab.hide();
+			legacyTab.display();
+
+			expect(
+				legacyTab.containerEl.querySelectorAll('.aar-doc-callout'),
+			).toHaveLength(1);
+			expect(renderedNames(legacyTab.containerEl)).toContain(
+				'Input device',
+			);
+		});
+
+		it('keeps the device-change listener lifecycle of the newer path', () => {
+			legacyTab.display();
+			const handler = addEventListenerMock.mock.calls[0][1] as () => void;
+
+			legacyTab.hide();
+
+			expect(addEventListenerMock).toHaveBeenCalledTimes(1);
+			expect(removeEventListenerMock).toHaveBeenCalledWith(
+				'devicechange',
+				handler,
+			);
 		});
 	});
 

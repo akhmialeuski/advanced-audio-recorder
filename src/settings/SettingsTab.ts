@@ -23,8 +23,12 @@ import {
 	debounce,
 	setIcon,
 } from 'obsidian';
-import type { Plugin } from 'obsidian';
+import type { Plugin, SettingTab } from 'obsidian';
 import type { SettingDefinitionItem } from 'obsidian';
+import {
+	createSettingsRenderMode,
+	type SettingsRenderMode,
+} from './settingsRenderMode';
 import type {
 	AudioRecorderSettings,
 	OutputMode,
@@ -96,15 +100,11 @@ import {
 /** Debounce delay for saving text settings, in milliseconds. */
 const TEXT_SETTING_SAVE_DEBOUNCE_MS = 500;
 
-/**
- * Marks the framework row the whole tab body is rendered into on Obsidian
- * 1.13+. The stylesheet strips that row's own flex layout, padding, and
- * divider so the body reads as an ordinary settings column.
- */
-const SETTINGS_ROOT_CLASS = 'aar-settings-root';
-
 /** Duration of the diagnostics test recording, in milliseconds. */
 const TEST_RECORDING_DURATION_MS = 5000;
+
+/** Name of the tab's declarative definition, and of the plugin it configures. */
+const SETTINGS_TAB_NAME = 'Advanced Audio Recorder';
 
 /**
  * Plugin interface for settings tab.
@@ -248,6 +248,14 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	);
 
 	/**
+	 * How this tab reaches the screen on the running Obsidian: through the
+	 * declarative definitions of 1.13+, or through display() below it. Chosen
+	 * once here - the app version cannot change under a live tab - so nothing
+	 * else in the tab has to know which Obsidian it is on.
+	 */
+	private readonly renderMode: SettingsRenderMode;
+
+	/**
 	 * Creates a new AudioRecorderSettingTab.
 	 * @param app - The Obsidian App instance
 	 * @param plugin - The plugin instance
@@ -255,6 +263,31 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	constructor(app: App, plugin: AudioRecorderPluginInterface) {
 		super(app, plugin);
 		this.plugin = plugin;
+		// SettingTab.update() is the 1.13 API this probe is looking for: the
+		// typings declare it unconditionally, so only the runtime tells the two
+		// versions apart. Its absence selects the imperative mode, which is
+		// what keeps the tab working down to minAppVersion. The call itself
+		// stays on the instance, so the framework - or a test double standing
+		// in for it - always drives its own re-render.
+		const hasFrameworkUpdate =
+			// eslint-disable-next-line obsidianmd/no-unsupported-api -- probing for the 1.13 API is how the pre-1.13 fallback is chosen; the call below is guarded by this result
+			typeof (this as Partial<SettingTab>).update === 'function';
+		this.renderMode = createSettingsRenderMode({
+			name: SETTINGS_TAB_NAME,
+			aliases: SETTINGS_SEARCH_ALIASES,
+			frameworkUpdate: hasFrameworkUpdate
+				? (): void => {
+						// eslint-disable-next-line obsidianmd/no-unsupported-api -- reached only when the probe above found update(), i.e. on Obsidian 1.13+
+						this.update();
+					}
+				: undefined,
+			renderFull: (): void => {
+				this.renderFull();
+			},
+			renderBody: (host): void => {
+				this.renderSettingsInto(host);
+			},
+		});
 	}
 
 	private getCompressionDescription(format: string): string {
@@ -292,10 +325,11 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * Displays the settings UI.
+	 * Renders the settings UI imperatively into the tab's own container. This
+	 * is Obsidian's render call before 1.13; from 1.13 on the framework renders
+	 * the tab from getSettingDefinitions() and never calls this.
 	 */
 	override display(): void {
-		this.isDisplayed = true;
 		this.renderFull();
 	}
 
@@ -303,55 +337,29 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * Declarative settings entry (Obsidian 1.13+). This tab is highly dynamic
 	 * (live device enumeration, async format probing, per-track rows) and does
 	 * not fit the declarative control model, so it renders imperatively through
-	 * a single render hook. The setting names travel as `aliases` so the
-	 * settings search still surfaces the tab by an individual setting's name.
-	 * On older Obsidian this method is not part of the API and display() renders
-	 * instead; both paths funnel through renderSettingsInto().
+	 * a single render definition, whose row hosts the body. The setting names
+	 * travel as `aliases` so the settings search still surfaces the tab by an
+	 * individual setting's name. On older Obsidian the render mode returns no
+	 * definitions and display() renders instead; both paths funnel through
+	 * renderSettingsInto().
 	 */
 	override getSettingDefinitions(): SettingDefinitionItem[] {
-		return [
-			{
-				name: 'Advanced Audio Recorder',
-				aliases: SETTINGS_SEARCH_ALIASES,
-				render: (setting: Setting): void => {
-					this.isDisplayed = true;
-					// The row element is the only DOM a render item owns. Once
-					// every item has rendered, the framework resets the group's
-					// list element to exactly the rows it tracks and the tab
-					// container to the group elements, so anything rendered
-					// into either is dropped again - and a row removed here is
-					// put straight back, which left the tab showing nothing but
-					// this item's name. Render the body into the row itself,
-					// after clearing the name, description, and control
-					// elements the framework put there.
-					const host = setting.settingEl;
-					host.empty();
-					host.addClass(SETTINGS_ROOT_CLASS);
-					this.renderSettingsInto(host);
-				},
-			},
-		];
+		return this.renderMode.getDefinitions();
 	}
 
 	/**
 	 * Re-renders the tab after a change that adds or removes settings (for
-	 * example toggling multi-track or Save near active file). Uses the
-	 * declarative update() on Obsidian 1.13+ (where display() is not the render
-	 * path) and falls back to display() on older versions.
+	 * example toggling multi-track or Save near active file), on whichever
+	 * terms the running Obsidian sets.
 	 */
 	private rerender(): void {
-		const update = (this as unknown as { update?: () => void }).update;
-		if (typeof update === 'function') {
-			update.call(this);
-		} else {
-			this.renderFull();
-		}
+		this.renderMode.rerender();
 	}
 
 	/**
-	 * Clears the container and rebuilds the settings body. Shared by display()
-	 * and by the pre-1.13 re-render path, which cannot call the framework's
-	 * update() and must re-render imperatively.
+	 * Clears the tab's own container and rebuilds the settings body into it.
+	 * The render call on Obsidian before 1.13, for the first render and for
+	 * every re-render, since there is no framework update() to ask.
 	 */
 	private renderFull(): void {
 		this.containerEl.empty();
@@ -360,11 +368,14 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 
 	/**
 	 * Builds the full settings body into the given host element. Shared by the
-	 * imperative display() fallback and the declarative render hook; the caller
-	 * owns clearing the host and toggling isDisplayed.
+	 * imperative display() path and the declarative render definition; the
+	 * render mode owns clearing the host it hands over.
 	 * @param containerEl - Host element the settings are rendered into
 	 */
 	private renderSettingsInto(containerEl: HTMLElement): void {
+		// One place marks the tab as on screen, so the async device enumeration
+		// and format probe are guarded the same way on both render paths.
+		this.isDisplayed = true;
 		this.deviceDropdowns = [];
 		this.channelDropdownUpdaters = [];
 		this.deviceSnapshot = EMPTY_DEVICE_SNAPSHOT;
