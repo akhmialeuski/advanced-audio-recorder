@@ -74,6 +74,15 @@ interface TokenRate {
  * local engine, which points at files on disk instead.
  */
 export interface EngineCredentials {
+	/**
+	 * Settings keys the engine's fields are stored under. The settings tab is
+	 * declared as data, and a declaration binds a control to a key, so the
+	 * descriptor names its keys as well as reading and writing them.
+	 */
+	readonly baseUrlKey: keyof AudioRecorderSettings;
+	readonly apiKeyKey: keyof AudioRecorderSettings;
+	readonly modelKey: keyof AudioRecorderSettings;
+	readonly modelsKey: keyof AudioRecorderSettings;
 	baseUrl(settings: AudioRecorderSettings): string;
 	setBaseUrl(settings: AudioRecorderSettings, url: string): void;
 	apiKey(settings: AudioRecorderSettings): string;
@@ -252,6 +261,10 @@ export const TRANSCRIPTION_ENGINES: Record<
 		pricing: (model) =>
 			perMinutePricing(matchRate(WHISPER_API_RATES, model)),
 		credentials: {
+			baseUrlKey: 'whisperApiBaseUrl',
+			apiKeyKey: 'whisperApiKey',
+			modelKey: 'whisperApiModel',
+			modelsKey: 'whisperApiModels',
 			baseUrl: (s) => s.whisperApiBaseUrl,
 			setBaseUrl: (s, url) => (s.whisperApiBaseUrl = url),
 			apiKey: (s) => s.whisperApiKey,
@@ -293,6 +306,10 @@ export const TRANSCRIPTION_ENGINES: Record<
 		model: (s) => s.deepgramModel,
 		pricing: (model) => perMinutePricing(matchRate(DEEPGRAM_RATES, model)),
 		credentials: {
+			baseUrlKey: 'deepgramBaseUrl',
+			apiKeyKey: 'deepgramApiKey',
+			modelKey: 'deepgramModel',
+			modelsKey: 'deepgramModels',
 			baseUrl: (s) => s.deepgramBaseUrl,
 			setBaseUrl: (s, url) => (s.deepgramBaseUrl = url),
 			apiKey: (s) => s.deepgramApiKey,
@@ -374,6 +391,10 @@ export const TRANSCRIPTION_ENGINES: Record<
 		model: (s) => s.geminiModel,
 		pricing: (model) => perTokenPricing(matchRate(GEMINI_RATES, model)),
 		credentials: {
+			baseUrlKey: 'geminiBaseUrl',
+			apiKeyKey: 'geminiApiKey',
+			modelKey: 'geminiModel',
+			modelsKey: 'geminiModels',
 			baseUrl: (s) => s.geminiBaseUrl,
 			setBaseUrl: (s, url) => (s.geminiBaseUrl = url),
 			apiKey: (s) => s.geminiApiKey,

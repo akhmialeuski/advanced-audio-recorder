@@ -40,6 +40,8 @@ describe('settings definitions', () => {
 	let settings: AudioRecorderSettings;
 	let renderDocs: jest.Mock;
 	let renderFormatRow: jest.Mock;
+	let addModel: jest.Mock;
+	let removeModel: jest.Mock;
 	let renderSummaryRow: jest.Mock;
 	let renderTranscriptionRest: jest.Mock;
 	let diagnostics: { [K in keyof DiagnosticsActions]: jest.Mock };
@@ -52,6 +54,8 @@ describe('settings definitions', () => {
 			host.createDiv({ cls: 'aar-doc-callout' });
 		});
 		renderFormatRow = jest.fn();
+		addModel = jest.fn();
+		removeModel = jest.fn();
 		renderSummaryRow = jest.fn();
 		renderTranscriptionRest = jest.fn((host: HTMLElement) => {
 			host.createDiv({ cls: 'aar-transcription-rest' });
@@ -84,6 +88,10 @@ describe('settings definitions', () => {
 			renderEngineFields: renderTranscriptionRest as (
 				host: HTMLElement,
 			) => void,
+			addModel: addModel as () => void,
+			removeModel: removeModel as (index: number) => void,
+			addLlmModel: jest.fn(),
+			removeLlmModel: jest.fn(),
 			renderDictionaryProfiles: jest.fn(),
 			renderChapterProfiles: jest.fn(),
 			renderLlmSection: jest.fn(),
@@ -228,12 +236,13 @@ describe('settings definitions', () => {
 			expect(typeof disabled === 'function' && disabled()).toBe(false);
 		});
 
-		it('hosts the engine fields that are not definitions yet', () => {
+		it('hosts the engine credentials, which are not a declared control', () => {
+			// The API key is a password field, which no control type covers.
 			settings.transcriptionEnabled = true;
 			const definition = rowOf(
 				build(),
 				TRANSCRIPTION,
-				'Transcription engine settings',
+				'Transcription engine credentials',
 			);
 			const { setting } = renderThroughFramework(
 				definition as RenderDefinition,
@@ -341,6 +350,83 @@ describe('settings definitions', () => {
 					max: MAX_SPLIT_CHUNK_MINUTES,
 				}),
 			);
+		});
+	});
+
+	describe('the model list', () => {
+		const seedModels = (): void => {
+			settings.transcriptionEnabled = true;
+			settings.transcriptionProvider =
+				TRANSCRIPTION_PROVIDER_IDS.WHISPER_API;
+			settings.whisperApiModels = ['whisper-1', 'whisper-large-v3'];
+			settings.whisperApiModel = 'whisper-1';
+		};
+
+		/** The engine's model list, narrowed to what these tests read. */
+		const modelList = (): {
+			type: string;
+			emptyState?: string;
+			search?: { match: (def: { name: string }, q: string) => boolean };
+			addItem?: { name: string; action: (el: HTMLElement) => void };
+			onDelete?: (index: number) => void;
+			items: Array<{ name: string; desc?: string }>;
+		} => groupOf(build(), 'Whisper model') as never;
+
+		it('declares the saved models as a list the user can edit', () => {
+			seedModels();
+			const list = modelList();
+
+			// A collection with add and delete affordances is a list, not a
+			// group: the framework renders those affordances itself.
+			expect(list.type).toBe('list');
+			expect(list.items.map((item) => item.name)).toEqual([
+				'whisper-1',
+				'whisper-large-v3',
+			]);
+		});
+
+		it('marks which saved model is the one in use', () => {
+			seedModels();
+
+			expect(modelList().items[0]?.desc).toBe('In use');
+			expect(modelList().items[1]?.desc).toBeUndefined();
+		});
+
+		it('filters the list through the group search', () => {
+			seedModels();
+			const match = modelList().search?.match;
+
+			expect(match?.({ name: 'whisper-large-v3' }, 'large')).toBe(true);
+			expect(match?.({ name: 'whisper-1' }, 'large')).toBe(false);
+		});
+
+		it('adds and deletes through the tab, which owns the settings', () => {
+			seedModels();
+			const list = modelList();
+
+			list.addItem?.action(createDiv());
+			list.onDelete?.(1);
+
+			expect(addModel).toHaveBeenCalledTimes(1);
+			expect(removeModel).toHaveBeenCalledWith(1);
+		});
+
+		it('offers an empty state instead of a bare heading', () => {
+			seedModels();
+			settings.whisperApiModels = [];
+
+			expect(modelList().emptyState).toContain('No models saved yet');
+		});
+
+		it('stays hidden for the local engine, which has no model list', () => {
+			settings.transcriptionEnabled = true;
+			settings.transcriptionProvider =
+				TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER;
+			const visible = (
+				groupOf(build(), 'Models') as { visible?: () => boolean }
+			).visible;
+
+			expect(typeof visible === 'function' && visible()).toBe(false);
 		});
 	});
 

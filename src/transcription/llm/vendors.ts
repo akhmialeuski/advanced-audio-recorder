@@ -55,6 +55,14 @@ export interface LlmRate {
  * keeps its own), so it belongs to the descriptor rather than to each consumer.
  */
 export interface LlmVendorSettingsAccess {
+	/**
+	 * Settings keys the vendor's fields are stored under. The settings tab is
+	 * declared as data, and a declaration binds a control to a key, so the
+	 * descriptor names its keys as well as reading and writing them.
+	 */
+	readonly apiKeyKey: keyof AudioRecorderSettings;
+	readonly modelKey: keyof AudioRecorderSettings;
+	readonly modelsKey: keyof AudioRecorderSettings;
 	/** Reads the vendor's API key. */
 	apiKey(settings: AudioRecorderSettings): string;
 	/** Writes the vendor's API key. */
@@ -170,6 +178,9 @@ export const LLM_VENDORS: Record<LlmProviderId, LlmVendorDescriptor> = {
 		rates: OPENAI_RATES,
 		settings: {
 			// OpenAI reuses the Whisper API key as the shared OpenAI vendor key.
+			apiKeyKey: 'whisperApiKey',
+			modelKey: 'llmOpenAiModel',
+			modelsKey: 'llmOpenAiModels',
 			apiKey: (s) => s.whisperApiKey,
 			setApiKey: (s, key) => (s.whisperApiKey = key),
 			model: (s) => s.llmOpenAiModel,
@@ -194,6 +205,9 @@ export const LLM_VENDORS: Record<LlmProviderId, LlmVendorDescriptor> = {
 		rates: ANTHROPIC_RATES,
 		settings: {
 			// Anthropic has no transcription counterpart, so it keeps its own key.
+			apiKeyKey: 'anthropicApiKey',
+			modelKey: 'llmAnthropicModel',
+			modelsKey: 'llmAnthropicModels',
 			apiKey: (s) => s.anthropicApiKey,
 			setApiKey: (s, key) => (s.anthropicApiKey = key),
 			model: (s) => s.llmAnthropicModel,
@@ -219,6 +233,9 @@ export const LLM_VENDORS: Record<LlmProviderId, LlmVendorDescriptor> = {
 		rates: GEMINI_RATES,
 		settings: {
 			// Gemini reuses the Gemini transcription key.
+			apiKeyKey: 'geminiApiKey',
+			modelKey: 'llmGeminiModel',
+			modelsKey: 'llmGeminiModels',
 			apiKey: (s) => s.geminiApiKey,
 			setApiKey: (s, key) => (s.geminiApiKey = key),
 			model: (s) => s.llmGeminiModel,

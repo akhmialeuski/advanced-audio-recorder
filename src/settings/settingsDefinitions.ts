@@ -24,7 +24,10 @@ import type {
 	SettingDefinitionItem,
 	SettingGroupItem,
 } from 'obsidian';
-import type { AudioRecorderSettings } from './settingsSchema';
+import {
+	advancedTwoPassEnabled,
+	type AudioRecorderSettings,
+} from './settingsSchema';
 import {
 	ADVANCED_SECOND_PASS_RATIO_STEP,
 	MAX_ADVANCED_SECOND_PASS_MIN_RATIO,
@@ -45,8 +48,14 @@ import {
 	MAX_SPLIT_CHUNK_MINUTES,
 	DEFAULT_SPLIT_PART_SUFFIX,
 	SPLIT_PART_SUFFIX_PATTERN,
+	MIN_LLM_MAX_TOKENS,
+	MAX_LLM_MAX_TOKENS,
 } from '../constants';
-import { TRANSCRIPTION_PROVIDER_OPTIONS } from './labels';
+import {
+	LLM_PROVIDER_OPTIONS,
+	LLM_TASK_OPTIONS,
+	TRANSCRIPTION_PROVIDER_OPTIONS,
+} from './labels';
 import {
 	isAutoSplitSupported,
 	isChannelModeSelectionSupported,
@@ -60,6 +69,8 @@ import {
 	TRANSCRIPT_DESTINATION_OPTIONS,
 	TRANSCRIPT_FILE_FORMAT_OPTIONS,
 } from './labels';
+import { selectedTranscriptionEngine } from '../transcription/providers/engines';
+import { selectedLlmVendor } from '../transcription/llm/vendors';
 import {
 	effectiveDiarize,
 	isProviderAvailableOnPlatform,
@@ -137,8 +148,19 @@ export interface DeviceOptions {
  * managers, which are collections with their own add and delete affordances.
  */
 export interface TranscriptionBlocks {
-	/** The selected engine's endpoint, credentials, model, or file paths. */
+	/**
+	 * The selected engine's API key, which is a password field rather than a
+	 * plain one, and the local engine's file paths.
+	 */
 	readonly renderEngineFields: (host: HTMLElement) => void;
+	/** Adds a model id to the selected engine's list. */
+	readonly addModel: () => void;
+	/** Removes the model id at a position in the selected engine's list. */
+	readonly removeModel: (index: number) => void;
+	/** Adds a model id to the selected LLM vendor's list. */
+	readonly addLlmModel: () => void;
+	/** Removes the model id at a position in the LLM vendor's list. */
+	readonly removeLlmModel: (index: number) => void;
 	/** The dictionary profile manager. */
 	readonly renderDictionaryProfiles: (host: HTMLElement) => void;
 	/** The chapter-guidance profile manager. */
@@ -577,6 +599,261 @@ function audioPlayerGroup(
 }
 
 /**
+ * LLM post-processing, and the vendor fields the auto chapters and the two-pass
+ * mode share with it. The vendor fields stay visible while any of the three
+ * features needs them, so enabling one alone still exposes its key and model.
+ * @param settings - Live settings, read by the predicates
+ */
+function llmGroup(settings: AudioRecorderSettings): SettingDefinitionItem {
+	const vendor = selectedLlmVendor(settings);
+	const needsVendor = (): boolean =>
+		settings.transcriptionEnabled &&
+		(settings.llmPostProcessEnabled ||
+			settings.transcriptionAutoChaptersEnabled ||
+			advancedTwoPassEnabled(settings));
+	const postProcessing = (): boolean =>
+		settings.transcriptionEnabled && settings.llmPostProcessEnabled;
+	const promptRow = (
+		task: string,
+		name: string,
+		desc: string,
+		key: string,
+		rows?: number,
+	): SettingDefinition => ({
+		name,
+		desc,
+		visible: (): boolean =>
+			postProcessing() && settings.llmPostProcessTask === task,
+		control: {
+			type: 'textarea',
+			key,
+			...(rows === undefined ? {} : { rows }),
+		},
+	});
+	return {
+		type: 'group',
+		heading: 'LLM post-processing',
+		visible: (): boolean => settings.transcriptionEnabled,
+		items: [
+			{
+				name: 'Enable LLM post-processing',
+				desc: 'Clean up punctuation and formatting, or summarize the transcript with an LLM.',
+				control: { type: 'toggle', key: 'llmPostProcessEnabled' },
+			},
+			{
+				name: 'Task',
+				desc: 'Clean up, summarize into key points, or apply a custom instruction.',
+				visible: postProcessing,
+				control: {
+					type: 'dropdown',
+					key: 'llmPostProcessTask',
+					options: Object.fromEntries(
+						LLM_TASK_OPTIONS.map((option) => [
+							option.value,
+							option.label,
+						]),
+					),
+				},
+			},
+			promptRow(
+				'cleanup',
+				'Cleanup prompt',
+				'System instruction for the cleanup pass. The transcript language is appended automatically; empty uses the built-in default.',
+				'llmCleanupPrompt',
+			),
+			promptRow(
+				'summary',
+				'Summary prompt',
+				'System instruction for the summary pass. The transcript language is appended automatically; empty uses the built-in default.',
+				'llmSummaryPrompt',
+			),
+			promptRow(
+				'custom',
+				'Custom instruction',
+				'System instruction applied to the transcript text, sent verbatim.',
+				'llmCustomInstruction',
+				8,
+			),
+			{
+				name: 'LLM provider',
+				desc: 'Vendor the post-processing, chapters and two-pass agents call.',
+				visible: needsVendor,
+				control: {
+					type: 'dropdown',
+					key: 'llmProvider',
+					options: Object.fromEntries(
+						LLM_PROVIDER_OPTIONS.map((option) => [
+							option.value,
+							option.label,
+						]),
+					),
+				},
+			},
+			{
+				name: 'LLM base URL',
+				desc: 'API base URL of the selected vendor.',
+				visible: needsVendor,
+				control: { type: 'text', key: 'llmBaseUrl' },
+			},
+			{
+				name: 'LLM model',
+				desc: vendor.modelPickerDesc,
+				visible: needsVendor,
+				control: {
+					type: 'dropdown',
+					key: vendor.settings.modelKey,
+					options: Object.fromEntries(
+						vendor.settings.models(settings).map((id) => [id, id]),
+					),
+				},
+			},
+			{
+				name: 'Max output tokens',
+				desc: 'Upper bound on the LLM response length.',
+				visible: needsVendor,
+				control: {
+					type: 'number',
+					key: 'llmMaxTokens',
+					min: MIN_LLM_MAX_TOKENS,
+					max: MAX_LLM_MAX_TOKENS,
+					step: 512,
+				},
+			},
+		],
+	};
+}
+
+/**
+ * The selected cloud engine's endpoint and models. The model list is a
+ * collection the user edits, so it is declared as one: the framework renders
+ * its add and delete affordances, and its search field filters long lists.
+ * @param settings - Live settings, read by the predicates
+ * @param blocks - The engine parts that are not definitions yet
+ */
+function transcriptionEngineGroup(
+	settings: AudioRecorderSettings,
+	blocks: TranscriptionBlocks,
+): SettingDefinitionItem {
+	const engine = selectedTranscriptionEngine(settings);
+	const credentials = engine.credentials;
+	const cloud = (): boolean =>
+		settings.transcriptionEnabled &&
+		selectedTranscriptionEngine(settings).credentials !== undefined;
+	const models = credentials ? credentials.models(settings) : [];
+	const selected = credentials ? engine.model(settings) : '';
+	return {
+		type: 'list',
+		heading: credentials?.modelPickerName ?? 'Models',
+		visible: cloud,
+		emptyState:
+			'No models saved yet. Add the model id your endpoint serves.',
+		search: {
+			placeholder: 'Filter models',
+			match: (definition, query): boolean =>
+				definition.name.toLowerCase().includes(query.toLowerCase()),
+		},
+		addItem: {
+			name: 'Add model',
+			action: (): void => {
+				blocks.addModel();
+			},
+		},
+		onDelete: (index): void => {
+			blocks.removeModel(index);
+		},
+		items: models.map(
+			(id): SettingGroupItem => ({
+				name: id,
+				// The saved list is the catalogue; which one is in use is the
+				// selection above it, so a row says only whether it is that one.
+				...(id === selected ? { desc: 'In use' } : {}),
+			}),
+		),
+	};
+}
+
+/**
+ * The saved model list of the LLM vendor in use, edited the same way the
+ * engine's is.
+ * @param settings - Live settings, read by the predicates
+ * @param blocks - The tab's list editors
+ */
+function llmModelListGroup(
+	settings: AudioRecorderSettings,
+	blocks: TranscriptionBlocks,
+): SettingDefinitionItem {
+	const vendor = selectedLlmVendor(settings);
+	const models = vendor.settings.models(settings);
+	const selected = vendor.settings.model(settings);
+	return {
+		type: 'list',
+		heading: 'LLM models',
+		visible: (): boolean =>
+			settings.transcriptionEnabled &&
+			(settings.llmPostProcessEnabled ||
+				settings.transcriptionAutoChaptersEnabled ||
+				advancedTwoPassEnabled(settings)),
+		emptyState: 'No models saved yet. Add the model id your vendor serves.',
+		search: {
+			placeholder: 'Filter models',
+			match: (definition, query): boolean =>
+				definition.name.toLowerCase().includes(query.toLowerCase()),
+		},
+		addItem: {
+			name: 'Add model',
+			action: (): void => {
+				blocks.addLlmModel();
+			},
+		},
+		onDelete: (index): void => {
+			blocks.removeLlmModel(index);
+		},
+		items: models.map(
+			(id): SettingGroupItem => ({
+				name: id,
+				...(id === selected ? { desc: 'In use' } : {}),
+			}),
+		),
+	};
+}
+
+/**
+ * The endpoint and model selection of the engine in use.
+ * @param settings - Live settings, read by the predicates
+ */
+function transcriptionEndpointRows(
+	settings: AudioRecorderSettings,
+): SettingGroupItem[] {
+	const credentials = selectedTranscriptionEngine(settings).credentials;
+	if (!credentials) {
+		return [];
+	}
+	const cloud = (): boolean =>
+		settings.transcriptionEnabled &&
+		selectedTranscriptionEngine(settings).credentials !== undefined;
+	return [
+		{
+			name: credentials.baseUrlFieldName,
+			desc: credentials.baseUrlFieldDesc,
+			visible: cloud,
+			control: { type: 'text', key: credentials.baseUrlKey },
+		},
+		{
+			name: credentials.modelPickerName,
+			desc: credentials.modelPickerDesc,
+			visible: cloud,
+			control: {
+				type: 'dropdown',
+				key: credentials.modelKey,
+				options: Object.fromEntries(
+					credentials.models(settings).map((id) => [id, id]),
+				),
+			},
+		},
+	];
+}
+
+/**
  * The transcription section. Everything below the section's own switch is
  * revealed by a predicate rather than by re-rendering the section, and the
  * options an engine cannot deliver are disabled rather than hidden, so the user
@@ -691,8 +968,9 @@ function transcriptionGroup(
 					step: 1,
 				},
 			},
+			...transcriptionEndpointRows(settings),
 			imperativeBlockRow(
-				'Transcription engine settings',
+				'Transcription engine credentials',
 				blocks.renderEngineFields,
 				enabled,
 			),
@@ -1120,13 +1398,20 @@ export function buildSettingsDefinitions(
 		multiTrackGroup(ctx.settings, ctx.devices),
 		audioPlayerGroup(ctx.settings),
 		transcriptionGroup(ctx.settings, ctx.transcriptionBlocks),
+		transcriptionEngineGroup(ctx.settings, ctx.transcriptionBlocks),
 		transcriptionAdvancedGroup(ctx.settings, ctx.transcriptionBlocks),
 		transcriptOutputGroup(ctx.settings),
 		autoChaptersGroup(ctx.settings, ctx.transcriptionBlocks),
+		llmGroup(ctx.settings),
+		llmModelListGroup(ctx.settings, ctx.transcriptionBlocks),
 		imperativeBlockRow(
-			'LLM post-processing',
+			'LLM credentials',
 			ctx.transcriptionBlocks.renderLlmSection,
-			() => ctx.settings.transcriptionEnabled,
+			() =>
+				ctx.settings.transcriptionEnabled &&
+				(ctx.settings.llmPostProcessEnabled ||
+					ctx.settings.transcriptionAutoChaptersEnabled ||
+					advancedTwoPassEnabled(ctx.settings)),
 		),
 		audioProcessingGroup(),
 		audioCleanupGroup(ctx.settings),

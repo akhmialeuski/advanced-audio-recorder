@@ -13,23 +13,19 @@ import {
 	TRANSCRIPTION_PROVIDER_IDS,
 } from '../../constants';
 import {
-	addModelPicker,
 	addNumberInput,
 	addText,
 	type SettingsSectionContext,
 } from '../settingControls';
 import { isProviderAvailableOnPlatform } from '../../transcription/providers/capabilities';
-import {
-	selectedTranscriptionEngine,
-	type EngineCredentials,
-} from '../../transcription/providers/engines';
+import type { EngineCredentials } from '../../transcription/providers/engines';
 
 /**
- * The cloud-engine fields: base URL, API key, and model picker, all bound
- * through the selected engine's descriptor. The three cloud engines differ only
- * in their labels and which settings fields they address, both of which the
- * registry owns, so one renderer covers them all.
+ * The one cloud-engine field that is not a declared control: the API key, which
+ * is a password field. The endpoint and the model list are declarations bound to
+ * the keys the engine's descriptor names.
  * @param ctx - Section context
+ * @param credentials - The selected engine's descriptor
  */
 export function renderCloudEngineSettings(
 	ctx: SettingsSectionContext,
@@ -37,29 +33,15 @@ export function renderCloudEngineSettings(
 ): void {
 	const s = ctx.settings;
 	addText(ctx, {
-		name: credentials.baseUrlFieldName,
-		desc: credentials.baseUrlFieldDesc,
-		get: () => credentials.baseUrl(s),
-		set: (v) => credentials.setBaseUrl(s, v),
-	});
-	addText(ctx, {
 		name: credentials.keyFieldName,
 		desc: credentials.keyFieldDesc,
-		get: () => credentials.apiKey(s),
-		set: (v) => credentials.setApiKey(s, v),
-		secret: true,
-	});
-	addModelPicker(ctx, {
-		name: credentials.modelPickerName,
-		desc: credentials.modelPickerDesc,
 		helpLink: {
 			label: credentials.modelsDocLabel,
 			url: credentials.modelsDocUrl,
 		},
-		getModels: () => credentials.models(s),
-		setModels: (models) => credentials.setModels(s, models),
-		getSelected: () => selectedTranscriptionEngine(s).model(s),
-		setSelected: (id) => credentials.setModel(s, id),
+		get: () => credentials.apiKey(s),
+		set: (v) => credentials.setApiKey(s, v),
+		secret: true,
 	});
 }
 

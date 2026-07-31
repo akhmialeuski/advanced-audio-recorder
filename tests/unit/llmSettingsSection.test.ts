@@ -1,10 +1,9 @@
 /**
- * Tests the LLM settings section: which rows appear for which combination of
- * features, and that the vendor-bound fields (API key, model list) really
- * follow the selected provider. The key field is the interesting one - OpenAI
- * and Gemini deliberately share their transcription keys while Anthropic keeps
- * its own, so a field bound to the wrong settings property silently sends the
- * user's key to the wrong vendor or asks for one they already entered.
+ * Tests the one LLM field still rendered by hand: the vendor's API key, which
+ * is a password field. Which settings property it writes follows the selected
+ * provider - OpenAI and Gemini deliberately share their transcription keys
+ * while Anthropic keeps its own - so a field bound to the wrong one silently
+ * sends the user's key to the wrong vendor, or asks for one already entered.
  * @module tests/unit/llmSettingsSection.test
  */
 
@@ -17,7 +16,6 @@ import type { SettingsSectionContext } from 'src/settings/settingControls';
 import {
 	capturedSettings,
 	changeSetting,
-	enterNumberSetting,
 	settingRow,
 } from '../helpers/captureSettings';
 
@@ -46,202 +44,37 @@ function render(overrides: Partial<AudioRecorderSettings> = {}): {
 	return { settings, ctx };
 }
 
-/** Names of the rows rendered by the last render(). */
-function renderedRows(): string[] {
-	return capturedSettings.map((row) => row.name);
-}
+describe('renderLlmSection', () => {
+	it('renders the selected vendor key field, and nothing else', () => {
+		// Everything else in the section is declared; this block is the one row
+		// no control type covers.
+		render({ llmProvider: LLM_PROVIDER_IDS.ANTHROPIC });
 
-describe('renderLlmSection visibility', () => {
-	it('shows only the master toggle when nothing needs an LLM', () => {
-		render({
-			llmPostProcessEnabled: false,
-			transcriptionAutoChaptersEnabled: false,
-			transcriptionAdvancedSettingsEnabled: false,
-		});
-
-		expect(renderedRows()).toEqual([
-			'LLM post-processing',
-			'Enable LLM post-processing',
-		]);
+		expect(capturedSettings).toHaveLength(1);
+		expect(settingRow(llmVendor(LLM_PROVIDER_IDS.ANTHROPIC).keyFieldName));
 	});
 
-	it('keeps the vendor fields for auto chapters while post-processing is off', () => {
-		render({
-			llmPostProcessEnabled: false,
-			transcriptionAutoChaptersEnabled: true,
-		});
-
-		const rows = renderedRows();
-		// Auto chapters calls the same vendor, so its key and model must stay
-		// configurable even with post-processing off.
-		expect(rows).toContain('LLM provider');
-		expect(rows).toContain('LLM model');
-		// ...but the post-processing task and its prompt belong to the feature
-		// that is off.
-		expect(rows).not.toContain('Task');
-	});
-
-	it('keeps the vendor fields for the advanced two-pass mode', () => {
-		render({
-			llmPostProcessEnabled: false,
-			transcriptionAutoChaptersEnabled: false,
-			transcriptionAdvancedSettingsEnabled: true,
-			transcriptionAdvancedEnabled: true,
-		});
-
-		expect(renderedRows()).toContain('LLM provider');
-	});
-
-	it('ignores a two-pass toggle left on under an off master switch', () => {
-		render({
-			llmPostProcessEnabled: false,
-			transcriptionAutoChaptersEnabled: false,
-			transcriptionAdvancedSettingsEnabled: false,
-			transcriptionAdvancedEnabled: true,
-		});
-
-		// A stale toggle under an off master does nothing at run time, so it
-		// must not keep the vendor fields on screen either.
-		expect(renderedRows()).toEqual([
-			'LLM post-processing',
-			'Enable LLM post-processing',
-		]);
-	});
-});
-
-describe('renderLlmSection task prompts', () => {
 	it.each([
-		['cleanup', 'Cleanup prompt'],
-		['summary', 'Summary prompt'],
-		['custom', 'Custom instruction'],
-	])('shows the %s prompt field for that task', (task, field) => {
-		render({
-			llmPostProcessEnabled: true,
-			llmPostProcessTask:
-				task as AudioRecorderSettings['llmPostProcessTask'],
-		});
-
-		const rows = renderedRows();
-		expect(rows).toContain(field);
-		// Exactly one prompt field: the others belong to the other tasks.
-		expect(
-			rows.filter((name) =>
-				[
-					'Cleanup prompt',
-					'Summary prompt',
-					'Custom instruction',
-				].includes(name),
-			),
-		).toEqual([field]);
-	});
-
-	it('edits the prompt of the selected task', () => {
-		const { settings } = render({
-			llmPostProcessEnabled: true,
-			llmPostProcessTask: 'summary',
-		});
-
-		changeSetting('Summary prompt', 'text', 'Five bullets, no preamble.');
-
-		expect(settings.llmSummaryPrompt).toBe('Five bullets, no preamble.');
-	});
-
-	it('redraws the section when the task changes so the right prompt appears', async () => {
-		const { settings, ctx } = render({
-			llmPostProcessEnabled: true,
-			llmPostProcessTask: 'cleanup',
-		});
-
-		await changeSetting('Task', 'dropdown', 'custom');
-
-		expect(settings.llmPostProcessTask).toBe('custom');
-		expect(ctx.rerender).toHaveBeenCalled();
-	});
-});
-
-describe('renderLlmSection vendor binding', () => {
-	it.each([
-		[LLM_PROVIDER_IDS.OPENAI_COMPATIBLE, 'OpenAI API key', 'whisperApiKey'],
-		[LLM_PROVIDER_IDS.ANTHROPIC, 'Anthropic API key', 'anthropicApiKey'],
-		[LLM_PROVIDER_IDS.GEMINI, 'Google Gemini API key', 'geminiApiKey'],
+		[LLM_PROVIDER_IDS.OPENAI_COMPATIBLE, 'whisperApiKey'],
+		[LLM_PROVIDER_IDS.ANTHROPIC, 'anthropicApiKey'],
+		[LLM_PROVIDER_IDS.GEMINI, 'geminiApiKey'],
 	] as const)(
-		'binds the key field of %s to its own settings property',
-		(provider, fieldName, property) => {
-			const { settings } = render({
-				llmPostProcessEnabled: true,
-				llmProvider: provider,
-			});
-
-			changeSetting(fieldName, 'text', 'sk-typed');
-
-			expect(settings[property]).toBe('sk-typed');
-		},
-	);
-
-	it.each([
-		[LLM_PROVIDER_IDS.OPENAI_COMPATIBLE, 'llmOpenAiModel'],
-		[LLM_PROVIDER_IDS.ANTHROPIC, 'llmAnthropicModel'],
-		[LLM_PROVIDER_IDS.GEMINI, 'llmGeminiModel'],
-	] as const)(
-		"shows the model list of %s, not another vendor's",
+		'writes the %s key into its own settings field',
 		(provider, property) => {
-			const { settings } = render({
-				llmPostProcessEnabled: true,
-				llmProvider: provider,
-			});
+			const { settings } = render({ llmProvider: provider });
+			const row = capturedSettings[0]?.name ?? '';
 
-			expect(settingRow('LLM model').dropdownValue).toBe(
-				settings[property],
-			);
+			changeSetting(row, 'text', 'token-value');
+
+			expect(settings[property]).toBe('token-value');
 		},
 	);
 
-	it('moves a still-default base URL to the newly picked provider', async () => {
-		const { settings, ctx } = render({
-			llmPostProcessEnabled: true,
-			llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
-			llmBaseUrl: llmVendor(LLM_PROVIDER_IDS.OPENAI_COMPATIBLE)
-				.defaultBaseUrl,
-		});
+	it('names the field after the vendor, so a shared key says whose it is', () => {
+		render({ llmProvider: LLM_PROVIDER_IDS.GEMINI });
 
-		await changeSetting(
-			'LLM provider',
-			'dropdown',
-			LLM_PROVIDER_IDS.ANTHROPIC,
+		expect(capturedSettings[0]?.name).toBe(
+			llmVendor(LLM_PROVIDER_IDS.GEMINI).keyFieldName,
 		);
-
-		expect(settings.llmProvider).toBe(LLM_PROVIDER_IDS.ANTHROPIC);
-		// Leaving the OpenAI URL behind would point Anthropic requests at the
-		// wrong host, with a confusing 404 as the only symptom.
-		expect(settings.llmBaseUrl).toBe(
-			llmVendor(LLM_PROVIDER_IDS.ANTHROPIC).defaultBaseUrl,
-		);
-		expect(ctx.rerender).toHaveBeenCalled();
-	});
-
-	it('keeps a hand-entered base URL when the provider changes', async () => {
-		const { settings } = render({
-			llmPostProcessEnabled: true,
-			llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
-			llmBaseUrl: 'https://proxy.internal/v1',
-		});
-
-		await changeSetting(
-			'LLM provider',
-			'dropdown',
-			LLM_PROVIDER_IDS.ANTHROPIC,
-		);
-
-		expect(settings.llmBaseUrl).toBe('https://proxy.internal/v1');
-	});
-
-	it('edits the base URL and the token budget', () => {
-		const { settings } = render({ llmPostProcessEnabled: true });
-
-		changeSetting('LLM base URL', 'text', 'https://proxy.internal/v1');
-		enterNumberSetting('Max output tokens', '4096');
-
-		expect(settings.llmBaseUrl).toBe('https://proxy.internal/v1');
-		expect(settings.llmMaxTokens).toBe(4096);
 	});
 });

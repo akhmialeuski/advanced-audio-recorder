@@ -68,6 +68,20 @@ import {
 } from './sections/profileManagerSection';
 import { renderLlmSection } from './sections/llmSettingsSection';
 import { selectedTranscriptionEngine } from '../transcription/providers/engines';
+import { addModelToList, removeModelFromList } from './modelList';
+import { selectedLlmVendor } from '../transcription/llm/vendors';
+
+/**
+ * The half of an engine or vendor descriptor a saved model list is edited
+ * through: both name the same four operations over their own settings keys.
+ */
+interface ModelListAccess {
+	models(settings: AudioRecorderSettings): string[];
+	setModels(settings: AudioRecorderSettings, ids: string[]): void;
+	model(settings: AudioRecorderSettings): string;
+	setModel(settings: AudioRecorderSettings, id: string): void;
+}
+import { ModelIdModal } from '../ui/ModelIdModal';
 import { TRANSCRIPTION_PROVIDER_IDS } from '../constants';
 import type { SettingsSectionContext } from './settingControls';
 
@@ -282,6 +296,29 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 						}
 					});
 				},
+				addModel: (): void => {
+					const access = this.engineModelAccess();
+					if (access) {
+						this.addModelTo(access);
+					}
+				},
+				removeModel: (index): void => {
+					const access = this.engineModelAccess();
+					if (access) {
+						this.removeModelFrom(access, index);
+					}
+				},
+				addLlmModel: (): void => {
+					this.addModelTo(
+						selectedLlmVendor(this.plugin.settings).settings,
+					);
+				},
+				removeLlmModel: (index): void => {
+					this.removeModelFrom(
+						selectedLlmVendor(this.plugin.settings).settings,
+						index,
+					);
+				},
 				renderDictionaryProfiles: (host): void => {
 					this.renderTranscriptionBlock(
 						host,
@@ -491,6 +528,74 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 */
 	private rerender(): void {
 		this.renderMode.rerender();
+	}
+
+	/**
+	 * The selected engine's saved model list, as the four operations a list edit
+	 * needs. The engine descriptor reads its selection through the engine rather
+	 * than through the credentials, and the local engine has no list at all.
+	 * @returns The access, or undefined for an engine without a model list
+	 */
+	private engineModelAccess(): ModelListAccess | undefined {
+		const engine = selectedTranscriptionEngine(this.plugin.settings);
+		const credentials = engine.credentials;
+		if (!credentials) {
+			return undefined;
+		}
+		return {
+			models: (settings) => credentials.models(settings),
+			setModels: (settings, ids) => {
+				credentials.setModels(settings, ids);
+			},
+			model: (settings) =>
+				selectedTranscriptionEngine(settings).model(settings),
+			setModel: (settings, id) => {
+				credentials.setModel(settings, id);
+			},
+		};
+	}
+
+	/**
+	 * Adds a model id to a saved list and selects it, which is what a list's add
+	 * affordance does for both the engine and the LLM catalogues.
+	 * @param access - Reads and writes the list and its selection
+	 */
+	private addModelTo(access: ModelListAccess): void {
+		new ModelIdModal(this.app, (id) => {
+			const settings = this.plugin.settings;
+			access.setModels(
+				settings,
+				addModelToList(access.models(settings), id),
+			);
+			access.setModel(settings, id);
+			void this.plugin.saveSettings().then(() => {
+				this.rerender();
+			});
+		}).open();
+	}
+
+	/**
+	 * Removes the model id at a position in a saved list. The list is the
+	 * catalogue and the selection points into it, so dropping the selected id
+	 * moves the selection rather than leaving it pointing at nothing.
+	 * @param access - Reads and writes the list and its selection
+	 * @param index - Position of the id to remove
+	 */
+	private removeModelFrom(access: ModelListAccess, index: number): void {
+		const settings = this.plugin.settings;
+		const models = access.models(settings);
+		const removed = models[index];
+		if (removed === undefined) {
+			return;
+		}
+		const next = removeModelFromList(models, removed);
+		access.setModels(settings, next);
+		if (access.model(settings) === removed) {
+			access.setModel(settings, next[0] ?? '');
+		}
+		void this.plugin.saveSettings().then(() => {
+			this.rerender();
+		});
 	}
 
 	/**

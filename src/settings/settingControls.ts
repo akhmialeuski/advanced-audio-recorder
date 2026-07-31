@@ -21,12 +21,6 @@ import type { AudioRecorderSettings } from './settingsSchema';
 import { CONVERSION_LINK_ACTION_OPTIONS, type LabeledOption } from './labels';
 import { getSupportedBitrates } from '../audio/AudioCapabilityDetector';
 import type { ConversionLinkAction } from './settingsSchema';
-import {
-	addModelToList,
-	ensureSelectedInList,
-	normalizeModelId,
-	removeModelFromList,
-} from './modelList';
 
 /** Class applied to a setting row that is rendered disabled (dimmed). */
 export const SETTING_DISABLED_CLASS = 'aar-setting-disabled';
@@ -417,103 +411,6 @@ export function addStageRowTo(
 			numberInput.setDisabled(!value);
 		}),
 	);
-}
-
-/** Configuration for a model picker (pick from a saved, user-editable list). */
-export interface ModelPickerConfig {
-	/** Label for the picker row (e.g. "Deepgram model"). */
-	name: string;
-	/** Description shown above the docs link. */
-	desc: string;
-	/** Docs link to where the engine's models are listed. */
-	helpLink: HelpLink;
-	/** Reads the saved model ids. */
-	getModels: () => string[];
-	/** Persists the model ids. */
-	setModels: (models: string[]) => void;
-	/** Reads the selected model id. */
-	getSelected: () => string;
-	/** Persists the selected model id. */
-	setSelected: (id: string) => void;
-}
-
-/**
- * Renders a model picker: a dropdown to choose the active model from a saved
- * list, a docs link, and an add/remove row to manage custom ids. The selected
- * id is always shown even if it is not in the saved list. Adding or removing
- * re-renders the tab so the dropdown reflects the new list. Used for engines
- * whose model is a free-form id (Whisper API, Deepgram); the local engine
- * points at a file path instead, so it does not use this.
- * @param ctx - Section context
- * @param config - Picker bindings
- */
-export function addModelPicker(
-	ctx: SettingsSectionContext,
-	config: ModelPickerConfig,
-): void {
-	const models = ensureSelectedInList(
-		config.getModels(),
-		config.getSelected(),
-	);
-	const selected = normalizeModelId(config.getSelected()) || models[0] || '';
-	// Self-heal a missing/empty stored selection: persist the fallback so the
-	// shown model is the one actually used at transcription time (a hand-edited
-	// or migrated config could otherwise leave an empty model selected).
-	if (selected !== '' && selected !== config.getSelected()) {
-		config.setSelected(selected);
-		void ctx.save();
-	}
-
-	const picker = new Setting(ctx.containerEl)
-		.setName(config.name)
-		.setDesc(config.desc);
-	appendHelpLink(picker, config.helpLink);
-	picker.addDropdown((dropdown) => {
-		for (const id of models) {
-			dropdown.addOption(id, id);
-		}
-		dropdown.setValue(selected).onChange(async (value) => {
-			config.setSelected(value);
-			await ctx.save();
-		});
-	});
-
-	let draft = '';
-	new Setting(ctx.containerEl)
-		.setName('Add custom model')
-		.setDesc('Add a model ID to the list above, then select it.')
-		.addText((text) => {
-			text.setPlaceholder('Model ID').onChange((value) => {
-				draft = value;
-			});
-		})
-		.addButton((button) => {
-			button.setButtonText('Add').onClick(async () => {
-				const id = normalizeModelId(draft);
-				if (id === '') {
-					return;
-				}
-				config.setModels(addModelToList(config.getModels(), id));
-				config.setSelected(id);
-				await ctx.save();
-				ctx.rerender();
-			});
-		})
-		.addButton((button) => {
-			button
-				.setButtonText('Remove selected')
-				.setDisabled(config.getModels().length <= 1)
-				.onClick(async () => {
-					const next = removeModelFromList(
-						config.getModels(),
-						config.getSelected(),
-					);
-					config.setModels(next);
-					config.setSelected(next[0] ?? '');
-					await ctx.save();
-					ctx.rerender();
-				});
-		});
 }
 
 /**

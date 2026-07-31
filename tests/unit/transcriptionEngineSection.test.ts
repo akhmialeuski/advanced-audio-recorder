@@ -61,66 +61,43 @@ function renderCloud(provider: TranscriptionProviderId): AudioRecorderSettings {
 
 describe('renderCloudEngineSettings', () => {
 	it.each([
-		[
-			TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
-			'whisperApiBaseUrl',
-			'whisperApiKey',
-		],
-		[
-			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-			'deepgramBaseUrl',
-			'deepgramApiKey',
-		],
-		[TRANSCRIPTION_PROVIDER_IDS.GEMINI, 'geminiBaseUrl', 'geminiApiKey'],
+		[TRANSCRIPTION_PROVIDER_IDS.WHISPER_API, 'whisperApiKey'],
+		[TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, 'deepgramApiKey'],
+		[TRANSCRIPTION_PROVIDER_IDS.GEMINI, 'geminiApiKey'],
 	] as const)(
-		'binds the endpoint and key fields of %s to its own settings',
-		(provider, urlProperty, keyProperty) => {
+		'binds the key field of %s to its own settings property',
+		(provider, property) => {
+			// Everything else about a cloud engine is declared; this block is
+			// the one row no control type covers, the password field.
 			const settings = renderCloud(provider);
 			const credentials = defined(
 				selectedTranscriptionEngine(settings).credentials,
 			);
 
-			changeSetting(
-				credentials.baseUrlFieldName,
-				'text',
-				'https://edge.example/v1',
-			);
-			changeSetting(credentials.keyFieldName, 'text', 'key-typed');
+			changeSetting(credentials.keyFieldName, 'text', 'token-value');
 
-			expect(settings[urlProperty]).toBe('https://edge.example/v1');
-			expect(settings[keyProperty]).toBe('key-typed');
+			expect(settings[property]).toBe('token-value');
 		},
 	);
 
-	it.each([
-		[TRANSCRIPTION_PROVIDER_IDS.WHISPER_API, 'whisperApiModel'],
-		[TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, 'deepgramModel'],
-		[TRANSCRIPTION_PROVIDER_IDS.GEMINI, 'geminiModel'],
-	] as const)('shows the model of %s in its picker', (provider, property) => {
-		const settings = renderCloud(provider);
-		const credentials = defined(
-			selectedTranscriptionEngine(settings).credentials,
-		);
+	it('renders only that one row', () => {
+		renderCloud(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM);
 
-		expect(settingRow(credentials.modelPickerName).dropdownValue).toBe(
-			settings[property],
-		);
+		expect(capturedSettings).toHaveLength(1);
 	});
 
-	it('gives each engine its own labels rather than a generic one', () => {
-		renderCloud(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM);
-		const deepgramRows = capturedSettings.map((row) => row.name);
+	it('gives each engine its own key label rather than a generic one', () => {
+		const labels = new Set<string>();
+		for (const provider of [
+			TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			TRANSCRIPTION_PROVIDER_IDS.GEMINI,
+		]) {
+			renderCloud(provider);
+			labels.add(capturedSettings[0]?.name ?? '');
+		}
 
-		renderCloud(TRANSCRIPTION_PROVIDER_IDS.GEMINI);
-		const geminiRows = capturedSettings.map((row) => row.name);
-
-		// Same shape, different copy: the vendor-specific rows share no label,
-		// so a user switching engines can tell which vendor a key belongs to.
-		// (The model picker's own "Add custom model" row is generic by design.)
-		expect(deepgramRows).toHaveLength(geminiRows.length);
-		expect(
-			deepgramRows.filter((name) => geminiRows.includes(name)),
-		).toEqual(['Add custom model']);
+		expect(labels.size).toBe(3);
 	});
 });
 
