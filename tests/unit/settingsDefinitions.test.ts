@@ -14,6 +14,7 @@ import {
 	rowOf,
 	type GroupDefinition,
 	type RenderDefinition,
+	type RowDefinition,
 } from '../helpers/declarativeSettings';
 import {
 	DEFAULT_SETTINGS,
@@ -169,6 +170,53 @@ describe('settings definitions', () => {
 				(renderDefinitionOf(build()) as { searchable?: boolean })
 					.searchable,
 			).toBe(false);
+		});
+	});
+
+	describe('search terms', () => {
+		/** Every row in the tree, at any depth. */
+		const allRows = (
+			entries: readonly SettingDefinitionItem[],
+		): RowDefinition[] =>
+			entries.flatMap((entry) =>
+				'type' in entry
+					? allRows((entry.items ?? []) as SettingDefinitionItem[])
+					: [entry as unknown as RowDefinition],
+			);
+
+		/** The declared aliases of a row, addressed by name. */
+		const aliasesOf = (name: string): string[] => {
+			const row = allRows(build()).find((entry) => entry.name === name);
+			if (!row) {
+				throw new Error(`No "${name}" row declared`);
+			}
+			return row.aliases ?? [];
+		};
+
+		it('lets the settings search find a row by what it does', () => {
+			// The framework indexes a row by its name and its aliases, so a
+			// user who searches for the thing rather than for our word for it
+			// still lands on the row.
+			expect(aliasesOf('Input device')).toContain('microphone');
+			expect(aliasesOf('Enable transcription')).toContain(
+				'speech to text',
+			);
+			expect(aliasesOf('Loudness leveling')).toContain('normalize');
+		});
+
+		it('makes the fields inside a hand-rendered block findable', () => {
+			// The search indexes definitions, and a credential block is one
+			// definition, so its API-key field has no row of its own to match.
+			expect(aliasesOf('Transcription engine credentials')).toContain(
+				'api key',
+			);
+			expect(aliasesOf('LLM credentials')).toContain('api key');
+		});
+
+		it('declares no alias that repeats the row name', () => {
+			for (const row of allRows(build())) {
+				expect(row.aliases ?? []).not.toContain(row.name.toLowerCase());
+			}
 		});
 	});
 

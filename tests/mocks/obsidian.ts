@@ -817,11 +817,15 @@ export class ExtraButtonComponent {
 		this.extraSettingsEl.classList.add('extra-setting-button');
 	}
 
-	setIcon(_icon: string): this {
+	setIcon(icon: string): this {
+		// Recorded the way ButtonComponent records it, so a test can see which
+		// icon a button currently shows rather than only that it was set once.
+		this.extraSettingsEl.setAttribute('data-icon', icon);
 		return this;
 	}
 
-	setTooltip(_tooltip: string): this {
+	setTooltip(tooltip: string): this {
+		this.extraSettingsEl.setAttribute('aria-label', tooltip);
 		return this;
 	}
 

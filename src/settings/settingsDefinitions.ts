@@ -13,8 +13,10 @@
  * A handful of rows cannot be declared: the documentation callout, the format
  * list blocked per option by an asynchronous encoder probe, the output summary
  * derived from two other rows, the test capture that reports into its own row,
- * and the transcription engine fields that are not migrated yet. Those use the
- * framework's own escape hatch, a render callback, and nothing else does.
+ * and the two credential blocks, whose fields are password inputs the control
+ * set has no type for and whose identity changes with the selected engine.
+ * Those use the framework's own escape hatch, a render callback, and nothing
+ * else does.
  * @module settings/settingsDefinitions
  */
 
@@ -143,9 +145,10 @@ export interface DeviceOptions {
 }
 
 /**
- * The transcription blocks still rendered by hand, each into the row its
- * section keeps for it: the selected engine's own fields, and the two profile
- * managers, which are collections with their own add and delete affordances.
+ * What the transcription sections need from the tab: the two credential blocks
+ * rendered by hand into the row their section keeps for them, and the edits
+ * behind the add and delete affordances of the two model lists, which the
+ * framework draws but the tab owns.
  */
 export interface TranscriptionBlocks {
 	/**
@@ -218,25 +221,27 @@ export interface SettingsDefinitionContext {
 }
 
 /**
- * A row whose body is still rendered by hand, hosted in the row itself, which
- * is the only DOM a render definition owns.
- * @param name - Row name, used by the settings search
- * @param render - Draws the block into the row
- * @param visible - When the row applies
+ * A row whose body is rendered by hand, hosted in the row itself, which is the
+ * only DOM a render definition owns. The fields inside such a block are
+ * invisible to the settings search - it indexes definitions, and the block is
+ * one - so the row carries what a user would type looking for them.
+ * @param row - Row name, its extra search terms, its body and when it applies
  */
-function imperativeBlockRow(
-	name: string,
-	render: (host: HTMLElement) => void,
-	visible: () => boolean,
-): SettingDefinition {
+function imperativeBlockRow(row: {
+	name: string;
+	aliases: string[];
+	render: (host: HTMLElement) => void;
+	visible: () => boolean;
+}): SettingDefinition {
 	return {
-		name,
-		visible,
+		name: row.name,
+		aliases: row.aliases,
+		visible: row.visible,
 		render: (setting: Setting): void => {
 			const host = setting.settingEl;
 			host.empty();
 			host.addClass(SETTINGS_ROOT_CLASS);
-			render(host);
+			row.render(host);
 		},
 	};
 }
@@ -254,6 +259,7 @@ function fileStorageGroup(
 		items: [
 			{
 				name: 'Save folder',
+				aliases: ['recordings folder', 'output folder', 'path'],
 				desc: 'Where recordings are saved in your vault.',
 				// The folder control brings Obsidian's own folder suggestions,
 				// which the tab used to wire by hand.
@@ -277,6 +283,7 @@ function fileStorageGroup(
 			},
 			{
 				name: 'File prefix',
+				aliases: ['file name', 'filename', 'naming'],
 				desc: 'Filename prefix used for exported recordings.',
 				control: { type: 'text', key: 'filePrefix' },
 			},
@@ -301,6 +308,7 @@ function outputFormatGroup(rows: OutputFormatRows): SettingDefinitionItem {
 		items: [
 			{
 				name: 'Recording format',
+				aliases: ['codec', 'container', 'mp3', 'wav', 'webm', 'm4a'],
 				desc: 'Final file format. Formats this device cannot record are shown blocked.',
 				render: (setting: Setting): void => {
 					rows.renderFormatRow(setting);
@@ -308,6 +316,7 @@ function outputFormatGroup(rows: OutputFormatRows): SettingDefinitionItem {
 			},
 			{
 				name: 'Audio bitrate',
+				aliases: ['quality', 'kbps'],
 				desc: 'Compression quality and resulting file size.',
 				control: {
 					type: 'dropdown',
@@ -372,6 +381,7 @@ function audioInputGroup(
 		items: [
 			{
 				name: 'Input device',
+				aliases: ['microphone', 'mic', 'source'],
 				desc: deviceSelectable
 					? 'Default input device for single-track recordings. Also changeable from the command palette.'
 					: 'Not selectable on this device; recording uses the system default microphone.',
@@ -384,6 +394,7 @@ function audioInputGroup(
 			},
 			{
 				name: 'Sample rate',
+				aliases: ['hz', 'khz'],
 				desc: rateSelectable
 					? 'Audio sample rate in hertz.'
 					: 'Not selectable on this device; the system capture rate is used.',
@@ -398,6 +409,7 @@ function audioInputGroup(
 			},
 			{
 				name: 'Recording channels',
+				aliases: ['mono', 'stereo', 'channel'],
 				desc: 'Channel layout for single-track recordings: keep the device layout, or reduce to mono during capture. Multi-track sessions use the per-track selectors instead.',
 				control: {
 					type: 'dropdown',
@@ -426,6 +438,7 @@ function audioSplittingGroup(): SettingDefinitionItem {
 		items: [
 			{
 				name: 'Split recordings automatically',
+				aliases: ['chunk', 'segment', 'long recording'],
 				desc: available
 					? 'Save the recording as separate part files of fixed duration instead of one long file. Not applied to merged multi-track recordings.'
 					: 'Not available on this device. Recordings are saved as one file; manual splitting from the context menu still works.',
@@ -526,6 +539,7 @@ function multiTrackGroup(
 		items: [
 			{
 				name: 'Enable multi-track recording',
+				aliases: ['multitrack', 'interview', 'two mics'],
 				desc: available
 					? 'Record from several input devices at the same time.'
 					: 'Not available on this device. Recording captures a single track from the default microphone.',
@@ -580,6 +594,7 @@ function audioPlayerGroup(
 		items: [
 			{
 				name: 'Enhanced audio player',
+				aliases: ['waveform player', 'embed'],
 				desc: 'Replace the built-in audio embed with a richer player (waveform, speed, skip, volume, loop, timecode links, markers and chapters). Video files keep the built-in player.',
 				control: { type: 'toggle', key: 'enhancedPlayerEnabled' },
 			},
@@ -638,6 +653,7 @@ function llmGroup(settings: AudioRecorderSettings): SettingDefinitionItem {
 		items: [
 			{
 				name: 'Enable LLM post-processing',
+				aliases: ['ai', 'summary', 'cleanup', 'gpt'],
 				desc: 'Clean up punctuation and formatting, or summarize the transcript with an LLM.',
 				control: { type: 'toggle', key: 'llmPostProcessEnabled' },
 			},
@@ -692,6 +708,7 @@ function llmGroup(settings: AudioRecorderSettings): SettingDefinitionItem {
 			},
 			{
 				name: 'LLM base URL',
+				aliases: ['endpoint', 'api url', 'self hosted'],
 				desc: 'API base URL of the selected vendor.',
 				visible: needsVendor,
 				control: { type: 'text', key: 'llmBaseUrl' },
@@ -753,6 +770,24 @@ export interface ProfileCatalogue {
 }
 
 /**
+ * The filter a list of named entries carries in its header. Every collection
+ * here is a flat list of names, so they all narrow the same way: the framework
+ * draws the field, keeps the query across re-renders, and reapplies it.
+ * @param placeholder - Prompt shown in the empty filter field
+ * @returns The group's search declaration
+ */
+function nameFilter(placeholder: string): {
+	placeholder: string;
+	match: (definition: SettingDefinition, query: string) => boolean;
+} {
+	return {
+		placeholder,
+		match: (definition, query): boolean =>
+			definition.name.toLowerCase().includes(query.toLowerCase()),
+	};
+}
+
+/**
  * A profile catalogue and the editor for the profile in use: the collection is
  * a list, with the framework's own add, delete and filter affordances, and the
  * two editable fields follow the selection rather than repeating per profile.
@@ -776,11 +811,7 @@ function profileGroups(
 			heading: catalogue.heading,
 			visible,
 			emptyState: 'No profiles yet. Add one to start a glossary.',
-			search: {
-				placeholder: 'Filter profiles',
-				match: (definition, query): boolean =>
-					definition.name.toLowerCase().includes(query.toLowerCase()),
-			},
+			search: nameFilter('Filter profiles'),
 			addItem: {
 				name: 'Add profile',
 				action: (): void => {
@@ -858,11 +889,7 @@ function transcriptionEngineGroup(
 		visible: cloud,
 		emptyState:
 			'No models saved yet. Add the model id your endpoint serves.',
-		search: {
-			placeholder: 'Filter models',
-			match: (definition, query): boolean =>
-				definition.name.toLowerCase().includes(query.toLowerCase()),
-		},
+		search: nameFilter('Filter models'),
 		addItem: {
 			name: 'Add model',
 			action: (): void => {
@@ -905,11 +932,7 @@ function llmModelListGroup(
 				settings.transcriptionAutoChaptersEnabled ||
 				advancedTwoPassEnabled(settings)),
 		emptyState: 'No models saved yet. Add the model id your vendor serves.',
-		search: {
-			placeholder: 'Filter models',
-			match: (definition, query): boolean =>
-				definition.name.toLowerCase().includes(query.toLowerCase()),
-		},
+		search: nameFilter('Filter models'),
 		addItem: {
 			name: 'Add model',
 			action: (): void => {
@@ -985,6 +1008,7 @@ function transcriptionGroup(
 		items: [
 			{
 				name: 'Enable transcription',
+				aliases: ['speech to text', 'stt', 'subtitles', 'whisper'],
 				desc: 'Transcribe recordings to text, with optional speaker labels and LLM post-processing.',
 				control: { type: 'toggle', key: 'transcriptionEnabled' },
 			},
@@ -1005,6 +1029,13 @@ function transcriptionGroup(
 			},
 			{
 				name: 'Engine',
+				aliases: [
+					'provider',
+					'whisper',
+					'deepgram',
+					'gemini',
+					'elevenlabs',
+				],
 				desc: 'Whisper API, Deepgram, or Google Gemini (cloud), or a local whisper.cpp binary (desktop).',
 				visible: enabled,
 				control: {
@@ -1029,6 +1060,7 @@ function transcriptionGroup(
 			},
 			{
 				name: 'Language',
+				aliases: ['locale', 'spoken language'],
 				desc: 'ISO code (e.g. en, ru, es). Leave empty, or write "auto", to detect it.',
 				visible: enabled,
 				control: {
@@ -1043,6 +1075,7 @@ function transcriptionGroup(
 			},
 			{
 				name: 'Speaker diarization',
+				aliases: ['speakers', 'who spoke', 'diarisation'],
 				desc: 'Request speaker labels. Speaker count is detected automatically.',
 				visible: enabled,
 				control: {
@@ -1080,11 +1113,12 @@ function transcriptionGroup(
 				},
 			},
 			...transcriptionEndpointRows(settings),
-			imperativeBlockRow(
-				'Transcription engine credentials',
-				blocks.renderEngineFields,
-				enabled,
-			),
+			imperativeBlockRow({
+				name: 'Transcription engine credentials',
+				aliases: ['api key', 'token', 'base url', 'endpoint'],
+				render: blocks.renderEngineFields,
+				visible: enabled,
+			}),
 		],
 	};
 }
@@ -1259,6 +1293,7 @@ function transcriptOutputGroup(
 			),
 			{
 				name: 'Rename speakers',
+				aliases: ['speaker names', 'labels'],
 				desc: 'Add a "Rename speakers" action that replaces diarized labels with participant names in an existing transcript.',
 				control: {
 					type: 'toggle',
@@ -1286,6 +1321,7 @@ function autoChaptersGroup(
 		items: [
 			{
 				name: 'Auto chapters',
+				aliases: ['sections', 'headings'],
 				desc: 'Add an action that asks the LLM to divide a transcribed recording into titled chapters, shown in the enhanced player.',
 				control: {
 					type: 'toggle',
@@ -1315,6 +1351,7 @@ function audioProcessingGroup(): SettingDefinitionItem {
 		items: [
 			{
 				name: 'Noise suppression',
+				aliases: ['background noise'],
 				desc: 'Apply the browser noise-suppression filter to the input.',
 				control: { type: 'toggle', key: 'inputNoiseSuppression' },
 			},
@@ -1367,6 +1404,7 @@ function audioCleanupGroup(
 		items: [
 			{
 				name: 'High-pass filter',
+				aliases: ['low cut', 'rumble'],
 				desc: 'Remove low-frequency rumble below the cutoff. These defaults prefill the cleanup dialog; cleanup writes a processed copy and never changes a live recording.',
 				control: { type: 'toggle', key: 'cleanupHighPassEnabled' },
 			},
@@ -1384,6 +1422,7 @@ function audioCleanupGroup(
 			},
 			{
 				name: 'Noise gate',
+				aliases: ['silence', 'gate'],
 				desc: 'Silence the signal below the threshold.',
 				control: { type: 'toggle', key: 'cleanupNoiseGateEnabled' },
 			},
@@ -1401,6 +1440,7 @@ function audioCleanupGroup(
 			},
 			{
 				name: 'Loudness leveling',
+				aliases: ['normalize', 'normalisation', 'lufs'],
 				desc: 'Even out quiet and loud passages (compressor).',
 				control: { type: 'toggle', key: 'cleanupLevelingEnabled' },
 			},
@@ -1434,6 +1474,7 @@ function diagnosticsGroup(
 		items: [
 			{
 				name: 'Test recording',
+				aliases: ['microphone test', 'check mic'],
 				desc: 'Records a 5-second test clip using your current settings and plays it back. Nothing is saved to your vault.',
 				// A render row: the capture reports progress into the row and
 				// leaves a playback element behind, which no control type covers.
@@ -1455,6 +1496,7 @@ function diagnosticsGroup(
 			},
 			{
 				name: 'System info',
+				aliases: ['diagnostics', 'support', 'report'],
 				desc: 'Show full system diagnostics including plugin settings, audio devices, and browser capabilities.',
 				action: (): void => {
 					diagnostics.showSystemInfo();
@@ -1462,6 +1504,7 @@ function diagnosticsGroup(
 			},
 			{
 				name: 'Debug mode',
+				aliases: ['logs', 'logging', 'verbose'],
 				desc: 'Enable verbose logs for troubleshooting recording issues.',
 				control: { type: 'toggle', key: 'debug' },
 			},
@@ -1512,15 +1555,16 @@ export function buildSettingsDefinitions(
 				...profileGroups(ctx.settings, ctx.profiles.chapters),
 				llmGroup(ctx.settings),
 				llmModelListGroup(ctx.settings, ctx.transcriptionBlocks),
-				imperativeBlockRow(
-					'LLM credentials',
-					ctx.transcriptionBlocks.renderLlmSection,
-					() =>
+				imperativeBlockRow({
+					name: 'LLM credentials',
+					aliases: ['api key', 'token', 'openai', 'anthropic'],
+					render: ctx.transcriptionBlocks.renderLlmSection,
+					visible: () =>
 						ctx.settings.transcriptionEnabled &&
 						(ctx.settings.llmPostProcessEnabled ||
 							ctx.settings.transcriptionAutoChaptersEnabled ||
 							advancedTwoPassEnabled(ctx.settings)),
-				),
+				}),
 			],
 		},
 		audioProcessingGroup(),

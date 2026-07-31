@@ -32,6 +32,8 @@ export interface RenderDefinition {
 /** A setting row, in the shape a test reads it. */
 export interface RowDefinition {
 	name: string;
+	/** Extra terms the settings search matches the row on. */
+	aliases?: string[];
 	desc?: string;
 	visible?: boolean | (() => boolean);
 	control?: {
