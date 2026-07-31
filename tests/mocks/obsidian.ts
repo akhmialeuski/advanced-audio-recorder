@@ -785,6 +785,10 @@ export class TextComponent {
 
 	setDisabled(disabled: boolean): this {
 		this.disabled = disabled;
+		// Mirrored onto the element like real Obsidian, whose
+		// AbstractTextComponent sets inputEl.disabled, so a DOM-level
+		// assertion sees a field the user cannot type into.
+		this.inputEl.disabled = disabled;
 		return this;
 	}
 
@@ -831,6 +835,14 @@ export class ExtraButtonComponent {
 
 	setDisabled(disabled: boolean): this {
 		this.disabled = disabled;
+		// Obsidian marks it disabled and takes it out of the tab order, which
+		// is the whole of "non-interactive" for an icon button.
+		this.extraSettingsEl.classList.toggle('is-disabled', disabled);
+		if (disabled) {
+			this.extraSettingsEl.removeAttribute('tabindex');
+		} else {
+			this.extraSettingsEl.setAttribute('tabindex', '0');
+		}
 		return this;
 	}
 
@@ -877,6 +889,10 @@ export class TextAreaComponent {
 
 	setDisabled(disabled: boolean): this {
 		this.disabled = disabled;
+		// Mirrored onto the element like real Obsidian, whose
+		// AbstractTextComponent sets inputEl.disabled, so a DOM-level
+		// assertion sees a field the user cannot type into.
+		this.inputEl.disabled = disabled;
 		return this;
 	}
 
@@ -919,6 +935,9 @@ export class ToggleComponent {
 
 	setDisabled(disabled: boolean): this {
 		this.disabled = disabled;
+		// Obsidian marks a disabled toggle with is-disabled rather than a DOM
+		// disabled attribute, since it is a div and not an input.
+		this.toggleEl.classList.toggle('is-disabled', disabled);
 		return this;
 	}
 

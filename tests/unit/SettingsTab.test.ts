@@ -12,7 +12,9 @@ import {
 	rowOf,
 	withoutFrameworkUpdate,
 	type DeclarativeFrame,
+	type GroupDefinition,
 	type RenderDefinition,
+	type RowDefinition,
 } from '../helpers/declarativeSettings';
 import { AudioRecorderSettingTab } from 'src/settings/SettingsTab';
 import {
@@ -364,6 +366,57 @@ describe('AudioRecorderSettingTab', () => {
 			expect(
 				legacyTab.containerEl.querySelector('.aar-doc-callout-link'),
 			).not.toBeNull();
+		});
+
+		it('renders every declared row, so nothing is 1.13-only', () => {
+			// One tree, two renderers. This walks what the definitions
+			// describe and asserts the pre-1.13 renderer put all of it on
+			// screen, so a section can never reach 1.13 alone. Rows with a
+			// render callback are left out: their DOM is their own, and the
+			// ones hosting a hand-built block clear the name away.
+			mockSettings.transcriptionEnabled = true;
+			mockSettings.llmPostProcessEnabled = true;
+			mockSettings.enableMultiTrack = true;
+			const shows = (entry: {
+				visible?: boolean | (() => boolean);
+			}): boolean =>
+				typeof entry.visible === 'function'
+					? entry.visible()
+					: entry.visible !== false;
+			const declared: string[] = [];
+			const walk = (
+				entries: ReadonlyArray<RowDefinition | GroupDefinition>,
+			): void => {
+				for (const entry of entries) {
+					if (!shows(entry)) {
+						continue;
+					}
+					if ('type' in entry) {
+						const group = entry;
+						if (group.heading) {
+							declared.push(group.heading);
+						}
+						walk(group.items ?? []);
+						continue;
+					}
+					if (!entry.render) {
+						declared.push(entry.name);
+					}
+				}
+			};
+			walk(
+				tab.getSettingDefinitions() as unknown as ReadonlyArray<
+					RowDefinition | GroupDefinition
+				>,
+			);
+			expect(declared.length).toBeGreaterThan(50);
+
+			legacyTab.display();
+
+			const rendered = new Set(renderedNames(legacyTab.containerEl));
+			expect(
+				declared.filter((name) => !rendered.has(name)),
+			).toStrictEqual([]);
 		});
 
 		it('renders the migrated sections from the same definitions', () => {
