@@ -33,6 +33,7 @@ import {
 	buildSettingsDefinitions,
 	collectDebouncedControlKeys,
 	type DiagnosticsActions,
+	type ProfileCatalogue,
 	type SettingsDefinitionContext,
 } from 'src/settings/settingsDefinitions';
 
@@ -41,6 +42,9 @@ describe('settings definitions', () => {
 	let renderDocs: jest.Mock;
 	let renderFormatRow: jest.Mock;
 	let addModel: jest.Mock;
+	let addProfile: jest.Mock;
+	let removeProfile: jest.Mock;
+	let profileEntries: Array<{ id: string; name: string }>;
 	let removeModel: jest.Mock;
 	let renderSummaryRow: jest.Mock;
 	let renderTranscriptionRest: jest.Mock;
@@ -55,6 +59,12 @@ describe('settings definitions', () => {
 		});
 		renderFormatRow = jest.fn();
 		addModel = jest.fn();
+		addProfile = jest.fn();
+		removeProfile = jest.fn();
+		profileEntries = [
+			{ id: 'a', name: 'Standup' },
+			{ id: 'b', name: 'Legal' },
+		];
 		removeModel = jest.fn();
 		renderSummaryRow = jest.fn();
 		renderTranscriptionRest = jest.fn((host: HTMLElement) => {
@@ -84,6 +94,10 @@ describe('settings definitions', () => {
 				deviceId === 'iface-1',
 		},
 		diagnostics: diagnostics,
+		profiles: {
+			dictionary: catalogue('Dictionary profiles', 'Terms'),
+			chapters: catalogue('Chapter guidance profiles', 'Guidance prompt'),
+		},
 		transcriptionBlocks: {
 			renderEngineFields: renderTranscriptionRest as (
 				host: HTMLElement,
@@ -92,10 +106,29 @@ describe('settings definitions', () => {
 			removeModel: removeModel as (index: number) => void,
 			addLlmModel: jest.fn(),
 			removeLlmModel: jest.fn(),
-			renderDictionaryProfiles: jest.fn(),
-			renderChapterProfiles: jest.fn(),
 			renderLlmSection: jest.fn(),
 		},
+	});
+
+	/** A profile catalogue whose edits are spies. */
+	const catalogue = (
+		heading: string,
+		bodyName: string,
+	): ProfileCatalogue => ({
+		heading,
+		selectorDesc: 'Pick the profile to use.',
+		bodyName,
+		bodyDesc: 'The profile body.',
+		selectionKey:
+			heading === 'Dictionary profiles'
+				? 'transcriptionDictionaryProfileId'
+				: 'transcriptionChapterPromptProfileId',
+		nameKey: `${heading}.name`,
+		bodyKey: `${heading}.body`,
+		entries: () => profileEntries,
+		visible: () => true,
+		add: addProfile as () => void,
+		remove: removeProfile as (index: number) => void,
 	});
 
 	const build = (): SettingDefinitionItem[] =>
@@ -424,6 +457,70 @@ describe('settings definitions', () => {
 				TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER;
 			const visible = (
 				groupOf(build(), 'Models') as { visible?: () => boolean }
+			).visible;
+
+			expect(typeof visible === 'function' && visible()).toBe(false);
+		});
+	});
+
+	describe('the profile catalogues', () => {
+		/** A catalogue list, narrowed to what these tests read. */
+		const listOf = (
+			heading: string,
+		): {
+			type: string;
+			emptyState?: string;
+			addItem?: { action: (el: HTMLElement) => void };
+			onDelete?: (index: number) => void;
+			items: Array<{ name: string; desc?: string }>;
+		} => groupOf(build(), heading) as never;
+
+		it('declares the stored profiles as an editable list', () => {
+			settings.transcriptionDictionaryProfileId = 'b';
+			const list = listOf('Dictionary profiles');
+
+			expect(list.type).toBe('list');
+			expect(list.items.map((item) => item.name)).toEqual([
+				'Standup',
+				'Legal',
+			]);
+			// Which one a run uses is the selection, so a row says only whether
+			// it is that one.
+			expect(list.items[1]?.desc).toBe('In use');
+		});
+
+		it('adds and deletes through the tab, which owns the profiles', () => {
+			const list = listOf('Chapter guidance profiles');
+
+			list.addItem?.action(createDiv());
+			list.onDelete?.(1);
+
+			expect(addProfile).toHaveBeenCalledTimes(1);
+			expect(removeProfile).toHaveBeenCalledWith(1);
+		});
+
+		it('edits the profile in use rather than repeating a row per profile', () => {
+			settings.transcriptionDictionaryProfileId = 'a';
+			const editor = 'Dictionary profiles: selected';
+
+			expect(rowOf(build(), editor, 'Profile').control?.options).toEqual({
+				a: 'Standup',
+				b: 'Legal',
+			});
+			expect(rowOf(build(), editor, 'Terms').control?.type).toBe(
+				'textarea',
+			);
+			expect(rowOf(build(), editor, 'Profile name').control?.type).toBe(
+				'text',
+			);
+		});
+
+		it('hides the editor while no profile is selected', () => {
+			settings.transcriptionDictionaryProfileId = '';
+			const visible = rowOf(
+				build(),
+				'Dictionary profiles: selected',
+				'Terms',
 			).visible;
 
 			expect(typeof visible === 'function' && visible()).toBe(false);

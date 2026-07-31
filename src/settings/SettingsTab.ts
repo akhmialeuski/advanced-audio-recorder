@@ -33,6 +33,7 @@ import {
 	buildSettingsDefinitions,
 	collectDebouncedControlKeys,
 	parseTrackControlKey,
+	type ProfileCatalogue,
 } from './settingsDefinitions';
 import { LegacySettingsRenderer } from './legacySettingsRenderer';
 import type { AudioRecorderSettings } from './settingsSchema';
@@ -62,14 +63,20 @@ import {
 	renderLocalWhisperSettings,
 	renderWhisperChunkSize,
 } from './sections/transcriptionEngineSection';
-import {
-	renderChapterPromptProfiles,
-	renderDictionaryProfiles,
-} from './sections/profileManagerSection';
 import { renderLlmSection } from './sections/llmSettingsSection';
 import { selectedTranscriptionEngine } from '../transcription/providers/engines';
 import { addModelToList, removeModelFromList } from './modelList';
 import { selectedLlmVendor } from '../transcription/llm/vendors';
+import {
+	addAndSelectProfile,
+	editingProfileId,
+	findProfile,
+	removeAndReselectProfile,
+	type Profile,
+	type ProfileList,
+} from './profiles';
+import { DICTIONARY_PROFILES } from './dictionaryProfiles';
+import { CHAPTER_PROMPT_PROFILES } from './chapterPromptProfiles';
 
 /**
  * The half of an engine or vendor descriptor a saved model list is edited
@@ -198,6 +205,20 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	private debouncedControlKeys: ReadonlySet<string> = new Set();
 
 	/**
+	 * Control keys addressing a field of whichever profile is selected. A
+	 * profile is an entry in a list rather than a settings property, so its
+	 * editor rows are read and written through here.
+	 */
+	private readonly profileAccess = new Map<
+		string,
+		{
+			list: ProfileList<Profile>;
+			read: (profile: Profile) => string;
+			write: (profile: Profile, value: string) => void;
+		}
+	>();
+
+	/**
 	 * Creates a new AudioRecorderSettingTab.
 	 * @param app - The Obsidian App instance
 	 * @param plugin - The plugin instance
@@ -277,6 +298,40 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					);
 				},
 			},
+			profiles: {
+				dictionary: this.profileCatalogue(DICTIONARY_PROFILES, {
+					heading: 'Dictionary profiles',
+					selectorDesc:
+						'Named glossaries of names, abbreviations, and domain terms. Pick one, or None, per run in the Transcribe dialog.',
+					bodyName: 'Terms',
+					bodyDesc:
+						'One term per line. A term may contain spaces; blank lines and case-insensitive duplicates are ignored.',
+					selectionKey: 'transcriptionDictionaryProfileId',
+					nameKey: 'dictionaryProfile.name',
+					bodyKey: 'dictionaryProfile.terms',
+					visible: (settings) =>
+						settings.transcriptionEnabled &&
+						settings.transcriptionAdvancedSettingsEnabled,
+					body: (profile) => profile.terms,
+					setBody: (profile, value) => (profile.terms = value),
+				}),
+				chapters: this.profileCatalogue(CHAPTER_PROMPT_PROFILES, {
+					heading: 'Chapter guidance profiles',
+					selectorDesc:
+						'Named prompts describing how to divide a recording into chapters. The response format is fixed, so editing one is safe.',
+					bodyName: 'Guidance prompt',
+					bodyDesc:
+						'How to divide the recording into chapters. Appended to the fixed base prompt; blank leaves the base behaviour.',
+					selectionKey: 'transcriptionChapterPromptProfileId',
+					nameKey: 'chapterProfile.name',
+					bodyKey: 'chapterProfile.prompt',
+					visible: (settings) =>
+						settings.transcriptionEnabled &&
+						settings.transcriptionAutoChaptersEnabled,
+					body: (profile) => profile.prompt,
+					setBody: (profile, value) => (profile.prompt = value),
+				}),
+			},
 			transcriptionBlocks: {
 				renderEngineFields: (host): void => {
 					this.renderTranscriptionBlock(host, (ctx) => {
@@ -319,18 +374,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 						index,
 					);
 				},
-				renderDictionaryProfiles: (host): void => {
-					this.renderTranscriptionBlock(
-						host,
-						renderDictionaryProfiles,
-					);
-				},
-				renderChapterProfiles: (host): void => {
-					this.renderTranscriptionBlock(
-						host,
-						renderChapterPromptProfiles,
-					);
-				},
 				renderLlmSection: (host): void => {
 					this.renderTranscriptionBlock(host, renderLlmSection);
 				},
@@ -363,6 +406,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * @returns The stored value
 	 */
 	override getControlValue(key: string): unknown {
+		const profile = this.selectedProfileFor(key);
+		if (profile) {
+			return profile.access.read(profile.profile);
+		}
 		const track = parseTrackControlKey(key);
 		if (track) {
 			const source = this.plugin.settings.trackAudioSources.get(
@@ -405,6 +452,14 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		key: string,
 		value: unknown,
 	): void | Promise<void> {
+		const profile = this.selectedProfileFor(key);
+		if (profile) {
+			profile.access.write(profile.profile, String(value));
+			// A profile name reads back into the list and the selector, so a
+			// rename is a changed tree rather than a changed value.
+			this.saveTextSettingDebounced();
+			return;
+		}
 		const track = parseTrackControlKey(key);
 		if (track) {
 			this.writeTrackSource(track.track, track.field, String(value));
@@ -453,6 +508,35 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			}
 		});
 		return folders;
+	}
+
+	/**
+	 * The profile a profile-editor control key addresses, which is whichever
+	 * profile of that kind is selected.
+	 * @param key - The control key to resolve
+	 */
+	private selectedProfileFor(key: string):
+		| {
+				profile: Profile;
+				access: {
+					read: (profile: Profile) => string;
+					write: (profile: Profile, value: string) => void;
+				};
+		  }
+		| undefined {
+		const access = this.profileAccess.get(key);
+		if (!access) {
+			return undefined;
+		}
+		const profiles = access.list.get(this.plugin.settings);
+		const profile = findProfile(
+			profiles,
+			editingProfileId(
+				profiles,
+				access.list.selectedId(this.plugin.settings),
+			),
+		);
+		return profile ? { profile, access } : undefined;
 	}
 
 	/**
@@ -528,6 +612,79 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 */
 	private rerender(): void {
 		this.renderMode.rerender();
+	}
+
+	/**
+	 * Builds one profile catalogue for the definitions: the list's copy, the
+	 * control keys its editor rows bind to, and the add and remove edits, all
+	 * over the profile list the caller names.
+	 * @param list - Where this kind of profile lives in settings
+	 * @param copy - The catalogue's copy, keys, visibility, and body accessors
+	 */
+	private profileCatalogue<T extends Profile>(
+		list: ProfileList<T>,
+		copy: {
+			heading: string;
+			selectorDesc: string;
+			bodyName: string;
+			bodyDesc: string;
+			selectionKey: string;
+			nameKey: string;
+			bodyKey: string;
+			visible: (settings: AudioRecorderSettings) => boolean;
+			body: (profile: T) => string;
+			setBody: (profile: T, value: string) => void;
+		},
+	): ProfileCatalogue {
+		this.profileAccess.set(copy.nameKey, {
+			list: list,
+			read: (profile) => profile.name,
+			write: (profile, value) => {
+				profile.name = value;
+			},
+		});
+		this.profileAccess.set(copy.bodyKey, {
+			list: list,
+			read: (profile) => copy.body(profile as T),
+			write: (profile, value) => {
+				copy.setBody(profile as T, value);
+			},
+		});
+		return {
+			heading: copy.heading,
+			selectorDesc: copy.selectorDesc,
+			bodyName: copy.bodyName,
+			bodyDesc: copy.bodyDesc,
+			selectionKey: copy.selectionKey,
+			nameKey: copy.nameKey,
+			bodyKey: copy.bodyKey,
+			entries: (settings) =>
+				list.get(settings).map((profile) => ({
+					id: profile.id,
+					name: profile.name,
+				})),
+			visible: copy.visible,
+			add: (): void => {
+				addAndSelectProfile(list, this.plugin.settings, 'New profile');
+				void this.plugin.saveSettings().then(() => {
+					this.rerender();
+				});
+			},
+			remove: (index): void => {
+				const profile = list.get(this.plugin.settings)[index];
+				if (!profile) {
+					return;
+				}
+				removeAndReselectProfile(
+					list,
+					this.plugin.settings,
+					profile.id,
+				);
+				void this.plugin.saveSettings().then(() => {
+					this.rerender();
+				});
+			},
+		};
 	}
 
 	/**

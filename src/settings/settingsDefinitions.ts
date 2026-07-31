@@ -161,10 +161,6 @@ export interface TranscriptionBlocks {
 	readonly addLlmModel: () => void;
 	/** Removes the model id at a position in the LLM vendor's list. */
 	readonly removeLlmModel: (index: number) => void;
-	/** The dictionary profile manager. */
-	readonly renderDictionaryProfiles: (host: HTMLElement) => void;
-	/** The chapter-guidance profile manager. */
-	readonly renderChapterProfiles: (host: HTMLElement) => void;
 	/** The LLM post-processing block. */
 	readonly renderLlmSection: (host: HTMLElement) => void;
 }
@@ -204,6 +200,11 @@ export interface SettingsDefinitionContext {
 	readonly settings: AudioRecorderSettings;
 	/** Input devices and their channel capability, as last enumerated. */
 	readonly devices: DeviceOptions;
+	/** The dictionary and chapter-guidance profile catalogues. */
+	readonly profiles: {
+		readonly dictionary: ProfileCatalogue;
+		readonly chapters: ProfileCatalogue;
+	};
 	/** Capture sample rates this device offers. */
 	readonly sampleRates: readonly number[];
 	/** The two output-format rows the declarative controls cannot express. */
@@ -723,6 +724,116 @@ function llmGroup(settings: AudioRecorderSettings): SettingDefinitionItem {
 	};
 }
 
+/** One profile catalogue, as the definitions address it. */
+export interface ProfileCatalogue {
+	/** Heading of the catalogue list, e.g. "Dictionary profiles". */
+	readonly heading: string;
+	/** Description of the selector row. */
+	readonly selectorDesc: string;
+	/** Label and description of the profile body field. */
+	readonly bodyName: string;
+	readonly bodyDesc: string;
+	/** Settings key holding the selected profile id. */
+	readonly selectionKey: string;
+	/** Control key of the selected profile's name. */
+	readonly nameKey: string;
+	/** Control key of the selected profile's body. */
+	readonly bodyKey: string;
+	/** The stored profiles, as id and name pairs. */
+	entries(settings: AudioRecorderSettings): ReadonlyArray<{
+		id: string;
+		name: string;
+	}>;
+	/** Whether this catalogue is on screen at all. */
+	visible(settings: AudioRecorderSettings): boolean;
+	/** Adds a profile and selects it. */
+	add(): void;
+	/** Removes the profile at a position. */
+	remove(index: number): void;
+}
+
+/**
+ * A profile catalogue and the editor for the profile in use: the collection is
+ * a list, with the framework's own add, delete and filter affordances, and the
+ * two editable fields follow the selection rather than repeating per profile.
+ * @param settings - Live settings, read by the predicates
+ * @param catalogue - The profile kind being declared
+ */
+function profileGroups(
+	settings: AudioRecorderSettings,
+	catalogue: ProfileCatalogue,
+): SettingDefinitionItem[] {
+	const entries = catalogue.entries(settings);
+	const selected = settings[
+		catalogue.selectionKey as keyof AudioRecorderSettings
+	] as string;
+	const visible = (): boolean => catalogue.visible(settings);
+	const hasProfile = (): boolean =>
+		visible() && entries.some((entry) => entry.id === selected);
+	return [
+		{
+			type: 'list',
+			heading: catalogue.heading,
+			visible,
+			emptyState: 'No profiles yet. Add one to start a glossary.',
+			search: {
+				placeholder: 'Filter profiles',
+				match: (definition, query): boolean =>
+					definition.name.toLowerCase().includes(query.toLowerCase()),
+			},
+			addItem: {
+				name: 'Add profile',
+				action: (): void => {
+					catalogue.add();
+				},
+			},
+			onDelete: (index): void => {
+				catalogue.remove(index);
+			},
+			items: entries.map(
+				(entry): SettingGroupItem => ({
+					name: entry.name,
+					...(entry.id === selected ? { desc: 'In use' } : {}),
+				}),
+			),
+		},
+		{
+			type: 'group',
+			heading: `${catalogue.heading}: selected`,
+			visible,
+			items: [
+				{
+					name: 'Profile',
+					desc: catalogue.selectorDesc,
+					control: {
+						type: 'dropdown',
+						key: catalogue.selectionKey,
+						options: Object.fromEntries(
+							entries.map((entry) => [entry.id, entry.name]),
+						),
+					},
+				},
+				{
+					name: 'Profile name',
+					desc: 'Name shown wherever this profile is picked.',
+					visible: hasProfile,
+					control: { type: 'text', key: catalogue.nameKey },
+				},
+				{
+					name: catalogue.bodyName,
+					desc: catalogue.bodyDesc,
+					visible: hasProfile,
+					control: {
+						type: 'textarea',
+						key: catalogue.bodyKey,
+						rows: 6,
+					},
+				},
+			],
+		},
+	];
+}
+
 /**
  * The selected cloud engine's endpoint and models. The model list is a
  * collection the user edits, so it is declared as one: the framework renders
@@ -982,11 +1093,9 @@ function transcriptionGroup(
  * The advanced transcription block: dictionary term biasing and the two-pass
  * mode, both behind a master switch that is off for a plain run.
  * @param settings - Live settings, read by the predicates
- * @param blocks - The profile manager that is not a definition yet
  */
 function transcriptionAdvancedGroup(
 	settings: AudioRecorderSettings,
-	blocks: TranscriptionBlocks,
 ): SettingDefinitionItem {
 	const advanced = (): boolean =>
 		settings.transcriptionEnabled &&
@@ -1004,11 +1113,6 @@ function transcriptionAdvancedGroup(
 					key: 'transcriptionAdvancedSettingsEnabled',
 				},
 			},
-			imperativeBlockRow(
-				'Dictionary profiles',
-				blocks.renderDictionaryProfiles,
-				advanced,
-			),
 			{
 				name: 'Advanced two-pass transcription (experimental)',
 				desc: 'Transcribe twice: LLM agents mine the first draft for names and jargon, and the second pass re-decodes biased toward them. Roughly twice the engine cost and time, plus several LLM calls per file.',
@@ -1168,11 +1272,9 @@ function transcriptOutputGroup(
 /**
  * LLM-generated chapters, and the guidance profiles they use.
  * @param settings - Live settings, read by the predicates
- * @param blocks - The profile manager that is not a definition yet
  */
 function autoChaptersGroup(
 	settings: AudioRecorderSettings,
-	blocks: TranscriptionBlocks,
 ): SettingDefinitionItem {
 	const chapters = (): boolean =>
 		settings.transcriptionEnabled &&
@@ -1199,11 +1301,6 @@ function autoChaptersGroup(
 					key: 'transcriptionAutoChaptersOnTranscribe',
 				},
 			},
-			imperativeBlockRow(
-				'Chapter guidance profiles',
-				blocks.renderChapterProfiles,
-				chapters,
-			),
 		],
 	};
 }
@@ -1399,9 +1496,11 @@ export function buildSettingsDefinitions(
 		audioPlayerGroup(ctx.settings),
 		transcriptionGroup(ctx.settings, ctx.transcriptionBlocks),
 		transcriptionEngineGroup(ctx.settings, ctx.transcriptionBlocks),
-		transcriptionAdvancedGroup(ctx.settings, ctx.transcriptionBlocks),
+		transcriptionAdvancedGroup(ctx.settings),
+		...profileGroups(ctx.settings, ctx.profiles.dictionary),
 		transcriptOutputGroup(ctx.settings),
-		autoChaptersGroup(ctx.settings, ctx.transcriptionBlocks),
+		autoChaptersGroup(ctx.settings),
+		...profileGroups(ctx.settings, ctx.profiles.chapters),
 		llmGroup(ctx.settings),
 		llmModelListGroup(ctx.settings, ctx.transcriptionBlocks),
 		imperativeBlockRow(
