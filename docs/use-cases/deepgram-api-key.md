@@ -63,7 +63,7 @@ Open **Settings > Advanced Audio Recorder** and scroll to the **Transcription** 
 ![Transcription settings with Engine set to Deepgram, the base URL, API key, and model picker](../images/settings-transcription-deepgram.png)
 _Figure: The Deepgram engine fields under Settings > Transcription._
 
-The model picker lets you pick from a seeded list, **Add custom model** to type an id Deepgram supports, or **Remove selected** to drop one you do not use. A link to Deepgram's authoritative model catalogue - [https://developers.deepgram.com/docs/model](https://developers.deepgram.com/docs/model) - sits next to the picker.
+The model picker lets you pick from a seeded list, and the list below it adds an id Deepgram supports or drops one you do not use. A link to Deepgram's authoritative model catalogue - [https://developers.deepgram.com/docs/model](https://developers.deepgram.com/docs/model) - sits next to the picker.
 
 ## Step 4: Enable speaker diarization
 
@@ -102,7 +102,7 @@ If both speakers appear with their own labels, diarization is working. If everyt
 
 ## Choosing a model
 
-The **Deepgram model** picker is seeded with the families below; the current, authoritative list lives at [https://developers.deepgram.com/docs/model](https://developers.deepgram.com/docs/model). You can also **Add custom model** to enter any model id Deepgram supports.
+The **Deepgram model** picker is seeded with the families below; the current, authoritative list lives at [https://developers.deepgram.com/docs/model](https://developers.deepgram.com/docs/model). You can also add any model id Deepgram supports.
 
 | Model family       | Example ids                                                                                   | Notes                                                |
 | ------------------ | --------------------------------------------------------------------------------------------- | ---------------------------------------------------- |

@@ -68,7 +68,7 @@ Open **Settings > Advanced Audio Recorder** and scroll to the **Transcription** 
 2. In the **Engine** dropdown, choose **Whisper API (OpenAI-compatible)**.
 3. Leave **Whisper API base URL** as `https://api.openai.com/v1` (the default).
 4. Paste your secret key into **Whisper API key**.
-5. In the **Whisper model** picker, select **`whisper-1`** (the default). You can also click **Add custom model** to type a model id, or **Remove selected** to drop one from the list.
+5. In the **Whisper model** picker, select **`whisper-1`** (the default). The list below it adds a model id and deletes one.
 6. Set **Language** to `auto` to auto-detect, or to an ISO code (for example `en`, `ru`, `es`).
 7. (Optional) Choose where the transcript goes under **Transcript output > Destination**. The default is **Insert into note**.
 

@@ -82,7 +82,7 @@ The API requires prepaid credit or a billing method before it will answer reques
 
 ## Choosing a model
 
-The model picker is seeded with the current Claude family and is editable - use **Add custom model** to add a newer id, and **Remove selected** to drop one. The catalogue link opens Anthropic's model list.
+The model picker is seeded with the current Claude family and is editable - the add button on the **LLM models** list below it takes a newer id, and the button on a row drops one. The catalogue link opens Anthropic's model list.
 
 | Model              | Notes                                                                                |
 | ------------------ | ------------------------------------------------------------------------------------ |
@@ -92,7 +92,7 @@ The model picker is seeded with the current Claude family and is editable - use 
 | `claude-fable-5`   | The most capable current model, priced above Opus; for the hardest material.         |
 
 - **Catalogue:** the authoritative, current Claude model list is at `https://platform.claude.com/docs/en/about-claude/models/overview`.
-- Model ids change over time. If a seeded id is retired, use **Add custom model** to enter the new id exactly as Anthropic publishes it.
+- Model ids change over time. If a seeded id is retired, add the new one exactly as Anthropic publishes it.
 
 ## Choosing a task
 
@@ -140,7 +140,7 @@ For a deeper explanation of the tasks and prompts, see [LLM post-processing](../
 | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `401` / authentication / invalid key            | The key is wrong, has a stray space, or was revoked. Re-copy it from the Console and paste it cleanly.                                 |
 | Credit / balance / "insufficient credits" error | No API credit. Add billing at `https://console.anthropic.com/settings/billing` (Console > **Settings > Billing**) and purchase credit. |
-| `404` / model not found                         | The model id is retired or misspelled. Open the catalogue and use **Add custom model** with the exact current id.                      |
+| `404` / model not found                         | The model id is retired or misspelled. Open the catalogue and add the exact current id.                      |
 | Result is cut off or empty                      | The reply hit **Max output tokens**. Raise it (up to `32000`), shorten the input, or pick a model with a larger limit.                 |
 | `429` / rate limit                              | Too many requests too quickly, or a low tier. Wait and retry, or raise your account's rate limits in the Console.                      |
 | Request times out                               | LLM requests are bounded by an internal timeout. Shorten the transcript, lower **Max output tokens**, or retry.                        |

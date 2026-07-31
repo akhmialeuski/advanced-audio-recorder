@@ -174,11 +174,12 @@ _Figure: the local whisper.cpp engine fields for an offline transcription setup.
 
 ## Model picker and language
 
-The cloud engines share one **model picker** control. It lets you:
+The cloud engines share one **model picker** control, with the saved model ids listed below it. Between them you can:
 
 - **Pick from the list** - choose a model id from the dropdown of saved suggestions.
-- **Add custom model** - type a custom model id to add it to the list.
-- **Remove selected** - prune the currently selected id from the list.
+- **Add a model** - the add button on the list asks for the id your endpoint serves, adds it, and selects it.
+- **Delete one** - the button on a list row removes that id; deleting the one **In use** moves the selection to the first remaining id.
+- **Filter the list** - type in the field above it once the list is long enough to scroll.
 - **Catalogue link** - a help link beside the field opens that engine's official model list (OpenAI, Deepgram, or Gemini).
 
 The list is seeded on first run with common models for each engine and is fully user-editable. Local whisper.cpp does not use this picker - it takes a model **file path** instead (see above).
@@ -234,7 +235,7 @@ The names you assign are **remembered in the recording's sidecar file** (`<recor
 
 ## Biasing recognition toward your own terms
 
-Names, abbreviations, and domain jargon are the words an engine mishears most often. **Dictionary profiles** live under the **Advanced settings** master switch (**Settings > Advanced Audio Recorder > Transcription > Advanced settings**), which is off by default; turn it on to reveal the dictionary and the two-pass mode, and with it off a recording transcribes in one plain pass with no biasing. The profiles are named glossaries, one term per line, so you can keep separate lists for different meeting types (standup, legal, medical) instead of one merged glossary that dilutes the bias. Manage them in the settings tab: the selector picks which profile to edit, and its name and terms appear below with buttons to add a new profile or remove the selected one. A term may contain spaces, so a full name or a multi-word product stays intact, while blank lines and case-insensitive duplicates are ignored. In the per-run **Transcribe audio** dialog you choose which profile to apply for that run, or **None**; the last choice is remembered and becomes the default for the next dialog and for transcribe-on-save.
+Names, abbreviations, and domain jargon are the words an engine mishears most often. **Dictionary profiles** live under the **Advanced settings** master switch (**Settings > Advanced Audio Recorder > Transcription > Advanced settings**), which is off by default; turn it on to reveal the dictionary and the two-pass mode, and with it off a recording transcribes in one plain pass with no biasing. The profiles are named glossaries, one term per line, so you can keep separate lists for different meeting types (standup, legal, medical) instead of one merged glossary that dilutes the bias. Manage them in the settings tab: **Dictionary profiles** lists the saved ones, with a filter above it, a delete button on each, and an add button that names the new profile; the **Profile** selector below picks which one to edit, and its name and terms appear under it. A term may contain spaces, so a full name or a multi-word product stays intact, while blank lines and case-insensitive duplicates are ignored. In the per-run **Transcribe audio** dialog you choose which profile to apply for that run, or **None**; the last choice is remembered and becomes the default for the next dialog and for transcribe-on-save.
 
 ![The Dictionary profiles settings section with a Profile selector, add and remove buttons, a Profile name field, and a Terms text area](images/settings-dictionary-profiles.png)
 _Figure: the Dictionary profiles section under Settings > Advanced Audio Recorder > Transcription, editing a profile's name and terms._

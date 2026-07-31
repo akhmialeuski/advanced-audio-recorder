@@ -57,12 +57,12 @@ In Obsidian, open **Settings > Advanced Audio Recorder** and scroll to the **Tra
 2. Set **Engine** to **Google Gemini**.
 3. In **Gemini base URL**, leave the default `https://generativelanguage.googleapis.com` unless you have a specific reason to change it.
 4. Paste your key into **Gemini API key**.
-5. Under **Gemini model**, pick `gemini-3.5-flash` (default) or `gemini-2.5-pro` for harder audio. Use **Add custom model** to enter any other model id, **Remove selected** to drop one, or open the **Gemini model list** link to browse the [model catalogue](https://ai.google.dev/gemini-api/docs/models).
+5. Under **Gemini model**, pick `gemini-3.5-flash` (default) or `gemini-2.5-pro` for harder audio. Use the add button on the model list below to enter any other model id, the button on a row to drop one, or the **Gemini model list** link to browse the [model catalogue](https://ai.google.dev/gemini-api/docs/models).
 6. (Optional) Set **Language** to `auto` (default) or an ISO code such as `en`, `ru`, or `es`. Gemini transcribes each segment in the language actually spoken regardless, but a hint can help.
 7. (Optional) Turn on **Speaker diarization** to label speakers. This toggle is only enabled for Gemini and Deepgram.
 8. (Optional) Turn on **Transcribe after recording** to transcribe every new recording automatically.
 
-![Gemini model picker showing gemini-2.5-flash selected, with Add custom model and Remove selected buttons and a catalogue link](../images/settings-gemini-model-picker.png)
+![Gemini model picker showing gemini-2.5-flash selected, with the saved model list and a catalogue link](../images/settings-gemini-model-picker.png)
 _Figure: The Gemini model picker with the default model selected and the catalogue link._
 
 The table below summarizes the fields you set:

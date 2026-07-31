@@ -118,7 +118,7 @@ LLM post-processing supports three providers, chosen from the **LLM provider** d
 | **Anthropic (Claude)** | `Anthropic (Claude)` | `claude-opus-4-8`  | [Anthropic models](https://platform.claude.com/docs/en/about-claude/models/overview)   |
 | **Google Gemini**      | `Google Gemini`      | `gemini-3.5-flash` | [Gemini models](https://ai.google.dev/gemini-api/docs/models)                          |
 
-The **LLM model** picker is the same control used for transcription models: pick one from the saved list, type a new id under **Add custom model** to add it, use **Remove selected** to prune one, and follow the catalogue link next to the field to the provider's model list. The list is seeded with common models for the selected provider:
+The **LLM model** picker is the same control used for transcription models: pick one from the saved list, add an id with the button on the **LLM models** list below it, delete one with the button on its row, and follow the catalogue link next to the field to the provider's model list. The list is seeded with common models for the selected provider:
 
 | Provider      | Seeded model ids                                                                                                      |
 | ------------- | --------------------------------------------------------------------------------------------------------------------- |
@@ -129,7 +129,7 @@ The **LLM model** picker is the same control used for transcription models: pick
 The model list is per-provider, so switching the **LLM provider** dropdown swaps both the picker contents and the selected model to that provider's list - your OpenAI choice is remembered separately from your Anthropic and Gemini choices.
 
 ![LLM provider dropdown and model picker showing the per-provider catalogue link](images/settings-llm-provider-model.png)
-_Figure: the LLM provider dropdown and the per-provider model picker with add/remove and a catalogue link._
+_Figure: the LLM provider dropdown and the per-provider model picker with its saved-model list and a catalogue link._
 
 ---
 
@@ -258,7 +258,7 @@ All controls live under **Settings > Advanced Audio Recorder > Transcription > L
 | **LLM provider**               | `OpenAI`, `Anthropic (Claude)`, or `Google Gemini`.                                                             | OpenAI           |
 | **LLM base URL**               | API endpoint; auto-switches to the provider default unless customized.                                          | Provider default |
 | **API key**                    | Shared per vendor: OpenAI reuses the Whisper key, Gemini reuses the Gemini key, Anthropic has its own.          | -                |
-| **LLM model**                  | Per-provider model picker (pick, add custom, remove, catalogue link).                                           | See table above  |
+| **LLM model**                  | Per-provider model picker, with the saved ids listed below it (catalogue link).                                           | See table above  |
 | **Max output tokens**          | Upper bound on the reply length (truncation guard). Range 512-32000, step 512.                                  | 4096             |
 
 ---
