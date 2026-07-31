@@ -825,8 +825,11 @@ input.aar-input-invalid {
     font-size: 0.85em;
 }
 
-/* Multi-line prompt editor: stack the control under the label and let the
-   text area fill the row so long editable prompts have room to breathe. */
+/* Multi-line prompt editor on Obsidian before 1.13, where every control sits in
+   the narrow right-hand column: stack the control under the label and let the
+   text area fill the row so long editable prompts have room to breathe. From
+   1.13 the framework lays a text area out this way itself, and the legacy
+   renderer is the only thing that sets this class. */
 .aar-setting-stacked {
     display: block;
 }

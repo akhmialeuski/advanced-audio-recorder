@@ -9,6 +9,7 @@ import type { SettingDefinitionItem } from 'obsidian';
 import { at } from '../helpers/assertions';
 import {
 	LEGACY_ACTION_ROW_CLASS,
+	LEGACY_STACKED_CLASS,
 	LegacySettingsRenderer,
 	type LegacySettingsHost,
 } from 'src/settings/legacySettingsRenderer';
@@ -125,6 +126,25 @@ describe('LegacySettingsRenderer', () => {
 			toggle?.click();
 
 			expect(setControlValue).toHaveBeenCalledWith('debug', false);
+		});
+
+		it('stacks a text area, which the old layout would leave unusable', () => {
+			values['terms'] = 'kubectl, Kubernetes';
+			renderer.render(containerEl, [
+				{
+					name: 'Terms',
+					control: { type: 'textarea', key: 'terms', rows: 8 },
+				},
+			]);
+
+			const row = rowFor('Terms');
+			const textarea = row.querySelector('textarea');
+			expect(textarea?.value).toBe('kubectl, Kubernetes');
+			expect(textarea?.rows).toBe(8);
+			// From 1.13 the framework lays a text area out full width under its
+			// name. The older stylesheets put every control in the narrow right
+			// column, which cannot hold a multi-sentence prompt.
+			expect(row.classList.contains(LEGACY_STACKED_CLASS)).toBe(true);
 		});
 
 		it('writes a dropdown selection back through the host', () => {

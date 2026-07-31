@@ -38,6 +38,14 @@ export const LEGACY_EMPTY_STATE_CLASS = 'aar-empty-state-row';
 /** Class applied to the row holding a group's search field. */
 export const LEGACY_SEARCH_ROW_CLASS = 'aar-search-row';
 
+/**
+ * Class applied to a row whose control is a text area. From 1.13 the framework
+ * lays a text area out full width under its name; the older stylesheets put
+ * every control in the narrow right-hand column, which is unusable for a
+ * multi-sentence prompt, so the stylesheet stacks it here instead.
+ */
+export const LEGACY_STACKED_CLASS = 'aar-setting-stacked';
+
 /** Class applied to a text input holding a value its validator rejected. */
 const INVALID_INPUT_CLASS = 'aar-input-invalid';
 
@@ -504,6 +512,7 @@ export class LegacySettingsRenderer {
 				}
 				bind(text);
 			});
+			setting.settingEl.addClass(LEGACY_STACKED_CLASS);
 			return hook;
 		}
 		setting.addText(bind);
