@@ -710,6 +710,106 @@ describe('settings definitions', () => {
 		});
 	});
 
+	describe('the sections that sit behind an entry', () => {
+		/** What a page's entry shows without being opened. */
+		const displayValueOf = (name: string): string | undefined =>
+			(
+				pageOf(build(), name) as {
+					displayValue?: (() => string) | string;
+				}
+			).displayValue as string | undefined;
+
+		/** The same, for the entries whose value is computed per read. */
+		const readValue = (name: string): string | undefined => {
+			const value = (
+				pageOf(build(), name) as {
+					displayValue?: (() => string) | string;
+				}
+			).displayValue;
+			return typeof value === 'function' ? value() : value;
+		};
+
+		it.each([
+			'Audio splitting',
+			'Audio player',
+			'Audio processing & feedback',
+			'Audio cleanup defaults',
+		])('declares %s behind an entry rather than inline', (name) => {
+			// Sections nobody reads on the way to something else: inline they
+			// are twenty rows between the recording settings and diagnostics.
+			expect(pageOf(build(), name).type).toBe('page');
+			expect(displayValueOf(name) ?? readValue(name)).toBeDefined();
+		});
+
+		it('says on the splitting entry whether recordings split, and how often', () => {
+			settings.autoSplitEnabled = false;
+
+			expect(readValue('Audio splitting')).toBe('Off');
+
+			settings.autoSplitEnabled = true;
+			settings.splitChunkMinutes = 23;
+
+			expect(readValue('Audio splitting')).toBe('Every 23 min');
+		});
+
+		it('says on the player entry whether the enhanced embed is on', () => {
+			settings.enhancedPlayerEnabled = true;
+
+			expect(readValue('Audio player')).toBe('On');
+
+			settings.enhancedPlayerEnabled = false;
+
+			expect(readValue('Audio player')).toBe('Off');
+		});
+
+		it('counts the switches that are on for the processing entry', () => {
+			settings.inputNoiseSuppression = true;
+			settings.inputEchoCancellation = true;
+			settings.inputAutoGainControl = false;
+			settings.showInputLevelMeter = false;
+			settings.showRecordingStats = false;
+			settings.detectSilentChannelOnSave = false;
+			settings.mobileRecordingBanner = false;
+
+			// Seven independent switches have no single value, so the entry
+			// reports how many of them are on.
+			expect(readValue('Audio processing & feedback')).toBe('2 of 7 on');
+		});
+
+		it('names the stages the cleanup dialog would open with', () => {
+			settings.cleanupHighPassEnabled = true;
+			settings.cleanupNoiseGateEnabled = false;
+			settings.cleanupLevelingEnabled = true;
+
+			// A count would not say which two, and which two is the answer
+			// worth having before opening the page.
+			expect(readValue('Audio cleanup defaults')).toBe(
+				'High-pass, Leveling',
+			);
+
+			settings.cleanupHighPassEnabled = false;
+			settings.cleanupLevelingEnabled = false;
+
+			expect(readValue('Audio cleanup defaults')).toBe('Off');
+		});
+
+		it('keeps every row of those sections reachable', () => {
+			// Moving a section behind an entry must not drop a setting: the
+			// rows are the same rows, one navigation step further in.
+			expect(
+				rowOf(build(), 'Audio splitting', 'Part duration').control
+					?.type,
+			).toBe('number');
+			expect(
+				rowOf(build(), 'Audio player', 'Show waveform').control?.type,
+			).toBe('toggle');
+			expect(
+				rowOf(build(), 'Audio cleanup defaults', 'Makeup gain').control
+					?.type,
+			).toBe('number');
+		});
+	});
+
 	describe('the transcript output section', () => {
 		const OUTPUT = 'Transcript output';
 

@@ -1,6 +1,6 @@
 # Settings reference
 
-This is the exhaustive reference for every setting in **Advanced Audio Recorder**. Open **Settings > Advanced Audio Recorder** to reach it. The settings tab is grouped into headed sections; this page covers them in the exact order they appear, with a fully aligned table per section listing what each control does, its options or range, and its default. Conditional controls (ones that only appear once another setting is on) are called out inline. For deeper, task-focused walkthroughs, each section links to its own guide.
+This is the exhaustive reference for every setting in **Advanced Audio Recorder**. Open **Settings > Advanced Audio Recorder** to reach it. The settings tab is grouped into headed sections; this page covers them in the exact order they appear, with a fully aligned table per section listing what each control does, its options or range, and its default. On Obsidian 1.13 and later the sections that are set once and then read past sit behind an entry that already shows what they hold, so opening one is a choice: transcription, audio splitting, the audio player, audio processing and feedback, and the audio cleanup defaults. On older versions every section is inline, and the settings themselves are the same either way. Conditional controls (ones that only appear once another setting is on) are called out inline. For deeper, task-focused walkthroughs, each section links to its own guide.
 
 - [Where settings live and how they apply](#where-settings-live-and-how-they-apply)
 - [Documentation callout](#documentation-callout)

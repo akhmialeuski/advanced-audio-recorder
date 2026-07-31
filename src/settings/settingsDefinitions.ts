@@ -168,6 +168,52 @@ export const STACKED_TEXT_CLASS = 'aar-stacked-text';
 const PROFILE_BODY_ROWS = 8;
 
 /**
+ * What a page of independent switches says on its entry: how many of them are
+ * on. Counted from the rows themselves rather than from a second list of keys,
+ * so a switch added to the page is counted without being registered twice.
+ * @param rows - The page's rows
+ * @param settings - Live settings, read by each row's own key
+ * @returns The count, as the entry shows it
+ */
+function toggleSummary(
+	rows: readonly SettingDefinition[],
+	settings: AudioRecorderSettings,
+): string {
+	const keys = rows.flatMap((row) =>
+		'control' in row && row.control?.type === 'toggle'
+			? [row.control.key]
+			: [],
+	);
+	const on = keys.filter(
+		(key) => settings[key as keyof AudioRecorderSettings] === true,
+	).length;
+	return `${String(on)} of ${String(keys.length)} on`;
+}
+
+/** The cleanup stages, in the order their rows appear. */
+const CLEANUP_STAGES: ReadonlyArray<{
+	readonly key: keyof AudioRecorderSettings;
+	readonly label: string;
+}> = [
+	{ key: 'cleanupHighPassEnabled', label: 'High-pass' },
+	{ key: 'cleanupNoiseGateEnabled', label: 'Noise gate' },
+	{ key: 'cleanupLevelingEnabled', label: 'Leveling' },
+];
+
+/**
+ * What the cleanup entry says: which stages the dialog would open with, since
+ * "2 of 3" would not say which two.
+ * @param settings - Live settings, read by each stage's switch
+ * @returns The enabled stages, or Off
+ */
+function enabledStages(settings: AudioRecorderSettings): string {
+	const enabled = CLEANUP_STAGES.filter(
+		(stage) => settings[stage.key] === true,
+	).map((stage) => stage.label);
+	return enabled.length > 0 ? enabled.join(', ') : 'Off';
+}
+
+/**
  * The live audio-input picture the device-bound rows are built from. The tab
  * enumerates devices asynchronously and asks for a re-render when the list
  * changes, so the definitions themselves only read what is already known.
@@ -472,13 +518,23 @@ function audioInputGroup(
 }
 
 /**
- * Automatic splitting of a long recording into part files.
+ * Automatic splitting of a long recording into part files, behind an entry of
+ * its own. Four rows nobody reads on the way to something else, and the entry
+ * already says whether recordings are split and how often.
+ * @param settings - Live settings, read by the entry's value
  */
-function audioSplittingGroup(): SettingDefinitionItem {
+function audioSplittingPage(
+	settings: AudioRecorderSettings,
+): SettingDefinitionItem {
 	const available = isAutoSplitSupported();
 	return {
-		type: 'group',
-		heading: 'Audio splitting',
+		type: 'page',
+		name: 'Audio splitting',
+		desc: 'Saving a long recording as fixed-length part files instead of one.',
+		displayValue: (): string =>
+			available && settings.autoSplitEnabled
+				? `Every ${String(settings.splitChunkMinutes)} min`
+				: 'Off',
 		items: [
 			{
 				name: 'Split recordings automatically',
@@ -624,17 +680,20 @@ function multiTrackGroup(
 }
 
 /**
- * The enhanced player and the two windows it can open. The sub-options are
- * revealed by a predicate rather than by redrawing the section.
+ * The enhanced player and the two windows it can open, behind an entry of its
+ * own. The sub-options are revealed by a predicate rather than by redrawing the
+ * section.
  * @param settings - Live settings, read by the predicates
  */
-function audioPlayerGroup(
+function audioPlayerPage(
 	settings: AudioRecorderSettings,
 ): SettingDefinitionItem {
 	const enhanced = (): boolean => settings.enhancedPlayerEnabled;
 	return {
-		type: 'group',
-		heading: 'Audio player',
+		type: 'page',
+		name: 'Audio player',
+		desc: "The embed that replaces Obsidian's own audio player.",
+		displayValue: (): string => (enhanced() ? 'On' : 'Off'),
 		items: [
 			{
 				name: 'Enhanced audio player',
@@ -1523,50 +1582,58 @@ function autoChaptersGroup(
 }
 
 /**
- * The input-processing constraints and the live recording feedback.
+ * The input-processing constraints and the live recording feedback, behind an
+ * entry of its own. Seven switches that are set once and then read past, so the
+ * entry counts how many are on rather than showing them all.
+ * @param settings - Live settings, read by the entry's value
  */
-function audioProcessingGroup(): SettingDefinitionItem {
+function audioProcessingPage(
+	settings: AudioRecorderSettings,
+): SettingDefinitionItem {
+	const rows: SettingDefinition[] = [
+		{
+			name: 'Noise suppression',
+			aliases: ['background noise'],
+			desc: 'Apply the browser noise-suppression filter to the input.',
+			control: { type: 'toggle', key: 'inputNoiseSuppression' },
+		},
+		{
+			name: 'Echo cancellation',
+			desc: 'Apply the browser echo-cancellation filter to the input.',
+			control: { type: 'toggle', key: 'inputEchoCancellation' },
+		},
+		{
+			name: 'Automatic gain control',
+			desc: 'Let the browser normalize the input level automatically.',
+			control: { type: 'toggle', key: 'inputAutoGainControl' },
+		},
+		{
+			name: 'Input level meter',
+			desc: 'Show a live input-level meter while recording.',
+			control: { type: 'toggle', key: 'showInputLevelMeter' },
+		},
+		{
+			name: 'Recording stats',
+			desc: 'Show the live elapsed time and total recorded size while recording.',
+			control: { type: 'toggle', key: 'showRecordingStats' },
+		},
+		{
+			name: 'Detect silent channel after recording',
+			desc: 'Check a saved stereo recording for a silent channel - the typical result of one microphone on a dual-input interface - and offer to convert it to mono.',
+			control: { type: 'toggle', key: 'detectSilentChannelOnSave' },
+		},
+		{
+			name: 'Mobile recording banner',
+			desc: 'Show a prominent recording banner on mobile, where there is no ribbon indicator.',
+			control: { type: 'toggle', key: 'mobileRecordingBanner' },
+		},
+	];
 	return {
-		type: 'group',
-		heading: 'Audio processing & feedback',
-		items: [
-			{
-				name: 'Noise suppression',
-				aliases: ['background noise'],
-				desc: 'Apply the browser noise-suppression filter to the input.',
-				control: { type: 'toggle', key: 'inputNoiseSuppression' },
-			},
-			{
-				name: 'Echo cancellation',
-				desc: 'Apply the browser echo-cancellation filter to the input.',
-				control: { type: 'toggle', key: 'inputEchoCancellation' },
-			},
-			{
-				name: 'Automatic gain control',
-				desc: 'Let the browser normalize the input level automatically.',
-				control: { type: 'toggle', key: 'inputAutoGainControl' },
-			},
-			{
-				name: 'Input level meter',
-				desc: 'Show a live input-level meter while recording.',
-				control: { type: 'toggle', key: 'showInputLevelMeter' },
-			},
-			{
-				name: 'Recording stats',
-				desc: 'Show the live elapsed time and total recorded size while recording.',
-				control: { type: 'toggle', key: 'showRecordingStats' },
-			},
-			{
-				name: 'Detect silent channel after recording',
-				desc: 'Check a saved stereo recording for a silent channel - the typical result of one microphone on a dual-input interface - and offer to convert it to mono.',
-				control: { type: 'toggle', key: 'detectSilentChannelOnSave' },
-			},
-			{
-				name: 'Mobile recording banner',
-				desc: 'Show a prominent recording banner on mobile, where there is no ribbon indicator.',
-				control: { type: 'toggle', key: 'mobileRecordingBanner' },
-			},
-		],
+		type: 'page',
+		name: 'Audio processing & feedback',
+		desc: 'Filters applied to the input, and what is shown while recording.',
+		displayValue: (): string => toggleSummary(rows, settings),
+		items: rows,
 	};
 }
 
@@ -1576,12 +1643,14 @@ function audioProcessingGroup(): SettingDefinitionItem {
  * the number follows the switch that decides whether it is used at all.
  * @param settings - Live settings, read by the disabled predicates
  */
-function audioCleanupGroup(
+function audioCleanupPage(
 	settings: AudioRecorderSettings,
 ): SettingDefinitionItem {
 	return {
-		type: 'group',
-		heading: 'Audio cleanup defaults',
+		type: 'page',
+		name: 'Audio cleanup defaults',
+		desc: 'What the on-demand cleanup dialog opens with.',
+		displayValue: (): string => enabledStages(settings),
 		items: [
 			{
 				name: 'High-pass filter',
@@ -1715,9 +1784,9 @@ export function buildSettingsDefinitions(
 		audioInputGroup(ctx.settings, ctx.devices, ctx.sampleRates),
 		outputFormatGroup(ctx.outputFormat),
 		fileStorageGroup(ctx.settings),
-		audioSplittingGroup(),
+		audioSplittingPage(ctx.settings),
 		multiTrackGroup(ctx.settings, ctx.devices),
-		audioPlayerGroup(ctx.settings),
+		audioPlayerPage(ctx.settings),
 		{
 			// Forty-odd settings with a scope of their own: the style guide's
 			// case for a sub-page, and it keeps the main tab scannable.
@@ -1764,8 +1833,8 @@ export function buildSettingsDefinitions(
 				}),
 			],
 		},
-		audioProcessingGroup(),
-		audioCleanupGroup(ctx.settings),
+		audioProcessingPage(ctx.settings),
+		audioCleanupPage(ctx.settings),
 		diagnosticsGroup(ctx.diagnostics),
 	];
 }
