@@ -1,15 +1,17 @@
 /**
- * Settings tab UI for the Audio Recorder plugin.
+ * Settings tab for the Audio Recorder plugin.
  *
- * Rows that are plain toggles, dropdowns, text fields, or numeric inputs go
- * through the shared builders in `settingControls`, bound to the tab's save
- * hooks by {@link AudioRecorderSettingTab.sectionContext}. What stays
- * imperative here is what the declarative model does not cover: the device
- * dropdowns fed by live enumeration, the recording-format dropdown whose
- * options are blocked by an async encoder probe, the output summary that
- * recomputes from two other controls, the per-track rows built from a Map, the
- * part-suffix field with its own validation feedback, and the diagnostics
- * actions. The transcription settings live in their own section modules.
+ * The tab itself is described as data in
+ * {@link module:settings/settingsDefinitions}; what lives here is everything
+ * that tree needs from the plugin. Three things, in order of weight. The
+ * version split: which Obsidian is running decides who renders the tree, and
+ * {@link module:settings/settingsRenderMode} answers that once, in the
+ * constructor. The value hooks: `getControlValue`/`setControlValue` are how
+ * every control reads and writes, routed through `plugin.saveSettings()` so a
+ * Map-valued setting survives, the per-platform write-back happens, and the
+ * recording manager and player registrar hear about the change. And the
+ * handlers the declarations call into - the list edits, the diagnostics
+ * actions, and the few bodies no control type covers.
  * @module settings/SettingsTab
  */
 
@@ -111,11 +113,6 @@ export interface AudioRecorderPluginInterface extends Plugin {
 	saveSettings(): Promise<void>;
 }
 
-interface DeviceDropdownBinding {
-	readonly dropdown: DropdownComponent;
-	readonly getSelectedDeviceId: () => string;
-}
-
 const EMPTY_DEVICE_SNAPSHOT: AudioInputDeviceSnapshot = {
 	enumerationSucceeded: false,
 	devices: [],
@@ -127,7 +124,6 @@ const EMPTY_DEVICE_SNAPSHOT: AudioInputDeviceSnapshot = {
  */
 export class AudioRecorderSettingTab extends PluginSettingTab {
 	plugin: AudioRecorderPluginInterface;
-	private deviceDropdowns: DeviceDropdownBinding[] = [];
 	private readonly testRecorder = new TestRecorder();
 	private testAudioElement: HTMLAudioElement | null = null;
 	/**
@@ -155,12 +151,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	private formatAvailabilityGeneration = 0;
 	/** Prevents a refresh from updating controls after the tab is hidden. */
 	private isDisplayed = false;
-	/**
-	 * Re-evaluators for every channel-mode dropdown on the tab. Run
-	 * after the capability map loads, after a device selection changes,
-	 * and on devicechange events.
-	 */
-	private channelDropdownUpdaters: (() => void)[] = [];
 	/**
 	 * Debounced settings save shared by the text fields, which fire
 	 * onChange on every keystroke and would otherwise rewrite data.json
@@ -409,6 +399,12 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		const profile = this.selectedProfileFor(key);
 		if (profile) {
 			return profile.access.read(profile.profile);
+		}
+		if (this.profileAccess.has(key)) {
+			// An editor key with nothing selected: the row is hidden, but the
+			// control is still built, and a text control handed undefined
+			// renders it.
+			return '';
 		}
 		const track = parseTrackControlKey(key);
 		if (track) {
@@ -950,14 +946,12 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * Runs every registered channel-dropdown re-evaluator.
+	 * Re-reads the audio inputs and asks for a re-render when they changed.
+	 *
+	 * The device-bound rows are declarations built from the last snapshot, so
+	 * there is nothing to patch in place: either the list is the one the tree
+	 * was built from, or the tree is stale and the framework rebuilds it.
 	 */
-	private runChannelDropdownUpdaters(): void {
-		for (const update of this.channelDropdownUpdaters) {
-			update();
-		}
-	}
-
 	private async refreshDeviceList(): Promise<void> {
 		const generation = ++this.deviceRefreshGeneration;
 		const snapshot = await getAudioInputDeviceSnapshot();
@@ -965,35 +959,16 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			return;
 		}
 		this.deviceSnapshot = snapshot;
-		// The device-bound rows are built from this snapshot, so a changed
-		// device list is a changed tree: ask for a re-render, which is the
-		// documented way to react to state the settings tab does not own.
 		// Compared by content, because a render enumerates again and an
 		// unconditional re-render would never settle.
 		const signature = snapshot.devices
 			.map((device) => `${device.deviceId}:${device.label}`)
 			.join('|');
-		if (signature !== this.deviceSignature) {
-			this.deviceSignature = signature;
-			this.rerender();
+		if (signature === this.deviceSignature) {
 			return;
 		}
-		if (snapshot.enumerationSucceeded) {
-			for (const binding of this.deviceDropdowns) {
-				const { dropdown } = binding;
-				dropdown.selectEl.empty();
-				for (const device of snapshot.devices) {
-					const label =
-						device.label ||
-						`Audio device ${device.deviceId.substring(0, 8)}`;
-					dropdown.addOption(device.deviceId, label);
-				}
-				const selectedDeviceId = binding.getSelectedDeviceId();
-				const isPresent = snapshot.channelLimits.has(selectedDeviceId);
-				dropdown.setValue(isPresent ? selectedDeviceId : '');
-			}
-		}
-		this.runChannelDropdownUpdaters();
+		this.deviceSignature = signature;
+		this.rerender();
 	}
 
 	/**
@@ -1131,8 +1106,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		// detaching controls.
 		this.deviceRefreshGeneration++;
 		this.formatAvailabilityGeneration++;
-		this.deviceDropdowns = [];
-		this.channelDropdownUpdaters = [];
 		this.saveTextSettingDebounced.run();
 		// On the legacy path the renderer holds the rows and their cleanups;
 		// releasing it is what runs them when the tab is left. On 1.13 the

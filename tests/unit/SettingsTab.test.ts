@@ -40,6 +40,21 @@ jest.mock('src/diagnostics/SystemDiagnostics', () => ({
 }));
 
 /**
+ * Confirm callbacks of the model dialogs the tab opened, newest last. The
+ * dialog has its own suite; here a test only needs to answer it, which is what
+ * a user typing an id and pressing Add does.
+ */
+const mockModelDialogs: Array<(id: string) => void> = [];
+jest.mock('src/ui/ModelIdModal', () => ({
+	ModelIdModal: jest
+		.fn()
+		.mockImplementation((_app: unknown, onAdd: (id: string) => void) => {
+			mockModelDialogs.push(onAdd);
+			return { open: (): void => undefined };
+		}),
+}));
+
+/**
  * Plugin name as the manifest carries it. The tab names its declarative
  * definition from there rather than from a copy of its own.
  */
@@ -256,6 +271,69 @@ describe('AudioRecorderSettingTab', () => {
 			await flushAsync();
 
 			expect(updateSpy).not.toHaveBeenCalled();
+		});
+	});
+
+	describe('per-track control keys', () => {
+		/** The track's stored source, or undefined when it has none. */
+		const sourceOf = (
+			track: number,
+		): { deviceId: string; channelMode: string } | undefined =>
+			mockSettings.trackAudioSources.get(track);
+
+		beforeEach(() => {
+			mockSettings.trackAudioSources = new Map();
+		});
+
+		it('creates a track source from the device control', async () => {
+			// A track's source lives in a Map keyed by track number, so the
+			// control key addresses an entry rather than a settings property.
+			await tab.setControlValue('track.1.deviceId', 'mic-1');
+
+			expect(sourceOf(1)).toEqual({
+				deviceId: 'mic-1',
+				channelMode: 'source',
+			});
+			expect(saveSettingsMock).toHaveBeenCalled();
+		});
+
+		it('keeps the channel layout across a device swap', async () => {
+			await tab.setControlValue('track.1.deviceId', 'mic-1');
+			await tab.setControlValue('track.1.channelMode', 'mono-left');
+
+			await tab.setControlValue('track.1.deviceId', 'iface-1');
+
+			expect(sourceOf(1)).toEqual({
+				deviceId: 'iface-1',
+				channelMode: 'mono-left',
+			});
+		});
+
+		it('drops the entry when the device is cleared', async () => {
+			await tab.setControlValue('track.1.deviceId', 'mic-1');
+
+			await tab.setControlValue('track.1.deviceId', '');
+
+			expect(sourceOf(1)).toBeUndefined();
+		});
+
+		it('ignores a layout written to a track with no device', async () => {
+			// There is nothing to bind a layout to, and inventing an entry would
+			// make an unconfigured track look configured.
+			await tab.setControlValue('track.2.channelMode', 'mono-left');
+
+			expect(sourceOf(2)).toBeUndefined();
+		});
+
+		it('reads a track control back out of the Map', async () => {
+			await tab.setControlValue('track.3.deviceId', 'mic-1');
+
+			expect(tab.getControlValue('track.3.deviceId')).toBe('mic-1');
+			expect(tab.getControlValue('track.3.channelMode')).toBe('source');
+		});
+
+		it('reads an unconfigured track as empty', () => {
+			expect(tab.getControlValue('track.4.deviceId')).toBe('');
 		});
 	});
 
@@ -623,6 +701,60 @@ describe('AudioRecorderSettingTab', () => {
 			expect(audio?.getAttribute('src')).toBe('blob:test-url');
 		});
 
+		it('names the format when this device cannot record it', async () => {
+			mockSettings.recordingFormat = 'aiff';
+			installRecorder(createRecorderMock());
+			(
+				(global as Record<string, unknown>).MediaRecorder as Record<
+					string,
+					unknown
+				>
+			).isTypeSupported = jest.fn().mockReturnValue(false);
+
+			await runTest(tab.containerEl);
+
+			// A failed capture has to say which format failed, or the only
+			// reading left is "the microphone is broken".
+			const status = tab.containerEl.querySelector('.aar-test-status');
+			expect(status?.textContent).toContain('aiff');
+			expect(status?.classList.contains('aar-test-error')).toBe(true);
+			expect(URL.createObjectURL).not.toHaveBeenCalled();
+		});
+
+		it('reports a capture that produced no audio', async () => {
+			const recorder = createRecorderMock();
+			installRecorder(recorder);
+
+			jest.useFakeTimers();
+			const testPromise = runTest(tab.containerEl);
+			await jest.advanceTimersByTimeAsync(0);
+			// The recorder ran and stopped without ever delivering a chunk,
+			// which is a silent device rather than a failure to start.
+			await jest.advanceTimersByTimeAsync(5000);
+			await testPromise;
+			jest.useRealTimers();
+
+			const status = tab.containerEl.querySelector('.aar-test-status');
+			expect(status?.textContent).toContain('no data');
+			expect(status?.classList.contains('aar-test-error')).toBe(true);
+			expect(tab.containerEl.querySelector('.aar-test-audio')).toBeNull();
+		});
+
+		it('revokes the previous playback when the test is run again', async () => {
+			const container = tab.containerEl;
+			await recordUntilPlayback(tab, container);
+			(URL.createObjectURL as jest.Mock).mockReturnValue('blob:second');
+
+			await recordUntilPlayback(tab, container);
+
+			// Each rerun replaces the playback element; without revoking the
+			// one it replaces, a session leaks a blob per run.
+			expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test-url');
+			expect(container.querySelectorAll('.aar-test-audio')).toHaveLength(
+				1,
+			);
+		});
+
 		it('releases the finished playback when update() re-renders the row', async () => {
 			const definition = testRecordingDefinitionOf(tab);
 			const frame = renderThroughFramework(definition);
@@ -659,6 +791,193 @@ describe('AudioRecorderSettingTab', () => {
 			expect(
 				legacyTab.containerEl.querySelector('.aar-test-audio'),
 			).toBeNull();
+		});
+	});
+
+	describe('editing the native lists', () => {
+		/** The list group declared under a heading, with its edit affordances. */
+		const listOf = (
+			heading: string,
+		): {
+			items: Array<{ name: string; desc?: string }>;
+			addItem?: { action: () => void };
+			onDelete?: (index: number) => void;
+		} =>
+			groupOf(tab.getSettingDefinitions(), heading) as unknown as {
+				items: Array<{ name: string; desc?: string }>;
+				addItem?: { action: () => void };
+				onDelete?: (index: number) => void;
+			};
+
+		/** Opens the add dialog of a list and answers it with an id. */
+		const addThrough = async (
+			heading: string,
+			id: string,
+		): Promise<void> => {
+			listOf(heading).addItem?.action();
+			const confirm = mockModelDialogs[mockModelDialogs.length - 1];
+			if (!confirm) {
+				throw new Error(`"${heading}" opened no dialog`);
+			}
+			confirm(id);
+			await flushAsync();
+		};
+
+		beforeEach(() => {
+			mockModelDialogs.length = 0;
+			mockSettings.transcriptionEnabled = true;
+			mockSettings.transcriptionProvider = 'whisper-api';
+		});
+
+		it('adds a model through the dialog and puts it in use', async () => {
+			mockSettings.whisperApiModels = ['whisper-1'];
+			mockSettings.whisperApiModel = 'whisper-1';
+
+			await addThrough('Whisper model', 'whisper-large-v3');
+
+			expect(mockSettings.whisperApiModels).toContain('whisper-large-v3');
+			// A model is added to be used, so the addition is also the selection.
+			expect(mockSettings.whisperApiModel).toBe('whisper-large-v3');
+			expect(saveSettingsMock).toHaveBeenCalled();
+		});
+
+		it('moves the selection off a model it deletes', async () => {
+			mockSettings.whisperApiModels = ['whisper-1', 'whisper-large-v3'];
+			mockSettings.whisperApiModel = 'whisper-1';
+
+			listOf('Whisper model').onDelete?.(0);
+			await flushAsync();
+
+			expect(mockSettings.whisperApiModels).toEqual(['whisper-large-v3']);
+			expect(mockSettings.whisperApiModel).toBe('whisper-large-v3');
+		});
+
+		it('leaves the selection alone when another model is deleted', async () => {
+			mockSettings.whisperApiModels = ['whisper-1', 'whisper-large-v3'];
+			mockSettings.whisperApiModel = 'whisper-1';
+
+			listOf('Whisper model').onDelete?.(1);
+			await flushAsync();
+
+			expect(mockSettings.whisperApiModels).toEqual(['whisper-1']);
+			expect(mockSettings.whisperApiModel).toBe('whisper-1');
+		});
+
+		it('ignores a delete for a position the list no longer has', async () => {
+			mockSettings.whisperApiModels = ['whisper-1'];
+
+			listOf('Whisper model').onDelete?.(4);
+			await flushAsync();
+
+			expect(mockSettings.whisperApiModels).toEqual(['whisper-1']);
+			expect(saveSettingsMock).not.toHaveBeenCalled();
+		});
+
+		it('marks which saved model is the one in use', () => {
+			mockSettings.whisperApiModels = ['whisper-1', 'whisper-large-v3'];
+			mockSettings.whisperApiModel = 'whisper-large-v3';
+
+			expect(listOf('Whisper model').items).toEqual([
+				{ name: 'whisper-1' },
+				{ name: 'whisper-large-v3', desc: 'In use' },
+			]);
+		});
+
+		it('adds an LLM model to the vendor in use', async () => {
+			mockSettings.llmPostProcessEnabled = true;
+			mockSettings.llmProvider = 'openai-compatible';
+			mockSettings.llmOpenAiModels = ['gpt-4o-mini'];
+
+			await addThrough('LLM models', 'gpt-4o');
+
+			expect(mockSettings.llmOpenAiModels).toContain('gpt-4o');
+			expect(mockSettings.llmOpenAiModel).toBe('gpt-4o');
+		});
+
+		it('deletes an LLM model through the same list', async () => {
+			mockSettings.llmPostProcessEnabled = true;
+			mockSettings.llmProvider = 'openai-compatible';
+			mockSettings.llmOpenAiModels = ['gpt-4o-mini', 'gpt-4o'];
+			mockSettings.llmOpenAiModel = 'gpt-4o';
+
+			listOf('LLM models').onDelete?.(1);
+			await flushAsync();
+
+			expect(mockSettings.llmOpenAiModels).toEqual(['gpt-4o-mini']);
+			expect(mockSettings.llmOpenAiModel).toBe('gpt-4o-mini');
+		});
+
+		it('adds a dictionary profile and selects it', async () => {
+			mockSettings.transcriptionDictionaryProfiles = [];
+
+			listOf('Dictionary profiles').addItem?.action();
+			await flushAsync();
+
+			const profiles = mockSettings.transcriptionDictionaryProfiles;
+			expect(profiles).toHaveLength(1);
+			expect(mockSettings.transcriptionDictionaryProfileId).toBe(
+				profiles[0]?.id,
+			);
+		});
+
+		it('removes a dictionary profile through its list', async () => {
+			listOf('Dictionary profiles').addItem?.action();
+			listOf('Dictionary profiles').addItem?.action();
+			await flushAsync();
+			expect(mockSettings.transcriptionDictionaryProfiles).toHaveLength(
+				2,
+			);
+
+			listOf('Dictionary profiles').onDelete?.(0);
+			await flushAsync();
+
+			expect(mockSettings.transcriptionDictionaryProfiles).toHaveLength(
+				1,
+			);
+		});
+
+		it('edits the profile in use through the editor keys', async () => {
+			listOf('Dictionary profiles').addItem?.action();
+			await flushAsync();
+
+			await tab.setControlValue('dictionaryProfile.name', 'Standup');
+			await tab.setControlValue(
+				'dictionaryProfile.terms',
+				'Kubernetes, kubectl',
+			);
+
+			// One editor follows the selection instead of a row per profile, so
+			// its keys address whichever profile is selected.
+			const profile = mockSettings.transcriptionDictionaryProfiles[0];
+			expect(profile?.name).toBe('Standup');
+			expect(profile?.terms).toBe('Kubernetes, kubectl');
+			expect(tab.getControlValue('dictionaryProfile.name')).toBe(
+				'Standup',
+			);
+		});
+
+		it('reads the editor as empty while no profile is selected', () => {
+			mockSettings.transcriptionDictionaryProfiles = [];
+			mockSettings.transcriptionDictionaryProfileId = '';
+			tab.getSettingDefinitions();
+
+			// The row is hidden with nothing selected, but its control is still
+			// built, and a text control handed undefined renders it.
+			expect(tab.getControlValue('dictionaryProfile.name')).toBe('');
+		});
+
+		it('offers no model list for an engine that has none', () => {
+			mockSettings.transcriptionProvider = 'local-whisper';
+
+			// The local engine runs a binary against a file on disk, so there
+			// is no catalogue of served ids to keep - the list stays hidden
+			// rather than being declared empty.
+			const list = groupOf(
+				tab.getSettingDefinitions(),
+				'Models',
+			) as unknown as { visible?: () => boolean; items: unknown[] };
+			expect(list.visible?.()).toBe(false);
+			expect(list.items).toEqual([]);
 		});
 	});
 
