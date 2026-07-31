@@ -10,11 +10,11 @@
  * dual-support path keeps two hand-written implementations instead; for a tab
  * with sixty-odd settings that is a drift generator, and the guide says as much.
  *
- * Sections migrate into this tree from the bottom of the tab upwards, so the
- * part still rendered imperatively stays one contiguous block at the top and row
- * order never changes while the migration runs. That block is the remainder
- * definition below; it shrinks with each migrated section and goes away with the
- * last one.
+ * A handful of rows cannot be declared: the documentation callout, the format
+ * list blocked per option by an asynchronous encoder probe, the output summary
+ * derived from two other rows, the test capture that reports into its own row,
+ * and the transcription engine fields that are not migrated yet. Those use the
+ * framework's own escape hatch, a render callback, and nothing else does.
  * @module settings/settingsDefinitions
  */
 
@@ -46,14 +46,19 @@ import { TRANSCRIPTION_PROVIDER_OPTIONS } from './labels';
 import {
 	isAutoSplitSupported,
 	isChannelModeSelectionSupported,
+	isDeviceSelectionSupported,
 	isMultiTrackCaptureSupported,
+	isSampleRateSelectionSupported,
 } from '../platform/capabilities';
-import { CHANNEL_MODE_LABELS } from './labels';
+import { CHANNEL_MODE_LABELS, CONVERSION_LINK_ACTION_OPTIONS } from './labels';
 import {
 	isProviderAvailableOnPlatform,
 	providerSupportsDiarization,
 } from '../transcription/providers/capabilities';
 import type { TranscriptionProviderId } from './settingsSchema';
+
+/** Bitrates the output-format section offers, in kbps. */
+const BITRATE_OPTIONS_KBPS = [64, 96, 128, 160, 192, 256, 320];
 
 /** Highest track count the multi-track section offers. */
 export const MAX_TRACK_COUNT = 8;
@@ -117,15 +122,15 @@ export interface DeviceOptions {
 }
 
 /**
- * The sections still rendered by the tab's own imperative body.
+ * The output-format rows that stay imperative. The format list is blocked per
+ * option by an asynchronous encoder probe, which no control type expresses, and
+ * the summary is derived from two other rows rather than stored.
  */
-export interface ImperativeRemainder {
-	/** Row name, which is also what the settings search matches the tab by. */
-	readonly name: string;
-	/** Names of the settings inside the remainder, carried as search aliases. */
-	readonly aliases: readonly string[];
-	/** Draws those sections into a host the definition has already cleared. */
-	render(host: HTMLElement): void;
+export interface OutputFormatRows {
+	/** Fills the recording-format row and starts its availability probe. */
+	renderFormatRow(setting: Setting): void;
+	/** Fills the row that summarises the effective output. */
+	renderSummaryRow(setting: Setting): void;
 }
 
 /**
@@ -149,10 +154,14 @@ export interface SettingsDefinitionContext {
 	 * themselves travel through the tab's control-value hooks, not from here.
 	 */
 	readonly settings: AudioRecorderSettings;
-	/** The sections not migrated into this tree yet. */
-	readonly remainder: ImperativeRemainder;
 	/** Input devices and their channel capability, as last enumerated. */
 	readonly devices: DeviceOptions;
+	/** Capture sample rates this device offers. */
+	readonly sampleRates: readonly number[];
+	/** The two output-format rows the declarative controls cannot express. */
+	readonly outputFormat: OutputFormatRows;
+	/** Draws the documentation callout that opens the tab. */
+	renderDocumentationLink(host: HTMLElement): void;
 	/** Handlers for the diagnostics rows. */
 	readonly diagnostics: DiagnosticsActions;
 	/**
@@ -163,27 +172,176 @@ export interface SettingsDefinitionContext {
 }
 
 /**
- * The definition for the sections still rendered imperatively. Its row is the
- * only host that survives the framework's post-render pass, so the body is
- * rendered into the row itself, over the name, description, and control
- * elements the framework prefilled it with.
- * @param remainder - The imperative body and its search metadata
+ * Where a recording is written and how it is named.
+ * @param settings - Live settings, read by the predicates
  */
-function remainderDefinition(
-	remainder: ImperativeRemainder,
+function fileStorageGroup(
+	settings: AudioRecorderSettings,
 ): SettingDefinitionItem {
 	return {
-		name: remainder.name,
-		// The settings inside this block are not definitions of their own yet,
-		// so the search cannot index them individually. Their names travel as
-		// aliases until they are migrated, which at least finds the tab.
-		aliases: [...remainder.aliases],
-		render: (setting: Setting): void => {
-			const host = setting.settingEl;
-			host.empty();
-			host.addClass(SETTINGS_ROOT_CLASS);
-			remainder.render(host);
-		},
+		type: 'group',
+		heading: 'File storage',
+		items: [
+			{
+				name: 'Save folder',
+				desc: 'Where recordings are saved in your vault.',
+				// The folder control brings Obsidian's own folder suggestions,
+				// which the tab used to wire by hand.
+				control: {
+					type: 'folder',
+					key: 'saveFolder',
+					includeRoot: true,
+					placeholder: '/',
+				},
+			},
+			{
+				name: 'Save recordings near active file',
+				desc: 'Save recordings beside the active Markdown file. Takes priority over the save folder.',
+				control: { type: 'toggle', key: 'saveNearActiveFile' },
+			},
+			{
+				name: 'Active file subfolder',
+				desc: 'Optional subfolder beside the active file (for example: audio). Created if missing.',
+				visible: (): boolean => settings.saveNearActiveFile,
+				control: { type: 'text', key: 'activeFileSubfolder' },
+			},
+			{
+				name: 'File prefix',
+				desc: 'Filename prefix used for exported recordings.',
+				control: { type: 'text', key: 'filePrefix' },
+			},
+			{
+				name: 'Insert at original position',
+				desc: 'Insert the audio link where recording started, even if you navigate away during it.',
+				control: { type: 'toggle', key: 'insertAtOriginalPosition' },
+			},
+		],
+	};
+}
+
+/**
+ * The recorded file's format, its bitrate, and what a conversion does with the
+ * source file it replaces.
+ * @param rows - The two rows that cannot be expressed as controls
+ */
+function outputFormatGroup(rows: OutputFormatRows): SettingDefinitionItem {
+	return {
+		type: 'group',
+		heading: 'Output format',
+		items: [
+			{
+				name: 'Recording format',
+				desc: 'Final file format. Formats this device cannot record are shown blocked.',
+				render: (setting: Setting): void => {
+					rows.renderFormatRow(setting);
+				},
+			},
+			{
+				name: 'Audio bitrate',
+				desc: 'Compression quality and resulting file size.',
+				control: {
+					type: 'dropdown',
+					key: 'bitrate',
+					options: Object.fromEntries(
+						BITRATE_OPTIONS_KBPS.map((kbps) => [
+							String(kbps * 1000),
+							`${String(kbps)} kbps`,
+						]),
+					),
+				},
+			},
+			{
+				name: 'Output summary',
+				desc: 'The exact format, compression type, and bitrate used for recording.',
+				render: (setting: Setting): void => {
+					rows.renderSummaryRow(setting);
+				},
+			},
+			{
+				name: 'Delete source after conversion',
+				desc: 'Delete the original file after a successful conversion from the context menu.',
+				control: {
+					type: 'toggle',
+					key: 'deleteSourceAfterConversion',
+				},
+			},
+			{
+				name: 'Update links after conversion',
+				desc: 'What to do with links to the source file in your notes.',
+				control: {
+					type: 'dropdown',
+					key: 'conversionLinkAction',
+					options: Object.fromEntries(
+						CONVERSION_LINK_ACTION_OPTIONS.map((option) => [
+							option.value,
+							option.label,
+						]),
+					),
+				},
+			},
+		],
+	};
+}
+
+/**
+ * The capture hardware: which input, at what rate, in what channel layout.
+ * @param settings - Live settings, read by the predicates
+ * @param devices - Input devices as last enumerated
+ * @param sampleRates - Capture rates this device offers
+ */
+function audioInputGroup(
+	settings: AudioRecorderSettings,
+	devices: DeviceOptions,
+	sampleRates: readonly number[],
+): SettingDefinitionItem {
+	const deviceSelectable = isDeviceSelectionSupported();
+	const rateSelectable = isSampleRateSelectionSupported();
+	return {
+		type: 'group',
+		heading: 'Audio input',
+		items: [
+			{
+				name: 'Input device',
+				desc: deviceSelectable
+					? 'Default input device for single-track recordings. Also changeable from the command palette.'
+					: 'Not selectable on this device; recording uses the system default microphone.',
+				control: {
+					type: 'dropdown',
+					key: 'audioDeviceId',
+					options: devices.inputs,
+					disabled: !deviceSelectable,
+				},
+			},
+			{
+				name: 'Sample rate',
+				desc: rateSelectable
+					? 'Audio sample rate in hertz.'
+					: 'Not selectable on this device; the system capture rate is used.',
+				control: {
+					type: 'dropdown',
+					key: 'sampleRate',
+					options: Object.fromEntries(
+						sampleRates.map((rate) => [String(rate), String(rate)]),
+					),
+					disabled: !rateSelectable,
+				},
+			},
+			{
+				name: 'Recording channels',
+				desc: 'Channel layout for single-track recordings: keep the device layout, or reduce to mono during capture. Multi-track sessions use the per-track selectors instead.',
+				control: {
+					type: 'dropdown',
+					key: 'recordingChannels',
+					options: CHANNEL_MODE_LABELS,
+					// An empty device id means the platform default, whose
+					// capability is not knowable here, so the choice stays open.
+					disabled: (): boolean =>
+						!isChannelModeSelectionSupported() ||
+						(settings.audioDeviceId !== '' &&
+							!devices.channelSelectable(settings.audioDeviceId)),
+				},
+			},
+		],
 	};
 }
 
@@ -674,7 +832,19 @@ export function buildSettingsDefinitions(
 	ctx: SettingsDefinitionContext,
 ): SettingDefinitionItem[] {
 	return [
-		remainderDefinition(ctx.remainder),
+		{
+			name: 'Documentation',
+			searchable: false,
+			render: (setting: Setting): void => {
+				const host = setting.settingEl;
+				host.empty();
+				host.addClass(SETTINGS_ROOT_CLASS);
+				ctx.renderDocumentationLink(host);
+			},
+		},
+		audioInputGroup(ctx.settings, ctx.devices, ctx.sampleRates),
+		outputFormatGroup(ctx.outputFormat),
+		fileStorageGroup(ctx.settings),
 		audioSplittingGroup(),
 		multiTrackGroup(ctx.settings, ctx.devices),
 		audioPlayerGroup(ctx.settings),

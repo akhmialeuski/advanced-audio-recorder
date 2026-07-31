@@ -35,10 +35,7 @@ import {
 	parseTrackControlKey,
 } from './settingsDefinitions';
 import { LegacySettingsRenderer } from './legacySettingsRenderer';
-import type {
-	AudioRecorderSettings,
-	ConversionLinkAction,
-} from './settingsSchema';
+import type { AudioRecorderSettings } from './settingsSchema';
 import {
 	getSupportedSampleRates,
 	buildMimeType,
@@ -48,12 +45,7 @@ import {
 } from '../audio/AudioCapabilityDetector';
 import { AUDIO_FORMAT_IDS } from '../audio/formatRegistry';
 import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
-import {
-	CHANNEL_MODES,
-	CHANNEL_MODE_SOURCE,
-	normalizeChannelMode,
-	type ChannelMode,
-} from '../audio/downmix';
+import { CHANNEL_MODE_SOURCE, normalizeChannelMode } from '../audio/downmix';
 import {
 	channelSelectionAvailable,
 	getAudioInputDeviceSnapshot,
@@ -66,21 +58,10 @@ import { DOCS_URL, FORMAT_WAV } from '../constants';
 import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
 import { SystemInfoModal } from '../diagnostics/SystemInfoModal';
 import { renderTranscriptionRemainder } from './sections/transcriptionSettingsSection';
-import { CONVERSION_LINK_ACTION_OPTIONS } from './labels';
-import {
-	addDropdown,
-	addHeading,
-	addText,
-	addToggle,
-	SETTING_DISABLED_CLASS,
-	type SettingsSectionContext,
-} from './settingControls';
+
 import {
 	isAutoSplitSupported,
-	isChannelModeSelectionSupported,
-	isDeviceSelectionSupported,
 	isMultiTrackCaptureSupported,
-	isSampleRateSelectionSupported,
 } from '../platform/capabilities';
 
 /** Debounce delay for saving text settings, in milliseconds. */
@@ -109,46 +90,11 @@ const EMPTY_DEVICE_SNAPSHOT: AudioInputDeviceSnapshot = {
 };
 
 /**
- * Individual setting names carried as search aliases on the single declarative
- * render definition. The tab renders imperatively (it drives live device
- * enumeration, async format probing, and per-track rows that do not fit the
- * declarative control model), so this list is what lets Obsidian's settings
- * search (1.13+) surface the tab by an individual setting's name.
- */
-const SETTINGS_SEARCH_ALIASES: string[] = [
-	'Audio input',
-	'Input device',
-	'Sample rate',
-	'Recording channels',
-	'Output format',
-	'Recording format',
-	'Audio bitrate',
-	'Output summary',
-	'Delete source after conversion',
-	'Update links after conversion',
-	'File storage',
-	'Save folder',
-	'Save recordings near active file',
-	'Active file subfolder',
-	'File prefix',
-	'Insert at original position',
-	'Dictionary profiles',
-	'Rename speakers',
-	'Upload chunk size',
-	'Whisper API key',
-	'Whisper model',
-	'Deepgram API key',
-	'Deepgram model',
-	'Gemini API key',
-];
-
-/**
  * Settings tab for the Audio Recorder plugin.
  */
 export class AudioRecorderSettingTab extends PluginSettingTab {
 	plugin: AudioRecorderPluginInterface;
 	private deviceDropdowns: DeviceDropdownBinding[] = [];
-	private readonly bitrateOptionsKbps = [64, 96, 128, 160, 192, 256, 320];
 	private readonly testRecorder = new TestRecorder();
 	private testAudioElement: HTMLAudioElement | null = null;
 	/**
@@ -208,7 +154,15 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * settings API. Holds the rendered rows, so it can re-evaluate their
 	 * predicates and run their cleanups the way the framework does.
 	 */
-	private readonly legacyRenderer = new LegacySettingsRenderer(this);
+	private readonly legacyRenderer = new LegacySettingsRenderer(this, {
+		// The folder control is native from 1.13 on; below it, the tab's own
+		// suggester is what puts the vault's folders under the field.
+		attachFolderSuggest: (inputEl: HTMLInputElement): void => {
+			new TextInputSuggest(this.app, inputEl, () =>
+				this.getFolderOptions(),
+			);
+		},
+	});
 
 	/**
 	 * Keys whose control is a text field, collected from the definition tree on
@@ -257,16 +211,20 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	private buildDefinitions(): SettingDefinitionItem[] {
 		const definitions = buildSettingsDefinitions({
 			settings: this.plugin.settings,
-			remainder: {
-				// The remainder is the whole tab until the migration finishes,
-				// so it is named after the plugin. Read from the manifest
-				// Obsidian already names the tab from, so a rename cannot leave
-				// the settings search index behind.
-				name: this.plugin.manifest.name,
-				aliases: SETTINGS_SEARCH_ALIASES,
-				render: (host): void => {
-					this.renderSettingsInto(host);
+			sampleRates: getSupportedSampleRates(),
+			outputFormat: {
+				renderFormatRow: (setting): void => {
+					this.renderFormatRow(setting);
 				},
+				renderSummaryRow: (setting): void => {
+					this.renderSummaryRow(setting);
+				},
+			},
+			renderDocumentationLink: (host): void => {
+				// The first row of every pass, and the one place that knows the
+				// tab is on screen on both render paths.
+				this.ensureDeviceWatch();
+				this.renderDocumentationLink(host);
 			},
 			devices: {
 				inputs: Object.fromEntries(
@@ -294,7 +252,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				},
 			},
 			renderTranscriptionRest: (host): void => {
-				this.renderScopedSection(host, renderTranscriptionRemainder);
+				this.renderTranscriptionRest(host);
 			},
 			diagnostics: {
 				startTestRecording: (rowEl): void => {
@@ -492,17 +450,34 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * Builds the sections not migrated into the definition tree yet, into the
-	 * host their render definition owns. Shrinks with every migrated section.
-	 * @param containerEl - Host element the settings are rendered into
+	 * Renders the transcription settings that are not definitions yet, into the
+	 * row the transcription section keeps for them. Their own reveals still
+	 * redraw this block, which is confined to that row.
+	 * @param host - The row element the block is rendered into
 	 */
-	private renderSettingsInto(containerEl: HTMLElement): void {
-		// One place marks the tab as on screen, so the async device enumeration
-		// and format probe are guarded the same way on both render paths.
+	private renderTranscriptionRest(host: HTMLElement): void {
+		const draw = (): void => {
+			host.empty();
+			renderTranscriptionRemainder({
+				containerEl: host,
+				settings: this.plugin.settings,
+				save: () => this.plugin.saveSettings(),
+				rerender: draw,
+				saveDebounced: () => {
+					this.saveTextSettingDebounced();
+				},
+			});
+		};
+		draw();
+	}
+
+	/**
+	 * Starts watching the audio inputs while the tab is on screen. The device
+	 * rows are built from the last enumeration, so the tab enumerates once per
+	 * open and again whenever the system reports a change.
+	 */
+	private ensureDeviceWatch(): void {
 		this.isDisplayed = true;
-		this.deviceDropdowns = [];
-		this.channelDropdownUpdaters = [];
-		this.deviceSnapshot = EMPTY_DEVICE_SNAPSHOT;
 		if (!this.deviceChangeHandler) {
 			this.deviceChangeHandler = (): void => {
 				void this.refreshDeviceList();
@@ -512,109 +487,17 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				this.deviceChangeHandler,
 			);
 		}
+		void this.refreshDeviceList();
+	}
 
-		// Quick access to the full documentation, so users do not have to
-		// hunt through the GitHub repository for the guides.
-		this.renderDocumentationLink(containerEl);
-
-		// Audio input
-		new Setting(containerEl).setName('Audio input').setHeading();
-
-		const deviceSelectable = isDeviceSelectionSupported();
-		const deviceSetting = new Setting(containerEl)
-			.setName('Input device')
-			.setDesc(
-				deviceSelectable
-					? 'Select the default input device for single-track recordings. You can also change it from the command palette.'
-					: 'Not selectable on this device; recording uses the system default microphone.',
-			)
-			.addDropdown((dropdown) => {
-				if (!deviceSelectable) {
-					dropdown.setDisabled(true);
-					return;
-				}
-				this.deviceDropdowns.push({
-					dropdown,
-					getSelectedDeviceId: () =>
-						this.plugin.settings.audioDeviceId || '',
-				});
-				dropdown.onChange(async (value) => {
-					this.plugin.settings.audioDeviceId = value;
-					await this.plugin.saveSettings();
-					// The channel selector is bound to this device
-					this.runChannelDropdownUpdaters();
-				});
-			});
-		if (!deviceSelectable) {
-			deviceSetting.settingEl.addClass(SETTING_DISABLED_CLASS);
-		}
-
-		const sampleRateSelectable = isSampleRateSelectionSupported();
-		const sampleRateSetting = new Setting(containerEl)
-			.setName('Sample rate')
-			.setDesc(
-				sampleRateSelectable
-					? 'Audio sample rate in hertz.'
-					: 'Not selectable on this device; the system capture rate is used.',
-			)
-			.addDropdown((dropdown) => {
-				const sampleRates = getSupportedSampleRates();
-				sampleRates.forEach((rate) => {
-					dropdown.addOption(String(rate), String(rate));
-				});
-				dropdown.setValue(String(this.plugin.settings.sampleRate));
-				if (!sampleRateSelectable) {
-					dropdown.setDisabled(true);
-					return;
-				}
-				dropdown.onChange(async (value) => {
-					this.plugin.settings.sampleRate = parseInt(value, 10);
-					await this.plugin.saveSettings();
-				});
-			});
-		if (!sampleRateSelectable) {
-			sampleRateSetting.settingEl.addClass(SETTING_DISABLED_CLASS);
-		}
-
-		new Setting(containerEl)
-			.setName('Recording channels')
-			.setDesc(
-				'Channel layout for single-track recordings: keep the device layout, or reduce to mono during capture. The left/right channel options suit audio interfaces whose two mono inputs show up as one stereo device: a single microphone is kept at full level instead of being mixed with a silent channel. Disabled when the selected device reports a mono-only input. Multi-track sessions use the per-track selectors below instead.',
-			)
-			.addDropdown((dropdown) => {
-				this.bindChannelModeDropdown(dropdown, {
-					getDeviceId: () => this.plugin.settings.audioDeviceId,
-					// An empty id means the platform default device,
-					// whose capability is not knowable here: keep enabled
-					hasDevice: () => true,
-					getMode: () => this.plugin.settings.recordingChannels,
-					setMode: async (mode) => {
-						this.plugin.settings.recordingChannels = mode;
-						await this.plugin.saveSettings();
-					},
-				});
-			});
-
-		// Output format
-		new Setting(containerEl).setName('Output format').setHeading();
-
-		const selectedBitrateKbps = Math.round(
-			this.plugin.settings.bitrate / 1000,
-		);
-		const updateOutputSummary = (container: HTMLElement): void => {
-			container.setText(
-				`Output: ${this.plugin.settings.recordingFormat.toUpperCase()}, ${String(Math.round(this.plugin.settings.bitrate / 1000))} kbps. ${this.getCompressionDescription(this.plugin.settings.recordingFormat)}`,
-			);
-		};
-		let summaryEl: HTMLElement | null = null;
-		const formatSetting = new Setting(containerEl)
-			.setName('Recording format')
-			.setDesc(
-				'Select the final file format. The selected format is applied when files are saved. Formats this device cannot record are shown blocked.',
-			);
-		formatSetting.addDropdown((dropdown) => {
-			// Render the full registry immediately; the async encoder
-			// probe then blocks the options this device cannot record.
+	/**
+	 * Fills the recording-format row. The format list is rendered from the
+	 * registry at once and the options this device cannot record are blocked by
+	 * an asynchronous encoder probe, which no control type expresses.
+	 * @param setting - The row to fill
+	 */
+	private renderFormatRow(setting: Setting): void {
+		setting.addDropdown((dropdown) => {
 			for (const format of AUDIO_FORMAT_IDS) {
 				dropdown.addOption(format, format.toUpperCase());
 			}
@@ -628,76 +511,27 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			dropdown.onChange(async (value) => {
 				this.plugin.settings.recordingFormat = value;
 				await this.plugin.saveSettings();
-				if (summaryEl) {
-					updateOutputSummary(summaryEl);
-				}
+				// The summary row reads this, and the format list may need a
+				// fallback note, so the tree is rebuilt rather than patched.
+				this.rerender();
 			});
-			void this.applyFormatAvailability(dropdown, formatSetting.descEl);
+			void this.applyFormatAvailability(dropdown, setting.descEl);
 		});
+	}
 
-		new Setting(containerEl)
-			.setName('Audio bitrate')
-			.setDesc(
-				'Controls compression quality and resulting file size. Higher bitrate = better quality and larger files.',
-			)
-			.addDropdown((dropdown) => {
-				this.bitrateOptionsKbps.forEach((bitrateKbps) => {
-					dropdown.addOption(
-						String(bitrateKbps),
-						`${String(bitrateKbps)} kbps`,
-					);
-				});
-				dropdown.setValue(String(selectedBitrateKbps));
-				dropdown.onChange(async (value) => {
-					this.plugin.settings.bitrate = parseInt(value, 10) * 1000;
-					await this.plugin.saveSettings();
-					if (summaryEl) {
-						updateOutputSummary(summaryEl);
-					}
-				});
-			});
-
-		const outputSummarySetting = new Setting(containerEl)
-			.setName('Output summary')
-			.setDesc(
-				'Shows the exact format, compression type, and bitrate used for recording.',
+	/**
+	 * Fills the row that summarises the effective output, which is derived from
+	 * the format and bitrate rows rather than stored.
+	 * @param setting - The row to fill
+	 */
+	private renderSummaryRow(setting: Setting): void {
+		const format = this.plugin.settings.recordingFormat;
+		const kbps = Math.round(this.plugin.settings.bitrate / 1000);
+		setting.descEl
+			.createDiv()
+			.setText(
+				`Output: ${format.toUpperCase()}, ${String(kbps)} kbps. ${this.getCompressionDescription(format)}`,
 			);
-		summaryEl = outputSummarySetting.descEl.createDiv();
-		updateOutputSummary(summaryEl);
-
-		const outputCtx = this.sectionContext(containerEl);
-		addToggle(outputCtx, {
-			name: 'Delete source after conversion',
-			desc: 'When converting audio via the context menu, delete the original file after a successful conversion.',
-			get: () => this.plugin.settings.deleteSourceAfterConversion,
-			set: (v) => (this.plugin.settings.deleteSourceAfterConversion = v),
-		});
-
-		addDropdown(outputCtx, {
-			name: 'Update links after conversion',
-			desc: 'How to handle links to the source file in notes after conversion.',
-			options: CONVERSION_LINK_ACTION_OPTIONS,
-			get: () => this.plugin.settings.conversionLinkAction,
-			set: (v) =>
-				(this.plugin.settings.conversionLinkAction =
-					v as ConversionLinkAction),
-		});
-
-		// File storage: "Save near active file" reveals the subfolder row and
-		// nothing else, so the section redraws itself.
-		this.renderScopedSection(containerEl, (ctx) => {
-			this.renderFileStorageRows(ctx);
-		});
-
-		// Audio splitting and Multi-track recording follow here, from the
-		// definition tree.
-
-		// Audio processing & feedback, the cleanup defaults, and Diagnostics
-		// follow here, from the definition tree.
-
-		// Populate every device dropdown and capability lookup from one
-		// coherent enumeration after all bindings have been registered.
-		void this.refreshDeviceList();
 	}
 
 	/**
@@ -731,125 +565,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			'aria-label',
 			'Open the documentation in your browser',
 		);
-	}
-
-	/**
-	 * Builds the section context the shared control builders bind to: the live
-	 * settings object plus this tab's save, debounced-save, and re-render hooks.
-	 * Sections that are plain toggles, dropdowns, text fields, and numeric inputs
-	 * go through these builders, so they get the tab's save conventions (and the
-	 * disabled/help-link rendering) instead of restating them per row.
-	 *
-	 * The sections that stay imperative are the ones the declarative model does
-	 * not cover: live device enumeration, the async format-availability probe,
-	 * and the per-track rows built from a Map.
-	 * @param containerEl - Element the section renders into
-	 */
-	private sectionContext(containerEl: HTMLElement): SettingsSectionContext {
-		return {
-			containerEl,
-			settings: this.plugin.settings,
-			save: () => this.plugin.saveSettings(),
-			rerender: () => {
-				this.rerender();
-			},
-			saveDebounced: () => {
-				this.saveTextSettingDebounced();
-			},
-		};
-	}
-
-	/**
-	 * Renders a section into a container of its own, so a reveal/hide toggle
-	 * inside it redraws only that section.
-	 *
-	 * The tab-wide rerender rebuilds every row and, with them, restarts the
-	 * device enumeration and the async format-availability probe. That is the
-	 * right response to a setting those depend on (multi-track, track count),
-	 * and pure waste for one whose effect is confined to its own section - the
-	 * transcription reveals, the player's sub-options, the save-folder mode.
-	 * Sections whose visible rows depend only on their own settings render
-	 * through here.
-	 * @param containerEl - Element to host the section's own container
-	 * @param render - Draws the section into the context it is given
-	 */
-	private renderScopedSection(
-		containerEl: HTMLElement,
-		render: (ctx: SettingsSectionContext) => void,
-	): void {
-		const sectionEl = containerEl.createDiv();
-		const draw = (): void => {
-			sectionEl.empty();
-			render({
-				containerEl: sectionEl,
-				settings: this.plugin.settings,
-				save: () => this.plugin.saveSettings(),
-				rerender: draw,
-				saveDebounced: () => {
-					this.saveTextSettingDebounced();
-				},
-			});
-		};
-		draw();
-	}
-
-	/**
-	 * The file-storage rows: where a recording is written and how it is named.
-	 * @param ctx - The section context (its own container and hooks)
-	 */
-	private renderFileStorageRows(ctx: SettingsSectionContext): void {
-		const settings = this.plugin.settings;
-		addHeading(ctx, 'File storage');
-
-		// The save folder keeps its own builder: the field carries a
-		// TextInputSuggest bound to the live vault folder list, which the
-		// shared text control has no hook for.
-		new Setting(ctx.containerEl)
-			.setName('Save folder')
-			.setDesc(
-				'Specify where recordings are saved in your vault. Existing folders are suggested as you type.',
-			)
-			.addText((text) => {
-				new TextInputSuggest(this.app, text.inputEl, () =>
-					this.getFolderOptions(),
-				);
-				text.setValue(settings.saveFolder);
-				text.onChange((value) => {
-					settings.saveFolder = value;
-					this.saveTextSettingDebounced();
-				});
-			});
-
-		addToggle(ctx, {
-			name: 'Save recordings near active file',
-			desc: 'Save recordings in the same directory as the currently active Markdown file. This mode has priority over save folder.',
-			get: () => settings.saveNearActiveFile,
-			set: (v) => (settings.saveNearActiveFile = v),
-			rerender: true,
-		});
-
-		if (settings.saveNearActiveFile) {
-			addText(ctx, {
-				name: 'Active file subfolder',
-				desc: 'Optional subfolder relative to the active file directory (for example: audio). Created automatically if missing.',
-				get: () => settings.activeFileSubfolder,
-				set: (v) => (settings.activeFileSubfolder = v),
-			});
-		}
-
-		addText(ctx, {
-			name: 'File prefix',
-			desc: 'Set the filename prefix used for exported recordings.',
-			get: () => settings.filePrefix,
-			set: (v) => (settings.filePrefix = v),
-		});
-
-		addToggle(ctx, {
-			name: 'Insert at original position',
-			desc: 'When enabled, the plugin remembers the note and insertion position where recording started. The audio link is inserted at that location, even if you navigate away during recording. Note: if the original note is edited during recording, the insertion position may shift.',
-			get: () => settings.insertAtOriginalPosition,
-			set: (v) => (settings.insertAtOriginalPosition = v),
-		});
 	}
 
 	/**
@@ -931,65 +646,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		for (const update of this.channelDropdownUpdaters) {
 			update();
 		}
-	}
-
-	/**
-	 * Fills a channel-mode dropdown and binds it to a device selection.
-	 * The dropdown greys itself out when the bound device positively reports
-	 * a single capture channel
-	 * (every mono option would be an identity or a fallback there) or
-	 * when no device is selected at all. An id missing from a successful
-	 * enumeration is treated as unplugged, while an enumeration failure or
-	 * a present device with unknown capability keeps the selection enabled.
-	 * Capability observation never changes the saved mode. The evaluator
-	 * registers itself for re-runs on capability loads and device changes.
-	 * @param dropdown - Dropdown to fill and manage
-	 * @param binding - Accessors for the bound device and stored mode
-	 */
-	private bindChannelModeDropdown(
-		dropdown: DropdownComponent,
-		binding: {
-			getDeviceId: () => string;
-			hasDevice: () => boolean;
-			getMode: () => ChannelMode;
-			setMode: (mode: ChannelMode) => Promise<void>;
-		},
-	): void {
-		const labels: Record<ChannelMode, string> = {
-			source: 'Same as input device',
-			'mono-mix': 'Mono (mix all channels)',
-			'mono-left': 'Mono (left channel)',
-			'mono-right': 'Mono (right channel)',
-		};
-		CHANNEL_MODES.forEach((mode) => {
-			dropdown.addOption(mode, labels[mode]);
-		});
-		dropdown.setValue(binding.getMode());
-		dropdown.onChange(async (value) => {
-			await binding.setMode(normalizeChannelMode(value));
-		});
-		const update = (): void => {
-			const deviceId = binding.getDeviceId();
-			// Where the platform offers no channel layout choice (mobile),
-			// every channel dropdown stays blocked regardless of devices.
-			let available =
-				isChannelModeSelectionSupported() && binding.hasDevice();
-			if (available && deviceId) {
-				const { enumerationSucceeded, channelLimits } =
-					this.deviceSnapshot;
-				available =
-					!enumerationSucceeded ||
-					(channelLimits.has(deviceId) &&
-						channelSelectionAvailable(channelLimits.get(deviceId)));
-			}
-			dropdown.setDisabled(!available);
-			// Runtime capability data is advisory and may be incomplete.
-			// Never rewrite a persistent user choice merely because a device
-			// is mono, unplugged, or temporarily absent from enumeration.
-			dropdown.setValue(binding.getMode());
-		};
-		this.channelDropdownUpdaters.push(update);
-		update();
 	}
 
 	private async refreshDeviceList(): Promise<void> {

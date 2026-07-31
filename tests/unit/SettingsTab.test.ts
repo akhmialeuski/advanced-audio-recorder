@@ -136,22 +136,26 @@ describe('AudioRecorderSettingTab', () => {
 				existing,
 			);
 
-		it('declares the migrated sections, plus one row for the rest', () => {
+		it('declares every section of the tab', () => {
 			const defs = tab.getSettingDefinitions();
 
-			// Sections migrate from the bottom of the tab upwards, so what is
-			// still rendered by hand stays one contiguous block at the top and
-			// the row order the user knows never changes.
-			const remainder = renderDefinitionOf(defs);
-			expect(remainder.name).toBe(PLUGIN_MANIFEST_NAME);
-			expect(remainder.aliases).toEqual(
-				expect.arrayContaining(['Recording format', 'Save folder']),
-			);
-			expect(groupOf(defs, 'Diagnostics').items).not.toHaveLength(0);
-			expect(groupOf(defs, 'Transcription').items).not.toHaveLength(0);
-			expect(
-				groupOf(defs, 'Multi-track recording').items,
-			).not.toHaveLength(0);
+			// Nothing is rendered by hand any more except the rows no control
+			// type covers, so the settings search indexes each setting by its
+			// own name rather than through a hand-kept alias list.
+			for (const heading of [
+				'Audio input',
+				'Output format',
+				'File storage',
+				'Audio splitting',
+				'Multi-track recording',
+				'Audio player',
+				'Transcription',
+				'Audio processing & feedback',
+				'Audio cleanup defaults',
+				'Diagnostics',
+			]) {
+				expect(groupOf(defs, heading).items).not.toHaveLength(0);
+			}
 		});
 
 		it('renders the settings body inside the row the framework keeps', () => {
@@ -205,21 +209,6 @@ describe('AudioRecorderSettingTab', () => {
 			).toHaveLength(1);
 		});
 
-		it('carries every name still rendered by hand as a search alias', () => {
-			// The settings inside the remainder are not definitions yet, so the
-			// search cannot index them individually; their names travel as
-			// aliases, and that hand-kept list drifts when a rename forgets it.
-			const remainder = renderDefinitionOf(tab.getSettingDefinitions());
-			const aliases = new Set(remainder.aliases);
-			const frame = renderThroughFramework(remainder);
-
-			const rendered = renderedNames(frame.setting.settingEl);
-
-			expect(rendered.length).toBeGreaterThan(0);
-			const missing = rendered.filter((name) => !aliases.has(name));
-			expect(missing).toEqual([]);
-		});
-
 		it('reads a control value straight from the live settings', () => {
 			mockSettings.debug = true;
 
@@ -235,17 +224,6 @@ describe('AudioRecorderSettingTab', () => {
 
 			expect(mockSettings.debug).toBe(true);
 			expect(saveSettingsMock).toHaveBeenCalledTimes(1);
-		});
-
-		it('drops the aliases of the sections that became definitions', () => {
-			// A migrated setting is indexed by its own definition. Leaving it in
-			// the alias list would list the tab twice for one query, and one of
-			// the two would scroll to the wrong row.
-			const remainder = renderDefinitionOf(tab.getSettingDefinitions());
-
-			expect(remainder.aliases).not.toContain('Debug mode');
-			expect(remainder.aliases).not.toContain('Diagnostics');
-			expect(remainder.aliases).not.toContain('Enable transcription');
 		});
 
 		it('asks the framework to re-render when the device list changes', async () => {
@@ -817,13 +795,18 @@ describe('AudioRecorderSettingTab', () => {
 
 		it('blocks device, sample-rate, and channel selection on mobile', () => {
 			Platform.isMobile = true;
-			tab.display();
+			const defs = tab.getSettingDefinitions();
+			const disabledOf = (name: string): boolean => {
+				const disabled = rowOf(defs, 'Audio input', name).control
+					?.disabled;
+				return typeof disabled === 'function'
+					? disabled()
+					: disabled === true;
+			};
 
-			expect(rowDimmed('Input device')).toBe(true);
-			expect(rowSelect('Input device').disabled).toBe(true);
-			expect(rowDimmed('Sample rate')).toBe(true);
-			expect(rowSelect('Sample rate').disabled).toBe(true);
-			expect(rowSelect('Recording channels').disabled).toBe(true);
+			expect(disabledOf('Input device')).toBe(true);
+			expect(disabledOf('Sample rate')).toBe(true);
+			expect(disabledOf('Recording channels')).toBe(true);
 		});
 
 		it('blocks recording formats the device cannot produce (iOS profile)', async () => {

@@ -6,7 +6,7 @@
  */
 
 import { Platform } from 'obsidian';
-import type { SettingDefinitionItem } from 'obsidian';
+import type { Setting, SettingDefinitionItem } from 'obsidian';
 import {
 	groupOf,
 	renderDefinitionOf,
@@ -37,11 +37,10 @@ import {
 } from 'src/settings/settingsDefinitions';
 
 describe('settings definitions', () => {
-	const REMAINDER_NAME = 'Advanced Audio Recorder';
-	const ALIASES = ['Recording format', 'Save folder'];
-
 	let settings: AudioRecorderSettings;
-	let renderRemainder: jest.Mock;
+	let renderDocs: jest.Mock;
+	let renderFormatRow: jest.Mock;
+	let renderSummaryRow: jest.Mock;
 	let renderTranscriptionRest: jest.Mock;
 	let diagnostics: { [K in keyof DiagnosticsActions]: jest.Mock };
 
@@ -49,9 +48,11 @@ describe('settings definitions', () => {
 		settings = { ...DEFAULT_SETTINGS };
 		// Stands in for the real body with one marker element, so a test can see
 		// which host it was rendered into and whether it survived.
-		renderRemainder = jest.fn((host: HTMLElement) => {
-			host.createDiv({ cls: 'aar-body-marker' });
+		renderDocs = jest.fn((host: HTMLElement) => {
+			host.createDiv({ cls: 'aar-doc-callout' });
 		});
+		renderFormatRow = jest.fn();
+		renderSummaryRow = jest.fn();
 		renderTranscriptionRest = jest.fn((host: HTMLElement) => {
 			host.createDiv({ cls: 'aar-transcription-rest' });
 		});
@@ -62,15 +63,14 @@ describe('settings definitions', () => {
 		};
 	});
 
-	const createContext = (
-		aliases: readonly string[] = ALIASES,
-	): SettingsDefinitionContext => ({
+	const createContext = (): SettingsDefinitionContext => ({
 		settings,
-		remainder: {
-			name: REMAINDER_NAME,
-			aliases,
-			render: renderRemainder as (host: HTMLElement) => void,
+		sampleRates: [44100, 48000],
+		outputFormat: {
+			renderFormatRow: renderFormatRow as (setting: Setting) => void,
+			renderSummaryRow: renderSummaryRow as (setting: Setting) => void,
 		},
+		renderDocumentationLink: renderDocs as (host: HTMLElement) => void,
 		devices: {
 			inputs: {
 				'mic-1': 'Built-in microphone',
@@ -85,83 +85,44 @@ describe('settings definitions', () => {
 		) => void,
 	});
 
-	const build = (aliases?: readonly string[]): SettingDefinitionItem[] =>
-		buildSettingsDefinitions(createContext(aliases));
-
-	/** The definition hosting the sections still rendered imperatively. */
-	const remainderOf = (
-		definitions: SettingDefinitionItem[],
-	): RenderDefinition => renderDefinitionOf(definitions);
+	const build = (): SettingDefinitionItem[] =>
+		buildSettingsDefinitions(createContext());
 
 	/** The diagnostics group of a built tree. */
 	const diagnosticsGroupOf = (
 		definitions: SettingDefinitionItem[],
 	): GroupDefinition => groupOf(definitions, 'Diagnostics');
 
-	describe('the imperative remainder', () => {
-		it('is named after the plugin and carries the remaining names as aliases', () => {
-			const definition = remainderOf(build());
-
-			expect(definition.name).toBe(REMAINDER_NAME);
-			expect(definition.aliases).toEqual(ALIASES);
-		});
-
-		it('copies the alias list, so the tab keeps its own', () => {
-			const aliases = [...ALIASES];
-			const definition = remainderOf(build(aliases));
-
-			definition.aliases?.push('Injected by the framework');
-
-			expect(aliases).toEqual(ALIASES);
-		});
-
-		it('renders the body into the row the framework hands over', () => {
-			const { setting } = renderThroughFramework(remainderOf(build()));
-
-			expect(renderRemainder).toHaveBeenCalledWith(setting.settingEl);
-			expect(
-				setting.settingEl.querySelector('.aar-body-marker'),
-			).not.toBeNull();
-		});
-
-		it('keeps the body through the framework reset that follows a render', () => {
-			// Rendering into the group's list element (or the tab container)
-			// leaves the tab empty: the framework resets both to the elements it
-			// tracks once every definition has rendered.
-			const { containerEl } = renderThroughFramework(
-				remainderOf(build()),
+	describe('the documentation row', () => {
+		it('renders the callout into the row the framework hands over', () => {
+			const { setting, containerEl } = renderThroughFramework(
+				renderDefinitionOf(build()),
 			);
 
+			expect(renderDocs).toHaveBeenCalledWith(setting.settingEl);
+			// The body survives the framework's post-render pass because it
+			// lives inside the tracked row.
 			expect(
-				containerEl.querySelector('.aar-body-marker'),
+				containerEl.querySelector('.aar-doc-callout'),
 			).not.toBeNull();
-		});
-
-		it('clears the name and description the framework prefilled the row with', () => {
-			const { setting } = renderThroughFramework(remainderOf(build()));
-
-			expect(setting.settingEl.contains(setting.nameEl)).toBe(false);
-			expect(setting.settingEl.contains(setting.descEl)).toBe(false);
-			expect(setting.settingEl.contains(setting.controlEl)).toBe(false);
 		});
 
 		it('marks the row so the stylesheet can strip its setting-row layout', () => {
-			const { setting } = renderThroughFramework(remainderOf(build()));
+			const { setting } = renderThroughFramework(
+				renderDefinitionOf(build()),
+			);
 
 			expect(
 				setting.settingEl.classList.contains(SETTINGS_ROOT_CLASS),
 			).toBe(true);
+			expect(setting.settingEl.contains(setting.nameEl)).toBe(false);
 		});
 
-		it('replaces the body when the framework re-renders the same row', () => {
-			const definition = remainderOf(build());
-			const frame = renderThroughFramework(definition);
-
-			renderThroughFramework(definition, frame);
-
+		it('stays out of the settings search, having nothing to configure', () => {
 			expect(
-				frame.setting.settingEl.querySelectorAll('.aar-body-marker'),
-			).toHaveLength(1);
+				(renderDefinitionOf(build()) as { searchable?: boolean })
+					.searchable,
+			).toBe(false);
 		});
 	});
 

@@ -41,6 +41,15 @@ export interface LegacySettingsHost {
 	setControlValue(key: string, value: unknown): void | Promise<void>;
 }
 
+/**
+ * What this renderer cannot do on its own. Obsidian brings these from 1.13;
+ * below it they are the plugin's own, and the tab passes them in.
+ */
+export interface LegacyRenderExtras {
+	/** Puts the vault's folders under a folder field, as the folder control does. */
+	attachFolderSuggest(inputEl: HTMLInputElement): void;
+}
+
 /** A rendered row, kept so its predicates can be re-evaluated in place. */
 interface RenderedRow {
 	readonly definition: SettingDefinition;
@@ -86,7 +95,10 @@ export class LegacySettingsRenderer {
 	 * Creates a renderer bound to a settings store.
 	 * @param host - Where rendered controls read and write their values
 	 */
-	constructor(private readonly host: LegacySettingsHost) {}
+	constructor(
+		private readonly host: LegacySettingsHost,
+		private readonly extras?: LegacyRenderExtras,
+	) {}
 
 	/**
 	 * Clears the container and renders the definitions into it.
@@ -289,6 +301,24 @@ export class LegacySettingsRenderer {
 			case 'text':
 			case 'textarea': {
 				return this.bindTextControl(setting, control, stored, write);
+			}
+			case 'folder': {
+				let hook: ((disabled: boolean) => void) | undefined;
+				setting.addText((text) => {
+					this.extras?.attachFolderSuggest(text.inputEl);
+					if (control.placeholder) {
+						text.setPlaceholder(control.placeholder);
+					}
+					text.setValue(
+						typeof stored === 'string'
+							? stored
+							: (control.defaultValue ?? ''),
+					).onChange(write);
+					hook = (disabled): void => {
+						text.setDisabled(disabled);
+					};
+				});
+				return hook;
 			}
 			case 'number': {
 				return this.bindNumberControl(setting, control, stored, write);
