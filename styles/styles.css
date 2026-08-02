@@ -846,19 +846,22 @@ input.aar-input-invalid {
    belongs to the framework and the tree can only mark the group around it, so
    the rule reaches the row through the text area it holds. */
 .aar-setting-stacked,
-.aar-stacked-text .setting-item:has(> .setting-item-control > textarea) {
+:has(> .aar-settings-section)
+	.setting-item:has(> .setting-item-control > textarea) {
     display: block;
 }
 
 .aar-setting-stacked .setting-item-control,
-.aar-stacked-text .setting-item:has(> .setting-item-control > textarea) > .setting-item-control {
+:has(> .aar-settings-section)
+	.setting-item:has(> .setting-item-control > textarea)
+	> .setting-item-control {
     width: 100%;
     padding-top: var(--size-4-2);
     justify-content: flex-start;
 }
 
 .aar-setting-stacked .setting-item-control textarea,
-.aar-stacked-text .setting-item-control > textarea {
+:has(> .aar-settings-section) .setting-item-control > textarea {
     width: 100%;
     min-height: 6em;
     resize: vertical;

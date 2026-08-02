@@ -355,9 +355,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					bodyName: 'Terms',
 					bodyDesc:
 						'One term per line. A term may contain spaces; blank lines and case-insensitive duplicates are ignored.',
-					selectionName: 'Use by default',
+					selectionName: 'Dictionary profile',
 					selectionDesc:
-						'Offer this glossary in the Transcribe dialog. Turning it off leaves the run starting from None.',
+						'Glossary offered by default in the Transcribe dialog; None applies no terms.',
 					selectionKey: 'transcriptionDictionaryProfileId',
 					bodyKey: 'dictionaryProfile.terms',
 					visible: (settings) =>
@@ -374,9 +374,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					bodyName: 'Guidance prompt',
 					bodyDesc:
 						'How to divide the recording into chapters. Appended to the fixed base prompt; blank leaves the base behaviour.',
-					selectionName: 'Use by default',
+					selectionName: 'Chapter guidance profile',
 					selectionDesc:
-						'Offer this prompt in the Transcribe dialog. Turning it off leaves the run on the base behaviour.',
+						'Prompt used by default when chapters are generated; None leaves the base behaviour.',
 					selectionKey: 'transcriptionChapterPromptProfileId',
 					bodyKey: 'chapterProfile.prompt',
 					visible: (settings) =>

@@ -829,6 +829,12 @@ function llmGroup(settings: AudioRecorderSettings): SettingDefinitionItem {
 				desc: 'Clean up punctuation and formatting, or summarize the transcript with an LLM.',
 				control: { type: 'toggle', key: 'llmPostProcessEnabled' },
 			},
+			engineChoiceRow(
+				'Engine',
+				'Which engine writes the post-processed transcript. Set it up under Engines.',
+				'llmProvider',
+				needsVendor,
+			),
 			{
 				name: 'Task',
 				desc: 'Clean up, summarize into key points, or apply a custom instruction.',
@@ -863,33 +869,6 @@ function llmGroup(settings: AudioRecorderSettings): SettingDefinitionItem {
 				'llmCustomInstruction',
 				8,
 			),
-			{
-				name: 'LLM provider',
-				desc: 'Vendor the post-processing, chapters and two-pass agents call.',
-				visible: needsVendor,
-				control: {
-					type: 'dropdown',
-					key: 'llmProvider',
-					options: Object.fromEntries(
-						LLM_PROVIDER_OPTIONS.map((option) => [
-							option.value,
-							option.label,
-						]),
-					),
-				},
-			},
-			{
-				name: 'Max output tokens',
-				desc: 'Upper bound on the LLM response length.',
-				visible: needsVendor,
-				control: {
-					type: 'number',
-					key: 'llmMaxTokens',
-					min: MIN_LLM_MAX_TOKENS,
-					max: MAX_LLM_MAX_TOKENS,
-					step: 512,
-				},
-			},
 		],
 	};
 }
@@ -1082,7 +1061,25 @@ function profileGroups(
 			catalogue.add();
 		},
 	);
+	const selectionRow: SettingGroupItem = {
+		name: catalogue.selectionName,
+		aliases: ['profile', 'preset'],
+		desc: catalogue.selectionDesc,
+		visible,
+		control: {
+			type: 'dropdown',
+			key: catalogue.selectionKey,
+			// None is a real answer: a run then applies no profile of this kind.
+			options: {
+				'': 'None',
+				...Object.fromEntries(
+					entries.map((entry) => [entry.id, entry.name]),
+				),
+			},
+		},
+	};
 	return [
+		selectionRow,
 		{
 			type: 'page',
 			name: catalogue.heading,
@@ -1112,6 +1109,39 @@ function profileGroups(
 			],
 		},
 	];
+}
+
+/**
+ * The row that picks which engine does a job. Every job that calls an engine
+ * declares one, right under the switch that turns the job on, so the engine is
+ * settled before anything about how the job runs.
+ * @param name - Row name, e.g. "Chapters engine"
+ * @param desc - What the engine is called for
+ * @param key - Settings key holding the choice
+ * @param visible - Whether the job is on
+ */
+function engineChoiceRow(
+	name: string,
+	desc: string,
+	key: keyof AudioRecorderSettings,
+	visible: () => boolean,
+): SettingGroupItem {
+	return {
+		name,
+		aliases: ['provider', 'vendor', 'model', 'llm'],
+		desc,
+		visible,
+		control: {
+			type: 'dropdown',
+			key,
+			options: Object.fromEntries(
+				LLM_PROVIDER_OPTIONS.map((option) => [
+					option.value,
+					option.label,
+				]),
+			),
+		},
+	};
 }
 
 /**
@@ -1169,6 +1199,20 @@ function enginePage(
 			},
 		});
 		rows.push(modelCataloguePage(settings, models, blocks, declareAddRow));
+	}
+	if (engine.maxTokens) {
+		rows.push({
+			name: 'Max output tokens',
+			aliases: ['length', 'limit', 'response'],
+			desc: 'Longest answer this engine may write, whichever job calls it.',
+			control: {
+				type: 'number',
+				key: engine.maxTokens.key,
+				min: MIN_LLM_MAX_TOKENS,
+				max: MAX_LLM_MAX_TOKENS,
+				step: 512,
+			},
+		});
 	}
 	if (engine.uploadLimitMb > 0) {
 		rows.push({
@@ -1510,6 +1554,13 @@ function transcriptionAdvancedGroup(
 					key: 'transcriptionAdvancedEnabled',
 				},
 			},
+			engineChoiceRow(
+				'Engine',
+				'Which engine the context agents call between the two passes. Set it up under Engines.',
+				'advancedLlmProvider',
+				(): boolean =>
+					advanced() && settings.transcriptionAdvancedEnabled,
+			),
 			{
 				name: 'Second-pass length safeguard',
 				desc: 'Keep the second pass only when its text is at least this fraction of the first. A shorter biased decode lost content, so the run falls back.',
@@ -1689,6 +1740,12 @@ function autoChaptersGroup(
 					key: 'transcriptionAutoChaptersEnabled',
 				},
 			},
+			engineChoiceRow(
+				'Engine',
+				'Which engine divides a transcript into chapters. Set it up under Engines.',
+				'chaptersLlmProvider',
+				enabled,
+			),
 			{
 				name: 'Generate after transcription',
 				desc: 'Generate chapters each time a recording is transcribed.',
@@ -1929,11 +1986,6 @@ export function buildSettingsDefinitions(
 				// Each block holds what belongs to it, catalogues included:
 				// nothing floats on the page beside the section it configures.
 				transcriptionGroup(ctx.settings, enginesPage(ctx)),
-				transcriptionAdvancedGroup(
-					ctx.settings,
-					ctx.profiles.dictionary,
-					ctx.declareListAddRow,
-				),
 				transcriptOutputGroup(ctx.settings),
 				autoChaptersGroup(
 					ctx.settings,
@@ -1941,6 +1993,11 @@ export function buildSettingsDefinitions(
 					ctx.declareListAddRow,
 				),
 				llmGroup(ctx.settings),
+				transcriptionAdvancedGroup(
+					ctx.settings,
+					ctx.profiles.dictionary,
+					ctx.declareListAddRow,
+				),
 			],
 		},
 		audioProcessingPage(ctx.settings),

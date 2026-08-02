@@ -13,6 +13,7 @@ import {
 	removeModelFromList,
 } from 'src/settings/modelList';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
+import { MODEL_SEED_GENERATION } from 'src/constants';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import {
 	DEEPGRAM_MODEL_SUGGESTIONS,
@@ -125,11 +126,22 @@ describe('model list settings defaults', () => {
 	});
 
 	it('keeps a user-saved model list through a merge', () => {
+		// The list is the user's: ids they added survive, and the shipped ones
+		// are topped up once per seed generation rather than on every load.
 		const merged = mergeSettings({
 			deepgramModels: ['nova-3', 'my-model'],
+			modelSeedGeneration: MODEL_SEED_GENERATION,
 		});
+
 		expect(merged.deepgramModels).toEqual(['nova-3', 'my-model']);
-		// An unspecified list still falls back to the seed.
-		expect(merged.whisperApiModels).toEqual(WHISPER_API_MODEL_SUGGESTIONS);
+	});
+
+	it('tops a saved list up with the ids this version ships', () => {
+		const merged = mergeSettings({ deepgramModels: ['my-model'] });
+
+		expect(merged.deepgramModels).toEqual(
+			expect.arrayContaining(['my-model', 'nova-3']),
+		);
+		expect(merged.modelSeedGeneration).toBe(MODEL_SEED_GENERATION);
 	});
 });

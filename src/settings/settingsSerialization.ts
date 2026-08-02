@@ -13,6 +13,14 @@ import { isDeviceSelectionSupported } from '../platform/capabilities';
 import { LLM_VENDORS, selectedLlmVendor } from '../transcription/llm/vendors';
 import { vendorConnection } from '../providers/providers';
 import {
+	DEEPGRAM_MODEL_SUGGESTIONS,
+	GEMINI_MODEL_SUGGESTIONS,
+	LLM_ANTHROPIC_MODEL_SUGGESTIONS,
+	LLM_OPENAI_MODEL_SUGGESTIONS,
+	MODEL_SEED_GENERATION,
+	WHISPER_API_MODEL_SUGGESTIONS,
+} from '../constants';
+import {
 	DEFAULT_SETTINGS,
 	createPlatformScopedDefaults,
 	type AudioRecorderSettings,
@@ -217,6 +225,7 @@ export function mergeSettings(
 		perPlatform,
 	};
 	migrateLegacyLlmSettings(merged, userSettings);
+	migrateModelCatalogues(merged, userSettings);
 	migrateLegacyTranscriptionDictionary(merged, userSettings);
 	migrateAdvancedDictionaryGate(merged, userSettings);
 	return merged;
@@ -369,6 +378,23 @@ function migrateLegacyLlmSettings(
 			merged.geminiModels = [...merged.geminiModels, legacyGeminiModel];
 		}
 	}
+	// Chapters and the two-pass agents used to call whichever engine
+	// post-processing named. They pick their own now, and a stored config keeps
+	// the behaviour it had by starting all three on the engine it named.
+	if (raw.chaptersLlmProvider === undefined) {
+		merged.chaptersLlmProvider = merged.llmProvider;
+	}
+	if (raw.advancedLlmProvider === undefined) {
+		merged.advancedLlmProvider = merged.llmProvider;
+	}
+	// The answer ceiling was one field for whichever engine was selected; every
+	// engine that writes now holds its own, and each starts at that bound.
+	const legacyMaxTokens = raw.llmMaxTokens;
+	if (typeof legacyMaxTokens === 'number' && legacyMaxTokens > 0) {
+		merged.llmOpenAiMaxTokens = legacyMaxTokens;
+		merged.llmAnthropicMaxTokens = legacyMaxTokens;
+		merged.geminiMaxTokens = legacyMaxTokens;
+	}
 	// Drop the superseded flat fields so a later save does not persist them.
 	if (isRecord(merged)) {
 		delete merged.llmApiKey;
@@ -376,7 +402,46 @@ function migrateLegacyLlmSettings(
 		delete merged.llmBaseUrl;
 		delete merged.llmGeminiModel;
 		delete merged.llmGeminiModels;
+		delete merged.llmMaxTokens;
 	}
+}
+
+/**
+ * Tops a saved model catalogue up with the ids this version ships, once per
+ * seed generation. A catalogue is the user's to edit, so this runs only while
+ * the stored generation is behind: an id deleted after the top-up stays
+ * deleted, and one added by hand is never dropped.
+ * @param merged - The merged settings to migrate in place
+ * @param raw - The raw user settings as loaded from disk
+ */
+function migrateModelCatalogues(
+	merged: AudioRecorderSettings,
+	raw: AudioRecorderSettingsInput,
+): void {
+	const stored =
+		typeof raw.modelSeedGeneration === 'number'
+			? raw.modelSeedGeneration
+			: 0;
+	if (stored >= MODEL_SEED_GENERATION) {
+		return;
+	}
+	const seeds: ReadonlyArray<[keyof AudioRecorderSettings, string[]]> = [
+		['whisperApiModels', [...WHISPER_API_MODEL_SUGGESTIONS]],
+		['deepgramModels', [...DEEPGRAM_MODEL_SUGGESTIONS]],
+		['geminiModels', [...GEMINI_MODEL_SUGGESTIONS]],
+		['llmOpenAiModels', [...LLM_OPENAI_MODEL_SUGGESTIONS]],
+		['llmAnthropicModels', [...LLM_ANTHROPIC_MODEL_SUGGESTIONS]],
+	];
+	for (const [key, shipped] of seeds) {
+		const saved = merged[key];
+		if (!Array.isArray(saved)) {
+			continue;
+		}
+		(merged as unknown as Record<string, string[]>)[key] = [
+			...new Set([...(saved as string[]), ...shipped]),
+		];
+	}
+	merged.modelSeedGeneration = MODEL_SEED_GENERATION;
 }
 
 /**

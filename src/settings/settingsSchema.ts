@@ -23,6 +23,7 @@ import {
 	DEFAULT_TRANSCRIPTION_TIMEOUT_MINUTES,
 	TRANSCRIPTION_PROVIDER_IDS,
 	LLM_PROVIDER_IDS,
+	MODEL_SEED_GENERATION,
 	DEFAULT_LLM_ANTHROPIC_BASE_URL,
 	DEFAULT_LLM_OPENAI_MODEL,
 	DEFAULT_LLM_ANTHROPIC_MODEL,
@@ -421,8 +422,12 @@ export interface AudioRecorderSettings {
 	llmSummaryPrompt: string;
 	/** Editable instruction for the 'custom' task (sent verbatim) */
 	llmCustomInstruction: string;
-	/** LLM provider: OpenAI, Anthropic, or Google Gemini */
+	/** Engine that runs the post-processing pass */
 	llmProvider: LlmProviderId;
+	/** Engine that divides a transcript into chapters */
+	chaptersLlmProvider: LlmProviderId;
+	/** Engine the two-pass context agents call */
+	advancedLlmProvider: LlmProviderId;
 	/**
 	 * Anthropic endpoint and key. Every provider keeps its endpoint and its key
 	 * in fields of its own, and a provider that both transcribes and answers
@@ -439,8 +444,20 @@ export interface AudioRecorderSettings {
 	llmAnthropicModel: string;
 	/** Known Anthropic LLM model ids offered in the picker (user-editable) */
 	llmAnthropicModels: string[];
-	/** Maximum output tokens for LLM post-processing */
-	llmMaxTokens: number;
+	/**
+	 * Longest answer each engine is allowed to write. A ceiling belongs to the
+	 * engine that has to honour it, not to one of the jobs that calls it, so
+	 * every engine that writes keeps its own.
+	 */
+	llmOpenAiMaxTokens: number;
+	llmAnthropicMaxTokens: number;
+	geminiMaxTokens: number;
+	/**
+	 * Generation of the shipped model catalogues the saved lists were last
+	 * topped up from. A list is the user's to edit, so new ids are merged in
+	 * once per generation rather than on every load.
+	 */
+	modelSeedGeneration: number;
 	/** Apply browser noise suppression to the input */
 	inputNoiseSuppression: boolean;
 	/** Apply browser echo cancellation to the input */
@@ -513,6 +530,12 @@ export interface LegacyAudioRecorderSettings {
 	 */
 	llmGeminiModel?: string;
 	llmGeminiModels?: string[];
+	/**
+	 * Pre-registry single answer ceiling, held for whichever engine was
+	 * selected. Copied onto every engine that writes, so a job keeps the bound
+	 * it had whichever engine it now calls.
+	 */
+	llmMaxTokens?: number;
 }
 
 /**
@@ -643,13 +666,18 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	llmSummaryPrompt: DEFAULT_LLM_SUMMARY_PROMPT,
 	llmCustomInstruction: DEFAULT_LLM_CUSTOM_INSTRUCTION,
 	llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+	chaptersLlmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+	advancedLlmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
 	anthropicBaseUrl: DEFAULT_LLM_ANTHROPIC_BASE_URL,
 	anthropicApiKey: '',
 	llmOpenAiModel: DEFAULT_LLM_OPENAI_MODEL,
 	llmOpenAiModels: [...LLM_OPENAI_MODEL_SUGGESTIONS],
 	llmAnthropicModel: DEFAULT_LLM_ANTHROPIC_MODEL,
 	llmAnthropicModels: [...LLM_ANTHROPIC_MODEL_SUGGESTIONS],
-	llmMaxTokens: DEFAULT_LLM_MAX_TOKENS,
+	llmOpenAiMaxTokens: DEFAULT_LLM_MAX_TOKENS,
+	llmAnthropicMaxTokens: DEFAULT_LLM_MAX_TOKENS,
+	geminiMaxTokens: DEFAULT_LLM_MAX_TOKENS,
+	modelSeedGeneration: MODEL_SEED_GENERATION,
 	inputNoiseSuppression: true,
 	inputEchoCancellation: true,
 	inputAutoGainControl: true,

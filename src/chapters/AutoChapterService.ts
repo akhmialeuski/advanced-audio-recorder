@@ -17,6 +17,7 @@ import { PLUGIN_LOG_PREFIX } from '../constants';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import { resolveChapterGuidance } from '../settings/chapterPromptProfiles';
 import { createLlmProvider } from '../transcription/factories';
+import { vendorMaxTokens } from '../providers/providers';
 import type { LlmProvider } from '../transcription/llm/LlmProvider';
 import { runLlmStep, type LlmCostSink } from '../transcription/llm/llmStep';
 import type { Transcript } from '../transcription/TranscriptTypes';
@@ -230,7 +231,10 @@ export class AutoChapterService {
 				step: 'autoChapters',
 				llm,
 				prompt,
-				maxTokens: settings.llmMaxTokens,
+				maxTokens: vendorMaxTokens(
+					settings,
+					settings.chaptersLlmProvider,
+				),
 				settings,
 				durationSeconds,
 				costSink: this.costSink,

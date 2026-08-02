@@ -17,6 +17,7 @@ import {
 	mergeSettings,
 	mergeSettingsAsync,
 } from 'src/settings/settingsSerialization';
+import { MODEL_SEED_GENERATION } from 'src/constants';
 
 describe('Settings', () => {
 	describe('DEFAULT_SETTINGS', () => {
@@ -363,13 +364,18 @@ describe('Settings', () => {
 				llmSummaryPrompt: 'summary base',
 				llmCustomInstruction: 'do it',
 				llmProvider: 'anthropic',
+				chaptersLlmProvider: 'anthropic',
+				advancedLlmProvider: 'anthropic',
 				anthropicBaseUrl: 'https://api.anthropic.com/v1',
 				anthropicApiKey: 'ak-test',
 				llmOpenAiModel: 'gpt-4o',
 				llmOpenAiModels: ['gpt-4o', 'gpt-4o-mini'],
 				llmAnthropicModel: 'claude-opus-4-8',
 				llmAnthropicModels: ['claude-opus-4-8', 'claude-sonnet-4-6'],
-				llmMaxTokens: 2048,
+				llmOpenAiMaxTokens: 2048,
+				llmAnthropicMaxTokens: 2048,
+				geminiMaxTokens: 2048,
+				modelSeedGeneration: MODEL_SEED_GENERATION,
 				inputNoiseSuppression: false,
 				inputEchoCancellation: false,
 				inputAutoGainControl: false,
@@ -418,6 +424,8 @@ describe('Settings', () => {
 			// Pre-rework data held one flat key and model for the stored provider.
 			const legacy = {
 				llmProvider: 'anthropic',
+				chaptersLlmProvider: 'anthropic',
+				advancedLlmProvider: 'anthropic',
 				llmApiKey: 'ak-legacy',
 				llmModel: 'claude-legacy',
 			} as unknown as AudioRecorderSettingsInput;

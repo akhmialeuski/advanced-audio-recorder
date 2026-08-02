@@ -680,8 +680,24 @@ describe('settings definitions', () => {
 			expect(listOf('Dictionary profiles').onDelete).toBeUndefined();
 		});
 
+		/**
+		 * A profile's page under one catalogue. Both catalogues are seeded with
+		 * the same entries here, so the lookup has to say which one it means.
+		 * @param heading - The catalogue holding it
+		 * @param name - The profile's name
+		 */
+		const profilePageOf = (
+			heading: string,
+			name: string,
+		): GroupDefinition =>
+			pageOf(
+				listIn(pageOf(build(), heading))
+					.items as unknown as SettingDefinitionItem[],
+				name,
+			);
+
 		it('edits each profile on its own page, keyed by that profile', () => {
-			const page = pageOf(build(), 'Standup');
+			const page = profilePageOf('Dictionary profiles', 'Standup');
 
 			expect(rowIn(page, 'Terms').control).toEqual(
 				expect.objectContaining({
@@ -700,7 +716,7 @@ describe('settings definitions', () => {
 		it('lays the body out under its name across the row', () => {
 			// A glossary is edited in paragraphs; the control column a row gives
 			// a text area by default is a few characters wide.
-			const page = pageOf(build(), 'Legal');
+			const page = profilePageOf('Dictionary profiles', 'Legal');
 			const stacked = (page.items as GroupDefinition[]).find((item) =>
 				(item.cls ?? '').split(' ').includes(STACKED_TEXT_CLASS),
 			);
@@ -711,7 +727,7 @@ describe('settings definitions', () => {
 		});
 
 		it('renames and deletes from the page of the profile itself', () => {
-			const page = pageOf(build(), 'Legal');
+			const page = profilePageOf('Dictionary profiles', 'Legal');
 
 			rowIn(page, 'Rename profile').action?.(createDiv(), 0);
 			rowIn(page, 'Delete profile').action?.(createDiv(), 0);
@@ -772,18 +788,26 @@ describe('settings definitions', () => {
 			// A provider that both transcribes and answers prompts keeps one
 			// key and one endpoint, with a catalogue per capability.
 			// One catalogue for both jobs, because the ids are the same family.
+			// One catalogue for both jobs, and the ceiling of the engine that
+			// has to honour it.
 			expect(pageEntryNames('Google Gemini')).toEqual([
 				'Base URL',
 				'Google Gemini API key',
 				'Model',
 				'Model',
+				'Max output tokens',
 			]);
 		});
 
 		it('leaves each use holding only the choice', () => {
 			expect(childNamesOf('Transcription')).toContain('Engine');
-			expect(childNamesOf('LLM post-processing')).toEqual(
-				expect.arrayContaining(['LLM provider', 'Max output tokens']),
+			// The engine is picked here; how much it may write is its own.
+			expect(childNamesOf('LLM post-processing').slice(0, 2)).toEqual([
+				'Enable LLM post-processing',
+				'Engine',
+			]);
+			expect(childNamesOf('LLM post-processing')).not.toContain(
+				'Max output tokens',
 			);
 			// The key and the endpoint are the provider's, not the use's.
 			expect(childNamesOf('LLM post-processing')).not.toContain(

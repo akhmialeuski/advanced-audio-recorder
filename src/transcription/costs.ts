@@ -24,6 +24,7 @@ import {
 } from './advanced/advancedBias';
 import { LLM_TASK_LABELS } from '../settings/labels';
 import { llmVendor, selectedLlmVendor } from './llm/vendors';
+import { vendorMaxTokens } from '../providers/providers';
 import {
 	matchRate,
 	selectedTranscriptionEngine,
@@ -239,7 +240,7 @@ function estimatedLlmUsage(
 	const ratio = LLM_OUTPUT_RATIO[settings.llmPostProcessTask] ?? 1;
 	const outputTokens = Math.min(
 		Math.ceil(transcriptTokens * ratio),
-		settings.llmMaxTokens,
+		vendorMaxTokens(settings, settings.llmProvider),
 	);
 	return { inputTokens: transcriptTokens, outputTokens };
 }
@@ -283,7 +284,7 @@ function estimatedChaptersUsage(
 	);
 	const outputTokens = Math.min(
 		Math.ceil(transcriptTokens * CHAPTERS_OUTPUT_TOKEN_RATIO),
-		settings.llmMaxTokens,
+		vendorMaxTokens(settings, settings.llmProvider),
 	);
 	return { inputTokens: transcriptTokens, outputTokens };
 }

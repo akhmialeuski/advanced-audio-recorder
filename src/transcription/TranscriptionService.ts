@@ -69,6 +69,7 @@ import {
 	SPEAKER_PROFILES,
 } from '../settings/speakerProfiles';
 import { createLlmProvider, createTranscriptionProvider } from './factories';
+import { vendorMaxTokens } from '../providers/providers';
 import { effectiveDiarize } from './providers/capabilities';
 import type { LlmProvider } from './llm/LlmProvider';
 import { runLlmStep, type LlmCostSink } from './llm/llmStep';
@@ -955,7 +956,7 @@ export class TranscriptionService {
 			step: 'postProcess',
 			llm,
 			prompt,
-			maxTokens: settings.llmMaxTokens,
+			maxTokens: vendorMaxTokens(settings, settings.llmProvider),
 			settings,
 			// The transcript is what the pass reads, so its extent sizes the
 			// estimate exactly as the pre-run breakdown does.

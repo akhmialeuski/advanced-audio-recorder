@@ -367,6 +367,13 @@ export const DEFAULT_WHISPER_API_MODEL = 'whisper-1';
  * incompatible with the timed output the plugin requests. As of July 2026,
  * `whisper-1` remains OpenAI's only model that supports it.)
  */
+/**
+ * Generation of the shipped model catalogues. Raised whenever a seed list
+ * gains ids worth offering, which tops up the saved lists once: a list stays
+ * the user's to edit, so an id deleted after that stays deleted.
+ */
+export const MODEL_SEED_GENERATION = 2;
+
 export const WHISPER_API_MODEL_SUGGESTIONS = [
 	'whisper-1',
 	'whisper-large-v3',

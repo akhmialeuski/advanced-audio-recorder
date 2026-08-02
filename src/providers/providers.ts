@@ -139,6 +139,19 @@ export interface EngineDescriptor {
 	 * a fact about the engine rather than a setting to hide per provider.
 	 */
 	readonly uploadLimitMb: number;
+	/**
+	 * Where the longest answer this engine may write is stored, or null for one
+	 * that writes nothing. A ceiling belongs to the engine that honours it, not
+	 * to a job that calls it.
+	 */
+	readonly maxTokens: EngineMaxTokens | null;
+}
+
+/** Where an engine's answer ceiling is stored. */
+export interface EngineMaxTokens {
+	readonly key: keyof AudioRecorderSettings;
+	readonly get: (settings: AudioRecorderSettings) => number;
+	readonly set: (settings: AudioRecorderSettings, value: number) => void;
 }
 
 /** Every account, keyed by id. */
@@ -233,6 +246,7 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 			docLabel: 'Whisper API models',
 			docUrl: WHISPER_API_MODELS_DOC_URL,
 		},
+		maxTokens: null,
 	},
 	[ENGINE_IDS.OPENAI_LLM]: {
 		id: ENGINE_IDS.OPENAI_LLM,
@@ -254,6 +268,11 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 				'Pick an OpenAI model (e.g. gpt-5.6-sol, gpt-5.6-luna).',
 			docLabel: 'OpenAI models',
 			docUrl: OPENAI_MODELS_DOC_URL,
+		},
+		maxTokens: {
+			key: 'llmOpenAiMaxTokens',
+			get: (settings) => settings.llmOpenAiMaxTokens,
+			set: (settings, value) => (settings.llmOpenAiMaxTokens = value),
 		},
 	},
 	[ENGINE_IDS.DEEPGRAM]: {
@@ -277,6 +296,7 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 			docLabel: 'Deepgram model list',
 			docUrl: DEEPGRAM_MODELS_DOC_URL,
 		},
+		maxTokens: null,
 	},
 	[ENGINE_IDS.GEMINI]: {
 		id: ENGINE_IDS.GEMINI,
@@ -301,6 +321,11 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 			docLabel: 'Gemini model list',
 			docUrl: GEMINI_MODELS_DOC_URL,
 		},
+		maxTokens: {
+			key: 'geminiMaxTokens',
+			get: (settings) => settings.geminiMaxTokens,
+			set: (settings, value) => (settings.geminiMaxTokens = value),
+		},
 	},
 	[ENGINE_IDS.ANTHROPIC]: {
 		id: ENGINE_IDS.ANTHROPIC,
@@ -323,6 +348,11 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 			docLabel: 'Anthropic models',
 			docUrl: ANTHROPIC_MODELS_DOC_URL,
 		},
+		maxTokens: {
+			key: 'llmAnthropicMaxTokens',
+			get: (settings) => settings.llmAnthropicMaxTokens,
+			set: (settings, value) => (settings.llmAnthropicMaxTokens = value),
+		},
 	},
 	[ENGINE_IDS.LOCAL_WHISPER]: {
 		id: ENGINE_IDS.LOCAL_WHISPER,
@@ -335,6 +365,7 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 		transcriptionId: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
 		llmId: null,
 		uploadLimitMb: 0,
+		maxTokens: null,
 	},
 };
 
@@ -392,4 +423,18 @@ export function vendorConnection(vendorId: LlmProviderId): ProviderConnection {
 		throw new Error(`No account declared for LLM vendor "${vendorId}"`);
 	}
 	return connection;
+}
+
+/**
+ * The longest answer the engine behind a vendor id may write.
+ * @param settings - Plugin settings
+ * @param vendorId - Id stored for the job being run
+ * @returns That engine's ceiling, or 0 when it declares none
+ */
+export function vendorMaxTokens(
+	settings: AudioRecorderSettings,
+	vendorId: LlmProviderId,
+): number {
+	const maxTokens = engineOfVendor(vendorId)?.maxTokens;
+	return maxTokens ? maxTokens.get(settings) : 0;
 }
