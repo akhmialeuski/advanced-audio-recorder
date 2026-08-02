@@ -78,12 +78,10 @@ import {
 	type Profile,
 	type ProfileList,
 } from './profiles';
+import { PROFILE_KINDS, type ProfileKind } from './profileKinds';
 import { ProfileNameModal } from '../ui/ProfileNameModal';
 import { closeSettingsPage } from '../obsidian/settingsNavigation';
 import { ENGINES, type ProviderModels } from '../providers/providers';
-import { parseDictionary } from '../transcription/dictionary';
-import { DICTIONARY_PROFILES } from './dictionaryProfiles';
-import { CHAPTER_PROMPT_PROFILES } from './chapterPromptProfiles';
 
 /**
  * The half of an engine or vendor descriptor a saved model list is edited
@@ -130,30 +128,6 @@ function modelListAccess(models: ProviderModels): ModelListAccess {
 		model: models.model,
 		setModel: models.setModel,
 	};
-}
-
-/**
- * What a dictionary profile's entry says about it without being opened: the
- * number of terms a run would actually bias toward, counted the way the run
- * counts them, so a body of blank lines does not read as a full glossary.
- * @param terms - The profile's raw term text
- */
-function termCountSummary(terms: string): string {
-	const count = parseDictionary(terms).length;
-	if (count === 0) {
-		return 'No terms';
-	}
-	return count === 1 ? '1 term' : `${String(count)} terms`;
-}
-
-/**
- * What a chapter-guidance profile's entry says about it. The body is a
- * paragraph of instructions, so the entry reports whether there is one rather
- * than quoting the start of it.
- * @param prompt - The profile's guidance prompt
- */
-function promptSummary(prompt: string): string {
-	return prompt.trim() === '' ? 'No prompt' : 'Prompt set';
 }
 
 const EMPTY_DEVICE_SNAPSHOT: AudioInputDeviceSnapshot = {
@@ -347,46 +321,10 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					);
 				},
 			},
-			profiles: {
-				dictionary: this.profileCatalogue(DICTIONARY_PROFILES, {
-					heading: 'Dictionary profiles',
-					selectorDesc:
-						'Named glossaries of names, abbreviations, and domain terms. Pick one, or None, per run in the Transcribe dialog.',
-					bodyName: 'Terms',
-					bodyDesc:
-						'One term per line. A term may contain spaces; blank lines and case-insensitive duplicates are ignored.',
-					selectionName: 'Dictionary profile',
-					selectionDesc:
-						'Glossary offered by default in the Transcribe dialog; None applies no terms.',
-					selectionKey: 'transcriptionDictionaryProfileId',
-					bodyKey: 'dictionaryProfile.terms',
-					visible: (settings) =>
-						settings.transcriptionEnabled &&
-						settings.transcriptionAdvancedSettingsEnabled,
-					body: (profile) => profile.terms,
-					setBody: (profile, value) => (profile.terms = value),
-					summary: (profile) => termCountSummary(profile.terms),
-				}),
-				chapters: this.profileCatalogue(CHAPTER_PROMPT_PROFILES, {
-					heading: 'Chapter guidance profiles',
-					selectorDesc:
-						'Named prompts describing how to divide a recording into chapters. The response format is fixed, so editing one is safe.',
-					bodyName: 'Guidance prompt',
-					bodyDesc:
-						'How to divide the recording into chapters. Appended to the fixed base prompt; blank leaves the base behaviour.',
-					selectionName: 'Chapter guidance profile',
-					selectionDesc:
-						'Prompt used by default when chapters are generated; None leaves the base behaviour.',
-					selectionKey: 'transcriptionChapterPromptProfileId',
-					bodyKey: 'chapterProfile.prompt',
-					visible: (settings) =>
-						settings.transcriptionEnabled &&
-						settings.transcriptionAutoChaptersEnabled,
-					body: (profile) => profile.prompt,
-					setBody: (profile, value) => (profile.prompt = value),
-					summary: (profile) => promptSummary(profile.prompt),
-				}),
-			},
+			// Every kind of profile is built the same way, from the one list
+			// that describes them, so a kind added there arrives with the same
+			// rules rather than with a block of its own here.
+			profiles: PROFILE_KINDS.map((kind) => this.profileCatalogue(kind)),
 			transcriptionBlocks: {
 				renderProviderKey: (host, engineId): void => {
 					this.renderTranscriptionBlock(host, (ctx) => {
@@ -709,37 +647,21 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * Builds one profile catalogue for the definitions: the list's copy, the
-	 * control keys its editor rows bind to, and the add and remove edits, all
-	 * over the profile list the caller names.
-	 * @param list - Where this kind of profile lives in settings
-	 * @param copy - The catalogue's copy, keys, visibility, and body accessors
+	 * One profile catalogue for the definitions: the kind's copy, the control
+	 * keys its rows bind to, and the add, rename and remove edits, all over the
+	 * list the kind names. Every kind goes through here, so they cannot drift.
+	 * @param kind - The kind of profile being described
 	 */
-	private profileCatalogue<T extends Profile>(
-		list: ProfileList<T>,
-		copy: {
-			heading: string;
-			selectorDesc: string;
-			bodyName: string;
-			bodyDesc: string;
-			selectionName: string;
-			selectionDesc: string;
-			selectionKey: string;
-			bodyKey: string;
-			visible: (settings: AudioRecorderSettings) => boolean;
-			body: (profile: T) => string;
-			setBody: (profile: T, value: string) => void;
-			summary: (profile: T) => string;
-		},
-	): ProfileCatalogue {
-		this.profileAccess.set(copy.bodyKey, {
-			list: list,
-			read: (profile) => copy.body(profile as T),
+	private profileCatalogue(kind: ProfileKind): ProfileCatalogue {
+		const list = kind.list;
+		this.profileAccess.set(kind.bodyKey, {
+			list,
+			read: (profile) => kind.body(profile),
 			write: (profile, value) => {
-				copy.setBody(profile as T, value);
+				kind.setBody(profile, value);
 			},
 		});
-		this.profileSelections.set(copy.selectionKey, list);
+		this.profileSelections.set(kind.selectionKey, list);
 		const rejection = (id: string, name: string): string | undefined => {
 			if (name === '') {
 				return 'Give the profile a name.';
@@ -751,24 +673,25 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				: undefined;
 		};
 		return {
-			heading: copy.heading,
-			selectorDesc: copy.selectorDesc,
-			bodyName: copy.bodyName,
-			bodyDesc: copy.bodyDesc,
-			selectionName: copy.selectionName,
-			selectionDesc: copy.selectionDesc,
-			selectionKey: copy.selectionKey,
-			bodyKey: copy.bodyKey,
+			section: kind.section,
+			heading: kind.heading,
+			selectorDesc: kind.catalogueDesc,
+			bodyName: kind.bodyName,
+			bodyDesc: kind.bodyDesc,
+			selectionName: kind.selectionName,
+			selectionDesc: kind.selectionDesc,
+			selectionKey: kind.selectionKey,
+			bodyKey: kind.bodyKey,
 			entries: (settings) =>
 				list.get(settings).map((profile) => ({
 					id: profile.id,
 					name: profile.name,
 					summary:
 						profile.id === list.selectedId(settings)
-							? `In use, ${copy.summary(profile)}`
-							: copy.summary(profile),
+							? `In use, ${kind.summary(profile)}`
+							: kind.summary(profile),
 				})),
-			visible: copy.visible,
+			visible: kind.visible,
 			add: (): void => {
 				const created = addProfile(
 					list.get(this.plugin.settings),
@@ -780,7 +703,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					),
 				);
 				list.set(this.plugin.settings, created);
-				// Adding a glossary must not silently change which one a run
+				// Adding a profile must not silently change which one a run
 				// uses; only a catalogue with nothing usable selected adopts it.
 				if (
 					effectiveProfileId(

@@ -24,6 +24,7 @@ import {
 	DEFAULT_SETTINGS,
 	type AudioRecorderSettings,
 } from 'src/settings/settingsSchema';
+import type { ProfileSection } from 'src/settings/profileKinds';
 import type { ProviderModels } from 'src/providers/providers';
 import {
 	CLEANUP_HIGHPASS_STEP_HZ,
@@ -108,10 +109,15 @@ describe('settings definitions', () => {
 				deviceId === 'iface-1',
 		},
 		diagnostics: diagnostics,
-		profiles: {
-			dictionary: catalogue('Dictionary profiles', 'Terms'),
-			chapters: catalogue('Chapter guidance profiles', 'Guidance prompt'),
-		},
+		profiles: [
+			catalogue('advanced', 'Dictionary profiles', 'Terms'),
+			catalogue(
+				'chapters',
+				'Chapter guidance profiles',
+				'Guidance prompt',
+			),
+			catalogue('transcription', 'Participant profiles', 'Participants'),
+		],
 		declareListAddRow,
 		transcriptionBlocks: {
 			renderProviderKey: renderTranscriptionRest as (
@@ -132,19 +138,18 @@ describe('settings definitions', () => {
 
 	/** A profile catalogue whose edits are spies. */
 	const catalogue = (
+		section: ProfileSection,
 		heading: string,
 		bodyName: string,
 	): ProfileCatalogue => ({
+		section,
 		heading,
 		selectorDesc: 'Pick the profile to use.',
 		bodyName,
 		bodyDesc: 'The profile body.',
 		selectionName: 'Use by default',
 		selectionDesc: 'Offer this profile in the Transcribe dialog.',
-		selectionKey:
-			heading === 'Dictionary profiles'
-				? 'transcriptionDictionaryProfileId'
-				: 'transcriptionChapterPromptProfileId',
+		selectionKey: `${heading} id`,
 		bodyKey: `${heading}.body`,
 		entries: () => profileEntries,
 		visible: () => true,
@@ -307,7 +312,11 @@ describe('settings definitions', () => {
 			settings.transcriptionEnabled = true;
 			settings.whisperApiModels = ['whisper-1'];
 			settings.whisperApiModel = 'whisper-1';
-			settings.transcriptionDictionaryProfileId = 'b';
+			// The test catalogue keys its selection by heading, so the entry
+			// reads the same field the tree binds the picker to.
+			(settings as unknown as Record<string, string>)[
+				'Dictionary profiles id'
+			] = 'b';
 
 			// The value a page holds belongs on the entry, so opening it is a
 			// choice rather than the only way to see what is set.
@@ -708,7 +717,7 @@ describe('settings definitions', () => {
 			expect(rowIn(page, 'Use by default').control).toEqual(
 				expect.objectContaining({
 					type: 'toggle',
-					key: 'transcriptionDictionaryProfileId#a',
+					key: 'Dictionary profiles id#a',
 				}),
 			);
 		});

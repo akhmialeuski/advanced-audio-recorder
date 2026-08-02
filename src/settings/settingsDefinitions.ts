@@ -60,6 +60,7 @@ import {
 	LLM_TASK_OPTIONS,
 	TRANSCRIPTION_PROVIDER_OPTIONS,
 } from './labels';
+import type { ProfileSection } from './profileKinds';
 import {
 	ENGINES,
 	ENGINE_ORDER,
@@ -344,11 +345,12 @@ export interface SettingsDefinitionContext {
 	readonly settings: AudioRecorderSettings;
 	/** Input devices and their channel capability, as last enumerated. */
 	readonly devices: DeviceOptions;
-	/** The dictionary and chapter-guidance profile catalogues. */
-	readonly profiles: {
-		readonly dictionary: ProfileCatalogue;
-		readonly chapters: ProfileCatalogue;
-	};
+	/**
+	 * Every profile catalogue, in the order their kinds are declared. A block
+	 * takes the ones whose section names it, so a kind added to the registry
+	 * needs no branch here.
+	 */
+	readonly profiles: readonly ProfileCatalogue[];
 	/**
 	 * Whether a list in this tree needs a labelled add row of its own. False
 	 * wherever the renderer already draws one, which the render mode answers.
@@ -885,6 +887,8 @@ export interface ProfileEntry {
 
 /** One profile catalogue, as the definitions address it. */
 export interface ProfileCatalogue {
+	/** Block of the settings this catalogue is shown in. */
+	readonly section: ProfileSection;
 	/** Heading of the catalogue page, e.g. "Dictionary profiles". */
 	readonly heading: string;
 	/** Description of the entry that opens the catalogue. */
@@ -1023,6 +1027,23 @@ function profilePage(
 			},
 		],
 	};
+}
+
+/**
+ * Every catalogue one block of the settings shows, each as the same pair: the
+ * row that picks the profile in use, and the entry that manages them.
+ * @param ctx - Everything the tree reads from the tab
+ * @param section - The block being built
+ */
+function profileCatalogues(
+	ctx: SettingsDefinitionContext,
+	section: ProfileSection,
+): SettingGroupItem[] {
+	return ctx.profiles
+		.filter((catalogue) => catalogue.section === section)
+		.flatMap((catalogue) =>
+			profileGroups(ctx.settings, catalogue, ctx.declareListAddRow),
+		);
 }
 
 /**
@@ -1390,9 +1411,10 @@ function modelCataloguePage(
  * @param blocks - The parts of the section that are not definitions yet
  */
 function transcriptionGroup(
-	settings: AudioRecorderSettings,
+	ctx: SettingsDefinitionContext,
 	enginesEntry: SettingGroupItem,
 ): SettingDefinitionItem {
+	const settings = ctx.settings;
 	const enabled = (): boolean => settings.transcriptionEnabled;
 	const canDiarize = (): boolean =>
 		providerSupportsDiarization(settings.transcriptionProvider);
@@ -1455,6 +1477,9 @@ function transcriptionGroup(
 					disabled: (): boolean => !canDiarize(),
 				},
 			},
+			// The rosters a run labels speakers with, beside the switch that
+			// asks for the labels.
+			...profileCatalogues(ctx, 'transcription'),
 			{
 				name: 'Word-level timestamps',
 				desc: 'Request per-word timing when the provider supports it. Recorded in JSON file output only.',
@@ -1524,10 +1549,10 @@ function transcriptionEngineRow(
  * @param settings - Live settings, read by the predicates
  */
 function transcriptionAdvancedGroup(
-	settings: AudioRecorderSettings,
-	dictionary: ProfileCatalogue,
-	declareAddRow: boolean,
+	ctx: SettingsDefinitionContext,
+	section: ProfileSection,
 ): SettingDefinitionItem {
+	const settings = ctx.settings;
 	const advanced = (): boolean =>
 		settings.transcriptionEnabled &&
 		settings.transcriptionAdvancedSettingsEnabled;
@@ -1574,9 +1599,8 @@ function transcriptionAdvancedGroup(
 					step: ADVANCED_SECOND_PASS_RATIO_STEP,
 				},
 			},
-			// The glossaries this block biases a run with, inside the block
-			// that gates them rather than beside it.
-			...profileGroups(settings, dictionary, declareAddRow),
+			// The profiles this block owns, inside the block that gates them.
+			...profileCatalogues(ctx, section),
 		],
 	};
 }
@@ -1718,10 +1742,10 @@ function transcriptOutputGroup(
  * @param settings - Live settings, read by the predicates
  */
 function autoChaptersGroup(
-	settings: AudioRecorderSettings,
-	catalogue: ProfileCatalogue,
-	declareAddRow: boolean,
+	ctx: SettingsDefinitionContext,
+	section: ProfileSection,
 ): SettingDefinitionItem {
+	const settings = ctx.settings;
 	const enabled = (): boolean =>
 		settings.transcriptionEnabled &&
 		settings.transcriptionAutoChaptersEnabled;
@@ -1755,9 +1779,8 @@ function autoChaptersGroup(
 					key: 'transcriptionAutoChaptersOnTranscribe',
 				},
 			},
-			// The guidance prompts a division is steered by, inside the block
-			// that turns the division on.
-			...profileGroups(settings, catalogue, declareAddRow),
+			// The profiles this block owns, inside the block that gates them.
+			...profileCatalogues(ctx, section),
 		],
 	};
 }
@@ -1985,19 +2008,11 @@ export function buildSettingsDefinitions(
 			items: [
 				// Each block holds what belongs to it, catalogues included:
 				// nothing floats on the page beside the section it configures.
-				transcriptionGroup(ctx.settings, enginesPage(ctx)),
+				transcriptionGroup(ctx, enginesPage(ctx)),
 				transcriptOutputGroup(ctx.settings),
-				autoChaptersGroup(
-					ctx.settings,
-					ctx.profiles.chapters,
-					ctx.declareListAddRow,
-				),
+				autoChaptersGroup(ctx, 'chapters'),
 				llmGroup(ctx.settings),
-				transcriptionAdvancedGroup(
-					ctx.settings,
-					ctx.profiles.dictionary,
-					ctx.declareListAddRow,
-				),
+				transcriptionAdvancedGroup(ctx, 'advanced'),
 			],
 		},
 		audioProcessingPage(ctx.settings),
