@@ -1325,6 +1325,9 @@ function transcriptionGroup(
 				desc: 'Transcribe recordings to text, with optional speaker labels and LLM post-processing.',
 				control: { type: 'toggle', key: 'transcriptionEnabled' },
 			},
+			// The first thing to settle once transcription is on, so it opens
+			// the block rather than sitting below the run options.
+			transcriptionEnginePage(settings, blocks, declareAddRow),
 			{
 				name: 'Transcribe after recording',
 				desc: 'Automatically transcribe each recording once it is saved.',
@@ -1340,7 +1343,6 @@ function transcriptionGroup(
 					key: 'transcriptionShowCostEstimates',
 				},
 			},
-			transcriptionEnginePage(settings, blocks, declareAddRow),
 			{
 				name: 'Language',
 				aliases: ['locale', 'spoken language'],

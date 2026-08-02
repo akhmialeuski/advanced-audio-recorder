@@ -758,6 +758,15 @@ describe('settings definitions', () => {
 			);
 		});
 
+		it('opens the transcription block with the engine', () => {
+			// The first thing to settle once transcription is on: what turns
+			// speech into text, before how the run behaves.
+			expect(childNamesOf('Transcription').slice(0, 2)).toEqual([
+				'Enable transcription',
+				'Engine',
+			]);
+		});
+
 		it('keeps the engine and its own settings on one page', () => {
 			// The picker used to sit five rows above the fields it decides,
 			// with the settings that hold for every engine in between.
