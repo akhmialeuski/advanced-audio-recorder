@@ -64,14 +64,10 @@ import { DOCS_URL, FORMAT_WAV } from '../constants';
 import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
 import { SystemInfoModal } from '../diagnostics/SystemInfoModal';
 import {
-	renderCloudEngineSettings,
 	renderLocalWhisperSettings,
-	renderWhisperChunkSize,
+	renderProviderKeyField,
 } from './sections/transcriptionEngineSection';
-import { renderLlmSection } from './sections/llmSettingsSection';
-import { selectedTranscriptionEngine } from '../transcription/providers/engines';
 import { addModelToList, removeModelFromList } from './modelList';
-import { selectedLlmVendor } from '../transcription/llm/vendors';
 import {
 	addProfile,
 	effectiveProfileId,
@@ -84,6 +80,7 @@ import {
 } from './profiles';
 import { ProfileNameModal } from '../ui/ProfileNameModal';
 import { closeSettingsPage } from '../obsidian/settingsNavigation';
+import { PROVIDERS, type ProviderModels } from '../providers/providers';
 import { parseDictionary } from '../transcription/dictionary';
 import { DICTIONARY_PROFILES } from './dictionaryProfiles';
 import { CHAPTER_PROMPT_PROFILES } from './chapterPromptProfiles';
@@ -99,7 +96,6 @@ interface ModelListAccess {
 	setModel(settings: AudioRecorderSettings, id: string): void;
 }
 import { ModelIdModal } from '../ui/ModelIdModal';
-import { TRANSCRIPTION_PROVIDER_IDS } from '../constants';
 import type { SettingsSectionContext } from './settingControls';
 
 import {
@@ -119,6 +115,21 @@ const TEST_RECORDING_DURATION_MS = 5000;
 export interface AudioRecorderPluginInterface extends Plugin {
 	settings: AudioRecorderSettings;
 	saveSettings(): Promise<void>;
+}
+
+/**
+ * A catalogue's fields, as the list edits read and write them. The page hands
+ * back the provider capability it belongs to, so the tab edits any catalogue
+ * through one path instead of resolving "the selected engine" first.
+ * @param models - The catalogue's own settings fields
+ */
+function modelListAccess(models: ProviderModels): ModelListAccess {
+	return {
+		models: models.models,
+		setModels: models.setModels,
+		model: models.model,
+		setModel: models.setModel,
+	};
 }
 
 /**
@@ -377,61 +388,28 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				}),
 			},
 			transcriptionBlocks: {
-				renderEngineFields: (host): void => {
+				renderProviderKey: (host, providerId): void => {
 					this.renderTranscriptionBlock(host, (ctx) => {
-						const engine = selectedTranscriptionEngine(
-							ctx.settings,
-						);
-						if (
-							ctx.settings.transcriptionProvider ===
-							TRANSCRIPTION_PROVIDER_IDS.WHISPER_API
-						) {
-							renderWhisperChunkSize(ctx);
-						}
-						if (engine.credentials) {
-							renderCloudEngineSettings(ctx, engine.credentials);
-						} else {
-							renderLocalWhisperSettings(ctx);
-						}
+						renderProviderKeyField(ctx, PROVIDERS[providerId]);
 					});
 				},
-				addModel: (): void => {
-					const access = this.engineModelAccess();
-					if (access) {
-						this.addModelTo(access);
-					}
-				},
-				removeModel: (index): void => {
-					const access = this.engineModelAccess();
-					if (access) {
-						this.removeModelFrom(access, index);
-					}
-				},
-				selectModel: (id): void => {
-					const access = this.engineModelAccess();
-					if (access) {
-						this.selectModelIn(access, id);
-					}
-				},
-				addLlmModel: (): void => {
-					this.addModelTo(
-						selectedLlmVendor(this.plugin.settings).settings,
+				renderLocalWhisperFields: (host): void => {
+					this.renderTranscriptionBlock(
+						host,
+						renderLocalWhisperSettings,
 					);
 				},
-				removeLlmModel: (index): void => {
-					this.removeModelFrom(
-						selectedLlmVendor(this.plugin.settings).settings,
-						index,
-					);
+				// One mechanism for every catalogue: the page hands back the
+				// fields it belongs to, so the tab needs no idea which provider
+				// or which capability asked.
+				addModel: (models): void => {
+					this.addModelTo(modelListAccess(models));
 				},
-				selectLlmModel: (id): void => {
-					this.selectModelIn(
-						selectedLlmVendor(this.plugin.settings).settings,
-						id,
-					);
+				removeModel: (models, index): void => {
+					this.removeModelFrom(modelListAccess(models), index);
 				},
-				renderLlmSection: (host): void => {
-					this.renderTranscriptionBlock(host, renderLlmSection);
+				selectModel: (models, id): void => {
+					this.selectModelIn(modelListAccess(models), id);
 				},
 			},
 			diagnostics: {
@@ -857,31 +835,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					// by a name that resolves to nothing now.
 					closeSettingsPage(this.app);
 				});
-			},
-		};
-	}
-
-	/**
-	 * The selected engine's saved model list, as the four operations a list edit
-	 * needs. The engine descriptor reads its selection through the engine rather
-	 * than through the credentials, and the local engine has no list at all.
-	 * @returns The access, or undefined for an engine without a model list
-	 */
-	private engineModelAccess(): ModelListAccess | undefined {
-		const engine = selectedTranscriptionEngine(this.plugin.settings);
-		const credentials = engine.credentials;
-		if (!credentials) {
-			return undefined;
-		}
-		return {
-			models: (settings) => credentials.models(settings),
-			setModels: (settings, ids) => {
-				credentials.setModels(settings, ids);
-			},
-			model: (settings) =>
-				selectedTranscriptionEngine(settings).model(settings),
-			setModel: (settings, id) => {
-				credentials.setModel(settings, id);
 			},
 		};
 	}

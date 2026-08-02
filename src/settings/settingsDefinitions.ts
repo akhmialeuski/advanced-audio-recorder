@@ -52,12 +52,22 @@ import {
 	SPLIT_PART_SUFFIX_PATTERN,
 	MIN_LLM_MAX_TOKENS,
 	MAX_LLM_MAX_TOKENS,
+	MIN_TRANSCRIBE_CHUNK_MB,
+	MAX_TRANSCRIBE_CHUNK_MB,
 } from '../constants';
 import {
 	LLM_PROVIDER_OPTIONS,
 	LLM_TASK_OPTIONS,
 	TRANSCRIPTION_PROVIDER_OPTIONS,
 } from './labels';
+import {
+	PROVIDERS,
+	PROVIDER_IDS,
+	PROVIDER_ORDER,
+	type ProviderDescriptor,
+	type ProviderId,
+	type ProviderModels,
+} from '../providers/providers';
 import {
 	isAutoSplitSupported,
 	isChannelModeSelectionSupported,
@@ -71,8 +81,6 @@ import {
 	TRANSCRIPT_DESTINATION_OPTIONS,
 	TRANSCRIPT_FILE_FORMAT_OPTIONS,
 } from './labels';
-import { selectedTranscriptionEngine } from '../transcription/providers/engines';
-import { selectedLlmVendor } from '../transcription/llm/vendors';
 import {
 	effectiveDiarize,
 	isProviderAvailableOnPlatform,
@@ -286,24 +294,22 @@ export interface DeviceOptions {
  */
 export interface TranscriptionBlocks {
 	/**
-	 * The selected engine's API key, which is a password field rather than a
-	 * plain one, and the local engine's file paths.
+	 * A provider's API key, which is a password field rather than a plain one,
+	 * so no control type covers it.
 	 */
-	readonly renderEngineFields: (host: HTMLElement) => void;
-	/** Adds a model id to the selected engine's list. */
-	readonly addModel: () => void;
-	/** Removes the model id at a position in the selected engine's list. */
-	readonly removeModel: (index: number) => void;
-	/** Makes a saved id the model the selected engine transcribes with. */
-	readonly selectModel: (id: string) => void;
-	/** Adds a model id to the selected LLM vendor's list. */
-	readonly addLlmModel: () => void;
-	/** Removes the model id at a position in the LLM vendor's list. */
-	readonly removeLlmModel: (index: number) => void;
-	/** Makes a saved id the model the selected LLM vendor answers with. */
-	readonly selectLlmModel: (id: string) => void;
-	/** The LLM post-processing block. */
-	readonly renderLlmSection: (host: HTMLElement) => void;
+	readonly renderProviderKey: (
+		host: HTMLElement,
+		providerId: ProviderId,
+	) => void;
+	/** The local engine's binary and model paths, which are file pickers. */
+	readonly renderLocalWhisperFields: (host: HTMLElement) => void;
+	/**
+	 * The three edits a model catalogue takes, over whichever catalogue the
+	 * page belongs to: one mechanism for every provider and both capabilities.
+	 */
+	readonly addModel: (models: ProviderModels) => void;
+	readonly removeModel: (models: ProviderModels, index: number) => void;
+	readonly selectModel: (models: ProviderModels, id: string) => void;
 }
 
 /**
@@ -789,11 +795,7 @@ function audioPlayerPage(
  * features needs them, so enabling one alone still exposes its key and model.
  * @param settings - Live settings, read by the predicates
  */
-function llmGroup(
-	settings: AudioRecorderSettings,
-	blocks: TranscriptionBlocks,
-	declareAddRow: boolean,
-): SettingDefinitionItem {
+function llmGroup(settings: AudioRecorderSettings): SettingDefinitionItem {
 	const needsVendor = (): boolean =>
 		settings.transcriptionEnabled &&
 		(settings.llmPostProcessEnabled ||
@@ -879,9 +881,6 @@ function llmGroup(
 					),
 				},
 			},
-			// The model this vendor answers with, chosen in the catalogue the
-			// entry opens rather than in a dropdown beside it.
-			llmModelListGroup(settings, blocks, declareAddRow),
 			{
 				name: 'Max output tokens',
 				desc: 'Upper bound on the LLM response length.',
@@ -894,14 +893,6 @@ function llmGroup(
 					step: 512,
 				},
 			},
-			// The vendor's key closes the block it belongs to, instead of
-			// trailing the page as a row of its own.
-			imperativeBlockRow({
-				name: 'LLM credentials',
-				aliases: ['api key', 'token', 'openai', 'anthropic'],
-				render: blocks.renderLlmSection,
-				visible: needsVendor,
-			}),
 		],
 	};
 }
@@ -1127,35 +1118,190 @@ function profileGroups(
 }
 
 /**
- * The selected cloud engine's endpoint and models. The model list is a
- * collection the user edits, so it is declared as one: the framework renders
- * its add and delete affordances, and its search field filters long lists.
- * @param settings - Live settings, read by the predicates
- * @param blocks - The engine parts that are not definitions yet
+ * One provider's own page: how it is reached, and the catalogues it serves.
+ *
+ * A service is configured here once, whatever it is later asked to do, which is
+ * what keeps one key on one row: before this, a provider that both transcribed
+ * and answered prompts had its key on the transcription page and again under
+ * post-processing, with two endpoints for one account.
+ * @param settings - Live settings, read for the entry's value
+ * @param provider - The provider being declared
+ * @param blocks - The password field and the list edits, which the tab owns
+ * @param declareAddRow - Whether the tree owes a list a labelled add row
  */
-function transcriptionEngineGroup(
+function providerPage(
 	settings: AudioRecorderSettings,
+	provider: ProviderDescriptor,
 	blocks: TranscriptionBlocks,
 	declareAddRow: boolean,
 ): SettingGroupItem {
-	const engine = selectedTranscriptionEngine(settings);
-	const credentials = engine.credentials;
-	const cloud = (): boolean =>
-		settings.transcriptionEnabled &&
-		selectedTranscriptionEngine(settings).credentials !== undefined;
-	const models = credentials ? credentials.models(settings) : [];
-	const selected = credentials ? engine.model(settings) : '';
+	const connection = provider.connection;
+	const rows: SettingGroupItem[] = [];
+	if (connection) {
+		rows.push({
+			name: 'Base URL',
+			aliases: ['endpoint', 'api url', 'self hosted'],
+			desc: connection.baseUrlFieldDesc,
+			control: { type: 'text', key: connection.baseUrlKey },
+		});
+		rows.push(
+			imperativeBlockRow({
+				name: 'API key',
+				aliases: ['token', 'credentials', provider.label.toLowerCase()],
+				render: (host) => {
+					blocks.renderProviderKey(host, provider.id);
+				},
+				visible: () => true,
+			}),
+		);
+	}
+	if (provider.transcription?.models) {
+		rows.push(
+			modelCataloguePage(
+				settings,
+				provider.transcription.models,
+				blocks,
+				declareAddRow,
+			),
+		);
+	}
+	if (provider.llm) {
+		rows.push(
+			modelCataloguePage(
+				settings,
+				provider.llm.models,
+				blocks,
+				declareAddRow,
+			),
+		);
+	}
+	if (provider.id === PROVIDER_IDS.OPENAI) {
+		rows.push({
+			name: 'Upload chunk size',
+			desc: 'Megabytes per WAV chunk when a recording is too large to upload whole (the API limit is 25 MB). Files under the limit are sent untouched.',
+			control: {
+				type: 'number',
+				key: 'transcriptionChunkMb',
+				min: MIN_TRANSCRIBE_CHUNK_MB,
+				max: MAX_TRANSCRIBE_CHUNK_MB,
+				step: 1,
+			},
+		});
+	}
+	if (provider.id === PROVIDER_IDS.LOCAL_WHISPER) {
+		rows.push(
+			imperativeBlockRow({
+				name: 'Binary and model paths',
+				aliases: ['whisper.cpp', 'offline', 'local'],
+				render: blocks.renderLocalWhisperFields,
+				visible: () => true,
+			}),
+		);
+	}
+	return {
+		type: 'page',
+		name: provider.label,
+		desc: providerCapabilitiesDesc(provider),
+		displayValue: (): string => providerSummary(settings, provider),
+		items: sectionItems(rows),
+	};
+}
+
+/** What a provider can be asked to do, for its entry's description. */
+function providerCapabilitiesDesc(provider: ProviderDescriptor): string {
+	if (provider.transcription && provider.llm) {
+		return 'Transcribes recordings and answers the post-processing prompts.';
+	}
+	if (provider.transcription) {
+		return 'Transcribes recordings.';
+	}
+	return 'Answers the post-processing prompts.';
+}
+
+/**
+ * What a provider's entry says without being opened: whether it is reachable,
+ * and which of its models are in use.
+ * @param settings - Live settings, read for the key and the selections
+ * @param provider - The provider being described
+ */
+function providerSummary(
+	settings: AudioRecorderSettings,
+	provider: ProviderDescriptor,
+): string {
+	if (!provider.connection) {
+		return settings.localWhisperBinaryPath ? 'Configured' : 'No binary';
+	}
+	if (!provider.connection.apiKey(settings)) {
+		return 'No key';
+	}
+	const models = [
+		provider.transcription?.models?.model(settings),
+		provider.llm?.models.model(settings),
+	].filter((model): model is string => Boolean(model));
+	return models.length > 0 ? models.join(', ') : 'Key set';
+}
+
+/**
+ * Every provider, each on a page of its own. One place to configure a service,
+ * whatever it is later used for, which is what the transcription block and the
+ * post-processing block point at instead of holding their own copies.
+ * @param ctx - Everything the tree reads from the tab
+ */
+function providersPage(ctx: SettingsDefinitionContext): SettingGroupItem {
+	return {
+		type: 'page',
+		name: 'Engines',
+		desc: 'The services this plugin talks to: where each one is reached, and the models it serves.',
+		displayValue: (): string =>
+			`${String(
+				PROVIDER_ORDER.filter((id) => {
+					const connection = PROVIDERS[id].connection;
+					return connection && connection.apiKey(ctx.settings);
+				}).length,
+			)} configured`,
+		visible: (): boolean => ctx.settings.transcriptionEnabled,
+		items: sectionItems(
+			PROVIDER_ORDER.map((id) =>
+				providerPage(
+					ctx.settings,
+					PROVIDERS[id],
+					ctx.transcriptionBlocks,
+					ctx.declareListAddRow,
+				),
+			),
+		),
+	};
+}
+
+/**
+ * A provider's saved model ids, as the page the picking happens on. The list is
+ * a collection the user edits, so it is declared as one: the framework renders
+ * its add and delete affordances and its filter, and tapping a row makes that
+ * id the one in use. One builder serves every catalogue - a speech one, a text
+ * one, whichever provider they belong to - because a catalogue differs only in
+ * which fields it reads.
+ * @param settings - Live settings, read for the current selection
+ * @param models - The catalogue's own settings fields and copy
+ * @param blocks - The list edits, which the tab owns
+ * @param declareAddRow - Whether the tree owes the list a labelled add row
+ */
+function modelCataloguePage(
+	settings: AudioRecorderSettings,
+	models: ProviderModels,
+	blocks: TranscriptionBlocks,
+	declareAddRow: boolean,
+): SettingGroupItem {
+	const saved = models.models(settings);
+	const selected = models.model(settings);
 	return {
 		// The entry is the picker: it says which id is in use, and opens the
 		// catalogue it was chosen from. A vendor's catalogue runs to thirty-odd
-		// ids, which inline is thirty rows between the engine and everything
-		// configured after it, and a dropdown beside them would be a second
-		// place saying the same thing.
+		// ids, which inline is thirty rows between the endpoint and everything
+		// configured after it.
 		type: 'page',
-		name: credentials?.modelPickerName ?? 'Model',
-		desc: credentials?.modelPickerDesc ?? '',
+		name: models.pickerName,
+		desc: models.pickerDesc,
 		displayValue: (): string => selected || 'None',
-		visible: cloud,
 		items: [
 			{
 				type: 'list',
@@ -1166,20 +1312,20 @@ function transcriptionEngineGroup(
 				addItem: {
 					name: 'Add model',
 					action: (): void => {
-						blocks.addModel();
+						blocks.addModel(models);
 					},
 				},
 				onDelete: (index): void => {
-					blocks.removeModel(index);
+					blocks.removeModel(models, index);
 				},
-				items: models.map(
+				items: saved.map(
 					(id): SettingGroupItem => ({
 						name: id,
-						// The row is the choice: tapping an id transcribes with
-						// it from then on, and the one in use says so.
+						// The row is the choice: tapping an id puts it to work,
+						// and the one in use says so.
 						...(id === selected ? { desc: 'In use' } : {}),
 						action: (): void => {
-							blocks.selectModel(id);
+							blocks.selectModel(models, id);
 						},
 					}),
 				),
@@ -1188,106 +1334,15 @@ function transcriptionEngineGroup(
 				? [
 						addItemRow(
 							'Add model',
-							'Saves another model id for this engine.',
+							'Saves another model id for this provider.',
 							() => {
-								blocks.addModel();
+								blocks.addModel(models);
 							},
 						),
 					]
 				: []),
 		],
 	};
-}
-
-/**
- * The saved model list of the LLM vendor in use, edited the same way the
- * engine's is.
- * @param settings - Live settings, read by the predicates
- * @param blocks - The tab's list editors
- */
-function llmModelListGroup(
-	settings: AudioRecorderSettings,
-	blocks: TranscriptionBlocks,
-	declareAddRow: boolean,
-): SettingGroupItem {
-	const vendor = selectedLlmVendor(settings);
-	const models = vendor.settings.models(settings);
-	const selected = vendor.settings.model(settings);
-	return {
-		// The entry is the picker here too: it says which id answers, and opens
-		// the catalogue it was chosen from. Each vendor keeps its own.
-		type: 'page',
-		name: 'LLM model',
-		desc: vendor.modelPickerDesc,
-		displayValue: (): string => selected || 'None',
-		visible: (): boolean =>
-			settings.transcriptionEnabled &&
-			(settings.llmPostProcessEnabled ||
-				settings.transcriptionAutoChaptersEnabled ||
-				advancedTwoPassEnabled(settings)),
-		items: [
-			{
-				type: 'list',
-				cls: SETTINGS_SECTION_CLASS,
-				emptyState:
-					'No models saved yet. Add the model id your vendor serves.',
-				search: nameFilter('Filter models'),
-				addItem: {
-					name: 'Add model',
-					action: (): void => {
-						blocks.addLlmModel();
-					},
-				},
-				onDelete: (index): void => {
-					blocks.removeLlmModel(index);
-				},
-				items: models.map(
-					(id): SettingGroupItem => ({
-						name: id,
-						...(id === selected ? { desc: 'In use' } : {}),
-						action: (): void => {
-							blocks.selectLlmModel(id);
-						},
-					}),
-				),
-			},
-			...(declareAddRow
-				? [
-						addItemRow(
-							'Add model',
-							'Saves another model id for this vendor.',
-							() => {
-								blocks.addLlmModel();
-							},
-						),
-					]
-				: []),
-		],
-	};
-}
-
-/**
- * The endpoint and model selection of the engine in use.
- * @param settings - Live settings, read by the predicates
- */
-function transcriptionEndpointRows(
-	settings: AudioRecorderSettings,
-): SettingGroupItem[] {
-	const credentials = selectedTranscriptionEngine(settings).credentials;
-	if (!credentials) {
-		return [];
-	}
-	const cloud = (): boolean =>
-		settings.transcriptionEnabled &&
-		selectedTranscriptionEngine(settings).credentials !== undefined;
-	return [
-		{
-			name: credentials.baseUrlFieldName,
-			desc: credentials.baseUrlFieldDesc,
-			visible: cloud,
-			control: { type: 'text', key: credentials.baseUrlKey },
-		},
-	];
 }
 
 /**
@@ -1300,8 +1355,6 @@ function transcriptionEndpointRows(
  */
 function transcriptionGroup(
 	settings: AudioRecorderSettings,
-	blocks: TranscriptionBlocks,
-	declareAddRow: boolean,
 ): SettingDefinitionItem {
 	const enabled = (): boolean => settings.transcriptionEnabled;
 	const canDiarize = (): boolean =>
@@ -1319,7 +1372,7 @@ function transcriptionGroup(
 			},
 			// The first thing to settle once transcription is on, so it opens
 			// the block rather than sitting below the run options.
-			transcriptionEnginePage(settings, blocks, declareAddRow),
+			transcriptionEngineRow(settings),
 			{
 				name: 'Transcribe after recording',
 				desc: 'Automatically transcribe each recording once it is saved.',
@@ -1394,71 +1447,35 @@ function transcriptionGroup(
 }
 
 /**
- * The engine and everything it needs, behind an entry of its own: which service
- * turns speech into text, the endpoint it is reached at, the model it uses, and
- * its key. Inline, the picker sat five rows above the fields it decides, with
- * the settings that hold for every engine in between.
- * @param settings - Live settings, read by the predicates
- * @param blocks - The credential block and the model-list edits
- * @param declareAddRow - Whether the tree owes the model list an add row
+ * Which service transcribes. Only the choice: where that service is reached and
+ * which models it serves are configured once, on its own page under Engines.
+ * @param settings - Live settings, read by the predicate
  */
-function transcriptionEnginePage(
+function transcriptionEngineRow(
 	settings: AudioRecorderSettings,
-	blocks: TranscriptionBlocks,
-	declareAddRow: boolean,
 ): SettingGroupItem {
-	const enabled = (): boolean => settings.transcriptionEnabled;
 	return {
-		type: 'page',
 		name: 'Engine',
-		desc: 'Which service turns speech into text, and what it needs to run.',
-		displayValue: (): string =>
-			TRANSCRIPTION_PROVIDER_OPTIONS.find(
-				(option) => option.value === settings.transcriptionProvider,
-			)?.label ?? 'None',
-		visible: enabled,
-		items: sectionItems([
-			{
-				name: 'Engine',
-				aliases: [
-					'provider',
-					'whisper',
-					'deepgram',
-					'gemini',
-					'elevenlabs',
-				],
-				desc: 'Whisper API, Deepgram, or Google Gemini (cloud), or a local whisper.cpp binary (desktop).',
-				control: {
-					type: 'dropdown',
-					key: 'transcriptionProvider',
-					// Every device lists every engine, so the dropdown reads the
-					// same everywhere; picking one this device cannot run is
-					// refused with the reason instead of silently blocked.
-					options: Object.fromEntries(
-						TRANSCRIPTION_PROVIDER_OPTIONS.map((option) => [
-							option.value,
-							option.label,
-						]),
-					),
-					validate: (value: string): string | undefined =>
-						isProviderAvailableOnPlatform(
-							value as TranscriptionProviderId,
-						)
-							? undefined
-							: 'Not available on this device.',
-				},
-			},
-			...transcriptionEndpointRows(settings),
-			// The model this engine transcribes with, chosen in the catalogue
-			// the entry opens rather than in a dropdown beside it.
-			transcriptionEngineGroup(settings, blocks, declareAddRow),
-			imperativeBlockRow({
-				name: 'Transcription engine credentials',
-				aliases: ['api key', 'token', 'base url', 'endpoint'],
-				render: blocks.renderEngineFields,
-				visible: enabled,
-			}),
-		]),
+		aliases: ['provider', 'whisper', 'deepgram', 'gemini', 'elevenlabs'],
+		desc: 'Whisper API, Deepgram, or Google Gemini (cloud), or a local whisper.cpp binary (desktop). Configure each one under Engines.',
+		visible: (): boolean => settings.transcriptionEnabled,
+		control: {
+			type: 'dropdown',
+			key: 'transcriptionProvider',
+			// Every device lists every engine, so the dropdown reads the same
+			// everywhere; picking one this device cannot run is refused with
+			// the reason instead of silently blocked.
+			options: Object.fromEntries(
+				TRANSCRIPTION_PROVIDER_OPTIONS.map((option) => [
+					option.value,
+					option.label,
+				]),
+			),
+			validate: (value: string): string | undefined =>
+				isProviderAvailableOnPlatform(value as TranscriptionProviderId)
+					? undefined
+					: 'Not available on this device.',
+		},
 	};
 }
 
@@ -1916,27 +1933,20 @@ export function buildSettingsDefinitions(
 			items: [
 				// Each block holds what belongs to it, catalogues included:
 				// nothing floats on the page beside the section it configures.
-				transcriptionGroup(
-					ctx.settings,
-					ctx.transcriptionBlocks,
-					ctx.declareListAddRow,
-				),
+				transcriptionGroup(ctx.settings),
 				transcriptionAdvancedGroup(
 					ctx.settings,
 					ctx.profiles.dictionary,
 					ctx.declareListAddRow,
 				),
+				providersPage(ctx),
 				transcriptOutputGroup(ctx.settings),
 				autoChaptersGroup(
 					ctx.settings,
 					ctx.profiles.chapters,
 					ctx.declareListAddRow,
 				),
-				llmGroup(
-					ctx.settings,
-					ctx.transcriptionBlocks,
-					ctx.declareListAddRow,
-				),
+				llmGroup(ctx.settings),
 			],
 		},
 		audioProcessingPage(ctx.settings),

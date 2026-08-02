@@ -24,6 +24,7 @@ import {
 	DEFAULT_SETTINGS,
 	type AudioRecorderSettings,
 } from 'src/settings/settingsSchema';
+import type { ProviderModels } from 'src/providers/providers';
 import {
 	CLEANUP_HIGHPASS_STEP_HZ,
 	MAX_CLEANUP_HIGHPASS_HZ,
@@ -113,16 +114,19 @@ describe('settings definitions', () => {
 		},
 		declareListAddRow,
 		transcriptionBlocks: {
-			renderEngineFields: renderTranscriptionRest as (
+			renderProviderKey: renderTranscriptionRest as (
 				host: HTMLElement,
 			) => void,
-			addModel: addModel as () => void,
-			removeModel: removeModel as (index: number) => void,
-			selectModel: selectModel as (id: string) => void,
-			addLlmModel: jest.fn(),
-			removeLlmModel: jest.fn(),
-			selectLlmModel: jest.fn(),
-			renderLlmSection: jest.fn(),
+			renderLocalWhisperFields: jest.fn(),
+			addModel: addModel as (models: ProviderModels) => void,
+			removeModel: removeModel as (
+				models: ProviderModels,
+				index: number,
+			) => void,
+			selectModel: selectModel as (
+				models: ProviderModels,
+				id: string,
+			) => void,
 		},
 	});
 
@@ -151,6 +155,16 @@ describe('settings definitions', () => {
 
 	const build = (): SettingDefinitionItem[] =>
 		buildSettingsDefinitions(createContext());
+
+	/**
+	 * Names of a page's own children, rows and entries alike. A page whose rows
+	 * are one block declares that block itself, so what it shows is a level in.
+	 * @param name - Name on the page's entry
+	 */
+	const pageEntryNames = (name: string): string[] => {
+		const [block] = pageOf(build(), name).items as GroupDefinition[];
+		return (block?.items ?? []).map((item) => item.name ?? '');
+	};
 
 	/** The diagnostics group of a built tree. */
 	const diagnosticsGroupOf = (
@@ -222,12 +236,10 @@ describe('settings definitions', () => {
 		});
 
 		it('makes the fields inside a hand-rendered block findable', () => {
-			// The search indexes definitions, and a credential block is one
-			// definition, so its API-key field has no row of its own to match.
-			expect(aliasesOf('Transcription engine credentials')).toContain(
-				'api key',
-			);
-			expect(aliasesOf('LLM credentials')).toContain('api key');
+			// The search indexes definitions, and a key block is one
+			// definition, so the password field has no row of its own to match.
+			expect(aliasesOf('API key')).toContain('token');
+			expect(aliasesOf('Binary and model paths')).toContain('offline');
 		});
 
 		it('declares no alias that repeats the row name', () => {
@@ -330,13 +342,8 @@ describe('settings definitions', () => {
 				: visible !== false;
 		};
 
-		/** Whether the entry that opens the engine page is shown. */
-		const engineEntryVisible = (): boolean => {
-			const visible = (
-				pageOf(build(), 'Engine') as { visible?: () => boolean }
-			).visible;
-			return typeof visible === 'function' ? visible() : true;
-		};
+		/** Whether the row that picks the engine is shown. */
+		const engineEntryVisible = (): boolean => isVisible('Engine');
 
 		it('keeps every option behind the section switch', () => {
 			// A predicate, not a re-render: the framework hides and shows these
@@ -424,24 +431,14 @@ describe('settings definitions', () => {
 			expect(typeof disabled === 'function' && disabled()).toBe(false);
 		});
 
-		it('hosts the engine credentials, which are not a declared control', () => {
-			// The API key is a password field, which no control type covers.
-			settings.transcriptionEnabled = true;
-			const definition = rowOf(
-				build(),
-				TRANSCRIPTION,
-				'Transcription engine credentials',
-			);
-			const { setting } = renderThroughFramework(
-				definition as RenderDefinition,
-			);
-
-			expect(renderTranscriptionRest).toHaveBeenCalledWith(
-				setting.settingEl,
-			);
-			expect(
-				setting.settingEl.querySelector('.aar-transcription-rest'),
-			).not.toBeNull();
+		it('hosts a provider key on that provider\u2019s page', () => {
+			// A password field is the one row no control type covers, and it
+			// belongs to the service rather than to either use of it.
+			expect(pageEntryNames('Deepgram')).toEqual([
+				'Base URL',
+				'API key',
+				'Deepgram model',
+			]);
 		});
 	});
 
@@ -580,7 +577,10 @@ describe('settings definitions', () => {
 			// dropdown beside it saying the same thing.
 			modelList().items[1]?.action?.(createDiv(), 1);
 
-			expect(selectModel).toHaveBeenCalledWith('whisper-large-v3');
+			expect(selectModel).toHaveBeenCalledWith(
+				expect.objectContaining({ modelKey: 'whisperApiModel' }),
+				'whisper-large-v3',
+			);
 		});
 
 		it('marks which saved model is the one in use', () => {
@@ -605,8 +605,13 @@ describe('settings definitions', () => {
 			list.addItem?.action(createDiv());
 			list.onDelete?.(1);
 
-			expect(addModel).toHaveBeenCalledTimes(1);
-			expect(removeModel).toHaveBeenCalledWith(1);
+			expect(addModel).toHaveBeenCalledWith(
+				expect.objectContaining({ modelKey: 'whisperApiModel' }),
+			);
+			expect(removeModel).toHaveBeenCalledWith(
+				expect.objectContaining({ modelKey: 'whisperApiModel' }),
+				1,
+			);
 		});
 
 		it('offers an empty state instead of a bare heading', () => {
@@ -616,15 +621,15 @@ describe('settings definitions', () => {
 			expect(modelList().emptyState).toContain('No models saved yet');
 		});
 
-		it('stays hidden for the local engine, which has no model list', () => {
-			settings.transcriptionEnabled = true;
-			settings.transcriptionProvider =
-				TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER;
-			const visible = (
-				pageOf(build(), 'Model') as { visible?: () => boolean }
-			).visible;
-
-			expect(typeof visible === 'function' && visible()).toBe(false);
+		it('declares no catalogue for the local engine, which serves none', () => {
+			// It runs a binary against a file on disk: there is no list of
+			// served ids to keep, so its page holds the paths instead.
+			expect(() =>
+				pageOf(build(), 'Local whisper.cpp (desktop)'),
+			).not.toThrow();
+			expect(pageEntryNames('Local whisper.cpp (desktop)')).toEqual([
+				'Binary and model paths',
+			]);
 		});
 	});
 
@@ -739,58 +744,43 @@ describe('settings definitions', () => {
 		const childNamesOf = (heading: string): string[] =>
 			groupOf(build(), heading).items.map((item) => item.name ?? '');
 
-		/** The same, for a page whose rows are one block. */
-		const entryNamesOf = (page: string): string[] => {
-			const [block] = pageOf(build(), page).items as GroupDefinition[];
-			return (block?.items ?? []).map((item) => item.name ?? '');
-		};
-
-		it('names the engine model once, on the entry that picks it', () => {
-			const names = entryNamesOf('Engine');
-
-			// One place says which model is in use: the entry that opens the
-			// ids it was chosen from, on the row after the endpoint serving it.
-			expect(names.filter((name) => name === 'Whisper model')).toEqual([
-				'Whisper model',
-			]);
-			expect(names.indexOf('Whisper model')).toBe(
-				names.indexOf('Whisper API base URL') + 1,
+		it('configures every provider on one page each, under Engines', () => {
+			// One place to set up a service, whatever it is later asked to do:
+			// the endpoint, the key, and the catalogues it serves.
+			const engines = pageOf(build(), 'Engines');
+			const providers = (engines.items[0] as GroupDefinition).items.map(
+				(item) => item.name ?? '',
 			);
-		});
 
-		it('opens the transcription block with the engine', () => {
-			// The first thing to settle once transcription is on: what turns
-			// speech into text, before how the run behaves.
-			expect(childNamesOf('Transcription').slice(0, 2)).toEqual([
-				'Enable transcription',
-				'Engine',
+			expect(providers).toEqual([
+				'OpenAI',
+				'Deepgram',
+				'Google Gemini',
+				'Anthropic (Claude)',
+				'Local whisper.cpp (desktop)',
 			]);
-		});
-
-		it('keeps the engine and its own settings on one page', () => {
-			// The picker used to sit five rows above the fields it decides,
-			// with the settings that hold for every engine in between.
-			expect(entryNamesOf('Engine')).toEqual([
-				'Engine',
-				'Whisper API base URL',
-				'Whisper model',
-				'Transcription engine credentials',
-			]);
-			expect(childNamesOf('Transcription')).toContain('Engine');
-		});
-
-		it('names the LLM model once, the same way', () => {
-			const names = childNamesOf('LLM post-processing');
-
-			// The endpoint is the provider's now, so the block holds the use:
-			// which vendor answers, and which of its models.
-			expect(names.filter((name) => name === 'LLM model')).toEqual([
+			// A provider that both transcribes and answers prompts keeps one
+			// key and one endpoint, with a catalogue per capability.
+			expect(pageEntryNames('Google Gemini')).toEqual([
+				'Base URL',
+				'API key',
+				'Gemini model',
 				'LLM model',
 			]);
-			expect(names.indexOf('LLM model')).toBe(
-				names.indexOf('LLM provider') + 1,
+		});
+
+		it('leaves each use holding only the choice', () => {
+			expect(childNamesOf('Transcription')).toContain('Engine');
+			expect(childNamesOf('LLM post-processing')).toEqual(
+				expect.arrayContaining(['LLM provider', 'Max output tokens']),
 			);
-			expect(names).not.toContain('LLM base URL');
+			// The key and the endpoint are the provider's, not the use's.
+			expect(childNamesOf('LLM post-processing')).not.toContain(
+				'LLM credentials',
+			);
+			expect(childNamesOf('Transcription')).not.toContain(
+				'Transcription engine credentials',
+			);
 		});
 
 		it('keeps each profile catalogue inside the block that gates it', () => {
@@ -802,9 +792,9 @@ describe('settings definitions', () => {
 			);
 		});
 
-		it('leaves the transcription page holding blocks and nothing else', () => {
+		it('leaves the transcription page holding blocks and entries only', () => {
 			for (const item of pageOf(build(), 'Transcription').items) {
-				expect('type' in item && item.type).toBe('group');
+				expect('type' in item && item.type).toMatch(/group|page/);
 			}
 		});
 	});

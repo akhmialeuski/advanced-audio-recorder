@@ -1190,18 +1190,18 @@ describe('AudioRecorderSettingTab', () => {
 			);
 		});
 
-		it('offers no model list for an engine that has none', () => {
-			mockSettings.transcriptionProvider = 'local-whisper';
-
-			// The local engine runs a binary against a file on disk, so there
-			// is no catalogue of served ids to keep - the list stays hidden
-			// rather than being declared empty.
+		it('offers no model list for the engine that serves none', () => {
+			// The local engine runs a binary against a file on disk, so its
+			// page holds the paths and no catalogue at all.
 			const page = pageOf(
 				tab.getSettingDefinitions(),
-				'Model',
-			) as unknown as { visible?: () => boolean };
-			expect(page.visible?.()).toBe(false);
-			expect(listOf('Model').items).toEqual([]);
+				'Local whisper.cpp (desktop)',
+			);
+			const [block] = page.items as GroupDefinition[];
+
+			expect((block?.items ?? []).map((item) => item.name ?? '')).toEqual(
+				['Binary and model paths'],
+			);
 		});
 	});
 

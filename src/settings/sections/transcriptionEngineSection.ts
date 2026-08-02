@@ -1,65 +1,47 @@
 /**
- * The per-engine transcription settings: the cloud engines' endpoint, key, and
- * model picker (all bound through the selected engine's descriptor) and the
- * local whisper.cpp file paths.
+ * The provider fields no declarative control type covers: the API key, which
+ * is a password field, and the local whisper.cpp file paths.
  * @module settings/sections/transcriptionEngineSection
  */
 
 import {
-	MIN_TRANSCRIBE_CHUNK_MB,
-	MAX_TRANSCRIBE_CHUNK_MB,
 	LOCAL_WHISPER_MODEL_NAMES,
 	LOCAL_WHISPER_MODELS_DOC_URL,
 	TRANSCRIPTION_PROVIDER_IDS,
 } from '../../constants';
-import {
-	addNumberInput,
-	addText,
-	type SettingsSectionContext,
-} from '../settingControls';
+import { addText, type SettingsSectionContext } from '../settingControls';
 import { isProviderAvailableOnPlatform } from '../../transcription/providers/capabilities';
-import type { EngineCredentials } from '../../transcription/providers/engines';
+import type { ProviderDescriptor } from '../../providers/providers';
 
 /**
- * The one cloud-engine field that is not a declared control: the API key, which
- * is a password field. The endpoint and the model list are declarations bound to
- * the keys the engine's descriptor names.
- * @param ctx - Section context
- * @param credentials - The selected engine's descriptor
+ * A provider's API key: a password field with the reveal toggle Obsidian's own
+ * keychain dialog uses, which no declarative control type covers. Rendered from
+ * the provider's connection, so the field a key is entered in is the one both
+ * its transcription and its post-processing read.
+ * @param ctx - The section context (host element and save hooks)
+ * @param provider - The provider whose key is being entered
  */
-export function renderCloudEngineSettings(
+export function renderProviderKeyField(
 	ctx: SettingsSectionContext,
-	credentials: EngineCredentials,
+	provider: ProviderDescriptor,
 ): void {
+	const connection = provider.connection;
+	if (!connection) {
+		return;
+	}
 	const s = ctx.settings;
+	const docs = provider.transcription?.models ?? provider.llm?.models;
 	addText(ctx, {
-		name: credentials.keyFieldName,
-		desc: credentials.keyFieldDesc,
-		helpLink: {
-			label: credentials.modelsDocLabel,
-			url: credentials.modelsDocUrl,
+		name: connection.keyFieldName,
+		desc: connection.keyFieldDesc,
+		...(docs
+			? { helpLink: { label: docs.docLabel, url: docs.docUrl } }
+			: {}),
+		get: () => connection.apiKey(s),
+		set: (v) => {
+			connection.setApiKey(s, v);
 		},
-		get: () => credentials.apiKey(s),
-		set: (v) => credentials.setApiKey(s, v),
 		secret: true,
-	});
-}
-
-/**
- * The upload chunk size, offered only for the Whisper API: it is the one engine
- * with a per-request byte ceiling low enough that long recordings are split.
- * @param ctx - Section context
- */
-export function renderWhisperChunkSize(ctx: SettingsSectionContext): void {
-	const s = ctx.settings;
-	addNumberInput(ctx, {
-		name: 'Upload chunk size',
-		desc: 'Megabytes per WAV chunk when a recording is too large to upload whole (the API limit is 25 MB). Files under the limit are sent untouched.',
-		min: MIN_TRANSCRIBE_CHUNK_MB,
-		max: MAX_TRANSCRIBE_CHUNK_MB,
-		step: 1,
-		get: () => s.transcriptionChunkMb,
-		set: (v) => (s.transcriptionChunkMb = v),
 	});
 }
 
