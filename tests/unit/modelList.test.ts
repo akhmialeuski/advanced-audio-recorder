@@ -19,7 +19,6 @@ import {
 	DEEPGRAM_MODEL_SUGGESTIONS,
 	GEMINI_MODEL_SUGGESTIONS,
 	LLM_ANTHROPIC_MODEL_SUGGESTIONS,
-	LLM_GEMINI_MODEL_SUGGESTIONS,
 	LLM_OPENAI_MODEL_SUGGESTIONS,
 	WHISPER_API_MODEL_SUGGESTIONS,
 } from 'src/constants';
@@ -95,11 +94,6 @@ describe('model list settings defaults', () => {
 		expect(DEFAULT_SETTINGS.llmAnthropicModels).toEqual(
 			LLM_ANTHROPIC_MODEL_SUGGESTIONS,
 		);
-		// Gemini serves one family of ids for both jobs, so its engine keeps
-		// one catalogue: the transcription seed list, which is the wider one.
-		expect(DEFAULT_SETTINGS.geminiModels).toEqual(
-			expect.arrayContaining([...LLM_GEMINI_MODEL_SUGGESTIONS]),
-		);
 	});
 
 	it('selects a default model that is present in its own seed list', () => {
@@ -119,9 +113,6 @@ describe('model list settings defaults', () => {
 		);
 		expect(LLM_ANTHROPIC_MODEL_SUGGESTIONS).toContain(
 			DEFAULT_SETTINGS.llmAnthropicModel,
-		);
-		expect(LLM_GEMINI_MODEL_SUGGESTIONS).toContain(
-			DEFAULT_SETTINGS.geminiModel,
 		);
 	});
 

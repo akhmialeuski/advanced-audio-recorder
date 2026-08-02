@@ -449,6 +449,46 @@ describe('LegacySettingsRenderer', () => {
 			expect(onDelete).toHaveBeenCalledWith(1);
 		});
 
+		it('deletes an entry without also running the row action', () => {
+			// A model catalogue is both: the row picks the id and the button
+			// deletes it. The row listens on the whole row and the button sits
+			// inside it, so a delete used to bubble back out as "the row was
+			// clicked" - which removed an id and immediately selected it again.
+			const onDelete = jest.fn();
+			const action = jest.fn();
+			renderer.render(containerEl, [
+				{
+					type: 'list',
+					onDelete,
+					items: [{ name: 'whisper-1', action }],
+				} as unknown as SettingDefinitionItem,
+			]);
+
+			rowFor('whisper-1')
+				.querySelector<HTMLElement>('.setting-item-control button')
+				?.click();
+
+			expect(onDelete).toHaveBeenCalledWith(0);
+			expect(action).not.toHaveBeenCalled();
+		});
+
+		it('still runs the row action when the row itself is clicked', () => {
+			const onDelete = jest.fn();
+			const action = jest.fn();
+			renderer.render(containerEl, [
+				{
+					type: 'list',
+					onDelete,
+					items: [{ name: 'whisper-1', action }],
+				} as unknown as SettingDefinitionItem,
+			]);
+
+			rowFor('whisper-1').click();
+
+			expect(action).toHaveBeenCalledTimes(1);
+			expect(onDelete).not.toHaveBeenCalled();
+		});
+
 		it('filters the list through the group search field', () => {
 			// The framework renders a search input in the group header and hides
 			// the rows its predicate rejects; the same filter reaches this

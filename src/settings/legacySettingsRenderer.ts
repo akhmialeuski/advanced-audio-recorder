@@ -136,6 +136,15 @@ function evaluate(
 }
 
 /**
+ * The elements that answer a click themselves. A row bound to an action listens
+ * on the whole row, and a list row carries a delete button inside it, so without
+ * this the delete would run and then be read a second time as "the row was
+ * clicked" - which on a model catalogue deleted an id and immediately selected
+ * it again. What owns the click is the innermost control under the pointer.
+ */
+const INTERACTIVE_SELECTOR = 'button, input, select, textarea, a';
+
+/**
  * Renders setting definitions with the pre-1.13 API and keeps enough state to
  * refresh their predicates and release what they own.
  */
@@ -447,6 +456,9 @@ export class LegacySettingsRenderer {
 	/**
 	 * Makes the whole row run an action when clicked, which is what a 1.13
 	 * action row does. The chevron is the affordance that says so.
+	 *
+	 * A control inside the row keeps its own click: the row's action is what
+	 * clicking the row means, not what clicking everything within it means.
 	 * @param setting - The row being bound
 	 * @param action - The definition's action callback
 	 * @param index - The row's position among its siblings
@@ -457,7 +469,13 @@ export class LegacySettingsRenderer {
 		index: number,
 	): void {
 		setting.settingEl.addClass(LEGACY_ACTION_ROW_CLASS);
-		setting.settingEl.addEventListener('click', () => {
+		setting.settingEl.addEventListener('click', (event) => {
+			if (
+				event.target instanceof Element &&
+				event.target.closest(INTERACTIVE_SELECTOR)
+			) {
+				return;
+			}
 			action(setting.settingEl, index);
 		});
 		setIcon(setting.controlEl.createSpan(), 'lucide-chevron-right');

@@ -1,11 +1,14 @@
 /**
- * Asks for the name of a profile, which is what creating or renaming one opens.
+ * Asks for the name of a profile, which is what renaming one opens.
  *
  * A profile is edited on a page of its own, and from Obsidian 1.13 the settings
  * framework addresses an open page by its name: a name field on that page would
  * rename the page under itself and leave it unresolvable. The name is therefore
- * taken here, before the page exists or while the user is on it, and the caller
- * applies it and returns to the list where the new name is shown.
+ * taken here, while the user is on that page, and the caller applies it and
+ * returns to the list where the new name is shown. Creating goes the other way
+ * round - a list's add affordance creates the entry and the page it opens is
+ * where it is then named - so a new profile starts under a free name from
+ * {@link module:settings/profiles} rather than through this dialog.
  *
  * Names have to be unique within their catalogue for the same reason, so the
  * dialog rejects a taken name (and a blank one) instead of letting the tab
@@ -23,7 +26,7 @@ export interface ProfileNamePrompt {
 	readonly title: string;
 	/** Label of the confirming button, e.g. "Rename". */
 	readonly confirmText: string;
-	/** Name the field opens with, empty when creating. */
+	/** Name the field opens with, which is the one being replaced. */
 	readonly initial: string;
 	/**
 	 * Why a name cannot be used, or undefined when it can. Keeps the rule with

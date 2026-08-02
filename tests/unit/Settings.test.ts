@@ -622,6 +622,57 @@ describe('Settings', () => {
 			expect(result.bitrate).toBe(320000);
 			expect(result.maxTracks).toBe(8);
 		});
+
+		describe('model catalogues and their selection', () => {
+			// The catalogue is the picker: a run uses the selected id and the
+			// settings show the list it came from, so an id held outside its
+			// list is a selection nobody can see or change.
+			it('takes a selection missing from its catalogue into the list', () => {
+				const result = mergeSettings({
+					whisperApiModel: 'whisper-custom',
+					whisperApiModels: ['whisper-1'],
+					modelSeedGeneration: MODEL_SEED_GENERATION,
+				});
+
+				expect(result.whisperApiModel).toBe('whisper-custom');
+				expect(result.whisperApiModels).toContain('whisper-custom');
+			});
+
+			it('picks the first saved id when nothing is selected', () => {
+				const result = mergeSettings({
+					deepgramModel: '',
+					deepgramModels: ['nova-3', 'nova-2'],
+					modelSeedGeneration: MODEL_SEED_GENERATION,
+				});
+
+				expect(result.deepgramModel).toBe('nova-3');
+			});
+
+			it('leaves an emptied catalogue empty rather than inventing an id', () => {
+				// An empty catalogue is a state the list itself offers, and a
+				// run refuses it by name; guessing an id here would run the
+				// wrong model instead.
+				const result = mergeSettings({
+					geminiModel: '',
+					geminiModels: [],
+					modelSeedGeneration: MODEL_SEED_GENERATION,
+				});
+
+				expect(result.geminiModel).toBe('');
+				expect(result.geminiModels).toEqual([]);
+			});
+
+			it('trims a hand-edited selection to the id it names', () => {
+				const result = mergeSettings({
+					llmAnthropicModel: '  claude-sonnet-5  ',
+					llmAnthropicModels: ['claude-sonnet-5'],
+					modelSeedGeneration: MODEL_SEED_GENERATION,
+				});
+
+				expect(result.llmAnthropicModel).toBe('claude-sonnet-5');
+				expect(result.llmAnthropicModels).toEqual(['claude-sonnet-5']);
+			});
+		});
 	});
 
 	describe('Type definitions', () => {

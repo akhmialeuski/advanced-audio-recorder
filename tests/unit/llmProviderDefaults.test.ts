@@ -66,3 +66,42 @@ describe('account endpoints', () => {
 		expect(merged.geminiBaseUrl).toBe('https://gemini.internal');
 	});
 });
+
+describe('the pre-rework single LLM model', () => {
+	it('never overwrites a model the provider already holds', () => {
+		// Gemini serves one catalogue for both jobs, so the field the legacy
+		// chat model maps onto is the one transcription picks from: adopting it
+		// unconditionally replaced the id chosen to transcribe with.
+		const merged = mergeSettings({
+			llmProvider: 'gemini',
+			geminiModel: 'gemini-2.5-pro',
+			llmModel: 'gemini-2.0-flash',
+		});
+
+		expect(merged.geminiModel).toBe('gemini-2.5-pro');
+		expect('llmModel' in merged).toBe(false);
+	});
+
+	it('carries onto a field still holding what this version ships', () => {
+		const merged = mergeSettings({
+			llmProvider: 'gemini',
+			llmModel: 'gemini-2.0-flash',
+		});
+
+		expect(merged.geminiModel).toBe('gemini-2.0-flash');
+		// The migrated id is what a run uses, so the catalogue lists it too.
+		expect(merged.geminiModels).toContain('gemini-2.0-flash');
+	});
+
+	it('leaves a vendor with a catalogue of its own untouched by the other', () => {
+		// OpenAI keeps its chat ids apart from its Whisper ids, so the legacy
+		// chat model reaches one of them only.
+		const merged = mergeSettings({
+			llmProvider: 'openai-compatible',
+			llmModel: 'gpt-4o-mini',
+		});
+
+		expect(merged.llmOpenAiModel).toBe('gpt-4o-mini');
+		expect(merged.whisperApiModel).toBe(DEFAULT_SETTINGS.whisperApiModel);
+	});
+});

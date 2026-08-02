@@ -29,8 +29,6 @@ import {
 	formatUsd,
 	jobLlmVendor,
 	jobVendorId,
-	LLM_VENDOR_IDS,
-	LLM_VENDORS,
 	type LlmJobId,
 } from '../transcription/api';
 import { formatTimecode } from '../utils/TimeUtils';
@@ -270,20 +268,19 @@ export class ChapterGenerationModal extends PluginModal {
 	}
 
 	/**
-	 * Writes the run's choices into the live settings. Driven by the vendor
-	 * registry rather than a hand-listed field set, so a vendor added later is
-	 * committed without another edit here.
+	 * Writes the run's choices into the live settings: the engine chapters are
+	 * generated with, and the model that engine is generating with.
+	 *
+	 * Only that engine's model is committed. A provider that both transcribes
+	 * and answers prompts keeps one catalogue for both, so writing every
+	 * vendor's model would let this dialog move the id another feature runs on
+	 * - picking a Gemini model here would change what transcription uses.
 	 */
 	private commitRunSettings(): void {
 		const live = this.options.getSettings();
 		live.chaptersLlmProvider = this.runSettings.chaptersLlmProvider;
-		for (const id of LLM_VENDOR_IDS) {
-			const vendor = LLM_VENDORS[id];
-			vendor.settings.setModel(
-				live,
-				vendor.settings.model(this.runSettings),
-			);
-		}
+		const vendor = jobLlmVendor(this.runSettings, CHAPTERS_JOB);
+		vendor.settings.setModel(live, vendor.settings.model(this.runSettings));
 		CHAPTER_PROMPT_PROFILES.setSelectedId(
 			live,
 			CHAPTER_PROMPT_PROFILES.selectedId(this.runSettings),

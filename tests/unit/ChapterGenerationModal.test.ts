@@ -190,6 +190,32 @@ describe('ChapterGenerationModal run settings', () => {
 		expect(generate).toHaveBeenCalledWith(file, undefined, SOURCE);
 	});
 
+	it('moves only the model of the engine it generates with', async () => {
+		// Gemini serves one catalogue for transcription and for prompts alike,
+		// so committing every vendor's model let this dialog repoint the id
+		// transcription runs on.
+		const { modal, settings } = build();
+		settings.geminiModel = 'gemini-2.5-pro';
+		await open(modal);
+
+		const provider = at(dropdowns(modal), 1);
+		provider.value = LLM_PROVIDER_IDS.ANTHROPIC;
+		provider.dispatchEvent(new Event('change'));
+		await Promise.resolve();
+		await Promise.resolve();
+
+		const model = at(dropdowns(modal), 2);
+		model.value = 'claude-sonnet-5';
+		model.dispatchEvent(new Event('change'));
+		await Promise.resolve();
+		await Promise.resolve();
+
+		at(buttons(modal), 0).click();
+
+		expect(settings.llmAnthropicModel).toBe('claude-sonnet-5');
+		expect(settings.geminiModel).toBe('gemini-2.5-pro');
+	});
+
 	it("commits the run's chapter profile so the shared service reads it", async () => {
 		const { modal, settings, generate } = build({
 			transcriptionChapterPromptProfiles: [

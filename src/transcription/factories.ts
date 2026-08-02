@@ -13,7 +13,7 @@ import type {
 } from '../settings/settingsSchema';
 import type { TranscriptionProvider } from './providers/TranscriptionProvider';
 import type { LlmProvider } from './llm/LlmProvider';
-import { llmVendor } from './llm/vendors';
+import { jobVendorId, llmVendor } from './llm/vendors';
 import { vendorConnection } from '../providers/providers';
 import { ProviderConfigError } from './providerConfigError';
 
@@ -28,7 +28,9 @@ export type { TranscriptionProvider, LlmProvider };
 /**
  * Builds an LLM provider from a vendor's descriptor: which settings field
  * holds its key and model, and how to construct it, are vendor facts owned by
- * the registry rather than branches here. Every vendor requires a key.
+ * the registry rather than branches here. A run needs both halves of the
+ * configuration, so a missing key and an empty catalogue are refused with the
+ * reason rather than sent to the endpoint as a request that cannot succeed.
  *
  * The vendor is a parameter because each LLM-driven job picks its own engine
  * (see {@link module:transcription/llm/vendors}'s `LLM_JOBS`): a caller names
@@ -39,18 +41,22 @@ export type { TranscriptionProvider, LlmProvider };
  */
 export function createLlmProvider(
 	settings: AudioRecorderSettings,
-	vendorId: LlmProviderId = settings.llmProvider,
+	vendorId: LlmProviderId = jobVendorId(settings, 'postProcess'),
 ): LlmProvider {
 	const vendor = llmVendor(vendorId);
 	const apiKey = vendor.settings.apiKey(settings);
 	if (!apiKey) {
 		throw new ProviderConfigError(vendor.missingKeyMessage);
 	}
+	const model = vendor.settings.model(settings);
+	if (!model) {
+		throw new ProviderConfigError(vendor.missingModelMessage);
+	}
 	return vendor.create({
 		// The endpoint belongs to the provider the vendor is a capability of,
 		// which is the same one its transcription side is reached through.
 		baseUrl: vendorConnection(vendor.id).baseUrl(settings),
 		apiKey,
-		model: vendor.settings.model(settings),
+		model,
 	});
 }

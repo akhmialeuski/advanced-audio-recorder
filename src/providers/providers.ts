@@ -22,9 +22,6 @@
 import {
 	ANTHROPIC_MODELS_DOC_URL,
 	DEEPGRAM_MODELS_DOC_URL,
-	DEFAULT_LLM_ANTHROPIC_BASE_URL,
-	DEFAULT_LLM_GEMINI_BASE_URL,
-	DEFAULT_LLM_OPENAI_BASE_URL,
 	GEMINI_MODELS_DOC_URL,
 	LLM_PROVIDER_IDS,
 	OPENAI_MODELS_DOC_URL,
@@ -73,14 +70,15 @@ export interface ProviderConnection {
 	/** Settings keys the fields are stored under, for declaring the controls. */
 	readonly baseUrlKey: keyof AudioRecorderSettings;
 	readonly apiKeyKey: keyof AudioRecorderSettings;
-	/** Endpoint the plugin ships as this account's default. */
-	readonly defaultBaseUrl: string;
 	readonly baseUrl: (settings: AudioRecorderSettings) => string;
 	readonly setBaseUrl: (settings: AudioRecorderSettings, url: string) => void;
 	readonly apiKey: (settings: AudioRecorderSettings) => string;
 	readonly setApiKey: (settings: AudioRecorderSettings, key: string) => void;
-	/** Label and description of the base-URL row. */
-	readonly baseUrlFieldName: string;
+	/**
+	 * What the base-URL row says about this endpoint. Only the description: the
+	 * row is called "Base URL" on every account, which makes the label a fact
+	 * of the row rather than of the account.
+	 */
 	readonly baseUrlFieldDesc: string;
 	/** Label and description of the API-key row. */
 	readonly keyFieldName: string;
@@ -165,12 +163,10 @@ export const ACCOUNTS: Record<AccountId, ProviderConnection> = {
 	[ACCOUNT_IDS.OPENAI]: {
 		baseUrlKey: 'whisperApiBaseUrl',
 		apiKeyKey: 'whisperApiKey',
-		defaultBaseUrl: DEFAULT_LLM_OPENAI_BASE_URL,
 		baseUrl: (s) => s.whisperApiBaseUrl,
 		setBaseUrl: (s, url) => (s.whisperApiBaseUrl = url),
 		apiKey: (s) => s.whisperApiKey,
 		setApiKey: (s, key) => (s.whisperApiKey = key),
-		baseUrlFieldName: 'Base URL',
 		baseUrlFieldDesc:
 			'OpenAI-compatible endpoint base (e.g. https://api.openai.com/v1 or a Groq URL). Shared by the Whisper API and OpenAI engines.',
 		keyFieldName: 'OpenAI API key',
@@ -180,12 +176,10 @@ export const ACCOUNTS: Record<AccountId, ProviderConnection> = {
 	[ACCOUNT_IDS.DEEPGRAM]: {
 		baseUrlKey: 'deepgramBaseUrl',
 		apiKeyKey: 'deepgramApiKey',
-		defaultBaseUrl: 'https://api.deepgram.com/v1',
 		baseUrl: (s) => s.deepgramBaseUrl,
 		setBaseUrl: (s, url) => (s.deepgramBaseUrl = url),
 		apiKey: (s) => s.deepgramApiKey,
 		setApiKey: (s, key) => (s.deepgramApiKey = key),
-		baseUrlFieldName: 'Base URL',
 		baseUrlFieldDesc:
 			'Deepgram API base (default https://api.deepgram.com/v1).',
 		keyFieldName: 'Deepgram API key',
@@ -195,12 +189,10 @@ export const ACCOUNTS: Record<AccountId, ProviderConnection> = {
 	[ACCOUNT_IDS.GEMINI]: {
 		baseUrlKey: 'geminiBaseUrl',
 		apiKeyKey: 'geminiApiKey',
-		defaultBaseUrl: DEFAULT_LLM_GEMINI_BASE_URL,
 		baseUrl: (s) => s.geminiBaseUrl,
 		setBaseUrl: (s, url) => (s.geminiBaseUrl = url),
 		apiKey: (s) => s.geminiApiKey,
 		setApiKey: (s, key) => (s.geminiApiKey = key),
-		baseUrlFieldName: 'Base URL',
 		baseUrlFieldDesc:
 			'Gemini API base (default https://generativelanguage.googleapis.com).',
 		keyFieldName: 'Google Gemini API key',
@@ -210,12 +202,10 @@ export const ACCOUNTS: Record<AccountId, ProviderConnection> = {
 	[ACCOUNT_IDS.ANTHROPIC]: {
 		baseUrlKey: 'anthropicBaseUrl',
 		apiKeyKey: 'anthropicApiKey',
-		defaultBaseUrl: DEFAULT_LLM_ANTHROPIC_BASE_URL,
 		baseUrl: (s) => s.anthropicBaseUrl,
 		setBaseUrl: (s, url) => (s.anthropicBaseUrl = url),
 		apiKey: (s) => s.anthropicApiKey,
 		setApiKey: (s, key) => (s.anthropicApiKey = key),
-		baseUrlFieldName: 'Base URL',
 		baseUrlFieldDesc:
 			'Anthropic API base (default https://api.anthropic.com/v1).',
 		keyFieldName: 'Anthropic API key',
@@ -385,19 +375,6 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 export const ENGINE_ORDER = Object.keys(ENGINES) as EngineId[];
 
 /**
- * The engine a transcription id belongs to.
- * @param transcriptionId - Id stored in the transcription settings
- * @returns The engine, or undefined for an id no engine claims
- */
-export function engineOfTranscription(
-	transcriptionId: TranscriptionProviderId,
-): EngineDescriptor | undefined {
-	return ENGINE_ORDER.map((id) => ENGINES[id]).find(
-		(engine) => engine.transcriptionId === transcriptionId,
-	);
-}
-
-/**
  * The engine an LLM vendor id belongs to.
  * @param vendorId - Id stored in the post-processing settings
  * @returns The engine, or undefined for an id no engine claims
@@ -419,6 +396,42 @@ export function accountOf(
 	engine: EngineDescriptor,
 ): ProviderConnection | undefined {
 	return engine.account ? ACCOUNTS[engine.account] : undefined;
+}
+
+/** An engine together with the account and catalogue it declares. */
+export interface EngineAccess {
+	readonly engine: EngineDescriptor;
+	readonly account: ProviderConnection;
+	readonly models: ProviderModels;
+}
+
+/**
+ * An engine that is reached over the network, with the two things such an
+ * engine always has: the account it is called through and the catalogue it
+ * serves. Both job registries and the run that builds a client ask for the same
+ * pair, so the "an engine with an endpoint has a catalogue too" check lives
+ * here rather than once per reader.
+ * @param id - The engine being resolved
+ * @returns Its descriptor, account, and catalogue
+ * @throws Error when the id names the local engine, which has neither
+ */
+export function engineAccess(id: EngineId): EngineAccess {
+	const engine = ENGINES[id];
+	const account = accountOf(engine);
+	if (!account || !engine.models) {
+		throw new Error(`Engine "${id}" is not reached over an account`);
+	}
+	return { engine, account, models: engine.models };
+}
+
+/**
+ * What a run says when it is attempted with no model picked. Derived from the
+ * engine's own label, so an engine added to the registry arrives with the
+ * message rather than needing a string of its own.
+ * @param engine - The engine whose catalogue is empty
+ */
+export function missingModelMessage(engine: EngineDescriptor): string {
+	return `Pick a model for ${engine.label} in settings.`;
 }
 
 /**

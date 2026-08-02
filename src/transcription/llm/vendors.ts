@@ -20,9 +20,9 @@
 
 import { LLM_PROVIDER_IDS } from '../../constants';
 import {
-	ACCOUNTS,
-	ENGINES,
 	ENGINE_IDS,
+	engineAccess,
+	missingModelMessage,
 	type EngineId,
 } from '../../providers/providers';
 import type {
@@ -53,14 +53,6 @@ export interface LlmRate {
  * keeps its own), so it belongs to the descriptor rather than to each consumer.
  */
 export interface LlmVendorSettingsAccess {
-	/**
-	 * Settings keys the vendor's fields are stored under. The settings tab is
-	 * declared as data, and a declaration binds a control to a key, so the
-	 * descriptor names its keys as well as reading and writing them.
-	 */
-	readonly apiKeyKey: keyof AudioRecorderSettings;
-	readonly modelKey: keyof AudioRecorderSettings;
-	readonly modelsKey: keyof AudioRecorderSettings;
 	/** Reads the vendor's API key. */
 	apiKey(settings: AudioRecorderSettings): string;
 	/** Writes the vendor's API key. */
@@ -75,27 +67,25 @@ export interface LlmVendorSettingsAccess {
 	setModels(settings: AudioRecorderSettings, ids: string[]): void;
 }
 
-/** Everything the plugin knows about one LLM vendor. */
+/**
+ * What post-processing knows about one LLM vendor beyond the provider registry.
+ *
+ * Everything about the service itself - its endpoint, its key, the catalogue it
+ * serves, and the copy of the rows that configure it - belongs to
+ * {@link module:providers/providers} and is read from there. What is left here
+ * is what only this job knows: what a chat model costs, and which client speaks
+ * the vendor's wire format.
+ */
 export interface LlmVendorDescriptor {
 	readonly id: LlmProviderId;
 	/** Display label, used in dropdowns and cost-estimate lines. */
 	readonly label: string;
-	/** Base URL shipped as this vendor's default. */
-	readonly defaultBaseUrl: string;
 	/** Public pricing page, linked from the cost estimate. */
 	readonly pricingUrl: string;
-	/** Model catalog link shown under the model picker. */
-	readonly modelsDocUrl: string;
-	/** Label for the model catalog link. */
-	readonly modelsDocLabel: string;
-	/** Description shown on the model picker row. */
-	readonly modelPickerDesc: string;
-	/** Label of the API-key settings row. */
-	readonly keyFieldName: string;
-	/** Description of the API-key settings row. */
-	readonly keyFieldDesc: string;
 	/** Error shown when a run is attempted with no key configured. */
 	readonly missingKeyMessage: string;
+	/** Error shown when a run is attempted with no model picked. */
+	readonly missingModelMessage: string;
 	/**
 	 * Approximate rates by model-id fragment, USD per million tokens. Matched
 	 * longest-fragment-first by the cost model, so a more specific entry wins.
@@ -156,39 +146,29 @@ const GEMINI_RATES: readonly [string, LlmRate][] = [
 ];
 
 /**
- * The half of a vendor that belongs to the service rather than to the use: its
- * label, its endpoint, its key, and the catalogue its models come from. Read
+ * The half of a vendor that belongs to the service rather than to this job: how
+ * it is named, how it is reached, and the catalogue its models come from. Read
  * from the provider registry, so a service that also transcribes declares them
  * once and both uses reach the same fields.
- * @param id - Provider the vendor is a capability of
- * @returns That provider's half of the descriptor
+ * @param id - Engine the vendor is the prompt-answering side of
+ * @returns That engine's half of the descriptor
  */
 function fromRegistry(
 	id: EngineId,
 ): Omit<LlmVendorDescriptor, 'rates' | 'create'> {
-	const engine = ENGINES[id];
-	const connection = engine.account ? ACCOUNTS[engine.account] : undefined;
-	const models = engine.models;
-	if (!connection || !models || !engine.llmId) {
+	const { engine, account, models } = engineAccess(id);
+	if (!engine.llmId) {
 		throw new Error(`Engine "${id}" answers no prompts`);
 	}
 	return {
 		id: engine.llmId,
 		label: engine.label,
-		defaultBaseUrl: connection.defaultBaseUrl,
 		pricingUrl: engine.pricingUrl,
-		modelsDocUrl: models.docUrl,
-		modelsDocLabel: models.docLabel,
-		modelPickerDesc: models.pickerDesc,
-		keyFieldName: connection.keyFieldName,
-		keyFieldDesc: connection.keyFieldDesc,
-		missingKeyMessage: connection.missingKeyMessage,
+		missingKeyMessage: account.missingKeyMessage,
+		missingModelMessage: missingModelMessage(engine),
 		settings: {
-			apiKeyKey: connection.apiKeyKey,
-			modelKey: models.modelKey,
-			modelsKey: models.modelsKey,
-			apiKey: connection.apiKey,
-			setApiKey: connection.setApiKey,
+			apiKey: account.apiKey,
+			setApiKey: account.setApiKey,
 			model: models.model,
 			setModel: models.setModel,
 			models: models.models,
@@ -307,12 +287,3 @@ export function jobLlmVendor(
 ): LlmVendorDescriptor {
 	return llmVendor(jobVendorId(settings, job));
 }
-
-/**
- * Base URLs that ship as vendor defaults. Auto-switching only replaces a value
- * still equal to one of these, so a custom endpoint the user typed survives a
- * provider change.
- */
-export const DEFAULT_LLM_BASE_URLS: ReadonlySet<string> = new Set(
-	LLM_VENDOR_IDS.map((id) => LLM_VENDORS[id].defaultBaseUrl),
-);

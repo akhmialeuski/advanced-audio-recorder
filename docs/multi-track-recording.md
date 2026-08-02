@@ -40,7 +40,7 @@ Multi-track recording is configured under **Settings > Advanced Audio Recorder >
 2. Turn on **Enable multi-track recording**. (Default: **Off**.) The track options below appear.
 3. Set **Maximum tracks** in the number field - the number of simultaneous tracks, from **1 to 8** (default **2**). Use only what you need; each extra track is another live recorder.
 4. Choose the **Output mode**: **Single file** (all tracks mixed into one) or **Multiple files** (one file per track). Default is **Single file**.
-5. For each track, assign an **Track N input** - pick the input device from the dropdown. There is one dropdown per track, numbered up to the **Maximum tracks** value. The device list auto-populates and refreshes as devices are connected or disconnected.
+5. For each track, assign a **Track N input** - pick the input device from the dropdown. There is one dropdown per track, numbered up to the **Maximum tracks** value. The device list auto-populates and refreshes as devices are connected or disconnected.
 6. Optionally set **Track N channels** - the channel layout for that track's capture, bound to the track's device: keep the device layout (default), **Mono (mix all channels)**, **Mono (left channel)**, or **Mono (right channel)**. Because the choice is per track, a microphone that arrives hard-panned through a dual-input audio interface can be reduced to mono while a genuine stereo source on another track (for example a system-loopback device) keeps both channels. The selector is disabled when the track has no device yet, its device reports a mono-only input, or the selected device has been disconnected. The saved choice is retained and becomes available again after reconnecting a capable device. See [Recording in mono](recording.md#recording-in-mono) for how each mode sounds.
 
 ![Multi-track recording settings with the enable toggle on, the Maximum tracks number field, the Output mode dropdown, and several "Track N input" device dropdowns](images/settings-multi-track.png)
@@ -135,13 +135,13 @@ For everything about splitting - automatic and manual, part naming, WAV vs compr
 
 All multi-track controls live under **Settings > Advanced Audio Recorder > Multi-track recording**.
 
-| Setting                          | Description                                                                              | Default     |
-| -------------------------------- | ---------------------------------------------------------------------------------------- | ----------- |
-| **Enable multi-track recording** | Record from multiple input devices at the same time. Reveals the options below.          | Off         |
-| **Maximum tracks**               | Number of simultaneous tracks (number field, 1-8).                                       | 2           |
-| **Output mode**                  | `Single file` mixes all tracks into one file. `Multiple files` saves one file per track. | Single file |
-| **Track N input**     | Input device assigned to each track. One dropdown per track, up to **Maximum tracks**.   | -           |
-| **Track N channels**         | Channel layout for that track's capture: device layout, mono mix, or one picked channel. Disabled without a device or for mono-only devices. | Same as input device |
+| Setting                          | Description                                                                                                                                  | Default              |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| **Enable multi-track recording** | Record from multiple input devices at the same time. Reveals the options below.                                                              | Off                  |
+| **Maximum tracks**               | Number of simultaneous tracks (number field, 1-8).                                                                                           | 2                    |
+| **Output mode**                  | `Single file` mixes all tracks into one file. `Multiple files` saves one file per track.                                                     | Single file          |
+| **Track N input**                | Input device assigned to each track. One dropdown per track, up to **Maximum tracks**.                                                       | -                    |
+| **Track N channels**             | Channel layout for that track's capture: device layout, mono mix, or one picked channel. Disabled without a device or for mono-only devices. | Same as input device |
 
 Settings that also shape multi-track output:
 

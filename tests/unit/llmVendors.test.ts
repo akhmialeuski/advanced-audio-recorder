@@ -6,7 +6,6 @@
  */
 
 import {
-	DEFAULT_LLM_BASE_URLS,
 	LLM_VENDOR_IDS,
 	LLM_VENDORS,
 	llmVendor,
@@ -47,15 +46,25 @@ describe('LLM vendor registry', () => {
 		for (const id of LLM_VENDOR_IDS) {
 			const vendor = LLM_VENDORS[id];
 			expect(vendor.label).toBeTruthy();
-			expect(vendor.defaultBaseUrl).toMatch(/^https:\/\//);
 			expect(vendor.pricingUrl).toMatch(/^https:\/\//);
-			expect(vendor.modelsDocUrl).toMatch(/^https:\/\//);
-			expect(vendor.modelsDocLabel).toBeTruthy();
-			expect(vendor.modelPickerDesc).toBeTruthy();
-			expect(vendor.keyFieldName).toBeTruthy();
-			expect(vendor.keyFieldDesc).toBeTruthy();
 			expect(vendor.missingKeyMessage).toBeTruthy();
+			expect(vendor.missingModelMessage).toContain(vendor.label);
 			expect(vendor.rates.length).toBeGreaterThan(0);
+		}
+	});
+
+	it('describes the service once, in the provider registry', () => {
+		// A descriptor that also carried the endpoint, the catalogue link, and
+		// the settings-row copy was the same facts twice: the settings tab and
+		// the run both read them from the registry, and the copies went unread.
+		for (const id of LLM_VENDOR_IDS) {
+			const vendor = LLM_VENDORS[id] as unknown as Record<
+				string,
+				unknown
+			>;
+			expect(vendor.defaultBaseUrl).toBeUndefined();
+			expect(vendor.modelsDocUrl).toBeUndefined();
+			expect(vendor.keyFieldName).toBeUndefined();
 		}
 	});
 
@@ -76,12 +85,22 @@ describe('LLM vendor registry', () => {
 		}
 	});
 
-	it('collects the shipped base URLs for the auto-switch guard', () => {
-		expect(DEFAULT_LLM_BASE_URLS.size).toBe(LLM_VENDOR_IDS.length);
+	it('refuses to build a vendor whose catalogue holds no model', () => {
+		// A run needs an endpoint, a key, and an id. Only the first two were
+		// checked, so an emptied catalogue reached the endpoint as a request
+		// naming no model and failed there in the provider's own words.
 		for (const id of LLM_VENDOR_IDS) {
-			expect(
-				DEFAULT_LLM_BASE_URLS.has(LLM_VENDORS[id].defaultBaseUrl),
-			).toBe(true);
+			const vendor = LLM_VENDORS[id];
+			const settings = mergeSettings({ llmProvider: id });
+			vendor.settings.setApiKey(settings, 'token');
+			vendor.settings.setModel(settings, '');
+
+			expect(() => createLlmProvider(settings, id)).toThrow(
+				ProviderConfigError,
+			);
+			expect(() => createLlmProvider(settings, id)).toThrow(
+				vendor.missingModelMessage,
+			);
 		}
 	});
 });

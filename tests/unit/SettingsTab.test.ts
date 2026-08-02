@@ -375,23 +375,31 @@ describe('AudioRecorderSettingTab', () => {
 			},
 		);
 
-		it('leaves every provider endpoint alone when the vendor changes', async () => {
-			mockSettings.llmProvider = 'openai-compatible';
-			mockSettings.whisperApiBaseUrl = 'https://groq.internal/v1';
-			mockSettings.anthropicBaseUrl = 'https://claude.internal/v1';
+		it.each(['llmProvider', 'chaptersLlmProvider', 'advancedLlmProvider'])(
+			'stores %s without touching an endpoint or rebuilding the tree',
+			async (key) => {
+				mockSettings.whisperApiBaseUrl = 'https://groq.internal/v1';
+				mockSettings.anthropicBaseUrl = 'https://claude.internal/v1';
 
-			await tab.setControlValue('llmProvider', 'anthropic');
+				await tab.setControlValue(key, 'anthropic');
 
-			// The endpoint belongs to the provider, not to the use, so the
-			// switch reads another provider's field instead of rewriting one.
-			expect(mockSettings.whisperApiBaseUrl).toBe(
-				'https://groq.internal/v1',
-			);
-			expect(mockSettings.anthropicBaseUrl).toBe(
-				'https://claude.internal/v1',
-			);
-			expect(updateSpy).toHaveBeenCalled();
-		});
+				// The endpoint belongs to the provider, not to the use, so the
+				// switch reads another provider's field instead of rewriting
+				// one. Every service is configured on its own page too, so no
+				// row below this one holds the chosen vendor's fields and there
+				// is nothing for a rebuild to change.
+				expect(mockSettings.whisperApiBaseUrl).toBe(
+					'https://groq.internal/v1',
+				);
+				expect(mockSettings.anthropicBaseUrl).toBe(
+					'https://claude.internal/v1',
+				);
+				expect(
+					(mockSettings as unknown as Record<string, unknown>)[key],
+				).toBe('anthropic');
+				expect(updateSpy).not.toHaveBeenCalled();
+			},
+		);
 
 		it('reads the tree again when the engine changes', async () => {
 			mockSettings.transcriptionEnabled = true;

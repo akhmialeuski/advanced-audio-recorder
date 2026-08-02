@@ -19,9 +19,9 @@
 
 import { MS_PER_MINUTE, TRANSCRIPTION_PROVIDER_IDS } from '../../constants';
 import {
-	ACCOUNTS,
-	ENGINES,
 	ENGINE_IDS,
+	engineAccess,
+	missingModelMessage,
 	type EngineId,
 } from '../../providers/providers';
 import type {
@@ -69,75 +69,48 @@ interface TokenRate {
 	output: number;
 }
 
-/**
- * The endpoint, key, and model-list settings of a cloud engine. Absent on the
- * local engine, which points at files on disk instead.
- */
-export interface EngineCredentials {
-	/**
-	 * Settings keys the engine's fields are stored under. The settings tab is
-	 * declared as data, and a declaration binds a control to a key, so the
-	 * descriptor names its keys as well as reading and writing them.
-	 */
-	readonly baseUrlKey: keyof AudioRecorderSettings;
-	readonly apiKeyKey: keyof AudioRecorderSettings;
-	readonly modelKey: keyof AudioRecorderSettings;
-	readonly modelsKey: keyof AudioRecorderSettings;
-	baseUrl(settings: AudioRecorderSettings): string;
-	setBaseUrl(settings: AudioRecorderSettings, url: string): void;
-	apiKey(settings: AudioRecorderSettings): string;
-	setApiKey(settings: AudioRecorderSettings, key: string): void;
-	setModel(settings: AudioRecorderSettings, id: string): void;
-	models(settings: AudioRecorderSettings): string[];
-	setModels(settings: AudioRecorderSettings, ids: string[]): void;
-	/** Label and description of the base-URL settings row. */
-	readonly baseUrlFieldName: string;
-	readonly baseUrlFieldDesc: string;
-	/** Label and description of the API-key settings row. */
-	readonly keyFieldName: string;
-	readonly keyFieldDesc: string;
-	/** Label, description, and catalog link of the model picker row. */
-	readonly modelPickerName: string;
-	readonly modelPickerDesc: string;
-	readonly modelsDocLabel: string;
-	readonly modelsDocUrl: string;
+/** What a cloud engine's client is built from, once its settings check out. */
+interface CloudEngineConfig {
+	baseUrl: string;
+	apiKey: string;
+	model: string;
+	requestTimeoutMs: number;
 }
 
 /**
- * The half of an engine's credentials that belongs to the service rather than
- * to transcription: its endpoint, its key, and the catalogue its speech models
- * come from. Read from the provider registry, so a service that also answers
- * prompts declares them once and both uses reach the same fields.
- * @param id - Provider the engine is a capability of
- * @returns That provider's credentials for transcription
+ * The `create` of an engine reached over the network. The three cloud engines
+ * differ only in the client that speaks their wire format: where the endpoint,
+ * the key, and the model are stored, and what a run says when one of them is
+ * missing, are facts of the account and the catalogue, so they are read from
+ * the provider registry once here instead of being restated per engine.
+ *
+ * Both halves are required. A key was always checked; a model was not, so an
+ * emptied catalogue (or a hand-edited `data.json`) sent a request naming no
+ * model and failed at the endpoint with the provider's own wording.
+ * @param id - The engine being built
+ * @param build - Constructs the client for that engine
+ * @returns The descriptor's `create`
  */
-function credentialsFromRegistry(id: EngineId): EngineCredentials {
-	const engine = ENGINES[id];
-	const connection = engine.account ? ACCOUNTS[engine.account] : undefined;
-	const models = engine.models;
-	if (!connection || !models) {
-		throw new Error(`Engine "${id}" declares no endpoint`);
-	}
-	return {
-		baseUrlKey: connection.baseUrlKey,
-		apiKeyKey: connection.apiKeyKey,
-		modelKey: models.modelKey,
-		modelsKey: models.modelsKey,
-		baseUrl: connection.baseUrl,
-		setBaseUrl: connection.setBaseUrl,
-		apiKey: connection.apiKey,
-		setApiKey: connection.setApiKey,
-		setModel: models.setModel,
-		models: models.models,
-		setModels: models.setModels,
-		baseUrlFieldName: connection.baseUrlFieldName,
-		baseUrlFieldDesc: connection.baseUrlFieldDesc,
-		keyFieldName: connection.keyFieldName,
-		keyFieldDesc: connection.keyFieldDesc,
-		modelPickerName: models.pickerName,
-		modelPickerDesc: models.pickerDesc,
-		modelsDocLabel: models.docLabel,
-		modelsDocUrl: models.docUrl,
+function cloudEngineFactory(
+	id: EngineId,
+	build: (config: CloudEngineConfig) => TranscriptionProvider,
+): TranscriptionEngineDescriptor['create'] {
+	return (settings, requestTimeoutMs) => {
+		const { engine, account, models } = engineAccess(id);
+		const apiKey = account.apiKey(settings);
+		if (!apiKey) {
+			throw new ProviderConfigError(account.missingKeyMessage);
+		}
+		const model = models.model(settings);
+		if (!model) {
+			throw new ProviderConfigError(missingModelMessage(engine));
+		}
+		return build({
+			baseUrl: account.baseUrl(settings),
+			apiKey,
+			model,
+			requestTimeoutMs,
+		});
 	};
 }
 
@@ -155,8 +128,6 @@ export interface TranscriptionEngineDescriptor {
 	model(settings: AudioRecorderSettings): string;
 	/** Resolves the rate for a model id, or null when none is built in. */
 	pricing(model: string): EnginePricing | null;
-	/** Endpoint/key/model settings, absent for the local engine. */
-	readonly credentials?: EngineCredentials;
 	/**
 	 * Plans how the user's dictionary terms are applied within this engine's
 	 * mechanism and request limits. The per-engine rules live with the engine
@@ -296,22 +267,12 @@ export const TRANSCRIPTION_ENGINES: Record<
 		model: (s) => s.whisperApiModel,
 		pricing: (model) =>
 			perMinutePricing(matchRate(WHISPER_API_RATES, model)),
-		credentials: credentialsFromRegistry(ENGINE_IDS.WHISPER_API),
 		planDictionary: (_model, terms) => planWhisperPromptDictionary(terms),
 		biasUnsupportedReason: () => null,
-		create: (settings, requestTimeoutMs) => {
-			if (!settings.whisperApiKey) {
-				throw new ProviderConfigError(
-					'Set the Whisper API key in settings to transcribe.',
-				);
-			}
-			return new WhisperApiProvider({
-				baseUrl: settings.whisperApiBaseUrl,
-				apiKey: settings.whisperApiKey,
-				model: settings.whisperApiModel,
-				requestTimeoutMs,
-			});
-		},
+		create: cloudEngineFactory(
+			ENGINE_IDS.WHISPER_API,
+			(config) => new WhisperApiProvider(config),
+		),
 	},
 	[TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM]: {
 		id: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
@@ -319,7 +280,6 @@ export const TRANSCRIPTION_ENGINES: Record<
 		pricingUrl: 'https://deepgram.com/pricing',
 		model: (s) => s.deepgramModel,
 		pricing: (model) => perMinutePricing(matchRate(DEEPGRAM_RATES, model)),
-		credentials: credentialsFromRegistry(ENGINE_IDS.DEEPGRAM),
 		// Deepgram's mechanism, and therefore its limits, depend on the model:
 		// Nova-3 keyterm prompting is bounded by both an entry count and an
 		// aggregate token budget, Nova-2 and older keyword boosting only by an
@@ -362,19 +322,10 @@ export const TRANSCRIPTION_ENGINES: Record<
 			deepgramBiasMechanism(model) === null
 				? `the Deepgram model "${model}" cannot bias recognition (choose a Nova model)`
 				: null,
-		create: (settings, requestTimeoutMs) => {
-			if (!settings.deepgramApiKey) {
-				throw new ProviderConfigError(
-					'Set the Deepgram API key in settings to transcribe.',
-				);
-			}
-			return new DeepgramProvider({
-				baseUrl: settings.deepgramBaseUrl,
-				apiKey: settings.deepgramApiKey,
-				model: settings.deepgramModel,
-				requestTimeoutMs,
-			});
-		},
+		create: cloudEngineFactory(
+			ENGINE_IDS.DEEPGRAM,
+			(config) => new DeepgramProvider(config),
+		),
 	},
 	[TRANSCRIPTION_PROVIDER_IDS.GEMINI]: {
 		id: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
@@ -382,23 +333,13 @@ export const TRANSCRIPTION_ENGINES: Record<
 		pricingUrl: 'https://ai.google.dev/gemini-api/docs/pricing',
 		model: (s) => s.geminiModel,
 		pricing: (model) => perTokenPricing(matchRate(GEMINI_RATES, model)),
-		credentials: credentialsFromRegistry(ENGINE_IDS.GEMINI),
 		// Gemini folds terms into a large instruction context with no hard cap.
 		planDictionary: (_model, terms) => ({ applied: terms, omitted: [] }),
 		biasUnsupportedReason: () => null,
-		create: (settings, requestTimeoutMs) => {
-			if (!settings.geminiApiKey) {
-				throw new ProviderConfigError(
-					'Set the Google Gemini API key in settings to transcribe.',
-				);
-			}
-			return new GeminiProvider({
-				baseUrl: settings.geminiBaseUrl,
-				apiKey: settings.geminiApiKey,
-				model: settings.geminiModel,
-				requestTimeoutMs,
-			});
-		},
+		create: cloudEngineFactory(
+			ENGINE_IDS.GEMINI,
+			(config) => new GeminiProvider(config),
+		),
 	},
 	[TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER]: {
 		id: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,

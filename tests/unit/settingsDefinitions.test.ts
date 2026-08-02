@@ -335,6 +335,38 @@ describe('settings definitions', () => {
 				'whisper-1',
 			);
 			expect(displayValue('Dictionary profiles')).toBe('Legal');
+
+			// Both halves are needed to run, so an engine reachable but with
+			// nothing to run says which half is still missing rather than
+			// reading as configured.
+			settings.whisperApiModel = '';
+
+			expect(displayValue('Whisper API (OpenAI-compatible)')).toBe(
+				'No model',
+			);
+		});
+
+		it('counts a configured engine by its account, not by its engines', () => {
+			// One key configures the account it belongs to. The Whisper API and
+			// OpenAI engines name the same account, so entering that one key is
+			// one answer on the entry, not two.
+			settings.transcriptionEnabled = true;
+			const engines = (): string | undefined =>
+				(
+					pageOf(build(), 'Engines') as {
+						displayValue?: () => string;
+					}
+				).displayValue?.();
+
+			expect(engines()).toBe('0 configured');
+
+			settings.whisperApiKey = 'sk-test';
+
+			expect(engines()).toBe('1 configured');
+
+			settings.deepgramApiKey = 'dg-test';
+
+			expect(engines()).toBe('2 configured');
 		});
 
 		it('reports on the entry whether transcription is on', () => {
@@ -454,7 +486,6 @@ describe('settings definitions', () => {
 			expect(pageEntryNames('Deepgram')).toEqual([
 				'Base URL',
 				'Deepgram API key',
-				'Model',
 				'Model',
 			]);
 		});
@@ -803,7 +834,6 @@ describe('settings definitions', () => {
 			expect(pageEntryNames('Google Gemini')).toEqual([
 				'Base URL',
 				'Google Gemini API key',
-				'Model',
 				'Model',
 				'Max output tokens',
 			]);

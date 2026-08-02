@@ -10,8 +10,14 @@ import { isRecord } from '../utils/objects';
 import { getDefaultDeviceId } from '../utils/DeviceUtils';
 import { getPlatformKind, type PlatformKind } from '../platform/platformKind';
 import { isDeviceSelectionSupported } from '../platform/capabilities';
-import { LLM_VENDORS, selectedLlmVendor } from '../transcription/llm/vendors';
-import { vendorConnection } from '../providers/providers';
+import { LLM_VENDORS } from '../transcription/llm/vendors';
+import {
+	ENGINES,
+	ENGINE_ORDER,
+	engineOfVendor,
+	vendorConnection,
+} from '../providers/providers';
+import { ensureSelectedInList, normalizeModelId } from './modelList';
 import {
 	DEEPGRAM_MODEL_SUGGESTIONS,
 	GEMINI_MODEL_SUGGESTIONS,
@@ -226,9 +232,59 @@ export function mergeSettings(
 	};
 	migrateLegacyLlmSettings(merged, userSettings);
 	migrateModelCatalogues(merged, userSettings);
+	reconcileModelCatalogues(merged);
 	migrateLegacyTranscriptionDictionary(merged, userSettings);
 	migrateAdvancedDictionaryGate(merged, userSettings);
 	return merged;
+}
+
+/**
+ * Whether a setting still holds the value this version ships for it.
+ *
+ * A superseded field is carried onto the field that replaced it only while that
+ * field has not been set: overwriting a value the user chose would answer a
+ * migration question with the old configuration's answer. The rule is one rule,
+ * so it is written once here rather than restated at each field it guards.
+ * @param settings - The merged settings being migrated
+ * @param key - The field the legacy value would be written to
+ * @returns Whether the field is untouched
+ */
+function isShippedDefault(
+	settings: AudioRecorderSettings,
+	key: keyof AudioRecorderSettings,
+): boolean {
+	return settings[key] === DEFAULT_SETTINGS[key];
+}
+
+/**
+ * Keeps every engine's catalogue and the id picked out of it consistent.
+ *
+ * The catalogue is the picker: a run uses the selected id, and the settings
+ * show the list it was chosen from, so an id held outside its list is a
+ * selection the user can neither see nor change. That happens without any bug
+ * of its own - a hand-edited `data.json`, a config synced from a device whose
+ * list differs, or a legacy field migrated onto a catalogue that never listed
+ * it - so the invariant is restored where settings are loaded rather than
+ * defended at each place that edits them.
+ * @param merged - The merged settings to reconcile in place
+ */
+function reconcileModelCatalogues(merged: AudioRecorderSettings): void {
+	for (const id of ENGINE_ORDER) {
+		const models = ENGINES[id].models;
+		if (!models) {
+			continue;
+		}
+		const selected = normalizeModelId(models.model(merged));
+		const saved = models.models(merged);
+		if (selected === '') {
+			// Nothing picked: a run needs an id, and the catalogue's first
+			// entry is the one the list itself offers first.
+			models.setModel(merged, saved[0] ?? '');
+			continue;
+		}
+		models.setModels(merged, ensureSelectedInList(saved, selected));
+		models.setModel(merged, selected);
+	}
 }
 
 /**
@@ -329,17 +385,27 @@ function migrateLegacyLlmSettings(
 	// vendor, so skip the mapping rather than dereference an absent descriptor;
 	// the superseded flat fields are still dropped below.
 	if (merged.llmProvider in LLM_VENDORS) {
-		// Which fields hold the stored provider's key and model is a vendor
-		// fact, so the migration asks the registry instead of re-deriving the
-		// mapping.
-		const vendor = selectedLlmVendor(merged);
-		// A vendor key already set is never overwritten, so the migration
-		// cannot clobber a freshly entered token.
-		if (legacyKey && !vendor.settings.apiKey(merged)) {
-			vendor.settings.setApiKey(merged, legacyKey);
+		// Which fields hold the stored provider's key and model is a fact of
+		// the provider, so both halves are asked of the registry rather than
+		// re-derived here.
+		const account = vendorConnection(merged.llmProvider);
+		// A key already set is never overwritten, so the migration cannot
+		// clobber a freshly entered token.
+		if (legacyKey && !account.apiKey(merged)) {
+			account.setApiKey(merged, legacyKey);
 		}
-		if (legacyModel) {
-			vendor.settings.setModel(merged, legacyModel);
+		// The catalogue this vendor picks from is, for a provider that also
+		// transcribes, the catalogue transcription picks from as well. Adopting
+		// the legacy chat model unconditionally would therefore replace the id
+		// a user chose to transcribe with, so it applies on the same terms as
+		// every other superseded value: only while nothing was chosen.
+		const models = engineOfVendor(merged.llmProvider)?.models;
+		if (
+			legacyModel &&
+			models &&
+			isShippedDefault(merged, models.modelKey)
+		) {
+			models.setModel(merged, legacyModel);
 		}
 	}
 	// The endpoint was one field rewritten on every vendor change; it now
@@ -350,7 +416,7 @@ function migrateLegacyLlmSettings(
 	const legacyBaseUrl = legacyString(raw.llmBaseUrl).trim();
 	if (legacyBaseUrl && merged.llmProvider in LLM_VENDORS) {
 		const connection = vendorConnection(merged.llmProvider);
-		if (connection.baseUrl(merged) === connection.defaultBaseUrl) {
+		if (isShippedDefault(merged, connection.baseUrlKey)) {
 			connection.setBaseUrl(merged, legacyBaseUrl);
 		}
 	}
@@ -369,14 +435,8 @@ function migrateLegacyLlmSettings(
 		];
 	}
 	const legacyGeminiModel = legacyString(raw.llmGeminiModel).trim();
-	if (
-		legacyGeminiModel &&
-		merged.geminiModel === DEFAULT_SETTINGS.geminiModel
-	) {
+	if (legacyGeminiModel && isShippedDefault(merged, 'geminiModel')) {
 		merged.geminiModel = legacyGeminiModel;
-		if (!merged.geminiModels.includes(legacyGeminiModel)) {
-			merged.geminiModels = [...merged.geminiModels, legacyGeminiModel];
-		}
 	}
 	// Chapters and the two-pass agents used to call whichever engine
 	// post-processing named. They pick their own now, and a stored config keeps

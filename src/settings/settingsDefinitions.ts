@@ -60,9 +60,11 @@ import {
 import { PROFILE_KINDS, type ProfileSection } from './profileKinds';
 import { LLM_JOBS } from '../transcription/llm/vendors';
 import {
+	ACCOUNTS,
 	ENGINES,
 	ENGINE_ORDER,
 	accountOf,
+	type AccountId,
 	type EngineDescriptor,
 	type EngineId,
 	type ProviderModels,
@@ -1072,13 +1074,9 @@ function profileGroups(
 				?.name ?? 'None'
 		);
 	};
-	const addRow = addItemRow(
-		'Add profile',
-		'Creates an empty profile at the end of the list.',
-		() => {
-			catalogue.add();
-		},
-	);
+	const add = (): void => {
+		catalogue.add();
+	};
 	const selectionRow: SettingGroupItem = {
 		name: catalogue.selectionName,
 		aliases: ['profile', 'preset'],
@@ -1110,12 +1108,7 @@ function profileGroups(
 					cls: SETTINGS_SECTION_CLASS,
 					emptyState: 'No profiles yet. Add one to start.',
 					search: nameFilter('Filter profiles'),
-					addItem: {
-						name: 'Add profile',
-						action: (): void => {
-							catalogue.add();
-						},
-					},
+					addItem: { name: 'Add profile', action: add },
 					items: entries.map((entry) =>
 						profilePage(catalogue, entry),
 					),
@@ -1123,7 +1116,15 @@ function profileGroups(
 				// Beside the list rather than in it: a row inside would be
 				// filtered away by the list's own search, exactly when an empty
 				// result makes adding one the obvious next move.
-				...(declareAddRow ? [addRow] : []),
+				...(declareAddRow
+					? [
+							addItemRow(
+								'Add profile',
+								'Creates an empty profile at the end of the list.',
+								add,
+							),
+						]
+					: []),
 			],
 		},
 	];
@@ -1204,18 +1205,9 @@ function enginePage(
 	}
 	const models = engine.models;
 	if (models) {
-		rows.push({
-			name: models.pickerName,
-			aliases: ['model id'],
-			desc: models.pickerDesc,
-			control: {
-				type: 'dropdown',
-				key: models.modelKey,
-				options: Object.fromEntries(
-					models.models(settings).map((id) => [id, id]),
-				),
-			},
-		});
+		// One row, not two: the catalogue entry names the id in use and opens
+		// the list the choice is made in, so a dropdown beside it would be the
+		// same value twice - and the one that does not refresh the entry.
 		rows.push(modelCataloguePage(settings, models, blocks, declareAddRow));
 	}
 	if (engine.maxTokens) {
@@ -1277,7 +1269,9 @@ function engineJobsDesc(engine: EngineDescriptor): string {
 
 /**
  * What an engine's entry says without being opened: whether it is reachable,
- * and which model it uses.
+ * and which model it uses. Both halves are needed to run, so an engine with a
+ * key but an emptied catalogue reports the half it is still missing rather than
+ * reading as configured.
  * @param settings - Live settings, read for the key and the choice
  * @param engine - The engine being described
  */
@@ -1292,7 +1286,27 @@ function engineSummary(
 	if (!connection.apiKey(settings)) {
 		return 'No key';
 	}
-	return engine.models?.model(settings) || 'Key set';
+	if (!engine.models) {
+		return 'Key set';
+	}
+	return engine.models.model(settings) || 'No model';
+}
+
+/**
+ * The accounts a key has been entered for. An account is what a key belongs to,
+ * so two engines reached through one are one answer, not two.
+ * @param settings - Live settings, read for each account's key
+ * @returns The ids of the accounts that hold a key
+ */
+function configuredAccounts(settings: AudioRecorderSettings): Set<AccountId> {
+	const configured = new Set<AccountId>();
+	for (const id of ENGINE_ORDER) {
+		const engine = ENGINES[id];
+		if (engine.account && ACCOUNTS[engine.account].apiKey(settings)) {
+			configured.add(engine.account);
+		}
+	}
+	return configured;
 }
 
 /**
@@ -1306,13 +1320,11 @@ function enginesPage(ctx: SettingsDefinitionContext): SettingGroupItem {
 		type: 'page',
 		name: 'Engines',
 		desc: 'The services this plugin calls: where each one is reached, and the models it serves.',
+		// Counted by account rather than by engine: a key configures the account
+		// it belongs to, and the two engines over the OpenAI account would
+		// otherwise both report the one key that was entered.
 		displayValue: (): string =>
-			`${String(
-				ENGINE_ORDER.filter((id) => {
-					const connection = accountOf(ENGINES[id]);
-					return connection && connection.apiKey(ctx.settings);
-				}).length,
-			)} configured`,
+			`${String(configuredAccounts(ctx.settings).size)} configured`,
 		visible: (): boolean => ctx.settings.transcriptionEnabled,
 		items: sectionItems(
 			ENGINE_ORDER.map((id) =>
@@ -1370,6 +1382,9 @@ function modelCataloguePage(
 ): SettingGroupItem {
 	const saved = models.models(settings);
 	const selected = models.model(settings);
+	const add = (): void => {
+		blocks.addModel(models);
+	};
 	return {
 		// The entry is the picker: it says which id is in use, and opens the
 		// catalogue it was chosen from. A vendor's catalogue runs to thirty-odd
@@ -1389,12 +1404,7 @@ function modelCataloguePage(
 				emptyState:
 					'No models saved yet. Add the model id your endpoint serves.',
 				search: nameFilter('Filter models'),
-				addItem: {
-					name: 'Add model',
-					action: (): void => {
-						blocks.addModel(models);
-					},
-				},
+				addItem: { name: 'Add model', action: add },
 				onDelete: (index): void => {
 					blocks.removeModel(models, index);
 				},
@@ -1415,9 +1425,7 @@ function modelCataloguePage(
 						addItemRow(
 							'Add model',
 							'Saves another model id for this provider.',
-							() => {
-								blocks.addModel(models);
-							},
+							add,
 						),
 					]
 				: []),
@@ -2091,12 +2099,12 @@ export const CONTROL_WRITE_EFFECTS: Readonly<
 	// other numeric setting uses a number control, which speaks numbers.
 	bitrate: { numeric: true },
 	sampleRate: { numeric: true },
+	// Picking another transcription engine rewrites the descriptions the
+	// speaker rows carry, which are built from the engine rather than
+	// re-evaluated per pass. The three rows that pick an engine for an LLM job
+	// need no entry: every service is configured on its own page now, so
+	// nothing under such a row holds the chosen vendor's fields.
 	transcriptionProvider: { reshapesTree: true },
-	llmProvider: {
-		// Each provider keeps its own endpoint and key, so a switch moves
-		// nothing; the rows below it hold another vendor's model and rates.
-		reshapesTree: true,
-	},
 	// Every catalogue names the profile in use on the entry that opens it, so
 	// moving that selection leaves those rows holding something else. Read from
 	// the kinds themselves, so a kind added there arrives with this behaviour

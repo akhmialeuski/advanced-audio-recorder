@@ -251,26 +251,26 @@ This is only a summary. For the full behaviour - manual splitting of existing fi
 
 These settings shape the recording workflow. See the [settings reference](settings-reference.md) for the complete list, exact ranges, and defaults.
 
-| Setting                              | What it controls                                                                                   | Reference                                                                       |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| **Input device**                     | Which microphone or input the recording captures.                                                  | [Audio input](settings-reference.md#audio-input)                                |
-| **Sample rate**                      | Capture sample rate in Hz (default 44100).                                                         | [Audio input](settings-reference.md#audio-input)                                |
+| Setting                              | What it controls                                                                                        | Reference                                                                       |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| **Input device**                     | Which microphone or input the recording captures.                                                       | [Audio input](settings-reference.md#audio-input)                                |
+| **Sample rate**                      | Capture sample rate in Hz (default 44100).                                                              | [Audio input](settings-reference.md#audio-input)                                |
 | **Recording channels**               | Keep the device channel layout, or record mono (mix all channels, or keep only the left/right channel). | [Audio input](settings-reference.md#audio-input)                                |
-| **Recording format**                 | The output container/codec (default WebM); offline formats are labelled `(offline)`.               | [Output format](settings-reference.md#output-format)                            |
-| **Audio bitrate**                    | Compression quality for the recording (default 128 kbps).                                          | [Output format](settings-reference.md#output-format)                            |
-| **Save folder**                      | The vault folder recordings are written to (default vault root).                                   | [File storage](settings-reference.md#file-storage)                              |
-| **Save recordings near active file** | Writes the file beside the active note instead; takes priority over Save folder.                   | [File storage](settings-reference.md#file-storage)                              |
-| **File prefix**                      | The filename prefix for new recordings (default `recording`).                                      | [File storage](settings-reference.md#file-storage)                              |
-| **Insert at original position**      | Places the embed link where recording started rather than at the cursor on stop (default Off).     | [File storage](settings-reference.md#file-storage)                              |
-| **Split recordings automatically**   | Saves a long recording as fixed-duration part files (desktop only, default Off).                   | [Audio splitting](settings-reference.md#audio-splitting)                        |
-| **Part duration**                    | The length of each auto-split part in minutes (default 15, range 1-180).                           | [Audio splitting](settings-reference.md#audio-splitting)                        |
-| **Markers and chapters**             | Enables the **Add marker** control while recording and the marker list in the player (default On). | [Audio player](settings-reference.md#audio-player)                              |
-| **Input level meter**                | Shows the live VU meter in the status bar (default On).                                            | [Audio processing & feedback](settings-reference.md#audio-processing--feedback) |
-| **Recording stats**                  | Shows live elapsed time and recorded size in the status bar (default On).                          | [Audio processing & feedback](settings-reference.md#audio-processing--feedback) |
-| **Mobile recording banner**          | Shows the floating recording banner where the ribbon is unavailable (default On).                  | [Audio processing & feedback](settings-reference.md#audio-processing--feedback) |
-| **Noise suppression**                | Applies the browser's noise suppression to the input stream (default On).                          | [Audio processing & feedback](settings-reference.md#audio-processing--feedback) |
-| **Echo cancellation**                | Applies the browser's echo cancellation to the input stream (default On).                          | [Audio processing & feedback](settings-reference.md#audio-processing--feedback) |
-| **Automatic gain control**           | Applies the browser's automatic gain control to the input stream (default On).                     | [Audio processing & feedback](settings-reference.md#audio-processing--feedback) |
+| **Recording format**                 | The output container/codec (default WebM); offline formats are labelled `(offline)`.                    | [Output format](settings-reference.md#output-format)                            |
+| **Audio bitrate**                    | Compression quality for the recording (default 128 kbps).                                               | [Output format](settings-reference.md#output-format)                            |
+| **Save folder**                      | The vault folder recordings are written to (default vault root).                                        | [File storage](settings-reference.md#file-storage)                              |
+| **Save recordings near active file** | Writes the file beside the active note instead; takes priority over Save folder.                        | [File storage](settings-reference.md#file-storage)                              |
+| **File prefix**                      | The filename prefix for new recordings (default `recording`).                                           | [File storage](settings-reference.md#file-storage)                              |
+| **Insert at original position**      | Places the embed link where recording started rather than at the cursor on stop (default Off).          | [File storage](settings-reference.md#file-storage)                              |
+| **Split recordings automatically**   | Saves a long recording as fixed-duration part files (desktop only, default Off).                        | [Audio splitting](settings-reference.md#audio-splitting)                        |
+| **Part duration**                    | The length of each auto-split part in minutes (default 15, range 1-180).                                | [Audio splitting](settings-reference.md#audio-splitting)                        |
+| **Markers and chapters**             | Enables the **Add marker** control while recording and the marker list in the player (default On).      | [Audio player](settings-reference.md#audio-player)                              |
+| **Input level meter**                | Shows the live VU meter in the status bar (default On).                                                 | [Audio processing & feedback](settings-reference.md#audio-processing--feedback) |
+| **Recording stats**                  | Shows live elapsed time and recorded size in the status bar (default On).                               | [Audio processing & feedback](settings-reference.md#audio-processing--feedback) |
+| **Mobile recording banner**          | Shows the floating recording banner where the ribbon is unavailable (default On).                       | [Audio processing & feedback](settings-reference.md#audio-processing--feedback) |
+| **Noise suppression**                | Applies the browser's noise suppression to the input stream (default On).                               | [Audio processing & feedback](settings-reference.md#audio-processing--feedback) |
+| **Echo cancellation**                | Applies the browser's echo cancellation to the input stream (default On).                               | [Audio processing & feedback](settings-reference.md#audio-processing--feedback) |
+| **Automatic gain control**           | Applies the browser's automatic gain control to the input stream (default On).                          | [Audio processing & feedback](settings-reference.md#audio-processing--feedback) |
 
 ---
 
