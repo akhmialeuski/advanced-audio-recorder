@@ -3,7 +3,10 @@
  * @module tests/unit/AudioFileAnalyzer.test
  */
 
-import { getAudioFileInfo } from 'src/utils/AudioFileAnalyzer';
+import {
+	getAudioFileInfo,
+	readAudioMetadata,
+} from 'src/utils/AudioFileAnalyzer';
 import { App, Notice, TFile } from 'obsidian';
 
 // Mock Notice
@@ -244,15 +247,18 @@ describe('getAudioFileInfo', () => {
 	it('should return null and show Notice if decoding throws', async () => {
 		mockDecodeAudioData.mockRejectedValue(new Error('Invalid audio data'));
 
+		// A decode that fails is logged rather than announced: the fallback is
+		// also reached from a background probe, so what an unreadable file
+		// should say belongs to the action the user opened.
 		const consoleSpy = jest
-			.spyOn(console, 'error')
+			.spyOn(console, 'warn')
 			.mockImplementation(() => {});
 
 		const result = await getAudioFileInfo(app, file);
 
 		expect(result).toBeNull();
 		expect(Notice).toHaveBeenCalledWith(
-			'Failed to decode audio file data.',
+			'Could not read this audio file to show its details.',
 		);
 		expect(consoleSpy).toHaveBeenCalled();
 
@@ -280,8 +286,107 @@ describe('getAudioFileInfo', () => {
 		const result = await getAudioFileInfo(app, file);
 		expect(result).toBeNull();
 		expect(Notice).toHaveBeenCalledWith(
-			'Audio context is not supported. Cannot extract audio metadata.',
+			'Could not read this audio file to show its details.',
 		);
+
+		consoleSpy.mockRestore();
+	});
+});
+
+describe('readAudioMetadata', () => {
+	beforeEach(() => {
+		jest.clearAllMocks();
+		mockDecodeAudioData.mockResolvedValue({
+			duration: 90,
+			sampleRate: 48000,
+			numberOfChannels: 2,
+		});
+		mockClose.mockResolvedValue(undefined);
+		Object.defineProperty(window, 'AudioContext', {
+			writable: true,
+			value: MockAudioContext,
+		});
+	});
+
+	it('answers from the container headers without decoding', async () => {
+		mockGetPrimaryAudioTrack.mockResolvedValue({
+			getSampleRate: () => 44100,
+			getNumberOfChannels: () => 1,
+		});
+		mockComputeDuration.mockResolvedValue(120);
+
+		const result = await readAudioMetadata(new ArrayBuffer(8), 'a.webm');
+
+		expect(result).toEqual({
+			durationSeconds: 120,
+			sampleRate: 44100,
+			channels: 1,
+		});
+		expect(mockDecodeAudioData).not.toHaveBeenCalled();
+	});
+
+	it('decodes when the container cannot be parsed', async () => {
+		mockGetPrimaryAudioTrack.mockRejectedValue(new Error('unparseable'));
+		const consoleSpy = jest
+			.spyOn(console, 'warn')
+			.mockImplementation(() => {});
+
+		const result = await readAudioMetadata(new ArrayBuffer(8), 'a.webm');
+
+		expect(result?.durationSeconds).toBe(90);
+		expect(mockDecodeAudioData).toHaveBeenCalled();
+
+		consoleSpy.mockRestore();
+	});
+
+	it('decodes when the headers carry no duration', async () => {
+		// A recorder writing live leaves no duration in the segment it has not
+		// finished, which is what this plugin's own recordings look like. The
+		// headers parse, so a probe alone answered zero and every priced line
+		// went unestimated.
+		mockGetPrimaryAudioTrack.mockResolvedValue({
+			getSampleRate: () => 48000,
+			getNumberOfChannels: () => 2,
+		});
+		mockComputeDuration.mockResolvedValue(0);
+
+		const result = await readAudioMetadata(new ArrayBuffer(8), 'a.webm');
+
+		expect(result?.durationSeconds).toBe(90);
+	});
+
+	it('keeps what the headers did read when the decode fails too', async () => {
+		mockGetPrimaryAudioTrack.mockResolvedValue({
+			getSampleRate: () => 48000,
+			getNumberOfChannels: () => 2,
+		});
+		mockComputeDuration.mockResolvedValue(0);
+		mockDecodeAudioData.mockRejectedValue(new Error('no decoder'));
+		const consoleSpy = jest
+			.spyOn(console, 'warn')
+			.mockImplementation(() => {});
+
+		const result = await readAudioMetadata(new ArrayBuffer(8), 'a.webm');
+
+		expect(result).toEqual({
+			durationSeconds: 0,
+			sampleRate: 48000,
+			channels: 2,
+		});
+
+		consoleSpy.mockRestore();
+	});
+
+	it('answers null when neither path can read the file', async () => {
+		mockGetPrimaryAudioTrack.mockRejectedValue(new Error('unparseable'));
+		mockDecodeAudioData.mockRejectedValue(new Error('no decoder'));
+		const consoleSpy = jest
+			.spyOn(console, 'warn')
+			.mockImplementation(() => {});
+
+		expect(
+			await readAudioMetadata(new ArrayBuffer(8), 'a.webm'),
+		).toBeNull();
 
 		consoleSpy.mockRestore();
 	});

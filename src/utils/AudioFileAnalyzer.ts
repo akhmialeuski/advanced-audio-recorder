@@ -51,6 +51,9 @@ export async function getAudioFileInfo(
 	try {
 		const metadata = await probeFileMetadata(app, file);
 		if (!metadata) {
+			// Neither the headers nor a decode could read the file, which is
+			// what this action was opened to show; the reason is in the log.
+			new Notice('Could not read this audio file to show its details.');
 			return null;
 		}
 
@@ -121,10 +124,35 @@ async function probeFileMetadata(
 		return ranged;
 	}
 	const bytes = await app.vault.readBinary(file);
-	return (
-		(await probeAudioMetadata(bytes, file.path)) ??
-		(await decodeMetadata(bytes))
-	);
+	return readAudioMetadata(bytes, file.path);
+}
+
+/**
+ * A recording's metadata from its bytes, whichever path can read it: the
+ * container probe first, and the full decode when the headers do not answer.
+ *
+ * The two paths belong together because a caller that needs the duration needs
+ * it either way, and the header alone is the answer that fails on this plugin's
+ * own output: a recorder writing live leaves no duration in the segment it has
+ * not finished, so a caller that only probed got nothing for exactly the files
+ * the plugin produces. A caller that only wants the cheap answer, to reject an
+ * oversized file before decoding it, still calls {@link probeAudioMetadata}.
+ * @param data - The file's bytes
+ * @param path - Vault path, for the warning log only
+ * @returns The metadata, or null when neither path could read it
+ */
+export async function readAudioMetadata(
+	data: ArrayBuffer,
+	path: string,
+): Promise<ProbedAudioMetadata | null> {
+	const probed = await probeAudioMetadata(data, path);
+	if (probed && probed.durationSeconds > 0) {
+		return probed;
+	}
+	// A probe answering zero for a recording that has a length has not
+	// answered; the sample rate and channels it did read are kept when the
+	// decode cannot improve on them either.
+	return (await decodeMetadata(data)) ?? probed;
 }
 
 /**
@@ -200,6 +228,10 @@ async function readTrackMetadata(
  * Fallback metadata path: fully decodes the file through the Web Audio
  * API. Expensive for long recordings, so it only runs when the container
  * probe could not parse the file.
+ *
+ * Reports failure by returning null and logging why. It is reached from a
+ * background probe as well as from the file-info action, so what an unreadable
+ * file should say is the caller's to decide rather than a Notice from here.
  * @param data - The file's bytes
  */
 async function decodeMetadata(
@@ -209,11 +241,8 @@ async function decodeMetadata(
 	// cross-browser compatibility.
 	const AudioContextClass = window.AudioContext || window.webkitAudioContext;
 	if (!AudioContextClass) {
-		console.error(
+		console.warn(
 			`${PLUGIN_LOG_PREFIX} AudioContext is not supported in this environment.`,
-		);
-		new Notice(
-			'Audio context is not supported. Cannot extract audio metadata.',
 		);
 		return null;
 	}
@@ -229,8 +258,7 @@ async function decodeMetadata(
 			channels: audioBuffer.numberOfChannels,
 		};
 	} catch (e) {
-		console.error(`${PLUGIN_LOG_PREFIX} Failed to decode audio data:`, e);
-		new Notice('Failed to decode audio file data.');
+		console.warn(`${PLUGIN_LOG_PREFIX} Failed to decode audio data:`, e);
 		return null;
 	}
 }

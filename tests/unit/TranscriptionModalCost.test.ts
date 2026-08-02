@@ -16,7 +16,7 @@ import type { TranscribeRunCost } from 'src/transcription/TranscriptionService';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 
 jest.mock('src/utils/AudioFileAnalyzer', () => ({
-	probeAudioMetadata: jest.fn(),
+	readAudioMetadata: jest.fn(),
 }));
 
 // Mock only transcribeFile so a run can be driven without a real provider;
@@ -26,7 +26,7 @@ jest.mock('src/transcription/api', () => {
 	return { __esModule: true, ...actual, transcribeFile: jest.fn() };
 });
 
-import { probeAudioMetadata } from 'src/utils/AudioFileAnalyzer';
+import { readAudioMetadata } from 'src/utils/AudioFileAnalyzer';
 import { transcribeFile } from 'src/transcription/api';
 import { createFile } from '../helpers/createApp';
 
@@ -42,7 +42,7 @@ type ModalInternals = {
 	probeFinished: boolean;
 };
 
-const probeMock = probeAudioMetadata as jest.Mock;
+const probeMock = readAudioMetadata as jest.Mock;
 const transcribeMock = transcribeFile as jest.Mock;
 
 /** Lets a fire-and-forget probe (readBinary + probe) settle before asserting. */
