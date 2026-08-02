@@ -284,6 +284,84 @@ describe('LegacySettingsRenderer', () => {
 			expect(rowFor('Show waveform').style.display).toBe('');
 		});
 
+		/**
+		 * A switch and a whole block gated on it, which is the shape of the
+		 * transcription section: the master switch is outside the blocks it
+		 * reveals.
+		 */
+		const blockTree = (): SettingDefinitionItem[] => [
+			{
+				name: 'Enable transcription',
+				control: { type: 'toggle', key: 'transcription' },
+			},
+			{
+				type: 'group',
+				heading: 'Transcript output',
+				visible: () => values['transcription'] === true,
+				items: [
+					{
+						name: 'Destination',
+						control: { type: 'toggle', key: 'destination' },
+					},
+				],
+			},
+		];
+
+		it('leaves a whole block hidden while its predicate is false', () => {
+			values['transcription'] = false;
+			renderer.render(containerEl, blockTree());
+
+			expect(rowFor('Transcript output').style.display).toBe('none');
+			expect(rowFor('Destination').style.display).toBe('none');
+		});
+
+		it('reveals a block when the switch that gates it turns on', () => {
+			// A block skipped at render time could never come back: the switch
+			// that reveals it had nothing to reveal, so turning transcription on
+			// left the rest of the section missing until the tab was reopened.
+			values['transcription'] = false;
+			renderer.render(containerEl, blockTree());
+
+			rowFor('Enable transcription')
+				.querySelector<HTMLElement>('.checkbox-container')
+				?.click();
+
+			expect(rowFor('Transcript output').style.display).toBe('');
+			expect(rowFor('Destination').style.display).toBe('');
+		});
+
+		it('keeps a nested block hidden while its own block is', () => {
+			// The predicate of an inner block can hold while the block around it
+			// does not; what the user sees is the outer answer.
+			values['transcription'] = false;
+			renderer.render(containerEl, [
+				{
+					type: 'group',
+					heading: 'Transcription',
+					visible: () => values['transcription'] === true,
+					items: [
+						{
+							type: 'page',
+							name: 'Engines',
+							visible: () => true,
+							items: [
+								{
+									name: 'Base URL',
+									control: {
+										type: 'text',
+										key: 'baseUrl',
+									},
+								},
+							],
+						},
+					],
+				},
+			]);
+
+			expect(rowFor('Engines').style.display).toBe('none');
+			expect(rowFor('Base URL').style.display).toBe('none');
+		});
+
 		it('disables a control whose disabled predicate holds', () => {
 			renderer.render(containerEl, [
 				{
@@ -388,6 +466,50 @@ describe('LegacySettingsRenderer', () => {
 
 			expect(rowFor('whisper-1').style.display).toBe('none');
 			expect(rowFor('nova-2').style.display).toBe('');
+		});
+
+		it('filters a list whose entries are pages by the entry name', () => {
+			// A profile catalogue is a list of entities, so each entry is a page
+			// rather than a row and the rows on screen are that page's. Matching
+			// the rows instead left the filter matching nothing at all.
+			renderer.render(containerEl, [
+				{
+					type: 'list',
+					heading: 'Dictionary profiles',
+					search: {
+						placeholder: 'Filter profiles',
+						match: (def, query) =>
+							(def as { name: string }).name
+								.toLowerCase()
+								.includes(query.toLowerCase()),
+					},
+					items: ['Legal', 'Standup'].map((name) => ({
+						type: 'page' as const,
+						name,
+						items: [
+							{
+								name: `${name} terms`,
+								control: {
+									type: 'textarea' as const,
+									key: `terms.${name}`,
+								},
+							},
+						],
+					})),
+				},
+			]);
+
+			const search = containerEl.querySelector<HTMLInputElement>(
+				'.aar-search-row input',
+			);
+			if (!search) {
+				throw new Error('No search field rendered');
+			}
+			search.value = 'legal';
+			search.dispatchEvent(new Event('input'));
+
+			expect(rowFor('Legal terms').style.display).toBe('');
+			expect(rowFor('Standup terms').style.display).toBe('none');
 		});
 	});
 

@@ -373,6 +373,22 @@ export function addObsidianDomExtensions<T extends HTMLElement>(el: T): T {
 
 	extended['hasClass'] = (cls: string): boolean => el.classList.contains(cls);
 
+	// Obsidian's own visibility helpers, which set and clear the inline display
+	// rather than toggling a class, so a test asserting on style.display sees
+	// what the app leaves behind.
+	extended['show'] = (): void => {
+		el.style.removeProperty('display');
+	};
+
+	extended['hide'] = (): void => {
+		el.style.setProperty('display', 'none');
+	};
+
+	extended['toggle'] = (show: boolean): void => {
+		const helper = extended[show ? 'show' : 'hide'] as () => void;
+		helper();
+	};
+
 	return el;
 }
 
@@ -505,8 +521,19 @@ export class Setting {
 		return this;
 	}
 
-	setDesc(desc: string): this {
-		this.descEl.textContent = desc;
+	/**
+	 * Obsidian's own setDesc, which takes either plain text or a fragment - the
+	 * latter is how a description carries a link. Mirrored here so a fragment
+	 * lands as nodes rather than as "[object DocumentFragment]".
+	 * @param desc - The description text, or the nodes making it up
+	 */
+	setDesc(desc: string | DocumentFragment): this {
+		this.descEl.textContent = '';
+		if (typeof desc === 'string') {
+			this.descEl.textContent = desc;
+		} else {
+			this.descEl.appendChild(desc);
+		}
 		return this;
 	}
 

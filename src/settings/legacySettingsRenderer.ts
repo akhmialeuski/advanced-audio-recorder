@@ -12,7 +12,10 @@
  *
  * `visible` and `disabled` predicates are re-evaluated after every change, the
  * way the framework's own `refreshDomState()` does, so a row that reveals
- * another row does it here too without rebuilding the tab.
+ * another row does it here too without rebuilding the tab. That holds for a
+ * whole block as much as for a row: the tree flattens here, so a hidden group
+ * is one whose own elements and rows are hidden, never one that was skipped -
+ * a block never built could not be revealed by the switch that gates it.
  * @module settings/legacySettingsRenderer
  */
 
@@ -23,8 +26,10 @@ import type {
 	SettingDefinitionGroup,
 	SettingDefinitionItem,
 	SettingDefinitionList,
+	SettingDefinitionPage,
 	SettingGroup,
 } from 'obsidian';
+import { NUMBER_INPUT_CLASS } from './settingControls';
 
 /** Class applied to a row whose whole surface runs an action when clicked. */
 export const LEGACY_ACTION_ROW_CLASS = 'aar-action-row';
@@ -69,14 +74,41 @@ export interface LegacyRenderExtras {
 	attachFolderSuggest(inputEl: HTMLInputElement): void;
 }
 
+/**
+ * A shape of the tree that holds other items: a group, a list, or a page. All
+ * three carry a `visible` predicate over everything inside them.
+ */
+type SettingContainer = SettingDefinitionGroup | SettingDefinitionPage;
+
 /** A rendered row, kept so its predicates can be re-evaluated in place. */
 interface RenderedRow {
 	readonly definition: SettingDefinition;
 	readonly settingEl: HTMLElement;
+	/** The containers it sits inside, outermost first. */
+	readonly ancestors: readonly SettingContainer[];
 	/** Applies a disabled state to the row's control, when it has one. */
 	readonly setDisabled: ((disabled: boolean) => void) | undefined;
 	/** Cleanup returned by a render definition, if it returned one. */
 	cleanup: (() => void) | undefined;
+}
+
+/**
+ * A rendered container, kept for the same reason a row is: its `visible`
+ * predicate has to be re-evaluated after every change.
+ *
+ * The tree flattens here - this Obsidian has no group element to hide - so a
+ * container is remembered by the elements it contributed itself (its heading
+ * and a list's own affordance rows) plus the ancestors that can hide it in
+ * turn. Skipping a hidden container at render time instead, which is what this
+ * renderer did first, left it unable to ever appear: turning transcription on
+ * revealed nothing, because the blocks it reveals had never been built.
+ */
+interface RenderedContainer {
+	readonly definition: SettingContainer;
+	/** Elements this container owns, hidden with it. */
+	readonly els: HTMLElement[];
+	/** The containers it sits inside, outermost first. */
+	readonly ancestors: readonly SettingContainer[];
 }
 
 /**
@@ -110,6 +142,9 @@ function evaluate(
 export class LegacySettingsRenderer {
 	private rows: RenderedRow[] = [];
 
+	/** Every rendered group, list, and page, so their predicates can be reapplied. */
+	private containers: RenderedContainer[] = [];
+
 	/** The group search field's current query, if one has been typed. */
 	private filter:
 		| { group: SettingDefinitionGroup; query: string }
@@ -118,6 +153,8 @@ export class LegacySettingsRenderer {
 	/**
 	 * Creates a renderer bound to a settings store.
 	 * @param host - Where rendered controls read and write their values
+	 * @param extras - What this renderer cannot build on its own, supplied by
+	 * the tab (the folder suggester Obsidian brings from 1.13)
 	 */
 	constructor(
 		private readonly host: LegacySettingsHost,
@@ -137,32 +174,59 @@ export class LegacySettingsRenderer {
 		this.filter = undefined;
 		containerEl.empty();
 		for (const item of items) {
-			this.renderItem(containerEl, item);
+			this.renderItem(containerEl, item, []);
 		}
 		this.refreshState();
 	}
 
 	/**
-	 * Re-evaluates every rendered row's `visible` and `disabled` predicate and
-	 * applies the result, the way the framework's `refreshDomState()` does.
+	 * Re-evaluates every rendered `visible` and `disabled` predicate and applies
+	 * the result, the way the framework's `refreshDomState()` does. Containers
+	 * are re-evaluated alongside rows, so a block revealed by a switch appears
+	 * without rebuilding the tab.
 	 */
 	refreshState(): void {
+		// One evaluation per container, reused by everything inside it: a
+		// predicate reads live settings and a row would otherwise re-run every
+		// ancestor's.
+		const shown = new Map<SettingContainer, boolean>();
+		const containerVisible = (
+			ancestors: readonly SettingContainer[],
+		): boolean =>
+			ancestors.every((ancestor) => shown.get(ancestor) === true);
+		for (const container of this.containers) {
+			shown.set(
+				container.definition,
+				containerVisible(container.ancestors) &&
+					evaluate(container.definition.visible, true),
+			);
+			const visible = shown.get(container.definition) === true;
+			for (const el of container.els) {
+				el.toggle(visible);
+			}
+		}
 		for (const row of this.rows) {
 			const visible =
+				containerVisible(row.ancestors) &&
 				evaluate(row.definition.visible, true) &&
 				this.matchesFilter(row);
-			// Obsidian's own show()/hide() toggle the inline display, and doing
-			// the same keeps a hidden row out of the layout without needing a
-			// class the older stylesheets do not have.
-			row.settingEl.style.display = visible ? '' : 'none';
+			// Obsidian's own toggle(), which is show()/hide() by another name:
+			// a hidden row leaves the layout without needing a class the older
+			// stylesheets do not have.
+			row.settingEl.toggle(visible);
 			const disabled = evaluate(disabledPredicate(row.definition), false);
 			row.setDisabled?.(disabled);
 		}
 	}
 
 	/**
-	 * Whether a row passes the search field of the group it belongs to. Rows the
-	 * definition marks unsearchable always show, as they do in the framework.
+	 * Whether a row passes the search field of the list it belongs to.
+	 *
+	 * A list's entries are matched, not its rows: where the entries are plain
+	 * settings the two are the same thing, but where an entry is an entity with
+	 * a page of its own (a profile), the rows on screen are that page's and the
+	 * name the user is filtering by is the entry's. Rows the definition marks
+	 * unsearchable always show, as they do in the framework.
 	 * @param row - The rendered row to test
 	 */
 	private matchesFilter(row: RenderedRow): boolean {
@@ -170,18 +234,30 @@ export class LegacySettingsRenderer {
 		if (!filter || filter.query === '') {
 			return true;
 		}
-		if (!(filter.group.items ?? []).includes(row.definition)) {
+		const entries: readonly unknown[] = filter.group.items ?? [];
+		const entry: SettingDefinition | SettingContainer | undefined =
+			entries.includes(row.definition)
+				? row.definition
+				: row.ancestors.find((ancestor) => entries.includes(ancestor));
+		// A list's entries are rows or pages, both of which carry a name; a
+		// group is neither, so it is not an entry of anything.
+		if (!entry || !('name' in entry)) {
 			return true;
 		}
 		if (!evaluate(row.definition.searchable, true)) {
 			return true;
 		}
-		return filter.group.search?.match(row.definition, filter.query) ?? true;
+		// Matched on the entry's name, so one declared filter serves a list of
+		// plain settings and a list of entities alike.
+		return (
+			filter.group.search?.match({ name: entry.name }, filter.query) ??
+			true
+		);
 	}
 
 	/**
-	 * Runs the cleanup every render definition returned and forgets the rows.
-	 * Called before a re-render and when the tab is left.
+	 * Runs the cleanup every render definition returned and forgets what was
+	 * rendered. Called before a re-render and when the tab is left.
 	 */
 	release(): void {
 		for (const row of this.rows) {
@@ -194,24 +270,31 @@ export class LegacySettingsRenderer {
 			}
 		}
 		this.rows = [];
+		this.containers = [];
 	}
 
 	/**
 	 * Renders one item of the tree.
+	 *
+	 * A container is rendered whether or not its predicate currently holds, and
+	 * hidden by {@link refreshState} when it does not, because a container
+	 * skipped here could never be revealed by a later change.
 	 * @param containerEl - Element to render into
 	 * @param item - A definition, a group, a list, or a page
+	 * @param ancestors - The containers this item sits inside, outermost first
 	 */
 	private renderItem(
 		containerEl: HTMLElement,
 		item: SettingDefinitionItem,
+		ancestors: readonly SettingContainer[],
 	): void {
 		if (!('type' in item)) {
-			this.renderDefinition(containerEl, item, 0);
+			this.renderDefinition(containerEl, item, 0, ancestors);
 			return;
 		}
-		if (!evaluate(item.visible, true)) {
-			return;
-		}
+		const els: HTMLElement[] = [];
+		this.containers.push({ definition: item, els, ancestors });
+		const nested = [...ancestors, item];
 		// Groups, lists, and pages all flatten to a heading and its rows: this
 		// Obsidian has no group cards and no navigable sub-pages. A page's own
 		// name is its heading here, since there is nothing to navigate to.
@@ -225,6 +308,7 @@ export class LegacySettingsRenderer {
 					headingRow.addExtraButton(build);
 				}
 			}
+			els.push(headingRow.settingEl);
 		}
 		const items = item.items ?? [];
 		// Both group shapes declare type as 'group' | 'list', so the tag alone
@@ -233,24 +317,24 @@ export class LegacySettingsRenderer {
 		const list =
 			item.type === 'list' ? (item as SettingDefinitionList) : undefined;
 		if (item.type !== 'page' && item.search && items.length > 0) {
-			this.renderGroupSearch(containerEl, item);
+			els.push(this.renderGroupSearch(containerEl, item));
 		}
 		if (list && items.length === 0 && list.emptyState) {
-			new Setting(containerEl)
-				.setName(list.emptyState as string)
-				.settingEl.addClass(LEGACY_EMPTY_STATE_CLASS);
+			const empty = new Setting(containerEl).setName(list.emptyState);
+			empty.settingEl.addClass(LEGACY_EMPTY_STATE_CLASS);
+			els.push(empty.settingEl);
 		}
 		items.forEach((child, index) => {
 			if ('type' in child) {
-				this.renderItem(containerEl, child);
+				this.renderItem(containerEl, child, nested);
 				return;
 			}
-			this.renderDefinition(containerEl, child, index, {
+			this.renderDefinition(containerEl, child, index, nested, {
 				...(list?.onDelete ? { onDelete: list.onDelete } : {}),
 			});
 		});
 		if (list?.addItem) {
-			this.renderAddItemRow(containerEl, list.addItem);
+			els.push(this.renderAddItemRow(containerEl, list.addItem));
 		}
 	}
 
@@ -260,11 +344,12 @@ export class LegacySettingsRenderer {
 	 * its own at the end of the list, which is what the framework does on mobile.
 	 * @param containerEl - Element to render into
 	 * @param addItem - The list's add-entry configuration
+	 * @returns The row, which belongs to the list and is hidden with it
 	 */
 	private renderAddItemRow(
 		containerEl: HTMLElement,
 		addItem: { name: string; action: (el: HTMLElement) => void },
-	): void {
+	): HTMLElement {
 		const setting = new Setting(containerEl).setName(addItem.name);
 		setting.settingEl.addClass(LEGACY_ADD_ITEM_CLASS);
 		setting.addButton((button) =>
@@ -272,6 +357,7 @@ export class LegacySettingsRenderer {
 				addItem.action(setting.settingEl);
 			}),
 		);
+		return setting.settingEl;
 	}
 
 	/**
@@ -281,15 +367,12 @@ export class LegacySettingsRenderer {
 	 * list that is only re-rendered when its own data changes.
 	 * @param containerEl - Element to render into
 	 * @param group - The group whose rows are filtered
+	 * @returns The row, which belongs to the group and is hidden with it
 	 */
 	private renderGroupSearch(
 		containerEl: HTMLElement,
 		group: SettingDefinitionGroup,
-	): void {
-		const match = group.search?.match;
-		if (!match) {
-			return;
-		}
+	): HTMLElement {
 		const setting = new Setting(containerEl);
 		setting.settingEl.addClass(LEGACY_SEARCH_ROW_CLASS);
 		setting.addSearch((search) => {
@@ -301,6 +384,7 @@ export class LegacySettingsRenderer {
 				this.refreshState();
 			});
 		});
+		return setting.settingEl;
 	}
 
 	/**
@@ -309,11 +393,14 @@ export class LegacySettingsRenderer {
 	 * @param definition - The setting to render
 	 * @param index - The row's position among its siblings, which an action
 	 * callback receives
+	 * @param ancestors - The containers this row sits inside, outermost first
+	 * @param list - The list affordances the row's collection declared, if any
 	 */
 	private renderDefinition(
 		containerEl: HTMLElement,
 		definition: SettingDefinition,
 		index: number,
+		ancestors: readonly SettingContainer[],
 		list?: { onDelete?: (index: number) => void },
 	): void {
 		const setting = new Setting(containerEl).setName(definition.name);
@@ -323,6 +410,7 @@ export class LegacySettingsRenderer {
 		const row: RenderedRow = {
 			definition,
 			settingEl: setting.settingEl,
+			ancestors,
 			setDisabled: undefined,
 			cleanup: undefined,
 		};
@@ -547,7 +635,7 @@ export class LegacySettingsRenderer {
 			if (control.step !== undefined) {
 				input.step = String(control.step);
 			}
-			input.addClass('aar-number-input');
+			input.addClass(NUMBER_INPUT_CLASS);
 			const current =
 				typeof stored === 'number'
 					? stored

@@ -25,6 +25,13 @@ import type { ConversionLinkAction } from './settingsSchema';
 /** Class applied to a setting row that is rendered disabled (dimmed). */
 export const SETTING_DISABLED_CLASS = 'aar-setting-disabled';
 
+/**
+ * Class applied to a numeric input, which the stylesheet sizes and gives back
+ * the browser's stepper. Shared with the renderer that binds a declared number
+ * control, so both kinds of numeric row look the same.
+ */
+export const NUMBER_INPUT_CLASS = 'aar-number-input';
+
 /** Class applied to a "learn more" link appended to a setting description. */
 const SETTING_DOC_LINK_CLASS = 'aar-doc-link';
 
@@ -301,7 +308,7 @@ export function addNumberInputTo(
 		input.min = String(config.min);
 		input.max = String(config.max);
 		input.step = String(config.step);
-		input.addClass('aar-number-input');
+		input.addClass(NUMBER_INPUT_CLASS);
 		text.setValue(String(config.get()));
 		input.addEventListener('change', () => {
 			const value = normalizeNumber(input.value, config);
