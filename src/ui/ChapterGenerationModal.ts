@@ -27,11 +27,19 @@ import { LLM_PROVIDER_OPTIONS } from '../settings/labels';
 import {
 	estimateStepCost,
 	formatUsd,
+	jobLlmVendor,
+	jobVendorId,
 	LLM_VENDOR_IDS,
 	LLM_VENDORS,
-	selectedLlmVendor,
+	type LlmJobId,
 } from '../transcription/api';
 import { formatTimecode } from '../utils/TimeUtils';
+
+/**
+ * The job this dialog configures. Named once so the engine picker, the model
+ * picker, and the cost estimate below all speak about the same one.
+ */
+const CHAPTERS_JOB: LlmJobId = 'autoChapters';
 
 /** Collaborators the dialog needs, injected by the action registry. */
 export interface ChapterGenerationModalOptions {
@@ -164,32 +172,35 @@ export class ChapterGenerationModal extends PluginModal {
 	}
 
 	/**
-	 * Renders the LLM provider and model pickers for this run. Chapters use the
-	 * same provider, key, and model as LLM post-processing, so generating
-	 * commits this choice as that shared configuration; the dialog re-renders on
-	 * a change so the model list and the cost estimate follow the provider.
+	 * Renders the LLM engine and model pickers for this run. Chapters name
+	 * their own engine, so a change here moves that choice rather than the
+	 * post-processing one; the dialog re-renders on a change so the model list
+	 * and the cost estimate follow the engine.
 	 */
 	private renderLlmPicker(): void {
 		const s = this.runSettings;
 		new Setting(this.contentEl)
 			.setName('LLM')
 			.setDesc(
-				'The provider and model that generate the chapters (shared ' +
-					'with LLM post-processing).',
+				'The engine and model that generate the chapters. Kept as the ' +
+					'chapters engine in settings.',
 			)
 			.addDropdown((dropdown) => {
 				for (const option of LLM_PROVIDER_OPTIONS) {
 					dropdown.addOption(option.value, option.label);
 				}
-				dropdown.setValue(s.llmProvider).onChange((id) => {
-					s.llmProvider = id as AudioRecorderSettings['llmProvider'];
-					void this.render();
-				});
+				dropdown
+					.setValue(jobVendorId(s, CHAPTERS_JOB))
+					.onChange((id) => {
+						s.chaptersLlmProvider =
+							id as AudioRecorderSettings['chaptersLlmProvider'];
+						void this.render();
+					});
 			});
 
 		// Which fields hold the vendor's model and model list comes from the
 		// registry, so this picker cannot drift from the settings tab's.
-		const vendor = selectedLlmVendor(s);
+		const vendor = jobLlmVendor(s, CHAPTERS_JOB);
 		const selected = vendor.settings.model(s);
 		const models = ensureSelectedInList(
 			vendor.settings.models(s),
@@ -265,7 +276,7 @@ export class ChapterGenerationModal extends PluginModal {
 	 */
 	private commitRunSettings(): void {
 		const live = this.options.getSettings();
-		live.llmProvider = this.runSettings.llmProvider;
+		live.chaptersLlmProvider = this.runSettings.chaptersLlmProvider;
 		for (const id of LLM_VENDOR_IDS) {
 			const vendor = LLM_VENDORS[id];
 			vendor.settings.setModel(

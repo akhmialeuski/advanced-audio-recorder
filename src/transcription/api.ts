@@ -41,5 +41,12 @@ export type { Transcript } from './TranscriptTypes';
  * addressing settings fields directly, which is what keeps their pickers in
  * step with the settings tab.
  */
-export { LLM_VENDOR_IDS, LLM_VENDORS, selectedLlmVendor } from './llm/vendors';
-export type { LlmVendorDescriptor } from './llm/vendors';
+export {
+	LLM_JOBS,
+	LLM_VENDOR_IDS,
+	LLM_VENDORS,
+	jobLlmVendor,
+	jobVendorId,
+	selectedLlmVendor,
+} from './llm/vendors';
+export type { LlmJobId, LlmVendorDescriptor } from './llm/vendors';

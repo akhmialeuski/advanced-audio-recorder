@@ -231,13 +231,81 @@ export function llmVendor(id: LlmProviderId): LlmVendorDescriptor {
 }
 
 /**
- * The descriptor for the vendor the settings currently select.
+ * The descriptor for the vendor post-processing selects. Named for that job
+ * rather than for "the LLM", because the other two jobs pick their own; see
+ * {@link LLM_JOBS}.
  * @param settings - Plugin settings
  */
 export function selectedLlmVendor(
 	settings: AudioRecorderSettings,
 ): LlmVendorDescriptor {
-	return llmVendor(settings.llmProvider);
+	return jobLlmVendor(settings, 'postProcess');
+}
+
+/**
+ * The jobs that drive an LLM. Each one picks its own engine, so a run can
+ * summarize with one service and title its chapters with another.
+ */
+export type LlmJobId = 'postProcess' | 'contextAgents' | 'autoChapters';
+
+/** Where one job's engine choice is stored. */
+export interface LlmJob {
+	/** Settings key the choice lives under, for declaring the control. */
+	readonly key: keyof AudioRecorderSettings;
+	/** The engine the job calls, as the settings currently name it. */
+	readonly vendor: (settings: AudioRecorderSettings) => LlmProviderId;
+}
+
+/**
+ * Every job and the field naming its engine, declared once.
+ *
+ * Three readers have to agree on that engine: the factory that builds the
+ * provider, the ceiling that bounds its answer, and the cost model that prices
+ * the call. Each of them used to read `llmProvider` directly, so a job pointed
+ * at another engine was dispatched to the post-processing one and merely
+ * bounded and priced inconsistently. They read this instead, and the settings
+ * declare their rows from the same keys, so a job cannot be configured in one
+ * place and run in another.
+ */
+export const LLM_JOBS: Record<LlmJobId, LlmJob> = {
+	postProcess: {
+		key: 'llmProvider',
+		vendor: (settings) => settings.llmProvider,
+	},
+	contextAgents: {
+		key: 'advancedLlmProvider',
+		vendor: (settings) => settings.advancedLlmProvider,
+	},
+	autoChapters: {
+		key: 'chaptersLlmProvider',
+		vendor: (settings) => settings.chaptersLlmProvider,
+	},
+};
+
+/**
+ * The engine a job calls.
+ * @param settings - Plugin settings
+ * @param job - The job about to run
+ * @returns Its vendor id
+ */
+export function jobVendorId(
+	settings: AudioRecorderSettings,
+	job: LlmJobId,
+): LlmProviderId {
+	return LLM_JOBS[job].vendor(settings);
+}
+
+/**
+ * The descriptor of the engine a job calls.
+ * @param settings - Plugin settings
+ * @param job - The job about to run
+ * @returns That engine's vendor descriptor
+ */
+export function jobLlmVendor(
+	settings: AudioRecorderSettings,
+	job: LlmJobId,
+): LlmVendorDescriptor {
+	return llmVendor(jobVendorId(settings, job));
 }
 
 /**

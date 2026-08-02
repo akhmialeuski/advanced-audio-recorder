@@ -14,10 +14,14 @@
 import { Notice } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
-import type { AudioRecorderSettings } from '../settings/settingsSchema';
+import type {
+	AudioRecorderSettings,
+	LlmProviderId,
+} from '../settings/settingsSchema';
 import { resolveChapterGuidance } from '../settings/chapterPromptProfiles';
 import { createLlmProvider } from '../transcription/factories';
 import { vendorMaxTokens } from '../providers/providers';
+import { jobVendorId } from '../transcription/llm/vendors';
 import type { LlmProvider } from '../transcription/llm/LlmProvider';
 import { runLlmStep, type LlmCostSink } from '../transcription/llm/llmStep';
 import type { Transcript } from '../transcription/TranscriptTypes';
@@ -44,8 +48,11 @@ export interface AutoChapterServiceDeps {
 	 * generate and simply account nothing.
 	 */
 	costSink?: LlmCostSink;
-	/** Builds the LLM provider from settings. */
-	createLlm?: (settings: AudioRecorderSettings) => LlmProvider;
+	/** Builds the LLM provider for the engine this job names. */
+	createLlm?: (
+		settings: AudioRecorderSettings,
+		vendorId: LlmProviderId,
+	) => LlmProvider;
 	/** Probes a recording's real duration in seconds (null when unknown). */
 	probeDuration?: (file: TFile) => Promise<number | null>;
 }
@@ -109,6 +116,7 @@ function languageHintFromSettings(
 export class AutoChapterService {
 	private readonly createLlm: (
 		settings: AudioRecorderSettings,
+		vendorId: LlmProviderId,
 	) => LlmProvider;
 	private readonly probeDuration: (file: TFile) => Promise<number | null>;
 	/** Where LLM spending is reported; undefined when nothing accounts it. */
@@ -187,7 +195,10 @@ export class AutoChapterService {
 			const { lines } = resolved;
 			new Notice(`Generating chapters for ${file.name}...`);
 			const settings = this.getSettings();
-			const llm = this.createLlm(settings);
+			// The engine this job names, not the one post-processing points at:
+			// chapters are configured on a row of their own.
+			const vendorId = jobVendorId(settings, 'autoChapters');
+			const llm = this.createLlm(settings, vendorId);
 			const lastSegment = transcript?.segments.at(-1);
 			// Bound everything by the recording's REAL length. Prefer the
 			// in-memory transcript's own end; otherwise probe the audio's
@@ -231,10 +242,7 @@ export class AutoChapterService {
 				step: 'autoChapters',
 				llm,
 				prompt,
-				maxTokens: vendorMaxTokens(
-					settings,
-					settings.chaptersLlmProvider,
-				),
+				maxTokens: vendorMaxTokens(settings, vendorId),
 				settings,
 				durationSeconds,
 				costSink: this.costSink,

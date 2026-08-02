@@ -396,6 +396,41 @@ describe('TranscriptionService multi-part salvage', () => {
 		expect(result.markdown).toContain('part 1 of 2');
 	});
 
+	it('post-processes on the engine the post-processing row names', async () => {
+		// Post-processing keeps its own engine choice, separate from the ones
+		// chapters and the two-pass agents make, and the run has to dispatch to
+		// the field that belongs to it.
+		const transcribe = jest.fn().mockResolvedValue({
+			segments: [{ start: 0, end: 1, text: 'good part' }],
+		});
+		const vendorIds: string[] = [];
+		const service = new TranscriptionService(
+			makeApp(),
+			() =>
+				mergeSettings({
+					...baseSettings,
+					llmPostProcessEnabled: true,
+					llmPostProcessTask: 'cleanup',
+					llmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
+					chaptersLlmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+				}),
+			{
+				createProvider: () => makeProvider(transcribe),
+				createLlm: (_settings, vendorId): LlmProvider => {
+					vendorIds.push(vendorId);
+					return makeLlm('LLM CLEANED OUTPUT');
+				},
+			},
+		);
+
+		await service.run(audioFile, {
+			notePathForLinks: 'note.md',
+			token: NEVER_CANCELLED,
+		});
+
+		expect(vendorIds).toEqual([LLM_PROVIDER_IDS.ANTHROPIC]);
+	});
+
 	it('labels a salvaged part by its timeline span when the span is known', async () => {
 		// The decode path stamps endSeconds on every part, so in production the
 		// salvage label is a time range, never the ordinal fallback. Exercise

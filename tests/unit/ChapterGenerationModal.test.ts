@@ -165,12 +165,12 @@ describe('ChapterGenerationModal run settings', () => {
 		await Promise.resolve();
 		modal.onClose();
 
-		expect(settings.llmProvider).toBe(LLM_PROVIDER_IDS.GEMINI);
+		expect(settings.chaptersLlmProvider).toBe(LLM_PROVIDER_IDS.GEMINI);
 		expect(saveSettings).not.toHaveBeenCalled();
 		expect(generate).not.toHaveBeenCalled();
 	});
 
-	it("commits the run's provider and model when the user generates", async () => {
+	it("commits the run's engine and model when the user generates", async () => {
 		const { modal, settings, saveSettings, generate } = build();
 		await open(modal);
 
@@ -182,7 +182,10 @@ describe('ChapterGenerationModal run settings', () => {
 
 		at(buttons(modal), 0).click();
 
-		expect(settings.llmProvider).toBe(LLM_PROVIDER_IDS.ANTHROPIC);
+		// The dialog configures chapters, so it moves the chapters engine and
+		// leaves post-processing pointing where the user put it.
+		expect(settings.chaptersLlmProvider).toBe(LLM_PROVIDER_IDS.ANTHROPIC);
+		expect(settings.llmProvider).toBe(LLM_PROVIDER_IDS.GEMINI);
 		expect(saveSettings).toHaveBeenCalled();
 		expect(generate).toHaveBeenCalledWith(file, undefined, SOURCE);
 	});

@@ -244,6 +244,33 @@ describe('TranscriptionService advanced two-pass mode', () => {
 		expect(result.markdown).not.toContain('кубернетис');
 	});
 
+	it('runs the context agents on the engine the two-pass row names', async () => {
+		// The agents pick their own engine, which the run has to dispatch to:
+		// reading the post-processing field instead sent them to whichever
+		// service was configured for a different job entirely.
+		const { provider } = makeProvider();
+		const { llm } = makeLlm();
+		const vendorIds: string[] = [];
+		const settings = mergeSettings({
+			transcriptionEnabled: true,
+			transcriptionAdvancedSettingsEnabled: true,
+			transcriptionAdvancedEnabled: true,
+			llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+			advancedLlmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
+		});
+		const service = new TranscriptionService(makeApp(), () => settings, {
+			createProvider: () => provider,
+			createLlm: (_settings, vendorId): LlmProvider => {
+				vendorIds.push(vendorId);
+				return llm;
+			},
+		});
+
+		await service.run(audioFile, { notePathForLinks: 'note.md' });
+
+		expect(vendorIds).toEqual([LLM_PROVIDER_IDS.ANTHROPIC]);
+	});
+
 	it('reverts to the first pass when the second comes back too short', async () => {
 		const { provider, calls } = makeProvider('whisper-api', [
 			{ start: 0, end: 5, text: 'Коротко.' },

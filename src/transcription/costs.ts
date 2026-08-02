@@ -23,7 +23,13 @@ import {
 	advancedTwoPassWillRun,
 } from './advanced/advancedBias';
 import { LLM_TASK_LABELS } from '../settings/labels';
-import { llmVendor, selectedLlmVendor } from './llm/vendors';
+import {
+	jobLlmVendor,
+	jobVendorId,
+	llmVendor,
+	selectedLlmVendor,
+	type LlmJobId,
+} from './llm/vendors';
 import { vendorMaxTokens } from '../providers/providers';
 import {
 	matchRate,
@@ -240,7 +246,7 @@ function estimatedLlmUsage(
 	const ratio = LLM_OUTPUT_RATIO[settings.llmPostProcessTask] ?? 1;
 	const outputTokens = Math.min(
 		Math.ceil(transcriptTokens * ratio),
-		vendorMaxTokens(settings, settings.llmProvider),
+		vendorMaxTokens(settings, jobVendorId(settings, 'postProcess')),
 	);
 	return { inputTokens: transcriptTokens, outputTokens };
 }
@@ -284,7 +290,10 @@ function estimatedChaptersUsage(
 	);
 	const outputTokens = Math.min(
 		Math.ceil(transcriptTokens * CHAPTERS_OUTPUT_TOKEN_RATIO),
-		vendorMaxTokens(settings, settings.llmProvider),
+		// Bounded by the engine chapters name, which is what the run is
+		// actually bounded by; pricing it against another engine's ceiling
+		// made the estimate and the run disagree.
+		vendorMaxTokens(settings, jobVendorId(settings, 'autoChapters')),
 	);
 	return { inputTokens: transcriptTokens, outputTokens };
 }
@@ -384,11 +393,7 @@ export interface CostEstimate {
  * names the step it means and goes through {@link estimateStepCost}, so one
  * step can never be priced by two different formulas.
  */
-export type RunCostStepId =
-	| 'transcription'
-	| 'contextAgents'
-	| 'postProcess'
-	| 'autoChapters';
+export type RunCostStepId = 'transcription' | LlmJobId;
 
 /**
  * How many times the engine decodes the audio for a run. The advanced
@@ -439,14 +444,25 @@ function transcriptionEstimateLine(
 	return { ...base, usd: perPass === null ? null : perPass * passes };
 }
 
-/** Builds an LLM estimate line (an LLM provider call) with a given label and usage. */
+/**
+ * Builds an LLM estimate line (an LLM provider call) with a given label and
+ * usage, priced against the engine the job it belongs to names. A job that
+ * points at another engine is quoted at that engine's rate, which is the one
+ * the run will be billed at.
+ * @param settings - The run's settings snapshot
+ * @param job - The job this line prices
+ * @param durationSeconds - Material extent in seconds, null when unknown
+ * @param label - How the line names the step
+ * @param usage - Sizes the call from the duration
+ */
 function llmLine(
 	settings: AudioRecorderSettings,
+	job: LlmJobId,
 	durationSeconds: number | null,
 	label: string,
 	usage: (durationSeconds: number) => TranscriptionUsage,
 ): CostEstimateLine {
-	const vendor = selectedLlmVendor(settings);
+	const vendor = jobLlmVendor(settings, job);
 	const model = vendor.settings.model(settings);
 	const base = {
 		label,
@@ -465,16 +481,22 @@ function llmLine(
 }
 
 /**
- * How a run's LLM steps are priced: every one bills the configured LLM
- * provider, so pricing them needs the duration exactly when that provider's
- * model has a built-in rate at all.
- * @param settings - The run's settings snapshot
+ * How one LLM step is priced: it bills the engine its job names, so pricing it
+ * needs the duration exactly when that engine's model has a built-in rate at
+ * all.
+ * @param job - The job whose step is being gated
+ * @returns A predicate over the run's settings
  */
-function llmStepIsPriced(settings: AudioRecorderSettings): boolean {
-	return (
-		resolveLlmPricing(settings.llmProvider, selectedLlmModel(settings)) !==
-		null
-	);
+function llmStepIsPriced(
+	job: LlmJobId,
+): (settings: AudioRecorderSettings) => boolean {
+	return (settings) => {
+		const vendor = jobLlmVendor(settings, job);
+		return (
+			resolveLlmPricing(vendor.id, vendor.settings.model(settings)) !==
+			null
+		);
+	};
 }
 
 /** How one billable step is labelled, priced, and gated. */
@@ -520,32 +542,38 @@ const RUN_COST_STEPS: Record<RunCostStepId, RunCostStep> = {
 					: CONTEXT_AGENT_CALL_ESTIMATE_PROMPT;
 			return llmLine(
 				settings,
+				'contextAgents',
 				durationSeconds,
 				CONTEXT_AGENTS_ESTIMATE_LABEL,
 				(seconds) => estimatedContextAgentsUsage(seconds, callCount),
 			);
 		},
 		enabled: advancedTwoPassWillRun,
-		needsDuration: llmStepIsPriced,
+		needsDuration: llmStepIsPriced('contextAgents'),
 	},
 	postProcess: {
 		line: (settings, durationSeconds) =>
 			llmLine(
 				settings,
+				'postProcess',
 				durationSeconds,
 				`Post-processing (${LLM_TASK_LABELS[settings.llmPostProcessTask]})`,
 				(seconds) => estimatedLlmUsage(settings, seconds),
 			),
 		enabled: (settings) => settings.llmPostProcessEnabled,
-		needsDuration: llmStepIsPriced,
+		needsDuration: llmStepIsPriced('postProcess'),
 	},
 	autoChapters: {
 		line: (settings, durationSeconds) =>
-			llmLine(settings, durationSeconds, 'Auto chapters', (seconds) =>
-				estimatedChaptersUsage(settings, seconds),
+			llmLine(
+				settings,
+				'autoChapters',
+				durationSeconds,
+				'Auto chapters',
+				(seconds) => estimatedChaptersUsage(settings, seconds),
 			),
 		enabled: autoChaptersAfterTranscribe,
-		needsDuration: llmStepIsPriced,
+		needsDuration: llmStepIsPriced('autoChapters'),
 	},
 };
 
@@ -603,6 +631,7 @@ export function estimateLlmCallCost(
 	if (step === 'contextAgents') {
 		return llmLine(
 			settings,
+			'contextAgents',
 			durationSeconds,
 			CONTEXT_AGENTS_ESTIMATE_LABEL,
 			(seconds) => estimatedContextAgentsUsage(seconds, 1),

@@ -7,10 +7,13 @@
  * @module transcription/factories
  */
 
-import type { AudioRecorderSettings } from '../settings/settingsSchema';
+import type {
+	AudioRecorderSettings,
+	LlmProviderId,
+} from '../settings/settingsSchema';
 import type { TranscriptionProvider } from './providers/TranscriptionProvider';
 import type { LlmProvider } from './llm/LlmProvider';
-import { selectedLlmVendor } from './llm/vendors';
+import { llmVendor } from './llm/vendors';
 import { vendorConnection } from '../providers/providers';
 import { ProviderConfigError } from './providerConfigError';
 
@@ -23,16 +26,22 @@ export { createTranscriptionProvider } from './providers/engines';
 export type { TranscriptionProvider, LlmProvider };
 
 /**
- * Builds the configured LLM post-processing provider from the selected
- * vendor's descriptor: which settings field holds its key and model, and how
- * to construct it, are vendor facts owned by the registry rather than branches
- * here. Every vendor requires a key.
+ * Builds an LLM provider from a vendor's descriptor: which settings field
+ * holds its key and model, and how to construct it, are vendor facts owned by
+ * the registry rather than branches here. Every vendor requires a key.
+ *
+ * The vendor is a parameter because each LLM-driven job picks its own engine
+ * (see {@link module:transcription/llm/vendors}'s `LLM_JOBS`): a caller names
+ * the engine its job is configured to call rather than getting whichever one
+ * post-processing happens to point at.
  * @param settings - Plugin settings
+ * @param vendorId - Engine to build, defaulting to the post-processing one
  */
 export function createLlmProvider(
 	settings: AudioRecorderSettings,
+	vendorId: LlmProviderId = settings.llmProvider,
 ): LlmProvider {
-	const vendor = selectedLlmVendor(settings);
+	const vendor = llmVendor(vendorId);
 	const apiKey = vendor.settings.apiKey(settings);
 	if (!apiKey) {
 		throw new ProviderConfigError(vendor.missingKeyMessage);
