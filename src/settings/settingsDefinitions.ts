@@ -28,7 +28,6 @@ import type {
 } from 'obsidian';
 import {
 	advancedTwoPassEnabled,
-	applyLlmProviderDefaults,
 	type AudioRecorderSettings,
 } from './settingsSchema';
 import {
@@ -879,13 +878,6 @@ function llmGroup(
 						]),
 					),
 				},
-			},
-			{
-				name: 'LLM base URL',
-				aliases: ['endpoint', 'api url', 'self hosted'],
-				desc: 'API base URL of the selected vendor.',
-				visible: needsVendor,
-				control: { type: 'text', key: 'llmBaseUrl' },
 			},
 			// The model this vendor answers with, chosen in the catalogue the
 			// entry opens rather than in a dropdown beside it.
@@ -1989,11 +1981,8 @@ export const CONTROL_WRITE_EFFECTS: Readonly<
 	},
 	transcriptionProvider: { reshapesTree: true },
 	llmProvider: {
-		// Choosing Anthropic must not leave an OpenAI URL behind. A URL the
-		// user typed is not a default and is left alone.
-		follow: (settings) => {
-			applyLlmProviderDefaults(settings, settings.llmProvider);
-		},
+		// Each provider keeps its own endpoint and key, so a switch moves
+		// nothing; the rows below it hold another vendor's model and rates.
 		reshapesTree: true,
 	},
 	transcriptionDictionaryProfileId: { reshapesTree: true },

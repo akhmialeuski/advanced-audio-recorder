@@ -11,6 +11,7 @@ import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import type { TranscriptionProvider } from './providers/TranscriptionProvider';
 import type { LlmProvider } from './llm/LlmProvider';
 import { selectedLlmVendor } from './llm/vendors';
+import { vendorConnection } from '../providers/providers';
 import { ProviderConfigError } from './providerConfigError';
 
 export { ProviderConfigError } from './providerConfigError';
@@ -37,7 +38,9 @@ export function createLlmProvider(
 		throw new ProviderConfigError(vendor.missingKeyMessage);
 	}
 	return vendor.create({
-		baseUrl: settings.llmBaseUrl,
+		// The endpoint belongs to the provider the vendor is a capability of,
+		// which is the same one its transcription side is reached through.
+		baseUrl: vendorConnection(vendor.id).baseUrl(settings),
 		apiKey,
 		model: vendor.settings.model(settings),
 	});

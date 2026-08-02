@@ -17,13 +17,12 @@
  * @module transcription/providers/engines
  */
 
+import { MS_PER_MINUTE, TRANSCRIPTION_PROVIDER_IDS } from '../../constants';
 import {
-	DEEPGRAM_MODELS_DOC_URL,
-	GEMINI_MODELS_DOC_URL,
-	MS_PER_MINUTE,
-	TRANSCRIPTION_PROVIDER_IDS,
-	WHISPER_API_MODELS_DOC_URL,
-} from '../../constants';
+	PROVIDERS,
+	PROVIDER_IDS,
+	type ProviderId,
+} from '../../providers/providers';
 import type {
 	AudioRecorderSettings,
 	TranscriptionProviderId,
@@ -101,6 +100,44 @@ export interface EngineCredentials {
 	readonly modelPickerDesc: string;
 	readonly modelsDocLabel: string;
 	readonly modelsDocUrl: string;
+}
+
+/**
+ * The half of an engine's credentials that belongs to the service rather than
+ * to transcription: its endpoint, its key, and the catalogue its speech models
+ * come from. Read from the provider registry, so a service that also answers
+ * prompts declares them once and both uses reach the same fields.
+ * @param id - Provider the engine is a capability of
+ * @returns That provider's credentials for transcription
+ */
+function credentialsFromRegistry(id: ProviderId): EngineCredentials {
+	const provider = PROVIDERS[id];
+	const connection = provider.connection;
+	const models = provider.transcription?.models;
+	if (!connection || !models) {
+		throw new Error(`Provider "${id}" declares no transcription endpoint`);
+	}
+	return {
+		baseUrlKey: connection.baseUrlKey,
+		apiKeyKey: connection.apiKeyKey,
+		modelKey: models.modelKey,
+		modelsKey: models.modelsKey,
+		baseUrl: connection.baseUrl,
+		setBaseUrl: connection.setBaseUrl,
+		apiKey: connection.apiKey,
+		setApiKey: connection.setApiKey,
+		setModel: models.setModel,
+		models: models.models,
+		setModels: models.setModels,
+		baseUrlFieldName: connection.baseUrlFieldName,
+		baseUrlFieldDesc: connection.baseUrlFieldDesc,
+		keyFieldName: connection.keyFieldName,
+		keyFieldDesc: connection.keyFieldDesc,
+		modelPickerName: models.pickerName,
+		modelPickerDesc: models.pickerDesc,
+		modelsDocLabel: models.docLabel,
+		modelsDocUrl: models.docUrl,
+	};
 }
 
 /** Everything the plugin knows about one transcription engine. */
@@ -241,10 +278,6 @@ function planWhisperPromptDictionary(terms: string[]): DictionaryBiasPlan {
 	return { applied, omitted: [] };
 }
 
-/** The API-key description shared by every cloud engine. */
-const STORED_LOCALLY_DESC =
-	'Stored in plugin data on this device. Avoid syncing data.json to untrusted locations.';
-
 /**
  * Every transcription engine, keyed by its settings id. Insertion order is the
  * order the engine dropdown offers them.
@@ -255,34 +288,14 @@ export const TRANSCRIPTION_ENGINES: Record<
 > = {
 	[TRANSCRIPTION_PROVIDER_IDS.WHISPER_API]: {
 		id: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+		// The engine is named for what it does; the service behind it is named
+		// once in the provider registry.
 		label: 'Whisper API (OpenAI-compatible)',
 		pricingUrl: 'https://openai.com/api/pricing/',
 		model: (s) => s.whisperApiModel,
 		pricing: (model) =>
 			perMinutePricing(matchRate(WHISPER_API_RATES, model)),
-		credentials: {
-			baseUrlKey: 'whisperApiBaseUrl',
-			apiKeyKey: 'whisperApiKey',
-			modelKey: 'whisperApiModel',
-			modelsKey: 'whisperApiModels',
-			baseUrl: (s) => s.whisperApiBaseUrl,
-			setBaseUrl: (s, url) => (s.whisperApiBaseUrl = url),
-			apiKey: (s) => s.whisperApiKey,
-			setApiKey: (s, key) => (s.whisperApiKey = key),
-			setModel: (s, id) => (s.whisperApiModel = id),
-			models: (s) => s.whisperApiModels,
-			setModels: (s, ids) => (s.whisperApiModels = ids),
-			baseUrlFieldName: 'Whisper API base URL',
-			baseUrlFieldDesc:
-				'OpenAI-compatible endpoint base (e.g. https://api.openai.com/v1 or a Groq URL).',
-			keyFieldName: 'Whisper API key',
-			keyFieldDesc: STORED_LOCALLY_DESC,
-			modelPickerName: 'Whisper model',
-			modelPickerDesc:
-				'OpenAI: whisper-1. Groq and other hosts: whisper-large-v3, whisper-large-v3-turbo. The model must support verbose_json with timestamps.',
-			modelsDocLabel: 'Whisper API models',
-			modelsDocUrl: WHISPER_API_MODELS_DOC_URL,
-		},
+		credentials: credentialsFromRegistry(PROVIDER_IDS.OPENAI),
 		planDictionary: (_model, terms) => planWhisperPromptDictionary(terms),
 		biasUnsupportedReason: () => null,
 		create: (settings, requestTimeoutMs) => {
@@ -305,29 +318,7 @@ export const TRANSCRIPTION_ENGINES: Record<
 		pricingUrl: 'https://deepgram.com/pricing',
 		model: (s) => s.deepgramModel,
 		pricing: (model) => perMinutePricing(matchRate(DEEPGRAM_RATES, model)),
-		credentials: {
-			baseUrlKey: 'deepgramBaseUrl',
-			apiKeyKey: 'deepgramApiKey',
-			modelKey: 'deepgramModel',
-			modelsKey: 'deepgramModels',
-			baseUrl: (s) => s.deepgramBaseUrl,
-			setBaseUrl: (s, url) => (s.deepgramBaseUrl = url),
-			apiKey: (s) => s.deepgramApiKey,
-			setApiKey: (s, key) => (s.deepgramApiKey = key),
-			setModel: (s, id) => (s.deepgramModel = id),
-			models: (s) => s.deepgramModels,
-			setModels: (s, ids) => (s.deepgramModels = ids),
-			baseUrlFieldName: 'Deepgram base URL',
-			baseUrlFieldDesc:
-				'Deepgram API base (default https://api.deepgram.com/v1).',
-			keyFieldName: 'Deepgram API key',
-			keyFieldDesc: STORED_LOCALLY_DESC,
-			modelPickerName: 'Deepgram model',
-			modelPickerDesc:
-				'Pick a Deepgram model (e.g. nova-3, nova-2-meeting, enhanced-phonecall). Files up to 2 GB are sent whole for consistent speaker labels.',
-			modelsDocLabel: 'Deepgram model list',
-			modelsDocUrl: DEEPGRAM_MODELS_DOC_URL,
-		},
+		credentials: credentialsFromRegistry(PROVIDER_IDS.DEEPGRAM),
 		// Deepgram's mechanism, and therefore its limits, depend on the model:
 		// Nova-3 keyterm prompting is bounded by both an entry count and an
 		// aggregate token budget, Nova-2 and older keyword boosting only by an
@@ -390,29 +381,7 @@ export const TRANSCRIPTION_ENGINES: Record<
 		pricingUrl: 'https://ai.google.dev/gemini-api/docs/pricing',
 		model: (s) => s.geminiModel,
 		pricing: (model) => perTokenPricing(matchRate(GEMINI_RATES, model)),
-		credentials: {
-			baseUrlKey: 'geminiBaseUrl',
-			apiKeyKey: 'geminiApiKey',
-			modelKey: 'geminiModel',
-			modelsKey: 'geminiModels',
-			baseUrl: (s) => s.geminiBaseUrl,
-			setBaseUrl: (s, url) => (s.geminiBaseUrl = url),
-			apiKey: (s) => s.geminiApiKey,
-			setApiKey: (s, key) => (s.geminiApiKey = key),
-			setModel: (s, id) => (s.geminiModel = id),
-			models: (s) => s.geminiModels,
-			setModels: (s, ids) => (s.geminiModels = ids),
-			baseUrlFieldName: 'Gemini base URL',
-			baseUrlFieldDesc:
-				'Gemini API base (default https://generativelanguage.googleapis.com).',
-			keyFieldName: 'Gemini API key',
-			keyFieldDesc: STORED_LOCALLY_DESC,
-			modelPickerName: 'Gemini model',
-			modelPickerDesc:
-				'Pick a Gemini model (e.g. gemini-3.5-flash, gemini-2.5-pro). The whole recording is uploaded via the File API for consistent speaker labels.',
-			modelsDocLabel: 'Gemini model list',
-			modelsDocUrl: GEMINI_MODELS_DOC_URL,
-		},
+		credentials: credentialsFromRegistry(PROVIDER_IDS.GEMINI),
 		// Gemini folds terms into a large instruction context with no hard cap.
 		planDictionary: (_model, terms) => ({ applied: terms, omitted: [] }),
 		biasUnsupportedReason: () => null,

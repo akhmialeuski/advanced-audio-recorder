@@ -782,12 +782,15 @@ describe('settings definitions', () => {
 		it('names the LLM model once, the same way', () => {
 			const names = childNamesOf('LLM post-processing');
 
+			// The endpoint is the provider's now, so the block holds the use:
+			// which vendor answers, and which of its models.
 			expect(names.filter((name) => name === 'LLM model')).toEqual([
 				'LLM model',
 			]);
 			expect(names.indexOf('LLM model')).toBe(
-				names.indexOf('LLM base URL') + 1,
+				names.indexOf('LLM provider') + 1,
 			);
+			expect(names).not.toContain('LLM base URL');
 		});
 
 		it('keeps each profile catalogue inside the block that gates it', () => {

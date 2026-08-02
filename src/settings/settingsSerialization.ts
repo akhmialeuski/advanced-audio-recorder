@@ -11,6 +11,7 @@ import { getDefaultDeviceId } from '../utils/DeviceUtils';
 import { getPlatformKind, type PlatformKind } from '../platform/platformKind';
 import { isDeviceSelectionSupported } from '../platform/capabilities';
 import { LLM_VENDORS, selectedLlmVendor } from '../transcription/llm/vendors';
+import { vendorConnection } from '../providers/providers';
 import {
 	DEFAULT_SETTINGS,
 	createPlatformScopedDefaults,
@@ -332,10 +333,23 @@ function migrateLegacyLlmSettings(
 			vendor.settings.setModel(merged, legacyModel);
 		}
 	}
+	// The endpoint was one field rewritten on every vendor change; it now
+	// belongs to the provider the stored vendor is a capability of, which is
+	// also the one its transcription side is reached through. A custom URL is
+	// carried over only where that provider still holds its shipped default,
+	// so a transcription endpoint the user typed is never overwritten.
+	const legacyBaseUrl = legacyString(raw.llmBaseUrl).trim();
+	if (legacyBaseUrl && merged.llmProvider in LLM_VENDORS) {
+		const connection = vendorConnection(merged.llmProvider);
+		if (connection.baseUrl(merged) === connection.defaultBaseUrl) {
+			connection.setBaseUrl(merged, legacyBaseUrl);
+		}
+	}
 	// Drop the superseded flat fields so a later save does not persist them.
 	if (isRecord(merged)) {
 		delete merged.llmApiKey;
 		delete merged.llmModel;
+		delete merged.llmBaseUrl;
 	}
 }
 

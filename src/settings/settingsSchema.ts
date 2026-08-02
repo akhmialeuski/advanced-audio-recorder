@@ -23,7 +23,7 @@ import {
 	DEFAULT_TRANSCRIPTION_TIMEOUT_MINUTES,
 	TRANSCRIPTION_PROVIDER_IDS,
 	LLM_PROVIDER_IDS,
-	DEFAULT_LLM_OPENAI_BASE_URL,
+	DEFAULT_LLM_ANTHROPIC_BASE_URL,
 	DEFAULT_LLM_OPENAI_MODEL,
 	DEFAULT_LLM_ANTHROPIC_MODEL,
 	DEFAULT_LLM_GEMINI_MODEL,
@@ -49,7 +49,6 @@ import type { LlmTask } from '../transcription/llmPostProcess';
 import { CHANNEL_MODE_SOURCE } from '../audio/downmix';
 import type { ChannelMode } from '../audio/downmix';
 import type { PlatformKind } from '../platform/platformKind';
-import { DEFAULT_LLM_BASE_URLS, llmVendor } from '../transcription/llm/vendors';
 
 export type { OutputMode } from '../types';
 
@@ -426,13 +425,13 @@ export interface AudioRecorderSettings {
 	llmCustomInstruction: string;
 	/** LLM provider: OpenAI, Anthropic, or Google Gemini */
 	llmProvider: LlmProviderId;
-	/** LLM base URL */
-	llmBaseUrl: string;
 	/**
-	 * Anthropic API key. OpenAI and Gemini LLM reuse the transcription keys
-	 * (whisperApiKey, geminiApiKey) so a vendor token is entered once; Anthropic
-	 * has no transcription counterpart, so it keeps its own key here.
+	 * Anthropic endpoint and key. Every provider keeps its endpoint and its key
+	 * in fields of its own, and a provider that both transcribes and answers
+	 * prompts (OpenAI, Gemini) is reached through the one pair it already has;
+	 * Anthropic only answers prompts, so this is where its pair lives.
 	 */
+	anthropicBaseUrl: string;
 	anthropicApiKey: string;
 	/** Selected OpenAI LLM model id */
 	llmOpenAiModel: string;
@@ -506,6 +505,13 @@ export interface LegacyAudioRecorderSettings {
 	llmModel?: string;
 	/** Pre-profile single dictionary text, moved into a "General" profile. */
 	transcriptionDictionary?: string;
+	/**
+	 * Pre-registry single LLM endpoint, held for whichever vendor was selected
+	 * and rewritten on every vendor change. Moved onto the endpoint of the
+	 * provider that vendor belongs to, which is the one both its transcription
+	 * and its post-processing now read.
+	 */
+	llmBaseUrl?: string;
 }
 
 /**
@@ -636,7 +642,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	llmSummaryPrompt: DEFAULT_LLM_SUMMARY_PROMPT,
 	llmCustomInstruction: DEFAULT_LLM_CUSTOM_INSTRUCTION,
 	llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
-	llmBaseUrl: DEFAULT_LLM_OPENAI_BASE_URL,
+	anthropicBaseUrl: DEFAULT_LLM_ANTHROPIC_BASE_URL,
 	anthropicApiKey: '',
 	llmOpenAiModel: DEFAULT_LLM_OPENAI_MODEL,
 	llmOpenAiModels: [...LLM_OPENAI_MODEL_SUGGESTIONS],
@@ -659,28 +665,6 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	cleanupLevelingEnabled: false,
 	cleanupLevelingMakeupDb: DEFAULT_CLEANUP_LEVELING_MAKEUP_DB,
 };
-
-/**
- * Aligns the LLM base URL with the target vendor's default when the current
- * value is still some vendor's shipped default; a custom URL the user entered
- * is preserved. Switching to a vendor whose own default is already in place is
- * a no-op, so an OpenAI-compatible endpoint the user typed survives. The model
- * is not switched here - each vendor keeps its own selected model in a
- * dedicated field. Mutates and returns `settings` so the settings tab can
- * switch the base URL in one step when the provider changes.
- * @param settings - Settings to adjust in place
- * @param provider - The provider being switched to
- * @returns The same settings object, adjusted
- */
-export function applyLlmProviderDefaults(
-	settings: AudioRecorderSettings,
-	provider: LlmProviderId,
-): AudioRecorderSettings {
-	if (DEFAULT_LLM_BASE_URLS.has(settings.llmBaseUrl)) {
-		settings.llmBaseUrl = llmVendor(provider).defaultBaseUrl;
-	}
-	return settings;
-}
 
 /**
  * Whether a run performs the advanced two-pass transcription: both the advanced

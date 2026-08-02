@@ -18,15 +18,12 @@
  * @module transcription/llm/vendors
  */
 
+import { LLM_PROVIDER_IDS } from '../../constants';
 import {
-	ANTHROPIC_MODELS_DOC_URL,
-	DEFAULT_LLM_ANTHROPIC_BASE_URL,
-	DEFAULT_LLM_GEMINI_BASE_URL,
-	DEFAULT_LLM_OPENAI_BASE_URL,
-	GEMINI_MODELS_DOC_URL,
-	LLM_PROVIDER_IDS,
-	OPENAI_MODELS_DOC_URL,
-} from '../../constants';
+	PROVIDERS,
+	PROVIDER_IDS,
+	type ProviderId,
+} from '../../providers/providers';
 import type {
 	AudioRecorderSettings,
 	LlmProviderId,
@@ -158,91 +155,65 @@ const GEMINI_RATES: readonly [string, LlmRate][] = [
 ];
 
 /**
+ * The half of a vendor that belongs to the service rather than to the use: its
+ * label, its endpoint, its key, and the catalogue its models come from. Read
+ * from the provider registry, so a service that also transcribes declares them
+ * once and both uses reach the same fields.
+ * @param id - Provider the vendor is a capability of
+ * @returns That provider's half of the descriptor
+ */
+function fromRegistry(
+	id: ProviderId,
+): Omit<LlmVendorDescriptor, 'rates' | 'create'> {
+	const provider = PROVIDERS[id];
+	const connection = provider.connection;
+	const llm = provider.llm;
+	if (!connection || !llm) {
+		throw new Error(`Provider "${id}" declares no LLM connection`);
+	}
+	return {
+		id: llm.vendorId,
+		label: provider.label,
+		defaultBaseUrl: connection.defaultBaseUrl,
+		pricingUrl: provider.pricingUrl ?? '',
+		modelsDocUrl: llm.models.docUrl,
+		modelsDocLabel: llm.models.docLabel,
+		modelPickerDesc: llm.models.pickerDesc,
+		keyFieldName: connection.keyFieldName,
+		keyFieldDesc: connection.keyFieldDesc,
+		missingKeyMessage: connection.missingKeyMessage,
+		settings: {
+			apiKeyKey: connection.apiKeyKey,
+			modelKey: llm.models.modelKey,
+			modelsKey: llm.models.modelsKey,
+			apiKey: connection.apiKey,
+			setApiKey: connection.setApiKey,
+			model: llm.models.model,
+			setModel: llm.models.setModel,
+			models: llm.models.models,
+			setModels: llm.models.setModels,
+		},
+	};
+}
+
+/**
  * Every LLM vendor, keyed by its settings id. Insertion order is the order the
  * provider dropdown offers them.
  */
 export const LLM_VENDORS: Record<LlmProviderId, LlmVendorDescriptor> = {
 	[LLM_PROVIDER_IDS.OPENAI_COMPATIBLE]: {
-		id: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
-		label: 'OpenAI',
-		defaultBaseUrl: DEFAULT_LLM_OPENAI_BASE_URL,
-		pricingUrl: 'https://openai.com/api/pricing/',
-		modelsDocUrl: OPENAI_MODELS_DOC_URL,
-		modelsDocLabel: 'OpenAI models',
-		modelPickerDesc:
-			'Pick an OpenAI model (e.g. gpt-5.6-sol, gpt-5.6-luna).',
-		keyFieldName: 'OpenAI API key',
-		keyFieldDesc:
-			'Shared with the Whisper API transcription engine - set it in either place.',
-		missingKeyMessage: 'Set the OpenAI API key in settings.',
+		...fromRegistry(PROVIDER_IDS.OPENAI),
 		rates: OPENAI_RATES,
-		settings: {
-			// OpenAI reuses the Whisper API key as the shared OpenAI vendor key.
-			apiKeyKey: 'whisperApiKey',
-			modelKey: 'llmOpenAiModel',
-			modelsKey: 'llmOpenAiModels',
-			apiKey: (s) => s.whisperApiKey,
-			setApiKey: (s, key) => (s.whisperApiKey = key),
-			model: (s) => s.llmOpenAiModel,
-			setModel: (s, id) => (s.llmOpenAiModel = id),
-			models: (s) => s.llmOpenAiModels,
-			setModels: (s, ids) => (s.llmOpenAiModels = ids),
-		},
 		create: (config) => new OpenAiCompatibleLlmProvider(config),
 	},
 	[LLM_PROVIDER_IDS.ANTHROPIC]: {
-		id: LLM_PROVIDER_IDS.ANTHROPIC,
-		label: 'Anthropic (Claude)',
-		defaultBaseUrl: DEFAULT_LLM_ANTHROPIC_BASE_URL,
-		pricingUrl: 'https://www.anthropic.com/pricing',
-		modelsDocUrl: ANTHROPIC_MODELS_DOC_URL,
-		modelsDocLabel: 'Anthropic models',
-		modelPickerDesc:
-			'Pick an Anthropic model (e.g. claude-opus-4-8, claude-sonnet-5).',
-		keyFieldName: 'Anthropic API key',
-		keyFieldDesc: 'Stored in plugin data on this device.',
-		missingKeyMessage: 'Set the Anthropic API key in settings.',
+		...fromRegistry(PROVIDER_IDS.ANTHROPIC),
 		rates: ANTHROPIC_RATES,
-		settings: {
-			// Anthropic has no transcription counterpart, so it keeps its own key.
-			apiKeyKey: 'anthropicApiKey',
-			modelKey: 'llmAnthropicModel',
-			modelsKey: 'llmAnthropicModels',
-			apiKey: (s) => s.anthropicApiKey,
-			setApiKey: (s, key) => (s.anthropicApiKey = key),
-			model: (s) => s.llmAnthropicModel,
-			setModel: (s, id) => (s.llmAnthropicModel = id),
-			models: (s) => s.llmAnthropicModels,
-			setModels: (s, ids) => (s.llmAnthropicModels = ids),
-		},
 		create: (config) => new AnthropicLlmProvider(config),
 	},
 	[LLM_PROVIDER_IDS.GEMINI]: {
-		id: LLM_PROVIDER_IDS.GEMINI,
-		label: 'Google Gemini',
-		defaultBaseUrl: DEFAULT_LLM_GEMINI_BASE_URL,
-		pricingUrl: 'https://ai.google.dev/gemini-api/docs/pricing',
-		modelsDocUrl: GEMINI_MODELS_DOC_URL,
-		modelsDocLabel: 'Gemini model list',
-		modelPickerDesc:
-			'Pick a Gemini model (e.g. gemini-3.5-flash, gemini-2.5-pro).',
-		keyFieldName: 'Google Gemini API key',
-		keyFieldDesc:
-			'Shared with the Gemini transcription engine - set it in either place.',
-		missingKeyMessage: 'Set the Google Gemini API key in settings.',
+		...fromRegistry(PROVIDER_IDS.GEMINI),
 		rates: GEMINI_RATES,
-		settings: {
-			// Gemini reuses the Gemini transcription key.
-			apiKeyKey: 'geminiApiKey',
-			modelKey: 'llmGeminiModel',
-			modelsKey: 'llmGeminiModels',
-			apiKey: (s) => s.geminiApiKey,
-			setApiKey: (s, key) => (s.geminiApiKey = key),
-			model: (s) => s.llmGeminiModel,
-			setModel: (s, id) => (s.llmGeminiModel = id),
-			models: (s) => s.llmGeminiModels,
-			setModels: (s, ids) => (s.llmGeminiModels = ids),
-		},
 		create: (config) => new GeminiLlmProvider(config),
 	},
 };

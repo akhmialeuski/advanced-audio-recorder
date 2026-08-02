@@ -334,24 +334,22 @@ describe('AudioRecorderSettingTab', () => {
 			expect(updateSpy).toHaveBeenCalled();
 		});
 
-		it('moves the base URL to the vendor picked, leaving a typed one alone', async () => {
+		it('leaves every provider endpoint alone when the vendor changes', async () => {
 			mockSettings.llmProvider = 'openai-compatible';
-			mockSettings.llmBaseUrl = 'https://api.openai.com/v1';
+			mockSettings.whisperApiBaseUrl = 'https://groq.internal/v1';
+			mockSettings.anthropicBaseUrl = 'https://claude.internal/v1';
 
 			await tab.setControlValue('llmProvider', 'anthropic');
 
-			// Choosing Anthropic must not leave an OpenAI URL behind.
-			expect(mockSettings.llmBaseUrl).toBe(
-				'https://api.anthropic.com/v1',
+			// The endpoint belongs to the provider, not to the use, so the
+			// switch reads another provider's field instead of rewriting one.
+			expect(mockSettings.whisperApiBaseUrl).toBe(
+				'https://groq.internal/v1',
+			);
+			expect(mockSettings.anthropicBaseUrl).toBe(
+				'https://claude.internal/v1',
 			);
 			expect(updateSpy).toHaveBeenCalled();
-
-			mockSettings.llmBaseUrl = 'https://llm.internal/v1';
-
-			await tab.setControlValue('llmProvider', 'gemini');
-
-			// A URL the user typed is not a default and is theirs to keep.
-			expect(mockSettings.llmBaseUrl).toBe('https://llm.internal/v1');
 		});
 
 		it('reads the tree again when the engine changes', async () => {

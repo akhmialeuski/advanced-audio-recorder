@@ -363,7 +363,7 @@ describe('Settings', () => {
 				llmSummaryPrompt: 'summary base',
 				llmCustomInstruction: 'do it',
 				llmProvider: 'anthropic',
-				llmBaseUrl: 'https://api.anthropic.com/v1',
+				anthropicBaseUrl: 'https://api.anthropic.com/v1',
 				anthropicApiKey: 'ak-test',
 				llmOpenAiModel: 'gpt-4o',
 				llmOpenAiModels: ['gpt-4o', 'gpt-4o-mini'],
