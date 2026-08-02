@@ -33,6 +33,7 @@ import {
 	MIN_SPLIT_CHUNK_MINUTES,
 	MAX_SPLIT_CHUNK_MINUTES,
 	TRANSCRIPTION_PROVIDER_IDS,
+	WHISPER_API_MODELS_DOC_URL,
 } from 'src/constants';
 import {
 	SETTINGS_BLOCK_ROW_CLASS,
@@ -806,6 +807,32 @@ describe('settings definitions', () => {
 				'Model',
 				'Max output tokens',
 			]);
+		});
+
+		it('carries the catalogue link on the catalogue, not on the key field', () => {
+			// The link lists the ids the endpoint serves, so it belongs with
+			// those ids; hanging it off the API-key row put a model catalogue
+			// under a password field.
+			const catalogue = pageOf(build(), 'Model');
+			const desc = catalogue.desc;
+			if (!(desc instanceof DocumentFragment)) {
+				throw new Error('The catalogue carries no link');
+			}
+			const link = desc.querySelector('a');
+
+			expect(link?.textContent).toBe('Whisper API models');
+			expect(link?.getAttribute('href')).toBe(WHISPER_API_MODELS_DOC_URL);
+		});
+
+		it('offers a chunk size only on the engine that splits an upload', () => {
+			// A limit is the engine's own fact, and so is the field holding the
+			// chunk size, so no second engine can edit the first one's.
+			expect(pageEntryNames('Whisper API (OpenAI-compatible)')).toContain(
+				'Upload chunk size',
+			);
+			expect(pageEntryNames('Deepgram')).not.toContain(
+				'Upload chunk size',
+			);
 		});
 
 		it('leaves each use holding only the choice', () => {

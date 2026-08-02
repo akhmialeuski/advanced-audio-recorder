@@ -140,6 +140,12 @@ export interface EngineDescriptor {
 	 */
 	readonly uploadLimitMb: number;
 	/**
+	 * Where this engine's chunk size is stored, or null where it never splits.
+	 * Named per engine rather than assumed, so a second engine with a limit
+	 * cannot end up sharing the first one's field by accident.
+	 */
+	readonly uploadChunkKey: keyof AudioRecorderSettings | null;
+	/**
 	 * Where the longest answer this engine may write is stored, or null for one
 	 * that writes nothing. A ceiling belongs to the engine that honours it, not
 	 * to a job that calls it.
@@ -233,6 +239,7 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 		// The API refuses a request over 25 MB, so a longer recording is split
 		// into chunks under that ceiling and stitched back onto one timeline.
 		uploadLimitMb: 25,
+		uploadChunkKey: 'transcriptionChunkMb',
 		models: {
 			modelKey: 'whisperApiModel',
 			modelsKey: 'whisperApiModels',
@@ -256,6 +263,7 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 		transcriptionId: null,
 		llmId: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
 		uploadLimitMb: 0,
+		uploadChunkKey: null,
 		models: {
 			modelKey: 'llmOpenAiModel',
 			modelsKey: 'llmOpenAiModels',
@@ -283,6 +291,7 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 		transcriptionId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 		llmId: null,
 		uploadLimitMb: 0,
+		uploadChunkKey: null,
 		models: {
 			modelKey: 'deepgramModel',
 			modelsKey: 'deepgramModels',
@@ -308,6 +317,7 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 		transcriptionId: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
 		llmId: LLM_PROVIDER_IDS.GEMINI,
 		uploadLimitMb: 0,
+		uploadChunkKey: null,
 		models: {
 			modelKey: 'geminiModel',
 			modelsKey: 'geminiModels',
@@ -335,6 +345,7 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 		transcriptionId: null,
 		llmId: LLM_PROVIDER_IDS.ANTHROPIC,
 		uploadLimitMb: 0,
+		uploadChunkKey: null,
 		models: {
 			modelKey: 'llmAnthropicModel',
 			modelsKey: 'llmAnthropicModels',
@@ -365,6 +376,7 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 		transcriptionId: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
 		llmId: null,
 		uploadLimitMb: 0,
+		uploadChunkKey: null,
 		maxTokens: null,
 	},
 };

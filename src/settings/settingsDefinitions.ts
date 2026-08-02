@@ -26,10 +26,7 @@ import type {
 	SettingDefinitionItem,
 	SettingGroupItem,
 } from 'obsidian';
-import {
-	advancedTwoPassEnabled,
-	type AudioRecorderSettings,
-} from './settingsSchema';
+import type { AudioRecorderSettings } from './settingsSchema';
 import {
 	ADVANCED_SECOND_PASS_RATIO_STEP,
 	MAX_ADVANCED_SECOND_PASS_MIN_RATIO,
@@ -60,7 +57,8 @@ import {
 	LLM_TASK_OPTIONS,
 	TRANSCRIPTION_PROVIDER_OPTIONS,
 } from './labels';
-import type { ProfileSection } from './profileKinds';
+import { PROFILE_KINDS, type ProfileSection } from './profileKinds';
+import { LLM_JOBS } from '../transcription/llm/vendors';
 import {
 	ENGINES,
 	ENGINE_ORDER,
@@ -151,10 +149,11 @@ export function parseProfileControlKey(
 const LANGUAGE_CODE_PATTERN = /^([a-z]{2,3}(-[a-z0-9]{2,8})?|auto)?$/i;
 
 /**
- * Marks the row that hosts the sections not described here yet. From 1.13 on,
- * the row of a render definition is the only DOM that definition owns, so the
- * stylesheet strips that row's own flex layout, padding, background, and
- * divider to let a whole imperative body read as an ordinary settings column.
+ * Marks a row whose whole body is drawn by hand: the documentation callout and
+ * the credential blocks. From 1.13 on, the row of a render definition is the
+ * only DOM that definition owns, so the stylesheet strips that row's own flex
+ * layout, padding, background, and divider to let the body inside it read as an
+ * ordinary settings column rather than as one setting's control.
  */
 export const SETTINGS_ROOT_CLASS = 'aar-settings-root';
 
@@ -198,6 +197,8 @@ export const SETTINGS_TAB_CLASS = 'aar-settings-tab';
  * carries no heading of its own; without it the framework would wrap the rows
  * in a group of its own that nothing here can mark.
  * @param rows - The page's rows, in the order they are shown
+ * @param extraClass - Class the block carries beyond the shared one, where its
+ * rows need a layout of their own
  * @returns The page's items
  */
 function sectionItems(
@@ -789,17 +790,13 @@ function audioPlayerPage(
 }
 
 /**
- * LLM post-processing, and the vendor fields the auto chapters and the two-pass
- * mode share with it. The vendor fields stay visible while any of the three
- * features needs them, so enabling one alone still exposes its key and model.
+ * LLM post-processing: the switch, the engine that writes it, and the task and
+ * prompt that steer it. Nothing here is shared with the other two LLM jobs any
+ * more - each names its own engine beside its own switch - so the rows follow
+ * this feature alone.
  * @param settings - Live settings, read by the predicates
  */
 function llmGroup(settings: AudioRecorderSettings): SettingDefinitionItem {
-	const needsVendor = (): boolean =>
-		settings.transcriptionEnabled &&
-		(settings.llmPostProcessEnabled ||
-			settings.transcriptionAutoChaptersEnabled ||
-			advancedTwoPassEnabled(settings));
 	const postProcessing = (): boolean =>
 		settings.transcriptionEnabled && settings.llmPostProcessEnabled;
 	const promptRow = (
@@ -834,8 +831,8 @@ function llmGroup(settings: AudioRecorderSettings): SettingDefinitionItem {
 			engineChoiceRow(
 				'Engine',
 				'Which engine writes the post-processed transcript. Set it up under Engines.',
-				'llmProvider',
-				needsVendor,
+				LLM_JOBS.postProcess.key,
+				postProcessing,
 			),
 			{
 				name: 'Task',
@@ -1235,13 +1232,13 @@ function enginePage(
 			},
 		});
 	}
-	if (engine.uploadLimitMb > 0) {
+	if (engine.uploadChunkKey) {
 		rows.push({
 			name: 'Upload chunk size',
 			desc: `Megabytes per WAV chunk when a recording is too large to upload whole (this engine accepts ${String(engine.uploadLimitMb)} MB per request). Files under the limit are sent untouched.`,
 			control: {
 				type: 'number',
-				key: 'transcriptionChunkMb',
+				key: engine.uploadChunkKey,
 				min: MIN_TRANSCRIBE_CHUNK_MB,
 				max: MAX_TRANSCRIBE_CHUNK_MB,
 				step: 1,
@@ -1331,6 +1328,29 @@ function enginesPage(ctx: SettingsDefinitionContext): SettingGroupItem {
 }
 
 /**
+ * What a model catalogue says about itself: how to pick an id, followed by the
+ * provider's own list of the ids it serves. A description is where Obsidian
+ * puts such a link, which is why this is a fragment rather than a string.
+ * @param models - The catalogue's own copy and catalogue link
+ * @returns The description, link included
+ */
+function catalogueDesc(models: ProviderModels): DocumentFragment {
+	return createFragment((fragment) => {
+		fragment.appendChild(createSpan({ text: `${models.pickerDesc} ` }));
+		fragment.appendChild(
+			createEl('a', {
+				text: models.docLabel,
+				attr: {
+					href: models.docUrl,
+					target: '_blank',
+					rel: 'noopener',
+				},
+			}),
+		);
+	});
+}
+
+/**
  * A provider's saved model ids, as the page the picking happens on. The list is
  * a collection the user edits, so it is declared as one: the framework renders
  * its add and delete affordances and its filter, and tapping a row makes that
@@ -1357,7 +1377,10 @@ function modelCataloguePage(
 		// configured after it.
 		type: 'page',
 		name: models.pickerName,
-		desc: models.pickerDesc,
+		// The catalogue link belongs here, with the catalogue it lists: it used
+		// to hang off the API-key row, which is a password field and has nothing
+		// to do with which ids the endpoint serves.
+		desc: catalogueDesc(models),
 		displayValue: (): string => selected || 'None',
 		items: [
 			{
@@ -1407,8 +1430,9 @@ function modelCataloguePage(
  * revealed by a predicate rather than by re-rendering the section, and the
  * options an engine cannot deliver are disabled rather than hidden, so the user
  * can see the option exists and why it is unavailable.
- * @param settings - Live settings, read by the predicates
- * @param blocks - The parts of the section that are not definitions yet
+ * @param ctx - Everything the tree reads from the tab
+ * @param enginesEntry - The entry opening the page every engine is set up on,
+ * placed right under the engine choice it configures
  */
 function transcriptionGroup(
 	ctx: SettingsDefinitionContext,
@@ -1546,7 +1570,8 @@ function transcriptionEngineRow(
 /**
  * The advanced transcription block: dictionary term biasing and the two-pass
  * mode, both behind a master switch that is off for a plain run.
- * @param settings - Live settings, read by the predicates
+ * @param ctx - Everything the tree reads from the tab
+ * @param section - The block whose profile catalogues belong here
  */
 function transcriptionAdvancedGroup(
 	ctx: SettingsDefinitionContext,
@@ -1582,7 +1607,7 @@ function transcriptionAdvancedGroup(
 			engineChoiceRow(
 				'Engine',
 				'Which engine the context agents call between the two passes. Set it up under Engines.',
-				'advancedLlmProvider',
+				LLM_JOBS.contextAgents.key,
 				(): boolean =>
 					advanced() && settings.transcriptionAdvancedEnabled,
 			),
@@ -1739,7 +1764,8 @@ function transcriptOutputGroup(
 
 /**
  * LLM-generated chapters, and the guidance profiles they use.
- * @param settings - Live settings, read by the predicates
+ * @param ctx - Everything the tree reads from the tab
+ * @param section - The block whose profile catalogues belong here
  */
 function autoChaptersGroup(
 	ctx: SettingsDefinitionContext,
@@ -1767,7 +1793,7 @@ function autoChaptersGroup(
 			engineChoiceRow(
 				'Engine',
 				'Which engine divides a transcript into chapters. Set it up under Engines.',
-				'chaptersLlmProvider',
+				LLM_JOBS.autoChapters.key,
 				enabled,
 			),
 			{
@@ -2026,16 +2052,22 @@ export function buildSettingsDefinitions(
  *
  * A `visible` predicate covers a setting that reveals another one, which is
  * most of them. It cannot cover the rest of what a write can mean: a value the
- * plugin wants in a canonical form, a second field that has to follow the
- * first, or a choice that leaves the same rows on screen holding different
- * things. Those three live here, next to the declarations they belong to,
- * rather than as branches in the tab's write path.
+ * plugin stores in a form of its own, or a choice that leaves the same rows on
+ * screen holding different things. Both live here, next to the declarations
+ * they belong to, rather than as branches in the tab's write path.
  */
 export interface ControlWriteEffect {
 	/** Rewrites the value before it is stored. */
 	readonly normalize?: (value: string) => string;
-	/** Adjusts the settings that follow this one, after it is stored. */
-	readonly follow?: (settings: AudioRecorderSettings) => void;
+	/**
+	 * Whether the setting holds a number while the control bound to it speaks
+	 * strings, which is the case for the two dropdowns that pick one. Both
+	 * directions convert: without it the string a dropdown hands back would be
+	 * stored where the schema declares a number - past the type system, since a
+	 * control key addresses the settings object dynamically - and the number
+	 * read back would match no option, leaving the dropdown blank.
+	 */
+	readonly numeric?: boolean;
 	/**
 	 * Whether the write changes what other rows *show*, not merely whether they
 	 * show. Picking another engine swaps the model catalogue and the credential
@@ -2055,14 +2087,62 @@ export const CONTROL_WRITE_EFFECTS: Readonly<
 		// "en", and an untrimmed code reaches the request verbatim.
 		normalize: (value) => value.trim(),
 	},
+	// The only two settings a dropdown edits that are not stored as text; every
+	// other numeric setting uses a number control, which speaks numbers.
+	bitrate: { numeric: true },
+	sampleRate: { numeric: true },
 	transcriptionProvider: { reshapesTree: true },
 	llmProvider: {
 		// Each provider keeps its own endpoint and key, so a switch moves
 		// nothing; the rows below it hold another vendor's model and rates.
 		reshapesTree: true,
 	},
-	transcriptionDictionaryProfileId: { reshapesTree: true },
-	transcriptionChapterPromptProfileId: { reshapesTree: true },
+	// Every catalogue names the profile in use on the entry that opens it, so
+	// moving that selection leaves those rows holding something else. Read from
+	// the kinds themselves, so a kind added there arrives with this behaviour
+	// instead of silently missing it.
+	...Object.fromEntries(
+		PROFILE_KINDS.map((kind) => [
+			kind.selectionKey,
+			{ reshapesTree: true },
+		]),
+	),
+};
+
+/**
+ * Projects a stored value into what its control speaks, and back. The two
+ * halves sit together so a conversion cannot be applied in one direction only.
+ */
+export const controlValue = {
+	/**
+	 * The stored value as the control reads it.
+	 * @param key - The settings key the control is bound to
+	 * @param stored - The stored value
+	 */
+	read(key: string, stored: unknown): unknown {
+		return CONTROL_WRITE_EFFECTS[key]?.numeric ? String(stored) : stored;
+	},
+	/**
+	 * The control's value as the setting stores it. A field left empty or
+	 * holding something unparseable keeps the stored value rather than writing
+	 * NaN into it.
+	 * @param key - The settings key the control is bound to
+	 * @param value - The value the control produced
+	 * @param stored - What the setting holds now
+	 */
+	write(key: string, value: unknown, stored: unknown): unknown {
+		const effect = CONTROL_WRITE_EFFECTS[key];
+		if (effect?.numeric) {
+			// An empty field reads as 0 through Number(), which is a value no
+			// numeric setting here can take, so it counts as unparseable.
+			const empty = typeof value === 'string' && value.trim() === '';
+			const parsed = Number(value);
+			return !empty && Number.isFinite(parsed) ? parsed : stored;
+		}
+		return effect?.normalize && typeof value === 'string'
+			? effect.normalize(value)
+			: value;
+	},
 };
 
 /**

@@ -13,6 +13,7 @@ import type { App, ButtonComponent } from 'obsidian';
 import { PluginModal } from './PluginModal';
 import { normalizeModelId } from '../settings/modelList';
 
+/** Asks for one model id and hands the accepted value to its caller. */
 export class ModelIdModal extends PluginModal {
 	private draft = '';
 	private addButton: ButtonComponent | null = null;

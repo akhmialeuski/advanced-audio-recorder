@@ -25,6 +25,7 @@ import {
 	type AudioRecorderSettings,
 } from 'src/settings/settingsSchema';
 import { DOCS_URL } from 'src/constants';
+import { PROFILE_KINDS } from 'src/settings/profileKinds';
 import type { AudioRecorderPluginInterface } from 'src/settings/SettingsTab';
 
 // Mock AudioEncoder to avoid loading mediabunny in jsdom. The async
@@ -235,6 +236,31 @@ describe('AudioRecorderSettingTab', () => {
 			expect(tab.getControlValue('debug')).toBe(true);
 		});
 
+		it.each([
+			['bitrate', '192000', 192000],
+			['sampleRate', '44100', 44100],
+		])(
+			'keeps %s a number across a dropdown round trip',
+			async (key, produced, stored) => {
+				// A dropdown speaks the option value, which is a string, while
+				// these two settings are numbers: storing the string put
+				// "192000" where every consumer expects 192000, and reading the
+				// number back matched no option, so the dropdown opened blank.
+				await tab.setControlValue(key, produced);
+
+				expect(mockSettings[key as 'bitrate' | 'sampleRate']).toBe(
+					stored,
+				);
+				expect(tab.getControlValue(key)).toBe(produced);
+			},
+		);
+
+		it('keeps the stored number when a numeric control produces nothing', async () => {
+			await tab.setControlValue('bitrate', '');
+
+			expect(mockSettings.bitrate).toBe(DEFAULT_SETTINGS.bitrate);
+		});
+
 		it('persists a control value through the plugin, not through saveData', async () => {
 			// The inherited implementation writes plugin.settings[key] and then
 			// calls saveData(settings). That would flatten the trackAudioSources
@@ -333,6 +359,21 @@ describe('AudioRecorderSettingTab', () => {
 			).toBe('by chapter');
 			expect(updateSpy).toHaveBeenCalled();
 		});
+
+		it.each(PROFILE_KINDS.map((kind) => [kind.heading, kind.selectionKey]))(
+			'reads the tree again when %s picks another profile from the dropdown',
+			async (_heading, selectionKey) => {
+				// The dropdown moves the same selection the per-profile switch
+				// does, so it owes the catalogue entry the same refresh. Read
+				// from the kinds themselves: a kind that forgot to register the
+				// effect showed a stale name on its entry, which is how the
+				// participant catalogue came to behave differently from the
+				// other two.
+				await tab.setControlValue(selectionKey, 'a');
+
+				expect(updateSpy).toHaveBeenCalled();
+			},
+		);
 
 		it('leaves every provider endpoint alone when the vendor changes', async () => {
 			mockSettings.llmProvider = 'openai-compatible';

@@ -36,6 +36,7 @@ import {
 	SETTINGS_TAB_CLASS,
 	buildSettingsDefinitions,
 	collectDebouncedControlKeys,
+	controlValue,
 	parseProfileControlKey,
 	parseTrackControlKey,
 	type ProfileCatalogue,
@@ -82,6 +83,12 @@ import { PROFILE_KINDS, type ProfileKind } from './profileKinds';
 import { ProfileNameModal } from '../ui/ProfileNameModal';
 import { closeSettingsPage } from '../obsidian/settingsNavigation';
 import { ENGINES, type ProviderModels } from '../providers/providers';
+import { ModelIdModal } from '../ui/ModelIdModal';
+import type { SettingsSectionContext } from './settingControls';
+import {
+	isAutoSplitSupported,
+	isMultiTrackCaptureSupported,
+} from '../platform/capabilities';
 
 /**
  * The half of an engine or vendor descriptor a saved model list is edited
@@ -93,13 +100,6 @@ interface ModelListAccess {
 	model(settings: AudioRecorderSettings): string;
 	setModel(settings: AudioRecorderSettings, id: string): void;
 }
-import { ModelIdModal } from '../ui/ModelIdModal';
-import type { SettingsSectionContext } from './settingControls';
-
-import {
-	isAutoSplitSupported,
-	isMultiTrackCaptureSupported,
-} from '../platform/capabilities';
 
 /** Debounce delay for saving text settings, in milliseconds. */
 const TEXT_SETTING_SAVE_DEBOUNCE_MS = 500;
@@ -413,7 +413,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		if (key === 'autoSplitEnabled') {
 			return stored === true && isAutoSplitSupported();
 		}
-		return stored;
+		// A dropdown over a numeric setting reads it as the option value it
+		// offers, which is that number written out.
+		return controlValue.read(key, stored);
 	}
 
 	/**
@@ -466,11 +468,11 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			return this.plugin.saveSettings();
 		}
 		const effect = CONTROL_WRITE_EFFECTS[key];
-		(this.plugin.settings as unknown as Record<string, unknown>)[key] =
-			effect?.normalize && typeof value === 'string'
-				? effect.normalize(value)
-				: value;
-		effect?.follow?.(this.plugin.settings);
+		const settings = this.plugin.settings as unknown as Record<
+			string,
+			unknown
+		>;
+		settings[key] = controlValue.write(key, value, settings[key]);
 		if (this.debouncedControlKeys.has(key)) {
 			// A text field changes on every keystroke. The value is live in
 			// memory either way; only the write to disk waits.

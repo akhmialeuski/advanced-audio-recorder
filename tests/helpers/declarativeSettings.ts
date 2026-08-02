@@ -53,6 +53,8 @@ export interface GroupDefinition {
 	type: string;
 	heading?: string;
 	name?: string;
+	/** A page's own description, which is a fragment when it carries a link. */
+	desc?: string | DocumentFragment;
 	/** Classes the framework puts on the group element. */
 	cls?: string;
 	visible?: boolean | (() => boolean);

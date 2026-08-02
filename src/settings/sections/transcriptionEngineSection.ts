@@ -30,13 +30,11 @@ export function renderProviderKeyField(
 		return;
 	}
 	const s = ctx.settings;
-	const docs = engine.models;
+	// No catalogue link here: it belongs with the catalogue, which is a page of
+	// its own on this engine, not under the field that holds a secret.
 	addText(ctx, {
 		name: connection.keyFieldName,
 		desc: connection.keyFieldDesc,
-		...(docs
-			? { helpLink: { label: docs.docLabel, url: docs.docUrl } }
-			: {}),
 		get: () => connection.apiKey(s),
 		set: (v) => {
 			connection.setApiKey(s, v);

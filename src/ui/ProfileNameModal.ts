@@ -34,6 +34,10 @@ export interface ProfileNamePrompt {
 	onSubmit(name: string): void;
 }
 
+/**
+ * Asks for a profile's name, refusing one its catalogue cannot accept, and
+ * hands the accepted name to its caller.
+ */
 export class ProfileNameModal extends PluginModal {
 	private draft: string;
 	private confirmButton: ButtonComponent | null = null;
