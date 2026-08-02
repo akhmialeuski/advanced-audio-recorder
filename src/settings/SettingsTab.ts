@@ -33,6 +33,7 @@ import {
 } from './settingsRenderMode';
 import {
 	CONTROL_WRITE_EFFECTS,
+	SETTINGS_TAB_CLASS,
 	buildSettingsDefinitions,
 	collectDebouncedControlKeys,
 	parseProfileControlKey,
@@ -257,6 +258,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	constructor(app: App, plugin: AudioRecorderPluginInterface) {
 		super(app, plugin);
 		this.plugin = plugin;
+		// The container belongs to this tab on both Obsidians and survives every
+		// render, so it is where the stylesheet is told which settings are ours.
+		this.containerEl.addClass(SETTINGS_TAB_CLASS);
 		// SettingTab.update() is the 1.13 API this probe is looking for: the
 		// typings declare it unconditionally, so only the runtime tells the two
 		// versions apart. Its absence selects the imperative mode, which is

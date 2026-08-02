@@ -865,6 +865,39 @@ input.aar-input-invalid {
     font-family: var(--font-monospace);
 }
 
+/* Where the lines of this tab go: between the blocks, not between the rows
+   inside them. A block is one group of the definition tree, and every group the
+   tree declares carries .aar-settings-section, which is also how these rules
+   find the containers that are this plugin's - a container holding one of those
+   groups holds only this tab's blocks, so the groups the framework builds
+   around loose rows are dressed with them and nothing outside is touched.
+
+   The row divider is switched off through Obsidian's own variable rather than
+   by overriding the rule that reads it, so a theme changing that rule keeps
+   working. */
+:has(> .aar-settings-section) > .setting-group {
+    --setting-items-divider-width: 0;
+}
+
+:has(> .aar-settings-section) > .setting-group + .setting-group {
+    border-top: var(--divider-width) solid var(--background-modifier-border);
+    padding-top: var(--size-4-4);
+}
+
+/* The Obsidian before 1.13 renders the same tree as a flat list of rows with no
+   group element at all, so the same rule is expressed the other way round: a
+   row keeps no divider of its own, and a heading carries the line above the
+   block it opens. A 1.13 group heading is the first element of its group, which
+   is what keeps this from drawing a second line under the one above. */
+.aar-settings-tab .setting-item {
+    border-top: none;
+}
+
+.aar-settings-tab .setting-item-heading:not(:first-child) {
+    border-top: var(--divider-width) solid var(--background-modifier-border);
+    padding-top: var(--size-4-4);
+}
+
 /* Obsidian 1.13+ renders the settings tab from getSettingDefinitions(), and the
    framework owns the rows of a declarative group: it resets the group's list to
    exactly the rows it tracks after every render. The tab body therefore lives

@@ -459,6 +459,15 @@ describe('AudioRecorderSettingTab', () => {
 			expect(legacyTab.getSettingDefinitions()).toEqual([]);
 		});
 
+		it('marks the container, which is what scopes the stylesheet here', () => {
+			// This Obsidian renders the tree as a flat list of rows with no
+			// group element to carry a class, so the tab's own container is the
+			// only handle the block separators have.
+			expect(
+				legacyTab.containerEl.classList.contains('aar-settings-tab'),
+			).toBe(true);
+		});
+
 		it('renders the whole body into the tab container', () => {
 			legacyTab.display();
 

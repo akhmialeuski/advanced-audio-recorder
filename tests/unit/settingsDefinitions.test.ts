@@ -14,6 +14,7 @@ import {
 	renderDefinitionOf,
 	rowIn,
 	renderThroughFramework,
+	rowNamesIn,
 	rowOf,
 	type GroupDefinition,
 	type RenderDefinition,
@@ -34,6 +35,7 @@ import {
 import {
 	SETTINGS_BLOCK_ROW_CLASS,
 	SETTINGS_ROOT_CLASS,
+	SETTINGS_SECTION_CLASS,
 	STACKED_TEXT_CLASS,
 	buildSettingsDefinitions,
 	collectDebouncedControlKeys,
@@ -663,8 +665,8 @@ describe('settings definitions', () => {
 			// A glossary is edited in paragraphs; the control column a row gives
 			// a text area by default is a few characters wide.
 			const page = pageOf(build(), 'Legal');
-			const stacked = (page.items as GroupDefinition[]).find(
-				(item) => item.cls === STACKED_TEXT_CLASS,
+			const stacked = (page.items as GroupDefinition[]).find((item) =>
+				(item.cls ?? '').split(' ').includes(STACKED_TEXT_CLASS),
 			);
 
 			expect(
@@ -706,6 +708,49 @@ describe('settings definitions', () => {
 			// by the list's own search exactly when nothing matches.
 			expect(listIn(page).items.map((item) => item.name)).not.toContain(
 				'Add profile',
+			);
+		});
+	});
+
+	describe('the blocks the stylesheet separates', () => {
+		/** Every group, list, and page of a tree, at any depth. */
+		const everyContainer = (
+			entries: ReadonlyArray<RowDefinition | GroupDefinition>,
+		): GroupDefinition[] =>
+			entries.flatMap((entry) =>
+				'type' in entry
+					? [entry, ...everyContainer(entry.items ?? [])]
+					: [],
+			);
+
+		it('marks every group it declares as a block', () => {
+			// The class is the only handle the stylesheet has: a group carries
+			// it, a row cannot, and a group left unmarked keeps Obsidian's
+			// divider between its rows and loses the line above itself.
+			const unmarked = everyContainer(
+				build() as Array<RowDefinition | GroupDefinition>,
+			)
+				.filter((entry) => entry.type !== 'page')
+				.filter(
+					(entry) =>
+						!(entry.cls ?? '')
+							.split(' ')
+							.includes(SETTINGS_SECTION_CLASS),
+				);
+
+			expect(unmarked).toEqual([]);
+		});
+
+		it('gives a page of loose rows a block of its own', () => {
+			// Without it the framework wraps those rows in a group of its own,
+			// which carries no class and is left ruled between every row.
+			const page = pageOf(build(), 'Audio splitting');
+
+			expect(
+				(page.items as GroupDefinition[]).map((item) => item.cls),
+			).toEqual([SETTINGS_SECTION_CLASS]);
+			expect(rowOf(build(), 'Audio splitting', 'Part duration')).toEqual(
+				expect.objectContaining({ name: 'Part duration' }),
 			);
 		});
 	});
@@ -911,9 +956,7 @@ describe('settings definitions', () => {
 		const PLAYER = 'Audio player';
 
 		it('binds the player options to their settings keys', () => {
-			const group = groupOf(build(), PLAYER);
-
-			expect(group.items.map((item) => item.name)).toEqual([
+			expect(rowNamesIn(groupOf(build(), PLAYER))).toEqual([
 				'Enhanced audio player',
 				'Show waveform',
 				'Markers and chapters',
@@ -938,15 +981,14 @@ describe('settings definitions', () => {
 
 	describe('the audio processing section', () => {
 		it('binds every input option to its settings key', () => {
-			const group = groupOf(build(), 'Audio processing & feedback');
+			const rows = rowNamesIn(
+				groupOf(build(), 'Audio processing & feedback'),
+			).map((name) => [
+				name,
+				rowOf(build(), 'Audio processing & feedback', name).control,
+			]);
 
-			expect(
-				group.items.map((item) => [
-					item.name,
-					(item as { control?: { type: string; key: string } })
-						.control,
-				]),
-			).toEqual([
+			expect(rows).toEqual([
 				[
 					'Noise suppression',
 					{ type: 'toggle', key: 'inputNoiseSuppression' },
@@ -985,9 +1027,7 @@ describe('settings definitions', () => {
 		it('gives each stage a switch and its number on rows of their own', () => {
 			// One control per row: a toggle and a number field side by side stack
 			// vertically on mobile and break the rhythm of the tab.
-			const group = groupOf(build(), CLEANUP);
-
-			expect(group.items.map((item) => item.name)).toEqual([
+			expect(rowNamesIn(groupOf(build(), CLEANUP))).toEqual([
 				'High-pass filter',
 				'High-pass cutoff',
 				'Noise gate',
@@ -1039,7 +1079,7 @@ describe('settings definitions', () => {
 			// being set up, so it costs the main tab one row.
 			expect(group.type).toBe('page');
 			expect(group.name).toBe('Diagnostics');
-			expect(group.items.map((item) => item.name)).toEqual([
+			expect(rowNamesIn(group)).toEqual([
 				'Test recording',
 				'System info',
 				'Debug mode',

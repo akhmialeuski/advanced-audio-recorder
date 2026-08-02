@@ -164,6 +164,38 @@ export const SETTINGS_BLOCK_ROW_CLASS = 'aar-setting-block-row';
  */
 export const STACKED_TEXT_CLASS = 'aar-stacked-text';
 
+/**
+ * Marks a block of settings: a group of this tree, whatever it is headed by.
+ *
+ * The block is what the eye should group by, so the stylesheet draws the line
+ * between blocks and switches off the one Obsidian draws between the rows
+ * inside them. It needs a handle for that, and a group is the only shape in the
+ * tree that takes a class, so every group declared here carries this one - the
+ * class also tells the stylesheet which containers are this plugin's, so
+ * nothing outside its own settings is restyled.
+ */
+export const SETTINGS_SECTION_CLASS = 'aar-settings-section';
+
+/**
+ * Marks the tab's own container. On 1.13 the blocks carry their own class and
+ * the stylesheet finds them there, but the Obsidian below it renders the same
+ * tree as a flat list of rows with no group element at all, and its only block
+ * boundaries are the heading rows. This is what scopes that half to this tab.
+ */
+export const SETTINGS_TAB_CLASS = 'aar-settings-tab';
+
+/**
+ * The rows of a page that is a single block, wrapped in the group the
+ * stylesheet separates. The page title already names the block, so the group
+ * carries no heading of its own; without it the framework would wrap the rows
+ * in a group of its own that nothing here can mark.
+ * @param rows - The page's rows, in the order they are shown
+ * @returns The page's items
+ */
+function sectionItems(rows: SettingGroupItem[]): SettingDefinitionItem[] {
+	return [{ type: 'group', cls: SETTINGS_SECTION_CLASS, items: rows }];
+}
+
 /** Visible lines a profile body field opens with. */
 const PROFILE_BODY_ROWS = 8;
 
@@ -345,6 +377,7 @@ function fileStorageGroup(
 ): SettingDefinitionItem {
 	return {
 		type: 'group',
+		cls: SETTINGS_SECTION_CLASS,
 		heading: 'File storage',
 		items: [
 			{
@@ -394,6 +427,7 @@ function fileStorageGroup(
 function outputFormatGroup(rows: OutputFormatRows): SettingDefinitionItem {
 	return {
 		type: 'group',
+		cls: SETTINGS_SECTION_CLASS,
 		heading: 'Output format',
 		items: [
 			{
@@ -467,6 +501,7 @@ function audioInputGroup(
 	const rateSelectable = isSampleRateSelectionSupported();
 	return {
 		type: 'group',
+		cls: SETTINGS_SECTION_CLASS,
 		heading: 'Audio input',
 		items: [
 			{
@@ -535,7 +570,7 @@ function audioSplittingPage(
 			available && settings.autoSplitEnabled
 				? `Every ${String(settings.splitChunkMinutes)} min`
 				: 'Off',
-		items: [
+		items: sectionItems([
 			{
 				name: 'Split recordings automatically',
 				aliases: ['chunk', 'segment', 'long recording'],
@@ -577,7 +612,7 @@ function audioSplittingPage(
 				desc: 'Default state of the delete source file option in the manual split dialog.',
 				control: { type: 'toggle', key: 'deleteSourceAfterSplit' },
 			},
-		],
+		]),
 	};
 }
 
@@ -641,7 +676,7 @@ function multiTrackPage(
 		desc: 'Recording several input devices at the same time.',
 		displayValue: (): string =>
 			active() ? `${String(settings.maxTracks)} tracks` : 'Off',
-		items: [
+		items: sectionItems([
 			{
 				name: 'Enable multi-track recording',
 				aliases: ['multitrack', 'interview', 'two mics'],
@@ -680,7 +715,7 @@ function multiTrackPage(
 				},
 			},
 			...trackRows(),
-		],
+		]),
 	};
 }
 
@@ -699,7 +734,7 @@ function audioPlayerPage(
 		name: 'Audio player',
 		desc: "The embed that replaces Obsidian's own audio player.",
 		displayValue: (): string => (enhanced() ? 'On' : 'Off'),
-		items: [
+		items: sectionItems([
 			{
 				name: 'Enhanced audio player',
 				aliases: ['waveform player', 'embed'],
@@ -718,7 +753,7 @@ function audioPlayerPage(
 				visible: enhanced,
 				control: { type: 'toggle', key: 'playerEnableMarkers' },
 			},
-		],
+		]),
 	};
 }
 
@@ -756,6 +791,7 @@ function llmGroup(settings: AudioRecorderSettings): SettingDefinitionItem {
 	});
 	return {
 		type: 'group',
+		cls: SETTINGS_SECTION_CLASS,
 		heading: 'LLM post-processing',
 		visible: (): boolean => settings.transcriptionEnabled,
 		items: [
@@ -953,7 +989,7 @@ function profilePage(
 		items: [
 			{
 				type: 'group',
-				cls: STACKED_TEXT_CLASS,
+				cls: `${SETTINGS_SECTION_CLASS} ${STACKED_TEXT_CLASS}`,
 				items: [
 					{
 						name: catalogue.selectionName,
@@ -979,6 +1015,7 @@ function profilePage(
 			},
 			{
 				type: 'group',
+				cls: SETTINGS_SECTION_CLASS,
 				items: [
 					{
 						name: 'Rename profile',
@@ -1046,6 +1083,7 @@ function profileGroups(
 			items: [
 				{
 					type: 'list',
+					cls: SETTINGS_SECTION_CLASS,
 					emptyState: 'No profiles yet. Add one to start.',
 					search: nameFilter('Filter profiles'),
 					addItem: {
@@ -1098,6 +1136,7 @@ function transcriptionEngineGroup(
 		items: [
 			{
 				type: 'list',
+				cls: SETTINGS_SECTION_CLASS,
 				emptyState:
 					'No models saved yet. Add the model id your endpoint serves.',
 				search: nameFilter('Filter models'),
@@ -1162,6 +1201,7 @@ function llmModelListGroup(
 		items: [
 			{
 				type: 'list',
+				cls: SETTINGS_SECTION_CLASS,
 				emptyState:
 					'No models saved yet. Add the model id your vendor serves.',
 				search: nameFilter('Filter models'),
@@ -1249,6 +1289,7 @@ function transcriptionGroup(
 		providerSupportsDiarization(settings.transcriptionProvider);
 	return {
 		type: 'group',
+		cls: SETTINGS_SECTION_CLASS,
 		heading: 'Transcription',
 		items: [
 			{
@@ -1381,6 +1422,7 @@ function transcriptionAdvancedGroup(
 		settings.transcriptionAdvancedSettingsEnabled;
 	return {
 		type: 'group',
+		cls: SETTINGS_SECTION_CLASS,
 		heading: 'Advanced',
 		visible: (): boolean => settings.transcriptionEnabled,
 		items: [
@@ -1452,6 +1494,7 @@ function transcriptOutputGroup(
 	});
 	return {
 		type: 'group',
+		cls: SETTINGS_SECTION_CLASS,
 		heading: 'Transcript output',
 		visible: (): boolean => settings.transcriptionEnabled,
 		items: [
@@ -1561,6 +1604,7 @@ function autoChaptersGroup(
 		settings.transcriptionAutoChaptersEnabled;
 	return {
 		type: 'group',
+		cls: SETTINGS_SECTION_CLASS,
 		heading: 'Auto chapters',
 		visible: (): boolean => settings.transcriptionEnabled,
 		items: [
@@ -1638,7 +1682,7 @@ function audioProcessingPage(
 		name: 'Audio processing & feedback',
 		desc: 'Filters applied to the input, and what is shown while recording.',
 		displayValue: (): string => toggleSummary(rows, settings),
-		items: rows,
+		items: sectionItems(rows),
 	};
 }
 
@@ -1656,7 +1700,7 @@ function audioCleanupPage(
 		name: 'Audio cleanup defaults',
 		desc: 'What the on-demand cleanup dialog opens with.',
 		displayValue: (): string => enabledStages(settings),
-		items: [
+		items: sectionItems([
 			{
 				name: 'High-pass filter',
 				aliases: ['low cut', 'rumble'],
@@ -1711,7 +1755,7 @@ function audioCleanupPage(
 					disabled: (): boolean => !settings.cleanupLevelingEnabled,
 				},
 			},
-		],
+		]),
 	};
 }
 
@@ -1732,7 +1776,7 @@ function diagnosticsPage(
 		name: 'Diagnostics',
 		desc: 'A test capture, the system report, and verbose logging.',
 		displayValue: (): string => (settings.debug ? 'Debug on' : 'Debug off'),
-		items: [
+		items: sectionItems([
 			{
 				name: 'Test recording',
 				aliases: ['microphone test', 'check mic'],
@@ -1769,7 +1813,7 @@ function diagnosticsPage(
 				desc: 'Enable verbose logs for troubleshooting recording issues.',
 				control: { type: 'toggle', key: 'debug' },
 			},
-		],
+		]),
 	};
 }
 

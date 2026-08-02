@@ -210,6 +210,25 @@ export const rowIn = (entry: GroupDefinition, name: string): RowDefinition => {
 };
 
 /**
+ * Names of every row under an entry, at any depth, in the order they are shown.
+ * A section that is one block wraps its rows in a group of its own, so what a
+ * page declares and what it shows are a level apart.
+ * @param entry - The group, list, or page to read
+ * @returns The row names
+ */
+export const rowNamesIn = (entry: GroupDefinition): string[] => {
+	const names = (
+		entries: ReadonlyArray<RowDefinition | GroupDefinition>,
+	): string[] =>
+		entries.flatMap((candidate) =>
+			'type' in candidate
+				? names(candidate.items ?? [])
+				: [candidate.name],
+		);
+	return names(entry.items ?? []);
+};
+
+/**
  * Finds a row by name inside a group.
  * @param definitions - The tree to search
  * @param heading - Heading of the group holding the row
@@ -221,13 +240,9 @@ export const rowOf = (
 	heading: string,
 	name: string,
 ): RowDefinition => {
-	const row = groupOf(definitions, heading).items.find(
-		(item) => !('type' in item) && item.name === name,
-	);
-	if (!row) {
-		throw new Error(`No "${name}" row declared under "${heading}"`);
-	}
-	return row as RowDefinition;
+	// Searched at any depth under the heading: a section that is one block wraps
+	// its rows in a group, and a row is no less that section's for it.
+	return rowIn(groupOf(definitions, heading), name);
 };
 
 /** The DOM the framework builds around one render definition. */
