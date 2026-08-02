@@ -330,18 +330,26 @@ describe('settings definitions', () => {
 				: visible !== false;
 		};
 
+		/** Whether the entry that opens the engine page is shown. */
+		const engineEntryVisible = (): boolean => {
+			const visible = (
+				pageOf(build(), 'Engine') as { visible?: () => boolean }
+			).visible;
+			return typeof visible === 'function' ? visible() : true;
+		};
+
 		it('keeps every option behind the section switch', () => {
 			// A predicate, not a re-render: the framework hides and shows these
 			// rows in place, and the legacy renderer does the same.
 			settings.transcriptionEnabled = false;
 
 			expect(isVisible('Enable transcription')).toBe(true);
-			expect(isVisible('Engine')).toBe(false);
+			expect(engineEntryVisible()).toBe(false);
 			expect(isVisible('Language')).toBe(false);
 
 			settings.transcriptionEnabled = true;
 
-			expect(isVisible('Engine')).toBe(true);
+			expect(engineEntryVisible()).toBe(true);
 			expect(isVisible('Language')).toBe(true);
 		});
 
@@ -731,8 +739,14 @@ describe('settings definitions', () => {
 		const childNamesOf = (heading: string): string[] =>
 			groupOf(build(), heading).items.map((item) => item.name ?? '');
 
+		/** The same, for a page whose rows are one block. */
+		const entryNamesOf = (page: string): string[] => {
+			const [block] = pageOf(build(), page).items as GroupDefinition[];
+			return (block?.items ?? []).map((item) => item.name ?? '');
+		};
+
 		it('names the engine model once, on the entry that picks it', () => {
-			const names = childNamesOf('Transcription');
+			const names = entryNamesOf('Engine');
 
 			// One place says which model is in use: the entry that opens the
 			// ids it was chosen from, on the row after the endpoint serving it.
@@ -742,6 +756,18 @@ describe('settings definitions', () => {
 			expect(names.indexOf('Whisper model')).toBe(
 				names.indexOf('Whisper API base URL') + 1,
 			);
+		});
+
+		it('keeps the engine and its own settings on one page', () => {
+			// The picker used to sit five rows above the fields it decides,
+			// with the settings that hold for every engine in between.
+			expect(entryNamesOf('Engine')).toEqual([
+				'Engine',
+				'Whisper API base URL',
+				'Whisper model',
+				'Transcription engine credentials',
+			]);
+			expect(childNamesOf('Transcription')).toContain('Engine');
 		});
 
 		it('names the LLM model once, the same way', () => {

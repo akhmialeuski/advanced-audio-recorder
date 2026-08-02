@@ -31,15 +31,14 @@
 Open **Settings > Advanced Audio Recorder > Transcription** and turn on **Enable transcription**. The rest of the section appears only while it is on. From top to bottom you then configure:
 
 1. **Transcribe after recording** - auto-transcribe each saved recording (off by default).
-2. **Engine** - which speech-to-text service to use.
+2. **Engine** - an entry showing the service in use and opening its own page, where the engine is picked and everything it needs is configured: base URL, API key, and model.
 3. **Language** - `auto` to detect, or an ISO code.
 4. **Speaker diarization** - request speaker labels (only some engines).
 5. **Word-level timestamps** - per-word timing in JSON output.
 6. **Request timeout** - the per-request network deadline (cloud engines only).
-7. **Per-engine fields** - base URL, API key, and model picker for the chosen engine.
-8. **Transcript output** - destination, file format, and in-note formatting.
-9. **Auto chapters** - optional LLM-generated chapters for the enhanced player (see [Auto chapters](#auto-chapters)).
-10. **LLM post-processing** - optional, documented separately in [LLM post-processing](llm-post-processing.md).
+7. **Transcript output** - destination, file format, and in-note formatting.
+8. **Auto chapters** - optional LLM-generated chapters for the enhanced player (see [Auto chapters](#auto-chapters)).
+9. **LLM post-processing** - optional, documented separately in [LLM post-processing](llm-post-processing.md).
 
 ---
 

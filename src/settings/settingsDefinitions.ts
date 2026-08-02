@@ -1340,37 +1340,7 @@ function transcriptionGroup(
 					key: 'transcriptionShowCostEstimates',
 				},
 			},
-			{
-				name: 'Engine',
-				aliases: [
-					'provider',
-					'whisper',
-					'deepgram',
-					'gemini',
-					'elevenlabs',
-				],
-				desc: 'Whisper API, Deepgram, or Google Gemini (cloud), or a local whisper.cpp binary (desktop).',
-				visible: enabled,
-				control: {
-					type: 'dropdown',
-					key: 'transcriptionProvider',
-					// Every device lists every engine, so the dropdown reads the
-					// same everywhere; picking one this device cannot run is
-					// refused with the reason instead of silently blocked.
-					options: Object.fromEntries(
-						TRANSCRIPTION_PROVIDER_OPTIONS.map((option) => [
-							option.value,
-							option.label,
-						]),
-					),
-					validate: (value: string): string | undefined =>
-						isProviderAvailableOnPlatform(
-							value as TranscriptionProviderId,
-						)
-							? undefined
-							: 'Not available on this device.',
-				},
-			},
+			transcriptionEnginePage(settings, blocks, declareAddRow),
 			{
 				name: 'Language',
 				aliases: ['locale', 'spoken language'],
@@ -1425,6 +1395,65 @@ function transcriptionGroup(
 					step: 1,
 				},
 			},
+		],
+	};
+}
+
+/**
+ * The engine and everything it needs, behind an entry of its own: which service
+ * turns speech into text, the endpoint it is reached at, the model it uses, and
+ * its key. Inline, the picker sat five rows above the fields it decides, with
+ * the settings that hold for every engine in between.
+ * @param settings - Live settings, read by the predicates
+ * @param blocks - The credential block and the model-list edits
+ * @param declareAddRow - Whether the tree owes the model list an add row
+ */
+function transcriptionEnginePage(
+	settings: AudioRecorderSettings,
+	blocks: TranscriptionBlocks,
+	declareAddRow: boolean,
+): SettingGroupItem {
+	const enabled = (): boolean => settings.transcriptionEnabled;
+	return {
+		type: 'page',
+		name: 'Engine',
+		desc: 'Which service turns speech into text, and what it needs to run.',
+		displayValue: (): string =>
+			TRANSCRIPTION_PROVIDER_OPTIONS.find(
+				(option) => option.value === settings.transcriptionProvider,
+			)?.label ?? 'None',
+		visible: enabled,
+		items: sectionItems([
+			{
+				name: 'Engine',
+				aliases: [
+					'provider',
+					'whisper',
+					'deepgram',
+					'gemini',
+					'elevenlabs',
+				],
+				desc: 'Whisper API, Deepgram, or Google Gemini (cloud), or a local whisper.cpp binary (desktop).',
+				control: {
+					type: 'dropdown',
+					key: 'transcriptionProvider',
+					// Every device lists every engine, so the dropdown reads the
+					// same everywhere; picking one this device cannot run is
+					// refused with the reason instead of silently blocked.
+					options: Object.fromEntries(
+						TRANSCRIPTION_PROVIDER_OPTIONS.map((option) => [
+							option.value,
+							option.label,
+						]),
+					),
+					validate: (value: string): string | undefined =>
+						isProviderAvailableOnPlatform(
+							value as TranscriptionProviderId,
+						)
+							? undefined
+							: 'Not available on this device.',
+				},
+			},
 			...transcriptionEndpointRows(settings),
 			// The model this engine transcribes with, chosen in the catalogue
 			// the entry opens rather than in a dropdown beside it.
@@ -1435,7 +1464,7 @@ function transcriptionGroup(
 				render: blocks.renderEngineFields,
 				visible: enabled,
 			}),
-		],
+		]),
 	};
 }
 

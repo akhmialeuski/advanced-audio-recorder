@@ -34,7 +34,7 @@ A few settings reveal or hide other controls when toggled, so the tab redraws in
 - Turning **Save recordings near active file** on reveals **Active file subfolder**.
 - Turning **Enable multi-track recording** on reveals **Maximum tracks**, **Output mode**, and one **Track N input** and **Track N channels** dropdown pair per track.
 - Turning **Enhanced audio player** on reveals **Show waveform** and **Markers and chapters**.
-- Turning **Enable transcription** on reveals the engine fields, transcript output, and LLM sub-sections; the **Engine** dropdown then swaps in that engine's own fields.
+- Turning **Enable transcription** on reveals the **Engine** entry, transcript output, and LLM sub-sections; the engine page holds the picker and the fields of whichever engine it points at, so choosing another one swaps them there.
 - Turning **Enable LLM post-processing** on reveals the task, prompt, provider, key, model, and token controls.
 - Turning **Auto chapters** on reveals **Generate after transcription** and keeps the LLM provider controls visible even while LLM post-processing is off.
 
