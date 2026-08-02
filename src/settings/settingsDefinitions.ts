@@ -763,7 +763,11 @@ function audioPlayerPage(
  * features needs them, so enabling one alone still exposes its key and model.
  * @param settings - Live settings, read by the predicates
  */
-function llmGroup(settings: AudioRecorderSettings): SettingDefinitionItem {
+function llmGroup(
+	settings: AudioRecorderSettings,
+	blocks: TranscriptionBlocks,
+	declareAddRow: boolean,
+): SettingDefinitionItem {
 	const vendor = selectedLlmVendor(settings);
 	const needsVendor = (): boolean =>
 		settings.transcriptionEnabled &&
@@ -869,6 +873,9 @@ function llmGroup(settings: AudioRecorderSettings): SettingDefinitionItem {
 					),
 				},
 			},
+			// The saved ids the row above picks from, next to it rather than
+			// floating on the page as a block of its own.
+			llmModelListGroup(settings, blocks, declareAddRow),
 			{
 				name: 'Max output tokens',
 				desc: 'Upper bound on the LLM response length.',
@@ -881,6 +888,14 @@ function llmGroup(settings: AudioRecorderSettings): SettingDefinitionItem {
 					step: 512,
 				},
 			},
+			// The vendor's key closes the block it belongs to, instead of
+			// trailing the page as a row of its own.
+			imperativeBlockRow({
+				name: 'LLM credentials',
+				aliases: ['api key', 'token', 'openai', 'anthropic'],
+				render: blocks.renderLlmSection,
+				visible: needsVendor,
+			}),
 		],
 	};
 }
@@ -1054,7 +1069,7 @@ function profileGroups(
 	settings: AudioRecorderSettings,
 	catalogue: ProfileCatalogue,
 	declareAddRow: boolean,
-): SettingDefinitionItem[] {
+): SettingGroupItem[] {
 	const entries = catalogue.entries(settings);
 	const visible = (): boolean => catalogue.visible(settings);
 	const selectedName = (): string => {
@@ -1116,7 +1131,7 @@ function transcriptionEngineGroup(
 	settings: AudioRecorderSettings,
 	blocks: TranscriptionBlocks,
 	declareAddRow: boolean,
-): SettingDefinitionItem {
+): SettingGroupItem {
 	const engine = selectedTranscriptionEngine(settings);
 	const credentials = engine.credentials;
 	const cloud = (): boolean =>
@@ -1129,7 +1144,7 @@ function transcriptionEngineGroup(
 		// rows between the engine and everything configured after it; behind an
 		// entry, it is one row that already says which id is in use.
 		type: 'page',
-		name: credentials?.modelPickerName ?? 'Models',
+		name: credentials?.modelListName ?? 'Models',
 		desc: 'The model ids saved for this engine, and which one it transcribes with.',
 		displayValue: (): string => selected || 'None',
 		visible: cloud,
@@ -1184,7 +1199,7 @@ function llmModelListGroup(
 	settings: AudioRecorderSettings,
 	blocks: TranscriptionBlocks,
 	declareAddRow: boolean,
-): SettingDefinitionItem {
+): SettingGroupItem {
 	const vendor = selectedLlmVendor(settings);
 	const models = vendor.settings.models(settings);
 	const selected = vendor.settings.model(settings);
@@ -1283,6 +1298,7 @@ function transcriptionEndpointRows(
 function transcriptionGroup(
 	settings: AudioRecorderSettings,
 	blocks: TranscriptionBlocks,
+	declareAddRow: boolean,
 ): SettingDefinitionItem {
 	const enabled = (): boolean => settings.transcriptionEnabled;
 	const canDiarize = (): boolean =>
@@ -1399,6 +1415,9 @@ function transcriptionGroup(
 				},
 			},
 			...transcriptionEndpointRows(settings),
+			// The saved ids the row above picks from, next to it rather than
+			// floating on the page as a block of its own.
+			transcriptionEngineGroup(settings, blocks, declareAddRow),
 			imperativeBlockRow({
 				name: 'Transcription engine credentials',
 				aliases: ['api key', 'token', 'base url', 'endpoint'],
@@ -1416,6 +1435,8 @@ function transcriptionGroup(
  */
 function transcriptionAdvancedGroup(
 	settings: AudioRecorderSettings,
+	dictionary: ProfileCatalogue,
+	declareAddRow: boolean,
 ): SettingDefinitionItem {
 	const advanced = (): boolean =>
 		settings.transcriptionEnabled &&
@@ -1456,6 +1477,9 @@ function transcriptionAdvancedGroup(
 					step: ADVANCED_SECOND_PASS_RATIO_STEP,
 				},
 			},
+			// The glossaries this block biases a run with, inside the block
+			// that gates them rather than beside it.
+			...profileGroups(settings, dictionary, declareAddRow),
 		],
 	};
 }
@@ -1598,8 +1622,10 @@ function transcriptOutputGroup(
  */
 function autoChaptersGroup(
 	settings: AudioRecorderSettings,
+	catalogue: ProfileCatalogue,
+	declareAddRow: boolean,
 ): SettingDefinitionItem {
-	const chapters = (): boolean =>
+	const enabled = (): boolean =>
 		settings.transcriptionEnabled &&
 		settings.transcriptionAutoChaptersEnabled;
 	return {
@@ -1620,12 +1646,15 @@ function autoChaptersGroup(
 			{
 				name: 'Generate after transcription',
 				desc: 'Generate chapters each time a recording is transcribed.',
-				visible: chapters,
+				visible: enabled,
 				control: {
 					type: 'toggle',
 					key: 'transcriptionAutoChaptersOnTranscribe',
 				},
 			},
+			// The guidance prompts a division is steered by, inside the block
+			// that turns the division on.
+			...profileGroups(settings, catalogue, declareAddRow),
 		],
 	};
 }
@@ -1851,41 +1880,29 @@ export function buildSettingsDefinitions(
 			displayValue: (): string =>
 				ctx.settings.transcriptionEnabled ? 'On' : 'Off',
 			items: [
-				transcriptionGroup(ctx.settings, ctx.transcriptionBlocks),
-				transcriptionEngineGroup(
+				// Each block holds what belongs to it, catalogues included:
+				// nothing floats on the page beside the section it configures.
+				transcriptionGroup(
 					ctx.settings,
 					ctx.transcriptionBlocks,
 					ctx.declareListAddRow,
 				),
-				transcriptionAdvancedGroup(ctx.settings),
-				...profileGroups(
+				transcriptionAdvancedGroup(
 					ctx.settings,
 					ctx.profiles.dictionary,
 					ctx.declareListAddRow,
 				),
 				transcriptOutputGroup(ctx.settings),
-				autoChaptersGroup(ctx.settings),
-				...profileGroups(
+				autoChaptersGroup(
 					ctx.settings,
 					ctx.profiles.chapters,
 					ctx.declareListAddRow,
 				),
-				llmGroup(ctx.settings),
-				llmModelListGroup(
+				llmGroup(
 					ctx.settings,
 					ctx.transcriptionBlocks,
 					ctx.declareListAddRow,
 				),
-				imperativeBlockRow({
-					name: 'LLM credentials',
-					aliases: ['api key', 'token', 'openai', 'anthropic'],
-					render: ctx.transcriptionBlocks.renderLlmSection,
-					visible: () =>
-						ctx.settings.transcriptionEnabled &&
-						(ctx.settings.llmPostProcessEnabled ||
-							ctx.settings.transcriptionAutoChaptersEnabled ||
-							advancedTwoPassEnabled(ctx.settings)),
-				}),
 			],
 		},
 		audioProcessingPage(ctx.settings),

@@ -99,6 +99,12 @@ export interface EngineCredentials {
 	/** Label, description, and catalog link of the model picker row. */
 	readonly modelPickerName: string;
 	readonly modelPickerDesc: string;
+	/**
+	 * Label of the entry holding the saved ids. Distinct from the picker's, so
+	 * the row that chooses a model and the page that keeps the list of them do
+	 * not read as the same thing twice.
+	 */
+	readonly modelListName: string;
 	readonly modelsDocLabel: string;
 	readonly modelsDocUrl: string;
 }
@@ -278,6 +284,7 @@ export const TRANSCRIPTION_ENGINES: Record<
 			keyFieldName: 'Whisper API key',
 			keyFieldDesc: STORED_LOCALLY_DESC,
 			modelPickerName: 'Whisper model',
+			modelListName: 'Whisper models',
 			modelPickerDesc:
 				'OpenAI: whisper-1. Groq and other hosts: whisper-large-v3, whisper-large-v3-turbo. The model must support verbose_json with timestamps.',
 			modelsDocLabel: 'Whisper API models',
@@ -323,6 +330,7 @@ export const TRANSCRIPTION_ENGINES: Record<
 			keyFieldName: 'Deepgram API key',
 			keyFieldDesc: STORED_LOCALLY_DESC,
 			modelPickerName: 'Deepgram model',
+			modelListName: 'Deepgram models',
 			modelPickerDesc:
 				'Pick a Deepgram model (e.g. nova-3, nova-2-meeting, enhanced-phonecall). Files up to 2 GB are sent whole for consistent speaker labels.',
 			modelsDocLabel: 'Deepgram model list',
@@ -408,6 +416,7 @@ export const TRANSCRIPTION_ENGINES: Record<
 			keyFieldName: 'Gemini API key',
 			keyFieldDesc: STORED_LOCALLY_DESC,
 			modelPickerName: 'Gemini model',
+			modelListName: 'Gemini models',
 			modelPickerDesc:
 				'Pick a Gemini model (e.g. gemini-3.5-flash, gemini-2.5-pro). The whole recording is uploaded via the File API for consistent speaker labels.',
 			modelsDocLabel: 'Gemini model list',

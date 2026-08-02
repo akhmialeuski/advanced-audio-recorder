@@ -281,9 +281,9 @@ describe('settings definitions', () => {
 					false,
 				);
 			}
-			expect(listIn(pageOf(build(), 'Whisper model')).items).toHaveLength(
-				2,
-			);
+			expect(
+				listIn(pageOf(build(), 'Whisper models')).items,
+			).toHaveLength(2);
 		});
 
 		it('says on the entry which model and profile are in use', () => {
@@ -300,7 +300,7 @@ describe('settings definitions', () => {
 						displayValue?: () => string;
 					}
 				).displayValue?.();
-			expect(displayValue('Whisper model')).toBe('whisper-1');
+			expect(displayValue('Whisper models')).toBe('whisper-1');
 			expect(displayValue('Dictionary profiles')).toBe('Legal');
 		});
 
@@ -546,7 +546,7 @@ describe('settings definitions', () => {
 			addItem?: { name: string; action: (el: HTMLElement) => void };
 			onDelete?: (index: number) => void;
 			items: Array<{ name: string; desc?: string }>;
-		} => listIn(pageOf(build(), 'Whisper model')) as never;
+		} => listIn(pageOf(build(), 'Whisper models')) as never;
 
 		it('declares the saved models as a list the user can edit', () => {
 			seedModels();
@@ -709,6 +709,45 @@ describe('settings definitions', () => {
 			expect(listIn(page).items.map((item) => item.name)).not.toContain(
 				'Add profile',
 			);
+		});
+	});
+
+	describe('what each block holds', () => {
+		/** Names of a block's own children, rows and page entries alike. */
+		const childNamesOf = (heading: string): string[] =>
+			groupOf(build(), heading).items.map((item) => item.name ?? '');
+
+		it('keeps the engine model list next to the row that picks from it', () => {
+			const names = childNamesOf('Transcription');
+
+			// The catalogue belongs to the engine, so it follows the row that
+			// picks from it rather than floating on the page beside the block.
+			expect(names.indexOf('Whisper models')).toBe(
+				names.indexOf('Whisper model') + 1,
+			);
+		});
+
+		it('keeps the LLM model list next to the row that picks from it', () => {
+			const names = childNamesOf('LLM post-processing');
+
+			expect(names.indexOf('LLM models')).toBe(
+				names.indexOf('LLM model') + 1,
+			);
+		});
+
+		it('keeps each profile catalogue inside the block that gates it', () => {
+			// A glossary is only reachable while the advanced settings are on,
+			// and a guidance prompt only while chapters are generated.
+			expect(childNamesOf('Advanced')).toContain('Dictionary profiles');
+			expect(childNamesOf('Auto chapters')).toContain(
+				'Chapter guidance profiles',
+			);
+		});
+
+		it('leaves the transcription page holding blocks and nothing else', () => {
+			for (const item of pageOf(build(), 'Transcription').items) {
+				expect('type' in item && item.type).toBe('group');
+			}
 		});
 	});
 

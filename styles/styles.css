@@ -884,6 +884,18 @@ input.aar-input-invalid {
     padding-top: var(--size-4-4);
 }
 
+/* A row that opens a page is a link, and Obsidian marks it with a chevron and
+   the pointer cursor of the moment - it declares the transition for a hover
+   background on such a row but never sets one on the desktop, so the row reads
+   as text under the pointer. It gets the background the app gives its own
+   action rows, written the way the app writes it, hover-capable devices only:
+   on a touch device the framework has its own tap state. */
+@media (hover: hover) {
+    :has(> .aar-settings-section) .setting-item.mod-navigable:hover {
+        background-color: var(--background-modifier-hover);
+    }
+}
+
 /* The Obsidian before 1.13 renders the same tree as a flat list of rows with no
    group element at all, so the same rule is expressed the other way round: a
    row keeps no divider of its own, and a heading carries the line above the

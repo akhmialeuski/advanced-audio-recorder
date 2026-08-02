@@ -174,7 +174,7 @@ Shown when **Engine** is **Whisper API (OpenAI-compatible)**. Works with OpenAI 
 | **Whisper API key**      | API key, stored in plugin data on this device. Shared with the OpenAI LLM provider as the OpenAI vendor key.                                                 | Secret text                                                                                                     | - (empty)                   |
 | **Whisper model**        | Model id, chosen from an editable list with a catalogue link. Must support `verbose_json` with timestamps. | Editable list (seeded: `whisper-1`, `whisper-large-v3`, `whisper-large-v3-turbo`, `distil-whisper-large-v3-en`) | `whisper-1`                 |
 
-Every model picker in this tab (Whisper, Deepgram, Gemini, and the LLM model below) is followed by its own list of saved model ids: a filter above it once the list is long, a delete button on each row, and an add button that asks for the id your endpoint serves. Adding a model also selects it. The row marked **In use** is the one the picker above the list points at; deleting it moves the selection to the first remaining id.
+Every model picker in this tab (Whisper, Deepgram, Gemini, and the LLM model below) is followed on the next row by its own list of saved model ids, named after the picker in the plural (**Whisper models**, **Deepgram models**, **Gemini models**, **LLM models**) and opened from there: a filter above it once the list is long, a delete button on each row, and an add button that asks for the id your endpoint serves. Adding a model also selects it. The row marked **In use** is the one the picker above the list points at; deleting it moves the selection to the first remaining id.
 
 ### Engine: Deepgram
 
