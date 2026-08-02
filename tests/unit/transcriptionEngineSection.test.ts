@@ -11,8 +11,8 @@ import {
 	renderLocalWhisperSettings,
 	renderProviderKeyField,
 } from 'src/settings/sections/transcriptionEngineSection';
-import { PROVIDERS, PROVIDER_IDS } from 'src/providers/providers';
-import type { ProviderId } from 'src/providers/providers';
+import { ACCOUNTS, ENGINES, ENGINE_IDS } from 'src/providers/providers';
+import type { EngineId } from 'src/providers/providers';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { defined } from '../helpers/assertions';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
@@ -44,25 +44,27 @@ function makeCtx(settings: AudioRecorderSettings): SettingsSectionContext {
 }
 
 /** Renders one provider's key field and returns the settings behind it. */
-function renderKey(provider: ProviderId): AudioRecorderSettings {
+function renderKey(engine: EngineId): AudioRecorderSettings {
 	const settings = mergeSettings({});
-	renderProviderKeyField(makeCtx(settings), PROVIDERS[provider]);
+	renderProviderKeyField(makeCtx(settings), ENGINES[engine]);
 	return settings;
 }
 
 describe('renderProviderKeyField', () => {
 	it.each([
-		[PROVIDER_IDS.OPENAI, 'whisperApiKey'],
-		[PROVIDER_IDS.DEEPGRAM, 'deepgramApiKey'],
-		[PROVIDER_IDS.GEMINI, 'geminiApiKey'],
-		[PROVIDER_IDS.ANTHROPIC, 'anthropicApiKey'],
+		[ENGINE_IDS.WHISPER_API, 'whisperApiKey'],
+		[ENGINE_IDS.DEEPGRAM, 'deepgramApiKey'],
+		[ENGINE_IDS.GEMINI, 'geminiApiKey'],
+		[ENGINE_IDS.ANTHROPIC, 'anthropicApiKey'],
 	] as const)(
 		'binds the key field of %s to its own settings property',
 		(provider, property) => {
 			// Everything else about a provider is declared; this block is the
 			// one row no control type covers, the password field.
 			const settings = renderKey(provider);
-			const connection = defined(PROVIDERS[provider].connection);
+			const connection = defined(
+				ACCOUNTS[defined(ENGINES[provider].account)],
+			);
 
 			changeSetting(connection.keyFieldName, 'text', 'token-value');
 
@@ -71,7 +73,7 @@ describe('renderProviderKeyField', () => {
 	);
 
 	it('renders only that one row', () => {
-		renderKey(PROVIDER_IDS.DEEPGRAM);
+		renderKey(ENGINE_IDS.DEEPGRAM);
 
 		expect(capturedSettings).toHaveLength(1);
 	});
@@ -79,9 +81,9 @@ describe('renderProviderKeyField', () => {
 	it('gives each provider its own key label rather than a generic one', () => {
 		const labels = new Set<string>();
 		for (const provider of [
-			PROVIDER_IDS.OPENAI,
-			PROVIDER_IDS.DEEPGRAM,
-			PROVIDER_IDS.GEMINI,
+			ENGINE_IDS.WHISPER_API,
+			ENGINE_IDS.DEEPGRAM,
+			ENGINE_IDS.GEMINI,
 		]) {
 			renderKey(provider);
 			labels.add(capturedSettings[0]?.name ?? '');

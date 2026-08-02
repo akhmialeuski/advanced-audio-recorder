@@ -26,11 +26,9 @@ import {
 	DEFAULT_LLM_ANTHROPIC_BASE_URL,
 	DEFAULT_LLM_OPENAI_MODEL,
 	DEFAULT_LLM_ANTHROPIC_MODEL,
-	DEFAULT_LLM_GEMINI_MODEL,
 	DEFAULT_LLM_MAX_TOKENS,
 	LLM_OPENAI_MODEL_SUGGESTIONS,
 	LLM_ANTHROPIC_MODEL_SUGGESTIONS,
-	LLM_GEMINI_MODEL_SUGGESTIONS,
 	DEFAULT_LLM_CLEANUP_PROMPT,
 	DEFAULT_LLM_SUMMARY_PROMPT,
 	DEFAULT_LLM_CUSTOM_INSTRUCTION,
@@ -441,10 +439,6 @@ export interface AudioRecorderSettings {
 	llmAnthropicModel: string;
 	/** Known Anthropic LLM model ids offered in the picker (user-editable) */
 	llmAnthropicModels: string[];
-	/** Selected Gemini LLM model id */
-	llmGeminiModel: string;
-	/** Known Gemini LLM model ids offered in the picker (user-editable) */
-	llmGeminiModels: string[];
 	/** Maximum output tokens for LLM post-processing */
 	llmMaxTokens: number;
 	/** Apply browser noise suppression to the input */
@@ -512,6 +506,13 @@ export interface LegacyAudioRecorderSettings {
 	 * and its post-processing now read.
 	 */
 	llmBaseUrl?: string;
+	/**
+	 * Pre-registry Gemini chat model and catalogue. Gemini serves one family of
+	 * ids for transcription and for prompts alike, so the two lists were the
+	 * same list twice; they merge into the engine's own catalogue.
+	 */
+	llmGeminiModel?: string;
+	llmGeminiModels?: string[];
 }
 
 /**
@@ -648,8 +649,6 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	llmOpenAiModels: [...LLM_OPENAI_MODEL_SUGGESTIONS],
 	llmAnthropicModel: DEFAULT_LLM_ANTHROPIC_MODEL,
 	llmAnthropicModels: [...LLM_ANTHROPIC_MODEL_SUGGESTIONS],
-	llmGeminiModel: DEFAULT_LLM_GEMINI_MODEL,
-	llmGeminiModels: [...LLM_GEMINI_MODEL_SUGGESTIONS],
 	llmMaxTokens: DEFAULT_LLM_MAX_TOKENS,
 	inputNoiseSuppression: true,
 	inputEchoCancellation: true,

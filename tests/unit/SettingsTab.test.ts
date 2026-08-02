@@ -998,7 +998,10 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.whisperApiModels = ['whisper-1'];
 			mockSettings.whisperApiModel = 'whisper-1';
 
-			await addThrough('Whisper model', 'whisper-large-v3');
+			await addThrough(
+				'Whisper API (OpenAI-compatible)',
+				'whisper-large-v3',
+			);
 
 			expect(mockSettings.whisperApiModels).toContain('whisper-large-v3');
 			// A model is added to be used, so the addition is also the selection.
@@ -1010,7 +1013,7 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.whisperApiModels = ['whisper-1', 'whisper-large-v3'];
 			mockSettings.whisperApiModel = 'whisper-1';
 
-			listOf('Whisper model').onDelete?.(0);
+			listOf('Whisper API (OpenAI-compatible)').onDelete?.(0);
 			await flushAsync();
 
 			expect(mockSettings.whisperApiModels).toEqual(['whisper-large-v3']);
@@ -1021,7 +1024,7 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.whisperApiModels = ['whisper-1', 'whisper-large-v3'];
 			mockSettings.whisperApiModel = 'whisper-1';
 
-			listOf('Whisper model').onDelete?.(1);
+			listOf('Whisper API (OpenAI-compatible)').onDelete?.(1);
 			await flushAsync();
 
 			expect(mockSettings.whisperApiModels).toEqual(['whisper-1']);
@@ -1031,7 +1034,7 @@ describe('AudioRecorderSettingTab', () => {
 		it('ignores a delete for a position the list no longer has', async () => {
 			mockSettings.whisperApiModels = ['whisper-1'];
 
-			listOf('Whisper model').onDelete?.(4);
+			listOf('Whisper API (OpenAI-compatible)').onDelete?.(4);
 			await flushAsync();
 
 			expect(mockSettings.whisperApiModels).toEqual(['whisper-1']);
@@ -1042,7 +1045,7 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.whisperApiModels = ['whisper-1', 'whisper-large-v3'];
 			mockSettings.whisperApiModel = 'whisper-large-v3';
 
-			expect(listOf('Whisper model').items).toEqual([
+			expect(listOf('Whisper API (OpenAI-compatible)').items).toEqual([
 				expect.objectContaining({ name: 'whisper-1' }),
 				expect.objectContaining({
 					name: 'whisper-large-v3',
@@ -1056,7 +1059,7 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.llmProvider = 'openai-compatible';
 			mockSettings.llmOpenAiModels = ['gpt-4o-mini'];
 
-			await addThrough('LLM model', 'gpt-4o');
+			await addThrough('OpenAI', 'gpt-4o');
 
 			expect(mockSettings.llmOpenAiModels).toContain('gpt-4o');
 			expect(mockSettings.llmOpenAiModel).toBe('gpt-4o');
@@ -1068,7 +1071,7 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.llmOpenAiModels = ['gpt-4o-mini', 'gpt-4o'];
 			mockSettings.llmOpenAiModel = 'gpt-4o';
 
-			listOf('LLM model').onDelete?.(1);
+			listOf('OpenAI').onDelete?.(1);
 			await flushAsync();
 
 			expect(mockSettings.llmOpenAiModels).toEqual(['gpt-4o-mini']);

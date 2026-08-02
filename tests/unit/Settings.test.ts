@@ -369,8 +369,6 @@ describe('Settings', () => {
 				llmOpenAiModels: ['gpt-4o', 'gpt-4o-mini'],
 				llmAnthropicModel: 'claude-opus-4-8',
 				llmAnthropicModels: ['claude-opus-4-8', 'claude-sonnet-4-6'],
-				llmGeminiModel: 'gemini-2.5-flash',
-				llmGeminiModels: ['gemini-2.5-flash', 'gemini-2.5-pro'],
 				llmMaxTokens: 2048,
 				inputNoiseSuppression: false,
 				inputEchoCancellation: false,

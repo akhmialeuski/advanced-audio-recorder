@@ -40,7 +40,7 @@ const app = {} as App;
 function build(overrides: Partial<AudioRecorderSettings> = {}) {
 	const settings = mergeSettings({
 		llmProvider: LLM_PROVIDER_IDS.GEMINI,
-		llmGeminiModel: 'gemini-2.5-flash',
+		geminiModel: 'gemini-2.5-flash',
 		llmMaxTokens: 32000,
 		...overrides,
 	});
@@ -137,7 +137,7 @@ describe('ChapterGenerationModal cost estimate', () => {
 	});
 
 	it('says so when the selected model has no built-in rate', async () => {
-		const { modal } = build({ llmGeminiModel: 'mystery-model' });
+		const { modal } = build({ geminiModel: 'mystery-model' });
 
 		await open(modal);
 

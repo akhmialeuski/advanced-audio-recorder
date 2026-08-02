@@ -11,26 +11,26 @@ import {
 } from '../../constants';
 import { addText, type SettingsSectionContext } from '../settingControls';
 import { isProviderAvailableOnPlatform } from '../../transcription/providers/capabilities';
-import type { ProviderDescriptor } from '../../providers/providers';
+import { accountOf, type EngineDescriptor } from '../../providers/providers';
 
 /**
- * A provider's API key: a password field with the reveal toggle Obsidian's own
+ * An engine's API key: a password field with the reveal toggle Obsidian's own
  * keychain dialog uses, which no declarative control type covers. Rendered from
- * the provider's connection, so the field a key is entered in is the one both
- * its transcription and its post-processing read.
+ * the account the engine names, so two engines over one account share the field
+ * instead of each keeping a copy.
  * @param ctx - The section context (host element and save hooks)
- * @param provider - The provider whose key is being entered
+ * @param engine - The engine whose account is being credentialed
  */
 export function renderProviderKeyField(
 	ctx: SettingsSectionContext,
-	provider: ProviderDescriptor,
+	engine: EngineDescriptor,
 ): void {
-	const connection = provider.connection;
+	const connection = accountOf(engine);
 	if (!connection) {
 		return;
 	}
 	const s = ctx.settings;
-	const docs = provider.transcription?.models ?? provider.llm?.models;
+	const docs = engine.models;
 	addText(ctx, {
 		name: connection.keyFieldName,
 		desc: connection.keyFieldDesc,

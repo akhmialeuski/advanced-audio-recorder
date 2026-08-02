@@ -80,7 +80,7 @@ import {
 } from './profiles';
 import { ProfileNameModal } from '../ui/ProfileNameModal';
 import { closeSettingsPage } from '../obsidian/settingsNavigation';
-import { PROVIDERS, type ProviderModels } from '../providers/providers';
+import { ENGINES, type ProviderModels } from '../providers/providers';
 import { parseDictionary } from '../transcription/dictionary';
 import { DICTIONARY_PROFILES } from './dictionaryProfiles';
 import { CHAPTER_PROMPT_PROFILES } from './chapterPromptProfiles';
@@ -388,9 +388,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				}),
 			},
 			transcriptionBlocks: {
-				renderProviderKey: (host, providerId): void => {
+				renderProviderKey: (host, engineId): void => {
 					this.renderTranscriptionBlock(host, (ctx) => {
-						renderProviderKeyField(ctx, PROVIDERS[providerId]);
+						renderProviderKeyField(ctx, ENGINES[engineId]);
 					});
 				},
 				renderLocalWhisperFields: (host): void => {

@@ -345,11 +345,37 @@ function migrateLegacyLlmSettings(
 			connection.setBaseUrl(merged, legacyBaseUrl);
 		}
 	}
+	// Gemini kept a chat catalogue beside its transcription one, over the same
+	// account and the same family of ids. They merge into the engine's own
+	// catalogue: the saved ids join it, and a chat model that was picked wins
+	// only where the engine still holds its shipped default.
+	const legacyGeminiModels = Array.isArray(raw.llmGeminiModels)
+		? raw.llmGeminiModels.filter(
+				(id): id is string => typeof id === 'string',
+			)
+		: [];
+	if (legacyGeminiModels.length > 0) {
+		merged.geminiModels = [
+			...new Set([...merged.geminiModels, ...legacyGeminiModels]),
+		];
+	}
+	const legacyGeminiModel = legacyString(raw.llmGeminiModel).trim();
+	if (
+		legacyGeminiModel &&
+		merged.geminiModel === DEFAULT_SETTINGS.geminiModel
+	) {
+		merged.geminiModel = legacyGeminiModel;
+		if (!merged.geminiModels.includes(legacyGeminiModel)) {
+			merged.geminiModels = [...merged.geminiModels, legacyGeminiModel];
+		}
+	}
 	// Drop the superseded flat fields so a later save does not persist them.
 	if (isRecord(merged)) {
 		delete merged.llmApiKey;
 		delete merged.llmModel;
 		delete merged.llmBaseUrl;
+		delete merged.llmGeminiModel;
+		delete merged.llmGeminiModels;
 	}
 }
 

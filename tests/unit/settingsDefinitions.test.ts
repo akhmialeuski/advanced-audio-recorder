@@ -238,7 +238,7 @@ describe('settings definitions', () => {
 		it('makes the fields inside a hand-rendered block findable', () => {
 			// The search indexes definitions, and a key block is one
 			// definition, so the password field has no row of its own to match.
-			expect(aliasesOf('API key')).toContain('token');
+			expect(aliasesOf('Deepgram API key')).toContain('token');
 			expect(aliasesOf('Binary and model paths')).toContain('offline');
 		});
 
@@ -297,9 +297,10 @@ describe('settings definitions', () => {
 					false,
 				);
 			}
-			expect(listIn(pageOf(build(), 'Whisper model')).items).toHaveLength(
-				2,
-			);
+			expect(
+				listIn(pageOf(build(), 'Whisper API (OpenAI-compatible)'))
+					.items,
+			).toHaveLength(2);
 		});
 
 		it('says on the entry which model and profile are in use', () => {
@@ -316,7 +317,13 @@ describe('settings definitions', () => {
 						displayValue?: () => string;
 					}
 				).displayValue?.();
-			expect(displayValue('Whisper model')).toBe('whisper-1');
+			settings.whisperApiKey = 'sk-test';
+
+			// An engine entry reports what it holds: the model it uses once it
+			// is reachable, and what is missing until then.
+			expect(displayValue('Whisper API (OpenAI-compatible)')).toBe(
+				'whisper-1',
+			);
 			expect(displayValue('Dictionary profiles')).toBe('Legal');
 		});
 
@@ -436,8 +443,9 @@ describe('settings definitions', () => {
 			// belongs to the service rather than to either use of it.
 			expect(pageEntryNames('Deepgram')).toEqual([
 				'Base URL',
-				'API key',
-				'Deepgram model',
+				'Deepgram API key',
+				'Model',
+				'Model',
 			]);
 		});
 	});
@@ -555,7 +563,8 @@ describe('settings definitions', () => {
 				desc?: string;
 				action?: (el: HTMLElement, index: number) => void;
 			}>;
-		} => listIn(pageOf(build(), 'Whisper model')) as never;
+		} =>
+			listIn(pageOf(build(), 'Whisper API (OpenAI-compatible)')) as never;
 
 		it('declares the saved models as a list the user can edit', () => {
 			seedModels();
@@ -753,6 +762,7 @@ describe('settings definitions', () => {
 			);
 
 			expect(providers).toEqual([
+				'Whisper API (OpenAI-compatible)',
 				'OpenAI',
 				'Deepgram',
 				'Google Gemini',
@@ -761,11 +771,12 @@ describe('settings definitions', () => {
 			]);
 			// A provider that both transcribes and answers prompts keeps one
 			// key and one endpoint, with a catalogue per capability.
+			// One catalogue for both jobs, because the ids are the same family.
 			expect(pageEntryNames('Google Gemini')).toEqual([
 				'Base URL',
-				'API key',
-				'Gemini model',
-				'LLM model',
+				'Google Gemini API key',
+				'Model',
+				'Model',
 			]);
 		});
 

@@ -19,9 +19,10 @@
 
 import { MS_PER_MINUTE, TRANSCRIPTION_PROVIDER_IDS } from '../../constants';
 import {
-	PROVIDERS,
-	PROVIDER_IDS,
-	type ProviderId,
+	ACCOUNTS,
+	ENGINES,
+	ENGINE_IDS,
+	type EngineId,
 } from '../../providers/providers';
 import type {
 	AudioRecorderSettings,
@@ -110,12 +111,12 @@ export interface EngineCredentials {
  * @param id - Provider the engine is a capability of
  * @returns That provider's credentials for transcription
  */
-function credentialsFromRegistry(id: ProviderId): EngineCredentials {
-	const provider = PROVIDERS[id];
-	const connection = provider.connection;
-	const models = provider.transcription?.models;
+function credentialsFromRegistry(id: EngineId): EngineCredentials {
+	const engine = ENGINES[id];
+	const connection = engine.account ? ACCOUNTS[engine.account] : undefined;
+	const models = engine.models;
 	if (!connection || !models) {
-		throw new Error(`Provider "${id}" declares no transcription endpoint`);
+		throw new Error(`Engine "${id}" declares no endpoint`);
 	}
 	return {
 		baseUrlKey: connection.baseUrlKey,
@@ -295,7 +296,7 @@ export const TRANSCRIPTION_ENGINES: Record<
 		model: (s) => s.whisperApiModel,
 		pricing: (model) =>
 			perMinutePricing(matchRate(WHISPER_API_RATES, model)),
-		credentials: credentialsFromRegistry(PROVIDER_IDS.OPENAI),
+		credentials: credentialsFromRegistry(ENGINE_IDS.WHISPER_API),
 		planDictionary: (_model, terms) => planWhisperPromptDictionary(terms),
 		biasUnsupportedReason: () => null,
 		create: (settings, requestTimeoutMs) => {
@@ -318,7 +319,7 @@ export const TRANSCRIPTION_ENGINES: Record<
 		pricingUrl: 'https://deepgram.com/pricing',
 		model: (s) => s.deepgramModel,
 		pricing: (model) => perMinutePricing(matchRate(DEEPGRAM_RATES, model)),
-		credentials: credentialsFromRegistry(PROVIDER_IDS.DEEPGRAM),
+		credentials: credentialsFromRegistry(ENGINE_IDS.DEEPGRAM),
 		// Deepgram's mechanism, and therefore its limits, depend on the model:
 		// Nova-3 keyterm prompting is bounded by both an entry count and an
 		// aggregate token budget, Nova-2 and older keyword boosting only by an
@@ -381,7 +382,7 @@ export const TRANSCRIPTION_ENGINES: Record<
 		pricingUrl: 'https://ai.google.dev/gemini-api/docs/pricing',
 		model: (s) => s.geminiModel,
 		pricing: (model) => perTokenPricing(matchRate(GEMINI_RATES, model)),
-		credentials: credentialsFromRegistry(PROVIDER_IDS.GEMINI),
+		credentials: credentialsFromRegistry(ENGINE_IDS.GEMINI),
 		// Gemini folds terms into a large instruction context with no hard cap.
 		planDictionary: (_model, terms) => ({ applied: terms, omitted: [] }),
 		biasUnsupportedReason: () => null,

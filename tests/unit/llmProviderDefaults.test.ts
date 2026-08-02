@@ -9,21 +9,21 @@
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import {
-	PROVIDERS,
-	PROVIDER_IDS,
+	ACCOUNTS,
+	ACCOUNT_IDS,
 	vendorConnection,
 } from 'src/providers/providers';
 
-describe('provider endpoints', () => {
-	it('gives each provider a field of its own', () => {
+describe('account endpoints', () => {
+	it('gives each account a field of its own', () => {
 		// One endpoint per service, whatever the request is for: the field a
 		// vendor reads is the field its transcription side reads.
 		const keys = [
-			PROVIDER_IDS.OPENAI,
-			PROVIDER_IDS.DEEPGRAM,
-			PROVIDER_IDS.GEMINI,
-			PROVIDER_IDS.ANTHROPIC,
-		].map((id) => PROVIDERS[id].connection?.baseUrlKey);
+			ACCOUNT_IDS.OPENAI,
+			ACCOUNT_IDS.DEEPGRAM,
+			ACCOUNT_IDS.GEMINI,
+			ACCOUNT_IDS.ANTHROPIC,
+		].map((id) => ACCOUNTS[id].baseUrlKey);
 
 		expect(keys).toEqual([
 			'whisperApiBaseUrl',

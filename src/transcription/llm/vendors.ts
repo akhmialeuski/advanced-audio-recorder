@@ -20,9 +20,10 @@
 
 import { LLM_PROVIDER_IDS } from '../../constants';
 import {
-	PROVIDERS,
-	PROVIDER_IDS,
-	type ProviderId,
+	ACCOUNTS,
+	ENGINES,
+	ENGINE_IDS,
+	type EngineId,
 } from '../../providers/providers';
 import type {
 	AudioRecorderSettings,
@@ -163,35 +164,35 @@ const GEMINI_RATES: readonly [string, LlmRate][] = [
  * @returns That provider's half of the descriptor
  */
 function fromRegistry(
-	id: ProviderId,
+	id: EngineId,
 ): Omit<LlmVendorDescriptor, 'rates' | 'create'> {
-	const provider = PROVIDERS[id];
-	const connection = provider.connection;
-	const llm = provider.llm;
-	if (!connection || !llm) {
-		throw new Error(`Provider "${id}" declares no LLM connection`);
+	const engine = ENGINES[id];
+	const connection = engine.account ? ACCOUNTS[engine.account] : undefined;
+	const models = engine.models;
+	if (!connection || !models || !engine.llmId) {
+		throw new Error(`Engine "${id}" answers no prompts`);
 	}
 	return {
-		id: llm.vendorId,
-		label: provider.label,
+		id: engine.llmId,
+		label: engine.label,
 		defaultBaseUrl: connection.defaultBaseUrl,
-		pricingUrl: provider.pricingUrl ?? '',
-		modelsDocUrl: llm.models.docUrl,
-		modelsDocLabel: llm.models.docLabel,
-		modelPickerDesc: llm.models.pickerDesc,
+		pricingUrl: engine.pricingUrl,
+		modelsDocUrl: models.docUrl,
+		modelsDocLabel: models.docLabel,
+		modelPickerDesc: models.pickerDesc,
 		keyFieldName: connection.keyFieldName,
 		keyFieldDesc: connection.keyFieldDesc,
 		missingKeyMessage: connection.missingKeyMessage,
 		settings: {
 			apiKeyKey: connection.apiKeyKey,
-			modelKey: llm.models.modelKey,
-			modelsKey: llm.models.modelsKey,
+			modelKey: models.modelKey,
+			modelsKey: models.modelsKey,
 			apiKey: connection.apiKey,
 			setApiKey: connection.setApiKey,
-			model: llm.models.model,
-			setModel: llm.models.setModel,
-			models: llm.models.models,
-			setModels: llm.models.setModels,
+			model: models.model,
+			setModel: models.setModel,
+			models: models.models,
+			setModels: models.setModels,
 		},
 	};
 }
@@ -202,17 +203,17 @@ function fromRegistry(
  */
 export const LLM_VENDORS: Record<LlmProviderId, LlmVendorDescriptor> = {
 	[LLM_PROVIDER_IDS.OPENAI_COMPATIBLE]: {
-		...fromRegistry(PROVIDER_IDS.OPENAI),
+		...fromRegistry(ENGINE_IDS.OPENAI_LLM),
 		rates: OPENAI_RATES,
 		create: (config) => new OpenAiCompatibleLlmProvider(config),
 	},
 	[LLM_PROVIDER_IDS.ANTHROPIC]: {
-		...fromRegistry(PROVIDER_IDS.ANTHROPIC),
+		...fromRegistry(ENGINE_IDS.ANTHROPIC),
 		rates: ANTHROPIC_RATES,
 		create: (config) => new AnthropicLlmProvider(config),
 	},
 	[LLM_PROVIDER_IDS.GEMINI]: {
-		...fromRegistry(PROVIDER_IDS.GEMINI),
+		...fromRegistry(ENGINE_IDS.GEMINI),
 		rates: GEMINI_RATES,
 		create: (config) => new GeminiLlmProvider(config),
 	},

@@ -61,11 +61,11 @@ import {
 	TRANSCRIPTION_PROVIDER_OPTIONS,
 } from './labels';
 import {
-	PROVIDERS,
-	PROVIDER_IDS,
-	PROVIDER_ORDER,
-	type ProviderDescriptor,
-	type ProviderId,
+	ENGINES,
+	ENGINE_ORDER,
+	accountOf,
+	type EngineDescriptor,
+	type EngineId,
 	type ProviderModels,
 } from '../providers/providers';
 import {
@@ -297,10 +297,7 @@ export interface TranscriptionBlocks {
 	 * A provider's API key, which is a password field rather than a plain one,
 	 * so no control type covers it.
 	 */
-	readonly renderProviderKey: (
-		host: HTMLElement,
-		providerId: ProviderId,
-	) => void;
+	readonly renderProviderKey: (host: HTMLElement, engineId: EngineId) => void;
 	/** The local engine's binary and model paths, which are file pickers. */
 	readonly renderLocalWhisperFields: (host: HTMLElement) => void;
 	/**
@@ -1118,24 +1115,26 @@ function profileGroups(
 }
 
 /**
- * One provider's own page: how it is reached, and the catalogues it serves.
+ * One engine's own page: the account it is reached through, the models it
+ * serves, and the one it uses.
  *
- * A service is configured here once, whatever it is later asked to do, which is
- * what keeps one key on one row: before this, a provider that both transcribed
- * and answered prompts had its key on the transcription page and again under
- * post-processing, with two endpoints for one account.
+ * Every engine is declared the same way, so the page asks the same questions of
+ * each and shows only the answers that exist: an engine with no account has no
+ * endpoint rows, one with no catalogue has no model rows, and one that sends a
+ * recording whole has no chunk row. Two engines over one account share its
+ * endpoint and its key, which is why the key is entered once.
  * @param settings - Live settings, read for the entry's value
- * @param provider - The provider being declared
+ * @param engine - The engine being declared
  * @param blocks - The password field and the list edits, which the tab owns
  * @param declareAddRow - Whether the tree owes a list a labelled add row
  */
-function providerPage(
+function enginePage(
 	settings: AudioRecorderSettings,
-	provider: ProviderDescriptor,
+	engine: EngineDescriptor,
 	blocks: TranscriptionBlocks,
 	declareAddRow: boolean,
 ): SettingGroupItem {
-	const connection = provider.connection;
+	const connection = accountOf(engine);
 	const rows: SettingGroupItem[] = [];
 	if (connection) {
 		rows.push({
@@ -1146,39 +1145,35 @@ function providerPage(
 		});
 		rows.push(
 			imperativeBlockRow({
-				name: 'API key',
-				aliases: ['token', 'credentials', provider.label.toLowerCase()],
+				name: connection.keyFieldName,
+				aliases: ['api key', 'token', 'credentials'],
 				render: (host) => {
-					blocks.renderProviderKey(host, provider.id);
+					blocks.renderProviderKey(host, engine.id);
 				},
 				visible: () => true,
 			}),
 		);
 	}
-	if (provider.transcription?.models) {
-		rows.push(
-			modelCataloguePage(
-				settings,
-				provider.transcription.models,
-				blocks,
-				declareAddRow,
-			),
-		);
+	const models = engine.models;
+	if (models) {
+		rows.push({
+			name: models.pickerName,
+			aliases: ['model id'],
+			desc: models.pickerDesc,
+			control: {
+				type: 'dropdown',
+				key: models.modelKey,
+				options: Object.fromEntries(
+					models.models(settings).map((id) => [id, id]),
+				),
+			},
+		});
+		rows.push(modelCataloguePage(settings, models, blocks, declareAddRow));
 	}
-	if (provider.llm) {
-		rows.push(
-			modelCataloguePage(
-				settings,
-				provider.llm.models,
-				blocks,
-				declareAddRow,
-			),
-		);
-	}
-	if (provider.id === PROVIDER_IDS.OPENAI) {
+	if (engine.uploadLimitMb > 0) {
 		rows.push({
 			name: 'Upload chunk size',
-			desc: 'Megabytes per WAV chunk when a recording is too large to upload whole (the API limit is 25 MB). Files under the limit are sent untouched.',
+			desc: `Megabytes per WAV chunk when a recording is too large to upload whole (this engine accepts ${String(engine.uploadLimitMb)} MB per request). Files under the limit are sent untouched.`,
 			control: {
 				type: 'number',
 				key: 'transcriptionChunkMb',
@@ -1188,7 +1183,7 @@ function providerPage(
 			},
 		});
 	}
-	if (provider.id === PROVIDER_IDS.LOCAL_WHISPER) {
+	if (!connection) {
 		rows.push(
 			imperativeBlockRow({
 				name: 'Binary and model paths',
@@ -1200,71 +1195,68 @@ function providerPage(
 	}
 	return {
 		type: 'page',
-		name: provider.label,
-		desc: providerCapabilitiesDesc(provider),
-		displayValue: (): string => providerSummary(settings, provider),
+		name: engine.label,
+		desc: engineJobsDesc(engine),
+		displayValue: (): string => engineSummary(settings, engine),
 		items: sectionItems(rows),
 	};
 }
 
-/** What a provider can be asked to do, for its entry's description. */
-function providerCapabilitiesDesc(provider: ProviderDescriptor): string {
-	if (provider.transcription && provider.llm) {
+/** What an engine can be asked to do, for its entry's description. */
+function engineJobsDesc(engine: EngineDescriptor): string {
+	if (engine.transcriptionId && engine.llmId) {
 		return 'Transcribes recordings and answers the post-processing prompts.';
 	}
-	if (provider.transcription) {
+	if (engine.transcriptionId) {
 		return 'Transcribes recordings.';
 	}
 	return 'Answers the post-processing prompts.';
 }
 
 /**
- * What a provider's entry says without being opened: whether it is reachable,
- * and which of its models are in use.
- * @param settings - Live settings, read for the key and the selections
- * @param provider - The provider being described
+ * What an engine's entry says without being opened: whether it is reachable,
+ * and which model it uses.
+ * @param settings - Live settings, read for the key and the choice
+ * @param engine - The engine being described
  */
-function providerSummary(
+function engineSummary(
 	settings: AudioRecorderSettings,
-	provider: ProviderDescriptor,
+	engine: EngineDescriptor,
 ): string {
-	if (!provider.connection) {
+	const connection = accountOf(engine);
+	if (!connection) {
 		return settings.localWhisperBinaryPath ? 'Configured' : 'No binary';
 	}
-	if (!provider.connection.apiKey(settings)) {
+	if (!connection.apiKey(settings)) {
 		return 'No key';
 	}
-	const models = [
-		provider.transcription?.models?.model(settings),
-		provider.llm?.models.model(settings),
-	].filter((model): model is string => Boolean(model));
-	return models.length > 0 ? models.join(', ') : 'Key set';
+	return engine.models?.model(settings) || 'Key set';
 }
 
 /**
- * Every provider, each on a page of its own. One place to configure a service,
+ * Every engine, each on a page of its own. One place to set a service up,
  * whatever it is later used for, which is what the transcription block and the
  * post-processing block point at instead of holding their own copies.
  * @param ctx - Everything the tree reads from the tab
  */
-function providersPage(ctx: SettingsDefinitionContext): SettingGroupItem {
+function enginesPage(ctx: SettingsDefinitionContext): SettingGroupItem {
 	return {
 		type: 'page',
 		name: 'Engines',
-		desc: 'The services this plugin talks to: where each one is reached, and the models it serves.',
+		desc: 'The services this plugin calls: where each one is reached, and the models it serves.',
 		displayValue: (): string =>
 			`${String(
-				PROVIDER_ORDER.filter((id) => {
-					const connection = PROVIDERS[id].connection;
+				ENGINE_ORDER.filter((id) => {
+					const connection = accountOf(ENGINES[id]);
 					return connection && connection.apiKey(ctx.settings);
 				}).length,
 			)} configured`,
 		visible: (): boolean => ctx.settings.transcriptionEnabled,
 		items: sectionItems(
-			PROVIDER_ORDER.map((id) =>
-				providerPage(
+			ENGINE_ORDER.map((id) =>
+				enginePage(
 					ctx.settings,
-					PROVIDERS[id],
+					ENGINES[id],
 					ctx.transcriptionBlocks,
 					ctx.declareListAddRow,
 				),
@@ -1355,6 +1347,7 @@ function modelCataloguePage(
  */
 function transcriptionGroup(
 	settings: AudioRecorderSettings,
+	enginesEntry: SettingGroupItem,
 ): SettingDefinitionItem {
 	const enabled = (): boolean => settings.transcriptionEnabled;
 	const canDiarize = (): boolean =>
@@ -1371,8 +1364,10 @@ function transcriptionGroup(
 				control: { type: 'toggle', key: 'transcriptionEnabled' },
 			},
 			// The first thing to settle once transcription is on, so it opens
-			// the block rather than sitting below the run options.
+			// the block rather than sitting below the run options: which
+			// service transcribes, and the page where every service is set up.
 			transcriptionEngineRow(settings),
+			enginesEntry,
 			{
 				name: 'Transcribe after recording',
 				desc: 'Automatically transcribe each recording once it is saved.',
@@ -1933,13 +1928,12 @@ export function buildSettingsDefinitions(
 			items: [
 				// Each block holds what belongs to it, catalogues included:
 				// nothing floats on the page beside the section it configures.
-				transcriptionGroup(ctx.settings),
+				transcriptionGroup(ctx.settings, enginesPage(ctx)),
 				transcriptionAdvancedGroup(
 					ctx.settings,
 					ctx.profiles.dictionary,
 					ctx.declareListAddRow,
 				),
-				providersPage(ctx),
 				transcriptOutputGroup(ctx.settings),
 				autoChaptersGroup(
 					ctx.settings,
