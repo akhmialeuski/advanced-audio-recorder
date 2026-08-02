@@ -94,15 +94,15 @@ A few behaviors are specific to Gemini and worth knowing before you transcribe a
 
 ## Reuse the same key for LLM post-processing
 
-Gemini is also one of the three [LLM post-processing](../llm-post-processing.md) providers, alongside OpenAI and Anthropic. When you select **Google Gemini** as the LLM provider, the plugin **reuses the same Gemini API key** - the key field there reads _"Shared with the Gemini transcription engine - set it in either place."_ You do not need a second key.
+Gemini is also one of the three [LLM post-processing](../llm-post-processing.md) engines, alongside OpenAI and Anthropic. Because one Gemini page serves both jobs, the key you entered for transcription is the key post-processing reads, and you do not need a second one.
 
 To enable it:
 
 1. In the **Transcription** section, open the **LLM post-processing** subsection.
 2. Turn on **Enable LLM post-processing**.
 3. Pick a **Task**: Clean up (default), Summarize, or Custom.
-4. Set **LLM provider** to **Google Gemini**. The **LLM base URL** auto-switches to `https://generativelanguage.googleapis.com` unless you typed a custom one, and the key is taken from your Gemini transcription key.
-5. Pick a model under the Gemini LLM model picker (default `gemini-3.5-flash`), and adjust **Max output tokens** if needed (default 4096, range 512-32000).
+4. Set its **Engine** to **Google Gemini**, which settles only which service does the work.
+5. Open **Engines** and then **Google Gemini** to confirm the **Base URL** reads `https://generativelanguage.googleapis.com`, pick a **Model** (default `gemini-3.5-flash`), and adjust **Max output tokens** if needed (default 4096, range 512-32000). One catalogue serves transcription and prompts alike, because Gemini answers both with the same family of ids.
 
 ![LLM post-processing subsection set to the Google Gemini provider with the shared-key notice](../images/settings-llm-gemini-provider.png)
 _Figure: The LLM post-processing subsection with Google Gemini selected; the API key is shared with transcription._

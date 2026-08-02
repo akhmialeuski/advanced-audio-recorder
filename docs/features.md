@@ -137,7 +137,7 @@ Learn more: [Transcription](transcription.md)
 
 ## LLM post-processing
 
-Optionally pass a finished transcript through an LLM to **clean up** punctuation and formatting (preserving wording, timestamps, and speakers), **summarize** it into key points and action items, or apply a **custom instruction**. Each task has its own editable prompt. Providers are **OpenAI** (default `gpt-5.6-sol`), **Anthropic (Claude)** (default `claude-opus-4-8`), and **Google Gemini** (default `gemini-3.5-flash`); the OpenAI and Gemini keys are shared with the matching transcription engines, while Anthropic uses its own key.
+Optionally pass a finished transcript through an LLM to **clean up** punctuation and formatting (preserving wording, timestamps, and speakers), **summarize** it into key points and action items, or apply a **custom instruction**. Each task has its own editable prompt. Engines are **OpenAI** (default `gpt-5.6-sol`), **Anthropic (Claude)** (default `claude-opus-4-8`), and **Google Gemini** (default `gemini-3.5-flash`), each configured once on its own page; the OpenAI and Gemini pages are shared with the matching transcription engines, while Anthropic keeps its own. Auto chapters and the advanced two-pass agents each pick an engine of their own, so a run can summarize with one service and title its chapters with another.
 
 Learn more: [LLM post-processing](llm-post-processing.md)
 

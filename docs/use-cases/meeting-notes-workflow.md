@@ -121,7 +121,7 @@ This is what turns a wall of transcript text into a usable summary with action i
 1. Turn on **Enable LLM post-processing**.
 2. Set **Task** to **Summarize**. (The other tasks are **Clean up**, which fixes punctuation and formatting, and **Custom**, which sends your own instruction verbatim.)
 3. Each task carries its own editable prompt. The **Summarize** prompt ships with a sensible default and has the transcript language appended automatically - edit it if you want a specific structure (for example, "list decisions, then action items with owners").
-4. Pick an **LLM provider**: **OpenAI**, **Anthropic (Claude)**, or **Google Gemini**.
+4. Pick its **Engine**: **OpenAI**, **Anthropic (Claude)**, or **Google Gemini**, and set that service up on its page under **Engines**.
 5. Confirm the **API key**. The plugin shares keys where the same vendor does both jobs:
     - **OpenAI** LLM reuses your **Whisper API** key.
     - **Gemini** LLM reuses your **Gemini** key.
@@ -209,7 +209,7 @@ Use this once to confirm your setup, then just record.
 2. **Engine** = Deepgram or Google Gemini, with a valid **API key**.
 3. **Speaker diarization** = On.
 4. **Transcript output > Destination** = **Note and file** (File format **JSON**).
-5. **LLM post-processing** = On, **Task** = **Summarize**, **LLM provider** chosen, **API key** confirmed.
+5. **LLM post-processing** = On, **Task** = **Summarize**, its **Engine** chosen, and that engine's **API key** confirmed under **Engines**.
 6. (Optional) **Rename speakers** = On, to replace `Speaker 1` with real names afterwards (with a play button per speaker so you can tell who is who).
 7. (Optional) **Transcribe after recording** = On for hands-off transcription.
 8. (Optional) **Audio player > Enhanced audio player** = On, then **Markers and chapters** = On (this toggle appears only after the enhanced player is enabled), to mark agenda items.
@@ -233,7 +233,7 @@ Use this once to confirm your setup, then just record.
 - **The Speaker diarization toggle is greyed out** - the selected engine cannot diarize. Switch **Engine** to **Deepgram** or **Google Gemini**.
 - **Speaker numbers reset partway through a long Gemini transcript** - Gemini splits recordings longer than 15 minutes into parts, and diarized splits restart speaker numbering at each boundary (surfaced as a warning). Use **Deepgram** for consistent labels across a long meeting.
 - **The play buttons in Rename speakers are greyed out** - that recording's roster predates speaker samples. Transcribe it once more with **Speaker diarization** on and the samples appear.
-- **No summary appeared** - confirm **Enable LLM post-processing** is on, **Task** is **Summarize**, and the LLM provider's **API key** is set (remember OpenAI reuses the Whisper key and Gemini reuses the Gemini key; Anthropic needs its own).
+- **No summary appeared** - confirm **Enable LLM post-processing** is on, **Task** is **Summarize**, and the chosen engine's **API key** is set on its page under **Engines** (the OpenAI and Gemini pages are shared with transcription; Anthropic keeps its own).
 - **The summary is cut off** - raise **Max output tokens** (default 4096, up to 32000).
 - **Transcription accuracy is poor in a noisy room** - run [Clean up audio](../audio-cleanup.md) first, or move to a better microphone.
 - **The transcription dialog closed and the job stopped** - closing the dialog cancels the job. Use **Minimize** to keep it running in the status bar.
