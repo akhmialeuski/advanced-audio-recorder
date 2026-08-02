@@ -137,7 +137,7 @@ A practical pairing: use **Gemini** for both transcription and the summary so on
 If everyone in the room has their own microphone, or you want a clean track per participant, enable multi-track capture under **Settings > Advanced Audio Recorder > Multi-track recording**:
 
 - Turn on **Enable multi-track recording**.
-- Set **Maximum tracks** (1-8, default 2) and assign an **Audio source for track N** to each microphone.
+- Set **Maximum tracks** (1-8, default 2) and assign an **Track N input** to each microphone.
 - Choose an **Output mode**: **Single file** (all mics mixed into one file - simplest to transcribe and diarize) or **Multiple files** (one file per track).
 
 For a transcribe-and-diarize workflow, **Single file** is usually the right choice: the engine sees one timeline and can diarize across it. Multi-file output gives you per-speaker isolation but you would transcribe each file separately. See [Multi-track recording](../multi-track-recording.md) for the details.

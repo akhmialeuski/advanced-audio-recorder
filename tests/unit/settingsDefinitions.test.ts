@@ -55,6 +55,7 @@ describe('settings definitions', () => {
 	let profileEntries: Array<{ id: string; name: string; summary: string }>;
 	let declareListAddRow: boolean;
 	let removeModel: jest.Mock;
+	let selectModel: jest.Mock;
 	let renderSummaryRow: jest.Mock;
 	let renderTranscriptionRest: jest.Mock;
 	let diagnostics: { [K in keyof DiagnosticsActions]: jest.Mock };
@@ -77,6 +78,7 @@ describe('settings definitions', () => {
 		];
 		declareListAddRow = false;
 		removeModel = jest.fn();
+		selectModel = jest.fn();
 		renderSummaryRow = jest.fn();
 		renderTranscriptionRest = jest.fn((host: HTMLElement) => {
 			host.createDiv({ cls: 'aar-transcription-rest' });
@@ -116,8 +118,10 @@ describe('settings definitions', () => {
 			) => void,
 			addModel: addModel as () => void,
 			removeModel: removeModel as (index: number) => void,
+			selectModel: selectModel as (id: string) => void,
 			addLlmModel: jest.fn(),
 			removeLlmModel: jest.fn(),
+			selectLlmModel: jest.fn(),
 			renderLlmSection: jest.fn(),
 		},
 	});
@@ -281,9 +285,9 @@ describe('settings definitions', () => {
 					false,
 				);
 			}
-			expect(
-				listIn(pageOf(build(), 'Whisper models')).items,
-			).toHaveLength(2);
+			expect(listIn(pageOf(build(), 'Whisper model')).items).toHaveLength(
+				2,
+			);
 		});
 
 		it('says on the entry which model and profile are in use', () => {
@@ -300,7 +304,7 @@ describe('settings definitions', () => {
 						displayValue?: () => string;
 					}
 				).displayValue?.();
-			expect(displayValue('Whisper models')).toBe('whisper-1');
+			expect(displayValue('Whisper model')).toBe('whisper-1');
 			expect(displayValue('Dictionary profiles')).toBe('Legal');
 		});
 
@@ -451,27 +455,23 @@ describe('settings definitions', () => {
 			settings.enableMultiTrack = true;
 			settings.maxTracks = 2;
 
-			expect(isVisible('Audio source for track 2')).toBe(true);
-			expect(isVisible('Audio source for track 3')).toBe(false);
+			expect(isVisible('Track 2 input')).toBe(true);
+			expect(isVisible('Track 3 input')).toBe(false);
 
 			settings.maxTracks = 3;
 
-			expect(isVisible('Audio source for track 3')).toBe(true);
+			expect(isVisible('Track 3 input')).toBe(true);
 		});
 
 		it('hides every track row while multi-track is off', () => {
 			settings.enableMultiTrack = false;
 
-			expect(isVisible('Audio source for track 1')).toBe(false);
+			expect(isVisible('Track 1 input')).toBe(false);
 			expect(isVisible('Maximum tracks')).toBe(false);
 		});
 
 		it('lists the enumerated devices as the track input options', () => {
-			const control = rowOf(
-				build(),
-				MULTI,
-				'Audio source for track 1',
-			).control;
+			const control = rowOf(build(), MULTI, 'Track 1 input').control;
 
 			expect(control?.key).toBe('track.1.deviceId');
 			expect(control?.options).toEqual({
@@ -486,8 +486,8 @@ describe('settings definitions', () => {
 				deviceId: 'mic-1',
 				channelMode: 'source',
 			});
-			const disabled = rowOf(build(), MULTI, 'Channels for track 1')
-				.control?.disabled;
+			const disabled = rowOf(build(), MULTI, 'Track 1 channels').control
+				?.disabled;
 
 			expect(typeof disabled === 'function' && disabled()).toBe(true);
 
@@ -545,8 +545,12 @@ describe('settings definitions', () => {
 			search?: { match: (def: { name: string }, q: string) => boolean };
 			addItem?: { name: string; action: (el: HTMLElement) => void };
 			onDelete?: (index: number) => void;
-			items: Array<{ name: string; desc?: string }>;
-		} => listIn(pageOf(build(), 'Whisper models')) as never;
+			items: Array<{
+				name: string;
+				desc?: string;
+				action?: (el: HTMLElement, index: number) => void;
+			}>;
+		} => listIn(pageOf(build(), 'Whisper model')) as never;
 
 		it('declares the saved models as a list the user can edit', () => {
 			seedModels();
@@ -559,6 +563,16 @@ describe('settings definitions', () => {
 				'whisper-1',
 				'whisper-large-v3',
 			]);
+		});
+
+		it('makes a tapped id the model in use', () => {
+			seedModels();
+
+			// The list is the picker: the row is the choice, so there is no
+			// dropdown beside it saying the same thing.
+			modelList().items[1]?.action?.(createDiv(), 1);
+
+			expect(selectModel).toHaveBeenCalledWith('whisper-large-v3');
 		});
 
 		it('marks which saved model is the one in use', () => {
@@ -599,7 +613,7 @@ describe('settings definitions', () => {
 			settings.transcriptionProvider =
 				TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER;
 			const visible = (
-				pageOf(build(), 'Models') as { visible?: () => boolean }
+				pageOf(build(), 'Model') as { visible?: () => boolean }
 			).visible;
 
 			expect(typeof visible === 'function' && visible()).toBe(false);
@@ -717,21 +731,27 @@ describe('settings definitions', () => {
 		const childNamesOf = (heading: string): string[] =>
 			groupOf(build(), heading).items.map((item) => item.name ?? '');
 
-		it('keeps the engine model list next to the row that picks from it', () => {
+		it('names the engine model once, on the entry that picks it', () => {
 			const names = childNamesOf('Transcription');
 
-			// The catalogue belongs to the engine, so it follows the row that
-			// picks from it rather than floating on the page beside the block.
-			expect(names.indexOf('Whisper models')).toBe(
-				names.indexOf('Whisper model') + 1,
+			// One place says which model is in use: the entry that opens the
+			// ids it was chosen from, on the row after the endpoint serving it.
+			expect(names.filter((name) => name === 'Whisper model')).toEqual([
+				'Whisper model',
+			]);
+			expect(names.indexOf('Whisper model')).toBe(
+				names.indexOf('Whisper API base URL') + 1,
 			);
 		});
 
-		it('keeps the LLM model list next to the row that picks from it', () => {
+		it('names the LLM model once, the same way', () => {
 			const names = childNamesOf('LLM post-processing');
 
-			expect(names.indexOf('LLM models')).toBe(
-				names.indexOf('LLM model') + 1,
+			expect(names.filter((name) => name === 'LLM model')).toEqual([
+				'LLM model',
+			]);
+			expect(names.indexOf('LLM model')).toBe(
+				names.indexOf('LLM base URL') + 1,
 			);
 		});
 

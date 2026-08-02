@@ -896,6 +896,29 @@ input.aar-input-invalid {
     }
 }
 
+/* A number row is a real input[type=number] with its min, max, and step
+   already set, and Obsidian only hides the browser's stepper. It is shown back
+   here, so a count is nudged with the arrows (or the arrow keys, which have
+   always worked) instead of being retyped, and the browser keeps it in range. */
+:has(> .aar-settings-section) input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: auto;
+    appearance: auto;
+    opacity: 1;
+}
+
+/* The per-track rows repeat one pair of pickers, and a picker sized to its own
+   text ends where its longest option ends: a device name runs to sixty
+   characters and a channel layout to twenty, so the block reads as a ragged
+   column. They share one width instead, and each picker truncates its own
+   label the way a picker does. */
+.aar-track-rows .setting-item-control {
+    flex: 0 0 var(--aar-track-control-width, 60%);
+}
+
+.aar-track-rows .setting-item-control select {
+    width: 100%;
+}
+
 /* The Obsidian before 1.13 renders the same tree as a flat list of rows with no
    group element at all, so the same rule is expressed the other way round: a
    row keeps no divider of its own, and a heading carries the line above the

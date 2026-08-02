@@ -407,6 +407,12 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 						this.removeModelFrom(access, index);
 					}
 				},
+				selectModel: (id): void => {
+					const access = this.engineModelAccess();
+					if (access) {
+						this.selectModelIn(access, id);
+					}
+				},
 				addLlmModel: (): void => {
 					this.addModelTo(
 						selectedLlmVendor(this.plugin.settings).settings,
@@ -416,6 +422,12 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					this.removeModelFrom(
 						selectedLlmVendor(this.plugin.settings).settings,
 						index,
+					);
+				},
+				selectLlmModel: (id): void => {
+					this.selectModelIn(
+						selectedLlmVendor(this.plugin.settings).settings,
+						id,
 					);
 				},
 				renderLlmSection: (host): void => {
@@ -872,6 +884,21 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				credentials.setModel(settings, id);
 			},
 		};
+	}
+
+	/**
+	 * Makes a saved id the one in use, which is what tapping a row of a model
+	 * catalogue does now that the catalogue is the picker. The entry that opens
+	 * it says which id is in use, so the tree is read again rather than
+	 * re-evaluated in place.
+	 * @param access - Reads and writes the list and its selection
+	 * @param id - The id to transcribe (or answer) with from now on
+	 */
+	private selectModelIn(access: ModelListAccess, id: string): void {
+		access.setModel(this.plugin.settings, id);
+		void this.plugin.saveSettings().then(() => {
+			this.rerender();
+		});
 	}
 
 	/**

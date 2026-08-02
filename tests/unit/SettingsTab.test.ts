@@ -1000,7 +1000,7 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.whisperApiModels = ['whisper-1'];
 			mockSettings.whisperApiModel = 'whisper-1';
 
-			await addThrough('Whisper models', 'whisper-large-v3');
+			await addThrough('Whisper model', 'whisper-large-v3');
 
 			expect(mockSettings.whisperApiModels).toContain('whisper-large-v3');
 			// A model is added to be used, so the addition is also the selection.
@@ -1012,7 +1012,7 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.whisperApiModels = ['whisper-1', 'whisper-large-v3'];
 			mockSettings.whisperApiModel = 'whisper-1';
 
-			listOf('Whisper models').onDelete?.(0);
+			listOf('Whisper model').onDelete?.(0);
 			await flushAsync();
 
 			expect(mockSettings.whisperApiModels).toEqual(['whisper-large-v3']);
@@ -1023,7 +1023,7 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.whisperApiModels = ['whisper-1', 'whisper-large-v3'];
 			mockSettings.whisperApiModel = 'whisper-1';
 
-			listOf('Whisper models').onDelete?.(1);
+			listOf('Whisper model').onDelete?.(1);
 			await flushAsync();
 
 			expect(mockSettings.whisperApiModels).toEqual(['whisper-1']);
@@ -1033,7 +1033,7 @@ describe('AudioRecorderSettingTab', () => {
 		it('ignores a delete for a position the list no longer has', async () => {
 			mockSettings.whisperApiModels = ['whisper-1'];
 
-			listOf('Whisper models').onDelete?.(4);
+			listOf('Whisper model').onDelete?.(4);
 			await flushAsync();
 
 			expect(mockSettings.whisperApiModels).toEqual(['whisper-1']);
@@ -1044,9 +1044,12 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.whisperApiModels = ['whisper-1', 'whisper-large-v3'];
 			mockSettings.whisperApiModel = 'whisper-large-v3';
 
-			expect(listOf('Whisper models').items).toEqual([
-				{ name: 'whisper-1' },
-				{ name: 'whisper-large-v3', desc: 'In use' },
+			expect(listOf('Whisper model').items).toEqual([
+				expect.objectContaining({ name: 'whisper-1' }),
+				expect.objectContaining({
+					name: 'whisper-large-v3',
+					desc: 'In use',
+				}),
 			]);
 		});
 
@@ -1055,7 +1058,7 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.llmProvider = 'openai-compatible';
 			mockSettings.llmOpenAiModels = ['gpt-4o-mini'];
 
-			await addThrough('LLM models', 'gpt-4o');
+			await addThrough('LLM model', 'gpt-4o');
 
 			expect(mockSettings.llmOpenAiModels).toContain('gpt-4o');
 			expect(mockSettings.llmOpenAiModel).toBe('gpt-4o');
@@ -1067,7 +1070,7 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.llmOpenAiModels = ['gpt-4o-mini', 'gpt-4o'];
 			mockSettings.llmOpenAiModel = 'gpt-4o';
 
-			listOf('LLM models').onDelete?.(1);
+			listOf('LLM model').onDelete?.(1);
 			await flushAsync();
 
 			expect(mockSettings.llmOpenAiModels).toEqual(['gpt-4o-mini']);
@@ -1197,10 +1200,10 @@ describe('AudioRecorderSettingTab', () => {
 			// rather than being declared empty.
 			const page = pageOf(
 				tab.getSettingDefinitions(),
-				'Models',
+				'Model',
 			) as unknown as { visible?: () => boolean };
 			expect(page.visible?.()).toBe(false);
-			expect(listOf('Models').items).toEqual([]);
+			expect(listOf('Model').items).toEqual([]);
 		});
 	});
 

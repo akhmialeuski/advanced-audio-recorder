@@ -192,9 +192,27 @@ export const SETTINGS_TAB_CLASS = 'aar-settings-tab';
  * @param rows - The page's rows, in the order they are shown
  * @returns The page's items
  */
-function sectionItems(rows: SettingGroupItem[]): SettingDefinitionItem[] {
-	return [{ type: 'group', cls: SETTINGS_SECTION_CLASS, items: rows }];
+function sectionItems(
+	rows: SettingGroupItem[],
+	extraClass?: string,
+): SettingDefinitionItem[] {
+	return [
+		{
+			type: 'group',
+			cls: extraClass
+				? `${SETTINGS_SECTION_CLASS} ${extraClass}`
+				: SETTINGS_SECTION_CLASS,
+			items: rows,
+		},
+	];
 }
+
+/**
+ * Marks the block whose rows repeat the same pair of pickers. Sized to its own
+ * text, each picker ends where its longest option ends, which turns a block of
+ * identical rows into a ragged column; the stylesheet gives them one width.
+ */
+export const TRACK_ROWS_CLASS = 'aar-track-rows';
 
 /** Visible lines a profile body field opens with. */
 const PROFILE_BODY_ROWS = 8;
@@ -277,10 +295,14 @@ export interface TranscriptionBlocks {
 	readonly addModel: () => void;
 	/** Removes the model id at a position in the selected engine's list. */
 	readonly removeModel: (index: number) => void;
+	/** Makes a saved id the model the selected engine transcribes with. */
+	readonly selectModel: (id: string) => void;
 	/** Adds a model id to the selected LLM vendor's list. */
 	readonly addLlmModel: () => void;
 	/** Removes the model id at a position in the LLM vendor's list. */
 	readonly removeLlmModel: (index: number) => void;
+	/** Makes a saved id the model the selected LLM vendor answers with. */
+	readonly selectLlmModel: (id: string) => void;
 	/** The LLM post-processing block. */
 	readonly renderLlmSection: (host: HTMLElement) => void;
 }
@@ -639,8 +661,9 @@ function multiTrackPage(
 				active() && track <= settings.maxTracks;
 			rows.push(
 				{
-					name: `Audio source for track ${String(track)}`,
-					desc: `Input device assigned to track ${String(track)}.`,
+					name: `Track ${String(track)} input`,
+					aliases: ['audio source', 'device'],
+					desc: `Input device recorded into track ${String(track)}.`,
 					visible: offered,
 					control: {
 						type: 'dropdown',
@@ -649,8 +672,9 @@ function multiTrackPage(
 					},
 				},
 				{
-					name: `Channels for track ${String(track)}`,
-					desc: `Channel layout for track ${String(track)}: keep the device layout, or reduce this track to mono during capture.`,
+					name: `Track ${String(track)} channels`,
+					aliases: ['channel layout', 'mono'],
+					desc: `Channel layout recorded into track ${String(track)}: keep the device layout, or reduce it to mono.`,
 					visible: offered,
 					control: {
 						type: 'dropdown',
@@ -676,46 +700,49 @@ function multiTrackPage(
 		desc: 'Recording several input devices at the same time.',
 		displayValue: (): string =>
 			active() ? `${String(settings.maxTracks)} tracks` : 'Off',
-		items: sectionItems([
-			{
-				name: 'Enable multi-track recording',
-				aliases: ['multitrack', 'interview', 'two mics'],
-				desc: available
-					? 'Record from several input devices at the same time.'
-					: 'Not available on this device. Recording captures a single track from the default microphone.',
-				control: {
-					type: 'toggle',
-					key: 'enableMultiTrack',
-					disabled: !available,
-				},
-			},
-			{
-				name: 'Maximum tracks',
-				desc: 'Number of simultaneous tracks to configure. Use only what you need.',
-				visible: active,
-				control: {
-					type: 'number',
-					key: 'maxTracks',
-					min: 1,
-					max: MAX_TRACK_COUNT,
-					step: 1,
-				},
-			},
-			{
-				name: 'Output mode',
-				desc: 'Export multi-track output as one combined file or one file per track.',
-				visible: active,
-				control: {
-					type: 'dropdown',
-					key: 'outputMode',
-					options: {
-						single: 'Single file',
-						multiple: 'Multiple files',
+		items: sectionItems(
+			[
+				{
+					name: 'Enable multi-track recording',
+					aliases: ['multitrack', 'interview', 'two mics'],
+					desc: available
+						? 'Record from several input devices at the same time.'
+						: 'Not available on this device. Recording captures a single track from the default microphone.',
+					control: {
+						type: 'toggle',
+						key: 'enableMultiTrack',
+						disabled: !available,
 					},
 				},
-			},
-			...trackRows(),
-		]),
+				{
+					name: 'Maximum tracks',
+					desc: 'Number of simultaneous tracks to configure. Use only what you need.',
+					visible: active,
+					control: {
+						type: 'number',
+						key: 'maxTracks',
+						min: 1,
+						max: MAX_TRACK_COUNT,
+						step: 1,
+					},
+				},
+				{
+					name: 'Output mode',
+					desc: 'Export multi-track output as one combined file or one file per track.',
+					visible: active,
+					control: {
+						type: 'dropdown',
+						key: 'outputMode',
+						options: {
+							single: 'Single file',
+							multiple: 'Multiple files',
+						},
+					},
+				},
+				...trackRows(),
+			],
+			TRACK_ROWS_CLASS,
+		),
 	};
 }
 
@@ -768,7 +795,6 @@ function llmGroup(
 	blocks: TranscriptionBlocks,
 	declareAddRow: boolean,
 ): SettingDefinitionItem {
-	const vendor = selectedLlmVendor(settings);
 	const needsVendor = (): boolean =>
 		settings.transcriptionEnabled &&
 		(settings.llmPostProcessEnabled ||
@@ -861,20 +887,8 @@ function llmGroup(
 				visible: needsVendor,
 				control: { type: 'text', key: 'llmBaseUrl' },
 			},
-			{
-				name: 'LLM model',
-				desc: vendor.modelPickerDesc,
-				visible: needsVendor,
-				control: {
-					type: 'dropdown',
-					key: vendor.settings.modelKey,
-					options: Object.fromEntries(
-						vendor.settings.models(settings).map((id) => [id, id]),
-					),
-				},
-			},
-			// The saved ids the row above picks from, next to it rather than
-			// floating on the page as a block of its own.
+			// The model this vendor answers with, chosen in the catalogue the
+			// entry opens rather than in a dropdown beside it.
 			llmModelListGroup(settings, blocks, declareAddRow),
 			{
 				name: 'Max output tokens',
@@ -1140,12 +1154,14 @@ function transcriptionEngineGroup(
 	const models = credentials ? credentials.models(settings) : [];
 	const selected = credentials ? engine.model(settings) : '';
 	return {
-		// A vendor's catalogue runs to thirty-odd ids. Inline, that is thirty
-		// rows between the engine and everything configured after it; behind an
-		// entry, it is one row that already says which id is in use.
+		// The entry is the picker: it says which id is in use, and opens the
+		// catalogue it was chosen from. A vendor's catalogue runs to thirty-odd
+		// ids, which inline is thirty rows between the engine and everything
+		// configured after it, and a dropdown beside them would be a second
+		// place saying the same thing.
 		type: 'page',
-		name: credentials?.modelListName ?? 'Models',
-		desc: 'The model ids saved for this engine, and which one it transcribes with.',
+		name: credentials?.modelPickerName ?? 'Model',
+		desc: credentials?.modelPickerDesc ?? '',
 		displayValue: (): string => selected || 'None',
 		visible: cloud,
 		items: [
@@ -1167,10 +1183,12 @@ function transcriptionEngineGroup(
 				items: models.map(
 					(id): SettingGroupItem => ({
 						name: id,
-						// The saved list is the catalogue; which one is in use
-						// is the selection, so a row says only whether it is
-						// that one.
+						// The row is the choice: tapping an id transcribes with
+						// it from then on, and the one in use says so.
 						...(id === selected ? { desc: 'In use' } : {}),
+						action: (): void => {
+							blocks.selectModel(id);
+						},
 					}),
 				),
 			},
@@ -1204,9 +1222,11 @@ function llmModelListGroup(
 	const models = vendor.settings.models(settings);
 	const selected = vendor.settings.model(settings);
 	return {
+		// The entry is the picker here too: it says which id answers, and opens
+		// the catalogue it was chosen from. Each vendor keeps its own.
 		type: 'page',
-		name: 'LLM models',
-		desc: 'The model ids saved for this vendor. The one in use is picked by the LLM model row, and each vendor keeps its own.',
+		name: 'LLM model',
+		desc: vendor.modelPickerDesc,
 		displayValue: (): string => selected || 'None',
 		visible: (): boolean =>
 			settings.transcriptionEnabled &&
@@ -1233,6 +1253,9 @@ function llmModelListGroup(
 					(id): SettingGroupItem => ({
 						name: id,
 						...(id === selected ? { desc: 'In use' } : {}),
+						action: (): void => {
+							blocks.selectLlmModel(id);
+						},
 					}),
 				),
 			},
@@ -1271,18 +1294,6 @@ function transcriptionEndpointRows(
 			desc: credentials.baseUrlFieldDesc,
 			visible: cloud,
 			control: { type: 'text', key: credentials.baseUrlKey },
-		},
-		{
-			name: credentials.modelPickerName,
-			desc: credentials.modelPickerDesc,
-			visible: cloud,
-			control: {
-				type: 'dropdown',
-				key: credentials.modelKey,
-				options: Object.fromEntries(
-					credentials.models(settings).map((id) => [id, id]),
-				),
-			},
 		},
 	];
 }
@@ -1415,8 +1426,8 @@ function transcriptionGroup(
 				},
 			},
 			...transcriptionEndpointRows(settings),
-			// The saved ids the row above picks from, next to it rather than
-			// floating on the page as a block of its own.
+			// The model this engine transcribes with, chosen in the catalogue
+			// the entry opens rather than in a dropdown beside it.
 			transcriptionEngineGroup(settings, blocks, declareAddRow),
 			imperativeBlockRow({
 				name: 'Transcription engine credentials',

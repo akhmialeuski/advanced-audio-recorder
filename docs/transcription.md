@@ -78,12 +78,12 @@ OpenAI's speech-to-text API, and any OpenAI-compatible host (for example **Groq*
 
 Settings to fill:
 
-| Setting                  | Description                                                                           | Default                     |
-| ------------------------ | ------------------------------------------------------------------------------------- | --------------------------- |
-| **Upload chunk size**    | Megabytes per WAV chunk when a recording is too large to upload whole. Range 1-24 MB. | 24                          |
-| **Whisper API base URL** | OpenAI-compatible endpoint base, e.g. `https://api.openai.com/v1` or a Groq URL.      | `https://api.openai.com/v1` |
-| **Whisper API key**      | Your API key. Stored in plugin data on this device.                                   | -                           |
-| **Whisper model**        | Model id from the picker. Must support `verbose_json` with timestamps.                | `whisper-1`                 |
+| Setting                  | Description                                                                                                      | Default                     |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| **Upload chunk size**    | Megabytes per WAV chunk when a recording is too large to upload whole. Range 1-24 MB.                            | 24                          |
+| **Whisper API base URL** | OpenAI-compatible endpoint base, e.g. `https://api.openai.com/v1` or a Groq URL.                                 | `https://api.openai.com/v1` |
+| **Whisper API key**      | Your API key. Stored in plugin data on this device.                                                              | -                           |
+| **Whisper model**        | Model id in use; the entry opens the saved ids, where it is picked. Must support `verbose_json` with timestamps. | `whisper-1`                 |
 
 Behavior and limits:
 
@@ -103,11 +103,11 @@ Deepgram's official **pre-recorded** transcription API, with strong diarization.
 
 Settings to fill:
 
-| Setting               | Description                                                 | Default                       |
-| --------------------- | ----------------------------------------------------------- | ----------------------------- |
-| **Deepgram base URL** | Deepgram API base.                                          | `https://api.deepgram.com/v1` |
-| **Deepgram API key**  | Your Deepgram key. Stored in plugin data on this device.    | -                             |
-| **Deepgram model**    | Model id from the picker (e.g. `nova-3`, `nova-2-meeting`). | `nova-3`                      |
+| Setting               | Description                                                                                           | Default                       |
+| --------------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------- |
+| **Deepgram base URL** | Deepgram API base.                                                                                    | `https://api.deepgram.com/v1` |
+| **Deepgram API key**  | Your Deepgram key. Stored in plugin data on this device.                                              | -                             |
+| **Deepgram model**    | Model id in use; the entry opens the saved ids, where it is picked (e.g. `nova-3`, `nova-2-meeting`). | `nova-3`                      |
 
 Behavior and limits:
 
@@ -128,11 +128,11 @@ Google's multimodal `generateContent` API, using the File API to upload the reco
 
 Settings to fill:
 
-| Setting             | Description                                                           | Default                                     |
-| ------------------- | --------------------------------------------------------------------- | ------------------------------------------- |
-| **Gemini base URL** | Gemini API base (no version segment).                                 | `https://generativelanguage.googleapis.com` |
-| **Gemini API key**  | Your Gemini key. Stored in plugin data on this device.                | -                                           |
-| **Gemini model**    | Model id from the picker (e.g. `gemini-3.5-flash`, `gemini-2.5-pro`). | `gemini-3.5-flash`                          |
+| Setting             | Description                                                                                                     | Default                                     |
+| ------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| **Gemini base URL** | Gemini API base (no version segment).                                                                           | `https://generativelanguage.googleapis.com` |
+| **Gemini API key**  | Your Gemini key. Stored in plugin data on this device.                                                          | -                                           |
+| **Gemini model**    | Model id in use; the entry opens the saved ids, where it is picked (e.g. `gemini-3.5-flash`, `gemini-2.5-pro`). | `gemini-3.5-flash`                          |
 
 Behavior and limits:
 
