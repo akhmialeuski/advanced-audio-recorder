@@ -14,7 +14,11 @@ import {
 	getFormatDescriptor,
 } from '../audio/formatRegistry';
 import { isDecodableSize } from '../platform/capabilities';
-import { probeBlobDurationSeconds } from './mediaDuration';
+import {
+	probeBlobDurationSeconds,
+	probeMediaDurationSeconds,
+	usableSeconds,
+} from './mediaDuration';
 import { formatByteSize } from './formatBytes';
 import { formatTimecode } from './TimeUtils';
 import { autoClosing, disposableOf } from './disposables';
@@ -134,6 +138,30 @@ export async function getAudioFileInfo(
 }
 
 /**
+ * Completes a container's answer with a length it did not carry.
+ *
+ * A parse that read everything but the length has not finished the job, and
+ * that is what this plugin's own recordings look like: a recorder streaming
+ * into a container stamps no length into the segment it has not finished. What
+ * is missing is only the length, so only the length is asked for, through
+ * whichever reader the caller can afford - and that is the whole difference
+ * between the two callers, which is why the rule itself is written once.
+ * @param probed - What the container parse did read
+ * @param readDuration - Asks the browser for the length the headers lack
+ * @returns The metadata, with a length where one could be read
+ */
+async function withReadDuration(
+	probed: ProbedAudioMetadata,
+	readDuration: () => Promise<number | null>,
+): Promise<ProbedAudioMetadata> {
+	if (probed.durationSeconds !== null) {
+		return probed;
+	}
+	const played = await readDuration();
+	return played === null ? probed : { ...probed, durationSeconds: played };
+}
+
+/**
  * Reads a recording's metadata without loading the whole file.
  *
  * The container probe only needs the header and the index, which for a
@@ -143,9 +171,15 @@ export async function getAudioFileInfo(
  * URL does serve ranges (it is what the audio element seeks against), so the
  * probe reads through that and mediabunny fetches only the ranges it needs.
  *
- * Falls back to the whole-file read when the ranged probe cannot parse the
- * file - an environment that does not honor the range request, or a container
- * mediabunny does not know, which then needs the full decode anyway.
+ * The same URL is what answers a length the headers do not carry, because a
+ * media element streams it exactly as the parse did. Reading the file in to ask
+ * that question would hold the whole recording in memory, and a second copy of
+ * it for the blob, to learn one number the address already on hand gives for
+ * nothing - on precisely the files this plugin records itself.
+ *
+ * The bytes are read only where the ranged probe could not parse the container
+ * at all, since the sample rate and the channel count then exist nowhere but
+ * the decoded buffer.
  * @param app - Obsidian App
  * @param file - The recording to measure
  * @returns The metadata, or null when neither path could read it
@@ -154,19 +188,15 @@ async function probeFileMetadata(
 	app: App,
 	file: TFile,
 ): Promise<ProbedAudioMetadata | null> {
-	const ranged = await probeAudioMetadataAt(
-		app.vault.getResourcePath(file),
-		file.path,
-	);
-	if (ranged && ranged.durationSeconds !== null) {
-		return ranged;
+	const url = app.vault.getResourcePath(file);
+	const ranged = await probeAudioMetadataAt(url, file.path);
+	if (ranged) {
+		return await withReadDuration(ranged, () =>
+			probeMediaDurationSeconds(url),
+		);
 	}
-	// A parse that read everything but the length has not finished the job,
-	// which is what this plugin's own recordings look like: the paths below
-	// answer where the headers do not, so reaching them cannot depend on the
-	// container having failed outright.
 	const bytes = await app.vault.readBinary(file);
-	return (await readAudioMetadata(bytes, file.path)) ?? ranged;
+	return await readAudioMetadata(bytes, file.path);
 }
 
 /**
@@ -206,18 +236,12 @@ export async function readAudioMetadata(
 ): Promise<ProbedAudioMetadata | null> {
 	const probed = await probeAudioMetadata(data, path);
 	if (probed) {
-		if (probed.durationSeconds !== null) {
-			return probed;
-		}
-		// The headers gave everything but the length, so only the length is
-		// missing and only the length is asked for.
-		const played = await probeBlobDurationSeconds(
-			data,
-			audioMimeForExtension(extensionOf(path)),
+		return await withReadDuration(probed, () =>
+			probeBlobDurationSeconds(
+				data,
+				audioMimeForExtension(extensionOf(path)),
+			),
 		);
-		return played === null
-			? probed
-			: { ...probed, durationSeconds: played };
 	}
 	if (!isDecodableSize(data.byteLength)) {
 		console.warn(
@@ -293,11 +317,10 @@ async function readTrackMetadata(
 		}
 		const duration = await input.computeDuration();
 		return {
-			// The one place a container's answer becomes this module's: a
-			// stream whose last packet the parse never reached comes back as
-			// zero, which is not a length, so it is turned into "unread" here
-			// rather than left for each reader to recognise.
-			durationSeconds: duration > 0 ? duration : null,
+			// A stream whose last packet the parse never reached comes back as
+			// zero, which is not a length: the shared rule turns it into
+			// "unread" rather than leaving each reader to recognise it.
+			durationSeconds: usableSeconds(duration),
 			sampleRate: await track.getSampleRate(),
 			channels: await track.getNumberOfChannels(),
 		};
@@ -349,10 +372,9 @@ async function decodeMetadata(
 		// PCM this call is about to materialize anyway.
 		const audioBuffer = await audioContext.decodeAudioData(data.slice(0));
 		return {
-			// Zero means the same thing here as everywhere else in this
-			// module: nothing was read, not "no time passed".
-			durationSeconds:
-				audioBuffer.duration > 0 ? audioBuffer.duration : null,
+			// Zero means the same thing here as everywhere else: nothing was
+			// read, not "no time passed".
+			durationSeconds: usableSeconds(audioBuffer.duration),
 			sampleRate: audioBuffer.sampleRate,
 			channels: audioBuffer.numberOfChannels,
 		};

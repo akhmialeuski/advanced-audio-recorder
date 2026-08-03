@@ -33,10 +33,23 @@ export const DURATION_PROBE_SECONDS = 1e101;
 const DURATION_PROBE_TIMEOUT_MS = 15000;
 
 /**
- * The element's length, or null while it has none to give. Infinity is what a
- * streamed container reports before the seek, and a finite zero is what a
- * container whose length was never stamped reports after loading; neither is a
- * duration, so both read as "not yet".
+ * A reported number of seconds, or null where it is not a length at all.
+ *
+ * Infinity is what a streamed container reports before the seek, and a finite
+ * zero is what a container whose length was never stamped reports after
+ * loading. Neither is a duration, and a reader that cannot tell them from one
+ * is the reader that prices a recording it knows nothing about at zero - so the
+ * question is asked in one place and every source of a length goes through it,
+ * whether it came from a media element, a container parse, or a decode.
+ * @param seconds - The number the reader produced
+ * @returns That length, or null when nothing was actually read
+ */
+export function usableSeconds(seconds: number): number | null {
+	return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
+}
+
+/**
+ * The element's length, or null while it has none to give.
  *
  * Exported because the enhanced player runs the same probe on its own shared
  * element and has to recognise the same answers: a probe that finished on
@@ -44,9 +57,7 @@ const DURATION_PROBE_TIMEOUT_MS = 15000;
  * @param audio - The element being probed
  */
 export function usableDuration(audio: HTMLAudioElement): number | null {
-	return Number.isFinite(audio.duration) && audio.duration > 0
-		? audio.duration
-		: null;
+	return usableSeconds(audio.duration);
 }
 
 /**

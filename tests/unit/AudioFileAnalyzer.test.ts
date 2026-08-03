@@ -295,10 +295,12 @@ describe('getAudioFileInfo', () => {
 		expect(result?.bitrate).toBe('unknown');
 	});
 
-	it('goes on to the byte path when the ranged probe read no length', async () => {
+	it('asks the same URL for a length the ranged parse did not carry', async () => {
 		// The ranged parse succeeds on this plugin's own recordings, it just
-		// carries no length; stopping at "it parsed" left the readers that can
-		// answer unreachable for exactly the files the plugin produces.
+		// carries no length. Only the length is missing, and the address the
+		// parse streamed from answers it: reading the file in to ask would hold
+		// the whole recording in memory, and a second copy of it for the blob,
+		// for one number - on exactly the files the plugin records itself.
 		mockGetPrimaryAudioTrack.mockResolvedValue({
 			getSampleRate: () => 48000,
 			getNumberOfChannels: () => 2,
@@ -308,30 +310,53 @@ describe('getAudioFileInfo', () => {
 
 		const result = await getAudioFileInfo(app, file);
 
-		expect(app.vault.readBinary).toHaveBeenCalled();
 		expect(result?.duration).toBe('1:30');
+		expect(app.vault.readBinary).not.toHaveBeenCalled();
+		expect(mockDecodeAudioData).not.toHaveBeenCalled();
+		// Streamed, not copied: the media element is pointed at the resource
+		// path rather than at a blob built from bytes held in memory.
+		expect(audioMock.instances.at(-1)?.src).toBe('app://vault/test.webm');
+		expect(urlMock.instances[0]?.created).toHaveLength(0);
+	});
+
+	it('keeps the ranged parse when the media read answers nothing either', async () => {
+		mockGetPrimaryAudioTrack.mockResolvedValue({
+			getSampleRate: () => 48000,
+			getNumberOfChannels: () => 2,
+		});
+		mockComputeDuration.mockResolvedValue(0);
+		// mediaDuration stays null, which makes the element report an error.
+
+		const result = await getAudioFileInfo(app, file);
+
+		// The sample rate and channel count the ranged parse did read are still
+		// worth showing; only the length is missing. A decode could add nothing
+		// but the length the browser has just declined to read, on the same
+		// demuxer, so the file is never read in to pay for that answer twice.
+		expect(result?.sampleRate).toBe('48000 Hz');
+		expect(result?.duration).toBe('unknown');
+		expect(app.vault.readBinary).not.toHaveBeenCalled();
 		expect(mockDecodeAudioData).not.toHaveBeenCalled();
 	});
 
-	it('keeps the ranged parse when the byte path reads nothing at all', async () => {
-		mockGetPrimaryAudioTrack
-			.mockResolvedValueOnce({
-				getSampleRate: () => 48000,
-				getNumberOfChannels: () => 2,
-			})
-			.mockRejectedValue(new Error('unparseable'));
-		mockComputeDuration.mockResolvedValue(0);
-		mockDecodeAudioData.mockRejectedValue(new Error('no decoder'));
+	it('reads the bytes only where the container did not parse at all', async () => {
+		// Then the sample rate and the channel count exist nowhere but the
+		// decoded buffer, so the bytes are what is left to read.
+		mockGetPrimaryAudioTrack.mockRejectedValue(new Error('unparseable'));
+		mockDecodeAudioData.mockResolvedValue({
+			duration: 12,
+			sampleRate: 44100,
+			numberOfChannels: 1,
+		});
 		const consoleSpy = jest
 			.spyOn(console, 'warn')
 			.mockImplementation(() => {});
 
 		const result = await getAudioFileInfo(app, file);
 
-		// The sample rate and channel count the ranged parse did read are still
-		// worth showing; only the length is missing.
-		expect(result?.sampleRate).toBe('48000 Hz');
-		expect(result?.duration).toBe('unknown');
+		expect(app.vault.readBinary).toHaveBeenCalled();
+		expect(result?.duration).toBe('0:12');
+		expect(result?.sampleRate).toBe('44100 Hz');
 
 		consoleSpy.mockRestore();
 	});

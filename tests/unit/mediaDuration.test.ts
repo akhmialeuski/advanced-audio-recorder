@@ -13,6 +13,7 @@ import {
 	DURATION_PROBE_SECONDS,
 	probeBlobDurationSeconds,
 	probeMediaDurationSeconds,
+	usableSeconds,
 } from 'src/utils/mediaDuration';
 import {
 	installAudioElementMock,
@@ -212,5 +213,25 @@ describe('probeBlobDurationSeconds', () => {
 		// A blob URL pins its data for the life of the document, so a probe
 		// that leaked one per failed file would hold every one of them.
 		expect(urls().revoked).toEqual(urls().created);
+	});
+});
+
+describe('usableSeconds', () => {
+	it('takes a real length', () => {
+		expect(usableSeconds(90)).toBe(90);
+		expect(usableSeconds(0.25)).toBe(0.25);
+	});
+
+	it.each([
+		['a streamed container before the seek', Number.POSITIVE_INFINITY],
+		['a length that was never stamped', 0],
+		['a reader that answered nothing at all', Number.NaN],
+		['a value no timeline could hold', -1],
+	])('reads %s as no length rather than as one', (_case, reported) => {
+		// The one rule every source of a length goes through: a media element,
+		// a container parse, and a decode all report "nothing was read" in their
+		// own way, and a reader that cannot tell those from a measurement is the
+		// one that prices a recording it knows nothing about at zero.
+		expect(usableSeconds(reported)).toBeNull();
 	});
 });
