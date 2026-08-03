@@ -14,7 +14,9 @@ import {
 	ENGINE_IDS,
 	ENGINE_ORDER,
 	accountOf,
+	accountTranscribes,
 	engineAccess,
+	enginesOfAccount,
 	missingModelMessage,
 	vendorConnection,
 	vendorMaxTokens,
@@ -135,5 +137,34 @@ describe('provider registry', () => {
 				engine.maxTokens?.get(settings),
 			);
 		}
+	});
+
+	it('lists the engines behind each account, and no others', () => {
+		for (const id of EVERY_ACCOUNT_ID) {
+			const behind = enginesOfAccount(id);
+
+			expect(behind.map((engine) => engine.id)).toEqual(
+				ENGINE_ORDER.filter(
+					(engineId) => ENGINES[engineId].account === id,
+				),
+			);
+			expect(behind.every((engine) => engine.account === id)).toBe(true);
+		}
+	});
+
+	it('says which accounts something transcribes through', () => {
+		for (const id of EVERY_ACCOUNT_ID) {
+			// The endpoint of an account something transcribes through is a
+			// transcription endpoint, whatever else the account also answers.
+			// A caller about to write one on another feature's behalf reads
+			// this rather than assuming the two are separate fields.
+			expect(accountTranscribes(id)).toBe(
+				enginesOfAccount(id).some((engine) => engine.transcriptionId),
+			);
+		}
+		expect(accountTranscribes(ACCOUNT_IDS.OPENAI)).toBe(true);
+		expect(accountTranscribes(ACCOUNT_IDS.GEMINI)).toBe(true);
+		expect(accountTranscribes(ACCOUNT_IDS.DEEPGRAM)).toBe(true);
+		expect(accountTranscribes(ACCOUNT_IDS.ANTHROPIC)).toBe(false);
 	});
 });

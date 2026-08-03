@@ -65,6 +65,45 @@ describe('account endpoints', () => {
 
 		expect(merged.geminiBaseUrl).toBe('https://gemini.internal');
 	});
+
+	it('drops a chat endpoint rather than pointing transcription at it', () => {
+		// The two were independent fields, and this pairing was ordinary:
+		// transcribe through OpenAI on the shipped endpoint, post-process on a
+		// local OpenAI-compatible chat server. They share one field now, and a
+		// default sitting in it is not a sign nothing uses it - writing the
+		// chat URL there would send every transcription request to a host with
+		// no audio endpoint, and lose the address that did work.
+		const merged = mergeSettings({
+			llmProvider: 'openai-compatible',
+			whisperApiKey: 'sk-live',
+			llmBaseUrl: 'http://localhost:1234/v1',
+		});
+
+		expect(merged.whisperApiBaseUrl).toBe(
+			DEFAULT_SETTINGS.whisperApiBaseUrl,
+		);
+		expect('llmBaseUrl' in merged).toBe(false);
+	});
+
+	it('drops it for Gemini too, which transcribes through the same endpoint', () => {
+		const merged = mergeSettings({
+			llmProvider: 'gemini',
+			llmBaseUrl: 'http://localhost:4000',
+		});
+
+		expect(merged.geminiBaseUrl).toBe(DEFAULT_SETTINGS.geminiBaseUrl);
+	});
+
+	it('keeps carrying it where nothing transcribes through the account', () => {
+		// Anthropic only answers prompts, so its endpoint was never anything
+		// but the chat one and adopting the stored value loses nothing.
+		const merged = mergeSettings({
+			llmProvider: 'anthropic',
+			llmBaseUrl: 'https://claude.internal/v1',
+		});
+
+		expect(merged.anthropicBaseUrl).toBe('https://claude.internal/v1');
+	});
 });
 
 describe('the pre-rework single LLM model', () => {

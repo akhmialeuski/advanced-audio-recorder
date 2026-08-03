@@ -12,7 +12,11 @@ import { getPlatformKind, type PlatformKind } from '../platform/platformKind';
 import { isDeviceSelectionSupported } from '../platform/capabilities';
 import { LLM_JOBS, LLM_VENDORS } from '../transcription/llm/vendors';
 import { TRANSCRIPTION_ENGINES } from '../transcription/providers/engines';
-import { engineOfVendor, vendorConnection } from '../providers/providers';
+import {
+	accountTranscribes,
+	engineOfVendor,
+	vendorConnection,
+} from '../providers/providers';
 import { reconcileEngineSettings } from '../providers/engineSettings';
 import {
 	DEEPGRAM_MODEL_SUGGESTIONS,
@@ -413,14 +417,28 @@ function migrateLegacyLlmSettings(
 		}
 	}
 	// The endpoint was one field rewritten on every vendor change; it now
-	// belongs to the provider the stored vendor is a capability of, which is
-	// also the one its transcription side is reached through. A custom URL is
-	// carried over only where that provider still holds its shipped default,
-	// so a transcription endpoint the user typed is never overwritten.
+	// belongs to the provider the stored vendor is a capability of. Two things
+	// have to hold before it is carried over, and holding the shipped default
+	// is only the first: a field the user set is not overwritten.
+	//
+	// The second is that the endpoint must not also be a transcription one.
+	// A chat URL and a Whisper URL were independent fields, and plenty of
+	// configurations used that - OpenAI transcription against the default
+	// endpoint with post-processing pointed at a local OpenAI-compatible chat
+	// server, say. Writing the chat URL onto the shared field would move
+	// transcription to a host that serves no audio endpoint at all, and the
+	// address it used to run against would be gone from the config. So where
+	// the account also transcribes, the legacy value is dropped rather than
+	// applied to a field it was never the answer for.
 	const legacyBaseUrl = legacyString(raw.llmBaseUrl).trim();
 	if (legacyBaseUrl && merged.llmProvider in LLM_VENDORS) {
+		const account = engineOfVendor(merged.llmProvider)?.account;
 		const connection = vendorConnection(merged.llmProvider);
-		if (isShippedDefault(merged, connection.baseUrlKey)) {
+		if (
+			account &&
+			!accountTranscribes(account) &&
+			isShippedDefault(merged, connection.baseUrlKey)
+		) {
 			connection.setBaseUrl(merged, legacyBaseUrl);
 		}
 	}

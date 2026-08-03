@@ -424,6 +424,31 @@ export function accountOf(
 	return engine.account ? ACCOUNTS[engine.account] : undefined;
 }
 
+/**
+ * Every engine reached through one account, in registry order.
+ * @param account - The account being asked about
+ * @returns The engines behind it
+ */
+export function enginesOfAccount(account: AccountId): EngineDescriptor[] {
+	return ENGINE_ORDER.map((id) => ENGINES[id]).filter(
+		(engine) => engine.account === account,
+	);
+}
+
+/**
+ * Whether anything transcribes through an account.
+ *
+ * An account is one endpoint, and what that endpoint has to serve follows from
+ * the engines behind it: where one of them transcribes, the endpoint is a
+ * transcription endpoint whatever else it also answers. A caller about to write
+ * one on some other feature's behalf has to know that, because a host that
+ * answers prompts is not thereby a host that accepts audio.
+ * @param account - The account being asked about
+ */
+export function accountTranscribes(account: AccountId): boolean {
+	return enginesOfAccount(account).some((engine) => engine.transcriptionId);
+}
+
 /** An engine together with the account and catalogue it declares. */
 export interface EngineAccess {
 	readonly engine: EngineDescriptor;
