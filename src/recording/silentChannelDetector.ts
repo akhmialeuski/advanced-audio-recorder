@@ -18,7 +18,10 @@ import {
 	SILENT_CHANNEL_ANALYSIS_WINDOW_SECONDS,
 	SILENT_CHANNEL_MAX_DECODE_SECONDS,
 } from '../constants';
-import { probeAudioMetadata } from '../utils/AudioFileAnalyzer';
+import {
+	isKnownLongerThan,
+	probeAudioMetadata,
+} from '../utils/AudioFileAnalyzer';
 import {
 	CHANNEL_MODE_MONO_LEFT,
 	CHANNEL_MODE_MONO_RIGHT,
@@ -164,7 +167,7 @@ export async function detectSilentChannel(
 		if (
 			metadata &&
 			(metadata.channels !== 2 ||
-				metadata.durationSeconds > maxDecodeSeconds)
+				isKnownLongerThan(metadata.durationSeconds, maxDecodeSeconds))
 		) {
 			return null;
 		}

@@ -44,27 +44,29 @@ Every action in the table is also registered as a **command palette** command of
 
 ## Audio file info
 
-**Audio file info** opens a read-only modal that decodes the file and reports its technical properties. Use it to confirm what was actually recorded - the container, the codec, the sample rate, and so on - without opening an external tool.
+**Audio file info** opens a read-only modal that reads the file and reports its technical properties. Use it to confirm what was actually recorded - the container, the codec, the sample rate, and so on - without opening an external tool.
 
 ![Audio file info modal listing file name, size, duration, container, codec, bitrate, sample rate, and channels, with a Copy as Markdown button](images/modal-audio-file-info.png)
 _Figure: The Audio file info modal with the Copy as Markdown button._
 
 The modal lists the following fields:
 
-| Field                | What it shows                                                  | Example          |
-| -------------------- | -------------------------------------------------------------- | ---------------- |
-| **File Name**        | The file name with its extension.                              | `recording.webm` |
-| **File Size**        | On-disk size, formatted (Bytes / KB / MB / GB).                | `4.2 MB`         |
-| **Duration**         | Decoded length as `HH:MM:SS` (or `00:MM:SS` under an hour).    | `00:12:34`       |
-| **Container Format** | The container's MIME type, inferred from the extension.        | `audio/webm`     |
-| **Audio Codec**      | The likely codec, inferred from the extension.                 | `opus`           |
-| **Bitrate**          | Average bitrate computed from file size and duration, in kbps. | `128 kbps`       |
-| **Sample Rate**      | The decoded sample rate in hertz.                              | `48000 Hz`       |
-| **Channels**         | Channel count with a label (`1 (Mono)`, `2 (Stereo)`).         | `2 (Stereo)`     |
+| Field                | What it shows                                                                                      | Example          |
+| -------------------- | -------------------------------------------------------------------------------------------------- | ---------------- |
+| **File Name**        | The file name with its extension.                                                                  | `recording.webm` |
+| **File Size**        | On-disk size, formatted (Bytes / KB / MB / GB).                                                    | `4.2 MB`         |
+| **Duration**         | Length as `HH:MM:SS` (or `00:MM:SS` under an hour), or `unknown` when no reader could produce one. | `00:12:34`       |
+| **Container Format** | The container's MIME type, inferred from the extension.                                            | `audio/webm`     |
+| **Audio Codec**      | The likely codec, inferred from the extension.                                                     | `opus`           |
+| **Bitrate**          | Average bitrate computed from file size and duration, or `unknown` without a duration.             | `128 kbps`       |
+| **Sample Rate**      | The sample rate in hertz.                                                                          | `48000 Hz`       |
+| **Channels**         | Channel count with a label (`1 (Mono)`, `2 (Stereo)`).                                             | `2 (Stereo)`     |
 
 A few notes on how these values are derived:
 
-- **Duration**, **Sample Rate**, and **Channels** come from decoding the audio with the browser's audio engine, so they reflect the real decoded stream.
+- **Duration**, **Sample Rate**, and **Channels** are read from the container's own headers, which costs nothing no matter how long the recording is. Only a container the plugin cannot parse at all falls back to decoding the audio with the browser's audio engine.
+- **Duration** has one extra step behind it, because a recorder streaming into a container writes no length into a segment it has not finished, which is what the plugin's own recordings look like until they are closed. When the headers carry no length, the plugin asks the browser to read the file the way the player does and report the length it finds, so a live-written recording still shows its real duration.
+- **Duration** and **Bitrate** read `unknown` when none of those steps could produce a length. That is deliberate: a recording whose length was never read is not a recording that lasts no time, so the modal says nothing rather than showing a `0:00` that looks like a measurement.
 - **Bitrate** is a calculated average (`file size × 8 ÷ duration`), not a value read from the container header. For variable-bitrate files it is an approximation.
 - **Container Format** and **Audio Codec** are inferred from the file extension, not parsed from the bytes. The codec mapping is: `webm` > `opus`, `ogg` > `opus/vorbis`, `mp4`/`m4a`/`aac` > `aac`, `mp3` > `mp3`, `wav` > `pcm`, `flac` > `flac`.
 

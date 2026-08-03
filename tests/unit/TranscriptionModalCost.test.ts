@@ -174,6 +174,31 @@ describe('TranscriptionModal cost estimate', () => {
 		);
 	});
 
+	it('degrades rather than quoting zero when the read answered with no length', async () => {
+		// The metadata came back - a sample rate, a channel count - with no
+		// length, which is what this plugin's own recordings look like. Sized
+		// by that the whole breakdown prices at ~$0.00, and a confident zero in
+		// a money line is worse than no line at all: the user reads it as "this
+		// run is free" and starts a job that is not.
+		probeMock.mockResolvedValue({
+			durationSeconds: null,
+			sampleRate: 48000,
+			channels: 2,
+		});
+		const { modal, internals } = createModal({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			deepgramModel: 'nova-3',
+		});
+		modal.onOpen();
+		await flush();
+
+		expect(internals.durationSeconds).toBeNull();
+		expect(internals.costEstimateEl?.textContent).toContain(
+			'estimate unavailable (duration unreadable)',
+		);
+		expect(internals.costEstimateEl?.textContent).not.toContain('$0.00');
+	});
+
 	it('marks the local engine as free and never reads the file', async () => {
 		const { modal, internals, readBinary } = createModal({
 			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,

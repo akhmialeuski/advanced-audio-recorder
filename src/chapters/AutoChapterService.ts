@@ -21,6 +21,7 @@ import type {
 import { resolveChapterGuidance } from '../settings/chapterPromptProfiles';
 import { createLlmProvider } from '../transcription/factories';
 import { vendorMaxTokens } from '../providers/providers';
+import { probeMediaDurationSeconds } from '../utils/mediaDuration';
 import { jobVendorId } from '../transcription/llm/vendors';
 import type { LlmProvider } from '../transcription/llm/LlmProvider';
 import { runLlmStep, type LlmCostSink } from '../transcription/llm/llmStep';
@@ -55,39 +56,6 @@ export interface AutoChapterServiceDeps {
 	) => LlmProvider;
 	/** Probes a recording's real duration in seconds (null when unknown). */
 	probeDuration?: (file: TFile) => Promise<number | null>;
-}
-
-/**
- * Reads a recording's duration from its media metadata without decoding the
- * whole file, by loading only metadata into an audio element. Resolves null
- * on error or timeout so the caller falls back to the transcript extent.
- * @param app - Obsidian App
- * @param file - Recording to measure
- */
-function probeAudioDurationSeconds(
-	app: App,
-	file: TFile,
-): Promise<number | null> {
-	return new Promise((resolve) => {
-		const audio = new Audio();
-		audio.preload = 'metadata';
-		const finish = (value: number | null): void => {
-			window.clearTimeout(timer);
-			audio.removeAttribute('src');
-			audio.load();
-			resolve(value);
-		};
-		const timer = window.setTimeout(() => finish(null), 15000);
-		audio.addEventListener('loadedmetadata', () => {
-			finish(
-				Number.isFinite(audio.duration) && audio.duration > 0
-					? audio.duration
-					: null,
-			);
-		});
-		audio.addEventListener('error', () => finish(null));
-		audio.src = app.vault.getResourcePath(file);
-	});
 }
 
 /** Timed lines plus the transcript language, when a source carried one. */
@@ -138,9 +106,16 @@ export class AutoChapterService {
 		deps: AutoChapterServiceDeps = {},
 	) {
 		this.createLlm = deps.createLlm ?? createLlmProvider;
+		// The shared media read, which resolves a length a streamed container
+		// never stamped: this plugin's own recordings are exactly those, and a
+		// chapter written past a length that read as unknown lands where the
+		// player cannot reach it.
 		this.probeDuration =
 			deps.probeDuration ??
-			((file) => probeAudioDurationSeconds(this.app, file));
+			((file) =>
+				probeMediaDurationSeconds(
+					this.app.vault.getResourcePath(file),
+				));
 		this.costSink = deps.costSink;
 	}
 

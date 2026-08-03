@@ -18,6 +18,11 @@ import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
 import { LLM_PROVIDER_IDS } from 'src/constants';
 import type { App, TFile } from 'obsidian';
 import { at, defined } from '../helpers/assertions';
+import {
+	installAudioElementMock,
+	type AudioElementDouble,
+	type InstalledMock,
+} from '../helpers/mediaMocks';
 
 jest.mock('src/chapters/transcriptSources', () => ({
 	...jest.requireActual<typeof import('src/chapters/transcriptSources')>(
@@ -127,47 +132,17 @@ describe('AutoChapterService.hasExistingChapters', () => {
 });
 
 describe('AutoChapterService duration probe', () => {
-	/** An Audio element fake that plays back a scripted metadata load. */
-	class FakeAudio {
-		static last: FakeAudio | null = null;
-		preload = '';
-		duration = Number.NaN;
-		src = '';
-		private listeners = new Map<string, (() => void)[]>();
-		constructor() {
-			FakeAudio.last = this;
-		}
-		addEventListener(type: string, handler: () => void): void {
-			this.listeners.set(type, [
-				...(this.listeners.get(type) ?? []),
-				handler,
-			]);
-		}
-		removeAttribute(): void {
-			/* mirrors the teardown the probe performs */
-		}
-		load(): void {
-			/* mirrors the teardown the probe performs */
-		}
-		emit(type: string): void {
-			for (const handler of this.listeners.get(type) ?? []) {
-				handler();
-			}
-		}
-	}
-
-	const originalAudio = global.Audio;
+	let audioMock: InstalledMock<AudioElementDouble>;
 
 	beforeEach(() => {
 		jest.clearAllMocks();
 		jest.useFakeTimers();
-		FakeAudio.last = null;
-		global.Audio = FakeAudio as unknown as typeof Audio;
+		audioMock = installAudioElementMock();
 	});
 
 	afterEach(() => {
 		jest.useRealTimers();
-		global.Audio = originalAudio;
+		audioMock.restore();
 	});
 
 	/**
@@ -175,11 +150,15 @@ describe('AutoChapterService duration probe', () => {
 	 * timer-based flush would deadlock; microtask ticks are enough because
 	 * everything between generate() and the probe is already-resolved promises.
 	 */
-	async function untilProbeStarted(): Promise<FakeAudio> {
-		for (let tick = 0; tick < 10 && !FakeAudio.last; tick++) {
+	async function untilProbeStarted(): Promise<AudioElementDouble> {
+		for (
+			let tick = 0;
+			tick < 10 && audioMock.instances.length === 0;
+			tick++
+		) {
 			await Promise.resolve();
 		}
-		return defined(FakeAudio.last, 'audio element');
+		return defined(audioMock.instances.at(-1), 'audio element');
 	}
 
 	/** A service using the real probe against a resource-path app. */
@@ -275,7 +254,41 @@ describe('AutoChapterService duration probe', () => {
 		expect(await generated).toBe(true);
 	});
 
-	it('ignores a non-finite reported duration', async () => {
+	it('bounds generation by the length a streamed container only reveals after a seek', async () => {
+		const llm = makeLlm(
+			JSON.stringify({
+				chapters: [
+					{ time: 0, title: 'Intro' },
+					{ time: 400, title: 'Past the end' },
+				],
+			}),
+		);
+		const { service, written: writtenMarkers } = makeService(llm);
+		const generated = service.generate(file, undefined, {
+			origin: 'talk.transcript.json',
+			lines: [
+				{ time: 0, text: 'intro talk' },
+				{ time: 400, text: 'trailing line' },
+			],
+		});
+
+		// This plugin's own recordings load reporting Infinity, so the probe
+		// that stopped there learned nothing about exactly the files the
+		// plugin produces and every chapter fell "inside" them.
+		const audio = await untilProbeStarted();
+		audio.duration = Number.POSITIVE_INFINITY;
+		audio.emit('loadedmetadata');
+		audio.duration = 200;
+		audio.emit('durationchange');
+
+		expect(await generated).toBe(true);
+		const written = defined(writtenMarkers()).filter((marker) =>
+			marker.id.startsWith(AUTO_CHAPTER_ID_PREFIX),
+		);
+		expect(written.map((marker) => marker.time)).toEqual([0]);
+	});
+
+	it('gives up when a seeked stream still reveals nothing', async () => {
 		const llm = makeLlm(
 			JSON.stringify({ chapters: [{ time: 0, title: 'Intro' }] }),
 		);
@@ -288,9 +301,10 @@ describe('AutoChapterService duration probe', () => {
 		const audio = await untilProbeStarted();
 		audio.duration = Number.POSITIVE_INFINITY;
 		audio.emit('loadedmetadata');
+		jest.advanceTimersByTime(15000);
 
-		// A streaming container reports Infinity; treating that as the length
-		// would make every chapter fall "inside" the recording.
+		// An unreadable length still must not abort generation, and the
+		// watchdog is what keeps the seek from hanging it.
 		expect(await generated).toBe(true);
 	});
 });

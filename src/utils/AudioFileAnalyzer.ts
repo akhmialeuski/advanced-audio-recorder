@@ -14,6 +14,7 @@ import {
 	getFormatDescriptor,
 } from '../audio/formatRegistry';
 import { isDecodableSize } from '../platform/capabilities';
+import { probeBlobDurationSeconds } from './mediaDuration';
 import { formatByteSize } from './formatBytes';
 import { formatTimecode } from './TimeUtils';
 import { autoClosing, disposableOf } from './disposables';
@@ -32,11 +33,41 @@ export interface AudioFileInfo {
 	channels: string;
 }
 
+/** What a reader shows in place of a number no probe could read. */
+const UNKNOWN_VALUE = 'unknown';
+
 /** The raw numbers the info dialog is built from. */
 export interface ProbedAudioMetadata {
-	durationSeconds: number;
+	/**
+	 * Length in seconds, or null where no reader could give one.
+	 *
+	 * Null rather than zero, because the two are different answers and a
+	 * caller that cannot tell them apart gets the wrong one: a recording whose
+	 * length is unknown is not a recording that costs nothing to transcribe,
+	 * and it is not one that fits under every ceiling either. Saying so in the
+	 * type is what makes every reader decide, instead of the ones that
+	 * remember to compare against zero.
+	 */
+	durationSeconds: number | null;
 	sampleRate: number;
 	channels: number;
+}
+
+/**
+ * Whether a probed length is known to exceed a ceiling.
+ *
+ * Every caller bounded by a duration asks this, and they all have to answer
+ * "unknown" the same way: not as short. A length that was never read is not a
+ * length under the limit, so the guard declines to reject and leaves the
+ * decision to whatever checks the allocation it is about to make.
+ * @param durationSeconds - The probed length, or null when it was not read
+ * @param limitSeconds - The ceiling being tested against
+ */
+export function isKnownLongerThan(
+	durationSeconds: number | null,
+	limitSeconds: number,
+): boolean {
+	return durationSeconds !== null && durationSeconds > limitSeconds;
 }
 
 /**
@@ -61,14 +92,16 @@ export async function getAudioFileInfo(
 		const fileSizeInBytes = file.stat.size;
 		const durationInSeconds = metadata.durationSeconds;
 
-		// Calculate bitrate in kbps
-		// bitRate = (fileSizeInBytes * 8 bits) / durationInSeconds
-		let bitrateKbps = 0;
-		if (durationInSeconds > 0) {
-			bitrateKbps = Math.round(
-				(fileSizeInBytes * 8) / durationInSeconds / 1000,
-			);
-		}
+		// bitRate = (fileSizeInBytes * 8 bits) / durationInSeconds, which a
+		// length nothing could read leaves undefined rather than at zero.
+		const bitrate =
+			durationInSeconds === null
+				? UNKNOWN_VALUE
+				: `${String(
+						Math.round(
+							(fileSizeInBytes * 8) / durationInSeconds / 1000,
+						),
+					)} kbps`;
 
 		const extension = file.extension.toLowerCase();
 
@@ -79,10 +112,14 @@ export async function getAudioFileInfo(
 				trimZeros: true,
 				bytesLabel: 'Bytes',
 			}),
-			duration: formatTimecode(durationInSeconds),
+			duration:
+				durationInSeconds === null
+					? UNKNOWN_VALUE
+					: formatTimecode(durationInSeconds),
 			containerFormat: audioMimeForExtension(extension),
-			audioCodec: getFormatDescriptor(extension)?.codecLabel ?? 'unknown',
-			bitrate: `${bitrateKbps} kbps`,
+			audioCodec:
+				getFormatDescriptor(extension)?.codecLabel ?? UNKNOWN_VALUE,
+			bitrate,
 			sampleRate: `${metadata.sampleRate} Hz`,
 			channels: formatChannels(metadata.channels),
 		};
@@ -121,39 +158,55 @@ async function probeFileMetadata(
 		app.vault.getResourcePath(file),
 		file.path,
 	);
-	if (ranged) {
+	if (ranged && ranged.durationSeconds !== null) {
 		return ranged;
 	}
+	// A parse that read everything but the length has not finished the job,
+	// which is what this plugin's own recordings look like: the paths below
+	// answer where the headers do not, so reaching them cannot depend on the
+	// container having failed outright.
 	const bytes = await app.vault.readBinary(file);
-	return readAudioMetadata(bytes, file.path);
+	return (await readAudioMetadata(bytes, file.path)) ?? ranged;
 }
 
 /**
- * A recording's metadata from its bytes, whichever path can read it: the
- * container probe first, and the full decode when the headers do not answer.
+ * A recording's metadata from its bytes, through whichever reader can answer.
  *
- * The two paths belong together because a caller that needs the duration needs
- * it either way, and the header alone is the answer that fails on this plugin's
- * own output: a recorder writing live leaves no duration in the segment it has
- * not finished, so a caller that only probed got nothing for exactly the files
- * the plugin produces. A caller that only wants the cheap answer, to reject an
+ * The container headers come first and settle most files for nothing. They do
+ * not settle this plugin's own output: a recorder streaming into a container
+ * stamps no length into the segment it has not finished, so a caller that only
+ * probed got nothing for exactly the files the plugin produces. What answers
+ * there is the browser, which reads the same packets the probe walked and costs
+ * no samples - see {@link module:utils/mediaDuration}.
+ *
+ * The full decode is last and is now genuinely last: it is what remains when
+ * the container did not parse at all, since the sample rate and the channel
+ * count have to come from somewhere and expanding the file to PCM is the only
+ * reader left that has them. Bounded by the platform's decode ceiling for that
+ * reason. A caller that only wants the cheap header answer, to reject an
  * oversized file before decoding it, still calls {@link probeAudioMetadata}.
- *
- * The fallback is bounded by the platform's decode ceiling, like every other
- * path that expands a file to PCM. The recordings whose headers carry no
- * duration are the long ones, so without the bound the cheapest read in the
- * plugin would become the one that decodes multi-hour audio on the main thread.
  * @param data - The file's bytes
- * @param path - Vault path, for the warning log only
- * @returns The metadata, or null when neither path could read it
+ * @param path - Vault path, for the warning log and the container's MIME type
+ * @returns The metadata, or null when no reader could read it
  */
 export async function readAudioMetadata(
 	data: ArrayBuffer,
 	path: string,
 ): Promise<ProbedAudioMetadata | null> {
 	const probed = await probeAudioMetadata(data, path);
-	if (probed && probed.durationSeconds > 0) {
+	if (probed && probed.durationSeconds !== null) {
 		return probed;
+	}
+	if (probed) {
+		// The headers gave everything but the length, so only the length is
+		// missing and only the length is asked for.
+		const played = await probeBlobDurationSeconds(
+			data,
+			audioMimeForExtension(extensionOf(path)),
+		);
+		if (played !== null) {
+			return { ...probed, durationSeconds: played };
+		}
 	}
 	if (!isDecodableSize(data.byteLength)) {
 		console.warn(
@@ -161,10 +214,17 @@ export async function readAudioMetadata(
 		);
 		return probed;
 	}
-	// A probe answering zero for a recording that has a length has not
-	// answered; the sample rate and channels it did read are kept when the
-	// decode cannot improve on them either.
+	// Whatever the headers did read is kept when the decode cannot improve on
+	// it either, so a failed decode never costs a sample rate that was known.
 	return (await decodeMetadata(data)) ?? probed;
+}
+
+/**
+ * The lowercase extension of a vault path, which is what names the container.
+ * @param path - Vault path of the recording
+ */
+function extensionOf(path: string): string {
+	return path.slice(path.lastIndexOf('.') + 1).toLowerCase();
 }
 
 /**
@@ -222,14 +282,19 @@ async function readTrackMetadata(
 		if (!track) {
 			return null;
 		}
+		const duration = await input.computeDuration();
 		return {
-			durationSeconds: await input.computeDuration(),
+			// The one place a container's answer becomes this module's: a
+			// stream whose last packet the parse never reached comes back as
+			// zero, which is not a length, so it is turned into "unread" here
+			// rather than left for each reader to recognise.
+			durationSeconds: duration > 0 ? duration : null,
 			sampleRate: await track.getSampleRate(),
 			channels: await track.getNumberOfChannels(),
 		};
 	} catch (error) {
 		console.warn(
-			`${PLUGIN_LOG_PREFIX} Container probe failed for ${path}; falling back to a full decode:`,
+			`${PLUGIN_LOG_PREFIX} Container probe failed for ${path}; falling back to the readers that do not parse it:`,
 			error,
 		);
 		return null;
@@ -237,9 +302,12 @@ async function readTrackMetadata(
 }
 
 /**
- * Fallback metadata path: fully decodes the file through the Web Audio
- * API. Expensive for long recordings, so it only runs when the container
- * probe could not parse the file.
+ * Last-resort metadata path: fully decodes the file through the Web Audio API.
+ *
+ * It expands the whole recording to PCM, so it runs only where nothing cheaper
+ * can answer at all - a container mediabunny could not parse, whose sample rate
+ * and channel count exist nowhere but the decoded buffer. A file whose headers
+ * merely lack a length never reaches here; the media read answers that.
  *
  * Reports failure by returning null and logging why. It is reached from a
  * background probe as well as from the file-info action, so what an unreadable
@@ -265,7 +333,10 @@ async function decodeMetadata(
 	try {
 		const audioBuffer = await audioContext.decodeAudioData(data);
 		return {
-			durationSeconds: audioBuffer.duration,
+			// Zero means the same thing here as everywhere else in this
+			// module: nothing was read, not "no time passed".
+			durationSeconds:
+				audioBuffer.duration > 0 ? audioBuffer.duration : null,
 			sampleRate: audioBuffer.sampleRate,
 			channels: audioBuffer.numberOfChannels,
 		};

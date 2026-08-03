@@ -5,9 +5,45 @@
 
 import {
 	getAudioFileInfo,
+	isKnownLongerThan,
 	readAudioMetadata,
 } from 'src/utils/AudioFileAnalyzer';
 import { App, Notice, TFile } from 'obsidian';
+import {
+	installAudioElementMock,
+	installObjectUrlMock,
+	type AudioElementDouble,
+	type InstalledMock,
+	type ObjectUrlDouble,
+} from '../helpers/mediaMocks';
+
+/**
+ * What the browser answers when the module asks it for a length the container
+ * did not carry. Null makes the element report an error, which is the case
+ * that falls through to the decode.
+ */
+let mediaDuration: number | null = null;
+
+let audioMock: InstalledMock<AudioElementDouble>;
+let urlMock: InstalledMock<ObjectUrlDouble>;
+
+beforeEach(() => {
+	mediaDuration = null;
+	urlMock = installObjectUrlMock();
+	audioMock = installAudioElementMock((audio) => {
+		if (mediaDuration === null) {
+			audio.emit('error');
+			return;
+		}
+		audio.duration = mediaDuration;
+		audio.emit('loadedmetadata');
+	});
+});
+
+afterEach(() => {
+	audioMock.restore();
+	urlMock.restore();
+});
 
 // Mock Notice
 jest.mock('obsidian', () => ({
@@ -243,15 +279,61 @@ describe('getAudioFileInfo', () => {
 		expect(result?.bitrate).toBe('4 kbps'); // 500 * 8 / 1000 = 4k
 	});
 
-	it('should format zero duration correctly without Infinity bitrate', async () => {
+	it('says a length nothing could read is unknown rather than zero', async () => {
 		mockDecodeAudioData.mockResolvedValue({
 			duration: 0,
 			sampleRate: 44100,
 			numberOfChannels: 1,
 		});
+
 		const result = await getAudioFileInfo(app, file);
-		expect(result?.duration).toBe('0:00');
-		expect(result?.bitrate).toBe('0 kbps');
+
+		// "0:00" and "0 kbps" are claims about the recording, and both are
+		// false: nothing read a length, so the dialog says so instead of
+		// reporting a file that lasts no time and carries no data.
+		expect(result?.duration).toBe('unknown');
+		expect(result?.bitrate).toBe('unknown');
+	});
+
+	it('goes on to the byte path when the ranged probe read no length', async () => {
+		// The ranged parse succeeds on this plugin's own recordings, it just
+		// carries no length; stopping at "it parsed" left the readers that can
+		// answer unreachable for exactly the files the plugin produces.
+		mockGetPrimaryAudioTrack.mockResolvedValue({
+			getSampleRate: () => 48000,
+			getNumberOfChannels: () => 2,
+		});
+		mockComputeDuration.mockResolvedValue(0);
+		mediaDuration = 90;
+
+		const result = await getAudioFileInfo(app, file);
+
+		expect(app.vault.readBinary).toHaveBeenCalled();
+		expect(result?.duration).toBe('1:30');
+		expect(mockDecodeAudioData).not.toHaveBeenCalled();
+	});
+
+	it('keeps the ranged parse when the byte path reads nothing at all', async () => {
+		mockGetPrimaryAudioTrack
+			.mockResolvedValueOnce({
+				getSampleRate: () => 48000,
+				getNumberOfChannels: () => 2,
+			})
+			.mockRejectedValue(new Error('unparseable'));
+		mockComputeDuration.mockResolvedValue(0);
+		mockDecodeAudioData.mockRejectedValue(new Error('no decoder'));
+		const consoleSpy = jest
+			.spyOn(console, 'warn')
+			.mockImplementation(() => {});
+
+		const result = await getAudioFileInfo(app, file);
+
+		// The sample rate and channel count the ranged parse did read are still
+		// worth showing; only the length is missing.
+		expect(result?.sampleRate).toBe('48000 Hz');
+		expect(result?.duration).toBe('unknown');
+
+		consoleSpy.mockRestore();
 	});
 
 	it('should return null and show Notice if decoding throws', async () => {
@@ -349,23 +431,58 @@ describe('readAudioMetadata', () => {
 		consoleSpy.mockRestore();
 	});
 
-	it('decodes when the headers carry no duration', async () => {
+	it('reads the length through the browser when the headers carry none, and never decodes', async () => {
 		// A recorder writing live leaves no duration in the segment it has not
-		// finished, which is what this plugin's own recordings look like. The
-		// headers parse, so a probe alone answered zero and every priced line
-		// went unestimated.
+		// finished, which is what this plugin's own recordings look like. Those
+		// are also the long ones, so answering with a full PCM decode would put
+		// the most expensive read in the plugin on its most ordinary path.
 		mockGetPrimaryAudioTrack.mockResolvedValue({
 			getSampleRate: () => 48000,
 			getNumberOfChannels: () => 2,
 		});
 		mockComputeDuration.mockResolvedValue(0);
+		mediaDuration = 3600;
 
 		const result = await readAudioMetadata(new ArrayBuffer(8), 'a.webm');
 
+		expect(result).toEqual({
+			durationSeconds: 3600,
+			sampleRate: 48000,
+			channels: 2,
+		});
+		expect(mockDecodeAudioData).not.toHaveBeenCalled();
+	});
+
+	it('names the container so the browser picks a demuxer instead of sniffing', async () => {
+		mockGetPrimaryAudioTrack.mockResolvedValue({
+			getSampleRate: () => 48000,
+			getNumberOfChannels: () => 2,
+		});
+		mockComputeDuration.mockResolvedValue(0);
+		mediaDuration = 10;
+
+		await readAudioMetadata(new ArrayBuffer(8), 'Recordings/talk.mp4');
+
+		expect(URL.createObjectURL).toHaveBeenCalledWith(
+			expect.objectContaining({ type: 'audio/mp4' }),
+		);
+	});
+
+	it('falls through to the decode when the browser cannot read it either', async () => {
+		mockGetPrimaryAudioTrack.mockResolvedValue({
+			getSampleRate: () => 48000,
+			getNumberOfChannels: () => 2,
+		});
+		mockComputeDuration.mockResolvedValue(0);
+		mediaDuration = null;
+
+		const result = await readAudioMetadata(new ArrayBuffer(8), 'a.webm');
+
+		expect(mockDecodeAudioData).toHaveBeenCalled();
 		expect(result?.durationSeconds).toBe(90);
 	});
 
-	it('keeps what the headers did read when the decode fails too', async () => {
+	it('reports an unread length as null, never as zero', async () => {
 		mockGetPrimaryAudioTrack.mockResolvedValue({
 			getSampleRate: () => 48000,
 			getNumberOfChannels: () => 2,
@@ -378,8 +495,11 @@ describe('readAudioMetadata', () => {
 
 		const result = await readAudioMetadata(new ArrayBuffer(8), 'a.webm');
 
+		// Zero is a duration, and a caller that gets one prices the run at it:
+		// the transcribe dialog would quote a confident $0.00 for a recording
+		// it knows nothing about. Null is the only honest answer.
 		expect(result).toEqual({
-			durationSeconds: 0,
+			durationSeconds: null,
 			sampleRate: 48000,
 			channels: 2,
 		});
@@ -425,11 +545,27 @@ describe('readAudioMetadata', () => {
 		// What the headers did read is still worth answering with; only the
 		// duration stays unknown, and the estimate degrades around it.
 		expect(result).toEqual({
-			durationSeconds: 0,
+			durationSeconds: null,
 			sampleRate: 48000,
 			channels: 2,
 		});
 
 		consoleSpy.mockRestore();
+	});
+});
+
+describe('isKnownLongerThan', () => {
+	it('answers for a length that was read', () => {
+		expect(isKnownLongerThan(120, 60)).toBe(true);
+		expect(isKnownLongerThan(30, 60)).toBe(false);
+		expect(isKnownLongerThan(60, 60)).toBe(false);
+	});
+
+	it('does not read an unknown length as short', () => {
+		// Every ceiling guard in the plugin asks this, and a null that answered
+		// "no, it is within the limit" would let a file of any size past the
+		// check that exists to keep it out.
+		expect(isKnownLongerThan(null, 60)).toBe(false);
+		expect(isKnownLongerThan(null, 0)).toBe(false);
 	});
 });

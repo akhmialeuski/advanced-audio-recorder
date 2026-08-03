@@ -22,6 +22,9 @@ import { at } from '../helpers/assertions';
 // parseable", which sends the pipeline down the plain decode path the
 // existing tests exercise. The pre-decode guard tests override it.
 jest.mock('src/utils/AudioFileAnalyzer', () => ({
+	...jest.requireActual<typeof import('src/utils/AudioFileAnalyzer')>(
+		'src/utils/AudioFileAnalyzer',
+	),
 	probeAudioMetadata: jest.fn(() => Promise.resolve(null)),
 }));
 
@@ -360,6 +363,32 @@ describe('AudioProcessingService.process (e2e pipeline)', () => {
 			),
 		).rejects.toThrow(/too long/i);
 		expect(decodeAudioData).not.toHaveBeenCalled();
+	});
+
+	it('does not size the decode against a length the headers never carried', async () => {
+		// A container that parsed but stamped no length is this plugin's own
+		// output. Reading that as a zero-second recording would put every such
+		// file under every ceiling, which is the opposite of what these guards
+		// are for; the decode's own post-check is what bounds it instead.
+		const { probeAudioMetadata } = jest.requireMock<{
+			probeAudioMetadata: jest.Mock;
+		}>('src/utils/AudioFileAnalyzer');
+		probeAudioMetadata.mockResolvedValueOnce({
+			durationSeconds: null,
+			sampleRate: 48000,
+			channels: 2,
+		});
+		decodeAudioData.mockResolvedValue(
+			fakeBuffer([new Float32Array(16000)], 16000),
+		);
+		const { app } = makeApp();
+
+		await new AudioProcessingService(app).process(
+			fakeFile('live.webm'),
+			ALL_STAGES,
+		);
+
+		expect(decodeAudioData).toHaveBeenCalled();
 	});
 
 	it('proceeds to decode when metadata stays within the limits', async () => {

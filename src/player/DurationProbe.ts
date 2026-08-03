@@ -7,13 +7,7 @@
  * @module player/DurationProbe
  */
 
-/**
- * A very large finite time used to coax browsers into computing the
- * real duration of a stream (notably MediaRecorder WebM) that initially
- * reports Infinity. Seeking near the end triggers a durationchange with
- * the true value, after which playback is reset to the start.
- */
-const DURATION_PROBE_SECONDS = 1e101;
+import { DURATION_PROBE_SECONDS } from '../utils/mediaDuration';
 
 /**
  * How long to wait for a probed stream to report its real duration

@@ -584,8 +584,11 @@ export class TranscriptionModal extends PluginModal {
 	 * cannot be read shows no estimate at all. The container headers answer for
 	 * most files and cost nothing, but a recorder writing live leaves no
 	 * duration in the segment it has not finished, which is this plugin's own
-	 * output - so the read falls back to a decode rather than giving up on the
-	 * files it produces itself. Failure still leaves the duration unknown; the
+	 * output - so the read goes on to the browser rather than giving up on the
+	 * files the plugin produces itself. A length none of them could read stays
+	 * null and is shown as unavailable: priced as a number it would put a
+	 * confident zero on every line of the breakdown, which is the one answer
+	 * worse than no answer. Failure still leaves the duration unknown; the
 	 * estimate degrades instead of blocking the dialog.
 	 */
 	private async probeDuration(): Promise<void> {
