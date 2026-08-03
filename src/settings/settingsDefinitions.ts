@@ -223,6 +223,25 @@ function sectionItems(
  */
 export const TRACK_ROWS_CLASS = 'aar-track-rows';
 
+/**
+ * Whether anything on the Transcription page still calls an engine.
+ *
+ * Turning transcription off does not retire every feature the page holds.
+ * Chapters are offered on a recording that already has a transcript, so the
+ * action stays registered on its own switch alone, and it calls an engine with
+ * a key, an endpoint, and a model of its own. Gating the rows that configure
+ * that engine on transcription instead would leave the action offered while
+ * everything it needs is off screen - and the failure it then reports names the
+ * Engines page as the place to fix it.
+ * @param settings - Live settings, read for the two switches
+ */
+function transcriptionPageActive(settings: AudioRecorderSettings): boolean {
+	return (
+		settings.transcriptionEnabled ||
+		settings.transcriptionAutoChaptersEnabled
+	);
+}
+
 /** Visible lines a profile body field opens with. */
 const PROFILE_BODY_ROWS = 8;
 
@@ -1315,7 +1334,7 @@ function enginesPage(ctx: SettingsDefinitionContext): SettingGroupItem {
 		// otherwise both report the one key that was entered.
 		displayValue: (): string =>
 			`${String(configuredAccountCount(ctx.settings))} configured`,
-		visible: (): boolean => ctx.settings.transcriptionEnabled,
+		visible: (): boolean => transcriptionPageActive(ctx.settings),
 		items: sectionItems(
 			ENGINE_ORDER.map((id) =>
 				enginePage(
@@ -1803,14 +1822,15 @@ function autoChaptersGroup(
 	section: ProfileSection,
 ): SettingDefinitionItem {
 	const settings = ctx.settings;
-	const enabled = (): boolean =>
-		settings.transcriptionEnabled &&
-		settings.transcriptionAutoChaptersEnabled;
+	// The block follows its own switch, not transcription's: the chapters action
+	// is offered on a recording that already has a transcript, so it outlives
+	// transcription being turned off and its engine still has to be configurable.
+	const enabled = (): boolean => settings.transcriptionAutoChaptersEnabled;
 	return {
 		type: 'group',
 		cls: SETTINGS_SECTION_CLASS,
 		heading: 'Auto chapters',
-		visible: (): boolean => settings.transcriptionEnabled,
+		visible: (): boolean => transcriptionPageActive(settings),
 		items: [
 			{
 				name: 'Auto chapters',
@@ -1829,8 +1849,11 @@ function autoChaptersGroup(
 			),
 			{
 				name: 'Generate after transcription',
+				// The one row here that does need transcription: there is no
+				// run for it to follow when nothing transcribes.
 				desc: 'Generate chapters each time a recording is transcribed.',
-				visible: enabled,
+				visible: (): boolean =>
+					enabled() && settings.transcriptionEnabled,
 				control: {
 					type: 'toggle',
 					key: 'transcriptionAutoChaptersOnTranscribe',

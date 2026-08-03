@@ -36,7 +36,8 @@ A few settings reveal or hide other controls when toggled, so the tab redraws in
 - Turning **Enhanced audio player** on reveals **Show waveform** and **Markers and chapters**.
 - Turning **Enable transcription** on reveals the **Transcription engine** row, transcript output, and LLM sub-sections; the engine page holds the picker and the fields of whichever engine it points at, so choosing another one swaps them there.
 - Turning **Enable LLM post-processing** on reveals its **Post-processing engine** row and the task and prompt controls; the key, the model, and the token ceiling belong to that engine and live on its page under **Engines**.
-- Turning **Auto chapters** on reveals its own **Chapters engine** row and **Generate after transcription**, so chapters can run on a different service from post-processing.
+- Turning **Auto chapters** on reveals its own **Chapters engine** row, so chapters can run on a different service from post-processing, and it reveals **Generate after transcription** whenever there are transcriptions for that generation to follow.
+- Turning **Enable transcription** back off keeps the **Auto chapters** block and the **Engines** entry on screen while chapters are on, because the chapters action is offered on any recording that already has a transcript and it still needs an engine, a key, and a model. Everything that has no run without transcription goes away with it, so transcript output, the post-processing block, and the advanced two-pass block all disappear.
 
 Player settings apply live: changing **Show waveform** or **Markers and chapters** rebuilds any enhanced player already open in a note, so you do not have to reopen the embed. Other changes (for example a new recording format or save folder) take effect on the next action that uses them.
 

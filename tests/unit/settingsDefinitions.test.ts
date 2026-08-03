@@ -958,6 +958,84 @@ describe('settings definitions', () => {
 				expect('type' in item && item.type).toMatch(/group|page/);
 			}
 		});
+
+		describe('a block that outlives transcription being turned off', () => {
+			/** Whether a named block or entry shows for the current settings. */
+			const shows = (name: string, visible?: unknown): boolean => {
+				const predicate =
+					visible ??
+					(name === 'Engines'
+						? pageOf(build(), name).visible
+						: groupOf(build(), name).visible);
+				return typeof predicate === 'function'
+					? (predicate as () => boolean)()
+					: predicate !== false;
+			};
+
+			beforeEach(() => {
+				// Chapters are offered on a recording that already has a
+				// transcript, so the action stays registered on this switch alone
+				// while nothing transcribes any more.
+				settings.transcriptionEnabled = false;
+				settings.transcriptionAutoChaptersEnabled = true;
+			});
+
+			it('keeps Engines reachable, since chapters still call one', () => {
+				// The run reports a missing key by naming the Engines page as the
+				// place to enter it, and a provider that refuses a whole region
+				// says the same thing: both are useless if the page is hidden.
+				expect(shows('Engines')).toBe(true);
+			});
+
+			it('keeps the chapters block and its engine row reachable', () => {
+				expect(shows('Auto chapters')).toBe(true);
+				expect(
+					shows(
+						'Chapters engine',
+						rowOf(build(), 'Auto chapters', 'Chapters engine')
+							.visible,
+					),
+				).toBe(true);
+			});
+
+			it('keeps the guidance profiles, which steer that generation', () => {
+				expect(
+					shows(
+						'Chapter guidance profiles',
+						pageOf(build(), 'Chapter guidance profiles').visible,
+					),
+				).toBe(true);
+			});
+
+			it('hides only the row that has no run to follow', () => {
+				// Generating after each transcription needs a transcription.
+				expect(
+					shows(
+						'Generate after transcription',
+						rowOf(
+							build(),
+							'Auto chapters',
+							'Generate after transcription',
+						).visible,
+					),
+				).toBe(false);
+			});
+
+			it('still hides everything that genuinely needs a run', () => {
+				// Post-processing rewrites a transcript a run produced and the
+				// two-pass mode is a way of transcribing, so neither outlives it.
+				expect(shows('LLM post-processing')).toBe(false);
+				expect(shows('Advanced')).toBe(false);
+				expect(shows('Transcript output')).toBe(false);
+			});
+
+			it('hides Engines once nothing calls an engine at all', () => {
+				settings.transcriptionAutoChaptersEnabled = false;
+
+				expect(shows('Engines')).toBe(false);
+				expect(shows('Auto chapters')).toBe(false);
+			});
+		});
 	});
 
 	describe('the blocks the stylesheet separates', () => {

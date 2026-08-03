@@ -123,9 +123,10 @@ const CHAPTER_KIND: ProfileKind<ChapterPromptProfile> = {
 	},
 	summary: (profile) =>
 		profile.prompt.trim() === '' ? 'No prompt' : 'Prompt set',
-	visible: (settings) =>
-		settings.transcriptionEnabled &&
-		settings.transcriptionAutoChaptersEnabled,
+	// Follows the chapters switch alone: the guidance steers a generation, and a
+	// generation is offered on any recording that already has a transcript,
+	// whether or not this vault still transcribes new ones.
+	visible: (settings) => settings.transcriptionAutoChaptersEnabled,
 };
 
 /** Named rosters of people, suggested when speakers are renamed. */
