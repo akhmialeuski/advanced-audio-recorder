@@ -55,6 +55,9 @@ export const LEGACY_STACKED_CLASS = 'aar-setting-stacked';
 /** Class applied to a text input holding a value its validator rejected. */
 const INVALID_INPUT_CLASS = 'aar-input-invalid';
 
+/** Class applied to the line stating why a control refused a value. */
+export const LEGACY_SETTING_ERROR_CLASS = 'aar-setting-error';
+
 /**
  * The read and write path a rendered control is bound to. The same pair the
  * framework calls on 1.13, so a value reaches the plugin identically on both.
@@ -110,6 +113,58 @@ interface RenderedContainer {
 	readonly els: HTMLElement[];
 	/** The containers it sits inside, outermost first. */
 	readonly ancestors: readonly SettingContainer[];
+}
+
+/**
+ * Why a control's own validator refuses a value, or undefined when it takes it.
+ *
+ * Every kind of control carries a validator from 1.13 and the framework applies
+ * it to all of them, refusing the change and stating why rather than storing
+ * what the declaration rules out. So this renderer applies it to all of them
+ * too: honouring it on the text fields alone left a dropdown accepting values
+ * the newer Obsidian refuses, which is the divergence one declaration exists to
+ * rule out.
+ *
+ * Only a synchronous verdict is applied. An asynchronous one could arrive only
+ * after the value had already been written, which is not a refusal at all, and
+ * nothing in this plugin declares one.
+ * @param validate - The control's declared validator, when it has one
+ * @param value - The value the control produced
+ * @returns The message it is refused with, or undefined when it is accepted
+ */
+function validatorRejection<V>(
+	validate:
+		| ((value: V) => string | void | Promise<string | void>)
+		| undefined,
+	value: V,
+): string | undefined {
+	const message = validate?.(value);
+	return typeof message === 'string' && message !== '' ? message : undefined;
+}
+
+/**
+ * The line a refusal is stated on, created only once there is something to
+ * state. Written under the row's own description, which is where the framework
+ * puts it from 1.13, so a row whose value is accepted carries no empty element.
+ * @param setting - The row being reported on
+ * @returns Shows a message, or clears the line when given undefined
+ */
+function rejectionReporter(
+	setting: Setting,
+): (message: string | undefined) => void {
+	let errorEl: HTMLElement | null = null;
+	return (message): void => {
+		if (!errorEl) {
+			if (message === undefined) {
+				return;
+			}
+			errorEl = setting.descEl.createDiv({
+				cls: LEGACY_SETTING_ERROR_CLASS,
+			});
+		}
+		errorEl.setText(message ?? '');
+		errorEl.toggle(message !== undefined);
+	};
 }
 
 /**
@@ -483,7 +538,8 @@ export class LegacySettingsRenderer {
 		control: SettingControl,
 	): ((disabled: boolean) => void) | undefined {
 		const stored = this.host.getControlValue(control.key);
-		const write = (value: unknown): void => {
+		const report = rejectionReporter(setting);
+		const persist = (value: unknown): void => {
 			void this.host.setControlValue(control.key, value);
 			// The framework refreshes predicates after every change it persists;
 			// a row revealed by this one appears here for the same reason.
@@ -493,13 +549,25 @@ export class LegacySettingsRenderer {
 			case 'toggle': {
 				let hook: ((disabled: boolean) => void) | undefined;
 				setting.addToggle((toggle) => {
-					toggle
-						.setValue(
-							typeof stored === 'boolean'
-								? stored
-								: (control.defaultValue ?? false),
-						)
-						.onChange(write);
+					const seed =
+						typeof stored === 'boolean'
+							? stored
+							: (control.defaultValue ?? false);
+					toggle.setValue(seed).onChange(
+						guardedWrite({
+							seed,
+							rejectionOf: (value) =>
+								validatorRejection(control.validate, value),
+							report,
+							// A switch has two states and both are on screen, so a
+							// refused flip is put back rather than left showing a
+							// position nothing was stored for.
+							restore: () => {
+								toggle.setValue(seed);
+							},
+							write: persist,
+						}),
+					);
 					hook = (disabled): void => {
 						toggle.setDisabled(disabled);
 					};
@@ -514,13 +582,25 @@ export class LegacySettingsRenderer {
 					)) {
 						dropdown.addOption(value, label);
 					}
-					dropdown
-						.setValue(
-							typeof stored === 'string'
-								? stored
-								: (control.defaultValue ?? ''),
-						)
-						.onChange(write);
+					const seed =
+						typeof stored === 'string'
+							? stored
+							: (control.defaultValue ?? '');
+					dropdown.setValue(seed).onChange(
+						guardedWrite({
+							seed,
+							rejectionOf: (value) =>
+								validatorRejection(control.validate, value),
+							report,
+							// The options are the whole value space and the chosen
+							// one is what the row reads as, so a refused choice is
+							// put back to what is actually stored.
+							restore: () => {
+								dropdown.setValue(seed);
+							},
+							write: persist,
+						}),
+					);
 					hook = (disabled): void => {
 						dropdown.setDisabled(disabled);
 					};
@@ -529,7 +609,10 @@ export class LegacySettingsRenderer {
 			}
 			case 'text':
 			case 'textarea': {
-				return this.bindTextControl(setting, control, stored, write);
+				return this.bindTextControl(setting, control, stored, {
+					report,
+					persist,
+				});
 			}
 			case 'folder': {
 				let hook: ((disabled: boolean) => void) | undefined;
@@ -538,11 +621,19 @@ export class LegacySettingsRenderer {
 					if (control.placeholder) {
 						text.setPlaceholder(control.placeholder);
 					}
-					text.setValue(
+					const seed =
 						typeof stored === 'string'
 							? stored
-							: (control.defaultValue ?? ''),
-					).onChange(write);
+							: (control.defaultValue ?? '');
+					text.setValue(seed).onChange(
+						guardedWrite({
+							seed,
+							rejectionOf: (value) =>
+								validatorRejection(control.validate, value),
+							report: markingInput(text.inputEl, report),
+							write: persist,
+						}),
+					);
 					hook = (disabled): void => {
 						text.setDisabled(disabled);
 					};
@@ -550,7 +641,10 @@ export class LegacySettingsRenderer {
 				return hook;
 			}
 			case 'number': {
-				return this.bindNumberControl(setting, control, stored, write);
+				return this.bindNumberControl(setting, control, stored, {
+					report,
+					persist,
+				});
 			}
 			default:
 				// Control types this plugin does not use yet render as a plain
@@ -565,13 +659,13 @@ export class LegacySettingsRenderer {
 	 * @param setting - The row the input is added to
 	 * @param control - The text control being rendered
 	 * @param stored - The current stored value
-	 * @param write - Persists an accepted value
+	 * @param hooks - Where a refusal is reported and an accepted value stored
 	 */
 	private bindTextControl(
 		setting: Setting,
 		control: Extract<SettingControl, { type: 'text' | 'textarea' }>,
 		stored: unknown,
-		write: (value: string) => void,
+		hooks: ControlWriteHooks,
 	): (disabled: boolean) => void {
 		let hook!: (disabled: boolean) => void;
 		const bind = (text: {
@@ -584,20 +678,23 @@ export class LegacySettingsRenderer {
 			if (control.placeholder) {
 				text.setPlaceholder(control.placeholder);
 			}
-			text.setValue(
+			const seed =
 				typeof stored === 'string'
 					? stored
-					: (control.defaultValue ?? ''),
+					: (control.defaultValue ?? '');
+			text.setValue(seed);
+			text.onChange(
+				guardedWrite({
+					seed,
+					rejectionOf: (value: string) =>
+						validatorRejection(control.validate, value),
+					report: markingInput(text.inputEl, hooks.report),
+					// Free text is typed a character at a time, so a value that
+					// is not finished yet is marked rather than replaced: putting
+					// the field back mid-word would fight the person typing.
+					write: hooks.persist,
+				}),
 			);
-			text.onChange((value: string) => {
-				const message = control.validate?.(value);
-				const invalid = typeof message === 'string' && message !== '';
-				text.inputEl.toggleClass(INVALID_INPUT_CLASS, invalid);
-				if (invalid) {
-					return;
-				}
-				write(value);
-			});
 			hook = (disabled): void => {
 				text.setDisabled(disabled);
 			};
@@ -618,17 +715,17 @@ export class LegacySettingsRenderer {
 
 	/**
 	 * Renders a numeric control as the number input the framework renders,
-	 * committing on change and rejecting values outside its bounds.
+	 * committing on change and rejecting values its declaration refuses.
 	 * @param setting - The row the input is added to
 	 * @param control - The number control being rendered
 	 * @param stored - The current stored value
-	 * @param write - Persists an accepted value
+	 * @param hooks - Where a refusal is reported and an accepted value stored
 	 */
 	private bindNumberControl(
 		setting: Setting,
 		control: Extract<SettingControl, { type: 'number' }>,
 		stored: unknown,
-		write: (value: number) => void,
+		hooks: ControlWriteHooks,
 	): (disabled: boolean) => void {
 		let hook!: (disabled: boolean) => void;
 		setting.addText((text) => {
@@ -645,22 +742,25 @@ export class LegacySettingsRenderer {
 				input.step = String(control.step);
 			}
 			input.addClass(NUMBER_INPUT_CLASS);
-			const current =
+			const seed =
 				typeof stored === 'number'
 					? stored
 					: (control.defaultValue ?? 0);
-			text.setValue(String(current));
+			text.setValue(String(seed));
+			const commit = guardedWrite({
+				seed,
+				// The value space is the control's own declaration: the bounds and
+				// the grid it lies on, and then whatever its validator adds. This
+				// Obsidian therefore accepts exactly what 1.13 accepts instead of
+				// storing what the newer one would refuse.
+				rejectionOf: (value: number) =>
+					numberControlRejection(control, value) ??
+					validatorRejection(control.validate, value),
+				report: markingInput(input, hooks.report),
+				write: hooks.persist,
+			});
 			input.addEventListener('change', () => {
-				// The value space is the control's own declaration, bounds and
-				// grid alike, so this Obsidian accepts exactly what 1.13
-				// accepts instead of storing what the newer one would refuse.
-				const parsed = Number(input.value);
-				const rejection = numberControlRejection(control, parsed);
-				input.toggleClass(INVALID_INPUT_CLASS, rejection !== undefined);
-				if (rejection !== undefined) {
-					return;
-				}
-				write(parsed);
+				commit(Number(input.value));
 			});
 			hook = (disabled): void => {
 				text.setDisabled(disabled);
@@ -668,6 +768,83 @@ export class LegacySettingsRenderer {
 		});
 		return hook;
 	}
+}
+
+/** Where a bound control reports a refusal and stores an accepted value. */
+interface ControlWriteHooks {
+	/** States why a value was refused, or clears the statement. */
+	readonly report: (message: string | undefined) => void;
+	/** Persists an accepted value and refreshes the tab's predicates. */
+	readonly persist: (value: unknown) => void;
+}
+
+/** How one control's writes are guarded. */
+interface GuardedWrite<V> {
+	/** The value the control was rendered holding. */
+	readonly seed: V;
+	/** Why a candidate is refused, or undefined when it is accepted. */
+	readonly rejectionOf: (value: V) => string | undefined;
+	/** States the refusal on the row. */
+	readonly report: (message: string | undefined) => void;
+	/** Puts a control whose value space is discrete back to what is stored. */
+	readonly restore?: (() => void) | undefined;
+	/** Persists an accepted value. */
+	readonly write: (value: V) => void;
+}
+
+/**
+ * The write path of one control: what its declaration refuses is not stored,
+ * the reason is stated on the row, and a control whose value space is discrete
+ * is put back to what actually is stored.
+ *
+ * The seeded value is checked once as the row is built, which is what the
+ * framework does from 1.13: a config written by an older version, or synced
+ * from a device with other capabilities, is how a row arrives already holding
+ * something its own declaration refuses. Reported, never rewritten - the stored
+ * value is the user's, and silently replacing it is how a setting changes
+ * without anyone asking for it.
+ * @param guard - The seed, the rule, and where the outcome goes
+ * @returns The control's onChange handler
+ */
+function guardedWrite<V>(guard: GuardedWrite<V>): (value: V) => void {
+	guard.report(guard.rejectionOf(guard.seed));
+	// Restoring a control re-enters its own change handler on Obsidian, whose
+	// components notify on setValue; without this the put-back would be taken
+	// for a fresh edit and stored.
+	let restoring = false;
+	return (value: V): void => {
+		if (restoring) {
+			return;
+		}
+		const rejection = guard.rejectionOf(value);
+		guard.report(rejection);
+		if (rejection === undefined) {
+			guard.write(value);
+			return;
+		}
+		restoring = true;
+		try {
+			guard.restore?.();
+		} finally {
+			restoring = false;
+		}
+	};
+}
+
+/**
+ * A reporter that also marks the input a refused value sits in, which is the
+ * affordance a field has and a switch or a dropdown does not.
+ * @param inputEl - The field holding the value
+ * @param report - The row's own reporter
+ */
+function markingInput(
+	inputEl: HTMLInputElement | HTMLTextAreaElement,
+	report: (message: string | undefined) => void,
+): (message: string | undefined) => void {
+	return (message): void => {
+		inputEl.toggleClass(INVALID_INPUT_CLASS, message !== undefined);
+		report(message);
+	};
 }
 
 /**

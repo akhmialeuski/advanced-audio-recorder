@@ -351,6 +351,15 @@ input.aar-input-invalid {
     border-color: var(--text-error);
 }
 
+/* Why a setting refused the value that was entered, under the row's own
+   description. Obsidian renders this itself from 1.13; below it the row is the
+   plugin's to append to, and a control whose value is accepted never grows one. */
+.aar-setting-error {
+    margin-top: 4px;
+    font-size: 0.9em;
+    color: var(--text-error);
+}
+
 /* Enhanced audio player */
 .aar-player {
     /* Waveform colors derive from the theme so it matches any palette. The

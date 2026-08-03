@@ -14,6 +14,7 @@ import {
 } from 'src/constants';
 import {
 	LEGACY_ACTION_ROW_CLASS,
+	LEGACY_SETTING_ERROR_CLASS,
 	LEGACY_STACKED_CLASS,
 	LegacySettingsRenderer,
 	type LegacySettingsHost,
@@ -317,6 +318,229 @@ describe('LegacySettingsRenderer', () => {
 				'maxTokens',
 				MAX_LLM_MAX_TOKENS,
 			);
+		});
+	});
+
+	describe('the declared validator, which every control carries', () => {
+		/** The refusal stated under a row, or '' when the row states none. */
+		const rejectionOn = (name: string): string =>
+			rowFor(name).querySelector(`.${LEGACY_SETTING_ERROR_CLASS}`)
+				?.textContent ?? '';
+
+		/** A tree with one engine dropdown that refuses one of its options. */
+		const engineTree = (): SettingDefinitionItem[] => [
+			{
+				name: 'Transcription engine',
+				control: {
+					type: 'dropdown',
+					key: 'engine',
+					options: {
+						'whisper-api': 'Whisper API',
+						'local-whisper': 'Local whisper.cpp (desktop)',
+					},
+					validate: (value: string) =>
+						value === 'local-whisper'
+							? 'Not available on this device.'
+							: undefined,
+				},
+			},
+		];
+
+		it('refuses a dropdown option its validator rules out', () => {
+			// The declaration is one declaration: from 1.13 the framework refuses
+			// the change and states why, so an engine this device cannot run must
+			// not become the stored engine here either.
+			values['engine'] = 'whisper-api';
+			renderer.render(containerEl, engineTree());
+
+			const select = rowFor('Transcription engine').querySelector(
+				'select',
+			);
+			if (!select) {
+				throw new Error('No dropdown rendered');
+			}
+			select.value = 'local-whisper';
+			select.dispatchEvent(new Event('change'));
+
+			expect(setControlValue).not.toHaveBeenCalled();
+			expect(rejectionOn('Transcription engine')).toBe(
+				'Not available on this device.',
+			);
+			// Put back to what is stored: a refused choice left on screen reads
+			// as a choice that was taken.
+			expect(select.value).toBe('whisper-api');
+		});
+
+		it('takes a dropdown option its validator accepts, and clears the refusal', () => {
+			values['engine'] = 'whisper-api';
+			renderer.render(containerEl, engineTree());
+
+			const select = rowFor('Transcription engine').querySelector(
+				'select',
+			);
+			if (!select) {
+				throw new Error('No dropdown rendered');
+			}
+			select.value = 'local-whisper';
+			select.dispatchEvent(new Event('change'));
+			select.value = 'whisper-api';
+			select.dispatchEvent(new Event('change'));
+
+			expect(setControlValue).toHaveBeenCalledWith(
+				'engine',
+				'whisper-api',
+			);
+			expect(rejectionOn('Transcription engine')).toBe('');
+		});
+
+		it('states a refusal the stored value already stands in, without rewriting it', () => {
+			// A config synced from a desktop, read on a phone. The framework
+			// validates the seeded value on mount and shows the message without
+			// replacing what is stored, because the value is the user's and it
+			// works again the moment the vault is opened where it came from.
+			values['engine'] = 'local-whisper';
+			renderer.render(containerEl, engineTree());
+
+			expect(rejectionOn('Transcription engine')).toBe(
+				'Not available on this device.',
+			);
+			expect(setControlValue).not.toHaveBeenCalled();
+			expect(values['engine']).toBe('local-whisper');
+		});
+
+		it('grows no error line on a row whose value is accepted', () => {
+			values['engine'] = 'whisper-api';
+			renderer.render(containerEl, engineTree());
+
+			expect(
+				rowFor('Transcription engine').querySelector(
+					`.${LEGACY_SETTING_ERROR_CLASS}`,
+				),
+			).toBeNull();
+		});
+
+		it('refuses a toggle its validator rules out and puts the switch back', () => {
+			values['experimental'] = false;
+			renderer.render(containerEl, [
+				{
+					name: 'Experimental mode',
+					control: {
+						type: 'toggle',
+						key: 'experimental',
+						validate: (value: boolean) =>
+							value ? 'Not supported here.' : undefined,
+					},
+				},
+			]);
+
+			const row = rowFor('Experimental mode');
+			row.querySelector<HTMLElement>('.checkbox-container')?.click();
+
+			expect(setControlValue).not.toHaveBeenCalled();
+			expect(rejectionOn('Experimental mode')).toBe(
+				'Not supported here.',
+			);
+			// Restoring a component notifies its own change handler on Obsidian,
+			// so the put-back must not be taken for a fresh edit and stored.
+			expect(setControlValue).toHaveBeenCalledTimes(0);
+		});
+
+		it('refuses a folder path its validator rules out and marks the field', () => {
+			renderer.render(containerEl, [
+				{
+					name: 'Recording folder',
+					control: {
+						type: 'folder',
+						key: 'folder',
+						validate: (value: string) =>
+							value.startsWith('/')
+								? 'Use a vault-relative path.'
+								: undefined,
+					},
+				},
+			]);
+
+			const input = rowFor('Recording folder').querySelector('input');
+			if (!input) {
+				throw new Error('No folder input rendered');
+			}
+			input.value = '/absolute';
+			input.dispatchEvent(new Event('input'));
+
+			expect(setControlValue).not.toHaveBeenCalled();
+			expect(input.classList.contains('aar-input-invalid')).toBe(true);
+			expect(rejectionOn('Recording folder')).toBe(
+				'Use a vault-relative path.',
+			);
+		});
+
+		it('applies a number control validator on top of its bounds and grid', () => {
+			// Both belong to the same declaration, so the value has to clear the
+			// grid and then whatever the validator adds beyond it.
+			values['chunkMb'] = 24;
+			renderer.render(containerEl, [
+				{
+					name: 'Upload chunk size',
+					control: {
+						type: 'number',
+						key: 'chunkMb',
+						min: 1,
+						max: 100,
+						step: 1,
+						validate: (value: number) =>
+							value > 25
+								? 'This engine accepts 25 MB per request.'
+								: undefined,
+					},
+				},
+			]);
+
+			const input = rowFor('Upload chunk size').querySelector('input');
+			if (!input) {
+				throw new Error('No number input rendered');
+			}
+			input.value = '40';
+			input.dispatchEvent(new Event('change'));
+
+			expect(setControlValue).not.toHaveBeenCalled();
+			expect(rejectionOn('Upload chunk size')).toBe(
+				'This engine accepts 25 MB per request.',
+			);
+			expect(input.classList.contains('aar-input-invalid')).toBe(true);
+		});
+
+		it('leaves a free-text field to be finished rather than putting it back', () => {
+			// Text arrives a character at a time, so a value that is not valid yet
+			// is marked; replacing it would fight the person typing.
+			renderer.render(containerEl, [
+				{
+					name: 'Language',
+					control: {
+						type: 'text',
+						key: 'language',
+						validate: (value: string) =>
+							/^[a-z]{2}$/.test(value)
+								? undefined
+								: 'Use an ISO code such as en.',
+					},
+				},
+			]);
+
+			const input = rowFor('Language').querySelector('input');
+			if (!input) {
+				throw new Error('No text input rendered');
+			}
+			input.value = 'e';
+			input.dispatchEvent(new Event('input'));
+
+			expect(input.value).toBe('e');
+			expect(rejectionOn('Language')).toBe('Use an ISO code such as en.');
+
+			input.value = 'en';
+			input.dispatchEvent(new Event('input'));
+
+			expect(setControlValue).toHaveBeenCalledWith('language', 'en');
+			expect(rejectionOn('Language')).toBe('');
 		});
 	});
 
