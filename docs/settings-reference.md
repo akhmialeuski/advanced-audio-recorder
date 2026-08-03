@@ -167,7 +167,7 @@ Every service the plugin talks to is configured once, on its own page under the 
 
 ### Engine: Whisper API
 
-Shown when **Transcription engine** is **Whisper API (OpenAI-compatible)**. Works with OpenAI and any compatible host (for example Groq) by setting the base URL, key, and model. The 25 MB per-request limit is enforced by the API; files at or under it are uploaded in their original container, while larger files are resampled to 16 kHz mono, split into upload-sized WAV chunks, and stitched onto one timeline. No diarization. See [OpenAI Whisper API key](use-cases/openai-whisper-api-key.md) and [Groq Whisper setup](use-cases/groq-whisper-setup.md).
+One of the pages under **Engines**, listed whether or not it is the engine transcription currently runs on. Works with OpenAI and any compatible host (for example Groq) by setting the base URL, key, and model. The 25 MB per-request limit is enforced by the API; files at or under it are uploaded in their original container, while larger files are resampled to 16 kHz mono, split into upload-sized WAV chunks, and stitched onto one timeline. No diarization. See [OpenAI Whisper API key](use-cases/openai-whisper-api-key.md) and [Groq Whisper setup](use-cases/groq-whisper-setup.md).
 
 | Setting               | What it does                                                                                                                             | Options / range                                                                                                 | Default                     |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------- |
@@ -178,7 +178,7 @@ Shown when **Transcription engine** is **Whisper API (OpenAI-compatible)**. Work
 
 ### Engine: Deepgram
 
-Shown when **Transcription engine** is **Deepgram**. Deepgram's official pre-recorded API. Files up to 2 GB are sent whole, so diarization keeps consistent speaker numbering across the entire recording. A free account includes a starter credit, then pay-as-you-go. See [Deepgram API key](use-cases/deepgram-api-key.md).
+One of the pages under **Engines**, listed whether or not it is the engine transcription currently runs on. Deepgram's official pre-recorded API. Files up to 2 GB are sent whole, so diarization keeps consistent speaker numbering across the entire recording. A free account includes a starter credit, then pay-as-you-go. See [Deepgram API key](use-cases/deepgram-api-key.md).
 
 | Setting              | What it does                                                                                                                                               | Options / range                                                 | Default                       |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | ----------------------------- |
@@ -188,7 +188,7 @@ Shown when **Transcription engine** is **Deepgram**. Deepgram's official pre-rec
 
 ### Engine: Google Gemini
 
-Shown when **Transcription engine** is **Google Gemini**. Google's multimodal `generateContent` plus the File API. Files up to 2 GB are uploaded whole. Containers Gemini does not accept (for example `webm`, `m4a`) are decoded to 16 kHz mono WAV first. Recordings longer than 15 minutes are split into parts and stitched; a diarized split resets speaker numbering and surfaces a warning. See [Gemini API key](use-cases/gemini-api-key.md).
+One of the pages under **Engines**, listed whether or not it is the engine transcription currently runs on, and also the page the post-processing prompts are configured on when they run through Gemini. Google's multimodal `generateContent` plus the File API. Files up to 2 GB are uploaded whole. Containers Gemini does not accept (for example `webm`, `m4a`) are decoded to 16 kHz mono WAV first. Recordings longer than 15 minutes are split into parts and stitched; a diarized split resets speaker numbering and surfaces a warning. See [Gemini API key](use-cases/gemini-api-key.md).
 
 | Setting                   | What it does                                                                                                                                                              | Options / range                                                                                                                                                            | Default                                     |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
@@ -199,7 +199,7 @@ Shown when **Transcription engine** is **Google Gemini**. Google's multimodal `g
 
 ### Engine: Local whisper.cpp
 
-Shown when **Transcription engine** is **Local whisper.cpp (desktop)**. Runs a local `whisper.cpp` binary fully offline - no network request, so **Request timeout** is hidden and there is no diarization. See [Local whisper.cpp](use-cases/local-whisper-cpp.md).
+One of the pages under **Engines**, listed whether or not it is the engine transcription currently runs on. Runs a local `whisper.cpp` binary fully offline - no network request, so **Request timeout** is hidden and there is no diarization. See [Local whisper.cpp](use-cases/local-whisper-cpp.md).
 
 | Setting                     | What it does                                                                                                                           | Options / range                                                                                                                         | Default   |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | --------- |
