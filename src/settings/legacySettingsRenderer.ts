@@ -137,15 +137,6 @@ function evaluate(
 }
 
 /**
- * The elements that answer a click themselves. A row bound to an action listens
- * on the whole row, and a list row carries a delete button inside it, so without
- * this the delete would run and then be read a second time as "the row was
- * clicked" - which on a model catalogue deleted an id and immediately selected
- * it again. What owns the click is the innermost control under the pointer.
- */
-const INTERACTIVE_SELECTOR = 'button, input, select, textarea, a';
-
-/**
  * Renders setting definitions with the pre-1.13 API and keeps enough state to
  * refresh their predicates and release what they own.
  */
@@ -155,10 +146,16 @@ export class LegacySettingsRenderer {
 	/** Every rendered group, list, and page, so their predicates can be reapplied. */
 	private containers: RenderedContainer[] = [];
 
-	/** The group search field's current query, if one has been typed. */
-	private filter:
-		| { group: SettingDefinitionGroup; query: string }
-		| undefined;
+	/**
+	 * The query typed into each group's search field.
+	 *
+	 * One per group rather than one for the renderer: this Obsidian has no
+	 * sub-pages, so the whole tree flattens into a single column and every
+	 * list's filter is on screen at once. A single query would be replaced by
+	 * whichever field was typed into last, leaving the others displaying a
+	 * query that narrows nothing.
+	 */
+	private readonly filters = new Map<SettingDefinitionGroup, string>();
 
 	/**
 	 * Creates a renderer bound to a settings store.
@@ -181,7 +178,6 @@ export class LegacySettingsRenderer {
 		items: readonly SettingDefinitionItem[],
 	): void {
 		this.release();
-		this.filter = undefined;
 		containerEl.empty();
 		for (const item of items) {
 			this.renderItem(containerEl, item, []);
@@ -230,39 +226,27 @@ export class LegacySettingsRenderer {
 	}
 
 	/**
-	 * Whether a row passes the search field of the list it belongs to.
+	 * Whether a row passes the search field of every group that filters it.
 	 *
-	 * A list's entries are matched, not its rows: where the entries are plain
-	 * settings the two are the same thing, but where an entry is an entity with
-	 * a page of its own (a profile), the rows on screen are that page's and the
-	 * name the user is filtering by is the entry's. Rows the definition marks
-	 * unsearchable always show, as they do in the framework.
+	 * A group filters only its own entries, so a row is tested against the
+	 * queries of the groups it belongs to and ignored by the rest. Rows the
+	 * definition marks unsearchable always show, as they do in the framework.
 	 * @param row - The rendered row to test
 	 */
 	private matchesFilter(row: RenderedRow): boolean {
-		const filter = this.filter;
-		if (!filter || filter.query === '') {
-			return true;
-		}
-		const entries: readonly unknown[] = filter.group.items ?? [];
-		const entry: SettingDefinition | SettingContainer | undefined =
-			entries.includes(row.definition)
-				? row.definition
-				: row.ancestors.find((ancestor) => entries.includes(ancestor));
-		// A list's entries are rows or pages, both of which carry a name; a
-		// group is neither, so it is not an entry of anything.
-		if (!entry || !('name' in entry)) {
-			return true;
-		}
 		if (!evaluate(row.definition.searchable, true)) {
 			return true;
 		}
-		// Matched on the entry's name, so one declared filter serves a list of
-		// plain settings and a list of entities alike.
-		return (
-			filter.group.search?.match({ name: entry.name }, filter.query) ??
-			true
-		);
+		for (const [group, query] of this.filters) {
+			const entry = query === '' ? undefined : entryOf(group, row);
+			if (
+				entry &&
+				!(group.search?.match({ name: entry.name }, query) ?? true)
+			) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/**
@@ -281,6 +265,9 @@ export class LegacySettingsRenderer {
 		}
 		this.rows = [];
 		this.containers = [];
+		// A query belongs to the field it was typed into, and the fields go
+		// with the rows.
+		this.filters.clear();
 	}
 
 	/**
@@ -390,7 +377,7 @@ export class LegacySettingsRenderer {
 				search.setPlaceholder(group.search.placeholder);
 			}
 			search.onChange((query) => {
-				this.filter = { group, query };
+				this.filters.set(group, query);
 				this.refreshState();
 			});
 		});
@@ -426,14 +413,21 @@ export class LegacySettingsRenderer {
 		};
 		if (list?.onDelete) {
 			const onDelete = list.onDelete;
-			setting.addExtraButton((button) =>
-				button
-					.setIcon('lucide-x')
-					.setTooltip('Delete')
-					.onClick(() => {
-						onDelete(index);
-					}),
-			);
+			setting.addExtraButton((button) => {
+				button.setIcon('lucide-x').setTooltip('Delete');
+				// Bound on the element rather than through onClick(), which is
+				// handed no event: the row this button sits in may run an
+				// action of its own on any click that reaches it, so a delete
+				// has to end the click here. On a model catalogue it did not,
+				// and deleting an id immediately selected it again. Ending the
+				// click is also what keeps the rule independent of the element
+				// Obsidian builds the button from - it is a clickable-icon
+				// div, which no list of interactive tag names catches.
+				button.extraSettingsEl.addEventListener('click', (event) => {
+					event.stopPropagation();
+					onDelete(index);
+				});
+			});
 		}
 		if (definition.control) {
 			Object.assign(row, {
@@ -458,8 +452,10 @@ export class LegacySettingsRenderer {
 	 * Makes the whole row run an action when clicked, which is what a 1.13
 	 * action row does. The chevron is the affordance that says so.
 	 *
-	 * A control inside the row keeps its own click: the row's action is what
-	 * clicking the row means, not what clicking everything within it means.
+	 * A control inside the row keeps its own click by ending it where it is
+	 * handled, the way the delete button of a list row does: the row's action
+	 * is what clicking the row means, not what clicking everything within it
+	 * means.
 	 * @param setting - The row being bound
 	 * @param action - The definition's action callback
 	 * @param index - The row's position among its siblings
@@ -470,13 +466,7 @@ export class LegacySettingsRenderer {
 		index: number,
 	): void {
 		setting.settingEl.addClass(LEGACY_ACTION_ROW_CLASS);
-		setting.settingEl.addEventListener('click', (event) => {
-			if (
-				event.target instanceof Element &&
-				event.target.closest(INTERACTIVE_SELECTOR)
-			) {
-				return;
-			}
+		setting.settingEl.addEventListener('click', () => {
 			action(setting.settingEl, index);
 		});
 		setIcon(setting.controlEl.createSpan(), 'lucide-chevron-right');
@@ -678,6 +668,31 @@ export class LegacySettingsRenderer {
 		});
 		return hook;
 	}
+}
+
+/**
+ * The entry of a group that a rendered row speaks for, or undefined when the
+ * row belongs to some other part of the tree.
+ *
+ * A group's entries are matched, not its rows: where the entries are plain
+ * settings the two are the same thing, but where an entry is an entity with a
+ * page of its own (a profile), the rows on screen are that page's while the
+ * name the user is filtering by is the entry's.
+ * @param group - The group whose entries are being looked through
+ * @param row - The rendered row to place
+ */
+function entryOf(
+	group: SettingDefinitionGroup,
+	row: RenderedRow,
+): { name: string } | undefined {
+	const entries: readonly unknown[] = group.items ?? [];
+	const entry: SettingDefinition | SettingContainer | undefined =
+		entries.includes(row.definition)
+			? row.definition
+			: row.ancestors.find((ancestor) => entries.includes(ancestor));
+	// A group's entries are rows or pages, both of which carry a name; a plain
+	// group is neither, so it is not an entry of anything.
+	return entry && 'name' in entry ? entry : undefined;
 }
 
 /**

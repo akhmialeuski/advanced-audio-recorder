@@ -837,15 +837,25 @@ export class SearchComponent extends TextComponent {
 
 /**
  * Mock ExtraButtonComponent: the compact icon-only button beside a control.
+ *
+ * Obsidian builds it as a `div.clickable-icon.extra-setting-button`, not as a
+ * `<button>` - which is why it has to be given a tabindex to be reachable at
+ * all. Modelled here as the div it is: a mock that answered `button` let a
+ * renderer distinguishing "a click on a control" from "a click on the row"
+ * pass its tests while failing in Obsidian.
  */
 export class ExtraButtonComponent {
 	extraSettingsEl: HTMLElement = addObsidianDomExtensions(
-		document.createElement('button'),
+		document.createElement('div'),
 	);
 	disabled = false;
 
 	constructor() {
-		this.extraSettingsEl.classList.add('extra-setting-button');
+		this.extraSettingsEl.classList.add(
+			'clickable-icon',
+			'extra-setting-button',
+		);
+		this.extraSettingsEl.setAttribute('tabindex', '0');
 	}
 
 	setIcon(icon: string): this {

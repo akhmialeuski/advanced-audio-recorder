@@ -505,6 +505,22 @@ describe('LegacySettingsRenderer', () => {
 			expect(addItem).toHaveBeenCalledTimes(1);
 		});
 
+		/**
+		 * The delete affordance of a rendered list row. Obsidian's extra
+		 * button is a clickable-icon div, so it is found the way it exists
+		 * rather than as a native button.
+		 * @param name - Name of the row whose delete button is wanted
+		 */
+		const deleteButtonFor = (name: string): HTMLElement => {
+			const button = rowFor(name).querySelector<HTMLElement>(
+				'.setting-item-control .clickable-icon',
+			);
+			if (!button) {
+				throw new Error(`No delete button rendered for: ${name}`);
+			}
+			return button;
+		};
+
 		it('deletes an entry by its position in the list', () => {
 			const onDelete = jest.fn();
 			renderer.render(
@@ -512,9 +528,7 @@ describe('LegacySettingsRenderer', () => {
 				listTree(['whisper-1', 'whisper-2'], { onDelete }),
 			);
 
-			rowFor('whisper-2')
-				.querySelector<HTMLElement>('.setting-item-control button')
-				?.click();
+			deleteButtonFor('whisper-2').click();
 
 			expect(onDelete).toHaveBeenCalledWith(1);
 		});
@@ -524,6 +538,8 @@ describe('LegacySettingsRenderer', () => {
 			// deletes it. The row listens on the whole row and the button sits
 			// inside it, so a delete used to bubble back out as "the row was
 			// clicked" - which removed an id and immediately selected it again.
+			// The click has to end at the button, since what element Obsidian
+			// builds that button from is not this renderer's to know.
 			const onDelete = jest.fn();
 			const action = jest.fn();
 			renderer.render(containerEl, [
@@ -534,9 +550,7 @@ describe('LegacySettingsRenderer', () => {
 				} as unknown as SettingDefinitionItem,
 			]);
 
-			rowFor('whisper-1')
-				.querySelector<HTMLElement>('.setting-item-control button')
-				?.click();
+			deleteButtonFor('whisper-1').click();
 
 			expect(onDelete).toHaveBeenCalledWith(0);
 			expect(action).not.toHaveBeenCalled();
@@ -620,6 +634,72 @@ describe('LegacySettingsRenderer', () => {
 
 			expect(rowFor('Legal terms').style.display).toBe('');
 			expect(rowFor('Standup terms').style.display).toBe('none');
+		});
+
+		it('narrows each list through its own search field', () => {
+			// This Obsidian has no sub-pages, so every list is on screen at
+			// once and so is every filter. A single remembered query was
+			// replaced by whichever field was typed into last, which left the
+			// other list showing everything under a field that still read as
+			// filtering it.
+			const searchable = (
+				heading: string,
+				names: string[],
+			): SettingDefinitionItem => ({
+				type: 'list',
+				heading,
+				search: {
+					placeholder: `Filter ${heading}`,
+					match: (def, query): boolean =>
+						def.name.toLowerCase().includes(query.toLowerCase()),
+				},
+				items: names.map((name) => ({ name })),
+			});
+			renderer.render(containerEl, [
+				searchable('Whisper models', ['whisper-1', 'nova-2']),
+				searchable('Gemini models', [
+					'gemini-3.5-flash',
+					'gemini-2.5-pro',
+				]),
+			]);
+
+			const [whisperSearch, geminiSearch] = Array.from(
+				containerEl.querySelectorAll<HTMLInputElement>(
+					'.aar-search-row input',
+				),
+			);
+			if (!whisperSearch || !geminiSearch) {
+				throw new Error('Both search fields should render');
+			}
+			whisperSearch.value = 'nova';
+			whisperSearch.dispatchEvent(new Event('input'));
+			geminiSearch.value = 'pro';
+			geminiSearch.dispatchEvent(new Event('input'));
+
+			// Each query narrows its own list and leaves the other alone.
+			expect(rowFor('whisper-1').style.display).toBe('none');
+			expect(rowFor('nova-2').style.display).toBe('');
+			expect(rowFor('gemini-3.5-flash').style.display).toBe('none');
+			expect(rowFor('gemini-2.5-pro').style.display).toBe('');
+		});
+
+		it('forgets every query when the tree is rendered again', () => {
+			renderer.render(containerEl, listTree(['whisper-1', 'nova-2']));
+			const search = containerEl.querySelector<HTMLInputElement>(
+				'.aar-search-row input',
+			);
+			if (!search) {
+				throw new Error('No search field rendered');
+			}
+			search.value = 'nova';
+			search.dispatchEvent(new Event('input'));
+
+			renderer.render(containerEl, listTree(['whisper-1', 'nova-2']));
+
+			// The field is gone with the rows it filtered, so the query it held
+			// must not keep hiding rows nothing is narrowing any more.
+			expect(rowFor('whisper-1').style.display).toBe('');
+			expect(rowFor('nova-2').style.display).toBe('');
 		});
 	});
 
