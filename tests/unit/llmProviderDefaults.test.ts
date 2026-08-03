@@ -118,23 +118,60 @@ describe('the pre-rework single LLM model', () => {
 		});
 
 		expect(merged.geminiModel).toBe('gemini-2.5-pro');
+		// Not adopted, but not lost either: the id stays pickable.
+		expect(merged.geminiModels).toContain('gemini-2.0-flash');
 		expect('llmModel' in merged).toBe(false);
 	});
 
-	it('carries onto a field still holding what this version ships', () => {
+	it('carries onto a catalogue that answers prompts alone', () => {
+		// Anthropic never transcribes, so its catalogue was only ever the chat
+		// one and adopting the stored id loses nothing.
 		const merged = mergeSettings({
-			llmProvider: 'gemini',
-			llmModel: 'gemini-2.0-flash',
+			llmProvider: 'anthropic',
+			llmModel: 'claude-3-5-sonnet',
 		});
 
-		expect(merged.geminiModel).toBe('gemini-2.0-flash');
+		expect(merged.llmAnthropicModel).toBe('claude-3-5-sonnet');
 		// The migrated id is what a run uses, so the catalogue lists it too.
-		expect(merged.geminiModels).toContain('gemini-2.0-flash');
+		expect(merged.llmAnthropicModels).toContain('claude-3-5-sonnet');
+	});
+
+	it('offers a Gemini chat model rather than transcribing on it', () => {
+		// Gemini serves one catalogue for both jobs. A user transcribing on the
+		// shipped default has never touched that field, so holding the default
+		// says nothing about whether it is in use - adopting the chat id there
+		// would move what transcription runs on, and what it costs, without
+		// anything having been asked. It joins the catalogue instead.
+		const merged = mergeSettings({
+			llmProvider: 'gemini',
+			llmModel: 'gemini-2.5-pro',
+		});
+
+		expect(merged.geminiModel).toBe(DEFAULT_SETTINGS.geminiModel);
+		expect(merged.geminiModels).toContain('gemini-2.5-pro');
+	});
+
+	it('offers a stored Gemini chat model on the same terms', () => {
+		// The dedicated llmGeminiModel field went the same way as llmModel, so
+		// it is carried over by the same rule rather than by one of its own.
+		const merged = mergeSettings({
+			llmProvider: 'openai-compatible',
+			llmGeminiModel: 'gemini-2.5-pro',
+			llmGeminiModels: ['gemini-2.5-pro', 'gemini-2.0-flash'],
+		});
+
+		expect(merged.geminiModel).toBe(DEFAULT_SETTINGS.geminiModel);
+		expect(merged.geminiModels).toEqual(
+			expect.arrayContaining(['gemini-2.5-pro', 'gemini-2.0-flash']),
+		);
+		expect('llmGeminiModel' in merged).toBe(false);
+		expect('llmGeminiModels' in merged).toBe(false);
 	});
 
 	it('leaves a vendor with a catalogue of its own untouched by the other', () => {
-		// OpenAI keeps its chat ids apart from its Whisper ids, so the legacy
-		// chat model reaches one of them only.
+		// OpenAI keeps its chat ids apart from its Whisper ids: a catalogue
+		// belongs to the engine, not to the account the two engines share, so
+		// the legacy chat model reaches one of them only.
 		const merged = mergeSettings({
 			llmProvider: 'openai-compatible',
 			llmModel: 'gpt-4o-mini',
