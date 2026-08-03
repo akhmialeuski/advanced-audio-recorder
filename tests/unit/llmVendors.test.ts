@@ -8,12 +8,12 @@
 import {
 	LLM_VENDOR_IDS,
 	LLM_VENDORS,
+	jobLlmVendor,
 	llmVendor,
-	selectedLlmVendor,
 } from 'src/transcription/llm/vendors';
 import { LLM_PROVIDER_IDS } from 'src/constants';
 import { mergeSettings } from 'src/settings/settingsSerialization';
-import { resolveLlmPricing, selectedLlmModel } from 'src/transcription/costs';
+import { resolveLlmPricing } from 'src/transcription/costs';
 import {
 	createLlmProvider,
 	ProviderConfigError,
@@ -125,10 +125,7 @@ describe('registry-derived consumers stay in step', () => {
 			// The registry, not a per-consumer switch, decides which field holds
 			// the model; a vendor left out of a consumer used to silently read
 			// OpenAI's.
-			expect(selectedLlmModel(settings)).toBe(
-				vendor.settings.model(settings),
-			);
-			expect(selectedLlmVendor(settings)).toBe(vendor);
+			expect(jobLlmVendor(settings, 'postProcess')).toBe(vendor);
 			// Every seeded default model must be priced by its own vendor's table.
 			expect(
 				resolveLlmPricing(id, vendor.settings.model(settings)),

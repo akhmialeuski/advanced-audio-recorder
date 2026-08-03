@@ -141,12 +141,18 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * re-render enumerates again, so only a real change asks for another one.
 	 */
 	private deviceSignature = '';
-	/** Latest device refresh generation; older async results are discarded. */
+	/**
+	 * Latest device refresh generation; older async results are discarded.
+	 *
+	 * This is also what stops a result landing on a tab that has been left:
+	 * `hide()` bumps the generation, so everything in flight at that moment is
+	 * already stale by the time it resolves. A second "is the tab shown" flag
+	 * beside it would be the same guard written twice, and the two could
+	 * disagree.
+	 */
 	private deviceRefreshGeneration = 0;
 	/** Latest format-availability probe; older async results are discarded. */
 	private formatAvailabilityGeneration = 0;
-	/** Prevents a refresh from updating controls after the tab is hidden. */
-	private isDisplayed = false;
 	/**
 	 * Debounced settings save shared by the text fields, which fire
 	 * onChange on every keystroke and would otherwise rewrite data.json
@@ -270,8 +276,14 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			// outlives, and the tree is rebuilt for every pass anyway.
 			declareListAddRow: !this.renderMode.rendersListAddRow(),
 			renderDocumentationLink: (host): void => {
-				// The first row of every pass, and the one place that knows the
-				// tab is on screen on both render paths.
+				// The tab's "it reached the screen" signal, which is why this
+				// row stays first and stays a render row. From 1.13 nothing
+				// else says so: display() is not called, and
+				// getSettingDefinitions() also runs once at plugin load to
+				// index the settings search, so enumerating there would leave
+				// a device listener open on a tab nobody opened. A render
+				// callback runs only when rows are actually drawn, which is
+				// exactly the question being asked.
 				this.ensureDeviceWatch();
 				this.renderDocumentationLink(host);
 			},
@@ -811,7 +823,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * open and again whenever the system reports a change.
 	 */
 	private ensureDeviceWatch(): void {
-		this.isDisplayed = true;
 		if (!this.deviceChangeHandler) {
 			this.deviceChangeHandler = (): void => {
 				void this.refreshDeviceList();
@@ -926,10 +937,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			// recording-start validation still guards the session
 			return;
 		}
-		if (
-			!this.isDisplayed ||
-			generation !== this.formatAvailabilityGeneration
-		) {
+		if (generation !== this.formatAvailabilityGeneration) {
 			return;
 		}
 		for (const option of Array.from(dropdown.selectEl.options)) {
@@ -963,10 +971,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		} catch {
 			note.textContent = `This device cannot record ${stored.toUpperCase()}. Select a different format.`;
 		}
-		if (
-			!this.isDisplayed ||
-			generation !== this.formatAvailabilityGeneration
-		) {
+		if (generation !== this.formatAvailabilityGeneration) {
 			return;
 		}
 		descEl.appendChild(note);
@@ -982,7 +987,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	private async refreshDeviceList(): Promise<void> {
 		const generation = ++this.deviceRefreshGeneration;
 		const snapshot = await getAudioInputDeviceSnapshot();
-		if (!this.isDisplayed || generation !== this.deviceRefreshGeneration) {
+		if (generation !== this.deviceRefreshGeneration) {
 			return;
 		}
 		this.deviceSnapshot = snapshot;
@@ -1128,7 +1133,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * device-change listener registered in display().
 	 */
 	override hide(): void {
-		this.isDisplayed = false;
 		// Invalidate every in-flight enumeration and probe before
 		// detaching controls.
 		this.deviceRefreshGeneration++;

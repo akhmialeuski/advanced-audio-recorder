@@ -211,18 +211,6 @@ export function llmVendor(id: LlmProviderId): LlmVendorDescriptor {
 }
 
 /**
- * The descriptor for the vendor post-processing selects. Named for that job
- * rather than for "the LLM", because the other two jobs pick their own; see
- * {@link LLM_JOBS}.
- * @param settings - Plugin settings
- */
-export function selectedLlmVendor(
-	settings: AudioRecorderSettings,
-): LlmVendorDescriptor {
-	return jobLlmVendor(settings, 'postProcess');
-}
-
-/**
  * The jobs that drive an LLM. Each one picks its own engine, so a run can
  * summarize with one service and title its chapters with another.
  */

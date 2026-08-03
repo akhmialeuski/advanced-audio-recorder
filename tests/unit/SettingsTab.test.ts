@@ -543,6 +543,61 @@ describe('AudioRecorderSettingTab', () => {
 			);
 		});
 
+		/** A device list the enumeration answers with, named for its label. */
+		const audioInput = (deviceId: string, label: string): MediaDeviceInfo =>
+			({
+				kind: 'audioinput',
+				deviceId,
+				label,
+				groupId: '',
+				toJSON: () => ({}),
+			}) as unknown as MediaDeviceInfo;
+
+		it('renders the devices an enumeration finds while the tab is open', async () => {
+			(
+				navigator.mediaDevices.enumerateDevices as jest.Mock
+			).mockResolvedValue([audioInput('mic-1', 'Desk microphone')]);
+
+			legacyTab.display();
+			await flushAsync();
+
+			// The enumeration is asynchronous, so the first pass has no devices
+			// and the result is what asks for the second. Nothing else gates
+			// that: a flag saying the tab is shown would only be a second copy
+			// of the generation check, able to disagree with it.
+			expect(
+				Array.from(
+					legacyTab.containerEl.querySelectorAll('option'),
+				).map((option) => option.textContent),
+			).toContain('Desk microphone');
+		});
+
+		it('drops an enumeration that lands after the tab was left', async () => {
+			let answer = (): void => undefined;
+			(
+				navigator.mediaDevices.enumerateDevices as jest.Mock
+			).mockImplementation(
+				() =>
+					new Promise((resolve) => {
+						answer = (): void => {
+							resolve([
+								audioInput('late-mic', 'Arrived after hide'),
+							]);
+						};
+					}),
+			);
+			legacyTab.display();
+			legacyTab.hide();
+			const afterHide = legacyTab.containerEl.innerHTML;
+
+			answer();
+			await flushAsync();
+
+			// hide() bumps the refresh generation, which is the whole guard:
+			// re-rendering here would rebuild a tab nobody is looking at.
+			expect(legacyTab.containerEl.innerHTML).toBe(afterHide);
+		});
+
 		it('declares no settings, so Obsidian renders through display()', () => {
 			// An empty list is the signal: 1.13's renderTab() falls back to
 			// display() only while there is nothing to render declaratively.

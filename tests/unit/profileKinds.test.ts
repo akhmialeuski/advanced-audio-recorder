@@ -6,7 +6,7 @@
  * @module tests/unit/profileKinds.test
  */
 
-import { PROFILE_KINDS, profileKindsOf } from 'src/settings/profileKinds';
+import { PROFILE_KINDS } from 'src/settings/profileKinds';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import {
 	addProfile,
@@ -100,7 +100,9 @@ describe.each(PROFILE_KINDS.map((kind) => [kind.heading, kind] as const))(
 		});
 
 		it('belongs to exactly one block of the settings', () => {
-			expect(profileKindsOf(kind.section)).toContain(kind);
+			expect(
+				PROFILE_KINDS.filter((other) => other.section === kind.section),
+			).toContain(kind);
 			expect(
 				PROFILE_KINDS.filter(
 					(other) => other !== kind && other.heading === kind.heading,

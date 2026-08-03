@@ -65,7 +65,6 @@ import {
 	ENGINES,
 	ENGINE_ORDER,
 	accountOf,
-	type AccountId,
 	type EngineDescriptor,
 	type EngineId,
 	type ProviderModels,
@@ -1309,20 +1308,14 @@ function engineSummary(
 }
 
 /**
- * The accounts a key has been entered for. An account is what a key belongs to,
- * so two engines reached through one are one answer, not two.
+ * How many accounts a key has been entered for. An account is what a key
+ * belongs to, so the accounts themselves are counted rather than the engines
+ * behind them: two engines over one account are one answer, not two.
  * @param settings - Live settings, read for each account's key
- * @returns The ids of the accounts that hold a key
  */
-function configuredAccounts(settings: AudioRecorderSettings): Set<AccountId> {
-	const configured = new Set<AccountId>();
-	for (const id of ENGINE_ORDER) {
-		const engine = ENGINES[id];
-		if (engine.account && ACCOUNTS[engine.account].apiKey(settings)) {
-			configured.add(engine.account);
-		}
-	}
-	return configured;
+function configuredAccountCount(settings: AudioRecorderSettings): number {
+	return Object.values(ACCOUNTS).filter((account) => account.apiKey(settings))
+		.length;
 }
 
 /**
@@ -1340,7 +1333,7 @@ function enginesPage(ctx: SettingsDefinitionContext): SettingGroupItem {
 		// it belongs to, and the two engines over the OpenAI account would
 		// otherwise both report the one key that was entered.
 		displayValue: (): string =>
-			`${String(configuredAccounts(ctx.settings).size)} configured`,
+			`${String(configuredAccountCount(ctx.settings))} configured`,
 		visible: (): boolean => ctx.settings.transcriptionEnabled,
 		items: sectionItems(
 			ENGINE_ORDER.map((id) =>

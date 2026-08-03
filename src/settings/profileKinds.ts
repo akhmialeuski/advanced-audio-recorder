@@ -165,20 +165,14 @@ function asProfileKind<T extends Profile>(kind: ProfileKind<T>): ProfileKind {
 	return kind as unknown as ProfileKind;
 }
 
-/** Every kind of profile, in the order the settings show them. */
+/**
+ * Every kind of profile, in the order the settings show them. Which block each
+ * one belongs to is the kind's own `section`, and the settings tree filters the
+ * catalogues it built from this list by it, so there is no second answer here
+ * to the same question.
+ */
 export const PROFILE_KINDS: readonly ProfileKind[] = [
 	asProfileKind(SPEAKER_KIND),
 	asProfileKind(DICTIONARY_KIND),
 	asProfileKind(CHAPTER_KIND),
 ];
-
-/**
- * The kinds whose catalogue belongs to one block of the settings.
- * @param section - The block being built
- * @returns Its kinds, in the order they are shown
- */
-export function profileKindsOf(
-	section: ProfileSection,
-): readonly ProfileKind[] {
-	return PROFILE_KINDS.filter((kind) => kind.section === section);
-}

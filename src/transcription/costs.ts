@@ -27,7 +27,6 @@ import {
 	jobLlmVendor,
 	jobVendorId,
 	llmVendor,
-	selectedLlmVendor,
 	type LlmJobId,
 } from './llm/vendors';
 import { vendorMaxTokens } from '../providers/providers';
@@ -147,14 +146,6 @@ export function selectedEngineModel(
 	engineId: TranscriptionProviderId,
 ): string {
 	return transcriptionEngine(engineId).model(settings);
-}
-
-/**
- * Returns the model id the settings select for the current LLM provider.
- * @param settings - Plugin settings
- */
-export function selectedLlmModel(settings: AudioRecorderSettings): string {
-	return selectedLlmVendor(settings).settings.model(settings);
 }
 
 /**

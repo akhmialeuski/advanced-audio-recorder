@@ -47,6 +47,5 @@ export {
 	LLM_VENDORS,
 	jobLlmVendor,
 	jobVendorId,
-	selectedLlmVendor,
 } from './llm/vendors';
 export type { LlmJobId, LlmVendorDescriptor } from './llm/vendors';
