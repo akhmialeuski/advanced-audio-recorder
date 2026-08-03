@@ -1130,8 +1130,45 @@ export const Platform = {
 	isMobileApp: false,
 };
 
-/** Mock of obsidian's module-level API version export. */
-export const apiVersion = '1.12.3';
+/**
+ * Mock of obsidian's module-level API version export, holding the version the
+ * plugin builds against. Writable because it is also what requireApiVersion()
+ * answers from: a test that models an older Obsidian moves it (through
+ * __setApiVersion) rather than keeping a second version beside this one.
+ */
+export let apiVersion = '1.13.0';
+
+/**
+ * Sets the app version the mock reports, for a test that models a specific
+ * Obsidian. Restore the previous value when the test is done.
+ * @param version - Version to report from now on
+ */
+export function __setApiVersion(version: string): void {
+	apiVersion = version;
+}
+
+/**
+ * Mock of obsidian's requireApiVersion: whether the running app is at least
+ * the requested version, compared the way the real one compares - numerically,
+ * segment by segment.
+ * @param version - Lowest version the caller needs
+ * @returns Whether the reported version is that version or newer
+ */
+export function requireApiVersion(version: string): boolean {
+	const parse = (value: string): number[] =>
+		value.split('.').map((part) => Number.parseInt(part, 10) || 0);
+	const running = parse(apiVersion);
+	const required = parse(version);
+	const segments = Math.max(running.length, required.length);
+	for (let index = 0; index < segments; index++) {
+		const here = running[index] ?? 0;
+		const needed = required[index] ?? 0;
+		if (here !== needed) {
+			return here > needed;
+		}
+	}
+	return true;
+}
 
 /**
  * Mock AbstractInputSuggest: enough surface for components that attach

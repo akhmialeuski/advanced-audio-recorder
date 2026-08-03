@@ -15,9 +15,9 @@
  * @module tests/helpers/declarativeSettings
  */
 
-import { PluginSettingTab, Setting } from 'obsidian';
+import { PluginSettingTab, Setting, apiVersion } from 'obsidian';
 import type { SettingDefinitionItem } from 'obsidian';
-import { at } from './assertions';
+import { __setApiVersion } from '../mocks/obsidian';
 
 /**
  * A tab's render definition, in the shape a test reads it: the framework
@@ -265,18 +265,39 @@ export interface DeclarativeFrame {
 }
 
 /**
- * The single render definition a tab declares.
+ * The first render definition a tab declares, which is the documentation
+ * callout the tab opens with. Found at any depth, since every row of the tree
+ * sits inside the block it belongs to.
  * @param definitions - What `getSettingDefinitions()` returned
  * @returns That definition, narrowed to its render shape
  */
 export const renderDefinitionOf = (
 	definitions: SettingDefinitionItem[],
 ): RenderDefinition => {
-	const definition = at(definitions, 0, 'setting definition');
-	if (!('render' in definition) || typeof definition.render !== 'function') {
+	const search = (
+		entries: ReadonlyArray<RowDefinition | GroupDefinition>,
+	): RenderDefinition | undefined => {
+		for (const entry of entries) {
+			if ('type' in entry) {
+				const nested = search(entry.items ?? []);
+				if (nested) {
+					return nested;
+				}
+				continue;
+			}
+			if (typeof entry.render === 'function') {
+				return entry as RenderDefinition;
+			}
+		}
+		return undefined;
+	};
+	const found = search(
+		definitions as ReadonlyArray<RowDefinition | GroupDefinition>,
+	);
+	if (!found) {
 		throw new Error('The tab declares no render definition');
 	}
-	return definition as RenderDefinition;
+	return found;
 };
 
 /** Builds the DOM the framework wraps a definition in. */
@@ -328,20 +349,25 @@ export const releaseThroughFramework = (frame: DeclarativeFrame): void => {
 };
 
 /**
- * Runs a body against an Obsidian that has no `SettingTab.update()`, the
- * method 1.13 added alongside the declarative render. Its absence is what a
- * tab probes for when it picks the imperative path, and since that choice is
- * made in the constructor, the tab under test has to be built inside the body.
- * @param body - Runs while the prototype models the older Obsidian
+ * Runs a body against an Obsidian older than 1.13, the version that brought
+ * the declarative settings API and the `SettingTab.update()` that re-renders
+ * from it. The reported app version is what a tab asks when it picks the
+ * imperative path, and since that choice is made in the constructor, the tab
+ * under test has to be built inside the body. `update()` goes with the version
+ * it arrived in, so the older prototype does not carry it either.
+ * @param body - Runs while the mock models the older Obsidian
  * @returns Whatever the body returned
  */
-export const withoutFrameworkUpdate = <T>(body: () => T): T => {
+export const withoutDeclarativeSettings = <T>(body: () => T): T => {
 	const base = PluginSettingTab.prototype as { update?: () => void };
 	const update = base.update;
+	const version = apiVersion;
 	delete base.update;
+	__setApiVersion('1.12.3');
 	try {
 		return body();
 	} finally {
+		__setApiVersion(version);
 		if (update) {
 			base.update = update;
 		}

@@ -112,7 +112,7 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 	it("reads the API version from obsidian's module export", () => {
 		const result = SystemDiagnostics.collectEnvironment(makeApp());
 
-		expect(result.obsidianVersion).toBe('1.12.3');
+		expect(result.obsidianVersion).toBe('1.13.0');
 	});
 
 	it('reads electron and node versions from process.versions', () => {
@@ -462,7 +462,7 @@ describe('SystemDiagnostics.collect', () => {
 		expect(result).toHaveProperty('audioDevices');
 		expect(result).toHaveProperty('audioCapabilities');
 		expect(result).toHaveProperty('activeRecordingConfig');
-		expect(result.environment.obsidianVersion).toBe('1.12.3');
+		expect(result.environment.obsidianVersion).toBe('1.13.0');
 		expect(result.pluginSettings.recordingFormat).toBe(FORMAT_WEBM);
 		expect(Array.isArray(result.audioDevices)).toBe(true);
 	});

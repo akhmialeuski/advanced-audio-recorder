@@ -165,9 +165,15 @@ export const SETTINGS_ROOT_CLASS = 'aar-settings-root';
 export const SETTINGS_BLOCK_ROW_CLASS = 'aar-setting-block-row';
 
 /**
- * Marks a group whose text areas are laid out under their name across the whole
- * row. A glossary or a guidance prompt is edited in paragraphs, and the control
- * column a row gives a text area by default is a few characters wide.
+ * Marks a block whose rows are all multi-line editors, laid out with the field
+ * under its name across the whole row. A glossary or a guidance prompt is
+ * edited in paragraphs, and the control column a row gives a text area by
+ * default is a few characters wide.
+ *
+ * Only a group takes a class - a row cannot - so a text area is put in a block
+ * of its own rather than beside the switches and pickers it belongs with. That
+ * is what lets the stylesheet find it without asking which rows hold a text
+ * area, a question CSS can only answer by testing every element on the page.
  */
 export const STACKED_TEXT_CLASS = 'aar-stacked-text';
 
@@ -178,8 +184,13 @@ export const STACKED_TEXT_CLASS = 'aar-stacked-text';
  * between blocks and switches off the one Obsidian draws between the rows
  * inside them. It needs a handle for that, and a group is the only shape in the
  * tree that takes a class, so every group declared here carries this one - the
- * class also tells the stylesheet which containers are this plugin's, so
- * nothing outside its own settings is restyled.
+ * class is also the whole scope of those rules, so nothing outside this tab's
+ * own blocks is restyled.
+ *
+ * That scope only holds while the tree leaves no row loose: Obsidian collects
+ * every run of rows that sits outside a group into a block of its own, and such
+ * a block carries no class to find it by. Every level of this tree therefore
+ * declares its blocks itself, {@link sectionItems} being the shorthand for it.
  */
 export const SETTINGS_SECTION_CLASS = 'aar-settings-section';
 
@@ -604,9 +615,7 @@ function audioInputGroup(
  * already says whether recordings are split and how often.
  * @param settings - Live settings, read by the entry's value
  */
-function audioSplittingPage(
-	settings: AudioRecorderSettings,
-): SettingDefinitionItem {
+function audioSplittingPage(settings: AudioRecorderSettings): SettingGroupItem {
 	const available = isAutoSplitSupported();
 	return {
 		type: 'page',
@@ -675,7 +684,7 @@ function audioSplittingPage(
 function multiTrackPage(
 	settings: AudioRecorderSettings,
 	devices: DeviceOptions,
-): SettingDefinitionItem {
+): SettingGroupItem {
 	const available = isMultiTrackCaptureSupported();
 	const active = (): boolean => settings.enableMultiTrack && available;
 	const trackRows = (): SettingGroupItem[] => {
@@ -776,9 +785,7 @@ function multiTrackPage(
  * section.
  * @param settings - Live settings, read by the predicates
  */
-function audioPlayerPage(
-	settings: AudioRecorderSettings,
-): SettingDefinitionItem {
+function audioPlayerPage(settings: AudioRecorderSettings): SettingGroupItem {
 	const enhanced = (): boolean => settings.enhancedPlayerEnabled;
 	return {
 		type: 'page',
@@ -813,9 +820,15 @@ function audioPlayerPage(
  * prompt that steer it. Nothing here is shared with the other two LLM jobs any
  * more - each names its own engine beside its own switch - so the rows follow
  * this feature alone.
+ *
+ * Two blocks rather than one, because the prompt of the chosen task is a
+ * multi-line editor: it is laid out under its name across the row, and that
+ * layout is declared per block (see {@link STACKED_TEXT_CLASS}). The task
+ * decides which of the three prompts is shown, so the second block always holds
+ * exactly the one being edited, and disappears with the feature.
  * @param settings - Live settings, read by the predicates
  */
-function llmGroup(settings: AudioRecorderSettings): SettingDefinitionItem {
+function llmGroup(settings: AudioRecorderSettings): SettingDefinitionItem[] {
 	const postProcessing = (): boolean =>
 		settings.transcriptionEnabled && settings.llmPostProcessEnabled;
 	const promptRow = (
@@ -835,55 +848,64 @@ function llmGroup(settings: AudioRecorderSettings): SettingDefinitionItem {
 			...(rows === undefined ? {} : { rows }),
 		},
 	});
-	return {
-		type: 'group',
-		cls: SETTINGS_SECTION_CLASS,
-		heading: 'LLM post-processing',
-		visible: (): boolean => settings.transcriptionEnabled,
-		items: [
-			{
-				name: 'Enable LLM post-processing',
-				aliases: ['ai', 'summary', 'cleanup', 'gpt'],
-				desc: 'Clean up punctuation and formatting, or summarize the transcript with an LLM.',
-				control: { type: 'toggle', key: 'llmPostProcessEnabled' },
-			},
-			engineChoiceRow(
-				'Post-processing engine',
-				'Which engine writes the post-processed transcript. Set it up under Engines.',
-				LLM_JOBS.postProcess.key,
-				postProcessing,
-			),
-			{
-				name: 'Task',
-				desc: 'Clean up, summarize into key points, or apply a custom instruction.',
-				visible: postProcessing,
-				control: {
-					type: 'dropdown',
-					key: 'llmPostProcessTask',
-					options: LLM_TASK_LABELS,
+	return [
+		{
+			type: 'group',
+			cls: SETTINGS_SECTION_CLASS,
+			heading: 'LLM post-processing',
+			visible: (): boolean => settings.transcriptionEnabled,
+			items: [
+				{
+					name: 'Enable LLM post-processing',
+					aliases: ['ai', 'summary', 'cleanup', 'gpt'],
+					desc: 'Clean up punctuation and formatting, or summarize the transcript with an LLM.',
+					control: { type: 'toggle', key: 'llmPostProcessEnabled' },
 				},
-			},
-			promptRow(
-				'cleanup',
-				'Cleanup prompt',
-				'System instruction for the cleanup pass. The transcript language is appended automatically; empty uses the built-in default.',
-				'llmCleanupPrompt',
-			),
-			promptRow(
-				'summary',
-				'Summary prompt',
-				'System instruction for the summary pass. The transcript language is appended automatically; empty uses the built-in default.',
-				'llmSummaryPrompt',
-			),
-			promptRow(
-				'custom',
-				'Custom instruction',
-				'System instruction applied to the transcript text, sent verbatim.',
-				'llmCustomInstruction',
-				8,
-			),
-		],
-	};
+				engineChoiceRow(
+					'Post-processing engine',
+					'Which engine writes the post-processed transcript. Set it up under Engines.',
+					LLM_JOBS.postProcess.key,
+					postProcessing,
+				),
+				{
+					name: 'Task',
+					desc: 'Clean up, summarize into key points, or apply a custom instruction.',
+					visible: postProcessing,
+					control: {
+						type: 'dropdown',
+						key: 'llmPostProcessTask',
+						options: LLM_TASK_LABELS,
+					},
+				},
+			],
+		},
+		{
+			type: 'group',
+			cls: `${SETTINGS_SECTION_CLASS} ${STACKED_TEXT_CLASS}`,
+			visible: (): boolean => settings.transcriptionEnabled,
+			items: [
+				promptRow(
+					'cleanup',
+					'Cleanup prompt',
+					'System instruction for the cleanup pass. The transcript language is appended automatically; empty uses the built-in default.',
+					'llmCleanupPrompt',
+				),
+				promptRow(
+					'summary',
+					'Summary prompt',
+					'System instruction for the summary pass. The transcript language is appended automatically; empty uses the built-in default.',
+					'llmSummaryPrompt',
+				),
+				promptRow(
+					'custom',
+					'Custom instruction',
+					'System instruction applied to the transcript text, sent verbatim.',
+					'llmCustomInstruction',
+					8,
+				),
+			],
+		},
+	];
 }
 
 /** One stored profile, as its entry in the catalogue presents it. */
@@ -992,7 +1014,7 @@ function profilePage(
 		items: [
 			{
 				type: 'group',
-				cls: `${SETTINGS_SECTION_CLASS} ${STACKED_TEXT_CLASS}`,
+				cls: SETTINGS_SECTION_CLASS,
 				items: [
 					{
 						name: catalogue.selectionName,
@@ -1005,6 +1027,14 @@ function profilePage(
 							),
 						},
 					},
+				],
+			},
+			{
+				// The body is a multi-line editor, which is laid out across the
+				// whole row and therefore in a block of its own.
+				type: 'group',
+				cls: `${SETTINGS_SECTION_CLASS} ${STACKED_TEXT_CLASS}`,
+				items: [
 					{
 						name: catalogue.bodyName,
 						desc: catalogue.bodyDesc,
@@ -1873,7 +1903,7 @@ function autoChaptersGroup(
  */
 function audioProcessingPage(
 	settings: AudioRecorderSettings,
-): SettingDefinitionItem {
+): SettingGroupItem {
 	const rows: SettingDefinition[] = [
 		{
 			name: 'Noise suppression',
@@ -1927,9 +1957,7 @@ function audioProcessingPage(
  * the number follows the switch that decides whether it is used at all.
  * @param settings - Live settings, read by the disabled predicates
  */
-function audioCleanupPage(
-	settings: AudioRecorderSettings,
-): SettingDefinitionItem {
+function audioCleanupPage(settings: AudioRecorderSettings): SettingGroupItem {
 	return {
 		type: 'page',
 		name: 'Audio cleanup defaults',
@@ -2005,7 +2033,7 @@ function audioCleanupPage(
 function diagnosticsPage(
 	diagnostics: DiagnosticsActions,
 	settings: AudioRecorderSettings,
-): SettingDefinitionItem {
+): SettingGroupItem {
 	return {
 		type: 'page',
 		name: 'Diagnostics',
@@ -2054,6 +2082,11 @@ function diagnosticsPage(
 
 /**
  * Builds the tab's definition tree.
+ *
+ * The callout and the entries below the blocks are rows rather than blocks, so
+ * each run of them is declared as a block here: Obsidian would otherwise wrap
+ * them in one of its own, which carries no class and would be left ruled
+ * between every row (see {@link SETTINGS_SECTION_CLASS}).
  * @param ctx - The tab's remainder body and action handlers
  * @returns The definitions, in the order the tab renders them
  */
@@ -2061,43 +2094,47 @@ export function buildSettingsDefinitions(
 	ctx: SettingsDefinitionContext,
 ): SettingDefinitionItem[] {
 	return [
-		{
-			name: 'Documentation',
-			searchable: false,
-			render: (setting: Setting): void => {
-				const host = setting.settingEl;
-				host.empty();
-				host.addClass(SETTINGS_ROOT_CLASS);
-				ctx.renderDocumentationLink(host);
+		...sectionItems([
+			{
+				name: 'Documentation',
+				searchable: false,
+				render: (setting: Setting): void => {
+					const host = setting.settingEl;
+					host.empty();
+					host.addClass(SETTINGS_ROOT_CLASS);
+					ctx.renderDocumentationLink(host);
+				},
 			},
-		},
+		]),
 		audioInputGroup(ctx.settings, ctx.devices, ctx.sampleRates),
 		outputFormatGroup(ctx.outputFormat),
 		fileStorageGroup(ctx.settings),
-		audioSplittingPage(ctx.settings),
-		multiTrackPage(ctx.settings, ctx.devices),
-		audioPlayerPage(ctx.settings),
-		{
-			// Forty-odd settings with a scope of their own: the style guide's
-			// case for a sub-page, and it keeps the main tab scannable.
-			type: 'page',
-			name: 'Transcription',
-			desc: 'Speech-to-text, transcript output, chapters, and LLM post-processing.',
-			displayValue: (): string =>
-				ctx.settings.transcriptionEnabled ? 'On' : 'Off',
-			items: [
-				// Each block holds what belongs to it, catalogues included:
-				// nothing floats on the page beside the section it configures.
-				transcriptionGroup(ctx, enginesPage(ctx)),
-				transcriptOutputGroup(ctx.settings),
-				autoChaptersGroup(ctx, 'chapters'),
-				llmGroup(ctx.settings),
-				transcriptionAdvancedGroup(ctx, 'advanced'),
-			],
-		},
-		audioProcessingPage(ctx.settings),
-		audioCleanupPage(ctx.settings),
-		diagnosticsPage(ctx.diagnostics, ctx.settings),
+		...sectionItems([
+			audioSplittingPage(ctx.settings),
+			multiTrackPage(ctx.settings, ctx.devices),
+			audioPlayerPage(ctx.settings),
+			{
+				// Forty-odd settings with a scope of their own: the style guide's
+				// case for a sub-page, and it keeps the main tab scannable.
+				type: 'page',
+				name: 'Transcription',
+				desc: 'Speech-to-text, transcript output, chapters, and LLM post-processing.',
+				displayValue: (): string =>
+					ctx.settings.transcriptionEnabled ? 'On' : 'Off',
+				items: [
+					// Each block holds what belongs to it, catalogues included:
+					// nothing floats on the page beside the section it configures.
+					transcriptionGroup(ctx, enginesPage(ctx)),
+					transcriptOutputGroup(ctx.settings),
+					autoChaptersGroup(ctx, 'chapters'),
+					...llmGroup(ctx.settings),
+					transcriptionAdvancedGroup(ctx, 'advanced'),
+				],
+			},
+			audioProcessingPage(ctx.settings),
+			audioCleanupPage(ctx.settings),
+			diagnosticsPage(ctx.diagnostics, ctx.settings),
+		]),
 	];
 }
 

@@ -1079,6 +1079,49 @@ describe('settings definitions', () => {
 				expect.objectContaining({ name: 'Part duration' }),
 			);
 		});
+
+		it('leaves no row loose beside the blocks, at any level', () => {
+			// What the whole scope of those rules rests on: Obsidian collects
+			// every run of rows outside a group into a block of its own, and
+			// such a block carries no class for the stylesheet to find.
+			const tree = build() as Array<RowDefinition | GroupDefinition>;
+			const containers = [
+				{ name: 'the tab', items: tree },
+				...everyContainer(tree)
+					.filter((entry) => entry.type === 'page')
+					.map((page) => ({
+						name: page.name ?? '',
+						items: page.items,
+					})),
+			];
+
+			for (const container of containers) {
+				const loose = container.items
+					.filter((item) => !('type' in item))
+					.map((item) => item.name);
+
+				expect([container.name, loose]).toEqual([container.name, []]);
+			}
+		});
+
+		it('keeps a block of multi-line editors to text areas alone', () => {
+			// The layout that block declares applies to every row in it, so a
+			// switch or a picker sharing it would be stacked along with them.
+			const stacked = everyContainer(
+				build() as Array<RowDefinition | GroupDefinition>,
+			).filter((entry) =>
+				(entry.cls ?? '').split(' ').includes(STACKED_TEXT_CLASS),
+			);
+
+			expect(stacked.length).toBeGreaterThan(0);
+			for (const block of stacked) {
+				expect(
+					block.items.map(
+						(item) => (item as RowDefinition).control?.type,
+					),
+				).toEqual(block.items.map(() => 'textarea'));
+			}
+		});
 	});
 
 	describe('the sections that sit behind an entry', () => {

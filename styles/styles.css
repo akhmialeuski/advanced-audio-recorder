@@ -852,25 +852,22 @@ input.aar-input-invalid {
    text area is written in paragraphs, so the control moves under the label and
    fills the row instead. The two selectors are the two ways such a row is
    found: the legacy renderer marks the row itself, while from 1.13 the row
-   belongs to the framework and the tree can only mark the group around it, so
-   the rule reaches the row through the text area it holds. */
+   belongs to the framework and only a group takes a class, so the tree keeps
+   its text areas in a block of their own and this rule dresses that block. */
 .aar-setting-stacked,
-:has(> .aar-settings-section)
-	.setting-item:has(> .setting-item-control > textarea) {
+.aar-stacked-text .setting-item {
     display: block;
 }
 
 .aar-setting-stacked .setting-item-control,
-:has(> .aar-settings-section)
-	.setting-item:has(> .setting-item-control > textarea)
-	> .setting-item-control {
+.aar-stacked-text .setting-item-control {
     width: 100%;
     padding-top: var(--size-4-2);
     justify-content: flex-start;
 }
 
 .aar-setting-stacked .setting-item-control textarea,
-:has(> .aar-settings-section) .setting-item-control > textarea {
+.aar-stacked-text .setting-item-control > textarea {
     width: 100%;
     min-height: 6em;
     resize: vertical;
@@ -879,19 +876,19 @@ input.aar-input-invalid {
 
 /* Where the lines of this tab go: between the blocks, not between the rows
    inside them. A block is one group of the definition tree, and every group the
-   tree declares carries .aar-settings-section, which is also how these rules
-   find the containers that are this plugin's - a container holding one of those
-   groups holds only this tab's blocks, so the groups the framework builds
-   around loose rows are dressed with them and nothing outside is touched.
+   tree declares carries .aar-settings-section, which is also the scope of these
+   rules: they reach nothing but this tab's own blocks and what those blocks
+   hold. The tree leaves no row loose beside them, so a block the framework
+   builds around loose rows - which would carry no class - never arises.
 
    The row divider is switched off through Obsidian's own variable rather than
    by overriding the rule that reads it, so a theme changing that rule keeps
    working. */
-:has(> .aar-settings-section) > .setting-group {
+.aar-settings-section {
     --setting-items-divider-width: 0;
 }
 
-:has(> .aar-settings-section) > .setting-group + .setting-group {
+.aar-settings-section + .aar-settings-section {
     border-top: var(--divider-width) solid var(--background-modifier-border);
     padding-top: var(--size-4-4);
 }
@@ -903,7 +900,7 @@ input.aar-input-invalid {
    action rows, written the way the app writes it, hover-capable devices only:
    on a touch device the framework has its own tap state. */
 @media (hover: hover) {
-    :has(> .aar-settings-section) .setting-item.mod-navigable:hover {
+    .aar-settings-section .setting-item.mod-navigable:hover {
         background-color: var(--background-modifier-hover);
     }
 }
@@ -912,7 +909,7 @@ input.aar-input-invalid {
    already set, and Obsidian only hides the browser's stepper. It is shown back
    here, so a count is nudged with the arrows (or the arrow keys, which have
    always worked) instead of being retyped, and the browser keeps it in range. */
-:has(> .aar-settings-section) input[type='number']::-webkit-inner-spin-button {
+.aar-settings-section input[type='number']::-webkit-inner-spin-button {
     -webkit-appearance: auto;
     appearance: auto;
     opacity: 1;

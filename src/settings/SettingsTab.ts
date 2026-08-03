@@ -23,9 +23,10 @@ import {
 	TFolder,
 	Vault,
 	debounce,
+	requireApiVersion,
 	setIcon,
 } from 'obsidian';
-import type { Plugin, SettingTab } from 'obsidian';
+import type { Plugin } from 'obsidian';
 import type { SettingDefinitionItem } from 'obsidian';
 import {
 	createSettingsRenderMode,
@@ -231,19 +232,17 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		// The container belongs to this tab on both Obsidians and survives every
 		// render, so it is where the stylesheet is told which settings are ours.
 		this.containerEl.addClass(SETTINGS_TAB_CLASS);
-		// SettingTab.update() is the 1.13 API this probe is looking for: the
-		// typings declare it unconditionally, so only the runtime tells the two
-		// versions apart. Its absence selects the imperative mode, which is
-		// what keeps the tab working down to minAppVersion. The call itself
-		// stays on the instance, so the framework - or a test double standing
-		// in for it - always drives its own re-render.
-		const hasFrameworkUpdate =
-			// eslint-disable-next-line obsidianmd/no-unsupported-api -- probing for the 1.13 API is how the pre-1.13 fallback is chosen; the call below is guarded by this result
-			typeof (this as Partial<SettingTab>).update === 'function';
+		// Obsidian 1.13 is where the declarative settings API begins, and with
+		// it SettingTab.update(), the framework's own re-render of the
+		// definitions. The typings declare that method unconditionally, so the
+		// running app is what has to be asked; below 1.13 the answer selects
+		// the imperative mode, which is what keeps the tab working down to
+		// minAppVersion. The re-render itself stays a call on the instance, so
+		// the framework - or a test double standing in for it - always drives
+		// its own pass.
 		this.renderMode = createSettingsRenderMode({
-			frameworkUpdate: hasFrameworkUpdate
+			frameworkUpdate: requireApiVersion('1.13.0')
 				? (): void => {
-						// eslint-disable-next-line obsidianmd/no-unsupported-api -- reached only when the probe above found update(), i.e. on Obsidian 1.13+
 						this.update();
 					}
 				: undefined,
