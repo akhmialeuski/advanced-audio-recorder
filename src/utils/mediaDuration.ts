@@ -37,9 +37,13 @@ const DURATION_PROBE_TIMEOUT_MS = 15000;
  * streamed container reports before the seek, and a finite zero is what a
  * container whose length was never stamped reports after loading; neither is a
  * duration, so both read as "not yet".
+ *
+ * Exported because the enhanced player runs the same probe on its own shared
+ * element and has to recognise the same answers: a probe that finished on
+ * "finite" alone would lock in the bogus zero.
  * @param audio - The element being probed
  */
-function usableDuration(audio: HTMLAudioElement): number | null {
+export function usableDuration(audio: HTMLAudioElement): number | null {
 	return Number.isFinite(audio.duration) && audio.duration > 0
 		? audio.duration
 		: null;

@@ -179,13 +179,24 @@ async function probeFileMetadata(
  * there is the browser, which reads the same packets the probe walked and costs
  * no samples - see {@link module:utils/mediaDuration}.
  *
- * The full decode is last and is now genuinely last: it is what remains when
- * the container did not parse at all, since the sample rate and the channel
- * count have to come from somewhere and expanding the file to PCM is the only
- * reader left that has them. Bounded by the platform's decode ceiling for that
- * reason. A caller that only wants the cheap header answer, to reject an
- * oversized file before decoding it, still calls {@link probeAudioMetadata}.
- * @param data - The file's bytes
+ * The full decode is what remains when the container did not parse at all, and
+ * only then: the sample rate and the channel count exist nowhere but the decoded
+ * buffer for such a file, so it is the one reader left that has them, and it is
+ * bounded by the platform's decode ceiling because it expands the whole
+ * recording to PCM. A container that did parse has already given both, so the
+ * only thing a decode could add there is the length the browser has just
+ * declined to read - on the same demuxer, since a media element and
+ * `decodeAudioData` are the same engine. Paying gigabytes of samples to ask that
+ * question again is how the cheapest read in the plugin became its most
+ * expensive one, so the length simply stays unread instead.
+ *
+ * A caller that only wants the cheap header answer, to reject an oversized file
+ * before decoding it, still calls {@link probeAudioMetadata}.
+ *
+ * The bytes are read, never taken: a caller holding a file it is about to do
+ * something else with - the transcribe dialog reads it once and hands the same
+ * bytes to the run - gets them back intact.
+ * @param data - The file's bytes, which this leaves usable
  * @param path - Vault path, for the warning log and the container's MIME type
  * @returns The metadata, or null when no reader could read it
  */
@@ -194,29 +205,27 @@ export async function readAudioMetadata(
 	path: string,
 ): Promise<ProbedAudioMetadata | null> {
 	const probed = await probeAudioMetadata(data, path);
-	if (probed && probed.durationSeconds !== null) {
-		return probed;
-	}
 	if (probed) {
+		if (probed.durationSeconds !== null) {
+			return probed;
+		}
 		// The headers gave everything but the length, so only the length is
 		// missing and only the length is asked for.
 		const played = await probeBlobDurationSeconds(
 			data,
 			audioMimeForExtension(extensionOf(path)),
 		);
-		if (played !== null) {
-			return { ...probed, durationSeconds: played };
-		}
+		return played === null
+			? probed
+			: { ...probed, durationSeconds: played };
 	}
 	if (!isDecodableSize(data.byteLength)) {
 		console.warn(
-			`${PLUGIN_LOG_PREFIX} ${path} is too large to decode on this device; its duration stays unread.`,
+			`${PLUGIN_LOG_PREFIX} ${path} is too large to decode on this device; its metadata stays unread.`,
 		);
-		return probed;
+		return null;
 	}
-	// Whatever the headers did read is kept when the decode cannot improve on
-	// it either, so a failed decode never costs a sample rate that was known.
-	return (await decodeMetadata(data)) ?? probed;
+	return await decodeMetadata(data);
 }
 
 /**
@@ -312,7 +321,7 @@ async function readTrackMetadata(
  * Reports failure by returning null and logging why. It is reached from a
  * background probe as well as from the file-info action, so what an unreadable
  * file should say is the caller's to decide rather than a Notice from here.
- * @param data - The file's bytes
+ * @param data - The file's bytes, which are read and not taken
  */
 async function decodeMetadata(
 	data: ArrayBuffer,
@@ -331,7 +340,14 @@ async function decodeMetadata(
 	// context that is already closed
 	await using audioContext = autoClosing(new AudioContextClass());
 	try {
-		const audioBuffer = await audioContext.decodeAudioData(data);
+		// Decoded from a copy, because decodeAudioData does not read its input,
+		// it takes it: the buffer comes back detached and empty. Callers here
+		// hand over bytes they still hold - the transcribe dialog reads the
+		// file once and passes the same bytes to the run - so taking them left
+		// the run uploading nothing, and the engine answering that the audio is
+		// corrupt. The copy costs one more encoded file in memory next to the
+		// PCM this call is about to materialize anyway.
+		const audioBuffer = await audioContext.decodeAudioData(data.slice(0));
 		return {
 			// Zero means the same thing here as everywhere else in this
 			// module: nothing was read, not "no time passed".

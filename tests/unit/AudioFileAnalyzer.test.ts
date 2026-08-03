@@ -468,7 +468,12 @@ describe('readAudioMetadata', () => {
 		);
 	});
 
-	it('falls through to the decode when the browser cannot read it either', async () => {
+	it('leaves the length unread rather than decoding for it', async () => {
+		// The browser has just declined, on the same demuxer decodeAudioData
+		// uses, so a decode is not a second opinion - it is the whole recording
+		// expanded to PCM to ask a question that was already answered "no". A
+		// two-hour recording is gigabytes of samples, on the path the transcribe
+		// dialog takes every time it opens.
 		mockGetPrimaryAudioTrack.mockResolvedValue({
 			getSampleRate: () => 48000,
 			getNumberOfChannels: () => 2,
@@ -478,33 +483,16 @@ describe('readAudioMetadata', () => {
 
 		const result = await readAudioMetadata(new ArrayBuffer(8), 'a.webm');
 
-		expect(mockDecodeAudioData).toHaveBeenCalled();
-		expect(result?.durationSeconds).toBe(90);
-	});
-
-	it('reports an unread length as null, never as zero', async () => {
-		mockGetPrimaryAudioTrack.mockResolvedValue({
-			getSampleRate: () => 48000,
-			getNumberOfChannels: () => 2,
-		});
-		mockComputeDuration.mockResolvedValue(0);
-		mockDecodeAudioData.mockRejectedValue(new Error('no decoder'));
-		const consoleSpy = jest
-			.spyOn(console, 'warn')
-			.mockImplementation(() => {});
-
-		const result = await readAudioMetadata(new ArrayBuffer(8), 'a.webm');
-
+		expect(mockDecodeAudioData).not.toHaveBeenCalled();
 		// Zero is a duration, and a caller that gets one prices the run at it:
 		// the transcribe dialog would quote a confident $0.00 for a recording
-		// it knows nothing about. Null is the only honest answer.
+		// it knows nothing about. Null is the only honest answer, and what the
+		// headers did read is kept.
 		expect(result).toEqual({
 			durationSeconds: null,
 			sampleRate: 48000,
 			channels: 2,
 		});
-
-		consoleSpy.mockRestore();
 	});
 
 	it('answers null when neither path can read the file', async () => {
@@ -522,19 +510,14 @@ describe('readAudioMetadata', () => {
 	});
 
 	it('does not decode a file past the platform ceiling', async () => {
-		// The recordings whose headers carry no duration are the long ones, so
-		// an unbounded fallback would put a full PCM decode of multi-hour audio
-		// on the main thread - the one thing every other decode path asks the
-		// platform about first.
+		// The decode is the last reader, reached where the container did not
+		// parse, and it expands the whole recording to PCM on the main thread -
+		// the one thing every other decode path asks the platform about first.
 		const { isDecodableSize } = jest.requireMock<{
 			isDecodableSize: jest.Mock;
 		}>('src/platform/capabilities');
 		isDecodableSize.mockReturnValueOnce(false);
-		mockGetPrimaryAudioTrack.mockResolvedValue({
-			getSampleRate: () => 48000,
-			getNumberOfChannels: () => 2,
-		});
-		mockComputeDuration.mockResolvedValue(0);
+		mockGetPrimaryAudioTrack.mockRejectedValue(new Error('unparseable'));
 		const consoleSpy = jest
 			.spyOn(console, 'warn')
 			.mockImplementation(() => {});
@@ -542,15 +525,48 @@ describe('readAudioMetadata', () => {
 		const result = await readAudioMetadata(new ArrayBuffer(8), 'huge.webm');
 
 		expect(mockDecodeAudioData).not.toHaveBeenCalled();
-		// What the headers did read is still worth answering with; only the
-		// duration stays unknown, and the estimate degrades around it.
-		expect(result).toEqual({
-			durationSeconds: null,
-			sampleRate: 48000,
-			channels: 2,
-		});
+		// Nothing read the file at all, so there is nothing to answer with.
+		expect(result).toBeNull();
 
 		consoleSpy.mockRestore();
+	});
+
+	it('decodes a copy, leaving the caller bytes it can still use', async () => {
+		// decodeAudioData does not read its input, it takes it: the buffer
+		// comes back detached and empty. The transcribe dialog reads the file
+		// once and hands the same bytes to the run, so decoding the original
+		// left the run uploading nothing and the engine answering that the
+		// audio was corrupt.
+		mockGetPrimaryAudioTrack.mockRejectedValue(new Error('unparseable'));
+		const consoleSpy = jest
+			.spyOn(console, 'warn')
+			.mockImplementation(() => {});
+		const bytes = new Uint8Array([1, 2, 3, 4]).buffer;
+
+		await readAudioMetadata(bytes, 'a.webm');
+
+		const decoded = mockDecodeAudioData.mock.calls[0]?.[0] as ArrayBuffer;
+		expect(decoded).not.toBe(bytes);
+		// A copy, not an empty stand-in: the decode still has to see the file.
+		expect(Array.from(new Uint8Array(decoded))).toEqual([1, 2, 3, 4]);
+
+		consoleSpy.mockRestore();
+	});
+
+	it('never asks the browser for a length it has already been given', async () => {
+		// The cheap header answer settles most files, and it settles them
+		// outright: opening a media element on top of it would cost a second
+		// read of the same bytes for a number already in hand.
+		mockGetPrimaryAudioTrack.mockResolvedValue({
+			getSampleRate: () => 44100,
+			getNumberOfChannels: () => 1,
+		});
+		mockComputeDuration.mockResolvedValue(120);
+
+		await readAudioMetadata(new ArrayBuffer(8), 'a.webm');
+
+		expect(URL.createObjectURL).not.toHaveBeenCalled();
+		expect(mockDecodeAudioData).not.toHaveBeenCalled();
 	});
 });
 
