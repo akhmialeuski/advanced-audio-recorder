@@ -28,6 +28,7 @@ import {
 import type {
 	AudioRecorderSettings,
 	LlmProviderId,
+	PrimitiveSettingKey,
 } from '../../settings/settingsSchema';
 import {
 	AnthropicLlmProvider,
@@ -218,8 +219,14 @@ export type LlmJobId = 'postProcess' | 'contextAgents' | 'autoChapters';
 
 /** Where one job's engine choice is stored. */
 export interface LlmJob {
-	/** Settings key the choice lives under, for declaring the control. */
-	readonly key: keyof AudioRecorderSettings;
+	/**
+	 * Settings key the choice lives under, for declaring the control.
+	 *
+	 * A vendor id is one string, so the key is declared as one that holds a
+	 * primitive: that is what lets the load path ask whether the stored value is
+	 * still an id any vendor claims without the question being restated per job.
+	 */
+	readonly key: PrimitiveSettingKey;
 	/** The engine the job calls, as the settings currently name it. */
 	readonly vendor: (settings: AudioRecorderSettings) => LlmProviderId;
 }

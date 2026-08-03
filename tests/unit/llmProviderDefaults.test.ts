@@ -6,7 +6,10 @@
  * @module tests/unit/llmProviderDefaults.test
  */
 
-import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
+import {
+	DEFAULT_SETTINGS,
+	type AudioRecorderSettingsInput,
+} from 'src/settings/settingsSchema';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import {
 	ACCOUNTS,
@@ -141,6 +144,48 @@ describe('account endpoints', () => {
 		});
 
 		expect(merged.anthropicBaseUrl).toBe('https://claude.internal/v1');
+	});
+
+	it('asks which engine transcribes only after that id has been made to name one', () => {
+		// An engine id no registry claims - a hand-edited or downgraded
+		// data.json, which is the case the reconciliation exists for - answers
+		// "nothing transcribes anywhere", which is exactly the answer that lets
+		// the chat URL through. Asked before the id was reconciled, the
+		// migration wrote it onto the OpenAI endpoint and the reconciliation
+		// then pointed transcription straight back at that field, which is the
+		// host with no audio endpoint this rule exists to avoid.
+		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+		try {
+			const merged = mergeSettings({
+				transcriptionProvider: 'no-such-engine',
+				llmProvider: 'openai-compatible',
+				llmBaseUrl: 'http://localhost:1234/v1',
+			} as unknown as AudioRecorderSettingsInput);
+
+			expect(merged.transcriptionProvider).toBe(
+				DEFAULT_SETTINGS.transcriptionProvider,
+			);
+			expect(merged.whisperApiBaseUrl).toBe(
+				DEFAULT_SETTINGS.whisperApiBaseUrl,
+			);
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
+	it('still carries it for a vendor the reconciled engine does not share an account with', () => {
+		// The reordering must not turn every unclaimed id into a refusal: once
+		// the id names the shipped engine, the question is the ordinary one, and
+		// an Anthropic relay is still the only address that vendor ever had.
+		const merged = mergeSettings({
+			transcriptionProvider: 'no-such-engine',
+			llmProvider: 'anthropic',
+			llmBaseUrl: 'https://claude-relay.internal/v1',
+		} as unknown as AudioRecorderSettingsInput);
+
+		expect(merged.anthropicBaseUrl).toBe(
+			'https://claude-relay.internal/v1',
+		);
 	});
 });
 

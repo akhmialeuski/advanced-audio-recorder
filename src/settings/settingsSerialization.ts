@@ -235,13 +235,23 @@ export function mergeSettings(
 		trackAudioSources: active.trackAudioSources,
 		perPlatform,
 	};
+	// Before the migrations, not after: the endpoint rule below asks which
+	// account transcription is reached through, and an id no engine claims
+	// answers "none", which reads as "nothing transcribes anywhere" and lets a
+	// stored chat URL onto the very field the reconciliation is about to point
+	// transcription back at. A field a migration resolves through a registry has
+	// to name something by the time the migration asks.
+	reconcileTranscriptionEngine(merged);
 	migrateLegacyLlmSettings(merged, userSettings);
 	migrateModelCatalogues(merged, userSettings);
 	// The same rule that holds after an edit on an engine's page, applied to a
 	// config that has just been read: every catalogue offers the id in use.
 	reconcileEngineSettings(merged);
+	// After the migration rather than before it: an unclaimed vendor id is what
+	// tells the migration it does not know which engine the legacy key and model
+	// belonged to, and answering it first would turn that into a guess that
+	// writes one vendor's token into another vendor's field.
 	reconcileLlmJobEngines(merged);
-	reconcileTranscriptionEngine(merged);
 	migrateLegacyTranscriptionDictionary(merged, userSettings);
 	migrateAdvancedDictionaryGate(merged, userSettings);
 	return merged;
@@ -266,37 +276,48 @@ function isShippedDefault(
 }
 
 /**
- * Points every LLM-driven job at an engine that exists.
+ * Points a field that names a registry entry at one that exists.
  *
- * The three fields naming a job's engine are read from disk, which is not
- * type-checked, and every reader of one - the factory that builds the client,
- * the ceiling that bounds the answer, the cost model that prices the call -
- * looks the id up in a registry that has no entry for a value no vendor claims.
- * A hand-edited or downgraded `data.json` would therefore fail inside the
- * transcribe dialog rather than at the field that holds the bad value, so an
- * unclaimed id is answered here, once, with the value this version ships.
+ * Every such field is read from disk, which is not type-checked, and every
+ * reader of one resolves it against a registry that has no entry for a value
+ * nothing claims: the factory that builds a client, the ceiling that bounds an
+ * answer, the cost model that prices a call. A hand-edited or downgraded
+ * `data.json` would therefore fail deep inside a run rather than at the field
+ * holding the bad value, so an unclaimed id is answered here, once, with the
+ * value this version ships. Which registry the field names is the only thing
+ * that differs between the jobs and transcription, so it is the only thing
+ * passed in.
  * @param merged - The merged settings to reconcile in place
+ * @param key - The field naming an entry
+ * @param registry - The entries that field may name
  */
-function reconcileLlmJobEngines(merged: AudioRecorderSettings): void {
-	for (const job of Object.values(LLM_JOBS)) {
-		const key = job.key;
-		if (!((merged[key] as string) in LLM_VENDORS)) {
-			(merged as unknown as Record<string, unknown>)[key] =
-				DEFAULT_SETTINGS[key];
-		}
+function reconcileRegistryId(
+	merged: AudioRecorderSettings,
+	key: PrimitiveSettingKey,
+	registry: Readonly<Record<string, unknown>>,
+): void {
+	if (!((merged[key] as string) in registry)) {
+		(merged as unknown as Record<string, unknown>)[key] =
+			DEFAULT_SETTINGS[key];
 	}
 }
 
 /**
- * Points transcription at an engine that exists, for the reason
- * {@link reconcileLlmJobEngines} does: the id is read from disk and every
- * reader resolves it against a registry with no entry for an unclaimed one.
+ * Points every LLM-driven job at an engine that exists.
+ * @param merged - The merged settings to reconcile in place
+ */
+function reconcileLlmJobEngines(merged: AudioRecorderSettings): void {
+	for (const job of Object.values(LLM_JOBS)) {
+		reconcileRegistryId(merged, job.key, LLM_VENDORS);
+	}
+}
+
+/**
+ * Points transcription at an engine that exists.
  * @param merged - The merged settings to reconcile in place
  */
 function reconcileTranscriptionEngine(merged: AudioRecorderSettings): void {
-	if (!(merged.transcriptionProvider in TRANSCRIPTION_ENGINES)) {
-		merged.transcriptionProvider = DEFAULT_SETTINGS.transcriptionProvider;
-	}
+	reconcileRegistryId(merged, 'transcriptionProvider', TRANSCRIPTION_ENGINES);
 }
 
 /**
