@@ -16,8 +16,8 @@ import {
 	ENGINES,
 	ENGINE_IDS,
 	accountOf,
-	accountTranscribes,
 	engineOfVendor,
+	transcribingAccount,
 	type EngineDescriptor,
 } from '../providers/providers';
 import { reconcileEngineSettings } from '../providers/engineSettings';
@@ -27,6 +27,7 @@ import {
 	LLM_ANTHROPIC_MODEL_SUGGESTIONS,
 	LLM_OPENAI_MODEL_SUGGESTIONS,
 	MODEL_SEED_GENERATION,
+	PLUGIN_LOG_PREFIX,
 	WHISPER_API_MODEL_SUGGESTIONS,
 } from '../constants';
 import {
@@ -375,16 +376,31 @@ function migrateLegacyTranscriptionDictionary(
 }
 
 /**
- * Whether an engine's endpoint answers for prompts alone.
+ * Whether an engine's endpoint answers for prompts alone, as configured.
  *
  * An endpoint belongs to the account, and an account is shared by every engine
- * behind it, so the question is whether any of them transcribes. Where one
- * does, a stored chat URL is not an answer for the field: writing it would send
- * transcription to a host that serves no audio endpoint at all.
+ * behind it, so a stored chat URL must not be written onto one transcription
+ * reads: it would send every transcription request to a host that serves no
+ * audio endpoint at all.
+ *
+ * The question is whether transcription reads it, not whether it could. An
+ * account whose speech engine nobody selected serves prompts and nothing else
+ * in this configuration, and refusing the value there loses the only endpoint
+ * it was ever the answer for. That is not hypothetical: a provider blocked in
+ * the user's country is reached through a relay, entered in the one field the
+ * old schema had, and dropping it silently took away the address that worked
+ * and left the run pointed at a host that answers nobody there.
  * @param engine - The engine the legacy endpoint would be written to
+ * @param settings - The merged settings, read for the engine transcription uses
  */
-function endpointIsChatOnly(engine: EngineDescriptor): boolean {
-	return engine.account === null || !accountTranscribes(engine.account);
+function endpointIsChatOnly(
+	engine: EngineDescriptor,
+	settings: AudioRecorderSettings,
+): boolean {
+	return (
+		engine.account !== null &&
+		engine.account !== transcribingAccount(settings)
+	);
 }
 
 /**
@@ -481,13 +497,21 @@ function migrateLegacyLlmSettings(
 		// chat server, say. Writing the chat URL onto the shared field would
 		// move transcription to a host that serves no audio endpoint at all.
 		const legacyBaseUrl = legacyString(raw.llmBaseUrl).trim();
-		if (
-			account &&
-			legacyBaseUrl &&
-			endpointIsChatOnly(engine) &&
-			isShippedDefault(merged, account.baseUrlKey)
-		) {
-			account.setBaseUrl(merged, legacyBaseUrl);
+		if (account && legacyBaseUrl) {
+			if (
+				endpointIsChatOnly(engine, merged) &&
+				isShippedDefault(merged, account.baseUrlKey)
+			) {
+				account.setBaseUrl(merged, legacyBaseUrl);
+			} else {
+				// Not applied, but not disappeared without a word either: the
+				// value is the only record of an endpoint the user entered, and
+				// the field it would land on is now shared, so where it cannot
+				// be carried it is at least recoverable from the log.
+				console.warn(
+					`${PLUGIN_LOG_PREFIX} The stored LLM endpoint "${legacyBaseUrl}" was not carried over: ${account.baseUrlKey} is the endpoint transcription reads. Enter it under Engines if post-processing needs it.`,
+				);
+			}
 		}
 	}
 	// Gemini kept a chat catalogue beside its transcription one, over the same

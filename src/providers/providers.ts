@@ -414,6 +414,38 @@ export function vendorEngine(vendorId: LlmProviderId): EngineDescriptor {
 }
 
 /**
+ * The engine a transcription id names.
+ * @param transcriptionId - Id stored in the transcription settings
+ * @returns That engine, or undefined for an id no engine claims
+ */
+export function engineOfTranscription(
+	transcriptionId: TranscriptionProviderId,
+): EngineDescriptor | undefined {
+	return ENGINE_ORDER.map((id) => ENGINES[id]).find(
+		(engine) => engine.transcriptionId === transcriptionId,
+	);
+}
+
+/**
+ * The account transcription is actually reached through, as the settings stand.
+ *
+ * Not the same question as whether an account can transcribe. An account that
+ * serves a speech engine nobody selected is, for the configuration in front of
+ * you, a prompt-answering account and nothing else - and a caller deciding
+ * whether some other feature may write its endpoint has to ask about the
+ * configuration rather than about the catalogue.
+ * @param settings - Plugin settings
+ * @returns That account's id, or null when transcription needs no account
+ */
+export function transcribingAccount(
+	settings: AudioRecorderSettings,
+): AccountId | null {
+	return (
+		engineOfTranscription(settings.transcriptionProvider)?.account ?? null
+	);
+}
+
+/**
  * The account an engine is reached through.
  * @param engine - The engine being reached
  * @returns Its account, or undefined for the local engine

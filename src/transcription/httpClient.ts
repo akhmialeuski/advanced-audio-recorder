@@ -13,6 +13,7 @@ import {
 	TRANSCRIBE_UPLOAD_BYTES_PER_MS,
 } from '../constants';
 import { randomToken } from '../utils/ids';
+import { isRecord } from '../utils/objects';
 
 /** One field of a multipart/form-data body. */
 export type MultipartField =
@@ -141,6 +142,21 @@ const QUOTA_BODY_MARKERS = [
 	'insufficient credits',
 	'credit balance',
 	'billing',
+];
+
+/**
+ * Body substrings that signal the service does not serve the caller's country.
+ *
+ * A refusal no key, no model, and no retry can fix, and one the provider states
+ * plainly while the status code does not: Gemini answers 400 with
+ * `FAILED_PRECONDITION` and "User location is not supported for the API use",
+ * which reads as a malformed request unless the body is looked at.
+ */
+const REGION_BODY_MARKERS = [
+	'user location is not supported',
+	'location is not supported',
+	'country, region, or territory not supported',
+	'unsupported_country_region_territory',
 ];
 
 /**
@@ -352,6 +368,14 @@ async function dispatchRequest(
  */
 export function friendlyHttpHint(status: number, body: string): string {
 	const lower = body.toLowerCase();
+	// Before the billing and auth branches: a region refusal arrives on a
+	// status those branches would otherwise claim, and it is neither.
+	if (REGION_BODY_MARKERS.some((marker) => lower.includes(marker))) {
+		return (
+			'This provider does not serve your region. Pick a different engine ' +
+			'for this job in settings, under Engines.'
+		);
+	}
 	const looksLikeBilling =
 		status === HTTP_PAYMENT_REQUIRED ||
 		QUOTA_BODY_MARKERS.some((marker) => lower.includes(marker));
@@ -379,6 +403,40 @@ export function friendlyHttpHint(status: number, body: string): string {
 		return 'The provider had a server error. Try again shortly.';
 	}
 	return '';
+}
+
+/**
+ * What a provider said went wrong, taken out of the envelope it said it in.
+ *
+ * Every service the plugin calls answers a failure with JSON carrying one
+ * human sentence and a pile of machine fields around it: Google nests it under
+ * `error.message`, OpenAI and Anthropic the same, Deepgram calls it `err_msg`.
+ * Showing the envelope makes the reader find that sentence among braces and
+ * request ids, in a Notice that disappears while they are still reading. The
+ * sentence alone is what a person can act on; the rest is in the console log
+ * with the error.
+ * @param body - Response body excerpt
+ * @returns The provider's own message, or the excerpt when there is none
+ */
+export function providerMessage(body: string): string {
+	try {
+		const parsed: unknown = JSON.parse(body);
+		if (!isRecord(parsed)) {
+			return body;
+		}
+		const error = parsed.error;
+		const message = isRecord(error) ? error.message : undefined;
+		for (const candidate of [message, parsed.err_msg, parsed.message]) {
+			if (typeof candidate === 'string' && candidate.trim() !== '') {
+				return candidate;
+			}
+		}
+		return body;
+	} catch {
+		// Not JSON at all (an HTML error page, a proxy banner, a truncated
+		// excerpt): there is no sentence to lift out, so it is shown as it came.
+		return body;
+	}
 }
 
 /** Options shared by {@link requestRaw} and {@link requestJson}. */
@@ -437,8 +495,10 @@ export async function requestRaw(
 			0,
 			ERROR_BODY_EXCERPT_LENGTH,
 		);
+		// The hint reads the whole excerpt, because what it looks for is as
+		// likely to be in a status field as in the message.
 		const hint = friendlyHttpHint(response.status, excerpt);
-		const detail = `Request to ${safeUrl} failed with status ${String(response.status)}: ${excerpt}`;
+		const detail = `Request to ${safeUrl} failed with status ${String(response.status)}: ${providerMessage(excerpt)}`;
 		throw new HttpError(
 			response.status,
 			hint ? `${hint} (${detail})` : detail,

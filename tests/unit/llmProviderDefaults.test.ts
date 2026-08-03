@@ -85,13 +85,51 @@ describe('account endpoints', () => {
 		expect('llmBaseUrl' in merged).toBe(false);
 	});
 
-	it('drops it for Gemini too, which transcribes through the same endpoint', () => {
+	it('drops it for Gemini while Gemini is what transcribes', () => {
 		const merged = mergeSettings({
 			llmProvider: 'gemini',
+			transcriptionProvider: 'gemini',
 			llmBaseUrl: 'http://localhost:4000',
 		});
 
 		expect(merged.geminiBaseUrl).toBe(DEFAULT_SETTINGS.geminiBaseUrl);
+	});
+
+	it('carries it onto an account nothing transcribes through as configured', () => {
+		// The question is whether transcription reads the field, not whether it
+		// could. Transcribing on Deepgram and prompting through a relay was
+		// ordinary - it is how a provider blocked in the user's country is
+		// reached at all - and the relay lived in the one endpoint field the old
+		// schema had. Refusing it because Gemini is capable of transcribing took
+		// away the only address that worked and pointed post-processing at a
+		// host that answers nobody there.
+		const merged = mergeSettings({
+			transcriptionProvider: 'deepgram',
+			llmProvider: 'gemini',
+			llmBaseUrl: 'https://gemini-relay.internal/v1',
+		});
+
+		expect(merged.geminiBaseUrl).toBe('https://gemini-relay.internal/v1');
+	});
+
+	it('says where a dropped endpoint went, rather than losing it silently', () => {
+		// It is the only record of an address the user typed, and the migration
+		// deletes the field it lived in, so a refusal that says nothing leaves
+		// nothing to recover it from.
+		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+		try {
+			mergeSettings({
+				llmProvider: 'gemini',
+				transcriptionProvider: 'gemini',
+				llmBaseUrl: 'http://localhost:4000',
+			});
+
+			expect(warn).toHaveBeenCalledWith(
+				expect.stringContaining('http://localhost:4000'),
+			);
+		} finally {
+			warn.mockRestore();
+		}
 	});
 
 	it('keeps carrying it where nothing transcribes through the account', () => {
