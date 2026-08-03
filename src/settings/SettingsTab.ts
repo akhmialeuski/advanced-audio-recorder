@@ -1,15 +1,17 @@
 /**
- * Settings tab UI for the Audio Recorder plugin.
+ * Settings tab for the Audio Recorder plugin.
  *
- * Rows that are plain toggles, dropdowns, text fields, or numeric inputs go
- * through the shared builders in `settingControls`, bound to the tab's save
- * hooks by {@link AudioRecorderSettingTab.sectionContext}. What stays
- * imperative here is what the declarative model does not cover: the device
- * dropdowns fed by live enumeration, the recording-format dropdown whose
- * options are blocked by an async encoder probe, the output summary that
- * recomputes from two other controls, the per-track rows built from a Map, the
- * part-suffix field with its own validation feedback, and the diagnostics
- * actions. The transcription settings live in their own section modules.
+ * The tab itself is described as data in
+ * {@link module:settings/settingsDefinitions}; what lives here is everything
+ * that tree needs from the plugin. Three things, in order of weight. The
+ * version split: which Obsidian is running decides who renders the tree, and
+ * {@link module:settings/settingsRenderMode} answers that once, in the
+ * constructor. The value hooks: `getControlValue`/`setControlValue` are how
+ * every control reads and writes, routed through `plugin.saveSettings()` so a
+ * Map-valued setting survives, the per-platform write-back happens, and the
+ * recording manager and player registrar hear about the change. And the
+ * handlers the declarations call into - the list edits, the diagnostics
+ * actions, and the few bodies no control type covers.
  * @module settings/SettingsTab
  */
 
@@ -23,13 +25,24 @@ import {
 	debounce,
 	setIcon,
 } from 'obsidian';
-import type { Plugin } from 'obsidian';
+import type { Plugin, SettingTab } from 'obsidian';
 import type { SettingDefinitionItem } from 'obsidian';
-import type {
-	AudioRecorderSettings,
-	OutputMode,
-	ConversionLinkAction,
-} from './settingsSchema';
+import {
+	createSettingsRenderMode,
+	type SettingsRenderMode,
+} from './settingsRenderMode';
+import {
+	CONTROL_WRITE_EFFECTS,
+	SETTINGS_TAB_CLASS,
+	buildSettingsDefinitions,
+	collectDebouncedControlKeys,
+	controlValue,
+	parseProfileControlKey,
+	parseTrackControlKey,
+	type ProfileCatalogue,
+} from './settingsDefinitions';
+import { LegacySettingsRenderer } from './legacySettingsRenderer';
+import type { AudioRecorderSettings } from './settingsSchema';
 import {
 	getSupportedSampleRates,
 	buildMimeType,
@@ -39,12 +52,7 @@ import {
 } from '../audio/AudioCapabilityDetector';
 import { AUDIO_FORMAT_IDS } from '../audio/formatRegistry';
 import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
-import {
-	CHANNEL_MODES,
-	CHANNEL_MODE_SOURCE,
-	normalizeChannelMode,
-	type ChannelMode,
-} from '../audio/downmix';
+import { CHANNEL_MODE_SOURCE, normalizeChannelMode } from '../audio/downmix';
 import {
 	channelSelectionAvailable,
 	getAudioInputDeviceSnapshot,
@@ -53,44 +61,38 @@ import {
 import { getEncoderDescription } from '../ui/formatDescriptions';
 import { TestRecorder } from '../recording/TestRecorder';
 import { TextInputSuggest } from '../ui/TextInputSuggest';
-import {
-	DEFAULT_SPLIT_PART_SUFFIX,
-	MIN_SPLIT_CHUNK_MINUTES,
-	MAX_SPLIT_CHUNK_MINUTES,
-	SPLIT_PART_SUFFIX_PATTERN,
-	MIN_CLEANUP_HIGHPASS_HZ,
-	MAX_CLEANUP_HIGHPASS_HZ,
-	MIN_CLEANUP_GATE_THRESHOLD_DB,
-	MAX_CLEANUP_GATE_THRESHOLD_DB,
-	MIN_CLEANUP_LEVELING_MAKEUP_DB,
-	MAX_CLEANUP_LEVELING_MAKEUP_DB,
-	CLEANUP_HIGHPASS_STEP_HZ,
-	CLEANUP_GATE_STEP_DB,
-	CLEANUP_LEVELING_STEP_DB,
-	DOCS_URL,
-	FORMAT_WAV,
-} from '../constants';
+import { DOCS_URL, FORMAT_WAV } from '../constants';
 import { SystemDiagnostics } from '../diagnostics/SystemDiagnostics';
 import { SystemInfoModal } from '../diagnostics/SystemInfoModal';
-import { renderTranscriptionSection } from './sections/transcriptionSettingsSection';
-import { CONVERSION_LINK_ACTION_OPTIONS } from './labels';
 import {
-	addDropdown,
-	addHeading,
-	addNumberInput,
-	addNumberInputTo,
-	addStageRowTo,
-	addText,
-	addToggle,
-	SETTING_DISABLED_CLASS,
-	type SettingsSectionContext,
-} from './settingControls';
+	renderLocalWhisperSettings,
+	renderProviderKeyField,
+} from './sections/transcriptionEngineSection';
+import {
+	addProfile,
+	effectiveProfileId,
+	findProfile,
+	freeProfileName,
+	removeAndReselectProfile,
+	NEW_PROFILE_NAME,
+	type Profile,
+	type ProfileList,
+} from './profiles';
+import { PROFILE_KINDS, type ProfileKind } from './profileKinds';
+import { ProfileNameModal } from '../ui/ProfileNameModal';
+import { closeSettingsPage } from '../obsidian/settingsNavigation';
+import { ENGINES, type EngineId } from '../providers/providers';
+import {
+	applyEngineSettingsField,
+	engineFieldOf,
+	engineSettingsStore,
+	type EngineSettingsStore,
+} from '../providers/engineSettings';
+import { ModelIdModal } from '../ui/ModelIdModal';
+import type { SettingsSectionContext } from './settingControls';
 import {
 	isAutoSplitSupported,
-	isChannelModeSelectionSupported,
-	isDeviceSelectionSupported,
 	isMultiTrackCaptureSupported,
-	isSampleRateSelectionSupported,
 } from '../platform/capabilities';
 
 /** Debounce delay for saving text settings, in milliseconds. */
@@ -107,11 +109,6 @@ export interface AudioRecorderPluginInterface extends Plugin {
 	saveSettings(): Promise<void>;
 }
 
-interface DeviceDropdownBinding {
-	readonly dropdown: DropdownComponent;
-	readonly getSelectedDeviceId: () => string;
-}
-
 const EMPTY_DEVICE_SNAPSHOT: AudioInputDeviceSnapshot = {
 	enumerationSucceeded: false,
 	devices: [],
@@ -119,86 +116,10 @@ const EMPTY_DEVICE_SNAPSHOT: AudioInputDeviceSnapshot = {
 };
 
 /**
- * Individual setting names carried as search aliases on the single declarative
- * render definition. The tab renders imperatively (it drives live device
- * enumeration, async format probing, and per-track rows that do not fit the
- * declarative control model), so this list is what lets Obsidian's settings
- * search (1.13+) surface the tab by an individual setting's name.
- */
-const SETTINGS_SEARCH_ALIASES: string[] = [
-	'Audio input',
-	'Input device',
-	'Sample rate',
-	'Recording channels',
-	'Output format',
-	'Recording format',
-	'Audio bitrate',
-	'Output summary',
-	'Delete source after conversion',
-	'Update links after conversion',
-	'File storage',
-	'Save folder',
-	'Save recordings near active file',
-	'Active file subfolder',
-	'File prefix',
-	'Insert at original position',
-	'Audio splitting',
-	'Split recordings automatically',
-	'Part duration',
-	'Part name suffix',
-	'Delete source after split',
-	'Multi-track recording',
-	'Enable multi-track recording',
-	'Maximum tracks',
-	'Output mode',
-	'Audio source for track',
-	'Channels for track',
-	'Audio player',
-	'Enhanced audio player',
-	'Show waveform',
-	'Markers and chapters',
-	'Transcription',
-	'Enable transcription',
-	'Transcribe after recording',
-	'Engine',
-	'Language',
-	'Speaker diarization',
-	'Word-level timestamps',
-	'Dictionary profiles',
-	'Rename speakers',
-	'Show cost estimates',
-	'Request timeout',
-	'Upload chunk size',
-	'Whisper API key',
-	'Whisper model',
-	'Deepgram API key',
-	'Deepgram model',
-	'Gemini API key',
-	'Audio processing & feedback',
-	'Noise suppression',
-	'Echo cancellation',
-	'Automatic gain control',
-	'Input level meter',
-	'Recording stats',
-	'Detect silent channel after recording',
-	'Mobile recording banner',
-	'Audio cleanup defaults',
-	'High-pass filter',
-	'Noise gate',
-	'Loudness leveling',
-	'Diagnostics',
-	'Test recording',
-	'System info',
-	'Debug mode',
-];
-
-/**
  * Settings tab for the Audio Recorder plugin.
  */
 export class AudioRecorderSettingTab extends PluginSettingTab {
 	plugin: AudioRecorderPluginInterface;
-	private deviceDropdowns: DeviceDropdownBinding[] = [];
-	private readonly bitrateOptionsKbps = [64, 96, 128, 160, 192, 256, 320];
 	private readonly testRecorder = new TestRecorder();
 	private testAudioElement: HTMLAudioElement | null = null;
 	/**
@@ -215,18 +136,23 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * positively report a single channel.
 	 */
 	private deviceSnapshot: AudioInputDeviceSnapshot = EMPTY_DEVICE_SNAPSHOT;
-	/** Latest device refresh generation; older async results are discarded. */
+	/**
+	 * The device list the tree was last built from, as a comparable string. A
+	 * re-render enumerates again, so only a real change asks for another one.
+	 */
+	private deviceSignature = '';
+	/**
+	 * Latest device refresh generation; older async results are discarded.
+	 *
+	 * This is also what stops a result landing on a tab that has been left:
+	 * `hide()` bumps the generation, so everything in flight at that moment is
+	 * already stale by the time it resolves. A second "is the tab shown" flag
+	 * beside it would be the same guard written twice, and the two could
+	 * disagree.
+	 */
 	private deviceRefreshGeneration = 0;
 	/** Latest format-availability probe; older async results are discarded. */
 	private formatAvailabilityGeneration = 0;
-	/** Prevents a refresh from updating controls after the tab is hidden. */
-	private isDisplayed = false;
-	/**
-	 * Re-evaluators for every channel-mode dropdown on the tab. Run
-	 * after the capability map loads, after a device selection changes,
-	 * and on devicechange events.
-	 */
-	private channelDropdownUpdaters: (() => void)[] = [];
 	/**
 	 * Debounced settings save shared by the text fields, which fire
 	 * onChange on every keystroke and would otherwise rewrite data.json
@@ -241,6 +167,60 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	);
 
 	/**
+	 * How this tab reaches the screen on the running Obsidian: through the
+	 * declarative definitions of 1.13+, or through display() below it. Chosen
+	 * once here - the app version cannot change under a live tab - so nothing
+	 * else in the tab has to know which Obsidian it is on.
+	 */
+	private readonly renderMode: SettingsRenderMode;
+
+	/**
+	 * Renders the definition tree on the Obsidian that has no declarative
+	 * settings API. Holds the rendered rows, so it can re-evaluate their
+	 * predicates and run their cleanups the way the framework does.
+	 */
+	private readonly legacyRenderer = new LegacySettingsRenderer(this, {
+		// The folder control is native from 1.13 on; below it, the tab's own
+		// suggester is what puts the vault's folders under the field.
+		attachFolderSuggest: (inputEl: HTMLInputElement): void => {
+			new TextInputSuggest(this.app, inputEl, () =>
+				this.getFolderOptions(),
+			);
+		},
+	});
+
+	/**
+	 * Keys whose control is a text field, collected from the definition tree on
+	 * every build. Their writes are debounced: a text control fires a change per
+	 * keystroke, and each one would otherwise rewrite data.json.
+	 */
+	private debouncedControlKeys: ReadonlySet<string> = new Set();
+
+	/**
+	 * Base control keys addressing the body of a profile. A profile is an entry
+	 * in a stored list rather than a settings property, so the key its page
+	 * carries names the field here and the profile by id.
+	 */
+	private readonly profileAccess = new Map<
+		string,
+		{
+			list: ProfileList<Profile>;
+			read: (profile: Profile) => string;
+			write: (profile: Profile, value: string) => void;
+		}
+	>();
+
+	/**
+	 * Base control keys addressing whether a profile is the selected one. The
+	 * row is a toggle per profile, so the value is a comparison against the
+	 * stored selection rather than a field of the profile.
+	 */
+	private readonly profileSelections = new Map<
+		string,
+		ProfileList<Profile>
+	>();
+
+	/**
 	 * Creates a new AudioRecorderSettingTab.
 	 * @param app - The Obsidian App instance
 	 * @param plugin - The plugin instance
@@ -248,6 +228,268 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	constructor(app: App, plugin: AudioRecorderPluginInterface) {
 		super(app, plugin);
 		this.plugin = plugin;
+		// The container belongs to this tab on both Obsidians and survives every
+		// render, so it is where the stylesheet is told which settings are ours.
+		this.containerEl.addClass(SETTINGS_TAB_CLASS);
+		// SettingTab.update() is the 1.13 API this probe is looking for: the
+		// typings declare it unconditionally, so only the runtime tells the two
+		// versions apart. Its absence selects the imperative mode, which is
+		// what keeps the tab working down to minAppVersion. The call itself
+		// stays on the instance, so the framework - or a test double standing
+		// in for it - always drives its own re-render.
+		const hasFrameworkUpdate =
+			// eslint-disable-next-line obsidianmd/no-unsupported-api -- probing for the 1.13 API is how the pre-1.13 fallback is chosen; the call below is guarded by this result
+			typeof (this as Partial<SettingTab>).update === 'function';
+		this.renderMode = createSettingsRenderMode({
+			frameworkUpdate: hasFrameworkUpdate
+				? (): void => {
+						// eslint-disable-next-line obsidianmd/no-unsupported-api -- reached only when the probe above found update(), i.e. on Obsidian 1.13+
+						this.update();
+					}
+				: undefined,
+			buildDefinitions: (): SettingDefinitionItem[] =>
+				this.buildDefinitions(),
+			renderLegacy: (): void => {
+				this.renderLegacy();
+			},
+		});
+	}
+
+	/**
+	 * Builds the tab's definition tree and notes which of its controls are text
+	 * fields, so their writes can be debounced.
+	 * @returns The definitions, in render order
+	 */
+	private buildDefinitions(): SettingDefinitionItem[] {
+		const definitions = buildSettingsDefinitions({
+			settings: this.plugin.settings,
+			sampleRates: getSupportedSampleRates(),
+			outputFormat: {
+				renderFormatRow: (setting): void => {
+					this.renderFormatRow(setting);
+				},
+				renderSummaryRow: (setting): void => {
+					this.renderSummaryRow(setting);
+				},
+			},
+			// Asked per build: the answer depends on the platform, which a tab
+			// outlives, and the tree is rebuilt for every pass anyway.
+			declareListAddRow: !this.renderMode.rendersListAddRow(),
+			renderDocumentationLink: (host): void => {
+				// The tab's "it reached the screen" signal, which is why this
+				// row stays first and stays a render row. From 1.13 nothing
+				// else says so: display() is not called, and
+				// getSettingDefinitions() also runs once at plugin load to
+				// index the settings search, so enumerating there would leave
+				// a device listener open on a tab nobody opened. A render
+				// callback runs only when rows are actually drawn, which is
+				// exactly the question being asked.
+				this.ensureDeviceWatch();
+				this.renderDocumentationLink(host);
+			},
+			devices: {
+				inputs: Object.fromEntries(
+					this.deviceSnapshot.devices.map((device) => [
+						device.deviceId,
+						device.label ||
+							`Audio device ${device.deviceId.substring(0, 8)}`,
+					]),
+				),
+				channelSelectable: (deviceId): boolean => {
+					if (!deviceId) {
+						return false;
+					}
+					const { enumerationSucceeded, channelLimits } =
+						this.deviceSnapshot;
+					// An enumeration that failed says nothing about the device,
+					// so the choice stays open rather than silently locked.
+					return (
+						!enumerationSucceeded ||
+						(channelLimits.has(deviceId) &&
+							channelSelectionAvailable(
+								channelLimits.get(deviceId),
+							))
+					);
+				},
+			},
+			// Every kind of profile is built the same way, from the one list
+			// that describes them, so a kind added there arrives with the same
+			// rules rather than with a block of its own here.
+			profiles: PROFILE_KINDS.map((kind) => this.profileCatalogue(kind)),
+			transcriptionBlocks: {
+				renderProviderKey: (host, engineId): void => {
+					this.renderTranscriptionBlock(host, (ctx) => {
+						renderProviderKeyField(ctx, ENGINES[engineId]);
+					});
+				},
+				renderLocalWhisperFields: (host): void => {
+					this.renderTranscriptionBlock(
+						host,
+						renderLocalWhisperSettings,
+					);
+				},
+				// One mechanism for every catalogue: the page names the engine
+				// it belongs to and that engine's own store performs the edit,
+				// so the tab needs no idea which provider or which capability
+				// asked, and never writes half of one.
+				addModel: (engine): void => {
+					new ModelIdModal(this.app, (id) => {
+						void this.engineSettings(engine).addModel(id);
+					}).open();
+				},
+				removeModel: (engine, model): void => {
+					void this.engineSettings(engine).removeModel(model);
+				},
+				selectModel: (engine, model): void => {
+					void this.engineSettings(engine).selectModel(model);
+				},
+			},
+			diagnostics: {
+				startTestRecording: (rowEl): void => {
+					void this.runTestRecording(rowEl);
+				},
+				releaseTestRecording: (): void => {
+					this.cleanupTestRecording();
+				},
+				showSystemInfo: (): void => {
+					void SystemDiagnostics.collect(
+						this.plugin.settings,
+						this.app,
+					).then((data) => {
+						new SystemInfoModal(this.app, data).open();
+					});
+				},
+			},
+		});
+		this.debouncedControlKeys = collectDebouncedControlKeys(definitions);
+		return definitions;
+	}
+
+	/**
+	 * Reads a control's value. Obsidian calls this on every render of a control
+	 * definition on 1.13+, and the legacy renderer calls it for the same reason.
+	 * @param key - The settings key the control is bound to
+	 * @returns The stored value
+	 */
+	override getControlValue(key: string): unknown {
+		const field = this.profileFieldFor(key);
+		if (field) {
+			// A profile deleted while its page was open leaves the controls of
+			// that page standing until the page is torn down; an empty body is
+			// what they read then.
+			return field.profile ? field.access.read(field.profile) : '';
+		}
+		const selection = this.profileSelectionFor(key);
+		if (selection) {
+			return (
+				selection.list.selectedId(this.plugin.settings) === selection.id
+			);
+		}
+		const track = parseTrackControlKey(key);
+		if (track) {
+			const source = this.plugin.settings.trackAudioSources.get(
+				track.track,
+			);
+			return track.field === 'deviceId'
+				? (source?.deviceId ?? '')
+				: (source?.channelMode ?? CHANNEL_MODE_SOURCE);
+		}
+		const stored = (
+			this.plugin.settings as unknown as Record<string, unknown>
+		)[key];
+		// A feature switched on where the platform cannot honour it reads as
+		// off, so the control never claims a result this device cannot give.
+		// The stored value is left alone, so the setting survives a sync back
+		// to a device that can.
+		if (key === 'enableMultiTrack') {
+			return stored === true && isMultiTrackCaptureSupported();
+		}
+		if (key === 'autoSplitEnabled') {
+			return stored === true && isAutoSplitSupported();
+		}
+		// A dropdown over a numeric setting reads it as the option value it
+		// offers, which is that number written out.
+		return controlValue.read(key, stored);
+	}
+
+	/**
+	 * Persists a control's value.
+	 *
+	 * The inherited implementation writes `plugin.settings[key]` and then calls
+	 * `plugin.saveData(settings)`, which is wrong for this plugin three times
+	 * over: the settings hold a Map that JSON would flatten to `{}`, the device
+	 * fields have to be written back into their per-platform branch, and the
+	 * recording manager and the player registrar have to be told that settings
+	 * changed. `saveSettings()` is what does all three, so every write goes
+	 * through it.
+	 * @param key - The settings key the control is bound to
+	 * @param value - The value the control produced
+	 */
+	override setControlValue(
+		key: string,
+		value: unknown,
+	): void | Promise<void> {
+		const field = this.profileFieldFor(key);
+		if (field) {
+			if (field.profile) {
+				field.access.write(field.profile, String(value));
+			}
+			// The body is a text area, so this fires per keystroke: the value
+			// is live in memory either way, only the write to disk waits.
+			this.saveTextSettingDebounced();
+			return;
+		}
+		const selection = this.profileSelectionFor(key);
+		if (selection) {
+			const settings = this.plugin.settings;
+			// Off means "no default of this kind", which is what the run-time
+			// resolver reads as None. Turning another profile on moves the
+			// selection; turning this one off only clears its own.
+			if (value === true) {
+				selection.list.setSelectedId(settings, selection.id);
+			} else if (selection.list.selectedId(settings) === selection.id) {
+				selection.list.setSelectedId(settings, '');
+			}
+			// Every entry of the catalogue says whether it is the one in use,
+			// so the tree is read again rather than re-evaluated in place.
+			return this.commit();
+		}
+		const track = parseTrackControlKey(key);
+		if (track) {
+			this.writeTrackSource(track.track, track.field, String(value));
+			return this.plugin.saveSettings();
+		}
+		const effect = CONTROL_WRITE_EFFECTS[key];
+		const settings = this.plugin.settings as unknown as Record<
+			string,
+			unknown
+		>;
+		const stored = controlValue.write(key, value, settings[key]);
+		// A field an engine owns is written by that engine rather than into the
+		// settings object behind its back, so a row on an engine's page and an
+		// edit from a dialog go through the same writer and the same rules -
+		// among them that a catalogue always offers the id it names.
+		const engineField = engineFieldOf(key);
+		if (engineField) {
+			applyEngineSettingsField(this.plugin.settings, engineField, stored);
+		} else {
+			settings[key] = stored;
+		}
+		if (this.debouncedControlKeys.has(key)) {
+			// A text field changes on every keystroke. The value is live in
+			// memory either way; only the write to disk waits.
+			this.saveTextSettingDebounced();
+			return;
+		}
+		const saved = this.plugin.saveSettings();
+		if (!effect?.reshapesTree) {
+			return saved;
+		}
+		// The rows this write changed are the rows already on screen, holding
+		// something else now, so they are read again rather than re-evaluated.
+		return saved.then(() => {
+			this.rerender();
+		});
 	}
 
 	private getCompressionDescription(format: string): string {
@@ -285,83 +527,302 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * Displays the settings UI.
+	 * The profile body a control key addresses. The key names the field and the
+	 * profile it belongs to, so a row on one profile's page can never write to
+	 * another's.
+	 * @param key - The control key to resolve
+	 * @returns The field's accessors and the profile, or undefined for any
+	 * other key. The profile is undefined when the key resolves to a kind of
+	 * profile that no longer holds this id.
 	 */
-	override display(): void {
-		this.isDisplayed = true;
-		this.renderFull();
+	private profileFieldFor(key: string):
+		| {
+				profile: Profile | undefined;
+				access: {
+					read: (profile: Profile) => string;
+					write: (profile: Profile, value: string) => void;
+				};
+		  }
+		| undefined {
+		const parsed = parseProfileControlKey(key);
+		const access = parsed && this.profileAccess.get(parsed.base);
+		if (!parsed || !access) {
+			return undefined;
+		}
+		return {
+			profile: findProfile(
+				access.list.get(this.plugin.settings),
+				parsed.id,
+			),
+			access,
+		};
 	}
 
 	/**
-	 * Declarative settings entry (Obsidian 1.13+). This tab is highly dynamic
-	 * (live device enumeration, async format probing, per-track rows) and does
-	 * not fit the declarative control model, so it renders imperatively through
-	 * a single render hook. The setting names travel as `aliases` so the
-	 * settings search still surfaces the tab by an individual setting's name.
-	 * On older Obsidian this method is not part of the API and display() renders
-	 * instead; both paths funnel through renderSettingsInto().
+	 * The profile a selection toggle addresses.
+	 * @param key - The control key to resolve
+	 * @returns The profile list and the id the toggle speaks for, or undefined
+	 * for any other key
+	 */
+	private profileSelectionFor(
+		key: string,
+	): { list: ProfileList<Profile>; id: string } | undefined {
+		const parsed = parseProfileControlKey(key);
+		const list = parsed && this.profileSelections.get(parsed.base);
+		if (!parsed || !list) {
+			return undefined;
+		}
+		return { list, id: parsed.id };
+	}
+
+	/**
+	 * Writes one field of a track's audio source. The sources live in a Map
+	 * keyed by track number, so a control key addresses an entry rather than a
+	 * settings property; clearing the device drops the entry entirely.
+	 * @param track - The track number the control belongs to
+	 * @param field - Which half of the source the control writes
+	 * @param value - The value the control produced
+	 */
+	private writeTrackSource(
+		track: number,
+		field: 'deviceId' | 'channelMode',
+		value: string,
+	): void {
+		const sources = this.plugin.settings.trackAudioSources;
+		const current = sources.get(track);
+		if (field === 'channelMode') {
+			if (!current) {
+				// No device on this track: there is nothing to bind a layout to.
+				return;
+			}
+			sources.set(track, {
+				...current,
+				channelMode: normalizeChannelMode(value),
+			});
+			return;
+		}
+		if (!value) {
+			sources.delete(track);
+			return;
+		}
+		// Keep the track's channel layout across a device swap.
+		sources.set(track, {
+			deviceId: value,
+			channelMode: current?.channelMode ?? CHANNEL_MODE_SOURCE,
+		});
+	}
+
+	/**
+	 * Renders the tab into its own container. This is Obsidian's render call
+	 * before 1.13; from 1.13 on the framework renders the tab from
+	 * getSettingDefinitions() and never calls this.
+	 */
+	override display(): void {
+		this.renderLegacy();
+	}
+
+	/**
+	 * Declarative settings entry (Obsidian 1.13+): the tab's definition tree,
+	 * which the framework renders, indexes for the settings search, and reads
+	 * and writes values through. On older Obsidian the render mode returns no
+	 * definitions, which is what makes that Obsidian call display() instead;
+	 * both paths render the same tree.
 	 */
 	override getSettingDefinitions(): SettingDefinitionItem[] {
-		return [
-			{
-				name: 'Advanced Audio Recorder',
-				aliases: SETTINGS_SEARCH_ALIASES,
-				render: (setting: Setting): void => {
-					this.isDisplayed = true;
-					// The framework appends this render item's row to the
-					// group's list element; render the real controls into that
-					// same host, then drop the empty anchor row itself.
-					const host =
-						setting.settingEl.parentElement ?? this.containerEl;
-					setting.settingEl.remove();
-					// Clear the host before rendering. getSettingDefinitions()
-					// returns a single item, so the group's list element holds
-					// only this item's row; emptying it keeps a re-render via
-					// update() from stacking a second copy of the body if the
-					// framework reuses the same list element instead of clearing
-					// the container first.
-					host.empty();
-					this.renderSettingsInto(host);
-				},
-			},
-		];
+		return this.renderMode.getDefinitions();
+	}
+
+	/**
+	 * Renders the definition tree with the pre-1.13 API. The render call on
+	 * older Obsidian, for the first render and for every re-render, since there
+	 * is no framework update() to hand the work back to.
+	 */
+	private renderLegacy(): void {
+		this.legacyRenderer.render(this.containerEl, this.buildDefinitions());
 	}
 
 	/**
 	 * Re-renders the tab after a change that adds or removes settings (for
-	 * example toggling multi-track or Save near active file). Uses the
-	 * declarative update() on Obsidian 1.13+ (where display() is not the render
-	 * path) and falls back to display() on older versions.
+	 * example toggling multi-track or Save near active file), on whichever
+	 * terms the running Obsidian sets.
 	 */
 	private rerender(): void {
-		const update = (this as unknown as { update?: () => void }).update;
-		if (typeof update === 'function') {
-			update.call(this);
-		} else {
-			this.renderFull();
-		}
+		this.renderMode.rerender();
 	}
 
 	/**
-	 * Clears the container and rebuilds the settings body. Shared by display()
-	 * and by the pre-1.13 re-render path, which cannot call the framework's
-	 * update() and must re-render imperatively.
+	 * One profile catalogue for the definitions: the kind's copy, the control
+	 * keys its rows bind to, and the add, rename and remove edits, all over the
+	 * list the kind names. Every kind goes through here, so they cannot drift.
+	 * @param kind - The kind of profile being described
 	 */
-	private renderFull(): void {
-		this.containerEl.empty();
-		this.renderSettingsInto(this.containerEl);
+	private profileCatalogue(kind: ProfileKind): ProfileCatalogue {
+		const list = kind.list;
+		this.profileAccess.set(kind.bodyKey, {
+			list,
+			read: (profile) => kind.body(profile),
+			write: (profile, value) => {
+				kind.setBody(profile, value);
+			},
+		});
+		this.profileSelections.set(kind.selectionKey, list);
+		const rejection = (id: string, name: string): string | undefined => {
+			if (name === '') {
+				return 'Give the profile a name.';
+			}
+			return list
+				.get(this.plugin.settings)
+				.some((profile) => profile.id !== id && profile.name === name)
+				? 'Another profile already uses this name.'
+				: undefined;
+		};
+		return {
+			section: kind.section,
+			heading: kind.heading,
+			selectorDesc: kind.catalogueDesc,
+			bodyName: kind.bodyName,
+			bodyDesc: kind.bodyDesc,
+			selectionName: kind.selectionName,
+			selectionDesc: kind.selectionDesc,
+			selectionKey: kind.selectionKey,
+			bodyKey: kind.bodyKey,
+			entries: (settings) =>
+				list.get(settings).map((profile) => ({
+					id: profile.id,
+					name: profile.name,
+					summary:
+						profile.id === list.selectedId(settings)
+							? `In use, ${kind.summary(profile)}`
+							: kind.summary(profile),
+				})),
+			visible: kind.visible,
+			add: (): void => {
+				const created = addProfile(
+					list.get(this.plugin.settings),
+					list.create(
+						freeProfileName(
+							list.get(this.plugin.settings),
+							NEW_PROFILE_NAME,
+						),
+					),
+				);
+				list.set(this.plugin.settings, created);
+				// Adding a profile must not silently change which one a run
+				// uses; only a catalogue with nothing usable selected adopts it.
+				if (
+					effectiveProfileId(
+						created,
+						list.selectedId(this.plugin.settings),
+					) === '' &&
+					created.length === 1
+				) {
+					list.setSelectedId(
+						this.plugin.settings,
+						created[0]?.id ?? '',
+					);
+				}
+				void this.commit();
+			},
+			rename: (id): void => {
+				const profile = findProfile(list.get(this.plugin.settings), id);
+				if (!profile) {
+					return;
+				}
+				new ProfileNameModal(this.app, {
+					title: 'Rename profile',
+					confirmText: 'Rename',
+					initial: profile.name,
+					rejection: (name) => rejection(id, name),
+					onSubmit: (name) => {
+						profile.name = name;
+						void this.commit().then(() => {
+							// The page is addressed by the name it just lost,
+							// so it cannot stay open on it.
+							closeSettingsPage(this.app);
+						});
+					},
+				}).open();
+			},
+			remove: (id): void => {
+				const profile = findProfile(list.get(this.plugin.settings), id);
+				if (!profile) {
+					return;
+				}
+				removeAndReselectProfile(
+					list,
+					this.plugin.settings,
+					profile.id,
+				);
+				void this.commit().then(() => {
+					// Deleted from its own page, which the framework addresses
+					// by a name that resolves to nothing now.
+					closeSettingsPage(this.app);
+				});
+			},
+		};
 	}
 
 	/**
-	 * Builds the full settings body into the given host element. Shared by the
-	 * imperative display() fallback and the declarative render hook; the caller
-	 * owns clearing the host and toggling isDisplayed.
-	 * @param containerEl - Host element the settings are rendered into
+	 * One engine's own settings store, bound to this tab's way of persisting: a
+	 * change is written by the engine that owns the fields, saved, and the tree
+	 * read again, because an engine's entry says what it is configured with.
+	 * @param id - The engine being configured
 	 */
-	private renderSettingsInto(containerEl: HTMLElement): void {
-		this.deviceDropdowns = [];
-		this.channelDropdownUpdaters = [];
-		this.deviceSnapshot = EMPTY_DEVICE_SNAPSHOT;
+	private engineSettings(id: EngineId): EngineSettingsStore {
+		return engineSettingsStore(
+			id,
+			() => this.plugin.settings,
+			() => this.commit(),
+		);
+	}
+
+	/**
+	 * Persists a change and reads the definition tree again.
+	 *
+	 * What every edit that moves what other rows *show* needs, as opposed to
+	 * whether they show: a model put to work, a profile added, renamed, or
+	 * removed, a recording format that rewrites the summary beneath it. The
+	 * rows are the same rows holding something else, which no predicate
+	 * expresses, so they are read again rather than re-evaluated in place.
+	 */
+	private commit(): Promise<void> {
+		return this.plugin.saveSettings().then(() => {
+			this.rerender();
+		});
+	}
+
+	/**
+	 * Renders one transcription block that is not a definition yet, into the row
+	 * its section keeps for it. A reveal inside the block redraws the block,
+	 * which is confined to that row.
+	 * @param host - The row element the block is rendered into
+	 * @param render - Draws the block into the section context it is given
+	 */
+	private renderTranscriptionBlock(
+		host: HTMLElement,
+		render: (ctx: SettingsSectionContext) => void,
+	): void {
+		const draw = (): void => {
+			host.empty();
+			render({
+				containerEl: host,
+				settings: this.plugin.settings,
+				save: () => this.plugin.saveSettings(),
+				rerender: draw,
+				saveDebounced: () => {
+					this.saveTextSettingDebounced();
+				},
+			});
+		};
+		draw();
+	}
+
+	/**
+	 * Starts watching the audio inputs while the tab is on screen. The device
+	 * rows are built from the last enumeration, so the tab enumerates once per
+	 * open and again whenever the system reports a change.
+	 */
+	private ensureDeviceWatch(): void {
 		if (!this.deviceChangeHandler) {
 			this.deviceChangeHandler = (): void => {
 				void this.refreshDeviceList();
@@ -371,109 +832,17 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				this.deviceChangeHandler,
 			);
 		}
+		void this.refreshDeviceList();
+	}
 
-		// Quick access to the full documentation, so users do not have to
-		// hunt through the GitHub repository for the guides.
-		this.renderDocumentationLink(containerEl);
-
-		// Audio input
-		new Setting(containerEl).setName('Audio input').setHeading();
-
-		const deviceSelectable = isDeviceSelectionSupported();
-		const deviceSetting = new Setting(containerEl)
-			.setName('Input device')
-			.setDesc(
-				deviceSelectable
-					? 'Select the default input device for single-track recordings. You can also change it from the command palette.'
-					: 'Not selectable on this device; recording uses the system default microphone.',
-			)
-			.addDropdown((dropdown) => {
-				if (!deviceSelectable) {
-					dropdown.setDisabled(true);
-					return;
-				}
-				this.deviceDropdowns.push({
-					dropdown,
-					getSelectedDeviceId: () =>
-						this.plugin.settings.audioDeviceId || '',
-				});
-				dropdown.onChange(async (value) => {
-					this.plugin.settings.audioDeviceId = value;
-					await this.plugin.saveSettings();
-					// The channel selector is bound to this device
-					this.runChannelDropdownUpdaters();
-				});
-			});
-		if (!deviceSelectable) {
-			deviceSetting.settingEl.addClass(SETTING_DISABLED_CLASS);
-		}
-
-		const sampleRateSelectable = isSampleRateSelectionSupported();
-		const sampleRateSetting = new Setting(containerEl)
-			.setName('Sample rate')
-			.setDesc(
-				sampleRateSelectable
-					? 'Audio sample rate in hertz.'
-					: 'Not selectable on this device; the system capture rate is used.',
-			)
-			.addDropdown((dropdown) => {
-				const sampleRates = getSupportedSampleRates();
-				sampleRates.forEach((rate) => {
-					dropdown.addOption(String(rate), String(rate));
-				});
-				dropdown.setValue(String(this.plugin.settings.sampleRate));
-				if (!sampleRateSelectable) {
-					dropdown.setDisabled(true);
-					return;
-				}
-				dropdown.onChange(async (value) => {
-					this.plugin.settings.sampleRate = parseInt(value, 10);
-					await this.plugin.saveSettings();
-				});
-			});
-		if (!sampleRateSelectable) {
-			sampleRateSetting.settingEl.addClass(SETTING_DISABLED_CLASS);
-		}
-
-		new Setting(containerEl)
-			.setName('Recording channels')
-			.setDesc(
-				'Channel layout for single-track recordings: keep the device layout, or reduce to mono during capture. The left/right channel options suit audio interfaces whose two mono inputs show up as one stereo device: a single microphone is kept at full level instead of being mixed with a silent channel. Disabled when the selected device reports a mono-only input. Multi-track sessions use the per-track selectors below instead.',
-			)
-			.addDropdown((dropdown) => {
-				this.bindChannelModeDropdown(dropdown, {
-					getDeviceId: () => this.plugin.settings.audioDeviceId,
-					// An empty id means the platform default device,
-					// whose capability is not knowable here: keep enabled
-					hasDevice: () => true,
-					getMode: () => this.plugin.settings.recordingChannels,
-					setMode: async (mode) => {
-						this.plugin.settings.recordingChannels = mode;
-						await this.plugin.saveSettings();
-					},
-				});
-			});
-
-		// Output format
-		new Setting(containerEl).setName('Output format').setHeading();
-
-		const selectedBitrateKbps = Math.round(
-			this.plugin.settings.bitrate / 1000,
-		);
-		const updateOutputSummary = (container: HTMLElement): void => {
-			container.setText(
-				`Output: ${this.plugin.settings.recordingFormat.toUpperCase()}, ${String(Math.round(this.plugin.settings.bitrate / 1000))} kbps. ${this.getCompressionDescription(this.plugin.settings.recordingFormat)}`,
-			);
-		};
-		let summaryEl: HTMLElement | null = null;
-		const formatSetting = new Setting(containerEl)
-			.setName('Recording format')
-			.setDesc(
-				'Select the final file format. The selected format is applied when files are saved. Formats this device cannot record are shown blocked.',
-			);
-		formatSetting.addDropdown((dropdown) => {
-			// Render the full registry immediately; the async encoder
-			// probe then blocks the options this device cannot record.
+	/**
+	 * Fills the recording-format row. The format list is rendered from the
+	 * registry at once and the options this device cannot record are blocked by
+	 * an asynchronous encoder probe, which no control type expresses.
+	 * @param setting - The row to fill
+	 */
+	private renderFormatRow(setting: Setting): void {
+		setting.addDropdown((dropdown) => {
 			for (const format of AUDIO_FORMAT_IDS) {
 				dropdown.addOption(format, format.toUpperCase());
 			}
@@ -486,350 +855,27 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			dropdown.setValue(stored);
 			dropdown.onChange(async (value) => {
 				this.plugin.settings.recordingFormat = value;
-				await this.plugin.saveSettings();
-				if (summaryEl) {
-					updateOutputSummary(summaryEl);
-				}
+				// The summary row reads this, and the format list may need a
+				// fallback note, so the tree is rebuilt rather than patched.
+				await this.commit();
 			});
-			void this.applyFormatAvailability(dropdown, formatSetting.descEl);
+			void this.applyFormatAvailability(dropdown, setting.descEl);
 		});
+	}
 
-		new Setting(containerEl)
-			.setName('Audio bitrate')
-			.setDesc(
-				'Controls compression quality and resulting file size. Higher bitrate = better quality and larger files.',
-			)
-			.addDropdown((dropdown) => {
-				this.bitrateOptionsKbps.forEach((bitrateKbps) => {
-					dropdown.addOption(
-						String(bitrateKbps),
-						`${String(bitrateKbps)} kbps`,
-					);
-				});
-				dropdown.setValue(String(selectedBitrateKbps));
-				dropdown.onChange(async (value) => {
-					this.plugin.settings.bitrate = parseInt(value, 10) * 1000;
-					await this.plugin.saveSettings();
-					if (summaryEl) {
-						updateOutputSummary(summaryEl);
-					}
-				});
-			});
-
-		const outputSummarySetting = new Setting(containerEl)
-			.setName('Output summary')
-			.setDesc(
-				'Shows the exact format, compression type, and bitrate used for recording.',
+	/**
+	 * Fills the row that summarises the effective output, which is derived from
+	 * the format and bitrate rows rather than stored.
+	 * @param setting - The row to fill
+	 */
+	private renderSummaryRow(setting: Setting): void {
+		const format = this.plugin.settings.recordingFormat;
+		const kbps = Math.round(this.plugin.settings.bitrate / 1000);
+		setting.descEl
+			.createDiv()
+			.setText(
+				`Output: ${format.toUpperCase()}, ${String(kbps)} kbps. ${this.getCompressionDescription(format)}`,
 			);
-		summaryEl = outputSummarySetting.descEl.createDiv();
-		updateOutputSummary(summaryEl);
-
-		const outputCtx = this.sectionContext(containerEl);
-		addToggle(outputCtx, {
-			name: 'Delete source after conversion',
-			desc: 'When converting audio via the context menu, delete the original file after a successful conversion.',
-			get: () => this.plugin.settings.deleteSourceAfterConversion,
-			set: (v) => (this.plugin.settings.deleteSourceAfterConversion = v),
-		});
-
-		addDropdown(outputCtx, {
-			name: 'Update links after conversion',
-			desc: 'How to handle links to the source file in notes after conversion.',
-			options: CONVERSION_LINK_ACTION_OPTIONS,
-			get: () => this.plugin.settings.conversionLinkAction,
-			set: (v) =>
-				(this.plugin.settings.conversionLinkAction =
-					v as ConversionLinkAction),
-		});
-
-		// File storage: "Save near active file" reveals the subfolder row and
-		// nothing else, so the section redraws itself.
-		this.renderScopedSection(containerEl, (ctx) => {
-			this.renderFileStorageRows(ctx);
-		});
-
-		// Audio splitting
-		new Setting(containerEl).setName('Audio splitting').setHeading();
-
-		// Splitting rows reveal nothing, so they stay on the tab-wide context.
-		const splitCtx = this.sectionContext(containerEl);
-		const settings = this.plugin.settings;
-		const autoSplitAvailable = isAutoSplitSupported();
-		const autoSplitSetting = new Setting(containerEl)
-			.setName('Split recordings automatically')
-			.setDesc(
-				autoSplitAvailable
-					? 'Save the recording as separate part files of fixed duration instead of one long file. Not applied to merged multi-track recordings.'
-					: 'Not available on this device. Recordings are saved as one file; manual splitting from the context menu still works.',
-			)
-			.addToggle((toggle) => {
-				// Reflect the effective state: a stored "on" synced from
-				// another platform reads as off where auto-split cannot run.
-				toggle
-					.setValue(
-						this.plugin.settings.autoSplitEnabled &&
-							autoSplitAvailable,
-					)
-					.onChange(async (value) => {
-						this.plugin.settings.autoSplitEnabled = value;
-						await this.plugin.saveSettings();
-					});
-				if (!autoSplitAvailable) {
-					toggle.setDisabled(true);
-				}
-			});
-		if (!autoSplitAvailable) {
-			autoSplitSetting.settingEl.addClass(SETTING_DISABLED_CLASS);
-		}
-
-		addNumberInput(splitCtx, {
-			name: 'Part duration',
-			desc: 'Length of each part in minutes. Also used as the default for manual splitting from the context menu.',
-			min: MIN_SPLIT_CHUNK_MINUTES,
-			max: MAX_SPLIT_CHUNK_MINUTES,
-			step: 1,
-			get: () => settings.splitChunkMinutes,
-			set: (v) => (settings.splitChunkMinutes = v),
-		});
-
-		new Setting(containerEl)
-			.setName('Part name suffix')
-			.setDesc(
-				'Appended with the part number to part file names, e.g. "recording-part1.webm". Letters, digits, hyphens, and underscores only.',
-			)
-			.addText((text) =>
-				text
-					.setPlaceholder(DEFAULT_SPLIT_PART_SUFFIX)
-					.setValue(this.plugin.settings.splitPartSuffix)
-					.onChange((value) => {
-						// Mirror the manual split dialog: surrounding
-						// whitespace is ignored and an empty field means
-						// the default suffix. Only valid suffixes are
-						// persisted; the red border tells the user the
-						// last valid value is still in effect
-						const trimmed = value.trim();
-						const valid =
-							trimmed === '' ||
-							SPLIT_PART_SUFFIX_PATTERN.test(trimmed);
-						text.inputEl.toggleClass('aar-input-invalid', !valid);
-						if (!valid) {
-							return;
-						}
-						this.plugin.settings.splitPartSuffix =
-							trimmed === ''
-								? DEFAULT_SPLIT_PART_SUFFIX
-								: trimmed;
-						this.saveTextSettingDebounced();
-					}),
-			);
-
-		addToggle(splitCtx, {
-			name: 'Delete source after split',
-			desc: 'Default state of the delete source file option in the manual split dialog.',
-			get: () => settings.deleteSourceAfterSplit,
-			set: (v) => (settings.deleteSourceAfterSplit = v),
-		});
-
-		// Multi-track recording
-		new Setting(containerEl).setName('Multi-track recording').setHeading();
-
-		const multiTrackAvailable = isMultiTrackCaptureSupported();
-		const multiTrackSetting = new Setting(containerEl)
-			.setName('Enable multi-track recording')
-			.setDesc(
-				multiTrackAvailable
-					? 'Enable recording from multiple input devices at the same time.'
-					: 'Not available on this device. Recording captures a single track from the default microphone.',
-			)
-			.addToggle((toggle) => {
-				// Reflect the effective state: a stored "on" synced from
-				// another platform reads as off where multi-track capture
-				// is unavailable, and the toggle cannot be switched on.
-				toggle
-					.setValue(
-						this.plugin.settings.enableMultiTrack &&
-							multiTrackAvailable,
-					)
-					.onChange(async (value) => {
-						this.plugin.settings.enableMultiTrack = value;
-						await this.plugin.saveSettings();
-						this.rerender();
-					});
-				if (!multiTrackAvailable) {
-					toggle.setDisabled(true);
-				}
-			});
-		if (!multiTrackAvailable) {
-			multiTrackSetting.settingEl.addClass(SETTING_DISABLED_CLASS);
-		}
-
-		if (this.plugin.settings.enableMultiTrack && multiTrackAvailable) {
-			addNumberInputTo(
-				new Setting(containerEl)
-					.setName('Maximum tracks')
-					.setDesc(
-						'Set the number of simultaneous tracks (1-8). Use only what you need to keep configuration simple.',
-					),
-				{
-					min: 1,
-					max: 8,
-					step: 1,
-					get: () => this.plugin.settings.maxTracks,
-					set: async (value) => {
-						this.plugin.settings.maxTracks = value;
-						await this.plugin.saveSettings();
-						this.rerender();
-					},
-				},
-			);
-
-			new Setting(containerEl)
-				.setName('Output mode')
-				.setDesc(
-					'Choose whether multi-track output is exported as one combined file or one file per track.',
-				)
-				.addDropdown((dropdown) =>
-					dropdown
-						.addOption('single', 'Single file')
-						.addOption('multiple', 'Multiple files')
-						.setValue(this.plugin.settings.outputMode)
-						.onChange(async (value: string) => {
-							this.plugin.settings.outputMode =
-								value as OutputMode;
-							await this.plugin.saveSettings();
-						}),
-				);
-
-			for (let i = 1; i <= this.plugin.settings.maxTracks; i++) {
-				new Setting(containerEl)
-					.setName(`Audio source for track ${String(i)}`)
-					.setDesc(
-						`Select the input device assigned to track ${String(i)}`,
-					)
-					.addDropdown((dropdown) => {
-						this.deviceDropdowns.push({
-							dropdown,
-							getSelectedDeviceId: () =>
-								this.plugin.settings.trackAudioSources.get(i)
-									?.deviceId || '',
-						});
-						dropdown.onChange(async (value) => {
-							if (value) {
-								// Keep the track's channel mode across a
-								// device swap. Capability observation only
-								// disables the selector; it never rewrites
-								// the user's persistent choice.
-								this.plugin.settings.trackAudioSources.set(i, {
-									deviceId: value,
-									channelMode:
-										this.plugin.settings.trackAudioSources.get(
-											i,
-										)?.channelMode ?? CHANNEL_MODE_SOURCE,
-								});
-							} else {
-								this.plugin.settings.trackAudioSources.delete(
-									i,
-								);
-							}
-							await this.plugin.saveSettings();
-							// The track's channel selector is bound to
-							// this device
-							this.runChannelDropdownUpdaters();
-						});
-					});
-
-				new Setting(containerEl)
-					.setName(`Channels for track ${String(i)}`)
-					.setDesc(
-						`Channel layout for track ${String(i)}: keep the device layout, or reduce this track to mono during capture. Disabled when the track has no device or its device reports a mono-only input.`,
-					)
-					.addDropdown((dropdown) => {
-						this.bindChannelModeDropdown(dropdown, {
-							getDeviceId: () =>
-								this.plugin.settings.trackAudioSources.get(i)
-									?.deviceId ?? '',
-							hasDevice: () =>
-								Boolean(
-									this.plugin.settings.trackAudioSources.get(
-										i,
-									)?.deviceId,
-								),
-							getMode: () =>
-								this.plugin.settings.trackAudioSources.get(i)
-									?.channelMode ?? CHANNEL_MODE_SOURCE,
-							setMode: async (mode) => {
-								const source =
-									this.plugin.settings.trackAudioSources.get(
-										i,
-									);
-								if (!source) {
-									// No device selected: nothing to bind
-									// the mode to
-									return;
-								}
-								this.plugin.settings.trackAudioSources.set(i, {
-									...source,
-									channelMode: mode,
-								});
-								await this.plugin.saveSettings();
-							},
-						});
-					});
-			}
-		}
-
-		// Audio player
-		this.renderAudioPlayerSettings(containerEl);
-
-		// Transcription: its many reveal/hide toggles (engine, advanced mode,
-		// chapters, LLM task) and its model-list add/remove buttons affect
-		// nothing outside the section.
-		this.renderScopedSection(containerEl, renderTranscriptionSection);
-
-		// Audio processing & feedback
-		this.renderInputProcessingSettings(containerEl);
-
-		// Diagnostics
-		new Setting(containerEl).setName('Diagnostics').setHeading();
-
-		const testContainer = containerEl.createDiv();
-		new Setting(testContainer)
-			.setName('Test recording')
-			.setDesc(
-				'Records a 5-second test clip using your current settings and plays it back. Nothing is saved to your vault.',
-			)
-			.addButton((button) =>
-				button.setButtonText('Start test').onClick(() => {
-					void this.runTestRecording(testContainer);
-				}),
-			);
-
-		new Setting(containerEl)
-			.setName('System info')
-			.setDesc(
-				'Show full system diagnostics including plugin settings, audio devices, and browser capabilities.',
-			)
-			.addButton((button) =>
-				button.setButtonText('Show info').onClick(() => {
-					void SystemDiagnostics.collect(
-						this.plugin.settings,
-						this.app,
-					).then((data) => {
-						new SystemInfoModal(this.app, data).open();
-					});
-				}),
-			);
-
-		addToggle(this.sectionContext(containerEl), {
-			name: 'Debug mode',
-			desc: 'Enable verbose logs for troubleshooting recording issues.',
-			get: () => this.plugin.settings.debug,
-			set: (v) => (this.plugin.settings.debug = v),
-		});
-
-		// Populate every device dropdown and capability lookup from one
-		// coherent enumeration after all bindings have been registered.
-		void this.refreshDeviceList();
 	}
 
 	/**
@@ -866,306 +912,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * Renders the enhanced audio player settings: the master toggle plus the
-	 * two window toggles (waveform, markers/chapters). The control buttons
-	 * (speed, skip, volume, time, mute, loop, timecode links) are fixed.
-	 * @param containerEl - The settings container element
-	 */
-	/**
-	 * Builds the section context the shared control builders bind to: the live
-	 * settings object plus this tab's save, debounced-save, and re-render hooks.
-	 * Sections that are plain toggles, dropdowns, text fields, and numeric inputs
-	 * go through these builders, so they get the tab's save conventions (and the
-	 * disabled/help-link rendering) instead of restating them per row.
-	 *
-	 * The sections that stay imperative are the ones the declarative model does
-	 * not cover: live device enumeration, the async format-availability probe,
-	 * and the per-track rows built from a Map.
-	 * @param containerEl - Element the section renders into
-	 */
-	private sectionContext(containerEl: HTMLElement): SettingsSectionContext {
-		return {
-			containerEl,
-			settings: this.plugin.settings,
-			save: () => this.plugin.saveSettings(),
-			rerender: () => {
-				this.rerender();
-			},
-			saveDebounced: () => {
-				this.saveTextSettingDebounced();
-			},
-		};
-	}
-
-	/**
-	 * Renders a section into a container of its own, so a reveal/hide toggle
-	 * inside it redraws only that section.
-	 *
-	 * The tab-wide rerender rebuilds every row and, with them, restarts the
-	 * device enumeration and the async format-availability probe. That is the
-	 * right response to a setting those depend on (multi-track, track count),
-	 * and pure waste for one whose effect is confined to its own section - the
-	 * transcription reveals, the player's sub-options, the save-folder mode.
-	 * Sections whose visible rows depend only on their own settings render
-	 * through here.
-	 * @param containerEl - Element to host the section's own container
-	 * @param render - Draws the section into the context it is given
-	 */
-	private renderScopedSection(
-		containerEl: HTMLElement,
-		render: (ctx: SettingsSectionContext) => void,
-	): void {
-		const sectionEl = containerEl.createDiv();
-		const draw = (): void => {
-			sectionEl.empty();
-			render({
-				containerEl: sectionEl,
-				settings: this.plugin.settings,
-				save: () => this.plugin.saveSettings(),
-				rerender: draw,
-				saveDebounced: () => {
-					this.saveTextSettingDebounced();
-				},
-			});
-		};
-		draw();
-	}
-
-	/**
-	 * The file-storage rows: where a recording is written and how it is named.
-	 * @param ctx - The section context (its own container and hooks)
-	 */
-	private renderFileStorageRows(ctx: SettingsSectionContext): void {
-		const settings = this.plugin.settings;
-		addHeading(ctx, 'File storage');
-
-		// The save folder keeps its own builder: the field carries a
-		// TextInputSuggest bound to the live vault folder list, which the
-		// shared text control has no hook for.
-		new Setting(ctx.containerEl)
-			.setName('Save folder')
-			.setDesc(
-				'Specify where recordings are saved in your vault. Existing folders are suggested as you type.',
-			)
-			.addText((text) => {
-				new TextInputSuggest(this.app, text.inputEl, () =>
-					this.getFolderOptions(),
-				);
-				text.setValue(settings.saveFolder);
-				text.onChange((value) => {
-					settings.saveFolder = value;
-					this.saveTextSettingDebounced();
-				});
-			});
-
-		addToggle(ctx, {
-			name: 'Save recordings near active file',
-			desc: 'Save recordings in the same directory as the currently active Markdown file. This mode has priority over save folder.',
-			get: () => settings.saveNearActiveFile,
-			set: (v) => (settings.saveNearActiveFile = v),
-			rerender: true,
-		});
-
-		if (settings.saveNearActiveFile) {
-			addText(ctx, {
-				name: 'Active file subfolder',
-				desc: 'Optional subfolder relative to the active file directory (for example: audio). Created automatically if missing.',
-				get: () => settings.activeFileSubfolder,
-				set: (v) => (settings.activeFileSubfolder = v),
-			});
-		}
-
-		addText(ctx, {
-			name: 'File prefix',
-			desc: 'Set the filename prefix used for exported recordings.',
-			get: () => settings.filePrefix,
-			set: (v) => (settings.filePrefix = v),
-		});
-
-		addToggle(ctx, {
-			name: 'Insert at original position',
-			desc: 'When enabled, the plugin remembers the note and insertion position where recording started. The audio link is inserted at that location, even if you navigate away during recording. Note: if the original note is edited during recording, the insertion position may shift.',
-			get: () => settings.insertAtOriginalPosition,
-			set: (v) => (settings.insertAtOriginalPosition = v),
-		});
-	}
-
-	private renderAudioPlayerSettings(containerEl: HTMLElement): void {
-		this.renderScopedSection(containerEl, (ctx) => {
-			this.renderAudioPlayerRows(ctx);
-		});
-	}
-
-	/**
-	 * The audio-player rows: the master toggle plus the sub-options it reveals.
-	 * @param ctx - The section context (its own container and hooks)
-	 */
-	private renderAudioPlayerRows(ctx: SettingsSectionContext): void {
-		const s = this.plugin.settings;
-		addHeading(ctx, 'Audio player');
-
-		addToggle(ctx, {
-			name: 'Enhanced audio player',
-			desc: 'Replace the built-in audio embed with a richer player (waveform, speed, skip, volume, loop, timecode links, markers and chapters). Video files keep the built-in player.',
-			get: () => s.enhancedPlayerEnabled,
-			set: (v) => (s.enhancedPlayerEnabled = v),
-			rerender: true,
-		});
-		if (!s.enhancedPlayerEnabled) {
-			return;
-		}
-
-		addToggle(ctx, {
-			name: 'Show waveform',
-			desc: 'Draw a waveform behind the seek bar.',
-			get: () => s.playerShowWaveform,
-			set: (v) => (s.playerShowWaveform = v),
-		});
-
-		addToggle(ctx, {
-			name: 'Markers and chapters',
-			desc: 'Show the markers and chapters list below the player. Markers are stored next to the recording, not in your vault.',
-			get: () => s.playerEnableMarkers,
-			set: (v) => (s.playerEnableMarkers = v),
-		});
-	}
-
-	/**
-	 * Renders the audio input-processing constraints and the live
-	 * recording-feedback options.
-	 * @param containerEl - The settings container element
-	 */
-	private renderInputProcessingSettings(containerEl: HTMLElement): void {
-		const ctx = this.sectionContext(containerEl);
-		const s = this.plugin.settings;
-		addHeading(ctx, 'Audio processing & feedback');
-
-		addToggle(ctx, {
-			name: 'Noise suppression',
-			desc: 'Apply the browser noise-suppression filter to the input.',
-			get: () => s.inputNoiseSuppression,
-			set: (v) => (s.inputNoiseSuppression = v),
-		});
-		addToggle(ctx, {
-			name: 'Echo cancellation',
-			desc: 'Apply the browser echo-cancellation filter to the input.',
-			get: () => s.inputEchoCancellation,
-			set: (v) => (s.inputEchoCancellation = v),
-		});
-		addToggle(ctx, {
-			name: 'Automatic gain control',
-			desc: 'Let the browser normalize the input level automatically.',
-			get: () => s.inputAutoGainControl,
-			set: (v) => (s.inputAutoGainControl = v),
-		});
-		addToggle(ctx, {
-			name: 'Input level meter',
-			desc: 'Show a live input-level meter while recording.',
-			get: () => s.showInputLevelMeter,
-			set: (v) => (s.showInputLevelMeter = v),
-		});
-		addToggle(ctx, {
-			name: 'Recording stats',
-			desc: 'Show the live elapsed time and total recorded size while recording.',
-			get: () => s.showRecordingStats,
-			set: (v) => (s.showRecordingStats = v),
-		});
-		addToggle(ctx, {
-			name: 'Detect silent channel after recording',
-			desc: 'After saving a recording, check whether it is a stereo file with one silent channel - the typical result of a single microphone on a dual-input audio interface - and offer to convert it to mono. Long recordings are skipped.',
-			get: () => s.detectSilentChannelOnSave,
-			set: (v) => (s.detectSilentChannelOnSave = v),
-		});
-		addToggle(ctx, {
-			name: 'Mobile recording banner',
-			desc: 'Show a prominent recording banner on mobile, where there is no ribbon indicator.',
-			get: () => s.mobileRecordingBanner,
-			set: (v) => (s.mobileRecordingBanner = v),
-		});
-
-		this.renderAudioCleanupSettings(containerEl);
-	}
-
-	/**
-	 * Renders the default settings for the on-demand "Clean up audio"
-	 * dialog (high-pass, noise gate, loudness leveling). These prefill the
-	 * dialog opened from the context menu; each run can override them.
-	 * @param containerEl - The settings container element
-	 */
-	private renderAudioCleanupSettings(containerEl: HTMLElement): void {
-		const s = this.plugin.settings;
-		const save = (): void => {
-			void this.plugin.saveSettings();
-		};
-		new Setting(containerEl)
-			.setName('Audio cleanup defaults')
-			.setDesc(
-				'Defaults for the cleanup action in the file/embed context menu. Cleanup runs on demand and writes a processed copy; it does not change live recording.',
-			)
-			.setHeading();
-
-		// The same three stage rows the cleanup dialog renders, through the same
-		// builder, so the two cannot drift in layout or disabled behaviour.
-		addStageRowTo(containerEl, {
-			name: 'High-pass filter',
-			desc: 'Remove low-frequency rumble below the cutoff by default.',
-			getEnabled: () => s.cleanupHighPassEnabled,
-			setEnabled: (v) => {
-				s.cleanupHighPassEnabled = v;
-				save();
-			},
-			value: {
-				min: MIN_CLEANUP_HIGHPASS_HZ,
-				max: MAX_CLEANUP_HIGHPASS_HZ,
-				step: CLEANUP_HIGHPASS_STEP_HZ,
-				get: () => s.cleanupHighPassHz,
-				set: (v) => {
-					s.cleanupHighPassHz = v;
-					save();
-				},
-			},
-		});
-		addStageRowTo(containerEl, {
-			name: 'Noise gate',
-			desc: 'Silence the signal below the threshold (dBFS) by default.',
-			getEnabled: () => s.cleanupNoiseGateEnabled,
-			setEnabled: (v) => {
-				s.cleanupNoiseGateEnabled = v;
-				save();
-			},
-			value: {
-				min: MIN_CLEANUP_GATE_THRESHOLD_DB,
-				max: MAX_CLEANUP_GATE_THRESHOLD_DB,
-				step: CLEANUP_GATE_STEP_DB,
-				get: () => s.cleanupNoiseGateThresholdDb,
-				set: (v) => {
-					s.cleanupNoiseGateThresholdDb = v;
-					save();
-				},
-			},
-		});
-		addStageRowTo(containerEl, {
-			name: 'Loudness leveling',
-			desc: 'Even out quiet and loud passages (compressor); makeup gain (dB).',
-			getEnabled: () => s.cleanupLevelingEnabled,
-			setEnabled: (v) => {
-				s.cleanupLevelingEnabled = v;
-				save();
-			},
-			value: {
-				min: MIN_CLEANUP_LEVELING_MAKEUP_DB,
-				max: MAX_CLEANUP_LEVELING_MAKEUP_DB,
-				step: CLEANUP_LEVELING_STEP_DB,
-				get: () => s.cleanupLevelingMakeupDb,
-				set: (v) => {
-					s.cleanupLevelingMakeupDb = v;
-					save();
-				},
-			},
-		});
-	}
-
-	/**
 	 * Applies the probed per-format recordability to the format
 	 * dropdown: unavailable formats are blocked (visible but
 	 * unselectable) and every option gets its accurate label. When the
@@ -1191,10 +937,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			// recording-start validation still guards the session
 			return;
 		}
-		if (
-			!this.isDisplayed ||
-			generation !== this.formatAvailabilityGeneration
-		) {
+		if (generation !== this.formatAvailabilityGeneration) {
 			return;
 		}
 		for (const option of Array.from(dropdown.selectEl.options)) {
@@ -1228,106 +971,36 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		} catch {
 			note.textContent = `This device cannot record ${stored.toUpperCase()}. Select a different format.`;
 		}
-		if (
-			!this.isDisplayed ||
-			generation !== this.formatAvailabilityGeneration
-		) {
+		if (generation !== this.formatAvailabilityGeneration) {
 			return;
 		}
 		descEl.appendChild(note);
 	}
 
 	/**
-	 * Runs every registered channel-dropdown re-evaluator.
+	 * Re-reads the audio inputs and asks for a re-render when they changed.
+	 *
+	 * The device-bound rows are declarations built from the last snapshot, so
+	 * there is nothing to patch in place: either the list is the one the tree
+	 * was built from, or the tree is stale and the framework rebuilds it.
 	 */
-	private runChannelDropdownUpdaters(): void {
-		for (const update of this.channelDropdownUpdaters) {
-			update();
-		}
-	}
-
-	/**
-	 * Fills a channel-mode dropdown and binds it to a device selection.
-	 * The dropdown greys itself out when the bound device positively reports
-	 * a single capture channel
-	 * (every mono option would be an identity or a fallback there) or
-	 * when no device is selected at all. An id missing from a successful
-	 * enumeration is treated as unplugged, while an enumeration failure or
-	 * a present device with unknown capability keeps the selection enabled.
-	 * Capability observation never changes the saved mode. The evaluator
-	 * registers itself for re-runs on capability loads and device changes.
-	 * @param dropdown - Dropdown to fill and manage
-	 * @param binding - Accessors for the bound device and stored mode
-	 */
-	private bindChannelModeDropdown(
-		dropdown: DropdownComponent,
-		binding: {
-			getDeviceId: () => string;
-			hasDevice: () => boolean;
-			getMode: () => ChannelMode;
-			setMode: (mode: ChannelMode) => Promise<void>;
-		},
-	): void {
-		const labels: Record<ChannelMode, string> = {
-			source: 'Same as input device',
-			'mono-mix': 'Mono (mix all channels)',
-			'mono-left': 'Mono (left channel)',
-			'mono-right': 'Mono (right channel)',
-		};
-		CHANNEL_MODES.forEach((mode) => {
-			dropdown.addOption(mode, labels[mode]);
-		});
-		dropdown.setValue(binding.getMode());
-		dropdown.onChange(async (value) => {
-			await binding.setMode(normalizeChannelMode(value));
-		});
-		const update = (): void => {
-			const deviceId = binding.getDeviceId();
-			// Where the platform offers no channel layout choice (mobile),
-			// every channel dropdown stays blocked regardless of devices.
-			let available =
-				isChannelModeSelectionSupported() && binding.hasDevice();
-			if (available && deviceId) {
-				const { enumerationSucceeded, channelLimits } =
-					this.deviceSnapshot;
-				available =
-					!enumerationSucceeded ||
-					(channelLimits.has(deviceId) &&
-						channelSelectionAvailable(channelLimits.get(deviceId)));
-			}
-			dropdown.setDisabled(!available);
-			// Runtime capability data is advisory and may be incomplete.
-			// Never rewrite a persistent user choice merely because a device
-			// is mono, unplugged, or temporarily absent from enumeration.
-			dropdown.setValue(binding.getMode());
-		};
-		this.channelDropdownUpdaters.push(update);
-		update();
-	}
-
 	private async refreshDeviceList(): Promise<void> {
 		const generation = ++this.deviceRefreshGeneration;
 		const snapshot = await getAudioInputDeviceSnapshot();
-		if (!this.isDisplayed || generation !== this.deviceRefreshGeneration) {
+		if (generation !== this.deviceRefreshGeneration) {
 			return;
 		}
 		this.deviceSnapshot = snapshot;
-		if (snapshot.enumerationSucceeded) {
-			for (const binding of this.deviceDropdowns) {
-				const { dropdown } = binding;
-				dropdown.selectEl.empty();
-				for (const device of snapshot.devices) {
-					const label =
-						device.label ||
-						`Audio device ${device.deviceId.substring(0, 8)}`;
-					dropdown.addOption(device.deviceId, label);
-				}
-				const selectedDeviceId = binding.getSelectedDeviceId();
-				const isPresent = snapshot.channelLimits.has(selectedDeviceId);
-				dropdown.setValue(isPresent ? selectedDeviceId : '');
-			}
+		// Compared by content, because a render enumerates again and an
+		// unconditional re-render would never settle.
+		const signature = snapshot.devices
+			.map((device) => `${device.deviceId}:${device.label}`)
+			.join('|');
+		if (signature === this.deviceSignature) {
+			return;
 		}
-		this.runChannelDropdownUpdaters();
+		this.deviceSignature = signature;
+		this.rerender();
 	}
 
 	/**
@@ -1460,14 +1133,15 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * device-change listener registered in display().
 	 */
 	override hide(): void {
-		this.isDisplayed = false;
 		// Invalidate every in-flight enumeration and probe before
 		// detaching controls.
 		this.deviceRefreshGeneration++;
 		this.formatAvailabilityGeneration++;
-		this.deviceDropdowns = [];
-		this.channelDropdownUpdaters = [];
 		this.saveTextSettingDebounced.run();
+		// On the legacy path the renderer holds the rows and their cleanups;
+		// releasing it is what runs them when the tab is left. On 1.13 the
+		// framework runs them itself and this renderer holds nothing.
+		this.legacyRenderer.release();
 		this.cleanupTestRecording();
 		if (this.deviceChangeHandler) {
 			navigator.mediaDevices.removeEventListener(

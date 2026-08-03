@@ -11,7 +11,7 @@ import {
 	LLM_PROVIDER_IDS,
 	LLM_REQUEST_TIMEOUT_MS,
 } from '../../constants';
-import { requestJson, trimTrailingSlash } from '../httpClient';
+import { HttpError, requestJson, trimTrailingSlash } from '../httpClient';
 import type { LlmProviderId } from '../../settings/settingsSchema';
 import type { LlmPrompt } from '../llmPostProcess';
 import {
@@ -69,6 +69,53 @@ export interface LlmConfig {
 }
 
 /**
+ * The names the OpenAI chat API has had for its output-token ceiling, in the
+ * order an endpoint is asked about them.
+ *
+ * `max_tokens` is the original. OpenAI itself has superseded it with
+ * `max_completion_tokens` and its current models refuse the old name outright,
+ * so a request carrying it fails before generating anything. Which name an
+ * endpoint takes is not knowable from the model id: a list of "new" model
+ * families goes stale with every release, and the same base URL setting also
+ * points at Groq, LM Studio, llama.cpp and the rest. So it is asked rather than
+ * guessed, and the endpoint's own refusal is what selects the other name.
+ *
+ * The original is asked first, because the two ways of not understanding a
+ * field are not equally safe. A server that refuses an unknown field answers
+ * 400 and costs one extra request; a server that ignores one answers 200 and
+ * silently drops the ceiling, which is a truncation guard that is not there
+ * and says nothing about it. Every OpenAI-compatible server understands
+ * `max_tokens`, so asking it first means only OpenAI's own current models ever
+ * reach the second attempt, and no endpoint can quietly discard the budget.
+ */
+const OUTPUT_TOKEN_PARAMS = ['max_tokens', 'max_completion_tokens'] as const;
+
+/** The status an endpoint refuses an unknown parameter with. */
+const HTTP_BAD_REQUEST = 400;
+
+/** One of the two names an output-token ceiling can be sent under. */
+type OutputTokenParam = (typeof OUTPUT_TOKEN_PARAMS)[number];
+
+/**
+ * Whether a failure is the endpoint saying it does not know this parameter,
+ * which is the one failure worth re-sending under the other name.
+ *
+ * Narrow on purpose: a 400 naming the very field just sent. Anything else - a
+ * bad key, a rate limit, a model that does not exist - is the caller's answer
+ * and is raised as it came, rather than retried under a name that would fail
+ * the same way.
+ * @param error - The failure the request threw
+ * @param param - The parameter name that request carried
+ */
+function rejectedTokenParam(error: unknown, param: OutputTokenParam): boolean {
+	return (
+		error instanceof HttpError &&
+		error.status === HTTP_BAD_REQUEST &&
+		error.message.includes(param)
+	);
+}
+
+/**
  * OpenAI chat-completions provider, using the OpenAI Chat Completions API.
  * The implementation stays OpenAI-compatible, but only OpenAI is offered as a
  * configured vendor.
@@ -76,6 +123,16 @@ export interface LlmConfig {
 export class OpenAiCompatibleLlmProvider implements LlmProvider {
 	readonly id = LLM_PROVIDER_IDS.OPENAI_COMPATIBLE;
 	readonly label = 'OpenAI';
+
+	/**
+	 * The name this endpoint took, once it has answered.
+	 *
+	 * Which name it takes is a fact about the endpoint rather than about the
+	 * call, so it is asked once and remembered: the advanced two-pass mode
+	 * drives six sequential agent calls through one provider, and renegotiating
+	 * on each of them pays the refused request six times over.
+	 */
+	private acceptedParam: OutputTokenParam | null = null;
 
 	constructor(private readonly config: LlmConfig) {}
 
@@ -88,17 +145,72 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
 		if (this.config.apiKey) {
 			headers.Authorization = `Bearer ${this.config.apiKey}`;
 		}
-		const json = await requestJson({
+		const candidates = this.candidateParams();
+		let lastError: unknown;
+		for (const [index, param] of candidates.entries()) {
+			let json: unknown;
+			try {
+				json = await this.request(prompt, headers, {
+					[param]: maxTokens,
+					...(options?.temperature !== undefined
+						? { temperature: options.temperature }
+						: {}),
+				});
+			} catch (error) {
+				lastError = error;
+				const isLast = index === candidates.length - 1;
+				if (isLast || !rejectedTokenParam(error, param)) {
+					throw error;
+				}
+				continue;
+			}
+			// The request went through, so this is the name this endpoint takes.
+			// Recorded after the call rather than after the parse: an answer this
+			// client cannot read is still an answer the parameter was accepted for.
+			this.acceptedParam = param;
+			return extractOpenAiText(json);
+		}
+		// Unreachable: the loop either returns or throws on its last attempt.
+		throw lastError;
+	}
+
+	/**
+	 * The names to try, best guess first. A remembered name leads and the other
+	 * still follows it, so an endpoint that changes under a live provider - a
+	 * base URL repointed at another server between runs - renegotiates instead
+	 * of failing on a memory that has gone stale.
+	 */
+	private candidateParams(): readonly OutputTokenParam[] {
+		const accepted = this.acceptedParam;
+		if (accepted === null) {
+			return OUTPUT_TOKEN_PARAMS;
+		}
+		return [
+			accepted,
+			...OUTPUT_TOKEN_PARAMS.filter((param) => param !== accepted),
+		];
+	}
+
+	/**
+	 * Sends one chat completion.
+	 * @param prompt - System + user prompt
+	 * @param headers - Authorization headers, when a key is configured
+	 * @param generation - The generation fields this attempt carries
+	 * @returns The parsed response body
+	 */
+	private request(
+		prompt: LlmPrompt,
+		headers: Record<string, string>,
+		generation: Record<string, number>,
+	): Promise<unknown> {
+		return requestJson({
 			url: `${trimTrailingSlash(this.config.baseUrl)}/chat/completions`,
 			method: 'POST',
 			headers,
 			contentType: 'application/json',
 			body: JSON.stringify({
 				model: this.config.model,
-				max_tokens: maxTokens,
-				...(options?.temperature !== undefined
-					? { temperature: options.temperature }
-					: {}),
+				...generation,
 				messages: [
 					{ role: 'system', content: prompt.system },
 					{ role: 'user', content: prompt.user },
@@ -106,7 +218,6 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
 			}),
 			timeoutMs: LLM_REQUEST_TIMEOUT_MS,
 		});
-		return extractOpenAiText(json);
 	}
 }
 

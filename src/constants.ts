@@ -349,11 +349,22 @@ export const MIN_AUDIO_BYTES_PER_SEC = 1000;
  */
 export const DEFAULT_TRANSCRIBE_CHUNK_MB = 24;
 
-/** Default OpenAI-compatible transcription endpoint base URL. */
-export const DEFAULT_WHISPER_API_BASE_URL = 'https://api.openai.com/v1';
+/**
+ * Default endpoint of the OpenAI account. One account is one endpoint whatever
+ * the engines behind it are asked to do, so the Whisper API and the OpenAI chat
+ * models are reached through this one value rather than through a copy each.
+ */
+export const DEFAULT_OPENAI_BASE_URL = 'https://api.openai.com/v1';
 
 /** Default Whisper API model id. */
 export const DEFAULT_WHISPER_API_MODEL = 'whisper-1';
+
+/**
+ * Generation of the shipped model catalogues. Raised whenever a seed list
+ * gains ids worth offering, which tops up the saved lists once: a list stays
+ * the user's to edit, so an id deleted after that stays deleted.
+ */
+export const MODEL_SEED_GENERATION = 2;
 
 /**
  * Seed model ids for the OpenAI-compatible Whisper API. They populate the
@@ -626,9 +637,6 @@ export const LLM_PROVIDER_IDS = {
 	GEMINI: 'gemini',
 } as const;
 
-/** Default OpenAI-compatible chat base URL for LLM post-processing. */
-export const DEFAULT_LLM_OPENAI_BASE_URL = 'https://api.openai.com/v1';
-
 /**
  * Default OpenAI-compatible chat model for LLM post-processing. Moved from
  * `gpt-4o-mini` (dropped from the current catalog) to the GPT-5.6 flagship,
@@ -638,8 +646,8 @@ export const DEFAULT_LLM_OPENAI_BASE_URL = 'https://api.openai.com/v1';
  */
 export const DEFAULT_LLM_OPENAI_MODEL = 'gpt-5.6-sol';
 
-/** Default Anthropic Messages API base URL. */
-export const DEFAULT_LLM_ANTHROPIC_BASE_URL = 'https://api.anthropic.com/v1';
+/** Default endpoint of the Anthropic account. */
+export const DEFAULT_ANTHROPIC_BASE_URL = 'https://api.anthropic.com/v1';
 
 /** Anthropic API version header value. */
 export const ANTHROPIC_API_VERSION = '2023-06-01';
@@ -651,22 +659,6 @@ export const ANTHROPIC_API_VERSION = '2023-06-01';
  * it is priced for the most demanding work rather than everyday cleanup.
  */
 export const DEFAULT_LLM_ANTHROPIC_MODEL = 'claude-opus-4-8';
-
-/**
- * Default Gemini base URL for LLM post-processing. Like the transcription
- * base URL it carries no version segment; the provider appends
- * `/v1beta/models/{model}:generateContent`.
- */
-export const DEFAULT_LLM_GEMINI_BASE_URL =
-	'https://generativelanguage.googleapis.com';
-
-/**
- * Default Gemini model for transcript post-processing. Moved from
- * `gemini-2.5-flash` to `gemini-3.5-flash` together with
- * {@link DEFAULT_GEMINI_MODEL}, so transcription and post-processing default
- * to the same current Flash generation.
- */
-export const DEFAULT_LLM_GEMINI_MODEL = 'gemini-3.5-flash';
 
 /** Minimum configurable transcription chunk size in megabytes. */
 export const MIN_TRANSCRIBE_CHUNK_MB = 1;
@@ -683,8 +675,33 @@ export const DEFAULT_LLM_MAX_TOKENS = 4096;
 /** Minimum configurable LLM output token budget. */
 export const MIN_LLM_MAX_TOKENS = 512;
 
-/** Maximum configurable LLM output token budget. */
-export const MAX_LLM_MAX_TOKENS = 32000;
+/**
+ * Highest output token budget the field accepts: a guard against a typo, not a
+ * claim about any service.
+ *
+ * How long an answer may be is the model's own limit, it moves with every model
+ * release, and it differs between models of one provider - Claude's synchronous
+ * Messages API allows 128k output tokens on a 1M-context model and less on the
+ * others, and the catalogue a user edits can name any of them. A number here
+ * pretending to be that limit is a number that goes stale and refuses a budget
+ * the service would have honoured, which is what a 32000 ceiling did. So this
+ * sits above every synchronous limit a provider currently offers and leaves the
+ * real answer to the endpoint, which refuses an over-large budget naming its own
+ * maximum - the only source that is right by construction.
+ */
+export const MAX_LLM_MAX_TOKENS = 200000;
+
+/**
+ * Granularity of the LLM output token budget: one token.
+ *
+ * A declared step is the value space of the setting, not a convenience for the
+ * stepper arrows: the settings framework offers exactly `min + n * step` and
+ * refuses everything between. A token budget is meaningful at every integer,
+ * and the numbers a user reaches for come from a model's own documentation
+ * (8000, 32000, 128000), so anything coarser would refuse most of them - a
+ * 512-token grid excluded the ceiling itself.
+ */
+export const LLM_MAX_TOKENS_STEP = 1;
 
 /**
  * Seed OpenAI chat model ids for the LLM model picker on first run; the list
@@ -717,22 +734,6 @@ export const LLM_ANTHROPIC_MODEL_SUGGESTIONS = [
 	'claude-sonnet-5',
 	'claude-haiku-4-5',
 	'claude-fable-5',
-];
-
-/**
- * Seed Gemini model ids for the LLM model picker on first run; the list is
- * user-editable. The GA 3.x generation leads the list (the same models as the
- * transcription seeds, since they accept text as well as audio); the 2.5
- * generation stays while it remains in the catalog. See
- * {@link GEMINI_MODELS_DOC_URL} for the current list.
- */
-export const LLM_GEMINI_MODEL_SUGGESTIONS = [
-	'gemini-3.6-flash',
-	'gemini-3.5-flash',
-	'gemini-3.5-flash-lite',
-	'gemini-2.5-flash',
-	'gemini-2.5-pro',
-	'gemini-2.5-flash-lite',
 ];
 
 /** Where to find the OpenAI model catalog. */

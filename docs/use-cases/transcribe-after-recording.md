@@ -63,7 +63,7 @@ Automatic runs use your saved settings with no prompt, so set them before you re
 
 | Setting                 | Where                                  | Notes                                                                                                      |
 | ----------------------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| **Engine**              | Transcription section                  | Whisper API, Deepgram, Google Gemini, or local `whisper.cpp`. Default: Whisper API.                        |
+| **Transcription engine** | Transcription section                 | Whisper API, Deepgram, Google Gemini, or local `whisper.cpp`. Default: Whisper API.                        |
 | **Language**            | Transcription section                  | `auto` to detect, or an ISO code such as `en`, `ru`, `es`. Default: `auto`.                                |
 | **Speaker diarization** | Transcription section                  | Speaker labels. Only available on Deepgram and Gemini; greyed out for Whisper API and local `whisper.cpp`. |
 | **Destination**         | Transcript output                      | Insert into note, Save to file, Note and file, or Save to file and link it. Default: Insert into note.     |

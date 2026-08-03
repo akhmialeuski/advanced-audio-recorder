@@ -7,6 +7,7 @@
 import {
 	friendlyHttpHint,
 	HttpError,
+	providerMessage,
 	requestRaw,
 	uploadTimeoutMs,
 } from 'src/transcription/httpClient';
@@ -77,8 +78,72 @@ describe('friendlyHttpHint', () => {
 		).toContain('server error');
 	});
 
+	it('names the region for a Gemini FAILED_PRECONDITION 400', () => {
+		// The status says the request was malformed and it was not: the service
+		// does not serve the caller's country, which no key and no retry fix.
+		// Left unrecognized, the whole envelope was shown and the one sentence
+		// that mattered was buried in it.
+		const hint = friendlyHttpHint(
+			400,
+			'{"error":{"code":400,"message":"User location is not supported for the API use.","status":"FAILED_PRECONDITION"}}',
+		).toLowerCase();
+
+		expect(hint).toContain('does not serve your region');
+		// Both ways out are named: another engine, or an endpoint that does
+		// serve the caller. The second is what a user in a blocked country
+		// already relies on, and it is a field on the same page.
+		expect(hint).toContain('engines');
+		expect(hint).toContain('base url');
+	});
+
+	it('names the region for an OpenAI unsupported-country 403', () => {
+		// Same refusal, a status the auth branch would otherwise claim, so the
+		// region check has to be asked first.
+		const hint = friendlyHttpHint(
+			403,
+			'{"error":{"code":"unsupported_country_region_territory","message":"Country, region, or territory not supported"}}',
+		).toLowerCase();
+
+		expect(hint).toContain('does not serve your region');
+		expect(hint).not.toContain('authentication failed');
+	});
+
 	it('returns no hint for an unrecognized client error', () => {
 		expect(friendlyHttpHint(404, 'Not Found')).toBe('');
+	});
+});
+
+describe('providerMessage', () => {
+	it('lifts the sentence out of a Google error envelope', () => {
+		expect(
+			providerMessage(
+				'{"error":{"code":400,"message":"User location is not supported for the API use.","status":"FAILED_PRECONDITION"}}',
+			),
+		).toBe('User location is not supported for the API use.');
+	});
+
+	it('lifts it out of a Deepgram envelope, which names the field differently', () => {
+		expect(
+			providerMessage(
+				'{"err_code":"Bad Request","err_msg":"Bad Request: failed to process audio: corrupt or unsupported data","request_id":"019fc75b"}',
+			),
+		).toBe(
+			'Bad Request: failed to process audio: corrupt or unsupported data',
+		);
+	});
+
+	it('keeps the body when there is no sentence to lift', () => {
+		// An HTML error page from a proxy, a truncated excerpt, or JSON with no
+		// message field: there is nothing better to show than what arrived.
+		expect(
+			providerMessage('<html><body>502 Bad Gateway</body></html>'),
+		).toBe('<html><body>502 Bad Gateway</body></html>');
+		expect(providerMessage('{"error":{"code":400}}')).toBe(
+			'{"error":{"code":400}}',
+		);
+		expect(providerMessage('{"error":{"message":"   "}}')).toBe(
+			'{"error":{"message":"   "}}',
+		);
 	});
 });
 

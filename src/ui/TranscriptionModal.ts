@@ -31,7 +31,7 @@ import {
 	type SettingsSectionContext,
 } from '../settings/settingControls';
 import { formatTimecode } from '../utils/TimeUtils';
-import { probeAudioMetadata } from '../utils/AudioFileAnalyzer';
+import { readAudioMetadata } from '../utils/AudioFileAnalyzer';
 import { TRANSCRIPTION_PROVIDER_IDS } from '../constants';
 import {
 	buildCostEstimate,
@@ -578,9 +578,18 @@ export class TranscriptionModal extends PluginModal {
 	}
 
 	/**
-	 * Probes the audio duration from the container headers (no PCM decode)
-	 * and refreshes the estimate once it resolves. Failure leaves the
-	 * duration unknown; the estimate degrades instead of blocking the dialog.
+	 * Reads the audio duration and refreshes the estimate once it resolves.
+	 *
+	 * Every priced line is sized by the duration, so a file whose duration
+	 * cannot be read shows no estimate at all. The container headers answer for
+	 * most files and cost nothing, but a recorder writing live leaves no
+	 * duration in the segment it has not finished, which is this plugin's own
+	 * output - so the read goes on to the browser rather than giving up on the
+	 * files the plugin produces itself. A length none of them could read stays
+	 * null and is shown as unavailable: priced as a number it would put a
+	 * confident zero on every line of the breakdown, which is the one answer
+	 * worse than no answer. Failure still leaves the duration unknown; the
+	 * estimate degrades instead of blocking the dialog.
 	 */
 	private async probeDuration(): Promise<void> {
 		try {
@@ -588,7 +597,7 @@ export class TranscriptionModal extends PluginModal {
 			// Keep the bytes so the imminent run reuses them rather than reading
 			// the whole file again.
 			this.probedBytes = bytes;
-			const metadata = await probeAudioMetadata(bytes, this.file.path);
+			const metadata = await readAudioMetadata(bytes, this.file.path);
 			this.durationSeconds = metadata?.durationSeconds ?? null;
 		} catch {
 			this.durationSeconds = null;

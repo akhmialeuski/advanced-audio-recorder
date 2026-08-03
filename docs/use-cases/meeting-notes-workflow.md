@@ -68,7 +68,7 @@ The **Whisper API** engine (OpenAI / Groq) and **local whisper.cpp** do **not** 
 
 For a multi-hour meeting, Deepgram sends the whole file in one request, so speaker numbering stays consistent end to end. Gemini also accepts up to 2 GB, but a recording longer than **15 minutes** is split into parts and stitched back together; a diarized split **resets speaker numbering** at each part boundary, which the plugin surfaces as a warning. If consistent labels across a very long meeting matter most, prefer Deepgram. See [Speakers and diarization](../transcription.md#speakers-and-diarization) for the full behavior.
 
-1. Set **Engine** to **Deepgram** or **Google Gemini**.
+1. Set **Transcription engine** to **Deepgram** or **Google Gemini**.
 2. Paste the **API key** for that engine (follow the linked guide above).
 3. Leave **Model** on its default (`nova-3` for Deepgram, `gemini-3.5-flash` for Gemini) unless you have a reason to change it.
 
@@ -121,12 +121,12 @@ This is what turns a wall of transcript text into a usable summary with action i
 1. Turn on **Enable LLM post-processing**.
 2. Set **Task** to **Summarize**. (The other tasks are **Clean up**, which fixes punctuation and formatting, and **Custom**, which sends your own instruction verbatim.)
 3. Each task carries its own editable prompt. The **Summarize** prompt ships with a sensible default and has the transcript language appended automatically - edit it if you want a specific structure (for example, "list decisions, then action items with owners").
-4. Pick an **LLM provider**: **OpenAI**, **Anthropic (Claude)**, or **Google Gemini**.
+4. Pick its **Post-processing engine**: **OpenAI**, **Anthropic (Claude)**, or **Google Gemini**, and set that service up on its page under **Engines**.
 5. Confirm the **API key**. The plugin shares keys where the same vendor does both jobs:
     - **OpenAI** LLM reuses your **Whisper API** key.
     - **Gemini** LLM reuses your **Gemini** key.
     - **Anthropic (Claude)** has its **own** dedicated key - see [Anthropic / Claude](anthropic-api-key.md).
-6. Leave **Max output tokens** at its default of **4096** (range 512-32000) unless your summaries are getting cut off, in which case raise it.
+6. Leave **Max output tokens** at its default of **4096** (range 512-200000) unless your summaries are getting cut off, in which case raise it.
 
 Provider model defaults are **OpenAI** `gpt-5.6-sol`, **Anthropic** `claude-opus-4-8`, and **Gemini** `gemini-3.5-flash`. The **LLM base URL** auto-switches to the provider default unless you have typed a custom one.
 
@@ -137,7 +137,7 @@ A practical pairing: use **Gemini** for both transcription and the summary so on
 If everyone in the room has their own microphone, or you want a clean track per participant, enable multi-track capture under **Settings > Advanced Audio Recorder > Multi-track recording**:
 
 - Turn on **Enable multi-track recording**.
-- Set **Maximum tracks** (1-8, default 2) and assign an **Audio source for track N** to each microphone.
+- Set **Maximum tracks** (1-8, default 2) and assign an **Track N input** to each microphone.
 - Choose an **Output mode**: **Single file** (all mics mixed into one file - simplest to transcribe and diarize) or **Multiple files** (one file per track).
 
 For a transcribe-and-diarize workflow, **Single file** is usually the right choice: the engine sees one timeline and can diarize across it. Multi-file output gives you per-speaker isolation but you would transcribe each file separately. See [Multi-track recording](../multi-track-recording.md) for the details.
@@ -206,10 +206,10 @@ Use this once to confirm your setup, then just record.
 **One-time setup**
 
 1. Settings > Transcription > **Enable transcription** = On.
-2. **Engine** = Deepgram or Google Gemini, with a valid **API key**.
+2. **Transcription engine** = Deepgram or Google Gemini, with a valid **API key**.
 3. **Speaker diarization** = On.
 4. **Transcript output > Destination** = **Note and file** (File format **JSON**).
-5. **LLM post-processing** = On, **Task** = **Summarize**, **LLM provider** chosen, **API key** confirmed.
+5. **LLM post-processing** = On, **Task** = **Summarize**, its **Post-processing engine** chosen, and that engine's **API key** confirmed under **Engines**.
 6. (Optional) **Rename speakers** = On, to replace `Speaker 1` with real names afterwards (with a play button per speaker so you can tell who is who).
 7. (Optional) **Transcribe after recording** = On for hands-off transcription.
 8. (Optional) **Audio player > Enhanced audio player** = On, then **Markers and chapters** = On (this toggle appears only after the enhanced player is enabled), to mark agenda items.
@@ -230,11 +230,11 @@ Use this once to confirm your setup, then just record.
 
 ## Troubleshooting
 
-- **The Speaker diarization toggle is greyed out** - the selected engine cannot diarize. Switch **Engine** to **Deepgram** or **Google Gemini**.
+- **The Speaker diarization toggle is greyed out** - the selected engine cannot diarize. Switch **Transcription engine** to **Deepgram** or **Google Gemini**.
 - **Speaker numbers reset partway through a long Gemini transcript** - Gemini splits recordings longer than 15 minutes into parts, and diarized splits restart speaker numbering at each boundary (surfaced as a warning). Use **Deepgram** for consistent labels across a long meeting.
 - **The play buttons in Rename speakers are greyed out** - that recording's roster predates speaker samples. Transcribe it once more with **Speaker diarization** on and the samples appear.
-- **No summary appeared** - confirm **Enable LLM post-processing** is on, **Task** is **Summarize**, and the LLM provider's **API key** is set (remember OpenAI reuses the Whisper key and Gemini reuses the Gemini key; Anthropic needs its own).
-- **The summary is cut off** - raise **Max output tokens** (default 4096, up to 32000).
+- **No summary appeared** - confirm **Enable LLM post-processing** is on, **Task** is **Summarize**, and the chosen engine's **API key** is set on its page under **Engines** (the OpenAI and Gemini pages are shared with transcription; Anthropic keeps its own).
+- **The summary is cut off** - raise **Max output tokens** (default 4096), up to whatever your model allows; the service refuses a larger budget and names its own maximum.
 - **Transcription accuracy is poor in a noisy room** - run [Clean up audio](../audio-cleanup.md) first, or move to a better microphone.
 - **The transcription dialog closed and the job stopped** - closing the dialog cancels the job. Use **Minimize** to keep it running in the status bar.
 

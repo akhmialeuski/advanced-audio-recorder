@@ -17,7 +17,10 @@ import {
 	PLUGIN_LOG_PREFIX,
 	TRANSCRIBE_CHUNK_PROGRESS_CEILING,
 } from '../constants';
-import type { AudioRecorderSettings } from '../settings/settingsSchema';
+import type {
+	AudioRecorderSettings,
+	LlmProviderId,
+} from '../settings/settingsSchema';
 import { advancedTwoPassEnabled } from '../settings/settingsSchema';
 import {
 	audioMimeFromExtension,
@@ -69,6 +72,8 @@ import {
 	SPEAKER_PROFILES,
 } from '../settings/speakerProfiles';
 import { createLlmProvider, createTranscriptionProvider } from './factories';
+import { vendorMaxTokens } from '../providers/providers';
+import { jobVendorId } from './llm/vendors';
 import { effectiveDiarize } from './providers/capabilities';
 import type { LlmProvider } from './llm/LlmProvider';
 import { runLlmStep, type LlmCostSink } from './llm/llmStep';
@@ -191,8 +196,11 @@ export interface TranscriptionServiceDeps {
 	costSink?: LlmCostSink | undefined;
 	/** Builds the transcription provider from settings. */
 	createProvider?: (settings: AudioRecorderSettings) => TranscriptionProvider;
-	/** Builds the LLM post-processing provider from settings. */
-	createLlm?: (settings: AudioRecorderSettings) => LlmProvider;
+	/** Builds the LLM provider for the engine a job names. */
+	createLlm?: (
+		settings: AudioRecorderSettings,
+		vendorId: LlmProviderId,
+	) => LlmProvider;
 }
 
 /**
@@ -204,6 +212,7 @@ export class TranscriptionService {
 	) => TranscriptionProvider;
 	private readonly createLlm: (
 		settings: AudioRecorderSettings,
+		vendorId: LlmProviderId,
 	) => LlmProvider;
 	/** Where LLM spending is reported; undefined when nothing accounts it. */
 	private readonly costSink: LlmCostSink | undefined;
@@ -459,14 +468,19 @@ export class TranscriptionService {
 						firstPassCeiling,
 						'Analyzing transcript context...',
 					);
-					// The agents run on the configured LLM post-processing
-					// provider. This run's Dictionary terms join as bias
-					// candidates, vetted against the draft so an off-topic term
-					// is not injected. The advanced mode reuses the same terms
-					// the single pass biases toward, not a second glossary. A
-					// keyword-biased engine (Deepgram) reads only the keyterm
-					// list, so the pipeline skips the prompt-sentence agents.
-					const llm = this.createLlm(settings);
+					// The agents run on the engine the two-pass mode names,
+					// which is a choice of its own rather than whatever
+					// post-processing points at. This run's Dictionary terms
+					// join as bias candidates, vetted against the draft so an
+					// off-topic term is not injected. The advanced mode reuses
+					// the same terms the single pass biases toward, not a second
+					// glossary. A keyword-biased engine (Deepgram) reads only
+					// the keyterm list, so the pipeline skips the prompt-sentence
+					// agents.
+					const llm = this.createLlm(
+						settings,
+						jobVendorId(settings, 'contextAgents'),
+					);
 					const context = await generateContext(stitched, llm, {
 						language:
 							transcribeOptions.language ?? stitched.language,
@@ -934,7 +948,8 @@ export class TranscriptionService {
 		transcript: Transcript,
 		markdown: string,
 	): Promise<string> {
-		const llm = this.createLlm(settings);
+		const vendorId = jobVendorId(settings, 'postProcess');
+		const llm = this.createLlm(settings, vendorId);
 		const prompt = buildPostProcessPrompt(
 			settings.llmPostProcessTask === 'summary'
 				? plainText(transcript)
@@ -955,7 +970,7 @@ export class TranscriptionService {
 			step: 'postProcess',
 			llm,
 			prompt,
-			maxTokens: settings.llmMaxTokens,
+			maxTokens: vendorMaxTokens(settings, vendorId),
 			settings,
 			// The transcript is what the pass reads, so its extent sizes the
 			// estimate exactly as the pre-run breakdown does.

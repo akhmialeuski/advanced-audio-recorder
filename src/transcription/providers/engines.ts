@@ -17,13 +17,13 @@
  * @module transcription/providers/engines
  */
 
+import { MS_PER_MINUTE, TRANSCRIPTION_PROVIDER_IDS } from '../../constants';
 import {
-	DEEPGRAM_MODELS_DOC_URL,
-	GEMINI_MODELS_DOC_URL,
-	MS_PER_MINUTE,
-	TRANSCRIPTION_PROVIDER_IDS,
-	WHISPER_API_MODELS_DOC_URL,
-} from '../../constants';
+	ENGINE_IDS,
+	engineAccess,
+	missingModelMessage,
+	type EngineId,
+} from '../../providers/providers';
 import type {
 	AudioRecorderSettings,
 	TranscriptionProviderId,
@@ -69,29 +69,49 @@ interface TokenRate {
 	output: number;
 }
 
+/** What a cloud engine's client is built from, once its settings check out. */
+interface CloudEngineConfig {
+	baseUrl: string;
+	apiKey: string;
+	model: string;
+	requestTimeoutMs: number;
+}
+
 /**
- * The endpoint, key, and model-list settings of a cloud engine. Absent on the
- * local engine, which points at files on disk instead.
+ * The `create` of an engine reached over the network. The three cloud engines
+ * differ only in the client that speaks their wire format: where the endpoint,
+ * the key, and the model are stored, and what a run says when one of them is
+ * missing, are facts of the account and the catalogue, so they are read from
+ * the provider registry once here instead of being restated per engine.
+ *
+ * Both halves are required. A key was always checked; a model was not, so an
+ * emptied catalogue (or a hand-edited `data.json`) sent a request naming no
+ * model and failed at the endpoint with the provider's own wording.
+ * @param id - The engine being built
+ * @param build - Constructs the client for that engine
+ * @returns The descriptor's `create`
  */
-export interface EngineCredentials {
-	baseUrl(settings: AudioRecorderSettings): string;
-	setBaseUrl(settings: AudioRecorderSettings, url: string): void;
-	apiKey(settings: AudioRecorderSettings): string;
-	setApiKey(settings: AudioRecorderSettings, key: string): void;
-	setModel(settings: AudioRecorderSettings, id: string): void;
-	models(settings: AudioRecorderSettings): string[];
-	setModels(settings: AudioRecorderSettings, ids: string[]): void;
-	/** Label and description of the base-URL settings row. */
-	readonly baseUrlFieldName: string;
-	readonly baseUrlFieldDesc: string;
-	/** Label and description of the API-key settings row. */
-	readonly keyFieldName: string;
-	readonly keyFieldDesc: string;
-	/** Label, description, and catalog link of the model picker row. */
-	readonly modelPickerName: string;
-	readonly modelPickerDesc: string;
-	readonly modelsDocLabel: string;
-	readonly modelsDocUrl: string;
+function cloudEngineFactory(
+	id: EngineId,
+	build: (config: CloudEngineConfig) => TranscriptionProvider,
+): TranscriptionEngineDescriptor['create'] {
+	return (settings, requestTimeoutMs) => {
+		const { engine, account, models } = engineAccess(id);
+		const apiKey = account.apiKey(settings);
+		if (!apiKey) {
+			throw new ProviderConfigError(account.missingKeyMessage);
+		}
+		const model = models.model(settings);
+		if (!model) {
+			throw new ProviderConfigError(missingModelMessage(engine));
+		}
+		return build({
+			baseUrl: account.baseUrl(settings),
+			apiKey,
+			model,
+			requestTimeoutMs,
+		});
+	};
 }
 
 /** Everything the plugin knows about one transcription engine. */
@@ -108,8 +128,6 @@ export interface TranscriptionEngineDescriptor {
 	model(settings: AudioRecorderSettings): string;
 	/** Resolves the rate for a model id, or null when none is built in. */
 	pricing(model: string): EnginePricing | null;
-	/** Endpoint/key/model settings, absent for the local engine. */
-	readonly credentials?: EngineCredentials;
 	/**
 	 * Plans how the user's dictionary terms are applied within this engine's
 	 * mechanism and request limits. The per-engine rules live with the engine
@@ -232,10 +250,6 @@ function planWhisperPromptDictionary(terms: string[]): DictionaryBiasPlan {
 	return { applied, omitted: [] };
 }
 
-/** The API-key description shared by every cloud engine. */
-const STORED_LOCALLY_DESC =
-	'Stored in plugin data on this device. Avoid syncing data.json to untrusted locations.';
-
 /**
  * Every transcription engine, keyed by its settings id. Insertion order is the
  * order the engine dropdown offers them.
@@ -246,45 +260,19 @@ export const TRANSCRIPTION_ENGINES: Record<
 > = {
 	[TRANSCRIPTION_PROVIDER_IDS.WHISPER_API]: {
 		id: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+		// The engine is named for what it does; the service behind it is named
+		// once in the provider registry.
 		label: 'Whisper API (OpenAI-compatible)',
 		pricingUrl: 'https://openai.com/api/pricing/',
 		model: (s) => s.whisperApiModel,
 		pricing: (model) =>
 			perMinutePricing(matchRate(WHISPER_API_RATES, model)),
-		credentials: {
-			baseUrl: (s) => s.whisperApiBaseUrl,
-			setBaseUrl: (s, url) => (s.whisperApiBaseUrl = url),
-			apiKey: (s) => s.whisperApiKey,
-			setApiKey: (s, key) => (s.whisperApiKey = key),
-			setModel: (s, id) => (s.whisperApiModel = id),
-			models: (s) => s.whisperApiModels,
-			setModels: (s, ids) => (s.whisperApiModels = ids),
-			baseUrlFieldName: 'Whisper API base URL',
-			baseUrlFieldDesc:
-				'OpenAI-compatible endpoint base (e.g. https://api.openai.com/v1 or a Groq URL).',
-			keyFieldName: 'Whisper API key',
-			keyFieldDesc: STORED_LOCALLY_DESC,
-			modelPickerName: 'Whisper model',
-			modelPickerDesc:
-				'OpenAI: whisper-1. Groq and other hosts: whisper-large-v3, whisper-large-v3-turbo. The model must support verbose_json with timestamps.',
-			modelsDocLabel: 'Whisper API models',
-			modelsDocUrl: WHISPER_API_MODELS_DOC_URL,
-		},
 		planDictionary: (_model, terms) => planWhisperPromptDictionary(terms),
 		biasUnsupportedReason: () => null,
-		create: (settings, requestTimeoutMs) => {
-			if (!settings.whisperApiKey) {
-				throw new ProviderConfigError(
-					'Set the Whisper API key in settings to transcribe.',
-				);
-			}
-			return new WhisperApiProvider({
-				baseUrl: settings.whisperApiBaseUrl,
-				apiKey: settings.whisperApiKey,
-				model: settings.whisperApiModel,
-				requestTimeoutMs,
-			});
-		},
+		create: cloudEngineFactory(
+			ENGINE_IDS.WHISPER_API,
+			(config) => new WhisperApiProvider(config),
+		),
 	},
 	[TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM]: {
 		id: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
@@ -292,25 +280,6 @@ export const TRANSCRIPTION_ENGINES: Record<
 		pricingUrl: 'https://deepgram.com/pricing',
 		model: (s) => s.deepgramModel,
 		pricing: (model) => perMinutePricing(matchRate(DEEPGRAM_RATES, model)),
-		credentials: {
-			baseUrl: (s) => s.deepgramBaseUrl,
-			setBaseUrl: (s, url) => (s.deepgramBaseUrl = url),
-			apiKey: (s) => s.deepgramApiKey,
-			setApiKey: (s, key) => (s.deepgramApiKey = key),
-			setModel: (s, id) => (s.deepgramModel = id),
-			models: (s) => s.deepgramModels,
-			setModels: (s, ids) => (s.deepgramModels = ids),
-			baseUrlFieldName: 'Deepgram base URL',
-			baseUrlFieldDesc:
-				'Deepgram API base (default https://api.deepgram.com/v1).',
-			keyFieldName: 'Deepgram API key',
-			keyFieldDesc: STORED_LOCALLY_DESC,
-			modelPickerName: 'Deepgram model',
-			modelPickerDesc:
-				'Pick a Deepgram model (e.g. nova-3, nova-2-meeting, enhanced-phonecall). Files up to 2 GB are sent whole for consistent speaker labels.',
-			modelsDocLabel: 'Deepgram model list',
-			modelsDocUrl: DEEPGRAM_MODELS_DOC_URL,
-		},
 		// Deepgram's mechanism, and therefore its limits, depend on the model:
 		// Nova-3 keyterm prompting is bounded by both an entry count and an
 		// aggregate token budget, Nova-2 and older keyword boosting only by an
@@ -353,19 +322,10 @@ export const TRANSCRIPTION_ENGINES: Record<
 			deepgramBiasMechanism(model) === null
 				? `the Deepgram model "${model}" cannot bias recognition (choose a Nova model)`
 				: null,
-		create: (settings, requestTimeoutMs) => {
-			if (!settings.deepgramApiKey) {
-				throw new ProviderConfigError(
-					'Set the Deepgram API key in settings to transcribe.',
-				);
-			}
-			return new DeepgramProvider({
-				baseUrl: settings.deepgramBaseUrl,
-				apiKey: settings.deepgramApiKey,
-				model: settings.deepgramModel,
-				requestTimeoutMs,
-			});
-		},
+		create: cloudEngineFactory(
+			ENGINE_IDS.DEEPGRAM,
+			(config) => new DeepgramProvider(config),
+		),
 	},
 	[TRANSCRIPTION_PROVIDER_IDS.GEMINI]: {
 		id: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
@@ -373,41 +333,13 @@ export const TRANSCRIPTION_ENGINES: Record<
 		pricingUrl: 'https://ai.google.dev/gemini-api/docs/pricing',
 		model: (s) => s.geminiModel,
 		pricing: (model) => perTokenPricing(matchRate(GEMINI_RATES, model)),
-		credentials: {
-			baseUrl: (s) => s.geminiBaseUrl,
-			setBaseUrl: (s, url) => (s.geminiBaseUrl = url),
-			apiKey: (s) => s.geminiApiKey,
-			setApiKey: (s, key) => (s.geminiApiKey = key),
-			setModel: (s, id) => (s.geminiModel = id),
-			models: (s) => s.geminiModels,
-			setModels: (s, ids) => (s.geminiModels = ids),
-			baseUrlFieldName: 'Gemini base URL',
-			baseUrlFieldDesc:
-				'Gemini API base (default https://generativelanguage.googleapis.com).',
-			keyFieldName: 'Gemini API key',
-			keyFieldDesc: STORED_LOCALLY_DESC,
-			modelPickerName: 'Gemini model',
-			modelPickerDesc:
-				'Pick a Gemini model (e.g. gemini-3.5-flash, gemini-2.5-pro). The whole recording is uploaded via the File API for consistent speaker labels.',
-			modelsDocLabel: 'Gemini model list',
-			modelsDocUrl: GEMINI_MODELS_DOC_URL,
-		},
 		// Gemini folds terms into a large instruction context with no hard cap.
 		planDictionary: (_model, terms) => ({ applied: terms, omitted: [] }),
 		biasUnsupportedReason: () => null,
-		create: (settings, requestTimeoutMs) => {
-			if (!settings.geminiApiKey) {
-				throw new ProviderConfigError(
-					'Set the Google Gemini API key in settings to transcribe.',
-				);
-			}
-			return new GeminiProvider({
-				baseUrl: settings.geminiBaseUrl,
-				apiKey: settings.geminiApiKey,
-				model: settings.geminiModel,
-				requestTimeoutMs,
-			});
-		},
+		create: cloudEngineFactory(
+			ENGINE_IDS.GEMINI,
+			(config) => new GeminiProvider(config),
+		),
 	},
 	[TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER]: {
 		id: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,

@@ -351,6 +351,15 @@ input.aar-input-invalid {
     border-color: var(--text-error);
 }
 
+/* Why a setting refused the value that was entered, under the row's own
+   description. Obsidian renders this itself from 1.13; below it the row is the
+   plugin's to append to, and a control whose value is accepted never grows one. */
+.aar-setting-error {
+    margin-top: 4px;
+    font-size: 0.9em;
+    color: var(--text-error);
+}
+
 /* Enhanced audio player */
 .aar-player {
     /* Waveform colors derive from the theme so it matches any palette. The
@@ -704,6 +713,19 @@ input.aar-input-invalid {
     font-size: 0.9em;
 }
 
+/* Why a dialog cannot accept what was typed, shown under the field it belongs
+   to while the confirming button stays disabled. Holding no message is what
+   keeps it out of the layout, so nothing has to toggle it. */
+.aar-modal-error {
+    margin: 4px 0 0;
+    font-size: 0.9em;
+    color: var(--text-error);
+}
+
+.aar-modal-error:empty {
+    display: none;
+}
+
 /* Speaker rename dialog: the third column of each speaker row, one button
    that plays where that speaker first talks and turns into stop while it does.
    Fixed width so the buttons line up as a column under each other regardless
@@ -825,23 +847,199 @@ input.aar-input-invalid {
     font-size: 0.85em;
 }
 
-/* Multi-line prompt editor: stack the control under the label and let the
-   text area fill the row so long editable prompts have room to breathe. */
-.aar-setting-stacked {
+/* Multi-line editors - a glossary, a guidance prompt - on both Obsidians, which
+   put every control in the same narrow right-hand column a toggle lives in. A
+   text area is written in paragraphs, so the control moves under the label and
+   fills the row instead. The two selectors are the two ways such a row is
+   found: the legacy renderer marks the row itself, while from 1.13 the row
+   belongs to the framework and the tree can only mark the group around it, so
+   the rule reaches the row through the text area it holds. */
+.aar-setting-stacked,
+:has(> .aar-settings-section)
+	.setting-item:has(> .setting-item-control > textarea) {
     display: block;
 }
 
-.aar-setting-stacked .setting-item-control {
+.aar-setting-stacked .setting-item-control,
+:has(> .aar-settings-section)
+	.setting-item:has(> .setting-item-control > textarea)
+	> .setting-item-control {
     width: 100%;
     padding-top: var(--size-4-2);
     justify-content: flex-start;
 }
 
-.aar-setting-stacked .setting-item-control textarea {
+.aar-setting-stacked .setting-item-control textarea,
+:has(> .aar-settings-section) .setting-item-control > textarea {
     width: 100%;
     min-height: 6em;
     resize: vertical;
     font-family: var(--font-monospace);
+}
+
+/* Where the lines of this tab go: between the blocks, not between the rows
+   inside them. A block is one group of the definition tree, and every group the
+   tree declares carries .aar-settings-section, which is also how these rules
+   find the containers that are this plugin's - a container holding one of those
+   groups holds only this tab's blocks, so the groups the framework builds
+   around loose rows are dressed with them and nothing outside is touched.
+
+   The row divider is switched off through Obsidian's own variable rather than
+   by overriding the rule that reads it, so a theme changing that rule keeps
+   working. */
+:has(> .aar-settings-section) > .setting-group {
+    --setting-items-divider-width: 0;
+}
+
+:has(> .aar-settings-section) > .setting-group + .setting-group {
+    border-top: var(--divider-width) solid var(--background-modifier-border);
+    padding-top: var(--size-4-4);
+}
+
+/* A row that opens a page is a link, and Obsidian marks it with a chevron and
+   the pointer cursor of the moment - it declares the transition for a hover
+   background on such a row but never sets one on the desktop, so the row reads
+   as text under the pointer. It gets the background the app gives its own
+   action rows, written the way the app writes it, hover-capable devices only:
+   on a touch device the framework has its own tap state. */
+@media (hover: hover) {
+    :has(> .aar-settings-section) .setting-item.mod-navigable:hover {
+        background-color: var(--background-modifier-hover);
+    }
+}
+
+/* A number row is a real input[type=number] with its min, max, and step
+   already set, and Obsidian only hides the browser's stepper. It is shown back
+   here, so a count is nudged with the arrows (or the arrow keys, which have
+   always worked) instead of being retyped, and the browser keeps it in range. */
+:has(> .aar-settings-section) input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: auto;
+    appearance: auto;
+    opacity: 1;
+}
+
+/* The per-track rows repeat one pair of pickers, and a picker sized to its own
+   text ends where its longest option ends: a device name runs to sixty
+   characters and a channel layout to twenty, so the block reads as a ragged
+   column. They share one width instead, and each picker truncates its own
+   label the way a picker does. */
+.aar-track-rows .setting-item-control {
+    flex: 0 0 var(--aar-track-control-width, 60%);
+}
+
+.aar-track-rows .setting-item-control select {
+    width: 100%;
+}
+
+/* The Obsidian before 1.13 renders the same tree as a flat list of rows with no
+   group element at all, so the same rule is expressed the other way round: a
+   row keeps no divider of its own, and a heading carries the line above the
+   block it opens. A 1.13 group heading is the first element of its group, which
+   is what keeps this from drawing a second line under the one above. */
+.aar-settings-tab .setting-item {
+    border-top: none;
+}
+
+.aar-settings-tab .setting-item-heading:not(:first-child) {
+    border-top: var(--divider-width) solid var(--background-modifier-border);
+    padding-top: var(--size-4-4);
+}
+
+/* Obsidian 1.13+ renders the settings tab from getSettingDefinitions(), and the
+   framework owns the rows of a declarative group: it resets the group's list to
+   exactly the rows it tracks after every render. The tab body therefore lives
+   inside the single row element the framework tracks, and that row has to stop
+   behaving like a setting row - no flex layout, padding, background, or
+   divider - so the settings inside it read as an ordinary settings column. The
+   second selector of each rule outweighs Obsidian's own
+   ".setting-group .setting-item:not(.setting-item-heading)" rules, which would
+   otherwise keep the row's padding and divider and inset the whole body twice.
+   It repeats that ":not" deliberately: matching the shape of the rule being
+   overridden wins on specificity rather than on stylesheet order, so a theme or
+   a snippet carrying the app's own weight cannot put the inset back. */
+.setting-item.aar-settings-root,
+.setting-group .setting-item.aar-settings-root:not(.setting-item-heading) {
+    display: block;
+    padding: 0;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    background-color: transparent;
+}
+
+.setting-item.aar-settings-root::before,
+.setting-group .setting-item.aar-settings-root:not(.setting-item-heading)::before {
+    content: none;
+}
+
+/* Obsidian spaces a row's first child away from its control column; the body's
+   first section is not a control and must not inherit that gap. */
+.setting-item.aar-settings-root>*:first-child {
+    margin-inline-end: 0;
+}
+
+/* A row whose render callback puts block content under its control - the test
+   recording's status line and playback element - rather than beside it. The row
+   is a flex line, so the block only starts on its own line once the row wraps
+   and the block claims the full width. */
+.setting-item.aar-setting-block-row {
+    flex-wrap: wrap;
+}
+
+.setting-item.aar-setting-block-row>.aar-test-status,
+.setting-item.aar-setting-block-row>.aar-test-audio {
+    flex-basis: 100%;
+    margin-inline: 0;
+}
+
+/* An action row runs its action when clicked anywhere. Obsidian styles its own
+   from 1.13 on; this is the same affordance on the versions below it. */
+.setting-item.aar-action-row {
+    cursor: var(--cursor, pointer);
+}
+
+/* Obsidian before 1.13 has no group header to hang a list's filter and add
+   button on, so both become rows of their own. The filter has no label to sit
+   beside, so it takes the whole row instead of the narrow control column. */
+.setting-item.aar-search-row {
+    padding-block: var(--size-4-2);
+    border-top: none;
+}
+
+.setting-item.aar-search-row .setting-item-info {
+    display: none;
+}
+
+.setting-item.aar-search-row .setting-item-control,
+.setting-item.aar-search-row .search-input-container {
+    width: 100%;
+}
+
+/* An empty list says so in a row of its own. It reads as a note rather than as
+   a setting whose control failed to render. */
+.setting-item.aar-empty-state-row .setting-item-name {
+    color: var(--text-muted);
+    font-weight: normal;
+}
+
+/* The add affordance closes the list, so it carries no divider of its own. */
+.setting-item.aar-add-item-row {
+    border-top: none;
+    padding-top: 0;
+}
+
+/* The body's few blocks that are not setting rows have to line up with the rows
+   around them: a row carries Obsidian's own horizontal inset, a plain element
+   does not. The 0 fallback leaves pre-1.13 rendering, where the body is not
+   inside a row at all, exactly as it was. */
+.aar-settings-root .aar-doc-callout,
+.aar-settings-root .aar-test-status {
+    margin-inline: var(--setting-items-padding-x, 0);
+}
+
+.aar-settings-root .aar-test-audio {
+    margin-inline: var(--setting-items-padding-x, 0);
+    width: calc(100% - 2 * var(--setting-items-padding-x, 0px));
 }
 
 /* Documentation callout at the top of the settings tab. A subtle, accent-bordered

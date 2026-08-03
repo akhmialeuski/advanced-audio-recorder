@@ -21,24 +21,19 @@ import type { AudioRecorderSettings } from './settingsSchema';
 import { CONVERSION_LINK_ACTION_OPTIONS, type LabeledOption } from './labels';
 import { getSupportedBitrates } from '../audio/AudioCapabilityDetector';
 import type { ConversionLinkAction } from './settingsSchema';
-import {
-	addModelToList,
-	ensureSelectedInList,
-	normalizeModelId,
-	removeModelFromList,
-} from './modelList';
 
 /** Class applied to a setting row that is rendered disabled (dimmed). */
 export const SETTING_DISABLED_CLASS = 'aar-setting-disabled';
 
+/**
+ * Class applied to a numeric input, which the stylesheet sizes and gives back
+ * the browser's stepper. Shared with the renderer that binds a declared number
+ * control, so both kinds of numeric row look the same.
+ */
+export const NUMBER_INPUT_CLASS = 'aar-number-input';
+
 /** Class applied to a "learn more" link appended to a setting description. */
 const SETTING_DOC_LINK_CLASS = 'aar-doc-link';
-
-/** Class applied to a setting whose control is a full-width, stacked text area. */
-const SETTING_STACKED_CLASS = 'aar-setting-stacked';
-
-/** Default visible row count for a multi-line text-area control. */
-const DEFAULT_TEXTAREA_ROWS = 6;
 
 /** A "learn more" link appended to a setting's description. */
 export interface HelpLink {
@@ -78,11 +73,6 @@ export interface SettingsSectionContext {
 	saveDebounced: () => void;
 }
 
-/** Adds a section heading. */
-export function addHeading(ctx: SettingsSectionContext, name: string): void {
-	new Setting(ctx.containerEl).setName(name).setHeading();
-}
-
 /** Configuration for a debounced text control (optionally a password). */
 export interface TextControlConfig {
 	name: string;
@@ -102,6 +92,35 @@ export interface TextControlConfig {
 	disabled?: boolean;
 }
 
+/**
+ * Adds the eye button that unmasks a secret field, the way Obsidian's own
+ * secret dialog does it: the button sits to the left of the input and swaps the
+ * icon with the input type. It is added before the input exists, so it is
+ * handed the input afterwards through the binder it returns.
+ * @param setting - The row the button is added to
+ * @returns Binds the button to the password input the caller adds next
+ */
+function addSecretReveal(setting: Setting): (input: HTMLInputElement) => void {
+	let inputEl: HTMLInputElement | null = null;
+	setting.addExtraButton((button) => {
+		button
+			.setIcon('lucide-eye-off')
+			.setTooltip('Show value')
+			.onClick(() => {
+				if (!inputEl) {
+					return;
+				}
+				const masked = inputEl.type === 'password';
+				inputEl.type = masked ? 'text' : 'password';
+				button.setIcon(masked ? 'lucide-eye' : 'lucide-eye-off');
+				button.setTooltip(masked ? 'Hide value' : 'Show value');
+			});
+	});
+	return (input: HTMLInputElement): void => {
+		inputEl = input;
+	};
+}
+
 /** Adds a text input bound to a getter/setter with a debounced save. */
 export function addText(
 	ctx: SettingsSectionContext,
@@ -114,9 +133,16 @@ export function addText(
 	if (config.helpLink) {
 		appendHelpLink(setting, config.helpLink);
 	}
+	// Obsidian masks a secret this way in its own keychain dialog: a reveal
+	// toggle to the left of the field, an autocomplete the browser will not fill.
+	// Mirrored here so an API key looks and behaves like every other secret the
+	// app asks for.
+	const bindReveal = config.secret ? addSecretReveal(setting) : undefined;
 	setting.addText((text) => {
 		if (config.secret) {
 			text.inputEl.type = 'password';
+			text.inputEl.setAttribute('autocomplete', 'off');
+			bindReveal?.(text.inputEl);
 		}
 		text.setValue(config.get()).onChange((value) => {
 			config.set(value);
@@ -129,56 +155,6 @@ export function addText(
 	if (config.disabled) {
 		// Dim the whole row so a non-interactive input reads as unavailable, not
 		// merely empty - mirrors the disabled rendering used by addToggle.
-		setting.settingEl.addClass(SETTING_DISABLED_CLASS);
-	}
-}
-
-/** Configuration for a debounced multi-line text-area control. */
-export interface TextAreaControlConfig {
-	name: string;
-	desc?: string;
-	get: () => string;
-	set: (value: string) => void;
-	/** Optional "learn more" link appended to the description. */
-	helpLink?: HelpLink;
-	/** Visible row count (defaults to {@link DEFAULT_TEXTAREA_ROWS}). */
-	rows?: number;
-	/** Render the input non-interactive and dim the row. */
-	disabled?: boolean;
-}
-
-/**
- * Adds a full-width, stacked multi-line text area bound to a getter/setter with
- * a debounced save. Used for the editable LLM prompts, where a single-line text
- * field is too cramped to read or edit a multi-sentence instruction.
- * @param ctx - Section context
- * @param config - Text-area bindings
- */
-export function addTextArea(
-	ctx: SettingsSectionContext,
-	config: TextAreaControlConfig,
-): void {
-	const setting = new Setting(ctx.containerEl).setName(config.name);
-	if (config.desc) {
-		setting.setDesc(config.desc);
-	}
-	if (config.helpLink) {
-		appendHelpLink(setting, config.helpLink);
-	}
-	setting.addTextArea((text) => {
-		// rows is a textarea attribute (not a style), so it is allowed; width
-		// and height come from the stacked-layout CSS class on the row.
-		text.inputEl.rows = config.rows ?? DEFAULT_TEXTAREA_ROWS;
-		text.setValue(config.get()).onChange((value) => {
-			config.set(value);
-			ctx.saveDebounced();
-		});
-		if (config.disabled) {
-			text.setDisabled(true);
-		}
-	});
-	setting.settingEl.addClass(SETTING_STACKED_CLASS);
-	if (config.disabled) {
 		setting.settingEl.addClass(SETTING_DISABLED_CLASS);
 	}
 }
@@ -332,7 +308,7 @@ export function addNumberInputTo(
 		input.min = String(config.min);
 		input.max = String(config.max);
 		input.step = String(config.step);
-		input.addClass('aar-number-input');
+		input.addClass(NUMBER_INPUT_CLASS);
 		text.setValue(String(config.get()));
 		input.addEventListener('change', () => {
 			const value = normalizeNumber(input.value, config);
@@ -341,43 +317,6 @@ export function addNumberInputTo(
 		});
 	});
 	return component;
-}
-
-/** Configuration for a numeric setting row (label plus numeric input). */
-export interface NumberSettingConfig {
-	name: string;
-	desc?: string;
-	min: number;
-	max: number;
-	step: number;
-	get: () => number;
-	set: (value: number) => void;
-}
-
-/**
- * Adds a labelled numeric-input row bound to a getter/setter that saves
- * immediately, the numeric-field replacement for the old slider row.
- * @param ctx - The section context (container plus save hook)
- * @param config - The row label and numeric bounds/accessors
- */
-export function addNumberInput(
-	ctx: SettingsSectionContext,
-	config: NumberSettingConfig,
-): void {
-	const setting = new Setting(ctx.containerEl).setName(config.name);
-	if (config.desc) {
-		setting.setDesc(config.desc);
-	}
-	addNumberInputTo(setting, {
-		min: config.min,
-		max: config.max,
-		step: config.step,
-		get: config.get,
-		set: async (value) => {
-			config.set(value);
-			await ctx.save();
-		},
-	});
 }
 
 /** A stage row: an on/off toggle and its one numeric parameter, side by side. */
@@ -417,103 +356,6 @@ export function addStageRowTo(
 			numberInput.setDisabled(!value);
 		}),
 	);
-}
-
-/** Configuration for a model picker (pick from a saved, user-editable list). */
-export interface ModelPickerConfig {
-	/** Label for the picker row (e.g. "Deepgram model"). */
-	name: string;
-	/** Description shown above the docs link. */
-	desc: string;
-	/** Docs link to where the engine's models are listed. */
-	helpLink: HelpLink;
-	/** Reads the saved model ids. */
-	getModels: () => string[];
-	/** Persists the model ids. */
-	setModels: (models: string[]) => void;
-	/** Reads the selected model id. */
-	getSelected: () => string;
-	/** Persists the selected model id. */
-	setSelected: (id: string) => void;
-}
-
-/**
- * Renders a model picker: a dropdown to choose the active model from a saved
- * list, a docs link, and an add/remove row to manage custom ids. The selected
- * id is always shown even if it is not in the saved list. Adding or removing
- * re-renders the tab so the dropdown reflects the new list. Used for engines
- * whose model is a free-form id (Whisper API, Deepgram); the local engine
- * points at a file path instead, so it does not use this.
- * @param ctx - Section context
- * @param config - Picker bindings
- */
-export function addModelPicker(
-	ctx: SettingsSectionContext,
-	config: ModelPickerConfig,
-): void {
-	const models = ensureSelectedInList(
-		config.getModels(),
-		config.getSelected(),
-	);
-	const selected = normalizeModelId(config.getSelected()) || models[0] || '';
-	// Self-heal a missing/empty stored selection: persist the fallback so the
-	// shown model is the one actually used at transcription time (a hand-edited
-	// or migrated config could otherwise leave an empty model selected).
-	if (selected !== '' && selected !== config.getSelected()) {
-		config.setSelected(selected);
-		void ctx.save();
-	}
-
-	const picker = new Setting(ctx.containerEl)
-		.setName(config.name)
-		.setDesc(config.desc);
-	appendHelpLink(picker, config.helpLink);
-	picker.addDropdown((dropdown) => {
-		for (const id of models) {
-			dropdown.addOption(id, id);
-		}
-		dropdown.setValue(selected).onChange(async (value) => {
-			config.setSelected(value);
-			await ctx.save();
-		});
-	});
-
-	let draft = '';
-	new Setting(ctx.containerEl)
-		.setName('Add custom model')
-		.setDesc('Add a model ID to the list above, then select it.')
-		.addText((text) => {
-			text.setPlaceholder('Model ID').onChange((value) => {
-				draft = value;
-			});
-		})
-		.addButton((button) => {
-			button.setButtonText('Add').onClick(async () => {
-				const id = normalizeModelId(draft);
-				if (id === '') {
-					return;
-				}
-				config.setModels(addModelToList(config.getModels(), id));
-				config.setSelected(id);
-				await ctx.save();
-				ctx.rerender();
-			});
-		})
-		.addButton((button) => {
-			button
-				.setButtonText('Remove selected')
-				.setDisabled(config.getModels().length <= 1)
-				.onClick(async () => {
-					const next = removeModelFromList(
-						config.getModels(),
-						config.getSelected(),
-					);
-					config.setModels(next);
-					config.setSelected(next[0] ?? '');
-					await ctx.save();
-					ctx.rerender();
-				});
-		});
 }
 
 /**

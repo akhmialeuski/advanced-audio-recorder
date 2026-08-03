@@ -14,7 +14,6 @@ import {
 	resolveEnginePricing,
 	resolveLlmPricing,
 	selectedEngineModel,
-	selectedLlmModel,
 	sumUsage,
 	type RunCostStepId,
 } from 'src/transcription/costs';
@@ -217,17 +216,6 @@ describe('resolveLlmPricing', () => {
 		expect(
 			resolveLlmPricing(LLM_PROVIDER_IDS.ANTHROPIC, 'mystery-model'),
 		).toBeNull();
-	});
-});
-
-describe('selectedLlmModel', () => {
-	it('returns the model the settings select for the current LLM provider', () => {
-		const settings = mergeSettings({
-			llmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
-			llmAnthropicModel: 'claude-opus-4-8',
-			llmOpenAiModel: 'gpt-4o-mini',
-		});
-		expect(selectedLlmModel(settings)).toBe('claude-opus-4-8');
 	});
 });
 

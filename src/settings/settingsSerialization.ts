@@ -10,11 +10,31 @@ import { isRecord } from '../utils/objects';
 import { getDefaultDeviceId } from '../utils/DeviceUtils';
 import { getPlatformKind, type PlatformKind } from '../platform/platformKind';
 import { isDeviceSelectionSupported } from '../platform/capabilities';
-import { LLM_VENDORS, selectedLlmVendor } from '../transcription/llm/vendors';
+import { LLM_JOBS, LLM_VENDORS } from '../transcription/llm/vendors';
+import { TRANSCRIPTION_ENGINES } from '../transcription/providers/engines';
+import {
+	ENGINES,
+	ENGINE_IDS,
+	accountOf,
+	engineOfVendor,
+	transcribingAccount,
+	type EngineDescriptor,
+} from '../providers/providers';
+import { reconcileEngineSettings } from '../providers/engineSettings';
+import {
+	DEEPGRAM_MODEL_SUGGESTIONS,
+	GEMINI_MODEL_SUGGESTIONS,
+	LLM_ANTHROPIC_MODEL_SUGGESTIONS,
+	LLM_OPENAI_MODEL_SUGGESTIONS,
+	MODEL_SEED_GENERATION,
+	PLUGIN_LOG_PREFIX,
+	WHISPER_API_MODEL_SUGGESTIONS,
+} from '../constants';
 import {
 	DEFAULT_SETTINGS,
 	createPlatformScopedDefaults,
 	type AudioRecorderSettings,
+	type PrimitiveSettingKey,
 	type AudioRecorderSettingsInput,
 	type AudioSource,
 	type DictionaryProfile,
@@ -215,10 +235,89 @@ export function mergeSettings(
 		trackAudioSources: active.trackAudioSources,
 		perPlatform,
 	};
+	// Before the migrations, not after: the endpoint rule below asks which
+	// account transcription is reached through, and an id no engine claims
+	// answers "none", which reads as "nothing transcribes anywhere" and lets a
+	// stored chat URL onto the very field the reconciliation is about to point
+	// transcription back at. A field a migration resolves through a registry has
+	// to name something by the time the migration asks.
+	reconcileTranscriptionEngine(merged);
 	migrateLegacyLlmSettings(merged, userSettings);
+	migrateModelCatalogues(merged, userSettings);
+	// The same rule that holds after an edit on an engine's page, applied to a
+	// config that has just been read: every catalogue offers the id in use.
+	reconcileEngineSettings(merged);
+	// After the migration rather than before it: an unclaimed vendor id is what
+	// tells the migration it does not know which engine the legacy key and model
+	// belonged to, and answering it first would turn that into a guess that
+	// writes one vendor's token into another vendor's field.
+	reconcileLlmJobEngines(merged);
 	migrateLegacyTranscriptionDictionary(merged, userSettings);
 	migrateAdvancedDictionaryGate(merged, userSettings);
 	return merged;
+}
+
+/**
+ * Whether a setting still holds the value this version ships for it.
+ *
+ * A superseded field is carried onto the field that replaced it only while that
+ * field has not been set: overwriting a value the user chose would answer a
+ * migration question with the old configuration's answer. The rule is one rule,
+ * so it is written once here rather than restated at each field it guards.
+ * @param settings - The merged settings being migrated
+ * @param key - The field the legacy value would be written to
+ * @returns Whether the field is untouched
+ */
+function isShippedDefault(
+	settings: AudioRecorderSettings,
+	key: PrimitiveSettingKey,
+): boolean {
+	return settings[key] === DEFAULT_SETTINGS[key];
+}
+
+/**
+ * Points a field that names a registry entry at one that exists.
+ *
+ * Every such field is read from disk, which is not type-checked, and every
+ * reader of one resolves it against a registry that has no entry for a value
+ * nothing claims: the factory that builds a client, the ceiling that bounds an
+ * answer, the cost model that prices a call. A hand-edited or downgraded
+ * `data.json` would therefore fail deep inside a run rather than at the field
+ * holding the bad value, so an unclaimed id is answered here, once, with the
+ * value this version ships. Which registry the field names is the only thing
+ * that differs between the jobs and transcription, so it is the only thing
+ * passed in.
+ * @param merged - The merged settings to reconcile in place
+ * @param key - The field naming an entry
+ * @param registry - The entries that field may name
+ */
+function reconcileRegistryId(
+	merged: AudioRecorderSettings,
+	key: PrimitiveSettingKey,
+	registry: Readonly<Record<string, unknown>>,
+): void {
+	if (!((merged[key] as string) in registry)) {
+		(merged as unknown as Record<string, unknown>)[key] =
+			DEFAULT_SETTINGS[key];
+	}
+}
+
+/**
+ * Points every LLM-driven job at an engine that exists.
+ * @param merged - The merged settings to reconcile in place
+ */
+function reconcileLlmJobEngines(merged: AudioRecorderSettings): void {
+	for (const job of Object.values(LLM_JOBS)) {
+		reconcileRegistryId(merged, job.key, LLM_VENDORS);
+	}
+}
+
+/**
+ * Points transcription at an engine that exists.
+ * @param merged - The merged settings to reconcile in place
+ */
+function reconcileTranscriptionEngine(merged: AudioRecorderSettings): void {
+	reconcileRegistryId(merged, 'transcriptionProvider', TRANSCRIPTION_ENGINES);
 }
 
 /**
@@ -298,12 +397,97 @@ function migrateLegacyTranscriptionDictionary(
 }
 
 /**
+ * Whether an engine's endpoint answers for prompts alone, as configured.
+ *
+ * An endpoint belongs to the account, and an account is shared by every engine
+ * behind it, so a stored chat URL must not be written onto one transcription
+ * reads: it would send every transcription request to a host that serves no
+ * audio endpoint at all.
+ *
+ * The question is whether transcription reads it, not whether it could. An
+ * account whose speech engine nobody selected serves prompts and nothing else
+ * in this configuration, and refusing the value there loses the only endpoint
+ * it was ever the answer for. That is not hypothetical: a provider blocked in
+ * the user's country is reached through a relay, entered in the one field the
+ * old schema had, and dropping it silently took away the address that worked
+ * and left the run pointed at a host that answers nobody there.
+ * @param engine - The engine the legacy endpoint would be written to
+ * @param settings - The merged settings, read for the engine transcription uses
+ */
+function endpointIsChatOnly(
+	engine: EngineDescriptor,
+	settings: AudioRecorderSettings,
+): boolean {
+	return (
+		engine.account !== null &&
+		engine.account !== transcribingAccount(settings)
+	);
+}
+
+/**
+ * Adds ids to an engine's catalogue, keeping the saved order and dropping
+ * repeats. A model that was in use stays pickable whatever else the migration
+ * decides about it.
+ * @param merged - The merged settings to migrate in place
+ * @param engine - The engine whose catalogue is being topped up
+ * @param ids - The ids to offer
+ */
+function offerModels(
+	merged: AudioRecorderSettings,
+	engine: EngineDescriptor,
+	ids: readonly string[],
+): void {
+	const models = engine.models;
+	const fresh = ids.filter((id) => id !== '');
+	if (!models || fresh.length === 0) {
+		return;
+	}
+	models.setModels(merged, [
+		...new Set([...models.models(merged), ...fresh]),
+	]);
+}
+
+/**
+ * Carries a superseded chat model onto the engine that serves it now.
+ *
+ * The id always joins the catalogue, so a model that was in use stays pickable.
+ * Whether it also becomes the id in use turns on who else reads that catalogue.
+ * A catalogue belongs to the engine rather than to the account, so two engines
+ * over one account keep one each and the OpenAI chat ids are nothing to do with
+ * the Whisper ones; but an engine that both transcribes and writes serves one
+ * catalogue for both jobs, which is Gemini. There, a stored chat model is not
+ * an answer for the field, and holding the shipped default is no sign it is
+ * unused - a user transcribing on the default model has simply never changed
+ * it. Writing the chat id would silently move what transcription runs on, and
+ * what it costs.
+ * @param merged - The merged settings to migrate in place
+ * @param engine - The engine the legacy model belongs to now
+ * @param legacyModel - The stored chat model, or '' when none was saved
+ */
+function adoptLegacyChatModel(
+	merged: AudioRecorderSettings,
+	engine: EngineDescriptor,
+	legacyModel: string,
+): void {
+	offerModels(merged, engine, [legacyModel]);
+	const models = engine.models;
+	if (
+		legacyModel === '' ||
+		!models ||
+		engine.transcriptionId !== null ||
+		!isShippedDefault(merged, models.modelKey)
+	) {
+		return;
+	}
+	models.setModel(merged, legacyModel);
+}
+
+/**
  * Carries forward settings saved under the pre-rework LLM schema. The old
- * single `llmApiKey` maps onto the new per-vendor key (OpenAI reuses
- * `whisperApiKey`, Gemini reuses `geminiApiKey`, Anthropic uses its own
- * `anthropicApiKey`), and the old single `llmModel` maps onto the selected
- * model of the stored provider. The superseded flat fields are then dropped so
- * a later save does not persist them. A vendor key already set is never
+ * single `llmApiKey` maps onto the key of the account the stored vendor is
+ * reached through, and the old single `llmModel` and `llmBaseUrl` onto that
+ * engine's catalogue and endpoint. The superseded flat fields are then dropped
+ * so a later save does not persist them. A vendor key already set is never
  * overwritten, so the migration cannot clobber a freshly entered token.
  * @param merged - The merged settings to migrate in place
  * @param raw - The raw user settings as loaded from disk
@@ -312,31 +496,128 @@ function migrateLegacyLlmSettings(
 	merged: AudioRecorderSettings,
 	raw: AudioRecorderSettingsInput,
 ): void {
-	const legacyKey = legacyString(raw.llmApiKey);
-	const legacyModel = legacyString(raw.llmModel).trim();
-	// The stored provider decides which fields the legacy key and model map
-	// onto. A corrupted provider id (disk data is not type-checked) names no
-	// vendor, so skip the mapping rather than dereference an absent descriptor;
-	// the superseded flat fields are still dropped below.
-	if (merged.llmProvider in LLM_VENDORS) {
-		// Which fields hold the stored provider's key and model is a vendor
-		// fact, so the migration asks the registry instead of re-deriving the
-		// mapping.
-		const vendor = selectedLlmVendor(merged);
-		// A vendor key already set is never overwritten, so the migration
-		// cannot clobber a freshly entered token.
-		if (legacyKey && !vendor.settings.apiKey(merged)) {
-			vendor.settings.setApiKey(merged, legacyKey);
+	// The stored vendor decides which engine the legacy values map onto. A
+	// corrupted vendor id (disk data is not type-checked) names none, so skip
+	// the mapping rather than dereference an absent descriptor; the superseded
+	// flat fields are still dropped below.
+	const engine = engineOfVendor(merged.llmProvider);
+	if (engine) {
+		const account = accountOf(engine);
+		const legacyKey = legacyString(raw.llmApiKey);
+		// A key already set is never overwritten, so the migration cannot
+		// clobber a freshly entered token.
+		if (account && legacyKey && !account.apiKey(merged)) {
+			account.setApiKey(merged, legacyKey);
 		}
-		if (legacyModel) {
-			vendor.settings.setModel(merged, legacyModel);
+		adoptLegacyChatModel(merged, engine, legacyString(raw.llmModel).trim());
+		// The endpoint was one field rewritten on every vendor change; it now
+		// belongs to the account the stored vendor is reached through. A chat
+		// URL and a Whisper URL were independent fields, and plenty of
+		// configurations used that - OpenAI transcription against the default
+		// endpoint with post-processing pointed at a local OpenAI-compatible
+		// chat server, say. Writing the chat URL onto the shared field would
+		// move transcription to a host that serves no audio endpoint at all.
+		const legacyBaseUrl = legacyString(raw.llmBaseUrl).trim();
+		if (account && legacyBaseUrl) {
+			if (
+				endpointIsChatOnly(engine, merged) &&
+				isShippedDefault(merged, account.baseUrlKey)
+			) {
+				account.setBaseUrl(merged, legacyBaseUrl);
+			} else {
+				// Not applied, but not disappeared without a word either: the
+				// value is the only record of an endpoint the user entered, and
+				// the field it would land on is now shared, so where it cannot
+				// be carried it is at least recoverable from the log.
+				console.warn(
+					`${PLUGIN_LOG_PREFIX} The stored LLM endpoint "${legacyBaseUrl}" was not carried over: ${account.baseUrlKey} is the endpoint transcription reads. Enter it under Engines if post-processing needs it.`,
+				);
+			}
 		}
+	}
+	// Gemini kept a chat catalogue beside its transcription one, over the same
+	// account and the same family of ids. They merge into the engine's own
+	// catalogue, whichever vendor was selected, because the ids were saved
+	// whether or not Gemini was the one answering prompts.
+	const gemini = ENGINES[ENGINE_IDS.GEMINI];
+	offerModels(
+		merged,
+		gemini,
+		Array.isArray(raw.llmGeminiModels)
+			? raw.llmGeminiModels.filter(
+					(id): id is string => typeof id === 'string',
+				)
+			: [],
+	);
+	adoptLegacyChatModel(
+		merged,
+		gemini,
+		legacyString(raw.llmGeminiModel).trim(),
+	);
+	// Chapters and the two-pass agents used to call whichever engine
+	// post-processing named. They pick their own now, and a stored config keeps
+	// the behaviour it had by starting all three on the engine it named.
+	if (raw.chaptersLlmProvider === undefined) {
+		merged.chaptersLlmProvider = merged.llmProvider;
+	}
+	if (raw.advancedLlmProvider === undefined) {
+		merged.advancedLlmProvider = merged.llmProvider;
+	}
+	// The answer ceiling was one field for whichever engine was selected; every
+	// engine that writes now holds its own, and each starts at that bound.
+	const legacyMaxTokens = raw.llmMaxTokens;
+	if (typeof legacyMaxTokens === 'number' && legacyMaxTokens > 0) {
+		merged.llmOpenAiMaxTokens = legacyMaxTokens;
+		merged.llmAnthropicMaxTokens = legacyMaxTokens;
+		merged.geminiMaxTokens = legacyMaxTokens;
 	}
 	// Drop the superseded flat fields so a later save does not persist them.
 	if (isRecord(merged)) {
 		delete merged.llmApiKey;
 		delete merged.llmModel;
+		delete merged.llmBaseUrl;
+		delete merged.llmGeminiModel;
+		delete merged.llmGeminiModels;
+		delete merged.llmMaxTokens;
 	}
+}
+
+/**
+ * Tops a saved model catalogue up with the ids this version ships, once per
+ * seed generation. A catalogue is the user's to edit, so this runs only while
+ * the stored generation is behind: an id deleted after the top-up stays
+ * deleted, and one added by hand is never dropped.
+ * @param merged - The merged settings to migrate in place
+ * @param raw - The raw user settings as loaded from disk
+ */
+function migrateModelCatalogues(
+	merged: AudioRecorderSettings,
+	raw: AudioRecorderSettingsInput,
+): void {
+	const stored =
+		typeof raw.modelSeedGeneration === 'number'
+			? raw.modelSeedGeneration
+			: 0;
+	if (stored >= MODEL_SEED_GENERATION) {
+		return;
+	}
+	const seeds: ReadonlyArray<[keyof AudioRecorderSettings, string[]]> = [
+		['whisperApiModels', [...WHISPER_API_MODEL_SUGGESTIONS]],
+		['deepgramModels', [...DEEPGRAM_MODEL_SUGGESTIONS]],
+		['geminiModels', [...GEMINI_MODEL_SUGGESTIONS]],
+		['llmOpenAiModels', [...LLM_OPENAI_MODEL_SUGGESTIONS]],
+		['llmAnthropicModels', [...LLM_ANTHROPIC_MODEL_SUGGESTIONS]],
+	];
+	for (const [key, shipped] of seeds) {
+		const saved = merged[key];
+		if (!Array.isArray(saved)) {
+			continue;
+		}
+		(merged as unknown as Record<string, string[]>)[key] = [
+			...new Set([...(saved as string[]), ...shipped]),
+		];
+	}
+	merged.modelSeedGeneration = MODEL_SEED_GENERATION;
 }
 
 /**

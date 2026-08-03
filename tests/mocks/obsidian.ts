@@ -373,6 +373,22 @@ export function addObsidianDomExtensions<T extends HTMLElement>(el: T): T {
 
 	extended['hasClass'] = (cls: string): boolean => el.classList.contains(cls);
 
+	// Obsidian's own visibility helpers, which set and clear the inline display
+	// rather than toggling a class, so a test asserting on style.display sees
+	// what the app leaves behind.
+	extended['show'] = (): void => {
+		el.style.removeProperty('display');
+	};
+
+	extended['hide'] = (): void => {
+		el.style.setProperty('display', 'none');
+	};
+
+	extended['toggle'] = (show: boolean): void => {
+		const helper = extended[show ? 'show' : 'hide'] as () => void;
+		helper();
+	};
+
 	return el;
 }
 
@@ -505,8 +521,19 @@ export class Setting {
 		return this;
 	}
 
-	setDesc(desc: string): this {
-		this.descEl.textContent = desc;
+	/**
+	 * Obsidian's own setDesc, which takes either plain text or a fragment - the
+	 * latter is how a description carries a link. Mirrored here so a fragment
+	 * lands as nodes rather than as "[object DocumentFragment]".
+	 * @param desc - The description text, or the nodes making it up
+	 */
+	setDesc(desc: string | DocumentFragment): this {
+		this.descEl.textContent = '';
+		if (typeof desc === 'string') {
+			this.descEl.textContent = desc;
+		} else {
+			this.descEl.appendChild(desc);
+		}
 		return this;
 	}
 
@@ -514,9 +541,23 @@ export class Setting {
 		return this;
 	}
 
+	/**
+	 * Obsidian's own clear(): drops the row's controls and the components
+	 * bound to them, leaving the name and description elements alone. The
+	 * framework calls this before it renders a row it already built again.
+	 */
+	clear(): this {
+		this.controlEl.empty();
+		this.components = [];
+		return this;
+	}
+
 	/** Components created by the add* methods, in creation order. */
 	components: Array<
 		| TextComponent
+		| TextAreaComponent
+		| SearchComponent
+		| ExtraButtonComponent
 		| ToggleComponent
 		| DropdownComponent
 		| SliderComponent
@@ -526,6 +567,9 @@ export class Setting {
 	private addComponent<
 		T extends
 			| TextComponent
+			| TextAreaComponent
+			| SearchComponent
+			| ExtraButtonComponent
 			| ToggleComponent
 			| DropdownComponent
 			| SliderComponent
@@ -536,6 +580,7 @@ export class Setting {
 		// queries and clicks reach it
 		const el =
 			(component as { buttonEl?: HTMLElement }).buttonEl ??
+			(component as { extraSettingsEl?: HTMLElement }).extraSettingsEl ??
 			(component as { inputEl?: HTMLElement }).inputEl ??
 			(component as { selectEl?: HTMLElement }).selectEl ??
 			(component as { toggleEl?: HTMLElement }).toggleEl ??
@@ -549,6 +594,18 @@ export class Setting {
 
 	addText(callback: (text: TextComponent) => void): this {
 		return this.addComponent(new TextComponent(), callback);
+	}
+
+	addTextArea(callback: (text: TextAreaComponent) => void): this {
+		return this.addComponent(new TextAreaComponent(), callback);
+	}
+
+	addSearch(callback: (search: SearchComponent) => void): this {
+		return this.addComponent(new SearchComponent(), callback);
+	}
+
+	addExtraButton(callback: (button: ExtraButtonComponent) => void): this {
+		return this.addComponent(new ExtraButtonComponent(), callback);
 	}
 
 	addToggle(callback: (toggle: ToggleComponent) => void): this {
@@ -588,6 +645,16 @@ export class PluginSettingTab {
 	}
 
 	hide(): void {
+		// Mock implementation
+	}
+
+	/**
+	 * Obsidian 1.13's declarative re-render, which re-reads
+	 * getSettingDefinitions() and renders the tab from it. Present here because
+	 * the plugin builds against 1.13; a test that models an older Obsidian
+	 * deletes it from this prototype before constructing its tab.
+	 */
+	update(): void {
 		// Mock implementation
 	}
 }
@@ -720,6 +787,18 @@ export class TextComponent {
 	/** Change handler, stored as Obsidian does for test triggering. */
 	changeCallback: ((value: string) => void) | null = null;
 
+	constructor() {
+		// Mirrors Obsidian: typing in the field fires the change handler, so a
+		// DOM-driven test reaches the same code path a user does.
+		this.inputEl.addEventListener('input', () => {
+			if (this.disabled) {
+				return;
+			}
+			this.value = this.inputEl.value;
+			this.changeCallback?.(this.inputEl.value);
+		});
+	}
+
 	setPlaceholder(placeholder: string): this {
 		this.inputEl.placeholder = placeholder;
 		return this;
@@ -733,6 +812,124 @@ export class TextComponent {
 
 	setDisabled(disabled: boolean): this {
 		this.disabled = disabled;
+		// Mirrored onto the element like real Obsidian, whose
+		// AbstractTextComponent sets inputEl.disabled, so a DOM-level
+		// assertion sees a field the user cannot type into.
+		this.inputEl.disabled = disabled;
+		return this;
+	}
+
+	onChange(callback: (value: string) => void): this {
+		this.changeCallback = callback;
+		return this;
+	}
+}
+
+/**
+ * Mock SearchComponent: a text input with Obsidian's search contract, which is
+ * the same change wiring as a text field.
+ */
+export class SearchComponent extends TextComponent {
+	clear(): void {
+		this.setValue('');
+	}
+}
+
+/**
+ * Mock ExtraButtonComponent: the compact icon-only button beside a control.
+ *
+ * Obsidian builds it as a `div.clickable-icon.extra-setting-button`, not as a
+ * `<button>` - which is why it has to be given a tabindex to be reachable at
+ * all. Modelled here as the div it is: a mock that answered `button` let a
+ * renderer distinguishing "a click on a control" from "a click on the row"
+ * pass its tests while failing in Obsidian.
+ */
+export class ExtraButtonComponent {
+	extraSettingsEl: HTMLElement = addObsidianDomExtensions(
+		document.createElement('div'),
+	);
+	disabled = false;
+
+	constructor() {
+		this.extraSettingsEl.classList.add(
+			'clickable-icon',
+			'extra-setting-button',
+		);
+		this.extraSettingsEl.setAttribute('tabindex', '0');
+	}
+
+	setIcon(icon: string): this {
+		// Recorded the way ButtonComponent records it, so a test can see which
+		// icon a button currently shows rather than only that it was set once.
+		this.extraSettingsEl.setAttribute('data-icon', icon);
+		return this;
+	}
+
+	setTooltip(tooltip: string): this {
+		this.extraSettingsEl.setAttribute('aria-label', tooltip);
+		return this;
+	}
+
+	setDisabled(disabled: boolean): this {
+		this.disabled = disabled;
+		// Obsidian marks it disabled and takes it out of the tab order, which
+		// is the whole of "non-interactive" for an icon button.
+		this.extraSettingsEl.classList.toggle('is-disabled', disabled);
+		if (disabled) {
+			this.extraSettingsEl.removeAttribute('tabindex');
+		} else {
+			this.extraSettingsEl.setAttribute('tabindex', '0');
+		}
+		return this;
+	}
+
+	onClick(callback: () => void): this {
+		this.extraSettingsEl.addEventListener('click', callback);
+		return this;
+	}
+}
+
+/**
+ * Mock TextAreaComponent: the same contract as {@link TextComponent} over a
+ * textarea element, which is what Obsidian's own component is.
+ */
+export class TextAreaComponent {
+	inputEl: HTMLTextAreaElement = addObsidianDomExtensions(
+		document.createElement('textarea'),
+	);
+	value = '';
+	disabled = false;
+
+	/** Change handler, stored as Obsidian does for test triggering. */
+	changeCallback: ((value: string) => void) | null = null;
+
+	constructor() {
+		this.inputEl.addEventListener('input', () => {
+			if (this.disabled) {
+				return;
+			}
+			this.value = this.inputEl.value;
+			this.changeCallback?.(this.inputEl.value);
+		});
+	}
+
+	setPlaceholder(placeholder: string): this {
+		this.inputEl.placeholder = placeholder;
+		return this;
+	}
+
+	setValue(value: string): this {
+		this.value = value;
+		this.inputEl.value = value;
+		return this;
+	}
+
+	setDisabled(disabled: boolean): this {
+		this.disabled = disabled;
+		// Mirrored onto the element like real Obsidian, whose
+		// AbstractTextComponent sets inputEl.disabled, so a DOM-level
+		// assertion sees a field the user cannot type into.
+		this.inputEl.disabled = disabled;
 		return this;
 	}
 
@@ -775,6 +972,9 @@ export class ToggleComponent {
 
 	setDisabled(disabled: boolean): this {
 		this.disabled = disabled;
+		// Obsidian marks a disabled toggle with is-disabled rather than a DOM
+		// disabled attribute, since it is a div and not an input.
+		this.toggleEl.classList.toggle('is-disabled', disabled);
 		return this;
 	}
 

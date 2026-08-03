@@ -31,15 +31,14 @@
 Open **Settings > Advanced Audio Recorder > Transcription** and turn on **Enable transcription**. The rest of the section appears only while it is on. From top to bottom you then configure:
 
 1. **Transcribe after recording** - auto-transcribe each saved recording (off by default).
-2. **Engine** - which speech-to-text service to use.
+2. **Transcription engine** - the row naming the service that transcribes, with the **Engines** entry under it opening the page where that service is configured: base URL, API key, and model.
 3. **Language** - `auto` to detect, or an ISO code.
 4. **Speaker diarization** - request speaker labels (only some engines).
 5. **Word-level timestamps** - per-word timing in JSON output.
 6. **Request timeout** - the per-request network deadline (cloud engines only).
-7. **Per-engine fields** - base URL, API key, and model picker for the chosen engine.
-8. **Transcript output** - destination, file format, and in-note formatting.
-9. **Auto chapters** - optional LLM-generated chapters for the enhanced player (see [Auto chapters](#auto-chapters)).
-10. **LLM post-processing** - optional, documented separately in [LLM post-processing](llm-post-processing.md).
+7. **Transcript output** - destination, file format, and in-note formatting.
+8. **Auto chapters** - optional LLM-generated chapters for the enhanced player (see [Auto chapters](#auto-chapters)).
+9. **LLM post-processing** - optional, documented separately in [LLM post-processing](llm-post-processing.md).
 
 ---
 
@@ -61,7 +60,7 @@ The first two open the **Transcribe audio** dialog, where you can override the e
 
 ## Engines
 
-Choose the **Engine** from the dropdown. Four engines are available:
+Choose the **Transcription engine** from the dropdown. Four engines are available:
 
 | Engine                              | Type                        | Size limit per request | Diarization | Network  |
 | ----------------------------------- | --------------------------- | ---------------------- | ----------- | -------- |
@@ -78,12 +77,12 @@ OpenAI's speech-to-text API, and any OpenAI-compatible host (for example **Groq*
 
 Settings to fill:
 
-| Setting                  | Description                                                                           | Default                     |
-| ------------------------ | ------------------------------------------------------------------------------------- | --------------------------- |
-| **Upload chunk size**    | Megabytes per WAV chunk when a recording is too large to upload whole. Range 1-24 MB. | 24                          |
-| **Whisper API base URL** | OpenAI-compatible endpoint base, e.g. `https://api.openai.com/v1` or a Groq URL.      | `https://api.openai.com/v1` |
-| **Whisper API key**      | Your API key. Stored in plugin data on this device.                                   | -                           |
-| **Whisper model**        | Model id from the picker. Must support `verbose_json` with timestamps.                | `whisper-1`                 |
+| Setting                  | Description                                                                                                      | Default                     |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| **Upload chunk size**    | Megabytes per WAV chunk when a recording is too large to upload whole. Range 1-24 MB.                            | 24                          |
+| **Whisper API base URL** | OpenAI-compatible endpoint base, e.g. `https://api.openai.com/v1` or a Groq URL.                                 | `https://api.openai.com/v1` |
+| **Whisper API key**      | Your API key. Stored in plugin data on this device.                                                              | -                           |
+| **Whisper model**        | Model id in use; the entry opens the saved ids, where it is picked. Must support `verbose_json` with timestamps. | `whisper-1`                 |
 
 Behavior and limits:
 
@@ -103,11 +102,11 @@ Deepgram's official **pre-recorded** transcription API, with strong diarization.
 
 Settings to fill:
 
-| Setting               | Description                                                 | Default                       |
-| --------------------- | ----------------------------------------------------------- | ----------------------------- |
-| **Deepgram base URL** | Deepgram API base.                                          | `https://api.deepgram.com/v1` |
-| **Deepgram API key**  | Your Deepgram key. Stored in plugin data on this device.    | -                             |
-| **Deepgram model**    | Model id from the picker (e.g. `nova-3`, `nova-2-meeting`). | `nova-3`                      |
+| Setting               | Description                                                                                           | Default                       |
+| --------------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------- |
+| **Deepgram base URL** | Deepgram API base.                                                                                    | `https://api.deepgram.com/v1` |
+| **Deepgram API key**  | Your Deepgram key. Stored in plugin data on this device.                                              | -                             |
+| **Deepgram model**    | Model id in use; the entry opens the saved ids, where it is picked (e.g. `nova-3`, `nova-2-meeting`). | `nova-3`                      |
 
 Behavior and limits:
 
@@ -128,11 +127,11 @@ Google's multimodal `generateContent` API, using the File API to upload the reco
 
 Settings to fill:
 
-| Setting             | Description                                                           | Default                                     |
-| ------------------- | --------------------------------------------------------------------- | ------------------------------------------- |
-| **Gemini base URL** | Gemini API base (no version segment).                                 | `https://generativelanguage.googleapis.com` |
-| **Gemini API key**  | Your Gemini key. Stored in plugin data on this device.                | -                                           |
-| **Gemini model**    | Model id from the picker (e.g. `gemini-3.5-flash`, `gemini-2.5-pro`). | `gemini-3.5-flash`                          |
+| Setting             | Description                                                                                                     | Default                                     |
+| ------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| **Gemini base URL** | Gemini API base (no version segment).                                                                           | `https://generativelanguage.googleapis.com` |
+| **Gemini API key**  | Your Gemini key. Stored in plugin data on this device.                                                          | -                                           |
+| **Gemini model**    | Model id in use; the entry opens the saved ids, where it is picked (e.g. `gemini-3.5-flash`, `gemini-2.5-pro`). | `gemini-3.5-flash`                          |
 
 Behavior and limits:
 
@@ -174,11 +173,14 @@ _Figure: the local whisper.cpp engine fields for an offline transcription setup.
 
 ## Model picker and language
 
-The cloud engines share one **model picker** control. It lets you:
+The cloud engines share one **model picker** control, with the saved model ids listed below it. Between them you can:
 
 - **Pick from the list** - choose a model id from the dropdown of saved suggestions.
-- **Add custom model** - type a custom model id to add it to the list.
-- **Remove selected** - prune the currently selected id from the list.
+- **Add a model** - the add button on the list asks for the id your endpoint serves, adds it, and selects it.
+- **Delete one** - the button on a list row removes that id; deleting the one **In use** moves the selection to the first remaining id.
+- **Filter the list** - type in the field above it once the list is long enough to scroll.
+
+On Obsidian 1.13 and later the saved ids live on a page of their own, reached from the model row, which shows the id in use; a vendor catalogue can run to thirty ids and inline they would bury the settings after them. On older versions the list is shown inline, since that Obsidian has no sub-pages.
 - **Catalogue link** - a help link beside the field opens that engine's official model list (OpenAI, Deepgram, or Gemini).
 
 The list is seeded on first run with common models for each engine and is fully user-editable. Local whisper.cpp does not use this picker - it takes a model **file path** instead (see above).
@@ -234,10 +236,10 @@ The names you assign are **remembered in the recording's sidecar file** (`<recor
 
 ## Biasing recognition toward your own terms
 
-Names, abbreviations, and domain jargon are the words an engine mishears most often. **Dictionary profiles** live under the **Advanced settings** master switch (**Settings > Advanced Audio Recorder > Transcription > Advanced settings**), which is off by default; turn it on to reveal the dictionary and the two-pass mode, and with it off a recording transcribes in one plain pass with no biasing. The profiles are named glossaries, one term per line, so you can keep separate lists for different meeting types (standup, legal, medical) instead of one merged glossary that dilutes the bias. Manage them in the settings tab: the selector picks which profile to edit, and its name and terms appear below with buttons to add a new profile or remove the selected one. A term may contain spaces, so a full name or a multi-word product stays intact, while blank lines and case-insensitive duplicates are ignored. In the per-run **Transcribe audio** dialog you choose which profile to apply for that run, or **None**; the last choice is remembered and becomes the default for the next dialog and for transcribe-on-save.
+Names, abbreviations, and domain jargon are the words an engine mishears most often. **Dictionary profiles** live under the **Advanced settings** master switch (**Settings > Advanced Audio Recorder > Transcription > Advanced settings**), which is off by default; turn it on to reveal the dictionary and the two-pass mode, and with it off a recording transcribes in one plain pass with no biasing. The profiles are named glossaries, one term per line, so you can keep separate lists for different meeting types (standup, legal, medical) instead of one merged glossary that dilutes the bias. Manage them in the settings tab: **Dictionary profiles** opens a page (on Obsidian 1.13 and later; inline on older versions) whose entry shows the profile in use. That page is a list of the saved profiles with a filter above them, each entry saying how many terms it holds and whether a run uses it, plus **Add profile** for another one. Opening an entry gives that profile a page of its own with its terms across the full width, a **Use by default** switch deciding whether the Transcribe dialog offers it, and **Rename profile** and **Delete profile**. Names are unique, because a profile's page is addressed by its name. A term may contain spaces, so a full name or a multi-word product stays intact, while blank lines and case-insensitive duplicates are ignored. In the per-run **Transcribe audio** dialog you choose which profile to apply for that run, or **None**; the last choice is remembered and becomes the default for the next dialog and for transcribe-on-save.
 
-![The Dictionary profiles settings section with a Profile selector, add and remove buttons, a Profile name field, and a Terms text area](images/settings-dictionary-profiles.png)
-_Figure: the Dictionary profiles section under Settings > Advanced Audio Recorder > Transcription, editing a profile's name and terms._
+![The Dictionary profiles settings section listing the saved glossaries with their term counts](images/settings-dictionary-profiles.png)
+_Figure: the Dictionary profiles section under Settings > Advanced Audio Recorder > Transcription, listing the saved glossaries._
 
 ![The Transcribe audio dialog with a Dictionary dropdown for choosing a named profile or None](images/transcribe-dialog-dictionary.png)
 _Figure: the per-run Transcribe audio dialog, where the Dictionary control selects which profile biases that run, or None._
@@ -270,7 +272,7 @@ Deepgram's biasing depends on the selected **Deepgram model**, which is worth re
 
 The mode targets the words a single pass gets wrong most stubbornly in, for example, Russian technical meetings: Russian proper names (rare, inflected, easily invented), professional jargon, and English terms and acronyms that a single pass transliterates ("кубернетис", "си ай си ди") or spells out. The agents put the canonical spellings (`Kubernetes`, `CI/CD`) into the second pass's hint, and the second pass's language is always pinned to the language detected on the first pass, so an English-heavy hint can never flip a Russian recording into English.
 
-**It is off by default and costs real money and time when on:** every file runs two engine passes (roughly 2x the engine cost and duration) plus four to six sequential LLM calls on the provider configured under [LLM post-processing](#llm-post-processing) (whose provider fields stay visible while this mode is on), and because a keyword-biased engine such as Deepgram reads only a keyterm list it runs two fewer of them, skipping the topic and sentence agents it does not need. On a cheap LLM model the money is small, but the sequential calls add latency. Turn it on for the recordings where names and terminology matter, and leave the normal single pass for everything else. The regular LLM post-processing still runs afterwards, on top of whichever pass won. Because that choice is usually made per recording, the **Transcribe audio** dialog carries its own **Advanced two-pass transcription** toggle that overrides this saved setting for a single run: enable the pricier pass for one important meeting, or skip it for a routine file, without changing the default. The toggle defaults from your saved setting, and the length safeguard stays in the settings tab.
+**It is off by default and costs real money and time when on:** every file runs two engine passes (roughly 2x the engine cost and duration) plus four to six sequential LLM calls on the engine its own **Context agents engine** row names, which sits beside the two-pass toggle so this mode can run on a different service from post-processing, and because a keyword-biased engine such as Deepgram reads only a keyterm list it runs two fewer of them, skipping the topic and sentence agents it does not need. On a cheap LLM model the money is small, but the sequential calls add latency. Turn it on for the recordings where names and terminology matter, and leave the normal single pass for everything else. The regular LLM post-processing still runs afterwards, on top of whichever pass won. Because that choice is usually made per recording, the **Transcribe audio** dialog carries its own **Advanced two-pass transcription** toggle that overrides this saved setting for a single run: enable the pricier pass for one important meeting, or skip it for a routine file, without changing the default. The toggle defaults from your saved setting, and the length safeguard stays in the settings tab.
 
 How the engines receive the bias mirrors the [dictionary](#biasing-recognition-toward-your-own-terms) plumbing: the Whisper API and local whisper.cpp get one natural sentence in the audio's language (their prompt weights its last tokens most, so the most valuable terms go at the end), Deepgram Nova models get the terms as keyterms/keywords ahead of your dictionary profile's terms, and Gemini gets the context folded into its instruction text. A Deepgram hosted Whisper model cannot bias at all, so the mode degrades to a normal single pass and a notice says so - before any LLM is called.
 
@@ -358,7 +360,7 @@ When you run **Transcribe audio** from the context menu or the command palette, 
 - **Include timestamps** and **Include speakers** - shown only when the destination renders Markdown into the note (Insert into note / Note and file); **Include speakers** is diarization-gated.
 - **LLM post-processing** - toggle it on, and pick the **LLM task** (Clean up / Summarize / Custom) for this run.
 
-The detailed in-note templates (note heading, timestamp/speaker/line format) and the LLM provider, endpoint, key, and model stay in the **settings tab** - a credential cannot be entered safely in a transient dialog, so switching LLM providers belongs there. Whatever you set in those template and provider fields is applied as configured.
+The detailed in-note templates (note heading, timestamp/speaker/line format) stay in the **settings tab**, and so does everything about a service itself, since a credential cannot be entered safely in a transient dialog: each engine's endpoint, key, model catalogue, and token ceiling belong on its page under **Engines**. Whatever you set in those template and provider fields is applied as configured.
 
 Options toggled mid-run do **not** change an in-flight job: the run snapshots its options when you press **Transcribe**, so edits only affect the next attempt after a failure.
 
@@ -387,7 +389,7 @@ A part whose transcript overruns the model's **output-token limit** (which Gemin
 
 Cloud transcription is a paid API call, and nobody likes a surprise bill. With **Show cost estimates** on (the default, under **Settings > Advanced Audio Recorder > Transcription**), the **Transcribe audio** dialog makes the spending visible:
 
-- **Before the run**, the dialog shows an **Estimated cost** breakdown priced from the recording's duration (read cheaply from the container headers, no decoding). It lists one line per billed step of the run, assembled automatically from the features you have enabled: the transcription pass itself, a second transcription pass when the **Advanced two-pass** mode is on (so the transcription roughly doubles), the LLM **context agents** that run between those passes, the [LLM post-processing](llm-post-processing.md) pass, and the **auto chapters** generation, each shown only when it will actually run. The priced lines are summed into an estimated total, so the number reflects the whole run rather than one stage, and toggling a feature changes it. Deepgram and the Whisper API are priced per audio minute; Gemini is priced from its audio-token rate (about 32 tokens per second of audio); the LLM steps are priced from the transcript's token size and the selected model. Switching the engine, model, or an enabled feature in the dialog re-prices the estimate immediately.
+- **Before the run**, the dialog shows an **Estimated cost** breakdown priced from the recording's duration. That duration is read from the container headers, which costs almost nothing; a file whose headers carry no duration, as a recording written live often does, is decoded instead, so the estimate appears either way. It lists one line per billed step of the run, assembled automatically from the features you have enabled: the transcription pass itself, a second transcription pass when the **Advanced two-pass** mode is on (so the transcription roughly doubles), the LLM **context agents** that run between those passes, the [LLM post-processing](llm-post-processing.md) pass, and the **auto chapters** generation, each shown only when it will actually run. The priced lines are summed into an estimated total, so the number reflects the whole run rather than one stage, and toggling a feature changes it. Deepgram and the Whisper API are priced per audio minute; Gemini is priced from its audio-token rate (about 32 tokens per second of audio); the LLM steps are priced from the transcript's token size and the selected model. Switching the engine, model, or an enabled feature in the dialog re-prices the estimate immediately.
 - **During a long multi-part run**, a live "Cost so far" line accumulates what the completed transcription parts actually billed.
 - **After the run**, a notice reports the transcription cost together with the running session total, and the dialog shows **"Spent this session"** - a per-session counter of everything transcribed since Obsidian started, kept per engine.
 
@@ -411,14 +413,18 @@ With **Auto chapters** enabled (under **Settings > Advanced Audio Recorder > Tra
 
 Two ways to run it:
 
-- **On demand** - the **Generate chapters from transcript** action in the recording's context menu, the editor menu of its embed, and the command palette. It opens a dialog where you pick the chapter guidance profile and the LLM provider and model for this run, and see an up-front estimate of the LLM cost before generating. It requires an existing transcript: the outputs recorded in the recording's sidecar are consulted first (transcript files in JSON, SRT, VTT, or plain text, then recorded notes scoped by their timecode links). When the recorded outputs yield nothing - none recorded, or every one since deleted, unreadable, or replaced by an LLM pass - the plugin falls back to scanning for transcript files next to the audio and referencing notes, so a transcript that exists on disk is still found. Without one, the dialog explains there is nothing to chapter and asks you to transcribe first.
+- **On demand** - the **Generate chapters from transcript** action in the recording's context menu, the editor menu of its embed, and the command palette. It opens a dialog where you pick the chapter guidance profile and the chapters engine and model for this run, and see an up-front estimate of the LLM cost before generating. It requires an existing transcript: the outputs recorded in the recording's sidecar are consulted first (transcript files in JSON, SRT, VTT, or plain text, then recorded notes scoped by their timecode links). When the recorded outputs yield nothing - none recorded, or every one since deleted, unreadable, or replaced by an LLM pass - the plugin falls back to scanning for transcript files next to the audio and referencing notes, so a transcript that exists on disk is still found. Without one, the dialog explains there is nothing to chapter and asks you to transcribe first.
 - **After each transcription** - turn on **Generate after transcription** (also offered as a per-run toggle in the Transcribe dialog, where a compact **Chapter profile** picker appears next to it). Chapters are then generated in the background from the fresh transcript once each run finishes, without delaying the transcript output.
 
 How the recording is divided is steered by a selected **chapter guidance profile**. The plugin ships a **Default** profile with general splitting guidance, and you can edit it, add profiles for specific cases (a meeting split by agenda item, a lecture by topic, an interview by question), and pick the one that fits the recording before generating. The selected profile's text is appended to the fixed chapter prompt, so it shapes the division and the titles without being able to change the strict response format the plugin validates. Selecting **None** leaves the base prompt alone.
 
 The LLM's response is validated before anything is written, and the validation is a real check on the times rather than blind trust in the model. Chapter times must fall inside the recording's transcript, and the model is told the recording's length so it spreads chapters across the whole timeline instead of bunching them at the start. Chapters that land closer together than a minimum spacing (about twenty seconds on a normal recording, relaxed for a short clip) are dropped, so a model that returns a run of one- or two-second chapters cannot produce them. Empty or malformed entries are dropped, and an unusable response leaves the markers untouched. Re-running replaces only the previously **generated** chapters - bookmarks and chapters you created manually are never modified, and a generated chapter landing on top of a manual one is skipped.
 
-Auto chapters uses the same LLM provider, key, and model as [LLM post-processing](llm-post-processing.md); enabling the feature reveals those provider fields even when post-processing itself is off. The on-demand dialog also exposes the provider and model, so you can switch the LLM for a run without leaving the dialog; generating commits that choice as the shared configuration, while cancelling leaves the shared configuration unchanged.
+Auto chapters names its own engine on the **Chapters engine** row beside its switch, so it can run on a different service from [LLM post-processing](llm-post-processing.md); that service is set up once on its page under **Engines**, where its key, model, and token ceiling live. The on-demand dialog exposes the same engine and model, so you can switch them for a run without leaving the dialog; generating keeps that choice as the chapters engine and saves the model on the engine it generated with, while cancelling leaves both unchanged and post-processing untouched either way. Only the engine that ran is saved, so a provider you merely switched through keeps the id it had.
+
+The engine that does run is a different matter, and the dialog says so before you choose. An engine serves one model catalogue, and an engine that both transcribes and answers prompts therefore serves one catalogue for both jobs, which is what Gemini does: the model you pick for a chaptering run is literally the field transcription reads, so choosing a cheaper one to title some chapters also changes what the next recording is transcribed with. Where that applies, the engine row spells it out; an engine that only answers prompts, such as OpenAI or Anthropic, has a catalogue nothing else reads and the row stays silent.
+
+The **Auto chapters** block and the **Engines** entry stay in settings when **Enable transcription** is turned off, because the chapters action is offered on any recording that already carries a transcript. A vault that has stopped transcribing new recordings can still chapter the old ones, and the engine that does it still needs a key, an endpoint, and a model, so the rows that hold them stay reachable. Only **Generate after transcription** goes away, since there are no transcriptions left for it to follow.
 
 ---
 
@@ -438,7 +444,7 @@ All transcription settings live under **Settings > Advanced Audio Recorder > Tra
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------- | ------------------------------ |
 | **Enable transcription**            | Master toggle that reveals the rest of the section.                                                     | Off                            |
 | **Transcribe after recording**      | Auto-transcribe each saved recording (first file only).                                                 | Off                            |
-| **Engine**                          | Whisper API / Deepgram / Google Gemini / Local whisper.cpp.                                             | Whisper API                    |
+| **Transcription engine**            | Whisper API / Deepgram / Google Gemini / Local whisper.cpp.                                             | Whisper API                    |
 | **Language**                        | `auto` to detect, or an ISO code (`en`, `ru`, `es`).                                                    | `auto`                         |
 | **Speaker diarization**             | Request speaker labels (Deepgram and Gemini only).                                                      | Off                            |
 | **Word-level timestamps**           | Per-word timing, recorded in JSON file output only.                                                     | Off                            |

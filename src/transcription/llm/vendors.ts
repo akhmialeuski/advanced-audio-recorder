@@ -18,18 +18,17 @@
  * @module transcription/llm/vendors
  */
 
+import { LLM_PROVIDER_IDS } from '../../constants';
 import {
-	ANTHROPIC_MODELS_DOC_URL,
-	DEFAULT_LLM_ANTHROPIC_BASE_URL,
-	DEFAULT_LLM_GEMINI_BASE_URL,
-	DEFAULT_LLM_OPENAI_BASE_URL,
-	GEMINI_MODELS_DOC_URL,
-	LLM_PROVIDER_IDS,
-	OPENAI_MODELS_DOC_URL,
-} from '../../constants';
+	ENGINE_IDS,
+	engineAccess,
+	missingModelMessage,
+	type EngineId,
+} from '../../providers/providers';
 import type {
 	AudioRecorderSettings,
 	LlmProviderId,
+	PrimitiveSettingKey,
 } from '../../settings/settingsSchema';
 import {
 	AnthropicLlmProvider,
@@ -69,27 +68,25 @@ export interface LlmVendorSettingsAccess {
 	setModels(settings: AudioRecorderSettings, ids: string[]): void;
 }
 
-/** Everything the plugin knows about one LLM vendor. */
+/**
+ * What post-processing knows about one LLM vendor beyond the provider registry.
+ *
+ * Everything about the service itself - its endpoint, its key, the catalogue it
+ * serves, and the copy of the rows that configure it - belongs to
+ * {@link module:providers/providers} and is read from there. What is left here
+ * is what only this job knows: what a chat model costs, and which client speaks
+ * the vendor's wire format.
+ */
 export interface LlmVendorDescriptor {
 	readonly id: LlmProviderId;
 	/** Display label, used in dropdowns and cost-estimate lines. */
 	readonly label: string;
-	/** Base URL shipped as this vendor's default. */
-	readonly defaultBaseUrl: string;
 	/** Public pricing page, linked from the cost estimate. */
 	readonly pricingUrl: string;
-	/** Model catalog link shown under the model picker. */
-	readonly modelsDocUrl: string;
-	/** Label for the model catalog link. */
-	readonly modelsDocLabel: string;
-	/** Description shown on the model picker row. */
-	readonly modelPickerDesc: string;
-	/** Label of the API-key settings row. */
-	readonly keyFieldName: string;
-	/** Description of the API-key settings row. */
-	readonly keyFieldDesc: string;
 	/** Error shown when a run is attempted with no key configured. */
 	readonly missingKeyMessage: string;
+	/** Error shown when a run is attempted with no model picked. */
+	readonly missingModelMessage: string;
 	/**
 	 * Approximate rates by model-id fragment, USD per million tokens. Matched
 	 * longest-fragment-first by the cost model, so a more specific entry wins.
@@ -150,82 +147,55 @@ const GEMINI_RATES: readonly [string, LlmRate][] = [
 ];
 
 /**
+ * The half of a vendor that belongs to the service rather than to this job: how
+ * it is named, how it is reached, and the catalogue its models come from. Read
+ * from the provider registry, so a service that also transcribes declares them
+ * once and both uses reach the same fields.
+ * @param id - Engine the vendor is the prompt-answering side of
+ * @returns That engine's half of the descriptor
+ */
+function fromRegistry(
+	id: EngineId,
+): Omit<LlmVendorDescriptor, 'rates' | 'create'> {
+	const { engine, account, models } = engineAccess(id);
+	if (!engine.llmId) {
+		throw new Error(`Engine "${id}" answers no prompts`);
+	}
+	return {
+		id: engine.llmId,
+		label: engine.label,
+		pricingUrl: engine.pricingUrl,
+		missingKeyMessage: account.missingKeyMessage,
+		missingModelMessage: missingModelMessage(engine),
+		settings: {
+			apiKey: account.apiKey,
+			setApiKey: account.setApiKey,
+			model: models.model,
+			setModel: models.setModel,
+			models: models.models,
+			setModels: models.setModels,
+		},
+	};
+}
+
+/**
  * Every LLM vendor, keyed by its settings id. Insertion order is the order the
  * provider dropdown offers them.
  */
 export const LLM_VENDORS: Record<LlmProviderId, LlmVendorDescriptor> = {
 	[LLM_PROVIDER_IDS.OPENAI_COMPATIBLE]: {
-		id: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
-		label: 'OpenAI',
-		defaultBaseUrl: DEFAULT_LLM_OPENAI_BASE_URL,
-		pricingUrl: 'https://openai.com/api/pricing/',
-		modelsDocUrl: OPENAI_MODELS_DOC_URL,
-		modelsDocLabel: 'OpenAI models',
-		modelPickerDesc:
-			'Pick an OpenAI model (e.g. gpt-5.6-sol, gpt-5.6-luna).',
-		keyFieldName: 'OpenAI API key',
-		keyFieldDesc:
-			'Shared with the Whisper API transcription engine - set it in either place.',
-		missingKeyMessage: 'Set the OpenAI API key in settings.',
+		...fromRegistry(ENGINE_IDS.OPENAI_LLM),
 		rates: OPENAI_RATES,
-		settings: {
-			// OpenAI reuses the Whisper API key as the shared OpenAI vendor key.
-			apiKey: (s) => s.whisperApiKey,
-			setApiKey: (s, key) => (s.whisperApiKey = key),
-			model: (s) => s.llmOpenAiModel,
-			setModel: (s, id) => (s.llmOpenAiModel = id),
-			models: (s) => s.llmOpenAiModels,
-			setModels: (s, ids) => (s.llmOpenAiModels = ids),
-		},
 		create: (config) => new OpenAiCompatibleLlmProvider(config),
 	},
 	[LLM_PROVIDER_IDS.ANTHROPIC]: {
-		id: LLM_PROVIDER_IDS.ANTHROPIC,
-		label: 'Anthropic (Claude)',
-		defaultBaseUrl: DEFAULT_LLM_ANTHROPIC_BASE_URL,
-		pricingUrl: 'https://www.anthropic.com/pricing',
-		modelsDocUrl: ANTHROPIC_MODELS_DOC_URL,
-		modelsDocLabel: 'Anthropic models',
-		modelPickerDesc:
-			'Pick an Anthropic model (e.g. claude-opus-4-8, claude-sonnet-5).',
-		keyFieldName: 'Anthropic API key',
-		keyFieldDesc: 'Stored in plugin data on this device.',
-		missingKeyMessage: 'Set the Anthropic API key in settings.',
+		...fromRegistry(ENGINE_IDS.ANTHROPIC),
 		rates: ANTHROPIC_RATES,
-		settings: {
-			// Anthropic has no transcription counterpart, so it keeps its own key.
-			apiKey: (s) => s.anthropicApiKey,
-			setApiKey: (s, key) => (s.anthropicApiKey = key),
-			model: (s) => s.llmAnthropicModel,
-			setModel: (s, id) => (s.llmAnthropicModel = id),
-			models: (s) => s.llmAnthropicModels,
-			setModels: (s, ids) => (s.llmAnthropicModels = ids),
-		},
 		create: (config) => new AnthropicLlmProvider(config),
 	},
 	[LLM_PROVIDER_IDS.GEMINI]: {
-		id: LLM_PROVIDER_IDS.GEMINI,
-		label: 'Google Gemini',
-		defaultBaseUrl: DEFAULT_LLM_GEMINI_BASE_URL,
-		pricingUrl: 'https://ai.google.dev/gemini-api/docs/pricing',
-		modelsDocUrl: GEMINI_MODELS_DOC_URL,
-		modelsDocLabel: 'Gemini model list',
-		modelPickerDesc:
-			'Pick a Gemini model (e.g. gemini-3.5-flash, gemini-2.5-pro).',
-		keyFieldName: 'Google Gemini API key',
-		keyFieldDesc:
-			'Shared with the Gemini transcription engine - set it in either place.',
-		missingKeyMessage: 'Set the Google Gemini API key in settings.',
+		...fromRegistry(ENGINE_IDS.GEMINI),
 		rates: GEMINI_RATES,
-		settings: {
-			// Gemini reuses the Gemini transcription key.
-			apiKey: (s) => s.geminiApiKey,
-			setApiKey: (s, key) => (s.geminiApiKey = key),
-			model: (s) => s.llmGeminiModel,
-			setModel: (s, id) => (s.llmGeminiModel = id),
-			models: (s) => s.llmGeminiModels,
-			setModels: (s, ids) => (s.llmGeminiModels = ids),
-		},
 		create: (config) => new GeminiLlmProvider(config),
 	},
 };
@@ -242,20 +212,73 @@ export function llmVendor(id: LlmProviderId): LlmVendorDescriptor {
 }
 
 /**
- * The descriptor for the vendor the settings currently select.
- * @param settings - Plugin settings
+ * The jobs that drive an LLM. Each one picks its own engine, so a run can
+ * summarize with one service and title its chapters with another.
  */
-export function selectedLlmVendor(
-	settings: AudioRecorderSettings,
-): LlmVendorDescriptor {
-	return llmVendor(settings.llmProvider);
+export type LlmJobId = 'postProcess' | 'contextAgents' | 'autoChapters';
+
+/** Where one job's engine choice is stored. */
+export interface LlmJob {
+	/**
+	 * Settings key the choice lives under, for declaring the control.
+	 *
+	 * A vendor id is one string, so the key is declared as one that holds a
+	 * primitive: that is what lets the load path ask whether the stored value is
+	 * still an id any vendor claims without the question being restated per job.
+	 */
+	readonly key: PrimitiveSettingKey;
+	/** The engine the job calls, as the settings currently name it. */
+	readonly vendor: (settings: AudioRecorderSettings) => LlmProviderId;
 }
 
 /**
- * Base URLs that ship as vendor defaults. Auto-switching only replaces a value
- * still equal to one of these, so a custom endpoint the user typed survives a
- * provider change.
+ * Every job and the field naming its engine, declared once.
+ *
+ * Three readers have to agree on that engine: the factory that builds the
+ * provider, the ceiling that bounds its answer, and the cost model that prices
+ * the call. Each of them used to read `llmProvider` directly, so a job pointed
+ * at another engine was dispatched to the post-processing one and merely
+ * bounded and priced inconsistently. They read this instead, and the settings
+ * declare their rows from the same keys, so a job cannot be configured in one
+ * place and run in another.
  */
-export const DEFAULT_LLM_BASE_URLS: ReadonlySet<string> = new Set(
-	LLM_VENDOR_IDS.map((id) => LLM_VENDORS[id].defaultBaseUrl),
-);
+export const LLM_JOBS: Record<LlmJobId, LlmJob> = {
+	postProcess: {
+		key: 'llmProvider',
+		vendor: (settings) => settings.llmProvider,
+	},
+	contextAgents: {
+		key: 'advancedLlmProvider',
+		vendor: (settings) => settings.advancedLlmProvider,
+	},
+	autoChapters: {
+		key: 'chaptersLlmProvider',
+		vendor: (settings) => settings.chaptersLlmProvider,
+	},
+};
+
+/**
+ * The engine a job calls.
+ * @param settings - Plugin settings
+ * @param job - The job about to run
+ * @returns Its vendor id
+ */
+export function jobVendorId(
+	settings: AudioRecorderSettings,
+	job: LlmJobId,
+): LlmProviderId {
+	return LLM_JOBS[job].vendor(settings);
+}
+
+/**
+ * The descriptor of the engine a job calls.
+ * @param settings - Plugin settings
+ * @param job - The job about to run
+ * @returns That engine's vendor descriptor
+ */
+export function jobLlmVendor(
+	settings: AudioRecorderSettings,
+	job: LlmJobId,
+): LlmVendorDescriptor {
+	return llmVendor(jobVendorId(settings, job));
+}

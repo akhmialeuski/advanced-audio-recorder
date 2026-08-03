@@ -40,7 +40,7 @@ const app = {} as App;
 function build(overrides: Partial<AudioRecorderSettings> = {}) {
 	const settings = mergeSettings({
 		llmProvider: LLM_PROVIDER_IDS.GEMINI,
-		llmGeminiModel: 'gemini-2.5-flash',
+		geminiModel: 'gemini-2.5-flash',
 		llmMaxTokens: 32000,
 		...overrides,
 	});
@@ -77,6 +77,21 @@ function buttons(modal: ChapterGenerationModal): HTMLButtonElement[] {
 /** The dialog's dropdowns, in render order. */
 function dropdowns(modal: ChapterGenerationModal): HTMLSelectElement[] {
 	return [...modal.contentEl.querySelectorAll('select')];
+}
+
+/**
+ * What the row with a given name says under it.
+ * @param modal - The open dialog
+ * @param name - The row's label
+ */
+function descriptionOf(modal: ChapterGenerationModal, name: string): string {
+	const row = [...modal.contentEl.querySelectorAll('.setting-item')].find(
+		(el) => el.querySelector('.setting-item-name')?.textContent === name,
+	);
+	return (
+		defined(row, `row ${name}`).querySelector('.setting-item-description')
+			?.textContent ?? ''
+	);
 }
 
 beforeEach(() => {
@@ -137,7 +152,7 @@ describe('ChapterGenerationModal cost estimate', () => {
 	});
 
 	it('says so when the selected model has no built-in rate', async () => {
-		const { modal } = build({ llmGeminiModel: 'mystery-model' });
+		const { modal } = build({ geminiModel: 'mystery-model' });
 
 		await open(modal);
 
@@ -165,12 +180,12 @@ describe('ChapterGenerationModal run settings', () => {
 		await Promise.resolve();
 		modal.onClose();
 
-		expect(settings.llmProvider).toBe(LLM_PROVIDER_IDS.GEMINI);
+		expect(settings.chaptersLlmProvider).toBe(LLM_PROVIDER_IDS.GEMINI);
 		expect(saveSettings).not.toHaveBeenCalled();
 		expect(generate).not.toHaveBeenCalled();
 	});
 
-	it("commits the run's provider and model when the user generates", async () => {
+	it("commits the run's engine and model when the user generates", async () => {
 		const { modal, settings, saveSettings, generate } = build();
 		await open(modal);
 
@@ -182,9 +197,81 @@ describe('ChapterGenerationModal run settings', () => {
 
 		at(buttons(modal), 0).click();
 
-		expect(settings.llmProvider).toBe(LLM_PROVIDER_IDS.ANTHROPIC);
+		// The dialog configures chapters, so it moves the chapters engine and
+		// leaves post-processing pointing where the user put it.
+		expect(settings.chaptersLlmProvider).toBe(LLM_PROVIDER_IDS.ANTHROPIC);
+		expect(settings.llmProvider).toBe(LLM_PROVIDER_IDS.GEMINI);
 		expect(saveSettings).toHaveBeenCalled();
 		expect(generate).toHaveBeenCalledWith(file, undefined, SOURCE);
+	});
+
+	it('moves only the model of the engine it generates with', async () => {
+		// Gemini serves one catalogue for transcription and for prompts alike,
+		// so committing every vendor's model let this dialog repoint the id
+		// transcription runs on.
+		const { modal, settings } = build();
+		settings.geminiModel = 'gemini-2.5-pro';
+		await open(modal);
+
+		const provider = at(dropdowns(modal), 1);
+		provider.value = LLM_PROVIDER_IDS.ANTHROPIC;
+		provider.dispatchEvent(new Event('change'));
+		await Promise.resolve();
+		await Promise.resolve();
+
+		const model = at(dropdowns(modal), 2);
+		model.value = 'claude-sonnet-5';
+		model.dispatchEvent(new Event('change'));
+		await Promise.resolve();
+		await Promise.resolve();
+
+		at(buttons(modal), 0).click();
+
+		expect(settings.llmAnthropicModel).toBe('claude-sonnet-5');
+		expect(settings.geminiModel).toBe('gemini-2.5-pro');
+	});
+
+	it('says up front when the engine it would generate with shares its catalogue', async () => {
+		// What the previous case cannot prevent: the engine that actually runs
+		// has one catalogue for both jobs, so the model committed here is the id
+		// transcription reads. That belongs where the choice is made rather than
+		// in the next transcription's bill.
+		const { modal } = build();
+		await open(modal);
+
+		expect(descriptionOf(modal, 'LLM')).toContain(
+			'the model picked here is the one transcription runs on too',
+		);
+	});
+
+	it('says nothing of the kind for an engine that only answers prompts', async () => {
+		// Anthropic has no transcription side, so its catalogue is the chapters
+		// catalogue and nothing else reads what is picked from it.
+		const { modal } = build({
+			chaptersLlmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
+		});
+		await open(modal);
+
+		expect(descriptionOf(modal, 'LLM')).not.toContain(
+			'transcription runs on too',
+		);
+	});
+
+	it('follows the engine as it is switched, rather than the one it opened on', async () => {
+		const { modal } = build({
+			chaptersLlmProvider: LLM_PROVIDER_IDS.ANTHROPIC,
+		});
+		await open(modal);
+
+		const provider = at(dropdowns(modal), 1);
+		provider.value = LLM_PROVIDER_IDS.GEMINI;
+		provider.dispatchEvent(new Event('change'));
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(descriptionOf(modal, 'LLM')).toContain(
+			'the model picked here is the one transcription runs on too',
+		);
 	});
 
 	it("commits the run's chapter profile so the shared service reads it", async () => {

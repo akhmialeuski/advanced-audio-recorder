@@ -41,6 +41,33 @@ export interface ProfileList<T extends Profile> {
 	create(name: string): T;
 }
 
+/** Name a freshly created profile starts out under, numbered when taken. */
+export const NEW_PROFILE_NAME = 'New profile';
+
+/**
+ * A name no profile in the list holds yet: the base name, or the first
+ * numbered variant of it that is free. The settings tree gives every profile a
+ * page of its own and the framework addresses a page by its name, so a
+ * duplicate would be a page Obsidian cannot tell from another.
+ * @param profiles - Current profiles
+ * @param base - Name to start from
+ * @returns A name free within this list
+ */
+export function freeProfileName<T extends Profile>(
+	profiles: readonly T[],
+	base: string,
+): string {
+	const taken = new Set(profiles.map((profile) => profile.name));
+	if (!taken.has(base)) {
+		return base;
+	}
+	let suffix = 2;
+	while (taken.has(`${base} ${String(suffix)}`)) {
+		suffix += 1;
+	}
+	return `${base} ${String(suffix)}`;
+}
+
 /**
  * Appends a profile. A blank or whitespace-only name leaves the list
  * unchanged. Duplicate names are allowed on purpose: identity is the id, so

@@ -32,7 +32,36 @@ import {
 } from 'src/settings/labels';
 import { providerBiasChannel } from 'src/transcription/providers/capabilities';
 import { advancedBiasChannel } from 'src/transcription/advanced/advancedBias';
+import {
+	ENGINE_IDS,
+	engineAccess,
+	missingModelMessage,
+	type EngineDescriptor,
+	type EngineId,
+} from 'src/providers/providers';
 import type { TranscriptionProviderId } from 'src/settings/settingsSchema';
+
+/** The engines a transcription run reaches over an account. */
+const CLOUD_ENGINES: EngineId[] = [
+	ENGINE_IDS.WHISPER_API,
+	ENGINE_IDS.DEEPGRAM,
+	ENGINE_IDS.GEMINI,
+];
+
+/**
+ * The transcription id a registry engine is stored under, asserted rather than
+ * assumed so a mis-declared engine fails here instead of silently testing the
+ * wrong one.
+ * @param engine - The engine being addressed
+ */
+const transcriptionIdOf = (
+	engine: EngineDescriptor,
+): TranscriptionProviderId => {
+	if (!engine.transcriptionId) {
+		throw new Error(`Engine "${engine.id}" does not transcribe`);
+	}
+	return engine.transcriptionId;
+};
 
 /** Every id the settings type admits, listed independently of the registry. */
 const EVERY_ENGINE_ID: TranscriptionProviderId[] = [
@@ -52,44 +81,48 @@ describe('transcription engine registry', () => {
 		}
 	});
 
-	it('gives every cloud engine its own settings fields', () => {
+	it('reads a cloud engine field set from the provider registry alone', () => {
+		// The descriptor used to mirror the endpoint, the key, and the
+		// catalogue that the registry already declares, and nothing outside
+		// its own tests ever read the copy.
 		const settings = mergeSettings();
-		const cloud = TRANSCRIPTION_ENGINE_IDS.filter(
-			(id) => TRANSCRIPTION_ENGINES[id].credentials !== undefined,
-		);
-		expect(cloud.length).toBeGreaterThan(1);
-		for (const id of cloud) {
-			const credentials = TRANSCRIPTION_ENGINES[id].credentials;
-			if (!credentials) {
-				throw new Error(`expected credentials for ${id}`);
-			}
-			credentials.setBaseUrl(settings, `url-${id}`);
-			credentials.setApiKey(settings, `key-${id}`);
-			credentials.setModel(settings, `model-${id}`);
-			credentials.setModels(settings, [`model-${id}`]);
+		for (const id of CLOUD_ENGINES) {
+			const { account, models } = engineAccess(id);
+			account.setBaseUrl(settings, `url-${id}`);
+			account.setApiKey(settings, `key-${id}`);
+			models.setModel(settings, `model-${id}`);
+			models.setModels(settings, [`model-${id}`]);
 		}
 		// Writing every engine's fields must not have them overwrite each other.
-		for (const id of cloud) {
-			const engine = TRANSCRIPTION_ENGINES[id];
-			const credentials = engine.credentials;
-			if (!credentials) {
-				throw new Error(`expected credentials for ${id}`);
-			}
-			expect(credentials.baseUrl(settings)).toBe(`url-${id}`);
-			expect(credentials.apiKey(settings)).toBe(`key-${id}`);
-			expect(credentials.models(settings)).toEqual([`model-${id}`]);
-			expect(engine.model(settings)).toBe(`model-${id}`);
+		for (const id of CLOUD_ENGINES) {
+			const { account, models } = engineAccess(id);
+			expect(account.baseUrl(settings)).toBe(`url-${id}`);
+			expect(account.apiKey(settings)).toBe(`key-${id}`);
+			expect(models.models(settings)).toEqual([`model-${id}`]);
+			expect(models.model(settings)).toBe(`model-${id}`);
 		}
 	});
 
-	it('treats the local engine as free with no billed model or credentials', () => {
+	it('reaches the two OpenAI engines through one account', () => {
+		// Whisper ids and chat ids are different catalogues over one endpoint
+		// and one key, which is why the key is entered once and read twice.
+		const speech = engineAccess(ENGINE_IDS.WHISPER_API);
+		const chat = engineAccess(ENGINE_IDS.OPENAI_LLM);
+
+		expect(chat.account).toBe(speech.account);
+		expect(chat.models).not.toBe(speech.models);
+	});
+
+	it('treats the local engine as free with no billed model or account', () => {
 		const engine = transcriptionEngine(
 			TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
 		);
-		expect(engine.credentials).toBeUndefined();
 		expect(engine.pricingUrl).toBeUndefined();
 		expect(engine.model(mergeSettings())).toBe('');
 		expect(engine.pricing('anything')).toEqual({ kind: 'free' });
+		expect(() => engineAccess(ENGINE_IDS.LOCAL_WHISPER)).toThrow(
+			/not reached over an account/,
+		);
 	});
 });
 
@@ -132,28 +165,49 @@ describe('registry-derived consumers stay in step', () => {
 		);
 	});
 
-	it('refuses to build a cloud engine with no key', () => {
-		for (const id of TRANSCRIPTION_ENGINE_IDS) {
-			const engine = TRANSCRIPTION_ENGINES[id];
-			if (!engine.credentials) {
-				continue;
-			}
-			const settings = mergeSettings({ transcriptionProvider: id });
-			engine.credentials.setApiKey(settings, '');
+	it('refuses to build a cloud engine with no key, in the account wording', () => {
+		for (const engineId of CLOUD_ENGINES) {
+			const { engine, account } = engineAccess(engineId);
+			const settings = mergeSettings({
+				transcriptionProvider: transcriptionIdOf(engine),
+			});
+			account.setApiKey(settings, '');
+
 			expect(() => createTranscriptionProvider(settings)).toThrow(
 				ProviderConfigError,
+			);
+			// The key is entered on a row the account labels, so the message
+			// names that field rather than the engine that happened to need it.
+			expect(() => createTranscriptionProvider(settings)).toThrow(
+				account.missingKeyMessage,
+			);
+		}
+	});
+
+	it('refuses to build a cloud engine whose catalogue holds no model', () => {
+		// A request naming no model cannot succeed; it used to be sent anyway
+		// and fail at the endpoint in the provider's own wording.
+		for (const engineId of CLOUD_ENGINES) {
+			const { engine, account, models } = engineAccess(engineId);
+			const settings = mergeSettings({
+				transcriptionProvider: transcriptionIdOf(engine),
+			});
+			account.setApiKey(settings, 'token');
+			models.setModel(settings, '');
+
+			expect(() => createTranscriptionProvider(settings)).toThrow(
+				missingModelMessage(engine),
 			);
 		}
 	});
 
 	it('builds each configured cloud engine with its own id', () => {
-		for (const id of TRANSCRIPTION_ENGINE_IDS) {
-			const engine = TRANSCRIPTION_ENGINES[id];
-			if (!engine.credentials) {
-				continue;
-			}
+		for (const engineId of CLOUD_ENGINES) {
+			const { engine, account } = engineAccess(engineId);
+			const id = transcriptionIdOf(engine);
 			const settings = mergeSettings({ transcriptionProvider: id });
-			engine.credentials.setApiKey(settings, 'token');
+			account.setApiKey(settings, 'token');
+
 			expect(createTranscriptionProvider(settings).id).toBe(id);
 		}
 	});

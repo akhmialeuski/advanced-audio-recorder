@@ -7,13 +7,7 @@
  * @module player/DurationProbe
  */
 
-/**
- * A very large finite time used to coax browsers into computing the
- * real duration of a stream (notably MediaRecorder WebM) that initially
- * reports Infinity. Seeking near the end triggers a durationchange with
- * the true value, after which playback is reset to the start.
- */
-const DURATION_PROBE_SECONDS = 1e101;
+import { DURATION_PROBE_SECONDS, usableDuration } from '../utils/mediaDuration';
 
 /**
  * How long to wait for a probed stream to report its real duration
@@ -68,13 +62,11 @@ export class DurationProbe {
 			this.onResolved();
 		};
 		const onDurationChange = (): void => {
-			// Wait for a real, positive length: a file that loaded at 0 reports a
-			// finite-but-useless 0, so finishing on "finite" alone would lock in
-			// the bogus zero instead of the corrected duration.
-			if (
-				Number.isFinite(this.audio.duration) &&
-				this.audio.duration > 0
-			) {
+			// Wait for a length the shared read calls usable, which is the same
+			// question the detached probe asks: a file that loaded at 0 reports
+			// a finite-but-useless 0, so finishing on "finite" alone would lock
+			// in the bogus zero instead of the corrected duration.
+			if (usableDuration(this.audio) !== null) {
 				finish();
 			}
 		};

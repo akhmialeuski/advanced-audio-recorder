@@ -1,83 +1,45 @@
 /**
- * The per-engine transcription settings: the cloud engines' endpoint, key, and
- * model picker (all bound through the selected engine's descriptor) and the
- * local whisper.cpp file paths.
+ * The provider fields no declarative control type covers: the API key, which
+ * is a password field, and the local whisper.cpp file paths.
  * @module settings/sections/transcriptionEngineSection
  */
 
 import {
-	MIN_TRANSCRIBE_CHUNK_MB,
-	MAX_TRANSCRIBE_CHUNK_MB,
 	LOCAL_WHISPER_MODEL_NAMES,
 	LOCAL_WHISPER_MODELS_DOC_URL,
 	TRANSCRIPTION_PROVIDER_IDS,
 } from '../../constants';
-import {
-	addModelPicker,
-	addNumberInput,
-	addText,
-	type SettingsSectionContext,
-} from '../settingControls';
+import { addText, type SettingsSectionContext } from '../settingControls';
 import { isProviderAvailableOnPlatform } from '../../transcription/providers/capabilities';
-import {
-	selectedTranscriptionEngine,
-	type EngineCredentials,
-} from '../../transcription/providers/engines';
+import { accountOf, type EngineDescriptor } from '../../providers/providers';
 
 /**
- * The cloud-engine fields: base URL, API key, and model picker, all bound
- * through the selected engine's descriptor. The three cloud engines differ only
- * in their labels and which settings fields they address, both of which the
- * registry owns, so one renderer covers them all.
- * @param ctx - Section context
+ * An engine's API key: a password field with the reveal toggle Obsidian's own
+ * keychain dialog uses, which no declarative control type covers. Rendered from
+ * the account the engine names, so two engines over one account share the field
+ * instead of each keeping a copy.
+ * @param ctx - The section context (host element and save hooks)
+ * @param engine - The engine whose account is being credentialed
  */
-export function renderCloudEngineSettings(
+export function renderProviderKeyField(
 	ctx: SettingsSectionContext,
-	credentials: EngineCredentials,
+	engine: EngineDescriptor,
 ): void {
+	const connection = accountOf(engine);
+	if (!connection) {
+		return;
+	}
 	const s = ctx.settings;
+	// No catalogue link here: it belongs with the catalogue, which is a page of
+	// its own on this engine, not under the field that holds a secret.
 	addText(ctx, {
-		name: credentials.baseUrlFieldName,
-		desc: credentials.baseUrlFieldDesc,
-		get: () => credentials.baseUrl(s),
-		set: (v) => credentials.setBaseUrl(s, v),
-	});
-	addText(ctx, {
-		name: credentials.keyFieldName,
-		desc: credentials.keyFieldDesc,
-		get: () => credentials.apiKey(s),
-		set: (v) => credentials.setApiKey(s, v),
-		secret: true,
-	});
-	addModelPicker(ctx, {
-		name: credentials.modelPickerName,
-		desc: credentials.modelPickerDesc,
-		helpLink: {
-			label: credentials.modelsDocLabel,
-			url: credentials.modelsDocUrl,
+		name: connection.keyFieldName,
+		desc: connection.keyFieldDesc,
+		get: () => connection.apiKey(s),
+		set: (v) => {
+			connection.setApiKey(s, v);
 		},
-		getModels: () => credentials.models(s),
-		setModels: (models) => credentials.setModels(s, models),
-		getSelected: () => selectedTranscriptionEngine(s).model(s),
-		setSelected: (id) => credentials.setModel(s, id),
-	});
-}
-
-/**
- * The upload chunk size, offered only for the Whisper API: it is the one engine
- * with a per-request byte ceiling low enough that long recordings are split.
- * @param ctx - Section context
- */
-export function renderWhisperChunkSize(ctx: SettingsSectionContext): void {
-	const s = ctx.settings;
-	addNumberInput(ctx, {
-		name: 'Upload chunk size',
-		desc: 'Megabytes per WAV chunk when a recording is too large to upload whole (the API limit is 25 MB). Files under the limit are sent untouched.',
-		min: MIN_TRANSCRIBE_CHUNK_MB,
-		max: MAX_TRANSCRIBE_CHUNK_MB,
-		step: 1,
-		get: () => s.transcriptionChunkMb,
-		set: (v) => (s.transcriptionChunkMb = v),
+		secret: true,
 	});
 }
 

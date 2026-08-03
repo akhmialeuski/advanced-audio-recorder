@@ -11,7 +11,7 @@ import {
 	DEFAULT_SPLIT_CHUNK_MINUTES,
 	DEFAULT_SPLIT_PART_SUFFIX,
 	DEFAULT_TRANSCRIBE_CHUNK_MB,
-	DEFAULT_WHISPER_API_BASE_URL,
+	DEFAULT_OPENAI_BASE_URL,
 	DEFAULT_WHISPER_API_MODEL,
 	WHISPER_API_MODEL_SUGGESTIONS,
 	DEFAULT_DEEPGRAM_BASE_URL,
@@ -23,14 +23,13 @@ import {
 	DEFAULT_TRANSCRIPTION_TIMEOUT_MINUTES,
 	TRANSCRIPTION_PROVIDER_IDS,
 	LLM_PROVIDER_IDS,
-	DEFAULT_LLM_OPENAI_BASE_URL,
+	MODEL_SEED_GENERATION,
+	DEFAULT_ANTHROPIC_BASE_URL,
 	DEFAULT_LLM_OPENAI_MODEL,
 	DEFAULT_LLM_ANTHROPIC_MODEL,
-	DEFAULT_LLM_GEMINI_MODEL,
 	DEFAULT_LLM_MAX_TOKENS,
 	LLM_OPENAI_MODEL_SUGGESTIONS,
 	LLM_ANTHROPIC_MODEL_SUGGESTIONS,
-	LLM_GEMINI_MODEL_SUGGESTIONS,
 	DEFAULT_LLM_CLEANUP_PROMPT,
 	DEFAULT_LLM_SUMMARY_PROMPT,
 	DEFAULT_LLM_CUSTOM_INSTRUCTION,
@@ -49,7 +48,6 @@ import type { LlmTask } from '../transcription/llmPostProcess';
 import { CHANNEL_MODE_SOURCE } from '../audio/downmix';
 import type { ChannelMode } from '../audio/downmix';
 import type { PlatformKind } from '../platform/platformKind';
-import { DEFAULT_LLM_BASE_URLS, llmVendor } from '../transcription/llm/vendors';
 
 export type { OutputMode } from '../types';
 
@@ -424,15 +422,19 @@ export interface AudioRecorderSettings {
 	llmSummaryPrompt: string;
 	/** Editable instruction for the 'custom' task (sent verbatim) */
 	llmCustomInstruction: string;
-	/** LLM provider: OpenAI, Anthropic, or Google Gemini */
+	/** Engine that runs the post-processing pass */
 	llmProvider: LlmProviderId;
-	/** LLM base URL */
-	llmBaseUrl: string;
+	/** Engine that divides a transcript into chapters */
+	chaptersLlmProvider: LlmProviderId;
+	/** Engine the two-pass context agents call */
+	advancedLlmProvider: LlmProviderId;
 	/**
-	 * Anthropic API key. OpenAI and Gemini LLM reuse the transcription keys
-	 * (whisperApiKey, geminiApiKey) so a vendor token is entered once; Anthropic
-	 * has no transcription counterpart, so it keeps its own key here.
+	 * Anthropic endpoint and key. Every provider keeps its endpoint and its key
+	 * in fields of its own, and a provider that both transcribes and answers
+	 * prompts (OpenAI, Gemini) is reached through the one pair it already has;
+	 * Anthropic only answers prompts, so this is where its pair lives.
 	 */
+	anthropicBaseUrl: string;
 	anthropicApiKey: string;
 	/** Selected OpenAI LLM model id */
 	llmOpenAiModel: string;
@@ -442,12 +444,20 @@ export interface AudioRecorderSettings {
 	llmAnthropicModel: string;
 	/** Known Anthropic LLM model ids offered in the picker (user-editable) */
 	llmAnthropicModels: string[];
-	/** Selected Gemini LLM model id */
-	llmGeminiModel: string;
-	/** Known Gemini LLM model ids offered in the picker (user-editable) */
-	llmGeminiModels: string[];
-	/** Maximum output tokens for LLM post-processing */
-	llmMaxTokens: number;
+	/**
+	 * Longest answer each engine is allowed to write. A ceiling belongs to the
+	 * engine that has to honour it, not to one of the jobs that calls it, so
+	 * every engine that writes keeps its own.
+	 */
+	llmOpenAiMaxTokens: number;
+	llmAnthropicMaxTokens: number;
+	geminiMaxTokens: number;
+	/**
+	 * Generation of the shipped model catalogues the saved lists were last
+	 * topped up from. A list is the user's to edit, so new ids are merged in
+	 * once per generation rather than on every load.
+	 */
+	modelSeedGeneration: number;
 	/** Apply browser noise suppression to the input */
 	inputNoiseSuppression: boolean;
 	/** Apply browser echo cancellation to the input */
@@ -480,6 +490,24 @@ export interface AudioRecorderSettings {
 	cleanupLevelingMakeupDb: number;
 }
 
+/**
+ * Settings keys holding a primitive.
+ *
+ * These are the keys a value comparison answers for, and the ones a registry
+ * names when it says where a single field lives. A list or a Map compares by
+ * reference, so a key naming one cannot be asked whether it still holds what
+ * this version ships - the answer would be "no" for a config that never touched
+ * it. Saying so in the type keeps that question from being asked.
+ */
+export type PrimitiveSettingKey = {
+	[K in keyof AudioRecorderSettings]: AudioRecorderSettings[K] extends
+		| string
+		| number
+		| boolean
+		? K
+		: never;
+}[keyof AudioRecorderSettings];
+
 /** Transcription engine identifier, derived from {@link TRANSCRIPTION_PROVIDER_IDS}. */
 export type TranscriptionProviderId =
 	(typeof TRANSCRIPTION_PROVIDER_IDS)[keyof typeof TRANSCRIPTION_PROVIDER_IDS];
@@ -506,6 +534,26 @@ export interface LegacyAudioRecorderSettings {
 	llmModel?: string;
 	/** Pre-profile single dictionary text, moved into a "General" profile. */
 	transcriptionDictionary?: string;
+	/**
+	 * Pre-registry single LLM endpoint, held for whichever vendor was selected
+	 * and rewritten on every vendor change. Moved onto the endpoint of the
+	 * provider that vendor belongs to, which is the one both its transcription
+	 * and its post-processing now read.
+	 */
+	llmBaseUrl?: string;
+	/**
+	 * Pre-registry Gemini chat model and catalogue. Gemini serves one family of
+	 * ids for transcription and for prompts alike, so the two lists were the
+	 * same list twice; they merge into the engine's own catalogue.
+	 */
+	llmGeminiModel?: string;
+	llmGeminiModels?: string[];
+	/**
+	 * Pre-registry single answer ceiling, held for whichever engine was
+	 * selected. Copied onto every engine that writes, so a job keeps the bound
+	 * it had whichever engine it now calls.
+	 */
+	llmMaxTokens?: number;
 }
 
 /**
@@ -605,7 +653,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	transcriptionSpeakerProfileId: '',
 	transcriptionChunkMb: DEFAULT_TRANSCRIBE_CHUNK_MB,
 	transcriptionTimeoutMinutes: DEFAULT_TRANSCRIPTION_TIMEOUT_MINUTES,
-	whisperApiBaseUrl: DEFAULT_WHISPER_API_BASE_URL,
+	whisperApiBaseUrl: DEFAULT_OPENAI_BASE_URL,
 	whisperApiKey: '',
 	whisperApiModel: DEFAULT_WHISPER_API_MODEL,
 	whisperApiModels: [...WHISPER_API_MODEL_SUGGESTIONS],
@@ -636,15 +684,18 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	llmSummaryPrompt: DEFAULT_LLM_SUMMARY_PROMPT,
 	llmCustomInstruction: DEFAULT_LLM_CUSTOM_INSTRUCTION,
 	llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
-	llmBaseUrl: DEFAULT_LLM_OPENAI_BASE_URL,
+	chaptersLlmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+	advancedLlmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+	anthropicBaseUrl: DEFAULT_ANTHROPIC_BASE_URL,
 	anthropicApiKey: '',
 	llmOpenAiModel: DEFAULT_LLM_OPENAI_MODEL,
 	llmOpenAiModels: [...LLM_OPENAI_MODEL_SUGGESTIONS],
 	llmAnthropicModel: DEFAULT_LLM_ANTHROPIC_MODEL,
 	llmAnthropicModels: [...LLM_ANTHROPIC_MODEL_SUGGESTIONS],
-	llmGeminiModel: DEFAULT_LLM_GEMINI_MODEL,
-	llmGeminiModels: [...LLM_GEMINI_MODEL_SUGGESTIONS],
-	llmMaxTokens: DEFAULT_LLM_MAX_TOKENS,
+	llmOpenAiMaxTokens: DEFAULT_LLM_MAX_TOKENS,
+	llmAnthropicMaxTokens: DEFAULT_LLM_MAX_TOKENS,
+	geminiMaxTokens: DEFAULT_LLM_MAX_TOKENS,
+	modelSeedGeneration: MODEL_SEED_GENERATION,
 	inputNoiseSuppression: true,
 	inputEchoCancellation: true,
 	inputAutoGainControl: true,
@@ -659,28 +710,6 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	cleanupLevelingEnabled: false,
 	cleanupLevelingMakeupDb: DEFAULT_CLEANUP_LEVELING_MAKEUP_DB,
 };
-
-/**
- * Aligns the LLM base URL with the target vendor's default when the current
- * value is still some vendor's shipped default; a custom URL the user entered
- * is preserved. Switching to a vendor whose own default is already in place is
- * a no-op, so an OpenAI-compatible endpoint the user typed survives. The model
- * is not switched here - each vendor keeps its own selected model in a
- * dedicated field. Mutates and returns `settings` so the settings tab can
- * switch the base URL in one step when the provider changes.
- * @param settings - Settings to adjust in place
- * @param provider - The provider being switched to
- * @returns The same settings object, adjusted
- */
-export function applyLlmProviderDefaults(
-	settings: AudioRecorderSettings,
-	provider: LlmProviderId,
-): AudioRecorderSettings {
-	if (DEFAULT_LLM_BASE_URLS.has(settings.llmBaseUrl)) {
-		settings.llmBaseUrl = llmVendor(provider).defaultBaseUrl;
-	}
-	return settings;
-}
 
 /**
  * Whether a run performs the advanced two-pass transcription: both the advanced

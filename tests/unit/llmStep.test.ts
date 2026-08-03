@@ -178,9 +178,13 @@ describe('SessionCostTracker as an LLM cost sink', () => {
 			llm: stubLlm(),
 			prompt: { system: 's', user: 'u' },
 			maxTokens: 100,
+			// An id with no built-in rate, set the way a user sets one: the
+			// legacy field it used to be written through is only offered to
+			// the catalogue now, never selected on an engine that transcribes.
 			settings: mergeSettings({
 				llmProvider: LLM_PROVIDER_IDS.GEMINI,
-				llmGeminiModel: 'mystery-model',
+				chaptersLlmProvider: LLM_PROVIDER_IDS.GEMINI,
+				geminiModel: 'mystery-model',
 			}),
 			durationSeconds: 600,
 			costSink: tracker,

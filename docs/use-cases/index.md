@@ -33,7 +33,7 @@ Cloud transcription engines (and the LLM post-processing providers) authenticate
 
 Every API-key guide follows the same shape: generate the key on the provider's site, then paste it into the matching field in the Transcription settings.
 
-> **Heads-up on shared keys.** The plugin reuses keys where the same vendor serves both jobs: the OpenAI **LLM post-processing** provider reuses your Whisper API key, and the Gemini LLM provider reuses your Gemini key. Anthropic/Claude has its own dedicated key. See [LLM post-processing](../llm-post-processing.md) for details.
+> **Heads-up on shared keys.** A key belongs to the account rather than to the job, so the OpenAI page serves both Whisper API transcription and OpenAI post-processing, and the Gemini page serves transcription and prompts alike. Anthropic/Claude only writes, so it keeps a page and a key of its own. See [LLM post-processing](../llm-post-processing.md) for details.
 
 ---
 

@@ -1,30 +1,25 @@
 /**
- * Tests the per-engine transcription settings. One renderer serves all three
- * cloud engines by reading the selected engine's descriptor, so the risk it
- * carries is a field bound to the wrong settings property: an endpoint or key
- * typed for Deepgram landing in the Whisper fields fails at request time with
- * an authentication error that points nowhere near the cause.
+ * Tests the provider fields no control type covers. One renderer serves every
+ * provider by reading its connection, so the risk it carries is a field bound
+ * to the wrong settings property: a key typed for Deepgram landing in the
+ * Whisper field fails at request time with an authentication error that points
+ * nowhere near the cause.
  * @module tests/unit/transcriptionEngineSection.test
  */
 
 import {
-	renderCloudEngineSettings,
 	renderLocalWhisperSettings,
-	renderWhisperChunkSize,
+	renderProviderKeyField,
 } from 'src/settings/sections/transcriptionEngineSection';
-import { selectedTranscriptionEngine } from 'src/transcription/providers/engines';
+import { ACCOUNTS, ENGINES, ENGINE_IDS } from 'src/providers/providers';
+import type { EngineId } from 'src/providers/providers';
 import { mergeSettings } from 'src/settings/settingsSerialization';
-import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { defined } from '../helpers/assertions';
-import type {
-	AudioRecorderSettings,
-	TranscriptionProviderId,
-} from 'src/settings/settingsSchema';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import type { SettingsSectionContext } from 'src/settings/settingControls';
 import {
 	capturedSettings,
 	changeSetting,
-	enterNumberSetting,
 	isSettingDisabled,
 	settingRow,
 } from '../helpers/captureSettings';
@@ -48,102 +43,53 @@ function makeCtx(settings: AudioRecorderSettings): SettingsSectionContext {
 	};
 }
 
-/** Renders the cloud fields for an engine and returns its settings. */
-function renderCloud(provider: TranscriptionProviderId): AudioRecorderSettings {
-	const settings = mergeSettings({ transcriptionProvider: provider });
-	const credentials = defined(
-		selectedTranscriptionEngine(settings).credentials,
-		`credentials for ${provider}`,
-	);
-	renderCloudEngineSettings(makeCtx(settings), credentials);
+/** Renders one provider's key field and returns the settings behind it. */
+function renderKey(engine: EngineId): AudioRecorderSettings {
+	const settings = mergeSettings({});
+	renderProviderKeyField(makeCtx(settings), ENGINES[engine]);
 	return settings;
 }
 
-describe('renderCloudEngineSettings', () => {
+describe('renderProviderKeyField', () => {
 	it.each([
-		[
-			TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
-			'whisperApiBaseUrl',
-			'whisperApiKey',
-		],
-		[
-			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-			'deepgramBaseUrl',
-			'deepgramApiKey',
-		],
-		[TRANSCRIPTION_PROVIDER_IDS.GEMINI, 'geminiBaseUrl', 'geminiApiKey'],
+		[ENGINE_IDS.WHISPER_API, 'whisperApiKey'],
+		[ENGINE_IDS.DEEPGRAM, 'deepgramApiKey'],
+		[ENGINE_IDS.GEMINI, 'geminiApiKey'],
+		[ENGINE_IDS.ANTHROPIC, 'anthropicApiKey'],
 	] as const)(
-		'binds the endpoint and key fields of %s to its own settings',
-		(provider, urlProperty, keyProperty) => {
-			const settings = renderCloud(provider);
-			const credentials = defined(
-				selectedTranscriptionEngine(settings).credentials,
+		'binds the key field of %s to its own settings property',
+		(provider, property) => {
+			// Everything else about a provider is declared; this block is the
+			// one row no control type covers, the password field.
+			const settings = renderKey(provider);
+			const connection = defined(
+				ACCOUNTS[defined(ENGINES[provider].account)],
 			);
 
-			changeSetting(
-				credentials.baseUrlFieldName,
-				'text',
-				'https://edge.example/v1',
-			);
-			changeSetting(credentials.keyFieldName, 'text', 'key-typed');
+			changeSetting(connection.keyFieldName, 'text', 'token-value');
 
-			expect(settings[urlProperty]).toBe('https://edge.example/v1');
-			expect(settings[keyProperty]).toBe('key-typed');
+			expect(settings[property]).toBe('token-value');
 		},
 	);
 
-	it.each([
-		[TRANSCRIPTION_PROVIDER_IDS.WHISPER_API, 'whisperApiModel'],
-		[TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM, 'deepgramModel'],
-		[TRANSCRIPTION_PROVIDER_IDS.GEMINI, 'geminiModel'],
-	] as const)('shows the model of %s in its picker', (provider, property) => {
-		const settings = renderCloud(provider);
-		const credentials = defined(
-			selectedTranscriptionEngine(settings).credentials,
-		);
+	it('renders only that one row', () => {
+		renderKey(ENGINE_IDS.DEEPGRAM);
 
-		expect(settingRow(credentials.modelPickerName).dropdownValue).toBe(
-			settings[property],
-		);
+		expect(capturedSettings).toHaveLength(1);
 	});
 
-	it('gives each engine its own labels rather than a generic one', () => {
-		renderCloud(TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM);
-		const deepgramRows = capturedSettings.map((row) => row.name);
+	it('gives each provider its own key label rather than a generic one', () => {
+		const labels = new Set<string>();
+		for (const provider of [
+			ENGINE_IDS.WHISPER_API,
+			ENGINE_IDS.DEEPGRAM,
+			ENGINE_IDS.GEMINI,
+		]) {
+			renderKey(provider);
+			labels.add(capturedSettings[0]?.name ?? '');
+		}
 
-		renderCloud(TRANSCRIPTION_PROVIDER_IDS.GEMINI);
-		const geminiRows = capturedSettings.map((row) => row.name);
-
-		// Same shape, different copy: the vendor-specific rows share no label,
-		// so a user switching engines can tell which vendor a key belongs to.
-		// (The model picker's own "Add custom model" row is generic by design.)
-		expect(deepgramRows).toHaveLength(geminiRows.length);
-		expect(
-			deepgramRows.filter((name) => geminiRows.includes(name)),
-		).toEqual(['Add custom model']);
-	});
-});
-
-describe('renderWhisperChunkSize', () => {
-	it('stores a chunk size the user enters', () => {
-		const settings = mergeSettings({ transcriptionChunkMb: 20 });
-		renderWhisperChunkSize(makeCtx(settings));
-
-		enterNumberSetting('Upload chunk size', '10');
-
-		expect(settings.transcriptionChunkMb).toBe(10);
-	});
-
-	it('clamps a chunk size above the API limit instead of rejecting it', () => {
-		const settings = mergeSettings({ transcriptionChunkMb: 20 });
-		renderWhisperChunkSize(makeCtx(settings));
-
-		enterNumberSetting('Upload chunk size', '999');
-
-		// Storing 999 MB would produce chunks every request rejects; the field
-		// bounds it to what the API actually accepts.
-		expect(settings.transcriptionChunkMb).toBeLessThanOrEqual(25);
-		expect(settings.transcriptionChunkMb).toBeGreaterThan(0);
+		expect(labels.size).toBe(3);
 	});
 });
 

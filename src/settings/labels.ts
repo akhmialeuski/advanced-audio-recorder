@@ -4,6 +4,7 @@
  * @module settings/labels
  */
 
+import type { ChannelMode } from '../audio/downmix';
 import { LLM_VENDOR_IDS, LLM_VENDORS } from '../transcription/llm/vendors';
 import {
 	TRANSCRIPTION_ENGINE_IDS,
@@ -33,7 +34,10 @@ export const TRANSCRIPTION_PROVIDER_LABELS: Record<
 ) as Record<TranscriptionProviderId, string>;
 
 /** Display labels for each transcript destination (single source for UI). */
-const TRANSCRIPT_DESTINATION_LABELS: Record<TranscriptDestination, string> = {
+export const TRANSCRIPT_DESTINATION_LABELS: Record<
+	TranscriptDestination,
+	string
+> = {
 	note: 'Insert into note',
 	file: 'Save to file',
 	both: 'Note and file',
@@ -41,7 +45,10 @@ const TRANSCRIPT_DESTINATION_LABELS: Record<TranscriptDestination, string> = {
 };
 
 /** Display labels for each transcript file format (single source for UI). */
-const TRANSCRIPT_FILE_FORMAT_LABELS: Record<TranscriptFileFormat, string> = {
+export const TRANSCRIPT_FILE_FORMAT_LABELS: Record<
+	TranscriptFileFormat,
+	string
+> = {
 	json: 'JSON (full data + speakers)',
 	srt: 'SubRip (.srt)',
 	vtt: 'WebVTT (.vtt)',
@@ -53,7 +60,10 @@ const TRANSCRIPT_FILE_FORMAT_LABELS: Record<TranscriptFileFormat, string> = {
  * links in notes. Shared by the settings tab and the two dialogs, which each
  * used to hard-code the same three value/label pairs.
  */
-const CONVERSION_LINK_ACTION_LABELS: Record<ConversionLinkAction, string> = {
+export const CONVERSION_LINK_ACTION_LABELS: Record<
+	ConversionLinkAction,
+	string
+> = {
 	none: 'Do nothing',
 	replace: 'Replace source link',
 	after: 'Insert after source link',
@@ -151,3 +161,15 @@ export const LLM_PROVIDER_OPTIONS = optionsFromLabels(LLM_PROVIDER_LABELS);
 export const CONVERSION_LINK_ACTION_OPTIONS = optionsFromLabels(
 	CONVERSION_LINK_ACTION_LABELS,
 );
+
+/**
+ * Channel-layout labels, keyed by mode. The left/right options suit audio
+ * interfaces whose two mono inputs show up as one stereo device: a single
+ * microphone stays at full level instead of being mixed with a silent channel.
+ */
+export const CHANNEL_MODE_LABELS: Record<ChannelMode, string> = {
+	source: 'Same as input device',
+	'mono-mix': 'Mono (mix all channels)',
+	'mono-left': 'Mono (left channel)',
+	'mono-right': 'Mono (right channel)',
+};

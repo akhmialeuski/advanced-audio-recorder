@@ -110,40 +110,40 @@ These ship with the plugin and are used whenever the matching prompt field is em
 
 ## Providers and models
 
-LLM post-processing supports three providers, chosen from the **LLM provider** dropdown. Each has its own default model and its own user-editable model list.
+LLM post-processing supports three providers, chosen from its own **Post-processing engine** dropdown. That row settles only which service does the work; where the service is reached and which models it serves are configured once on its page under **Engines**, so a key that also transcribes is entered in one place. The other two LLM jobs, auto chapters and the advanced two-pass agents, each carry a **Chapters engine** and a **Context agents engine** row of their own beside their own switch, so a run can summarize with one service and title its chapters with another. Each provider has its own default model and its own user-editable model list.
 
-| Provider               | Dropdown label       | Default model      | Model catalogue                                                                        |
-| ---------------------- | -------------------- | ------------------ | -------------------------------------------------------------------------------------- |
-| **OpenAI**             | `OpenAI`             | `gpt-5.6-sol`      | [OpenAI models](https://developers.openai.com/api/docs/models)                         |
-| **Anthropic (Claude)** | `Anthropic (Claude)` | `claude-opus-4-8`  | [Anthropic models](https://platform.claude.com/docs/en/about-claude/models/overview)   |
-| **Google Gemini**      | `Google Gemini`      | `gemini-3.5-flash` | [Gemini models](https://ai.google.dev/gemini-api/docs/models)                          |
+| Provider               | Dropdown label       | Default model      | Model catalogue                                                                      |
+| ---------------------- | -------------------- | ------------------ | ------------------------------------------------------------------------------------ |
+| **OpenAI**             | `OpenAI`             | `gpt-5.6-sol`      | [OpenAI models](https://developers.openai.com/api/docs/models)                       |
+| **Anthropic (Claude)** | `Anthropic (Claude)` | `claude-opus-4-8`  | [Anthropic models](https://platform.claude.com/docs/en/about-claude/models/overview) |
+| **Google Gemini**      | `Google Gemini`      | `gemini-3.5-flash` | [Gemini models](https://ai.google.dev/gemini-api/docs/models)                        |
 
-The **LLM model** picker is the same control used for transcription models: pick one from the saved list, type a new id under **Add custom model** to add it, use **Remove selected** to prune one, and follow the catalogue link next to the field to the provider's model list. The list is seeded with common models for the selected provider:
+The **Model** picker on the engine's page is the same control used for transcription models: pick one from the saved list, add an id with the button on the catalogue that entry opens, delete one with the button on its row, and follow the catalogue link in that page's description to the provider's model list. The list is seeded with common models for the provider:
 
-| Provider      | Seeded model ids                                                                                                      |
-| ------------- | --------------------------------------------------------------------------------------------------------------------- |
-| **OpenAI**    | `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`                                                                        |
-| **Anthropic** | `claude-opus-4-8`, `claude-sonnet-5`, `claude-haiku-4-5`, `claude-fable-5`                                            |
+| Provider      | Seeded model ids                                                                                                               |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| **OpenAI**    | `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`                                                                                 |
+| **Anthropic** | `claude-opus-4-8`, `claude-sonnet-5`, `claude-haiku-4-5`, `claude-fable-5`                                                     |
 | **Gemini**    | `gemini-3.6-flash`, `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-2.5-flash-lite` |
 
-The model list is per-provider, so switching the **LLM provider** dropdown swaps both the picker contents and the selected model to that provider's list - your OpenAI choice is remembered separately from your Anthropic and Gemini choices.
+The model list belongs to the provider rather than to the job, so each provider's page keeps its own picker contents and its own selected model, and your OpenAI choice is remembered separately from your Anthropic and Gemini choices whichever job calls them.
 
 ![LLM provider dropdown and model picker showing the per-provider catalogue link](images/settings-llm-provider-model.png)
-_Figure: the LLM provider dropdown and the per-provider model picker with add/remove and a catalogue link._
+_Figure: the LLM provider dropdown and the per-provider model picker with its saved-model list and a catalogue link._
 
 ---
 
 ## Shared API keys
 
-You only enter a vendor's API token **once**. The LLM key field is bound to the same per-vendor key the transcription engines use, so a token serves both jobs:
+You only enter a vendor's API token **once**, because a key belongs to the account rather than to the job: two engines reached through the same account read the one field their shared page holds.
 
-| LLM provider           | Key field shown           | Shared with                                                             |
-| ---------------------- | ------------------------- | ----------------------------------------------------------------------- |
-| **OpenAI**             | **OpenAI API key**        | The [Whisper API](transcription.md#engines) transcription engine's key. |
-| **Google Gemini**      | **Google Gemini API key** | The [Gemini](transcription.md#engines) transcription engine's key.      |
-| **Anthropic (Claude)** | **Anthropic API key**     | Nothing - Anthropic is LLM-only, so it has its own dedicated key.       |
+| Account                | Key field shown           | Read by                                                                      |
+| ---------------------- | ------------------------- | ---------------------------------------------------------------------------- |
+| **OpenAI**             | **OpenAI API key**        | The [Whisper API](transcription.md#engines) engine and the OpenAI engine.    |
+| **Google Gemini**      | **Google Gemini API key** | The [Gemini](transcription.md#engines) engine, which transcribes and writes. |
+| **Anthropic (Claude)** | **Anthropic API key**     | The Anthropic engine, which only writes and so keeps a key of its own.       |
 
-So if you already set the **Whisper API key** for OpenAI-compatible transcription, the OpenAI LLM provider uses it automatically (and vice versa) - set it in either place. The same is true for the **Gemini API key**. Anthropic is not offered as a transcription engine, so it keeps its own **Anthropic API key**.
+So a key set on the OpenAI page serves OpenAI-compatible transcription and OpenAI post-processing alike, and the same holds for Gemini. Anthropic is not offered as a transcription engine, so its page is where its key lives and nothing else reads it.
 
 Need a key? Follow the matching use-case guide:
 
@@ -157,7 +157,7 @@ Need a key? Follow the matching use-case guide:
 
 ## Base URL
 
-The **LLM base URL** is the API endpoint the request is sent to. It **auto-switches** to the selected provider's default when you change the **LLM provider** dropdown - choosing Anthropic does not leave an OpenAI URL behind, and vice versa. If you typed a custom URL, switching providers leaves your custom value in place.
+The **Base URL** on a provider's page is the API endpoint its requests are sent to. Each provider keeps its own, so choosing another engine reads that provider's field instead of rewriting a shared one, and a custom URL you typed for a gateway survives every switch.
 
 | Provider          | Default base URL                            |
 | ----------------- | ------------------------------------------- |
@@ -171,11 +171,15 @@ Leave it at the default unless you are routing requests through an OpenAI-compat
 
 ## Max output tokens
 
-**Max output tokens** caps the length of the LLM's reply.
+**Max output tokens** caps the length of the LLM's reply. The ceiling belongs to the engine that has to honour it, so it lives on that engine's page under **Engines** and applies to every job calling it rather than to post-processing alone.
 
-| Setting               | Range     | Default | Step |
-| --------------------- | --------- | ------- | ---- |
-| **Max output tokens** | 512-32000 | 4096    | 512  |
+| Setting               | Range      | Default | Step |
+| --------------------- | ---------- | ------- | ---- |
+| **Max output tokens** | 512-200000 | 4096    | 1    |
+
+Any whole number in that range is accepted, so the budgets a model's own documentation quotes - 8000, 32000, 128000 - can be typed straight in. The upper end of the field is a guard against a typo rather than a claim about any service: how long an answer may be is the model's own limit, it differs between models of one provider, and it moves with every release, so a budget above what your model allows is refused by the service itself, which names the maximum it accepts.
+
+On an OpenAI-compatible endpoint the budget is sent under whichever name that endpoint takes, which the plugin discovers rather than guesses. OpenAI renamed the field and its current models refuse the original name, while Groq, LM Studio, llama.cpp and the rest still speak it and are reached through the same **Base URL**, so no fixed choice works everywhere and a list of "new" model families would go stale with the next release. The request therefore goes out under the original name first, and only an endpoint that refuses it by name is asked again under the current one. That order matters because a server which does not recognise a field may drop it silently instead of refusing it, and a dropped budget is a truncation guard that is not there and says nothing about it. The answer is remembered for as long as the plugin is talking to that endpoint, so a run that makes several calls negotiates once.
 
 Why it matters: the model stops generating once it hits this budget. If the cap is too low for a long cleanup, the reply is **truncated** - you could lose the end of the transcript. Raise it for long recordings or detailed summaries; the default of `4096` suits short notes and most summaries. Bear in mind:
 
@@ -248,18 +252,23 @@ The exact headings come from the model following the summary prompt; the `### Su
 
 All controls live under **Settings > Advanced Audio Recorder > Transcription > LLM post-processing**.
 
-| Setting                        | Description                                                                                                     | Default          |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------- | ---------------- |
-| **Enable LLM post-processing** | Run an LLM pass over the transcript after transcription. Reveals the controls below.                            | Off              |
-| **Task**                       | `Clean up`, `Summarize`, or `Custom`.                                                                           | Clean up         |
-| **Cleanup prompt**             | System prompt for Clean up (language clause appended). Empty = built-in default. Shown when Task is Clean up.   | Built-in default |
-| **Summary prompt**             | System prompt for Summarize (language clause appended). Empty = built-in default. Shown when Task is Summarize. | Built-in default |
-| **Custom instruction**         | System prompt sent verbatim, larger editor. Shown when Task is Custom.                                          | Built-in starter |
-| **LLM provider**               | `OpenAI`, `Anthropic (Claude)`, or `Google Gemini`.                                                             | OpenAI           |
-| **LLM base URL**               | API endpoint; auto-switches to the provider default unless customized.                                          | Provider default |
-| **API key**                    | Shared per vendor: OpenAI reuses the Whisper key, Gemini reuses the Gemini key, Anthropic has its own.          | -                |
-| **LLM model**                  | Per-provider model picker (pick, add custom, remove, catalogue link).                                           | See table above  |
-| **Max output tokens**          | Upper bound on the reply length (truncation guard). Range 512-32000, step 512.                                  | 4096             |
+| Setting                        | Description                                                                                                       | Default          |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------- | ---------------- |
+| **Enable LLM post-processing** | Run an LLM pass over the transcript after transcription. Reveals the controls below.                              | Off              |
+| **Task**                       | `Clean up`, `Summarize`, or `Custom`.                                                                             | Clean up         |
+| **Cleanup prompt**             | System prompt for Clean up (language clause appended). Empty = built-in default. Shown when Task is Clean up.     | Built-in default |
+| **Summary prompt**             | System prompt for Summarize (language clause appended). Empty = built-in default. Shown when Task is Summarize.   | Built-in default |
+| **Custom instruction**         | System prompt sent verbatim, larger editor. Shown when Task is Custom.                                            | Built-in starter |
+| **Post-processing engine**     | `OpenAI`, `Anthropic (Claude)`, or `Google Gemini`. Only the choice; the service is configured under **Engines**. | OpenAI           |
+
+The rows that describe the service itself sit on its page under **Engines**, shared by every job that calls it:
+
+| Setting               | What it does                                                                   | Default          |
+| --------------------- | ------------------------------------------------------------------------------ | ---------------- |
+| **Base URL**          | API endpoint for that provider.                                                | Provider default |
+| **API key**           | Entered once per provider, so a service that also transcribes reuses it.       | -                |
+| **Model**             | The provider's model picker, opening the saved ids and its catalogue link.     | See table above  |
+| **Max output tokens** | Upper bound on the reply length (truncation guard). Any whole number from 512 to 200000; the model's own maximum is the real limit. | 4096             |
 
 ---
 

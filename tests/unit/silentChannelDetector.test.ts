@@ -11,7 +11,13 @@ import {
 import type { App, TFile } from 'obsidian';
 import { createMockApp } from '../helpers/createApp';
 
+// Only the probe is doubled: the ceiling predicate beside it is a pure rule
+// both this detector and the cleanup guard read, and a blank stub for it would
+// test the mock rather than the rule.
 jest.mock('src/utils/AudioFileAnalyzer', () => ({
+	...jest.requireActual<typeof import('src/utils/AudioFileAnalyzer')>(
+		'src/utils/AudioFileAnalyzer',
+	),
 	probeAudioMetadata: jest.fn(),
 }));
 
@@ -200,6 +206,27 @@ describe('detectSilentChannel', () => {
 			}),
 		).toBeNull();
 		expect(decodeAudioData).not.toHaveBeenCalled();
+	});
+
+	it('keeps the decoded-duration guard when the headers carried no length', async () => {
+		// The headers parsed and reported two channels, but no length. Reading
+		// that as zero seconds would call a multi-hour recording short enough
+		// to decode, so the guard defers to the post-decode check instead.
+		(probeAudioMetadata as jest.Mock).mockResolvedValue({
+			durationSeconds: null,
+			sampleRate: 44100,
+			channels: 2,
+		});
+		decodeAudioData.mockResolvedValue(
+			new FakeAudioBuffer(2, 3600, [loud(), silent()]),
+		);
+
+		expect(
+			await detectSilentChannel(makeApp(), file, {
+				maxDecodeSeconds: 60,
+			}),
+		).toBeNull();
+		expect(decodeAudioData).toHaveBeenCalled();
 	});
 
 	it('keeps the decoded-duration guard when metadata is unavailable', async () => {

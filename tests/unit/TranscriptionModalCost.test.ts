@@ -16,7 +16,7 @@ import type { TranscribeRunCost } from 'src/transcription/TranscriptionService';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 
 jest.mock('src/utils/AudioFileAnalyzer', () => ({
-	probeAudioMetadata: jest.fn(),
+	readAudioMetadata: jest.fn(),
 }));
 
 // Mock only transcribeFile so a run can be driven without a real provider;
@@ -26,7 +26,7 @@ jest.mock('src/transcription/api', () => {
 	return { __esModule: true, ...actual, transcribeFile: jest.fn() };
 });
 
-import { probeAudioMetadata } from 'src/utils/AudioFileAnalyzer';
+import { readAudioMetadata } from 'src/utils/AudioFileAnalyzer';
 import { transcribeFile } from 'src/transcription/api';
 import { createFile } from '../helpers/createApp';
 
@@ -42,7 +42,7 @@ type ModalInternals = {
 	probeFinished: boolean;
 };
 
-const probeMock = probeAudioMetadata as jest.Mock;
+const probeMock = readAudioMetadata as jest.Mock;
 const transcribeMock = transcribeFile as jest.Mock;
 
 /** Lets a fire-and-forget probe (readBinary + probe) settle before asserting. */
@@ -172,6 +172,31 @@ describe('TranscriptionModal cost estimate', () => {
 		expect(internals.costEstimateEl?.textContent).toContain(
 			'estimate unavailable (duration unreadable)',
 		);
+	});
+
+	it('degrades rather than quoting zero when the read answered with no length', async () => {
+		// The metadata came back - a sample rate, a channel count - with no
+		// length, which is what this plugin's own recordings look like. Sized
+		// by that the whole breakdown prices at ~$0.00, and a confident zero in
+		// a money line is worse than no line at all: the user reads it as "this
+		// run is free" and starts a job that is not.
+		probeMock.mockResolvedValue({
+			durationSeconds: null,
+			sampleRate: 48000,
+			channels: 2,
+		});
+		const { modal, internals } = createModal({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			deepgramModel: 'nova-3',
+		});
+		modal.onOpen();
+		await flush();
+
+		expect(internals.durationSeconds).toBeNull();
+		expect(internals.costEstimateEl?.textContent).toContain(
+			'estimate unavailable (duration unreadable)',
+		);
+		expect(internals.costEstimateEl?.textContent).not.toContain('$0.00');
 	});
 
 	it('marks the local engine as free and never reads the file', async () => {

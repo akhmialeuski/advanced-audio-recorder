@@ -17,6 +17,7 @@ import {
 	mergeSettings,
 	mergeSettingsAsync,
 } from 'src/settings/settingsSerialization';
+import { MODEL_SEED_GENERATION } from 'src/constants';
 
 describe('Settings', () => {
 	describe('DEFAULT_SETTINGS', () => {
@@ -363,15 +364,18 @@ describe('Settings', () => {
 				llmSummaryPrompt: 'summary base',
 				llmCustomInstruction: 'do it',
 				llmProvider: 'anthropic',
-				llmBaseUrl: 'https://api.anthropic.com/v1',
+				chaptersLlmProvider: 'anthropic',
+				advancedLlmProvider: 'anthropic',
+				anthropicBaseUrl: 'https://api.anthropic.com/v1',
 				anthropicApiKey: 'ak-test',
 				llmOpenAiModel: 'gpt-4o',
 				llmOpenAiModels: ['gpt-4o', 'gpt-4o-mini'],
 				llmAnthropicModel: 'claude-opus-4-8',
 				llmAnthropicModels: ['claude-opus-4-8', 'claude-sonnet-4-6'],
-				llmGeminiModel: 'gemini-2.5-flash',
-				llmGeminiModels: ['gemini-2.5-flash', 'gemini-2.5-pro'],
-				llmMaxTokens: 2048,
+				llmOpenAiMaxTokens: 2048,
+				llmAnthropicMaxTokens: 2048,
+				geminiMaxTokens: 2048,
+				modelSeedGeneration: MODEL_SEED_GENERATION,
 				inputNoiseSuppression: false,
 				inputEchoCancellation: false,
 				inputAutoGainControl: false,
@@ -420,6 +424,8 @@ describe('Settings', () => {
 			// Pre-rework data held one flat key and model for the stored provider.
 			const legacy = {
 				llmProvider: 'anthropic',
+				chaptersLlmProvider: 'anthropic',
+				advancedLlmProvider: 'anthropic',
 				llmApiKey: 'ak-legacy',
 				llmModel: 'claude-legacy',
 			} as unknown as AudioRecorderSettingsInput;
@@ -551,6 +557,51 @@ describe('Settings', () => {
 			expect(record.llmModel).toBeUndefined();
 		});
 
+		it('points every job at an engine that exists', () => {
+			// The three fields naming a job's engine are read from disk, which
+			// is not type-checked, and every reader resolves the id against a
+			// registry that has no entry for one no vendor claims. Answered at
+			// the field rather than inside the transcribe dialog.
+			const corrupt = {
+				llmProvider: 'no-such-vendor',
+				chaptersLlmProvider: 'also-gone',
+				advancedLlmProvider: 'gemini',
+			} as unknown as AudioRecorderSettingsInput;
+
+			const result = mergeSettings(corrupt);
+
+			expect(result.llmProvider).toBe(DEFAULT_SETTINGS.llmProvider);
+			expect(result.chaptersLlmProvider).toBe(
+				DEFAULT_SETTINGS.chaptersLlmProvider,
+			);
+			// A claimed id is a deliberate choice and is left alone.
+			expect(result.advancedLlmProvider).toBe('gemini');
+		});
+
+		it('points transcription at an engine that exists', () => {
+			const corrupt = {
+				transcriptionProvider: 'no-such-engine',
+			} as unknown as AudioRecorderSettingsInput;
+
+			const result = mergeSettings(corrupt);
+
+			expect(result.transcriptionProvider).toBe(
+				DEFAULT_SETTINGS.transcriptionProvider,
+			);
+		});
+
+		it('inherits a job engine from a stored provider only while it exists', () => {
+			// A config saved before the jobs picked their own engine keeps the
+			// behaviour it had by starting all three on the one it named - but
+			// only where that one names an engine at all.
+			const result = mergeSettings({
+				llmProvider: 'anthropic',
+			});
+
+			expect(result.chaptersLlmProvider).toBe('anthropic');
+			expect(result.advancedLlmProvider).toBe('anthropic');
+		});
+
 		it('enables the advanced master switch on upgrade for a config with a dictionary profile', () => {
 			// A release that had profiles but not the advanced switch stored no
 			// flag; without the migration it would merge to the false default and
@@ -615,6 +666,57 @@ describe('Settings', () => {
 			expect(result.sampleRate).toBe(96000);
 			expect(result.bitrate).toBe(320000);
 			expect(result.maxTracks).toBe(8);
+		});
+
+		describe('model catalogues and their selection', () => {
+			// The catalogue is the picker: a run uses the selected id and the
+			// settings show the list it came from, so an id held outside its
+			// list is a selection nobody can see or change.
+			it('takes a selection missing from its catalogue into the list', () => {
+				const result = mergeSettings({
+					whisperApiModel: 'whisper-custom',
+					whisperApiModels: ['whisper-1'],
+					modelSeedGeneration: MODEL_SEED_GENERATION,
+				});
+
+				expect(result.whisperApiModel).toBe('whisper-custom');
+				expect(result.whisperApiModels).toContain('whisper-custom');
+			});
+
+			it('picks the first saved id when nothing is selected', () => {
+				const result = mergeSettings({
+					deepgramModel: '',
+					deepgramModels: ['nova-3', 'nova-2'],
+					modelSeedGeneration: MODEL_SEED_GENERATION,
+				});
+
+				expect(result.deepgramModel).toBe('nova-3');
+			});
+
+			it('leaves an emptied catalogue empty rather than inventing an id', () => {
+				// An empty catalogue is a state the list itself offers, and a
+				// run refuses it by name; guessing an id here would run the
+				// wrong model instead.
+				const result = mergeSettings({
+					geminiModel: '',
+					geminiModels: [],
+					modelSeedGeneration: MODEL_SEED_GENERATION,
+				});
+
+				expect(result.geminiModel).toBe('');
+				expect(result.geminiModels).toEqual([]);
+			});
+
+			it('trims a hand-edited selection to the id it names', () => {
+				const result = mergeSettings({
+					llmAnthropicModel: '  claude-sonnet-5  ',
+					llmAnthropicModels: ['claude-sonnet-5'],
+					modelSeedGeneration: MODEL_SEED_GENERATION,
+				});
+
+				expect(result.llmAnthropicModel).toBe('claude-sonnet-5');
+				expect(result.llmAnthropicModels).toEqual(['claude-sonnet-5']);
+			});
 		});
 	});
 

@@ -23,7 +23,13 @@ import {
 	advancedTwoPassWillRun,
 } from './advanced/advancedBias';
 import { LLM_TASK_LABELS } from '../settings/labels';
-import { llmVendor, selectedLlmVendor } from './llm/vendors';
+import {
+	jobLlmVendor,
+	jobVendorId,
+	llmVendor,
+	type LlmJobId,
+} from './llm/vendors';
+import { vendorMaxTokens } from '../providers/providers';
 import {
 	matchRate,
 	selectedTranscriptionEngine,
@@ -143,14 +149,6 @@ export function selectedEngineModel(
 }
 
 /**
- * Returns the model id the settings select for the current LLM provider.
- * @param settings - Plugin settings
- */
-export function selectedLlmModel(settings: AudioRecorderSettings): string {
-	return selectedLlmVendor(settings).settings.model(settings);
-}
-
-/**
  * Converts provider-reported usage into dollars under the given pricing.
  * Returns null when the usage carries nothing the pricing can bill (e.g.
  * a per-minute engine that reported no billed seconds), so a caller can
@@ -213,35 +211,50 @@ function estimatedUsage(
 		return {
 			inputTokens: audioTokens,
 			audioInputTokens: audioTokens,
-			outputTokens: Math.ceil(
-				durationSeconds * ESTIMATED_OUTPUT_TOKENS_PER_SECOND,
-			),
+			// What the engine writes is the transcript, which is the same size
+			// every step that reads it back is estimated from.
+			outputTokens: transcriptTokens(durationSeconds),
 		};
 	}
 	return { audioSeconds: durationSeconds };
 }
 
 /**
- * Synthesizes the usage an LLM post-processing pass over a transcript of
- * the given duration is expected to bill. The transcript is the (text)
- * input; the output is a fraction of it that depends on the task and is
- * capped by the configured output-token budget.
- * @param settings - Plugin settings
+ * How many tokens a transcript of the given recording is expected to run to.
+ * The input size of every LLM step that reads the whole transcript back, and
+ * the output size of a token-billed transcription engine that writes it.
  * @param durationSeconds - Audio duration in seconds
  */
-function estimatedLlmUsage(
+function transcriptTokens(durationSeconds: number): number {
+	return Math.ceil(durationSeconds * ESTIMATED_OUTPUT_TOKENS_PER_SECOND);
+}
+
+/**
+ * Synthesizes the usage one LLM pass over the whole transcript is expected to
+ * bill: the transcript is the (text) input, the answer is a fraction of it, and
+ * that fraction is capped by the ceiling of the engine the job names. Auto
+ * chapters and post-processing are the same pass twice over, differing only in
+ * how much they write and which engine they write it on, so they are the same
+ * function twice over rather than two that have to be kept in step.
+ * @param settings - Plugin settings
+ * @param durationSeconds - Audio duration in seconds
+ * @param job - The job making the pass, which names the engine and its ceiling
+ * @param outputRatio - Share of the transcript the answer is expected to run to
+ */
+function estimatedTranscriptPassUsage(
 	settings: AudioRecorderSettings,
 	durationSeconds: number,
+	job: LlmJobId,
+	outputRatio: number,
 ): TranscriptionUsage {
-	const transcriptTokens = Math.ceil(
-		durationSeconds * ESTIMATED_OUTPUT_TOKENS_PER_SECOND,
-	);
-	const ratio = LLM_OUTPUT_RATIO[settings.llmPostProcessTask] ?? 1;
-	const outputTokens = Math.min(
-		Math.ceil(transcriptTokens * ratio),
-		settings.llmMaxTokens,
-	);
-	return { inputTokens: transcriptTokens, outputTokens };
+	const inputTokens = transcriptTokens(durationSeconds);
+	return {
+		inputTokens,
+		outputTokens: Math.min(
+			Math.ceil(inputTokens * outputRatio),
+			vendorMaxTokens(settings, jobVendorId(settings, job)),
+		),
+	};
 }
 
 /**
@@ -256,36 +269,14 @@ function estimatedContextAgentsUsage(
 	durationSeconds: number,
 	callCount: number,
 ): TranscriptionUsage {
-	const transcriptTokens = Math.ceil(
-		durationSeconds * ESTIMATED_OUTPUT_TOKENS_PER_SECOND,
+	const perCallInput = Math.min(
+		transcriptTokens(durationSeconds),
+		CONTEXT_AGENT_INPUT_TOKENS,
 	);
-	const perCallInput = Math.min(transcriptTokens, CONTEXT_AGENT_INPUT_TOKENS);
 	return {
 		inputTokens: perCallInput * callCount,
 		outputTokens: CONTEXT_AGENT_OUTPUT_TOKENS * callCount,
 	};
-}
-
-/**
- * Synthesizes the LLM usage an auto-chapters pass over a transcript of the
- * given duration is expected to bill: the transcript is the input and the
- * titled-timestamp list is a small fraction of it, capped by the output-token
- * budget.
- * @param settings - Plugin settings
- * @param durationSeconds - Audio duration in seconds
- */
-function estimatedChaptersUsage(
-	settings: AudioRecorderSettings,
-	durationSeconds: number,
-): TranscriptionUsage {
-	const transcriptTokens = Math.ceil(
-		durationSeconds * ESTIMATED_OUTPUT_TOKENS_PER_SECOND,
-	);
-	const outputTokens = Math.min(
-		Math.ceil(transcriptTokens * CHAPTERS_OUTPUT_TOKEN_RATIO),
-		settings.llmMaxTokens,
-	);
-	return { inputTokens: transcriptTokens, outputTokens };
 }
 
 /**
@@ -383,11 +374,7 @@ export interface CostEstimate {
  * names the step it means and goes through {@link estimateStepCost}, so one
  * step can never be priced by two different formulas.
  */
-export type RunCostStepId =
-	| 'transcription'
-	| 'contextAgents'
-	| 'postProcess'
-	| 'autoChapters';
+export type RunCostStepId = 'transcription' | LlmJobId;
 
 /**
  * How many times the engine decodes the audio for a run. The advanced
@@ -438,14 +425,25 @@ function transcriptionEstimateLine(
 	return { ...base, usd: perPass === null ? null : perPass * passes };
 }
 
-/** Builds an LLM estimate line (an LLM provider call) with a given label and usage. */
+/**
+ * Builds an LLM estimate line (an LLM provider call) with a given label and
+ * usage, priced against the engine the job it belongs to names. A job that
+ * points at another engine is quoted at that engine's rate, which is the one
+ * the run will be billed at.
+ * @param settings - The run's settings snapshot
+ * @param job - The job this line prices
+ * @param durationSeconds - Material extent in seconds, null when unknown
+ * @param label - How the line names the step
+ * @param usage - Sizes the call from the duration
+ */
 function llmLine(
 	settings: AudioRecorderSettings,
+	job: LlmJobId,
 	durationSeconds: number | null,
 	label: string,
 	usage: (durationSeconds: number) => TranscriptionUsage,
 ): CostEstimateLine {
-	const vendor = selectedLlmVendor(settings);
+	const vendor = jobLlmVendor(settings, job);
 	const model = vendor.settings.model(settings);
 	const base = {
 		label,
@@ -464,16 +462,22 @@ function llmLine(
 }
 
 /**
- * How a run's LLM steps are priced: every one bills the configured LLM
- * provider, so pricing them needs the duration exactly when that provider's
- * model has a built-in rate at all.
- * @param settings - The run's settings snapshot
+ * How one LLM step is priced: it bills the engine its job names, so pricing it
+ * needs the duration exactly when that engine's model has a built-in rate at
+ * all.
+ * @param job - The job whose step is being gated
+ * @returns A predicate over the run's settings
  */
-function llmStepIsPriced(settings: AudioRecorderSettings): boolean {
-	return (
-		resolveLlmPricing(settings.llmProvider, selectedLlmModel(settings)) !==
-		null
-	);
+function llmStepIsPriced(
+	job: LlmJobId,
+): (settings: AudioRecorderSettings) => boolean {
+	return (settings) => {
+		const vendor = jobLlmVendor(settings, job);
+		return (
+			resolveLlmPricing(vendor.id, vendor.settings.model(settings)) !==
+			null
+		);
+	};
 }
 
 /** How one billable step is labelled, priced, and gated. */
@@ -519,32 +523,53 @@ const RUN_COST_STEPS: Record<RunCostStepId, RunCostStep> = {
 					: CONTEXT_AGENT_CALL_ESTIMATE_PROMPT;
 			return llmLine(
 				settings,
+				'contextAgents',
 				durationSeconds,
 				CONTEXT_AGENTS_ESTIMATE_LABEL,
 				(seconds) => estimatedContextAgentsUsage(seconds, callCount),
 			);
 		},
 		enabled: advancedTwoPassWillRun,
-		needsDuration: llmStepIsPriced,
+		needsDuration: llmStepIsPriced('contextAgents'),
 	},
 	postProcess: {
 		line: (settings, durationSeconds) =>
 			llmLine(
 				settings,
+				'postProcess',
 				durationSeconds,
 				`Post-processing (${LLM_TASK_LABELS[settings.llmPostProcessTask]})`,
-				(seconds) => estimatedLlmUsage(settings, seconds),
+				(seconds) =>
+					estimatedTranscriptPassUsage(
+						settings,
+						seconds,
+						'postProcess',
+						LLM_OUTPUT_RATIO[settings.llmPostProcessTask] ?? 1,
+					),
 			),
 		enabled: (settings) => settings.llmPostProcessEnabled,
-		needsDuration: llmStepIsPriced,
+		needsDuration: llmStepIsPriced('postProcess'),
 	},
 	autoChapters: {
 		line: (settings, durationSeconds) =>
-			llmLine(settings, durationSeconds, 'Auto chapters', (seconds) =>
-				estimatedChaptersUsage(settings, seconds),
+			llmLine(
+				settings,
+				'autoChapters',
+				durationSeconds,
+				'Auto chapters',
+				(seconds) =>
+					estimatedTranscriptPassUsage(
+						settings,
+						seconds,
+						// Bounded by the engine chapters name, which is what the
+						// run is actually bounded by; pricing it against another
+						// engine's ceiling made the estimate and the run disagree.
+						'autoChapters',
+						CHAPTERS_OUTPUT_TOKEN_RATIO,
+					),
 			),
 		enabled: autoChaptersAfterTranscribe,
-		needsDuration: llmStepIsPriced,
+		needsDuration: llmStepIsPriced('autoChapters'),
 	},
 };
 
@@ -602,6 +627,7 @@ export function estimateLlmCallCost(
 	if (step === 'contextAgents') {
 		return llmLine(
 			settings,
+			'contextAgents',
 			durationSeconds,
 			CONTEXT_AGENTS_ESTIMATE_LABEL,
 			(seconds) => estimatedContextAgentsUsage(seconds, 1),

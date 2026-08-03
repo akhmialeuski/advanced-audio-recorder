@@ -19,7 +19,7 @@ The plugin's **Whisper API** engine is the OpenAI-compatible speech-to-text path
 
 | Item                 | Value                                               |
 | -------------------- | --------------------------------------------------- |
-| **Engine**           | `Whisper API (OpenAI-compatible)`                   |
+| **Transcription engine** | `Whisper API (OpenAI-compatible)`               |
 | **Default base URL** | `https://api.openai.com/v1`                         |
 | **Default model**    | `whisper-1`                                         |
 | **Diarization**      | Not supported (no speaker labels)                   |
@@ -65,10 +65,10 @@ Without a positive balance, the plugin's transcription requests fail with a quot
 Open **Settings > Advanced Audio Recorder** and scroll to the **Transcription** section.
 
 1. Turn on **Enable transcription**. The transcription controls appear.
-2. In the **Engine** dropdown, choose **Whisper API (OpenAI-compatible)**.
+2. In the **Transcription engine** dropdown, choose **Whisper API (OpenAI-compatible)**.
 3. Leave **Whisper API base URL** as `https://api.openai.com/v1` (the default).
 4. Paste your secret key into **Whisper API key**.
-5. In the **Whisper model** picker, select **`whisper-1`** (the default). You can also click **Add custom model** to type a model id, or **Remove selected** to drop one from the list.
+5. In the **Whisper model** picker, select **`whisper-1`** (the default). The list below it adds a model id and deletes one.
 6. Set **Language** to `auto` to auto-detect, or to an ISO code (for example `en`, `ru`, `es`).
 7. (Optional) Choose where the transcript goes under **Transcript output > Destination**. The default is **Insert into note**.
 
@@ -95,7 +95,7 @@ The fields the Whisper API engine adds under **Settings > Transcription** (defau
 
 | Setting                   | What it does                                                                                     | Default                     |
 | ------------------------- | ------------------------------------------------------------------------------------------------ | --------------------------- |
-| **Engine**                | Selects the transcription engine. Choose `Whisper API (OpenAI-compatible)`.                      | `Whisper API`               |
+| **Transcription engine**  | Selects the transcription engine. Choose `Whisper API (OpenAI-compatible)`.                      | `Whisper API`               |
 | **Language**              | ISO code (e.g. `en`, `ru`, `es`) or `auto` to detect.                                            | `auto`                      |
 | **Speaker diarization**   | Speaker labels. Disabled and greyed out for Whisper API.                                         | Off (unavailable)           |
 | **Word-level timestamps** | Per-word timing, recorded in JSON file output only.                                              | Off                         |

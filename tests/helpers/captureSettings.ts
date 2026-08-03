@@ -382,9 +382,10 @@ export class CapturingSetting {
 		return this;
 	}
 	addExtraButton(callback: (button: unknown) => void): this {
-		// Icon-only action button (e.g. add/remove profile). Chainable no-op:
-		// the callback wires setIcon/setTooltip/onClick, none of which the
-		// render tests assert, so the stub only needs to be invokable.
+		// Icon-only action button (e.g. add/remove profile, reveal a secret).
+		// The icon doubles as the button's label here, and it is re-read after
+		// every setIcon, so a test can see a button that swaps its icon with
+		// its state.
 		const captured: CapturedButton = {
 			label: '',
 			tooltip: '',

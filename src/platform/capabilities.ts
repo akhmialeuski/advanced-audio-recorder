@@ -50,6 +50,15 @@ export interface PlatformCapabilities {
 	readonly localTranscription: boolean;
 	/** Floating on-screen recording banner (mobile has no ribbon/status bar). */
 	readonly recordingBanner: boolean;
+	/**
+	 * Whether the settings framework gives a list its own labelled add row.
+	 * From Obsidian 1.13 the add affordance of a declarative list is platform
+	 * dependent: a tappable "+ name" row under the list on mobile, and a bare
+	 * plus icon in the list header on desktop. Where the row is missing the
+	 * tab declares one of its own, so adding an entry is never hidden behind
+	 * an unlabelled icon.
+	 */
+	readonly settingsListAddRow: boolean;
 	/** In-memory chunk buffer size that triggers a flush to disk. */
 	readonly chunkFlushThresholdBytes: number;
 	/**
@@ -82,6 +91,7 @@ const DESKTOP_CAPABILITIES: PlatformCapabilities = {
 	recoveryJournal: true,
 	localTranscription: true,
 	recordingBanner: false,
+	settingsListAddRow: false,
 	chunkFlushThresholdBytes: DESKTOP_FLUSH_THRESHOLD_BYTES,
 	maxDecodeBytes: WAVEFORM_MAX_DECODE_BYTES,
 	maxSplitSourceBytes: Number.POSITIVE_INFINITY,
@@ -99,6 +109,7 @@ const MOBILE_CAPABILITIES: PlatformCapabilities = {
 	recoveryJournal: false,
 	localTranscription: false,
 	recordingBanner: true,
+	settingsListAddRow: true,
 	chunkFlushThresholdBytes: MOBILE_BUFFER_LIMIT_BYTES,
 	maxDecodeBytes: MOBILE_MAX_DECODE_BYTES,
 	maxSplitSourceBytes: MOBILE_MAX_DECODE_BYTES,
@@ -169,6 +180,11 @@ export function isRecordingBannerSupported(kind?: PlatformKind): boolean {
 	return getPlatformCapabilities(kind).recordingBanner;
 }
 
+/** Whether a declarative settings list gets its own add row on this platform. */
+export function isSettingsListAddRowProvided(kind?: PlatformKind): boolean {
+	return getPlatformCapabilities(kind).settingsListAddRow;
+}
+
 /** Chunk-buffer size that triggers a flush to disk on this platform. */
 export function getChunkFlushThresholdBytes(kind?: PlatformKind): number {
 	return getPlatformCapabilities(kind).chunkFlushThresholdBytes;
@@ -177,6 +193,22 @@ export function getChunkFlushThresholdBytes(kind?: PlatformKind): number {
 /** Largest encoded file decode-heavy features load on this platform. */
 export function getMaxDecodeBytes(kind?: PlatformKind): number {
 	return getPlatformCapabilities(kind).maxDecodeBytes;
+}
+
+/**
+ * Whether a file of this size may be decoded whole on this platform.
+ *
+ * Decoding expands a file to full PCM in memory, so every path that does it
+ * asks this first: the waveform, cleanup, the splitter, and the metadata read
+ * that falls back to a decode when the container headers carry no duration.
+ * The ceiling is far lower on mobile, whose WebView is killed by the OS rather
+ * than given a catchable error, which is why the question is asked before the
+ * allocation rather than answered by it.
+ * @param bytes - Encoded size of the file
+ * @param kind - Platform to answer for (defaults to the current one)
+ */
+export function isDecodableSize(bytes: number, kind?: PlatformKind): boolean {
+	return bytes <= getMaxDecodeBytes(kind);
 }
 
 /** Largest source file the splitter reads into memory on this platform. */
