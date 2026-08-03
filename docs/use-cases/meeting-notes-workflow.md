@@ -126,7 +126,7 @@ This is what turns a wall of transcript text into a usable summary with action i
     - **OpenAI** LLM reuses your **Whisper API** key.
     - **Gemini** LLM reuses your **Gemini** key.
     - **Anthropic (Claude)** has its **own** dedicated key - see [Anthropic / Claude](anthropic-api-key.md).
-6. Leave **Max output tokens** at its default of **4096** (range 512-32000) unless your summaries are getting cut off, in which case raise it.
+6. Leave **Max output tokens** at its default of **4096** (range 512-200000) unless your summaries are getting cut off, in which case raise it.
 
 Provider model defaults are **OpenAI** `gpt-5.6-sol`, **Anthropic** `claude-opus-4-8`, and **Gemini** `gemini-3.5-flash`. The **LLM base URL** auto-switches to the provider default unless you have typed a custom one.
 
@@ -234,7 +234,7 @@ Use this once to confirm your setup, then just record.
 - **Speaker numbers reset partway through a long Gemini transcript** - Gemini splits recordings longer than 15 minutes into parts, and diarized splits restart speaker numbering at each boundary (surfaced as a warning). Use **Deepgram** for consistent labels across a long meeting.
 - **The play buttons in Rename speakers are greyed out** - that recording's roster predates speaker samples. Transcribe it once more with **Speaker diarization** on and the samples appear.
 - **No summary appeared** - confirm **Enable LLM post-processing** is on, **Task** is **Summarize**, and the chosen engine's **API key** is set on its page under **Engines** (the OpenAI and Gemini pages are shared with transcription; Anthropic keeps its own).
-- **The summary is cut off** - raise **Max output tokens** (default 4096, up to 32000).
+- **The summary is cut off** - raise **Max output tokens** (default 4096), up to whatever your model allows; the service refuses a larger budget and names its own maximum.
 - **Transcription accuracy is poor in a noisy room** - run [Clean up audio](../audio-cleanup.md) first, or move to a better microphone.
 - **The transcription dialog closed and the job stopped** - closing the dialog cancels the job. Use **Minimize** to keep it running in the status bar.
 

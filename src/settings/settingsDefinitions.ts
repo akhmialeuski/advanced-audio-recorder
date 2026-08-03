@@ -1230,7 +1230,7 @@ function enginePage(
 		rows.push({
 			name: 'Max output tokens',
 			aliases: ['length', 'limit', 'response'],
-			desc: 'Longest answer this engine may write, whichever job calls it.',
+			desc: "Longest answer this engine may write, whichever job calls it. The model's own maximum is the real limit; a budget above it is refused by the service, which names the maximum it allows.",
 			control: {
 				type: 'number',
 				key: engine.maxTokens.key,

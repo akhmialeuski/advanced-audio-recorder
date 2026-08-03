@@ -675,8 +675,21 @@ export const DEFAULT_LLM_MAX_TOKENS = 4096;
 /** Minimum configurable LLM output token budget. */
 export const MIN_LLM_MAX_TOKENS = 512;
 
-/** Maximum configurable LLM output token budget. */
-export const MAX_LLM_MAX_TOKENS = 32000;
+/**
+ * Highest output token budget the field accepts: a guard against a typo, not a
+ * claim about any service.
+ *
+ * How long an answer may be is the model's own limit, it moves with every model
+ * release, and it differs between models of one provider - Claude's synchronous
+ * Messages API allows 128k output tokens on a 1M-context model and less on the
+ * others, and the catalogue a user edits can name any of them. A number here
+ * pretending to be that limit is a number that goes stale and refuses a budget
+ * the service would have honoured, which is what a 32000 ceiling did. So this
+ * sits above every synchronous limit a provider currently offers and leaves the
+ * real answer to the endpoint, which refuses an over-large budget naming its own
+ * maximum - the only source that is right by construction.
+ */
+export const MAX_LLM_MAX_TOKENS = 200000;
 
 /**
  * Granularity of the LLM output token budget: one token.
@@ -685,7 +698,7 @@ export const MAX_LLM_MAX_TOKENS = 32000;
  * stepper arrows: the settings framework offers exactly `min + n * step` and
  * refuses everything between. A token budget is meaningful at every integer,
  * and the numbers a user reaches for come from a model's own documentation
- * (8000, 16000, 32000), so anything coarser would refuse most of them - a
+ * (8000, 32000, 128000), so anything coarser would refuse most of them - a
  * 512-token grid excluded the ceiling itself.
  */
 export const LLM_MAX_TOKENS_STEP = 1;

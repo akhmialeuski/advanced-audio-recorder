@@ -173,11 +173,11 @@ Leave it at the default unless you are routing requests through an OpenAI-compat
 
 **Max output tokens** caps the length of the LLM's reply. The ceiling belongs to the engine that has to honour it, so it lives on that engine's page under **Engines** and applies to every job calling it rather than to post-processing alone.
 
-| Setting               | Range     | Default | Step |
-| --------------------- | --------- | ------- | ---- |
-| **Max output tokens** | 512-32000 | 4096    | 1    |
+| Setting               | Range      | Default | Step |
+| --------------------- | ---------- | ------- | ---- |
+| **Max output tokens** | 512-200000 | 4096    | 1    |
 
-Any whole number in that range is accepted, so the budgets a model's own documentation quotes - 8000, 16000, the 32000 ceiling - can be typed straight in.
+Any whole number in that range is accepted, so the budgets a model's own documentation quotes - 8000, 32000, 128000 - can be typed straight in. The upper end of the field is a guard against a typo rather than a claim about any service: how long an answer may be is the model's own limit, it differs between models of one provider, and it moves with every release, so a budget above what your model allows is refused by the service itself, which names the maximum it accepts.
 
 Why it matters: the model stops generating once it hits this budget. If the cap is too low for a long cleanup, the reply is **truncated** - you could lose the end of the transcript. Raise it for long recordings or detailed summaries; the default of `4096` suits short notes and most summaries. Bear in mind:
 
@@ -266,7 +266,7 @@ The rows that describe the service itself sit on its page under **Engines**, sha
 | **Base URL**          | API endpoint for that provider.                                                | Provider default |
 | **API key**           | Entered once per provider, so a service that also transcribes reuses it.       | -                |
 | **Model**             | The provider's model picker, opening the saved ids and its catalogue link.     | See table above  |
-| **Max output tokens** | Upper bound on the reply length (truncation guard). Any whole number from 512 to 32000. | 4096             |
+| **Max output tokens** | Upper bound on the reply length (truncation guard). Any whole number from 512 to 200000; the model's own maximum is the real limit. | 4096             |
 
 ---
 

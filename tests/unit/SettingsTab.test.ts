@@ -274,6 +274,15 @@ describe('AudioRecorderSettingTab', () => {
 			},
 		);
 
+		it('stores a budget a current model allows and the old cap refused', async () => {
+			// The ceiling was a number this plugin invented, and models moved
+			// past it: a service that will write 100000 tokens was refused by
+			// the field rather than by the service.
+			await tab.setControlValue('llmAnthropicMaxTokens', 100000);
+
+			expect(mockSettings.llmAnthropicMaxTokens).toBe(100000);
+		});
+
 		it('writes an engine-owned field through the engine that owns it', async () => {
 			// A catalogue and the id picked out of it are one thing, so a write
 			// to either comes out consistent: replacing the list around a live
