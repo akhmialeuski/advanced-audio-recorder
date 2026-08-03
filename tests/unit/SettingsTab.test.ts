@@ -13,7 +13,7 @@ import {
 	renderThroughFramework,
 	rowIn,
 	rowOf,
-	withoutFrameworkUpdate,
+	withoutDeclarativeSettings,
 	type DeclarativeFrame,
 	type GroupDefinition,
 	type RenderDefinition,
@@ -538,7 +538,7 @@ describe('AudioRecorderSettingTab', () => {
 		beforeEach(() => {
 			// The render mode is picked when the tab is constructed, so the
 			// older Obsidian only has to be modelled for that one call.
-			legacyTab = withoutFrameworkUpdate(
+			legacyTab = withoutDeclarativeSettings(
 				() => new AudioRecorderSettingTab(new App(), mockPlugin),
 			);
 		});
@@ -1086,7 +1086,7 @@ describe('AudioRecorderSettingTab', () => {
 		});
 
 		it('releases the finished playback when the imperative path rebuilds', async () => {
-			const legacyTab = withoutFrameworkUpdate(
+			const legacyTab = withoutDeclarativeSettings(
 				() => new AudioRecorderSettingTab(new App(), mockPlugin),
 			);
 			legacyTab.display();
