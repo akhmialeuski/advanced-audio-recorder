@@ -10,14 +10,10 @@ import { isRecord } from '../utils/objects';
 import { getDefaultDeviceId } from '../utils/DeviceUtils';
 import { getPlatformKind, type PlatformKind } from '../platform/platformKind';
 import { isDeviceSelectionSupported } from '../platform/capabilities';
-import { LLM_VENDORS } from '../transcription/llm/vendors';
-import {
-	ENGINES,
-	ENGINE_ORDER,
-	engineOfVendor,
-	vendorConnection,
-} from '../providers/providers';
-import { ensureSelectedInList, normalizeModelId } from './modelList';
+import { LLM_JOBS, LLM_VENDORS } from '../transcription/llm/vendors';
+import { TRANSCRIPTION_ENGINES } from '../transcription/providers/engines';
+import { engineOfVendor, vendorConnection } from '../providers/providers';
+import { reconcileEngineSettings } from '../providers/engineSettings';
 import {
 	DEEPGRAM_MODEL_SUGGESTIONS,
 	GEMINI_MODEL_SUGGESTIONS,
@@ -30,6 +26,7 @@ import {
 	DEFAULT_SETTINGS,
 	createPlatformScopedDefaults,
 	type AudioRecorderSettings,
+	type PrimitiveSettingKey,
 	type AudioRecorderSettingsInput,
 	type AudioSource,
 	type DictionaryProfile,
@@ -232,7 +229,11 @@ export function mergeSettings(
 	};
 	migrateLegacyLlmSettings(merged, userSettings);
 	migrateModelCatalogues(merged, userSettings);
-	reconcileModelCatalogues(merged);
+	// The same rule that holds after an edit on an engine's page, applied to a
+	// config that has just been read: every catalogue offers the id in use.
+	reconcileEngineSettings(merged);
+	reconcileLlmJobEngines(merged);
+	reconcileTranscriptionEngine(merged);
 	migrateLegacyTranscriptionDictionary(merged, userSettings);
 	migrateAdvancedDictionaryGate(merged, userSettings);
 	return merged;
@@ -251,39 +252,42 @@ export function mergeSettings(
  */
 function isShippedDefault(
 	settings: AudioRecorderSettings,
-	key: keyof AudioRecorderSettings,
+	key: PrimitiveSettingKey,
 ): boolean {
 	return settings[key] === DEFAULT_SETTINGS[key];
 }
 
 /**
- * Keeps every engine's catalogue and the id picked out of it consistent.
+ * Points every LLM-driven job at an engine that exists.
  *
- * The catalogue is the picker: a run uses the selected id, and the settings
- * show the list it was chosen from, so an id held outside its list is a
- * selection the user can neither see nor change. That happens without any bug
- * of its own - a hand-edited `data.json`, a config synced from a device whose
- * list differs, or a legacy field migrated onto a catalogue that never listed
- * it - so the invariant is restored where settings are loaded rather than
- * defended at each place that edits them.
+ * The three fields naming a job's engine are read from disk, which is not
+ * type-checked, and every reader of one - the factory that builds the client,
+ * the ceiling that bounds the answer, the cost model that prices the call -
+ * looks the id up in a registry that has no entry for a value no vendor claims.
+ * A hand-edited or downgraded `data.json` would therefore fail inside the
+ * transcribe dialog rather than at the field that holds the bad value, so an
+ * unclaimed id is answered here, once, with the value this version ships.
  * @param merged - The merged settings to reconcile in place
  */
-function reconcileModelCatalogues(merged: AudioRecorderSettings): void {
-	for (const id of ENGINE_ORDER) {
-		const models = ENGINES[id].models;
-		if (!models) {
-			continue;
+function reconcileLlmJobEngines(merged: AudioRecorderSettings): void {
+	for (const job of Object.values(LLM_JOBS)) {
+		const key = job.key;
+		if (!((merged[key] as string) in LLM_VENDORS)) {
+			(merged as unknown as Record<string, unknown>)[key] =
+				DEFAULT_SETTINGS[key];
 		}
-		const selected = normalizeModelId(models.model(merged));
-		const saved = models.models(merged);
-		if (selected === '') {
-			// Nothing picked: a run needs an id, and the catalogue's first
-			// entry is the one the list itself offers first.
-			models.setModel(merged, saved[0] ?? '');
-			continue;
-		}
-		models.setModels(merged, ensureSelectedInList(saved, selected));
-		models.setModel(merged, selected);
+	}
+}
+
+/**
+ * Points transcription at an engine that exists, for the reason
+ * {@link reconcileLlmJobEngines} does: the id is read from disk and every
+ * reader resolves it against a registry with no entry for an unclaimed one.
+ * @param merged - The merged settings to reconcile in place
+ */
+function reconcileTranscriptionEngine(merged: AudioRecorderSettings): void {
+	if (!(merged.transcriptionProvider in TRANSCRIPTION_ENGINES)) {
+		merged.transcriptionProvider = DEFAULT_SETTINGS.transcriptionProvider;
 	}
 }
 

@@ -19,6 +19,7 @@ import {
 	getMaxCleanupDecodedSamples,
 	getMaxCleanupSeconds,
 	getMaxDecodeBytes,
+	isDecodableSize,
 	getMaxSplitSourceBytes,
 	getPlatformCapabilities,
 	isAutoSplitSupported,
@@ -221,5 +222,27 @@ describe('capability helper functions', () => {
 			MOBILE_MAX_CLEANUP_DECODED_SAMPLES,
 		);
 		expect(getMaxCleanupSeconds()).toBe(MOBILE_MAX_AUDIO_CLEANUP_SECONDS);
+	});
+
+	it('answers whether a file may be decoded whole, per platform', () => {
+		// One question for every path that expands a file to PCM - the
+		// waveform, cleanup, the splitter, the metadata read - so none of them
+		// can be the one that forgot to ask.
+		expect(isDecodableSize(WAVEFORM_MAX_DECODE_BYTES, 'desktop')).toBe(
+			true,
+		);
+		expect(isDecodableSize(WAVEFORM_MAX_DECODE_BYTES + 1, 'desktop')).toBe(
+			false,
+		);
+		expect(isDecodableSize(MOBILE_MAX_DECODE_BYTES, 'mobile')).toBe(true);
+		expect(isDecodableSize(MOBILE_MAX_DECODE_BYTES + 1, 'mobile')).toBe(
+			false,
+		);
+	});
+
+	it('follows the current platform when none is named', () => {
+		expect(isDecodableSize(MOBILE_MAX_DECODE_BYTES + 1)).toBe(true);
+		Platform.isMobile = true;
+		expect(isDecodableSize(MOBILE_MAX_DECODE_BYTES + 1)).toBe(false);
 	});
 });

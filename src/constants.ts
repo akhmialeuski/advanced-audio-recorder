@@ -679,6 +679,18 @@ export const MIN_LLM_MAX_TOKENS = 512;
 export const MAX_LLM_MAX_TOKENS = 32000;
 
 /**
+ * Granularity of the LLM output token budget: one token.
+ *
+ * A declared step is the value space of the setting, not a convenience for the
+ * stepper arrows: the settings framework offers exactly `min + n * step` and
+ * refuses everything between. A token budget is meaningful at every integer,
+ * and the numbers a user reaches for come from a model's own documentation
+ * (8000, 16000, 32000), so anything coarser would refuse most of them - a
+ * 512-token grid excluded the ceiling itself.
+ */
+export const LLM_MAX_TOKENS_STEP = 1;
+
+/**
  * Seed OpenAI chat model ids for the LLM model picker on first run; the list
  * is user-editable. The GPT-5.6 family (released July 2026) is the current
  * text-model catalog: `gpt-5.6-sol` is the flagship (alias `gpt-5.6`),

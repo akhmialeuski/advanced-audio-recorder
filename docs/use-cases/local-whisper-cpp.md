@@ -121,7 +121,7 @@ The settings tab lists the model names the plugin recognizes as guidance (the pl
 Open **Settings > Advanced Audio Recorder > Transcription** and turn on **Enable transcription**, then select the local engine.
 
 1. Toggle **Enable transcription** on.
-2. In the **Engine** dropdown, choose **Local whisper.cpp (desktop)**.
+2. In the **Transcription engine** dropdown, choose **Local whisper.cpp (desktop)**.
 3. Fill in the three local-engine fields:
 
 | Field                       | What to enter                                                                                             |

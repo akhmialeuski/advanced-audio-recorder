@@ -490,6 +490,24 @@ export interface AudioRecorderSettings {
 	cleanupLevelingMakeupDb: number;
 }
 
+/**
+ * Settings keys holding a primitive.
+ *
+ * These are the keys a value comparison answers for, and the ones a registry
+ * names when it says where a single field lives. A list or a Map compares by
+ * reference, so a key naming one cannot be asked whether it still holds what
+ * this version ships - the answer would be "no" for a config that never touched
+ * it. Saying so in the type keeps that question from being asked.
+ */
+export type PrimitiveSettingKey = {
+	[K in keyof AudioRecorderSettings]: AudioRecorderSettings[K] extends
+		| string
+		| number
+		| boolean
+		? K
+		: never;
+}[keyof AudioRecorderSettings];
+
 /** Transcription engine identifier, derived from {@link TRANSCRIPTION_PROVIDER_IDS}. */
 export type TranscriptionProviderId =
 	(typeof TRANSCRIPTION_PROVIDER_IDS)[keyof typeof TRANSCRIPTION_PROVIDER_IDS];

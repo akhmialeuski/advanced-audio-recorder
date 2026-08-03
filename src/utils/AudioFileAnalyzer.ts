@@ -13,6 +13,7 @@ import {
 	audioMimeForExtension,
 	getFormatDescriptor,
 } from '../audio/formatRegistry';
+import { isDecodableSize } from '../platform/capabilities';
 import { formatByteSize } from './formatBytes';
 import { formatTimecode } from './TimeUtils';
 import { autoClosing, disposableOf } from './disposables';
@@ -137,6 +138,11 @@ async function probeFileMetadata(
  * not finished, so a caller that only probed got nothing for exactly the files
  * the plugin produces. A caller that only wants the cheap answer, to reject an
  * oversized file before decoding it, still calls {@link probeAudioMetadata}.
+ *
+ * The fallback is bounded by the platform's decode ceiling, like every other
+ * path that expands a file to PCM. The recordings whose headers carry no
+ * duration are the long ones, so without the bound the cheapest read in the
+ * plugin would become the one that decodes multi-hour audio on the main thread.
  * @param data - The file's bytes
  * @param path - Vault path, for the warning log only
  * @returns The metadata, or null when neither path could read it
@@ -147,6 +153,12 @@ export async function readAudioMetadata(
 ): Promise<ProbedAudioMetadata | null> {
 	const probed = await probeAudioMetadata(data, path);
 	if (probed && probed.durationSeconds > 0) {
+		return probed;
+	}
+	if (!isDecodableSize(data.byteLength)) {
+		console.warn(
+			`${PLUGIN_LOG_PREFIX} ${path} is too large to decode on this device; its duration stays unread.`,
+		);
 		return probed;
 	}
 	// A probe answering zero for a recording that has a length has not

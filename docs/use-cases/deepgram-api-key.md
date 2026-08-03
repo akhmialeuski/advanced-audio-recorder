@@ -48,14 +48,14 @@ Treat the key like a password. Anyone who has it can spend your Deepgram credit.
 Open **Settings > Advanced Audio Recorder** and scroll to the **Transcription** section.
 
 1. Turn on **Enable transcription**. The engine fields appear below it.
-2. Set **Engine** to **Deepgram**.
+2. Set **Transcription engine** to **Deepgram**.
 3. In **Deepgram base URL**, leave the default `https://api.deepgram.com/v1`. Only change this if Deepgram tells you to use a different endpoint.
 4. Paste the key you copied into **Deepgram API key**.
 5. In **Deepgram model**, pick a model. The default is `nova-3`; other options are listed under [Choosing a model](#choosing-a-model).
 
 | Field                 | What to enter                              | Default                       |
 | --------------------- | ------------------------------------------ | ----------------------------- |
-| **Engine**            | `Deepgram`                                 | Whisper API                   |
+| **Transcription engine** | `Deepgram`                              | Whisper API                   |
 | **Deepgram base URL** | Leave as the default unless told otherwise | `https://api.deepgram.com/v1` |
 | **Deepgram API key**  | The key copied from the Deepgram Console   | (empty)                       |
 | **Deepgram model**    | `nova-3` (or a named variant)              | `nova-3`                      |

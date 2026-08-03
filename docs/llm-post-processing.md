@@ -110,7 +110,7 @@ These ship with the plugin and are used whenever the matching prompt field is em
 
 ## Providers and models
 
-LLM post-processing supports three providers, chosen from its own **Engine** dropdown. That row settles only which service does the work; where the service is reached and which models it serves are configured once on its page under **Engines**, so a key that also transcribes is entered in one place. The other two LLM jobs, auto chapters and the advanced two-pass agents, each carry an **Engine** row of their own beside their own switch, so a run can summarize with one service and title its chapters with another. Each provider has its own default model and its own user-editable model list.
+LLM post-processing supports three providers, chosen from its own **Post-processing engine** dropdown. That row settles only which service does the work; where the service is reached and which models it serves are configured once on its page under **Engines**, so a key that also transcribes is entered in one place. The other two LLM jobs, auto chapters and the advanced two-pass agents, each carry a **Chapters engine** and a **Context agents engine** row of their own beside their own switch, so a run can summarize with one service and title its chapters with another. Each provider has its own default model and its own user-editable model list.
 
 | Provider               | Dropdown label       | Default model      | Model catalogue                                                                      |
 | ---------------------- | -------------------- | ------------------ | ------------------------------------------------------------------------------------ |
@@ -175,7 +175,9 @@ Leave it at the default unless you are routing requests through an OpenAI-compat
 
 | Setting               | Range     | Default | Step |
 | --------------------- | --------- | ------- | ---- |
-| **Max output tokens** | 512-32000 | 4096    | 512  |
+| **Max output tokens** | 512-32000 | 4096    | 1    |
+
+Any whole number in that range is accepted, so the budgets a model's own documentation quotes - 8000, 16000, the 32000 ceiling - can be typed straight in.
 
 Why it matters: the model stops generating once it hits this budget. If the cap is too low for a long cleanup, the reply is **truncated** - you could lose the end of the transcript. Raise it for long recordings or detailed summaries; the default of `4096` suits short notes and most summaries. Bear in mind:
 
@@ -255,7 +257,7 @@ All controls live under **Settings > Advanced Audio Recorder > Transcription > L
 | **Cleanup prompt**             | System prompt for Clean up (language clause appended). Empty = built-in default. Shown when Task is Clean up.     | Built-in default |
 | **Summary prompt**             | System prompt for Summarize (language clause appended). Empty = built-in default. Shown when Task is Summarize.   | Built-in default |
 | **Custom instruction**         | System prompt sent verbatim, larger editor. Shown when Task is Custom.                                            | Built-in starter |
-| **Engine**                     | `OpenAI`, `Anthropic (Claude)`, or `Google Gemini`. Only the choice; the service is configured under **Engines**. | OpenAI           |
+| **Post-processing engine**     | `OpenAI`, `Anthropic (Claude)`, or `Google Gemini`. Only the choice; the service is configured under **Engines**. | OpenAI           |
 
 The rows that describe the service itself sit on its page under **Engines**, shared by every job that calls it:
 
@@ -264,7 +266,7 @@ The rows that describe the service itself sit on its page under **Engines**, sha
 | **Base URL**          | API endpoint for that provider.                                                | Provider default |
 | **API key**           | Entered once per provider, so a service that also transcribes reuses it.       | -                |
 | **Model**             | The provider's model picker, opening the saved ids and its catalogue link.     | See table above  |
-| **Max output tokens** | Upper bound on the reply length (truncation guard). Range 512-32000, step 512. | 4096             |
+| **Max output tokens** | Upper bound on the reply length (truncation guard). Any whole number from 512 to 32000. | 4096             |
 
 ---
 

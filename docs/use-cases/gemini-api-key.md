@@ -54,7 +54,7 @@ _Figure: The Transcription settings section after you pick Google Gemini as the 
 In Obsidian, open **Settings > Advanced Audio Recorder** and scroll to the **Transcription** section.
 
 1. Turn on **Enable transcription**. The engine fields appear below it.
-2. Set **Engine** to **Google Gemini**.
+2. Set **Transcription engine** to **Google Gemini**.
 3. In **Gemini base URL**, leave the default `https://generativelanguage.googleapis.com` unless you have a specific reason to change it.
 4. Paste your key into **Gemini API key**.
 5. Under **Gemini model**, pick `gemini-3.5-flash` (default) or `gemini-2.5-pro` for harder audio. Use the add button on the model list below to enter any other model id, the button on a row to drop one, or the **Gemini model list** link to browse the [model catalogue](https://ai.google.dev/gemini-api/docs/models).
@@ -69,7 +69,7 @@ The table below summarizes the fields you set:
 
 | Field                   | What to enter                                            |
 | ----------------------- | -------------------------------------------------------- |
-| **Engine**              | Google Gemini                                            |
+| **Transcription engine** | Google Gemini                                           |
 | **Gemini base URL**     | `https://generativelanguage.googleapis.com` (default)    |
 | **Gemini API key**      | The key you copied from AI Studio                        |
 | **Gemini model**        | `gemini-3.5-flash` (default) or `gemini-2.5-pro`         |
@@ -101,7 +101,7 @@ To enable it:
 1. In the **Transcription** section, open the **LLM post-processing** subsection.
 2. Turn on **Enable LLM post-processing**.
 3. Pick a **Task**: Clean up (default), Summarize, or Custom.
-4. Set its **Engine** to **Google Gemini**, which settles only which service does the work.
+4. Set its **Post-processing engine** to **Google Gemini**, which settles only which service does the work.
 5. Open **Engines** and then **Google Gemini** to confirm the **Base URL** reads `https://generativelanguage.googleapis.com`, pick a **Model** (default `gemini-3.5-flash`), and adjust **Max output tokens** if needed (default 4096, range 512-32000). One catalogue serves transcription and prompts alike, because Gemini answers both with the same family of ids.
 
 ![LLM post-processing subsection set to the Google Gemini provider with the shared-key notice](../images/settings-llm-gemini-provider.png)

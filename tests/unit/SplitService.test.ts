@@ -47,7 +47,7 @@ jest.mock('src/platform/capabilities', () => {
 	>('src/platform/capabilities');
 	return {
 		...actual,
-		getMaxDecodeBytes: jest.fn(actual.getMaxDecodeBytes),
+		isDecodableSize: jest.fn(actual.isDecodableSize),
 		getMaxSplitSourceBytes: jest.fn(actual.getMaxSplitSourceBytes),
 	};
 });
@@ -186,12 +186,14 @@ describe('SplitService', () => {
 		});
 
 		it('aborts the decode path when the file exceeds the platform decode ceiling', async () => {
-			// Decoding expands the file to full PCM in memory; the ceiling
-			// comes from the platform capability layer (far lower on mobile)
-			const { getMaxDecodeBytes } = jest.requireMock<{
-				getMaxDecodeBytes: jest.Mock;
+			// Decoding expands the file to full PCM in memory; whether a file
+			// may be decoded whole is one question the platform capability
+			// layer answers for every path that asks it (far stricter on
+			// mobile), and this is that path asking.
+			const { isDecodableSize } = jest.requireMock<{
+				isDecodableSize: jest.Mock;
 			}>('src/platform/capabilities');
-			getMaxDecodeBytes.mockReturnValueOnce(16);
+			isDecodableSize.mockReturnValueOnce(false);
 			const { decodeAudioBlob } = jest.requireMock<{
 				decodeAudioBlob: jest.Mock;
 			}>('src/audio/AudioFormatConverter');

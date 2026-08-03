@@ -25,13 +25,14 @@ import {
 	type AudioRecorderSettings,
 } from 'src/settings/settingsSchema';
 import type { ProfileSection } from 'src/settings/profileKinds';
-import type { ProviderModels } from 'src/providers/providers';
+import { ENGINE_IDS, type EngineId } from 'src/providers/providers';
 import {
 	CLEANUP_HIGHPASS_STEP_HZ,
 	MAX_CLEANUP_HIGHPASS_HZ,
 	MIN_CLEANUP_HIGHPASS_HZ,
 	MIN_SPLIT_CHUNK_MINUTES,
 	MAX_SPLIT_CHUNK_MINUTES,
+	MAX_LLM_MAX_TOKENS,
 	TRANSCRIPTION_PROVIDER_IDS,
 	WHISPER_API_MODELS_DOC_URL,
 } from 'src/constants';
@@ -42,6 +43,7 @@ import {
 	STACKED_TEXT_CLASS,
 	buildSettingsDefinitions,
 	collectDebouncedControlKeys,
+	numberControlRejection,
 	type DiagnosticsActions,
 	type ProfileCatalogue,
 	type SettingsDefinitionContext,
@@ -125,14 +127,14 @@ describe('settings definitions', () => {
 				host: HTMLElement,
 			) => void,
 			renderLocalWhisperFields: jest.fn(),
-			addModel: addModel as (models: ProviderModels) => void,
+			addModel: addModel as (engine: EngineId) => void,
 			removeModel: removeModel as (
-				models: ProviderModels,
-				index: number,
+				engine: EngineId,
+				model: string,
 			) => void,
 			selectModel: selectModel as (
-				models: ProviderModels,
-				id: string,
+				engine: EngineId,
+				model: string,
 			) => void,
 		},
 	});
@@ -392,7 +394,8 @@ describe('settings definitions', () => {
 		};
 
 		/** Whether the row that picks the engine is shown. */
-		const engineEntryVisible = (): boolean => isVisible('Engine');
+		const engineEntryVisible = (): boolean =>
+			isVisible('Transcription engine');
 
 		it('keeps every option behind the section switch', () => {
 			// A predicate, not a re-render: the framework hides and shows these
@@ -427,7 +430,11 @@ describe('settings definitions', () => {
 			// The list reads the same on every device; picking an engine this
 			// one cannot run is refused with the reason, rather than silently
 			// blocked or missing.
-			const control = rowOf(build(), TRANSCRIPTION, 'Engine').control;
+			const control = rowOf(
+				build(),
+				TRANSCRIPTION,
+				'Transcription engine',
+			).control;
 
 			expect(Object.keys(control?.options ?? {}).sort()).toEqual(
 				Object.values(TRANSCRIPTION_PROVIDER_IDS).sort(),
@@ -628,7 +635,7 @@ describe('settings definitions', () => {
 			modelList().items[1]?.action?.(createDiv(), 1);
 
 			expect(selectModel).toHaveBeenCalledWith(
-				expect.objectContaining({ modelKey: 'whisperApiModel' }),
+				ENGINE_IDS.WHISPER_API,
 				'whisper-large-v3',
 			);
 		});
@@ -655,12 +662,12 @@ describe('settings definitions', () => {
 			list.addItem?.action(createDiv());
 			list.onDelete?.(1);
 
-			expect(addModel).toHaveBeenCalledWith(
-				expect.objectContaining({ modelKey: 'whisperApiModel' }),
-			);
+			expect(addModel).toHaveBeenCalledWith(ENGINE_IDS.WHISPER_API);
+			// By id, not by position: the row was built from the catalogue as
+			// it stood, and the edit runs against it as it stands.
 			expect(removeModel).toHaveBeenCalledWith(
-				expect.objectContaining({ modelKey: 'whisperApiModel' }),
-				1,
+				ENGINE_IDS.WHISPER_API,
+				'whisper-large-v3',
 			);
 		});
 
@@ -866,11 +873,13 @@ describe('settings definitions', () => {
 		});
 
 		it('leaves each use holding only the choice', () => {
-			expect(childNamesOf('Transcription')).toContain('Engine');
+			expect(childNamesOf('Transcription')).toContain(
+				'Transcription engine',
+			);
 			// The engine is picked here; how much it may write is its own.
 			expect(childNamesOf('LLM post-processing').slice(0, 2)).toEqual([
 				'Enable LLM post-processing',
-				'Engine',
+				'Post-processing engine',
 			]);
 			expect(childNamesOf('LLM post-processing')).not.toContain(
 				'Max output tokens',
@@ -1364,6 +1373,149 @@ describe('settings definitions', () => {
 			const keys = collectDebouncedControlKeys(build());
 
 			expect(keys.has('debug')).toBe(false);
+		});
+	});
+
+	describe('numeric bounds', () => {
+		/** The bounds one number control declares, with the row it belongs to. */
+		interface NumericBounds {
+			name: string;
+			min: number | undefined;
+			max: number | undefined;
+			step: number | undefined;
+		}
+
+		/** Every number control in the tree, with the row that declares it. */
+		const numberControls = (): NumericBounds[] => {
+			const found: NumericBounds[] = [];
+			const walk = (
+				entries: ReadonlyArray<RowDefinition | GroupDefinition>,
+			): void => {
+				for (const entry of entries) {
+					if ('type' in entry) {
+						walk(entry.items);
+						continue;
+					}
+					if (entry.control?.type === 'number') {
+						found.push({
+							name: entry.name,
+							min: entry.control.min as number | undefined,
+							max: entry.control.max as number | undefined,
+							step: entry.control.step as number | undefined,
+						});
+					}
+				}
+			};
+			walk(build() as ReadonlyArray<RowDefinition | GroupDefinition>);
+			return found;
+		};
+
+		it('declares every bound on the grid its own step describes', () => {
+			// A number control's step is its value space, not a convenience for
+			// the stepper arrows: the framework offers exactly `min + n * step`
+			// and refuses everything between. A ceiling off that grid is a value
+			// the field shows, the arrows cannot reach, and typing will not
+			// save - which is what a 512-token grid ending at 32000 was.
+			//
+			// Asked through the rule the renderers apply, so a grid of tenths
+			// is judged the way it is enforced rather than by an exact modulo
+			// that binary arithmetic fails for values the field does accept.
+			const unreachable = numberControls().filter((control) =>
+				[control.min, control.max].some(
+					(bound) =>
+						bound !== undefined &&
+						numberControlRejection(control, bound) !== undefined,
+				),
+			);
+
+			expect(unreachable).toEqual([]);
+		});
+
+		it('finds every numeric row, so the invariant covers the tree', () => {
+			expect(numberControls().length).toBeGreaterThan(5);
+		});
+
+		it('accepts the ceiling of the answer budget an engine may write', () => {
+			// The reported defect: the row showed 32000 and refused to store it.
+			const row = rowIn(
+				pageOf(build(), 'Anthropic (Claude)'),
+				'Max output tokens',
+			);
+
+			expect(
+				numberControlRejection(
+					row.control as {
+						min?: number;
+						max?: number;
+						step?: number;
+					},
+					MAX_LLM_MAX_TOKENS,
+				),
+			).toBeUndefined();
+		});
+
+		it('accepts the round numbers a model catalogue quotes', () => {
+			const row = rowIn(pageOf(build(), 'OpenAI'), 'Max output tokens')
+				.control as { min?: number; max?: number; step?: number };
+
+			for (const tokens of [4000, 8000, 16000, 32000]) {
+				expect(numberControlRejection(row, tokens)).toBeUndefined();
+			}
+		});
+	});
+
+	describe('numberControlRejection', () => {
+		it('accepts a value inside the bounds and on the grid', () => {
+			expect(
+				numberControlRejection({ min: 1, max: 60, step: 1 }, 20),
+			).toBeUndefined();
+		});
+
+		it('refuses a value below the floor or above the ceiling', () => {
+			expect(
+				numberControlRejection({ min: 1, max: 60, step: 1 }, 0),
+			).toBeDefined();
+			expect(
+				numberControlRejection({ min: 1, max: 60, step: 1 }, 61),
+			).toBeDefined();
+		});
+
+		it('refuses a value between two grid points', () => {
+			expect(
+				numberControlRejection({ min: 20, max: 300, step: 5 }, 137),
+			).toBeDefined();
+			expect(
+				numberControlRejection({ min: 20, max: 300, step: 5 }, 135),
+			).toBeUndefined();
+		});
+
+		it('accepts a grid point binary arithmetic cannot land on exactly', () => {
+			// 0.5 + 7 * 0.05 is not 0.85 in floating point, so the question is
+			// asked of the nearest grid point rather than of the quotient.
+			expect(
+				numberControlRejection({ min: 0.5, max: 1, step: 0.05 }, 0.85),
+			).toBeUndefined();
+			expect(
+				numberControlRejection({ min: 0.5, max: 1, step: 0.05 }, 0.87),
+			).toBeDefined();
+		});
+
+		it('constrains nothing where no grid is declared', () => {
+			expect(
+				numberControlRejection({ min: 1, max: 60 }, 20.5),
+			).toBeUndefined();
+			expect(
+				numberControlRejection({ min: 1, max: 60, step: 'any' }, 20.5),
+			).toBeUndefined();
+		});
+
+		it('refuses what is not a number at all', () => {
+			expect(
+				numberControlRejection(
+					{ min: 1, max: 60, step: 1 },
+					Number.NaN,
+				),
+			).toBeDefined();
 		});
 	});
 });

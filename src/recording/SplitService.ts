@@ -14,7 +14,7 @@ import {
 } from '../audio/AudioEncoder';
 import { FORMAT_WAV, PLUGIN_LOG_PREFIX } from '../constants';
 import {
-	getMaxDecodeBytes,
+	isDecodableSize,
 	getMaxSplitSourceBytes,
 } from '../platform/capabilities';
 import { decodeAudioBlob } from '../audio/AudioFormatConverter';
@@ -288,7 +288,7 @@ export class SplitService {
 		// Platform-dependent decode ceiling (far lower on mobile): the
 		// decode path expands the file to full PCM in memory. The lossless
 		// WAV byte path above never decodes, so it is not capped here.
-		if (sourceBytes.byteLength > getMaxDecodeBytes()) {
+		if (!isDecodableSize(sourceBytes.byteLength)) {
 			new Notice(
 				'File is too large to split on this device. Convert or split it on desktop instead.',
 			);

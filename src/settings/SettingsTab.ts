@@ -68,7 +68,6 @@ import {
 	renderLocalWhisperSettings,
 	renderProviderKeyField,
 } from './sections/transcriptionEngineSection';
-import { addModelToList, removeModelFromList } from './modelList';
 import {
 	addProfile,
 	effectiveProfileId,
@@ -82,24 +81,19 @@ import {
 import { PROFILE_KINDS, type ProfileKind } from './profileKinds';
 import { ProfileNameModal } from '../ui/ProfileNameModal';
 import { closeSettingsPage } from '../obsidian/settingsNavigation';
-import { ENGINES, type ProviderModels } from '../providers/providers';
+import { ENGINES, type EngineId } from '../providers/providers';
+import {
+	applyEngineSettingsField,
+	engineFieldOf,
+	engineSettingsStore,
+	type EngineSettingsStore,
+} from '../providers/engineSettings';
 import { ModelIdModal } from '../ui/ModelIdModal';
 import type { SettingsSectionContext } from './settingControls';
 import {
 	isAutoSplitSupported,
 	isMultiTrackCaptureSupported,
 } from '../platform/capabilities';
-
-/**
- * The half of an engine or vendor descriptor a saved model list is edited
- * through: both name the same four operations over their own settings keys.
- */
-interface ModelListAccess {
-	models(settings: AudioRecorderSettings): string[];
-	setModels(settings: AudioRecorderSettings, ids: string[]): void;
-	model(settings: AudioRecorderSettings): string;
-	setModel(settings: AudioRecorderSettings, id: string): void;
-}
 
 /** Debounce delay for saving text settings, in milliseconds. */
 const TEXT_SETTING_SAVE_DEBOUNCE_MS = 500;
@@ -113,21 +107,6 @@ const TEST_RECORDING_DURATION_MS = 5000;
 export interface AudioRecorderPluginInterface extends Plugin {
 	settings: AudioRecorderSettings;
 	saveSettings(): Promise<void>;
-}
-
-/**
- * A catalogue's fields, as the list edits read and write them. The page hands
- * back the provider capability it belongs to, so the tab edits any catalogue
- * through one path instead of resolving "the selected engine" first.
- * @param models - The catalogue's own settings fields
- */
-function modelListAccess(models: ProviderModels): ModelListAccess {
-	return {
-		models: models.models,
-		setModels: models.setModels,
-		model: models.model,
-		setModel: models.setModel,
-	};
 }
 
 const EMPTY_DEVICE_SNAPSHOT: AudioInputDeviceSnapshot = {
@@ -337,17 +316,20 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 						renderLocalWhisperSettings,
 					);
 				},
-				// One mechanism for every catalogue: the page hands back the
-				// fields it belongs to, so the tab needs no idea which provider
-				// or which capability asked.
-				addModel: (models): void => {
-					this.addModelTo(modelListAccess(models));
+				// One mechanism for every catalogue: the page names the engine
+				// it belongs to and that engine's own store performs the edit,
+				// so the tab needs no idea which provider or which capability
+				// asked, and never writes half of one.
+				addModel: (engine): void => {
+					new ModelIdModal(this.app, (id) => {
+						void this.engineSettings(engine).addModel(id);
+					}).open();
 				},
-				removeModel: (models, index): void => {
-					this.removeModelFrom(modelListAccess(models), index);
+				removeModel: (engine, model): void => {
+					void this.engineSettings(engine).removeModel(model);
 				},
-				selectModel: (models, id): void => {
-					this.selectModelIn(modelListAccess(models), id);
+				selectModel: (engine, model): void => {
+					void this.engineSettings(engine).selectModel(model);
 				},
 			},
 			diagnostics: {
@@ -458,9 +440,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			}
 			// Every entry of the catalogue says whether it is the one in use,
 			// so the tree is read again rather than re-evaluated in place.
-			return this.plugin.saveSettings().then(() => {
-				this.rerender();
-			});
+			return this.commit();
 		}
 		const track = parseTrackControlKey(key);
 		if (track) {
@@ -472,7 +452,17 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			string,
 			unknown
 		>;
-		settings[key] = controlValue.write(key, value, settings[key]);
+		const stored = controlValue.write(key, value, settings[key]);
+		// A field an engine owns is written by that engine rather than into the
+		// settings object behind its back, so a row on an engine's page and an
+		// edit from a dialog go through the same writer and the same rules -
+		// among them that a catalogue always offers the id it names.
+		const engineField = engineFieldOf(key);
+		if (engineField) {
+			applyEngineSettingsField(this.plugin.settings, engineField, stored);
+		} else {
+			settings[key] = stored;
+		}
 		if (this.debouncedControlKeys.has(key)) {
 			// A text field changes on every keystroke. The value is live in
 			// memory either way; only the write to disk waits.
@@ -719,9 +709,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 						created[0]?.id ?? '',
 					);
 				}
-				void this.plugin.saveSettings().then(() => {
-					this.rerender();
-				});
+				void this.commit();
 			},
 			rename: (id): void => {
 				const profile = findProfile(list.get(this.plugin.settings), id);
@@ -735,8 +723,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					rejection: (name) => rejection(id, name),
 					onSubmit: (name) => {
 						profile.name = name;
-						void this.plugin.saveSettings().then(() => {
-							this.rerender();
+						void this.commit().then(() => {
 							// The page is addressed by the name it just lost,
 							// so it cannot stay open on it.
 							closeSettingsPage(this.app);
@@ -754,8 +741,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					this.plugin.settings,
 					profile.id,
 				);
-				void this.plugin.saveSettings().then(() => {
-					this.rerender();
+				void this.commit().then(() => {
 					// Deleted from its own page, which the framework addresses
 					// by a name that resolves to nothing now.
 					closeSettingsPage(this.app);
@@ -765,59 +751,30 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * Makes a saved id the one in use, which is what tapping a row of a model
-	 * catalogue does now that the catalogue is the picker. The entry that opens
-	 * it says which id is in use, so the tree is read again rather than
-	 * re-evaluated in place.
-	 * @param access - Reads and writes the list and its selection
-	 * @param id - The id to transcribe (or answer) with from now on
+	 * One engine's own settings store, bound to this tab's way of persisting: a
+	 * change is written by the engine that owns the fields, saved, and the tree
+	 * read again, because an engine's entry says what it is configured with.
+	 * @param id - The engine being configured
 	 */
-	private selectModelIn(access: ModelListAccess, id: string): void {
-		access.setModel(this.plugin.settings, id);
-		void this.plugin.saveSettings().then(() => {
-			this.rerender();
-		});
+	private engineSettings(id: EngineId): EngineSettingsStore {
+		return engineSettingsStore(
+			id,
+			() => this.plugin.settings,
+			() => this.commit(),
+		);
 	}
 
 	/**
-	 * Adds a model id to a saved list and selects it, which is what a list's add
-	 * affordance does for both the engine and the LLM catalogues.
-	 * @param access - Reads and writes the list and its selection
+	 * Persists a change and reads the definition tree again.
+	 *
+	 * What every edit that moves what other rows *show* needs, as opposed to
+	 * whether they show: a model put to work, a profile added, renamed, or
+	 * removed, a recording format that rewrites the summary beneath it. The
+	 * rows are the same rows holding something else, which no predicate
+	 * expresses, so they are read again rather than re-evaluated in place.
 	 */
-	private addModelTo(access: ModelListAccess): void {
-		new ModelIdModal(this.app, (id) => {
-			const settings = this.plugin.settings;
-			access.setModels(
-				settings,
-				addModelToList(access.models(settings), id),
-			);
-			access.setModel(settings, id);
-			void this.plugin.saveSettings().then(() => {
-				this.rerender();
-			});
-		}).open();
-	}
-
-	/**
-	 * Removes the model id at a position in a saved list. The list is the
-	 * catalogue and the selection points into it, so dropping the selected id
-	 * moves the selection rather than leaving it pointing at nothing.
-	 * @param access - Reads and writes the list and its selection
-	 * @param index - Position of the id to remove
-	 */
-	private removeModelFrom(access: ModelListAccess, index: number): void {
-		const settings = this.plugin.settings;
-		const models = access.models(settings);
-		const removed = models[index];
-		if (removed === undefined) {
-			return;
-		}
-		const next = removeModelFromList(models, removed);
-		access.setModels(settings, next);
-		if (access.model(settings) === removed) {
-			access.setModel(settings, next[0] ?? '');
-		}
-		void this.plugin.saveSettings().then(() => {
+	private commit(): Promise<void> {
+		return this.plugin.saveSettings().then(() => {
 			this.rerender();
 		});
 	}
@@ -887,10 +844,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			dropdown.setValue(stored);
 			dropdown.onChange(async (value) => {
 				this.plugin.settings.recordingFormat = value;
-				await this.plugin.saveSettings();
 				// The summary row reads this, and the format list may need a
 				// fallback note, so the tree is rebuilt rather than patched.
-				this.rerender();
+				await this.commit();
 			});
 			void this.applyFormatAvailability(dropdown, setting.descEl);
 		});

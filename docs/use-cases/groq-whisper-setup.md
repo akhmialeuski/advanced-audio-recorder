@@ -63,7 +63,7 @@ The free tier is active immediately; you do not need to add billing to start tra
 
 1. Open **Settings > Advanced Audio Recorder > Transcription**.
 2. Make sure **Enable transcription** is on.
-3. Set **Engine** to **Whisper API (OpenAI-compatible)**.
+3. Set **Transcription engine** to **Whisper API (OpenAI-compatible)**.
 4. In **Base URL**, replace the default OpenAI URL with Groq's:
     - `https://api.groq.com/openai/v1`
 5. Paste your Groq key (the `gsk_…` value) into **Whisper API key**.
@@ -73,7 +73,7 @@ The exact field labels, order, and conditional rows are described in the [Transc
 
 | Field               | Value to enter                                 | Notes                                                                            |
 | ------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------- |
-| **Engine**          | `Whisper API (OpenAI-compatible)`              | Same engine used for OpenAI; only the three values below differ.                 |
+| **Transcription engine** | `Whisper API (OpenAI-compatible)`         | Same engine used for OpenAI; only the three values below differ.                 |
 | **Base URL**        | `https://api.groq.com/openai/v1`               | Groq's OpenAI-compatible endpoint. Note the `/openai/v1` path.                   |
 | **Whisper API key** | your `gsk_…` key                               | Created in [Step 2](#step-2-create-an-api-key).                                  |
 | **Model**           | `whisper-large-v3` or `whisper-large-v3-turbo` | Pick from the list or add a custom id - see [Step 4](#step-4-pick-a-groq-model). |

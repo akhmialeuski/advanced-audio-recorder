@@ -195,6 +195,22 @@ export function getMaxDecodeBytes(kind?: PlatformKind): number {
 	return getPlatformCapabilities(kind).maxDecodeBytes;
 }
 
+/**
+ * Whether a file of this size may be decoded whole on this platform.
+ *
+ * Decoding expands a file to full PCM in memory, so every path that does it
+ * asks this first: the waveform, cleanup, the splitter, and the metadata read
+ * that falls back to a decode when the container headers carry no duration.
+ * The ceiling is far lower on mobile, whose WebView is killed by the OS rather
+ * than given a catchable error, which is why the question is asked before the
+ * allocation rather than answered by it.
+ * @param bytes - Encoded size of the file
+ * @param kind - Platform to answer for (defaults to the current one)
+ */
+export function isDecodableSize(bytes: number, kind?: PlatformKind): boolean {
+	return bytes <= getMaxDecodeBytes(kind);
+}
+
 /** Largest source file the splitter reads into memory on this platform. */
 export function getMaxSplitSourceBytes(kind?: PlatformKind): number {
 	return getPlatformCapabilities(kind).maxSplitSourceBytes;

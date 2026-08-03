@@ -11,7 +11,7 @@ import { CLEANUP_SEGMENT_SECONDS, CLEANUP_WARMUP_SECONDS } from '../constants';
 import {
 	getMaxCleanupDecodedSamples,
 	getMaxCleanupSeconds,
-	getMaxDecodeBytes,
+	isDecodableSize,
 } from '../platform/capabilities';
 import { probeAudioMetadata } from '../utils/AudioFileAnalyzer';
 import { createWavFileBuffer, WAV_HEADER_SIZE } from '../audio/WavEncoder';
@@ -92,7 +92,7 @@ export class AudioProcessingService {
 	async process(file: TFile, config: AudioDspConfig): Promise<string> {
 		// Platform-dependent ceiling: mobile WebViews get a far smaller
 		// memory budget than the desktop renderer.
-		if (file.stat.size > getMaxDecodeBytes()) {
+		if (!isDecodableSize(file.stat.size)) {
 			throw new Error(
 				'Audio file is too large to clean up here. Split it into parts first.',
 			);

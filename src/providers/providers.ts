@@ -31,6 +31,7 @@ import {
 import type {
 	AudioRecorderSettings,
 	LlmProviderId,
+	PrimitiveSettingKey,
 	TranscriptionProviderId,
 } from '../settings/settingsSchema';
 
@@ -68,8 +69,8 @@ const STORED_LOCALLY_DESC =
  */
 export interface ProviderConnection {
 	/** Settings keys the fields are stored under, for declaring the controls. */
-	readonly baseUrlKey: keyof AudioRecorderSettings;
-	readonly apiKeyKey: keyof AudioRecorderSettings;
+	readonly baseUrlKey: PrimitiveSettingKey;
+	readonly apiKeyKey: PrimitiveSettingKey;
 	readonly baseUrl: (settings: AudioRecorderSettings) => string;
 	readonly setBaseUrl: (settings: AudioRecorderSettings, url: string) => void;
 	readonly apiKey: (settings: AudioRecorderSettings) => string;
@@ -93,7 +94,7 @@ export interface ProviderConnection {
  */
 export interface ProviderModels {
 	/** Settings keys the choice and the list are stored under. */
-	readonly modelKey: keyof AudioRecorderSettings;
+	readonly modelKey: PrimitiveSettingKey;
 	readonly modelsKey: keyof AudioRecorderSettings;
 	readonly model: (settings: AudioRecorderSettings) => string;
 	readonly setModel: (settings: AudioRecorderSettings, id: string) => void;
@@ -142,18 +143,22 @@ export interface EngineDescriptor {
 	 * Named per engine rather than assumed, so a second engine with a limit
 	 * cannot end up sharing the first one's field by accident.
 	 */
-	readonly uploadChunkKey: keyof AudioRecorderSettings | null;
+	readonly uploadChunk: EngineNumericField | null;
 	/**
 	 * Where the longest answer this engine may write is stored, or null for one
 	 * that writes nothing. A ceiling belongs to the engine that honours it, not
 	 * to a job that calls it.
 	 */
-	readonly maxTokens: EngineMaxTokens | null;
+	readonly maxTokens: EngineNumericField | null;
 }
 
-/** Where an engine's answer ceiling is stored. */
-export interface EngineMaxTokens {
-	readonly key: keyof AudioRecorderSettings;
+/**
+ * Where one number an engine owns is stored, and how it is read and written.
+ * The answer ceiling and the upload chunk size are the same shape, so they are
+ * declared as one: a reader that can move either can move both.
+ */
+export interface EngineNumericField {
+	readonly key: PrimitiveSettingKey;
 	readonly get: (settings: AudioRecorderSettings) => number;
 	readonly set: (settings: AudioRecorderSettings, value: number) => void;
 }
@@ -229,7 +234,11 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 		// The API refuses a request over 25 MB, so a longer recording is split
 		// into chunks under that ceiling and stitched back onto one timeline.
 		uploadLimitMb: 25,
-		uploadChunkKey: 'transcriptionChunkMb',
+		uploadChunk: {
+			key: 'transcriptionChunkMb',
+			get: (settings) => settings.transcriptionChunkMb,
+			set: (settings, value) => (settings.transcriptionChunkMb = value),
+		},
 		models: {
 			modelKey: 'whisperApiModel',
 			modelsKey: 'whisperApiModels',
@@ -253,7 +262,7 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 		transcriptionId: null,
 		llmId: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
 		uploadLimitMb: 0,
-		uploadChunkKey: null,
+		uploadChunk: null,
 		models: {
 			modelKey: 'llmOpenAiModel',
 			modelsKey: 'llmOpenAiModels',
@@ -281,7 +290,7 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 		transcriptionId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 		llmId: null,
 		uploadLimitMb: 0,
-		uploadChunkKey: null,
+		uploadChunk: null,
 		models: {
 			modelKey: 'deepgramModel',
 			modelsKey: 'deepgramModels',
@@ -307,7 +316,7 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 		transcriptionId: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
 		llmId: LLM_PROVIDER_IDS.GEMINI,
 		uploadLimitMb: 0,
-		uploadChunkKey: null,
+		uploadChunk: null,
 		models: {
 			modelKey: 'geminiModel',
 			modelsKey: 'geminiModels',
@@ -335,7 +344,7 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 		transcriptionId: null,
 		llmId: LLM_PROVIDER_IDS.ANTHROPIC,
 		uploadLimitMb: 0,
-		uploadChunkKey: null,
+		uploadChunk: null,
 		models: {
 			modelKey: 'llmAnthropicModel',
 			modelsKey: 'llmAnthropicModels',
@@ -366,7 +375,7 @@ export const ENGINES: Record<EngineId, EngineDescriptor> = {
 		transcriptionId: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
 		llmId: null,
 		uploadLimitMb: 0,
-		uploadChunkKey: null,
+		uploadChunk: null,
 		maxTokens: null,
 	},
 };
@@ -385,6 +394,23 @@ export function engineOfVendor(
 	return ENGINE_ORDER.map((id) => ENGINES[id]).find(
 		(engine) => engine.llmId === vendorId,
 	);
+}
+
+/**
+ * The engine an LLM vendor id names.
+ *
+ * Every vendor is the prompt-answering side of an engine, which is what lets a
+ * job's model be moved without the caller knowing which catalogue holds it.
+ * @param vendorId - Id stored for the job being configured
+ * @returns That engine
+ * @throws Error when no engine claims the id
+ */
+export function vendorEngine(vendorId: LlmProviderId): EngineDescriptor {
+	const engine = engineOfVendor(vendorId);
+	if (!engine) {
+		throw new Error(`No engine declared for LLM vendor "${vendorId}"`);
+	}
+	return engine;
 }
 
 /**

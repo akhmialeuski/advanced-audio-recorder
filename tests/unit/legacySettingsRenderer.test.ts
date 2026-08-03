@@ -8,6 +8,11 @@
 import type { SettingDefinitionItem } from 'obsidian';
 import { at } from '../helpers/assertions';
 import {
+	LLM_MAX_TOKENS_STEP,
+	MAX_LLM_MAX_TOKENS,
+	MIN_LLM_MAX_TOKENS,
+} from 'src/constants';
+import {
 	LEGACY_ACTION_ROW_CLASS,
 	LEGACY_STACKED_CLASS,
 	LegacySettingsRenderer,
@@ -247,6 +252,71 @@ describe('LegacySettingsRenderer', () => {
 			input.value = '20';
 			input.dispatchEvent(new Event('change'));
 			expect(setControlValue).toHaveBeenCalledWith('splitMinutes', 20);
+		});
+
+		it('accepts and refuses exactly what the declared grid does', () => {
+			// The tree is one description of the settings, so the Obsidian
+			// without a declarative API has to accept the same values the one
+			// with it accepts: the bounds and the grid between them.
+			values['cutoffHz'] = 100;
+			renderer.render(containerEl, [
+				{
+					name: 'High-pass cutoff',
+					control: {
+						type: 'number',
+						key: 'cutoffHz',
+						min: 20,
+						max: 300,
+						step: 5,
+					},
+				},
+			]);
+
+			const input = rowFor('High-pass cutoff').querySelector('input');
+			if (!input) {
+				throw new Error('No number input rendered');
+			}
+			input.value = '137';
+			input.dispatchEvent(new Event('change'));
+			expect(setControlValue).not.toHaveBeenCalled();
+			expect(input.classList.contains('aar-input-invalid')).toBe(true);
+
+			input.value = '135';
+			input.dispatchEvent(new Event('change'));
+
+			expect(setControlValue).toHaveBeenCalledWith('cutoffHz', 135);
+			expect(input.classList.contains('aar-input-invalid')).toBe(false);
+		});
+
+		it('stores the ceiling of a bound the declaration says is reachable', () => {
+			// The reported defect, on the renderer that never rejected it: a
+			// ceiling has to be enterable on both, or the two disagree about
+			// what the same tree means.
+			values['maxTokens'] = 4096;
+			renderer.render(containerEl, [
+				{
+					name: 'Max output tokens',
+					control: {
+						type: 'number',
+						key: 'maxTokens',
+						min: MIN_LLM_MAX_TOKENS,
+						max: MAX_LLM_MAX_TOKENS,
+						step: LLM_MAX_TOKENS_STEP,
+					},
+				},
+			]);
+
+			const input = rowFor('Max output tokens').querySelector('input');
+			if (!input) {
+				throw new Error('No number input rendered');
+			}
+			input.value = String(MAX_LLM_MAX_TOKENS);
+			input.dispatchEvent(new Event('change'));
+
+			expect(setControlValue).toHaveBeenCalledWith(
+				'maxTokens',
+				MAX_LLM_MAX_TOKENS,
+			);
 		});
 	});
 

@@ -14,7 +14,7 @@ import {
 	PLAYER_WAVEFORM_REDRAW_RETRIES,
 	PLAYER_WAVEFORM_PREFETCH_MARGIN_PX,
 } from '../constants';
-import { getMaxDecodeBytes } from '../platform/capabilities';
+import { isDecodableSize } from '../platform/capabilities';
 import {
 	computeWaveformPeaksProgressive,
 	waveformCacheKey,
@@ -60,7 +60,7 @@ export class WaveformController {
 	 * @param showWaveform - The waveform window toggle from settings
 	 */
 	shouldRender(showWaveform: boolean): boolean {
-		return showWaveform && this.file.stat.size <= getMaxDecodeBytes();
+		return showWaveform && isDecodableSize(this.file.stat.size);
 	}
 
 	/**

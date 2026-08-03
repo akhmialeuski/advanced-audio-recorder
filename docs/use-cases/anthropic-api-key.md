@@ -71,7 +71,7 @@ The API requires prepaid credit or a billing method before it will answer reques
 1. Open **Settings > Advanced Audio Recorder** and scroll to the **Transcription** section.
 2. Turn on **Enable transcription** if it is off, and confirm an engine is configured.
 3. Scroll to the **LLM post-processing** subsection and turn on **Enable LLM post-processing**.
-4. Set its **Engine** to **Anthropic (Claude)**.
+4. Set its **Post-processing engine** to **Anthropic (Claude)**.
 5. Open **Engines** and then the **Anthropic (Claude)** page, where everything about the service itself lives.
 6. Confirm the **Base URL** reads `https://api.anthropic.com/v1`; only change it if you front Anthropic with a proxy, and the value you type stays put whichever job later calls the engine.
 7. Paste your key into the **Anthropic API key** field. This is Anthropic's **own** field - it is not shared with any transcription key.
@@ -126,7 +126,7 @@ For a deeper explanation of the tasks and prompts, see [LLM post-processing](../
 | ------------------------------ | --------------------------------------------------------------------------------------- |
 | **Enable transcription**       | On (post-processing runs inside transcription)                                          |
 | **Enable LLM post-processing** | On                                                                                      |
-| **Engine** (post-processing)   | `Anthropic (Claude)`                                                                    |
+| **Post-processing engine**     | `Anthropic (Claude)`                                                                    |
 | **Base URL** (Engines page)    | `https://api.anthropic.com/v1` (shipped default)                                        |
 | **Anthropic API key**          | Your `sk-ant-…` key (Anthropic's own field; not shared)                                 |
 | **Model**                      | `claude-opus-4-8` (default) / `claude-sonnet-5` / `claude-haiku-4-5` / `claude-fable-5` |

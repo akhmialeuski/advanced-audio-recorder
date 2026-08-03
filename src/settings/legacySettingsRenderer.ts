@@ -30,6 +30,7 @@ import type {
 	SettingGroup,
 } from 'obsidian';
 import { NUMBER_INPUT_CLASS } from './settingControls';
+import { numberControlRejection } from './settingsDefinitions';
 
 /** Class applied to a row whose whole surface runs an action when clicked. */
 export const LEGACY_ACTION_ROW_CLASS = 'aar-action-row';
@@ -660,13 +661,13 @@ export class LegacySettingsRenderer {
 					: (control.defaultValue ?? 0);
 			text.setValue(String(current));
 			input.addEventListener('change', () => {
+				// The value space is the control's own declaration, bounds and
+				// grid alike, so this Obsidian accepts exactly what 1.13
+				// accepts instead of storing what the newer one would refuse.
 				const parsed = Number(input.value);
-				const outOfRange =
-					Number.isNaN(parsed) ||
-					(control.min !== undefined && parsed < control.min) ||
-					(control.max !== undefined && parsed > control.max);
-				input.toggleClass(INVALID_INPUT_CLASS, outOfRange);
-				if (outOfRange) {
+				const rejection = numberControlRejection(control, parsed);
+				input.toggleClass(INVALID_INPUT_CLASS, rejection !== undefined);
+				if (rejection !== undefined) {
 					return;
 				}
 				write(parsed);

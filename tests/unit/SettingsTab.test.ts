@@ -24,7 +24,7 @@ import {
 	DEFAULT_SETTINGS,
 	type AudioRecorderSettings,
 } from 'src/settings/settingsSchema';
-import { DOCS_URL } from 'src/constants';
+import { DOCS_URL, MAX_LLM_MAX_TOKENS } from 'src/constants';
 import { PROFILE_KINDS } from 'src/settings/profileKinds';
 import type { AudioRecorderPluginInterface } from 'src/settings/SettingsTab';
 
@@ -254,6 +254,40 @@ describe('AudioRecorderSettingTab', () => {
 				expect(tab.getControlValue(key)).toBe(produced);
 			},
 		);
+
+		it.each([
+			['llmOpenAiMaxTokens'],
+			['llmAnthropicMaxTokens'],
+			['geminiMaxTokens'],
+		])(
+			'stores the ceiling %s declares, which is what the row offers',
+			async (key) => {
+				// The reported defect: the row showed the ceiling and would not
+				// keep it. The value space a number control declares has to
+				// contain its own bounds, or the setting cannot be set to them.
+				await tab.setControlValue(key, MAX_LLM_MAX_TOKENS);
+
+				expect(mockSettings[key as keyof AudioRecorderSettings]).toBe(
+					MAX_LLM_MAX_TOKENS,
+				);
+				expect(saveSettingsMock).toHaveBeenCalledTimes(1);
+			},
+		);
+
+		it('writes an engine-owned field through the engine that owns it', async () => {
+			// A catalogue and the id picked out of it are one thing, so a write
+			// to either comes out consistent: replacing the list around a live
+			// selection leaves that selection something the list offers.
+			mockSettings.whisperApiModel = 'whisper-large-v3';
+
+			await tab.setControlValue('whisperApiModels', ['whisper-1']);
+
+			expect(mockSettings.whisperApiModels).toEqual([
+				'whisper-large-v3',
+				'whisper-1',
+			]);
+			expect(mockSettings.whisperApiModel).toBe('whisper-large-v3');
+		});
 
 		it('keeps the stored number when a numeric control produces nothing', async () => {
 			await tab.setControlValue('bitrate', '');
@@ -1125,6 +1159,30 @@ describe('AudioRecorderSettingTab', () => {
 
 			expect(mockSettings.llmOpenAiModels).toEqual(['gpt-4o-mini']);
 			expect(mockSettings.llmOpenAiModel).toBe('gpt-4o-mini');
+		});
+
+		it('deletes the id the row stands for, not the one at its position', async () => {
+			// The rows were built from the catalogue as it stood; the edit runs
+			// against it as it stands. Between the two the list can move - a
+			// second window, a config reloaded from disk, a selection
+			// reconciled into the list - and a position then names a different
+			// id than the row the user clicked.
+			mockSettings.whisperApiModels = ['whisper-1', 'whisper-large-v3'];
+			mockSettings.whisperApiModel = 'whisper-1';
+			const onDelete = listOf('Whisper API (OpenAI-compatible)').onDelete;
+			mockSettings.whisperApiModels = [
+				'whisper-large-v3-turbo',
+				'whisper-1',
+				'whisper-large-v3',
+			];
+
+			onDelete?.(1);
+			await flushAsync();
+
+			expect(mockSettings.whisperApiModels).toEqual([
+				'whisper-large-v3-turbo',
+				'whisper-1',
+			]);
 		});
 
 		it('adds the first dictionary profile and adopts it', async () => {

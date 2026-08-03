@@ -22,6 +22,9 @@ jest.mock('obsidian', () => ({
 		},
 	})),
 	Notice: jest.fn(),
+	// The decode fallback is bounded by the platform's decode ceiling, which
+	// is read from here.
+	Platform: { isMobileApp: false, isMobile: false },
 	TFile: jest.fn().mockImplementation(() => ({
 		extension: 'webm',
 		name: 'test.webm',
@@ -49,6 +52,13 @@ jest.mock('mediabunny', () => ({
 		dispose: mockDispose,
 	})),
 }));
+
+jest.mock('src/platform/capabilities', () => {
+	const actual = jest.requireActual<
+		typeof import('src/platform/capabilities')
+	>('src/platform/capabilities');
+	return { ...actual, isDecodableSize: jest.fn(() => true) };
+});
 
 // Setup mock AudioContext
 const mockDecodeAudioData = jest.fn();
@@ -387,6 +397,38 @@ describe('readAudioMetadata', () => {
 		expect(
 			await readAudioMetadata(new ArrayBuffer(8), 'a.webm'),
 		).toBeNull();
+
+		consoleSpy.mockRestore();
+	});
+
+	it('does not decode a file past the platform ceiling', async () => {
+		// The recordings whose headers carry no duration are the long ones, so
+		// an unbounded fallback would put a full PCM decode of multi-hour audio
+		// on the main thread - the one thing every other decode path asks the
+		// platform about first.
+		const { isDecodableSize } = jest.requireMock<{
+			isDecodableSize: jest.Mock;
+		}>('src/platform/capabilities');
+		isDecodableSize.mockReturnValueOnce(false);
+		mockGetPrimaryAudioTrack.mockResolvedValue({
+			getSampleRate: () => 48000,
+			getNumberOfChannels: () => 2,
+		});
+		mockComputeDuration.mockResolvedValue(0);
+		const consoleSpy = jest
+			.spyOn(console, 'warn')
+			.mockImplementation(() => {});
+
+		const result = await readAudioMetadata(new ArrayBuffer(8), 'huge.webm');
+
+		expect(mockDecodeAudioData).not.toHaveBeenCalled();
+		// What the headers did read is still worth answering with; only the
+		// duration stays unknown, and the estimate degrades around it.
+		expect(result).toEqual({
+			durationSeconds: 0,
+			sampleRate: 48000,
+			channels: 2,
+		});
 
 		consoleSpy.mockRestore();
 	});

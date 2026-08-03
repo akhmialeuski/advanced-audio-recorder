@@ -32,6 +32,8 @@ import {
 	type LlmJobId,
 } from '../transcription/api';
 import { formatTimecode } from '../utils/TimeUtils';
+import { vendorEngine } from '../providers/providers';
+import { applyEngineSettings } from '../providers/engineSettings';
 
 /**
  * The job this dialog configures. Named once so the engine picker, the model
@@ -199,6 +201,7 @@ export class ChapterGenerationModal extends PluginModal {
 		// Which fields hold the vendor's model and model list comes from the
 		// registry, so this picker cannot drift from the settings tab's.
 		const vendor = jobLlmVendor(s, CHAPTERS_JOB);
+		const engine = vendorEngine(vendor.id);
 		const selected = vendor.settings.model(s);
 		const models = ensureSelectedInList(
 			vendor.settings.models(s),
@@ -209,7 +212,9 @@ export class ChapterGenerationModal extends PluginModal {
 				dropdown.addOption(model, model);
 			}
 			dropdown.setValue(selected).onChange((id) => {
-				vendor.settings.setModel(s, id);
+				// Through the engine that owns the catalogue, so this dialog
+				// moves a model by the same rules the engine's own page does.
+				applyEngineSettings(s, engine.id, { model: id });
 				void this.render();
 			});
 		});
@@ -280,7 +285,9 @@ export class ChapterGenerationModal extends PluginModal {
 		const live = this.options.getSettings();
 		live.chaptersLlmProvider = this.runSettings.chaptersLlmProvider;
 		const vendor = jobLlmVendor(this.runSettings, CHAPTERS_JOB);
-		vendor.settings.setModel(live, vendor.settings.model(this.runSettings));
+		applyEngineSettings(live, vendorEngine(vendor.id).id, {
+			model: vendor.settings.model(this.runSettings),
+		});
 		CHAPTER_PROMPT_PROFILES.setSelectedId(
 			live,
 			CHAPTER_PROMPT_PROFILES.selectedId(this.runSettings),

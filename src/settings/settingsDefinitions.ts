@@ -49,6 +49,7 @@ import {
 	SPLIT_PART_SUFFIX_PATTERN,
 	MIN_LLM_MAX_TOKENS,
 	MAX_LLM_MAX_TOKENS,
+	LLM_MAX_TOKENS_STEP,
 	MIN_TRANSCRIBE_CHUNK_MB,
 	MAX_TRANSCRIBE_CHUNK_MB,
 } from '../constants';
@@ -305,12 +306,19 @@ export interface TranscriptionBlocks {
 	/** The local engine's binary and model paths, which are file pickers. */
 	readonly renderLocalWhisperFields: (host: HTMLElement) => void;
 	/**
-	 * The three edits a model catalogue takes, over whichever catalogue the
-	 * page belongs to: one mechanism for every provider and both capabilities.
+	 * The three edits a model catalogue takes, named by the engine whose
+	 * catalogue it is: one mechanism for every provider and both capabilities.
+	 *
+	 * A model is addressed by its id rather than by its position. The rows are
+	 * built from the catalogue as it stood when the tree was built, while the
+	 * edit runs against the catalogue as it stands when the row is clicked, and
+	 * between those two moments the list can move - another window, a config
+	 * reloaded from disk, an id added from a dialog. An id means the same thing
+	 * in both.
 	 */
-	readonly addModel: (models: ProviderModels) => void;
-	readonly removeModel: (models: ProviderModels, index: number) => void;
-	readonly selectModel: (models: ProviderModels, id: string) => void;
+	readonly addModel: (engine: EngineId) => void;
+	readonly removeModel: (engine: EngineId, model: string) => void;
+	readonly selectModel: (engine: EngineId, model: string) => void;
 }
 
 /**
@@ -831,7 +839,7 @@ function llmGroup(settings: AudioRecorderSettings): SettingDefinitionItem {
 				control: { type: 'toggle', key: 'llmPostProcessEnabled' },
 			},
 			engineChoiceRow(
-				'Engine',
+				'Post-processing engine',
 				'Which engine writes the post-processed transcript. Set it up under Engines.',
 				LLM_JOBS.postProcess.key,
 				postProcessing,
@@ -1208,7 +1216,15 @@ function enginePage(
 		// One row, not two: the catalogue entry names the id in use and opens
 		// the list the choice is made in, so a dropdown beside it would be the
 		// same value twice - and the one that does not refresh the entry.
-		rows.push(modelCataloguePage(settings, models, blocks, declareAddRow));
+		rows.push(
+			modelCataloguePage(
+				settings,
+				engine.id,
+				models,
+				blocks,
+				declareAddRow,
+			),
+		);
 	}
 	if (engine.maxTokens) {
 		rows.push({
@@ -1220,17 +1236,17 @@ function enginePage(
 				key: engine.maxTokens.key,
 				min: MIN_LLM_MAX_TOKENS,
 				max: MAX_LLM_MAX_TOKENS,
-				step: 512,
+				step: LLM_MAX_TOKENS_STEP,
 			},
 		});
 	}
-	if (engine.uploadChunkKey) {
+	if (engine.uploadChunk) {
 		rows.push({
 			name: 'Upload chunk size',
 			desc: `Megabytes per WAV chunk when a recording is too large to upload whole (this engine accepts ${String(engine.uploadLimitMb)} MB per request). Files under the limit are sent untouched.`,
 			control: {
 				type: 'number',
-				key: engine.uploadChunkKey,
+				key: engine.uploadChunk.key,
 				min: MIN_TRANSCRIBE_CHUNK_MB,
 				max: MAX_TRANSCRIBE_CHUNK_MB,
 				step: 1,
@@ -1370,20 +1386,21 @@ function catalogueDesc(models: ProviderModels): DocumentFragment {
  * one, whichever provider they belong to - because a catalogue differs only in
  * which fields it reads.
  * @param settings - Live settings, read for the current selection
+ * @param engine - The engine whose catalogue this is
  * @param models - The catalogue's own settings fields and copy
  * @param blocks - The list edits, which the tab owns
  * @param declareAddRow - Whether the tree owes the list a labelled add row
  */
 function modelCataloguePage(
 	settings: AudioRecorderSettings,
+	engine: EngineId,
 	models: ProviderModels,
 	blocks: TranscriptionBlocks,
 	declareAddRow: boolean,
 ): SettingGroupItem {
 	const saved = models.models(settings);
-	const selected = models.model(settings);
 	const add = (): void => {
-		blocks.addModel(models);
+		blocks.addModel(engine);
 	};
 	return {
 		// The entry is the picker: it says which id is in use, and opens the
@@ -1396,7 +1413,11 @@ function modelCataloguePage(
 		// to hang off the API-key row, which is a password field and has nothing
 		// to do with which ids the endpoint serves.
 		desc: catalogueDesc(models),
-		displayValue: (): string => selected || 'None',
+		// Read when the entry is drawn, not when the tree was built: the
+		// framework re-evaluates an entry's value without re-reading the
+		// definitions, and an entry naming the previous model is the same
+		// stale copy the dropdown beside it used to be.
+		displayValue: (): string => models.model(settings) || 'None',
 		items: [
 			{
 				type: 'list',
@@ -1406,16 +1427,24 @@ function modelCataloguePage(
 				search: nameFilter('Filter models'),
 				addItem: { name: 'Add model', action: add },
 				onDelete: (index): void => {
-					blocks.removeModel(models, index);
+					const id = saved[index];
+					if (id !== undefined) {
+						blocks.removeModel(engine, id);
+					}
 				},
 				items: saved.map(
 					(id): SettingGroupItem => ({
 						name: id,
 						// The row is the choice: tapping an id puts it to work,
-						// and the one in use says so.
-						...(id === selected ? { desc: 'In use' } : {}),
+						// and the one in use says so. A row's description is a
+						// string the framework renders, not a predicate it
+						// re-evaluates, so this is the selection as the tree was
+						// built - which is what a rebuild is for.
+						...(id === models.model(settings)
+							? { desc: 'In use' }
+							: {}),
 						action: (): void => {
-							blocks.selectModel(models, id);
+							blocks.selectModel(engine, id);
 						},
 					}),
 				),
@@ -1551,7 +1580,10 @@ function transcriptionEngineRow(
 	settings: AudioRecorderSettings,
 ): SettingGroupItem {
 	return {
-		name: 'Engine',
+		// Named for the job it configures rather than "Engine": three rows pick
+		// an engine, on three pages, and the settings search lists them by name
+		// alone - three results reading "Engine" name nothing.
+		name: 'Transcription engine',
 		aliases: ['provider', 'whisper', 'deepgram', 'gemini', 'elevenlabs'],
 		desc: 'Whisper API, Deepgram, or Google Gemini (cloud), or a local whisper.cpp binary (desktop). Configure each one under Engines.',
 		visible: (): boolean => settings.transcriptionEnabled,
@@ -1613,7 +1645,7 @@ function transcriptionAdvancedGroup(
 				},
 			},
 			engineChoiceRow(
-				'Engine',
+				'Context agents engine',
 				'Which engine the context agents call between the two passes. Set it up under Engines.',
 				LLM_JOBS.contextAgents.key,
 				(): boolean =>
@@ -1799,7 +1831,7 @@ function autoChaptersGroup(
 				},
 			},
 			engineChoiceRow(
-				'Engine',
+				'Chapters engine',
 				'Which engine divides a transcript into chapters. Set it up under Engines.',
 				LLM_JOBS.autoChapters.key,
 				enabled,
@@ -2152,6 +2184,64 @@ export const controlValue = {
 			: value;
 	},
 };
+
+/**
+ * Largest share of one step a value may miss its grid point by and still count
+ * as sitting on it. A grid of tenths cannot be walked in binary floating point
+ * - `0.5 + 7 * 0.05` is not `0.85` - so the comparison is made against the
+ * nearest grid point rather than by asking whether the quotient is an integer.
+ */
+const STEP_GRID_TOLERANCE = 1e-6;
+
+/**
+ * Why a number is outside what its control accepts, or undefined when it is
+ * inside.
+ *
+ * A number control declares a value space, and the whole of it: the bounds the
+ * value lies between and the grid it sits on, which is `min + n * step`. From
+ * 1.13 the framework enforces that space itself, refusing anything between two
+ * grid points; below it {@link module:settings/legacySettingsRenderer} enforces
+ * this, so one declaration means one set of accepted values on both Obsidians
+ * rather than two.
+ *
+ * It follows that a bound no grid point reaches is a declaration that cannot be
+ * satisfied - the ceiling of a 512-token grid at 32000 was one - which is why
+ * the tree is tested for it rather than left to be discovered as a setting that
+ * will not save.
+ * @param control - The number control the value was entered into
+ * @param value - The number the field produced
+ * @returns The reason it is refused, or undefined when it is accepted
+ */
+export function numberControlRejection(
+	control: {
+		min?: number | undefined;
+		max?: number | undefined;
+		/** `'any'` is the input's own way of declaring no grid at all. */
+		step?: number | 'any' | undefined;
+	},
+	value: number,
+): string | undefined {
+	if (!Number.isFinite(value)) {
+		return 'Enter a number.';
+	}
+	const { min, max, step } = control;
+	if (min !== undefined && value < min) {
+		return `Enter ${String(min)} or more.`;
+	}
+	if (max !== undefined && value > max) {
+		return `Enter ${String(max)} or less.`;
+	}
+	if (step === undefined || step === 'any' || step <= 0) {
+		return undefined;
+	}
+	const base = min ?? 0;
+	const snapped = base + Math.round((value - base) / step) * step;
+	return Math.abs(value - snapped) > step * STEP_GRID_TOLERANCE
+		? `Enter a multiple of ${String(step)}${
+				min === undefined ? '' : ` above ${String(min)}`
+			}.`
+		: undefined;
+}
 
 /**
  * The control keys whose writes are worth debouncing: the text-bearing ones,
