@@ -183,6 +183,16 @@ describe('settings definitions', () => {
 		return (block?.items ?? []).map((item) => item.name ?? '');
 	};
 
+	/**
+	 * What a page's entry reports without being opened. Declared as a value or
+	 * a function by the tree, so both are read the same way here.
+	 * @param page - The page whose entry is being read
+	 */
+	const entryValueOf = (page: GroupDefinition): string | undefined =>
+		typeof page.displayValue === 'function'
+			? page.displayValue()
+			: page.displayValue;
+
 	/** The diagnostics group of a built tree. */
 	const diagnosticsGroupOf = (
 		definitions: SettingDefinitionItem[],
@@ -268,9 +278,8 @@ describe('settings definitions', () => {
 
 	describe('the transcription sub-page', () => {
 		/** The transcription page entry. */
-		const transcriptionPage = (): GroupDefinition & {
-			displayValue?: () => string;
-		} => pageOf(build(), 'Transcription');
+		const transcriptionPage = (): GroupDefinition =>
+			pageOf(build(), 'Transcription');
 
 		it('gathers the transcription groups behind one entry', () => {
 			const page = transcriptionPage();
@@ -333,11 +342,7 @@ describe('settings definitions', () => {
 			// The value a page holds belongs on the entry, so opening it is a
 			// choice rather than the only way to see what is set.
 			const displayValue = (name: string): string | undefined =>
-				(
-					pageOf(build(), name) as {
-						displayValue?: () => string;
-					}
-				).displayValue?.();
+				entryValueOf(pageOf(build(), name));
 			settings.whisperApiKey = 'sk-test';
 
 			// An engine entry reports what it holds: the model it uses once it
@@ -363,11 +368,7 @@ describe('settings definitions', () => {
 			// one answer on the entry, not two.
 			settings.transcriptionEnabled = true;
 			const engines = (): string | undefined =>
-				(
-					pageOf(build(), 'Engines') as {
-						displayValue?: () => string;
-					}
-				).displayValue?.();
+				entryValueOf(pageOf(build(), 'Engines'));
 
 			expect(engines()).toBe('0 configured');
 
@@ -383,11 +384,11 @@ describe('settings definitions', () => {
 		it('reports on the entry whether transcription is on', () => {
 			settings.transcriptionEnabled = false;
 
-			expect(transcriptionPage().displayValue?.()).toBe('Off');
+			expect(entryValueOf(transcriptionPage())).toBe('Off');
 
 			settings.transcriptionEnabled = true;
 
-			expect(transcriptionPage().displayValue?.()).toBe('On');
+			expect(entryValueOf(transcriptionPage())).toBe('On');
 		});
 	});
 
@@ -503,7 +504,43 @@ describe('settings definitions', () => {
 				'Base URL',
 				'Deepgram API key',
 				'Model',
+				'Model catalogue',
 			]);
+		});
+
+		it('picks the model in place and keeps the list behind an entry', () => {
+			// Choosing one of a handful of known ids is what a dropdown is for:
+			// the value is legible without opening anything and changing it is
+			// one tap. The catalogue is the other question - which ids exist -
+			// and that is a list, which is why it stays an entry of its own.
+			settings.deepgramModels = ['nova-3', 'nova-2-meeting'];
+			settings.deepgramModel = 'nova-3';
+			const definitions = build();
+
+			const picker = rowOf(definitions, 'Deepgram', 'Model');
+			expect(picker.control?.type).toBe('dropdown');
+			expect(picker.control?.key).toBe('deepgramModel');
+			expect(picker.control?.options).toEqual({
+				'nova-3': 'nova-3',
+				'nova-2-meeting': 'nova-2-meeting',
+			});
+
+			const catalogue = pageOf(
+				groupOf(definitions, 'Deepgram')
+					.items as SettingDefinitionItem[],
+				'Model catalogue',
+			);
+			expect(entryValueOf(catalogue)).toBe('2 saved');
+		});
+
+		it('disables the picker rather than offering an empty dropdown', () => {
+			// An emptied catalogue has nothing to pick, and the entry below is
+			// where ids are added; a blank dropdown would be a dead end.
+			settings.deepgramModels = [];
+			const picker = rowOf(build(), 'Deepgram', 'Model');
+
+			expect(picker.control?.options).toEqual({});
+			expect(picker.control?.disabled).toBe(true);
 		});
 	});
 
@@ -851,6 +888,7 @@ describe('settings definitions', () => {
 				'Base URL',
 				'Google Gemini API key',
 				'Model',
+				'Model catalogue',
 				'Max output tokens',
 			]);
 		});
@@ -859,10 +897,14 @@ describe('settings definitions', () => {
 			// The link lists the ids the endpoint serves, so it belongs with
 			// those ids; hanging it off the API-key row put a model catalogue
 			// under a password field.
-			const catalogue = pageOf(build(), 'Model');
-			const desc = catalogue.desc;
+			const picker = rowOf(
+				build(),
+				'Whisper API (OpenAI-compatible)',
+				'Model',
+			);
+			const desc = picker.desc;
 			if (!(desc instanceof DocumentFragment)) {
-				throw new Error('The catalogue carries no link');
+				throw new Error('The picker carries no link');
 			}
 			const link = desc.querySelector('a');
 

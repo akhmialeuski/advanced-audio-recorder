@@ -34,7 +34,8 @@ export interface RowDefinition {
 	name: string;
 	/** Extra terms the settings search matches the row on. */
 	aliases?: string[];
-	desc?: string;
+	/** A row's description, which is a fragment when it carries a link. */
+	desc?: string | DocumentFragment;
 	visible?: boolean | (() => boolean);
 	control?: {
 		type: string;
@@ -57,6 +58,8 @@ export interface GroupDefinition {
 	desc?: string | DocumentFragment;
 	/** Classes the framework puts on the group element. */
 	cls?: string;
+	/** What a page's entry reports without being opened. */
+	displayValue?: string | (() => string);
 	visible?: boolean | (() => boolean);
 	items: Array<RowDefinition | GroupDefinition>;
 }

@@ -1192,10 +1192,12 @@ function enginePage(
 	}
 	const models = engine.models;
 	if (models) {
-		// One row, not two: the catalogue entry names the id in use and opens
-		// the list the choice is made in, so a dropdown beside it would be the
-		// same value twice - and the one that does not refresh the entry.
+		// Two rows that say different things: the picker is the choice, and
+		// the catalogue is the list it is chosen from. They were one entry
+		// doing both, which buried picking a model two taps deep for a
+		// question a dropdown answers in place.
 		rows.push(
+			modelPickerRow(settings, models),
 			modelCataloguePage(
 				settings,
 				engine.id,
@@ -1351,6 +1353,42 @@ function catalogueDesc(models: ProviderModels): DocumentFragment {
 }
 
 /**
+ * The row that picks the model an engine runs on.
+ *
+ * A dropdown over the saved ids, which is what choosing one of a handful of
+ * known values is: in place, one tap, the current value legible without opening
+ * anything. It was briefly an entry opening the catalogue instead, so picking a
+ * model meant walking into a list and tapping a row - two taps and a page for a
+ * question that has an answer visible from here.
+ *
+ * The value is written by the engine that owns the field, because the key is
+ * one the provider registry claims, so the catalogue invariant holds the same
+ * way it does for an edit made anywhere else.
+ * @param settings - Live settings, read for the saved ids
+ * @param models - The catalogue's own settings fields and copy
+ */
+function modelPickerRow(
+	settings: AudioRecorderSettings,
+	models: ProviderModels,
+): SettingGroupItem {
+	const saved = models.models(settings);
+	return {
+		name: models.pickerName,
+		aliases: ['engine model', 'model id'],
+		desc: catalogueDesc(models),
+		control: {
+			type: 'dropdown',
+			key: models.modelKey,
+			options: Object.fromEntries(saved.map((id) => [id, id])),
+			// An emptied catalogue offers nothing to pick, and the entry below
+			// is where ids are added; a dropdown over no options would just be
+			// a blank field with no way out of it.
+			disabled: saved.length === 0,
+		},
+	};
+}
+
+/**
  * A provider's saved model ids, as the page the picking happens on. The list is
  * a collection the user edits, so it is declared as one: the framework renders
  * its add and delete affordances and its filter, and tapping a row makes that
@@ -1375,21 +1413,17 @@ function modelCataloguePage(
 		blocks.addModel(engine);
 	};
 	return {
-		// The entry is the picker: it says which id is in use, and opens the
-		// catalogue it was chosen from. A vendor's catalogue runs to thirty-odd
-		// ids, which inline is thirty rows between the endpoint and everything
-		// configured after it.
+		// The list, not the choice: a vendor's catalogue runs to thirty-odd ids,
+		// which inline is thirty rows between the endpoint and everything
+		// configured after it. What it holds is what its entry reports, so it
+		// never restates the value the picker above it already shows.
 		type: 'page',
-		name: models.pickerName,
-		// The catalogue link belongs here, with the catalogue it lists: it used
-		// to hang off the API-key row, which is a password field and has nothing
-		// to do with which ids the endpoint serves.
-		desc: catalogueDesc(models),
-		// Read when the entry is drawn, not when the tree was built: the
-		// framework re-evaluates an entry's value without re-reading the
-		// definitions, and an entry naming the previous model is the same
-		// stale copy the dropdown beside it used to be.
-		displayValue: (): string => models.model(settings) || 'None',
+		name: `${models.pickerName} catalogue`,
+		desc: 'The model ids this provider is offered in the picker above. Add the ones your endpoint serves and remove the ones it does not.',
+		displayValue: (): string => {
+			const count = models.models(settings).length;
+			return count === 1 ? '1 saved' : `${String(count)} saved`;
+		},
 		items: [
 			{
 				type: 'list',
@@ -2103,6 +2137,16 @@ export const CONTROL_WRITE_EFFECTS: Readonly<
 			kind.selectionKey,
 			{ reshapesTree: true },
 		]),
+	),
+	// An engine's entry reports the model it runs on, and its catalogue marks
+	// that id as the one in use, so picking another leaves both holding
+	// something else. Read from the registry, so an engine added there arrives
+	// with this behaviour rather than silently missing it.
+	...Object.fromEntries(
+		ENGINE_ORDER.flatMap((id) => {
+			const models = ENGINES[id].models;
+			return models ? [[models.modelKey, { reshapesTree: true }]] : [];
+		}),
 	),
 };
 
