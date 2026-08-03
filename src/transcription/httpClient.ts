@@ -153,7 +153,9 @@ const QUOTA_BODY_MARKERS = [
  * which reads as a malformed request unless the body is looked at.
  */
 const REGION_BODY_MARKERS = [
-	'user location is not supported',
+	// Gemini's own wording is "User location is not supported for the API use",
+	// which this shorter fragment already covers: the match is a substring test,
+	// so a longer phrase beside it could never be the one that fires.
 	'location is not supported',
 	'country, region, or territory not supported',
 	'unsupported_country_region_territory',

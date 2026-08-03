@@ -76,7 +76,7 @@ The API requires prepaid credit or a billing method before it will answer reques
 6. Confirm the **Base URL** reads `https://api.anthropic.com/v1`; only change it if you front Anthropic with a proxy, and the value you type stays put whichever job later calls the engine.
 7. Paste your key into the **Anthropic API key** field. This is Anthropic's **own** field - it is not shared with any transcription key.
 8. Pick a **Model** (see [Choosing a model](#choosing-a-model)).
-9. Optionally adjust **Max output tokens** (default `4096`, range `512`-`32000`), which bounds every job that calls this engine.
+9. Optionally adjust **Max output tokens** (default `4096`, range `512`-`200000`), which bounds every job that calls this engine. The field guards against a typo rather than stating any limit of Anthropic's: how long a reply may be is the model's own maximum, it differs between models, and a budget above it is refused by the service, which names the maximum it accepts.
 10. Back in **LLM post-processing**, pick a **Task** and review its prompt (see [Choosing a task](#choosing-a-task)).
 
 > **Shared vs. own keys.** The OpenAI account is read by both the Whisper API engine and the OpenAI engine, and the Gemini account by the one Gemini engine that transcribes and writes alike. **Anthropic does not share** - it has a page and a key of its own, because there is no Anthropic transcription engine to borrow a key from. See [Shared API keys](../llm-post-processing.md#shared-api-keys).
@@ -131,7 +131,7 @@ For a deeper explanation of the tasks and prompts, see [LLM post-processing](../
 | **Anthropic API key**          | Your `sk-ant-…` key (Anthropic's own field; not shared)                                 |
 | **Model**                      | `claude-opus-4-8` (default) / `claude-sonnet-5` / `claude-haiku-4-5` / `claude-fable-5` |
 | **Task**                       | `Clean up` (default) / `Summarize` / `Custom`                                           |
-| **Max output tokens**          | `4096` default; range `512`-`32000`                                                     |
+| **Max output tokens**          | `4096` default; range `512`-`200000`                                                    |
 
 > **Where the key is stored.** The key lives in the plugin's `data.json` on this device. It is never written into the **System info** diagnostics report. Avoid syncing `data.json` to untrusted locations. Only the transcript **text** is sent to Anthropic - your audio never leaves your machine for the LLM step.
 
@@ -142,7 +142,7 @@ For a deeper explanation of the tasks and prompts, see [LLM post-processing](../
 | `401` / authentication / invalid key            | The key is wrong, has a stray space, or was revoked. Re-copy it from the Console and paste it cleanly.                                 |
 | Credit / balance / "insufficient credits" error | No API credit. Add billing at `https://console.anthropic.com/settings/billing` (Console > **Settings > Billing**) and purchase credit. |
 | `404` / model not found                         | The model id is retired or misspelled. Open the catalogue and add the exact current id.                                                |
-| Result is cut off or empty                      | The reply hit **Max output tokens**. Raise it (up to `32000`), shorten the input, or pick a model with a larger limit.                 |
+| Result is cut off or empty                      | The reply hit **Max output tokens**. Raise it, shorten the input, or pick a model with a larger limit.                                 |
 | `429` / rate limit                              | Too many requests too quickly, or a low tier. Wait and retry, or raise your account's rate limits in the Console.                      |
 | Request times out                               | LLM requests are bounded by an internal timeout. Shorten the transcript, lower **Max output tokens**, or retry.                        |
 | The LLM step never runs                         | **Enable LLM post-processing** is off, or transcription itself failed first. Confirm both are enabled and the engine works.            |

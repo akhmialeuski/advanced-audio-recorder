@@ -11,7 +11,10 @@
 
 import { Setting } from 'obsidian';
 import type { App, TFile } from 'obsidian';
-import type { AudioRecorderSettings } from '../settings/settingsSchema';
+import type {
+	AudioRecorderSettings,
+	LlmProviderId,
+} from '../settings/settingsSchema';
 import type { AutoChapterService } from '../chapters/AutoChapterService';
 import {
 	loadTranscriptLines,
@@ -40,6 +43,27 @@ import { applyEngineSettings } from '../providers/engineSettings';
  * picker, and the cost estimate below all speak about the same one.
  */
 const CHAPTERS_JOB: LlmJobId = 'autoChapters';
+
+/**
+ * What the engine row says about the pickers under it.
+ *
+ * An engine serves one catalogue, and an engine that both transcribes and
+ * answers prompts therefore serves one catalogue for both jobs: the model
+ * picked here is then literally the field transcription runs on, and picking a
+ * cheaper one for a chaptering run would change what the next recording is
+ * transcribed with. That is a property of the engine rather than of this
+ * dialog, so it is read from the registry and said out loud where the choice is
+ * made, instead of being a surprise the next transcription delivers.
+ * @param vendorId - Engine currently selected for chapters
+ * @returns The row's description
+ */
+function sharedCatalogueDesc(vendorId: LlmProviderId): string {
+	const base =
+		'The engine and model that generate the chapters. Kept as the chapters engine in settings.';
+	return vendorEngine(vendorId).transcriptionId === null
+		? base
+		: `${base} This engine serves one model catalogue, so the model picked here is the one transcription runs on too.`;
+}
 
 /** Collaborators the dialog needs, injected by the action registry. */
 export interface ChapterGenerationModalOptions {
@@ -181,10 +205,7 @@ export class ChapterGenerationModal extends PluginModal {
 		const s = this.runSettings;
 		new Setting(this.contentEl)
 			.setName('LLM')
-			.setDesc(
-				'The engine and model that generate the chapters. Kept as the ' +
-					'chapters engine in settings.',
-			)
+			.setDesc(sharedCatalogueDesc(jobLlmVendor(s, CHAPTERS_JOB).id))
 			.addDropdown((dropdown) => {
 				for (const option of LLM_PROVIDER_OPTIONS) {
 					dropdown.addOption(option.value, option.label);
@@ -276,10 +297,11 @@ export class ChapterGenerationModal extends PluginModal {
 	 * Writes the run's choices into the live settings: the engine chapters are
 	 * generated with, and the model that engine is generating with.
 	 *
-	 * Only that engine's model is committed. A provider that both transcribes
-	 * and answers prompts keeps one catalogue for both, so writing every
-	 * vendor's model would let this dialog move the id another feature runs on
-	 * - picking a Gemini model here would change what transcription uses.
+	 * Only that engine's model is committed, so an engine the dialog was merely
+	 * switched through keeps the id it had. The engine that actually ran is a
+	 * different matter: where it serves one catalogue for both jobs, the model
+	 * committed here is the one transcription reads, which is what the engine
+	 * row says before the choice is made rather than after.
 	 */
 	private commitRunSettings(): void {
 		const live = this.options.getSettings();

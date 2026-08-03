@@ -211,35 +211,50 @@ function estimatedUsage(
 		return {
 			inputTokens: audioTokens,
 			audioInputTokens: audioTokens,
-			outputTokens: Math.ceil(
-				durationSeconds * ESTIMATED_OUTPUT_TOKENS_PER_SECOND,
-			),
+			// What the engine writes is the transcript, which is the same size
+			// every step that reads it back is estimated from.
+			outputTokens: transcriptTokens(durationSeconds),
 		};
 	}
 	return { audioSeconds: durationSeconds };
 }
 
 /**
- * Synthesizes the usage an LLM post-processing pass over a transcript of
- * the given duration is expected to bill. The transcript is the (text)
- * input; the output is a fraction of it that depends on the task and is
- * capped by the configured output-token budget.
- * @param settings - Plugin settings
+ * How many tokens a transcript of the given recording is expected to run to.
+ * The input size of every LLM step that reads the whole transcript back, and
+ * the output size of a token-billed transcription engine that writes it.
  * @param durationSeconds - Audio duration in seconds
  */
-function estimatedLlmUsage(
+function transcriptTokens(durationSeconds: number): number {
+	return Math.ceil(durationSeconds * ESTIMATED_OUTPUT_TOKENS_PER_SECOND);
+}
+
+/**
+ * Synthesizes the usage one LLM pass over the whole transcript is expected to
+ * bill: the transcript is the (text) input, the answer is a fraction of it, and
+ * that fraction is capped by the ceiling of the engine the job names. Auto
+ * chapters and post-processing are the same pass twice over, differing only in
+ * how much they write and which engine they write it on, so they are the same
+ * function twice over rather than two that have to be kept in step.
+ * @param settings - Plugin settings
+ * @param durationSeconds - Audio duration in seconds
+ * @param job - The job making the pass, which names the engine and its ceiling
+ * @param outputRatio - Share of the transcript the answer is expected to run to
+ */
+function estimatedTranscriptPassUsage(
 	settings: AudioRecorderSettings,
 	durationSeconds: number,
+	job: LlmJobId,
+	outputRatio: number,
 ): TranscriptionUsage {
-	const transcriptTokens = Math.ceil(
-		durationSeconds * ESTIMATED_OUTPUT_TOKENS_PER_SECOND,
-	);
-	const ratio = LLM_OUTPUT_RATIO[settings.llmPostProcessTask] ?? 1;
-	const outputTokens = Math.min(
-		Math.ceil(transcriptTokens * ratio),
-		vendorMaxTokens(settings, jobVendorId(settings, 'postProcess')),
-	);
-	return { inputTokens: transcriptTokens, outputTokens };
+	const inputTokens = transcriptTokens(durationSeconds);
+	return {
+		inputTokens,
+		outputTokens: Math.min(
+			Math.ceil(inputTokens * outputRatio),
+			vendorMaxTokens(settings, jobVendorId(settings, job)),
+		),
+	};
 }
 
 /**
@@ -254,39 +269,14 @@ function estimatedContextAgentsUsage(
 	durationSeconds: number,
 	callCount: number,
 ): TranscriptionUsage {
-	const transcriptTokens = Math.ceil(
-		durationSeconds * ESTIMATED_OUTPUT_TOKENS_PER_SECOND,
+	const perCallInput = Math.min(
+		transcriptTokens(durationSeconds),
+		CONTEXT_AGENT_INPUT_TOKENS,
 	);
-	const perCallInput = Math.min(transcriptTokens, CONTEXT_AGENT_INPUT_TOKENS);
 	return {
 		inputTokens: perCallInput * callCount,
 		outputTokens: CONTEXT_AGENT_OUTPUT_TOKENS * callCount,
 	};
-}
-
-/**
- * Synthesizes the LLM usage an auto-chapters pass over a transcript of the
- * given duration is expected to bill: the transcript is the input and the
- * titled-timestamp list is a small fraction of it, capped by the output-token
- * budget.
- * @param settings - Plugin settings
- * @param durationSeconds - Audio duration in seconds
- */
-function estimatedChaptersUsage(
-	settings: AudioRecorderSettings,
-	durationSeconds: number,
-): TranscriptionUsage {
-	const transcriptTokens = Math.ceil(
-		durationSeconds * ESTIMATED_OUTPUT_TOKENS_PER_SECOND,
-	);
-	const outputTokens = Math.min(
-		Math.ceil(transcriptTokens * CHAPTERS_OUTPUT_TOKEN_RATIO),
-		// Bounded by the engine chapters name, which is what the run is
-		// actually bounded by; pricing it against another engine's ceiling
-		// made the estimate and the run disagree.
-		vendorMaxTokens(settings, jobVendorId(settings, 'autoChapters')),
-	);
-	return { inputTokens: transcriptTokens, outputTokens };
 }
 
 /**
@@ -549,7 +539,13 @@ const RUN_COST_STEPS: Record<RunCostStepId, RunCostStep> = {
 				'postProcess',
 				durationSeconds,
 				`Post-processing (${LLM_TASK_LABELS[settings.llmPostProcessTask]})`,
-				(seconds) => estimatedLlmUsage(settings, seconds),
+				(seconds) =>
+					estimatedTranscriptPassUsage(
+						settings,
+						seconds,
+						'postProcess',
+						LLM_OUTPUT_RATIO[settings.llmPostProcessTask] ?? 1,
+					),
 			),
 		enabled: (settings) => settings.llmPostProcessEnabled,
 		needsDuration: llmStepIsPriced('postProcess'),
@@ -561,7 +557,16 @@ const RUN_COST_STEPS: Record<RunCostStepId, RunCostStep> = {
 				'autoChapters',
 				durationSeconds,
 				'Auto chapters',
-				(seconds) => estimatedChaptersUsage(settings, seconds),
+				(seconds) =>
+					estimatedTranscriptPassUsage(
+						settings,
+						seconds,
+						// Bounded by the engine chapters name, which is what the
+						// run is actually bounded by; pricing it against another
+						// engine's ceiling made the estimate and the run disagree.
+						'autoChapters',
+						CHAPTERS_OUTPUT_TOKEN_RATIO,
+					),
 			),
 		enabled: autoChaptersAfterTranscribe,
 		needsDuration: llmStepIsPriced('autoChapters'),
