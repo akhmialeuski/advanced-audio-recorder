@@ -69,21 +69,26 @@ export interface LlmConfig {
 }
 
 /**
- * The names the OpenAI chat API has had for its output-token ceiling, newest
- * first.
+ * The names the OpenAI chat API has had for its output-token ceiling, in the
+ * order an endpoint is asked about them.
  *
- * `max_tokens` is the original and is what every OpenAI-compatible server
- * understands. OpenAI itself has superseded it with `max_completion_tokens` and
- * its current models refuse the old name outright, so a request carrying it
- * fails before generating anything.
+ * `max_tokens` is the original. OpenAI itself has superseded it with
+ * `max_completion_tokens` and its current models refuse the old name outright,
+ * so a request carrying it fails before generating anything. Which name an
+ * endpoint takes is not knowable from the model id: a list of "new" model
+ * families goes stale with every release, and the same base URL setting also
+ * points at Groq, LM Studio, llama.cpp and the rest. So it is asked rather than
+ * guessed, and the endpoint's own refusal is what selects the other name.
  *
- * Which name an endpoint takes is therefore not knowable from the model id: a
- * list of "new" model families goes stale with every release, and the same base
- * URL setting also points at Groq, LM Studio, llama.cpp and the rest. So it is
- * asked rather than guessed - the current name first, the original as the
- * fallback - and the endpoint's own refusal is what selects the other.
+ * The original is asked first, because the two ways of not understanding a
+ * field are not equally safe. A server that refuses an unknown field answers
+ * 400 and costs one extra request; a server that ignores one answers 200 and
+ * silently drops the ceiling, which is a truncation guard that is not there
+ * and says nothing about it. Every OpenAI-compatible server understands
+ * `max_tokens`, so asking it first means only OpenAI's own current models ever
+ * reach the second attempt, and no endpoint can quietly discard the budget.
  */
-const OUTPUT_TOKEN_PARAMS = ['max_completion_tokens', 'max_tokens'] as const;
+const OUTPUT_TOKEN_PARAMS = ['max_tokens', 'max_completion_tokens'] as const;
 
 /** The status an endpoint refuses an unknown parameter with. */
 const HTTP_BAD_REQUEST = 400;
@@ -119,6 +124,16 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
 	readonly id = LLM_PROVIDER_IDS.OPENAI_COMPATIBLE;
 	readonly label = 'OpenAI';
 
+	/**
+	 * The name this endpoint took, once it has answered.
+	 *
+	 * Which name it takes is a fact about the endpoint rather than about the
+	 * call, so it is asked once and remembered: the advanced two-pass mode
+	 * drives six sequential agent calls through one provider, and renegotiating
+	 * on each of them pays the refused request six times over.
+	 */
+	private acceptedParam: OutputTokenParam | null = null;
+
 	constructor(private readonly config: LlmConfig) {}
 
 	async complete(
@@ -130,27 +145,50 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
 		if (this.config.apiKey) {
 			headers.Authorization = `Bearer ${this.config.apiKey}`;
 		}
+		const candidates = this.candidateParams();
 		let lastError: unknown;
-		for (const [index, param] of OUTPUT_TOKEN_PARAMS.entries()) {
+		for (const [index, param] of candidates.entries()) {
+			let json: unknown;
 			try {
-				return extractOpenAiText(
-					await this.request(prompt, headers, {
-						[param]: maxTokens,
-						...(options?.temperature !== undefined
-							? { temperature: options.temperature }
-							: {}),
-					}),
-				);
+				json = await this.request(prompt, headers, {
+					[param]: maxTokens,
+					...(options?.temperature !== undefined
+						? { temperature: options.temperature }
+						: {}),
+				});
 			} catch (error) {
 				lastError = error;
-				const isLast = index === OUTPUT_TOKEN_PARAMS.length - 1;
+				const isLast = index === candidates.length - 1;
 				if (isLast || !rejectedTokenParam(error, param)) {
 					throw error;
 				}
+				continue;
 			}
+			// The request went through, so this is the name this endpoint takes.
+			// Recorded after the call rather than after the parse: an answer this
+			// client cannot read is still an answer the parameter was accepted for.
+			this.acceptedParam = param;
+			return extractOpenAiText(json);
 		}
 		// Unreachable: the loop either returns or throws on its last attempt.
 		throw lastError;
+	}
+
+	/**
+	 * The names to try, best guess first. A remembered name leads and the other
+	 * still follows it, so an endpoint that changes under a live provider - a
+	 * base URL repointed at another server between runs - renegotiates instead
+	 * of failing on a memory that has gone stale.
+	 */
+	private candidateParams(): readonly OutputTokenParam[] {
+		const accepted = this.acceptedParam;
+		if (accepted === null) {
+			return OUTPUT_TOKEN_PARAMS;
+		}
+		return [
+			accepted,
+			...OUTPUT_TOKEN_PARAMS.filter((param) => param !== accepted),
+		];
 	}
 
 	/**
