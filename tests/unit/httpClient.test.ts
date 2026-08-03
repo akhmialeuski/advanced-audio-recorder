@@ -89,7 +89,11 @@ describe('friendlyHttpHint', () => {
 		).toLowerCase();
 
 		expect(hint).toContain('does not serve your region');
+		// Both ways out are named: another engine, or an endpoint that does
+		// serve the caller. The second is what a user in a blocked country
+		// already relies on, and it is a field on the same page.
 		expect(hint).toContain('engines');
+		expect(hint).toContain('base url');
 	});
 
 	it('names the region for an OpenAI unsupported-country 403', () => {

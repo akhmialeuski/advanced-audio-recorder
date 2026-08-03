@@ -371,9 +371,13 @@ export function friendlyHttpHint(status: number, body: string): string {
 	// Before the billing and auth branches: a region refusal arrives on a
 	// status those branches would otherwise claim, and it is neither.
 	if (REGION_BODY_MARKERS.some((marker) => lower.includes(marker))) {
+		// Two ways out, and the second is the one a user in a blocked country
+		// already relies on: the same page holds the endpoint, so a request can
+		// be sent somewhere that does serve them.
 		return (
-			'This provider does not serve your region. Pick a different engine ' +
-			'for this job in settings, under Engines.'
+			'This provider does not serve your region. Under Engines, either ' +
+			'pick a different engine for this job, or point this one at an ' +
+			'endpoint that serves you via its Base URL.'
 		);
 	}
 	const looksLikeBilling =
