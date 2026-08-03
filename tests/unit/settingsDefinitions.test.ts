@@ -25,6 +25,15 @@ import {
 	type AudioRecorderSettings,
 } from 'src/settings/settingsSchema';
 import type { ProfileSection } from 'src/settings/profileKinds';
+import {
+	CHANNEL_MODE_LABELS,
+	CONVERSION_LINK_ACTION_LABELS,
+	LLM_PROVIDER_LABELS,
+	LLM_TASK_LABELS,
+	TRANSCRIPTION_PROVIDER_LABELS,
+	TRANSCRIPT_DESTINATION_LABELS,
+	TRANSCRIPT_FILE_FORMAT_LABELS,
+} from 'src/settings/labels';
 import { ENGINE_IDS, type EngineId } from 'src/providers/providers';
 import {
 	CLEANUP_HIGHPASS_STEP_HZ,
@@ -1373,6 +1382,85 @@ describe('settings definitions', () => {
 			const keys = collectDebouncedControlKeys(build());
 
 			expect(keys.has('debug')).toBe(false);
+		});
+	});
+
+	describe('dropdown options', () => {
+		/**
+		 * Every dropdown whose options are a settled label map, paired with the
+		 * map they have to be. Each of these used to be spelled out as the same
+		 * map taken apart into value/label pairs and put back together, which is
+		 * a second copy of a list that already exists - and one that drifts the
+		 * moment a label is added on one side only.
+		 */
+		const labelledDropdowns: ReadonlyArray<{
+			heading: string;
+			name: string;
+			labels: Record<string, string>;
+		}> = [
+			{
+				heading: 'Output format',
+				name: 'Update links after conversion',
+				labels: CONVERSION_LINK_ACTION_LABELS,
+			},
+			{
+				heading: 'Audio input',
+				name: 'Recording channels',
+				labels: CHANNEL_MODE_LABELS,
+			},
+			{
+				heading: 'Transcription',
+				name: 'Transcription engine',
+				labels: TRANSCRIPTION_PROVIDER_LABELS,
+			},
+			{
+				heading: 'Transcript output',
+				name: 'Destination',
+				labels: TRANSCRIPT_DESTINATION_LABELS,
+			},
+			{
+				heading: 'Transcript output',
+				name: 'File format',
+				labels: TRANSCRIPT_FILE_FORMAT_LABELS,
+			},
+			{
+				heading: 'LLM post-processing',
+				name: 'Task',
+				labels: LLM_TASK_LABELS,
+			},
+		];
+
+		it.each(labelledDropdowns)(
+			'offers $name exactly what its label map holds',
+			({ heading, name, labels }) => {
+				const control = rowOf(build(), heading, name).control;
+
+				expect(control?.options).toEqual(labels);
+			},
+		);
+
+		it('offers the same engines on every row that picks one', () => {
+			// Three jobs pick an engine, on three pages. They are the same
+			// engines, so the list of them belongs in one place rather than
+			// once per row.
+			settings.transcriptionEnabled = true;
+			settings.transcriptionAdvancedSettingsEnabled = true;
+			settings.transcriptionAdvancedEnabled = true;
+			settings.transcriptionAutoChaptersEnabled = true;
+			const definitions = build();
+			const engineRows = [
+				rowOf(
+					definitions,
+					'LLM post-processing',
+					'Post-processing engine',
+				),
+				rowOf(definitions, 'Auto chapters', 'Chapters engine'),
+				rowOf(definitions, 'Advanced', 'Context agents engine'),
+			];
+
+			for (const row of engineRows) {
+				expect(row.control?.options).toEqual(LLM_PROVIDER_LABELS);
+			}
 		});
 	});
 

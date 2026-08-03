@@ -493,8 +493,7 @@ export function missingModelMessage(engine: EngineDescriptor): string {
  * @returns That engine's account
  */
 export function vendorConnection(vendorId: LlmProviderId): ProviderConnection {
-	const engine = engineOfVendor(vendorId);
-	const connection = engine && accountOf(engine);
+	const connection = accountOf(vendorEngine(vendorId));
 	if (!connection) {
 		throw new Error(`No account declared for LLM vendor "${vendorId}"`);
 	}

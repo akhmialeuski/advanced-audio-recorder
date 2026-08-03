@@ -319,43 +319,6 @@ export function addNumberInputTo(
 	return component;
 }
 
-/** Configuration for a numeric setting row (label plus numeric input). */
-export interface NumberSettingConfig {
-	name: string;
-	desc?: string;
-	min: number;
-	max: number;
-	step: number;
-	get: () => number;
-	set: (value: number) => void;
-}
-
-/**
- * Adds a labelled numeric-input row bound to a getter/setter that saves
- * immediately, the numeric-field replacement for the old slider row.
- * @param ctx - The section context (container plus save hook)
- * @param config - The row label and numeric bounds/accessors
- */
-export function addNumberInput(
-	ctx: SettingsSectionContext,
-	config: NumberSettingConfig,
-): void {
-	const setting = new Setting(ctx.containerEl).setName(config.name);
-	if (config.desc) {
-		setting.setDesc(config.desc);
-	}
-	addNumberInputTo(setting, {
-		min: config.min,
-		max: config.max,
-		step: config.step,
-		get: config.get,
-		set: async (value) => {
-			config.set(value);
-			await ctx.save();
-		},
-	});
-}
-
 /** A stage row: an on/off toggle and its one numeric parameter, side by side. */
 export interface StageRowConfig {
 	name: string;

@@ -13,8 +13,8 @@
  * A handful of rows cannot be declared: the documentation callout, the format
  * list blocked per option by an asynchronous encoder probe, the output summary
  * derived from two other rows, the test capture that reports into its own row,
- * and the two credential blocks, whose fields are password inputs the control
- * set has no type for and whose identity changes with the selected engine.
+ * each account's API key, which is a password field the control set has no type
+ * for, and the local engine's binary and model paths, which are file pickers.
  * Those use the framework's own escape hatch, a render callback, and nothing
  * else does.
  * @module settings/settingsDefinitions
@@ -53,11 +53,6 @@ import {
 	MIN_TRANSCRIBE_CHUNK_MB,
 	MAX_TRANSCRIBE_CHUNK_MB,
 } from '../constants';
-import {
-	LLM_PROVIDER_OPTIONS,
-	LLM_TASK_OPTIONS,
-	TRANSCRIPTION_PROVIDER_OPTIONS,
-} from './labels';
 import { PROFILE_KINDS, type ProfileSection } from './profileKinds';
 import { LLM_JOBS } from '../transcription/llm/vendors';
 import {
@@ -78,9 +73,12 @@ import {
 } from '../platform/capabilities';
 import {
 	CHANNEL_MODE_LABELS,
-	CONVERSION_LINK_ACTION_OPTIONS,
-	TRANSCRIPT_DESTINATION_OPTIONS,
-	TRANSCRIPT_FILE_FORMAT_OPTIONS,
+	CONVERSION_LINK_ACTION_LABELS,
+	LLM_PROVIDER_LABELS,
+	LLM_TASK_LABELS,
+	TRANSCRIPTION_PROVIDER_LABELS,
+	TRANSCRIPT_DESTINATION_LABELS,
+	TRANSCRIPT_FILE_FORMAT_LABELS,
 } from './labels';
 import {
 	effectiveDiarize,
@@ -389,12 +387,10 @@ function imperativeBlockRow(row: {
 	name: string;
 	aliases: string[];
 	render: (host: HTMLElement) => void;
-	visible: () => boolean;
 }): SettingDefinition {
 	return {
 		name: row.name,
 		aliases: row.aliases,
-		visible: row.visible,
 		render: (setting: Setting): void => {
 			const host = setting.settingEl;
 			host.empty();
@@ -510,12 +506,7 @@ function outputFormatGroup(rows: OutputFormatRows): SettingDefinitionItem {
 				control: {
 					type: 'dropdown',
 					key: 'conversionLinkAction',
-					options: Object.fromEntries(
-						CONVERSION_LINK_ACTION_OPTIONS.map((option) => [
-							option.value,
-							option.label,
-						]),
-					),
+					options: CONVERSION_LINK_ACTION_LABELS,
 				},
 			},
 		],
@@ -850,12 +841,7 @@ function llmGroup(settings: AudioRecorderSettings): SettingDefinitionItem {
 				control: {
 					type: 'dropdown',
 					key: 'llmPostProcessTask',
-					options: Object.fromEntries(
-						LLM_TASK_OPTIONS.map((option) => [
-							option.value,
-							option.label,
-						]),
-					),
+					options: LLM_TASK_LABELS,
 				},
 			},
 			promptRow(
@@ -1160,12 +1146,7 @@ function engineChoiceRow(
 		control: {
 			type: 'dropdown',
 			key,
-			options: Object.fromEntries(
-				LLM_PROVIDER_OPTIONS.map((option) => [
-					option.value,
-					option.label,
-				]),
-			),
+			options: LLM_PROVIDER_LABELS,
 		},
 	};
 }
@@ -1206,7 +1187,6 @@ function enginePage(
 				render: (host) => {
 					blocks.renderProviderKey(host, engine.id);
 				},
-				visible: () => true,
 			}),
 		);
 	}
@@ -1258,7 +1238,6 @@ function enginePage(
 				name: 'Binary and model paths',
 				aliases: ['whisper.cpp', 'offline', 'local'],
 				render: blocks.renderLocalWhisperFields,
-				visible: () => true,
 			}),
 		);
 	}
@@ -1586,12 +1565,7 @@ function transcriptionEngineRow(
 			// Every device lists every engine, so the dropdown reads the same
 			// everywhere; picking one this device cannot run is refused with
 			// the reason instead of silently blocked.
-			options: Object.fromEntries(
-				TRANSCRIPTION_PROVIDER_OPTIONS.map((option) => [
-					option.value,
-					option.label,
-				]),
-			),
+			options: TRANSCRIPTION_PROVIDER_LABELS,
 			validate: (value: string): string | undefined =>
 				isProviderAvailableOnPlatform(value as TranscriptionProviderId)
 					? undefined
@@ -1707,12 +1681,7 @@ function transcriptOutputGroup(
 				control: {
 					type: 'dropdown',
 					key: 'transcriptDestination',
-					options: Object.fromEntries(
-						TRANSCRIPT_DESTINATION_OPTIONS.map((option) => [
-							option.value,
-							option.label,
-						]),
-					),
+					options: TRANSCRIPT_DESTINATION_LABELS,
 				},
 			},
 			{
@@ -1723,12 +1692,7 @@ function transcriptOutputGroup(
 				control: {
 					type: 'dropdown',
 					key: 'transcriptFileFormat',
-					options: Object.fromEntries(
-						TRANSCRIPT_FILE_FORMAT_OPTIONS.map((option) => [
-							option.value,
-							option.label,
-						]),
-					),
+					options: TRANSCRIPT_FILE_FORMAT_LABELS,
 				},
 			},
 			{
