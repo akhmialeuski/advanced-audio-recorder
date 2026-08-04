@@ -36,7 +36,6 @@ function noteOutput(path: string): NoteOutput {
 			timestampLinks: true,
 			mergeConsecutiveSpeaker: true,
 		},
-		llmProcessed: false,
 		heading: 'Transcript',
 		writtenAt: '2026-07-21T10:00:00Z',
 	};
@@ -179,7 +178,6 @@ describe('parseTranscriptSection normalization', () => {
 			timestampLinks: true,
 			mergeConsecutiveSpeaker: true,
 		});
-		expect(section.noteOutputs[0]?.llmProcessed).toBe(false);
 		expect(section.noteOutputs[0]?.writtenAt).toBe('');
 	});
 

@@ -110,16 +110,6 @@ export interface NoteOutput {
 	path: string;
 	/** Render templates in effect for that run (per-run overrides included). */
 	templates: NoteOutputTemplates;
-	/**
-	 * True when the run that wrote this note had an LLM cleanup or custom pass
-	 * enabled. It records what the run did and never what the note now holds:
-	 * that pass is asked to keep speaker labels and timestamps on their
-	 * original lines, so the body usually still carries them. Nothing may
-	 * branch on it. Readers and rewriters attempt the note and judge by what
-	 * they actually find, because treating this as a verdict is exactly what
-	 * once cost renames their note.
-	 */
-	llmProcessed: boolean;
 	/** Heading the transcript was inserted under ('' when none). */
 	heading: string;
 	/** ISO-8601 timestamp of the write. */
@@ -357,7 +347,6 @@ function parseNoteOutputs(value: unknown): NoteOutput[] {
 		result.push({
 			path,
 			templates,
-			llmProcessed: record.llmProcessed === true,
 			heading: typeof record.heading === 'string' ? record.heading : '',
 			writtenAt:
 				typeof record.writtenAt === 'string' ? record.writtenAt : '',
@@ -558,7 +547,6 @@ export function serializeRecordingSidecar(
 			noteOutputs: sidecar.transcript.noteOutputs.map((output) => ({
 				path: output.path,
 				templates: { ...output.templates },
-				llmProcessed: output.llmProcessed,
 				heading: output.heading,
 				writtenAt: output.writtenAt,
 			})),

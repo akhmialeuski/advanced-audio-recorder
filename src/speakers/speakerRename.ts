@@ -104,6 +104,20 @@ export interface SpeakerRenamePlan {
 }
 
 /**
+ * Whether a plan has anything at all to do, over both of the places a rename
+ * reaches: a roster assignment to store, or a replacement to run over the
+ * outputs. The two are independent, and only the second survives a repeat -
+ * once the roster holds the names, `changed` is false while the healing rules
+ * that reach an output still showing an engine label remain. Gating an apply
+ * on `changed` alone is therefore what strands such an output forever.
+ * @param plan - Plan built by `planSpeakerRename`
+ * @returns True when applying the plan could still change something
+ */
+export function planHasWork(plan: SpeakerRenamePlan): boolean {
+	return plan.changed || plan.renames.length > 0;
+}
+
+/**
  * Plans a rename of the stored roster toward a target assignment: what to
  * store (roster and history mapping) and which display-level replacements to
  * run over the outputs. Each speaker's replacement covers every text it may

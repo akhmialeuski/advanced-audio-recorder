@@ -3,8 +3,9 @@
  * prefilled name fields from the sidecar roster, the per-speaker preview
  * column, rejecting a duplicate name, applying renames through the recorded
  * outputs (diffed against the stored names, with roster and history persisted
- * first), the LLM-skip notice, undo, and the participant roster the recording
- * carries alongside the settings profiles.
+ * first), a repeated apply that heals the outputs without recording anything,
+ * the notice that names why a note went untouched, undo, and the participant
+ * roster the recording carries alongside the settings profiles.
  * @jest-environment jsdom
  */
 
@@ -177,6 +178,7 @@ const cleanApplyResult = {
 	updatedTranscriptFiles: 1,
 	failed: 0,
 	unscopableNotes: 0,
+	alreadyCurrentNotes: 0,
 	unmatchedNotes: 0,
 	missingOutputs: 0,
 };
@@ -418,8 +420,35 @@ describe('SpeakerRenameModal', () => {
 		);
 	});
 
-	it('does nothing when the entered names equal the stored ones', async () => {
+	it('repeats the rewrite without recording when the names are unchanged', async () => {
+		// The roster and the outputs are different questions. With the names
+		// already stored there is nothing to commit, but the healing rule that
+		// reaches an output still showing the engine label survives - and it
+		// is the only thing that can ever reach it.
 		const sidecar = makeSidecar(rosterSection());
+		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+		modal.open();
+		await internals.render();
+		await internals.apply();
+
+		expect(applyMock).toHaveBeenCalledWith(
+			app,
+			audioFile,
+			expect.anything(),
+			[{ from: 'Speaker 1', to: 'Alex' }],
+			{ allowBroad: false },
+		);
+		// Nothing changed, so no history entry is appended for undo to walk.
+		expect(sidecar.commitRename).not.toHaveBeenCalled();
+		expect(Notice).not.toHaveBeenCalledWith('No speaker names to change.');
+	});
+
+	it('does nothing when there is neither a name to store nor one to rewrite', async () => {
+		const sidecar = makeSidecar(
+			rosterSection({
+				speakers: [{ label: 'Speaker 1' }, { label: 'Speaker 2' }],
+			}),
+		);
 		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
 		modal.open();
 		await internals.render();
@@ -428,6 +457,34 @@ describe('SpeakerRenameModal', () => {
 		expect(sidecar.commitRename).not.toHaveBeenCalled();
 		expect(applyMock).not.toHaveBeenCalled();
 		expect(Notice).toHaveBeenCalledWith('No speaker names to change.');
+	});
+
+	it('lets the broad opt-in reach a note a previous apply left behind', async () => {
+		// The exact sequence the unscopable notice tells the user to perform:
+		// the names were stored by an earlier apply, and this one exists only
+		// to carry the opt-in down to the note that was skipped.
+		unscopableMock.mockReturnValue(true);
+		applyMock.mockResolvedValue({
+			...cleanApplyResult,
+			updatedTranscriptFiles: 0,
+		});
+		const sidecar = makeSidecar(rosterSection());
+		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+		modal.open();
+		await internals.render();
+		internals.allowBroad = true;
+		await internals.apply();
+
+		expect(applyMock).toHaveBeenCalledWith(
+			app,
+			audioFile,
+			expect.anything(),
+			[{ from: 'Speaker 1', to: 'Alex' }],
+			{ allowBroad: true },
+		);
+		expect(Notice).toHaveBeenCalledWith(
+			expect.stringContaining('Renamed speakers in 1 note'),
+		);
 	});
 
 	it('passes broad rewrite through when the user opts in', async () => {
@@ -690,9 +747,11 @@ describe('SpeakerRenameModal', () => {
 		expect(sidecar.commitRename).not.toHaveBeenCalled();
 	});
 
-	it('undo pops the entry even when nothing needed rewriting', async () => {
-		// The stored roster already matches the previous history state; the
-		// entry is still consumed so the next undo walks further back.
+	it('undo still heals the outputs when the roster needs no change', async () => {
+		// The stored roster already matches the previous history state, so
+		// there is nothing to revert - but an output that missed the rewrite
+		// still shows the engine label, and the healing rule reaches it. The
+		// entry is consumed either way, so the next undo walks further back.
 		const section = rosterSection({
 			speakers: [{ label: 'Speaker 1', name: 'Alex' }],
 			history: [
@@ -706,9 +765,70 @@ describe('SpeakerRenameModal', () => {
 		await internals.render();
 		await internals.undo();
 
-		expect(applyMock).not.toHaveBeenCalled();
-		expect(sidecar.setSpeakers).not.toHaveBeenCalled();
+		expect(applyMock).toHaveBeenCalledWith(
+			app,
+			audioFile,
+			expect.anything(),
+			[{ from: 'Speaker 1', to: 'Alex' }],
+			{ allowBroad: false },
+		);
+		expect(sidecar.setSpeakers).toHaveBeenCalledWith('audio/rec.wav', [
+			{ label: 'Speaker 1', name: 'Alex' },
+		]);
 		expect(sidecar.popHistory).toHaveBeenCalledWith('audio/rec.wav');
+	});
+
+	it('undo reports an unscopable note without pointing at Apply', async () => {
+		// The remedy is apply-shaped: telling someone who just pressed Undo to
+		// apply again would walk the names forward, not back.
+		applyMock.mockResolvedValue({
+			...cleanApplyResult,
+			updatedNotes: 0,
+			unscopableNotes: 1,
+		});
+		const sidecar = makeSidecar(
+			rosterSection({
+				speakers: [{ label: 'Speaker 1', name: 'Alex' }],
+				history: [{ at: 't1', names: { 'Speaker 1': 'Alex' } }],
+			}),
+		);
+		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+		modal.open();
+		await internals.render();
+		await internals.undo();
+
+		const notice = (Notice as jest.Mock).mock.calls.at(-1)?.[0] as string;
+		expect(notice).toContain(
+			'1 note(s) carry no timecode link for this recording and were ' +
+				'left as they are.',
+		);
+		expect(notice).not.toContain('apply again');
+	});
+
+	it('reports a note that already uses these names without alarm', async () => {
+		applyMock.mockResolvedValue({
+			...cleanApplyResult,
+			updatedNotes: 0,
+			updatedTranscriptFiles: 1,
+			alreadyCurrentNotes: 1,
+		});
+		const sidecar = makeSidecar(rosterSection());
+		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+		modal.open();
+		await internals.render();
+
+		const first = internals.inputs.get('Speaker 1');
+		if (!first) {
+			throw new Error('missing input');
+		}
+		first.value = 'Bob';
+		await internals.apply();
+
+		const notice = (Notice as jest.Mock).mock.calls.at(-1)?.[0] as string;
+		expect(notice).toContain('1 note(s) already use these names.');
+		// Neither accusation may appear: the note was read back, not guessed at.
+		expect(notice).not.toContain('no longer carry the speaker labels');
+		expect(notice).not.toContain('carry no timecode link');
 	});
 
 	it('offers a preview button per speaker, disabled without stored offsets', async () => {

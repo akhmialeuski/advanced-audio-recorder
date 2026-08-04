@@ -244,7 +244,7 @@ describe('loadTranscriptLines with a recorded sidecar section', () => {
 		getTranscript: () => Promise.resolve(section),
 	});
 
-	function recordedNote(path: string, llmProcessed = false): NoteOutput {
+	function recordedNote(path: string): NoteOutput {
 		return {
 			path,
 			templates: {
@@ -254,7 +254,6 @@ describe('loadTranscriptLines with a recorded sidecar section', () => {
 				timestampLinks: true,
 				mergeConsecutiveSpeaker: true,
 			},
-			llmProcessed,
 			heading: 'Transcript',
 			writtenAt: 't',
 		};
@@ -352,10 +351,7 @@ describe('loadTranscriptLines with a recorded sidecar section', () => {
 		const app = makeApp(files, { caches: { 'note.md': { links: refs } } });
 		const section: TranscriptSection = {
 			...emptyTranscriptSection(),
-			noteOutputs: [
-				recordedNote('cleaned.md', true),
-				recordedNote('note.md'),
-			],
+			noteOutputs: [recordedNote('cleaned.md'), recordedNote('note.md')],
 			provenance: { language: 'en' },
 		};
 		const found = await loadTranscriptLines(
@@ -398,7 +394,7 @@ describe('loadTranscriptLines with a recorded sidecar section', () => {
 		});
 		const section: TranscriptSection = {
 			...emptyTranscriptSection(),
-			noteOutputs: [recordedNote('cleaned.md', true)],
+			noteOutputs: [recordedNote('cleaned.md')],
 		};
 		const found = await loadTranscriptLines(
 			app,
@@ -444,7 +440,7 @@ describe('loadTranscriptLines with a recorded sidecar section', () => {
 		const app = makeApp(files);
 		const section: TranscriptSection = {
 			...emptyTranscriptSection(),
-			noteOutputs: [recordedNote('cleaned.md', true)],
+			noteOutputs: [recordedNote('cleaned.md')],
 		};
 		const found = await loadTranscriptLines(
 			app,

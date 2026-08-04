@@ -18,7 +18,8 @@
  * The same chain then runs with a custom pass that really does restructure,
  * stripping the timecode links a scoped rewrite needs, because that is the
  * case whose outcome notice has to name the broad opt-in rather than claim
- * the note holds no matching label.
+ * the note holds no matching label - and because the notice is only worth
+ * printing if a second apply can act on it, which is covered here too.
  * @jest-environment jsdom
  */
 
@@ -397,12 +398,21 @@ describe('renaming speakers in an LLM-cleaned note', () => {
 			'[[standup.webm#t=3|0:03]] - **Speaker 1**: Morning all lets start.',
 		);
 		expect(note).toContain('**Speaker 2**: Api is done.');
-		// The run recorded the note as LLM-post-processed, so the regression
-		// path is genuinely exercised rather than sidestepped.
-		const recorded = storedTranscript(files).noteOutputs;
-		expect(recorded).toEqual([
-			expect.objectContaining({ path: NOTE_PATH, llmProcessed: true }),
+		// The note is recorded with the template it was written with and
+		// nothing about the pass that produced it: what a run was configured
+		// to do is not a fact about the note, and recording it as one is what
+		// cost these renames their note.
+		expect(storedTranscript(files).noteOutputs).toEqual([
+			expect.objectContaining({
+				path: NOTE_PATH,
+				templates: expect.objectContaining({
+					speakerFormat: '**{speaker}**',
+				}),
+			}),
 		]);
+		expect(
+			JSON.stringify(storedTranscript(files).noteOutputs),
+		).not.toContain('llmProcessed');
 	});
 
 	it('applies the names to that note, not only to the sidecar roster', async () => {
@@ -479,6 +489,41 @@ describe('renaming speakers in an LLM-cleaned note', () => {
 		expect(notice).toContain('Rename in notes without timecodes');
 		expect(notice).not.toContain('no longer carry the speaker labels');
 		expect(files.get(NOTE_PATH)).toBe(written);
+	});
+
+	it('rewrites the note when the opt-in is granted on a later apply', async () => {
+		// The sequence the notice above asks for, end to end. It used to dead
+		// end: the first apply stored the names, so the second planned no
+		// roster change and was refused before the opt-in could reach the
+		// note, leaving the user with advice that could not be followed.
+		installAudio();
+		const { app, files } = makeApp();
+		const store = new RecordingSidecarStore(app);
+		const settings = customSettings();
+		await transcribe(app, store, settings, makeRestructuringLlm);
+
+		const first = await rename(app, store, settings, {
+			'Speaker 1': 'Kseniya',
+		});
+		expect(first.notice).toContain('apply again to rewrite them');
+		expect(files.get(NOTE_PATH)).toContain('**Speaker 1**');
+
+		// Turn the toggle on, press Apply, change nothing else.
+		const second = await rename(
+			app,
+			store,
+			settings,
+			{ 'Speaker 1': 'Kseniya' },
+			{ allowBroad: true },
+		);
+
+		const note = files.get(NOTE_PATH) ?? '';
+		expect(note).toContain('**Kseniya**: morning all lets start');
+		expect(note).not.toContain('**Speaker 1**');
+		expect(second.notice).toContain('Renamed speakers in 1 note');
+		// The heal recorded no assignment of its own, so undo still has the
+		// single step the first apply put there.
+		expect(storedTranscript(files).history).toHaveLength(1);
 	});
 
 	it('rewrites that same note once the broad opt-in is on', async () => {

@@ -2,12 +2,14 @@
  * Tests for the pure speaker-rename model: rejecting a merge of two labels
  * into one name (including a name colliding with another entry's label), and
  * the shared rename plan - change detection against the stored roster, the
- * self-healing replacement rules that also target the engine label, the next
+ * self-healing replacement rules that also target the engine label, whether a
+ * plan has work left in either of the two places a rename reaches, the next
  * roster and history mapping, and prototype-safe label handling.
  */
 
 import {
 	duplicateAssignedNames,
+	planHasWork,
 	planSpeakerRename,
 	type SpeakerNameEntry,
 } from 'src/speakers/speakerRename';
@@ -216,6 +218,40 @@ describe('speakerRename', () => {
 			expect(plan.nextNames.constructor).toBe('Bob');
 			expect(Object.getPrototypeOf(plan.nextNames)).toBeNull();
 			expect(({} as Record<string, unknown>).Alex).toBeUndefined();
+		});
+	});
+
+	describe('planHasWork', () => {
+		it('is true for a roster that already holds the target names', () => {
+			// Nothing to store, but the healing rule that reaches an output
+			// still showing the engine label survives - and gating an apply on
+			// `changed` alone is what strands such an output forever.
+			const plan = planSpeakerRename(
+				[{ label: 'Speaker 1', name: 'Alex' }],
+				() => 'Alex',
+			);
+			expect(plan.changed).toBe(false);
+			expect(plan.renames).toEqual([{ from: 'Speaker 1', to: 'Alex' }]);
+			expect(planHasWork(plan)).toBe(true);
+		});
+
+		it('is false for an unnamed roster left unnamed', () => {
+			const plan = planSpeakerRename(
+				[{ label: 'Speaker 1' }, { label: 'Speaker 2' }],
+				() => '',
+			);
+			expect(plan.changed).toBe(false);
+			expect(plan.renames).toEqual([]);
+			expect(planHasWork(plan)).toBe(false);
+		});
+
+		it('is true whenever the roster itself changes', () => {
+			const plan = planSpeakerRename(
+				[{ label: 'Speaker 1' }],
+				() => 'Alex',
+			);
+			expect(plan.changed).toBe(true);
+			expect(planHasWork(plan)).toBe(true);
 		});
 	});
 });

@@ -2,18 +2,16 @@
  * Tests for the sidecar-driven speaker rename application: recorded file
  * outputs rewritten at their exact paths, recorded notes rewritten with the
  * templates they were written with (scoped to the recording's timecode
- * lines), the two untouched-note outcomes counted apart (never attempted for
- * want of a scope, versus attempted and matching nothing), the recorded
- * `llmProcessed` flag proven to change no outcome at all, missing outputs
- * skipped and counted, and the unscopable-note detection behind the
- * broad-rewrite opt-in.
+ * lines), the three untouched-note outcomes counted apart (never attempted for
+ * want of a scope, attempted and already showing these names, attempted and
+ * holding no rendered label), missing outputs skipped and counted, and the
+ * unscopable-note detection behind the broad-rewrite opt-in.
  */
 
 import type { App, CachedMetadata, TFile } from 'obsidian';
 import {
 	applySpeakerRenamesWithSidecar,
 	hasUnscopableRecordedNote,
-	type SpeakerRenameApplyResult,
 } from 'src/speakers/applySpeakerRenames';
 import {
 	emptyTranscriptSection,
@@ -129,12 +127,22 @@ function meetingNote(): { content: string; cache: Cache } {
 	return { content, cache };
 }
 
+/**
+ * The same note after a rename already reached it. Only this recording's lines
+ * carry the new names, so the neighbour's line still shows its engine label
+ * exactly as a scoped rewrite leaves it, and the line positions the cache
+ * refers to are unchanged.
+ */
+function renamedMeetingNote(): { content: string; cache: Cache } {
+	const { content, cache } = meetingNote();
+	const lines = content.split('\n');
+	lines[2] = '[00:00](rec.wav#t=0) **Alex** hello';
+	lines[3] = '[00:05](rec.wav#t=5) **Bob** hi';
+	return { content: lines.join('\n'), cache };
+}
+
 /** Builds a recorded note output with the given speaker template. */
-function recordedNote(
-	path: string,
-	speakerFormat = FORMAT,
-	llmProcessed = false,
-): NoteOutput {
+function recordedNote(path: string, speakerFormat = FORMAT): NoteOutput {
 	return {
 		path,
 		templates: {
@@ -144,7 +152,6 @@ function recordedNote(
 			timestampLinks: true,
 			mergeConsecutiveSpeaker: true,
 		},
-		llmProcessed,
 		heading: 'Transcript',
 		writtenAt: '2026-07-21T10:00:00Z',
 	};
@@ -309,7 +316,7 @@ describe('applySpeakerRenamesWithSidecar', () => {
 		const app = makeApp(files, { caches: { 'cleaned.md': cache } });
 		const section: TranscriptSection = {
 			...emptyTranscriptSection(),
-			noteOutputs: [recordedNote('cleaned.md', FORMAT, true)],
+			noteOutputs: [recordedNote('cleaned.md')],
 		};
 
 		const result = await applySpeakerRenamesWithSidecar(
@@ -364,7 +371,7 @@ describe('applySpeakerRenamesWithSidecar', () => {
 		const app = makeApp(files, { caches: { 'cleaned.md': cache } });
 		const section: TranscriptSection = {
 			...emptyTranscriptSection(),
-			noteOutputs: [recordedNote('cleaned.md', FORMAT, true)],
+			noteOutputs: [recordedNote('cleaned.md')],
 		};
 
 		const result = await applySpeakerRenamesWithSidecar(
@@ -392,7 +399,7 @@ describe('applySpeakerRenamesWithSidecar', () => {
 		const app = makeApp(files, { caches: { 'cleaned.md': {} } });
 		const section: TranscriptSection = {
 			...emptyTranscriptSection(),
-			noteOutputs: [recordedNote('cleaned.md', FORMAT, true)],
+			noteOutputs: [recordedNote('cleaned.md')],
 		};
 
 		const result = await applySpeakerRenamesWithSidecar(
@@ -419,7 +426,7 @@ describe('applySpeakerRenamesWithSidecar', () => {
 		const app = makeApp(files, { caches: { 'cleaned.md': {} } });
 		const section: TranscriptSection = {
 			...emptyTranscriptSection(),
-			noteOutputs: [recordedNote('cleaned.md', FORMAT, true)],
+			noteOutputs: [recordedNote('cleaned.md')],
 		};
 
 		const result = await applySpeakerRenamesWithSidecar(
@@ -446,7 +453,7 @@ describe('applySpeakerRenamesWithSidecar', () => {
 		const app = makeApp(files, { caches: { 'cleaned.md': {} } });
 		const section: TranscriptSection = {
 			...emptyTranscriptSection(),
-			noteOutputs: [recordedNote('cleaned.md', FORMAT, true)],
+			noteOutputs: [recordedNote('cleaned.md')],
 		};
 
 		const result = await applySpeakerRenamesWithSidecar(
@@ -461,43 +468,188 @@ describe('applySpeakerRenamesWithSidecar', () => {
 		expect(result.updatedNotes).toBe(0);
 	});
 
-	it('reaches the same outcome whatever the recorded llmProcessed flag says', async () => {
-		// The flag is provenance about the run, not a verdict about the note.
-		// Branching on it is what once cost these renames their note, so every
-		// outcome is pinned to be identical with it set and cleared.
-		const scenarios: { name: string; content: string; cache: Cache }[] = [
-			{ name: 'scoped.md', ...meetingNote() },
+	it('counts a note that already shows these names as current', async () => {
+		// Both a healthy note and one whose labels are gone leave the rewrite
+		// with nothing to do, so only reading the note back tells them apart.
+		// Accusing this one is the misreport the separate count exists for.
+		const content = renamedMeetingNote().content;
+		const files = new Map<string, string>([
+			['audio/rec.wav', ''],
+			['other.wav', ''],
+			['meeting.md', content],
+		]);
+		const app = makeApp(files, {
+			caches: { 'meeting.md': renamedMeetingNote().cache },
+		});
+		const section: TranscriptSection = {
+			...emptyTranscriptSection(),
+			noteOutputs: [recordedNote('meeting.md')],
+		};
+
+		const result = await applySpeakerRenamesWithSidecar(
+			app,
+			audioFile,
+			section,
+			renames,
+			{ allowBroad: false },
+		);
+		expect(result.alreadyCurrentNotes).toBe(1);
+		expect(result.unmatchedNotes).toBe(0);
+		expect(result.updatedNotes).toBe(0);
+		expect(files.get('meeting.md')).toBe(content);
+	});
+
+	it('heals one note while reporting the other as already current', async () => {
+		// The shape a repeated apply takes after a write failed on one output:
+		// the roster and the healthy note agree, the failed one still shows the
+		// engine label, and this apply is what closes the gap.
+		const healed = meetingNote();
+		const current = renamedMeetingNote();
+		const files = new Map<string, string>([
+			['audio/rec.wav', ''],
+			['other.wav', ''],
+			['stale.md', healed.content],
+			['fresh.md', current.content],
+		]);
+		const app = makeApp(files, {
+			caches: { 'stale.md': healed.cache, 'fresh.md': current.cache },
+		});
+		const section: TranscriptSection = {
+			...emptyTranscriptSection(),
+			noteOutputs: [recordedNote('stale.md'), recordedNote('fresh.md')],
+		};
+
+		const result = await applySpeakerRenamesWithSidecar(
+			app,
+			audioFile,
+			section,
+			renames,
+			{ allowBroad: false },
+		);
+		expect(result.updatedNotes).toBe(1);
+		expect(result.alreadyCurrentNotes).toBe(1);
+		expect(result.unmatchedNotes).toBe(0);
+		expect(files.get('stale.md')).toContain('**Alex** hello');
+		expect(files.get('fresh.md')).toBe(current.content);
+	});
+
+	it("reads 'already current' from this recording's lines only", async () => {
+		// The new names sit on a second recording's line while this
+		// recording's own lines lost their labels: scoping the read-back the
+		// same way the rewrite scopes keeps the neighbour from vouching for a
+		// transcript that really is beyond reach.
+		const content = [
+			'![[rec.wav]]',
+			'',
+			'[00:00](rec.wav#t=0) Alex opened the meeting.',
+			'',
+			'[00:00](other.wav#t=0) **Alex** unrelated',
+		].join('\n');
+		const cache: Cache = {
+			embeds: [
+				{
+					link: 'rec.wav',
+					position: { start: { line: 0 }, end: { line: 0 } },
+				},
+			],
+			links: [
+				{
+					link: 'rec.wav#t=0',
+					position: { start: { line: 2 }, end: { line: 2 } },
+				},
+				{
+					link: 'other.wav#t=0',
+					position: { start: { line: 4 }, end: { line: 4 } },
+				},
+			],
+		};
+		const files = new Map<string, string>([
+			['audio/rec.wav', ''],
+			['other.wav', ''],
+			['meeting.md', content],
+		]);
+		const app = makeApp(files, { caches: { 'meeting.md': cache } });
+		const section: TranscriptSection = {
+			...emptyTranscriptSection(),
+			noteOutputs: [recordedNote('meeting.md')],
+		};
+
+		const result = await applySpeakerRenamesWithSidecar(
+			app,
+			audioFile,
+			section,
+			renames,
+			{ allowBroad: false },
+		);
+		expect(result.unmatchedNotes).toBe(1);
+		expect(result.alreadyCurrentNotes).toBe(0);
+	});
+
+	it('counts a broad-allowed note that already shows the names as current', async () => {
+		const content = 'Cleaned up prose mentioning **Alex** somewhere.';
+		const files = new Map<string, string>([
+			['audio/rec.wav', ''],
+			['cleaned.md', content],
+		]);
+		const app = makeApp(files, { caches: { 'cleaned.md': {} } });
+		const section: TranscriptSection = {
+			...emptyTranscriptSection(),
+			noteOutputs: [recordedNote('cleaned.md')],
+		};
+
+		const result = await applySpeakerRenamesWithSidecar(
+			app,
+			audioFile,
+			section,
+			renames,
+			{ allowBroad: true },
+		);
+		expect(result.alreadyCurrentNotes).toBe(1);
+		expect(result.unmatchedNotes).toBe(0);
+		expect(files.get('cleaned.md')).toBe(content);
+	});
+
+	it('leaves an already-current transcript file byte-identical', async () => {
+		// A healing apply runs over every recorded output, so a file that
+		// needs nothing must not be re-serialized into a phantom update.
+		const serialized = JSON.stringify(
 			{
-				name: 'untimecoded.md',
-				content: '**Speaker 1** hi',
-				cache: {},
+				language: 'en',
+				segments: [
+					{ speaker: 'Alex', text: 'hi' },
+					{ speaker: 'Bob', text: 'hello' },
+				],
+				speakers: ['Alex', 'Bob'],
 			},
-		];
-		for (const { name, content, cache } of scenarios) {
-			const run = async (
-				llmProcessed: boolean,
-			): Promise<{ counts: SpeakerRenameApplyResult; note: string }> => {
-				const files = new Map<string, string>([
-					['audio/rec.wav', ''],
-					['other.wav', ''],
-					[name, content],
-				]);
-				const app = makeApp(files, { caches: { [name]: cache } });
-				const section: TranscriptSection = {
-					...emptyTranscriptSection(),
-					noteOutputs: [recordedNote(name, FORMAT, llmProcessed)],
-				};
-				const counts = await applySpeakerRenamesWithSidecar(
-					app,
-					audioFile,
-					section,
-					renames,
-					{ allowBroad: false },
-				);
-				return { counts, note: files.get(name) ?? '' };
-			};
-			expect(await run(true)).toEqual(await run(false));
-		}
+			null,
+			2,
+		);
+		const files = new Map<string, string>([
+			['audio/rec.wav', ''],
+			['audio/rec.transcript.json', serialized],
+		]);
+		const app = makeApp(files);
+		const section: TranscriptSection = {
+			...emptyTranscriptSection(),
+			fileOutputs: [
+				{
+					path: 'audio/rec.transcript.json',
+					format: 'json',
+					writtenAt: 't',
+				},
+			],
+		};
+
+		const result = await applySpeakerRenamesWithSidecar(
+			app,
+			audioFile,
+			section,
+			renames,
+			{ allowBroad: false },
+		);
+		expect(result.updatedTranscriptFiles).toBe(0);
+		expect(result.failed).toBe(0);
+		expect(files.get('audio/rec.transcript.json')).toBe(serialized);
 	});
 
 	it('rewrites an untimecoded recorded note only under allowBroad', async () => {
@@ -693,7 +845,7 @@ describe('hasUnscopableRecordedNote', () => {
 		const app = makeApp(files, { caches: { 'cleaned.md': {} } });
 		const section: TranscriptSection = {
 			...emptyTranscriptSection(),
-			noteOutputs: [recordedNote('cleaned.md', FORMAT, true)],
+			noteOutputs: [recordedNote('cleaned.md')],
 		};
 		expect(hasUnscopableRecordedNote(app, audioFile, section)).toBe(true);
 	});

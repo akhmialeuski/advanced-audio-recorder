@@ -41,6 +41,7 @@ import { mergeParticipantNames } from '../speakers/participantRoster';
 import { speakerPreviewRange } from '../speakers/speakerPreview';
 import {
 	duplicateAssignedNames,
+	planHasWork,
 	planSpeakerRename,
 	type SpeakerNameEntry,
 } from '../speakers/speakerRename';
@@ -462,7 +463,13 @@ export class SpeakerRenameModal extends PluginModal {
 					section.speakers,
 					(label) => typed.get(label) ?? '',
 				);
-				if (!plan.changed) {
+				// The roster and the outputs are two different questions. A
+				// roster that already holds these names still leaves healing
+				// rules for an output that shows an engine label (a write that
+				// failed, a note the broad opt-in had not been granted for
+				// yet), so an apply is refused only when neither has anything
+				// left to do.
+				if (!planHasWork(plan)) {
 					new Notice('No speaker names to change.');
 					this.close();
 					return;
@@ -481,21 +488,28 @@ export class SpeakerRenameModal extends PluginModal {
 				// actually applied. A name that was in neither the recording's
 				// roster nor the picked profile joins the recording here (and
 				// the profile in rememberNames above), so it is suggested next
-				// time from the recording itself.
-				await this.options.sidecar.commitRename(
-					this.file.path,
-					plan.nextEntries,
-					plan.nextNames,
-					{
-						names: Object.values(plan.nextNames),
-						profileId: this.selectedProfileId,
-					},
-				);
+				// time from the recording itself. An apply that only healed
+				// the outputs has no assignment to record and must not append
+				// a history entry, which undo would then step through for
+				// nothing.
+				if (plan.changed) {
+					await this.options.sidecar.commitRename(
+						this.file.path,
+						plan.nextEntries,
+						plan.nextNames,
+						{
+							names: Object.values(plan.nextNames),
+							profileId: this.selectedProfileId,
+						},
+					);
+				}
 				console.debug(
 					`${PLUGIN_LOG_PREFIX} Renamed speakers: ` +
 						this.describeCounts(applied),
 				);
-				new Notice(this.describeOutcome(applied));
+				new Notice(
+					this.describeOutcome(applied, { offerBroadOptIn: true }),
+				);
 				this.close();
 			} catch (error) {
 				const message =
@@ -530,7 +544,10 @@ export class SpeakerRenameModal extends PluginModal {
 						? (previous[label] ?? '')
 						: '',
 				);
-				if (plan.changed) {
+				// Same split as apply: an output can still show the name this
+				// undo reverses while the roster already reads the older one,
+				// and the healing rules are what reach it.
+				if (planHasWork(plan)) {
 					const applied = await applySpeakerRenamesWithSidecar(
 						this.app,
 						this.file,
@@ -542,7 +559,13 @@ export class SpeakerRenameModal extends PluginModal {
 						this.file.path,
 						plan.nextEntries,
 					);
-					new Notice(this.describeOutcome(applied));
+					// No opt-in advice here: it would tell the user to press
+					// Apply, which walks the names forward rather than back.
+					new Notice(
+						this.describeOutcome(applied, {
+							offerBroadOptIn: false,
+						}),
+					);
 				} else {
 					new Notice(
 						'Nothing to undo: the names are already the same.',
@@ -601,6 +624,7 @@ export class SpeakerRenameModal extends PluginModal {
 			`${String(applied.updatedNotes)} note(s) and ` +
 			`${String(applied.updatedTranscriptFiles)} transcript file(s) ` +
 			`updated, ${String(applied.unscopableNotes)} note(s) unscopable, ` +
+			`${String(applied.alreadyCurrentNotes)} note(s) already current, ` +
 			`${String(applied.unmatchedNotes)} note(s) unmatched, ` +
 			`${String(applied.missingOutputs)} recorded output(s) missing, ` +
 			`${String(applied.failed)} failed`
@@ -610,8 +634,13 @@ export class SpeakerRenameModal extends PluginModal {
 	/**
 	 * Builds the outcome notice from what the rename actually touched.
 	 * @param applied - Counts of rewritten notes and files
+	 * @param options - `offerBroadOptIn` names the toggle that would rewrite
+	 *   an unscopable note, which only an apply can act on
 	 */
-	private describeOutcome(applied: SpeakerRenameApplyResult): string {
+	private describeOutcome(
+		applied: SpeakerRenameApplyResult,
+		options: { offerBroadOptIn: boolean },
+	): string {
 		const targets: string[] = [];
 		if (applied.updatedNotes > 0) {
 			const plural = applied.updatedNotes > 1 ? 's' : '';
@@ -635,12 +664,22 @@ export class SpeakerRenameModal extends PluginModal {
 		const unscopable =
 			applied.unscopableNotes > 0
 				? ` ${String(applied.unscopableNotes)} note(s) carry no ` +
-					'timecode link for this recording; turn on "Rename in ' +
-					'notes without timecodes" and apply again to rewrite them.'
+					'timecode link for this recording' +
+					(options.offerBroadOptIn
+						? '; turn on "Rename in notes without timecodes" and ' +
+							'apply again to rewrite them.'
+						: ' and were left as they are.')
 				: '';
-		// This one was attempted and matched nothing, so the rendered labels
-		// really are gone, whether an LLM pass restructured the body or the
-		// note was edited by hand.
+		// Read back from the note rather than inferred: it shows these names
+		// already, so there was nothing to do and nothing to warn about.
+		const alreadyCurrent =
+			applied.alreadyCurrentNotes > 0
+				? ` ${String(applied.alreadyCurrentNotes)} note(s) already ` +
+					'use these names.'
+				: '';
+		// This one was attempted and holds neither the old text nor the new
+		// one, so the rendered labels really are gone, whether an LLM pass
+		// restructured the body or the note was edited by hand.
 		const unmatched =
 			applied.unmatchedNotes > 0
 				? ` ${String(applied.unmatchedNotes)} note(s) no longer carry ` +
@@ -657,10 +696,11 @@ export class SpeakerRenameModal extends PluginModal {
 					'longer exist and were skipped; transcribe again to ' +
 					'refresh them.'
 				: '';
+		const rest = `${unscopable}${alreadyCurrent}${unmatched}${missing}${failed}`;
 		if (targets.length === 0) {
-			return `No speaker labels were rewritten.${unscopable}${unmatched}${missing}${failed}`;
+			return `No speaker labels were rewritten.${rest}`;
 		}
-		return `Renamed speakers in ${targets.join(' and ')}.${unscopable}${unmatched}${missing}${failed}`;
+		return `Renamed speakers in ${targets.join(' and ')}.${rest}`;
 	}
 
 	override onClose(): void {

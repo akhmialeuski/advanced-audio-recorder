@@ -444,7 +444,6 @@ describe('transcribeFile output registration', () => {
 					mergeConsecutiveSpeaker:
 						settings.transcriptMergeConsecutiveSpeaker,
 				},
-				llmProcessed: false,
 				heading: settings.transcriptHeading,
 			}),
 		);
@@ -456,7 +455,11 @@ describe('transcribeFile output registration', () => {
 		);
 	});
 
-	it('marks the note output llmProcessed for a cleanup pass', async () => {
+	it('records a note output holding facts about the note, not the run', async () => {
+		// A run's configuration is not a claim about what the note contains.
+		// Recording one as if it were made every later reader trust a
+		// prediction over the file in front of it, which is how a cleanup pass
+		// came to silently veto its own renames.
 		const sidecar = makeSidecar(emptyTranscriptSection());
 		insertMock.mockReturnValue(true);
 		const settings = diarizedSettings({
@@ -478,38 +481,17 @@ describe('transcribeFile output registration', () => {
 				}),
 			},
 		);
-		expect(sidecar.recordNoteOutput).toHaveBeenCalledWith(
-			'audio/rec.webm',
-			expect.objectContaining({ llmProcessed: true }),
-		);
-	});
-
-	it('does not mark the note output llmProcessed for a summary pass', async () => {
-		const sidecar = makeSidecar(emptyTranscriptSection());
-		insertMock.mockReturnValue(true);
-		const settings = diarizedSettings({
-			transcriptDestination: 'note',
-			llmPostProcessEnabled: true,
-			llmPostProcessTask: 'summary',
-		});
-		await transcribeFile(
-			makeApp(),
-			() => settings,
-			audioFile,
-			{ notePathForLinks: 'note.md', sidecar },
-			{
-				createProvider: () => makeProvider(twoSpeakerSegments),
-				createLlm: () => ({
-					id: LLM_PROVIDER_IDS.GEMINI,
-					label: 'Fake LLM',
-					complete: jest.fn(async () => 'a summary'),
-				}),
-			},
-		);
-		expect(sidecar.recordNoteOutput).toHaveBeenCalledWith(
-			'audio/rec.webm',
-			expect.objectContaining({ llmProcessed: false }),
-		);
+		const recorded = sidecar.recordNoteOutput.mock.calls[0]?.[1] as Record<
+			string,
+			unknown
+		>;
+		expect(Object.keys(recorded).sort()).toEqual([
+			'heading',
+			'path',
+			'templates',
+			'writtenAt',
+		]);
+		expect(recorded.path).toBe('note.md');
 	});
 
 	it('registers the outputs of a non-diarized run too', async () => {

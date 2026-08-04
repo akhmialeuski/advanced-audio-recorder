@@ -5,10 +5,10 @@
  * templates each note was actually written with, scoped to the lines whose
  * timecode link resolves to this audio. A transcript without such links
  * cannot be scoped, so a broad rewrite of the whole note is offered only
- * after the caller confirms. Nothing here branches on what the transcribing
- * run happened to enable: an output is judged solely by what it turns out to
- * contain, and every outcome is counted separately so the caller can name the
- * actual reason a note went untouched. Each output is rewritten
+ * after the caller confirms. An output is judged only by what it turns out to
+ * contain, never by what the transcribing run was configured to do, and a note
+ * the rewrite left alone is read back to find out why, so the caller can name
+ * the actual reason instead of guessing one. Each output is rewritten
  * independently, so one failure is logged and skipped rather than aborting
  * the rest.
  * @module speakers/applySpeakerRenames
@@ -21,6 +21,7 @@ import type { TranscriptSection } from '../sidecar/recordingSidecarModel';
 import type { TranscriptFileFormat } from '../transcription/TranscriptTypes';
 import type { SpeakerRename } from './speakerRename';
 import {
+	noteShowsAnySpeaker,
 	renameSpeakersInMarkdown,
 	renameSpeakersInNoteLines,
 	renameSpeakersInPlainText,
@@ -44,9 +45,17 @@ export interface SpeakerRenameApplyResult {
 	 */
 	unscopableNotes: number;
 	/**
+	 * Notes the rewrite attempted, could not change, and read back as already
+	 * showing the names being applied. Nothing was wrong with them: a rename
+	 * that reaches an output twice, or an apply that only heals the others,
+	 * lands here.
+	 */
+	alreadyCurrentNotes: number;
+	/**
 	 * Notes the rewrite did attempt and could not change, because no fragment
-	 * rendered from the note's own speaker template survives in it. The labels
-	 * are genuinely gone, whether an LLM pass restructured the body or a hand
+	 * rendered from the note's own speaker template survives in it - neither
+	 * the text being replaced nor the text replacing it. The labels are
+	 * genuinely gone, whether an LLM pass restructured the body or a hand
 	 * edit did.
 	 */
 	unmatchedNotes: number;
@@ -106,9 +115,37 @@ function emptyApplyResult(): SpeakerRenameApplyResult {
 		updatedTranscriptFiles: 0,
 		failed: 0,
 		unscopableNotes: 0,
+		alreadyCurrentNotes: 0,
 		unmatchedNotes: 0,
 		missingOutputs: 0,
 	};
+}
+
+/**
+ * Counts a note the rewrite left byte-identical, by reading back which of the
+ * two opposite causes produced it: the note already shows the names this apply
+ * targets (healthy, nothing to do), or it shows no rendered speaker fragment
+ * at all (the labels the transcript was written with are gone). Guessing here
+ * is what makes a rename dialog accuse an output that is perfectly in sync.
+ * @param content - Note content as the rewrite saw it
+ * @param speakerFormat - Speaker template the note was written with
+ * @param renames - Replacements that found nothing to do
+ * @param scope - Lines belonging to this recording, null when unscoped
+ * @param result - Shared result the outcome is counted into
+ */
+function countUntouchedNote(
+	content: string,
+	speakerFormat: string,
+	renames: readonly SpeakerRename[],
+	scope: ReadonlySet<number> | null,
+	result: SpeakerRenameApplyResult,
+): void {
+	const targets = renames.map((rename) => rename.to);
+	if (noteShowsAnySpeaker(content, speakerFormat, targets, scope)) {
+		result.alreadyCurrentNotes++;
+		return;
+	}
+	result.unmatchedNotes++;
 }
 
 /**
@@ -151,11 +188,11 @@ async function rewriteTranscriptFileOutput(
 /**
  * Rewrites one note, scoped to the recording's lines when timecode links
  * identify them and whole-note only under `allowBroad`, counting the outcome
- * into the shared result. The two ways a note can survive untouched are
- * counted apart, because they call for opposite advice: one was never
- * attempted and the broad opt-in would rewrite it, the other was attempted
- * and found nothing left to match. A failure is logged and counted, never
- * thrown.
+ * into the shared result. The three ways a note can survive untouched are
+ * counted apart, because they call for different advice: it was never
+ * attempted and the broad opt-in would rewrite it, it was attempted and
+ * already shows these names, or it was attempted and holds no rendered label
+ * any more. A failure is logged and counted, never thrown.
  */
 async function rewriteNoteOutput(
 	app: App,
@@ -175,17 +212,25 @@ async function rewriteNoteOutput(
 			result.unscopableNotes++;
 			return;
 		}
+		const scope = lines.size > 0 ? lines : null;
 		const rewriteNote = (data: string): string =>
-			lines.size > 0
-				? renameSpeakersInNoteLines(data, speakerFormat, renames, lines)
+			scope
+				? renameSpeakersInNoteLines(data, speakerFormat, renames, scope)
 				: renameSpeakersInMarkdown(data, speakerFormat, renames);
+		// Skip untouched notes with a cheap read, but perform the rewrite
+		// against the content vault.process supplies so a concurrent edit
+		// between this read and the write is never clobbered. Either content
+		// is the one to judge an untouched note by, so both are carried into
+		// the count below rather than assumed identical.
 		const current = await app.vault.read(note);
 		if (rewriteNote(current) === current) {
-			result.unmatchedNotes++;
+			countUntouchedNote(current, speakerFormat, renames, scope, result);
 			return;
 		}
+		let seen = current;
 		let changed = false;
 		await app.vault.process(note, (data) => {
+			seen = data;
 			const rewritten = rewriteNote(data);
 			changed = rewritten !== data;
 			return rewritten;
@@ -193,7 +238,7 @@ async function rewriteNoteOutput(
 		if (changed) {
 			result.updatedNotes++;
 		} else {
-			result.unmatchedNotes++;
+			countUntouchedNote(seen, speakerFormat, renames, scope, result);
 		}
 	} catch (error) {
 		result.failed++;
@@ -213,9 +258,10 @@ async function rewriteNoteOutput(
  * enabled, because the line-scoped rewrite only touches lines whose timecode
  * link resolves to this audio and only replaces exact rendered speaker
  * fragments, so a body an LLM pass did restructure is a no-op rather than a
- * hazard. A note that could not be scoped without the broad opt-in and one
- * that was attempted without a single match are counted apart, since only the
- * first has a remedy the caller can offer. A recorded path that no longer
+ * hazard. The three untouched outcomes are counted apart - never attempted for
+ * want of a scope, attempted and already showing these names, attempted and
+ * holding no rendered label - because each calls for different words, and only
+ * the first has a remedy the caller can offer. A recorded path that no longer
  * resolves is skipped and counted.
  * @param app - Obsidian App
  * @param audioFile - Recording whose outputs are renamed
