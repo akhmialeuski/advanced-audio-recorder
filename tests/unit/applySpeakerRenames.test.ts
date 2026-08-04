@@ -2,9 +2,10 @@
  * Tests for the sidecar-driven speaker rename application: recorded file
  * outputs rewritten at their exact paths, recorded notes rewritten with the
  * templates they were written with (scoped to the recording's timecode
- * lines), LLM-post-processed notes rewritten whenever their rendered lines
- * survived the pass and only counted as unchanged when they did not, missing
- * outputs skipped and counted, and the unscopable-note detection behind the
+ * lines), the two untouched-note outcomes counted apart (never attempted for
+ * want of a scope, versus attempted and matching nothing), the recorded
+ * `llmProcessed` flag proven to change no outcome at all, missing outputs
+ * skipped and counted, and the unscopable-note detection behind the
  * broad-rewrite opt-in.
  */
 
@@ -12,6 +13,7 @@ import type { App, CachedMetadata, TFile } from 'obsidian';
 import {
 	applySpeakerRenamesWithSidecar,
 	hasUnscopableRecordedNote,
+	type SpeakerRenameApplyResult,
 } from 'src/speakers/applySpeakerRenames';
 import {
 	emptyTranscriptSection,
@@ -318,14 +320,70 @@ describe('applySpeakerRenamesWithSidecar', () => {
 			{ allowBroad: false },
 		);
 		expect(result.updatedNotes).toBe(1);
-		expect(result.unchangedLlmNotes).toBe(0);
+		expect(result.unmatchedNotes).toBe(0);
+		expect(result.unscopableNotes).toBe(0);
 		const note = files.get('cleaned.md') ?? '';
 		expect(note).toContain('**Alex** hello');
 		expect(note).toContain('**Bob** hi');
 		expect(note).toContain('**Speaker 1** unrelated');
 	});
 
-	it('counts an LLM-processed note the pass really did restructure', async () => {
+	it('counts a note the pass restructured, its labels folded into prose', async () => {
+		// The timecode links survived, so the note is scoped and genuinely
+		// attempted; the pass dissolved the rendered labels into the sentence,
+		// leaving a template-driven rewrite nothing to match. This is the only
+		// shape that may be reported as carrying no labels.
+		const content = [
+			'![[rec.wav]]',
+			'',
+			'[00:00](rec.wav#t=0) Alex opened the meeting.',
+			'[00:05](rec.wav#t=5) Bob answered right away.',
+		].join('\n');
+		const cache: Cache = {
+			embeds: [
+				{
+					link: 'rec.wav',
+					position: { start: { line: 0 }, end: { line: 0 } },
+				},
+			],
+			links: [
+				{
+					link: 'rec.wav#t=0',
+					position: { start: { line: 2 }, end: { line: 2 } },
+				},
+				{
+					link: 'rec.wav#t=5',
+					position: { start: { line: 3 }, end: { line: 3 } },
+				},
+			],
+		};
+		const files = new Map<string, string>([
+			['audio/rec.wav', ''],
+			['cleaned.md', content],
+		]);
+		const app = makeApp(files, { caches: { 'cleaned.md': cache } });
+		const section: TranscriptSection = {
+			...emptyTranscriptSection(),
+			noteOutputs: [recordedNote('cleaned.md', FORMAT, true)],
+		};
+
+		const result = await applySpeakerRenamesWithSidecar(
+			app,
+			audioFile,
+			section,
+			renames,
+			{ allowBroad: false },
+		);
+		expect(result.unmatchedNotes).toBe(1);
+		expect(result.unscopableNotes).toBe(0);
+		expect(result.updatedNotes).toBe(0);
+		expect(files.get('cleaned.md')).toBe(content);
+	});
+
+	it('counts an untimecoded note as unscopable, never as unmatched', async () => {
+		// The labels are right there and the broad opt-in would rewrite them,
+		// so reporting this as a note without matching labels would state a
+		// false reason and hide the remedy from the user.
 		const content = 'Cleaned up prose mentioning **Speaker 1** somewhere.';
 		const files = new Map<string, string>([
 			['audio/rec.wav', ''],
@@ -344,12 +402,15 @@ describe('applySpeakerRenamesWithSidecar', () => {
 			renames,
 			{ allowBroad: false },
 		);
-		expect(result.unchangedLlmNotes).toBe(1);
+		expect(result.unscopableNotes).toBe(1);
+		expect(result.unmatchedNotes).toBe(0);
 		expect(result.updatedNotes).toBe(0);
 		expect(files.get('cleaned.md')).toBe(content);
 	});
 
-	it('rewrites an untimecoded LLM-processed note under allowBroad', async () => {
+	it('rewrites that same untimecoded note once broad is allowed', async () => {
+		// The proof that the previous case was never "no matching labels": the
+		// identical content rewrites cleanly the moment the opt-in is on.
 		const content = 'Cleaned up prose mentioning **Speaker 1** somewhere.';
 		const files = new Map<string, string>([
 			['audio/rec.wav', ''],
@@ -369,8 +430,74 @@ describe('applySpeakerRenamesWithSidecar', () => {
 			{ allowBroad: true },
 		);
 		expect(result.updatedNotes).toBe(1);
-		expect(result.unchangedLlmNotes).toBe(0);
+		expect(result.unscopableNotes).toBe(0);
+		expect(result.unmatchedNotes).toBe(0);
 		expect(files.get('cleaned.md')).toContain('**Alex** somewhere.');
+	});
+
+	it('counts a broad-allowed note with no labels at all as unmatched', async () => {
+		// With the opt-in on, an untimecoded note is attempted whole; only now
+		// may "no matching labels" be reported, and only because it is true.
+		const content = 'A summary paragraph naming nobody in particular.';
+		const files = new Map<string, string>([
+			['audio/rec.wav', ''],
+			['cleaned.md', content],
+		]);
+		const app = makeApp(files, { caches: { 'cleaned.md': {} } });
+		const section: TranscriptSection = {
+			...emptyTranscriptSection(),
+			noteOutputs: [recordedNote('cleaned.md', FORMAT, true)],
+		};
+
+		const result = await applySpeakerRenamesWithSidecar(
+			app,
+			audioFile,
+			section,
+			renames,
+			{ allowBroad: true },
+		);
+		expect(result.unmatchedNotes).toBe(1);
+		expect(result.unscopableNotes).toBe(0);
+		expect(result.updatedNotes).toBe(0);
+	});
+
+	it('reaches the same outcome whatever the recorded llmProcessed flag says', async () => {
+		// The flag is provenance about the run, not a verdict about the note.
+		// Branching on it is what once cost these renames their note, so every
+		// outcome is pinned to be identical with it set and cleared.
+		const scenarios: { name: string; content: string; cache: Cache }[] = [
+			{ name: 'scoped.md', ...meetingNote() },
+			{
+				name: 'untimecoded.md',
+				content: '**Speaker 1** hi',
+				cache: {},
+			},
+		];
+		for (const { name, content, cache } of scenarios) {
+			const run = async (
+				llmProcessed: boolean,
+			): Promise<{ counts: SpeakerRenameApplyResult; note: string }> => {
+				const files = new Map<string, string>([
+					['audio/rec.wav', ''],
+					['other.wav', ''],
+					[name, content],
+				]);
+				const app = makeApp(files, { caches: { [name]: cache } });
+				const section: TranscriptSection = {
+					...emptyTranscriptSection(),
+					noteOutputs: [recordedNote(name, FORMAT, llmProcessed)],
+				};
+				const counts = await applySpeakerRenamesWithSidecar(
+					app,
+					audioFile,
+					section,
+					renames,
+					{ allowBroad: false },
+				);
+				return { counts, note: files.get(name) ?? '' };
+			};
+			expect(await run(true)).toEqual(await run(false));
+		}
 	});
 
 	it('rewrites an untimecoded recorded note only under allowBroad', async () => {
@@ -402,6 +529,10 @@ describe('applySpeakerRenamesWithSidecar', () => {
 			{ allowBroad: false },
 		);
 		expect(scoped.updatedNotes).toBe(0);
+		// Never attempted, so it counts as unscopable however the run was
+		// configured; the flag plays no part in this at all.
+		expect(scoped.unscopableNotes).toBe(1);
+		expect(scoped.unmatchedNotes).toBe(0);
 		expect(scopedFiles.get('meeting.md')).toBe(content);
 
 		const broadFiles = build();
@@ -413,6 +544,7 @@ describe('applySpeakerRenamesWithSidecar', () => {
 			{ allowBroad: true },
 		);
 		expect(broad.updatedNotes).toBe(1);
+		expect(broad.unscopableNotes).toBe(0);
 		expect(broadFiles.get('meeting.md')).toContain('**Alex** hi');
 	});
 

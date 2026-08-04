@@ -14,10 +14,15 @@
  * sidecar roster took the names while the note kept reading "Speaker 1". Only
  * a test that renders, cleans, inserts, records, and renames through the real
  * objects catches that, which is why this drives the whole chain.
+ *
+ * The same chain then runs with a custom pass that really does restructure,
+ * stripping the timecode links a scoped rewrite needs, because that is the
+ * case whose outcome notice has to name the broad opt-in rather than claim
+ * the note holds no matching label.
  * @jest-environment jsdom
  */
 
-import { MarkdownView } from 'obsidian';
+import { MarkdownView, Notice } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { mergeSettings } from 'src/settings/settingsSerialization';
@@ -34,6 +39,7 @@ interface ModalInternals {
 	render(): Promise<void>;
 	apply(): Promise<void>;
 	inputs: Map<string, HTMLInputElement>;
+	allowBroad: boolean;
 }
 
 const NOTE_PATH = 'meetings/standup.md';
@@ -250,6 +256,25 @@ function makeCleanupLlm(): LlmProvider {
 	} as unknown as LlmProvider;
 }
 
+/**
+ * A custom-task LLM that really does restructure: the spoken turns keep their
+ * speaker labels but lose the timecode link that opened each line, which is
+ * exactly what leaves the note beyond a scoped rewrite.
+ */
+function makeRestructuringLlm(): LlmProvider {
+	return {
+		id: 'openai',
+		label: 'Fake custom pass',
+		complete: (prompt: { user: string }) =>
+			Promise.resolve(
+				prompt.user
+					.split('\n')
+					.map((line) => line.replace(/^\[\[[^\]]*\]\]\s*-\s*/, ''))
+					.join('\n'),
+			),
+	} as unknown as LlmProvider;
+}
+
 /** Settings that diarize, write into the note, and run the cleanup pass. */
 function cleanupSettings(): AudioRecorderSettings {
 	return mergeSettings({
@@ -264,6 +289,14 @@ function cleanupSettings(): AudioRecorderSettings {
 	});
 }
 
+/** The same settings with the custom task, whose prompt is unconstrained. */
+function customSettings(): AudioRecorderSettings {
+	return mergeSettings({
+		...cleanupSettings(),
+		llmPostProcessTask: 'custom',
+	});
+}
+
 /** The transcript section of the sidecar file as it actually sits on disk. */
 function storedTranscript(files: Map<string, string>): Record<string, unknown> {
 	const raw = files.get(SIDECAR_PATH);
@@ -274,8 +307,12 @@ function storedTranscript(files: Map<string, string>): Record<string, unknown> {
 		.transcript;
 }
 
-/** Installs a deterministic audio element as the global Audio factory. */
-function installAudio(): { restore(): void } {
+/**
+ * Installs a deterministic audio element as the global Audio factory, which
+ * the dialog builds for its speaker excerpts. The jest config restores spies
+ * after every test, so this needs no teardown of its own.
+ */
+function installAudio(): void {
 	const element = document.createElement('audio');
 	Object.defineProperties(element, {
 		paused: { configurable: true, get: () => true },
@@ -285,10 +322,7 @@ function installAudio(): { restore(): void } {
 	jest.spyOn(element, 'play').mockResolvedValue(undefined);
 	jest.spyOn(element, 'pause').mockImplementation(() => undefined);
 	jest.spyOn(element, 'load').mockImplementation(() => undefined);
-	const factory = jest
-		.spyOn(globalThis, 'Audio')
-		.mockImplementation(() => element);
-	return { restore: () => factory.mockRestore() };
+	jest.spyOn(globalThis, 'Audio').mockImplementation(() => element);
 }
 
 describe('renaming speakers in an LLM-cleaned note', () => {
@@ -297,6 +331,7 @@ describe('renaming speakers in an LLM-cleaned note', () => {
 		app: App,
 		store: RecordingSidecarStore,
 		settings: AudioRecorderSettings,
+		llm: () => LlmProvider = makeCleanupLlm,
 	): Promise<void> {
 		await transcribeFile(
 			app,
@@ -305,18 +340,23 @@ describe('renaming speakers in an LLM-cleaned note', () => {
 			{ notePathForLinks: NOTE_PATH, sidecar: store },
 			{
 				createProvider: () => makeProvider(),
-				createLlm: () => makeCleanupLlm(),
+				createLlm: () => llm(),
 			},
 		);
 	}
 
-	/** Opens the real dialog and applies one name per engine label. */
+	/**
+	 * Opens the real dialog, applies one name per engine label, and returns
+	 * both the outcome notice the user reads and whether the dialog offered
+	 * the broad-rewrite opt-in.
+	 */
 	async function rename(
 		app: App,
 		store: RecordingSidecarStore,
 		settings: AudioRecorderSettings,
 		names: Record<string, string>,
-	): Promise<void> {
+		options: { allowBroad?: boolean } = {},
+	): Promise<{ notice: string; offeredBroad: boolean }> {
 		const modal = new SpeakerRenameModal(app, audioFile, {
 			getSettings: () => settings,
 			saveSettings: () => Promise.resolve(),
@@ -325,6 +365,9 @@ describe('renaming speakers in an LLM-cleaned note', () => {
 		const internals = modal as unknown as ModalInternals;
 		modal.open();
 		await internals.render();
+		const offeredBroad = (modal.contentEl.textContent ?? '').includes(
+			'Rename in notes without timecodes',
+		);
 		for (const [label, name] of Object.entries(names)) {
 			const input = internals.inputs.get(label);
 			if (!input) {
@@ -332,8 +375,14 @@ describe('renaming speakers in an LLM-cleaned note', () => {
 			}
 			input.value = name;
 		}
+		internals.allowBroad = options.allowBroad ?? false;
 		await internals.apply();
 		modal.close();
+		const calls = (Notice as unknown as jest.Mock).mock.calls;
+		return {
+			notice: (calls.at(-1)?.[0] as string | undefined) ?? '',
+			offeredBroad,
+		};
 	}
 
 	it('the cleanup pass keeps the rendered labels the rename needs', async () => {
@@ -357,7 +406,7 @@ describe('renaming speakers in an LLM-cleaned note', () => {
 	});
 
 	it('applies the names to that note, not only to the sidecar roster', async () => {
-		const audio = installAudio();
+		installAudio();
 		const { app, files } = makeApp();
 		const store = new RecordingSidecarStore(app);
 		const settings = cleanupSettings();
@@ -379,11 +428,10 @@ describe('renaming speakers in an LLM-cleaned note', () => {
 			expect.objectContaining({ label: 'Speaker 1', name: 'Kseniya' }),
 			expect.objectContaining({ label: 'Speaker 2', name: 'Anatol' }),
 		]);
-		audio.restore();
 	});
 
 	it('leaves another recording in the same note alone', async () => {
-		const audio = installAudio();
+		installAudio();
 		const { app, files } = makeApp();
 		const store = new RecordingSidecarStore(app);
 		const settings = cleanupSettings();
@@ -403,6 +451,55 @@ describe('renaming speakers in an LLM-cleaned note', () => {
 		expect(note).toContain(
 			'[[other.webm#t=9|0:09]] - **Speaker 1**: Other meeting.',
 		);
-		audio.restore();
+	});
+
+	it('names the broad opt-in when a custom pass stripped the timecodes', async () => {
+		installAudio();
+		const { app, files } = makeApp();
+		const store = new RecordingSidecarStore(app);
+		const settings = customSettings();
+		await transcribe(app, store, settings, makeRestructuringLlm);
+
+		// The pass kept the labels but dropped every timecode link, so the
+		// note can no longer be scoped to this recording.
+		const written = files.get(NOTE_PATH) ?? '';
+		expect(written).toContain('**Speaker 1**: morning all lets start');
+		expect(written).not.toContain('standup.webm#t=');
+
+		const { notice, offeredBroad } = await rename(app, store, settings, {
+			'Speaker 1': 'Kseniya',
+		});
+
+		// The dialog offered the remedy and the notice points at it. Saying
+		// the note carries no matching label would be false: it carries one.
+		expect(offeredBroad).toBe(true);
+		expect(notice).toContain(
+			'1 note(s) carry no timecode link for this recording',
+		);
+		expect(notice).toContain('Rename in notes without timecodes');
+		expect(notice).not.toContain('no longer carry the speaker labels');
+		expect(files.get(NOTE_PATH)).toBe(written);
+	});
+
+	it('rewrites that same note once the broad opt-in is on', async () => {
+		installAudio();
+		const { app, files } = makeApp();
+		const store = new RecordingSidecarStore(app);
+		const settings = customSettings();
+		await transcribe(app, store, settings, makeRestructuringLlm);
+
+		const { notice } = await rename(
+			app,
+			store,
+			settings,
+			{ 'Speaker 1': 'Kseniya' },
+			{ allowBroad: true },
+		);
+
+		const note = files.get(NOTE_PATH) ?? '';
+		expect(note).toContain('**Kseniya**: morning all lets start');
+		expect(note).not.toContain('**Speaker 1**');
+		expect(notice).toContain('Renamed speakers in 1 note');
+		expect(notice).not.toContain('carry no timecode link');
 	});
 });

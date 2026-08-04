@@ -600,9 +600,10 @@ export class SpeakerRenameModal extends PluginModal {
 		return (
 			`${String(applied.updatedNotes)} note(s) and ` +
 			`${String(applied.updatedTranscriptFiles)} transcript file(s) ` +
-			`updated, ${String(applied.unchangedLlmNotes)} LLM-processed ` +
-			`note(s) unchanged, ${String(applied.missingOutputs)} recorded ` +
-			`output(s) missing, ${String(applied.failed)} failed`
+			`updated, ${String(applied.unscopableNotes)} note(s) unscopable, ` +
+			`${String(applied.unmatchedNotes)} note(s) unmatched, ` +
+			`${String(applied.missingOutputs)} recorded output(s) missing, ` +
+			`${String(applied.failed)} failed`
 		);
 	}
 
@@ -628,14 +629,23 @@ export class SpeakerRenameModal extends PluginModal {
 						applied.failed > 1 ? 's' : ''
 					} could not be updated.`
 				: '';
-		// An LLM-post-processed note is rewritten like any other; it lands here
-		// only when the pass genuinely restructured the transcript body, so no
-		// rendered speaker label was left to match.
-		const llmSkipped =
-			applied.unchangedLlmNotes > 0
-				? ` ${String(applied.unchangedLlmNotes)} note(s) were ` +
-					'post-processed by an LLM and carry no matching speaker ' +
-					'labels, so they were left as they are.'
+		// This note was never attempted, so naming the labels would be a guess
+		// and a misleading one: they are usually intact and the toggle right
+		// above this dialog's buttons is what rewrites them.
+		const unscopable =
+			applied.unscopableNotes > 0
+				? ` ${String(applied.unscopableNotes)} note(s) carry no ` +
+					'timecode link for this recording; turn on "Rename in ' +
+					'notes without timecodes" and apply again to rewrite them.'
+				: '';
+		// This one was attempted and matched nothing, so the rendered labels
+		// really are gone, whether an LLM pass restructured the body or the
+		// note was edited by hand.
+		const unmatched =
+			applied.unmatchedNotes > 0
+				? ` ${String(applied.unmatchedNotes)} note(s) no longer carry ` +
+					'the speaker labels they were written with and were left ' +
+					'as they are.'
 				: '';
 		// A recorded output whose path no longer resolves (the note or file
 		// was renamed or deleted) is skipped; say so instead of reporting an
@@ -648,9 +658,9 @@ export class SpeakerRenameModal extends PluginModal {
 					'refresh them.'
 				: '';
 		if (targets.length === 0) {
-			return `No speaker labels were rewritten.${llmSkipped}${missing}${failed}`;
+			return `No speaker labels were rewritten.${unscopable}${unmatched}${missing}${failed}`;
 		}
-		return `Renamed speakers in ${targets.join(' and ')}.${llmSkipped}${missing}${failed}`;
+		return `Renamed speakers in ${targets.join(' and ')}.${unscopable}${unmatched}${missing}${failed}`;
 	}
 
 	override onClose(): void {

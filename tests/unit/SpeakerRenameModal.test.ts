@@ -176,7 +176,8 @@ const cleanApplyResult = {
 	updatedNotes: 1,
 	updatedTranscriptFiles: 1,
 	failed: 0,
-	unchangedLlmNotes: 0,
+	unscopableNotes: 0,
+	unmatchedNotes: 0,
 	missingOutputs: 0,
 };
 
@@ -461,11 +462,13 @@ describe('SpeakerRenameModal', () => {
 		);
 	});
 
-	it('reports unchanged LLM-processed notes in the outcome notice', async () => {
+	it('points an unscopable note at the opt-in that would rewrite it', async () => {
+		// This note was never attempted, so claiming it holds no matching
+		// label would state a false reason and bury the one available remedy.
 		applyMock.mockResolvedValue({
 			...cleanApplyResult,
 			updatedNotes: 0,
-			unchangedLlmNotes: 1,
+			unscopableNotes: 1,
 		});
 		const sidecar = makeSidecar(rosterSection());
 		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
@@ -479,12 +482,39 @@ describe('SpeakerRenameModal', () => {
 		first.value = 'Bob';
 		await internals.apply();
 
-		expect(Notice).toHaveBeenCalledWith(
-			expect.stringContaining(
-				'1 note(s) were post-processed by an LLM and carry no ' +
-					'matching speaker labels',
-			),
+		const notice = (Notice as jest.Mock).mock.calls.at(-1)?.[0] as string;
+		expect(notice).toContain(
+			'1 note(s) carry no timecode link for this recording',
 		);
+		expect(notice).toContain('Rename in notes without timecodes');
+		// The other reason must not appear: it is the one that was disproved.
+		expect(notice).not.toContain('no longer carry the speaker labels');
+	});
+
+	it('reports a note that was attempted and matched nothing', async () => {
+		applyMock.mockResolvedValue({
+			...cleanApplyResult,
+			updatedNotes: 0,
+			unmatchedNotes: 1,
+		});
+		const sidecar = makeSidecar(rosterSection());
+		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
+		modal.open();
+		await internals.render();
+
+		const first = internals.inputs.get('Speaker 1');
+		if (!first) {
+			throw new Error('missing input');
+		}
+		first.value = 'Bob';
+		await internals.apply();
+
+		const notice = (Notice as jest.Mock).mock.calls.at(-1)?.[0] as string;
+		expect(notice).toContain(
+			'1 note(s) no longer carry the speaker labels they were written ' +
+				'with',
+		);
+		expect(notice).not.toContain('Rename in notes without timecodes');
 	});
 
 	it('reports skipped missing outputs in the outcome notice', async () => {

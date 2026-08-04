@@ -363,10 +363,10 @@ export interface TranscriptSectionReader {
  * files in preference order (JSON preferred, so the detected language rides
  * along), then recorded notes scoped by their timecode links. Only when the
  * recorded outputs yield nothing - none recorded, or every one is missing,
- * unreadable, or left without timecoded lines - does the legacy discovery scan run
- * (transcript files next to the audio by name, then every referencing
- * note), so a transcript the sidecar never recorded is still found instead
- * of reporting "no transcript". Unreadable outputs are logged and skipped
+ * unreadable, or left without timecoded lines - does the legacy discovery
+ * scan run (transcript files next to the audio by name, then every
+ * referencing note), so a transcript the sidecar never recorded is still
+ * found instead of reporting "no transcript". Unreadable outputs are skipped
  * rather than failing the search.
  * @param app - Obsidian App
  * @param audioFile - Recording whose transcript is sought
