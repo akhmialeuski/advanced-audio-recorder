@@ -176,7 +176,7 @@ const cleanApplyResult = {
 	updatedNotes: 1,
 	updatedTranscriptFiles: 1,
 	failed: 0,
-	skippedLlmNotes: 0,
+	unchangedLlmNotes: 0,
 	missingOutputs: 0,
 };
 
@@ -461,11 +461,11 @@ describe('SpeakerRenameModal', () => {
 		);
 	});
 
-	it('reports LLM-skipped notes in the outcome notice', async () => {
+	it('reports unchanged LLM-processed notes in the outcome notice', async () => {
 		applyMock.mockResolvedValue({
 			...cleanApplyResult,
 			updatedNotes: 0,
-			skippedLlmNotes: 1,
+			unchangedLlmNotes: 1,
 		});
 		const sidecar = makeSidecar(rosterSection());
 		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
@@ -481,7 +481,8 @@ describe('SpeakerRenameModal', () => {
 
 		expect(Notice).toHaveBeenCalledWith(
 			expect.stringContaining(
-				'1 note(s) were post-processed by an LLM and were not updated',
+				'1 note(s) were post-processed by an LLM and carry no ' +
+					'matching speaker labels',
 			),
 		);
 	});

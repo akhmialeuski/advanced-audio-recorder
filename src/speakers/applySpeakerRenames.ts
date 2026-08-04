@@ -5,8 +5,12 @@
  * templates each note was actually written with, scoped to the lines whose
  * timecode link resolves to this audio. A transcript without such links
  * cannot be scoped, so a broad rewrite of the whole note is offered only
- * after the caller confirms. Each output is rewritten independently, so one
- * failure is logged and skipped rather than aborting the rest.
+ * after the caller confirms. Whether an LLM pass post-processed a note is a
+ * hint for reporting, never a gate: the rewrite is attempted regardless and
+ * the result decides, because the cleanup pass is instructed to keep speaker
+ * labels and timestamps on their original lines. Each output is rewritten
+ * independently, so one failure is logged and skipped rather than aborting
+ * the rest.
  * @module speakers/applySpeakerRenames
  */
 
@@ -32,8 +36,12 @@ export interface SpeakerRenameApplyResult {
 	updatedTranscriptFiles: number;
 	/** Outputs whose rewrite threw and were skipped. */
 	failed: number;
-	/** Recorded notes skipped because an LLM pass replaced their body. */
-	skippedLlmNotes: number;
+	/**
+	 * LLM-post-processed notes the rewrite reached but could not change,
+	 * meaning that pass really did restructure the transcript body away from
+	 * the templates it was written with.
+	 */
+	unchangedLlmNotes: number;
 	/** Recorded outputs whose path no longer resolves to a file. */
 	missingOutputs: number;
 }
@@ -89,7 +97,7 @@ function emptyApplyResult(): SpeakerRenameApplyResult {
 		updatedNotes: 0,
 		updatedTranscriptFiles: 0,
 		failed: 0,
-		skippedLlmNotes: 0,
+		unchangedLlmNotes: 0,
 		missingOutputs: 0,
 	};
 }
@@ -134,7 +142,11 @@ async function rewriteTranscriptFileOutput(
 /**
  * Rewrites one note, scoped to the recording's lines when timecode links
  * identify them and whole-note only under `allowBroad`, counting the outcome
- * into the shared result. A failure is logged and counted, never thrown.
+ * into the shared result. An LLM-post-processed note is attempted like any
+ * other and only counted as unchanged when nothing actually matched, because
+ * the cleanup pass is asked to keep speaker labels and timestamps on their
+ * original lines and therefore usually leaves a rewritable body behind. A
+ * failure is logged and counted, never thrown.
  */
 async function rewriteNoteOutput(
 	app: App,
@@ -143,6 +155,7 @@ async function rewriteNoteOutput(
 	speakerFormat: string,
 	renames: readonly SpeakerRename[],
 	allowBroad: boolean,
+	llmProcessed: boolean,
 	result: SpeakerRenameApplyResult,
 ): Promise<void> {
 	try {
@@ -163,6 +176,9 @@ async function rewriteNoteOutput(
 		};
 		const current = await app.vault.read(note);
 		if (rewriteNote(current) === current) {
+			if (llmProcessed) {
+				result.unchangedLlmNotes++;
+			}
 			return;
 		}
 		let changed = false;
@@ -173,6 +189,8 @@ async function rewriteNoteOutput(
 		});
 		if (changed) {
 			result.updatedNotes++;
+		} else if (llmProcessed) {
+			result.unchangedLlmNotes++;
 		}
 	} catch (error) {
 		result.failed++;
@@ -188,9 +206,12 @@ async function rewriteNoteOutput(
  * transcript section: file outputs at their recorded paths and formats, and
  * note outputs with the speaker template each note was actually written with
  * (per-run overrides included), so changing the settings later never breaks
- * a rename. A recorded note replaced by an LLM pass is skipped and counted
- * (rewriting it would silently do nothing); a recorded path that no longer
- * resolves is skipped and counted.
+ * a rename. Every recorded note is attempted, LLM-post-processed ones
+ * included, because the line-scoped rewrite only touches lines whose timecode
+ * link resolves to this audio and only replaces exact rendered speaker
+ * fragments, so a body the LLM did restructure is a no-op rather than a
+ * hazard; such a note is counted as unchanged only when nothing matched. A
+ * recorded path that no longer resolves is skipped and counted.
  * @param app - Obsidian App
  * @param audioFile - Recording whose outputs are renamed
  * @param section - The recording's sidecar transcript section
@@ -232,13 +253,6 @@ export async function applySpeakerRenamesWithSidecar(
 			result.missingOutputs++;
 			continue;
 		}
-		if (output.llmProcessed) {
-			// The LLM replaced the rendered transcript body, so a line-scoped
-			// rewrite would silently find nothing; count it so the dialog can
-			// say the note was left as it is.
-			result.skippedLlmNotes++;
-			continue;
-		}
 		await rewriteNoteOutput(
 			app,
 			note,
@@ -246,6 +260,7 @@ export async function applySpeakerRenamesWithSidecar(
 			output.templates.speakerFormat,
 			renames,
 			options.allowBroad,
+			output.llmProcessed,
 			result,
 		);
 	}
@@ -254,9 +269,10 @@ export async function applySpeakerRenamesWithSidecar(
 
 /**
  * Whether any of a recording's recorded note outputs cannot be scoped by
- * timecode links (the note exists, was not LLM-replaced, but carries no line
- * whose link resolves to this audio), so the dialog can offer the broad
- * whole-note rewrite opt-in.
+ * timecode links (the note exists but carries no line whose link resolves to
+ * this audio), so the dialog can offer the broad whole-note rewrite opt-in.
+ * An LLM-post-processed note counts like any other, since that pass is the
+ * very thing that can strip the timecode links a scoped rewrite needs.
  * @param app - Obsidian App
  * @param audioFile - Recording being renamed
  * @param section - The recording's sidecar transcript section
@@ -267,9 +283,6 @@ export function hasUnscopableRecordedNote(
 	section: TranscriptSection,
 ): boolean {
 	for (const output of section.noteOutputs) {
-		if (output.llmProcessed) {
-			continue;
-		}
 		const note = app.vault.getFileByPath(output.path);
 		if (!note) {
 			continue;

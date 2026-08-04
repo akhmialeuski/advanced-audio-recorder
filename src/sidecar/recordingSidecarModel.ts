@@ -110,7 +110,12 @@ export interface NoteOutput {
 	path: string;
 	/** Render templates in effect for that run (per-run overrides included). */
 	templates: NoteOutputTemplates;
-	/** True when an LLM pass (cleanup/custom) replaced the transcript body. */
+	/**
+	 * True when an LLM pass (cleanup/custom) rewrote the transcript body. It
+	 * is a hint, not a verdict: such a pass is asked to keep speaker labels
+	 * and timestamps on their original lines, so the body often still parses.
+	 * Consumers must attempt the read or rewrite and judge by the result.
+	 */
 	llmProcessed: boolean;
 	/** Heading the transcript was inserted under ('' when none). */
 	heading: string;

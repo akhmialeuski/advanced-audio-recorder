@@ -600,8 +600,8 @@ export class SpeakerRenameModal extends PluginModal {
 		return (
 			`${String(applied.updatedNotes)} note(s) and ` +
 			`${String(applied.updatedTranscriptFiles)} transcript file(s) ` +
-			`updated, ${String(applied.skippedLlmNotes)} LLM-processed ` +
-			`note(s) skipped, ${String(applied.missingOutputs)} recorded ` +
+			`updated, ${String(applied.unchangedLlmNotes)} LLM-processed ` +
+			`note(s) unchanged, ${String(applied.missingOutputs)} recorded ` +
 			`output(s) missing, ${String(applied.failed)} failed`
 		);
 	}
@@ -628,10 +628,14 @@ export class SpeakerRenameModal extends PluginModal {
 						applied.failed > 1 ? 's' : ''
 					} could not be updated.`
 				: '';
+		// An LLM-post-processed note is rewritten like any other; it lands here
+		// only when the pass genuinely restructured the transcript body, so no
+		// rendered speaker label was left to match.
 		const llmSkipped =
-			applied.skippedLlmNotes > 0
-				? ` ${String(applied.skippedLlmNotes)} note(s) were ` +
-					'post-processed by an LLM and were not updated.'
+			applied.unchangedLlmNotes > 0
+				? ` ${String(applied.unchangedLlmNotes)} note(s) were ` +
+					'post-processed by an LLM and carry no matching speaker ' +
+					'labels, so they were left as they are.'
 				: '';
 		// A recorded output whose path no longer resolves (the note or file
 		// was renamed or deleted) is skipped; say so instead of reporting an

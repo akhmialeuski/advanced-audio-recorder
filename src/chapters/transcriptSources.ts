@@ -363,7 +363,7 @@ export interface TranscriptSectionReader {
  * files in preference order (JSON preferred, so the detected language rides
  * along), then recorded notes scoped by their timecode links. Only when the
  * recorded outputs yield nothing - none recorded, or every one is missing,
- * unreadable, or LLM-replaced - does the legacy discovery scan run
+ * unreadable, or left without timecoded lines - does the legacy discovery scan run
  * (transcript files next to the audio by name, then every referencing
  * note), so a transcript the sidecar never recorded is still found instead
  * of reporting "no transcript". Unreadable outputs are logged and skipped
@@ -415,9 +415,11 @@ async function readSection(
 /**
  * Loads the transcript from the outputs the sidecar recorded: transcript
  * files in format-preference order (JSON first, its declared language
- * winning over the recorded provenance), then recorded notes (LLM-replaced
- * ones skipped - their body no longer parses as a transcript), the note
- * with the most timecode-linked lines winning.
+ * winning over the recorded provenance), then recorded notes, the note with
+ * the most timecode-linked lines winning. An LLM-post-processed note is read
+ * like any other: that pass is asked to keep speaker labels and timestamps on
+ * their original lines, so its body usually still parses, and one that truly
+ * was restructured simply yields no timecoded lines and loses the comparison.
  */
 async function loadFromRecordedOutputs(
 	app: App,
@@ -457,9 +459,6 @@ async function loadFromRecordedOutputs(
 	}
 	let best: TranscriptLinesSource | null = null;
 	for (const output of section.noteOutputs) {
-		if (output.llmProcessed) {
-			continue;
-		}
 		const note = app.vault.getFileByPath(output.path);
 		if (!note) {
 			continue;

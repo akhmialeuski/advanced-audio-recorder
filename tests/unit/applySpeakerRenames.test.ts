@@ -2,8 +2,10 @@
  * Tests for the sidecar-driven speaker rename application: recorded file
  * outputs rewritten at their exact paths, recorded notes rewritten with the
  * templates they were written with (scoped to the recording's timecode
- * lines), LLM-processed and missing outputs skipped and counted, and the
- * unscopable-note detection behind the broad-rewrite opt-in.
+ * lines), LLM-post-processed notes rewritten whenever their rendered lines
+ * survived the pass and only counted as unchanged when they did not, missing
+ * outputs skipped and counted, and the unscopable-note detection behind the
+ * broad-rewrite opt-in.
  */
 
 import type { App, CachedMetadata, TFile } from 'obsidian';
@@ -292,7 +294,62 @@ describe('applySpeakerRenamesWithSidecar', () => {
 		expect(files.get('meeting.md')).toContain('__Alex__ hello');
 	});
 
-	it('skips an LLM-processed note and counts it', async () => {
+	it('rewrites an LLM-processed note whose timecoded lines survived', async () => {
+		// The cleanup pass is instructed to keep speaker labels and timestamps
+		// on their original lines, so the rendered transcript is still there;
+		// the rename must not refuse the note just because the flag is set.
+		const { content, cache } = meetingNote();
+		const files = new Map<string, string>([
+			['audio/rec.wav', ''],
+			['other.wav', ''],
+			['cleaned.md', content],
+		]);
+		const app = makeApp(files, { caches: { 'cleaned.md': cache } });
+		const section: TranscriptSection = {
+			...emptyTranscriptSection(),
+			noteOutputs: [recordedNote('cleaned.md', FORMAT, true)],
+		};
+
+		const result = await applySpeakerRenamesWithSidecar(
+			app,
+			audioFile,
+			section,
+			renames,
+			{ allowBroad: false },
+		);
+		expect(result.updatedNotes).toBe(1);
+		expect(result.unchangedLlmNotes).toBe(0);
+		const note = files.get('cleaned.md') ?? '';
+		expect(note).toContain('**Alex** hello');
+		expect(note).toContain('**Bob** hi');
+		expect(note).toContain('**Speaker 1** unrelated');
+	});
+
+	it('counts an LLM-processed note the pass really did restructure', async () => {
+		const content = 'Cleaned up prose mentioning **Speaker 1** somewhere.';
+		const files = new Map<string, string>([
+			['audio/rec.wav', ''],
+			['cleaned.md', content],
+		]);
+		const app = makeApp(files, { caches: { 'cleaned.md': {} } });
+		const section: TranscriptSection = {
+			...emptyTranscriptSection(),
+			noteOutputs: [recordedNote('cleaned.md', FORMAT, true)],
+		};
+
+		const result = await applySpeakerRenamesWithSidecar(
+			app,
+			audioFile,
+			section,
+			renames,
+			{ allowBroad: false },
+		);
+		expect(result.unchangedLlmNotes).toBe(1);
+		expect(result.updatedNotes).toBe(0);
+		expect(files.get('cleaned.md')).toBe(content);
+	});
+
+	it('rewrites an untimecoded LLM-processed note under allowBroad', async () => {
 		const content = 'Cleaned up prose mentioning **Speaker 1** somewhere.';
 		const files = new Map<string, string>([
 			['audio/rec.wav', ''],
@@ -311,9 +368,9 @@ describe('applySpeakerRenamesWithSidecar', () => {
 			renames,
 			{ allowBroad: true },
 		);
-		expect(result.skippedLlmNotes).toBe(1);
-		expect(result.updatedNotes).toBe(0);
-		expect(files.get('cleaned.md')).toBe(content);
+		expect(result.updatedNotes).toBe(1);
+		expect(result.unchangedLlmNotes).toBe(0);
+		expect(files.get('cleaned.md')).toContain('**Alex** somewhere.');
 	});
 
 	it('rewrites an untimecoded recorded note only under allowBroad', async () => {
@@ -479,25 +536,33 @@ describe('hasUnscopableRecordedNote', () => {
 		expect(hasUnscopableRecordedNote(app, audioFile, section)).toBe(true);
 	});
 
-	it('ignores missing, LLM-processed, and properly scoped notes', () => {
+	it('ignores missing and properly scoped notes', () => {
 		const { content, cache } = meetingNote();
 		const files = new Map<string, string>([
 			['audio/rec.wav', ''],
 			['other.wav', ''],
 			['meeting.md', content],
-			['cleaned.md', 'llm text'],
 		]);
-		const app = makeApp(files, {
-			caches: { 'meeting.md': cache, 'cleaned.md': {} },
-		});
+		const app = makeApp(files, { caches: { 'meeting.md': cache } });
 		const section: TranscriptSection = {
 			...emptyTranscriptSection(),
-			noteOutputs: [
-				recordedNote('meeting.md'),
-				recordedNote('gone.md'),
-				recordedNote('cleaned.md', FORMAT, true),
-			],
+			noteOutputs: [recordedNote('meeting.md'), recordedNote('gone.md')],
 		};
 		expect(hasUnscopableRecordedNote(app, audioFile, section)).toBe(false);
+	});
+
+	it('flags an LLM-processed note that lost its timecode links', () => {
+		// Stripping the timecode links is exactly what a restructuring pass
+		// does, and it is the case the broad opt-in exists for.
+		const files = new Map<string, string>([
+			['audio/rec.wav', ''],
+			['cleaned.md', 'llm prose mentioning **Speaker 1**'],
+		]);
+		const app = makeApp(files, { caches: { 'cleaned.md': {} } });
+		const section: TranscriptSection = {
+			...emptyTranscriptSection(),
+			noteOutputs: [recordedNote('cleaned.md', FORMAT, true)],
+		};
+		expect(hasUnscopableRecordedNote(app, audioFile, section)).toBe(true);
 	});
 });
