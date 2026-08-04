@@ -6,7 +6,10 @@
  * (identified by the caller through their timecode link) are touched, which
  * keeps a second transcript in the same note untouched. All replacements
  * within one document happen simultaneously, so swapping two names (A -> B
- * while B -> A) can never chain. No DOM or I/O; unit tested directly.
+ * while B -> A) can never chain. The module also answers whether a note still
+ * shows a rendered speaker at all, since that is what tells an output that is
+ * already up to date from one whose labels are gone. No DOM or I/O; unit
+ * tested directly.
  * @module speakers/transcriptRewrite
  */
 
@@ -111,6 +114,44 @@ export function renameSpeakersInMarkdown(
 	}
 	const regex = new RegExp(alternation(fragments.keys()), 'g');
 	return content.replace(regex, (match) => fragments.get(match) ?? match);
+}
+
+/**
+ * Whether a note still shows any of these speakers as a rendered fragment,
+ * within the lines the caller scopes to (or anywhere, when it has no scope).
+ * A rewrite that changed nothing has two opposite causes - the note already
+ * shows the names being applied, or it shows no speaker label at all - and
+ * only reading it back tells them apart, so a caller can report the second
+ * without accusing the first.
+ * @param content - Note Markdown
+ * @param speakerFormat - Speaker template the transcript was rendered with
+ * @param speakers - Display texts to look for
+ * @param audioLines - Zero-based indices of the lines that belong to the
+ *   audio, or null to search the whole note
+ * @returns True when at least one rendered fragment is present in scope
+ */
+export function noteShowsAnySpeaker(
+	content: string,
+	speakerFormat: string,
+	speakers: readonly string[],
+	audioLines: ReadonlySet<number> | null,
+): boolean {
+	const fragments = speakers
+		.filter((speaker) => speaker.length > 0)
+		.map((speaker) => renderSpeakerFragment(speakerFormat, speaker))
+		.filter((fragment) => fragment.length > 0);
+	if (fragments.length === 0) {
+		return false;
+	}
+	// Deliberately not global: the regex is reused across the lines below, and
+	// a sticky lastIndex would make every other test miss.
+	const regex = new RegExp(alternation(fragments));
+	if (!audioLines) {
+		return regex.test(content);
+	}
+	return content
+		.split('\n')
+		.some((line, index) => audioLines.has(index) && regex.test(line));
 }
 
 /**

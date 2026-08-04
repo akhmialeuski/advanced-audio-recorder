@@ -5,8 +5,12 @@
  * templates each note was actually written with, scoped to the lines whose
  * timecode link resolves to this audio. A transcript without such links
  * cannot be scoped, so a broad rewrite of the whole note is offered only
- * after the caller confirms. Each output is rewritten independently, so one
- * failure is logged and skipped rather than aborting the rest.
+ * after the caller confirms. An output is judged only by what it turns out to
+ * contain, never by what the transcribing run was configured to do, and a note
+ * the rewrite left alone is read back to find out why, so the caller can name
+ * the actual reason instead of guessing one. Each output is rewritten
+ * independently, so one failure is logged and skipped rather than aborting
+ * the rest.
  * @module speakers/applySpeakerRenames
  */
 
@@ -17,6 +21,7 @@ import type { TranscriptSection } from '../sidecar/recordingSidecarModel';
 import type { TranscriptFileFormat } from '../transcription/TranscriptTypes';
 import type { SpeakerRename } from './speakerRename';
 import {
+	noteShowsAnySpeaker,
 	renameSpeakersInMarkdown,
 	renameSpeakersInNoteLines,
 	renameSpeakersInPlainText,
@@ -32,8 +37,28 @@ export interface SpeakerRenameApplyResult {
 	updatedTranscriptFiles: number;
 	/** Outputs whose rewrite threw and were skipped. */
 	failed: number;
-	/** Recorded notes skipped because an LLM pass replaced their body. */
-	skippedLlmNotes: number;
+	/**
+	 * Notes carrying no timecode link that resolves to this recording, left
+	 * untouched because a whole-note rewrite was not allowed. They were never
+	 * attempted, so their labels may well be intact and the broad opt-in is
+	 * what rewrites them.
+	 */
+	unscopableNotes: number;
+	/**
+	 * Notes the rewrite attempted, could not change, and read back as already
+	 * showing the names being applied. Nothing was wrong with them: a rename
+	 * that reaches an output twice, or an apply that only heals the others,
+	 * lands here.
+	 */
+	alreadyCurrentNotes: number;
+	/**
+	 * Notes the rewrite did attempt and could not change, because no fragment
+	 * rendered from the note's own speaker template survives in it - neither
+	 * the text being replaced nor the text replacing it. The labels are
+	 * genuinely gone, whether an LLM pass restructured the body or a hand
+	 * edit did.
+	 */
+	unmatchedNotes: number;
 	/** Recorded outputs whose path no longer resolves to a file. */
 	missingOutputs: number;
 }
@@ -89,9 +114,38 @@ function emptyApplyResult(): SpeakerRenameApplyResult {
 		updatedNotes: 0,
 		updatedTranscriptFiles: 0,
 		failed: 0,
-		skippedLlmNotes: 0,
+		unscopableNotes: 0,
+		alreadyCurrentNotes: 0,
+		unmatchedNotes: 0,
 		missingOutputs: 0,
 	};
+}
+
+/**
+ * Counts a note the rewrite left byte-identical, by reading back which of the
+ * two opposite causes produced it: the note already shows the names this apply
+ * targets (healthy, nothing to do), or it shows no rendered speaker fragment
+ * at all (the labels the transcript was written with are gone). Guessing here
+ * is what makes a rename dialog accuse an output that is perfectly in sync.
+ * @param content - Note content as the rewrite saw it
+ * @param speakerFormat - Speaker template the note was written with
+ * @param renames - Replacements that found nothing to do
+ * @param scope - Lines belonging to this recording, null when unscoped
+ * @param result - Shared result the outcome is counted into
+ */
+function countUntouchedNote(
+	content: string,
+	speakerFormat: string,
+	renames: readonly SpeakerRename[],
+	scope: ReadonlySet<number> | null,
+	result: SpeakerRenameApplyResult,
+): void {
+	const targets = renames.map((rename) => rename.to);
+	if (noteShowsAnySpeaker(content, speakerFormat, targets, scope)) {
+		result.alreadyCurrentNotes++;
+		return;
+	}
+	result.unmatchedNotes++;
 }
 
 /**
@@ -134,7 +188,11 @@ async function rewriteTranscriptFileOutput(
 /**
  * Rewrites one note, scoped to the recording's lines when timecode links
  * identify them and whole-note only under `allowBroad`, counting the outcome
- * into the shared result. A failure is logged and counted, never thrown.
+ * into the shared result. The three ways a note can survive untouched are
+ * counted apart, because they call for different advice: it was never
+ * attempted and the broad opt-in would rewrite it, it was attempted and
+ * already shows these names, or it was attempted and holds no rendered label
+ * any more. A failure is logged and counted, never thrown.
  */
 async function rewriteNoteOutput(
 	app: App,
@@ -147,32 +205,40 @@ async function rewriteNoteOutput(
 ): Promise<void> {
 	try {
 		const lines = audioLineIndices(app, note, audioPath);
-		const rewriteNote = (data: string): string => {
-			if (lines.size > 0) {
-				return renameSpeakersInNoteLines(
-					data,
-					speakerFormat,
-					renames,
-					lines,
-				);
-			}
-			if (allowBroad) {
-				return renameSpeakersInMarkdown(data, speakerFormat, renames);
-			}
-			return data;
-		};
-		const current = await app.vault.read(note);
-		if (rewriteNote(current) === current) {
+		if (lines.size === 0 && !allowBroad) {
+			// Nothing is read or matched here, so this note must never be
+			// reported as carrying no label: its labels are usually intact and
+			// the broad opt-in is the answer the caller has to offer.
+			result.unscopableNotes++;
 			return;
 		}
+		const scope = lines.size > 0 ? lines : null;
+		const rewriteNote = (data: string): string =>
+			scope
+				? renameSpeakersInNoteLines(data, speakerFormat, renames, scope)
+				: renameSpeakersInMarkdown(data, speakerFormat, renames);
+		// Skip untouched notes with a cheap read, but perform the rewrite
+		// against the content vault.process supplies so a concurrent edit
+		// between this read and the write is never clobbered. Either content
+		// is the one to judge an untouched note by, so both are carried into
+		// the count below rather than assumed identical.
+		const current = await app.vault.read(note);
+		if (rewriteNote(current) === current) {
+			countUntouchedNote(current, speakerFormat, renames, scope, result);
+			return;
+		}
+		let seen = current;
 		let changed = false;
 		await app.vault.process(note, (data) => {
+			seen = data;
 			const rewritten = rewriteNote(data);
 			changed = rewritten !== data;
 			return rewritten;
 		});
 		if (changed) {
 			result.updatedNotes++;
+		} else {
+			countUntouchedNote(seen, speakerFormat, renames, scope, result);
 		}
 	} catch (error) {
 		result.failed++;
@@ -188,8 +254,14 @@ async function rewriteNoteOutput(
  * transcript section: file outputs at their recorded paths and formats, and
  * note outputs with the speaker template each note was actually written with
  * (per-run overrides included), so changing the settings later never breaks
- * a rename. A recorded note replaced by an LLM pass is skipped and counted
- * (rewriting it would silently do nothing); a recorded path that no longer
+ * a rename. Every recorded note is attempted whatever the transcribing run
+ * enabled, because the line-scoped rewrite only touches lines whose timecode
+ * link resolves to this audio and only replaces exact rendered speaker
+ * fragments, so a body an LLM pass did restructure is a no-op rather than a
+ * hazard. The three untouched outcomes are counted apart - never attempted for
+ * want of a scope, attempted and already showing these names, attempted and
+ * holding no rendered label - because each calls for different words, and only
+ * the first has a remedy the caller can offer. A recorded path that no longer
  * resolves is skipped and counted.
  * @param app - Obsidian App
  * @param audioFile - Recording whose outputs are renamed
@@ -232,13 +304,6 @@ export async function applySpeakerRenamesWithSidecar(
 			result.missingOutputs++;
 			continue;
 		}
-		if (output.llmProcessed) {
-			// The LLM replaced the rendered transcript body, so a line-scoped
-			// rewrite would silently find nothing; count it so the dialog can
-			// say the note was left as it is.
-			result.skippedLlmNotes++;
-			continue;
-		}
 		await rewriteNoteOutput(
 			app,
 			note,
@@ -254,9 +319,10 @@ export async function applySpeakerRenamesWithSidecar(
 
 /**
  * Whether any of a recording's recorded note outputs cannot be scoped by
- * timecode links (the note exists, was not LLM-replaced, but carries no line
- * whose link resolves to this audio), so the dialog can offer the broad
- * whole-note rewrite opt-in.
+ * timecode links (the note exists but carries no line whose link resolves to
+ * this audio), so the dialog can offer the broad whole-note rewrite opt-in.
+ * An LLM-post-processed note counts like any other, since that pass is the
+ * very thing that can strip the timecode links a scoped rewrite needs.
  * @param app - Obsidian App
  * @param audioFile - Recording being renamed
  * @param section - The recording's sidecar transcript section
@@ -267,9 +333,6 @@ export function hasUnscopableRecordedNote(
 	section: TranscriptSection,
 ): boolean {
 	for (const output of section.noteOutputs) {
-		if (output.llmProcessed) {
-			continue;
-		}
 		const note = app.vault.getFileByPath(output.path);
 		if (!note) {
 			continue;

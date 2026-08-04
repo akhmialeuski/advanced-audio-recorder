@@ -177,13 +177,6 @@ export async function transcribeFile(
 						mergeConsecutiveSpeaker:
 							settings.transcriptMergeConsecutiveSpeaker,
 					},
-					// Cleanup/custom replace the transcript body, so a
-					// line-scoped rename can no longer find it; a summary is
-					// prepended above the intact body and does not count.
-					llmProcessed:
-						settings.llmPostProcessEnabled &&
-						(settings.llmPostProcessTask === 'cleanup' ||
-							settings.llmPostProcessTask === 'custom'),
 					heading: settings.transcriptHeading,
 					writtenAt,
 				});

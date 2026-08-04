@@ -1,10 +1,12 @@
 /**
  * Tests for the pure speaker-rewriting helpers: note Markdown scoped by
- * line, and subtitle/plain-text/JSON sidecar bodies.
+ * line, subtitle/plain-text/JSON sidecar bodies, and the read-back that says
+ * whether a note still shows a rendered speaker at all.
  */
 
 import type { SpeakerRename } from 'src/speakers/speakerRename';
 import {
+	noteShowsAnySpeaker,
 	renameSpeakersInMarkdown,
 	renameSpeakersInNoteLines,
 	renameSpeakersInPlainText,
@@ -108,5 +110,65 @@ describe('sidecar rewriters', () => {
 
 	it('returns null for non-transcript JSON', () => {
 		expect(renameSpeakersInTranscriptJson('{"foo":1}', renames)).toBeNull();
+	});
+});
+
+describe('noteShowsAnySpeaker', () => {
+	it('finds a rendered speaker on a scoped line', () => {
+		expect(
+			noteShowsAnySpeaker(NOTE, FORMAT, ['Speaker 1'], new Set([2])),
+		).toBe(true);
+	});
+
+	it('ignores a rendered speaker outside the scope', () => {
+		// Line 6 belongs to another recording. Letting it answer for this one
+		// would vouch for a transcript the rename can no longer reach.
+		expect(
+			noteShowsAnySpeaker(NOTE, FORMAT, ['Speaker 1'], new Set([2])),
+		).toBe(true);
+		expect(
+			noteShowsAnySpeaker(NOTE, FORMAT, ['Speaker 2'], new Set([6])),
+		).toBe(false);
+	});
+
+	it('searches the whole note without a scope', () => {
+		expect(noteShowsAnySpeaker(NOTE, FORMAT, ['Speaker 2'], null)).toBe(
+			true,
+		);
+	});
+
+	it('is false when the name appears only as prose', () => {
+		// The bare name is not a rendered fragment, which is exactly the shape
+		// a restructuring pass leaves behind.
+		const note = '[00:00](rec.wav#t=0) Alex opened the meeting.';
+		expect(noteShowsAnySpeaker(note, FORMAT, ['Alex'], new Set([0]))).toBe(
+			false,
+		);
+	});
+
+	it('is false for an empty or blank speaker list', () => {
+		// A blank name renders to a bare template ("****") that would match
+		// arbitrary emphasis, so it must never be searched for.
+		expect(noteShowsAnySpeaker('**** hi', FORMAT, [''], null)).toBe(false);
+		expect(noteShowsAnySpeaker(NOTE, FORMAT, [], null)).toBe(false);
+	});
+
+	it('matches the longer name when one is a prefix of another', () => {
+		const note = '[00:00](rec.wav#t=0) **Anna Lee** hello';
+		expect(noteShowsAnySpeaker(note, FORMAT, ['Anna'], new Set([0]))).toBe(
+			false,
+		);
+		expect(
+			noteShowsAnySpeaker(note, FORMAT, ['Anna Lee'], new Set([0])),
+		).toBe(true);
+	});
+
+	it('answers per line rather than sticking at the first match', () => {
+		// A global regex would carry lastIndex from one line to the next and
+		// silently miss the second.
+		const note = ['**Speaker 1** a', '**Speaker 1** b'].join('\n');
+		expect(
+			noteShowsAnySpeaker(note, FORMAT, ['Speaker 1'], new Set([1])),
+		).toBe(true);
 	});
 });

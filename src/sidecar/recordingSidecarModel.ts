@@ -110,8 +110,6 @@ export interface NoteOutput {
 	path: string;
 	/** Render templates in effect for that run (per-run overrides included). */
 	templates: NoteOutputTemplates;
-	/** True when an LLM pass (cleanup/custom) replaced the transcript body. */
-	llmProcessed: boolean;
 	/** Heading the transcript was inserted under ('' when none). */
 	heading: string;
 	/** ISO-8601 timestamp of the write. */
@@ -349,7 +347,6 @@ function parseNoteOutputs(value: unknown): NoteOutput[] {
 		result.push({
 			path,
 			templates,
-			llmProcessed: record.llmProcessed === true,
 			heading: typeof record.heading === 'string' ? record.heading : '',
 			writtenAt:
 				typeof record.writtenAt === 'string' ? record.writtenAt : '',
@@ -550,7 +547,6 @@ export function serializeRecordingSidecar(
 			noteOutputs: sidecar.transcript.noteOutputs.map((output) => ({
 				path: output.path,
 				templates: { ...output.templates },
-				llmProcessed: output.llmProcessed,
 				heading: output.heading,
 				writtenAt: output.writtenAt,
 			})),

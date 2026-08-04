@@ -55,7 +55,7 @@ function marker(id: string, time: number): PlayerMarker {
 	return { id, time, label: id, kind: 'bookmark' };
 }
 
-function noteOutput(path: string, llmProcessed = false): NoteOutput {
+function noteOutput(path: string): NoteOutput {
 	return {
 		path,
 		templates: {
@@ -65,7 +65,6 @@ function noteOutput(path: string, llmProcessed = false): NoteOutput {
 			timestampLinks: true,
 			mergeConsecutiveSpeaker: true,
 		},
-		llmProcessed,
 		heading: 'Transcript',
 		writtenAt: '2026-07-21T10:00:00Z',
 	};
@@ -274,7 +273,7 @@ describe('RecordingSidecarStore', () => {
 			await store.setSpeakers('rec.wav', [{ label: 'Speaker 1' }]);
 			await store.recordNoteOutput('rec.wav', noteOutput('a.md'));
 			await store.recordNoteOutput('rec.wav', noteOutput('b.md'));
-			await store.recordNoteOutput('rec.wav', noteOutput('a.md', true));
+			await store.recordNoteOutput('rec.wav', noteOutput('a.md'));
 			await store.recordFileOutput('rec.wav', {
 				path: 'rec.srt',
 				format: 'srt',
@@ -291,7 +290,6 @@ describe('RecordingSidecarStore', () => {
 				'a.md',
 				'b.md',
 			]);
-			expect(section.noteOutputs[0]?.llmProcessed).toBe(true);
 			expect(section.fileOutputs).toEqual([
 				{ path: 'rec.srt', format: 'srt', writtenAt: 't2' },
 			]);

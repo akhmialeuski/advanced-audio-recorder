@@ -244,7 +244,7 @@ describe('loadTranscriptLines with a recorded sidecar section', () => {
 		getTranscript: () => Promise.resolve(section),
 	});
 
-	function recordedNote(path: string, llmProcessed = false): NoteOutput {
+	function recordedNote(path: string): NoteOutput {
 		return {
 			path,
 			templates: {
@@ -254,7 +254,6 @@ describe('loadTranscriptLines with a recorded sidecar section', () => {
 				timestampLinks: true,
 				mergeConsecutiveSpeaker: true,
 			},
-			llmProcessed,
 			heading: 'Transcript',
 			writtenAt: 't',
 		};
@@ -329,7 +328,7 @@ describe('loadTranscriptLines with a recorded sidecar section', () => {
 		expect(found?.language).toBe('de');
 	});
 
-	it('reads a recorded note, skipping LLM-replaced ones', async () => {
+	it('reads a recorded note, ignoring one left without timecodes', async () => {
 		const note =
 			'# Meeting\n' +
 			'[[rec.wav#t=0|0:00]] **Speaker 1** welcome\n' +
@@ -352,10 +351,7 @@ describe('loadTranscriptLines with a recorded sidecar section', () => {
 		const app = makeApp(files, { caches: { 'note.md': { links: refs } } });
 		const section: TranscriptSection = {
 			...emptyTranscriptSection(),
-			noteOutputs: [
-				recordedNote('cleaned.md', true),
-				recordedNote('note.md'),
-			],
+			noteOutputs: [recordedNote('cleaned.md'), recordedNote('note.md')],
 			provenance: { language: 'en' },
 		};
 		const found = await loadTranscriptLines(
@@ -368,6 +364,47 @@ describe('loadTranscriptLines with a recorded sidecar section', () => {
 		expect(found?.lines).toEqual([
 			{ time: 0, text: '0:00 Speaker 1 welcome' },
 			{ time: 65, text: '1:05 Speaker 2 first topic' },
+		]);
+	});
+
+	it('reads an LLM-processed note whose timecoded lines survived', async () => {
+		// A cleanup pass is asked to keep speaker labels and timestamps on
+		// their original lines, so its note is still a usable transcript and
+		// must not be excluded by the recorded flag alone.
+		const note =
+			'# Meeting\n' +
+			'[[rec.wav#t=0|0:00]] **Speaker 1** welcome.\n' +
+			'[[rec.wav#t=65|1:05]] **Speaker 2** first topic.\n';
+		const files = new Map([
+			['rec.wav', ''],
+			['cleaned.md', note],
+		]);
+		const refs: Ref[] = [
+			{
+				link: 'rec.wav#t=0',
+				position: { start: { line: 1 }, end: { line: 1 } },
+			},
+			{
+				link: 'rec.wav#t=65',
+				position: { start: { line: 2 }, end: { line: 2 } },
+			},
+		];
+		const app = makeApp(files, {
+			caches: { 'cleaned.md': { links: refs } },
+		});
+		const section: TranscriptSection = {
+			...emptyTranscriptSection(),
+			noteOutputs: [recordedNote('cleaned.md')],
+		};
+		const found = await loadTranscriptLines(
+			app,
+			tf('rec.wav'),
+			sidecarWith(section),
+		);
+		expect(found?.origin).toBe('cleaned.md');
+		expect(found?.lines).toEqual([
+			{ time: 0, text: '0:00 Speaker 1 welcome.' },
+			{ time: 65, text: '1:05 Speaker 2 first topic.' },
 		]);
 	});
 
@@ -394,7 +431,7 @@ describe('loadTranscriptLines with a recorded sidecar section', () => {
 		]);
 	});
 
-	it('falls back to discovery when the only recorded note is LLM-replaced', async () => {
+	it('falls back to discovery when the only recorded note lost its timecodes', async () => {
 		const files = new Map([
 			['rec.wav', ''],
 			['cleaned.md', 'llm prose, no transcript lines'],
@@ -403,7 +440,7 @@ describe('loadTranscriptLines with a recorded sidecar section', () => {
 		const app = makeApp(files);
 		const section: TranscriptSection = {
 			...emptyTranscriptSection(),
-			noteOutputs: [recordedNote('cleaned.md', true)],
+			noteOutputs: [recordedNote('cleaned.md')],
 		};
 		const found = await loadTranscriptLines(
 			app,
