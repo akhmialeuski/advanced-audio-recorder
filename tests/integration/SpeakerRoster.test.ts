@@ -21,8 +21,8 @@ import { TranscriptionService } from 'src/transcription/TranscriptionService';
 import type { TranscriptionProvider } from 'src/transcription/providers/TranscriptionProvider';
 import type { TranscriptSegment } from 'src/transcription/TranscriptTypes';
 import { SpeakerRenameModal } from 'src/ui/SpeakerRenameModal';
-import { partialApp } from '../helpers/obsidianMock';
 import { internalsOf, partial } from '../helpers/doubles';
+import { createMockApp } from '../helpers/createApp';
 
 /** Internal surface the test drives, mirroring the dialog's unit suite. */
 interface ModalInternals {
@@ -70,7 +70,7 @@ function makeApp(): { app: App; files: Map<string, string> } {
 		},
 		rename: (): Promise<void> => Promise.resolve(),
 	};
-	const app = partialApp({
+	const app = createMockApp({
 		vault: {
 			adapter,
 			getFiles: () => [...files.keys()].map((path) => ({ path })),
@@ -89,7 +89,7 @@ function makeApp(): { app: App; files: Map<string, string> } {
 			) => `[${label}](standup.webm)`,
 		},
 		metadataCache: { resolvedLinks: {} },
-	});
+	}).app;
 	return { app, files };
 }
 

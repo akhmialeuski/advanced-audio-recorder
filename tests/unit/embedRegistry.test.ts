@@ -11,7 +11,7 @@ import {
 	type EmbedCreator,
 } from 'src/obsidian/embedRegistry';
 import type { EmbedComponent } from 'src/obsidian/embedRegistry';
-import { partialApp } from '../helpers/obsidianMock';
+import { createMockApp } from '../helpers/createApp';
 
 /** Builds a uniquely identifiable creator stub. */
 function creator(tag: string): EmbedCreator {
@@ -28,12 +28,12 @@ function makeRegistry(
 describe('getEmbedRegistry', () => {
 	it('returns the registry when present', () => {
 		const reg = makeRegistry();
-		const app = partialApp({ embedRegistry: reg });
+		const app = createMockApp({ embedRegistry: reg }).app;
 		expect(getEmbedRegistry(app)).toBe(reg);
 	});
 
 	it('returns null when absent', () => {
-		expect(getEmbedRegistry(partialApp({}))).toBeNull();
+		expect(getEmbedRegistry(createMockApp({}).app)).toBeNull();
 	});
 });
 

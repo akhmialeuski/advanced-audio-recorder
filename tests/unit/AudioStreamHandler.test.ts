@@ -518,28 +518,48 @@ describe('AudioStreamHandler', () => {
 			});
 		});
 
-		it('isMultiTrackSessionEnabled honors the setting on desktop', () => {
-			expect(isMultiTrackSessionEnabled(multiTrackSettings)).toBe(true);
+		describe.each([
+			{
+				platform: 'desktop',
+				mobile: false,
+				multiTrack: true,
+				device: 'configured-mic',
+			},
+			{
+				platform: 'mobile',
+				mobile: true,
+				multiTrack: false,
+				device: undefined,
+			},
+		])(
+			'a config with multi-track and a device, read on $platform',
+			({ mobile, multiTrack, device }) => {
+				// The same stored config syncs to both, so each reading has to
+				// come from the platform rather than from what was saved.
+				beforeEach(() => {
+					setPlatform({ isMobile: mobile });
+				});
+
+				it(`treats multi-track as ${String(multiTrack)}`, () => {
+					expect(isMultiTrackSessionEnabled(multiTrackSettings)).toBe(
+						multiTrack,
+					);
+				});
+
+				it('resolves the capture device the platform can use', () => {
+					// Device ids are randomized per install, so a synced
+					// desktop id could never satisfy an exact-match
+					// constraint on the phone.
+					expect(resolveCaptureDeviceId(multiTrackSettings)).toBe(
+						device,
+					);
+				});
+			},
+		);
+
+		it('leaves multi-track off and the device unset when nothing was configured', () => {
 			expect(isMultiTrackSessionEnabled(DEFAULT_SETTINGS)).toBe(false);
-		});
-
-		it('isMultiTrackSessionEnabled degrades a stored "on" on mobile', () => {
-			setPlatform({ isMobile: true });
-			expect(isMultiTrackSessionEnabled(multiTrackSettings)).toBe(false);
-		});
-
-		it('resolveCaptureDeviceId uses the configured device on desktop', () => {
-			expect(resolveCaptureDeviceId(multiTrackSettings)).toBe(
-				'configured-mic',
-			);
 			expect(resolveCaptureDeviceId(DEFAULT_SETTINGS)).toBeUndefined();
-		});
-
-		it('resolveCaptureDeviceId ignores stored device ids on mobile', () => {
-			// Ids are randomized per install; a synced desktop id could
-			// never satisfy an exact-match constraint on the phone
-			setPlatform({ isMobile: true });
-			expect(resolveCaptureDeviceId(multiTrackSettings)).toBeUndefined();
 		});
 
 		it('getAudioStreams opens one default-mic stream on mobile despite multi-track config', async () => {

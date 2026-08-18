@@ -52,8 +52,8 @@ jest.mock('@mediabunny/mp3-encoder', () => ({
 
 describe('AudioEncoder', () => {
 	beforeEach(() => {
-		// Re-arm the default: clearAllMocks does not reset
-		// implementations, so a test that flips this mock would
+		// Re-arm the default: the global `clearMocks` resets calls but
+		// not implementations, so a test that flips this mock would
 		// otherwise leak its value into the following tests
 		const { canEncodeAudio } = jest.requireMock('mediabunny');
 		canEncodeAudio.mockResolvedValue(false);

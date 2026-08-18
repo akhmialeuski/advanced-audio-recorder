@@ -27,8 +27,8 @@ import {
 	notifyTranscriptWritten,
 	writeTranscriptFile,
 } from 'src/transcription/transcriptOutput';
-import { partialApp } from '../helpers/obsidianMock';
 import { partial } from '../helpers/doubles';
+import { createMockApp } from '../helpers/createApp';
 
 jest.mock('src/transcription/transcriptOutput', () => ({
 	writeTranscriptFile: jest.fn(),
@@ -67,7 +67,7 @@ function makeProvider(segments: TranscriptSegment[]): TranscriptionProvider {
 
 /** Minimal App surface the service touches on the whole-file path. */
 function makeApp(): App {
-	return partialApp({
+	return createMockApp({
 		vault: { readBinary: jest.fn(async () => new ArrayBuffer(4)) },
 		fileManager: {
 			generateMarkdownLink: jest.fn(
@@ -75,7 +75,7 @@ function makeApp(): App {
 					`[${label}](rec.webm#t=0)`,
 			),
 		},
-	});
+	}).app;
 }
 
 /** A sidecar stub whose getTranscript resolves to the given section. */

@@ -24,8 +24,8 @@ import type {
 import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
 import { at } from '../helpers/assertions';
-import { partialApp } from '../helpers/obsidianMock';
 import { partial } from '../helpers/doubles';
+import { createMockApp } from '../helpers/createApp';
 
 /** A configuration where every job names a different engine. */
 const settingsWithDistinctEngines = (): AudioRecorderSettings =>
@@ -136,10 +136,10 @@ describe('AutoChapterService engine choice', () => {
 			write: jest.fn().mockResolvedValue(undefined),
 		});
 		const service = new AutoChapterService(
-			partialApp({
+			createMockApp({
 				vault: { getFiles: () => [] },
 				metadataCache: { resolvedLinks: {} },
-			}),
+			}).app,
 			() => settings,
 			store,
 			undefined,

@@ -17,7 +17,7 @@
 
 import { PluginSettingTab, Setting, apiVersion } from 'obsidian';
 import type { SettingDefinitionItem } from 'obsidian';
-import { __setApiVersion } from '../mocks/obsidian';
+import { withApiVersion } from './apiVersion';
 
 /**
  * A tab's render definition, in the shape a test reads it: the framework
@@ -363,11 +363,11 @@ export const withoutDeclarativeSettings = <T>(body: () => T): T => {
 	const update = base.update;
 	const version = apiVersion;
 	delete base.update;
-	__setApiVersion('1.12.3');
+	withApiVersion('1.12.3');
 	try {
 		return body();
 	} finally {
-		__setApiVersion(version);
+		withApiVersion(version);
 		if (update) {
 			base.update = update;
 		}

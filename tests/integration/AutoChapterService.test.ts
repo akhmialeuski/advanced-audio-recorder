@@ -14,8 +14,8 @@ import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
 import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
 import { LLM_PROVIDER_IDS } from 'src/constants';
-import { partialApp } from '../helpers/obsidianMock';
 import { partial } from '../helpers/doubles';
+import { createMockApp } from '../helpers/createApp';
 
 const tf = (path: string): TFile => {
 	const name = path.split('/').pop() ?? path;
@@ -82,10 +82,10 @@ function makeService(options: {
 }): AutoChapterService {
 	const app =
 		options.app ??
-		partialApp({
+		createMockApp({
 			vault: { getFiles: () => [] },
 			metadataCache: { resolvedLinks: {} },
-		});
+		}).app;
 	return new AutoChapterService(
 		app,
 		() =>

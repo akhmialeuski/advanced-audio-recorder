@@ -28,16 +28,16 @@ import {
 	timeText,
 	tick,
 } from '../helpers/playbackHarness';
-import { partialApp } from '../helpers/obsidianMock';
 import { partial } from '../helpers/doubles';
+import { createMockApp } from '../helpers/createApp';
 
-const app = partialApp({
+const app = createMockApp({
 	vault: {
 		getResourcePath: () => 'app://media',
 		readBinary: () => Promise.resolve(new ArrayBuffer(0)),
 	},
 	fileManager: { generateMarkdownLink: () => '[[rec.mp4]]' },
-});
+}).app;
 
 const decoder: AudioDecoder = {
 	decode: () => Promise.reject(new Error('no decode in tests')),

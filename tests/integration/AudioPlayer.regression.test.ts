@@ -31,8 +31,8 @@ import type { PlayerMarker } from 'src/markers/markerModel';
 import type { ResolvedPlayerSettings } from 'src/player/playerSettings';
 import type { TFile } from 'obsidian';
 import { tick } from '../helpers/async';
-import { partialApp } from '../helpers/obsidianMock';
 import { partial } from '../helpers/doubles';
+import { createMockApp } from '../helpers/createApp';
 
 type Listener = () => void;
 
@@ -143,7 +143,7 @@ function makePartialRegistry(...audios: FakeAudio[]): object {
 	return registry;
 }
 
-const app = partialApp({
+const app = createMockApp({
 	vault: {
 		getResourcePath: () => 'app://media',
 		readBinary: () => Promise.resolve(new ArrayBuffer(0)),
@@ -151,7 +151,7 @@ const app = partialApp({
 	fileManager: {
 		generateMarkdownLink: () => '[[rec.webm]]',
 	},
-});
+}).app;
 
 // Decoding is irrelevant to these structural assertions; rejecting keeps the
 // progressive peak path (and its timers) out of the tests.

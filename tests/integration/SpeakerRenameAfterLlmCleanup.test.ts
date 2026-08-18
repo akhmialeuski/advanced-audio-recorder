@@ -34,8 +34,8 @@ import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
 import type { TranscriptionProvider } from 'src/transcription/providers/TranscriptionProvider';
 import type { TranscriptSegment } from 'src/transcription/TranscriptTypes';
 import { SpeakerRenameModal } from 'src/ui/SpeakerRenameModal';
-import { partialApp } from '../helpers/obsidianMock';
 import { internalsOf, partial } from '../helpers/doubles';
+import { createMockApp } from '../helpers/createApp';
 
 /** Internal surface the test drives, mirroring the dialog's unit suite. */
 interface ModalInternals {
@@ -156,7 +156,7 @@ function makeApp(): { app: App; files: Map<string, string> } {
 			files.set(NOTE_PATH, (files.get(NOTE_PATH) ?? '') + text);
 		},
 	};
-	const app = partialApp({
+	const app = createMockApp({
 		vault: {
 			adapter,
 			getFiles: () => [...files.keys()].map((path) => tf(path)),
@@ -203,7 +203,7 @@ function makeApp(): { app: App; files: Map<string, string> } {
 			getLeavesOfType: (type: string) =>
 				type === 'markdown' ? [{ view }] : [],
 		},
-	});
+	}).app;
 	return { app, files };
 }
 

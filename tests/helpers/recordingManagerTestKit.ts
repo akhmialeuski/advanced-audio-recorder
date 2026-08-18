@@ -13,7 +13,6 @@ import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { PlayerMarker } from 'src/markers/markerModel';
-import { tickTimes } from './async';
 
 /** The MediaRecorder constructor double, with its static format probe. */
 export type MediaRecorderCtorMock = jest.Mock & {
@@ -169,14 +168,6 @@ export const createDesktopRecorder = (): MockMediaRecorder => {
 	});
 	return mockMediaRecorder;
 };
-
-/**
- * Drains the write chain so void'ed chunk handlers settle.
- *
- * Two turns, not one: the Blob.arrayBuffer polyfill reads through FileReader,
- * which costs an extra event-loop turn before the chain advances.
- */
-export const flushAsync = (): Promise<void> => tickTimes(2);
 
 /** Mutable view of a chunk target's write-chain internals. */
 export interface MutableTarget {

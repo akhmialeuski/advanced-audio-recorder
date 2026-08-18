@@ -10,7 +10,6 @@ import {
 } from 'src/recording/silentChannelDetector';
 import type { App, TFile } from 'obsidian';
 import { createMockApp } from '../helpers/createApp';
-import { partialApp } from '../helpers/obsidianMock';
 import { partial } from '../helpers/doubles';
 
 // Only the probe is doubled: the ceiling predicate beside it is a pure rule
@@ -257,11 +256,11 @@ describe('detectSilentChannel', () => {
 
 	it('returns null when the file cannot be read', async () => {
 		const warn = jest.spyOn(console, 'warn').mockImplementation();
-		const app = partialApp({
+		const app = createMockApp({
 			vault: {
 				readBinary: jest.fn().mockRejectedValue(new Error('missing')),
 			},
-		});
+		}).app;
 
 		expect(await detectSilentChannel(app, file)).toBeNull();
 		warn.mockRestore();

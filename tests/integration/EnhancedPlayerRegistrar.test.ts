@@ -33,8 +33,10 @@ import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import type { EmbedInfo } from 'src/obsidian/embedRegistry';
 import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
-import { partialApp, partialPlugin } from '../helpers/obsidianMock';
+import { partialPlugin } from '../helpers/obsidianMock';
 import { partial } from '../helpers/doubles';
+import { pastDebounce } from '../helpers/async';
+import { createMockApp } from '../helpers/createApp';
 
 jest.mock('src/player/AudioPlayer', () => ({
 	AudioPlayer: jest.fn().mockImplementation(() => ({
@@ -73,18 +75,6 @@ const RERENDER_DEBOUNCE_MS = 50;
 /** Builds a probe result; probes are confident unless stated otherwise. */
 function probeResult(kind: MediaKind, confident = true): MediaProbeResult {
 	return { kind, confident };
-}
-
-/**
- * Resolves after the probe microtasks and the re-render debounce.
- *
- * Fake timers rather than a real sleep: the debounce is 50 ms, and a fixed
- * wait long enough on an idle machine is a coin flip on a loaded one.
- * advanceTimersByTimeAsync moves the clock past the debounce and drains the
- * microtasks the probe queues, in a fixed number of steps every time.
- */
-function flush(): Promise<void> {
-	return jest.advanceTimersByTimeAsync(RERENDER_DEBOUNCE_MS * 2);
 }
 
 /**
@@ -211,7 +201,7 @@ function setup(
 	});
 	const getLeaves = jest.fn(() => [previewLeaf, sourceLeaf]);
 
-	const app = partialApp({
+	const app = createMockApp({
 		embedRegistry:
 			'embedRegistry' in options
 				? options.embedRegistry
@@ -234,7 +224,7 @@ function setup(
 			// lookup finds nothing and falls back to the active view/file.
 			iterateAllLeaves: jest.fn(),
 		},
-	});
+	}).app;
 
 	const plugin = partialPlugin({
 		registerMarkdownPostProcessor: jest.fn(),
@@ -335,7 +325,7 @@ describe('EnhancedPlayerRegistrar embed creation', () => {
 		const shell = creator(info, fileOf('wav'), '') as Component;
 		shell.load();
 
-		await flush();
+		await pastDebounce(RERENDER_DEBOUNCE_MS);
 
 		// The shell swapped this one embed: the native child was unloaded
 		// (stopping any playback) and the player took over the container
@@ -361,7 +351,7 @@ describe('EnhancedPlayerRegistrar embed creation', () => {
 		const shell = creator(info, fileOf('mp4'), '') as Component;
 		shell.load();
 
-		await flush();
+		await pastDebounce(RERENDER_DEBOUNCE_MS);
 
 		const native = at(nativeCreator.mock.results, 0).value as NativeEmbed;
 		expect(native.unloaded).toBe(false);
@@ -374,7 +364,7 @@ describe('EnhancedPlayerRegistrar embed creation', () => {
 		const { creator } = setup(true);
 
 		creator(info, fileOf('mp4'), '');
-		await flush();
+		await pastDebounce(RERENDER_DEBOUNCE_MS);
 
 		// The kind is cached now: the next render gets exactly what Obsidian
 		// renders on its own, so Live Preview cannot double it
@@ -389,7 +379,7 @@ describe('EnhancedPlayerRegistrar embed creation', () => {
 		const { creator } = setup(true);
 
 		creator(info, fileOf('wav'), '');
-		await flush();
+		await pastDebounce(RERENDER_DEBOUNCE_MS);
 		probeMock.mockClear();
 
 		// A later render of the same file is enhanced from the start, with
@@ -422,7 +412,7 @@ describe('EnhancedPlayerRegistrar embed creation', () => {
 		first.load();
 		second.load();
 
-		await flush();
+		await pastDebounce(RERENDER_DEBOUNCE_MS);
 
 		expect(audioPlayerMock).toHaveBeenCalledTimes(2);
 	});
@@ -442,7 +432,7 @@ describe('EnhancedPlayerRegistrar embed creation', () => {
 		shell.unload();
 		resolveProbe(probeResult('audio'));
 
-		await flush();
+		await pastDebounce(RERENDER_DEBOUNCE_MS);
 
 		expect(audioPlayerMock).not.toHaveBeenCalled();
 	});
@@ -462,7 +452,7 @@ describe('EnhancedPlayerRegistrar embed creation', () => {
 		settings.enhancedPlayerEnabled = false;
 		resolveProbe(probeResult('audio'));
 
-		await flush();
+		await pastDebounce(RERENDER_DEBOUNCE_MS);
 
 		expect(audioPlayerMock).not.toHaveBeenCalled();
 	});
@@ -479,7 +469,7 @@ describe('EnhancedPlayerRegistrar embed creation', () => {
 		const native = at(nativeCreator.mock.results, 0).value as NativeEmbed;
 		expect(native.loadFile).toHaveBeenCalledWith(file);
 
-		await flush();
+		await pastDebounce(RERENDER_DEBOUNCE_MS);
 
 		// Live Preview drove the old child through loadFile, so the new
 		// child gets the same call and renders
@@ -496,7 +486,7 @@ describe('EnhancedPlayerRegistrar re-renders only when needed', () => {
 		// Flip the only render-affecting setting
 		settings.enhancedPlayerEnabled = false;
 		registrar.refresh();
-		await flush();
+		await pastDebounce(RERENDER_DEBOUNCE_MS);
 
 		expect(getLeaves).toHaveBeenCalledWith('markdown');
 		// Both modes rebuild through the same path, which unloads the old
@@ -517,7 +507,7 @@ describe('EnhancedPlayerRegistrar re-renders only when needed', () => {
 		// A settings save that did not flip the toggle must not touch views
 		registrar.refresh();
 		registrar.refresh();
-		await flush();
+		await pastDebounce(RERENDER_DEBOUNCE_MS);
 
 		expect(getLeaves).not.toHaveBeenCalled();
 	});
@@ -558,7 +548,7 @@ describe('EnhancedPlayerRegistrar re-renders only when needed', () => {
 
 		registrar.primeSavedRecordingsForEnhancement(['recording.wav']);
 		expect(probeMock).toHaveBeenCalledTimes(1);
-		await flush();
+		await pastDebounce(RERENDER_DEBOUNCE_MS);
 
 		// The kind was probed before Obsidian ever created the embed, so
 		// the embed is built enhanced directly - no native pass, no swap
@@ -616,7 +606,7 @@ describe('EnhancedPlayerRegistrar persistent media kinds', () => {
 
 		const shell = creator(info, fileOf('wav'), '') as Component;
 		shell.load();
-		await flush();
+		await pastDebounce(RERENDER_DEBOUNCE_MS);
 
 		expect(kindStore.set).toHaveBeenCalledWith(
 			expect.objectContaining({ path: 'recording.wav' }),
@@ -631,7 +621,7 @@ describe('EnhancedPlayerRegistrar persistent media kinds', () => {
 
 		const shell = creator(info, fileOf('wav'), '') as Component;
 		shell.load();
-		await flush();
+		await pastDebounce(RERENDER_DEBOUNCE_MS);
 
 		// A slow-loading video must not be remembered as audio forever
 		expect(kindStore.set).not.toHaveBeenCalled();
@@ -1185,7 +1175,7 @@ describe('EnhancedPlayerRegistrar rebuilding open notes', () => {
 
 		settings.enhancedPlayerEnabled = false;
 		registrar.refresh();
-		await flush();
+		await pastDebounce(RERENDER_DEBOUNCE_MS);
 
 		expect(rerender).toHaveBeenCalledWith(true);
 	});
@@ -1202,7 +1192,7 @@ describe('EnhancedPlayerRegistrar rebuilding open notes', () => {
 
 		settings.enhancedPlayerEnabled = false;
 		registrar.refresh();
-		await flush();
+		await pastDebounce(RERENDER_DEBOUNCE_MS);
 
 		expect(rerender).not.toHaveBeenCalled();
 	});
@@ -1220,7 +1210,7 @@ describe('EnhancedPlayerRegistrar rebuilding open notes', () => {
 		await expect(
 			(async (): Promise<void> => {
 				registrar.refresh();
-				await flush();
+				await pastDebounce(RERENDER_DEBOUNCE_MS);
 			})(),
 		).resolves.toBeUndefined();
 	});
@@ -1243,7 +1233,7 @@ describe('EnhancedPlayerRegistrar rebuilding open notes', () => {
 
 		settings.enhancedPlayerEnabled = false;
 		registrar.refresh();
-		await flush();
+		await pastDebounce(RERENDER_DEBOUNCE_MS);
 
 		expect(good).toHaveBeenCalled();
 		expect(error).toHaveBeenCalledWith(
@@ -1260,7 +1250,7 @@ describe('EnhancedPlayerRegistrar rebuilding open notes', () => {
 		registrar.refresh();
 		settings.enhancedPlayerEnabled = true;
 		registrar.refresh();
-		await flush();
+		await pastDebounce(RERENDER_DEBOUNCE_MS);
 
 		expect(
 			(leaves.preview as unknown as { rebuildView: jest.Mock })
@@ -1300,7 +1290,7 @@ describe('EnhancedPlayerRegistrar priming a saved recording', () => {
 
 		registrar.primeSavedRecordingsForEnhancement(['take.wav']);
 		registrar.primeSavedRecordingsForEnhancement(['take.wav']);
-		await flush();
+		await pastDebounce(RERENDER_DEBOUNCE_MS);
 
 		expect(probeMock).toHaveBeenCalledTimes(1);
 	});
@@ -1381,7 +1371,7 @@ describe('EnhancedPlayerRegistrar settings changes that change nothing', () => {
 		getLeaves.mockClear();
 
 		registrar.refresh();
-		await flush();
+		await pastDebounce(RERENDER_DEBOUNCE_MS);
 
 		expect(getLeaves).not.toHaveBeenCalled();
 	});
@@ -1392,11 +1382,11 @@ describe('EnhancedPlayerRegistrar probing a file it already knows', () => {
 		probeMock.mockResolvedValue(probeResult('audio'));
 		const { registrar } = setup(true);
 		registrar.primeSavedRecordingsForEnhancement(['take.wav']);
-		await flush();
+		await pastDebounce(RERENDER_DEBOUNCE_MS);
 		probeMock.mockClear();
 
 		registrar.primeSavedRecordingsForEnhancement(['take.wav']);
-		await flush();
+		await pastDebounce(RERENDER_DEBOUNCE_MS);
 
 		expect(probeMock).not.toHaveBeenCalled();
 	});
@@ -1699,7 +1689,7 @@ describe('EnhancedPlayerRegistrar renaming a probed recording', () => {
 		const kindStore = kindStoreStub();
 		const { app, registrar } = setup(true, kindStore);
 		registrar.primeSavedRecordingsForEnhancement(['old.wav']);
-		await flush();
+		await pastDebounce(RERENDER_DEBOUNCE_MS);
 		probeMock.mockClear();
 
 		const rename = at(
@@ -1710,7 +1700,7 @@ describe('EnhancedPlayerRegistrar renaming a probed recording', () => {
 		)[1] as (file: TFile, oldPath: string) => void;
 		rename(fileFromPath('new.wav'), 'old.wav');
 		registrar.primeSavedRecordingsForEnhancement(['new.wav']);
-		await flush();
+		await pastDebounce(RERENDER_DEBOUNCE_MS);
 
 		expect(probeMock).not.toHaveBeenCalled();
 		expect(kindStore.handleRename).toHaveBeenCalledWith(

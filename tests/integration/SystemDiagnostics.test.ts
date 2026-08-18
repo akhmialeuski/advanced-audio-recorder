@@ -15,6 +15,8 @@ import {
 	DEFAULT_BITRATE,
 } from 'src/constants';
 import { mergeSettings } from 'src/settings/settingsSerialization';
+import { createMockApp } from '../helpers/createApp';
+import type { App } from 'obsidian';
 
 // Deterministic encoder probing: this suite exercises the diagnostics
 // wiring, not the encoders. No offline encoder is available, so a
@@ -54,10 +56,15 @@ function makeSettings(
 	};
 }
 
-function makeApp(apiVersion = '1.5.0') {
-	return { apiVersion } as unknown as Parameters<
-		typeof SystemDiagnostics.collectEnvironment
-	>[0];
+/**
+ * An App for the environment report. `collectEnvironment` reads the running
+ * Obsidian version off the app itself, so the version travels as an argument
+ * rather than through the mock's module-level state.
+ * @param apiVersion - Version the report should see
+ * @returns The App double
+ */
+function makeApp(apiVersion = '1.5.0'): App {
+	return createMockApp({ apiVersion }).app;
 }
 
 // collectPluginSettings

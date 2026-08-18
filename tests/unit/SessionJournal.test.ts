@@ -8,7 +8,7 @@ import { SessionJournal, JOURNAL_VERSION } from 'src/recording/SessionJournal';
 import { at } from '../helpers/assertions';
 import type { JournalFile, JournalSession } from 'src/recording/SessionJournal';
 import type { App } from 'obsidian';
-import { partialApp } from '../helpers/obsidianMock';
+import { createMockApp } from '../helpers/createApp';
 
 const JOURNAL_PATH = '.obsidian/plugins/aar/recording-journal.json';
 
@@ -52,7 +52,7 @@ describe('SessionJournal', () => {
 			files.set(path, data);
 			return Promise.resolve();
 		});
-		mockApp = partialApp({
+		mockApp = createMockApp({
 			vault: {
 				adapter: {
 					exists: jest.fn((path: string) =>
@@ -71,7 +71,7 @@ describe('SessionJournal', () => {
 					}),
 				},
 			},
-		});
+		}).app;
 		journal = new SessionJournal(JOURNAL_PATH, mockApp);
 	});
 

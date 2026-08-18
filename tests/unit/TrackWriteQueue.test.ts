@@ -12,7 +12,7 @@ import {
 } from 'src/settings/settingsSchema';
 import type { App } from 'obsidian';
 import { Notice } from 'obsidian';
-import { partialApp } from '../helpers/obsidianMock';
+import { createMockApp } from '../helpers/createApp';
 
 const createTarget = (): RecordingTarget => ({
 	fileBaseName: 'recording-Track1-stamp',
@@ -59,7 +59,7 @@ describe('TrackWriteQueue', () => {
 	beforeEach(() => {
 		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
 
-		mockApp = partialApp({
+		mockApp = createMockApp({
 			vault: {
 				adapter: {
 					exists: jest.fn().mockResolvedValue(false),
@@ -71,7 +71,7 @@ describe('TrackWriteQueue', () => {
 			workspace: {
 				getActiveFile: jest.fn().mockReturnValue(null),
 			},
-		});
+		}).app;
 		mockSettings = { ...DEFAULT_SETTINGS };
 		queue = new TrackWriteQueue(mockApp, mockSettings);
 		queue.beginSession(createSession());

@@ -9,7 +9,7 @@ import { SplitService } from 'src/recording/SplitService';
 import type { SplitRequest } from 'src/recording/SplitService';
 import { App, TFile } from 'obsidian';
 import { noticeMessages } from '../mocks/obsidian';
-import { partialApp } from '../helpers/obsidianMock';
+import { createMockApp } from '../helpers/createApp';
 
 jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest
@@ -90,7 +90,7 @@ describe('SplitService', () => {
 
 	beforeEach(() => {
 		createdFiles = [];
-		mockApp = partialApp({
+		mockApp = createMockApp({
 			vault: {
 				adapter: {
 					exists: jest.fn().mockResolvedValue(false),
@@ -109,7 +109,7 @@ describe('SplitService', () => {
 			fileManager: {
 				trashFile: jest.fn().mockResolvedValue(undefined),
 			},
-		});
+		}).app;
 		service = new SplitService(mockApp);
 	});
 

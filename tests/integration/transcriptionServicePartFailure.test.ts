@@ -22,8 +22,8 @@ import { TranscriptTruncatedError } from 'src/transcription/transcriptionErrors'
 import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
-import { partialApp } from '../helpers/obsidianMock';
 import { partial } from '../helpers/doubles';
+import { createMockApp } from '../helpers/createApp';
 
 // Replace audio preparation so the test drives the part count directly without
 // decoding real audio (the Web Audio path is unavailable under jsdom).
@@ -44,7 +44,7 @@ const audioFile = partial<TFile>({
 
 /** Minimal App with just the surface the transcription pipeline touches. */
 function makeApp(): App {
-	return partialApp({
+	return createMockApp({
 		vault: {
 			readBinary: jest.fn(async () => new ArrayBuffer(4)),
 			create: jest.fn(),
@@ -54,7 +54,7 @@ function makeApp(): App {
 			generateMarkdownLink: jest.fn(() => '[[rec#t=0|0:00]]'),
 		},
 		workspace: { getLeavesOfType: jest.fn(() => []) },
-	});
+	}).app;
 }
 
 /** Two prepared parts on the timeline (0s and 60s), each a tiny WAV payload. */

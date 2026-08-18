@@ -25,8 +25,8 @@ import {
 } from 'src/speakers/applySpeakerRenames';
 import { SpeakerPreviewPlayer } from 'src/player/SpeakerPreviewPlayer';
 import { noticeMessages } from '../mocks/obsidian';
-import { partialApp } from '../helpers/obsidianMock';
 import { internalsOf, partial } from '../helpers/doubles';
+import { createMockApp } from '../helpers/createApp';
 
 jest.mock('src/speakers/applySpeakerRenames', () => ({
 	applySpeakerRenamesWithSidecar: jest.fn(),
@@ -56,9 +56,9 @@ const audioFile = partial<TFile>({
 	path: 'audio/rec.wav',
 });
 
-const app = partialApp({
+const app = createMockApp({
 	vault: { getResourcePath: () => 'app://vault/audio/rec.wav' },
-});
+}).app;
 
 /** A sidecar stub whose getTranscript resolves to the given section. */
 function makeSidecar(

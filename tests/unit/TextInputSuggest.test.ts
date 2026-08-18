@@ -8,8 +8,8 @@
  */
 
 import { TextInputSuggest } from 'src/ui/TextInputSuggest';
-import { partialApp } from '../helpers/obsidianMock';
 import { internalsOf } from '../helpers/doubles';
+import { createMockApp } from '../helpers/createApp';
 
 /** Exposes the protected query hook the popover calls as the user types. */
 interface SuggestInternals {
@@ -25,7 +25,11 @@ function makeSuggest(candidates: string[]): {
 } {
 	const pool = [...candidates];
 	const input = document.createElement('input');
-	const suggest = new TextInputSuggest(partialApp({}), input, () => pool);
+	const suggest = new TextInputSuggest(
+		createMockApp({}).app,
+		input,
+		() => pool,
+	);
 	return {
 		suggest,
 		query: (text) =>

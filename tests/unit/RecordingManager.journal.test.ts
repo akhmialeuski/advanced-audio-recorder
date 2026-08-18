@@ -18,7 +18,7 @@ import {
 } from '../helpers/recordingManagerTestKit';
 import { at } from '../helpers/assertions';
 import { useDesktopPlatform, useMobilePlatform } from '../helpers/platform';
-import { tick } from '../helpers/async';
+import { tick, waitFor } from '../helpers/async';
 
 // Mock AudioStreamHandler
 jest.mock('src/recording/AudioStreamHandler', () =>
@@ -169,10 +169,12 @@ describe('RecordingManager', () => {
 			recorder.ondataavailable?.({
 				data: new Blob([new Uint8Array([1])], { type: 'audio/webm' }),
 			} as BlobEvent);
-			// The Blob.arrayBuffer polyfill reads through FileReader, which
-			// takes an extra event-loop turn before the flush lands
-			await tick();
-			await tick();
+			// The Blob.arrayBuffer polyfill reads through FileReader, and
+			// how many event-loop turns that takes is the runtime's business,
+			// not something a fixed count of ticks can promise
+			await waitFor(() => mockJournal.addSegment.mock.calls.length > 0, {
+				message: 'the flushed segment to reach the journal',
+			});
 
 			expect(mockJournal.addSegment).toHaveBeenCalledWith(
 				expect.stringContaining('Track1'),

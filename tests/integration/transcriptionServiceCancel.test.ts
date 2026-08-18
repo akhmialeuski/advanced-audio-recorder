@@ -19,8 +19,8 @@ import { transcribeFile } from 'src/transcription/runTranscription';
 import type { TranscriptionProvider } from 'src/transcription/providers/TranscriptionProvider';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
-import { partialApp } from '../helpers/obsidianMock';
 import { partial } from '../helpers/doubles';
+import { createMockApp } from '../helpers/createApp';
 
 const audioFile = partial<TFile>({
 	name: 'rec.webm',
@@ -56,7 +56,7 @@ function makeProvider(onTranscribe: () => void): TranscriptionProvider {
 
 /** Minimal App with just the surface the transcription pipeline touches. */
 function makeApp(create?: jest.Mock): App {
-	return partialApp({
+	return createMockApp({
 		vault: {
 			readBinary: jest.fn(async () => new ArrayBuffer(4)),
 			create: create ?? jest.fn(),
@@ -66,7 +66,7 @@ function makeApp(create?: jest.Mock): App {
 			generateMarkdownLink: jest.fn(() => '[[rec#t=0|0:00]]'),
 		},
 		workspace: { getLeavesOfType: jest.fn(() => []) },
-	});
+	}).app;
 }
 
 const baseSettings = {

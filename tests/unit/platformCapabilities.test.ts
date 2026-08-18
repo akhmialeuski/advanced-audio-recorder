@@ -176,29 +176,53 @@ describe('capability helper functions', () => {
 		},
 	);
 
-	it('returns the platform-specific numeric limits', () => {
-		expect(getChunkFlushThresholdBytes('desktop')).toBe(
-			DESKTOP_FLUSH_THRESHOLD_BYTES,
-		);
-		expect(getChunkFlushThresholdBytes('mobile')).toBe(
-			MOBILE_BUFFER_LIMIT_BYTES,
-		);
-		expect(getMaxDecodeBytes('desktop')).toBe(WAVEFORM_MAX_DECODE_BYTES);
-		expect(getMaxDecodeBytes('mobile')).toBe(MOBILE_MAX_DECODE_BYTES);
-		expect(getMaxSplitSourceBytes('desktop')).toBe(
-			Number.POSITIVE_INFINITY,
-		);
-		expect(getMaxSplitSourceBytes('mobile')).toBe(MOBILE_MAX_DECODE_BYTES);
-		expect(getMaxCleanupDecodedSamples('desktop')).toBe(
-			MAX_AUDIO_CLEANUP_DECODED_SAMPLES,
-		);
-		expect(getMaxCleanupDecodedSamples('mobile')).toBe(
-			MOBILE_MAX_CLEANUP_DECODED_SAMPLES,
-		);
-		expect(getMaxCleanupSeconds('desktop')).toBe(MAX_AUDIO_CLEANUP_SECONDS);
-		expect(getMaxCleanupSeconds('mobile')).toBe(
-			MOBILE_MAX_AUDIO_CLEANUP_SECONDS,
-		);
+	describe.each([
+		{
+			platform: 'desktop' as const,
+			flushThreshold: DESKTOP_FLUSH_THRESHOLD_BYTES,
+			maxDecode: WAVEFORM_MAX_DECODE_BYTES,
+			maxSplitSource: Number.POSITIVE_INFINITY,
+			maxCleanupSamples: MAX_AUDIO_CLEANUP_DECODED_SAMPLES,
+			maxCleanupSeconds: MAX_AUDIO_CLEANUP_SECONDS,
+		},
+		{
+			platform: 'mobile' as const,
+			flushThreshold: MOBILE_BUFFER_LIMIT_BYTES,
+			maxDecode: MOBILE_MAX_DECODE_BYTES,
+			maxSplitSource: MOBILE_MAX_DECODE_BYTES,
+			maxCleanupSamples: MOBILE_MAX_CLEANUP_DECODED_SAMPLES,
+			maxCleanupSeconds: MOBILE_MAX_AUDIO_CLEANUP_SECONDS,
+		},
+	])('the numeric limits on $platform', (limits) => {
+		// Every one of these bounds memory-heavy work, and a phone that got a
+		// desktop bound would be killed by the OS rather than degrade.
+		it('flushes the chunk buffer at its threshold', () => {
+			expect(getChunkFlushThresholdBytes(limits.platform)).toBe(
+				limits.flushThreshold,
+			);
+		});
+
+		it('bounds what may be decoded whole', () => {
+			expect(getMaxDecodeBytes(limits.platform)).toBe(limits.maxDecode);
+		});
+
+		it('bounds the source a split may read', () => {
+			expect(getMaxSplitSourceBytes(limits.platform)).toBe(
+				limits.maxSplitSource,
+			);
+		});
+
+		it('bounds the samples a cleanup run may expand to', () => {
+			expect(getMaxCleanupDecodedSamples(limits.platform)).toBe(
+				limits.maxCleanupSamples,
+			);
+		});
+
+		it('bounds the seconds a cleanup run may cover', () => {
+			expect(getMaxCleanupSeconds(limits.platform)).toBe(
+				limits.maxCleanupSeconds,
+			);
+		});
 	});
 
 	it('numeric getters follow the current platform by default', () => {

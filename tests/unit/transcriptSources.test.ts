@@ -19,8 +19,8 @@ import {
 	type TranscriptSection,
 } from 'src/sidecar/recordingSidecarModel';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
-import { partialApp } from '../helpers/obsidianMock';
 import { partial } from '../helpers/doubles';
+import { createMockApp } from '../helpers/createApp';
 
 interface Ref {
 	link: string;
@@ -47,7 +47,7 @@ function makeApp(
 	} = {},
 ): App {
 	const { resolvedLinks = {}, caches = {} } = opts;
-	return partialApp({
+	return createMockApp({
 		vault: {
 			getFiles: (): TFile[] => [...files.keys()].map(tf),
 			getFileByPath: (path: string): TFile | null =>
@@ -71,7 +71,7 @@ function makeApp(
 				return null;
 			},
 		},
-	});
+	}).app;
 }
 
 describe('timedLinesFromTranscript', () => {

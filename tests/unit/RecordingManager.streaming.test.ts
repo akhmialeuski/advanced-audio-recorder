@@ -16,7 +16,6 @@ import type { App } from 'obsidian';
 import {
 	createDesktopRecorder,
 	createRecordingSut,
-	flushAsync,
 	getChunkTarget,
 	installMediaRecorder,
 	installMediaRecorderFactory,
@@ -33,6 +32,7 @@ import { flushMicrotasks } from '../helpers/async';
 import { Notice } from 'obsidian';
 import { internalsOf } from '../helpers/doubles';
 import { PcmStreamRecorder } from 'src/recording/PcmStreamRecorder';
+import { tickTimes } from '../helpers/async';
 
 // Mock AudioStreamHandler
 jest.mock('src/recording/AudioStreamHandler', () =>
@@ -189,7 +189,7 @@ describe('RecordingManager', () => {
 			// recorders, flushes a self-contained raw segment, restarts
 			// capture, and converts the segment into a final part file
 			for (let i = 0; i < 10; i++) {
-				await flushAsync();
+				await tickTimes(2);
 			}
 
 			// The flush wrote a raw recorder-container segment...
@@ -358,9 +358,9 @@ describe('RecordingManager', () => {
 			};
 
 			sendChunk();
-			await flushAsync();
+			await tickTimes(2);
 			sendChunk();
-			await flushAsync();
+			await tickTimes(2);
 
 			// Two failed flushes: chain must stay resolvable, one Notice
 			await expect(target.pendingWrite).resolves.toBeUndefined();
@@ -369,7 +369,7 @@ describe('RecordingManager', () => {
 
 			// Disk "recovers": the next chunk flushes the retained data
 			sendChunk();
-			await flushAsync();
+			await tickTimes(2);
 
 			expect(writeBinary).toHaveBeenCalledTimes(3);
 			expect(writeBinary).toHaveBeenLastCalledWith(
@@ -399,7 +399,7 @@ describe('RecordingManager', () => {
 
 			writeBinary.mockRejectedValueOnce(new Error('disk full'));
 			sendChunk();
-			await flushAsync();
+			await tickTimes(2);
 			// Await the write chain itself rather than trusting flushAsync's
 			// fixed macrotask count: under load the failure handler (which emits
 			// the Notice) can settle a turn later, which would otherwise leave
@@ -409,13 +409,13 @@ describe('RecordingManager', () => {
 
 			// Successful flush ends the failure streak
 			sendChunk();
-			await flushAsync();
+			await tickTimes(2);
 			await expect(target.pendingWrite).resolves.toBeUndefined();
 
 			// New streak: a second Notice is allowed again
 			writeBinary.mockRejectedValueOnce(new Error('disk full'));
 			sendChunk();
-			await flushAsync();
+			await tickTimes(2);
 			await expect(target.pendingWrite).resolves.toBeUndefined();
 			expect(getWriteFailureNotices()).toHaveLength(2);
 
@@ -457,13 +457,13 @@ describe('RecordingManager', () => {
 			};
 
 			sendPcm();
-			await flushAsync();
+			await tickTimes(2);
 
 			await expect(target.pendingWrite).resolves.toBeUndefined();
 			expect(getWriteFailureNotices()).toHaveLength(1);
 
 			sendPcm();
-			await flushAsync();
+			await tickTimes(2);
 
 			expect(writeBinary).toHaveBeenCalledTimes(2);
 			expect(writeBinary).toHaveBeenLastCalledWith(

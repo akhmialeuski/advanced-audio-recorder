@@ -12,10 +12,10 @@ import type { LlmPrompt } from 'src/transcription/llmPostProcess';
 // API, so they are imported from the mock by path. Jest maps 'obsidian'
 // to the same module, so both imports share one instance.
 import {
-	__setRequestUrlHandler,
 	type MockRequestUrlParam,
 	type MockRequestUrlResponse,
 } from '../mocks/obsidian';
+import { withRequestUrl } from '../helpers/network';
 
 const BASE_URL = 'https://gemini.example';
 const API_KEY = 'gm-test';
@@ -45,7 +45,7 @@ function geminiText(text: string, finishReason = 'STOP'): string {
 describe('GeminiLlmProvider.complete', () => {
 	it('posts to generateContent with the api-key header and thinking disabled', async () => {
 		let seen: MockRequestUrlParam | undefined;
-		__setRequestUrlHandler((param): MockRequestUrlResponse => {
+		withRequestUrl((param): MockRequestUrlResponse => {
 			seen = param;
 			return { status: 200, headers: {}, text: geminiText('Cleaned.') };
 		});
@@ -66,7 +66,7 @@ describe('GeminiLlmProvider.complete', () => {
 
 	it('uses the Pro minimum thinking budget for a Pro model', async () => {
 		let seen: MockRequestUrlParam | undefined;
-		__setRequestUrlHandler((param): MockRequestUrlResponse => {
+		withRequestUrl((param): MockRequestUrlResponse => {
 			seen = param;
 			return { status: 200, headers: {}, text: geminiText('ok') };
 		});
@@ -79,7 +79,7 @@ describe('GeminiLlmProvider.complete', () => {
 
 	it('omits thinkingConfig for a model without a thinking budget (2.0)', async () => {
 		let seen: MockRequestUrlParam | undefined;
-		__setRequestUrlHandler((param): MockRequestUrlResponse => {
+		withRequestUrl((param): MockRequestUrlResponse => {
 			seen = param;
 			return { status: 200, headers: {}, text: geminiText('ok') };
 		});
@@ -92,7 +92,7 @@ describe('GeminiLlmProvider.complete', () => {
 	});
 
 	it('throws with the LLM remedy when the answer was truncated', async () => {
-		__setRequestUrlHandler(() => ({
+		withRequestUrl(() => ({
 			status: 200,
 			headers: {},
 			text: geminiText('partial', 'MAX_TOKENS'),
@@ -106,7 +106,7 @@ describe('GeminiLlmProvider.complete', () => {
 	});
 
 	it('throws when the prompt was blocked', async () => {
-		__setRequestUrlHandler(() => ({
+		withRequestUrl(() => ({
 			status: 200,
 			headers: {},
 			text: JSON.stringify({ promptFeedback: { blockReason: 'SAFETY' } }),

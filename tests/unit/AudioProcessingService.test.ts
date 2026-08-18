@@ -17,8 +17,8 @@ import {
 	MAX_AUDIO_CLEANUP_DECODED_SAMPLES,
 } from 'src/constants';
 import { at } from '../helpers/assertions';
-import { partialApp } from '../helpers/obsidianMock';
 import { partial } from '../helpers/doubles';
+import { createMockApp } from '../helpers/createApp';
 
 // Controllable container probe: null (the default) means "container not
 // parseable", which sends the pipeline down the plain decode path the
@@ -121,7 +121,7 @@ function makeApp(): { app: App; written: Map<string, ArrayBuffer> } {
 			return Promise.resolve();
 		},
 	};
-	return { app: partialApp({ vault }), written };
+	return { app: createMockApp({ vault }).app, written };
 }
 
 function fakeFile(path: string, size = 1024): TFile {

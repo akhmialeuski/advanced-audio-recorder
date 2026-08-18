@@ -16,7 +16,7 @@ import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import * as AudioFileAnalyzer from 'src/utils/AudioFileAnalyzer';
 import { at } from '../helpers/assertions';
 import { tick } from '../helpers/async';
-import { asMockMenu, partialApp, partialPlugin } from '../helpers/obsidianMock';
+import { asMockMenu, partialPlugin } from '../helpers/obsidianMock';
 import { setPlayerEmbedActions } from 'src/player/playerEmbedActions';
 import type { PlayerEmbedActions } from 'src/player/playerEmbedActions';
 import {
@@ -33,6 +33,7 @@ import {
 	MarkdownView,
 } from 'obsidian';
 import { partial } from '../helpers/doubles';
+import { createMockApp } from '../helpers/createApp';
 
 // The player menu binds through registerDomEventOnAllWindows (one listener
 // per Obsidian window). These unit tests exercise the handler itself, so the
@@ -128,12 +129,12 @@ describe('ContextMenu', () => {
 			trashFile: jest.fn(),
 		} as unknown as FileManager;
 
-		mockApp = partialApp({
+		mockApp = createMockApp({
 			workspace: mockWorkspace,
 			metadataCache: mockMetadataCache,
 			vault: mockVault,
 			fileManager: mockFileManager,
-		});
+		}).app;
 
 		mockPlugin = partialPlugin({
 			registerEvent: jest.fn(),

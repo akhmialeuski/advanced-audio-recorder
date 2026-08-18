@@ -16,13 +16,10 @@ import {
 import type { App } from 'obsidian';
 import { at, defined } from '../helpers/assertions';
 import { Notice } from 'obsidian';
-import { partialApp } from '../helpers/obsidianMock';
+import { WAV_HEADER_BYTES } from '../mocks/modules/wavEncoder';
+import { createMockApp } from '../helpers/createApp';
 
-jest.mock('src/audio/WavEncoder', () => ({
-	assembleWavFromPcmSegmentFiles: jest
-		.fn()
-		.mockResolvedValue(new ArrayBuffer(50)),
-}));
+jest.mock('src/audio/WavEncoder', () => require('../mocks/modules/wavEncoder'));
 
 jest.mock('src/audio/AudioEncoder', () => ({
 	isOfflineEncodingSupported: jest.fn((format: string) =>
@@ -118,7 +115,7 @@ describe('RecordingFinalizer', () => {
 	beforeEach(() => {
 		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
 
-		mockApp = partialApp({
+		mockApp = createMockApp({
 			vault: {
 				adapter: {
 					exists: jest.fn().mockResolvedValue(false),
@@ -134,7 +131,7 @@ describe('RecordingFinalizer', () => {
 			workspace: {
 				getActiveFile: jest.fn().mockReturnValue(null),
 			},
-		});
+		}).app;
 		mockSettings = { ...DEFAULT_SETTINGS };
 		onProgress = jest.fn();
 		buildFinalizer(createSession());
@@ -280,9 +277,12 @@ describe('RecordingFinalizer', () => {
 				48000,
 				mockApp,
 			);
-			const written = (mockApp.vault.createBinary as jest.Mock).mock
-				.calls[0][1] as ArrayBuffer;
-			expect(written.byteLength).toBe(50);
+			// What the assembler returned is what gets written, unchanged.
+			const written = at(
+				at(jest.mocked(mockApp.vault.createBinary).mock.calls, 0),
+				1,
+			);
+			expect((written as ArrayBuffer).byteLength).toBe(WAV_HEADER_BYTES);
 		});
 
 		it('assembles segments and remove them', async () => {

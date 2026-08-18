@@ -9,6 +9,7 @@ import type { App, TFile } from 'obsidian';
 import {
 	createFile,
 	createMarkdownView,
+	createMockApp,
 	type SpiedMarkdownView,
 } from '../helpers/createApp';
 
@@ -17,7 +18,6 @@ import {
 	insertFileLinks,
 	insertProcessedAudioEmbed,
 } from 'src/recording/NoteInserter';
-import { partialApp } from '../helpers/obsidianMock';
 
 // DebugLogger mock
 function createMockDebugLogger(): { log: jest.Mock } {
@@ -25,19 +25,19 @@ function createMockDebugLogger(): { log: jest.Mock } {
 }
 
 // Helper to create a mock App with workspace methods
-function createMockApp(overrides?: {
+function appWithViews(overrides?: {
 	activeView?: SpiedMarkdownView | null;
 	leaves?: Array<{ view: SpiedMarkdownView }>;
 }): App {
 	const activeView = overrides?.activeView ?? null;
 	const leaves = overrides?.leaves ?? [];
 
-	return partialApp({
+	return createMockApp({
 		workspace: {
 			getActiveViewOfType: jest.fn().mockReturnValue(activeView),
 			getLeavesOfType: jest.fn().mockReturnValue(leaves),
 		},
-	});
+	}).app;
 }
 
 /**
@@ -64,7 +64,7 @@ function createMockView(
 describe('NoteInserter', () => {
 	describe('captureInsertionContext', () => {
 		it('returns null when insertAtOriginalPosition is false', () => {
-			const app = createMockApp();
+			const app = appWithViews();
 			const logger = createMockDebugLogger();
 
 			const result = captureInsertionContext(app, false, logger);
@@ -76,7 +76,7 @@ describe('NoteInserter', () => {
 
 		it('returns InsertionContext when active MarkdownView has file and cursor', () => {
 			const view = createMockView('notes/test.md', 10, 5);
-			const app = createMockApp({ activeView: view });
+			const app = appWithViews({ activeView: view });
 			const logger = createMockDebugLogger();
 
 			const result = captureInsertionContext(app, true, logger);
@@ -90,7 +90,7 @@ describe('NoteInserter', () => {
 		});
 
 		it('returns null and logs when no active MarkdownView', () => {
-			const app = createMockApp({ activeView: null });
+			const app = appWithViews({ activeView: null });
 			const logger = createMockDebugLogger();
 
 			const result = captureInsertionContext(app, true, logger);
@@ -103,7 +103,7 @@ describe('NoteInserter', () => {
 
 		it('returns null and logs when view has no file', () => {
 			const view = createMockView(null, 3, 0);
-			const app = createMockApp({ activeView: view });
+			const app = appWithViews({ activeView: view });
 			const logger = createMockDebugLogger();
 
 			const result = captureInsertionContext(app, true, logger);
@@ -117,7 +117,7 @@ describe('NoteInserter', () => {
 		it('returns null and logs when view has no editor (no cursor)', () => {
 			// A view showing a note, but with no editor to write into
 			const view = createMockView('notes/test.md');
-			const app = createMockApp({ activeView: view });
+			const app = appWithViews({ activeView: view });
 			const logger = createMockDebugLogger();
 
 			const result = captureInsertionContext(app, true, logger);
@@ -130,7 +130,7 @@ describe('NoteInserter', () => {
 
 		it('captures cursor at line 0 ch 0 correctly', () => {
 			const view = createMockView('notes/test.md', 0, 0);
-			const app = createMockApp({ activeView: view });
+			const app = appWithViews({ activeView: view });
 			const logger = createMockDebugLogger();
 
 			const result = captureInsertionContext(app, true, logger);
@@ -152,7 +152,7 @@ describe('NoteInserter', () => {
 				line: 7,
 				ch: 3,
 			};
-			const app = createMockApp({ leaves: [leaf] });
+			const app = appWithViews({ leaves: [leaf] });
 
 			insertFileLinks(['recordings/audio.webm'], context, app);
 
@@ -176,7 +176,7 @@ describe('NoteInserter', () => {
 				ch: 3,
 			};
 			// No leaves match the context filePath
-			const app = createMockApp({ activeView, leaves: [] });
+			const app = appWithViews({ activeView, leaves: [] });
 
 			insertFileLinks(['recordings/audio.webm'], context, app);
 
@@ -187,7 +187,7 @@ describe('NoteInserter', () => {
 
 		it('falls back to active editor when insertionContext is null', () => {
 			const activeView = createMockView('notes/other.md', 2, 0);
-			const app = createMockApp({ activeView });
+			const app = appWithViews({ activeView });
 
 			insertFileLinks(['recordings/audio.webm'], null, app);
 
@@ -197,7 +197,7 @@ describe('NoteInserter', () => {
 		});
 
 		it('does nothing when no editor is available and no context match', () => {
-			const app = createMockApp({ activeView: null, leaves: [] });
+			const app = appWithViews({ activeView: null, leaves: [] });
 			const context: InsertionContext = {
 				filePath: 'notes/missing.md',
 				line: 0,
@@ -211,7 +211,7 @@ describe('NoteInserter', () => {
 		});
 
 		it('does nothing when no editor is available and context is null', () => {
-			const app = createMockApp({ activeView: null });
+			const app = appWithViews({ activeView: null });
 
 			// Should not throw
 			expect(() =>
@@ -221,7 +221,7 @@ describe('NoteInserter', () => {
 
 		it('formats links correctly as ![[filename]]', () => {
 			const activeView = createMockView('notes/test.md', 0, 0);
-			const app = createMockApp({ activeView });
+			const app = appWithViews({ activeView });
 
 			insertFileLinks(
 				['path/to/deep/folder/my-recording.mp3'],
@@ -236,7 +236,7 @@ describe('NoteInserter', () => {
 
 		it('handles multiple file links joined with newlines', () => {
 			const activeView = createMockView('notes/test.md', 0, 0);
-			const app = createMockApp({ activeView });
+			const app = appWithViews({ activeView });
 
 			insertFileLinks(
 				[
@@ -261,7 +261,7 @@ describe('NoteInserter', () => {
 				line: 3,
 				ch: 0,
 			};
-			const app = createMockApp({ leaves: [leaf] });
+			const app = appWithViews({ leaves: [leaf] });
 
 			insertFileLinks(
 				['recordings/audio1.webm', 'recordings/audio2.mp3'],
@@ -277,7 +277,7 @@ describe('NoteInserter', () => {
 
 		it('uses filename only, stripping directory path', () => {
 			const activeView = createMockView('notes/test.md', 0, 0);
-			const app = createMockApp({ activeView });
+			const app = appWithViews({ activeView });
 
 			insertFileLinks(['a/b/c/d/recording.flac'], null, app);
 
@@ -288,7 +288,7 @@ describe('NoteInserter', () => {
 
 		it('handles file path without directory separators', () => {
 			const activeView = createMockView('notes/test.md', 0, 0);
-			const app = createMockApp({ activeView });
+			const app = appWithViews({ activeView });
 
 			insertFileLinks(['recording.webm'], null, app);
 
@@ -307,7 +307,7 @@ describe('NoteInserter', () => {
 				line: 5,
 				ch: 0,
 			};
-			const app = createMockApp({ leaves: [wrongLeaf, correctLeaf] });
+			const app = appWithViews({ leaves: [wrongLeaf, correctLeaf] });
 
 			insertFileLinks(['recordings/audio.webm'], context, app);
 
@@ -322,7 +322,7 @@ describe('NoteInserter', () => {
 
 		it('handles empty file links array', () => {
 			const activeView = createMockView('notes/test.md', 0, 0);
-			const app = createMockApp({ activeView });
+			const app = appWithViews({ activeView });
 
 			insertFileLinks([], null, app);
 
@@ -336,7 +336,7 @@ describe('NoteInserter', () => {
 				line: 7,
 				ch: 3,
 			};
-			const app = createMockApp({ leaves: [{ view }] });
+			const app = appWithViews({ leaves: [{ view }] });
 
 			const notePath = insertFileLinks(
 				['recordings/audio.webm'],
@@ -349,7 +349,7 @@ describe('NoteInserter', () => {
 
 		it('returns the active note path when falling back to the active editor', () => {
 			const activeView = createMockView('notes/other.md', 2, 0);
-			const app = createMockApp({ activeView, leaves: [] });
+			const app = appWithViews({ activeView, leaves: [] });
 
 			const notePath = insertFileLinks(
 				['recordings/audio.webm'],
@@ -361,7 +361,7 @@ describe('NoteInserter', () => {
 		});
 
 		it('returns null when no editor is available to receive the links', () => {
-			const app = createMockApp({ activeView: null, leaves: [] });
+			const app = appWithViews({ activeView: null, leaves: [] });
 
 			const notePath = insertFileLinks(
 				['recordings/audio.webm'],
@@ -388,7 +388,7 @@ describe('NoteInserter', () => {
 					? null
 					: createFile(`notes/daily.${opts.noteExtension ?? 'md'}`);
 			let content = opts.content;
-			const app = partialApp({
+			const app = createMockApp({
 				workspace: {
 					getActiveFile: (): TFile | null => note,
 				},
@@ -417,7 +417,7 @@ describe('NoteInserter', () => {
 					generateMarkdownLink: (file: TFile): string =>
 						`[[${file.path.split('/').pop() ?? file.path}]]`,
 				},
-			});
+			}).app;
 			return { app, getContent: (): string => content };
 		}
 

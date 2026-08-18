@@ -21,13 +21,12 @@ import {
 	WAVEFORM_CACHE_BUCKETS,
 } from 'src/constants';
 import { at } from '../helpers/assertions';
-import { createFile } from '../helpers/createApp';
+import { createFile, createMockApp } from '../helpers/createApp';
 import { createMockAudioBuffer } from '../helpers/createMockAudioBuffer';
 import { tick } from '../helpers/async';
 import { addObsidianDomExtensions } from '../mocks/domExtensions';
 import { installCanvas2dContext } from '../helpers/canvas';
 import type { CanvasContextDouble } from '../helpers/canvas';
-import { partialApp } from '../helpers/obsidianMock';
 
 let canvas: CanvasContextDouble;
 
@@ -84,7 +83,7 @@ function createSut(
 	const readBinary = jest
 		.fn()
 		.mockResolvedValue(overrides.bytes ?? new ArrayBuffer(8));
-	const app = partialApp({ vault: { readBinary } });
+	const app = createMockApp({ vault: { readBinary } }).app;
 	const decode = jest.fn(
 		overrides.decode ??
 			(() => Promise.resolve(createMockAudioBuffer(1, 8, 8))),
@@ -255,6 +254,23 @@ describe('scheduleLoad with IntersectionObserver', () => {
 			{} as IntersectionObserver,
 		);
 	}
+
+	it('leaves a newer observer alone when an older render is cleaned up', () => {
+		// Re-rendering in place schedules a second load before the first
+		// render's cleanup runs. Clearing the field then would drop the
+		// observer the live render is waiting on, and the waveform would
+		// never decode.
+		const { controller, cleanups } = createSut();
+		controller.mount(createSeekEl(200));
+		controller.scheduleLoad(document.createElement('div'));
+		const firstCleanup = at(cleanups, cleanups.length - 1);
+		controller.scheduleLoad(document.createElement('div'));
+
+		firstCleanup();
+
+		expect(at(observers, 0).disconnect).toHaveBeenCalled();
+		expect(at(observers, 1).disconnect).not.toHaveBeenCalled();
+	});
 
 	it('waits for the player to come near the viewport before decoding', async () => {
 		const { controller, readBinary } = createSut();
@@ -538,5 +554,59 @@ describe('drawing once the seek area has a width', () => {
 		}
 
 		expect(cancel).toHaveBeenCalled();
+	});
+});
+
+describe('work that lands after the player is gone', () => {
+	it('draws no progress snapshot into a torn-down player', async () => {
+		// A long decode reports partial peaks as it goes. The note can be
+		// closed mid-decode, and drawing into a canvas whose player has been
+		// unloaded is work nobody sees on DOM nobody owns.
+		let unloaded = false;
+		const { controller, decode } = createSut({
+			unloaded: () => unloaded,
+			decode: async () => {
+				unloaded = true;
+				return createMockAudioBuffer(1, 8, 8);
+			},
+		});
+		const seekEl = createSeekEl(200);
+		controller.mount(seekEl);
+
+		controller.scheduleLoad(document.createElement('div'));
+		await tick();
+		await tick();
+
+		expect(decode).toHaveBeenCalled();
+		expect(canvas.rectsOf(seekEl)).toHaveLength(0);
+	});
+
+	it('applies no cached peaks to a torn-down player', async () => {
+		// The cache answers on the next tick, by which time the note may be
+		// closed; the cheap path has to check as carefully as the slow one.
+		const file = createFile('Recordings/take.wav', {
+			size: 4096,
+			mtime: 100,
+		});
+		const cache = new WaveformPeakCache();
+		cache.set(
+			waveformCacheKey(file.path, file.stat.mtime, file.stat.size),
+			Array.from({ length: WAVEFORM_CACHE_BUCKETS }, () => 0.5),
+		);
+		let unloaded = false;
+		const { controller } = createSut({
+			file,
+			cache,
+			unloaded: () => unloaded,
+		});
+		const seekEl = createSeekEl(200);
+		controller.mount(seekEl);
+		unloaded = true;
+
+		controller.scheduleLoad(document.createElement('div'));
+		await tick();
+		await tick();
+
+		expect(canvas.rectsOf(seekEl)).toHaveLength(0);
 	});
 });

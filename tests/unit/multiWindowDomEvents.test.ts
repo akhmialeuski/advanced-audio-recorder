@@ -12,8 +12,9 @@
 import { Component } from 'obsidian';
 import type { App, WorkspaceLeaf } from 'obsidian';
 import { registerDomEventOnAllWindows } from 'src/utils/multiWindowDomEvents';
-import { partialApp, partialPlugin } from '../helpers/obsidianMock';
+import { partialPlugin } from '../helpers/obsidianMock';
 import { partial } from '../helpers/doubles';
+import { createMockApp } from '../helpers/createApp';
 
 /** A pop-out-like window handle, as workspace window events carry it. */
 interface WindowLike {
@@ -37,7 +38,7 @@ class FakePlugin extends Component {
 				getContainer: () => ({ doc }),
 			}),
 		);
-		this.app = partialApp({
+		this.app = createMockApp({
 			workspace: {
 				iterateAllLeaves: (cb: (leaf: WorkspaceLeaf) => void): void => {
 					leaves.forEach(cb);
@@ -47,7 +48,7 @@ class FakePlugin extends Component {
 					return {};
 				},
 			},
-		});
+		}).app;
 	}
 
 	/** Fires a recorded workspace window event, as Obsidian would. */

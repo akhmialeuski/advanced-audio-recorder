@@ -132,17 +132,37 @@ describe('active-branch resolution', () => {
 		},
 	};
 
-	it('activates the desktop branch on desktop', () => {
-		const merged = mergeSettings(stored, 'desktop');
-		expect(merged.audioDeviceId).toBe('desktop-mic');
-		expect(merged.recordingChannels).toBe('mono-left');
-		expect(merged.trackAudioSources.get(1)?.deviceId).toBe('desk-1');
-	});
+	describe.each([
+		{
+			platform: 'desktop' as const,
+			device: 'desktop-mic',
+			channels: 'mono-left',
+			tracks: 1,
+		},
+		{
+			platform: 'mobile' as const,
+			device: 'phone-mic',
+			channels: 'source',
+			tracks: 0,
+		},
+	])('activated on $platform', ({ platform, device, channels, tracks }) => {
+		// The flat runtime fields are the active branch; reading the wrong one
+		// records with a device that does not exist on this machine.
+		it('takes the device from that branch', () => {
+			expect(mergeSettings(stored, platform).audioDeviceId).toBe(device);
+		});
 
-	it('activates the mobile branch on mobile', () => {
-		const merged = mergeSettings(stored, 'mobile');
-		expect(merged.audioDeviceId).toBe('phone-mic');
-		expect(merged.trackAudioSources.size).toBe(0);
+		it('takes the channel layout from that branch', () => {
+			expect(mergeSettings(stored, platform).recordingChannels).toBe(
+				channels,
+			);
+		});
+
+		it('takes the per-track sources from that branch', () => {
+			expect(mergeSettings(stored, platform).trackAudioSources.size).toBe(
+				tracks,
+			);
+		});
 	});
 
 	it('defaults the platform argument to the current platform', () => {

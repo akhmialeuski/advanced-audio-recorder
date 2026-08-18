@@ -99,8 +99,8 @@ import {
 import { noticeInitialText, noticeInstances } from '../mocks/obsidian';
 import { el } from '../helpers/dom';
 import { MODAL } from '../helpers/selectors';
-import { partialApp } from '../helpers/obsidianMock';
 import { internalsOf } from '../helpers/doubles';
+import { createMockApp } from '../helpers/createApp';
 
 /** WAV header size produced by createWavHeader. */
 const WAV_HEADER_SIZE = 44;
@@ -212,7 +212,7 @@ describe('SplitModal', () => {
 		// activeWindow is an Obsidian global; map it to the jsdom window
 		(global as Record<string, unknown>).activeWindow = window;
 
-		mockApp = partialApp({
+		mockApp = createMockApp({
 			vault: {
 				adapter: {
 					readBinary: jest.fn(),
@@ -229,7 +229,7 @@ describe('SplitModal', () => {
 			fileManager: {
 				trashFile: jest.fn().mockResolvedValue(undefined),
 			},
-		});
+		}).app;
 
 		mockFile = new TFile();
 		configureFile('recording.wav', 'wav');

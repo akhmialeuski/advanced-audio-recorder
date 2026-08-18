@@ -18,8 +18,8 @@ import {
 	type NoteOutput,
 	type TranscriptSection,
 } from 'src/sidecar/recordingSidecarModel';
-import { partialApp } from '../helpers/obsidianMock';
 import { partial } from '../helpers/doubles';
+import { createMockApp } from '../helpers/createApp';
 
 const FORMAT = '**{speaker}**';
 
@@ -52,7 +52,7 @@ function makeApp(
 	} = {},
 ): App {
 	const { caches = {}, failPaths = new Set() } = opts;
-	return partialApp({
+	return createMockApp({
 		vault: {
 			getFileByPath: (path: string): TFile | null =>
 				files.has(path) ? tf(path) : null,
@@ -85,7 +85,7 @@ function makeApp(
 				return null;
 			},
 		},
-	});
+	}).app;
 }
 
 const audioFile = tf('audio/rec.wav');
@@ -744,7 +744,7 @@ describe('applySpeakerRenamesWithSidecar', () => {
 		]);
 		// read returns a stale snapshot while process operates on the current
 		// content, mimicking an edit landing between the two calls.
-		const app = partialApp({
+		const app = createMockApp({
 			vault: {
 				getFileByPath: (path: string): TFile | null =>
 					live.has(path) ? tf(path) : null,
@@ -763,7 +763,7 @@ describe('applySpeakerRenamesWithSidecar', () => {
 				getFileCache: (): null => null,
 				getFirstLinkpathDest: (): null => null,
 			},
-		});
+		}).app;
 		const section: TranscriptSection = {
 			...emptyTranscriptSection(),
 			fileOutputs: [

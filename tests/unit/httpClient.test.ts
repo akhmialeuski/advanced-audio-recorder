@@ -15,7 +15,7 @@ import {
 	TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS,
 	TRANSCRIBE_REQUEST_TIMEOUT_MS,
 } from 'src/constants';
-import { __setRequestUrlHandler } from '../mocks/obsidian';
+import { withRequestUrl } from '../helpers/network';
 
 describe('friendlyHttpHint', () => {
 	it.each([
@@ -270,7 +270,7 @@ describe('requestRaw abort support', () => {
 
 	it('falls back to requestUrl when fetch fails at the network layer (CORS)', async () => {
 		mockFetch(() => Promise.reject(new TypeError('Failed to fetch')));
-		__setRequestUrlHandler(() => ({
+		withRequestUrl(() => ({
 			status: 200,
 			headers: {},
 			text: '{"via":"requestUrl"}',
@@ -289,7 +289,7 @@ describe('requestRaw abort support', () => {
 		const fetchMock = mockFetch(() =>
 			Promise.resolve(fakeResponse(200, '')),
 		);
-		__setRequestUrlHandler(() => ({
+		withRequestUrl(() => ({
 			status: 200,
 			headers: {},
 			text: 'ok',

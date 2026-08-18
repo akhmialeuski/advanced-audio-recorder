@@ -30,8 +30,8 @@ import {
 	TRANSCRIPTION_PROVIDER_IDS,
 } from 'src/constants';
 import type { TranscriptionProviderId } from 'src/settings/settingsSchema';
-import { partialApp } from '../helpers/obsidianMock';
 import { partial } from '../helpers/doubles';
+import { createMockApp } from '../helpers/createApp';
 
 // Replace audio preparation so the test drives the part count directly without
 // decoding real audio (the Web Audio path is unavailable under jsdom).
@@ -52,14 +52,14 @@ const audioFile = partial<TFile>({
 
 /** Minimal App with just the surface the transcription pipeline touches. */
 function makeApp(): App {
-	return partialApp({
+	return createMockApp({
 		vault: {
 			readBinary: jest.fn(async () => new ArrayBuffer(4)),
 		},
 		fileManager: {
 			generateMarkdownLink: jest.fn(() => '[[rec#t=0|0:00]]'),
 		},
-	});
+	}).app;
 }
 
 /** One prepared part whose bytes can be materialized once per pass. */

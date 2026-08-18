@@ -19,7 +19,7 @@ import type { App } from 'obsidian';
 import type { TrackWriteQueue } from 'src/recording/TrackWriteQueue';
 import type { RecordingFinalizer } from 'src/recording/RecordingFinalizer';
 import { noticeMessages } from '../mocks/obsidian';
-import { partialApp } from '../helpers/obsidianMock';
+import { createMockApp } from '../helpers/createApp';
 
 const createTarget = (
 	overrides: Partial<RecordingTarget> = {},
@@ -110,7 +110,7 @@ describe('PartRotationController', () => {
 			finalizeSegmentsToFile: jest.fn().mockResolvedValue('/part.webm'),
 			assembleWavFile: jest.fn().mockResolvedValue(undefined),
 		};
-		mockApp = partialApp({
+		mockApp = createMockApp({
 			vault: {
 				adapter: {
 					exists: jest.fn().mockResolvedValue(false),
@@ -120,7 +120,7 @@ describe('PartRotationController', () => {
 			workspace: {
 				getActiveFile: jest.fn().mockReturnValue(null),
 			},
-		});
+		}).app;
 		mockSettings = { ...DEFAULT_SETTINGS };
 		buildController(createSession());
 	});

@@ -21,7 +21,7 @@ import {
 	cleanupIntermediateFiles,
 } from 'src/audio/RecordingFileManager';
 import { partial } from '../helpers/doubles';
-import { partialApp } from '../helpers/obsidianMock';
+import { createMockApp } from '../helpers/createApp';
 
 // Polyfill Blob.arrayBuffer for jsdom if missing
 
@@ -38,7 +38,7 @@ describe('RecordingFileManager', () => {
 		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
 
 		// Create mock App with all required vault and workspace methods
-		mockApp = partialApp({
+		mockApp = createMockApp({
 			vault: {
 				adapter: {
 					exists: jest.fn().mockResolvedValue(false),
@@ -51,7 +51,7 @@ describe('RecordingFileManager', () => {
 				getActiveFile: jest.fn().mockReturnValue(null),
 				getActiveViewOfType: jest.fn().mockReturnValue(null),
 			},
-		});
+		}).app;
 
 		// Use default settings with a defined saveFolder
 		mockSettings = {

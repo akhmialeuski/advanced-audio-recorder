@@ -21,8 +21,8 @@ import type {
 	Transcript,
 	TranscriptSegment,
 } from 'src/transcription/TranscriptTypes';
-import { partialApp } from '../helpers/obsidianMock';
 import { partial } from '../helpers/doubles';
+import { createMockApp } from '../helpers/createApp';
 
 const audioFile = partial<TFile>({
 	name: 'rec.webm',
@@ -63,12 +63,12 @@ function makeProvider(
 
 /** Minimal App surface the service touches on the whole-file path. */
 function makeApp(): App {
-	return partialApp({
+	return createMockApp({
 		vault: { readBinary: jest.fn(async () => new ArrayBuffer(4)) },
 		fileManager: {
 			generateMarkdownLink: jest.fn(() => '[[rec#t=0|0:00]]'),
 		},
-	});
+	}).app;
 }
 
 async function runWith(

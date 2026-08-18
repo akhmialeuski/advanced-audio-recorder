@@ -18,13 +18,11 @@ import type {
 	JournalTrack,
 } from 'src/recording/SessionJournal';
 import type { App } from 'obsidian';
-import { partialApp } from '../helpers/obsidianMock';
+import { createMockApp } from '../helpers/createApp';
 
-jest.mock('src/audio/WavEncoder', () => ({
-	assembleWavFromPcmSegmentFiles: jest.fn((segmentPaths: string[]) =>
-		Promise.resolve(new Uint8Array(44 + segmentPaths.length).buffer),
-	),
-}));
+jest.mock('src/audio/WavEncoder', () => require('../mocks/modules/wavEncoder'));
+
+import { assembleWavFromPcmSegmentFiles } from 'src/audio/WavEncoder';
 
 const JOURNAL_PATH = '.obsidian/plugins/aar/recording-journal.json';
 
@@ -84,7 +82,7 @@ describe('RecoveryService', () => {
 
 		textFiles = new Map();
 		binaryFiles = new Map();
-		mockApp = partialApp({
+		mockApp = createMockApp({
 			vault: {
 				adapter: {
 					exists: jest.fn((path: string) =>
@@ -119,7 +117,7 @@ describe('RecoveryService', () => {
 					return Promise.resolve();
 				}),
 			},
-		});
+		}).app;
 		journal = new SessionJournal(JOURNAL_PATH, mockApp);
 	});
 
@@ -232,12 +230,11 @@ describe('RecoveryService', () => {
 
 			const result = await recoverSession(session, journal, mockApp);
 
-			const { assembleWavFromPcmSegmentFiles } = jest.requireMock(
-				'src/audio/WavEncoder',
-			);
 			// Streamed straight from the segment files: recovery must not
 			// read the whole track into memory before assembly
-			expect(assembleWavFromPcmSegmentFiles).toHaveBeenCalledWith(
+			expect(
+				jest.mocked(assembleWavFromPcmSegmentFiles),
+			).toHaveBeenCalledWith(
 				['Audio/rec-pcm-part1.tmp', 'Audio/rec-pcm-part2.tmp'],
 				2,
 				48000,

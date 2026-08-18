@@ -19,8 +19,9 @@ import { COMMAND_IDS } from 'src/constants';
 import { MARKER_KIND } from 'src/markers/markerModel';
 import type { ActionServices, FileAction } from 'src/actions/PluginAction';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
-import { partialApp, partialPlugin } from '../helpers/obsidianMock';
+import { partialPlugin } from '../helpers/obsidianMock';
 import { partial } from '../helpers/doubles';
+import { createMockApp } from '../helpers/createApp';
 
 jest.mock('src/ui/AudioFileInfoModal', () => ({
 	AudioFileInfoModal: jest
@@ -64,10 +65,10 @@ function audioFile(extension = 'mp3'): TFile {
 
 function makeServices(activeFile: TFile | null): ActionServices {
 	return {
-		app: partialApp({
+		app: createMockApp({
 			workspace: { getActiveFile: () => activeFile },
 			fileManager: { trashFile: jest.fn() },
-		}),
+		}).app,
 		getSettings: () =>
 			partial<AudioRecorderSettings>({
 				transcriptionEnabled: true,

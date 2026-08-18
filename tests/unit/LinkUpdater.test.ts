@@ -6,7 +6,7 @@
 import { updateLinksInVault } from 'src/utils/LinkUpdater';
 import { defined } from '../helpers/assertions';
 import { App, TFile } from 'obsidian';
-import { partialApp } from '../helpers/obsidianMock';
+import { createMockApp } from '../helpers/createApp';
 
 describe('updateLinksInVault', () => {
 	/**
@@ -98,7 +98,7 @@ describe('updateLinksInVault', () => {
 				contents[note.path] = transform(defined(contents[note.path]));
 			},
 		);
-		const app = partialApp({
+		const app = createMockApp({
 			metadataCache: {
 				resolvedLinks,
 				getFileCache: jest.fn((note: TFile) => {
@@ -127,7 +127,7 @@ describe('updateLinksInVault', () => {
 				process: processMock,
 			},
 			fileManager: { generateMarkdownLink },
-		});
+		}).app;
 		return { app, contents, processMock, generateMarkdownLink };
 	}
 

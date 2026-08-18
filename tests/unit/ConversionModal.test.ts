@@ -12,7 +12,7 @@ import { capturedSettings } from '../helpers/captureSettings';
 import { noticeInstances, noticeText } from '../mocks/obsidian';
 import { el } from '../helpers/dom';
 import { MODAL } from '../helpers/selectors';
-import { partialApp } from '../helpers/obsidianMock';
+import { createMockApp } from '../helpers/createApp';
 
 /**
  * Extends an HTMLElement with Obsidian's custom DOM methods.
@@ -105,7 +105,7 @@ describe('ConversionModal', () => {
 		capturedSettings.length = 0;
 
 		createdFile = { path: 'Recordings/recording.webm' };
-		mockApp = partialApp({
+		mockApp = createMockApp({
 			vault: {
 				adapter: {
 					exists: jest.fn().mockResolvedValue(false),
@@ -118,7 +118,7 @@ describe('ConversionModal', () => {
 			fileManager: {
 				trashFile: jest.fn().mockResolvedValue(undefined),
 			},
-		});
+		}).app;
 
 		mockFile = new TFile();
 		Object.defineProperty(mockFile, 'name', { value: 'recording.wav' });

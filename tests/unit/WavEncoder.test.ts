@@ -10,7 +10,7 @@ import {
 	assembleWavFromPcmSegments,
 	assembleWavFromPcmSegmentFiles,
 } from 'src/audio/WavEncoder';
-import { partialApp } from '../helpers/obsidianMock';
+import { createMockApp } from '../helpers/createApp';
 
 describe('WavEncoder', () => {
 	describe('getWavHeaderInfo', () => {
@@ -215,6 +215,9 @@ describe('assembleWavFromPcmSegmentFiles', () => {
 					: Promise.reject(new Error(`Missing file: ${path}`));
 			}),
 		};
+		// The shared App double always carries a `stat`, so the
+		// no-stat-support path needs the key explicitly blanked out.
+		adapter.stat = undefined;
 		if (options.withStat ?? true) {
 			adapter.stat = jest.fn((path: string) => {
 				if (options.statSizes?.has(path)) {
@@ -225,7 +228,7 @@ describe('assembleWavFromPcmSegmentFiles', () => {
 				return Promise.resolve(data ? { size: data.byteLength } : null);
 			});
 		}
-		return partialApp({ vault: { adapter } });
+		return createMockApp({ vault: { adapter } }).app;
 	};
 
 	it('streams segments into one preallocated buffer in capture order', async () => {

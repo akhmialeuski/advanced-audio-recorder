@@ -18,14 +18,22 @@ export interface MockApp {
 			rename: jest.Mock;
 			readBinary: jest.Mock;
 			writeBinary: jest.Mock;
+			read: jest.Mock;
+			write: jest.Mock;
+			append: jest.Mock;
+			mkdir: jest.Mock;
 			remove: jest.Mock;
 		};
 		createBinary: jest.Mock;
 		createFolder: jest.Mock;
+		create: jest.Mock;
 		readBinary: jest.Mock;
 		read: jest.Mock;
 		modify: jest.Mock;
 		process: jest.Mock;
+		rename: jest.Mock;
+		delete: jest.Mock;
+		getFiles: jest.Mock;
 		getAbstractFileByPath: jest.Mock;
 		getFileByPath: jest.Mock;
 		getResourcePath: jest.Mock;
@@ -35,6 +43,7 @@ export interface MockApp {
 		getActiveFile: jest.Mock;
 		getActiveViewOfType: jest.Mock;
 		getLeavesOfType: jest.Mock;
+		iterateAllLeaves: jest.Mock;
 		on: jest.Mock;
 		trigger: jest.Mock;
 		onLayoutReady: jest.Mock;
@@ -42,18 +51,25 @@ export interface MockApp {
 	metadataCache: {
 		getFirstLinkpathDest: jest.Mock;
 		getFileCache: jest.Mock;
+		on: jest.Mock;
+		resolvedLinks: Record<string, Record<string, number>>;
 	};
 	fileManager: {
 		trashFile: jest.Mock;
+		generateMarkdownLink: jest.Mock;
 	};
 }
 
 /**
- * Deep-partial override shape for {@link createMockApp}.
+ * Override shape for {@link createMockApp}. Every section is optional and its
+ * members are typed `unknown`, because a double stands in for a method rather
+ * than reimplementing it: a suite hands over a bare arrow, a `jest.fn`, or a
+ * whole `Vault` from the obsidian mock, and all three are legitimate. Keys
+ * outside the four sections pass through untouched.
  */
 export type MockAppOverrides = {
-	[K in keyof MockApp]?: Partial<MockApp[K]> & Record<string, unknown>;
-};
+	[K in keyof MockApp]?: { [P in keyof MockApp[K]]?: unknown };
+} & Record<string, unknown>;
 
 /**
  * Builds a fresh App double. Pass overrides to replace individual
@@ -73,16 +89,24 @@ export function createMockApp(overrides: MockAppOverrides = {}): {
 				rename: jest.fn().mockResolvedValue(undefined),
 				readBinary: jest.fn().mockResolvedValue(new ArrayBuffer(0)),
 				writeBinary: jest.fn().mockResolvedValue(undefined),
+				read: jest.fn().mockResolvedValue(''),
+				write: jest.fn().mockResolvedValue(undefined),
+				append: jest.fn().mockResolvedValue(undefined),
+				mkdir: jest.fn().mockResolvedValue(undefined),
 				remove: jest.fn().mockResolvedValue(undefined),
 				...(overrides.vault as { adapter?: object } | undefined)
 					?.adapter,
 			},
 			createBinary: jest.fn().mockResolvedValue(undefined),
 			createFolder: jest.fn().mockResolvedValue(undefined),
+			create: jest.fn().mockResolvedValue(undefined),
 			readBinary: jest.fn().mockResolvedValue(new ArrayBuffer(0)),
 			read: jest.fn().mockResolvedValue(''),
 			modify: jest.fn().mockResolvedValue(undefined),
 			process: jest.fn().mockResolvedValue(''),
+			rename: jest.fn().mockResolvedValue(undefined),
+			delete: jest.fn().mockResolvedValue(undefined),
+			getFiles: jest.fn().mockReturnValue([]),
 			getAbstractFileByPath: jest.fn().mockReturnValue(null),
 			getFileByPath: jest.fn().mockReturnValue(null),
 			getResourcePath: jest.fn().mockReturnValue('app://audio'),
@@ -93,22 +117,49 @@ export function createMockApp(overrides: MockAppOverrides = {}): {
 			getActiveFile: jest.fn().mockReturnValue(null),
 			getActiveViewOfType: jest.fn().mockReturnValue(null),
 			getLeavesOfType: jest.fn().mockReturnValue([]),
+			iterateAllLeaves: jest.fn(),
 			on: jest.fn().mockReturnValue({}),
 			trigger: jest.fn(),
 			onLayoutReady: jest.fn((callback: () => void) => callback()),
-			...overrides.workspace,
+			...(overrides.workspace as object | undefined),
 		},
 		metadataCache: {
 			getFirstLinkpathDest: jest.fn().mockReturnValue(null),
 			getFileCache: jest.fn().mockReturnValue(null),
-			...overrides.metadataCache,
+			on: jest.fn().mockReturnValue({}),
+			resolvedLinks: {},
+			...(overrides.metadataCache as object | undefined),
 		},
 		fileManager: {
 			trashFile: jest.fn().mockResolvedValue(undefined),
-			...overrides.fileManager,
+			generateMarkdownLink: jest.fn().mockReturnValue('[[link]]'),
+			...(overrides.fileManager as object | undefined),
 		},
+		...extraSections(overrides),
 	};
 	return { mock, app: mock as unknown as App };
+}
+
+/** The override keys the factory builds itself; anything else passes through. */
+const BUILT_IN_SECTIONS = [
+	'vault',
+	'workspace',
+	'metadataCache',
+	'fileManager',
+];
+
+/**
+ * Returns the override sections the factory does not build itself, so a suite
+ * can hang an extra App surface (say `embedRegistry`) off the same double.
+ * @param overrides - The full override object
+ * @returns Only the keys outside {@link BUILT_IN_SECTIONS}
+ */
+function extraSections(overrides: MockAppOverrides): Record<string, unknown> {
+	return Object.fromEntries(
+		Object.entries(overrides).filter(
+			([key]) => !BUILT_IN_SECTIONS.includes(key),
+		),
+	);
 }
 
 /** Returns the override object without the given nested key. */

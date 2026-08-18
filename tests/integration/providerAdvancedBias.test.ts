@@ -19,10 +19,10 @@ import type { AudioPayload } from 'src/transcription/providers/TranscriptionProv
 // API, so they are imported from the mock by path. Jest maps 'obsidian'
 // to the same module, so both imports share one instance.
 import {
-	__setRequestUrlHandler,
 	type MockRequestUrlParam,
 	type MockRequestUrlResponse,
 } from '../mocks/obsidian';
+import { withRequestUrl } from '../helpers/network';
 
 const BIAS_SENTENCE =
 	'Митинг про деплой и ревью, обсуждаются gRPC, CI/CD и Kubernetes.';
@@ -40,7 +40,7 @@ describe('WhisperApiProvider advanced bias', () => {
 	/** Records every request and returns a minimal transcript. */
 	function capture(): MockRequestUrlParam[] {
 		const calls: MockRequestUrlParam[] = [];
-		__setRequestUrlHandler((param): MockRequestUrlResponse => {
+		withRequestUrl((param): MockRequestUrlResponse => {
 			calls.push(param);
 			return {
 				status: 200,
@@ -81,7 +81,7 @@ describe('DeepgramProvider advanced bias', () => {
 	/** Records every request and returns one valid utterance. */
 	function capture(): MockRequestUrlParam[] {
 		const calls: MockRequestUrlParam[] = [];
-		__setRequestUrlHandler((param): MockRequestUrlResponse => {
+		withRequestUrl((param): MockRequestUrlResponse => {
 			calls.push(param);
 			return {
 				status: 200,
@@ -147,7 +147,7 @@ describe('GeminiProvider advanced bias', () => {
 	function scriptFlow(): { instruction: () => string } {
 		const calls: MockRequestUrlParam[] = [];
 		const baseUrl = 'https://gemini.example';
-		__setRequestUrlHandler((param): MockRequestUrlResponse => {
+		withRequestUrl((param): MockRequestUrlResponse => {
 			calls.push(param);
 			const url = param.url;
 			if (url.endsWith('/upload/v1beta/files')) {

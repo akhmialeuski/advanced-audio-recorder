@@ -81,3 +81,14 @@ export async function waitFor(
 		});
 	}
 }
+
+/**
+ * Advances past a debounce window and drains what it scheduled.
+ *
+ * A debounced callback needs both halves: the clock moved past the window and
+ * the microtasks its body queues drained. Fake timers move the clock; only
+ * awaiting the timer API drains the rest.
+ * @param windowMs - The debounce window to clear
+ */
+export const pastDebounce = (windowMs: number): Promise<void> =>
+	jest.advanceTimersByTimeAsync(windowMs * 2);

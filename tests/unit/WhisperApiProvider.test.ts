@@ -20,10 +20,10 @@ import type {
 // API, so they are imported from the mock by path. Jest maps 'obsidian'
 // to the same module, so both imports share one instance.
 import {
-	__setRequestUrlHandler,
 	type MockRequestUrlParam,
 	type MockRequestUrlResponse,
 } from '../mocks/obsidian';
+import { withRequestUrl } from '../helpers/network';
 
 const BASE_URL = 'https://whisper.example';
 
@@ -39,7 +39,7 @@ function payload(): AudioPayload {
 /** Records every request and returns a minimal transcript. */
 function capture(): MockRequestUrlParam[] {
 	const calls: MockRequestUrlParam[] = [];
-	__setRequestUrlHandler((param): MockRequestUrlResponse => {
+	withRequestUrl((param): MockRequestUrlResponse => {
 		calls.push(param);
 		return {
 			status: 200,

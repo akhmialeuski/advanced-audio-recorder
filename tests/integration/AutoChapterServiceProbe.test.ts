@@ -23,8 +23,8 @@ import {
 	type AudioElementDouble,
 	type InstalledMock,
 } from '../helpers/mediaMocks';
-import { partialApp } from '../helpers/obsidianMock';
 import { partial } from '../helpers/doubles';
+import { createMockApp } from '../helpers/createApp';
 
 jest.mock('src/chapters/transcriptSources', () => ({
 	...jest.requireActual<typeof import('src/chapters/transcriptSources')>(
@@ -168,9 +168,9 @@ describe('AutoChapterService duration probe', () => {
 		written: () => PlayerMarker[] | null;
 	} {
 		const { store, written } = makeStore([]);
-		const app = partialApp({
+		const app = createMockApp({
 			vault: { getResourcePath: () => 'app://talk.webm' },
-		});
+		}).app;
 		const service = new AutoChapterService(
 			app,
 			() => settings,

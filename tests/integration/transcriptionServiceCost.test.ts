@@ -12,8 +12,8 @@ import type { WhisperResult } from 'src/transcription/providers/whisperResponse'
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
-import { partialApp } from '../helpers/obsidianMock';
 import { partial } from '../helpers/doubles';
+import { createMockApp } from '../helpers/createApp';
 
 const audioFile = partial<TFile>({
 	name: 'rec.webm',
@@ -39,12 +39,12 @@ function makeProvider(result: WhisperResult): TranscriptionProvider {
 }
 
 function makeApp(): App {
-	return partialApp({
+	return createMockApp({
 		vault: { readBinary: jest.fn(async () => new ArrayBuffer(4)) },
 		fileManager: {
 			generateMarkdownLink: jest.fn(() => '[[rec#t=0|0:00]]'),
 		},
-	});
+	}).app;
 }
 
 async function runWith(
@@ -155,12 +155,12 @@ describe('TranscriptionService run cost', () => {
 
 	it('reuses caller-provided audio bytes instead of reading the file', async () => {
 		const readBinary = jest.fn(async () => new ArrayBuffer(4));
-		const app = partialApp({
+		const app = createMockApp({
 			vault: { readBinary },
 			fileManager: {
 				generateMarkdownLink: jest.fn(() => '[[rec#t=0|0:00]]'),
 			},
-		});
+		}).app;
 		const service = new TranscriptionService(
 			app,
 			() =>
@@ -183,12 +183,12 @@ describe('TranscriptionService run cost', () => {
 
 	it('reads the file itself when no bytes are provided', async () => {
 		const readBinary = jest.fn(async () => new ArrayBuffer(4));
-		const app = partialApp({
+		const app = createMockApp({
 			vault: { readBinary },
 			fileManager: {
 				generateMarkdownLink: jest.fn(() => '[[rec#t=0|0:00]]'),
 			},
-		});
+		}).app;
 		const service = new TranscriptionService(
 			app,
 			() =>
