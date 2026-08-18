@@ -7,20 +7,7 @@
 
 import { ConversionService } from 'src/recording/ConversionService';
 import type { ConversionRequest } from 'src/recording/ConversionService';
-import { TFile, App } from 'obsidian';
-
-jest.mock('obsidian', () => ({
-	App: jest.fn(),
-	Notice: jest.fn(),
-	TFile: class {
-		path = '';
-		name = '';
-		basename = '';
-		extension = '';
-		parent: { path: string } | null = null;
-	},
-	normalizePath: (path: string) => path.replace(/\\/g, '/'),
-}));
+import { App, Notice, TFile } from 'obsidian';
 
 jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest
@@ -77,7 +64,6 @@ describe('ConversionService', () => {
 	});
 
 	const getNotices = (): string[] => {
-		const { Notice } = jest.requireMock('obsidian');
 		return (Notice as jest.Mock).mock.calls.map((call) => String(call[0]));
 	};
 

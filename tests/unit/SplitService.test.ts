@@ -7,21 +7,7 @@
 
 import { SplitService } from 'src/recording/SplitService';
 import type { SplitRequest } from 'src/recording/SplitService';
-import { TFile, App } from 'obsidian';
-
-jest.mock('obsidian', () => ({
-	App: jest.fn(),
-	Notice: jest.fn(),
-	Platform: { isMobile: false, isMobileApp: false },
-	TFile: class {
-		path = '';
-		name = '';
-		basename = '';
-		extension = '';
-		parent: { path: string } | null = null;
-	},
-	normalizePath: (path: string) => path.replace(/\\/g, '/'),
-}));
+import { App, Notice, TFile } from 'obsidian';
 
 jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest
@@ -174,7 +160,6 @@ describe('SplitService', () => {
 
 			expect(outcome).toEqual({ status: 'aborted' });
 			expect(mockApp.vault.adapter.readBinary).not.toHaveBeenCalled();
-			const { Notice } = jest.requireMock('obsidian');
 			expect(
 				(Notice as jest.Mock).mock.calls.some((call) =>
 					String(call[0]).includes(
@@ -202,7 +187,6 @@ describe('SplitService', () => {
 			expect(outcome).toEqual({ status: 'aborted' });
 			expect(decodeAudioBlob).not.toHaveBeenCalled();
 			expect(createdFiles).toEqual([]);
-			const { Notice } = jest.requireMock('obsidian');
 			expect(
 				(Notice as jest.Mock).mock.calls.some((call) =>
 					String(call[0]).includes(
@@ -219,7 +203,6 @@ describe('SplitService', () => {
 
 			expect(outcome).toEqual({ status: 'aborted' });
 			expect(createdFiles).toEqual([]);
-			const { Notice } = jest.requireMock('obsidian');
 			expect(
 				(Notice as jest.Mock).mock.calls.some((call) =>
 					String(call[0]).includes('already exists'),

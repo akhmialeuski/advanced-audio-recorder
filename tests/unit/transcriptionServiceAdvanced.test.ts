@@ -31,11 +31,6 @@ import {
 } from 'src/constants';
 import type { TranscriptionProviderId } from 'src/settings/settingsSchema';
 
-jest.mock('obsidian', () => {
-	const actual = jest.requireActual('../mocks/obsidian');
-	return { ...actual, Notice: jest.fn() };
-});
-
 // Replace audio preparation so the test drives the part count directly without
 // decoding real audio (the Web Audio path is unavailable under jsdom).
 jest.mock('src/transcription/audioPrep', () => ({

@@ -1,7 +1,113 @@
 /**
- * Mock implementations for Obsidian API.
+ * The Obsidian API, as the test suite sees it.
+ *
+ * The `obsidian` package ships type definitions and no runtime at all
+ * (`"main": ""`) - a real one is provided by the app - so a plugin's tests have
+ * to supply the runtime themselves. This module is that runtime, wired in
+ * through `moduleNameMapper`, which makes it the single Obsidian every suite
+ * runs against.
+ *
+ * ## What is modelled
+ *
+ * Roughly fifty of the API's ~290 exports: the plugin lifecycle, the vault and
+ * workspace (both event-backed), files and folders, modals and the settings
+ * components, menus, notices, `requestUrl`, `Platform`, and the DOM extensions
+ * Obsidian puts on every element. The Vault keeps a small in-memory store so
+ * reads answer what was written; seed it with `vault.seed([...])`.
+ *
+ * ## What is not
+ *
+ * Editors beyond the handful of methods the plugin calls, views and leaves
+ * beyond `getActiveViewOfType`, the canvas and bases APIs, and everything else
+ * the plugin never touches. Absence is deliberate: an export nothing uses is an
+ * export nothing keeps honest.
+ *
+ * ## Adding to it
+ *
+ * Add what a real test needs, when it needs it, and give the addition a test in
+ * `tests/unit/mocks/` - the suite's correctness rests on this file behaving
+ * like the thing it stands in for.
+ *
+ * Before adding, consider the alternative the Obsidian community recommends:
+ * move the logic out from under the API. Code here that does not import
+ * `obsidian` is markedly better covered than code that does, because it can be
+ * tested without any of this.
+ *
+ * ## What not to do
+ *
+ * Do not shadow this module with `jest.mock('obsidian', () => ({ ... }))`. A
+ * factory replaces the module wholesale, so that file alone gets a thinner
+ * Obsidian than the rest of the suite and the two drift apart silently. When a
+ * test genuinely needs one class to behave differently, spread this module and
+ * override the one export - see `tests/mocks/modules/`.
  * @module tests/mocks/obsidian
  */
+
+/* eslint-disable @typescript-eslint/no-explicit-any -- the real API types
+   each event name separately; the mock only has to accept any handler. */
+
+/** A subscriber registered through {@link Events.on}. */
+export type EventCallback = (...args: any[]) => void;
+
+/** Handle returned by {@link Events.on}, accepted by offref. */
+export interface EventRef {
+	name: string;
+	callback: EventCallback;
+}
+
+/**
+ * Mock Events: the pub/sub base the real Vault, Workspace, and MetadataCache
+ * extend.
+ *
+ * Without it a test could not deliver a vault rename or a workspace
+ * window-open to the code that registered for it, so every such test grew its
+ * own app-shaped literal with `on: jest.fn()` and reached into the mock's call
+ * list to find the handler. The registrar and the context menu still have the
+ * lowest branch coverage in the player for exactly that reason.
+ */
+export class Events {
+	private readonly handlers = new Map<string, Set<EventCallback>>();
+
+	on(name: string, callback: EventCallback): EventRef {
+		const set = this.handlers.get(name) ?? new Set<EventCallback>();
+		set.add(callback);
+		this.handlers.set(name, set);
+		return { name, callback };
+	}
+
+	off(name: string, callback: EventCallback): void {
+		this.handlers.get(name)?.delete(callback);
+	}
+
+	offref(ref: EventRef): void {
+		this.off(ref.name, ref.callback);
+	}
+
+	/**
+	 * Delivers an event to everything currently subscribed.
+	 * @param name - Event name
+	 * @param args - Arguments passed to each handler
+	 */
+	trigger(name: string, ...args: unknown[]): void {
+		// Copied first: a handler is allowed to unsubscribe itself.
+		for (const handler of [...(this.handlers.get(name) ?? [])]) {
+			handler(...args);
+		}
+	}
+
+	/**
+	 * How many handlers are listening, for a test asserting that a component
+	 * unsubscribed on unload.
+	 * @param name - Event name
+	 * @returns Number of live handlers
+	 */
+	countHandlers(name: string): number {
+		return this.handlers.get(name)?.size ?? 0;
+	}
+}
+
+export { addObsidianDomExtensions } from './domExtensions';
+import { addObsidianDomExtensions } from './domExtensions';
 
 /**
  * Mock Plugin class.
@@ -39,6 +145,20 @@ export class Plugin {
 		return id;
 	}
 
+	/**
+	 * Records an event registration so a test can assert the plugin releases
+	 * it. The real Plugin unsubscribes these on unload; so does this one.
+	 * @param ref - Handle returned by an Events.on call
+	 * @returns The same handle, as the real API does
+	 */
+	registerEvent(ref: EventRef): EventRef {
+		this.registeredEvents.push(ref);
+		return ref;
+	}
+
+	/** Event handles passed to {@link registerEvent}, in order. */
+	readonly registeredEvents: EventRef[] = [];
+
 	async loadData(): Promise<unknown> {
 		return {};
 	}
@@ -54,72 +174,232 @@ export class Plugin {
 export class App {
 	vault: Vault = new Vault();
 	workspace: Workspace = new Workspace();
+	metadataCache: MetadataCache = new MetadataCache();
 }
 
 /**
- * Mock Vault class.
+ * Mock MetadataCache. Events-backed like the real one; the plugin listens for
+ * `changed` and `resolved`.
  */
-export class Vault {
+export class MetadataCache extends Events {
+	getFileCache = jest.fn((_file: TFile): unknown => null);
+	getFirstLinkpathDest = jest.fn(
+		(_linkpath: string, _sourcePath: string): TFile | null => null,
+	);
+}
+
+/** One entry in a seeded vault. */
+export interface VaultSeedFile {
+	path: string;
+	/** Text contents, for adapter.read and cachedRead. */
+	content?: string;
+	/** Binary contents, for adapter.readBinary and readBinary. */
+	data?: ArrayBuffer;
+	mtime?: number;
+	size?: number;
+}
+
+/**
+ * Mock Vault.
+ *
+ * Every method is a jest.fn so a test can both assert on the call and override
+ * the answer, and the defaults read a small in-memory store rather than
+ * returning a fixed empty value. Before that, `getFileByPath` always answered
+ * null and `adapter.read` always answered an empty string, which is why so
+ * many tests built their own vault literal instead of using this one.
+ *
+ * Seed the store with {@link Vault.seed}.
+ */
+export class Vault extends Events {
+	private readonly files = new Map<string, TFile>();
+	private readonly text = new Map<string, string>();
+	private readonly binary = new Map<string, ArrayBuffer>();
+
 	adapter = {
-		exists: async (_path: string): Promise<boolean> => false,
-		read: async (_path: string): Promise<string> => '',
-		write: async (_path: string, _data: string): Promise<void> => {
-			// Mock implementation
-		},
-		append: async (_path: string, _data: ArrayBuffer): Promise<void> => {
-			// Mock implementation
-		},
-		rename: async (_oldPath: string, _newPath: string): Promise<void> => {
-			// Mock implementation
-		},
-		readBinary: async (_path: string): Promise<ArrayBuffer> =>
-			new ArrayBuffer(0),
-		writeBinary: async (
-			_path: string,
-			_data: ArrayBuffer,
-		): Promise<void> => {
-			// Mock implementation
-		},
-		remove: async (_path: string): Promise<void> => {
-			// Mock implementation
-		},
+		exists: jest.fn(
+			async (path: string): Promise<boolean> =>
+				this.text.has(path) || this.binary.has(path),
+		),
+		read: jest.fn(
+			async (path: string): Promise<string> => this.text.get(path) ?? '',
+		),
+		write: jest.fn(async (path: string, data: string): Promise<void> => {
+			this.text.set(path, data);
+		}),
+		append: jest.fn(
+			async (path: string, data: ArrayBuffer): Promise<void> => {
+				const existing = this.binary.get(path);
+				if (!existing) {
+					this.binary.set(path, data);
+					return;
+				}
+				const merged = new Uint8Array(
+					existing.byteLength + data.byteLength,
+				);
+				merged.set(new Uint8Array(existing), 0);
+				merged.set(new Uint8Array(data), existing.byteLength);
+				this.binary.set(path, merged.buffer);
+			},
+		),
+		rename: jest.fn(
+			async (oldPath: string, newPath: string): Promise<void> => {
+				const moveIn = <T>(store: Map<string, T>): void => {
+					if (!store.has(oldPath)) {
+						return;
+					}
+					store.set(newPath, store.get(oldPath) as T);
+					store.delete(oldPath);
+				};
+				moveIn(this.text);
+				moveIn(this.binary);
+			},
+		),
+		readBinary: jest.fn(
+			async (path: string): Promise<ArrayBuffer> =>
+				this.binary.get(path) ?? new ArrayBuffer(0),
+		),
+		writeBinary: jest.fn(
+			async (path: string, data: ArrayBuffer): Promise<void> => {
+				this.binary.set(path, data);
+			},
+		),
+		remove: jest.fn(async (path: string): Promise<void> => {
+			this.text.delete(path);
+			this.binary.delete(path);
+		}),
 	};
 
-	async createBinary(_path: string, _data: ArrayBuffer): Promise<void> {
-		// Mock implementation
+	createBinary = jest.fn(
+		async (path: string, data: ArrayBuffer): Promise<TFile> => {
+			this.binary.set(path, data);
+			return this.registerFile(path, data.byteLength);
+		},
+	);
+
+	create = jest.fn(async (path: string, data: string): Promise<TFile> => {
+		this.text.set(path, data);
+		return this.registerFile(path, data.length);
+	});
+
+	read = jest.fn(
+		async (file: TFile): Promise<string> => this.text.get(file.path) ?? '',
+	);
+
+	cachedRead = jest.fn(
+		async (file: TFile): Promise<string> => this.text.get(file.path) ?? '',
+	);
+
+	readBinary = jest.fn(
+		async (file: TFile): Promise<ArrayBuffer> =>
+			this.binary.get(file.path) ?? new ArrayBuffer(0),
+	);
+
+	modify = jest.fn(async (file: TFile, data: string): Promise<void> => {
+		this.text.set(file.path, data);
+	});
+
+	getFileByPath = jest.fn(
+		(path: string): TFile | null => this.files.get(path) ?? null,
+	);
+
+	getAbstractFileByPath = jest.fn(
+		(path: string): TAbstractFile | null => this.files.get(path) ?? null,
+	);
+
+	getResourcePath = jest.fn(
+		(file: TFile): string => `app://vault/${file.path}`,
+	);
+
+	getRoot = jest.fn((): TFolder => new TFolder(''));
+
+	getFiles = jest.fn((): TFile[] => [...this.files.values()]);
+
+	/**
+	 * Fills the vault so its readers answer consistently: a seeded file is
+	 * found by path, exists, and reads back what it was given.
+	 * @param files - Files to place in the vault
+	 * @returns The TFile objects created, in the order seeded
+	 */
+	seed(files: VaultSeedFile[]): TFile[] {
+		return files.map((entry) => {
+			if (entry.content !== undefined) {
+				this.text.set(entry.path, entry.content);
+			}
+			if (entry.data !== undefined) {
+				this.binary.set(entry.path, entry.data);
+			}
+			const size =
+				entry.size ??
+				entry.data?.byteLength ??
+				entry.content?.length ??
+				0;
+			return this.registerFile(entry.path, size, entry.mtime ?? 0);
+		});
 	}
 
-	getFileByPath(_path: string): TFile | null {
-		return null;
-	}
-
-	getResourcePath(file: TFile): string {
-		return `app://vault/${file.path}`;
-	}
-
-	getRoot(): TFolder {
-		return new TFolder('');
+	/**
+	 * Adds a path to the file index, reusing the TFile if it is already known
+	 * so identity survives a rewrite.
+	 * @param path - Vault-relative path
+	 * @param size - Byte size to report through stat
+	 * @param mtime - Modification time to report through stat
+	 * @returns The indexed file
+	 */
+	private registerFile(path: string, size: number, mtime = 0): TFile {
+		const existing = this.files.get(path);
+		const file = existing ?? new TFile(path);
+		file.stat = { size, mtime, ctime: mtime };
+		this.files.set(path, file);
+		return file;
 	}
 
 	static recurseChildren(
-		_root: TFolder,
-		_callback: (file: TAbstractFile) => void,
+		root: TFolder,
+		callback: (file: TAbstractFile) => void,
 	): void {
-		// Mock implementation
+		const walk = (folder: TFolder): void => {
+			for (const child of folder.children) {
+				callback(child);
+				if (child instanceof TFolder) {
+					walk(child);
+				}
+			}
+		};
+		callback(root);
+		walk(root);
 	}
 }
 
 /**
- * Mock Workspace class.
+ * Mock Workspace. Events-backed like the real one, so `window-open`,
+ * `window-close`, and `active-leaf-change` can be delivered to whatever
+ * registered for them.
  */
-export class Workspace {
-	getActiveViewOfType<T>(_type: new (...args: unknown[]) => T): T | null {
-		return null;
-	}
+export class Workspace extends Events {
+	private activeView: unknown = null;
 
-	onLayoutReady(callback: () => void): void {
+	getActiveViewOfType = jest.fn(
+		<T>(_type: new (...args: unknown[]) => T): T | null =>
+			this.activeView as T | null,
+	);
+
+	onLayoutReady = jest.fn((callback: () => void): void => {
 		// The mock workspace is always "ready"
 		callback();
+	});
+
+	getLeavesOfType = jest.fn((_type: string): unknown[] => []);
+
+	iterateAllLeaves = jest.fn((_callback: (leaf: unknown) => void): void => {
+		// No leaves unless a test seeds them
+	});
+
+	/**
+	 * Sets what getActiveViewOfType answers with.
+	 * @param view - View to report as active, or null for none
+	 */
+	seedActiveView(view: unknown): void {
+		this.activeView = view;
 	}
 }
 
@@ -129,55 +409,195 @@ export class Workspace {
  * The global clearMocks option resets the calls between tests.
  */
 export const Notice = jest.fn(function (
-	this: { message: string | DocumentFragment; hide: jest.Mock },
+	this: NoticeInstance,
 	message: string | DocumentFragment,
-	_timeout?: number,
+	timeout?: number,
 ) {
+	this.initialMessage = message;
 	this.message = message;
+	this.timeout = timeout;
+	// The progress notices rewrite themselves in place, so setMessage has to
+	// keep the latest text where a test can read it.
+	this.setMessage = jest.fn((next: string | DocumentFragment) => {
+		this.message = next;
+		return this;
+	});
 	this.hide = jest.fn();
+	noticeInstances.push(this);
 });
 
+/** A Notice the code under test raised. */
+export interface NoticeInstance {
+	/** What the notice was raised with, before any setMessage. */
+	initialMessage: string | DocumentFragment;
+	/** What the notice currently reads, after any setMessage. */
+	message: string | DocumentFragment;
+	timeout: number | undefined;
+	setMessage: jest.Mock;
+	hide: jest.Mock;
+}
+
 /**
- * Mock MenuItem class. Builder methods are chainable like the real API.
+ * The text of a notice, whether it was raised with a string or a fragment.
+ * @param notice - A recorded notice
+ * @returns Its current message as plain text
+ */
+export function noticeText(notice: NoticeInstance): string {
+	return asText(notice.message);
+}
+
+/**
+ * The text a notice was first raised with, before any in-place update.
+ * @param notice - A recorded notice
+ * @returns Its original message as plain text
+ */
+export function noticeInitialText(notice: NoticeInstance): string {
+	return asText(notice.initialMessage);
+}
+
+/**
+ * Reads a notice message that may be a string or a fragment.
+ * @param message - The message to read
+ * @returns Its plain text
+ */
+function asText(message: string | DocumentFragment): string {
+	return typeof message === 'string' ? message : (message.textContent ?? '');
+}
+
+/**
+ * Every Notice raised so far, newest last.
+ *
+ * `Notice` is a jest.fn, so the constructor arguments are already in
+ * `mock.calls`; this is for the notices that are updated after they are shown,
+ * where the final message is the interesting one.
+ */
+export const noticeInstances: NoticeInstance[] = [];
+
+// Cleared per test from tests/setupAfterEnv.ts: this module is loaded by
+// setupFiles, which runs before the test framework exists.
+
+/**
+ * Mock MenuItem. Builder methods are chainable like the real API, and unlike
+ * the real API they keep what they were given: the previous mock threw the
+ * click handler away, so no test could invoke a context-menu entry through the
+ * shared mock and every menu test had to shadow the whole obsidian module.
  */
 export class MenuItem {
-	setTitle(_title: string): this {
+	title = '';
+	icon = '';
+	section = '';
+	checked = false;
+	disabled = false;
+	/** The handler registered through onClick, if any. */
+	clickHandler: ((event?: MouseEvent | KeyboardEvent) => void) | null = null;
+
+	setTitle(title: string | DocumentFragment): this {
+		this.title =
+			typeof title === 'string' ? title : (title.textContent ?? '');
 		return this;
 	}
-	setIcon(_icon: string): this {
+	setIcon(icon: string | null): this {
+		this.icon = icon ?? '';
 		return this;
 	}
-	setChecked(_checked: boolean): this {
+	setChecked(checked: boolean | null): this {
+		this.checked = checked ?? false;
 		return this;
 	}
-	setSection(_section: string): this {
+	setSection(section: string): this {
+		this.section = section;
 		return this;
 	}
-	setDisabled(_disabled: boolean): this {
+	setDisabled(disabled: boolean): this {
+		this.disabled = disabled;
 		return this;
 	}
-	onClick(_callback: () => void): this {
+	onClick(callback: (event?: MouseEvent | KeyboardEvent) => void): this {
+		this.clickHandler = callback;
 		return this;
+	}
+
+	/**
+	 * Invokes the registered handler, the way a user picking the entry would.
+	 * @param event - Event handed to the handler
+	 */
+	click(event?: MouseEvent | KeyboardEvent): void {
+		if (this.disabled) {
+			throw new Error(`Menu item "${this.title}" is disabled`);
+		}
+		if (!this.clickHandler) {
+			throw new Error(`Menu item "${this.title}" has no click handler`);
+		}
+		this.clickHandler(event);
 	}
 }
 
 /**
- * Mock Menu class. addItem invokes the builder with a MenuItem so callers
- * exercise their item-building code; showing is a no-op.
+ * Mock Menu. Builds real MenuItem objects and keeps them, so a test can read
+ * the menu a component produced and pick an entry from it.
  */
 export class Menu {
+	/** Items added so far, in order. */
+	readonly items: MenuItem[] = [];
+	/** Where separators fall, as indices into {@link items}. */
+	readonly separatorsAfter: number[] = [];
+	shown = false;
+
 	addItem(callback: (item: MenuItem) => void): this {
-		callback(new MenuItem());
+		const item = new MenuItem();
+		callback(item);
+		this.items.push(item);
 		return this;
 	}
 	addSeparator(): this {
+		this.separatorsAfter.push(this.items.length - 1);
 		return this;
 	}
-	showAtMouseEvent(_event: MouseEvent): this {
+
+	/** The event the menu was opened from, when it was opened from one. */
+	shownAtEvent: MouseEvent | null = null;
+	/** Where the menu was opened, when it was opened at a position. */
+	shownAtPosition: { x: number; y: number } | null = null;
+
+	// Plain methods rather than instance spies: a test watching every menu the
+	// code opens does it with spyOn(Menu.prototype, ...), which an instance
+	// property would hide. What was opened where is recorded on the instance
+	// instead, which reads better than digging through mock.calls anyway.
+	showAtMouseEvent(event: MouseEvent): this {
+		this.shown = true;
+		this.shownAtEvent = event;
 		return this;
 	}
-	showAtPosition(_position: { x: number; y: number }): this {
+	showAtPosition(position: { x: number; y: number }): this {
+		this.shown = true;
+		this.shownAtPosition = position;
 		return this;
+	}
+
+	/**
+	 * Finds an entry by its title.
+	 * @param title - Exact title set through setTitle
+	 * @returns The item, or undefined when the menu has no such entry
+	 */
+	item(title: string): MenuItem | undefined {
+		return this.items.find((entry) => entry.title === title);
+	}
+
+	/**
+	 * Picks an entry by title, failing loudly when it is missing so the error
+	 * names the menu instead of surfacing as "cannot read property of
+	 * undefined".
+	 * @param title - Exact title set through setTitle
+	 */
+	click(title: string): void {
+		const item = this.item(title);
+		if (!item) {
+			const available = this.items.map((entry) => entry.title).join(', ');
+			throw new Error(
+				`Menu has no item "${title}". Available: ${available || '(none)'}`,
+			);
+		}
+		item.click();
 	}
 }
 
@@ -278,121 +698,6 @@ export class MarkdownRenderChild extends Component {
 }
 
 /**
- * Adds Obsidian DOM extension methods to an HTMLElement.
- * Obsidian extends HTMLElement with helper methods like createEl, setText, etc.
- * Exported so DOM-driven tests can extend elements Obsidian extends at
- * runtime (e.g. document.body for body-mounted UI like RecordingBanner).
- */
-export function addObsidianDomExtensions<T extends HTMLElement>(el: T): T {
-	// Use unknown cast to avoid TypeScript's overloaded HTMLElement extension conflicts
-	const extended = el as unknown as Record<string, unknown>;
-
-	extended['createEl'] = (
-		tag: string,
-		opts?: {
-			text?: string;
-			cls?: string | string[];
-			attr?: Record<string, string>;
-		},
-	): HTMLElement => {
-		const child = document.createElement(tag);
-		addObsidianDomExtensions(child);
-		if (opts?.text) child.textContent = opts.text;
-		if (opts?.cls) {
-			const classes = Array.isArray(opts.cls)
-				? opts.cls
-				: opts.cls.split(' ');
-			classes.forEach((c) => child.classList.add(c));
-		}
-		if (opts?.attr) {
-			Object.entries(opts.attr).forEach(([k, v]) =>
-				child.setAttribute(k, v),
-			);
-		}
-		el.appendChild(child);
-		return child;
-	};
-
-	extended['createDiv'] = (opts?: {
-		cls?: string;
-		text?: string;
-	}): HTMLElement => {
-		const createEl = extended['createEl'] as (
-			tag: string,
-			opts?: { cls?: string; text?: string },
-		) => HTMLElement;
-		return createEl(
-			'div',
-			opts
-				? {
-						...(opts.cls === undefined ? {} : { cls: opts.cls }),
-						...(opts.text === undefined ? {} : { text: opts.text }),
-					}
-				: undefined,
-		);
-	};
-
-	extended['setText'] = (text: string): void => {
-		el.textContent = text;
-	};
-
-	extended['addClass'] = (...classes: string[]): void => {
-		classes.forEach((c) => el.classList.add(c));
-	};
-
-	extended['removeClass'] = (...classes: string[]): void => {
-		classes.forEach((c) => el.classList.remove(c));
-	};
-
-	extended['empty'] = (): void => {
-		while (el.firstChild) {
-			el.removeChild(el.firstChild);
-		}
-	};
-
-	extended['createSpan'] = (opts?: {
-		cls?: string;
-		text?: string;
-	}): HTMLElement => {
-		const createEl = extended['createEl'] as (
-			tag: string,
-			opts?: { cls?: string; text?: string },
-		) => HTMLElement;
-		return createEl('span', opts);
-	};
-
-	extended['setCssProps'] = (props: Record<string, string>): void => {
-		Object.entries(props).forEach(([key, value]) => {
-			el.style.setProperty(key, value);
-		});
-	};
-
-	extended['toggleClass'] = (cls: string, force?: boolean): void => {
-		el.classList.toggle(cls, force);
-	};
-
-	extended['hasClass'] = (cls: string): boolean => el.classList.contains(cls);
-
-	// Obsidian's own visibility helpers, which set and clear the inline display
-	// rather than toggling a class, so a test asserting on style.display sees
-	// what the app leaves behind.
-	extended['show'] = (): void => {
-		el.style.removeProperty('display');
-	};
-
-	extended['hide'] = (): void => {
-		el.style.setProperty('display', 'none');
-	};
-
-	extended['toggle'] = (show: boolean): void => {
-		const helper = extended[show ? 'show' : 'hide'] as () => void;
-		helper();
-	};
-
-	return el;
-}
-
-/**
  * Mock Modal class.
  */
 export class Modal {
@@ -410,6 +715,9 @@ export class Modal {
 		document.createElement('div'),
 	);
 
+	// Prototype methods, not instance spies: a test that wants to watch these
+	// spies the instance (or the prototype, to catch a modal it never sees),
+	// and an instance-level jest.fn would put neither within reach of spyOn.
 	open(): void {
 		// Mirrors Obsidian: opening renders the modal contents
 		this.onOpen();
@@ -664,6 +972,9 @@ export class PluginSettingTab {
  */
 export class MarkdownView {
 	editor: Editor | null = null;
+	// The real MarkdownView carries the file through FileView; production code
+	// narrows a leaf to a MarkdownView and then reads view.file.
+	file: TFile | null = null;
 }
 
 /**
@@ -680,9 +991,16 @@ export class Editor {
  */
 export class TAbstractFile {
 	path: string;
+	name: string;
+	parent: TFolder | null = null;
 
-	constructor(path: string) {
+	// The path defaults to empty so `new TFile()` works the way the previous
+	// per-file `TFile: jest.fn()` doubles did, for tests that only need an
+	// object of the right shape and set the fields they care about.
+	constructor(path = '') {
 		this.path = path;
+		const parts = path.split('/');
+		this.name = parts[parts.length - 1] ?? path;
 	}
 }
 
@@ -699,8 +1017,13 @@ export class TFolder extends TAbstractFile {
 export class TFile extends TAbstractFile {
 	basename: string;
 	extension: string;
+	stat: { size: number; mtime: number; ctime: number } = {
+		size: 0,
+		mtime: 0,
+		ctime: 0,
+	};
 
-	constructor(path: string) {
+	constructor(path = '') {
 		super(path);
 		const parts = path.split('/');
 		// split() always yields at least one element, so the last one is the
@@ -1033,11 +1356,15 @@ export function normalizePath(path: string): string {
 }
 
 /**
- * Mock setIcon function.
+ * Mock setIcon: records the icon on the element as `data-icon`.
+ *
+ * The real one renders an SVG, which a test cannot reasonably assert on. The
+ * attribute is the observable stand-in, and a spy so a test can also assert
+ * that the icon was set at all.
  */
-export function setIcon(_el: HTMLElement, _iconId: string): void {
-	// Mock implementation
-}
+export const setIcon = jest.fn((el: HTMLElement, iconId: string): void => {
+	el.setAttribute('data-icon', iconId);
+});
 
 /**
  * Mock getLinkpath function: strips the subpath (heading/block
@@ -1281,6 +1608,10 @@ export interface PluginManifest {
 	id: string;
 	name: string;
 	version: string;
+	minAppVersion?: string;
+	author?: string;
+	description?: string;
+	isDesktopOnly?: boolean;
 	dir?: string;
 }
 

@@ -25,12 +25,11 @@ import {
 } from '../helpers/captureSettings';
 import { useMobilePlatform } from '../helpers/platform';
 
-jest.mock('obsidian', () => ({
-	Platform: { isMobile: false, isMobileApp: false },
-	Setting: jest.requireActual<typeof import('../helpers/captureSettings')>(
-		'../helpers/captureSettings',
-	).CapturingSetting,
-}));
+// The full obsidian mock with only Setting swapped for the recording double,
+// so this file sees the same Notice, Platform, and DOM helpers as every other.
+jest.mock('obsidian', () =>
+	require('../mocks/modules/obsidianWithCapturingSetting'),
+);
 
 /** Builds a section context over the given settings. */
 function makeCtx(settings: AudioRecorderSettings): SettingsSectionContext {

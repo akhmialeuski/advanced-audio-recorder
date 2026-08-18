@@ -9,84 +9,13 @@ import {
 	addLinkActionSetting,
 } from 'src/settings/settingControls';
 import { at } from '../helpers/assertions';
+import { capturedSettings } from '../helpers/captureSettings';
+import type { CapturedSetting } from '../helpers/captureSettings';
 
-/** Captured dropdowns and toggles rendered through the Setting mock. */
-interface DropdownCapture {
-	options: { value: string; label: string }[];
-	value: string;
-	onChange: (value: string) => void;
-}
-interface ToggleCapture {
-	value: boolean;
-	onChange: (value: boolean) => void;
-}
-const dropdowns: DropdownCapture[] = [];
-const toggles: ToggleCapture[] = [];
-
-jest.mock('obsidian', () => ({
-	Setting: class {
-		setName(): this {
-			return this;
-		}
-		setDesc(): this {
-			return this;
-		}
-		addDropdown(
-			callback: (dropdown: {
-				addOption: (value: string, label: string) => unknown;
-				setValue: (value: string) => unknown;
-				onChange: (handler: (value: string) => void) => unknown;
-			}) => void,
-		): this {
-			const capture: DropdownCapture = {
-				options: [],
-				value: '',
-				onChange: () => undefined,
-			};
-			const dropdown = {
-				addOption(value: string, label: string) {
-					capture.options.push({ value, label });
-					return this;
-				},
-				setValue(value: string) {
-					capture.value = value;
-					return this;
-				},
-				onChange(handler: (value: string) => void) {
-					capture.onChange = handler;
-					return this;
-				},
-			};
-			callback(dropdown);
-			dropdowns.push(capture);
-			return this;
-		}
-		addToggle(
-			callback: (toggle: {
-				setValue: (value: boolean) => unknown;
-				onChange: (handler: (value: boolean) => void) => unknown;
-			}) => void,
-		): this {
-			const capture: ToggleCapture = {
-				value: false,
-				onChange: () => undefined,
-			};
-			const toggle = {
-				setValue(value: boolean) {
-					capture.value = value;
-					return this;
-				},
-				onChange(handler: (value: boolean) => void) {
-					capture.onChange = handler;
-					return this;
-				},
-			};
-			callback(toggle);
-			toggles.push(capture);
-			return this;
-		}
-	},
-}));
+// The full obsidian mock with only Setting swapped for the recording double.
+jest.mock('obsidian', () =>
+	require('../mocks/modules/obsidianWithCapturingSetting'),
+);
 
 jest.mock('src/audio/AudioCapabilityDetector', () => ({
 	getSupportedBitrates: jest
@@ -98,10 +27,17 @@ describe('dialog setting builders', () => {
 	let containerEl: HTMLElement;
 
 	beforeEach(() => {
-		dropdowns.length = 0;
-		toggles.length = 0;
+		capturedSettings.length = 0;
 		containerEl = document.createElement('div');
 	});
+
+	/**
+	 * The single row these builders render.
+	 * @returns The captured row
+	 */
+	function row(): CapturedSetting {
+		return at(capturedSettings, 0);
+	}
 
 	describe('addBitrateSetting', () => {
 		it('should list supported bitrates with kbps labels', () => {
@@ -111,13 +47,18 @@ describe('dialog setting builders', () => {
 				onChange: jest.fn(),
 			});
 
-			expect(at(dropdowns, 0).options).toEqual([
+			expect(
+				(row().dropdownOptions ?? []).map(({ value, label }) => ({
+					value,
+					label,
+				})),
+			).toEqual([
 				{ value: '64000', label: '64 kbps' },
 				{ value: '96000', label: '96 kbps' },
 				{ value: '128000', label: '128 kbps' },
 				{ value: '192000', label: '192 kbps' },
 			]);
-			expect(at(dropdowns, 0).value).toBe('128000');
+			expect(row().dropdownValue).toBe('128000');
 		});
 
 		it('should snap an unsupported initial bitrate to the closest entry', () => {
@@ -128,7 +69,7 @@ describe('dialog setting builders', () => {
 			});
 
 			expect(effective).toBe(96000);
-			expect(at(dropdowns, 0).value).toBe('96000');
+			expect(row().dropdownValue).toBe('96000');
 		});
 
 		it('should report numeric bitrate changes', () => {
@@ -139,7 +80,7 @@ describe('dialog setting builders', () => {
 				onChange,
 			});
 
-			at(dropdowns, 0).onChange('192000');
+			row().changes.dropdown?.('192000');
 
 			expect(onChange).toHaveBeenCalledWith(192000);
 		});
@@ -154,9 +95,9 @@ describe('dialog setting builders', () => {
 				onChange,
 			});
 
-			expect(at(toggles, 0).value).toBe(true);
+			expect(row().toggle?.value).toBe(true);
 
-			at(toggles, 0).onChange(false);
+			row().changes.toggle?.(false);
 			expect(onChange).toHaveBeenCalledWith(false);
 		});
 	});
@@ -171,11 +112,11 @@ describe('dialog setting builders', () => {
 			});
 
 			expect(
-				at(dropdowns, 0).options.map((option) => option.value),
+				(row().dropdownOptions ?? []).map((option) => option.value),
 			).toEqual(['none', 'replace', 'after']);
-			expect(at(dropdowns, 0).value).toBe('replace');
+			expect(row().dropdownValue).toBe('replace');
 
-			at(dropdowns, 0).onChange('after');
+			row().changes.dropdown?.('after');
 			expect(onChange).toHaveBeenCalledWith('after');
 		});
 	});

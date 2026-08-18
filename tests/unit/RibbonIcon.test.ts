@@ -7,13 +7,6 @@
 import { updateRibbonIcon, initializeRibbonIcon } from 'src/ui/RibbonIcon';
 import { RecordingStatus } from 'src/types';
 
-// Mock the setIcon function from obsidian
-jest.mock('obsidian', () => ({
-	setIcon: jest.fn((el: HTMLElement, iconName: string) => {
-		el.setAttribute('data-icon', iconName);
-	}),
-}));
-
 describe('RibbonIcon', () => {
 	let ribbonElement: HTMLElement;
 

@@ -21,44 +21,20 @@ import {
 	makeStatefulMarkerStore,
 } from './helpers/recordingManagerTestKit';
 import { flushMicrotasks } from '../helpers/async';
-
-// Mock obsidian module
-jest.mock('obsidian', () => ({
-	Notice: jest.fn(),
-	MarkdownView: jest.fn(),
-	normalizePath: (path: string) => path.replace(/\\/g, '/'),
-	Platform: {
-		isMobile: false,
-		isMobileApp: false,
-	},
-}));
+import { Notice } from 'obsidian';
 
 // Mock AudioStreamHandler
-jest.mock('src/recording/AudioStreamHandler', () => ({
-	getAudioStreams: jest.fn(),
-	getAudioSourceName: jest.fn().mockResolvedValue('TestDevice'),
-	stopAllStreams: jest.fn(),
-	validateSelectedDevices: jest.fn(),
-}));
+jest.mock('src/recording/AudioStreamHandler', () =>
+	require('../mocks/modules/audioStreamHandler'),
+);
 
 // Mock AudioEncoder module to avoid mediabunny TextDecoder requirement
-jest.mock('src/audio/AudioEncoder', () => ({
-	encodeAudioBuffer: jest
-		.fn()
-		.mockResolvedValue(new Blob(['encoded'], { type: 'audio/webm' })),
-	isOfflineEncodingSupported: jest.fn((format: string) => {
-		return ['mp3', 'flac', 'aac', 'webm', 'ogg', 'mp4', 'm4a'].includes(
-			format,
-		);
-	}),
-}));
+jest.mock('src/audio/AudioEncoder', () =>
+	require('../mocks/modules/audioEncoder'),
+);
 
 // Mock WavEncoder
-jest.mock('src/audio/WavEncoder', () => ({
-	assembleWavFromPcmSegmentFiles: jest
-		.fn()
-		.mockResolvedValue(new ArrayBuffer(44)),
-}));
+jest.mock('src/audio/WavEncoder', () => require('../mocks/modules/wavEncoder'));
 
 // Mock PcmStreamRecorder
 jest.mock('src/recording/PcmStreamRecorder', () => ({
@@ -270,7 +246,6 @@ describe('RecordingManager', () => {
 			manager.captureMarkerDraft()?.commit('Intro', MARKER_KIND.bookmark);
 			await feedChunkAndStop();
 
-			const { Notice } = jest.requireMock('obsidian');
 			expect(Notice).toHaveBeenCalledWith(
 				expect.stringContaining('could not be saved'),
 			);

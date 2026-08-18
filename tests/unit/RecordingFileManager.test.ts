@@ -21,11 +21,6 @@ import {
 	cleanupIntermediateFiles,
 } from 'src/audio/RecordingFileManager';
 
-// Mock obsidian module
-jest.mock('obsidian', () => ({
-	normalizePath: (path: string) => path.replace(/\\/g, '/'),
-}));
-
 // Polyfill Blob.arrayBuffer for jsdom if missing
 
 describe('RecordingFileManager', () => {

@@ -15,6 +15,8 @@ import { AUDIO_EXTENSIONS } from 'src/constants';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import * as AudioFileAnalyzer from 'src/utils/AudioFileAnalyzer';
 import { at } from '../helpers/assertions';
+import { tick } from '../helpers/async';
+import { asMockMenu } from '../helpers/obsidianMock';
 import {
 	App,
 	Menu,
@@ -28,66 +30,6 @@ import {
 	FileManager,
 	MarkdownView,
 } from 'obsidian';
-
-/** The shape of a recorded menu item (see the Menu fake below). */
-interface RecordedMenuItem {
-	title: string;
-	onClickHandler: (() => unknown) | null;
-}
-
-/** The shape of the recording Menu fake, for structural casts. */
-interface RecordedMenu {
-	items: RecordedMenuItem[];
-	showAtPosition: jest.Mock;
-}
-
-// Mock obsidian with a recording Menu fake: items are inspectable by
-// title and clickable, so tests assert user-visible behavior instead of
-// builder-call structure.
-jest.mock('obsidian', () => {
-	class MockMenuItem {
-		title = '';
-		onClickHandler: (() => unknown) | null = null;
-		setTitle(title: string): this {
-			this.title = title;
-			return this;
-		}
-		setIcon(): this {
-			return this;
-		}
-		setSection(): this {
-			return this;
-		}
-		onClick(handler: () => unknown): this {
-			this.onClickHandler = handler;
-			return this;
-		}
-	}
-	class MockMenu {
-		items: MockMenuItem[] = [];
-		showAtPosition = jest.fn();
-		addItem(cb: (item: MockMenuItem) => void): this {
-			const item = new MockMenuItem();
-			cb(item);
-			this.items.push(item);
-			return this;
-		}
-		addSeparator(): this {
-			return this;
-		}
-	}
-	return {
-		App: jest.fn(),
-		Menu: MockMenu,
-		Modal: class {},
-		TFile: jest.fn(),
-		Plugin: jest.fn(),
-		Editor: jest.fn(),
-		Notice: jest.fn(),
-		MarkdownView: jest.fn(),
-		FileManager: jest.fn(),
-	};
-});
 
 // The player menu binds through registerDomEventOnAllWindows (one listener
 // per Obsidian window). These unit tests exercise the handler itself, so the
@@ -135,18 +77,22 @@ jest.mock('src/audio/AudioEncoder', () => ({
 
 /** The visible item titles of a rendered menu. */
 function titlesOf(menu: Menu): string[] {
-	return (menu as unknown as RecordedMenu).items.map((item) => item.title);
+	return asMockMenu(menu).items.map((item) => item.title);
 }
 
-/** Clicks the menu item with the given title (fails if absent). */
+/**
+ * Clicks the menu item with the given title.
+ *
+ * The mock's own click() names the entries it does have when the title is
+ * missing, so a renamed item fails here rather than three assertions later.
+ * @param menu - The rendered menu
+ * @param title - Exact item title
+ */
 async function clickItem(menu: Menu, title: string): Promise<void> {
-	const item = (menu as unknown as RecordedMenu).items.find(
-		(candidate) => candidate.title === title,
-	);
-	if (!item?.onClickHandler) {
-		throw new Error(`menu item "${title}" not found or not clickable`);
-	}
-	await item.onClickHandler();
+	asMockMenu(menu).click(title);
+	// The handlers are async and fire-and-forget from the menu's point of
+	// view; let them settle before the assertions run.
+	await tick();
 }
 
 describe('ContextMenu', () => {
@@ -716,9 +662,10 @@ describe('ContextMenu', () => {
 				'audio.mp3',
 				'active.md',
 			);
-			expect(
-				(triggeredMenu() as unknown as RecordedMenu).showAtPosition,
-			).toHaveBeenCalledWith({ x: 100, y: 200 });
+			expect(asMockMenu(triggeredMenu()).shownAtPosition).toEqual({
+				x: 100,
+				y: 200,
+			});
 		});
 
 		it('does nothing when the file cannot be resolved', () => {

@@ -5,42 +5,18 @@
  */
 
 import type { InsertionContext } from 'src/types';
-import { at } from '../helpers/assertions';
-import type { App } from 'obsidian';
-
-// Mock MarkdownView class used for instanceof checks
-class MockMarkdownView {
-	file: { path: string } | null = null;
-	editor: {
-		getCursor: jest.Mock;
-		replaceRange: jest.Mock;
-		replaceSelection: jest.Mock;
-	} | null = null;
-}
-
-/** Mock TFile for the instanceof check in insertProcessedAudioEmbed. */
-class MockTFile {
-	path: string;
-	extension: string;
-	constructor(path: string) {
-		this.path = path;
-		this.extension = path.split('.').pop() ?? '';
-	}
-}
-
-jest.mock('obsidian', () => ({
-	MarkdownView: MockMarkdownView,
-	TFile: MockTFile,
-	getLinkpath: (link: string): string =>
-		at(at(link.split('#'), 0).split('|'), 0).trim(),
-}));
+import type { App, TFile } from 'obsidian';
+import {
+	createFile,
+	createMarkdownView,
+	type SpiedMarkdownView,
+} from '../helpers/createApp';
 
 import {
 	captureInsertionContext,
 	insertFileLinks,
 	insertProcessedAudioEmbed,
 } from 'src/recording/NoteInserter';
-import type { TFile } from 'obsidian';
 
 // DebugLogger mock
 function createMockDebugLogger(): { log: jest.Mock } {
@@ -49,8 +25,8 @@ function createMockDebugLogger(): { log: jest.Mock } {
 
 // Helper to create a mock App with workspace methods
 function createMockApp(overrides?: {
-	activeView?: MockMarkdownView | null;
-	leaves?: Array<{ view: MockMarkdownView }>;
+	activeView?: SpiedMarkdownView | null;
+	leaves?: Array<{ view: SpiedMarkdownView }>;
 }): App {
 	const activeView = overrides?.activeView ?? null;
 	const leaves = overrides?.leaves ?? [];
@@ -63,24 +39,25 @@ function createMockApp(overrides?: {
 	} as unknown as App;
 }
 
-// Helper to create a MockMarkdownView with file and editor
+/**
+ * A markdown view over a note, optionally with a cursor in it.
+ * @param filePath - Note the view shows, or null for a view with no file
+ * @param cursorLine - Cursor line; omit for a view with no editor
+ * @param cursorCh - Cursor column
+ * @returns The view, with every editor method spied
+ */
 function createMockView(
 	filePath: string | null,
 	cursorLine?: number,
 	cursorCh?: number,
-): MockMarkdownView {
-	const view = new MockMarkdownView();
-	view.file = filePath ? { path: filePath } : null;
-	if (cursorLine !== undefined && cursorCh !== undefined) {
-		view.editor = {
-			getCursor: jest
-				.fn()
-				.mockReturnValue({ line: cursorLine, ch: cursorCh }),
-			replaceRange: jest.fn(),
-			replaceSelection: jest.fn(),
-		};
-	}
-	return view;
+): SpiedMarkdownView {
+	return createMarkdownView({
+		file: filePath ? createFile(filePath) : null,
+		cursor:
+			cursorLine === undefined || cursorCh === undefined
+				? null
+				: { line: cursorLine, ch: cursorCh },
+	});
 }
 
 describe('NoteInserter', () => {
@@ -137,10 +114,8 @@ describe('NoteInserter', () => {
 		});
 
 		it('returns null and logs when view has no editor (no cursor)', () => {
-			// View with file but no editor
-			const view = new MockMarkdownView();
-			view.file = { path: 'notes/test.md' };
-			view.editor = null;
+			// A view showing a note, but with no editor to write into
+			const view = createMockView('notes/test.md');
 			const app = createMockApp({ activeView: view });
 			const logger = createMockDebugLogger();
 
@@ -184,7 +159,7 @@ describe('NoteInserter', () => {
 				'markdown',
 			);
 
-			expect(view.editor!.replaceRange).toHaveBeenCalledWith(
+			expect(view.editor.replaceRange).toHaveBeenCalledWith(
 				'![[audio.webm]]\n',
 				{ line: 8, ch: 0 },
 			);
@@ -204,7 +179,7 @@ describe('NoteInserter', () => {
 
 			insertFileLinks(['recordings/audio.webm'], context, app);
 
-			expect(activeView.editor!.replaceSelection).toHaveBeenCalledWith(
+			expect(activeView.editor.replaceSelection).toHaveBeenCalledWith(
 				'![[audio.webm]]',
 			);
 		});
@@ -215,7 +190,7 @@ describe('NoteInserter', () => {
 
 			insertFileLinks(['recordings/audio.webm'], null, app);
 
-			expect(activeView.editor!.replaceSelection).toHaveBeenCalledWith(
+			expect(activeView.editor.replaceSelection).toHaveBeenCalledWith(
 				'![[audio.webm]]',
 			);
 		});
@@ -253,7 +228,7 @@ describe('NoteInserter', () => {
 				app,
 			);
 
-			expect(activeView.editor!.replaceSelection).toHaveBeenCalledWith(
+			expect(activeView.editor.replaceSelection).toHaveBeenCalledWith(
 				'![[my-recording.mp3]]',
 			);
 		});
@@ -272,7 +247,7 @@ describe('NoteInserter', () => {
 				app,
 			);
 
-			expect(activeView.editor!.replaceSelection).toHaveBeenCalledWith(
+			expect(activeView.editor.replaceSelection).toHaveBeenCalledWith(
 				'![[audio1.webm]]\n![[audio2.mp3]]\n![[audio3.wav]]',
 			);
 		});
@@ -293,7 +268,7 @@ describe('NoteInserter', () => {
 				app,
 			);
 
-			expect(view.editor!.replaceRange).toHaveBeenCalledWith(
+			expect(view.editor.replaceRange).toHaveBeenCalledWith(
 				'![[audio1.webm]]\n![[audio2.mp3]]\n',
 				{ line: 4, ch: 0 },
 			);
@@ -305,7 +280,7 @@ describe('NoteInserter', () => {
 
 			insertFileLinks(['a/b/c/d/recording.flac'], null, app);
 
-			expect(activeView.editor!.replaceSelection).toHaveBeenCalledWith(
+			expect(activeView.editor.replaceSelection).toHaveBeenCalledWith(
 				'![[recording.flac]]',
 			);
 		});
@@ -316,7 +291,7 @@ describe('NoteInserter', () => {
 
 			insertFileLinks(['recording.webm'], null, app);
 
-			expect(activeView.editor!.replaceSelection).toHaveBeenCalledWith(
+			expect(activeView.editor.replaceSelection).toHaveBeenCalledWith(
 				'![[recording.webm]]',
 			);
 		});
@@ -335,13 +310,13 @@ describe('NoteInserter', () => {
 
 			insertFileLinks(['recordings/audio.webm'], context, app);
 
-			expect(correctView.editor!.replaceRange).toHaveBeenCalledWith(
+			expect(correctView.editor.replaceRange).toHaveBeenCalledWith(
 				'![[audio.webm]]\n',
 				{ line: 6, ch: 0 },
 			);
 			// Wrong view should not be touched
 
-			expect(wrongView.editor!.replaceRange).not.toHaveBeenCalled();
+			expect(wrongView.editor.replaceRange).not.toHaveBeenCalled();
 		});
 
 		it('handles empty file links array', () => {
@@ -350,9 +325,7 @@ describe('NoteInserter', () => {
 
 			insertFileLinks([], null, app);
 
-			expect(activeView.editor!.replaceSelection).toHaveBeenCalledWith(
-				'',
-			);
+			expect(activeView.editor.replaceSelection).toHaveBeenCalledWith('');
 		});
 
 		it('returns the context note path when inserted at the captured context', () => {
@@ -412,13 +385,11 @@ describe('NoteInserter', () => {
 			const note =
 				opts.noteActive === false
 					? null
-					: new MockTFile(
-							`notes/daily.${opts.noteExtension ?? 'md'}`,
-						);
+					: createFile(`notes/daily.${opts.noteExtension ?? 'md'}`);
 			let content = opts.content;
 			const app = {
 				workspace: {
-					getActiveFile: (): MockTFile | null => note,
+					getActiveFile: (): TFile | null => note,
 				},
 				metadataCache: {
 					getFileCache: (): { embeds: typeof opts.embeds } => ({
@@ -432,8 +403,7 @@ describe('NoteInserter', () => {
 					},
 				},
 				vault: {
-					getFileByPath: (path: string): MockTFile =>
-						new MockTFile(path),
+					getFileByPath: (path: string): TFile => createFile(path),
 					process: (
 						_note: unknown,
 						fn: (current: string) => string,
@@ -443,15 +413,14 @@ describe('NoteInserter', () => {
 					},
 				},
 				fileManager: {
-					generateMarkdownLink: (file: MockTFile): string =>
+					generateMarkdownLink: (file: TFile): string =>
 						`[[${file.path.split('/').pop() ?? file.path}]]`,
 				},
 			} as unknown as App;
 			return { app, getContent: (): string => content };
 		}
 
-		const source = (): TFile =>
-			new MockTFile('Audio/recording.mp4') as unknown as TFile;
+		const source = (): TFile => createFile('Audio/recording.mp4');
 
 		it('replaces the source embed when the source is being deleted', async () => {
 			const { app, getContent } = buildEmbedApp({

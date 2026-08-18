@@ -30,44 +30,20 @@ import {
 	useMobilePlatform,
 } from '../helpers/platform';
 import { flushMicrotasks } from '../helpers/async';
-
-// Mock obsidian module
-jest.mock('obsidian', () => ({
-	Notice: jest.fn(),
-	MarkdownView: jest.fn(),
-	normalizePath: (path: string) => path.replace(/\\/g, '/'),
-	Platform: {
-		isMobile: false,
-		isMobileApp: false,
-	},
-}));
+import { Notice } from 'obsidian';
 
 // Mock AudioStreamHandler
-jest.mock('src/recording/AudioStreamHandler', () => ({
-	getAudioStreams: jest.fn(),
-	getAudioSourceName: jest.fn().mockResolvedValue('TestDevice'),
-	stopAllStreams: jest.fn(),
-	validateSelectedDevices: jest.fn(),
-}));
+jest.mock('src/recording/AudioStreamHandler', () =>
+	require('../mocks/modules/audioStreamHandler'),
+);
 
 // Mock AudioEncoder module to avoid mediabunny TextDecoder requirement
-jest.mock('src/audio/AudioEncoder', () => ({
-	encodeAudioBuffer: jest
-		.fn()
-		.mockResolvedValue(new Blob(['encoded'], { type: 'audio/webm' })),
-	isOfflineEncodingSupported: jest.fn((format: string) => {
-		return ['mp3', 'flac', 'aac', 'webm', 'ogg', 'mp4', 'm4a'].includes(
-			format,
-		);
-	}),
-}));
+jest.mock('src/audio/AudioEncoder', () =>
+	require('../mocks/modules/audioEncoder'),
+);
 
 // Mock WavEncoder
-jest.mock('src/audio/WavEncoder', () => ({
-	assembleWavFromPcmSegmentFiles: jest
-		.fn()
-		.mockResolvedValue(new ArrayBuffer(44)),
-}));
+jest.mock('src/audio/WavEncoder', () => require('../mocks/modules/wavEncoder'));
 
 // Mock PcmStreamRecorder
 let capturedPcmChunkCallback: ((data: ArrayBuffer) => void) | null = null;
@@ -374,7 +350,6 @@ describe('RecordingManager', () => {
 		});
 
 		const getWriteFailureNotices = (): unknown[][] => {
-			const { Notice } = jest.requireMock('obsidian');
 			return (Notice as jest.Mock).mock.calls.filter((call) =>
 				String(call[0]).includes('Failed to write recording data'),
 			);
@@ -706,7 +681,6 @@ describe('RecordingManager', () => {
 
 			await manager.startRecording();
 
-			const { Notice } = jest.requireMock('obsidian');
 			expect(Notice).toHaveBeenCalledWith(
 				'Auto-split is not available on this device.',
 			);
@@ -734,7 +708,6 @@ describe('RecordingManager', () => {
 			const target = at(getInternals(manager).chunkTargets, 0);
 			expect(target.partIndex).toBe(1);
 			expect(target.partPaths).toHaveLength(1);
-			const { Notice } = jest.requireMock('obsidian');
 			expect(Notice).toHaveBeenCalledWith(
 				expect.stringContaining(
 					'Recording saved, but temporary files could not be removed',
@@ -867,7 +840,6 @@ describe('RecordingManager', () => {
 
 			await manager.startRecording();
 
-			const { Notice } = jest.requireMock('obsidian');
 			expect(Notice).toHaveBeenCalledWith(
 				'Auto-split is skipped for merged multi-track recordings.',
 			);
@@ -900,7 +872,6 @@ describe('RecordingManager', () => {
 			await flushMicrotasks(10);
 			await getInternals(manager).rotationPromise;
 
-			const { Notice } = jest.requireMock('obsidian');
 			expect(Notice).toHaveBeenCalledWith(
 				'Failed to save recording part. Recording continues; data is kept for the next part.',
 			);
@@ -932,7 +903,6 @@ describe('RecordingManager', () => {
 			capturedPcmChunkCallback?.(new ArrayBuffer(6_000_000));
 			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
 
-			const { Notice } = jest.requireMock('obsidian');
 			expect(Notice).toHaveBeenCalledWith(
 				'Failed to save recording part. Recording continues; data is kept for the next part.',
 			);
@@ -1079,7 +1049,6 @@ describe('RecordingManager', () => {
 				await flushMicrotasks(10);
 			}
 
-			const { Notice } = jest.requireMock('obsidian');
 			expect(Notice).toHaveBeenCalledWith(
 				'Could not restart recording after saving a part. Stopping and saving the recording.',
 			);
@@ -1143,7 +1112,6 @@ describe('RecordingManager', () => {
 			const secondStop = manager.stopRecording();
 			await Promise.all([firstStop, secondStop]);
 
-			const { Notice } = jest.requireMock('obsidian');
 			const stopNotices = (Notice as jest.Mock).mock.calls.filter(
 				(call: unknown[]) => call[0] === 'Recording stopped',
 			);

@@ -25,11 +25,11 @@ import {
 	type CapturedSetting,
 } from '../helpers/captureSettings';
 
-jest.mock('obsidian', () => ({
-	Setting: jest.requireActual<typeof import('../helpers/captureSettings')>(
-		'../helpers/captureSettings',
-	).CapturingSetting,
-}));
+// The full obsidian mock with only Setting swapped for the recording double,
+// so this file sees the same Notice, Platform, and DOM helpers as every other.
+jest.mock('obsidian', () =>
+	require('../mocks/modules/obsidianWithCapturingSetting'),
+);
 
 /** Builds a section context whose hooks are spies. */
 function makeCtx(): SettingsSectionContext {
@@ -185,8 +185,8 @@ describe('addDropdown blocked options', () => {
 
 		const options = at(capturedSettings, 0).dropdownOptions ?? [];
 		expect(options).toEqual([
-			{ value: 'cloud', disabled: false },
-			{ value: 'local', disabled: true },
+			{ value: 'cloud', label: 'Cloud', disabled: false },
+			{ value: 'local', label: 'Local', disabled: true },
 		]);
 	});
 

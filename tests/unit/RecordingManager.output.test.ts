@@ -21,44 +21,20 @@ import {
 	makeFakeMarkerStore,
 } from './helpers/recordingManagerTestKit';
 import { useDesktopPlatform } from '../helpers/platform';
-
-// Mock obsidian module
-jest.mock('obsidian', () => ({
-	Notice: jest.fn(),
-	MarkdownView: jest.fn(),
-	normalizePath: (path: string) => path.replace(/\\/g, '/'),
-	Platform: {
-		isMobile: false,
-		isMobileApp: false,
-	},
-}));
+import { MarkdownView, Notice } from 'obsidian';
 
 // Mock AudioStreamHandler
-jest.mock('src/recording/AudioStreamHandler', () => ({
-	getAudioStreams: jest.fn(),
-	getAudioSourceName: jest.fn().mockResolvedValue('TestDevice'),
-	stopAllStreams: jest.fn(),
-	validateSelectedDevices: jest.fn(),
-}));
+jest.mock('src/recording/AudioStreamHandler', () =>
+	require('../mocks/modules/audioStreamHandler'),
+);
 
 // Mock AudioEncoder module to avoid mediabunny TextDecoder requirement
-jest.mock('src/audio/AudioEncoder', () => ({
-	encodeAudioBuffer: jest
-		.fn()
-		.mockResolvedValue(new Blob(['encoded'], { type: 'audio/webm' })),
-	isOfflineEncodingSupported: jest.fn((format: string) => {
-		return ['mp3', 'flac', 'aac', 'webm', 'ogg', 'mp4', 'm4a'].includes(
-			format,
-		);
-	}),
-}));
+jest.mock('src/audio/AudioEncoder', () =>
+	require('../mocks/modules/audioEncoder'),
+);
 
 // Mock WavEncoder
-jest.mock('src/audio/WavEncoder', () => ({
-	assembleWavFromPcmSegmentFiles: jest
-		.fn()
-		.mockResolvedValue(new ArrayBuffer(44)),
-}));
+jest.mock('src/audio/WavEncoder', () => require('../mocks/modules/wavEncoder'));
 
 // Mock PcmStreamRecorder
 let capturedPcmChunkCallback: ((data: ArrayBuffer) => void) | null = null;
@@ -170,7 +146,6 @@ describe('RecordingManager', () => {
 			);
 			expect(mockApp.vault.adapter.remove).not.toHaveBeenCalled();
 
-			const { Notice } = jest.requireMock('obsidian');
 			const keptNotice = (Notice as jest.Mock).mock.calls.find((call) =>
 				String(call[0]).includes('Temporary track files were kept'),
 			);
@@ -375,8 +350,6 @@ describe('RecordingManager', () => {
 		});
 
 		it('should keep the merged file when cleanup of temporary partial files fails', async () => {
-			const { Notice } = jest.requireMock('obsidian');
-
 			const consoleWarnSpy = jest
 				.spyOn(console, 'warn')
 				.mockImplementation(() => {});
@@ -1078,10 +1051,8 @@ describe('RecordingManager', () => {
 					replaceSelection: jest.fn(),
 				},
 			};
-			Object.setPrototypeOf(
-				mockLeafView,
-				jest.requireMock('obsidian').MarkdownView.prototype,
-			);
+			// The production code narrows leaves with instanceof MarkdownView.
+			Object.setPrototypeOf(mockLeafView, MarkdownView.prototype);
 			(
 				mockApp.workspace as unknown as Record<string, unknown>
 			).getLeavesOfType = jest

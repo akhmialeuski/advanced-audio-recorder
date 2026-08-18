@@ -13,6 +13,7 @@ import {
 } from 'src/settings/settingsSchema';
 import { AudioStreamError } from 'src/errors';
 import { PLUGIN_LOG_PREFIX } from 'src/constants';
+import { Notice } from 'obsidian';
 import type { App } from 'obsidian';
 import {
 	createRecordingMockApp,
@@ -38,23 +39,9 @@ class OverconstrainedError extends Error {
 	OverconstrainedError;
 
 // Mock obsidian module
-const mockNotice = jest.fn();
-jest.mock('obsidian', () => ({
-	Notice: jest.fn().mockImplementation((msg: string) => mockNotice(msg)),
-	MarkdownView: jest.fn(),
-	normalizePath: (path: string) => path.replace(/\\/g, '/'),
-	Platform: {
-		isMobile: false,
-		isMobileApp: false,
-	},
-}));
 
 // Mock WavEncoder
-jest.mock('src/audio/WavEncoder', () => ({
-	assembleWavFromPcmSegmentFiles: jest
-		.fn()
-		.mockResolvedValue(new ArrayBuffer(44)),
-}));
+jest.mock('src/audio/WavEncoder', () => require('../mocks/modules/wavEncoder'));
 
 describe('AudioStreamHandler: Error Handling', () => {
 	let manager: RecordingManager;
@@ -152,7 +139,7 @@ describe('AudioStreamHandler: Error Handling', () => {
 
 		await manager.startRecording();
 
-		expect(mockNotice).toHaveBeenCalledWith(
+		expect(jest.mocked(Notice)).toHaveBeenCalledWith(
 			expect.stringContaining('test-device-id'),
 		);
 	});
@@ -178,7 +165,7 @@ describe('AudioStreamHandler: Error Handling', () => {
 
 		await manager.startRecording();
 
-		expect(mockNotice).toHaveBeenCalledWith(
+		expect(jest.mocked(Notice)).toHaveBeenCalledWith(
 			expect.stringContaining('verify the device in plugin settings'),
 		);
 	});

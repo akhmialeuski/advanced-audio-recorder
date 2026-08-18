@@ -8,7 +8,9 @@ import {
 	isKnownLongerThan,
 	readAudioMetadata,
 } from 'src/utils/AudioFileAnalyzer';
-import { App, Notice, TFile } from 'obsidian';
+import { App, Notice } from 'obsidian';
+import type { TFile } from 'obsidian';
+import { createFile } from '../helpers/createApp';
 import {
 	installAudioElementMock,
 	installObjectUrlMock,
@@ -44,32 +46,6 @@ afterEach(() => {
 	audioMock.restore();
 	urlMock.restore();
 });
-
-// Mock Notice
-jest.mock('obsidian', () => ({
-	App: jest.fn().mockImplementation(() => ({
-		vault: {
-			readBinary: jest.fn(),
-			// The ranged probe reads through the resource URL; only the
-			// fallback path touches readBinary.
-			getResourcePath: jest.fn(
-				(file: { path: string }) => `app://vault/${file.path}`,
-			),
-		},
-	})),
-	Notice: jest.fn(),
-	// The decode fallback is bounded by the platform's decode ceiling, which
-	// is read from here.
-	Platform: { isMobileApp: false, isMobile: false },
-	TFile: jest.fn().mockImplementation(() => ({
-		extension: 'webm',
-		name: 'test.webm',
-		path: 'test.webm',
-		stat: {
-			size: 1572864, // 1.5 MB
-		},
-	})),
-}));
 
 // Mock mediabunny's container probe. Defaults to an unparseable input
 // (getPrimaryAudioTrack rejects) so the existing decode-fallback tests
@@ -112,7 +88,9 @@ describe('getAudioFileInfo', () => {
 
 	beforeEach(() => {
 		app = new App();
-		file = new TFile();
+		// 1.5 MB webm: the size feeds the bitrate the analyzer reports, and the
+		// extension picks the codec it infers.
+		file = createFile('test.webm', { size: 1572864 });
 
 		// Set default mocked behaviors
 		(app.vault.readBinary as jest.Mock).mockResolvedValue(

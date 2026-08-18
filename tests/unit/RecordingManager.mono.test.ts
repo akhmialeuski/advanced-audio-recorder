@@ -20,37 +20,15 @@ import {
 } from './helpers/recordingManagerTestKit';
 import { useDesktopPlatform } from '../helpers/platform';
 
-jest.mock('obsidian', () => ({
-	Notice: jest.fn(),
-	MarkdownView: jest.fn(),
-	normalizePath: (path: string) => path.replace(/\\/g, '/'),
-	Platform: {
-		isMobile: false,
-		isMobileApp: false,
-	},
-}));
+jest.mock('src/recording/AudioStreamHandler', () =>
+	require('../mocks/modules/audioStreamHandler'),
+);
 
-jest.mock('src/recording/AudioStreamHandler', () => ({
-	getAudioStreams: jest.fn(),
-	getAudioSourceName: jest.fn().mockResolvedValue('TestDevice'),
-	stopAllStreams: jest.fn(),
-	validateSelectedDevices: jest.fn(),
-}));
+jest.mock('src/audio/AudioEncoder', () =>
+	require('../mocks/modules/audioEncoder'),
+);
 
-jest.mock('src/audio/AudioEncoder', () => ({
-	encodeAudioBuffer: jest
-		.fn()
-		.mockResolvedValue(new Blob(['encoded'], { type: 'audio/webm' })),
-	isOfflineEncodingSupported: jest.fn((format: string) =>
-		['mp3', 'flac', 'aac', 'webm', 'ogg', 'mp4', 'm4a'].includes(format),
-	),
-}));
-
-jest.mock('src/audio/WavEncoder', () => ({
-	assembleWavFromPcmSegmentFiles: jest
-		.fn()
-		.mockResolvedValue(new ArrayBuffer(44)),
-}));
+jest.mock('src/audio/WavEncoder', () => require('../mocks/modules/wavEncoder'));
 
 /** Bridge doubles created by the manager, in construction order. */
 interface BridgeDouble {

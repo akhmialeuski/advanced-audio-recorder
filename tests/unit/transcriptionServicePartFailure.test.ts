@@ -23,11 +23,6 @@ import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 
-jest.mock('obsidian', () => {
-	const actual = jest.requireActual('../mocks/obsidian');
-	return { ...actual, Notice: jest.fn() };
-});
-
 // Replace audio preparation so the test drives the part count directly without
 // decoding real audio (the Web Audio path is unavailable under jsdom).
 jest.mock('src/transcription/audioPrep', () => ({

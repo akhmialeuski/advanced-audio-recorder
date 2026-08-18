@@ -11,10 +11,6 @@ import type { PlayerMarkerHost } from 'src/player/PlayerMarkerController';
 import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import { MARKER_KIND, type PlayerMarker } from 'src/markers/markerModel';
 
-jest.mock('obsidian', () => ({
-	Notice: jest.fn(),
-}));
-
 const noticeMock = Notice as unknown as jest.Mock;
 
 /** A host double recording render calls; never unloaded unless flipped. */

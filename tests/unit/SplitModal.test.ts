@@ -47,155 +47,11 @@ function addObsidianDomMethods(el: HTMLElement): HTMLElement {
 	return el;
 }
 
-/** Captured UI control handlers, filled while onOpen runs. */
-const mockCapturedControls = {
-	numberInputs: [] as HTMLInputElement[],
-	texts: [] as ((value: string) => void)[],
-	textInputs: [] as (HTMLInputElement & { toggleClass: jest.Mock })[],
-	toggles: [] as ((value: boolean) => void)[],
-	dropdowns: [] as ((value: string) => void)[],
-	buttons: [] as { click: () => void; setDisabled: jest.Mock }[],
-};
-
-// Mock obsidian with interactive Setting components so that the
-// onChange/onClick wiring inside onOpen can be exercised by tests
-jest.mock('obsidian', () => ({
-	App: jest.fn(),
-	Platform: { isMobile: false, isMobileApp: false },
-	Modal: class {
-		app: unknown;
-		contentEl: HTMLElement;
-		constructor(app: unknown) {
-			this.app = app;
-			this.contentEl = addObsidianDomMethods(
-				document.createElement('div'),
-			);
-		}
-		open = jest.fn();
-		close = jest.fn();
-	},
-	// Notice instances expose the methods used by the background
-	// progress notice (setMessage/hide)
-	Notice: jest.fn().mockImplementation(() => ({
-		setMessage: jest.fn(),
-		hide: jest.fn(),
-	})),
-	Setting: jest.fn().mockImplementation(() => {
-		const chain = {
-			setName: jest.fn(),
-			setDesc: jest.fn(),
-			setHeading: jest.fn(),
-			addText: jest.fn(),
-			addToggle: jest.fn(),
-			addDropdown: jest.fn(),
-			addButton: jest.fn(),
-		};
-		chain.setName.mockReturnValue(chain);
-		chain.setDesc.mockReturnValue(chain);
-		chain.setHeading.mockReturnValue(chain);
-		chain.addText.mockImplementation((cb: (text: unknown) => void) => {
-			// A real input so the number-input control can set type/min/max and
-			// attach a change listener; addClass and toggleClass are the only
-			// Obsidian helpers the production code calls on it.
-			const inputEl = document.createElement(
-				'input',
-			) as HTMLInputElement & {
-				addClass: (cls: string) => void;
-				toggleClass: jest.Mock;
-			};
-			inputEl.addClass = (cls: string): void =>
-				inputEl.classList.add(cls);
-			inputEl.toggleClass = jest.fn();
-			const text: Record<string, unknown> & {
-				setPlaceholder: jest.Mock;
-				setValue: jest.Mock;
-				setDisabled: jest.Mock;
-				onChange: jest.Mock;
-			} = {
-				inputEl,
-				setPlaceholder: jest.fn(),
-				setValue: jest.fn((value: unknown) => {
-					inputEl.value = String(value);
-					return text;
-				}),
-				setDisabled: jest.fn(),
-				onChange: jest.fn((handler: (value: string) => void) => {
-					mockCapturedControls.texts.push(handler);
-					mockCapturedControls.textInputs.push(inputEl);
-					return text;
-				}),
-			};
-			text.setPlaceholder.mockReturnValue(text);
-			cb(text);
-			// The number input registers its own change listener instead of
-			// calling onChange, so capture number-type inputs separately.
-			if (inputEl.type === 'number') {
-				mockCapturedControls.numberInputs.push(inputEl);
-			}
-			return chain;
-		});
-		chain.addToggle.mockImplementation((cb: (toggle: unknown) => void) => {
-			const toggle: { setValue: jest.Mock; onChange: jest.Mock } = {
-				setValue: jest.fn(),
-				onChange: jest.fn((handler: (value: boolean) => void) => {
-					mockCapturedControls.toggles.push(handler);
-					return toggle;
-				}),
-			};
-			toggle.setValue.mockReturnValue(toggle);
-			cb(toggle);
-			return chain;
-		});
-		chain.addDropdown.mockImplementation(
-			(cb: (dropdown: unknown) => void) => {
-				const dropdown: {
-					addOption: jest.Mock;
-					setValue: jest.Mock;
-					onChange: jest.Mock;
-				} = {
-					addOption: jest.fn(),
-					setValue: jest.fn(),
-					onChange: jest.fn((handler: (value: string) => void) => {
-						mockCapturedControls.dropdowns.push(handler);
-						return dropdown;
-					}),
-				};
-				dropdown.addOption.mockReturnValue(dropdown);
-				dropdown.setValue.mockReturnValue(dropdown);
-				cb(dropdown);
-				return chain;
-			},
-		);
-		chain.addButton.mockImplementation((cb: (button: unknown) => void) => {
-			const setDisabled = jest.fn();
-			const button: {
-				setButtonText: jest.Mock;
-				setCta: jest.Mock;
-				setDisabled: jest.Mock;
-				onClick: jest.Mock;
-			} = {
-				setButtonText: jest.fn(),
-				setCta: jest.fn(),
-				setDisabled,
-				onClick: jest.fn((handler: () => void) => {
-					mockCapturedControls.buttons.push({
-						click: handler,
-						setDisabled,
-					});
-					return button;
-				}),
-			};
-			button.setButtonText.mockReturnValue(button);
-			button.setCta.mockReturnValue(button);
-			cb(button);
-			return chain;
-		});
-		return chain;
-	}),
-	TFile: jest.fn(),
-	normalizePath: (path: string) =>
-		path.replace(/\\/g, '/').replace(/\/+/g, '/'),
-}));
+// The full obsidian mock with only Setting swapped for the recording double,
+// which is what makes this dialog's dropdowns, toggles, and buttons reachable.
+jest.mock('obsidian', () =>
+	require('../mocks/modules/obsidianWithCapturingSetting'),
+);
 
 // Mock AudioEncoder
 jest.mock('src/audio/AudioEncoder', () => ({
@@ -231,6 +87,16 @@ import { decodeAudioBlob } from 'src/audio/AudioFormatConverter';
 import { updateLinksInVault } from 'src/utils/LinkUpdater';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { waitFor } from '../helpers/async';
+import {
+	allButtons,
+	capturedSettings,
+	dropdownChanges,
+	settingRow,
+	textChanges,
+	textInputs,
+	toggleChanges,
+} from '../helpers/captureSettings';
+import { noticeInitialText, noticeInstances } from '../mocks/obsidian';
 
 /** WAV header size produced by createWavHeader. */
 const WAV_HEADER_SIZE = 44;
@@ -321,6 +187,14 @@ describe('SplitModal', () => {
 		});
 	}
 
+	/**
+	 * The description text of every rendered row, as it currently reads.
+	 * @returns One string per row
+	 */
+	function renderedDescriptions(): string[] {
+		return capturedSettings.map((row) => row.desc);
+	}
+
 	beforeEach(() => {
 		// clearMocks wipes recorded calls but keeps return values, so a test
 		// that makes a format unencodable would otherwise leave every later
@@ -329,12 +203,7 @@ describe('SplitModal', () => {
 			jest.requireMock('src/audio/AudioEncoder')
 				.isOfflineEncodingSupported as jest.Mock
 		).mockReturnValue(true);
-		mockCapturedControls.numberInputs.length = 0;
-		mockCapturedControls.texts.length = 0;
-		mockCapturedControls.textInputs.length = 0;
-		mockCapturedControls.toggles.length = 0;
-		mockCapturedControls.dropdowns.length = 0;
-		mockCapturedControls.buttons.length = 0;
+		capturedSettings.length = 0;
 
 		// activeWindow is an Obsidian global; map it to the jsdom window
 		(global as Record<string, unknown>).activeWindow = window;
@@ -394,26 +263,16 @@ describe('SplitModal', () => {
 	});
 
 	it('should refresh the part name example when the suffix changes', () => {
-		const { Setting } = jest.requireMock('obsidian');
 		const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
 		modal.onOpen();
 
-		const collectDescs = (): string[] =>
-			(
-				(Setting as jest.Mock).mock.results as {
-					value: { setDesc: jest.Mock };
-				}[]
-			).flatMap((result) =>
-				result.value.setDesc.mock.calls.map((call: unknown[]) =>
-					String(call[0]),
-				),
-			);
-		expect(collectDescs()).toContainEqual(
+		expect(renderedDescriptions()).toContainEqual(
 			expect.stringContaining('"recording-part1.wav"'),
 		);
 
-		at(mockCapturedControls.texts, 0)('seg');
-		expect(collectDescs()).toContainEqual(
+		at(textChanges(), 0)('seg');
+
+		expect(renderedDescriptions()).toContainEqual(
 			expect.stringContaining('"recording-seg1.wav"'),
 		);
 	});
@@ -424,20 +283,10 @@ describe('SplitModal', () => {
 		);
 		(isOfflineEncodingSupported as jest.Mock).mockReturnValue(false);
 		configureFile('recording.webm', 'webm');
-		const { Setting } = jest.requireMock('obsidian');
 		const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
 		modal.onOpen();
 
-		const descs = (
-			(Setting as jest.Mock).mock.results as {
-				value: { setDesc: jest.Mock };
-			}[]
-		).flatMap((result) =>
-			result.value.setDesc.mock.calls.map((call: unknown[]) =>
-				String(call[0]),
-			),
-		);
-		expect(descs).toContainEqual(
+		expect(renderedDescriptions()).toContainEqual(
 			expect.stringContaining('"recording-part1.wav"'),
 		);
 		(isOfflineEncodingSupported as jest.Mock).mockReturnValue(true);
@@ -474,19 +323,12 @@ describe('SplitModal', () => {
 		resolveRead(buildTestWav(1, 1000, 250000));
 		await split;
 
-		const backgroundNotices = (Notice as jest.Mock).mock.calls.filter(
-			(call: unknown[]) =>
-				String(call[0]).includes('continues in the background'),
+		const background = noticeInstances.filter((notice) =>
+			noticeInitialText(notice).includes('continues in the background'),
 		);
-		expect(backgroundNotices).toHaveLength(1);
-		const backgroundIndex = (Notice as jest.Mock).mock.calls.findIndex(
-			(call: unknown[]) =>
-				String(call[0]).includes('continues in the background'),
-		);
-		expect(backgroundIndex).toBeGreaterThanOrEqual(0);
+		expect(background).toHaveLength(1);
 		// The notice mirrors pipeline progress and is hidden at the end
-		const notice = at((Notice as jest.Mock).mock.results, backgroundIndex)
-			.value as { setMessage: jest.Mock; hide: jest.Mock };
+		const notice = at(background, 0);
 		expect(notice.setMessage).toHaveBeenCalledWith(
 			expect.stringContaining('Writing part'),
 		);
@@ -535,39 +377,39 @@ describe('SplitModal', () => {
 
 		// WAV source: one duration number input, one suffix text, one delete
 		// toggle, one link-action dropdown (no bitrate dropdown)
-		expect(mockCapturedControls.dropdowns).toHaveLength(1);
+		expect(dropdownChanges()).toHaveLength(1);
 
-		const durationInput = at(mockCapturedControls.numberInputs, 0);
+		const durationInput = at(textInputs(), 0);
 		durationInput.value = '5';
 		durationInput.dispatchEvent(new Event('change'));
 		expect(internals(modal).partMinutes).toBe(5);
 
-		at(mockCapturedControls.texts, 0)('seg');
+		at(textChanges(), 0)('seg');
 		expect(internals(modal).partSuffix).toBe('seg');
 
-		at(mockCapturedControls.toggles, 0)(true);
+		at(toggleChanges(), 0)(true);
 		expect(internals(modal).deleteSource).toBe(true);
 
-		at(mockCapturedControls.dropdowns, 0)('after');
+		at(dropdownChanges(), 0)('after');
 		expect(internals(modal).linkAction).toBe('after');
 	});
 
 	it.each([
-		['an invalid suffix', 'bad/suffix', true],
-		['a valid suffix', 'good-suffix', false],
+		{ name: 'an invalid suffix', suffix: 'bad/suffix', flagged: true },
+		{ name: 'a valid suffix', suffix: 'good-suffix', flagged: false },
 		// Empty input is valid: it falls back to the default suffix
-		['a blank suffix', '', false],
-	])('toggles the invalid-input class for %s', (_case, input, invalid) => {
+		{ name: 'a blank suffix', suffix: '', flagged: false },
+	])('marks $name as invalid: $flagged', ({ suffix, flagged }) => {
 		const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
 		modal.onOpen();
+		const row = settingRow('Part name suffix');
 
-		const handler = at(mockCapturedControls.texts, 0);
-		const inputEl = at(mockCapturedControls.textInputs, 0);
+		row.changes.text?.(suffix);
 
-		handler(input);
-		expect(inputEl.toggleClass).toHaveBeenLastCalledWith(
-			'aar-input-invalid',
-			invalid,
+		// The rendered class, not the call that set it: what the user sees is
+		// the field being flagged, however the production code got there.
+		expect(row.text?.inputEl?.classList.contains('aar-input-invalid')).toBe(
+			flagged,
 		);
 	});
 
@@ -577,9 +419,9 @@ describe('SplitModal', () => {
 		modal.onOpen();
 
 		// Compressed source: bitrate dropdown plus link-action dropdown
-		expect(mockCapturedControls.dropdowns).toHaveLength(2);
+		expect(dropdownChanges()).toHaveLength(2);
 
-		at(mockCapturedControls.dropdowns, 0)('192000');
+		at(dropdownChanges(), 0)('192000');
 		expect((modal as unknown as { bitrate: number }).bitrate).toBe(192000);
 	});
 
@@ -590,7 +432,7 @@ describe('SplitModal', () => {
 		const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
 		modal.onOpen();
 
-		const button = at(mockCapturedControls.buttons, 0);
+		const button = at(allButtons(), 0);
 		button.click();
 		// The click handler runs the async pipeline in the background and
 		// re-enables the button in its finally block, so wait for that rather

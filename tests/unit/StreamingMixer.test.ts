@@ -8,10 +8,6 @@ import { canStreamMix, mixPcmTracksToWav } from 'src/recording/StreamingMixer';
 import type { PcmMixTrack } from 'src/recording/StreamingMixer';
 import type { App } from 'obsidian';
 
-jest.mock('obsidian', () => ({
-	normalizePath: (path: string) => path.replace(/\\/g, '/'),
-}));
-
 const WAV_HEADER_SIZE = 44;
 
 describe('StreamingMixer', () => {

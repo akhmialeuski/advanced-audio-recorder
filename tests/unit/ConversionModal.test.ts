@@ -8,6 +8,8 @@ import { App, TFile } from 'obsidian';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { tick } from '../helpers/async';
+import { capturedSettings } from '../helpers/captureSettings';
+import { noticeInstances, noticeText } from '../mocks/obsidian';
 
 /**
  * Extends an HTMLElement with Obsidian's custom DOM methods.
@@ -43,55 +45,12 @@ function addObsidianDomMethods(el: HTMLElement): HTMLElement {
 	return el;
 }
 
-/** Captured Notice instances for assertions on setMessage/hide. */
-interface NoticeInstance {
-	message: string;
-	timeout?: number | undefined;
-	setMessage: jest.Mock;
-	hide: jest.Mock;
-}
-const noticeInstances: NoticeInstance[] = [];
-
-// Mock obsidian
-jest.mock('obsidian', () => ({
-	App: jest.fn(),
-	Modal: class {
-		app: unknown;
-		contentEl: HTMLElement;
-		constructor(app: unknown) {
-			this.app = app;
-			this.contentEl = addObsidianDomMethods(
-				document.createElement('div'),
-			);
-		}
-		open = jest.fn();
-		close = jest.fn();
-	},
-	Notice: jest.fn().mockImplementation(function (
-		message: string,
-		timeout?: number,
-	) {
-		const instance = {
-			message,
-			timeout,
-			setMessage: jest.fn(),
-			hide: jest.fn(),
-		};
-		noticeInstances.push(instance);
-		return instance;
-	}),
-	normalizePath: (path: string) => path.replace(/\\/g, '/'),
-	Platform: { isMobile: false, isMobileApp: false },
-	Setting: jest.fn().mockImplementation(() => ({
-		setName: jest.fn().mockReturnThis(),
-		setDesc: jest.fn().mockReturnThis(),
-		setHeading: jest.fn().mockReturnThis(),
-		addDropdown: jest.fn().mockReturnThis(),
-		addButton: jest.fn().mockReturnThis(),
-		addToggle: jest.fn().mockReturnThis(),
-	})),
-	TFile: jest.fn(),
-}));
+// The full obsidian mock with only Setting swapped for the recording double.
+// The previous inline mock stubbed Setting out entirely - its add* methods
+// never called back - so half of this dialog's wiring never ran under test.
+jest.mock('obsidian', () =>
+	require('../mocks/modules/obsidianWithCapturingSetting'),
+);
 
 // Mock LinkUpdater: the vault-wide rewrite has its own suite
 jest.mock('src/utils/LinkUpdater', () => ({
@@ -140,7 +99,7 @@ describe('ConversionModal', () => {
 	let createdFile: { path: string };
 
 	beforeEach(() => {
-		noticeInstances.length = 0;
+		capturedSettings.length = 0;
 
 		createdFile = { path: 'Recordings/recording.webm' };
 		mockApp = {
@@ -305,7 +264,7 @@ describe('ConversionModal', () => {
 			expect(mockApp.fileManager.trashFile).not.toHaveBeenCalled();
 			expect(
 				noticeInstances.some((n) =>
-					n.message.includes('Source file kept'),
+					noticeText(n).includes('Source file kept'),
 				),
 			).toBe(true);
 		});
@@ -325,7 +284,7 @@ describe('ConversionModal', () => {
 
 			expect(
 				noticeInstances.some((n) =>
-					n.message.includes('frontmatter link'),
+					noticeText(n).includes('frontmatter link'),
 				),
 			).toBe(true);
 		});
@@ -365,7 +324,7 @@ describe('ConversionModal', () => {
 			modal.onClose();
 
 			const background = noticeInstances.find((n) =>
-				n.message.includes('continues in the background'),
+				noticeText(n).includes('continues in the background'),
 			);
 			expect(background).toBeDefined();
 			expect(background?.timeout).toBe(0);
@@ -385,7 +344,7 @@ describe('ConversionModal', () => {
 
 			expect(
 				noticeInstances.some((n) =>
-					n.message.includes('continues in the background'),
+					noticeText(n).includes('continues in the background'),
 				),
 			).toBe(false);
 		});

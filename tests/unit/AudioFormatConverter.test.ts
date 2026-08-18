@@ -7,11 +7,6 @@
 import type { RecordingTarget } from 'src/types';
 import { at } from '../helpers/assertions';
 
-// Mock obsidian module
-jest.mock('obsidian', () => ({
-	normalizePath: (path: string) => path.replace(/\\/g, '/'),
-}));
-
 // Mock AudioEncoder module
 jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest

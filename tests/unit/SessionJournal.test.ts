@@ -9,10 +9,6 @@ import { at } from '../helpers/assertions';
 import type { JournalFile, JournalSession } from 'src/recording/SessionJournal';
 import type { App } from 'obsidian';
 
-jest.mock('obsidian', () => ({
-	normalizePath: (path: string) => path.replace(/\\/g, '/'),
-}));
-
 const JOURNAL_PATH = '.obsidian/plugins/aar/recording-journal.json';
 
 const createSession = (

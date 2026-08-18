@@ -19,10 +19,6 @@ import type {
 } from 'src/recording/SessionJournal';
 import type { App } from 'obsidian';
 
-jest.mock('obsidian', () => ({
-	normalizePath: (path: string) => path.replace(/\\/g, '/'),
-}));
-
 jest.mock('src/audio/WavEncoder', () => ({
 	assembleWavFromPcmSegmentFiles: jest.fn((segmentPaths: string[]) =>
 		Promise.resolve(new Uint8Array(44 + segmentPaths.length).buffer),

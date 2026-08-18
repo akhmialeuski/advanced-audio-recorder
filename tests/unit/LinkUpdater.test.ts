@@ -7,17 +7,6 @@ import { updateLinksInVault } from 'src/utils/LinkUpdater';
 import { defined } from '../helpers/assertions';
 import { App, TFile } from 'obsidian';
 
-jest.mock('obsidian', () => ({
-	TFile: class {
-		path = '';
-		name = '';
-	},
-	getLinkpath: (linktext: string): string => {
-		const hashIndex = linktext.indexOf('#');
-		return hashIndex === -1 ? linktext : linktext.slice(0, hashIndex);
-	},
-}));
-
 describe('updateLinksInVault', () => {
 	/**
 	 * Minimal reference cache double carrying only the fields

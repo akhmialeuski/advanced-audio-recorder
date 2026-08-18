@@ -6,8 +6,8 @@
  * @module tests/helpers/createApp
  */
 
-import { TFile } from 'obsidian';
-import type { App } from 'obsidian';
+import { MarkdownView, TFile } from 'obsidian';
+import type { App, Editor } from 'obsidian';
 
 /** The mutable double returned by createMockApp. */
 export interface MockApp {
@@ -134,7 +134,10 @@ function stripNested(
  * @param path - Vault path, e.g. 'Recordings/take.webm'
  * @returns A file with path, name, basename, and extension set
  */
-export function createFile(path: string): TFile {
+export function createFile(
+	path: string,
+	stat: Partial<TFile['stat']> = {},
+): TFile {
 	const name = path.split('/').at(-1) ?? path;
 	const parts = name.split('.');
 	const extension = parts.length > 1 ? (parts.pop() ?? '') : '';
@@ -143,5 +146,55 @@ export function createFile(path: string): TFile {
 		name,
 		basename: parts.join('.'),
 		extension,
+		stat: { size: 0, mtime: 0, ctime: 0, ...stat },
 	});
+}
+
+/** The editor surface a note-writing test drives, all of it spied. */
+export interface SpiedEditor {
+	getCursor: jest.Mock;
+	setCursor: jest.Mock;
+	replaceRange: jest.Mock;
+	replaceSelection: jest.Mock;
+	getValue: jest.Mock;
+	lastLine: jest.Mock;
+}
+
+/** A MarkdownView whose editor is spied, so a test can read what was written. */
+export interface SpiedMarkdownView extends MarkdownView {
+	editor: Editor & SpiedEditor;
+}
+
+/**
+ * Builds a MarkdownView double with a spied editor.
+ *
+ * Built through the prototype for the same reason {@link createFile} is: the
+ * production code narrows a workspace leaf with `instanceof MarkdownView`, and
+ * Obsidian's own class cannot be constructed from a test.
+ * @param options - The file the view shows and where its cursor sits
+ * @returns The view, with every editor method a jest.fn
+ */
+export function createMarkdownView(
+	options: {
+		file?: TFile | null;
+		cursor?: { line: number; ch: number } | null;
+	} = {},
+): SpiedMarkdownView {
+	const editor: SpiedEditor = {
+		getCursor: jest
+			.fn()
+			.mockReturnValue(options.cursor ?? { line: 0, ch: 0 }),
+		setCursor: jest.fn(),
+		replaceRange: jest.fn(),
+		replaceSelection: jest.fn(),
+		getValue: jest.fn().mockReturnValue(''),
+		lastLine: jest.fn().mockReturnValue(0),
+	};
+	return Object.assign(
+		Object.create(MarkdownView.prototype) as SpiedMarkdownView,
+		{
+			file: options.file ?? null,
+			editor: options.cursor === null ? null : editor,
+		},
+	);
 }

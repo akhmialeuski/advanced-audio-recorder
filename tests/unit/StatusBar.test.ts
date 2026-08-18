@@ -15,10 +15,6 @@ import type { PlaybackControlsState } from 'src/player/playbackControls';
 import { RecordingStatus } from 'src/types';
 import type { RecordingControls } from 'src/types';
 
-jest.mock('obsidian', () => ({
-	setIcon: jest.fn(),
-}));
-
 /**
  * Polyfill Obsidian's HTMLElement extensions for jsdom.
  */

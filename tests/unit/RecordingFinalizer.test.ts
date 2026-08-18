@@ -15,11 +15,7 @@ import {
 } from 'src/settings/settingsSchema';
 import type { App } from 'obsidian';
 import { at, defined } from '../helpers/assertions';
-
-jest.mock('obsidian', () => ({
-	Notice: jest.fn(),
-	normalizePath: (path: string) => path.replace(/\\/g, '/'),
-}));
+import { Notice } from 'obsidian';
 
 jest.mock('src/audio/WavEncoder', () => ({
 	assembleWavFromPcmSegmentFiles: jest
@@ -99,7 +95,6 @@ describe('RecordingFinalizer', () => {
 	let consoleErrorSpy: jest.SpyInstance;
 
 	const getNotices = (): string[] => {
-		const { Notice } = jest.requireMock('obsidian');
 		return (Notice as jest.Mock).mock.calls.map((call) => String(call[0]));
 	};
 

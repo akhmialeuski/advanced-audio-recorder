@@ -11,12 +11,7 @@ import {
 	type AudioRecorderSettings,
 } from 'src/settings/settingsSchema';
 import type { App } from 'obsidian';
-
-jest.mock('obsidian', () => ({
-	Notice: jest.fn(),
-	Platform: { isMobile: false, isMobileApp: false },
-	normalizePath: (path: string) => path.replace(/\\/g, '/'),
-}));
+import { Notice } from 'obsidian';
 
 const createTarget = (): RecordingTarget => ({
 	fileBaseName: 'recording-Track1-stamp',
@@ -57,7 +52,6 @@ describe('TrackWriteQueue', () => {
 	let consoleErrorSpy: jest.SpyInstance;
 
 	const getNoticeCalls = (): unknown[][] => {
-		const { Notice } = jest.requireMock('obsidian');
 		return (Notice as jest.Mock).mock.calls;
 	};
 
