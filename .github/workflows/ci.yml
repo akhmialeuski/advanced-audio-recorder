@@ -27,3 +27,6 @@ jobs:
 
             - name: Tests with coverage thresholds
               run: npm run test:coverage
+
+            - name: Coverage and suite-size regression guard
+              run: node scripts/coverage-diff.mjs

@@ -9,6 +9,8 @@
 		"build": "npm run typecheck && node esbuild.config.mjs production",
 		"test": "jest",
 		"test:coverage": "jest --coverage",
+		"test:guard": "npm run test:coverage && node scripts/coverage-diff.mjs",
+		"test:baseline": "npm run test:coverage && node scripts/coverage-diff.mjs --update-baseline",
 		"lint": "eslint .",
 		"lint:fix": "eslint . --fix",
 		"version": "node scripts/version-bump.mjs && git add manifest.json versions.json",
@@ -109,22 +111,61 @@
 			"src/**/*.ts",
 			"!src/**/*.d.ts"
 		],
+		"coverageReporters": [
+			"text",
+			"json-summary",
+			"lcov"
+		],
 		"coverageThreshold": {
 			"global": {
-				"statements": 91,
-				"branches": 83,
-				"functions": 86,
-				"lines": 91
+				"statements": 95.5,
+				"branches": 87,
+				"functions": 95.2,
+				"lines": 95.4
+			},
+			"./src/main.ts": {
+				"statements": 73,
+				"branches": 71.5,
+				"functions": 50,
+				"lines": 73.5
+			},
+			"src/player/views/": {
+				"statements": 83.5,
+				"branches": 65,
+				"functions": 82,
+				"lines": 84
+			},
+			"src/player/": {
+				"statements": 86.4,
+				"branches": 75,
+				"functions": 84,
+				"lines": 86.5
+			},
+			"src/ui/": {
+				"statements": 90,
+				"branches": 81.3,
+				"functions": 81,
+				"lines": 90
+			},
+			"src/actions/": {
+				"statements": 90,
+				"branches": 94,
+				"functions": 74.5,
+				"lines": 90
 			},
 			"src/platform/": {
-				"statements": 90,
-				"branches": 90,
-				"functions": 90,
-				"lines": 90
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
 			}
 		},
 		"setupFiles": [
 			"<rootDir>/tests/setup.ts"
+		],
+		"reporters": [
+			"default",
+			"<rootDir>/scripts/jest-suite-stats-reporter.cjs"
 		]
 	},
 	"dependencies": {
