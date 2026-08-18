@@ -21,6 +21,8 @@
 
 import { App, Modal } from 'obsidian';
 import { at } from '../helpers/assertions';
+import { allEls, clickControl, control, el, maybeEl } from '../helpers/dom';
+import { PLAYER } from '../helpers/selectors';
 import { AudioPlayer } from 'src/player/AudioPlayer';
 import { WaveformPeakCache, type AudioDecoder } from 'src/player/WaveformData';
 import type { AudioPlayerRegistry } from 'src/player/AudioPlayerRegistry';
@@ -249,8 +251,9 @@ describe('shared playback state survives a re-render (F1)', () => {
 
 		const container = makeContainer();
 		makePlayer(container, registry, PLAIN).onload();
-		const loopButton = container.querySelector('[aria-label="Loop"]');
-		expect(loopButton?.classList.contains('is-active')).toBe(true);
+		expect(control(container, 'Loop').classList.contains('is-active')).toBe(
+			true,
+		);
 	});
 
 	it('reflects the live playback rate on the speed button after a re-render', () => {
@@ -260,8 +263,7 @@ describe('shared playback state survives a re-render (F1)', () => {
 		audio.playbackRate = 1.75;
 		player.applySettings({ showWaveform: false, enableMarkers: true });
 
-		const speed = document.querySelector('.aar-player-speed');
-		expect(speed?.textContent).toBe('1.75x');
+		expect(el(document, PLAYER.speed).textContent).toBe('1.75x');
 	});
 });
 
@@ -273,14 +275,12 @@ describe('settings re-render only when the layout changes (F4)', () => {
 			PLAIN,
 		);
 		player.onload();
-		const controlsBefore = document.querySelector('.aar-player-controls');
+		const controlsBefore = el(document, PLAYER.controls);
 
 		// A save that did not change a player window must not rebuild anything
 		player.applySettings({ ...PLAIN });
 
-		expect(document.querySelector('.aar-player-controls')).toBe(
-			controlsBefore,
-		);
+		expect(el(document, PLAYER.controls)).toBe(controlsBefore);
 	});
 
 	it('rebuilds the player when a window toggle actually changes', () => {
@@ -290,13 +290,11 @@ describe('settings re-render only when the layout changes (F4)', () => {
 			PLAIN,
 		);
 		player.onload();
-		const controlsBefore = document.querySelector('.aar-player-controls');
+		const controlsBefore = el(document, PLAYER.controls);
 
 		player.applySettings({ showWaveform: false, enableMarkers: true });
 
-		expect(document.querySelector('.aar-player-controls')).not.toBe(
-			controlsBefore,
-		);
+		expect(el(document, PLAYER.controls)).not.toBe(controlsBefore);
 	});
 });
 
@@ -331,11 +329,9 @@ describe('waveform rendering decision (F2/F3)', () => {
 	it('renders the plain seek bar when the waveform is off', () => {
 		const container = makeContainer();
 		makePlayer(container, makeRegistry(makeFakeAudio()), PLAIN).onload();
-		expect(container.querySelector('.aar-player-seek-bar')).not.toBeNull();
-		expect(container.querySelector('.aar-player-seek-waveform')).toBeNull();
-		expect(
-			container.querySelector('.aar-player-progress-fill'),
-		).not.toBeNull();
+		expect(maybeEl(container, PLAYER.seekBar)).not.toBeNull();
+		expect(maybeEl(container, PLAYER.seekWaveform)).toBeNull();
+		expect(maybeEl(container, PLAYER.progressFill)).not.toBeNull();
 	});
 
 	it('renders the waveform layer for a small file when enabled', async () => {
@@ -348,13 +344,9 @@ describe('waveform rendering decision (F2/F3)', () => {
 				showWaveform: true,
 				enableMarkers: false,
 			}).onload();
-			expect(
-				container.querySelector('.aar-player-seek-waveform'),
-			).not.toBeNull();
-			expect(
-				container.querySelector('.aar-player-waveform'),
-			).not.toBeNull();
-			expect(container.querySelectorAll('canvas')).toHaveLength(2);
+			expect(maybeEl(container, PLAYER.seekWaveform)).not.toBeNull();
+			expect(maybeEl(container, PLAYER.waveform)).not.toBeNull();
+			expect(allEls(container, 'canvas')).toHaveLength(2);
 			// Let the fire-and-forget waveform load settle (decode rejects)
 			// while the warning is still silenced
 			await tick();
@@ -377,13 +369,9 @@ describe('waveform rendering decision (F2/F3)', () => {
 				{ showWaveform: true, enableMarkers: false },
 				makeFile(500 * 1024 * 1024, 'wav'),
 			).onload();
-			expect(
-				container.querySelector('.aar-player-seek-waveform'),
-			).not.toBeNull();
-			expect(
-				container.querySelector('.aar-player-waveform'),
-			).not.toBeNull();
-			expect(container.querySelector('.aar-player-seek-bar')).toBeNull();
+			expect(maybeEl(container, PLAYER.seekWaveform)).not.toBeNull();
+			expect(maybeEl(container, PLAYER.waveform)).not.toBeNull();
+			expect(maybeEl(container, PLAYER.seekBar)).toBeNull();
 			// Let the fire-and-forget waveform load settle (decode rejects)
 			await tick();
 		} finally {
@@ -402,11 +390,9 @@ describe('waveform rendering decision (F2/F3)', () => {
 			{ showWaveform: true, enableMarkers: false },
 			makeFile(2 * 1024 * 1024 * 1024, 'wav'),
 		).onload();
-		expect(container.querySelector('.aar-player-seek-waveform')).toBeNull();
-		expect(container.querySelector('.aar-player-seek-bar')).not.toBeNull();
-		expect(
-			container.querySelector('.aar-player-progress-fill'),
-		).not.toBeNull();
+		expect(maybeEl(container, PLAYER.seekWaveform)).toBeNull();
+		expect(maybeEl(container, PLAYER.seekBar)).not.toBeNull();
+		expect(maybeEl(container, PLAYER.progressFill)).not.toBeNull();
 	});
 });
 
@@ -426,9 +412,7 @@ describe('timecode start offset (#t=) positions and shows the embed', () => {
 		).onload();
 
 		// The embed shows its #t=3 start (paused at 3 of 5 seconds)...
-		expect(container.querySelector('.aar-player-time')?.textContent).toBe(
-			'0:03 / 0:05',
-		);
+		expect(container).toShowTime('0:03 / 0:05');
 		expect(audio.paused).toBe(true);
 		// ...but it must NOT move the shared element, so a second embed of the
 		// same file is never dragged to 0:03 (the start is per-embed, display
@@ -465,12 +449,8 @@ describe('timecode start offset (#t=) positions and shows the embed', () => {
 			null,
 		).onload();
 
-		expect(withOffset.querySelector('.aar-player-time')?.textContent).toBe(
-			'0:03 / 0:05',
-		);
-		expect(plain.querySelector('.aar-player-time')?.textContent).toBe(
-			'0:00 / 0:05',
-		);
+		expect(withOffset).toShowTime('0:03 / 0:05');
+		expect(plain).toShowTime('0:00 / 0:05');
 		expect(timedAudio.currentTime).toBe(0);
 		expect(plainAudio.currentTime).toBe(0);
 	});
@@ -490,9 +470,7 @@ describe('timecode start offset (#t=) positions and shows the embed', () => {
 		// Display-only until the user engages this embed
 		expect(audio.currentTime).toBe(0);
 
-		container
-			.querySelector<HTMLElement>('[aria-label="Play / pause"]')
-			?.click();
+		clickControl(container, 'Play / pause');
 
 		// Pressing play engages the embed at its #t= start
 		expect(audio.currentTime).toBe(3);
@@ -518,9 +496,7 @@ describe('timecode start offset (#t=) positions and shows the embed', () => {
 
 		// The #t= start is a hint only while the shared audio is untouched; once
 		// it is engaged, the embed reflects the real shared position
-		expect(container.querySelector('.aar-player-time')?.textContent).toBe(
-			'0:04 / 0:05',
-		);
+		expect(container).toShowTime('0:04 / 0:05');
 		expect(audio.currentTime).toBe(4);
 	});
 
@@ -538,9 +514,7 @@ describe('timecode start offset (#t=) positions and shows the embed', () => {
 			999,
 		).onload();
 
-		expect(container.querySelector('.aar-player-time')?.textContent).toBe(
-			'0:05 / 0:05',
-		);
+		expect(container).toShowTime('0:05 / 0:05');
 	});
 
 	it('does not resurface a stale #t= start after playback returns to 0', () => {
@@ -556,9 +530,7 @@ describe('timecode start offset (#t=) positions and shows the embed', () => {
 			3,
 		).onload();
 		// Initially the embed shows its #t=3 start
-		expect(container.querySelector('.aar-player-time')?.textContent).toBe(
-			'0:03 / 0:05',
-		);
+		expect(container).toShowTime('0:03 / 0:05');
 
 		// Playback engages the shared timeline, then the user returns to the
 		// very start and pauses
@@ -568,9 +540,7 @@ describe('timecode start offset (#t=) positions and shows the embed', () => {
 		audio.emit('timeupdate');
 
 		// The #t=3 hint is consumed: it must NOT reappear at position 0
-		expect(container.querySelector('.aar-player-time')?.textContent).toBe(
-			'0:00 / 0:05',
-		);
+		expect(container).toShowTime('0:00 / 0:05');
 	});
 
 	it('keeps the #t= start while a different embed of the same file plays (issue #38)', () => {
@@ -608,13 +578,9 @@ describe('timecode start offset (#t=) positions and shows the embed', () => {
 		plainAudio.currentTime = 2;
 		plainAudio.emit('timeupdate');
 
-		expect(plain.querySelector('.aar-player-time')?.textContent).toBe(
-			'0:02 / 0:05',
-		);
+		expect(plain).toShowTime('0:02 / 0:05');
 		// The #t= embed is untouched: still paused at its own 0:03 start
-		expect(withOffset.querySelector('.aar-player-time')?.textContent).toBe(
-			'0:03 / 0:05',
-		);
+		expect(withOffset).toShowTime('0:03 / 0:05');
 		expect(timedAudio.currentTime).toBe(0);
 		expect(timedAudio.play).not.toHaveBeenCalled();
 	});
@@ -651,13 +617,9 @@ describe('timecode start offset (#t=) positions and shows the embed', () => {
 		plainAudio.emit('timeupdate');
 
 		expect(plainAudio.currentTime).toBe(4);
-		expect(plain.querySelector('.aar-player-time')?.textContent).toBe(
-			'0:04 / 0:05',
-		);
+		expect(plain).toShowTime('0:04 / 0:05');
 		expect(timedAudio.currentTime).toBe(0);
-		expect(withOffset.querySelector('.aar-player-time')?.textContent).toBe(
-			'0:03 / 0:05',
-		);
+		expect(withOffset).toShowTime('0:03 / 0:05');
 	});
 
 	it('registers every embed of a file under the file path, keeping markers in sync', () => {

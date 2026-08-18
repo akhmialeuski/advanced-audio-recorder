@@ -8,6 +8,8 @@
 import { ProfileNameModal } from 'src/ui/ProfileNameModal';
 import type { App } from 'obsidian';
 import { at } from '../helpers/assertions';
+import { allEls, el } from '../helpers/dom';
+import { MODAL } from '../helpers/selectors';
 
 /** The taken names these tests reject a draft against. */
 const TAKEN = ['Legal'];
@@ -39,16 +41,9 @@ function open(onSubmit: (name: string) => void): {
 	modal.onOpen();
 	return {
 		modal,
-		input: at(Array.from(modal.contentEl.querySelectorAll('input')), 0),
-		buttons: Array.from(modal.contentEl.querySelectorAll('button')),
-		error: at(
-			Array.from(
-				modal.contentEl.querySelectorAll<HTMLElement>(
-					'.aar-modal-error',
-				),
-			),
-			0,
-		),
+		input: el<HTMLInputElement>(modal.contentEl, 'input'),
+		buttons: allEls<HTMLButtonElement>(modal.contentEl, 'button'),
+		error: el(modal.contentEl, MODAL.error),
 	};
 }
 

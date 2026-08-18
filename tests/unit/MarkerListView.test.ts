@@ -7,6 +7,8 @@
 
 import { App, Modal } from 'obsidian';
 import { at } from '../helpers/assertions';
+import { allEls, el } from '../helpers/dom';
+import { MARKER } from '../helpers/selectors';
 import {
 	MarkerListView,
 	type MarkerListCallbacks,
@@ -70,66 +72,57 @@ function setup(editable: boolean): Setup {
 describe('MarkerListView rendering', () => {
 	it('renders one row per marker, ordered by time', () => {
 		const { listContainer } = setup(true);
-		const rows = listContainer.querySelectorAll('.aar-player-marker-row');
-		expect(rows).toHaveLength(2);
-		const times = Array.from(
-			listContainer.querySelectorAll('[data-marker-id]'),
-		)
-			.map((el) => (el as HTMLElement).dataset.markerId)
-			.filter((id, i, arr) => arr.indexOf(id) === i);
-		expect(times).toEqual(['a', 'b']);
+		expect(allEls(listContainer, MARKER.row)).toHaveLength(2);
+		const ids = allEls(listContainer, '[data-marker-id]')
+			.map((node) => node.dataset['markerId'])
+			.filter((id, index, all) => all.indexOf(id) === index);
+		expect(ids).toEqual(['a', 'b']);
 	});
 
 	it('renders editable rows with a rename input and a delete button', () => {
 		const { listContainer } = setup(true);
-		expect(
-			listContainer.querySelectorAll('input.aar-player-marker-label'),
-		).toHaveLength(2);
-		expect(
-			listContainer.querySelectorAll('.aar-player-marker-delete'),
-		).toHaveLength(2);
+		expect(allEls(listContainer, MARKER.labelInput)).toHaveLength(2);
+		expect(allEls(listContainer, MARKER.delete)).toHaveLength(2);
 	});
 
 	it('renders read-only rows as clickable jump targets without inputs', () => {
 		const { listContainer } = setup(false);
-		expect(
-			listContainer.querySelectorAll('input.aar-player-marker-label'),
-		).toHaveLength(0);
-		expect(
-			listContainer.querySelectorAll('.aar-player-marker-row-clickable'),
-		).toHaveLength(2);
+		expect(allEls(listContainer, MARKER.labelInput)).toHaveLength(0);
+		expect(allEls(listContainer, MARKER.clickableRow)).toHaveLength(2);
 	});
 
 	it('renders a tick per marker on the overlay', () => {
 		const { seekEl } = setup(true);
-		expect(seekEl.querySelectorAll('.aar-player-tick')).toHaveLength(2);
+		expect(seekEl).toHaveMarkerAt(10, 'Intro');
+		expect(seekEl).toHaveMarkerAt(30, 'Note');
 	});
 });
 
 describe('MarkerListView interaction', () => {
 	it('jumps to a marker time on a list jump click', () => {
 		const { listContainer, callbacks } = setup(true);
-		const jump = listContainer.querySelector(
+		el(
+			listContainer,
 			'[data-action="jump"][data-marker-id="b"]',
-		) as HTMLElement;
-		jump.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 		expect(callbacks.onJump).toHaveBeenCalledWith(30);
 	});
 
 	it('deletes a marker on a delete click', () => {
 		const { listContainer, callbacks } = setup(true);
-		const del = listContainer.querySelector(
+		el(
+			listContainer,
 			'[data-action="delete"][data-marker-id="a"]',
-		) as HTMLElement;
-		del.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 		expect(callbacks.onDelete).toHaveBeenCalledWith('a');
 	});
 
 	it('renames a marker immediately on a change event', () => {
 		const { listContainer, callbacks } = setup(true);
-		const input = listContainer.querySelector(
+		const input = el<HTMLInputElement>(
+			listContainer,
 			'input[data-marker-id="b"]',
-		) as HTMLInputElement;
+		);
 		input.value = 'Renamed';
 		input.dispatchEvent(new Event('change', { bubbles: true }));
 		expect(callbacks.onRename).toHaveBeenCalledWith('b', 'Renamed');
@@ -137,19 +130,17 @@ describe('MarkerListView interaction', () => {
 
 	it('jumps to a marker time on a tick pointerdown', () => {
 		const { seekEl, callbacks } = setup(true);
-		const tick = seekEl.querySelector(
-			'.aar-player-tick[data-time="30"]',
-		) as HTMLElement;
-		tick.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+		el(seekEl, MARKER.tickAt(30)).dispatchEvent(
+			new MouseEvent('pointerdown', { bubbles: true }),
+		);
 		expect(callbacks.onJump).toHaveBeenCalledWith(30);
 	});
 
 	it('jumps on a read-only row click', () => {
 		const { listContainer, callbacks } = setup(false);
-		const row = listContainer.querySelector(
-			'.aar-player-marker-row-clickable[data-marker-id="a"]',
-		) as HTMLElement;
-		row.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		el(listContainer, MARKER.byId('a')).dispatchEvent(
+			new MouseEvent('click', { bubbles: true }),
+		);
 		expect(callbacks.onJump).toHaveBeenCalledWith(10);
 	});
 });
@@ -158,7 +149,7 @@ describe('MarkerListView active highlight and tick refresh', () => {
 	it('highlights the row whose segment contains the current time', () => {
 		const { view, listContainer } = setup(false);
 		view.updateActive(15);
-		const rows = listContainer.querySelectorAll('.aar-player-marker-row');
+		const rows = allEls(listContainer, MARKER.row);
 		// 15s falls in the first marker's segment (10s..30s)
 		expect(at(rows, 0).classList.contains('is-active')).toBe(true);
 		expect(at(rows, 1).classList.contains('is-active')).toBe(false);
@@ -166,11 +157,9 @@ describe('MarkerListView active highlight and tick refresh', () => {
 
 	it('refreshes ticks without rebuilding the list', () => {
 		const { view, listContainer } = setup(true);
-		const firstRow = listContainer.querySelector('.aar-player-marker-row');
+		const firstRow = el(listContainer, MARKER.row);
 		view.refreshTicks(60);
 		// The same row node survives a tick refresh (a focused input is kept)
-		expect(listContainer.querySelector('.aar-player-marker-row')).toBe(
-			firstRow,
-		);
+		expect(el(listContainer, MARKER.row)).toBe(firstRow);
 	});
 });

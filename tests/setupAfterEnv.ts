@@ -11,9 +11,13 @@
  *
  * Resetting here makes every test start from the same place no matter what ran
  * before it, which is what lets the suite run in a random order.
+ *
+ * It is also where the domain matchers are registered, so every test has
+ * `toHaveControl` and friends without importing them.
  * @module tests/setupAfterEnv
  */
 
+import './helpers/matchers';
 import {
 	DEFAULT_MOCK_API_VERSION,
 	__setApiVersion,

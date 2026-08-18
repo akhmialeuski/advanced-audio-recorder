@@ -13,6 +13,8 @@ jest.mock('obsidian', () =>
 	require('../mocks/modules/obsidianWithCapturingSetting'),
 );
 import { capturedSettings } from '../helpers/captureSettings';
+import { el } from '../helpers/dom';
+import { MODAL } from '../helpers/selectors';
 
 /** Captured action buttons rendered by the modal. */
 
@@ -76,10 +78,10 @@ describe('RecoveryModal', () => {
 	it('renders session details with the saved-parts note', () => {
 		const modal = openModal([createSession()]);
 
-		const line = modal.contentEl.querySelector('.aar-recovery-session');
-		expect(line?.textContent).toContain('1 track(s)');
-		expect(line?.textContent).toContain('2 temporary segment(s)');
-		expect(line?.textContent).toContain('1 already saved part file(s)');
+		const line = el(modal.contentEl, MODAL.recoverySession);
+		expect(line.textContent).toContain('1 track(s)');
+		expect(line.textContent).toContain('2 temporary segment(s)');
+		expect(line.textContent).toContain('1 already saved part file(s)');
 	});
 
 	it('omits the parts note when no parts were saved', () => {
@@ -87,8 +89,9 @@ describe('RecoveryModal', () => {
 		at(session.tracks, 0).partPaths = [];
 		const modal = openModal([session]);
 
-		const line = modal.contentEl.querySelector('.aar-recovery-session');
-		expect(line?.textContent).not.toContain('already saved part');
+		expect(
+			el(modal.contentEl, MODAL.recoverySession).textContent,
+		).not.toContain('already saved part');
 	});
 
 	it('runs the recover callback and close', async () => {

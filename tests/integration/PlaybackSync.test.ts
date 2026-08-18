@@ -9,6 +9,8 @@
  */
 
 import { App, Modal } from 'obsidian';
+import { allEls } from '../helpers/dom';
+import { MARKER } from '../helpers/selectors';
 import { AudioPlayer } from 'src/player/AudioPlayer';
 import {
 	AudioPlayerRegistry,
@@ -251,8 +253,8 @@ const CHAPTERS: PlayerMarker[] = [
 
 /** Reads the chapter labels the player rendered, in list order. */
 function markerLabels(container: HTMLElement): string[] {
-	return [...container.querySelectorAll('.aar-player-marker-label')].map(
-		(el) => (el as HTMLInputElement).getAttribute('value') ?? '',
+	return allEls(container, MARKER.label).map(
+		(label) => label.getAttribute('value') ?? '',
 	);
 }
 
@@ -277,9 +279,7 @@ describe('generated chapters reach an already-open player', () => {
 			await tick();
 
 			// The open embed shows the chapters at once, without a re-mount
-			expect(
-				container.querySelectorAll('.aar-player-marker-row'),
-			).toHaveLength(2);
+			expect(allEls(container, MARKER.row)).toHaveLength(2);
 			expect(markerLabels(container)).toEqual(['Intro', 'Middle']);
 		} finally {
 			shared.restore();
@@ -311,9 +311,7 @@ describe('generated chapters reach an already-open player', () => {
 			// while it was detached must be there, not a stale empty list
 			parent.appendChild(container);
 			expect(container.isConnected).toBe(true);
-			expect(
-				container.querySelectorAll('.aar-player-marker-row'),
-			).toHaveLength(2);
+			expect(allEls(container, MARKER.row)).toHaveLength(2);
 			expect(markerLabels(container)).toEqual(['Intro', 'Middle']);
 		} finally {
 			shared.restore();

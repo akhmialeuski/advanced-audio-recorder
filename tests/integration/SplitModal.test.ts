@@ -97,6 +97,8 @@ import {
 	toggleChanges,
 } from '../helpers/captureSettings';
 import { noticeInitialText, noticeInstances } from '../mocks/obsidian';
+import { el } from '../helpers/dom';
+import { MODAL } from '../helpers/selectors';
 
 /** WAV header size produced by createWavHeader. */
 const WAV_HEADER_SIZE = 44;
@@ -364,8 +366,9 @@ describe('SplitModal', () => {
 		const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
 		modal.onOpen();
 
-		const source = modal.contentEl.querySelector('.aar-split-source');
-		expect(source?.textContent).toContain('recording.wav');
+		expect(el(modal.contentEl, MODAL.splitSource).textContent).toContain(
+			'recording.wav',
+		);
 
 		modal.onClose();
 		expect(modal.contentEl.children).toHaveLength(0);

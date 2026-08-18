@@ -11,6 +11,8 @@ import { WaveformCanvas } from 'src/player/views/WaveformCanvas';
 import * as WaveformData from 'src/player/WaveformData';
 import { installCanvas2dContext } from '../helpers/canvas';
 import type { CanvasContextDouble } from '../helpers/canvas';
+import { maybeEl } from '../helpers/dom';
+import { PLAYER } from '../helpers/selectors';
 
 let canvas: CanvasContextDouble;
 
@@ -40,7 +42,7 @@ describe('WaveformCanvas', () => {
 	it('mounts a base and a played canvas in a positioned layer', () => {
 		const seekEl = makeSeekEl();
 		new WaveformCanvas(seekEl);
-		expect(seekEl.querySelector('.aar-player-waveform')).not.toBeNull();
+		expect(maybeEl(seekEl, PLAYER.waveform)).not.toBeNull();
 		const canvases = seekEl.querySelectorAll('canvas');
 		expect(canvases).toHaveLength(2);
 		expect(at(canvases, 0).classList.contains('aar-player-canvas')).toBe(

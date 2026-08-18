@@ -10,6 +10,8 @@ import { mergeSettings } from 'src/settings/settingsSerialization';
 import { tick } from '../helpers/async';
 import { capturedSettings } from '../helpers/captureSettings';
 import { noticeInstances, noticeText } from '../mocks/obsidian';
+import { el } from '../helpers/dom';
+import { MODAL } from '../helpers/selectors';
 
 /**
  * Extends an HTMLElement with Obsidian's custom DOM methods.
@@ -162,9 +164,9 @@ describe('ConversionModal', () => {
 		modal.onOpen();
 
 		// Heading is rendered via Setting.setHeading(); source file info is a <p>
-		const source = modal.contentEl.querySelector('.aar-conversion-source');
-		expect(source).not.toBeNull();
-		expect(source?.textContent).toContain('recording.wav');
+		expect(
+			el(modal.contentEl, MODAL.conversionSource).textContent,
+		).toContain('recording.wav');
 	});
 
 	it('shows source file name', () => {
@@ -175,8 +177,9 @@ describe('ConversionModal', () => {
 		);
 		modal.onOpen();
 
-		const source = modal.contentEl.querySelector('.aar-conversion-source');
-		expect(source?.textContent).toContain('recording.wav');
+		expect(
+			el(modal.contentEl, MODAL.conversionSource).textContent,
+		).toContain('recording.wav');
 	});
 
 	it('clears content on close', () => {

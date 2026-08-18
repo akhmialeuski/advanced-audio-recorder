@@ -10,6 +10,8 @@
  */
 
 import { at } from '../helpers/assertions';
+import { clickControl, control, el } from '../helpers/dom';
+import { PLAYER } from '../helpers/selectors';
 import { AudioPlayer } from 'src/player/AudioPlayer';
 import { WaveformPeakCache } from 'src/player/WaveformData';
 import type { AudioPlayerRegistry } from 'src/player/AudioPlayerRegistry';
@@ -56,10 +58,7 @@ function makePlayer(
 
 /** The seek area, prepared for pointer interaction under jsdom. */
 function seekArea(container: HTMLElement): HTMLElement {
-	const seekEl = container.querySelector<HTMLElement>('.aar-player-seek');
-	if (!seekEl) {
-		throw new Error('seek area not rendered');
-	}
+	const seekEl = el(container, PLAYER.seek);
 	seekEl.getBoundingClientRect = () =>
 		({ left: 0, width: 100, top: 0, height: 10 }) as DOMRect;
 	seekEl.setPointerCapture = jest.fn();
@@ -85,18 +84,10 @@ describe('control row drives the shared audio (PlayerControlsView wiring)', () =
 		const container = makeContainer();
 		makePlayer(container, makeRegistry(audio)).onload();
 
-		container
-			.querySelector<HTMLElement>(
-				`[aria-label="Forward ${String(PLAYER_SKIP_SECONDS)}s"]`,
-			)
-			?.click();
+		clickControl(container, `Forward ${String(PLAYER_SKIP_SECONDS)}s`);
 		expect(audio.currentTime).toBe(30 + PLAYER_SKIP_SECONDS);
 
-		container
-			.querySelector<HTMLElement>(
-				`[aria-label="Back ${String(PLAYER_SKIP_SECONDS)}s"]`,
-			)
-			?.click();
+		clickControl(container, `Back ${String(PLAYER_SKIP_SECONDS)}s`);
 		expect(audio.currentTime).toBe(30);
 	});
 
@@ -104,17 +95,15 @@ describe('control row drives the shared audio (PlayerControlsView wiring)', () =
 		const audio = makeFakeAudio();
 		const container = makeContainer();
 		makePlayer(container, makeRegistry(audio)).onload();
-		const mute = container.querySelector<HTMLElement>(
-			'[aria-label="Mute / unmute"]',
-		);
+		const mute = control(container, 'Mute / unmute');
 
-		mute?.click();
+		mute.click();
 		expect(audio.muted).toBe(true);
-		expect(mute?.classList.contains('is-active')).toBe(true);
+		expect(mute.classList.contains('is-active')).toBe(true);
 
-		mute?.click();
+		mute.click();
 		expect(audio.muted).toBe(false);
-		expect(mute?.classList.contains('is-active')).toBe(false);
+		expect(mute.classList.contains('is-active')).toBe(false);
 	});
 
 	it('raising the volume slider unmutes the shared audio', () => {
@@ -123,11 +112,7 @@ describe('control row drives the shared audio (PlayerControlsView wiring)', () =
 		const container = makeContainer();
 		makePlayer(container, makeRegistry(audio)).onload();
 
-		const volume =
-			container.querySelector<HTMLInputElement>('.aar-player-volume');
-		if (!volume) {
-			throw new Error('volume slider not rendered');
-		}
+		const volume = el<HTMLInputElement>(container, PLAYER.volume);
 		volume.value = '0.5';
 		volume.dispatchEvent(new Event('input'));
 
@@ -139,15 +124,13 @@ describe('control row drives the shared audio (PlayerControlsView wiring)', () =
 		const audio = makeFakeAudio();
 		const container = makeContainer();
 		makePlayer(container, makeRegistry(audio)).onload();
-		const loop = container.querySelector<HTMLElement>(
-			'[aria-label="Loop"]',
-		);
+		const loop = control(container, 'Loop');
 
-		loop?.click();
+		loop.click();
 		expect(audio.loop).toBe(true);
-		expect(loop?.classList.contains('is-active')).toBe(true);
+		expect(loop.classList.contains('is-active')).toBe(true);
 
-		loop?.click();
+		loop.click();
 		expect(audio.loop).toBe(false);
 	});
 
@@ -155,15 +138,13 @@ describe('control row drives the shared audio (PlayerControlsView wiring)', () =
 		const audio = makeFakeAudio();
 		const container = makeContainer();
 		makePlayer(container, makeRegistry(audio)).onload();
-		const play = container.querySelector<HTMLElement>(
-			'[aria-label="Play / pause"]',
-		);
+		const play = control(container, 'Play / pause');
 
-		play?.click();
+		play.click();
 		expect(audio.play).toHaveBeenCalled();
 		audio.emit('play');
 
-		play?.click();
+		play.click();
 		expect(audio.pause).toHaveBeenCalled();
 	});
 });
@@ -272,9 +253,7 @@ describe('infinite-duration resolution (DurationProbe wiring)', () => {
 
 		// Resolution restores the start and unlocks the timeline display
 		expect(audio.currentTime).toBe(0);
-		expect(container.querySelector('.aar-player-time')?.textContent).toBe(
-			'0:00 / 1:00',
-		);
+		expect(container).toShowTime('0:00 / 1:00');
 	});
 
 	it('also probes a finite-but-zero duration (unstamped container)', () => {
@@ -331,11 +310,7 @@ describe('marker CRUD stays player-driven and persisted (PlayerMarkerController 
 		player.onload();
 		await tick();
 
-		container
-			.querySelector<HTMLElement>(
-				'[aria-label="Add marker at current position"]',
-			)
-			?.click();
+		clickControl(container, 'Add marker at current position');
 		await tick();
 
 		const saved = store.data.get('rec.wav') ?? [];
@@ -442,14 +417,10 @@ describe('marker CRUD stays player-driven and persisted (PlayerMarkerController 
 		).onload();
 		await tick();
 
-		container
-			.querySelector<HTMLElement>('[aria-label="Next chapter"]')
-			?.click();
+		clickControl(container, 'Next chapter');
 		expect(audio.currentTime).toBe(80);
 
-		container
-			.querySelector<HTMLElement>('[aria-label="Previous chapter"]')
-			?.click();
+		clickControl(container, 'Previous chapter');
 		// Shortly after a boundary, previous returns to that boundary's start
 		expect(audio.currentTime).toBe(10);
 	});
@@ -461,11 +432,7 @@ describe('marker CRUD stays player-driven and persisted (PlayerMarkerController 
 		makePlayer(container, makeRegistry(audio), PLAIN, store).onload();
 		await tick();
 
-		expect(
-			container.querySelector(
-				'[aria-label="Add marker at current position"]',
-			),
-		).toBeNull();
+		expect(container).not.toHaveControl('Add marker at current position');
 		expect(store.getMarkers).not.toHaveBeenCalled();
 	});
 });

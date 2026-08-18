@@ -57,6 +57,8 @@ import {
 	type SettingsDefinitionContext,
 } from 'src/settings/settingsDefinitions';
 import { setPlatform } from '../helpers/platform';
+import { maybeEl } from '../helpers/dom';
+import { SETTING } from '../helpers/selectors';
 
 describe('settings definitions', () => {
 	let settings: AudioRecorderSettings;
@@ -207,9 +209,7 @@ describe('settings definitions', () => {
 			expect(renderDocs).toHaveBeenCalledWith(setting.settingEl);
 			// The body survives the framework's post-render pass because it
 			// lives inside the tracked row.
-			expect(
-				containerEl.querySelector('.aar-doc-callout'),
-			).not.toBeNull();
+			expect(maybeEl(containerEl, SETTING.docCallout)).not.toBeNull();
 		});
 
 		it('marks the row so the stylesheet can strip its setting-row layout', () => {

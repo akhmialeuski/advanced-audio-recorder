@@ -13,6 +13,8 @@ import type { PlaybackControlsState } from 'src/player/playbackControls';
 import type { TranscriptionModalOptions } from 'src/ui/TranscriptionModal';
 import type { PluginManifest, TFile } from 'obsidian';
 import { createFile } from '../helpers/createApp';
+import { allEls, el } from '../helpers/dom';
+import { MODAL } from '../helpers/selectors';
 
 jest.mock('src/recording/RecordingManager', () => ({
 	RecordingManager: jest.fn().mockImplementation(() => ({
@@ -1027,12 +1029,13 @@ describe('AudioRecorderPlugin silent-channel suggestion', () => {
 			message: DocumentFragment;
 			hide: jest.Mock;
 		};
-		const button = notice.message.querySelector<HTMLButtonElement>(
-			'.aar-silent-channel-convert',
+		const button = el<HTMLButtonElement>(
+			notice.message,
+			MODAL.silentChannelConvert,
 		);
-		expect(button?.tagName).toBe('BUTTON');
-		expect(button?.type).toBe('button');
-		button?.click();
+		expect(button.tagName).toBe('BUTTON');
+		expect(button.type).toBe('button');
+		button.click();
 		expect(notice.hide).toHaveBeenCalled();
 		expect(openSpy).toHaveBeenCalledWith(file, 'mono-left');
 	});
@@ -1073,11 +1076,12 @@ describe('AudioRecorderPlugin silent-channel suggestion', () => {
 			message: DocumentFragment;
 			hide: jest.Mock;
 		};
-		const buttons = notice.message.querySelectorAll<HTMLButtonElement>(
-			'.aar-silent-channel-convert',
+		const buttons = allEls<HTMLButtonElement>(
+			notice.message,
+			MODAL.silentChannelConvert,
 		);
 		expect(buttons).toHaveLength(2);
-		buttons[1]?.click();
+		at(buttons, 1).click();
 		expect(openSpy).toHaveBeenCalledWith(second, 'mono-right');
 		// Keep the aggregate notice available so the other file can be fixed.
 		expect(notice.hide).not.toHaveBeenCalled();

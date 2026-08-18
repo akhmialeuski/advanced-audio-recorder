@@ -29,6 +29,14 @@ import { PROFILE_KINDS } from 'src/settings/profileKinds';
 import type { AudioRecorderPluginInterface } from 'src/settings/SettingsTab';
 import { setPlatform, useDesktopPlatform } from '../helpers/platform';
 import { tick } from '../helpers/async';
+import { allEls, el, maybeEl, textsOf } from '../helpers/dom';
+import { SETTING } from '../helpers/selectors';
+import {
+	rowSelect,
+	rowToggle,
+	settingNames,
+	settingRow,
+} from '../helpers/settingRows';
 
 // Mock AudioEncoder to avoid loading mediabunny in jsdom. The async
 // probe defaults to "no offline encoder works"; individual tests
@@ -74,10 +82,7 @@ const PLUGIN_MANIFEST_NAME = 'Advanced Audio Recorder';
  * Names of every setting row rendered under a host, in render order.
  * @param host - Element the settings body was rendered into
  */
-const renderedNames = (host: HTMLElement): string[] =>
-	Array.from(host.querySelectorAll('.setting-item-name'))
-		.map((el) => el.textContent?.trim() ?? '')
-		.filter((name) => name.length > 0);
+const renderedNames = (host: HTMLElement): string[] => settingNames(host);
 
 /**
  * The diagnostics row that owns the test capture, which is the definition
@@ -184,10 +189,10 @@ describe('AudioRecorderSettingTab', () => {
 			// lives inside the tracked row: rendering it into the group's list
 			// element (or the tab container) leaves the tab blank.
 			expect(
-				frame.containerEl.querySelector('.aar-doc-callout-link'),
+				maybeEl(frame.containerEl, SETTING.docCalloutLink),
 			).not.toBeNull();
 			expect(
-				frame.setting.settingEl.querySelector('.aar-doc-callout-link'),
+				maybeEl(frame.setting.settingEl, SETTING.docCalloutLink),
 			).not.toBeNull();
 			expect(
 				frame.setting.settingEl.classList.contains('aar-settings-root'),
@@ -223,9 +228,9 @@ describe('AudioRecorderSettingTab', () => {
 
 			// update() re-runs the render callback against the row it already
 			// rendered into; a second copy of the body must not stack up.
-			expect(
-				frame.containerEl.querySelectorAll('.aar-doc-callout'),
-			).toHaveLength(1);
+			expect(allEls(frame.containerEl, SETTING.docCallout)).toHaveLength(
+				1,
+			);
 		});
 
 		it('reads a control value straight from the live settings', () => {
@@ -563,11 +568,9 @@ describe('AudioRecorderSettingTab', () => {
 			// and the result is what asks for the second. Nothing else gates
 			// that: a flag saying the tab is shown would only be a second copy
 			// of the generation check, able to disagree with it.
-			expect(
-				Array.from(
-					legacyTab.containerEl.querySelectorAll('option'),
-				).map((option) => option.textContent),
-			).toContain('Desk microphone');
+			expect(textsOf(legacyTab.containerEl, 'option')).toContain(
+				'Desk microphone',
+			);
 		});
 
 		it('drops an enumeration that lands after the tab was left', async () => {
@@ -619,7 +622,7 @@ describe('AudioRecorderSettingTab', () => {
 			expect(names).toContain('Recording format');
 			expect(names).toContain('Debug mode');
 			expect(
-				legacyTab.containerEl.querySelector('.aar-doc-callout-link'),
+				maybeEl(legacyTab.containerEl, SETTING.docCalloutLink),
 			).not.toBeNull();
 		});
 
@@ -689,9 +692,8 @@ describe('AudioRecorderSettingTab', () => {
 		it('hosts the sections still rendered by hand in a row of their own', () => {
 			legacyTab.display();
 
-			const host =
-				legacyTab.containerEl.querySelector('.aar-settings-root');
-			expect(host?.querySelector('.aar-doc-callout-link')).not.toBeNull();
+			const host = el(legacyTab.containerEl, SETTING.root);
+			expect(maybeEl(host, SETTING.docCalloutLink)).not.toBeNull();
 		});
 
 		it('rebuilds the container itself when the device list changes', async () => {
@@ -716,7 +718,7 @@ describe('AudioRecorderSettingTab', () => {
 				names.filter((name) => name === 'Input device'),
 			).toHaveLength(1);
 			expect(
-				legacyTab.containerEl.querySelectorAll('.aar-doc-callout'),
+				allEls(legacyTab.containerEl, SETTING.docCallout),
 			).toHaveLength(1);
 		});
 
@@ -726,7 +728,7 @@ describe('AudioRecorderSettingTab', () => {
 			legacyTab.display();
 
 			expect(
-				legacyTab.containerEl.querySelectorAll('.aar-doc-callout'),
+				allEls(legacyTab.containerEl, SETTING.docCallout),
 			).toHaveLength(1);
 			expect(renderedNames(legacyTab.containerEl)).toContain(
 				'Input device',
@@ -751,34 +753,33 @@ describe('AudioRecorderSettingTab', () => {
 		it('renders a documentation callout linking to the docs', () => {
 			tab.display();
 
-			const link = tab.containerEl.querySelector<HTMLAnchorElement>(
-				'.aar-doc-callout-link',
+			const link = el<HTMLAnchorElement>(
+				tab.containerEl,
+				SETTING.docCalloutLink,
 			);
-			expect(link).not.toBeNull();
-			expect(link?.getAttribute('href')).toBe(DOCS_URL);
+			expect(link.getAttribute('href')).toBe(DOCS_URL);
 		});
 
 		it('opens the documentation link in a new tab safely', () => {
 			tab.display();
 
-			const link = tab.containerEl.querySelector<HTMLAnchorElement>(
-				'.aar-doc-callout-link',
+			const link = el<HTMLAnchorElement>(
+				tab.containerEl,
+				SETTING.docCalloutLink,
 			);
 			// New tab plus rel=noopener so the docs page cannot reach back
 			// into the Obsidian window via window.opener.
-			expect(link?.getAttribute('target')).toBe('_blank');
-			expect(link?.getAttribute('rel')).toBe('noopener');
+			expect(link.getAttribute('target')).toBe('_blank');
+			expect(link.getAttribute('rel')).toBe('noopener');
 		});
 
 		it('renders the callout only once per display() call', () => {
 			tab.display();
 			tab.display();
 
-			const callouts =
-				tab.containerEl.querySelectorAll('.aar-doc-callout');
 			// display() empties the container first, so a re-render must not
 			// stack duplicate callouts.
-			expect(callouts).toHaveLength(1);
+			expect(allEls(tab.containerEl, SETTING.docCallout)).toHaveLength(1);
 		});
 	});
 
@@ -946,8 +947,9 @@ describe('AudioRecorderSettingTab', () => {
 			await runTest(tab.containerEl);
 
 			expect(trackStop).toHaveBeenCalled();
-			const status = tab.containerEl.querySelector('.aar-test-status');
-			expect(status?.textContent).toContain('Test recording failed');
+			expect(
+				el(tab.containerEl, SETTING.testStatus).textContent,
+			).toContain('Test recording failed');
 		});
 
 		it('stops the stream and bail out when hidden mid-recording', async () => {
@@ -977,7 +979,7 @@ describe('AudioRecorderSettingTab', () => {
 
 			expect(trackStop).toHaveBeenCalled();
 			expect(URL.createObjectURL).not.toHaveBeenCalled();
-			expect(tab.containerEl.querySelector('.aar-test-audio')).toBeNull();
+			expect(maybeEl(tab.containerEl, SETTING.testAudio)).toBeNull();
 		});
 
 		it('stops the stream and attach playback on success', async () => {
@@ -1004,9 +1006,9 @@ describe('AudioRecorderSettingTab', () => {
 			expect(recorder.stop).toHaveBeenCalled();
 			expect(trackStop).toHaveBeenCalled();
 			expect(URL.createObjectURL).toHaveBeenCalled();
-			const audio = tab.containerEl.querySelector('.aar-test-audio');
-			expect(audio).not.toBeNull();
-			expect(audio?.getAttribute('src')).toBe('blob:test-url');
+			expect(
+				el(tab.containerEl, SETTING.testAudio).getAttribute('src'),
+			).toBe('blob:test-url');
 		});
 
 		it('names the format when this device cannot record it', async () => {
@@ -1023,9 +1025,9 @@ describe('AudioRecorderSettingTab', () => {
 
 			// A failed capture has to say which format failed, or the only
 			// reading left is "the microphone is broken".
-			const status = tab.containerEl.querySelector('.aar-test-status');
-			expect(status?.textContent).toContain('aiff');
-			expect(status?.classList.contains('aar-test-error')).toBe(true);
+			const status = el(tab.containerEl, SETTING.testStatus);
+			expect(status.textContent).toContain('aiff');
+			expect(status.classList.contains('aar-test-error')).toBe(true);
 			expect(URL.createObjectURL).not.toHaveBeenCalled();
 		});
 
@@ -1042,10 +1044,10 @@ describe('AudioRecorderSettingTab', () => {
 			await testPromise;
 			jest.useRealTimers();
 
-			const status = tab.containerEl.querySelector('.aar-test-status');
-			expect(status?.textContent).toContain('no data');
-			expect(status?.classList.contains('aar-test-error')).toBe(true);
-			expect(tab.containerEl.querySelector('.aar-test-audio')).toBeNull();
+			const status = el(tab.containerEl, SETTING.testStatus);
+			expect(status.textContent).toContain('no data');
+			expect(status.classList.contains('aar-test-error')).toBe(true);
+			expect(maybeEl(tab.containerEl, SETTING.testAudio)).toBeNull();
 		});
 
 		it('revokes the previous playback when the test is run again', async () => {
@@ -1058,9 +1060,7 @@ describe('AudioRecorderSettingTab', () => {
 			// Each rerun replaces the playback element; without revoking the
 			// one it replaces, a session leaks a blob per run.
 			expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test-url');
-			expect(container.querySelectorAll('.aar-test-audio')).toHaveLength(
-				1,
-			);
+			expect(allEls(container, SETTING.testAudio)).toHaveLength(1);
 		});
 
 		it('releases the finished playback when update() re-renders the row', async () => {
@@ -1068,7 +1068,7 @@ describe('AudioRecorderSettingTab', () => {
 			const frame = renderThroughFramework(definition);
 			await recordUntilPlayback(tab, frame.setting.settingEl);
 			expect(
-				frame.setting.settingEl.querySelector('.aar-test-audio'),
+				maybeEl(frame.setting.settingEl, SETTING.testAudio),
 			).not.toBeNull();
 
 			renderThroughFramework(definition, frame);
@@ -1078,9 +1078,7 @@ describe('AudioRecorderSettingTab', () => {
 			// body it belonged to instead of outliving it detached, holding a
 			// blob URL until the tab is closed.
 			expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test-url');
-			expect(
-				frame.containerEl.querySelector('.aar-test-audio'),
-			).toBeNull();
+			expect(maybeEl(frame.containerEl, SETTING.testAudio)).toBeNull();
 		});
 
 		it('releases the finished playback when the imperative path rebuilds', async () => {
@@ -1097,7 +1095,7 @@ describe('AudioRecorderSettingTab', () => {
 			// same blob URL is revoked on this Obsidian too.
 			expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test-url');
 			expect(
-				legacyTab.containerEl.querySelector('.aar-test-audio'),
+				maybeEl(legacyTab.containerEl, SETTING.testAudio),
 			).toBeNull();
 		});
 	});
@@ -1387,23 +1385,7 @@ describe('AudioRecorderSettingTab', () => {
 
 		/** Toggles the named setting the way a click would. */
 		function toggleSetting(name: string): void {
-			const row = Array.from(
-				tab.containerEl.querySelectorAll<HTMLElement>('.setting-item'),
-			).find(
-				(el) =>
-					el.querySelector('.setting-item-name')?.textContent ===
-					name,
-			);
-			if (!row) {
-				throw new Error(`setting row "${name}" not rendered`);
-			}
-			const toggle = row.querySelector<HTMLElement>(
-				'.checkbox-container',
-			);
-			if (!toggle) {
-				throw new Error(`toggle in "${name}" not rendered`);
-			}
-			toggle.click();
+			rowToggle(settingRow(tab.containerEl, name)).click();
 		}
 
 		it('redraws only its own section when a reveal toggle flips', async () => {
@@ -1432,11 +1414,7 @@ describe('AudioRecorderSettingTab', () => {
 			toggleSetting('Save recordings near active file');
 			await tick();
 
-			const names = Array.from(
-				tab.containerEl.querySelectorAll<HTMLElement>(
-					'.setting-item-name',
-				),
-			).map((el) => el.textContent);
+			const names = renderedNames(tab.containerEl);
 			expect(names).toContain('Active file subfolder');
 			// The section is redrawn, not appended to.
 			expect(
@@ -1450,11 +1428,7 @@ describe('AudioRecorderSettingTab', () => {
 			toggleSetting('Save recordings near active file');
 			await tick();
 
-			const names = Array.from(
-				tab.containerEl.querySelectorAll<HTMLElement>(
-					'.setting-item-name',
-				),
-			).map((el) => el.textContent);
+			const names = renderedNames(tab.containerEl);
 			expect(names).toContain('File prefix');
 			expect(names).toContain('Enhanced audio player');
 			expect(names).toContain('Debug mode');
@@ -1466,34 +1440,19 @@ describe('AudioRecorderSettingTab', () => {
 			useDesktopPlatform();
 		});
 
-		/** Finds a rendered setting row by its displayed name. */
-		function settingRow(name: string): HTMLElement {
-			const rows = Array.from(
-				tab.containerEl.querySelectorAll<HTMLElement>('.setting-item'),
-			);
-			const row = rows.find(
-				(el) =>
-					el.querySelector('.setting-item-name')?.textContent ===
-					name,
-			);
-			if (!row) {
-				throw new Error(`Setting row not rendered: ${name}`);
-			}
-			return row;
+		/** A rendered setting row, by its displayed name. */
+		function rowNamed(name: string): HTMLElement {
+			return settingRow(tab.containerEl, name);
 		}
 
 		/** Whether a row is rendered dimmed (blocked on this platform). */
 		function rowDimmed(name: string): boolean {
-			return settingRow(name).classList.contains('aar-setting-disabled');
+			return rowNamed(name).classList.contains('aar-setting-disabled');
 		}
 
-		/** The row's select element, when its control is a dropdown. */
-		function rowSelect(name: string): HTMLSelectElement {
-			const select = settingRow(name).querySelector('select');
-			if (!select) {
-				throw new Error(`No dropdown in setting row: ${name}`);
-			}
-			return select;
+		/** The row's dropdown, when its control is one. */
+		function dropdownIn(name: string): HTMLSelectElement {
+			return rowSelect(rowNamed(name));
 		}
 
 		it('keeps the hardware rows interactive on desktop', () => {
@@ -1503,8 +1462,8 @@ describe('AudioRecorderSettingTab', () => {
 			expect(rowDimmed('Sample rate')).toBe(false);
 			expect(rowDimmed('Split recordings automatically')).toBe(false);
 			expect(rowDimmed('Enable multi-track recording')).toBe(false);
-			expect(rowSelect('Input device').disabled).toBe(false);
-			expect(rowSelect('Sample rate').disabled).toBe(false);
+			expect(dropdownIn('Input device').disabled).toBe(false);
+			expect(dropdownIn('Sample rate').disabled).toBe(false);
 		});
 
 		it('blocks device, sample-rate, and channel selection on mobile', () => {
@@ -1540,7 +1499,7 @@ describe('AudioRecorderSettingTab', () => {
 			await tick();
 
 			const options = new Map(
-				Array.from(rowSelect('Recording format').options).map(
+				Array.from(dropdownIn('Recording format').options).map(
 					(option) => [option.value, option.disabled],
 				),
 			);
@@ -1572,12 +1531,12 @@ describe('AudioRecorderSettingTab', () => {
 			await tick();
 			await tick();
 
-			const note = settingRow('Recording format').querySelector(
-				'.aar-format-fallback-note',
+			const note = el(
+				rowNamed('Recording format'),
+				SETTING.formatFallbackNote,
 			);
-			expect(note).not.toBeNull();
-			expect(note?.textContent).toContain('cannot record WEBM');
-			expect(note?.textContent).toContain('MP4');
+			expect(note.textContent).toContain('cannot record WEBM');
+			expect(note.textContent).toContain('MP4');
 		});
 
 		it('keeps every recordable format selectable on a permissive desktop profile', async () => {
@@ -1585,14 +1544,15 @@ describe('AudioRecorderSettingTab', () => {
 			await tick();
 			await tick();
 
-			const options = Array.from(rowSelect('Recording format').options);
+			const options = Array.from(dropdownIn('Recording format').options);
 			expect(options.length).toBeGreaterThan(0);
 			for (const option of options) {
 				expect(option.disabled).toBe(false);
 			}
 			expect(
-				settingRow('Recording format').querySelector(
-					'.aar-format-fallback-note',
+				maybeEl(
+					rowNamed('Recording format'),
+					SETTING.formatFallbackNote,
 				),
 			).toBeNull();
 		});
