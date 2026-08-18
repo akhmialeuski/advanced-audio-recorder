@@ -193,9 +193,8 @@ options, and the first is usually the better one:
 
 1. **Move the logic out from under the API.** A function taking data and
    returning data needs no mock at all. Files in this repository that do not
-   import `obsidian` sit at 97.1% statement coverage; files that do sit at
-   93.7%, and the gap is almost entirely code that is awkward to reach through
-   a double.
+   import `obsidian` sit at 98.4% statement coverage; files that do sit at
+   96.3%, and the gap is what is awkward to reach through a double.
 2. **Add it to `tests/mocks/obsidian.ts`**, for genuine API surface -
    `Vault.process`, a new `Menu` affordance, an event type. Model the behaviour
    the plugin depends on, not the whole API, and record what happened
@@ -256,7 +255,7 @@ than the baseline.
 When it fails it names the file and the metric:
 
 ```
-regressed: src/ui/StatusBar.ts branches: 97.18% -> 91.55%
+regressed: src/player/DurationProbe.ts functions: 85.71% < baseline 100.00%
 ```
 
 Work out which of these it is:
