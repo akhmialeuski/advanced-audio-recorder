@@ -178,32 +178,78 @@ describe('parseWavLayout', () => {
 		expect(layout?.dataLength).toBe(100);
 	});
 
-	it('returns null for non-RIFF data', () => {
-		const bytes = new Uint8Array(100).fill(0x42);
-
-		expect(parseWavLayout(bytes.buffer)).toBeNull();
+	it.each([
+		{
+			name: 'the file is not RIFF at all',
+			build: (): ArrayBuffer => new Uint8Array(100).fill(0x42).buffer,
+		},
+		{
+			name: 'the RIFF is not a WAVE',
+			build: (): ArrayBuffer => {
+				const wav = buildTestWav(1, 8000, 100);
+				new Uint8Array(wav).set([0x41, 0x56, 0x49, 0x20], 8); // 'AVI '
+				return wav;
+			},
+		},
+		{
+			name: 'the file is shorter than the RIFF header',
+			build: (): ArrayBuffer => new ArrayBuffer(8),
+		},
+		{
+			name: 'the audio is compressed rather than PCM',
+			build: (): ArrayBuffer => {
+				const wav = buildTestWav(1, 8000, 100);
+				// The fmt audioFormat field, set to 0x0055 (MP3)
+				new DataView(wav).setUint16(20, 0x0055, true);
+				return wav;
+			},
+		},
+		{
+			name: 'the byte rate is zero',
+			build: (): ArrayBuffer => {
+				const wav = buildTestWav(1, 8000, 100);
+				new DataView(wav).setUint32(28, 0, true);
+				return wav;
+			},
+		},
+		{
+			name: 'the block alignment is zero',
+			build: (): ArrayBuffer => {
+				const wav = buildTestWav(1, 8000, 100);
+				new DataView(wav).setUint16(32, 0, true);
+				return wav;
+			},
+		},
+		{
+			name: 'the fmt chunk is truncated',
+			build: (): ArrayBuffer => {
+				// 'RIFF<size>WAVE' + 'fmt <size=16>' with no fmt body
+				const bytes = new Uint8Array(24);
+				const view = new DataView(bytes.buffer);
+				bytes.set([0x52, 0x49, 0x46, 0x46], 0); // 'RIFF'
+				view.setUint32(4, 16, true);
+				bytes.set([0x57, 0x41, 0x56, 0x45], 8); // 'WAVE'
+				bytes.set([0x66, 0x6d, 0x74, 0x20], 12); // 'fmt '
+				view.setUint32(16, 16, true);
+				return bytes.buffer;
+			},
+		},
+		{
+			name: 'there is no data chunk',
+			build: (): ArrayBuffer => {
+				const wav = buildTestWav(1, 8000, 0);
+				new Uint8Array(wav).set([0x4c, 0x49, 0x53, 0x54], 36); // 'LIST'
+				return wav;
+			},
+		},
+	])('refuses to split a file where $name', ({ build }) => {
+		// Splitting by byte offsets is only safe on uncompressed PCM whose
+		// header describes the layout; anything else has to fall back to the
+		// decode-and-re-encode path rather than produce a corrupt part.
+		expect(parseWavLayout(build())).toBeNull();
 	});
 
-	it('returns null for RIFF data that is not WAVE', () => {
-		const wav = buildTestWav(1, 8000, 100);
-		new Uint8Array(wav).set([0x41, 0x56, 0x49, 0x20], 8); // 'AVI '
-
-		expect(parseWavLayout(wav)).toBeNull();
-	});
-
-	it('returns null for a buffer shorter than the RIFF header', () => {
-		expect(parseWavLayout(new ArrayBuffer(8))).toBeNull();
-	});
-
-	it('returns null for compressed WAV format codes', () => {
-		const wav = buildTestWav(1, 8000, 100);
-		// Overwrite the fmt audioFormat field with 0x0055 (MP3)
-		new DataView(wav).setUint16(20, 0x0055, true);
-
-		expect(parseWavLayout(wav)).toBeNull();
-	});
-
-	it('accepts IEEE float format code', () => {
+	it('accepts IEEE float, which is uncompressed too', () => {
 		const wav = buildTestWav(1, 8000, 100);
 		new DataView(wav).setUint16(20, 0x0003, true);
 

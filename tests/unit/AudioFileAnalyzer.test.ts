@@ -210,37 +210,43 @@ describe('getAudioFileInfo', () => {
 		});
 	});
 
-	it('handles mono channels', async () => {
-		mockDecodeAudioData.mockResolvedValue({
-			duration: 60,
-			sampleRate: 44100,
-			numberOfChannels: 1,
-		});
-		const result = await getAudioFileInfo(app, file);
-		expect(result?.channels).toBe('1 (Mono)');
-	});
+	it.each([
+		{ channels: 1, shown: '1 (Mono)' },
+		{ channels: 2, shown: '2 (Stereo)' },
+		{ channels: 6, shown: '6 channels' },
+	])(
+		'names a $channels-channel layout as "$shown"',
+		async ({ channels, shown }) => {
+			// Mono and stereo have names a reader recognises; beyond that the
+			// count is the only honest description.
+			mockDecodeAudioData.mockResolvedValue({
+				duration: 60,
+				sampleRate: 44100,
+				numberOfChannels: channels,
+			});
 
-	it('handles > 2 channels', async () => {
-		mockDecodeAudioData.mockResolvedValue({
-			duration: 60,
-			sampleRate: 44100,
-			numberOfChannels: 6,
-		});
-		const result = await getAudioFileInfo(app, file);
-		expect(result?.channels).toBe('6 channels');
-	});
+			const result = await getAudioFileInfo(app, file);
 
-	it('correctly infers codecs from extensions', async () => {
-		(file as { extension: string }).extension = 'mp4';
-		let result = await getAudioFileInfo(app, file);
-		expect(result?.containerFormat).toBe('audio/mp4');
-		expect(result?.audioCodec).toBe('aac');
+			expect(result?.channels).toBe(shown);
+		},
+	);
 
-		(file as { extension: string }).extension = 'ogg';
-		result = await getAudioFileInfo(app, file);
-		expect(result?.containerFormat).toBe('audio/ogg');
-		expect(result?.audioCodec).toBe('opus/vorbis');
-	});
+	it.each([
+		{ extension: 'mp4', container: 'audio/mp4', codec: 'aac' },
+		{ extension: 'ogg', container: 'audio/ogg', codec: 'opus/vorbis' },
+	])(
+		'infers $container and $codec from a .$extension file',
+		async ({ extension, container, codec }) => {
+			// The container probe fails on these fixtures, so the extension
+			// is all that is left to describe the file with.
+			(file as { extension: string }).extension = extension;
+
+			const result = await getAudioFileInfo(app, file);
+
+			expect(result?.containerFormat).toBe(container);
+			expect(result?.audioCodec).toBe(codec);
+		},
+	);
 
 	it('formats very small files correctly', async () => {
 		(file as { stat: { size: number } }).stat.size = 500;

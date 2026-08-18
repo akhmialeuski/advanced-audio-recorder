@@ -6,10 +6,15 @@
 import { formatPlaybackRate, speedMenuItems } from 'src/player/playbackRate';
 
 describe('formatPlaybackRate', () => {
-	it('appends an x to the rate', () => {
-		expect(formatPlaybackRate(1)).toBe('1x');
-		expect(formatPlaybackRate(1.5)).toBe('1.5x');
-		expect(formatPlaybackRate(0.5)).toBe('0.5x');
+	it.each([
+		{ rate: 1, shown: '1x' },
+		{ rate: 1.5, shown: '1.5x' },
+		{ rate: 0.5, shown: '0.5x' },
+		{ rate: 2, shown: '2x' },
+	])('shows $rate as "$shown"', ({ rate, shown }) => {
+		// The label goes on a narrow button, so a trailing zero would cost a
+		// character the control does not have.
+		expect(formatPlaybackRate(rate)).toBe(shown);
 	});
 });
 
@@ -22,21 +27,22 @@ describe('speedMenuItems', () => {
 		expect(items.map((i) => i.rate)).toEqual(presets);
 	});
 
-	it('checks exactly the entry matching the current rate', () => {
-		const items = speedMenuItems(1.5, presets);
-		expect(items.filter((i) => i.checked).map((i) => i.rate)).toEqual([
-			1.5,
-		]);
-	});
+	it.each([
+		{ name: 'the rate exactly', current: 1.5, checked: [1.5] },
+		{
+			name: 'a rate the element drifted off by a rounding error',
+			current: 1.5000000001,
+			checked: [1.5],
+		},
+		{ name: 'a rate no preset offers', current: 1.23, checked: [] },
+	])('ticks $name', ({ current, checked }) => {
+		// The element's playbackRate comes back from the browser, not from
+		// the preset that was set, so an exact comparison ticks nothing.
+		const items = speedMenuItems(current, presets);
 
-	it('tolerates floating-point drift when matching', () => {
-		const items = speedMenuItems(1.5000000001, presets);
-		expect(items.find((i) => i.rate === 1.5)?.checked).toBe(true);
-	});
-
-	it('checks nothing when the current rate matches no preset', () => {
-		const items = speedMenuItems(1.23, presets);
-		expect(items.some((i) => i.checked)).toBe(false);
+		expect(items.filter((item) => item.checked).map((i) => i.rate)).toEqual(
+			checked,
+		);
 	});
 
 	it('returns an empty list for no presets', () => {

@@ -180,86 +180,59 @@ describe('AudioEncoder', () => {
 			expect(result.type).toBe('audio/webm');
 		});
 
-		it('encodes OGG using Mediabunny with Opus codec', async () => {
-			const { OggOutputFormat, AudioBufferSource } =
-				jest.requireMock('mediabunny');
-			const buffer = createMockAudioBuffer(1, 4096, 44100);
-
-			const result = await encodeAudioBuffer(buffer, {
-				...defaultOptions,
+		it.each([
+			{
 				format: 'ogg',
-			});
-
-			expect(OggOutputFormat).toHaveBeenCalled();
-			expect(AudioBufferSource).toHaveBeenCalledWith(
-				expect.objectContaining({ codec: 'opus' }),
-			);
-			expect(result.type).toBe('audio/ogg');
-		});
-
-		it('encodes MP4 using Mediabunny with AAC codec', async () => {
-			const { Mp4OutputFormat, AudioBufferSource } =
-				jest.requireMock('mediabunny');
-			const buffer = createMockAudioBuffer(2, 4096, 44100);
-
-			const result = await encodeAudioBuffer(buffer, {
-				...defaultOptions,
+				container: 'OggOutputFormat',
+				codec: 'opus',
+				mime: 'audio/ogg',
+			},
+			{
 				format: 'mp4',
-			});
-
-			expect(Mp4OutputFormat).toHaveBeenCalled();
-			expect(AudioBufferSource).toHaveBeenCalledWith(
-				expect.objectContaining({ codec: 'aac' }),
-			);
-			expect(result.type).toBe('audio/mp4');
-		});
-
-		it('encodes M4A using Mp4OutputFormat with AAC codec', async () => {
-			const { Mp4OutputFormat, AudioBufferSource } =
-				jest.requireMock('mediabunny');
-			const buffer = createMockAudioBuffer(1, 4096, 44100);
-
-			const result = await encodeAudioBuffer(buffer, {
-				...defaultOptions,
+				container: 'Mp4OutputFormat',
+				codec: 'aac',
+				mime: 'audio/mp4',
+			},
+			{
 				format: 'm4a',
-			});
-
-			expect(Mp4OutputFormat).toHaveBeenCalled();
-			expect(AudioBufferSource).toHaveBeenCalledWith(
-				expect.objectContaining({ codec: 'aac' }),
-			);
-			expect(result.type).toBe('audio/m4a');
-		});
-
-		it('encodes AAC using Mp4OutputFormat', async () => {
-			const { Mp4OutputFormat } = jest.requireMock('mediabunny');
-			const buffer = createMockAudioBuffer(1, 4096, 44100);
-
-			const result = await encodeAudioBuffer(buffer, {
-				...defaultOptions,
+				container: 'Mp4OutputFormat',
+				codec: 'aac',
+				mime: 'audio/m4a',
+			},
+			{
 				format: 'aac',
-			});
-
-			expect(Mp4OutputFormat).toHaveBeenCalled();
-			expect(result.type).toBe('audio/aac');
-		});
-
-		it('encodes FLAC using FlacOutputFormat', async () => {
-			const { FlacOutputFormat, AudioBufferSource } =
-				jest.requireMock('mediabunny');
-			const buffer = createMockAudioBuffer(1, 4096, 44100);
-
-			const result = await encodeAudioBuffer(buffer, {
-				...defaultOptions,
+				container: 'Mp4OutputFormat',
+				codec: 'aac',
+				mime: 'audio/aac',
+			},
+			{
 				format: 'flac',
-			});
+				container: 'FlacOutputFormat',
+				codec: 'flac',
+				mime: 'audio/flac',
+			},
+		])(
+			'encodes $format into a $container as $codec',
+			async ({ format, container, codec, mime }) => {
+				// The container and the codec are chosen together: an mp4
+				// holding opus, or an ogg holding aac, is a file the player
+				// cannot open even though the encode reported success.
+				const mediabunny =
+					jest.requireMock<Record<string, jest.Mock>>('mediabunny');
+				const buffer = createMockAudioBuffer(1, 4096, 44100);
 
-			expect(FlacOutputFormat).toHaveBeenCalled();
-			expect(AudioBufferSource).toHaveBeenCalledWith(
-				expect.objectContaining({ codec: 'flac' }),
-			);
-			expect(result.type).toBe('audio/flac');
-		});
+				const result = await encodeAudioBuffer(buffer, {
+					...defaultOptions,
+					format,
+				});
+
+				expect(mediabunny[container]).toHaveBeenCalled();
+				expect(mediabunny['AudioBufferSource']).toHaveBeenCalledWith(
+					expect.objectContaining({ codec }),
+				);
+				expect(result.type).toBe(mime);
+			},
+		);
 
 		it('throws EncodingError for unsupported format', async () => {
 			const buffer = createMockAudioBuffer(1, 1024, 44100);

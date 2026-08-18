@@ -25,14 +25,27 @@ describe('LLM_PROVIDER_IDS as single source of truth', () => {
 		});
 	});
 
-	it('matches each provider class id to its constant', () => {
-		expect(new OpenAiCompatibleLlmProvider(CONFIG).id).toBe(
-			LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
-		);
-		expect(new AnthropicLlmProvider(CONFIG).id).toBe(
-			LLM_PROVIDER_IDS.ANTHROPIC,
-		);
-		expect(new GeminiLlmProvider(CONFIG).id).toBe(LLM_PROVIDER_IDS.GEMINI);
+	it.each([
+		{
+			name: 'OpenAI-compatible',
+			build: (): { id: string } =>
+				new OpenAiCompatibleLlmProvider(CONFIG),
+			id: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
+		},
+		{
+			name: 'Anthropic',
+			build: (): { id: string } => new AnthropicLlmProvider(CONFIG),
+			id: LLM_PROVIDER_IDS.ANTHROPIC,
+		},
+		{
+			name: 'Gemini',
+			build: (): { id: string } => new GeminiLlmProvider(CONFIG),
+			id: LLM_PROVIDER_IDS.GEMINI,
+		},
+	])('the $name provider answers to its own constant', ({ build, id }) => {
+		// The id is what the settings store and the factory match on; a class
+		// that hand-typed it would silently become unreachable.
+		expect(build().id).toBe(id);
 	});
 
 	it('keys the label map exactly by the provider ids', () => {

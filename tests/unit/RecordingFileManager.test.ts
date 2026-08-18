@@ -4,7 +4,7 @@
  * @module tests/unit/RecordingFileManager.test
  */
 
-import type { App } from 'obsidian';
+import type { App, TFile } from 'obsidian';
 import {
 	DEFAULT_SETTINGS,
 	type AudioRecorderSettings,
@@ -20,6 +20,7 @@ import {
 	removeTemporaryArtifacts,
 	cleanupIntermediateFiles,
 } from 'src/audio/RecordingFileManager';
+import { partial } from '../helpers/doubles';
 import { partialApp } from '../helpers/obsidianMock';
 
 // Polyfill Blob.arrayBuffer for jsdom if missing
@@ -69,64 +70,38 @@ describe('RecordingFileManager', () => {
 	// getActiveFileDirectory
 	// -----------------------------------------------------------------------
 	describe('getActiveFileDirectory', () => {
-		it('returns the directory of the active .md file', () => {
-			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
+		it.each([
+			{
+				name: 'a note in a folder',
 				path: 'Notes/Daily/2024-01-01.md',
-			});
-
-			const result = getActiveFileDirectory(mockApp);
-
-			expect(result).toBe('Notes/Daily');
-		});
-
-		it('handles .MD extension (case-insensitive)', () => {
-			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
+				expected: 'Notes/Daily',
+			},
+			{
+				name: 'a deeply nested note',
+				path: 'a/b/c/d/note.md',
+				expected: 'a/b/c/d',
+			},
+			{
+				name: 'a note whose extension is upper-case',
 				path: 'Notes/README.MD',
-			});
-
-			const result = getActiveFileDirectory(mockApp);
-
-			expect(result).toBe('Notes');
-		});
-
-		it('returns empty string for a non-.md active file', () => {
-			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
+				expected: 'Notes',
+			},
+			{ name: 'a note at the vault root', path: 'note.md', expected: '' },
+			{
+				name: 'a file that is not a note',
 				path: 'Assets/image.png',
-			});
-
-			const result = getActiveFileDirectory(mockApp);
-
-			expect(result).toBe('');
-		});
-
-		it('returns empty string when no file is active', () => {
-			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue(
-				null,
+				expected: '',
+			},
+			{ name: 'no active file at all', path: null, expected: '' },
+		])('answers "$expected" for $name', ({ path, expected }) => {
+			// This decides where a recording lands when "save near the active
+			// file" is on, so anything that is not a note in a folder has to
+			// fall back to the configured folder rather than guess.
+			jest.mocked(mockApp.workspace.getActiveFile).mockReturnValue(
+				path === null ? null : partial<TFile>({ path }),
 			);
 
-			const result = getActiveFileDirectory(mockApp);
-
-			expect(result).toBe('');
-		});
-
-		it('returns empty string for a root-level .md file', () => {
-			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
-				path: 'note.md',
-			});
-
-			const result = getActiveFileDirectory(mockApp);
-
-			expect(result).toBe('');
-		});
-
-		it('returns deeply nested directory path', () => {
-			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
-				path: 'a/b/c/d/note.md',
-			});
-
-			const result = getActiveFileDirectory(mockApp);
-
-			expect(result).toBe('a/b/c/d');
+			expect(getActiveFileDirectory(mockApp)).toBe(expected);
 		});
 	});
 

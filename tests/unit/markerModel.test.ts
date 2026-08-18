@@ -155,23 +155,29 @@ describe('markerModel - edge and negative cases', () => {
 		expect(previousChapterTime([], 5)).toBeNull();
 	});
 
-	it('parseMarkers drops entries with a non-finite or missing time', () => {
-		expect(
-			parseMarkers([
-				{ id: 'a', time: Number.NaN, kind: 'bookmark' },
-				{ id: 'b', time: Number.POSITIVE_INFINITY, kind: 'chapter' },
-				{ id: 'c', kind: 'bookmark' },
-			]),
-		).toEqual([]);
-	});
-
-	it('parseMarkers drops entries with a missing or non-string id', () => {
-		expect(
-			parseMarkers([
-				{ time: 1, kind: 'bookmark' },
-				{ id: 5, time: 1, kind: 'bookmark' },
-			]),
-		).toEqual([]);
+	it.each([
+		{
+			name: 'a time that is not a number',
+			entry: { id: 'a', time: Number.NaN, kind: 'bookmark' },
+		},
+		{
+			name: 'a time that is infinite',
+			entry: { id: 'b', time: Number.POSITIVE_INFINITY, kind: 'chapter' },
+		},
+		{ name: 'no time at all', entry: { id: 'c', kind: 'bookmark' } },
+		{ name: 'no id', entry: { time: 1, kind: 'bookmark' } },
+		{
+			name: 'an id that is not a string',
+			entry: { id: 5, time: 1, kind: 'bookmark' },
+		},
+		{
+			name: 'a kind nothing renders',
+			entry: { id: 'd', time: 1, kind: 'segment' },
+		},
+	])('parseMarkers drops an entry with $name', ({ entry }) => {
+		// A sidecar can be hand-edited or written by an older version; an
+		// unusable marker has to be dropped rather than crash the player.
+		expect(parseMarkers([entry])).toEqual([]);
 	});
 
 	it('parseMarkers coerces a non-string label to an empty string', () => {
