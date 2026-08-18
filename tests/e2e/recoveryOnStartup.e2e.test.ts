@@ -9,10 +9,7 @@
  * @module tests/e2e/recoveryOnStartup.e2e.test
  */
 
-import { App } from 'obsidian';
-import type { PluginManifest } from 'obsidian';
 import AudioRecorderPlugin from 'src/main';
-import { RecordingStatus } from 'src/types';
 import { at } from '../helpers/assertions';
 import { noticeMessages } from '../mocks/obsidian';
 import { RecoveryModal } from 'src/ui/RecoveryModal';
@@ -21,53 +18,21 @@ import {
 	discardSession,
 	recoverSession,
 } from 'src/recording/RecoveryService';
-import { partial } from '../helpers/doubles';
+import { loadPlugin } from '../helpers/pluginHarness';
 
-jest.mock('src/recording/RecordingManager', () => ({
-	RecordingManager: jest.fn().mockImplementation(() => ({
-		toggleRecording: jest.fn().mockResolvedValue(undefined),
-		togglePauseResume: jest.fn(),
-		stopRecording: jest.fn().mockResolvedValue(undefined),
-		cleanup: jest.fn(),
-		updateSettings: jest.fn(),
-		getStatus: jest.fn(() => RecordingStatus.Idle),
-		canDropMarker: jest.fn(() => false),
-		captureMarkerDraft: jest.fn(() => null),
-		getElapsedMs: jest.fn(() => 0),
-		getRecordedBytes: jest.fn(() => 0),
-		getInputLevel: jest.fn(() => 0),
-	})),
-}));
-jest.mock('src/ui/ContextMenu', () => ({
-	ContextMenu: jest.fn().mockImplementation(() => ({ register: jest.fn() })),
-}));
-jest.mock('src/player/EnhancedPlayerRegistrar', () => ({
-	EnhancedPlayerRegistrar: jest.fn().mockImplementation(() => ({
-		register: jest.fn(),
-		dispose: jest.fn(),
-		refresh: jest.fn(),
-		subscribePlayback: jest.fn(),
-		reloadMarkersFor: jest.fn(),
-		primeSavedRecordingsForEnhancement: jest.fn(),
-	})),
-}));
+jest.mock('src/recording/RecordingManager', () =>
+	require('../mocks/modules/recordingManager'),
+);
+jest.mock('src/ui/ContextMenu', () => require('../mocks/modules/contextMenu'));
+jest.mock('src/player/EnhancedPlayerRegistrar', () =>
+	require('../mocks/modules/enhancedPlayerRegistrar'),
+);
 jest.mock('src/ui/RecoveryModal', () => ({
 	RecoveryModal: jest.fn().mockImplementation(() => ({ open: jest.fn() })),
 }));
-jest.mock('src/recording/RecoveryService', () => ({
-	collectRecoverableSessions: jest.fn().mockResolvedValue([]),
-	recoverSession: jest
-		.fn()
-		.mockResolvedValue({ recoveredPaths: [], failedTracks: [] }),
-	discardSession: jest.fn().mockResolvedValue([]),
-}));
-
-const MANIFEST = partial<PluginManifest>({
-	id: 'advanced-audio-recorder',
-	name: 'Advanced Audio Recorder',
-	version: '2.2.2',
-	dir: 'config-dir/plugins/advanced-audio-recorder',
-});
+jest.mock('src/recording/RecoveryService', () =>
+	require('../mocks/modules/recoveryService'),
+);
 
 /** A journal entry describing a session that never finished. */
 function interruptedSession(id: string): { id: string } {
@@ -81,12 +46,7 @@ async function loadWithSessions(
 	jest.mocked(collectRecoverableSessions).mockResolvedValue(
 		sessions as never,
 	);
-	const plugin = new AudioRecorderPlugin(new App(), MANIFEST);
-	const store = plugin as unknown as Record<string, unknown>;
-	store.loadData = jest.fn().mockResolvedValue(null);
-	store.saveData = jest.fn().mockResolvedValue(undefined);
-	await plugin.onload();
-	return plugin;
+	return (await loadPlugin()).plugin;
 }
 
 /** The choices the recovery dialog was opened with. */
@@ -126,12 +86,7 @@ describe('starting up with an interrupted session', () => {
 			new Error('journal unreadable'),
 		);
 
-		const plugin = new AudioRecorderPlugin(new App(), MANIFEST);
-		const store = plugin as unknown as Record<string, unknown>;
-		store.loadData = jest.fn().mockResolvedValue(null);
-		store.saveData = jest.fn().mockResolvedValue(undefined);
-
-		await expect(plugin.onload()).resolves.toBeUndefined();
+		await expect(loadPlugin()).resolves.toBeDefined();
 		expect(consoleError).toHaveBeenCalledWith(
 			expect.stringContaining('Recovery check failed'),
 			expect.any(Error),

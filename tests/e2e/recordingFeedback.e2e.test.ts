@@ -10,8 +10,6 @@
  * @module tests/e2e/recordingFeedback.e2e.test
  */
 
-import { App } from 'obsidian';
-import type { PluginManifest } from 'obsidian';
 import AudioRecorderPlugin from 'src/main';
 import { RecordingStatus } from 'src/types';
 import type { SaveProgress } from 'src/types';
@@ -25,73 +23,44 @@ import { asMockPlugin } from '../helpers/obsidianMock';
 import { setPlatform, useDesktopPlatform } from '../helpers/platform';
 import { BANNER, PLAYER, STATUS } from '../helpers/selectors';
 import { addObsidianDomExtensions } from '../mocks/domExtensions';
-import { partial } from '../helpers/doubles';
+import { loadPlugin } from '../helpers/pluginHarness';
+import type { RecorderDouble } from '../mocks/modules/recordingManager';
 
-jest.mock('src/recording/RecordingManager', () => ({
-	RecordingManager: jest.fn().mockImplementation(() => ({
-		toggleRecording: jest.fn().mockResolvedValue(undefined),
-		togglePauseResume: jest.fn(),
-		stopRecording: jest.fn().mockResolvedValue(undefined),
-		cleanup: jest.fn(),
-		updateSettings: jest.fn(),
-		getStatus: jest.fn(() => RecordingStatus.Recording),
-		canDropMarker: jest.fn(() => true),
-		captureMarkerDraft: jest.fn(() => ({ id: 'draft' })),
-		getElapsedMs: jest.fn(() => 65_000),
-		getRecordedBytes: jest.fn(() => 2048),
-		getInputLevel: jest.fn(() => 0.5),
-	})),
-}));
-jest.mock('src/ui/ContextMenu', () => ({
-	ContextMenu: jest.fn().mockImplementation(() => ({ register: jest.fn() })),
-}));
-jest.mock('src/player/EnhancedPlayerRegistrar', () => ({
-	EnhancedPlayerRegistrar: jest.fn().mockImplementation(() => ({
-		register: jest.fn(),
-		dispose: jest.fn(),
-		refresh: jest.fn(),
-		subscribePlayback: jest.fn(),
-		reloadMarkersFor: jest.fn(),
-		primeSavedRecordingsForEnhancement: jest.fn(),
-	})),
-}));
+jest.mock('src/recording/RecordingManager', () =>
+	require('../mocks/modules/recordingManager'),
+);
+jest.mock('src/ui/ContextMenu', () => require('../mocks/modules/contextMenu'));
+jest.mock('src/player/EnhancedPlayerRegistrar', () =>
+	require('../mocks/modules/enhancedPlayerRegistrar'),
+);
 jest.mock('src/ui/MarkerModal', () => ({
 	RecordingMarkerModal: jest
 		.fn()
 		.mockImplementation(() => ({ open: jest.fn() })),
 }));
-jest.mock('src/recording/RecoveryService', () => ({
-	collectRecoverableSessions: jest.fn().mockResolvedValue([]),
-	recoverSession: jest
-		.fn()
-		.mockResolvedValue({ recoveredPaths: [], failedTracks: [] }),
-	discardSession: jest.fn().mockResolvedValue([]),
-}));
-
-const MANIFEST = partial<PluginManifest>({
-	id: 'advanced-audio-recorder',
-	name: 'Advanced Audio Recorder',
-	version: '2.2.2',
-	dir: 'config-dir/plugins/advanced-audio-recorder',
-});
-
-/** The recording manager the plugin built, whose methods are all spies. */
-interface RecorderDouble {
-	toggleRecording: jest.Mock;
-	togglePauseResume: jest.Mock;
-	stopRecording: jest.Mock;
-	getStatus: jest.Mock;
-	canDropMarker: jest.Mock;
-	captureMarkerDraft: jest.Mock;
-	getElapsedMs: jest.Mock;
-	getRecordedBytes: jest.Mock;
-	getInputLevel: jest.Mock;
-}
+jest.mock('src/recording/RecoveryService', () =>
+	require('../mocks/modules/recoveryService'),
+);
 
 /** The recording manager the plugin built, whose methods are all spies. */
 function recorder(): RecorderDouble {
-	return at(jest.mocked(RecordingManager).mock.results, 0)
-		.value as RecorderDouble;
+	return at(jest.mocked(RecordingManager).mock.results, 0).value;
+}
+
+/**
+ * Loads the plugin over a recorder that is mid-recording with something to
+ * report, which is the state every test here is about.
+ * @returns The loaded plugin
+ */
+async function loadRecording(): Promise<AudioRecorderPlugin> {
+	const { plugin } = await loadPlugin();
+	const live = recorder();
+	live.canDropMarker.mockReturnValue(true);
+	live.captureMarkerDraft.mockReturnValue({ id: 'draft' });
+	live.getElapsedMs.mockReturnValue(65_000);
+	live.getRecordedBytes.mockReturnValue(2048);
+	live.getInputLevel.mockReturnValue(0.5);
+	return plugin;
 }
 
 /** The status-change callback the plugin handed the recording manager. */
@@ -99,16 +68,6 @@ function reportStatus(status: RecordingStatus, progress?: SaveProgress): void {
 	const onStatusChange = at(jest.mocked(RecordingManager).mock.calls, 0)[2];
 	recorder().getStatus.mockReturnValue(status);
 	onStatusChange(status, progress);
-}
-
-/** Loads the plugin the way Obsidian does and hands it back. */
-async function loadPlugin(): Promise<AudioRecorderPlugin> {
-	const plugin = new AudioRecorderPlugin(new App(), MANIFEST);
-	const store = plugin as unknown as Record<string, unknown>;
-	store.loadData = jest.fn().mockResolvedValue(null);
-	store.saveData = jest.fn().mockResolvedValue(undefined);
-	await plugin.onload();
-	return plugin;
 }
 
 /** The status bar element the plugin renders into. */
@@ -129,7 +88,7 @@ afterEach(() => {
 
 describe('the ribbon icon', () => {
 	it('starts and stops a recording when it is clicked', async () => {
-		const plugin = await loadPlugin();
+		const plugin = await loadRecording();
 
 		at(asMockPlugin(plugin).ribbonIcons, 0).callback(
 			new MouseEvent('click'),
@@ -143,7 +102,7 @@ describe('the ribbon icon', () => {
 		{ name: 'paused', status: RecordingStatus.Paused, active: true },
 		{ name: 'idle', status: RecordingStatus.Idle, active: false },
 	])('shows the $name state on the icon', async ({ status, active }) => {
-		const plugin = await loadPlugin();
+		const plugin = await loadRecording();
 
 		reportStatus(status);
 
@@ -157,7 +116,7 @@ describe('the ribbon icon', () => {
 
 describe('the status bar during a recording', () => {
 	it('says it is recording, with the controls to stop it', async () => {
-		const plugin = await loadPlugin();
+		const plugin = await loadRecording();
 
 		reportStatus(RecordingStatus.Recording);
 
@@ -173,7 +132,7 @@ describe('the status bar during a recording', () => {
 	] satisfies { label: string; command: keyof RecorderDouble }[])(
 		'$label reaches the recorder',
 		async ({ label, command }) => {
-			const plugin = await loadPlugin();
+			const plugin = await loadRecording();
 			reportStatus(RecordingStatus.Recording);
 
 			control(statusBar(plugin), label).dispatchEvent(
@@ -185,7 +144,7 @@ describe('the status bar during a recording', () => {
 	);
 
 	it('offers a marker button, which opens the marker dialog', async () => {
-		const plugin = await loadPlugin();
+		const plugin = await loadRecording();
 		reportStatus(RecordingStatus.Recording);
 
 		control(statusBar(plugin), 'Add marker').dispatchEvent(
@@ -198,7 +157,7 @@ describe('the status bar during a recording', () => {
 	it('offers no marker button when markers are switched off', async () => {
 		// Markers are surfaced only by the enhanced player; a button that
 		// drops them where nothing shows them would be a dead end.
-		const plugin = await loadPlugin();
+		const plugin = await loadRecording();
 		plugin.settings.playerEnableMarkers = false;
 
 		reportStatus(RecordingStatus.Recording);
@@ -207,7 +166,7 @@ describe('the status bar during a recording', () => {
 	});
 
 	it('says nothing happened when the recorder has no draft to give', async () => {
-		const plugin = await loadPlugin();
+		const plugin = await loadRecording();
 		reportStatus(RecordingStatus.Recording);
 		recorder().captureMarkerDraft.mockReturnValue(null);
 
@@ -219,7 +178,7 @@ describe('the status bar during a recording', () => {
 	});
 
 	it('shows the save progress once the recording stops', async () => {
-		const plugin = await loadPlugin();
+		const plugin = await loadRecording();
 
 		reportStatus(RecordingStatus.Saving, {
 			percent: 40,
@@ -232,7 +191,7 @@ describe('the status bar during a recording', () => {
 	});
 
 	it('clears itself when the recording is done', async () => {
-		const plugin = await loadPlugin();
+		const plugin = await loadRecording();
 		reportStatus(RecordingStatus.Recording);
 
 		reportStatus(RecordingStatus.Idle);
@@ -252,7 +211,7 @@ describe('the live indicators', () => {
 	});
 
 	it('ticks the elapsed time, the size, and the input level', async () => {
-		const plugin = await loadPlugin();
+		const plugin = await loadRecording();
 		reportStatus(RecordingStatus.Recording);
 
 		jest.advanceTimersByTime(2000);
@@ -270,7 +229,7 @@ describe('the live indicators', () => {
 	it('does not tick while nothing is being recorded', async () => {
 		// The interval runs for the whole session; asking the recorder for
 		// numbers it does not have would repaint the bar over a playback.
-		const plugin = await loadPlugin();
+		const plugin = await loadRecording();
 		reportStatus(RecordingStatus.Idle);
 		recorder().getElapsedMs.mockClear();
 
@@ -283,7 +242,7 @@ describe('the live indicators', () => {
 
 describe('the mobile recording banner', () => {
 	it('appears while recording on a device that uses it', async () => {
-		const plugin = await loadPlugin();
+		const plugin = await loadRecording();
 		setPlatform({ isMobile: true, isMobileApp: true });
 
 		reportStatus(RecordingStatus.Recording);
@@ -293,7 +252,7 @@ describe('the mobile recording banner', () => {
 	});
 
 	it('marks itself paused while the recording is', async () => {
-		await loadPlugin();
+		await loadRecording();
 		setPlatform({ isMobile: true, isMobileApp: true });
 
 		reportStatus(RecordingStatus.Paused);
@@ -304,7 +263,7 @@ describe('the mobile recording banner', () => {
 	});
 
 	it('stops the recording from its own stop control', async () => {
-		await loadPlugin();
+		await loadRecording();
 		setPlatform({ isMobile: true, isMobileApp: true });
 		reportStatus(RecordingStatus.Recording);
 
@@ -314,7 +273,7 @@ describe('the mobile recording banner', () => {
 	});
 
 	it('leaves when the recording does', async () => {
-		await loadPlugin();
+		await loadRecording();
 		setPlatform({ isMobile: true, isMobileApp: true });
 		reportStatus(RecordingStatus.Recording);
 
@@ -324,7 +283,7 @@ describe('the mobile recording banner', () => {
 	});
 
 	it('stays away on a device that shows the status bar instead', async () => {
-		await loadPlugin();
+		await loadRecording();
 		setPlatform({ isMobile: false, isMobileApp: false });
 
 		reportStatus(RecordingStatus.Recording);
@@ -333,7 +292,7 @@ describe('the mobile recording banner', () => {
 	});
 
 	it('stays away when the user switched it off', async () => {
-		const plugin = await loadPlugin();
+		const plugin = await loadRecording();
 		setPlatform({ isMobile: true, isMobileApp: true });
 		plugin.settings.mobileRecordingBanner = false;
 
@@ -371,7 +330,7 @@ describe('playback taking over the status bar', () => {
 	}
 
 	it('shows the transport while nothing is being recorded', async () => {
-		const plugin = await loadPlugin();
+		const plugin = await loadRecording();
 		reportStatus(RecordingStatus.Idle);
 
 		reportPlayback(plugin);
@@ -381,7 +340,7 @@ describe('playback taking over the status bar', () => {
 	});
 
 	it('gives way to a recording that starts under it', async () => {
-		const plugin = await loadPlugin();
+		const plugin = await loadRecording();
 		reportStatus(RecordingStatus.Idle);
 		reportPlayback(plugin);
 
@@ -405,7 +364,7 @@ describe('dropping a marker from the palette', () => {
 			kind: MARKER_KIND.chapter,
 		},
 	])('drops $name at the current position', async ({ id, kind }) => {
-		const plugin = await loadPlugin();
+		const plugin = await loadRecording();
 		reportStatus(RecordingStatus.Recording);
 
 		asMockPlugin(plugin).invokeCommand(id);
@@ -418,7 +377,7 @@ describe('dropping a marker from the palette', () => {
 		COMMAND_IDS.addRecordingBookmark,
 		COMMAND_IDS.addRecordingChapter,
 	])('hides %s while no recording can take one', async (id) => {
-		const plugin = await loadPlugin();
+		const plugin = await loadRecording();
 		recorder().canDropMarker.mockReturnValue(false);
 
 		expect(asMockPlugin(plugin).invokeCommand(id)).toBe(false);

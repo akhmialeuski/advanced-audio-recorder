@@ -10,10 +10,8 @@
  */
 
 import { App } from 'obsidian';
-import type { PluginManifest } from 'obsidian';
 import AudioRecorderPlugin from 'src/main';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
-import { RecordingStatus } from 'src/types';
 import type { RecordingSaveResult } from 'src/types';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { at } from '../helpers/assertions';
@@ -22,58 +20,26 @@ import { asMockVault } from '../helpers/obsidianMock';
 import { noticeMessages } from '../mocks/obsidian';
 import { TranscriptionModal } from 'src/ui/TranscriptionModal';
 import { RecordingManager } from 'src/recording/RecordingManager';
-import { partial } from '../helpers/doubles';
+import { loadPlugin } from '../helpers/pluginHarness';
 
-jest.mock('src/recording/RecordingManager', () => ({
-	RecordingManager: jest.fn().mockImplementation(() => ({
-		toggleRecording: jest.fn().mockResolvedValue(undefined),
-		togglePauseResume: jest.fn(),
-		stopRecording: jest.fn().mockResolvedValue(undefined),
-		cleanup: jest.fn(),
-		updateSettings: jest.fn(),
-		getStatus: jest.fn(() => RecordingStatus.Idle),
-		canDropMarker: jest.fn(() => false),
-		captureMarkerDraft: jest.fn(() => null),
-		getElapsedMs: jest.fn(() => 0),
-		getRecordedBytes: jest.fn(() => 0),
-		getInputLevel: jest.fn(() => 0),
-	})),
-}));
-jest.mock('src/ui/ContextMenu', () => ({
-	ContextMenu: jest.fn().mockImplementation(() => ({ register: jest.fn() })),
-}));
-jest.mock('src/player/EnhancedPlayerRegistrar', () => ({
-	EnhancedPlayerRegistrar: jest.fn().mockImplementation(() => ({
-		register: jest.fn(),
-		dispose: jest.fn(),
-		refresh: jest.fn(),
-		subscribePlayback: jest.fn(),
-		reloadMarkersFor: jest.fn(),
-		primeSavedRecordingsForEnhancement: jest.fn(),
-	})),
-}));
+jest.mock('src/recording/RecordingManager', () =>
+	require('../mocks/modules/recordingManager'),
+);
+jest.mock('src/ui/ContextMenu', () => require('../mocks/modules/contextMenu'));
+jest.mock('src/player/EnhancedPlayerRegistrar', () =>
+	require('../mocks/modules/enhancedPlayerRegistrar'),
+);
 jest.mock('src/ui/TranscriptionModal', () => ({
 	TranscriptionModal: jest.fn().mockImplementation(() => ({
 		open: jest.fn(),
 	})),
 }));
-jest.mock('src/recording/RecoveryService', () => ({
-	collectRecoverableSessions: jest.fn().mockResolvedValue([]),
-	recoverSession: jest
-		.fn()
-		.mockResolvedValue({ recoveredPaths: [], failedTracks: [] }),
-	discardSession: jest.fn().mockResolvedValue([]),
-}));
+jest.mock('src/recording/RecoveryService', () =>
+	require('../mocks/modules/recoveryService'),
+);
 jest.mock('src/recording/silentChannelDetector', () => ({
 	detectSilentChannel: jest.fn().mockResolvedValue(null),
 }));
-
-const MANIFEST = partial<PluginManifest>({
-	id: 'advanced-audio-recorder',
-	name: 'Advanced Audio Recorder',
-	version: '2.2.2',
-	dir: 'config-dir/plugins/advanced-audio-recorder',
-});
 
 /** Settings that would auto-transcribe, so a case states only what it changes. */
 function transcribingSettings(
@@ -88,7 +54,7 @@ function transcribingSettings(
 }
 
 /** Loads a plugin whose vault holds the recording that was just saved. */
-async function loadPlugin(
+async function loadWithRecording(
 	settings: Partial<AudioRecorderSettings>,
 	options: { seedRecording?: boolean } = {},
 ): Promise<AudioRecorderPlugin> {
@@ -96,12 +62,7 @@ async function loadPlugin(
 	if (options.seedRecording !== false) {
 		asMockVault(app.vault).seed([{ path: 'Recordings/take.webm' }]);
 	}
-	const plugin = new AudioRecorderPlugin(app, MANIFEST);
-	const store = plugin as unknown as Record<string, unknown>;
-	store.loadData = jest.fn().mockResolvedValue(settings);
-	store.saveData = jest.fn().mockResolvedValue(undefined);
-	await plugin.onload();
-	return plugin;
+	return (await loadPlugin(settings, app)).plugin;
 }
 
 /** Reports a finished recording through the callback the plugin registered. */
@@ -123,7 +84,7 @@ beforeEach(() => {
 
 describe('a recording that should be transcribed', () => {
 	it('opens the transcription dialog over the file that was saved', async () => {
-		await loadPlugin(transcribingSettings());
+		await loadWithRecording(transcribingSettings());
 
 		reportSaved();
 
@@ -133,7 +94,7 @@ describe('a recording that should be transcribed', () => {
 	});
 
 	it('starts the run itself rather than waiting to be asked', async () => {
-		await loadPlugin(transcribingSettings());
+		await loadWithRecording(transcribingSettings());
 
 		reportSaved();
 
@@ -142,7 +103,7 @@ describe('a recording that should be transcribed', () => {
 	});
 
 	it('tells the dialog which note the recording went into', async () => {
-		await loadPlugin(transcribingSettings());
+		await loadWithRecording(transcribingSettings());
 
 		reportSaved({ notePath: 'Notes/meeting.md' });
 
@@ -151,7 +112,7 @@ describe('a recording that should be transcribed', () => {
 	});
 
 	it('opens the dialog it built', async () => {
-		await loadPlugin(transcribingSettings());
+		await loadWithRecording(transcribingSettings());
 
 		reportSaved();
 
@@ -161,7 +122,7 @@ describe('a recording that should be transcribed', () => {
 	});
 
 	it('transcribes the first file of a multi-track recording', async () => {
-		await loadPlugin(transcribingSettings());
+		await loadWithRecording(transcribingSettings());
 
 		reportSaved({
 			audioPaths: ['Recordings/take.webm', 'Recordings/take-2.webm'],
@@ -183,7 +144,7 @@ describe('a recording that should not be transcribed', () => {
 			settings: transcribingSettings({ transcribeOnSave: false }),
 		},
 	])('stays out of the way when $name', async ({ settings }) => {
-		await loadPlugin(settings);
+		await loadWithRecording(settings);
 
 		reportSaved();
 
@@ -191,7 +152,7 @@ describe('a recording that should not be transcribed', () => {
 	});
 
 	it('stays out of the way when the recording produced no audio', async () => {
-		await loadPlugin(transcribingSettings());
+		await loadWithRecording(transcribingSettings());
 
 		reportSaved({ audioPaths: [] });
 
@@ -199,7 +160,9 @@ describe('a recording that should not be transcribed', () => {
 	});
 
 	it('stays out of the way when the saved file is not in the vault yet', async () => {
-		await loadPlugin(transcribingSettings(), { seedRecording: false });
+		await loadWithRecording(transcribingSettings(), {
+			seedRecording: false,
+		});
 
 		reportSaved();
 
@@ -212,7 +175,7 @@ describe('a recording on a device that cannot run the chosen engine', () => {
 		// A synced desktop config can select local whisper.cpp, which no
 		// mobile device can run: auto-starting would pop a failing dialog
 		// after every single recording.
-		await loadPlugin(
+		await loadWithRecording(
 			transcribingSettings({
 				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
 			}),
@@ -230,7 +193,7 @@ describe('a recording on a device that cannot run the chosen engine', () => {
 	});
 
 	it('names the way out, not only the problem', async () => {
-		await loadPlugin(
+		await loadWithRecording(
 			transcribingSettings({
 				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
 			}),
@@ -247,7 +210,7 @@ describe('a recording on a device that cannot run the chosen engine', () => {
 	});
 
 	it('runs the same engine happily on a device that supports it', async () => {
-		await loadPlugin(
+		await loadWithRecording(
 			transcribingSettings({
 				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
 			}),

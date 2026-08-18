@@ -12,66 +12,30 @@
  * @module tests/e2e/pluginLifecycle.e2e.test
  */
 
-import { App } from 'obsidian';
-import type { PluginManifest } from 'obsidian';
-import AudioRecorderPlugin from 'src/main';
 import { COMMAND_IDS } from 'src/constants';
-import { RecordingStatus } from 'src/types';
 import { at } from '../helpers/assertions';
 import { asMockPlugin } from '../helpers/obsidianMock';
 import { setPlatform } from '../helpers/platform';
 import { showDeviceSelectionModal } from 'src/ui/DeviceSelectionModal';
 import { RecordingManager } from 'src/recording/RecordingManager';
-import { partial } from '../helpers/doubles';
+import { loadPlugin } from '../helpers/pluginHarness';
 
 // The plugin's collaborators are each covered by their own suite. What is
 // under test here is the wiring between them, so they are recorded rather
 // than reproduced.
-jest.mock('src/recording/RecordingManager', () => ({
-	RecordingManager: jest.fn().mockImplementation(() => ({
-		toggleRecording: jest.fn().mockResolvedValue(undefined),
-		togglePauseResume: jest.fn(),
-		stopRecording: jest.fn().mockResolvedValue(undefined),
-		cleanup: jest.fn(),
-		updateSettings: jest.fn(),
-		getStatus: jest.fn(() => RecordingStatus.Idle),
-		canDropMarker: jest.fn(() => false),
-		captureMarkerDraft: jest.fn(() => null),
-		getElapsedMs: jest.fn(() => 0),
-		getRecordedBytes: jest.fn(() => 0),
-		getInputLevel: jest.fn(() => 0),
-	})),
-}));
-jest.mock('src/ui/ContextMenu', () => ({
-	ContextMenu: jest.fn().mockImplementation(() => ({ register: jest.fn() })),
-}));
-jest.mock('src/player/EnhancedPlayerRegistrar', () => ({
-	EnhancedPlayerRegistrar: jest.fn().mockImplementation(() => ({
-		register: jest.fn(),
-		dispose: jest.fn(),
-		refresh: jest.fn(),
-		subscribePlayback: jest.fn(),
-		reloadMarkersFor: jest.fn(),
-		primeSavedRecordingsForEnhancement: jest.fn(),
-	})),
-}));
+jest.mock('src/recording/RecordingManager', () =>
+	require('../mocks/modules/recordingManager'),
+);
+jest.mock('src/ui/ContextMenu', () => require('../mocks/modules/contextMenu'));
+jest.mock('src/player/EnhancedPlayerRegistrar', () =>
+	require('../mocks/modules/enhancedPlayerRegistrar'),
+);
 jest.mock('src/ui/DeviceSelectionModal', () => ({
 	showDeviceSelectionModal: jest.fn().mockResolvedValue(undefined),
 }));
-jest.mock('src/recording/RecoveryService', () => ({
-	collectRecoverableSessions: jest.fn().mockResolvedValue([]),
-	recoverSession: jest
-		.fn()
-		.mockResolvedValue({ recoveredPaths: [], failedTracks: [] }),
-	discardSession: jest.fn().mockResolvedValue([]),
-}));
-
-const MANIFEST = partial<PluginManifest>({
-	id: 'advanced-audio-recorder',
-	name: 'Advanced Audio Recorder',
-	version: '2.2.2',
-	dir: 'config-dir/plugins/advanced-audio-recorder',
-});
+jest.mock('src/recording/RecoveryService', () =>
+	require('../mocks/modules/recoveryService'),
+);
 
 /** The methods the recording-manager double offers, all of them spies. */
 interface RecorderDouble {
@@ -97,19 +61,9 @@ function recorder(): RecorderDouble {
 		.value as RecorderDouble;
 }
 
-/** Loads the plugin the way Obsidian does and hands it back. */
-async function loadPlugin(): Promise<AudioRecorderPlugin> {
-	const plugin = new AudioRecorderPlugin(new App(), MANIFEST);
-	const store = plugin as unknown as Record<string, unknown>;
-	store.loadData = jest.fn().mockResolvedValue(null);
-	store.saveData = jest.fn().mockResolvedValue(undefined);
-	await plugin.onload();
-	return plugin;
-}
-
 describe('loading the plugin', () => {
 	it('registers the recording commands in the palette', async () => {
-		const plugin = await loadPlugin();
+		const { plugin } = await loadPlugin();
 
 		const ids = asMockPlugin(plugin).registeredCommands.map(
 			(command) => command.id,
@@ -121,7 +75,7 @@ describe('loading the plugin', () => {
 	});
 
 	it('registers every file action as a command, so each is hotkey-assignable', async () => {
-		const plugin = await loadPlugin();
+		const { plugin } = await loadPlugin();
 
 		const ids = asMockPlugin(plugin).registeredCommands.map(
 			(command) => command.id,
@@ -132,7 +86,7 @@ describe('loading the plugin', () => {
 	});
 
 	it('gives every command a name', async () => {
-		const plugin = await loadPlugin();
+		const { plugin } = await loadPlugin();
 
 		for (const command of asMockPlugin(plugin).registeredCommands) {
 			expect(command.name).not.toBe('');
@@ -140,7 +94,7 @@ describe('loading the plugin', () => {
 	});
 
 	it('registers no command twice', async () => {
-		const plugin = await loadPlugin();
+		const { plugin } = await loadPlugin();
 
 		const ids = asMockPlugin(plugin).registeredCommands.map(
 			(command) => command.id,
@@ -149,7 +103,7 @@ describe('loading the plugin', () => {
 	});
 
 	it('adds the ribbon icon, the status bar item, and the settings tab', async () => {
-		const plugin = await loadPlugin();
+		const { plugin } = await loadPlugin();
 		const mock = asMockPlugin(plugin);
 
 		expect(mock.ribbonIcons).toHaveLength(1);
@@ -158,7 +112,7 @@ describe('loading the plugin', () => {
 	});
 
 	it('keeps the live-stats pump on an interval it can release', async () => {
-		const plugin = await loadPlugin();
+		const { plugin } = await loadPlugin();
 
 		expect(asMockPlugin(plugin).registeredIntervals.length).toBeGreaterThan(
 			0,
@@ -168,7 +122,7 @@ describe('loading the plugin', () => {
 
 describe('the recording commands', () => {
 	it('starts and stops recording from the palette', async () => {
-		const plugin = await loadPlugin();
+		const { plugin } = await loadPlugin();
 
 		asMockPlugin(plugin).invokeCommand(COMMAND_IDS.startStopRecording);
 
@@ -176,7 +130,7 @@ describe('the recording commands', () => {
 	});
 
 	it('pauses and resumes from the palette', async () => {
-		const plugin = await loadPlugin();
+		const { plugin } = await loadPlugin();
 
 		asMockPlugin(plugin).invokeCommand(COMMAND_IDS.pauseResumeRecording);
 
@@ -184,7 +138,7 @@ describe('the recording commands', () => {
 	});
 
 	it('hides the marker command while no recording can take one', async () => {
-		const plugin = await loadPlugin();
+		const { plugin } = await loadPlugin();
 		recorder().canDropMarker.mockReturnValue(false);
 
 		const available = asMockPlugin(plugin).invokeCommand(
@@ -197,7 +151,7 @@ describe('the recording commands', () => {
 	});
 
 	it('offers the marker command once a recording can take one', async () => {
-		const plugin = await loadPlugin();
+		const { plugin } = await loadPlugin();
 		recorder().canDropMarker.mockReturnValue(true);
 
 		const available = asMockPlugin(plugin).invokeCommand(
@@ -209,7 +163,7 @@ describe('the recording commands', () => {
 	});
 
 	it('drops the marker command when the recorder has no draft to give', async () => {
-		const plugin = await loadPlugin();
+		const { plugin } = await loadPlugin();
 		recorder().canDropMarker.mockReturnValue(true);
 		recorder().captureMarkerDraft.mockReturnValue(null);
 
@@ -221,7 +175,7 @@ describe('the recording commands', () => {
 
 describe('the device selection command', () => {
 	it('is hidden on a device that records from the default microphone', async () => {
-		const plugin = await loadPlugin();
+		const { plugin } = await loadPlugin();
 		setPlatform({ isMobile: true, isMobileApp: true });
 
 		const available = asMockPlugin(plugin).invokeCommand(
@@ -233,7 +187,7 @@ describe('the device selection command', () => {
 	});
 
 	it('opens the picker on a device that can choose an input', async () => {
-		const plugin = await loadPlugin();
+		const { plugin } = await loadPlugin();
 		setPlatform({ isMobile: false, isMobileApp: false });
 
 		const available = asMockPlugin(plugin).invokeCommand(
@@ -245,7 +199,7 @@ describe('the device selection command', () => {
 	});
 
 	it('remembers the device that was picked', async () => {
-		const plugin = await loadPlugin();
+		const { plugin } = await loadPlugin();
 		setPlatform({ isMobile: false, isMobileApp: false });
 		asMockPlugin(plugin).invokeCommand(COMMAND_IDS.selectAudioInputDevice);
 		const [, onPicked] = at(
@@ -264,7 +218,7 @@ describe('the device selection command', () => {
 
 describe('unloading the plugin', () => {
 	it('releases the recorder and the player registrar', async () => {
-		const plugin = await loadPlugin();
+		const { plugin } = await loadPlugin();
 
 		plugin.onunload();
 
@@ -272,7 +226,7 @@ describe('unloading the plugin', () => {
 	});
 
 	it('leaves the ribbon icon and status bar in their idle state', async () => {
-		const plugin = await loadPlugin();
+		const { plugin } = await loadPlugin();
 		const mock = asMockPlugin(plugin);
 
 		plugin.onunload();
@@ -285,7 +239,7 @@ describe('unloading the plugin', () => {
 	});
 
 	it('can be unloaded twice without complaint', async () => {
-		const plugin = await loadPlugin();
+		const { plugin } = await loadPlugin();
 
 		plugin.onunload();
 

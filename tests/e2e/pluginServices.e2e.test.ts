@@ -14,10 +14,8 @@
  * @module tests/e2e/pluginServices.e2e.test
  */
 
-import { App } from 'obsidian';
-import type { PluginManifest, TFile } from 'obsidian';
+import type { TFile } from 'obsidian';
 import AudioRecorderPlugin from 'src/main';
-import { RecordingStatus } from 'src/types';
 import type { ActionServices } from 'src/actions/PluginAction';
 import type { TranscriptionModalOptions } from 'src/ui/TranscriptionModal';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
@@ -26,65 +24,23 @@ import { ContextMenu } from 'src/ui/ContextMenu';
 import { EnhancedPlayerRegistrar } from 'src/player/EnhancedPlayerRegistrar';
 import { RecordingManager } from 'src/recording/RecordingManager';
 import { at, defined } from '../helpers/assertions';
-import { partial } from '../helpers/doubles';
+import { loadPlugin } from '../helpers/pluginHarness';
 
-jest.mock('src/recording/RecordingManager', () => ({
-	RecordingManager: jest.fn().mockImplementation(() => ({
-		toggleRecording: jest.fn().mockResolvedValue(undefined),
-		togglePauseResume: jest.fn(),
-		stopRecording: jest.fn().mockResolvedValue(undefined),
-		cleanup: jest.fn(),
-		updateSettings: jest.fn(),
-		getStatus: jest.fn(() => RecordingStatus.Idle),
-		canDropMarker: jest.fn(() => false),
-		captureMarkerDraft: jest.fn(() => null),
-		getElapsedMs: jest.fn(() => 0),
-		getRecordedBytes: jest.fn(() => 0),
-		getInputLevel: jest.fn(() => 0),
-	})),
-}));
-jest.mock('src/ui/ContextMenu', () => ({
-	ContextMenu: jest.fn().mockImplementation(() => ({ register: jest.fn() })),
-}));
-jest.mock('src/player/EnhancedPlayerRegistrar', () => ({
-	EnhancedPlayerRegistrar: jest.fn().mockImplementation(() => ({
-		register: jest.fn(),
-		dispose: jest.fn(),
-		refresh: jest.fn(),
-		subscribePlayback: jest.fn(),
-		reloadMarkersFor: jest.fn(),
-		primeSavedRecordingsForEnhancement: jest.fn(),
-	})),
-}));
+jest.mock('src/recording/RecordingManager', () =>
+	require('../mocks/modules/recordingManager'),
+);
+jest.mock('src/ui/ContextMenu', () => require('../mocks/modules/contextMenu'));
+jest.mock('src/player/EnhancedPlayerRegistrar', () =>
+	require('../mocks/modules/enhancedPlayerRegistrar'),
+);
 jest.mock('src/chapters/AutoChapterService', () => ({
 	AutoChapterService: jest.fn().mockImplementation(() => ({
 		generate: jest.fn().mockResolvedValue(undefined),
 	})),
 }));
-jest.mock('src/recording/RecoveryService', () => ({
-	collectRecoverableSessions: jest.fn().mockResolvedValue([]),
-	recoverSession: jest
-		.fn()
-		.mockResolvedValue({ recoveredPaths: [], failedTracks: [] }),
-	discardSession: jest.fn().mockResolvedValue([]),
-}));
-
-const MANIFEST = partial<PluginManifest>({
-	id: 'advanced-audio-recorder',
-	name: 'Advanced Audio Recorder',
-	version: '2.2.2',
-	dir: 'config-dir/plugins/advanced-audio-recorder',
-});
-
-/** Loads the plugin the way Obsidian does and hands it back. */
-async function loadPlugin(): Promise<AudioRecorderPlugin> {
-	const plugin = new AudioRecorderPlugin(new App(), MANIFEST);
-	const store = plugin as unknown as Record<string, unknown>;
-	store.loadData = jest.fn().mockResolvedValue(null);
-	store.saveData = jest.fn().mockResolvedValue(undefined);
-	await plugin.onload();
-	return plugin;
-}
+jest.mock('src/recording/RecoveryService', () =>
+	require('../mocks/modules/recoveryService'),
+);
 
 /** The services the plugin built for its file actions. */
 function actionServices(): ActionServices {
@@ -124,7 +80,7 @@ describe('the settings getter every collaborator reads through', () => {
 	])('gives $name the live settings, not a copy', async ({ getter }) => {
 		// A snapshot taken at load would leave every one of them acting on
 		// the settings as they were when Obsidian started the plugin.
-		const plugin = await loadPlugin();
+		const { plugin } = await loadPlugin();
 
 		plugin.settings.filePrefix = 'changed-after-load';
 
@@ -169,7 +125,7 @@ describe('the encoder the plugin shares', () => {
 	])('hands $name the one worker client', async ({ getter }) => {
 		// One encoder process per session: a second would double the memory a
 		// long conversion needs on a phone.
-		const plugin = await loadPlugin();
+		const { plugin } = await loadPlugin();
 		const worker = (plugin as unknown as { encodingWorker: unknown })
 			.encodingWorker;
 
@@ -179,7 +135,7 @@ describe('the encoder the plugin shares', () => {
 
 describe('the services the file actions run with', () => {
 	it('persists a settings change made by an action', async () => {
-		const plugin = await loadPlugin();
+		const { plugin } = await loadPlugin();
 		plugin.settings.filePrefix = 'from-an-action';
 
 		await actionServices().saveSettings();
@@ -202,7 +158,7 @@ describe('the services the file actions run with', () => {
 	});
 
 	it('shares the one sidecar store, so markers and transcripts agree', async () => {
-		const plugin = await loadPlugin();
+		const { plugin } = await loadPlugin();
 
 		expect(actionServices().recordingSidecar).toBe(
 			(plugin as unknown as { sidecarStore: unknown }).sidecarStore,
@@ -210,7 +166,7 @@ describe('the services the file actions run with', () => {
 	});
 
 	it('shares the one chapter service, so its cost joins the session total', async () => {
-		const plugin = await loadPlugin();
+		const { plugin } = await loadPlugin();
 
 		expect(actionServices().autoChapters).toBe(
 			(plugin as unknown as { autoChapterService: unknown })
@@ -225,7 +181,7 @@ describe('the options a transcription run is opened with', () => {
 		plugin: AudioRecorderPlugin;
 		modalOptions: TranscriptionModalOptions;
 	}> {
-		const plugin = await loadPlugin();
+		const { plugin } = await loadPlugin();
 		return {
 			plugin,
 			modalOptions: actionServices().createTranscriptionModalOptions(),
