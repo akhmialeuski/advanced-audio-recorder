@@ -353,6 +353,66 @@ describe('AudioRecorderPlugin settings persistence', () => {
 		expect(saveData).not.toHaveBeenCalled();
 	});
 
+	it('treats a file it cannot ask about as present, rather than overwriting it', async () => {
+		// An adapter that throws on exists() says nothing about the file. The
+		// protective reading is "it is there": overwriting a possibly intact
+		// data.json with defaults loses the user's settings for good.
+		const { plugin, saveData, adapterExists } = createPlugin([
+			undefined,
+			undefined,
+		]);
+		adapterExists.mockRejectedValue(new Error('EACCES'));
+
+		await onloadWithTimers(plugin);
+
+		await plugin.saveSettings();
+		expect(saveData).not.toHaveBeenCalled();
+	});
+
+	it('carries on when the backup cannot be written', async () => {
+		// The backup is best-effort. A read-only plugin folder must not stop
+		// the settings themselves from being saved.
+		const warn = jest
+			.spyOn(console, 'warn')
+			.mockImplementation(() => undefined);
+		const { plugin, saveData, adapterWrite } = createPlugin([null]);
+		adapterWrite.mockRejectedValue(new Error('EROFS'));
+
+		await onloadWithTimers(plugin);
+		await plugin.saveSettings();
+
+		expect(saveData).toHaveBeenCalled();
+		expect(warn).toHaveBeenCalledWith(
+			expect.stringContaining('Failed to write settings backup'),
+			expect.any(Error),
+		);
+		warn.mockRestore();
+	});
+
+	it('skips the backup entirely when the plugin folder is unknown', async () => {
+		// manifest.dir is optional in Obsidian's own types; with no folder
+		// there is nowhere to put a backup and nothing to check for.
+		const app = new App();
+		const plugin = new AudioRecorderPlugin(app, {
+			...MANIFEST,
+			dir: undefined,
+		} as unknown as PluginManifest);
+		const store = plugin as unknown as Record<string, unknown>;
+		store.loadData = jest.fn().mockResolvedValue(undefined);
+		store.saveData = jest.fn().mockResolvedValue(undefined);
+		const adapterWrite = jest.fn().mockResolvedValue(undefined);
+		const adapterExists = jest.fn().mockResolvedValue(false);
+		plugin.app.vault.adapter.write = adapterWrite;
+		plugin.app.vault.adapter.exists = adapterExists;
+
+		await onloadWithTimers(plugin);
+		await plugin.saveSettings();
+
+		expect(adapterExists).not.toHaveBeenCalled();
+		expect(adapterWrite).not.toHaveBeenCalled();
+		expect(store.saveData).toHaveBeenCalled();
+	});
+
 	it('propagates in-memory settings to the recording manager while saving is blocked', async () => {
 		const { plugin, saveData, adapterExists } = createPlugin([
 			undefined,
@@ -410,6 +470,46 @@ describe('AudioRecorderPlugin settings persistence', () => {
 		expect(
 			registrar.primeSavedRecordingsForEnhancement,
 		).toHaveBeenCalledWith(['recordings/fresh.webm']);
+	});
+
+	it('finishes the save even when the lopsided-stereo check throws', async () => {
+		// The check is a fire-and-forget nicety at the end of a recording. A
+		// failure there must not surface as an unhandled rejection, and must
+		// not stop the rest of the save from being reported.
+		const warn = jest
+			.spyOn(console, 'warn')
+			.mockImplementation(() => undefined);
+		const { plugin } = createPlugin([null]);
+		await onloadWithTimers(plugin);
+		plugin.settings.detectSilentChannelOnSave = true;
+		plugin.app.vault.getFileByPath = jest
+			.fn()
+			.mockReturnValue(createFile('rec.wav'));
+		const { detectSilentChannel } = jest.requireMock(
+			'src/recording/silentChannelDetector',
+		);
+		(detectSilentChannel as jest.Mock).mockRejectedValue(
+			new Error('decode failed'),
+		);
+		const onRecordingSaved = at(
+			(
+				jest.requireMock('src/recording/RecordingManager')
+					.RecordingManager as jest.Mock
+			).mock.calls,
+			0,
+		)[5] as (result: {
+			audioPaths: string[];
+			notePath: string | null;
+		}) => void;
+
+		onRecordingSaved({ audioPaths: ['rec.wav'], notePath: null });
+		await jest.advanceTimersByTimeAsync(0);
+
+		expect(warn).toHaveBeenCalledWith(
+			expect.stringContaining('Silent-channel suggestion failed'),
+			expect.any(Error),
+		);
+		warn.mockRestore();
 	});
 
 	it('treats a rejected settings read as a failed read', async () => {
@@ -1001,16 +1101,90 @@ describe('AudioRecorderPlugin silent-channel suggestion', () => {
 		expect(detectSilentChannel).not.toHaveBeenCalled();
 	});
 
+	it('abandons a run that a newer recording superseded', async () => {
+		// Two recordings finishing close together: the older scan must not
+		// prompt about a file the user has already moved past, and must stop
+		// before spending another decode on it.
+		const { plugin, hooks } = primedPlugin();
+		let superseded = false;
+		(detectSilentChannel as jest.Mock).mockImplementation(async () => {
+			if (!superseded) {
+				// A second save lands while the first scan is mid-file.
+				superseded = true;
+				await hooks.maybeSuggestMonoConversion({
+					audioPaths: ['newer.wav'],
+					notePath: null,
+				});
+			}
+			return null;
+		});
+		plugin.app.vault.getFileByPath = jest
+			.fn()
+			.mockReturnValue(createFile('rec.wav'));
+
+		await hooks.maybeSuggestMonoConversion({
+			audioPaths: ['a.wav', 'b.wav'],
+			notePath: null,
+			trackFiles: [
+				{ trackIndex: 0, files: ['a.wav'] },
+				{ trackIndex: 1, files: ['b.wav'] },
+			],
+		});
+
+		// The superseded run stops after its first candidate rather than
+		// scanning the second.
+		expect(detectSilentChannel).toHaveBeenCalledTimes(2);
+	});
+
+	it('skips a path whose file is gone by the time the scan reaches it', async () => {
+		const { plugin, hooks } = primedPlugin();
+		plugin.app.vault.getFileByPath = jest.fn().mockReturnValue(null);
+
+		await hooks.maybeSuggestMonoConversion({
+			audioPaths: ['deleted.wav'],
+			notePath: null,
+		});
+
+		expect(detectSilentChannel).not.toHaveBeenCalled();
+	});
+
 	it('opens the conversion dialog preset to the kept channel', () => {
 		const { hooks, file } = primedPlugin();
 
 		hooks.openMonoConversion(file, 'mono-left');
 
 		expect(ConversionModal).toHaveBeenCalledTimes(1);
-		expect((ConversionModal as jest.Mock).mock.calls[0][3]).toEqual(
+		expect(at((ConversionModal as jest.Mock).mock.calls, 0)[3]).toEqual(
 			expect.objectContaining({ initialChannelMode: 'mono-left' }),
 		);
 		expect(mockConversionModalOpen).toHaveBeenCalled();
+	});
+
+	it('gives the dialog the encoder the rest of the plugin shares', () => {
+		// A second worker would spin up a second encoder process for what is
+		// the same session's work.
+		const { hooks, file } = primedPlugin();
+
+		hooks.openMonoConversion(file, 'mono-left');
+		const options = at((ConversionModal as jest.Mock).mock.calls, 0)[3] as {
+			getWorkerClient: () => unknown;
+		};
+
+		expect(options.getWorkerClient()).toBe(hooks.encodingWorker);
+	});
+
+	it('enhances the converted file, so its player appears without a reload', () => {
+		const { hooks, file } = primedPlugin();
+		hooks.openMonoConversion(file, 'mono-left');
+		const options = at((ConversionModal as jest.Mock).mock.calls, 0)[3] as {
+			onConverted: (path: string) => void;
+		};
+
+		options.onConverted('Recordings/take-mono.wav');
+
+		expect(
+			hooks.playerRegistrar.primeSavedRecordingsForEnhancement,
+		).toHaveBeenCalledWith(['Recordings/take-mono.wav']);
 	});
 
 	it('renders a native keyboard-accessible action and hides a single notice on click', () => {
