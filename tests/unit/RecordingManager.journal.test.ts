@@ -15,7 +15,7 @@ import {
 	createRecordingSut,
 	installRecordingMediaStubs,
 	makeFakeMarkerStore,
-} from './helpers/recordingManagerTestKit';
+} from '../helpers/recordingManagerTestKit';
 import { at } from '../helpers/assertions';
 import { useDesktopPlatform, useMobilePlatform } from '../helpers/platform';
 import { tick } from '../helpers/async';

@@ -17,7 +17,7 @@ import {
 	installMediaRecorder,
 	installRecordingMediaStubs,
 	recordingManagerOver,
-} from './helpers/recordingManagerTestKit';
+} from '../helpers/recordingManagerTestKit';
 import { useDesktopPlatform } from '../helpers/platform';
 import { noticeMessages } from '../mocks/obsidian';
 

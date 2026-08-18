@@ -23,7 +23,7 @@ import {
 	installRecordingMediaStubs,
 	recordingManagerOver,
 	type MutableTarget,
-} from './helpers/recordingManagerTestKit';
+} from '../helpers/recordingManagerTestKit';
 import {
 	setPlatform,
 	useDesktopPlatform,

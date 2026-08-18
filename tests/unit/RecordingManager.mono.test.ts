@@ -17,7 +17,7 @@ import {
 	createRecordingMockApp,
 	installRecordingMediaStubs,
 	makeFakeMarkerStore,
-} from './helpers/recordingManagerTestKit';
+} from '../helpers/recordingManagerTestKit';
 import { useDesktopPlatform } from '../helpers/platform';
 
 jest.mock('src/recording/AudioStreamHandler', () =>

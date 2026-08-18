@@ -20,7 +20,7 @@ import {
 	installRecordingMediaStubs,
 	makeFakeMarkerStore,
 	recordingManagerOver,
-} from './helpers/recordingManagerTestKit';
+} from '../helpers/recordingManagerTestKit';
 import { useDesktopPlatform } from '../helpers/platform';
 import { MarkdownView, Notice } from 'obsidian';
 

@@ -30,3 +30,6 @@ jobs:
 
             - name: Coverage and suite-size regression guard
               run: node scripts/coverage-diff.mjs
+
+            - name: Test layers match what each test covers
+              run: node scripts/layer-check.mjs

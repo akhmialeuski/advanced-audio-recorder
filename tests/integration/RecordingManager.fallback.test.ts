@@ -19,7 +19,7 @@ import {
 	createRecordingMockApp,
 	installRecordingMediaStubs,
 	recordingManagerOver,
-} from './helpers/recordingManagerTestKit';
+} from '../helpers/recordingManagerTestKit';
 
 // Mock AudioContext, OfflineAudioContext, and AudioBuffer. The kit's
 // AudioContext stub has no audioWorklet, so the real PcmStreamRecorder

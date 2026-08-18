@@ -20,7 +20,7 @@ import {
 	makeFakeMarkerStore,
 	recordingManagerOver,
 	makeStatefulMarkerStore,
-} from './helpers/recordingManagerTestKit';
+} from '../helpers/recordingManagerTestKit';
 import { flushMicrotasks } from '../helpers/async';
 import { Notice } from 'obsidian';
 

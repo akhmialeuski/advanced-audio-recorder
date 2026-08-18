@@ -4,7 +4,7 @@
  * jest.mock() calls cannot live in an imported helper (jest hoists
  * them within each test file), so every suite keeps its own jest.mock
  * blocks and imports the rest of the shared setup from here.
- * @module tests/unit/helpers/recordingManagerTestKit
+ * @module tests/helpers/recordingManagerTestKit
  */
 
 import type { App } from 'obsidian';
@@ -13,7 +13,7 @@ import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { PlayerMarker } from 'src/markers/markerModel';
-import { tickTimes } from '../../helpers/async';
+import { tickTimes } from './async';
 
 /** The MediaRecorder constructor double, with its static format probe. */
 export type MediaRecorderCtorMock = jest.Mock & {
