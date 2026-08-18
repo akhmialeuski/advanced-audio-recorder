@@ -9,14 +9,28 @@ import { App, Modal } from 'obsidian';
 import { at } from '../helpers/assertions';
 import { WaveformCanvas } from 'src/player/views/WaveformCanvas';
 import * as WaveformData from 'src/player/WaveformData';
+import { installCanvas2dContext } from '../helpers/canvas';
+import type { CanvasContextDouble } from '../helpers/canvas';
 
-/** Builds an Obsidian-extended seek element with a non-zero width. */
-function makeSeekEl(): HTMLElement {
+let canvas: CanvasContextDouble;
+
+beforeEach(() => {
+	// jsdom's getContext throws unless the native canvas package is present,
+	// so the painting half of this renderer could never run under test.
+	canvas = installCanvas2dContext();
+});
+
+afterEach(() => {
+	canvas.restore();
+});
+
+/** Builds an Obsidian-extended seek element with a width a test controls. */
+function makeSeekEl(width = 600): HTMLElement {
 	const seekEl = new Modal(new App()).contentEl.createDiv({
 		cls: 'aar-player-seek',
 	});
 	Object.defineProperty(seekEl, 'clientWidth', {
-		value: 600,
+		value: width,
 		configurable: true,
 	});
 	return seekEl;
@@ -88,5 +102,106 @@ describe('WaveformCanvas', () => {
 		const waveform = new WaveformCanvas(seekEl);
 		waveform.setPeaks([0.1, 0.2]);
 		expect(waveform.hasPeaks()).toBe(true);
+	});
+
+	it('paints a bar per downsampled peak, inset and gapped', () => {
+		const waveform = new WaveformCanvas(makeSeekEl(600));
+
+		waveform.setPeaks([0.25, 0.5, 1]);
+
+		// Two canvases are painted per redraw - the unplayed base and the
+		// played overlay - and the recorder keeps only the last clear's worth.
+		expect(canvas.rects.length).toBeGreaterThan(0);
+		for (const rect of canvas.rects) {
+			expect(rect.width).toBeGreaterThan(0);
+			expect(rect.height).toBeGreaterThanOrEqual(1);
+		}
+	});
+
+	it('gives a silent peak a visible sliver rather than nothing', () => {
+		const waveform = new WaveformCanvas(makeSeekEl(600));
+
+		waveform.setPeaks(new Array<number>(120).fill(0));
+
+		// A bar of height zero would leave a gap in the waveform where silence
+		// is; a one-pixel bar reads as "quiet here" instead.
+		expect(canvas.rects.every((rect) => rect.height >= 1)).toBe(true);
+	});
+
+	it('scales the canvas to the device pixel ratio', () => {
+		Object.defineProperty(window, 'devicePixelRatio', {
+			configurable: true,
+			value: 2,
+		});
+		const seekEl = makeSeekEl(600);
+
+		new WaveformCanvas(seekEl).setPeaks([0.5, 0.5]);
+
+		const base = seekEl.querySelector('canvas') as HTMLCanvasElement;
+		expect(base.width).toBe(1200);
+	});
+
+	it('re-reads the theme colours after they are invalidated', () => {
+		const seekEl = makeSeekEl(600);
+		const waveform = new WaveformCanvas(seekEl);
+		waveform.setPeaks([0.5, 0.5]);
+		const computed = jest.spyOn(window, 'getComputedStyle');
+
+		waveform.redraw();
+		const cachedCalls = computed.mock.calls.length;
+		waveform.invalidateColors();
+		waveform.redraw();
+
+		expect(computed.mock.calls.length).toBeGreaterThan(cachedCalls);
+	});
+
+	it('does not redraw while the seek area has no width', () => {
+		const waveform = new WaveformCanvas(makeSeekEl(0));
+
+		waveform.setPeaks([0.5, 0.5]);
+
+		// Painting into a zero-width canvas would allocate nothing useful and
+		// throw the cached bars away for a width that is about to change.
+		expect(canvas.rects).toHaveLength(0);
+	});
+
+	it('re-downsamples when the width changes', () => {
+		const spy = jest.spyOn(WaveformData, 'downsamplePeaks');
+		const seekEl = makeSeekEl(600);
+		const waveform = new WaveformCanvas(seekEl);
+		waveform.setPeaks(new Array<number>(2048).fill(0.5));
+		const afterFirst = spy.mock.calls.length;
+
+		Object.defineProperty(seekEl, 'clientWidth', {
+			value: 300,
+			configurable: true,
+		});
+		waveform.redraw();
+
+		expect(spy.mock.calls.length).toBeGreaterThan(afterFirst);
+	});
+
+	it('paints nothing when the canvas has no 2d context', () => {
+		const seekEl = makeSeekEl(600);
+		const waveform = new WaveformCanvas(seekEl);
+		// A context the browser refuses to give (memory pressure, a lost
+		// context) must degrade to no waveform, not to a thrown render.
+		jest.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
+			null,
+		);
+
+		expect(() => {
+			waveform.setPeaks([0.5, 0.5]);
+		}).not.toThrow();
+		expect(canvas.rects).toHaveLength(0);
+	});
+
+	it('paints nothing for an empty peak list', () => {
+		const waveform = new WaveformCanvas(makeSeekEl(600));
+
+		waveform.setPeaks([]);
+
+		expect(waveform.hasPeaks()).toBe(true);
+		expect(canvas.rects).toHaveLength(0);
 	});
 });
