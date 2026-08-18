@@ -17,6 +17,8 @@ import * as AudioFileAnalyzer from 'src/utils/AudioFileAnalyzer';
 import { at } from '../helpers/assertions';
 import { tick } from '../helpers/async';
 import { asMockMenu } from '../helpers/obsidianMock';
+import { setPlayerEmbedActions } from 'src/player/playerEmbedActions';
+import type { PlayerEmbedActions } from 'src/player/playerEmbedActions';
 import {
 	App,
 	Menu,
@@ -794,6 +796,162 @@ describe('ContextMenu', () => {
 				expect.any(Error),
 			);
 			consoleSpy.mockRestore();
+		});
+	});
+
+	describe('ContextMenu over an enhanced player', () => {
+		/** The contextmenu handler the menu installed on every window. */
+		function playerMenu(): (event: MouseEvent) => void {
+			const { registerDomEventOnAllWindows } = jest.requireMock(
+				'src/utils/multiWindowDomEvents',
+			);
+			const call = (
+				registerDomEventOnAllWindows as jest.Mock
+			).mock.calls.find((args: unknown[]) => args[2] === 'contextmenu');
+			if (!call) {
+				throw new Error('Expected a contextmenu handler registration');
+			}
+			return call[3] as (event: MouseEvent) => void;
+		}
+
+		/**
+		 * A right-click on an embed carrying the given player actions.
+		 * @param actions - What the player published on its container
+		 * @param clientX - Where along the seek area the click landed
+		 * @returns The event, ready to hand to the handler
+		 */
+		function rightClickOnPlayer(
+			actions: Partial<PlayerEmbedActions>,
+			clientX = 120,
+		): MouseEvent {
+			const embed = document.createElement('div');
+			embed.className = 'internal-embed';
+			embed.setAttribute('src', 'audio.mp3');
+			setPlayerEmbedActions(embed, {
+				markersEnabled: true,
+				timestampLinksEnabled: true,
+				timeAtClientX: () => 42,
+				addMarkerAtTime: jest.fn(),
+				copyTimestampAtTime: jest.fn(),
+				togglePlayback: jest.fn(),
+				...actions,
+			});
+			const target = document.createElement('span');
+			embed.appendChild(target);
+			return {
+				target,
+				clientX,
+				pageX: 100,
+				pageY: 200,
+				preventDefault: jest.fn(),
+				stopPropagation: jest.fn(),
+			} as unknown as MouseEvent;
+		}
+
+		/** The titles of the menu the handler built. */
+		function menuTitles(): string[] {
+			const call = (mockWorkspace.trigger as jest.Mock).mock.calls.find(
+				(args: unknown[]) => args[0] === 'file-menu',
+			);
+			if (!call) {
+				throw new Error('file-menu was not triggered');
+			}
+			return asMockMenu(call[1] as Menu).items.map((item) => item.title);
+		}
+
+		beforeEach(() => {
+			contextMenu.register();
+			(
+				mockMetadataCache.getFirstLinkpathDest as jest.Mock
+			).mockReturnValue(makeAudioFile());
+			(mockWorkspace.getActiveFile as jest.Mock).mockReturnValue(null);
+		});
+
+		it('offers the position-aware actions of an editable player', () => {
+			// "Add marker here" has to mean where the user right-clicked, which
+			// is the whole reason these live on the player rather than the file.
+			playerMenu()(rightClickOnPlayer({}));
+
+			expect(menuTitles()).toEqual(
+				expect.arrayContaining([
+					'Add marker here',
+					'Add chapter here',
+					'Copy timestamp link here',
+				]),
+			);
+		});
+
+		it.each([
+			{ title: 'Add marker here', kind: 'bookmark' },
+			{ title: 'Add chapter here', kind: 'chapter' },
+		])('$title drops one at the clicked position', ({ title, kind }) => {
+			const addMarkerAtTime = jest.fn();
+			playerMenu()(rightClickOnPlayer({ addMarkerAtTime }));
+
+			const call = (mockWorkspace.trigger as jest.Mock).mock.calls.find(
+				(args: unknown[]) => args[0] === 'file-menu',
+			);
+			asMockMenu(at(call as unknown[], 1) as Menu).click(title);
+
+			expect(addMarkerAtTime).toHaveBeenCalledWith(42, kind);
+		});
+
+		it('copies a link to the clicked position', () => {
+			const copyTimestampAtTime = jest.fn();
+			playerMenu()(rightClickOnPlayer({ copyTimestampAtTime }));
+
+			const call = (mockWorkspace.trigger as jest.Mock).mock.calls.find(
+				(args: unknown[]) => args[0] === 'file-menu',
+			);
+			asMockMenu(at(call as unknown[], 1) as Menu).click(
+				'Copy timestamp link here',
+			);
+
+			expect(copyTimestampAtTime).toHaveBeenCalledWith(42);
+		});
+
+		it('offers no marker actions in a read-only note', () => {
+			// Reading view has no way to undo an accidental marker.
+			playerMenu()(rightClickOnPlayer({ markersEnabled: false }));
+
+			expect(menuTitles()).not.toContain('Add marker here');
+			expect(menuTitles()).toContain('Copy timestamp link here');
+		});
+
+		it('offers no timestamp link when the player does not publish one', () => {
+			playerMenu()(rightClickOnPlayer({ timestampLinksEnabled: false }));
+
+			expect(menuTitles()).not.toContain('Copy timestamp link here');
+			expect(menuTitles()).toContain('Add marker here');
+		});
+
+		it('offers no position-aware action when the click was off the seek area', () => {
+			// Without a position "here" means nothing, and adding a marker at an
+			// arbitrary time would be worse than offering nothing.
+			playerMenu()(rightClickOnPlayer({ timeAtClientX: () => null }));
+
+			expect(menuTitles()).not.toContain('Add marker here');
+			expect(menuTitles()).not.toContain('Copy timestamp link here');
+		});
+
+		it('offers only the file actions over a plain embed', () => {
+			const embed = document.createElement('div');
+			embed.className = 'internal-embed';
+			embed.setAttribute('src', 'audio.mp3');
+			const target = document.createElement('span');
+			embed.appendChild(target);
+
+			playerMenu()({
+				target,
+				clientX: 120,
+				pageX: 100,
+				pageY: 200,
+				preventDefault: jest.fn(),
+				stopPropagation: jest.fn(),
+			} as unknown as MouseEvent);
+
+			expect(menuTitles()).not.toContain('Add marker here');
+			expect(mockWorkspace.trigger).toHaveBeenCalled();
 		});
 	});
 });

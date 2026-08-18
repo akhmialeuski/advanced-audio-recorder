@@ -24,6 +24,7 @@ import {
 	hasUnscopableRecordedNote,
 } from 'src/speakers/applySpeakerRenames';
 import { SpeakerPreviewPlayer } from 'src/player/SpeakerPreviewPlayer';
+import { noticeMessages } from '../mocks/obsidian';
 
 jest.mock('src/speakers/applySpeakerRenames', () => ({
 	applySpeakerRenamesWithSidecar: jest.fn(),
@@ -1085,5 +1086,89 @@ describe('SpeakerRenameModal', () => {
 		expect(settings.transcriptionSpeakerProfiles[0]?.participants).toEqual([
 			'Maria',
 		]);
+	});
+
+	it.each([
+		{ name: 'apply', act: (i: ModalInternals) => i.apply() },
+		{ name: 'undo', act: (i: ModalInternals) => i.undo() },
+	])(
+		'does nothing on $name before the roster has loaded',
+		async ({ act }) => {
+			// The dialog is open and its buttons exist while the sidecar read is
+			// still in flight; acting on a roster that is not there yet would
+			// commit an empty rename.
+			const { internals } = makeModal(
+				mergeSettings({}),
+				makeSidecar(rosterSection()),
+			);
+
+			await expect(act(internals)).resolves.toBeUndefined();
+			expect(applyMock).not.toHaveBeenCalled();
+		},
+	);
+
+	it('creates no profile from an empty name', async () => {
+		const settings = mergeSettings({});
+		const { internals, saveSettings } = makeModal(
+			settings,
+			makeSidecar(rosterSection()),
+		);
+		await internals.render();
+		const field = internals.newProfileInput;
+		if (field) {
+			field.value = '   ';
+		}
+
+		await internals.createProfile();
+
+		expect(saveSettings).not.toHaveBeenCalled();
+	});
+
+	it('adds nothing to a profile when every field was left blank', async () => {
+		// Applying with no names is already a no-op; the profile must not
+		// gain empty participants from it either.
+		const settings: AudioRecorderSettings = mergeSettings({
+			transcriptionSpeakerProfiles: [
+				{ id: 'p1', name: 'Standup', participants: [] },
+			],
+		});
+		const { internals, saveSettings } = makeModal(
+			settings,
+			makeSidecar(
+				rosterSection({
+					speakers: [{ label: 'Speaker 1' }, { label: 'Speaker 2' }],
+				}),
+			),
+		);
+		await internals.render();
+		internals.selectedProfileId = 'p1';
+
+		await internals.apply();
+
+		expect(saveSettings).not.toHaveBeenCalled();
+	});
+
+	it('says what went wrong when the undo itself fails', async () => {
+		const sidecar = makeSidecar(
+			rosterSection({
+				history: [
+					{
+						at: '2026-01-01T00:00:00Z',
+						names: { 'Speaker 1': 'Alex' },
+					},
+				],
+			}),
+		);
+		sidecar.popHistory.mockRejectedValue(new Error('sidecar is read-only'));
+		const { internals } = makeModal(mergeSettings({}), sidecar);
+		await internals.render();
+
+		await internals.undo();
+
+		expect(
+			noticeMessages().some((message) =>
+				message.includes('sidecar is read-only'),
+			),
+		).toBe(true);
 	});
 });
