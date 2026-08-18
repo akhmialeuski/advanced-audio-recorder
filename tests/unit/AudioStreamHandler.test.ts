@@ -149,7 +149,7 @@ describe('AudioStreamHandler', () => {
 	});
 
 	describe('getOrderedTrackSources', () => {
-		it('should return sources in track order regardless of Map insertion order', () => {
+		it('returns sources in track order regardless of Map insertion order', () => {
 			const settings = {
 				...DEFAULT_SETTINGS,
 				enableMultiTrack: true,
@@ -196,7 +196,7 @@ describe('AudioStreamHandler', () => {
 			]);
 		});
 
-		it('should skip tracks without selected devices', () => {
+		it('skips tracks without selected devices', () => {
 			const settings: AudioRecorderSettings = {
 				...DEFAULT_SETTINGS,
 				enableMultiTrack: true,

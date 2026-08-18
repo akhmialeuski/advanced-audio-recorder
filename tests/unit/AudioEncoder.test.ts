@@ -65,7 +65,7 @@ describe('AudioEncoder', () => {
 			bitrate: 128000,
 		};
 
-		it('should encode WAV using Mediabunny with the pcm-s16 codec', async () => {
+		it('encodes WAV using Mediabunny with the pcm-s16 codec', async () => {
 			const { WavOutputFormat, AudioBufferSource } =
 				jest.requireMock('mediabunny');
 			const buffer = createMockAudioBuffer(1, 1024, 44100);
@@ -84,7 +84,7 @@ describe('AudioEncoder', () => {
 			expect(result.type).toBe('audio/wav');
 		});
 
-		it('should encode MP3 using Mediabunny with the MP3 codec', async () => {
+		it('encodes MP3 using Mediabunny with the MP3 codec', async () => {
 			const { Mp3OutputFormat, AudioBufferSource } =
 				jest.requireMock('mediabunny');
 			const buffer = createMockAudioBuffer(1, 2304, 44100);
@@ -103,7 +103,7 @@ describe('AudioEncoder', () => {
 			expect(result.type).toBe('audio/mp3');
 		});
 
-		it('should register the MP3 extension encoder when not natively supported', async () => {
+		it('registers the MP3 extension encoder when not natively supported', async () => {
 			const { canEncodeAudio } = jest.requireMock('mediabunny');
 			const { registerMp3Encoder } = jest.requireMock(
 				'@mediabunny/mp3-encoder',
@@ -120,7 +120,7 @@ describe('AudioEncoder', () => {
 			expect(registerMp3Encoder).toHaveBeenCalledTimes(1);
 		});
 
-		it('should skip MP3 encoder registration when natively supported', async () => {
+		it('skips MP3 encoder registration when natively supported', async () => {
 			const { canEncodeAudio } = jest.requireMock('mediabunny');
 			const { registerMp3Encoder } = jest.requireMock(
 				'@mediabunny/mp3-encoder',
@@ -136,7 +136,7 @@ describe('AudioEncoder', () => {
 			expect(registerMp3Encoder).not.toHaveBeenCalled();
 		});
 
-		it('should register the FLAC extension encoder when not natively supported', async () => {
+		it('registers the FLAC extension encoder when not natively supported', async () => {
 			const { canEncodeAudio } = jest.requireMock('mediabunny');
 			const { registerFlacEncoder } = jest.requireMock(
 				'@mediabunny/flac-encoder',
@@ -153,7 +153,7 @@ describe('AudioEncoder', () => {
 			expect(registerFlacEncoder).toHaveBeenCalledTimes(1);
 		});
 
-		it('should encode WebM using Mediabunny', async () => {
+		it('encodes WebM using Mediabunny', async () => {
 			const { Output, AudioBufferSource, WebMOutputFormat } =
 				jest.requireMock('mediabunny');
 			const buffer = createMockAudioBuffer(2, 4096, 48000);
@@ -180,7 +180,7 @@ describe('AudioEncoder', () => {
 			expect(result.type).toBe('audio/webm');
 		});
 
-		it('should encode OGG using Mediabunny with Opus codec', async () => {
+		it('encodes OGG using Mediabunny with Opus codec', async () => {
 			const { OggOutputFormat, AudioBufferSource } =
 				jest.requireMock('mediabunny');
 			const buffer = createMockAudioBuffer(1, 4096, 44100);
@@ -197,7 +197,7 @@ describe('AudioEncoder', () => {
 			expect(result.type).toBe('audio/ogg');
 		});
 
-		it('should encode MP4 using Mediabunny with AAC codec', async () => {
+		it('encodes MP4 using Mediabunny with AAC codec', async () => {
 			const { Mp4OutputFormat, AudioBufferSource } =
 				jest.requireMock('mediabunny');
 			const buffer = createMockAudioBuffer(2, 4096, 44100);
@@ -214,7 +214,7 @@ describe('AudioEncoder', () => {
 			expect(result.type).toBe('audio/mp4');
 		});
 
-		it('should encode M4A using Mp4OutputFormat with AAC codec', async () => {
+		it('encodes M4A using Mp4OutputFormat with AAC codec', async () => {
 			const { Mp4OutputFormat, AudioBufferSource } =
 				jest.requireMock('mediabunny');
 			const buffer = createMockAudioBuffer(1, 4096, 44100);
@@ -231,7 +231,7 @@ describe('AudioEncoder', () => {
 			expect(result.type).toBe('audio/m4a');
 		});
 
-		it('should encode AAC using Mp4OutputFormat', async () => {
+		it('encodes AAC using Mp4OutputFormat', async () => {
 			const { Mp4OutputFormat } = jest.requireMock('mediabunny');
 			const buffer = createMockAudioBuffer(1, 4096, 44100);
 
@@ -244,7 +244,7 @@ describe('AudioEncoder', () => {
 			expect(result.type).toBe('audio/aac');
 		});
 
-		it('should encode FLAC using FlacOutputFormat', async () => {
+		it('encodes FLAC using FlacOutputFormat', async () => {
 			const { FlacOutputFormat, AudioBufferSource } =
 				jest.requireMock('mediabunny');
 			const buffer = createMockAudioBuffer(1, 4096, 44100);
@@ -261,7 +261,7 @@ describe('AudioEncoder', () => {
 			expect(result.type).toBe('audio/flac');
 		});
 
-		it('should throw EncodingError for unsupported format', async () => {
+		it('throws EncodingError for unsupported format', async () => {
 			const buffer = createMockAudioBuffer(1, 1024, 44100);
 
 			await expect(
@@ -272,7 +272,7 @@ describe('AudioEncoder', () => {
 			).rejects.toThrow(EncodingError);
 		});
 
-		it('should call progress callback for WAV encoding', async () => {
+		it('calls progress callback for WAV encoding', async () => {
 			const buffer = createMockAudioBuffer(1, 1024, 44100);
 			const onProgress = jest.fn();
 
@@ -285,7 +285,7 @@ describe('AudioEncoder', () => {
 			expect(onProgress).toHaveBeenCalledWith(100);
 		});
 
-		it('should call progress callback during MP3 encoding', async () => {
+		it('calls progress callback during MP3 encoding', async () => {
 			const buffer = createMockAudioBuffer(1, 2304, 44100);
 			const onProgress = jest.fn();
 
@@ -300,7 +300,7 @@ describe('AudioEncoder', () => {
 			expect(onProgress).toHaveBeenCalledWith(100);
 		});
 
-		it('should call progress callback during Mediabunny encoding', async () => {
+		it('calls progress callback during Mediabunny encoding', async () => {
 			const buffer = createMockAudioBuffer(1, 4096, 44100);
 			const onProgress = jest.fn();
 
@@ -315,7 +315,7 @@ describe('AudioEncoder', () => {
 			expect(onProgress).toHaveBeenCalledWith(100);
 		});
 
-		it('should wrap Mediabunny errors in EncodingError', async () => {
+		it('wraps Mediabunny errors in EncodingError', async () => {
 			mockStart.mockRejectedValueOnce(new Error('Codec not supported'));
 			const buffer = createMockAudioBuffer(1, 1024, 44100);
 
@@ -327,7 +327,7 @@ describe('AudioEncoder', () => {
 			).rejects.toThrow(EncodingError);
 		});
 
-		it('should wrap MP3 encoding errors in EncodingError', async () => {
+		it('wraps MP3 encoding errors in EncodingError', async () => {
 			mockStart.mockRejectedValueOnce(new Error('Encoding failed'));
 			const buffer = createMockAudioBuffer(1, 2304, 44100);
 
@@ -341,19 +341,19 @@ describe('AudioEncoder', () => {
 	});
 
 	describe('isOfflineEncodingSupported', () => {
-		it('should return true for WAV', () => {
+		it('returns true for WAV', () => {
 			expect(isOfflineEncodingSupported('wav')).toBe(true);
 		});
 
-		it('should return true for MP3', () => {
+		it('returns true for MP3', () => {
 			expect(isOfflineEncodingSupported('mp3')).toBe(true);
 		});
 
-		it('should return true for FLAC', () => {
+		it('returns true for FLAC', () => {
 			expect(isOfflineEncodingSupported('flac')).toBe(true);
 		});
 
-		it('should return true for WebCodecs formats when AudioEncoder is available', () => {
+		it('returns true for WebCodecs formats when AudioEncoder is available', () => {
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any -- simulating WebCodecs global in test
 			(global as any).AudioEncoder = jest.fn();
 
@@ -367,7 +367,7 @@ describe('AudioEncoder', () => {
 			delete (global as any).AudioEncoder;
 		});
 
-		it('should return false for WebCodecs formats when AudioEncoder is unavailable', () => {
+		it('returns false for WebCodecs formats when AudioEncoder is unavailable', () => {
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any -- cleaning up WebCodecs global in test
 			delete (global as any).AudioEncoder;
 
@@ -378,7 +378,7 @@ describe('AudioEncoder', () => {
 			expect(isOfflineEncodingSupported('aac')).toBe(false);
 		});
 
-		it('should return false for unknown formats', () => {
+		it('returns false for unknown formats', () => {
 			expect(isOfflineEncodingSupported('xyz')).toBe(false);
 		});
 	});

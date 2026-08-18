@@ -169,7 +169,7 @@ describe('ContextMenu', () => {
 	}
 
 	describe('register', () => {
-		it('should register file, editor, and player menus', () => {
+		it('registers file, editor, and player menus', () => {
 			contextMenu.register();
 
 			expect(mockWorkspace.on).toHaveBeenCalledWith(

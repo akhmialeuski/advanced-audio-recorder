@@ -229,6 +229,6 @@ describe('SystemInfoModal.onClose', () => {
 
 		modal.onClose();
 
-		expect(modal.contentEl.children.length).toBe(0);
+		expect(modal.contentEl.children).toHaveLength(0);
 	});
 });

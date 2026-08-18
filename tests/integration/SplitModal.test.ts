@@ -233,7 +233,7 @@ describe('SplitModal', () => {
 		progressEl = addObsidianDomMethods(document.createElement('div'));
 	});
 
-	it('should instantiate with defaults from settings', () => {
+	it('instantiates with defaults from settings', () => {
 		const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
 
 		expect(internals(modal).partMinutes).toBe(1);
@@ -242,7 +242,7 @@ describe('SplitModal', () => {
 		expect(internals(modal).linkAction).toBe('replace');
 	});
 
-	it('should seed the link action from the conversion link action setting', () => {
+	it('seeds the link action from the conversion link action setting', () => {
 		const modal = new SplitModal(mockApp, mockFile, () => ({
 			...mockSettings,
 			conversionLinkAction: 'after',
@@ -251,7 +251,7 @@ describe('SplitModal', () => {
 		expect(internals(modal).linkAction).toBe('after');
 	});
 
-	it('should snap an unsupported configured bitrate to the closest option', () => {
+	it('snaps an unsupported configured bitrate to the closest option', () => {
 		configureFile('recording.webm', 'webm');
 		const modal = new SplitModal(mockApp, mockFile, () => ({
 			...mockSettings,
@@ -262,7 +262,7 @@ describe('SplitModal', () => {
 		expect((modal as unknown as { bitrate: number }).bitrate).toBe(96000);
 	});
 
-	it('should refresh the part name example when the suffix changes', () => {
+	it('refreshes the part name example when the suffix changes', () => {
 		const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
 		modal.onOpen();
 
@@ -277,7 +277,7 @@ describe('SplitModal', () => {
 		);
 	});
 
-	it('should show the WAV extension in the example when encoding falls back', () => {
+	it('shows the WAV extension in the example when encoding falls back', () => {
 		const { isOfflineEncodingSupported } = jest.requireMock(
 			'src/audio/AudioEncoder',
 		);
@@ -292,7 +292,7 @@ describe('SplitModal', () => {
 		(isOfflineEncodingSupported as jest.Mock).mockReturnValue(true);
 	});
 
-	it('should clear the progress text when aborting on a collision', async () => {
+	it('clears the progress text when aborting on a collision', async () => {
 		(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
 			buildTestWav(1, 1000, 250000),
 		);
@@ -307,7 +307,7 @@ describe('SplitModal', () => {
 		expect(progressEl.textContent).toBe('');
 	});
 
-	it('should keep reporting progress in a notice when the modal closes mid-split', async () => {
+	it('keeps reporting progress in a notice when the modal closes mid-split', async () => {
 		let resolveRead!: (bytes: ArrayBuffer) => void;
 		(mockApp.vault.adapter.readBinary as jest.Mock).mockReturnValue(
 			new Promise<ArrayBuffer>((resolve) => {
@@ -360,7 +360,7 @@ describe('SplitModal', () => {
 		expect(internals(modal).partMinutes).toBe(expected);
 	});
 
-	it('should render source file info on open and clear on close', () => {
+	it('renders source file info on open and clear on close', () => {
 		const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
 		modal.onOpen();
 
@@ -368,10 +368,10 @@ describe('SplitModal', () => {
 		expect(source?.textContent).toContain('recording.wav');
 
 		modal.onClose();
-		expect(modal.contentEl.children.length).toBe(0);
+		expect(modal.contentEl.children).toHaveLength(0);
 	});
 
-	it('should update split options from UI controls', () => {
+	it('updates split options from UI controls', () => {
 		const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
 		modal.onOpen();
 
@@ -413,7 +413,7 @@ describe('SplitModal', () => {
 		);
 	});
 
-	it('should show the bitrate dropdown only for compressed sources', () => {
+	it('shows the bitrate dropdown only for compressed sources', () => {
 		configureFile('recording.webm', 'webm');
 		const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
 		modal.onOpen();
@@ -425,7 +425,7 @@ describe('SplitModal', () => {
 		expect((modal as unknown as { bitrate: number }).bitrate).toBe(192000);
 	});
 
-	it('should run the split when the split button is clicked', async () => {
+	it('runs the split when the split button is clicked', async () => {
 		(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
 			buildTestWav(1, 1000, 250000),
 		);
@@ -458,7 +458,7 @@ describe('SplitModal', () => {
 			);
 		});
 
-		it('should split WAV bytes without decoding', async () => {
+		it('splits WAV bytes without decoding', async () => {
 			const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
 
 			await internals(modal).runSplit(progressEl);
@@ -475,7 +475,7 @@ describe('SplitModal', () => {
 			]);
 		});
 
-		it('should write standalone WAV parts with patched sizes', async () => {
+		it('writes standalone WAV parts with patched sizes', async () => {
 			const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
 
 			await internals(modal).runSplit(progressEl);
@@ -489,7 +489,7 @@ describe('SplitModal', () => {
 			expect(new DataView(lastPart).getUint32(40, true)).toBe(10000);
 		});
 
-		it('should update links in the vault with the created part files', async () => {
+		it('updates links in the vault with the created part files', async () => {
 			const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
 
 			await internals(modal).runSplit(progressEl);
@@ -516,7 +516,7 @@ describe('SplitModal', () => {
 			expect(partFiles.every((file) => file instanceof TFile)).toBe(true);
 		});
 
-		it('should pass only TFile results from createBinary to the link updater', async () => {
+		it('passes only TFile results from createBinary to the link updater', async () => {
 			// Simulate an adapter that does not resolve to a TFile
 			(mockApp.vault.createBinary as jest.Mock).mockResolvedValue(
 				undefined,
@@ -533,7 +533,7 @@ describe('SplitModal', () => {
 			);
 		});
 
-		it('should not update links for the none action', async () => {
+		it('does not update links for the none action', async () => {
 			const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
 			internals(modal).linkAction = 'none';
 
@@ -542,7 +542,7 @@ describe('SplitModal', () => {
 			expect(updateLinksInVault).not.toHaveBeenCalled();
 		});
 
-		it('should not delete the source by default', async () => {
+		it('does not delete the source by default', async () => {
 			const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
 
 			await internals(modal).runSplit(progressEl);
@@ -550,7 +550,7 @@ describe('SplitModal', () => {
 			expect(mockApp.fileManager.trashFile).not.toHaveBeenCalled();
 		});
 
-		it('should delete the source only after all parts are written', async () => {
+		it('deletes the source only after all parts are written', async () => {
 			const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
 			internals(modal).deleteSource = true;
 
@@ -568,7 +568,7 @@ describe('SplitModal', () => {
 			expect(trashOrder).toBeGreaterThan(lastWriteOrder);
 		});
 
-		it('should abort with the suffix rule before reading the source for an invalid suffix', async () => {
+		it('aborts with the suffix rule before reading the source for an invalid suffix', async () => {
 			const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
 			internals(modal).partSuffix = 'bad suffix';
 
@@ -581,7 +581,7 @@ describe('SplitModal', () => {
 			expect(mockApp.vault.createBinary).not.toHaveBeenCalled();
 		});
 
-		it('should fall back to the default suffix when the field is blank', async () => {
+		it('falls back to the default suffix when the field is blank', async () => {
 			const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
 			internals(modal).partSuffix = '   ';
 
@@ -597,7 +597,7 @@ describe('SplitModal', () => {
 			]);
 		});
 
-		it('should clamp a zero part duration up to one minute', async () => {
+		it('clamps a zero part duration up to one minute', async () => {
 			const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
 			internals(modal).partMinutes = 0;
 
@@ -608,7 +608,7 @@ describe('SplitModal', () => {
 			expect(mockApp.vault.createBinary).toHaveBeenCalledTimes(3);
 		});
 
-		it('should clamp an oversized part duration down to 180 minutes', async () => {
+		it('clamps an oversized part duration down to 180 minutes', async () => {
 			// 10 Hz mono 16-bit: byteRate 20 B/s; a 180-minute part = 216000 B
 			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
 				buildTestWav(1, 10, 250000),
@@ -626,7 +626,7 @@ describe('SplitModal', () => {
 			expect(at(calls, 1)[1].byteLength).toBe(WAV_HEADER_SIZE + 34000);
 		});
 
-		it('should abort when a target part file already exists', async () => {
+		it('aborts when a target part file already exists', async () => {
 			(mockApp.vault.adapter.exists as jest.Mock).mockImplementation(
 				(path: string) =>
 					Promise.resolve(path === 'Recordings/recording-part2.wav'),
@@ -641,7 +641,7 @@ describe('SplitModal', () => {
 			);
 		});
 
-		it('should abort when the file is shorter than one part', async () => {
+		it('aborts when the file is shorter than one part', async () => {
 			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
 				buildTestWav(1, 1000, 60000),
 			);
@@ -655,7 +655,7 @@ describe('SplitModal', () => {
 			);
 		});
 
-		it('should remove written parts and keep the source when a write fails', async () => {
+		it('removes written parts and keep the source when a write fails', async () => {
 			(mockApp.vault.createBinary as jest.Mock)
 				.mockResolvedValueOnce(undefined)
 				.mockRejectedValueOnce(new Error('disk full'));
@@ -673,7 +673,7 @@ describe('SplitModal', () => {
 			);
 		});
 
-		it('should write parts next to a file in the vault root', async () => {
+		it('writes parts next to a file in the vault root', async () => {
 			Object.defineProperty(mockFile, 'parent', {
 				value: null,
 				configurable: true,
@@ -688,7 +688,7 @@ describe('SplitModal', () => {
 			);
 		});
 
-		it('should stringify non-Error failures', async () => {
+		it('stringifies non-Error failures', async () => {
 			(mockApp.vault.adapter.readBinary as jest.Mock).mockRejectedValue(
 				'raw failure',
 			);
@@ -699,7 +699,7 @@ describe('SplitModal', () => {
 			expect(Notice).toHaveBeenCalledWith('Split failed: raw failure');
 		});
 
-		it('should roll back written parts by trashing them when a write fails', async () => {
+		it('rolls back written parts by trashing them when a write fails', async () => {
 			(mockApp.vault.createBinary as jest.Mock)
 				.mockImplementationOnce((path: string) =>
 					Promise.resolve(makePartFile(path)),
@@ -719,7 +719,7 @@ describe('SplitModal', () => {
 			expect(mockApp.vault.adapter.remove).not.toHaveBeenCalled();
 		});
 
-		it('should report partial success when updating links fails after parts are written', async () => {
+		it('reports partial success when updating links fails after parts are written', async () => {
 			(updateLinksInVault as jest.Mock).mockRejectedValueOnce(
 				new Error('cache busy'),
 			);
@@ -743,7 +743,7 @@ describe('SplitModal', () => {
 			expect(totalFailures).toHaveLength(0);
 		});
 
-		it('should report partial success when deleting the source fails', async () => {
+		it('reports partial success when deleting the source fails', async () => {
 			(mockApp.fileManager.trashFile as jest.Mock).mockRejectedValueOnce(
 				new Error('locked'),
 			);
@@ -757,7 +757,7 @@ describe('SplitModal', () => {
 			);
 		});
 
-		it('should stringify non-Error post-write failures', async () => {
+		it('stringifies non-Error post-write failures', async () => {
 			(updateLinksInVault as jest.Mock).mockRejectedValueOnce(
 				'raw link failure',
 			);
@@ -782,7 +782,7 @@ describe('SplitModal', () => {
 			);
 		});
 
-		it('should keep the source when some links could not be updated', async () => {
+		it('keeps the source when some links could not be updated', async () => {
 			(updateLinksInVault as jest.Mock).mockResolvedValueOnce({
 				updatedNotes: 1,
 				skippedReferences: 2,
@@ -799,7 +799,7 @@ describe('SplitModal', () => {
 			);
 		});
 
-		it('should warn about frontmatter links that stay on the source', async () => {
+		it('warns about frontmatter links that stay on the source', async () => {
 			(updateLinksInVault as jest.Mock).mockResolvedValueOnce({
 				updatedNotes: 1,
 				skippedReferences: 0,
@@ -816,7 +816,7 @@ describe('SplitModal', () => {
 			);
 		});
 
-		it('should log and continue when rollback of a written part fails', async () => {
+		it('logs and continue when rollback of a written part fails', async () => {
 			(mockApp.vault.createBinary as jest.Mock)
 				.mockResolvedValueOnce(undefined)
 				.mockRejectedValueOnce(new Error('disk full'));
@@ -866,7 +866,7 @@ describe('SplitModal', () => {
 			};
 		});
 
-		it('should decode once and encode each part', async () => {
+		it('decodes once and encode each part', async () => {
 			const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
 
 			await internals(modal).runSplit(progressEl);
@@ -887,7 +887,7 @@ describe('SplitModal', () => {
 			]);
 		});
 
-		it('should abort when the audio is shorter than one part', async () => {
+		it('aborts when the audio is shorter than one part', async () => {
 			(decodeAudioBlob as jest.Mock).mockResolvedValue(
 				createMockAudioBuffer(1, 30 * 44100, 44100),
 			);
@@ -901,7 +901,7 @@ describe('SplitModal', () => {
 			);
 		});
 
-		it('should decode a WAV file without a raw sample data chunk', async () => {
+		it('decodes a WAV file without a raw sample data chunk', async () => {
 			// readBinary returns a non-RIFF buffer, so the lossless WAV
 			// path is rejected and the decode pipeline takes over
 			configureFile('recording.wav', 'wav');
@@ -916,7 +916,7 @@ describe('SplitModal', () => {
 			);
 		});
 
-		it('should fall back to WAV when the source format cannot be encoded', async () => {
+		it('falls back to WAV when the source format cannot be encoded', async () => {
 			const { isOfflineEncodingSupported } = jest.requireMock(
 				'src/audio/AudioEncoder',
 			);
@@ -938,7 +938,7 @@ describe('SplitModal', () => {
 			);
 		});
 
-		it('should report errors from decoding', async () => {
+		it('reports errors from decoding', async () => {
 			(decodeAudioBlob as jest.Mock).mockRejectedValue(
 				new Error('decode failed'),
 			);

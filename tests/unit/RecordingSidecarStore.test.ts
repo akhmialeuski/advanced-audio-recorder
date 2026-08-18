@@ -877,7 +877,7 @@ describe('RecordingSidecarStore', () => {
 			// resolve from the cache without re-reading the vault.
 			await store.handleOutputRename('b.md', 'b2.md');
 			await store.handleOutputRename('a2.md', 'a3.md');
-			expect(readSpy.mock.calls.length).toBe(readsAfterFirst);
+			expect(readSpy.mock.calls).toHaveLength(readsAfterFirst);
 			readSpy.mockRestore();
 		});
 	});

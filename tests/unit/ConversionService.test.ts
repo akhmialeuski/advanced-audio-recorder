@@ -88,7 +88,7 @@ describe('ConversionService', () => {
 		service = new ConversionService(mockApp);
 	});
 
-	it('should convert through the streaming pipeline and complete', async () => {
+	it('converts through the streaming pipeline and complete', async () => {
 		const outcome = await service.convert(createRequest(), jest.fn());
 
 		expect(outcome).toEqual({
@@ -102,7 +102,7 @@ describe('ConversionService', () => {
 		);
 	});
 
-	it('should use the decode-and-encode path for WAV targets', async () => {
+	it('uses the decode-and-encode path for WAV targets', async () => {
 		const { decodeAudioBlob } = jest.requireMock(
 			'src/audio/AudioFormatConverter',
 		);
@@ -126,7 +126,7 @@ describe('ConversionService', () => {
 		);
 	});
 
-	it('should downmix on the WAV decode path when a mono mode is requested', async () => {
+	it('downmixes on the WAV decode path when a mono mode is requested', async () => {
 		const { downmixAudioBuffer } = jest.requireMock('src/audio/downmix');
 
 		await service.convert(
@@ -144,7 +144,7 @@ describe('ConversionService', () => {
 		);
 	});
 
-	it('should pass the channel mode to the streaming conversion', async () => {
+	it('passes the channel mode to the streaming conversion', async () => {
 		const { convertBlobToFormatBuffer } = jest.requireMock(
 			'src/audio/AudioFormatConverter',
 		);
@@ -163,7 +163,7 @@ describe('ConversionService', () => {
 		);
 	});
 
-	it('should refuse a same-format conversion without a mono mode', async () => {
+	it('refuses a same-format conversion without a mono mode', async () => {
 		const outcome = await service.convert(
 			createRequest({ targetFormat: 'wav' }),
 			jest.fn(),
@@ -178,7 +178,7 @@ describe('ConversionService', () => {
 		).toBe(true);
 	});
 
-	it('should write a -mono file for a same-format mono downmix', async () => {
+	it('writes a -mono file for a same-format mono downmix', async () => {
 		const outcome = await service.convert(
 			createRequest({ targetFormat: 'wav', channelMode: 'mono-left' }),
 			jest.fn(),
@@ -195,7 +195,7 @@ describe('ConversionService', () => {
 		);
 	});
 
-	it('should treat an uppercase source extension as the same format', async () => {
+	it('treats an uppercase source extension as the same format', async () => {
 		// A .WAV source converting to wav differs from the source path
 		// only in case - still the same format, so it must get the
 		// -mono name instead of colliding on Windows or creating a
@@ -216,7 +216,7 @@ describe('ConversionService', () => {
 		});
 	});
 
-	it('should refuse an uppercase same-format conversion without a mono mode', async () => {
+	it('refuses an uppercase same-format conversion without a mono mode', async () => {
 		const outcome = await service.convert(
 			createRequest({
 				sourceFile: createSourceFile('WAV'),
@@ -233,7 +233,7 @@ describe('ConversionService', () => {
 		).toBe(true);
 	});
 
-	it('should abort when the target file already exists', async () => {
+	it('aborts when the target file already exists', async () => {
 		jest.mocked(mockApp.vault.adapter.exists).mockResolvedValue(true);
 
 		const outcome = await service.convert(createRequest(), jest.fn());
@@ -245,7 +245,7 @@ describe('ConversionService', () => {
 		).toBe(true);
 	});
 
-	it('should abort with a notice when the pipeline fails', async () => {
+	it('aborts with a notice when the pipeline fails', async () => {
 		jest.mocked(mockApp.vault.adapter.readBinary).mockRejectedValue(
 			new Error('missing'),
 		);
@@ -262,7 +262,7 @@ describe('ConversionService', () => {
 		).toBe(true);
 	});
 
-	it('should report partial success when the source cannot be deleted', async () => {
+	it('reports partial success when the source cannot be deleted', async () => {
 		jest.mocked(mockApp.fileManager.trashFile).mockRejectedValue(
 			new Error('locked'),
 		);

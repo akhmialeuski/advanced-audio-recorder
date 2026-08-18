@@ -83,7 +83,7 @@ describe('AudioStreamHandler: Error Handling', () => {
 		consoleErrorSpy.mockRestore();
 	});
 
-	it('should log AudioStreamError when OverconstrainedError occurs', async () => {
+	it('logs AudioStreamError when OverconstrainedError occurs', async () => {
 		const getUserMediaMock = jest
 			.fn()
 			.mockRejectedValueOnce(
@@ -115,7 +115,7 @@ describe('AudioStreamHandler: Error Handling', () => {
 		);
 	});
 
-	it('should show Notice with error message containing device ID', async () => {
+	it('shows Notice with error message containing device ID', async () => {
 		const getUserMediaMock = jest
 			.fn()
 			.mockRejectedValueOnce(
@@ -143,7 +143,7 @@ describe('AudioStreamHandler: Error Handling', () => {
 		);
 	});
 
-	it('should suggest checking plugin settings in Notice', async () => {
+	it('suggests checking plugin settings in Notice', async () => {
 		const getUserMediaMock = jest
 			.fn()
 			.mockRejectedValueOnce(new Error('NotFoundError'));
@@ -169,7 +169,7 @@ describe('AudioStreamHandler: Error Handling', () => {
 		);
 	});
 
-	it('should not fallback to default device', async () => {
+	it('does not fallback to default device', async () => {
 		const getUserMediaMock = jest
 			.fn()
 			.mockRejectedValueOnce(
@@ -199,7 +199,7 @@ describe('AudioStreamHandler: Error Handling', () => {
 		expect(getUserMediaMock).toHaveBeenCalledTimes(1);
 	});
 
-	it('should remain in Idle status on error', async () => {
+	it('remains in Idle status on error', async () => {
 		const getUserMediaMock = jest
 			.fn()
 			.mockRejectedValueOnce(new Error('Access denied'));
@@ -267,7 +267,7 @@ describe('Start failure after stream acquisition', () => {
 		consoleErrorSpy.mockRestore();
 	});
 
-	it('should stop acquired tracks when MediaRecorder creation fails', async () => {
+	it('stops acquired tracks when MediaRecorder creation fails', async () => {
 		(global as unknown as Record<string, unknown>).MediaRecorder = jest.fn(
 			() => {
 				throw new Error('mimeType not supported');
@@ -284,7 +284,7 @@ describe('Start failure after stream acquisition', () => {
 		expect(manager.getStatus()).toBe(RecordingStatus.Idle);
 	});
 
-	it('should stop acquired tracks when PCM capture fails to start', async () => {
+	it('stops acquired tracks when PCM capture fails to start', async () => {
 		// The module-level AudioContext mock has no audioWorklet, so the
 		// real PcmStreamRecorder.start() fails like a broken worklet load
 		(global as unknown as Record<string, unknown>).MediaRecorder =
@@ -313,7 +313,7 @@ describe('Start failure after stream acquisition', () => {
 });
 
 describe('AudioStreamError', () => {
-	it('should create error with device ID', () => {
+	it('creates error with device ID', () => {
 		const original = new Error('Original error');
 		const error = new AudioStreamError(original, 'my-device-id');
 
@@ -323,7 +323,7 @@ describe('AudioStreamError', () => {
 		expect(error.deviceId).toBe('my-device-id');
 	});
 
-	it('should create error without device ID', () => {
+	it('creates error without device ID', () => {
 		const original = new Error('Original error');
 		const error = new AudioStreamError(original);
 

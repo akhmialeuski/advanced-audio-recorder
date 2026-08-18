@@ -189,7 +189,7 @@ describe('downmixAudioBuffer', () => {
 
 		expect(mono.numberOfChannels).toBe(1);
 		expect(mono.sampleRate).toBe(48000);
-		expect(mono.length).toBe(2);
+		expect(mono).toHaveLength(2);
 		expect(Array.from(mono.getChannelData(0))).toEqual([0, 0.5]);
 	});
 

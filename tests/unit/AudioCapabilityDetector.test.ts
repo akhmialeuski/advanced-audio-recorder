@@ -49,7 +49,7 @@ describe('AudioCapabilityDetector', () => {
 	});
 
 	describe('detectSupportedFormats', () => {
-		it('should return MediaRecorder formats plus offline-encodable formats', async () => {
+		it('returns MediaRecorder formats plus offline-encodable formats', async () => {
 			(global as Record<string, unknown>).MediaRecorder = {
 				isTypeSupported: jest.fn((type: string) => {
 					return type === 'audio/webm' || type === 'audio/ogg';
@@ -66,7 +66,7 @@ describe('AudioCapabilityDetector', () => {
 			expect(formats).toContain('aac');
 		});
 
-		it('should include wav when a compressed intermediate is supported', async () => {
+		it('includes wav when a compressed intermediate is supported', async () => {
 			(global as Record<string, unknown>).MediaRecorder = {
 				isTypeSupported: jest.fn((type: string) => {
 					return type === 'audio/webm';
@@ -79,7 +79,7 @@ describe('AudioCapabilityDetector', () => {
 			expect(formats).toContain('webm');
 		});
 
-		it('should exclude wav when no compressed intermediate is supported', async () => {
+		it('excludes wav when no compressed intermediate is supported', async () => {
 			(global as Record<string, unknown>).MediaRecorder = {
 				isTypeSupported: jest.fn((type: string) => {
 					return type === 'audio/mp3';
@@ -92,7 +92,7 @@ describe('AudioCapabilityDetector', () => {
 			expect(formats).not.toContain('wav');
 		});
 
-		it('should return nothing when MediaRecorder supports no format at all', async () => {
+		it('returns nothing when MediaRecorder supports no format at all', async () => {
 			(global as Record<string, unknown>).MediaRecorder = {
 				isTypeSupported: jest.fn().mockReturnValue(false),
 			};
@@ -107,13 +107,13 @@ describe('AudioCapabilityDetector', () => {
 	});
 
 	describe('getSupportedSampleRates', () => {
-		it('should return all candidate sample rates', () => {
+		it('returns all candidate sample rates', () => {
 			const rates = getSupportedSampleRates();
 
 			expect(rates).toEqual([8000, 16000, 22050, 44100, 48000]);
 		});
 
-		it('should return a new array each time', () => {
+		it('returns a new array each time', () => {
 			const rates1 = getSupportedSampleRates();
 			const rates2 = getSupportedSampleRates();
 
@@ -123,7 +123,7 @@ describe('AudioCapabilityDetector', () => {
 	});
 
 	describe('getSupportedBitrates', () => {
-		it('should return all candidate bitrates in bps', () => {
+		it('returns all candidate bitrates in bps', () => {
 			const bitrates = getSupportedBitrates();
 
 			expect(bitrates).toEqual([
@@ -131,7 +131,7 @@ describe('AudioCapabilityDetector', () => {
 			]);
 		});
 
-		it('should return a new array each time', () => {
+		it('returns a new array each time', () => {
 			const b1 = getSupportedBitrates();
 			const b2 = getSupportedBitrates();
 
@@ -149,21 +149,21 @@ describe('AudioCapabilityDetector', () => {
 			};
 		});
 
-		it('should return valid for supported format', async () => {
+		it('returns valid for supported format', async () => {
 			const result = await validateRecordingCapability('webm');
 
 			expect(result.valid).toBe(true);
 			expect(result.reason).toBe('');
 		});
 
-		it('should return valid for offline-only format when intermediate is available', async () => {
+		it('returns valid for offline-only format when intermediate is available', async () => {
 			const result = await validateRecordingCapability('mp3');
 
 			// MP3 is offline-only but valid because WebM intermediate is supported
 			expect(result.valid).toBe(true);
 		});
 
-		it('should return invalid for completely unsupported format', async () => {
+		it('returns invalid for completely unsupported format', async () => {
 			const result = await validateRecordingCapability('xyz');
 
 			expect(result.valid).toBe(false);
@@ -171,7 +171,7 @@ describe('AudioCapabilityDetector', () => {
 			expect(result.reason).toContain('cannot be recorded or encoded');
 		});
 
-		it('should return invalid when the encoder probe fails despite an intermediate', async () => {
+		it('returns invalid when the encoder probe fails despite an intermediate', async () => {
 			// m4a needs a working AAC-in-mp4 pipeline; the mock probe
 			// rejects it, so the intermediate alone must not validate it
 			const result = await validateRecordingCapability('m4a');
@@ -180,13 +180,13 @@ describe('AudioCapabilityDetector', () => {
 			expect(result.reason).toContain('m4a');
 		});
 
-		it('should return valid for wav when compressed intermediate is available', async () => {
+		it('returns valid for wav when compressed intermediate is available', async () => {
 			const result = await validateRecordingCapability('wav');
 
 			expect(result.valid).toBe(true);
 		});
 
-		it('should return invalid for wav when no compressed intermediate is available', async () => {
+		it('returns invalid for wav when no compressed intermediate is available', async () => {
 			(global as Record<string, unknown>).MediaRecorder = {
 				isTypeSupported: jest.fn().mockReturnValue(false),
 			};
@@ -199,7 +199,7 @@ describe('AudioCapabilityDetector', () => {
 	});
 
 	describe('detectCapabilities', () => {
-		it('should aggregate all detection results', async () => {
+		it('aggregates all detection results', async () => {
 			(global as Record<string, unknown>).MediaRecorder = {
 				isTypeSupported: jest.fn((type: string) => {
 					return type === 'audio/webm';
@@ -219,7 +219,7 @@ describe('AudioCapabilityDetector', () => {
 			expect(caps.defaultBitrate).toBe(128000);
 		});
 
-		it('should default to first supported format when webm is unavailable', async () => {
+		it('defaults to first supported format when webm is unavailable', async () => {
 			(global as Record<string, unknown>).MediaRecorder = {
 				isTypeSupported: jest.fn((type: string) => {
 					return type === 'audio/ogg';
@@ -231,7 +231,7 @@ describe('AudioCapabilityDetector', () => {
 			expect(caps.defaultFormat).toBe('ogg');
 		});
 
-		it('should report no supported formats when nothing can be recorded', async () => {
+		it('reports no supported formats when nothing can be recorded', async () => {
 			(global as Record<string, unknown>).MediaRecorder = {
 				isTypeSupported: jest.fn().mockReturnValue(false),
 			};

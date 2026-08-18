@@ -50,7 +50,7 @@ describe('AudioFileInfoModal.onOpen', () => {
 		const modal = makeModal(makeData());
 
 		const listItems = modal.contentEl.querySelectorAll('li');
-		expect(listItems.length).toBe(8);
+		expect(listItems).toHaveLength(8);
 
 		expect(at(listItems, 0).textContent).toBe('File Name: test.webm');
 		expect(at(listItems, 1).textContent).toBe('File Size: 1.5 MB');
@@ -180,6 +180,6 @@ describe('AudioFileInfoModal.onClose', () => {
 
 		modal.onClose();
 
-		expect(modal.contentEl.children.length).toBe(0);
+		expect(modal.contentEl.children).toHaveLength(0);
 	});
 });

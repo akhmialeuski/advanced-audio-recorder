@@ -4,6 +4,7 @@ import obsidianmd from 'eslint-plugin-obsidianmd';
 import prettier from 'eslint-plugin-prettier';
 import eslintConfigPrettier from 'eslint-config-prettier';
 import globals from 'globals';
+import jest from 'eslint-plugin-jest';
 
 // Non-ASCII typography characters that must never appear in source: em/en
 // dashes, curly quotes, arrows, multiplication sign, approximation sign, and
@@ -190,7 +191,65 @@ export default tseslint.config(
     },
     {
         files: ['tests/**/*.ts'],
+        plugins: { jest },
+        languageOptions: {
+            globals: globals.jest,
+        },
         rules: {
+            // A suite is only worth what its weakest test is worth, and these
+            // are the ways a test quietly stops being one. Errors, not
+            // warnings: a warning in a 3000-test suite is invisible.
+            'jest/no-focused-tests': 'error',
+            'jest/no-disabled-tests': 'error',
+            // A test with no expectation passes forever, including after the
+            // behaviour it was written for is deleted.
+            'jest/expect-expect': [
+                'error',
+                {
+                    assertFunctionNames: [
+                        'expect',
+                        // Helpers that assert on the caller's behalf.
+                        'settingRow',
+                        'defined',
+                    ],
+                },
+            ],
+            // An expectation inside an if or a catch can be skipped without
+            // the test failing, which is the same as not having it.
+            'jest/no-conditional-expect': 'error',
+            'jest/valid-expect': 'error',
+            'jest/valid-expect-in-promise': 'error',
+            'jest/no-standalone-expect': 'error',
+            'jest/no-identical-title': 'error',
+            // One naming convention, checked rather than agreed. A title in
+            // the third person states the contract - "returns null for an
+            // empty path" - where "should return null" states an intention
+            // about the code instead of a fact about it.
+            'jest/valid-title': [
+                'error',
+                {
+                    mustNotMatch: {
+                        it: [
+                            '^should\\b',
+                            'Name a test after what the code does, in the third person: "returns X", not "should return X".',
+                        ],
+                        test: [
+                            '^should\\b',
+                            'Name a test after what the code does, in the third person: "returns X", not "should return X".',
+                        ],
+                    },
+                },
+            ],
+            'jest/no-done-callback': 'error',
+            // Awaiting is the difference between asserting and hoping.
+            'jest/no-conditional-in-test': 'off',
+            'jest/prefer-to-be': 'error',
+            'jest/prefer-to-contain': 'error',
+            'jest/prefer-to-have-length': 'error',
+            // Guards the parametrisation pass: a run of tests that differ
+            // only by their inputs belongs in a table.
+            'jest/prefer-each': 'warn',
+            'jest/require-top-level-describe': 'off',
             // Test files need unbound methods for jest mocks
             '@typescript-eslint/unbound-method': 'off',
             // Test mocks may require type assertions and flexible typing

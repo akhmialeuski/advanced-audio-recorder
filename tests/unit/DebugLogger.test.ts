@@ -18,7 +18,7 @@ describe('DebugLogger', () => {
 	});
 
 	describe('when debug is disabled', () => {
-		it('should not log anything', () => {
+		it('does not log anything', () => {
 			const settings: AudioRecorderSettings = {
 				...DEFAULT_SETTINGS,
 				debug: false,
@@ -36,7 +36,7 @@ describe('DebugLogger', () => {
 	});
 
 	describe('when debug is enabled', () => {
-		it('should log MIME type', () => {
+		it('logs MIME type', () => {
 			const settings: AudioRecorderSettings = {
 				...DEFAULT_SETTINGS,
 				debug: true,
@@ -51,7 +51,7 @@ describe('DebugLogger', () => {
 			);
 		});
 
-		it('should log devices', () => {
+		it('logs devices', () => {
 			const settings: AudioRecorderSettings = {
 				...DEFAULT_SETTINGS,
 				debug: true,
@@ -69,7 +69,7 @@ describe('DebugLogger', () => {
 			);
 		});
 
-		it('should log chunk size', () => {
+		it('logs chunk size', () => {
 			const settings: AudioRecorderSettings = {
 				...DEFAULT_SETTINGS,
 				debug: true,
@@ -83,7 +83,7 @@ describe('DebugLogger', () => {
 			);
 		});
 
-		it('should log recording stats', () => {
+		it('logs recording stats', () => {
 			const settings: AudioRecorderSettings = {
 				...DEFAULT_SETTINGS,
 				debug: true,
@@ -97,7 +97,7 @@ describe('DebugLogger', () => {
 			);
 		});
 
-		it('should log generic messages', () => {
+		it('logs generic messages', () => {
 			const settings: AudioRecorderSettings = {
 				...DEFAULT_SETTINGS,
 				debug: true,
@@ -114,7 +114,7 @@ describe('DebugLogger', () => {
 	});
 
 	describe('updateSettings', () => {
-		it('should toggle logging based on new settings', () => {
+		it('toggles logging based on new settings', () => {
 			const settings: AudioRecorderSettings = {
 				...DEFAULT_SETTINGS,
 				debug: false,

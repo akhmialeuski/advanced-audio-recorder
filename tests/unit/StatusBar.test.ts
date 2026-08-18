@@ -118,13 +118,13 @@ describe('StatusBar', () => {
 	});
 
 	describe('updateStatusBar', () => {
-		it('should handle null element gracefully', () => {
+		it('handles null element gracefully', () => {
 			expect(() => {
 				updateStatusBar(null, RecordingStatus.Recording);
 			}).not.toThrow();
 		});
 
-		it('should show "Recording..." and add is-recording class when recording', () => {
+		it('shows "Recording..." and adds the is-recording class while recording', () => {
 			updateStatusBar(statusBarItem, RecordingStatus.Recording);
 
 			expect(statusBarItem.textContent).toContain('Recording...');
@@ -132,14 +132,14 @@ describe('StatusBar', () => {
 			expect(statusBarItem.classList.contains('is-saving')).toBe(false);
 		});
 
-		it('should show "Recording paused" when paused', () => {
+		it('shows "Recording paused" while paused', () => {
 			updateStatusBar(statusBarItem, RecordingStatus.Paused);
 
 			expect(statusBarItem.textContent).toContain('Recording paused');
 			expect(statusBarItem.classList.contains('is-recording')).toBe(true);
 		});
 
-		it('should clear text and remove classes when idle', () => {
+		it('clears text and remove classes when idle', () => {
 			statusBarItem.classList.add('is-recording');
 			statusBarItem.classList.add('is-saving');
 			statusBarItem.textContent = 'Something';
@@ -153,7 +153,7 @@ describe('StatusBar', () => {
 			expect(statusBarItem.classList.contains('is-saving')).toBe(false);
 		});
 
-		it('should show saving state with progress bar', () => {
+		it('shows saving state with progress bar', () => {
 			updateStatusBar(statusBarItem, RecordingStatus.Saving, {
 				percent: 40,
 				description: 'Assembling audio...',
@@ -176,7 +176,7 @@ describe('StatusBar', () => {
 			);
 		});
 
-		it('should show default "Saving..." when no progress provided', () => {
+		it('shows a plain "Saving..." when no progress was reported', () => {
 			updateStatusBar(statusBarItem, RecordingStatus.Saving);
 
 			const text = statusBarItem.querySelector('span');
@@ -190,7 +190,7 @@ describe('StatusBar', () => {
 			);
 		});
 
-		it('should have progress container with correct classes', () => {
+		it('has progress container with correct classes', () => {
 			updateStatusBar(statusBarItem, RecordingStatus.Saving, {
 				percent: 60,
 				description: 'Writing file...',
@@ -203,7 +203,7 @@ describe('StatusBar', () => {
 			expect(bar).not.toBeNull();
 		});
 
-		it('should remove is-saving when transitioning from saving to idle', () => {
+		it('removes is-saving when transitioning from saving to idle', () => {
 			updateStatusBar(statusBarItem, RecordingStatus.Saving, {
 				percent: 100,
 				description: 'Saved',
@@ -215,7 +215,7 @@ describe('StatusBar', () => {
 			expect(statusBarItem.textContent).toBe('');
 		});
 
-		it('should clear previous content when transitioning between states', () => {
+		it('clears previous content when transitioning between states', () => {
 			updateStatusBar(statusBarItem, RecordingStatus.Saving, {
 				percent: 50,
 				description: 'Assembling...',
@@ -231,7 +231,7 @@ describe('StatusBar', () => {
 			expect(statusBarItem.textContent).toContain('Recording...');
 		});
 
-		it('should clear transcription state when transitioning to recording', () => {
+		it('clears transcription state when transitioning to recording', () => {
 			renderTranscriptionStatusBar(
 				statusBarItem,
 				{
@@ -252,7 +252,7 @@ describe('StatusBar', () => {
 			expect(statusBarItem.textContent).toContain('Recording...');
 		});
 
-		it('should handle default case same as idle', () => {
+		it('handles default case same as idle', () => {
 			statusBarItem.classList.add('is-recording');
 
 			updateStatusBar(statusBarItem, 'unknown' as RecordingStatus);
@@ -265,7 +265,7 @@ describe('StatusBar', () => {
 	});
 
 	describe('transcription progress', () => {
-		it('should show minimized transcription progress in the status bar', () => {
+		it('shows minimized transcription progress in the status bar', () => {
 			renderTranscriptionStatusBar(
 				statusBarItem,
 				{
@@ -298,7 +298,7 @@ describe('StatusBar', () => {
 			);
 		});
 
-		it('should restore transcription on a single click', () => {
+		it('restores transcription on a single click', () => {
 			const onActivate = jest.fn();
 			renderTranscriptionStatusBar(
 				statusBarItem,
@@ -320,7 +320,7 @@ describe('StatusBar', () => {
 			expect(onActivate).toHaveBeenCalledTimes(1);
 		});
 
-		it('should not restore transcription on a double click only', () => {
+		it('does not restore transcription on a double click only', () => {
 			const onActivate = jest.fn();
 			renderTranscriptionStatusBar(
 				statusBarItem,
@@ -346,7 +346,7 @@ describe('StatusBar', () => {
 			expect(onActivate).not.toHaveBeenCalled();
 		});
 
-		it('should restore transcription from keyboard activation', () => {
+		it('restores transcription from keyboard activation', () => {
 			const onActivate = jest.fn();
 			renderTranscriptionStatusBar(
 				statusBarItem,
@@ -381,13 +381,13 @@ describe('StatusBar', () => {
 	});
 
 	describe('playback controls', () => {
-		it('should handle a missing status bar element', () => {
+		it('handles a missing status bar element', () => {
 			expect(() => {
 				renderPlaybackStatusBar(null, makePlaybackState());
 			}).not.toThrow();
 		});
 
-		it('should render transport, volume, markers, chapters, and time without speed controls', () => {
+		it('renders transport, volume, markers, chapters, and time without speed controls', () => {
 			renderPlaybackStatusBar(statusBarItem, makePlaybackState());
 
 			expect(statusBarItem.classList.contains('is-playback')).toBe(true);
@@ -428,7 +428,7 @@ describe('StatusBar', () => {
 			expect(statusBarItem.querySelector('.aar-player-speed')).toBeNull();
 		});
 
-		it('should dispatch every playback command from mouse and volume input', () => {
+		it('dispatches every playback command from mouse and volume input', () => {
 			const state = makePlaybackState();
 			renderPlaybackStatusBar(statusBarItem, state);
 
@@ -476,7 +476,7 @@ describe('StatusBar', () => {
 			expect(state.onAddMarker).toHaveBeenNthCalledWith(2, 'chapter');
 		});
 
-		it('should keep the controls DOM while updating pause, mute, markers, volume, and time', () => {
+		it('keeps the controls DOM while updating pause, mute, markers, volume, and time', () => {
 			renderPlaybackStatusBar(statusBarItem, makePlaybackState());
 			const controls = statusBarItem.querySelector(
 				'.aar-playback-controls',
@@ -520,7 +520,7 @@ describe('StatusBar', () => {
 			).toBe('0:05 / 0:00');
 		});
 
-		it('should preserve a focused volume input during playback updates', () => {
+		it('preserves a focused volume input during playback updates', () => {
 			document.body.appendChild(statusBarItem);
 			renderPlaybackStatusBar(statusBarItem, makePlaybackState());
 			const volume = statusBarItem.querySelector<HTMLInputElement>(
@@ -541,7 +541,7 @@ describe('StatusBar', () => {
 			statusBarItem.remove();
 		});
 
-		it('should tolerate controls removed by an external status-bar refresh', () => {
+		it('tolerates controls removed by an external status-bar refresh', () => {
 			renderPlaybackStatusBar(statusBarItem, makePlaybackState());
 			const controls = statusBarItem.querySelector<HTMLElement>(
 				'.aar-playback-controls',
@@ -557,7 +557,7 @@ describe('StatusBar', () => {
 			}).not.toThrow();
 		});
 
-		it('should activate transport controls with Enter and Space only', () => {
+		it('activates transport controls with Enter and Space only', () => {
 			const state = makePlaybackState();
 			renderPlaybackStatusBar(statusBarItem, state);
 			const toggle = statusBarItem.querySelector<HTMLElement>(
@@ -575,7 +575,7 @@ describe('StatusBar', () => {
 			expect(state.onTogglePlay).toHaveBeenCalledTimes(2);
 		});
 
-		it('should clear playback controls when recording takes precedence', () => {
+		it('clears playback controls when recording takes precedence', () => {
 			renderPlaybackStatusBar(statusBarItem, makePlaybackState());
 
 			updateStatusBar(statusBarItem, RecordingStatus.Recording);
@@ -589,7 +589,7 @@ describe('StatusBar', () => {
 	});
 
 	describe('recording controls', () => {
-		it('should render pause and stop buttons when recording with controls', () => {
+		it('renders pause and stop buttons when recording with controls', () => {
 			const controls: RecordingControls = {
 				onPauseResume: jest.fn(),
 				onStop: jest.fn(),
@@ -612,10 +612,10 @@ describe('StatusBar', () => {
 			expect(label?.textContent).toBe('Recording...');
 
 			const buttons = statusBarItem.querySelectorAll('.aar-control-btn');
-			expect(buttons.length).toBe(2);
+			expect(buttons).toHaveLength(2);
 		});
 
-		it('should render resume and stop buttons when paused with controls', () => {
+		it('renders resume and stop buttons when paused with controls', () => {
 			const controls: RecordingControls = {
 				onPauseResume: jest.fn(),
 				onStop: jest.fn(),
@@ -633,7 +633,7 @@ describe('StatusBar', () => {
 			expect(label?.textContent).toBe('Recording paused');
 
 			const buttons = statusBarItem.querySelectorAll('.aar-control-btn');
-			expect(buttons.length).toBe(2);
+			expect(buttons).toHaveLength(2);
 
 			// First button should have aria-label "Resume recording"
 			expect(at(buttons, 0).getAttribute('aria-label')).toBe(
@@ -644,7 +644,7 @@ describe('StatusBar', () => {
 			);
 		});
 
-		it('should call onPauseResume when pause button is clicked', () => {
+		it('calls onPauseResume when pause button is clicked', () => {
 			const controls: RecordingControls = {
 				onPauseResume: jest.fn(),
 				onStop: jest.fn(),
@@ -669,7 +669,7 @@ describe('StatusBar', () => {
 			expect(controls.onPauseResume).toHaveBeenCalledTimes(1);
 		});
 
-		it('should call onStop when stop button is clicked', () => {
+		it('calls onStop when stop button is clicked', () => {
 			const controls: RecordingControls = {
 				onPauseResume: jest.fn(),
 				onStop: jest.fn(),
@@ -690,18 +690,18 @@ describe('StatusBar', () => {
 			expect(controls.onStop).toHaveBeenCalledTimes(1);
 		});
 
-		it('should not render buttons when controls are not provided', () => {
+		it('does not render buttons when controls are not provided', () => {
 			updateStatusBar(statusBarItem, RecordingStatus.Recording);
 
 			const buttons = statusBarItem.querySelectorAll('.aar-control-btn');
-			expect(buttons.length).toBe(0);
+			expect(buttons).toHaveLength(0);
 
 			// Should still show recording label in container
 			const label = statusBarItem.querySelector('.aar-recording-label');
 			expect(label?.textContent).toBe('Recording...');
 		});
 
-		it('should set accessible attributes on control buttons', () => {
+		it('sets accessible attributes on control buttons', () => {
 			const controls: RecordingControls = {
 				onPauseResume: jest.fn(),
 				onStop: jest.fn(),
@@ -723,7 +723,7 @@ describe('StatusBar', () => {
 			}
 		});
 
-		it('should stop event propagation on button click', () => {
+		it('stops event propagation on button click', () => {
 			const controls: RecordingControls = {
 				onPauseResume: jest.fn(),
 				onStop: jest.fn(),
@@ -745,7 +745,7 @@ describe('StatusBar', () => {
 			expect(stopPropSpy).toHaveBeenCalled();
 		});
 
-		it('should show buttons container with correct class', () => {
+		it('shows buttons container with correct class', () => {
 			const controls: RecordingControls = {
 				onPauseResume: jest.fn(),
 				onStop: jest.fn(),
@@ -765,7 +765,7 @@ describe('StatusBar', () => {
 			expect(buttonsContainer).not.toBeNull();
 		});
 
-		it('should clear controls when transitioning to idle', () => {
+		it('clears controls when transitioning to idle', () => {
 			const controls: RecordingControls = {
 				onPauseResume: jest.fn(),
 				onStop: jest.fn(),
@@ -779,16 +779,16 @@ describe('StatusBar', () => {
 				controls,
 			);
 			expect(
-				statusBarItem.querySelectorAll('.aar-control-btn').length,
-			).toBe(2);
+				statusBarItem.querySelectorAll('.aar-control-btn'),
+			).toHaveLength(2);
 
 			updateStatusBar(statusBarItem, RecordingStatus.Idle);
 			expect(
-				statusBarItem.querySelectorAll('.aar-control-btn').length,
-			).toBe(0);
+				statusBarItem.querySelectorAll('.aar-control-btn'),
+			).toHaveLength(0);
 		});
 
-		it('should clear controls when transitioning to saving', () => {
+		it('clears controls when transitioning to saving', () => {
 			const controls: RecordingControls = {
 				onPauseResume: jest.fn(),
 				onStop: jest.fn(),
@@ -808,20 +808,20 @@ describe('StatusBar', () => {
 			});
 
 			expect(
-				statusBarItem.querySelectorAll('.aar-control-btn').length,
-			).toBe(0);
+				statusBarItem.querySelectorAll('.aar-control-btn'),
+			).toHaveLength(0);
 			expect(statusBarItem.classList.contains('is-saving')).toBe(true);
 		});
 	});
 
 	describe('initializeStatusBar', () => {
-		it('should handle null element gracefully', () => {
+		it('handles null element gracefully', () => {
 			expect(() => {
 				initializeStatusBar(null);
 			}).not.toThrow();
 		});
 
-		it('should set status bar to idle state', () => {
+		it('sets status bar to idle state', () => {
 			statusBarItem.classList.add('is-recording');
 			statusBarItem.textContent = 'Recording...';
 

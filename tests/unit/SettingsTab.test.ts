@@ -748,7 +748,7 @@ describe('AudioRecorderSettingTab', () => {
 	});
 
 	describe('documentation link', () => {
-		it('should render a documentation callout linking to the docs', () => {
+		it('renders a documentation callout linking to the docs', () => {
 			tab.display();
 
 			const link = tab.containerEl.querySelector<HTMLAnchorElement>(
@@ -758,7 +758,7 @@ describe('AudioRecorderSettingTab', () => {
 			expect(link?.getAttribute('href')).toBe(DOCS_URL);
 		});
 
-		it('should open the documentation link in a new tab safely', () => {
+		it('opens the documentation link in a new tab safely', () => {
 			tab.display();
 
 			const link = tab.containerEl.querySelector<HTMLAnchorElement>(
@@ -770,7 +770,7 @@ describe('AudioRecorderSettingTab', () => {
 			expect(link?.getAttribute('rel')).toBe('noopener');
 		});
 
-		it('should render the callout only once per display() call', () => {
+		it('renders the callout only once per display() call', () => {
 			tab.display();
 			tab.display();
 
@@ -778,12 +778,12 @@ describe('AudioRecorderSettingTab', () => {
 				tab.containerEl.querySelectorAll('.aar-doc-callout');
 			// display() empties the container first, so a re-render must not
 			// stack duplicate callouts.
-			expect(callouts.length).toBe(1);
+			expect(callouts).toHaveLength(1);
 		});
 	});
 
 	describe('device-change listener lifecycle', () => {
-		it('should register the listener via addEventListener, not assignment', () => {
+		it('registers the listener via addEventListener, not assignment', () => {
 			tab.display();
 
 			expect(addEventListenerMock).toHaveBeenCalledTimes(1);
@@ -798,7 +798,7 @@ describe('AudioRecorderSettingTab', () => {
 			).toBeUndefined();
 		});
 
-		it('should register only once across repeated display() calls', () => {
+		it('registers only once across repeated display() calls', () => {
 			tab.display();
 			tab.display();
 			tab.display();
@@ -806,7 +806,7 @@ describe('AudioRecorderSettingTab', () => {
 			expect(addEventListenerMock).toHaveBeenCalledTimes(1);
 		});
 
-		it('should remove the listener in hide()', () => {
+		it('removes the listener in hide()', () => {
 			tab.display();
 			const handler = addEventListenerMock.mock.calls[0][1] as () => void;
 
@@ -818,7 +818,7 @@ describe('AudioRecorderSettingTab', () => {
 			);
 		});
 
-		it('should re-register after hide() and display() again', () => {
+		it('res-register after hide() and display() again', () => {
 			tab.display();
 			tab.hide();
 			tab.display();
@@ -827,7 +827,7 @@ describe('AudioRecorderSettingTab', () => {
 			expect(removeEventListenerMock).toHaveBeenCalledTimes(1);
 		});
 
-		it('should not remove anything when hidden without display()', () => {
+		it('does not remove anything when hidden without display()', () => {
 			tab.hide();
 
 			expect(removeEventListenerMock).not.toHaveBeenCalled();
@@ -932,7 +932,7 @@ describe('AudioRecorderSettingTab', () => {
 			jest.useRealTimers();
 		});
 
-		it('should stop the stream when MediaRecorder creation fails', async () => {
+		it('stops the stream when MediaRecorder creation fails', async () => {
 			(global as Record<string, unknown>).MediaRecorder = jest.fn(() => {
 				throw new Error('mimeType not supported');
 			});
@@ -950,7 +950,7 @@ describe('AudioRecorderSettingTab', () => {
 			expect(status?.textContent).toContain('Test recording failed');
 		});
 
-		it('should stop the stream and bail out when hidden mid-recording', async () => {
+		it('stops the stream and bail out when hidden mid-recording', async () => {
 			const recorder = createRecorderMock();
 			(global as Record<string, unknown>).MediaRecorder = jest.fn(
 				() => recorder,
@@ -980,7 +980,7 @@ describe('AudioRecorderSettingTab', () => {
 			expect(tab.containerEl.querySelector('.aar-test-audio')).toBeNull();
 		});
 
-		it('should stop the stream and attach playback on success', async () => {
+		it('stops the stream and attach playback on success', async () => {
 			const recorder = createRecorderMock();
 			(global as Record<string, unknown>).MediaRecorder = jest.fn(
 				() => recorder,
@@ -1422,8 +1422,8 @@ describe('AudioRecorderSettingTab', () => {
 			expect(mockSettings.saveNearActiveFile).toBe(true);
 			expect(
 				(navigator.mediaDevices.enumerateDevices as jest.Mock).mock
-					.calls.length,
-			).toBe(enumerateCalls);
+					.calls,
+			).toHaveLength(enumerateCalls);
 		});
 
 		it('reveals the newly applicable row in the redrawn section', async () => {

@@ -29,7 +29,7 @@ Object.defineProperty(global, 'navigator', {
 
 describe('DeviceUtils', () => {
 	describe('getAudioInputDevices', () => {
-		it('should return only audio input devices', async () => {
+		it('returns only audio input devices', async () => {
 			const devices: MediaDeviceInfo[] = [
 				{
 					deviceId: 'default',
@@ -63,7 +63,7 @@ describe('DeviceUtils', () => {
 			expect(at(result, 0).kind).toBe('audioinput');
 		});
 
-		it('should return empty array when no audio input devices exist', async () => {
+		it('returns empty array when no audio input devices exist', async () => {
 			mockEnumerateDevices.mockResolvedValue([]);
 
 			const result = await getAudioInputDevices();
@@ -73,7 +73,7 @@ describe('DeviceUtils', () => {
 	});
 
 	describe('findDefaultDevice', () => {
-		it('should find device with deviceId "default"', () => {
+		it('finds the device whose id is "default"', () => {
 			const devices: MediaDeviceInfo[] = [
 				{
 					deviceId: 'device1',
@@ -98,7 +98,7 @@ describe('DeviceUtils', () => {
 			expect(result?.label).toBe('Default - Microphone');
 		});
 
-		it('should return undefined when no default device exists', () => {
+		it('returns undefined when no default device exists', () => {
 			const devices: MediaDeviceInfo[] = [
 				{
 					deviceId: 'device1',
@@ -114,7 +114,7 @@ describe('DeviceUtils', () => {
 			expect(result).toBeUndefined();
 		});
 
-		it('should return undefined for empty array', () => {
+		it('returns undefined for empty array', () => {
 			const result = findDefaultDevice([]);
 
 			expect(result).toBeUndefined();
@@ -122,7 +122,7 @@ describe('DeviceUtils', () => {
 	});
 
 	describe('getDefaultDeviceId', () => {
-		it('should return default device ID when available', async () => {
+		it('returns default device ID when available', async () => {
 			const devices: MediaDeviceInfo[] = [
 				{
 					deviceId: 'default',
@@ -142,7 +142,7 @@ describe('DeviceUtils', () => {
 			expect(mockGetUserMedia).toHaveBeenCalledWith({ audio: true });
 		});
 
-		it('should return empty string when no default device exists', async () => {
+		it('returns empty string when no default device exists', async () => {
 			const devices: MediaDeviceInfo[] = [
 				{
 					deviceId: 'device1',
@@ -161,7 +161,7 @@ describe('DeviceUtils', () => {
 			expect(result).toBe('');
 		});
 
-		it('should return empty string when permission is denied', async () => {
+		it('returns empty string when permission is denied', async () => {
 			mockGetUserMedia.mockRejectedValue(new Error('Permission denied'));
 
 			const result = await getDefaultDeviceId();
@@ -169,7 +169,7 @@ describe('DeviceUtils', () => {
 			expect(result).toBe('');
 		});
 
-		it('should stop tracks after getting user media', async () => {
+		it('stops tracks after getting user media', async () => {
 			const mockStop = jest.fn();
 			const devices: MediaDeviceInfo[] = [
 				{

@@ -129,7 +129,7 @@ describe('ConversionModal', () => {
 		});
 	});
 
-	it('should instantiate with source file', () => {
+	it('instantiates with source file', () => {
 		const modal = new ConversionModal(
 			mockApp,
 			mockFile,
@@ -153,7 +153,7 @@ describe('ConversionModal', () => {
 		);
 	});
 
-	it('should set up content on open', () => {
+	it('sets up content on open', () => {
 		const modal = new ConversionModal(
 			mockApp,
 			mockFile,
@@ -167,7 +167,7 @@ describe('ConversionModal', () => {
 		expect(source?.textContent).toContain('recording.wav');
 	});
 
-	it('should show source file name', () => {
+	it('shows source file name', () => {
 		const modal = new ConversionModal(
 			mockApp,
 			mockFile,
@@ -179,7 +179,7 @@ describe('ConversionModal', () => {
 		expect(source?.textContent).toContain('recording.wav');
 	});
 
-	it('should clear content on close', () => {
+	it('clears content on close', () => {
 		const modal = new ConversionModal(
 			mockApp,
 			mockFile,
@@ -188,7 +188,7 @@ describe('ConversionModal', () => {
 		modal.onOpen();
 		modal.onClose();
 
-		expect(modal.contentEl.children.length).toBe(0);
+		expect(modal.contentEl.children).toHaveLength(0);
 	});
 
 	describe('runConversion', () => {
@@ -225,7 +225,7 @@ describe('ConversionModal', () => {
 			return { modal, progressEl };
 		};
 
-		it('should update links vault-wide with the created file', async () => {
+		it('updates links vault-wide with the created file', async () => {
 			const { updateLinksInVault } = jest.requireMock(
 				'src/utils/LinkUpdater',
 			);
@@ -248,7 +248,7 @@ describe('ConversionModal', () => {
 			);
 		});
 
-		it('should keep the source when some links could not be updated', async () => {
+		it('keeps the source when some links could not be updated', async () => {
 			const { updateLinksInVault } = jest.requireMock(
 				'src/utils/LinkUpdater',
 			);
@@ -269,7 +269,7 @@ describe('ConversionModal', () => {
 			).toBe(true);
 		});
 
-		it('should report frontmatter links that stay on the source', async () => {
+		it('reports frontmatter links that stay on the source', async () => {
 			const { updateLinksInVault } = jest.requireMock(
 				'src/utils/LinkUpdater',
 			);
@@ -289,7 +289,7 @@ describe('ConversionModal', () => {
 			).toBe(true);
 		});
 
-		it('should skip link updates and deletion for the none action', async () => {
+		it('skips link updates and deletion for the none action', async () => {
 			const { updateLinksInVault } = jest.requireMock(
 				'src/utils/LinkUpdater',
 			);
@@ -304,7 +304,7 @@ describe('ConversionModal', () => {
 			expect(mockApp.fileManager.trashFile).not.toHaveBeenCalled();
 		});
 
-		it('should show a background notice when closed mid-conversion', async () => {
+		it('shows a background notice when closed mid-conversion', async () => {
 			const { convertBlobToFormatBuffer } = jest.requireMock(
 				'src/audio/AudioFormatConverter',
 			);
@@ -337,7 +337,7 @@ describe('ConversionModal', () => {
 			expect(background?.hide).toHaveBeenCalled();
 		});
 
-		it('should not show a background notice when closed while idle', () => {
+		it('does not show a background notice when closed while idle', () => {
 			const { modal } = createModal();
 
 			modal.onClose();
@@ -349,7 +349,7 @@ describe('ConversionModal', () => {
 			).toBe(false);
 		});
 
-		it('should pass the selected channel mode into the conversion', async () => {
+		it('passes the selected channel mode into the conversion', async () => {
 			const { convertBlobToFormatBuffer } = jest.requireMock(
 				'src/audio/AudioFormatConverter',
 			);

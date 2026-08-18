@@ -101,7 +101,7 @@ describe('RecordingManager', () => {
 			};
 		});
 
-		it('should journal the session on desktop start and end it on stop', async () => {
+		it('journals the session on desktop start and end it on stop', async () => {
 			createDesktopRecorder();
 			manager = createManager();
 			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
@@ -128,7 +128,7 @@ describe('RecordingManager', () => {
 			expect(mockJournal.flush).toHaveBeenCalled();
 		});
 
-		it('should end the journal session when start fails after journaling', async () => {
+		it('ends the journal session when start fails after journaling', async () => {
 			createDesktopRecorder();
 			manager = createManager();
 			// The first status update (Recording) fires after the journal
@@ -145,7 +145,7 @@ describe('RecordingManager', () => {
 			expect(mockJournal.endSession).toHaveBeenCalledTimes(1);
 		});
 
-		it('should not journal mobile sessions', async () => {
+		it('does not journal mobile sessions', async () => {
 			useMobilePlatform();
 			createDesktopRecorder();
 			manager = createManager();
@@ -156,7 +156,7 @@ describe('RecordingManager', () => {
 			expect(mockJournal.startSession).not.toHaveBeenCalled();
 		});
 
-		it('should record flushed segments in the journal', async () => {
+		it('records flushed segments in the journal', async () => {
 			const recorder = createDesktopRecorder();
 			manager = createManager();
 			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
@@ -189,7 +189,7 @@ describe('RecordingManager', () => {
 			await manager.stopRecording();
 		});
 
-		it('should keep the journal when saving fails', async () => {
+		it('keeps the journal when saving fails', async () => {
 			const recorder = createDesktopRecorder();
 			manager = createManager();
 			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
@@ -210,7 +210,7 @@ describe('RecordingManager', () => {
 			expect(mockJournal.endSession).not.toHaveBeenCalled();
 		});
 
-		it('should keep the journal and release recorders on cleanup', async () => {
+		it('keeps the journal and release recorders on cleanup', async () => {
 			mockSettings = { ...DEFAULT_SETTINGS, recordingFormat: 'wav' };
 			createDesktopRecorder();
 			manager = createManager();

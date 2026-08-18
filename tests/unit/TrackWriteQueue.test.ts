@@ -81,7 +81,7 @@ describe('TrackWriteQueue', () => {
 	});
 
 	describe('enqueue', () => {
-		it('should run tasks of one target in FIFO order', async () => {
+		it('runs tasks of one target in FIFO order', async () => {
 			const target = createTarget();
 			const order: number[] = [];
 
@@ -101,7 +101,7 @@ describe('TrackWriteQueue', () => {
 			expect(order).toEqual([1, 2]);
 		});
 
-		it('should not let targets block each other', async () => {
+		it('does not let targets block each other', async () => {
 			const slow = createTarget();
 			const fast = createTarget();
 			const order: string[] = [];
@@ -121,7 +121,7 @@ describe('TrackWriteQueue', () => {
 			await queue.drain([slow, fast]);
 		});
 
-		it('should contain a failing task and keep the chain alive', async () => {
+		it('contains a failing task and keep the chain alive', async () => {
 			const target = createTarget();
 			const order: string[] = [];
 
@@ -139,7 +139,7 @@ describe('TrackWriteQueue', () => {
 			await expect(target.pendingWrite).resolves.toBeUndefined();
 		});
 
-		it('should notify once per failure streak', async () => {
+		it('notifies once per failure streak', async () => {
 			const target = createTarget();
 
 			await queue.enqueue(target, () =>
@@ -152,7 +152,7 @@ describe('TrackWriteQueue', () => {
 			expect(getNoticeCalls()).toHaveLength(1);
 		});
 
-		it('should re-arm the failure Notice after a successful flush', async () => {
+		it('res-arm the failure Notice after a successful flush', async () => {
 			const target = createTarget();
 
 			await queue.enqueue(target, () =>
@@ -169,7 +169,7 @@ describe('TrackWriteQueue', () => {
 			expect(getNoticeCalls()).toHaveLength(2);
 		});
 
-		it('should re-arm the failure Notice on beginSession', async () => {
+		it('res-arm the failure Notice on beginSession', async () => {
 			const target = createTarget();
 
 			await queue.enqueue(target, () =>
@@ -185,7 +185,7 @@ describe('TrackWriteQueue', () => {
 	});
 
 	describe('flushPcmBuffer', () => {
-		it('should be a no-op for an empty buffer', async () => {
+		it('is a no-op for an empty buffer', async () => {
 			const target = createTarget();
 
 			await queue.flushPcmBuffer(target);
@@ -194,7 +194,7 @@ describe('TrackWriteQueue', () => {
 			expect(target.segmentIndex).toBe(0);
 		});
 
-		it('should merge buffers in capture order into one segment', async () => {
+		it('merges buffers in capture order into one segment', async () => {
 			const target = createTarget();
 			target.pcmBuffers = [
 				new Uint8Array([1, 2]).buffer,
@@ -219,7 +219,7 @@ describe('TrackWriteQueue', () => {
 			expect(target.segmentPaths).toHaveLength(1);
 		});
 
-		it('should keep the buffer and index when the write fails', async () => {
+		it('keeps the buffer and index when the write fails', async () => {
 			const target = createTarget();
 			target.pcmBuffers = [new Uint8Array([1, 2]).buffer];
 			target.pcmBufferedBytes = 2;
@@ -238,7 +238,7 @@ describe('TrackWriteQueue', () => {
 	});
 
 	describe('flushChunkBuffer', () => {
-		it('should be a no-op for an empty buffer', async () => {
+		it('is a no-op for an empty buffer', async () => {
 			const target = createTarget();
 
 			await queue.flushChunkBuffer(target);
@@ -247,7 +247,7 @@ describe('TrackWriteQueue', () => {
 			expect(mockApp.vault.createBinary).not.toHaveBeenCalled();
 		});
 
-		it('should write raw chunks as a .tmp segment in the recorder container', async () => {
+		it('writes raw chunks as a .tmp segment in the recorder container', async () => {
 			const target = createTarget();
 			target.bufferedChunks = [new Blob(['chunk'])];
 			target.bufferedBytes = 5;
@@ -284,7 +284,7 @@ describe('TrackWriteQueue', () => {
 			expect(mockApp.vault.createBinary).not.toHaveBeenCalled();
 		});
 
-		it('should throw when used outside a session', async () => {
+		it('throws when used outside a session', async () => {
 			const freshQueue = new TrackWriteQueue(mockApp, mockSettings);
 			const target = createTarget();
 			target.bufferedChunks = [new Blob(['chunk'])];

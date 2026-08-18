@@ -83,7 +83,7 @@ describe('handleEncodingMessage', () => {
 		});
 	});
 
-	it('should post the converted buffer as a transferable result', async () => {
+	it('posts the converted buffer as a transferable result', async () => {
 		await handleEncodingMessage(createRequest(), post);
 
 		const result = responses.find(
@@ -99,7 +99,7 @@ describe('handleEncodingMessage', () => {
 		expect(result?.transfer).toEqual([mockConvertedBuffer]);
 	});
 
-	it('should forward whole-percent progress updates', async () => {
+	it('forwards whole-percent progress updates', async () => {
 		await handleEncodingMessage(createRequest(), post);
 
 		const conversion = (await at(mockConversionInit.mock.results, 0)
@@ -120,7 +120,7 @@ describe('handleEncodingMessage', () => {
 		});
 	});
 
-	it('should omit the bitrate for PCM targets', async () => {
+	it('omits the bitrate for PCM targets', async () => {
 		await handleEncodingMessage(
 			createRequest({ targetFormat: 'wav' }),
 			post,
@@ -133,7 +133,7 @@ describe('handleEncodingMessage', () => {
 		);
 	});
 
-	it('should remux without a bitrate when codecs match and remux is allowed', async () => {
+	it('remuxes without a bitrate when codecs match and remux is allowed', async () => {
 		await handleEncodingMessage(
 			createRequest({ targetFormat: 'webm', allowRemux: true }),
 			post,
@@ -146,7 +146,7 @@ describe('handleEncodingMessage', () => {
 		);
 	});
 
-	it('should apply the requested channel mode', async () => {
+	it('applies the requested channel mode', async () => {
 		await handleEncodingMessage(
 			createRequest({ channelMode: 'mono-mix' }),
 			post,
@@ -162,7 +162,7 @@ describe('handleEncodingMessage', () => {
 		);
 	});
 
-	it('should normalize an unknown channel mode to the source layout', async () => {
+	it('normalizes an unknown channel mode to the source layout', async () => {
 		await handleEncodingMessage(
 			createRequest({
 				channelMode: 'bogus' as WorkerRequest['channelMode'],
@@ -179,7 +179,7 @@ describe('handleEncodingMessage', () => {
 		expect(audio.process).toBeUndefined();
 	});
 
-	it('should post an error for an unmapped format', async () => {
+	it('posts an error for an unmapped format', async () => {
 		await handleEncodingMessage(
 			createRequest({ targetFormat: 'xyz' }),
 			post,
@@ -197,7 +197,7 @@ describe('handleEncodingMessage', () => {
 		]);
 	});
 
-	it('should post an error when the audio track is discarded', async () => {
+	it('posts an error when the audio track is discarded', async () => {
 		mockConversionInit.mockImplementationOnce(() =>
 			Promise.resolve({
 				execute: mockConversionExecute,

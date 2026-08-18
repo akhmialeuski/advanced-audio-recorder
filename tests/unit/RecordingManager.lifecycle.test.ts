@@ -72,23 +72,23 @@ describe('RecordingManager', () => {
 	});
 
 	describe('constructor', () => {
-		it('should initialize with idle status', () => {
+		it('initializes with idle status', () => {
 			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
 		});
 
-		it('should store the status change callback', () => {
+		it('stores the status change callback', () => {
 			expect(statusChangeCallback).not.toHaveBeenCalled();
 		});
 	});
 
 	describe('getStatus', () => {
-		it('should return Idle initially', () => {
+		it('returns Idle initially', () => {
 			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
 		});
 	});
 
 	describe('updateSettings', () => {
-		it('should update settings reference', () => {
+		it('updates settings reference', () => {
 			const newSettings: AudioRecorderSettings = {
 				...DEFAULT_SETTINGS,
 				filePrefix: 'new-prefix',
@@ -136,7 +136,7 @@ describe('RecordingManager', () => {
 			});
 		});
 
-		it('should start recording when idle', async () => {
+		it('starts recording when idle', async () => {
 			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
 
 			await manager.toggleRecording();
@@ -148,7 +148,7 @@ describe('RecordingManager', () => {
 			);
 		});
 
-		it('should stop recording when recording', async () => {
+		it('stops recording when recording', async () => {
 			// First start
 			await manager.toggleRecording();
 			expect(manager.getStatus()).toBe(RecordingStatus.Recording);
@@ -202,14 +202,14 @@ describe('RecordingManager', () => {
 			});
 		});
 
-		it('should do nothing when idle', () => {
+		it('does nothing when idle', () => {
 			manager.togglePauseResume();
 
 			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
 			expect(mockMediaRecorder.pause).not.toHaveBeenCalled();
 		});
 
-		it('should pause when recording', async () => {
+		it('pauses when recording', async () => {
 			await manager.toggleRecording();
 			expect(manager.getStatus()).toBe(RecordingStatus.Recording);
 
@@ -222,7 +222,7 @@ describe('RecordingManager', () => {
 			);
 		});
 
-		it('should resume when paused', async () => {
+		it('resumes when paused', async () => {
 			await manager.toggleRecording();
 			manager.togglePauseResume(); // Pause
 			expect(manager.getStatus()).toBe(RecordingStatus.Paused);
@@ -242,7 +242,7 @@ describe('RecordingManager', () => {
 			jest.useRealTimers();
 		});
 
-		it('should finish stopping when the stop event never fires', async () => {
+		it('finishes stopping when the stop event never fires', async () => {
 			useDesktopPlatform();
 
 			// Recorder whose stop event never arrives (dead audio subsystem)
@@ -279,7 +279,7 @@ describe('RecordingManager', () => {
 			);
 		});
 
-		it('should resolve when stop() throws on a racing recorder', async () => {
+		it('resolves when stop() throws on a racing recorder', async () => {
 			useDesktopPlatform();
 
 			const mockMediaRecorder = {
@@ -312,13 +312,13 @@ describe('RecordingManager', () => {
 	});
 
 	describe('cleanup', () => {
-		it('should reset all internal state', () => {
+		it('resets all internal state', () => {
 			manager.cleanup();
 
 			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
 		});
 
-		it('should stop all streams', () => {
+		it('stops all streams', () => {
 			const { stopAllStreams } = jest.requireMock(
 				'src/recording/AudioStreamHandler',
 			);
@@ -366,7 +366,7 @@ describe('RecordingManager', () => {
 			});
 		});
 
-		it('should reset status to Idle even when save fails', async () => {
+		it('resets status to Idle even when save fails', async () => {
 			// Start recording first
 			await manager.startRecording();
 			expect(manager.getStatus()).toBe(RecordingStatus.Recording);
@@ -387,7 +387,7 @@ describe('RecordingManager', () => {
 			);
 		});
 
-		it('should stop streams even when save fails', async () => {
+		it('stops streams even when save fails', async () => {
 			const { stopAllStreams } = jest.requireMock(
 				'src/recording/AudioStreamHandler',
 			);
@@ -405,7 +405,7 @@ describe('RecordingManager', () => {
 			expect(stopAllStreams).toHaveBeenCalled();
 		});
 
-		it('should clear all arrays after stop', async () => {
+		it('clears all arrays after stop', async () => {
 			await manager.startRecording();
 			await manager.stopRecording();
 
@@ -416,7 +416,7 @@ describe('RecordingManager', () => {
 	});
 
 	describe('startRecording error handling', () => {
-		it('should configure MediaRecorder with bitrate from settings', async () => {
+		it('configures MediaRecorder with bitrate from settings', async () => {
 			mockSettings = {
 				...DEFAULT_SETTINGS,
 				bitrate: 192000,
@@ -534,7 +534,7 @@ describe('RecordingManager', () => {
 			}
 		});
 
-		it('should handle stream acquisition error', async () => {
+		it('handles stream acquisition error', async () => {
 			(global as Record<string, unknown>).MediaRecorder = {
 				isTypeSupported: jest.fn().mockReturnValue(true),
 			};
@@ -583,7 +583,7 @@ describe('RecordingManager', () => {
 			});
 		});
 
-		it('should follow full lifecycle: idle -> recording -> paused -> recording -> idle', async () => {
+		it('follows full lifecycle: idle -> recording -> paused -> recording -> idle', async () => {
 			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
 
 			// Start recording
@@ -603,7 +603,7 @@ describe('RecordingManager', () => {
 			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
 		});
 
-		it('should call onStatusChange for each transition', async () => {
+		it('calls onStatusChange for each transition', async () => {
 			await manager.toggleRecording();
 			manager.togglePauseResume();
 			manager.togglePauseResume();

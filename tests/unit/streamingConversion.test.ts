@@ -74,7 +74,7 @@ describe('runStreamingConversion', () => {
 		});
 	});
 
-	it('should return the converted buffer', async () => {
+	it('returns the converted buffer', async () => {
 		const result = await runStreamingConversion(
 			inputBlob,
 			'mp3',
@@ -86,13 +86,13 @@ describe('runStreamingConversion', () => {
 		expect(mockConversionExecute).toHaveBeenCalledTimes(1);
 	});
 
-	it('should throw for a format without codec mapping', async () => {
+	it('throws for a format without codec mapping', async () => {
 		await expect(
 			runStreamingConversion(inputBlob, 'xyz', 128000, false),
 		).rejects.toThrow('No codec mapping for format "xyz"');
 	});
 
-	it('should throw when the input has no audio track', async () => {
+	it('throws when the input has no audio track', async () => {
 		mockGetPrimaryAudioTrack.mockResolvedValue(null);
 
 		await expect(
@@ -100,13 +100,13 @@ describe('runStreamingConversion', () => {
 		).rejects.toThrow('Input contains no audio track');
 	});
 
-	it('should dispose the input on success', async () => {
+	it('disposes the input on success', async () => {
 		await runStreamingConversion(inputBlob, 'mp3', 128000, false);
 
 		expect(mockInputDispose).toHaveBeenCalledTimes(1);
 	});
 
-	it('should dispose the input when the conversion throws', async () => {
+	it('disposes the input when the conversion throws', async () => {
 		mockGetPrimaryAudioTrack.mockResolvedValue(null);
 
 		await expect(
@@ -116,7 +116,7 @@ describe('runStreamingConversion', () => {
 		expect(mockInputDispose).toHaveBeenCalledTimes(1);
 	});
 
-	it('should force a re-encode with bitrate by default', async () => {
+	it('forces a re-encode with bitrate by default', async () => {
 		await runStreamingConversion(inputBlob, 'mp3', 96000, false);
 
 		expect(mockConversionInit).toHaveBeenCalledWith(
@@ -126,7 +126,7 @@ describe('runStreamingConversion', () => {
 		);
 	});
 
-	it('should omit the bitrate for a codec-matching remux', async () => {
+	it('omits the bitrate for a codec-matching remux', async () => {
 		mockGetPrimaryAudioTrack.mockResolvedValue({
 			getCodec: jest.fn().mockResolvedValue('mp3'),
 			isAudioTrack: (): boolean => true,
@@ -141,7 +141,7 @@ describe('runStreamingConversion', () => {
 		);
 	});
 
-	it('should re-encode a codec match when remux is not allowed', async () => {
+	it('res-encode a codec match when remux is not allowed', async () => {
 		mockGetPrimaryAudioTrack.mockResolvedValue({
 			getCodec: jest.fn().mockResolvedValue('mp3'),
 			isAudioTrack: (): boolean => true,
@@ -156,7 +156,7 @@ describe('runStreamingConversion', () => {
 		);
 	});
 
-	it('should omit the bitrate for PCM targets', async () => {
+	it('omits the bitrate for PCM targets', async () => {
 		await runStreamingConversion(inputBlob, 'wav', 128000, false);
 
 		expect(mockConversionInit).toHaveBeenCalledWith(
@@ -166,7 +166,7 @@ describe('runStreamingConversion', () => {
 		);
 	});
 
-	it('should throw when the conversion discards the audio track', async () => {
+	it('throws when the conversion discards the audio track', async () => {
 		conversionStub.discardedTracks = [
 			{ track: { isAudioTrack: (): boolean => true } },
 		];
@@ -177,7 +177,7 @@ describe('runStreamingConversion', () => {
 		expect(mockConversionExecute).not.toHaveBeenCalled();
 	});
 
-	it('should throw when the conversion is not valid', async () => {
+	it('throws when the conversion is not valid', async () => {
 		conversionStub.isValid = false;
 
 		await expect(
@@ -185,7 +185,7 @@ describe('runStreamingConversion', () => {
 		).rejects.toThrow('cannot process the input audio track');
 	});
 
-	it('should throw when the conversion produces no output', async () => {
+	it('throws when the conversion produces no output', async () => {
 		const { BufferTarget } = jest.requireMock('mediabunny');
 		jest.mocked(BufferTarget).mockImplementationOnce(() => ({
 			buffer: new ArrayBuffer(0),
@@ -196,7 +196,7 @@ describe('runStreamingConversion', () => {
 		).rejects.toThrow('produced no output');
 	});
 
-	it('should deduplicate whole-percent progress updates', async () => {
+	it('deduplicates whole-percent progress updates', async () => {
 		const onProgress = jest.fn();
 		mockConversionExecute.mockImplementationOnce(async () => {
 			conversionStub.onProgress?.(0.101);
@@ -216,14 +216,14 @@ describe('runStreamingConversion', () => {
 		expect(onProgress.mock.calls.map((call) => call[0])).toEqual([10, 50]);
 	});
 
-	it('should not register a progress handler without a callback', async () => {
+	it('does not register a progress handler without a callback', async () => {
 		await runStreamingConversion(inputBlob, 'mp3', 128000, false);
 
 		expect(conversionStub.onProgress).toBeUndefined();
 	});
 
 	describe('channel modes', () => {
-		it('should keep the source layout by default', async () => {
+		it('keeps the source layout by default', async () => {
 			await runStreamingConversion(inputBlob, 'mp3', 96000, false);
 
 			const audio = (
@@ -235,7 +235,7 @@ describe('runStreamingConversion', () => {
 			expect(audio.process).toBeUndefined();
 		});
 
-		it('should install an averaging process hook for the mono mix', async () => {
+		it('installs an averaging process hook for the mono mix', async () => {
 			await runStreamingConversion(
 				inputBlob,
 				'mp3',
@@ -265,7 +265,7 @@ describe('runStreamingConversion', () => {
 			expect(audio.numberOfChannels).toBeUndefined();
 		});
 
-		it('should send the bitrate for a mono mix even on a codec match', async () => {
+		it('sends the bitrate for a mono mix even on a codec match', async () => {
 			mockGetPrimaryAudioTrack.mockResolvedValue({
 				getCodec: jest.fn().mockResolvedValue('mp3'),
 				isAudioTrack: (): boolean => true,
@@ -293,7 +293,7 @@ describe('runStreamingConversion', () => {
 			expect(typeof audio.process).toBe('function');
 		});
 
-		it('should keep remux eligibility for a mono mix of already-mono input', async () => {
+		it('keeps remux eligibility for a mono mix of already-mono input', async () => {
 			mockGetPrimaryAudioTrack.mockResolvedValue({
 				getCodec: jest.fn().mockResolvedValue('mp3'),
 				isAudioTrack: (): boolean => true,
@@ -317,7 +317,7 @@ describe('runStreamingConversion', () => {
 			);
 		});
 
-		it('should average all channels inside the mix hook', async () => {
+		it('averages all channels inside the mix hook', async () => {
 			await runStreamingConversion(
 				inputBlob,
 				'mp3',
@@ -351,7 +351,7 @@ describe('runStreamingConversion', () => {
 			['mono-left', 0],
 			['mono-right', 1],
 		] as const)(
-			'should install a %s process hook with a mono hint',
+			'installs a %s process hook with a mono hint',
 			async (mode, expectedPlane) => {
 				await runStreamingConversion(
 					inputBlob,
@@ -392,7 +392,7 @@ describe('runStreamingConversion', () => {
 		);
 
 		it.each(['mono-left', 'mono-right'] as const)(
-			'should keep remux eligibility for a %s pick on already-mono input',
+			'keeps remux eligibility for a %s pick on already-mono input',
 			async (mode) => {
 				mockGetPrimaryAudioTrack.mockResolvedValue({
 					getCodec: jest.fn().mockResolvedValue('mp3'),

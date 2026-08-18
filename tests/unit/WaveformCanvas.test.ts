@@ -84,7 +84,7 @@ describe('WaveformCanvas', () => {
 			expect(callsAfterSet).toBeGreaterThanOrEqual(1);
 			// Same width: redraw reuses the cached bars, no re-downsample
 			waveform.redraw();
-			expect(spy.mock.calls.length).toBe(callsAfterSet);
+			expect(spy.mock.calls).toHaveLength(callsAfterSet);
 		} finally {
 			spy.mockRestore();
 		}

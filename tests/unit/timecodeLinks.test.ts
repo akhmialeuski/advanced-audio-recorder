@@ -112,7 +112,7 @@ describe('wikiLinkTargetAtCursor', () => {
 		// '[[rec.mp4#t=5]]' spans indices 0..14; index 15 is the next character,
 		// so a click there must not resolve to the preceding link
 		const link = '[[rec.mp4#t=5]]';
-		expect(link.length).toBe(15);
+		expect(link).toHaveLength(15);
 		expect(wikiLinkTargetAtCursor(link, 14)).toBe('rec.mp4#t=5');
 		expect(wikiLinkTargetAtCursor(link, 15)).toBeNull();
 	});

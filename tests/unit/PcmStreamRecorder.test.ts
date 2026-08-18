@@ -126,7 +126,7 @@ describe('PcmStreamRecorder', () => {
 	});
 
 	describe('start', () => {
-		it('should create AudioContext with requested sample rate', async () => {
+		it('creates AudioContext with requested sample rate', async () => {
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 48000, onChunkMock);
 
@@ -137,7 +137,7 @@ describe('PcmStreamRecorder', () => {
 			});
 		});
 
-		it('should register worklet processor via Blob URL', async () => {
+		it('registers worklet processor via Blob URL', async () => {
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
@@ -149,7 +149,7 @@ describe('PcmStreamRecorder', () => {
 			).toHaveBeenCalledWith('blob:mock-worklet-url');
 		});
 
-		it('should create AudioWorkletNode and connect audio graph', async () => {
+		it('creates AudioWorkletNode and connect audio graph', async () => {
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
@@ -173,7 +173,7 @@ describe('PcmStreamRecorder', () => {
 			expect(mockGainNode.gain.value).toBe(0);
 		});
 
-		it('should prefer the negotiated track channel count over the source node default', async () => {
+		it('prefers the negotiated track channel count over the source node default', async () => {
 			// MediaStreamAudioSourceNode.channelCount commonly stays at
 			// its default of 2 even though the track actually delivers mono.
 			mockSourceNode.channelCount = 2;
@@ -191,7 +191,7 @@ describe('PcmStreamRecorder', () => {
 			);
 		});
 
-		it('should pass the mono channel mode to the worklet and keep the full input width', async () => {
+		it('passes the mono channel mode to the worklet and keep the full input width', async () => {
 			mockSourceNode.channelCount = 2;
 			const stream = createMockStream(2);
 			const recorder = new PcmStreamRecorder(
@@ -219,7 +219,7 @@ describe('PcmStreamRecorder', () => {
 		});
 
 		it.each(['mono-mix', 'mono-left', 'mono-right'] as const)(
-			'should report one channel for the %s mode on a stereo source',
+			'reports one channel for the %s mode on a stereo source',
 			async (mode) => {
 				mockSourceNode.channelCount = 2;
 				const stream = createMockStream(2);
@@ -236,7 +236,7 @@ describe('PcmStreamRecorder', () => {
 			},
 		);
 
-		it('should expose actual channels and sampleRate from AudioContext', async () => {
+		it('exposes actual channels and sampleRate from AudioContext', async () => {
 			mockSourceNode.channelCount = 2;
 			const stream = createMockStream(2);
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
@@ -247,7 +247,7 @@ describe('PcmStreamRecorder', () => {
 			expect(recorder.sampleRate).toBe(44100);
 		});
 
-		it('should set up port.onmessage handler', async () => {
+		it('sets up port.onmessage handler', async () => {
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
@@ -256,7 +256,7 @@ describe('PcmStreamRecorder', () => {
 			expect(mainPortOnMessage).not.toBeNull();
 		});
 
-		it('should release resources when worklet registration fails', async () => {
+		it('releases resources when worklet registration fails', async () => {
 			mockAudioContext.audioWorklet.addModule.mockRejectedValueOnce(
 				new Error('addModule failed'),
 			);
@@ -271,7 +271,7 @@ describe('PcmStreamRecorder', () => {
 			);
 		});
 
-		it('should release resources when the audio graph setup fails', async () => {
+		it('releases resources when the audio graph setup fails', async () => {
 			mockAudioContext.createMediaStreamSource.mockImplementationOnce(
 				() => {
 					throw new Error('source failed');
@@ -288,7 +288,7 @@ describe('PcmStreamRecorder', () => {
 			);
 		});
 
-		it('should not mask the original error when cleanup itself fails', async () => {
+		it('does not mask the original error when cleanup itself fails', async () => {
 			const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
 			mockAudioContext.audioWorklet.addModule.mockRejectedValueOnce(
 				new Error('addModule failed'),
@@ -307,7 +307,7 @@ describe('PcmStreamRecorder', () => {
 	});
 
 	describe('worklet message handling', () => {
-		it('should deliver PCM data via onChunk when worklet posts message', async () => {
+		it('delivers PCM data via onChunk when worklet posts message', async () => {
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
@@ -321,7 +321,7 @@ describe('PcmStreamRecorder', () => {
 			expect(chunkBuffer.byteLength).toBe(256);
 		});
 
-		it('should deliver stereo PCM data correctly', async () => {
+		it('delivers stereo PCM data correctly', async () => {
 			mockSourceNode.channelCount = 2;
 			const stream = createMockStream(2);
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
@@ -338,7 +338,7 @@ describe('PcmStreamRecorder', () => {
 	});
 
 	describe('pause / resume', () => {
-		it('should send pause message to worklet port', async () => {
+		it('sends pause message to worklet port', async () => {
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
@@ -350,7 +350,7 @@ describe('PcmStreamRecorder', () => {
 			});
 		});
 
-		it('should send resume message to worklet port', async () => {
+		it('sends resume message to worklet port', async () => {
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
@@ -363,7 +363,7 @@ describe('PcmStreamRecorder', () => {
 			});
 		});
 
-		it('should not throw when pausing before start', () => {
+		it('does not throw when pausing before start', () => {
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
@@ -373,7 +373,7 @@ describe('PcmStreamRecorder', () => {
 	});
 
 	describe('stop', () => {
-		it('should flush worklet before disconnecting', async () => {
+		it('flushes worklet before disconnecting', async () => {
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
@@ -385,7 +385,7 @@ describe('PcmStreamRecorder', () => {
 			});
 		});
 
-		it('should close AudioContext and disconnect nodes', async () => {
+		it('closes AudioContext and disconnect nodes', async () => {
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
@@ -398,7 +398,7 @@ describe('PcmStreamRecorder', () => {
 			expect(mockGainNode.disconnect).toHaveBeenCalled();
 		});
 
-		it('should nullify port.onmessage', async () => {
+		it('nullifies port.onmessage', async () => {
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
@@ -408,7 +408,7 @@ describe('PcmStreamRecorder', () => {
 			expect(mainPortOnMessage).toBeNull();
 		});
 
-		it('should revoke the Blob URL', async () => {
+		it('revokes the Blob URL', async () => {
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
@@ -420,14 +420,14 @@ describe('PcmStreamRecorder', () => {
 			);
 		});
 
-		it('should handle stop when not started', async () => {
+		it('handles stop when not started', async () => {
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
 			await expect(recorder.stop()).resolves.toBeUndefined();
 		});
 
-		it('should deliver flushed PCM data via onChunk before stop completes', async () => {
+		it('delivers flushed PCM data via onChunk before stop completes', async () => {
 			// Override postMessage to simulate flush with a trailing data chunk
 			mockWorkletPort.postMessage.mockImplementation(
 				(msg: { type: string }) => {
@@ -467,7 +467,7 @@ describe('PcmStreamRecorder', () => {
 	});
 
 	describe('message filtering', () => {
-		it('should ignore non-ArrayBuffer messages from worklet', async () => {
+		it('ignores non-ArrayBuffer messages from worklet', async () => {
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 

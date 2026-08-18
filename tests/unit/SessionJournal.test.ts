@@ -79,7 +79,7 @@ describe('SessionJournal', () => {
 	});
 
 	describe('session lifecycle', () => {
-		it('should write the journal with the started session', async () => {
+		it('writes the journal with the started session', async () => {
 			journal.startSession(createSession());
 			await journal.flush();
 
@@ -91,7 +91,7 @@ describe('SessionJournal', () => {
 			);
 		});
 
-		it('should track added and removed segments', async () => {
+		it('tracks added and removed segments', async () => {
 			journal.startSession(createSession());
 			journal.addSegment(
 				'recording-Track1-2026-06-12T10-00-00-000Z',
@@ -115,7 +115,7 @@ describe('SessionJournal', () => {
 			).toEqual(['rec-part2.webm.tmp']);
 		});
 
-		it('should record part files', async () => {
+		it('records part files', async () => {
 			journal.startSession(createSession());
 			journal.addPart(
 				'recording-Track1-2026-06-12T10-00-00-000Z',
@@ -128,7 +128,7 @@ describe('SessionJournal', () => {
 			).toEqual(['rec-part1.webm']);
 		});
 
-		it('should remove the file when the last session ends', async () => {
+		it('removes the file when the last session ends', async () => {
 			journal.startSession(createSession());
 			await journal.flush();
 			expect(files.has(JOURNAL_PATH)).toBe(true);
@@ -139,7 +139,7 @@ describe('SessionJournal', () => {
 			expect(files.has(JOURNAL_PATH)).toBe(false);
 		});
 
-		it('should append a second session without clobbering the first', async () => {
+		it('appends a second session without clobbering the first', async () => {
 			files.set(
 				JOURNAL_PATH,
 				JSON.stringify({
@@ -158,7 +158,7 @@ describe('SessionJournal', () => {
 			]);
 		});
 
-		it('should ignore segment updates without an active session', async () => {
+		it('ignores segment updates without an active session', async () => {
 			journal.addSegment('some-track', 'seg.tmp');
 			await journal.flush();
 
@@ -167,7 +167,7 @@ describe('SessionJournal', () => {
 	});
 
 	describe('write coalescing and failure tolerance', () => {
-		it('should coalesce synchronous mutations into one write', async () => {
+		it('coalesces synchronous mutations into one write', async () => {
 			journal.startSession(createSession());
 			journal.addSegment(
 				'recording-Track1-2026-06-12T10-00-00-000Z',
@@ -185,7 +185,7 @@ describe('SessionJournal', () => {
 			).toEqual(['a.tmp', 'b.tmp']);
 		});
 
-		it('should swallow write failures without rejecting', async () => {
+		it('swallows write failures without rejecting', async () => {
 			writeMock.mockRejectedValueOnce(new Error('disk full'));
 
 			journal.startSession(createSession());
@@ -194,7 +194,7 @@ describe('SessionJournal', () => {
 			expect(consoleWarnSpy).toHaveBeenCalled();
 		});
 
-		it('should fall back to an empty journal write when removal fails', async () => {
+		it('falls back to an empty journal write when removal fails', async () => {
 			jest.mocked(mockApp.vault.adapter.remove).mockRejectedValue(
 				new Error('locked'),
 			);
@@ -209,13 +209,13 @@ describe('SessionJournal', () => {
 	});
 
 	describe('readJournal', () => {
-		it('should report a missing file as no data', async () => {
+		it('reports a missing file as no data', async () => {
 			const result = await journal.readJournal();
 
 			expect(result).toEqual({ data: null, corrupt: false });
 		});
 
-		it('should round-trip a valid journal', async () => {
+		it('rounds-trip a valid journal', async () => {
 			journal.startSession(createSession());
 			await journal.flush();
 
@@ -225,7 +225,7 @@ describe('SessionJournal', () => {
 			expect(result.data?.sessions).toHaveLength(1);
 		});
 
-		it('should flag unparseable content as corrupt', async () => {
+		it('flags unparseable content as corrupt', async () => {
 			files.set(JOURNAL_PATH, '{not json');
 
 			const result = await journal.readJournal();
@@ -233,7 +233,7 @@ describe('SessionJournal', () => {
 			expect(result).toEqual({ data: null, corrupt: true });
 		});
 
-		it('should flag structurally invalid content as corrupt', async () => {
+		it('flags structurally invalid content as corrupt', async () => {
 			files.set(JOURNAL_PATH, JSON.stringify({ foo: 'bar' }));
 
 			const result = await journal.readJournal();
@@ -241,7 +241,7 @@ describe('SessionJournal', () => {
 			expect(result).toEqual({ data: null, corrupt: true });
 		});
 
-		it('should keep the file on a transient read failure', async () => {
+		it('keeps the file on a transient read failure', async () => {
 			files.set(
 				JOURNAL_PATH,
 				JSON.stringify({ version: JOURNAL_VERSION, sessions: [] }),
@@ -258,7 +258,7 @@ describe('SessionJournal', () => {
 	});
 
 	describe('replaceSessions', () => {
-		it('should rewrite non-active sessions', async () => {
+		it('rewrites non-active sessions', async () => {
 			files.set(
 				JOURNAL_PATH,
 				JSON.stringify({
@@ -279,7 +279,7 @@ describe('SessionJournal', () => {
 			).toEqual(['old-2']);
 		});
 
-		it('should keep the active session through a replace', async () => {
+		it('keeps the active session through a replace', async () => {
 			journal.startSession(createSession({ sessionId: 'active' }));
 			await journal.flush();
 
@@ -292,7 +292,7 @@ describe('SessionJournal', () => {
 	});
 
 	describe('discardJournalFile', () => {
-		it('should remove the journal file', async () => {
+		it('removes the journal file', async () => {
 			files.set(JOURNAL_PATH, '{not json');
 
 			await journal.discardJournalFile();
@@ -302,7 +302,7 @@ describe('SessionJournal', () => {
 	});
 
 	describe('null journal path', () => {
-		it('should no-op every operation', async () => {
+		it('noes-op every operation', async () => {
 			const nullJournal = new SessionJournal(null, mockApp);
 
 			nullJournal.startSession(createSession());

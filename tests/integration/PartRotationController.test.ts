@@ -138,14 +138,14 @@ describe('PartRotationController', () => {
 		hooks.stopRecorders.mock.calls.length > 0;
 
 	describe('rotation gating', () => {
-		it('should not rotate before the part boundary', () => {
+		it('does not rotate before the part boundary', () => {
 			advanceMinutes(14);
 			controller.maybeRotate();
 
 			expect(rotationStarted()).toBe(false);
 		});
 
-		it('should rotate once the active time reaches the boundary', async () => {
+		it('rotates once the active time reaches the boundary', async () => {
 			advanceMinutes(15);
 			controller.maybeRotate();
 			await controller.waitForPendingRotation();
@@ -154,7 +154,7 @@ describe('PartRotationController', () => {
 			expect(hooks.restartRecorders).toHaveBeenCalled();
 		});
 
-		it('should exclude paused time from the part accounting', () => {
+		it('excludes paused time from the part accounting', () => {
 			advanceMinutes(10);
 			controller.markPaused();
 			advanceMinutes(30);
@@ -169,7 +169,7 @@ describe('PartRotationController', () => {
 			expect(rotationStarted()).toBe(true);
 		});
 
-		it('should not rotate when auto-split is disabled', () => {
+		it('does not rotate when auto-split is disabled', () => {
 			buildController(createSession({ splitEnabled: false }));
 			advanceMinutes(60);
 			controller.maybeRotate();
@@ -177,7 +177,7 @@ describe('PartRotationController', () => {
 			expect(rotationStarted()).toBe(false);
 		});
 
-		it('should not rotate for PCM/WAV sessions', () => {
+		it('does not rotate for PCM/WAV sessions', () => {
 			buildController(createSession({ isWavPcm: true }));
 			advanceMinutes(60);
 			controller.maybeRotate();
@@ -185,7 +185,7 @@ describe('PartRotationController', () => {
 			expect(rotationStarted()).toBe(false);
 		});
 
-		it('should not rotate while stopping', () => {
+		it('does not rotate while stopping', () => {
 			advanceMinutes(60);
 			controller.requestStop();
 			controller.maybeRotate();
@@ -193,7 +193,7 @@ describe('PartRotationController', () => {
 			expect(rotationStarted()).toBe(false);
 		});
 
-		it('should not rotate unless the status is Recording', () => {
+		it('does not rotate unless the status is Recording', () => {
 			hooks.getStatus.mockReturnValue(RecordingStatus.Paused);
 			advanceMinutes(60);
 			controller.maybeRotate();
@@ -201,7 +201,7 @@ describe('PartRotationController', () => {
 			expect(rotationStarted()).toBe(false);
 		});
 
-		it('should not start a second rotation while one is in flight', async () => {
+		it('does not start a second rotation while one is in flight', async () => {
 			let releaseStop: () => void = () => undefined;
 			hooks.stopRecorders.mockReturnValue(
 				new Promise<void>((resolve) => {
@@ -291,12 +291,12 @@ describe('PartRotationController', () => {
 	});
 
 	describe('requestStop', () => {
-		it('should return true once and false on reentry', () => {
+		it('returns true once and false on reentry', () => {
 			expect(controller.requestStop()).toBe(true);
 			expect(controller.requestStop()).toBe(false);
 		});
 
-		it('should re-arm on beginSession', () => {
+		it('res-arm on beginSession', () => {
 			controller.requestStop();
 			controller.beginSession(createSession());
 
@@ -309,7 +309,7 @@ describe('PartRotationController', () => {
 			advanceMinutes(15);
 		});
 
-		it('should restart the recorders before finalizing the snapshot', async () => {
+		it('restarts the recorders before finalizing the snapshot', async () => {
 			const order: string[] = [];
 			writeQueue.flushChunkBuffer.mockImplementation(
 				async (target: RecordingTarget) => {
@@ -331,7 +331,7 @@ describe('PartRotationController', () => {
 			expect(order).toEqual(['flush', 'restart', 'finalize']);
 		});
 
-		it('should detach the snapshot and record the finalized part', async () => {
+		it('detaches the snapshot and record the finalized part', async () => {
 			writeQueue.flushChunkBuffer.mockImplementation(
 				async (target: RecordingTarget) => {
 					target.segmentPaths = ['seg1.tmp', 'seg2.tmp'];
@@ -352,7 +352,7 @@ describe('PartRotationController', () => {
 			expect(at(targets, 0).segmentIndex).toBe(0);
 		});
 
-		it('should not restart when a stop arrived mid-rotation but still finalize', async () => {
+		it('does not restart when a stop arrived mid-rotation but still finalize', async () => {
 			let releaseStop: () => void = () => undefined;
 			hooks.stopRecorders.mockReturnValue(
 				new Promise<void>((resolve) => {
@@ -374,7 +374,7 @@ describe('PartRotationController', () => {
 			expect(finalizer.finalizeSegmentsToFile).toHaveBeenCalled();
 		});
 
-		it('should keep buffered chunks and restart when the boundary flush fails', async () => {
+		it('keeps buffered chunks and restart when the boundary flush fails', async () => {
 			writeQueue.flushChunkBuffer.mockRejectedValue(
 				new Error('disk full'),
 			);
@@ -388,7 +388,7 @@ describe('PartRotationController', () => {
 			expect(finalizer.finalizeSegmentsToFile).not.toHaveBeenCalled();
 		});
 
-		it('should roll back and re-attach the snapshot when finalization fails', async () => {
+		it('rolls back and re-attach the snapshot when finalization fails', async () => {
 			writeQueue.flushChunkBuffer.mockImplementation(
 				async (target: RecordingTarget) => {
 					target.segmentPaths = ['seg1.tmp'];
@@ -411,7 +411,7 @@ describe('PartRotationController', () => {
 			).toBe(true);
 		});
 
-		it('should contain an unexpected rotation rejection', async () => {
+		it('contains an unexpected rotation rejection', async () => {
 			hooks.stopRecorders.mockRejectedValue(new Error('boom'));
 			writeQueue.drain.mockRejectedValue(new Error('boom'));
 
@@ -423,7 +423,7 @@ describe('PartRotationController', () => {
 	});
 
 	describe('finalizePcmPart', () => {
-		it('should carry the overshoot into the next part on success', async () => {
+		it('carries the overshoot into the next part on success', async () => {
 			const target = createTarget({
 				pcmBuffers: [new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]).buffer],
 				pcmBufferedBytes: 8,
@@ -452,7 +452,7 @@ describe('PartRotationController', () => {
 			).toEqual([7, 8]);
 		});
 
-		it('should restore buffers with the carry re-attached on failure', async () => {
+		it('restores buffers with the carry re-attached on failure', async () => {
 			const target = createTarget({
 				pcmBuffers: [new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]).buffer],
 				pcmBufferedBytes: 8,
@@ -474,7 +474,7 @@ describe('PartRotationController', () => {
 			expect(target.partPcmBytes).toBe(0);
 		});
 
-		it('should reset segments without a part when nothing was flushed', async () => {
+		it('resets segments without a part when nothing was flushed', async () => {
 			const target = createTarget({ partPcmBytes: 4 });
 
 			await controller.finalizePcmPart(target, 4);

@@ -113,19 +113,19 @@ describe('SplitService', () => {
 	});
 
 	describe('getTargetExtension', () => {
-		it('should keep WAV sources as WAV', () => {
+		it('keeps WAV sources as WAV', () => {
 			expect(service.getTargetExtension(createSourceFile('wav'))).toBe(
 				'wav',
 			);
 		});
 
-		it('should keep encodable compressed formats', () => {
+		it('keeps encodable compressed formats', () => {
 			expect(service.getTargetExtension(createSourceFile('mp3'))).toBe(
 				'mp3',
 			);
 		});
 
-		it('should fall back to WAV for unencodable formats', () => {
+		it('falls back to WAV for unencodable formats', () => {
 			expect(service.getTargetExtension(createSourceFile('aiff'))).toBe(
 				'wav',
 			);
@@ -133,7 +133,7 @@ describe('SplitService', () => {
 	});
 
 	describe('split', () => {
-		it('should write all parts and complete', async () => {
+		it('writes all parts and complete', async () => {
 			const outcome = await service.split(createRequest(), jest.fn());
 
 			// 882000 samples at 44100 Hz / 10 s parts -> 2 parts
@@ -193,7 +193,7 @@ describe('SplitService', () => {
 			).toBe(true);
 		});
 
-		it('should abort on a name collision before writing anything', async () => {
+		it('aborts on a name collision before writing anything', async () => {
 			jest.mocked(mockApp.vault.adapter.exists).mockResolvedValue(true);
 
 			const outcome = await service.split(createRequest(), jest.fn());
@@ -207,7 +207,7 @@ describe('SplitService', () => {
 			).toBe(true);
 		});
 
-		it('should report partial success when the source cannot be deleted', async () => {
+		it('reports partial success when the source cannot be deleted', async () => {
 			jest.mocked(mockApp.fileManager.trashFile).mockRejectedValue(
 				new Error('locked'),
 			);
@@ -221,7 +221,7 @@ describe('SplitService', () => {
 			expect(createdFiles).toHaveLength(2);
 		});
 
-		it('should abort with a notice when reading the source fails', async () => {
+		it('aborts with a notice when reading the source fails', async () => {
 			jest.mocked(mockApp.vault.adapter.readBinary).mockRejectedValue(
 				new Error('missing'),
 			);

@@ -57,7 +57,7 @@ describe('Settings', () => {
 			expect(DEFAULT_SETTINGS.trackAudioSources.size).toBe(0);
 		});
 
-		it('should be a complete AudioRecorderSettings object', () => {
+		it('is a complete AudioRecorderSettings object', () => {
 			const expectedKeys: (keyof AudioRecorderSettings)[] = [
 				'recordingFormat',
 				'saveFolder',
@@ -105,12 +105,12 @@ describe('Settings', () => {
 	});
 
 	describe('mergeSettings', () => {
-		it('should return default settings when given empty object', () => {
+		it('returns default settings when given empty object', () => {
 			const result = mergeSettings({});
 			expect(result).toEqual(DEFAULT_SETTINGS);
 		});
 
-		it('should override specific settings while keeping defaults', () => {
+		it('overrides specific settings while keeping defaults', () => {
 			const partial: Partial<AudioRecorderSettings> = {
 				recordingFormat: 'ogg',
 				sampleRate: 48000,
@@ -155,7 +155,7 @@ describe('Settings', () => {
 			},
 		);
 
-		it('should merge track audio sources', () => {
+		it('merges track audio sources', () => {
 			const trackSources: TrackAudioSources = new Map([
 				[1, { deviceId: 'device-id-1', channelMode: 'source' }],
 				[2, { deviceId: 'device-id-2', channelMode: 'source' }],
@@ -171,7 +171,7 @@ describe('Settings', () => {
 			);
 		});
 
-		it('should normalize serialized track audio sources into a Map', () => {
+		it('normalizes serialized track audio sources into a Map', () => {
 			const result = mergeSettings({
 				trackAudioSources: { 1: 'device-id-1', 2: 'device-id-2' },
 			});
@@ -185,7 +185,7 @@ describe('Settings', () => {
 			);
 		});
 
-		it('should default legacy string track sources to the source channel mode', () => {
+		it('defaults legacy string track sources to the source channel mode', () => {
 			const result = mergeSettings({
 				trackAudioSources: { 1: 'device-id-1' },
 			});
@@ -193,7 +193,7 @@ describe('Settings', () => {
 			expect(result.trackAudioSources.get(1)?.channelMode).toBe('source');
 		});
 
-		it('should keep a stored per-track channel mode', () => {
+		it('keeps a stored per-track channel mode', () => {
 			const result = mergeSettings({
 				trackAudioSources: {
 					1: { deviceId: 'device-id-1', channelMode: 'mono-left' },
@@ -205,7 +205,7 @@ describe('Settings', () => {
 			);
 		});
 
-		it('should normalize a missing or invalid per-track channel mode', () => {
+		it('normalizes a missing or invalid per-track channel mode', () => {
 			const result = mergeSettings({
 				trackAudioSources: {
 					1: { deviceId: 'device-id-1' },
@@ -217,7 +217,7 @@ describe('Settings', () => {
 			expect(result.trackAudioSources.get(2)?.channelMode).toBe('source');
 		});
 
-		it('should normalize channel modes of Map-form track sources', () => {
+		it('normalizes channel modes of Map-form track sources', () => {
 			// A Map built by pre-channel-mode plugin code lacks the field
 			const legacyMap = new Map([
 				[1, { deviceId: 'device-id-1', channelMode: 'source' }],
@@ -228,7 +228,7 @@ describe('Settings', () => {
 			expect(result.trackAudioSources.get(1)?.channelMode).toBe('source');
 		});
 
-		it('should handle output mode changes', () => {
+		it('handles output mode changes', () => {
 			const modes: OutputMode[] = ['single', 'multiple'];
 
 			modes.forEach((mode) => {
@@ -237,7 +237,7 @@ describe('Settings', () => {
 			});
 		});
 
-		it('should preserve all user settings when fully specified', () => {
+		it('preserves all user settings when fully specified', () => {
 			const fullSettings = fullyPopulatedSettings();
 
 			const result = mergeSettings(fullSettings);
@@ -261,7 +261,7 @@ describe('Settings', () => {
 			});
 		});
 
-		it('should not modify the default settings object', () => {
+		it('does not modify the default settings object', () => {
 			const originalDefaults = { ...DEFAULT_SETTINGS };
 
 			mergeSettings({ recordingFormat: 'wav' });
@@ -497,7 +497,7 @@ describe('Settings', () => {
 			expect(result.transcriptionAdvancedSettingsEnabled).toBe(false);
 		});
 
-		it('should handle boolean settings correctly', () => {
+		it('handles boolean settings correctly', () => {
 			const result1 = mergeSettings({ debug: true });
 			const result2 = mergeSettings({ enableMultiTrack: true });
 
@@ -505,7 +505,7 @@ describe('Settings', () => {
 			expect(result2.enableMultiTrack).toBe(true);
 		});
 
-		it('should handle numeric settings correctly', () => {
+		it('handles numeric settings correctly', () => {
 			const result = mergeSettings({
 				sampleRate: 96000,
 				bitrate: 320000,
@@ -604,7 +604,7 @@ describe('mergeSettingsAsync', () => {
 		});
 	});
 
-	it('should auto-select default device when audioDeviceId is empty', async () => {
+	it('autoes-select default device when audioDeviceId is empty', async () => {
 		const devices: MediaDeviceInfo[] = [
 			{
 				deviceId: 'default',
@@ -623,7 +623,7 @@ describe('mergeSettingsAsync', () => {
 		expect(result.audioDeviceId).toBe('default');
 	});
 
-	it('should auto-select default device when audioDeviceId is whitespace', async () => {
+	it('autoes-select default device when audioDeviceId is whitespace', async () => {
 		const devices: MediaDeviceInfo[] = [
 			{
 				deviceId: 'default',
@@ -642,7 +642,7 @@ describe('mergeSettingsAsync', () => {
 		expect(result.audioDeviceId).toBe('default');
 	});
 
-	it('should keep existing device ID when already set', async () => {
+	it('keeps existing device ID when already set', async () => {
 		const devices: MediaDeviceInfo[] = [
 			{
 				deviceId: 'default',
@@ -663,7 +663,7 @@ describe('mergeSettingsAsync', () => {
 		expect(result.audioDeviceId).toBe('my-custom-device');
 	});
 
-	it('should leave audioDeviceId empty when no default device available', async () => {
+	it('leaves audioDeviceId empty when no default device available', async () => {
 		mockGetUserMedia.mockRejectedValue(new Error('Permission denied'));
 
 		const result = await mergeSettingsAsync({});
@@ -671,7 +671,7 @@ describe('mergeSettingsAsync', () => {
 		expect(result.audioDeviceId).toBe('');
 	});
 
-	it('should preserve other settings while auto-selecting device', async () => {
+	it('preserves other settings while auto-selecting device', async () => {
 		const devices: MediaDeviceInfo[] = [
 			{
 				deviceId: 'default',

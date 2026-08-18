@@ -692,7 +692,7 @@ describe('AudioPlayerRegistry', () => {
 			harness.audio.dispatchEvent(new Event('durationchange'));
 			harness.audio.dispatchEvent(new Event('loadedmetadata'));
 
-			expect(listener.mock.calls.length).toBe(before + 3);
+			expect(listener.mock.calls).toHaveLength(before + 3);
 		} finally {
 			harness.restore();
 		}

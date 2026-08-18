@@ -138,7 +138,7 @@ describe('TranscriptionModal cost estimate', () => {
 		expect(text).toContain('their share of the session total is estimated');
 		// Both providers are linked for pricing.
 		const links = internals.costEstimateEl?.querySelectorAll('a') ?? [];
-		expect(links.length).toBe(2);
+		expect(links).toHaveLength(2);
 	});
 
 	it('opens pricing links in the browser, not the Obsidian window', async () => {
@@ -151,7 +151,7 @@ describe('TranscriptionModal cost estimate', () => {
 		await tick();
 
 		const links = internals.costEstimateEl?.querySelectorAll('a') ?? [];
-		expect(links.length).toBe(1);
+		expect(links).toHaveLength(1);
 		const link = links[0];
 		expect(link?.getAttribute('target')).toBe('_blank');
 		expect(link?.getAttribute('rel')).toBe('noopener');

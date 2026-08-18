@@ -85,7 +85,7 @@ describe('RecordingManager', () => {
 	});
 
 	describe('merged output with no audio', () => {
-		it('should keep and report segment files when the merged blob is empty', async () => {
+		it('keeps and report segment files when the merged blob is empty', async () => {
 			useDesktopPlatform();
 
 			mockSettings = {
@@ -187,7 +187,7 @@ describe('RecordingManager', () => {
 				}
 			).chunkTargets;
 
-		it('should append track numbers when tracks share a device', async () => {
+		it('appends track numbers when tracks share a device', async () => {
 			mockSettings = {
 				...DEFAULT_SETTINGS,
 				enableMultiTrack: true,
@@ -217,7 +217,7 @@ describe('RecordingManager', () => {
 			await manager.stopRecording();
 		});
 
-		it('should keep plain source names when they are unique', async () => {
+		it('keeps plain source names when they are unique', async () => {
 			const { getAudioSourceName } = jest.requireMock(
 				'src/recording/AudioStreamHandler',
 			);
@@ -256,7 +256,7 @@ describe('RecordingManager', () => {
 		 * Verifies that single-file output in multi-track mode produces
 		 * the configured format via offline encoding when supported.
 		 */
-		it('should save single-mode multi-track recording in configured format via offline encoding', async () => {
+		it('saves single-mode multi-track recording in configured format via offline encoding', async () => {
 			useDesktopPlatform();
 
 			mockSettings = {
@@ -301,7 +301,7 @@ describe('RecordingManager', () => {
 			expect(global.OfflineAudioContext).toHaveBeenCalled();
 		});
 
-		it('should keep the merged file when cleanup of temporary partial files fails', async () => {
+		it('keeps the merged file when cleanup of temporary partial files fails', async () => {
 			const consoleWarnSpy = jest
 				.spyOn(console, 'warn')
 				.mockImplementation(() => {});
@@ -391,7 +391,7 @@ describe('RecordingManager', () => {
 		 * Regression: multi-track MP4 must produce a properly mixed/encoded file
 		 * via OfflineAudioContext instead of broken concatenated MP4 containers.
 		 */
-		it('should merge MP4 multi-track recording into target format with all tracks mixed', async () => {
+		it('merges MP4 multi-track recording into target format with all tracks mixed', async () => {
 			useDesktopPlatform();
 
 			mockSettings = {
@@ -437,7 +437,7 @@ describe('RecordingManager', () => {
 		 * Ensures that WAV output mode uses direct PCM capture on desktop
 		 * and writes files with .wav extension assembled from PCM segments.
 		 */
-		it('should convert to wav only when output format is wav', async () => {
+		it('converts to wav only when output format is wav', async () => {
 			mockSettings = {
 				...DEFAULT_SETTINGS,
 				recordingFormat: 'wav',
@@ -480,7 +480,7 @@ describe('RecordingManager', () => {
 	});
 
 	describe('context-aware save location', () => {
-		it('should save near active markdown file when enabled without subfolder', async () => {
+		it('saves near active markdown file when enabled without subfolder', async () => {
 			mockSettings = {
 				...DEFAULT_SETTINGS,
 				saveNearActiveFile: true,
@@ -539,7 +539,7 @@ describe('RecordingManager', () => {
 			);
 		});
 
-		it('should create active file subfolder and save recording there', async () => {
+		it('creates active file subfolder and save recording there', async () => {
 			mockSettings = {
 				...DEFAULT_SETTINGS,
 				saveNearActiveFile: true,
@@ -601,7 +601,7 @@ describe('RecordingManager', () => {
 			);
 		});
 
-		it('should fallback to global save folder when near-active mode is disabled', async () => {
+		it('fallbacks to global save folder when near-active mode is disabled', async () => {
 			mockSettings = {
 				...DEFAULT_SETTINGS,
 				saveFolder: 'Recordings',
@@ -663,7 +663,7 @@ describe('RecordingManager', () => {
 	});
 
 	describe('insertFileLinks uses basename only', () => {
-		it('should insert only filename without directory path in wikilinks', async () => {
+		it('inserts only filename without directory path in wikilinks', async () => {
 			const mockReplaceSelection = jest.fn();
 			(
 				mockApp.workspace.getActiveViewOfType as jest.Mock
@@ -718,7 +718,7 @@ describe('RecordingManager', () => {
 			expect(insertedText).toMatch(/^!\[\[recording-.*\]\]$/);
 		});
 
-		it('should use basename when file is saved in a nested directory', async () => {
+		it('uses basename when file is saved in a nested directory', async () => {
 			mockSettings = {
 				...DEFAULT_SETTINGS,
 				saveNearActiveFile: true,
@@ -832,7 +832,7 @@ describe('RecordingManager', () => {
 			);
 		});
 
-		it('should use replaceSelection on active note when insertAtOriginalPosition is disabled', async () => {
+		it('uses replaceSelection on active note when insertAtOriginalPosition is disabled', async () => {
 			const mockReplaceSelection = jest.fn();
 			(
 				mockApp.workspace.getActiveViewOfType as jest.Mock
@@ -905,7 +905,7 @@ describe('RecordingManager', () => {
 			expect(result.durationSeconds).toEqual(expect.any(Number));
 		});
 
-		it('should use replaceRange at stored position when insertAtOriginalPosition is enabled', async () => {
+		it('uses replaceRange at stored position when insertAtOriginalPosition is enabled', async () => {
 			const mockReplaceRange = jest.fn();
 			const mockGetCursor = jest.fn().mockReturnValue({ line: 5, ch: 3 });
 
@@ -961,7 +961,7 @@ describe('RecordingManager', () => {
 			);
 		});
 
-		it('should fallback to replaceSelection when stored note leaf is not found', async () => {
+		it('fallbacks to replaceSelection when stored note leaf is not found', async () => {
 			const mockReplaceSelection = jest.fn();
 			const mockGetCursor = jest.fn().mockReturnValue({ line: 2, ch: 0 });
 
@@ -1003,7 +1003,7 @@ describe('RecordingManager', () => {
 			expect(mockReplaceSelection).toHaveBeenCalled();
 		});
 
-		it('should clear insertionContext after stopRecording', async () => {
+		it('clears insertionContext after stopRecording', async () => {
 			const mockGetCursor = jest.fn().mockReturnValue({ line: 0, ch: 0 });
 			(
 				mockApp.workspace.getActiveViewOfType as jest.Mock

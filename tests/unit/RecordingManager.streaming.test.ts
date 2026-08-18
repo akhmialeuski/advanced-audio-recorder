@@ -93,7 +93,7 @@ describe('RecordingManager', () => {
 	});
 
 	describe('streaming chunks', () => {
-		it('should write chunks as segment files on desktop', async () => {
+		it('writes chunks as segment files on desktop', async () => {
 			useDesktopPlatform();
 
 			const mockMediaRecorder = {
@@ -223,7 +223,7 @@ describe('RecordingManager', () => {
 			await manager.stopRecording();
 		});
 
-		it('should buffer multiple chunks into a single segment file and clean up after finalization', async () => {
+		it('buffers multiple chunks into a single segment file and clean up after finalization', async () => {
 			useDesktopPlatform();
 
 			const mockMediaRecorder = {
@@ -284,7 +284,7 @@ describe('RecordingManager', () => {
 			expect(mockApp.vault.adapter.remove).toHaveBeenCalledTimes(1);
 		});
 
-		it('should save multi-track WAV via PCM capture and merge', async () => {
+		it('saves multi-track WAV via PCM capture and merge', async () => {
 			useDesktopPlatform();
 
 			mockSettings = {
@@ -345,7 +345,7 @@ describe('RecordingManager', () => {
 		const getTarget = (index: number): MutableTarget =>
 			getChunkTarget(manager, index);
 
-		it('should keep the chain alive and retry after a failed flush', async () => {
+		it('keeps the chain alive and retry after a failed flush', async () => {
 			const recorder = createDesktopRecorder();
 			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
 				new Uint8Array([1, 2, 3]).buffer,
@@ -395,7 +395,7 @@ describe('RecordingManager', () => {
 			expect(mockApp.vault.createBinary).toHaveBeenCalled();
 		});
 
-		it('should re-arm the failure Notice after a successful flush', async () => {
+		it('res-arm the failure Notice after a successful flush', async () => {
 			const recorder = createDesktopRecorder();
 			await manager.startRecording();
 			const target = getTarget(0);
@@ -435,7 +435,7 @@ describe('RecordingManager', () => {
 			await manager.stopRecording();
 		});
 
-		it('should contain PCM flush failures without dropping later chunks', async () => {
+		it('contains PCM flush failures without dropping later chunks', async () => {
 			useDesktopPlatform();
 
 			mockSettings = { ...DEFAULT_SETTINGS, recordingFormat: 'wav' };
@@ -585,7 +585,7 @@ describe('RecordingManager', () => {
 			jest.useRealTimers();
 		});
 
-		it('should save PCM parts at byte boundaries and a residual part at stop', async () => {
+		it('saves PCM parts at byte boundaries and a residual part at stop', async () => {
 			createManagerWithSettings({
 				recordingFormat: 'wav',
 				autoSplitEnabled: true,
@@ -617,7 +617,7 @@ describe('RecordingManager', () => {
 			);
 		});
 
-		it('should not split PCM recordings when auto-split is disabled', async () => {
+		it('does not split PCM recordings when auto-split is disabled', async () => {
 			createManagerWithSettings({
 				recordingFormat: 'wav',
 				autoSplitEnabled: false,
@@ -637,7 +637,7 @@ describe('RecordingManager', () => {
 			expect(partCalls).toHaveLength(0);
 		});
 
-		it('should use the configured suffix for PCM part files', async () => {
+		it('uses the configured suffix for PCM part files', async () => {
 			createManagerWithSettings({
 				recordingFormat: 'wav',
 				autoSplitEnabled: true,
@@ -656,7 +656,7 @@ describe('RecordingManager', () => {
 			);
 		});
 
-		it('should notify that auto-split is unavailable on mobile', async () => {
+		it('notifies that auto-split is unavailable on mobile', async () => {
 			setPlatform({ isMobile: true });
 			createManagerWithSettings({
 				recordingFormat: 'webm',
@@ -672,7 +672,7 @@ describe('RecordingManager', () => {
 			await manager.stopRecording();
 		});
 
-		it('should keep the part file when segment cleanup fails', async () => {
+		it('keeps the part file when segment cleanup fails', async () => {
 			createManagerWithSettings({
 				recordingFormat: 'wav',
 				autoSplitEnabled: true,
@@ -701,7 +701,7 @@ describe('RecordingManager', () => {
 			expect(manager.getStatus()).toBe(RecordingStatus.Recording);
 		});
 
-		it('should name the residual from the base name snapshotted at start', async () => {
+		it('names the residual from the base name snapshotted at start', async () => {
 			createManagerWithSettings({
 				recordingFormat: 'wav',
 				autoSplitEnabled: true,
@@ -730,7 +730,7 @@ describe('RecordingManager', () => {
 			expect(String(residualCall?.[0])).not.toContain('changed-');
 		});
 
-		it('should rotate MediaRecorder parts after the configured duration', async () => {
+		it('rotates MediaRecorder parts after the configured duration', async () => {
 			jest.useFakeTimers();
 			jest.setSystemTime(0);
 			createManagerWithSettings({
@@ -776,7 +776,7 @@ describe('RecordingManager', () => {
 			);
 		});
 
-		it('should not count paused time toward the part duration', async () => {
+		it('does not count paused time toward the part duration', async () => {
 			jest.useFakeTimers();
 			jest.setSystemTime(0);
 			createManagerWithSettings({
@@ -814,7 +814,7 @@ describe('RecordingManager', () => {
 			expect(global.MediaRecorder).toHaveBeenCalledTimes(2);
 		});
 
-		it('should skip auto-split for merged multi-track recordings', async () => {
+		it('skips auto-split for merged multi-track recordings', async () => {
 			setupStreams(2);
 			createManagerWithSettings({
 				recordingFormat: 'webm',
@@ -830,7 +830,7 @@ describe('RecordingManager', () => {
 			);
 		});
 
-		it('should keep recording when part finalization fails', async () => {
+		it('keeps recording when part finalization fails', async () => {
 			jest.useFakeTimers();
 			jest.setSystemTime(0);
 			createManagerWithSettings({
@@ -868,7 +868,7 @@ describe('RecordingManager', () => {
 			expect(manager.getStatus()).toBe(RecordingStatus.Recording);
 		});
 
-		it('should preserve buffered PCM audio when a part save fails', async () => {
+		it('preserves buffered PCM audio when a part save fails', async () => {
 			createManagerWithSettings({
 				recordingFormat: 'wav',
 				autoSplitEnabled: true,
@@ -923,7 +923,7 @@ describe('RecordingManager', () => {
 			expect(partWavCalls).toHaveLength(0);
 		});
 
-		it('should restart recorders before transcoding the rotated part', async () => {
+		it('restarts recorders before transcoding the rotated part', async () => {
 			jest.useFakeTimers();
 			jest.setSystemTime(0);
 			createManagerWithSettings({
@@ -967,7 +967,7 @@ describe('RecordingManager', () => {
 			]);
 		});
 
-		it('should skip pausing recorders that are inactive during rotation', async () => {
+		it('skips pausing recorders that are inactive during rotation', async () => {
 			createManagerWithSettings({
 				recordingFormat: 'webm',
 				autoSplitEnabled: true,
@@ -994,7 +994,7 @@ describe('RecordingManager', () => {
 			expect(manager.getStatus()).toBe(RecordingStatus.Paused);
 		});
 
-		it('should stop and salvage the session when recorder restart fails', async () => {
+		it('stops and salvage the session when recorder restart fails', async () => {
 			jest.useFakeTimers();
 			jest.setSystemTime(0);
 			createManagerWithSettings({
@@ -1043,7 +1043,7 @@ describe('RecordingManager', () => {
 			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
 		});
 
-		it('should keep the session output format when settings change mid-session', async () => {
+		it('keeps the session output format when settings change mid-session', async () => {
 			jest.useFakeTimers();
 			jest.setSystemTime(0);
 			createManagerWithSettings({
@@ -1078,7 +1078,7 @@ describe('RecordingManager', () => {
 			expect(oggCalls).toHaveLength(0);
 		});
 
-		it('should ignore a reentrant stopRecording call', async () => {
+		it('ignores a reentrant stopRecording call', async () => {
 			createManagerWithSettings({
 				recordingFormat: 'webm',
 				autoSplitEnabled: true,
@@ -1110,7 +1110,7 @@ describe('RecordingManager', () => {
 			expect(finalWrites).toHaveLength(1);
 		});
 
-		it('should stop cleanly while a rotation is in flight', async () => {
+		it('stops cleanly while a rotation is in flight', async () => {
 			jest.useFakeTimers();
 			jest.setSystemTime(0);
 			createManagerWithSettings({

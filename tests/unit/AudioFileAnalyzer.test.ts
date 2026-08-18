@@ -194,7 +194,7 @@ describe('getAudioFileInfo', () => {
 		}
 	});
 
-	it('should accurately extract and format audio metadata', async () => {
+	it('accuratelies extract and format audio metadata', async () => {
 		const result = await getAudioFileInfo(app, file);
 
 		expect(result).not.toBeNull();
@@ -210,7 +210,7 @@ describe('getAudioFileInfo', () => {
 		});
 	});
 
-	it('should handle mono channels', async () => {
+	it('handles mono channels', async () => {
 		mockDecodeAudioData.mockResolvedValue({
 			duration: 60,
 			sampleRate: 44100,
@@ -220,7 +220,7 @@ describe('getAudioFileInfo', () => {
 		expect(result?.channels).toBe('1 (Mono)');
 	});
 
-	it('should handle > 2 channels', async () => {
+	it('handles > 2 channels', async () => {
 		mockDecodeAudioData.mockResolvedValue({
 			duration: 60,
 			sampleRate: 44100,
@@ -230,7 +230,7 @@ describe('getAudioFileInfo', () => {
 		expect(result?.channels).toBe('6 channels');
 	});
 
-	it('should correctly infer codecs from extensions', async () => {
+	it('correctly infers codecs from extensions', async () => {
 		(file as { extension: string }).extension = 'mp4';
 		let result = await getAudioFileInfo(app, file);
 		expect(result?.containerFormat).toBe('audio/mp4');
@@ -242,7 +242,7 @@ describe('getAudioFileInfo', () => {
 		expect(result?.audioCodec).toBe('opus/vorbis');
 	});
 
-	it('should format very small files correctly', async () => {
+	it('formats very small files correctly', async () => {
 		(file as { stat: { size: number } }).stat.size = 500;
 		mockDecodeAudioData.mockResolvedValue({
 			duration: 1,
@@ -336,7 +336,7 @@ describe('getAudioFileInfo', () => {
 		consoleSpy.mockRestore();
 	});
 
-	it('should return null and show Notice if decoding throws', async () => {
+	it('returns null and show Notice if decoding throws', async () => {
 		mockDecodeAudioData.mockRejectedValue(new Error('Invalid audio data'));
 
 		// A decode that fails is logged rather than announced: the fallback is
@@ -357,12 +357,12 @@ describe('getAudioFileInfo', () => {
 		consoleSpy.mockRestore();
 	});
 
-	it('should close AudioContext in finally block', async () => {
+	it('closes AudioContext in finally block', async () => {
 		await getAudioFileInfo(app, file);
 		expect(mockClose).toHaveBeenCalled();
 	});
 
-	it('should return null if AudioContext is not supported', async () => {
+	it('returns null if AudioContext is not supported', async () => {
 		const consoleSpy = jest
 			.spyOn(console, 'error')
 			.mockImplementation(() => {});

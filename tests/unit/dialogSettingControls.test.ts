@@ -40,7 +40,7 @@ describe('dialog setting builders', () => {
 	}
 
 	describe('addBitrateSetting', () => {
-		it('should list supported bitrates with kbps labels', () => {
+		it('lists supported bitrates with kbps labels', () => {
 			addBitrateSetting(containerEl, {
 				desc: 'Bitrate.',
 				initialBitrate: 128000,
@@ -61,7 +61,7 @@ describe('dialog setting builders', () => {
 			expect(row().dropdownValue).toBe('128000');
 		});
 
-		it('should snap an unsupported initial bitrate to the closest entry', () => {
+		it('snaps an unsupported initial bitrate to the closest entry', () => {
 			const effective = addBitrateSetting(containerEl, {
 				desc: 'Bitrate.',
 				initialBitrate: 100000,
@@ -72,7 +72,7 @@ describe('dialog setting builders', () => {
 			expect(row().dropdownValue).toBe('96000');
 		});
 
-		it('should report numeric bitrate changes', () => {
+		it('reports numeric bitrate changes', () => {
 			const onChange = jest.fn();
 			addBitrateSetting(containerEl, {
 				desc: 'Bitrate.',
@@ -87,7 +87,7 @@ describe('dialog setting builders', () => {
 	});
 
 	describe('addDeleteSourceSetting', () => {
-		it('should render the initial value and forward changes', () => {
+		it('renders the initial value and forward changes', () => {
 			const onChange = jest.fn();
 			addDeleteSourceSetting(containerEl, {
 				desc: 'Delete.',
@@ -103,7 +103,7 @@ describe('dialog setting builders', () => {
 	});
 
 	describe('addLinkActionSetting', () => {
-		it('should render the three link actions and forward changes', () => {
+		it('renders the three link actions and forward changes', () => {
 			const onChange = jest.fn();
 			addLinkActionSetting(containerEl, {
 				desc: 'Links.',

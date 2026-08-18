@@ -73,7 +73,7 @@ describe('RecoveryModal', () => {
 		onDiscard = jest.fn().mockResolvedValue(undefined);
 	});
 
-	it('should render session details with the saved-parts note', () => {
+	it('renders session details with the saved-parts note', () => {
 		const modal = openModal([createSession()]);
 
 		const line = modal.contentEl.querySelector('.aar-recovery-session');
@@ -82,7 +82,7 @@ describe('RecoveryModal', () => {
 		expect(line?.textContent).toContain('1 already saved part file(s)');
 	});
 
-	it('should omit the parts note when no parts were saved', () => {
+	it('omits the parts note when no parts were saved', () => {
 		const session = createSession();
 		at(session.tracks, 0).partPaths = [];
 		const modal = openModal([session]);
@@ -91,7 +91,7 @@ describe('RecoveryModal', () => {
 		expect(line?.textContent).not.toContain('already saved part');
 	});
 
-	it('should run the recover callback and close', async () => {
+	it('runs the recover callback and close', async () => {
 		const modal = openModal([createSession()]);
 
 		clickButton('Recover audio');
@@ -102,7 +102,7 @@ describe('RecoveryModal', () => {
 		expect(modal.close).toHaveBeenCalled();
 	});
 
-	it('should run the discard callback and close', async () => {
+	it('runs the discard callback and close', async () => {
 		const modal = openModal([createSession()]);
 
 		clickButton('Discard');
@@ -113,7 +113,7 @@ describe('RecoveryModal', () => {
 		expect(modal.close).toHaveBeenCalled();
 	});
 
-	it('should close without callbacks on decide later', () => {
+	it('closes without callbacks on decide later', () => {
 		const modal = openModal([createSession()]);
 
 		clickButton('Decide later');
@@ -123,7 +123,7 @@ describe('RecoveryModal', () => {
 		expect(modal.close).toHaveBeenCalled();
 	});
 
-	it('should ignore a second click while an action runs', async () => {
+	it('ignores a second click while an action runs', async () => {
 		let release: () => void = () => undefined;
 		onRecover.mockReturnValue(
 			new Promise<void>((resolve) => {
@@ -140,7 +140,7 @@ describe('RecoveryModal', () => {
 		expect(onRecover).toHaveBeenCalledTimes(1);
 	});
 
-	it('should contain a failing action, notify, and still close', async () => {
+	it('contains a failing action, notify, and still close', async () => {
 		const errorSpy = jest.spyOn(console, 'error').mockImplementation();
 		onRecover.mockRejectedValue(new Error('vault unavailable'));
 		const modal = openModal([createSession()]);
@@ -164,7 +164,7 @@ describe('RecoveryModal', () => {
 		errorSpy.mockRestore();
 	});
 
-	it('should accept a new action after a failed one', async () => {
+	it('accepts a new action after a failed one', async () => {
 		const errorSpy = jest.spyOn(console, 'error').mockImplementation();
 		onRecover.mockRejectedValue(new Error('vault unavailable'));
 		openModal([createSession()]);

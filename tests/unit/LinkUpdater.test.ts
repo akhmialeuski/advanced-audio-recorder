@@ -130,7 +130,7 @@ describe('updateLinksInVault', () => {
 		return { app, contents, processMock, generateMarkdownLink };
 	}
 
-	it('should replace a wikilink embed and preserve the embed prefix', async () => {
+	it('replaces a wikilink embed and preserve the embed prefix', async () => {
 		const source = createFile('audio/rec.webm');
 		const content = 'intro ![[rec.webm]] outro';
 		const { app, contents, generateMarkdownLink } = createVaultApp(
@@ -174,7 +174,7 @@ describe('updateLinksInVault', () => {
 		);
 	});
 
-	it('should strip the embed prefix for non-embed wikilinks', async () => {
+	it('strips the embed prefix for non-embed wikilinks', async () => {
 		const source = createFile('rec.webm');
 		const content = 'see [[rec.webm]] here';
 		const { app, contents, generateMarkdownLink } = createVaultApp(
@@ -204,7 +204,7 @@ describe('updateLinksInVault', () => {
 		expect(contents['note.md']).toBe('see [[new.webm]] here');
 	});
 
-	it('should rewrite Markdown-style embeds', async () => {
+	it('rewrites Markdown-style embeds', async () => {
 		const source = createFile('rec.webm');
 		const content = 'audio: ![](rec.webm)';
 		const { app, contents, generateMarkdownLink } = createVaultApp(
@@ -232,7 +232,7 @@ describe('updateLinksInVault', () => {
 		expect(contents['note.md']).toBe('audio: ![](new.webm)');
 	});
 
-	it('should leave references resolving to other files untouched', async () => {
+	it('leaves references resolving to other files untouched', async () => {
 		const source = createFile('rec.webm');
 		const other = createFile('other.webm');
 		const content = '![[other.webm]] and ![[ghost.webm]]';
@@ -271,7 +271,7 @@ describe('updateLinksInVault', () => {
 		expect(contents['note.md']).toBe(content);
 	});
 
-	it('should append links below the original for the after action', async () => {
+	it('appends links below the original for the after action', async () => {
 		const source = createFile('rec.webm');
 		const content = '![[rec.webm]]';
 		const { app, contents, generateMarkdownLink } = createVaultApp(
@@ -299,7 +299,7 @@ describe('updateLinksInVault', () => {
 		expect(contents['note.md']).toBe('![[rec.webm]]\n![[new.webm]]');
 	});
 
-	it('should return zero without processing for none action or empty file list', async () => {
+	it('returns zero without processing for none action or empty file list', async () => {
 		const source = createFile('rec.webm');
 		const content = '![[rec.webm]]';
 		const { app, processMock } = createVaultApp(
@@ -331,7 +331,7 @@ describe('updateLinksInVault', () => {
 		expect(processMock).not.toHaveBeenCalled();
 	});
 
-	it('should skip stale references and warn instead of corrupting the note', async () => {
+	it('skips stale references and warn instead of corrupting the note', async () => {
 		const warnSpy = jest
 			.spyOn(console, 'warn')
 			.mockImplementation(() => undefined);
@@ -364,7 +364,7 @@ describe('updateLinksInVault', () => {
 		warnSpy.mockRestore();
 	});
 
-	it('should replace multiple references in one note from end to start', async () => {
+	it('replaces multiple references in one note from end to start', async () => {
 		const source = createFile('rec.webm');
 		const content = '![[rec.webm]] middle [[rec.webm#start|intro]] end';
 		const { app, contents, generateMarkdownLink } = createVaultApp(
@@ -406,7 +406,7 @@ describe('updateLinksInVault', () => {
 		);
 	});
 
-	it('should skip referencing paths that do not resolve to a file', async () => {
+	it('skips referencing paths that do not resolve to a file', async () => {
 		const source = createFile('rec.webm');
 		const { app, processMock } = createVaultApp(
 			{ 'missing.md': { 'rec.webm': 1 } },
@@ -425,7 +425,7 @@ describe('updateLinksInVault', () => {
 		expect(processMock).not.toHaveBeenCalled();
 	});
 
-	it('should skip notes whose metadata cache has no references', async () => {
+	it('skips notes whose metadata cache has no references', async () => {
 		const source = createFile('rec.webm');
 		const { app, processMock } = createVaultApp(
 			{ 'note.md': { 'rec.webm': 1 } },
@@ -444,7 +444,7 @@ describe('updateLinksInVault', () => {
 		expect(processMock).not.toHaveBeenCalled();
 	});
 
-	it('should count only notes whose content changed', async () => {
+	it('counts only notes whose content changed', async () => {
 		const warnSpy = jest
 			.spyOn(console, 'warn')
 			.mockImplementation(() => undefined);
@@ -500,7 +500,7 @@ describe('updateLinksInVault', () => {
 		warnSpy.mockRestore();
 	});
 
-	it('should keep a table row on one line when replacing an embed inside it', async () => {
+	it('keeps a table row on one line when replacing an embed inside it', async () => {
 		const source = createFile('rec.webm');
 		const content = '| ![[rec.webm]] | comment |';
 		const { app, contents, generateMarkdownLink } = createVaultApp(
@@ -532,7 +532,7 @@ describe('updateLinksInVault', () => {
 		);
 	});
 
-	it('should keep a table row on one line for the after action', async () => {
+	it('keeps a table row on one line for the after action', async () => {
 		const source = createFile('rec.webm');
 		const content = '| ![[rec.webm]] |';
 		const { app, contents, generateMarkdownLink } = createVaultApp(
@@ -560,7 +560,7 @@ describe('updateLinksInVault', () => {
 		expect(contents['note.md']).toBe('| ![[rec.webm]] ![[new.webm]] |');
 	});
 
-	it('should use one link per line when the embed is alone on its line', async () => {
+	it('uses one link per line when the embed is alone on its line', async () => {
 		const source = createFile('rec.webm');
 		const content = 'intro\n![[rec.webm]]\noutro';
 		const { app, contents, generateMarkdownLink } = createVaultApp(
@@ -592,7 +592,7 @@ describe('updateLinksInVault', () => {
 		);
 	});
 
-	it('should count frontmatter references without touching them', async () => {
+	it('counts frontmatter references without touching them', async () => {
 		const source = createFile('rec.webm');
 		const bodyContent = '---\naudio: "[[rec.webm]]"\n---\n![[rec.webm]]';
 		const { app, contents, generateMarkdownLink } = createVaultApp(
