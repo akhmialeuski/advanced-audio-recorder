@@ -386,7 +386,7 @@ describe('AudioEncoder', () => {
 	describe('probeOfflineEncodingSupport', () => {
 		it('returns the real canEncodeAudio answer for a WebCodecs codec', async () => {
 			const { canEncodeAudio } = jest.requireMock('mediabunny');
-			(canEncodeAudio as jest.Mock).mockResolvedValueOnce(true);
+			jest.mocked(canEncodeAudio).mockResolvedValueOnce(true);
 
 			await expect(probeOfflineEncodingSupport('webm')).resolves.toBe(
 				true,
@@ -398,7 +398,7 @@ describe('AudioEncoder', () => {
 			// The AudioEncoder global may exist while the codec is still
 			// unencodable - the probe must not be fooled by the global
 			const { canEncodeAudio } = jest.requireMock('mediabunny');
-			(canEncodeAudio as jest.Mock).mockResolvedValue(false);
+			jest.mocked(canEncodeAudio).mockResolvedValue(false);
 
 			await expect(probeOfflineEncodingSupport('m4a')).resolves.toBe(
 				false,
@@ -411,7 +411,7 @@ describe('AudioEncoder', () => {
 				'@mediabunny/mp3-encoder',
 			);
 			// Unencodable before registration, encodable after
-			(canEncodeAudio as jest.Mock)
+			jest.mocked(canEncodeAudio)
 				.mockResolvedValueOnce(false)
 				.mockResolvedValueOnce(true);
 
@@ -432,7 +432,7 @@ describe('AudioEncoder', () => {
 
 		it('maps a probe failure to false instead of throwing', async () => {
 			const { canEncodeAudio } = jest.requireMock('mediabunny');
-			(canEncodeAudio as jest.Mock).mockRejectedValueOnce(
+			jest.mocked(canEncodeAudio).mockRejectedValueOnce(
 				new Error('probe exploded'),
 			);
 

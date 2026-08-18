@@ -539,7 +539,7 @@ describe('SpeakerRenameModal', () => {
 		first.value = 'Bob';
 		await internals.apply();
 
-		const notice = (Notice as jest.Mock).mock.calls.at(-1)?.[0] as string;
+		const notice = jest.mocked(Notice).mock.calls.at(-1)?.[0] as string;
 		expect(notice).toContain(
 			'1 note(s) carry no timecode link for this recording',
 		);
@@ -566,7 +566,7 @@ describe('SpeakerRenameModal', () => {
 		first.value = 'Bob';
 		await internals.apply();
 
-		const notice = (Notice as jest.Mock).mock.calls.at(-1)?.[0] as string;
+		const notice = jest.mocked(Notice).mock.calls.at(-1)?.[0] as string;
 		expect(notice).toContain(
 			'1 note(s) no longer carry the speaker labels they were written ' +
 				'with',
@@ -797,7 +797,7 @@ describe('SpeakerRenameModal', () => {
 		await internals.render();
 		await internals.undo();
 
-		const notice = (Notice as jest.Mock).mock.calls.at(-1)?.[0] as string;
+		const notice = jest.mocked(Notice).mock.calls.at(-1)?.[0] as string;
 		expect(notice).toContain(
 			'1 note(s) carry no timecode link for this recording and were ' +
 				'left as they are.',
@@ -824,7 +824,7 @@ describe('SpeakerRenameModal', () => {
 		first.value = 'Bob';
 		await internals.apply();
 
-		const notice = (Notice as jest.Mock).mock.calls.at(-1)?.[0] as string;
+		const notice = jest.mocked(Notice).mock.calls.at(-1)?.[0] as string;
 		expect(notice).toContain('1 note(s) already use these names.');
 		// Neither accusation may appear: the note was read back, not guessed at.
 		expect(notice).not.toContain('no longer carry the speaker labels');

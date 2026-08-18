@@ -14,11 +14,12 @@ import {
 } from 'src/settings/settingsSchema';
 import type { App } from 'obsidian';
 import {
-	createRecordingMockApp,
+	createRecordingSut,
 	installMediaRecorder,
-	installMediaRecorderFactory,
+	installMultiTrackRecorders,
 	installRecordingMediaStubs,
 	makeFakeMarkerStore,
+	recordingManagerOver,
 } from './helpers/recordingManagerTestKit';
 import { useDesktopPlatform } from '../helpers/platform';
 import { MarkdownView, Notice } from 'obsidian';
@@ -70,25 +71,13 @@ describe('RecordingManager', () => {
 	let consoleErrorSpy: jest.SpyInstance;
 
 	beforeEach(() => {
-		// Reset mocks
 		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
-
-		// Create mock App
-		mockApp = createRecordingMockApp();
-
-		// Use default settings
-		mockSettings = { ...DEFAULT_SETTINGS };
-
-		// Status change callback
-		statusChangeCallback = jest.fn();
-
-		// Create manager instance
-		manager = new RecordingManager(
-			mockApp,
-			mockSettings,
-			statusChangeCallback,
-			makeFakeMarkerStore().store,
-		);
+		({
+			manager,
+			app: mockApp,
+			settings: mockSettings,
+			onStatusChange: statusChangeCallback,
+		} = createRecordingSut());
 	});
 
 	afterEach(() => {
@@ -105,11 +94,10 @@ describe('RecordingManager', () => {
 				outputMode: 'single',
 				recordingFormat: 'wav',
 			};
-			manager = new RecordingManager(
+			manager = recordingManagerOver(
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				makeFakeMarkerStore().store,
 			);
 
 			installMediaRecorder(undefined, (mime) => mime === 'audio/webm');
@@ -206,11 +194,10 @@ describe('RecordingManager', () => {
 				useSourceNamesForTracks: true,
 				outputMode: 'multiple',
 			};
-			manager = new RecordingManager(
+			manager = recordingManagerOver(
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				makeFakeMarkerStore().store,
 			);
 			setupTwoTrackRecording([
 				{ trackNumber: 1, deviceId: 'shared-device' },
@@ -244,11 +231,10 @@ describe('RecordingManager', () => {
 				useSourceNamesForTracks: true,
 				outputMode: 'multiple',
 			};
-			manager = new RecordingManager(
+			manager = recordingManagerOver(
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				makeFakeMarkerStore().store,
 			);
 			setupTwoTrackRecording([
 				{ trackNumber: 1, deviceId: 'device-a' },
@@ -279,47 +265,13 @@ describe('RecordingManager', () => {
 				outputMode: 'single',
 				recordingFormat: 'webm',
 			};
-			manager = new RecordingManager(
+			manager = recordingManagerOver(
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				makeFakeMarkerStore().store,
 			);
 
-			const mockMediaRecorders = [0, 1].map(() => ({
-				start: jest.fn(),
-				stop: jest.fn(),
-				pause: jest.fn(),
-				resume: jest.fn(),
-				ondataavailable: null as ((event: BlobEvent) => void) | null,
-				onerror: null as ((event: Event) => void) | null,
-				addEventListener: jest.fn(
-					(event: string, handler: () => void) => {
-						if (event === 'stop') {
-							handler();
-						}
-					},
-				),
-			}));
-			let recorderIndex = 0;
-
-			installMediaRecorderFactory(() => {
-				const recorder =
-					mockMediaRecorders[recorderIndex] ?? mockMediaRecorders[0];
-				recorderIndex += 1;
-				return recorder;
-			});
-
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioStreams.mockResolvedValue({
-				streams: [
-					{ getTracks: () => [{ stop: jest.fn() }] },
-					{ getTracks: () => [{ stop: jest.fn() }] },
-				],
-				trackOrder: [],
-			});
+			const mockMediaRecorders = installMultiTrackRecorders(2);
 
 			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
 				new Uint8Array([1, 2, 3]).buffer,
@@ -365,47 +317,13 @@ describe('RecordingManager', () => {
 				outputMode: 'single',
 				recordingFormat: 'webm',
 			};
-			manager = new RecordingManager(
+			manager = recordingManagerOver(
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				makeFakeMarkerStore().store,
 			);
 
-			const mockMediaRecorders = [0, 1].map(() => ({
-				start: jest.fn(),
-				stop: jest.fn(),
-				pause: jest.fn(),
-				resume: jest.fn(),
-				ondataavailable: null as ((event: BlobEvent) => void) | null,
-				onerror: null as ((event: Event) => void) | null,
-				addEventListener: jest.fn(
-					(event: string, handler: () => void) => {
-						if (event === 'stop') {
-							handler();
-						}
-					},
-				),
-			}));
-			let recorderIndex = 0;
-
-			installMediaRecorderFactory(() => {
-				const recorder =
-					mockMediaRecorders[recorderIndex] ?? mockMediaRecorders[0];
-				recorderIndex += 1;
-				return recorder;
-			});
-
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioStreams.mockResolvedValue({
-				streams: [
-					{ getTracks: () => [{ stop: jest.fn() }] },
-					{ getTracks: () => [{ stop: jest.fn() }] },
-				],
-				trackOrder: [],
-			});
+			const mockMediaRecorders = installMultiTrackRecorders(2);
 
 			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
 				new Uint8Array([1, 2, 3]).buffer,
@@ -482,47 +400,13 @@ describe('RecordingManager', () => {
 				outputMode: 'single',
 				recordingFormat: 'mp4',
 			};
-			manager = new RecordingManager(
+			manager = recordingManagerOver(
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				makeFakeMarkerStore().store,
 			);
 
-			const mockMediaRecorders = [0, 1].map(() => ({
-				start: jest.fn(),
-				stop: jest.fn(),
-				pause: jest.fn(),
-				resume: jest.fn(),
-				ondataavailable: null as ((event: BlobEvent) => void) | null,
-				onerror: null as ((event: Event) => void) | null,
-				addEventListener: jest.fn(
-					(event: string, handler: () => void) => {
-						if (event === 'stop') {
-							handler();
-						}
-					},
-				),
-			}));
-			let recorderIndex = 0;
-
-			installMediaRecorderFactory(() => {
-				const recorder =
-					mockMediaRecorders[recorderIndex] ?? mockMediaRecorders[0];
-				recorderIndex += 1;
-				return recorder;
-			});
-
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioStreams.mockResolvedValue({
-				streams: [
-					{ getTracks: () => [{ stop: jest.fn() }] },
-					{ getTracks: () => [{ stop: jest.fn() }] },
-				],
-				trackOrder: [],
-			});
+			const mockMediaRecorders = installMultiTrackRecorders(2);
 
 			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
 				new Uint8Array([1, 2, 3]).buffer,
@@ -558,11 +442,10 @@ describe('RecordingManager', () => {
 				...DEFAULT_SETTINGS,
 				recordingFormat: 'wav',
 			};
-			manager = new RecordingManager(
+			manager = recordingManagerOver(
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				makeFakeMarkerStore().store,
 			);
 
 			installMediaRecorder(undefined, (mime) => mime === 'audio/webm');
@@ -603,11 +486,10 @@ describe('RecordingManager', () => {
 				saveNearActiveFile: true,
 				activeFileSubfolder: '',
 			};
-			manager = new RecordingManager(
+			manager = recordingManagerOver(
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				makeFakeMarkerStore().store,
 			);
 			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
 				path: 'Meetings/2026/Meeting Note.md',
@@ -663,11 +545,10 @@ describe('RecordingManager', () => {
 				saveNearActiveFile: true,
 				activeFileSubfolder: 'Audio',
 			};
-			manager = new RecordingManager(
+			manager = recordingManagerOver(
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				makeFakeMarkerStore().store,
 			);
 			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
 				path: 'Meetings/2026/Meeting Note.md',
@@ -727,11 +608,10 @@ describe('RecordingManager', () => {
 				saveNearActiveFile: false,
 				activeFileSubfolder: 'Audio',
 			};
-			manager = new RecordingManager(
+			manager = recordingManagerOver(
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				makeFakeMarkerStore().store,
 			);
 			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
 				path: 'Meetings/2026/Meeting Note.md',
@@ -844,11 +724,10 @@ describe('RecordingManager', () => {
 				saveNearActiveFile: true,
 				activeFileSubfolder: 'Audio',
 			};
-			manager = new RecordingManager(
+			manager = recordingManagerOver(
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				makeFakeMarkerStore().store,
 			);
 			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
 				path: 'Projects/Notes/Daily.md',
@@ -965,11 +844,10 @@ describe('RecordingManager', () => {
 				...DEFAULT_SETTINGS,
 				insertAtOriginalPosition: false,
 			};
-			manager = new RecordingManager(
+			manager = recordingManagerOver(
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				makeFakeMarkerStore().store,
 			);
 
 			await manager.startRecording();
@@ -1063,11 +941,10 @@ describe('RecordingManager', () => {
 				...DEFAULT_SETTINGS,
 				insertAtOriginalPosition: true,
 			};
-			manager = new RecordingManager(
+			manager = recordingManagerOver(
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				makeFakeMarkerStore().store,
 			);
 
 			await manager.startRecording();
@@ -1108,11 +985,10 @@ describe('RecordingManager', () => {
 				...DEFAULT_SETTINGS,
 				insertAtOriginalPosition: true,
 			};
-			manager = new RecordingManager(
+			manager = recordingManagerOver(
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				makeFakeMarkerStore().store,
 			);
 
 			await manager.startRecording();
@@ -1146,11 +1022,10 @@ describe('RecordingManager', () => {
 				...DEFAULT_SETTINGS,
 				insertAtOriginalPosition: true,
 			};
-			manager = new RecordingManager(
+			manager = recordingManagerOver(
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				makeFakeMarkerStore().store,
 			);
 
 			await manager.startRecording();

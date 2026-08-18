@@ -405,7 +405,7 @@ export class Workspace extends Events {
 
 /**
  * Mock Notice: a jest.fn-backed constructor so tests can assert on
- * `(Notice as jest.Mock).mock.calls` without re-mocking the module.
+ * `jest.mocked(Notice).mock.calls` without re-mocking the module.
  * The global clearMocks option resets the calls between tests.
  */
 export const Notice = jest.fn(function (
@@ -444,6 +444,18 @@ export interface NoticeInstance {
  */
 export function noticeText(notice: NoticeInstance): string {
 	return asText(notice.message);
+}
+
+/**
+ * The text of every notice raised so far, in order.
+ *
+ * Reading `Notice.mock.calls` directly gives `string | DocumentFragment`, which
+ * a test then has to stringify - and stringifying a fragment yields
+ * "[object DocumentFragment]" rather than its text.
+ * @returns One string per notice
+ */
+export function noticeMessages(): string[] {
+	return noticeInstances.map(noticeInitialText);
 }
 
 /**

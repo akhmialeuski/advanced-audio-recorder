@@ -52,7 +52,7 @@ describe('TrackWriteQueue', () => {
 	let consoleErrorSpy: jest.SpyInstance;
 
 	const getNoticeCalls = (): unknown[][] => {
-		return (Notice as jest.Mock).mock.calls;
+		return jest.mocked(Notice).mock.calls;
 	};
 
 	beforeEach(() => {
@@ -223,8 +223,8 @@ describe('TrackWriteQueue', () => {
 			const target = createTarget();
 			target.pcmBuffers = [new Uint8Array([1, 2]).buffer];
 			target.pcmBufferedBytes = 2;
-			(
-				mockApp.vault.adapter.writeBinary as jest.Mock
+			jest.mocked(
+				mockApp.vault.adapter.writeBinary,
 			).mockRejectedValueOnce(new Error('disk full'));
 
 			await expect(queue.flushPcmBuffer(target)).rejects.toThrow(

@@ -15,13 +15,13 @@ import {
 import type { App } from 'obsidian';
 import {
 	createDesktopRecorder,
-	createRecordingMockApp,
+	createRecordingSut,
 	flushAsync,
 	getChunkTarget,
 	installMediaRecorder,
 	installMediaRecorderFactory,
 	installRecordingMediaStubs,
-	makeFakeMarkerStore,
+	recordingManagerOver,
 	type MutableTarget,
 } from './helpers/recordingManagerTestKit';
 import {
@@ -79,25 +79,13 @@ describe('RecordingManager', () => {
 	let consoleErrorSpy: jest.SpyInstance;
 
 	beforeEach(() => {
-		// Reset mocks
 		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
-
-		// Create mock App
-		mockApp = createRecordingMockApp();
-
-		// Use default settings
-		mockSettings = { ...DEFAULT_SETTINGS };
-
-		// Status change callback
-		statusChangeCallback = jest.fn();
-
-		// Create manager instance
-		manager = new RecordingManager(
-			mockApp,
-			mockSettings,
-			statusChangeCallback,
-			makeFakeMarkerStore().store,
-		);
+		({
+			manager,
+			app: mockApp,
+			settings: mockSettings,
+			onStatusChange: statusChangeCallback,
+		} = createRecordingSut());
 	});
 
 	afterEach(() => {
@@ -305,11 +293,10 @@ describe('RecordingManager', () => {
 				outputMode: 'single',
 				recordingFormat: 'wav',
 			};
-			manager = new RecordingManager(
+			manager = recordingManagerOver(
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				makeFakeMarkerStore().store,
 			);
 
 			installMediaRecorder(undefined, (mime) => mime === 'audio/webm');
@@ -452,11 +439,10 @@ describe('RecordingManager', () => {
 			useDesktopPlatform();
 
 			mockSettings = { ...DEFAULT_SETTINGS, recordingFormat: 'wav' };
-			manager = new RecordingManager(
+			manager = recordingManagerOver(
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				makeFakeMarkerStore().store,
 			);
 
 			const { getAudioStreams } = jest.requireMock(
@@ -547,11 +533,10 @@ describe('RecordingManager', () => {
 			overrides: Partial<AudioRecorderSettings>,
 		): void {
 			mockSettings = { ...DEFAULT_SETTINGS, ...overrides };
-			manager = new RecordingManager(
+			manager = recordingManagerOver(
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				makeFakeMarkerStore().store,
 			);
 		}
 

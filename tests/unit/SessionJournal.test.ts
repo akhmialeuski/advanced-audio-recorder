@@ -195,7 +195,7 @@ describe('SessionJournal', () => {
 		});
 
 		it('should fall back to an empty journal write when removal fails', async () => {
-			(mockApp.vault.adapter.remove as jest.Mock).mockRejectedValue(
+			jest.mocked(mockApp.vault.adapter.remove).mockRejectedValue(
 				new Error('locked'),
 			);
 			journal.startSession(createSession());
@@ -246,7 +246,7 @@ describe('SessionJournal', () => {
 				JOURNAL_PATH,
 				JSON.stringify({ version: JOURNAL_VERSION, sessions: [] }),
 			);
-			(mockApp.vault.adapter.read as jest.Mock).mockRejectedValueOnce(
+			jest.mocked(mockApp.vault.adapter.read).mockRejectedValueOnce(
 				new Error('locked'),
 			);
 

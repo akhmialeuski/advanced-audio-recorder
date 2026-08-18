@@ -134,7 +134,7 @@ import type { EncodingWorkerClient } from 'src/audio/EncodingWorkerClient';
 describe('AudioFormatConverter', () => {
 	beforeEach(() => {
 		// Reset MediaRecorder.isTypeSupported to default
-		(MediaRecorder.isTypeSupported as jest.Mock).mockImplementation(
+		jest.mocked(MediaRecorder.isTypeSupported).mockImplementation(
 			(mime: string) => mime === 'audio/webm' || mime === 'audio/ogg',
 		);
 
@@ -182,7 +182,7 @@ describe('AudioFormatConverter', () => {
 		])(
 			'falls back to %s for an unsupported native format',
 			(_case, supportedMime, expected) => {
-				(MediaRecorder.isTypeSupported as jest.Mock).mockImplementation(
+				jest.mocked(MediaRecorder.isTypeSupported).mockImplementation(
 					(mime: string) => mime === supportedMime,
 				);
 				expect(resolveRecorderFormat('mp4')).toEqual({
@@ -194,7 +194,7 @@ describe('AudioFormatConverter', () => {
 
 		it('falls back to MP4 when only audio/mp4 is recordable (iOS)', () => {
 			// iOS WKWebView: MediaRecorder records audio/mp4 only
-			(MediaRecorder.isTypeSupported as jest.Mock).mockImplementation(
+			jest.mocked(MediaRecorder.isTypeSupported).mockImplementation(
 				(mime: string) => mime === 'audio/mp4',
 			);
 			expect(resolveRecorderFormat('wav')).toEqual({
@@ -207,7 +207,7 @@ describe('AudioFormatConverter', () => {
 			// audio/m4a probes false on iOS, but m4a IS an mp4 container:
 			// the recorder captures audio/mp4 and the file keeps the .m4a
 			// extension without any re-encode
-			(MediaRecorder.isTypeSupported as jest.Mock).mockImplementation(
+			jest.mocked(MediaRecorder.isTypeSupported).mockImplementation(
 				(mime: string) => mime === 'audio/mp4',
 			);
 			expect(resolveRecorderFormat('m4a')).toEqual({
@@ -217,7 +217,7 @@ describe('AudioFormatConverter', () => {
 		});
 
 		it('should throw when no intermediate format is supported', () => {
-			(MediaRecorder.isTypeSupported as jest.Mock).mockReturnValue(false);
+			jest.mocked(MediaRecorder.isTypeSupported).mockReturnValue(false);
 			expect(() => resolveRecorderFormat('mp4')).toThrow(
 				/none of webm, ogg, mp4 is supported/,
 			);

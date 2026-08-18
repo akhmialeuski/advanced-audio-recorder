@@ -14,10 +14,11 @@ import {
 } from 'src/settings/settingsSchema';
 import type { App } from 'obsidian';
 import {
-	createRecordingMockApp,
+	createRecordingSut,
 	installMediaRecorder,
 	installRecordingMediaStubs,
 	makeFakeMarkerStore,
+	recordingManagerOver,
 	makeStatefulMarkerStore,
 } from './helpers/recordingManagerTestKit';
 import { flushMicrotasks } from '../helpers/async';
@@ -58,25 +59,13 @@ describe('RecordingManager', () => {
 	let consoleErrorSpy: jest.SpyInstance;
 
 	beforeEach(() => {
-		// Reset mocks
 		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
-
-		// Create mock App
-		mockApp = createRecordingMockApp();
-
-		// Use default settings
-		mockSettings = { ...DEFAULT_SETTINGS };
-
-		// Status change callback
-		statusChangeCallback = jest.fn();
-
-		// Create manager instance
-		manager = new RecordingManager(
-			mockApp,
-			mockSettings,
-			statusChangeCallback,
-			makeFakeMarkerStore().store,
-		);
+		({
+			manager,
+			app: mockApp,
+			settings: mockSettings,
+			onStatusChange: statusChangeCallback,
+		} = createRecordingSut());
 	});
 
 	afterEach(() => {
@@ -121,7 +110,7 @@ describe('RecordingManager', () => {
 				trackOrder: [],
 			});
 
-			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
+			jest.mocked(mockApp.vault.adapter.readBinary).mockResolvedValue(
 				new Uint8Array([1, 2, 3]).buffer,
 			);
 		});
@@ -332,11 +321,10 @@ describe('RecordingManager', () => {
 
 		it('refuses to drop a marker when no recording is active', () => {
 			mockSettings = { ...DEFAULT_SETTINGS, playerEnableMarkers: true };
-			manager = new RecordingManager(
+			manager = recordingManagerOver(
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				makeFakeMarkerStore().store,
 			);
 
 			expect(manager.canDropMarker()).toBe(false);
@@ -345,11 +333,10 @@ describe('RecordingManager', () => {
 
 		it('refuses to drop a marker when markers are disabled', async () => {
 			mockSettings = { ...DEFAULT_SETTINGS, playerEnableMarkers: false };
-			manager = new RecordingManager(
+			manager = recordingManagerOver(
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				makeFakeMarkerStore().store,
 			);
 
 			await manager.startRecording();
@@ -360,11 +347,10 @@ describe('RecordingManager', () => {
 
 		it('still allows dropping a marker while paused', async () => {
 			mockSettings = { ...DEFAULT_SETTINGS, playerEnableMarkers: true };
-			manager = new RecordingManager(
+			manager = recordingManagerOver(
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				makeFakeMarkerStore().store,
 			);
 
 			await manager.startRecording();

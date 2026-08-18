@@ -93,9 +93,7 @@ describe('getAudioFileInfo', () => {
 		file = createFile('test.webm', { size: 1572864 });
 
 		// Set default mocked behaviors
-		(app.vault.readBinary as jest.Mock).mockResolvedValue(
-			new ArrayBuffer(8),
-		);
+		jest.mocked(app.vault.readBinary).mockResolvedValue(new ArrayBuffer(8));
 
 		// Reset AudioContext mocks
 		mockDecodeAudioData.mockResolvedValue({

@@ -217,7 +217,7 @@ describe('AudioProcessingModal', () => {
 		processMock.mockResolvedValue('recordings/take-processed.wav');
 		const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
 		const app = makeApp();
-		(app.fileManager.trashFile as jest.Mock).mockRejectedValue(
+		jest.mocked(app.fileManager.trashFile).mockRejectedValue(
 			new Error('locked'),
 		);
 		const { modal, processButton } = openModal(

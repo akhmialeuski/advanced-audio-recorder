@@ -7,7 +7,8 @@
 
 import { ConversionService } from 'src/recording/ConversionService';
 import type { ConversionRequest } from 'src/recording/ConversionService';
-import { App, Notice, TFile } from 'obsidian';
+import { App, TFile } from 'obsidian';
+import { noticeMessages } from '../mocks/obsidian';
 
 jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest
@@ -63,9 +64,7 @@ describe('ConversionService', () => {
 		...overrides,
 	});
 
-	const getNotices = (): string[] => {
-		return (Notice as jest.Mock).mock.calls.map((call) => String(call[0]));
-	};
+	const getNotices = (): string[] => noticeMessages();
 
 	beforeEach(() => {
 		mockApp = {
@@ -235,7 +234,7 @@ describe('ConversionService', () => {
 	});
 
 	it('should abort when the target file already exists', async () => {
-		(mockApp.vault.adapter.exists as jest.Mock).mockResolvedValue(true);
+		jest.mocked(mockApp.vault.adapter.exists).mockResolvedValue(true);
 
 		const outcome = await service.convert(createRequest(), jest.fn());
 
@@ -247,7 +246,7 @@ describe('ConversionService', () => {
 	});
 
 	it('should abort with a notice when the pipeline fails', async () => {
-		(mockApp.vault.adapter.readBinary as jest.Mock).mockRejectedValue(
+		jest.mocked(mockApp.vault.adapter.readBinary).mockRejectedValue(
 			new Error('missing'),
 		);
 		const onProgress = jest.fn();
@@ -264,7 +263,7 @@ describe('ConversionService', () => {
 	});
 
 	it('should report partial success when the source cannot be deleted', async () => {
-		(mockApp.fileManager.trashFile as jest.Mock).mockRejectedValue(
+		jest.mocked(mockApp.fileManager.trashFile).mockRejectedValue(
 			new Error('locked'),
 		);
 

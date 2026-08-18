@@ -13,13 +13,13 @@ import {
 } from 'src/settings/settingsSchema';
 import type { App } from 'obsidian';
 import {
-	createRecordingMockApp,
+	createRecordingSut,
 	installMediaRecorder,
 	installRecordingMediaStubs,
-	makeFakeMarkerStore,
+	recordingManagerOver,
 } from './helpers/recordingManagerTestKit';
 import { useDesktopPlatform } from '../helpers/platform';
-import { Notice } from 'obsidian';
+import { noticeMessages } from '../mocks/obsidian';
 
 // Mock AudioStreamHandler
 jest.mock('src/recording/AudioStreamHandler', () =>
@@ -58,25 +58,13 @@ describe('RecordingManager', () => {
 	let consoleErrorSpy: jest.SpyInstance;
 
 	beforeEach(() => {
-		// Reset mocks
 		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
-
-		// Create mock App
-		mockApp = createRecordingMockApp();
-
-		// Use default settings
-		mockSettings = { ...DEFAULT_SETTINGS };
-
-		// Status change callback
-		statusChangeCallback = jest.fn();
-
-		// Create manager instance
-		manager = new RecordingManager(
-			mockApp,
-			mockSettings,
-			statusChangeCallback,
-			makeFakeMarkerStore().store,
-		);
+		({
+			manager,
+			app: mockApp,
+			settings: mockSettings,
+			onStatusChange: statusChangeCallback,
+		} = createRecordingSut());
 	});
 
 	afterEach(() => {
@@ -384,7 +372,7 @@ describe('RecordingManager', () => {
 			expect(manager.getStatus()).toBe(RecordingStatus.Recording);
 
 			// Mock vault to throw error during save
-			(mockApp.vault.adapter.rename as jest.Mock).mockRejectedValue(
+			jest.mocked(mockApp.vault.adapter.rename).mockRejectedValue(
 				new Error('Save failed'),
 			);
 
@@ -407,7 +395,7 @@ describe('RecordingManager', () => {
 			await manager.startRecording();
 
 			// Mock vault to throw error during save
-			(mockApp.vault.adapter.rename as jest.Mock).mockRejectedValue(
+			jest.mocked(mockApp.vault.adapter.rename).mockRejectedValue(
 				new Error('Save failed'),
 			);
 
@@ -433,11 +421,10 @@ describe('RecordingManager', () => {
 				...DEFAULT_SETTINGS,
 				bitrate: 192000,
 			};
-			manager = new RecordingManager(
+			manager = recordingManagerOver(
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				makeFakeMarkerStore().store,
 			);
 
 			const mockMediaRecorder = {
@@ -519,8 +506,8 @@ describe('RecordingManager', () => {
 				expect.objectContaining({ mimeType: 'audio/mp4' }),
 			);
 			expect(
-				(Notice as jest.Mock).mock.calls.some((call) =>
-					String(call[0]).includes('Recording in MP4 instead'),
+				noticeMessages().some((message) =>
+					message.includes('Recording in MP4 instead'),
 				),
 			).toBe(true);
 

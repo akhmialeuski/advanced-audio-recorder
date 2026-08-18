@@ -8,7 +8,9 @@
  */
 
 import type { App } from 'obsidian';
-import type { RecordingManager } from 'src/recording/RecordingManager';
+import { RecordingManager } from 'src/recording/RecordingManager';
+import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { PlayerMarker } from 'src/markers/markerModel';
 import { tickTimes } from '../../helpers/async';
@@ -270,3 +272,138 @@ export const makeStatefulMarkerStore = (): {
 	} as unknown as RecordingSidecarStore;
 	return { store, writes, read: (path) => data.get(path) ?? [] };
 };
+
+/** A RecordingManager with the collaborators a test asserts against. */
+export interface RecordingSut {
+	manager: RecordingManager;
+	app: App;
+	settings: AudioRecorderSettings;
+	onStatusChange: jest.Mock;
+	markers: RecordingSidecarStore;
+	/** Everything written to the marker store, in order. */
+	markerWrites: MarkerWrite[];
+	/** The store's updateMarkers spy. */
+	markerUpdate: jest.Mock;
+}
+
+/**
+ * Builds a RecordingManager and everything it was built from.
+ *
+ * Six suites in this family opened with the same fifteen-line `beforeEach` and
+ * repeated the constructor call forty times between them, so a change to the
+ * manager's signature meant forty edits. Returning the collaborators alongside
+ * the manager also means a test states what it varies - `{ settings: { ... } }`
+ * - instead of reassigning a `let` from an outer scope.
+ * @param overrides - What this test needs different from the defaults
+ * @returns The manager and its collaborators
+ */
+export const createRecordingSut = (
+	overrides: {
+		app?: App;
+		settings?: Partial<AudioRecorderSettings>;
+		onStatusChange?: jest.Mock;
+		markerStore?: {
+			store: RecordingSidecarStore;
+			update: jest.Mock;
+			writes: MarkerWrite[];
+		};
+	} = {},
+): RecordingSut => {
+	const app = overrides.app ?? createRecordingMockApp();
+	const settings: AudioRecorderSettings = {
+		...DEFAULT_SETTINGS,
+		...overrides.settings,
+	};
+	const onStatusChange = overrides.onStatusChange ?? jest.fn();
+	const markerStore = overrides.markerStore ?? makeFakeMarkerStore();
+	return {
+		manager: new RecordingManager(
+			app,
+			settings,
+			onStatusChange,
+			markerStore.store,
+		),
+		app,
+		settings,
+		onStatusChange,
+		markers: markerStore.store,
+		markerWrites: markerStore.writes,
+		markerUpdate: markerStore.update,
+	};
+};
+
+/**
+ * Rebuilds the manager over collaborators a test already holds, for the case
+ * where it changed the settings after the initial build.
+ * @param app - The app the manager reads the vault through
+ * @param settings - The settings it should now run with
+ * @param onStatusChange - The status callback to report through
+ * @returns A fresh manager
+ */
+export const recordingManagerOver = (
+	app: App,
+	settings: AudioRecorderSettings,
+	onStatusChange: jest.Mock,
+): RecordingManager =>
+	new RecordingManager(
+		app,
+		settings,
+		onStatusChange,
+		makeFakeMarkerStore().store,
+	);
+
+/**
+ * Installs a bank of MediaRecorder doubles, one per track, and points
+ * getAudioStreams at a matching set of streams.
+ *
+ * Five tests across the output and streaming suites hand-rolled this same
+ * thirty-line arrange - a pair of recorders whose stop event fires
+ * synchronously, plus the streams they were opened over - which is what pushed
+ * one of them past a hundred lines.
+ * @param trackCount - How many tracks are recording at once
+ * @returns The recorder doubles, in the order the manager receives them
+ */
+export const installMultiTrackRecorders = (
+	trackCount: number,
+): MediaRecorderDoubleInstance[] => {
+	const recorders = Array.from({ length: trackCount }, () => ({
+		start: jest.fn(),
+		stop: jest.fn(),
+		pause: jest.fn(),
+		resume: jest.fn(),
+		ondataavailable: null as ((event: BlobEvent) => void) | null,
+		onerror: null as ((event: Event) => void) | null,
+		addEventListener: jest.fn((event: string, handler: () => void) => {
+			if (event === 'stop') {
+				handler();
+			}
+		}),
+	}));
+	let index = 0;
+	installMediaRecorderFactory(() => {
+		const recorder = recorders[index] ?? recorders[0];
+		index += 1;
+		return recorder;
+	});
+	const streams = jest.requireMock<{ getAudioStreams: jest.Mock }>(
+		'src/recording/AudioStreamHandler',
+	);
+	streams.getAudioStreams.mockResolvedValue({
+		streams: recorders.map(() => ({
+			getTracks: () => [{ stop: jest.fn() }],
+		})),
+		trackOrder: [],
+	});
+	return recorders;
+};
+
+/** One recorder double from {@link installMultiTrackRecorders}. */
+export interface MediaRecorderDoubleInstance {
+	start: jest.Mock;
+	stop: jest.Mock;
+	pause: jest.Mock;
+	resume: jest.Mock;
+	ondataavailable: ((event: BlobEvent) => void) | null;
+	onerror: ((event: Event) => void) | null;
+	addEventListener: jest.Mock;
+}

@@ -187,7 +187,7 @@ describe('runStreamingConversion', () => {
 
 	it('should throw when the conversion produces no output', async () => {
 		const { BufferTarget } = jest.requireMock('mediabunny');
-		(BufferTarget as jest.Mock).mockImplementationOnce(() => ({
+		jest.mocked(BufferTarget).mockImplementationOnce(() => ({
 			buffer: new ArrayBuffer(0),
 		}));
 

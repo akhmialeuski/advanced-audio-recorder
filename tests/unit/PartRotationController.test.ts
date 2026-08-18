@@ -18,7 +18,7 @@ import { MS_PER_MINUTE } from 'src/constants';
 import type { App } from 'obsidian';
 import type { TrackWriteQueue } from 'src/recording/TrackWriteQueue';
 import type { RecordingFinalizer } from 'src/recording/RecordingFinalizer';
-import { Notice } from 'obsidian';
+import { noticeMessages } from '../mocks/obsidian';
 
 const createTarget = (
 	overrides: Partial<RecordingTarget> = {},
@@ -405,8 +405,8 @@ describe('PartRotationController', () => {
 			// Snapshot segments are re-attached in front of newer data
 			expect(at(targets, 0).segmentPaths).toEqual(['seg1.tmp']);
 			expect(
-				(Notice as jest.Mock).mock.calls.some((call) =>
-					String(call[0]).includes('Failed to save recording part'),
+				noticeMessages().some((message) =>
+					message.includes('Failed to save recording part'),
 				),
 			).toBe(true);
 		});
