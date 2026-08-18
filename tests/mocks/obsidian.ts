@@ -489,6 +489,15 @@ export const noticeInstances: NoticeInstance[] = [];
 // setupFiles, which runs before the test framework exists.
 
 /**
+ * Every Menu built so far, newest last.
+ *
+ * A menu is usually constructed inside the code under test and shown straight
+ * away, so a test has no reference to assert against. Cleared per test from
+ * tests/setupAfterEnv.ts.
+ */
+export const menuInstances: Menu[] = [];
+
+/**
  * Mock MenuItem. Builder methods are chainable like the real API, and unlike
  * the real API they keep what they were given: the previous mock threw the
  * click handler away, so no test could invoke a context-menu entry through the
@@ -549,6 +558,10 @@ export class MenuItem {
  * the menu a component produced and pick an entry from it.
  */
 export class Menu {
+	constructor() {
+		menuInstances.push(this);
+	}
+
 	/** Items added so far, in order. */
 	readonly items: MenuItem[] = [];
 	/** Where separators fall, as indices into {@link items}. */
