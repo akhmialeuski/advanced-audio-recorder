@@ -21,113 +21,107 @@ import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 
 describe('resolveEnginePricing', () => {
-	it('is free for the local engine regardless of model', () => {
-		expect(
-			resolveEnginePricing(TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER, ''),
-		).toEqual({ kind: 'free' });
+	it.each([
+		{
+			name: 'the local engine, free whatever the model',
+			engine: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+			model: '',
+			expected: { kind: 'free' },
+		},
+		{
+			name: 'the local engine with a model named',
+			engine: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+			model: 'ggml-large-v3',
+			expected: { kind: 'free' },
+		},
+		{
+			name: 'whisper-1, priced per minute',
+			engine: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			model: 'whisper-1',
+			expected: { kind: 'perMinute', usdPerMinute: 0.006 },
+		},
+		{
+			// The longest matching fragment wins, or v3-turbo would be priced
+			// at the dearer v3 rate its name contains.
+			name: 'whisper-large-v3-turbo, not the v3 rate its name contains',
+			engine: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			model: 'whisper-large-v3-turbo',
+			expected: { kind: 'perMinute', usdPerMinute: 0.04 / 60 },
+		},
+		{
+			name: 'whisper-large-v3',
+			engine: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			model: 'whisper-large-v3',
+			expected: { kind: 'perMinute', usdPerMinute: 0.111 / 60 },
+		},
+		{
+			name: 'distil-whisper, its own cheaper model rather than full v3',
+			engine: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			model: 'distil-whisper-large-v3-en',
+			expected: { kind: 'perMinute', usdPerMinute: 0.02 / 60 },
+		},
+		{
+			name: 'a Deepgram nova tier',
+			engine: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			model: 'nova-2-meeting',
+			expected: { kind: 'perMinute', usdPerMinute: 0.0043 },
+		},
+		{
+			name: 'a Deepgram enhanced tier',
+			engine: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			model: 'enhanced-phonecall',
+			expected: { kind: 'perMinute', usdPerMinute: 0.0145 },
+		},
+		{
+			name: 'a Gemini 2.x model, audio and text priced apart',
+			engine: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
+			model: 'gemini-2.5-flash',
+			expected: {
+				kind: 'perToken',
+				usdPerMillionAudioInput: 1.0,
+				usdPerMillionTextInput: 0.3,
+				usdPerMillionOutput: 2.5,
+			},
+		},
+		{
+			name: 'a Gemini 3.x model, one rate for every input modality',
+			engine: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
+			model: 'gemini-3.5-flash',
+			expected: {
+				kind: 'perToken',
+				usdPerMillionAudioInput: 1.5,
+				usdPerMillionTextInput: 1.5,
+				usdPerMillionOutput: 9,
+			},
+		},
+		{
+			name: 'gemini-3.5-flash-lite, its own model rather than full Flash',
+			engine: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
+			model: 'gemini-3.5-flash-lite',
+			expected: {
+				kind: 'perToken',
+				usdPerMillionAudioInput: 0.3,
+				usdPerMillionTextInput: 0.3,
+				usdPerMillionOutput: 2.5,
+			},
+		},
+	])('prices $name', ({ engine, model, expected }) => {
+		expect(resolveEnginePricing(engine, model)).toEqual(expected);
 	});
 
-	it('prices whisper-1 per minute', () => {
-		expect(
-			resolveEnginePricing(
-				TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
-				'whisper-1',
-			),
-		).toEqual({ kind: 'perMinute', usdPerMinute: 0.006 });
-	});
-
-	it('prefers the longest matching fragment (v3-turbo over v3)', () => {
-		const turbo = resolveEnginePricing(
-			TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
-			'whisper-large-v3-turbo',
-		);
-		const v3 = resolveEnginePricing(
-			TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
-			'whisper-large-v3',
-		);
-		expect(turbo).toEqual({
-			kind: 'perMinute',
-			usdPerMinute: 0.04 / 60,
-		});
-		expect(v3).toEqual({
-			kind: 'perMinute',
-			usdPerMinute: 0.111 / 60,
-		});
-	});
-
-	it('matches Deepgram model variants by fragment', () => {
-		expect(
-			resolveEnginePricing(
-				TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-				'nova-2-meeting',
-			),
-		).toEqual({ kind: 'perMinute', usdPerMinute: 0.0043 });
-		expect(
-			resolveEnginePricing(
-				TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-				'enhanced-phonecall',
-			),
-		).toEqual({ kind: 'perMinute', usdPerMinute: 0.0145 });
-	});
-
-	it('prices Gemini models per token with separate audio and text rates', () => {
-		expect(
-			resolveEnginePricing(
-				TRANSCRIPTION_PROVIDER_IDS.GEMINI,
-				'gemini-2.5-flash',
-			),
-		).toEqual({
-			kind: 'perToken',
-			usdPerMillionAudioInput: 1.0,
-			usdPerMillionTextInput: 0.3,
-			usdPerMillionOutput: 2.5,
-		});
-	});
-
-	it('prices the Gemini 3.x generation with one rate for every input modality', () => {
-		expect(
-			resolveEnginePricing(
-				TRANSCRIPTION_PROVIDER_IDS.GEMINI,
-				'gemini-3.5-flash',
-			),
-		).toEqual({
-			kind: 'perToken',
-			usdPerMillionAudioInput: 1.5,
-			usdPerMillionTextInput: 1.5,
-			usdPerMillionOutput: 9,
-		});
-	});
-
-	it('prices gemini-3.5-flash-lite as its own model, not the full Flash rate', () => {
-		expect(
-			resolveEnginePricing(
-				TRANSCRIPTION_PROVIDER_IDS.GEMINI,
-				'gemini-3.5-flash-lite',
-			),
-		).toEqual({
-			kind: 'perToken',
-			usdPerMillionAudioInput: 0.3,
-			usdPerMillionTextInput: 0.3,
-			usdPerMillionOutput: 2.5,
-		});
-	});
-
-	it('prices distil-whisper as its own cheaper model, not the full v3 rate', () => {
-		expect(
-			resolveEnginePricing(
-				TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
-				'distil-whisper-large-v3-en',
-			),
-		).toEqual({ kind: 'perMinute', usdPerMinute: 0.02 / 60 });
-	});
-
-	it('returns null for a model with no built-in rate', () => {
-		expect(
-			resolveEnginePricing(
-				TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-				'my-custom-model',
-			),
-		).toBeNull();
+	it.each([
+		{
+			name: 'a model with no built-in rate',
+			engine: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			model: 'my-custom-model',
+		},
+		{
+			name: 'an empty model on a paid engine',
+			engine: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			model: '',
+		},
+	])('has no price for $name', ({ engine, model }) => {
+		expect(resolveEnginePricing(engine, model)).toBeNull();
 	});
 });
 

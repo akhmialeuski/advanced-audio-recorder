@@ -22,87 +22,39 @@ import { fullyPopulatedSettings } from '../helpers/settingsFixtures';
 
 describe('Settings', () => {
 	describe('DEFAULT_SETTINGS', () => {
-		it('should have correct default recording format', () => {
-			expect(DEFAULT_SETTINGS.recordingFormat).toBe('webm');
-		});
+		it.each([
+			{ key: 'recordingFormat', value: 'webm' },
+			{ key: 'saveFolder', value: '' },
+			{ key: 'saveNearActiveFile', value: false },
+			{ key: 'activeFileSubfolder', value: '' },
+			{ key: 'filePrefix', value: 'recording' },
+			{ key: 'startStopHotkey', value: '' },
+			{ key: 'pauseHotkey', value: '' },
+			{ key: 'resumeHotkey', value: '' },
+			{ key: 'audioDeviceId', value: '' },
+			{ key: 'sampleRate', value: 44100 },
+			{ key: 'bitrate', value: 128000 },
+			{ key: 'recordingChannels', value: 'source' },
+			{ key: 'enableMultiTrack', value: false },
+			{ key: 'maxTracks', value: 2 },
+			{ key: 'outputMode', value: 'single' },
+			{ key: 'useSourceNamesForTracks', value: true },
+			{ key: 'debug', value: false },
+			{ key: 'insertAtOriginalPosition', value: false },
+			{ key: 'autoSplitEnabled', value: false },
+			{ key: 'splitChunkMinutes', value: 15 },
+			{ key: 'splitPartSuffix', value: 'part' },
+			{ key: 'deleteSourceAfterSplit', value: false },
+		] satisfies { key: keyof AudioRecorderSettings; value: unknown }[])(
+			'defaults $key to $value',
+			({ key, value }) => {
+				expect(DEFAULT_SETTINGS[key]).toBe(value);
+			},
+		);
 
-		it('should have empty save folder by default', () => {
-			expect(DEFAULT_SETTINGS.saveFolder).toBe('');
-		});
-
-		it('should have save-near-active-file mode disabled by default', () => {
-			expect(DEFAULT_SETTINGS.saveNearActiveFile).toBe(false);
-		});
-
-		it('should have empty active file subfolder by default', () => {
-			expect(DEFAULT_SETTINGS.activeFileSubfolder).toBe('');
-		});
-
-		it('should have default file prefix', () => {
-			expect(DEFAULT_SETTINGS.filePrefix).toBe('recording');
-		});
-
-		it('should have empty hotkeys by default', () => {
-			expect(DEFAULT_SETTINGS.startStopHotkey).toBe('');
-			expect(DEFAULT_SETTINGS.pauseHotkey).toBe('');
-			expect(DEFAULT_SETTINGS.resumeHotkey).toBe('');
-		});
-
-		it('should have empty audio device ID', () => {
-			expect(DEFAULT_SETTINGS.audioDeviceId).toBe('');
-		});
-
-		it('should have default sample rate of 44100', () => {
-			expect(DEFAULT_SETTINGS.sampleRate).toBe(44100);
-		});
-
-		it('should have default bitrate of 128000', () => {
-			expect(DEFAULT_SETTINGS.bitrate).toBe(128000);
-		});
-
-		it('should have multi-track disabled by default', () => {
-			expect(DEFAULT_SETTINGS.enableMultiTrack).toBe(false);
-		});
-
-		it('should have max tracks set to 2 by default', () => {
-			expect(DEFAULT_SETTINGS.maxTracks).toBe(2);
-		});
-
-		it('should have single output mode by default', () => {
-			expect(DEFAULT_SETTINGS.outputMode).toBe('single');
-		});
-
-		it('should use source names for tracks by default', () => {
-			expect(DEFAULT_SETTINGS.useSourceNamesForTracks).toBe(true);
-		});
-
-		it('should have empty track audio sources', () => {
+		it('starts with no track audio sources configured', () => {
 			expect(DEFAULT_SETTINGS.trackAudioSources).toBeInstanceOf(Map);
 			expect(DEFAULT_SETTINGS.trackAudioSources.size).toBe(0);
-		});
-
-		it('should have debug mode disabled by default', () => {
-			expect(DEFAULT_SETTINGS.debug).toBe(false);
-		});
-
-		it('should have insert at original position disabled by default', () => {
-			expect(DEFAULT_SETTINGS.insertAtOriginalPosition).toBe(false);
-		});
-
-		it('should have auto-split disabled by default', () => {
-			expect(DEFAULT_SETTINGS.autoSplitEnabled).toBe(false);
-		});
-
-		it('should have 15-minute split parts by default', () => {
-			expect(DEFAULT_SETTINGS.splitChunkMinutes).toBe(15);
-		});
-
-		it('should have "part" as the default split suffix', () => {
-			expect(DEFAULT_SETTINGS.splitPartSuffix).toBe('part');
-		});
-
-		it('should have delete source after split disabled by default', () => {
-			expect(DEFAULT_SETTINGS.deleteSourceAfterSplit).toBe(false);
 		});
 
 		it('should be a complete AudioRecorderSettings object', () => {
@@ -172,20 +124,36 @@ describe('Settings', () => {
 			expect(result.debug).toBe(DEFAULT_SETTINGS.debug);
 		});
 
-		it('should keep a valid stored recording channel mode', () => {
-			const result = mergeSettings({ recordingChannels: 'mono-left' });
+		it.each([
+			{ name: 'source', stored: 'source', expected: 'source' },
+			{ name: 'mono-left', stored: 'mono-left', expected: 'mono-left' },
+			{
+				name: 'mono-right',
+				stored: 'mono-right',
+				expected: 'mono-right',
+			},
+			{ name: 'mono-mix', stored: 'mono-mix', expected: 'mono-mix' },
+			{
+				name: 'an unknown mode, normalised',
+				stored: 'stereo-wide',
+				expected: 'source',
+			},
+			{
+				name: 'an empty string, normalised',
+				stored: '',
+				expected: 'source',
+			},
+		])(
+			'reads a stored channel mode of $name as $expected',
+			({ stored, expected }) => {
+				const result = mergeSettings({
+					recordingChannels:
+						stored as AudioRecorderSettings['recordingChannels'],
+				});
 
-			expect(result.recordingChannels).toBe('mono-left');
-		});
-
-		it('should normalize an unknown recording channel mode to source', () => {
-			const result = mergeSettings({
-				recordingChannels:
-					'stereo-wide' as AudioRecorderSettings['recordingChannels'],
-			});
-
-			expect(result.recordingChannels).toBe('source');
-		});
+				expect(result.recordingChannels).toBe(expected);
+			},
+		);
 
 		it('should merge track audio sources', () => {
 			const trackSources: TrackAudioSources = new Map([

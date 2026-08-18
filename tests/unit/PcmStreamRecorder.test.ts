@@ -561,49 +561,71 @@ describe('PcmCaptureProcessor worklet logic', () => {
 	const left = Float32Array.from([0.5, 0.5]);
 	const right = Float32Array.from([-0.5, 0.0]);
 
-	it('interleaves all channels in the source mode', () => {
-		const pcm = captureOnce('source', [left, right]);
+	const third = Float32Array.from([0.25, 0.25]);
 
-		expect(Array.from(pcm)).toEqual([16383, -16384, 16383, 0]);
-	});
-
-	it('defaults to the source mode when no options are provided', () => {
-		const pcm = captureOnce(undefined, [left, right]);
-
-		expect(Array.from(pcm)).toEqual([16383, -16384, 16383, 0]);
-	});
-
-	it('averages every channel in the mono-mix mode', () => {
-		const pcm = captureOnce('mono-mix', [left, right]);
-
-		// (0.5 + -0.5)/2 = 0 and (0.5 + 0)/2 = 0.25
-		expect(Array.from(pcm)).toEqual([0, 8191]);
-	});
-
-	it('keeps only the left channel in the mono-left mode', () => {
-		const pcm = captureOnce('mono-left', [left, right]);
-
-		expect(Array.from(pcm)).toEqual([16383, 16383]);
-	});
-
-	it('keeps only the right channel in the mono-right mode', () => {
-		const pcm = captureOnce('mono-right', [left, right]);
-
-		expect(Array.from(pcm)).toEqual([-16384, 0]);
-	});
-
-	it('falls back to the only channel for mono-right on mono input', () => {
-		const pcm = captureOnce('mono-right', [left]);
-
-		expect(Array.from(pcm)).toEqual([16383, 16383]);
-	});
-
-	it('averages more than two channels in the mono-mix mode', () => {
-		const third = Float32Array.from([0.25, 0.25]);
-		const pcm = captureOnce('mono-mix', [left, right, third]);
-
-		// (0.5 - 0.5 + 0.25)/3 = 0.0833..., (0.5 + 0 + 0.25)/3 = 0.25
-		expect(Array.from(pcm)).toEqual([2730, 8191]);
+	it.each([
+		{
+			name: 'the source mode interleaves every channel',
+			mode: 'source',
+			input: [left, right],
+			expected: [16383, -16384, 16383, 0],
+		},
+		{
+			name: 'no mode at all behaves as the source mode',
+			mode: undefined,
+			input: [left, right],
+			expected: [16383, -16384, 16383, 0],
+		},
+		{
+			// (0.5 + -0.5)/2 = 0 and (0.5 + 0)/2 = 0.25
+			name: 'the mono-mix mode averages both channels',
+			mode: 'mono-mix',
+			input: [left, right],
+			expected: [0, 8191],
+		},
+		{
+			// (0.5 - 0.5 + 0.25)/3 = 0.0833..., (0.5 + 0 + 0.25)/3 = 0.25
+			name: 'the mono-mix mode averages more than two channels',
+			mode: 'mono-mix',
+			input: [left, right, third],
+			expected: [2730, 8191],
+		},
+		{
+			name: 'the mono-left mode keeps only the left channel',
+			mode: 'mono-left',
+			input: [left, right],
+			expected: [16383, 16383],
+		},
+		{
+			name: 'the mono-right mode keeps only the right channel',
+			mode: 'mono-right',
+			input: [left, right],
+			expected: [-16384, 0],
+		},
+		{
+			name: 'mono-right falls back to the only channel of mono input',
+			mode: 'mono-right',
+			input: [left],
+			expected: [16383, 16383],
+		},
+		{
+			name: 'mono-left falls back to the only channel of mono input',
+			mode: 'mono-left',
+			input: [left],
+			expected: [16383, 16383],
+		},
+		{
+			// Anything that is not the source mode downmixes to one channel,
+			// and an unrecognised mode is none of the named mono modes, so it
+			// lands on the first channel. Better a mono file than an
+			// interleaved one the container was not told about.
+			name: 'an unrecognised mode downmixes to the first channel',
+			mode: 'nonsense',
+			input: [left, right],
+			expected: [16383, 16383],
+		},
+	])('$name', ({ mode, input, expected }) => {
+		expect(Array.from(captureOnce(mode, input))).toEqual(expected);
 	});
 
 	it('discards input while paused and resumes cleanly', () => {

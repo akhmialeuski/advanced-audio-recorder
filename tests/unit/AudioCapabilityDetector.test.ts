@@ -32,24 +32,19 @@ import { setPlatform, useDesktopPlatform } from '../helpers/platform';
 
 describe('AudioCapabilityDetector', () => {
 	describe('buildMimeType', () => {
-		it('should return plain audio/webm without codecs suffix', () => {
-			expect(buildMimeType('webm')).toBe('audio/webm');
-		});
-
-		it('should return plain audio/ogg without codecs suffix', () => {
-			expect(buildMimeType('ogg')).toBe('audio/ogg');
-		});
-
-		it('should return plain audio/mp3', () => {
-			expect(buildMimeType('mp3')).toBe('audio/mp3');
-		});
-
-		it('should return plain audio/m4a', () => {
-			expect(buildMimeType('m4a')).toBe('audio/m4a');
-		});
-
-		it('should handle arbitrary format strings', () => {
-			expect(buildMimeType(FORMAT_FLAC)).toBe(`audio/${FORMAT_FLAC}`);
+		// No codecs suffix for any of them: MediaRecorder is asked about the
+		// container, and pinning a codec narrows what the browser will accept.
+		it.each([
+			{ format: 'webm', expected: 'audio/webm' },
+			{ format: 'ogg', expected: 'audio/ogg' },
+			{ format: 'mp3', expected: 'audio/mp3' },
+			{ format: 'm4a', expected: 'audio/m4a' },
+			{ format: 'mp4', expected: 'audio/mp4' },
+			{ format: 'wav', expected: 'audio/wav' },
+			{ format: FORMAT_FLAC, expected: `audio/${FORMAT_FLAC}` },
+			{ format: 'anything', expected: 'audio/anything' },
+		])('maps $format to $expected', ({ format, expected }) => {
+			expect(buildMimeType(format)).toBe(expected);
 		});
 	});
 

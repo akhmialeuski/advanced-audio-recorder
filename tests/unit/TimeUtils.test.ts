@@ -1,120 +1,206 @@
 /**
  * Tests for time formatting and timecode parsing helpers.
+ * @module tests/unit/TimeUtils.test
  */
 
-import { formatTimecode, parseTimecode } from 'src/utils/TimeUtils';
+import { delay, formatTimecode, parseTimecode } from 'src/utils/TimeUtils';
 
 describe('formatTimecode', () => {
-	it('formats sub-minute durations as m:ss', () => {
-		expect(formatTimecode(0)).toBe('0:00');
-		expect(formatTimecode(5)).toBe('0:05');
-		expect(formatTimecode(65)).toBe('1:05');
+	it.each([
+		{ name: 'zero', seconds: 0, expected: '0:00' },
+		{ name: 'a single second', seconds: 1, expected: '0:01' },
+		{ name: 'under a minute', seconds: 5, expected: '0:05' },
+		{ name: 'exactly a minute', seconds: 60, expected: '1:00' },
+		{ name: 'a minute and change', seconds: 65, expected: '1:05' },
+		{
+			name: 'the last second below ten minutes',
+			seconds: 599,
+			expected: '9:59',
+		},
+		{
+			name: 'the last second below an hour',
+			seconds: 3599,
+			expected: '59:59',
+		},
+		{ name: 'exactly an hour', seconds: 3600, expected: '1:00:00' },
+		{ name: 'over an hour', seconds: 3723, expected: '1:02:03' },
+		{ name: 'over a day', seconds: 90061, expected: '25:01:01' },
+	])('formats $name as $expected', ({ seconds, expected }) => {
+		expect(formatTimecode(seconds)).toBe(expected);
 	});
 
-	it('formats hour-and-over durations as h:mm:ss', () => {
-		expect(formatTimecode(3600)).toBe('1:00:00');
-		expect(formatTimecode(3723)).toBe('1:02:03');
-	});
-
-	it('floors fractional seconds', () => {
+	it('floors fractional seconds rather than rounding them', () => {
+		// Rounding up would show a timecode the audio has not reached yet.
 		expect(formatTimecode(9.9)).toBe('0:09');
+		expect(formatTimecode(59.999)).toBe('0:59');
 	});
 
-	it('collapses invalid input to 0:00', () => {
-		expect(formatTimecode(-5)).toBe('0:00');
-		expect(formatTimecode(Number.NaN)).toBe('0:00');
-		expect(formatTimecode(Number.POSITIVE_INFINITY)).toBe('0:00');
+	it.each([
+		{ name: 'a negative duration', seconds: -5 },
+		{ name: 'not a number', seconds: Number.NaN },
+		{ name: 'positive infinity', seconds: Number.POSITIVE_INFINITY },
+		{ name: 'negative infinity', seconds: Number.NEGATIVE_INFINITY },
+	])('collapses $name to 0:00', ({ seconds }) => {
+		expect(formatTimecode(seconds)).toBe('0:00');
 	});
 });
 
 describe('formatTimecode with a reference duration', () => {
-	it('forces h:mm:ss for every value when the recording is an hour or more', () => {
-		// Reference 1:07:20 -> all marker times align at h:mm:ss
-		const total = 4040;
-		expect(formatTimecode(109, total)).toBe('0:01:49');
-		expect(formatTimecode(1017, total)).toBe('0:16:57');
-		expect(formatTimecode(4028, total)).toBe('1:07:08');
-	});
+	it.each([
+		// Reference 1:07:20 - every marker time aligns at h:mm:ss so a list of
+		// them lines up in the same columns.
+		{
+			name: 'under a minute',
+			seconds: 109,
+			total: 4040,
+			expected: '0:01:49',
+		},
+		{
+			name: 'under an hour',
+			seconds: 1017,
+			total: 4040,
+			expected: '0:16:57',
+		},
+		{
+			name: 'over an hour',
+			seconds: 4028,
+			total: 4040,
+			expected: '1:07:08',
+		},
+		// Reference 12:23 - the shorter width for the whole list.
+		{ name: 'a few seconds', seconds: 5, total: 743, expected: '0:05' },
+		{
+			name: 'a couple of minutes',
+			seconds: 125,
+			total: 743,
+			expected: '2:05',
+		},
+		{
+			name: 'the full length',
+			seconds: 743,
+			total: 743,
+			expected: '12:23',
+		},
+	])(
+		'renders $name at the reference width ($expected)',
+		({ seconds, total, expected }) => {
+			expect(formatTimecode(seconds, total)).toBe(expected);
+		},
+	);
 
-	it('keeps m:ss for every value when the recording is under an hour', () => {
-		const total = 743; // 12:23
-		expect(formatTimecode(5, total)).toBe('0:05');
-		expect(formatTimecode(125, total)).toBe('2:05');
-		expect(formatTimecode(743, total)).toBe('12:23');
-	});
-
-	it('collapses invalid input to the reference width', () => {
-		expect(formatTimecode(Number.NaN, 4040)).toBe('0:00:00');
-		expect(formatTimecode(-1, 4040)).toBe('0:00:00');
-		expect(formatTimecode(Number.NaN, 600)).toBe('0:00');
-	});
+	it.each([
+		{ name: 'an hour-long reference', total: 4040, expected: '0:00:00' },
+		{ name: 'a short reference', total: 600, expected: '0:00' },
+	])(
+		'collapses invalid input to $expected for $name',
+		({ total, expected }) => {
+			expect(formatTimecode(Number.NaN, total)).toBe(expected);
+			expect(formatTimecode(-1, total)).toBe(expected);
+		},
+	);
 
 	it('still shows hours when the value exceeds an hour despite a short reference', () => {
 		// Defensive: a value past an hour never loses its hours component
 		expect(formatTimecode(3661, 100)).toBe('1:01:01');
 	});
 
-	it('falls back to value-based formatting when the reference is not finite', () => {
-		expect(formatTimecode(65, Number.NaN)).toBe('1:05');
-		expect(formatTimecode(3661, Number.POSITIVE_INFINITY)).toBe('1:01:01');
-	});
+	it.each([
+		{
+			name: 'not a number',
+			total: Number.NaN,
+			seconds: 65,
+			expected: '1:05',
+		},
+		{
+			name: 'infinite',
+			total: Number.POSITIVE_INFINITY,
+			seconds: 3661,
+			expected: '1:01:01',
+		},
+	])(
+		'falls back to value-based formatting when the reference is $name',
+		({ seconds, total, expected }) => {
+			expect(formatTimecode(seconds, total)).toBe(expected);
+		},
+	);
 });
 
 describe('parseTimecode', () => {
-	it('parses a plain seconds count', () => {
-		expect(parseTimecode('90')).toBe(90);
-		expect(parseTimecode('90.5')).toBe(90.5);
+	it.each([
+		{ name: 'a plain seconds count', input: '90', expected: 90 },
+		{ name: 'fractional seconds', input: '90.5', expected: 90.5 },
+		{ name: 'm:ss', input: '1:30', expected: 90 },
+		{ name: 'a zero minute', input: '0:05', expected: 5 },
+		{ name: 'h:mm:ss', input: '1:02:03', expected: 3723 },
+		{ name: 'a fractional final segment', input: '1:30.5', expected: 90.5 },
+		{ name: 'surrounding whitespace', input: '  1:30 ', expected: 90 },
+		{ name: 'a bare fraction', input: '1.5', expected: 1.5 },
+		{
+			name: 'a fraction in the last of three segments',
+			input: '0:0:1.25',
+			expected: 1.25,
+		},
+		{ name: 'zero', input: '0', expected: 0 },
+	])('parses $name as $expected', ({ input, expected }) => {
+		expect(parseTimecode(input)).toBe(expected);
 	});
 
-	it('parses m:ss', () => {
-		expect(parseTimecode('1:30')).toBe(90);
-		expect(parseTimecode('0:05')).toBe(5);
-	});
-
-	it('parses h:mm:ss', () => {
-		expect(parseTimecode('1:02:03')).toBe(3723);
-	});
-
-	it('parses a fractional final segment', () => {
-		expect(parseTimecode('1:30.5')).toBe(90.5);
-	});
-
-	it('ignores surrounding whitespace', () => {
-		expect(parseTimecode('  1:30 ')).toBe(90);
-	});
-
-	it('returns null for empty or malformed input', () => {
-		expect(parseTimecode('')).toBeNull();
-		expect(parseTimecode('   ')).toBeNull();
-		expect(parseTimecode('abc')).toBeNull();
-		expect(parseTimecode('1:2:3:4')).toBeNull();
-		expect(parseTimecode('1:.5:3')).toBeNull();
+	it.each([
+		{ name: 'an empty string', input: '' },
+		{ name: 'only whitespace', input: '   ' },
+		{ name: 'letters', input: 'abc' },
+		{ name: 'four segments', input: '1:2:3:4' },
+		{ name: 'a fraction in a middle segment', input: '1:.5:3' },
+		{ name: 'a fraction in a leading segment', input: '1.5:30' },
+		{ name: 'a leading colon', input: ':30' },
+		{ name: 'a trailing colon', input: '1:' },
+		{ name: 'nothing but colons', input: '::' },
+		{ name: 'an empty middle segment', input: '1::3' },
+		{ name: 'a negative value', input: '-5' },
+		{ name: 'a negative segment', input: '1:-5' },
+		{ name: 'a segment with a stray letter', input: '1a:30' },
+	])('returns null for $name', ({ input }) => {
+		expect(parseTimecode(input)).toBeNull();
 	});
 });
 
-describe('formatTimecode / parseTimecode - more edge cases', () => {
-	it('pads minutes only past an hour', () => {
-		expect(formatTimecode(599)).toBe('9:59');
-		expect(formatTimecode(3599)).toBe('59:59');
-		expect(formatTimecode(3600)).toBe('1:00:00');
+describe('formatTimecode and parseTimecode round-trip', () => {
+	it.each([0, 5, 59, 60, 599, 3599, 3600, 3723, 90061])(
+		'parses back what it formatted for %i seconds',
+		(seconds) => {
+			expect(parseTimecode(formatTimecode(seconds))).toBe(seconds);
+		},
+	);
+});
+
+describe('delay', () => {
+	beforeEach(() => {
+		jest.useFakeTimers();
 	});
 
-	it('rejects empty segments and stray colons', () => {
-		expect(parseTimecode(':30')).toBeNull();
-		expect(parseTimecode('1:')).toBeNull();
-		expect(parseTimecode('::')).toBeNull();
-		expect(parseTimecode('1::3')).toBeNull();
+	afterEach(() => {
+		jest.useRealTimers();
 	});
 
-	it('rejects negative and non-numeric parts', () => {
-		expect(parseTimecode('-5')).toBeNull();
-		expect(parseTimecode('1:-5')).toBeNull();
-		expect(parseTimecode('1a:30')).toBeNull();
+	it('resolves once the delay has elapsed', async () => {
+		const settled = jest.fn();
+		const waiting = delay(500).then(settled);
+
+		await jest.advanceTimersByTimeAsync(499);
+		expect(settled).not.toHaveBeenCalled();
+
+		await jest.advanceTimersByTimeAsync(1);
+		await waiting;
+		expect(settled).toHaveBeenCalled();
 	});
 
-	it('allows a fractional component only in the last segment', () => {
-		expect(parseTimecode('1.5')).toBe(1.5);
-		expect(parseTimecode('0:0:1.25')).toBe(1.25);
-		expect(parseTimecode('1.5:30')).toBeNull();
+	it('resolves on the next turn for a zero delay', async () => {
+		const settled = jest.fn();
+		const waiting = delay(0).then(settled);
+
+		await jest.advanceTimersByTimeAsync(0);
+		await waiting;
+
+		expect(settled).toHaveBeenCalled();
 	});
 });
