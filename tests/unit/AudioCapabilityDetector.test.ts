@@ -16,7 +16,6 @@ jest.mock('src/audio/AudioEncoder', () => ({
 	),
 }));
 
-import { Platform } from 'obsidian';
 import { FORMAT_FLAC } from 'src/constants';
 import {
 	buildMimeType,
@@ -29,12 +28,9 @@ import {
 	listFormatAvailability,
 	resolveEffectiveOutputFormat,
 } from 'src/audio/AudioCapabilityDetector';
+import { setPlatform, useDesktopPlatform } from '../helpers/platform';
 
 describe('AudioCapabilityDetector', () => {
-	beforeEach(() => {
-		jest.clearAllMocks();
-	});
-
 	describe('buildMimeType', () => {
 		it('should return plain audio/webm without codecs suffix', () => {
 			expect(buildMimeType('webm')).toBe('audio/webm');
@@ -319,8 +315,7 @@ describe('AudioCapabilityDetector', () => {
 
 	describe('platform-aware WAV availability', () => {
 		afterEach(() => {
-			Platform.isMobile = false;
-			Platform.isMobileApp = false;
+			useDesktopPlatform();
 			delete (global as Record<string, unknown>).AudioContext;
 		});
 
@@ -337,7 +332,7 @@ describe('AudioCapabilityDetector', () => {
 		it('blocks WAV on mobile when no intermediate is recordable', async () => {
 			// PCM capture is desktop-only, so AudioContext alone is not
 			// enough on mobile - an intermediate recording format is needed
-			Platform.isMobile = true;
+			setPlatform({ isMobile: true });
 			(global as Record<string, unknown>).MediaRecorder = {
 				isTypeSupported: jest.fn().mockReturnValue(false),
 			};
@@ -351,7 +346,7 @@ describe('AudioCapabilityDetector', () => {
 
 		it('offers WAV on mobile through the mp4 intermediate (iOS)', async () => {
 			// iOS WKWebView records audio/mp4 only
-			Platform.isMobile = true;
+			setPlatform({ isMobile: true });
 			(global as Record<string, unknown>).MediaRecorder = {
 				isTypeSupported: jest.fn(
 					(type: string) => type === 'audio/mp4',
@@ -367,8 +362,7 @@ describe('AudioCapabilityDetector', () => {
 
 	describe('resolveEffectiveOutputFormat', () => {
 		afterEach(() => {
-			Platform.isMobile = false;
-			Platform.isMobileApp = false;
+			useDesktopPlatform();
 		});
 
 		it('keeps a recordable requested format', async () => {
@@ -390,7 +384,7 @@ describe('AudioCapabilityDetector', () => {
 		it('falls back to the platform default when the request is unrecordable (iOS default-webm case)', async () => {
 			// The plugin default (webm) synced onto an iOS profile that can
 			// only record audio/mp4 and has no working opus encoder
-			Platform.isMobile = true;
+			setPlatform({ isMobile: true });
 			(global as Record<string, unknown>).MediaRecorder = {
 				isTypeSupported: jest.fn(
 					(type: string) => type === 'audio/mp4',
@@ -417,12 +411,11 @@ describe('AudioCapabilityDetector', () => {
 
 	describe('listFormatAvailability', () => {
 		afterEach(() => {
-			Platform.isMobile = false;
-			Platform.isMobileApp = false;
+			useDesktopPlatform();
 		});
 
 		it('reports every registry format with its availability (iOS profile)', async () => {
-			Platform.isMobile = true;
+			setPlatform({ isMobile: true });
 			(global as Record<string, unknown>).MediaRecorder = {
 				isTypeSupported: jest.fn(
 					(type: string) => type === 'audio/mp4',

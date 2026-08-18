@@ -233,7 +233,6 @@ const tick = (): Promise<void> =>
 
 afterEach(() => {
 	document.body.innerHTML = '';
-	jest.clearAllMocks();
 });
 
 describe('control row drives the shared audio (PlayerControlsView wiring)', () => {

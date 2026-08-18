@@ -64,7 +64,6 @@ describe('AudioStreamHandler: Error Handling', () => {
 	let consoleErrorSpy: jest.SpyInstance;
 
 	beforeEach(() => {
-		jest.clearAllMocks();
 		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
 
 		mockApp = createRecordingMockApp();
@@ -248,7 +247,6 @@ describe('Start failure after stream acquisition', () => {
 	let trackStop: jest.Mock;
 
 	beforeEach(() => {
-		jest.clearAllMocks();
 		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
 
 		mockApp = createRecordingMockApp();

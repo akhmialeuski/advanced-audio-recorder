@@ -24,7 +24,6 @@ import {
 
 afterEach(() => {
 	document.body.innerHTML = '';
-	jest.restoreAllMocks();
 });
 
 describe('context menu works inside a pop-out window', () => {

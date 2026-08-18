@@ -82,7 +82,6 @@ describe('RecordingManager', () => {
 
 	beforeEach(() => {
 		// Reset mocks
-		jest.clearAllMocks();
 		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
 
 		// Create mock App

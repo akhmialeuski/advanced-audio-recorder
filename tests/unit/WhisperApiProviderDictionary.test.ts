@@ -55,10 +55,6 @@ function provider(): WhisperApiProvider {
 	});
 }
 
-afterEach(() => {
-	__setRequestUrlHandler(null);
-});
-
 describe('WhisperApiProvider dictionary biasing', () => {
 	it('sends the dictionary as a comma-joined prompt field', async () => {
 		const calls = capture();

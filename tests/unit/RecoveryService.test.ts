@@ -82,7 +82,6 @@ describe('RecoveryService', () => {
 	};
 
 	beforeEach(() => {
-		jest.clearAllMocks();
 		consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
 		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
 

@@ -84,10 +84,6 @@ function createMockView(
 }
 
 describe('NoteInserter', () => {
-	beforeEach(() => {
-		jest.clearAllMocks();
-	});
-
 	describe('captureInsertionContext', () => {
 		it('returns null when insertAtOriginalPosition is false', () => {
 			const app = createMockApp();

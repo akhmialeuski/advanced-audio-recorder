@@ -65,7 +65,6 @@ describe('handleEncodingMessage', () => {
 	};
 
 	beforeEach(() => {
-		jest.clearAllMocks();
 		responses = [];
 		mockConversionInit.mockImplementation(() =>
 			Promise.resolve({

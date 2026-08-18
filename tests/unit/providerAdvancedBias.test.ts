@@ -36,10 +36,6 @@ function payload(): AudioPayload {
 	};
 }
 
-afterEach(() => {
-	__setRequestUrlHandler(null);
-});
-
 describe('WhisperApiProvider advanced bias', () => {
 	/** Records every request and returns a minimal transcript. */
 	function capture(): MockRequestUrlParam[] {

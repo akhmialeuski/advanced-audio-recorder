@@ -36,8 +36,6 @@ describe('RecordingFileManager', () => {
 	let consoleErrorSpy: jest.SpyInstance;
 
 	beforeEach(() => {
-		jest.clearAllMocks();
-
 		consoleDebugSpy = jest.spyOn(console, 'debug').mockImplementation();
 		consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
 		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();

@@ -545,7 +545,6 @@ describe('AudioPlayerRegistry', () => {
 			}
 
 			first.audio.dispatchEvent(new Event('ended'));
-			jest.clearAllMocks();
 			staleState.onSkip(10);
 			staleState.onToggleMute();
 			staleState.onTogglePlay();

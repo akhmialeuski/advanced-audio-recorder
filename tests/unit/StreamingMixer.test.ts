@@ -43,7 +43,6 @@ describe('StreamingMixer', () => {
 	};
 
 	beforeEach(() => {
-		jest.clearAllMocks();
 		segments = new Map();
 		mockApp = {
 			vault: {

@@ -3,7 +3,6 @@
  * @module tests/unit/AudioStreamHandler.test
  */
 
-import { Platform } from 'obsidian';
 import {
 	channelSelectionAvailable,
 	deviceMaxChannels,
@@ -17,6 +16,7 @@ import {
 import { AudioStreamError } from 'src/errors';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
+import { setPlatform, useDesktopPlatform } from '../helpers/platform';
 
 /** Builds a MediaStream stub whose tracks record stop() calls. */
 function fakeStream(): { stream: MediaStream; stop: jest.Mock } {
@@ -389,8 +389,7 @@ describe('AudioStreamHandler', () => {
 		});
 
 		afterEach(() => {
-			Platform.isMobile = false;
-			Platform.isMobileApp = false;
+			useDesktopPlatform();
 			Object.defineProperty(navigator, 'mediaDevices', {
 				value: originalMediaDevices,
 				configurable: true,
@@ -403,7 +402,7 @@ describe('AudioStreamHandler', () => {
 		});
 
 		it('isMultiTrackSessionEnabled degrades a stored "on" on mobile', () => {
-			Platform.isMobile = true;
+			setPlatform({ isMobile: true });
 			expect(isMultiTrackSessionEnabled(multiTrackSettings)).toBe(false);
 		});
 
@@ -417,12 +416,12 @@ describe('AudioStreamHandler', () => {
 		it('resolveCaptureDeviceId ignores stored device ids on mobile', () => {
 			// Ids are randomized per install; a synced desktop id could
 			// never satisfy an exact-match constraint on the phone
-			Platform.isMobile = true;
+			setPlatform({ isMobile: true });
 			expect(resolveCaptureDeviceId(multiTrackSettings)).toBeUndefined();
 		});
 
 		it('getAudioStreams opens one default-mic stream on mobile despite multi-track config', async () => {
-			Platform.isMobile = true;
+			setPlatform({ isMobile: true });
 
 			const { streams, trackOrder } =
 				await getAudioStreams(multiTrackSettings);
@@ -449,7 +448,7 @@ describe('AudioStreamHandler', () => {
 		it('validateSelectedDevices is a no-op on mobile', async () => {
 			// A synced desktop device id must not block recording on the
 			// default microphone
-			Platform.isMobile = true;
+			setPlatform({ isMobile: true });
 
 			await expect(
 				validateSelectedDevices({

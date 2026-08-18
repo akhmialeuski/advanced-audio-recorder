@@ -3,12 +3,13 @@
  * @module tests/unit/TranscriptionModal.test
  */
 
-import { App, Notice, Platform, TFile } from 'obsidian';
+import { App, Notice, TFile } from 'obsidian';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { TranscriptionModal } from 'src/ui/TranscriptionModal';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { createFile } from '../helpers/createApp';
+import { setPlatform, useDesktopPlatform } from '../helpers/platform';
 
 type TranscriptionModalInternals = {
 	setRunning: (running: boolean) => void;
@@ -113,8 +114,7 @@ describe('TranscriptionModal minimize behavior', () => {
 
 describe('TranscriptionModal platform gating', () => {
 	afterEach(() => {
-		Platform.isMobile = false;
-		Platform.isMobileApp = false;
+		useDesktopPlatform();
 	});
 
 	/** The rendered engine select and its options, from the modal DOM. */
@@ -133,7 +133,7 @@ describe('TranscriptionModal platform gating', () => {
 	it('blocks the local whisper.cpp engine option on mobile', () => {
 		// The per-run dialog must gate engines exactly like the settings
 		// tab: a doomed local run should not be selectable on mobile
-		Platform.isMobile = true;
+		setPlatform({ isMobile: true });
 		const modal = createModal({ show: jest.fn(), clear: jest.fn() });
 		modal.onOpen();
 
@@ -185,7 +185,7 @@ describe('TranscriptionModal platform gating', () => {
 		// A local whisper.cpp selection synced from desktop stays the active
 		// value on mobile; the run must read as blocked, not merely the
 		// option, so the disabled selection cannot be launched by a click.
-		Platform.isMobile = true;
+		setPlatform({ isMobile: true });
 		const modal = createLocalWhisperModal();
 		modal.onOpen();
 
@@ -196,7 +196,7 @@ describe('TranscriptionModal platform gating', () => {
 		// Guards the run itself (including the auto-start path), so a
 		// doomed local run never launches; it surfaces a clear notice
 		// instead of failing later with a generic transcription error.
-		Platform.isMobile = true;
+		setPlatform({ isMobile: true });
 		const notice = jest.mocked(Notice);
 		notice.mockClear();
 		const modal = createLocalWhisperModal();

@@ -17,8 +17,8 @@ import {
 	createRecordingMockApp,
 	installRecordingMediaStubs,
 	makeFakeMarkerStore,
-	setDesktopPlatform,
 } from './helpers/recordingManagerTestKit';
+import { useDesktopPlatform } from '../helpers/platform';
 
 jest.mock('obsidian', () => ({
 	Notice: jest.fn(),
@@ -118,12 +118,11 @@ describe('RecordingManager mono channel wiring', () => {
 	let consoleErrorSpy: jest.SpyInstance;
 
 	beforeEach(() => {
-		jest.clearAllMocks();
 		createdBridges.length = 0;
 		failBridgeAtIndex = -1;
 		pcmRecorderCtorArgs = [];
 		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
-		setDesktopPlatform();
+		useDesktopPlatform();
 		mockApp = createRecordingMockApp();
 		mockSettings = { ...DEFAULT_SETTINGS };
 		manager = new RecordingManager(

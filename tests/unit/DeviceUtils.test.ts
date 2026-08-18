@@ -28,10 +28,6 @@ Object.defineProperty(global, 'navigator', {
 });
 
 describe('DeviceUtils', () => {
-	beforeEach(() => {
-		jest.clearAllMocks();
-	});
-
 	describe('getAudioInputDevices', () => {
 		it('should return only audio input devices', async () => {
 			const devices: MediaDeviceInfo[] = [

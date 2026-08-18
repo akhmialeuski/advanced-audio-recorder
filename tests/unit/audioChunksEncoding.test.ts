@@ -212,7 +212,6 @@ describe('decodeToMono16k', () => {
 	const originalOffline = global.OfflineAudioContext;
 
 	beforeEach(() => {
-		jest.clearAllMocks();
 		FakeOfflineAudioContext.last = null;
 		global.OfflineAudioContext =
 			FakeOfflineAudioContext as unknown as typeof OfflineAudioContext;

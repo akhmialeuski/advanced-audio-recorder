@@ -35,7 +35,6 @@ describe('EncodingWorkerClient', () => {
 	};
 
 	beforeEach(() => {
-		jest.clearAllMocks();
 		createdWorkers.length = 0;
 		consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
 		(global as Record<string, unknown>).Worker = MockWorker;

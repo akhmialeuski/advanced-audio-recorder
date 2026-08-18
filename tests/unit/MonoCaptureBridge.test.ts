@@ -46,7 +46,6 @@ function createMockStream(channelCount?: number): MediaStream {
 }
 
 beforeEach(() => {
-	jest.clearAllMocks();
 	mockSourceNode = {
 		connect: jest.fn(),
 		disconnect: jest.fn(),

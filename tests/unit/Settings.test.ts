@@ -744,7 +744,6 @@ describe('mergeSettingsAsync', () => {
 	const mockGetUserMedia = jest.fn();
 
 	beforeEach(() => {
-		jest.clearAllMocks();
 		Object.defineProperty(global, 'navigator', {
 			value: {
 				mediaDevices: {

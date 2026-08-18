@@ -108,7 +108,6 @@ function mountMarkerPlayer(
 
 afterEach(() => {
 	document.body.innerHTML = '';
-	jest.restoreAllMocks();
 });
 
 describe('timecode seek stays in sync with the embedded player', () => {

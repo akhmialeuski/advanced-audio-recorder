@@ -139,7 +139,6 @@ describe('ConversionModal', () => {
 	let createdFile: { path: string };
 
 	beforeEach(() => {
-		jest.clearAllMocks();
 		noticeInstances.length = 0;
 
 		createdFile = { path: 'Recordings/recording.webm' };

@@ -135,7 +135,6 @@ describe('AutoChapterService duration probe', () => {
 	let audioMock: InstalledMock<AudioElementDouble>;
 
 	beforeEach(() => {
-		jest.clearAllMocks();
 		jest.useFakeTimers();
 		audioMock = installAudioElementMock();
 	});
@@ -310,10 +309,6 @@ describe('AutoChapterService duration probe', () => {
 });
 
 describe('AutoChapterService transcript discovery', () => {
-	beforeEach(() => {
-		jest.clearAllMocks();
-	});
-
 	it('generates from a transcript found among the recording outputs', async () => {
 		mockLoadTranscriptLines.mockResolvedValue({
 			origin: 'talk.transcript.json',

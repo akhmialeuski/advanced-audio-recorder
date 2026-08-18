@@ -133,10 +133,6 @@ function scriptFlow(generateText: string): ScriptedFlow {
 	};
 }
 
-afterEach(() => {
-	__setRequestUrlHandler(null);
-});
-
 describe('GeminiProvider.transcribe', () => {
 	it('uploads a WAV payload as-is and maps the structured transcript', async () => {
 		const flow = scriptFlow(

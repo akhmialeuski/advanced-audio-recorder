@@ -82,7 +82,6 @@ describe('ConversionService', () => {
 	};
 
 	beforeEach(() => {
-		jest.clearAllMocks();
 		mockApp = {
 			vault: {
 				adapter: {

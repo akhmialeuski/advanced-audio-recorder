@@ -20,6 +20,7 @@ import {
 	installRecordingMediaStubs,
 	makeFakeMarkerStore,
 } from './helpers/recordingManagerTestKit';
+import { useDesktopPlatform } from '../helpers/platform';
 
 // Mock obsidian module
 jest.mock('obsidian', () => ({
@@ -94,7 +95,6 @@ describe('RecordingManager', () => {
 
 	beforeEach(() => {
 		// Reset mocks
-		jest.clearAllMocks();
 		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
 
 		// Create mock App
@@ -121,9 +121,7 @@ describe('RecordingManager', () => {
 
 	describe('merged output with no audio', () => {
 		it('should keep and report segment files when the merged blob is empty', async () => {
-			const { Platform } = jest.requireMock('obsidian');
-			Platform.isMobile = false;
-			Platform.isMobileApp = false;
+			useDesktopPlatform();
 
 			mockSettings = {
 				...DEFAULT_SETTINGS,
@@ -185,9 +183,7 @@ describe('RecordingManager', () => {
 		const setupTwoTrackRecording = (
 			trackOrder: { trackNumber: number; deviceId: string }[],
 		): void => {
-			const { Platform } = jest.requireMock('obsidian');
-			Platform.isMobile = false;
-			Platform.isMobileApp = false;
+			useDesktopPlatform();
 
 			const mockMediaRecorder = {
 				start: jest.fn(),
@@ -300,9 +296,7 @@ describe('RecordingManager', () => {
 		 * the configured format via offline encoding when supported.
 		 */
 		it('should save single-mode multi-track recording in configured format via offline encoding', async () => {
-			const { Platform } = jest.requireMock('obsidian');
-			Platform.isMobile = false;
-			Platform.isMobileApp = false;
+			useDesktopPlatform();
 
 			mockSettings = {
 				...DEFAULT_SETTINGS,
@@ -390,9 +384,7 @@ describe('RecordingManager', () => {
 				.spyOn(console, 'error')
 				.mockImplementation(() => {});
 
-			const { Platform } = jest.requireMock('obsidian');
-			Platform.isMobile = false;
-			Platform.isMobileApp = false;
+			useDesktopPlatform();
 
 			mockSettings = {
 				...DEFAULT_SETTINGS,
@@ -509,9 +501,7 @@ describe('RecordingManager', () => {
 		 * via OfflineAudioContext instead of broken concatenated MP4 containers.
 		 */
 		it('should merge MP4 multi-track recording into target format with all tracks mixed', async () => {
-			const { Platform } = jest.requireMock('obsidian');
-			Platform.isMobile = false;
-			Platform.isMobileApp = false;
+			useDesktopPlatform();
 
 			mockSettings = {
 				...DEFAULT_SETTINGS,

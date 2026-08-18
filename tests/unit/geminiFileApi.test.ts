@@ -29,10 +29,6 @@ import {
 const BASE_URL = 'https://gemini.example';
 const API_KEY = 'gm-test';
 
-afterEach(() => {
-	__setRequestUrlHandler(null);
-});
-
 describe('uploadFile', () => {
 	it('starts a resumable session then finalizes, returning the file', async () => {
 		const calls: MockRequestUrlParam[] = [];

@@ -118,7 +118,6 @@ describe('PcmStreamRecorder', () => {
 	let onChunkMock: jest.Mock;
 
 	beforeEach(() => {
-		jest.clearAllMocks();
 		mainPortOnMessage = null;
 		workletPortMessages = [];
 		mockGainNode.gain.value = 1;

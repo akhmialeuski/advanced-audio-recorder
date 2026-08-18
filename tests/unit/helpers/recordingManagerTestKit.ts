@@ -135,17 +135,10 @@ export interface MockMediaRecorder {
 	addEventListener: jest.Mock;
 }
 
-/** Forces the mocked obsidian Platform flags to desktop. */
-export const setDesktopPlatform = (): void => {
-	const { Platform } = jest.requireMock('obsidian');
-	Platform.isMobile = false;
-	Platform.isMobileApp = false;
-};
-
 /**
  * Installs a single-stream MediaRecorder double whose stop event fires
  * synchronously, and points getAudioStreams at one desktop stream.
- * Platform flags are left untouched; call {@link setDesktopPlatform}
+ * Platform flags are left untouched; call `useDesktopPlatform`
  * where the desktop code path is required.
  * @returns The MediaRecorder double
  */

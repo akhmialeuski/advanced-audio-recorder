@@ -94,7 +94,6 @@ describe('PartRotationController', () => {
 	};
 
 	beforeEach(() => {
-		jest.clearAllMocks();
 		jest.useFakeTimers();
 		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
 

@@ -48,7 +48,6 @@ describe('SessionJournal', () => {
 		JSON.parse(files.get(JOURNAL_PATH) ?? 'null') as JournalFile;
 
 	beforeEach(() => {
-		jest.clearAllMocks();
 		consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
 
 		files = new Map();

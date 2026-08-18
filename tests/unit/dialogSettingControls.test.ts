@@ -98,7 +98,6 @@ describe('dialog setting builders', () => {
 	let containerEl: HTMLElement;
 
 	beforeEach(() => {
-		jest.clearAllMocks();
 		dropdowns.length = 0;
 		toggles.length = 0;
 		containerEl = document.createElement('div');

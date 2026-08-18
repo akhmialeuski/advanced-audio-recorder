@@ -57,10 +57,6 @@ function queryOf(calls: MockRequestUrlParam[]): URLSearchParams {
 	return new URL(at(calls, 0).url).searchParams;
 }
 
-afterEach(() => {
-	__setRequestUrlHandler(null);
-});
-
 describe('DeepgramProvider dictionary biasing', () => {
 	it('sends each term as a keyterm param on nova-3', async () => {
 		const calls = capture();

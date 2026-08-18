@@ -7,7 +7,6 @@
  * @module tests/unit/platformCapabilities.test
  */
 
-import { Platform } from 'obsidian';
 import {
 	getPlatformKind,
 	isMobilePlatform,
@@ -42,35 +41,28 @@ import {
 	MOBILE_MAX_DECODE_BYTES,
 	WAVEFORM_MAX_DECODE_BYTES,
 } from 'src/constants';
-
-/** Restores the mocked Platform to desktop after each test. */
-function resetPlatform(): void {
-	Platform.isMobile = false;
-	Platform.isMobileApp = false;
-}
+import { setPlatform } from '../helpers/platform';
 
 describe('platformKind', () => {
-	afterEach(resetPlatform);
-
 	it('resolves desktop when no mobile flag is set', () => {
 		expect(getPlatformKind()).toBe('desktop');
 		expect(isMobilePlatform()).toBe(false);
 	});
 
 	it('resolves mobile from Platform.isMobile', () => {
-		Platform.isMobile = true;
+		setPlatform({ isMobile: true });
 		expect(getPlatformKind()).toBe('mobile');
 		expect(isMobilePlatform()).toBe(true);
 	});
 
 	it('resolves mobile from Platform.isMobileApp alone', () => {
-		Platform.isMobileApp = true;
+		setPlatform({ isMobileApp: true });
 		expect(getPlatformKind()).toBe('mobile');
 	});
 
 	it('reads the flags lazily on every call', () => {
 		expect(getPlatformKind()).toBe('desktop');
-		Platform.isMobile = true;
+		setPlatform({ isMobile: true });
 		expect(getPlatformKind()).toBe('mobile');
 	});
 
@@ -88,8 +80,6 @@ describe('platformKind', () => {
 });
 
 describe('platform capability table', () => {
-	afterEach(resetPlatform);
-
 	it('desktop allows the full feature set', () => {
 		const desktop = getPlatformCapabilities('desktop');
 		expect(desktop.multiTrackCapture).toBe(true);
@@ -148,7 +138,7 @@ describe('platform capability table', () => {
 		expect(getPlatformCapabilities()).toBe(
 			getPlatformCapabilities('desktop'),
 		);
-		Platform.isMobile = true;
+		setPlatform({ isMobile: true });
 		expect(getPlatformCapabilities()).toBe(
 			getPlatformCapabilities('mobile'),
 		);
@@ -156,8 +146,6 @@ describe('platform capability table', () => {
 });
 
 describe('capability helper functions', () => {
-	afterEach(resetPlatform);
-
 	it.each([
 		['isMultiTrackCaptureSupported', isMultiTrackCaptureSupported, true],
 		['isDeviceSelectionSupported', isDeviceSelectionSupported, true],
@@ -183,7 +171,7 @@ describe('capability helper functions', () => {
 			expect(helper('mobile')).toBe(!desktopValue);
 			// Defaults to the current platform
 			expect(helper()).toBe(desktopValue);
-			Platform.isMobile = true;
+			setPlatform({ isMobile: true });
 			expect(helper()).toBe(!desktopValue);
 		},
 	);
@@ -215,7 +203,7 @@ describe('capability helper functions', () => {
 
 	it('numeric getters follow the current platform by default', () => {
 		expect(getMaxDecodeBytes()).toBe(WAVEFORM_MAX_DECODE_BYTES);
-		Platform.isMobile = true;
+		setPlatform({ isMobile: true });
 		expect(getMaxDecodeBytes()).toBe(MOBILE_MAX_DECODE_BYTES);
 		expect(getChunkFlushThresholdBytes()).toBe(MOBILE_BUFFER_LIMIT_BYTES);
 		expect(getMaxCleanupDecodedSamples()).toBe(
@@ -242,7 +230,7 @@ describe('capability helper functions', () => {
 
 	it('follows the current platform when none is named', () => {
 		expect(isDecodableSize(MOBILE_MAX_DECODE_BYTES + 1)).toBe(true);
-		Platform.isMobile = true;
+		setPlatform({ isMobile: true });
 		expect(isDecodableSize(MOBILE_MAX_DECODE_BYTES + 1)).toBe(false);
 	});
 });

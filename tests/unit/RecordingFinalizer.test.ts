@@ -120,7 +120,6 @@ describe('RecordingFinalizer', () => {
 	};
 
 	beforeEach(() => {
-		jest.clearAllMocks();
 		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
 
 		mockApp = {

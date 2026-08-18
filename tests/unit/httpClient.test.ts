@@ -180,7 +180,6 @@ describe('uploadTimeoutMs', () => {
 
 describe('requestRaw abort support', () => {
 	afterEach(() => {
-		__setRequestUrlHandler(null);
 		delete (globalThis as { fetch?: unknown }).fetch;
 	});
 

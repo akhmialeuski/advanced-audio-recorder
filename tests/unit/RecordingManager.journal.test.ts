@@ -17,6 +17,7 @@ import {
 	makeFakeMarkerStore,
 } from './helpers/recordingManagerTestKit';
 import { at } from '../helpers/assertions';
+import { useDesktopPlatform, useMobilePlatform } from '../helpers/platform';
 
 // Mock obsidian module
 jest.mock('obsidian', () => ({
@@ -79,7 +80,6 @@ describe('RecordingManager', () => {
 
 	beforeEach(() => {
 		// Reset mocks
-		jest.clearAllMocks();
 		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
 
 		// Create mock App
@@ -126,9 +126,7 @@ describe('RecordingManager', () => {
 			);
 
 		beforeEach(() => {
-			const { Platform } = jest.requireMock('obsidian');
-			Platform.isMobile = false;
-			Platform.isMobileApp = false;
+			useDesktopPlatform();
 			mockJournal = {
 				startSession: jest.fn(),
 				addSegment: jest.fn(),
@@ -184,9 +182,7 @@ describe('RecordingManager', () => {
 		});
 
 		it('should not journal mobile sessions', async () => {
-			const { Platform } = jest.requireMock('obsidian');
-			Platform.isMobile = true;
-			Platform.isMobileApp = true;
+			useMobilePlatform();
 			createDesktopRecorder();
 			manager = createManager();
 

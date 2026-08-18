@@ -42,10 +42,6 @@ function geminiText(text: string, finishReason = 'STOP'): string {
 	});
 }
 
-afterEach(() => {
-	__setRequestUrlHandler(null);
-});
-
 describe('GeminiLlmProvider.complete', () => {
 	it('posts to generateContent with the api-key header and thinking disabled', async () => {
 		let seen: MockRequestUrlParam | undefined;

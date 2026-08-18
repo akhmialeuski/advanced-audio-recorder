@@ -321,7 +321,13 @@ describe('SplitModal', () => {
 	}
 
 	beforeEach(() => {
-		jest.clearAllMocks();
+		// clearMocks wipes recorded calls but keeps return values, so a test
+		// that makes a format unencodable would otherwise leave every later
+		// test taking the WAV fallback. Re-seed the module default per test.
+		(
+			jest.requireMock('src/audio/AudioEncoder')
+				.isOfflineEncodingSupported as jest.Mock
+		).mockReturnValue(true);
 		mockCapturedControls.numberInputs.length = 0;
 		mockCapturedControls.texts.length = 0;
 		mockCapturedControls.textInputs.length = 0;

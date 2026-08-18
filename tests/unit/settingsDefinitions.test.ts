@@ -5,7 +5,6 @@
  * @module tests/unit/settingsDefinitions.test
  */
 
-import { Platform } from 'obsidian';
 import type { Setting, SettingDefinitionItem } from 'obsidian';
 import {
 	groupOf,
@@ -57,6 +56,7 @@ import {
 	type ProfileCatalogue,
 	type SettingsDefinitionContext,
 } from 'src/settings/settingsDefinitions';
+import { setPlatform } from '../helpers/platform';
 
 describe('settings definitions', () => {
 	let settings: AudioRecorderSettings;
@@ -456,12 +456,12 @@ describe('settings definitions', () => {
 				validate(TRANSCRIPTION_PROVIDER_IDS.WHISPER_API),
 			).toBeUndefined();
 
-			Platform.isMobile = true;
+			setPlatform({ isMobile: true });
 
 			expect(validate(TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER)).toBe(
 				'Not available on this device.',
 			);
-			Platform.isMobile = false;
+			setPlatform({ isMobile: false });
 		});
 
 		it('rejects a language that is not an ISO code', () => {

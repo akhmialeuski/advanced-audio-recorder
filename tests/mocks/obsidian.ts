@@ -1136,7 +1136,9 @@ export const Platform = {
  * answers from: a test that models an older Obsidian moves it (through
  * __setApiVersion) rather than keeping a second version beside this one.
  */
-export let apiVersion = '1.13.0';
+export const DEFAULT_MOCK_API_VERSION = '1.13.0';
+
+export let apiVersion: string = DEFAULT_MOCK_API_VERSION;
 
 /**
  * Sets the app version the mock reports, for a test that models a specific

@@ -58,7 +58,6 @@ describe('runStreamingConversion', () => {
 	};
 
 	beforeEach(() => {
-		jest.clearAllMocks();
 		conversionStub = {
 			execute: mockConversionExecute,
 			onProgress: undefined,

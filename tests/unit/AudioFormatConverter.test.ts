@@ -138,8 +138,6 @@ import type { EncodingWorkerClient } from 'src/audio/EncodingWorkerClient';
 
 describe('AudioFormatConverter', () => {
 	beforeEach(() => {
-		jest.clearAllMocks();
-
 		// Reset MediaRecorder.isTypeSupported to default
 		(MediaRecorder.isTypeSupported as jest.Mock).mockImplementation(
 			(mime: string) => mime === 'audio/webm' || mime === 'audio/ogg',

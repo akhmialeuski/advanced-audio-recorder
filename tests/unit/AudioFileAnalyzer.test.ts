@@ -111,7 +111,6 @@ describe('getAudioFileInfo', () => {
 	let file: TFile;
 
 	beforeEach(() => {
-		jest.clearAllMocks();
 		app = new App();
 		file = new TFile();
 
@@ -412,7 +411,6 @@ describe('getAudioFileInfo', () => {
 
 describe('readAudioMetadata', () => {
 	beforeEach(() => {
-		jest.clearAllMocks();
 		mockDecodeAudioData.mockResolvedValue({
 			duration: 90,
 			sampleRate: 48000,

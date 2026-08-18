@@ -177,7 +177,6 @@ const baseSettings = {
 
 describe('TranscriptionService multi-part salvage', () => {
 	beforeEach(() => {
-		jest.clearAllMocks();
 		prepareTwoParts();
 	});
 

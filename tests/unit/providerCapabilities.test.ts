@@ -8,7 +8,6 @@
  * @module tests/unit/providerCapabilities.test
  */
 
-import { Platform } from 'obsidian';
 import {
 	DEEPGRAM_CAPABILITIES,
 	effectiveDiarize,
@@ -27,6 +26,7 @@ import { WhisperApiProvider } from 'src/transcription/providers/WhisperApiProvid
 import { DeepgramProvider } from 'src/transcription/providers/DeepgramProvider';
 import { GeminiProvider } from 'src/transcription/providers/GeminiProvider';
 import { LocalWhisperProvider } from 'src/transcription/providers/LocalWhisperProvider';
+import { setPlatform, useDesktopPlatform } from '../helpers/platform';
 
 describe('transcription provider capabilities', () => {
 	it('advertises diarization only for engines that return speaker labels', () => {
@@ -145,8 +145,7 @@ describe('transcription engine id constants', () => {
 
 	describe('isProviderAvailableOnPlatform', () => {
 		afterEach(() => {
-			Platform.isMobile = false;
-			Platform.isMobileApp = false;
+			useDesktopPlatform();
 		});
 
 		it('offers every engine on desktop', () => {
@@ -158,7 +157,7 @@ describe('transcription engine id constants', () => {
 		it('blocks only local whisper.cpp on mobile', () => {
 			// It shells out to a binary through Node, which the mobile app
 			// does not provide; the cloud engines work everywhere.
-			Platform.isMobile = true;
+			setPlatform({ isMobile: true });
 			expect(
 				isProviderAvailableOnPlatform(
 					TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,

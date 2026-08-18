@@ -4,7 +4,7 @@
  * @module tests/unit/SettingsTab.test
  */
 
-import { App, Platform } from 'obsidian';
+import { App } from 'obsidian';
 import {
 	groupOf,
 	listIn,
@@ -27,6 +27,7 @@ import {
 import { DOCS_URL, MAX_LLM_MAX_TOKENS } from 'src/constants';
 import { PROFILE_KINDS } from 'src/settings/profileKinds';
 import type { AudioRecorderPluginInterface } from 'src/settings/SettingsTab';
+import { setPlatform, useDesktopPlatform } from '../helpers/platform';
 
 // Mock AudioEncoder to avoid loading mediabunny in jsdom. The async
 // probe defaults to "no offline encoder works"; individual tests
@@ -104,8 +105,6 @@ describe('AudioRecorderSettingTab', () => {
 	let mockPlugin: AudioRecorderPluginInterface;
 
 	beforeEach(() => {
-		jest.clearAllMocks();
-
 		addEventListenerMock = jest.fn();
 		removeEventListenerMock = jest.fn();
 		getUserMediaMock = jest.fn();
@@ -1465,8 +1464,7 @@ describe('AudioRecorderSettingTab', () => {
 
 	describe('platform gating of the settings UI', () => {
 		afterEach(() => {
-			Platform.isMobile = false;
-			Platform.isMobileApp = false;
+			useDesktopPlatform();
 		});
 
 		/** Finds a rendered setting row by its displayed name. */
@@ -1511,7 +1509,7 @@ describe('AudioRecorderSettingTab', () => {
 		});
 
 		it('blocks device, sample-rate, and channel selection on mobile', () => {
-			Platform.isMobile = true;
+			setPlatform({ isMobile: true });
 			const defs = tab.getSettingDefinitions();
 			const disabledOf = (name: string): boolean => {
 				const disabled = rowOf(defs, 'Audio input', name).control
@@ -1529,7 +1527,7 @@ describe('AudioRecorderSettingTab', () => {
 		it('blocks recording formats the device cannot produce (iOS profile)', async () => {
 			// iOS WKWebView: MediaRecorder records audio/mp4 only; with no
 			// working offline encoders, everything unrecordable is blocked.
-			Platform.isMobile = true;
+			setPlatform({ isMobile: true });
 			(
 				(global as Record<string, unknown>).MediaRecorder as {
 					isTypeSupported: jest.Mock;
@@ -1562,7 +1560,7 @@ describe('AudioRecorderSettingTab', () => {
 		it('names the fallback format when the stored format is blocked (iOS profile)', async () => {
 			// The plugin default (webm) synced onto an iOS-like device:
 			// the note must say what recordings actually produce
-			Platform.isMobile = true;
+			setPlatform({ isMobile: true });
 			mockSettings.recordingFormat = 'webm';
 			(
 				(global as Record<string, unknown>).MediaRecorder as {

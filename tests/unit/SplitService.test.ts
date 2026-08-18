@@ -101,7 +101,6 @@ describe('SplitService', () => {
 	});
 
 	beforeEach(() => {
-		jest.clearAllMocks();
 		createdFiles = [];
 		mockApp = {
 			vault: {

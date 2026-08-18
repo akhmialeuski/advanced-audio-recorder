@@ -23,6 +23,7 @@ import {
 	isSettingDisabled,
 	settingRow,
 } from '../helpers/captureSettings';
+import { useMobilePlatform } from '../helpers/platform';
 
 jest.mock('obsidian', () => ({
 	Platform: { isMobile: false, isMobileApp: false },
@@ -118,21 +119,7 @@ describe('renderLocalWhisperSettings', () => {
 });
 
 describe('renderLocalWhisperSettings on mobile', () => {
-	beforeEach(() => {
-		const obsidian = jest.requireMock<{
-			Platform: { isMobile: boolean; isMobileApp: boolean };
-		}>('obsidian');
-		obsidian.Platform.isMobile = true;
-		obsidian.Platform.isMobileApp = true;
-	});
-
-	afterEach(() => {
-		const obsidian = jest.requireMock<{
-			Platform: { isMobile: boolean; isMobileApp: boolean };
-		}>('obsidian');
-		obsidian.Platform.isMobile = false;
-		obsidian.Platform.isMobileApp = false;
-	});
+	beforeEach(useMobilePlatform);
 
 	it('blocks the fields and says why, rather than hiding them', () => {
 		renderLocalWhisperSettings(makeCtx(mergeSettings({})));

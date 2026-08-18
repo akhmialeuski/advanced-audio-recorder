@@ -81,10 +81,6 @@ function script(responses: ReadonlyArray<{ status: number; text: string }>): {
 	};
 }
 
-afterEach(() => {
-	__setRequestUrlHandler(null);
-});
-
 describe('the output-token parameter the OpenAI provider sends', () => {
 	it('asks with the original name first, and asks only once when it is taken', async () => {
 		const sent = script([{ status: 200, text: OK_BODY }]);

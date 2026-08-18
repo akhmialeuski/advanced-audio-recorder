@@ -18,6 +18,7 @@ import {
 	installRecordingMediaStubs,
 	makeFakeMarkerStore,
 } from './helpers/recordingManagerTestKit';
+import { useDesktopPlatform } from '../helpers/platform';
 
 // Mock obsidian module
 jest.mock('obsidian', () => ({
@@ -83,7 +84,6 @@ describe('RecordingManager', () => {
 
 	beforeEach(() => {
 		// Reset mocks
-		jest.clearAllMocks();
 		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
 
 		// Create mock App
@@ -280,9 +280,7 @@ describe('RecordingManager', () => {
 		});
 
 		it('should finish stopping when the stop event never fires', async () => {
-			const { Platform } = jest.requireMock('obsidian');
-			Platform.isMobile = false;
-			Platform.isMobileApp = false;
+			useDesktopPlatform();
 
 			// Recorder whose stop event never arrives (dead audio subsystem)
 			const mockMediaRecorder = {
@@ -319,9 +317,7 @@ describe('RecordingManager', () => {
 		});
 
 		it('should resolve when stop() throws on a racing recorder', async () => {
-			const { Platform } = jest.requireMock('obsidian');
-			Platform.isMobile = false;
-			Platform.isMobileApp = false;
+			useDesktopPlatform();
 
 			const mockMediaRecorder = {
 				start: jest.fn(),

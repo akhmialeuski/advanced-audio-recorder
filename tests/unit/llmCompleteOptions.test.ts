@@ -52,10 +52,6 @@ const GEMINI_RESPONSE = JSON.stringify({
 	],
 });
 
-afterEach(() => {
-	__setRequestUrlHandler(null);
-});
-
 describe('LlmProvider.complete temperature option', () => {
 	it('sends and omits temperature on the OpenAI provider', async () => {
 		const provider = new OpenAiCompatibleLlmProvider({

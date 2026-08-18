@@ -39,7 +39,6 @@ import {
 
 afterEach(() => {
 	document.body.innerHTML = '';
-	jest.restoreAllMocks();
 });
 
 describe('timecode clicks work inside a pop-out window', () => {

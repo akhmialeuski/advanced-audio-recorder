@@ -204,7 +204,6 @@ const PLAIN: ResolvedPlayerSettings = {
 
 afterEach(() => {
 	document.body.innerHTML = '';
-	jest.clearAllMocks();
 });
 
 describe('shared playback state survives a re-render (F1)', () => {

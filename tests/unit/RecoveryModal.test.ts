@@ -119,7 +119,6 @@ describe('RecoveryModal', () => {
 	};
 
 	beforeEach(() => {
-		jest.clearAllMocks();
 		renderedButtons.length = 0;
 		onRecover = jest.fn().mockResolvedValue(undefined);
 		onDiscard = jest.fn().mockResolvedValue(undefined);

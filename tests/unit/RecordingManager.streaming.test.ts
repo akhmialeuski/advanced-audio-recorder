@@ -22,9 +22,13 @@ import {
 	installMediaRecorderFactory,
 	installRecordingMediaStubs,
 	makeFakeMarkerStore,
-	setDesktopPlatform,
 	type MutableTarget,
 } from './helpers/recordingManagerTestKit';
+import {
+	setPlatform,
+	useDesktopPlatform,
+	useMobilePlatform,
+} from '../helpers/platform';
 
 // Mock obsidian module
 jest.mock('obsidian', () => ({
@@ -99,7 +103,6 @@ describe('RecordingManager', () => {
 
 	beforeEach(() => {
 		// Reset mocks
-		jest.clearAllMocks();
 		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
 
 		// Create mock App
@@ -126,9 +129,7 @@ describe('RecordingManager', () => {
 
 	describe('streaming chunks', () => {
 		it('should write chunks as segment files on desktop', async () => {
-			const { Platform } = jest.requireMock('obsidian');
-			Platform.isMobile = false;
-			Platform.isMobileApp = false;
+			useDesktopPlatform();
 
 			const mockMediaRecorder = {
 				start: jest.fn(),
@@ -180,9 +181,7 @@ describe('RecordingManager', () => {
 		});
 
 		it('rotates the recorder at the mobile size boundary and writes a converted part', async () => {
-			const { Platform } = jest.requireMock('obsidian');
-			Platform.isMobile = true;
-			Platform.isMobileApp = true;
+			useMobilePlatform();
 
 			const mockMediaRecorder = {
 				start: jest.fn(),
@@ -260,9 +259,7 @@ describe('RecordingManager', () => {
 		});
 
 		it('should buffer multiple chunks into a single segment file and clean up after finalization', async () => {
-			const { Platform } = jest.requireMock('obsidian');
-			Platform.isMobile = false;
-			Platform.isMobileApp = false;
+			useDesktopPlatform();
 
 			const mockMediaRecorder = {
 				start: jest.fn(),
@@ -323,9 +320,7 @@ describe('RecordingManager', () => {
 		});
 
 		it('should save multi-track WAV via PCM capture and merge', async () => {
-			const { Platform } = jest.requireMock('obsidian');
-			Platform.isMobile = false;
-			Platform.isMobileApp = false;
+			useDesktopPlatform();
 
 			mockSettings = {
 				...DEFAULT_SETTINGS,
@@ -374,7 +369,7 @@ describe('RecordingManager', () => {
 		beforeEach(() => {
 			// The desktop reset used to live in the local recorder factory;
 			// the shared kit factory leaves Platform untouched
-			setDesktopPlatform();
+			useDesktopPlatform();
 		});
 
 		const getWriteFailureNotices = (): unknown[][] => {
@@ -478,9 +473,7 @@ describe('RecordingManager', () => {
 		});
 
 		it('should contain PCM flush failures without dropping later chunks', async () => {
-			const { Platform } = jest.requireMock('obsidian');
-			Platform.isMobile = false;
-			Platform.isMobileApp = false;
+			useDesktopPlatform();
 
 			mockSettings = { ...DEFAULT_SETTINGS, recordingFormat: 'wav' };
 			manager = new RecordingManager(
@@ -609,9 +602,7 @@ describe('RecordingManager', () => {
 		}
 
 		beforeEach(() => {
-			const { Platform } = jest.requireMock('obsidian');
-			Platform.isMobile = false;
-			Platform.isMobileApp = false;
+			useDesktopPlatform();
 
 			mockMediaRecorder = {
 				start: jest.fn(),
@@ -715,8 +706,7 @@ describe('RecordingManager', () => {
 		});
 
 		it('should notify that auto-split is unavailable on mobile', async () => {
-			const { Platform } = jest.requireMock('obsidian');
-			Platform.isMobile = true;
+			setPlatform({ isMobile: true });
 			createManagerWithSettings({
 				recordingFormat: 'webm',
 				autoSplitEnabled: true,

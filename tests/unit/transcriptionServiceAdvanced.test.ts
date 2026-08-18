@@ -197,7 +197,6 @@ function makeService(
 }
 
 beforeEach(() => {
-	jest.clearAllMocks();
 	prepareOnePart();
 });
 

@@ -6,7 +6,6 @@
  * @module tests/unit/settingsPerPlatform.test
  */
 
-import { Platform } from 'obsidian';
 import {
 	mergeSettings,
 	mergeSettingsAsync,
@@ -15,11 +14,7 @@ import {
 	serializeSettings,
 } from 'src/settings/settingsSerialization';
 import type { AudioRecorderSettingsInput } from 'src/settings/settingsSchema';
-
-function resetPlatform(): void {
-	Platform.isMobile = false;
-	Platform.isMobileApp = false;
-}
+import { setPlatform } from '../helpers/platform';
 
 /** A legacy (pre-perPlatform) data.json shape with desktop device state. */
 function legacyStored(): AudioRecorderSettingsInput {
@@ -59,8 +54,6 @@ describe('normalizePlatformScopedSettings', () => {
 });
 
 describe('legacy flat settings migration', () => {
-	afterEach(resetPlatform);
-
 	it('moves legacy flat device fields into the desktop branch', () => {
 		const perPlatform = normalizePerPlatformSettings(legacyStored());
 		expect(perPlatform.desktop.audioDeviceId).toBe('desktop-mic');
@@ -74,7 +67,7 @@ describe('legacy flat settings migration', () => {
 	});
 
 	it('migrates legacy fields to the desktop branch even when loading on mobile', () => {
-		Platform.isMobile = true;
+		setPlatform({ isMobile: true });
 		const merged = mergeSettings(legacyStored());
 		// Active (mobile) values are the clean mobile defaults...
 		expect(merged.audioDeviceId).toBe('');
@@ -122,8 +115,6 @@ describe('legacy flat settings migration', () => {
 });
 
 describe('active-branch resolution', () => {
-	afterEach(resetPlatform);
-
 	const stored: AudioRecorderSettingsInput = {
 		perPlatform: {
 			desktop: {
@@ -155,7 +146,7 @@ describe('active-branch resolution', () => {
 	});
 
 	it('defaults the platform argument to the current platform', () => {
-		Platform.isMobile = true;
+		setPlatform({ isMobile: true });
 		const merged = mergeSettings(stored);
 		expect(merged.audioDeviceId).toBe('phone-mic');
 	});
@@ -174,8 +165,6 @@ describe('active-branch resolution', () => {
 });
 
 describe('serializeSettings platform separation', () => {
-	afterEach(resetPlatform);
-
 	it('drops the flat device fields from the persisted shape', () => {
 		const merged = mergeSettings(legacyStored(), 'desktop');
 		const serialized = serializeSettings(
@@ -257,7 +246,6 @@ describe('mergeSettingsAsync device auto-detection', () => {
 			value: originalMediaDevices,
 			configurable: true,
 		});
-		resetPlatform();
 	});
 
 	it('detects the default device on desktop and stores it in the branch', async () => {

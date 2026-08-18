@@ -159,8 +159,6 @@ describe('ContextMenu', () => {
 	let mockFileManager: FileManager;
 
 	beforeEach(() => {
-		jest.clearAllMocks();
-
 		mockWorkspace = {
 			on: jest.fn(),
 			trigger: jest.fn(),

@@ -181,7 +181,6 @@ describe('AudioRecorderPlugin settings persistence', () => {
 
 	afterEach(() => {
 		jest.useRealTimers();
-		jest.clearAllMocks();
 	});
 
 	it('merges stored settings with defaults and writes a backup', async () => {
@@ -505,7 +504,6 @@ describe('AudioRecorderPlugin crash recovery wiring', () => {
 
 	afterEach(() => {
 		jest.useRealTimers();
-		jest.clearAllMocks();
 	});
 
 	const createTestSession = (): Record<string, unknown> => ({
@@ -638,7 +636,6 @@ describe('AudioRecorderPlugin background transcription status bar', () => {
 
 	afterEach(() => {
 		jest.useRealTimers();
-		jest.clearAllMocks();
 	});
 
 	/** Builds per-modal background-progress callbacks via the private factory. */

@@ -163,6 +163,9 @@
 		"setupFiles": [
 			"<rootDir>/tests/setup.ts"
 		],
+		"setupFilesAfterEnv": [
+			"<rootDir>/tests/setupAfterEnv.ts"
+		],
 		"reporters": [
 			"default",
 			"<rootDir>/scripts/jest-suite-stats-reporter.cjs"
