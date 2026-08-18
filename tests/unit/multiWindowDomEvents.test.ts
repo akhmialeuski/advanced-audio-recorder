@@ -10,8 +10,10 @@
  */
 
 import { Component } from 'obsidian';
-import type { App, Plugin, WorkspaceLeaf } from 'obsidian';
+import type { App, WorkspaceLeaf } from 'obsidian';
 import { registerDomEventOnAllWindows } from 'src/utils/multiWindowDomEvents';
+import { partialApp, partialPlugin } from '../helpers/obsidianMock';
+import { partial } from '../helpers/doubles';
 
 /** A pop-out-like window handle, as workspace window events carry it. */
 interface WindowLike {
@@ -30,13 +32,12 @@ class FakePlugin extends Component {
 
 	constructor(preOpenDocs: Document[]) {
 		super();
-		const leaves: WorkspaceLeaf[] = preOpenDocs.map(
-			(doc) =>
-				({
-					getContainer: () => ({ doc }),
-				}) as unknown as WorkspaceLeaf,
+		const leaves: WorkspaceLeaf[] = preOpenDocs.map((doc) =>
+			partial<WorkspaceLeaf>({
+				getContainer: () => ({ doc }),
+			}),
 		);
-		this.app = {
+		this.app = partialApp({
 			workspace: {
 				iterateAllLeaves: (cb: (leaf: WorkspaceLeaf) => void): void => {
 					leaves.forEach(cb);
@@ -46,7 +47,7 @@ class FakePlugin extends Component {
 					return {};
 				},
 			},
-		} as unknown as App;
+		});
 	}
 
 	/** Fires a recorded workspace window event, as Obsidian would. */
@@ -73,7 +74,7 @@ describe('registerDomEventOnAllWindows', () => {
 		const seen: Document[] = [];
 
 		registerDomEventOnAllWindows(
-			plugin as unknown as Plugin,
+			partialPlugin(plugin),
 			plugin.app,
 			'click',
 			(_event, doc) => seen.push(doc),
@@ -91,7 +92,7 @@ describe('registerDomEventOnAllWindows', () => {
 		plugin.load();
 		const seen: Document[] = [];
 		registerDomEventOnAllWindows(
-			plugin as unknown as Plugin,
+			partialPlugin(plugin),
 			plugin.app,
 			'click',
 			(_event, doc) => seen.push(doc),
@@ -113,7 +114,7 @@ describe('registerDomEventOnAllWindows', () => {
 		plugin.load();
 		const seen: Document[] = [];
 		registerDomEventOnAllWindows(
-			plugin as unknown as Plugin,
+			partialPlugin(plugin),
 			plugin.app,
 			'click',
 			(_event, doc) => seen.push(doc),
@@ -132,7 +133,7 @@ describe('registerDomEventOnAllWindows', () => {
 		plugin.load();
 		const seen: Document[] = [];
 		registerDomEventOnAllWindows(
-			plugin as unknown as Plugin,
+			partialPlugin(plugin),
 			plugin.app,
 			'click',
 			(_event, doc) => seen.push(doc),
@@ -152,7 +153,7 @@ describe('registerDomEventOnAllWindows', () => {
 		plugin.load();
 		const seen: Document[] = [];
 		registerDomEventOnAllWindows(
-			plugin as unknown as Plugin,
+			partialPlugin(plugin),
 			plugin.app,
 			'click',
 			(_event, doc) => seen.push(doc),
@@ -175,7 +176,7 @@ describe('registerDomEventOnAllWindows', () => {
 			plugin.load();
 
 			registerDomEventOnAllWindows(
-				plugin as unknown as Plugin,
+				partialPlugin(plugin),
 				plugin.app,
 				'click',
 				() => {},
@@ -199,7 +200,7 @@ describe('registerDomEventOnAllWindows', () => {
 		const plugin = new FakePlugin([]);
 		plugin.load();
 		registerDomEventOnAllWindows(
-			plugin as unknown as Plugin,
+			partialPlugin(plugin),
 			plugin.app,
 			'click',
 			() => undefined,

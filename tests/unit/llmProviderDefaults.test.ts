@@ -16,6 +16,7 @@ import {
 	ACCOUNT_IDS,
 	vendorConnection,
 } from 'src/providers/providers';
+import { partial } from '../helpers/doubles';
 
 describe('account endpoints', () => {
 	it('gives each account a field of its own', () => {
@@ -156,11 +157,13 @@ describe('account endpoints', () => {
 		// host with no audio endpoint this rule exists to avoid.
 		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
 		try {
-			const merged = mergeSettings({
-				transcriptionProvider: 'no-such-engine',
-				llmProvider: 'openai-compatible',
-				llmBaseUrl: 'http://localhost:1234/v1',
-			} as unknown as AudioRecorderSettingsInput);
+			const merged = mergeSettings(
+				partial<AudioRecorderSettingsInput>({
+					transcriptionProvider: 'no-such-engine',
+					llmProvider: 'openai-compatible',
+					llmBaseUrl: 'http://localhost:1234/v1',
+				}),
+			);
 
 			expect(merged.transcriptionProvider).toBe(
 				DEFAULT_SETTINGS.transcriptionProvider,
@@ -177,11 +180,13 @@ describe('account endpoints', () => {
 		// The reordering must not turn every unclaimed id into a refusal: once
 		// the id names the shipped engine, the question is the ordinary one, and
 		// an Anthropic relay is still the only address that vendor ever had.
-		const merged = mergeSettings({
-			transcriptionProvider: 'no-such-engine',
-			llmProvider: 'anthropic',
-			llmBaseUrl: 'https://claude-relay.internal/v1',
-		} as unknown as AudioRecorderSettingsInput);
+		const merged = mergeSettings(
+			partial<AudioRecorderSettingsInput>({
+				transcriptionProvider: 'no-such-engine',
+				llmProvider: 'anthropic',
+				llmBaseUrl: 'https://claude-relay.internal/v1',
+			}),
+		);
 
 		expect(merged.anthropicBaseUrl).toBe(
 			'https://claude-relay.internal/v1',

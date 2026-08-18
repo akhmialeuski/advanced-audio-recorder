@@ -18,13 +18,14 @@ import { AudioStreamError } from 'src/errors';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { setPlatform, useDesktopPlatform } from '../helpers/platform';
+import { partial } from '../helpers/doubles';
 
 /** Builds a MediaStream stub whose tracks record stop() calls. */
 function fakeStream(): { stream: MediaStream; stop: jest.Mock } {
 	const stop = jest.fn();
-	const stream = {
+	const stream = partial<MediaStream>({
 		getTracks: () => [{ stop }],
-	} as unknown as MediaStream;
+	});
 	return { stream, stop };
 }
 

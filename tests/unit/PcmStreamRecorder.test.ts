@@ -9,6 +9,7 @@ import {
 	WORKLET_PROCESSOR_SOURCE,
 } from 'src/recording/PcmStreamRecorder';
 import { defined } from '../helpers/assertions';
+import { partial } from '../helpers/doubles';
 
 // Track messages sent to the worklet port
 let workletPortMessages: Array<{ type: string }> = [];
@@ -82,7 +83,7 @@ global.URL.createObjectURL = jest.fn().mockReturnValue('blob:mock-worklet-url');
 global.URL.revokeObjectURL = jest.fn();
 
 function createMockStream(channelCount: number = 1): MediaStream {
-	return {
+	return partial<MediaStream>({
 		getAudioTracks: () => [
 			{
 				stop: jest.fn(),
@@ -90,7 +91,7 @@ function createMockStream(channelCount: number = 1): MediaStream {
 			},
 		],
 		getTracks: () => [{ stop: jest.fn() }],
-	} as unknown as MediaStream;
+	});
 }
 
 /**

@@ -33,6 +33,8 @@ import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import type { EmbedInfo } from 'src/obsidian/embedRegistry';
 import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
+import { partialApp, partialPlugin } from '../helpers/obsidianMock';
+import { partial } from '../helpers/doubles';
 
 jest.mock('src/player/AudioPlayer', () => ({
 	AudioPlayer: jest.fn().mockImplementation(() => ({
@@ -140,7 +142,7 @@ function leafStub(parts: {
 	view: unknown;
 	rebuildView?: () => void;
 }): WorkspaceLeaf {
-	return parts as unknown as WorkspaceLeaf;
+	return partial<WorkspaceLeaf>(parts);
 }
 
 /** A fully mocked persistent media-kind store. */
@@ -199,17 +201,17 @@ function setup(
 		embedByExtension[ext] = nativeCreator;
 	}
 
-	const previewLeaf = {
+	const previewLeaf = partial<WorkspaceLeaf>({
 		view: viewStub('preview', 'note.md'),
 		rebuildView: jest.fn(),
-	} as unknown as WorkspaceLeaf;
-	const sourceLeaf = {
+	});
+	const sourceLeaf = partial<WorkspaceLeaf>({
 		view: viewStub('source', 'other.md'),
 		rebuildView: jest.fn(),
-	} as unknown as WorkspaceLeaf;
+	});
 	const getLeaves = jest.fn(() => [previewLeaf, sourceLeaf]);
 
-	const app = {
+	const app = partialApp({
 		embedRegistry:
 			'embedRegistry' in options
 				? options.embedRegistry
@@ -232,13 +234,13 @@ function setup(
 			// lookup finds nothing and falls back to the active view/file.
 			iterateAllLeaves: jest.fn(),
 		},
-	} as unknown as App;
+	});
 
-	const plugin = {
+	const plugin = partialPlugin({
 		registerMarkdownPostProcessor: jest.fn(),
 		registerDomEvent: jest.fn(),
 		registerEvent: jest.fn(),
-	} as unknown as Plugin;
+	});
 
 	const markerStore = {
 		handleRename: jest.fn().mockResolvedValue(undefined),
@@ -251,8 +253,8 @@ function setup(
 		plugin,
 		app,
 		() => settings,
-		markerStore as unknown as RecordingSidecarStore,
-		kindStore as unknown as MediaKindStore | null,
+		partial<RecordingSidecarStore>(markerStore),
+		kindStore === null ? null : partial<MediaKindStore>(kindStore),
 	);
 	registrar.register();
 
@@ -652,9 +654,9 @@ describe('EnhancedPlayerRegistrar vault rename/delete wiring', () => {
 		app: App,
 		event: 'rename' | 'delete',
 	): (...args: unknown[]) => void {
-		const call = (app.vault.on as unknown as jest.Mock).mock.calls.find(
-			(args: unknown[]) => args[0] === event,
-		);
+		const call = jest
+			.mocked(app.vault.on)
+			.mock.calls.find((args: unknown[]) => args[0] === event);
 		if (!call) {
 			throw new Error(`Expected a vault ${event} handler registration`);
 		}
@@ -757,7 +759,7 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 	 * and dispose on it, so the cast at the boundary is what states that.
 	 */
 	function detachedStubOf(path: string): DetachedPlayback {
-		return detachedStub(path) as unknown as DetachedPlayback;
+		return partial<DetachedPlayback>(detachedStub(path));
 	}
 
 	it('seeks an on-screen player and never opens the file', () => {
@@ -809,9 +811,7 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 			.spyOn(AudioPlayerRegistry.prototype, 'seek')
 			.mockReturnValue(false);
 		const detached = detachedStub('rec.mp4');
-		detachedStartMock.mockReturnValue(
-			detached as unknown as DetachedPlayback,
-		);
+		detachedStartMock.mockReturnValue(partial<DetachedPlayback>(detached));
 		try {
 			const { plugin } = setup(true);
 			const handle = clickHandler(plugin);
@@ -1003,9 +1003,7 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 			.spyOn(AudioPlayerRegistry.prototype, 'seek')
 			.mockReturnValue(false);
 		const detached = detachedStub('rec.mp4');
-		detachedStartMock.mockReturnValue(
-			detached as unknown as DetachedPlayback,
-		);
+		detachedStartMock.mockReturnValue(partial<DetachedPlayback>(detached));
 		try {
 			const { plugin, registrar, settings } = setup(true);
 			clickHandler(plugin)(timecodeClick('rec.mp4#t=30'));
@@ -1511,9 +1509,7 @@ describe('EnhancedPlayerRegistrar handing playback between surfaces', () => {
 		// position; the embed wins because it is the one on screen.
 		const seek = jest.spyOn(AudioPlayerRegistry.prototype, 'seek');
 		const detached = detachedStubOfPath('rec.mp4');
-		detachedStartMock.mockReturnValue(
-			detached as unknown as DetachedPlayback,
-		);
+		detachedStartMock.mockReturnValue(partial<DetachedPlayback>(detached));
 		try {
 			setup(true);
 			seek.mockReturnValue(false);
@@ -1531,9 +1527,7 @@ describe('EnhancedPlayerRegistrar handing playback between surfaces', () => {
 	it('leaves the detached playback of another file alone', () => {
 		const seek = jest.spyOn(AudioPlayerRegistry.prototype, 'seek');
 		const detached = detachedStubOfPath('other.mp4');
-		detachedStartMock.mockReturnValue(
-			detached as unknown as DetachedPlayback,
-		);
+		detachedStartMock.mockReturnValue(partial<DetachedPlayback>(detached));
 		try {
 			setup(true);
 			seek.mockReturnValue(false);
@@ -1577,8 +1571,8 @@ describe('EnhancedPlayerRegistrar handing playback between surfaces', () => {
 		const first = detachedStubOfPath('first.mp4');
 		const second = detachedStubOfPath('second.mp4');
 		detachedStartMock
-			.mockReturnValueOnce(first as unknown as DetachedPlayback)
-			.mockReturnValueOnce(second as unknown as DetachedPlayback);
+			.mockReturnValueOnce(partial<DetachedPlayback>(first))
+			.mockReturnValueOnce(partial<DetachedPlayback>(second));
 		try {
 			setup(true);
 			clicks()(linkClick('first.mp4#t=10'));
@@ -1709,9 +1703,9 @@ describe('EnhancedPlayerRegistrar renaming a probed recording', () => {
 		probeMock.mockClear();
 
 		const rename = at(
-			(app.vault.on as unknown as jest.Mock).mock.calls.filter(
-				(args: unknown[]) => args[0] === 'rename',
-			),
+			jest
+				.mocked(app.vault.on)
+				.mock.calls.filter((args: unknown[]) => args[0] === 'rename'),
 			0,
 		)[1] as (file: TFile, oldPath: string) => void;
 		rename(fileFromPath('new.wav'), 'old.wav');
@@ -1736,8 +1730,8 @@ describe('EnhancedPlayerRegistrar forgetting a finished playback', () => {
 		const first = detachedStubOfPath('rec.mp4');
 		const second = detachedStubOfPath('rec.mp4');
 		detachedStartMock
-			.mockReturnValueOnce(first as unknown as DetachedPlayback)
-			.mockReturnValueOnce(second as unknown as DetachedPlayback);
+			.mockReturnValueOnce(partial<DetachedPlayback>(first))
+			.mockReturnValueOnce(partial<DetachedPlayback>(second));
 		try {
 			setup(true);
 			const { registerDomEventOnAllWindows } = jest.requireMock(

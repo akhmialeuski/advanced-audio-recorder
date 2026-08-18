@@ -16,7 +16,7 @@ import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import * as AudioFileAnalyzer from 'src/utils/AudioFileAnalyzer';
 import { at } from '../helpers/assertions';
 import { tick } from '../helpers/async';
-import { asMockMenu } from '../helpers/obsidianMock';
+import { asMockMenu, partialApp, partialPlugin } from '../helpers/obsidianMock';
 import { setPlayerEmbedActions } from 'src/player/playerEmbedActions';
 import type { PlayerEmbedActions } from 'src/player/playerEmbedActions';
 import {
@@ -32,6 +32,7 @@ import {
 	FileManager,
 	MarkdownView,
 } from 'obsidian';
+import { partial } from '../helpers/doubles';
 
 // The player menu binds through registerDomEventOnAllWindows (one listener
 // per Obsidian window). These unit tests exercise the handler itself, so the
@@ -107,58 +108,58 @@ describe('ContextMenu', () => {
 	let mockFileManager: FileManager;
 
 	beforeEach(() => {
-		mockWorkspace = {
+		mockWorkspace = partial<Workspace>({
 			on: jest.fn(),
 			trigger: jest.fn(),
 			getActiveFile: jest.fn(),
 			getActiveViewOfType: jest.fn(),
 			iterateAllLeaves: jest.fn(),
-		} as unknown as Workspace;
+		});
 
-		mockMetadataCache = {
+		mockMetadataCache = partial<MetadataCache>({
 			getFirstLinkpathDest: jest.fn(),
-		} as unknown as MetadataCache;
+		});
 
-		mockVault = {
+		mockVault = partial<Vault>({
 			delete: jest.fn(),
-		} as unknown as Vault;
+		});
 
 		mockFileManager = {
 			trashFile: jest.fn(),
 		} as unknown as FileManager;
 
-		mockApp = {
+		mockApp = partialApp({
 			workspace: mockWorkspace,
 			metadataCache: mockMetadataCache,
 			vault: mockVault,
 			fileManager: mockFileManager,
-		} as unknown as App;
+		});
 
-		mockPlugin = {
+		mockPlugin = partialPlugin({
 			registerEvent: jest.fn(),
 			registerDomEvent: jest.fn(),
-		} as unknown as Plugin;
+		});
 
 		contextMenu = new ContextMenu(
 			mockPlugin,
 			{
 				app: mockApp,
 				getSettings: () =>
-					({
+					partial<AudioRecorderSettings>({
 						deleteSourceAfterConversion: true,
 						conversionLinkAction: 'replace',
-					}) as unknown as AudioRecorderSettings,
+					}),
 				saveSettings: () => Promise.resolve(),
 				createTranscriptionModalOptions: () => ({}),
 				primeForEnhancement: () => {},
 				getWorkerClient: () => null,
-				autoChapters: {
+				autoChapters: partial<ActionServices>({
 					generate: jest.fn(),
-				} as unknown as ActionServices['autoChapters'],
-				recordingSidecar: {
+				})['autoChapters'],
+				recordingSidecar: partial<ActionServices>({
 					getTranscript: jest.fn().mockResolvedValue(null),
 					updateTranscript: jest.fn().mockResolvedValue(undefined),
-				} as unknown as ActionServices['recordingSidecar'],
+				})['recordingSidecar'],
 			},
 			FILE_ACTIONS,
 		);
@@ -388,12 +389,12 @@ describe('ContextMenu', () => {
 			);
 			editorMenuCallback = call[1];
 
-			mockEditor = {
+			mockEditor = partial<Editor>({
 				getCursor: jest.fn().mockReturnValue({ line: 0, ch: 0 }),
 				getLine: jest.fn(),
 				replaceRange: jest.fn(),
 				offsetToPos: jest.fn(),
-			} as unknown as Editor;
+			});
 		});
 
 		test.each(AUDIO_EXTENSIONS)(
@@ -577,13 +578,13 @@ describe('ContextMenu', () => {
 			embed.setAttribute('src', src);
 			const target = document.createElement('span');
 			embed.appendChild(target);
-			return {
+			return partial<MouseEvent>({
 				target,
 				pageX: 100,
 				pageY: 200,
 				preventDefault: jest.fn(),
 				stopPropagation: jest.fn(),
-			} as unknown as MouseEvent;
+			});
 		}
 
 		/** The menu the player handler passed to workspace.trigger. */
@@ -622,9 +623,11 @@ describe('ContextMenu', () => {
 		);
 
 		it('does nothing when the target is not inside an internal embed', () => {
-			playerMenuCallback({
-				target: document.createElement('div'),
-			} as unknown as MouseEvent);
+			playerMenuCallback(
+				partial<MouseEvent>({
+					target: document.createElement('div'),
+				}),
+			);
 
 			expect(
 				mockMetadataCache.getFirstLinkpathDest,
@@ -637,7 +640,7 @@ describe('ContextMenu', () => {
 			const target = document.createElement('span');
 			embed.appendChild(target);
 
-			playerMenuCallback({ target } as unknown as MouseEvent);
+			playerMenuCallback(partial<MouseEvent>({ target }));
 
 			expect(
 				mockMetadataCache.getFirstLinkpathDest,
@@ -727,13 +730,15 @@ describe('ContextMenu', () => {
 				mockMetadataCache.getFirstLinkpathDest as jest.Mock
 			).mockReturnValue(makeAudioFile());
 
-			playerMenuCallback({
-				target,
-				pageX: 10,
-				pageY: 20,
-				preventDefault: jest.fn(),
-				stopPropagation: jest.fn(),
-			} as unknown as MouseEvent);
+			playerMenuCallback(
+				partial<MouseEvent>({
+					target,
+					pageX: 10,
+					pageY: 20,
+					preventDefault: jest.fn(),
+					stopPropagation: jest.fn(),
+				}),
+			);
 
 			expect(mockMetadataCache.getFirstLinkpathDest).toHaveBeenCalledWith(
 				'audio.mp3',
@@ -748,12 +753,12 @@ describe('ContextMenu', () => {
 				mockMetadataCache.getFirstLinkpathDest as jest.Mock
 			).mockReturnValue(makeAudioFile());
 
-			const mockEditor = {
+			const mockEditor = partial<Editor>({
 				offsetToPos: jest.fn().mockReturnValue({ line: 0, ch: 0 }),
 				getLine: jest.fn().mockReturnValue('[[audio.mp3]]'),
 				getCursor: jest.fn().mockReturnValue({ line: 10, ch: 10 }),
 				replaceRange: jest.fn(),
-			} as unknown as Editor;
+			});
 			Object.defineProperty(mockEditor, 'cm', {
 				get: () => ({ posAtDOM: jest.fn().mockReturnValue(0) }),
 			});
@@ -776,7 +781,7 @@ describe('ContextMenu', () => {
 			const consoleSpy = jest
 				.spyOn(console, 'error')
 				.mockImplementation();
-			const mockEditor = {
+			const mockEditor = partial<Editor>({
 				get cm() {
 					return {
 						posAtDOM: jest.fn().mockImplementation(() => {
@@ -784,7 +789,7 @@ describe('ContextMenu', () => {
 						}),
 					};
 				},
-			} as unknown as Editor;
+			});
 			(mockWorkspace.getActiveViewOfType as jest.Mock).mockReturnValue({
 				editor: mockEditor,
 			});
@@ -838,14 +843,14 @@ describe('ContextMenu', () => {
 			});
 			const target = document.createElement('span');
 			embed.appendChild(target);
-			return {
+			return partial<MouseEvent>({
 				target,
 				clientX,
 				pageX: 100,
 				pageY: 200,
 				preventDefault: jest.fn(),
 				stopPropagation: jest.fn(),
-			} as unknown as MouseEvent;
+			});
 		}
 
 		/** The titles of the menu the handler built. */
@@ -941,14 +946,16 @@ describe('ContextMenu', () => {
 			const target = document.createElement('span');
 			embed.appendChild(target);
 
-			playerMenu()({
-				target,
-				clientX: 120,
-				pageX: 100,
-				pageY: 200,
-				preventDefault: jest.fn(),
-				stopPropagation: jest.fn(),
-			} as unknown as MouseEvent);
+			playerMenu()(
+				partial<MouseEvent>({
+					target,
+					clientX: 120,
+					pageX: 100,
+					pageY: 200,
+					preventDefault: jest.fn(),
+					stopPropagation: jest.fn(),
+				}),
+			);
 
 			expect(menuTitles()).not.toContain('Add marker here');
 			expect(mockWorkspace.trigger).toHaveBeenCalled();

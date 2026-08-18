@@ -15,6 +15,7 @@ import type { PluginManifest, TFile } from 'obsidian';
 import { createFile } from '../helpers/createApp';
 import { allEls, el } from '../helpers/dom';
 import { MODAL } from '../helpers/selectors';
+import { partial } from '../helpers/doubles';
 
 jest.mock('src/recording/RecordingManager', () => ({
 	RecordingManager: jest.fn().mockImplementation(() => ({
@@ -138,7 +139,7 @@ function createPlugin(loadDataResults: LoadDataResult[]): PluginHarness {
 	const app = new App();
 	const plugin = new AudioRecorderPlugin(
 		app,
-		MANIFEST as unknown as PluginManifest,
+		partial<PluginManifest>(MANIFEST),
 	);
 
 	const loadData = jest.fn();
@@ -393,10 +394,13 @@ describe('AudioRecorderPlugin settings persistence', () => {
 		// manifest.dir is optional in Obsidian's own types; with no folder
 		// there is nowhere to put a backup and nothing to check for.
 		const app = new App();
-		const plugin = new AudioRecorderPlugin(app, {
-			...MANIFEST,
-			dir: undefined,
-		} as unknown as PluginManifest);
+		const plugin = new AudioRecorderPlugin(
+			app,
+			partial<PluginManifest>({
+				...MANIFEST,
+				dir: undefined,
+			}),
+		);
 		const store = plugin as unknown as Record<string, unknown>;
 		store.loadData = jest.fn().mockResolvedValue(undefined);
 		store.saveData = jest.fn().mockResolvedValue(undefined);

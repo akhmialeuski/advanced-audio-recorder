@@ -20,6 +20,7 @@ import {
 import { at, defined } from '../helpers/assertions';
 import { PCM_BYTES_PER_SAMPLE } from 'src/audio/pcm';
 import { createWavHeader } from 'src/audio/WavEncoder';
+import { partial } from '../helpers/doubles';
 
 /** WAV header size produced by createWavHeader. */
 const WAV_HEADER_SIZE = 44;
@@ -430,11 +431,13 @@ describe('sliceAudioBuffer', () => {
 		length: number,
 		sampleRate: number,
 	): AudioBuffer {
-		const buffer = new FakeAudioBuffer({
-			numberOfChannels: channels,
-			length,
-			sampleRate,
-		}) as unknown as AudioBuffer;
+		const buffer = partial<AudioBuffer>(
+			new FakeAudioBuffer({
+				numberOfChannels: channels,
+				length,
+				sampleRate,
+			}),
+		);
 		for (let ch = 0; ch < channels; ch++) {
 			const data = buffer.getChannelData(ch);
 			for (let i = 0; i < length; i++) {

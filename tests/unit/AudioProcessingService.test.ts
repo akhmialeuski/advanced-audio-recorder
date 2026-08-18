@@ -17,6 +17,8 @@ import {
 	MAX_AUDIO_CLEANUP_DECODED_SAMPLES,
 } from 'src/constants';
 import { at } from '../helpers/assertions';
+import { partialApp } from '../helpers/obsidianMock';
+import { partial } from '../helpers/doubles';
 
 // Controllable container probe: null (the default) means "container not
 // parseable", which sends the pipeline down the plain decode path the
@@ -119,7 +121,7 @@ function makeApp(): { app: App; written: Map<string, ArrayBuffer> } {
 			return Promise.resolve();
 		},
 	};
-	return { app: { vault } as unknown as App, written };
+	return { app: partialApp({ vault }), written };
 }
 
 function fakeFile(path: string, size = 1024): TFile {
@@ -127,7 +129,7 @@ function fakeFile(path: string, size = 1024): TFile {
 		path.lastIndexOf('/') + 1,
 		path.lastIndexOf('.'),
 	);
-	return { path, basename, stat: { size } } as unknown as TFile;
+	return partial<TFile>({ path, basename, stat: { size } });
 }
 
 const ALL_STAGES: AudioDspConfig = {

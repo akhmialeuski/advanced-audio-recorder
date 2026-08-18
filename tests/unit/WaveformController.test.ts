@@ -27,6 +27,7 @@ import { tick } from '../helpers/async';
 import { addObsidianDomExtensions } from '../mocks/domExtensions';
 import { installCanvas2dContext } from '../helpers/canvas';
 import type { CanvasContextDouble } from '../helpers/canvas';
+import { partialApp } from '../helpers/obsidianMock';
 
 let canvas: CanvasContextDouble;
 
@@ -83,7 +84,7 @@ function createSut(
 	const readBinary = jest
 		.fn()
 		.mockResolvedValue(overrides.bytes ?? new ArrayBuffer(8));
-	const app = { vault: { readBinary } } as unknown as App;
+	const app = partialApp({ vault: { readBinary } });
 	const decode = jest.fn(
 		overrides.decode ??
 			(() => Promise.resolve(createMockAudioBuffer(1, 8, 8))),

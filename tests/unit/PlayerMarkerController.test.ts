@@ -10,8 +10,9 @@ import { PlayerMarkerController } from 'src/player/PlayerMarkerController';
 import type { PlayerMarkerHost } from 'src/player/PlayerMarkerController';
 import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import { MARKER_KIND, type PlayerMarker } from 'src/markers/markerModel';
+import { partial } from '../helpers/doubles';
 
-const noticeMock = Notice as unknown as jest.Mock;
+const noticeMock = jest.mocked(Notice);
 
 /** A host double recording render calls; never unloaded unless flipped. */
 function makeHost(): PlayerMarkerHost & {
@@ -36,7 +37,7 @@ function makeStore(initial: PlayerMarker[] = []): {
 	read: () => PlayerMarker[];
 } {
 	let data = [...initial];
-	const store = {
+	const store = partial<RecordingSidecarStore>({
 		getMarkers: jest.fn(() => Promise.resolve([...data])),
 		updateMarkers: jest.fn(
 			(
@@ -49,13 +50,13 @@ function makeStore(initial: PlayerMarker[] = []): {
 				return Promise.resolve([...data]);
 			},
 		),
-	} as unknown as RecordingSidecarStore;
+	});
 	return { store, read: () => data };
 }
 
 /** A store double whose every write is refused (corrupt sidecar). */
 function makeCorruptStore(): RecordingSidecarStore {
-	return {
+	return partial<RecordingSidecarStore>({
 		getMarkers: jest.fn(() => Promise.resolve([])),
 		updateMarkers: jest.fn(() =>
 			Promise.reject(
@@ -64,7 +65,7 @@ function makeCorruptStore(): RecordingSidecarStore {
 				),
 			),
 		),
-	} as unknown as RecordingSidecarStore;
+	});
 }
 
 beforeEach(() => {
@@ -138,12 +139,12 @@ describe('PlayerMarkerController', () => {
 			label: 'Keep',
 			kind: 'bookmark',
 		};
-		const store = {
+		const store = partial<RecordingSidecarStore>({
 			getMarkers: jest.fn(() => Promise.resolve([kept])),
 			updateMarkers: jest.fn(() =>
 				Promise.reject(new Error('could not be read')),
 			),
-		} as unknown as RecordingSidecarStore;
+		});
 		const host = makeHost();
 		const controller = new PlayerMarkerController(store, 'rec.wav', host);
 		const warn = jest

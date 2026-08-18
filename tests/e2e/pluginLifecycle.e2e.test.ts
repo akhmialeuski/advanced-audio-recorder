@@ -22,6 +22,7 @@ import { asMockPlugin } from '../helpers/obsidianMock';
 import { setPlatform } from '../helpers/platform';
 import { showDeviceSelectionModal } from 'src/ui/DeviceSelectionModal';
 import { RecordingManager } from 'src/recording/RecordingManager';
+import { partial } from '../helpers/doubles';
 
 // The plugin's collaborators are each covered by their own suite. What is
 // under test here is the wiring between them, so they are recorded rather
@@ -65,12 +66,12 @@ jest.mock('src/recording/RecoveryService', () => ({
 	discardSession: jest.fn().mockResolvedValue([]),
 }));
 
-const MANIFEST = {
+const MANIFEST = partial<PluginManifest>({
 	id: 'advanced-audio-recorder',
 	name: 'Advanced Audio Recorder',
 	version: '2.2.2',
 	dir: 'config-dir/plugins/advanced-audio-recorder',
-} as unknown as PluginManifest;
+});
 
 /** The methods the recording-manager double offers, all of them spies. */
 interface RecorderDouble {

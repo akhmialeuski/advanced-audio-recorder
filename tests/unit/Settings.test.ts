@@ -19,6 +19,7 @@ import {
 } from 'src/settings/settingsSerialization';
 import { MODEL_SEED_GENERATION } from 'src/constants';
 import { fullyPopulatedSettings } from '../helpers/settingsFixtures';
+import { partial } from '../helpers/doubles';
 
 describe('Settings', () => {
 	describe('DEFAULT_SETTINGS', () => {
@@ -219,9 +220,9 @@ describe('Settings', () => {
 
 		it('normalizes channel modes of Map-form track sources', () => {
 			// A Map built by pre-channel-mode plugin code lacks the field
-			const legacyMap = new Map([
-				[1, { deviceId: 'device-id-1', channelMode: 'source' }],
-			]) as unknown as AudioRecorderSettings['trackAudioSources'];
+			const legacyMap = partial<
+				AudioRecorderSettings['trackAudioSources']
+			>(new Map([[1, { deviceId: 'device-id-1' }]]));
 
 			const result = mergeSettings({ trackAudioSources: legacyMap });
 
@@ -271,13 +272,13 @@ describe('Settings', () => {
 
 		it('migrates a legacy llmApiKey/llmModel onto the Anthropic vendor fields', () => {
 			// Pre-rework data held one flat key and model for the stored provider.
-			const legacy = {
+			const legacy = partial<AudioRecorderSettingsInput>({
 				llmProvider: 'anthropic',
 				chaptersLlmProvider: 'anthropic',
 				advancedLlmProvider: 'anthropic',
 				llmApiKey: 'ak-legacy',
 				llmModel: 'claude-legacy',
-			} as unknown as AudioRecorderSettingsInput;
+			});
 
 			const result = mergeSettings(legacy);
 
@@ -312,9 +313,9 @@ describe('Settings', () => {
 
 		it('migrates a legacy single dictionary into one seeded General profile', () => {
 			// Pre-profiles data held one flat dictionary string.
-			const legacy = {
+			const legacy = partial<AudioRecorderSettingsInput>({
 				transcriptionDictionary: 'Foo\nBar',
-			} as unknown as AudioRecorderSettingsInput;
+			});
 
 			const result = mergeSettings(legacy);
 
@@ -358,9 +359,9 @@ describe('Settings', () => {
 			// A hand-edited or corrupted data.json can hold a non-string where
 			// the old schema expected text. Reading it as a string would throw on
 			// .trim() and, through the load-time fallback, reset every setting.
-			const corrupt = {
+			const corrupt = partial<AudioRecorderSettingsInput>({
 				transcriptionDictionary: 123,
-			} as unknown as AudioRecorderSettingsInput;
+			});
 
 			const result = mergeSettings(corrupt);
 
@@ -370,11 +371,11 @@ describe('Settings', () => {
 		});
 
 		it('ignores a non-string legacy LLM key and model instead of throwing', () => {
-			const corrupt = {
+			const corrupt = partial<AudioRecorderSettingsInput>({
 				llmProvider: 'gemini',
 				llmApiKey: 42,
 				llmModel: { nested: true },
-			} as unknown as AudioRecorderSettingsInput;
+			});
 
 			const result = mergeSettings(corrupt);
 
@@ -389,12 +390,12 @@ describe('Settings', () => {
 			// An unrecognized provider id names no vendor descriptor; the
 			// migration must not dereference the absent descriptor and crash the
 			// whole load.
-			const corrupt = {
+			const corrupt = partial<AudioRecorderSettingsInput>({
 				llmProvider: 'no-such-vendor',
 				llmApiKey: 'k',
 				llmModel: 'm',
 				filePrefix: 'kept',
-			} as unknown as AudioRecorderSettingsInput;
+			});
 
 			const result = mergeSettings(corrupt);
 
@@ -411,11 +412,11 @@ describe('Settings', () => {
 			// is not type-checked, and every reader resolves the id against a
 			// registry that has no entry for one no vendor claims. Answered at
 			// the field rather than inside the transcribe dialog.
-			const corrupt = {
+			const corrupt = partial<AudioRecorderSettingsInput>({
 				llmProvider: 'no-such-vendor',
 				chaptersLlmProvider: 'also-gone',
 				advancedLlmProvider: 'gemini',
-			} as unknown as AudioRecorderSettingsInput;
+			});
 
 			const result = mergeSettings(corrupt);
 
@@ -428,9 +429,9 @@ describe('Settings', () => {
 		});
 
 		it('points transcription at an engine that exists', () => {
-			const corrupt = {
+			const corrupt = partial<AudioRecorderSettingsInput>({
 				transcriptionProvider: 'no-such-engine',
-			} as unknown as AudioRecorderSettingsInput;
+			});
 
 			const result = mergeSettings(corrupt);
 

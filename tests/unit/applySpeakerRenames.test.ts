@@ -18,6 +18,8 @@ import {
 	type NoteOutput,
 	type TranscriptSection,
 } from 'src/sidecar/recordingSidecarModel';
+import { partialApp } from '../helpers/obsidianMock';
+import { partial } from '../helpers/doubles';
 
 const FORMAT = '**{speaker}**';
 
@@ -34,7 +36,7 @@ const tf = (path: string): TFile => {
 	const name = path.split('/').pop() ?? path;
 	const dot = name.lastIndexOf('.');
 	const extension = dot >= 0 ? name.slice(dot + 1) : '';
-	return { path, name, extension } as unknown as TFile;
+	return partial<TFile>({ path, name, extension });
 };
 
 /**
@@ -50,7 +52,7 @@ function makeApp(
 	} = {},
 ): App {
 	const { caches = {}, failPaths = new Set() } = opts;
-	return {
+	return partialApp({
 		vault: {
 			getFileByPath: (path: string): TFile | null =>
 				files.has(path) ? tf(path) : null,
@@ -83,7 +85,7 @@ function makeApp(
 				return null;
 			},
 		},
-	} as unknown as App;
+	});
 }
 
 const audioFile = tf('audio/rec.wav');
@@ -742,7 +744,7 @@ describe('applySpeakerRenamesWithSidecar', () => {
 		]);
 		// read returns a stale snapshot while process operates on the current
 		// content, mimicking an edit landing between the two calls.
-		const app = {
+		const app = partialApp({
 			vault: {
 				getFileByPath: (path: string): TFile | null =>
 					live.has(path) ? tf(path) : null,
@@ -761,7 +763,7 @@ describe('applySpeakerRenamesWithSidecar', () => {
 				getFileCache: (): null => null,
 				getFirstLinkpathDest: (): null => null,
 			},
-		} as unknown as App;
+		});
 		const section: TranscriptSection = {
 			...emptyTranscriptSection(),
 			fileOutputs: [

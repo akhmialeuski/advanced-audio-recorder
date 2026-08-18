@@ -29,6 +29,7 @@ import {
 	LegacySettingsRenderer,
 	type LegacySettingsHost,
 } from 'src/settings/legacySettingsRenderer';
+import { partial } from '../helpers/doubles';
 
 describe('LegacySettingsRenderer', () => {
 	let values: Record<string, unknown>;
@@ -709,11 +710,11 @@ describe('LegacySettingsRenderer', () => {
 			const onDelete = jest.fn();
 			const action = jest.fn();
 			renderer.render(containerEl, [
-				{
+				partial<SettingDefinitionItem>({
 					type: 'list',
 					onDelete,
 					items: [{ name: 'whisper-1', action }],
-				} as unknown as SettingDefinitionItem,
+				}),
 			]);
 
 			deleteButtonFor('whisper-1').click();
@@ -726,11 +727,11 @@ describe('LegacySettingsRenderer', () => {
 			const onDelete = jest.fn();
 			const action = jest.fn();
 			renderer.render(containerEl, [
-				{
+				partial<SettingDefinitionItem>({
 					type: 'list',
 					onDelete,
 					items: [{ name: 'whisper-1', action }],
-				} as unknown as SettingDefinitionItem,
+				}),
 			]);
 
 			rowFor('whisper-1').click();

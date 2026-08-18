@@ -19,7 +19,7 @@ import { at } from '../helpers/assertions';
 // API, so they are imported from the mock by path. Jest maps 'obsidian'
 // to the same module, so both imports share one instance.
 import { addObsidianDomExtensions } from '../mocks/obsidian';
-import type { MarkdownPostProcessorContext, Plugin } from 'obsidian';
+import type { MarkdownPostProcessorContext } from 'obsidian';
 import { EnhancedPlayerRegistrar } from 'src/player/EnhancedPlayerRegistrar';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
@@ -36,6 +36,7 @@ import {
 	makePopoutDoc,
 	makePopoutLivePreview,
 } from '../helpers/popoutHarness';
+import { partialPlugin } from '../helpers/obsidianMock';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -56,7 +57,7 @@ describe('timecode clicks work inside a pop-out window', () => {
 			};
 
 			const registrar = new EnhancedPlayerRegistrar(
-				plugin as unknown as Plugin,
+				partialPlugin(plugin),
 				plugin.app,
 				() => settings,
 				makeMarkerStore(),
@@ -139,7 +140,7 @@ describe('timecode clicks work inside a pop-out window', () => {
 			};
 
 			const registrar = new EnhancedPlayerRegistrar(
-				plugin as unknown as Plugin,
+				partialPlugin(plugin),
 				plugin.app,
 				() => settings,
 				makeMarkerStore(),

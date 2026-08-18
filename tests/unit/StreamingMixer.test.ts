@@ -7,6 +7,7 @@
 import { canStreamMix, mixPcmTracksToWav } from 'src/recording/StreamingMixer';
 import type { PcmMixTrack } from 'src/recording/StreamingMixer';
 import type { App } from 'obsidian';
+import { partialApp } from '../helpers/obsidianMock';
 
 const WAV_HEADER_SIZE = 44;
 
@@ -40,7 +41,7 @@ describe('StreamingMixer', () => {
 
 	beforeEach(() => {
 		segments = new Map();
-		mockApp = {
+		mockApp = partialApp({
 			vault: {
 				adapter: {
 					stat: jest.fn((path: string) => {
@@ -57,7 +58,7 @@ describe('StreamingMixer', () => {
 					}),
 				},
 			},
-		} as unknown as App;
+		});
 	});
 
 	describe('canStreamMix', () => {

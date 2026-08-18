@@ -18,6 +18,7 @@ import type {
 	JournalTrack,
 } from 'src/recording/SessionJournal';
 import type { App } from 'obsidian';
+import { partialApp } from '../helpers/obsidianMock';
 
 jest.mock('src/audio/WavEncoder', () => ({
 	assembleWavFromPcmSegmentFiles: jest.fn((segmentPaths: string[]) =>
@@ -83,7 +84,7 @@ describe('RecoveryService', () => {
 
 		textFiles = new Map();
 		binaryFiles = new Map();
-		mockApp = {
+		mockApp = partialApp({
 			vault: {
 				adapter: {
 					exists: jest.fn((path: string) =>
@@ -118,7 +119,7 @@ describe('RecoveryService', () => {
 					return Promise.resolve();
 				}),
 			},
-		} as unknown as App;
+		});
 		journal = new SessionJournal(JOURNAL_PATH, mockApp);
 	});
 

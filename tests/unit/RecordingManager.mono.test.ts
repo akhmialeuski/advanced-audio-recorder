@@ -19,6 +19,7 @@ import {
 	makeFakeMarkerStore,
 } from '../helpers/recordingManagerTestKit';
 import { useDesktopPlatform } from '../helpers/platform';
+import { partial } from '../helpers/doubles';
 
 jest.mock('src/recording/AudioStreamHandler', () =>
 	require('../mocks/modules/audioStreamHandler'),
@@ -49,10 +50,10 @@ jest.mock('src/recording/MonoCaptureBridge', () => ({
 		.mockImplementation(
 			(stream: MediaStream, mode: string, sampleRate: number) => {
 				const index = createdBridges.length;
-				const monoStream = {
+				const monoStream = partial<MediaStream>({
 					getTracks: () => [{ stop: jest.fn() }],
 					isMonoBridgeOutput: true,
-				} as unknown as MediaStream;
+				});
 				const bridge: BridgeDouble = {
 					stream,
 					mode,
@@ -137,8 +138,8 @@ describe('RecordingManager mono channel wiring', () => {
 		expect(bridge.mode).toBe('mono-left');
 		expect(bridge.sampleRate).toBe(48000);
 		// The MediaRecorder consumes the bridged stream, not the raw one
-		const recorderCtor = global.MediaRecorder as unknown as jest.Mock;
-		expect(recorderCtor.mock.calls[0][0]).toBe(bridge.monoStream);
+		const recorderCtor = jest.mocked(global.MediaRecorder);
+		expect(at(at(recorderCtor.mock.calls, 0), 0)).toBe(bridge.monoStream);
 
 		await manager.stopRecording();
 		expect(bridge.release).toHaveBeenCalled();
@@ -246,11 +247,11 @@ describe('RecordingManager mono channel wiring', () => {
 		expect(at(createdBridges, 0).mode).toBe('mono-left');
 		// The source-mode track records its raw stream; the mono track
 		// records its bridged stream
-		const recorderCtor = global.MediaRecorder as unknown as jest.Mock;
-		expect(recorderCtor.mock.calls[0][0]).toBe(
+		const recorderCtor = jest.mocked(global.MediaRecorder);
+		expect(at(at(recorderCtor.mock.calls, 0), 0)).toBe(
 			at(createdBridges, 0).monoStream,
 		);
-		expect(recorderCtor.mock.calls[1][0]).toBe(streamB);
+		expect(at(at(recorderCtor.mock.calls, 1), 0)).toBe(streamB);
 
 		await manager.stopRecording();
 	});

@@ -27,6 +27,8 @@ import {
 	notifyTranscriptWritten,
 	writeTranscriptFile,
 } from 'src/transcription/transcriptOutput';
+import { partialApp } from '../helpers/obsidianMock';
+import { partial } from '../helpers/doubles';
 
 jest.mock('src/transcription/transcriptOutput', () => ({
 	writeTranscriptFile: jest.fn(),
@@ -39,11 +41,11 @@ const writeFileMock = writeTranscriptFile as jest.Mock;
 const insertMock = insertTranscriptIntoNote as jest.Mock;
 const notifyMock = notifyTranscriptWritten as jest.Mock;
 
-const audioFile = {
+const audioFile = partial<TFile>({
 	name: 'rec.webm',
 	extension: 'webm',
 	path: 'audio/rec.webm',
-} as unknown as TFile;
+});
 
 /** A whole-file provider returning the given diarized segments. */
 function makeProvider(segments: TranscriptSegment[]): TranscriptionProvider {
@@ -65,7 +67,7 @@ function makeProvider(segments: TranscriptSegment[]): TranscriptionProvider {
 
 /** Minimal App surface the service touches on the whole-file path. */
 function makeApp(): App {
-	return {
+	return partialApp({
 		vault: { readBinary: jest.fn(async () => new ArrayBuffer(4)) },
 		fileManager: {
 			generateMarkdownLink: jest.fn(
@@ -73,7 +75,7 @@ function makeApp(): App {
 					`[${label}](rec.webm#t=0)`,
 			),
 		},
-	} as unknown as App;
+	});
 }
 
 /** A sidecar stub whose getTranscript resolves to the given section. */

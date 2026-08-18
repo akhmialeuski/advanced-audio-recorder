@@ -17,6 +17,7 @@ import {
 	insertFileLinks,
 	insertProcessedAudioEmbed,
 } from 'src/recording/NoteInserter';
+import { partialApp } from '../helpers/obsidianMock';
 
 // DebugLogger mock
 function createMockDebugLogger(): { log: jest.Mock } {
@@ -31,12 +32,12 @@ function createMockApp(overrides?: {
 	const activeView = overrides?.activeView ?? null;
 	const leaves = overrides?.leaves ?? [];
 
-	return {
+	return partialApp({
 		workspace: {
 			getActiveViewOfType: jest.fn().mockReturnValue(activeView),
 			getLeavesOfType: jest.fn().mockReturnValue(leaves),
 		},
-	} as unknown as App;
+	});
 }
 
 /**
@@ -387,7 +388,7 @@ describe('NoteInserter', () => {
 					? null
 					: createFile(`notes/daily.${opts.noteExtension ?? 'md'}`);
 			let content = opts.content;
-			const app = {
+			const app = partialApp({
 				workspace: {
 					getActiveFile: (): TFile | null => note,
 				},
@@ -416,7 +417,7 @@ describe('NoteInserter', () => {
 					generateMarkdownLink: (file: TFile): string =>
 						`[[${file.path.split('/').pop() ?? file.path}]]`,
 				},
-			} as unknown as App;
+			});
 			return { app, getContent: (): string => content };
 		}
 

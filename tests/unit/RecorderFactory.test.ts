@@ -15,6 +15,7 @@ import {
 } from 'src/recording/RecorderFactory';
 import { CHUNK_TIMESLICE_MS } from 'src/constants';
 import { at } from '../helpers/assertions';
+import { partial } from '../helpers/doubles';
 
 /** A MediaRecorder double recording what the factory attached to it. */
 interface RecorderDouble {
@@ -46,7 +47,7 @@ beforeEach(() => {
 
 /** A stream stand-in; the factory only passes it through. */
 function stream(name: string): MediaStream {
-	return { id: name } as unknown as MediaStream;
+	return partial<MediaStream>({ id: name });
 }
 
 /** A blob of the given size, which is all the factory inspects. */

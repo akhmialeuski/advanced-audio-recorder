@@ -21,6 +21,7 @@ import {
 	discardSession,
 	recoverSession,
 } from 'src/recording/RecoveryService';
+import { partial } from '../helpers/doubles';
 
 jest.mock('src/recording/RecordingManager', () => ({
 	RecordingManager: jest.fn().mockImplementation(() => ({
@@ -61,12 +62,12 @@ jest.mock('src/recording/RecoveryService', () => ({
 	discardSession: jest.fn().mockResolvedValue([]),
 }));
 
-const MANIFEST = {
+const MANIFEST = partial<PluginManifest>({
 	id: 'advanced-audio-recorder',
 	name: 'Advanced Audio Recorder',
 	version: '2.2.2',
 	dir: 'config-dir/plugins/advanced-audio-recorder',
-} as unknown as PluginManifest;
+});
 
 /** A journal entry describing a session that never finished. */
 function interruptedSession(id: string): { id: string } {

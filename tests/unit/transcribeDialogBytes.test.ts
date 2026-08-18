@@ -48,6 +48,7 @@ jest.mock('mediabunny', () => ({
 
 import { transcribeFile } from 'src/transcription/api';
 import { waitFor } from '../helpers/async';
+import { internalsOf } from '../helpers/doubles';
 
 const transcribeMock = transcribeFile as jest.Mock;
 
@@ -108,7 +109,7 @@ beforeEach(() => {
 			usage: {},
 		},
 	});
-	(Notice as unknown as jest.Mock).mockClear();
+	jest.mocked(Notice).mockClear();
 	urlMock = installObjectUrlMock();
 	// The browser cannot read a length either, so the read goes all the way to
 	// the decode - the only reader that takes what it is given.
@@ -152,7 +153,7 @@ function createModal(readBinary?: () => Promise<ArrayBuffer>): {
 	const file = createFile('Audio/meeting.webm');
 	Object.defineProperty(file, 'name', { value: 'meeting.webm' });
 	const modal = new TranscriptionModal(app, file, () => settings, {});
-	return { modal, internals: modal as unknown as ModalInternals, bytes };
+	return { modal, internals: internalsOf<ModalInternals>(modal), bytes };
 }
 
 describe('the bytes the transcribe dialog shares with its run', () => {

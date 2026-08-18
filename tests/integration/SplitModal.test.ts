@@ -99,6 +99,8 @@ import {
 import { noticeInitialText, noticeInstances } from '../mocks/obsidian';
 import { el } from '../helpers/dom';
 import { MODAL } from '../helpers/selectors';
+import { partialApp } from '../helpers/obsidianMock';
+import { internalsOf } from '../helpers/doubles';
 
 /** WAV header size produced by createWavHeader. */
 const WAV_HEADER_SIZE = 44;
@@ -140,7 +142,7 @@ interface SplitModalInternals {
 function internals(modal: SplitModal): SplitModalInternals {
 	// Deliberately reaching past `private`: these tests assert the seeded
 	// state a user cannot observe until they act on the dialog.
-	return modal as unknown as SplitModalInternals;
+	return internalsOf<SplitModalInternals>(modal);
 }
 
 describe('SplitModal', () => {
@@ -210,7 +212,7 @@ describe('SplitModal', () => {
 		// activeWindow is an Obsidian global; map it to the jsdom window
 		(global as Record<string, unknown>).activeWindow = window;
 
-		mockApp = {
+		mockApp = partialApp({
 			vault: {
 				adapter: {
 					readBinary: jest.fn(),
@@ -227,7 +229,7 @@ describe('SplitModal', () => {
 			fileManager: {
 				trashFile: jest.fn().mockResolvedValue(undefined),
 			},
-		} as unknown as App;
+		});
 
 		mockFile = new TFile();
 		configureFile('recording.wav', 'wav');

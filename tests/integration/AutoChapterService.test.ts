@@ -14,10 +14,12 @@ import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
 import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
 import { LLM_PROVIDER_IDS } from 'src/constants';
+import { partialApp } from '../helpers/obsidianMock';
+import { partial } from '../helpers/doubles';
 
 const tf = (path: string): TFile => {
 	const name = path.split('/').pop() ?? path;
-	return { path, name } as unknown as TFile;
+	return partial<TFile>({ path, name });
 };
 
 const TRANSCRIPT: Transcript = {
@@ -34,7 +36,7 @@ function makeStore(initial: PlayerMarker[] = []): {
 	saved: () => PlayerMarker[] | null;
 } {
 	let written: PlayerMarker[] | null = null;
-	const store = {
+	const store = partial<RecordingSidecarStore>({
 		getMarkers: jest.fn(async () => initial),
 		getTranscript: jest.fn(async () => ({
 			speakers: [],
@@ -53,7 +55,7 @@ function makeStore(initial: PlayerMarker[] = []): {
 				return written;
 			},
 		),
-	} as unknown as RecordingSidecarStore;
+	});
 	return { store, saved: () => written };
 }
 
@@ -80,20 +82,20 @@ function makeService(options: {
 }): AutoChapterService {
 	const app =
 		options.app ??
-		({
+		partialApp({
 			vault: { getFiles: () => [] },
 			metadataCache: { resolvedLinks: {} },
-		} as unknown as App);
+		});
 	return new AutoChapterService(
 		app,
 		() =>
-			({
+			partial<AudioRecorderSettings>({
 				llmMaxTokens: 4096,
 				transcriptionLanguage: 'auto',
 				transcriptionChapterPromptProfiles: [],
 				transcriptionChapterPromptProfileId: '',
 				...options.settings,
-			}) as unknown as AudioRecorderSettings,
+			}),
 		options.store,
 		options.onWritten,
 		{
@@ -122,13 +124,11 @@ const TRANSCRIPT_NO_LANGUAGE: Transcript = {
 };
 
 beforeEach(() => {
-	(Notice as unknown as jest.Mock).mockClear();
+	jest.mocked(Notice).mockClear();
 });
 
 function noticeTexts(): string[] {
-	return (Notice as unknown as jest.Mock).mock.calls.map(
-		(call) => call[0] as string,
-	);
+	return jest.mocked(Notice).mock.calls.map((call) => call[0] as string);
 }
 
 describe('AutoChapterService.generate', () => {

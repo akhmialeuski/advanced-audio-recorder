@@ -28,14 +28,16 @@ import {
 	timeText,
 	tick,
 } from '../helpers/playbackHarness';
+import { partialApp } from '../helpers/obsidianMock';
+import { partial } from '../helpers/doubles';
 
-const app = {
+const app = partialApp({
 	vault: {
 		getResourcePath: () => 'app://media',
 		readBinary: () => Promise.resolve(new ArrayBuffer(0)),
 	},
 	fileManager: { generateMarkdownLink: () => '[[rec.mp4]]' },
-} as unknown as App;
+});
 
 const decoder: AudioDecoder = {
 	decode: () => Promise.reject(new Error('no decode in tests')),
@@ -52,11 +54,11 @@ const WITH_MARKERS: ResolvedPlayerSettings = {
 };
 
 function makeFile(): TFile {
-	return {
+	return partial<TFile>({
 		path: 'rec.mp4',
 		extension: 'mp4',
 		stat: { mtime: 1, size: 1000 },
-	} as unknown as TFile;
+	});
 }
 
 function makeContainer(): HTMLElement {

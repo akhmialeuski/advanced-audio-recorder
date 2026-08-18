@@ -12,6 +12,7 @@
  */
 
 import type { App, Menu, Plugin, Vault, Workspace } from 'obsidian';
+import { partial } from './doubles';
 import type {
 	App as MockApp,
 	Menu as MockMenu,
@@ -64,4 +65,24 @@ export function asMockApp(app: App): MockApp {
  */
 export function asMockPlugin(plugin: Plugin): MockPlugin {
 	return plugin as unknown as MockPlugin;
+}
+
+/**
+ * A partial stand-in typed as the App the code under test expects.
+ *
+ * Sugar over {@link partial} for the type nearly every suite needs one of.
+ * @param parts - The slice of App the code under test reads
+ * @returns The same object, typed as an App
+ */
+export function partialApp(parts: object): App {
+	return partial<App>(parts);
+}
+
+/**
+ * A partial stand-in typed as the Plugin the code under test expects.
+ * @param parts - The slice of Plugin the code under test reads
+ * @returns The same object, typed as a Plugin
+ */
+export function partialPlugin(parts: object): Plugin {
+	return partial<Plugin>(parts);
 }

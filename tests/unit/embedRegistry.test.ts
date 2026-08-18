@@ -4,7 +4,6 @@
  * and restoration.
  */
 
-import type { App } from 'obsidian';
 import {
 	getEmbedRegistry,
 	EmbedRegistryOverride,
@@ -12,6 +11,7 @@ import {
 	type EmbedCreator,
 } from 'src/obsidian/embedRegistry';
 import type { EmbedComponent } from 'src/obsidian/embedRegistry';
+import { partialApp } from '../helpers/obsidianMock';
 
 /** Builds a uniquely identifiable creator stub. */
 function creator(tag: string): EmbedCreator {
@@ -28,12 +28,12 @@ function makeRegistry(
 describe('getEmbedRegistry', () => {
 	it('returns the registry when present', () => {
 		const reg = makeRegistry();
-		const app = { embedRegistry: reg } as unknown as App;
+		const app = partialApp({ embedRegistry: reg });
 		expect(getEmbedRegistry(app)).toBe(reg);
 	});
 
 	it('returns null when absent', () => {
-		expect(getEmbedRegistry({} as unknown as App)).toBeNull();
+		expect(getEmbedRegistry(partialApp({}))).toBeNull();
 	});
 });
 

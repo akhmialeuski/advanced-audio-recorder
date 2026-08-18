@@ -59,6 +59,7 @@ import {
 import { setPlatform } from '../helpers/platform';
 import { maybeEl } from '../helpers/dom';
 import { SETTING } from '../helpers/selectors';
+import { partial } from '../helpers/doubles';
 
 describe('settings definitions', () => {
 	let settings: AudioRecorderSettings;
@@ -785,8 +786,9 @@ describe('settings definitions', () => {
 			name: string,
 		): GroupDefinition =>
 			pageOf(
-				listIn(pageOf(build(), heading))
-					.items as unknown as SettingDefinitionItem[],
+				partial<SettingDefinitionItem[]>(
+					listIn(pageOf(build(), heading)).items,
+				),
 				name,
 			);
 

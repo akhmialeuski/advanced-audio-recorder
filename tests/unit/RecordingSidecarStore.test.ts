@@ -13,6 +13,7 @@ import { at } from '../helpers/assertions';
 import type { PlayerMarker } from 'src/markers/markerModel';
 import { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { NoteOutput } from 'src/sidecar/recordingSidecarModel';
+import { partialApp } from '../helpers/obsidianMock';
 
 /**
  * Builds a fake App whose adapter is backed by an in-memory file map,
@@ -42,12 +43,12 @@ function makeApp(): { app: App; files: Map<string, string> } {
 			return Promise.resolve();
 		},
 	};
-	const app = {
+	const app = partialApp({
 		vault: {
 			adapter,
 			getFiles: () => [...files.keys()].map((path) => ({ path })),
 		},
-	} as unknown as App;
+	});
 	return { app, files };
 }
 
@@ -896,7 +897,7 @@ describe('RecordingSidecarStore', () => {
 		});
 
 		it('does not throw when the adapter write fails', async () => {
-			const app = {
+			const app = partialApp({
 				vault: {
 					adapter: {
 						exists: (): Promise<boolean> => Promise.resolve(false),
@@ -907,7 +908,7 @@ describe('RecordingSidecarStore', () => {
 						rename: (): Promise<void> => Promise.resolve(),
 					},
 				},
-			} as unknown as App;
+			});
 			const warn = jest
 				.spyOn(console, 'warn')
 				.mockImplementation(() => undefined);

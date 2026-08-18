@@ -10,6 +10,7 @@ import {
 	assembleWavFromPcmSegments,
 	assembleWavFromPcmSegmentFiles,
 } from 'src/audio/WavEncoder';
+import { partialApp } from '../helpers/obsidianMock';
 
 describe('WavEncoder', () => {
 	describe('getWavHeaderInfo', () => {
@@ -224,7 +225,7 @@ describe('assembleWavFromPcmSegmentFiles', () => {
 				return Promise.resolve(data ? { size: data.byteLength } : null);
 			});
 		}
-		return { vault: { adapter } } as unknown as App;
+		return partialApp({ vault: { adapter } });
 	};
 
 	it('streams segments into one preallocated buffer in capture order', async () => {

@@ -5,6 +5,7 @@
  */
 
 import { MonoCaptureBridge } from 'src/recording/MonoCaptureBridge';
+import { partial } from '../helpers/doubles';
 
 interface NodeDouble {
 	connect: jest.Mock;
@@ -34,7 +35,7 @@ let mockAudioContext: {
 };
 
 function createMockStream(channelCount?: number): MediaStream {
-	return {
+	return partial<MediaStream>({
 		getAudioTracks: () => [
 			{
 				stop: jest.fn(),
@@ -42,7 +43,7 @@ function createMockStream(channelCount?: number): MediaStream {
 			},
 		],
 		getTracks: () => [{ stop: jest.fn() }],
-	} as unknown as MediaStream;
+	});
 }
 
 beforeEach(() => {
@@ -62,9 +63,9 @@ beforeEach(() => {
 		channelCount: 2,
 		channelCountMode: 'explicit',
 		channelInterpretation: 'speakers',
-		stream: {
+		stream: partial<MediaStream>({
 			getTracks: () => [{ stop: destinationTrackStop }],
-		} as unknown as MediaStream,
+		}),
 		disconnect: jest.fn(),
 	};
 	mockAudioContext = {

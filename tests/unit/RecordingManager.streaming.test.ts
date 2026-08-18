@@ -31,6 +31,7 @@ import {
 } from '../helpers/platform';
 import { flushMicrotasks } from '../helpers/async';
 import { Notice } from 'obsidian';
+import { internalsOf } from '../helpers/doubles';
 
 // Mock AudioStreamHandler
 jest.mock('src/recording/AudioStreamHandler', () =>
@@ -519,7 +520,7 @@ describe('RecordingManager', () => {
 			chunkTargets: TargetInternals[];
 			rotationPromise: Promise<void> | null;
 		} {
-			const internals = instance as unknown as ManagerInternals;
+			const internals = internalsOf<ManagerInternals>(instance);
 			return {
 				chunkTargets: internals.chunkTargets,
 				// Rotation state lives on the PartRotationController

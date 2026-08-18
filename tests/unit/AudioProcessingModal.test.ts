@@ -13,6 +13,7 @@ import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { createMockApp } from '../helpers/createApp';
 import { tick } from '../helpers/async';
+import { partial } from '../helpers/doubles';
 
 jest.mock('src/cleanup/AudioProcessingService');
 
@@ -99,8 +100,8 @@ async function settle(): Promise<void> {
 describe('AudioProcessingModal', () => {
 	beforeEach(() => {
 		processMock.mockReset();
-		(AudioProcessingService as unknown as jest.Mock).mockImplementation(
-			() => ({ process: processMock }),
+		jest.mocked(AudioProcessingService).mockImplementation(() =>
+			partial<AudioProcessingService>({ process: processMock }),
 		);
 	});
 

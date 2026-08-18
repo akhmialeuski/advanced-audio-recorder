@@ -24,6 +24,7 @@ import {
 } from '../helpers/settingRows';
 import { setPlatform, useDesktopPlatform } from '../helpers/platform';
 import { tick } from '../helpers/async';
+import { internalsOf } from '../helpers/doubles';
 
 // The run itself has its own suites (runTranscription, the providers); what
 // this dialog owes is what it does with the outcome, so the run is recorded
@@ -70,7 +71,7 @@ describe('TranscriptionModal minimize behavior', () => {
 			clear: jest.fn(),
 		};
 		const modal = createModal(callbacks);
-		const internals = modal as unknown as TranscriptionModalInternals;
+		const internals = internalsOf<TranscriptionModalInternals>(modal);
 
 		modal.onOpen();
 		internals.setRunning(true);
@@ -97,7 +98,7 @@ describe('TranscriptionModal minimize behavior', () => {
 			clear: jest.fn(),
 		};
 		const modal = createModal(callbacks);
-		const internals = modal as unknown as TranscriptionModalInternals;
+		const internals = internalsOf<TranscriptionModalInternals>(modal);
 
 		modal.onOpen();
 		internals.setRunning(true);
@@ -122,7 +123,7 @@ describe('TranscriptionModal minimize behavior', () => {
 			clear: jest.fn(),
 		};
 		const modal = createModal(callbacks);
-		const internals = modal as unknown as TranscriptionModalInternals;
+		const internals = internalsOf<TranscriptionModalInternals>(modal);
 
 		modal.onOpen();
 		internals.setRunning(true);
@@ -222,7 +223,7 @@ describe('TranscriptionModal platform gating', () => {
 		const notice = jest.mocked(Notice);
 		notice.mockClear();
 		const modal = createLocalWhisperModal();
-		const internals = modal as unknown as TranscriptionModalInternals;
+		const internals = internalsOf<TranscriptionModalInternals>(modal);
 		modal.onOpen();
 
 		await internals.startRun();
@@ -916,7 +917,7 @@ describe('TranscriptionModal running the job', () => {
 		modal.onOpen();
 		return {
 			modal,
-			internals: modal as unknown as TranscriptionModalInternals,
+			internals: internalsOf<TranscriptionModalInternals>(modal),
 			addCost,
 			generateChapters,
 		};
@@ -1088,7 +1089,7 @@ describe('TranscriptionModal buttons', () => {
 		modal.onOpen();
 		return {
 			modal,
-			internals: modal as unknown as TranscriptionModalInternals,
+			internals: internalsOf<TranscriptionModalInternals>(modal),
 		};
 	}
 

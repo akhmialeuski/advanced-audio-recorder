@@ -9,7 +9,7 @@
  * @jest-environment jsdom
  */
 
-import type { App, ButtonComponent, TFile } from 'obsidian';
+import type { ButtonComponent, TFile } from 'obsidian';
 import { Notice } from 'obsidian';
 import { SpeakerRenameModal } from 'src/ui/SpeakerRenameModal';
 import type { SpeakerRenameSidecarAccess } from 'src/ui/SpeakerRenameModal';
@@ -25,6 +25,8 @@ import {
 } from 'src/speakers/applySpeakerRenames';
 import { SpeakerPreviewPlayer } from 'src/player/SpeakerPreviewPlayer';
 import { noticeMessages } from '../mocks/obsidian';
+import { partialApp } from '../helpers/obsidianMock';
+import { internalsOf, partial } from '../helpers/doubles';
 
 jest.mock('src/speakers/applySpeakerRenames', () => ({
 	applySpeakerRenamesWithSidecar: jest.fn(),
@@ -49,14 +51,14 @@ interface ModalInternals {
 	newProfileInput: HTMLInputElement | null;
 }
 
-const audioFile = {
+const audioFile = partial<TFile>({
 	name: 'rec.wav',
 	path: 'audio/rec.wav',
-} as unknown as TFile;
+});
 
-const app = {
+const app = partialApp({
 	vault: { getResourcePath: () => 'app://vault/audio/rec.wav' },
-} as unknown as App;
+});
 
 /** A sidecar stub whose getTranscript resolves to the given section. */
 function makeSidecar(
@@ -94,7 +96,7 @@ function makeModal(
 	});
 	return {
 		modal,
-		internals: modal as unknown as ModalInternals,
+		internals: internalsOf<ModalInternals>(modal),
 		saveSettings,
 	};
 }

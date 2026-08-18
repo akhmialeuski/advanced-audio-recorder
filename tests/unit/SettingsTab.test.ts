@@ -39,6 +39,7 @@ import {
 	settingNames,
 	settingRow,
 } from '../helpers/settingRows';
+import { partial } from '../helpers/doubles';
 
 // Mock AudioEncoder to avoid loading mediabunny in jsdom. The async
 // probe defaults to "no offline encoder works"; individual tests
@@ -182,14 +183,14 @@ describe('AudioRecorderSettingTab', () => {
 
 		mockSettings = { ...DEFAULT_SETTINGS };
 		saveSettingsMock = jest.fn().mockResolvedValue(undefined);
-		mockPlugin = {
+		mockPlugin = partial<AudioRecorderPluginInterface>({
 			settings: mockSettings,
 			saveSettings: saveSettingsMock,
 			manifest: {
 				id: 'advanced-audio-recorder',
 				name: PLUGIN_MANIFEST_NAME,
 			},
-		} as unknown as AudioRecorderPluginInterface;
+		});
 		tab = new AudioRecorderSettingTab(new App(), mockPlugin);
 	});
 
@@ -937,9 +938,9 @@ describe('AudioRecorderSettingTab', () => {
 		 * @param recorder - The recorder every construction returns
 		 */
 		const installRecorder = (recorder: RecorderMock): void => {
-			const constructor = jest.fn(
-				() => recorder,
-			) as unknown as jest.Mock & { isTypeSupported: jest.Mock };
+			const constructor = partial<
+				jest.Mock & { isTypeSupported: jest.Mock }
+			>(jest.fn(() => recorder));
 			constructor.isTypeSupported = jest.fn().mockReturnValue(true);
 			(global as Record<string, unknown>).MediaRecorder = constructor;
 		};
@@ -1661,14 +1662,17 @@ describe('AudioRecorderSettingTab profile catalogues', () => {
 		];
 		mockSettings.transcriptionDictionaryProfileId = 'a';
 		saveSettings = jest.fn().mockResolvedValue(undefined);
-		tab = new AudioRecorderSettingTab(new App(), {
-			settings: mockSettings,
-			saveSettings,
-			manifest: {
-				id: 'advanced-audio-recorder',
-				name: PLUGIN_MANIFEST_NAME,
-			},
-		} as unknown as AudioRecorderPluginInterface);
+		tab = new AudioRecorderSettingTab(
+			new App(),
+			partial<AudioRecorderPluginInterface>({
+				settings: mockSettings,
+				saveSettings,
+				manifest: {
+					id: 'advanced-audio-recorder',
+					name: PLUGIN_MANIFEST_NAME,
+				},
+			}),
+		);
 	});
 
 	it('offers the current name when renaming, so it can be edited', () => {
@@ -1774,14 +1778,17 @@ describe('AudioRecorderSettingTab describing the recording formats', () => {
 
 	beforeEach(() => {
 		mockSettings = { ...DEFAULT_SETTINGS };
-		tab = new AudioRecorderSettingTab(new App(), {
-			settings: mockSettings,
-			saveSettings: jest.fn().mockResolvedValue(undefined),
-			manifest: {
-				id: 'advanced-audio-recorder',
-				name: PLUGIN_MANIFEST_NAME,
-			},
-		} as unknown as AudioRecorderPluginInterface);
+		tab = new AudioRecorderSettingTab(
+			new App(),
+			partial<AudioRecorderPluginInterface>({
+				settings: mockSettings,
+				saveSettings: jest.fn().mockResolvedValue(undefined),
+				manifest: {
+					id: 'advanced-audio-recorder',
+					name: PLUGIN_MANIFEST_NAME,
+				},
+			}),
+		);
 		(global as Record<string, unknown>).MediaRecorder = {
 			isTypeSupported: jest.fn(() => false),
 		};
@@ -1823,14 +1830,17 @@ describe('AudioRecorderSettingTab offering the vault folders', () => {
 		// The recording-folder field autocompletes from this; a flat listing
 		// of the root would leave every nested folder untypeable by suggestion.
 		const app = new App();
-		const tab = new AudioRecorderSettingTab(app, {
-			settings: { ...DEFAULT_SETTINGS },
-			saveSettings: jest.fn(),
-			manifest: {
-				id: 'advanced-audio-recorder',
-				name: PLUGIN_MANIFEST_NAME,
-			},
-		} as unknown as AudioRecorderPluginInterface);
+		const tab = new AudioRecorderSettingTab(
+			app,
+			partial<AudioRecorderPluginInterface>({
+				settings: { ...DEFAULT_SETTINGS },
+				saveSettings: jest.fn(),
+				manifest: {
+					id: 'advanced-audio-recorder',
+					name: PLUGIN_MANIFEST_NAME,
+				},
+			}),
+		);
 		asMockVault(app.vault).seed([
 			{ path: 'Recordings/take.webm' },
 			{ path: 'Archive/2024/old.webm' },
@@ -1881,14 +1891,17 @@ describe('AudioRecorderSettingTab probing the format list', () => {
 		mockSettings = { ...DEFAULT_SETTINGS };
 		tab = withoutDeclarativeSettings(
 			() =>
-				new AudioRecorderSettingTab(new App(), {
-					settings: mockSettings,
-					saveSettings: jest.fn().mockResolvedValue(undefined),
-					manifest: {
-						id: 'advanced-audio-recorder',
-						name: PLUGIN_MANIFEST_NAME,
-					},
-				} as unknown as AudioRecorderPluginInterface),
+				new AudioRecorderSettingTab(
+					new App(),
+					partial<AudioRecorderPluginInterface>({
+						settings: mockSettings,
+						saveSettings: jest.fn().mockResolvedValue(undefined),
+						manifest: {
+							id: 'advanced-audio-recorder',
+							name: PLUGIN_MANIFEST_NAME,
+						},
+					}),
+				),
 		);
 	});
 

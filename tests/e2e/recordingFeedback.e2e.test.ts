@@ -25,6 +25,7 @@ import { asMockPlugin } from '../helpers/obsidianMock';
 import { setPlatform, useDesktopPlatform } from '../helpers/platform';
 import { BANNER, PLAYER, STATUS } from '../helpers/selectors';
 import { addObsidianDomExtensions } from '../mocks/domExtensions';
+import { partial } from '../helpers/doubles';
 
 jest.mock('src/recording/RecordingManager', () => ({
 	RecordingManager: jest.fn().mockImplementation(() => ({
@@ -67,12 +68,12 @@ jest.mock('src/recording/RecoveryService', () => ({
 	discardSession: jest.fn().mockResolvedValue([]),
 }));
 
-const MANIFEST = {
+const MANIFEST = partial<PluginManifest>({
 	id: 'advanced-audio-recorder',
 	name: 'Advanced Audio Recorder',
 	version: '2.2.2',
 	dir: 'config-dir/plugins/advanced-audio-recorder',
-} as unknown as PluginManifest;
+});
 
 /** The recording manager the plugin built, whose methods are all spies. */
 interface RecorderDouble {

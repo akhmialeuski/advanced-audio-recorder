@@ -10,6 +10,8 @@ import {
 } from 'src/recording/silentChannelDetector';
 import type { App, TFile } from 'obsidian';
 import { createMockApp } from '../helpers/createApp';
+import { partialApp } from '../helpers/obsidianMock';
+import { partial } from '../helpers/doubles';
 
 // Only the probe is doubled: the ceiling predicate beside it is a pure rule
 // both this detector and the cleanup guard read, and a blank stub for it would
@@ -140,7 +142,7 @@ describe('detectSilentChannel', () => {
 		}).app;
 	}
 
-	const file = { path: 'rec.wav' } as unknown as TFile;
+	const file = partial<TFile>({ path: 'rec.wav' });
 
 	beforeEach(() => {
 		jest.mocked(probeAudioMetadata).mockReset().mockResolvedValue({
@@ -255,11 +257,11 @@ describe('detectSilentChannel', () => {
 
 	it('returns null when the file cannot be read', async () => {
 		const warn = jest.spyOn(console, 'warn').mockImplementation();
-		const app = {
+		const app = partialApp({
 			vault: {
 				readBinary: jest.fn().mockRejectedValue(new Error('missing')),
 			},
-		} as unknown as App;
+		});
 
 		expect(await detectSilentChannel(app, file)).toBeNull();
 		warn.mockRestore();

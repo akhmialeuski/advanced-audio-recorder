@@ -16,6 +16,7 @@ import {
 import type { App } from 'obsidian';
 import { at, defined } from '../helpers/assertions';
 import { Notice } from 'obsidian';
+import { partialApp } from '../helpers/obsidianMock';
 
 jest.mock('src/audio/WavEncoder', () => ({
 	assembleWavFromPcmSegmentFiles: jest
@@ -117,7 +118,7 @@ describe('RecordingFinalizer', () => {
 	beforeEach(() => {
 		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
 
-		mockApp = {
+		mockApp = partialApp({
 			vault: {
 				adapter: {
 					exists: jest.fn().mockResolvedValue(false),
@@ -133,7 +134,7 @@ describe('RecordingFinalizer', () => {
 			workspace: {
 				getActiveFile: jest.fn().mockReturnValue(null),
 			},
-		} as unknown as App;
+		});
 		mockSettings = { ...DEFAULT_SETTINGS };
 		onProgress = jest.fn();
 		buildFinalizer(createSession());

@@ -8,7 +8,7 @@
 
 import { TFile } from 'obsidian';
 import { at } from '../helpers/assertions';
-import type { App, Plugin } from 'obsidian';
+import type { Plugin } from 'obsidian';
 import {
 	registerFileActionCommands,
 	registerRecordingActionCommands,
@@ -19,6 +19,8 @@ import { COMMAND_IDS } from 'src/constants';
 import { MARKER_KIND } from 'src/markers/markerModel';
 import type { ActionServices, FileAction } from 'src/actions/PluginAction';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
+import { partialApp, partialPlugin } from '../helpers/obsidianMock';
+import { partial } from '../helpers/doubles';
 
 jest.mock('src/ui/AudioFileInfoModal', () => ({
 	AudioFileInfoModal: jest
@@ -62,36 +64,36 @@ function audioFile(extension = 'mp3'): TFile {
 
 function makeServices(activeFile: TFile | null): ActionServices {
 	return {
-		app: {
+		app: partialApp({
 			workspace: { getActiveFile: () => activeFile },
 			fileManager: { trashFile: jest.fn() },
-		} as unknown as App,
+		}),
 		getSettings: () =>
-			({
+			partial<AudioRecorderSettings>({
 				transcriptionEnabled: true,
 				transcriptionSpeakerRenameEnabled: true,
 				transcriptionAutoChaptersEnabled: true,
-			}) as unknown as AudioRecorderSettings,
+			}),
 		saveSettings: () => Promise.resolve(),
 		createTranscriptionModalOptions: () => ({}),
 		primeForEnhancement: () => {},
 		getWorkerClient: () => null,
-		autoChapters: {
+		autoChapters: partial<ActionServices>({
 			generate: jest.fn(),
-		} as unknown as ActionServices['autoChapters'],
-		recordingSidecar: {
+		})['autoChapters'],
+		recordingSidecar: partial<ActionServices>({
 			getTranscript: jest.fn().mockResolvedValue(null),
 			updateTranscript: jest.fn().mockResolvedValue(undefined),
-		} as unknown as ActionServices['recordingSidecar'],
+		})['recordingSidecar'],
 	};
 }
 
 function makePlugin(commands: RegisteredCommand[]): Plugin {
-	return {
+	return partialPlugin({
 		addCommand: jest.fn((command: RegisteredCommand) => {
 			commands.push(command);
 		}),
-	} as unknown as Plugin;
+	});
 }
 
 describe('registerFileActionCommands', () => {

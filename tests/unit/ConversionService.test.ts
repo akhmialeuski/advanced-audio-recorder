@@ -9,6 +9,7 @@ import { ConversionService } from 'src/recording/ConversionService';
 import type { ConversionRequest } from 'src/recording/ConversionService';
 import { App, TFile } from 'obsidian';
 import { noticeMessages } from '../mocks/obsidian';
+import { partialApp } from '../helpers/obsidianMock';
 
 jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest
@@ -67,7 +68,7 @@ describe('ConversionService', () => {
 	const getNotices = (): string[] => noticeMessages();
 
 	beforeEach(() => {
-		mockApp = {
+		mockApp = partialApp({
 			vault: {
 				adapter: {
 					exists: jest.fn().mockResolvedValue(false),
@@ -84,7 +85,7 @@ describe('ConversionService', () => {
 			fileManager: {
 				trashFile: jest.fn().mockResolvedValue(undefined),
 			},
-		} as unknown as App;
+		});
 		service = new ConversionService(mockApp);
 	});
 

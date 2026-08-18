@@ -26,6 +26,7 @@ import { ContextMenu } from 'src/ui/ContextMenu';
 import { EnhancedPlayerRegistrar } from 'src/player/EnhancedPlayerRegistrar';
 import { RecordingManager } from 'src/recording/RecordingManager';
 import { at, defined } from '../helpers/assertions';
+import { partial } from '../helpers/doubles';
 
 jest.mock('src/recording/RecordingManager', () => ({
 	RecordingManager: jest.fn().mockImplementation(() => ({
@@ -68,12 +69,12 @@ jest.mock('src/recording/RecoveryService', () => ({
 	discardSession: jest.fn().mockResolvedValue([]),
 }));
 
-const MANIFEST = {
+const MANIFEST = partial<PluginManifest>({
 	id: 'advanced-audio-recorder',
 	name: 'Advanced Audio Recorder',
 	version: '2.2.2',
 	dir: 'config-dir/plugins/advanced-audio-recorder',
-} as unknown as PluginManifest;
+});
 
 /** Loads the plugin the way Obsidian does and hands it back. */
 async function loadPlugin(): Promise<AudioRecorderPlugin> {

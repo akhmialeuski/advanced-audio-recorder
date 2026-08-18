@@ -22,6 +22,7 @@ import { asMockVault } from '../helpers/obsidianMock';
 import { noticeMessages } from '../mocks/obsidian';
 import { TranscriptionModal } from 'src/ui/TranscriptionModal';
 import { RecordingManager } from 'src/recording/RecordingManager';
+import { partial } from '../helpers/doubles';
 
 jest.mock('src/recording/RecordingManager', () => ({
 	RecordingManager: jest.fn().mockImplementation(() => ({
@@ -67,12 +68,12 @@ jest.mock('src/recording/silentChannelDetector', () => ({
 	detectSilentChannel: jest.fn().mockResolvedValue(null),
 }));
 
-const MANIFEST = {
+const MANIFEST = partial<PluginManifest>({
 	id: 'advanced-audio-recorder',
 	name: 'Advanced Audio Recorder',
 	version: '2.2.2',
 	dir: 'config-dir/plugins/advanced-audio-recorder',
-} as unknown as PluginManifest;
+});
 
 /** Settings that would auto-transcribe, so a case states only what it changes. */
 function transcribingSettings(

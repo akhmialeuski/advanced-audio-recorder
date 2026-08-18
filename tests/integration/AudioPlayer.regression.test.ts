@@ -31,6 +31,8 @@ import type { PlayerMarker } from 'src/markers/markerModel';
 import type { ResolvedPlayerSettings } from 'src/player/playerSettings';
 import type { TFile } from 'obsidian';
 import { tick } from '../helpers/async';
+import { partialApp } from '../helpers/obsidianMock';
+import { partial } from '../helpers/doubles';
 
 type Listener = () => void;
 
@@ -98,7 +100,7 @@ function makeFakeAudio(): FakeAudio {
 function makeRegistry(...audios: FakeAudio[]): AudioPlayerRegistry {
 	// A partial double: these suites drive only the acquire/release surface,
 	// so the cast at the boundary is the honest statement of that.
-	return makePartialRegistry(...audios) as unknown as AudioPlayerRegistry;
+	return partial<AudioPlayerRegistry>(makePartialRegistry(...audios));
 }
 
 /** The methods {@link makeRegistry} actually implements. */
@@ -110,14 +112,14 @@ function makePartialRegistry(...audios: FakeAudio[]): object {
 			const existing = entries.get(key);
 			if (existing) {
 				return {
-					audio: existing.audio as unknown as HTMLAudioElement,
+					audio: partial<HTMLAudioElement>(existing.audio),
 					isNew: false,
 				};
 			}
 			const audio = audios[nextAudio] ?? makeFakeAudio();
 			nextAudio += 1;
 			entries.set(key, { audio, engaged: false });
-			return { audio: audio as unknown as HTMLAudioElement, isNew: true };
+			return { audio: partial<HTMLAudioElement>(audio), isNew: true };
 		}),
 		releaseAudio: jest.fn(),
 		register: jest.fn(),
@@ -141,7 +143,7 @@ function makePartialRegistry(...audios: FakeAudio[]): object {
 	return registry;
 }
 
-const app = {
+const app = partialApp({
 	vault: {
 		getResourcePath: () => 'app://media',
 		readBinary: () => Promise.resolve(new ArrayBuffer(0)),
@@ -149,7 +151,7 @@ const app = {
 	fileManager: {
 		generateMarkdownLink: () => '[[rec.webm]]',
 	},
-} as unknown as App;
+});
 
 // Decoding is irrelevant to these structural assertions; rejecting keeps the
 // progressive peak path (and its timers) out of the tests.
@@ -157,20 +159,20 @@ const decoder: AudioDecoder = {
 	decode: () => Promise.reject(new Error('no decode in tests')),
 };
 
-const markerStore = {
+const markerStore = partial<RecordingSidecarStore>({
 	getMarkers: () => Promise.resolve([]),
 	updateMarkers: (
 		_path: string,
 		change: (existing: readonly PlayerMarker[]) => readonly PlayerMarker[],
 	) => Promise.resolve([...change([])]),
-} as unknown as RecordingSidecarStore;
+});
 
 function makeFile(size = 1000, extension = 'webm'): TFile {
-	return {
+	return partial<TFile>({
 		path: `rec.${extension}`,
 		extension,
 		stat: { mtime: 1, size },
-	} as unknown as TFile;
+	});
 }
 
 /** A connected, Obsidian-extended container element. */

@@ -10,7 +10,7 @@
  * @module tests/unit/llmJobEngines.test
  */
 
-import type { App, TFile } from 'obsidian';
+import type { TFile } from 'obsidian';
 import { AutoChapterService } from 'src/chapters/AutoChapterService';
 import { createLlmProvider } from 'src/transcription/factories';
 import { LLM_JOBS, estimateStepCost, jobVendorId } from 'src/transcription/api';
@@ -24,6 +24,8 @@ import type {
 import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
 import { at } from '../helpers/assertions';
+import { partialApp } from '../helpers/obsidianMock';
+import { partial } from '../helpers/doubles';
 
 /** A configuration where every job names a different engine. */
 const settingsWithDistinctEngines = (): AudioRecorderSettings =>
@@ -129,15 +131,15 @@ describe('AutoChapterService engine choice', () => {
 				return Promise.resolve('0:00 Intro\n1:00 Topic');
 			},
 		};
-		const store = {
+		const store = partial<RecordingSidecarStore>({
 			read: jest.fn().mockResolvedValue({ markers: [] }),
 			write: jest.fn().mockResolvedValue(undefined),
-		} as unknown as RecordingSidecarStore;
+		});
 		const service = new AutoChapterService(
-			{
+			partialApp({
 				vault: { getFiles: () => [] },
 				metadataCache: { resolvedLinks: {} },
-			} as unknown as App,
+			}),
 			() => settings,
 			store,
 			undefined,

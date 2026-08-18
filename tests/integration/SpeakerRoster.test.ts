@@ -21,6 +21,8 @@ import { TranscriptionService } from 'src/transcription/TranscriptionService';
 import type { TranscriptionProvider } from 'src/transcription/providers/TranscriptionProvider';
 import type { TranscriptSegment } from 'src/transcription/TranscriptTypes';
 import { SpeakerRenameModal } from 'src/ui/SpeakerRenameModal';
+import { partialApp } from '../helpers/obsidianMock';
+import { internalsOf, partial } from '../helpers/doubles';
 
 /** Internal surface the test drives, mirroring the dialog's unit suite. */
 interface ModalInternals {
@@ -31,11 +33,11 @@ interface ModalInternals {
 	previewButtons: Map<string, { buttonEl: HTMLButtonElement }>;
 }
 
-const audioFile = {
+const audioFile = partial<TFile>({
 	name: 'standup.webm',
 	extension: 'webm',
 	path: 'audio/standup.webm',
-} as unknown as TFile;
+});
 
 /** The sidecar path the store derives for the recording under test. */
 const SIDECAR_PATH = 'audio/standup.webm.markers.json';
@@ -68,7 +70,7 @@ function makeApp(): { app: App; files: Map<string, string> } {
 		},
 		rename: (): Promise<void> => Promise.resolve(),
 	};
-	const app = {
+	const app = partialApp({
 		vault: {
 			adapter,
 			getFiles: () => [...files.keys()].map((path) => ({ path })),
@@ -87,7 +89,7 @@ function makeApp(): { app: App; files: Map<string, string> } {
 			) => `[${label}](standup.webm)`,
 		},
 		metadataCache: { resolvedLinks: {} },
-	} as unknown as App;
+	});
 	return { app, files };
 }
 
@@ -209,7 +211,7 @@ describe('speaker roster round trip', () => {
 			saveSettings: () => Promise.resolve(),
 			sidecar: reader,
 		});
-		const internals = modal as unknown as ModalInternals;
+		const internals = internalsOf<ModalInternals>(modal);
 		modal.open();
 		await internals.render();
 
@@ -238,7 +240,7 @@ describe('speaker roster round trip', () => {
 			saveSettings: () => Promise.resolve(),
 			sidecar: store,
 		});
-		const internals = modal as unknown as ModalInternals;
+		const internals = internalsOf<ModalInternals>(modal);
 		modal.open();
 		await internals.render();
 
@@ -278,7 +280,7 @@ describe('speaker roster round trip', () => {
 			saveSettings: () => Promise.resolve(),
 			sidecar: store,
 		});
-		const internals = modal as unknown as ModalInternals;
+		const internals = internalsOf<ModalInternals>(modal);
 		modal.open();
 		await internals.render();
 		const first = internals.inputs.get('Speaker 1');

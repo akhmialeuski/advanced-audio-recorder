@@ -7,6 +7,7 @@
  */
 
 import { probeMediaKind } from 'src/player/mediaProbe';
+import { partial } from '../helpers/doubles';
 
 type Listener = () => void;
 
@@ -59,7 +60,7 @@ beforeEach(() => {
 		.spyOn(document, 'createElement')
 		.mockImplementation((tag: string, options?: ElementCreationOptions) =>
 			tag === 'video'
-				? (fakeVideo as unknown as HTMLElement)
+				? partial<HTMLElement>(fakeVideo)
 				: realCreateElement(tag, options),
 		);
 });

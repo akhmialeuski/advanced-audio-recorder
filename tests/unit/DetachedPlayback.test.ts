@@ -10,6 +10,8 @@ import {
 } from 'src/player/AudioPlayerRegistry';
 import { DetachedPlayback } from 'src/player/DetachedPlayback';
 import type { PlaybackControlsState } from 'src/player/playbackControls';
+import { partialApp } from '../helpers/obsidianMock';
+import { partial } from '../helpers/doubles';
 
 /** Controllable media element installed as the global Audio factory. */
 interface MockAudioHarness {
@@ -84,14 +86,14 @@ function installMockAudio(duration = 120, readyState = 1): MockAudioHarness {
 
 /** App stub exposing only the media resource lookup DetachedPlayback needs. */
 function appStub(): App {
-	return {
+	return partialApp({
 		vault: { getResourcePath: () => 'app://rec' },
-	} as unknown as App;
+	});
 }
 
 /** Audio file stub with the path DetachedPlayback keys its playback on. */
 function fileStub(path = 'rec.mp4'): TFile {
-	return { path } as unknown as TFile;
+	return partial<TFile>({ path });
 }
 
 describe('DetachedPlayback', () => {

@@ -132,6 +132,7 @@ import {
 	mergeAudioTracks,
 } from 'src/audio/AudioFormatConverter';
 import type { EncodingWorkerClient } from 'src/audio/EncodingWorkerClient';
+import { partial } from '../helpers/doubles';
 
 describe('AudioFormatConverter', () => {
 	beforeEach(() => {
@@ -368,7 +369,7 @@ describe('AudioFormatConverter', () => {
 				undefined,
 				{
 					allowRemux: true,
-					workerClient: worker as unknown as EncodingWorkerClient,
+					workerClient: partial<EncodingWorkerClient>(worker),
 				},
 			);
 
@@ -393,7 +394,7 @@ describe('AudioFormatConverter', () => {
 				192000,
 				undefined,
 				{
-					workerClient: worker as unknown as EncodingWorkerClient,
+					workerClient: partial<EncodingWorkerClient>(worker),
 					channelMode: 'mono-left',
 				},
 			);
@@ -419,7 +420,7 @@ describe('AudioFormatConverter', () => {
 				'mp3',
 				192000,
 				undefined,
-				{ workerClient: worker as unknown as EncodingWorkerClient },
+				{ workerClient: partial<EncodingWorkerClient>(worker) },
 			);
 
 			expect(worker.convertBlob).not.toHaveBeenCalled();
@@ -440,7 +441,7 @@ describe('AudioFormatConverter', () => {
 				'mp4',
 				128000,
 				undefined,
-				{ workerClient: worker as unknown as EncodingWorkerClient },
+				{ workerClient: partial<EncodingWorkerClient>(worker) },
 			);
 
 			expect(mockConversionInit).toHaveBeenCalledTimes(1);
@@ -515,7 +516,7 @@ describe('AudioFormatConverter', () => {
 			await convertBlobToWavBuffer(
 				new Blob(['audio-data'], { type: 'audio/webm' }),
 				{
-					workerClient: worker as unknown as EncodingWorkerClient,
+					workerClient: partial<EncodingWorkerClient>(worker),
 					channelMode: 'mono-right',
 				},
 			);
@@ -540,10 +541,7 @@ describe('AudioFormatConverter', () => {
 			await decodeAudioBlob(buffer);
 
 			expect(AudioContext).toHaveBeenCalledTimes(1);
-			const ctx = at(
-				(AudioContext as unknown as jest.Mock).mock.results,
-				0,
-			).value;
+			const ctx = at(jest.mocked(AudioContext).mock.results, 0).value;
 			expect(ctx.decodeAudioData).toHaveBeenCalledTimes(1);
 			expect(ctx.close).toHaveBeenCalledTimes(1);
 			// No second decode through an OfflineAudioContext
@@ -553,20 +551,19 @@ describe('AudioFormatConverter', () => {
 		it('closes the context when decoding fails', async () => {
 			const decodeError = new Error('decode failed');
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any -- required for mock override
-			(AudioContext as any).mockImplementationOnce(() => ({
-				decodeAudioData: jest.fn().mockRejectedValue(decodeError),
-				close: jest.fn().mockResolvedValue(undefined),
-			}));
+			(AudioContext as any).mockImplementationOnce(() =>
+				partial<AudioContext>({
+					decodeAudioData: jest.fn().mockRejectedValue(decodeError),
+					close: jest.fn().mockResolvedValue(undefined),
+				}),
+			);
 
 			await expect(decodeAudioBlob(new ArrayBuffer(8))).rejects.toThrow(
 				'decode failed',
 			);
 
 			// The AudioContext must not leak on corrupted input
-			const ctx = at(
-				(AudioContext as unknown as jest.Mock).mock.results,
-				0,
-			).value;
+			const ctx = at(jest.mocked(AudioContext).mock.results, 0).value;
 			expect(ctx.close).toHaveBeenCalledTimes(1);
 		});
 	});
@@ -593,8 +590,7 @@ describe('AudioFormatConverter', () => {
 				undefined,
 				{
 					allowRemux: true,
-					workerClient:
-						workerClient as unknown as EncodingWorkerClient,
+					workerClient: partial<EncodingWorkerClient>(workerClient),
 				},
 			);
 
@@ -623,7 +619,7 @@ describe('AudioFormatConverter', () => {
 			const blob = new Blob(['test'], { type: 'audio/webm' });
 
 			await convertBlobToFormat(blob, 'mp3', 192000, undefined, {
-				workerClient: workerClient as unknown as EncodingWorkerClient,
+				workerClient: partial<EncodingWorkerClient>(workerClient),
 				channelMode: 'mono-left',
 			});
 
@@ -653,8 +649,7 @@ describe('AudioFormatConverter', () => {
 				128000,
 				undefined,
 				{
-					workerClient:
-						workerClient as unknown as EncodingWorkerClient,
+					workerClient: partial<EncodingWorkerClient>(workerClient),
 				},
 			);
 
@@ -884,7 +879,9 @@ describe('AudioFormatConverter', () => {
 				'src/audio/AudioEncoder',
 			);
 			const { BufferTarget } = jest.requireMock('mediabunny');
-			BufferTarget.mockImplementationOnce(() => ({ buffer: null }));
+			BufferTarget.mockImplementationOnce(() =>
+				partial<AudioContext>({ buffer: null }),
+			);
 			const warnSpy = jest
 				.spyOn(console, 'warn')
 				.mockImplementation(() => undefined);
@@ -1075,23 +1072,23 @@ describe('AudioFormatConverter', () => {
 			).rejects.toThrow('No audio data recorded');
 
 			const contextInstance = at(
-				(global.AudioContext as unknown as jest.Mock).mock.results,
+				jest.mocked(global.AudioContext).mock.results,
 				0,
 			).value as { close: jest.Mock };
 			expect(contextInstance.close).toHaveBeenCalled();
 		});
 
 		it('closes the AudioContext when decoding fails', async () => {
-			(
-				global.AudioContext as unknown as jest.Mock
-			).mockImplementationOnce(() => ({
-				decodeAudioData: jest
-					.fn()
-					.mockRejectedValue(new Error('corrupted track')),
-				destination: {},
-				close: jest.fn().mockResolvedValue(undefined),
-				sampleRate: 44100,
-			}));
+			jest.mocked(global.AudioContext).mockImplementationOnce(() =>
+				partial<AudioContext>({
+					decodeAudioData: jest
+						.fn()
+						.mockRejectedValue(new Error('corrupted track')),
+					destination: {},
+					close: jest.fn().mockResolvedValue(undefined),
+					sampleRate: 44100,
+				}),
+			);
 			const targets = [createMockTarget('track1')];
 			const buildTrackBlob = jest
 				.fn()
@@ -1109,7 +1106,7 @@ describe('AudioFormatConverter', () => {
 			).rejects.toThrow('corrupted track');
 
 			const contextInstance = at(
-				(global.AudioContext as unknown as jest.Mock).mock.results,
+				jest.mocked(global.AudioContext).mock.results,
 				0,
 			).value as { close: jest.Mock };
 			expect(contextInstance.close).toHaveBeenCalled();
@@ -1117,16 +1114,18 @@ describe('AudioFormatConverter', () => {
 
 		it('does not mask the merge error when closing the context fails', async () => {
 			const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
-			(
-				global.AudioContext as unknown as jest.Mock
-			).mockImplementationOnce(() => ({
-				decodeAudioData: jest
-					.fn()
-					.mockResolvedValue(createMockAudioBuffer()),
-				destination: {},
-				close: jest.fn().mockRejectedValue(new Error('close failed')),
-				sampleRate: 44100,
-			}));
+			jest.mocked(global.AudioContext).mockImplementationOnce(() =>
+				partial<AudioContext>({
+					decodeAudioData: jest
+						.fn()
+						.mockResolvedValue(createMockAudioBuffer()),
+					destination: {},
+					close: jest
+						.fn()
+						.mockRejectedValue(new Error('close failed')),
+					sampleRate: 44100,
+				}),
+			);
 			const targets = [createMockTarget('track1')];
 			const buildTrackBlob = jest.fn().mockResolvedValue(null);
 
@@ -1174,7 +1173,7 @@ describe('AudioFormatConverter', () => {
 			expect(result).toBeInstanceOf(Blob);
 			// 2 valid buffers decoded, null one skipped
 			const ctxInstance = at(
-				(AudioContext as unknown as jest.Mock).mock.results,
+				jest.mocked(AudioContext).mock.results,
 				0,
 			).value;
 			expect(ctxInstance.decodeAudioData).toHaveBeenCalledTimes(2);
@@ -1214,8 +1213,8 @@ describe('AudioFormatConverter', () => {
 				.mockResolvedValue(new Blob(['audio'], { type: 'audio/webm' }));
 
 			// Second decoded track is stereo; override only this instance
-			(AudioContext as unknown as jest.Mock).mockImplementationOnce(
-				() => ({
+			jest.mocked(AudioContext).mockImplementationOnce(() =>
+				partial<AudioContext>({
 					decodeAudioData: jest
 						.fn()
 						.mockResolvedValueOnce(createMockAudioBuffer())
@@ -1308,7 +1307,7 @@ describe('AudioFormatConverter', () => {
 			);
 
 			const ctxInstance = at(
-				(AudioContext as unknown as jest.Mock).mock.results,
+				jest.mocked(AudioContext).mock.results,
 				0,
 			).value;
 			expect(ctxInstance.close).toHaveBeenCalledTimes(1);

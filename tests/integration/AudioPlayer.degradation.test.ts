@@ -29,6 +29,7 @@ import {
 	makeRegistry,
 	type FakeAudio,
 } from '../helpers/audioPlayerHarness';
+import { internalsOf } from '../helpers/doubles';
 
 const PLAIN: ResolvedPlayerSettings = {
 	showWaveform: false,
@@ -68,7 +69,7 @@ interface PlayerInternals {
  * @returns The same object, typed with the members under test
  */
 function internals(player: AudioPlayer): PlayerInternals {
-	return player as unknown as PlayerInternals;
+	return internalsOf<PlayerInternals>(player);
 }
 
 describe('degrading to the native audio element', () => {

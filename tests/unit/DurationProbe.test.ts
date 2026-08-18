@@ -12,6 +12,7 @@
 
 import { DurationProbe } from 'src/player/DurationProbe';
 import { DURATION_PROBE_SECONDS } from 'src/utils/mediaDuration';
+import { partial } from '../helpers/doubles';
 
 /** An audio element whose duration and seeks the test drives. */
 function createSut(options: { seekThrows?: boolean } = {}): {
@@ -22,7 +23,7 @@ function createSut(options: { seekThrows?: boolean } = {}): {
 } {
 	let currentTime = 0;
 	const listeners = new Set<() => void>();
-	const audio = {
+	const audio = partial<HTMLAudioElement>({
 		duration: Number.POSITIVE_INFINITY,
 		get currentTime(): number {
 			return currentTime;
@@ -44,7 +45,7 @@ function createSut(options: { seekThrows?: boolean } = {}): {
 		removeEventListener: (_type: string, handler: () => void): void => {
 			listeners.delete(handler);
 		},
-	} as unknown as HTMLAudioElement & {
+	}) as HTMLAudioElement & {
 		duration: number;
 		currentTime: number;
 	};

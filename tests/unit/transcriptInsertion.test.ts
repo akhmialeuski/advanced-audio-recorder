@@ -16,6 +16,7 @@ import {
 import { MarkdownView } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import { at, defined } from '../helpers/assertions';
+import { partialApp } from '../helpers/obsidianMock';
 
 /** A Markdown leaf whose editor records the ranges written into it. */
 function makeLeaf(
@@ -52,14 +53,14 @@ function makeApp(
 	leaves: { view: MarkdownView }[],
 	generateMarkdownLink = jest.fn().mockReturnValue('[[audio.srt]]'),
 ): App {
-	return {
+	return partialApp({
 		workspace: {
 			getLeavesOfType: jest.fn((type: string) =>
 				type === 'markdown' ? leaves : [],
 			),
 		},
 		fileManager: { generateMarkdownLink },
-	} as unknown as App;
+	});
 }
 
 describe('insertTranscriptIntoNote', () => {
@@ -210,13 +211,13 @@ describe('insertTranscriptFileLink', () => {
 describe('writeTranscriptFile', () => {
 	it('writes the sidecar next to the audio in the requested format', async () => {
 		const create = jest.fn().mockResolvedValue({ path: 'out' });
-		const app = {
+		const app = partialApp({
 			vault: {
 				create,
 				getAbstractFileByPath: jest.fn().mockReturnValue(null),
 				adapter: { exists: jest.fn().mockResolvedValue(false) },
 			},
-		} as unknown as App;
+		});
 
 		await writeTranscriptFile(
 			app,
@@ -237,7 +238,7 @@ describe('writeTranscriptFile', () => {
 	it('does not overwrite an existing sidecar', async () => {
 		const create = jest.fn().mockResolvedValue({ path: 'out' });
 		const existing = new Set(['Recordings/audio.txt']);
-		const app = {
+		const app = partialApp({
 			vault: {
 				create,
 				getAbstractFileByPath: jest.fn((path: string) =>
@@ -249,7 +250,7 @@ describe('writeTranscriptFile', () => {
 					),
 				},
 			},
-		} as unknown as App;
+		});
 
 		await writeTranscriptFile(
 			app,

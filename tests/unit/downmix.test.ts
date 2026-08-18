@@ -16,6 +16,7 @@ import {
 	downmixChannelData,
 	downmixAudioBuffer,
 } from 'src/audio/downmix';
+import { partial } from '../helpers/doubles';
 
 /** Minimal AudioBuffer double backed by per-channel Float32Arrays. */
 class FakeAudioBuffer {
@@ -67,7 +68,7 @@ function stereoBuffer(
 	});
 	buffer.getChannelData(0).set(left);
 	buffer.getChannelData(1).set(right);
-	return buffer as unknown as AudioBuffer;
+	return partial<AudioBuffer>(buffer);
 }
 
 describe('channel mode guards', () => {
@@ -173,11 +174,13 @@ describe('downmixAudioBuffer', () => {
 	});
 
 	it('returns an already-mono buffer unchanged', () => {
-		const mono = new FakeAudioBuffer({
-			length: 2,
-			numberOfChannels: 1,
-			sampleRate: 48000,
-		}) as unknown as AudioBuffer;
+		const mono = partial<AudioBuffer>(
+			new FakeAudioBuffer({
+				length: 2,
+				numberOfChannels: 1,
+				sampleRate: 48000,
+			}),
+		);
 
 		expect(downmixAudioBuffer(mono, CHANNEL_MODE_MONO_MIX)).toBe(mono);
 	});

@@ -23,6 +23,8 @@ import {
 	type AudioElementDouble,
 	type InstalledMock,
 } from '../helpers/mediaMocks';
+import { partialApp } from '../helpers/obsidianMock';
+import { partial } from '../helpers/doubles';
 
 jest.mock('src/chapters/transcriptSources', () => ({
 	...jest.requireActual<typeof import('src/chapters/transcriptSources')>(
@@ -47,7 +49,7 @@ interface StoreDouble {
 function makeStore(markers: PlayerMarker[] | Error): StoreDouble {
 	const initial = markers instanceof Error ? [] : markers;
 	let written: PlayerMarker[] | null = null;
-	const store = {
+	const store = partial<RecordingSidecarStore>({
 		getMarkers: jest.fn(() =>
 			markers instanceof Error
 				? Promise.reject(markers)
@@ -64,7 +66,7 @@ function makeStore(markers: PlayerMarker[] | Error): StoreDouble {
 				return Promise.resolve(written);
 			},
 		),
-	} as unknown as RecordingSidecarStore;
+	});
 	return { store, written: () => written };
 }
 
@@ -77,12 +79,12 @@ function makeLlm(output: string): LlmProvider {
 	};
 }
 
-const settings = {
+const settings = partial<AudioRecorderSettings>({
 	llmMaxTokens: 4096,
 	transcriptionLanguage: 'auto',
 	transcriptionChapterPromptProfiles: [],
 	transcriptionChapterPromptProfileId: '',
-} as unknown as AudioRecorderSettings;
+});
 
 describe('AutoChapterService.hasExistingChapters', () => {
 	it('reports true when a generated chapter is already stored', async () => {
@@ -166,9 +168,9 @@ describe('AutoChapterService duration probe', () => {
 		written: () => PlayerMarker[] | null;
 	} {
 		const { store, written } = makeStore([]);
-		const app = {
+		const app = partialApp({
 			vault: { getResourcePath: () => 'app://talk.webm' },
-		} as unknown as App;
+		});
 		const service = new AutoChapterService(
 			app,
 			() => settings,

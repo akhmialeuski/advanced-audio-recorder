@@ -30,6 +30,7 @@ import { readAudioMetadata } from 'src/utils/AudioFileAnalyzer';
 import { transcribeFile } from 'src/transcription/api';
 import { createFile } from '../helpers/createApp';
 import { tick } from '../helpers/async';
+import { internalsOf } from '../helpers/doubles';
 
 type ModalInternals = {
 	updateCostEstimate: () => void;
@@ -78,7 +79,7 @@ function createModal(
 			...modalOptions,
 		},
 	);
-	return { modal, internals: modal as unknown as ModalInternals, readBinary };
+	return { modal, internals: internalsOf<ModalInternals>(modal), readBinary };
 }
 
 beforeEach(() => {
@@ -97,7 +98,7 @@ beforeEach(() => {
 			usage: {},
 		},
 	});
-	(Notice as unknown as jest.Mock).mockClear();
+	jest.mocked(Notice).mockClear();
 });
 
 describe('TranscriptionModal cost estimate', () => {

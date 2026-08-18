@@ -9,6 +9,7 @@
 import { TFile } from 'obsidian';
 import type { App } from 'obsidian';
 import { MediaKindStore } from 'src/player/MediaKindStore';
+import { partialApp } from '../helpers/obsidianMock';
 
 const STORE_PATH = '.obsidian/plugins/advanced-audio-recorder/media-kinds.json';
 
@@ -22,7 +23,7 @@ function makeApp(files: Map<string, string> = new Map()): {
 		files.set(path, data);
 		return Promise.resolve();
 	});
-	const app = {
+	const app = partialApp({
 		vault: {
 			adapter: {
 				exists: (path: string) => Promise.resolve(files.has(path)),
@@ -35,7 +36,7 @@ function makeApp(files: Map<string, string> = new Map()): {
 				write,
 			},
 		},
-	} as unknown as App;
+	});
 	return { app, files, write };
 }
 
