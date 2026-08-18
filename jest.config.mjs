@@ -55,41 +55,46 @@ export default {
 	collectCoverageFrom: ['src/**/*.ts', '!src/**/*.d.ts'],
 	coverageReporters: ['text', 'json-summary', 'lcov'],
 	coverageThreshold: {
+		// Pinned just under the current actuals, so a drop is a failed build
+		// rather than a number nobody notices. Note the semantics: a file
+		// counts in EVERY group whose prefix matches it, and `global` covers
+		// only the files no other group claims.
+		// scripts/coverage-thresholds.mjs prints what each group reaches now.
 		global: {
-			statements: 95.5,
-			branches: 87,
-			functions: 95.2,
-			lines: 95.4,
+			statements: 96.5,
+			branches: 89.2,
+			functions: 96.4,
+			lines: 96.5,
 		},
 		'./src/main.ts': {
-			statements: 73,
-			branches: 71.5,
-			functions: 50,
-			lines: 73.5,
+			statements: 98.2,
+			branches: 95.7,
+			functions: 96.6,
+			lines: 98.8,
 		},
 		'src/player/views/': {
-			statements: 83.5,
-			branches: 65,
-			functions: 82,
-			lines: 84,
+			statements: 98.2,
+			branches: 92.2,
+			functions: 93.7,
+			lines: 98.2,
 		},
 		'src/player/': {
-			statements: 86.4,
-			branches: 75,
-			functions: 84,
-			lines: 86.5,
+			statements: 96.8,
+			branches: 88.9,
+			functions: 95.3,
+			lines: 96.8,
 		},
 		'src/ui/': {
-			statements: 90,
-			branches: 81.3,
-			functions: 81,
-			lines: 90,
+			statements: 96.7,
+			branches: 90.2,
+			functions: 92.6,
+			lines: 96.7,
 		},
 		'src/actions/': {
-			statements: 90,
-			branches: 94,
-			functions: 74.5,
-			lines: 90,
+			statements: 100,
+			branches: 100,
+			functions: 100,
+			lines: 100,
 		},
 		'src/platform/': {
 			statements: 100,

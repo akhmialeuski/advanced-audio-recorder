@@ -1,6 +1,7 @@
 /**
- * Prints the coverage each `coverageThreshold` group in package.json actually
- * reaches right now, so the thresholds can be pinned to the current state.
+ * Prints the coverage each `coverageThreshold` group in jest.config.mjs
+ * actually reaches right now, so the thresholds can be pinned to the current
+ * state.
  *
  * Jest subtracts every file matched by a path/glob group from the `global`
  * group, so the global numbers are NOT the ones in the summary's `total` once
@@ -14,11 +15,13 @@ import path from 'node:path';
 
 const require = createRequire(import.meta.url);
 const summary = require('../coverage/coverage-summary.json');
-const pkg = require('../package.json');
+// The thresholds live in the Jest config rather than package.json, so the
+// script reads the same file Jest does instead of a second copy.
+const jestConfig = (await import('../jest.config.mjs')).default;
 
 const METRICS = ['statements', 'branches', 'functions', 'lines'];
 const root = process.cwd();
-const groups = Object.keys(pkg.jest.coverageThreshold).filter(
+const groups = Object.keys(jestConfig.coverageThreshold).filter(
 	(key) => key !== 'global',
 );
 
