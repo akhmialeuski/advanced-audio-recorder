@@ -27,6 +27,8 @@ import {
 import { DOCS_URL, MAX_LLM_MAX_TOKENS } from 'src/constants';
 import { PROFILE_KINDS } from 'src/settings/profileKinds';
 import type { AudioRecorderPluginInterface } from 'src/settings/SettingsTab';
+import { at } from '../helpers/assertions';
+import { asMockVault } from '../helpers/obsidianMock';
 import { setPlatform, useDesktopPlatform } from '../helpers/platform';
 import { tick } from '../helpers/async';
 import { allEls, el, maybeEl, textsOf } from '../helpers/dom';
@@ -61,6 +63,52 @@ jest.mock('src/diagnostics/SystemDiagnostics', () => ({
  * a user typing an id and pressing Add does.
  */
 const mockModelDialogs: Array<(id: string) => void> = [];
+
+/**
+ * Options the profile-name dialog was opened with, newest last. Naming a
+ * profile is a dialog with its own suite; here a test only needs to answer it,
+ * or to ask what it would say about a name.
+ */
+interface ProfileNamePrompt {
+	title: string;
+	confirmText: string;
+	initial?: string;
+	rejection?: (name: string) => string | undefined;
+	onSubmit: (name: string) => void;
+}
+const mockProfileDialogs: ProfileNamePrompt[] = [];
+// The probe itself has its own suite; here only its failure modes matter, so
+// the two entry points keep their real behaviour and a test overrides one for
+// the case it is about.
+jest.mock('src/audio/AudioCapabilityDetector', () => {
+	const actual: Record<string, unknown> = jest.requireActual(
+		'src/audio/AudioCapabilityDetector',
+	);
+	return {
+		...actual,
+		listFormatAvailability: jest.fn(
+			actual['listFormatAvailability'] as never,
+		),
+		resolveEffectiveOutputFormat: jest.fn(
+			actual['resolveEffectiveOutputFormat'] as never,
+		),
+	};
+});
+
+jest.mock('src/obsidian/settingsNavigation', () => ({
+	...jest.requireActual('src/obsidian/settingsNavigation'),
+	closeSettingsPage: jest.fn(),
+}));
+
+jest.mock('src/ui/ProfileNameModal', () => ({
+	ProfileNameModal: jest
+		.fn()
+		.mockImplementation((_app: unknown, options: unknown) => {
+			mockProfileDialogs.push(options as ProfileNamePrompt);
+			return { open: (): void => undefined };
+		}),
+}));
+
 jest.mock('src/ui/ModelIdModal', () => ({
 	ModelIdModal: jest
 		.fn()
@@ -1556,5 +1604,347 @@ describe('AudioRecorderSettingTab', () => {
 				),
 			).toBeNull();
 		});
+	});
+});
+
+describe('AudioRecorderSettingTab profile catalogues', () => {
+	let tab: AudioRecorderSettingTab;
+	let mockSettings: AudioRecorderSettings;
+	let saveSettings: jest.Mock;
+
+	/** Every item in the definition tree, flattened depth-first. */
+	function everyItem(items: readonly unknown[]): Record<string, unknown>[] {
+		const found: Record<string, unknown>[] = [];
+		for (const item of items) {
+			const entry = item as Record<string, unknown>;
+			found.push(entry);
+			if (Array.isArray(entry['items'])) {
+				found.push(...everyItem(entry['items'] as unknown[]));
+			}
+		}
+		return found;
+	}
+
+	/**
+	 * The action of the named row on the page of the named profile.
+	 * @param profileName - The profile whose page holds the row
+	 * @param rowName - The row's name
+	 * @returns The action the row runs when pressed
+	 */
+	function profileAction(profileName: string, rowName: string): () => void {
+		const page = everyItem(tab.getSettingDefinitions()).find(
+			(item) => item['name'] === profileName && 'items' in item,
+		);
+		if (!page) {
+			throw new Error(`No page for the profile "${profileName}"`);
+		}
+		const row = everyItem(page['items'] as unknown[]).find(
+			(item) => item['name'] === rowName,
+		);
+		if (!row || typeof row['action'] !== 'function') {
+			throw new Error(`No "${rowName}" action on "${profileName}"`);
+		}
+		return row['action'] as () => void;
+	}
+
+	/** The most recent profile-name dialog. */
+	function lastPrompt(): ProfileNamePrompt {
+		return at(mockProfileDialogs, mockProfileDialogs.length - 1);
+	}
+
+	beforeEach(() => {
+		mockProfileDialogs.length = 0;
+		mockSettings = { ...DEFAULT_SETTINGS };
+		mockSettings.transcriptionDictionaryProfiles = [
+			{ id: 'a', name: 'Legal', terms: 'tort' },
+			{ id: 'b', name: 'Medical', terms: 'triage' },
+		];
+		mockSettings.transcriptionDictionaryProfileId = 'a';
+		saveSettings = jest.fn().mockResolvedValue(undefined);
+		tab = new AudioRecorderSettingTab(new App(), {
+			settings: mockSettings,
+			saveSettings,
+			manifest: {
+				id: 'advanced-audio-recorder',
+				name: PLUGIN_MANIFEST_NAME,
+			},
+		} as unknown as AudioRecorderPluginInterface);
+	});
+
+	it('offers the current name when renaming, so it can be edited', () => {
+		profileAction('Legal', 'Rename profile')();
+
+		expect(lastPrompt().initial).toBe('Legal');
+		expect(lastPrompt().confirmText).toBe('Rename');
+	});
+
+	it('stores the new name and leaves the page it just renamed', async () => {
+		// The page is addressed by the name it no longer has, so staying on
+		// it would show an empty page.
+		const { closeSettingsPage } = jest.requireMock(
+			'src/obsidian/settingsNavigation',
+		);
+		profileAction('Legal', 'Rename profile')();
+
+		lastPrompt().onSubmit('Contracts');
+		await tick();
+
+		expect(at(mockSettings.transcriptionDictionaryProfiles, 0).name).toBe(
+			'Contracts',
+		);
+		expect(saveSettings).toHaveBeenCalled();
+		expect(closeSettingsPage).toHaveBeenCalled();
+	});
+
+	it.each([
+		{
+			name: 'an empty name',
+			candidate: '',
+			expected: 'Give the profile a name.',
+		},
+		{
+			name: 'a name another profile already uses',
+			candidate: 'Medical',
+			expected: 'Another profile already uses this name.',
+		},
+	])('refuses $name', ({ candidate, expected }) => {
+		profileAction('Legal', 'Rename profile')();
+
+		expect(lastPrompt().rejection?.(candidate)).toBe(expected);
+	});
+
+	it('accepts a profile keeping the name it already has', () => {
+		// Opening rename and pressing Rename unchanged is not a clash with
+		// itself.
+		profileAction('Legal', 'Rename profile')();
+
+		expect(lastPrompt().rejection?.('Legal')).toBeUndefined();
+	});
+
+	it('deletes the profile and leaves its page', async () => {
+		const { closeSettingsPage } = jest.requireMock(
+			'src/obsidian/settingsNavigation',
+		);
+		profileAction('Medical', 'Delete profile')();
+		await tick();
+
+		expect(
+			mockSettings.transcriptionDictionaryProfiles.map(
+				(profile) => profile.name,
+			),
+		).toEqual(['Legal']);
+		expect(closeSettingsPage).toHaveBeenCalled();
+	});
+
+	it('moves the selection off a profile it deletes', async () => {
+		profileAction('Legal', 'Delete profile')();
+		await tick();
+
+		expect(mockSettings.transcriptionDictionaryProfileId).toBe('b');
+	});
+
+	it.each([
+		{ name: 'renaming', row: 'Rename profile' },
+		{ name: 'deleting', row: 'Delete profile' },
+	])('does nothing when $name a profile that is already gone', ({ row }) => {
+		// The page can still be open on a profile a sync just removed.
+		const act = profileAction('Medical', row);
+		mockSettings.transcriptionDictionaryProfiles = [
+			at(mockSettings.transcriptionDictionaryProfiles, 0),
+		];
+
+		expect(act).not.toThrow();
+		expect(mockProfileDialogs).toHaveLength(0);
+		expect(saveSettings).not.toHaveBeenCalled();
+	});
+});
+
+describe('AudioRecorderSettingTab describing the recording formats', () => {
+	let tab: AudioRecorderSettingTab;
+	let mockSettings: AudioRecorderSettings;
+
+	/** The compression note the tab writes for a format. */
+	function describeFormat(format: string): string {
+		return (
+			tab as unknown as {
+				getCompressionDescription: (format: string) => string;
+			}
+		).getCompressionDescription(format);
+	}
+
+	beforeEach(() => {
+		mockSettings = { ...DEFAULT_SETTINGS };
+		tab = new AudioRecorderSettingTab(new App(), {
+			settings: mockSettings,
+			saveSettings: jest.fn().mockResolvedValue(undefined),
+			manifest: {
+				id: 'advanced-audio-recorder',
+				name: PLUGIN_MANIFEST_NAME,
+			},
+		} as unknown as AudioRecorderPluginInterface);
+		(global as Record<string, unknown>).MediaRecorder = {
+			isTypeSupported: jest.fn(() => false),
+		};
+	});
+
+	it('says WAV is uncompressed, since its size is what surprises people', () => {
+		expect(describeFormat('wav')).toContain('Uncompressed WAV');
+	});
+
+	it('says a format the recorder cannot produce goes through the encoder', () => {
+		expect(describeFormat('mp3')).toContain('offline encoding');
+	});
+
+	it('says a format the recorder produces is saved straight out of it', () => {
+		(
+			(global as Record<string, unknown>).MediaRecorder as {
+				isTypeSupported: jest.Mock;
+			}
+		).isTypeSupported = jest.fn(() => true);
+
+		expect(describeFormat('webm')).toContain('directly from recorder');
+	});
+
+	it('treats every format as offline where MediaRecorder does not exist', () => {
+		// Obsidian on a platform without MediaRecorder still opens settings;
+		// the note must not throw on the missing global.
+		const previous = (global as Record<string, unknown>).MediaRecorder;
+		delete (global as Record<string, unknown>).MediaRecorder;
+		try {
+			expect(describeFormat('mp3')).toContain('offline encoding');
+		} finally {
+			(global as Record<string, unknown>).MediaRecorder = previous;
+		}
+	});
+});
+
+describe('AudioRecorderSettingTab offering the vault folders', () => {
+	it('lists every folder in the vault, however deep', () => {
+		// The recording-folder field autocompletes from this; a flat listing
+		// of the root would leave every nested folder untypeable by suggestion.
+		const app = new App();
+		const tab = new AudioRecorderSettingTab(app, {
+			settings: { ...DEFAULT_SETTINGS },
+			saveSettings: jest.fn(),
+			manifest: {
+				id: 'advanced-audio-recorder',
+				name: PLUGIN_MANIFEST_NAME,
+			},
+		} as unknown as AudioRecorderPluginInterface);
+		asMockVault(app.vault).seed([
+			{ path: 'Recordings/take.webm' },
+			{ path: 'Archive/2024/old.webm' },
+		]);
+
+		expect(tab.getFolderOptions()).toEqual(
+			expect.arrayContaining(['Recordings', 'Archive', 'Archive/2024']),
+		);
+	});
+});
+
+describe('AudioRecorderSettingTab probing the format list', () => {
+	let tab: AudioRecorderSettingTab;
+	let mockSettings: AudioRecorderSettings;
+
+	/** The dropdown the format row rendered, and the description beside it. */
+	function formatRow(): {
+		dropdown: HTMLSelectElement;
+		descEl: HTMLElement;
+	} {
+		tab.display();
+		const row = settingRow(tab.containerEl, 'Recording format');
+		return {
+			dropdown: rowSelect(row),
+			descEl: el(row, SETTING.description),
+		};
+	}
+
+	beforeEach(() => {
+		Object.defineProperty(global, 'navigator', {
+			value: {
+				mediaDevices: {
+					enumerateDevices: jest.fn().mockResolvedValue([]),
+					getUserMedia: jest.fn(),
+					addEventListener: jest.fn(),
+					removeEventListener: jest.fn(),
+				},
+			},
+			writable: true,
+		});
+		(global as Record<string, unknown>).MediaRecorder = jest.fn();
+		(
+			(global as Record<string, unknown>).MediaRecorder as Record<
+				string,
+				unknown
+			>
+		).isTypeSupported = jest.fn().mockReturnValue(true);
+		mockSettings = { ...DEFAULT_SETTINGS };
+		tab = withoutDeclarativeSettings(
+			() =>
+				new AudioRecorderSettingTab(new App(), {
+					settings: mockSettings,
+					saveSettings: jest.fn().mockResolvedValue(undefined),
+					manifest: {
+						id: 'advanced-audio-recorder',
+						name: PLUGIN_MANIFEST_NAME,
+					},
+				} as unknown as AudioRecorderPluginInterface),
+		);
+	});
+
+	it('leaves every format selectable when the probe itself fails', async () => {
+		// A failed probe says nothing about the device. Blocking everything
+		// would leave the user unable to pick any format at all; the
+		// recording-start validation still catches a bad one.
+		const { listFormatAvailability } = jest.requireMock(
+			'src/audio/AudioCapabilityDetector',
+		);
+		(listFormatAvailability as jest.Mock).mockRejectedValueOnce(
+			new Error('probe failed'),
+		);
+
+		const { dropdown, descEl } = formatRow();
+		await tick();
+		await tick();
+
+		for (const option of Array.from(dropdown.options)) {
+			expect(option.disabled).toBe(false);
+		}
+		expect(maybeEl(descEl, SETTING.formatFallbackNote)).toBeNull();
+	});
+
+	it('offers a stored format the registry does not know, so it stays selected', async () => {
+		// A hand-edited config, or one from a newer version: without an
+		// option for it the dropdown would silently show something else.
+		mockSettings.recordingFormat = 'aiff';
+
+		const { dropdown } = formatRow();
+		await tick();
+		await tick();
+
+		expect(dropdown.value).toBe('aiff');
+		expect(
+			Array.from(dropdown.options).map((option) => option.value),
+		).toContain('aiff');
+	});
+
+	it('says only that the format is unusable when no fallback can be worked out', async () => {
+		const { listFormatAvailability, resolveEffectiveOutputFormat } =
+			jest.requireMock('src/audio/AudioCapabilityDetector');
+		(listFormatAvailability as jest.Mock).mockResolvedValueOnce([
+			{ format: 'webm', available: false, direct: false },
+		]);
+		(resolveEffectiveOutputFormat as jest.Mock).mockRejectedValueOnce(
+			new Error('nothing works here'),
+		);
+		mockSettings.recordingFormat = 'webm';
+
+		const { descEl } = formatRow();
+		await tick();
+		await tick();
+
+		expect(el(descEl, SETTING.formatFallbackNote).textContent).toBe(
+			'This device cannot record WEBM. Select a different format.',
+		);
 	});
 });

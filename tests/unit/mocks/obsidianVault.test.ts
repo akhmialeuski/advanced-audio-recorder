@@ -314,3 +314,69 @@ describe('Vault.recurseChildren', () => {
 		expect(seen).toEqual(['Empty']);
 	});
 });
+
+describe('the vault folder tree', () => {
+	it('grows the folders a seeded path lives in', () => {
+		// getFolderOptions and every other Vault.recurseChildren caller walks
+		// this tree, so a flat file index would leave them seeing nothing.
+		const vault = new Vault();
+		vault.seed([{ path: 'Archive/2024/old.webm' }]);
+
+		const seen: string[] = [];
+		Vault.recurseChildren(vault.getRoot(), (file) => {
+			seen.push(file.path);
+		});
+
+		expect(seen).toEqual([
+			'',
+			'Archive',
+			'Archive/2024',
+			'Archive/2024/old.webm',
+		]);
+	});
+
+	it('reuses a folder two files share', () => {
+		const vault = new Vault();
+		vault.seed([
+			{ path: 'Recordings/one.webm' },
+			{ path: 'Recordings/two.webm' },
+		]);
+
+		const folders: string[] = [];
+		Vault.recurseChildren(vault.getRoot(), (file) => {
+			if (file instanceof TFolder) {
+				folders.push(file.path);
+			}
+		});
+
+		expect(folders).toEqual(['', 'Recordings']);
+	});
+
+	it('points a file at the folder holding it', () => {
+		const vault = new Vault();
+		const file = at(vault.seed([{ path: 'Recordings/one.webm' }]), 0);
+
+		expect(file.parent?.path).toBe('Recordings');
+	});
+
+	it('adds a file at the root straight to the root', () => {
+		const vault = new Vault();
+		vault.seed([{ path: 'loose.webm' }]);
+
+		expect(vault.getRoot().children.map((child) => child.path)).toEqual([
+			'loose.webm',
+		]);
+	});
+
+	it('does not add a file twice when it is written again', () => {
+		const vault = new Vault();
+		vault.seed([{ path: 'Recordings/one.webm', content: 'first' }]);
+		vault.seed([{ path: 'Recordings/one.webm', content: 'second' }]);
+
+		expect(vault.getRoot().children).toHaveLength(1);
+		expect(at(vault.getRoot().children, 0)).toBeInstanceOf(TFolder);
+		expect(
+			(at(vault.getRoot().children, 0) as TFolder).children,
+		).toHaveLength(1);
+	});
+});

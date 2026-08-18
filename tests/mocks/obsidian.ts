@@ -374,7 +374,17 @@ export class Vault extends Events {
 		(file: TFile): string => `app://vault/${file.path}`,
 	);
 
-	getRoot = jest.fn((): TFolder => new TFolder(''));
+	getRoot = jest.fn((): TFolder => this.root);
+
+	/**
+	 * The vault's folder tree, grown as files are seeded so
+	 * `Vault.recurseChildren` walks the same structure the paths describe.
+	 * Obsidian's own root is a TFolder with an empty path.
+	 */
+	private readonly root = new TFolder('');
+
+	/** Every folder in the tree, by path, so a seed reuses what exists. */
+	private readonly folders = new Map<string, TFolder>();
 
 	getFiles = jest.fn((): TFile[] => [...this.files.values()]);
 
@@ -413,8 +423,38 @@ export class Vault extends Events {
 		const existing = this.files.get(path);
 		const file = existing ?? new TFile(path);
 		file.stat = { size, mtime, ctime: mtime };
+		if (!existing) {
+			const parent = this.registerFolders(path);
+			file.parent = parent;
+			parent.children.push(file);
+		}
 		this.files.set(path, file);
 		return file;
+	}
+
+	/**
+	 * Creates the folders a path lives in, reusing any that already exist.
+	 * @param filePath - Vault-relative path of the file being indexed
+	 * @returns The folder directly holding the file
+	 */
+	private registerFolders(filePath: string): TFolder {
+		const segments = filePath.split('/').slice(0, -1);
+		let parent = this.root;
+		let prefix = '';
+		for (const segment of segments) {
+			prefix = prefix === '' ? segment : `${prefix}/${segment}`;
+			const known = this.folders.get(prefix);
+			if (known) {
+				parent = known;
+				continue;
+			}
+			const folder = new TFolder(prefix);
+			folder.parent = parent;
+			parent.children.push(folder);
+			this.folders.set(prefix, folder);
+			parent = folder;
+		}
+		return parent;
 	}
 
 	static recurseChildren(
