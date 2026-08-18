@@ -92,6 +92,9 @@ describe('TrackWriteQueue', () => {
 			const order: number[] = [];
 
 			void queue.enqueue(target, async () => {
+				// A real delay inside the task, not a wait on the queue: the
+				// point is that a slow task still finishes before the one
+				// queued behind it.
 				await new Promise((resolve) => setTimeout(resolve, 10));
 				order.push(1);
 			});
@@ -110,6 +113,8 @@ describe('TrackWriteQueue', () => {
 			const order: string[] = [];
 
 			void queue.enqueue(slow, async () => {
+				// Slow enough that the fast target must have finished first
+				// for the assertion below to mean anything.
 				await new Promise((resolve) => setTimeout(resolve, 20));
 				order.push('slow');
 			});

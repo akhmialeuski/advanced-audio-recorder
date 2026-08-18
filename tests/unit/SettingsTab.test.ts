@@ -28,6 +28,7 @@ import { DOCS_URL, MAX_LLM_MAX_TOKENS } from 'src/constants';
 import { PROFILE_KINDS } from 'src/settings/profileKinds';
 import type { AudioRecorderPluginInterface } from 'src/settings/SettingsTab';
 import { setPlatform, useDesktopPlatform } from '../helpers/platform';
+import { tick } from '../helpers/async';
 
 // Mock AudioEncoder to avoid loading mediabunny in jsdom. The async
 // probe defaults to "no offline encoder works"; individual tests
@@ -68,8 +69,6 @@ jest.mock('src/ui/ModelIdModal', () => ({
 const PLUGIN_MANIFEST_NAME = 'Advanced Audio Recorder';
 
 /** Lets pending promise callbacks (a save, then a re-render) run. */
-const flushAsync = (): Promise<void> =>
-	new Promise((resolve) => setTimeout(resolve, 0));
 
 /**
  * Names of every setting row rendered under a host, in render order.
@@ -333,7 +332,7 @@ describe('AudioRecorderSettingTab', () => {
 				.mockImplementation(() => undefined);
 
 			renderDeclaratively();
-			await flushAsync();
+			await tick();
 
 			expect(updateSpy).toHaveBeenCalledTimes(1);
 
@@ -341,7 +340,7 @@ describe('AudioRecorderSettingTab', () => {
 			// of asking for yet another render.
 			updateSpy.mockClear();
 			renderDeclaratively();
-			await flushAsync();
+			await tick();
 
 			expect(updateSpy).not.toHaveBeenCalled();
 		});
@@ -558,7 +557,7 @@ describe('AudioRecorderSettingTab', () => {
 			).mockResolvedValue([audioInput('mic-1', 'Desk microphone')]);
 
 			legacyTab.display();
-			await flushAsync();
+			await tick();
 
 			// The enumeration is asynchronous, so the first pass has no devices
 			// and the result is what asks for the second. Nothing else gates
@@ -590,7 +589,7 @@ describe('AudioRecorderSettingTab', () => {
 			const afterHide = legacyTab.containerEl.innerHTML;
 
 			answer();
-			await flushAsync();
+			await tick();
 
 			// hide() bumps the refresh generation, which is the whole guard:
 			// re-rendering here would rebuild a tab nobody is looking at.
@@ -710,7 +709,7 @@ describe('AudioRecorderSettingTab', () => {
 			]);
 
 			legacyTab.display();
-			await flushAsync();
+			await tick();
 
 			const names = renderedNames(legacyTab.containerEl);
 			expect(
@@ -1131,7 +1130,7 @@ describe('AudioRecorderSettingTab', () => {
 				throw new Error(`"${heading}" opened no dialog`);
 			}
 			confirm(id);
-			await flushAsync();
+			await tick();
 		};
 
 		beforeEach(() => {
@@ -1160,7 +1159,7 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.whisperApiModel = 'whisper-1';
 
 			listOf('Whisper API (OpenAI-compatible)').onDelete?.(0);
-			await flushAsync();
+			await tick();
 
 			expect(mockSettings.whisperApiModels).toEqual(['whisper-large-v3']);
 			expect(mockSettings.whisperApiModel).toBe('whisper-large-v3');
@@ -1171,7 +1170,7 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.whisperApiModel = 'whisper-1';
 
 			listOf('Whisper API (OpenAI-compatible)').onDelete?.(1);
-			await flushAsync();
+			await tick();
 
 			expect(mockSettings.whisperApiModels).toEqual(['whisper-1']);
 			expect(mockSettings.whisperApiModel).toBe('whisper-1');
@@ -1181,7 +1180,7 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.whisperApiModels = ['whisper-1'];
 
 			listOf('Whisper API (OpenAI-compatible)').onDelete?.(4);
-			await flushAsync();
+			await tick();
 
 			expect(mockSettings.whisperApiModels).toEqual(['whisper-1']);
 			expect(saveSettingsMock).not.toHaveBeenCalled();
@@ -1218,7 +1217,7 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.llmOpenAiModel = 'gpt-4o';
 
 			listOf('OpenAI').onDelete?.(1);
-			await flushAsync();
+			await tick();
 
 			expect(mockSettings.llmOpenAiModels).toEqual(['gpt-4o-mini']);
 			expect(mockSettings.llmOpenAiModel).toBe('gpt-4o-mini');
@@ -1240,7 +1239,7 @@ describe('AudioRecorderSettingTab', () => {
 			];
 
 			onDelete?.(1);
-			await flushAsync();
+			await tick();
 
 			expect(mockSettings.whisperApiModels).toEqual([
 				'whisper-large-v3-turbo',
@@ -1252,7 +1251,7 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.transcriptionDictionaryProfiles = [];
 
 			listOf('Dictionary profiles').addItem?.action();
-			await flushAsync();
+			await tick();
 
 			const profiles = mockSettings.transcriptionDictionaryProfiles;
 			expect(profiles).toHaveLength(1);
@@ -1266,10 +1265,10 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.transcriptionDictionaryProfiles = [];
 
 			listOf('Dictionary profiles').addItem?.action();
-			await flushAsync();
+			await tick();
 			const first = mockSettings.transcriptionDictionaryProfileId;
 			listOf('Dictionary profiles').addItem?.action();
-			await flushAsync();
+			await tick();
 
 			// Names identify a profile's page, so a second one cannot repeat
 			// the first one's name; and adding a glossary must not silently
@@ -1285,7 +1284,7 @@ describe('AudioRecorderSettingTab', () => {
 		it('edits a profile through the keys of its own page', async () => {
 			listOf('Dictionary profiles').addItem?.action();
 			listOf('Dictionary profiles').addItem?.action();
-			await flushAsync();
+			await tick();
 			const [first, second] =
 				mockSettings.transcriptionDictionaryProfiles;
 			const bodyKey = (id: string): string =>
@@ -1307,7 +1306,7 @@ describe('AudioRecorderSettingTab', () => {
 		it('moves the default through the toggle on a profile page', async () => {
 			listOf('Dictionary profiles').addItem?.action();
 			listOf('Dictionary profiles').addItem?.action();
-			await flushAsync();
+			await tick();
 			const [, second] = mockSettings.transcriptionDictionaryProfiles;
 			const key = `transcriptionDictionaryProfileId#${second?.id ?? ''}`;
 			expect(tab.getControlValue(key)).toBe(false);
@@ -1322,7 +1321,7 @@ describe('AudioRecorderSettingTab', () => {
 
 		it('clears the default when a profile stops being it', async () => {
 			listOf('Dictionary profiles').addItem?.action();
-			await flushAsync();
+			await tick();
 			const [only] = mockSettings.transcriptionDictionaryProfiles;
 			const key = `transcriptionDictionaryProfileId#${only?.id ?? ''}`;
 
@@ -1336,14 +1335,14 @@ describe('AudioRecorderSettingTab', () => {
 		it('deletes a profile from its own page', async () => {
 			listOf('Dictionary profiles').addItem?.action();
 			listOf('Dictionary profiles').addItem?.action();
-			await flushAsync();
+			await tick();
 			const [first] = mockSettings.transcriptionDictionaryProfiles;
 
 			rowIn(
 				pageOf(tab.getSettingDefinitions(), 'New profile'),
 				'Delete profile',
 			).action?.(createDiv(), 0);
-			await flushAsync();
+			await tick();
 
 			expect(
 				mockSettings.transcriptionDictionaryProfiles.map(
@@ -1354,7 +1353,7 @@ describe('AudioRecorderSettingTab', () => {
 
 		it('reads a body key of a profile that is gone as empty', async () => {
 			listOf('Dictionary profiles').addItem?.action();
-			await flushAsync();
+			await tick();
 
 			// A profile deleted while its page was open leaves that page's
 			// controls standing until the page is torn down.
@@ -1382,8 +1381,8 @@ describe('AudioRecorderSettingTab', () => {
 		/** display() plus the async capability load and device fills. */
 		async function renderAndSettle(): Promise<void> {
 			tab.display();
-			await new Promise((resolve) => setTimeout(resolve, 0));
-			await new Promise((resolve) => setTimeout(resolve, 0));
+			await tick();
+			await tick();
 		}
 
 		/** Toggles the named setting the way a click would. */
@@ -1418,7 +1417,7 @@ describe('AudioRecorderSettingTab', () => {
 			// every row and restart the device enumeration behind the input
 			// dropdowns, which no storage setting can affect.
 			toggleSetting('Save recordings near active file');
-			await new Promise((resolve) => setTimeout(resolve, 0));
+			await tick();
 
 			expect(mockSettings.saveNearActiveFile).toBe(true);
 			expect(
@@ -1431,7 +1430,7 @@ describe('AudioRecorderSettingTab', () => {
 			await renderAndSettle();
 
 			toggleSetting('Save recordings near active file');
-			await new Promise((resolve) => setTimeout(resolve, 0));
+			await tick();
 
 			const names = Array.from(
 				tab.containerEl.querySelectorAll<HTMLElement>(
@@ -1449,7 +1448,7 @@ describe('AudioRecorderSettingTab', () => {
 			await renderAndSettle();
 
 			toggleSetting('Save recordings near active file');
-			await new Promise((resolve) => setTimeout(resolve, 0));
+			await tick();
 
 			const names = Array.from(
 				tab.containerEl.querySelectorAll<HTMLElement>(
@@ -1537,8 +1536,8 @@ describe('AudioRecorderSettingTab', () => {
 			);
 			tab.display();
 			// The availability probe is async: let it annotate the options
-			await new Promise((resolve) => setTimeout(resolve, 0));
-			await new Promise((resolve) => setTimeout(resolve, 0));
+			await tick();
+			await tick();
 
 			const options = new Map(
 				Array.from(rowSelect('Recording format').options).map(
@@ -1570,8 +1569,8 @@ describe('AudioRecorderSettingTab', () => {
 				(type: string) => type === 'audio/mp4',
 			);
 			tab.display();
-			await new Promise((resolve) => setTimeout(resolve, 0));
-			await new Promise((resolve) => setTimeout(resolve, 0));
+			await tick();
+			await tick();
 
 			const note = settingRow('Recording format').querySelector(
 				'.aar-format-fallback-note',
@@ -1583,8 +1582,8 @@ describe('AudioRecorderSettingTab', () => {
 
 		it('keeps every recordable format selectable on a permissive desktop profile', async () => {
 			tab.display();
-			await new Promise((resolve) => setTimeout(resolve, 0));
-			await new Promise((resolve) => setTimeout(resolve, 0));
+			await tick();
+			await tick();
 
 			const options = Array.from(rowSelect('Recording format').options);
 			expect(options.length).toBeGreaterThan(0);

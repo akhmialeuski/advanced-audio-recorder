@@ -11,6 +11,7 @@ import type { App } from 'obsidian';
 import type { RecordingManager } from 'src/recording/RecordingManager';
 import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { PlayerMarker } from 'src/markers/markerModel';
+import { tickTimes } from '../../helpers/async';
 
 /** The MediaRecorder constructor double, with its static format probe. */
 export type MediaRecorderCtorMock = jest.Mock & {
@@ -167,14 +168,13 @@ export const createDesktopRecorder = (): MockMediaRecorder => {
 	return mockMediaRecorder;
 };
 
-/** Microtask+macrotask drain so void'ed chunk handlers settle. */
-// Two macrotask turns: the Blob.arrayBuffer polyfill reads through
-// FileReader, which takes an extra event-loop turn before the
-// write chain advances
-export const flushAsync = async (): Promise<void> => {
-	await new Promise((resolve) => setTimeout(resolve, 0));
-	await new Promise((resolve) => setTimeout(resolve, 0));
-};
+/**
+ * Drains the write chain so void'ed chunk handlers settle.
+ *
+ * Two turns, not one: the Blob.arrayBuffer polyfill reads through FileReader,
+ * which costs an extra event-loop turn before the chain advances.
+ */
+export const flushAsync = (): Promise<void> => tickTimes(2);
 
 /** Mutable view of a chunk target's write-chain internals. */
 export interface MutableTarget {

@@ -12,6 +12,7 @@ import {
 	DeviceSelectionModal,
 	showDeviceSelectionModal,
 } from 'src/ui/DeviceSelectionModal';
+import { tick } from '../helpers/async';
 
 function makeDevice(
 	deviceId: string,
@@ -45,9 +46,6 @@ function selectButtonOf(modal: DeviceSelectionModal): HTMLButtonElement {
 	}
 	return button;
 }
-
-const tick = (): Promise<void> =>
-	new Promise((resolve) => setTimeout(resolve, 0));
 
 describe('DeviceSelectionModal', () => {
 	it('renders one option per device with its label', () => {

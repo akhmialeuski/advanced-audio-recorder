@@ -10,6 +10,7 @@ import { TranscriptionModal } from 'src/ui/TranscriptionModal';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { createFile } from '../helpers/createApp';
 import { setPlatform, useDesktopPlatform } from '../helpers/platform';
+import { tick } from '../helpers/async';
 
 type TranscriptionModalInternals = {
 	setRunning: (running: boolean) => void;
@@ -553,7 +554,7 @@ describe('TranscriptionModal advanced settings master toggle', () => {
 		// two-pass sub-toggle for this run. The toggle's onChange re-renders the
 		// config after an awaited save, so let that microtask settle.
 		toggleByName(modal, 'Advanced settings').click();
-		await new Promise((resolve) => setTimeout(resolve, 0));
+		await tick();
 
 		expect(runSettingsOf(modal).transcriptionAdvancedSettingsEnabled).toBe(
 			true,

@@ -7,6 +7,7 @@ import { ConversionModal } from 'src/ui/ConversionModal';
 import { App, TFile } from 'obsidian';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { mergeSettings } from 'src/settings/settingsSerialization';
+import { tick } from '../helpers/async';
 
 /**
  * Extends an HTMLElement with Obsidian's custom DOM methods.
@@ -359,7 +360,7 @@ describe('ConversionModal', () => {
 
 			const conversionPromise = runConversion(modal, progressEl);
 			// Let the pipeline reach the hanging conversion step
-			await new Promise((resolve) => setTimeout(resolve, 0));
+			await tick();
 
 			modal.onClose();
 

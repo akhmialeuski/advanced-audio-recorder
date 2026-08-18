@@ -47,6 +47,7 @@ jest.mock('mediabunny', () => ({
 }));
 
 import { transcribeFile } from 'src/transcription/api';
+import { waitFor } from '../helpers/async';
 
 const transcribeMock = transcribeFile as jest.Mock;
 
@@ -82,16 +83,14 @@ let warn: jest.SpyInstance;
 
 /**
  * Lets the dialog's fire-and-forget probe finish before a run is started. It
- * reads the file and then walks every reader, so a single tick is not enough.
+ * reads the file and then walks every reader, so the wait polls the dialog's
+ * own flag rather than guessing at a number of turns.
  * @param internals - The dialog whose probe is being waited on
  */
 async function settle(internals: ModalInternals): Promise<void> {
-	for (let tick = 0; tick < 50 && !internals.probeFinished; tick++) {
-		await new Promise((resolve) => setTimeout(resolve, 0));
-	}
-	if (!internals.probeFinished) {
-		throw new Error('The duration probe never finished');
-	}
+	await waitFor(() => internals.probeFinished, {
+		message: 'the duration probe never finished',
+	});
 }
 
 beforeEach(() => {

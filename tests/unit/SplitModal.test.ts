@@ -230,6 +230,7 @@ import { encodeAudioBuffer } from 'src/audio/AudioEncoder';
 import { decodeAudioBlob } from 'src/audio/AudioFormatConverter';
 import { updateLinksInVault } from 'src/utils/LinkUpdater';
 import { mergeSettings } from 'src/settings/settingsSerialization';
+import { waitFor } from '../helpers/async';
 
 /** WAV header size produced by createWavHeader. */
 const WAV_HEADER_SIZE = 44;
@@ -591,19 +592,16 @@ describe('SplitModal', () => {
 
 		const button = at(mockCapturedControls.buttons, 0);
 		button.click();
-		// The click handler runs the async pipeline in the background;
-		// the button is re-enabled in its finally block, so wait for that
-		// instead of a fixed delay (slow under coverage instrumentation)
-		for (let i = 0; i < 400; i++) {
-			if (
+		// The click handler runs the async pipeline in the background and
+		// re-enables the button in its finally block, so wait for that rather
+		// than a fixed delay (slow under coverage instrumentation).
+		await waitFor(
+			() =>
 				button.setDisabled.mock.calls.some(
 					(call: unknown[]) => call[0] === false,
-				)
-			) {
-				break;
-			}
-			await new Promise((resolve) => setTimeout(resolve, 5));
-		}
+				),
+			{ timeout: 2000, message: 'the Split button was never re-enabled' },
+		);
 
 		expect(mockApp.vault.createBinary).toHaveBeenCalledTimes(3);
 		expect(button.setDisabled).toHaveBeenCalledWith(true);

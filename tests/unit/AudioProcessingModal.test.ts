@@ -12,6 +12,7 @@ import { AudioProcessingService } from 'src/cleanup/AudioProcessingService';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { createMockApp } from '../helpers/createApp';
+import { tick } from '../helpers/async';
 
 jest.mock('src/cleanup/AudioProcessingService');
 
@@ -91,8 +92,8 @@ function clickToggle(container: HTMLElement, name: string): void {
 
 /** Lets the queued run() settle (one yield plus the async pipeline). */
 async function settle(): Promise<void> {
-	await new Promise((resolve) => setTimeout(resolve, 0));
-	await new Promise((resolve) => setTimeout(resolve, 0));
+	await tick();
+	await tick();
 }
 
 describe('AudioProcessingModal', () => {

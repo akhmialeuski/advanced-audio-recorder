@@ -18,6 +18,7 @@ import {
 } from './helpers/recordingManagerTestKit';
 import { at } from '../helpers/assertions';
 import { useDesktopPlatform, useMobilePlatform } from '../helpers/platform';
+import { tick } from '../helpers/async';
 
 // Mock obsidian module
 jest.mock('obsidian', () => ({
@@ -214,8 +215,8 @@ describe('RecordingManager', () => {
 			} as BlobEvent);
 			// The Blob.arrayBuffer polyfill reads through FileReader, which
 			// takes an extra event-loop turn before the flush lands
-			await new Promise((resolve) => setTimeout(resolve, 0));
-			await new Promise((resolve) => setTimeout(resolve, 0));
+			await tick();
+			await tick();
 
 			expect(mockJournal.addSegment).toHaveBeenCalledWith(
 				expect.stringContaining('Track1'),
@@ -239,7 +240,7 @@ describe('RecordingManager', () => {
 			recorder.ondataavailable?.({
 				data: new Blob([new Uint8Array([1])], { type: 'audio/webm' }),
 			} as BlobEvent);
-			await new Promise((resolve) => setTimeout(resolve, 0));
+			await tick();
 
 			await manager.stopRecording();
 

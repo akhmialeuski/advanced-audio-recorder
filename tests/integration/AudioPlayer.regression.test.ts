@@ -28,6 +28,7 @@ import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { PlayerMarker } from 'src/markers/markerModel';
 import type { ResolvedPlayerSettings } from 'src/player/playerSettings';
 import type { TFile } from 'obsidian';
+import { tick } from '../helpers/async';
 
 type Listener = () => void;
 
@@ -356,7 +357,7 @@ describe('waveform rendering decision (F2/F3)', () => {
 			expect(container.querySelectorAll('canvas')).toHaveLength(2);
 			// Let the fire-and-forget waveform load settle (decode rejects)
 			// while the warning is still silenced
-			await new Promise((resolve) => setTimeout(resolve, 0));
+			await tick();
 		} finally {
 			warn.mockRestore();
 		}
@@ -384,7 +385,7 @@ describe('waveform rendering decision (F2/F3)', () => {
 			).not.toBeNull();
 			expect(container.querySelector('.aar-player-seek-bar')).toBeNull();
 			// Let the fire-and-forget waveform load settle (decode rejects)
-			await new Promise((resolve) => setTimeout(resolve, 0));
+			await tick();
 		} finally {
 			warn.mockRestore();
 		}
@@ -741,9 +742,6 @@ describe('lazy waveform decode (B2)', () => {
 			{ startSeconds: null, sourcePath: 'note.md', immediate: true },
 		);
 	}
-
-	const tick = (): Promise<void> =>
-		new Promise((resolve) => setTimeout(resolve, 0));
 
 	const rejectingDecode = (): jest.Mock =>
 		jest.fn(() => Promise.reject(new Error('no decode in tests')));

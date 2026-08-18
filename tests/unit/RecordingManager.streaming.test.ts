@@ -29,6 +29,7 @@ import {
 	useDesktopPlatform,
 	useMobilePlatform,
 } from '../helpers/platform';
+import { flushMicrotasks } from '../helpers/async';
 
 // Mock obsidian module
 jest.mock('obsidian', () => ({
@@ -567,16 +568,6 @@ describe('RecordingManager', () => {
 			};
 		}
 
-		/**
-		 * Lets the voided handleChunk continuation run to completion so
-		 * rotationPromise is observable after awaiting pendingWrite.
-		 */
-		async function flushMicrotasks(): Promise<void> {
-			for (let i = 0; i < 10; i++) {
-				await Promise.resolve();
-			}
-		}
-
 		function createManagerWithSettings(
 			overrides: Partial<AudioRecorderSettings>,
 		): void {
@@ -799,7 +790,7 @@ describe('RecordingManager', () => {
 			});
 			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
 			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
-			await flushMicrotasks();
+			await flushMicrotasks(10);
 
 			const rotation = getInternals(manager).rotationPromise;
 			expect(rotation).not.toBeNull();
@@ -850,14 +841,14 @@ describe('RecordingManager', () => {
 			});
 			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
 			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
-			await flushMicrotasks();
+			await flushMicrotasks(10);
 			expect(getInternals(manager).rotationPromise).toBeNull();
 
 			// Active time reaches 30 s + 35 s = 65 s, beyond the boundary
 			jest.setSystemTime(165_000);
 			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
 			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
-			await flushMicrotasks();
+			await flushMicrotasks(10);
 
 			const rotation = getInternals(manager).rotationPromise;
 			expect(rotation).not.toBeNull();
@@ -906,7 +897,7 @@ describe('RecordingManager', () => {
 			});
 			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
 			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
-			await flushMicrotasks();
+			await flushMicrotasks(10);
 			await getInternals(manager).rotationPromise;
 
 			const { Notice } = jest.requireMock('obsidian');
@@ -1009,7 +1000,7 @@ describe('RecordingManager', () => {
 			});
 			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
 			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
-			await flushMicrotasks();
+			await flushMicrotasks(10);
 			await getInternals(manager).rotationPromise;
 
 			// Restart (2nd construction) precedes the part file write so
@@ -1076,7 +1067,7 @@ describe('RecordingManager', () => {
 			});
 			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
 			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
-			await flushMicrotasks();
+			await flushMicrotasks(10);
 			await getInternals(manager).rotationPromise;
 
 			// The internally fired stopRecording is not awaitable from the
@@ -1085,7 +1076,7 @@ describe('RecordingManager', () => {
 				if (manager.getStatus() === RecordingStatus.Idle) {
 					break;
 				}
-				await flushMicrotasks();
+				await flushMicrotasks(10);
 			}
 
 			const { Notice } = jest.requireMock('obsidian');
@@ -1118,7 +1109,7 @@ describe('RecordingManager', () => {
 			});
 			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
 			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
-			await flushMicrotasks();
+			await flushMicrotasks(10);
 			await getInternals(manager).rotationPromise;
 
 			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
@@ -1194,7 +1185,7 @@ describe('RecordingManager', () => {
 			});
 			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
 			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
-			await flushMicrotasks();
+			await flushMicrotasks(10);
 			expect(getInternals(manager).rotationPromise).not.toBeNull();
 
 			// The rotation already stopped the recorders; the stop call

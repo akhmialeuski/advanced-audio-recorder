@@ -20,6 +20,7 @@ import {
 	makeFakeMarkerStore,
 	makeStatefulMarkerStore,
 } from './helpers/recordingManagerTestKit';
+import { flushMicrotasks } from '../helpers/async';
 
 // Mock obsidian module
 jest.mock('obsidian', () => ({
@@ -148,14 +149,6 @@ describe('RecordingManager', () => {
 				new Uint8Array([1, 2, 3]).buffer,
 			);
 		});
-
-		// A commit/cancel queues fire-and-forget atomic sidecar updates;
-		// draining a few microtask turns lets them settle.
-		const flushMicrotasks = async (): Promise<void> => {
-			for (let i = 0; i < 5; i++) {
-				await Promise.resolve();
-			}
-		};
 
 		const feedChunkAndStop = async (): Promise<void> => {
 			const chunk = new Blob([new Uint8Array([1, 2, 3])], {

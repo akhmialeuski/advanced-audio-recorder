@@ -29,6 +29,7 @@ jest.mock('src/transcription/api', () => {
 import { readAudioMetadata } from 'src/utils/AudioFileAnalyzer';
 import { transcribeFile } from 'src/transcription/api';
 import { createFile } from '../helpers/createApp';
+import { tick } from '../helpers/async';
 
 type ModalInternals = {
 	updateCostEstimate: () => void;
@@ -46,9 +47,6 @@ const probeMock = readAudioMetadata as jest.Mock;
 const transcribeMock = transcribeFile as jest.Mock;
 
 /** Lets a fire-and-forget probe (readBinary + probe) settle before asserting. */
-function flush(): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, 0));
-}
 
 function createAudioFile(): TFile {
 	const file = createFile('Audio/meeting.webm');
@@ -110,7 +108,7 @@ describe('TranscriptionModal cost estimate', () => {
 			llmPostProcessEnabled: false,
 		});
 		modal.onOpen();
-		await flush();
+		await tick();
 
 		const text = internals.costEstimateEl?.textContent ?? '';
 		expect(text).toContain('Estimated cost');
@@ -130,7 +128,7 @@ describe('TranscriptionModal cost estimate', () => {
 			llmOpenAiModel: 'gpt-4o-mini',
 		});
 		modal.onOpen();
-		await flush();
+		await tick();
 
 		const text = internals.costEstimateEl?.textContent ?? '';
 		expect(text).toContain('Post-processing (Clean up) - OpenAI');
@@ -150,7 +148,7 @@ describe('TranscriptionModal cost estimate', () => {
 			llmPostProcessEnabled: false,
 		});
 		modal.onOpen();
-		await flush();
+		await tick();
 
 		const links = internals.costEstimateEl?.querySelectorAll('a') ?? [];
 		expect(links.length).toBe(1);
@@ -167,7 +165,7 @@ describe('TranscriptionModal cost estimate', () => {
 			deepgramModel: 'nova-3',
 		});
 		modal.onOpen();
-		await flush();
+		await tick();
 
 		expect(internals.costEstimateEl?.textContent).toContain(
 			'estimate unavailable (duration unreadable)',
@@ -190,7 +188,7 @@ describe('TranscriptionModal cost estimate', () => {
 			deepgramModel: 'nova-3',
 		});
 		modal.onOpen();
-		await flush();
+		await tick();
 
 		expect(internals.durationSeconds).toBeNull();
 		expect(internals.costEstimateEl?.textContent).toContain(
@@ -205,7 +203,7 @@ describe('TranscriptionModal cost estimate', () => {
 			llmPostProcessEnabled: false,
 		});
 		modal.onOpen();
-		await flush();
+		await tick();
 
 		expect(internals.costEstimateEl?.textContent).toContain('no API cost');
 		expect(readBinary).not.toHaveBeenCalled();
@@ -217,7 +215,7 @@ describe('TranscriptionModal cost estimate', () => {
 			transcriptionShowCostEstimates: false,
 		});
 		modal.onOpen();
-		await flush();
+		await tick();
 
 		expect(internals.costEstimateEl?.textContent).toBe('');
 		expect(readBinary).not.toHaveBeenCalled();
@@ -233,7 +231,7 @@ describe('TranscriptionModal cost estimate', () => {
 			{ autoStart: true },
 		);
 		modal.onOpen();
-		await flush();
+		await tick();
 
 		// The run's own read is the only one; the estimate probe is skipped so
 		// a long recording is never held in memory twice.
@@ -251,7 +249,7 @@ describe('TranscriptionModal cost estimate', () => {
 			tracker,
 		);
 		modal.onOpen();
-		await flush();
+		await tick();
 
 		expect(internals.costEstimateEl?.textContent).toContain(
 			'Spent this session: ~$0.12',

@@ -19,6 +19,7 @@ import type { ResolvedPlayerSettings } from 'src/player/playerSettings';
 import type { PlayerMarker } from 'src/markers/markerModel';
 import { PLAYER_SKIP_SECONDS } from 'src/constants';
 import type { TFile } from 'obsidian';
+import { tick } from '../helpers/async';
 
 type Listener = () => void;
 
@@ -227,9 +228,6 @@ function pointerEvent(type: string, clientX: number): MouseEvent {
 	// the same listeners (pointerId is undefined, capture calls are mocked)
 	return new MouseEvent(type, { button: 0, clientX, bubbles: true });
 }
-
-const tick = (): Promise<void> =>
-	new Promise((resolve) => setTimeout(resolve, 0));
 
 afterEach(() => {
 	document.body.innerHTML = '';

@@ -65,14 +65,24 @@ const probeMock = jest.mocked(probeMediaKind);
 const audioPlayerMock = jest.mocked(AudioPlayer);
 const detachedStartMock = jest.mocked(DetachedPlayback.start);
 
+/** Mirrors RERENDER_DEBOUNCE_MS in src/player/EnhancedPlayerRegistrar.ts. */
+const RERENDER_DEBOUNCE_MS = 50;
+
 /** Builds a probe result; probes are confident unless stated otherwise. */
 function probeResult(kind: MediaKind, confident = true): MediaProbeResult {
 	return { kind, confident };
 }
 
-/** Resolves after the probe microtasks and the re-render debounce. */
+/**
+ * Resolves after the probe microtasks and the re-render debounce.
+ *
+ * Fake timers rather than a real sleep: the debounce is 50 ms, and a fixed
+ * wait long enough on an idle machine is a coin flip on a loaded one.
+ * advanceTimersByTimeAsync moves the clock past the debounce and drains the
+ * microtasks the probe queues, in a fixed number of steps every time.
+ */
 function flush(): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, 120));
+	return jest.advanceTimersByTimeAsync(RERENDER_DEBOUNCE_MS * 2);
 }
 
 /**
@@ -274,9 +284,14 @@ const info: EmbedInfo = {
 };
 
 beforeEach(() => {
+	jest.useFakeTimers();
 	probeMock.mockReset();
 	audioPlayerMock.mockClear();
 	detachedStartMock.mockReset();
+});
+
+afterEach(() => {
+	jest.useRealTimers();
 });
 
 describe('EnhancedPlayerRegistrar embed creation', () => {
