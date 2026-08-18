@@ -6,6 +6,7 @@
  */
 
 import { App } from 'obsidian';
+import { allEls, el } from '../helpers/dom';
 import { RecordingMarkerModal } from 'src/ui/MarkerModal';
 import { MARKER_KIND } from 'src/markers/markerModel';
 import type { MarkerKind } from 'src/markers/markerModel';
@@ -36,21 +37,20 @@ function openModal(handle: RecordingMarkerHandle): RecordingMarkerModal {
 }
 
 function inputOf(modal: RecordingMarkerModal): HTMLInputElement {
-	const input = modal.contentEl.querySelector('input');
-	if (!input) {
-		throw new Error('name input not rendered');
-	}
-	return input;
+	return el<HTMLInputElement>(modal.contentEl, 'input');
 }
 
 function buttonByText(
 	modal: RecordingMarkerModal,
 	text: string,
 ): HTMLButtonElement {
-	const buttons = Array.from(modal.contentEl.querySelectorAll('button'));
-	const button = buttons.find((el) => el.textContent?.includes(text));
+	const buttons = allEls<HTMLButtonElement>(modal.contentEl, 'button');
+	const button = buttons.find((one) => one.textContent?.includes(text));
 	if (!button) {
-		throw new Error(`button "${text}" not rendered`);
+		throw new Error(
+			`No "${text}" button. Rendered: ` +
+				buttons.map((one) => `"${one.textContent ?? ''}"`).join(', '),
+		);
 	}
 	return button;
 }
@@ -141,5 +141,53 @@ describe('RecordingMarkerModal', () => {
 
 		buttonByText(modal, 'Add').click();
 		expect(commit).toHaveBeenCalledWith('Chapter 1', MARKER_KIND.chapter);
+	});
+
+	it('does nothing when the kind that is already selected is pressed again', () => {
+		// Re-selecting would re-derive the default label, silently discarding
+		// whatever the user had typed.
+		const { handle, commit } = makeHandle();
+		const modal = openModal(handle);
+		inputOf(modal).value = 'My own name';
+
+		buttonByText(modal, 'Bookmark').click();
+		buttonByText(modal, 'Add').click();
+
+		expect(commit).toHaveBeenCalledWith(
+			'My own name',
+			MARKER_KIND.bookmark,
+		);
+	});
+
+	it('focuses the name field once the dialog is on screen', () => {
+		// select() does nothing on a detached input, so the focus is deferred
+		// to after Obsidian has mounted the dialog.
+		jest.useFakeTimers();
+		try {
+			const { handle } = makeHandle();
+			const modal = openModal(handle);
+			document.body.appendChild(modal.contentEl);
+			const input = inputOf(modal);
+			const select = jest.spyOn(input, 'select');
+
+			jest.advanceTimersByTime(0);
+
+			expect(document.activeElement).toBe(input);
+			expect(select).toHaveBeenCalled();
+		} finally {
+			jest.useRealTimers();
+		}
+	});
+
+	it('leaves other keys to the field', () => {
+		// Committing on any key would make the name uneditable.
+		const { handle, commit } = makeHandle();
+		const modal = openModal(handle);
+
+		inputOf(modal).dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'a', bubbles: true }),
+		);
+
+		expect(commit).not.toHaveBeenCalled();
 	});
 });

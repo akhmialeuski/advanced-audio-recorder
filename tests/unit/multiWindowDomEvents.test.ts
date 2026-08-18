@@ -192,4 +192,21 @@ describe('registerDomEventOnAllWindows', () => {
 			attach.mockRestore();
 		}
 	});
+
+	it('ignores the closing of a window it never attached to', () => {
+		// Every pop-out close fires this event, including ones that closed
+		// before the listener was registered.
+		const plugin = new FakePlugin([]);
+		plugin.load();
+		registerDomEventOnAllWindows(
+			plugin as unknown as Plugin,
+			plugin.app,
+			'click',
+			() => undefined,
+		);
+
+		expect(() => {
+			plugin.emit('window-close', makeDoc());
+		}).not.toThrow();
+	});
 });
