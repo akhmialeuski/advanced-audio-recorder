@@ -34,16 +34,9 @@ jest.mock('src/audio/AudioEncoder', () =>
 jest.mock('src/audio/WavEncoder', () => require('../mocks/modules/wavEncoder'));
 
 // Mock PcmStreamRecorder
-jest.mock('src/recording/PcmStreamRecorder', () => ({
-	PcmStreamRecorder: jest.fn().mockImplementation(() => ({
-		channels: 1,
-		sampleRate: 44100,
-		start: jest.fn().mockResolvedValue(undefined),
-		stop: jest.fn().mockResolvedValue(undefined),
-		pause: jest.fn(),
-		resume: jest.fn(),
-	})),
-}));
+jest.mock('src/recording/PcmStreamRecorder', () =>
+	require('../mocks/modules/pcmStreamRecorder'),
+);
 
 installRecordingMediaStubs();
 

@@ -32,6 +32,7 @@ import {
 import { flushMicrotasks } from '../helpers/async';
 import { Notice } from 'obsidian';
 import { internalsOf } from '../helpers/doubles';
+import { PcmStreamRecorder } from 'src/recording/PcmStreamRecorder';
 
 // Mock AudioStreamHandler
 jest.mock('src/recording/AudioStreamHandler', () =>
@@ -46,29 +47,14 @@ jest.mock('src/audio/AudioEncoder', () =>
 // Mock WavEncoder
 jest.mock('src/audio/WavEncoder', () => require('../mocks/modules/wavEncoder'));
 
-// Mock PcmStreamRecorder
-let capturedPcmChunkCallback: ((data: ArrayBuffer) => void) | null = null;
-jest.mock('src/recording/PcmStreamRecorder', () => ({
-	PcmStreamRecorder: jest
-		.fn()
-		.mockImplementation(
-			(
-				_stream: MediaStream,
-				_sampleRate: number,
-				onChunk: (data: ArrayBuffer) => void,
-			) => {
-				capturedPcmChunkCallback = onChunk;
-				return {
-					channels: 1,
-					sampleRate: 44100,
-					start: jest.fn().mockResolvedValue(undefined),
-					stop: jest.fn().mockResolvedValue(undefined),
-					pause: jest.fn(),
-					resume: jest.fn(),
-				};
-			},
-		),
-}));
+jest.mock('src/recording/PcmStreamRecorder', () =>
+	require('../mocks/modules/pcmStreamRecorder'),
+);
+
+/** The chunk callback the manager gave the PCM recorder it built. */
+function pcmChunkCallback(): (data: ArrayBuffer) => void {
+	return at(jest.mocked(PcmStreamRecorder).mock.calls, 0)[2];
+}
 
 installRecordingMediaStubs();
 
@@ -317,7 +303,7 @@ describe('RecordingManager', () => {
 
 			// Simulate PCM chunks for both tracks
 			const pcmData = new Int16Array([100, -100, 200, -200]).buffer;
-			capturedPcmChunkCallback?.(pcmData);
+			pcmChunkCallback()(pcmData);
 
 			await Promise.resolve();
 			await manager.stopRecording();
@@ -467,7 +453,7 @@ describe('RecordingManager', () => {
 				// Keep the PCM buffer over the threshold so every chunk
 				// triggers a flush attempt
 				target.pcmBufferedBytes = 50 * 1024 * 1024 - 1;
-				capturedPcmChunkCallback?.(new Int16Array([100, -100]).buffer);
+				pcmChunkCallback()(new Int16Array([100, -100]).buffer);
 			};
 
 			sendPcm();
@@ -596,9 +582,9 @@ describe('RecordingManager', () => {
 			await manager.startRecording();
 
 			// Part limit: 1 min * 60 s * 44100 Hz * 1 ch * 2 B = 5,292,000 B
-			capturedPcmChunkCallback?.(new ArrayBuffer(3_000_000));
+			pcmChunkCallback()(new ArrayBuffer(3_000_000));
 			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
-			capturedPcmChunkCallback?.(new ArrayBuffer(3_000_000));
+			pcmChunkCallback()(new ArrayBuffer(3_000_000));
 			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
 
 			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
@@ -627,7 +613,7 @@ describe('RecordingManager', () => {
 
 			await manager.startRecording();
 
-			capturedPcmChunkCallback?.(new ArrayBuffer(6_000_000));
+			pcmChunkCallback()(new ArrayBuffer(6_000_000));
 			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
 
 			const partCalls = (
@@ -648,7 +634,7 @@ describe('RecordingManager', () => {
 
 			await manager.startRecording();
 
-			capturedPcmChunkCallback?.(new ArrayBuffer(6_000_000));
+			pcmChunkCallback()(new ArrayBuffer(6_000_000));
 			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
 
 			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
@@ -686,7 +672,7 @@ describe('RecordingManager', () => {
 
 			await manager.startRecording();
 
-			capturedPcmChunkCallback?.(new ArrayBuffer(6_000_000));
+			pcmChunkCallback()(new ArrayBuffer(6_000_000));
 			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
 
 			// The assembled part is kept: the removed segments would
@@ -711,7 +697,7 @@ describe('RecordingManager', () => {
 
 			await manager.startRecording();
 
-			capturedPcmChunkCallback?.(new ArrayBuffer(6_000_000));
+			pcmChunkCallback()(new ArrayBuffer(6_000_000));
 			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
 
 			// Changing the prefix mid-session must not affect this session
@@ -886,7 +872,7 @@ describe('RecordingManager', () => {
 			await manager.startRecording();
 
 			// Part limit: 1 min * 60 s * 44100 Hz * 1 ch * 2 B = 5,292,000 B
-			capturedPcmChunkCallback?.(new ArrayBuffer(6_000_000));
+			pcmChunkCallback()(new ArrayBuffer(6_000_000));
 			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
 
 			expect(Notice).toHaveBeenCalledWith(

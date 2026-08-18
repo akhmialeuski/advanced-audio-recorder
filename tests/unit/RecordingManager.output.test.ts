@@ -23,6 +23,7 @@ import {
 } from '../helpers/recordingManagerTestKit';
 import { useDesktopPlatform } from '../helpers/platform';
 import { MarkdownView, Notice } from 'obsidian';
+import { PcmStreamRecorder } from 'src/recording/PcmStreamRecorder';
 
 // Mock AudioStreamHandler
 jest.mock('src/recording/AudioStreamHandler', () =>
@@ -37,29 +38,14 @@ jest.mock('src/audio/AudioEncoder', () =>
 // Mock WavEncoder
 jest.mock('src/audio/WavEncoder', () => require('../mocks/modules/wavEncoder'));
 
-// Mock PcmStreamRecorder
-let capturedPcmChunkCallback: ((data: ArrayBuffer) => void) | null = null;
-jest.mock('src/recording/PcmStreamRecorder', () => ({
-	PcmStreamRecorder: jest
-		.fn()
-		.mockImplementation(
-			(
-				_stream: MediaStream,
-				_sampleRate: number,
-				onChunk: (data: ArrayBuffer) => void,
-			) => {
-				capturedPcmChunkCallback = onChunk;
-				return {
-					channels: 1,
-					sampleRate: 44100,
-					start: jest.fn().mockResolvedValue(undefined),
-					stop: jest.fn().mockResolvedValue(undefined),
-					pause: jest.fn(),
-					resume: jest.fn(),
-				};
-			},
-		),
-}));
+jest.mock('src/recording/PcmStreamRecorder', () =>
+	require('../mocks/modules/pcmStreamRecorder'),
+);
+
+/** The chunk callback the manager gave the PCM recorder it built. */
+function pcmChunkCallback(): (data: ArrayBuffer) => void {
+	return at(jest.mocked(PcmStreamRecorder).mock.calls, 0)[2];
+}
 
 installRecordingMediaStubs();
 
@@ -122,7 +108,7 @@ describe('RecordingManager', () => {
 			await manager.startRecording();
 
 			const pcmData = new Int16Array([100, -100, 200, -200]).buffer;
-			capturedPcmChunkCallback?.(pcmData);
+			pcmChunkCallback()(pcmData);
 			await Promise.resolve();
 
 			await manager.stopRecording();
@@ -466,7 +452,7 @@ describe('RecordingManager', () => {
 
 			// Simulate PCM chunk via captured callback
 			const pcmData = new Int16Array([100, -100, 200, -200]).buffer;
-			capturedPcmChunkCallback?.(pcmData);
+			pcmChunkCallback()(pcmData);
 
 			await Promise.resolve();
 			await manager.stopRecording();

@@ -20,6 +20,7 @@ import {
 } from '../helpers/recordingManagerTestKit';
 import { useDesktopPlatform } from '../helpers/platform';
 import { partial } from '../helpers/doubles';
+import { PcmStreamRecorder } from 'src/recording/PcmStreamRecorder';
 
 jest.mock('src/recording/AudioStreamHandler', () =>
 	require('../mocks/modules/audioStreamHandler'),
@@ -73,20 +74,9 @@ jest.mock('src/recording/MonoCaptureBridge', () => ({
 		),
 }));
 
-let pcmRecorderCtorArgs: unknown[][] = [];
-jest.mock('src/recording/PcmStreamRecorder', () => ({
-	PcmStreamRecorder: jest.fn().mockImplementation((...args: unknown[]) => {
-		pcmRecorderCtorArgs.push(args);
-		return {
-			channels: 1,
-			sampleRate: 44100,
-			start: jest.fn().mockResolvedValue(undefined),
-			stop: jest.fn().mockResolvedValue(undefined),
-			pause: jest.fn(),
-			resume: jest.fn(),
-		};
-	}),
-}));
+jest.mock('src/recording/PcmStreamRecorder', () =>
+	require('../mocks/modules/pcmStreamRecorder'),
+);
 
 installRecordingMediaStubs();
 
@@ -99,7 +89,6 @@ describe('RecordingManager mono channel wiring', () => {
 	beforeEach(() => {
 		createdBridges.length = 0;
 		failBridgeAtIndex = -1;
-		pcmRecorderCtorArgs = [];
 		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
 		useDesktopPlatform();
 		mockApp = createRecordingMockApp();
@@ -321,8 +310,10 @@ describe('RecordingManager mono channel wiring', () => {
 		await manager.startRecording();
 
 		expect(createdBridges).toHaveLength(0);
-		expect(pcmRecorderCtorArgs).toHaveLength(1);
-		expect(at(pcmRecorderCtorArgs, 0)[3]).toBe('mono-left');
+		expect(jest.mocked(PcmStreamRecorder).mock.calls).toHaveLength(1);
+		expect(at(jest.mocked(PcmStreamRecorder).mock.calls, 0)[3]).toBe(
+			'mono-left',
+		);
 
 		await manager.stopRecording();
 	});
@@ -351,9 +342,13 @@ describe('RecordingManager mono channel wiring', () => {
 		await manager.startRecording();
 
 		expect(createdBridges).toHaveLength(0);
-		expect(pcmRecorderCtorArgs).toHaveLength(2);
-		expect(at(pcmRecorderCtorArgs, 0)[3]).toBe('mono-right');
-		expect(at(pcmRecorderCtorArgs, 1)[3]).toBe('source');
+		expect(jest.mocked(PcmStreamRecorder).mock.calls).toHaveLength(2);
+		expect(at(jest.mocked(PcmStreamRecorder).mock.calls, 0)[3]).toBe(
+			'mono-right',
+		);
+		expect(at(jest.mocked(PcmStreamRecorder).mock.calls, 1)[3]).toBe(
+			'source',
+		);
 
 		await manager.stopRecording();
 	});
