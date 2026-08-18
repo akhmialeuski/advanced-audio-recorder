@@ -1,11 +1,13 @@
 /**
- * Unit tests for the encoding worker handler. The onmessage glue is a
- * thin wrapper; the handler is tested directly with mocked mediabunny.
+ * Unit tests for the encoding worker handler, tested directly with mocked
+ * mediabunny, plus the onmessage glue that only installs itself inside a real
+ * worker - which is why it needed a module re-import to reach at all.
  * @module tests/unit/encodingWorker.test
  */
 
 import { handleEncodingMessage } from 'src/audio/encodingWorker';
 import { at } from '../helpers/assertions';
+import { tick } from '../helpers/async';
 import type { WorkerRequest, WorkerResponse } from 'src/audio/encodingWorker';
 
 const mockConversionExecute = jest.fn().mockResolvedValue(undefined);
@@ -217,6 +219,85 @@ describe('handleEncodingMessage', () => {
 			message: expect.stringContaining(
 				'cannot process the input audio track',
 			),
+		});
+	});
+});
+
+describe('the worker entry point', () => {
+	/**
+	 * Re-imports the module with `self` shaped like a worker global - the only
+	 * condition under which it installs its message handler - and runs the
+	 * body while that scope is still in place, since the handler reads
+	 * `self.postMessage` when it replies, not when it is installed.
+	 * @param body - Receives the installed handler and the posted messages
+	 */
+	async function inWorkerScope(
+		body: (scope: {
+			onmessage: ((event: MessageEvent) => void) | null;
+			posted: unknown[];
+		}) => void | Promise<void>,
+	): Promise<void> {
+		const posted: unknown[] = [];
+		const scope = globalThis as unknown as Record<string, unknown>;
+		const previous = {
+			importScripts: scope.importScripts,
+			postMessage: scope.postMessage,
+			onmessage: scope.onmessage,
+		};
+		scope.importScripts = jest.fn();
+		scope.postMessage = jest.fn((message: unknown) => {
+			posted.push(message);
+		});
+		scope.onmessage = null;
+		try {
+			jest.isolateModules(() => {
+				require('src/audio/encodingWorker');
+			});
+			await body({
+				onmessage: scope.onmessage as
+					| ((event: MessageEvent) => void)
+					| null,
+				posted,
+			});
+		} finally {
+			scope.importScripts = previous.importScripts;
+			scope.postMessage = previous.postMessage;
+			scope.onmessage = previous.onmessage;
+		}
+	}
+
+	it('installs a message handler when it is running as a worker', async () => {
+		await inWorkerScope(({ onmessage }) => {
+			expect(onmessage).toEqual(expect.any(Function));
+		});
+	});
+
+	it('installs nothing on the main thread', () => {
+		// The module is imported by the main thread too, to reach
+		// handleEncodingMessage and the request types; taking over
+		// window.onmessage there would break the host page.
+		const scope = globalThis as unknown as Record<string, unknown>;
+		scope.onmessage = null;
+
+		jest.isolateModules(() => {
+			require('src/audio/encodingWorker');
+		});
+
+		expect(scope.onmessage).toBeNull();
+	});
+
+	it('answers a message the host posted', async () => {
+		await inWorkerScope(async ({ onmessage, posted }) => {
+			onmessage?.({
+				data: { id: 7, type: 'nonsense' },
+			} as MessageEvent);
+			await tick();
+
+			// Whatever the request was, the worker replies: a host left
+			// waiting on a request that silently died would hang the
+			// conversion.
+			expect(posted).toHaveLength(1);
+			expect(posted[0]).toMatchObject({ id: 7 });
 		});
 	});
 });

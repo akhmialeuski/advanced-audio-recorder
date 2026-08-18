@@ -110,23 +110,79 @@ describe('mapWhisperCppJson', () => {
 });
 
 describe('LLM response extractors', () => {
-	it('extracts OpenAI chat content', () => {
-		expect(
-			extractOpenAiText({ choices: [{ message: { content: ' hi ' } }] }),
-		).toBe('hi');
-		expect(extractOpenAiText({ choices: [] })).toBe('');
+	// A provider that changes its envelope, an error body returned with a 200,
+	// or a truncated response all arrive here as something other than the
+	// happy shape. Every one of them must read as "no text", never as a crash
+	// in the middle of a paid run.
+	it.each([
+		{
+			name: 'a chat completion',
+			body: { choices: [{ message: { content: ' hi ' } }] },
+			expected: 'hi',
+		},
+		{ name: 'no choices at all', body: { choices: [] }, expected: '' },
+		{
+			name: 'choices that are not an array',
+			body: { choices: {} },
+			expected: '',
+		},
+		{
+			name: 'a choice with no message',
+			body: { choices: [{}] },
+			expected: '',
+		},
+		{
+			name: 'a message with no content',
+			body: { choices: [{ message: {} }] },
+			expected: '',
+		},
+		{
+			name: 'content that is not a string',
+			body: { choices: [{ message: { content: 42 } }] },
+			expected: '',
+		},
+		{ name: 'a body that is not an object', body: 'oops', expected: '' },
+		{ name: 'a null body', body: null, expected: '' },
+	])('reads $name as "$expected" (OpenAI)', ({ body, expected }) => {
+		expect(extractOpenAiText(body)).toBe(expected);
 	});
 
-	it('extracts Anthropic text blocks', () => {
-		expect(
-			extractAnthropicText({
+	it.each([
+		{
+			name: 'text blocks, joined',
+			body: {
 				content: [
 					{ type: 'text', text: 'a' },
 					{ type: 'thinking', text: 'ignored' },
 					{ type: 'text', text: 'b' },
 				],
-			}),
-		).toBe('ab');
+			},
+			expected: 'ab',
+		},
+		{
+			name: 'a single block with surrounding space',
+			body: { content: [{ type: 'text', text: '  hi  ' }] },
+			expected: 'hi',
+		},
+		{ name: 'an empty content array', body: { content: [] }, expected: '' },
+		{
+			name: 'content that is not an array',
+			body: { content: 'hi' },
+			expected: '',
+		},
+		{
+			name: 'a block that is not an object',
+			body: { content: ['hi'] },
+			expected: '',
+		},
+		{
+			name: 'a text block whose text is not a string',
+			body: { content: [{ type: 'text', text: 42 }] },
+			expected: '',
+		},
+		{ name: 'a body that is not an object', body: 7, expected: '' },
+	])('reads $name as "$expected" (Anthropic)', ({ body, expected }) => {
+		expect(extractAnthropicText(body)).toBe(expected);
 	});
 });
 
