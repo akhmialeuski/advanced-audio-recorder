@@ -47,6 +47,10 @@ export const MARKER = {
 	label: '.aar-player-marker-label',
 	segment: '.aar-player-marker-segment',
 	delete: '.aar-player-marker-delete',
+	/** The overlay the ticks are drawn onto, over the seek area. */
+	overlay: '.aar-player-markers',
+	/** The list of marker rows under the player. */
+	list: '.aar-player-marker-list',
 	byId: (id: string): string =>
 		`.aar-player-marker-row-clickable[data-marker-id="${id}"]`,
 	tickAt: (seconds: number): string =>

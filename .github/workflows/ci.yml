@@ -33,3 +33,6 @@ jobs:
 
             - name: Test layers match what each test covers
               run: node scripts/layer-check.mjs
+
+            - name: Test conventions stay within their ceilings
+              run: node scripts/test-conventions.mjs

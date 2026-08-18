@@ -12,6 +12,7 @@
 		"test:guard": "npm run test:coverage && node scripts/coverage-diff.mjs",
 		"test:baseline": "npm run test:coverage && node scripts/coverage-diff.mjs --update-baseline",
 		"test:layers": "node scripts/layer-check.mjs",
+		"test:conventions": "node scripts/test-conventions.mjs",
 		"lint": "eslint .",
 		"lint:fix": "eslint . --fix",
 		"version": "node scripts/version-bump.mjs && git add manifest.json versions.json",

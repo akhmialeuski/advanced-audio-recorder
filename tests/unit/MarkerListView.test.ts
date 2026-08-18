@@ -204,7 +204,7 @@ describe('MarkerListView tick jumps', () => {
 	it('ignores a press on the overlay that missed every tick', () => {
 		const { seekEl, callbacks } = setup(true);
 
-		pointerDown(el(seekEl, '.aar-player-markers'));
+		pointerDown(el(seekEl, MARKER.overlay));
 
 		expect(callbacks.onJump).not.toHaveBeenCalled();
 	});
@@ -257,7 +257,7 @@ describe('MarkerListView double-click to add', () => {
 
 describe('MarkerListView list clicks that are not actions', () => {
 	it.each([
-		{ name: 'the list background', selector: '.aar-player-marker-list' },
+		{ name: 'the list background', selector: MARKER.list },
 		{ name: 'a row that carries no action', selector: MARKER.row },
 	])('ignores a click on $name', ({ selector }) => {
 		const { listContainer, callbacks } = setup(true);

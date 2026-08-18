@@ -225,11 +225,18 @@ asserts the control is reachable at the same time as it finds it.
 ## 11. Coverage, and what to do when the guard fails
 
 ```bash
-npm test              # everything
-npm run test:coverage # with coverage, writes coverage/
-npm run test:guard    # coverage plus the per-file regression check
-npm run test:layers   # the unit/integration boundary
+npm test                 # everything
+npm run test:coverage    # with coverage, writes coverage/
+npm run test:guard       # coverage plus the per-file regression check
+npm run test:layers      # the unit/integration boundary
+npm run test:conventions # the ceilings the sections above describe
 ```
+
+`test:conventions` is what keeps sections 4, 5, 9 and 10 from being
+suggestions: it counts CSS selectors and bare `as unknown as` casts in test
+bodies, `should` titles, and inline mocks shadowing the Obsidian one, and fails
+when a count creeps above the ceiling the suite currently sits at. The ceilings
+are lowered deliberately, in the commit that does the work to lower them.
 
 Two mechanisms guard coverage, and they catch different things.
 
