@@ -121,27 +121,91 @@ export class Plugin {
 		this.manifest = manifest;
 	}
 
-	addCommand(_command: Command): Command {
-		return _command;
+	/**
+	 * Commands the plugin registered, in order.
+	 *
+	 * The real Obsidian keeps these in its command palette, which is where a
+	 * user reaches them; recording them here is what lets a test invoke a
+	 * command the way the palette would instead of calling the private method
+	 * behind it.
+	 */
+	readonly registeredCommands: Command[] = [];
+
+	/** Ribbon icons the plugin added, with the element each returned. */
+	readonly ribbonIcons: {
+		icon: string;
+		title: string;
+		callback: (event: MouseEvent) => void;
+		el: HTMLElement;
+	}[] = [];
+
+	/** Status bar items the plugin added, in order. */
+	readonly statusBarItems: HTMLElement[] = [];
+
+	/** Setting tabs the plugin added, in order. */
+	readonly settingTabs: PluginSettingTab[] = [];
+
+	/** Intervals the plugin registered, in order. */
+	readonly registeredIntervals: number[] = [];
+
+	addCommand(command: Command): Command {
+		this.registeredCommands.push(command);
+		return command;
+	}
+
+	/**
+	 * Runs a registered command the way the palette would.
+	 * @param id - The command id
+	 * @returns Whether a checkCallback reported the command as available
+	 */
+	invokeCommand(id: string): boolean {
+		const command = this.registeredCommands.find(
+			(entry) => entry.id === id,
+		);
+		if (!command) {
+			const known = this.registeredCommands
+				.map((entry) => entry.id)
+				.join(', ');
+			throw new Error(
+				`No command "${id}". Registered: ${known || '(none)'}`,
+			);
+		}
+		if (command.checkCallback) {
+			// The palette asks first, then runs; a command that says no is
+			// never shown, so a test that skipped the ask would exercise a
+			// path the user cannot reach.
+			if (!command.checkCallback(true)) {
+				return false;
+			}
+			command.checkCallback(false);
+			return true;
+		}
+		command.callback?.();
+		return true;
 	}
 
 	addRibbonIcon(
-		_icon: string,
-		_title: string,
-		_callback: () => void,
+		icon: string,
+		title: string,
+		callback: (event: MouseEvent) => void,
 	): HTMLElement {
-		return document.createElement('div');
+		const el = addObsidianDomExtensions(document.createElement('div'));
+		this.ribbonIcons.push({ icon, title, callback, el });
+		return el;
 	}
 
-	addSettingTab(_settingTab: PluginSettingTab): void {
-		// Mock implementation
+	addSettingTab(settingTab: PluginSettingTab): void {
+		this.settingTabs.push(settingTab);
 	}
 
 	addStatusBarItem(): HTMLElement {
-		return document.createElement('div');
+		const el = addObsidianDomExtensions(document.createElement('div'));
+		this.statusBarItems.push(el);
+		return el;
 	}
 
 	registerInterval(id: number): number {
+		this.registeredIntervals.push(id);
 		return id;
 	}
 
@@ -1644,4 +1708,11 @@ export interface Command {
 	id: string;
 	name: string;
 	callback?: () => void;
+	/**
+	 * Obsidian's conditional command: called with true to ask whether the
+	 * command applies right now, and with false to run it.
+	 */
+	checkCallback?: (checking: boolean) => boolean | void;
+	editorCallback?: (...args: unknown[]) => void;
+	icon?: string;
 }
