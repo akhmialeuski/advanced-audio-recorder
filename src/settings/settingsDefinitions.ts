@@ -54,6 +54,12 @@ import {
 	MAX_TRANSCRIBE_CHUNK_MB,
 } from '../constants';
 import { PROFILE_KINDS, type ProfileSection } from './profileKinds';
+import {
+	engineStatus,
+	enginesStatus,
+	multiTrackStatus,
+	type PageStatus,
+} from './settingsAttention';
 import { LLM_JOBS } from '../transcription/llm/vendors';
 import {
 	ACCOUNTS,
@@ -733,6 +739,9 @@ function multiTrackPage(
 		desc: 'Recording several input devices at the same time.',
 		displayValue: (): string =>
 			active() ? `${String(settings.maxTracks)} tracks` : 'Off',
+		// The track count alone reads the same whether the tracks have inputs
+		// or not, and a track without one is what a recording is refused on.
+		status: (): PageStatus => multiTrackStatus(settings),
 		items: sectionItems(
 			[
 				{
@@ -946,6 +955,11 @@ export interface ProfileCatalogue {
 	rename(id: string): void;
 	/** Removes a profile. */
 	remove(id: string): void;
+	/**
+	 * Moves a profile from one position in the catalogue to another, by index
+	 * into {@link ProfileCatalogue.entries}.
+	 */
+	reorder(from: number, to: number): void;
 }
 
 /**
@@ -1151,6 +1165,15 @@ function profileGroups(
 					emptyState: 'No profiles yet. Add one to start.',
 					search: nameFilter('Filter profiles'),
 					addItem: { name: 'Add profile', action: add },
+					// The order is the order the picker offers, so a catalogue
+					// grown one profile at a time can be arranged rather than
+					// read in the order it happened to be created in. Indices
+					// address the items declared below, which is the stored
+					// order - the same contract the model catalogue's onDelete
+					// already relies on.
+					onReorder: (from, to): void => {
+						catalogue.reorder(from, to);
+					},
 					items: entries.map((entry) =>
 						profilePage(catalogue, entry),
 					),
@@ -1297,6 +1320,7 @@ function enginePage(
 		name: engine.label,
 		desc: engineJobsDesc(engine),
 		displayValue: (): string => engineSummary(settings, engine),
+		status: (): PageStatus => engineStatus(settings, engine),
 		items: sectionItems(rows),
 	};
 }
@@ -1326,7 +1350,12 @@ function engineSummary(
 ): string {
 	const connection = accountOf(engine);
 	if (!connection) {
-		return settings.localWhisperBinaryPath ? 'Configured' : 'No binary';
+		// Both paths, in the order they are entered: the local engine is
+		// refused without either, so a binary alone is not "Configured".
+		if (!settings.localWhisperBinaryPath) {
+			return 'No binary';
+		}
+		return settings.localWhisperModelPath ? 'Configured' : 'No model file';
 	}
 	if (!connection.apiKey(settings)) {
 		return 'No key';
@@ -1364,6 +1393,9 @@ function enginesPage(ctx: SettingsDefinitionContext): SettingGroupItem {
 		// otherwise both report the one key that was entered.
 		displayValue: (): string =>
 			`${String(configuredAccountCount(ctx.settings))} configured`,
+		// Counting the accounts that hold a key says nothing about whether the
+		// ones actually called hold theirs, which is what this reports.
+		status: (): PageStatus => enginesStatus(ctx.settings),
 		visible: (): boolean => transcriptionPageActive(ctx.settings),
 		items: sectionItems(
 			ENGINE_ORDER.map((id) =>
@@ -2121,6 +2153,10 @@ export function buildSettingsDefinitions(
 				desc: 'Speech-to-text, transcript output, chapters, and LLM post-processing.',
 				displayValue: (): string =>
 					ctx.settings.transcriptionEnabled ? 'On' : 'Off',
+				// Every engine a job calls is configured under this entry, so
+				// it carries what the Engines entry inside it carries: an
+				// indicator the user cannot follow inwards is worse than none.
+				status: (): PageStatus => enginesStatus(ctx.settings),
 				items: [
 					// Each block holds what belongs to it, catalogues included:
 					// nothing floats on the page beside the section it configures.

@@ -13,6 +13,7 @@ import {
 	editingProfileId,
 	effectiveProfileId,
 	findProfile,
+	moveProfile,
 	removeAndReselectProfile,
 	removeProfile,
 	selectedProfile,
@@ -67,6 +68,50 @@ describe('profile list helpers', () => {
 			const next = removeProfile(profiles, 'missing');
 			expect(next).toEqual(profiles);
 			expect(next).not.toBe(profiles);
+		});
+	});
+
+	describe('moveProfile', () => {
+		const profiles = [simple('a', 'A'), simple('b', 'B'), simple('c', 'C')];
+
+		it('moves a profile down to the dropped position', () => {
+			expect(
+				moveProfile(profiles, 0, 2).map((profile) => profile.id),
+			).toEqual(['b', 'c', 'a']);
+		});
+
+		it('moves a profile up to the dropped position', () => {
+			expect(
+				moveProfile(profiles, 2, 0).map((profile) => profile.id),
+			).toEqual(['c', 'a', 'b']);
+		});
+
+		it('leaves the order alone for a drop on the same position', () => {
+			expect(
+				moveProfile(profiles, 1, 1).map((profile) => profile.id),
+			).toEqual(['a', 'b', 'c']);
+		});
+
+		it.each([
+			['a source outside the list', 3, 0],
+			['a target outside the list', 0, 3],
+			['a negative index', -1, 0],
+		])('leaves the order alone for %s', (_case, from, to) => {
+			expect(moveProfile(profiles, from, to).map((p) => p.id)).toEqual([
+				'a',
+				'b',
+				'c',
+			]);
+		});
+
+		it('returns a copy rather than reordering in place', () => {
+			const next = moveProfile(profiles, 0, 1);
+			expect(next).not.toBe(profiles);
+			expect(profiles.map((profile) => profile.id)).toEqual([
+				'a',
+				'b',
+				'c',
+			]);
 		});
 	});
 

@@ -127,10 +127,17 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 		global.navigator,
 		'userAgent',
 	);
+	const originalNavigator = Object.getOwnPropertyDescriptor(
+		global,
+		'navigator',
+	);
 
 	afterEach(() => {
 		(global as unknown as { process: NodeJS.Process }).process =
 			originalProcess;
+		if (originalNavigator) {
+			Object.defineProperty(global, 'navigator', originalNavigator);
+		}
 		if (originalUserAgent) {
 			Object.defineProperty(
 				global.navigator,
@@ -198,6 +205,19 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 		expect(result.userAgent).toBe(
 			'Mozilla/5.0 (Linux; Android 14) obsidian/1.13.1',
 		);
+	});
+
+	it('returns "unknown" where there is no navigator to ask', () => {
+		// Neither runtime object is guaranteed: the report is also collected
+		// from tests and from a worker-like context with neither global.
+		Object.defineProperty(global, 'navigator', {
+			value: undefined,
+			configurable: true,
+		});
+
+		const result = SystemDiagnostics.collectEnvironment(makeApp());
+
+		expect(result.userAgent).toBe('unknown');
 	});
 
 	it('returns "unknown" for an empty user agent', () => {

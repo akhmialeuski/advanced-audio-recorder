@@ -1720,6 +1720,66 @@ describe('AudioRecorderSettingTab profile catalogues', () => {
 		expect(mockSettings.transcriptionDictionaryProfileId).toBe('b');
 	});
 
+	/**
+	 * The reorder handler of one catalogue's list, as the framework calls it
+	 * after a drag. Named by catalogue, since the tab declares one list per
+	 * kind of profile and they all carry the handler.
+	 * @param heading - The catalogue's page name, e.g. "Dictionary profiles"
+	 * @returns The handler declared on that catalogue's list
+	 */
+	function reorderProfiles(
+		heading: string,
+	): (from: number, to: number) => void {
+		const page = everyItem(tab.getSettingDefinitions()).find(
+			(item) => item['name'] === heading && 'items' in item,
+		);
+		if (!page) {
+			throw new Error(`No catalogue page called "${heading}"`);
+		}
+		const list = everyItem(page['items'] as unknown[]).find(
+			(item) => item['type'] === 'list',
+		);
+		if (!list || typeof list['onReorder'] !== 'function') {
+			throw new Error(`No reorderable list under "${heading}"`);
+		}
+		return list['onReorder'] as (from: number, to: number) => void;
+	}
+
+	it('stores the order a profile was dragged into', async () => {
+		reorderProfiles('Dictionary profiles')(1, 0);
+		await tick();
+
+		expect(
+			mockSettings.transcriptionDictionaryProfiles.map(
+				(profile) => profile.name,
+			),
+		).toEqual(['Medical', 'Legal']);
+		expect(saveSettings).toHaveBeenCalled();
+	});
+
+	it('leaves the selection on the profile that was in use', async () => {
+		// The order is presentation; which profile a run applies is not.
+		reorderProfiles('Dictionary profiles')(1, 0);
+		await tick();
+
+		expect(mockSettings.transcriptionDictionaryProfileId).toBe('a');
+	});
+
+	it.each([
+		{ name: 'a drop on the same position', from: 1, to: 1 },
+		{ name: 'an index the list does not hold', from: 4, to: 0 },
+	])('writes nothing for $name', async ({ from, to }) => {
+		reorderProfiles('Dictionary profiles')(from, to);
+		await tick();
+
+		expect(
+			mockSettings.transcriptionDictionaryProfiles.map(
+				(profile) => profile.name,
+			),
+		).toEqual(['Legal', 'Medical']);
+		expect(saveSettings).not.toHaveBeenCalled();
+	});
+
 	it.each([
 		{ name: 'renaming', row: 'Rename profile' },
 		{ name: 'deleting', row: 'Delete profile' },

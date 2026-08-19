@@ -60,6 +60,10 @@ export interface GroupDefinition {
 	cls?: string;
 	/** What a page's entry reports without being opened. */
 	displayValue?: string | (() => string);
+	/** The indicator a page's entry carries beside that value. */
+	status?: 'warning' | null | (() => 'warning' | null);
+	/** A list's drag-to-reorder handler, by index into its items. */
+	onReorder?: (from: number, to: number) => void;
 	visible?: boolean | (() => boolean);
 	items: Array<RowDefinition | GroupDefinition>;
 }
