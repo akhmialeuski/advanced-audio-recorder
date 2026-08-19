@@ -23,6 +23,7 @@ The full documentation lives in the [docs](docs/index.md) folder, and the same l
 - LLM post-processing: optionally clean up or summarize any transcript with OpenAI, Anthropic, or Gemini.
 - Audio cleanup: high-pass filter, noise gate, and loudness leveling, written to a fresh copy.
 - Formats and file operations: convert between WAV, WebM, OGG, MP3, MP4, M4A, AAC, and FLAC (with an optional mono downmix), and split long files from the right-click menu.
+- Command line (desktop, Obsidian 1.12.2+): start or stop a recording, ask what the recorder is doing, or transcribe a vault file from a terminal.
 
 Recording is fast and forgiving. Start and stop from the ribbon or a command, follow live feedback in the status bar, and pause or resume without losing anything. Capture up to eight input devices at once for multi-microphone interviews, let long sessions split into fixed-length parts automatically, and recover the audio on the next launch if Obsidian closes mid-recording. See [Recording](docs/recording.md) and [Multi-track recording](docs/multi-track-recording.md).
 

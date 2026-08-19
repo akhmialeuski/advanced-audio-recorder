@@ -29,7 +29,7 @@ What it does:
 - **Post-processes transcripts with an LLM** to clean up punctuation, summarize into key points and action items, or apply a custom instruction.
 - **Ships diagnostics** - a test recording, a system-info report, and a debug mode - for troubleshooting devices, codecs, and the runtime environment.
 
-It runs on **desktop and mobile** (iOS and Android) and requires Obsidian **1.6.6+**, with a few features desktop-only (multi-track recording, automatic splitting, input device selection, and local whisper.cpp transcription) - see [Mobile support](mobile-support.md). Search terms people use for this plugin include: voice recorder, dictation, meeting recorder, audio notes, speech-to-text, transcription, Whisper, Deepgram, and Gemini.
+It runs on **desktop and mobile** (iOS and Android) and requires Obsidian **1.6.6+**, with a few features desktop-only (multi-track recording, automatic splitting, input device selection, the command line, and local whisper.cpp transcription) - see [Mobile support](mobile-support.md). Search terms people use for this plugin include: voice recorder, dictation, meeting recorder, audio notes, speech-to-text, transcription, Whisper, Deepgram, and Gemini.
 
 ---
 
@@ -45,6 +45,7 @@ It runs on **desktop and mobile** (iOS and Android) and requires Obsidian **1.6.
 - **LLM post-processing** - clean up, summarize, or run a custom instruction over the transcript. See [LLM post-processing](llm-post-processing.md).
 - **Crash recovery and settings backup** - interrupted recordings can be recovered, and settings are auto-restored from a backup. See [Recording](recording.md) and [Settings reference](settings-reference.md).
 - **Desktop and mobile** - record, play back in the enhanced player, convert, split, and transcribe with a cloud engine on iOS and Android, with a few features desktop-only. See [Mobile support](mobile-support.md).
+- **Driven from a terminal** - start, stop, report state, or transcribe a file with the desktop app's command line. See [From the command line](recording.md#from-the-command-line).
 - **Built-in diagnostics** - a 5-second test recording, a full system-info report, and a verbose debug mode. See [Troubleshooting](troubleshooting.md).
 
 ---
