@@ -16,6 +16,7 @@ import {
 	downmixChannelData,
 	downmixAudioBuffer,
 } from 'src/audio/downmix';
+import { partial } from '../helpers/doubles';
 
 /** Minimal AudioBuffer double backed by per-channel Float32Arrays. */
 class FakeAudioBuffer {
@@ -67,7 +68,7 @@ function stereoBuffer(
 	});
 	buffer.getChannelData(0).set(left);
 	buffer.getChannelData(1).set(right);
-	return buffer as unknown as AudioBuffer;
+	return partial<AudioBuffer>(buffer);
 }
 
 describe('channel mode guards', () => {
@@ -100,25 +101,27 @@ describe('channel mode guards', () => {
 	});
 });
 
-describe('monoPickIndex', () => {
-	it('returns null for non-picking modes', () => {
-		expect(monoPickIndex(CHANNEL_MODE_SOURCE, 2)).toBeNull();
-		expect(monoPickIndex(CHANNEL_MODE_MONO_MIX, 2)).toBeNull();
+describe.each([
+	{ name: 'stereo', channels: 2, left: 0, right: 1 },
+	{ name: 'mono', channels: 1, left: 0, right: 0 },
+	{ name: 'no channels at all', channels: 0, left: 0, right: 0 },
+])('monoPickIndex on $name input', ({ channels, left, right }) => {
+	// The index goes straight into a channel array; a negative or
+	// out-of-range one would read past the end of a capture.
+	it('picks the left channel', () => {
+		expect(monoPickIndex(CHANNEL_MODE_MONO_LEFT, channels)).toBe(left);
 	});
 
-	it('picks left and right on stereo input', () => {
-		expect(monoPickIndex(CHANNEL_MODE_MONO_LEFT, 2)).toBe(0);
-		expect(monoPickIndex(CHANNEL_MODE_MONO_RIGHT, 2)).toBe(1);
+	it('picks the right channel, clamped to what exists', () => {
+		expect(monoPickIndex(CHANNEL_MODE_MONO_RIGHT, channels)).toBe(right);
 	});
 
-	it('clamps the right pick to the only channel of mono input', () => {
-		expect(monoPickIndex(CHANNEL_MODE_MONO_RIGHT, 1)).toBe(0);
-	});
-
-	it('never returns a negative index for degenerate channel counts', () => {
-		expect(monoPickIndex(CHANNEL_MODE_MONO_LEFT, 0)).toBe(0);
-		expect(monoPickIndex(CHANNEL_MODE_MONO_RIGHT, 0)).toBe(0);
-	});
+	it.each([CHANNEL_MODE_SOURCE, CHANNEL_MODE_MONO_MIX] as const)(
+		'picks nothing for the %s mode, which mixes rather than picks',
+		(mode) => {
+			expect(monoPickIndex(mode, channels)).toBeNull();
+		},
+	);
 });
 
 describe('downmixChannelData', () => {
@@ -173,11 +176,13 @@ describe('downmixAudioBuffer', () => {
 	});
 
 	it('returns an already-mono buffer unchanged', () => {
-		const mono = new FakeAudioBuffer({
-			length: 2,
-			numberOfChannels: 1,
-			sampleRate: 48000,
-		}) as unknown as AudioBuffer;
+		const mono = partial<AudioBuffer>(
+			new FakeAudioBuffer({
+				length: 2,
+				numberOfChannels: 1,
+				sampleRate: 48000,
+			}),
+		);
 
 		expect(downmixAudioBuffer(mono, CHANNEL_MODE_MONO_MIX)).toBe(mono);
 	});
@@ -189,7 +194,7 @@ describe('downmixAudioBuffer', () => {
 
 		expect(mono.numberOfChannels).toBe(1);
 		expect(mono.sampleRate).toBe(48000);
-		expect(mono.length).toBe(2);
+		expect(mono).toHaveLength(2);
 		expect(Array.from(mono.getChannelData(0))).toEqual([0, 0.5]);
 	});
 

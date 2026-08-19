@@ -7,21 +7,9 @@
 
 import { SplitService } from 'src/recording/SplitService';
 import type { SplitRequest } from 'src/recording/SplitService';
-import { TFile, App } from 'obsidian';
-
-jest.mock('obsidian', () => ({
-	App: jest.fn(),
-	Notice: jest.fn(),
-	Platform: { isMobile: false, isMobileApp: false },
-	TFile: class {
-		path = '';
-		name = '';
-		basename = '';
-		extension = '';
-		parent: { path: string } | null = null;
-	},
-	normalizePath: (path: string) => path.replace(/\\/g, '/'),
-}));
+import { App, TFile } from 'obsidian';
+import { noticeMessages } from '../mocks/obsidian';
+import { createMockApp } from '../helpers/createApp';
 
 jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest
@@ -101,9 +89,8 @@ describe('SplitService', () => {
 	});
 
 	beforeEach(() => {
-		jest.clearAllMocks();
 		createdFiles = [];
-		mockApp = {
+		mockApp = createMockApp({
 			vault: {
 				adapter: {
 					exists: jest.fn().mockResolvedValue(false),
@@ -122,24 +109,24 @@ describe('SplitService', () => {
 			fileManager: {
 				trashFile: jest.fn().mockResolvedValue(undefined),
 			},
-		} as unknown as App;
+		}).app;
 		service = new SplitService(mockApp);
 	});
 
 	describe('getTargetExtension', () => {
-		it('should keep WAV sources as WAV', () => {
+		it('keeps WAV sources as WAV', () => {
 			expect(service.getTargetExtension(createSourceFile('wav'))).toBe(
 				'wav',
 			);
 		});
 
-		it('should keep encodable compressed formats', () => {
+		it('keeps encodable compressed formats', () => {
 			expect(service.getTargetExtension(createSourceFile('mp3'))).toBe(
 				'mp3',
 			);
 		});
 
-		it('should fall back to WAV for unencodable formats', () => {
+		it('falls back to WAV for unencodable formats', () => {
 			expect(service.getTargetExtension(createSourceFile('aiff'))).toBe(
 				'wav',
 			);
@@ -147,7 +134,7 @@ describe('SplitService', () => {
 	});
 
 	describe('split', () => {
-		it('should write all parts and complete', async () => {
+		it('writes all parts and complete', async () => {
 			const outcome = await service.split(createRequest(), jest.fn());
 
 			// 882000 samples at 44100 Hz / 10 s parts -> 2 parts
@@ -175,12 +162,9 @@ describe('SplitService', () => {
 
 			expect(outcome).toEqual({ status: 'aborted' });
 			expect(mockApp.vault.adapter.readBinary).not.toHaveBeenCalled();
-			const { Notice } = jest.requireMock('obsidian');
 			expect(
-				(Notice as jest.Mock).mock.calls.some((call) =>
-					String(call[0]).includes(
-						'too large to split on this device',
-					),
+				noticeMessages().some((message) =>
+					message.includes('too large to split on this device'),
 				),
 			).toBe(true);
 		});
@@ -203,33 +187,29 @@ describe('SplitService', () => {
 			expect(outcome).toEqual({ status: 'aborted' });
 			expect(decodeAudioBlob).not.toHaveBeenCalled();
 			expect(createdFiles).toEqual([]);
-			const { Notice } = jest.requireMock('obsidian');
 			expect(
-				(Notice as jest.Mock).mock.calls.some((call) =>
-					String(call[0]).includes(
-						'too large to split on this device',
-					),
+				noticeMessages().some((message) =>
+					message.includes('too large to split on this device'),
 				),
 			).toBe(true);
 		});
 
-		it('should abort on a name collision before writing anything', async () => {
-			(mockApp.vault.adapter.exists as jest.Mock).mockResolvedValue(true);
+		it('aborts on a name collision before writing anything', async () => {
+			jest.mocked(mockApp.vault.adapter.exists).mockResolvedValue(true);
 
 			const outcome = await service.split(createRequest(), jest.fn());
 
 			expect(outcome).toEqual({ status: 'aborted' });
 			expect(createdFiles).toEqual([]);
-			const { Notice } = jest.requireMock('obsidian');
 			expect(
-				(Notice as jest.Mock).mock.calls.some((call) =>
-					String(call[0]).includes('already exists'),
+				noticeMessages().some((message) =>
+					message.includes('already exists'),
 				),
 			).toBe(true);
 		});
 
-		it('should report partial success when the source cannot be deleted', async () => {
-			(mockApp.fileManager.trashFile as jest.Mock).mockRejectedValue(
+		it('reports partial success when the source cannot be deleted', async () => {
+			jest.mocked(mockApp.fileManager.trashFile).mockRejectedValue(
 				new Error('locked'),
 			);
 
@@ -242,8 +222,8 @@ describe('SplitService', () => {
 			expect(createdFiles).toHaveLength(2);
 		});
 
-		it('should abort with a notice when reading the source fails', async () => {
-			(mockApp.vault.adapter.readBinary as jest.Mock).mockRejectedValue(
+		it('aborts with a notice when reading the source fails', async () => {
+			jest.mocked(mockApp.vault.adapter.readBinary).mockRejectedValue(
 				new Error('missing'),
 			);
 			const onProgress = jest.fn();

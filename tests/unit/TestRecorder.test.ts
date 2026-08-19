@@ -8,6 +8,7 @@ import { TestRecorder } from 'src/recording/TestRecorder';
 import { at } from '../helpers/assertions';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
+import { partial } from '../helpers/doubles';
 
 /** Bridge doubles created by the recorder under test. */
 interface BridgeDouble {
@@ -25,9 +26,9 @@ jest.mock('src/recording/MonoCaptureBridge', () => ({
 		.fn()
 		.mockImplementation(
 			(stream: MediaStream, mode: string, sampleRate: number) => {
-				const monoStream = {
+				const monoStream = partial<MediaStream>({
 					getTracks: () => [{ stop: jest.fn() }],
-				} as unknown as MediaStream;
+				});
 				const bridge: BridgeDouble = {
 					stream,
 					mode,
@@ -76,9 +77,9 @@ class MockMediaRecorder {
 
 function createRawStream(): { stream: MediaStream; trackStop: jest.Mock } {
 	const trackStop = jest.fn();
-	const stream = {
+	const stream = partial<MediaStream>({
 		getTracks: () => [{ stop: trackStop }],
-	} as unknown as MediaStream;
+	});
 	return { stream, trackStop };
 }
 
@@ -87,7 +88,6 @@ describe('TestRecorder', () => {
 	let rawTrackStop: jest.Mock;
 
 	beforeEach(() => {
-		jest.clearAllMocks();
 		createdBridges.length = 0;
 		MockMediaRecorder.instances = [];
 		MockMediaRecorder.isTypeSupported.mockReturnValue(true);
@@ -129,9 +129,13 @@ describe('TestRecorder', () => {
 
 	it('releases the bridge when the capture fails mid-run', async () => {
 		settings.recordingChannels = 'mono-mix';
-		MockMediaRecorder.prototype.start = jest.fn(() => {
-			throw new Error('recorder failed');
-		});
+		// spyOn, not assignment: a plain assignment would leave the throwing
+		// start on the prototype for every later test in any order but this one.
+		jest.spyOn(MockMediaRecorder.prototype, 'start').mockImplementation(
+			() => {
+				throw new Error('recorder failed');
+			},
+		);
 
 		await expect(new TestRecorder().record(settings, 0)).rejects.toThrow(
 			'recorder failed',

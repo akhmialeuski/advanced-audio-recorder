@@ -19,163 +19,29 @@
  * while marker registrations stay per file so marker edits sync across embeds.
  */
 
-import { App, Modal } from 'obsidian';
 import { at } from '../helpers/assertions';
+import { allEls, clickControl, control, el, maybeEl } from '../helpers/dom';
+import { PLAYER } from '../helpers/selectors';
 import { AudioPlayer } from 'src/player/AudioPlayer';
-import { WaveformPeakCache, type AudioDecoder } from 'src/player/WaveformData';
+import { WaveformPeakCache } from 'src/player/WaveformData';
 import type { AudioPlayerRegistry } from 'src/player/AudioPlayerRegistry';
-import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
-import type { PlayerMarker } from 'src/markers/markerModel';
+
 import type { ResolvedPlayerSettings } from 'src/player/playerSettings';
 import type { TFile } from 'obsidian';
+import { tick } from '../helpers/async';
 
-type Listener = () => void;
+import {
+	app,
+	decoder,
+	makeContainer,
+	makeFakeAudio,
+	makeFile,
+	makeMarkerStore,
+	makeRegistry,
+	type FakeAudio,
+} from '../helpers/audioPlayerHarness';
 
-/** A controllable stand-in for the shared HTMLAudioElement. */
-interface FakeAudio {
-	paused: boolean;
-	loop: boolean;
-	playbackRate: number;
-	volume: number;
-	muted: boolean;
-	currentTime: number;
-	duration: number;
-	readyState: number;
-	play: jest.Mock;
-	pause: jest.Mock;
-	addEventListener: (type: string, cb: Listener) => void;
-	removeEventListener: (type: string, cb: Listener) => void;
-	/** Test hook: invoke the registered listeners for an event type. */
-	emit: (type: string) => void;
-}
-
-function makeFakeAudio(): FakeAudio {
-	const handlers = new Map<string, Set<Listener>>();
-	const audio: FakeAudio = {
-		paused: true,
-		loop: false,
-		playbackRate: 1,
-		volume: 1,
-		muted: false,
-		currentTime: 0,
-		duration: 100,
-		readyState: 1,
-		play: jest.fn(() => {
-			audio.paused = false;
-			return Promise.resolve();
-		}),
-		pause: jest.fn(() => {
-			audio.paused = true;
-		}),
-		addEventListener: (type, cb) => {
-			const set = handlers.get(type) ?? new Set<Listener>();
-			set.add(cb);
-			handlers.set(type, set);
-		},
-		removeEventListener: (type, cb) => {
-			handlers.get(type)?.delete(cb);
-		},
-		emit: (type) => {
-			handlers.get(type)?.forEach((cb) => {
-				cb();
-			});
-		},
-	};
-	return audio;
-}
-
-/**
- * A key-aware registry stand-in that mirrors the real acquire semantics:
- * each distinct playback key (file path + #t= start) gets its own audio
- * element and its own engaged flag, and re-acquiring a known key returns
- * the same element with isNew=false. New keys consume the provided fakes
- * in acquisition order, then fall back to fresh ones - so a test that
- * mounts several distinct embeds controls each element it asserts on.
- */
-function makeRegistry(...audios: FakeAudio[]): AudioPlayerRegistry {
-	// A partial double: these suites drive only the acquire/release surface,
-	// so the cast at the boundary is the honest statement of that.
-	return makePartialRegistry(...audios) as unknown as AudioPlayerRegistry;
-}
-
-/** The methods {@link makeRegistry} actually implements. */
-function makePartialRegistry(...audios: FakeAudio[]): object {
-	const entries = new Map<string, { audio: FakeAudio; engaged: boolean }>();
-	let nextAudio = 0;
-	const registry = {
-		acquireAudio: jest.fn((key: string) => {
-			const existing = entries.get(key);
-			if (existing) {
-				return {
-					audio: existing.audio as unknown as HTMLAudioElement,
-					isNew: false,
-				};
-			}
-			const audio = audios[nextAudio] ?? makeFakeAudio();
-			nextAudio += 1;
-			entries.set(key, { audio, engaged: false });
-			return { audio: audio as unknown as HTMLAudioElement, isNew: true };
-		}),
-		releaseAudio: jest.fn(),
-		register: jest.fn(),
-		unregister: jest.fn(),
-		reloadMarkers: jest.fn(),
-		seek: jest.fn(),
-		applySettings: jest.fn(),
-		clear: jest.fn(),
-		registerPlaybackController: jest.fn(() => jest.fn()),
-		subscribePlayback: jest.fn(() => jest.fn()),
-		markAudioEngaged: jest.fn((key: string) => {
-			const entry = entries.get(key);
-			if (entry) {
-				entry.engaged = true;
-			}
-		}),
-		isAudioEngaged: jest.fn(
-			(key: string) => entries.get(key)?.engaged ?? false,
-		),
-	};
-	return registry;
-}
-
-const app = {
-	vault: {
-		getResourcePath: () => 'app://media',
-		readBinary: () => Promise.resolve(new ArrayBuffer(0)),
-	},
-	fileManager: {
-		generateMarkdownLink: () => '[[rec.webm]]',
-	},
-} as unknown as App;
-
-// Decoding is irrelevant to these structural assertions; rejecting keeps the
-// progressive peak path (and its timers) out of the tests.
-const decoder: AudioDecoder = {
-	decode: () => Promise.reject(new Error('no decode in tests')),
-};
-
-const markerStore = {
-	getMarkers: () => Promise.resolve([]),
-	updateMarkers: (
-		_path: string,
-		change: (existing: readonly PlayerMarker[]) => readonly PlayerMarker[],
-	) => Promise.resolve([...change([])]),
-} as unknown as RecordingSidecarStore;
-
-function makeFile(size = 1000, extension = 'webm'): TFile {
-	return {
-		path: `rec.${extension}`,
-		extension,
-		stat: { mtime: 1, size },
-	} as unknown as TFile;
-}
-
-/** A connected, Obsidian-extended container element. */
-function makeContainer(): HTMLElement {
-	const el = new Modal(new App()).contentEl.createDiv();
-	document.body.appendChild(el);
-	return el;
-}
+const markerStore = makeMarkerStore();
 
 function makePlayer(
 	container: HTMLElement,
@@ -202,9 +68,43 @@ const PLAIN: ResolvedPlayerSettings = {
 	enableMarkers: false,
 };
 
+/**
+ * Two embeds of one file mounted side by side: one carrying a `#t=` start, one
+ * plain. This is the arrangement issue #38 is about - distinct embeds of the
+ * same file must drive independent playback - and three tests set it up.
+ * @param startSeconds - The `#t=` offset the first embed carries
+ * @returns Both containers and both elements the registry handed out
+ */
+function mountTimedAndPlainEmbeds(startSeconds = 3): {
+	withOffset: HTMLElement;
+	plain: HTMLElement;
+	timedAudio: FakeAudio;
+	plainAudio: FakeAudio;
+} {
+	const timedAudio = makeFakeAudio();
+	timedAudio.duration = 5;
+	timedAudio.readyState = 1;
+	const plainAudio = makeFakeAudio();
+	plainAudio.duration = 5;
+	plainAudio.readyState = 1;
+	const registry = makeRegistry(timedAudio, plainAudio);
+
+	const withOffset = makeContainer();
+	makePlayer(
+		withOffset,
+		registry,
+		PLAIN,
+		makeFile(1000, 'wav'),
+		startSeconds,
+	).onload();
+	const plain = makeContainer();
+	makePlayer(plain, registry, PLAIN, makeFile(1000, 'wav'), null).onload();
+
+	return { withOffset, plain, timedAudio, plainAudio };
+}
+
 afterEach(() => {
 	document.body.innerHTML = '';
-	jest.clearAllMocks();
 });
 
 describe('shared playback state survives a re-render (F1)', () => {
@@ -249,8 +149,9 @@ describe('shared playback state survives a re-render (F1)', () => {
 
 		const container = makeContainer();
 		makePlayer(container, registry, PLAIN).onload();
-		const loopButton = container.querySelector('[aria-label="Loop"]');
-		expect(loopButton?.classList.contains('is-active')).toBe(true);
+		expect(control(container, 'Loop').classList.contains('is-active')).toBe(
+			true,
+		);
 	});
 
 	it('reflects the live playback rate on the speed button after a re-render', () => {
@@ -260,8 +161,7 @@ describe('shared playback state survives a re-render (F1)', () => {
 		audio.playbackRate = 1.75;
 		player.applySettings({ showWaveform: false, enableMarkers: true });
 
-		const speed = document.querySelector('.aar-player-speed');
-		expect(speed?.textContent).toBe('1.75x');
+		expect(el(document, PLAYER.speed).textContent).toBe('1.75x');
 	});
 });
 
@@ -273,14 +173,12 @@ describe('settings re-render only when the layout changes (F4)', () => {
 			PLAIN,
 		);
 		player.onload();
-		const controlsBefore = document.querySelector('.aar-player-controls');
+		const controlsBefore = el(document, PLAYER.controls);
 
 		// A save that did not change a player window must not rebuild anything
 		player.applySettings({ ...PLAIN });
 
-		expect(document.querySelector('.aar-player-controls')).toBe(
-			controlsBefore,
-		);
+		expect(el(document, PLAYER.controls)).toBe(controlsBefore);
 	});
 
 	it('rebuilds the player when a window toggle actually changes', () => {
@@ -290,13 +188,11 @@ describe('settings re-render only when the layout changes (F4)', () => {
 			PLAIN,
 		);
 		player.onload();
-		const controlsBefore = document.querySelector('.aar-player-controls');
+		const controlsBefore = el(document, PLAYER.controls);
 
 		player.applySettings({ showWaveform: false, enableMarkers: true });
 
-		expect(document.querySelector('.aar-player-controls')).not.toBe(
-			controlsBefore,
-		);
+		expect(el(document, PLAYER.controls)).not.toBe(controlsBefore);
 	});
 });
 
@@ -331,64 +227,46 @@ describe('waveform rendering decision (F2/F3)', () => {
 	it('renders the plain seek bar when the waveform is off', () => {
 		const container = makeContainer();
 		makePlayer(container, makeRegistry(makeFakeAudio()), PLAIN).onload();
-		expect(container.querySelector('.aar-player-seek-bar')).not.toBeNull();
-		expect(container.querySelector('.aar-player-seek-waveform')).toBeNull();
-		expect(
-			container.querySelector('.aar-player-progress-fill'),
-		).not.toBeNull();
+		expect(maybeEl(container, PLAYER.seekBar)).not.toBeNull();
+		expect(maybeEl(container, PLAYER.seekWaveform)).toBeNull();
+		expect(maybeEl(container, PLAYER.progressFill)).not.toBeNull();
 	});
 
 	it('renders the waveform layer for a small file when enabled', async () => {
-		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+		jest.spyOn(console, 'warn').mockImplementation(() => {
 			// Silence the expected decode-rejection warning
 		});
-		try {
-			const container = makeContainer();
-			makePlayer(container, makeRegistry(makeFakeAudio()), {
-				showWaveform: true,
-				enableMarkers: false,
-			}).onload();
-			expect(
-				container.querySelector('.aar-player-seek-waveform'),
-			).not.toBeNull();
-			expect(
-				container.querySelector('.aar-player-waveform'),
-			).not.toBeNull();
-			expect(container.querySelectorAll('canvas')).toHaveLength(2);
-			// Let the fire-and-forget waveform load settle (decode rejects)
-			// while the warning is still silenced
-			await new Promise((resolve) => setTimeout(resolve, 0));
-		} finally {
-			warn.mockRestore();
-		}
+		const container = makeContainer();
+		makePlayer(container, makeRegistry(makeFakeAudio()), {
+			showWaveform: true,
+			enableMarkers: false,
+		}).onload();
+		expect(maybeEl(container, PLAYER.seekWaveform)).not.toBeNull();
+		expect(maybeEl(container, PLAYER.waveform)).not.toBeNull();
+		expect(allEls(container, 'canvas')).toHaveLength(2);
+		// Let the fire-and-forget waveform load settle (decode rejects)
+		// while the warning is still silenced
+		await tick();
 	});
 
 	it('renders the waveform for a large file below the safety ceiling', async () => {
-		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+		jest.spyOn(console, 'warn').mockImplementation(() => {
 			// Silence the expected decode-rejection warning
 		});
-		try {
-			const container = makeContainer();
-			// A multi-hundred-MB (hour-long) recording must still get the
-			// waveform - it is computed progressively, not skipped by a cap
-			makePlayer(
-				container,
-				makeRegistry(makeFakeAudio()),
-				{ showWaveform: true, enableMarkers: false },
-				makeFile(500 * 1024 * 1024, 'wav'),
-			).onload();
-			expect(
-				container.querySelector('.aar-player-seek-waveform'),
-			).not.toBeNull();
-			expect(
-				container.querySelector('.aar-player-waveform'),
-			).not.toBeNull();
-			expect(container.querySelector('.aar-player-seek-bar')).toBeNull();
-			// Let the fire-and-forget waveform load settle (decode rejects)
-			await new Promise((resolve) => setTimeout(resolve, 0));
-		} finally {
-			warn.mockRestore();
-		}
+		const container = makeContainer();
+		// A multi-hundred-MB (hour-long) recording must still get the
+		// waveform - it is computed progressively, not skipped by a cap
+		makePlayer(
+			container,
+			makeRegistry(makeFakeAudio()),
+			{ showWaveform: true, enableMarkers: false },
+			makeFile(500 * 1024 * 1024, 'wav'),
+		).onload();
+		expect(maybeEl(container, PLAYER.seekWaveform)).not.toBeNull();
+		expect(maybeEl(container, PLAYER.waveform)).not.toBeNull();
+		expect(maybeEl(container, PLAYER.seekBar)).toBeNull();
+		// Let the fire-and-forget waveform load settle (decode rejects)
+		await tick();
 	});
 
 	it('falls back to the plain bar for a pathological file above the ceiling', () => {
@@ -402,11 +280,9 @@ describe('waveform rendering decision (F2/F3)', () => {
 			{ showWaveform: true, enableMarkers: false },
 			makeFile(2 * 1024 * 1024 * 1024, 'wav'),
 		).onload();
-		expect(container.querySelector('.aar-player-seek-waveform')).toBeNull();
-		expect(container.querySelector('.aar-player-seek-bar')).not.toBeNull();
-		expect(
-			container.querySelector('.aar-player-progress-fill'),
-		).not.toBeNull();
+		expect(maybeEl(container, PLAYER.seekWaveform)).toBeNull();
+		expect(maybeEl(container, PLAYER.seekBar)).not.toBeNull();
+		expect(maybeEl(container, PLAYER.progressFill)).not.toBeNull();
 	});
 });
 
@@ -426,9 +302,7 @@ describe('timecode start offset (#t=) positions and shows the embed', () => {
 		).onload();
 
 		// The embed shows its #t=3 start (paused at 3 of 5 seconds)...
-		expect(container.querySelector('.aar-player-time')?.textContent).toBe(
-			'0:03 / 0:05',
-		);
+		expect(container).toShowTime('0:03 / 0:05');
 		expect(audio.paused).toBe(true);
 		// ...but it must NOT move the shared element, so a second embed of the
 		// same file is never dragged to 0:03 (the start is per-embed, display
@@ -440,37 +314,11 @@ describe('timecode start offset (#t=) positions and shows the embed', () => {
 		// Two distinct embeds of ONE file drive independent playback elements
 		// (issue #38). The #t= start stays per-embed: the plain embed must not
 		// inherit the other embed's 0:03, and neither element is moved.
-		const timedAudio = makeFakeAudio();
-		timedAudio.duration = 5;
-		timedAudio.readyState = 1;
-		const plainAudio = makeFakeAudio();
-		plainAudio.duration = 5;
-		plainAudio.readyState = 1;
-		const registry = makeRegistry(timedAudio, plainAudio);
+		const { withOffset, plain, timedAudio, plainAudio } =
+			mountTimedAndPlainEmbeds();
 
-		const withOffset = makeContainer();
-		makePlayer(
-			withOffset,
-			registry,
-			PLAIN,
-			makeFile(1000, 'wav'),
-			3,
-		).onload();
-		const plain = makeContainer();
-		makePlayer(
-			plain,
-			registry,
-			PLAIN,
-			makeFile(1000, 'wav'),
-			null,
-		).onload();
-
-		expect(withOffset.querySelector('.aar-player-time')?.textContent).toBe(
-			'0:03 / 0:05',
-		);
-		expect(plain.querySelector('.aar-player-time')?.textContent).toBe(
-			'0:00 / 0:05',
-		);
+		expect(withOffset).toShowTime('0:03 / 0:05');
+		expect(plain).toShowTime('0:00 / 0:05');
 		expect(timedAudio.currentTime).toBe(0);
 		expect(plainAudio.currentTime).toBe(0);
 	});
@@ -490,9 +338,7 @@ describe('timecode start offset (#t=) positions and shows the embed', () => {
 		// Display-only until the user engages this embed
 		expect(audio.currentTime).toBe(0);
 
-		container
-			.querySelector<HTMLElement>('[aria-label="Play / pause"]')
-			?.click();
+		clickControl(container, 'Play / pause');
 
 		// Pressing play engages the embed at its #t= start
 		expect(audio.currentTime).toBe(3);
@@ -518,9 +364,7 @@ describe('timecode start offset (#t=) positions and shows the embed', () => {
 
 		// The #t= start is a hint only while the shared audio is untouched; once
 		// it is engaged, the embed reflects the real shared position
-		expect(container.querySelector('.aar-player-time')?.textContent).toBe(
-			'0:04 / 0:05',
-		);
+		expect(container).toShowTime('0:04 / 0:05');
 		expect(audio.currentTime).toBe(4);
 	});
 
@@ -538,9 +382,7 @@ describe('timecode start offset (#t=) positions and shows the embed', () => {
 			999,
 		).onload();
 
-		expect(container.querySelector('.aar-player-time')?.textContent).toBe(
-			'0:05 / 0:05',
-		);
+		expect(container).toShowTime('0:05 / 0:05');
 	});
 
 	it('does not resurface a stale #t= start after playback returns to 0', () => {
@@ -556,9 +398,7 @@ describe('timecode start offset (#t=) positions and shows the embed', () => {
 			3,
 		).onload();
 		// Initially the embed shows its #t=3 start
-		expect(container.querySelector('.aar-player-time')?.textContent).toBe(
-			'0:03 / 0:05',
-		);
+		expect(container).toShowTime('0:03 / 0:05');
 
 		// Playback engages the shared timeline, then the user returns to the
 		// very start and pauses
@@ -568,39 +408,15 @@ describe('timecode start offset (#t=) positions and shows the embed', () => {
 		audio.emit('timeupdate');
 
 		// The #t=3 hint is consumed: it must NOT reappear at position 0
-		expect(container.querySelector('.aar-player-time')?.textContent).toBe(
-			'0:00 / 0:05',
-		);
+		expect(container).toShowTime('0:00 / 0:05');
 	});
 
 	it('keeps the #t= start while a different embed of the same file plays (issue #38)', () => {
 		// Distinct embeds of one file have independent playback: playing the
 		// plain embed must neither move the #t= embed's position nor consume
 		// its start hint.
-		const timedAudio = makeFakeAudio();
-		timedAudio.duration = 5;
-		timedAudio.readyState = 1;
-		const plainAudio = makeFakeAudio();
-		plainAudio.duration = 5;
-		plainAudio.readyState = 1;
-		const registry = makeRegistry(timedAudio, plainAudio);
-
-		const withOffset = makeContainer();
-		makePlayer(
-			withOffset,
-			registry,
-			PLAIN,
-			makeFile(1000, 'wav'),
-			3,
-		).onload();
-		const plain = makeContainer();
-		makePlayer(
-			plain,
-			registry,
-			PLAIN,
-			makeFile(1000, 'wav'),
-			null,
-		).onload();
+		const { withOffset, plain, timedAudio, plainAudio } =
+			mountTimedAndPlainEmbeds();
 
 		// The plain embed plays and advances to 0:02
 		plainAudio.paused = false;
@@ -608,13 +424,9 @@ describe('timecode start offset (#t=) positions and shows the embed', () => {
 		plainAudio.currentTime = 2;
 		plainAudio.emit('timeupdate');
 
-		expect(plain.querySelector('.aar-player-time')?.textContent).toBe(
-			'0:02 / 0:05',
-		);
+		expect(plain).toShowTime('0:02 / 0:05');
 		// The #t= embed is untouched: still paused at its own 0:03 start
-		expect(withOffset.querySelector('.aar-player-time')?.textContent).toBe(
-			'0:03 / 0:05',
-		);
+		expect(withOffset).toShowTime('0:03 / 0:05');
 		expect(timedAudio.currentTime).toBe(0);
 		expect(timedAudio.play).not.toHaveBeenCalled();
 	});
@@ -651,13 +463,9 @@ describe('timecode start offset (#t=) positions and shows the embed', () => {
 		plainAudio.emit('timeupdate');
 
 		expect(plainAudio.currentTime).toBe(4);
-		expect(plain.querySelector('.aar-player-time')?.textContent).toBe(
-			'0:04 / 0:05',
-		);
+		expect(plain).toShowTime('0:04 / 0:05');
 		expect(timedAudio.currentTime).toBe(0);
-		expect(withOffset.querySelector('.aar-player-time')?.textContent).toBe(
-			'0:03 / 0:05',
-		);
+		expect(withOffset).toShowTime('0:03 / 0:05');
 	});
 
 	it('registers every embed of a file under the file path, keeping markers in sync', () => {
@@ -712,7 +520,6 @@ describe('lazy waveform decode (B2)', () => {
 	};
 
 	let originalIO: typeof IntersectionObserver | undefined;
-	let warn: jest.SpyInstance;
 
 	beforeEach(() => {
 		MockIntersectionObserver.instances = [];
@@ -720,12 +527,11 @@ describe('lazy waveform decode (B2)', () => {
 		window.IntersectionObserver =
 			MockIntersectionObserver as unknown as typeof IntersectionObserver;
 		// loadWaveform's decode rejects in these tests; silence the warning
-		warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+		jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 	});
 
 	afterEach(() => {
 		window.IntersectionObserver = originalIO as typeof IntersectionObserver;
-		warn.mockRestore();
 	});
 
 	/** Builds a waveform player wired to a decode spy. */
@@ -742,9 +548,6 @@ describe('lazy waveform decode (B2)', () => {
 			{ startSeconds: null, sourcePath: 'note.md', immediate: true },
 		);
 	}
-
-	const tick = (): Promise<void> =>
-		new Promise((resolve) => setTimeout(resolve, 0));
 
 	const rejectingDecode = (): jest.Mock =>
 		jest.fn(() => Promise.reject(new Error('no decode in tests')));

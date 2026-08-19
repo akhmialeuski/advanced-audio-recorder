@@ -17,8 +17,15 @@ export function generateMarkerId(): string {
 	const cryptoApi = (
 		activeWindow as Window & { crypto?: { randomUUID?: () => string } }
 	).crypto;
-	if (cryptoApi?.randomUUID) {
-		return cryptoApi.randomUUID();
+	// Chromium exposes randomUUID outside a secure context but throws from
+	// it, and an Obsidian pop-out window is not always one. A marker press
+	// must produce an id either way rather than surfacing that error.
+	try {
+		if (cryptoApi?.randomUUID) {
+			return cryptoApi.randomUUID();
+		}
+	} catch {
+		// Fall through to the timestamp id below.
 	}
 	return `${String(Date.now())}-${randomToken()}`;
 }

@@ -166,6 +166,11 @@ export default class AudioRecorderPlugin extends Plugin {
 	/** Invalidates an older asynchronous analysis when a newer save starts. */
 	private silentChannelSuggestionGeneration = 0;
 	/**
+	 * Whether Obsidian has unloaded this plugin. Work already in flight when
+	 * that happens must not reach back into the UI it tore down.
+	 */
+	private unloaded = false;
+	/**
 	 * True when data.json exists on disk but could not be read at load
 	 * time. While set, saveSettings refuses to write so the possibly
 	 * intact file is never overwritten with defaults.
@@ -303,13 +308,31 @@ export default class AudioRecorderPlugin extends Plugin {
 					const recovered: string[] = [];
 					const failed: string[] = [];
 					for (const session of sessions) {
-						const result = await recoverSession(
-							session,
-							this.journal,
-							this.app,
-						);
-						recovered.push(...result.recoveredPaths);
-						failed.push(...result.failedTracks);
+						// Per session, not per run: recoverSession writes the
+						// journal back when it is done, and that write can
+						// fail on a read-only or full vault. One session
+						// failing must not abandon the sessions after it, nor
+						// swallow the report of what was already brought back.
+						try {
+							const result = await recoverSession(
+								session,
+								this.journal,
+								this.app,
+							);
+							recovered.push(...result.recoveredPaths);
+							failed.push(...result.failedTracks);
+						} catch (error) {
+							console.error(
+								`${PLUGIN_LOG_PREFIX} Failed to recover session:`,
+								session.sessionId,
+								error,
+							);
+							failed.push(
+								...session.tracks.map(
+									(track) => track.fileBaseName,
+								),
+							);
+						}
 					}
 					if (recovered.length > 0) {
 						new Notice(
@@ -325,13 +348,29 @@ export default class AudioRecorderPlugin extends Plugin {
 				onDiscard: async () => {
 					const failedPaths: string[] = [];
 					for (const session of sessions) {
-						failedPaths.push(
-							...(await discardSession(
-								session,
-								this.journal,
-								this.app,
-							)),
-						);
+						// Same reasoning as the recovery loop above: a
+						// journal write that fails on one session must not
+						// leave the rest of them undiscarded and unreported.
+						try {
+							failedPaths.push(
+								...(await discardSession(
+									session,
+									this.journal,
+									this.app,
+								)),
+							);
+						} catch (error) {
+							console.error(
+								`${PLUGIN_LOG_PREFIX} Failed to discard session:`,
+								session.sessionId,
+								error,
+							);
+							failedPaths.push(
+								...session.tracks.flatMap(
+									(track) => track.segmentPaths,
+								),
+							);
+						}
 					}
 					new Notice(
 						failedPaths.length > 0
@@ -349,6 +388,11 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * Called when the plugin is unloaded.
 	 */
 	override onunload(): void {
+		// Set before anything is torn down: the recorder's stop sequence is
+		// asynchronous, so disabling the plugin mid-save leaves its status and
+		// saved-recording callbacks in flight, and both of them reach back
+		// into UI Obsidian has already detached.
+		this.unloaded = true;
 		this.silentChannelSuggestionGeneration++;
 		this.silentChannelNotice?.hide();
 		this.silentChannelNotice = null;
@@ -747,6 +791,9 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * @param result - The saved audio paths and the note the links landed in
 	 */
 	private handleRecordingSaved(result: RecordingSaveResult): void {
+		if (this.unloaded) {
+			return;
+		}
 		this.playerRegistrar.primeSavedRecordingsForEnhancement(
 			result.audioPaths,
 		);
@@ -1102,6 +1149,9 @@ export default class AudioRecorderPlugin extends Plugin {
 		status: RecordingStatus,
 		saveProgress?: SaveProgress,
 	): void {
+		if (this.unloaded) {
+			return;
+		}
 		this.recordingStatus = status;
 		this.recordingSaveProgress =
 			status === RecordingStatus.Saving ? saveProgress : undefined;

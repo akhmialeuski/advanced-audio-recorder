@@ -6,92 +6,12 @@
  */
 
 import { SpeakerPreviewPlayer } from 'src/player/SpeakerPreviewPlayer';
-
-/** Controllable media element installed as the global Audio factory. */
-interface AudioHarness {
-	audio: HTMLAudioElement;
-	play: jest.SpyInstance<Promise<void>, []>;
-	pause: jest.SpyInstance<void, []>;
-	load: jest.SpyInstance<void, []>;
-	/** Constructions of `new Audio()` observed so far. */
-	constructions(): number;
-	/** Moves the playhead and emits timeupdate, as playback would. */
-	advanceTo(seconds: number): void;
-	/** Makes the element seekable and emits loadedmetadata, as a load would. */
-	loadMetadata(): void;
-	/** Makes the next play() reject, as an autoplay policy would. */
-	blockPlayback(): void;
-	restore(): void;
-}
-
-/**
- * Installs a deterministic audio element whose play/pause emit the matching
- * events and whose currentTime is observable, mirroring the other player suites.
- * @param duration - Finite media duration in seconds
- * @param readyState - Initial readyState (0 means metadata has not loaded yet,
- *   which is what a freshly built element actually reports)
- */
-function installAudio(duration = 300, readyState = 1): AudioHarness {
-	const audio = document.createElement('audio');
-	let paused = true;
-	let currentTime = 0;
-	let blocked = false;
-	let ready = readyState;
-	Object.defineProperties(audio, {
-		paused: { configurable: true, get: () => paused },
-		currentTime: {
-			configurable: true,
-			get: () => currentTime,
-			set: (value: number) => {
-				currentTime = value;
-			},
-		},
-		duration: { configurable: true, get: () => duration },
-		readyState: { configurable: true, get: () => ready },
-	});
-	const play = jest.spyOn(audio, 'play').mockImplementation(() => {
-		if (blocked) {
-			return Promise.reject(new Error('autoplay blocked'));
-		}
-		paused = false;
-		audio.dispatchEvent(new Event('play'));
-		return Promise.resolve();
-	});
-	const pause = jest.spyOn(audio, 'pause').mockImplementation(() => {
-		paused = true;
-		audio.dispatchEvent(new Event('pause'));
-	});
-	const load = jest.spyOn(audio, 'load').mockImplementation(() => undefined);
-	const factory = jest
-		.spyOn(globalThis, 'Audio')
-		.mockImplementation(() => audio);
-
-	return {
-		audio,
-		play,
-		pause,
-		load,
-		constructions: () => factory.mock.calls.length,
-		advanceTo: (seconds: number) => {
-			currentTime = seconds;
-			audio.dispatchEvent(new Event('timeupdate'));
-		},
-		loadMetadata: () => {
-			ready = 1;
-			audio.dispatchEvent(new Event('loadedmetadata'));
-		},
-		blockPlayback: () => {
-			blocked = true;
-		},
-		restore: () => {
-			factory.mockRestore();
-		},
-	};
-}
+import { installControlledAudio } from '../helpers/mediaMocks';
+import type { ControlledAudio } from '../helpers/mediaMocks';
 
 /** A player plus the change notifications it emitted, in order. */
 function makePlayer(
-	harness: AudioHarness,
+	harness: ControlledAudio,
 	src = 'app://vault/audio/rec.wav',
 ): { player: SpeakerPreviewPlayer; changes: (string | null)[] } {
 	const changes: (string | null)[] = [];
@@ -105,15 +25,13 @@ function makePlayer(
 }
 
 describe('SpeakerPreviewPlayer', () => {
-	let harness: AudioHarness;
+	let harness: ControlledAudio;
 
 	beforeEach(() => {
-		harness = installAudio();
+		harness = installControlledAudio({ duration: 300 });
 	});
 
-	afterEach(() => {
-		harness.restore();
-	});
+	afterEach(() => {});
 
 	it('builds no media element until the first excerpt is played', () => {
 		const { player } = makePlayer(harness);
@@ -196,11 +114,10 @@ describe('SpeakerPreviewPlayer', () => {
 	describe('while the file is still loading its metadata', () => {
 		// A freshly built element reports readyState 0, so the very first press
 		// always waits. Everything the user does in that window has to survive.
-		let loading: AudioHarness;
+		let loading: ControlledAudio;
 
 		beforeEach(() => {
-			harness.restore();
-			loading = installAudio(300, 0);
+			loading = installControlledAudio({ duration: 300, readyState: 0 });
 			harness = loading;
 		});
 
@@ -281,7 +198,7 @@ describe('SpeakerPreviewPlayer', () => {
 		const warn = jest
 			.spyOn(console, 'warn')
 			.mockImplementation(() => undefined);
-		harness.blockPlayback();
+		harness.blockAutoplay();
 		const { player, changes } = makePlayer(harness);
 		player.toggle('Speaker 1', { start: 10, end: 20 });
 		await Promise.resolve();
@@ -293,7 +210,6 @@ describe('SpeakerPreviewPlayer', () => {
 			expect.stringContaining('Speaker preview could not start'),
 			expect.anything(),
 		);
-		warn.mockRestore();
 	});
 
 	it('dispose stops playback and releases the element', () => {

@@ -18,16 +18,11 @@ import type {
 	JournalTrack,
 } from 'src/recording/SessionJournal';
 import type { App } from 'obsidian';
+import { createMockApp } from '../helpers/createApp';
 
-jest.mock('obsidian', () => ({
-	normalizePath: (path: string) => path.replace(/\\/g, '/'),
-}));
+jest.mock('src/audio/WavEncoder', () => require('../mocks/modules/wavEncoder'));
 
-jest.mock('src/audio/WavEncoder', () => ({
-	assembleWavFromPcmSegmentFiles: jest.fn((segmentPaths: string[]) =>
-		Promise.resolve(new Uint8Array(44 + segmentPaths.length).buffer),
-	),
-}));
+import { assembleWavFromPcmSegmentFiles } from 'src/audio/WavEncoder';
 
 const JOURNAL_PATH = '.obsidian/plugins/aar/recording-journal.json';
 
@@ -60,8 +55,6 @@ describe('RecoveryService', () => {
 	let binaryFiles: Map<string, ArrayBuffer>;
 	let journal: SessionJournal;
 	let mockApp: App;
-	let consoleWarnSpy: jest.SpyInstance;
-	let consoleErrorSpy: jest.SpyInstance;
 
 	const storeJournal = (
 		sessions: JournalSession[],
@@ -82,13 +75,12 @@ describe('RecoveryService', () => {
 	};
 
 	beforeEach(() => {
-		jest.clearAllMocks();
-		consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
-		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+		jest.spyOn(console, 'warn').mockImplementation();
+		jest.spyOn(console, 'error').mockImplementation();
 
 		textFiles = new Map();
 		binaryFiles = new Map();
-		mockApp = {
+		mockApp = createMockApp({
 			vault: {
 				adapter: {
 					exists: jest.fn((path: string) =>
@@ -123,23 +115,18 @@ describe('RecoveryService', () => {
 					return Promise.resolve();
 				}),
 			},
-		} as unknown as App;
+		}).app;
 		journal = new SessionJournal(JOURNAL_PATH, mockApp);
 	});
 
-	afterEach(() => {
-		consoleWarnSpy.mockRestore();
-		consoleErrorSpy.mockRestore();
-	});
-
 	describe('collectRecoverableSessions', () => {
-		it('should return nothing when no journal exists', async () => {
+		it('returns nothing when no journal exists', async () => {
 			const sessions = await collectRecoverableSessions(journal, mockApp);
 
 			expect(sessions).toEqual([]);
 		});
 
-		it('should delete a corrupt journal without prompting', async () => {
+		it('deletes a corrupt journal without prompting', async () => {
 			textFiles.set(JOURNAL_PATH, '{not json');
 
 			const sessions = await collectRecoverableSessions(journal, mockApp);
@@ -148,7 +135,7 @@ describe('RecoveryService', () => {
 			expect(textFiles.has(JOURNAL_PATH)).toBe(false);
 		});
 
-		it('should leave a newer-version journal untouched', async () => {
+		it('leaves a newer-version journal untouched', async () => {
 			storeJournal([createJournalSession()], JOURNAL_VERSION + 1);
 
 			const sessions = await collectRecoverableSessions(journal, mockApp);
@@ -157,7 +144,7 @@ describe('RecoveryService', () => {
 			expect(textFiles.has(JOURNAL_PATH)).toBe(true);
 		});
 
-		it('should prune missing segments and self-clear empty sessions', async () => {
+		it('prunes missing segments and self-clear empty sessions', async () => {
 			storeJournal([
 				createJournalSession({
 					tracks: [createTrack({ segmentPaths: ['gone.tmp'] })],
@@ -171,7 +158,7 @@ describe('RecoveryService', () => {
 			expect(textFiles.has(JOURNAL_PATH)).toBe(false);
 		});
 
-		it('should keep sessions with surviving segments', async () => {
+		it('keeps sessions with surviving segments', async () => {
 			binaryFiles.set('Audio/rec-part1.webm.tmp', new ArrayBuffer(8));
 			storeJournal([
 				createJournalSession({
@@ -194,7 +181,7 @@ describe('RecoveryService', () => {
 			]);
 		});
 
-		it('should mark media tracks whose first segment is gone as header-lost', async () => {
+		it('marks media tracks whose first segment is gone as header-lost', async () => {
 			binaryFiles.set('Audio/rec-part2.webm.tmp', new ArrayBuffer(8));
 			storeJournal([
 				createJournalSession({
@@ -216,7 +203,7 @@ describe('RecoveryService', () => {
 	});
 
 	describe('recoverSession', () => {
-		it('should reassemble PCM tracks into a recovered WAV next to the segments', async () => {
+		it('reassembles PCM tracks into a recovered WAV next to the segments', async () => {
 			binaryFiles.set('Audio/rec-pcm-part1.tmp', new ArrayBuffer(4));
 			binaryFiles.set('Audio/rec-pcm-part2.tmp', new ArrayBuffer(4));
 			const session = createJournalSession({
@@ -236,12 +223,11 @@ describe('RecoveryService', () => {
 
 			const result = await recoverSession(session, journal, mockApp);
 
-			const { assembleWavFromPcmSegmentFiles } = jest.requireMock(
-				'src/audio/WavEncoder',
-			);
 			// Streamed straight from the segment files: recovery must not
 			// read the whole track into memory before assembly
-			expect(assembleWavFromPcmSegmentFiles).toHaveBeenCalledWith(
+			expect(
+				jest.mocked(assembleWavFromPcmSegmentFiles),
+			).toHaveBeenCalledWith(
 				['Audio/rec-pcm-part1.tmp', 'Audio/rec-pcm-part2.tmp'],
 				2,
 				48000,
@@ -256,7 +242,7 @@ describe('RecoveryService', () => {
 			expect(readStoredJournal()).toBeNull();
 		});
 
-		it('should byte-concatenate media tracks in capture order', async () => {
+		it('bytes-concatenate media tracks in capture order', async () => {
 			binaryFiles.set(
 				'Audio/rec-part1.webm.tmp',
 				new Uint8Array([1, 2]).buffer,
@@ -290,7 +276,7 @@ describe('RecoveryService', () => {
 			expect(Array.from(recovered)).toEqual([1, 2, 3, 4]);
 		});
 
-		it('should report header-lost media tracks as failed and keep them journaled', async () => {
+		it('reports header-lost media tracks as failed and keep them journaled', async () => {
 			binaryFiles.set('Audio/rec-part2.webm.tmp', new ArrayBuffer(4));
 			const session = createJournalSession({
 				tracks: [
@@ -310,7 +296,7 @@ describe('RecoveryService', () => {
 			expect(readStoredJournal()?.sessions).toHaveLength(1);
 		});
 
-		it('should resolve name collisions with a counter suffix', async () => {
+		it('resolves name collisions with a counter suffix', async () => {
 			binaryFiles.set('Audio/rec-pcm-part1.tmp', new ArrayBuffer(4));
 			binaryFiles.set(
 				'Audio/recording-Track1-stamp-recovered.wav',
@@ -333,7 +319,7 @@ describe('RecoveryService', () => {
 			]);
 		});
 
-		it('should isolate per-track failures', async () => {
+		it('isolates per-track failures', async () => {
 			binaryFiles.set('Audio/good-pcm-part1.tmp', new ArrayBuffer(4));
 			binaryFiles.set('Audio/bad-pcm-part1.tmp', new ArrayBuffer(4));
 			(mockApp.vault.createBinary as jest.Mock)
@@ -374,7 +360,7 @@ describe('RecoveryService', () => {
 	});
 
 	describe('discardSession', () => {
-		it('should remove segments and clear the session', async () => {
+		it('removes segments and clear the session', async () => {
 			binaryFiles.set('Audio/rec-part1.webm.tmp', new ArrayBuffer(4));
 			binaryFiles.set('Audio/rec-part2.webm.tmp', new ArrayBuffer(4));
 			const session = createJournalSession({
@@ -396,7 +382,7 @@ describe('RecoveryService', () => {
 			expect(readStoredJournal()).toBeNull();
 		});
 
-		it('should keep paths that could not be removed journaled', async () => {
+		it('keeps paths that could not be removed journaled', async () => {
 			binaryFiles.set('Audio/rec-part1.webm.tmp', new ArrayBuffer(4));
 			(mockApp.vault.adapter.remove as jest.Mock).mockRejectedValue(
 				new Error('locked'),
@@ -416,7 +402,7 @@ describe('RecoveryService', () => {
 			expect(readStoredJournal()?.sessions).toHaveLength(1);
 		});
 
-		it('should never touch finalized part files', async () => {
+		it('never touch finalized part files', async () => {
 			binaryFiles.set('Audio/rec-part1.webm.tmp', new ArrayBuffer(4));
 			binaryFiles.set('Audio/rec-part1.webm', new ArrayBuffer(100));
 			const session = createJournalSession({

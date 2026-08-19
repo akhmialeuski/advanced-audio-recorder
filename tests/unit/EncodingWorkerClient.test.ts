@@ -28,16 +28,13 @@ class MockWorker implements WorkerDouble {
 }
 
 describe('EncodingWorkerClient', () => {
-	let consoleWarnSpy: jest.SpyInstance;
-
 	const respond = (worker: WorkerDouble, response: WorkerResponse): void => {
 		worker.onmessage?.(new MessageEvent('message', { data: response }));
 	};
 
 	beforeEach(() => {
-		jest.clearAllMocks();
 		createdWorkers.length = 0;
-		consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
+		jest.spyOn(console, 'warn').mockImplementation();
 		(global as Record<string, unknown>).Worker = MockWorker;
 		global.URL.createObjectURL = jest
 			.fn()
@@ -45,11 +42,7 @@ describe('EncodingWorkerClient', () => {
 		global.URL.revokeObjectURL = jest.fn();
 	});
 
-	afterEach(() => {
-		consoleWarnSpy.mockRestore();
-	});
-
-	it('should be unavailable without bundled worker source', async () => {
+	it('is unavailable without bundled worker source', async () => {
 		const client = new EncodingWorkerClient(null);
 
 		expect(client.isAvailable()).toBe(false);
@@ -58,7 +51,7 @@ describe('EncodingWorkerClient', () => {
 		).rejects.toThrow('not available');
 	});
 
-	it('should post the request and resolve with the result blob', async () => {
+	it('posts the request and resolve with the result blob', async () => {
 		const client = new EncodingWorkerClient('worker-source');
 		const conversion = client.convertBlob(
 			new Blob(['audio']),
@@ -95,7 +88,7 @@ describe('EncodingWorkerClient', () => {
 		expect(blob.size).toBe(3);
 	});
 
-	it('should include the requested channel mode in the worker request', () => {
+	it('includes the requested channel mode in the worker request', () => {
 		const client = new EncodingWorkerClient('worker-source');
 		void client
 			.convertBlob(new Blob(['audio']), 'mp3', 128000, false, 'mono-mix')
@@ -109,7 +102,7 @@ describe('EncodingWorkerClient', () => {
 		);
 	});
 
-	it('should forward progress updates', async () => {
+	it('forwards progress updates', async () => {
 		const client = new EncodingWorkerClient('worker-source');
 		const onProgress = jest.fn();
 		const conversion = client.convertBlob(
@@ -137,7 +130,7 @@ describe('EncodingWorkerClient', () => {
 		await conversion;
 	});
 
-	it('should reject the matching request on a conversion error', async () => {
+	it('rejects the matching request on a conversion error', async () => {
 		const client = new EncodingWorkerClient('worker-source');
 		const conversion = client.convertBlob(
 			new Blob(['audio']),
@@ -161,7 +154,7 @@ describe('EncodingWorkerClient', () => {
 		expect(client.isAvailable()).toBe(true);
 	});
 
-	it('should degrade permanently on a worker-level error', async () => {
+	it('degrades permanently on a worker-level error', async () => {
 		const client = new EncodingWorkerClient('worker-source');
 		const conversion = client.convertBlob(
 			new Blob(['audio']),
@@ -179,7 +172,7 @@ describe('EncodingWorkerClient', () => {
 		expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:worker-url');
 	});
 
-	it('should degrade permanently when the worker cannot start', async () => {
+	it('degrades permanently when the worker cannot start', async () => {
 		(global as Record<string, unknown>).Worker = function (): never {
 			throw new Error('CSP blocked');
 		};
@@ -191,7 +184,7 @@ describe('EncodingWorkerClient', () => {
 		expect(client.isAvailable()).toBe(false);
 	});
 
-	it('should terminate the worker and reject in-flight requests', async () => {
+	it('terminates the worker and reject in-flight requests', async () => {
 		const client = new EncodingWorkerClient('worker-source');
 		const conversion = client.convertBlob(
 			new Blob(['audio']),

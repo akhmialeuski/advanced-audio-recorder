@@ -3,12 +3,36 @@
  * @module tests/unit/TranscriptionModal.test
  */
 
-import { App, Notice, Platform, TFile } from 'obsidian';
+import { App, Notice, TFile } from 'obsidian';
+import { noticeMessages } from '../mocks/obsidian';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { TranscriptionModal } from 'src/ui/TranscriptionModal';
+import {
+	transcribeFile,
+	TranscriptionCancelledError,
+} from 'src/transcription/api';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { createFile } from '../helpers/createApp';
+import { allEls, el, maybeEl } from '../helpers/dom';
+import {
+	hasSettingRow,
+	rowInput,
+	rowSelect,
+	rowToggle,
+	settingRow,
+} from '../helpers/settingRows';
+import { setPlatform, useDesktopPlatform } from '../helpers/platform';
+import { tick } from '../helpers/async';
+import { internalsOf } from '../helpers/doubles';
+
+// The run itself has its own suites (runTranscription, the providers); what
+// this dialog owes is what it does with the outcome, so the run is recorded
+// and its result scripted per test.
+jest.mock('src/transcription/api', () => ({
+	...jest.requireActual('src/transcription/api'),
+	transcribeFile: jest.fn(),
+}));
 
 type TranscriptionModalInternals = {
 	setRunning: (running: boolean) => void;
@@ -47,7 +71,7 @@ describe('TranscriptionModal minimize behavior', () => {
 			clear: jest.fn(),
 		};
 		const modal = createModal(callbacks);
-		const internals = modal as unknown as TranscriptionModalInternals;
+		const internals = internalsOf<TranscriptionModalInternals>(modal);
 
 		modal.onOpen();
 		internals.setRunning(true);
@@ -74,7 +98,7 @@ describe('TranscriptionModal minimize behavior', () => {
 			clear: jest.fn(),
 		};
 		const modal = createModal(callbacks);
-		const internals = modal as unknown as TranscriptionModalInternals;
+		const internals = internalsOf<TranscriptionModalInternals>(modal);
 
 		modal.onOpen();
 		internals.setRunning(true);
@@ -99,7 +123,7 @@ describe('TranscriptionModal minimize behavior', () => {
 			clear: jest.fn(),
 		};
 		const modal = createModal(callbacks);
-		const internals = modal as unknown as TranscriptionModalInternals;
+		const internals = internalsOf<TranscriptionModalInternals>(modal);
 
 		modal.onOpen();
 		internals.setRunning(true);
@@ -113,8 +137,7 @@ describe('TranscriptionModal minimize behavior', () => {
 
 describe('TranscriptionModal platform gating', () => {
 	afterEach(() => {
-		Platform.isMobile = false;
-		Platform.isMobileApp = false;
+		useDesktopPlatform();
 	});
 
 	/** The rendered engine select and its options, from the modal DOM. */
@@ -133,7 +156,7 @@ describe('TranscriptionModal platform gating', () => {
 	it('blocks the local whisper.cpp engine option on mobile', () => {
 		// The per-run dialog must gate engines exactly like the settings
 		// tab: a doomed local run should not be selectable on mobile
-		Platform.isMobile = true;
+		setPlatform({ isMobile: true });
 		const modal = createModal({ show: jest.fn(), clear: jest.fn() });
 		modal.onOpen();
 
@@ -185,7 +208,7 @@ describe('TranscriptionModal platform gating', () => {
 		// A local whisper.cpp selection synced from desktop stays the active
 		// value on mobile; the run must read as blocked, not merely the
 		// option, so the disabled selection cannot be launched by a click.
-		Platform.isMobile = true;
+		setPlatform({ isMobile: true });
 		const modal = createLocalWhisperModal();
 		modal.onOpen();
 
@@ -196,11 +219,11 @@ describe('TranscriptionModal platform gating', () => {
 		// Guards the run itself (including the auto-start path), so a
 		// doomed local run never launches; it surfaces a clear notice
 		// instead of failing later with a generic transcription error.
-		Platform.isMobile = true;
+		setPlatform({ isMobile: true });
 		const notice = jest.mocked(Notice);
 		notice.mockClear();
 		const modal = createLocalWhisperModal();
-		const internals = modal as unknown as TranscriptionModalInternals;
+		const internals = internalsOf<TranscriptionModalInternals>(modal);
 		modal.onOpen();
 
 		await internals.startRun();
@@ -228,11 +251,13 @@ function selectByName(
 	modal: TranscriptionModal,
 	name: string,
 ): HTMLSelectElement | null {
-	const items = Array.from(modal.contentEl.querySelectorAll('.setting-item'));
-	const item = items.find(
-		(el) => el.querySelector('.setting-item-name')?.textContent === name,
+	if (!hasSettingRow(modal.contentEl, name)) {
+		return null;
+	}
+	return maybeEl<HTMLSelectElement>(
+		settingRow(modal.contentEl, name),
+		'select',
 	);
-	return item?.querySelector<HTMLSelectElement>('select') ?? null;
 }
 
 /** The Dictionary select, which must exist wherever it is asked for. */
@@ -553,7 +578,7 @@ describe('TranscriptionModal advanced settings master toggle', () => {
 		// two-pass sub-toggle for this run. The toggle's onChange re-renders the
 		// config after an awaited save, so let that microtask settle.
 		toggleByName(modal, 'Advanced settings').click();
-		await new Promise((resolve) => setTimeout(resolve, 0));
+		await tick();
 
 		expect(runSettingsOf(modal).transcriptionAdvancedSettingsEnabled).toBe(
 			true,
@@ -614,5 +639,524 @@ describe('TranscriptionModal advanced two-pass toggle', () => {
 
 		expect(runSettingsOf(modal).transcriptionAdvancedEnabled).toBe(false);
 		expect(settings.transcriptionAdvancedEnabled).toBe(true);
+	});
+});
+
+describe('TranscriptionModal per-run options', () => {
+	/** A dialog open on its options, with everything revealed. */
+	function openWithEverything(
+		overrides: Partial<AudioRecorderSettings> = {},
+	): {
+		modal: TranscriptionModal;
+		runSettings: AudioRecorderSettings;
+		settings: AudioRecorderSettings;
+	} {
+		const settings: AudioRecorderSettings = {
+			...DEFAULT_SETTINGS,
+			// Deepgram so diarization (and the speaker options under it) is
+			// available, and every optional block switched on so each control
+			// is actually rendered.
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			transcriptionDiarize: true,
+			transcriptDestination: 'both',
+			llmPostProcessEnabled: true,
+			transcriptionAutoChaptersEnabled: true,
+			transcriptionAdvancedSettingsEnabled: true,
+			...overrides,
+		};
+		const modal = new TranscriptionModal(
+			new App(),
+			createAudioFile(),
+			() => settings,
+			// A note to write into, so an in-note destination is not
+			// downgraded to a file before anything is rendered.
+			{ notePath: 'Notes/meeting.md' },
+		);
+		modal.onOpen();
+		return {
+			modal,
+			runSettings: (
+				modal as unknown as { runSettings: AudioRecorderSettings }
+			).runSettings,
+			settings,
+		};
+	}
+
+	it.each([
+		{
+			name: 'Language',
+			key: 'transcriptionLanguage',
+			type: 'text',
+			input: '  ru  ',
+			expected: 'ru',
+		},
+		{
+			name: 'Language',
+			key: 'transcriptionLanguage',
+			type: 'text',
+			input: '   ',
+			expected: 'auto',
+		},
+		{
+			name: 'Destination',
+			key: 'transcriptDestination',
+			type: 'dropdown',
+			input: 'note',
+			expected: 'note',
+		},
+		{
+			name: 'File format',
+			key: 'transcriptFileFormat',
+			type: 'dropdown',
+			input: 'json',
+			expected: 'json',
+		},
+		{
+			name: 'LLM task',
+			key: 'llmPostProcessTask',
+			type: 'dropdown',
+			input: 'summary',
+			expected: 'summary',
+		},
+	])(
+		'$name writes $expected into the run snapshot',
+		({ name, key, type, input, expected }) => {
+			const { modal, runSettings } = openWithEverything();
+			const row = settingRow(modal.contentEl, name);
+
+			if (type === 'text') {
+				const field = rowInput(row);
+				field.value = input;
+				field.dispatchEvent(new Event('input'));
+			} else {
+				const field = rowSelect(row);
+				field.value = input;
+				field.dispatchEvent(new Event('change'));
+			}
+
+			expect(
+				(runSettings as unknown as Record<string, unknown>)[key],
+			).toBe(expected);
+		},
+	);
+
+	it('leaves the saved settings alone when an option is changed', () => {
+		// The dialog edits a copy: a per-run choice is for this run only.
+		const { modal, settings } = openWithEverything();
+		const language = rowInput(settingRow(modal.contentEl, 'Language'));
+
+		language.value = 'ru';
+		language.dispatchEvent(new Event('input'));
+
+		expect(settings.transcriptionLanguage).toBe(
+			DEFAULT_SETTINGS.transcriptionLanguage,
+		);
+	});
+
+	it('writes to a file when there is no note to write into', () => {
+		// The command can be run with the audio file itself in the active
+		// pane. Saying "could not insert" after the run would be worse than
+		// choosing the destination that works up front.
+		const settings: AudioRecorderSettings = {
+			...DEFAULT_SETTINGS,
+			transcriptDestination: 'note',
+		};
+		const modal = new TranscriptionModal(
+			new App(),
+			createAudioFile(),
+			() => settings,
+			{},
+		);
+
+		modal.onOpen();
+
+		expect(
+			(modal as unknown as { runSettings: AudioRecorderSettings })
+				.runSettings.transcriptDestination,
+		).toBe('file');
+	});
+
+	it.each([
+		{ name: 'Speaker diarization', key: 'transcriptionDiarize' },
+		{ name: 'Word-level timestamps', key: 'transcriptionWordTimestamps' },
+		{ name: 'Include timestamps', key: 'transcriptIncludeTimestamps' },
+		{ name: 'Include speakers', key: 'transcriptIncludeSpeakers' },
+		{ name: 'LLM post-processing', key: 'llmPostProcessEnabled' },
+		{
+			name: 'Generate chapters',
+			key: 'transcriptionAutoChaptersOnTranscribe',
+		},
+	])('$name flips $key on the run snapshot', ({ name, key }) => {
+		const { modal, runSettings } = openWithEverything();
+		const before = (runSettings as unknown as Record<string, unknown>)[key];
+
+		rowToggle(settingRow(modal.contentEl, name)).click();
+
+		expect((runSettings as unknown as Record<string, unknown>)[key]).toBe(
+			!before,
+		);
+	});
+
+	it('picks another engine for this run alone', () => {
+		const { modal, runSettings, settings } = openWithEverything();
+		const engine = rowSelect(settingRow(modal.contentEl, 'Engine'));
+
+		engine.value = TRANSCRIPTION_PROVIDER_IDS.WHISPER_API;
+		engine.dispatchEvent(new Event('change'));
+
+		expect(runSettings.transcriptionProvider).toBe(
+			TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+		);
+		expect(settings.transcriptionProvider).toBe(
+			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+		);
+	});
+
+	it('offers no file-format choice when only the note is written', () => {
+		// The format names a sidecar file that this destination never writes.
+		const { modal } = openWithEverything({ transcriptDestination: 'note' });
+
+		expect(hasSettingRow(modal.contentEl, 'File format')).toBe(false);
+	});
+
+	it.each([{ name: 'Include timestamps' }, { name: 'Include speakers' }])(
+		'offers no $name when the transcript never reaches the note',
+		({ name }) => {
+			// For a file-only run those toggles would format nothing.
+			const { modal } = openWithEverything({
+				transcriptDestination: 'file',
+			});
+
+			expect(hasSettingRow(modal.contentEl, name)).toBe(false);
+		},
+	);
+
+	it('offers no LLM task while post-processing is off', () => {
+		const { modal } = openWithEverything({ llmPostProcessEnabled: false });
+
+		expect(hasSettingRow(modal.contentEl, 'LLM task')).toBe(false);
+	});
+
+	it('offers no chapter toggle while the feature is off in settings', () => {
+		const { modal } = openWithEverything({
+			transcriptionAutoChaptersEnabled: false,
+		});
+
+		expect(hasSettingRow(modal.contentEl, 'Generate chapters')).toBe(false);
+	});
+
+	it('leaves the speaker toggle inert for an engine that cannot diarize', () => {
+		// Whisper produces no speaker labels, so the toggle would promise
+		// something the run cannot deliver.
+		const { modal } = openWithEverything({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+		});
+
+		const row = settingRow(modal.contentEl, 'Speaker diarization');
+		const toggle = el(row, '.checkbox-container');
+
+		// Disabled and off: a toggle left switched on but unclickable reads
+		// as "diarization is happening", which is the promise Whisper cannot
+		// keep.
+		expect(toggle.classList).toContain('is-disabled');
+		expect(toggle.classList).not.toContain('is-enabled');
+	});
+});
+
+/** What a finished transcription run resolves to. */
+type RunResult = Awaited<ReturnType<typeof transcribeFile>>;
+
+describe('TranscriptionModal running the job', () => {
+	/** A finished run, with whatever the test needs to differ. */
+	function runResult(overrides: Partial<RunResult> = {}): RunResult {
+		return {
+			transcript: { segments: [], speakers: [] },
+			markdown: '# Transcript',
+			cost: { engineId: 'deepgram', usd: 0.12 },
+			...overrides,
+		} as RunResult;
+	}
+
+	/** A dialog ready to run, with the cost tracker and chapter hook spied. */
+	function openRunnable(
+		overrides: Partial<AudioRecorderSettings> = {},
+		options: Record<string, unknown> = {},
+	): {
+		modal: TranscriptionModal;
+		internals: TranscriptionModalInternals;
+		addCost: jest.Mock;
+		generateChapters: jest.Mock;
+	} {
+		const settings: AudioRecorderSettings = {
+			...DEFAULT_SETTINGS,
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			transcriptionShowCostEstimates: true,
+			...overrides,
+		};
+		const addCost = jest.fn();
+		// The dialog also reads the tracker to draw the session total line, so
+		// the double answers the whole surface it uses, not only add().
+		const costTracker = {
+			add: addCost,
+			hasEntries: (): boolean => false,
+			unpricedRuns: (): number => 0,
+			totalUsd: (): number => 0.12,
+			total: (): number => 0,
+			entries: (): unknown[] => [],
+		};
+		const generateChapters = jest.fn().mockResolvedValue(undefined);
+		const modal = new TranscriptionModal(
+			new App(),
+			createAudioFile(),
+			() => settings,
+			{
+				notePath: 'Notes/meeting.md',
+				costTracker: costTracker as never,
+				generateChapters,
+				...options,
+			},
+		);
+		modal.onOpen();
+		return {
+			modal,
+			internals: internalsOf<TranscriptionModalInternals>(modal),
+			addCost,
+			generateChapters,
+		};
+	}
+
+	beforeEach(() => {
+		jest.mocked(transcribeFile).mockResolvedValue(runResult());
+	});
+
+	it('closes itself when the run finishes', async () => {
+		const { modal, internals } = openRunnable();
+		const close = jest.spyOn(modal, 'close');
+
+		await internals.startRun();
+
+		expect(transcribeFile).toHaveBeenCalled();
+		expect(close).toHaveBeenCalled();
+	});
+
+	it('counts what the run cost against the session total', async () => {
+		const { internals, addCost } = openRunnable();
+
+		await internals.startRun();
+
+		expect(addCost).toHaveBeenCalledWith('deepgram', 0.12);
+	});
+
+	it('counts nothing for a local run, which is billed to nobody', async () => {
+		jest.mocked(transcribeFile).mockResolvedValue(
+			runResult({ cost: { engineId: 'local-whisper', usd: 0 } as never }),
+		);
+		const { internals, addCost } = openRunnable();
+
+		await internals.startRun();
+
+		expect(addCost).not.toHaveBeenCalled();
+	});
+
+	it('counts nothing while cost estimates are switched off', () => {
+		const { internals, addCost } = openRunnable({
+			transcriptionShowCostEstimates: false,
+		});
+
+		return internals.startRun().then(() => {
+			expect(addCost).not.toHaveBeenCalled();
+		});
+	});
+
+	it('generates chapters from the transcript it just produced', async () => {
+		const { internals, generateChapters } = openRunnable({
+			transcriptionAutoChaptersEnabled: true,
+			transcriptionAutoChaptersOnTranscribe: true,
+		});
+
+		await internals.startRun();
+
+		expect(generateChapters).toHaveBeenCalled();
+	});
+
+	it('generates no chapters when the run was not asked to', async () => {
+		const { internals, generateChapters } = openRunnable({
+			transcriptionAutoChaptersOnTranscribe: false,
+		});
+
+		await internals.startRun();
+
+		expect(generateChapters).not.toHaveBeenCalled();
+	});
+
+	it('says the run was cancelled rather than that it failed', async () => {
+		jest.mocked(transcribeFile).mockRejectedValue(
+			new TranscriptionCancelledError(),
+		);
+		const { internals } = openRunnable();
+
+		await internals.startRun();
+
+		expect(noticeMessages()).toContain('Transcription cancelled.');
+		expect(internals.busy).toBe(false);
+	});
+
+	it('names what went wrong when the run fails', async () => {
+		jest.mocked(transcribeFile).mockRejectedValue(
+			new Error('the endpoint refused the key'),
+		);
+		const { internals } = openRunnable();
+
+		await internals.startRun();
+
+		expect(
+			noticeMessages().some((message) =>
+				message.includes('the endpoint refused the key'),
+			),
+		).toBe(true);
+	});
+
+	it('reports a failure that was not thrown as an Error', async () => {
+		jest.mocked(transcribeFile).mockRejectedValue('upstream exploded');
+		const { internals } = openRunnable();
+
+		await internals.startRun();
+
+		expect(
+			noticeMessages().some((message) =>
+				message.includes('upstream exploded'),
+			),
+		).toBe(true);
+	});
+
+	it('still counts a run that was billed before the write failed', async () => {
+		// The provider charged for the audio; a read-only vault losing the
+		// transcript afterwards does not refund it.
+		let reportCost: ((cost: unknown) => void) | undefined;
+		jest.mocked(transcribeFile).mockImplementation(
+			async (_app, _settings, _file, runOptions) => {
+				reportCost = (
+					runOptions as unknown as { onCost: (cost: unknown) => void }
+				).onCost;
+				reportCost({ engineId: 'deepgram', usd: 0.5 });
+				throw new Error('vault is read-only');
+			},
+		);
+		const { internals, addCost } = openRunnable();
+
+		await internals.startRun();
+
+		expect(addCost).toHaveBeenCalledWith('deepgram', 0.5);
+	});
+
+	it('runs once however often the button is pressed', async () => {
+		// A long run leaves the dialog open; a second press must not start a
+		// second billed job.
+		const { internals } = openRunnable();
+
+		await Promise.all([internals.startRun(), internals.startRun()]);
+
+		expect(transcribeFile).toHaveBeenCalledTimes(1);
+	});
+
+	it('comes back into view when a minimized run fails', async () => {
+		// A notice alone would leave the failure unexplained behind a status
+		// bar the user has stopped watching.
+		jest.mocked(transcribeFile).mockRejectedValue(new Error('no network'));
+		const { internals } = openRunnable();
+		internals.minimize();
+
+		await internals.startRun();
+
+		expect(internals.minimized).toBe(false);
+	});
+});
+
+describe('TranscriptionModal buttons', () => {
+	/** A dialog whose action buttons are all rendered. */
+	function open(): {
+		modal: TranscriptionModal;
+		internals: TranscriptionModalInternals;
+	} {
+		const settings: AudioRecorderSettings = {
+			...DEFAULT_SETTINGS,
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+		};
+		const modal = new TranscriptionModal(
+			new App(),
+			createAudioFile(),
+			() => settings,
+			{ notePath: 'Notes/meeting.md' },
+		);
+		modal.onOpen();
+		return {
+			modal,
+			internals: internalsOf<TranscriptionModalInternals>(modal),
+		};
+	}
+
+	/** The action button with the given label. */
+	function button(modal: TranscriptionModal, text: string): HTMLElement {
+		const match = allEls(modal.contentEl, 'button').find(
+			(candidate) => candidate.textContent?.trim() === text,
+		);
+		if (!match) {
+			throw new Error(
+				`No "${text}" button. Rendered: ` +
+					allEls(modal.contentEl, 'button')
+						.map((one) => `"${one.textContent ?? ''}"`)
+						.join(', '),
+			);
+		}
+		return match;
+	}
+
+	beforeEach(() => {
+		jest.mocked(transcribeFile).mockImplementation(
+			() => new Promise(() => undefined),
+		);
+	});
+
+	it('starts the run from the Transcribe button', () => {
+		const { modal } = open();
+
+		button(modal, 'Transcribe').click();
+
+		expect(transcribeFile).toHaveBeenCalled();
+	});
+
+	it('offers no Minimize until there is a run to minimize', () => {
+		const { modal } = open();
+
+		expect(button(modal, 'Minimize')).toBeDisabledControl();
+	});
+
+	it('minimizes a running job into the status bar', () => {
+		const { modal, internals } = open();
+		button(modal, 'Transcribe').click();
+
+		button(modal, 'Minimize').click();
+
+		expect(internals.minimized).toBe(true);
+	});
+
+	it('closes the dialog when nothing is running', () => {
+		const { modal } = open();
+		const close = jest.spyOn(modal, 'close');
+
+		button(modal, 'Close').click();
+
+		expect(close).toHaveBeenCalled();
+	});
+
+	it('cancels the run instead of closing while one is in flight', () => {
+		// Closing on a running job would leave it billing in the background
+		// with nothing left to report to.
+		const { modal, internals } = open();
+		button(modal, 'Transcribe').click();
+
+		button(modal, 'Cancel').click();
+
+		expect(internals.cancelled).toBe(true);
 	});
 });

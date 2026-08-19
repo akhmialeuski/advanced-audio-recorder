@@ -14,62 +14,35 @@ import {
 } from 'src/settings/settingsSchema';
 import type { App } from 'obsidian';
 import {
-	createRecordingMockApp,
-	installMediaRecorder,
+	createRecordingSut,
 	installRecordingMediaStubs,
 	makeFakeMarkerStore,
+	makeMediaRecorderDouble,
 	makeStatefulMarkerStore,
-} from './helpers/recordingManagerTestKit';
-
-// Mock obsidian module
-jest.mock('obsidian', () => ({
-	Notice: jest.fn(),
-	MarkdownView: jest.fn(),
-	normalizePath: (path: string) => path.replace(/\\/g, '/'),
-	Platform: {
-		isMobile: false,
-		isMobileApp: false,
-	},
-}));
+	recordingManagerOver,
+	stubAudioStreams,
+	type MockMediaRecorder,
+} from '../helpers/recordingManagerTestKit';
+import { flushMicrotasks } from '../helpers/async';
+import { Notice } from 'obsidian';
 
 // Mock AudioStreamHandler
-jest.mock('src/recording/AudioStreamHandler', () => ({
-	getAudioStreams: jest.fn(),
-	getAudioSourceName: jest.fn().mockResolvedValue('TestDevice'),
-	stopAllStreams: jest.fn(),
-	validateSelectedDevices: jest.fn(),
-}));
+jest.mock('src/recording/AudioStreamHandler', () =>
+	require('../mocks/modules/audioStreamHandler'),
+);
 
 // Mock AudioEncoder module to avoid mediabunny TextDecoder requirement
-jest.mock('src/audio/AudioEncoder', () => ({
-	encodeAudioBuffer: jest
-		.fn()
-		.mockResolvedValue(new Blob(['encoded'], { type: 'audio/webm' })),
-	isOfflineEncodingSupported: jest.fn((format: string) => {
-		return ['mp3', 'flac', 'aac', 'webm', 'ogg', 'mp4', 'm4a'].includes(
-			format,
-		);
-	}),
-}));
+jest.mock('src/audio/AudioEncoder', () =>
+	require('../mocks/modules/audioEncoder'),
+);
 
 // Mock WavEncoder
-jest.mock('src/audio/WavEncoder', () => ({
-	assembleWavFromPcmSegmentFiles: jest
-		.fn()
-		.mockResolvedValue(new ArrayBuffer(44)),
-}));
+jest.mock('src/audio/WavEncoder', () => require('../mocks/modules/wavEncoder'));
 
 // Mock PcmStreamRecorder
-jest.mock('src/recording/PcmStreamRecorder', () => ({
-	PcmStreamRecorder: jest.fn().mockImplementation(() => ({
-		channels: 1,
-		sampleRate: 44100,
-		start: jest.fn().mockResolvedValue(undefined),
-		stop: jest.fn().mockResolvedValue(undefined),
-		pause: jest.fn(),
-		resume: jest.fn(),
-	})),
-}));
+jest.mock('src/recording/PcmStreamRecorder', () =>
+	require('../mocks/modules/pcmStreamRecorder'),
+);
 
 installRecordingMediaStubs();
 
@@ -81,82 +54,27 @@ describe('RecordingManager', () => {
 	let consoleErrorSpy: jest.SpyInstance;
 
 	beforeEach(() => {
-		// Reset mocks
-		jest.clearAllMocks();
 		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
-
-		// Create mock App
-		mockApp = createRecordingMockApp();
-
-		// Use default settings
-		mockSettings = { ...DEFAULT_SETTINGS };
-
-		// Status change callback
-		statusChangeCallback = jest.fn();
-
-		// Create manager instance
-		manager = new RecordingManager(
-			mockApp,
-			mockSettings,
-			statusChangeCallback,
-			makeFakeMarkerStore().store,
-		);
-	});
-
-	afterEach(() => {
-		consoleErrorSpy.mockRestore();
+		({
+			manager,
+			app: mockApp,
+			settings: mockSettings,
+			onStatusChange: statusChangeCallback,
+		} = createRecordingSut());
 	});
 
 	describe('marker draft capture and persistence', () => {
-		let mockMediaRecorder: {
-			start: jest.Mock;
-			stop: jest.Mock;
-			pause: jest.Mock;
-			resume: jest.Mock;
-			ondataavailable: ((event: BlobEvent) => void) | null;
-			onerror: ((event: Event) => void) | null;
-			addEventListener: jest.Mock;
-		};
+		let mockMediaRecorder: MockMediaRecorder;
 
 		beforeEach(() => {
-			mockMediaRecorder = {
-				start: jest.fn(),
-				stop: jest.fn(),
-				pause: jest.fn(),
-				resume: jest.fn(),
-				ondataavailable: null,
-				onerror: null,
-				addEventListener: jest.fn(
-					(event: string, handler: () => void) => {
-						if (event === 'stop') {
-							handler();
-						}
-					},
-				),
-			};
+			mockMediaRecorder = makeMediaRecorderDouble();
 
-			installMediaRecorder(mockMediaRecorder);
+			stubAudioStreams();
 
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioStreams.mockResolvedValue({
-				streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
-				trackOrder: [],
-			});
-
-			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
+			jest.mocked(mockApp.vault.adapter.readBinary).mockResolvedValue(
 				new Uint8Array([1, 2, 3]).buffer,
 			);
 		});
-
-		// A commit/cancel queues fire-and-forget atomic sidecar updates;
-		// draining a few microtask turns lets them settle.
-		const flushMicrotasks = async (): Promise<void> => {
-			for (let i = 0; i < 5; i++) {
-				await Promise.resolve();
-			}
-		};
 
 		const feedChunkAndStop = async (): Promise<void> => {
 			const chunk = new Blob([new Uint8Array([1, 2, 3])], {
@@ -278,7 +196,6 @@ describe('RecordingManager', () => {
 			manager.captureMarkerDraft()?.commit('Intro', MARKER_KIND.bookmark);
 			await feedChunkAndStop();
 
-			const { Notice } = jest.requireMock('obsidian');
 			expect(Notice).toHaveBeenCalledWith(
 				expect.stringContaining('could not be saved'),
 			);
@@ -365,11 +282,10 @@ describe('RecordingManager', () => {
 
 		it('refuses to drop a marker when no recording is active', () => {
 			mockSettings = { ...DEFAULT_SETTINGS, playerEnableMarkers: true };
-			manager = new RecordingManager(
+			manager = recordingManagerOver(
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				makeFakeMarkerStore().store,
 			);
 
 			expect(manager.canDropMarker()).toBe(false);
@@ -378,11 +294,10 @@ describe('RecordingManager', () => {
 
 		it('refuses to drop a marker when markers are disabled', async () => {
 			mockSettings = { ...DEFAULT_SETTINGS, playerEnableMarkers: false };
-			manager = new RecordingManager(
+			manager = recordingManagerOver(
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				makeFakeMarkerStore().store,
 			);
 
 			await manager.startRecording();
@@ -393,11 +308,10 @@ describe('RecordingManager', () => {
 
 		it('still allows dropping a marker while paused', async () => {
 			mockSettings = { ...DEFAULT_SETTINGS, playerEnableMarkers: true };
-			manager = new RecordingManager(
+			manager = recordingManagerOver(
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				makeFakeMarkerStore().store,
 			);
 
 			await manager.startRecording();

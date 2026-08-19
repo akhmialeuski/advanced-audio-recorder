@@ -4,7 +4,7 @@
  * @module tests/unit/SettingsTab.test
  */
 
-import { App, Platform } from 'obsidian';
+import { App } from 'obsidian';
 import {
 	groupOf,
 	listIn,
@@ -27,6 +27,22 @@ import {
 import { DOCS_URL, MAX_LLM_MAX_TOKENS } from 'src/constants';
 import { PROFILE_KINDS } from 'src/settings/profileKinds';
 import type { AudioRecorderPluginInterface } from 'src/settings/SettingsTab';
+import { at } from '../helpers/assertions';
+import { asMockVault } from '../helpers/obsidianMock';
+import { setPlatform, useDesktopPlatform } from '../helpers/platform';
+import { tick } from '../helpers/async';
+import { allEls, el, maybeEl, textsOf } from '../helpers/dom';
+import { SETTING } from '../helpers/selectors';
+import {
+	rowSelect,
+	rowToggle,
+	settingNames,
+	settingRow,
+} from '../helpers/settingRows';
+import { partial } from '../helpers/doubles';
+import { mediaDevice } from '../helpers/mediaMocks';
+import { closeSettingsPage } from 'src/obsidian/settingsNavigation';
+import { listFormatAvailability } from 'src/audio/AudioCapabilityDetector';
 
 // Mock AudioEncoder to avoid loading mediabunny in jsdom. The async
 // probe defaults to "no offline encoder works"; individual tests
@@ -51,6 +67,52 @@ jest.mock('src/diagnostics/SystemDiagnostics', () => ({
  * a user typing an id and pressing Add does.
  */
 const mockModelDialogs: Array<(id: string) => void> = [];
+
+/**
+ * Options the profile-name dialog was opened with, newest last. Naming a
+ * profile is a dialog with its own suite; here a test only needs to answer it,
+ * or to ask what it would say about a name.
+ */
+interface ProfileNamePrompt {
+	title: string;
+	confirmText: string;
+	initial?: string;
+	rejection?: (name: string) => string | undefined;
+	onSubmit: (name: string) => void;
+}
+const mockProfileDialogs: ProfileNamePrompt[] = [];
+// The probe itself has its own suite; here only its failure modes matter, so
+// the two entry points keep their real behaviour and a test overrides one for
+// the case it is about.
+jest.mock('src/audio/AudioCapabilityDetector', () => {
+	const actual: Record<string, unknown> = jest.requireActual(
+		'src/audio/AudioCapabilityDetector',
+	);
+	return {
+		...actual,
+		listFormatAvailability: jest.fn(
+			actual['listFormatAvailability'] as never,
+		),
+		resolveEffectiveOutputFormat: jest.fn(
+			actual['resolveEffectiveOutputFormat'] as never,
+		),
+	};
+});
+
+jest.mock('src/obsidian/settingsNavigation', () => ({
+	...jest.requireActual('src/obsidian/settingsNavigation'),
+	closeSettingsPage: jest.fn(),
+}));
+
+jest.mock('src/ui/ProfileNameModal', () => ({
+	ProfileNameModal: jest
+		.fn()
+		.mockImplementation((_app: unknown, options: unknown) => {
+			mockProfileDialogs.push(options as ProfileNamePrompt);
+			return { open: (): void => undefined };
+		}),
+}));
+
 jest.mock('src/ui/ModelIdModal', () => ({
 	ModelIdModal: jest
 		.fn()
@@ -67,17 +129,12 @@ jest.mock('src/ui/ModelIdModal', () => ({
 const PLUGIN_MANIFEST_NAME = 'Advanced Audio Recorder';
 
 /** Lets pending promise callbacks (a save, then a re-render) run. */
-const flushAsync = (): Promise<void> =>
-	new Promise((resolve) => setTimeout(resolve, 0));
 
 /**
  * Names of every setting row rendered under a host, in render order.
  * @param host - Element the settings body was rendered into
  */
-const renderedNames = (host: HTMLElement): string[] =>
-	Array.from(host.querySelectorAll('.setting-item-name'))
-		.map((el) => el.textContent?.trim() ?? '')
-		.filter((name) => name.length > 0);
+const renderedNames = (host: HTMLElement): string[] => settingNames(host);
 
 /**
  * The diagnostics row that owns the test capture, which is the definition
@@ -104,8 +161,6 @@ describe('AudioRecorderSettingTab', () => {
 	let mockPlugin: AudioRecorderPluginInterface;
 
 	beforeEach(() => {
-		jest.clearAllMocks();
-
 		addEventListenerMock = jest.fn();
 		removeEventListenerMock = jest.fn();
 		getUserMediaMock = jest.fn();
@@ -131,14 +186,14 @@ describe('AudioRecorderSettingTab', () => {
 
 		mockSettings = { ...DEFAULT_SETTINGS };
 		saveSettingsMock = jest.fn().mockResolvedValue(undefined);
-		mockPlugin = {
+		mockPlugin = partial<AudioRecorderPluginInterface>({
 			settings: mockSettings,
 			saveSettings: saveSettingsMock,
 			manifest: {
 				id: 'advanced-audio-recorder',
 				name: PLUGIN_MANIFEST_NAME,
 			},
-		} as unknown as AudioRecorderPluginInterface;
+		});
 		tab = new AudioRecorderSettingTab(new App(), mockPlugin);
 	});
 
@@ -186,10 +241,10 @@ describe('AudioRecorderSettingTab', () => {
 			// lives inside the tracked row: rendering it into the group's list
 			// element (or the tab container) leaves the tab blank.
 			expect(
-				frame.containerEl.querySelector('.aar-doc-callout-link'),
+				maybeEl(frame.containerEl, SETTING.docCalloutLink),
 			).not.toBeNull();
 			expect(
-				frame.setting.settingEl.querySelector('.aar-doc-callout-link'),
+				maybeEl(frame.setting.settingEl, SETTING.docCalloutLink),
 			).not.toBeNull();
 			expect(
 				frame.setting.settingEl.classList.contains('aar-settings-root'),
@@ -225,9 +280,9 @@ describe('AudioRecorderSettingTab', () => {
 
 			// update() re-runs the render callback against the row it already
 			// rendered into; a second copy of the body must not stack up.
-			expect(
-				frame.containerEl.querySelectorAll('.aar-doc-callout'),
-			).toHaveLength(1);
+			expect(allEls(frame.containerEl, SETTING.docCallout)).toHaveLength(
+				1,
+			);
 		});
 
 		it('reads a control value straight from the live settings', () => {
@@ -321,20 +376,13 @@ describe('AudioRecorderSettingTab', () => {
 			// to react to state the settings tab does not own.
 			(
 				navigator.mediaDevices.enumerateDevices as jest.Mock
-			).mockResolvedValue([
-				{
-					deviceId: 'mic-1',
-					kind: 'audioinput',
-					label: 'Built-in microphone',
-					groupId: '',
-				},
-			]);
+			).mockResolvedValue([mediaDevice('mic-1', 'Built-in microphone')]);
 			const updateSpy = jest
 				.spyOn(tab, 'update')
 				.mockImplementation(() => undefined);
 
 			renderDeclaratively();
-			await flushAsync();
+			await tick();
 
 			expect(updateSpy).toHaveBeenCalledTimes(1);
 
@@ -342,7 +390,7 @@ describe('AudioRecorderSettingTab', () => {
 			// of asking for yet another render.
 			updateSpy.mockClear();
 			renderDeclaratively();
-			await flushAsync();
+			await tick();
 
 			expect(updateSpy).not.toHaveBeenCalled();
 		});
@@ -357,10 +405,6 @@ describe('AudioRecorderSettingTab', () => {
 				.spyOn(tab, 'update')
 				.mockImplementation(() => undefined);
 			tab.getSettingDefinitions();
-		});
-
-		afterEach(() => {
-			updateSpy.mockRestore();
 		});
 
 		it('reads the tree again when another profile becomes the default', async () => {
@@ -543,33 +587,21 @@ describe('AudioRecorderSettingTab', () => {
 			);
 		});
 
-		/** A device list the enumeration answers with, named for its label. */
-		const audioInput = (deviceId: string, label: string): MediaDeviceInfo =>
-			({
-				kind: 'audioinput',
-				deviceId,
-				label,
-				groupId: '',
-				toJSON: () => ({}),
-			}) as unknown as MediaDeviceInfo;
-
 		it('renders the devices an enumeration finds while the tab is open', async () => {
 			(
 				navigator.mediaDevices.enumerateDevices as jest.Mock
-			).mockResolvedValue([audioInput('mic-1', 'Desk microphone')]);
+			).mockResolvedValue([mediaDevice('mic-1', 'Desk microphone')]);
 
 			legacyTab.display();
-			await flushAsync();
+			await tick();
 
 			// The enumeration is asynchronous, so the first pass has no devices
 			// and the result is what asks for the second. Nothing else gates
 			// that: a flag saying the tab is shown would only be a second copy
 			// of the generation check, able to disagree with it.
-			expect(
-				Array.from(
-					legacyTab.containerEl.querySelectorAll('option'),
-				).map((option) => option.textContent),
-			).toContain('Desk microphone');
+			expect(textsOf(legacyTab.containerEl, 'option')).toContain(
+				'Desk microphone',
+			);
 		});
 
 		it('drops an enumeration that lands after the tab was left', async () => {
@@ -581,7 +613,7 @@ describe('AudioRecorderSettingTab', () => {
 					new Promise((resolve) => {
 						answer = (): void => {
 							resolve([
-								audioInput('late-mic', 'Arrived after hide'),
+								mediaDevice('late-mic', 'Arrived after hide'),
 							]);
 						};
 					}),
@@ -591,7 +623,7 @@ describe('AudioRecorderSettingTab', () => {
 			const afterHide = legacyTab.containerEl.innerHTML;
 
 			answer();
-			await flushAsync();
+			await tick();
 
 			// hide() bumps the refresh generation, which is the whole guard:
 			// re-rendering here would rebuild a tab nobody is looking at.
@@ -621,7 +653,7 @@ describe('AudioRecorderSettingTab', () => {
 			expect(names).toContain('Recording format');
 			expect(names).toContain('Debug mode');
 			expect(
-				legacyTab.containerEl.querySelector('.aar-doc-callout-link'),
+				maybeEl(legacyTab.containerEl, SETTING.docCalloutLink),
 			).not.toBeNull();
 		});
 
@@ -691,9 +723,12 @@ describe('AudioRecorderSettingTab', () => {
 		it('hosts the sections still rendered by hand in a row of their own', () => {
 			legacyTab.display();
 
-			const host =
-				legacyTab.containerEl.querySelector('.aar-settings-root');
-			expect(host?.querySelector('.aar-doc-callout-link')).not.toBeNull();
+			const host = el(legacyTab.containerEl, SETTING.root);
+			const link = el(host, SETTING.docCalloutLink);
+
+			// A link with no text or no href is a row the user cannot use.
+			expect(link.textContent).not.toBe('');
+			expect(link.getAttribute('href')).toMatch(/^https?:\/\//);
 		});
 
 		it('rebuilds the container itself when the device list changes', async () => {
@@ -701,24 +736,17 @@ describe('AudioRecorderSettingTab', () => {
 			// tree again into its own container, exactly once.
 			(
 				navigator.mediaDevices.enumerateDevices as jest.Mock
-			).mockResolvedValue([
-				{
-					deviceId: 'mic-1',
-					kind: 'audioinput',
-					label: 'Built-in microphone',
-					groupId: '',
-				},
-			]);
+			).mockResolvedValue([mediaDevice('mic-1', 'Built-in microphone')]);
 
 			legacyTab.display();
-			await flushAsync();
+			await tick();
 
 			const names = renderedNames(legacyTab.containerEl);
 			expect(
 				names.filter((name) => name === 'Input device'),
 			).toHaveLength(1);
 			expect(
-				legacyTab.containerEl.querySelectorAll('.aar-doc-callout'),
+				allEls(legacyTab.containerEl, SETTING.docCallout),
 			).toHaveLength(1);
 		});
 
@@ -728,7 +756,7 @@ describe('AudioRecorderSettingTab', () => {
 			legacyTab.display();
 
 			expect(
-				legacyTab.containerEl.querySelectorAll('.aar-doc-callout'),
+				allEls(legacyTab.containerEl, SETTING.docCallout),
 			).toHaveLength(1);
 			expect(renderedNames(legacyTab.containerEl)).toContain(
 				'Input device',
@@ -750,42 +778,41 @@ describe('AudioRecorderSettingTab', () => {
 	});
 
 	describe('documentation link', () => {
-		it('should render a documentation callout linking to the docs', () => {
+		it('renders a documentation callout linking to the docs', () => {
 			tab.display();
 
-			const link = tab.containerEl.querySelector<HTMLAnchorElement>(
-				'.aar-doc-callout-link',
+			const link = el<HTMLAnchorElement>(
+				tab.containerEl,
+				SETTING.docCalloutLink,
 			);
-			expect(link).not.toBeNull();
-			expect(link?.getAttribute('href')).toBe(DOCS_URL);
+			expect(link.getAttribute('href')).toBe(DOCS_URL);
 		});
 
-		it('should open the documentation link in a new tab safely', () => {
+		it('opens the documentation link in a new tab safely', () => {
 			tab.display();
 
-			const link = tab.containerEl.querySelector<HTMLAnchorElement>(
-				'.aar-doc-callout-link',
+			const link = el<HTMLAnchorElement>(
+				tab.containerEl,
+				SETTING.docCalloutLink,
 			);
 			// New tab plus rel=noopener so the docs page cannot reach back
 			// into the Obsidian window via window.opener.
-			expect(link?.getAttribute('target')).toBe('_blank');
-			expect(link?.getAttribute('rel')).toBe('noopener');
+			expect(link.getAttribute('target')).toBe('_blank');
+			expect(link.getAttribute('rel')).toBe('noopener');
 		});
 
-		it('should render the callout only once per display() call', () => {
+		it('renders the callout only once per display() call', () => {
 			tab.display();
 			tab.display();
 
-			const callouts =
-				tab.containerEl.querySelectorAll('.aar-doc-callout');
 			// display() empties the container first, so a re-render must not
 			// stack duplicate callouts.
-			expect(callouts.length).toBe(1);
+			expect(allEls(tab.containerEl, SETTING.docCallout)).toHaveLength(1);
 		});
 	});
 
 	describe('device-change listener lifecycle', () => {
-		it('should register the listener via addEventListener, not assignment', () => {
+		it('registers the listener via addEventListener, not assignment', () => {
 			tab.display();
 
 			expect(addEventListenerMock).toHaveBeenCalledTimes(1);
@@ -800,7 +827,7 @@ describe('AudioRecorderSettingTab', () => {
 			).toBeUndefined();
 		});
 
-		it('should register only once across repeated display() calls', () => {
+		it('registers only once across repeated display() calls', () => {
 			tab.display();
 			tab.display();
 			tab.display();
@@ -808,7 +835,7 @@ describe('AudioRecorderSettingTab', () => {
 			expect(addEventListenerMock).toHaveBeenCalledTimes(1);
 		});
 
-		it('should remove the listener in hide()', () => {
+		it('removes the listener in hide()', () => {
 			tab.display();
 			const handler = addEventListenerMock.mock.calls[0][1] as () => void;
 
@@ -820,7 +847,7 @@ describe('AudioRecorderSettingTab', () => {
 			);
 		});
 
-		it('should re-register after hide() and display() again', () => {
+		it('res-register after hide() and display() again', () => {
 			tab.display();
 			tab.hide();
 			tab.display();
@@ -829,7 +856,7 @@ describe('AudioRecorderSettingTab', () => {
 			expect(removeEventListenerMock).toHaveBeenCalledTimes(1);
 		});
 
-		it('should not remove anything when hidden without display()', () => {
+		it('does not remove anything when hidden without display()', () => {
 			tab.hide();
 
 			expect(removeEventListenerMock).not.toHaveBeenCalled();
@@ -890,9 +917,9 @@ describe('AudioRecorderSettingTab', () => {
 		 * @param recorder - The recorder every construction returns
 		 */
 		const installRecorder = (recorder: RecorderMock): void => {
-			const constructor = jest.fn(
-				() => recorder,
-			) as unknown as jest.Mock & { isTypeSupported: jest.Mock };
+			const constructor = partial<
+				jest.Mock & { isTypeSupported: jest.Mock }
+			>(jest.fn(() => recorder));
 			constructor.isTypeSupported = jest.fn().mockReturnValue(true);
 			(global as Record<string, unknown>).MediaRecorder = constructor;
 		};
@@ -934,7 +961,7 @@ describe('AudioRecorderSettingTab', () => {
 			jest.useRealTimers();
 		});
 
-		it('should stop the stream when MediaRecorder creation fails', async () => {
+		it('stops the stream when MediaRecorder creation fails', async () => {
 			(global as Record<string, unknown>).MediaRecorder = jest.fn(() => {
 				throw new Error('mimeType not supported');
 			});
@@ -948,11 +975,12 @@ describe('AudioRecorderSettingTab', () => {
 			await runTest(tab.containerEl);
 
 			expect(trackStop).toHaveBeenCalled();
-			const status = tab.containerEl.querySelector('.aar-test-status');
-			expect(status?.textContent).toContain('Test recording failed');
+			expect(
+				el(tab.containerEl, SETTING.testStatus).textContent,
+			).toContain('Test recording failed');
 		});
 
-		it('should stop the stream and bail out when hidden mid-recording', async () => {
+		it('stops the stream and bail out when hidden mid-recording', async () => {
 			const recorder = createRecorderMock();
 			(global as Record<string, unknown>).MediaRecorder = jest.fn(
 				() => recorder,
@@ -979,10 +1007,10 @@ describe('AudioRecorderSettingTab', () => {
 
 			expect(trackStop).toHaveBeenCalled();
 			expect(URL.createObjectURL).not.toHaveBeenCalled();
-			expect(tab.containerEl.querySelector('.aar-test-audio')).toBeNull();
+			expect(maybeEl(tab.containerEl, SETTING.testAudio)).toBeNull();
 		});
 
-		it('should stop the stream and attach playback on success', async () => {
+		it('stops the stream and attach playback on success', async () => {
 			const recorder = createRecorderMock();
 			(global as Record<string, unknown>).MediaRecorder = jest.fn(
 				() => recorder,
@@ -1006,9 +1034,9 @@ describe('AudioRecorderSettingTab', () => {
 			expect(recorder.stop).toHaveBeenCalled();
 			expect(trackStop).toHaveBeenCalled();
 			expect(URL.createObjectURL).toHaveBeenCalled();
-			const audio = tab.containerEl.querySelector('.aar-test-audio');
-			expect(audio).not.toBeNull();
-			expect(audio?.getAttribute('src')).toBe('blob:test-url');
+			expect(
+				el(tab.containerEl, SETTING.testAudio).getAttribute('src'),
+			).toBe('blob:test-url');
 		});
 
 		it('names the format when this device cannot record it', async () => {
@@ -1025,9 +1053,9 @@ describe('AudioRecorderSettingTab', () => {
 
 			// A failed capture has to say which format failed, or the only
 			// reading left is "the microphone is broken".
-			const status = tab.containerEl.querySelector('.aar-test-status');
-			expect(status?.textContent).toContain('aiff');
-			expect(status?.classList.contains('aar-test-error')).toBe(true);
+			const status = el(tab.containerEl, SETTING.testStatus);
+			expect(status.textContent).toContain('aiff');
+			expect(status.classList.contains('aar-test-error')).toBe(true);
 			expect(URL.createObjectURL).not.toHaveBeenCalled();
 		});
 
@@ -1044,10 +1072,10 @@ describe('AudioRecorderSettingTab', () => {
 			await testPromise;
 			jest.useRealTimers();
 
-			const status = tab.containerEl.querySelector('.aar-test-status');
-			expect(status?.textContent).toContain('no data');
-			expect(status?.classList.contains('aar-test-error')).toBe(true);
-			expect(tab.containerEl.querySelector('.aar-test-audio')).toBeNull();
+			const status = el(tab.containerEl, SETTING.testStatus);
+			expect(status.textContent).toContain('no data');
+			expect(status.classList.contains('aar-test-error')).toBe(true);
+			expect(maybeEl(tab.containerEl, SETTING.testAudio)).toBeNull();
 		});
 
 		it('revokes the previous playback when the test is run again', async () => {
@@ -1060,9 +1088,7 @@ describe('AudioRecorderSettingTab', () => {
 			// Each rerun replaces the playback element; without revoking the
 			// one it replaces, a session leaks a blob per run.
 			expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test-url');
-			expect(container.querySelectorAll('.aar-test-audio')).toHaveLength(
-				1,
-			);
+			expect(allEls(container, SETTING.testAudio)).toHaveLength(1);
 		});
 
 		it('releases the finished playback when update() re-renders the row', async () => {
@@ -1070,7 +1096,7 @@ describe('AudioRecorderSettingTab', () => {
 			const frame = renderThroughFramework(definition);
 			await recordUntilPlayback(tab, frame.setting.settingEl);
 			expect(
-				frame.setting.settingEl.querySelector('.aar-test-audio'),
+				maybeEl(frame.setting.settingEl, SETTING.testAudio),
 			).not.toBeNull();
 
 			renderThroughFramework(definition, frame);
@@ -1080,9 +1106,7 @@ describe('AudioRecorderSettingTab', () => {
 			// body it belonged to instead of outliving it detached, holding a
 			// blob URL until the tab is closed.
 			expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test-url');
-			expect(
-				frame.containerEl.querySelector('.aar-test-audio'),
-			).toBeNull();
+			expect(maybeEl(frame.containerEl, SETTING.testAudio)).toBeNull();
 		});
 
 		it('releases the finished playback when the imperative path rebuilds', async () => {
@@ -1099,7 +1123,7 @@ describe('AudioRecorderSettingTab', () => {
 			// same blob URL is revoked on this Obsidian too.
 			expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test-url');
 			expect(
-				legacyTab.containerEl.querySelector('.aar-test-audio'),
+				maybeEl(legacyTab.containerEl, SETTING.testAudio),
 			).toBeNull();
 		});
 	});
@@ -1132,7 +1156,7 @@ describe('AudioRecorderSettingTab', () => {
 				throw new Error(`"${heading}" opened no dialog`);
 			}
 			confirm(id);
-			await flushAsync();
+			await tick();
 		};
 
 		beforeEach(() => {
@@ -1161,7 +1185,7 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.whisperApiModel = 'whisper-1';
 
 			listOf('Whisper API (OpenAI-compatible)').onDelete?.(0);
-			await flushAsync();
+			await tick();
 
 			expect(mockSettings.whisperApiModels).toEqual(['whisper-large-v3']);
 			expect(mockSettings.whisperApiModel).toBe('whisper-large-v3');
@@ -1172,7 +1196,7 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.whisperApiModel = 'whisper-1';
 
 			listOf('Whisper API (OpenAI-compatible)').onDelete?.(1);
-			await flushAsync();
+			await tick();
 
 			expect(mockSettings.whisperApiModels).toEqual(['whisper-1']);
 			expect(mockSettings.whisperApiModel).toBe('whisper-1');
@@ -1182,7 +1206,7 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.whisperApiModels = ['whisper-1'];
 
 			listOf('Whisper API (OpenAI-compatible)').onDelete?.(4);
-			await flushAsync();
+			await tick();
 
 			expect(mockSettings.whisperApiModels).toEqual(['whisper-1']);
 			expect(saveSettingsMock).not.toHaveBeenCalled();
@@ -1219,7 +1243,7 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.llmOpenAiModel = 'gpt-4o';
 
 			listOf('OpenAI').onDelete?.(1);
-			await flushAsync();
+			await tick();
 
 			expect(mockSettings.llmOpenAiModels).toEqual(['gpt-4o-mini']);
 			expect(mockSettings.llmOpenAiModel).toBe('gpt-4o-mini');
@@ -1241,7 +1265,7 @@ describe('AudioRecorderSettingTab', () => {
 			];
 
 			onDelete?.(1);
-			await flushAsync();
+			await tick();
 
 			expect(mockSettings.whisperApiModels).toEqual([
 				'whisper-large-v3-turbo',
@@ -1253,7 +1277,7 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.transcriptionDictionaryProfiles = [];
 
 			listOf('Dictionary profiles').addItem?.action();
-			await flushAsync();
+			await tick();
 
 			const profiles = mockSettings.transcriptionDictionaryProfiles;
 			expect(profiles).toHaveLength(1);
@@ -1267,10 +1291,10 @@ describe('AudioRecorderSettingTab', () => {
 			mockSettings.transcriptionDictionaryProfiles = [];
 
 			listOf('Dictionary profiles').addItem?.action();
-			await flushAsync();
+			await tick();
 			const first = mockSettings.transcriptionDictionaryProfileId;
 			listOf('Dictionary profiles').addItem?.action();
-			await flushAsync();
+			await tick();
 
 			// Names identify a profile's page, so a second one cannot repeat
 			// the first one's name; and adding a glossary must not silently
@@ -1286,7 +1310,7 @@ describe('AudioRecorderSettingTab', () => {
 		it('edits a profile through the keys of its own page', async () => {
 			listOf('Dictionary profiles').addItem?.action();
 			listOf('Dictionary profiles').addItem?.action();
-			await flushAsync();
+			await tick();
 			const [first, second] =
 				mockSettings.transcriptionDictionaryProfiles;
 			const bodyKey = (id: string): string =>
@@ -1308,7 +1332,7 @@ describe('AudioRecorderSettingTab', () => {
 		it('moves the default through the toggle on a profile page', async () => {
 			listOf('Dictionary profiles').addItem?.action();
 			listOf('Dictionary profiles').addItem?.action();
-			await flushAsync();
+			await tick();
 			const [, second] = mockSettings.transcriptionDictionaryProfiles;
 			const key = `transcriptionDictionaryProfileId#${second?.id ?? ''}`;
 			expect(tab.getControlValue(key)).toBe(false);
@@ -1323,7 +1347,7 @@ describe('AudioRecorderSettingTab', () => {
 
 		it('clears the default when a profile stops being it', async () => {
 			listOf('Dictionary profiles').addItem?.action();
-			await flushAsync();
+			await tick();
 			const [only] = mockSettings.transcriptionDictionaryProfiles;
 			const key = `transcriptionDictionaryProfileId#${only?.id ?? ''}`;
 
@@ -1337,14 +1361,14 @@ describe('AudioRecorderSettingTab', () => {
 		it('deletes a profile from its own page', async () => {
 			listOf('Dictionary profiles').addItem?.action();
 			listOf('Dictionary profiles').addItem?.action();
-			await flushAsync();
+			await tick();
 			const [first] = mockSettings.transcriptionDictionaryProfiles;
 
 			rowIn(
 				pageOf(tab.getSettingDefinitions(), 'New profile'),
 				'Delete profile',
 			).action?.(createDiv(), 0);
-			await flushAsync();
+			await tick();
 
 			expect(
 				mockSettings.transcriptionDictionaryProfiles.map(
@@ -1355,7 +1379,7 @@ describe('AudioRecorderSettingTab', () => {
 
 		it('reads a body key of a profile that is gone as empty', async () => {
 			listOf('Dictionary profiles').addItem?.action();
-			await flushAsync();
+			await tick();
 
 			// A profile deleted while its page was open leaves that page's
 			// controls standing until the page is torn down.
@@ -1383,29 +1407,13 @@ describe('AudioRecorderSettingTab', () => {
 		/** display() plus the async capability load and device fills. */
 		async function renderAndSettle(): Promise<void> {
 			tab.display();
-			await new Promise((resolve) => setTimeout(resolve, 0));
-			await new Promise((resolve) => setTimeout(resolve, 0));
+			await tick();
+			await tick();
 		}
 
 		/** Toggles the named setting the way a click would. */
 		function toggleSetting(name: string): void {
-			const row = Array.from(
-				tab.containerEl.querySelectorAll<HTMLElement>('.setting-item'),
-			).find(
-				(el) =>
-					el.querySelector('.setting-item-name')?.textContent ===
-					name,
-			);
-			if (!row) {
-				throw new Error(`setting row "${name}" not rendered`);
-			}
-			const toggle = row.querySelector<HTMLElement>(
-				'.checkbox-container',
-			);
-			if (!toggle) {
-				throw new Error(`toggle in "${name}" not rendered`);
-			}
-			toggle.click();
+			rowToggle(settingRow(tab.containerEl, name)).click();
 		}
 
 		it('redraws only its own section when a reveal toggle flips', async () => {
@@ -1419,26 +1427,22 @@ describe('AudioRecorderSettingTab', () => {
 			// every row and restart the device enumeration behind the input
 			// dropdowns, which no storage setting can affect.
 			toggleSetting('Save recordings near active file');
-			await new Promise((resolve) => setTimeout(resolve, 0));
+			await tick();
 
 			expect(mockSettings.saveNearActiveFile).toBe(true);
 			expect(
 				(navigator.mediaDevices.enumerateDevices as jest.Mock).mock
-					.calls.length,
-			).toBe(enumerateCalls);
+					.calls,
+			).toHaveLength(enumerateCalls);
 		});
 
 		it('reveals the newly applicable row in the redrawn section', async () => {
 			await renderAndSettle();
 
 			toggleSetting('Save recordings near active file');
-			await new Promise((resolve) => setTimeout(resolve, 0));
+			await tick();
 
-			const names = Array.from(
-				tab.containerEl.querySelectorAll<HTMLElement>(
-					'.setting-item-name',
-				),
-			).map((el) => el.textContent);
+			const names = renderedNames(tab.containerEl);
 			expect(names).toContain('Active file subfolder');
 			// The section is redrawn, not appended to.
 			expect(
@@ -1450,13 +1454,9 @@ describe('AudioRecorderSettingTab', () => {
 			await renderAndSettle();
 
 			toggleSetting('Save recordings near active file');
-			await new Promise((resolve) => setTimeout(resolve, 0));
+			await tick();
 
-			const names = Array.from(
-				tab.containerEl.querySelectorAll<HTMLElement>(
-					'.setting-item-name',
-				),
-			).map((el) => el.textContent);
+			const names = renderedNames(tab.containerEl);
 			expect(names).toContain('File prefix');
 			expect(names).toContain('Enhanced audio player');
 			expect(names).toContain('Debug mode');
@@ -1465,38 +1465,22 @@ describe('AudioRecorderSettingTab', () => {
 
 	describe('platform gating of the settings UI', () => {
 		afterEach(() => {
-			Platform.isMobile = false;
-			Platform.isMobileApp = false;
+			useDesktopPlatform();
 		});
 
-		/** Finds a rendered setting row by its displayed name. */
-		function settingRow(name: string): HTMLElement {
-			const rows = Array.from(
-				tab.containerEl.querySelectorAll<HTMLElement>('.setting-item'),
-			);
-			const row = rows.find(
-				(el) =>
-					el.querySelector('.setting-item-name')?.textContent ===
-					name,
-			);
-			if (!row) {
-				throw new Error(`Setting row not rendered: ${name}`);
-			}
-			return row;
+		/** A rendered setting row, by its displayed name. */
+		function rowNamed(name: string): HTMLElement {
+			return settingRow(tab.containerEl, name);
 		}
 
 		/** Whether a row is rendered dimmed (blocked on this platform). */
 		function rowDimmed(name: string): boolean {
-			return settingRow(name).classList.contains('aar-setting-disabled');
+			return rowNamed(name).classList.contains('aar-setting-disabled');
 		}
 
-		/** The row's select element, when its control is a dropdown. */
-		function rowSelect(name: string): HTMLSelectElement {
-			const select = settingRow(name).querySelector('select');
-			if (!select) {
-				throw new Error(`No dropdown in setting row: ${name}`);
-			}
-			return select;
+		/** The row's dropdown, when its control is one. */
+		function dropdownIn(name: string): HTMLSelectElement {
+			return rowSelect(rowNamed(name));
 		}
 
 		it('keeps the hardware rows interactive on desktop', () => {
@@ -1506,12 +1490,12 @@ describe('AudioRecorderSettingTab', () => {
 			expect(rowDimmed('Sample rate')).toBe(false);
 			expect(rowDimmed('Split recordings automatically')).toBe(false);
 			expect(rowDimmed('Enable multi-track recording')).toBe(false);
-			expect(rowSelect('Input device').disabled).toBe(false);
-			expect(rowSelect('Sample rate').disabled).toBe(false);
+			expect(dropdownIn('Input device').disabled).toBe(false);
+			expect(dropdownIn('Sample rate').disabled).toBe(false);
 		});
 
 		it('blocks device, sample-rate, and channel selection on mobile', () => {
-			Platform.isMobile = true;
+			setPlatform({ isMobile: true });
 			const defs = tab.getSettingDefinitions();
 			const disabledOf = (name: string): boolean => {
 				const disabled = rowOf(defs, 'Audio input', name).control
@@ -1529,7 +1513,7 @@ describe('AudioRecorderSettingTab', () => {
 		it('blocks recording formats the device cannot produce (iOS profile)', async () => {
 			// iOS WKWebView: MediaRecorder records audio/mp4 only; with no
 			// working offline encoders, everything unrecordable is blocked.
-			Platform.isMobile = true;
+			setPlatform({ isMobile: true });
 			(
 				(global as Record<string, unknown>).MediaRecorder as {
 					isTypeSupported: jest.Mock;
@@ -1539,11 +1523,11 @@ describe('AudioRecorderSettingTab', () => {
 			);
 			tab.display();
 			// The availability probe is async: let it annotate the options
-			await new Promise((resolve) => setTimeout(resolve, 0));
-			await new Promise((resolve) => setTimeout(resolve, 0));
+			await tick();
+			await tick();
 
 			const options = new Map(
-				Array.from(rowSelect('Recording format').options).map(
+				Array.from(dropdownIn('Recording format').options).map(
 					(option) => [option.value, option.disabled],
 				),
 			);
@@ -1562,7 +1546,7 @@ describe('AudioRecorderSettingTab', () => {
 		it('names the fallback format when the stored format is blocked (iOS profile)', async () => {
 			// The plugin default (webm) synced onto an iOS-like device:
 			// the note must say what recordings actually produce
-			Platform.isMobile = true;
+			setPlatform({ isMobile: true });
 			mockSettings.recordingFormat = 'webm';
 			(
 				(global as Record<string, unknown>).MediaRecorder as {
@@ -1572,32 +1556,378 @@ describe('AudioRecorderSettingTab', () => {
 				(type: string) => type === 'audio/mp4',
 			);
 			tab.display();
-			await new Promise((resolve) => setTimeout(resolve, 0));
-			await new Promise((resolve) => setTimeout(resolve, 0));
+			await tick();
+			await tick();
 
-			const note = settingRow('Recording format').querySelector(
-				'.aar-format-fallback-note',
+			const note = el(
+				rowNamed('Recording format'),
+				SETTING.formatFallbackNote,
 			);
-			expect(note).not.toBeNull();
-			expect(note?.textContent).toContain('cannot record WEBM');
-			expect(note?.textContent).toContain('MP4');
+			expect(note.textContent).toContain('cannot record WEBM');
+			expect(note.textContent).toContain('MP4');
 		});
 
 		it('keeps every recordable format selectable on a permissive desktop profile', async () => {
 			tab.display();
-			await new Promise((resolve) => setTimeout(resolve, 0));
-			await new Promise((resolve) => setTimeout(resolve, 0));
+			await tick();
+			await tick();
 
-			const options = Array.from(rowSelect('Recording format').options);
+			const options = Array.from(dropdownIn('Recording format').options);
 			expect(options.length).toBeGreaterThan(0);
 			for (const option of options) {
 				expect(option.disabled).toBe(false);
 			}
 			expect(
-				settingRow('Recording format').querySelector(
-					'.aar-format-fallback-note',
+				maybeEl(
+					rowNamed('Recording format'),
+					SETTING.formatFallbackNote,
 				),
 			).toBeNull();
 		});
+	});
+});
+
+describe('AudioRecorderSettingTab profile catalogues', () => {
+	let tab: AudioRecorderSettingTab;
+	let mockSettings: AudioRecorderSettings;
+	let saveSettings: jest.Mock;
+
+	/** Every item in the definition tree, flattened depth-first. */
+	function everyItem(items: readonly unknown[]): Record<string, unknown>[] {
+		const found: Record<string, unknown>[] = [];
+		for (const item of items) {
+			const entry = item as Record<string, unknown>;
+			found.push(entry);
+			if (Array.isArray(entry['items'])) {
+				found.push(...everyItem(entry['items'] as unknown[]));
+			}
+		}
+		return found;
+	}
+
+	/**
+	 * The action of the named row on the page of the named profile.
+	 * @param profileName - The profile whose page holds the row
+	 * @param rowName - The row's name
+	 * @returns The action the row runs when pressed
+	 */
+	function profileAction(profileName: string, rowName: string): () => void {
+		const page = everyItem(tab.getSettingDefinitions()).find(
+			(item) => item['name'] === profileName && 'items' in item,
+		);
+		if (!page) {
+			throw new Error(`No page for the profile "${profileName}"`);
+		}
+		const row = everyItem(page['items'] as unknown[]).find(
+			(item) => item['name'] === rowName,
+		);
+		if (!row || typeof row['action'] !== 'function') {
+			throw new Error(`No "${rowName}" action on "${profileName}"`);
+		}
+		return row['action'] as () => void;
+	}
+
+	/** The most recent profile-name dialog. */
+	function lastPrompt(): ProfileNamePrompt {
+		return at(mockProfileDialogs, mockProfileDialogs.length - 1);
+	}
+
+	beforeEach(() => {
+		mockProfileDialogs.length = 0;
+		mockSettings = { ...DEFAULT_SETTINGS };
+		mockSettings.transcriptionDictionaryProfiles = [
+			{ id: 'a', name: 'Legal', terms: 'tort' },
+			{ id: 'b', name: 'Medical', terms: 'triage' },
+		];
+		mockSettings.transcriptionDictionaryProfileId = 'a';
+		saveSettings = jest.fn().mockResolvedValue(undefined);
+		tab = new AudioRecorderSettingTab(
+			new App(),
+			partial<AudioRecorderPluginInterface>({
+				settings: mockSettings,
+				saveSettings,
+				manifest: {
+					id: 'advanced-audio-recorder',
+					name: PLUGIN_MANIFEST_NAME,
+				},
+			}),
+		);
+	});
+
+	it('offers the current name when renaming, so it can be edited', () => {
+		profileAction('Legal', 'Rename profile')();
+
+		expect(lastPrompt().initial).toBe('Legal');
+		expect(lastPrompt().confirmText).toBe('Rename');
+	});
+
+	it('stores the new name and leaves the page it just renamed', async () => {
+		// The page is addressed by the name it no longer has, so staying on
+		// it would show an empty page.
+		profileAction('Legal', 'Rename profile')();
+
+		lastPrompt().onSubmit('Contracts');
+		await tick();
+
+		expect(at(mockSettings.transcriptionDictionaryProfiles, 0).name).toBe(
+			'Contracts',
+		);
+		expect(saveSettings).toHaveBeenCalled();
+		expect(jest.mocked(closeSettingsPage)).toHaveBeenCalled();
+	});
+
+	it.each([
+		{
+			name: 'an empty name',
+			candidate: '',
+			expected: 'Give the profile a name.',
+		},
+		{
+			name: 'a name another profile already uses',
+			candidate: 'Medical',
+			expected: 'Another profile already uses this name.',
+		},
+	])('refuses $name', ({ candidate, expected }) => {
+		profileAction('Legal', 'Rename profile')();
+
+		expect(lastPrompt().rejection?.(candidate)).toBe(expected);
+	});
+
+	it('accepts a profile keeping the name it already has', () => {
+		// Opening rename and pressing Rename unchanged is not a clash with
+		// itself.
+		profileAction('Legal', 'Rename profile')();
+
+		expect(lastPrompt().rejection?.('Legal')).toBeUndefined();
+	});
+
+	it('deletes the profile and leaves its page', async () => {
+		profileAction('Medical', 'Delete profile')();
+		await tick();
+
+		expect(
+			mockSettings.transcriptionDictionaryProfiles.map(
+				(profile) => profile.name,
+			),
+		).toEqual(['Legal']);
+		expect(jest.mocked(closeSettingsPage)).toHaveBeenCalled();
+	});
+
+	it('moves the selection off a profile it deletes', async () => {
+		profileAction('Legal', 'Delete profile')();
+		await tick();
+
+		expect(mockSettings.transcriptionDictionaryProfileId).toBe('b');
+	});
+
+	it.each([
+		{ name: 'renaming', row: 'Rename profile' },
+		{ name: 'deleting', row: 'Delete profile' },
+	])('does nothing when $name a profile that is already gone', ({ row }) => {
+		// The page can still be open on a profile a sync just removed.
+		const act = profileAction('Medical', row);
+		mockSettings.transcriptionDictionaryProfiles = [
+			at(mockSettings.transcriptionDictionaryProfiles, 0),
+		];
+
+		expect(act).not.toThrow();
+		expect(mockProfileDialogs).toHaveLength(0);
+		expect(saveSettings).not.toHaveBeenCalled();
+	});
+});
+
+describe('AudioRecorderSettingTab describing the recording formats', () => {
+	let tab: AudioRecorderSettingTab;
+	let mockSettings: AudioRecorderSettings;
+
+	/** The compression note the tab writes for a format. */
+	function describeFormat(format: string): string {
+		return (
+			tab as unknown as {
+				getCompressionDescription: (format: string) => string;
+			}
+		).getCompressionDescription(format);
+	}
+
+	beforeEach(() => {
+		mockSettings = { ...DEFAULT_SETTINGS };
+		tab = new AudioRecorderSettingTab(
+			new App(),
+			partial<AudioRecorderPluginInterface>({
+				settings: mockSettings,
+				saveSettings: jest.fn().mockResolvedValue(undefined),
+				manifest: {
+					id: 'advanced-audio-recorder',
+					name: PLUGIN_MANIFEST_NAME,
+				},
+			}),
+		);
+		(global as Record<string, unknown>).MediaRecorder = {
+			isTypeSupported: jest.fn(() => false),
+		};
+	});
+
+	it('says WAV is uncompressed, since its size is what surprises people', () => {
+		expect(describeFormat('wav')).toContain('Uncompressed WAV');
+	});
+
+	it('says a format the recorder cannot produce goes through the encoder', () => {
+		expect(describeFormat('mp3')).toContain('offline encoding');
+	});
+
+	it('says a format the recorder produces is saved straight out of it', () => {
+		(
+			(global as Record<string, unknown>).MediaRecorder as {
+				isTypeSupported: jest.Mock;
+			}
+		).isTypeSupported = jest.fn(() => true);
+
+		expect(describeFormat('webm')).toContain('directly from recorder');
+	});
+
+	it('treats every format as offline where MediaRecorder does not exist', () => {
+		// Obsidian on a platform without MediaRecorder still opens settings;
+		// the note must not throw on the missing global.
+		const previous = (global as Record<string, unknown>).MediaRecorder;
+		delete (global as Record<string, unknown>).MediaRecorder;
+		try {
+			expect(describeFormat('mp3')).toContain('offline encoding');
+		} finally {
+			(global as Record<string, unknown>).MediaRecorder = previous;
+		}
+	});
+});
+
+describe('AudioRecorderSettingTab offering the vault folders', () => {
+	it('lists every folder in the vault, however deep', () => {
+		// The recording-folder field autocompletes from this; a flat listing
+		// of the root would leave every nested folder untypeable by suggestion.
+		const app = new App();
+		const tab = new AudioRecorderSettingTab(
+			app,
+			partial<AudioRecorderPluginInterface>({
+				settings: { ...DEFAULT_SETTINGS },
+				saveSettings: jest.fn(),
+				manifest: {
+					id: 'advanced-audio-recorder',
+					name: PLUGIN_MANIFEST_NAME,
+				},
+			}),
+		);
+		asMockVault(app.vault).seed([
+			{ path: 'Recordings/take.webm' },
+			{ path: 'Archive/2024/old.webm' },
+		]);
+
+		expect(tab.getFolderOptions()).toEqual(
+			expect.arrayContaining(['Recordings', 'Archive', 'Archive/2024']),
+		);
+	});
+});
+
+describe('AudioRecorderSettingTab probing the format list', () => {
+	let tab: AudioRecorderSettingTab;
+	let mockSettings: AudioRecorderSettings;
+
+	/** The dropdown the format row rendered, and the description beside it. */
+	function formatRow(): {
+		dropdown: HTMLSelectElement;
+		descEl: HTMLElement;
+	} {
+		tab.display();
+		const row = settingRow(tab.containerEl, 'Recording format');
+		return {
+			dropdown: rowSelect(row),
+			descEl: el(row, SETTING.description),
+		};
+	}
+
+	beforeEach(() => {
+		Object.defineProperty(global, 'navigator', {
+			value: {
+				mediaDevices: {
+					enumerateDevices: jest.fn().mockResolvedValue([]),
+					getUserMedia: jest.fn(),
+					addEventListener: jest.fn(),
+					removeEventListener: jest.fn(),
+				},
+			},
+			writable: true,
+		});
+		(global as Record<string, unknown>).MediaRecorder = jest.fn();
+		(
+			(global as Record<string, unknown>).MediaRecorder as Record<
+				string,
+				unknown
+			>
+		).isTypeSupported = jest.fn().mockReturnValue(true);
+		mockSettings = { ...DEFAULT_SETTINGS };
+		tab = withoutDeclarativeSettings(
+			() =>
+				new AudioRecorderSettingTab(
+					new App(),
+					partial<AudioRecorderPluginInterface>({
+						settings: mockSettings,
+						saveSettings: jest.fn().mockResolvedValue(undefined),
+						manifest: {
+							id: 'advanced-audio-recorder',
+							name: PLUGIN_MANIFEST_NAME,
+						},
+					}),
+				),
+		);
+	});
+
+	it('leaves every format selectable when the probe itself fails', async () => {
+		// A failed probe says nothing about the device. Blocking everything
+		// would leave the user unable to pick any format at all; the
+		// recording-start validation still catches a bad one.
+		(listFormatAvailability as jest.Mock).mockRejectedValueOnce(
+			new Error('probe failed'),
+		);
+
+		const { dropdown, descEl } = formatRow();
+		await tick();
+		await tick();
+
+		for (const option of Array.from(dropdown.options)) {
+			expect(option.disabled).toBe(false);
+		}
+		expect(maybeEl(descEl, SETTING.formatFallbackNote)).toBeNull();
+	});
+
+	it('offers a stored format the registry does not know, so it stays selected', async () => {
+		// A hand-edited config, or one from a newer version: without an
+		// option for it the dropdown would silently show something else.
+		mockSettings.recordingFormat = 'aiff';
+
+		const { dropdown } = formatRow();
+		await tick();
+		await tick();
+
+		expect(dropdown.value).toBe('aiff');
+		expect(
+			Array.from(dropdown.options).map((option) => option.value),
+		).toContain('aiff');
+	});
+
+	it('says only that the format is unusable when no fallback can be worked out', async () => {
+		const { listFormatAvailability, resolveEffectiveOutputFormat } =
+			jest.requireMock('src/audio/AudioCapabilityDetector');
+		(listFormatAvailability as jest.Mock).mockResolvedValueOnce([
+			{ format: 'webm', available: false, direct: false },
+		]);
+		(resolveEffectiveOutputFormat as jest.Mock).mockRejectedValueOnce(
+			new Error('nothing works here'),
+		);
+		mockSettings.recordingFormat = 'webm';
+
+		const { descEl } = formatRow();
+		await tick();
+		await tick();
+
+		expect(el(descEl, SETTING.formatFallbackNote).textContent).toBe(
+			'This device cannot record WEBM. Select a different format.',
+		);
 	});
 });

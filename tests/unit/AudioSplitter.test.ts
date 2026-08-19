@@ -20,6 +20,7 @@ import {
 import { at, defined } from '../helpers/assertions';
 import { PCM_BYTES_PER_SAMPLE } from 'src/audio/pcm';
 import { createWavHeader } from 'src/audio/WavEncoder';
+import { partial } from '../helpers/doubles';
 
 /** WAV header size produced by createWavHeader. */
 const WAV_HEADER_SIZE = 44;
@@ -144,7 +145,7 @@ beforeAll(() => {
 });
 
 describe('parseWavLayout', () => {
-	it('should parse a standard 44-byte-header WAV file', () => {
+	it('parses a standard 44-byte-header WAV file', () => {
 		const wav = buildTestWav(2, 44100, 1000);
 
 		const layout = parseWavLayout(wav);
@@ -156,7 +157,7 @@ describe('parseWavLayout', () => {
 		expect(layout?.blockAlign).toBe(4);
 	});
 
-	it('should parse a WAV with an extra chunk before the data chunk', () => {
+	it('parses a WAV with an extra chunk before the data chunk', () => {
 		const base = new Uint8Array(buildTestWav(1, 8000, 100));
 		// Insert a 10-byte LIST chunk between fmt and data
 		const extraChunk = new Uint8Array(18);
@@ -177,53 +178,106 @@ describe('parseWavLayout', () => {
 		expect(layout?.dataLength).toBe(100);
 	});
 
-	it('should return null for non-RIFF data', () => {
-		const bytes = new Uint8Array(100).fill(0x42);
-
-		expect(parseWavLayout(bytes.buffer)).toBeNull();
+	it.each([
+		{
+			name: 'the file is not RIFF at all',
+			build: (): ArrayBuffer => new Uint8Array(100).fill(0x42).buffer,
+		},
+		{
+			name: 'the RIFF is not a WAVE',
+			build: (): ArrayBuffer => {
+				const wav = buildTestWav(1, 8000, 100);
+				new Uint8Array(wav).set([0x41, 0x56, 0x49, 0x20], 8); // 'AVI '
+				return wav;
+			},
+		},
+		{
+			name: 'the file is shorter than the RIFF header',
+			build: (): ArrayBuffer => new ArrayBuffer(8),
+		},
+		{
+			name: 'the audio is compressed rather than PCM',
+			build: (): ArrayBuffer => {
+				const wav = buildTestWav(1, 8000, 100);
+				// The fmt audioFormat field, set to 0x0055 (MP3)
+				new DataView(wav).setUint16(20, 0x0055, true);
+				return wav;
+			},
+		},
+		{
+			name: 'the byte rate is zero',
+			build: (): ArrayBuffer => {
+				const wav = buildTestWav(1, 8000, 100);
+				new DataView(wav).setUint32(28, 0, true);
+				return wav;
+			},
+		},
+		{
+			name: 'the block alignment is zero',
+			build: (): ArrayBuffer => {
+				const wav = buildTestWav(1, 8000, 100);
+				new DataView(wav).setUint16(32, 0, true);
+				return wav;
+			},
+		},
+		{
+			name: 'the fmt chunk is truncated',
+			build: (): ArrayBuffer => {
+				// 'RIFF<size>WAVE' + 'fmt <size=16>' with no fmt body
+				const bytes = new Uint8Array(24);
+				const view = new DataView(bytes.buffer);
+				bytes.set([0x52, 0x49, 0x46, 0x46], 0); // 'RIFF'
+				view.setUint32(4, 16, true);
+				bytes.set([0x57, 0x41, 0x56, 0x45], 8); // 'WAVE'
+				bytes.set([0x66, 0x6d, 0x74, 0x20], 12); // 'fmt '
+				view.setUint32(16, 16, true);
+				return bytes.buffer;
+			},
+		},
+		{
+			name: 'there is no data chunk',
+			build: (): ArrayBuffer => {
+				const wav = buildTestWav(1, 8000, 0);
+				new Uint8Array(wav).set([0x4c, 0x49, 0x53, 0x54], 36); // 'LIST'
+				return wav;
+			},
+		},
+	])('refuses to split a file where $name', ({ build }) => {
+		// Splitting by byte offsets is only safe on uncompressed PCM whose
+		// header describes the layout; anything else has to fall back to the
+		// decode-and-re-encode path rather than produce a corrupt part.
+		expect(parseWavLayout(build())).toBeNull();
 	});
 
-	it('should return null for RIFF data that is not WAVE', () => {
-		const wav = buildTestWav(1, 8000, 100);
-		new Uint8Array(wav).set([0x41, 0x56, 0x49, 0x20], 8); // 'AVI '
-
-		expect(parseWavLayout(wav)).toBeNull();
-	});
-
-	it('should return null for a buffer shorter than the RIFF header', () => {
-		expect(parseWavLayout(new ArrayBuffer(8))).toBeNull();
-	});
-
-	it('should return null for compressed WAV format codes', () => {
-		const wav = buildTestWav(1, 8000, 100);
-		// Overwrite the fmt audioFormat field with 0x0055 (MP3)
-		new DataView(wav).setUint16(20, 0x0055, true);
-
-		expect(parseWavLayout(wav)).toBeNull();
-	});
-
-	it('should accept IEEE float format code', () => {
+	it('accepts IEEE float, which is uncompressed too', () => {
 		const wav = buildTestWav(1, 8000, 100);
 		new DataView(wav).setUint16(20, 0x0003, true);
 
-		expect(parseWavLayout(wav)).not.toBeNull();
+		// The layout is what the splitter slices on, so a non-null one that
+		// points nowhere would cut an empty part out of a real file.
+		expect(parseWavLayout(wav)).toEqual(
+			expect.objectContaining({
+				dataOffset: WAV_HEADER_SIZE,
+				dataLength: 100,
+			}),
+		);
 	});
 
-	it('should return null for a zero byte rate', () => {
+	it('returns null for a zero byte rate', () => {
 		const wav = buildTestWav(1, 8000, 100);
 		new DataView(wav).setUint32(28, 0, true);
 
 		expect(parseWavLayout(wav)).toBeNull();
 	});
 
-	it('should return null for a zero block align', () => {
+	it('returns null for a zero block align', () => {
 		const wav = buildTestWav(1, 8000, 100);
 		new DataView(wav).setUint16(32, 0, true);
 
 		expect(parseWavLayout(wav)).toBeNull();
 	});
 
-	it('should clamp dataLength to the actual buffer size', () => {
+	it('clamps dataLength to the actual buffer size', () => {
 		const wav = buildTestWav(1, 8000, 100);
 		// Claim more data than the file contains
 		new DataView(wav).setUint32(40, 5000, true);
@@ -233,7 +287,7 @@ describe('parseWavLayout', () => {
 		expect(layout?.dataLength).toBe(100);
 	});
 
-	it('should return null for a truncated fmt chunk', () => {
+	it('returns null for a truncated fmt chunk', () => {
 		// "RIFF<size>WAVE" + "fmt <size=16>" but only 4 bytes of fmt data
 		const bytes = new Uint8Array(24);
 		const view = new DataView(bytes.buffer);
@@ -246,7 +300,7 @@ describe('parseWavLayout', () => {
 		expect(parseWavLayout(bytes.buffer)).toBeNull();
 	});
 
-	it('should return null when no data chunk exists', () => {
+	it('returns null when no data chunk exists', () => {
 		// A valid header with the data chunk id overwritten
 		const wav = buildTestWav(1, 8000, 0);
 		new Uint8Array(wav).set([0x4c, 0x49, 0x53, 0x54], 36); // 'LIST'
@@ -256,7 +310,7 @@ describe('parseWavLayout', () => {
 });
 
 describe('computeWavPartBytes', () => {
-	it('should compute the part size from byteRate and duration', () => {
+	it('computes the part size from byteRate and duration', () => {
 		// 1000 Hz mono 16-bit: byteRate = 2000 B/s; 2 s parts = 4000 B
 		const wav = buildTestWav(1, 1000, 12000);
 		const layout = parseWavLayout(wav);
@@ -264,7 +318,7 @@ describe('computeWavPartBytes', () => {
 		expect(computeWavPartBytes(defined(layout), 2)).toBe(4000);
 	});
 
-	it('should align the part size down to blockAlign', () => {
+	it('aligns the part size down to blockAlign', () => {
 		const layout: WavLayout = {
 			dataOffset: WAV_HEADER_SIZE,
 			dataLength: 16000,
@@ -276,7 +330,7 @@ describe('computeWavPartBytes', () => {
 		expect(computeWavPartBytes(layout, 1.5005)).toBe(6000);
 	});
 
-	it('should return zero for a zero duration', () => {
+	it('returns zero for a zero duration', () => {
 		const layout: WavLayout = {
 			dataOffset: WAV_HEADER_SIZE,
 			dataLength: 1000,
@@ -289,7 +343,7 @@ describe('computeWavPartBytes', () => {
 });
 
 describe('buildWavPart', () => {
-	it('should split into equal parts when data is an exact multiple', () => {
+	it('splits into equal parts when data is an exact multiple', () => {
 		// 1000 Hz mono 16-bit: byteRate = 2000 B/s; 2 s parts = 4000 B
 		const wav = buildTestWav(1, 1000, 12000);
 		const layout = parseWavLayout(wav);
@@ -303,7 +357,7 @@ describe('buildWavPart', () => {
 		}
 	});
 
-	it('should put the remainder into a shorter last part', () => {
+	it('puts the remainder into a shorter last part', () => {
 		const wav = buildTestWav(1, 1000, 10000);
 		const layout = parseWavLayout(wav);
 
@@ -315,7 +369,7 @@ describe('buildWavPart', () => {
 		expect(parseWavLayout(defined(parts[2]))?.dataLength).toBe(2000);
 	});
 
-	it('should cut on blockAlign boundaries for stereo data', () => {
+	it('cuts on blockAlign boundaries for stereo data', () => {
 		// 1000 Hz stereo 16-bit: blockAlign = 4, byteRate = 4000 B/s
 		const wav = buildTestWav(2, 1000, 16000);
 		const layout = parseWavLayout(wav);
@@ -330,7 +384,7 @@ describe('buildWavPart', () => {
 		}
 	});
 
-	it('should preserve the sample bytes across parts', () => {
+	it('preserves the sample bytes across parts', () => {
 		const wav = buildTestWav(1, 1000, 6000);
 		const layout = parseWavLayout(wav);
 
@@ -350,7 +404,7 @@ describe('buildWavPart', () => {
 		expect(reassembled).toEqual([...original]);
 	});
 
-	it('should patch the RIFF size of each part', () => {
+	it('patches the RIFF size of each part', () => {
 		const wav = buildTestWav(1, 1000, 6000);
 		const layout = parseWavLayout(wav);
 
@@ -362,7 +416,7 @@ describe('buildWavPart', () => {
 		}
 	});
 
-	it('should patch the data chunk size of each part', () => {
+	it('patches the data chunk size of each part', () => {
 		const wav = buildTestWav(1, 1000, 10000);
 		const layout = parseWavLayout(wav);
 
@@ -378,7 +432,7 @@ describe('buildWavPart', () => {
 		});
 	});
 
-	it('should copy a non-44-byte header into every part', () => {
+	it('copies a non-44-byte header into every part', () => {
 		// Mono 8000 Hz 16-bit: byteRate = 16000 B/s; 0.0025 s parts = 40 B
 		const wav = buildTestWavWithListChunk(1, 8000, 100);
 		const layout = parseWavLayout(wav);
@@ -403,14 +457,14 @@ describe('buildWavPart', () => {
 		expect(reassembled).toEqual([...original]);
 	});
 
-	it('should produce no parts for a non-positive part size', () => {
+	it('produces no parts for a non-positive part size', () => {
 		const wav = buildTestWav(1, 1000, 6000);
 		const layout = parseWavLayout(wav);
 
 		expect(splitWav(wav, defined(layout), 0)).toEqual([]);
 	});
 
-	it('should build a header-only part when the index starts at the data end', () => {
+	it('builds a header-only part when the index starts at the data end', () => {
 		const wav = buildTestWav(1, 1000, 6000);
 		const layout = parseWavLayout(wav);
 
@@ -430,11 +484,13 @@ describe('sliceAudioBuffer', () => {
 		length: number,
 		sampleRate: number,
 	): AudioBuffer {
-		const buffer = new FakeAudioBuffer({
-			numberOfChannels: channels,
-			length,
-			sampleRate,
-		}) as unknown as AudioBuffer;
+		const buffer = partial<AudioBuffer>(
+			new FakeAudioBuffer({
+				numberOfChannels: channels,
+				length,
+				sampleRate,
+			}),
+		);
 		for (let ch = 0; ch < channels; ch++) {
 			const data = buffer.getChannelData(ch);
 			for (let i = 0; i < length; i++) {
@@ -444,12 +500,12 @@ describe('sliceAudioBuffer', () => {
 		return buffer;
 	}
 
-	it('should copy the requested sample range for all channels', () => {
+	it('copies the requested sample range for all channels', () => {
 		const source = buildRampBuffer(2, 100, 8000);
 
 		const slice = sliceAudioBuffer(source, 10, 20);
 
-		expect(slice.length).toBe(10);
+		expect(slice).toHaveLength(10);
 		expect(slice.numberOfChannels).toBe(2);
 		expect(slice.sampleRate).toBe(8000);
 		expect(slice.getChannelData(0)[0]).toBe(10);
@@ -458,51 +514,51 @@ describe('sliceAudioBuffer', () => {
 		expect(slice.getChannelData(1)[9]).toBe(38);
 	});
 
-	it('should clamp the end sample to the buffer length', () => {
+	it('clamps the end sample to the buffer length', () => {
 		const source = buildRampBuffer(1, 50, 8000);
 
 		const slice = sliceAudioBuffer(source, 40, 100);
 
-		expect(slice.length).toBe(10);
+		expect(slice).toHaveLength(10);
 		expect(slice.getChannelData(0)[9]).toBe(49);
 	});
 
-	it('should clamp a negative start sample to zero', () => {
+	it('clamps a negative start sample to zero', () => {
 		const source = buildRampBuffer(1, 50, 8000);
 
 		const slice = sliceAudioBuffer(source, -10, 5);
 
-		expect(slice.length).toBe(5);
+		expect(slice).toHaveLength(5);
 		expect(slice.getChannelData(0)[0]).toBe(0);
 	});
 });
 
 describe('computePartCount', () => {
-	it('should round up to include the remainder part', () => {
+	it('rounds up to include the remainder part', () => {
 		expect(computePartCount(10, 4)).toBe(3);
 	});
 
-	it('should return the exact count for multiples', () => {
+	it('returns the exact count for multiples', () => {
 		expect(computePartCount(12, 4)).toBe(3);
 	});
 
-	it('should return zero for empty input', () => {
+	it('returns zero for empty input', () => {
 		expect(computePartCount(0, 4)).toBe(0);
 	});
 
-	it('should return zero for a non-positive part size', () => {
+	it('returns zero for a non-positive part size', () => {
 		expect(computePartCount(10, 0)).toBe(0);
 	});
 });
 
 describe('computePcmPartLimitBytes', () => {
-	it('should compute the limit from minutes, rate, and channels', () => {
+	it('computes the limit from minutes, rate, and channels', () => {
 		expect(computePcmPartLimitBytes(1, 44100, 1)).toBe(
 			60 * 44100 * PCM_BYTES_PER_SAMPLE,
 		);
 	});
 
-	it('should scale with channel count', () => {
+	it('scales with channel count', () => {
 		expect(computePcmPartLimitBytes(2, 48000, 2)).toBe(
 			2 * 60 * 48000 * 2 * PCM_BYTES_PER_SAMPLE,
 		);
@@ -510,7 +566,7 @@ describe('computePcmPartLimitBytes', () => {
 });
 
 describe('buildPartFileName', () => {
-	it('should compose base, suffix, number, and extension', () => {
+	it('composes base, suffix, number, and extension', () => {
 		expect(buildPartFileName('recording-2026', 'part', 3, 'webm')).toBe(
 			'recording-2026-part3.webm',
 		);
@@ -518,15 +574,15 @@ describe('buildPartFileName', () => {
 });
 
 describe('sanitizePartSuffix', () => {
-	it('should keep a valid suffix', () => {
+	it('keeps a valid suffix', () => {
 		expect(sanitizePartSuffix('chunk_1-a')).toBe('chunk_1-a');
 	});
 
-	it('should fall back to the default for an empty suffix', () => {
+	it('falls back to the default for an empty suffix', () => {
 		expect(sanitizePartSuffix('')).toBe('part');
 	});
 
-	it('should fall back to the default for illegal characters', () => {
+	it('falls back to the default for illegal characters', () => {
 		expect(sanitizePartSuffix('pa/rt')).toBe('part');
 		expect(sanitizePartSuffix('pa.rt')).toBe('part');
 		expect(sanitizePartSuffix('pa rt')).toBe('part');
@@ -534,31 +590,31 @@ describe('sanitizePartSuffix', () => {
 });
 
 describe('clampSplitMinutes', () => {
-	it('should clamp values below the minimum', () => {
+	it('clamps values below the minimum', () => {
 		expect(clampSplitMinutes(0)).toBe(1);
 		expect(clampSplitMinutes(-10)).toBe(1);
 	});
 
-	it('should clamp values above the maximum', () => {
+	it('clamps values above the maximum', () => {
 		expect(clampSplitMinutes(181)).toBe(180);
 		expect(clampSplitMinutes(10000)).toBe(180);
 	});
 
-	it('should floor fractional values', () => {
+	it('floors fractional values', () => {
 		expect(clampSplitMinutes(2.9)).toBe(2);
 		expect(clampSplitMinutes(15.5)).toBe(15);
 	});
 
-	it('should return the default for NaN', () => {
+	it('returns the default for NaN', () => {
 		expect(clampSplitMinutes(Number.NaN)).toBe(15);
 	});
 
-	it('should return the default for Infinity', () => {
+	it('returns the default for Infinity', () => {
 		expect(clampSplitMinutes(Number.POSITIVE_INFINITY)).toBe(15);
 		expect(clampSplitMinutes(Number.NEGATIVE_INFINITY)).toBe(15);
 	});
 
-	it('should pass through valid whole minutes', () => {
+	it('passes through valid whole minutes', () => {
 		expect(clampSplitMinutes(1)).toBe(1);
 		expect(clampSplitMinutes(15)).toBe(15);
 		expect(clampSplitMinutes(180)).toBe(180);
@@ -566,11 +622,11 @@ describe('clampSplitMinutes', () => {
 });
 
 describe('totalByteLength', () => {
-	it('should return zero for an empty list', () => {
+	it('returns zero for an empty list', () => {
 		expect(totalByteLength([])).toBe(0);
 	});
 
-	it('should sum the byte lengths of all buffers', () => {
+	it('sums the byte lengths of all buffers', () => {
 		const buffers = [
 			new ArrayBuffer(3),
 			new ArrayBuffer(5),
@@ -582,7 +638,7 @@ describe('totalByteLength', () => {
 });
 
 describe('detachTrailingBytes', () => {
-	it('should be a no-op for zero trailing bytes', () => {
+	it('is a no-op for zero trailing bytes', () => {
 		const buffers = [buildBytes(4, 0)];
 
 		const carry = detachTrailingBytes(buffers, 0);
@@ -592,14 +648,14 @@ describe('detachTrailingBytes', () => {
 		expect(at(buffers, 0).byteLength).toBe(4);
 	});
 
-	it('should return an empty carry for an empty list', () => {
+	it('returns an empty carry for an empty list', () => {
 		const buffers: ArrayBuffer[] = [];
 
 		expect(detachTrailingBytes(buffers, 5)).toEqual([]);
 		expect(buffers).toEqual([]);
 	});
 
-	it('should split inside the last buffer', () => {
+	it('splits inside the last buffer', () => {
 		const buffers = [buildBytes(10, 0)];
 
 		const carry = detachTrailingBytes(buffers, 4);
@@ -610,7 +666,7 @@ describe('detachTrailingBytes', () => {
 		expect([...new Uint8Array(at(carry, 0))]).toEqual([6, 7, 8, 9]);
 	});
 
-	it('should detach whole buffers plus a partial one across a boundary', () => {
+	it('detaches whole buffers plus a partial one across a boundary', () => {
 		const buffers = [buildBytes(4, 0), buildBytes(4, 4), buildBytes(4, 8)];
 
 		const carry = detachTrailingBytes(buffers, 6);
@@ -624,7 +680,7 @@ describe('detachTrailingBytes', () => {
 		expect([...new Uint8Array(at(carry, 1))]).toEqual([8, 9, 10, 11]);
 	});
 
-	it('should detach everything when trailing bytes equal the total', () => {
+	it('detaches everything when trailing bytes equal the total', () => {
 		const first = buildBytes(3, 0);
 		const second = buildBytes(5, 3);
 		const buffers = [first, second];
@@ -636,7 +692,7 @@ describe('detachTrailingBytes', () => {
 		expect(carry).toEqual([first, second]);
 	});
 
-	it('should reproduce the original sequence from remainder plus carry', () => {
+	it('reproduces the original sequence from remainder plus carry', () => {
 		const buffers = [buildBytes(7, 0), buildBytes(5, 7), buildBytes(9, 12)];
 		const original = concatBytes(buffers);
 

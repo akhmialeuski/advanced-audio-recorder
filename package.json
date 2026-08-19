@@ -9,6 +9,11 @@
 		"build": "npm run typecheck && node esbuild.config.mjs production",
 		"test": "jest",
 		"test:coverage": "jest --coverage",
+		"test:guard": "npm run test:coverage && node scripts/coverage-diff.mjs",
+		"test:baseline": "npm run test:coverage && node scripts/coverage-diff.mjs --update-baseline",
+		"test:layers": "node scripts/layer-check.mjs",
+		"test:conventions": "node scripts/test-conventions.mjs",
+		"test:clones": "node scripts/clone-check.mjs",
 		"lint": "eslint .",
 		"lint:fix": "eslint . --fix",
 		"version": "node scripts/version-bump.mjs && git add manifest.json versions.json",
@@ -66,8 +71,10 @@
 		"esbuild": "0.28.1",
 		"eslint": "10.4.1",
 		"eslint-config-prettier": "10.1.8",
+		"eslint-plugin-jest": "29.16.1",
 		"eslint-plugin-obsidianmd": "0.3.0",
 		"eslint-plugin-prettier": "^5.5.4",
+		"expect-type": "1.4.0",
 		"globals": "^16.5.0",
 		"husky": "^9.0.0",
 		"jest": "30.4.2",
@@ -83,49 +90,6 @@
 	"nano-staged": {
 		"*.ts": "eslint --fix",
 		"*.json": "prettier --write"
-	},
-	"jest": {
-		"moduleNameMapper": {
-			"^obsidian$": "<rootDir>/tests/mocks/obsidian.ts",
-			"^@mediabunny/flac-encoder$": "<rootDir>/tests/mocks/flac-encoder.ts",
-			"^@mediabunny/mp3-encoder$": "<rootDir>/tests/mocks/mp3-encoder.ts",
-			"^src/(.*)$": "<rootDir>/src/$1"
-		},
-		"moduleFileExtensions": [
-			"js",
-			"ts",
-			"d.ts"
-		],
-		"transform": {
-			"^.+\\.ts$": "ts-jest"
-		},
-		"testEnvironment": "jsdom",
-		"testMatch": [
-			"<rootDir>/tests/**/*.test.ts"
-		],
-		"clearMocks": true,
-		"restoreMocks": true,
-		"collectCoverageFrom": [
-			"src/**/*.ts",
-			"!src/**/*.d.ts"
-		],
-		"coverageThreshold": {
-			"global": {
-				"statements": 91,
-				"branches": 83,
-				"functions": 86,
-				"lines": 91
-			},
-			"src/platform/": {
-				"statements": 90,
-				"branches": 90,
-				"functions": 90,
-				"lines": 90
-			}
-		},
-		"setupFiles": [
-			"<rootDir>/tests/setup.ts"
-		]
 	},
 	"dependencies": {
 		"@mediabunny/flac-encoder": "1.50.4",

@@ -6,7 +6,6 @@
  * @module tests/unit/settingsPerPlatform.test
  */
 
-import { Platform } from 'obsidian';
 import {
 	mergeSettings,
 	mergeSettingsAsync,
@@ -15,11 +14,7 @@ import {
 	serializeSettings,
 } from 'src/settings/settingsSerialization';
 import type { AudioRecorderSettingsInput } from 'src/settings/settingsSchema';
-
-function resetPlatform(): void {
-	Platform.isMobile = false;
-	Platform.isMobileApp = false;
-}
+import { setPlatform } from '../helpers/platform';
 
 /** A legacy (pre-perPlatform) data.json shape with desktop device state. */
 function legacyStored(): AudioRecorderSettingsInput {
@@ -59,8 +54,6 @@ describe('normalizePlatformScopedSettings', () => {
 });
 
 describe('legacy flat settings migration', () => {
-	afterEach(resetPlatform);
-
 	it('moves legacy flat device fields into the desktop branch', () => {
 		const perPlatform = normalizePerPlatformSettings(legacyStored());
 		expect(perPlatform.desktop.audioDeviceId).toBe('desktop-mic');
@@ -74,7 +67,7 @@ describe('legacy flat settings migration', () => {
 	});
 
 	it('migrates legacy fields to the desktop branch even when loading on mobile', () => {
-		Platform.isMobile = true;
+		setPlatform({ isMobile: true });
 		const merged = mergeSettings(legacyStored());
 		// Active (mobile) values are the clean mobile defaults...
 		expect(merged.audioDeviceId).toBe('');
@@ -122,8 +115,6 @@ describe('legacy flat settings migration', () => {
 });
 
 describe('active-branch resolution', () => {
-	afterEach(resetPlatform);
-
 	const stored: AudioRecorderSettingsInput = {
 		perPlatform: {
 			desktop: {
@@ -141,21 +132,41 @@ describe('active-branch resolution', () => {
 		},
 	};
 
-	it('activates the desktop branch on desktop', () => {
-		const merged = mergeSettings(stored, 'desktop');
-		expect(merged.audioDeviceId).toBe('desktop-mic');
-		expect(merged.recordingChannels).toBe('mono-left');
-		expect(merged.trackAudioSources.get(1)?.deviceId).toBe('desk-1');
-	});
+	describe.each([
+		{
+			platform: 'desktop' as const,
+			device: 'desktop-mic',
+			channels: 'mono-left',
+			tracks: 1,
+		},
+		{
+			platform: 'mobile' as const,
+			device: 'phone-mic',
+			channels: 'source',
+			tracks: 0,
+		},
+	])('activated on $platform', ({ platform, device, channels, tracks }) => {
+		// The flat runtime fields are the active branch; reading the wrong one
+		// records with a device that does not exist on this machine.
+		it('takes the device from that branch', () => {
+			expect(mergeSettings(stored, platform).audioDeviceId).toBe(device);
+		});
 
-	it('activates the mobile branch on mobile', () => {
-		const merged = mergeSettings(stored, 'mobile');
-		expect(merged.audioDeviceId).toBe('phone-mic');
-		expect(merged.trackAudioSources.size).toBe(0);
+		it('takes the channel layout from that branch', () => {
+			expect(mergeSettings(stored, platform).recordingChannels).toBe(
+				channels,
+			);
+		});
+
+		it('takes the per-track sources from that branch', () => {
+			expect(mergeSettings(stored, platform).trackAudioSources.size).toBe(
+				tracks,
+			);
+		});
 	});
 
 	it('defaults the platform argument to the current platform', () => {
-		Platform.isMobile = true;
+		setPlatform({ isMobile: true });
 		const merged = mergeSettings(stored);
 		expect(merged.audioDeviceId).toBe('phone-mic');
 	});
@@ -174,8 +185,6 @@ describe('active-branch resolution', () => {
 });
 
 describe('serializeSettings platform separation', () => {
-	afterEach(resetPlatform);
-
 	it('drops the flat device fields from the persisted shape', () => {
 		const merged = mergeSettings(legacyStored(), 'desktop');
 		const serialized = serializeSettings(
@@ -257,7 +266,6 @@ describe('mergeSettingsAsync device auto-detection', () => {
 			value: originalMediaDevices,
 			configurable: true,
 		});
-		resetPlatform();
 	});
 
 	it('detects the default device on desktop and stores it in the branch', async () => {

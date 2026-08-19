@@ -4,7 +4,7 @@
  * @module tests/unit/RecordingFileManager.test
  */
 
-import type { App } from 'obsidian';
+import type { App, TFile } from 'obsidian';
 import {
 	DEFAULT_SETTINGS,
 	type AudioRecorderSettings,
@@ -20,11 +20,9 @@ import {
 	removeTemporaryArtifacts,
 	cleanupIntermediateFiles,
 } from 'src/audio/RecordingFileManager';
-
-// Mock obsidian module
-jest.mock('obsidian', () => ({
-	normalizePath: (path: string) => path.replace(/\\/g, '/'),
-}));
+import { partial } from '../helpers/doubles';
+import { createMockApp } from '../helpers/createApp';
+import { at } from '../helpers/assertions';
 
 // Polyfill Blob.arrayBuffer for jsdom if missing
 
@@ -33,17 +31,14 @@ describe('RecordingFileManager', () => {
 	let mockSettings: AudioRecorderSettings;
 	let consoleDebugSpy: jest.SpyInstance;
 	let consoleWarnSpy: jest.SpyInstance;
-	let consoleErrorSpy: jest.SpyInstance;
 
 	beforeEach(() => {
-		jest.clearAllMocks();
-
 		consoleDebugSpy = jest.spyOn(console, 'debug').mockImplementation();
 		consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
-		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+		jest.spyOn(console, 'error').mockImplementation();
 
 		// Create mock App with all required vault and workspace methods
-		mockApp = {
+		mockApp = createMockApp({
 			vault: {
 				adapter: {
 					exists: jest.fn().mockResolvedValue(false),
@@ -56,7 +51,7 @@ describe('RecordingFileManager', () => {
 				getActiveFile: jest.fn().mockReturnValue(null),
 				getActiveViewOfType: jest.fn().mockReturnValue(null),
 			},
-		} as unknown as App;
+		}).app;
 
 		// Use default settings with a defined saveFolder
 		mockSettings = {
@@ -65,74 +60,42 @@ describe('RecordingFileManager', () => {
 		};
 	});
 
-	afterEach(() => {
-		consoleDebugSpy.mockRestore();
-		consoleWarnSpy.mockRestore();
-		consoleErrorSpy.mockRestore();
-	});
-
 	// -----------------------------------------------------------------------
 	// getActiveFileDirectory
 	// -----------------------------------------------------------------------
 	describe('getActiveFileDirectory', () => {
-		it('should return the directory of the active .md file', () => {
-			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
+		it.each([
+			{
+				name: 'a note in a folder',
 				path: 'Notes/Daily/2024-01-01.md',
-			});
-
-			const result = getActiveFileDirectory(mockApp);
-
-			expect(result).toBe('Notes/Daily');
-		});
-
-		it('should handle .MD extension (case-insensitive)', () => {
-			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
+				expected: 'Notes/Daily',
+			},
+			{
+				name: 'a deeply nested note',
+				path: 'a/b/c/d/note.md',
+				expected: 'a/b/c/d',
+			},
+			{
+				name: 'a note whose extension is upper-case',
 				path: 'Notes/README.MD',
-			});
-
-			const result = getActiveFileDirectory(mockApp);
-
-			expect(result).toBe('Notes');
-		});
-
-		it('should return empty string for a non-.md active file', () => {
-			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
+				expected: 'Notes',
+			},
+			{ name: 'a note at the vault root', path: 'note.md', expected: '' },
+			{
+				name: 'a file that is not a note',
 				path: 'Assets/image.png',
-			});
-
-			const result = getActiveFileDirectory(mockApp);
-
-			expect(result).toBe('');
-		});
-
-		it('should return empty string when no file is active', () => {
-			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue(
-				null,
+				expected: '',
+			},
+			{ name: 'no active file at all', path: null, expected: '' },
+		])('answers "$expected" for $name', ({ path, expected }) => {
+			// This decides where a recording lands when "save near the active
+			// file" is on, so anything that is not a note in a folder has to
+			// fall back to the configured folder rather than guess.
+			jest.mocked(mockApp.workspace.getActiveFile).mockReturnValue(
+				path === null ? null : partial<TFile>({ path }),
 			);
 
-			const result = getActiveFileDirectory(mockApp);
-
-			expect(result).toBe('');
-		});
-
-		it('should return empty string for a root-level .md file', () => {
-			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
-				path: 'note.md',
-			});
-
-			const result = getActiveFileDirectory(mockApp);
-
-			expect(result).toBe('');
-		});
-
-		it('should return deeply nested directory path', () => {
-			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
-				path: 'a/b/c/d/note.md',
-			});
-
-			const result = getActiveFileDirectory(mockApp);
-
-			expect(result).toBe('a/b/c/d');
+			expect(getActiveFileDirectory(mockApp)).toBe(expected);
 		});
 	});
 
@@ -140,7 +103,7 @@ describe('RecordingFileManager', () => {
 	// getBaseSaveDirectory
 	// -----------------------------------------------------------------------
 	describe('getBaseSaveDirectory', () => {
-		it('should return saveFolder when saveNearActiveFile is false', () => {
+		it('returns saveFolder when saveNearActiveFile is false', () => {
 			mockSettings.saveNearActiveFile = false;
 			mockSettings.saveFolder = 'MyRecordings';
 
@@ -149,7 +112,7 @@ describe('RecordingFileManager', () => {
 			expect(result).toBe('MyRecordings');
 		});
 
-		it('should return active file directory when saveNearActiveFile is true and subfolder is empty', () => {
+		it('returns active file directory when saveNearActiveFile is true and subfolder is empty', () => {
 			mockSettings.saveNearActiveFile = true;
 			mockSettings.activeFileSubfolder = '';
 			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
@@ -161,7 +124,7 @@ describe('RecordingFileManager', () => {
 			expect(result).toBe('Notes/Daily');
 		});
 
-		it('should return active file directory + subfolder when saveNearActiveFile is true and subfolder set', () => {
+		it('returns active file directory + subfolder when saveNearActiveFile is true and subfolder set', () => {
 			mockSettings.saveNearActiveFile = true;
 			mockSettings.activeFileSubfolder = 'audio';
 			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
@@ -173,7 +136,7 @@ describe('RecordingFileManager', () => {
 			expect(result).toBe('Notes/Daily/audio');
 		});
 
-		it('should handle whitespace-only subfolder as empty', () => {
+		it('handles whitespace-only subfolder as empty', () => {
 			mockSettings.saveNearActiveFile = true;
 			mockSettings.activeFileSubfolder = '   ';
 			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue({
@@ -185,7 +148,7 @@ describe('RecordingFileManager', () => {
 			expect(result).toBe('Notes');
 		});
 
-		it('should return subfolder relative to root when no active .md file', () => {
+		it('returns subfolder relative to root when no active .md file', () => {
 			mockSettings.saveNearActiveFile = true;
 			mockSettings.activeFileSubfolder = 'recordings';
 			(mockApp.workspace.getActiveFile as jest.Mock).mockReturnValue(
@@ -203,7 +166,7 @@ describe('RecordingFileManager', () => {
 	// ensureFolderExists
 	// -----------------------------------------------------------------------
 	describe('ensureFolderExists', () => {
-		it('should not create folder if it already exists', async () => {
+		it('does not create folder if it already exists', async () => {
 			(mockApp.vault.adapter.exists as jest.Mock).mockResolvedValue(true);
 
 			await ensureFolderExists('Recordings', mockApp);
@@ -214,7 +177,7 @@ describe('RecordingFileManager', () => {
 			expect(mockApp.vault.createFolder).not.toHaveBeenCalled();
 		});
 
-		it('should create folder if it does not exist', async () => {
+		it('creates folder if it does not exist', async () => {
 			(mockApp.vault.adapter.exists as jest.Mock).mockResolvedValue(
 				false,
 			);
@@ -229,21 +192,21 @@ describe('RecordingFileManager', () => {
 			);
 		});
 
-		it('should skip creation for empty path', async () => {
+		it('skips creation for empty path', async () => {
 			await ensureFolderExists('', mockApp);
 
 			expect(mockApp.vault.adapter.exists).not.toHaveBeenCalled();
 			expect(mockApp.vault.createFolder).not.toHaveBeenCalled();
 		});
 
-		it('should skip creation for whitespace-only path', async () => {
+		it('skips creation for whitespace-only path', async () => {
 			await ensureFolderExists('   ', mockApp);
 
 			expect(mockApp.vault.adapter.exists).not.toHaveBeenCalled();
 			expect(mockApp.vault.createFolder).not.toHaveBeenCalled();
 		});
 
-		it('should normalize backslashes in path', async () => {
+		it('normalizes backslashes in path', async () => {
 			(mockApp.vault.adapter.exists as jest.Mock).mockResolvedValue(
 				false,
 			);
@@ -264,7 +227,7 @@ describe('RecordingFileManager', () => {
 	// resolveUniquePathInDirectory
 	// -----------------------------------------------------------------------
 	describe('resolveUniquePathInDirectory', () => {
-		it('should return the path directly when free', async () => {
+		it('returns the path directly when free', async () => {
 			(mockApp.vault.adapter.exists as jest.Mock).mockResolvedValue(
 				false,
 			);
@@ -278,7 +241,7 @@ describe('RecordingFileManager', () => {
 			expect(result).toBe('Recordings/clip.webm');
 		});
 
-		it('should append a counter on collision', async () => {
+		it('appends a counter on collision', async () => {
 			(mockApp.vault.adapter.exists as jest.Mock)
 				.mockResolvedValueOnce(true)
 				.mockResolvedValueOnce(false);
@@ -292,7 +255,7 @@ describe('RecordingFileManager', () => {
 			expect(result).toBe('Recordings/clip_1.webm');
 		});
 
-		it('should keep multi-dot names intact', async () => {
+		it('keeps multi-dot names intact', async () => {
 			(mockApp.vault.adapter.exists as jest.Mock)
 				.mockResolvedValueOnce(true)
 				.mockResolvedValueOnce(false);
@@ -306,7 +269,7 @@ describe('RecordingFileManager', () => {
 			expect(result).toBe('Recordings/clip.part1.webm_1.tmp');
 		});
 
-		it('should sanitize illegal characters', async () => {
+		it('sanitizes illegal characters', async () => {
 			(mockApp.vault.adapter.exists as jest.Mock).mockResolvedValue(
 				false,
 			);
@@ -325,7 +288,7 @@ describe('RecordingFileManager', () => {
 	// resolveUniquePath
 	// -----------------------------------------------------------------------
 	describe('resolveUniquePath', () => {
-		it('should return the path directly when no collision', async () => {
+		it('returns the path directly when no collision', async () => {
 			mockSettings.saveFolder = 'Recordings';
 			(mockApp.vault.adapter.exists as jest.Mock).mockResolvedValue(
 				false,
@@ -340,7 +303,7 @@ describe('RecordingFileManager', () => {
 			expect(result).toBe('Recordings/test.webm');
 		});
 
-		it('should append counter when file already exists', async () => {
+		it('appends counter when file already exists', async () => {
 			mockSettings.saveFolder = 'Recordings';
 			(mockApp.vault.adapter.exists as jest.Mock)
 				.mockResolvedValueOnce(false) // ensureFolderExists check
@@ -356,7 +319,7 @@ describe('RecordingFileManager', () => {
 			expect(result).toBe('Recordings/test_1.webm');
 		});
 
-		it('should increment counter multiple times until unique path found', async () => {
+		it('increments counter multiple times until unique path found', async () => {
 			// The implementation mutates sanitizedFileName each iteration,
 			// so counters accumulate: test -> test_1 -> test_1_2 -> test_1_2_3
 			mockSettings.saveFolder = 'Recordings';
@@ -376,7 +339,7 @@ describe('RecordingFileManager', () => {
 			expect(result).toBe('Recordings/test_1_2_3.webm');
 		});
 
-		it('should sanitize special characters in filename', async () => {
+		it('sanitizes special characters in filename', async () => {
 			mockSettings.saveFolder = 'Recordings';
 			(mockApp.vault.adapter.exists as jest.Mock).mockResolvedValue(
 				false,
@@ -391,7 +354,7 @@ describe('RecordingFileManager', () => {
 			expect(result).toBe('Recordings/test-file-name-.webm');
 		});
 
-		it('should ensure folder is created before resolving path', async () => {
+		it('ensures folder is created before resolving path', async () => {
 			mockSettings.saveFolder = 'NewFolder';
 			(mockApp.vault.adapter.exists as jest.Mock).mockResolvedValue(
 				false,
@@ -404,7 +367,7 @@ describe('RecordingFileManager', () => {
 			);
 		});
 
-		it('should handle filename with multiple dots', async () => {
+		it('handles filename with multiple dots', async () => {
 			mockSettings.saveFolder = 'Recordings';
 			(mockApp.vault.adapter.exists as jest.Mock)
 				.mockResolvedValueOnce(false) // ensureFolderExists
@@ -420,7 +383,7 @@ describe('RecordingFileManager', () => {
 			expect(result).toBe('Recordings/my.recording.2024_1.webm');
 		});
 
-		it('should sanitize all invalid characters from filename', async () => {
+		it('sanitizes all invalid characters from filename', async () => {
 			mockSettings.saveFolder = '';
 			(mockApp.vault.adapter.exists as jest.Mock).mockResolvedValue(
 				false,
@@ -440,7 +403,7 @@ describe('RecordingFileManager', () => {
 	// saveAudioFile
 	// -----------------------------------------------------------------------
 	describe('saveAudioFile', () => {
-		it('should save a non-empty blob and return the file path', async () => {
+		it('saves a non-empty blob and return the file path', async () => {
 			mockSettings.saveFolder = 'Recordings';
 			(mockApp.vault.adapter.exists as jest.Mock).mockResolvedValue(
 				false,
@@ -461,7 +424,7 @@ describe('RecordingFileManager', () => {
 			);
 		});
 
-		it('should return null for an empty blob', async () => {
+		it('returns null for an empty blob', async () => {
 			const emptyBlob = new Blob([], { type: 'audio/webm' });
 
 			const result = await saveAudioFile(
@@ -478,7 +441,7 @@ describe('RecordingFileManager', () => {
 			expect(mockApp.vault.createBinary).not.toHaveBeenCalled();
 		});
 
-		it('should use resolveUniquePath to determine the final path', async () => {
+		it('uses resolveUniquePath to determine the final path', async () => {
 			mockSettings.saveFolder = 'Recordings';
 			(mockApp.vault.adapter.exists as jest.Mock)
 				.mockResolvedValueOnce(false) // ensureFolderExists
@@ -500,7 +463,7 @@ describe('RecordingFileManager', () => {
 			);
 		});
 
-		it('should convert blob to ArrayBuffer before saving', async () => {
+		it('converts blob to ArrayBuffer before saving', async () => {
 			mockSettings.saveFolder = '';
 			(mockApp.vault.adapter.exists as jest.Mock).mockResolvedValue(
 				false,
@@ -509,9 +472,15 @@ describe('RecordingFileManager', () => {
 
 			await saveAudioFile(blob, 'test.wav', mockApp, mockSettings);
 
-			const createBinaryCall = (mockApp.vault.createBinary as jest.Mock)
-				.mock.calls[0];
-			expect(createBinaryCall[1]).toBeInstanceOf(ArrayBuffer);
+			// The type alone would pass on an empty buffer, which saves a
+			// zero-byte recording and loses the take.
+			const [, written] = at(
+				jest.mocked(mockApp.vault.createBinary).mock.calls,
+				0,
+			);
+
+			expect(written).toBeInstanceOf(ArrayBuffer);
+			expect(new TextDecoder().decode(written)).toBe('hello world');
 		});
 	});
 
@@ -519,7 +488,7 @@ describe('RecordingFileManager', () => {
 	// removeTemporaryArtifacts
 	// -----------------------------------------------------------------------
 	describe('removeTemporaryArtifacts', () => {
-		it('should remove all paths successfully and return empty array', async () => {
+		it('removes all paths successfully and return empty array', async () => {
 			(mockApp.vault.adapter.remove as jest.Mock).mockResolvedValue(
 				undefined,
 			);
@@ -543,7 +512,7 @@ describe('RecordingFileManager', () => {
 			);
 		});
 
-		it('should return failed paths when some removals fail', async () => {
+		it('returns failed paths when some removals fail', async () => {
 			(mockApp.vault.adapter.remove as jest.Mock)
 				.mockResolvedValueOnce(undefined) // a.tmp succeeds
 				.mockRejectedValueOnce(new Error('ENOENT')) // b.tmp fails
@@ -566,7 +535,7 @@ describe('RecordingFileManager', () => {
 			);
 		});
 
-		it('should return all paths when all removals fail', async () => {
+		it('returns all paths when all removals fail', async () => {
 			(mockApp.vault.adapter.remove as jest.Mock).mockRejectedValue(
 				new Error('Permission denied'),
 			);
@@ -582,7 +551,7 @@ describe('RecordingFileManager', () => {
 			expect(consoleWarnSpy).toHaveBeenCalledTimes(2);
 		});
 
-		it('should return empty array for empty input', async () => {
+		it('returns empty array for empty input', async () => {
 			const result = await removeTemporaryArtifacts(
 				[],
 				'no paths',
@@ -593,7 +562,7 @@ describe('RecordingFileManager', () => {
 			expect(mockApp.vault.adapter.remove).not.toHaveBeenCalled();
 		});
 
-		it('should include log prefix in warning messages', async () => {
+		it('includes log prefix in warning messages', async () => {
 			(mockApp.vault.adapter.remove as jest.Mock).mockRejectedValue(
 				new Error('fail'),
 			);
@@ -634,7 +603,7 @@ describe('RecordingFileManager', () => {
 			};
 		}
 
-		it('should collect segment paths from all targets and remove them', async () => {
+		it('collects segment paths from all targets and remove them', async () => {
 			(mockApp.vault.adapter.remove as jest.Mock).mockResolvedValue(
 				undefined,
 			);
@@ -659,7 +628,7 @@ describe('RecordingFileManager', () => {
 			);
 		});
 
-		it('should return failed paths from multiple targets', async () => {
+		it('returns failed paths from multiple targets', async () => {
 			(mockApp.vault.adapter.remove as jest.Mock)
 				.mockResolvedValueOnce(undefined) // seg1 ok
 				.mockRejectedValueOnce(new Error('fail')) // seg2 fail
@@ -675,14 +644,14 @@ describe('RecordingFileManager', () => {
 			expect(result).toEqual(['seg2.webm']);
 		});
 
-		it('should handle empty targets array', async () => {
+		it('handles empty targets array', async () => {
 			const result = await cleanupIntermediateFiles([], mockApp);
 
 			expect(result).toEqual([]);
 			expect(mockApp.vault.adapter.remove).not.toHaveBeenCalled();
 		});
 
-		it('should handle targets with empty segmentPaths', async () => {
+		it('handles targets with empty segmentPaths', async () => {
 			const targets = [createMockTarget([]), createMockTarget([])];
 
 			const result = await cleanupIntermediateFiles(targets, mockApp);
@@ -691,7 +660,7 @@ describe('RecordingFileManager', () => {
 			expect(mockApp.vault.adapter.remove).not.toHaveBeenCalled();
 		});
 
-		it('should use correct log context for failed removals', async () => {
+		it('uses correct log context for failed removals', async () => {
 			(mockApp.vault.adapter.remove as jest.Mock).mockRejectedValue(
 				new Error('fail'),
 			);

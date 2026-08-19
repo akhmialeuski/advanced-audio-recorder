@@ -6,6 +6,7 @@
  */
 
 import { isEditableContext, shouldEnhance } from 'src/player/playerMode';
+import type { MediaKind } from 'src/player/mediaProbe';
 
 /** Creates a child element inside a parent with the given class. */
 function childOf(parentClass: string): HTMLElement {
@@ -18,35 +19,69 @@ function childOf(parentClass: string): HTMLElement {
 }
 
 describe('isEditableContext', () => {
-	it('is editable inside the CodeMirror editor (Live Preview)', () => {
-		expect(isEditableContext(childOf('cm-editor'))).toBe(true);
+	it.each([
+		{
+			name: 'the CodeMirror editor (Live Preview)',
+			parent: 'cm-editor',
+			editable: true,
+		},
+		{
+			name: 'the reading view',
+			parent: 'markdown-reading-view',
+			editable: false,
+		},
+		{
+			name: 'an unknown container',
+			parent: 'some-other-plugin',
+			editable: false,
+		},
+	])('is editable inside $name: $editable', ({ parent, editable }) => {
+		expect(isEditableContext(childOf(parent))).toBe(editable);
 	});
 
-	it('is read-only inside the reading view', () => {
-		expect(isEditableContext(childOf('markdown-reading-view'))).toBe(false);
-	});
-
-	it('is read-only when detached or in an unknown context', () => {
+	it('is read-only while detached from any note', () => {
+		// A widget Obsidian has not mounted yet: offering marker editing
+		// there would write into a note the player is not in.
 		expect(isEditableContext(document.createElement('div'))).toBe(false);
 	});
 });
 
 describe('shouldEnhance', () => {
-	it('enhances only enabled, audio-only files', () => {
-		expect(shouldEnhance(true, 'audio')).toBe(true);
-	});
-
-	it('leaves video and unsupported files to the built-in player', () => {
-		expect(shouldEnhance(true, 'video')).toBe(false);
-		expect(shouldEnhance(true, 'unsupported')).toBe(false);
-	});
-
-	it('never enhances when the feature is disabled', () => {
-		expect(shouldEnhance(false, 'audio')).toBe(false);
-		expect(shouldEnhance(false, 'video')).toBe(false);
-	});
-
-	it('does not enhance a not-yet-probed file (null kind)', () => {
-		expect(shouldEnhance(true, null)).toBe(false);
+	it.each([
+		{
+			name: 'audio, with the feature on',
+			enabled: true,
+			kind: 'audio',
+			expected: true,
+		},
+		{ name: 'video', enabled: true, kind: 'video', expected: false },
+		{
+			name: 'a file nothing can play',
+			enabled: true,
+			kind: 'unsupported',
+			expected: false,
+		},
+		{
+			name: 'a file not probed yet',
+			enabled: true,
+			kind: null,
+			expected: false,
+		},
+		{
+			name: 'audio, with the feature off',
+			enabled: false,
+			kind: 'audio',
+			expected: false,
+		},
+		{
+			name: 'video, with the feature off',
+			enabled: false,
+			kind: 'video',
+			expected: false,
+		},
+	])('enhances $name: $expected', ({ enabled, kind, expected }) => {
+		// Taking over a video embed replaces the picture with an audio bar,
+		// and taking over before the probe answers does it on a guess.
+		expect(shouldEnhance(enabled, kind as MediaKind | null)).toBe(expected);
 	});
 });

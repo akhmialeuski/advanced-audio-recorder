@@ -9,6 +9,7 @@ import {
 	WORKLET_PROCESSOR_SOURCE,
 } from 'src/recording/PcmStreamRecorder';
 import { defined } from '../helpers/assertions';
+import { partial } from '../helpers/doubles';
 
 // Track messages sent to the worklet port
 let workletPortMessages: Array<{ type: string }> = [];
@@ -82,7 +83,7 @@ global.URL.createObjectURL = jest.fn().mockReturnValue('blob:mock-worklet-url');
 global.URL.revokeObjectURL = jest.fn();
 
 function createMockStream(channelCount: number = 1): MediaStream {
-	return {
+	return partial<MediaStream>({
 		getAudioTracks: () => [
 			{
 				stop: jest.fn(),
@@ -90,7 +91,7 @@ function createMockStream(channelCount: number = 1): MediaStream {
 			},
 		],
 		getTracks: () => [{ stop: jest.fn() }],
-	} as unknown as MediaStream;
+	});
 }
 
 /**
@@ -118,7 +119,6 @@ describe('PcmStreamRecorder', () => {
 	let onChunkMock: jest.Mock;
 
 	beforeEach(() => {
-		jest.clearAllMocks();
 		mainPortOnMessage = null;
 		workletPortMessages = [];
 		mockGainNode.gain.value = 1;
@@ -127,7 +127,7 @@ describe('PcmStreamRecorder', () => {
 	});
 
 	describe('start', () => {
-		it('should create AudioContext with requested sample rate', async () => {
+		it('creates AudioContext with requested sample rate', async () => {
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 48000, onChunkMock);
 
@@ -138,7 +138,7 @@ describe('PcmStreamRecorder', () => {
 			});
 		});
 
-		it('should register worklet processor via Blob URL', async () => {
+		it('registers worklet processor via Blob URL', async () => {
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
@@ -150,7 +150,7 @@ describe('PcmStreamRecorder', () => {
 			).toHaveBeenCalledWith('blob:mock-worklet-url');
 		});
 
-		it('should create AudioWorkletNode and connect audio graph', async () => {
+		it('creates AudioWorkletNode and connect audio graph', async () => {
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
@@ -174,7 +174,7 @@ describe('PcmStreamRecorder', () => {
 			expect(mockGainNode.gain.value).toBe(0);
 		});
 
-		it('should prefer the negotiated track channel count over the source node default', async () => {
+		it('prefers the negotiated track channel count over the source node default', async () => {
 			// MediaStreamAudioSourceNode.channelCount commonly stays at
 			// its default of 2 even though the track actually delivers mono.
 			mockSourceNode.channelCount = 2;
@@ -192,7 +192,7 @@ describe('PcmStreamRecorder', () => {
 			);
 		});
 
-		it('should pass the mono channel mode to the worklet and keep the full input width', async () => {
+		it('passes the mono channel mode to the worklet and keep the full input width', async () => {
 			mockSourceNode.channelCount = 2;
 			const stream = createMockStream(2);
 			const recorder = new PcmStreamRecorder(
@@ -220,7 +220,7 @@ describe('PcmStreamRecorder', () => {
 		});
 
 		it.each(['mono-mix', 'mono-left', 'mono-right'] as const)(
-			'should report one channel for the %s mode on a stereo source',
+			'reports one channel for the %s mode on a stereo source',
 			async (mode) => {
 				mockSourceNode.channelCount = 2;
 				const stream = createMockStream(2);
@@ -237,7 +237,7 @@ describe('PcmStreamRecorder', () => {
 			},
 		);
 
-		it('should expose actual channels and sampleRate from AudioContext', async () => {
+		it('exposes actual channels and sampleRate from AudioContext', async () => {
 			mockSourceNode.channelCount = 2;
 			const stream = createMockStream(2);
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
@@ -248,16 +248,23 @@ describe('PcmStreamRecorder', () => {
 			expect(recorder.sampleRate).toBe(44100);
 		});
 
-		it('should set up port.onmessage handler', async () => {
+		it('routes a worklet message to the chunk callback', async () => {
+			// A handler that is merely attached proves nothing: what matters
+			// is that a buffer arriving on the port reaches the consumer that
+			// writes it to disk.
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
-
 			await recorder.start();
+			const samples = new Int16Array([1, -1, 2]);
 
-			expect(mainPortOnMessage).not.toBeNull();
+			defined(mainPortOnMessage)({
+				data: samples.buffer,
+			} as MessageEvent);
+
+			expect(onChunkMock).toHaveBeenCalledWith(samples.buffer);
 		});
 
-		it('should release resources when worklet registration fails', async () => {
+		it('releases resources when worklet registration fails', async () => {
 			mockAudioContext.audioWorklet.addModule.mockRejectedValueOnce(
 				new Error('addModule failed'),
 			);
@@ -272,7 +279,7 @@ describe('PcmStreamRecorder', () => {
 			);
 		});
 
-		it('should release resources when the audio graph setup fails', async () => {
+		it('releases resources when the audio graph setup fails', async () => {
 			mockAudioContext.createMediaStreamSource.mockImplementationOnce(
 				() => {
 					throw new Error('source failed');
@@ -289,7 +296,7 @@ describe('PcmStreamRecorder', () => {
 			);
 		});
 
-		it('should not mask the original error when cleanup itself fails', async () => {
+		it('does not mask the original error when cleanup itself fails', async () => {
 			const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
 			mockAudioContext.audioWorklet.addModule.mockRejectedValueOnce(
 				new Error('addModule failed'),
@@ -303,12 +310,11 @@ describe('PcmStreamRecorder', () => {
 			await expect(recorder.start()).rejects.toThrow('addModule failed');
 
 			expect(warnSpy).toHaveBeenCalled();
-			warnSpy.mockRestore();
 		});
 	});
 
 	describe('worklet message handling', () => {
-		it('should deliver PCM data via onChunk when worklet posts message', async () => {
+		it('delivers PCM data via onChunk when worklet posts message', async () => {
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
@@ -322,7 +328,7 @@ describe('PcmStreamRecorder', () => {
 			expect(chunkBuffer.byteLength).toBe(256);
 		});
 
-		it('should deliver stereo PCM data correctly', async () => {
+		it('delivers stereo PCM data correctly', async () => {
 			mockSourceNode.channelCount = 2;
 			const stream = createMockStream(2);
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
@@ -339,7 +345,7 @@ describe('PcmStreamRecorder', () => {
 	});
 
 	describe('pause / resume', () => {
-		it('should send pause message to worklet port', async () => {
+		it('sends pause message to worklet port', async () => {
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
@@ -351,7 +357,7 @@ describe('PcmStreamRecorder', () => {
 			});
 		});
 
-		it('should send resume message to worklet port', async () => {
+		it('sends resume message to worklet port', async () => {
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
@@ -364,7 +370,7 @@ describe('PcmStreamRecorder', () => {
 			});
 		});
 
-		it('should not throw when pausing before start', () => {
+		it('does not throw when pausing before start', () => {
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
@@ -374,7 +380,7 @@ describe('PcmStreamRecorder', () => {
 	});
 
 	describe('stop', () => {
-		it('should flush worklet before disconnecting', async () => {
+		it('flushes worklet before disconnecting', async () => {
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
@@ -386,7 +392,7 @@ describe('PcmStreamRecorder', () => {
 			});
 		});
 
-		it('should close AudioContext and disconnect nodes', async () => {
+		it('closes AudioContext and disconnect nodes', async () => {
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
@@ -399,7 +405,7 @@ describe('PcmStreamRecorder', () => {
 			expect(mockGainNode.disconnect).toHaveBeenCalled();
 		});
 
-		it('should nullify port.onmessage', async () => {
+		it('nullifies port.onmessage', async () => {
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
@@ -409,7 +415,7 @@ describe('PcmStreamRecorder', () => {
 			expect(mainPortOnMessage).toBeNull();
 		});
 
-		it('should revoke the Blob URL', async () => {
+		it('revokes the Blob URL', async () => {
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
@@ -421,14 +427,14 @@ describe('PcmStreamRecorder', () => {
 			);
 		});
 
-		it('should handle stop when not started', async () => {
+		it('handles stop when not started', async () => {
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
 			await expect(recorder.stop()).resolves.toBeUndefined();
 		});
 
-		it('should deliver flushed PCM data via onChunk before stop completes', async () => {
+		it('delivers flushed PCM data via onChunk before stop completes', async () => {
 			// Override postMessage to simulate flush with a trailing data chunk
 			mockWorkletPort.postMessage.mockImplementation(
 				(msg: { type: string }) => {
@@ -468,7 +474,7 @@ describe('PcmStreamRecorder', () => {
 	});
 
 	describe('message filtering', () => {
-		it('should ignore non-ArrayBuffer messages from worklet', async () => {
+		it('ignores non-ArrayBuffer messages from worklet', async () => {
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
 
@@ -562,49 +568,71 @@ describe('PcmCaptureProcessor worklet logic', () => {
 	const left = Float32Array.from([0.5, 0.5]);
 	const right = Float32Array.from([-0.5, 0.0]);
 
-	it('interleaves all channels in the source mode', () => {
-		const pcm = captureOnce('source', [left, right]);
+	const third = Float32Array.from([0.25, 0.25]);
 
-		expect(Array.from(pcm)).toEqual([16383, -16384, 16383, 0]);
-	});
-
-	it('defaults to the source mode when no options are provided', () => {
-		const pcm = captureOnce(undefined, [left, right]);
-
-		expect(Array.from(pcm)).toEqual([16383, -16384, 16383, 0]);
-	});
-
-	it('averages every channel in the mono-mix mode', () => {
-		const pcm = captureOnce('mono-mix', [left, right]);
-
-		// (0.5 + -0.5)/2 = 0 and (0.5 + 0)/2 = 0.25
-		expect(Array.from(pcm)).toEqual([0, 8191]);
-	});
-
-	it('keeps only the left channel in the mono-left mode', () => {
-		const pcm = captureOnce('mono-left', [left, right]);
-
-		expect(Array.from(pcm)).toEqual([16383, 16383]);
-	});
-
-	it('keeps only the right channel in the mono-right mode', () => {
-		const pcm = captureOnce('mono-right', [left, right]);
-
-		expect(Array.from(pcm)).toEqual([-16384, 0]);
-	});
-
-	it('falls back to the only channel for mono-right on mono input', () => {
-		const pcm = captureOnce('mono-right', [left]);
-
-		expect(Array.from(pcm)).toEqual([16383, 16383]);
-	});
-
-	it('averages more than two channels in the mono-mix mode', () => {
-		const third = Float32Array.from([0.25, 0.25]);
-		const pcm = captureOnce('mono-mix', [left, right, third]);
-
-		// (0.5 - 0.5 + 0.25)/3 = 0.0833..., (0.5 + 0 + 0.25)/3 = 0.25
-		expect(Array.from(pcm)).toEqual([2730, 8191]);
+	it.each([
+		{
+			name: 'the source mode interleaves every channel',
+			mode: 'source',
+			input: [left, right],
+			expected: [16383, -16384, 16383, 0],
+		},
+		{
+			name: 'no mode at all behaves as the source mode',
+			mode: undefined,
+			input: [left, right],
+			expected: [16383, -16384, 16383, 0],
+		},
+		{
+			// (0.5 + -0.5)/2 = 0 and (0.5 + 0)/2 = 0.25
+			name: 'the mono-mix mode averages both channels',
+			mode: 'mono-mix',
+			input: [left, right],
+			expected: [0, 8191],
+		},
+		{
+			// (0.5 - 0.5 + 0.25)/3 = 0.0833..., (0.5 + 0 + 0.25)/3 = 0.25
+			name: 'the mono-mix mode averages more than two channels',
+			mode: 'mono-mix',
+			input: [left, right, third],
+			expected: [2730, 8191],
+		},
+		{
+			name: 'the mono-left mode keeps only the left channel',
+			mode: 'mono-left',
+			input: [left, right],
+			expected: [16383, 16383],
+		},
+		{
+			name: 'the mono-right mode keeps only the right channel',
+			mode: 'mono-right',
+			input: [left, right],
+			expected: [-16384, 0],
+		},
+		{
+			name: 'mono-right falls back to the only channel of mono input',
+			mode: 'mono-right',
+			input: [left],
+			expected: [16383, 16383],
+		},
+		{
+			name: 'mono-left falls back to the only channel of mono input',
+			mode: 'mono-left',
+			input: [left],
+			expected: [16383, 16383],
+		},
+		{
+			// Anything that is not the source mode downmixes to one channel,
+			// and an unrecognised mode is none of the named mono modes, so it
+			// lands on the first channel. Better a mono file than an
+			// interleaved one the container was not told about.
+			name: 'an unrecognised mode downmixes to the first channel',
+			mode: 'nonsense',
+			input: [left, right],
+			expected: [16383, 16383],
+		},
+	])('$name', ({ mode, input, expected }) => {
+		expect(Array.from(captureOnce(mode, input))).toEqual(expected);
 	});
 
 	it('discards input while paused and resumes cleanly', () => {

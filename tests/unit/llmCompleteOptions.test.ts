@@ -18,10 +18,10 @@ import type { LlmPrompt } from 'src/transcription/llmPostProcess';
 // API, so they are imported from the mock by path. Jest maps 'obsidian'
 // to the same module, so both imports share one instance.
 import {
-	__setRequestUrlHandler,
 	type MockRequestUrlParam,
 	type MockRequestUrlResponse,
 } from '../mocks/obsidian';
+import { withRequestUrl } from '../helpers/network';
 
 const PROMPT: LlmPrompt = { system: 'You extract terms.', user: 'hello' };
 
@@ -30,7 +30,7 @@ function capture(responseText: string): {
 	body: () => Record<string, unknown>;
 } {
 	let seen: MockRequestUrlParam | undefined;
-	__setRequestUrlHandler((param): MockRequestUrlResponse => {
+	withRequestUrl((param): MockRequestUrlResponse => {
 		seen = param;
 		return { status: 200, headers: {}, text: responseText };
 	});
@@ -50,10 +50,6 @@ const GEMINI_RESPONSE = JSON.stringify({
 	candidates: [
 		{ finishReason: 'STOP', content: { parts: [{ text: 'ok' }] } },
 	],
-});
-
-afterEach(() => {
-	__setRequestUrlHandler(null);
 });
 
 describe('LlmProvider.complete temperature option', () => {

@@ -10,6 +10,7 @@ import {
 } from 'src/recording/silentChannelDetector';
 import type { App, TFile } from 'obsidian';
 import { createMockApp } from '../helpers/createApp';
+import { partial } from '../helpers/doubles';
 
 // Only the probe is doubled: the ceiling predicate beside it is a pure rule
 // both this detector and the cleanup guard read, and a blank stub for it would
@@ -140,10 +141,10 @@ describe('detectSilentChannel', () => {
 		}).app;
 	}
 
-	const file = { path: 'rec.wav' } as unknown as TFile;
+	const file = partial<TFile>({ path: 'rec.wav' });
 
 	beforeEach(() => {
-		(probeAudioMetadata as jest.Mock).mockReset().mockResolvedValue({
+		jest.mocked(probeAudioMetadata).mockReset().mockResolvedValue({
 			durationSeconds: 5,
 			sampleRate: 44100,
 			channels: 2,
@@ -155,19 +156,35 @@ describe('detectSilentChannel', () => {
 			.mockImplementation(() => ({ decodeAudioData, close }));
 	});
 
-	it('detects a lopsided stereo recording', async () => {
-		decodeAudioData.mockResolvedValue(
-			new FakeAudioBuffer(2, 5, [loud(), silent()]),
-		);
+	it.each([
+		{ name: 'a context that closes cleanly', closeFails: false },
+		{
+			// The close is a teardown in a finally, and a context that fails
+			// to close is a browser problem, not a detection problem. Letting
+			// that rejection escape would turn a finished check into an
+			// unhandled rejection and lose the answer the user waited for.
+			name: 'a context that refuses to close',
+			closeFails: true,
+		},
+	])(
+		'detects a lopsided stereo recording over $name',
+		async ({ closeFails }) => {
+			if (closeFails) {
+				close.mockRejectedValue(new Error('context already gone'));
+			}
+			decodeAudioData.mockResolvedValue(
+				new FakeAudioBuffer(2, 5, [loud(), silent()]),
+			);
 
-		const result = await detectSilentChannel(makeApp(), file);
+			const result = await detectSilentChannel(makeApp(), file);
 
-		expect(result?.keepMode).toBe('mono-left');
-		expect(close).toHaveBeenCalled();
-	});
+			expect(result?.keepMode).toBe('mono-left');
+			expect(close).toHaveBeenCalled();
+		},
+	);
 
 	it('returns null and closes the context for a mono file', async () => {
-		(probeAudioMetadata as jest.Mock).mockResolvedValue({
+		jest.mocked(probeAudioMetadata).mockResolvedValue({
 			durationSeconds: 5,
 			sampleRate: 44100,
 			channels: 1,
@@ -194,7 +211,7 @@ describe('detectSilentChannel', () => {
 	});
 
 	it('skips a long file from metadata before full decode', async () => {
-		(probeAudioMetadata as jest.Mock).mockResolvedValue({
+		jest.mocked(probeAudioMetadata).mockResolvedValue({
 			durationSeconds: 3600,
 			sampleRate: 44100,
 			channels: 2,
@@ -212,7 +229,7 @@ describe('detectSilentChannel', () => {
 		// The headers parsed and reported two channels, but no length. Reading
 		// that as zero seconds would call a multi-hour recording short enough
 		// to decode, so the guard defers to the post-decode check instead.
-		(probeAudioMetadata as jest.Mock).mockResolvedValue({
+		jest.mocked(probeAudioMetadata).mockResolvedValue({
 			durationSeconds: null,
 			sampleRate: 44100,
 			channels: 2,
@@ -230,7 +247,7 @@ describe('detectSilentChannel', () => {
 	});
 
 	it('keeps the decoded-duration guard when metadata is unavailable', async () => {
-		(probeAudioMetadata as jest.Mock).mockResolvedValue(null);
+		jest.mocked(probeAudioMetadata).mockResolvedValue(null);
 		decodeAudioData.mockResolvedValue(
 			new FakeAudioBuffer(2, 3600, [loud(), silent()]),
 		);
@@ -244,24 +261,22 @@ describe('detectSilentChannel', () => {
 	});
 
 	it('returns null and closes the context when decoding fails', async () => {
-		const warn = jest.spyOn(console, 'warn').mockImplementation();
-		(probeAudioMetadata as jest.Mock).mockResolvedValue(null);
+		jest.spyOn(console, 'warn').mockImplementation();
+		jest.mocked(probeAudioMetadata).mockResolvedValue(null);
 		decodeAudioData.mockRejectedValue(new Error('bad data'));
 
 		expect(await detectSilentChannel(makeApp(), file)).toBeNull();
 		expect(close).toHaveBeenCalled();
-		warn.mockRestore();
 	});
 
 	it('returns null when the file cannot be read', async () => {
-		const warn = jest.spyOn(console, 'warn').mockImplementation();
-		const app = {
+		jest.spyOn(console, 'warn').mockImplementation();
+		const app = createMockApp({
 			vault: {
 				readBinary: jest.fn().mockRejectedValue(new Error('missing')),
 			},
-		} as unknown as App;
+		}).app;
 
 		expect(await detectSilentChannel(app, file)).toBeNull();
-		warn.mockRestore();
 	});
 });

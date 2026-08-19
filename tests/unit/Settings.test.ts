@@ -18,93 +18,48 @@ import {
 	mergeSettingsAsync,
 } from 'src/settings/settingsSerialization';
 import { MODEL_SEED_GENERATION } from 'src/constants';
+import { fullyPopulatedSettings } from '../helpers/settingsFixtures';
+import { partial } from '../helpers/doubles';
+import { mediaDevice } from '../helpers/mediaMocks';
 
 describe('Settings', () => {
 	describe('DEFAULT_SETTINGS', () => {
-		it('should have correct default recording format', () => {
-			expect(DEFAULT_SETTINGS.recordingFormat).toBe('webm');
-		});
+		it.each([
+			{ key: 'recordingFormat', value: 'webm' },
+			{ key: 'saveFolder', value: '' },
+			{ key: 'saveNearActiveFile', value: false },
+			{ key: 'activeFileSubfolder', value: '' },
+			{ key: 'filePrefix', value: 'recording' },
+			{ key: 'startStopHotkey', value: '' },
+			{ key: 'pauseHotkey', value: '' },
+			{ key: 'resumeHotkey', value: '' },
+			{ key: 'audioDeviceId', value: '' },
+			{ key: 'sampleRate', value: 44100 },
+			{ key: 'bitrate', value: 128000 },
+			{ key: 'recordingChannels', value: 'source' },
+			{ key: 'enableMultiTrack', value: false },
+			{ key: 'maxTracks', value: 2 },
+			{ key: 'outputMode', value: 'single' },
+			{ key: 'useSourceNamesForTracks', value: true },
+			{ key: 'debug', value: false },
+			{ key: 'insertAtOriginalPosition', value: false },
+			{ key: 'autoSplitEnabled', value: false },
+			{ key: 'splitChunkMinutes', value: 15 },
+			{ key: 'splitPartSuffix', value: 'part' },
+			{ key: 'deleteSourceAfterSplit', value: false },
+		] satisfies { key: keyof AudioRecorderSettings; value: unknown }[])(
+			'defaults $key to $value',
+			({ key, value }) => {
+				expect(DEFAULT_SETTINGS[key]).toBe(value);
+			},
+		);
 
-		it('should have empty save folder by default', () => {
-			expect(DEFAULT_SETTINGS.saveFolder).toBe('');
-		});
-
-		it('should have save-near-active-file mode disabled by default', () => {
-			expect(DEFAULT_SETTINGS.saveNearActiveFile).toBe(false);
-		});
-
-		it('should have empty active file subfolder by default', () => {
-			expect(DEFAULT_SETTINGS.activeFileSubfolder).toBe('');
-		});
-
-		it('should have default file prefix', () => {
-			expect(DEFAULT_SETTINGS.filePrefix).toBe('recording');
-		});
-
-		it('should have empty hotkeys by default', () => {
-			expect(DEFAULT_SETTINGS.startStopHotkey).toBe('');
-			expect(DEFAULT_SETTINGS.pauseHotkey).toBe('');
-			expect(DEFAULT_SETTINGS.resumeHotkey).toBe('');
-		});
-
-		it('should have empty audio device ID', () => {
-			expect(DEFAULT_SETTINGS.audioDeviceId).toBe('');
-		});
-
-		it('should have default sample rate of 44100', () => {
-			expect(DEFAULT_SETTINGS.sampleRate).toBe(44100);
-		});
-
-		it('should have default bitrate of 128000', () => {
-			expect(DEFAULT_SETTINGS.bitrate).toBe(128000);
-		});
-
-		it('should have multi-track disabled by default', () => {
-			expect(DEFAULT_SETTINGS.enableMultiTrack).toBe(false);
-		});
-
-		it('should have max tracks set to 2 by default', () => {
-			expect(DEFAULT_SETTINGS.maxTracks).toBe(2);
-		});
-
-		it('should have single output mode by default', () => {
-			expect(DEFAULT_SETTINGS.outputMode).toBe('single');
-		});
-
-		it('should use source names for tracks by default', () => {
-			expect(DEFAULT_SETTINGS.useSourceNamesForTracks).toBe(true);
-		});
-
-		it('should have empty track audio sources', () => {
+		it('starts with no track audio sources configured', () => {
 			expect(DEFAULT_SETTINGS.trackAudioSources).toBeInstanceOf(Map);
 			expect(DEFAULT_SETTINGS.trackAudioSources.size).toBe(0);
 		});
 
-		it('should have debug mode disabled by default', () => {
-			expect(DEFAULT_SETTINGS.debug).toBe(false);
-		});
-
-		it('should have insert at original position disabled by default', () => {
-			expect(DEFAULT_SETTINGS.insertAtOriginalPosition).toBe(false);
-		});
-
-		it('should have auto-split disabled by default', () => {
-			expect(DEFAULT_SETTINGS.autoSplitEnabled).toBe(false);
-		});
-
-		it('should have 15-minute split parts by default', () => {
-			expect(DEFAULT_SETTINGS.splitChunkMinutes).toBe(15);
-		});
-
-		it('should have "part" as the default split suffix', () => {
-			expect(DEFAULT_SETTINGS.splitPartSuffix).toBe('part');
-		});
-
-		it('should have delete source after split disabled by default', () => {
-			expect(DEFAULT_SETTINGS.deleteSourceAfterSplit).toBe(false);
-		});
-
-		it('should be a complete AudioRecorderSettings object', () => {
+		it('is a complete AudioRecorderSettings object', () => {
 			const expectedKeys: (keyof AudioRecorderSettings)[] = [
 				'recordingFormat',
 				'saveFolder',
@@ -152,12 +107,12 @@ describe('Settings', () => {
 	});
 
 	describe('mergeSettings', () => {
-		it('should return default settings when given empty object', () => {
+		it('returns default settings when given empty object', () => {
 			const result = mergeSettings({});
 			expect(result).toEqual(DEFAULT_SETTINGS);
 		});
 
-		it('should override specific settings while keeping defaults', () => {
+		it('overrides specific settings while keeping defaults', () => {
 			const partial: Partial<AudioRecorderSettings> = {
 				recordingFormat: 'ogg',
 				sampleRate: 48000,
@@ -171,22 +126,38 @@ describe('Settings', () => {
 			expect(result.debug).toBe(DEFAULT_SETTINGS.debug);
 		});
 
-		it('should keep a valid stored recording channel mode', () => {
-			const result = mergeSettings({ recordingChannels: 'mono-left' });
+		it.each([
+			{ name: 'source', stored: 'source', expected: 'source' },
+			{ name: 'mono-left', stored: 'mono-left', expected: 'mono-left' },
+			{
+				name: 'mono-right',
+				stored: 'mono-right',
+				expected: 'mono-right',
+			},
+			{ name: 'mono-mix', stored: 'mono-mix', expected: 'mono-mix' },
+			{
+				name: 'an unknown mode, normalised',
+				stored: 'stereo-wide',
+				expected: 'source',
+			},
+			{
+				name: 'an empty string, normalised',
+				stored: '',
+				expected: 'source',
+			},
+		])(
+			'reads a stored channel mode of $name as $expected',
+			({ stored, expected }) => {
+				const result = mergeSettings({
+					recordingChannels:
+						stored as AudioRecorderSettings['recordingChannels'],
+				});
 
-			expect(result.recordingChannels).toBe('mono-left');
-		});
+				expect(result.recordingChannels).toBe(expected);
+			},
+		);
 
-		it('should normalize an unknown recording channel mode to source', () => {
-			const result = mergeSettings({
-				recordingChannels:
-					'stereo-wide' as AudioRecorderSettings['recordingChannels'],
-			});
-
-			expect(result.recordingChannels).toBe('source');
-		});
-
-		it('should merge track audio sources', () => {
+		it('merges track audio sources', () => {
 			const trackSources: TrackAudioSources = new Map([
 				[1, { deviceId: 'device-id-1', channelMode: 'source' }],
 				[2, { deviceId: 'device-id-2', channelMode: 'source' }],
@@ -202,7 +173,7 @@ describe('Settings', () => {
 			);
 		});
 
-		it('should normalize serialized track audio sources into a Map', () => {
+		it('normalizes serialized track audio sources into a Map', () => {
 			const result = mergeSettings({
 				trackAudioSources: { 1: 'device-id-1', 2: 'device-id-2' },
 			});
@@ -216,7 +187,7 @@ describe('Settings', () => {
 			);
 		});
 
-		it('should default legacy string track sources to the source channel mode', () => {
+		it('defaults legacy string track sources to the source channel mode', () => {
 			const result = mergeSettings({
 				trackAudioSources: { 1: 'device-id-1' },
 			});
@@ -224,7 +195,7 @@ describe('Settings', () => {
 			expect(result.trackAudioSources.get(1)?.channelMode).toBe('source');
 		});
 
-		it('should keep a stored per-track channel mode', () => {
+		it('keeps a stored per-track channel mode', () => {
 			const result = mergeSettings({
 				trackAudioSources: {
 					1: { deviceId: 'device-id-1', channelMode: 'mono-left' },
@@ -236,7 +207,7 @@ describe('Settings', () => {
 			);
 		});
 
-		it('should normalize a missing or invalid per-track channel mode', () => {
+		it('normalizes a missing or invalid per-track channel mode', () => {
 			const result = mergeSettings({
 				trackAudioSources: {
 					1: { deviceId: 'device-id-1' },
@@ -248,18 +219,18 @@ describe('Settings', () => {
 			expect(result.trackAudioSources.get(2)?.channelMode).toBe('source');
 		});
 
-		it('should normalize channel modes of Map-form track sources', () => {
+		it('normalizes channel modes of Map-form track sources', () => {
 			// A Map built by pre-channel-mode plugin code lacks the field
-			const legacyMap = new Map([
-				[1, { deviceId: 'device-id-1', channelMode: 'source' }],
-			]) as unknown as AudioRecorderSettings['trackAudioSources'];
+			const legacyMap = partial<
+				AudioRecorderSettings['trackAudioSources']
+			>(new Map([[1, { deviceId: 'device-id-1' }]]));
 
 			const result = mergeSettings({ trackAudioSources: legacyMap });
 
 			expect(result.trackAudioSources.get(1)?.channelMode).toBe('source');
 		});
 
-		it('should handle output mode changes', () => {
+		it('handles output mode changes', () => {
 			const modes: OutputMode[] = ['single', 'multiple'];
 
 			modes.forEach((mode) => {
@@ -268,128 +239,8 @@ describe('Settings', () => {
 			});
 		});
 
-		it('should preserve all user settings when fully specified', () => {
-			const fullSettings: Omit<AudioRecorderSettings, 'perPlatform'> = {
-				recordingFormat: 'mp3',
-				saveFolder: '/recordings',
-				saveNearActiveFile: true,
-				activeFileSubfolder: 'Audio',
-				filePrefix: 'audio',
-				startStopHotkey: 'Ctrl+R',
-				pauseHotkey: 'Ctrl+P',
-				resumeHotkey: 'Ctrl+E',
-				audioDeviceId: 'test-device',
-				sampleRate: 22050,
-				recordingChannels: 'mono-left',
-				bitrate: 64000,
-				enableMultiTrack: true,
-				maxTracks: 4,
-				outputMode: 'multiple',
-				useSourceNamesForTracks: false,
-				trackAudioSources: new Map([
-					[1, { deviceId: 'dev1', channelMode: 'source' as const }],
-					[
-						2,
-						{ deviceId: 'dev2', channelMode: 'mono-left' as const },
-					],
-				]),
-				debug: true,
-				insertAtOriginalPosition: true,
-				deleteSourceAfterConversion: false,
-				conversionLinkAction: 'after',
-				autoSplitEnabled: true,
-				splitChunkMinutes: 30,
-				splitPartSuffix: 'chunk',
-				deleteSourceAfterSplit: true,
-				enhancedPlayerEnabled: true,
-				playerShowWaveform: false,
-				playerEnableMarkers: false,
-				transcriptionEnabled: true,
-				transcribeOnSave: true,
-				transcriptionShowCostEstimates: true,
-				transcriptionProvider: 'local-whisper',
-				transcriptionLanguage: 'ru',
-				transcriptionDiarize: true,
-				transcriptionWordTimestamps: true,
-				transcriptionAdvancedSettingsEnabled: true,
-				transcriptionDictionaryProfiles: [
-					{ id: 'p1', name: 'General', terms: 'Foo\nBar' },
-				],
-				transcriptionDictionaryProfileId: 'p1',
-				transcriptionAdvancedEnabled: true,
-				advancedSecondPassMinRatio: 0.7,
-				transcriptionSpeakerRenameEnabled: false,
-				transcriptionAutoChaptersEnabled: true,
-				transcriptionAutoChaptersOnTranscribe: true,
-				transcriptionChapterPromptProfiles: [
-					{
-						id: 'c1',
-						name: 'Agenda',
-						prompt: 'Split by agenda item.',
-					},
-				],
-				transcriptionChapterPromptProfileId: 'c1',
-				transcriptionSpeakerProfiles: [],
-				transcriptionSpeakerProfileId: '',
-				transcriptionChunkMb: 10,
-				transcriptionTimeoutMinutes: 15,
-				whisperApiBaseUrl: 'https://api.groq.com/openai/v1',
-				whisperApiKey: 'sk-test',
-				whisperApiModel: 'whisper-large-v3',
-				whisperApiModels: ['whisper-large-v3', 'whisper-1'],
-				deepgramBaseUrl: 'https://api.deepgram.com/v1',
-				deepgramApiKey: 'dg-test',
-				deepgramModel: 'nova-3',
-				deepgramModels: ['nova-3', 'nova-2'],
-				geminiBaseUrl: 'https://generativelanguage.googleapis.com',
-				geminiApiKey: 'gm-test',
-				geminiModel: 'gemini-2.5-flash',
-				geminiModels: ['gemini-2.5-flash', 'gemini-2.5-pro'],
-				localWhisperBinaryPath: '/usr/bin/whisper',
-				localWhisperModelPath: '/models/ggml.bin',
-				localWhisperExtraArgs: '-t 4',
-				transcriptDestination: 'both',
-				transcriptFileFormat: 'srt',
-				transcriptIncludeTimestamps: false,
-				transcriptTimestampLinks: false,
-				transcriptIncludeSpeakers: false,
-				transcriptMergeConsecutiveSpeaker: false,
-				transcriptTimestampFormat: '({time})',
-				transcriptSpeakerFormat: '{speaker}:',
-				transcriptLineFormat: '{speaker} {timestamp} {text}',
-				transcriptHeading: '# T',
-				llmPostProcessEnabled: true,
-				llmPostProcessTask: 'summary',
-				llmCleanupPrompt: 'cleanup base',
-				llmSummaryPrompt: 'summary base',
-				llmCustomInstruction: 'do it',
-				llmProvider: 'anthropic',
-				chaptersLlmProvider: 'anthropic',
-				advancedLlmProvider: 'anthropic',
-				anthropicBaseUrl: 'https://api.anthropic.com/v1',
-				anthropicApiKey: 'ak-test',
-				llmOpenAiModel: 'gpt-4o',
-				llmOpenAiModels: ['gpt-4o', 'gpt-4o-mini'],
-				llmAnthropicModel: 'claude-opus-4-8',
-				llmAnthropicModels: ['claude-opus-4-8', 'claude-sonnet-4-6'],
-				llmOpenAiMaxTokens: 2048,
-				llmAnthropicMaxTokens: 2048,
-				geminiMaxTokens: 2048,
-				modelSeedGeneration: MODEL_SEED_GENERATION,
-				inputNoiseSuppression: false,
-				inputEchoCancellation: false,
-				inputAutoGainControl: false,
-				showInputLevelMeter: false,
-				detectSilentChannelOnSave: false,
-				showRecordingStats: false,
-				mobileRecordingBanner: false,
-				cleanupHighPassEnabled: false,
-				cleanupHighPassHz: 100,
-				cleanupNoiseGateEnabled: true,
-				cleanupNoiseGateThresholdDb: -45,
-				cleanupLevelingEnabled: true,
-				cleanupLevelingMakeupDb: 9,
-			};
+		it('preserves all user settings when fully specified', () => {
+			const fullSettings = fullyPopulatedSettings();
 
 			const result = mergeSettings(fullSettings);
 
@@ -412,7 +263,7 @@ describe('Settings', () => {
 			});
 		});
 
-		it('should not modify the default settings object', () => {
+		it('does not modify the default settings object', () => {
 			const originalDefaults = { ...DEFAULT_SETTINGS };
 
 			mergeSettings({ recordingFormat: 'wav' });
@@ -422,13 +273,13 @@ describe('Settings', () => {
 
 		it('migrates a legacy llmApiKey/llmModel onto the Anthropic vendor fields', () => {
 			// Pre-rework data held one flat key and model for the stored provider.
-			const legacy = {
+			const legacy = partial<AudioRecorderSettingsInput>({
 				llmProvider: 'anthropic',
 				chaptersLlmProvider: 'anthropic',
 				advancedLlmProvider: 'anthropic',
 				llmApiKey: 'ak-legacy',
 				llmModel: 'claude-legacy',
-			} as unknown as AudioRecorderSettingsInput;
+			});
 
 			const result = mergeSettings(legacy);
 
@@ -463,9 +314,9 @@ describe('Settings', () => {
 
 		it('migrates a legacy single dictionary into one seeded General profile', () => {
 			// Pre-profiles data held one flat dictionary string.
-			const legacy = {
+			const legacy = partial<AudioRecorderSettingsInput>({
 				transcriptionDictionary: 'Foo\nBar',
-			} as unknown as AudioRecorderSettingsInput;
+			});
 
 			const result = mergeSettings(legacy);
 
@@ -509,9 +360,9 @@ describe('Settings', () => {
 			// A hand-edited or corrupted data.json can hold a non-string where
 			// the old schema expected text. Reading it as a string would throw on
 			// .trim() and, through the load-time fallback, reset every setting.
-			const corrupt = {
+			const corrupt = partial<AudioRecorderSettingsInput>({
 				transcriptionDictionary: 123,
-			} as unknown as AudioRecorderSettingsInput;
+			});
 
 			const result = mergeSettings(corrupt);
 
@@ -521,11 +372,11 @@ describe('Settings', () => {
 		});
 
 		it('ignores a non-string legacy LLM key and model instead of throwing', () => {
-			const corrupt = {
+			const corrupt = partial<AudioRecorderSettingsInput>({
 				llmProvider: 'gemini',
 				llmApiKey: 42,
 				llmModel: { nested: true },
-			} as unknown as AudioRecorderSettingsInput;
+			});
 
 			const result = mergeSettings(corrupt);
 
@@ -540,12 +391,12 @@ describe('Settings', () => {
 			// An unrecognized provider id names no vendor descriptor; the
 			// migration must not dereference the absent descriptor and crash the
 			// whole load.
-			const corrupt = {
+			const corrupt = partial<AudioRecorderSettingsInput>({
 				llmProvider: 'no-such-vendor',
 				llmApiKey: 'k',
 				llmModel: 'm',
 				filePrefix: 'kept',
-			} as unknown as AudioRecorderSettingsInput;
+			});
 
 			const result = mergeSettings(corrupt);
 
@@ -562,11 +413,11 @@ describe('Settings', () => {
 			// is not type-checked, and every reader resolves the id against a
 			// registry that has no entry for one no vendor claims. Answered at
 			// the field rather than inside the transcribe dialog.
-			const corrupt = {
+			const corrupt = partial<AudioRecorderSettingsInput>({
 				llmProvider: 'no-such-vendor',
 				chaptersLlmProvider: 'also-gone',
 				advancedLlmProvider: 'gemini',
-			} as unknown as AudioRecorderSettingsInput;
+			});
 
 			const result = mergeSettings(corrupt);
 
@@ -579,9 +430,9 @@ describe('Settings', () => {
 		});
 
 		it('points transcription at an engine that exists', () => {
-			const corrupt = {
+			const corrupt = partial<AudioRecorderSettingsInput>({
 				transcriptionProvider: 'no-such-engine',
-			} as unknown as AudioRecorderSettingsInput;
+			});
 
 			const result = mergeSettings(corrupt);
 
@@ -648,7 +499,7 @@ describe('Settings', () => {
 			expect(result.transcriptionAdvancedSettingsEnabled).toBe(false);
 		});
 
-		it('should handle boolean settings correctly', () => {
+		it('handles boolean settings correctly', () => {
 			const result1 = mergeSettings({ debug: true });
 			const result2 = mergeSettings({ enableMultiTrack: true });
 
@@ -656,7 +507,7 @@ describe('Settings', () => {
 			expect(result2.enableMultiTrack).toBe(true);
 		});
 
-		it('should handle numeric settings correctly', () => {
+		it('handles numeric settings correctly', () => {
 			const result = mergeSettings({
 				sampleRate: 96000,
 				bitrate: 320000,
@@ -744,7 +595,6 @@ describe('mergeSettingsAsync', () => {
 	const mockGetUserMedia = jest.fn();
 
 	beforeEach(() => {
-		jest.clearAllMocks();
 		Object.defineProperty(global, 'navigator', {
 			value: {
 				mediaDevices: {
@@ -756,15 +606,9 @@ describe('mergeSettingsAsync', () => {
 		});
 	});
 
-	it('should auto-select default device when audioDeviceId is empty', async () => {
+	it('autoes-select default device when audioDeviceId is empty', async () => {
 		const devices: MediaDeviceInfo[] = [
-			{
-				deviceId: 'default',
-				label: 'Default - Microphone',
-				kind: 'audioinput',
-				groupId: 'group1',
-				toJSON: () => ({}),
-			},
+			mediaDevice('default', 'Default - Microphone'),
 		] as MediaDeviceInfo[];
 
 		mockGetUserMedia.mockResolvedValue({ getTracks: () => [] });
@@ -775,15 +619,9 @@ describe('mergeSettingsAsync', () => {
 		expect(result.audioDeviceId).toBe('default');
 	});
 
-	it('should auto-select default device when audioDeviceId is whitespace', async () => {
+	it('autoes-select default device when audioDeviceId is whitespace', async () => {
 		const devices: MediaDeviceInfo[] = [
-			{
-				deviceId: 'default',
-				label: 'Default - Microphone',
-				kind: 'audioinput',
-				groupId: 'group1',
-				toJSON: () => ({}),
-			},
+			mediaDevice('default', 'Default - Microphone'),
 		] as MediaDeviceInfo[];
 
 		mockGetUserMedia.mockResolvedValue({ getTracks: () => [] });
@@ -794,15 +632,9 @@ describe('mergeSettingsAsync', () => {
 		expect(result.audioDeviceId).toBe('default');
 	});
 
-	it('should keep existing device ID when already set', async () => {
+	it('keeps existing device ID when already set', async () => {
 		const devices: MediaDeviceInfo[] = [
-			{
-				deviceId: 'default',
-				label: 'Default - Microphone',
-				kind: 'audioinput',
-				groupId: 'group1',
-				toJSON: () => ({}),
-			},
+			mediaDevice('default', 'Default - Microphone'),
 		] as MediaDeviceInfo[];
 
 		mockGetUserMedia.mockResolvedValue({ getTracks: () => [] });
@@ -815,7 +647,7 @@ describe('mergeSettingsAsync', () => {
 		expect(result.audioDeviceId).toBe('my-custom-device');
 	});
 
-	it('should leave audioDeviceId empty when no default device available', async () => {
+	it('leaves audioDeviceId empty when no default device available', async () => {
 		mockGetUserMedia.mockRejectedValue(new Error('Permission denied'));
 
 		const result = await mergeSettingsAsync({});
@@ -823,15 +655,9 @@ describe('mergeSettingsAsync', () => {
 		expect(result.audioDeviceId).toBe('');
 	});
 
-	it('should preserve other settings while auto-selecting device', async () => {
+	it('preserves other settings while auto-selecting device', async () => {
 		const devices: MediaDeviceInfo[] = [
-			{
-				deviceId: 'default',
-				label: 'Default - Microphone',
-				kind: 'audioinput',
-				groupId: 'group1',
-				toJSON: () => ({}),
-			},
+			mediaDevice('default', 'Default - Microphone'),
 		] as MediaDeviceInfo[];
 
 		mockGetUserMedia.mockResolvedValue({ getTracks: () => [] });

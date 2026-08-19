@@ -13,41 +13,20 @@ import { at } from '../helpers/assertions';
 import type { PlayerMarker } from 'src/markers/markerModel';
 import { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { NoteOutput } from 'src/sidecar/recordingSidecarModel';
+import { createMockApp, fakeVaultFiles } from '../helpers/createApp';
 
 /**
  * Builds a fake App whose adapter is backed by an in-memory file map,
  * and exposes that map for assertions.
  */
 function makeApp(): { app: App; files: Map<string, string> } {
-	const files = new Map<string, string>();
-	const adapter = {
-		exists: (path: string): Promise<boolean> =>
-			Promise.resolve(files.has(path)),
-		read: (path: string): Promise<string> =>
-			Promise.resolve(files.get(path) ?? ''),
-		write: (path: string, data: string): Promise<void> => {
-			files.set(path, data);
-			return Promise.resolve();
-		},
-		remove: (path: string): Promise<void> => {
-			files.delete(path);
-			return Promise.resolve();
-		},
-		rename: (from: string, to: string): Promise<void> => {
-			const value = files.get(from);
-			if (value !== undefined) {
-				files.set(to, value);
-				files.delete(from);
-			}
-			return Promise.resolve();
-		},
-	};
-	const app = {
+	const { files, adapter } = fakeVaultFiles();
+	const app = createMockApp({
 		vault: {
 			adapter,
 			getFiles: () => [...files.keys()].map((path) => ({ path })),
 		},
-	} as unknown as App;
+	}).app;
 	return { app, files };
 }
 
@@ -636,9 +615,7 @@ describe('RecordingSidecarStore', () => {
 		it('flags the path corrupt and refuses to overwrite the file', async () => {
 			const { app, files } = makeApp();
 			files.set('rec.wav.markers.json', 'not json');
-			const warn = jest
-				.spyOn(console, 'warn')
-				.mockImplementation(() => undefined);
+			jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 			const store = new RecordingSidecarStore(app);
 
 			expect(await store.getMarkers('rec.wav')).toEqual([]);
@@ -658,15 +635,12 @@ describe('RecordingSidecarStore', () => {
 				]),
 			).rejects.toThrow('could not be read');
 			expect(files.get('rec.wav.markers.json')).toBe('not json');
-			warn.mockRestore();
 		});
 
 		it('recovers once the file is readable again', async () => {
 			const { app, files } = makeApp();
 			files.set('rec.wav.markers.json', 'not json');
-			const warn = jest
-				.spyOn(console, 'warn')
-				.mockImplementation(() => undefined);
+			jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 			const store = new RecordingSidecarStore(app);
 			await store.getMarkers('rec.wav');
 			expect(store.isSidecarCorrupt('rec.wav')).toBe(true);
@@ -682,7 +656,6 @@ describe('RecordingSidecarStore', () => {
 
 			await store.setSpeakers('rec.wav', [{ label: 'Speaker 1' }]);
 			expect(files.get('rec.wav.markers.json')).toContain('Speaker 1');
-			warn.mockRestore();
 		});
 	});
 
@@ -712,7 +685,6 @@ describe('RecordingSidecarStore', () => {
 			expect(transcript.history.map((entry) => entry.names)).toEqual([
 				{ 'Speaker 1': 'Alex' },
 			]);
-			writeSpy.mockRestore();
 		});
 	});
 
@@ -779,9 +751,7 @@ describe('RecordingSidecarStore', () => {
 
 			// Corrupt the file on disk behind the cache.
 			files.set('rec.wav.markers.json', 'not json');
-			const warn = jest
-				.spyOn(console, 'warn')
-				.mockImplementation(() => undefined);
+			jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 
 			// moveCacheEntry (sync, inside handleRename) relocates the cache
 			// before the queued mutation runs; the mutation then re-reads the
@@ -800,7 +770,6 @@ describe('RecordingSidecarStore', () => {
 			expect(
 				(await store.getTranscript('renamed.wav')).speakers[0]?.name,
 			).toBe('Alex');
-			warn.mockRestore();
 		});
 
 		it('clears a corrupt flag re-added by a mutation racing a delete', async () => {
@@ -808,9 +777,7 @@ describe('RecordingSidecarStore', () => {
 			const store = new RecordingSidecarStore(app);
 			await store.setSpeakers('rec.wav', [{ label: 'Speaker 1' }]);
 			files.set('rec.wav.markers.json', 'not json');
-			const warn = jest
-				.spyOn(console, 'warn')
-				.mockImplementation(() => undefined);
+			jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 
 			const removal = store.handleDelete('rec.wav');
 			const mutation = store
@@ -821,7 +788,6 @@ describe('RecordingSidecarStore', () => {
 			// The queued task purges the flag the racing mutation re-added,
 			// so a recording re-created at this path starts clean.
 			expect(store.isSidecarCorrupt('rec.wav')).toBe(false);
-			warn.mockRestore();
 		});
 	});
 
@@ -858,7 +824,6 @@ describe('RecordingSidecarStore', () => {
 
 			expect(readSpy).not.toHaveBeenCalled();
 			expect(files.get('rec.wav.markers.json')).toContain('meeting.md');
-			readSpy.mockRestore();
 		});
 
 		it('reads each on-disk sidecar at most once across repeated renames', async () => {
@@ -877,8 +842,7 @@ describe('RecordingSidecarStore', () => {
 			// resolve from the cache without re-reading the vault.
 			await store.handleOutputRename('b.md', 'b2.md');
 			await store.handleOutputRename('a2.md', 'a3.md');
-			expect(readSpy.mock.calls.length).toBe(readsAfterFirst);
-			readSpy.mockRestore();
+			expect(readSpy.mock.calls).toHaveLength(readsAfterFirst);
 		});
 	});
 
@@ -886,17 +850,14 @@ describe('RecordingSidecarStore', () => {
 		it('starts empty when the sidecar is corrupt', async () => {
 			const { app, files } = makeApp();
 			files.set('rec.wav.markers.json', 'not json');
-			const warn = jest
-				.spyOn(console, 'warn')
-				.mockImplementation(() => undefined);
+			jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 			const store = new RecordingSidecarStore(app);
 			expect(await store.getMarkers('rec.wav')).toEqual([]);
 			expect((await store.getTranscript('rec.wav')).speakers).toEqual([]);
-			warn.mockRestore();
 		});
 
 		it('does not throw when the adapter write fails', async () => {
-			const app = {
+			const app = createMockApp({
 				vault: {
 					adapter: {
 						exists: (): Promise<boolean> => Promise.resolve(false),
@@ -907,15 +868,12 @@ describe('RecordingSidecarStore', () => {
 						rename: (): Promise<void> => Promise.resolve(),
 					},
 				},
-			} as unknown as App;
-			const warn = jest
-				.spyOn(console, 'warn')
-				.mockImplementation(() => undefined);
+			}).app;
+			jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 			const store = new RecordingSidecarStore(app);
 			await expect(
 				store.setSpeakers('rec.wav', [{ label: 'Speaker 1' }]),
 			).resolves.toBeUndefined();
-			warn.mockRestore();
 		});
 
 		it('serializes concurrent writes to both sections without losing either', async () => {

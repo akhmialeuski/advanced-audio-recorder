@@ -19,37 +19,28 @@ import {
 	type TranscriptSection,
 } from 'src/sidecar/recordingSidecarModel';
 import type { Transcript } from 'src/transcription/TranscriptTypes';
-
-interface Ref {
-	link: string;
-	position: { start: { line: number }; end: { line: number } };
-}
-interface Cache {
-	links?: Ref[];
-	embeds?: Ref[];
-}
-
-const tf = (path: string): TFile => {
-	const name = path.split('/').pop() ?? path;
-	const dot = name.lastIndexOf('.');
-	const extension = dot >= 0 ? name.slice(dot + 1) : '';
-	return { path, name, extension } as unknown as TFile;
-};
+import {
+	createFile,
+	createMockApp,
+	type LinkRef,
+	type NoteCache,
+} from '../helpers/createApp';
 
 /** Builds a fake App over an in-memory file map with a metadata cache. */
 function makeApp(
 	files: Map<string, string>,
 	opts: {
 		resolvedLinks?: Record<string, Record<string, number>>;
-		caches?: Record<string, Cache>;
+		caches?: Record<string, NoteCache>;
 	} = {},
 ): App {
 	const { resolvedLinks = {}, caches = {} } = opts;
-	return {
+	return createMockApp({
 		vault: {
-			getFiles: (): TFile[] => [...files.keys()].map(tf),
+			getFiles: (): TFile[] =>
+				[...files.keys()].map((path) => createFile(path)),
 			getFileByPath: (path: string): TFile | null =>
-				files.has(path) ? tf(path) : null,
+				files.has(path) ? createFile(path) : null,
 			read: async (file: TFile): Promise<string> =>
 				files.get(file.path) ?? '',
 		},
@@ -63,13 +54,13 @@ function makeApp(
 						path.split('/').pop() === linkpath ||
 						path === linkpath
 					) {
-						return tf(path);
+						return createFile(path);
 					}
 				}
 				return null;
 			},
 		},
-	} as unknown as App;
+	}).app;
 }
 
 describe('timedLinesFromTranscript', () => {
@@ -93,7 +84,9 @@ describe('loadTranscriptLines', () => {
 	it('returns null when the recording has no transcript anywhere', async () => {
 		const files = new Map([['rec.wav', '']]);
 		const app = makeApp(files);
-		expect(await loadTranscriptLines(app, tf('rec.wav'))).toBeNull();
+		expect(
+			await loadTranscriptLines(app, createFile('rec.wav')),
+		).toBeNull();
 	});
 
 	it('reads the JSON sidecar first', async () => {
@@ -109,7 +102,7 @@ describe('loadTranscriptLines', () => {
 			['rec.txt', '[0:10] should not win'],
 		]);
 		const app = makeApp(files);
-		const found = await loadTranscriptLines(app, tf('rec.wav'));
+		const found = await loadTranscriptLines(app, createFile('rec.wav'));
 		expect(found?.origin).toBe('rec.transcript.json');
 		expect(found?.lines).toEqual([
 			{ time: 0, text: 'Speaker 1: hi' },
@@ -127,7 +120,7 @@ describe('loadTranscriptLines', () => {
 			['rec.transcript.json', JSON.stringify(transcript)],
 		]);
 		const app = makeApp(files);
-		const found = await loadTranscriptLines(app, tf('rec.wav'));
+		const found = await loadTranscriptLines(app, createFile('rec.wav'));
 		expect(found?.language).toBe('ru');
 	});
 
@@ -138,7 +131,7 @@ describe('loadTranscriptLines', () => {
 			['rec.srt', srt],
 		]);
 		const app = makeApp(files);
-		const found = await loadTranscriptLines(app, tf('rec.wav'));
+		const found = await loadTranscriptLines(app, createFile('rec.wav'));
 		expect(found?.lines).toHaveLength(1);
 		expect(found?.language).toBeUndefined();
 	});
@@ -152,7 +145,7 @@ describe('loadTranscriptLines', () => {
 			['rec.srt', srt],
 		]);
 		const app = makeApp(files);
-		const found = await loadTranscriptLines(app, tf('rec.wav'));
+		const found = await loadTranscriptLines(app, createFile('rec.wav'));
 		expect(found?.lines).toEqual([
 			{ time: 1.5, text: 'Speaker 1: hello' },
 			{ time: 60, text: 'second cue second line' },
@@ -168,7 +161,7 @@ describe('loadTranscriptLines', () => {
 			['rec.vtt', vtt],
 		]);
 		const app = makeApp(files);
-		const found = await loadTranscriptLines(app, tf('rec.wav'));
+		const found = await loadTranscriptLines(app, createFile('rec.wav'));
 		expect(found?.lines).toEqual([
 			{ time: 2, text: 'first' },
 			{ time: 10, text: 'second' },
@@ -182,7 +175,7 @@ describe('loadTranscriptLines', () => {
 			['rec.txt', txt],
 		]);
 		const app = makeApp(files);
-		const found = await loadTranscriptLines(app, tf('rec.wav'));
+		const found = await loadTranscriptLines(app, createFile('rec.wav'));
 		expect(found?.lines).toEqual([
 			{ time: 5, text: 'Speaker 1: hi' },
 			{ time: 3601, text: 'later' },
@@ -200,7 +193,7 @@ describe('loadTranscriptLines', () => {
 			['other.wav', ''],
 			['note.md', note],
 		]);
-		const refs: Ref[] = [
+		const refs: LinkRef[] = [
 			{
 				link: 'rec.wav#t=0',
 				position: { start: { line: 1 }, end: { line: 1 } },
@@ -218,7 +211,7 @@ describe('loadTranscriptLines', () => {
 			resolvedLinks: { 'note.md': { 'rec.wav': 3, 'other.wav': 1 } },
 			caches: { 'note.md': { links: refs } },
 		});
-		const found = await loadTranscriptLines(app, tf('rec.wav'));
+		const found = await loadTranscriptLines(app, createFile('rec.wav'));
 		expect(found?.origin).toBe('note.md');
 		expect(found?.lines).toEqual([
 			{ time: 0, text: '0:00 Speaker 1 welcome' },
@@ -233,7 +226,9 @@ describe('loadTranscriptLines', () => {
 			['rec_1.txt', '[0:05] belongs to the sibling'],
 		]);
 		const app = makeApp(files);
-		expect(await loadTranscriptLines(app, tf('rec.wav'))).toBeNull();
+		expect(
+			await loadTranscriptLines(app, createFile('rec.wav')),
+		).toBeNull();
 	});
 });
 
@@ -274,7 +269,7 @@ describe('loadTranscriptLines with a recorded sidecar section', () => {
 		};
 		const found = await loadTranscriptLines(
 			app,
-			tf('rec.wav'),
+			createFile('rec.wav'),
 			sidecarWith(section),
 		);
 		expect(found?.origin).toBe('rec_1.txt');
@@ -301,7 +296,7 @@ describe('loadTranscriptLines with a recorded sidecar section', () => {
 		};
 		const found = await loadTranscriptLines(
 			app,
-			tf('rec.wav'),
+			createFile('rec.wav'),
 			sidecarWith(section),
 		);
 		expect(found?.origin).toBe('rec.transcript.json');
@@ -321,7 +316,7 @@ describe('loadTranscriptLines with a recorded sidecar section', () => {
 		};
 		const found = await loadTranscriptLines(
 			app,
-			tf('rec.wav'),
+			createFile('rec.wav'),
 			sidecarWith(section),
 		);
 		expect(found?.origin).toBe('rec.srt');
@@ -338,7 +333,7 @@ describe('loadTranscriptLines with a recorded sidecar section', () => {
 			['note.md', note],
 			['cleaned.md', 'llm prose without timecodes'],
 		]);
-		const refs: Ref[] = [
+		const refs: LinkRef[] = [
 			{
 				link: 'rec.wav#t=0',
 				position: { start: { line: 1 }, end: { line: 1 } },
@@ -356,7 +351,7 @@ describe('loadTranscriptLines with a recorded sidecar section', () => {
 		};
 		const found = await loadTranscriptLines(
 			app,
-			tf('rec.wav'),
+			createFile('rec.wav'),
 			sidecarWith(section),
 		);
 		expect(found?.origin).toBe('note.md');
@@ -379,7 +374,7 @@ describe('loadTranscriptLines with a recorded sidecar section', () => {
 			['rec.wav', ''],
 			['cleaned.md', note],
 		]);
-		const refs: Ref[] = [
+		const refs: LinkRef[] = [
 			{
 				link: 'rec.wav#t=0',
 				position: { start: { line: 1 }, end: { line: 1 } },
@@ -398,7 +393,7 @@ describe('loadTranscriptLines with a recorded sidecar section', () => {
 		};
 		const found = await loadTranscriptLines(
 			app,
-			tf('rec.wav'),
+			createFile('rec.wav'),
 			sidecarWith(section),
 		);
 		expect(found?.origin).toBe('cleaned.md');
@@ -422,7 +417,7 @@ describe('loadTranscriptLines with a recorded sidecar section', () => {
 		};
 		const found = await loadTranscriptLines(
 			app,
-			tf('rec.wav'),
+			createFile('rec.wav'),
 			sidecarWith(section),
 		);
 		expect(found?.origin).toBe('rec.txt');
@@ -444,7 +439,7 @@ describe('loadTranscriptLines with a recorded sidecar section', () => {
 		};
 		const found = await loadTranscriptLines(
 			app,
-			tf('rec.wav'),
+			createFile('rec.wav'),
 			sidecarWith(section),
 		);
 		expect(found?.origin).toBe('rec.srt');
@@ -458,7 +453,11 @@ describe('loadTranscriptLines with a recorded sidecar section', () => {
 			fileOutputs: [{ path: 'gone.txt', format: 'txt', writtenAt: 't' }],
 		};
 		expect(
-			await loadTranscriptLines(app, tf('rec.wav'), sidecarWith(section)),
+			await loadTranscriptLines(
+				app,
+				createFile('rec.wav'),
+				sidecarWith(section),
+			),
 		).toBeNull();
 	});
 
@@ -470,7 +469,7 @@ describe('loadTranscriptLines with a recorded sidecar section', () => {
 		const app = makeApp(files);
 		const found = await loadTranscriptLines(
 			app,
-			tf('rec.wav'),
+			createFile('rec.wav'),
 			sidecarWith(emptyTranscriptSection()),
 		);
 		expect(found?.origin).toBe('rec.txt');
@@ -482,14 +481,15 @@ describe('loadTranscriptLines with a recorded sidecar section', () => {
 			['rec.txt', '[0:05] discovered'],
 		]);
 		const app = makeApp(files);
-		const warn = jest
-			.spyOn(console, 'warn')
-			.mockImplementation(() => undefined);
+		jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 		const failing: TranscriptSectionReader = {
 			getTranscript: () => Promise.reject(new Error('io error')),
 		};
-		const found = await loadTranscriptLines(app, tf('rec.wav'), failing);
+		const found = await loadTranscriptLines(
+			app,
+			createFile('rec.wav'),
+			failing,
+		);
 		expect(found?.origin).toBe('rec.txt');
-		warn.mockRestore();
 	});
 });

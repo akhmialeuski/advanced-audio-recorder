@@ -9,179 +9,27 @@
  * hide behind mocked collaborators.
  */
 
-import { App, Modal } from 'obsidian';
 import { at } from '../helpers/assertions';
+import { clickControl, control, el } from '../helpers/dom';
+import { PLAYER } from '../helpers/selectors';
 import { AudioPlayer } from 'src/player/AudioPlayer';
-import { WaveformPeakCache, type AudioDecoder } from 'src/player/WaveformData';
+import { WaveformPeakCache } from 'src/player/WaveformData';
 import type { AudioPlayerRegistry } from 'src/player/AudioPlayerRegistry';
 import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { ResolvedPlayerSettings } from 'src/player/playerSettings';
-import type { PlayerMarker } from 'src/markers/markerModel';
 import { PLAYER_SKIP_SECONDS } from 'src/constants';
-import type { TFile } from 'obsidian';
+import { tick } from '../helpers/async';
 
-type Listener = () => void;
-
-interface FakeAudio {
-	paused: boolean;
-	loop: boolean;
-	playbackRate: number;
-	volume: number;
-	muted: boolean;
-	currentTime: number;
-	duration: number;
-	readyState: number;
-	play: jest.Mock;
-	pause: jest.Mock;
-	addEventListener: (type: string, cb: Listener) => void;
-	removeEventListener: (type: string, cb: Listener) => void;
-	emit: (type: string) => void;
-}
-
-function makeFakeAudio(): FakeAudio {
-	const handlers = new Map<string, Set<Listener>>();
-	const audio: FakeAudio = {
-		paused: true,
-		loop: false,
-		playbackRate: 1,
-		volume: 1,
-		muted: false,
-		currentTime: 0,
-		duration: 100,
-		readyState: 1,
-		play: jest.fn(() => {
-			audio.paused = false;
-			return Promise.resolve();
-		}),
-		pause: jest.fn(() => {
-			audio.paused = true;
-		}),
-		addEventListener: (type, cb) => {
-			const set = handlers.get(type) ?? new Set<Listener>();
-			set.add(cb);
-			handlers.set(type, set);
-		},
-		removeEventListener: (type, cb) => {
-			handlers.get(type)?.delete(cb);
-		},
-		emit: (type) => {
-			handlers.get(type)?.forEach((cb) => {
-				cb();
-			});
-		},
-	};
-	return audio;
-}
-
-function makeRegistry(...audios: FakeAudio[]): AudioPlayerRegistry {
-	// A partial double: these suites drive only the acquire/release surface,
-	// so the cast at the boundary is the honest statement of that.
-	return makePartialRegistry(...audios) as unknown as AudioPlayerRegistry;
-}
-
-/** The methods {@link makeRegistry} actually implements. */
-function makePartialRegistry(...audios: FakeAudio[]): object {
-	const entries = new Map<string, { audio: FakeAudio; engaged: boolean }>();
-	let nextAudio = 0;
-	return {
-		acquireAudio: jest.fn((key: string) => {
-			const existing = entries.get(key);
-			if (existing) {
-				return {
-					audio: existing.audio as unknown as HTMLAudioElement,
-					isNew: false,
-				};
-			}
-			const audio = audios[nextAudio] ?? makeFakeAudio();
-			nextAudio += 1;
-			entries.set(key, { audio, engaged: false });
-			return { audio: audio as unknown as HTMLAudioElement, isNew: true };
-		}),
-		releaseAudio: jest.fn(),
-		register: jest.fn(),
-		unregister: jest.fn(),
-		reloadMarkers: jest.fn(),
-		seek: jest.fn(),
-		applySettings: jest.fn(),
-		clear: jest.fn(),
-		registerPlaybackController: jest.fn(() => jest.fn()),
-		subscribePlayback: jest.fn(() => jest.fn()),
-		markAudioEngaged: jest.fn((key: string) => {
-			const entry = entries.get(key);
-			if (entry) {
-				entry.engaged = true;
-			}
-		}),
-		isAudioEngaged: jest.fn(
-			(key: string) => entries.get(key)?.engaged ?? false,
-		),
-	};
-}
-
-const app = {
-	vault: {
-		getResourcePath: () => 'app://media',
-		readBinary: () => Promise.resolve(new ArrayBuffer(0)),
-	},
-	fileManager: {
-		generateMarkdownLink: () => '[[rec.webm]]',
-	},
-} as unknown as App;
-
-const decoder: AudioDecoder = {
-	decode: () => Promise.reject(new Error('no decode in tests')),
-};
-
-/** An in-memory marker store the tests can inspect. */
-function makeMarkerStore(): RecordingSidecarStore & {
-	data: Map<string, PlayerMarker[]>;
-} {
-	const data = new Map<string, PlayerMarker[]>();
-	return {
-		data,
-		getMarkers: jest.fn((path: string) =>
-			Promise.resolve([...(data.get(path) ?? [])]),
-		),
-		updateMarkers: jest.fn(
-			(
-				path: string,
-				change: (
-					existing: readonly PlayerMarker[],
-				) => readonly PlayerMarker[],
-			) => {
-				const merged = [...change(data.get(path) ?? [])];
-				data.set(path, merged);
-				return Promise.resolve(merged);
-			},
-		),
-	} as unknown as RecordingSidecarStore & {
-		data: Map<string, PlayerMarker[]>;
-	};
-}
-
-function makeFile(size = 1000, extension = 'webm'): TFile {
-	return {
-		path: `rec.${extension}`,
-		extension,
-		stat: { mtime: 1, size },
-	} as unknown as TFile;
-}
-
-function makeContainer(): HTMLElement {
-	const el = new Modal(new App()).contentEl.createDiv();
-	document.body.appendChild(el);
-	return el;
-}
-
-/**
- * A container nested in a CodeMirror editor, so the player resolves to the
- * editable (Live Preview) mode where marker creation is allowed.
- */
-function makeEditableContainer(): HTMLElement {
-	const editor = makeContainer();
-	editor.addClass('cm-editor');
-	return editor.createDiv();
-}
+import {
+	app,
+	decoder,
+	makeContainer,
+	makeEditableContainer,
+	makeFakeAudio,
+	makeFile,
+	makeMarkerStore,
+	makeRegistry,
+} from '../helpers/audioPlayerHarness';
 
 const PLAIN: ResolvedPlayerSettings = {
 	showWaveform: false,
@@ -210,10 +58,7 @@ function makePlayer(
 
 /** The seek area, prepared for pointer interaction under jsdom. */
 function seekArea(container: HTMLElement): HTMLElement {
-	const seekEl = container.querySelector<HTMLElement>('.aar-player-seek');
-	if (!seekEl) {
-		throw new Error('seek area not rendered');
-	}
+	const seekEl = el(container, PLAYER.seek);
 	seekEl.getBoundingClientRect = () =>
 		({ left: 0, width: 100, top: 0, height: 10 }) as DOMRect;
 	seekEl.setPointerCapture = jest.fn();
@@ -228,12 +73,8 @@ function pointerEvent(type: string, clientX: number): MouseEvent {
 	return new MouseEvent(type, { button: 0, clientX, bubbles: true });
 }
 
-const tick = (): Promise<void> =>
-	new Promise((resolve) => setTimeout(resolve, 0));
-
 afterEach(() => {
 	document.body.innerHTML = '';
-	jest.clearAllMocks();
 });
 
 describe('control row drives the shared audio (PlayerControlsView wiring)', () => {
@@ -243,18 +84,10 @@ describe('control row drives the shared audio (PlayerControlsView wiring)', () =
 		const container = makeContainer();
 		makePlayer(container, makeRegistry(audio)).onload();
 
-		container
-			.querySelector<HTMLElement>(
-				`[aria-label="Forward ${String(PLAYER_SKIP_SECONDS)}s"]`,
-			)
-			?.click();
+		clickControl(container, `Forward ${String(PLAYER_SKIP_SECONDS)}s`);
 		expect(audio.currentTime).toBe(30 + PLAYER_SKIP_SECONDS);
 
-		container
-			.querySelector<HTMLElement>(
-				`[aria-label="Back ${String(PLAYER_SKIP_SECONDS)}s"]`,
-			)
-			?.click();
+		clickControl(container, `Back ${String(PLAYER_SKIP_SECONDS)}s`);
 		expect(audio.currentTime).toBe(30);
 	});
 
@@ -262,17 +95,15 @@ describe('control row drives the shared audio (PlayerControlsView wiring)', () =
 		const audio = makeFakeAudio();
 		const container = makeContainer();
 		makePlayer(container, makeRegistry(audio)).onload();
-		const mute = container.querySelector<HTMLElement>(
-			'[aria-label="Mute / unmute"]',
-		);
+		const mute = control(container, 'Mute / unmute');
 
-		mute?.click();
+		mute.click();
 		expect(audio.muted).toBe(true);
-		expect(mute?.classList.contains('is-active')).toBe(true);
+		expect(mute.classList.contains('is-active')).toBe(true);
 
-		mute?.click();
+		mute.click();
 		expect(audio.muted).toBe(false);
-		expect(mute?.classList.contains('is-active')).toBe(false);
+		expect(mute.classList.contains('is-active')).toBe(false);
 	});
 
 	it('raising the volume slider unmutes the shared audio', () => {
@@ -281,11 +112,7 @@ describe('control row drives the shared audio (PlayerControlsView wiring)', () =
 		const container = makeContainer();
 		makePlayer(container, makeRegistry(audio)).onload();
 
-		const volume =
-			container.querySelector<HTMLInputElement>('.aar-player-volume');
-		if (!volume) {
-			throw new Error('volume slider not rendered');
-		}
+		const volume = el<HTMLInputElement>(container, PLAYER.volume);
 		volume.value = '0.5';
 		volume.dispatchEvent(new Event('input'));
 
@@ -297,15 +124,13 @@ describe('control row drives the shared audio (PlayerControlsView wiring)', () =
 		const audio = makeFakeAudio();
 		const container = makeContainer();
 		makePlayer(container, makeRegistry(audio)).onload();
-		const loop = container.querySelector<HTMLElement>(
-			'[aria-label="Loop"]',
-		);
+		const loop = control(container, 'Loop');
 
-		loop?.click();
+		loop.click();
 		expect(audio.loop).toBe(true);
-		expect(loop?.classList.contains('is-active')).toBe(true);
+		expect(loop.classList.contains('is-active')).toBe(true);
 
-		loop?.click();
+		loop.click();
 		expect(audio.loop).toBe(false);
 	});
 
@@ -313,15 +138,13 @@ describe('control row drives the shared audio (PlayerControlsView wiring)', () =
 		const audio = makeFakeAudio();
 		const container = makeContainer();
 		makePlayer(container, makeRegistry(audio)).onload();
-		const play = container.querySelector<HTMLElement>(
-			'[aria-label="Play / pause"]',
-		);
+		const play = control(container, 'Play / pause');
 
-		play?.click();
+		play.click();
 		expect(audio.play).toHaveBeenCalled();
 		audio.emit('play');
 
-		play?.click();
+		play.click();
 		expect(audio.pause).toHaveBeenCalled();
 	});
 });
@@ -430,9 +253,7 @@ describe('infinite-duration resolution (DurationProbe wiring)', () => {
 
 		// Resolution restores the start and unlocks the timeline display
 		expect(audio.currentTime).toBe(0);
-		expect(container.querySelector('.aar-player-time')?.textContent).toBe(
-			'0:00 / 1:00',
-		);
+		expect(container).toShowTime('0:00 / 1:00');
 	});
 
 	it('also probes a finite-but-zero duration (unstamped container)', () => {
@@ -489,11 +310,7 @@ describe('marker CRUD stays player-driven and persisted (PlayerMarkerController 
 		player.onload();
 		await tick();
 
-		container
-			.querySelector<HTMLElement>(
-				'[aria-label="Add marker at current position"]',
-			)
-			?.click();
+		clickControl(container, 'Add marker at current position');
 		await tick();
 
 		const saved = store.data.get('rec.wav') ?? [];
@@ -600,14 +417,10 @@ describe('marker CRUD stays player-driven and persisted (PlayerMarkerController 
 		).onload();
 		await tick();
 
-		container
-			.querySelector<HTMLElement>('[aria-label="Next chapter"]')
-			?.click();
+		clickControl(container, 'Next chapter');
 		expect(audio.currentTime).toBe(80);
 
-		container
-			.querySelector<HTMLElement>('[aria-label="Previous chapter"]')
-			?.click();
+		clickControl(container, 'Previous chapter');
 		// Shortly after a boundary, previous returns to that boundary's start
 		expect(audio.currentTime).toBe(10);
 	});
@@ -619,11 +432,7 @@ describe('marker CRUD stays player-driven and persisted (PlayerMarkerController 
 		makePlayer(container, makeRegistry(audio), PLAIN, store).onload();
 		await tick();
 
-		expect(
-			container.querySelector(
-				'[aria-label="Add marker at current position"]',
-			),
-		).toBeNull();
+		expect(container).not.toHaveControl('Add marker at current position');
 		expect(store.getMarkers).not.toHaveBeenCalled();
 	});
 });

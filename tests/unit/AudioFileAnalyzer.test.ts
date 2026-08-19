@@ -8,7 +8,9 @@ import {
 	isKnownLongerThan,
 	readAudioMetadata,
 } from 'src/utils/AudioFileAnalyzer';
-import { App, Notice, TFile } from 'obsidian';
+import { App, Notice } from 'obsidian';
+import type { TFile } from 'obsidian';
+import { createFile } from '../helpers/createApp';
 import {
 	installAudioElementMock,
 	installObjectUrlMock,
@@ -44,32 +46,6 @@ afterEach(() => {
 	audioMock.restore();
 	urlMock.restore();
 });
-
-// Mock Notice
-jest.mock('obsidian', () => ({
-	App: jest.fn().mockImplementation(() => ({
-		vault: {
-			readBinary: jest.fn(),
-			// The ranged probe reads through the resource URL; only the
-			// fallback path touches readBinary.
-			getResourcePath: jest.fn(
-				(file: { path: string }) => `app://vault/${file.path}`,
-			),
-		},
-	})),
-	Notice: jest.fn(),
-	// The decode fallback is bounded by the platform's decode ceiling, which
-	// is read from here.
-	Platform: { isMobileApp: false, isMobile: false },
-	TFile: jest.fn().mockImplementation(() => ({
-		extension: 'webm',
-		name: 'test.webm',
-		path: 'test.webm',
-		stat: {
-			size: 1572864, // 1.5 MB
-		},
-	})),
-}));
 
 // Mock mediabunny's container probe. Defaults to an unparseable input
 // (getPrimaryAudioTrack rejects) so the existing decode-fallback tests
@@ -111,14 +87,13 @@ describe('getAudioFileInfo', () => {
 	let file: TFile;
 
 	beforeEach(() => {
-		jest.clearAllMocks();
 		app = new App();
-		file = new TFile();
+		// 1.5 MB webm: the size feeds the bitrate the analyzer reports, and the
+		// extension picks the codec it infers.
+		file = createFile('test.webm', { size: 1572864 });
 
 		// Set default mocked behaviors
-		(app.vault.readBinary as jest.Mock).mockResolvedValue(
-			new ArrayBuffer(8),
-		);
+		jest.mocked(app.vault.readBinary).mockResolvedValue(new ArrayBuffer(8));
 
 		// Reset AudioContext mocks
 		mockDecodeAudioData.mockResolvedValue({
@@ -185,41 +160,33 @@ describe('getAudioFileInfo', () => {
 	});
 
 	it('falls back to the whole-file read when the ranged probe cannot parse', async () => {
-		const warn = jest.spyOn(console, 'warn').mockImplementation();
-		try {
-			mockGetPrimaryAudioTrack
-				.mockRejectedValueOnce(new Error('range request refused'))
-				.mockResolvedValue({
-					getSampleRate: () => 48000,
-					getNumberOfChannels: () => 2,
-				});
-			mockComputeDuration.mockResolvedValue(90);
+		jest.spyOn(console, 'warn').mockImplementation();
+		mockGetPrimaryAudioTrack
+			.mockRejectedValueOnce(new Error('range request refused'))
+			.mockResolvedValue({
+				getSampleRate: () => 48000,
+				getNumberOfChannels: () => 2,
+			});
+		mockComputeDuration.mockResolvedValue(90);
 
-			const result = await getAudioFileInfo(app, file);
+		const result = await getAudioFileInfo(app, file);
 
-			// An environment that does not honor the range request still gets
-			// its metadata, from the bytes rather than from a decode.
-			expect(result?.duration).toBe('1:30');
-			expect(app.vault.readBinary).toHaveBeenCalled();
-			expect(mockDecodeAudioData).not.toHaveBeenCalled();
-		} finally {
-			warn.mockRestore();
-		}
+		// An environment that does not honor the range request still gets
+		// its metadata, from the bytes rather than from a decode.
+		expect(result?.duration).toBe('1:30');
+		expect(app.vault.readBinary).toHaveBeenCalled();
+		expect(mockDecodeAudioData).not.toHaveBeenCalled();
 	});
 
 	it('disposes the probe input even when parsing fails', async () => {
-		const warn = jest.spyOn(console, 'warn').mockImplementation();
-		try {
-			await getAudioFileInfo(app, file);
-			expect(mockDispose).toHaveBeenCalled();
-			// The decode fallback provided the metadata instead
-			expect(mockDecodeAudioData).toHaveBeenCalled();
-		} finally {
-			warn.mockRestore();
-		}
+		jest.spyOn(console, 'warn').mockImplementation();
+		await getAudioFileInfo(app, file);
+		expect(mockDispose).toHaveBeenCalled();
+		// The decode fallback provided the metadata instead
+		expect(mockDecodeAudioData).toHaveBeenCalled();
 	});
 
-	it('should accurately extract and format audio metadata', async () => {
+	it('accuratelies extract and format audio metadata', async () => {
 		const result = await getAudioFileInfo(app, file);
 
 		expect(result).not.toBeNull();
@@ -235,39 +202,49 @@ describe('getAudioFileInfo', () => {
 		});
 	});
 
-	it('should handle mono channels', async () => {
-		mockDecodeAudioData.mockResolvedValue({
-			duration: 60,
-			sampleRate: 44100,
-			numberOfChannels: 1,
-		});
-		const result = await getAudioFileInfo(app, file);
-		expect(result?.channels).toBe('1 (Mono)');
-	});
+	it.each([
+		{ channels: 0, shown: '0 channels' },
+		{ channels: 1, shown: '1 (Mono)' },
+		{ channels: 2, shown: '2 (Stereo)' },
+		// Three is the first count past the named layouts, and the one an
+		// off-by-one in the stereo branch would mislabel.
+		{ channels: 3, shown: '3 channels' },
+		{ channels: 6, shown: '6 channels' },
+	])(
+		'names a $channels-channel layout as "$shown"',
+		async ({ channels, shown }) => {
+			// Mono and stereo have names a reader recognises; beyond that the
+			// count is the only honest description.
+			mockDecodeAudioData.mockResolvedValue({
+				duration: 60,
+				sampleRate: 44100,
+				numberOfChannels: channels,
+			});
 
-	it('should handle > 2 channels', async () => {
-		mockDecodeAudioData.mockResolvedValue({
-			duration: 60,
-			sampleRate: 44100,
-			numberOfChannels: 6,
-		});
-		const result = await getAudioFileInfo(app, file);
-		expect(result?.channels).toBe('6 channels');
-	});
+			const result = await getAudioFileInfo(app, file);
 
-	it('should correctly infer codecs from extensions', async () => {
-		(file as { extension: string }).extension = 'mp4';
-		let result = await getAudioFileInfo(app, file);
-		expect(result?.containerFormat).toBe('audio/mp4');
-		expect(result?.audioCodec).toBe('aac');
+			expect(result?.channels).toBe(shown);
+		},
+	);
 
-		(file as { extension: string }).extension = 'ogg';
-		result = await getAudioFileInfo(app, file);
-		expect(result?.containerFormat).toBe('audio/ogg');
-		expect(result?.audioCodec).toBe('opus/vorbis');
-	});
+	it.each([
+		{ extension: 'mp4', container: 'audio/mp4', codec: 'aac' },
+		{ extension: 'ogg', container: 'audio/ogg', codec: 'opus/vorbis' },
+	])(
+		'infers $container and $codec from a .$extension file',
+		async ({ extension, container, codec }) => {
+			// The container probe fails on these fixtures, so the extension
+			// is all that is left to describe the file with.
+			(file as { extension: string }).extension = extension;
 
-	it('should format very small files correctly', async () => {
+			const result = await getAudioFileInfo(app, file);
+
+			expect(result?.containerFormat).toBe(container);
+			expect(result?.audioCodec).toBe(codec);
+		},
+	);
+
+	it('formats very small files correctly', async () => {
 		(file as { stat: { size: number } }).stat.size = 500;
 		mockDecodeAudioData.mockResolvedValue({
 			duration: 1,
@@ -348,20 +325,16 @@ describe('getAudioFileInfo', () => {
 			sampleRate: 44100,
 			numberOfChannels: 1,
 		});
-		const consoleSpy = jest
-			.spyOn(console, 'warn')
-			.mockImplementation(() => {});
+		jest.spyOn(console, 'warn').mockImplementation(() => {});
 
 		const result = await getAudioFileInfo(app, file);
 
 		expect(app.vault.readBinary).toHaveBeenCalled();
 		expect(result?.duration).toBe('0:12');
 		expect(result?.sampleRate).toBe('44100 Hz');
-
-		consoleSpy.mockRestore();
 	});
 
-	it('should return null and show Notice if decoding throws', async () => {
+	it('returns null and show Notice if decoding throws', async () => {
 		mockDecodeAudioData.mockRejectedValue(new Error('Invalid audio data'));
 
 		// A decode that fails is logged rather than announced: the fallback is
@@ -378,19 +351,15 @@ describe('getAudioFileInfo', () => {
 			'Could not read this audio file to show its details.',
 		);
 		expect(consoleSpy).toHaveBeenCalled();
-
-		consoleSpy.mockRestore();
 	});
 
-	it('should close AudioContext in finally block', async () => {
+	it('closes AudioContext in finally block', async () => {
 		await getAudioFileInfo(app, file);
 		expect(mockClose).toHaveBeenCalled();
 	});
 
-	it('should return null if AudioContext is not supported', async () => {
-		const consoleSpy = jest
-			.spyOn(console, 'error')
-			.mockImplementation(() => {});
+	it('returns null if AudioContext is not supported', async () => {
+		jest.spyOn(console, 'error').mockImplementation(() => {});
 		Object.defineProperty(window, 'AudioContext', {
 			writable: true,
 			value: undefined,
@@ -405,14 +374,11 @@ describe('getAudioFileInfo', () => {
 		expect(Notice).toHaveBeenCalledWith(
 			'Could not read this audio file to show its details.',
 		);
-
-		consoleSpy.mockRestore();
 	});
 });
 
 describe('readAudioMetadata', () => {
 	beforeEach(() => {
-		jest.clearAllMocks();
 		mockDecodeAudioData.mockResolvedValue({
 			duration: 90,
 			sampleRate: 48000,
@@ -444,16 +410,12 @@ describe('readAudioMetadata', () => {
 
 	it('decodes when the container cannot be parsed', async () => {
 		mockGetPrimaryAudioTrack.mockRejectedValue(new Error('unparseable'));
-		const consoleSpy = jest
-			.spyOn(console, 'warn')
-			.mockImplementation(() => {});
+		jest.spyOn(console, 'warn').mockImplementation(() => {});
 
 		const result = await readAudioMetadata(new ArrayBuffer(8), 'a.webm');
 
 		expect(result?.durationSeconds).toBe(90);
 		expect(mockDecodeAudioData).toHaveBeenCalled();
-
-		consoleSpy.mockRestore();
 	});
 
 	it('reads the length through the browser when the headers carry none, and never decodes', async () => {
@@ -523,15 +485,11 @@ describe('readAudioMetadata', () => {
 	it('answers null when neither path can read the file', async () => {
 		mockGetPrimaryAudioTrack.mockRejectedValue(new Error('unparseable'));
 		mockDecodeAudioData.mockRejectedValue(new Error('no decoder'));
-		const consoleSpy = jest
-			.spyOn(console, 'warn')
-			.mockImplementation(() => {});
+		jest.spyOn(console, 'warn').mockImplementation(() => {});
 
 		expect(
 			await readAudioMetadata(new ArrayBuffer(8), 'a.webm'),
 		).toBeNull();
-
-		consoleSpy.mockRestore();
 	});
 
 	it('does not decode a file past the platform ceiling', async () => {
@@ -543,17 +501,13 @@ describe('readAudioMetadata', () => {
 		}>('src/platform/capabilities');
 		isDecodableSize.mockReturnValueOnce(false);
 		mockGetPrimaryAudioTrack.mockRejectedValue(new Error('unparseable'));
-		const consoleSpy = jest
-			.spyOn(console, 'warn')
-			.mockImplementation(() => {});
+		jest.spyOn(console, 'warn').mockImplementation(() => {});
 
 		const result = await readAudioMetadata(new ArrayBuffer(8), 'huge.webm');
 
 		expect(mockDecodeAudioData).not.toHaveBeenCalled();
 		// Nothing read the file at all, so there is nothing to answer with.
 		expect(result).toBeNull();
-
-		consoleSpy.mockRestore();
 	});
 
 	it('decodes a copy, leaving the caller bytes it can still use', async () => {
@@ -563,9 +517,7 @@ describe('readAudioMetadata', () => {
 		// left the run uploading nothing and the engine answering that the
 		// audio was corrupt.
 		mockGetPrimaryAudioTrack.mockRejectedValue(new Error('unparseable'));
-		const consoleSpy = jest
-			.spyOn(console, 'warn')
-			.mockImplementation(() => {});
+		jest.spyOn(console, 'warn').mockImplementation(() => {});
 		const bytes = new Uint8Array([1, 2, 3, 4]).buffer;
 
 		await readAudioMetadata(bytes, 'a.webm');
@@ -574,8 +526,6 @@ describe('readAudioMetadata', () => {
 		expect(decoded).not.toBe(bytes);
 		// A copy, not an empty stand-in: the decode still has to see the file.
 		expect(Array.from(new Uint8Array(decoded))).toEqual([1, 2, 3, 4]);
-
-		consoleSpy.mockRestore();
 	});
 
 	it('never asks the browser for a length it has already been given', async () => {

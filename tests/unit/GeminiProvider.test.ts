@@ -17,10 +17,10 @@ import { GEMINI_GENERATE_MIN_TIMEOUT_MS } from 'src/constants';
 // API, so they are imported from the mock by path. Jest maps 'obsidian'
 // to the same module, so both imports share one instance.
 import {
-	__setRequestUrlHandler,
 	type MockRequestUrlParam,
 	type MockRequestUrlResponse,
 } from '../mocks/obsidian';
+import { withRequestUrl } from '../helpers/network';
 
 // Decoding an unsupported container needs OfflineAudioContext, which jsdom
 // lacks; mock the audio helpers so the decode branch is testable by eye.
@@ -83,7 +83,7 @@ interface ScriptedFlow {
  */
 function scriptFlow(generateText: string): ScriptedFlow {
 	const calls: MockRequestUrlParam[] = [];
-	__setRequestUrlHandler((param): MockRequestUrlResponse => {
+	withRequestUrl((param): MockRequestUrlResponse => {
 		calls.push(param);
 		const url = param.url;
 		const method = param.method ?? 'GET';
@@ -132,10 +132,6 @@ function scriptFlow(generateText: string): ScriptedFlow {
 		},
 	};
 }
-
-afterEach(() => {
-	__setRequestUrlHandler(null);
-});
 
 describe('GeminiProvider.transcribe', () => {
 	it('uploads a WAV payload as-is and maps the structured transcript', async () => {

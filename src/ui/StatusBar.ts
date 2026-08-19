@@ -193,9 +193,27 @@ export function updateRecordingLiveStats(
 	const fill = live.querySelector<HTMLElement>('.aar-input-meter-fill');
 	if (fill) {
 		fill.setCssProps({
-			'--aar-meter-fill': `${String(Math.round(stats.level * 100))}%`,
+			'--aar-meter-fill': `${String(meterPercent(stats.level))}%`,
 		});
 	}
+}
+
+/**
+ * Turns a level reading into a percentage the meter can actually paint.
+ *
+ * The reading crosses a module boundary from an analyser, and an analyser
+ * whose context closed under it - a device unplugged mid-recording - fills its
+ * buffer with values that carry NaN through the RMS maths. Painting `NaN%`
+ * leaves the meter blank with no explanation, and anything above 100% spills
+ * the fill out of its track.
+ * @param level - Input level, nominally 0..1
+ * @returns A whole percentage in 0..100
+ */
+function meterPercent(level: number): number {
+	if (!Number.isFinite(level)) {
+		return 0;
+	}
+	return Math.round(Math.min(1, Math.max(0, level)) * 100);
 }
 
 /**
@@ -492,10 +510,26 @@ function renderProgressState(
 	const progressBar = progressContainer.createDiv({
 		cls: 'aar-save-progress-bar',
 	});
-	const percent = progress?.percent ?? 0;
 	progressBar.setCssProps({
-		'--save-progress': `${String(percent)}%`,
+		'--save-progress': `${String(savePercent(progress?.percent))}%`,
 	});
+}
+
+/**
+ * Clamps a save percentage into something the bar can paint.
+ *
+ * The number is bytes written over bytes expected, both read off a save in
+ * flight: before the first chunk lands that division is NaN, and a final flush
+ * that writes more than it announced overshoots 100. The stylesheet takes the
+ * value straight into a width, so neither may reach it.
+ * @param percent - Reported percentage, or undefined before any was reported
+ * @returns A whole percentage in 0..100
+ */
+function savePercent(percent: number | undefined): number {
+	if (percent === undefined || !Number.isFinite(percent)) {
+		return 0;
+	}
+	return Math.round(Math.min(100, Math.max(0, percent)));
 }
 
 /**

@@ -8,6 +8,8 @@
  */
 
 import { RecordingBanner } from 'src/ui/RecordingBanner';
+import { allEls, el, maybeEl } from '../helpers/dom';
+import { BANNER } from '../helpers/selectors';
 import { addObsidianDomExtensions } from '../mocks/obsidian';
 
 // The banner mounts onto activeDocument.body, which Obsidian extends with
@@ -16,24 +18,14 @@ beforeAll(() => {
 	addObsidianDomExtensions(document.body);
 });
 
+/** The banner, asserting it is on screen. */
 function bannerEl(): HTMLElement {
-	const el = document.body.querySelector<HTMLElement>(
-		'.aar-recording-banner',
-	);
-	if (!el) {
-		throw new Error('banner not rendered');
-	}
-	return el;
+	return el(document.body, BANNER.root);
 }
 
+/** The banner's stop control, asserting it is there. */
 function stopEl(): HTMLElement {
-	const el = bannerEl().querySelector<HTMLElement>(
-		'.aar-recording-banner-stop',
-	);
-	if (!el) {
-		throw new Error('stop control not rendered');
-	}
-	return el;
+	return el(bannerEl(), BANNER.stop);
 }
 
 afterEach(() => {
@@ -44,12 +36,8 @@ describe('RecordingBanner', () => {
 	it('renders the dot, timer, and an accessible stop control', () => {
 		new RecordingBanner(jest.fn()).show(false);
 
-		expect(
-			bannerEl().querySelector('.aar-recording-banner-dot'),
-		).not.toBeNull();
-		expect(
-			bannerEl().querySelector('.aar-recording-banner-time')?.textContent,
-		).toBe('0:00');
+		expect(maybeEl(bannerEl(), BANNER.dot)).not.toBeNull();
+		expect(bannerEl()).toShowTime('0:00');
 		const stop = stopEl();
 		expect(stop.getAttribute('role')).toBe('button');
 		expect(stop.getAttribute('aria-label')).toBe('Stop recording');
@@ -62,9 +50,7 @@ describe('RecordingBanner', () => {
 		banner.show(true);
 		banner.show(false);
 
-		expect(
-			document.body.querySelectorAll('.aar-recording-banner'),
-		).toHaveLength(1);
+		expect(allEls(document.body, BANNER.root)).toHaveLength(1);
 	});
 
 	it('reflects the paused state on the banner class', () => {
@@ -81,14 +67,10 @@ describe('RecordingBanner', () => {
 		banner.show(false);
 
 		banner.update(65_000, false);
-		expect(
-			bannerEl().querySelector('.aar-recording-banner-time')?.textContent,
-		).toBe('1:05');
+		expect(bannerEl()).toShowTime('1:05');
 
 		banner.update(65_000, true);
-		expect(
-			bannerEl().querySelector('.aar-recording-banner-time')?.textContent,
-		).toBe('Paused 1:05');
+		expect(bannerEl()).toShowTime('Paused 1:05');
 	});
 
 	it('fires the stop callback on click', () => {
@@ -130,7 +112,7 @@ describe('RecordingBanner', () => {
 		banner.show(false);
 		banner.hide();
 
-		expect(document.body.querySelector('.aar-recording-banner')).toBeNull();
+		expect(maybeEl(document.body, BANNER.root)).toBeNull();
 
 		banner.show(true);
 		expect(bannerEl().classList.contains('is-paused')).toBe(true);

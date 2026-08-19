@@ -1,14 +1,20 @@
 /**
- * Shared Obsidian `Setting` test double that records each rendered row's name
- * and the value/disabled state of its toggle/text control. The global mock in
- * `tests/mocks/obsidian.ts` cannot be used for control-state assertions
- * because its builder methods never invoke the callback; this one does, so
- * tests can verify the disabled (dimmed) rendering of settings. It also records
- * each control's onChange handler and each button's click handler, so a test
- * can drive an edit through the production wiring - the half of a settings
- * section that rendering assertions alone never reach.
+ * Shared Obsidian `Setting` test double that records each rendered row by name,
+ * along with the value and disabled state of its controls, the onChange handler
+ * each control registered, and each button's click handler.
+ *
+ * The shared `Setting` in `tests/mocks/obsidian.ts` builds working components
+ * and is the right double for a test that drives the DOM. This one is for a
+ * test that asks about the row rather than the widget - "is the Language row
+ * dimmed", "what did editing it call" - which through the DOM would mean
+ * querying by CSS class.
+ *
+ * Install it through `tests/mocks/modules/obsidianWithCapturingSetting`, which
+ * swaps this class into the full mock rather than replacing the module.
  * @module tests/helpers/captureSettings
  */
+
+import { addObsidianDomExtensions } from '../mocks/domExtensions';
 
 /** Captured state of a single toggle or text control. */
 export interface CapturedControl {
@@ -25,6 +31,8 @@ export interface CapturedControl {
 /** Captured state of one rendered dropdown option. */
 export interface CapturedDropdownOption {
 	value: string;
+	/** Display text, which for a bitrate or a format is the assertion. */
+	label: string;
 	disabled: boolean;
 }
 
@@ -34,7 +42,14 @@ export interface CapturedButton {
 	label: string;
 	/** Tooltip text, when the builder set one. */
 	tooltip: string;
+	/** Latest disabled state. */
 	disabled: boolean;
+	/**
+	 * The builder's setDisabled, as a spy. A dialog that disables its action
+	 * button for the duration of a run and re-enables it in a finally block is
+	 * asserting about the sequence, not the final state.
+	 */
+	setDisabled: jest.Mock;
 	click: () => unknown;
 }
 
@@ -67,6 +82,66 @@ export interface CapturedSetting {
 
 /** Rows captured by the mock, in render order. Clear it in `beforeEach`. */
 export const capturedSettings: CapturedSetting[] = [];
+
+/**
+ * Every text-control onChange handler rendered so far, in render order.
+ *
+ * A dialog names its rows but a test driving several edits in a row usually
+ * knows them by position, so these flatten the per-row capture.
+ * @returns One handler per row that rendered a text control
+ */
+export function textChanges(): ((value: string) => unknown)[] {
+	return capturedSettings
+		.map((row) => row.changes.text)
+		.filter((handler): handler is (value: string) => unknown =>
+			Boolean(handler),
+		);
+}
+
+/**
+ * Every dropdown onChange handler rendered so far, in render order.
+ * @returns One handler per row that rendered a dropdown
+ */
+export function dropdownChanges(): ((value: string) => unknown)[] {
+	return capturedSettings
+		.map((row) => row.changes.dropdown)
+		.filter((handler): handler is (value: string) => unknown =>
+			Boolean(handler),
+		);
+}
+
+/**
+ * Every toggle onChange handler rendered so far, in render order.
+ * @returns One handler per row that rendered a toggle
+ */
+export function toggleChanges(): ((value: boolean) => unknown)[] {
+	return capturedSettings
+		.map((row) => row.changes.toggle)
+		.filter((handler): handler is (value: boolean) => unknown =>
+			Boolean(handler),
+		);
+}
+
+/**
+ * Every button rendered so far, in render order across all rows.
+ * @returns The captured buttons
+ */
+export function allButtons(): CapturedButton[] {
+	return capturedSettings.flatMap((row) => row.buttons);
+}
+
+/**
+ * Every text input element rendered so far, in render order.
+ * @returns One element per row that rendered a text or number control
+ */
+export function textInputs(): (HTMLInputElement | HTMLTextAreaElement)[] {
+	return capturedSettings
+		.map((row) => row.text?.inputEl)
+		.filter(
+			(el): el is HTMLInputElement | HTMLTextAreaElement =>
+				el !== undefined,
+		);
+}
 
 /**
  * The named row, asserting it was rendered.
@@ -223,14 +298,14 @@ export class CapturingSetting {
 		return this;
 	}
 	addText(callback: (text: unknown) => void): this {
-		// A real input element so number-input controls can set type/min/max
-		// and attach a change listener; addClass is the only Obsidian helper
-		// the production code calls on it, so stub just that.
+		// A real input element so number-input controls can set type/min/max and
+		// attach a change listener, carrying the same Obsidian DOM extensions
+		// (addClass, toggleClass, setText, ...) the shared mock puts on every
+		// element it builds - production code calls those on the input.
 		const cap = this.cap;
-		const inputEl = document.createElement('input') as HTMLInputElement & {
-			addClass: (cls: string) => void;
-		};
-		inputEl.addClass = (cls: string): void => inputEl.classList.add(cls);
+		const inputEl = addObsidianDomExtensions(
+			document.createElement('input'),
+		);
 		const text = {
 			value: '' as unknown,
 			disabled: false,
@@ -265,12 +340,9 @@ export class CapturingSetting {
 		// builder can set `rows`; captures value/disabled the same way so the
 		// dictionary row's dimmed state is assertable by name.
 		const cap = this.cap;
-		const inputEl = document.createElement(
-			'textarea',
-		) as HTMLTextAreaElement & {
-			addClass: (cls: string) => void;
-		};
-		inputEl.addClass = (cls: string): void => inputEl.classList.add(cls);
+		const inputEl = addObsidianDomExtensions(
+			document.createElement('textarea'),
+		);
 		const text = {
 			value: '' as unknown,
 			disabled: false,
@@ -307,9 +379,16 @@ export class CapturingSetting {
 		const cap = this.cap;
 		const options: CapturedDropdownOption[] = [];
 		const dropdown = {
-			selectEl: { options },
-			addOption(value: string) {
-				options.push({ value, disabled: false });
+			selectEl: {
+				options,
+				// Obsidian's DOM helper, which a dialog rebuilding its option
+				// list calls before adding the new ones.
+				empty() {
+					options.length = 0;
+				},
+			},
+			addOption(value: string, label = '') {
+				options.push({ value, label, disabled: false });
 				return this;
 			},
 			setValue(value: string) {
@@ -351,6 +430,7 @@ export class CapturingSetting {
 			label: '',
 			tooltip: '',
 			disabled: false,
+			setDisabled: jest.fn(),
 			click: () => undefined,
 		};
 		const button = {
@@ -370,6 +450,7 @@ export class CapturingSetting {
 			},
 			setDisabled(disabled: boolean) {
 				captured.disabled = disabled;
+				captured.setDisabled(disabled);
 				return this;
 			},
 			onClick(handler: () => unknown) {
@@ -390,6 +471,7 @@ export class CapturingSetting {
 			label: '',
 			tooltip: '',
 			disabled: false,
+			setDisabled: jest.fn(),
 			click: () => undefined,
 		};
 		const button = {
@@ -403,6 +485,7 @@ export class CapturingSetting {
 			},
 			setDisabled(disabled: boolean) {
 				captured.disabled = disabled;
+				captured.setDisabled(disabled);
 				return this;
 			},
 			onClick(handler: () => unknown) {

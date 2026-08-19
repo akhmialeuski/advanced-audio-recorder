@@ -15,20 +15,51 @@ import { WAVEFORM_DECODE_SAMPLE_RATE } from 'src/constants';
 const immediateYield = (): Promise<void> => Promise.resolve();
 
 describe('computeWaveformPeaksProgressive - peak extraction', () => {
-	it('returns empty for non-positive bucket counts', async () => {
+	it.each([
+		{
+			name: 'no buckets are asked for',
+			channels: [new Float32Array([1])],
+			buckets: 0,
+		},
+		{
+			name: 'a negative bucket count is asked for',
+			channels: [new Float32Array([1])],
+			buckets: -4,
+		},
+		{ name: 'the audio has no channels', channels: [], buckets: 4 },
+		// The two remaining ways a bucket count can be nonsense: a fractional
+		// width from a scaled layout, and a NaN from an element measured
+		// before it had one. Both would size an array the loop cannot fill.
+		{
+			name: 'a fractional bucket count is asked for',
+			channels: [new Float32Array([1])],
+			buckets: 0.5,
+		},
+		{
+			name: 'the bucket count is not a number',
+			channels: [new Float32Array([1])],
+			buckets: Number.NaN,
+		},
+	])('draws nothing when $name', async ({ channels, buckets }) => {
+		// A seek bar with no width, or audio that failed to decode: the
+		// waveform has nowhere to go and no data to put there.
 		expect(
-			await computeWaveformPeaksProgressive([new Float32Array([1])], 0, {
+			await computeWaveformPeaksProgressive(channels, buckets, {
 				yieldControl: immediateYield,
 			}),
 		).toEqual([]);
 	});
 
-	it('returns empty when there are no channels', async () => {
-		expect(
-			await computeWaveformPeaksProgressive([], 4, {
-				yieldControl: immediateYield,
-			}),
-		).toEqual([]);
+	it('floors a fractional bar count rather than throwing on it', async () => {
+		// A scaled layout measures 10.7 bars; ten of them is the honest
+		// answer, and `new Array(10.7)` is a RangeError.
+		const peaks = await computeWaveformPeaksProgressive(
+			[Float32Array.from({ length: 100 }, (_, i) => i / 100)],
+			10.7,
+			{ yieldControl: immediateYield },
+		);
+
+		expect(peaks).toHaveLength(10);
 	});
 
 	it('returns zeros for empty channel data', async () => {

@@ -9,6 +9,8 @@
  */
 
 import { App, Modal } from 'obsidian';
+import { allEls } from '../helpers/dom';
+import { MARKER } from '../helpers/selectors';
 import { AudioPlayer } from 'src/player/AudioPlayer';
 import {
 	AudioPlayerRegistry,
@@ -26,14 +28,16 @@ import {
 	timeText,
 	tick,
 } from '../helpers/playbackHarness';
+import { partial } from '../helpers/doubles';
+import { createMockApp } from '../helpers/createApp';
 
-const app = {
+const app = createMockApp({
 	vault: {
 		getResourcePath: () => 'app://media',
 		readBinary: () => Promise.resolve(new ArrayBuffer(0)),
 	},
 	fileManager: { generateMarkdownLink: () => '[[rec.mp4]]' },
-} as unknown as App;
+}).app;
 
 const decoder: AudioDecoder = {
 	decode: () => Promise.reject(new Error('no decode in tests')),
@@ -50,11 +54,11 @@ const WITH_MARKERS: ResolvedPlayerSettings = {
 };
 
 function makeFile(): TFile {
-	return {
+	return partial<TFile>({
 		path: 'rec.mp4',
 		extension: 'mp4',
 		stat: { mtime: 1, size: 1000 },
-	} as unknown as TFile;
+	});
 }
 
 function makeContainer(): HTMLElement {
@@ -108,7 +112,6 @@ function mountMarkerPlayer(
 
 afterEach(() => {
 	document.body.innerHTML = '';
-	jest.restoreAllMocks();
 });
 
 describe('timecode seek stays in sync with the embedded player', () => {
@@ -252,8 +255,8 @@ const CHAPTERS: PlayerMarker[] = [
 
 /** Reads the chapter labels the player rendered, in list order. */
 function markerLabels(container: HTMLElement): string[] {
-	return [...container.querySelectorAll('.aar-player-marker-label')].map(
-		(el) => (el as HTMLInputElement).getAttribute('value') ?? '',
+	return allEls(container, MARKER.label).map(
+		(label) => label.getAttribute('value') ?? '',
 	);
 }
 
@@ -278,9 +281,7 @@ describe('generated chapters reach an already-open player', () => {
 			await tick();
 
 			// The open embed shows the chapters at once, without a re-mount
-			expect(
-				container.querySelectorAll('.aar-player-marker-row'),
-			).toHaveLength(2);
+			expect(allEls(container, MARKER.row)).toHaveLength(2);
 			expect(markerLabels(container)).toEqual(['Intro', 'Middle']);
 		} finally {
 			shared.restore();
@@ -312,9 +313,7 @@ describe('generated chapters reach an already-open player', () => {
 			// while it was detached must be there, not a stale empty list
 			parent.appendChild(container);
 			expect(container.isConnected).toBe(true);
-			expect(
-				container.querySelectorAll('.aar-player-marker-row'),
-			).toHaveLength(2);
+			expect(allEls(container, MARKER.row)).toHaveLength(2);
 			expect(markerLabels(container)).toEqual(['Intro', 'Middle']);
 		} finally {
 			shared.restore();

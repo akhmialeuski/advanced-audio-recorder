@@ -155,23 +155,58 @@ describe('markerModel - edge and negative cases', () => {
 		expect(previousChapterTime([], 5)).toBeNull();
 	});
 
-	it('parseMarkers drops entries with a non-finite or missing time', () => {
-		expect(
-			parseMarkers([
-				{ id: 'a', time: Number.NaN, kind: 'bookmark' },
-				{ id: 'b', time: Number.POSITIVE_INFINITY, kind: 'chapter' },
-				{ id: 'c', kind: 'bookmark' },
-			]),
-		).toEqual([]);
+	it.each([
+		{
+			name: 'a time that is not a number',
+			entry: { id: 'a', time: Number.NaN, kind: 'bookmark' },
+		},
+		{
+			name: 'a time that is infinite',
+			entry: { id: 'b', time: Number.POSITIVE_INFINITY, kind: 'chapter' },
+		},
+		{ name: 'no time at all', entry: { id: 'c', kind: 'bookmark' } },
+		{ name: 'no id', entry: { time: 1, kind: 'bookmark' } },
+		{
+			name: 'an id that is not a string',
+			entry: { id: 5, time: 1, kind: 'bookmark' },
+		},
+		{
+			name: 'a kind nothing renders',
+			entry: { id: 'd', time: 1, kind: 'segment' },
+		},
+		// The remaining shapes a hand-edited or older sidecar can hold:
+		// nothing at all where an entry should be, a negative offset the
+		// player cannot seek to, and an empty id, which is falsy and would
+		// slip past a bare truthiness check on the id.
+		{ name: 'nothing where an entry should be', entry: null },
+		{ name: 'a primitive instead of an entry', entry: 'marker' },
+	])('parseMarkers drops an entry with $name', ({ entry }) => {
+		// A sidecar can be hand-edited or written by an older version; an
+		// unusable marker has to be dropped rather than crash the player.
+		expect(parseMarkers([entry])).toEqual([]);
 	});
 
-	it('parseMarkers drops entries with a missing or non-string id', () => {
+	it.each([
+		// The two boundary offsets a sidecar can hold that are recoverable
+		// rather than unusable: a negative one clamps to the start of the
+		// recording, and zero is a real offset, not a missing one.
+		{ name: 'a negative time', time: -1, expected: 0 },
+		{ name: 'a time of exactly zero', time: 0, expected: 0 },
+		{ name: 'a fractional time', time: 0.5, expected: 0.5 },
+	])('parseMarkers clamps $name to $expected', ({ time, expected }) => {
+		expect(parseMarkers([{ id: 'a', time, kind: 'bookmark' }])).toEqual([
+			{ id: 'a', time: expected, label: '', kind: 'bookmark' },
+		]);
+	});
+
+	it('parseMarkers keeps an entry whose id is the empty string', () => {
+		// Not dropped: the id check is a type check, and an empty id still
+		// sorts and renders. It is unaddressable by id, which is why the
+		// factory never mints one - this pins what a hand-edited sidecar
+		// carrying one actually does.
 		expect(
-			parseMarkers([
-				{ time: 1, kind: 'bookmark' },
-				{ id: 5, time: 1, kind: 'bookmark' },
-			]),
-		).toEqual([]);
+			parseMarkers([{ id: '', time: 1, kind: 'bookmark' }]),
+		).toHaveLength(1);
 	});
 
 	it('parseMarkers coerces a non-string label to an empty string', () => {

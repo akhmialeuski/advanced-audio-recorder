@@ -108,8 +108,155 @@ describe('sidecar rewriters', () => {
 		expect(parsed.speakers).toEqual(['Alex']);
 	});
 
-	it('returns null for non-transcript JSON', () => {
-		expect(renameSpeakersInTranscriptJson('{"foo":1}', renames)).toBeNull();
+	it.each([
+		{ name: 'is not JSON at all', raw: 'not json' },
+		{ name: 'is not an object', raw: '"a string"' },
+		{ name: 'has no segments list', raw: '{"foo":1}' },
+		{ name: 'has segments that are not a list', raw: '{"segments":"one"}' },
+		// The remaining shapes a truncated write or a sync conflict leaves:
+		// nothing at all, a bare JSON null, and a list where an object was.
+		{ name: 'is empty', raw: '' },
+		{ name: 'is only whitespace', raw: '  \n ' },
+		{ name: 'is a bare null', raw: 'null' },
+		{ name: 'is a bare list', raw: '[]' },
+		{ name: 'is a truncated object', raw: '{"segments":[' },
+	])('returns null for a sidecar that $name', ({ raw }) => {
+		// A hand-edited or truncated sidecar must leave the rewrite as a
+		// no-op rather than replacing the file with something invalid.
+		expect(renameSpeakersInTranscriptJson(raw, renames)).toBeNull();
+	});
+
+	it('passes a segment that is not an object through untouched', () => {
+		const json = JSON.stringify({
+			segments: ['stray', null],
+			speakers: [],
+		});
+
+		const out = renameSpeakersInTranscriptJson(json, renames);
+
+		expect(JSON.parse(out ?? '{}').segments).toEqual(['stray', null]);
+	});
+
+	it('leaves a speaker the rename does not name alone', () => {
+		const json = JSON.stringify({
+			segments: [
+				{ text: 'hi', speaker: 'Speaker 1' },
+				{ text: 'yes', speaker: 'Speaker 2' },
+				{ text: 'no speaker at all' },
+				{ text: 'odd', speaker: 7 },
+			],
+			speakers: ['Speaker 1', 'Speaker 2'],
+		});
+
+		const parsed = JSON.parse(
+			renameSpeakersInTranscriptJson(json, renames) ?? '{}',
+		);
+
+		expect(parsed.speakers).toEqual(['Alex', 'Speaker 2']);
+		expect(parsed.segments[3].speaker).toBe(7);
+	});
+
+	it.each([
+		{
+			name: 'markdown',
+			rewrite: (text: string): string =>
+				renameSpeakersInMarkdown(text, FORMAT, []),
+		},
+		{
+			name: 'subtitles',
+			rewrite: (text: string): string =>
+				renameSpeakersInSubtitles(text, []),
+		},
+		{
+			name: 'plain text',
+			rewrite: (text: string): string =>
+				renameSpeakersInPlainText(text, []),
+		},
+	])(
+		'leaves $name untouched when nothing is being renamed',
+		({ rewrite }) => {
+			// An apply with no changes still runs the rewrite over every
+			// output; building a regex from an empty alternation would match
+			// everything.
+			const content = 'Speaker 1: hello';
+
+			expect(rewrite(content)).toBe(content);
+		},
+	);
+
+	it.each([
+		{
+			name: 'names nothing to rename from',
+			rename: { from: '', to: 'Alex' },
+		},
+		{
+			name: 'renames a speaker to itself',
+			rename: { from: 'Speaker 1', to: 'Speaker 1' },
+		},
+	])('drops a rename that $name', ({ rename }) => {
+		// An apply carries one entry per speaker, most of them unchanged;
+		// rewriting on those would touch files for no reason.
+		const content = 'Speaker 1: hello';
+
+		expect(renameSpeakersInSubtitles(content, [rename])).toBe(content);
+	});
+
+	it.each([
+		{
+			name: 'subtitles',
+			rewrite: (
+				text: string,
+				renames: { from: string; to: string }[],
+			): string => renameSpeakersInSubtitles(text, renames),
+			content: 'Speaker 1: one\nSpeaker 10: ten\n',
+			expected: 'Alex: one\nJo: ten\n',
+		},
+		{
+			name: 'plain text',
+			rewrite: (
+				text: string,
+				renames: { from: string; to: string }[],
+			): string => renameSpeakersInPlainText(text, renames),
+			content: '[00:00] Speaker 1: one\n[00:05] Speaker 10: ten\n',
+			expected: '[00:00] Alex: one\n[00:05] Jo: ten\n',
+		},
+	])(
+		'renames the longer label first in $name, where one is a prefix of another',
+		({ rewrite, content, expected }) => {
+			// Ten speakers is enough to produce "Speaker 1" and "Speaker 10".
+			// A regex alternation in declaration order would match the short
+			// one inside the long one and leave "Alex0: ten" behind.
+			expect(
+				rewrite(content, [
+					{ from: 'Speaker 1', to: 'Alex' },
+					{ from: 'Speaker 10', to: 'Jo' },
+				]),
+			).toBe(expected);
+		},
+	);
+
+	it('keeps a sidecar that carries no speaker list without one', () => {
+		// The list is derived from the segments, so writing one into a
+		// sidecar that never had it would change the file's shape.
+		const json = JSON.stringify({
+			segments: [{ text: 'hi', speaker: 'Speaker 1' }],
+		});
+
+		const parsed = JSON.parse(
+			renameSpeakersInTranscriptJson(json, renames) ?? '{}',
+		);
+
+		expect(parsed.speakers).toBeUndefined();
+		expect(parsed.segments[0].speaker).toBe('Alex');
+	});
+
+	it('leaves transcript JSON untouched when nothing is being renamed', () => {
+		const json = JSON.stringify({
+			segments: [{ text: 'hi', speaker: 'Speaker 1' }],
+			speakers: ['Speaker 1'],
+		});
+
+		expect(renameSpeakersInTranscriptJson(json, [])).toBe(json);
 	});
 });
 

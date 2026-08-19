@@ -62,14 +62,10 @@ export function installSharedAudio(): {
 		duration = value;
 		el.dispatchEvent(new Event('durationchange'));
 	};
-	const factory = jest
-		.spyOn(globalThis, 'Audio')
-		.mockImplementation(() => el);
+	jest.spyOn(globalThis, 'Audio').mockImplementation(() => el);
 	return {
 		audio: el,
-		restore: () => {
-			factory.mockRestore();
-		},
+		restore: () => {},
 	};
 }
 
@@ -110,6 +106,6 @@ export function timeText(container: HTMLElement): string {
 	return container.querySelector('.aar-player-time')?.textContent ?? '';
 }
 
-/** Resolves on the next macrotask, flushing pending player microtasks. */
-export const tick = (): Promise<void> =>
-	new Promise((resolve) => setTimeout(resolve, 0));
+// Re-exported so a playback test needs one import; the implementation lives
+// with the other waiting primitives.
+export { tick } from './async';

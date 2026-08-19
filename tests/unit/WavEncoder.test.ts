@@ -10,10 +10,11 @@ import {
 	assembleWavFromPcmSegments,
 	assembleWavFromPcmSegmentFiles,
 } from 'src/audio/WavEncoder';
+import { createMockApp } from '../helpers/createApp';
 
 describe('WavEncoder', () => {
 	describe('getWavHeaderInfo', () => {
-		it('should calculate correct header info for mono audio', () => {
+		it('calculates correct header info for mono audio', () => {
 			const info = getWavHeaderInfo(1, 44100, 1000);
 
 			expect(info.headerSize).toBe(44);
@@ -21,7 +22,7 @@ describe('WavEncoder', () => {
 			expect(info.byteRate).toBe(88200); // 44100 * 2 * 1
 		});
 
-		it('should calculate correct header info for stereo audio', () => {
+		it('calculates correct header info for stereo audio', () => {
 			const info = getWavHeaderInfo(2, 48000, 5000);
 
 			expect(info.headerSize).toBe(44);
@@ -29,7 +30,7 @@ describe('WavEncoder', () => {
 			expect(info.byteRate).toBe(192000); // 48000 * 2 * 2
 		});
 
-		it('should handle different sample rates', () => {
+		it('handles different sample rates', () => {
 			const rates = [8000, 16000, 22050, 44100, 48000, 96000];
 
 			rates.forEach((rate) => {
@@ -41,13 +42,13 @@ describe('WavEncoder', () => {
 });
 
 describe('createWavHeader', () => {
-	it('should create a 44-byte WAV header', () => {
+	it('creates a 44-byte WAV header', () => {
 		const header = createWavHeader(1, 44100, 1000);
 
 		expect(header.byteLength).toBe(44);
 	});
 
-	it('should contain valid RIFF/WAVE markers', () => {
+	it('contains valid RIFF/WAVE markers', () => {
 		const header = createWavHeader(1, 44100, 1000);
 		const view = new DataView(header);
 
@@ -89,7 +90,7 @@ describe('createWavHeader', () => {
 		).toBe('data');
 	});
 
-	it('should set correct file size in RIFF header', () => {
+	it('sets correct file size in RIFF header', () => {
 		const pcmDataLength = 5000;
 		const header = createWavHeader(1, 44100, pcmDataLength);
 		const view = new DataView(header);
@@ -98,7 +99,7 @@ describe('createWavHeader', () => {
 		expect(view.getUint32(4, true)).toBe(44 - 8 + pcmDataLength);
 	});
 
-	it('should set correct audio format fields for mono', () => {
+	it('sets correct audio format fields for mono', () => {
 		const header = createWavHeader(1, 44100, 1000);
 		const view = new DataView(header);
 
@@ -110,7 +111,7 @@ describe('createWavHeader', () => {
 		expect(view.getUint16(34, true)).toBe(16); // bits per sample
 	});
 
-	it('should set correct audio format fields for stereo', () => {
+	it('sets correct audio format fields for stereo', () => {
 		const header = createWavHeader(2, 48000, 2000);
 		const view = new DataView(header);
 
@@ -120,7 +121,7 @@ describe('createWavHeader', () => {
 		expect(view.getUint16(32, true)).toBe(4); // block align: 2 * 2
 	});
 
-	it('should set correct data subchunk size', () => {
+	it('sets correct data subchunk size', () => {
 		const pcmDataLength = 8800;
 		const header = createWavHeader(1, 44100, pcmDataLength);
 		const view = new DataView(header);
@@ -130,14 +131,14 @@ describe('createWavHeader', () => {
 });
 
 describe('assembleWavFromPcmSegments', () => {
-	it('should assemble WAV from single segment', () => {
+	it('assembles WAV from single segment', () => {
 		const pcmData = new Int16Array([100, -100, 200, -200]).buffer;
 		const result = assembleWavFromPcmSegments([pcmData], 1, 44100);
 
 		expect(result.byteLength).toBe(44 + pcmData.byteLength);
 	});
 
-	it('should assemble WAV from multiple segments', () => {
+	it('assembles WAV from multiple segments', () => {
 		const seg1 = new Int16Array([100, -100]).buffer;
 		const seg2 = new Int16Array([200, -200]).buffer;
 		const seg3 = new Int16Array([300, -300]).buffer;
@@ -148,7 +149,7 @@ describe('assembleWavFromPcmSegments', () => {
 		expect(result.byteLength).toBe(44 + totalPcm);
 	});
 
-	it('should preserve PCM data in correct order', () => {
+	it('preserves PCM data in correct order', () => {
 		const seg1 = new Int16Array([1000, 2000]).buffer;
 		const seg2 = new Int16Array([3000, 4000]).buffer;
 
@@ -161,7 +162,7 @@ describe('assembleWavFromPcmSegments', () => {
 		expect(int16View[3]).toBe(4000);
 	});
 
-	it('should write correct WAV header for assembled data', () => {
+	it('writes correct WAV header for assembled data', () => {
 		const pcmData = new Int16Array(100).buffer;
 		const result = assembleWavFromPcmSegments([pcmData], 2, 48000);
 
@@ -183,7 +184,7 @@ describe('assembleWavFromPcmSegments', () => {
 		expect(view.getUint32(40, true)).toBe(pcmData.byteLength);
 	});
 
-	it('should handle empty segments array', () => {
+	it('handles empty segments array', () => {
 		const result = assembleWavFromPcmSegments([], 1, 44100);
 
 		// Header only, no data
@@ -214,6 +215,9 @@ describe('assembleWavFromPcmSegmentFiles', () => {
 					: Promise.reject(new Error(`Missing file: ${path}`));
 			}),
 		};
+		// The shared App double always carries a `stat`, so the
+		// no-stat-support path needs the key explicitly blanked out.
+		adapter.stat = undefined;
 		if (options.withStat ?? true) {
 			adapter.stat = jest.fn((path: string) => {
 				if (options.statSizes?.has(path)) {
@@ -224,10 +228,10 @@ describe('assembleWavFromPcmSegmentFiles', () => {
 				return Promise.resolve(data ? { size: data.byteLength } : null);
 			});
 		}
-		return { vault: { adapter } } as unknown as App;
+		return createMockApp({ vault: { adapter } }).app;
 	};
 
-	it('should stream segments into one preallocated buffer in capture order', async () => {
+	it('streams segments into one preallocated buffer in capture order', async () => {
 		const files = new Map<string, ArrayBuffer>([
 			['pcm1.tmp', new Uint8Array([1, 2, 3]).buffer],
 			['pcm2.tmp', new Uint8Array([4, 5, 6]).buffer],
@@ -256,7 +260,7 @@ describe('assembleWavFromPcmSegmentFiles', () => {
 		expect(view.getUint32(40, true)).toBe(6);
 	});
 
-	it('should fall back to read-all assembly without stat support', async () => {
+	it('falls back to read-all assembly without stat support', async () => {
 		const files = new Map<string, ArrayBuffer>([
 			['pcm1.tmp', new Uint8Array([1, 2]).buffer],
 			['pcm2.tmp', new Uint8Array([3, 4]).buffer],
@@ -275,7 +279,7 @@ describe('assembleWavFromPcmSegmentFiles', () => {
 		]);
 	});
 
-	it('should fall back when stat cannot report a segment size', async () => {
+	it('falls back when stat cannot report a segment size', async () => {
 		const files = new Map<string, ArrayBuffer>([
 			['pcm1.tmp', new Uint8Array([1, 2]).buffer],
 		]);
@@ -292,7 +296,7 @@ describe('assembleWavFromPcmSegmentFiles', () => {
 		expect(result.byteLength).toBe(46);
 	});
 
-	it('should shrink the output and fix the header when a segment shrank', async () => {
+	it('shrinks the output and fix the header when a segment shrank', async () => {
 		const files = new Map<string, ArrayBuffer>([
 			['pcm1.tmp', new Uint8Array([1, 2, 3, 4]).buffer],
 			['pcm2.tmp', new Uint8Array([5, 6]).buffer],
@@ -313,7 +317,7 @@ describe('assembleWavFromPcmSegmentFiles', () => {
 		expect(view.getUint32(40, true)).toBe(6);
 	});
 
-	it('should throw when a segment grew between stat and read', async () => {
+	it('throws when a segment grew between stat and read', async () => {
 		const files = new Map<string, ArrayBuffer>([
 			['pcm1.tmp', new Uint8Array([1, 2, 3, 4]).buffer],
 		]);

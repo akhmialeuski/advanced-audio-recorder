@@ -13,64 +13,40 @@ import {
 } from 'src/settings/settingsSchema';
 import type { App } from 'obsidian';
 import {
-	createRecordingMockApp,
+	createRecordingSut,
 	installMediaRecorder,
 	installRecordingMediaStubs,
-	makeFakeMarkerStore,
-} from './helpers/recordingManagerTestKit';
-
-// Mock obsidian module
-jest.mock('obsidian', () => ({
-	Notice: jest.fn(),
-	MarkdownView: jest.fn(),
-	normalizePath: (path: string) => path.replace(/\\/g, '/'),
-	Platform: {
-		isMobile: false,
-		isMobileApp: false,
-	},
-}));
+	makeMediaRecorderDouble,
+	recordingManagerOver,
+	stubAudioStreams,
+	type MockMediaRecorder,
+} from '../helpers/recordingManagerTestKit';
+import { useDesktopPlatform } from '../helpers/platform';
+import { noticeMessages } from '../mocks/obsidian';
+import {
+	getAudioStreams,
+	stopAllStreams,
+} from 'src/recording/AudioStreamHandler';
 
 // Mock AudioStreamHandler
-jest.mock('src/recording/AudioStreamHandler', () => ({
-	getAudioStreams: jest.fn(),
-	getAudioSourceName: jest.fn().mockResolvedValue('TestDevice'),
-	stopAllStreams: jest.fn(),
-	validateSelectedDevices: jest.fn(),
-}));
+jest.mock('src/recording/AudioStreamHandler', () =>
+	require('../mocks/modules/audioStreamHandler'),
+);
 
 // Mock AudioEncoder module to avoid mediabunny TextDecoder requirement.
 // The async probe answers false: these suites exercise recording flows,
 // so a format is recordable only when MediaRecorder supports it.
-jest.mock('src/audio/AudioEncoder', () => ({
-	encodeAudioBuffer: jest
-		.fn()
-		.mockResolvedValue(new Blob(['encoded'], { type: 'audio/webm' })),
-	isOfflineEncodingSupported: jest.fn((format: string) => {
-		return ['mp3', 'flac', 'aac', 'webm', 'ogg', 'mp4', 'm4a'].includes(
-			format,
-		);
-	}),
-	probeOfflineEncodingSupport: jest.fn(() => Promise.resolve(false)),
-}));
+jest.mock('src/audio/AudioEncoder', () =>
+	require('../mocks/modules/audioEncoder'),
+);
 
 // Mock WavEncoder
-jest.mock('src/audio/WavEncoder', () => ({
-	assembleWavFromPcmSegmentFiles: jest
-		.fn()
-		.mockResolvedValue(new ArrayBuffer(44)),
-}));
+jest.mock('src/audio/WavEncoder', () => require('../mocks/modules/wavEncoder'));
 
 // Mock PcmStreamRecorder
-jest.mock('src/recording/PcmStreamRecorder', () => ({
-	PcmStreamRecorder: jest.fn().mockImplementation(() => ({
-		channels: 1,
-		sampleRate: 44100,
-		start: jest.fn().mockResolvedValue(undefined),
-		stop: jest.fn().mockResolvedValue(undefined),
-		pause: jest.fn(),
-		resume: jest.fn(),
-	})),
-}));
+jest.mock('src/recording/PcmStreamRecorder', () =>
+	require('../mocks/modules/pcmStreamRecorder'),
+);
 
 installRecordingMediaStubs();
 
@@ -82,50 +58,33 @@ describe('RecordingManager', () => {
 	let consoleErrorSpy: jest.SpyInstance;
 
 	beforeEach(() => {
-		// Reset mocks
-		jest.clearAllMocks();
 		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
-
-		// Create mock App
-		mockApp = createRecordingMockApp();
-
-		// Use default settings
-		mockSettings = { ...DEFAULT_SETTINGS };
-
-		// Status change callback
-		statusChangeCallback = jest.fn();
-
-		// Create manager instance
-		manager = new RecordingManager(
-			mockApp,
-			mockSettings,
-			statusChangeCallback,
-			makeFakeMarkerStore().store,
-		);
-	});
-
-	afterEach(() => {
-		consoleErrorSpy.mockRestore();
+		({
+			manager,
+			app: mockApp,
+			settings: mockSettings,
+			onStatusChange: statusChangeCallback,
+		} = createRecordingSut());
 	});
 
 	describe('constructor', () => {
-		it('should initialize with idle status', () => {
+		it('initializes with idle status', () => {
 			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
 		});
 
-		it('should store the status change callback', () => {
+		it('stores the status change callback', () => {
 			expect(statusChangeCallback).not.toHaveBeenCalled();
 		});
 	});
 
 	describe('getStatus', () => {
-		it('should return Idle initially', () => {
+		it('returns Idle initially', () => {
 			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
 		});
 	});
 
 	describe('updateSettings', () => {
-		it('should update settings reference', () => {
+		it('updates settings reference', () => {
 			const newSettings: AudioRecorderSettings = {
 				...DEFAULT_SETTINGS,
 				filePrefix: 'new-prefix',
@@ -141,39 +100,13 @@ describe('RecordingManager', () => {
 	describe('toggleRecording', () => {
 		beforeEach(() => {
 			// Mock MediaRecorder
-			const mockMediaRecorder = {
-				start: jest.fn(),
-				stop: jest.fn(),
-				pause: jest.fn(),
-				resume: jest.fn(),
-				ondataavailable: null as ((event: BlobEvent) => void) | null,
-				onerror: null as ((event: Event) => void) | null,
-				addEventListener: jest.fn(
-					(event: string, handler: () => void) => {
-						if (event === 'stop') {
-							handler();
-						}
-					},
-				),
-			};
-
-			installMediaRecorder(mockMediaRecorder);
+			makeMediaRecorderDouble();
 
 			// Mock getAudioStreams
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioStreams.mockResolvedValue({
-				streams: [
-					{
-						getTracks: () => [{ stop: jest.fn() }],
-					},
-				],
-				trackOrder: [],
-			});
+			stubAudioStreams();
 		});
 
-		it('should start recording when idle', async () => {
+		it('starts recording when idle', async () => {
 			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
 
 			await manager.toggleRecording();
@@ -185,7 +118,7 @@ describe('RecordingManager', () => {
 			);
 		});
 
-		it('should stop recording when recording', async () => {
+		it('stops recording when recording', async () => {
 			// First start
 			await manager.toggleRecording();
 			expect(manager.getStatus()).toBe(RecordingStatus.Recording);
@@ -197,56 +130,22 @@ describe('RecordingManager', () => {
 	});
 
 	describe('togglePauseResume', () => {
-		let mockMediaRecorder: {
-			start: jest.Mock;
-			stop: jest.Mock;
-			pause: jest.Mock;
-			resume: jest.Mock;
-			ondataavailable: ((event: BlobEvent) => void) | null;
-			onerror: ((event: Event) => void) | null;
-			addEventListener: jest.Mock;
-		};
+		let mockMediaRecorder: MockMediaRecorder;
 
 		beforeEach(() => {
-			mockMediaRecorder = {
-				start: jest.fn(),
-				stop: jest.fn(),
-				pause: jest.fn(),
-				resume: jest.fn(),
-				ondataavailable: null,
-				onerror: null,
-				addEventListener: jest.fn(
-					(event: string, handler: () => void) => {
-						if (event === 'stop') {
-							handler();
-						}
-					},
-				),
-			};
+			mockMediaRecorder = makeMediaRecorderDouble();
 
-			installMediaRecorder(mockMediaRecorder);
-
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioStreams.mockResolvedValue({
-				streams: [
-					{
-						getTracks: () => [{ stop: jest.fn() }],
-					},
-				],
-				trackOrder: [],
-			});
+			stubAudioStreams();
 		});
 
-		it('should do nothing when idle', () => {
+		it('does nothing when idle', () => {
 			manager.togglePauseResume();
 
 			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
 			expect(mockMediaRecorder.pause).not.toHaveBeenCalled();
 		});
 
-		it('should pause when recording', async () => {
+		it('pauses when recording', async () => {
 			await manager.toggleRecording();
 			expect(manager.getStatus()).toBe(RecordingStatus.Recording);
 
@@ -259,7 +158,7 @@ describe('RecordingManager', () => {
 			);
 		});
 
-		it('should resume when paused', async () => {
+		it('resumes when paused', async () => {
 			await manager.toggleRecording();
 			manager.togglePauseResume(); // Pause
 			expect(manager.getStatus()).toBe(RecordingStatus.Paused);
@@ -279,31 +178,16 @@ describe('RecordingManager', () => {
 			jest.useRealTimers();
 		});
 
-		it('should finish stopping when the stop event never fires', async () => {
-			const { Platform } = jest.requireMock('obsidian');
-			Platform.isMobile = false;
-			Platform.isMobileApp = false;
+		it('finishes stopping when the stop event never fires', async () => {
+			useDesktopPlatform();
 
 			// Recorder whose stop event never arrives (dead audio subsystem)
-			const mockMediaRecorder = {
-				start: jest.fn(),
-				stop: jest.fn(),
-				pause: jest.fn(),
-				resume: jest.fn(),
+			makeMediaRecorderDouble({
 				state: 'recording',
-				ondataavailable: null as ((event: BlobEvent) => void) | null,
-				onerror: null as ((event: Event) => void) | null,
-				addEventListener: jest.fn(),
-			};
-			installMediaRecorder(mockMediaRecorder);
-
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioStreams.mockResolvedValue({
-				streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
-				trackOrder: [],
+				stopFiresImmediately: false,
 			});
+
+			stubAudioStreams();
 
 			await manager.startRecording();
 
@@ -318,32 +202,18 @@ describe('RecordingManager', () => {
 			);
 		});
 
-		it('should resolve when stop() throws on a racing recorder', async () => {
-			const { Platform } = jest.requireMock('obsidian');
-			Platform.isMobile = false;
-			Platform.isMobileApp = false;
+		it('resolves when stop() throws on a racing recorder', async () => {
+			useDesktopPlatform();
 
-			const mockMediaRecorder = {
-				start: jest.fn(),
+			makeMediaRecorderDouble({
+				state: 'recording',
+				stopFiresImmediately: false,
 				stop: jest.fn(() => {
 					throw new Error('InvalidStateError');
 				}),
-				pause: jest.fn(),
-				resume: jest.fn(),
-				state: 'recording',
-				ondataavailable: null as ((event: BlobEvent) => void) | null,
-				onerror: null as ((event: Event) => void) | null,
-				addEventListener: jest.fn(),
-			};
-			installMediaRecorder(mockMediaRecorder);
-
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioStreams.mockResolvedValue({
-				streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
-				trackOrder: [],
 			});
+
+			stubAudioStreams();
 
 			await manager.startRecording();
 			await manager.stopRecording();
@@ -353,20 +223,16 @@ describe('RecordingManager', () => {
 	});
 
 	describe('cleanup', () => {
-		it('should reset all internal state', () => {
+		it('resets all internal state', () => {
 			manager.cleanup();
 
 			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
 		});
 
-		it('should stop all streams', () => {
-			const { stopAllStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-
+		it('stops all streams', () => {
 			manager.cleanup();
 
-			expect(stopAllStreams).toHaveBeenCalled();
+			expect(jest.mocked(stopAllStreams)).toHaveBeenCalled();
 		});
 	});
 
@@ -376,44 +242,18 @@ describe('RecordingManager', () => {
 		beforeEach(() => {
 			mockStopTrack = jest.fn();
 
-			const mockMediaRecorder = {
-				start: jest.fn(),
-				stop: jest.fn(),
-				pause: jest.fn(),
-				resume: jest.fn(),
-				ondataavailable: null as ((event: BlobEvent) => void) | null,
-				onerror: null as ((event: Event) => void) | null,
-				addEventListener: jest.fn(
-					(event: string, handler: () => void) => {
-						if (event === 'stop') {
-							handler();
-						}
-					},
-				),
-			};
+			makeMediaRecorderDouble();
 
-			installMediaRecorder(mockMediaRecorder);
-
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioStreams.mockResolvedValue({
-				streams: [
-					{
-						getTracks: () => [{ stop: mockStopTrack }],
-					},
-				],
-				trackOrder: [],
-			});
+			stubAudioStreams({ stopTrack: mockStopTrack });
 		});
 
-		it('should reset status to Idle even when save fails', async () => {
+		it('resets status to Idle even when save fails', async () => {
 			// Start recording first
 			await manager.startRecording();
 			expect(manager.getStatus()).toBe(RecordingStatus.Recording);
 
 			// Mock vault to throw error during save
-			(mockApp.vault.adapter.rename as jest.Mock).mockRejectedValue(
+			jest.mocked(mockApp.vault.adapter.rename).mockRejectedValue(
 				new Error('Save failed'),
 			);
 
@@ -428,25 +268,21 @@ describe('RecordingManager', () => {
 			);
 		});
 
-		it('should stop streams even when save fails', async () => {
-			const { stopAllStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-
+		it('stops streams even when save fails', async () => {
 			await manager.startRecording();
 
 			// Mock vault to throw error during save
-			(mockApp.vault.adapter.rename as jest.Mock).mockRejectedValue(
+			jest.mocked(mockApp.vault.adapter.rename).mockRejectedValue(
 				new Error('Save failed'),
 			);
 
 			await manager.stopRecording();
 
 			// Streams should still be stopped
-			expect(stopAllStreams).toHaveBeenCalled();
+			expect(jest.mocked(stopAllStreams)).toHaveBeenCalled();
 		});
 
-		it('should clear all arrays after stop', async () => {
+		it('clears all arrays after stop', async () => {
 			await manager.startRecording();
 			await manager.stopRecording();
 
@@ -457,47 +293,20 @@ describe('RecordingManager', () => {
 	});
 
 	describe('startRecording error handling', () => {
-		it('should configure MediaRecorder with bitrate from settings', async () => {
+		it('configures MediaRecorder with bitrate from settings', async () => {
 			mockSettings = {
 				...DEFAULT_SETTINGS,
 				bitrate: 192000,
 			};
-			manager = new RecordingManager(
+			manager = recordingManagerOver(
 				mockApp,
 				mockSettings,
 				statusChangeCallback,
-				makeFakeMarkerStore().store,
 			);
 
-			const mockMediaRecorder = {
-				start: jest.fn(),
-				stop: jest.fn(),
-				pause: jest.fn(),
-				resume: jest.fn(),
-				ondataavailable: null as ((event: BlobEvent) => void) | null,
-				onerror: null as ((event: Event) => void) | null,
-				addEventListener: jest.fn(
-					(event: string, handler: () => void) => {
-						if (event === 'stop') {
-							handler();
-						}
-					},
-				),
-			};
+			makeMediaRecorderDouble();
 
-			installMediaRecorder(mockMediaRecorder);
-
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioStreams.mockResolvedValue({
-				streams: [
-					{
-						getTracks: () => [{ stop: jest.fn() }],
-					},
-				],
-				trackOrder: [],
-			});
+			stubAudioStreams();
 
 			await manager.startRecording();
 
@@ -513,32 +322,12 @@ describe('RecordingManager', () => {
 			// iOS profile: only audio/mp4 is recordable and no offline
 			// encoder works - the configured webm cannot be produced, so
 			// the session records mp4 instead and tells the user
-			const mockMediaRecorder = {
-				start: jest.fn(),
-				stop: jest.fn(),
-				pause: jest.fn(),
-				resume: jest.fn(),
-				ondataavailable: null as ((event: BlobEvent) => void) | null,
-				onerror: null as ((event: Event) => void) | null,
-				addEventListener: jest.fn(
-					(event: string, handler: () => void) => {
-						if (event === 'stop') {
-							handler();
-						}
-					},
-				),
-			};
+			const mockMediaRecorder = makeMediaRecorderDouble();
 			installMediaRecorder(
 				mockMediaRecorder,
 				(type) => type === 'audio/mp4',
 			);
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioStreams.mockResolvedValue({
-				streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
-				trackOrder: [],
-			});
+			stubAudioStreams();
 
 			await manager.startRecording();
 
@@ -547,10 +336,9 @@ describe('RecordingManager', () => {
 				expect.anything(),
 				expect.objectContaining({ mimeType: 'audio/mp4' }),
 			);
-			const { Notice } = jest.requireMock('obsidian');
 			expect(
-				(Notice as jest.Mock).mock.calls.some((call) =>
-					String(call[0]).includes('Recording in MP4 instead'),
+				noticeMessages().some((message) =>
+					message.includes('Recording in MP4 instead'),
 				),
 			).toBe(true);
 
@@ -577,15 +365,14 @@ describe('RecordingManager', () => {
 			}
 		});
 
-		it('should handle stream acquisition error', async () => {
+		it('handles stream acquisition error', async () => {
 			(global as Record<string, unknown>).MediaRecorder = {
 				isTypeSupported: jest.fn().mockReturnValue(true),
 			};
 
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
+			jest.mocked(getAudioStreams).mockRejectedValue(
+				new Error('Permission denied'),
 			);
-			getAudioStreams.mockRejectedValue(new Error('Permission denied'));
 
 			await manager.startRecording();
 
@@ -595,38 +382,12 @@ describe('RecordingManager', () => {
 
 	describe('lifecycle transitions', () => {
 		beforeEach(() => {
-			const mockMediaRecorder = {
-				start: jest.fn(),
-				stop: jest.fn(),
-				pause: jest.fn(),
-				resume: jest.fn(),
-				ondataavailable: null as ((event: BlobEvent) => void) | null,
-				onerror: null as ((event: Event) => void) | null,
-				addEventListener: jest.fn(
-					(event: string, handler: () => void) => {
-						if (event === 'stop') {
-							handler();
-						}
-					},
-				),
-			};
+			makeMediaRecorderDouble();
 
-			installMediaRecorder(mockMediaRecorder);
-
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioStreams.mockResolvedValue({
-				streams: [
-					{
-						getTracks: () => [{ stop: jest.fn() }],
-					},
-				],
-				trackOrder: [],
-			});
+			stubAudioStreams();
 		});
 
-		it('should follow full lifecycle: idle -> recording -> paused -> recording -> idle', async () => {
+		it('follows full lifecycle: idle -> recording -> paused -> recording -> idle', async () => {
 			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
 
 			// Start recording
@@ -646,7 +407,7 @@ describe('RecordingManager', () => {
 			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
 		});
 
-		it('should call onStatusChange for each transition', async () => {
+		it('calls onStatusChange for each transition', async () => {
 			await manager.toggleRecording();
 			manager.togglePauseResume();
 			manager.togglePauseResume();

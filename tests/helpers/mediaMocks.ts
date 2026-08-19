@@ -1,156 +1,18 @@
 /**
- * Media-API doubles (MediaRecorder, AudioContext, getUserMedia) with
- * paired cleanup, so suites stop hand-rolling globals and leaking them
- * into each other.
+ * Media-API doubles with paired cleanup, so suites stop hand-rolling globals
+ * and leaking them into each other.
+ *
+ * Covers the HTMLAudioElement and object URLs. It once also carried
+ * MediaRecorder, AudioContext, and getUserMedia doubles, which no test ever
+ * used - the suites that needed them had installed their own before these were
+ * written. Removed rather than left as a second way to do it.
  * @module tests/helpers/mediaMocks
  */
-
-/** A MediaRecorder double exposing its event hooks for tests. */
-export interface MediaRecorderDouble {
-	start: jest.Mock;
-	stop: jest.Mock;
-	pause: jest.Mock;
-	resume: jest.Mock;
-	state: string;
-	mimeType: string;
-	ondataavailable: ((event: { data: Blob }) => void) | null;
-	onstop: (() => void) | null;
-	onerror: ((event: unknown) => void) | null;
-}
 
 /** Handle returned by the install helpers; restore() undoes the global. */
 export interface InstalledMock<T> {
 	instances: T[];
 	restore: () => void;
-}
-
-/**
- * Installs a MediaRecorder double on globalThis. Each construction is
- * captured in `instances`; stop() fires onstop on the next microtask.
- * @param options - Optional overrides (e.g. isTypeSupported)
- * @returns Handle with created instances and a restore function
- */
-export function installMediaRecorderMock(
-	options: { isTypeSupported?: (type: string) => boolean } = {},
-): InstalledMock<MediaRecorderDouble> {
-	const previous = (globalThis as { MediaRecorder?: unknown }).MediaRecorder;
-	const instances: MediaRecorderDouble[] = [];
-
-	const MediaRecorderMock = jest.fn(function (
-		this: MediaRecorderDouble,
-		_stream: MediaStream,
-		init?: { mimeType?: string },
-	) {
-		this.state = 'inactive';
-		this.mimeType = init?.mimeType ?? 'audio/webm';
-		this.ondataavailable = null;
-		this.onstop = null;
-		this.onerror = null;
-		this.start = jest.fn(() => {
-			this.state = 'recording';
-		});
-		this.pause = jest.fn(() => {
-			this.state = 'paused';
-		});
-		this.resume = jest.fn(() => {
-			this.state = 'recording';
-		});
-		this.stop = jest.fn(() => {
-			this.state = 'inactive';
-			queueMicrotask(() => this.onstop?.());
-		});
-		instances.push(this);
-	}) as unknown as typeof MediaRecorder & {
-		isTypeSupported: jest.Mock;
-	};
-	MediaRecorderMock.isTypeSupported = jest.fn(
-		options.isTypeSupported ?? (() => true),
-	);
-
-	(globalThis as { MediaRecorder?: unknown }).MediaRecorder =
-		MediaRecorderMock;
-
-	return {
-		instances,
-		restore: () => {
-			(globalThis as { MediaRecorder?: unknown }).MediaRecorder =
-				previous;
-		},
-	};
-}
-
-/** An AudioContext double exposing the commonly probed surface. */
-export interface AudioContextDouble {
-	sampleRate: number;
-	state: string;
-	close: jest.Mock;
-	decodeAudioData: jest.Mock;
-	createMediaStreamSource: jest.Mock;
-	createGain: jest.Mock;
-	createAnalyser: jest.Mock;
-	destination: object;
-	audioWorklet: { addModule: jest.Mock };
-}
-
-/**
- * Installs an AudioContext double on globalThis (and window when
- * present).
- * @param options - Optional sample rate and decode result factory
- * @returns Handle with created instances and a restore function
- */
-export function installAudioContextMock(
-	options: {
-		sampleRate?: number;
-		decodeAudioData?: jest.Mock;
-	} = {},
-): InstalledMock<AudioContextDouble> {
-	const previous = (globalThis as { AudioContext?: unknown }).AudioContext;
-	const instances: AudioContextDouble[] = [];
-
-	const AudioContextMock = jest.fn(function (
-		this: AudioContextDouble,
-		init?: { sampleRate?: number },
-	) {
-		this.sampleRate = init?.sampleRate ?? options.sampleRate ?? 44100;
-		this.state = 'running';
-		this.close = jest.fn(() => {
-			this.state = 'closed';
-			return Promise.resolve();
-		});
-		this.decodeAudioData =
-			options.decodeAudioData ??
-			jest.fn().mockRejectedValue(new Error('decode not stubbed'));
-		this.createMediaStreamSource = jest.fn(() => ({
-			connect: jest.fn(),
-			disconnect: jest.fn(),
-			channelCount: 1,
-		}));
-		this.createGain = jest.fn(() => ({
-			gain: { value: 1 },
-			connect: jest.fn(),
-			disconnect: jest.fn(),
-		}));
-		this.createAnalyser = jest.fn(() => ({
-			fftSize: 2048,
-			connect: jest.fn(),
-			disconnect: jest.fn(),
-			getFloatTimeDomainData: jest.fn(),
-		}));
-		this.destination = {};
-		this.audioWorklet = {
-			addModule: jest.fn().mockResolvedValue(undefined),
-		};
-		instances.push(this);
-	});
-
-	(globalThis as { AudioContext?: unknown }).AudioContext = AudioContextMock;
-
-	return {
-		instances,
-		restore: () => {
-			(globalThis as { AudioContext?: unknown }).AudioContext = previous;
-		},
-	};
 }
 
 /**
@@ -294,37 +156,151 @@ export function installObjectUrlMock(): InstalledMock<ObjectUrlDouble> {
 }
 
 /**
- * Installs navigator.mediaDevices.getUserMedia returning the given
- * stream (or a minimal stub).
- * @param stream - Stream to resolve with; a stub is built when omitted
- * @returns Handle whose single instance is the getUserMedia mock
+ * Builds a `MediaDeviceInfo` the way the browser reports one.
+ *
+ * Eight suites hand-rolled this five-field literal, always with the same
+ * `toJSON` stub the DOM type demands and no test ever reads. Naming the two
+ * fields that matter - the id and the label - keeps a device list readable.
+ * @param deviceId - Device id the browser reports
+ * @param label - Human-readable name, defaults to the id
+ * @param kind - Device kind, defaulting to a microphone
+ * @returns The device descriptor
  */
-export function installGetUserMediaMock(
-	stream?: MediaStream,
-): InstalledMock<jest.Mock> {
-	const resolved =
-		stream ??
-		({
-			getTracks: () => [{ stop: jest.fn() }],
-			getAudioTracks: () => [{ stop: jest.fn() }],
-		} as unknown as MediaStream);
-	const getUserMedia = jest.fn().mockResolvedValue(resolved);
-	const previous = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
-	Object.defineProperty(navigator, 'mediaDevices', {
-		value: {
-			getUserMedia,
-			enumerateDevices: jest.fn().mockResolvedValue([]),
-		},
-		configurable: true,
-	});
+export function mediaDevice(
+	deviceId: string,
+	label: string = deviceId,
+	kind: MediaDeviceKind = 'audioinput',
+): MediaDeviceInfo {
 	return {
-		instances: [getUserMedia],
-		restore: () => {
-			if (previous) {
-				Object.defineProperty(navigator, 'mediaDevices', previous);
-			} else {
-				delete (navigator as { mediaDevices?: unknown }).mediaDevices;
-			}
+		deviceId,
+		label,
+		kind,
+		groupId: `group-${deviceId}`,
+		toJSON: () => ({}),
+	};
+}
+
+/** The device id the browser uses for the system default input. */
+export const DEFAULT_DEVICE_ID = 'default';
+
+/**
+ * The stock device list: a system default microphone plus a named second one.
+ * @returns Two audio inputs, the first of them the system default
+ */
+export function defaultDeviceList(): MediaDeviceInfo[] {
+	return [
+		mediaDevice(DEFAULT_DEVICE_ID, 'Default - Microphone'),
+		mediaDevice('device1', 'Microphone 1'),
+	];
+}
+
+/** A real audio element whose playback state a test drives. */
+export interface ControlledAudio {
+	/** The element itself, ready to hand to the code under test. */
+	audio: HTMLAudioElement;
+	play: jest.SpyInstance<Promise<void>, []>;
+	pause: jest.SpyInstance<void, []>;
+	load: jest.SpyInstance<void, []>;
+	/** How many times `new Audio()` was called, for a SUT that builds its own. */
+	constructions: () => number;
+	/** Moves the playhead and fires the timeupdate that follows it. */
+	advanceTo: (seconds: number) => void;
+	/** Reports a new length and fires durationchange, as a stream does. */
+	setDuration: (seconds: number) => void;
+	/** Sets readyState; 1 is "metadata is in", 0 is "nothing yet". */
+	setReadyState: (value: number) => void;
+	/** Marks metadata as arrived and fires loadedmetadata. */
+	loadMetadata: () => void;
+	/** Makes play() reject, the way a browser blocking autoplay does. */
+	blockAutoplay: () => void;
+}
+
+/** What a suite varies about the element it plays through. */
+export interface ControlledAudioOptions {
+	/** Length the element reports. */
+	duration?: number;
+	/** Initial readyState; 0 models an element whose metadata has not landed. */
+	readyState?: number;
+	/** Whether `new Audio()` should hand back this element. */
+	asConstructor?: boolean;
+}
+
+/**
+ * Builds an audio element that actually behaves like one.
+ *
+ * jsdom implements no media: `play()` does nothing, `paused` never changes,
+ * `duration` is NaN. Five suites each grew the same answer to that - property
+ * stubs over the element plus spies that flip them and fire the matching event
+ * - which is one double, not five.
+ *
+ * Nothing needs restoring afterwards: the element is built per call and thrown
+ * away, and the one global touched is the Audio constructor, which the
+ * projects' `restoreMocks` puts back.
+ * @param options - Length, readiness, and whether it stands in for `new Audio`
+ * @returns The element and the controls a test drives it with
+ */
+export function installControlledAudio(
+	options: ControlledAudioOptions = {},
+): ControlledAudio {
+	const { duration = 120, readyState = 1, asConstructor = true } = options;
+	const audio = document.createElement('audio');
+	let paused = true;
+	let currentTime = 0;
+	let ready = readyState;
+	let length = duration;
+	let autoplayBlocked = false;
+	Object.defineProperties(audio, {
+		paused: { configurable: true, get: () => paused },
+		currentTime: {
+			configurable: true,
+			get: () => currentTime,
+			set: (value: number) => {
+				currentTime = value;
+			},
+		},
+		duration: { configurable: true, get: () => length },
+		readyState: { configurable: true, get: () => ready },
+	});
+	const play = jest.spyOn(audio, 'play').mockImplementation(() => {
+		if (autoplayBlocked) {
+			return Promise.reject(new Error('autoplay blocked'));
+		}
+		paused = false;
+		audio.dispatchEvent(new Event('play'));
+		return Promise.resolve();
+	});
+	const pause = jest.spyOn(audio, 'pause').mockImplementation(() => {
+		paused = true;
+		audio.dispatchEvent(new Event('pause'));
+	});
+	const load = jest.spyOn(audio, 'load').mockImplementation(() => undefined);
+	const factory = asConstructor
+		? jest.spyOn(globalThis, 'Audio').mockImplementation(() => audio)
+		: null;
+
+	return {
+		audio,
+		play,
+		pause,
+		load,
+		constructions: () => factory?.mock.calls.length ?? 0,
+		advanceTo: (seconds) => {
+			currentTime = seconds;
+			audio.dispatchEvent(new Event('timeupdate'));
+		},
+		setDuration: (seconds) => {
+			length = seconds;
+			audio.dispatchEvent(new Event('durationchange'));
+		},
+		setReadyState: (value) => {
+			ready = value;
+		},
+		loadMetadata: () => {
+			ready = 1;
+			audio.dispatchEvent(new Event('loadedmetadata'));
+		},
+		blockAutoplay: () => {
+			autoplayBlocked = true;
 		},
 	};
 }

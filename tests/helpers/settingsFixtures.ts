@@ -1,0 +1,141 @@
+/**
+ * Settings fixtures shared by the suites that exercise merging, validation, and
+ * serialisation.
+ *
+ * The fully populated object is long because the settings schema is long, and
+ * that length used to sit inside a single 141-line test where it buried the one
+ * thing the test asserted. Here it is a fixture with a name.
+ * @module tests/helpers/settingsFixtures
+ */
+
+import { MODEL_SEED_GENERATION } from 'src/constants';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
+
+/**
+ * Every setting set to something other than its default, so a merge that drops
+ * or overwrites any field is visible.
+ * @returns A settings object with no platform branch, as a user's stored data
+ */
+export function fullyPopulatedSettings(): Omit<
+	AudioRecorderSettings,
+	'perPlatform'
+> {
+	return {
+		recordingFormat: 'mp3',
+		saveFolder: '/recordings',
+		saveNearActiveFile: true,
+		activeFileSubfolder: 'Audio',
+		filePrefix: 'audio',
+		startStopHotkey: 'Ctrl+R',
+		pauseHotkey: 'Ctrl+P',
+		resumeHotkey: 'Ctrl+E',
+		audioDeviceId: 'test-device',
+		sampleRate: 22050,
+		recordingChannels: 'mono-left',
+		bitrate: 64000,
+		enableMultiTrack: true,
+		maxTracks: 4,
+		outputMode: 'multiple',
+		useSourceNamesForTracks: false,
+		trackAudioSources: new Map([
+			[1, { deviceId: 'dev1', channelMode: 'source' as const }],
+			[2, { deviceId: 'dev2', channelMode: 'mono-left' as const }],
+		]),
+		debug: true,
+		insertAtOriginalPosition: true,
+		deleteSourceAfterConversion: false,
+		conversionLinkAction: 'after',
+		autoSplitEnabled: true,
+		splitChunkMinutes: 30,
+		splitPartSuffix: 'chunk',
+		deleteSourceAfterSplit: true,
+		enhancedPlayerEnabled: true,
+		playerShowWaveform: false,
+		playerEnableMarkers: false,
+		transcriptionEnabled: true,
+		transcribeOnSave: true,
+		transcriptionShowCostEstimates: true,
+		transcriptionProvider: 'local-whisper',
+		transcriptionLanguage: 'ru',
+		transcriptionDiarize: true,
+		transcriptionWordTimestamps: true,
+		transcriptionAdvancedSettingsEnabled: true,
+		transcriptionDictionaryProfiles: [
+			{ id: 'p1', name: 'General', terms: 'Foo\nBar' },
+		],
+		transcriptionDictionaryProfileId: 'p1',
+		transcriptionAdvancedEnabled: true,
+		advancedSecondPassMinRatio: 0.7,
+		transcriptionSpeakerRenameEnabled: false,
+		transcriptionAutoChaptersEnabled: true,
+		transcriptionAutoChaptersOnTranscribe: true,
+		transcriptionChapterPromptProfiles: [
+			{
+				id: 'c1',
+				name: 'Agenda',
+				prompt: 'Split by agenda item.',
+			},
+		],
+		transcriptionChapterPromptProfileId: 'c1',
+		transcriptionSpeakerProfiles: [],
+		transcriptionSpeakerProfileId: '',
+		transcriptionChunkMb: 10,
+		transcriptionTimeoutMinutes: 15,
+		whisperApiBaseUrl: 'https://api.groq.com/openai/v1',
+		whisperApiKey: 'sk-test',
+		whisperApiModel: 'whisper-large-v3',
+		whisperApiModels: ['whisper-large-v3', 'whisper-1'],
+		deepgramBaseUrl: 'https://api.deepgram.com/v1',
+		deepgramApiKey: 'dg-test',
+		deepgramModel: 'nova-3',
+		deepgramModels: ['nova-3', 'nova-2'],
+		geminiBaseUrl: 'https://generativelanguage.googleapis.com',
+		geminiApiKey: 'gm-test',
+		geminiModel: 'gemini-2.5-flash',
+		geminiModels: ['gemini-2.5-flash', 'gemini-2.5-pro'],
+		localWhisperBinaryPath: '/usr/bin/whisper',
+		localWhisperModelPath: '/models/ggml.bin',
+		localWhisperExtraArgs: '-t 4',
+		transcriptDestination: 'both',
+		transcriptFileFormat: 'srt',
+		transcriptIncludeTimestamps: false,
+		transcriptTimestampLinks: false,
+		transcriptIncludeSpeakers: false,
+		transcriptMergeConsecutiveSpeaker: false,
+		transcriptTimestampFormat: '({time})',
+		transcriptSpeakerFormat: '{speaker}:',
+		transcriptLineFormat: '{speaker} {timestamp} {text}',
+		transcriptHeading: '# T',
+		llmPostProcessEnabled: true,
+		llmPostProcessTask: 'summary',
+		llmCleanupPrompt: 'cleanup base',
+		llmSummaryPrompt: 'summary base',
+		llmCustomInstruction: 'do it',
+		llmProvider: 'anthropic',
+		chaptersLlmProvider: 'anthropic',
+		advancedLlmProvider: 'anthropic',
+		anthropicBaseUrl: 'https://api.anthropic.com/v1',
+		anthropicApiKey: 'ak-test',
+		llmOpenAiModel: 'gpt-4o',
+		llmOpenAiModels: ['gpt-4o', 'gpt-4o-mini'],
+		llmAnthropicModel: 'claude-opus-4-8',
+		llmAnthropicModels: ['claude-opus-4-8', 'claude-sonnet-4-6'],
+		llmOpenAiMaxTokens: 2048,
+		llmAnthropicMaxTokens: 2048,
+		geminiMaxTokens: 2048,
+		modelSeedGeneration: MODEL_SEED_GENERATION,
+		inputNoiseSuppression: false,
+		inputEchoCancellation: false,
+		inputAutoGainControl: false,
+		showInputLevelMeter: false,
+		detectSilentChannelOnSave: false,
+		showRecordingStats: false,
+		mobileRecordingBanner: false,
+		cleanupHighPassEnabled: false,
+		cleanupHighPassHz: 100,
+		cleanupNoiseGateEnabled: true,
+		cleanupNoiseGateThresholdDb: -45,
+		cleanupLevelingEnabled: true,
+		cleanupLevelingMakeupDb: 9,
+	};
+}

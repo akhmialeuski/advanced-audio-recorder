@@ -33,10 +33,6 @@ beforeEach(() => {
 	warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 });
 
-afterEach(() => {
-	warnSpy.mockRestore();
-});
-
 describe('mapGeminiResponse', () => {
 	it('maps segments with speaker labels when diarizing', () => {
 		const result = mapGeminiResponse(

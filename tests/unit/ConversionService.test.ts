@@ -7,20 +7,15 @@
 
 import { ConversionService } from 'src/recording/ConversionService';
 import type { ConversionRequest } from 'src/recording/ConversionService';
-import { TFile, App } from 'obsidian';
-
-jest.mock('obsidian', () => ({
-	App: jest.fn(),
-	Notice: jest.fn(),
-	TFile: class {
-		path = '';
-		name = '';
-		basename = '';
-		extension = '';
-		parent: { path: string } | null = null;
-	},
-	normalizePath: (path: string) => path.replace(/\\/g, '/'),
-}));
+import { App, TFile } from 'obsidian';
+import { noticeMessages } from '../mocks/obsidian';
+import { createMockApp } from '../helpers/createApp';
+import {
+	convertBlobToFormatBuffer,
+	decodeAudioBlob,
+} from 'src/audio/AudioFormatConverter';
+import { encodeAudioBuffer } from 'src/audio/AudioEncoder';
+import { downmixAudioBuffer } from 'src/audio/downmix';
 
 jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest
@@ -76,14 +71,10 @@ describe('ConversionService', () => {
 		...overrides,
 	});
 
-	const getNotices = (): string[] => {
-		const { Notice } = jest.requireMock('obsidian');
-		return (Notice as jest.Mock).mock.calls.map((call) => String(call[0]));
-	};
+	const getNotices = (): string[] => noticeMessages();
 
 	beforeEach(() => {
-		jest.clearAllMocks();
-		mockApp = {
+		mockApp = createMockApp({
 			vault: {
 				adapter: {
 					exists: jest.fn().mockResolvedValue(false),
@@ -100,11 +91,11 @@ describe('ConversionService', () => {
 			fileManager: {
 				trashFile: jest.fn().mockResolvedValue(undefined),
 			},
-		} as unknown as App;
+		}).app;
 		service = new ConversionService(mockApp);
 	});
 
-	it('should convert through the streaming pipeline and complete', async () => {
+	it('converts through the streaming pipeline and complete', async () => {
 		const outcome = await service.convert(createRequest(), jest.fn());
 
 		expect(outcome).toEqual({
@@ -118,14 +109,7 @@ describe('ConversionService', () => {
 		);
 	});
 
-	it('should use the decode-and-encode path for WAV targets', async () => {
-		const { decodeAudioBlob } = jest.requireMock(
-			'src/audio/AudioFormatConverter',
-		);
-		const { encodeAudioBuffer } = jest.requireMock(
-			'src/audio/AudioEncoder',
-		);
-
+	it('uses the decode-and-encode path for WAV targets', async () => {
 		await service.convert(
 			createRequest({
 				sourceFile: createSourceFile('webm'),
@@ -134,17 +118,15 @@ describe('ConversionService', () => {
 			jest.fn(),
 		);
 
-		expect(decodeAudioBlob).toHaveBeenCalled();
-		expect(encodeAudioBuffer).toHaveBeenCalledWith(
+		expect(jest.mocked(decodeAudioBlob)).toHaveBeenCalled();
+		expect(jest.mocked(encodeAudioBuffer)).toHaveBeenCalledWith(
 			expect.anything(),
 			{ format: 'wav', bitrate: 128000 },
 			expect.any(Function),
 		);
 	});
 
-	it('should downmix on the WAV decode path when a mono mode is requested', async () => {
-		const { downmixAudioBuffer } = jest.requireMock('src/audio/downmix');
-
+	it('downmixes on the WAV decode path when a mono mode is requested', async () => {
 		await service.convert(
 			createRequest({
 				sourceFile: createSourceFile('webm'),
@@ -154,23 +136,19 @@ describe('ConversionService', () => {
 			jest.fn(),
 		);
 
-		expect(downmixAudioBuffer).toHaveBeenCalledWith(
+		expect(jest.mocked(downmixAudioBuffer)).toHaveBeenCalledWith(
 			expect.anything(),
 			'mono-left',
 		);
 	});
 
-	it('should pass the channel mode to the streaming conversion', async () => {
-		const { convertBlobToFormatBuffer } = jest.requireMock(
-			'src/audio/AudioFormatConverter',
-		);
-
+	it('passes the channel mode to the streaming conversion', async () => {
 		await service.convert(
 			createRequest({ channelMode: 'mono-mix' }),
 			jest.fn(),
 		);
 
-		expect(convertBlobToFormatBuffer).toHaveBeenCalledWith(
+		expect(jest.mocked(convertBlobToFormatBuffer)).toHaveBeenCalledWith(
 			expect.any(Blob),
 			'webm',
 			128000,
@@ -179,7 +157,7 @@ describe('ConversionService', () => {
 		);
 	});
 
-	it('should refuse a same-format conversion without a mono mode', async () => {
+	it('refuses a same-format conversion without a mono mode', async () => {
 		const outcome = await service.convert(
 			createRequest({ targetFormat: 'wav' }),
 			jest.fn(),
@@ -194,7 +172,7 @@ describe('ConversionService', () => {
 		).toBe(true);
 	});
 
-	it('should write a -mono file for a same-format mono downmix', async () => {
+	it('writes a -mono file for a same-format mono downmix', async () => {
 		const outcome = await service.convert(
 			createRequest({ targetFormat: 'wav', channelMode: 'mono-left' }),
 			jest.fn(),
@@ -211,7 +189,7 @@ describe('ConversionService', () => {
 		);
 	});
 
-	it('should treat an uppercase source extension as the same format', async () => {
+	it('treats an uppercase source extension as the same format', async () => {
 		// A .WAV source converting to wav differs from the source path
 		// only in case - still the same format, so it must get the
 		// -mono name instead of colliding on Windows or creating a
@@ -232,7 +210,7 @@ describe('ConversionService', () => {
 		});
 	});
 
-	it('should refuse an uppercase same-format conversion without a mono mode', async () => {
+	it('refuses an uppercase same-format conversion without a mono mode', async () => {
 		const outcome = await service.convert(
 			createRequest({
 				sourceFile: createSourceFile('WAV'),
@@ -249,8 +227,8 @@ describe('ConversionService', () => {
 		).toBe(true);
 	});
 
-	it('should abort when the target file already exists', async () => {
-		(mockApp.vault.adapter.exists as jest.Mock).mockResolvedValue(true);
+	it('aborts when the target file already exists', async () => {
+		jest.mocked(mockApp.vault.adapter.exists).mockResolvedValue(true);
 
 		const outcome = await service.convert(createRequest(), jest.fn());
 
@@ -261,8 +239,8 @@ describe('ConversionService', () => {
 		).toBe(true);
 	});
 
-	it('should abort with a notice when the pipeline fails', async () => {
-		(mockApp.vault.adapter.readBinary as jest.Mock).mockRejectedValue(
+	it('aborts with a notice when the pipeline fails', async () => {
+		jest.mocked(mockApp.vault.adapter.readBinary).mockRejectedValue(
 			new Error('missing'),
 		);
 		const onProgress = jest.fn();
@@ -278,8 +256,8 @@ describe('ConversionService', () => {
 		).toBe(true);
 	});
 
-	it('should report partial success when the source cannot be deleted', async () => {
-		(mockApp.fileManager.trashFile as jest.Mock).mockRejectedValue(
+	it('reports partial success when the source cannot be deleted', async () => {
+		jest.mocked(mockApp.fileManager.trashFile).mockRejectedValue(
 			new Error('locked'),
 		);
 
@@ -290,4 +268,49 @@ describe('ConversionService', () => {
 
 		expect(outcome).toEqual({ status: 'partial' });
 	});
+
+	it.each([
+		{
+			name: 'encoding a WAV target',
+			request: {
+				sourceFile: createSourceFile('webm'),
+				targetFormat: 'wav' as const,
+			},
+			collaborator: (): jest.Mock => jest.mocked(encodeAudioBuffer),
+			reportArg: 2,
+			expected: 'Encoding... 40%',
+		},
+		{
+			name: 'streaming a compressed target',
+			request: {},
+			collaborator: (): jest.Mock =>
+				jest.mocked(convertBlobToFormatBuffer),
+			reportArg: 3,
+			expected: 'Converting... 40%',
+		},
+	])(
+		'relays the percentage while $name',
+		async ({ request, collaborator, reportArg, expected }) => {
+			// The dialog shows this text and nothing else while a long
+			// conversion runs. It is a one-line closure the encoder calls
+			// back into, so no test had ever executed it - a wrong format
+			// string here is a progress line that reads "Encoding...
+			// [object Object]" for the whole run.
+			collaborator().mockImplementationOnce(
+				(...args: unknown[]): Promise<unknown> => {
+					(args[reportArg] as (percent: number) => void)(40);
+					return Promise.resolve(
+						reportArg === 2
+							? new Blob(['encoded'])
+							: new ArrayBuffer(8),
+					);
+				},
+			);
+			const onProgress = jest.fn();
+
+			await service.convert(createRequest(request), onProgress);
+
+			expect(onProgress).toHaveBeenCalledWith(expected);
+		},
+	);
 });

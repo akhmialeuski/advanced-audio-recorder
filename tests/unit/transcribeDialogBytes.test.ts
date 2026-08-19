@@ -47,6 +47,8 @@ jest.mock('mediabunny', () => ({
 }));
 
 import { transcribeFile } from 'src/transcription/api';
+import { waitFor } from '../helpers/async';
+import { internalsOf } from '../helpers/doubles';
 
 const transcribeMock = transcribeFile as jest.Mock;
 
@@ -74,24 +76,23 @@ class MockAudioContext {
 interface ModalInternals {
 	startRun: () => Promise<void>;
 	probeFinished: boolean;
+	durationSeconds: number | null;
+	probedBytes: ArrayBuffer | null;
 }
 
 let audioMock: InstalledMock<AudioElementDouble>;
 let urlMock: InstalledMock<ObjectUrlDouble>;
-let warn: jest.SpyInstance;
 
 /**
  * Lets the dialog's fire-and-forget probe finish before a run is started. It
- * reads the file and then walks every reader, so a single tick is not enough.
+ * reads the file and then walks every reader, so the wait polls the dialog's
+ * own flag rather than guessing at a number of turns.
  * @param internals - The dialog whose probe is being waited on
  */
 async function settle(internals: ModalInternals): Promise<void> {
-	for (let tick = 0; tick < 50 && !internals.probeFinished; tick++) {
-		await new Promise((resolve) => setTimeout(resolve, 0));
-	}
-	if (!internals.probeFinished) {
-		throw new Error('The duration probe never finished');
-	}
+	await waitFor(() => internals.probeFinished, {
+		message: 'the duration probe never finished',
+	});
 }
 
 beforeEach(() => {
@@ -107,14 +108,14 @@ beforeEach(() => {
 			usage: {},
 		},
 	});
-	(Notice as unknown as jest.Mock).mockClear();
+	jest.mocked(Notice).mockClear();
 	urlMock = installObjectUrlMock();
 	// The browser cannot read a length either, so the read goes all the way to
 	// the decode - the only reader that takes what it is given.
 	audioMock = installAudioElementMock((audio) => {
 		audio.emit('error');
 	});
-	warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+	jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 	Object.defineProperty(window, 'AudioContext', {
 		writable: true,
 		value: MockAudioContext,
@@ -124,11 +125,13 @@ beforeEach(() => {
 afterEach(() => {
 	audioMock.restore();
 	urlMock.restore();
-	warn.mockRestore();
 });
 
-/** The dialog over one recording, with the vault read it drives. */
-function createModal(): {
+/**
+ * The dialog over one recording, with the vault read it drives.
+ * @param readBinary - Overrides the vault read, for the failing-probe case
+ */
+function createModal(readBinary?: () => Promise<ArrayBuffer>): {
 	modal: TranscriptionModal;
 	internals: ModalInternals;
 	bytes: ArrayBuffer;
@@ -142,13 +145,13 @@ function createModal(): {
 	const bytes = new Uint8Array(FILE_BYTES).buffer;
 	const app = new App();
 	(app as unknown as { vault: Record<string, unknown> }).vault = {
-		readBinary: jest.fn(() => Promise.resolve(bytes)),
+		readBinary: jest.fn(readBinary ?? (() => Promise.resolve(bytes))),
 		getResourcePath: (file: TFile): string => `app://vault/${file.path}`,
 	};
 	const file = createFile('Audio/meeting.webm');
 	Object.defineProperty(file, 'name', { value: 'meeting.webm' });
 	const modal = new TranscriptionModal(app, file, () => settings, {});
-	return { modal, internals: modal as unknown as ModalInternals, bytes };
+	return { modal, internals: internalsOf<ModalInternals>(modal), bytes };
 }
 
 describe('the bytes the transcribe dialog shares with its run', () => {
@@ -192,5 +195,40 @@ describe('the bytes the transcribe dialog shares with its run', () => {
 		expect(
 			Array.from(new Uint8Array(decoded[0] ?? new ArrayBuffer(0))),
 		).toEqual(FILE_BYTES);
+	});
+});
+
+describe('a probe the vault cannot serve', () => {
+	it('leaves the duration unknown instead of blocking the dialog', async () => {
+		const { modal, internals } = createModal(() =>
+			Promise.reject(new Error('vault read failed')),
+		);
+
+		modal.onOpen();
+		await settle(internals);
+
+		// The probe is the dialog's own best effort at a cost estimate. A read
+		// it cannot serve degrades the estimate; it must not leave the dialog
+		// waiting on a probe that will never finish.
+		expect(internals.probeFinished).toBe(true);
+		expect(internals.durationSeconds).toBeNull();
+		expect(internals.probedBytes).toBeNull();
+	});
+
+	it('still runs, reading the file itself rather than reusing probe bytes', async () => {
+		const { modal, internals } = createModal(() =>
+			Promise.reject(new Error('vault read failed')),
+		);
+		modal.onOpen();
+		await settle(internals);
+
+		await internals.startRun();
+
+		// No probed bytes to hand over, so the run passes the file and lets the
+		// engine read it.
+		const passed = transcribeMock.mock.calls[0]?.[3] as {
+			audioBytes?: ArrayBuffer;
+		};
+		expect(passed.audioBytes).toBeUndefined();
 	});
 });

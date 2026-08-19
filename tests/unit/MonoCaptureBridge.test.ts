@@ -5,6 +5,7 @@
  */
 
 import { MonoCaptureBridge } from 'src/recording/MonoCaptureBridge';
+import { partial } from '../helpers/doubles';
 
 interface NodeDouble {
 	connect: jest.Mock;
@@ -34,7 +35,7 @@ let mockAudioContext: {
 };
 
 function createMockStream(channelCount?: number): MediaStream {
-	return {
+	return partial<MediaStream>({
 		getAudioTracks: () => [
 			{
 				stop: jest.fn(),
@@ -42,11 +43,10 @@ function createMockStream(channelCount?: number): MediaStream {
 			},
 		],
 		getTracks: () => [{ stop: jest.fn() }],
-	} as unknown as MediaStream;
+	});
 }
 
 beforeEach(() => {
-	jest.clearAllMocks();
 	mockSourceNode = {
 		connect: jest.fn(),
 		disconnect: jest.fn(),
@@ -63,9 +63,9 @@ beforeEach(() => {
 		channelCount: 2,
 		channelCountMode: 'explicit',
 		channelInterpretation: 'speakers',
-		stream: {
+		stream: partial<MediaStream>({
 			getTracks: () => [{ stop: destinationTrackStop }],
-		} as unknown as MediaStream,
+		}),
 		disconnect: jest.fn(),
 	};
 	mockAudioContext = {
@@ -326,7 +326,7 @@ describe('MonoCaptureBridge', () => {
 	});
 
 	it('never throws when the context close fails during release', async () => {
-		const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
+		jest.spyOn(console, 'warn').mockImplementation();
 		mockAudioContext.close.mockRejectedValue(new Error('close failed'));
 		const bridge = new MonoCaptureBridge(
 			createMockStream(2),
@@ -336,7 +336,6 @@ describe('MonoCaptureBridge', () => {
 		await bridge.start();
 
 		expect(() => bridge.release()).not.toThrow();
-		warnSpy.mockRestore();
 	});
 
 	it('is safe to release before start', () => {

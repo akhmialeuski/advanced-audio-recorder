@@ -51,12 +51,29 @@ describe('parseRecordingSidecar', () => {
 		expect(isTranscriptSectionEmpty(sidecar.transcript)).toBe(true);
 	});
 
-	it('maps a non-object value to a fully empty document', () => {
-		for (const value of [null, undefined, 'text', 42, []]) {
-			const sidecar = parseRecordingSidecar(value);
-			expect(sidecar.markers).toEqual([]);
-			expect(isSidecarEmpty(sidecar)).toBe(true);
-		}
+	it.each([
+		{ name: 'a missing file', value: null },
+		{ name: 'a file that read as nothing', value: undefined },
+		{ name: 'plain text', value: 'text' },
+		{ name: 'a number', value: 42 },
+		{ name: 'a bare list', value: [] },
+		// The shapes that are objects but say nothing, and the one that says
+		// the wrong thing: an empty object, and sections of the wrong type.
+		{ name: 'an object with nothing in it', value: {} },
+		{ name: 'a boolean', value: false },
+		{
+			name: 'markers stored as something other than a list',
+			value: { markers: 'none' },
+		},
+		{ name: 'a transcript stored as a list', value: { transcript: [] } },
+	])('maps $name to a fully empty document', ({ value }) => {
+		// The sidecar is a file on disk that anything may have written; a
+		// shape it does not recognise has to read as "nothing stored yet"
+		// rather than throw on the next marker write.
+		const sidecar = parseRecordingSidecar(value);
+
+		expect(sidecar.markers).toEqual([]);
+		expect(isSidecarEmpty(sidecar)).toBe(true);
 	});
 
 	it('keeps markers when the transcript section is broken, and vice versa', () => {

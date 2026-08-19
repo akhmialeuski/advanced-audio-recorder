@@ -9,6 +9,7 @@ import type {
 	DiagnosticsData,
 } from 'src/diagnostics/SystemDiagnostics';
 import { App } from 'obsidian';
+import { el } from '../helpers/dom';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -150,78 +151,40 @@ describe('SystemInfoModal copy button', () => {
 		);
 	});
 
-	it('changes button text to "Copied!" after click', async () => {
+	/**
+	 * Presses the copy button and lets the clipboard write settle.
+	 * @returns The button, so a test reads its state back
+	 */
+	async function pressCopy(): Promise<HTMLButtonElement> {
 		const modal = makeModal();
-
-		const btn = modal.contentEl.querySelector(
-			'button',
-		) as HTMLButtonElement;
-		btn.click();
+		const button = el<HTMLButtonElement>(modal.contentEl, 'button');
+		button.click();
 		await Promise.resolve();
+		return button;
+	}
 
-		expect(btn.textContent).toBe('Copied!');
+	it.each([
+		// Both sides of the two-second revert. The confirmation is the only
+		// feedback a copy gives, so it has to still be there at 1999 ms and
+		// gone at 2000 - an off-by-one either way is a button that either
+		// flickers or stays stuck on "Copied!".
+		{ name: 'the moment it is pressed', afterMs: 0, copied: true },
+		{ name: 'a tick before the revert', afterMs: 1999, copied: true },
+		{ name: 'exactly on the revert', afterMs: 2000, copied: false },
+		{ name: 'well after the revert', afterMs: 5000, copied: false },
+	])('confirms the copy $name: $copied', async ({ afterMs, copied }) => {
+		const button = await pressCopy();
+
+		jest.advanceTimersByTime(afterMs);
+
+		expect(button.textContent).toBe(
+			copied ? 'Copied!' : 'Copy to clipboard',
+		);
+		expect(button.classList.contains('aar-system-info-copied')).toBe(
+			copied,
+		);
 	});
 
-	it('adds aar-system-info-copied CSS class after click', async () => {
-		const modal = makeModal();
-
-		const btn = modal.contentEl.querySelector(
-			'button',
-		) as HTMLButtonElement;
-		btn.click();
-		await Promise.resolve();
-
-		expect(btn.classList.contains('aar-system-info-copied')).toBe(true);
-	});
-
-	it('reverts button text back to "Copy to clipboard" after 2 seconds', async () => {
-		const modal = makeModal();
-
-		const btn = modal.contentEl.querySelector(
-			'button',
-		) as HTMLButtonElement;
-		btn.click();
-		await Promise.resolve();
-
-		jest.advanceTimersByTime(2000);
-
-		expect(btn.textContent).toBe('Copy to clipboard');
-	});
-
-	it('removes aar-system-info-copied CSS class after 2 seconds', async () => {
-		const modal = makeModal();
-
-		const btn = modal.contentEl.querySelector(
-			'button',
-		) as HTMLButtonElement;
-		btn.click();
-		await Promise.resolve();
-
-		jest.advanceTimersByTime(2000);
-
-		expect(btn.classList.contains('aar-system-info-copied')).toBe(false);
-	});
-
-	it('does not revert button text before 2 seconds have passed', async () => {
-		const modal = makeModal();
-
-		const btn = modal.contentEl.querySelector(
-			'button',
-		) as HTMLButtonElement;
-		btn.click();
-		await Promise.resolve();
-
-		jest.advanceTimersByTime(1999);
-
-		expect(btn.textContent).toBe('Copied!');
-	});
-});
-
-// ---------------------------------------------------------------------------
-// onClose
-// ---------------------------------------------------------------------------
-
-describe('SystemInfoModal.onClose', () => {
 	it('empties contentEl on close', () => {
 		const modal = makeModal();
 
@@ -229,6 +192,6 @@ describe('SystemInfoModal.onClose', () => {
 
 		modal.onClose();
 
-		expect(modal.contentEl.children.length).toBe(0);
+		expect(modal.contentEl.children).toHaveLength(0);
 	});
 });

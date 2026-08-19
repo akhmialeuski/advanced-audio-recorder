@@ -6,24 +6,18 @@
 import { updateLinksInVault } from 'src/utils/LinkUpdater';
 import { defined } from '../helpers/assertions';
 import { App, TFile } from 'obsidian';
-
-jest.mock('obsidian', () => ({
-	TFile: class {
-		path = '';
-		name = '';
-	},
-	getLinkpath: (linktext: string): string => {
-		const hashIndex = linktext.indexOf('#');
-		return hashIndex === -1 ? linktext : linktext.slice(0, hashIndex);
-	},
-}));
+import { createFile, createMockApp } from '../helpers/createApp';
 
 describe('updateLinksInVault', () => {
 	/**
 	 * Minimal reference cache double carrying only the fields
 	 * updateLinksInVault reads (link text, original text, offsets).
+	 *
+	 * Offset-based rather than line-based, and carrying the original text:
+	 * that is what the stale-cache check compares against, so this is a
+	 * different shape from the LinkRef the transcript suites share.
 	 */
-	interface ReferenceDouble {
+	interface OffsetRef {
 		link: string;
 		original: string;
 		position: { start: { offset: number }; end: { offset: number } };
@@ -35,8 +29,8 @@ describe('updateLinksInVault', () => {
 	 */
 	interface VaultNoteEntry {
 		content: string;
-		links?: ReferenceDouble[];
-		embeds?: ReferenceDouble[];
+		links?: OffsetRef[];
+		embeds?: OffsetRef[];
 		frontmatterLinks?: { link: string }[];
 	}
 
@@ -51,17 +45,6 @@ describe('updateLinksInVault', () => {
 	}
 
 	/**
-	 * Creates a TFile instance (of the mocked class) with path and name set.
-	 */
-	function createFile(path: string): TFile {
-		const file = new TFile();
-		const writable = file as unknown as { path: string; name: string };
-		writable.path = path;
-		writable.name = path.split('/').pop() ?? path;
-		return file;
-	}
-
-	/**
 	 * Builds a reference whose offsets point at the given occurrence of
 	 * the original text inside the note content, so the defensive
 	 * stale-cache check in updateLinksInVault passes.
@@ -71,7 +54,7 @@ describe('updateLinksInVault', () => {
 		original: string,
 		link: string,
 		occurrence = 0,
-	): ReferenceDouble {
+	): OffsetRef {
 		let start = -1;
 		for (let i = 0; i <= occurrence; i++) {
 			start = content.indexOf(original, start + 1);
@@ -108,7 +91,7 @@ describe('updateLinksInVault', () => {
 				contents[note.path] = transform(defined(contents[note.path]));
 			},
 		);
-		const app = {
+		const app = createMockApp({
 			metadataCache: {
 				resolvedLinks,
 				getFileCache: jest.fn((note: TFile) => {
@@ -137,11 +120,11 @@ describe('updateLinksInVault', () => {
 				process: processMock,
 			},
 			fileManager: { generateMarkdownLink },
-		} as unknown as App;
+		}).app;
 		return { app, contents, processMock, generateMarkdownLink };
 	}
 
-	it('should replace a wikilink embed and preserve the embed prefix', async () => {
+	it('replaces a wikilink embed and preserve the embed prefix', async () => {
 		const source = createFile('audio/rec.webm');
 		const content = 'intro ![[rec.webm]] outro';
 		const { app, contents, generateMarkdownLink } = createVaultApp(
@@ -185,7 +168,7 @@ describe('updateLinksInVault', () => {
 		);
 	});
 
-	it('should strip the embed prefix for non-embed wikilinks', async () => {
+	it('strips the embed prefix for non-embed wikilinks', async () => {
 		const source = createFile('rec.webm');
 		const content = 'see [[rec.webm]] here';
 		const { app, contents, generateMarkdownLink } = createVaultApp(
@@ -215,7 +198,7 @@ describe('updateLinksInVault', () => {
 		expect(contents['note.md']).toBe('see [[new.webm]] here');
 	});
 
-	it('should rewrite Markdown-style embeds', async () => {
+	it('rewrites Markdown-style embeds', async () => {
 		const source = createFile('rec.webm');
 		const content = 'audio: ![](rec.webm)';
 		const { app, contents, generateMarkdownLink } = createVaultApp(
@@ -243,7 +226,7 @@ describe('updateLinksInVault', () => {
 		expect(contents['note.md']).toBe('audio: ![](new.webm)');
 	});
 
-	it('should leave references resolving to other files untouched', async () => {
+	it('leaves references resolving to other files untouched', async () => {
 		const source = createFile('rec.webm');
 		const other = createFile('other.webm');
 		const content = '![[other.webm]] and ![[ghost.webm]]';
@@ -282,7 +265,7 @@ describe('updateLinksInVault', () => {
 		expect(contents['note.md']).toBe(content);
 	});
 
-	it('should append links below the original for the after action', async () => {
+	it('appends links below the original for the after action', async () => {
 		const source = createFile('rec.webm');
 		const content = '![[rec.webm]]';
 		const { app, contents, generateMarkdownLink } = createVaultApp(
@@ -310,7 +293,7 @@ describe('updateLinksInVault', () => {
 		expect(contents['note.md']).toBe('![[rec.webm]]\n![[new.webm]]');
 	});
 
-	it('should return zero without processing for none action or empty file list', async () => {
+	it('returns zero without processing for none action or empty file list', async () => {
 		const source = createFile('rec.webm');
 		const content = '![[rec.webm]]';
 		const { app, processMock } = createVaultApp(
@@ -342,14 +325,14 @@ describe('updateLinksInVault', () => {
 		expect(processMock).not.toHaveBeenCalled();
 	});
 
-	it('should skip stale references and warn instead of corrupting the note', async () => {
+	it('skips stale references and warn instead of corrupting the note', async () => {
 		const warnSpy = jest
 			.spyOn(console, 'warn')
 			.mockImplementation(() => undefined);
 		const source = createFile('rec.webm');
 		const content = 'edited content ![[rec.webm]]';
 		// Offsets predate an edit, so the slice no longer matches original
-		const stale: ReferenceDouble = {
+		const stale: OffsetRef = {
 			link: 'rec.webm',
 			original: '![[rec.webm]]',
 			position: { start: { offset: 0 }, end: { offset: 13 } },
@@ -372,10 +355,9 @@ describe('updateLinksInVault', () => {
 		expect(updated.skippedReferences).toBe(1);
 		expect(contents['note.md']).toBe(content);
 		expect(warnSpy).toHaveBeenCalledTimes(1);
-		warnSpy.mockRestore();
 	});
 
-	it('should replace multiple references in one note from end to start', async () => {
+	it('replaces multiple references in one note from end to start', async () => {
 		const source = createFile('rec.webm');
 		const content = '![[rec.webm]] middle [[rec.webm#start|intro]] end';
 		const { app, contents, generateMarkdownLink } = createVaultApp(
@@ -417,7 +399,7 @@ describe('updateLinksInVault', () => {
 		);
 	});
 
-	it('should skip referencing paths that do not resolve to a file', async () => {
+	it('skips referencing paths that do not resolve to a file', async () => {
 		const source = createFile('rec.webm');
 		const { app, processMock } = createVaultApp(
 			{ 'missing.md': { 'rec.webm': 1 } },
@@ -436,7 +418,7 @@ describe('updateLinksInVault', () => {
 		expect(processMock).not.toHaveBeenCalled();
 	});
 
-	it('should skip notes whose metadata cache has no references', async () => {
+	it('skips notes whose metadata cache has no references', async () => {
 		const source = createFile('rec.webm');
 		const { app, processMock } = createVaultApp(
 			{ 'note.md': { 'rec.webm': 1 } },
@@ -455,10 +437,8 @@ describe('updateLinksInVault', () => {
 		expect(processMock).not.toHaveBeenCalled();
 	});
 
-	it('should count only notes whose content changed', async () => {
-		const warnSpy = jest
-			.spyOn(console, 'warn')
-			.mockImplementation(() => undefined);
+	it('counts only notes whose content changed', async () => {
+		jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 		const source = createFile('rec.webm');
 		const goodContent = '![[rec.webm]]';
 		const staleContent = 'shifted ![[rec.webm]]';
@@ -508,10 +488,9 @@ describe('updateLinksInVault', () => {
 		expect(updated.skippedReferences).toBe(1);
 		expect(contents['good.md']).toBe('![[new.webm]]');
 		expect(contents['stale.md']).toBe(staleContent);
-		warnSpy.mockRestore();
 	});
 
-	it('should keep a table row on one line when replacing an embed inside it', async () => {
+	it('keeps a table row on one line when replacing an embed inside it', async () => {
 		const source = createFile('rec.webm');
 		const content = '| ![[rec.webm]] | comment |';
 		const { app, contents, generateMarkdownLink } = createVaultApp(
@@ -543,7 +522,7 @@ describe('updateLinksInVault', () => {
 		);
 	});
 
-	it('should keep a table row on one line for the after action', async () => {
+	it('keeps a table row on one line for the after action', async () => {
 		const source = createFile('rec.webm');
 		const content = '| ![[rec.webm]] |';
 		const { app, contents, generateMarkdownLink } = createVaultApp(
@@ -571,7 +550,7 @@ describe('updateLinksInVault', () => {
 		expect(contents['note.md']).toBe('| ![[rec.webm]] ![[new.webm]] |');
 	});
 
-	it('should use one link per line when the embed is alone on its line', async () => {
+	it('uses one link per line when the embed is alone on its line', async () => {
 		const source = createFile('rec.webm');
 		const content = 'intro\n![[rec.webm]]\noutro';
 		const { app, contents, generateMarkdownLink } = createVaultApp(
@@ -603,7 +582,7 @@ describe('updateLinksInVault', () => {
 		);
 	});
 
-	it('should count frontmatter references without touching them', async () => {
+	it('counts frontmatter references without touching them', async () => {
 		const source = createFile('rec.webm');
 		const bodyContent = '---\naudio: "[[rec.webm]]"\n---\n![[rec.webm]]';
 		const { app, contents, generateMarkdownLink } = createVaultApp(

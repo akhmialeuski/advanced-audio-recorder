@@ -7,90 +7,32 @@ import { ConversionModal } from 'src/ui/ConversionModal';
 import { App, TFile } from 'obsidian';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { mergeSettings } from 'src/settings/settingsSerialization';
+import { tick } from '../helpers/async';
+import {
+	allButtons,
+	capturedSettings,
+	changeSetting,
+	settingRow,
+	type CapturedButton,
+} from '../helpers/captureSettings';
+import { noticeInstances, noticeText } from '../mocks/obsidian';
+import { el } from '../helpers/dom';
+import { MODAL } from '../helpers/selectors';
+import { createMockApp } from '../helpers/createApp';
+import { updateLinksInVault } from 'src/utils/LinkUpdater';
+import { convertBlobToFormatBuffer } from 'src/audio/AudioFormatConverter';
+import { addObsidianDomExtensions } from '../mocks/domExtensions';
+import { defined } from '../helpers/assertions';
 
 /**
  * Extends an HTMLElement with Obsidian's custom DOM methods.
  */
-function addObsidianDomMethods(el: HTMLElement): HTMLElement {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- augmenting HTMLElement with Obsidian DOM methods
-	(el as any).empty = function () {
-		while (this.firstChild) {
-			this.removeChild(this.firstChild);
-		}
-	};
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- augmenting HTMLElement with Obsidian DOM methods
-	(el as any).createEl = function (
-		tag: string,
-		opts?: { text?: string; cls?: string; attr?: Record<string, string> },
-	) {
-		const child = document.createElement(tag);
-		if (opts?.text) child.textContent = opts.text;
-		if (opts?.cls) child.className = opts.cls;
-		if (opts?.attr) {
-			for (const [k, v] of Object.entries(opts.attr)) {
-				child.setAttribute(k, v);
-			}
-		}
-		addObsidianDomMethods(child);
-		this.appendChild(child);
-		return child;
-	};
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- augmenting HTMLElement with Obsidian DOM methods
-	(el as any).createDiv = function (opts?: { cls?: string }) {
-		return this.createEl('div', opts);
-	};
-	return el;
-}
-
-/** Captured Notice instances for assertions on setMessage/hide. */
-interface NoticeInstance {
-	message: string;
-	timeout?: number | undefined;
-	setMessage: jest.Mock;
-	hide: jest.Mock;
-}
-const noticeInstances: NoticeInstance[] = [];
-
-// Mock obsidian
-jest.mock('obsidian', () => ({
-	App: jest.fn(),
-	Modal: class {
-		app: unknown;
-		contentEl: HTMLElement;
-		constructor(app: unknown) {
-			this.app = app;
-			this.contentEl = addObsidianDomMethods(
-				document.createElement('div'),
-			);
-		}
-		open = jest.fn();
-		close = jest.fn();
-	},
-	Notice: jest.fn().mockImplementation(function (
-		message: string,
-		timeout?: number,
-	) {
-		const instance = {
-			message,
-			timeout,
-			setMessage: jest.fn(),
-			hide: jest.fn(),
-		};
-		noticeInstances.push(instance);
-		return instance;
-	}),
-	normalizePath: (path: string) => path.replace(/\\/g, '/'),
-	Platform: { isMobile: false, isMobileApp: false },
-	Setting: jest.fn().mockImplementation(() => ({
-		setName: jest.fn().mockReturnThis(),
-		setDesc: jest.fn().mockReturnThis(),
-		setHeading: jest.fn().mockReturnThis(),
-		addDropdown: jest.fn().mockReturnThis(),
-		addButton: jest.fn().mockReturnThis(),
-		addToggle: jest.fn().mockReturnThis(),
-	})),
-	TFile: jest.fn(),
-}));
+// The full obsidian mock with only Setting swapped for the recording double.
+// The previous inline mock stubbed Setting out entirely - its add* methods
+// never called back - so half of this dialog's wiring never ran under test.
+jest.mock('obsidian', () =>
+	require('../mocks/modules/obsidianWithCapturingSetting'),
+);
 
 // Mock LinkUpdater: the vault-wide rewrite has its own suite
 jest.mock('src/utils/LinkUpdater', () => ({
@@ -139,11 +81,10 @@ describe('ConversionModal', () => {
 	let createdFile: { path: string };
 
 	beforeEach(() => {
-		jest.clearAllMocks();
-		noticeInstances.length = 0;
+		capturedSettings.length = 0;
 
 		createdFile = { path: 'Recordings/recording.webm' };
-		mockApp = {
+		mockApp = createMockApp({
 			vault: {
 				adapter: {
 					exists: jest.fn().mockResolvedValue(false),
@@ -156,7 +97,7 @@ describe('ConversionModal', () => {
 			fileManager: {
 				trashFile: jest.fn().mockResolvedValue(undefined),
 			},
-		} as unknown as App;
+		}).app;
 
 		mockFile = new TFile();
 		Object.defineProperty(mockFile, 'name', { value: 'recording.wav' });
@@ -170,13 +111,20 @@ describe('ConversionModal', () => {
 		});
 	});
 
-	it('should instantiate with source file', () => {
+	it('opens over the file it was given, before anything is picked', () => {
+		// Constructing proves nothing - the dialog is only wrong once it is
+		// on screen. What it must show first is the file it will convert.
 		const modal = new ConversionModal(
 			mockApp,
 			mockFile,
 			() => mockSettings,
 		);
-		expect(modal).toBeDefined();
+
+		modal.onOpen();
+
+		expect(
+			el(modal.contentEl, MODAL.conversionSource).textContent,
+		).toContain(mockFile.name);
 	});
 
 	it('initializes the channel preset through named options', () => {
@@ -194,7 +142,7 @@ describe('ConversionModal', () => {
 		);
 	});
 
-	it('should set up content on open', () => {
+	it('sets up content on open', () => {
 		const modal = new ConversionModal(
 			mockApp,
 			mockFile,
@@ -203,12 +151,12 @@ describe('ConversionModal', () => {
 		modal.onOpen();
 
 		// Heading is rendered via Setting.setHeading(); source file info is a <p>
-		const source = modal.contentEl.querySelector('.aar-conversion-source');
-		expect(source).not.toBeNull();
-		expect(source?.textContent).toContain('recording.wav');
+		expect(
+			el(modal.contentEl, MODAL.conversionSource).textContent,
+		).toContain('recording.wav');
 	});
 
-	it('should show source file name', () => {
+	it('shows source file name', () => {
 		const modal = new ConversionModal(
 			mockApp,
 			mockFile,
@@ -216,11 +164,12 @@ describe('ConversionModal', () => {
 		);
 		modal.onOpen();
 
-		const source = modal.contentEl.querySelector('.aar-conversion-source');
-		expect(source?.textContent).toContain('recording.wav');
+		expect(
+			el(modal.contentEl, MODAL.conversionSource).textContent,
+		).toContain('recording.wav');
 	});
 
-	it('should clear content on close', () => {
+	it('clears content on close', () => {
 		const modal = new ConversionModal(
 			mockApp,
 			mockFile,
@@ -229,7 +178,7 @@ describe('ConversionModal', () => {
 		modal.onOpen();
 		modal.onClose();
 
-		expect(modal.contentEl.children.length).toBe(0);
+		expect(modal.contentEl.children).toHaveLength(0);
 	});
 
 	describe('runConversion', () => {
@@ -257,7 +206,7 @@ describe('ConversionModal', () => {
 			(modal as unknown as { targetFormat: string }).targetFormat =
 				'webm';
 			const progressEl = document.createElement('div');
-			addObsidianDomMethods(progressEl);
+			addObsidianDomExtensions(progressEl);
 			(progressEl as unknown as Record<string, unknown>).setText = (
 				text: string,
 			): void => {
@@ -266,10 +215,7 @@ describe('ConversionModal', () => {
 			return { modal, progressEl };
 		};
 
-		it('should update links vault-wide with the created file', async () => {
-			const { updateLinksInVault } = jest.requireMock(
-				'src/utils/LinkUpdater',
-			);
+		it('updates links vault-wide with the created file', async () => {
 			const { modal, progressEl } = createModal();
 
 			await runConversion(modal, progressEl);
@@ -278,7 +224,7 @@ describe('ConversionModal', () => {
 				'Recordings/recording.webm',
 				expect.any(ArrayBuffer),
 			);
-			expect(updateLinksInVault).toHaveBeenCalledWith(
+			expect(jest.mocked(updateLinksInVault)).toHaveBeenCalledWith(
 				mockApp,
 				mockFile,
 				[createdFile],
@@ -289,11 +235,8 @@ describe('ConversionModal', () => {
 			);
 		});
 
-		it('should keep the source when some links could not be updated', async () => {
-			const { updateLinksInVault } = jest.requireMock(
-				'src/utils/LinkUpdater',
-			);
-			updateLinksInVault.mockResolvedValueOnce({
+		it('keeps the source when some links could not be updated', async () => {
+			jest.mocked(updateLinksInVault).mockResolvedValueOnce({
 				updatedNotes: 1,
 				skippedReferences: 2,
 				frontmatterReferences: 0,
@@ -305,16 +248,13 @@ describe('ConversionModal', () => {
 			expect(mockApp.fileManager.trashFile).not.toHaveBeenCalled();
 			expect(
 				noticeInstances.some((n) =>
-					n.message.includes('Source file kept'),
+					noticeText(n).includes('Source file kept'),
 				),
 			).toBe(true);
 		});
 
-		it('should report frontmatter links that stay on the source', async () => {
-			const { updateLinksInVault } = jest.requireMock(
-				'src/utils/LinkUpdater',
-			);
-			updateLinksInVault.mockResolvedValueOnce({
+		it('reports frontmatter links that stay on the source', async () => {
+			jest.mocked(updateLinksInVault).mockResolvedValueOnce({
 				updatedNotes: 0,
 				skippedReferences: 0,
 				frontmatterReferences: 1,
@@ -325,15 +265,12 @@ describe('ConversionModal', () => {
 
 			expect(
 				noticeInstances.some((n) =>
-					n.message.includes('frontmatter link'),
+					noticeText(n).includes('frontmatter link'),
 				),
 			).toBe(true);
 		});
 
-		it('should skip link updates and deletion for the none action', async () => {
-			const { updateLinksInVault } = jest.requireMock(
-				'src/utils/LinkUpdater',
-			);
+		it('skips link updates and deletion for the none action', async () => {
 			const { modal, progressEl } = createModal({
 				conversionLinkAction: 'none',
 				deleteSourceAfterConversion: false,
@@ -341,17 +278,14 @@ describe('ConversionModal', () => {
 
 			await runConversion(modal, progressEl);
 
-			expect(updateLinksInVault).not.toHaveBeenCalled();
+			expect(jest.mocked(updateLinksInVault)).not.toHaveBeenCalled();
 			expect(mockApp.fileManager.trashFile).not.toHaveBeenCalled();
 		});
 
-		it('should show a background notice when closed mid-conversion', async () => {
-			const { convertBlobToFormatBuffer } = jest.requireMock(
-				'src/audio/AudioFormatConverter',
-			);
+		it('shows a background notice when closed mid-conversion', async () => {
 			let resolveConversion: (data: ArrayBuffer) => void = () =>
 				undefined;
-			convertBlobToFormatBuffer.mockReturnValueOnce(
+			jest.mocked(convertBlobToFormatBuffer).mockReturnValueOnce(
 				new Promise<ArrayBuffer>((resolve) => {
 					resolveConversion = resolve;
 				}),
@@ -360,12 +294,12 @@ describe('ConversionModal', () => {
 
 			const conversionPromise = runConversion(modal, progressEl);
 			// Let the pipeline reach the hanging conversion step
-			await new Promise((resolve) => setTimeout(resolve, 0));
+			await tick();
 
 			modal.onClose();
 
 			const background = noticeInstances.find((n) =>
-				n.message.includes('continues in the background'),
+				noticeText(n).includes('continues in the background'),
 			);
 			expect(background).toBeDefined();
 			expect(background?.timeout).toBe(0);
@@ -378,29 +312,26 @@ describe('ConversionModal', () => {
 			expect(background?.hide).toHaveBeenCalled();
 		});
 
-		it('should not show a background notice when closed while idle', () => {
+		it('does not show a background notice when closed while idle', () => {
 			const { modal } = createModal();
 
 			modal.onClose();
 
 			expect(
 				noticeInstances.some((n) =>
-					n.message.includes('continues in the background'),
+					noticeText(n).includes('continues in the background'),
 				),
 			).toBe(false);
 		});
 
-		it('should pass the selected channel mode into the conversion', async () => {
-			const { convertBlobToFormatBuffer } = jest.requireMock(
-				'src/audio/AudioFormatConverter',
-			);
+		it('passes the selected channel mode into the conversion', async () => {
 			const { modal, progressEl } = createModal();
 			(modal as unknown as { channelMode: string }).channelMode =
 				'mono-left';
 
 			await runConversion(modal, progressEl);
 
-			expect(convertBlobToFormatBuffer).toHaveBeenCalledWith(
+			expect(jest.mocked(convertBlobToFormatBuffer)).toHaveBeenCalledWith(
 				expect.any(Blob),
 				'webm',
 				expect.any(Number),
@@ -499,6 +430,153 @@ describe('ConversionModal', () => {
 			rebuild(modal);
 
 			expect(dropdown.setValue).toHaveBeenCalledWith('mp3');
+		});
+	});
+
+	// -----------------------------------------------------------------
+	// The controls a user actually touches
+	// -----------------------------------------------------------------
+
+	describe('what the user picked reaches the conversion', () => {
+		/**
+		 * Opens the dialog and returns the Convert button, so a test changes
+		 * a control and then runs the conversion the way a user does.
+		 * @returns The opened dialog and its Convert button
+		 */
+		function openDialog(): {
+			modal: ConversionModal;
+			convert: CapturedButton;
+		} {
+			const modal = new ConversionModal(
+				mockApp,
+				mockFile,
+				() => mockSettings,
+			);
+			modal.onOpen();
+			return {
+				modal,
+				convert: defined(
+					allButtons().find((entry) => entry.label === 'Convert'),
+				),
+			};
+		}
+
+		it.each([
+			{
+				name: 'a different target format',
+				row: 'Target format',
+				value: 'mp3',
+				written: /recording\.mp3$/,
+			},
+		])(
+			'carries $name into the file it writes',
+			async ({ row, value, written }) => {
+				// Each of these is a one-line handler on a control, and none of
+				// them had ever run: the suite asserted on what the dialog
+				// rendered, never on what changing it did. A handler wired to the
+				// wrong field is a setting the user picks and the conversion
+				// ignores, with the dialog still looking right.
+				const { convert } = openDialog();
+
+				changeSetting(row, 'dropdown', value);
+				convert.click();
+				await tick();
+
+				expect(
+					jest.mocked(mockApp.vault.createBinary),
+				).toHaveBeenCalledWith(
+					expect.stringMatching(written),
+					expect.anything(),
+				);
+			},
+		);
+
+		it('carries the chosen channel layout into the converter', async () => {
+			// The handler does two things: remember the layout, and re-offer
+			// the formats. This is the first half - a layout that stops here
+			// is a downmix the user asked for and never got.
+			const { convert } = openDialog();
+
+			changeSetting('Channels', 'dropdown', 'mono-left');
+			changeSetting('Target format', 'dropdown', 'mp3');
+			convert.click();
+			await tick();
+
+			expect(jest.mocked(convertBlobToFormatBuffer)).toHaveBeenCalledWith(
+				expect.anything(),
+				'mp3',
+				expect.any(Number),
+				expect.any(Function),
+				expect.objectContaining({ channelMode: 'mono-left' }),
+			);
+		});
+
+		it('deletes the source only once the toggle is on', async () => {
+			const { convert } = openDialog();
+
+			changeSetting('Delete source file', 'toggle', true);
+			changeSetting('Target format', 'dropdown', 'mp3');
+			convert.click();
+			await tick();
+
+			expect(
+				jest.mocked(mockApp.fileManager.trashFile),
+			).toHaveBeenCalled();
+		});
+
+		it('leaves the notes alone when the link action says to', async () => {
+			// 'none' is the one choice that must reach the service intact: a
+			// handler dropping it rewrites every note in the vault.
+			const { convert } = openDialog();
+
+			changeSetting('Update links in notes', 'dropdown', 'none');
+			changeSetting('Target format', 'dropdown', 'mp3');
+			convert.click();
+			await tick();
+
+			expect(jest.mocked(updateLinksInVault)).not.toHaveBeenCalled();
+		});
+
+		it('re-offers the source format once the channels change', async () => {
+			// The channel handler does two things, and the second - rebuilding
+			// the format list - is the easy one to drop.
+			openDialog();
+			const offered = (): string[] =>
+				(settingRow('Target format').dropdownOptions ?? []).map(
+					(option) => option.value,
+				);
+			expect(offered()).not.toContain('wav');
+
+			changeSetting('Channels', 'dropdown', 'mono-mix');
+
+			// wav is the source format: refused while the channels are kept,
+			// offered again the moment they are not.
+			expect(offered()).toContain('wav');
+		});
+
+		it('locks the button for the length of the conversion', async () => {
+			// A second press mid-run would start a second conversion over the
+			// same file; the disabled button is the only thing stopping it.
+			let settle = (): void => undefined;
+			jest.mocked(convertBlobToFormatBuffer).mockImplementationOnce(
+				() =>
+					new Promise((resolve) => {
+						settle = (): void => {
+							resolve(new ArrayBuffer(8));
+						};
+					}),
+			);
+			const { convert } = openDialog();
+			changeSetting('Target format', 'dropdown', 'mp3');
+
+			convert.click();
+			await tick();
+			expect(convert.disabled).toBe(true);
+
+			settle();
+			await tick();
+			await tick();
+			expect(convert.disabled).toBe(false);
 		});
 	});
 });

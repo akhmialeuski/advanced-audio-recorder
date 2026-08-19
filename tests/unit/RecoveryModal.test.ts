@@ -6,75 +6,17 @@
 import { RecoveryModal } from 'src/ui/RecoveryModal';
 import { at } from '../helpers/assertions';
 import type { JournalSession } from 'src/recording/SessionJournal';
-import { App } from 'obsidian';
+import { App, Notice } from 'obsidian';
+// The full obsidian mock with only Setting swapped for the recording double,
+// which is what makes the dialog's buttons reachable by label.
+jest.mock('obsidian', () =>
+	require('../mocks/modules/obsidianWithCapturingSetting'),
+);
+import { capturedSettings } from '../helpers/captureSettings';
+import { el } from '../helpers/dom';
+import { MODAL } from '../helpers/selectors';
 
 /** Captured action buttons rendered by the modal. */
-const renderedButtons: { text: string; onClick: () => void }[] = [];
-
-jest.mock('obsidian', () => ({
-	App: jest.fn(),
-	Modal: class {
-		app: unknown;
-		contentEl: HTMLElement;
-		constructor(app: unknown) {
-			this.app = app;
-			const el = document.createElement('div');
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any -- augmenting HTMLElement with Obsidian DOM methods
-			(el as any).empty = function () {
-				while (this.firstChild) {
-					this.removeChild(this.firstChild);
-				}
-			};
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any -- augmenting HTMLElement with Obsidian DOM methods
-			(el as any).createEl = function (
-				tag: string,
-				opts?: { text?: string; cls?: string },
-			) {
-				const child = document.createElement(tag);
-				if (opts?.text) child.textContent = opts.text;
-				if (opts?.cls) child.className = opts.cls;
-				this.appendChild(child);
-				return child;
-			};
-			this.contentEl = el;
-		}
-		open = jest.fn();
-		close = jest.fn();
-	},
-	Notice: jest.fn(),
-	Setting: class {
-		setName(): this {
-			return this;
-		}
-		setHeading(): this {
-			return this;
-		}
-		addButton(
-			callback: (button: {
-				setButtonText: (text: string) => unknown;
-				setCta: () => unknown;
-				onClick: (handler: () => void) => unknown;
-			}) => void,
-		): this {
-			let label = '';
-			const button = {
-				setButtonText(text: string) {
-					label = text;
-					return this;
-				},
-				setCta() {
-					return this;
-				},
-				onClick(handler: () => void) {
-					renderedButtons.push({ text: label, onClick: handler });
-					return this;
-				},
-			};
-			callback(button);
-			return this;
-		}
-	},
-}));
 
 const createSession = (
 	overrides: Partial<JournalSession> = {},
@@ -106,44 +48,53 @@ describe('RecoveryModal', () => {
 			onRecover,
 			onDiscard,
 		});
+		// The dialog closes itself when a choice is made; watch that here since
+		// the shared Modal's close is a plain method.
+		jest.spyOn(modal, 'close');
 		modal.onOpen();
 		return modal;
 	};
 
+	/**
+	 * Presses the dialog button with the given label.
+	 * @param text - Exact button text
+	 */
 	const clickButton = (text: string): void => {
-		const button = renderedButtons.find((entry) => entry.text === text);
+		const button = capturedSettings
+			.flatMap((row) => row.buttons)
+			.find((entry) => entry.label === text);
 		if (!button) {
 			throw new Error(`Button "${text}" not rendered`);
 		}
-		button.onClick();
+		button.click();
 	};
 
 	beforeEach(() => {
-		jest.clearAllMocks();
-		renderedButtons.length = 0;
+		capturedSettings.length = 0;
 		onRecover = jest.fn().mockResolvedValue(undefined);
 		onDiscard = jest.fn().mockResolvedValue(undefined);
 	});
 
-	it('should render session details with the saved-parts note', () => {
+	it('renders session details with the saved-parts note', () => {
 		const modal = openModal([createSession()]);
 
-		const line = modal.contentEl.querySelector('.aar-recovery-session');
-		expect(line?.textContent).toContain('1 track(s)');
-		expect(line?.textContent).toContain('2 temporary segment(s)');
-		expect(line?.textContent).toContain('1 already saved part file(s)');
+		const line = el(modal.contentEl, MODAL.recoverySession);
+		expect(line.textContent).toContain('1 track(s)');
+		expect(line.textContent).toContain('2 temporary segment(s)');
+		expect(line.textContent).toContain('1 already saved part file(s)');
 	});
 
-	it('should omit the parts note when no parts were saved', () => {
+	it('omits the parts note when no parts were saved', () => {
 		const session = createSession();
 		at(session.tracks, 0).partPaths = [];
 		const modal = openModal([session]);
 
-		const line = modal.contentEl.querySelector('.aar-recovery-session');
-		expect(line?.textContent).not.toContain('already saved part');
+		expect(
+			el(modal.contentEl, MODAL.recoverySession).textContent,
+		).not.toContain('already saved part');
 	});
 
-	it('should run the recover callback and close', async () => {
+	it('runs the recover callback and close', async () => {
 		const modal = openModal([createSession()]);
 
 		clickButton('Recover audio');
@@ -154,7 +105,7 @@ describe('RecoveryModal', () => {
 		expect(modal.close).toHaveBeenCalled();
 	});
 
-	it('should run the discard callback and close', async () => {
+	it('runs the discard callback and close', async () => {
 		const modal = openModal([createSession()]);
 
 		clickButton('Discard');
@@ -165,7 +116,7 @@ describe('RecoveryModal', () => {
 		expect(modal.close).toHaveBeenCalled();
 	});
 
-	it('should close without callbacks on decide later', () => {
+	it('closes without callbacks on decide later', () => {
 		const modal = openModal([createSession()]);
 
 		clickButton('Decide later');
@@ -175,7 +126,7 @@ describe('RecoveryModal', () => {
 		expect(modal.close).toHaveBeenCalled();
 	});
 
-	it('should ignore a second click while an action runs', async () => {
+	it('ignores a second click while an action runs', async () => {
 		let release: () => void = () => undefined;
 		onRecover.mockReturnValue(
 			new Promise<void>((resolve) => {
@@ -192,8 +143,7 @@ describe('RecoveryModal', () => {
 		expect(onRecover).toHaveBeenCalledTimes(1);
 	});
 
-	it('should contain a failing action, notify, and still close', async () => {
-		const { Notice } = jest.requireMock('obsidian');
+	it('contains a failing action, notify, and still close', async () => {
 		const errorSpy = jest.spyOn(console, 'error').mockImplementation();
 		onRecover.mockRejectedValue(new Error('vault unavailable'));
 		const modal = openModal([createSession()]);
@@ -214,11 +164,10 @@ describe('RecoveryModal', () => {
 			'The recovery action failed. Check the console for details.',
 		);
 		expect(modal.close).toHaveBeenCalled();
-		errorSpy.mockRestore();
 	});
 
-	it('should accept a new action after a failed one', async () => {
-		const errorSpy = jest.spyOn(console, 'error').mockImplementation();
+	it('accepts a new action after a failed one', async () => {
+		jest.spyOn(console, 'error').mockImplementation();
 		onRecover.mockRejectedValue(new Error('vault unavailable'));
 		openModal([createSession()]);
 
@@ -230,6 +179,5 @@ describe('RecoveryModal', () => {
 		await Promise.resolve();
 
 		expect(onDiscard).toHaveBeenCalledTimes(1);
-		errorSpy.mockRestore();
 	});
 });

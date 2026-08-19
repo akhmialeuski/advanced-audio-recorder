@@ -22,10 +22,10 @@ import { HttpError } from 'src/transcription/httpClient';
 import { jsonBody } from '../helpers/assertions';
 import type { LlmPrompt } from 'src/transcription/llmPostProcess';
 import {
-	__setRequestUrlHandler,
 	type MockRequestUrlParam,
 	type MockRequestUrlResponse,
 } from '../mocks/obsidian';
+import { withRequestUrl } from '../helpers/network';
 
 const PROMPT: LlmPrompt = { system: 'You write chapters.', user: 'transcript' };
 
@@ -67,7 +67,7 @@ function script(responses: ReadonlyArray<{ status: number; text: string }>): {
 	bodies: () => Array<Record<string, unknown>>;
 } {
 	const seen: MockRequestUrlParam[] = [];
-	__setRequestUrlHandler((param): MockRequestUrlResponse => {
+	withRequestUrl((param): MockRequestUrlResponse => {
 		seen.push(param);
 		const answer = responses[seen.length - 1] ?? {
 			status: 500,
@@ -80,10 +80,6 @@ function script(responses: ReadonlyArray<{ status: number; text: string }>): {
 			seen.map((param) => jsonBody<Record<string, unknown>>(param)),
 	};
 }
-
-afterEach(() => {
-	__setRequestUrlHandler(null);
-});
 
 describe('the output-token parameter the OpenAI provider sends', () => {
 	it('asks with the original name first, and asks only once when it is taken', async () => {

@@ -11,7 +11,6 @@
  */
 
 import { Menu } from 'obsidian';
-import type { Plugin } from 'obsidian';
 import { ContextMenu } from 'src/ui/ContextMenu';
 import { FILE_ACTIONS } from 'src/actions/fileActions';
 import type { ActionServices } from 'src/actions/PluginAction';
@@ -21,10 +20,11 @@ import {
 	makeFile,
 	makePopoutDoc,
 } from '../helpers/popoutHarness';
+import { partial } from '../helpers/doubles';
+import { partialPlugin } from '../helpers/obsidianMock';
 
 afterEach(() => {
 	document.body.innerHTML = '';
-	jest.restoreAllMocks();
 });
 
 describe('context menu works inside a pop-out window', () => {
@@ -35,10 +35,10 @@ describe('context menu works inside a pop-out window', () => {
 		plugin.app = makeApp(plugin, file);
 		// registerPlayerMenu only reads services.app; the rest is unused because
 		// the file-menu is populated by other plugins, not this handler.
-		const services = { app: plugin.app } as unknown as ActionServices;
+		const services = partial<ActionServices>({ app: plugin.app });
 
 		const contextMenu = new ContextMenu(
-			plugin as unknown as Plugin,
+			partialPlugin(plugin),
 			services,
 			FILE_ACTIONS,
 		);

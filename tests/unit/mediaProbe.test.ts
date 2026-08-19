@@ -7,6 +7,7 @@
  */
 
 import { probeMediaKind } from 'src/player/mediaProbe';
+import { partial } from '../helpers/doubles';
 
 type Listener = () => void;
 
@@ -48,24 +49,18 @@ function makeFakeVideo(): FakeVideo {
 }
 
 let fakeVideo: FakeVideo;
-let createElementSpy: jest.SpyInstance;
 
 beforeEach(() => {
 	fakeVideo = makeFakeVideo();
 	// The probe creates exactly one detached <video>; hand it the fake and
 	// delegate any other tag to the real implementation.
 	const realCreateElement = document.createElement.bind(document);
-	createElementSpy = jest
-		.spyOn(document, 'createElement')
-		.mockImplementation((tag: string, options?: ElementCreationOptions) =>
+	jest.spyOn(document, 'createElement').mockImplementation(
+		(tag: string, options?: ElementCreationOptions) =>
 			tag === 'video'
-				? (fakeVideo as unknown as HTMLElement)
+				? partial<HTMLElement>(fakeVideo)
 				: realCreateElement(tag, options),
-		);
-});
-
-afterEach(() => {
-	createElementSpy.mockRestore();
+	);
 });
 
 describe('probeMediaKind', () => {

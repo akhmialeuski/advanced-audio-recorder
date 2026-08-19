@@ -59,4 +59,47 @@ describe('generateMarkerId', () => {
 		]);
 		expect(ids.size).toBe(3);
 	});
+
+	/** Replaces the window's crypto for one test; the spy restores it. */
+	function withCrypto(value: unknown): void {
+		jest.spyOn(
+			activeWindow as Window & { crypto: Crypto },
+			'crypto',
+			'get',
+		).mockReturnValue(value as Crypto);
+	}
+
+	it('uses the platform UUID when there is one', () => {
+		withCrypto({
+			randomUUID: () => 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+		});
+
+		expect(generateMarkerId()).toBe('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee');
+	});
+
+	it.each([
+		{ name: 'no crypto at all', crypto: undefined },
+		{ name: 'a crypto without randomUUID', crypto: {} },
+		{
+			// Chromium exposes randomUUID outside a secure context but
+			// throws from it, so the presence check alone is not enough.
+			name: 'a randomUUID that throws',
+			crypto: {
+				randomUUID: (): string => {
+					throw new Error('not a secure context');
+				},
+			},
+		},
+	])('still gives a distinct id with $name', ({ crypto }) => {
+		// randomUUID needs a secure context, which an Obsidian pop-out window
+		// on some platforms is not. A marker with no id is unaddressable.
+		withCrypto(crypto);
+
+		const ids = new Set([generateMarkerId(), generateMarkerId()]);
+
+		expect(ids.size).toBe(2);
+		for (const id of ids) {
+			expect(id.length).toBeGreaterThan(0);
+		}
+	});
 });

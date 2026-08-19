@@ -26,4 +26,16 @@ jobs:
               run: npm run lint
 
             - name: Tests with coverage thresholds
-              run: npm run test:coverage
+              run: npm run test:coverage -- --randomize
+
+            - name: Coverage and suite-size regression guard
+              run: node scripts/coverage-diff.mjs
+
+            - name: Test layers match what each test covers
+              run: node scripts/layer-check.mjs
+
+            - name: Test conventions stay within their ceilings
+              run: node scripts/test-conventions.mjs
+
+            - name: Test duplication stays within its ceiling
+              run: node scripts/clone-check.mjs

@@ -7,6 +7,16 @@
 
 import type { SettingDefinitionItem } from 'obsidian';
 import { at } from '../helpers/assertions';
+import { allEls, el, maybeEl } from '../helpers/dom';
+import { SETTING } from '../helpers/selectors';
+import {
+	rowInput,
+	rowSelect,
+	rowTextarea,
+	rowToggle,
+	settingNames,
+	settingRow,
+} from '../helpers/settingRows';
 import {
 	LLM_MAX_TOKENS_STEP,
 	MAX_LLM_MAX_TOKENS,
@@ -19,6 +29,7 @@ import {
 	LegacySettingsRenderer,
 	type LegacySettingsHost,
 } from 'src/settings/legacySettingsRenderer';
+import { partial } from '../helpers/doubles';
 
 describe('LegacySettingsRenderer', () => {
 	let values: Record<string, unknown>;
@@ -41,24 +52,10 @@ describe('LegacySettingsRenderer', () => {
 	});
 
 	/** Names of the rows rendered into the container, in order. */
-	const renderedNames = (): string[] =>
-		Array.from(containerEl.querySelectorAll('.setting-item-name'))
-			.map((el) => el.textContent ?? '')
-			.filter((name) => name.length > 0);
+	const renderedNames = (): string[] => settingNames(containerEl);
 
 	/** The row carrying a given setting name. */
-	const rowFor = (name: string): HTMLElement => {
-		const row = Array.from(
-			containerEl.querySelectorAll('.setting-item'),
-		).find(
-			(el) =>
-				el.querySelector('.setting-item-name')?.textContent === name,
-		);
-		if (!row) {
-			throw new Error(`Row not rendered: ${name}`);
-		}
-		return row as HTMLElement;
-	};
+	const rowFor = (name: string): HTMLElement => settingRow(containerEl, name);
 
 	describe('structure', () => {
 		it('renders a group as its heading followed by its rows', () => {
@@ -126,10 +123,7 @@ describe('LegacySettingsRenderer', () => {
 				},
 			]);
 
-			const toggle = rowFor('Debug mode').querySelector<HTMLElement>(
-				'.checkbox-container',
-			);
-			toggle?.click();
+			rowToggle(rowFor('Debug mode')).click();
 
 			expect(setControlValue).toHaveBeenCalledWith('debug', false);
 		});
@@ -144,9 +138,9 @@ describe('LegacySettingsRenderer', () => {
 			]);
 
 			const row = rowFor('Terms');
-			const textarea = row.querySelector('textarea');
-			expect(textarea?.value).toBe('kubectl, Kubernetes');
-			expect(textarea?.rows).toBe(8);
+			const textarea = rowTextarea(row);
+			expect(textarea.value).toBe('kubectl, Kubernetes');
+			expect(textarea.rows).toBe(8);
 			// From 1.13 the framework lays a text area out full width under its
 			// name. The older stylesheets put every control in the narrow right
 			// column, which cannot hold a multi-sentence prompt.
@@ -169,10 +163,7 @@ describe('LegacySettingsRenderer', () => {
 				},
 			]);
 
-			const select = rowFor('Output mode').querySelector('select');
-			if (!select) {
-				throw new Error('No dropdown rendered');
-			}
+			const select = rowSelect(rowFor('Output mode'));
 			expect(select.value).toBe('single');
 			select.value = 'multiple';
 			select.dispatchEvent(new Event('change'));
@@ -188,10 +179,7 @@ describe('LegacySettingsRenderer', () => {
 				},
 			]);
 
-			const input = rowFor('File prefix').querySelector('input');
-			if (!input) {
-				throw new Error('No text input rendered');
-			}
+			const input = rowInput(rowFor('File prefix'));
 			expect(input.value).toBe('recording');
 			input.value = 'meeting';
 			input.dispatchEvent(new Event('input'));
@@ -217,10 +205,7 @@ describe('LegacySettingsRenderer', () => {
 				},
 			]);
 
-			const input = rowFor('Part name suffix').querySelector('input');
-			if (!input) {
-				throw new Error('No text input rendered');
-			}
+			const input = rowInput(rowFor('Part name suffix'));
 			input.value = 'bad suffix';
 			input.dispatchEvent(new Event('input'));
 
@@ -241,10 +226,7 @@ describe('LegacySettingsRenderer', () => {
 				},
 			]);
 
-			const input = rowFor('Part duration').querySelector('input');
-			if (!input) {
-				throw new Error('No number input rendered');
-			}
+			const input = rowInput(rowFor('Part duration'));
 			expect(input.value).toBe('10');
 			input.value = '120';
 			input.dispatchEvent(new Event('change'));
@@ -273,10 +255,7 @@ describe('LegacySettingsRenderer', () => {
 				},
 			]);
 
-			const input = rowFor('High-pass cutoff').querySelector('input');
-			if (!input) {
-				throw new Error('No number input rendered');
-			}
+			const input = rowInput(rowFor('High-pass cutoff'));
 			input.value = '137';
 			input.dispatchEvent(new Event('change'));
 			expect(setControlValue).not.toHaveBeenCalled();
@@ -307,10 +286,7 @@ describe('LegacySettingsRenderer', () => {
 				},
 			]);
 
-			const input = rowFor('Max output tokens').querySelector('input');
-			if (!input) {
-				throw new Error('No number input rendered');
-			}
+			const input = rowInput(rowFor('Max output tokens'));
 			input.value = String(MAX_LLM_MAX_TOKENS);
 			input.dispatchEvent(new Event('change'));
 
@@ -324,7 +300,7 @@ describe('LegacySettingsRenderer', () => {
 	describe('the declared validator, which every control carries', () => {
 		/** The refusal stated under a row, or '' when the row states none. */
 		const rejectionOn = (name: string): string =>
-			rowFor(name).querySelector(`.${LEGACY_SETTING_ERROR_CLASS}`)
+			maybeEl(rowFor(name), `.${LEGACY_SETTING_ERROR_CLASS}`)
 				?.textContent ?? '';
 
 		/** A tree with one engine dropdown that refuses one of its options. */
@@ -353,12 +329,7 @@ describe('LegacySettingsRenderer', () => {
 			values['engine'] = 'whisper-api';
 			renderer.render(containerEl, engineTree());
 
-			const select = rowFor('Transcription engine').querySelector(
-				'select',
-			);
-			if (!select) {
-				throw new Error('No dropdown rendered');
-			}
+			const select = rowSelect(rowFor('Transcription engine'));
 			select.value = 'local-whisper';
 			select.dispatchEvent(new Event('change'));
 
@@ -375,12 +346,7 @@ describe('LegacySettingsRenderer', () => {
 			values['engine'] = 'whisper-api';
 			renderer.render(containerEl, engineTree());
 
-			const select = rowFor('Transcription engine').querySelector(
-				'select',
-			);
-			if (!select) {
-				throw new Error('No dropdown rendered');
-			}
+			const select = rowSelect(rowFor('Transcription engine'));
 			select.value = 'local-whisper';
 			select.dispatchEvent(new Event('change'));
 			select.value = 'whisper-api';
@@ -413,7 +379,8 @@ describe('LegacySettingsRenderer', () => {
 			renderer.render(containerEl, engineTree());
 
 			expect(
-				rowFor('Transcription engine').querySelector(
+				maybeEl(
+					rowFor('Transcription engine'),
 					`.${LEGACY_SETTING_ERROR_CLASS}`,
 				),
 			).toBeNull();
@@ -434,7 +401,7 @@ describe('LegacySettingsRenderer', () => {
 			]);
 
 			const row = rowFor('Experimental mode');
-			row.querySelector<HTMLElement>('.checkbox-container')?.click();
+			rowToggle(row).click();
 
 			expect(setControlValue).not.toHaveBeenCalled();
 			expect(rejectionOn('Experimental mode')).toBe(
@@ -460,10 +427,7 @@ describe('LegacySettingsRenderer', () => {
 				},
 			]);
 
-			const input = rowFor('Recording folder').querySelector('input');
-			if (!input) {
-				throw new Error('No folder input rendered');
-			}
+			const input = rowInput(rowFor('Recording folder'));
 			input.value = '/absolute';
 			input.dispatchEvent(new Event('input'));
 
@@ -495,10 +459,7 @@ describe('LegacySettingsRenderer', () => {
 				},
 			]);
 
-			const input = rowFor('Upload chunk size').querySelector('input');
-			if (!input) {
-				throw new Error('No number input rendered');
-			}
+			const input = rowInput(rowFor('Upload chunk size'));
 			input.value = '40';
 			input.dispatchEvent(new Event('change'));
 
@@ -526,10 +487,7 @@ describe('LegacySettingsRenderer', () => {
 				},
 			]);
 
-			const input = rowFor('Language').querySelector('input');
-			if (!input) {
-				throw new Error('No text input rendered');
-			}
+			const input = rowInput(rowFor('Language'));
 			input.value = 'e';
 			input.dispatchEvent(new Event('input'));
 
@@ -571,9 +529,7 @@ describe('LegacySettingsRenderer', () => {
 			values['player'] = false;
 			renderer.render(containerEl, revealTree());
 
-			rowFor('Enhanced audio player')
-				.querySelector<HTMLElement>('.checkbox-container')
-				?.click();
+			rowToggle(rowFor('Enhanced audio player')).click();
 
 			expect(rowFor('Show waveform').style.display).toBe('');
 		});
@@ -616,9 +572,7 @@ describe('LegacySettingsRenderer', () => {
 			values['transcription'] = false;
 			renderer.render(containerEl, blockTree());
 
-			rowFor('Enable transcription')
-				.querySelector<HTMLElement>('.checkbox-container')
-				?.click();
+			rowToggle(rowFor('Enable transcription')).click();
 
 			expect(rowFor('Transcript output').style.display).toBe('');
 			expect(rowFor('Destination').style.display).toBe('');
@@ -668,10 +622,7 @@ describe('LegacySettingsRenderer', () => {
 				},
 			]);
 
-			const toggle = rowFor(
-				'Speaker diarization',
-			).querySelector<HTMLElement>('.checkbox-container');
-			toggle?.click();
+			rowToggle(rowFor('Speaker diarization')).click();
 
 			expect(setControlValue).not.toHaveBeenCalled();
 		});
@@ -722,9 +673,7 @@ describe('LegacySettingsRenderer', () => {
 			const addItem = jest.fn();
 			renderer.render(containerEl, listTree(['whisper-1'], { addItem }));
 
-			containerEl
-				.querySelector<HTMLElement>('.aar-add-item-row button')
-				?.click();
+			el(containerEl, SETTING.addItemButton).click();
 
 			expect(addItem).toHaveBeenCalledTimes(1);
 		});
@@ -736,13 +685,7 @@ describe('LegacySettingsRenderer', () => {
 		 * @param name - Name of the row whose delete button is wanted
 		 */
 		const deleteButtonFor = (name: string): HTMLElement => {
-			const button = rowFor(name).querySelector<HTMLElement>(
-				'.setting-item-control .clickable-icon',
-			);
-			if (!button) {
-				throw new Error(`No delete button rendered for: ${name}`);
-			}
-			return button;
+			return el(rowFor(name), '.setting-item-control .clickable-icon');
 		};
 
 		it('deletes an entry by its position in the list', () => {
@@ -767,11 +710,11 @@ describe('LegacySettingsRenderer', () => {
 			const onDelete = jest.fn();
 			const action = jest.fn();
 			renderer.render(containerEl, [
-				{
+				partial<SettingDefinitionItem>({
 					type: 'list',
 					onDelete,
 					items: [{ name: 'whisper-1', action }],
-				} as unknown as SettingDefinitionItem,
+				}),
 			]);
 
 			deleteButtonFor('whisper-1').click();
@@ -784,11 +727,11 @@ describe('LegacySettingsRenderer', () => {
 			const onDelete = jest.fn();
 			const action = jest.fn();
 			renderer.render(containerEl, [
-				{
+				partial<SettingDefinitionItem>({
 					type: 'list',
 					onDelete,
 					items: [{ name: 'whisper-1', action }],
-				} as unknown as SettingDefinitionItem,
+				}),
 			]);
 
 			rowFor('whisper-1').click();
@@ -803,12 +746,10 @@ describe('LegacySettingsRenderer', () => {
 			// Obsidian, which has no group header to put it in.
 			renderer.render(containerEl, listTree(['whisper-1', 'nova-2']));
 
-			const search = containerEl.querySelector<HTMLInputElement>(
-				'.aar-search-row input',
+			const search = el<HTMLInputElement>(
+				containerEl,
+				SETTING.searchInput,
 			);
-			if (!search) {
-				throw new Error('No search field rendered');
-			}
 			search.value = 'nova';
 			search.dispatchEvent(new Event('input'));
 
@@ -847,12 +788,10 @@ describe('LegacySettingsRenderer', () => {
 				},
 			]);
 
-			const search = containerEl.querySelector<HTMLInputElement>(
-				'.aar-search-row input',
+			const search = el<HTMLInputElement>(
+				containerEl,
+				SETTING.searchInput,
 			);
-			if (!search) {
-				throw new Error('No search field rendered');
-			}
 			search.value = 'legal';
 			search.dispatchEvent(new Event('input'));
 
@@ -887,14 +826,12 @@ describe('LegacySettingsRenderer', () => {
 				]),
 			]);
 
-			const [whisperSearch, geminiSearch] = Array.from(
-				containerEl.querySelectorAll<HTMLInputElement>(
-					'.aar-search-row input',
-				),
+			const searches = allEls<HTMLInputElement>(
+				containerEl,
+				SETTING.searchInput,
 			);
-			if (!whisperSearch || !geminiSearch) {
-				throw new Error('Both search fields should render');
-			}
+			const whisperSearch = at(searches, 0, 'search field');
+			const geminiSearch = at(searches, 1, 'search field');
 			whisperSearch.value = 'nova';
 			whisperSearch.dispatchEvent(new Event('input'));
 			geminiSearch.value = 'pro';
@@ -909,12 +846,10 @@ describe('LegacySettingsRenderer', () => {
 
 		it('forgets every query when the tree is rendered again', () => {
 			renderer.render(containerEl, listTree(['whisper-1', 'nova-2']));
-			const search = containerEl.querySelector<HTMLInputElement>(
-				'.aar-search-row input',
+			const search = el<HTMLInputElement>(
+				containerEl,
+				SETTING.searchInput,
 			);
-			if (!search) {
-				throw new Error('No search field rendered');
-			}
 			search.value = 'nova';
 			search.dispatchEvent(new Event('input'));
 
@@ -951,7 +886,7 @@ describe('LegacySettingsRenderer', () => {
 
 			expect(render).toHaveBeenCalledTimes(1);
 			expect(
-				rowFor('Test recording').querySelector('.aar-custom'),
+				maybeEl(rowFor('Test recording'), SETTING.custom),
 			).not.toBeNull();
 		});
 

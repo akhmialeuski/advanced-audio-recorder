@@ -37,100 +37,94 @@ const draft = (
 });
 
 describe('computePartPosition', () => {
-	it('returns the whole-session offset when auto-split is off', () => {
-		expect(
-			computePartPosition(
-				state({ splitEnabled: false, sessionActiveMs: 42000 }),
-			),
-		).toEqual({ partOrdinal: 0, offsetSeconds: 42 });
-	});
-
-	it('is zero at the very start of a recording', () => {
-		expect(computePartPosition(state())).toEqual({
-			partOrdinal: 0,
-			offsetSeconds: 0,
-		});
-	});
-
-	it('uses the rotation counter and per-part clock for a compressed split', () => {
-		expect(
-			computePartPosition(
-				state({
-					splitEnabled: true,
-					partActiveMs: 12000,
-					sessionActiveMs: 912000,
-					sessionPartOrdinal: 2,
-				}),
-			),
-		).toEqual({ partOrdinal: 2, offsetSeconds: 12 });
-	});
-
-	it('ignores the session clock for compressed split offsets', () => {
-		// Compressed offset comes from the per-part clock, not the session
-		// clock, so a large sessionActiveMs must not leak into the offset.
-		expect(
-			computePartPosition(
-				state({
-					splitEnabled: true,
-					partActiveMs: 1000,
-					sessionActiveMs: 9_999_000,
-					sessionPartOrdinal: 5,
-				}),
-			),
-		).toEqual({ partOrdinal: 5, offsetSeconds: 1 });
-	});
-
-	it('derives the PCM split ordinal at an exact part boundary', () => {
-		expect(
-			computePartPosition(
-				state({
-					isWavPcm: true,
-					splitEnabled: true,
-					partMinutes: 1,
-					sessionActiveMs: 60000,
-				}),
-			),
-		).toEqual({ partOrdinal: 1, offsetSeconds: 0 });
-	});
-
-	it('derives the PCM split ordinal and offset mid-part', () => {
-		expect(
-			computePartPosition(
-				state({
-					isWavPcm: true,
-					splitEnabled: true,
-					partMinutes: 1,
-					sessionActiveMs: 90000,
-				}),
-			),
-		).toEqual({ partOrdinal: 1, offsetSeconds: 30 });
-	});
-
-	it('keeps the first PCM part for times below one part length', () => {
-		expect(
-			computePartPosition(
-				state({
-					isWavPcm: true,
-					splitEnabled: true,
-					partMinutes: 1,
-					sessionActiveMs: 30000,
-				}),
-			),
-		).toEqual({ partOrdinal: 0, offsetSeconds: 30 });
-	});
-
-	it('computes a high PCM ordinal across many parts', () => {
-		// 7.5 minutes at 1-minute parts => part 7, 30s in.
-		expect(
-			computePartPosition(
-				state({
-					isWavPcm: true,
-					splitEnabled: true,
-					partMinutes: 1,
-					sessionActiveMs: 450000,
-				}),
-			),
-		).toEqual({ partOrdinal: 7, offsetSeconds: 30 });
+	it.each([
+		{
+			name: 'auto-split off, so the offset is the whole session',
+			over: { splitEnabled: false, sessionActiveMs: 42000 },
+			expected: { partOrdinal: 0, offsetSeconds: 42 },
+		},
+		{
+			name: 'the very start of a recording',
+			over: {},
+			expected: { partOrdinal: 0, offsetSeconds: 0 },
+		},
+		{
+			name: 'a compressed split, taking the rotation counter and part clock',
+			over: {
+				splitEnabled: true,
+				partActiveMs: 12000,
+				sessionActiveMs: 912000,
+				sessionPartOrdinal: 2,
+			},
+			expected: { partOrdinal: 2, offsetSeconds: 12 },
+		},
+		{
+			// The compressed offset comes from the per-part clock, so a large
+			// session clock must not leak into it.
+			name: 'a compressed split with a long session behind it',
+			over: {
+				splitEnabled: true,
+				partActiveMs: 1000,
+				sessionActiveMs: 9_999_000,
+				sessionPartOrdinal: 5,
+			},
+			expected: { partOrdinal: 5, offsetSeconds: 1 },
+		},
+		{
+			name: 'a PCM split exactly on a part boundary',
+			over: {
+				isWavPcm: true,
+				splitEnabled: true,
+				partMinutes: 1,
+				sessionActiveMs: 60000,
+			},
+			expected: { partOrdinal: 1, offsetSeconds: 0 },
+		},
+		{
+			name: 'a PCM split mid-part',
+			over: {
+				isWavPcm: true,
+				splitEnabled: true,
+				partMinutes: 1,
+				sessionActiveMs: 90000,
+			},
+			expected: { partOrdinal: 1, offsetSeconds: 30 },
+		},
+		{
+			name: 'a PCM split below one part length, still the first part',
+			over: {
+				isWavPcm: true,
+				splitEnabled: true,
+				partMinutes: 1,
+				sessionActiveMs: 30000,
+			},
+			expected: { partOrdinal: 0, offsetSeconds: 30 },
+		},
+		{
+			// 7.5 minutes at 1-minute parts => part 7, 30s in.
+			name: 'a PCM split many parts along',
+			over: {
+				isWavPcm: true,
+				splitEnabled: true,
+				partMinutes: 1,
+				sessionActiveMs: 450000,
+			},
+			expected: { partOrdinal: 7, offsetSeconds: 30 },
+		},
+		{
+			// Sub-second precision is kept rather than floored: a marker
+			// dropped just before a rotation belongs where it was dropped.
+			name: 'a PCM split one millisecond before a boundary',
+			over: {
+				isWavPcm: true,
+				splitEnabled: true,
+				partMinutes: 1,
+				sessionActiveMs: 59_999,
+			},
+			expected: { partOrdinal: 0, offsetSeconds: 59.999 },
+		},
+	])('places a marker at $name', ({ over, expected }) => {
+		expect(computePartPosition(state(over))).toEqual(expected);
 	});
 });
 

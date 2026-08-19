@@ -15,44 +15,60 @@ import {
 	TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS,
 	TRANSCRIBE_REQUEST_TIMEOUT_MS,
 } from 'src/constants';
-import { __setRequestUrlHandler } from '../mocks/obsidian';
+import { withRequestUrl } from '../helpers/network';
 
 describe('friendlyHttpHint', () => {
-	it('flags an OpenAI insufficient_quota 429 as a billing problem', () => {
-		const hint = friendlyHttpHint(
-			429,
-			'{"error":{"code":"insufficient_quota","message":"You exceeded your current quota"}}',
-		);
-		expect(hint.toLowerCase()).toContain('quota or credit');
-	});
-
-	it('flags an Anthropic low credit balance (HTTP 400) as a billing problem', () => {
-		const hint = friendlyHttpHint(
-			400,
-			'{"type":"error","error":{"message":"Your credit balance is too low to access the Anthropic API"}}',
-		);
-		expect(hint.toLowerCase()).toContain('quota or credit');
-	});
-
-	it('flags HTTP 402 Payment Required as billing even with an empty body', () => {
-		expect(friendlyHttpHint(402, '').toLowerCase()).toContain(
-			'quota or credit',
-		);
-	});
-
-	it('reports an authentication problem for 401', () => {
-		expect(
-			friendlyHttpHint(401, 'Incorrect API key provided').toLowerCase(),
-		).toContain('authentication failed');
-	});
-
-	it('flags a Deepgram INSUFFICIENT_CREDITS body as billing', () => {
-		expect(
-			friendlyHttpHint(
-				400,
-				'{"err_code":"INSUFFICIENT_CREDITS"}',
-			).toLowerCase(),
-		).toContain('quota or credit');
+	it.each([
+		{
+			name: 'an OpenAI insufficient_quota 429',
+			status: 429,
+			body: '{"error":{"code":"insufficient_quota","message":"You exceeded your current quota"}}',
+			says: 'quota or credit',
+		},
+		{
+			name: 'an Anthropic low credit balance on a 400',
+			status: 400,
+			body: '{"type":"error","error":{"message":"Your credit balance is too low to access the Anthropic API"}}',
+			says: 'quota or credit',
+		},
+		{
+			name: 'a 402 Payment Required with an empty body',
+			status: 402,
+			body: '',
+			says: 'quota or credit',
+		},
+		{
+			name: 'a Deepgram INSUFFICIENT_CREDITS body',
+			status: 400,
+			body: '{"err_code":"INSUFFICIENT_CREDITS"}',
+			says: 'quota or credit',
+		},
+		{
+			name: 'a 401 with a bad key',
+			status: 401,
+			body: 'Incorrect API key provided',
+			says: 'authentication failed',
+		},
+		{
+			name: 'a plain 429 with no billing markers',
+			status: 429,
+			body: 'Too Many Requests, slow down',
+			says: 'rate limit',
+		},
+		{
+			name: 'a 503 from the provider',
+			status: 503,
+			body: 'Service Unavailable',
+			says: 'server error',
+		},
+		{
+			name: 'a 500 from the provider',
+			status: 500,
+			body: 'Internal Server Error',
+			says: 'server error',
+		},
+	])('reads $name as "$says"', ({ status, body, says }) => {
+		expect(friendlyHttpHint(status, body).toLowerCase()).toContain(says);
 	});
 
 	it('treats a 403 "insufficient permissions" as auth, not billing', () => {
@@ -66,50 +82,86 @@ describe('friendlyHttpHint', () => {
 		expect(hint).not.toContain('quota or credit');
 	});
 
-	it('reports a rate limit for a plain 429 with no billing markers', () => {
-		expect(
-			friendlyHttpHint(429, 'Too Many Requests, slow down').toLowerCase(),
-		).toContain('rate limit');
-	});
-
-	it('reports a provider server error for 5xx', () => {
-		expect(
-			friendlyHttpHint(503, 'Service Unavailable').toLowerCase(),
-		).toContain('server error');
-	});
-
-	it('names the region for a Gemini FAILED_PRECONDITION 400', () => {
-		// The status says the request was malformed and it was not: the service
-		// does not serve the caller's country, which no key and no retry fix.
-		// Left unrecognized, the whole envelope was shown and the one sentence
-		// that mattered was buried in it.
-		const hint = friendlyHttpHint(
-			400,
-			'{"error":{"code":400,"message":"User location is not supported for the API use.","status":"FAILED_PRECONDITION"}}',
-		).toLowerCase();
-
-		expect(hint).toContain('does not serve your region');
-		// Both ways out are named: another engine, or an endpoint that does
-		// serve the caller. The second is what a user in a blocked country
-		// already relies on, and it is a field on the same page.
-		expect(hint).toContain('engines');
-		expect(hint).toContain('base url');
-	});
-
-	it('names the region for an OpenAI unsupported-country 403', () => {
-		// Same refusal, a status the auth branch would otherwise claim, so the
-		// region check has to be asked first.
-		const hint = friendlyHttpHint(
-			403,
-			'{"error":{"code":"unsupported_country_region_territory","message":"Country, region, or territory not supported"}}',
-		).toLowerCase();
+	it.each([
+		{
+			// The status says the request was malformed and it was not: the
+			// service does not serve the caller's country, which no key and no
+			// retry fix. Left unrecognized, the whole envelope was shown and
+			// the one sentence that mattered was buried in it.
+			name: 'a Gemini FAILED_PRECONDITION 400',
+			status: 400,
+			body: '{"error":{"code":400,"message":"User location is not supported for the API use.","status":"FAILED_PRECONDITION"}}',
+		},
+		{
+			// The same refusal under a status the auth branch would otherwise
+			// claim, so the region check has to be asked first.
+			name: 'an OpenAI unsupported-country 403',
+			status: 403,
+			body: '{"error":{"code":"unsupported_country_region_territory","message":"Country, region, or territory not supported"}}',
+		},
+	])('names the region for $name', ({ status, body }) => {
+		const hint = friendlyHttpHint(status, body).toLowerCase();
 
 		expect(hint).toContain('does not serve your region');
 		expect(hint).not.toContain('authentication failed');
 	});
 
-	it('returns no hint for an unrecognized client error', () => {
-		expect(friendlyHttpHint(404, 'Not Found')).toBe('');
+	it('names both ways out of a region refusal', () => {
+		// Another engine, or an endpoint that does serve the caller. The
+		// second is what a user in a blocked country already relies on, and it
+		// is a field on the same page.
+		const hint = friendlyHttpHint(
+			400,
+			'{"error":{"code":400,"message":"User location is not supported for the API use.","status":"FAILED_PRECONDITION"}}',
+		).toLowerCase();
+
+		expect(hint).toContain('engines');
+		expect(hint).toContain('base url');
+	});
+
+	it.each([
+		{
+			name: 'an unrecognized client error',
+			status: 404,
+			body: 'Not Found',
+		},
+		{ name: 'a success status', status: 200, body: 'OK' },
+		{ name: 'a redirect', status: 302, body: 'Found' },
+		// The bodies a failing endpoint returns when it is not the API at
+		// all. Each must read as "no hint" rather than break the error path
+		// that shows it, or throw out of a parse.
+		{ name: 'an empty body', status: 404, body: '' },
+		{
+			name: 'an HTML error page from a proxy',
+			status: 404,
+			body: '<html><body>Not Found</body></html>',
+		},
+		{ name: 'a body that is a bare JSON null', status: 404, body: 'null' },
+		{ name: 'a body that is a JSON list', status: 404, body: '[]' },
+		{
+			name: 'JSON with an unfamiliar error shape',
+			status: 400,
+			body: '{"problem":{"kind":"unknown"}}',
+		},
+		{ name: 'truncated JSON', status: 400, body: '{"error":{' },
+	])('returns no hint for $name', ({ status, body }) => {
+		expect(friendlyHttpHint(status, body)).toBe('');
+	});
+
+	it.each([
+		// Both ends of the 5xx range and the status just below it: the advice
+		// is "wait and retry", which is right for a server fault and wrong
+		// for a client one, so 499/500 is where it must not slip.
+		{ status: 500, hinted: true },
+		{ status: 502, hinted: true },
+		{ status: 503, hinted: true },
+		{ status: 599, hinted: true },
+		{ status: 499, hinted: false },
+		{ status: 404, hinted: false },
+	])('treats $status as a server fault: $hinted', ({ status, hinted }) => {
+		const hint = friendlyHttpHint(status, '').toLowerCase();
+
+		expect(hint.includes('server error')).toBe(hinted);
 	});
 });
 
@@ -180,7 +232,6 @@ describe('uploadTimeoutMs', () => {
 
 describe('requestRaw abort support', () => {
 	afterEach(() => {
-		__setRequestUrlHandler(null);
 		delete (globalThis as { fetch?: unknown }).fetch;
 	});
 
@@ -252,7 +303,7 @@ describe('requestRaw abort support', () => {
 
 	it('falls back to requestUrl when fetch fails at the network layer (CORS)', async () => {
 		mockFetch(() => Promise.reject(new TypeError('Failed to fetch')));
-		__setRequestUrlHandler(() => ({
+		withRequestUrl(() => ({
 			status: 200,
 			headers: {},
 			text: '{"via":"requestUrl"}',
@@ -271,7 +322,7 @@ describe('requestRaw abort support', () => {
 		const fetchMock = mockFetch(() =>
 			Promise.resolve(fakeResponse(200, '')),
 		);
-		__setRequestUrlHandler(() => ({
+		withRequestUrl(() => ({
 			status: 200,
 			headers: {},
 			text: 'ok',

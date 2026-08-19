@@ -57,33 +57,35 @@ export async function computeWaveformPeaksProgressive(
 		options.chunkBuckets ?? WAVEFORM_PROGRESSIVE_CHUNK_BUCKETS;
 	const yieldControl = options.yieldControl ?? defaultYield;
 
+	// A bar count comes from an element's measured width, which is
+	// fractional on a scaled layout and NaN before the element has one.
+	// Neither is an array length, and `new Array(0.5)` is a RangeError, so
+	// the count is floored here and anything that cannot be floored to a
+	// positive integer draws nothing.
+	const buckets = Number.isFinite(bucketCount) ? Math.floor(bucketCount) : 0;
 	const firstChannel = channels[0];
-	if (bucketCount <= 0 || !firstChannel) {
+	if (buckets <= 0 || !firstChannel) {
 		return [];
 	}
 	const frameCount = firstChannel.length;
 	if (frameCount === 0) {
-		return new Array<number>(bucketCount).fill(0);
+		return new Array<number>(buckets).fill(0);
 	}
 
-	const raw = new Array<number>(bucketCount).fill(0);
-	const framesPerBucket = frameCount / bucketCount;
+	const raw = new Array<number>(buckets).fill(0);
+	const framesPerBucket = frameCount / buckets;
 	const channelCount = channels.length;
 	let runningMax = 0;
 
-	for (
-		let chunkStart = 0;
-		chunkStart < bucketCount;
-		chunkStart += chunkBuckets
-	) {
+	for (let chunkStart = 0; chunkStart < buckets; chunkStart += chunkBuckets) {
 		if (options.shouldAbort?.()) {
 			return raw;
 		}
-		const chunkEnd = Math.min(bucketCount, chunkStart + chunkBuckets);
+		const chunkEnd = Math.min(buckets, chunkStart + chunkBuckets);
 		for (let bucket = chunkStart; bucket < chunkEnd; bucket++) {
 			const [start, end] = bucketBounds(
 				bucket,
-				bucketCount,
+				buckets,
 				framesPerBucket,
 				frameCount,
 			);
@@ -94,7 +96,7 @@ export async function computeWaveformPeaksProgressive(
 			}
 		}
 		options.onProgress?.(normalizePeaks(raw.slice(), runningMax));
-		if (chunkEnd < bucketCount) {
+		if (chunkEnd < buckets) {
 			await yieldControl();
 		}
 	}

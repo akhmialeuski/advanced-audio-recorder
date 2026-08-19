@@ -10,6 +10,8 @@
 import { Notice } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import { PluginModal } from 'src/ui/PluginModal';
+import { el } from '../helpers/dom';
+import { MODAL } from '../helpers/selectors';
 
 /** A concrete dialog exposing the protected frame for assertion. */
 class TestModal extends PluginModal {
@@ -141,7 +143,7 @@ describe('PluginModal shared body pieces', () => {
 	it('renders the source line with the shared class', () => {
 		const modal = createModal();
 		modal.renderSourceLine({ name: 'meeting.webm' } as TFile);
-		const line = modal.contentEl.querySelector('.aar-modal-config');
+		const line = el(modal.contentEl, MODAL.config);
 		expect(line?.textContent).toBe('Source: meeting.webm');
 	});
 

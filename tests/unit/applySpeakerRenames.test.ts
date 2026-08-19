@@ -18,24 +18,13 @@ import {
 	type NoteOutput,
 	type TranscriptSection,
 } from 'src/sidecar/recordingSidecarModel';
+import {
+	createFile,
+	createMockApp,
+	type NoteCache,
+} from '../helpers/createApp';
 
 const FORMAT = '**{speaker}**';
-
-interface Ref {
-	link: string;
-	position: { start: { line: number }; end: { line: number } };
-}
-interface Cache {
-	links?: Ref[];
-	embeds?: Ref[];
-}
-
-const tf = (path: string): TFile => {
-	const name = path.split('/').pop() ?? path;
-	const dot = name.lastIndexOf('.');
-	const extension = dot >= 0 ? name.slice(dot + 1) : '';
-	return { path, name, extension } as unknown as TFile;
-};
 
 /**
  * Builds a fake App over an in-memory file map with a metadata cache. Files
@@ -45,15 +34,15 @@ const tf = (path: string): TFile => {
 function makeApp(
 	files: Map<string, string>,
 	opts: {
-		caches?: Record<string, Cache>;
+		caches?: Record<string, NoteCache>;
 		failPaths?: Set<string>;
 	} = {},
 ): App {
 	const { caches = {}, failPaths = new Set() } = opts;
-	return {
+	return createMockApp({
 		vault: {
 			getFileByPath: (path: string): TFile | null =>
-				files.has(path) ? tf(path) : null,
+				files.has(path) ? createFile(path) : null,
 			read: async (file: TFile): Promise<string> =>
 				files.get(file.path) ?? '',
 			process: async (
@@ -77,23 +66,23 @@ function makeApp(
 						path.split('/').pop() === linkpath ||
 						path === linkpath
 					) {
-						return tf(path);
+						return createFile(path);
 					}
 				}
 				return null;
 			},
 		},
-	} as unknown as App;
+	}).app;
 }
 
-const audioFile = tf('audio/rec.wav');
+const audioFile = createFile('audio/rec.wav');
 const renames = [
 	{ from: 'Speaker 1', to: 'Alex' },
 	{ from: 'Speaker 2', to: 'Bob' },
 ];
 
 /** A note holding this recording's transcript plus another recording's. */
-function meetingNote(): { content: string; cache: Cache } {
+function meetingNote(): { content: string; cache: NoteCache } {
 	const content = [
 		'![[rec.wav]]', // 0
 		'', // 1
@@ -102,7 +91,7 @@ function meetingNote(): { content: string; cache: Cache } {
 		'', // 4
 		'[00:00](other.wav#t=0) **Speaker 1** unrelated', // 5
 	].join('\n');
-	const cache: Cache = {
+	const cache: NoteCache = {
 		embeds: [
 			{
 				link: 'rec.wav',
@@ -133,7 +122,7 @@ function meetingNote(): { content: string; cache: Cache } {
  * exactly as a scoped rewrite leaves it, and the line positions the cache
  * refers to are unchanged.
  */
-function renamedMeetingNote(): { content: string; cache: Cache } {
+function renamedMeetingNote(): { content: string; cache: NoteCache } {
 	const { content, cache } = meetingNote();
 	const lines = content.split('\n');
 	lines[2] = '[00:00](rec.wav#t=0) **Alex** hello';
@@ -274,7 +263,7 @@ describe('applySpeakerRenamesWithSidecar', () => {
 			'',
 			'[00:00](rec.wav#t=0) __Speaker 1__ hello',
 		].join('\n');
-		const cache: Cache = {
+		const cache: NoteCache = {
 			links: [
 				{
 					link: 'rec.wav#t=0',
@@ -346,7 +335,7 @@ describe('applySpeakerRenamesWithSidecar', () => {
 			'[00:00](rec.wav#t=0) Alex opened the meeting.',
 			'[00:05](rec.wav#t=5) Bob answered right away.',
 		].join('\n');
-		const cache: Cache = {
+		const cache: NoteCache = {
 			embeds: [
 				{
 					link: 'rec.wav',
@@ -545,7 +534,7 @@ describe('applySpeakerRenamesWithSidecar', () => {
 			'',
 			'[00:00](other.wav#t=0) **Alex** unrelated',
 		].join('\n');
-		const cache: Cache = {
+		const cache: NoteCache = {
 			embeds: [
 				{
 					link: 'rec.wav',
@@ -654,7 +643,7 @@ describe('applySpeakerRenamesWithSidecar', () => {
 
 	it('rewrites an untimecoded recorded note only under allowBroad', async () => {
 		const content = '![[rec.wav]]\n\n**Speaker 1** hi';
-		const cache: Cache = {
+		const cache: NoteCache = {
 			embeds: [
 				{
 					link: 'rec.wav',
@@ -717,9 +706,7 @@ describe('applySpeakerRenamesWithSidecar', () => {
 				{ path: 'audio/rec.txt', format: 'txt', writtenAt: 't' },
 			],
 		};
-		const warn = jest
-			.spyOn(console, 'warn')
-			.mockImplementation(() => undefined);
+		jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 
 		const result = await applySpeakerRenamesWithSidecar(
 			app,
@@ -732,7 +719,6 @@ describe('applySpeakerRenamesWithSidecar', () => {
 		expect(result.failed).toBe(1);
 		expect(result.updatedTranscriptFiles).toBe(1);
 		expect(files.get('audio/rec.txt')).toBe('[0:00] Alex: hi');
-		warn.mockRestore();
 	});
 
 	it('rewrites the content vault.process supplies, not a stale read', async () => {
@@ -742,10 +728,10 @@ describe('applySpeakerRenamesWithSidecar', () => {
 		]);
 		// read returns a stale snapshot while process operates on the current
 		// content, mimicking an edit landing between the two calls.
-		const app = {
+		const app = createMockApp({
 			vault: {
 				getFileByPath: (path: string): TFile | null =>
-					live.has(path) ? tf(path) : null,
+					live.has(path) ? createFile(path) : null,
 				read: async (): Promise<string> =>
 					'[0:00] Speaker 1: stale snapshot',
 				process: async (
@@ -761,7 +747,7 @@ describe('applySpeakerRenamesWithSidecar', () => {
 				getFileCache: (): null => null,
 				getFirstLinkpathDest: (): null => null,
 			},
-		} as unknown as App;
+		}).app;
 		const section: TranscriptSection = {
 			...emptyTranscriptSection(),
 			fileOutputs: [

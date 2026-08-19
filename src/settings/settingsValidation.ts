@@ -27,10 +27,23 @@ export function validateSettings(settings: AudioRecorderSettings): void {
 		);
 	}
 
-	if (!settings.sampleRate || settings.sampleRate <= 0) {
+	// Finite as well as positive: Infinity passes both a truthiness check and
+	// `> 0`, and would reach getUserMedia as a rate no device can honour.
+	if (!Number.isFinite(settings.sampleRate) || settings.sampleRate <= 0) {
 		throw new SettingsValidationError(
 			'sampleRate',
 			'Sample rate must be a positive number.',
+		);
+	}
+
+	// The same guard for the bitrate, which reaches MediaRecorder as
+	// audioBitsPerSecond. data.json is a file a sync conflict or a hand edit
+	// can leave holding a string where a number belongs, and the merge that
+	// reads it copies whatever is there onto the field.
+	if (!Number.isFinite(settings.bitrate) || settings.bitrate <= 0) {
+		throw new SettingsValidationError(
+			'bitrate',
+			'Bitrate must be a positive number.',
 		);
 	}
 

@@ -10,12 +10,9 @@ import { PlayerMarkerController } from 'src/player/PlayerMarkerController';
 import type { PlayerMarkerHost } from 'src/player/PlayerMarkerController';
 import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import { MARKER_KIND, type PlayerMarker } from 'src/markers/markerModel';
+import { partial } from '../helpers/doubles';
 
-jest.mock('obsidian', () => ({
-	Notice: jest.fn(),
-}));
-
-const noticeMock = Notice as unknown as jest.Mock;
+const noticeMock = jest.mocked(Notice);
 
 /** A host double recording render calls; never unloaded unless flipped. */
 function makeHost(): PlayerMarkerHost & {
@@ -40,7 +37,7 @@ function makeStore(initial: PlayerMarker[] = []): {
 	read: () => PlayerMarker[];
 } {
 	let data = [...initial];
-	const store = {
+	const store = partial<RecordingSidecarStore>({
 		getMarkers: jest.fn(() => Promise.resolve([...data])),
 		updateMarkers: jest.fn(
 			(
@@ -53,13 +50,13 @@ function makeStore(initial: PlayerMarker[] = []): {
 				return Promise.resolve([...data]);
 			},
 		),
-	} as unknown as RecordingSidecarStore;
+	});
 	return { store, read: () => data };
 }
 
 /** A store double whose every write is refused (corrupt sidecar). */
 function makeCorruptStore(): RecordingSidecarStore {
-	return {
+	return partial<RecordingSidecarStore>({
 		getMarkers: jest.fn(() => Promise.resolve([])),
 		updateMarkers: jest.fn(() =>
 			Promise.reject(
@@ -68,7 +65,7 @@ function makeCorruptStore(): RecordingSidecarStore {
 				),
 			),
 		),
-	} as unknown as RecordingSidecarStore;
+	});
 }
 
 beforeEach(() => {
@@ -114,9 +111,7 @@ describe('PlayerMarkerController', () => {
 		const store = makeCorruptStore();
 		const host = makeHost();
 		const controller = new PlayerMarkerController(store, 'rec.wav', host);
-		const warn = jest
-			.spyOn(console, 'warn')
-			.mockImplementation(() => undefined);
+		jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 
 		await controller.addAt(12, MARKER_KIND.bookmark);
 
@@ -130,7 +125,6 @@ describe('PlayerMarkerController', () => {
 		expect(noticeMock).not.toHaveBeenCalledWith(
 			expect.stringContaining('added at'),
 		);
-		warn.mockRestore();
 	});
 
 	it('does not wipe the list when a removal write is refused', async () => {
@@ -142,23 +136,20 @@ describe('PlayerMarkerController', () => {
 			label: 'Keep',
 			kind: 'bookmark',
 		};
-		const store = {
+		const store = partial<RecordingSidecarStore>({
 			getMarkers: jest.fn(() => Promise.resolve([kept])),
 			updateMarkers: jest.fn(() =>
 				Promise.reject(new Error('could not be read')),
 			),
-		} as unknown as RecordingSidecarStore;
+		});
 		const host = makeHost();
 		const controller = new PlayerMarkerController(store, 'rec.wav', host);
-		const warn = jest
-			.spyOn(console, 'warn')
-			.mockImplementation(() => undefined);
+		jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 		await controller.load();
 
 		await controller.remove('keep');
 
 		// The removal was refused, so the marker is restored from the store.
 		expect(controller.all.map((m) => m.id)).toEqual(['keep']);
-		warn.mockRestore();
 	});
 });

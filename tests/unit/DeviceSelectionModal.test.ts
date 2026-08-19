@@ -12,6 +12,7 @@ import {
 	DeviceSelectionModal,
 	showDeviceSelectionModal,
 } from 'src/ui/DeviceSelectionModal';
+import { tick } from '../helpers/async';
 
 function makeDevice(
 	deviceId: string,
@@ -45,9 +46,6 @@ function selectButtonOf(modal: DeviceSelectionModal): HTMLButtonElement {
 	}
 	return button;
 }
-
-const tick = (): Promise<void> =>
-	new Promise((resolve) => setTimeout(resolve, 0));
 
 describe('DeviceSelectionModal', () => {
 	it('renders one option per device with its label', () => {
@@ -129,17 +127,14 @@ describe('showDeviceSelectionModal', () => {
 		const openSpy = jest.spyOn(DeviceSelectionModal.prototype, 'open');
 		const onOpenSpy = jest.spyOn(DeviceSelectionModal.prototype, 'onOpen');
 
-		try {
-			await showDeviceSelectionModal(new App(), jest.fn());
+		// No manual restore: the projects run with `restoreMocks`, so jest
+		// puts both prototype methods back after the test either way.
+		await showDeviceSelectionModal(new App(), jest.fn());
 
-			expect(openSpy).toHaveBeenCalled();
-			const modal = onOpenSpy.mock
-				.instances[0] as unknown as DeviceSelectionModal;
-			const options = Array.from(dropdownOf(modal).options);
-			expect(options.map((option) => option.value)).toEqual(['mic-1']);
-		} finally {
-			openSpy.mockRestore();
-			onOpenSpy.mockRestore();
-		}
+		expect(openSpy).toHaveBeenCalled();
+		const modal = onOpenSpy.mock
+			.instances[0] as unknown as DeviceSelectionModal;
+		const options = Array.from(dropdownOf(modal).options);
+		expect(options.map((option) => option.value)).toEqual(['mic-1']);
 	});
 });

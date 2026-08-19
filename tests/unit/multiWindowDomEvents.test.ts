@@ -10,8 +10,11 @@
  */
 
 import { Component } from 'obsidian';
-import type { App, Plugin, WorkspaceLeaf } from 'obsidian';
+import type { App, WorkspaceLeaf } from 'obsidian';
 import { registerDomEventOnAllWindows } from 'src/utils/multiWindowDomEvents';
+import { partialPlugin } from '../helpers/obsidianMock';
+import { partial } from '../helpers/doubles';
+import { createMockApp } from '../helpers/createApp';
 
 /** A pop-out-like window handle, as workspace window events carry it. */
 interface WindowLike {
@@ -30,13 +33,12 @@ class FakePlugin extends Component {
 
 	constructor(preOpenDocs: Document[]) {
 		super();
-		const leaves: WorkspaceLeaf[] = preOpenDocs.map(
-			(doc) =>
-				({
-					getContainer: () => ({ doc }),
-				}) as unknown as WorkspaceLeaf,
+		const leaves: WorkspaceLeaf[] = preOpenDocs.map((doc) =>
+			partial<WorkspaceLeaf>({
+				getContainer: () => ({ doc }),
+			}),
 		);
-		this.app = {
+		this.app = createMockApp({
 			workspace: {
 				iterateAllLeaves: (cb: (leaf: WorkspaceLeaf) => void): void => {
 					leaves.forEach(cb);
@@ -46,7 +48,7 @@ class FakePlugin extends Component {
 					return {};
 				},
 			},
-		} as unknown as App;
+		}).app;
 	}
 
 	/** Fires a recorded workspace window event, as Obsidian would. */
@@ -73,7 +75,7 @@ describe('registerDomEventOnAllWindows', () => {
 		const seen: Document[] = [];
 
 		registerDomEventOnAllWindows(
-			plugin as unknown as Plugin,
+			partialPlugin(plugin),
 			plugin.app,
 			'click',
 			(_event, doc) => seen.push(doc),
@@ -91,7 +93,7 @@ describe('registerDomEventOnAllWindows', () => {
 		plugin.load();
 		const seen: Document[] = [];
 		registerDomEventOnAllWindows(
-			plugin as unknown as Plugin,
+			partialPlugin(plugin),
 			plugin.app,
 			'click',
 			(_event, doc) => seen.push(doc),
@@ -113,7 +115,7 @@ describe('registerDomEventOnAllWindows', () => {
 		plugin.load();
 		const seen: Document[] = [];
 		registerDomEventOnAllWindows(
-			plugin as unknown as Plugin,
+			partialPlugin(plugin),
 			plugin.app,
 			'click',
 			(_event, doc) => seen.push(doc),
@@ -132,7 +134,7 @@ describe('registerDomEventOnAllWindows', () => {
 		plugin.load();
 		const seen: Document[] = [];
 		registerDomEventOnAllWindows(
-			plugin as unknown as Plugin,
+			partialPlugin(plugin),
 			plugin.app,
 			'click',
 			(_event, doc) => seen.push(doc),
@@ -152,7 +154,7 @@ describe('registerDomEventOnAllWindows', () => {
 		plugin.load();
 		const seen: Document[] = [];
 		registerDomEventOnAllWindows(
-			plugin as unknown as Plugin,
+			partialPlugin(plugin),
 			plugin.app,
 			'click',
 			(_event, doc) => seen.push(doc),
@@ -170,26 +172,39 @@ describe('registerDomEventOnAllWindows', () => {
 
 	it('forwards addEventListener options (capture) to each window', () => {
 		const attach = jest.spyOn(Component.prototype, 'registerDomEvent');
-		try {
-			const plugin = new FakePlugin([]);
-			plugin.load();
+		const plugin = new FakePlugin([]);
+		plugin.load();
 
-			registerDomEventOnAllWindows(
-				plugin as unknown as Plugin,
-				plugin.app,
-				'click',
-				() => {},
-				{ capture: true },
-			);
+		registerDomEventOnAllWindows(
+			partialPlugin(plugin),
+			plugin.app,
+			'click',
+			() => {},
+			{ capture: true },
+		);
 
-			expect(attach).toHaveBeenCalledWith(
-				document,
-				'click',
-				expect.any(Function),
-				{ capture: true },
-			);
-		} finally {
-			attach.mockRestore();
-		}
+		expect(attach).toHaveBeenCalledWith(
+			document,
+			'click',
+			expect.any(Function),
+			{ capture: true },
+		);
+	});
+
+	it('ignores the closing of a window it never attached to', () => {
+		// Every pop-out close fires this event, including ones that closed
+		// before the listener was registered.
+		const plugin = new FakePlugin([]);
+		plugin.load();
+		registerDomEventOnAllWindows(
+			partialPlugin(plugin),
+			plugin.app,
+			'click',
+			() => undefined,
+		);
+
+		expect(() => {
+			plugin.emit('window-close', makeDoc());
+		}).not.toThrow();
 	});
 });

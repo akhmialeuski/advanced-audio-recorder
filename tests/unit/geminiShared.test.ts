@@ -132,17 +132,16 @@ describe('assertGeminiNotTruncated', () => {
 
 	it('omits the usage parenthetical when no counts are reported', () => {
 		// A response without usageMetadata must still read as a clean sentence.
-		let message = '';
-		try {
+		const assertTruncated = (): void => {
 			assertGeminiNotTruncated(
 				{ candidates: [{ finishReason: GEMINI_FINISH_MAX_TOKENS }] },
 				REMEDY,
 			);
-		} catch (error) {
-			message = error instanceof Error ? error.message : String(error);
-		}
-		expect(message).toContain('output token limit, so the response');
-		expect(message).not.toContain('(');
+		};
+
+		expect(assertTruncated).toThrow(/output token limit, so the response/);
+		// No usage counts means no parenthetical, not an empty one.
+		expect(assertTruncated).not.toThrow(/\(/);
 	});
 });
 

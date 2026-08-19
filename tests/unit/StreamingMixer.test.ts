@@ -7,10 +7,7 @@
 import { canStreamMix, mixPcmTracksToWav } from 'src/recording/StreamingMixer';
 import type { PcmMixTrack } from 'src/recording/StreamingMixer';
 import type { App } from 'obsidian';
-
-jest.mock('obsidian', () => ({
-	normalizePath: (path: string) => path.replace(/\\/g, '/'),
-}));
+import { createMockApp } from '../helpers/createApp';
 
 const WAV_HEADER_SIZE = 44;
 
@@ -43,9 +40,8 @@ describe('StreamingMixer', () => {
 	};
 
 	beforeEach(() => {
-		jest.clearAllMocks();
 		segments = new Map();
-		mockApp = {
+		mockApp = createMockApp({
 			vault: {
 				adapter: {
 					stat: jest.fn((path: string) => {
@@ -62,11 +58,11 @@ describe('StreamingMixer', () => {
 					}),
 				},
 			},
-		} as unknown as App;
+		}).app;
 	});
 
 	describe('canStreamMix', () => {
-		it('should accept tracks with one shared sample rate', () => {
+		it('accepts tracks with one shared sample rate', () => {
 			expect(
 				canStreamMix([
 					createTrack(['a.tmp']),
@@ -75,7 +71,7 @@ describe('StreamingMixer', () => {
 			).toBe(true);
 		});
 
-		it('should reject mismatched sample rates', () => {
+		it('rejects mismatched sample rates', () => {
 			expect(
 				canStreamMix([
 					createTrack(['a.tmp'], 1, 44100),
@@ -84,14 +80,14 @@ describe('StreamingMixer', () => {
 			).toBe(false);
 		});
 
-		it('should reject empty input', () => {
+		it('rejects empty input', () => {
 			expect(canStreamMix([])).toBe(false);
 			expect(canStreamMix([createTrack([])])).toBe(false);
 		});
 	});
 
 	describe('mixPcmTracksToWav', () => {
-		it('should sum mono tracks sample by sample', async () => {
+		it('sums mono tracks sample by sample', async () => {
 			storeSegment('a.tmp', [100, -200, 300]);
 			storeSegment('b.tmp', [10, 20, -30]);
 
@@ -103,7 +99,7 @@ describe('StreamingMixer', () => {
 			expect(Array.from(samples)).toEqual([110, -180, 270]);
 		});
 
-		it('should write a valid WAV header for the mix', async () => {
+		it('writes a valid WAV header for the mix', async () => {
 			storeSegment('a.tmp', [1, 2]);
 
 			const wav = await mixPcmTracksToWav(
@@ -119,7 +115,7 @@ describe('StreamingMixer', () => {
 			expect(view.getUint32(40, true)).toBe(4); // data length
 		});
 
-		it('should clamp clipping sums to the int16 range', async () => {
+		it('clamps clipping sums to the int16 range', async () => {
 			storeSegment('a.tmp', [30000, -30000]);
 			storeSegment('b.tmp', [30000, -30000]);
 
@@ -131,7 +127,7 @@ describe('StreamingMixer', () => {
 			expect(Array.from(samples)).toEqual([32767, -32768]);
 		});
 
-		it('should pad shorter tracks with silence', async () => {
+		it('pads shorter tracks with silence', async () => {
 			storeSegment('long.tmp', [10, 20, 30, 40]);
 			storeSegment('short.tmp', [5]);
 
@@ -143,7 +139,7 @@ describe('StreamingMixer', () => {
 			expect(Array.from(samples)).toEqual([15, 20, 30, 40]);
 		});
 
-		it('should duplicate mono into both channels of a stereo mix', async () => {
+		it('duplicates mono into both channels of a stereo mix', async () => {
 			// Stereo track: L/R interleaved; mono track is up-mixed
 			storeSegment('stereo.tmp', [100, -100, 200, -200]);
 			storeSegment('mono.tmp', [10, 20]);
@@ -156,7 +152,7 @@ describe('StreamingMixer', () => {
 			expect(Array.from(samples)).toEqual([110, -90, 220, -180]);
 		});
 
-		it('should mix across segment boundaries and small windows', async () => {
+		it('mixes across segment boundaries and small windows', async () => {
 			storeSegment('a1.tmp', [1, 2, 3]);
 			storeSegment('a2.tmp', [4, 5]);
 			storeSegment('b1.tmp', [10, 20, 30, 40, 50]);
@@ -170,7 +166,7 @@ describe('StreamingMixer', () => {
 			expect(Array.from(samples)).toEqual([11, 22, 33, 44, 55]);
 		});
 
-		it('should report progress up to 100', async () => {
+		it('reports progress up to 100', async () => {
 			storeSegment('a.tmp', [1, 2, 3, 4]);
 			const onProgress = jest.fn();
 
@@ -184,7 +180,7 @@ describe('StreamingMixer', () => {
 			expect(onProgress).toHaveBeenLastCalledWith(100);
 		});
 
-		it('should throw when the adapter cannot report sizes', async () => {
+		it('throws when the adapter cannot report sizes', async () => {
 			(mockApp.vault.adapter as unknown as Record<string, unknown>).stat =
 				undefined;
 			storeSegment('a.tmp', [1]);

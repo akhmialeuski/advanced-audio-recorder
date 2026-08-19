@@ -3,12 +3,12 @@
  * @module tests/unit/AudioStreamHandler.test
  */
 
-import { Platform } from 'obsidian';
 import {
 	channelSelectionAvailable,
 	deviceMaxChannels,
 	getAudioInputDeviceSnapshot,
 	getAudioStreams,
+	getAudioSourceName,
 	getOrderedTrackSources,
 	isMultiTrackSessionEnabled,
 	resolveCaptureDeviceId,
@@ -17,13 +17,15 @@ import {
 import { AudioStreamError } from 'src/errors';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
+import { setPlatform, useDesktopPlatform } from '../helpers/platform';
+import { partial } from '../helpers/doubles';
 
 /** Builds a MediaStream stub whose tracks record stop() calls. */
 function fakeStream(): { stream: MediaStream; stop: jest.Mock } {
 	const stop = jest.fn();
-	const stream = {
+	const stream = partial<MediaStream>({
 		getTracks: () => [{ stop }],
-	} as unknown as MediaStream;
+	});
 	return { stream, stop };
 }
 
@@ -148,8 +150,100 @@ describe('AudioStreamHandler', () => {
 		});
 	});
 
+	describe('opening a microphone that is busy', () => {
+		const originalMediaDevices = navigator.mediaDevices;
+		let getUserMedia: jest.Mock;
+
+		beforeEach(() => {
+			jest.useFakeTimers();
+			getUserMedia = jest.fn();
+			Object.defineProperty(navigator, 'mediaDevices', {
+				value: { getUserMedia },
+				configurable: true,
+			});
+		});
+
+		afterEach(() => {
+			jest.useRealTimers();
+			Object.defineProperty(navigator, 'mediaDevices', {
+				value: originalMediaDevices,
+				configurable: true,
+			});
+		});
+
+		/** Runs an acquisition, letting every retry delay elapse. */
+		async function acquire(
+			settings: AudioRecorderSettings,
+		): Promise<{ streams: MediaStream[] } | Error> {
+			const pending = getAudioStreams(settings).catch(
+				(error: unknown) => error as Error,
+			);
+			await jest.advanceTimersByTimeAsync(2000);
+			return await pending;
+		}
+
+		it.each([
+			{ name: 'the request was interrupted', errorName: 'AbortError' },
+			{
+				name: 'the device was momentarily busy',
+				errorName: 'NotReadableError',
+			},
+		])('retries when $name', async ({ errorName }) => {
+			// Another app releasing the microphone a moment later is the
+			// common case; failing the recording outright would be wrong.
+			jest.spyOn(console, 'debug').mockImplementation(() => undefined);
+			getUserMedia
+				.mockRejectedValueOnce(new DOMException('busy', errorName))
+				.mockResolvedValueOnce(fakeStream().stream);
+
+			const result = await acquire(DEFAULT_SETTINGS);
+
+			expect(getUserMedia).toHaveBeenCalledTimes(2);
+			expect(result).not.toBeInstanceOf(Error);
+		});
+
+		it('gives up after the last retry, naming the device', async () => {
+			jest.spyOn(console, 'debug').mockImplementation(() => undefined);
+			getUserMedia.mockRejectedValue(
+				new DOMException('busy', 'NotReadableError'),
+			);
+
+			const result = await acquire({
+				...DEFAULT_SETTINGS,
+				audioDeviceId: 'busy-mic',
+			});
+
+			// Two retries after the first attempt, then the failure stands.
+			expect(getUserMedia).toHaveBeenCalledTimes(3);
+			expect(result).toBeInstanceOf(AudioStreamError);
+		});
+
+		it('does not retry a refused permission', async () => {
+			// The user said no; asking twice more only repeats the prompt.
+			getUserMedia.mockRejectedValue(
+				new DOMException('denied', 'NotAllowedError'),
+			);
+
+			const result = await acquire(DEFAULT_SETTINGS);
+
+			expect(getUserMedia).toHaveBeenCalledTimes(1);
+			expect(result).toBeInstanceOf(AudioStreamError);
+		});
+
+		it('reports a failure that is not an Error at all', async () => {
+			getUserMedia.mockRejectedValue('the device exploded');
+
+			const result = await acquire(DEFAULT_SETTINGS);
+
+			expect(result).toBeInstanceOf(AudioStreamError);
+			expect((result as AudioStreamError).message).toContain(
+				'the device exploded',
+			);
+		});
+	});
+
 	describe('getOrderedTrackSources', () => {
-		it('should return sources in track order regardless of Map insertion order', () => {
+		it('returns sources in track order regardless of Map insertion order', () => {
 			const settings = {
 				...DEFAULT_SETTINGS,
 				enableMultiTrack: true,
@@ -196,7 +290,29 @@ describe('AudioStreamHandler', () => {
 			]);
 		});
 
-		it('should skip tracks without selected devices', () => {
+		it('lists nothing while multi-track is off', () => {
+			// The stored per-track devices survive the switch being turned
+			// off, and acting on them would open microphones nobody asked
+			// this session to open.
+			expect(
+				getOrderedTrackSources({
+					...DEFAULT_SETTINGS,
+					enableMultiTrack: false,
+					maxTracks: 2,
+					trackAudioSources: new Map([
+						[
+							1,
+							{
+								deviceId: 'device-1',
+								channelMode: 'source' as const,
+							},
+						],
+					]),
+				}),
+			).toEqual([]);
+		});
+
+		it('skips tracks without selected devices', () => {
 			const settings: AudioRecorderSettings = {
 				...DEFAULT_SETTINGS,
 				enableMultiTrack: true,
@@ -389,40 +505,59 @@ describe('AudioStreamHandler', () => {
 		});
 
 		afterEach(() => {
-			Platform.isMobile = false;
-			Platform.isMobileApp = false;
+			useDesktopPlatform();
 			Object.defineProperty(navigator, 'mediaDevices', {
 				value: originalMediaDevices,
 				configurable: true,
 			});
 		});
 
-		it('isMultiTrackSessionEnabled honors the setting on desktop', () => {
-			expect(isMultiTrackSessionEnabled(multiTrackSettings)).toBe(true);
+		describe.each([
+			{
+				platform: 'desktop',
+				mobile: false,
+				multiTrack: true,
+				device: 'configured-mic',
+			},
+			{
+				platform: 'mobile',
+				mobile: true,
+				multiTrack: false,
+				device: undefined,
+			},
+		])(
+			'a config with multi-track and a device, read on $platform',
+			({ mobile, multiTrack, device }) => {
+				// The same stored config syncs to both, so each reading has to
+				// come from the platform rather than from what was saved.
+				beforeEach(() => {
+					setPlatform({ isMobile: mobile });
+				});
+
+				it(`treats multi-track as ${String(multiTrack)}`, () => {
+					expect(isMultiTrackSessionEnabled(multiTrackSettings)).toBe(
+						multiTrack,
+					);
+				});
+
+				it('resolves the capture device the platform can use', () => {
+					// Device ids are randomized per install, so a synced
+					// desktop id could never satisfy an exact-match
+					// constraint on the phone.
+					expect(resolveCaptureDeviceId(multiTrackSettings)).toBe(
+						device,
+					);
+				});
+			},
+		);
+
+		it('leaves multi-track off and the device unset when nothing was configured', () => {
 			expect(isMultiTrackSessionEnabled(DEFAULT_SETTINGS)).toBe(false);
-		});
-
-		it('isMultiTrackSessionEnabled degrades a stored "on" on mobile', () => {
-			Platform.isMobile = true;
-			expect(isMultiTrackSessionEnabled(multiTrackSettings)).toBe(false);
-		});
-
-		it('resolveCaptureDeviceId uses the configured device on desktop', () => {
-			expect(resolveCaptureDeviceId(multiTrackSettings)).toBe(
-				'configured-mic',
-			);
 			expect(resolveCaptureDeviceId(DEFAULT_SETTINGS)).toBeUndefined();
 		});
 
-		it('resolveCaptureDeviceId ignores stored device ids on mobile', () => {
-			// Ids are randomized per install; a synced desktop id could
-			// never satisfy an exact-match constraint on the phone
-			Platform.isMobile = true;
-			expect(resolveCaptureDeviceId(multiTrackSettings)).toBeUndefined();
-		});
-
 		it('getAudioStreams opens one default-mic stream on mobile despite multi-track config', async () => {
-			Platform.isMobile = true;
+			setPlatform({ isMobile: true });
 
 			const { streams, trackOrder } =
 				await getAudioStreams(multiTrackSettings);
@@ -449,7 +584,7 @@ describe('AudioStreamHandler', () => {
 		it('validateSelectedDevices is a no-op on mobile', async () => {
 			// A synced desktop device id must not block recording on the
 			// default microphone
-			Platform.isMobile = true;
+			setPlatform({ isMobile: true });
 
 			await expect(
 				validateSelectedDevices({
@@ -458,6 +593,132 @@ describe('AudioStreamHandler', () => {
 				}),
 			).resolves.toBeUndefined();
 			expect(enumerateDevices).not.toHaveBeenCalled();
+		});
+
+		it('names every multi-track device that has gone missing', async () => {
+			// Naming the tracks is the whole point: "a device is missing"
+			// leaves the user to work out which of four to re-pick.
+			enumerateDevices.mockResolvedValue([
+				{ kind: 'audioinput', deviceId: 'device-1', label: 'Mic one' },
+			]);
+
+			await expect(
+				validateSelectedDevices({
+					...multiTrackSettings,
+					maxTracks: 3,
+					trackAudioSources: new Map([
+						[
+							1,
+							{
+								deviceId: 'device-1',
+								channelMode: 'source' as const,
+							},
+						],
+						[
+							2,
+							{
+								deviceId: 'gone-a',
+								channelMode: 'source' as const,
+							},
+						],
+						[
+							3,
+							{
+								deviceId: 'gone-b',
+								channelMode: 'source' as const,
+							},
+						],
+					]),
+				}),
+			).rejects.toThrow('track(s) 2, 3');
+		});
+
+		it('accepts a multi-track session whose devices are all present', async () => {
+			enumerateDevices.mockResolvedValue([
+				{ kind: 'audioinput', deviceId: 'device-1', label: 'Mic one' },
+				{ kind: 'audioinput', deviceId: 'device-2', label: 'Mic two' },
+			]);
+
+			await expect(
+				validateSelectedDevices(multiTrackSettings),
+			).resolves.toBeUndefined();
+		});
+
+		it('accepts a single-track session recording from the default mic', async () => {
+			await expect(
+				validateSelectedDevices({
+					...DEFAULT_SETTINGS,
+					audioDeviceId: '',
+				}),
+			).resolves.toBeUndefined();
+		});
+	});
+
+	describe('naming a device for the filename', () => {
+		const originalMediaDevices = navigator.mediaDevices;
+		let enumerateDevices: jest.Mock;
+
+		beforeEach(() => {
+			enumerateDevices = jest.fn().mockResolvedValue([]);
+			Object.defineProperty(navigator, 'mediaDevices', {
+				value: { enumerateDevices },
+				configurable: true,
+			});
+		});
+
+		afterEach(() => {
+			Object.defineProperty(navigator, 'mediaDevices', {
+				value: originalMediaDevices,
+				configurable: true,
+			});
+		});
+
+		it.each([
+			{
+				name: 'strips what a filename cannot carry',
+				label: 'Blue Yeti (USB-2)',
+				expected: 'BlueYetiUSB2',
+			},
+			{
+				name: 'falls back to the id when the label is only punctuation',
+				label: '- ()',
+				expected: 'Devicedevice-1',
+			},
+			{
+				name: 'falls back to the id when the label is empty',
+				label: '',
+				expected: 'Devicedevice-1',
+			},
+		])('$name', async ({ label, expected }) => {
+			// The name goes into a track's filename, so a slash or a colon
+			// would produce a path the vault cannot write.
+			enumerateDevices.mockResolvedValue([
+				{ kind: 'audioinput', deviceId: 'device-1', label },
+			]);
+
+			await expect(getAudioSourceName('device-1')).resolves.toBe(
+				expected,
+			);
+		});
+
+		it('says the device is unknown when it is not there any more', async () => {
+			await expect(getAudioSourceName('unplugged')).resolves.toBe(
+				'UnknownDevice',
+			);
+		});
+
+		it('shortens a long device id in the fallback name', async () => {
+			enumerateDevices.mockResolvedValue([
+				{
+					kind: 'audioinput',
+					deviceId: 'abcdefghijklmnopqrstuvwxyz',
+					label: '###',
+				},
+			]);
+
+			await expect(
+				getAudioSourceName('abcdefghijklmnopqrstuvwxyz'),
+			).resolves.toBe('Deviceabcdefgh');
 		});
 	});
 });

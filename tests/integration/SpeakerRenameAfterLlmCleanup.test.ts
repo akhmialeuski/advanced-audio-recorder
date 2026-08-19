@@ -34,6 +34,9 @@ import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
 import type { TranscriptionProvider } from 'src/transcription/providers/TranscriptionProvider';
 import type { TranscriptSegment } from 'src/transcription/TranscriptTypes';
 import { SpeakerRenameModal } from 'src/ui/SpeakerRenameModal';
+import { internalsOf, partial } from '../helpers/doubles';
+import { createMockApp, fakeVaultFiles } from '../helpers/createApp';
+import { fakeProvider } from '../helpers/providerFixtures';
 
 /** Internal surface the test drives, mirroring the dialog's unit suite. */
 interface ModalInternals {
@@ -47,11 +50,11 @@ const NOTE_PATH = 'meetings/standup.md';
 const AUDIO_PATH = 'audio/standup.webm';
 const SIDECAR_PATH = 'audio/standup.webm.markers.json';
 
-const audioFile = {
+const audioFile = partial<TFile>({
 	name: 'standup.webm',
 	extension: 'webm',
 	path: AUDIO_PATH,
-} as unknown as TFile;
+});
 
 /** Three turns across two speakers, so both labels reach the note. */
 const segments: TranscriptSegment[] = [
@@ -69,12 +72,12 @@ const segments: TranscriptSegment[] = [
 function tf(path: string): TFile {
 	const name = path.split('/').pop() ?? path;
 	const dot = name.lastIndexOf('.');
-	return {
+	return partial<TFile>({
 		path,
 		name,
 		basename: dot >= 0 ? name.slice(0, dot) : name,
 		extension: dot >= 0 ? name.slice(dot + 1) : '',
-	} as unknown as TFile;
+	});
 }
 
 /**
@@ -113,25 +116,10 @@ function linkCache(content: string): {
  * editor appends at the cursor, which is what the real insertion path needs.
  */
 function makeApp(): { app: App; files: Map<string, string> } {
-	const files = new Map<string, string>([
+	const { files, adapter } = fakeVaultFiles([
 		[AUDIO_PATH, ''],
 		[NOTE_PATH, '# Standup\n\n![[standup.webm]]\n'],
 	]);
-	const adapter = {
-		exists: (path: string): Promise<boolean> =>
-			Promise.resolve(files.has(path)),
-		read: (path: string): Promise<string> =>
-			Promise.resolve(files.get(path) ?? ''),
-		write: (path: string, data: string): Promise<void> => {
-			files.set(path, data);
-			return Promise.resolve();
-		},
-		remove: (path: string): Promise<void> => {
-			files.delete(path);
-			return Promise.resolve();
-		},
-		rename: (): Promise<void> => Promise.resolve(),
-	};
 	// Built off the prototype rather than the constructor, so the insertion
 	// path's `instanceof MarkdownView` check sees a real view without the
 	// workspace leaf the real constructor demands.
@@ -154,7 +142,7 @@ function makeApp(): { app: App; files: Map<string, string> } {
 			files.set(NOTE_PATH, (files.get(NOTE_PATH) ?? '') + text);
 		},
 	};
-	const app = {
+	const app = createMockApp({
 		vault: {
 			adapter,
 			getFiles: () => [...files.keys()].map((path) => tf(path)),
@@ -201,26 +189,20 @@ function makeApp(): { app: App; files: Map<string, string> } {
 			getLeavesOfType: (type: string) =>
 				type === 'markdown' ? [{ view }] : [],
 		},
-	} as unknown as App;
+	}).app;
 	return { app, files };
 }
 
 /** A whole-file provider returning the diarized segments untouched. */
+/**
+ * A whole-file provider returning the diarized segments untouched.
+ * @returns The provider double
+ */
 function makeProvider(): TranscriptionProvider {
-	return {
+	return fakeProvider({
 		id: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-		label: 'Fake',
-		requiresNetwork: false,
-		capabilities: {
-			maxRequestBytes: Number.POSITIVE_INFINITY,
-			maxRequestSeconds: Number.POSITIVE_INFINITY,
-			acceptsOriginalContainer: true,
-			supportsDiarization: true,
-			supportsDictionary: true,
-			biasChannel: 'prompt',
-		},
-		transcribe: jest.fn(() => Promise.resolve({ segments })),
-	} as unknown as TranscriptionProvider;
+		transcribe: { segments },
+	});
 }
 
 /**
@@ -363,7 +345,7 @@ describe('renaming speakers in an LLM-cleaned note', () => {
 			saveSettings: () => Promise.resolve(),
 			sidecar: store,
 		});
-		const internals = modal as unknown as ModalInternals;
+		const internals = internalsOf<ModalInternals>(modal);
 		modal.open();
 		await internals.render();
 		const offeredBroad = (modal.contentEl.textContent ?? '').includes(
@@ -379,7 +361,7 @@ describe('renaming speakers in an LLM-cleaned note', () => {
 		internals.allowBroad = options.allowBroad ?? false;
 		await internals.apply();
 		modal.close();
-		const calls = (Notice as unknown as jest.Mock).mock.calls;
+		const calls = jest.mocked(Notice).mock.calls;
 		return {
 			notice: (calls.at(-1)?.[0] as string | undefined) ?? '',
 			offeredBroad,
