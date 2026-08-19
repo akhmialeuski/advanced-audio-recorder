@@ -28,24 +28,18 @@ class MockWorker implements WorkerDouble {
 }
 
 describe('EncodingWorkerClient', () => {
-	let consoleWarnSpy: jest.SpyInstance;
-
 	const respond = (worker: WorkerDouble, response: WorkerResponse): void => {
 		worker.onmessage?.(new MessageEvent('message', { data: response }));
 	};
 
 	beforeEach(() => {
 		createdWorkers.length = 0;
-		consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
+		jest.spyOn(console, 'warn').mockImplementation();
 		(global as Record<string, unknown>).Worker = MockWorker;
 		global.URL.createObjectURL = jest
 			.fn()
 			.mockReturnValue('blob:worker-url');
 		global.URL.revokeObjectURL = jest.fn();
-	});
-
-	afterEach(() => {
-		consoleWarnSpy.mockRestore();
 	});
 
 	it('is unavailable without bundled worker source', async () => {

@@ -23,19 +23,9 @@ import { loadPlugin } from '../helpers/pluginHarness';
 // The plugin's collaborators are each covered by their own suite. What is
 // under test here is the wiring between them, so they are recorded rather
 // than reproduced.
-jest.mock('src/recording/RecordingManager', () =>
-	require('../mocks/modules/recordingManager'),
-);
-jest.mock('src/ui/ContextMenu', () => require('../mocks/modules/contextMenu'));
-jest.mock('src/player/EnhancedPlayerRegistrar', () =>
-	require('../mocks/modules/enhancedPlayerRegistrar'),
-);
 jest.mock('src/ui/DeviceSelectionModal', () => ({
 	showDeviceSelectionModal: jest.fn().mockResolvedValue(undefined),
 }));
-jest.mock('src/recording/RecoveryService', () =>
-	require('../mocks/modules/recoveryService'),
-);
 
 /** The methods the recording-manager double offers, all of them spies. */
 interface RecorderDouble {

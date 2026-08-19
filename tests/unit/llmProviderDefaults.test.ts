@@ -121,19 +121,15 @@ describe('account endpoints', () => {
 		// deletes the field it lived in, so a refusal that says nothing leaves
 		// nothing to recover it from.
 		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-		try {
-			mergeSettings({
-				llmProvider: 'gemini',
-				transcriptionProvider: 'gemini',
-				llmBaseUrl: 'http://localhost:4000',
-			});
+		mergeSettings({
+			llmProvider: 'gemini',
+			transcriptionProvider: 'gemini',
+			llmBaseUrl: 'http://localhost:4000',
+		});
 
-			expect(warn).toHaveBeenCalledWith(
-				expect.stringContaining('http://localhost:4000'),
-			);
-		} finally {
-			warn.mockRestore();
-		}
+		expect(warn).toHaveBeenCalledWith(
+			expect.stringContaining('http://localhost:4000'),
+		);
 	});
 
 	it('keeps carrying it where nothing transcribes through the account', () => {
@@ -155,25 +151,21 @@ describe('account endpoints', () => {
 		// migration wrote it onto the OpenAI endpoint and the reconciliation
 		// then pointed transcription straight back at that field, which is the
 		// host with no audio endpoint this rule exists to avoid.
-		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-		try {
-			const merged = mergeSettings(
-				partial<AudioRecorderSettingsInput>({
-					transcriptionProvider: 'no-such-engine',
-					llmProvider: 'openai-compatible',
-					llmBaseUrl: 'http://localhost:1234/v1',
-				}),
-			);
+		jest.spyOn(console, 'warn').mockImplementation(() => {});
+		const merged = mergeSettings(
+			partial<AudioRecorderSettingsInput>({
+				transcriptionProvider: 'no-such-engine',
+				llmProvider: 'openai-compatible',
+				llmBaseUrl: 'http://localhost:1234/v1',
+			}),
+		);
 
-			expect(merged.transcriptionProvider).toBe(
-				DEFAULT_SETTINGS.transcriptionProvider,
-			);
-			expect(merged.whisperApiBaseUrl).toBe(
-				DEFAULT_SETTINGS.whisperApiBaseUrl,
-			);
-		} finally {
-			warn.mockRestore();
-		}
+		expect(merged.transcriptionProvider).toBe(
+			DEFAULT_SETTINGS.transcriptionProvider,
+		);
+		expect(merged.whisperApiBaseUrl).toBe(
+			DEFAULT_SETTINGS.whisperApiBaseUrl,
+		);
 	});
 
 	it('still carries it for a vendor the reconciled engine does not share an account with', () => {

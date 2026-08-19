@@ -362,7 +362,6 @@ describe('updateLinksInVault', () => {
 		expect(updated.skippedReferences).toBe(1);
 		expect(contents['note.md']).toBe(content);
 		expect(warnSpy).toHaveBeenCalledTimes(1);
-		warnSpy.mockRestore();
 	});
 
 	it('replaces multiple references in one note from end to start', async () => {
@@ -446,9 +445,7 @@ describe('updateLinksInVault', () => {
 	});
 
 	it('counts only notes whose content changed', async () => {
-		const warnSpy = jest
-			.spyOn(console, 'warn')
-			.mockImplementation(() => undefined);
+		jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 		const source = createFile('rec.webm');
 		const goodContent = '![[rec.webm]]';
 		const staleContent = 'shifted ![[rec.webm]]';
@@ -498,7 +495,6 @@ describe('updateLinksInVault', () => {
 		expect(updated.skippedReferences).toBe(1);
 		expect(contents['good.md']).toBe('![[new.webm]]');
 		expect(contents['stale.md']).toBe(staleContent);
-		warnSpy.mockRestore();
 	});
 
 	it('keeps a table row on one line when replacing an embed inside it', async () => {

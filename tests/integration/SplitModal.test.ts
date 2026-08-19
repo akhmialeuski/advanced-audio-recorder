@@ -82,7 +82,10 @@ jest.mock('src/utils/LinkUpdater', () => ({
 	}),
 }));
 
-import { encodeAudioBuffer } from 'src/audio/AudioEncoder';
+import {
+	encodeAudioBuffer,
+	isOfflineEncodingSupported,
+} from 'src/audio/AudioEncoder';
 import { decodeAudioBlob } from 'src/audio/AudioFormatConverter';
 import { updateLinksInVault } from 'src/utils/LinkUpdater';
 import { mergeSettings } from 'src/settings/settingsSerialization';
@@ -282,9 +285,6 @@ describe('SplitModal', () => {
 	});
 
 	it('shows the WAV extension in the example when encoding falls back', () => {
-		const { isOfflineEncodingSupported } = jest.requireMock(
-			'src/audio/AudioEncoder',
-		);
 		(isOfflineEncodingSupported as jest.Mock).mockReturnValue(false);
 		configureFile('recording.webm', 'webm');
 		const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
@@ -839,7 +839,6 @@ describe('SplitModal', () => {
 			expect(Notice).toHaveBeenCalledWith(
 				expect.stringContaining('Split failed'),
 			);
-			consoleSpy.mockRestore();
 		});
 	});
 
@@ -922,9 +921,6 @@ describe('SplitModal', () => {
 		});
 
 		it('falls back to WAV when the source format cannot be encoded', async () => {
-			const { isOfflineEncodingSupported } = jest.requireMock(
-				'src/audio/AudioEncoder',
-			);
 			(isOfflineEncodingSupported as jest.Mock).mockReturnValue(false);
 			const modal = new SplitModal(mockApp, mockFile, () => mockSettings);
 

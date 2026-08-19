@@ -10,6 +10,12 @@ import type { ConversionRequest } from 'src/recording/ConversionService';
 import { App, TFile } from 'obsidian';
 import { noticeMessages } from '../mocks/obsidian';
 import { createMockApp } from '../helpers/createApp';
+import {
+	convertBlobToFormatBuffer,
+	decodeAudioBlob,
+} from 'src/audio/AudioFormatConverter';
+import { encodeAudioBuffer } from 'src/audio/AudioEncoder';
+import { downmixAudioBuffer } from 'src/audio/downmix';
 
 jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest
@@ -104,13 +110,6 @@ describe('ConversionService', () => {
 	});
 
 	it('uses the decode-and-encode path for WAV targets', async () => {
-		const { decodeAudioBlob } = jest.requireMock(
-			'src/audio/AudioFormatConverter',
-		);
-		const { encodeAudioBuffer } = jest.requireMock(
-			'src/audio/AudioEncoder',
-		);
-
 		await service.convert(
 			createRequest({
 				sourceFile: createSourceFile('webm'),
@@ -119,8 +118,8 @@ describe('ConversionService', () => {
 			jest.fn(),
 		);
 
-		expect(decodeAudioBlob).toHaveBeenCalled();
-		expect(encodeAudioBuffer).toHaveBeenCalledWith(
+		expect(jest.mocked(decodeAudioBlob)).toHaveBeenCalled();
+		expect(jest.mocked(encodeAudioBuffer)).toHaveBeenCalledWith(
 			expect.anything(),
 			{ format: 'wav', bitrate: 128000 },
 			expect.any(Function),
@@ -128,8 +127,6 @@ describe('ConversionService', () => {
 	});
 
 	it('downmixes on the WAV decode path when a mono mode is requested', async () => {
-		const { downmixAudioBuffer } = jest.requireMock('src/audio/downmix');
-
 		await service.convert(
 			createRequest({
 				sourceFile: createSourceFile('webm'),
@@ -139,23 +136,19 @@ describe('ConversionService', () => {
 			jest.fn(),
 		);
 
-		expect(downmixAudioBuffer).toHaveBeenCalledWith(
+		expect(jest.mocked(downmixAudioBuffer)).toHaveBeenCalledWith(
 			expect.anything(),
 			'mono-left',
 		);
 	});
 
 	it('passes the channel mode to the streaming conversion', async () => {
-		const { convertBlobToFormatBuffer } = jest.requireMock(
-			'src/audio/AudioFormatConverter',
-		);
-
 		await service.convert(
 			createRequest({ channelMode: 'mono-mix' }),
 			jest.fn(),
 		);
 
-		expect(convertBlobToFormatBuffer).toHaveBeenCalledWith(
+		expect(jest.mocked(convertBlobToFormatBuffer)).toHaveBeenCalledWith(
 			expect.any(Blob),
 			'webm',
 			128000,

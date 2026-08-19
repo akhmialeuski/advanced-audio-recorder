@@ -11,31 +11,16 @@ import {
 } from 'src/audio/streamingConversion';
 
 const mockConversionExecute = jest.fn().mockResolvedValue(undefined);
-const mockConversionInit = jest.fn();
-const mockGetPrimaryAudioTrack = jest.fn();
-const mockInputDispose = jest.fn();
-const mockConvertedBuffer = new ArrayBuffer(64);
 
-jest.mock('mediabunny', () => ({
-	Input: jest.fn().mockImplementation(() => ({
-		getPrimaryAudioTrack: (): unknown => mockGetPrimaryAudioTrack(),
-		dispose: mockInputDispose,
-	})),
-	Output: jest.fn().mockImplementation(() => ({})),
-	BlobSource: jest.fn(),
-	BufferTarget: jest.fn().mockImplementation(() => ({
-		buffer: mockConvertedBuffer,
-	})),
-	ALL_FORMATS: [],
-	AudioSample: class {
-		constructor(init: object) {
-			Object.assign(this, init);
-		}
-	},
-	Conversion: {
-		init: (...args: unknown[]): unknown => mockConversionInit(...args),
-	},
-}));
+jest.mock('mediabunny', () => require('../mocks/modules/mediabunny'));
+import {
+	conversionInit,
+	getPrimaryAudioTrack,
+	inputDispose,
+	convertedBuffer,
+} from '../mocks/modules/mediabunny';
+import { BufferTarget } from 'mediabunny';
+import { partial } from '../helpers/doubles';
 
 jest.mock('src/audio/AudioEncoder', () => ({
 	ensureEncoderRegistered: jest.fn().mockResolvedValue(undefined),
@@ -64,10 +49,10 @@ describe('runStreamingConversion', () => {
 			isValid: true,
 			discardedTracks: [],
 		};
-		mockConversionInit.mockImplementation(() =>
+		conversionInit.mockImplementation(() =>
 			Promise.resolve(conversionStub),
 		);
-		mockGetPrimaryAudioTrack.mockResolvedValue({
+		getPrimaryAudioTrack.mockResolvedValue({
 			getCodec: jest.fn().mockResolvedValue('opus'),
 			isAudioTrack: (): boolean => true,
 			getNumberOfChannels: jest.fn().mockResolvedValue(2),
@@ -82,7 +67,7 @@ describe('runStreamingConversion', () => {
 			false,
 		);
 
-		expect(result).toBe(mockConvertedBuffer);
+		expect(result).toBe(convertedBuffer);
 		expect(mockConversionExecute).toHaveBeenCalledTimes(1);
 	});
 
@@ -93,7 +78,7 @@ describe('runStreamingConversion', () => {
 	});
 
 	it('throws when the input has no audio track', async () => {
-		mockGetPrimaryAudioTrack.mockResolvedValue(null);
+		getPrimaryAudioTrack.mockResolvedValue(null);
 
 		await expect(
 			runStreamingConversion(inputBlob, 'mp3', 128000, false),
@@ -103,23 +88,23 @@ describe('runStreamingConversion', () => {
 	it('disposes the input on success', async () => {
 		await runStreamingConversion(inputBlob, 'mp3', 128000, false);
 
-		expect(mockInputDispose).toHaveBeenCalledTimes(1);
+		expect(inputDispose).toHaveBeenCalledTimes(1);
 	});
 
 	it('disposes the input when the conversion throws', async () => {
-		mockGetPrimaryAudioTrack.mockResolvedValue(null);
+		getPrimaryAudioTrack.mockResolvedValue(null);
 
 		await expect(
 			runStreamingConversion(inputBlob, 'mp3', 128000, false),
 		).rejects.toThrow('Input contains no audio track');
 
-		expect(mockInputDispose).toHaveBeenCalledTimes(1);
+		expect(inputDispose).toHaveBeenCalledTimes(1);
 	});
 
 	it('forces a re-encode with bitrate by default', async () => {
 		await runStreamingConversion(inputBlob, 'mp3', 96000, false);
 
-		expect(mockConversionInit).toHaveBeenCalledWith(
+		expect(conversionInit).toHaveBeenCalledWith(
 			expect.objectContaining({
 				audio: { codec: 'mp3', bitrate: 96000 },
 			}),
@@ -127,14 +112,14 @@ describe('runStreamingConversion', () => {
 	});
 
 	it('omits the bitrate for a codec-matching remux', async () => {
-		mockGetPrimaryAudioTrack.mockResolvedValue({
+		getPrimaryAudioTrack.mockResolvedValue({
 			getCodec: jest.fn().mockResolvedValue('mp3'),
 			isAudioTrack: (): boolean => true,
 		});
 
 		await runStreamingConversion(inputBlob, 'mp3', 96000, true);
 
-		expect(mockConversionInit).toHaveBeenCalledWith(
+		expect(conversionInit).toHaveBeenCalledWith(
 			expect.objectContaining({
 				audio: { codec: 'mp3' },
 			}),
@@ -142,14 +127,14 @@ describe('runStreamingConversion', () => {
 	});
 
 	it('res-encode a codec match when remux is not allowed', async () => {
-		mockGetPrimaryAudioTrack.mockResolvedValue({
+		getPrimaryAudioTrack.mockResolvedValue({
 			getCodec: jest.fn().mockResolvedValue('mp3'),
 			isAudioTrack: (): boolean => true,
 		});
 
 		await runStreamingConversion(inputBlob, 'mp3', 96000, false);
 
-		expect(mockConversionInit).toHaveBeenCalledWith(
+		expect(conversionInit).toHaveBeenCalledWith(
 			expect.objectContaining({
 				audio: { codec: 'mp3', bitrate: 96000 },
 			}),
@@ -159,7 +144,7 @@ describe('runStreamingConversion', () => {
 	it('omits the bitrate for PCM targets', async () => {
 		await runStreamingConversion(inputBlob, 'wav', 128000, false);
 
-		expect(mockConversionInit).toHaveBeenCalledWith(
+		expect(conversionInit).toHaveBeenCalledWith(
 			expect.objectContaining({
 				audio: { codec: 'pcm-s16' },
 			}),
@@ -186,10 +171,9 @@ describe('runStreamingConversion', () => {
 	});
 
 	it('throws when the conversion produces no output', async () => {
-		const { BufferTarget } = jest.requireMock('mediabunny');
-		jest.mocked(BufferTarget).mockImplementationOnce(() => ({
-			buffer: new ArrayBuffer(0),
-		}));
+		jest.mocked(BufferTarget).mockImplementationOnce(() =>
+			partial<BufferTarget>({ buffer: new ArrayBuffer(0) }),
+		);
 
 		await expect(
 			runStreamingConversion(inputBlob, 'mp3', 128000, false),
@@ -227,7 +211,7 @@ describe('runStreamingConversion', () => {
 			await runStreamingConversion(inputBlob, 'mp3', 96000, false);
 
 			const audio = (
-				mockConversionInit.mock.calls[0][0] as {
+				conversionInit.mock.calls[0][0] as {
 					audio: Record<string, unknown>;
 				}
 			).audio;
@@ -246,7 +230,7 @@ describe('runStreamingConversion', () => {
 			);
 
 			const audio = (
-				mockConversionInit.mock.calls[0][0] as {
+				conversionInit.mock.calls[0][0] as {
 					audio: {
 						codec: string;
 						bitrate?: number;
@@ -266,7 +250,7 @@ describe('runStreamingConversion', () => {
 		});
 
 		it('sends the bitrate for a mono mix even on a codec match', async () => {
-			mockGetPrimaryAudioTrack.mockResolvedValue({
+			getPrimaryAudioTrack.mockResolvedValue({
 				getCodec: jest.fn().mockResolvedValue('mp3'),
 				isAudioTrack: (): boolean => true,
 				getNumberOfChannels: jest.fn().mockResolvedValue(2),
@@ -285,7 +269,7 @@ describe('runStreamingConversion', () => {
 			// must not apply - otherwise the re-encode would run at
 			// mediabunny's default quality
 			const audio = (
-				mockConversionInit.mock.calls[0][0] as {
+				conversionInit.mock.calls[0][0] as {
 					audio: { bitrate?: number; process?: unknown };
 				}
 			).audio;
@@ -294,7 +278,7 @@ describe('runStreamingConversion', () => {
 		});
 
 		it('keeps remux eligibility for a mono mix of already-mono input', async () => {
-			mockGetPrimaryAudioTrack.mockResolvedValue({
+			getPrimaryAudioTrack.mockResolvedValue({
 				getCodec: jest.fn().mockResolvedValue('mp3'),
 				isAudioTrack: (): boolean => true,
 				getNumberOfChannels: jest.fn().mockResolvedValue(1),
@@ -310,7 +294,7 @@ describe('runStreamingConversion', () => {
 			);
 
 			// Nothing to mix: the packets can be copied untouched
-			expect(mockConversionInit).toHaveBeenCalledWith(
+			expect(conversionInit).toHaveBeenCalledWith(
 				expect.objectContaining({
 					audio: { codec: 'mp3' },
 				}),
@@ -328,7 +312,7 @@ describe('runStreamingConversion', () => {
 			);
 
 			const audio = (
-				mockConversionInit.mock.calls[0][0] as {
+				conversionInit.mock.calls[0][0] as {
 					audio: { process?: (sample: unknown) => unknown };
 				}
 			).audio;
@@ -363,7 +347,7 @@ describe('runStreamingConversion', () => {
 				);
 
 				const audio = (
-					mockConversionInit.mock.calls[0][0] as {
+					conversionInit.mock.calls[0][0] as {
 						audio: {
 							process?: (sample: unknown) => unknown;
 							processedNumberOfChannels?: number;
@@ -394,7 +378,7 @@ describe('runStreamingConversion', () => {
 		it.each(['mono-left', 'mono-right'] as const)(
 			'keeps remux eligibility for a %s pick on already-mono input',
 			async (mode) => {
-				mockGetPrimaryAudioTrack.mockResolvedValue({
+				getPrimaryAudioTrack.mockResolvedValue({
 					getCodec: jest.fn().mockResolvedValue('mp3'),
 					isAudioTrack: (): boolean => true,
 					getNumberOfChannels: jest.fn().mockResolvedValue(1),
@@ -411,7 +395,7 @@ describe('runStreamingConversion', () => {
 
 				// Picking either side of a mono source is a no-op: the
 				// only channel is already the required mono output.
-				expect(mockConversionInit).toHaveBeenCalledWith(
+				expect(conversionInit).toHaveBeenCalledWith(
 					expect.objectContaining({
 						audio: { codec: 'mp3' },
 					}),

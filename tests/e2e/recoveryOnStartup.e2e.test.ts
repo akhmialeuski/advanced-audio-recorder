@@ -20,19 +20,9 @@ import {
 } from 'src/recording/RecoveryService';
 import { loadPlugin } from '../helpers/pluginHarness';
 
-jest.mock('src/recording/RecordingManager', () =>
-	require('../mocks/modules/recordingManager'),
-);
-jest.mock('src/ui/ContextMenu', () => require('../mocks/modules/contextMenu'));
-jest.mock('src/player/EnhancedPlayerRegistrar', () =>
-	require('../mocks/modules/enhancedPlayerRegistrar'),
-);
 jest.mock('src/ui/RecoveryModal', () => ({
 	RecoveryModal: jest.fn().mockImplementation(() => ({ open: jest.fn() })),
 }));
-jest.mock('src/recording/RecoveryService', () =>
-	require('../mocks/modules/recoveryService'),
-);
 
 /** A journal entry describing a session that never finished. */
 function interruptedSession(id: string): { id: string } {

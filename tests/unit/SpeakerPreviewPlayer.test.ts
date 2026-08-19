@@ -83,9 +83,7 @@ function installAudio(duration = 300, readyState = 1): AudioHarness {
 		blockPlayback: () => {
 			blocked = true;
 		},
-		restore: () => {
-			factory.mockRestore();
-		},
+		restore: () => {},
 	};
 }
 
@@ -293,7 +291,6 @@ describe('SpeakerPreviewPlayer', () => {
 			expect.stringContaining('Speaker preview could not start'),
 			expect.anything(),
 		);
-		warn.mockRestore();
 	});
 
 	it('dispose stops playback and releases the element', () => {

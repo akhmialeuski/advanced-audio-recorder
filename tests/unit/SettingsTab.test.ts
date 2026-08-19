@@ -40,6 +40,9 @@ import {
 	settingRow,
 } from '../helpers/settingRows';
 import { partial } from '../helpers/doubles';
+import { mediaDevice } from '../helpers/mediaMocks';
+import { closeSettingsPage } from 'src/obsidian/settingsNavigation';
+import { listFormatAvailability } from 'src/audio/AudioCapabilityDetector';
 
 // Mock AudioEncoder to avoid loading mediabunny in jsdom. The async
 // probe defaults to "no offline encoder works"; individual tests
@@ -373,14 +376,7 @@ describe('AudioRecorderSettingTab', () => {
 			// to react to state the settings tab does not own.
 			(
 				navigator.mediaDevices.enumerateDevices as jest.Mock
-			).mockResolvedValue([
-				{
-					deviceId: 'mic-1',
-					kind: 'audioinput',
-					label: 'Built-in microphone',
-					groupId: '',
-				},
-			]);
+			).mockResolvedValue([mediaDevice('mic-1', 'Built-in microphone')]);
 			const updateSpy = jest
 				.spyOn(tab, 'update')
 				.mockImplementation(() => undefined);
@@ -409,10 +405,6 @@ describe('AudioRecorderSettingTab', () => {
 				.spyOn(tab, 'update')
 				.mockImplementation(() => undefined);
 			tab.getSettingDefinitions();
-		});
-
-		afterEach(() => {
-			updateSpy.mockRestore();
 		});
 
 		it('reads the tree again when another profile becomes the default', async () => {
@@ -595,20 +587,10 @@ describe('AudioRecorderSettingTab', () => {
 			);
 		});
 
-		/** A device list the enumeration answers with, named for its label. */
-		const audioInput = (deviceId: string, label: string): MediaDeviceInfo =>
-			({
-				kind: 'audioinput',
-				deviceId,
-				label,
-				groupId: '',
-				toJSON: () => ({}),
-			}) as unknown as MediaDeviceInfo;
-
 		it('renders the devices an enumeration finds while the tab is open', async () => {
 			(
 				navigator.mediaDevices.enumerateDevices as jest.Mock
-			).mockResolvedValue([audioInput('mic-1', 'Desk microphone')]);
+			).mockResolvedValue([mediaDevice('mic-1', 'Desk microphone')]);
 
 			legacyTab.display();
 			await tick();
@@ -631,7 +613,7 @@ describe('AudioRecorderSettingTab', () => {
 					new Promise((resolve) => {
 						answer = (): void => {
 							resolve([
-								audioInput('late-mic', 'Arrived after hide'),
+								mediaDevice('late-mic', 'Arrived after hide'),
 							]);
 						};
 					}),
@@ -750,14 +732,7 @@ describe('AudioRecorderSettingTab', () => {
 			// tree again into its own container, exactly once.
 			(
 				navigator.mediaDevices.enumerateDevices as jest.Mock
-			).mockResolvedValue([
-				{
-					deviceId: 'mic-1',
-					kind: 'audioinput',
-					label: 'Built-in microphone',
-					groupId: '',
-				},
-			]);
+			).mockResolvedValue([mediaDevice('mic-1', 'Built-in microphone')]);
 
 			legacyTab.display();
 			await tick();
@@ -1685,9 +1660,6 @@ describe('AudioRecorderSettingTab profile catalogues', () => {
 	it('stores the new name and leaves the page it just renamed', async () => {
 		// The page is addressed by the name it no longer has, so staying on
 		// it would show an empty page.
-		const { closeSettingsPage } = jest.requireMock(
-			'src/obsidian/settingsNavigation',
-		);
 		profileAction('Legal', 'Rename profile')();
 
 		lastPrompt().onSubmit('Contracts');
@@ -1697,7 +1669,7 @@ describe('AudioRecorderSettingTab profile catalogues', () => {
 			'Contracts',
 		);
 		expect(saveSettings).toHaveBeenCalled();
-		expect(closeSettingsPage).toHaveBeenCalled();
+		expect(jest.mocked(closeSettingsPage)).toHaveBeenCalled();
 	});
 
 	it.each([
@@ -1726,9 +1698,6 @@ describe('AudioRecorderSettingTab profile catalogues', () => {
 	});
 
 	it('deletes the profile and leaves its page', async () => {
-		const { closeSettingsPage } = jest.requireMock(
-			'src/obsidian/settingsNavigation',
-		);
 		profileAction('Medical', 'Delete profile')();
 		await tick();
 
@@ -1737,7 +1706,7 @@ describe('AudioRecorderSettingTab profile catalogues', () => {
 				(profile) => profile.name,
 			),
 		).toEqual(['Legal']);
-		expect(closeSettingsPage).toHaveBeenCalled();
+		expect(jest.mocked(closeSettingsPage)).toHaveBeenCalled();
 	});
 
 	it('moves the selection off a profile it deletes', async () => {
@@ -1909,9 +1878,6 @@ describe('AudioRecorderSettingTab probing the format list', () => {
 		// A failed probe says nothing about the device. Blocking everything
 		// would leave the user unable to pick any format at all; the
 		// recording-start validation still catches a bad one.
-		const { listFormatAvailability } = jest.requireMock(
-			'src/audio/AudioCapabilityDetector',
-		);
 		(listFormatAvailability as jest.Mock).mockRejectedValueOnce(
 			new Error('probe failed'),
 		);

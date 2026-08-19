@@ -19,13 +19,19 @@ import {
 	installMultiTrackRecorders,
 	installRecordingMediaStubs,
 	makeFakeMarkerStore,
+	makeMediaRecorderDouble,
 	recordingManagerOver,
+	stubAudioStreams,
 } from '../helpers/recordingManagerTestKit';
 import { useDesktopPlatform } from '../helpers/platform';
 import { MarkdownView, Notice } from 'obsidian';
 import { PcmStreamRecorder } from 'src/recording/PcmStreamRecorder';
+import { encodeAudioBuffer } from 'src/audio/AudioEncoder';
+import { getAudioSourceName } from 'src/recording/AudioStreamHandler';
 
 // Mock AudioStreamHandler
+import type { TrackAudioSource } from 'src/recording/AudioStreamHandler';
+
 jest.mock('src/recording/AudioStreamHandler', () =>
 	require('../mocks/modules/audioStreamHandler'),
 );
@@ -54,20 +60,15 @@ describe('RecordingManager', () => {
 	let mockApp: App;
 	let mockSettings: AudioRecorderSettings;
 	let statusChangeCallback: jest.Mock;
-	let consoleErrorSpy: jest.SpyInstance;
 
 	beforeEach(() => {
-		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+		jest.spyOn(console, 'error').mockImplementation();
 		({
 			manager,
 			app: mockApp,
 			settings: mockSettings,
 			onStatusChange: statusChangeCallback,
 		} = createRecordingSut());
-	});
-
-	afterEach(() => {
-		consoleErrorSpy.mockRestore();
 	});
 
 	describe('merged output with no audio', () => {
@@ -88,22 +89,10 @@ describe('RecordingManager', () => {
 
 			installMediaRecorder(undefined, (mime) => mime === 'audio/webm');
 
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioStreams.mockResolvedValue({
-				streams: [
-					{ getTracks: () => [{ stop: jest.fn() }] },
-					{ getTracks: () => [{ stop: jest.fn() }] },
-				],
-				trackOrder: [],
-			});
+			stubAudioStreams({ count: 2 });
 
 			// The mixed render encodes to an empty blob: nothing to save
-			const { encodeAudioBuffer } = jest.requireMock(
-				'src/audio/AudioEncoder',
-			);
-			encodeAudioBuffer.mockResolvedValueOnce(new Blob([]));
+			jest.mocked(encodeAudioBuffer).mockResolvedValueOnce(new Blob([]));
 
 			await manager.startRecording();
 
@@ -130,37 +119,13 @@ describe('RecordingManager', () => {
 
 	describe('track file base names', () => {
 		const setupTwoTrackRecording = (
-			trackOrder: { trackNumber: number; deviceId: string }[],
+			trackOrder: TrackAudioSource[],
 		): void => {
 			useDesktopPlatform();
 
-			const mockMediaRecorder = {
-				start: jest.fn(),
-				stop: jest.fn(),
-				pause: jest.fn(),
-				resume: jest.fn(),
-				ondataavailable: null as ((event: BlobEvent) => void) | null,
-				onerror: null as ((event: Event) => void) | null,
-				addEventListener: jest.fn(
-					(event: string, handler: () => void) => {
-						if (event === 'stop') {
-							handler();
-						}
-					},
-				),
-			};
-			installMediaRecorder(mockMediaRecorder);
+			makeMediaRecorderDouble();
 
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioStreams.mockResolvedValue({
-				streams: [
-					{ getTracks: () => [{ stop: jest.fn() }] },
-					{ getTracks: () => [{ stop: jest.fn() }] },
-				],
-				trackOrder,
-			});
+			stubAudioStreams({ count: 2, trackOrder });
 		};
 
 		const getTargets = (): { fileBaseName: string; sourceName: string }[] =>
@@ -186,8 +151,16 @@ describe('RecordingManager', () => {
 				statusChangeCallback,
 			);
 			setupTwoTrackRecording([
-				{ trackNumber: 1, deviceId: 'shared-device' },
-				{ trackNumber: 2, deviceId: 'shared-device' },
+				{
+					trackNumber: 1,
+					deviceId: 'shared-device',
+					channelMode: 'source',
+				},
+				{
+					trackNumber: 2,
+					deviceId: 'shared-device',
+					channelMode: 'source',
+				},
 			]);
 
 			await manager.startRecording();
@@ -204,10 +177,7 @@ describe('RecordingManager', () => {
 		});
 
 		it('keeps plain source names when they are unique', async () => {
-			const { getAudioSourceName } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioSourceName
+			jest.mocked(getAudioSourceName)
 				.mockResolvedValueOnce('DeviceA')
 				.mockResolvedValueOnce('DeviceB');
 
@@ -223,8 +193,8 @@ describe('RecordingManager', () => {
 				statusChangeCallback,
 			);
 			setupTwoTrackRecording([
-				{ trackNumber: 1, deviceId: 'device-a' },
-				{ trackNumber: 2, deviceId: 'device-b' },
+				{ trackNumber: 1, deviceId: 'device-a', channelMode: 'source' },
+				{ trackNumber: 2, deviceId: 'device-b', channelMode: 'source' },
 			]);
 
 			await manager.startRecording();
@@ -370,7 +340,6 @@ describe('RecordingManager', () => {
 			);
 
 			consoleWarnSpy.mockRestore();
-			consoleErrorSpy.mockRestore();
 		});
 
 		/**
@@ -436,17 +405,7 @@ describe('RecordingManager', () => {
 
 			installMediaRecorder(undefined, (mime) => mime === 'audio/webm');
 
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioStreams.mockResolvedValue({
-				streams: [
-					{
-						getTracks: () => [{ stop: jest.fn() }],
-					},
-				],
-				trackOrder: [],
-			});
+			stubAudioStreams();
 
 			await manager.startRecording();
 
@@ -481,31 +440,9 @@ describe('RecordingManager', () => {
 				path: 'Meetings/2026/Meeting Note.md',
 			});
 
-			const mockMediaRecorder = {
-				start: jest.fn(),
-				stop: jest.fn(),
-				pause: jest.fn(),
-				resume: jest.fn(),
-				ondataavailable: null as ((event: BlobEvent) => void) | null,
-				onerror: null as ((event: Event) => void) | null,
-				addEventListener: jest.fn(
-					(event: string, handler: () => void) => {
-						if (event === 'stop') {
-							handler();
-						}
-					},
-				),
-			};
+			const mockMediaRecorder = makeMediaRecorderDouble();
 
-			installMediaRecorder(mockMediaRecorder);
-
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioStreams.mockResolvedValue({
-				streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
-				trackOrder: [],
-			});
+			stubAudioStreams();
 
 			await manager.startRecording();
 
@@ -540,31 +477,9 @@ describe('RecordingManager', () => {
 				path: 'Meetings/2026/Meeting Note.md',
 			});
 
-			const mockMediaRecorder = {
-				start: jest.fn(),
-				stop: jest.fn(),
-				pause: jest.fn(),
-				resume: jest.fn(),
-				ondataavailable: null as ((event: BlobEvent) => void) | null,
-				onerror: null as ((event: Event) => void) | null,
-				addEventListener: jest.fn(
-					(event: string, handler: () => void) => {
-						if (event === 'stop') {
-							handler();
-						}
-					},
-				),
-			};
+			const mockMediaRecorder = makeMediaRecorderDouble();
 
-			installMediaRecorder(mockMediaRecorder);
-
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioStreams.mockResolvedValue({
-				streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
-				trackOrder: [],
-			});
+			stubAudioStreams();
 
 			await manager.startRecording();
 
@@ -603,31 +518,9 @@ describe('RecordingManager', () => {
 				path: 'Meetings/2026/Meeting Note.md',
 			});
 
-			const mockMediaRecorder = {
-				start: jest.fn(),
-				stop: jest.fn(),
-				pause: jest.fn(),
-				resume: jest.fn(),
-				ondataavailable: null as ((event: BlobEvent) => void) | null,
-				onerror: null as ((event: Event) => void) | null,
-				addEventListener: jest.fn(
-					(event: string, handler: () => void) => {
-						if (event === 'stop') {
-							handler();
-						}
-					},
-				),
-			};
+			const mockMediaRecorder = makeMediaRecorderDouble();
 
-			installMediaRecorder(mockMediaRecorder);
-
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioStreams.mockResolvedValue({
-				streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
-				trackOrder: [],
-			});
+			stubAudioStreams();
 
 			await manager.startRecording();
 
@@ -657,31 +550,9 @@ describe('RecordingManager', () => {
 				editor: { replaceSelection: mockReplaceSelection },
 			});
 
-			const mockMediaRecorder = {
-				start: jest.fn(),
-				stop: jest.fn(),
-				pause: jest.fn(),
-				resume: jest.fn(),
-				ondataavailable: null as ((event: BlobEvent) => void) | null,
-				onerror: null as ((event: Event) => void) | null,
-				addEventListener: jest.fn(
-					(event: string, handler: () => void) => {
-						if (event === 'stop') {
-							handler();
-						}
-					},
-				),
-			};
+			const mockMediaRecorder = makeMediaRecorderDouble();
 
-			installMediaRecorder(mockMediaRecorder);
-
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioStreams.mockResolvedValue({
-				streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
-				trackOrder: [],
-			});
+			stubAudioStreams();
 
 			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
 				new Uint8Array([1, 2, 3]).buffer,
@@ -726,31 +597,9 @@ describe('RecordingManager', () => {
 				editor: { replaceSelection: mockReplaceSelection },
 			});
 
-			const mockMediaRecorder = {
-				start: jest.fn(),
-				stop: jest.fn(),
-				pause: jest.fn(),
-				resume: jest.fn(),
-				ondataavailable: null as ((event: BlobEvent) => void) | null,
-				onerror: null as ((event: Event) => void) | null,
-				addEventListener: jest.fn(
-					(event: string, handler: () => void) => {
-						if (event === 'stop') {
-							handler();
-						}
-					},
-				),
-			};
+			const mockMediaRecorder = makeMediaRecorderDouble();
 
-			installMediaRecorder(mockMediaRecorder);
-
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioStreams.mockResolvedValue({
-				streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
-				trackOrder: [],
-			});
+			stubAudioStreams();
 
 			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
 				new Uint8Array([1, 2, 3]).buffer,
@@ -787,31 +636,9 @@ describe('RecordingManager', () => {
 		};
 
 		beforeEach(() => {
-			mockMediaRecorder = {
-				start: jest.fn(),
-				stop: jest.fn(),
-				pause: jest.fn(),
-				resume: jest.fn(),
-				ondataavailable: null,
-				onerror: null,
-				addEventListener: jest.fn(
-					(event: string, handler: () => void) => {
-						if (event === 'stop') {
-							handler();
-						}
-					},
-				),
-			};
+			mockMediaRecorder = makeMediaRecorderDouble();
 
-			installMediaRecorder(mockMediaRecorder);
-
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioStreams.mockResolvedValue({
-				streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
-				trackOrder: [],
-			});
+			stubAudioStreams();
 
 			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
 				new Uint8Array([1, 2, 3]).buffer,

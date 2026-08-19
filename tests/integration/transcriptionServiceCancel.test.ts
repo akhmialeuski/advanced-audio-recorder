@@ -18,9 +18,9 @@ import {
 import { transcribeFile } from 'src/transcription/runTranscription';
 import type { TranscriptionProvider } from 'src/transcription/providers/TranscriptionProvider';
 import { mergeSettings } from 'src/settings/settingsSerialization';
-import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
+import { fakeProvider, NO_DIARIZATION } from '../helpers/providerFixtures';
 
 const audioFile = partial<TFile>({
 	name: 'rec.webm',
@@ -34,24 +34,24 @@ const audioFile = partial<TFile>({
  * inside the single transcribe call, letting a test flip its cancel flag mid
  * request.
  */
+/**
+ * A provider that accepts the original container (so the service takes the
+ * whole-file path and never needs the Web Audio decode). `onTranscribe` runs
+ * inside the single transcribe call, letting a test flip its cancel flag mid
+ * request.
+ * @param onTranscribe - Runs inside the request, before it resolves
+ * @returns The provider double
+ */
 function makeProvider(onTranscribe: () => void): TranscriptionProvider {
-	return {
-		id: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
-		label: 'Fake',
-		requiresNetwork: false,
-		capabilities: {
-			maxRequestBytes: Number.POSITIVE_INFINITY,
-			maxRequestSeconds: Number.POSITIVE_INFINITY,
-			acceptsOriginalContainer: true,
-			supportsDiarization: false,
-			supportsDictionary: false,
-			biasChannel: 'prompt',
-		},
-		transcribe: jest.fn(async () => {
+	return fakeProvider({
+		capabilities: NO_DIARIZATION,
+		transcribe: () => {
 			onTranscribe();
-			return { segments: [{ start: 0, end: 1, text: 'hi' }] };
-		}),
-	};
+			return Promise.resolve({
+				segments: [{ start: 0, end: 1, text: 'hi' }],
+			});
+		},
+	});
 }
 
 /** Minimal App with just the surface the transcription pipeline touches. */

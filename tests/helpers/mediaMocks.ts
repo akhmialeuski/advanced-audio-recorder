@@ -154,3 +154,42 @@ export function installObjectUrlMock(): InstalledMock<ObjectUrlDouble> {
 		},
 	};
 }
+
+/**
+ * Builds a `MediaDeviceInfo` the way the browser reports one.
+ *
+ * Eight suites hand-rolled this five-field literal, always with the same
+ * `toJSON` stub the DOM type demands and no test ever reads. Naming the two
+ * fields that matter - the id and the label - keeps a device list readable.
+ * @param deviceId - Device id the browser reports
+ * @param label - Human-readable name, defaults to the id
+ * @param kind - Device kind, defaulting to a microphone
+ * @returns The device descriptor
+ */
+export function mediaDevice(
+	deviceId: string,
+	label: string = deviceId,
+	kind: MediaDeviceKind = 'audioinput',
+): MediaDeviceInfo {
+	return {
+		deviceId,
+		label,
+		kind,
+		groupId: `group-${deviceId}`,
+		toJSON: () => ({}),
+	};
+}
+
+/** The device id the browser uses for the system default input. */
+export const DEFAULT_DEVICE_ID = 'default';
+
+/**
+ * The stock device list: a system default microphone plus a named second one.
+ * @returns Two audio inputs, the first of them the system default
+ */
+export function defaultDeviceList(): MediaDeviceInfo[] {
+	return [
+		mediaDevice(DEFAULT_DEVICE_ID, 'Default - Microphone'),
+		mediaDevice('device1', 'Microphone 1'),
+	];
+}

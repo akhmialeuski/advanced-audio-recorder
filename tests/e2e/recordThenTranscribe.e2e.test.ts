@@ -22,21 +22,11 @@ import { TranscriptionModal } from 'src/ui/TranscriptionModal';
 import { RecordingManager } from 'src/recording/RecordingManager';
 import { loadPlugin } from '../helpers/pluginHarness';
 
-jest.mock('src/recording/RecordingManager', () =>
-	require('../mocks/modules/recordingManager'),
-);
-jest.mock('src/ui/ContextMenu', () => require('../mocks/modules/contextMenu'));
-jest.mock('src/player/EnhancedPlayerRegistrar', () =>
-	require('../mocks/modules/enhancedPlayerRegistrar'),
-);
 jest.mock('src/ui/TranscriptionModal', () => ({
 	TranscriptionModal: jest.fn().mockImplementation(() => ({
 		open: jest.fn(),
 	})),
 }));
-jest.mock('src/recording/RecoveryService', () =>
-	require('../mocks/modules/recoveryService'),
-);
 jest.mock('src/recording/silentChannelDetector', () => ({
 	detectSilentChannel: jest.fn().mockResolvedValue(null),
 }));

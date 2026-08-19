@@ -13,10 +13,6 @@ describe('DebugLogger', () => {
 		consoleMock = jest.spyOn(console, 'debug').mockImplementation();
 	});
 
-	afterEach(() => {
-		consoleMock.mockRestore();
-	});
-
 	describe('when debug is disabled', () => {
 		it('does not log anything', () => {
 			const settings: AudioRecorderSettings = {

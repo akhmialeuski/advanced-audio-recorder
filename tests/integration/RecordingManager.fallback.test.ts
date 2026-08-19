@@ -79,10 +79,6 @@ describe('AudioStreamHandler: Error Handling', () => {
 		).isTypeSupported = jest.fn().mockReturnValue(true);
 	});
 
-	afterEach(() => {
-		consoleErrorSpy.mockRestore();
-	});
-
 	it('logs AudioStreamError when OverconstrainedError occurs', async () => {
 		const getUserMediaMock = jest
 			.fn()
@@ -229,11 +225,10 @@ describe('Start failure after stream acquisition', () => {
 	let mockApp: App;
 	let mockSettings: AudioRecorderSettings;
 	let statusChangeCallback: jest.Mock;
-	let consoleErrorSpy: jest.SpyInstance;
 	let trackStop: jest.Mock;
 
 	beforeEach(() => {
-		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+		jest.spyOn(console, 'error').mockImplementation();
 
 		mockApp = createRecordingMockApp();
 
@@ -261,10 +256,6 @@ describe('Start failure after stream acquisition', () => {
 			},
 			writable: true,
 		});
-	});
-
-	afterEach(() => {
-		consoleErrorSpy.mockRestore();
 	});
 
 	it('stops acquired tracks when MediaRecorder creation fails', async () => {

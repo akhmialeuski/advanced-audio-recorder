@@ -12,6 +12,7 @@ import {
 	getDefaultDeviceId,
 } from 'src/utils/DeviceUtils';
 import { at } from '../helpers/assertions';
+import { mediaDevice } from '../helpers/mediaMocks';
 
 // Mock navigator.mediaDevices
 const mockEnumerateDevices = jest.fn();
@@ -31,27 +32,9 @@ describe('DeviceUtils', () => {
 	describe('getAudioInputDevices', () => {
 		it('returns only audio input devices', async () => {
 			const devices: MediaDeviceInfo[] = [
-				{
-					deviceId: 'default',
-					label: 'Default - Microphone',
-					kind: 'audioinput',
-					groupId: 'group1',
-					toJSON: () => ({}),
-				},
-				{
-					deviceId: 'videodevice1',
-					label: 'Camera',
-					kind: 'videoinput',
-					groupId: 'group2',
-					toJSON: () => ({}),
-				},
-				{
-					deviceId: 'audiooutput1',
-					label: 'Speakers',
-					kind: 'audiooutput',
-					groupId: 'group3',
-					toJSON: () => ({}),
-				},
+				mediaDevice('default', 'Default - Microphone'),
+				mediaDevice('videodevice1', 'Camera', 'videoinput'),
+				mediaDevice('audiooutput1', 'Speakers', 'audiooutput'),
 			] as MediaDeviceInfo[];
 
 			mockEnumerateDevices.mockResolvedValue(devices);
@@ -75,20 +58,8 @@ describe('DeviceUtils', () => {
 	describe('findDefaultDevice', () => {
 		it('finds the device whose id is "default"', () => {
 			const devices: MediaDeviceInfo[] = [
-				{
-					deviceId: 'device1',
-					label: 'Device 1',
-					kind: 'audioinput',
-					groupId: 'group1',
-					toJSON: () => ({}),
-				},
-				{
-					deviceId: 'default',
-					label: 'Default - Microphone',
-					kind: 'audioinput',
-					groupId: 'group2',
-					toJSON: () => ({}),
-				},
+				mediaDevice('device1', 'Device 1'),
+				mediaDevice('default', 'Default - Microphone'),
 			] as MediaDeviceInfo[];
 
 			const result = findDefaultDevice(devices);
@@ -100,13 +71,7 @@ describe('DeviceUtils', () => {
 
 		it('returns undefined when no default device exists', () => {
 			const devices: MediaDeviceInfo[] = [
-				{
-					deviceId: 'device1',
-					label: 'Device 1',
-					kind: 'audioinput',
-					groupId: 'group1',
-					toJSON: () => ({}),
-				},
+				mediaDevice('device1', 'Device 1'),
 			] as MediaDeviceInfo[];
 
 			const result = findDefaultDevice(devices);
@@ -124,13 +89,7 @@ describe('DeviceUtils', () => {
 	describe('getDefaultDeviceId', () => {
 		it('returns default device ID when available', async () => {
 			const devices: MediaDeviceInfo[] = [
-				{
-					deviceId: 'default',
-					label: 'Default - Microphone',
-					kind: 'audioinput',
-					groupId: 'group1',
-					toJSON: () => ({}),
-				},
+				mediaDevice('default', 'Default - Microphone'),
 			] as MediaDeviceInfo[];
 
 			mockGetUserMedia.mockResolvedValue({ getTracks: () => [] });
@@ -144,13 +103,7 @@ describe('DeviceUtils', () => {
 
 		it('returns empty string when no default device exists', async () => {
 			const devices: MediaDeviceInfo[] = [
-				{
-					deviceId: 'device1',
-					label: 'Device 1',
-					kind: 'audioinput',
-					groupId: 'group1',
-					toJSON: () => ({}),
-				},
+				mediaDevice('device1', 'Device 1'),
 			] as MediaDeviceInfo[];
 
 			mockGetUserMedia.mockResolvedValue({ getTracks: () => [] });
@@ -172,13 +125,7 @@ describe('DeviceUtils', () => {
 		it('stops tracks after getting user media', async () => {
 			const mockStop = jest.fn();
 			const devices: MediaDeviceInfo[] = [
-				{
-					deviceId: 'default',
-					label: 'Default - Microphone',
-					kind: 'audioinput',
-					groupId: 'group1',
-					toJSON: () => ({}),
-				},
+				mediaDevice('default', 'Default - Microphone'),
 			] as MediaDeviceInfo[];
 
 			mockGetUserMedia.mockResolvedValue({

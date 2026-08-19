@@ -164,11 +164,10 @@ describe('RecoveryModal', () => {
 			'The recovery action failed. Check the console for details.',
 		);
 		expect(modal.close).toHaveBeenCalled();
-		errorSpy.mockRestore();
 	});
 
 	it('accepts a new action after a failed one', async () => {
-		const errorSpy = jest.spyOn(console, 'error').mockImplementation();
+		jest.spyOn(console, 'error').mockImplementation();
 		onRecover.mockRejectedValue(new Error('vault unavailable'));
 		openModal([createSession()]);
 
@@ -180,6 +179,5 @@ describe('RecoveryModal', () => {
 		await Promise.resolve();
 
 		expect(onDiscard).toHaveBeenCalledTimes(1);
-		errorSpy.mockRestore();
 	});
 });

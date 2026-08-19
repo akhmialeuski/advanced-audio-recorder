@@ -20,6 +20,7 @@ import {
 import { MODEL_SEED_GENERATION } from 'src/constants';
 import { fullyPopulatedSettings } from '../helpers/settingsFixtures';
 import { partial } from '../helpers/doubles';
+import { mediaDevice } from '../helpers/mediaMocks';
 
 describe('Settings', () => {
 	describe('DEFAULT_SETTINGS', () => {
@@ -607,13 +608,7 @@ describe('mergeSettingsAsync', () => {
 
 	it('autoes-select default device when audioDeviceId is empty', async () => {
 		const devices: MediaDeviceInfo[] = [
-			{
-				deviceId: 'default',
-				label: 'Default - Microphone',
-				kind: 'audioinput',
-				groupId: 'group1',
-				toJSON: () => ({}),
-			},
+			mediaDevice('default', 'Default - Microphone'),
 		] as MediaDeviceInfo[];
 
 		mockGetUserMedia.mockResolvedValue({ getTracks: () => [] });
@@ -626,13 +621,7 @@ describe('mergeSettingsAsync', () => {
 
 	it('autoes-select default device when audioDeviceId is whitespace', async () => {
 		const devices: MediaDeviceInfo[] = [
-			{
-				deviceId: 'default',
-				label: 'Default - Microphone',
-				kind: 'audioinput',
-				groupId: 'group1',
-				toJSON: () => ({}),
-			},
+			mediaDevice('default', 'Default - Microphone'),
 		] as MediaDeviceInfo[];
 
 		mockGetUserMedia.mockResolvedValue({ getTracks: () => [] });
@@ -645,13 +634,7 @@ describe('mergeSettingsAsync', () => {
 
 	it('keeps existing device ID when already set', async () => {
 		const devices: MediaDeviceInfo[] = [
-			{
-				deviceId: 'default',
-				label: 'Default - Microphone',
-				kind: 'audioinput',
-				groupId: 'group1',
-				toJSON: () => ({}),
-			},
+			mediaDevice('default', 'Default - Microphone'),
 		] as MediaDeviceInfo[];
 
 		mockGetUserMedia.mockResolvedValue({ getTracks: () => [] });
@@ -674,13 +657,7 @@ describe('mergeSettingsAsync', () => {
 
 	it('preserves other settings while auto-selecting device', async () => {
 		const devices: MediaDeviceInfo[] = [
-			{
-				deviceId: 'default',
-				label: 'Default - Microphone',
-				kind: 'audioinput',
-				groupId: 'group1',
-				toJSON: () => ({}),
-			},
+			mediaDevice('default', 'Default - Microphone'),
 		] as MediaDeviceInfo[];
 
 		mockGetUserMedia.mockResolvedValue({ getTracks: () => [] });

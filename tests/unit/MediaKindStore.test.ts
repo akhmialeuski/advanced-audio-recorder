@@ -95,17 +95,13 @@ describe('MediaKindStore', () => {
 	});
 
 	it('tolerates a corrupt cache file (everything just re-probes)', async () => {
-		const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
-		try {
-			const { app, files } = makeApp();
-			files.set(STORE_PATH, 'not json at all');
-			const store = new MediaKindStore(app, STORE_PATH);
+		jest.spyOn(console, 'warn').mockImplementation();
+		const { app, files } = makeApp();
+		files.set(STORE_PATH, 'not json at all');
+		const store = new MediaKindStore(app, STORE_PATH);
 
-			await expect(store.load()).resolves.toBeUndefined();
-			expect(store.get(fileWithStat('a.webm', 1, 1))).toBeNull();
-		} finally {
-			warnSpy.mockRestore();
-		}
+		await expect(store.load()).resolves.toBeUndefined();
+		expect(store.get(fileWithStat('a.webm', 1, 1))).toBeNull();
 	});
 
 	it('ignores a cache file with an unknown version or malformed entries', async () => {
@@ -181,32 +177,25 @@ describe('MediaKindStore', () => {
 	});
 
 	it('keeps the change pending when a write fails, and retries on the next flush', async () => {
-		const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
-		try {
-			const { app, write } = makeApp();
-			write.mockRejectedValueOnce(new Error('disk full'));
-			const store = new MediaKindStore(app, STORE_PATH);
+		jest.spyOn(console, 'warn').mockImplementation();
+		const { app, write } = makeApp();
+		write.mockRejectedValueOnce(new Error('disk full'));
+		const store = new MediaKindStore(app, STORE_PATH);
 
-			store.set(fileWithStat('a.webm', 1, 1), 'audio');
-			store.flush();
-			await Promise.resolve();
-			await Promise.resolve();
+		store.set(fileWithStat('a.webm', 1, 1), 'audio');
+		store.flush();
+		await Promise.resolve();
+		await Promise.resolve();
 
-			// The failed write left the store dirty; another change + flush
-			// writes everything
-			store.set(fileWithStat('b.webm', 2, 2), 'audio');
-			store.flush();
-			await Promise.resolve();
-			expect(write).toHaveBeenCalledTimes(2);
-			const lastPayload = JSON.parse(
-				write.mock.calls[1][1] as string,
-			) as { entries: Record<string, unknown> };
-			expect(Object.keys(lastPayload.entries)).toEqual([
-				'a.webm',
-				'b.webm',
-			]);
-		} finally {
-			warnSpy.mockRestore();
-		}
+		// The failed write left the store dirty; another change + flush
+		// writes everything
+		store.set(fileWithStat('b.webm', 2, 2), 'audio');
+		store.flush();
+		await Promise.resolve();
+		expect(write).toHaveBeenCalledTimes(2);
+		const lastPayload = JSON.parse(write.mock.calls[1][1] as string) as {
+			entries: Record<string, unknown>;
+		};
+		expect(Object.keys(lastPayload.entries)).toEqual(['a.webm', 'b.webm']);
 	});
 });

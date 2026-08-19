@@ -20,7 +20,10 @@ import {
 	installMediaRecorder,
 	installMediaRecorderFactory,
 	installRecordingMediaStubs,
+	makeMediaRecorderDouble,
 	recordingManagerOver,
+	stubAudioStreams,
+	type MockMediaRecorder,
 	type MutableTarget,
 } from '../helpers/recordingManagerTestKit';
 import {
@@ -63,10 +66,9 @@ describe('RecordingManager', () => {
 	let mockApp: App;
 	let mockSettings: AudioRecorderSettings;
 	let statusChangeCallback: jest.Mock;
-	let consoleErrorSpy: jest.SpyInstance;
 
 	beforeEach(() => {
-		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+		jest.spyOn(console, 'error').mockImplementation();
 		({
 			manager,
 			app: mockApp,
@@ -75,43 +77,13 @@ describe('RecordingManager', () => {
 		} = createRecordingSut());
 	});
 
-	afterEach(() => {
-		consoleErrorSpy.mockRestore();
-	});
-
 	describe('streaming chunks', () => {
 		it('writes chunks as segment files on desktop', async () => {
 			useDesktopPlatform();
 
-			const mockMediaRecorder = {
-				start: jest.fn(),
-				stop: jest.fn(),
-				pause: jest.fn(),
-				resume: jest.fn(),
-				ondataavailable: null as ((event: BlobEvent) => void) | null,
-				onerror: null as ((event: Event) => void) | null,
-				addEventListener: jest.fn(
-					(event: string, handler: () => void) => {
-						if (event === 'stop') {
-							handler();
-						}
-					},
-				),
-			};
+			const mockMediaRecorder = makeMediaRecorderDouble();
 
-			installMediaRecorder(mockMediaRecorder);
-
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioStreams.mockResolvedValue({
-				streams: [
-					{
-						getTracks: () => [{ stop: jest.fn() }],
-					},
-				],
-				trackOrder: [],
-			});
+			stubAudioStreams();
 
 			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
 				new Uint8Array([1, 2, 3]).buffer,
@@ -135,35 +107,9 @@ describe('RecordingManager', () => {
 		it('rotates the recorder at the mobile size boundary and writes a converted part', async () => {
 			useMobilePlatform();
 
-			const mockMediaRecorder = {
-				start: jest.fn(),
-				stop: jest.fn(),
-				pause: jest.fn(),
-				resume: jest.fn(),
-				ondataavailable: null as ((event: BlobEvent) => void) | null,
-				onerror: null as ((event: Event) => void) | null,
-				addEventListener: jest.fn(
-					(event: string, handler: () => void) => {
-						if (event === 'stop') {
-							handler();
-						}
-					},
-				),
-			};
+			const mockMediaRecorder = makeMediaRecorderDouble();
 
-			installMediaRecorder(mockMediaRecorder);
-
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioStreams.mockResolvedValue({
-				streams: [
-					{
-						getTracks: () => [{ stop: jest.fn() }],
-					},
-				],
-				trackOrder: [],
-			});
+			stubAudioStreams();
 			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
 				new Uint8Array([1, 2, 3]).buffer,
 			);
@@ -213,35 +159,9 @@ describe('RecordingManager', () => {
 		it('buffers multiple chunks into a single segment file and clean up after finalization', async () => {
 			useDesktopPlatform();
 
-			const mockMediaRecorder = {
-				start: jest.fn(),
-				stop: jest.fn(),
-				pause: jest.fn(),
-				resume: jest.fn(),
-				ondataavailable: null as ((event: BlobEvent) => void) | null,
-				onerror: null as ((event: Event) => void) | null,
-				addEventListener: jest.fn(
-					(event: string, handler: () => void) => {
-						if (event === 'stop') {
-							handler();
-						}
-					},
-				),
-			};
+			const mockMediaRecorder = makeMediaRecorderDouble();
 
-			installMediaRecorder(mockMediaRecorder);
-
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioStreams.mockResolvedValue({
-				streams: [
-					{
-						getTracks: () => [{ stop: jest.fn() }],
-					},
-				],
-				trackOrder: [],
-			});
+			stubAudioStreams();
 
 			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
 				new Uint8Array([1, 2, 3]).buffer,
@@ -288,16 +208,7 @@ describe('RecordingManager', () => {
 
 			installMediaRecorder(undefined, (mime) => mime === 'audio/webm');
 
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioStreams.mockResolvedValue({
-				streams: [
-					{ getTracks: () => [{ stop: jest.fn() }] },
-					{ getTracks: () => [{ stop: jest.fn() }] },
-				],
-				trackOrder: [],
-			});
+			stubAudioStreams({ count: 2 });
 
 			await manager.startRecording();
 
@@ -432,13 +343,7 @@ describe('RecordingManager', () => {
 				statusChangeCallback,
 			);
 
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioStreams.mockResolvedValue({
-				streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
-				trackOrder: [],
-			});
+			stubAudioStreams();
 			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
 				new Uint8Array([1, 2, 3, 4]).buffer,
 			);
@@ -491,16 +396,7 @@ describe('RecordingManager', () => {
 			rotation: { rotationPromise: Promise<void> | null };
 		}
 
-		let mockMediaRecorder: {
-			start: jest.Mock;
-			stop: jest.Mock;
-			pause: jest.Mock;
-			resume: jest.Mock;
-			state: string;
-			ondataavailable: ((event: BlobEvent) => void) | null;
-			onerror: ((event: Event) => void) | null;
-			addEventListener: jest.Mock;
-		};
+		let mockMediaRecorder: MockMediaRecorder;
 
 		function getInternals(instance: RecordingManager): {
 			chunkTargets: TargetInternals[];
@@ -527,41 +423,12 @@ describe('RecordingManager', () => {
 			);
 		}
 
-		function setupStreams(count: number): void {
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioStreams.mockResolvedValue({
-				streams: Array.from({ length: count }, () => ({
-					getTracks: () => [{ stop: jest.fn() }],
-				})),
-				trackOrder: [],
-			});
-		}
-
 		beforeEach(() => {
 			useDesktopPlatform();
 
-			mockMediaRecorder = {
-				start: jest.fn(),
-				stop: jest.fn(),
-				pause: jest.fn(),
-				resume: jest.fn(),
-				state: 'recording',
-				ondataavailable: null,
-				onerror: null,
-				addEventListener: jest.fn(
-					(event: string, handler: () => void) => {
-						if (event === 'stop') {
-							handler();
-						}
-					},
-				),
-			};
+			mockMediaRecorder = makeMediaRecorderDouble({ state: 'recording' });
 
-			installMediaRecorder(mockMediaRecorder);
-
-			setupStreams(1);
+			stubAudioStreams();
 
 			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
 				new Uint8Array([1, 2, 3]).buffer,
@@ -802,7 +669,7 @@ describe('RecordingManager', () => {
 		});
 
 		it('skips auto-split for merged multi-track recordings', async () => {
-			setupStreams(2);
+			stubAudioStreams({ count: 2 });
 			createManagerWithSettings({
 				recordingFormat: 'webm',
 				autoSplitEnabled: true,

@@ -170,9 +170,7 @@ function installPreviewAudio(): PreviewAudioHarness {
 			currentTime = seconds;
 			element.dispatchEvent(new Event('timeupdate'));
 		},
-		restore: () => {
-			factory.mockRestore();
-		},
+		restore: () => {},
 	};
 }
 
@@ -211,16 +209,13 @@ describe('SpeakerRenameModal', () => {
 	it('shows the empty state when the sidecar read fails', async () => {
 		const sidecar = makeSidecar(emptyTranscriptSection());
 		sidecar.getTranscript.mockRejectedValue(new Error('io error'));
-		const warn = jest
-			.spyOn(console, 'warn')
-			.mockImplementation(() => undefined);
+		jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
 		modal.open();
 		await internals.render();
 
 		expect(internals.inputs.size).toBe(0);
 		expect(modal.contentEl.textContent).toContain('No speakers are stored');
-		warn.mockRestore();
 	});
 
 	it('distinguishes a corrupt sidecar from an empty one', async () => {

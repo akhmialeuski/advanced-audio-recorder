@@ -13,6 +13,8 @@ import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { PlayerMarker } from 'src/markers/markerModel';
+import type { TrackAudioSource } from 'src/recording/AudioStreamHandler';
+import { partial } from './doubles';
 
 /** The MediaRecorder constructor double, with its static format probe. */
 export type MediaRecorderCtorMock = jest.Mock & {
@@ -132,41 +134,110 @@ export interface MockMediaRecorder {
 	stop: jest.Mock;
 	pause: jest.Mock;
 	resume: jest.Mock;
+	state?: string;
 	ondataavailable: ((event: BlobEvent) => void) | null;
 	onerror: ((event: Event) => void) | null;
 	addEventListener: jest.Mock;
 }
+
+/** What a suite varies about the recorder it records through. */
+export interface DesktopRecorderOptions {
+	/**
+	 * Whether `addEventListener('stop', h)` runs `h` on the spot. The real
+	 * recorder fires it asynchronously; the suites that assert on what the
+	 * stop handler wrote need it synchronous, and the ones that assert the
+	 * manager's state *before* the handler runs need it not to fire at all.
+	 */
+	stopFiresImmediately?: boolean;
+	/** Reported `state`, for the code paths that read it before stopping. */
+	state?: string;
+	/** Replaces `stop()`; throw from here to model an InvalidStateError. */
+	stop?: jest.Mock;
+}
+
+/**
+ * Builds the MediaRecorder double and installs it as the constructor.
+ *
+ * The recording suites do not vary this double - they vary one field of it -
+ * so the shape lives here and each suite names only its own difference.
+ * @param options - The one field this suite differs on
+ * @returns The double every `new MediaRecorder(...)` hands back
+ */
+export const makeMediaRecorderDouble = (
+	options: DesktopRecorderOptions = {},
+): MockMediaRecorder => {
+	const { stopFiresImmediately = true, state, stop } = options;
+	const double: MockMediaRecorder = {
+		start: jest.fn(),
+		stop: stop ?? jest.fn(),
+		pause: jest.fn(),
+		resume: jest.fn(),
+		ondataavailable: null,
+		onerror: null,
+		addEventListener: stopFiresImmediately
+			? jest.fn((event: string, handler: () => void) => {
+					if (event === 'stop') {
+						handler();
+					}
+				})
+			: jest.fn(),
+	};
+	if (state !== undefined) {
+		double.state = state;
+	}
+	installMediaRecorder(double);
+	return double;
+};
+
+/** A capture stream as the manager sees it: something with stoppable tracks. */
+export interface StubStreamOptions {
+	/** How many streams `getAudioStreams` resolves with. */
+	count?: number;
+	/** The `stop` spy on every track, when a test asserts the capture closed. */
+	stopTrack?: jest.Mock;
+	/** Track order the handler reports, empty unless a suite pins it. */
+	trackOrder?: TrackAudioSource[];
+}
+
+/**
+ * Points the mocked `getAudioStreams` at capture streams.
+ * @param options - Stream count, the shared track-stop spy, and track order
+ * @returns The streams it resolved with, so a test can assert on identity -
+ *   which stream reached which bridge
+ */
+export const stubAudioStreams = (
+	options: StubStreamOptions = {},
+): MediaStream[] => {
+	const { count = 1, stopTrack, trackOrder = [] } = options;
+	const { getAudioStreams } = jest.requireMock<{
+		getAudioStreams: jest.Mock;
+	}>('src/recording/AudioStreamHandler');
+	const streams = Array.from({ length: count }, () =>
+		partial<MediaStream>({
+			getTracks: () => [
+				partial<MediaStreamTrack>({ stop: stopTrack ?? jest.fn() }),
+			],
+		}),
+	);
+	getAudioStreams.mockResolvedValue({ streams, trackOrder });
+	return streams;
+};
 
 /**
  * Installs a single-stream MediaRecorder double whose stop event fires
  * synchronously, and points getAudioStreams at one desktop stream.
  * Platform flags are left untouched; call `useDesktopPlatform`
  * where the desktop code path is required.
+ * @param options - Recorder differences, plus the track-stop spy
  * @returns The MediaRecorder double
  */
-export const createDesktopRecorder = (): MockMediaRecorder => {
-	const mockMediaRecorder: MockMediaRecorder = {
-		start: jest.fn(),
-		stop: jest.fn(),
-		pause: jest.fn(),
-		resume: jest.fn(),
-		ondataavailable: null,
-		onerror: null,
-		addEventListener: jest.fn((event: string, handler: () => void) => {
-			if (event === 'stop') {
-				handler();
-			}
-		}),
-	};
-	installMediaRecorder(mockMediaRecorder);
-	const { getAudioStreams } = jest.requireMock(
-		'src/recording/AudioStreamHandler',
-	);
-	getAudioStreams.mockResolvedValue({
-		streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
-		trackOrder: [],
-	});
-	return mockMediaRecorder;
+export const createDesktopRecorder = (
+	options: DesktopRecorderOptions & Pick<StubStreamOptions, 'stopTrack'> = {},
+): MockMediaRecorder => {
+	const { stopTrack, ...recorder } = options;
+	const double = makeMediaRecorderDouble(recorder);
+	stubAudioStreams(stopTrack ? { stopTrack } : {});
+	return double;
 };
 
 /** Mutable view of a chunk target's write-chain internals. */

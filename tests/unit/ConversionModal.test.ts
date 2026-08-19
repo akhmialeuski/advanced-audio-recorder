@@ -13,6 +13,8 @@ import { noticeInstances, noticeText } from '../mocks/obsidian';
 import { el } from '../helpers/dom';
 import { MODAL } from '../helpers/selectors';
 import { createMockApp } from '../helpers/createApp';
+import { updateLinksInVault } from 'src/utils/LinkUpdater';
+import { convertBlobToFormatBuffer } from 'src/audio/AudioFormatConverter';
 
 /**
  * Extends an HTMLElement with Obsidian's custom DOM methods.
@@ -230,9 +232,6 @@ describe('ConversionModal', () => {
 		};
 
 		it('updates links vault-wide with the created file', async () => {
-			const { updateLinksInVault } = jest.requireMock(
-				'src/utils/LinkUpdater',
-			);
 			const { modal, progressEl } = createModal();
 
 			await runConversion(modal, progressEl);
@@ -241,7 +240,7 @@ describe('ConversionModal', () => {
 				'Recordings/recording.webm',
 				expect.any(ArrayBuffer),
 			);
-			expect(updateLinksInVault).toHaveBeenCalledWith(
+			expect(jest.mocked(updateLinksInVault)).toHaveBeenCalledWith(
 				mockApp,
 				mockFile,
 				[createdFile],
@@ -253,10 +252,7 @@ describe('ConversionModal', () => {
 		});
 
 		it('keeps the source when some links could not be updated', async () => {
-			const { updateLinksInVault } = jest.requireMock(
-				'src/utils/LinkUpdater',
-			);
-			updateLinksInVault.mockResolvedValueOnce({
+			jest.mocked(updateLinksInVault).mockResolvedValueOnce({
 				updatedNotes: 1,
 				skippedReferences: 2,
 				frontmatterReferences: 0,
@@ -274,10 +270,7 @@ describe('ConversionModal', () => {
 		});
 
 		it('reports frontmatter links that stay on the source', async () => {
-			const { updateLinksInVault } = jest.requireMock(
-				'src/utils/LinkUpdater',
-			);
-			updateLinksInVault.mockResolvedValueOnce({
+			jest.mocked(updateLinksInVault).mockResolvedValueOnce({
 				updatedNotes: 0,
 				skippedReferences: 0,
 				frontmatterReferences: 1,
@@ -294,9 +287,6 @@ describe('ConversionModal', () => {
 		});
 
 		it('skips link updates and deletion for the none action', async () => {
-			const { updateLinksInVault } = jest.requireMock(
-				'src/utils/LinkUpdater',
-			);
 			const { modal, progressEl } = createModal({
 				conversionLinkAction: 'none',
 				deleteSourceAfterConversion: false,
@@ -304,17 +294,14 @@ describe('ConversionModal', () => {
 
 			await runConversion(modal, progressEl);
 
-			expect(updateLinksInVault).not.toHaveBeenCalled();
+			expect(jest.mocked(updateLinksInVault)).not.toHaveBeenCalled();
 			expect(mockApp.fileManager.trashFile).not.toHaveBeenCalled();
 		});
 
 		it('shows a background notice when closed mid-conversion', async () => {
-			const { convertBlobToFormatBuffer } = jest.requireMock(
-				'src/audio/AudioFormatConverter',
-			);
 			let resolveConversion: (data: ArrayBuffer) => void = () =>
 				undefined;
-			convertBlobToFormatBuffer.mockReturnValueOnce(
+			jest.mocked(convertBlobToFormatBuffer).mockReturnValueOnce(
 				new Promise<ArrayBuffer>((resolve) => {
 					resolveConversion = resolve;
 				}),
@@ -354,16 +341,13 @@ describe('ConversionModal', () => {
 		});
 
 		it('passes the selected channel mode into the conversion', async () => {
-			const { convertBlobToFormatBuffer } = jest.requireMock(
-				'src/audio/AudioFormatConverter',
-			);
 			const { modal, progressEl } = createModal();
 			(modal as unknown as { channelMode: string }).channelMode =
 				'mono-left';
 
 			await runConversion(modal, progressEl);
 
-			expect(convertBlobToFormatBuffer).toHaveBeenCalledWith(
+			expect(jest.mocked(convertBlobToFormatBuffer)).toHaveBeenCalledWith(
 				expect.any(Blob),
 				'webm',
 				expect.any(Number),

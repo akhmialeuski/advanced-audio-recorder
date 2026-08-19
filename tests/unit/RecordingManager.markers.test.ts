@@ -15,11 +15,12 @@ import {
 import type { App } from 'obsidian';
 import {
 	createRecordingSut,
-	installMediaRecorder,
 	installRecordingMediaStubs,
 	makeFakeMarkerStore,
-	recordingManagerOver,
+	makeMediaRecorderDouble,
 	makeStatefulMarkerStore,
+	recordingManagerOver,
+	stubAudioStreams,
 } from '../helpers/recordingManagerTestKit';
 import { flushMicrotasks } from '../helpers/async';
 import { Notice } from 'obsidian';
@@ -61,10 +62,6 @@ describe('RecordingManager', () => {
 		} = createRecordingSut());
 	});
 
-	afterEach(() => {
-		consoleErrorSpy.mockRestore();
-	});
-
 	describe('marker draft capture and persistence', () => {
 		let mockMediaRecorder: {
 			start: jest.Mock;
@@ -77,31 +74,9 @@ describe('RecordingManager', () => {
 		};
 
 		beforeEach(() => {
-			mockMediaRecorder = {
-				start: jest.fn(),
-				stop: jest.fn(),
-				pause: jest.fn(),
-				resume: jest.fn(),
-				ondataavailable: null,
-				onerror: null,
-				addEventListener: jest.fn(
-					(event: string, handler: () => void) => {
-						if (event === 'stop') {
-							handler();
-						}
-					},
-				),
-			};
+			mockMediaRecorder = makeMediaRecorderDouble();
 
-			installMediaRecorder(mockMediaRecorder);
-
-			const { getAudioStreams } = jest.requireMock(
-				'src/recording/AudioStreamHandler',
-			);
-			getAudioStreams.mockResolvedValue({
-				streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
-				trackOrder: [],
-			});
+			stubAudioStreams();
 
 			jest.mocked(mockApp.vault.adapter.readBinary).mockResolvedValue(
 				new Uint8Array([1, 2, 3]).buffer,

@@ -82,7 +82,6 @@ interface ModalInternals {
 
 let audioMock: InstalledMock<AudioElementDouble>;
 let urlMock: InstalledMock<ObjectUrlDouble>;
-let warn: jest.SpyInstance;
 
 /**
  * Lets the dialog's fire-and-forget probe finish before a run is started. It
@@ -116,7 +115,7 @@ beforeEach(() => {
 	audioMock = installAudioElementMock((audio) => {
 		audio.emit('error');
 	});
-	warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+	jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 	Object.defineProperty(window, 'AudioContext', {
 		writable: true,
 		value: MockAudioContext,
@@ -126,7 +125,6 @@ beforeEach(() => {
 afterEach(() => {
 	audioMock.restore();
 	urlMock.restore();
-	warn.mockRestore();
 });
 
 /**

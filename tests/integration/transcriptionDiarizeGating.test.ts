@@ -10,10 +10,7 @@
 
 import type { App, TFile } from 'obsidian';
 import { TranscriptionService } from 'src/transcription/TranscriptionService';
-import type {
-	TranscribeOptions,
-	TranscriptionProvider,
-} from 'src/transcription/providers/TranscriptionProvider';
+import type { TranscribeOptions } from 'src/transcription/providers/TranscriptionProvider';
 import type { TranscriptionProviderId } from 'src/settings/settingsSchema';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
@@ -23,6 +20,8 @@ import type {
 } from 'src/transcription/TranscriptTypes';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
+import { fakeProvider } from '../helpers/providerFixtures';
+import type { FakeProvider } from '../helpers/providerFixtures';
 
 const audioFile = partial<TFile>({
 	name: 'rec.webm',
@@ -31,34 +30,32 @@ const audioFile = partial<TFile>({
 });
 
 /**
- * A whole-file provider that records the options it was transcribed with. Its
- * capabilities only steer audio preparation; whether diarization is requested
- * is decided from the configured engine id, not this stub.
+ * A whole-file provider. Its capabilities only steer audio preparation;
+ * whether diarization is requested is decided from the configured engine id,
+ * not this stub.
+ * @param segments - What one request resolves with
+ * @returns The provider double
  */
 function makeProvider(
 	segments: TranscriptSegment[] = [{ start: 0, end: 1, text: 'hi' }],
-): TranscriptionProvider & {
-	lastOptions: TranscribeOptions | null;
-} {
-	const provider = {
+): FakeProvider {
+	return fakeProvider({
 		id: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-		label: 'Fake',
-		requiresNetwork: false,
-		capabilities: {
-			maxRequestBytes: Number.POSITIVE_INFINITY,
-			maxRequestSeconds: Number.POSITIVE_INFINITY,
-			acceptsOriginalContainer: true,
-			supportsDiarization: true,
-			supportsDictionary: true,
-			biasChannel: 'prompt' as const,
-		},
-		lastOptions: null as TranscribeOptions | null,
-		transcribe: jest.fn(async (_payload, options: TranscribeOptions) => {
-			provider.lastOptions = options;
-			return { segments };
-		}),
-	};
-	return provider;
+		transcribe: { segments },
+	});
+}
+
+/**
+ * The options the service last transcribed with.
+ *
+ * Read off the mock's own call log rather than a field the double maintains:
+ * `transcribe` is already a `jest.Mock`, and asking it what it was called with
+ * is what a mock is for.
+ * @param provider - The double the service ran through
+ * @returns The options of the last call, or null when it was never called
+ */
+function lastOptions(provider: FakeProvider): TranscribeOptions | null {
+	return provider.transcribe.mock.lastCall?.[1] ?? null;
 }
 
 /** Minimal App surface the service touches on the whole-file path. */
@@ -74,7 +71,7 @@ function makeApp(): App {
 async function runWith(
 	engineId: TranscriptionProviderId,
 	diarizeSetting: boolean,
-): Promise<TranscriptionProvider & { lastOptions: TranscribeOptions | null }> {
+): Promise<FakeProvider> {
 	const provider = makeProvider();
 	const service = new TranscriptionService(
 		makeApp(),
@@ -95,7 +92,7 @@ describe('TranscriptionService diarization gating', () => {
 			TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
 			true,
 		);
-		expect(provider.lastOptions?.diarize).toBe(false);
+		expect(lastOptions(provider)?.diarize).toBe(false);
 	});
 
 	it('does not request diarization for local whisper, even if enabled', async () => {
@@ -103,7 +100,7 @@ describe('TranscriptionService diarization gating', () => {
 			TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
 			true,
 		);
-		expect(provider.lastOptions?.diarize).toBe(false);
+		expect(lastOptions(provider)?.diarize).toBe(false);
 	});
 
 	it('requests diarization for a diarizing engine when enabled', async () => {
@@ -111,7 +108,7 @@ describe('TranscriptionService diarization gating', () => {
 			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 			true,
 		);
-		expect(provider.lastOptions?.diarize).toBe(true);
+		expect(lastOptions(provider)?.diarize).toBe(true);
 	});
 
 	it('does not request diarization when a capable engine has it disabled', async () => {
@@ -119,7 +116,7 @@ describe('TranscriptionService diarization gating', () => {
 			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 			false,
 		);
-		expect(provider.lastOptions?.diarize).toBe(false);
+		expect(lastOptions(provider)?.diarize).toBe(false);
 	});
 });
 
@@ -151,7 +148,7 @@ async function runWithDictionary(
 	engineId: TranscriptionProviderId,
 	dictionary: string,
 	deepgramModel?: string,
-): Promise<TranscriptionProvider & { lastOptions: TranscribeOptions | null }> {
+): Promise<FakeProvider> {
 	const provider = makeProvider();
 	const service = new TranscriptionService(
 		makeApp(),
@@ -177,7 +174,7 @@ async function runWithDictionary(
 async function runWithProfileId(
 	engineId: TranscriptionProviderId,
 	profileId: string,
-): Promise<TranscriptionProvider & { lastOptions: TranscribeOptions | null }> {
+): Promise<FakeProvider> {
 	const provider = makeProvider();
 	const service = new TranscriptionService(
 		makeApp(),
@@ -202,7 +199,7 @@ describe('TranscriptionService dictionary passthrough', () => {
 			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 			'Kubernetes\ngRPC\nkubernetes\n',
 		);
-		expect(provider.lastOptions?.dictionary).toEqual([
+		expect(lastOptions(provider)?.dictionary).toEqual([
 			'Kubernetes',
 			'gRPC',
 		]);
@@ -213,7 +210,7 @@ describe('TranscriptionService dictionary passthrough', () => {
 			TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
 			'   \n\t\n',
 		);
-		expect(provider.lastOptions?.dictionary).toBeUndefined();
+		expect(lastOptions(provider)?.dictionary).toBeUndefined();
 	});
 
 	it('drops the dictionary for a Deepgram model that cannot bias', async () => {
@@ -222,7 +219,7 @@ describe('TranscriptionService dictionary passthrough', () => {
 			'Kubernetes\ngRPC',
 			'whisper-medium',
 		);
-		expect(provider.lastOptions?.dictionary).toBeUndefined();
+		expect(lastOptions(provider)?.dictionary).toBeUndefined();
 	});
 
 	it('caps the dictionary at the Deepgram keyterm entry limit on nova-3', async () => {
@@ -237,7 +234,7 @@ describe('TranscriptionService dictionary passthrough', () => {
 			many,
 			'nova-3',
 		);
-		expect(provider.lastOptions?.dictionary).toHaveLength(100);
+		expect(lastOptions(provider)?.dictionary).toHaveLength(100);
 	});
 
 	it('caps the dictionary at the Deepgram keyterm token budget on nova-3', async () => {
@@ -252,7 +249,7 @@ describe('TranscriptionService dictionary passthrough', () => {
 			many,
 			'nova-3',
 		);
-		const applied = provider.lastOptions?.dictionary ?? [];
+		const applied = lastOptions(provider)?.dictionary ?? [];
 		expect(applied.length).toBeGreaterThan(0);
 		expect(applied.length).toBeLessThan(100);
 	});
@@ -262,7 +259,7 @@ describe('TranscriptionService dictionary passthrough', () => {
 			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 			'',
 		);
-		expect(provider.lastOptions?.dictionary).toBeUndefined();
+		expect(lastOptions(provider)?.dictionary).toBeUndefined();
 	});
 
 	it('sends no dictionary when the selected profile no longer exists', async () => {
@@ -270,7 +267,7 @@ describe('TranscriptionService dictionary passthrough', () => {
 			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 			'missing',
 		);
-		expect(provider.lastOptions?.dictionary).toBeUndefined();
+		expect(lastOptions(provider)?.dictionary).toBeUndefined();
 	});
 });
 

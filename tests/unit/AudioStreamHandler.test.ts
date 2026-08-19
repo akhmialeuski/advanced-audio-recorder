@@ -191,9 +191,7 @@ describe('AudioStreamHandler', () => {
 		])('retries when $name', async ({ errorName }) => {
 			// Another app releasing the microphone a moment later is the
 			// common case; failing the recording outright would be wrong.
-			const debug = jest
-				.spyOn(console, 'debug')
-				.mockImplementation(() => undefined);
+			jest.spyOn(console, 'debug').mockImplementation(() => undefined);
 			getUserMedia
 				.mockRejectedValueOnce(new DOMException('busy', errorName))
 				.mockResolvedValueOnce(fakeStream().stream);
@@ -202,13 +200,10 @@ describe('AudioStreamHandler', () => {
 
 			expect(getUserMedia).toHaveBeenCalledTimes(2);
 			expect(result).not.toBeInstanceOf(Error);
-			debug.mockRestore();
 		});
 
 		it('gives up after the last retry, naming the device', async () => {
-			const debug = jest
-				.spyOn(console, 'debug')
-				.mockImplementation(() => undefined);
+			jest.spyOn(console, 'debug').mockImplementation(() => undefined);
 			getUserMedia.mockRejectedValue(
 				new DOMException('busy', 'NotReadableError'),
 			);
@@ -221,7 +216,6 @@ describe('AudioStreamHandler', () => {
 			// Two retries after the first attempt, then the failure stands.
 			expect(getUserMedia).toHaveBeenCalledTimes(3);
 			expect(result).toBeInstanceOf(AudioStreamError);
-			debug.mockRestore();
 		});
 
 		it('does not retry a refused permission', async () => {

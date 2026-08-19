@@ -326,7 +326,7 @@ describe('MonoCaptureBridge', () => {
 	});
 
 	it('never throws when the context close fails during release', async () => {
-		const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
+		jest.spyOn(console, 'warn').mockImplementation();
 		mockAudioContext.close.mockRejectedValue(new Error('close failed'));
 		const bridge = new MonoCaptureBridge(
 			createMockStream(2),
@@ -336,7 +336,6 @@ describe('MonoCaptureBridge', () => {
 		await bridge.start();
 
 		expect(() => bridge.release()).not.toThrow();
-		warnSpy.mockRestore();
 	});
 
 	it('is safe to release before start', () => {

@@ -26,21 +26,11 @@ import { addObsidianDomExtensions } from '../mocks/domExtensions';
 import { loadPlugin } from '../helpers/pluginHarness';
 import type { RecorderDouble } from '../mocks/modules/recordingManager';
 
-jest.mock('src/recording/RecordingManager', () =>
-	require('../mocks/modules/recordingManager'),
-);
-jest.mock('src/ui/ContextMenu', () => require('../mocks/modules/contextMenu'));
-jest.mock('src/player/EnhancedPlayerRegistrar', () =>
-	require('../mocks/modules/enhancedPlayerRegistrar'),
-);
 jest.mock('src/ui/MarkerModal', () => ({
 	RecordingMarkerModal: jest
 		.fn()
 		.mockImplementation(() => ({ open: jest.fn() })),
 }));
-jest.mock('src/recording/RecoveryService', () =>
-	require('../mocks/modules/recoveryService'),
-);
 
 /** The recording manager the plugin built, whose methods are all spies. */
 function recorder(): RecorderDouble {

@@ -26,21 +26,11 @@ import { RecordingManager } from 'src/recording/RecordingManager';
 import { at, defined } from '../helpers/assertions';
 import { loadPlugin } from '../helpers/pluginHarness';
 
-jest.mock('src/recording/RecordingManager', () =>
-	require('../mocks/modules/recordingManager'),
-);
-jest.mock('src/ui/ContextMenu', () => require('../mocks/modules/contextMenu'));
-jest.mock('src/player/EnhancedPlayerRegistrar', () =>
-	require('../mocks/modules/enhancedPlayerRegistrar'),
-);
 jest.mock('src/chapters/AutoChapterService', () => ({
 	AutoChapterService: jest.fn().mockImplementation(() => ({
 		generate: jest.fn().mockResolvedValue(undefined),
 	})),
 }));
-jest.mock('src/recording/RecoveryService', () =>
-	require('../mocks/modules/recoveryService'),
-);
 
 /** The services the plugin built for its file actions. */
 function actionServices(): ActionServices {

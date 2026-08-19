@@ -172,27 +172,23 @@ describe('registerDomEventOnAllWindows', () => {
 
 	it('forwards addEventListener options (capture) to each window', () => {
 		const attach = jest.spyOn(Component.prototype, 'registerDomEvent');
-		try {
-			const plugin = new FakePlugin([]);
-			plugin.load();
+		const plugin = new FakePlugin([]);
+		plugin.load();
 
-			registerDomEventOnAllWindows(
-				partialPlugin(plugin),
-				plugin.app,
-				'click',
-				() => {},
-				{ capture: true },
-			);
+		registerDomEventOnAllWindows(
+			partialPlugin(plugin),
+			plugin.app,
+			'click',
+			() => {},
+			{ capture: true },
+		);
 
-			expect(attach).toHaveBeenCalledWith(
-				document,
-				'click',
-				expect.any(Function),
-				{ capture: true },
-			);
-		} finally {
-			attach.mockRestore();
-		}
+		expect(attach).toHaveBeenCalledWith(
+			document,
+			'click',
+			expect.any(Function),
+			{ capture: true },
+		);
 	});
 
 	it('ignores the closing of a window it never attached to', () => {

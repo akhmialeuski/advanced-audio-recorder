@@ -29,6 +29,7 @@ import {
 } from 'src/transcription/transcriptOutput';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
+import { fakeProvider } from '../helpers/providerFixtures';
 
 jest.mock('src/transcription/transcriptOutput', () => ({
 	writeTranscriptFile: jest.fn(),
@@ -48,21 +49,13 @@ const audioFile = partial<TFile>({
 });
 
 /** A whole-file provider returning the given diarized segments. */
+/**
+ * A whole-file provider returning the given diarized segments.
+ * @param segments - Segments every request resolves with
+ * @returns The provider double
+ */
 function makeProvider(segments: TranscriptSegment[]): TranscriptionProvider {
-	return {
-		id: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
-		label: 'Fake',
-		requiresNetwork: false,
-		capabilities: {
-			maxRequestBytes: Number.POSITIVE_INFINITY,
-			maxRequestSeconds: Number.POSITIVE_INFINITY,
-			acceptsOriginalContainer: true,
-			supportsDiarization: true,
-			supportsDictionary: true,
-			biasChannel: 'prompt',
-		},
-		transcribe: jest.fn(async () => ({ segments })),
-	};
+	return fakeProvider({ transcribe: { segments } });
 }
 
 /** Minimal App surface the service touches on the whole-file path. */
@@ -382,9 +375,7 @@ describe('TranscriptionService stored speaker names', () => {
 	it('keeps the original labels when the sidecar read fails', async () => {
 		const sidecar = makeSidecar(emptyTranscriptSection());
 		sidecar.getTranscript.mockRejectedValue(new Error('io error'));
-		const warn = jest
-			.spyOn(console, 'warn')
-			.mockImplementation(() => undefined);
+		jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 		const service = new TranscriptionService(
 			makeApp(),
 			() => diarizedSettings(),
@@ -395,7 +386,6 @@ describe('TranscriptionService stored speaker names', () => {
 			sidecar,
 		});
 		expect(transcript.speakers).toEqual(['Speaker 1', 'Speaker 2']);
-		warn.mockRestore();
 	});
 });
 
@@ -541,9 +531,7 @@ describe('transcribeFile output registration', () => {
 		const sidecar = makeSidecar(emptyTranscriptSection());
 		sidecar.recordNoteOutput.mockRejectedValue(new Error('disk full'));
 		insertMock.mockReturnValue(true);
-		const warn = jest
-			.spyOn(console, 'warn')
-			.mockImplementation(() => undefined);
+		jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 		const settings = diarizedSettings({ transcriptDestination: 'note' });
 		await expect(
 			transcribeFile(
@@ -554,6 +542,5 @@ describe('transcribeFile output registration', () => {
 				{ createProvider: () => makeProvider(twoSpeakerSegments) },
 			),
 		).resolves.toBeDefined();
-		warn.mockRestore();
 	});
 });

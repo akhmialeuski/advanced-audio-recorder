@@ -145,15 +145,12 @@ describe('validateSettings rejections', () => {
 	}[])('blames $field for $name', ({ patch, field }) => {
 		// The field is what the settings tab uses to focus the row that needs
 		// fixing, so a message alone is not enough.
-		let caught: unknown;
-		try {
+		const validate = (): void => {
 			validateSettings(settingsWith(patch));
-		} catch (error) {
-			caught = error;
-		}
+		};
 
-		expect(caught).toBeInstanceOf(SettingsValidationError);
-		expect((caught as SettingsValidationError).field).toBe(field);
+		expect(validate).toThrow(SettingsValidationError);
+		expect(validate).toThrow(expect.objectContaining({ field }));
 	});
 });
 

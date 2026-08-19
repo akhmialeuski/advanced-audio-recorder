@@ -49,6 +49,10 @@ export default {
 			...shared,
 			displayName: 'e2e',
 			testMatch: ['<rootDir>/tests/e2e/**/*.test.ts'],
+			// Every e2e suite drives the plugin, so every one of them needs
+			// the same collaborators recorded. Registering the mocks here
+			// keeps that out of the suites themselves.
+			setupFiles: [...shared.setupFiles, '<rootDir>/tests/setupE2e.ts'],
 		},
 	],
 	reporters: ['default', '<rootDir>/scripts/jest-suite-stats-reporter.cjs'],

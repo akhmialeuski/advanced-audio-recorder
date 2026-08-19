@@ -79,17 +79,13 @@ describe('WaveformCanvas', () => {
 	it('downsamples once per width and reuses the cache on redraw', () => {
 		const seekEl = makeSeekEl();
 		const spy = jest.spyOn(WaveformData, 'downsamplePeaks');
-		try {
-			const waveform = new WaveformCanvas(seekEl);
-			waveform.setPeaks(new Array<number>(2048).fill(0.5));
-			const callsAfterSet = spy.mock.calls.length;
-			expect(callsAfterSet).toBeGreaterThanOrEqual(1);
-			// Same width: redraw reuses the cached bars, no re-downsample
-			waveform.redraw();
-			expect(spy.mock.calls).toHaveLength(callsAfterSet);
-		} finally {
-			spy.mockRestore();
-		}
+		const waveform = new WaveformCanvas(seekEl);
+		waveform.setPeaks(new Array<number>(2048).fill(0.5));
+		const callsAfterSet = spy.mock.calls.length;
+		expect(callsAfterSet).toBeGreaterThanOrEqual(1);
+		// Same width: redraw reuses the cached bars, no re-downsample
+		waveform.redraw();
+		expect(spy.mock.calls).toHaveLength(callsAfterSet);
 	});
 
 	it('does not draw before peaks are set', () => {

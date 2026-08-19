@@ -75,10 +75,6 @@ describe('SessionJournal', () => {
 		journal = new SessionJournal(JOURNAL_PATH, mockApp);
 	});
 
-	afterEach(() => {
-		consoleWarnSpy.mockRestore();
-	});
-
 	describe('session lifecycle', () => {
 		it('writes the journal with the started session', async () => {
 			journal.startSession(createSession());

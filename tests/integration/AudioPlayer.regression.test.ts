@@ -337,48 +337,40 @@ describe('waveform rendering decision (F2/F3)', () => {
 	});
 
 	it('renders the waveform layer for a small file when enabled', async () => {
-		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+		jest.spyOn(console, 'warn').mockImplementation(() => {
 			// Silence the expected decode-rejection warning
 		});
-		try {
-			const container = makeContainer();
-			makePlayer(container, makeRegistry(makeFakeAudio()), {
-				showWaveform: true,
-				enableMarkers: false,
-			}).onload();
-			expect(maybeEl(container, PLAYER.seekWaveform)).not.toBeNull();
-			expect(maybeEl(container, PLAYER.waveform)).not.toBeNull();
-			expect(allEls(container, 'canvas')).toHaveLength(2);
-			// Let the fire-and-forget waveform load settle (decode rejects)
-			// while the warning is still silenced
-			await tick();
-		} finally {
-			warn.mockRestore();
-		}
+		const container = makeContainer();
+		makePlayer(container, makeRegistry(makeFakeAudio()), {
+			showWaveform: true,
+			enableMarkers: false,
+		}).onload();
+		expect(maybeEl(container, PLAYER.seekWaveform)).not.toBeNull();
+		expect(maybeEl(container, PLAYER.waveform)).not.toBeNull();
+		expect(allEls(container, 'canvas')).toHaveLength(2);
+		// Let the fire-and-forget waveform load settle (decode rejects)
+		// while the warning is still silenced
+		await tick();
 	});
 
 	it('renders the waveform for a large file below the safety ceiling', async () => {
-		const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+		jest.spyOn(console, 'warn').mockImplementation(() => {
 			// Silence the expected decode-rejection warning
 		});
-		try {
-			const container = makeContainer();
-			// A multi-hundred-MB (hour-long) recording must still get the
-			// waveform - it is computed progressively, not skipped by a cap
-			makePlayer(
-				container,
-				makeRegistry(makeFakeAudio()),
-				{ showWaveform: true, enableMarkers: false },
-				makeFile(500 * 1024 * 1024, 'wav'),
-			).onload();
-			expect(maybeEl(container, PLAYER.seekWaveform)).not.toBeNull();
-			expect(maybeEl(container, PLAYER.waveform)).not.toBeNull();
-			expect(maybeEl(container, PLAYER.seekBar)).toBeNull();
-			// Let the fire-and-forget waveform load settle (decode rejects)
-			await tick();
-		} finally {
-			warn.mockRestore();
-		}
+		const container = makeContainer();
+		// A multi-hundred-MB (hour-long) recording must still get the
+		// waveform - it is computed progressively, not skipped by a cap
+		makePlayer(
+			container,
+			makeRegistry(makeFakeAudio()),
+			{ showWaveform: true, enableMarkers: false },
+			makeFile(500 * 1024 * 1024, 'wav'),
+		).onload();
+		expect(maybeEl(container, PLAYER.seekWaveform)).not.toBeNull();
+		expect(maybeEl(container, PLAYER.waveform)).not.toBeNull();
+		expect(maybeEl(container, PLAYER.seekBar)).toBeNull();
+		// Let the fire-and-forget waveform load settle (decode rejects)
+		await tick();
 	});
 
 	it('falls back to the plain bar for a pathological file above the ceiling', () => {
@@ -676,7 +668,6 @@ describe('lazy waveform decode (B2)', () => {
 	};
 
 	let originalIO: typeof IntersectionObserver | undefined;
-	let warn: jest.SpyInstance;
 
 	beforeEach(() => {
 		MockIntersectionObserver.instances = [];
@@ -684,12 +675,11 @@ describe('lazy waveform decode (B2)', () => {
 		window.IntersectionObserver =
 			MockIntersectionObserver as unknown as typeof IntersectionObserver;
 		// loadWaveform's decode rejects in these tests; silence the warning
-		warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+		jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 	});
 
 	afterEach(() => {
 		window.IntersectionObserver = originalIO as typeof IntersectionObserver;
-		warn.mockRestore();
 	});
 
 	/** Builds a waveform player wired to a decode spy. */

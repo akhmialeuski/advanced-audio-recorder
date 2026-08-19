@@ -55,8 +55,6 @@ describe('RecoveryService', () => {
 	let binaryFiles: Map<string, ArrayBuffer>;
 	let journal: SessionJournal;
 	let mockApp: App;
-	let consoleWarnSpy: jest.SpyInstance;
-	let consoleErrorSpy: jest.SpyInstance;
 
 	const storeJournal = (
 		sessions: JournalSession[],
@@ -77,8 +75,8 @@ describe('RecoveryService', () => {
 	};
 
 	beforeEach(() => {
-		consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
-		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+		jest.spyOn(console, 'warn').mockImplementation();
+		jest.spyOn(console, 'error').mockImplementation();
 
 		textFiles = new Map();
 		binaryFiles = new Map();
@@ -119,11 +117,6 @@ describe('RecoveryService', () => {
 			},
 		}).app;
 		journal = new SessionJournal(JOURNAL_PATH, mockApp);
-	});
-
-	afterEach(() => {
-		consoleWarnSpy.mockRestore();
-		consoleErrorSpy.mockRestore();
 	});
 
 	describe('collectRecoverableSessions', () => {

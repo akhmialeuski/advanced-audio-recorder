@@ -64,7 +64,6 @@ function installMockAudio(duration = 120): MockAudioHarness {
 			audioConstructor.mockRestore();
 			load.mockRestore();
 			pause.mockRestore();
-			play.mockRestore();
 		},
 	};
 }

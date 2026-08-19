@@ -484,14 +484,11 @@ describe('loadTranscriptLines with a recorded sidecar section', () => {
 			['rec.txt', '[0:05] discovered'],
 		]);
 		const app = makeApp(files);
-		const warn = jest
-			.spyOn(console, 'warn')
-			.mockImplementation(() => undefined);
+		jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 		const failing: TranscriptSectionReader = {
 			getTranscript: () => Promise.reject(new Error('io error')),
 		};
 		const found = await loadTranscriptLines(app, tf('rec.wav'), failing);
 		expect(found?.origin).toBe('rec.txt');
-		warn.mockRestore();
 	});
 });

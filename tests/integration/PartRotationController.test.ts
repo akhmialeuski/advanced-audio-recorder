@@ -76,7 +76,6 @@ describe('PartRotationController', () => {
 	let targets: RecordingTarget[];
 	let mockApp: App;
 	let mockSettings: AudioRecorderSettings;
-	let consoleErrorSpy: jest.SpyInstance;
 
 	const buildController = (session: RecordingSessionConfig): void => {
 		controller = new PartRotationController(
@@ -92,7 +91,7 @@ describe('PartRotationController', () => {
 
 	beforeEach(() => {
 		jest.useFakeTimers();
-		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+		jest.spyOn(console, 'error').mockImplementation();
 
 		targets = [createTarget()];
 		hooks = {
@@ -127,7 +126,6 @@ describe('PartRotationController', () => {
 
 	afterEach(() => {
 		jest.useRealTimers();
-		consoleErrorSpy.mockRestore();
 	});
 
 	/** Advances fake time without running timer callbacks. */

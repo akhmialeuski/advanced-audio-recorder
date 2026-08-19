@@ -11,26 +11,13 @@ import { tick } from '../helpers/async';
 import type { WorkerRequest, WorkerResponse } from 'src/audio/encodingWorker';
 
 const mockConversionExecute = jest.fn().mockResolvedValue(undefined);
-const mockConversionInit = jest.fn();
-const mockGetPrimaryAudioTrack = jest.fn();
-const mockInputDispose = jest.fn();
-const mockConvertedBuffer = new ArrayBuffer(64);
 
-jest.mock('mediabunny', () => ({
-	Input: jest.fn().mockImplementation(() => ({
-		getPrimaryAudioTrack: (): unknown => mockGetPrimaryAudioTrack(),
-		dispose: mockInputDispose,
-	})),
-	Output: jest.fn().mockImplementation(() => ({})),
-	BlobSource: jest.fn(),
-	BufferTarget: jest.fn().mockImplementation(() => ({
-		buffer: mockConvertedBuffer,
-	})),
-	ALL_FORMATS: [],
-	Conversion: {
-		init: (...args: unknown[]): unknown => mockConversionInit(...args),
-	},
-}));
+jest.mock('mediabunny', () => require('../mocks/modules/mediabunny'));
+import {
+	conversionInit,
+	getPrimaryAudioTrack,
+	convertedBuffer,
+} from '../mocks/modules/mediabunny';
 
 jest.mock('src/audio/AudioEncoder', () => ({
 	ensureEncoderRegistered: jest.fn().mockResolvedValue(undefined),
@@ -68,7 +55,7 @@ describe('handleEncodingMessage', () => {
 
 	beforeEach(() => {
 		responses = [];
-		mockConversionInit.mockImplementation(() =>
+		conversionInit.mockImplementation(() =>
 			Promise.resolve({
 				execute: mockConversionExecute,
 				onProgress: undefined,
@@ -76,7 +63,7 @@ describe('handleEncodingMessage', () => {
 				discardedTracks: [],
 			}),
 		);
-		mockGetPrimaryAudioTrack.mockResolvedValue({
+		getPrimaryAudioTrack.mockResolvedValue({
 			getCodec: jest.fn().mockResolvedValue('opus'),
 			isAudioTrack: (): boolean => true,
 			getNumberOfChannels: jest.fn().mockResolvedValue(2),
@@ -93,17 +80,16 @@ describe('handleEncodingMessage', () => {
 		expect(result?.response).toEqual({
 			id: 1,
 			kind: 'result',
-			buffer: mockConvertedBuffer,
+			buffer: convertedBuffer,
 			mimeType: 'audio/mp3',
 		});
-		expect(result?.transfer).toEqual([mockConvertedBuffer]);
+		expect(result?.transfer).toEqual([convertedBuffer]);
 	});
 
 	it('forwards whole-percent progress updates', async () => {
 		await handleEncodingMessage(createRequest(), post);
 
-		const conversion = (await at(mockConversionInit.mock.results, 0)
-			.value) as {
+		const conversion = (await at(conversionInit.mock.results, 0).value) as {
 			onProgress?: (progress: number) => void;
 		};
 		conversion.onProgress?.(0.5);
@@ -126,7 +112,7 @@ describe('handleEncodingMessage', () => {
 			post,
 		);
 
-		expect(mockConversionInit).toHaveBeenCalledWith(
+		expect(conversionInit).toHaveBeenCalledWith(
 			expect.objectContaining({
 				audio: { codec: 'pcm-s16' },
 			}),
@@ -139,7 +125,7 @@ describe('handleEncodingMessage', () => {
 			post,
 		);
 
-		expect(mockConversionInit).toHaveBeenCalledWith(
+		expect(conversionInit).toHaveBeenCalledWith(
 			expect.objectContaining({
 				audio: { codec: 'opus' },
 			}),
@@ -152,7 +138,7 @@ describe('handleEncodingMessage', () => {
 			post,
 		);
 
-		expect(mockConversionInit).toHaveBeenCalledWith(
+		expect(conversionInit).toHaveBeenCalledWith(
 			expect.objectContaining({
 				audio: expect.objectContaining({
 					process: expect.any(Function),
@@ -171,7 +157,7 @@ describe('handleEncodingMessage', () => {
 		);
 
 		const audio = (
-			mockConversionInit.mock.calls[0][0] as {
+			conversionInit.mock.calls[0][0] as {
 				audio: Record<string, unknown>;
 			}
 		).audio;
@@ -198,7 +184,7 @@ describe('handleEncodingMessage', () => {
 	});
 
 	it('posts an error when the audio track is discarded', async () => {
-		mockConversionInit.mockImplementationOnce(() =>
+		conversionInit.mockImplementationOnce(() =>
 			Promise.resolve({
 				execute: mockConversionExecute,
 				isValid: true,

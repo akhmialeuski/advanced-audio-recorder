@@ -719,9 +719,7 @@ describe('applySpeakerRenamesWithSidecar', () => {
 				{ path: 'audio/rec.txt', format: 'txt', writtenAt: 't' },
 			],
 		};
-		const warn = jest
-			.spyOn(console, 'warn')
-			.mockImplementation(() => undefined);
+		jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 
 		const result = await applySpeakerRenamesWithSidecar(
 			app,
@@ -734,7 +732,6 @@ describe('applySpeakerRenamesWithSidecar', () => {
 		expect(result.failed).toBe(1);
 		expect(result.updatedTranscriptFiles).toBe(1);
 		expect(files.get('audio/rec.txt')).toBe('[0:00] Alex: hi');
-		warn.mockRestore();
 	});
 
 	it('rewrites the content vault.process supplies, not a stale read', async () => {

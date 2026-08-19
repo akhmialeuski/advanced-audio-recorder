@@ -147,7 +147,6 @@ describe('insertTranscriptIntoNote', () => {
 			),
 		).toBe(false);
 		expect(warn).toHaveBeenCalled();
-		warn.mockRestore();
 	});
 });
 

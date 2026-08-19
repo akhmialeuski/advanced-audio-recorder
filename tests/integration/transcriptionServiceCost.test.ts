@@ -14,6 +14,7 @@ import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
+import { fakeProvider } from '../helpers/providerFixtures';
 
 const audioFile = partial<TFile>({
 	name: 'rec.webm',
@@ -21,21 +22,13 @@ const audioFile = partial<TFile>({
 	path: 'rec.webm',
 });
 
+/**
+ * A whole-file engine that answers every request with the same result.
+ * @param result - What one transcribe call resolves with
+ * @returns The provider double
+ */
 function makeProvider(result: WhisperResult): TranscriptionProvider {
-	return {
-		id: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
-		label: 'Fake',
-		requiresNetwork: false,
-		capabilities: {
-			maxRequestBytes: Number.POSITIVE_INFINITY,
-			maxRequestSeconds: Number.POSITIVE_INFINITY,
-			acceptsOriginalContainer: true,
-			supportsDiarization: true,
-			supportsDictionary: true,
-			biasChannel: 'prompt',
-		},
-		transcribe: jest.fn(async () => result),
-	};
+	return fakeProvider({ transcribe: result });
 }
 
 function makeApp(): App {

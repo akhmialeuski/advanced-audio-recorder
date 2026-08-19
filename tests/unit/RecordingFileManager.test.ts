@@ -30,12 +30,11 @@ describe('RecordingFileManager', () => {
 	let mockSettings: AudioRecorderSettings;
 	let consoleDebugSpy: jest.SpyInstance;
 	let consoleWarnSpy: jest.SpyInstance;
-	let consoleErrorSpy: jest.SpyInstance;
 
 	beforeEach(() => {
 		consoleDebugSpy = jest.spyOn(console, 'debug').mockImplementation();
 		consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
-		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+		jest.spyOn(console, 'error').mockImplementation();
 
 		// Create mock App with all required vault and workspace methods
 		mockApp = createMockApp({
@@ -58,12 +57,6 @@ describe('RecordingFileManager', () => {
 			...DEFAULT_SETTINGS,
 			saveFolder: 'Recordings',
 		};
-	});
-
-	afterEach(() => {
-		consoleDebugSpy.mockRestore();
-		consoleWarnSpy.mockRestore();
-		consoleErrorSpy.mockRestore();
 	});
 
 	// -----------------------------------------------------------------------

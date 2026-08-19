@@ -17,10 +17,15 @@ import {
 	createRecordingMockApp,
 	installRecordingMediaStubs,
 	makeFakeMarkerStore,
+	stubAudioStreams,
 } from '../helpers/recordingManagerTestKit';
 import { useDesktopPlatform } from '../helpers/platform';
 import { partial } from '../helpers/doubles';
 import { PcmStreamRecorder } from 'src/recording/PcmStreamRecorder';
+import {
+	getAudioStreams,
+	stopAllStreams,
+} from 'src/recording/AudioStreamHandler';
 
 jest.mock('src/recording/AudioStreamHandler', () =>
 	require('../mocks/modules/audioStreamHandler'),
@@ -84,12 +89,11 @@ describe('RecordingManager mono channel wiring', () => {
 	let manager: RecordingManager;
 	let mockApp: App;
 	let mockSettings: AudioRecorderSettings;
-	let consoleErrorSpy: jest.SpyInstance;
 
 	beforeEach(() => {
 		createdBridges.length = 0;
 		failBridgeAtIndex = -1;
-		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+		jest.spyOn(console, 'error').mockImplementation();
 		useDesktopPlatform();
 		mockApp = createRecordingMockApp();
 		mockSettings = { ...DEFAULT_SETTINGS };
@@ -99,10 +103,6 @@ describe('RecordingManager mono channel wiring', () => {
 			jest.fn(),
 			makeFakeMarkerStore().store,
 		);
-	});
-
-	afterEach(() => {
-		consoleErrorSpy.mockRestore();
 	});
 
 	it('records without a bridge in the source mode', async () => {
@@ -136,13 +136,8 @@ describe('RecordingManager mono channel wiring', () => {
 
 	it('applies each track its own channel mode in multi-track sessions', async () => {
 		createDesktopRecorder();
-		const { getAudioStreams } = jest.requireMock(
-			'src/recording/AudioStreamHandler',
-		);
-		const streamA = { getTracks: () => [{ stop: jest.fn() }] };
-		const streamB = { getTracks: () => [{ stop: jest.fn() }] };
-		getAudioStreams.mockResolvedValue({
-			streams: [streamA, streamB],
+		const [streamA, streamB] = stubAudioStreams({
+			count: 2,
 			trackOrder: [
 				{ trackNumber: 1, deviceId: 'a', channelMode: 'mono-left' },
 				{ trackNumber: 2, deviceId: 'b', channelMode: 'mono-mix' },
@@ -169,9 +164,6 @@ describe('RecordingManager mono channel wiring', () => {
 
 	it('does not reread a changed track mode after stream acquisition', async () => {
 		createDesktopRecorder();
-		const { getAudioStreams } = jest.requireMock(
-			'src/recording/AudioStreamHandler',
-		);
 		const stream = { getTracks: () => [{ stop: jest.fn() }] };
 		mockSettings.trackAudioSources = new Map([
 			[
@@ -182,14 +174,14 @@ describe('RecordingManager mono channel wiring', () => {
 				},
 			],
 		]);
-		getAudioStreams.mockImplementation(async () => {
+		jest.mocked(getAudioStreams).mockImplementation(async () => {
 			// Simulate a settings edit while getUserMedia/permission was pending.
 			mockSettings.trackAudioSources.set(1, {
 				deviceId: 'device-after',
 				channelMode: 'mono-right',
 			});
 			return {
-				streams: [stream],
+				streams: [partial<MediaStream>(stream)],
 				trackOrder: [
 					{
 						trackNumber: 1,
@@ -210,13 +202,8 @@ describe('RecordingManager mono channel wiring', () => {
 
 	it('bridges only the mono tracks of a mixed multi-track session', async () => {
 		createDesktopRecorder();
-		const { getAudioStreams } = jest.requireMock(
-			'src/recording/AudioStreamHandler',
-		);
-		const streamA = { getTracks: () => [{ stop: jest.fn() }] };
-		const streamB = { getTracks: () => [{ stop: jest.fn() }] };
-		getAudioStreams.mockResolvedValue({
-			streams: [streamA, streamB],
+		const [streamA, streamB] = stubAudioStreams({
+			count: 2,
 			trackOrder: [
 				{ trackNumber: 1, deviceId: 'a', channelMode: 'mono-left' },
 				{ trackNumber: 2, deviceId: 'b', channelMode: 'source' },
@@ -247,11 +234,7 @@ describe('RecordingManager mono channel wiring', () => {
 
 	it('ignores the global channel setting for multi-track sessions', async () => {
 		createDesktopRecorder();
-		const { getAudioStreams } = jest.requireMock(
-			'src/recording/AudioStreamHandler',
-		);
-		getAudioStreams.mockResolvedValue({
-			streams: [{ getTracks: () => [{ stop: jest.fn() }] }],
+		stubAudioStreams({
 			trackOrder: [
 				{ trackNumber: 1, deviceId: 'a', channelMode: 'source' },
 			],
@@ -271,16 +254,7 @@ describe('RecordingManager mono channel wiring', () => {
 
 	it('releases already-started bridges when a later bridge fails to start', async () => {
 		createDesktopRecorder();
-		const { getAudioStreams, stopAllStreams } = jest.requireMock(
-			'src/recording/AudioStreamHandler',
-		);
-		getAudioStreams.mockResolvedValue({
-			streams: [
-				{ getTracks: () => [{ stop: jest.fn() }] },
-				{ getTracks: () => [{ stop: jest.fn() }] },
-			],
-			trackOrder: [],
-		});
+		stubAudioStreams({ count: 2 });
 		mockSettings.recordingChannels = 'mono-mix';
 		failBridgeAtIndex = 1;
 
@@ -289,7 +263,7 @@ describe('RecordingManager mono channel wiring', () => {
 		expect(createdBridges).toHaveLength(2);
 		expect(at(createdBridges, 0).release).toHaveBeenCalled();
 		expect(at(createdBridges, 1).release).toHaveBeenCalled();
-		expect(stopAllStreams).toHaveBeenCalled();
+		expect(jest.mocked(stopAllStreams)).toHaveBeenCalled();
 	});
 
 	it('releases bridges on unload cleanup', async () => {
@@ -320,14 +294,8 @@ describe('RecordingManager mono channel wiring', () => {
 
 	it('passes per-track modes to the PCM recorders in multi-track WAV sessions', async () => {
 		createDesktopRecorder();
-		const { getAudioStreams } = jest.requireMock(
-			'src/recording/AudioStreamHandler',
-		);
-		getAudioStreams.mockResolvedValue({
-			streams: [
-				{ getTracks: () => [{ stop: jest.fn() }] },
-				{ getTracks: () => [{ stop: jest.fn() }] },
-			],
+		stubAudioStreams({
+			count: 2,
 			trackOrder: [
 				{ trackNumber: 1, deviceId: 'a', channelMode: 'mono-right' },
 				{ trackNumber: 2, deviceId: 'b', channelMode: 'source' },

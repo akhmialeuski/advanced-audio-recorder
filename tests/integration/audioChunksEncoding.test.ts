@@ -109,7 +109,6 @@ describe('encodeMonoWav', () => {
 		expect(pcm.getInt16(0, true)).toBe(floatToInt16(1));
 		expect(pcm.getInt16((frames - 1) * 2, true)).toBe(floatToInt16(-1));
 		expect(setTimeoutSpy).toHaveBeenCalled();
-		setTimeoutSpy.mockRestore();
 	});
 });
 

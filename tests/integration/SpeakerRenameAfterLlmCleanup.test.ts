@@ -36,6 +36,7 @@ import type { TranscriptSegment } from 'src/transcription/TranscriptTypes';
 import { SpeakerRenameModal } from 'src/ui/SpeakerRenameModal';
 import { internalsOf, partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
+import { fakeProvider } from '../helpers/providerFixtures';
 
 /** Internal surface the test drives, mirroring the dialog's unit suite. */
 interface ModalInternals {
@@ -208,21 +209,15 @@ function makeApp(): { app: App; files: Map<string, string> } {
 }
 
 /** A whole-file provider returning the diarized segments untouched. */
+/**
+ * A whole-file provider returning the diarized segments untouched.
+ * @returns The provider double
+ */
 function makeProvider(): TranscriptionProvider {
-	return {
+	return fakeProvider({
 		id: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-		label: 'Fake',
-		requiresNetwork: false,
-		capabilities: {
-			maxRequestBytes: Number.POSITIVE_INFINITY,
-			maxRequestSeconds: Number.POSITIVE_INFINITY,
-			acceptsOriginalContainer: true,
-			supportsDiarization: true,
-			supportsDictionary: true,
-			biasChannel: 'prompt',
-		},
-		transcribe: jest.fn(() => Promise.resolve({ segments })),
-	} as unknown as TranscriptionProvider;
+		transcribe: { segments },
+	});
 }
 
 /**

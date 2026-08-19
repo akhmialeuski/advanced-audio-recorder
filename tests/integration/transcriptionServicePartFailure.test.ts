@@ -21,9 +21,10 @@ import { prepareAudio } from 'src/transcription/audioPrep';
 import { TranscriptTruncatedError } from 'src/transcription/transcriptionErrors';
 import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
 import { mergeSettings } from 'src/settings/settingsSerialization';
-import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
+import { LLM_PROVIDER_IDS } from 'src/constants';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
+import { fakeProvider, NO_DIARIZATION } from '../helpers/providerFixtures';
 
 // Replace audio preparation so the test drives the part count directly without
 // decoding real audio (the Web Audio path is unavailable under jsdom).
@@ -150,21 +151,13 @@ function makeLlm(output: string): LlmProvider {
 	};
 }
 
+/**
+ * A provider whose request behaviour the test scripts directly.
+ * @param transcribe - Stands in for the whole request
+ * @returns The provider double
+ */
 function makeProvider(transcribe: jest.Mock): TranscriptionProvider {
-	return {
-		id: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
-		label: 'Fake',
-		requiresNetwork: false,
-		capabilities: {
-			maxRequestBytes: Number.POSITIVE_INFINITY,
-			maxRequestSeconds: Number.POSITIVE_INFINITY,
-			acceptsOriginalContainer: true,
-			supportsDiarization: false,
-			supportsDictionary: false,
-			biasChannel: 'prompt',
-		},
-		transcribe,
-	};
+	return { ...fakeProvider({ capabilities: NO_DIARIZATION }), transcribe };
 }
 
 const baseSettings = {

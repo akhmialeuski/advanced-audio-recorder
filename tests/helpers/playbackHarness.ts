@@ -62,14 +62,10 @@ export function installSharedAudio(): {
 		duration = value;
 		el.dispatchEvent(new Event('durationchange'));
 	};
-	const factory = jest
-		.spyOn(globalThis, 'Audio')
-		.mockImplementation(() => el);
+	jest.spyOn(globalThis, 'Audio').mockImplementation(() => el);
 	return {
 		audio: el,
-		restore: () => {
-			factory.mockRestore();
-		},
+		restore: () => {},
 	};
 }
 

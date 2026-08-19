@@ -16,6 +16,17 @@ import { createFile } from '../helpers/createApp';
 import { allEls, el } from '../helpers/dom';
 import { MODAL } from '../helpers/selectors';
 import { partial } from '../helpers/doubles';
+import { RecordingManager } from 'src/recording/RecordingManager';
+import { EnhancedPlayerRegistrar } from 'src/player/EnhancedPlayerRegistrar';
+import { detectSilentChannel } from 'src/recording/silentChannelDetector';
+import { RecoveryModal } from 'src/ui/RecoveryModal';
+import {
+	collectRecoverableSessions,
+	recoverSession,
+} from 'src/recording/RecoveryService';
+import { updateStatusBar } from 'src/ui/StatusBar';
+import { ConversionModal } from 'src/ui/ConversionModal';
+import type { JournalSession } from 'src/recording/SessionJournal';
 
 jest.mock('src/recording/RecordingManager', () => ({
 	RecordingManager: jest.fn().mockImplementation(() => ({
@@ -387,7 +398,6 @@ describe('AudioRecorderPlugin settings persistence', () => {
 			expect.stringContaining('Failed to write settings backup'),
 			expect.any(Error),
 		);
-		warn.mockRestore();
 	});
 
 	it('skips the backup entirely when the plugin folder is unknown', async () => {
@@ -426,9 +436,6 @@ describe('AudioRecorderPlugin settings persistence', () => {
 
 		await onloadWithTimers(plugin);
 
-		const { RecordingManager } = jest.requireMock(
-			'src/recording/RecordingManager',
-		);
 		const manager = at((RecordingManager as jest.Mock).mock.results, 0)
 			.value as { updateSettings: jest.Mock };
 
@@ -448,17 +455,11 @@ describe('AudioRecorderPlugin settings persistence', () => {
 
 		await onloadWithTimers(plugin);
 
-		const { RecordingManager } = jest.requireMock(
-			'src/recording/RecordingManager',
-		);
 		const onRecordingSaved = (RecordingManager as jest.Mock).mock
 			.calls[0][5] as (result: {
 			audioPaths: string[];
 			notePath: string | null;
 		}) => void;
-		const { EnhancedPlayerRegistrar } = jest.requireMock(
-			'src/player/EnhancedPlayerRegistrar',
-		);
 		const registrar = at(
 			(EnhancedPlayerRegistrar as jest.Mock).mock.results,
 			0,
@@ -489,9 +490,6 @@ describe('AudioRecorderPlugin settings persistence', () => {
 		plugin.app.vault.getFileByPath = jest
 			.fn()
 			.mockReturnValue(createFile('rec.wav'));
-		const { detectSilentChannel } = jest.requireMock(
-			'src/recording/silentChannelDetector',
-		);
 		(detectSilentChannel as jest.Mock).mockRejectedValue(
 			new Error('decode failed'),
 		);
@@ -513,7 +511,6 @@ describe('AudioRecorderPlugin settings persistence', () => {
 			expect.stringContaining('Silent-channel suggestion failed'),
 			expect.any(Error),
 		);
-		warn.mockRestore();
 	});
 
 	it('treats a rejected settings read as a failed read', async () => {
@@ -612,7 +609,7 @@ describe('AudioRecorderPlugin crash recovery wiring', () => {
 		jest.useRealTimers();
 	});
 
-	const createTestSession = (): Record<string, unknown> => ({
+	const createTestSession = (): JournalSession => ({
 		sessionId: 'session-1',
 		startedAt: 1765533600000,
 		outputFormat: 'webm',
@@ -626,9 +623,6 @@ describe('AudioRecorderPlugin crash recovery wiring', () => {
 
 		await onloadWithTimers(plugin);
 
-		const { RecordingManager } = jest.requireMock(
-			'src/recording/RecordingManager',
-		);
 		const journalArg = (RecordingManager as jest.Mock).mock.calls[0][4] as {
 			readJournal?: unknown;
 		};
@@ -643,12 +637,6 @@ describe('AudioRecorderPlugin crash recovery wiring', () => {
 
 		await onloadWithTimers(plugin);
 
-		const { RecordingManager } = jest.requireMock(
-			'src/recording/RecordingManager',
-		);
-		const { EnhancedPlayerRegistrar } = jest.requireMock(
-			'src/player/EnhancedPlayerRegistrar',
-		);
 		const managerStore = (RecordingManager as jest.Mock).mock
 			.calls[0][3] as unknown;
 		const registrarStore = (EnhancedPlayerRegistrar as jest.Mock).mock
@@ -663,23 +651,20 @@ describe('AudioRecorderPlugin crash recovery wiring', () => {
 		await onloadWithTimers(plugin);
 		await jest.advanceTimersByTimeAsync(0);
 
-		const { RecoveryModal } = jest.requireMock('src/ui/RecoveryModal');
-		expect(RecoveryModal).not.toHaveBeenCalled();
+		expect(jest.mocked(RecoveryModal)).not.toHaveBeenCalled();
 	});
 
 	it('opens the recovery modal for recoverable sessions', async () => {
-		const { collectRecoverableSessions } = jest.requireMock(
-			'src/recording/RecoveryService',
-		);
 		const session = createTestSession();
-		collectRecoverableSessions.mockResolvedValueOnce([session]);
+		jest.mocked(collectRecoverableSessions).mockResolvedValueOnce([
+			session,
+		]);
 		const { plugin } = createPlugin([null]);
 
 		await onloadWithTimers(plugin);
 		await jest.advanceTimersByTimeAsync(0);
 
-		const { RecoveryModal } = jest.requireMock('src/ui/RecoveryModal');
-		expect(RecoveryModal).toHaveBeenCalledWith(
+		expect(jest.mocked(RecoveryModal)).toHaveBeenCalledWith(
 			plugin.app,
 			[session],
 			expect.objectContaining({
@@ -693,33 +678,26 @@ describe('AudioRecorderPlugin crash recovery wiring', () => {
 	});
 
 	it('recovers every offered session through the callback', async () => {
-		const { collectRecoverableSessions, recoverSession } = jest.requireMock(
-			'src/recording/RecoveryService',
-		);
 		const sessions = [createTestSession(), createTestSession()];
-		collectRecoverableSessions.mockResolvedValueOnce(sessions);
+		jest.mocked(collectRecoverableSessions).mockResolvedValueOnce(sessions);
 		const { plugin } = createPlugin([null]);
 
 		await onloadWithTimers(plugin);
 		await jest.advanceTimersByTimeAsync(0);
 
-		const { RecoveryModal } = jest.requireMock('src/ui/RecoveryModal');
 		const callbacks = (RecoveryModal as jest.Mock).mock.calls[0][2] as {
 			onRecover: () => Promise<void>;
 		};
 		await callbacks.onRecover();
 
-		expect(recoverSession).toHaveBeenCalledTimes(2);
+		expect(jest.mocked(recoverSession)).toHaveBeenCalledTimes(2);
 	});
 
 	it('does not break onload when the recovery check fails', async () => {
 		const consoleErrorSpy = jest
 			.spyOn(console, 'error')
 			.mockImplementation();
-		const { collectRecoverableSessions } = jest.requireMock(
-			'src/recording/RecoveryService',
-		);
-		collectRecoverableSessions.mockRejectedValueOnce(
+		jest.mocked(collectRecoverableSessions).mockRejectedValueOnce(
 			new Error('journal exploded'),
 		);
 		const { plugin } = createPlugin([null]);
@@ -731,7 +709,6 @@ describe('AudioRecorderPlugin crash recovery wiring', () => {
 			expect.stringContaining('Recovery check failed'),
 			expect.any(Error),
 		);
-		consoleErrorSpy.mockRestore();
 	});
 });
 
@@ -798,7 +775,7 @@ describe('AudioRecorderPlugin background transcription status bar', () => {
 		// Clearing the last job releases the slot to the idle renderer.
 		(updateStatusBar as jest.Mock).mockClear();
 		first.clear();
-		expect(updateStatusBar).toHaveBeenCalled();
+		expect(jest.mocked(updateStatusBar)).toHaveBeenCalled();
 	});
 
 	it('keeps the active job displayed when a superseded job clears', async () => {
@@ -828,9 +805,6 @@ describe('AudioRecorderPlugin background transcription status bar', () => {
 	it('prioritizes recording, then playback, then minimized transcription', async () => {
 		const { plugin } = createPlugin([null]);
 		await onloadWithTimers(plugin);
-		const { EnhancedPlayerRegistrar } = jest.requireMock(
-			'src/player/EnhancedPlayerRegistrar',
-		);
 		const registrar = at(
 			(EnhancedPlayerRegistrar as jest.Mock).mock.results,
 			0,
@@ -872,8 +846,7 @@ describe('AudioRecorderPlugin background transcription status bar', () => {
 			handleStatusChange(status: RecordingStatus): void;
 		};
 		hooks.handleStatusChange(RecordingStatus.Recording);
-		const { updateStatusBar } = jest.requireMock('src/ui/StatusBar');
-		expect(updateStatusBar).toHaveBeenLastCalledWith(
+		expect(jest.mocked(updateStatusBar)).toHaveBeenLastCalledWith(
 			expect.anything(),
 			RecordingStatus.Recording,
 			undefined,
@@ -898,9 +871,6 @@ describe('AudioRecorderPlugin background transcription status bar', () => {
 	it('does not rebuild recording controls when playback updates mid-recording', async () => {
 		const { plugin } = createPlugin([null]);
 		await onloadWithTimers(plugin);
-		const { EnhancedPlayerRegistrar } = jest.requireMock(
-			'src/player/EnhancedPlayerRegistrar',
-		);
 		const registrar = at(
 			(EnhancedPlayerRegistrar as jest.Mock).mock.results,
 			0,
@@ -938,17 +908,12 @@ describe('AudioRecorderPlugin background transcription status bar', () => {
 		};
 		onPlayback(playbackState);
 
-		expect(updateStatusBar).not.toHaveBeenCalled();
+		expect(jest.mocked(updateStatusBar)).not.toHaveBeenCalled();
 		expect(renderPlaybackStatusBar).not.toHaveBeenCalled();
 	});
 });
 
 describe('AudioRecorderPlugin silent-channel suggestion', () => {
-	const { detectSilentChannel } = jest.requireMock(
-		'src/recording/silentChannelDetector',
-	);
-	const { ConversionModal } = jest.requireMock('src/ui/ConversionModal');
-
 	function primedPlugin(overrides?: Partial<typeof DEFAULT_SETTINGS>): {
 		plugin: AudioRecorderPlugin;
 		hooks: SilentChannelHooks;
@@ -994,7 +959,7 @@ describe('AudioRecorderPlugin silent-channel suggestion', () => {
 			notePath: null,
 		});
 
-		expect(detectSilentChannel).toHaveBeenCalledWith(
+		expect(jest.mocked(detectSilentChannel)).toHaveBeenCalledWith(
 			expect.anything(),
 			file,
 			{ knownDurationSeconds: undefined },
@@ -1053,13 +1018,13 @@ describe('AudioRecorderPlugin silent-channel suggestion', () => {
 			],
 		});
 
-		expect(detectSilentChannel).toHaveBeenNthCalledWith(
+		expect(jest.mocked(detectSilentChannel)).toHaveBeenNthCalledWith(
 			1,
 			expect.anything(),
 			first,
 			{ knownDurationSeconds: 30 },
 		);
-		expect(detectSilentChannel).toHaveBeenNthCalledWith(
+		expect(jest.mocked(detectSilentChannel)).toHaveBeenNthCalledWith(
 			2,
 			expect.anything(),
 			second,
@@ -1078,7 +1043,7 @@ describe('AudioRecorderPlugin silent-channel suggestion', () => {
 			notePath: null,
 		});
 
-		expect(detectSilentChannel).not.toHaveBeenCalled();
+		expect(jest.mocked(detectSilentChannel)).not.toHaveBeenCalled();
 	});
 
 	it('does nothing when no lopsided channel is detected', async () => {
@@ -1102,7 +1067,7 @@ describe('AudioRecorderPlugin silent-channel suggestion', () => {
 			notePath: null,
 		});
 
-		expect(detectSilentChannel).not.toHaveBeenCalled();
+		expect(jest.mocked(detectSilentChannel)).not.toHaveBeenCalled();
 	});
 
 	it('abandons a run that a newer recording superseded', async () => {
@@ -1137,7 +1102,7 @@ describe('AudioRecorderPlugin silent-channel suggestion', () => {
 
 		// The superseded run stops after its first candidate rather than
 		// scanning the second.
-		expect(detectSilentChannel).toHaveBeenCalledTimes(2);
+		expect(jest.mocked(detectSilentChannel)).toHaveBeenCalledTimes(2);
 	});
 
 	it('skips a path whose file is gone by the time the scan reaches it', async () => {
@@ -1149,7 +1114,7 @@ describe('AudioRecorderPlugin silent-channel suggestion', () => {
 			notePath: null,
 		});
 
-		expect(detectSilentChannel).not.toHaveBeenCalled();
+		expect(jest.mocked(detectSilentChannel)).not.toHaveBeenCalled();
 	});
 
 	it('opens the conversion dialog preset to the kept channel', () => {
@@ -1157,7 +1122,7 @@ describe('AudioRecorderPlugin silent-channel suggestion', () => {
 
 		hooks.openMonoConversion(file, 'mono-left');
 
-		expect(ConversionModal).toHaveBeenCalledTimes(1);
+		expect(jest.mocked(ConversionModal)).toHaveBeenCalledTimes(1);
 		expect(at((ConversionModal as jest.Mock).mock.calls, 0)[3]).toEqual(
 			expect.objectContaining({ initialChannelMode: 'mono-left' }),
 		);

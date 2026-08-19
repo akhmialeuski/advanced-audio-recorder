@@ -34,6 +34,10 @@ import {
 } from 'obsidian';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
+import { registerDomEventOnAllWindows } from 'src/utils/multiWindowDomEvents';
+import { AudioFileInfoModal } from 'src/ui/AudioFileInfoModal';
+import { SplitModal } from 'src/ui/SplitModal';
+import { AudioProcessingModal } from 'src/cleanup/AudioProcessingModal';
 
 // The player menu binds through registerDomEventOnAllWindows (one listener
 // per Obsidian window). These unit tests exercise the handler itself, so the
@@ -185,10 +189,9 @@ describe('ContextMenu', () => {
 				'editor-menu',
 				expect.any(Function),
 			);
-			const { registerDomEventOnAllWindows } = jest.requireMock(
-				'src/utils/multiWindowDomEvents',
-			);
-			expect(registerDomEventOnAllWindows).toHaveBeenCalledWith(
+			expect(
+				jest.mocked(registerDomEventOnAllWindows),
+			).toHaveBeenCalledWith(
 				mockPlugin,
 				mockApp,
 				'contextmenu',
@@ -235,9 +238,6 @@ describe('ContextMenu', () => {
 		});
 
 		it('opens the file-info modal from "Audio file info"', async () => {
-			const { AudioFileInfoModal } = jest.requireMock(
-				'src/ui/AudioFileInfoModal',
-			);
 			const menu = new Menu();
 			const file = makeAudioFile();
 			const info = {
@@ -261,13 +261,10 @@ describe('ContextMenu', () => {
 				mockApp,
 				file,
 			);
-			expect(AudioFileInfoModal).toHaveBeenCalled();
+			expect(jest.mocked(AudioFileInfoModal)).toHaveBeenCalled();
 		});
 
 		it('does not open the file-info modal when analysis fails', async () => {
-			const { AudioFileInfoModal } = jest.requireMock(
-				'src/ui/AudioFileInfoModal',
-			);
 			const menu = new Menu();
 			jest.spyOn(AudioFileAnalyzer, 'getAudioFileInfo').mockResolvedValue(
 				null,
@@ -276,7 +273,7 @@ describe('ContextMenu', () => {
 			fileMenuCallback(menu, makeAudioFile());
 			await clickItem(menu, 'Audio file info');
 
-			expect(AudioFileInfoModal).not.toHaveBeenCalled();
+			expect(jest.mocked(AudioFileInfoModal)).not.toHaveBeenCalled();
 		});
 
 		it('does not duplicate actions when both menu hooks fire for one menu', () => {
@@ -297,14 +294,13 @@ describe('ContextMenu', () => {
 		});
 
 		it('opens SplitModal with a live settings accessor from "Split audio into parts"', async () => {
-			const { SplitModal } = jest.requireMock('src/ui/SplitModal');
 			const menu = new Menu();
 			const file = makeAudioFile();
 
 			fileMenuCallback(menu, file);
 			await clickItem(menu, 'Split audio into parts');
 
-			expect(SplitModal).toHaveBeenCalledWith(
+			expect(jest.mocked(SplitModal)).toHaveBeenCalledWith(
 				mockApp,
 				file,
 				expect.any(Function),
@@ -321,16 +317,13 @@ describe('ContextMenu', () => {
 		});
 
 		it('opens AudioProcessingModal from "Clean up audio"', async () => {
-			const { AudioProcessingModal } = jest.requireMock(
-				'src/cleanup/AudioProcessingModal',
-			);
 			const menu = new Menu();
 			const file = makeAudioFile();
 
 			fileMenuCallback(menu, file);
 			await clickItem(menu, 'Clean up audio');
 
-			expect(AudioProcessingModal).toHaveBeenCalledWith(
+			expect(jest.mocked(AudioProcessingModal)).toHaveBeenCalledWith(
 				mockApp,
 				file,
 				expect.any(Function),
@@ -371,7 +364,6 @@ describe('ContextMenu', () => {
 
 			expect(Notice).toHaveBeenCalledWith('Failed to delete recording');
 			expect(consoleSpy).toHaveBeenCalled();
-			consoleSpy.mockRestore();
 		});
 	});
 
@@ -495,7 +487,6 @@ describe('ContextMenu', () => {
 
 			expect(Notice).toHaveBeenCalledWith('Failed to delete recording');
 			expect(consoleSpy).toHaveBeenCalled();
-			consoleSpy.mockRestore();
 		});
 
 		it('recognizes markdown-style links', () => {
@@ -564,9 +555,6 @@ describe('ContextMenu', () => {
 
 		beforeEach(() => {
 			contextMenu.register();
-			const { registerDomEventOnAllWindows } = jest.requireMock(
-				'src/utils/multiWindowDomEvents',
-			);
 			const call = (
 				registerDomEventOnAllWindows as jest.Mock
 			).mock.calls.find((c) => c[2] === 'contextmenu');
@@ -801,16 +789,12 @@ describe('ContextMenu', () => {
 				'[AudioRecorder] Failed to resolve link position in editor:',
 				expect.any(Error),
 			);
-			consoleSpy.mockRestore();
 		});
 	});
 
 	describe('ContextMenu over an enhanced player', () => {
 		/** The contextmenu handler the menu installed on every window. */
 		function playerMenu(): (event: MouseEvent) => void {
-			const { registerDomEventOnAllWindows } = jest.requireMock(
-				'src/utils/multiWindowDomEvents',
-			);
 			const call = (
 				registerDomEventOnAllWindows as jest.Mock
 			).mock.calls.find((args: unknown[]) => args[2] === 'contextmenu');

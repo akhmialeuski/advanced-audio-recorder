@@ -50,14 +50,13 @@ describe('TrackWriteQueue', () => {
 	let queue: TrackWriteQueue;
 	let mockApp: App;
 	let mockSettings: AudioRecorderSettings;
-	let consoleErrorSpy: jest.SpyInstance;
 
 	const getNoticeCalls = (): unknown[][] => {
 		return jest.mocked(Notice).mock.calls;
 	};
 
 	beforeEach(() => {
-		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+		jest.spyOn(console, 'error').mockImplementation();
 
 		mockApp = createMockApp({
 			vault: {
@@ -75,10 +74,6 @@ describe('TrackWriteQueue', () => {
 		mockSettings = { ...DEFAULT_SETTINGS };
 		queue = new TrackWriteQueue(mockApp, mockSettings);
 		queue.beginSession(createSession());
-	});
-
-	afterEach(() => {
-		consoleErrorSpy.mockRestore();
 	});
 
 	describe('enqueue', () => {

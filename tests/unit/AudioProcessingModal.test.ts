@@ -216,7 +216,7 @@ describe('AudioProcessingModal', () => {
 
 	it('keeps the result and notifies when deleting the source fails', async () => {
 		processMock.mockResolvedValue('recordings/take-processed.wav');
-		const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
+		jest.spyOn(console, 'warn').mockImplementation();
 		const app = makeApp();
 		jest.mocked(app.fileManager.trashFile).mockRejectedValue(
 			new Error('locked'),
@@ -234,7 +234,6 @@ describe('AudioProcessingModal', () => {
 		expect(Notice).toHaveBeenCalledWith(
 			'Processed audio saved to recordings/take-processed.wav, but the source could not be deleted.',
 		);
-		warnSpy.mockRestore();
 	});
 
 	it('reports a processing failure and keeps the modal open', async () => {
@@ -257,7 +256,7 @@ describe('AudioProcessingModal', () => {
 
 	it('links the note best-effort: a linking failure does not block the save', async () => {
 		processMock.mockResolvedValue('recordings/take-processed.wav');
-		const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
+		jest.spyOn(console, 'warn').mockImplementation();
 		const onProcessed = jest.fn().mockRejectedValue(new Error('note gone'));
 		const { modal, processButton } = openModal(
 			makeApp(),
@@ -273,6 +272,5 @@ describe('AudioProcessingModal', () => {
 			'Processed audio saved to recordings/take-processed.wav',
 		);
 		expect(closeSpy).toHaveBeenCalled();
-		warnSpy.mockRestore();
 	});
 });

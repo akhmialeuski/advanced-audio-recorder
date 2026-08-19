@@ -245,17 +245,16 @@ describe('detectSilentChannel', () => {
 	});
 
 	it('returns null and closes the context when decoding fails', async () => {
-		const warn = jest.spyOn(console, 'warn').mockImplementation();
+		jest.spyOn(console, 'warn').mockImplementation();
 		jest.mocked(probeAudioMetadata).mockResolvedValue(null);
 		decodeAudioData.mockRejectedValue(new Error('bad data'));
 
 		expect(await detectSilentChannel(makeApp(), file)).toBeNull();
 		expect(close).toHaveBeenCalled();
-		warn.mockRestore();
 	});
 
 	it('returns null when the file cannot be read', async () => {
-		const warn = jest.spyOn(console, 'warn').mockImplementation();
+		jest.spyOn(console, 'warn').mockImplementation();
 		const app = createMockApp({
 			vault: {
 				readBinary: jest.fn().mockRejectedValue(new Error('missing')),
@@ -263,6 +262,5 @@ describe('detectSilentChannel', () => {
 		}).app;
 
 		expect(await detectSilentChannel(app, file)).toBeNull();
-		warn.mockRestore();
 	});
 });

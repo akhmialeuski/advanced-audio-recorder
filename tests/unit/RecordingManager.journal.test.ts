@@ -19,6 +19,7 @@ import {
 import { at } from '../helpers/assertions';
 import { useDesktopPlatform, useMobilePlatform } from '../helpers/platform';
 import { tick, waitFor } from '../helpers/async';
+import { PcmStreamRecorder } from 'src/recording/PcmStreamRecorder';
 
 // Mock AudioStreamHandler
 jest.mock('src/recording/AudioStreamHandler', () =>
@@ -45,20 +46,15 @@ describe('RecordingManager', () => {
 	let mockApp: App;
 	let mockSettings: AudioRecorderSettings;
 	let statusChangeCallback: jest.Mock;
-	let consoleErrorSpy: jest.SpyInstance;
 
 	beforeEach(() => {
-		consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+		jest.spyOn(console, 'error').mockImplementation();
 		({
 			manager,
 			app: mockApp,
 			settings: mockSettings,
 			onStatusChange: statusChangeCallback,
 		} = createRecordingSut());
-	});
-
-	afterEach(() => {
-		consoleErrorSpy.mockRestore();
 	});
 
 	describe('session journal integration', () => {
@@ -213,9 +209,6 @@ describe('RecordingManager', () => {
 			await manager.startRecording();
 			manager.cleanup();
 
-			const { PcmStreamRecorder } = jest.requireMock(
-				'src/recording/PcmStreamRecorder',
-			);
 			const recorderInstance = at(
 				(PcmStreamRecorder as jest.Mock).mock.results,
 				0,

@@ -303,7 +303,6 @@ describe('PcmStreamRecorder', () => {
 			await expect(recorder.start()).rejects.toThrow('addModule failed');
 
 			expect(warnSpy).toHaveBeenCalled();
-			warnSpy.mockRestore();
 		});
 	});
 

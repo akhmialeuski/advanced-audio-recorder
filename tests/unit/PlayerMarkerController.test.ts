@@ -111,9 +111,7 @@ describe('PlayerMarkerController', () => {
 		const store = makeCorruptStore();
 		const host = makeHost();
 		const controller = new PlayerMarkerController(store, 'rec.wav', host);
-		const warn = jest
-			.spyOn(console, 'warn')
-			.mockImplementation(() => undefined);
+		jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 
 		await controller.addAt(12, MARKER_KIND.bookmark);
 
@@ -127,7 +125,6 @@ describe('PlayerMarkerController', () => {
 		expect(noticeMock).not.toHaveBeenCalledWith(
 			expect.stringContaining('added at'),
 		);
-		warn.mockRestore();
 	});
 
 	it('does not wipe the list when a removal write is refused', async () => {
@@ -147,15 +144,12 @@ describe('PlayerMarkerController', () => {
 		});
 		const host = makeHost();
 		const controller = new PlayerMarkerController(store, 'rec.wav', host);
-		const warn = jest
-			.spyOn(console, 'warn')
-			.mockImplementation(() => undefined);
+		jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 		await controller.load();
 
 		await controller.remove('keep');
 
 		// The removal was refused, so the marker is restored from the store.
 		expect(controller.all.map((m) => m.id)).toEqual(['keep']);
-		warn.mockRestore();
 	});
 });
