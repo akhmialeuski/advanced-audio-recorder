@@ -28,6 +28,9 @@ import type { RecordingSaveResult } from 'src/types';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { TranscriptionModal } from 'src/ui/TranscriptionModal';
 import { asMockVault } from '../helpers/obsidianMock';
+// The double itself is the one every e2e suite is mocked with; its shape is
+// declared there rather than restated per suite.
+import type { RecorderDouble } from '../mocks/modules/recordingManager';
 
 jest.mock('src/ui/TranscriptionModal', () => ({
 	TranscriptionModal: jest
@@ -44,21 +47,6 @@ jest.mock('src/recording/silentChannelDetector', () => ({
 jest.mock('src/ui/DeviceSelectionModal', () => ({
 	showDeviceSelectionModal: jest.fn().mockResolvedValue(undefined),
 }));
-
-/** The methods the recording-manager double offers, all of them spies. */
-interface RecorderDouble {
-	toggleRecording: jest.Mock;
-	togglePauseResume: jest.Mock;
-	stopRecording: jest.Mock;
-	cleanup: jest.Mock;
-	updateSettings: jest.Mock;
-	getStatus: jest.Mock;
-	canDropMarker: jest.Mock;
-	captureMarkerDraft: jest.Mock;
-	getElapsedMs: jest.Mock;
-	getRecordedBytes: jest.Mock;
-	getInputLevel: jest.Mock;
-}
 
 /**
  * The recording manager the plugin built.
@@ -125,6 +113,108 @@ describe('loading the plugin', () => {
 		expect(asMockPlugin(plugin).registeredIntervals.length).toBeGreaterThan(
 			0,
 		);
+	});
+});
+
+describe('the command line', () => {
+	it('registers the CLI commands the desktop app answers', async () => {
+		const { plugin } = await loadPlugin();
+
+		expect(
+			asMockPlugin(plugin).registeredCliCommands.map(
+				(command) => command.id,
+			),
+		).toEqual([
+			MANIFEST.id,
+			`${MANIFEST.id}:record`,
+			`${MANIFEST.id}:stop`,
+			`${MANIFEST.id}:transcribe`,
+		]);
+	});
+
+	it('starts a recording from the command line', async () => {
+		const { plugin } = await loadPlugin();
+		recorder().getStatus.mockReturnValue(RecordingStatus.Idle);
+
+		await asMockPlugin(plugin).invokeCliCommand(`${MANIFEST.id}:record`);
+
+		expect(recorder().startRecording).toHaveBeenCalledTimes(1);
+	});
+
+	it('stops one from the command line', async () => {
+		const { plugin } = await loadPlugin();
+		recorder().getStatus.mockReturnValue(RecordingStatus.Recording);
+
+		await asMockPlugin(plugin).invokeCliCommand(`${MANIFEST.id}:stop`);
+
+		expect(recorder().stopRecording).toHaveBeenCalled();
+	});
+
+	it('answers with the state the recorder is in', async () => {
+		const { plugin } = await loadPlugin();
+		recorder().getStatus.mockReturnValue(RecordingStatus.Recording);
+
+		await expect(
+			asMockPlugin(plugin).invokeCliCommand(MANIFEST.id),
+		).resolves.toBe('Recording.');
+	});
+
+	it('names the stored format while nothing is recording', async () => {
+		const { plugin } = await loadPlugin({ recordingFormat: 'mp3' });
+		recorder().getStatus.mockReturnValue(RecordingStatus.Idle);
+
+		await expect(
+			asMockPlugin(plugin).invokeCliCommand(MANIFEST.id),
+		).resolves.toBe('Idle. A recording started now is saved as MP3.');
+	});
+
+	it('transcribes a vault file named on the command line', async () => {
+		const app = new App();
+		asMockVault(app.vault).seed([{ path: 'recordings/standup.webm' }]);
+		const { plugin } = await loadPlugin(null, app);
+
+		await expect(
+			asMockPlugin(plugin).invokeCliCommand(`${MANIFEST.id}:transcribe`, {
+				file: 'recordings/standup.webm',
+			}),
+		).resolves.toBe('Transcribing recordings/standup.webm in Obsidian.');
+		expect(jest.mocked(TranscriptionModal)).toHaveBeenCalled();
+	});
+
+	it('refuses a path the vault holds no audio file at', async () => {
+		const { plugin } = await loadPlugin();
+
+		await expect(
+			asMockPlugin(plugin).invokeCliCommand(`${MANIFEST.id}:transcribe`, {
+				file: 'notes/agenda.md',
+			}),
+		).resolves.toContain('No audio file');
+		expect(jest.mocked(TranscriptionModal)).not.toHaveBeenCalled();
+	});
+});
+
+describe('enabling the plugin deliberately', () => {
+	it("opens the plugin's own settings tab", async () => {
+		// The one moment Obsidian says a plugin may engage with the user, and
+		// the settings dialog is already open on Community plugins.
+		const app = new App();
+		const openTabById = jest.fn();
+		app.setting = { open: jest.fn(), openTabById };
+		const { plugin } = await loadPlugin(null, app);
+
+		plugin.onUserEnable();
+
+		expect(openTabById).toHaveBeenCalledWith(MANIFEST.id);
+	});
+
+	it('survives a build whose settings dialog it cannot reach', async () => {
+		// The dialog is internal API; the onboarding is not worth a load
+		// failure if it is gone.
+		const { plugin } = await loadPlugin();
+
+		expect(() => {
+			plugin.onUserEnable();
+		}).not.toThrow();
 	});
 });
 

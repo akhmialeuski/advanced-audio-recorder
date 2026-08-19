@@ -1,10 +1,10 @@
 {
 	"coverage": {
 		"total": {
-			"statements": 97.39,
-			"branches": 90.26,
-			"functions": 97.19,
-			"lines": 97.42
+			"statements": 97.4,
+			"branches": 90.32,
+			"functions": 97.21,
+			"lines": 97.44
 		},
 		"files": {
 			"src/constants.ts": {
@@ -20,10 +20,10 @@
 				"lines": 100
 			},
 			"src/main.ts": {
-				"statements": 99.09,
-				"branches": 97.05,
-				"functions": 97.18,
-				"lines": 99.69
+				"statements": 99.13,
+				"branches": 97.14,
+				"functions": 97.5,
+				"lines": 99.7
 			},
 			"src/types.ts": {
 				"statements": 100,
@@ -180,6 +180,12 @@
 				"branches": 97.05,
 				"functions": 100,
 				"lines": 98.5
+			},
+			"src/obsidian/cliCommands.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
 			},
 			"src/obsidian/embedRegistry.ts": {
 				"statements": 100,
@@ -1066,9 +1072,9 @@
 		}
 	},
 	"suite": {
-		"suites": 194,
-		"tests": 3751,
-		"passed": 3751,
+		"suites": 195,
+		"tests": 3785,
+		"passed": 3785,
 		"failed": 0,
 		"todo": 0
 	}

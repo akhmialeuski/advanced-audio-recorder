@@ -26,6 +26,10 @@ import type { App } from 'obsidian';
 export interface SettingsModal {
 	/** Pops the open sub-page and re-renders whatever it was opened from. */
 	closePage?(): void;
+	/** Opens the settings dialog itself. */
+	open?(): void;
+	/** Shows one tab of it, by the id the plugin is registered under. */
+	openTabById?(id: string): void;
 }
 
 declare module 'obsidian' {
@@ -51,5 +55,34 @@ export function closeSettingsPage(app: App): boolean {
 	// Called on the modal rather than through a captured reference: it is the
 	// modal that owns the page stack the close operates on.
 	modal.closePage();
+	return true;
+}
+
+/**
+ * Opens a plugin's own tab of the settings dialog.
+ *
+ * Used where the plugin has a reason to put the user in front of its settings
+ * rather than to wait for them to find it - the deliberate enable, which is the
+ * one moment Obsidian tells a plugin it may engage with the user.
+ *
+ * The dialog is opened before the tab is selected. It is already open when a
+ * plugin is enabled from Community plugins, where opening it again does
+ * nothing; from anywhere else, selecting a tab of a closed dialog would leave
+ * the user looking at nothing.
+ * @param app - The Obsidian App instance
+ * @param pluginId - Id the plugin's settings tab is registered under
+ * @returns Whether the tab could be opened
+ */
+export function openPluginSettings(app: App, pluginId: string): boolean {
+	const modal = app.setting;
+	if (
+		!modal ||
+		typeof modal.open !== 'function' ||
+		typeof modal.openTabById !== 'function'
+	) {
+		return false;
+	}
+	modal.open();
+	modal.openTabById(pluginId);
 	return true;
 }

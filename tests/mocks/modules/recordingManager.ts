@@ -13,6 +13,7 @@ import { RecordingStatus } from 'src/types';
 /** Every method the plugin calls on its recording manager, as a spy. */
 export interface RecorderDouble {
 	toggleRecording: jest.Mock;
+	startRecording: jest.Mock;
 	togglePauseResume: jest.Mock;
 	stopRecording: jest.Mock;
 	cleanup: jest.Mock;
@@ -28,6 +29,7 @@ export interface RecorderDouble {
 export const RecordingManager = jest.fn(
 	(): RecorderDouble => ({
 		toggleRecording: jest.fn().mockResolvedValue(undefined),
+		startRecording: jest.fn().mockResolvedValue(undefined),
 		togglePauseResume: jest.fn(),
 		stopRecording: jest.fn().mockResolvedValue(undefined),
 		cleanup: jest.fn(),

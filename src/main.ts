@@ -57,6 +57,9 @@ import { MediaKindStore, MEDIA_KIND_STORE_FILE } from './player/MediaKindStore';
 import { RecordingSidecarStore } from './sidecar/RecordingSidecarStore';
 import { AutoChapterService } from './chapters/AutoChapterService';
 import { RecordingMarkerModal } from './ui/MarkerModal';
+import { isAudioFile } from './utils/audioFile';
+import { openPluginSettings } from './obsidian/settingsNavigation';
+import { registerCliCommands, type CliHost } from './obsidian/cliCommands';
 import { TranscriptionModal } from './ui/TranscriptionModal';
 import type { TranscriptionModalOptions } from './ui/TranscriptionModal';
 import {
@@ -239,6 +242,10 @@ export default class AudioRecorderPlugin extends Plugin {
 
 		this.addSettingTab(new AudioRecorderSettingTab(this.app, this));
 		this.registerCommands();
+		// The desktop command line, where the app has one. Reports whether it
+		// registered, which is what the CLI-less platforms and the Obsidians
+		// below 1.12.2 answer.
+		registerCliCommands(this, this.createCliHost());
 		this.ribbonIconEl = this.addRibbonIcon(
 			'microphone',
 			'Start/stop recording',
@@ -286,6 +293,48 @@ export default class AudioRecorderPlugin extends Plugin {
 		this.app.workspace.onLayoutReady(() => {
 			void this.checkForInterruptedSessions();
 		});
+	}
+
+	/**
+	 * Runs once, when the user enables the plugin deliberately - an install, or
+	 * a re-enable - rather than on every start.
+	 *
+	 * It is the one moment Obsidian says a plugin may engage with the user, and
+	 * the Settings dialog is already open on Community plugins when it comes.
+	 * Switching it to this plugin's own tab puts the documentation callout and
+	 * the three rows a first recording needs (input, format, save folder) in
+	 * front of them, instead of leaving a freshly enabled recorder to be found.
+	 */
+	override onUserEnable(): void {
+		openPluginSettings(this.app, this.manifest.id);
+	}
+
+	/**
+	 * What the CLI is allowed to ask of the plugin.
+	 *
+	 * A port rather than the plugin itself: a command line reaches a running
+	 * app from outside it, and what it may do here is these five things.
+	 * @returns The host the CLI commands are built over
+	 */
+	private createCliHost(): CliHost {
+		return {
+			recordingStatus: (): RecordingStatus =>
+				this.recordingManager.getStatus(),
+			startRecording: (): Promise<void> =>
+				this.recordingManager.startRecording(),
+			stopRecording: (): Promise<void> =>
+				this.recordingManager.stopRecording(),
+			recordingFormat: (): string => this.settings.recordingFormat,
+			audioFileAt: (path: string): TFile | null => {
+				const file = this.app.vault.getFileByPath(path);
+				return file && isAudioFile(file) ? file : null;
+			},
+			// The same bargain every other surface makes for a paid job: the
+			// dialog runs it, reports its progress, and can be cancelled.
+			transcribe: (file: TFile): void => {
+				this.openTranscription(file);
+			},
+		};
 	}
 
 	/**
@@ -833,15 +882,26 @@ export default class AudioRecorderPlugin extends Plugin {
 		if (!file) {
 			return;
 		}
-		// Open the transcription modal and auto-run it: the user gets visible
-		// progress and a cancel button for what can be a long, paid job instead
-		// of a silent background request. The modal reports its own errors and
-		// writes the configured outputs (with a file fallback when the note is
-		// not editable).
+		this.openTranscription(file, result.notePath ?? undefined);
+	}
+
+	/**
+	 * Opens the transcription dialog on a file and starts it there.
+	 *
+	 * Every transcription this plugin starts on its own - after a recording,
+	 * from the command line - goes through here rather than in the background:
+	 * the user gets visible progress and a cancel button for what can be a
+	 * long, paid job. The dialog reports its own errors and writes the
+	 * configured outputs, with a file fallback when the note is not editable.
+	 * @param file - The audio file to transcribe
+	 * @param notePath - Note the transcript's links should resolve in, where
+	 *   the caller knows one; the dialog picks the active note otherwise
+	 */
+	private openTranscription(file: TFile, notePath?: string): void {
 		new TranscriptionModal(this.app, file, () => this.settings, {
 			...this.createTranscriptionModalOptions(),
 			autoStart: true,
-			notePath: result.notePath ?? undefined,
+			notePath,
 		}).open();
 	}
 
