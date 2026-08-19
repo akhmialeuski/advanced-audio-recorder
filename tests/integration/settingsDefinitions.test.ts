@@ -481,19 +481,19 @@ describe('settings definitions', () => {
 			expect(local()).toBe('Configured');
 		});
 
-		it('warns on multi-track with a track left unassigned', () => {
+		it('warns on multi-track that would open no input at all', () => {
 			settings.enableMultiTrack = true;
 			settings.maxTracks = 2;
-			settings.trackAudioSources = new Map([
-				[1, { deviceId: 'mic-1', channelMode: 'source' as const }],
-			]);
+			settings.trackAudioSources = new Map();
 			const multiTrack = (): 'warning' | null | undefined =>
 				entryStatusOf(pageOf(build(), 'Multi-track recording'));
 
 			expect(multiTrack()).toBe('warning');
 
-			settings.trackAudioSources.set(2, {
-				deviceId: 'iface-1',
+			// One assigned track is a session that records; the second is the
+			// user's to fill in, not something to mark the page over.
+			settings.trackAudioSources.set(1, {
+				deviceId: 'mic-1',
 				channelMode: 'source' as const,
 			});
 

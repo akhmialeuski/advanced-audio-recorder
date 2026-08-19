@@ -59,6 +59,7 @@ import { AutoChapterService } from './chapters/AutoChapterService';
 import { RecordingMarkerModal } from './ui/MarkerModal';
 import { isAudioFile } from './utils/audioFile';
 import { openPluginSettings } from './obsidian/settingsNavigation';
+import { transcriptionRefusal } from './settings/settingsAttention';
 import { registerCliCommands, type CliHost } from './obsidian/cliCommands';
 import { TranscriptionModal } from './ui/TranscriptionModal';
 import type { TranscriptionModalOptions } from './ui/TranscriptionModal';
@@ -320,11 +321,13 @@ export default class AudioRecorderPlugin extends Plugin {
 		return {
 			recordingStatus: (): RecordingStatus =>
 				this.recordingManager.getStatus(),
-			startRecording: (): Promise<void> =>
+			startRecording: (): Promise<string | null> =>
 				this.recordingManager.startRecording(),
-			stopRecording: (): Promise<void> =>
+			stopRecording: (): Promise<string | null> =>
 				this.recordingManager.stopRecording(),
 			recordingFormat: (): string => this.settings.recordingFormat,
+			transcriptionRefusal: (): string | null =>
+				transcriptionRefusal(this.settings),
 			audioFileAt: (path: string): TFile | null => {
 				const file = this.app.vault.getFileByPath(path);
 				return file && isAudioFile(file) ? file : null;

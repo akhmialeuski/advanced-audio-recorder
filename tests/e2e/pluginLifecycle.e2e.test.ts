@@ -168,27 +168,75 @@ describe('the command line', () => {
 		).resolves.toBe('Idle. A recording started now is saved as MP3.');
 	});
 
+	/** Stored settings a transcription could actually run on. */
+	const transcribable = {
+		transcriptionEnabled: true,
+		transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+		whisperApiKey: 'sk-test',
+	};
+
 	it('transcribes a vault file named on the command line', async () => {
 		const app = new App();
 		asMockVault(app.vault).seed([{ path: 'recordings/standup.webm' }]);
-		const { plugin } = await loadPlugin(null, app);
+		const { plugin } = await loadPlugin(transcribable, app);
 
 		await expect(
 			asMockPlugin(plugin).invokeCliCommand(`${MANIFEST.id}:transcribe`, {
 				file: 'recordings/standup.webm',
 			}),
-		).resolves.toBe('Transcribing recordings/standup.webm in Obsidian.');
+		).resolves.toBe(
+			'Started transcribing recordings/standup.webm in Obsidian.',
+		);
 		expect(jest.mocked(TranscriptionModal)).toHaveBeenCalled();
 	});
 
 	it('refuses a path the vault holds no audio file at', async () => {
-		const { plugin } = await loadPlugin();
+		const { plugin } = await loadPlugin(transcribable);
 
 		await expect(
 			asMockPlugin(plugin).invokeCliCommand(`${MANIFEST.id}:transcribe`, {
 				file: 'notes/agenda.md',
 			}),
 		).resolves.toContain('No audio file');
+		expect(jest.mocked(TranscriptionModal)).not.toHaveBeenCalled();
+	});
+
+	it('refuses to transcribe on settings a run would be refused on', async () => {
+		// Transcription off in this vault: the palette hides the action, and
+		// the command line says why instead of opening a dialog that would
+		// bill an engine it cannot reach.
+		const app = new App();
+		asMockVault(app.vault).seed([{ path: 'recordings/standup.webm' }]);
+		const { plugin } = await loadPlugin(
+			{ transcriptionEnabled: false },
+			app,
+		);
+
+		await expect(
+			asMockPlugin(plugin).invokeCliCommand(`${MANIFEST.id}:transcribe`, {
+				file: 'recordings/standup.webm',
+			}),
+		).resolves.toBe('Transcription is switched off in settings.');
+		expect(jest.mocked(TranscriptionModal)).not.toHaveBeenCalled();
+	});
+
+	it('refuses to transcribe on an engine with no key', async () => {
+		const app = new App();
+		asMockVault(app.vault).seed([{ path: 'recordings/standup.webm' }]);
+		const { plugin } = await loadPlugin(
+			{
+				transcriptionEnabled: true,
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+				whisperApiKey: '',
+			},
+			app,
+		);
+
+		await expect(
+			asMockPlugin(plugin).invokeCliCommand(`${MANIFEST.id}:transcribe`, {
+				file: 'recordings/standup.webm',
+			}),
+		).resolves.toContain('API key');
 		expect(jest.mocked(TranscriptionModal)).not.toHaveBeenCalled();
 	});
 });

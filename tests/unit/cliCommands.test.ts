@@ -19,9 +19,10 @@ const PLUGIN_ID = 'advanced-audio-recorder';
 function makeHost(overrides: Partial<CliHost> = {}): CliHost {
 	return {
 		recordingStatus: jest.fn(() => RecordingStatus.Idle),
-		startRecording: jest.fn().mockResolvedValue(undefined),
-		stopRecording: jest.fn().mockResolvedValue(undefined),
+		startRecording: jest.fn().mockResolvedValue(null),
+		stopRecording: jest.fn().mockResolvedValue(null),
 		recordingFormat: jest.fn(() => 'webm'),
+		transcriptionRefusal: jest.fn(() => null),
 		audioFileAt: jest.fn(() => null),
 		transcribe: jest.fn(),
 		...overrides,
@@ -110,6 +111,22 @@ describe('the record command', () => {
 		expect(host.startRecording).toHaveBeenCalledTimes(1);
 	});
 
+	it('answers with the reason a start failed, not with the state', async () => {
+		// Nobody is looking at the Notice the recorder shows; a script reads
+		// this line, and "Idle." would read as success.
+		const host = makeHost({
+			startRecording: jest
+				.fn()
+				.mockResolvedValue(
+					'Microphone access denied. Please grant permission in browser settings.',
+				),
+		});
+
+		await expect(run(host, 'record')).resolves.toBe(
+			'Microphone access denied. Please grant permission in browser settings.',
+		);
+	});
+
 	it('starts nothing while a recording is already running', async () => {
 		const host = makeHost({
 			recordingStatus: jest.fn(() => RecordingStatus.Recording),
@@ -134,6 +151,19 @@ describe('the stop command', () => {
 		expect(host.stopRecording).toHaveBeenCalledTimes(1);
 	});
 
+	it('answers with the reason a stop failed', async () => {
+		const host = makeHost({
+			recordingStatus: jest.fn(() => RecordingStatus.Recording),
+			stopRecording: jest
+				.fn()
+				.mockResolvedValue('Error stopping recording: disk full'),
+		});
+
+		await expect(run(host, 'stop')).resolves.toBe(
+			'Error stopping recording: disk full',
+		);
+	});
+
 	it('says so when there is nothing to stop', async () => {
 		const host = makeHost();
 
@@ -149,7 +179,9 @@ describe('the transcribe command', () => {
 
 		await expect(
 			run(host, 'transcribe', { file: 'recordings/standup.webm' }),
-		).resolves.toBe('Transcribing recordings/standup.webm in Obsidian.');
+		).resolves.toBe(
+			'Started transcribing recordings/standup.webm in Obsidian.',
+		);
 		expect(host.transcribe).toHaveBeenCalledWith(file);
 	});
 
@@ -174,6 +206,23 @@ describe('the transcribe command', () => {
 			'Name the file to transcribe: --file <vault path>.',
 		);
 		expect(host.transcribe).not.toHaveBeenCalled();
+	});
+
+	it('refuses before opening anything when a run would be refused', async () => {
+		// The menu and the palette hide this action while transcription is
+		// off; a command line has nothing to hide, so it says why.
+		const host = makeHost({
+			transcriptionRefusal: jest.fn(
+				() => 'Transcription is switched off in settings.',
+			),
+			audioFileAt: jest.fn(() => fileAt('a.webm')),
+		});
+
+		await expect(run(host, 'transcribe', { file: 'a.webm' })).resolves.toBe(
+			'Transcription is switched off in settings.',
+		);
+		expect(host.transcribe).not.toHaveBeenCalled();
+		expect(host.audioFileAt).not.toHaveBeenCalled();
 	});
 
 	it('says so when the vault holds no audio file there', async () => {

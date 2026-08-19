@@ -317,8 +317,14 @@ export class RecordingManager {
 
 	/**
 	 * Starts a new recording session.
+	 *
+	 * A failure is reported to the user as a Notice and answered here as the
+	 * same sentence, so a caller with nobody in front of it - the command line
+	 * - can say why nothing started instead of reading a status that has not
+	 * moved.
+	 * @returns The reason it did not start, or null once it is recording
 	 */
-	async startRecording(): Promise<void> {
+	async startRecording(): Promise<string | null> {
 		try {
 			// Resolve the format this session actually records in: the
 			// stored preference when this device can record it, otherwise
@@ -432,9 +438,10 @@ export class RecordingManager {
 			this.rotation.markResumed();
 			this.setStatus(RecordingStatus.Recording);
 			new Notice('Recording started');
+			return null;
 		} catch (error) {
 			this.releasePartialSession();
-			this.handleStartRecordingError(error);
+			return this.handleStartRecordingError(error);
 		}
 	}
 
@@ -704,26 +711,38 @@ export class RecordingManager {
 
 	/**
 	 * Handles errors during recording start with user-friendly messages.
+	 * @param error - What the start threw
+	 * @returns The sentence the user was shown, for a caller to answer with
 	 */
-	private handleStartRecordingError(error: unknown): void {
-		new Notice(describeRecordingError(error));
+	private handleStartRecordingError(error: unknown): string {
+		const message = describeRecordingError(error);
+		new Notice(message);
 		console.error(`${PLUGIN_LOG_PREFIX} Error in startRecording:`, error);
+		return message;
 	}
 
 	/**
 	 * Stops the current recording and saves the files.
+	 *
+	 * Answers the way {@link RecordingManager.startRecording} does: a failure
+	 * is shown to the user and returned as the same sentence, so a caller with
+	 * nobody in front of it can report it.
+	 * @returns The reason the stop did not complete, or null once it has
 	 */
-	async stopRecording(): Promise<void> {
+	async stopRecording(): Promise<string | null> {
 		// Block new part rotations from starting while stopping; a
 		// false return means another stop is already in flight
 		if (!this.rotation.requestStop()) {
-			return;
+			return 'A stop is already in progress.';
 		}
 		// Snapshot active audio time before recorder shutdown and saving add
 		// wall-clock latency. The post-save detector uses this to reject long
 		// sessions before reading or decoding their files.
 		const activeDurationSeconds =
 			this.rotation.getSessionActiveMs(this.status) / 1000;
+		// Set by both arms below and read after the teardown in `finally`,
+		// which runs whichever way the stop went.
+		let stopFailure: string | null = null;
 
 		try {
 			// Let an in-flight part rotation finish before tearing down:
@@ -785,7 +804,8 @@ export class RecordingManager {
 		} catch (error) {
 			const message =
 				error instanceof Error ? error.message : String(error);
-			new Notice(`Error stopping recording: ${message}`);
+			stopFailure = `Error stopping recording: ${message}`;
+			new Notice(stopFailure);
 			console.error(
 				`${PLUGIN_LOG_PREFIX} Error in stopRecording:`,
 				error,
@@ -809,6 +829,7 @@ export class RecordingManager {
 			this.markers.clearBuffer();
 			this.setStatus(RecordingStatus.Idle);
 		}
+		return stopFailure;
 	}
 
 	/**

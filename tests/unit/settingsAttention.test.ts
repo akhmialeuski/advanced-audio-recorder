@@ -7,12 +7,22 @@
 
 import {
 	engineNeedsSetup,
+	engineSetupReason,
 	engineStatus,
 	enginesInUse,
 	enginesStatus,
 	multiTrackStatus,
+	transcriptionRefusal,
 } from 'src/settings/settingsAttention';
-import { ENGINES, ENGINE_IDS } from 'src/providers/providers';
+import {
+	ENGINES,
+	ENGINE_IDS,
+	missingModelMessage,
+} from 'src/providers/providers';
+import {
+	LOCAL_WHISPER_SETUP_MESSAGE,
+	TRANSCRIPTION_PROVIDER_IDS,
+} from 'src/constants';
 import {
 	DEFAULT_SETTINGS,
 	type AudioRecorderSettings,
@@ -80,6 +90,113 @@ describe('engineNeedsSetup', () => {
 				local,
 			),
 		).toBe(false);
+	});
+});
+
+describe('engineSetupReason', () => {
+	// The sentence a run throws, so a caller outside the settings can answer
+	// with the reason rather than starting something that cannot work.
+	it('names the key an account engine is missing', () => {
+		expect(
+			engineSetupReason(
+				makeSettings({ whisperApiKey: '' }),
+				ENGINES[ENGINE_IDS.WHISPER_API],
+			),
+		).toBe('Set the OpenAI API key in settings.');
+	});
+
+	it('names the model a reachable engine has none of', () => {
+		expect(
+			engineSetupReason(
+				makeSettings({ whisperApiKey: 'sk-1', whisperApiModel: '' }),
+				ENGINES[ENGINE_IDS.WHISPER_API],
+			),
+		).toBe(missingModelMessage(ENGINES[ENGINE_IDS.WHISPER_API]));
+	});
+
+	it('names both paths the local engine needs', () => {
+		expect(
+			engineSetupReason(
+				makeSettings({ localWhisperBinaryPath: '/bin/whisper' }),
+				ENGINES[ENGINE_IDS.LOCAL_WHISPER],
+			),
+		).toBe(LOCAL_WHISPER_SETUP_MESSAGE);
+	});
+
+	it('answers with nothing for an engine that could run', () => {
+		expect(
+			engineSetupReason(
+				makeSettings({ whisperApiKey: 'sk-1' }),
+				ENGINES[ENGINE_IDS.WHISPER_API],
+			),
+		).toBeNull();
+	});
+});
+
+describe('transcriptionRefusal', () => {
+	it('refuses while transcription is switched off', () => {
+		expect(
+			transcriptionRefusal(
+				makeSettings({
+					transcriptionEnabled: false,
+					whisperApiKey: 'sk-1',
+				}),
+			),
+		).toBe('Transcription is switched off in settings.');
+	});
+
+	it('refuses an engine this device cannot run', () => {
+		setPlatform({ isMobile: true, isMobileApp: true });
+
+		expect(
+			transcriptionRefusal(
+				makeSettings({
+					transcriptionEnabled: true,
+					transcriptionProvider:
+						TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+					localWhisperBinaryPath: '/bin/whisper',
+					localWhisperModelPath: '/models/base.bin',
+				}),
+			),
+		).toContain('not available on this device');
+	});
+
+	it('refuses an engine that is not configured, in its own words', () => {
+		expect(
+			transcriptionRefusal(
+				makeSettings({
+					transcriptionEnabled: true,
+					whisperApiKey: '',
+				}),
+			),
+		).toBe('Set the OpenAI API key in settings.');
+	});
+
+	it('refuses a stored engine no engine claims', () => {
+		// data.json is a file a sync conflict or a hand edit can leave holding
+		// an id this plugin has no engine for.
+		expect(
+			transcriptionRefusal(
+				makeSettings({
+					transcriptionEnabled: true,
+					transcriptionProvider:
+						'nonesuch' as AudioRecorderSettings['transcriptionProvider'],
+				}),
+			),
+		).toBe(
+			'The selected transcription engine is not one this plugin serves.',
+		);
+	});
+
+	it('answers with nothing where a transcription could run', () => {
+		expect(
+			transcriptionRefusal(
+				makeSettings({
+					transcriptionEnabled: true,
+					whisperApiKey: 'sk-1',
+				}),
+			),
+		).toBeNull();
 	});
 });
 
@@ -249,28 +366,31 @@ describe('multiTrackStatus', () => {
 		).toBeNull();
 	});
 
-	it('warns on a track that has no input', () => {
+	it('warns where no track has an input, which records nothing', () => {
 		expect(
 			multiTrackStatus(
 				makeSettings({
 					enableMultiTrack: true,
 					maxTracks: 2,
-					trackAudioSources: sources('mic-1'),
+					trackAudioSources: sources(),
 				}),
 			),
 		).toBe('warning');
 	});
 
-	it('warns on a track whose input is blank', () => {
+	// Capture opens the tracks that have an input and skips the rest, so a
+	// partly configured section records - and an indicator would sit on it
+	// permanently.
+	it('stays quiet on a track left unassigned below the count', () => {
 		expect(
 			multiTrackStatus(
 				makeSettings({
 					enableMultiTrack: true,
-					maxTracks: 2,
-					trackAudioSources: sources('mic-1', '   '),
+					maxTracks: 3,
+					trackAudioSources: sources('mic-1', 'iface-1'),
 				}),
 			),
-		).toBe('warning');
+		).toBeNull();
 	});
 
 	it('stays quiet once every offered track has an input', () => {
@@ -285,17 +405,20 @@ describe('multiTrackStatus', () => {
 		).toBeNull();
 	});
 
-	// A track configured above the count in use is not part of the recording.
-	it('ignores tracks beyond the configured count', () => {
+	// A track configured above the count in use is not opened at all.
+	it('warns where the only assigned track is beyond the count', () => {
+		const configured = sources('mic-1', 'iface-1');
+		configured.delete(1);
+
 		expect(
 			multiTrackStatus(
 				makeSettings({
 					enableMultiTrack: true,
 					maxTracks: 1,
-					trackAudioSources: sources('mic-1', ''),
+					trackAudioSources: configured,
 				}),
 			),
-		).toBeNull();
+		).toBe('warning');
 	});
 
 	// The capture is unavailable there, so the section is not what a failed

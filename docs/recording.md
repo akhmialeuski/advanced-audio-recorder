@@ -54,7 +54,9 @@ On Obsidian 1.12.2 and later, the desktop app takes commands from a terminal, an
 | `advanced-audio-recorder:stop`                     | Stops the recording in progress and saves it.                                           |
 | `advanced-audio-recorder:transcribe --file <path>` | Transcribes an audio file in the vault, named by its vault path.                        |
 
-Each command answers with one line: the state it left behind, or why it did nothing (`Nothing is recording.`, `No audio file at "..." in this vault.`). Transcription is a paid job, so the command opens the transcribe dialog in Obsidian and starts it there, where it reports progress and can be cancelled - the same thing [transcribe on save](transcription.md) does.
+Each command answers with one line: the state it left behind, or why it did nothing - a recording that could not start answers with the same reason the app would have shown as a notice (`Microphone access denied...`), and a transcription that could not run answers with what is missing (`Transcription is switched off in settings.`, `Set the OpenAI API key in settings.`, `No audio file at "..." in this vault.`).
+
+Transcription is a paid job, so the command opens the transcribe dialog in Obsidian and starts it there, where it reports progress and can be cancelled - the same thing [transcribe on save](transcription.md) does. The answer says the run was started, not that it finished.
 
 ---
 

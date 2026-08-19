@@ -28,10 +28,22 @@ import { PLUGIN_LOG_PREFIX } from '../constants';
 export interface CliHost {
 	/** The recording state, as the manager holds it. */
 	recordingStatus(): RecordingStatus;
-	/** Starts a recording session. */
-	startRecording(): Promise<void>;
-	/** Stops the session in progress. */
-	stopRecording(): Promise<void>;
+	/**
+	 * Starts a recording session.
+	 * @returns The reason it did not start, or null once it is recording
+	 */
+	startRecording(): Promise<string | null>;
+	/**
+	 * Stops the session in progress.
+	 * @returns The reason the stop did not complete, or null once it has
+	 */
+	stopRecording(): Promise<string | null>;
+	/**
+	 * Why a transcription started now would be refused, or null when none
+	 * would be: the feature switched off, an engine this device cannot run,
+	 * or one that is not configured.
+	 */
+	transcriptionRefusal(): string | null;
 	/** The format a session started now would be saved in. */
 	recordingFormat(): string;
 	/** The audio file at this path, or null where the vault holds none. */
@@ -118,8 +130,11 @@ export function cliCommands(host: CliHost, pluginId: string): CliCommand[] {
 				if (host.recordingStatus() !== RecordingStatus.Idle) {
 					return statusLine(host);
 				}
-				await host.startRecording();
-				return statusLine(host);
+				// A start that fails is reported by the recorder as a Notice
+				// nobody at a terminal will see, so its reason is the answer:
+				// the status alone would read as a cheerful idle line.
+				const failure = await host.startRecording();
+				return failure ?? statusLine(host);
 			},
 		},
 		{
@@ -130,8 +145,8 @@ export function cliCommands(host: CliHost, pluginId: string): CliCommand[] {
 				if (host.recordingStatus() === RecordingStatus.Idle) {
 					return 'Nothing is recording.';
 				}
-				await host.stopRecording();
-				return statusLine(host);
+				const failure = await host.stopRecording();
+				return failure ?? statusLine(host);
 			},
 		},
 		{
@@ -146,16 +161,26 @@ export function cliCommands(host: CliHost, pluginId: string): CliCommand[] {
 				},
 			},
 			handler: (params: CliData): string => {
+				// Asked before the file, and before anything is opened: the
+				// same conditions the run refuses on, so a job that cannot
+				// work is answered with its reason rather than started. The
+				// menu and the palette hide this action for the first of
+				// them; a command line has nothing to hide, so it says so.
+				const refusal = host.transcriptionRefusal();
+				if (refusal) {
+					return refusal;
+				}
 				const found = fileFrom(host, params);
 				if ('refusal' in found) {
 					return found.refusal;
 				}
 				host.transcribe(found.file);
-				// The run itself is not awaited: transcription is a paid job
-				// that reports its own progress and can be cancelled in the
-				// app, which is the same bargain the transcribe-on-save path
-				// makes rather than a silent background request.
-				return `Transcribing ${found.file.path} in Obsidian.`;
+				// The run itself is not awaited, and the answer says only what
+				// happened here: transcription is a paid job that reports its
+				// own progress and can be cancelled in the app, which is the
+				// same bargain the transcribe-on-save path makes rather than a
+				// silent background request.
+				return `Started transcribing ${found.file.path} in Obsidian.`;
 			},
 		},
 	];

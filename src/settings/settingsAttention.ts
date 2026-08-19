@@ -1,5 +1,5 @@
 /**
- * Which settings pages hold a state the user should look at.
+ * What the settings, as they stand, would stop a run on.
  *
  * From 1.13.1 a page's entry can carry a status indicator beside the value it
  * reports, and the framework's rule for it is narrow: the indicator says only
@@ -23,10 +23,15 @@ import {
 	accountOf,
 	engineOfTranscription,
 	engineOfVendor,
+	missingModelMessage,
 	type EngineDescriptor,
 } from '../providers/providers';
-
-import { isMultiTrackCaptureSupported } from '../platform/capabilities';
+import { LOCAL_WHISPER_SETUP_MESSAGE } from '../constants';
+import { isProviderAvailableOnPlatform } from '../transcription/providers/capabilities';
+import {
+	getOrderedTrackSources,
+	isMultiTrackSessionEnabled,
+} from '../recording/AudioStreamHandler';
 import type { AudioRecorderSettings, LlmProviderId } from './settingsSchema';
 
 /**
@@ -37,12 +42,40 @@ import type { AudioRecorderSettings, LlmProviderId } from './settingsSchema';
 export type PageStatus = 'warning' | null;
 
 /**
- * Whether an engine is missing part of what a run needs from it.
+ * Why a run calling this engine would be refused, or null when none would be.
  *
- * The two halves are the ones the factories refuse on: an engine reached over
- * an account needs that account's key and one model id out of its catalogue,
- * and the local engine needs both of its paths - a binary with no model file is
- * as unrunnable as no binary at all.
+ * The halves are the ones the factories refuse on, and the sentence is the one
+ * they throw: an engine reached over an account needs that account's key and
+ * one model id out of its catalogue, and the local engine needs both of its
+ * paths - a binary with no model file is as unrunnable as no binary at all.
+ * Saying it in the engine's own words is what lets a caller outside the
+ * settings - the command line - answer with the reason instead of starting
+ * something that cannot work.
+ * @param settings - Live settings, read for this engine's fields
+ * @param engine - The engine being asked about
+ * @returns The refusal, or null where the engine is ready
+ */
+export function engineSetupReason(
+	settings: AudioRecorderSettings,
+	engine: EngineDescriptor,
+): string | null {
+	const account = accountOf(engine);
+	if (!account) {
+		return settings.localWhisperBinaryPath === '' ||
+			settings.localWhisperModelPath === ''
+			? LOCAL_WHISPER_SETUP_MESSAGE
+			: null;
+	}
+	if (account.apiKey(settings) === '') {
+		return account.missingKeyMessage;
+	}
+	return engine.models !== null && engine.models.model(settings) === ''
+		? missingModelMessage(engine)
+		: null;
+}
+
+/**
+ * Whether an engine is missing part of what a run needs from it.
  * @param settings - Live settings, read for this engine's fields
  * @param engine - The engine being asked about
  * @returns Whether a run calling it now would be refused
@@ -51,17 +84,7 @@ export function engineNeedsSetup(
 	settings: AudioRecorderSettings,
 	engine: EngineDescriptor,
 ): boolean {
-	const account = accountOf(engine);
-	if (!account) {
-		return (
-			settings.localWhisperBinaryPath === '' ||
-			settings.localWhisperModelPath === ''
-		);
-	}
-	if (account.apiKey(settings) === '') {
-		return true;
-	}
-	return engine.models !== null && engine.models.model(settings) === '';
+	return engineSetupReason(settings, engine) !== null;
 }
 
 /**
@@ -144,21 +167,50 @@ export function enginesStatus(settings: AudioRecorderSettings): PageStatus {
 }
 
 /**
- * The status of the multi-track page: set where the capture is switched on with
- * a track left unassigned. That is the state `validateSettings` refuses a
- * recording on, and it is invisible from the tab it is configured behind - the
- * entry reports the track count, which a half-configured section has too.
+ * The status of the multi-track page: set where the capture is switched on and
+ * no track has an input, which is a session that would open no microphone and
+ * record nothing.
+ *
+ * A track left unassigned below that is not reported. Capture asks
+ * {@link getOrderedTrackSources} which tracks to open and it skips the empty
+ * ones, so three configured tracks with two devices record two tracks - a
+ * working session, and one an indicator would sit on permanently. The question
+ * is asked through that same function rather than by walking the slots again,
+ * so what the entry warns about cannot drift from what a recording does.
  * @param settings - Live settings
  */
 export function multiTrackStatus(settings: AudioRecorderSettings): PageStatus {
-	if (!settings.enableMultiTrack || !isMultiTrackCaptureSupported()) {
+	// The same two questions capture asks, in the same order: is this a
+	// multi-track session at all - the switch, and a platform that has the
+	// capture - and then which tracks it would open.
+	if (!isMultiTrackSessionEnabled(settings)) {
 		return null;
 	}
-	for (let track = 1; track <= settings.maxTracks; track++) {
-		const source = settings.trackAudioSources.get(track);
-		if (!source || source.deviceId.trim() === '') {
-			return 'warning';
-		}
+	return getOrderedTrackSources(settings).length === 0 ? 'warning' : null;
+}
+
+/**
+ * Why a transcription started now would be refused, or null when none would be.
+ *
+ * The three answers a run gives before it reaches an engine: the feature is
+ * off, the engine cannot run on this device, or it is not configured. Asked by
+ * the surfaces that start a transcription without a user in front of them, so
+ * that a job which cannot work is refused with its reason rather than started.
+ * @param settings - Live settings
+ * @returns The refusal, or null where a transcription could run
+ */
+export function transcriptionRefusal(
+	settings: AudioRecorderSettings,
+): string | null {
+	if (!settings.transcriptionEnabled) {
+		return 'Transcription is switched off in settings.';
 	}
-	return null;
+	if (!isProviderAvailableOnPlatform(settings.transcriptionProvider)) {
+		return 'The selected transcription engine is not available on this device. Pick a cloud engine in settings.';
+	}
+	const engine = engineOfTranscription(settings.transcriptionProvider);
+	if (!engine) {
+		return 'The selected transcription engine is not one this plugin serves.';
+	}
+	return engineSetupReason(settings, engine);
 }

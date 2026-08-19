@@ -1,8 +1,8 @@
 {
 	"coverage": {
 		"total": {
-			"statements": 97.4,
-			"branches": 90.32,
+			"statements": 97.41,
+			"branches": 90.34,
 			"functions": 97.21,
 			"lines": 97.44
 		},
@@ -22,8 +22,8 @@
 			"src/main.ts": {
 				"statements": 99.13,
 				"branches": 97.14,
-				"functions": 97.5,
-				"lines": 99.7
+				"functions": 97.53,
+				"lines": 99.71
 			},
 			"src/types.ts": {
 				"statements": 100,
@@ -428,10 +428,10 @@
 				"lines": 96.6
 			},
 			"src/recording/RecordingManager.ts": {
-				"statements": 93.25,
+				"statements": 93.37,
 				"branches": 81.57,
 				"functions": 84.37,
-				"lines": 94.03
+				"lines": 94.13
 			},
 			"src/recording/RecordingMarkerCoordinator.ts": {
 				"statements": 96.96,
@@ -555,7 +555,7 @@
 			},
 			"src/settings/settingsAttention.ts": {
 				"statements": 100,
-				"branches": 97.22,
+				"branches": 97.61,
 				"functions": 100,
 				"lines": 100
 			},
@@ -1073,8 +1073,8 @@
 	},
 	"suite": {
 		"suites": 195,
-		"tests": 3785,
-		"passed": 3785,
+		"tests": 3802,
+		"passed": 3802,
 		"failed": 0,
 		"todo": 0
 	}
