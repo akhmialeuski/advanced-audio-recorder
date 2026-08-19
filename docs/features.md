@@ -149,7 +149,7 @@ Learn more: [Transcription](transcription.md#auto-chapters)
 
 ## Diagnostics
 
-Three tools under **Diagnostics** help you verify your setup and report problems. **Test recording** captures a 5-second clip with your current settings and plays it back; nothing is saved. **System info** opens a modal with full diagnostics (Obsidian and Electron versions, platform, devices, supported formats and codecs, active configuration, and all settings) plus a **Copy to clipboard** button. **Debug mode** enables verbose console logs prefixed with `[AudioRecorder]`.
+Three tools under **Diagnostics** help you verify your setup and report problems. **Test recording** captures a 5-second clip with your current settings and plays it back; nothing is saved. **System info** opens a modal with full diagnostics (Obsidian, Electron and Chromium versions, platform, devices, supported formats and codecs, active configuration, and all settings) plus a **Copy to clipboard** button. **Debug mode** enables verbose console logs prefixed with `[AudioRecorder]`.
 
 ![System info modal with versions, devices, supported formats, and settings](images/modal-system-info.png)
 _Figure: The System info modal collects full diagnostics with a copy button._

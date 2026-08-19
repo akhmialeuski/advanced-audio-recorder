@@ -48,6 +48,7 @@ function makeData(overrides: Partial<DiagnosticsData> = {}): DiagnosticsData {
 		environment: {
 			obsidianVersion: '1.5.0',
 			electronVersion: '28.0.0',
+			chromeVersion: '120.0.6099.109',
 			nodeVersion: '20.0.0',
 			platform: 'linux',
 			arch: 'x64',
