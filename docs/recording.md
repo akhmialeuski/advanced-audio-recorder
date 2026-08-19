@@ -3,6 +3,7 @@
 Recording is the core of Advanced Audio Recorder: start a capture from the ribbon or the command palette, watch live feedback in the status bar, drop markers as you go, and the plugin writes the finished file and inserts an embed link into your note when you stop. This page walks the complete workflow end to end - every button, every status-bar state, every save stage, and what happens when a recording is interrupted.
 
 - [Starting a recording](#starting-a-recording)
+- [From the command line](#from-the-command-line)
 - [Switching the input device](#switching-the-input-device)
 - [The status bar while recording](#the-status-bar-while-recording)
 - [Live feedback](#live-feedback)
@@ -23,6 +24,8 @@ There are two equivalent ways to start a recording:
 1. Click the **microphone icon** in the left ribbon, or
 2. Open the command palette (`Ctrl/Cmd + P`) and run **Start/stop recording**.
 
+On the desktop app there is a third, for scripts and shortcuts outside Obsidian: see [From the command line](#from-the-command-line).
+
 The plugin does not assign a default hotkey to any command, so if you want a keyboard shortcut, set one yourself under **Settings > Hotkeys**.
 
 The moment you start, the plugin captures the **active note and cursor position** so the finished audio link can be placed exactly where you began - see [Insert at original position](#insert-at-original-position) for when this matters. A short `Recording started` notice confirms the session is live.
@@ -37,6 +40,23 @@ If the recording cannot start, the plugin shows a specific notice instead of fai
 | The selected format is not supported        | The reason reported by the capability check                              |
 
 If recording does not work, run **Test recording** from settings and check **System info** for supported formats - see [Troubleshooting](troubleshooting.md).
+
+---
+
+## From the command line
+
+On Obsidian 1.12.2 and later, the desktop app takes commands from a terminal, and the plugin answers four of them. Nothing here exists on mobile, or on an older desktop build.
+
+| Command                                            | What it does                                                                            |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `advanced-audio-recorder`                          | Reports what the recorder is doing, and the format a recording started now would use.   |
+| `advanced-audio-recorder:record`                   | Starts a recording with the configured input and format.                                |
+| `advanced-audio-recorder:stop`                     | Stops the recording in progress and saves it.                                           |
+| `advanced-audio-recorder:transcribe --file <path>` | Transcribes an audio file in the vault, named by its vault path.                        |
+
+Each command answers with one line: the state it left behind, or why it did nothing - a recording that could not start answers with the same reason the app would have shown as a notice (`Microphone access denied...`), and a transcription that could not run answers with what is missing (`Transcription is switched off in settings.`, `Set the OpenAI API key in settings.`, `No audio file at "..." in this vault.`).
+
+Transcription is a paid job, so the command opens the transcribe dialog in Obsidian and starts it there, where it reports progress and can be cancelled - the same thing [transcribe on save](transcription.md) does. The answer says the run was started, not that it finished.
 
 ---
 

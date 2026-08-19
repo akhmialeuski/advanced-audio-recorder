@@ -3,6 +3,7 @@
 Advanced Audio Recorder is a recording plugin for [Obsidian](https://obsidian.md) that runs on desktop and mobile, captures audio from one or many input devices, saves it in the format you choose, and layers on an enhanced player, transcription, on-demand cleanup, and diagnostics. This page is a complete catalog of every feature in the plugin: each one gets a short summary and a **Learn more** link to its deep-dive doc. Use it as a map - start anywhere, then follow the links for full procedures, settings, and limitations. A few features are desktop-only; see [Mobile support](mobile-support.md).
 
 - [Recording](#recording)
+- [Command line (desktop)](#command-line-desktop)
 - [Pause and resume](#pause-and-resume)
 - [Markers while recording](#markers-while-recording)
 - [Crash recovery](#crash-recovery)
@@ -35,6 +36,12 @@ Start and stop a recording from the **microphone icon** in the left ribbon or wi
 To choose which microphone is used, run the `Select audio input device` command. It opens a quick-pick modal listing the detected input devices; choosing one saves it to settings immediately and shows a confirmation notice.
 
 Learn more: [Recording](recording.md)
+
+## Command line (desktop)
+
+On Obsidian 1.12.2 and later the desktop app takes commands from a terminal, and the plugin answers four: `advanced-audio-recorder` reports what the recorder is doing, `:record` starts a session, `:stop` stops and saves it, and `:transcribe --file <path>` transcribes an audio file in the vault. Each answers with one line - the state it left behind, or the reason it did nothing, including the reason a start failed or a transcription cannot run. Nothing here exists on mobile, or on an older desktop build.
+
+Learn more: [From the command line](recording.md#from-the-command-line)
 
 ## Pause and resume
 
@@ -149,7 +156,7 @@ Learn more: [Transcription](transcription.md#auto-chapters)
 
 ## Diagnostics
 
-Three tools under **Diagnostics** help you verify your setup and report problems. **Test recording** captures a 5-second clip with your current settings and plays it back; nothing is saved. **System info** opens a modal with full diagnostics (Obsidian and Electron versions, platform, devices, supported formats and codecs, active configuration, and all settings) plus a **Copy to clipboard** button. **Debug mode** enables verbose console logs prefixed with `[AudioRecorder]`.
+Three tools under **Diagnostics** help you verify your setup and report problems. **Test recording** captures a 5-second clip with your current settings and plays it back; nothing is saved. **System info** opens a modal with full diagnostics (Obsidian, Electron and Chromium versions, platform, devices, supported formats and codecs, active configuration, and all settings) plus a **Copy to clipboard** button. **Debug mode** enables verbose console logs prefixed with `[AudioRecorder]`.
 
 ![System info modal with versions, devices, supported formats, and settings](images/modal-system-info.png)
 _Figure: The System info modal collects full diagnostics with a copy button._
@@ -167,6 +174,7 @@ _Figure: The right-click context menu collects most per-file actions in one plac
 | ----------------------------- | ----------------------------------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------- |
 | Recording                     | Start/stop capture; ribbon, status bar, save-progress feedback    | Ribbon icon / command palette                   | [Recording](recording.md)                                      |
 | Switch input device           | Quick-pick modal to change the microphone                         | Command palette                                 | [Recording](recording.md#switching-the-input-device)           |
+| Command line (desktop)        | Start, stop, report state, transcribe a file from a terminal      | Obsidian CLI (1.12.2+)                          | [Recording](recording.md#from-the-command-line)                |
 | Pause and resume              | Pause and continue a session without losing progress              | Command palette / status bar                    | [Recording](recording.md#pausing-and-resuming)                 |
 | Markers while recording       | Drop a bookmark or chapter at the live position                   | Status bar / command palette (markers enabled)  | [Recording](recording.md#marking-moments-while-recording)      |
 | Crash recovery                | Recover audio after a crash, power loss, or mid-recording disable | Automatic modal on next launch                  | [Recording](recording.md#crash-recovery)                       |

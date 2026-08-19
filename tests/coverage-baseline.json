@@ -1,10 +1,10 @@
 {
 	"coverage": {
 		"total": {
-			"statements": 97.37,
-			"branches": 90.12,
-			"functions": 97.17,
-			"lines": 97.4
+			"statements": 97.42,
+			"branches": 90.36,
+			"functions": 97.25,
+			"lines": 97.44
 		},
 		"files": {
 			"src/constants.ts": {
@@ -20,10 +20,10 @@
 				"lines": 100
 			},
 			"src/main.ts": {
-				"statements": 99.09,
-				"branches": 97.05,
-				"functions": 97.18,
-				"lines": 99.69
+				"statements": 99.42,
+				"branches": 97.14,
+				"functions": 98.76,
+				"lines": 99.71
 			},
 			"src/types.ts": {
 				"statements": 100,
@@ -180,6 +180,12 @@
 				"branches": 97.05,
 				"functions": 100,
 				"lines": 98.5
+			},
+			"src/obsidian/cliCommands.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
 			},
 			"src/obsidian/embedRegistry.ts": {
 				"statements": 100,
@@ -422,10 +428,10 @@
 				"lines": 96.6
 			},
 			"src/recording/RecordingManager.ts": {
-				"statements": 93.25,
+				"statements": 93.37,
 				"branches": 81.57,
 				"functions": 84.37,
-				"lines": 94.03
+				"lines": 94.13
 			},
 			"src/recording/RecordingMarkerCoordinator.ts": {
 				"statements": 96.96,
@@ -494,10 +500,10 @@
 				"lines": 96.49
 			},
 			"src/settings/SettingsTab.ts": {
-				"statements": 94.06,
-				"branches": 88.27,
-				"functions": 88.75,
-				"lines": 94
+				"statements": 94.18,
+				"branches": 88.43,
+				"functions": 89.02,
+				"lines": 94.13
 			},
 			"src/settings/chapterPromptProfiles.ts": {
 				"statements": 100,
@@ -536,10 +542,10 @@
 				"lines": 100
 			},
 			"src/settings/profiles.ts": {
-				"statements": 97.29,
+				"statements": 97.77,
 				"branches": 100,
 				"functions": 100,
-				"lines": 97.05
+				"lines": 97.61
 			},
 			"src/settings/settingControls.ts": {
 				"statements": 99.17,
@@ -547,11 +553,17 @@
 				"functions": 100,
 				"lines": 99.17
 			},
-			"src/settings/settingsDefinitions.ts": {
-				"statements": 98.88,
-				"branches": 91.97,
+			"src/settings/settingsAttention.ts": {
+				"statements": 100,
+				"branches": 100,
 				"functions": 100,
-				"lines": 98.84
+				"lines": 100
+			},
+			"src/settings/settingsDefinitions.ts": {
+				"statements": 99.27,
+				"branches": 93.9,
+				"functions": 100,
+				"lines": 99.25
 			},
 			"src/settings/settingsRenderMode.ts": {
 				"statements": 100,
@@ -1060,9 +1072,9 @@
 		}
 	},
 	"suite": {
-		"suites": 193,
-		"tests": 3708,
-		"passed": 3708,
+		"suites": 195,
+		"tests": 3803,
+		"passed": 3803,
 		"failed": 0,
 		"todo": 0
 	}

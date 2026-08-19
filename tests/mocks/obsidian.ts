@@ -230,6 +230,56 @@ export class Plugin {
 	async saveData(_data: unknown): Promise<void> {
 		// Mock implementation
 	}
+
+	/**
+	 * CLI commands the plugin registered, in order. The real app answers these
+	 * on the desktop command line; recording them is what lets a test run one
+	 * the way a shell would.
+	 */
+	readonly registeredCliCommands: {
+		id: string;
+		description: string;
+		flags: unknown;
+		handler: (params: Record<string, string>) => string | Promise<string>;
+	}[] = [];
+
+	registerCliHandler(
+		command: string,
+		description: string,
+		flags: unknown,
+		handler: (params: Record<string, string>) => string | Promise<string>,
+	): void {
+		this.registeredCliCommands.push({
+			id: command,
+			description,
+			flags,
+			handler,
+		});
+	}
+
+	/**
+	 * Runs a registered CLI command the way the command line would.
+	 * @param id - The command id, as typed
+	 * @param params - Flags as typed
+	 * @returns What the handler answers with
+	 */
+	async invokeCliCommand(
+		id: string,
+		params: Record<string, string> = {},
+	): Promise<string> {
+		const command = this.registeredCliCommands.find(
+			(entry) => entry.id === id,
+		);
+		if (!command) {
+			const known = this.registeredCliCommands
+				.map((entry) => entry.id)
+				.join(', ');
+			throw new Error(
+				`No CLI command "${id}". Registered: ${known || '(none)'}`,
+			);
+		}
+		return command.handler(params);
+	}
 }
 
 /**
@@ -239,6 +289,15 @@ export class App {
 	vault: Vault = new Vault();
 	workspace: Workspace = new Workspace();
 	metadataCache: MetadataCache = new MetadataCache();
+	/**
+	 * The settings dialog, which is internal API in the real app and absent
+	 * unless a test stands one up (see obsidian/settingsNavigation).
+	 */
+	setting?: {
+		closePage?: () => void;
+		open?: () => void;
+		openTabById?: (id: string) => void;
+	};
 }
 
 /**

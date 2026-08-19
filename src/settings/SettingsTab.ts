@@ -74,6 +74,7 @@ import {
 	effectiveProfileId,
 	findProfile,
 	freeProfileName,
+	moveProfile,
 	removeAndReselectProfile,
 	NEW_PROFILE_NAME,
 	type Profile,
@@ -741,6 +742,19 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 						});
 					},
 				}).open();
+			},
+			reorder: (from, to): void => {
+				const profiles = list.get(this.plugin.settings);
+				const moved = moveProfile(profiles, from, to);
+				// A drop that changes nothing - the same position, or an index
+				// the list does not hold - is not a write.
+				if (
+					moved.every((profile, index) => profile === profiles[index])
+				) {
+					return;
+				}
+				list.set(this.plugin.settings, moved);
+				void this.commit();
 			},
 			remove: (id): void => {
 				const profile = findProfile(list.get(this.plugin.settings), id);

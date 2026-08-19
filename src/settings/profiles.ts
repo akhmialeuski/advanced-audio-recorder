@@ -101,6 +101,34 @@ export function removeProfile<T extends Profile>(
 }
 
 /**
+ * Moves a profile to another position. The order is the order the catalogue
+ * shows and its picker offers, so it is the user's to arrange; a drop that
+ * names a position outside the list, or the position the profile already
+ * holds, leaves the order alone rather than inventing one.
+ * @param profiles - Current profiles
+ * @param from - Index of the profile being moved
+ * @param to - Index it is dropped on
+ * @returns A new list in the new order (or an unchanged copy)
+ */
+export function moveProfile<T extends Profile>(
+	profiles: readonly T[],
+	from: number,
+	to: number,
+): T[] {
+	const reordered = [...profiles];
+	const inRange = (index: number): boolean =>
+		Number.isInteger(index) && index >= 0 && index < reordered.length;
+	if (from === to || !inRange(from) || !inRange(to)) {
+		return reordered;
+	}
+	// Spread rather than indexed: the removal is one element by construction,
+	// and passing it back as a list needs no check for an element that a
+	// checked index cannot fail to hold.
+	reordered.splice(to, 0, ...reordered.splice(from, 1));
+	return reordered;
+}
+
+/**
  * Finds a profile by id.
  * @param profiles - Current profiles
  * @param id - Id to look up

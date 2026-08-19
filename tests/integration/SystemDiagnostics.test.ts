@@ -67,6 +67,19 @@ function makeApp(apiVersion = '1.5.0'): App {
 	return createMockApp({ apiVersion }).app;
 }
 
+/**
+ * Points navigator.userAgent at a fixed string for one test. jsdom defines the
+ * property on the prototype, so it is redefined rather than assigned, and
+ * `configurable` leaves the next test free to redefine it again.
+ * @param value - User agent the report should see
+ */
+function withUserAgent(value: string): void {
+	Object.defineProperty(global.navigator, 'userAgent', {
+		value,
+		configurable: true,
+	});
+}
+
 // collectPluginSettings
 
 describe('SystemDiagnostics.collectPluginSettings', () => {
@@ -110,10 +123,28 @@ describe('SystemDiagnostics.collectPluginSettings', () => {
 
 describe('SystemDiagnostics.collectEnvironment', () => {
 	const originalProcess = global.process;
+	const originalUserAgent = Object.getOwnPropertyDescriptor(
+		global.navigator,
+		'userAgent',
+	);
+	const originalNavigator = Object.getOwnPropertyDescriptor(
+		global,
+		'navigator',
+	);
 
 	afterEach(() => {
 		(global as unknown as { process: NodeJS.Process }).process =
 			originalProcess;
+		if (originalNavigator) {
+			Object.defineProperty(global, 'navigator', originalNavigator);
+		}
+		if (originalUserAgent) {
+			Object.defineProperty(
+				global.navigator,
+				'userAgent',
+				originalUserAgent,
+			);
+		}
 	});
 
 	it("reads the API version from obsidian's module export", () => {
@@ -122,9 +153,13 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 		expect(result.obsidianVersion).toBe('1.13.0');
 	});
 
-	it('reads electron and node versions from process.versions', () => {
+	it('reads electron, chrome and node versions from process.versions', () => {
 		const proc = {
-			versions: { electron: '28.0.0', node: '20.11.0' },
+			versions: {
+				electron: '28.0.0',
+				node: '20.11.0',
+				chrome: '120.0.6099.109',
+			},
 			platform: 'win32',
 			arch: 'x64',
 		};
@@ -133,6 +168,7 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 		const result = SystemDiagnostics.collectEnvironment(makeApp());
 
 		expect(result.electronVersion).toBe('28.0.0');
+		expect(result.chromeVersion).toBe('120.0.6099.109');
 		expect(result.nodeVersion).toBe('20.11.0');
 		expect(result.platform).toBe('win32');
 		expect(result.arch).toBe('x64');
@@ -153,11 +189,40 @@ describe('SystemDiagnostics.collectEnvironment', () => {
 		const result = SystemDiagnostics.collectEnvironment(makeApp());
 
 		expect(result.electronVersion).toBe('unknown');
+		expect(result.chromeVersion).toBe('unknown');
 		expect(result.nodeVersion).toBe('unknown');
 		expect(result.arch).toBe('unknown');
 	});
 
-	it('returns "unknown" for userAgent', () => {
+	// The mobile shape: no process at all, so the WebView's own
+	// identification is the only version the report can carry.
+	it('reports the user agent when process is undefined', () => {
+		(global as unknown as { process: undefined }).process = undefined;
+		withUserAgent('Mozilla/5.0 (Linux; Android 14) obsidian/1.13.1');
+
+		const result = SystemDiagnostics.collectEnvironment(makeApp());
+
+		expect(result.userAgent).toBe(
+			'Mozilla/5.0 (Linux; Android 14) obsidian/1.13.1',
+		);
+	});
+
+	it('returns "unknown" where there is no navigator to ask', () => {
+		// Neither runtime object is guaranteed: the report is also collected
+		// from tests and from a worker-like context with neither global.
+		Object.defineProperty(global, 'navigator', {
+			value: undefined,
+			configurable: true,
+		});
+
+		const result = SystemDiagnostics.collectEnvironment(makeApp());
+
+		expect(result.userAgent).toBe('unknown');
+	});
+
+	it('returns "unknown" for an empty user agent', () => {
+		withUserAgent('');
+
 		const result = SystemDiagnostics.collectEnvironment(makeApp());
 
 		expect(result.userAgent).toBe('unknown');

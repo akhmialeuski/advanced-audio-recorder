@@ -36,6 +36,7 @@ The following features are **desktop-only** and do not run in the mobile app. Th
 - **Multi-track recording.** Capturing several input devices at once needs the multi-device access the mobile app does not provide. A multi-track configuration synced from the desktop silently records a normal single-track session on the phone. See [Multi-track recording](multi-track-recording.md).
 - **Automatic (time-based) splitting.** The **Split recordings automatically** option does not run on mobile. Long recordings are still saved as parts, but by a size-based rotation described below rather than by the configured duration. See [Splitting](splitting.md).
 - **Crash recovery.** In-progress recordings are not journaled on mobile, so audio still buffered in memory when the operating system kills the app cannot be recovered. Parts already written to disk are unaffected. See [Crash recovery](recording.md#crash-recovery).
+- **The command line.** The terminal commands the plugin answers exist only where the app has a command line, which is the desktop build from Obsidian 1.12.2 on. Nothing about a mobile session depends on them. See [From the command line](recording.md#from-the-command-line).
 - **Local whisper.cpp transcription.** The local engine shells out to a native binary, which the mobile app cannot do. Use a cloud engine instead - see [Transcription on mobile](#transcription-on-mobile).
 
 ## Recording formats and automatic fallback

@@ -47,9 +47,29 @@ export interface DiagnosticsPluginSettings {
 export interface DiagnosticsEnvironment {
 	obsidianVersion: string;
 	electronVersion: string;
+	/**
+	 * Chromium version of the WebView, which is what every codec answer in
+	 * this report was probed against.
+	 *
+	 * It travels with the installer, not with the Obsidian version: two vaults
+	 * reporting the same obsidianVersion run different Chromium builds until
+	 * the newer installer has actually been run, and that difference is what
+	 * makes a format recordable on one of them and not the other. Without it a
+	 * report says which Obsidian the user runs but not which browser, and the
+	 * codec probe below it cannot be reproduced.
+	 *
+	 * 'unknown' where the runtime exposes no process object - mobile, where
+	 * {@link DiagnosticsEnvironment.userAgent} carries the WebView version
+	 * instead.
+	 */
+	chromeVersion: string;
 	nodeVersion: string;
 	platform: string;
 	arch: string;
+	/**
+	 * The WebView's own identification. The only place a version comes from on
+	 * mobile, where there is no Electron and no process to ask.
+	 */
 	userAgent: string;
 }
 
@@ -154,23 +174,33 @@ export class SystemDiagnostics {
 			versions?: {
 				electron?: string;
 				node?: string;
+				chrome?: string;
 			};
 			platform?: string;
 			arch?: string;
 		} | null;
 
 		const electronVersion = proc?.versions?.electron ?? 'unknown';
+		const chromeVersion = proc?.versions?.chrome ?? 'unknown';
 		const nodeVersion = proc?.versions?.node ?? 'unknown';
 		const platform = proc?.platform ?? 'unknown';
 		const arch = proc?.arch ?? 'unknown';
+		// Read through the same guard as process: the mobile WebView has a
+		// navigator and no process, and a test environment may have neither.
+		// An empty string counts as no answer rather than as an answer.
+		const nav = (typeof navigator !== 'undefined' ? navigator : null) as {
+			userAgent?: string;
+		} | null;
+		const agent = nav?.userAgent;
 
 		return {
 			obsidianVersion: apiVersion,
 			electronVersion,
+			chromeVersion,
 			nodeVersion,
 			platform,
 			arch,
-			userAgent: 'unknown',
+			userAgent: agent === undefined || agent === '' ? 'unknown' : agent,
 		};
 	}
 

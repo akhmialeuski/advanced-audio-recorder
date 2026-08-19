@@ -57,6 +57,8 @@ Use this method to install a specific release or a build you compiled yourself.
 
 The `.obsidian` folder is hidden by default; enable hidden files in your file manager if you cannot see it.
 
+Enabling the plugin opens its settings tab straight away (Obsidian 1.7.2 and later), which is where the documentation link and the three settings a first recording needs - input device, output format, and save folder - live.
+
 ---
 
 ## Granting microphone access

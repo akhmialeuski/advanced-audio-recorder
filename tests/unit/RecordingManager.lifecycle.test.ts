@@ -290,6 +290,24 @@ describe('RecordingManager', () => {
 			// If arrays weren't cleared, this would have stale data
 			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
 		});
+
+		it('answers with nothing once a start and a stop have both gone through', async () => {
+			expect(await manager.startRecording()).toBeNull();
+			expect(await manager.stopRecording()).toBeNull();
+		});
+
+		it('answers that a stop is already running rather than stopping twice', async () => {
+			await manager.startRecording();
+			const [first, second] = await Promise.all([
+				manager.stopRecording(),
+				manager.stopRecording(),
+			]);
+
+			// One of the two did the stop; the other found it in flight and
+			// says so instead of reporting a stop it did not make.
+			expect([first, second]).toContain(null);
+			expect([first, second]).toContain('A stop is already in progress.');
+		});
 	});
 
 	describe('startRecording error handling', () => {
@@ -377,6 +395,23 @@ describe('RecordingManager', () => {
 			await manager.startRecording();
 
 			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+		});
+
+		it('answers with the reason it did not start', async () => {
+			// The Notice reaches whoever is looking at Obsidian; a caller with
+			// nobody in front of it - the command line - reads this instead of
+			// a status that never moved.
+			(global as Record<string, unknown>).MediaRecorder = {
+				isTypeSupported: jest.fn().mockReturnValue(true),
+			};
+			jest.mocked(getAudioStreams).mockRejectedValue(
+				new DOMException('Denied', 'NotAllowedError'),
+			);
+
+			const failure = await manager.startRecording();
+
+			expect(failure).not.toBeNull();
+			expect(noticeMessages()).toContain(failure);
 		});
 	});
 

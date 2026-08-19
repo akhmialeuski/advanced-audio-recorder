@@ -69,6 +69,7 @@ describe('settings definitions', () => {
 	let addProfile: jest.Mock;
 	let renameProfile: jest.Mock;
 	let removeProfile: jest.Mock;
+	let reorderProfile: jest.Mock;
 	let profileEntries: Array<{ id: string; name: string; summary: string }>;
 	let declareListAddRow: boolean;
 	let removeModel: jest.Mock;
@@ -89,6 +90,7 @@ describe('settings definitions', () => {
 		addProfile = jest.fn();
 		renameProfile = jest.fn();
 		removeProfile = jest.fn();
+		reorderProfile = jest.fn();
 		profileEntries = [
 			{ id: 'a', name: 'Standup', summary: '3 terms' },
 			{ id: 'b', name: 'Legal', summary: 'In use, 12 terms' },
@@ -171,6 +173,7 @@ describe('settings definitions', () => {
 		add: addProfile as () => void,
 		rename: renameProfile as (id: string) => void,
 		remove: removeProfile as (id: string) => void,
+		reorder: reorderProfile as (from: number, to: number) => void,
 	});
 
 	const build = (): SettingDefinitionItem[] =>
@@ -195,6 +198,15 @@ describe('settings definitions', () => {
 		typeof page.displayValue === 'function'
 			? page.displayValue()
 			: page.displayValue;
+
+	/**
+	 * The indicator a page's entry carries, read the same way.
+	 * @param page - The page whose entry is being read
+	 */
+	const entryStatusOf = (
+		page: GroupDefinition,
+	): 'warning' | null | undefined =>
+		typeof page.status === 'function' ? page.status() : page.status;
 
 	/** The diagnostics group of a built tree. */
 	const diagnosticsGroupOf = (
@@ -390,6 +402,102 @@ describe('settings definitions', () => {
 			settings.transcriptionEnabled = true;
 
 			expect(entryValueOf(transcriptionPage())).toBe('On');
+		});
+	});
+
+	describe('the status a page entry carries', () => {
+		it('warns down the whole trail to the engine that cannot run', () => {
+			// An indicator the user cannot follow inwards is worse than none,
+			// so every entry on the way to the engine carries it.
+			settings.transcriptionEnabled = true;
+			settings.whisperApiKey = '';
+			const statusOf = (name: string): 'warning' | null | undefined =>
+				entryStatusOf(pageOf(build(), name));
+
+			expect(statusOf('Transcription')).toBe('warning');
+			expect(statusOf('Engines')).toBe('warning');
+			expect(statusOf('Whisper API (OpenAI-compatible)')).toBe('warning');
+		});
+
+		it('clears the trail once the engine can run', () => {
+			settings.transcriptionEnabled = true;
+			settings.whisperApiKey = 'sk-test';
+			settings.whisperApiModels = ['whisper-1'];
+			settings.whisperApiModel = 'whisper-1';
+			const statusOf = (name: string): 'warning' | null | undefined =>
+				entryStatusOf(pageOf(build(), name));
+
+			expect(statusOf('Transcription')).toBeNull();
+			expect(statusOf('Engines')).toBeNull();
+			expect(statusOf('Whisper API (OpenAI-compatible)')).toBeNull();
+		});
+
+		it('leaves an engine no job calls unmarked', () => {
+			// Most vaults never enter a key for the services they do not use,
+			// and an indicator that is on for all of them says nothing.
+			settings.transcriptionEnabled = true;
+			settings.whisperApiKey = 'sk-test';
+			settings.whisperApiModels = ['whisper-1'];
+			settings.whisperApiModel = 'whisper-1';
+			settings.deepgramApiKey = '';
+
+			expect(entryStatusOf(pageOf(build(), 'Deepgram'))).toBeNull();
+		});
+
+		it('marks every engine page from the same answer', () => {
+			// Read through all of them rather than the one under test: each
+			// page declares its own indicator, and a page that answers from
+			// something else would only show up when it is the one missing.
+			settings.transcriptionEnabled = true;
+			settings.transcriptionProvider =
+				TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM;
+			settings.deepgramApiKey = '';
+			const engines = pageOf(build(), 'Engines');
+			const marked = (engines.items as GroupDefinition[])
+				.flatMap(
+					(section) => (section.items ?? []) as GroupDefinition[],
+				)
+				.filter((page) => entryStatusOf(page) === 'warning')
+				.map((page) => page.name);
+
+			expect(marked).toEqual(['Deepgram']);
+		});
+
+		it('says which half the local engine is still missing', () => {
+			// Both paths are needed to run, so a binary alone is not
+			// configured - the entry said it was.
+			settings.transcriptionEnabled = true;
+			const local = (): string | undefined =>
+				entryValueOf(pageOf(build(), 'Local whisper.cpp (desktop)'));
+
+			expect(local()).toBe('No binary');
+
+			settings.localWhisperBinaryPath = '/opt/whisper/main';
+
+			expect(local()).toBe('No model file');
+
+			settings.localWhisperModelPath = '/opt/whisper/base.bin';
+
+			expect(local()).toBe('Configured');
+		});
+
+		it('warns on multi-track that would open no input at all', () => {
+			settings.enableMultiTrack = true;
+			settings.maxTracks = 2;
+			settings.trackAudioSources = new Map();
+			const multiTrack = (): 'warning' | null | undefined =>
+				entryStatusOf(pageOf(build(), 'Multi-track recording'));
+
+			expect(multiTrack()).toBe('warning');
+
+			// One assigned track is a session that records; the second is the
+			// user's to fill in, not something to mark the page over.
+			settings.trackAudioSources.set(1, {
+				deviceId: 'mic-1',
+				channelMode: 'source' as const,
+			});
+
+			expect(multiTrack()).toBeNull();
 		});
 	});
 
@@ -746,6 +854,7 @@ describe('settings definitions', () => {
 			emptyState?: string;
 			addItem?: { action: (el: HTMLElement) => void };
 			onDelete?: (index: number) => void;
+			onReorder?: (from: number, to: number) => void;
 			items: Array<{ name: string; desc?: string }>;
 		} => listIn(pageOf(build(), heading)) as never;
 
@@ -830,6 +939,15 @@ describe('settings definitions', () => {
 
 			expect(renameProfile).toHaveBeenCalledWith('b');
 			expect(removeProfile).toHaveBeenCalledWith('b');
+		});
+
+		it('reorders through the tab, by position in the list it declared', () => {
+			// The order is the order the picker offers, and the indices name
+			// the items declared above - the stored order, since the list is
+			// built from it in one pass.
+			listOf('Dictionary profiles').onReorder?.(1, 0);
+
+			expect(reorderProfile).toHaveBeenCalledWith(1, 0);
 		});
 
 		it('adds through the tab, which owns the profiles', () => {

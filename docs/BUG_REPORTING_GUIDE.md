@@ -50,7 +50,7 @@ _Figure: The System info modal opened from the Diagnostics settings section._
 The diagnostics output includes:
 
 - Plugin settings (format, bitrate, sample rate, save folder, multi-track config).
-- Environment info (Obsidian version, Electron version, platform, architecture).
+- Environment info (Obsidian version, Electron and Chromium versions, platform, architecture, and the WebView user agent).
 - Audio devices (all detected input and output devices).
 - Audio capabilities (supported formats, sample rates, bitrates, codec support).
 - Active recording configuration (the exact format, MIME type, and codec that would be used for recording).

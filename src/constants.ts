@@ -880,6 +880,15 @@ export const LOCAL_WHISPER_MODEL_NAMES = [
 	'large-v3-turbo',
 ];
 
+/**
+ * What a run says when the local engine is called with a path missing. It
+ * needs both - a binary to run and a model file to run it over - so one
+ * sentence covers either half, and the settings and the run refuse on the
+ * same words rather than on two descriptions of the same state.
+ */
+export const LOCAL_WHISPER_SETUP_MESSAGE =
+	'Set the local whisper.cpp binary and model paths in settings.';
+
 /** Where to download whisper.cpp GGML model files. */
 export const LOCAL_WHISPER_MODELS_DOC_URL =
 	'https://huggingface.co/ggerganov/whisper.cpp';

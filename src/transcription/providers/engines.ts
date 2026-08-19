@@ -17,7 +17,11 @@
  * @module transcription/providers/engines
  */
 
-import { MS_PER_MINUTE, TRANSCRIPTION_PROVIDER_IDS } from '../../constants';
+import {
+	LOCAL_WHISPER_SETUP_MESSAGE,
+	MS_PER_MINUTE,
+	TRANSCRIPTION_PROVIDER_IDS,
+} from '../../constants';
 import {
 	ENGINE_IDS,
 	engineAccess,
@@ -354,9 +358,7 @@ export const TRANSCRIPTION_ENGINES: Record<
 				!settings.localWhisperBinaryPath ||
 				!settings.localWhisperModelPath
 			) {
-				throw new ProviderConfigError(
-					'Set the local whisper.cpp binary and model paths in settings.',
-				);
+				throw new ProviderConfigError(LOCAL_WHISPER_SETUP_MESSAGE);
 			}
 			const provider = new LocalWhisperProvider({
 				binaryPath: settings.localWhisperBinaryPath,

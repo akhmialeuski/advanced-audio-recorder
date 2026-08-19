@@ -95,6 +95,12 @@ export default tseslint.config(
     // manifests where type-aware rules cannot execute), so they are
     // constrained to src/. The plugin's own JSON manifest linting
     // entries keep their original file scope.
+    //
+    // From 0.4.1 the recommended set also carries the four settings-tab
+    // rules - prefer-setting-definitions, require-display,
+    // prefer-update-over-display, no-deprecated-display - which check the
+    // definition-driven settings tab this plugin already renders. They are
+    // taken as they ship rather than re-levelled here.
     ...obsidianmd.configs.recommended.map((entry) => {
         if (!entry.rules) {
             return entry;
