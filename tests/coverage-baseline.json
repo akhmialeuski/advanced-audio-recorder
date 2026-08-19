@@ -1,10 +1,10 @@
 {
 	"coverage": {
 		"total": {
-			"statements": 97.15,
-			"branches": 90,
-			"functions": 96.32,
-			"lines": 97.18
+			"statements": 97.37,
+			"branches": 90.12,
+			"functions": 97.17,
+			"lines": 97.4
 		},
 		"files": {
 			"src/constants.ts": {
@@ -20,10 +20,10 @@
 				"lines": 100
 			},
 			"src/main.ts": {
-				"statements": 98.74,
-				"branches": 96.21,
-				"functions": 97.1,
-				"lines": 99.36
+				"statements": 99.09,
+				"branches": 97.05,
+				"functions": 97.18,
+				"lines": 99.69
 			},
 			"src/types.ts": {
 				"statements": 100,
@@ -140,10 +140,10 @@
 				"lines": 91.62
 			},
 			"src/cleanup/AudioProcessingModal.ts": {
-				"statements": 91.02,
+				"statements": 100,
 				"branches": 80,
-				"functions": 72,
-				"lines": 90.9
+				"functions": 100,
+				"lines": 100
 			},
 			"src/cleanup/AudioProcessingService.ts": {
 				"statements": 99.19,
@@ -272,14 +272,14 @@
 				"lines": 100
 			},
 			"src/player/WaveformController.ts": {
-				"statements": 95.23,
-				"branches": 88.88,
+				"statements": 96.42,
+				"branches": 94.44,
 				"functions": 94.73,
-				"lines": 95.12
+				"lines": 96.34
 			},
 			"src/player/WaveformData.ts": {
 				"statements": 100,
-				"branches": 89.58,
+				"branches": 90,
 				"functions": 100,
 				"lines": 100
 			},
@@ -374,10 +374,10 @@
 				"lines": 99.04
 			},
 			"src/recording/ConversionService.ts": {
-				"statements": 91.3,
+				"statements": 94.2,
 				"branches": 81.08,
-				"functions": 66.66,
-				"lines": 91.3
+				"functions": 100,
+				"lines": 94.2
 			},
 			"src/recording/InputLevelMonitor.ts": {
 				"statements": 100,
@@ -490,7 +490,7 @@
 			"src/recording/silentChannelDetector.ts": {
 				"statements": 96.61,
 				"branches": 92.45,
-				"functions": 80,
+				"functions": 100,
 				"lines": 96.49
 			},
 			"src/settings/SettingsTab.ts": {
@@ -542,10 +542,10 @@
 				"lines": 97.05
 			},
 			"src/settings/settingControls.ts": {
-				"statements": 97.52,
+				"statements": 99.17,
 				"branches": 97.72,
-				"functions": 96.87,
-				"lines": 97.52
+				"functions": 100,
+				"lines": 99.17
 			},
 			"src/settings/settingsDefinitions.ts": {
 				"statements": 98.88,
@@ -567,7 +567,7 @@
 			},
 			"src/settings/settingsSerialization.ts": {
 				"statements": 98.56,
-				"branches": 91.66,
+				"branches": 92.7,
 				"functions": 100,
 				"lines": 98.55
 			},
@@ -662,10 +662,10 @@
 				"lines": 100
 			},
 			"src/transcription/audioPrep.ts": {
-				"statements": 90,
+				"statements": 100,
 				"branches": 100,
-				"functions": 72.72,
-				"lines": 90
+				"functions": 100,
+				"lines": 100
 			},
 			"src/transcription/costs.ts": {
 				"statements": 100,
@@ -872,10 +872,10 @@
 				"lines": 100
 			},
 			"src/ui/ConversionModal.ts": {
-				"statements": 87.64,
+				"statements": 96.62,
 				"branches": 91.66,
-				"functions": 68.18,
-				"lines": 87.64
+				"functions": 95.45,
+				"lines": 96.62
 			},
 			"src/ui/DeviceSelectionModal.ts": {
 				"statements": 100,
@@ -1061,8 +1061,8 @@
 	},
 	"suite": {
 		"suites": 193,
-		"tests": 3514,
-		"passed": 3514,
+		"tests": 3708,
+		"passed": 3708,
 		"failed": 0,
 		"todo": 0
 	}

@@ -156,16 +156,32 @@ describe('detectSilentChannel', () => {
 			.mockImplementation(() => ({ decodeAudioData, close }));
 	});
 
-	it('detects a lopsided stereo recording', async () => {
-		decodeAudioData.mockResolvedValue(
-			new FakeAudioBuffer(2, 5, [loud(), silent()]),
-		);
+	it.each([
+		{ name: 'a context that closes cleanly', closeFails: false },
+		{
+			// The close is a teardown in a finally, and a context that fails
+			// to close is a browser problem, not a detection problem. Letting
+			// that rejection escape would turn a finished check into an
+			// unhandled rejection and lose the answer the user waited for.
+			name: 'a context that refuses to close',
+			closeFails: true,
+		},
+	])(
+		'detects a lopsided stereo recording over $name',
+		async ({ closeFails }) => {
+			if (closeFails) {
+				close.mockRejectedValue(new Error('context already gone'));
+			}
+			decodeAudioData.mockResolvedValue(
+				new FakeAudioBuffer(2, 5, [loud(), silent()]),
+			);
 
-		const result = await detectSilentChannel(makeApp(), file);
+			const result = await detectSilentChannel(makeApp(), file);
 
-		expect(result?.keepMode).toBe('mono-left');
-		expect(close).toHaveBeenCalled();
-	});
+			expect(result?.keepMode).toBe('mono-left');
+			expect(close).toHaveBeenCalled();
+		},
+	);
 
 	it('returns null and closes the context for a mono file', async () => {
 		jest.mocked(probeAudioMetadata).mockResolvedValue({

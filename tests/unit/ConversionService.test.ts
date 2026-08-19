@@ -268,4 +268,49 @@ describe('ConversionService', () => {
 
 		expect(outcome).toEqual({ status: 'partial' });
 	});
+
+	it.each([
+		{
+			name: 'encoding a WAV target',
+			request: {
+				sourceFile: createSourceFile('webm'),
+				targetFormat: 'wav' as const,
+			},
+			collaborator: (): jest.Mock => jest.mocked(encodeAudioBuffer),
+			reportArg: 2,
+			expected: 'Encoding... 40%',
+		},
+		{
+			name: 'streaming a compressed target',
+			request: {},
+			collaborator: (): jest.Mock =>
+				jest.mocked(convertBlobToFormatBuffer),
+			reportArg: 3,
+			expected: 'Converting... 40%',
+		},
+	])(
+		'relays the percentage while $name',
+		async ({ request, collaborator, reportArg, expected }) => {
+			// The dialog shows this text and nothing else while a long
+			// conversion runs. It is a one-line closure the encoder calls
+			// back into, so no test had ever executed it - a wrong format
+			// string here is a progress line that reads "Encoding...
+			// [object Object]" for the whole run.
+			collaborator().mockImplementationOnce(
+				(...args: unknown[]): Promise<unknown> => {
+					(args[reportArg] as (percent: number) => void)(40);
+					return Promise.resolve(
+						reportArg === 2
+							? new Blob(['encoded'])
+							: new ArrayBuffer(8),
+					);
+				},
+			);
+			const onProgress = jest.fn();
+
+			await service.convert(createRequest(request), onProgress);
+
+			expect(onProgress).toHaveBeenCalledWith(expected);
+		},
+	);
 });

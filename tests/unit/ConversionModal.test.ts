@@ -8,7 +8,13 @@ import { App, TFile } from 'obsidian';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { tick } from '../helpers/async';
-import { capturedSettings } from '../helpers/captureSettings';
+import {
+	allButtons,
+	capturedSettings,
+	changeSetting,
+	settingRow,
+	type CapturedButton,
+} from '../helpers/captureSettings';
 import { noticeInstances, noticeText } from '../mocks/obsidian';
 import { el } from '../helpers/dom';
 import { MODAL } from '../helpers/selectors';
@@ -16,6 +22,7 @@ import { createMockApp } from '../helpers/createApp';
 import { updateLinksInVault } from 'src/utils/LinkUpdater';
 import { convertBlobToFormatBuffer } from 'src/audio/AudioFormatConverter';
 import { addObsidianDomExtensions } from '../mocks/domExtensions';
+import { defined } from '../helpers/assertions';
 
 /**
  * Extends an HTMLElement with Obsidian's custom DOM methods.
@@ -423,6 +430,153 @@ describe('ConversionModal', () => {
 			rebuild(modal);
 
 			expect(dropdown.setValue).toHaveBeenCalledWith('mp3');
+		});
+	});
+
+	// -----------------------------------------------------------------
+	// The controls a user actually touches
+	// -----------------------------------------------------------------
+
+	describe('what the user picked reaches the conversion', () => {
+		/**
+		 * Opens the dialog and returns the Convert button, so a test changes
+		 * a control and then runs the conversion the way a user does.
+		 * @returns The opened dialog and its Convert button
+		 */
+		function openDialog(): {
+			modal: ConversionModal;
+			convert: CapturedButton;
+		} {
+			const modal = new ConversionModal(
+				mockApp,
+				mockFile,
+				() => mockSettings,
+			);
+			modal.onOpen();
+			return {
+				modal,
+				convert: defined(
+					allButtons().find((entry) => entry.label === 'Convert'),
+				),
+			};
+		}
+
+		it.each([
+			{
+				name: 'a different target format',
+				row: 'Target format',
+				value: 'mp3',
+				written: /recording\.mp3$/,
+			},
+		])(
+			'carries $name into the file it writes',
+			async ({ row, value, written }) => {
+				// Each of these is a one-line handler on a control, and none of
+				// them had ever run: the suite asserted on what the dialog
+				// rendered, never on what changing it did. A handler wired to the
+				// wrong field is a setting the user picks and the conversion
+				// ignores, with the dialog still looking right.
+				const { convert } = openDialog();
+
+				changeSetting(row, 'dropdown', value);
+				convert.click();
+				await tick();
+
+				expect(
+					jest.mocked(mockApp.vault.createBinary),
+				).toHaveBeenCalledWith(
+					expect.stringMatching(written),
+					expect.anything(),
+				);
+			},
+		);
+
+		it('carries the chosen channel layout into the converter', async () => {
+			// The handler does two things: remember the layout, and re-offer
+			// the formats. This is the first half - a layout that stops here
+			// is a downmix the user asked for and never got.
+			const { convert } = openDialog();
+
+			changeSetting('Channels', 'dropdown', 'mono-left');
+			changeSetting('Target format', 'dropdown', 'mp3');
+			convert.click();
+			await tick();
+
+			expect(jest.mocked(convertBlobToFormatBuffer)).toHaveBeenCalledWith(
+				expect.anything(),
+				'mp3',
+				expect.any(Number),
+				expect.any(Function),
+				expect.objectContaining({ channelMode: 'mono-left' }),
+			);
+		});
+
+		it('deletes the source only once the toggle is on', async () => {
+			const { convert } = openDialog();
+
+			changeSetting('Delete source file', 'toggle', true);
+			changeSetting('Target format', 'dropdown', 'mp3');
+			convert.click();
+			await tick();
+
+			expect(
+				jest.mocked(mockApp.fileManager.trashFile),
+			).toHaveBeenCalled();
+		});
+
+		it('leaves the notes alone when the link action says to', async () => {
+			// 'none' is the one choice that must reach the service intact: a
+			// handler dropping it rewrites every note in the vault.
+			const { convert } = openDialog();
+
+			changeSetting('Update links in notes', 'dropdown', 'none');
+			changeSetting('Target format', 'dropdown', 'mp3');
+			convert.click();
+			await tick();
+
+			expect(jest.mocked(updateLinksInVault)).not.toHaveBeenCalled();
+		});
+
+		it('re-offers the source format once the channels change', async () => {
+			// The channel handler does two things, and the second - rebuilding
+			// the format list - is the easy one to drop.
+			openDialog();
+			const offered = (): string[] =>
+				(settingRow('Target format').dropdownOptions ?? []).map(
+					(option) => option.value,
+				);
+			expect(offered()).not.toContain('wav');
+
+			changeSetting('Channels', 'dropdown', 'mono-mix');
+
+			// wav is the source format: refused while the channels are kept,
+			// offered again the moment they are not.
+			expect(offered()).toContain('wav');
+		});
+
+		it('locks the button for the length of the conversion', async () => {
+			// A second press mid-run would start a second conversion over the
+			// same file; the disabled button is the only thing stopping it.
+			let settle = (): void => undefined;
+			jest.mocked(convertBlobToFormatBuffer).mockImplementationOnce(
+				() =>
+					new Promise((resolve) => {
+						settle = (): void => {
+							resolve(new ArrayBuffer(8));
+						};
+					}),
+			);
+			const { convert } = openDialog();
+			changeSetting('Target format', 'dropdown', 'mp3');
+
+			convert.click();
+			await tick();
+			expect(convert.disabled).toBe(true);
+
+			settle();
+			await tick();
+			await tick();
+			expect(convert.disabled).toBe(false);
 		});
 	});
 });

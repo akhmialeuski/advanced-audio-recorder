@@ -14,6 +14,8 @@ import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { createMockApp } from '../helpers/createApp';
 import { tick } from '../helpers/async';
 import { partial } from '../helpers/doubles';
+import { at } from '../helpers/assertions';
+import { el } from '../helpers/dom';
 
 jest.mock('src/cleanup/AudioProcessingService');
 
@@ -272,5 +274,92 @@ describe('AudioProcessingModal', () => {
 			'Processed audio saved to recordings/take-processed.wav',
 		);
 		expect(closeSpy).toHaveBeenCalled();
+	});
+
+	it.each([
+		{
+			name: 'High-pass filter',
+			field: 'highPass' as const,
+			key: 'hz' as const,
+			typed: '150',
+		},
+		{
+			name: 'Noise gate',
+			field: 'gate' as const,
+			key: 'thresholdDb' as const,
+			typed: '-42',
+		},
+		{
+			name: 'Loudness leveling',
+			field: 'leveling' as const,
+			key: 'makeupDb' as const,
+			typed: '4',
+		},
+	])(
+		'carries the $name stage the user configured into the run',
+		async ({ name, field, key, typed }) => {
+			// Each stage row owns four one-line closures - read the flag,
+			// write it, read the number, write it - and none of them had ever
+			// run: the suite asserted the rows render, never that touching
+			// them changes anything. A row wired to the wrong stage silences
+			// the wrong band with the dialog still looking correct.
+			processMock.mockResolvedValue('recordings/take-processed.wav');
+			const { modal, processButton } = openModal(
+				makeApp(),
+				settingsWithStages(false),
+			);
+
+			clickToggle(modal.contentEl, name);
+			const input = el<HTMLInputElement>(
+				settingRowByName(modal.contentEl, name),
+				'input[type="number"], input',
+			);
+			input.value = typed;
+			input.dispatchEvent(new Event('change'));
+			processButton.click();
+			await settle();
+
+			const [, config] = at(processMock.mock.calls, 0) as [
+				unknown,
+				Record<string, Record<string, unknown>>,
+			];
+			expect(config[field]).toEqual(
+				expect.objectContaining({
+					enabled: true,
+					[key]: Number(typed),
+				}),
+			);
+		},
+	);
+
+	it('re-enables the stage number field along with its toggle', async () => {
+		// The toggle's second job: a disabled stage must not offer an
+		// editable number, and enabling it has to give the field back.
+		const { modal } = openModal(makeApp(), settingsWithStages(false));
+		const input = el<HTMLInputElement>(
+			settingRowByName(modal.contentEl, 'Noise gate'),
+			'input',
+		);
+		expect(input.disabled).toBe(true);
+
+		clickToggle(modal.contentEl, 'Noise gate');
+
+		expect(input.disabled).toBe(false);
+	});
+
+	it('closes without processing when Cancel is pressed', async () => {
+		// Cancel is a one-line handler, and the only way out of the dialog
+		// that must leave the file untouched.
+		const { modal } = openModal(makeApp(), settingsWithStages(true));
+		const cancel = Array.from(
+			modal.contentEl.querySelectorAll('button'),
+		).find((button) => button.textContent === 'Cancel');
+		const closed = jest.spyOn(modal, 'close');
+
+		cancel?.click();
+		await settle();
+
+		expect(closed).toHaveBeenCalled();
+		expect(processMock).not.toHaveBeenCalled();
 	});
 });

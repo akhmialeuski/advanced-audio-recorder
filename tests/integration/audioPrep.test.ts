@@ -21,9 +21,10 @@ import {
 	shouldWarnDiarizationSplit,
 	withinDurationCap,
 } from 'src/transcription/audioPrep';
-import { at } from '../helpers/assertions';
+import { at, defined } from '../helpers/assertions';
 import { decodeToMono16k } from 'src/transcription/audioChunks';
 import {
+	MIN_SUBDIVIDE_SECONDS,
 	TRANSCRIBE_BYTES_PER_SEC,
 	TRANSCRIBE_SAMPLE_RATE,
 } from 'src/constants';
@@ -288,5 +289,98 @@ describe('prepareAudio (duration-cap decode path)', () => {
 		expect(result.payloads).toHaveLength(1);
 		expect(at(result.payloads, 0).filename).toBe('audio.wav');
 		expect(result.diarizationSplitWarning).toBe(false);
+	});
+});
+
+describe('prepareAudio (a decoded part the provider still rejects)', () => {
+	/**
+	 * Prepares a recording the cheap byte proof cannot call short, so the
+	 * duration comes from a real decode and the parts are real plans.
+	 * @param decodedSeconds - Length the decode reports
+	 * @param partSeconds - Duration cap, and so the length of one part
+	 * @returns What preparation produced
+	 */
+	async function prepareDecoded(
+		decodedSeconds: number,
+		partSeconds: number,
+	): Promise<Awaited<ReturnType<typeof prepareAudio>>> {
+		decodeMock.mockResolvedValue(samplesForSeconds(decodedSeconds));
+		return await prepareAudio(
+			// Past the cheap byte proof: 500 kB cannot be argued short.
+			new Uint8Array(500_000).buffer,
+			'rec.mp4',
+			'audio/mp4',
+			{
+				maxRequestBytes: 10_000_000,
+				maxRequestSeconds: partSeconds,
+				acceptsOriginalContainer: true,
+				chunkBytes: chunkBudgetForSeconds(partSeconds),
+				diarize: false,
+			},
+		);
+	}
+
+	it('renders a decoded part into WAV only when it is about to be sent', async () => {
+		// createData is deferred on purpose: a long recording holds one plan
+		// per part, and rendering all of them up front would put the whole
+		// decoded file in memory twice. Nothing had ever called it on the
+		// decode path, so the deferral was untested where it matters.
+		const result = await prepareDecoded(6, 2);
+
+		const rendered = await at(result.payloads, 0).createData();
+
+		expect(rendered.byteLength).toBe(chunkBudgetForSeconds(2));
+		expect(at(result.payloads, 0).contentType).toBe('audio/wav');
+	});
+
+	it.each([
+		// The rule is a floor, not a ratio: a part is only worth halving when
+		// both halves would still be a minute of audio. Either side of that.
+		{
+			name: 'long enough to halve',
+			seconds: MIN_SUBDIVIDE_SECONDS * 2,
+			halves: 2,
+		},
+		{
+			name: 'a second too short',
+			seconds: MIN_SUBDIVIDE_SECONDS * 2 - 1,
+			halves: 0,
+		},
+	])(
+		'offers $halves halves for a part $name',
+		async ({ seconds, halves }) => {
+			// A provider can reject a part that fitted every limit the plan knew
+			// about. subdivide is the retry, and nothing had ever called it - so
+			// neither the split nor its floor was exercised.
+			const result = await prepareDecoded(seconds, seconds);
+
+			expect(defined(at(result.payloads, 0).subdivide)()).toHaveLength(
+				halves,
+			);
+		},
+	);
+
+	it('gives each half its own name, span, and deferred render', async () => {
+		const result = await prepareDecoded(
+			MIN_SUBDIVIDE_SECONDS * 2,
+			MIN_SUBDIVIDE_SECONDS * 2,
+		);
+		const whole = at(result.payloads, 0);
+
+		const halves = defined(whole.subdivide)();
+
+		expect(halves.map((half) => half.filename)).toEqual([
+			'audio-0.wav',
+			'audio-1.wav',
+		]);
+		// The halves tile the original span with no gap and no overlap, or a
+		// retry would drop or repeat the audio between them.
+		expect(at(halves, 0).offsetSeconds).toBe(whole.offsetSeconds);
+		expect(at(halves, 0).endSeconds).toBe(at(halves, 1).offsetSeconds);
+		expect(at(halves, 1).endSeconds).toBe(whole.endSeconds);
+		// And each renders itself rather than sharing the parent's bytes.
+		expect((await at(halves, 0).createData()).byteLength).toBe(
+			chunkBudgetForSeconds(MIN_SUBDIVIDE_SECONDS),
+		);
 	});
 });
