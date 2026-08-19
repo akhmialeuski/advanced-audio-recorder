@@ -218,6 +218,20 @@ describe('enginesInUse', () => {
 		).toEqual([ENGINES[ENGINE_IDS.WHISPER_API]]);
 	});
 
+	// data.json is a file a sync conflict or a hand edit can leave holding a
+	// transcription id no engine claims; nothing is called for it.
+	it('holds no speech engine for an id no engine claims', () => {
+		expect(
+			enginesInUse(
+				makeSettings({
+					transcriptionEnabled: true,
+					transcriptionProvider:
+						'nonesuch' as AudioRecorderSettings['transcriptionProvider'],
+				}),
+			),
+		).toEqual([]);
+	});
+
 	it('holds a job engine only while that job is switched on', () => {
 		const off = enginesInUse(
 			makeSettings({

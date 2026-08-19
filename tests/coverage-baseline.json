@@ -1,9 +1,9 @@
 {
 	"coverage": {
 		"total": {
-			"statements": 97.41,
-			"branches": 90.34,
-			"functions": 97.21,
+			"statements": 97.42,
+			"branches": 90.36,
+			"functions": 97.25,
 			"lines": 97.44
 		},
 		"files": {
@@ -20,9 +20,9 @@
 				"lines": 100
 			},
 			"src/main.ts": {
-				"statements": 99.13,
+				"statements": 99.42,
 				"branches": 97.14,
-				"functions": 97.53,
+				"functions": 98.76,
 				"lines": 99.71
 			},
 			"src/types.ts": {
@@ -555,7 +555,7 @@
 			},
 			"src/settings/settingsAttention.ts": {
 				"statements": 100,
-				"branches": 97.61,
+				"branches": 100,
 				"functions": 100,
 				"lines": 100
 			},
@@ -1073,8 +1073,8 @@
 	},
 	"suite": {
 		"suites": 195,
-		"tests": 3802,
-		"passed": 3802,
+		"tests": 3803,
+		"passed": 3803,
 		"failed": 0,
 		"todo": 0
 	}
