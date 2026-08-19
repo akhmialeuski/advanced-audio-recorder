@@ -36,3 +36,6 @@ jobs:
 
             - name: Test conventions stay within their ceilings
               run: node scripts/test-conventions.mjs
+
+            - name: Test duplication stays within its ceiling
+              run: node scripts/clone-check.mjs

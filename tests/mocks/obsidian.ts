@@ -1227,19 +1227,24 @@ export class DropdownComponent {
 }
 
 /**
- * Mock TextComponent class.
+ * The shared body of Obsidian's text inputs, which is what Obsidian itself
+ * calls `AbstractTextComponent`: the same value/disabled/change contract over
+ * either an `<input>` or a `<textarea>`. Mirroring that hierarchy rather than
+ * copying the body twice keeps the two components from drifting apart.
  */
-export class TextComponent {
-	inputEl: HTMLInputElement = addObsidianDomExtensions(
-		document.createElement('input'),
-	);
+export abstract class AbstractTextComponent<
+	T extends HTMLInputElement | HTMLTextAreaElement,
+> {
 	value = '';
 	disabled = false;
 
 	/** Change handler, stored as Obsidian does for test triggering. */
 	changeCallback: ((value: string) => void) | null = null;
 
-	constructor() {
+	readonly inputEl: T;
+
+	constructor(inputEl: T) {
+		this.inputEl = inputEl;
 		// Mirrors Obsidian: typing in the field fires the change handler, so a
 		// DOM-driven test reaches the same code path a user does.
 		this.inputEl.addEventListener('input', () => {
@@ -1274,6 +1279,15 @@ export class TextComponent {
 	onChange(callback: (value: string) => void): this {
 		this.changeCallback = callback;
 		return this;
+	}
+}
+
+/**
+ * Mock TextComponent class.
+ */
+export class TextComponent extends AbstractTextComponent<HTMLInputElement> {
+	constructor() {
+		super(addObsidianDomExtensions(document.createElement('input')));
 	}
 }
 
@@ -1345,49 +1359,9 @@ export class ExtraButtonComponent {
  * Mock TextAreaComponent: the same contract as {@link TextComponent} over a
  * textarea element, which is what Obsidian's own component is.
  */
-export class TextAreaComponent {
-	inputEl: HTMLTextAreaElement = addObsidianDomExtensions(
-		document.createElement('textarea'),
-	);
-	value = '';
-	disabled = false;
-
-	/** Change handler, stored as Obsidian does for test triggering. */
-	changeCallback: ((value: string) => void) | null = null;
-
+export class TextAreaComponent extends AbstractTextComponent<HTMLTextAreaElement> {
 	constructor() {
-		this.inputEl.addEventListener('input', () => {
-			if (this.disabled) {
-				return;
-			}
-			this.value = this.inputEl.value;
-			this.changeCallback?.(this.inputEl.value);
-		});
-	}
-
-	setPlaceholder(placeholder: string): this {
-		this.inputEl.placeholder = placeholder;
-		return this;
-	}
-
-	setValue(value: string): this {
-		this.value = value;
-		this.inputEl.value = value;
-		return this;
-	}
-
-	setDisabled(disabled: boolean): this {
-		this.disabled = disabled;
-		// Mirrored onto the element like real Obsidian, whose
-		// AbstractTextComponent sets inputEl.disabled, so a DOM-level
-		// assertion sees a field the user cannot type into.
-		this.inputEl.disabled = disabled;
-		return this;
-	}
-
-	onChange(callback: (value: string) => void): this {
-		this.changeCallback = callback;
-		return this;
+		super(addObsidianDomExtensions(document.createElement('textarea')));
 	}
 }
 

@@ -19,6 +19,7 @@ import {
 	makeMediaRecorderDouble,
 	recordingManagerOver,
 	stubAudioStreams,
+	type MockMediaRecorder,
 } from '../helpers/recordingManagerTestKit';
 import { useDesktopPlatform } from '../helpers/platform';
 import { noticeMessages } from '../mocks/obsidian';
@@ -129,15 +130,7 @@ describe('RecordingManager', () => {
 	});
 
 	describe('togglePauseResume', () => {
-		let mockMediaRecorder: {
-			start: jest.Mock;
-			stop: jest.Mock;
-			pause: jest.Mock;
-			resume: jest.Mock;
-			ondataavailable: ((event: BlobEvent) => void) | null;
-			onerror: ((event: Event) => void) | null;
-			addEventListener: jest.Mock;
-		};
+		let mockMediaRecorder: MockMediaRecorder;
 
 		beforeEach(() => {
 			mockMediaRecorder = makeMediaRecorderDouble();

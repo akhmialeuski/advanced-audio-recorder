@@ -423,6 +423,23 @@ describe('RecordingManager', () => {
 			);
 		}
 
+		/**
+		 * A manager configured to rotate a WebM part every minute, with the
+		 * clock frozen at zero so a test moves it by hand.
+		 *
+		 * Seven rotation tests open this way; what they differ on is where
+		 * they move the clock to and what they then break.
+		 */
+		function startOneMinuteSplitClock(): void {
+			jest.useFakeTimers();
+			jest.setSystemTime(0);
+			createManagerWithSettings({
+				recordingFormat: 'webm',
+				autoSplitEnabled: true,
+				splitChunkMinutes: 1,
+			});
+		}
+
 		beforeEach(() => {
 			useDesktopPlatform();
 
@@ -585,13 +602,7 @@ describe('RecordingManager', () => {
 		});
 
 		it('rotates MediaRecorder parts after the configured duration', async () => {
-			jest.useFakeTimers();
-			jest.setSystemTime(0);
-			createManagerWithSettings({
-				recordingFormat: 'webm',
-				autoSplitEnabled: true,
-				splitChunkMinutes: 1,
-			});
+			startOneMinuteSplitClock();
 
 			await manager.startRecording();
 			expect(global.MediaRecorder).toHaveBeenCalledTimes(1);
@@ -631,13 +642,7 @@ describe('RecordingManager', () => {
 		});
 
 		it('does not count paused time toward the part duration', async () => {
-			jest.useFakeTimers();
-			jest.setSystemTime(0);
-			createManagerWithSettings({
-				recordingFormat: 'webm',
-				autoSplitEnabled: true,
-				splitChunkMinutes: 1,
-			});
+			startOneMinuteSplitClock();
 
 			await manager.startRecording();
 
@@ -685,13 +690,7 @@ describe('RecordingManager', () => {
 		});
 
 		it('keeps recording when part finalization fails', async () => {
-			jest.useFakeTimers();
-			jest.setSystemTime(0);
-			createManagerWithSettings({
-				recordingFormat: 'webm',
-				autoSplitEnabled: true,
-				splitChunkMinutes: 1,
-			});
+			startOneMinuteSplitClock();
 			// Fail only the final part write; segment (.tmp) writes succeed
 			(mockApp.vault.createBinary as jest.Mock).mockImplementation(
 				(path: string) =>
@@ -778,13 +777,7 @@ describe('RecordingManager', () => {
 		});
 
 		it('restarts recorders before transcoding the rotated part', async () => {
-			jest.useFakeTimers();
-			jest.setSystemTime(0);
-			createManagerWithSettings({
-				recordingFormat: 'webm',
-				autoSplitEnabled: true,
-				splitChunkMinutes: 1,
-			});
+			startOneMinuteSplitClock();
 
 			// Shared log capturing recorder construction vs part writes
 			const callLog: string[] = [];
@@ -849,13 +842,7 @@ describe('RecordingManager', () => {
 		});
 
 		it('stops and salvage the session when recorder restart fails', async () => {
-			jest.useFakeTimers();
-			jest.setSystemTime(0);
-			createManagerWithSettings({
-				recordingFormat: 'webm',
-				autoSplitEnabled: true,
-				splitChunkMinutes: 1,
-			});
+			startOneMinuteSplitClock();
 
 			// The 2nd construction is the rotation restart; it fails as if
 			// the input device disappeared mid-session
@@ -898,13 +885,7 @@ describe('RecordingManager', () => {
 		});
 
 		it('keeps the session output format when settings change mid-session', async () => {
-			jest.useFakeTimers();
-			jest.setSystemTime(0);
-			createManagerWithSettings({
-				recordingFormat: 'webm',
-				autoSplitEnabled: true,
-				splitChunkMinutes: 1,
-			});
+			startOneMinuteSplitClock();
 
 			await manager.startRecording();
 
@@ -965,13 +946,7 @@ describe('RecordingManager', () => {
 		});
 
 		it('stops cleanly while a rotation is in flight', async () => {
-			jest.useFakeTimers();
-			jest.setSystemTime(0);
-			createManagerWithSettings({
-				recordingFormat: 'webm',
-				autoSplitEnabled: true,
-				splitChunkMinutes: 1,
-			});
+			startOneMinuteSplitClock();
 
 			// Gate the rotation's segment flush so the stop request
 			// deterministically lands while the rotation is in flight

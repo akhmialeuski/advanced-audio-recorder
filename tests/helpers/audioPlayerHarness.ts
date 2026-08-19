@@ -11,11 +11,13 @@
  */
 
 import { App as ObsidianApp, Modal } from 'obsidian';
-import type { App, TFile } from 'obsidian';
+import type { TFile } from 'obsidian';
 import type { AudioPlayerRegistry } from 'src/player/AudioPlayerRegistry';
 import type { AudioDecoder } from 'src/player/WaveformData';
 import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { PlayerMarker } from 'src/markers/markerModel';
+import { partial } from './doubles';
+import { createMockApp } from './createApp';
 
 export type Listener = () => void;
 
@@ -70,10 +72,20 @@ export function makeFakeAudio(): FakeAudio {
 	return audio;
 }
 
+/**
+ * A key-aware registry stand-in that mirrors the real acquire semantics:
+ * each distinct playback key (file path + #t= start) gets its own audio
+ * element and its own engaged flag, and re-acquiring a known key returns the
+ * same element with isNew=false. New keys consume the provided fakes in
+ * acquisition order, then fall back to fresh ones - so a test that mounts
+ * several distinct embeds controls each element it asserts on.
+ * @param audios - Elements handed out to new keys, in order
+ * @returns The registry double
+ */
 export function makeRegistry(...audios: FakeAudio[]): AudioPlayerRegistry {
 	// A partial double: these suites drive only the acquire/release surface,
-	// so the cast at the boundary is the honest statement of that.
-	return makePartialRegistry(...audios) as unknown as AudioPlayerRegistry;
+	// so the widening at the boundary is the honest statement of that.
+	return partial<AudioPlayerRegistry>(makePartialRegistry(...audios));
 }
 
 /** The methods {@link makeRegistry} actually implements. */
@@ -85,14 +97,14 @@ export function makePartialRegistry(...audios: FakeAudio[]): object {
 			const existing = entries.get(key);
 			if (existing) {
 				return {
-					audio: existing.audio as unknown as HTMLAudioElement,
+					audio: partial<HTMLAudioElement>(existing.audio),
 					isNew: false,
 				};
 			}
 			const audio = audios[nextAudio] ?? makeFakeAudio();
 			nextAudio += 1;
 			entries.set(key, { audio, engaged: false });
-			return { audio: audio as unknown as HTMLAudioElement, isNew: true };
+			return { audio: partial<HTMLAudioElement>(audio), isNew: true };
 		}),
 		releaseAudio: jest.fn(),
 		register: jest.fn(),
@@ -115,7 +127,7 @@ export function makePartialRegistry(...audios: FakeAudio[]): object {
 	};
 }
 
-export const app = {
+export const app = createMockApp({
 	vault: {
 		getResourcePath: () => 'app://media',
 		readBinary: () => Promise.resolve(new ArrayBuffer(0)),
@@ -123,8 +135,12 @@ export const app = {
 	fileManager: {
 		generateMarkdownLink: () => '[[rec.webm]]',
 	},
-} as unknown as App;
+}).app;
 
+/**
+ * Decoding is irrelevant to the structural assertions these suites make;
+ * rejecting keeps the progressive peak path, and its timers, out of them.
+ */
 export const decoder: AudioDecoder = {
 	decode: () => Promise.reject(new Error('no decode in tests')),
 };
@@ -157,11 +173,11 @@ export function makeMarkerStore(): RecordingSidecarStore & {
 }
 
 export function makeFile(size = 1000, extension = 'webm'): TFile {
-	return {
+	return partial<TFile>({
 		path: `rec.${extension}`,
 		extension,
 		stat: { mtime: 1, size },
-	} as unknown as TFile;
+	});
 }
 
 export function makeContainer(): HTMLElement {

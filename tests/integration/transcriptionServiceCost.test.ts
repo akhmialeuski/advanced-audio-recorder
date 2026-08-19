@@ -146,57 +146,56 @@ describe('TranscriptionService run cost', () => {
 		expect(cost.usd).toBe(0);
 	});
 
-	it('reuses caller-provided audio bytes instead of reading the file', async () => {
-		const readBinary = jest.fn(async () => new ArrayBuffer(4));
-		const app = createMockApp({
-			vault: { readBinary },
-			fileManager: {
-				generateMarkdownLink: jest.fn(() => '[[rec#t=0|0:00]]'),
-			},
-		}).app;
-		const service = new TranscriptionService(
-			app,
-			() =>
-				mergeSettings({
-					transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-					deepgramModel: 'nova-3',
-				}),
-			{
-				createProvider: () =>
-					makeProvider({ segments, usage: { audioSeconds: 60 } }),
-			},
-		);
-		await service.run(audioFile, {
-			notePathForLinks: 'note.md',
+	it.each([
+		{
+			name: 'the caller already read the bytes',
 			audioBytes: new ArrayBuffer(8),
-		});
-		// The pre-read bytes are used, so the service never reads the file again.
-		expect(readBinary).not.toHaveBeenCalled();
-	});
+			reads: 0,
+		},
+		{
+			name: 'the caller passed none',
+			audioBytes: undefined,
+			reads: 1,
+		},
+		{
+			// An empty buffer is bytes the caller has: re-reading would send
+			// different audio than the caller measured and priced.
+			name: 'the caller passed an empty buffer',
+			audioBytes: new ArrayBuffer(0),
+			reads: 0,
+		},
+	])(
+		'reads the file $reads times when $name',
+		async ({ audioBytes, reads }) => {
+			const readBinary = jest.fn(async () => new ArrayBuffer(4));
+			const app = createMockApp({
+				vault: { readBinary },
+				fileManager: {
+					generateMarkdownLink: jest.fn(() => '[[rec#t=0|0:00]]'),
+				},
+			}).app;
+			const service = new TranscriptionService(
+				app,
+				() =>
+					mergeSettings({
+						transcriptionProvider:
+							TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+						deepgramModel: 'nova-3',
+					}),
+				{
+					createProvider: () =>
+						makeProvider({ segments, usage: { audioSeconds: 60 } }),
+				},
+			);
 
-	it('reads the file itself when no bytes are provided', async () => {
-		const readBinary = jest.fn(async () => new ArrayBuffer(4));
-		const app = createMockApp({
-			vault: { readBinary },
-			fileManager: {
-				generateMarkdownLink: jest.fn(() => '[[rec#t=0|0:00]]'),
-			},
-		}).app;
-		const service = new TranscriptionService(
-			app,
-			() =>
-				mergeSettings({
-					transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-					deepgramModel: 'nova-3',
-				}),
-			{
-				createProvider: () =>
-					makeProvider({ segments, usage: { audioSeconds: 60 } }),
-			},
-		);
-		await service.run(audioFile, { notePathForLinks: 'note.md' });
-		expect(readBinary).toHaveBeenCalledTimes(1);
-	});
+			await service.run(audioFile, {
+				notePathForLinks: 'note.md',
+				...(audioBytes === undefined ? {} : { audioBytes }),
+			});
+
+			expect(readBinary).toHaveBeenCalledTimes(reads);
+		},
+	);
 
 	it('invokes onCost with the cumulative cost after each part', async () => {
 		const updates: TranscribeRunCost[] = [];

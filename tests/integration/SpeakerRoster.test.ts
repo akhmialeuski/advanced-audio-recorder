@@ -24,6 +24,7 @@ import { SpeakerRenameModal } from 'src/ui/SpeakerRenameModal';
 import { internalsOf, partial } from '../helpers/doubles';
 import { createMockApp, fakeVaultFiles } from '../helpers/createApp';
 import { fakeProvider } from '../helpers/providerFixtures';
+import { installControlledAudio } from '../helpers/mediaMocks';
 
 /** Internal surface the test drives, mirroring the dialog's unit suite. */
 interface ModalInternals {
@@ -118,31 +119,6 @@ function storedTranscript(files: Map<string, string>): Record<string, unknown> {
 }
 
 /** Installs a deterministic audio element as the global Audio factory. */
-function installAudio(): { element: HTMLAudioElement; restore(): void } {
-	const element = document.createElement('audio');
-	let currentTime = 0;
-	Object.defineProperties(element, {
-		paused: { configurable: true, get: () => true },
-		currentTime: {
-			configurable: true,
-			get: () => currentTime,
-			set: (value: number) => {
-				currentTime = value;
-			},
-		},
-		duration: { configurable: true, get: () => 600 },
-		// Metadata already available, so a press seeks straight away.
-		readyState: { configurable: true, get: () => 1 },
-	});
-	jest.spyOn(element, 'play').mockResolvedValue(undefined);
-	jest.spyOn(element, 'pause').mockImplementation(() => undefined);
-	jest.spyOn(element, 'load').mockImplementation(() => undefined);
-	const factory = jest
-		.spyOn(globalThis, 'Audio')
-		.mockImplementation(() => element);
-	return { element, restore: () => factory.mockRestore() };
-}
-
 describe('speaker roster round trip', () => {
 	/** Transcribes once through the real service and real store. */
 	async function transcribe(
@@ -157,6 +133,38 @@ describe('speaker roster round trip', () => {
 			notePathForLinks: 'note.md',
 			sidecar: store,
 		});
+	}
+
+	/**
+	 * Transcribes one recording and opens the rename dialog over it, rendered
+	 * and ready to type into. Every test here starts from that state; what
+	 * they differ on is what they type and what they then read back.
+	 * @returns The dialog's internals, the vault's files, and the settings
+	 */
+	async function openRenameDialog(): Promise<{
+		app: App;
+		store: RecordingSidecarStore;
+		files: Map<string, string>;
+		settings: AudioRecorderSettings;
+		modal: SpeakerRenameModal;
+		internals: ModalInternals;
+	}> {
+		installControlledAudio({ duration: 600 });
+		const { app, files } = makeApp();
+		const store = new RecordingSidecarStore(app);
+		const settings = settingsWithProfile();
+		await transcribe(app, store, settings);
+
+		const modal = new SpeakerRenameModal(app, audioFile, {
+			getSettings: () => settings,
+			saveSettings: () => Promise.resolve(),
+			sidecar: store,
+		});
+		const internals = internalsOf<ModalInternals>(modal);
+		modal.open();
+		await internals.render();
+
+		return { app, store, files, settings, modal, internals };
 	}
 
 	it('writes the participants and first-turn offsets into the real sidecar file', async () => {
@@ -177,7 +185,7 @@ describe('speaker roster round trip', () => {
 	});
 
 	it('the dialog reads that file back: suggestions, offsets, and a working preview', async () => {
-		const audio = installAudio();
+		const audio = installControlledAudio({ duration: 600 });
 		const { app } = makeApp();
 		const store = new RecordingSidecarStore(app);
 		const settings = settingsWithProfile();
@@ -202,27 +210,13 @@ describe('speaker roster round trip', () => {
 
 		// Pressing a row's button plays from the offset the run measured.
 		internals.previewButtons.get('Speaker 2')?.buttonEl.click();
-		expect(audio.element.currentTime).toBe(10);
+		expect(audio.audio.currentTime).toBe(10);
 
 		modal.close();
-		audio.restore();
 	});
 
 	it('a name applied in the dialog is written back into the same file', async () => {
-		const audio = installAudio();
-		const { app, files } = makeApp();
-		const store = new RecordingSidecarStore(app);
-		const settings = settingsWithProfile();
-		await transcribe(app, store, settings);
-
-		const modal = new SpeakerRenameModal(app, audioFile, {
-			getSettings: () => settings,
-			saveSettings: () => Promise.resolve(),
-			sidecar: store,
-		});
-		const internals = internalsOf<ModalInternals>(modal);
-		modal.open();
-		await internals.render();
+		const { files, settings, internals } = await openRenameDialog();
 
 		const first = internals.inputs.get('Speaker 1');
 		if (!first) {
@@ -245,24 +239,11 @@ describe('speaker roster round trip', () => {
 			'Ivan',
 			'Priya',
 		]);
-		audio.restore();
 	});
 
 	it('a re-transcription keeps the name and refreshes the offsets', async () => {
-		const audio = installAudio();
-		const { app, files } = makeApp();
-		const store = new RecordingSidecarStore(app);
-		const settings = settingsWithProfile();
-		await transcribe(app, store, settings);
-
-		const modal = new SpeakerRenameModal(app, audioFile, {
-			getSettings: () => settings,
-			saveSettings: () => Promise.resolve(),
-			sidecar: store,
-		});
-		const internals = internalsOf<ModalInternals>(modal);
-		modal.open();
-		await internals.render();
+		const { app, store, files, settings, internals } =
+			await openRenameDialog();
 		const first = internals.inputs.get('Speaker 1');
 		if (!first) {
 			throw new Error('missing input');
@@ -279,6 +260,5 @@ describe('speaker roster round trip', () => {
 		]);
 		// The run re-recorded its profile without dropping the applied name.
 		expect(transcript.participants).toEqual(['Maria', 'Ivan', 'Priya']);
-		audio.restore();
 	});
 });

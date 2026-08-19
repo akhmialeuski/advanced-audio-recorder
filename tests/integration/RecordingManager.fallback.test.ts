@@ -20,6 +20,7 @@ import {
 	installRecordingMediaStubs,
 	recordingManagerOver,
 } from '../helpers/recordingManagerTestKit';
+import { mediaDevice } from '../helpers/mediaMocks';
 
 // Mock AudioContext, OfflineAudioContext, and AudioBuffer. The kit's
 // AudioContext stub has no audioWorklet, so the real PcmStreamRecorder
@@ -79,7 +80,14 @@ describe('AudioStreamHandler: Error Handling', () => {
 		).isTypeSupported = jest.fn().mockReturnValue(true);
 	});
 
-	it('logs AudioStreamError when OverconstrainedError occurs', async () => {
+	/**
+	 * A microphone that refuses the configured device with the error the
+	 * browser raises when a constraint cannot be met, and one device to
+	 * enumerate. Four tests start from exactly this state and differ only in
+	 * what they then read off the failure.
+	 * @returns The getUserMedia spy, for asserting how often it was tried
+	 */
+	function refuseConfiguredDevice(): jest.Mock {
 		const getUserMediaMock = jest
 			.fn()
 			.mockRejectedValueOnce(
@@ -88,20 +96,22 @@ describe('AudioStreamHandler: Error Handling', () => {
 					'Constraint not satisfied',
 				),
 			);
-
 		Object.defineProperty(navigator, 'mediaDevices', {
 			value: {
 				getUserMedia: getUserMediaMock,
-				enumerateDevices: jest.fn().mockResolvedValue([
-					{
-						deviceId: 'test-device-id',
-						kind: 'audioinput',
-						label: 'Test Device',
-					},
-				]),
+				enumerateDevices: jest
+					.fn()
+					.mockResolvedValue([
+						mediaDevice('test-device-id', 'Test Device'),
+					]),
 			},
 			writable: true,
 		});
+		return getUserMediaMock;
+	}
+
+	it('logs AudioStreamError when OverconstrainedError occurs', async () => {
+		refuseConfiguredDevice();
 
 		await manager.startRecording();
 
@@ -166,28 +176,7 @@ describe('AudioStreamHandler: Error Handling', () => {
 	});
 
 	it('does not fallback to default device', async () => {
-		const getUserMediaMock = jest
-			.fn()
-			.mockRejectedValueOnce(
-				new OverconstrainedError(
-					'deviceId',
-					'Constraint not satisfied',
-				),
-			);
-
-		Object.defineProperty(navigator, 'mediaDevices', {
-			value: {
-				getUserMedia: getUserMediaMock,
-				enumerateDevices: jest.fn().mockResolvedValue([
-					{
-						deviceId: 'test-device-id',
-						kind: 'audioinput',
-						label: 'Test Device',
-					},
-				]),
-			},
-			writable: true,
-		});
+		const getUserMediaMock = refuseConfiguredDevice();
 
 		await manager.startRecording();
 

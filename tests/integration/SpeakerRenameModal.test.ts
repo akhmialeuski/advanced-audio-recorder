@@ -28,6 +28,7 @@ import { noticeMessages } from '../mocks/obsidian';
 import { internalsOf, partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 import { installControlledAudio } from '../helpers/mediaMocks';
+import type { ControlledAudio } from '../helpers/mediaMocks';
 
 jest.mock('src/speakers/applySpeakerRenames', () => ({
 	applySpeakerRenamesWithSidecar: jest.fn(),
@@ -840,7 +841,17 @@ describe('SpeakerRenameModal', () => {
 		expect(second.buttonEl.getAttribute('data-icon')).toBe('play');
 	});
 
-	it('resets the button when the excerpt ends on its own', async () => {
+	/**
+	 * A rendered dialog over one speaker whose first turn runs 12s to 20s -
+	 * long enough to be excerpted without either clamp applying, which is what
+	 * every preview test here wants to start from.
+	 * @returns The audio element, the dialog, and its internals
+	 */
+	async function openWithOnePreviewableSpeaker(): Promise<{
+		audio: ControlledAudio;
+		modal: SpeakerRenameModal;
+		internals: ModalInternals;
+	}> {
 		const audio = installControlledAudio({ duration: 600 });
 		const sidecar = makeSidecar(
 			rosterSection({
@@ -852,6 +863,12 @@ describe('SpeakerRenameModal', () => {
 		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
 		modal.open();
 		await internals.render();
+
+		return { audio, modal, internals };
+	}
+
+	it('resets the button when the excerpt ends on its own', async () => {
+		const { audio, internals } = await openWithOnePreviewableSpeaker();
 
 		const button = internals.previewButtons.get('Speaker 1');
 		button?.buttonEl.click();
@@ -862,34 +879,15 @@ describe('SpeakerRenameModal', () => {
 	});
 
 	it('builds no audio element until a preview is pressed', async () => {
-		const audio = installControlledAudio({ duration: 600 });
-		const sidecar = makeSidecar(
-			rosterSection({
-				speakers: [
-					{ label: 'Speaker 1', firstStart: 12, firstEnd: 20 },
-				],
-			}),
-		);
-		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
-		modal.open();
-		await internals.render();
+		const { audio, internals } = await openWithOnePreviewableSpeaker();
 
 		expect(internals.preview).toBeNull();
 		expect(audio.constructions()).toBe(0);
 	});
 
 	it('stops and releases the preview when the dialog closes', async () => {
-		const audio = installControlledAudio({ duration: 600 });
-		const sidecar = makeSidecar(
-			rosterSection({
-				speakers: [
-					{ label: 'Speaker 1', firstStart: 12, firstEnd: 20 },
-				],
-			}),
-		);
-		const { modal, internals } = makeModal(mergeSettings({}), sidecar);
-		modal.open();
-		await internals.render();
+		const { audio, modal, internals } =
+			await openWithOnePreviewableSpeaker();
 		internals.previewButtons.get('Speaker 1')?.buttonEl.click();
 
 		modal.close();

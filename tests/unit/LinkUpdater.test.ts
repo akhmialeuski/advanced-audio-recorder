@@ -6,14 +6,18 @@
 import { updateLinksInVault } from 'src/utils/LinkUpdater';
 import { defined } from '../helpers/assertions';
 import { App, TFile } from 'obsidian';
-import { createMockApp } from '../helpers/createApp';
+import { createFile, createMockApp } from '../helpers/createApp';
 
 describe('updateLinksInVault', () => {
 	/**
 	 * Minimal reference cache double carrying only the fields
 	 * updateLinksInVault reads (link text, original text, offsets).
+	 *
+	 * Offset-based rather than line-based, and carrying the original text:
+	 * that is what the stale-cache check compares against, so this is a
+	 * different shape from the LinkRef the transcript suites share.
 	 */
-	interface ReferenceDouble {
+	interface OffsetRef {
 		link: string;
 		original: string;
 		position: { start: { offset: number }; end: { offset: number } };
@@ -25,8 +29,8 @@ describe('updateLinksInVault', () => {
 	 */
 	interface VaultNoteEntry {
 		content: string;
-		links?: ReferenceDouble[];
-		embeds?: ReferenceDouble[];
+		links?: OffsetRef[];
+		embeds?: OffsetRef[];
 		frontmatterLinks?: { link: string }[];
 	}
 
@@ -41,17 +45,6 @@ describe('updateLinksInVault', () => {
 	}
 
 	/**
-	 * Creates a TFile instance (of the mocked class) with path and name set.
-	 */
-	function createFile(path: string): TFile {
-		const file = new TFile();
-		const writable = file as unknown as { path: string; name: string };
-		writable.path = path;
-		writable.name = path.split('/').pop() ?? path;
-		return file;
-	}
-
-	/**
 	 * Builds a reference whose offsets point at the given occurrence of
 	 * the original text inside the note content, so the defensive
 	 * stale-cache check in updateLinksInVault passes.
@@ -61,7 +54,7 @@ describe('updateLinksInVault', () => {
 		original: string,
 		link: string,
 		occurrence = 0,
-	): ReferenceDouble {
+	): OffsetRef {
 		let start = -1;
 		for (let i = 0; i <= occurrence; i++) {
 			start = content.indexOf(original, start + 1);
@@ -339,7 +332,7 @@ describe('updateLinksInVault', () => {
 		const source = createFile('rec.webm');
 		const content = 'edited content ![[rec.webm]]';
 		// Offsets predate an edit, so the slice no longer matches original
-		const stale: ReferenceDouble = {
+		const stale: OffsetRef = {
 			link: 'rec.webm',
 			original: '![[rec.webm]]',
 			position: { start: { offset: 0 }, end: { offset: 13 } },

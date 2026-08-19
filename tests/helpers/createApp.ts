@@ -305,3 +305,19 @@ export function fakeVaultFiles(
 	};
 	return { files, adapter };
 }
+
+/**
+ * One reference the metadata cache reports for a note: the link text and the
+ * line span it sits on. Three suites declared this shape for themselves.
+ */
+export interface LinkRef {
+	link: string;
+	position: { start: { line: number }; end: { line: number } };
+}
+
+/** A note's parsed references, as `metadataCache.getFileCache` reports them. */
+export interface NoteCache {
+	links?: LinkRef[];
+	embeds?: LinkRef[];
+	frontmatterLinks?: { link: string }[];
+}

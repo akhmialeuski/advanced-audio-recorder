@@ -21,6 +21,7 @@ import {
 	makeStatefulMarkerStore,
 	recordingManagerOver,
 	stubAudioStreams,
+	type MockMediaRecorder,
 } from '../helpers/recordingManagerTestKit';
 import { flushMicrotasks } from '../helpers/async';
 import { Notice } from 'obsidian';
@@ -63,15 +64,7 @@ describe('RecordingManager', () => {
 	});
 
 	describe('marker draft capture and persistence', () => {
-		let mockMediaRecorder: {
-			start: jest.Mock;
-			stop: jest.Mock;
-			pause: jest.Mock;
-			resume: jest.Mock;
-			ondataavailable: ((event: BlobEvent) => void) | null;
-			onerror: ((event: Event) => void) | null;
-			addEventListener: jest.Mock;
-		};
+		let mockMediaRecorder: MockMediaRecorder;
 
 		beforeEach(() => {
 			mockMediaRecorder = makeMediaRecorderDouble();

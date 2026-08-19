@@ -19,168 +19,29 @@
  * while marker registrations stay per file so marker edits sync across embeds.
  */
 
-import { App, Modal } from 'obsidian';
 import { at } from '../helpers/assertions';
 import { allEls, clickControl, control, el, maybeEl } from '../helpers/dom';
 import { PLAYER } from '../helpers/selectors';
 import { AudioPlayer } from 'src/player/AudioPlayer';
-import { WaveformPeakCache, type AudioDecoder } from 'src/player/WaveformData';
+import { WaveformPeakCache } from 'src/player/WaveformData';
 import type { AudioPlayerRegistry } from 'src/player/AudioPlayerRegistry';
-import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
-import type { PlayerMarker } from 'src/markers/markerModel';
+
 import type { ResolvedPlayerSettings } from 'src/player/playerSettings';
 import type { TFile } from 'obsidian';
 import { tick } from '../helpers/async';
-import { partial } from '../helpers/doubles';
-import { createMockApp } from '../helpers/createApp';
 
-type Listener = () => void;
+import {
+	app,
+	decoder,
+	makeContainer,
+	makeFakeAudio,
+	makeFile,
+	makeMarkerStore,
+	makeRegistry,
+	type FakeAudio,
+} from '../helpers/audioPlayerHarness';
 
-/** A controllable stand-in for the shared HTMLAudioElement. */
-interface FakeAudio {
-	paused: boolean;
-	loop: boolean;
-	playbackRate: number;
-	volume: number;
-	muted: boolean;
-	currentTime: number;
-	duration: number;
-	readyState: number;
-	play: jest.Mock;
-	pause: jest.Mock;
-	addEventListener: (type: string, cb: Listener) => void;
-	removeEventListener: (type: string, cb: Listener) => void;
-	/** Test hook: invoke the registered listeners for an event type. */
-	emit: (type: string) => void;
-}
-
-function makeFakeAudio(): FakeAudio {
-	const handlers = new Map<string, Set<Listener>>();
-	const audio: FakeAudio = {
-		paused: true,
-		loop: false,
-		playbackRate: 1,
-		volume: 1,
-		muted: false,
-		currentTime: 0,
-		duration: 100,
-		readyState: 1,
-		play: jest.fn(() => {
-			audio.paused = false;
-			return Promise.resolve();
-		}),
-		pause: jest.fn(() => {
-			audio.paused = true;
-		}),
-		addEventListener: (type, cb) => {
-			const set = handlers.get(type) ?? new Set<Listener>();
-			set.add(cb);
-			handlers.set(type, set);
-		},
-		removeEventListener: (type, cb) => {
-			handlers.get(type)?.delete(cb);
-		},
-		emit: (type) => {
-			handlers.get(type)?.forEach((cb) => {
-				cb();
-			});
-		},
-	};
-	return audio;
-}
-
-/**
- * A key-aware registry stand-in that mirrors the real acquire semantics:
- * each distinct playback key (file path + #t= start) gets its own audio
- * element and its own engaged flag, and re-acquiring a known key returns
- * the same element with isNew=false. New keys consume the provided fakes
- * in acquisition order, then fall back to fresh ones - so a test that
- * mounts several distinct embeds controls each element it asserts on.
- */
-function makeRegistry(...audios: FakeAudio[]): AudioPlayerRegistry {
-	// A partial double: these suites drive only the acquire/release surface,
-	// so the cast at the boundary is the honest statement of that.
-	return partial<AudioPlayerRegistry>(makePartialRegistry(...audios));
-}
-
-/** The methods {@link makeRegistry} actually implements. */
-function makePartialRegistry(...audios: FakeAudio[]): object {
-	const entries = new Map<string, { audio: FakeAudio; engaged: boolean }>();
-	let nextAudio = 0;
-	const registry = {
-		acquireAudio: jest.fn((key: string) => {
-			const existing = entries.get(key);
-			if (existing) {
-				return {
-					audio: partial<HTMLAudioElement>(existing.audio),
-					isNew: false,
-				};
-			}
-			const audio = audios[nextAudio] ?? makeFakeAudio();
-			nextAudio += 1;
-			entries.set(key, { audio, engaged: false });
-			return { audio: partial<HTMLAudioElement>(audio), isNew: true };
-		}),
-		releaseAudio: jest.fn(),
-		register: jest.fn(),
-		unregister: jest.fn(),
-		reloadMarkers: jest.fn(),
-		seek: jest.fn(),
-		applySettings: jest.fn(),
-		clear: jest.fn(),
-		registerPlaybackController: jest.fn(() => jest.fn()),
-		subscribePlayback: jest.fn(() => jest.fn()),
-		markAudioEngaged: jest.fn((key: string) => {
-			const entry = entries.get(key);
-			if (entry) {
-				entry.engaged = true;
-			}
-		}),
-		isAudioEngaged: jest.fn(
-			(key: string) => entries.get(key)?.engaged ?? false,
-		),
-	};
-	return registry;
-}
-
-const app = createMockApp({
-	vault: {
-		getResourcePath: () => 'app://media',
-		readBinary: () => Promise.resolve(new ArrayBuffer(0)),
-	},
-	fileManager: {
-		generateMarkdownLink: () => '[[rec.webm]]',
-	},
-}).app;
-
-// Decoding is irrelevant to these structural assertions; rejecting keeps the
-// progressive peak path (and its timers) out of the tests.
-const decoder: AudioDecoder = {
-	decode: () => Promise.reject(new Error('no decode in tests')),
-};
-
-const markerStore = partial<RecordingSidecarStore>({
-	getMarkers: () => Promise.resolve([]),
-	updateMarkers: (
-		_path: string,
-		change: (existing: readonly PlayerMarker[]) => readonly PlayerMarker[],
-	) => Promise.resolve([...change([])]),
-});
-
-function makeFile(size = 1000, extension = 'webm'): TFile {
-	return partial<TFile>({
-		path: `rec.${extension}`,
-		extension,
-		stat: { mtime: 1, size },
-	});
-}
-
-/** A connected, Obsidian-extended container element. */
-function makeContainer(): HTMLElement {
-	const el = new Modal(new App()).contentEl.createDiv();
-	document.body.appendChild(el);
-	return el;
-}
+const markerStore = makeMarkerStore();
 
 function makePlayer(
 	container: HTMLElement,
@@ -206,6 +67,41 @@ const PLAIN: ResolvedPlayerSettings = {
 	showWaveform: false,
 	enableMarkers: false,
 };
+
+/**
+ * Two embeds of one file mounted side by side: one carrying a `#t=` start, one
+ * plain. This is the arrangement issue #38 is about - distinct embeds of the
+ * same file must drive independent playback - and three tests set it up.
+ * @param startSeconds - The `#t=` offset the first embed carries
+ * @returns Both containers and both elements the registry handed out
+ */
+function mountTimedAndPlainEmbeds(startSeconds = 3): {
+	withOffset: HTMLElement;
+	plain: HTMLElement;
+	timedAudio: FakeAudio;
+	plainAudio: FakeAudio;
+} {
+	const timedAudio = makeFakeAudio();
+	timedAudio.duration = 5;
+	timedAudio.readyState = 1;
+	const plainAudio = makeFakeAudio();
+	plainAudio.duration = 5;
+	plainAudio.readyState = 1;
+	const registry = makeRegistry(timedAudio, plainAudio);
+
+	const withOffset = makeContainer();
+	makePlayer(
+		withOffset,
+		registry,
+		PLAIN,
+		makeFile(1000, 'wav'),
+		startSeconds,
+	).onload();
+	const plain = makeContainer();
+	makePlayer(plain, registry, PLAIN, makeFile(1000, 'wav'), null).onload();
+
+	return { withOffset, plain, timedAudio, plainAudio };
+}
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -418,30 +314,8 @@ describe('timecode start offset (#t=) positions and shows the embed', () => {
 		// Two distinct embeds of ONE file drive independent playback elements
 		// (issue #38). The #t= start stays per-embed: the plain embed must not
 		// inherit the other embed's 0:03, and neither element is moved.
-		const timedAudio = makeFakeAudio();
-		timedAudio.duration = 5;
-		timedAudio.readyState = 1;
-		const plainAudio = makeFakeAudio();
-		plainAudio.duration = 5;
-		plainAudio.readyState = 1;
-		const registry = makeRegistry(timedAudio, plainAudio);
-
-		const withOffset = makeContainer();
-		makePlayer(
-			withOffset,
-			registry,
-			PLAIN,
-			makeFile(1000, 'wav'),
-			3,
-		).onload();
-		const plain = makeContainer();
-		makePlayer(
-			plain,
-			registry,
-			PLAIN,
-			makeFile(1000, 'wav'),
-			null,
-		).onload();
+		const { withOffset, plain, timedAudio, plainAudio } =
+			mountTimedAndPlainEmbeds();
 
 		expect(withOffset).toShowTime('0:03 / 0:05');
 		expect(plain).toShowTime('0:00 / 0:05');
@@ -541,30 +415,8 @@ describe('timecode start offset (#t=) positions and shows the embed', () => {
 		// Distinct embeds of one file have independent playback: playing the
 		// plain embed must neither move the #t= embed's position nor consume
 		// its start hint.
-		const timedAudio = makeFakeAudio();
-		timedAudio.duration = 5;
-		timedAudio.readyState = 1;
-		const plainAudio = makeFakeAudio();
-		plainAudio.duration = 5;
-		plainAudio.readyState = 1;
-		const registry = makeRegistry(timedAudio, plainAudio);
-
-		const withOffset = makeContainer();
-		makePlayer(
-			withOffset,
-			registry,
-			PLAIN,
-			makeFile(1000, 'wav'),
-			3,
-		).onload();
-		const plain = makeContainer();
-		makePlayer(
-			plain,
-			registry,
-			PLAIN,
-			makeFile(1000, 'wav'),
-			null,
-		).onload();
+		const { withOffset, plain, timedAudio, plainAudio } =
+			mountTimedAndPlainEmbeds();
 
 		// The plain embed plays and advances to 0:02
 		plainAudio.paused = false;

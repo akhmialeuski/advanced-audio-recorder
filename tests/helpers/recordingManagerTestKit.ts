@@ -469,3 +469,28 @@ export interface MediaRecorderDoubleInstance {
 	onerror: ((event: Event) => void) | null;
 	addEventListener: jest.Mock;
 }
+
+/**
+ * Runs one whole recording through the manager: start, feed a single chunk,
+ * stop.
+ *
+ * Nine tests in the output suite spelt this out to reach the code that names
+ * and writes the file, which is the part they are actually about. Naming the
+ * sequence keeps each of them to its own setup and its own assertion.
+ * @param manager - The manager under test
+ * @param recorder - The recorder double the manager is recording through
+ * @param bytes - What the single chunk carries
+ */
+export const recordOneChunk = async (
+	manager: RecordingManager,
+	recorder: MockMediaRecorder,
+	bytes: Uint8Array<ArrayBuffer> = new Uint8Array([1, 2, 3]),
+): Promise<void> => {
+	await manager.startRecording();
+	recorder.ondataavailable?.({
+		data: new Blob([bytes], { type: 'audio/webm' }),
+	} as BlobEvent);
+	// The Blob read the write chain performs settles a microtask later.
+	await Promise.resolve();
+	await manager.stopRecording();
+};

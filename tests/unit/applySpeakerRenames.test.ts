@@ -18,26 +18,13 @@ import {
 	type NoteOutput,
 	type TranscriptSection,
 } from 'src/sidecar/recordingSidecarModel';
-import { partial } from '../helpers/doubles';
-import { createMockApp } from '../helpers/createApp';
+import {
+	createFile,
+	createMockApp,
+	type NoteCache,
+} from '../helpers/createApp';
 
 const FORMAT = '**{speaker}**';
-
-interface Ref {
-	link: string;
-	position: { start: { line: number }; end: { line: number } };
-}
-interface Cache {
-	links?: Ref[];
-	embeds?: Ref[];
-}
-
-const tf = (path: string): TFile => {
-	const name = path.split('/').pop() ?? path;
-	const dot = name.lastIndexOf('.');
-	const extension = dot >= 0 ? name.slice(dot + 1) : '';
-	return partial<TFile>({ path, name, extension });
-};
 
 /**
  * Builds a fake App over an in-memory file map with a metadata cache. Files
@@ -47,7 +34,7 @@ const tf = (path: string): TFile => {
 function makeApp(
 	files: Map<string, string>,
 	opts: {
-		caches?: Record<string, Cache>;
+		caches?: Record<string, NoteCache>;
 		failPaths?: Set<string>;
 	} = {},
 ): App {
@@ -55,7 +42,7 @@ function makeApp(
 	return createMockApp({
 		vault: {
 			getFileByPath: (path: string): TFile | null =>
-				files.has(path) ? tf(path) : null,
+				files.has(path) ? createFile(path) : null,
 			read: async (file: TFile): Promise<string> =>
 				files.get(file.path) ?? '',
 			process: async (
@@ -79,7 +66,7 @@ function makeApp(
 						path.split('/').pop() === linkpath ||
 						path === linkpath
 					) {
-						return tf(path);
+						return createFile(path);
 					}
 				}
 				return null;
@@ -88,14 +75,14 @@ function makeApp(
 	}).app;
 }
 
-const audioFile = tf('audio/rec.wav');
+const audioFile = createFile('audio/rec.wav');
 const renames = [
 	{ from: 'Speaker 1', to: 'Alex' },
 	{ from: 'Speaker 2', to: 'Bob' },
 ];
 
 /** A note holding this recording's transcript plus another recording's. */
-function meetingNote(): { content: string; cache: Cache } {
+function meetingNote(): { content: string; cache: NoteCache } {
 	const content = [
 		'![[rec.wav]]', // 0
 		'', // 1
@@ -104,7 +91,7 @@ function meetingNote(): { content: string; cache: Cache } {
 		'', // 4
 		'[00:00](other.wav#t=0) **Speaker 1** unrelated', // 5
 	].join('\n');
-	const cache: Cache = {
+	const cache: NoteCache = {
 		embeds: [
 			{
 				link: 'rec.wav',
@@ -135,7 +122,7 @@ function meetingNote(): { content: string; cache: Cache } {
  * exactly as a scoped rewrite leaves it, and the line positions the cache
  * refers to are unchanged.
  */
-function renamedMeetingNote(): { content: string; cache: Cache } {
+function renamedMeetingNote(): { content: string; cache: NoteCache } {
 	const { content, cache } = meetingNote();
 	const lines = content.split('\n');
 	lines[2] = '[00:00](rec.wav#t=0) **Alex** hello';
@@ -276,7 +263,7 @@ describe('applySpeakerRenamesWithSidecar', () => {
 			'',
 			'[00:00](rec.wav#t=0) __Speaker 1__ hello',
 		].join('\n');
-		const cache: Cache = {
+		const cache: NoteCache = {
 			links: [
 				{
 					link: 'rec.wav#t=0',
@@ -348,7 +335,7 @@ describe('applySpeakerRenamesWithSidecar', () => {
 			'[00:00](rec.wav#t=0) Alex opened the meeting.',
 			'[00:05](rec.wav#t=5) Bob answered right away.',
 		].join('\n');
-		const cache: Cache = {
+		const cache: NoteCache = {
 			embeds: [
 				{
 					link: 'rec.wav',
@@ -547,7 +534,7 @@ describe('applySpeakerRenamesWithSidecar', () => {
 			'',
 			'[00:00](other.wav#t=0) **Alex** unrelated',
 		].join('\n');
-		const cache: Cache = {
+		const cache: NoteCache = {
 			embeds: [
 				{
 					link: 'rec.wav',
@@ -656,7 +643,7 @@ describe('applySpeakerRenamesWithSidecar', () => {
 
 	it('rewrites an untimecoded recorded note only under allowBroad', async () => {
 		const content = '![[rec.wav]]\n\n**Speaker 1** hi';
-		const cache: Cache = {
+		const cache: NoteCache = {
 			embeds: [
 				{
 					link: 'rec.wav',
@@ -744,7 +731,7 @@ describe('applySpeakerRenamesWithSidecar', () => {
 		const app = createMockApp({
 			vault: {
 				getFileByPath: (path: string): TFile | null =>
-					live.has(path) ? tf(path) : null,
+					live.has(path) ? createFile(path) : null,
 				read: async (): Promise<string> =>
 					'[0:00] Speaker 1: stale snapshot',
 				process: async (

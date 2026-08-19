@@ -20,8 +20,10 @@ import {
 	installRecordingMediaStubs,
 	makeFakeMarkerStore,
 	makeMediaRecorderDouble,
+	recordOneChunk,
 	recordingManagerOver,
 	stubAudioStreams,
+	type MockMediaRecorder,
 } from '../helpers/recordingManagerTestKit';
 import { useDesktopPlatform } from '../helpers/platform';
 import { MarkdownView, Notice } from 'obsidian';
@@ -444,15 +446,7 @@ describe('RecordingManager', () => {
 
 			stubAudioStreams();
 
-			await manager.startRecording();
-
-			const chunk = new Blob([new Uint8Array([1, 2, 3])], {
-				type: 'audio/webm',
-			});
-			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
-			await Promise.resolve();
-
-			await manager.stopRecording();
+			await recordOneChunk(manager, mockMediaRecorder);
 
 			expect(mockApp.vault.adapter.writeBinary).toHaveBeenCalledWith(
 				expect.stringMatching(
@@ -481,15 +475,7 @@ describe('RecordingManager', () => {
 
 			stubAudioStreams();
 
-			await manager.startRecording();
-
-			const chunk = new Blob([new Uint8Array([1, 2, 3])], {
-				type: 'audio/webm',
-			});
-			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
-			await Promise.resolve();
-
-			await manager.stopRecording();
+			await recordOneChunk(manager, mockMediaRecorder);
 
 			expect(mockApp.vault.createFolder).toHaveBeenCalledWith(
 				'Meetings/2026/Audio',
@@ -522,15 +508,7 @@ describe('RecordingManager', () => {
 
 			stubAudioStreams();
 
-			await manager.startRecording();
-
-			const chunk = new Blob([new Uint8Array([1, 2, 3])], {
-				type: 'audio/webm',
-			});
-			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
-			await Promise.resolve();
-
-			await manager.stopRecording();
+			await recordOneChunk(manager, mockMediaRecorder);
 
 			expect(mockApp.vault.adapter.writeBinary).toHaveBeenCalledWith(
 				expect.stringMatching(
@@ -558,15 +536,7 @@ describe('RecordingManager', () => {
 				new Uint8Array([1, 2, 3]).buffer,
 			);
 
-			await manager.startRecording();
-
-			const chunk = new Blob([new Uint8Array([1, 2, 3])], {
-				type: 'audio/webm',
-			});
-			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
-			await Promise.resolve();
-
-			await manager.stopRecording();
+			await recordOneChunk(manager, mockMediaRecorder);
 
 			expect(mockReplaceSelection).toHaveBeenCalled();
 			const insertedText = mockReplaceSelection.mock
@@ -605,15 +575,7 @@ describe('RecordingManager', () => {
 				new Uint8Array([1, 2, 3]).buffer,
 			);
 
-			await manager.startRecording();
-
-			const chunk = new Blob([new Uint8Array([1, 2, 3])], {
-				type: 'audio/webm',
-			});
-			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
-			await Promise.resolve();
-
-			await manager.stopRecording();
+			await recordOneChunk(manager, mockMediaRecorder);
 
 			expect(mockReplaceSelection).toHaveBeenCalled();
 			const insertedText = mockReplaceSelection.mock
@@ -625,15 +587,7 @@ describe('RecordingManager', () => {
 	});
 
 	describe('insertFileLinks with insertionContext', () => {
-		let mockMediaRecorder: {
-			start: jest.Mock;
-			stop: jest.Mock;
-			pause: jest.Mock;
-			resume: jest.Mock;
-			ondataavailable: ((event: BlobEvent) => void) | null;
-			onerror: ((event: Event) => void) | null;
-			addEventListener: jest.Mock;
-		};
+		let mockMediaRecorder: MockMediaRecorder;
 
 		beforeEach(() => {
 			mockMediaRecorder = makeMediaRecorderDouble();
@@ -663,13 +617,7 @@ describe('RecordingManager', () => {
 				statusChangeCallback,
 			);
 
-			await manager.startRecording();
-			const chunk = new Blob([new Uint8Array([1, 2, 3])], {
-				type: 'audio/webm',
-			});
-			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
-			await Promise.resolve();
-			await manager.stopRecording();
+			await recordOneChunk(manager, mockMediaRecorder);
 
 			expect(mockReplaceSelection).toHaveBeenCalled();
 		});
@@ -699,13 +647,7 @@ describe('RecordingManager', () => {
 				onRecordingSaved,
 			);
 
-			await manager.startRecording();
-			const chunk = new Blob([new Uint8Array([1, 2, 3])], {
-				type: 'audio/webm',
-			});
-			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
-			await Promise.resolve();
-			await manager.stopRecording();
+			await recordOneChunk(manager, mockMediaRecorder);
 
 			expect(onRecordingSaved).toHaveBeenCalledTimes(1);
 			const result = onRecordingSaved.mock.calls[0][0] as {
@@ -760,13 +702,7 @@ describe('RecordingManager', () => {
 				statusChangeCallback,
 			);
 
-			await manager.startRecording();
-			const chunk = new Blob([new Uint8Array([1, 2, 3])], {
-				type: 'audio/webm',
-			});
-			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
-			await Promise.resolve();
-			await manager.stopRecording();
+			await recordOneChunk(manager, mockMediaRecorder);
 
 			expect(mockReplaceRange).toHaveBeenCalledWith(
 				expect.stringMatching(/^!\[\[recording-.*\]\]\n$/),
@@ -804,13 +740,7 @@ describe('RecordingManager', () => {
 				statusChangeCallback,
 			);
 
-			await manager.startRecording();
-			const chunk = new Blob([new Uint8Array([1, 2, 3])], {
-				type: 'audio/webm',
-			});
-			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
-			await Promise.resolve();
-			await manager.stopRecording();
+			await recordOneChunk(manager, mockMediaRecorder);
 
 			// Falls back to active view replaceSelection
 			expect(mockReplaceSelection).toHaveBeenCalled();
