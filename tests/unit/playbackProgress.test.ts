@@ -17,11 +17,36 @@ describe('playbackProgress', () => {
 
 	it.each([
 		{ name: 'before the start', position: -5, expected: 0 },
+		{ name: 'one tick before the start', position: -0.001, expected: 0 },
+		{ name: 'one tick past the end', position: 100.001, expected: 1 },
 		{ name: 'past the end', position: 150, expected: 1 },
+		{
+			name: 'reported as not a number',
+			position: Number.NaN,
+			expected: 0,
+		},
+		{
+			name: 'reported as infinite',
+			position: Number.POSITIVE_INFINITY,
+			expected: 1,
+		},
+		{
+			name: 'reported as negatively infinite',
+			position: Number.NEGATIVE_INFINITY,
+			expected: 0,
+		},
 	])('clamps a position $name to $expected', ({ position, expected }) => {
 		// A seek that overshoots, or an element reporting a stale position
-		// after a source swap, must not push the fill outside the bar.
+		// after a source swap, must not push the fill outside the bar - and
+		// NaN, which a media element reports between a source swap and the
+		// first timeupdate, must not reach the fill's width either.
 		expect(playbackProgress(position, 100)).toBe(expected);
+	});
+
+	it('still reports a full bar for a duration at the smallest step', () => {
+		// The guard rejects a non-positive duration; the smallest positive one
+		// is still a real length and must divide rather than collapse to 0.
+		expect(playbackProgress(1, Number.MIN_VALUE)).toBe(1);
 	});
 
 	it.each([

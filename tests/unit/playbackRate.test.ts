@@ -11,6 +11,13 @@ describe('formatPlaybackRate', () => {
 		{ rate: 1.5, shown: '1.5x' },
 		{ rate: 0.5, shown: '0.5x' },
 		{ rate: 2, shown: '2x' },
+		// The ends of what a media element accepts, plus the two shapes the
+		// browser hands back that a naive toString would render badly: a
+		// rounding drift, and a rate with more decimals than the button fits.
+		{ rate: 0.25, shown: '0.25x' },
+		{ rate: 4, shown: '4x' },
+		{ rate: 1.0000000001, shown: '1x' },
+		{ rate: 1.25, shown: '1.25x' },
 	])('shows $rate as "$shown"', ({ rate, shown }) => {
 		// The label goes on a narrow button, so a trailing zero would cost a
 		// character the control does not have.

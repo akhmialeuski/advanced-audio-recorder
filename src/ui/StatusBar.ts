@@ -193,9 +193,27 @@ export function updateRecordingLiveStats(
 	const fill = live.querySelector<HTMLElement>('.aar-input-meter-fill');
 	if (fill) {
 		fill.setCssProps({
-			'--aar-meter-fill': `${String(Math.round(stats.level * 100))}%`,
+			'--aar-meter-fill': `${String(meterPercent(stats.level))}%`,
 		});
 	}
+}
+
+/**
+ * Turns a level reading into a percentage the meter can actually paint.
+ *
+ * The reading crosses a module boundary from an analyser, and an analyser
+ * whose context closed under it - a device unplugged mid-recording - fills its
+ * buffer with values that carry NaN through the RMS maths. Painting `NaN%`
+ * leaves the meter blank with no explanation, and anything above 100% spills
+ * the fill out of its track.
+ * @param level - Input level, nominally 0..1
+ * @returns A whole percentage in 0..100
+ */
+function meterPercent(level: number): number {
+	if (!Number.isFinite(level)) {
+		return 0;
+	}
+	return Math.round(Math.min(1, Math.max(0, level)) * 100);
 }
 
 /**

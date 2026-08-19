@@ -212,3 +212,39 @@ describe('a recording on a device that cannot run the chosen engine', () => {
 		expect(TranscriptionModal).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe('a save result the vault cannot make sense of', () => {
+	it.each([
+		{
+			name: 'the first audio path is empty',
+			result: { audioPaths: [''] },
+		},
+		{
+			name: 'the audio path names something the vault does not hold',
+			result: { audioPaths: ['Recordings/gone.webm'] },
+		},
+	])('opens no dialog when $name', async ({ result }) => {
+		// The save result is assembled while files are being written and a
+		// user can be deleting or renaming in the same window. Resolving the
+		// path to an actual file - rather than trusting the string - is what
+		// keeps a dialog from opening over a file that is not there, which
+		// would fail on its first read with nothing the user can do about it.
+		await loadWithRecording(transcribingSettings());
+
+		reportSaved(result);
+
+		expect(TranscriptionModal).not.toHaveBeenCalled();
+	});
+
+	it('still opens the dialog when only the note went missing', async () => {
+		// A missing note is not a missing recording. The transcript has
+		// nowhere to be linked back to, which the run handles by writing to a
+		// file instead - refusing to transcribe would lose the audio's only
+		// chance at a transcript over a note the user deleted on purpose.
+		await loadWithRecording(transcribingSettings());
+
+		reportSaved({ notePath: 'Notes/deleted.md' });
+
+		expect(TranscriptionModal).toHaveBeenCalled();
+	});
+});

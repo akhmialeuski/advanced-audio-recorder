@@ -9,12 +9,21 @@
 /** Tolerance that absorbs floating point drift when comparing playback rates. */
 const RATE_COMPARISON_EPSILON = 1e-6;
 
+/** Decimals a rate label keeps; every preset from 0.25x to 4x fits in two. */
+const RATE_LABEL_DECIMALS = 2;
+
 /**
  * Formats a playback rate for display (e.g. 1.5 becomes "1.5x").
+ *
+ * The rate reaching the button is read back off the media element, not the
+ * preset that was set, so it carries the browser's own float. Rounding to two
+ * decimals keeps a drift of 1.0000000001 from spilling eleven characters onto
+ * a button sized for three, while leaving every preset label unchanged.
  * @param rate - Playback rate multiplier
+ * @returns The label, e.g. "1.5x"
  */
 export function formatPlaybackRate(rate: number): string {
-	return `${String(rate)}x`;
+	return `${String(Number(rate.toFixed(RATE_LABEL_DECIMALS)))}x`;
 }
 
 /** A single entry in the playback-speed dropdown. */

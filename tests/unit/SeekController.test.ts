@@ -69,6 +69,15 @@ describe('timeAtClientX', () => {
 	it.each([
 		{ name: 'left of the area', clientX: -500, expected: 0 },
 		{ name: 'right of the area', clientX: 5000, expected: 100 },
+		// One pixel past each edge: the clamp has to hold on the first
+		// coordinate outside the area, not merely far outside it.
+		{ name: 'one pixel left of the area', clientX: 49, expected: 0 },
+		{ name: 'one pixel right of the area', clientX: 251, expected: 100 },
+		// A pointer event on a transformed element carries fractional
+		// coordinates, and the sub-pixel either side of an edge must land on
+		// the same second as the edge itself.
+		{ name: 'a hair left of the area', clientX: 49.9, expected: 0 },
+		{ name: 'a hair right of the area', clientX: 250.1, expected: 100 },
 	])(
 		'clamps a pointer $name to $expected seconds',
 		({ clientX, expected }) => {

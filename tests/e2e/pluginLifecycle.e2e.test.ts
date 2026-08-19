@@ -18,7 +18,11 @@ import { asMockPlugin } from '../helpers/obsidianMock';
 import { setPlatform } from '../helpers/platform';
 import { showDeviceSelectionModal } from 'src/ui/DeviceSelectionModal';
 import { RecordingManager } from 'src/recording/RecordingManager';
-import { loadPlugin } from '../helpers/pluginHarness';
+import { App } from 'obsidian';
+import AudioRecorderPlugin from 'src/main';
+import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
+import { validateSettings } from 'src/settings/settingsValidation';
+import { loadPlugin, MANIFEST } from '../helpers/pluginHarness';
 
 // The plugin's collaborators are each covered by their own suite. What is
 // under test here is the wiring between them, so they are recorded rather
@@ -236,5 +240,80 @@ describe('unloading the plugin', () => {
 		expect(() => {
 			plugin.onunload();
 		}).not.toThrow();
+	});
+});
+
+describe('loading the plugin when its stored settings are unusable', () => {
+	/**
+	 * Loads the plugin over a data.json read that misbehaves.
+	 * @param loadData - Stands in for Obsidian's data.json read
+	 * @returns The loaded plugin
+	 */
+	async function loadOverBadData(
+		loadData: jest.Mock,
+	): Promise<AudioRecorderPlugin> {
+		const plugin = new AudioRecorderPlugin(new App(), MANIFEST);
+		const persistence = plugin as unknown as Record<string, unknown>;
+		persistence.loadData = loadData;
+		persistence.saveData = jest.fn().mockResolvedValue(undefined);
+		await plugin.onload();
+		return plugin;
+	}
+
+	it.each([
+		{
+			name: 'the read itself fails',
+			loadData: (): jest.Mock =>
+				jest.fn().mockRejectedValue(new Error('vault is read-only')),
+		},
+		{
+			name: 'data.json holds a string',
+			loadData: (): jest.Mock => jest.fn().mockResolvedValue('nonsense'),
+		},
+		{
+			name: 'data.json holds a number',
+			loadData: (): jest.Mock => jest.fn().mockResolvedValue(42),
+		},
+		{
+			name: 'data.json holds a list',
+			loadData: (): jest.Mock => jest.fn().mockResolvedValue([]),
+		},
+	])('still loads when $name', async ({ loadData }) => {
+		// data.json is a file on disk that a sync conflict, a failed write, or
+		// a hand edit can leave in any shape. A plugin that throws out of
+		// onload is a plugin Obsidian shows as broken with no way back, so
+		// every one of these has to degrade to the defaults instead.
+		const plugin = await loadOverBadData(loadData());
+
+		expect(plugin.settings.recordingFormat).toBe(
+			DEFAULT_SETTINGS.recordingFormat,
+		);
+		expect(plugin.settings.bitrate).toBe(DEFAULT_SETTINGS.bitrate);
+		// Degrading is only useful if the plugin is still operable afterwards.
+		expect(
+			asMockPlugin(plugin).registeredCommands.map(
+				(command) => command.id,
+			),
+		).toContain(COMMAND_IDS.startStopRecording);
+	});
+
+	it('loads with a setting of the wrong type, and refuses to record on it', async () => {
+		// The merge is a spread over the defaults, so a value of the wrong
+		// type survives it rather than being replaced. That is deliberate -
+		// the merge is not a schema - and it is why the settings are
+		// validated again before a recording starts, which is the point this
+		// pins: the plugin comes up, and the bad value never reaches
+		// MediaRecorder as audioBitsPerSecond.
+		const plugin = await loadOverBadData(
+			jest.fn().mockResolvedValue({
+				bitrate: 'loud',
+				audioDeviceId: 'mic-1',
+			}),
+		);
+
+		expect(plugin.settings.bitrate).toBe('loud');
+		expect(() => {
+			validateSettings(plugin.settings);
+		}).toThrow(expect.objectContaining({ field: 'bitrate' }));
 	});
 });

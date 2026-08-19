@@ -203,8 +203,12 @@ describe('getAudioFileInfo', () => {
 	});
 
 	it.each([
+		{ channels: 0, shown: '0 channels' },
 		{ channels: 1, shown: '1 (Mono)' },
 		{ channels: 2, shown: '2 (Stereo)' },
+		// Three is the first count past the named layouts, and the one an
+		// off-by-one in the stereo branch would mislabel.
+		{ channels: 3, shown: '3 channels' },
 		{ channels: 6, shown: '6 channels' },
 	])(
 		'names a $channels-channel layout as "$shown"',

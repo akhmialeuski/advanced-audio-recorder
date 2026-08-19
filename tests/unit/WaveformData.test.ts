@@ -27,6 +27,19 @@ describe('computeWaveformPeaksProgressive - peak extraction', () => {
 			buckets: -4,
 		},
 		{ name: 'the audio has no channels', channels: [], buckets: 4 },
+		// The two remaining ways a bucket count can be nonsense: a fractional
+		// width from a scaled layout, and a NaN from an element measured
+		// before it had one. Both would size an array the loop cannot fill.
+		{
+			name: 'a fractional bucket count is asked for',
+			channels: [new Float32Array([1])],
+			buckets: 0.5,
+		},
+		{
+			name: 'the bucket count is not a number',
+			channels: [new Float32Array([1])],
+			buckets: Number.NaN,
+		},
 	])('draws nothing when $name', async ({ channels, buckets }) => {
 		// A seek bar with no width, or audio that failed to decode: the
 		// waveform has nowhere to go and no data to put there.
@@ -35,6 +48,18 @@ describe('computeWaveformPeaksProgressive - peak extraction', () => {
 				yieldControl: immediateYield,
 			}),
 		).toEqual([]);
+	});
+
+	it('floors a fractional bar count rather than throwing on it', async () => {
+		// A scaled layout measures 10.7 bars; ten of them is the honest
+		// answer, and `new Array(10.7)` is a RangeError.
+		const peaks = await computeWaveformPeaksProgressive(
+			[Float32Array.from({ length: 100 }, (_, i) => i / 100)],
+			10.7,
+			{ yieldControl: immediateYield },
+		);
+
+		expect(peaks).toHaveLength(10);
 	});
 
 	it('returns zeros for empty channel data', async () => {

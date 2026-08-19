@@ -6,6 +6,10 @@
  * hard to argue with: a test over one module is a unit test, a test that wires
  * five together is not, whatever directory it happens to live in.
  *
+ * A module the file `jest.mock`s does not count. Importing a mocked module is
+ * how a test reads its double through `jest.mocked` - the real module never
+ * runs, so it is not something the test wires together.
+ *
  * Usage: node scripts/layer-check.mjs
  */
 
@@ -41,17 +45,23 @@ function testFiles(dir) {
 }
 
 /**
- * How many distinct src modules a test file imports.
+ * How many distinct src modules a test file really wires together: everything
+ * it imports from src/, less everything it replaces with a double.
  * @param file - Repo-relative path to a test
- * @returns Count of distinct src imports
+ * @returns Count of distinct real src imports
  */
 function srcImportCount(file) {
 	const source = fs.readFileSync(path.join(ROOT, file), 'utf8');
 	const specifiers = [...source.matchAll(/from\s+['"]([^'"]+)['"]/g)].map(
 		(match) => match[1],
 	);
-	const fromSrc = specifiers.filter((specifier) =>
-		specifier.startsWith('src/'),
+	const mocked = new Set(
+		[...source.matchAll(/jest\.mock\(\s*['"]([^'"]+)['"]/g)].map(
+			(match) => match[1],
+		),
+	);
+	const fromSrc = specifiers.filter(
+		(specifier) => specifier.startsWith('src/') && !mocked.has(specifier),
 	);
 	return new Set(fromSrc).size;
 }

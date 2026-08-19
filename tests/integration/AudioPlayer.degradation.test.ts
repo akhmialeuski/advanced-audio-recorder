@@ -321,6 +321,24 @@ describe('copying a timestamp link', () => {
 	it.each([
 		{ name: 'a fractional position', time: 9.9, shown: '0:09' },
 		{ name: 'a negative position', time: -5, shown: '0:00' },
+		{ name: 'the very start', time: 0, shown: '0:00' },
+		// The two positions a media element reports before it has a real
+		// one. Neither is a timestamp, and both must copy a link the reader
+		// can click rather than one reading NaN.
+		{
+			name: 'a position that is not a number',
+			time: Number.NaN,
+			shown: '0:00',
+		},
+		{
+			name: 'an infinite position',
+			time: Number.POSITIVE_INFINITY,
+			shown: '0:00',
+		},
+		// One tick either side of the minute boundary: flooring must not
+		// round 59.999 up into the next minute.
+		{ name: 'a hair under a minute', time: 59.999, shown: '0:59' },
+		{ name: 'exactly a minute', time: 60, shown: '1:00' },
 	])('floors $name to $shown', async ({ time, shown }) => {
 		installClipboard();
 		const player = makePlayer(

@@ -216,6 +216,56 @@ describe('the live indicators', () => {
 		).toBe('50%');
 	});
 
+	it.each([
+		{
+			name: 'an elapsed time that is not a number',
+			readings: { getElapsedMs: Number.NaN },
+		},
+		{
+			name: 'a byte count that is not a number',
+			readings: { getRecordedBytes: Number.NaN },
+		},
+		{
+			name: 'an input level that is not a number',
+			readings: { getInputLevel: Number.NaN },
+		},
+		{
+			name: 'an input level past full scale',
+			readings: { getInputLevel: 4 },
+		},
+		{
+			name: 'a negative input level',
+			readings: { getInputLevel: -1 },
+		},
+		{
+			name: 'an elapsed time that went backwards',
+			readings: { getElapsedMs: -1000 },
+		},
+	])('paints something readable for $name', async ({ readings }) => {
+		// Every one of these is a reading, not a state: they come off a
+		// clock and an analyser mid-recording, and any of them can go
+		// briefly nonsensical on a device change or a paused-clock race.
+		// The status bar is a text line the user reads, so "NaN" or a
+		// meter overflowing its track is worse than a stale number.
+		const plugin = await loadRecording();
+		for (const [method, value] of Object.entries(readings)) {
+			recorder()[method as 'getElapsedMs'].mockReturnValue(value);
+		}
+		reportStatus(RecordingStatus.Recording);
+
+		jest.advanceTimersByTime(2000);
+
+		const bar = statusBar(plugin);
+		expect(bar.textContent).not.toContain('NaN');
+		expect(bar.textContent).not.toContain('Infinity');
+		const fill = el(bar, STATUS.inputMeterFill).style.getPropertyValue(
+			'--aar-meter-fill',
+		);
+		const percent = Number.parseFloat(fill);
+		expect(percent).toBeGreaterThanOrEqual(0);
+		expect(percent).toBeLessThanOrEqual(100);
+	});
+
 	it('does not tick while nothing is being recorded', async () => {
 		// The interval runs for the whole session; asking the recorder for
 		// numbers it does not have would repaint the bar over a playback.

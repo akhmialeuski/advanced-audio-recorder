@@ -49,6 +49,14 @@ describe('validateSettings rejections', () => {
 			reason: /Sample rate must be a positive number/,
 		},
 		{
+			// Infinity is positive and greater than zero, so a bare `> 0`
+			// check would let it through and hand the recorder a rate no
+			// device can honour.
+			name: 'an infinite sample rate',
+			patch: { sampleRate: Number.POSITIVE_INFINITY },
+			reason: /Sample rate must be a positive number/,
+		},
+		{
 			name: 'an unselected recording format',
 			patch: { recordingFormat: '' },
 			reason: /Recording format is not selected/,
@@ -93,6 +101,31 @@ describe('validateSettings rejections', () => {
 			name: 'a part duration above the maximum',
 			patch: { autoSplitEnabled: true, splitChunkMinutes: 181 },
 			reason: /Part duration must be an integer between 1 and 180 minutes/,
+		},
+		{
+			name: 'a negative part duration',
+			patch: { autoSplitEnabled: true, splitChunkMinutes: -1 },
+			reason: /Part duration must be an integer between 1 and 180 minutes/,
+		},
+		{
+			// Neither of these is an integer in the range, and both would
+			// otherwise reach the splitter as a chunk size it cannot use.
+			name: 'a part duration that is not a number',
+			patch: { autoSplitEnabled: true, splitChunkMinutes: Number.NaN },
+			reason: /Part duration must be an integer between 1 and 180 minutes/,
+		},
+		{
+			name: 'an infinite part duration',
+			patch: {
+				autoSplitEnabled: true,
+				splitChunkMinutes: Number.POSITIVE_INFINITY,
+			},
+			reason: /Part duration must be an integer between 1 and 180 minutes/,
+		},
+		{
+			name: 'a part suffix of only whitespace',
+			patch: { splitPartSuffix: '   ' },
+			reason: /Part suffix may contain only letters, digits, hyphens, and underscores/,
 		},
 		{
 			// The value is also the default part duration for manual
@@ -168,6 +201,18 @@ describe('validateSettings acceptances', () => {
 		{
 			name: 'a part suffix of letters, digits, hyphens, and underscores',
 			patch: { splitPartSuffix: 'chunk_1-a' },
+		},
+		{
+			// One character is the shortest suffix that is not empty, and the
+			// empty one is rejected above - so this is the lower bound.
+			name: 'a single-character part suffix',
+			patch: { splitPartSuffix: 'p' },
+		},
+		{
+			// The smallest sample rate that is still positive: the guard
+			// rejects zero and below, so anything above it must pass.
+			name: 'a sample rate at the smallest positive step',
+			patch: { sampleRate: Number.MIN_VALUE },
 		},
 		{
 			name: 'multi-track with every track given a device',

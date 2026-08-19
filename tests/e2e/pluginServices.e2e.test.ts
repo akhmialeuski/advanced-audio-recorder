@@ -244,3 +244,55 @@ describe('the options a transcription run is opened with', () => {
 		);
 	});
 });
+
+describe('a collaborator that fails under the plugin', () => {
+	beforeEach(() => {
+		jest.spyOn(console, 'error').mockImplementation(() => undefined);
+		jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+	});
+
+	it('surfaces a chapter-generation failure to whoever asked for it', async () => {
+		// The plugin's closure awaits the chapter service and hands the
+		// rejection back to the transcription run, which is the only place
+		// that knows a dialog is open and can report it. Swallowing it here
+		// would leave the run claiming chapters it never wrote.
+		const { plugin } = await loadPlugin();
+		const modalOptions = actionServices().createTranscriptionModalOptions();
+		chapterService().generate.mockRejectedValue(
+			new Error('note is read-only'),
+		);
+
+		await expect(
+			modalOptions.generateChapters?.(
+				{ path: 'Recordings/take.webm' } as TFile,
+				{ segments: [], speakers: [] },
+			),
+		).rejects.toThrow('note is read-only');
+		// The plugin is still the one holding the service afterwards, so a
+		// second run does not need a reload.
+		expect(actionServices().autoChapters).toBe(
+			(plugin as unknown as { autoChapterService: unknown })
+				.autoChapterService,
+		);
+	});
+
+	it('keeps the settings usable when persisting a choice fails', async () => {
+		// data.json can be unwritable - a full disk, a sync lock. The choice
+		// still has to apply to the run in progress, because the alternative
+		// is a dialog that silently ignores what the user just picked.
+		const { plugin } = await loadPlugin();
+		(
+			plugin as unknown as { saveData: jest.Mock }
+		).saveData.mockRejectedValue(new Error('disk full'));
+		const modalOptions = actionServices().createTranscriptionModalOptions();
+
+		await modalOptions.onProfileSelected?.('profile-7').catch(() => {
+			// The write failing is the scenario; what it did to the settings
+			// in memory is what this test is about.
+		});
+
+		expect(plugin.settings.transcriptionDictionaryProfileId).toBe(
+			'profile-7',
+		);
+	});
+});

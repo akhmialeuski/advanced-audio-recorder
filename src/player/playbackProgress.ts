@@ -19,5 +19,11 @@ export function playbackProgress(
 	if (!Number.isFinite(duration) || duration <= 0) {
 		return 0;
 	}
+	// A media element reports NaN for currentTime between a source swap and
+	// the first timeupdate. Dividing it through would put NaN in the fill's
+	// width, which renders as no bar at all rather than as an empty one.
+	if (Number.isNaN(currentTime)) {
+		return 0;
+	}
 	return Math.min(1, Math.max(0, currentTime / duration));
 }

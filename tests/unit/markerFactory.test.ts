@@ -80,6 +80,16 @@ describe('generateMarkerId', () => {
 	it.each([
 		{ name: 'no crypto at all', crypto: undefined },
 		{ name: 'a crypto without randomUUID', crypto: {} },
+		{
+			// Chromium exposes randomUUID outside a secure context but
+			// throws from it, so the presence check alone is not enough.
+			name: 'a randomUUID that throws',
+			crypto: {
+				randomUUID: (): string => {
+					throw new Error('not a secure context');
+				},
+			},
+		},
 	])('still gives a distinct id with $name', ({ crypto }) => {
 		// randomUUID needs a secure context, which an Obsidian pop-out window
 		// on some platforms is not. A marker with no id is unaddressable.

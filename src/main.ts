@@ -303,13 +303,31 @@ export default class AudioRecorderPlugin extends Plugin {
 					const recovered: string[] = [];
 					const failed: string[] = [];
 					for (const session of sessions) {
-						const result = await recoverSession(
-							session,
-							this.journal,
-							this.app,
-						);
-						recovered.push(...result.recoveredPaths);
-						failed.push(...result.failedTracks);
+						// Per session, not per run: recoverSession writes the
+						// journal back when it is done, and that write can
+						// fail on a read-only or full vault. One session
+						// failing must not abandon the sessions after it, nor
+						// swallow the report of what was already brought back.
+						try {
+							const result = await recoverSession(
+								session,
+								this.journal,
+								this.app,
+							);
+							recovered.push(...result.recoveredPaths);
+							failed.push(...result.failedTracks);
+						} catch (error) {
+							console.error(
+								`${PLUGIN_LOG_PREFIX} Failed to recover session:`,
+								session.sessionId,
+								error,
+							);
+							failed.push(
+								...session.tracks.map(
+									(track) => track.fileBaseName,
+								),
+							);
+						}
 					}
 					if (recovered.length > 0) {
 						new Notice(
@@ -325,13 +343,29 @@ export default class AudioRecorderPlugin extends Plugin {
 				onDiscard: async () => {
 					const failedPaths: string[] = [];
 					for (const session of sessions) {
-						failedPaths.push(
-							...(await discardSession(
-								session,
-								this.journal,
-								this.app,
-							)),
-						);
+						// Same reasoning as the recovery loop above: a
+						// journal write that fails on one session must not
+						// leave the rest of them undiscarded and unreported.
+						try {
+							failedPaths.push(
+								...(await discardSession(
+									session,
+									this.journal,
+									this.app,
+								)),
+							);
+						} catch (error) {
+							console.error(
+								`${PLUGIN_LOG_PREFIX} Failed to discard session:`,
+								session.sessionId,
+								error,
+							);
+							failedPaths.push(
+								...session.tracks.flatMap(
+									(track) => track.segmentPaths,
+								),
+							);
+						}
 					}
 					new Notice(
 						failedPaths.length > 0

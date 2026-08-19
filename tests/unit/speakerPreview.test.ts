@@ -48,37 +48,74 @@ describe('speakerPreviewRange', () => {
 			overrides: { firstStart: 8 },
 			expected: { start: 8, end: 8 + SPEAKER_PREVIEW_MIN_SECONDS },
 		},
-	])('excerpts $name into the playable bounds', ({ overrides, expected }) => {
-		expect(speakerPreviewRange(entry(overrides))).toEqual(expected);
-	});
-
-	it('clamps a negative start to the beginning of the recording', () => {
+		// Both clamps, exactly on their boundary: a turn of precisely the
+		// minimum or the maximum length is already playable and must come
+		// back unchanged, or an off-by-one in either Math call would show up
+		// as a preview a second short or a second long.
+		{
+			name: 'a turn of exactly the minimum length',
+			overrides: {
+				firstStart: 5,
+				firstEnd: 5 + SPEAKER_PREVIEW_MIN_SECONDS,
+			},
+			expected: { start: 5, end: 5 + SPEAKER_PREVIEW_MIN_SECONDS },
+		},
+		{
+			name: 'a turn one tick under the minimum',
+			overrides: {
+				firstStart: 5,
+				firstEnd: 5 + SPEAKER_PREVIEW_MIN_SECONDS - 0.001,
+			},
+			expected: { start: 5, end: 5 + SPEAKER_PREVIEW_MIN_SECONDS },
+		},
+		{
+			name: 'a turn of exactly the maximum length',
+			overrides: {
+				firstStart: 2,
+				firstEnd: 2 + SPEAKER_PREVIEW_MAX_SECONDS,
+			},
+			expected: { start: 2, end: 2 + SPEAKER_PREVIEW_MAX_SECONDS },
+		},
+		{
+			name: 'a turn one tick over the maximum',
+			overrides: {
+				firstStart: 2,
+				firstEnd: 2 + SPEAKER_PREVIEW_MAX_SECONDS + 0.001,
+			},
+			expected: { start: 2, end: 2 + SPEAKER_PREVIEW_MAX_SECONDS },
+		},
+		// firstStart 0 is a real offset, not a missing one.
+		{
+			name: 'a turn at the very start of the recording',
+			overrides: { firstStart: 0, firstEnd: 6 },
+			expected: { start: 0, end: 6 },
+		},
 		// The parser never stores a negative offset, but the clamp keeps the
 		// range playable for any entry handed in, and measures the turn from
 		// the clamped start rather than from the impossible one.
-		expect(
-			speakerPreviewRange(entry({ firstStart: -3, firstEnd: 10 })),
-		).toEqual({ start: 0, end: 10 });
-	});
+		{
+			name: 'a start before the recording began',
+			overrides: { firstStart: -3, firstEnd: 10 },
+			expected: { start: 0, end: 10 },
+		},
+		// firstEnd before firstStart is not a span; the minimum applies
+		// rather than a range the player would seek past its own end.
+		{
+			name: 'a hand-edited end that precedes its start',
+			overrides: { firstStart: 30, firstEnd: 5 },
+			expected: { start: 30, end: 30 + SPEAKER_PREVIEW_MIN_SECONDS },
+		},
+		{
+			name: 'an end equal to its start',
+			overrides: { firstStart: 30, firstEnd: 30 },
+			expected: { start: 30, end: 30 + SPEAKER_PREVIEW_MIN_SECONDS },
+		},
+	])('excerpts $name into the playable bounds', ({ overrides, expected }) => {
+		const range = speakerPreviewRange(entry(overrides));
 
-	it('never produces a backwards range from a hand-edited sidecar', () => {
-		// firstEnd before firstStart is not a span; the minimum applies rather
-		// than a range the player would seek past its own end.
-		const range = speakerPreviewRange(
-			entry({ firstStart: 30, firstEnd: 5 }),
-		);
-		expect(range).toEqual({
-			start: 30,
-			end: 30 + SPEAKER_PREVIEW_MIN_SECONDS,
-		});
+		expect(range).toEqual(expected);
+		// Whatever the input, the player is never handed a backwards range.
 		expect(range?.end).toBeGreaterThan(range?.start ?? 0);
-	});
-
-	it('is available at the very start of a recording', () => {
-		// firstStart 0 is a real offset, not a missing one.
-		expect(
-			speakerPreviewRange(entry({ firstStart: 0, firstEnd: 6 })),
-		).toEqual({ start: 0, end: 6 });
 	});
 
 	it('keeps the bounds sane relative to each other', () => {
