@@ -724,7 +724,11 @@ describe('AudioRecorderSettingTab', () => {
 			legacyTab.display();
 
 			const host = el(legacyTab.containerEl, SETTING.root);
-			expect(maybeEl(host, SETTING.docCalloutLink)).not.toBeNull();
+			const link = el(host, SETTING.docCalloutLink);
+
+			// A link with no text or no href is a row the user cannot use.
+			expect(link.textContent).not.toBe('');
+			expect(link.getAttribute('href')).toMatch(/^https?:\/\//);
 		});
 
 		it('rebuilds the container itself when the device list changes', async () => {

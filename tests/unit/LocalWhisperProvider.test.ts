@@ -238,9 +238,34 @@ describe('reading whisper.cpp JSON', () => {
 			name: 'a transcription that is not a list',
 			body: { transcription: 'one' },
 		},
+		// The remaining shapes a crashed or half-written whisper.cpp run
+		// leaves behind on disk.
+		{ name: 'nothing at all', body: null },
+		{ name: 'an empty string', body: '' },
+		{ name: 'a bare list', body: [] },
+		{ name: 'an empty transcription', body: { transcription: [] } },
 	])('answers no segments for $name', ({ body }) => {
 		expect(mapWhisperCppJson(body).segments).toEqual([]);
 	});
+
+	it.each([
+		{ name: 'no offsets at all', entry: { text: 'one' } },
+		{
+			name: 'offsets that are not numbers',
+			entry: { offsets: { from: 'a', to: 'b' }, text: 'one' },
+		},
+	])(
+		'keeps the words of an entry with $name, timed at the start',
+		({ entry }) => {
+			// Spoken words are the thing being transcribed; dropping them because
+			// whisper.cpp lost their offsets would lose content the user paid for.
+			// Timing them at zero costs a wrong timestamp link, which is
+			// recoverable by listening - the words are not.
+			expect(
+				mapWhisperCppJson({ transcription: [entry] }).segments,
+			).toEqual([{ start: 0, end: 0, text: 'one' }]);
+		},
+	);
 
 	it.each([
 		{ name: 'an entry that is not an object', entry: 'one' },
@@ -252,6 +277,7 @@ describe('reading whisper.cpp JSON', () => {
 			name: 'an entry whose text is only whitespace',
 			entry: { offsets: { from: 0, to: 1 }, text: '   ' },
 		},
+		{ name: 'an entry that is null', entry: null },
 	])('skips $name', ({ entry }) => {
 		// whisper.cpp emits blank segments for silence; each would become an
 		// empty line in the transcript and an empty timestamp link.

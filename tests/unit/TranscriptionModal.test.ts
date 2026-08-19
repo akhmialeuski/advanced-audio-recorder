@@ -14,7 +14,7 @@ import {
 } from 'src/transcription/api';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { createFile } from '../helpers/createApp';
-import { allEls, maybeEl } from '../helpers/dom';
+import { allEls, el, maybeEl } from '../helpers/dom';
 import {
 	hasSettingRow,
 	rowInput,
@@ -852,12 +852,14 @@ describe('TranscriptionModal per-run options', () => {
 			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
 		});
 
-		expect(
-			maybeEl(
-				settingRow(modal.contentEl, 'Speaker diarization'),
-				'.checkbox-container.is-disabled',
-			),
-		).not.toBeNull();
+		const row = settingRow(modal.contentEl, 'Speaker diarization');
+		const toggle = el(row, '.checkbox-container');
+
+		// Disabled and off: a toggle left switched on but unclickable reads
+		// as "diarization is happening", which is the promise Whisper cannot
+		// keep.
+		expect(toggle.classList).toContain('is-disabled');
+		expect(toggle.classList).not.toContain('is-enabled');
 	});
 });
 

@@ -166,6 +166,11 @@ export default class AudioRecorderPlugin extends Plugin {
 	/** Invalidates an older asynchronous analysis when a newer save starts. */
 	private silentChannelSuggestionGeneration = 0;
 	/**
+	 * Whether Obsidian has unloaded this plugin. Work already in flight when
+	 * that happens must not reach back into the UI it tore down.
+	 */
+	private unloaded = false;
+	/**
 	 * True when data.json exists on disk but could not be read at load
 	 * time. While set, saveSettings refuses to write so the possibly
 	 * intact file is never overwritten with defaults.
@@ -383,6 +388,11 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * Called when the plugin is unloaded.
 	 */
 	override onunload(): void {
+		// Set before anything is torn down: the recorder's stop sequence is
+		// asynchronous, so disabling the plugin mid-save leaves its status and
+		// saved-recording callbacks in flight, and both of them reach back
+		// into UI Obsidian has already detached.
+		this.unloaded = true;
 		this.silentChannelSuggestionGeneration++;
 		this.silentChannelNotice?.hide();
 		this.silentChannelNotice = null;
@@ -781,6 +791,9 @@ export default class AudioRecorderPlugin extends Plugin {
 	 * @param result - The saved audio paths and the note the links landed in
 	 */
 	private handleRecordingSaved(result: RecordingSaveResult): void {
+		if (this.unloaded) {
+			return;
+		}
 		this.playerRegistrar.primeSavedRecordingsForEnhancement(
 			result.audioPaths,
 		);
@@ -1136,6 +1149,9 @@ export default class AudioRecorderPlugin extends Plugin {
 		status: RecordingStatus,
 		saveProgress?: SaveProgress,
 	): void {
+		if (this.unloaded) {
+			return;
+		}
 		this.recordingStatus = status;
 		this.recordingSaveProgress =
 			status === RecordingStatus.Saving ? saveProgress : undefined;

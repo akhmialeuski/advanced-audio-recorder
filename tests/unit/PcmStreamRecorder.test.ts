@@ -248,13 +248,20 @@ describe('PcmStreamRecorder', () => {
 			expect(recorder.sampleRate).toBe(44100);
 		});
 
-		it('sets up port.onmessage handler', async () => {
+		it('routes a worklet message to the chunk callback', async () => {
+			// A handler that is merely attached proves nothing: what matters
+			// is that a buffer arriving on the port reaches the consumer that
+			// writes it to disk.
 			const stream = createMockStream();
 			const recorder = new PcmStreamRecorder(stream, 44100, onChunkMock);
-
 			await recorder.start();
+			const samples = new Int16Array([1, -1, 2]);
 
-			expect(mainPortOnMessage).not.toBeNull();
+			defined(mainPortOnMessage)({
+				data: samples.buffer,
+			} as MessageEvent);
+
+			expect(onChunkMock).toHaveBeenCalledWith(samples.buffer);
 		});
 
 		it('releases resources when worklet registration fails', async () => {

@@ -10,27 +10,83 @@ import {
 } from 'src/recording/InputLevelMonitor';
 
 describe('formatByteSize', () => {
-	it('formats bytes, KB, MB, and GB', () => {
-		expect(formatByteSize(512)).toBe('512 B');
-		expect(formatByteSize(1024)).toBe('1.0 KB');
-		expect(formatByteSize(1.5 * 1024 * 1024)).toBe('1.5 MB');
-		expect(formatByteSize(2 * 1024 * 1024 * 1024)).toBe('2.0 GB');
+	const KB = 1024;
+	const MB = KB * 1024;
+	const GB = MB * 1024;
+
+	it.each([
+		// One step either side of every unit boundary: the exponent comes
+		// from a log, and an off-by-one there relabels the whole reading.
+		{ bytes: 1, expected: '1 B' },
+		{ bytes: 512, expected: '512 B' },
+		{ bytes: KB - 1, expected: '1023 B' },
+		{ bytes: KB, expected: '1.0 KB' },
+		{ bytes: KB + 1, expected: '1.0 KB' },
+		{ bytes: MB - 1, expected: '1024.0 KB' },
+		{ bytes: MB, expected: '1.0 MB' },
+		{ bytes: 1.5 * MB, expected: '1.5 MB' },
+		{ bytes: GB - 1, expected: '1024.0 MB' },
+		{ bytes: GB, expected: '1.0 GB' },
+		{ bytes: 2 * GB, expected: '2.0 GB' },
+		// Past the largest unit the table has a name for: the exponent is
+		// clamped, so the number grows rather than the label running out.
+		{ bytes: Math.pow(1024, 9), expected: '1024.0 YB' },
+	])('formats $bytes as "$expected"', ({ bytes, expected }) => {
+		expect(formatByteSize(bytes)).toBe(expected);
 	});
 
-	it('renders non-positive or invalid input as 0 B', () => {
-		expect(formatByteSize(0)).toBe('0 B');
-		expect(formatByteSize(-5)).toBe('0 B');
-		expect(formatByteSize(Number.NaN)).toBe('0 B');
+	it.each([
+		{ name: 'nothing recorded yet', bytes: 0 },
+		{ name: 'a negative count', bytes: -5 },
+		{ name: 'a count that is not a number', bytes: Number.NaN },
+		{ name: 'an infinite count', bytes: Number.POSITIVE_INFINITY },
+	])('renders $name as 0 B', ({ bytes }) => {
+		// The status bar shows this while a recording runs, so any of these
+		// reaching it would read as a broken counter rather than a fresh one.
+		expect(formatByteSize(bytes)).toBe('0 B');
 	});
 
-	it('honors presentation options (decimals, trimZeros, bytesLabel)', () => {
-		expect(formatByteSize(1.25 * 1024 * 1024, { decimals: 2 })).toBe(
-			'1.25 MB',
-		);
-		expect(
-			formatByteSize(1.5 * 1024 * 1024, { decimals: 2, trimZeros: true }),
-		).toBe('1.5 MB');
-		expect(formatByteSize(500, { bytesLabel: 'Bytes' })).toBe('500 Bytes');
+	it.each([
+		{
+			name: 'more decimals than the default',
+			bytes: 1.25 * MB,
+			options: { decimals: 2 },
+			expected: '1.25 MB',
+		},
+		{
+			name: 'trailing zeros trimmed away',
+			bytes: 1.5 * MB,
+			options: { decimals: 2, trimZeros: true },
+			expected: '1.5 MB',
+		},
+		{
+			name: 'a whole number trimmed to no decimals at all',
+			bytes: 2 * MB,
+			options: { decimals: 2, trimZeros: true },
+			expected: '2 MB',
+		},
+		{
+			name: 'no decimals asked for',
+			bytes: 1.5 * MB,
+			options: { decimals: 0 },
+			expected: '2 MB',
+		},
+		{
+			name: 'a spelt-out bytes label',
+			bytes: 500,
+			options: { bytesLabel: 'Bytes' },
+			expected: '500 Bytes',
+		},
+		{
+			// The label applies to bytes only; above that the unit names
+			// itself, or a size would read "1.0 KBytes".
+			name: 'a bytes label above the bytes unit',
+			bytes: KB,
+			options: { bytesLabel: 'Bytes' },
+			expected: '1.0 KB',
+		},
+	])('honours $name', ({ bytes, options, expected }) => {
+		expect(formatByteSize(bytes, options)).toBe(expected);
 	});
 });
 

@@ -222,7 +222,38 @@ describe('saving progress', () => {
 		});
 
 		const container = el(statusBarItem, STATUS.saveProgress);
-		expect(maybeEl(container, STATUS.saveProgressBar)).not.toBeNull();
+		const bar = el(container, STATUS.saveProgressBar);
+
+		// The bar is the only part that moves, and it moves through the
+		// custom property the stylesheet reads: a bar that is there but never
+		// fills says nothing is happening.
+		expect(bar.style.getPropertyValue('--save-progress')).toBe('60%');
+	});
+
+	it.each([
+		// The percentage comes from bytes written over bytes expected, and
+		// both come off a recorder mid-save: a division that has not started
+		// yet is NaN, and a final flush that writes more than it announced
+		// overshoots. Neither may reach the stylesheet.
+		{ name: 'has not started counting', percent: Number.NaN, shown: '0%' },
+		{ name: 'overshot its own estimate', percent: 140, shown: '100%' },
+		{ name: 'went backwards', percent: -20, shown: '0%' },
+		{ name: 'is exactly done', percent: 100, shown: '100%' },
+		{ name: 'is exactly at the start', percent: 0, shown: '0%' },
+	])('fills the bar to $shown when the save $name', ({ percent, shown }) => {
+		const statusBarItem = createStatusBar();
+
+		updateStatusBar(statusBarItem, RecordingStatus.Saving, {
+			percent,
+			description: 'Writing file...',
+		});
+
+		const bar = el(
+			el(statusBarItem, STATUS.saveProgress),
+			STATUS.saveProgressBar,
+		);
+
+		expect(bar.style.getPropertyValue('--save-progress')).toBe(shown);
 	});
 
 	it.each([

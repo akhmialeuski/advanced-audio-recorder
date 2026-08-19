@@ -510,10 +510,26 @@ function renderProgressState(
 	const progressBar = progressContainer.createDiv({
 		cls: 'aar-save-progress-bar',
 	});
-	const percent = progress?.percent ?? 0;
 	progressBar.setCssProps({
-		'--save-progress': `${String(percent)}%`,
+		'--save-progress': `${String(savePercent(progress?.percent))}%`,
 	});
+}
+
+/**
+ * Clamps a save percentage into something the bar can paint.
+ *
+ * The number is bytes written over bytes expected, both read off a save in
+ * flight: before the first chunk lands that division is NaN, and a final flush
+ * that writes more than it announced overshoots 100. The stylesheet takes the
+ * value straight into a width, so neither may reach it.
+ * @param percent - Reported percentage, or undefined before any was reported
+ * @returns A whole percentage in 0..100
+ */
+function savePercent(percent: number | undefined): number {
+	if (percent === undefined || !Number.isFinite(percent)) {
+		return 0;
+	}
+	return Math.round(Math.min(100, Math.max(0, percent)));
 }
 
 /**

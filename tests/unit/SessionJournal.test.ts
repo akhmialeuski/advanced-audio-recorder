@@ -8,7 +8,7 @@ import { SessionJournal, JOURNAL_VERSION } from 'src/recording/SessionJournal';
 import { at } from '../helpers/assertions';
 import type { JournalFile, JournalSession } from 'src/recording/SessionJournal';
 import type { App } from 'obsidian';
-import { createMockApp } from '../helpers/createApp';
+import { createMockApp, fakeVaultFiles } from '../helpers/createApp';
 
 const JOURNAL_PATH = '.obsidian/plugins/aar/recording-journal.json';
 
@@ -47,31 +47,10 @@ describe('SessionJournal', () => {
 	beforeEach(() => {
 		consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
 
-		files = new Map();
-		writeMock = jest.fn((path: string, data: string) => {
-			files.set(path, data);
-			return Promise.resolve();
-		});
-		mockApp = createMockApp({
-			vault: {
-				adapter: {
-					exists: jest.fn((path: string) =>
-						Promise.resolve(files.has(path)),
-					),
-					read: jest.fn((path: string) => {
-						const content = files.get(path);
-						return content !== undefined
-							? Promise.resolve(content)
-							: Promise.reject(new Error('missing'));
-					}),
-					write: writeMock,
-					remove: jest.fn((path: string) => {
-						files.delete(path);
-						return Promise.resolve();
-					}),
-				},
-			},
-		}).app;
+		const vault = fakeVaultFiles();
+		files = vault.files;
+		writeMock = vault.adapter.write;
+		mockApp = createMockApp({ vault: { adapter: vault.adapter } }).app;
 		journal = new SessionJournal(JOURNAL_PATH, mockApp);
 	});
 

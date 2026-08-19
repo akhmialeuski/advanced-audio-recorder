@@ -22,7 +22,7 @@ import type { TranscriptionProvider } from 'src/transcription/providers/Transcri
 import type { TranscriptSegment } from 'src/transcription/TranscriptTypes';
 import { SpeakerRenameModal } from 'src/ui/SpeakerRenameModal';
 import { internalsOf, partial } from '../helpers/doubles';
-import { createMockApp } from '../helpers/createApp';
+import { createMockApp, fakeVaultFiles } from '../helpers/createApp';
 import { fakeProvider } from '../helpers/providerFixtures';
 
 /** Internal surface the test drives, mirroring the dialog's unit suite. */
@@ -55,22 +55,7 @@ const segments: TranscriptSegment[] = [
 
 /** An App backed by an in-memory adapter, shared by the store and the dialog. */
 function makeApp(): { app: App; files: Map<string, string> } {
-	const files = new Map<string, string>();
-	const adapter = {
-		exists: (path: string): Promise<boolean> =>
-			Promise.resolve(files.has(path)),
-		read: (path: string): Promise<string> =>
-			Promise.resolve(files.get(path) ?? ''),
-		write: (path: string, data: string): Promise<void> => {
-			files.set(path, data);
-			return Promise.resolve();
-		},
-		remove: (path: string): Promise<void> => {
-			files.delete(path);
-			return Promise.resolve();
-		},
-		rename: (): Promise<void> => Promise.resolve(),
-	};
+	const { files, adapter } = fakeVaultFiles();
 	const app = createMockApp({
 		vault: {
 			adapter,

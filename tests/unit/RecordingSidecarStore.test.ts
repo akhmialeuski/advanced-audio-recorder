@@ -13,36 +13,14 @@ import { at } from '../helpers/assertions';
 import type { PlayerMarker } from 'src/markers/markerModel';
 import { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { NoteOutput } from 'src/sidecar/recordingSidecarModel';
-import { createMockApp } from '../helpers/createApp';
+import { createMockApp, fakeVaultFiles } from '../helpers/createApp';
 
 /**
  * Builds a fake App whose adapter is backed by an in-memory file map,
  * and exposes that map for assertions.
  */
 function makeApp(): { app: App; files: Map<string, string> } {
-	const files = new Map<string, string>();
-	const adapter = {
-		exists: (path: string): Promise<boolean> =>
-			Promise.resolve(files.has(path)),
-		read: (path: string): Promise<string> =>
-			Promise.resolve(files.get(path) ?? ''),
-		write: (path: string, data: string): Promise<void> => {
-			files.set(path, data);
-			return Promise.resolve();
-		},
-		remove: (path: string): Promise<void> => {
-			files.delete(path);
-			return Promise.resolve();
-		},
-		rename: (from: string, to: string): Promise<void> => {
-			const value = files.get(from);
-			if (value !== undefined) {
-				files.set(to, value);
-				files.delete(from);
-			}
-			return Promise.resolve();
-		},
-	};
+	const { files, adapter } = fakeVaultFiles();
 	const app = createMockApp({
 		vault: {
 			adapter,

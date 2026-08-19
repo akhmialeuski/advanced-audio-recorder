@@ -46,6 +46,16 @@ const RULES = [
 		limit: 0,
 		fix: 'name the behaviour in the third person, as jest/valid-title requires',
 	},
+	{
+		// Obsidian extends HTMLElement at runtime, and a suite that reproduces
+		// a corner of that surface gets a subtly different one - a `cls` that
+		// takes no array, a `createEl` that appends before it fills. The
+		// shared extension is the only copy that keeps up with the real thing.
+		name: 'hand-rolled Obsidian DOM extensions',
+		pattern: /\b(?:createEl|createDiv|setText)\b\s*=\s*function|\['(?:createEl|createDiv)'\]\s*=/g,
+		limit: 0,
+		fix: 'extend elements through addObsidianDomExtensions in tests/mocks/domExtensions.ts',
+	},
 ];
 
 /**

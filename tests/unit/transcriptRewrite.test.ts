@@ -113,6 +113,13 @@ describe('sidecar rewriters', () => {
 		{ name: 'is not an object', raw: '"a string"' },
 		{ name: 'has no segments list', raw: '{"foo":1}' },
 		{ name: 'has segments that are not a list', raw: '{"segments":"one"}' },
+		// The remaining shapes a truncated write or a sync conflict leaves:
+		// nothing at all, a bare JSON null, and a list where an object was.
+		{ name: 'is empty', raw: '' },
+		{ name: 'is only whitespace', raw: '  \n ' },
+		{ name: 'is a bare null', raw: 'null' },
+		{ name: 'is a bare list', raw: '[]' },
+		{ name: 'is a truncated object', raw: '{"segments":[' },
 	])('returns null for a sidecar that $name', ({ raw }) => {
 		// A hand-edited or truncated sidecar must leave the rewrite as a
 		// no-op rather than replacing the file with something invalid.
@@ -193,6 +200,40 @@ describe('sidecar rewriters', () => {
 
 		expect(renameSpeakersInSubtitles(content, [rename])).toBe(content);
 	});
+
+	it.each([
+		{
+			name: 'subtitles',
+			rewrite: (
+				text: string,
+				renames: { from: string; to: string }[],
+			): string => renameSpeakersInSubtitles(text, renames),
+			content: 'Speaker 1: one\nSpeaker 10: ten\n',
+			expected: 'Alex: one\nJo: ten\n',
+		},
+		{
+			name: 'plain text',
+			rewrite: (
+				text: string,
+				renames: { from: string; to: string }[],
+			): string => renameSpeakersInPlainText(text, renames),
+			content: '[00:00] Speaker 1: one\n[00:05] Speaker 10: ten\n',
+			expected: '[00:00] Alex: one\n[00:05] Jo: ten\n',
+		},
+	])(
+		'renames the longer label first in $name, where one is a prefix of another',
+		({ rewrite, content, expected }) => {
+			// Ten speakers is enough to produce "Speaker 1" and "Speaker 10".
+			// A regex alternation in declaration order would match the short
+			// one inside the long one and leave "Alex0: ten" behind.
+			expect(
+				rewrite(content, [
+					{ from: 'Speaker 1', to: 'Alex' },
+					{ from: 'Speaker 10', to: 'Jo' },
+				]),
+			).toBe(expected);
+		},
+	);
 
 	it('keeps a sidecar that carries no speaker list without one', () => {
 		// The list is derived from the segments, so writing one into a

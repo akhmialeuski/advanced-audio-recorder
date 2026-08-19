@@ -193,3 +193,114 @@ export function defaultDeviceList(): MediaDeviceInfo[] {
 		mediaDevice('device1', 'Microphone 1'),
 	];
 }
+
+/** A real audio element whose playback state a test drives. */
+export interface ControlledAudio {
+	/** The element itself, ready to hand to the code under test. */
+	audio: HTMLAudioElement;
+	play: jest.SpyInstance<Promise<void>, []>;
+	pause: jest.SpyInstance<void, []>;
+	load: jest.SpyInstance<void, []>;
+	/** How many times `new Audio()` was called, for a SUT that builds its own. */
+	constructions: () => number;
+	/** Moves the playhead and fires the timeupdate that follows it. */
+	advanceTo: (seconds: number) => void;
+	/** Reports a new length and fires durationchange, as a stream does. */
+	setDuration: (seconds: number) => void;
+	/** Sets readyState; 1 is "metadata is in", 0 is "nothing yet". */
+	setReadyState: (value: number) => void;
+	/** Marks metadata as arrived and fires loadedmetadata. */
+	loadMetadata: () => void;
+	/** Makes play() reject, the way a browser blocking autoplay does. */
+	blockAutoplay: () => void;
+}
+
+/** What a suite varies about the element it plays through. */
+export interface ControlledAudioOptions {
+	/** Length the element reports. */
+	duration?: number;
+	/** Initial readyState; 0 models an element whose metadata has not landed. */
+	readyState?: number;
+	/** Whether `new Audio()` should hand back this element. */
+	asConstructor?: boolean;
+}
+
+/**
+ * Builds an audio element that actually behaves like one.
+ *
+ * jsdom implements no media: `play()` does nothing, `paused` never changes,
+ * `duration` is NaN. Five suites each grew the same answer to that - property
+ * stubs over the element plus spies that flip them and fire the matching event
+ * - which is one double, not five.
+ *
+ * Nothing needs restoring afterwards: the element is built per call and thrown
+ * away, and the one global touched is the Audio constructor, which the
+ * projects' `restoreMocks` puts back.
+ * @param options - Length, readiness, and whether it stands in for `new Audio`
+ * @returns The element and the controls a test drives it with
+ */
+export function installControlledAudio(
+	options: ControlledAudioOptions = {},
+): ControlledAudio {
+	const { duration = 120, readyState = 1, asConstructor = true } = options;
+	const audio = document.createElement('audio');
+	let paused = true;
+	let currentTime = 0;
+	let ready = readyState;
+	let length = duration;
+	let autoplayBlocked = false;
+	Object.defineProperties(audio, {
+		paused: { configurable: true, get: () => paused },
+		currentTime: {
+			configurable: true,
+			get: () => currentTime,
+			set: (value: number) => {
+				currentTime = value;
+			},
+		},
+		duration: { configurable: true, get: () => length },
+		readyState: { configurable: true, get: () => ready },
+	});
+	const play = jest.spyOn(audio, 'play').mockImplementation(() => {
+		if (autoplayBlocked) {
+			return Promise.reject(new Error('autoplay blocked'));
+		}
+		paused = false;
+		audio.dispatchEvent(new Event('play'));
+		return Promise.resolve();
+	});
+	const pause = jest.spyOn(audio, 'pause').mockImplementation(() => {
+		paused = true;
+		audio.dispatchEvent(new Event('pause'));
+	});
+	const load = jest.spyOn(audio, 'load').mockImplementation(() => undefined);
+	const factory = asConstructor
+		? jest.spyOn(globalThis, 'Audio').mockImplementation(() => audio)
+		: null;
+
+	return {
+		audio,
+		play,
+		pause,
+		load,
+		constructions: () => factory?.mock.calls.length ?? 0,
+		advanceTo: (seconds) => {
+			currentTime = seconds;
+			audio.dispatchEvent(new Event('timeupdate'));
+		},
+		setDuration: (seconds) => {
+			length = seconds;
+			audio.dispatchEvent(new Event('durationchange'));
+		},
+		setReadyState: (value) => {
+			ready = value;
+		},
+		loadMetadata: () => {
+			ready = 1;
+			audio.dispatchEvent(new Event('loadedmetadata'));
+		},
+		blockAutoplay: () => {
+			autoplayBlocked = true;
+		},
+	};
+}

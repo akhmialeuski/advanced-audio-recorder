@@ -40,6 +40,7 @@ import {
 	type EngineId,
 } from 'src/providers/providers';
 import type { TranscriptionProviderId } from 'src/settings/settingsSchema';
+import { defined } from '../helpers/assertions';
 
 /** The engines a transcription run reaches over an account. */
 const CLOUD_ENGINES: EngineId[] = [
@@ -223,7 +224,19 @@ describe('every seeded model has a built-in rate', () => {
 	];
 	it.each(cases)('prices every seeded %s model', (id, models) => {
 		for (const model of models) {
-			expect(transcriptionEngine(id).pricing(model)).not.toBeNull();
+			// Not merely "there is a price": the estimate multiplies these
+			// numbers, so a rate of zero or a NaN reads to the user as a free
+			// run they are about to be billed for.
+			const pricing = defined(transcriptionEngine(id).pricing(model));
+			const rates = Object.values(pricing).filter(
+				(value): value is number => typeof value === 'number',
+			);
+
+			expect(rates.length).toBeGreaterThan(0);
+			for (const rate of rates) {
+				expect(rate).toBeGreaterThan(0);
+				expect(Number.isFinite(rate)).toBe(true);
+			}
 		}
 	});
 });

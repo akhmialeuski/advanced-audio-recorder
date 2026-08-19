@@ -35,7 +35,7 @@ import type { TranscriptionProvider } from 'src/transcription/providers/Transcri
 import type { TranscriptSegment } from 'src/transcription/TranscriptTypes';
 import { SpeakerRenameModal } from 'src/ui/SpeakerRenameModal';
 import { internalsOf, partial } from '../helpers/doubles';
-import { createMockApp } from '../helpers/createApp';
+import { createMockApp, fakeVaultFiles } from '../helpers/createApp';
 import { fakeProvider } from '../helpers/providerFixtures';
 
 /** Internal surface the test drives, mirroring the dialog's unit suite. */
@@ -116,25 +116,10 @@ function linkCache(content: string): {
  * editor appends at the cursor, which is what the real insertion path needs.
  */
 function makeApp(): { app: App; files: Map<string, string> } {
-	const files = new Map<string, string>([
+	const { files, adapter } = fakeVaultFiles([
 		[AUDIO_PATH, ''],
 		[NOTE_PATH, '# Standup\n\n![[standup.webm]]\n'],
 	]);
-	const adapter = {
-		exists: (path: string): Promise<boolean> =>
-			Promise.resolve(files.has(path)),
-		read: (path: string): Promise<string> =>
-			Promise.resolve(files.get(path) ?? ''),
-		write: (path: string, data: string): Promise<void> => {
-			files.set(path, data);
-			return Promise.resolve();
-		},
-		remove: (path: string): Promise<void> => {
-			files.delete(path);
-			return Promise.resolve();
-		},
-		rename: (): Promise<void> => Promise.resolve(),
-	};
 	// Built off the prototype rather than the constructor, so the insertion
 	// path's `instanceof MarkdownView` check sees a real view without the
 	// workspace leaf the real constructor demands.

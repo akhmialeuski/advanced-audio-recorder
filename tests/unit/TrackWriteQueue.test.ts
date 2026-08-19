@@ -5,7 +5,6 @@
  */
 
 import { TrackWriteQueue } from 'src/recording/TrackWriteQueue';
-import type { RecordingSessionConfig, RecordingTarget } from 'src/types';
 import {
 	DEFAULT_SETTINGS,
 	type AudioRecorderSettings,
@@ -13,38 +12,7 @@ import {
 import type { App } from 'obsidian';
 import { Notice } from 'obsidian';
 import { createMockApp } from '../helpers/createApp';
-
-const createTarget = (): RecordingTarget => ({
-	fileBaseName: 'recording-Track1-stamp',
-	sourceName: 'Track1',
-	bufferedChunks: [],
-	bufferedBytes: 0,
-	segmentIndex: 0,
-	segmentPaths: [],
-	pendingWrite: Promise.resolve(),
-	pcmBuffers: [],
-	pcmBufferedBytes: 0,
-	pcmChannels: 1,
-	pcmSampleRate: 44100,
-	partIndex: 0,
-	partPaths: [],
-	partPcmBytes: 0,
-});
-
-const createSession = (
-	overrides: Partial<RecordingSessionConfig> = {},
-): RecordingSessionConfig => ({
-	chunkRotationBytes: null,
-	isWavPcm: false,
-	recorderFormat: 'webm',
-	outputFormat: 'webm',
-	outputMode: 'multiple',
-	bitrate: 128000,
-	splitEnabled: false,
-	partMinutes: 15,
-	partSuffix: 'part',
-	...overrides,
-});
+import { createSession, createTarget } from '../helpers/recordingFixtures';
 
 describe('TrackWriteQueue', () => {
 	let queue: TrackWriteQueue;

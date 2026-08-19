@@ -20,41 +20,7 @@ import type { TrackWriteQueue } from 'src/recording/TrackWriteQueue';
 import type { RecordingFinalizer } from 'src/recording/RecordingFinalizer';
 import { noticeMessages } from '../mocks/obsidian';
 import { createMockApp } from '../helpers/createApp';
-
-const createTarget = (
-	overrides: Partial<RecordingTarget> = {},
-): RecordingTarget => ({
-	fileBaseName: 'recording-Track1-stamp',
-	sourceName: 'Track1',
-	bufferedChunks: [],
-	bufferedBytes: 0,
-	segmentIndex: 0,
-	segmentPaths: [],
-	pendingWrite: Promise.resolve(),
-	pcmBuffers: [],
-	pcmBufferedBytes: 0,
-	pcmChannels: 1,
-	pcmSampleRate: 44100,
-	partIndex: 0,
-	partPaths: [],
-	partPcmBytes: 0,
-	...overrides,
-});
-
-const createSession = (
-	overrides: Partial<RecordingSessionConfig> = {},
-): RecordingSessionConfig => ({
-	chunkRotationBytes: null,
-	isWavPcm: false,
-	recorderFormat: 'webm',
-	outputFormat: 'webm',
-	outputMode: 'multiple',
-	bitrate: 128000,
-	splitEnabled: true,
-	partMinutes: 15,
-	partSuffix: 'part',
-	...overrides,
-});
+import { createSession, createTarget } from '../helpers/recordingFixtures';
 
 describe('PartRotationController', () => {
 	let controller: PartRotationController;
@@ -121,7 +87,11 @@ describe('PartRotationController', () => {
 			},
 		}).app;
 		mockSettings = { ...DEFAULT_SETTINGS };
-		buildController(createSession());
+		buildController(
+			createSession({
+				splitEnabled: true,
+			}),
+		);
 	});
 
 	afterEach(() => {
@@ -169,7 +139,11 @@ describe('PartRotationController', () => {
 		});
 
 		it('does not rotate when auto-split is disabled', () => {
-			buildController(createSession({ splitEnabled: false }));
+			buildController(
+				createSession({
+					splitEnabled: false,
+				}),
+			);
 			advanceMinutes(60);
 			controller.maybeRotate();
 
@@ -177,7 +151,12 @@ describe('PartRotationController', () => {
 		});
 
 		it('does not rotate for PCM/WAV sessions', () => {
-			buildController(createSession({ isWavPcm: true }));
+			buildController(
+				createSession({
+					splitEnabled: true,
+					isWavPcm: true,
+				}),
+			);
 			advanceMinutes(60);
 			controller.maybeRotate();
 
@@ -227,7 +206,12 @@ describe('PartRotationController', () => {
 			);
 			expect(controller.sizeRotationBytes()).toBe(1024);
 
-			buildController(createSession({ chunkRotationBytes: null }));
+			buildController(
+				createSession({
+					splitEnabled: true,
+					chunkRotationBytes: null,
+				}),
+			);
 			expect(controller.sizeRotationBytes()).toBeNull();
 		});
 
@@ -297,7 +281,11 @@ describe('PartRotationController', () => {
 
 		it('res-arm on beginSession', () => {
 			controller.requestStop();
-			controller.beginSession(createSession());
+			controller.beginSession(
+				createSession({
+					splitEnabled: true,
+				}),
+			);
 
 			expect(controller.requestStop()).toBe(true);
 		});
@@ -486,7 +474,11 @@ describe('PartRotationController', () => {
 
 	describe('getCurrentPartPosition', () => {
 		it('reports the whole-session offset when auto-split is off', () => {
-			buildController(createSession({ splitEnabled: false }));
+			buildController(
+				createSession({
+					splitEnabled: false,
+				}),
+			);
 
 			jest.advanceTimersByTime(5000);
 
@@ -496,7 +488,11 @@ describe('PartRotationController', () => {
 		});
 
 		it('is zero immediately after the session starts', () => {
-			buildController(createSession({ splitEnabled: false }));
+			buildController(
+				createSession({
+					splitEnabled: false,
+				}),
+			);
 
 			expect(
 				controller.getCurrentPartPosition(RecordingStatus.Recording),
@@ -504,7 +500,11 @@ describe('PartRotationController', () => {
 		});
 
 		it('excludes paused time from the offset', () => {
-			buildController(createSession({ splitEnabled: false }));
+			buildController(
+				createSession({
+					splitEnabled: false,
+				}),
+			);
 
 			jest.advanceTimersByTime(3000);
 			controller.markPaused();
@@ -516,7 +516,11 @@ describe('PartRotationController', () => {
 		});
 
 		it('resumes counting active time after a pause', () => {
-			buildController(createSession({ splitEnabled: false }));
+			buildController(
+				createSession({
+					splitEnabled: false,
+				}),
+			);
 
 			jest.advanceTimersByTime(3000);
 			controller.markPaused();
@@ -547,7 +551,10 @@ describe('PartRotationController', () => {
 
 		it('advances the compressed part ordinal after a rotation', async () => {
 			buildController(
-				createSession({ splitEnabled: true, partMinutes: 15 }),
+				createSession({
+					splitEnabled: true,
+					partMinutes: 15,
+				}),
 			);
 
 			jest.advanceTimersByTime(15 * MS_PER_MINUTE);

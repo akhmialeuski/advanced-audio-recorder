@@ -225,16 +225,21 @@ describe('waiting for Obsidian to populate the embed', () => {
 
 describe('the playback speed menu', () => {
 	/** Opens the speed menu over a player whose rate is set. */
-	function openSpeedMenu(rate: number): { menu: MockMenu; audio: FakeAudio } {
+	function openSpeedMenu(rate: number): {
+		menu: MockMenu;
+		audio: FakeAudio;
+		event: MouseEvent;
+	} {
 		const audio = makeFakeAudio();
 		const player = makePlayer(makeContainer(), makeRegistry(audio));
 		// After the render, which seeds the rate from settings.
 		player.onload();
 		audio.playbackRate = rate;
+		const event = new MouseEvent('click');
 
-		internals(player).showSpeedMenu(new MouseEvent('click'));
+		internals(player).showSpeedMenu(event);
 
-		return { menu: at(menuInstances, 0), audio };
+		return { menu: at(menuInstances, 0), audio, event };
 	}
 
 	it('offers every preset', () => {
@@ -271,9 +276,12 @@ describe('the playback speed menu', () => {
 	});
 
 	it('opens where the click was', () => {
-		const { menu } = openSpeedMenu(1);
+		// Obsidian positions the menu from the event it is shown at, so the
+		// event has to be the press that opened it - a fresh MouseEvent would
+		// put the menu at the top-left corner of the window.
+		const { menu, event } = openSpeedMenu(1);
 
-		expect(menu.shownAtEvent).toBeInstanceOf(MouseEvent);
+		expect(menu.shownAtEvent).toBe(event);
 	});
 });
 

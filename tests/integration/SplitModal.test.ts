@@ -12,41 +12,6 @@ import { createMockAudioBuffer } from '../helpers/createMockAudioBuffer';
 /**
  * Extends an HTMLElement with Obsidian's custom DOM methods.
  */
-function addObsidianDomMethods(el: HTMLElement): HTMLElement {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- augmenting HTMLElement with Obsidian DOM methods
-	(el as any).empty = function () {
-		while (this.firstChild) {
-			this.removeChild(this.firstChild);
-		}
-	};
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- augmenting HTMLElement with Obsidian DOM methods
-	(el as any).createEl = function (
-		tag: string,
-		opts?: { text?: string; cls?: string; attr?: Record<string, string> },
-	) {
-		const child = document.createElement(tag);
-		if (opts?.text) child.textContent = opts.text;
-		if (opts?.cls) child.className = opts.cls;
-		if (opts?.attr) {
-			for (const [k, v] of Object.entries(opts.attr)) {
-				child.setAttribute(k, v);
-			}
-		}
-		addObsidianDomMethods(child);
-		this.appendChild(child);
-		return child;
-	};
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- augmenting HTMLElement with Obsidian DOM methods
-	(el as any).createDiv = function (opts?: { cls?: string }) {
-		return this.createEl('div', opts);
-	};
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- augmenting HTMLElement with Obsidian DOM methods
-	(el as any).setText = function (text: string) {
-		this.textContent = text;
-	};
-	return el;
-}
-
 // The full obsidian mock with only Setting swapped for the recording double,
 // which is what makes this dialog's dropdowns, toggles, and buttons reachable.
 jest.mock('obsidian', () =>
@@ -104,6 +69,7 @@ import { el } from '../helpers/dom';
 import { MODAL } from '../helpers/selectors';
 import { internalsOf } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
+import { addObsidianDomExtensions } from '../mocks/domExtensions';
 
 /** WAV header size produced by createWavHeader. */
 const WAV_HEADER_SIZE = 44;
@@ -237,7 +203,7 @@ describe('SplitModal', () => {
 		mockFile = new TFile();
 		configureFile('recording.wav', 'wav');
 
-		progressEl = addObsidianDomMethods(document.createElement('div'));
+		progressEl = addObsidianDomExtensions(document.createElement('div'));
 	});
 
 	it('instantiates with defaults from settings', () => {

@@ -20,7 +20,7 @@ import {
 	PLAYER_WAVEFORM_REDRAW_RETRIES,
 	WAVEFORM_CACHE_BUCKETS,
 } from 'src/constants';
-import { at } from '../helpers/assertions';
+import { at, defined } from '../helpers/assertions';
 import { createFile, createMockApp } from '../helpers/createApp';
 import { createMockAudioBuffer } from '../helpers/createMockAudioBuffer';
 import { tick } from '../helpers/async';
@@ -395,7 +395,11 @@ describe('the decode pipeline', () => {
 			sut.file.stat.mtime,
 			sut.file.stat.size,
 		);
-		expect(sut.cache.get(key)).toBeDefined();
+		// The cached entry is what a later render draws from, so an empty or
+		// wrong-length one is a cache hit that paints nothing.
+		expect(defined(sut.cache.get(key))).toHaveLength(
+			WAVEFORM_CACHE_BUCKETS,
+		);
 	});
 
 	it('reuses cached peaks instead of reading the file again', async () => {

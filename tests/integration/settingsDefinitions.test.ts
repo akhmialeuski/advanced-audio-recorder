@@ -1724,14 +1724,28 @@ describe('settings definitions', () => {
 			).toBeUndefined();
 		});
 
-		it('refuses a value below the floor or above the ceiling', () => {
+		it.each([
+			// Just outside each bound, and each bound itself: the message the
+			// row shows has to name the limit that was crossed, or the user
+			// is told "wrong" without being told what is right.
+			{ value: 0, expected: 'Enter 1 or more.' },
+			{ value: -1, expected: 'Enter 1 or more.' },
+			{ value: 61, expected: 'Enter 60 or less.' },
+			{ value: 600, expected: 'Enter 60 or less.' },
+		])('refuses $value with "$expected"', ({ value, expected }) => {
 			expect(
-				numberControlRejection({ min: 1, max: 60, step: 1 }, 0),
-			).toBeDefined();
-			expect(
-				numberControlRejection({ min: 1, max: 60, step: 1 }, 61),
-			).toBeDefined();
+				numberControlRejection({ min: 1, max: 60, step: 1 }, value),
+			).toBe(expected);
 		});
+
+		it.each([1, 60])(
+			'accepts %i, which is on the bound itself',
+			(value) => {
+				expect(
+					numberControlRejection({ min: 1, max: 60, step: 1 }, value),
+				).toBeUndefined();
+			},
+		);
 
 		it('refuses a value between two grid points', () => {
 			expect(
@@ -1762,13 +1776,17 @@ describe('settings definitions', () => {
 			).toBeUndefined();
 		});
 
-		it('refuses what is not a number at all', () => {
+		it.each([
+			{ name: 'not a number', value: Number.NaN },
+			{ name: 'infinite', value: Number.POSITIVE_INFINITY },
+			{ name: 'negatively infinite', value: Number.NEGATIVE_INFINITY },
+		])('refuses a value that is $name', ({ value }) => {
+			// An empty or half-typed field parses to one of these, and every
+			// one of them has to read as "enter a number" rather than as a
+			// bound the user never set.
 			expect(
-				numberControlRejection(
-					{ min: 1, max: 60, step: 1 },
-					Number.NaN,
-				),
-			).toBeDefined();
+				numberControlRejection({ min: 1, max: 60, step: 1 }, value),
+			).toBe('Enter a number.');
 		});
 	});
 });

@@ -22,6 +22,7 @@ import {
 } from 'src/audio/RecordingFileManager';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
+import { at } from '../helpers/assertions';
 
 // Polyfill Blob.arrayBuffer for jsdom if missing
 
@@ -471,9 +472,15 @@ describe('RecordingFileManager', () => {
 
 			await saveAudioFile(blob, 'test.wav', mockApp, mockSettings);
 
-			const createBinaryCall = (mockApp.vault.createBinary as jest.Mock)
-				.mock.calls[0];
-			expect(createBinaryCall[1]).toBeInstanceOf(ArrayBuffer);
+			// The type alone would pass on an empty buffer, which saves a
+			// zero-byte recording and loses the take.
+			const [, written] = at(
+				jest.mocked(mockApp.vault.createBinary).mock.calls,
+				0,
+			);
+
+			expect(written).toBeInstanceOf(ArrayBuffer);
+			expect(new TextDecoder().decode(written)).toBe('hello world');
 		});
 	});
 

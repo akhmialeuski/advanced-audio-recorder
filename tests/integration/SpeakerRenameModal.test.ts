@@ -27,6 +27,7 @@ import { SpeakerPreviewPlayer } from 'src/player/SpeakerPreviewPlayer';
 import { noticeMessages } from '../mocks/obsidian';
 import { internalsOf, partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
+import { installControlledAudio } from '../helpers/mediaMocks';
 
 jest.mock('src/speakers/applySpeakerRenames', () => ({
 	applySpeakerRenamesWithSidecar: jest.fn(),
@@ -112,65 +113,6 @@ function rosterSection(
 			{ label: 'Speaker 2' },
 		],
 		...overrides,
-	};
-}
-
-/** A controllable audio element installed as the global Audio factory. */
-interface PreviewAudioHarness {
-	element: HTMLAudioElement;
-	play: jest.SpyInstance<Promise<void>, []>;
-	pause: jest.SpyInstance<void, []>;
-	load: jest.SpyInstance<void, []>;
-	constructions(): number;
-	/** Moves the playhead and emits timeupdate, as playback would. */
-	advanceTo(seconds: number): void;
-	restore(): void;
-}
-
-/**
- * Installs a deterministic audio element for the preview column, so pressing a
- * play button exercises the real player instead of jsdom's unimplemented media.
- */
-function installPreviewAudio(): PreviewAudioHarness {
-	const element = document.createElement('audio');
-	let paused = true;
-	let currentTime = 0;
-	Object.defineProperties(element, {
-		paused: { configurable: true, get: () => paused },
-		currentTime: {
-			configurable: true,
-			get: () => currentTime,
-			set: (value: number) => {
-				currentTime = value;
-			},
-		},
-		duration: { configurable: true, get: () => 600 },
-		readyState: { configurable: true, get: () => 1 },
-	});
-	const play = jest.spyOn(element, 'play').mockImplementation(() => {
-		paused = false;
-		return Promise.resolve();
-	});
-	const pause = jest.spyOn(element, 'pause').mockImplementation(() => {
-		paused = true;
-	});
-	const load = jest
-		.spyOn(element, 'load')
-		.mockImplementation(() => undefined);
-	const factory = jest
-		.spyOn(globalThis, 'Audio')
-		.mockImplementation(() => element);
-	return {
-		element,
-		play,
-		pause,
-		load,
-		constructions: () => factory.mock.calls.length,
-		advanceTo: (seconds: number) => {
-			currentTime = seconds;
-			element.dispatchEvent(new Event('timeupdate'));
-		},
-		restore: () => {},
 	};
 }
 
@@ -861,7 +803,7 @@ describe('SpeakerRenameModal', () => {
 	});
 
 	it('plays the speakers first turn and flips the button to stop', async () => {
-		const audio = installPreviewAudio();
+		const audio = installControlledAudio({ duration: 600 });
 		const sidecar = makeSidecar(
 			rosterSection({
 				speakers: [
@@ -881,14 +823,14 @@ describe('SpeakerRenameModal', () => {
 		}
 		first.buttonEl.click();
 
-		expect(audio.element.currentTime).toBe(12);
+		expect(audio.audio.currentTime).toBe(12);
 		expect(audio.play).toHaveBeenCalled();
 		expect(first.buttonEl.getAttribute('data-icon')).toBe('square');
 		expect(second.buttonEl.getAttribute('data-icon')).toBe('play');
 
 		// Starting the other speaker moves the stop affordance with it.
 		second.buttonEl.click();
-		expect(audio.element.currentTime).toBe(40);
+		expect(audio.audio.currentTime).toBe(40);
 		expect(first.buttonEl.getAttribute('data-icon')).toBe('play');
 		expect(second.buttonEl.getAttribute('data-icon')).toBe('square');
 
@@ -896,11 +838,10 @@ describe('SpeakerRenameModal', () => {
 		second.buttonEl.click();
 		expect(internals.preview?.playingId).toBeNull();
 		expect(second.buttonEl.getAttribute('data-icon')).toBe('play');
-		audio.restore();
 	});
 
 	it('resets the button when the excerpt ends on its own', async () => {
-		const audio = installPreviewAudio();
+		const audio = installControlledAudio({ duration: 600 });
 		const sidecar = makeSidecar(
 			rosterSection({
 				speakers: [
@@ -918,11 +859,10 @@ describe('SpeakerRenameModal', () => {
 
 		expect(internals.preview?.playingId).toBeNull();
 		expect(button?.buttonEl.getAttribute('data-icon')).toBe('play');
-		audio.restore();
 	});
 
 	it('builds no audio element until a preview is pressed', async () => {
-		const audio = installPreviewAudio();
+		const audio = installControlledAudio({ duration: 600 });
 		const sidecar = makeSidecar(
 			rosterSection({
 				speakers: [
@@ -936,11 +876,10 @@ describe('SpeakerRenameModal', () => {
 
 		expect(internals.preview).toBeNull();
 		expect(audio.constructions()).toBe(0);
-		audio.restore();
 	});
 
 	it('stops and releases the preview when the dialog closes', async () => {
-		const audio = installPreviewAudio();
+		const audio = installControlledAudio({ duration: 600 });
 		const sidecar = makeSidecar(
 			rosterSection({
 				speakers: [
@@ -958,7 +897,6 @@ describe('SpeakerRenameModal', () => {
 		expect(audio.pause).toHaveBeenCalled();
 		expect(audio.load).toHaveBeenCalled();
 		expect(internals.preview).toBeNull();
-		audio.restore();
 	});
 
 	it('suggests the names the recording carries, with no profile picked', async () => {

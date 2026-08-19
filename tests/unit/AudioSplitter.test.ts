@@ -253,7 +253,14 @@ describe('parseWavLayout', () => {
 		const wav = buildTestWav(1, 8000, 100);
 		new DataView(wav).setUint16(20, 0x0003, true);
 
-		expect(parseWavLayout(wav)).not.toBeNull();
+		// The layout is what the splitter slices on, so a non-null one that
+		// points nowhere would cut an empty part out of a real file.
+		expect(parseWavLayout(wav)).toEqual(
+			expect.objectContaining({
+				dataOffset: WAV_HEADER_SIZE,
+				dataLength: 100,
+			}),
+		);
 	});
 
 	it('returns null for a zero byte rate', () => {

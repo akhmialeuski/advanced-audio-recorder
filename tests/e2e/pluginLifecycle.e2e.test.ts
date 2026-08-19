@@ -23,6 +23,20 @@ import AudioRecorderPlugin from 'src/main';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import { validateSettings } from 'src/settings/settingsValidation';
 import { loadPlugin, MANIFEST } from '../helpers/pluginHarness';
+import { RecordingStatus } from 'src/types';
+import type { RecordingSaveResult } from 'src/types';
+import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
+import { TranscriptionModal } from 'src/ui/TranscriptionModal';
+import { asMockVault } from '../helpers/obsidianMock';
+
+jest.mock('src/ui/TranscriptionModal', () => ({
+	TranscriptionModal: jest
+		.fn()
+		.mockImplementation(() => ({ open: jest.fn() })),
+}));
+jest.mock('src/recording/silentChannelDetector', () => ({
+	detectSilentChannel: jest.fn().mockResolvedValue(null),
+}));
 
 // The plugin's collaborators are each covered by their own suite. What is
 // under test here is the wiring between them, so they are recorded rather
@@ -315,5 +329,68 @@ describe('loading the plugin when its stored settings are unusable', () => {
 		expect(() => {
 			validateSettings(plugin.settings);
 		}).toThrow(expect.objectContaining({ field: 'bitrate' }));
+	});
+});
+
+describe('work still in flight when the plugin is unloaded', () => {
+	it('releases the recorder even mid-recording', async () => {
+		// Disabling a plugin does not wait for the recording to finish, and
+		// the capture has to be released either way - a microphone left open
+		// by a plugin that is gone can only be freed by restarting Obsidian.
+		const { plugin } = await loadPlugin();
+		recorder().getStatus.mockReturnValue(RecordingStatus.Recording);
+
+		plugin.onunload();
+
+		expect(recorder().cleanup).toHaveBeenCalled();
+	});
+
+	it('paints no status change that arrives after the teardown', async () => {
+		// The recorder's stop sequence is asynchronous, so a status change can
+		// land after onunload. Obsidian has detached the status bar and the
+		// ribbon icon by then, and repainting them puts the plugin's recording
+		// state back onto UI that is on its way out.
+		const { plugin } = await loadPlugin();
+		const onStatusChange = at(
+			jest.mocked(RecordingManager).mock.calls,
+			0,
+		)[2];
+		const mock = asMockPlugin(plugin);
+		plugin.onunload();
+
+		onStatusChange(RecordingStatus.Recording);
+
+		expect(at(mock.statusBarItems, 0).textContent).toBe('');
+		expect(at(mock.ribbonIcons, 0).el.classList).not.toContain(
+			'is-recording',
+		);
+	});
+
+	it('opens no transcription dialog for a save that lands after the teardown', async () => {
+		// The same race one step further along: the file finished saving after
+		// the plugin was disabled. Opening a dialog then hands the user a
+		// window driven by services that have already been disposed.
+		const app = new App();
+		asMockVault(app.vault).seed([{ path: 'Recordings/take.webm' }]);
+		const { plugin } = await loadPlugin(
+			{
+				transcriptionEnabled: true,
+				transcribeOnSave: true,
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			},
+			app,
+		);
+		const onSaved = at(jest.mocked(RecordingManager).mock.calls, 0)[5] as (
+			saved: RecordingSaveResult,
+		) => void;
+		plugin.onunload();
+
+		onSaved({
+			audioPaths: ['Recordings/take.webm'],
+			notePath: 'Notes/daily.md',
+			durationSeconds: 42,
+		});
+
+		expect(TranscriptionModal).not.toHaveBeenCalled();
 	});
 });

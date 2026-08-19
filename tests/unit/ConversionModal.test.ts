@@ -15,41 +15,11 @@ import { MODAL } from '../helpers/selectors';
 import { createMockApp } from '../helpers/createApp';
 import { updateLinksInVault } from 'src/utils/LinkUpdater';
 import { convertBlobToFormatBuffer } from 'src/audio/AudioFormatConverter';
+import { addObsidianDomExtensions } from '../mocks/domExtensions';
 
 /**
  * Extends an HTMLElement with Obsidian's custom DOM methods.
  */
-function addObsidianDomMethods(el: HTMLElement): HTMLElement {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- augmenting HTMLElement with Obsidian DOM methods
-	(el as any).empty = function () {
-		while (this.firstChild) {
-			this.removeChild(this.firstChild);
-		}
-	};
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- augmenting HTMLElement with Obsidian DOM methods
-	(el as any).createEl = function (
-		tag: string,
-		opts?: { text?: string; cls?: string; attr?: Record<string, string> },
-	) {
-		const child = document.createElement(tag);
-		if (opts?.text) child.textContent = opts.text;
-		if (opts?.cls) child.className = opts.cls;
-		if (opts?.attr) {
-			for (const [k, v] of Object.entries(opts.attr)) {
-				child.setAttribute(k, v);
-			}
-		}
-		addObsidianDomMethods(child);
-		this.appendChild(child);
-		return child;
-	};
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- augmenting HTMLElement with Obsidian DOM methods
-	(el as any).createDiv = function (opts?: { cls?: string }) {
-		return this.createEl('div', opts);
-	};
-	return el;
-}
-
 // The full obsidian mock with only Setting swapped for the recording double.
 // The previous inline mock stubbed Setting out entirely - its add* methods
 // never called back - so half of this dialog's wiring never ran under test.
@@ -134,13 +104,20 @@ describe('ConversionModal', () => {
 		});
 	});
 
-	it('instantiates with source file', () => {
+	it('opens over the file it was given, before anything is picked', () => {
+		// Constructing proves nothing - the dialog is only wrong once it is
+		// on screen. What it must show first is the file it will convert.
 		const modal = new ConversionModal(
 			mockApp,
 			mockFile,
 			() => mockSettings,
 		);
-		expect(modal).toBeDefined();
+
+		modal.onOpen();
+
+		expect(
+			el(modal.contentEl, MODAL.conversionSource).textContent,
+		).toContain(mockFile.name);
 	});
 
 	it('initializes the channel preset through named options', () => {
@@ -222,7 +199,7 @@ describe('ConversionModal', () => {
 			(modal as unknown as { targetFormat: string }).targetFormat =
 				'webm';
 			const progressEl = document.createElement('div');
-			addObsidianDomMethods(progressEl);
+			addObsidianDomExtensions(progressEl);
 			(progressEl as unknown as Record<string, unknown>).setText = (
 				text: string,
 			): void => {

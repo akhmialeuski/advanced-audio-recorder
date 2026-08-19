@@ -8,7 +8,7 @@
 import { RecordingFinalizer } from 'src/recording/RecordingFinalizer';
 import { TrackWriteQueue } from 'src/recording/TrackWriteQueue';
 import { DebugLogger } from 'src/utils/DebugLogger';
-import type { RecordingSessionConfig, RecordingTarget } from 'src/types';
+import type { RecordingSessionConfig } from 'src/types';
 import {
 	DEFAULT_SETTINGS,
 	type AudioRecorderSettings,
@@ -26,6 +26,7 @@ import {
 import { assembleWavFromPcmSegmentFiles } from 'src/audio/WavEncoder';
 import { insertFileLinks } from 'src/recording/NoteInserter';
 import { canStreamMix, mixPcmTracksToWav } from 'src/recording/StreamingMixer';
+import { createSession, createTarget } from '../helpers/recordingFixtures';
 
 jest.mock('src/audio/WavEncoder', () => require('../mocks/modules/wavEncoder'));
 
@@ -56,41 +57,6 @@ jest.mock('src/recording/StreamingMixer', () => ({
 	canStreamMix: jest.fn().mockReturnValue(true),
 	mixPcmTracksToWav: jest.fn().mockResolvedValue(new ArrayBuffer(50)),
 }));
-
-const createTarget = (
-	overrides: Partial<RecordingTarget> = {},
-): RecordingTarget => ({
-	fileBaseName: 'recording-Track1-stamp',
-	sourceName: 'Track1',
-	bufferedChunks: [],
-	bufferedBytes: 0,
-	segmentIndex: 0,
-	segmentPaths: [],
-	pendingWrite: Promise.resolve(),
-	pcmBuffers: [],
-	pcmBufferedBytes: 0,
-	pcmChannels: 1,
-	pcmSampleRate: 44100,
-	partIndex: 0,
-	partPaths: [],
-	partPcmBytes: 0,
-	...overrides,
-});
-
-const createSession = (
-	overrides: Partial<RecordingSessionConfig> = {},
-): RecordingSessionConfig => ({
-	chunkRotationBytes: null,
-	isWavPcm: false,
-	recorderFormat: 'webm',
-	outputFormat: 'webm',
-	outputMode: 'single',
-	bitrate: 128000,
-	splitEnabled: false,
-	partMinutes: 15,
-	partSuffix: 'part',
-	...overrides,
-});
 
 describe('RecordingFinalizer', () => {
 	let finalizer: RecordingFinalizer;
@@ -142,7 +108,7 @@ describe('RecordingFinalizer', () => {
 		}).app;
 		mockSettings = { ...DEFAULT_SETTINGS };
 		onProgress = jest.fn();
-		buildFinalizer(createSession());
+		buildFinalizer(createSession({ outputMode: 'single' }));
 	});
 
 	describe('reportProgress', () => {
@@ -166,7 +132,7 @@ describe('RecordingFinalizer', () => {
 
 		it('resets deduplication on beginSession', () => {
 			finalizer.reportProgress(50, 'Encoding...');
-			finalizer.beginSession(createSession());
+			finalizer.beginSession(createSession({ outputMode: 'single' }));
 			finalizer.reportProgress(50, 'Encoding...');
 
 			expect(onProgress).toHaveBeenCalledTimes(2);

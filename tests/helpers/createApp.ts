@@ -249,3 +249,59 @@ export function createMarkdownView(
 		},
 	);
 }
+
+/** A vault adapter backed by a Map, with every call a spy. */
+export interface FakeVaultFiles {
+	/** The files themselves, for seeding and for reading back what was written. */
+	files: Map<string, string>;
+	/** The adapter surface, shaped for `createMockApp({ vault: { adapter } })`. */
+	adapter: {
+		exists: jest.Mock;
+		read: jest.Mock;
+		write: jest.Mock;
+		remove: jest.Mock;
+		rename: jest.Mock;
+	};
+}
+
+/**
+ * Builds an in-memory stand-in for the vault's file adapter.
+ *
+ * Four suites hand-rolled the same Map behind the same five calls. Sharing it
+ * is not only about the lines: `read` rejects for a path that is not there,
+ * which is what Obsidian's adapter does, so a store that reads without asking
+ * `exists` first fails here rather than in a vault.
+ * @param seed - Files present before the test starts
+ * @returns The file map and the adapter reading from it
+ */
+export function fakeVaultFiles(
+	seed: Iterable<readonly [string, string]> = [],
+): FakeVaultFiles {
+	const files = new Map<string, string>(seed);
+	const adapter = {
+		exists: jest.fn((path: string) => Promise.resolve(files.has(path))),
+		read: jest.fn((path: string) => {
+			const content = files.get(path);
+			return content === undefined
+				? Promise.reject(new Error(`ENOENT: ${path}`))
+				: Promise.resolve(content);
+		}),
+		write: jest.fn((path: string, data: string) => {
+			files.set(path, data);
+			return Promise.resolve();
+		}),
+		remove: jest.fn((path: string) => {
+			files.delete(path);
+			return Promise.resolve();
+		}),
+		rename: jest.fn((from: string, to: string) => {
+			const value = files.get(from);
+			if (value !== undefined) {
+				files.set(to, value);
+				files.delete(from);
+			}
+			return Promise.resolve();
+		}),
+	};
+	return { files, adapter };
+}

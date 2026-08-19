@@ -28,13 +28,11 @@ import { fakeProvider, NO_DIARIZATION } from '../helpers/providerFixtures';
 
 // Replace audio preparation so the test drives the part count directly without
 // decoding real audio (the Web Audio path is unavailable under jsdom).
-jest.mock('src/transcription/audioPrep', () => ({
-	prepareAudio: jest.fn(),
-	audioMimeFromExtension: jest.fn(() => 'audio/webm'),
-	audioPrepOptions: jest.fn(() => ({})),
-}));
+jest.mock('src/transcription/audioPrep', () =>
+	require('../mocks/modules/audioPrep'),
+);
 
-const mockPrepareAudio = prepareAudio as jest.Mock;
+const mockPrepareAudio = jest.mocked(prepareAudio);
 const mockNotice = jest.mocked(Notice);
 
 const audioFile = partial<TFile>({

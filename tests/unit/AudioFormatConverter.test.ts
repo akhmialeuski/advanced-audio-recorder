@@ -125,6 +125,7 @@ import {
 	isOfflineEncodingSupported,
 } from 'src/audio/AudioEncoder';
 import { BufferTarget } from 'mediabunny';
+import { createTarget } from '../helpers/recordingFixtures';
 
 describe('AudioFormatConverter', () => {
 	beforeEach(() => {
@@ -863,22 +864,8 @@ describe('AudioFormatConverter', () => {
 	// mergeAudioTracks
 	// ---------------------------------------------------------------
 	describe('mergeAudioTracks', () => {
-		const createMockTarget = (name: string): RecordingTarget => ({
-			fileBaseName: name,
-			sourceName: name,
-			bufferedChunks: [],
-			bufferedBytes: 0,
-			segmentIndex: 0,
-			segmentPaths: [],
-			pendingWrite: Promise.resolve(),
-			pcmBuffers: [],
-			pcmBufferedBytes: 0,
-			pcmChannels: 1,
-			pcmSampleRate: 44100,
-			partIndex: 0,
-			partPaths: [],
-			partPcmBytes: 0,
-		});
+		const createMockTarget = (name: string): RecordingTarget =>
+			createTarget({ fileBaseName: name, sourceName: name });
 
 		it('merges multiple tracks using buildTrackBlob', async () => {
 			const targets = [

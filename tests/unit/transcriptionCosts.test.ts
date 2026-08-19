@@ -399,17 +399,38 @@ describe('sumUsage', () => {
 		});
 	});
 
-	it('returns an empty total when nothing was reported', () => {
-		expect(sumUsage([undefined, {}])).toEqual({});
+	it.each([
+		{ name: 'nothing at all', usages: [] },
+		{ name: 'only absent parts', usages: [undefined, undefined] },
+		{ name: 'only parts that reported nothing', usages: [{}, {}] },
+		{ name: 'a mix of absent and empty', usages: [undefined, {}] },
+	])('returns an empty total for $name', ({ usages }) => {
+		// The estimate multiplies these; an accidental zero key would show a
+		// priced run as free rather than as unknown.
+		expect(sumUsage(usages)).toEqual({});
+	});
+
+	it('keeps a reported zero, which is not the same as nothing reported', () => {
+		// A part that ran and used nothing is a fact worth carrying: the
+		// total is then "zero seconds", not "we never asked".
+		expect(sumUsage([{ audioSeconds: 0 }])).toEqual({ audioSeconds: 0 });
 	});
 });
 
 describe('formatUsd', () => {
-	it('formats zero, sub-cent, and regular amounts', () => {
-		expect(formatUsd(0)).toBe('$0.00');
-		expect(formatUsd(0.001)).toBe('<$0.01');
-		expect(formatUsd(0.043)).toBe('$0.04');
-		expect(formatUsd(1.5)).toBe('$1.50');
+	it.each([
+		{ amount: 0, expected: '$0.00' },
+		// Either side of the sub-cent threshold, and the threshold itself:
+		// half a cent rounds up to a printable amount, anything under it
+		// cannot be printed as cents without reading as free.
+		{ amount: 0.001, expected: '<$0.01' },
+		{ amount: 0.004999, expected: '<$0.01' },
+		{ amount: 0.005, expected: '$0.01' },
+		{ amount: 0.043, expected: '$0.04' },
+		{ amount: 1.5, expected: '$1.50' },
+		{ amount: 1234.567, expected: '$1234.57' },
+	])('formats $amount as "$expected"', ({ amount, expected }) => {
+		expect(formatUsd(amount)).toBe(expected);
 	});
 
 	it('does not render a negative amount as sub-cent', () => {

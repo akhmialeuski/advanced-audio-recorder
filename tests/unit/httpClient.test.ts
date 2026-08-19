@@ -127,8 +127,41 @@ describe('friendlyHttpHint', () => {
 		},
 		{ name: 'a success status', status: 200, body: 'OK' },
 		{ name: 'a redirect', status: 302, body: 'Found' },
+		// The bodies a failing endpoint returns when it is not the API at
+		// all. Each must read as "no hint" rather than break the error path
+		// that shows it, or throw out of a parse.
+		{ name: 'an empty body', status: 404, body: '' },
+		{
+			name: 'an HTML error page from a proxy',
+			status: 404,
+			body: '<html><body>Not Found</body></html>',
+		},
+		{ name: 'a body that is a bare JSON null', status: 404, body: 'null' },
+		{ name: 'a body that is a JSON list', status: 404, body: '[]' },
+		{
+			name: 'JSON with an unfamiliar error shape',
+			status: 400,
+			body: '{"problem":{"kind":"unknown"}}',
+		},
+		{ name: 'truncated JSON', status: 400, body: '{"error":{' },
 	])('returns no hint for $name', ({ status, body }) => {
 		expect(friendlyHttpHint(status, body)).toBe('');
+	});
+
+	it.each([
+		// Both ends of the 5xx range and the status just below it: the advice
+		// is "wait and retry", which is right for a server fault and wrong
+		// for a client one, so 499/500 is where it must not slip.
+		{ status: 500, hinted: true },
+		{ status: 502, hinted: true },
+		{ status: 503, hinted: true },
+		{ status: 599, hinted: true },
+		{ status: 499, hinted: false },
+		{ status: 404, hinted: false },
+	])('treats $status as a server fault: $hinted', ({ status, hinted }) => {
+		const hint = friendlyHttpHint(status, '').toLowerCase();
+
+		expect(hint.includes('server error')).toBe(hinted);
 	});
 });
 
