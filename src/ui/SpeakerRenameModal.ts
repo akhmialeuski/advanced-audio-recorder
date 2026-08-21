@@ -29,6 +29,7 @@ import {
 	addProfile,
 	createProfile,
 	effectiveProfileId,
+	profileNameRejection,
 	profilesOfKind,
 } from '../settings/profiles';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
@@ -400,14 +401,25 @@ export class SpeakerRenameModal extends PluginModal {
 	 */
 	private async createProfile(): Promise<void> {
 		const name = this.newProfileInput?.value.trim() ?? '';
-		if (!name) {
-			return;
-		}
 		const settings = this.options.getSettings();
-		const created = createProfile('participants', name);
-		if (created.name === '') {
+		// The same rule the settings catalogue applies: a profile is a page
+		// addressed by its name, so a roster created here may no more repeat a
+		// name than one created there.
+		const rejection = profileNameRejection(
+			settings.profiles,
+			'participants',
+			'',
+			name,
+		);
+		if (rejection) {
+			// A blank field is someone who has not typed yet, not a mistake to
+			// report; a name already taken is.
+			if (name !== '') {
+				new Notice(rejection);
+			}
 			return;
 		}
+		const created = createProfile('participants', name);
 		settings.profiles = addProfile(settings.profiles, created);
 		await this.options.saveSettings();
 		this.selectedProfileId = created.id;

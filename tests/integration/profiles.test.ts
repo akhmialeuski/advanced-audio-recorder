@@ -16,6 +16,7 @@ import {
 	findProfile,
 	freeProfileName,
 	moveProfile,
+	profileNameRejection,
 	profilesOfKind,
 	removeAndReselectProfile,
 	removeProfile,
@@ -216,6 +217,50 @@ describe('profile list helpers', () => {
 	});
 });
 
+describe('profileNameRejection', () => {
+	const profiles = [
+		simple('a', 'Legal'),
+		simple('p', 'Legal', 'participants'),
+	];
+
+	it('accepts a name free within the kind, whatever another kind uses', () => {
+		// Pages are addressed per catalogue, so a roster and a glossary may
+		// share a name; two glossaries may not.
+		expect(
+			profileNameRejection(profiles, 'dictionary', '', 'Medical'),
+		).toBeUndefined();
+		expect(
+			profileNameRejection(profiles, 'participants', '', 'Legal'),
+		).toBe('Another profile already uses this name.');
+	});
+
+	it('refuses a name another profile of the kind already holds', () => {
+		expect(profileNameRejection(profiles, 'dictionary', '', 'Legal')).toBe(
+			'Another profile already uses this name.',
+		);
+		// Trimmed before comparing, so a stray space cannot smuggle a
+		// duplicate past the rule.
+		expect(
+			profileNameRejection(profiles, 'dictionary', '', '  Legal  '),
+		).toBe('Another profile already uses this name.');
+	});
+
+	it('lets a profile keep the name it already has', () => {
+		expect(
+			profileNameRejection(profiles, 'dictionary', 'a', 'Legal'),
+		).toBeUndefined();
+	});
+
+	it('refuses a name that is blank or only spaces', () => {
+		expect(profileNameRejection(profiles, 'dictionary', '', '')).toBe(
+			'Give the profile a name.',
+		);
+		expect(profileNameRejection(profiles, 'dictionary', '', '   ')).toBe(
+			'Give the profile a name.',
+		);
+	});
+});
+
 describe.each(PROFILE_KIND_IDS.map((kind) => [kind, kind] as const))(
 	'%s profiles',
 	(_name, kind) => {
@@ -250,6 +295,27 @@ describe.each(PROFILE_KIND_IDS.map((kind) => [kind, kind] as const))(
 			removeAndReselectProfile(settings, kind, second?.id ?? '');
 			expect(profilesOfKind(settings.profiles, kind)).toHaveLength(1);
 			expect(selectedProfileId(settings, kind)).toBe(first?.id);
+		});
+
+		it('leaves the selection alone when the profile removed was not in use', () => {
+			// Tidying a catalogue is not a decision about which profile a run
+			// applies; moving the selection here would change what the next
+			// run does behind the user's back. The deleted profile is neither
+			// the one in use nor the first of the list, so a reselection would
+			// land somewhere visibly wrong rather than back where it started.
+			const first = addAndSelectProfile(settings, kind, 'First');
+			const inUse = addAndSelectProfile(settings, kind, 'In use');
+			const spare = addAndSelectProfile(settings, kind, 'Spare');
+			setSelectedProfileId(settings, kind, inUse?.id ?? '');
+
+			removeAndReselectProfile(settings, kind, spare?.id ?? '');
+
+			expect(selectedProfileId(settings, kind)).toBe(inUse?.id);
+			expect(
+				profilesOfKind(settings.profiles, kind).map(
+					(profile) => profile.id,
+				),
+			).toEqual([first?.id, inUse?.id]);
 		});
 
 		it('falls back to no selection when the last profile is removed', () => {

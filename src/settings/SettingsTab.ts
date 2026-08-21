@@ -72,10 +72,10 @@ import {
 import {
 	addProfile,
 	createProfile,
-	effectiveProfileId,
 	findProfile,
 	freeProfileName,
 	moveProfile,
+	profileNameRejection,
 	profilesOfKind,
 	removeAndReselectProfile,
 	selectedProfileId,
@@ -661,16 +661,13 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			profilesOfKind(this.plugin.settings.profiles, kindId);
 		this.profileAccess.set(kind.bodyKey, kindId);
 		this.profileSelections.set(kind.selectionKey, kindId);
-		const rejection = (id: string, name: string): string | undefined => {
-			if (name === '') {
-				return 'Give the profile a name.';
-			}
-			return ofKind().some(
-				(profile) => profile.id !== id && profile.name === name,
-			)
-				? 'Another profile already uses this name.'
-				: undefined;
-		};
+		const rejection = (id: string, name: string): string | undefined =>
+			profileNameRejection(
+				this.plugin.settings.profiles,
+				kindId,
+				id,
+				name,
+			);
 		return {
 			section: kind.section,
 			heading: kind.heading,
@@ -698,18 +695,17 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 					kindId,
 					freeProfileName(ofKind(), NEW_PROFILE_NAME),
 				);
+				// Asked of the catalogue as it stands, before the new profile
+				// joins it: what decides whether the profile is adopted is
+				// whether there was anything to use in the first place.
+				const hadNothingToUse =
+					ofKind().length === 0 &&
+					selectedProfileId(settings, kindId) === '';
 				settings.profiles = addProfile(settings.profiles, created);
-				const now = ofKind();
 				// Adding a profile must not silently change which one a run
 				// uses; only a catalogue with nothing usable selected adopts it.
-				if (
-					effectiveProfileId(
-						now,
-						selectedProfileId(settings, kindId),
-					) === '' &&
-					now.length === 1
-				) {
-					setSelectedProfileId(settings, kindId, now[0]?.id ?? '');
+				if (hadNothingToUse) {
+					setSelectedProfileId(settings, kindId, created.id);
 				}
 				void this.commit();
 			},

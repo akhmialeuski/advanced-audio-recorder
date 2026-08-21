@@ -172,13 +172,22 @@ describe('resolveLlmPrompt', () => {
 		);
 	});
 
-	it('returns empty for None, which the prompt builder reads as the built-in default', () => {
+	it('returns empty for None and for a selection that is gone', () => {
+		// '' is what the prompt builder reads as "nothing was chosen": for
+		// cleanup and summary it then runs the built-in prompt, and for the
+		// custom task the neutral instruction, which is the behaviour the
+		// catalogue's own description promises for each.
 		const none = mergeSettings({
 			profiles,
-			selectedProfileIds: { llmCleanup: '', llmSummary: 'gone' },
+			selectedProfileIds: {
+				llmCleanup: '',
+				llmSummary: 'gone',
+				llmCustom: '',
+			},
 		});
 		expect(resolveLlmPrompt(none, 'cleanup')).toBe('');
 		expect(resolveLlmPrompt(none, 'summary')).toBe('');
+		expect(resolveLlmPrompt(none, 'custom')).toBe('');
 	});
 });
 

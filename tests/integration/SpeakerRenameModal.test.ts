@@ -1045,8 +1045,16 @@ describe('SpeakerRenameModal', () => {
 		},
 	);
 
-	it('creates no profile from an empty name', async () => {
-		const settings = mergeSettings({});
+	/**
+	 * Types a name into the dialog's inline profile creator and submits it.
+	 * @param settings - The settings the dialog reads and writes
+	 * @param name - The name as typed, submitted untrimmed
+	 * @returns The save spy, so a test can say whether anything was persisted
+	 */
+	const createProfileNamed = async (
+		settings: AudioRecorderSettings,
+		name: string,
+	): Promise<jest.Mock> => {
 		const { internals, saveSettings } = makeModal(
 			settings,
 			makeSidecar(rosterSection()),
@@ -1054,12 +1062,65 @@ describe('SpeakerRenameModal', () => {
 		await internals.render();
 		const field = internals.newProfileInput;
 		if (field) {
-			field.value = '   ';
+			field.value = name;
 		}
-
 		await internals.createProfile();
+		return saveSettings;
+	};
+
+	/** Settings holding one participant profile, the name to collide with. */
+	const withRoster = (): AudioRecorderSettings =>
+		mergeSettings({
+			profiles: [
+				{
+					id: 'p1',
+					kind: 'participants',
+					name: 'Weekly sync',
+					body: 'Maria',
+				},
+			],
+		});
+
+	it('creates no profile from an empty name', async () => {
+		const settings = mergeSettings({});
+		jest.mocked(Notice).mockClear();
+
+		const saveSettings = await createProfileNamed(settings, '   ');
 
 		expect(saveSettings).not.toHaveBeenCalled();
+		// Nothing typed yet is not a mistake to report back.
+		expect(Notice).not.toHaveBeenCalled();
+	});
+
+	it('refuses a roster name another profile already holds', async () => {
+		// A profile is a settings page addressed by its name, so a duplicate
+		// created here would be a page the settings cannot tell from another.
+		// The dialog applies the same rule the settings catalogue does, on the
+		// trimmed name, so a stray space cannot smuggle one past it.
+		const settings = withRoster();
+
+		const saveSettings = await createProfileNamed(
+			settings,
+			'  Weekly sync ',
+		);
+
+		expect(settings.profiles).toHaveLength(1);
+		expect(saveSettings).not.toHaveBeenCalled();
+		expect(Notice).toHaveBeenCalledWith(
+			'Another profile already uses this name.',
+		);
+	});
+
+	it('creates a roster under a name no other profile holds', async () => {
+		const settings = withRoster();
+
+		const saveSettings = await createProfileNamed(settings, 'Standup');
+
+		expect(settings.profiles.map((profile) => profile.name)).toEqual([
+			'Weekly sync',
+			'Standup',
+		]);
+		expect(saveSettings).toHaveBeenCalledTimes(1);
 	});
 
 	it('adds nothing to a profile when every field was left blank', async () => {

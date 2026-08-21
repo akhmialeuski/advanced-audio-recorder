@@ -101,6 +101,22 @@ describe('upgrading a pre-unification config', () => {
 		expect(profilesOfKind(result.profiles, 'llmCleanup')).toHaveLength(1);
 	});
 
+	it('carries a prompt the user had emptied, rather than seeding one back', () => {
+		// Emptying the field was how a user asked for the task's built-in
+		// behaviour - for the custom task, the neutral instruction. Reading
+		// blank as "nothing stored" would hand them a prompt they had
+		// deliberately cleared, and the custom pass would start rewriting
+		// transcripts as Markdown notes on its own.
+		const result = mergeSettings({
+			...legacyConfig(),
+			llmCustomInstruction: '',
+			llmCleanupPrompt: '   ',
+		});
+
+		expect(inUse(result, 'llmCustom')?.body).toBe('');
+		expect(inUse(result, 'llmCleanup')?.body).toBe('   ');
+	});
+
 	it('leaves the built-in prompts alone for a config that never edited them', () => {
 		const result = mergeSettings({});
 

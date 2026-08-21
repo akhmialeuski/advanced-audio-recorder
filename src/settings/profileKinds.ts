@@ -99,9 +99,9 @@ function postProcessing(settings: AudioRecorderSettings): boolean {
 }
 
 /**
- * The description of a prompt kind's selection row. Every prompt kind answers
- * "None" the same way - the built-in default prompt still runs - so the
- * sentence that says so is written once.
+ * The description of the row that picks a prompt for a task the plugin ships a
+ * prompt for. Cleanup and summary run their built-in prompt when no profile
+ * applies, so both say so in the same words.
  * @param what - What the prompt steers, e.g. "the cleanup pass"
  * @returns The row's description
  */
@@ -212,7 +212,11 @@ export const PROFILE_KINDS: readonly ProfileKind[] = [
 		catalogueDesc:
 			'Named instructions applied to the transcript verbatim. One per task you run the transcript through.',
 		selectionName: 'Custom instruction profile',
-		selectionDesc: promptSelectionDesc('the custom task'),
+		// Not the shared sentence: the custom task ships no prompt of its own,
+		// so None leaves the model with a neutral instruction to do something
+		// unstated rather than with a default worth running.
+		selectionDesc:
+			'Instruction used for the custom task; None leaves only a neutral instruction, so the pass does little.',
 		bodyName: 'Custom instruction',
 		bodyDesc:
 			'System instruction applied to the transcript text, sent verbatim: no language clause is added.',

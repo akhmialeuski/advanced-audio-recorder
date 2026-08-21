@@ -306,9 +306,16 @@ export function addAndSelectProfile(
 }
 
 /**
- * Removes a profile and moves its kind's selection to the first remaining
- * profile of that kind (or to none when the kind is now empty), so the editor
- * never points at a profile that is gone.
+ * Removes a profile, and moves the kind's selection to the first remaining
+ * profile (or to none when the kind is now empty) only when the profile
+ * removed was the one in use.
+ *
+ * Deleting a profile a run does not apply is not a decision about which
+ * profile it does apply: moving the selection then would silently change what
+ * the next run transcribes, summarizes, or divides with, from a catalogue the
+ * user was only tidying up. When the profile in use is the one deleted, some
+ * other answer has to be found, and the first of what is left is the one the
+ * editor already opens on.
  * @param settings - The settings to update in place
  * @param kind - Kind the profile belongs to
  * @param id - Id of the profile to remove
@@ -318,12 +325,47 @@ export function removeAndReselectProfile(
 	kind: ProfileKindId,
 	id: string,
 ): void {
+	const wasInUse = selectedProfileId(settings, kind) === id;
 	settings.profiles = removeProfile(settings.profiles, id);
-	setSelectedProfileId(
-		settings,
-		kind,
-		profilesOfKind(settings.profiles, kind)[0]?.id ?? '',
-	);
+	if (wasInUse) {
+		setSelectedProfileId(
+			settings,
+			kind,
+			profilesOfKind(settings.profiles, kind)[0]?.id ?? '',
+		);
+	}
+}
+
+/**
+ * Why a profile of this kind cannot be called this, or undefined when it can.
+ *
+ * A profile is a page of the settings tree and the framework addresses a page
+ * by its name, so two profiles of one kind sharing a name are two pages
+ * Obsidian cannot tell apart. The rule lives here rather than in the editor
+ * that happens to ask, because a profile can be created from the settings
+ * catalogue and from the speaker rename dialog alike, and a name one of them
+ * refuses cannot be a name the other accepts.
+ * @param profiles - All stored profiles
+ * @param kind - Kind the name would belong to
+ * @param id - Id of the profile being named ('' when it is being created)
+ * @param name - The name as typed
+ * @returns The reason to refuse, or undefined
+ */
+export function profileNameRejection(
+	profiles: readonly Profile[],
+	kind: ProfileKindId,
+	id: string,
+	name: string,
+): string | undefined {
+	const wanted = name.trim();
+	if (wanted === '') {
+		return 'Give the profile a name.';
+	}
+	return profilesOfKind(profiles, kind).some(
+		(profile) => profile.id !== id && profile.name === wanted,
+	)
+		? 'Another profile already uses this name.'
+		: undefined;
 }
 
 /**

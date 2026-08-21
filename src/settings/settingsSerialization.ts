@@ -497,9 +497,9 @@ function migrateLegacyProfileLists(
 	raw: AudioRecorderSettingsInput,
 ): void {
 	const stored: Record<string, unknown> = isRecord(raw) ? raw : {};
-	const unified = !Array.isArray(stored.profiles);
+	const alreadyUnified = Array.isArray(stored.profiles);
 	for (const list of LEGACY_PROFILE_LISTS) {
-		if (unified && stored[list.key] !== undefined) {
+		if (!alreadyUnified && stored[list.key] !== undefined) {
 			const converted = convertLegacyProfiles(stored[list.key], list);
 			merged.profiles = [
 				...merged.profiles.filter(
@@ -529,6 +529,12 @@ function migrateLegacyProfileLists(
  * running after the upgrade, and it is now one entry of a catalogue the user
  * can add to. A config that already carries profiles of the kind is left
  * alone.
+ *
+ * A stored prompt is carried over whatever it says, an empty one included:
+ * emptying the field was how a user asked for the built-in behaviour of the
+ * task (the neutral instruction, for the custom task), and a blank body still
+ * asks for exactly that. Reading blank as "nothing stored" would hand them the
+ * seeded prompt they had deliberately cleared.
  * @param merged - The merged settings to migrate in place
  * @param raw - The raw user settings as loaded from disk
  */
@@ -537,10 +543,10 @@ function migrateLegacyPrompts(
 	raw: AudioRecorderSettingsInput,
 ): void {
 	const stored: Record<string, unknown> = isRecord(raw) ? raw : {};
-	const unified = Array.isArray(stored.profiles);
+	const alreadyUnified = Array.isArray(stored.profiles);
 	for (const field of LEGACY_PROMPT_FIELDS) {
-		const prompt = legacyString(stored[field.key]);
-		if (!unified && prompt.trim() !== '') {
+		const prompt: unknown = stored[field.key];
+		if (!alreadyUnified && typeof prompt === 'string') {
 			// The seeded default of the task is where the prompt belongs, and
 			// a config from before the catalogues existed holds exactly that
 			// one profile per task - the one the merged selection already
