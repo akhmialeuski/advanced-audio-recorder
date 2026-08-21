@@ -22,18 +22,41 @@ export interface PcmRecorderDouble {
 	resume: jest.Mock;
 }
 
+/** What the next recorder's stop() should reject with, when a test armed one. */
+let nextStopFailure: { reason: unknown } | null = null;
+
+/**
+ * Makes the next recorder built refuse to stop.
+ * @param reason - What its `stop()` rejects with; not necessarily an Error,
+ *   since a worklet teardown can reject with anything
+ */
+export const __failNextStop = (reason: unknown): void => {
+	nextStopFailure = { reason };
+};
+
+/** Disarms any stop failure left armed. Called for every test. */
+export const __resetStopFailure = (): void => {
+	nextStopFailure = null;
+};
+
 export const PcmStreamRecorder = jest.fn(
 	(
 		_stream: MediaStream,
 		_sampleRate: number,
 		_onChunk: (data: ArrayBuffer) => void,
 		_channelMode?: ChannelMode,
-	): PcmRecorderDouble => ({
-		channels: 1,
-		sampleRate: 44100,
-		start: jest.fn().mockResolvedValue(undefined),
-		stop: jest.fn().mockResolvedValue(undefined),
-		pause: jest.fn(),
-		resume: jest.fn(),
-	}),
+	): PcmRecorderDouble => {
+		const armed = nextStopFailure;
+		nextStopFailure = null;
+		return {
+			channels: 1,
+			sampleRate: 44100,
+			start: jest.fn().mockResolvedValue(undefined),
+			stop: armed
+				? jest.fn().mockRejectedValue(armed.reason)
+				: jest.fn().mockResolvedValue(undefined),
+			pause: jest.fn(),
+			resume: jest.fn(),
+		};
+	},
 );

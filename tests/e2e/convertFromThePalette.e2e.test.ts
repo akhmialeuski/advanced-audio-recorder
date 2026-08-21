@@ -19,12 +19,12 @@ import { App } from 'obsidian';
 // absent from the published type definitions.
 import type { Modal, TFile } from '../mocks/obsidian';
 import { COMMAND_IDS } from 'src/constants';
-import { at } from '../helpers/assertions';
 import { asMockApp, asMockPlugin } from '../helpers/obsidianMock';
 import { loadPlugin } from '../helpers/pluginHarness';
 import { modalInstances, noticeMessages } from '../mocks/obsidian';
 import { rowButton, rowSelect, settingRow } from '../helpers/settingRows';
-import { tick, tickTimes } from '../helpers/async';
+import { tick, waitFor } from '../helpers/async';
+import { at, defined } from '../helpers/assertions';
 
 // The codec boundary, and only that: decoding and re-encoding audio needs
 // WebAudio and a container writer, neither of which jsdom has.
@@ -117,17 +117,35 @@ async function openConversionDialog(
 }
 
 /**
- * Picks a target format and presses Convert.
+ * Picks a target format, presses Convert, and waits for the converted file
+ * to exist.
+ *
+ * Waiting on the outcome rather than on a fixed number of turns is what §11
+ * of docs/dev/testing.md asks for: one extra await inside the conversion
+ * would otherwise fail every assertion below on something other than the
+ * behaviour they name. It is also the positive anchor the tests about link
+ * policy and source handling need - without it a Convert button that lost
+ * its handler leaves them asserting only that nothing changed.
+ * @param app - The vault the conversion writes into
  * @param dialog - The open conversion dialog
  * @param format - The format to convert to
+ * @returns The file the conversion produced
  */
-async function convertTo(dialog: Modal, format: string): Promise<void> {
+async function convertTo(
+	app: App,
+	dialog: Modal,
+	format: string,
+): Promise<TFile> {
 	const select = rowSelect(settingRow(dialog.contentEl, 'Target format'));
 	select.value = format;
 	select.dispatchEvent(new Event('change'));
 	rowButton(dialog.contentEl, 'Convert').click();
-	// The conversion reads the file, encodes, writes, and rewrites links.
-	await tickTimes(6);
+
+	const converted = `Recordings/meeting.${format}`;
+	await waitFor(() => app.vault.getFileByPath(converted) !== null, {
+		message: `the conversion to write ${converted}`,
+	});
+	return defined(app.vault.getFileByPath(converted), 'converted file');
 }
 
 describe('converting a recording from the palette', () => {
@@ -138,7 +156,7 @@ describe('converting a recording from the palette', () => {
 			conversionLinkAction: 'replace',
 		});
 
-		await convertTo(dialog, 'mp3');
+		await convertTo(app, dialog, 'mp3');
 
 		expect(
 			app.vault.getFileByPath('Recordings/meeting.mp3'),
@@ -154,7 +172,7 @@ describe('converting a recording from the palette', () => {
 			conversionLinkAction: 'replace',
 		});
 
-		await convertTo(dialog, 'mp3');
+		await convertTo(app, dialog, 'mp3');
 
 		const note = await app.vault.adapter.read(NOTE);
 		expect(note).toContain('![[meeting.mp3]]');
@@ -168,8 +186,12 @@ describe('converting a recording from the palette', () => {
 			conversionLinkAction: 'none',
 		});
 
-		await convertTo(dialog, 'mp3');
+		const converted = await convertTo(app, dialog, 'mp3');
 
+		// Anchored on the conversion having happened: without it this reads
+		// only that the seeded note is unchanged, which a conversion that
+		// never ran satisfies just as well.
+		expect(converted.path).toBe('Recordings/meeting.mp3');
 		expect(await app.vault.adapter.read(NOTE)).toContain(
 			'![[meeting.wav]]',
 		);
@@ -183,7 +205,7 @@ describe('converting a recording from the palette', () => {
 			conversionLinkAction: 'replace',
 		});
 
-		await convertTo(dialog, 'mp3');
+		await convertTo(app, dialog, 'mp3');
 
 		expect(trashFile).toHaveBeenCalledWith(audio);
 	});
@@ -196,8 +218,9 @@ describe('converting a recording from the palette', () => {
 			conversionLinkAction: 'replace',
 		});
 
-		await convertTo(dialog, 'mp3');
+		const converted = await convertTo(app, dialog, 'mp3');
 
+		expect(converted.path).toBe('Recordings/meeting.mp3');
 		expect(trashFile).not.toHaveBeenCalled();
 	});
 
@@ -208,7 +231,7 @@ describe('converting a recording from the palette', () => {
 			conversionLinkAction: 'replace',
 		});
 
-		await convertTo(dialog, 'mp3');
+		await convertTo(app, dialog, 'mp3');
 
 		expect(noticeMessages().join('\n')).toContain('meeting.mp3');
 	});

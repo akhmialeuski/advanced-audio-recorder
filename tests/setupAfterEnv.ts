@@ -18,6 +18,7 @@
  */
 
 import './helpers/matchers';
+import { __resetStopFailure } from './mocks/modules/pcmStreamRecorder';
 import {
 	DEFAULT_MOCK_API_VERSION,
 	__setApiVersion,
@@ -33,4 +34,7 @@ beforeEach(() => {
 	noticeInstances.length = 0;
 	menuInstances.length = 0;
 	modalInstances.length = 0;
+	// An armed stop failure is module state no mock reset reaches, and a test
+	// that armed one without building a recorder would hand it to the next.
+	__resetStopFailure();
 });

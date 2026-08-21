@@ -17,8 +17,8 @@
  *    which upgraded probed files by rebuilding the embedding leaves.
  */
 
-import { Component, MarkdownView, TFile } from 'obsidian';
-import { at } from '../helpers/assertions';
+import { App as MockApp, Component, MarkdownView, TFile } from 'obsidian';
+import { at, defined } from '../helpers/assertions';
 import type { App, Plugin, WorkspaceLeaf } from 'obsidian';
 import { EnhancedPlayerRegistrar } from 'src/player/EnhancedPlayerRegistrar';
 import { MediaEmbedShell } from 'src/player/MediaEmbedShell';
@@ -33,7 +33,7 @@ import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import type { EmbedInfo } from 'src/obsidian/embedRegistry';
 import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
-import { partialPlugin } from '../helpers/obsidianMock';
+import { asMockApp, partialPlugin } from '../helpers/obsidianMock';
 import { partial } from '../helpers/doubles';
 import { pastDebounce } from '../helpers/async';
 import { createMockApp } from '../helpers/createApp';
@@ -157,6 +157,21 @@ function kindStoreStub(): jest.Mocked<
  * Builds a registrar wired to fakes and registers it. Returns the installed
  * embed creator plus the spies needed to assert behaviour.
  */
+/** The sidecar store as the registrar drives it: four spies, nothing else. */
+function markerStoreStub(): {
+	handleRename: jest.Mock;
+	handleDelete: jest.Mock;
+	handleOutputRename: jest.Mock;
+	clearCache: jest.Mock;
+} {
+	return {
+		handleRename: jest.fn().mockResolvedValue(undefined),
+		handleDelete: jest.fn().mockResolvedValue(undefined),
+		handleOutputRename: jest.fn().mockResolvedValue(undefined),
+		clearCache: jest.fn(),
+	};
+}
+
 function setup(
 	enabled = true,
 	kindStore: ReturnType<typeof kindStoreStub> | null = null,
@@ -233,12 +248,7 @@ function setup(
 		registerEvent: jest.fn(),
 	});
 
-	const markerStore = {
-		handleRename: jest.fn().mockResolvedValue(undefined),
-		handleDelete: jest.fn().mockResolvedValue(undefined),
-		handleOutputRename: jest.fn().mockResolvedValue(undefined),
-		clearCache: jest.fn(),
-	};
+	const markerStore = markerStoreStub();
 
 	const registrar = new EnhancedPlayerRegistrar(
 		plugin,
@@ -681,6 +691,41 @@ describe('EnhancedPlayerRegistrar vault rename/delete wiring', () => {
 
 		expect(markerStore.handleRename).not.toHaveBeenCalled();
 		expect(markerStore.handleOutputRename).not.toHaveBeenCalled();
+	});
+
+	// The suite above reaches the handler through the registration, which
+	// proves the handler is right but not that anything ever calls it. This
+	// one goes the whole way: a real vault, the real event it fires when a
+	// file is trashed, and the cleanup that has to follow.
+	it('cleans up after a recording the vault actually trashed', async () => {
+		const app = new MockApp();
+		const [audio] = asMockApp(app).vault.seed([
+			{ path: 'Recordings/rec.wav', data: new ArrayBuffer(8) },
+		]);
+		const markerStore = markerStoreStub();
+		const kindStore = kindStoreStub();
+		new EnhancedPlayerRegistrar(
+			partialPlugin({
+				registerMarkdownPostProcessor: jest.fn(),
+				registerDomEvent: jest.fn(),
+				registerEvent: jest.fn(),
+			}),
+			app,
+			() => ({ ...DEFAULT_SETTINGS, enhancedPlayerEnabled: true }),
+			partial<RecordingSidecarStore>(markerStore),
+			partial<MediaKindStore>(kindStore),
+		).register();
+
+		await asMockApp(app).fileManager.trashFile(
+			defined(audio, 'seeded recording'),
+		);
+
+		expect(markerStore.handleDelete).toHaveBeenCalledWith(
+			'Recordings/rec.wav',
+		);
+		expect(kindStore.handleDelete).toHaveBeenCalledWith(
+			'Recordings/rec.wav',
+		);
 	});
 
 	it('removes the sidecar only for a deleted audio file', () => {

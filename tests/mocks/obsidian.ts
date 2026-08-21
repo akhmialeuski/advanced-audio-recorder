@@ -467,8 +467,20 @@ export class Vault extends Events {
 	// plain read-then-modify gets wrong: an edit landing between the two.
 	// Code that rewrites a note the user may have open uses this and nothing
 	// else, so a vault without it fails every such rewrite.
+	//
+	// It refuses a path the vault does not hold, as the real one does.
+	// Answering "" for an unknown file instead would make a rewrite aimed at
+	// the wrong note report success - the rewrite of an empty string equals
+	// the empty string, so nothing looks changed and nothing looks failed -
+	// and would invent a file at that path for the rest of the test.
 	process = jest.fn(
 		async (file: TFile, fn: (data: string) => string): Promise<string> => {
+			if (!this.text.has(file.path)) {
+				throw new Error(
+					`Vault.process: no file at ${file.path}. Seed it, or ` +
+						'check the path the code under test resolved.',
+				);
+			}
 			const next = fn(this.text.get(file.path) ?? '');
 			this.text.set(file.path, next);
 			return next;
@@ -480,13 +492,29 @@ export class Vault extends Events {
 	);
 
 	/**
-	 * Drops a file from the index and the stores, as trashing it does.
+	 * Drops a file from the index, the stores, and its folder, as trashing it
+	 * does, then fires the `delete` event the real vault fires.
+	 *
+	 * Detaching from the folder matters: `Vault.recurseChildren` walks the
+	 * tree, not the index, so a file removed from one and not the other is
+	 * still listed by anything reading the tree - and re-creating the path
+	 * would then give its folder two children for one file.
 	 * @param path - Vault-relative path
 	 */
 	forget(path: string): void {
+		const file = this.files.get(path);
+		if (!file) {
+			return;
+		}
+		const siblings = file.parent?.children;
+		const index = siblings?.indexOf(file) ?? -1;
+		if (siblings && index >= 0) {
+			siblings.splice(index, 1);
+		}
 		this.files.delete(path);
 		this.text.delete(path);
 		this.binary.delete(path);
+		this.trigger('delete', file);
 	}
 
 	getAbstractFileByPath = jest.fn(

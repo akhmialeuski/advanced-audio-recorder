@@ -15,6 +15,7 @@ import {
 	createDesktopRecorder,
 	createRecordingSut,
 	installRecordingMediaStubs,
+	stubAudioStreams,
 } from '../helpers/recordingManagerTestKit';
 import { useDesktopPlatform } from '../helpers/platform';
 import { at } from '../helpers/assertions';
@@ -70,14 +71,20 @@ describe('the input level the meter draws', () => {
 		expect(manager.getInputLevel()).toBe(0.42);
 	});
 
+	// One meter for a multi-track session, and it stands for the primary
+	// input: metering track two would draw a level for audio the user is not
+	// watching. Two streams on purpose - a single-stream session cannot tell
+	// "the first" from "whichever one".
 	it('meters the first stream, which is the one the meter stands for', async () => {
+		const streams = stubAudioStreams({ count: 2 });
 		const { manager } = createRecordingSut({
-			settings: { showInputLevelMeter: true },
+			settings: { showInputLevelMeter: true, enableMultiTrack: true },
 		});
 
 		await manager.startRecording();
 
 		expect(monitor().start).toHaveBeenCalledTimes(1);
+		expect(monitor().start).toHaveBeenCalledWith(at(streams, 0));
 	});
 
 	it('starts no monitor at all when the meter is switched off', async () => {

@@ -115,9 +115,7 @@ describe('running the binary', () => {
 
 	it('says the binary wrote no output rather than that the audio was empty', async () => {
 		installNode({
-			output: (): never => {
-				throw new Error('ENOENT');
-			},
+			writesNoOutput: true,
 		});
 
 		await expect(

@@ -519,22 +519,17 @@ export const pcmRecorderDoubles = (): PcmRecorderDouble[] => {
  *
  * A recorder built inside `startRecording` cannot be reached from the test
  * until that call has already returned, which is too late for the release
- * paths that run on the way out of a failed start. Scripting the next
- * construction reaches it in time, and `mockImplementationOnce` means the
- * override cannot outlive the test that asked for it.
+ * paths that run on the way out of a failed start. The double answers a flag
+ * instead, so nothing is queued on the constructor: `clearMocks` does not
+ * clear an unconsumed `mockImplementationOnce`, and one left behind would
+ * reach whichever test ran next. tests/setupAfterEnv.ts disarms the flag for
+ * every test.
  * @param error - What its `stop()` should reject with; not necessarily an
  *   Error, since a worklet teardown can reject with anything
  */
 export const failNextPcmRecorderStop = (error: unknown): void => {
-	const { PcmStreamRecorder } = jest.requireMock<{
-		PcmStreamRecorder: jest.Mock;
+	const { __failNextStop } = jest.requireMock<{
+		__failNextStop: (reason: unknown) => void;
 	}>('src/recording/PcmStreamRecorder');
-	const build = PcmStreamRecorder.getMockImplementation() as (
-		...args: unknown[]
-	) => PcmRecorderDouble;
-	PcmStreamRecorder.mockImplementationOnce((...args: unknown[]) => {
-		const recorder = build(...args);
-		recorder.stop.mockRejectedValue(error);
-		return recorder;
-	});
+	__failNextStop(error);
 };

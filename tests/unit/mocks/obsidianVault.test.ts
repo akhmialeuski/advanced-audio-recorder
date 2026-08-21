@@ -273,13 +273,21 @@ describe('Vault writers', () => {
 		await expect(vault.process(file, () => 'after')).resolves.toBe('after');
 	});
 
-	it('process treats an unknown path as empty rather than throwing', async () => {
+	// Answering "" for a file the vault does not hold would make a rewrite
+	// aimed at the wrong note report success: rewriting an empty string
+	// yields an empty string, so nothing reads as changed and nothing reads
+	// as failed. The real API throws, and so does this.
+	it('process refuses a path the vault does not hold', async () => {
 		const vault = new Vault();
-		const file = seedOne(vault, { path: 'note.md' });
+		const file = seedOne(vault, { path: 'note.md', content: 'body' });
+		const missing = new TFile('gone.md');
 
-		await expect(vault.process(file, (data) => `${data}x`)).resolves.toBe(
-			'x',
+		await expect(vault.process(missing, (data) => data)).rejects.toThrow(
+			'no file at gone.md',
 		);
+		// The refused path is not invented on the way out.
+		await expect(vault.read(file)).resolves.toBe('body');
+		expect(vault.getFileByPath('gone.md')).toBeNull();
 	});
 
 	it('is a spy, so a test can assert the call as well as the result', async () => {
@@ -418,5 +426,56 @@ describe('the vault folder tree', () => {
 		expect(
 			(at(vault.getRoot().children, 0) as TFolder).children,
 		).toHaveLength(1);
+	});
+});
+
+describe('Vault.forget', () => {
+	// The tree and the index are read by different callers - recurseChildren
+	// walks the tree, getFileByPath reads the index - so a trash that clears
+	// only one leaves the vault contradicting itself.
+	it('drops the file from the index and from its folder', () => {
+		const vault = new Vault();
+		const file = seedOne(vault, {
+			path: 'Audio/rec.wav',
+			content: 'x',
+		});
+		const folder = at(vault.getRoot().children, 0) as TFolder;
+
+		vault.forget('Audio/rec.wav');
+
+		expect(vault.getFileByPath('Audio/rec.wav')).toBeNull();
+		expect(folder.children).not.toContain(file);
+	});
+
+	it('gives the folder one child again when the path is re-created', async () => {
+		const vault = new Vault();
+		seedOne(vault, { path: 'Audio/rec.wav', content: 'x' });
+		const folder = at(vault.getRoot().children, 0) as TFolder;
+
+		vault.forget('Audio/rec.wav');
+		await vault.create('Audio/rec.wav', 'again');
+
+		expect(folder.children).toHaveLength(1);
+	});
+
+	it('tells the listeners the file is gone', () => {
+		const vault = new Vault();
+		const file = seedOne(vault, { path: 'Audio/rec.wav', content: 'x' });
+		const deleted = jest.fn();
+		vault.on('delete', deleted);
+
+		vault.forget('Audio/rec.wav');
+
+		expect(deleted).toHaveBeenCalledWith(file);
+	});
+
+	it('does nothing for a path it never held', () => {
+		const vault = new Vault();
+		const deleted = jest.fn();
+		vault.on('delete', deleted);
+
+		vault.forget('Audio/never.wav');
+
+		expect(deleted).not.toHaveBeenCalled();
 	});
 });

@@ -17,8 +17,13 @@
 export interface NodeSurfaceBehaviour {
 	/** Error handed to the execFile callback, for a binary that fails. */
 	execError?: Error;
-	/** Output file contents, or a thrower for a binary that wrote none. */
-	output?: string | (() => never);
+	/** What the binary writes to its output file. */
+	output?: string;
+	/**
+	 * Makes the binary produce no output file at all - the case a wrong flag
+	 * or a crashed run leaves behind.
+	 */
+	writesNoOutput?: boolean;
 	/**
 	 * Makes `window.require` itself throw, the way it does when the desktop
 	 * modules are not reachable.
@@ -36,6 +41,8 @@ export interface NodeInvocation {
 
 /** An installed Node surface, and what the code under test did with it. */
 export interface NodeSurface {
+	/** The fake filesystem, keyed by the path each write was made to. */
+	files: Map<string, string>;
 	/** Paths written before the binary was invoked, in order. */
 	written: string[];
 	/** Paths removed on the way out, in order. */
@@ -68,7 +75,9 @@ export function installNodeSurface(
 	behaviour: NodeSurfaceBehaviour = {},
 ): NodeSurface {
 	const original = Object.getOwnPropertyDescriptor(window, 'require');
+	const files = new Map<string, string>();
 	const surface: NodeSurface = {
+		files,
 		written: [],
 		removed: [],
 		invocations: [],
@@ -102,21 +111,47 @@ export function installNodeSurface(
 				) => void,
 			): void => {
 				surface.invocations.push({ file, args });
+				// whisper.cpp writes its JSON next to the base name given by
+				// -of. Honouring that is what makes the caller's -of / read
+				// pairing falsifiable: a run that reads any other path finds
+				// nothing there, exactly as it would on a real machine.
+				const outputBase = args[args.indexOf('-of') + 1];
+				if (
+					!behaviour.execError &&
+					!behaviour.writesNoOutput &&
+					outputBase !== undefined
+				) {
+					files.set(
+						`${outputBase}.json`,
+						behaviour.output ?? DEFAULT_OUTPUT,
+					);
+				}
 				callback(behaviour.execError ?? null, '', '');
 			},
 		},
 		fs: {
-			writeFileSync: (path: string): void => {
+			writeFileSync: (path: string, data: unknown): void => {
 				surface.written.push(path);
+				files.set(path, String(data));
 			},
-			readFileSync: (): string => {
-				const output = behaviour.output;
-				return typeof output === 'function'
-					? output()
-					: (output ?? DEFAULT_OUTPUT);
+			readFileSync: (path: string): string => {
+				const contents = files.get(path);
+				if (contents === undefined) {
+					// What Node throws for a path that is not there. The
+					// provider's "did not produce an output file" branch is
+					// the one that reads it.
+					throw Object.assign(
+						new Error(
+							`ENOENT: no such file or directory, open '${path}'`,
+						),
+						{ code: 'ENOENT' },
+					);
+				}
+				return contents;
 			},
 			rmSync: (path: string): void => {
 				surface.removed.push(path);
+				files.delete(path);
 			},
 		},
 		os: { tmpdir: (): string => '/tmp' },
