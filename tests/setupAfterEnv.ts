@@ -23,6 +23,7 @@ import {
 	__setApiVersion,
 	__setRequestUrlHandler,
 	menuInstances,
+	modalInstances,
 	noticeInstances,
 } from './mocks/obsidian';
 
@@ -31,4 +32,5 @@ beforeEach(() => {
 	__setApiVersion(DEFAULT_MOCK_API_VERSION);
 	noticeInstances.length = 0;
 	menuInstances.length = 0;
+	modalInstances.length = 0;
 });

@@ -242,6 +242,46 @@ describe('Vault writers', () => {
 		await expect(vault.read(file)).resolves.toBe('after');
 	});
 
+	// The atomic rewrite: production code that touches a note the user may
+	// have open reaches for this and nothing else.
+	it('process hands the current text to the callback', async () => {
+		const vault = new Vault();
+		const file = seedOne(vault, { path: 'note.md', content: 'before' });
+		const seen: string[] = [];
+
+		await vault.process(file, (data) => {
+			seen.push(data);
+			return data;
+		});
+
+		expect(seen).toEqual(['before']);
+	});
+
+	it('process stores what the callback returned', async () => {
+		const vault = new Vault();
+		const file = seedOne(vault, { path: 'note.md', content: 'before' });
+
+		await vault.process(file, () => 'after');
+
+		await expect(vault.read(file)).resolves.toBe('after');
+	});
+
+	it('process answers with the text it stored', async () => {
+		const vault = new Vault();
+		const file = seedOne(vault, { path: 'note.md', content: 'before' });
+
+		await expect(vault.process(file, () => 'after')).resolves.toBe('after');
+	});
+
+	it('process treats an unknown path as empty rather than throwing', async () => {
+		const vault = new Vault();
+		const file = seedOne(vault, { path: 'note.md' });
+
+		await expect(vault.process(file, (data) => `${data}x`)).resolves.toBe(
+			'x',
+		);
+	});
+
 	it('is a spy, so a test can assert the call as well as the result', async () => {
 		const vault = new Vault();
 
