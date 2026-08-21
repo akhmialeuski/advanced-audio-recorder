@@ -8,6 +8,7 @@
  * @module tests/unit/ChapterGenerationModal.test
  */
 
+import { noSelectedProfiles } from 'src/settings/profiles';
 import type { App, TFile } from 'obsidian';
 import { ChapterGenerationModal } from 'src/ui/ChapterGenerationModal';
 import { mergeSettings } from 'src/settings/settingsSerialization';
@@ -276,10 +277,15 @@ describe('ChapterGenerationModal run settings', () => {
 
 	it("commits the run's chapter profile so the shared service reads it", async () => {
 		const { modal, settings, generate } = build({
-			transcriptionChapterPromptProfiles: [
-				{ id: 'p1', name: 'Agenda', prompt: 'By agenda.' },
+			profiles: [
+				{
+					id: 'p1',
+					kind: 'chapterPrompt',
+					name: 'Agenda',
+					body: 'By agenda.',
+				},
 			],
-			transcriptionChapterPromptProfileId: '',
+			selectedProfileIds: noSelectedProfiles(),
 		});
 		await open(modal);
 
@@ -290,7 +296,7 @@ describe('ChapterGenerationModal run settings', () => {
 
 		at(buttons(modal), 0).click();
 
-		expect(settings.transcriptionChapterPromptProfileId).toBe('p1');
+		expect(settings.selectedProfileIds.chapterPrompt).toBe('p1');
 		expect(generate).toHaveBeenCalled();
 	});
 

@@ -582,13 +582,12 @@ describe('SpeakerRenameModal', () => {
 		internals.newProfileInput.value = 'Weekly sync';
 		await internals.createProfile();
 
-		expect(settings.transcriptionSpeakerProfiles).toHaveLength(1);
-		expect(settings.transcriptionSpeakerProfiles[0]?.name).toBe(
-			'Weekly sync',
+		const rosters = settings.profiles.filter(
+			(profile) => profile.kind === 'participants',
 		);
-		expect(internals.selectedProfileId).toBe(
-			settings.transcriptionSpeakerProfiles[0]?.id,
-		);
+		expect(rosters).toHaveLength(1);
+		expect(rosters[0]?.name).toBe('Weekly sync');
+		expect(internals.selectedProfileId).toBe(rosters[0]?.id);
 
 		const input = internals.inputs.get('Speaker 2');
 		if (!input) {
@@ -597,10 +596,10 @@ describe('SpeakerRenameModal', () => {
 		input.value = 'Bob';
 		await internals.apply();
 
-		expect(settings.transcriptionSpeakerProfiles[0]?.participants).toEqual([
-			'Alex',
-			'Bob',
-		]);
+		expect(
+			settings.profiles.find((profile) => profile.name === 'Weekly sync')
+				?.body,
+		).toBe('Alex\nBob');
 		expect(saveSettings).toHaveBeenCalled();
 	});
 
@@ -914,11 +913,12 @@ describe('SpeakerRenameModal', () => {
 
 	it('re-selects the profile the transcription recorded and widens the pool', async () => {
 		const settings = mergeSettings({
-			transcriptionSpeakerProfiles: [
+			profiles: [
 				{
 					id: 'p1',
+					kind: 'participants',
 					name: 'Weekly sync',
-					participants: ['Maria', 'Ivan'],
+					body: 'Maria\nIvan',
 				},
 			],
 		});
@@ -954,8 +954,13 @@ describe('SpeakerRenameModal', () => {
 
 	it('saves a name that is in neither the recording nor the profile to both', async () => {
 		const settings = mergeSettings({
-			transcriptionSpeakerProfiles: [
-				{ id: 'p1', name: 'Weekly sync', participants: ['Maria'] },
+			profiles: [
+				{
+					id: 'p1',
+					kind: 'participants',
+					name: 'Weekly sync',
+					body: 'Maria',
+				},
 			],
 		});
 		const sidecar = makeSidecar(
@@ -984,17 +989,19 @@ describe('SpeakerRenameModal', () => {
 			{ names: ['Ivan'], profileId: 'p1' },
 		);
 		// ...and the picked profile learns the name too.
-		expect(settings.transcriptionSpeakerProfiles[0]?.participants).toEqual([
-			'Maria',
-			'Ivan',
-		]);
+		expect(settings.profiles[0]?.body).toBe('Maria\nIvan');
 		expect(saveSettings).toHaveBeenCalled();
 	});
 
 	it('records "no profile" when the recording roster is the only source', async () => {
 		const settings = mergeSettings({
-			transcriptionSpeakerProfiles: [
-				{ id: 'p1', name: 'Weekly sync', participants: ['Maria'] },
+			profiles: [
+				{
+					id: 'p1',
+					kind: 'participants',
+					name: 'Weekly sync',
+					body: 'Maria',
+				},
 			],
 		});
 		const sidecar = makeSidecar(rosterSection({ participants: ['Alex'] }));
@@ -1016,9 +1023,7 @@ describe('SpeakerRenameModal', () => {
 			{ names: ['Alex', 'Ivan'], profileId: '' },
 		);
 		// No profile was picked, so none of them learned the name.
-		expect(settings.transcriptionSpeakerProfiles[0]?.participants).toEqual([
-			'Maria',
-		]);
+		expect(settings.profiles[0]?.body).toBe('Maria');
 	});
 
 	it.each([
@@ -1061,8 +1066,8 @@ describe('SpeakerRenameModal', () => {
 		// Applying with no names is already a no-op; the profile must not
 		// gain empty participants from it either.
 		const settings: AudioRecorderSettings = mergeSettings({
-			transcriptionSpeakerProfiles: [
-				{ id: 'p1', name: 'Standup', participants: [] },
+			profiles: [
+				{ id: 'p1', kind: 'participants', name: 'Standup', body: '' },
 			],
 		});
 		const { internals, saveSettings } = makeModal(

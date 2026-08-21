@@ -4,6 +4,7 @@
  * refresh, and error containment via Notices.
  */
 
+import { noSelectedProfiles } from 'src/settings/profiles';
 import { Notice } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import { AutoChapterService } from 'src/chapters/AutoChapterService';
@@ -92,8 +93,8 @@ function makeService(options: {
 			partial<AudioRecorderSettings>({
 				llmMaxTokens: 4096,
 				transcriptionLanguage: 'auto',
-				transcriptionChapterPromptProfiles: [],
-				transcriptionChapterPromptProfileId: '',
+				profiles: [],
+				selectedProfileIds: noSelectedProfiles(),
 				...options.settings,
 			}),
 		options.store,
@@ -310,14 +311,18 @@ describe('AutoChapterService.generate', () => {
 			llm,
 			store,
 			settings: {
-				transcriptionChapterPromptProfiles: [
+				profiles: [
 					{
 						id: 'p',
+						kind: 'chapterPrompt',
 						name: 'Agenda',
-						prompt: 'Split by agenda item.',
+						body: 'Split by agenda item.',
 					},
 				],
-				transcriptionChapterPromptProfileId: 'p',
+				selectedProfileIds: {
+					...noSelectedProfiles(),
+					chapterPrompt: 'p',
+				},
 			},
 		});
 

@@ -1,10 +1,10 @@
 {
 	"coverage": {
 		"total": {
-			"statements": 98.37,
-			"branches": 92.95,
+			"statements": 98.38,
+			"branches": 93.03,
 			"functions": 98.29,
-			"lines": 98.38
+			"lines": 98.39
 		},
 		"files": {
 			"src/constants.ts": {
@@ -22,8 +22,8 @@
 			"src/main.ts": {
 				"statements": 99.42,
 				"branches": 97.14,
-				"functions": 98.76,
-				"lines": 99.71
+				"functions": 98.73,
+				"lines": 99.7
 			},
 			"src/types.ts": {
 				"statements": 100,
@@ -500,22 +500,10 @@
 				"lines": 96.49
 			},
 			"src/settings/SettingsTab.ts": {
-				"statements": 94.18,
-				"branches": 89.11,
-				"functions": 89.02,
-				"lines": 94.13
-			},
-			"src/settings/chapterPromptProfiles.ts": {
-				"statements": 100,
-				"branches": 100,
-				"functions": 100,
-				"lines": 100
-			},
-			"src/settings/dictionaryProfiles.ts": {
-				"statements": 100,
-				"branches": 100,
-				"functions": 100,
-				"lines": 100
+				"statements": 94.25,
+				"branches": 89.26,
+				"functions": 88.88,
+				"lines": 94.2
 			},
 			"src/settings/labels.ts": {
 				"statements": 100,
@@ -525,7 +513,7 @@
 			},
 			"src/settings/legacySettingsRenderer.ts": {
 				"statements": 97.43,
-				"branches": 87.12,
+				"branches": 89.39,
 				"functions": 100,
 				"lines": 97.42
 			},
@@ -537,15 +525,21 @@
 			},
 			"src/settings/profileKinds.ts": {
 				"statements": 100,
-				"branches": 90,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
+			"src/settings/profileResolution.ts": {
+				"statements": 100,
+				"branches": 100,
 				"functions": 100,
 				"lines": 100
 			},
 			"src/settings/profiles.ts": {
-				"statements": 97.77,
+				"statements": 100,
 				"branches": 100,
 				"functions": 100,
-				"lines": 97.61
+				"lines": 100
 			},
 			"src/settings/settingControls.ts": {
 				"statements": 99.17,
@@ -560,10 +554,10 @@
 				"lines": 100
 			},
 			"src/settings/settingsDefinitions.ts": {
-				"statements": 99.27,
-				"branches": 94.51,
+				"statements": 99.26,
+				"branches": 94.37,
 				"functions": 100,
-				"lines": 99.25
+				"lines": 99.24
 			},
 			"src/settings/settingsRenderMode.ts": {
 				"statements": 100,
@@ -578,18 +572,12 @@
 				"lines": 100
 			},
 			"src/settings/settingsSerialization.ts": {
-				"statements": 98.56,
-				"branches": 92.7,
+				"statements": 98.97,
+				"branches": 92.42,
 				"functions": 100,
-				"lines": 98.55
+				"lines": 98.96
 			},
 			"src/settings/settingsValidation.ts": {
-				"statements": 100,
-				"branches": 100,
-				"functions": 100,
-				"lines": 100
-			},
-			"src/settings/speakerProfiles.ts": {
 				"statements": 100,
 				"branches": 100,
 				"functions": 100,
@@ -866,10 +854,10 @@
 				"lines": 100
 			},
 			"src/ui/ChapterGenerationModal.ts": {
-				"statements": 95.65,
+				"statements": 95.6,
 				"branches": 83.33,
 				"functions": 89.47,
-				"lines": 95.65
+				"lines": 95.6
 			},
 			"src/ui/ConfirmModal.ts": {
 				"statements": 100,
@@ -940,7 +928,7 @@
 			"src/ui/SpeakerRenameModal.ts": {
 				"statements": 95.6,
 				"branches": 82.65,
-				"functions": 86.04,
+				"functions": 86.36,
 				"lines": 96.05
 			},
 			"src/ui/SplitModal.ts": {
@@ -962,10 +950,10 @@
 				"lines": 100
 			},
 			"src/ui/TranscriptionModal.ts": {
-				"statements": 96.34,
+				"statements": 96.3,
 				"branches": 90,
 				"functions": 94.8,
-				"lines": 96.34
+				"lines": 96.3
 			},
 			"src/ui/formatDescriptions.ts": {
 				"statements": 100,
@@ -1072,9 +1060,9 @@
 		}
 	},
 	"suite": {
-		"suites": 204,
-		"tests": 4165,
-		"passed": 4165,
+		"suites": 203,
+		"tests": 4216,
+		"passed": 4216,
 		"failed": 0,
 		"todo": 0
 	}

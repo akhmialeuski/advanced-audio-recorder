@@ -25,13 +25,17 @@ import type { App, ButtonComponent, DropdownComponent, TFile } from 'obsidian';
 import { PluginModal } from './PluginModal';
 import { PLUGIN_LOG_PREFIX } from '../constants';
 import { SpeakerPreviewPlayer } from '../player/SpeakerPreviewPlayer';
-import { effectiveProfileId } from '../settings/profiles';
+import {
+	addProfile,
+	createProfile,
+	effectiveProfileId,
+	profilesOfKind,
+} from '../settings/profiles';
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import {
 	addParticipantsToProfile,
-	addSpeakerProfile,
 	participantsOf,
-} from '../settings/speakerProfiles';
+} from '../settings/profileResolution';
 import type {
 	ParticipantUpdate,
 	SpeakerEntry,
@@ -177,7 +181,7 @@ export class SpeakerRenameModal extends PluginModal {
 		// of that meeting are suggested without the user picking anything. A
 		// profile deleted since resolves to the recording's own roster.
 		this.selectedProfileId = effectiveProfileId(
-			settings.transcriptionSpeakerProfiles,
+			profilesOfKind(settings.profiles, 'participants'),
 			section.participantProfileId ?? '',
 		);
 		this.renderProfilePicker(settings, section);
@@ -353,7 +357,10 @@ export class SpeakerRenameModal extends PluginModal {
 			)
 			.addDropdown((dropdown) => {
 				dropdown.addOption(RECORDING_ROSTER_OPTION, 'This recording');
-				for (const profile of settings.transcriptionSpeakerProfiles) {
+				for (const profile of profilesOfKind(
+					settings.profiles,
+					'participants',
+				)) {
 					dropdown.addOption(profile.id, profile.name);
 				}
 				dropdown.setValue(this.selectedProfileId);
@@ -397,15 +404,11 @@ export class SpeakerRenameModal extends PluginModal {
 			return;
 		}
 		const settings = this.options.getSettings();
-		const profiles = addSpeakerProfile(
-			settings.transcriptionSpeakerProfiles,
-			name,
-		);
-		const created = profiles[profiles.length - 1];
-		if (!created) {
+		const created = createProfile('participants', name);
+		if (created.name === '') {
 			return;
 		}
-		settings.transcriptionSpeakerProfiles = profiles;
+		settings.profiles = addProfile(settings.profiles, created);
 		await this.options.saveSettings();
 		this.selectedProfileId = created.id;
 		this.profileDropdown?.addOption(created.id, created.name);
@@ -608,12 +611,18 @@ export class SpeakerRenameModal extends PluginModal {
 		}
 		const settings = this.options.getSettings();
 		const profiles = addParticipantsToProfile(
-			settings.transcriptionSpeakerProfiles,
+			settings.profiles,
 			this.selectedProfileId,
 			names,
 		);
-		if (profiles !== settings.transcriptionSpeakerProfiles) {
-			settings.transcriptionSpeakerProfiles = profiles;
+		// A merge that added nothing comes back as a copy, so the reference
+		// says whether anything is worth persisting.
+		if (
+			profiles.some(
+				(profile, index) => profile !== settings.profiles[index],
+			)
+		) {
+			settings.profiles = profiles;
 			await this.options.saveSettings();
 		}
 	}

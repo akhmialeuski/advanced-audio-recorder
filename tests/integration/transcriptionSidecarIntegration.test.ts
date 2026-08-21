@@ -9,6 +9,7 @@
  * The store reaches the run through a single channel: the run options.
  */
 
+import { noSelectedProfiles } from 'src/settings/profiles';
 import type { App, TFile } from 'obsidian';
 import { Notice } from 'obsidian';
 import { LLM_PROVIDER_IDS, TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
@@ -263,14 +264,18 @@ describe('TranscriptionService stored speaker names', () => {
 			makeApp(),
 			() =>
 				diarizedSettings({
-					transcriptionSpeakerProfiles: [
+					profiles: [
 						{
 							id: 'p1',
+							kind: 'participants',
 							name: 'Weekly sync',
-							participants: ['Alex', 'Maria'],
+							body: 'Alex\nMaria',
 						},
 					],
-					transcriptionSpeakerProfileId: 'p1',
+					selectedProfileIds: {
+						...noSelectedProfiles(),
+						participants: 'p1',
+					},
 				}),
 			{ createProvider: () => makeProvider(twoSpeakerSegments) },
 		);
@@ -289,7 +294,13 @@ describe('TranscriptionService stored speaker names', () => {
 		const sidecar = makeSidecar(emptyTranscriptSection());
 		const service = new TranscriptionService(
 			makeApp(),
-			() => diarizedSettings({ transcriptionSpeakerProfileId: 'gone' }),
+			() =>
+				diarizedSettings({
+					selectedProfileIds: {
+						...noSelectedProfiles(),
+						participants: 'gone',
+					},
+				}),
 			{ createProvider: () => makeProvider(twoSpeakerSegments) },
 		);
 		await service.run(audioFile, { notePathForLinks: 'note.md', sidecar });

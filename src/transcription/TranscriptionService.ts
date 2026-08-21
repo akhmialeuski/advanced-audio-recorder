@@ -65,12 +65,12 @@ import {
 	planAdvancedBias,
 } from './advanced/advancedBias';
 import { generateContext } from './advanced/contextPipeline';
-import { resolveDictionaryTermList } from '../settings/dictionaryProfiles';
-import { effectiveProfileId } from '../settings/profiles';
 import {
+	resolveDictionaryTermList,
+	resolveLlmPrompt,
 	resolveRunParticipants,
-	SPEAKER_PROFILES,
-} from '../settings/speakerProfiles';
+} from '../settings/profileResolution';
+import { selectedProfileId } from '../settings/profiles';
 import { createLlmProvider, createTranscriptionProvider } from './factories';
 import { vendorMaxTokens } from '../providers/providers';
 import { jobVendorId } from './llm/vendors';
@@ -604,10 +604,7 @@ export class TranscriptionService {
 					// this meeting's people without the user re-picking a profile.
 					{
 						names: resolveRunParticipants(settings),
-						profileId: effectiveProfileId(
-							SPEAKER_PROFILES.get(settings),
-							SPEAKER_PROFILES.selectedId(settings),
-						),
+						profileId: selectedProfileId(settings, 'participants'),
 					},
 				)
 			: canonical;
@@ -957,9 +954,9 @@ export class TranscriptionService {
 			{
 				task: settings.llmPostProcessTask,
 				language: transcript.language,
-				cleanupPrompt: settings.llmCleanupPrompt,
-				summaryPrompt: settings.llmSummaryPrompt,
-				customInstruction: settings.llmCustomInstruction,
+				cleanupPrompt: resolveLlmPrompt(settings, 'cleanup'),
+				summaryPrompt: resolveLlmPrompt(settings, 'summary'),
+				customInstruction: resolveLlmPrompt(settings, 'custom'),
 				// The user's Dictionary terms give the cleanup pass the canonical
 				// spellings, so even a single-pass run corrects garbled names and
 				// acronyms.

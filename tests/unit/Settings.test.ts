@@ -17,10 +17,16 @@ import {
 	mergeSettings,
 	mergeSettingsAsync,
 } from 'src/settings/settingsSerialization';
+import type { Profile } from 'src/settings/profiles';
 import { MODEL_SEED_GENERATION } from 'src/constants';
 import { fullyPopulatedSettings } from '../helpers/settingsFixtures';
 import { partial } from '../helpers/doubles';
 import { mediaDevice } from '../helpers/mediaMocks';
+
+/** The dictionary profiles of a merged config, in stored order. */
+function dictionaryProfiles(settings: AudioRecorderSettings): Profile[] {
+	return settings.profiles.filter((profile) => profile.kind === 'dictionary');
+}
 
 describe('Settings', () => {
 	describe('DEFAULT_SETTINGS', () => {
@@ -92,17 +98,35 @@ describe('Settings', () => {
 			});
 		});
 
-		it('seeds one selected default chapter guidance profile', () => {
-			const profiles =
-				DEFAULT_SETTINGS.transcriptionChapterPromptProfiles;
+		it.each([
+			['chapterPrompt'],
+			['llmCleanup'],
+			['llmSummary'],
+			['llmCustom'],
+		] as const)('seeds one selected default %s profile', (kind) => {
+			const profiles = DEFAULT_SETTINGS.profiles.filter(
+				(profile) => profile.kind === kind,
+			);
 			expect(profiles).toHaveLength(1);
 			expect(profiles[0]?.name).toBe('Default');
-			expect(profiles[0]?.prompt.length).toBeGreaterThan(0);
-			// The selection points at the seeded profile so guidance applies
+			expect(profiles[0]?.body.length).toBeGreaterThan(0);
+			// The selection points at the seeded profile so the prompt applies
 			// out of the box, and the id is a stable literal (not a uuid).
-			expect(DEFAULT_SETTINGS.transcriptionChapterPromptProfileId).toBe(
+			expect(DEFAULT_SETTINGS.selectedProfileIds[kind]).toBe(
 				profiles[0]?.id,
 			);
+		});
+
+		it('seeds no glossary and no roster, which only a user can write', () => {
+			expect(
+				DEFAULT_SETTINGS.profiles.filter(
+					(profile) =>
+						profile.kind === 'dictionary' ||
+						profile.kind === 'participants',
+				),
+			).toEqual([]);
+			expect(DEFAULT_SETTINGS.selectedProfileIds.dictionary).toBe('');
+			expect(DEFAULT_SETTINGS.selectedProfileIds.participants).toBe('');
 		});
 	});
 
@@ -320,11 +344,12 @@ describe('Settings', () => {
 
 			const result = mergeSettings(legacy);
 
-			expect(result.transcriptionDictionaryProfiles).toHaveLength(1);
-			const profile = result.transcriptionDictionaryProfiles[0];
+			const glossaries = dictionaryProfiles(result);
+			expect(glossaries).toHaveLength(1);
+			const profile = glossaries[0];
 			expect(profile?.name).toBe('General');
-			expect(profile?.terms).toBe('Foo\nBar');
-			expect(result.transcriptionDictionaryProfileId).toBe(profile?.id);
+			expect(profile?.body).toBe('Foo\nBar');
+			expect(result.selectedProfileIds.dictionary).toBe(profile?.id);
 			// The superseded flat field must not linger in the merged object.
 			const record = result as unknown as Record<string, unknown>;
 			expect(record.transcriptionDictionary).toBeUndefined();
@@ -335,8 +360,8 @@ describe('Settings', () => {
 				transcriptionDictionary: '   \n\t',
 			});
 
-			expect(result.transcriptionDictionaryProfiles).toEqual([]);
-			expect(result.transcriptionDictionaryProfileId).toBe('');
+			expect(dictionaryProfiles(result)).toEqual([]);
+			expect(result.selectedProfileIds.dictionary).toBe('');
 		});
 
 		it('leaves existing profiles untouched when a legacy dictionary is present', () => {
@@ -348,10 +373,10 @@ describe('Settings', () => {
 				transcriptionDictionaryProfileId: 'keep',
 			});
 
-			expect(result.transcriptionDictionaryProfiles).toEqual([
-				{ id: 'keep', name: 'Kept', terms: 'X' },
+			expect(dictionaryProfiles(result)).toEqual([
+				{ id: 'keep', kind: 'dictionary', name: 'Kept', body: 'X' },
 			]);
-			expect(result.transcriptionDictionaryProfileId).toBe('keep');
+			expect(result.selectedProfileIds.dictionary).toBe('keep');
 			const record = result as unknown as Record<string, unknown>;
 			expect(record.transcriptionDictionary).toBeUndefined();
 		});
@@ -366,7 +391,7 @@ describe('Settings', () => {
 
 			const result = mergeSettings(corrupt);
 
-			expect(result.transcriptionDictionaryProfiles).toEqual([]);
+			expect(dictionaryProfiles(result)).toEqual([]);
 			const record = result as unknown as Record<string, unknown>;
 			expect(record.transcriptionDictionary).toBeUndefined();
 		});
@@ -465,7 +490,7 @@ describe('Settings', () => {
 			});
 
 			expect(result.transcriptionAdvancedSettingsEnabled).toBe(true);
-			expect(result.transcriptionDictionaryProfileId).toBe('p1');
+			expect(result.selectedProfileIds.dictionary).toBe('p1');
 		});
 
 		it('enables the advanced master switch when migrating a legacy flat dictionary', () => {
@@ -476,7 +501,7 @@ describe('Settings', () => {
 			});
 
 			expect(result.transcriptionAdvancedSettingsEnabled).toBe(true);
-			expect(result.transcriptionDictionaryProfiles).toHaveLength(1);
+			expect(dictionaryProfiles(result)).toHaveLength(1);
 		});
 
 		it('respects a stored advanced master switch left off', () => {

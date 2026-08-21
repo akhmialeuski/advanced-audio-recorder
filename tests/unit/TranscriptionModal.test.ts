@@ -6,6 +6,7 @@
 import { App, Notice, TFile } from 'obsidian';
 import { noticeMessages } from '../mocks/obsidian';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
+import type { Profile, ProfileKindId } from 'src/settings/profiles';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import { TranscriptionModal } from 'src/ui/TranscriptionModal';
 import {
@@ -63,6 +64,16 @@ function createModal(callbacks: {
 	return new TranscriptionModal(new App(), createAudioFile(), getSettings, {
 		backgroundProgress: callbacks,
 	});
+}
+
+/** One stored profile of a kind, as the unified model holds it. */
+function storedProfile(
+	kind: ProfileKindId,
+	id: string,
+	name: string,
+	body: string,
+): Profile {
+	return { id, kind, name, body };
 }
 
 describe('TranscriptionModal minimize behavior', () => {
@@ -276,23 +287,20 @@ describe('TranscriptionModal dictionary profile selection', () => {
 			...DEFAULT_SETTINGS,
 			// The dictionary picker lives under the advanced master switch.
 			transcriptionAdvancedSettingsEnabled: true,
-			transcriptionDictionaryProfiles: [
-				{ id: 'a', name: 'Standup', terms: 'gRPC' },
-				{ id: 'b', name: 'Legal', terms: 'affidavit' },
+			profiles: [
+				storedProfile('dictionary', 'a', 'Standup', 'gRPC'),
+				storedProfile('dictionary', 'b', 'Legal', 'affidavit'),
 			],
-			transcriptionDictionaryProfileId: selectedId,
+			selectedProfileIds: {
+				...DEFAULT_SETTINGS.selectedProfileIds,
+				dictionary: selectedId,
+			},
 		};
 	}
 
 	it('lists None plus each profile in the Dictionary dropdown', () => {
 		const settings = settingsWithProfiles('a');
-		const modal = new TranscriptionModal(
-			new App(),
-			createAudioFile(),
-			() => settings,
-			{},
-		);
-		modal.onOpen();
+		const modal = openedOver(settings);
 
 		const select = dictionarySelect(modal);
 		expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
@@ -322,14 +330,14 @@ describe('TranscriptionModal dictionary profile selection', () => {
 		select.value = 'a';
 		select.dispatchEvent(new Event('change'));
 
-		expect(onProfileSelected).toHaveBeenCalledWith('a');
+		expect(onProfileSelected).toHaveBeenCalledWith('dictionary', 'a');
 		const runSettings = (
 			modal as unknown as { runSettings: AudioRecorderSettings }
 		).runSettings;
-		expect(runSettings.transcriptionDictionaryProfileId).toBe('a');
+		expect(runSettings.selectedProfileIds.dictionary).toBe('a');
 		// The saved settings object stays untouched: persistence rides on the
 		// callback, not on mutating the shared settings from the dialog.
-		expect(settings.transcriptionDictionaryProfileId).toBe('');
+		expect(settings.selectedProfileIds.dictionary).toBe('');
 	});
 });
 
@@ -342,24 +350,18 @@ describe('TranscriptionModal participant profile selection', () => {
 			...DEFAULT_SETTINGS,
 			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 			transcriptionDiarize: true,
-			transcriptionSpeakerProfiles: [
-				{ id: 's1', name: 'Weekly sync', participants: ['Alex'] },
-				{ id: 's2', name: 'Interviews', participants: [] },
+			profiles: [
+				storedProfile('participants', 's1', 'Weekly sync', 'Alex'),
+				storedProfile('participants', 's2', 'Interviews', ''),
 			],
-			transcriptionSpeakerProfileId: '',
+			selectedProfileIds: DEFAULT_SETTINGS.selectedProfileIds,
 			...overrides,
 		};
 	}
 
 	it('lists None plus each profile when the run will diarize', () => {
 		const settings = diarizingSettings();
-		const modal = new TranscriptionModal(
-			new App(),
-			createAudioFile(),
-			() => settings,
-			{},
-		);
-		modal.onOpen();
+		const modal = openedOver(settings);
 
 		const select = selectByName(modal, 'Participant profile');
 		expect(select).not.toBeNull();
@@ -399,12 +401,12 @@ describe('TranscriptionModal participant profile selection', () => {
 
 	it('persists the picked profile and updates the run snapshot', () => {
 		const settings = diarizingSettings();
-		const onSpeakerProfileSelected = jest.fn().mockResolvedValue(undefined);
+		const onProfileSelected = jest.fn().mockResolvedValue(undefined);
 		const modal = new TranscriptionModal(
 			new App(),
 			createAudioFile(),
 			() => settings,
-			{ onSpeakerProfileSelected },
+			{ onProfileSelected },
 		);
 		modal.onOpen();
 
@@ -415,16 +417,19 @@ describe('TranscriptionModal participant profile selection', () => {
 		select.value = 's1';
 		select.dispatchEvent(new Event('change'));
 
-		expect(onSpeakerProfileSelected).toHaveBeenCalledWith('s1');
-		expect(runSettingsOf(modal).transcriptionSpeakerProfileId).toBe('s1');
+		expect(onProfileSelected).toHaveBeenCalledWith('participants', 's1');
+		expect(runSettingsOf(modal).selectedProfileIds.participants).toBe('s1');
 		// The shared settings object stays untouched: persistence rides on the
 		// callback, matching the dictionary and chapter flows.
-		expect(settings.transcriptionSpeakerProfileId).toBe('');
+		expect(settings.selectedProfileIds.participants).toBe('');
 	});
 
 	it('shows a removed profile as None rather than a dangling selection', () => {
 		const stored = diarizingSettings({
-			transcriptionSpeakerProfileId: 's1',
+			selectedProfileIds: {
+				...DEFAULT_SETTINGS.selectedProfileIds,
+				participants: 's1',
+			},
 		});
 		const selected = new TranscriptionModal(
 			new App(),
@@ -436,7 +441,10 @@ describe('TranscriptionModal participant profile selection', () => {
 		expect(selectByName(selected, 'Participant profile')?.value).toBe('s1');
 
 		const stale = diarizingSettings({
-			transcriptionSpeakerProfileId: 'gone',
+			selectedProfileIds: {
+				...DEFAULT_SETTINGS.selectedProfileIds,
+				participants: 'gone',
+			},
 		});
 		const modal = new TranscriptionModal(
 			new App(),
@@ -471,11 +479,24 @@ describe('TranscriptionModal chapter profile selection', () => {
 			...DEFAULT_SETTINGS,
 			transcriptionAutoChaptersEnabled: true,
 			transcriptionAutoChaptersOnTranscribe: onTranscribe,
-			transcriptionChapterPromptProfiles: [
-				{ id: 'c1', name: 'Agenda', prompt: 'Split by agenda item.' },
-				{ id: 'c2', name: 'Topic', prompt: 'Split by topic.' },
+			profiles: [
+				storedProfile(
+					'chapterPrompt',
+					'c1',
+					'Agenda',
+					'Split by agenda item.',
+				),
+				storedProfile(
+					'chapterPrompt',
+					'c2',
+					'Topic',
+					'Split by topic.',
+				),
 			],
-			transcriptionChapterPromptProfileId: '',
+			selectedProfileIds: {
+				...DEFAULT_SETTINGS.selectedProfileIds,
+				chapterPrompt: '',
+			},
 		};
 	}
 
@@ -493,12 +514,12 @@ describe('TranscriptionModal chapter profile selection', () => {
 
 	it('persists the picked chapter profile and updates the run snapshot', () => {
 		const settings = settingsWithChapterProfiles(true);
-		const onChapterProfileSelected = jest.fn().mockResolvedValue(undefined);
+		const onProfileSelected = jest.fn().mockResolvedValue(undefined);
 		const modal = new TranscriptionModal(
 			new App(),
 			createAudioFile(),
 			() => settings,
-			{ onChapterProfileSelected },
+			{ onProfileSelected },
 		);
 		modal.onOpen();
 
@@ -510,14 +531,14 @@ describe('TranscriptionModal chapter profile selection', () => {
 		(select as HTMLSelectElement).value = 'c1';
 		select?.dispatchEvent(new Event('change'));
 
-		expect(onChapterProfileSelected).toHaveBeenCalledWith('c1');
+		expect(onProfileSelected).toHaveBeenCalledWith('chapterPrompt', 'c1');
 		const runSettings = (
 			modal as unknown as { runSettings: AudioRecorderSettings }
 		).runSettings;
-		expect(runSettings.transcriptionChapterPromptProfileId).toBe('c1');
+		expect(runSettings.selectedProfileIds.chapterPrompt).toBe('c1');
 		// The shared settings object stays untouched: persistence rides on the
 		// callback, matching the dictionary-profile flow.
-		expect(settings.transcriptionChapterPromptProfileId).toBe('');
+		expect(settings.selectedProfileIds.chapterPrompt).toBe('');
 	});
 });
 
@@ -540,6 +561,23 @@ function toggleByName(modal: TranscriptionModal, name: string): HTMLElement {
 	return toggle;
 }
 
+/**
+ * A dialog opened over the given settings with no run callbacks, which is the
+ * arrangement most of these tests need and none of them vary.
+ * @param settings - The settings the dialog reads
+ * @returns The opened modal
+ */
+function openedOver(settings: AudioRecorderSettings): TranscriptionModal {
+	const modal = new TranscriptionModal(
+		new App(),
+		createAudioFile(),
+		() => settings,
+		{},
+	);
+	modal.onOpen();
+	return modal;
+}
+
 function runSettingsOf(modal: TranscriptionModal): AudioRecorderSettings {
 	return (modal as unknown as { runSettings: AudioRecorderSettings })
 		.runSettings;
@@ -558,17 +596,9 @@ describe('TranscriptionModal advanced settings master toggle', () => {
 		const settings: AudioRecorderSettings = {
 			...DEFAULT_SETTINGS,
 			transcriptionAdvancedSettingsEnabled: false,
-			transcriptionDictionaryProfiles: [
-				{ id: 'a', name: 'Standup', terms: 'gRPC' },
-			],
+			profiles: [storedProfile('dictionary', 'a', 'Standup', 'gRPC')],
 		};
-		const modal = new TranscriptionModal(
-			new App(),
-			createAudioFile(),
-			() => settings,
-			{},
-		);
-		modal.onOpen();
+		const modal = openedOver(settings);
 
 		expect(toggleExists(modal, 'Advanced settings')).toBe(true);
 		expect(toggleExists(modal, 'Advanced two-pass transcription')).toBe(
@@ -605,13 +635,7 @@ describe('TranscriptionModal advanced two-pass toggle', () => {
 			transcriptionAdvancedSettingsEnabled: true,
 			transcriptionAdvancedEnabled: false,
 		};
-		const modal = new TranscriptionModal(
-			new App(),
-			createAudioFile(),
-			() => settings,
-			{},
-		);
-		modal.onOpen();
+		const modal = openedOver(settings);
 
 		toggleByName(modal, 'Advanced two-pass transcription').click();
 
@@ -628,13 +652,7 @@ describe('TranscriptionModal advanced two-pass toggle', () => {
 			transcriptionAdvancedSettingsEnabled: true,
 			transcriptionAdvancedEnabled: true,
 		};
-		const modal = new TranscriptionModal(
-			new App(),
-			createAudioFile(),
-			() => settings,
-			{},
-		);
-		modal.onOpen();
+		const modal = openedOver(settings);
 
 		toggleByName(modal, 'Advanced two-pass transcription').click();
 

@@ -37,7 +37,6 @@ import {
 	type PrimitiveSettingKey,
 	type AudioRecorderSettingsInput,
 	type AudioSource,
-	type DictionaryProfile,
 	type PlatformScopedSettings,
 	type PlatformScopedSettingsInput,
 	type PlatformScopedSettingsMap,
@@ -47,6 +46,19 @@ import {
 	type TrackAudioSources,
 	type TrackAudioSourcesRecord,
 } from './settingsSchema';
+import {
+	createProfile,
+	noSelectedProfiles,
+	profilesOfKind,
+	setSelectedProfileId,
+	PROFILE_KIND_IDS,
+	type Profile,
+	type ProfileKindId,
+} from './profiles';
+import {
+	formatParticipantBody,
+	normalizeParticipantNames,
+} from '../speakers/participantRoster';
 
 /**
  * Normalizes track audio sources into a Map. Accepts the current
@@ -228,6 +240,13 @@ export function mergeSettings(
 	const merged: AudioRecorderSettings = {
 		...DEFAULT_SETTINGS,
 		...userSettings,
+		// Spread over the defaults rather than replacing them: a config saved
+		// before a kind existed names no selection for it, and the kind then
+		// starts on the profile this version seeds for it rather than on none.
+		selectedProfileIds: {
+			...DEFAULT_SETTINGS.selectedProfileIds,
+			...userSettings.selectedProfileIds,
+		},
 		audioDeviceId: active.audioDeviceId,
 		recordingChannels: active.recordingChannels,
 		// The active branch shares its Map with the flat field, so
@@ -252,6 +271,12 @@ export function mergeSettings(
 	// belonged to, and answering it first would turn that into a guess that
 	// writes one vendor's token into another vendor's field.
 	reconcileLlmJobEngines(merged);
+	// The profiles first, so everything downstream asks the unified list: the
+	// flat dictionary migration below asks whether the config already has
+	// glossaries, and the advanced gate asks the same question again.
+	normalizeProfiles(merged);
+	migrateLegacyProfileLists(merged, userSettings);
+	migrateLegacyPrompts(merged, userSettings);
 	migrateLegacyTranscriptionDictionary(merged, userSettings);
 	migrateAdvancedDictionaryGate(merged, userSettings);
 	return merged;
@@ -329,8 +354,8 @@ function reconcileTranscriptionEngine(merged: AudioRecorderSettings): void {
  * hidden. When the flag is absent from the stored data and any dictionary
  * profile is present, turn it on to preserve the pre-upgrade behavior. A
  * pristine config (no profiles, flag absent) stays `false`, the fresh-install
- * default. Runs after {@link migrateLegacyTranscriptionDictionary} so a
- * legacy-seeded profile already shows up in `merged`.
+ * default. Runs after the profile migrations so a legacy-seeded profile
+ * already shows up in `merged`.
  * @param merged - The merged settings to migrate in place
  * @param raw - The raw user settings as loaded from disk
  */
@@ -344,7 +369,7 @@ function migrateAdvancedDictionaryGate(
 	if (legacy.transcriptionAdvancedSettingsEnabled !== undefined) {
 		return;
 	}
-	if (merged.transcriptionDictionaryProfiles.length > 0) {
+	if (profilesOfKind(merged.profiles, 'dictionary').length > 0) {
 		merged.transcriptionAdvancedSettingsEnabled = true;
 	}
 }
@@ -362,14 +387,197 @@ function legacyString(value: unknown): string {
 	return typeof value === 'string' ? value : '';
 }
 
+/** One pre-unification profile list, and what it becomes. */
+interface LegacyProfileList {
+	/** Stored field the list lived in. */
+	readonly key: string;
+	/** Stored field its selection lived in. */
+	readonly selectionKey: string;
+	/** Kind the migrated profiles carry. */
+	readonly kind: ProfileKindId;
+	/** The entry's body, read from whatever field that kind used to name it. */
+	readonly body: (entry: Record<string, unknown>) => string;
+}
+
+/**
+ * Every profile list the schema used to keep apart, in the order their kinds
+ * are declared. The list is what makes the migration one pass rather than one
+ * function per kind, and a kind that was never stored separately (the
+ * post-processing prompts) simply is not here.
+ */
+const LEGACY_PROFILE_LISTS: readonly LegacyProfileList[] = [
+	{
+		key: 'transcriptionSpeakerProfiles',
+		selectionKey: 'transcriptionSpeakerProfileId',
+		kind: 'participants',
+		// The roster was stored parsed; a unified profile keeps the text the
+		// editor shows, so it is written back one name per line.
+		body: (entry) =>
+			formatParticipantBody(
+				normalizeParticipantNames(
+					Array.isArray(entry.participants) ? entry.participants : [],
+				),
+			),
+	},
+	{
+		key: 'transcriptionDictionaryProfiles',
+		selectionKey: 'transcriptionDictionaryProfileId',
+		kind: 'dictionary',
+		body: (entry) => legacyString(entry.terms),
+	},
+	{
+		key: 'transcriptionChapterPromptProfiles',
+		selectionKey: 'transcriptionChapterPromptProfileId',
+		kind: 'chapterPrompt',
+		body: (entry) => legacyString(entry.prompt),
+	},
+];
+
+/**
+ * Every pre-profile post-processing prompt, and the kind that now holds it.
+ */
+const LEGACY_PROMPT_FIELDS: readonly {
+	readonly key: string;
+	readonly kind: ProfileKindId;
+}[] = [
+	{ key: 'llmCleanupPrompt', kind: 'llmCleanup' },
+	{ key: 'llmSummaryPrompt', kind: 'llmSummary' },
+	{ key: 'llmCustomInstruction', kind: 'llmCustom' },
+];
+
+/**
+ * Reads one stored profile list into unified profiles, dropping entries a
+ * hand-edited data.json left unusable (anything that is not a record with a
+ * string id and name), since a profile with no id is one no selection can name
+ * and no page can address.
+ * @param stored - The raw value of the stored list
+ * @param list - The list being read
+ * @returns The profiles it converts to
+ */
+function convertLegacyProfiles(
+	stored: unknown,
+	list: LegacyProfileList,
+): Profile[] {
+	if (!Array.isArray(stored)) {
+		return [];
+	}
+	const profiles: Profile[] = [];
+	for (const entry of stored) {
+		if (!isRecord(entry)) {
+			continue;
+		}
+		const id = legacyString(entry.id);
+		const name = legacyString(entry.name);
+		if (id === '' || name === '') {
+			continue;
+		}
+		profiles.push({ id, kind: list.kind, name, body: list.body(entry) });
+	}
+	return profiles;
+}
+
+/**
+ * Carries the pre-unification profile lists into the single `profiles` list.
+ *
+ * Each kind used to be its own stored list of its own shape, so an upgrade
+ * finds a config whose glossaries, rosters, and chapter prompts are in three
+ * fields this version no longer reads. They move over keeping their ids - a
+ * recording's sidecar names the participant profile it ran with, and every
+ * selection is by id - and the profiles this version seeds for that kind step
+ * aside, since the stored list is the user's own and already carries whatever
+ * it kept of the old default.
+ *
+ * A config already holding a unified list is left alone: it was written by
+ * this version or a later one, and its list is the authority.
+ * @param merged - The merged settings to migrate in place
+ * @param raw - The raw user settings as loaded from disk
+ */
+function migrateLegacyProfileLists(
+	merged: AudioRecorderSettings,
+	raw: AudioRecorderSettingsInput,
+): void {
+	const stored: Record<string, unknown> = isRecord(raw) ? raw : {};
+	const unified = !Array.isArray(stored.profiles);
+	for (const list of LEGACY_PROFILE_LISTS) {
+		if (unified && stored[list.key] !== undefined) {
+			const converted = convertLegacyProfiles(stored[list.key], list);
+			merged.profiles = [
+				...merged.profiles.filter(
+					(profile) => profile.kind !== list.kind,
+				),
+				...converted,
+			];
+			setSelectedProfileId(
+				merged,
+				list.kind,
+				legacyString(stored[list.selectionKey]),
+			);
+		}
+		// Dropped whether or not anything was carried over, so a later save
+		// never writes the superseded field again.
+		deleteLegacyField(merged, list.key);
+		deleteLegacyField(merged, list.selectionKey);
+	}
+}
+
+/**
+ * Carries the pre-profile post-processing prompts into profiles of their own.
+ *
+ * Each task used to hold one editable prompt, and that text is what the user
+ * tuned, so it becomes the body of the "Default" profile this version seeds
+ * for the task rather than a second profile beside it: the same prompt keeps
+ * running after the upgrade, and it is now one entry of a catalogue the user
+ * can add to. A config that already carries profiles of the kind is left
+ * alone.
+ * @param merged - The merged settings to migrate in place
+ * @param raw - The raw user settings as loaded from disk
+ */
+function migrateLegacyPrompts(
+	merged: AudioRecorderSettings,
+	raw: AudioRecorderSettingsInput,
+): void {
+	const stored: Record<string, unknown> = isRecord(raw) ? raw : {};
+	const unified = Array.isArray(stored.profiles);
+	for (const field of LEGACY_PROMPT_FIELDS) {
+		const prompt = legacyString(stored[field.key]);
+		if (!unified && prompt.trim() !== '') {
+			// The seeded default of the task is where the prompt belongs, and
+			// a config from before the catalogues existed holds exactly that
+			// one profile per task - the one the merged selection already
+			// names, since it named nothing of its own.
+			merged.profiles = merged.profiles.map((profile) =>
+				profile.kind === field.kind
+					? { ...profile, body: prompt }
+					: profile,
+			);
+		}
+		deleteLegacyField(merged, field.key);
+	}
+}
+
+/**
+ * Drops a superseded field from the merged settings, which spread the stored
+ * data and so still carries it. Without this a save would write the field back
+ * and the next load would migrate it again, over whatever the user has changed
+ * since.
+ * @param merged - The merged settings to strip
+ * @param key - The superseded field
+ */
+function deleteLegacyField(merged: AudioRecorderSettings, key: string): void {
+	if (isRecord(merged)) {
+		delete (merged as unknown as Record<string, unknown>)[key];
+	}
+}
+
 /**
  * Carries a pre-profiles single dictionary string forward into one seeded
  * 'General' profile and selects it, then drops the flat field so a later save
  * does not re-persist it. The only-when-empty guard mirrors the LLM migration:
- * a config that already has profiles is left untouched. The delete runs
- * unconditionally, since even an empty legacy string must be stripped from the
- * merged object (which spread `...userSettings`) so serializeSettings never
- * writes it again.
+ * a config that already has dictionary profiles is left untouched. The delete
+ * runs unconditionally, since even an empty legacy string must be stripped from
+ * the merged object (which spread `...userSettings`) so serializeSettings never
+ * writes it again. Runs after {@link migrateLegacyProfileLists}, so "already
+ * has profiles" is asked of the unified list.
  * @param merged - The merged settings to migrate in place
  * @param raw - The raw user settings as loaded from disk
  */
@@ -380,20 +588,57 @@ function migrateLegacyTranscriptionDictionary(
 	const legacyTerms = legacyString(raw.transcriptionDictionary);
 	if (
 		legacyTerms.trim() !== '' &&
-		merged.transcriptionDictionaryProfiles.length === 0
+		profilesOfKind(merged.profiles, 'dictionary').length === 0
 	) {
-		const profile: DictionaryProfile = {
-			id: crypto.randomUUID(),
-			name: 'General',
-			// Keep the raw multi-line text; parsing happens at run time.
-			terms: legacyTerms,
-		};
-		merged.transcriptionDictionaryProfiles = [profile];
-		merged.transcriptionDictionaryProfileId = profile.id;
+		// Keep the raw multi-line text; parsing happens at run time.
+		const profile = createProfile('dictionary', 'General', legacyTerms);
+		merged.profiles = [...merged.profiles, profile];
+		setSelectedProfileId(merged, 'dictionary', profile.id);
 	}
-	if (isRecord(merged)) {
-		delete merged.transcriptionDictionary;
+	deleteLegacyField(merged, 'transcriptionDictionary');
+}
+
+/**
+ * Reads the stored profiles and selections back into the shapes the plugin
+ * addresses, dropping what a hand-edited data.json left unusable: an entry
+ * that is not a record, one missing an id, a name, or a body, and one carrying
+ * a kind this version does not know. A selection is kept as text whatever it
+ * names, since an id naming no profile already reads as "none" everywhere.
+ * @param merged - The merged settings to normalize in place
+ */
+function normalizeProfiles(merged: AudioRecorderSettings): void {
+	const stored: unknown = merged.profiles;
+	const kinds = new Set<string>(PROFILE_KIND_IDS);
+	merged.profiles = (Array.isArray(stored) ? stored : []).flatMap(
+		(entry: unknown) => {
+			if (!isRecord(entry) || !kinds.has(legacyString(entry.kind))) {
+				return [];
+			}
+			const id = legacyString(entry.id);
+			const name = legacyString(entry.name);
+			if (id === '' || name === '') {
+				return [];
+			}
+			return [
+				{
+					id,
+					kind: entry.kind as ProfileKindId,
+					name,
+					body: legacyString(entry.body),
+				},
+			];
+		},
+	);
+	const selections: Record<string, unknown> = isRecord(
+		merged.selectedProfileIds,
+	)
+		? merged.selectedProfileIds
+		: {};
+	const normalized = noSelectedProfiles();
+	for (const kind of PROFILE_KIND_IDS) {
+		normalized[kind] = legacyString(selections[kind]);
 	}
+	merged.selectedProfileIds = normalized;
 }
 
 /**

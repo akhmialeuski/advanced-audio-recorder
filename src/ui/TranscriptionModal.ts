@@ -56,10 +56,12 @@ import {
 	type Transcript,
 	type TranscriptOutputSidecar,
 } from '../transcription/api';
-import { DICTIONARY_PROFILES } from '../settings/dictionaryProfiles';
-import { CHAPTER_PROMPT_PROFILES } from '../settings/chapterPromptProfiles';
-import { SPEAKER_PROFILES } from '../settings/speakerProfiles';
-import { effectiveProfileId } from '../settings/profiles';
+import {
+	profilesOfKind,
+	selectedProfileId,
+	setSelectedProfileId,
+	type ProfileKindId,
+} from '../settings/profiles';
 import type { SaveProgress } from '../types';
 
 /** Default status label shown before the engine reports a finer-grained stage. */
@@ -82,19 +84,14 @@ export type TranscriptionModalOptions = {
 	autoStart?: boolean;
 	notePath?: string | undefined;
 	backgroundProgress?: TranscriptionBackgroundProgressCallbacks;
-	/** Persists the run's dictionary-profile choice so it defaults next time. */
-	onProfileSelected?: (id: string) => Promise<void>;
 	/**
-	 * Persists the run's chapter guidance profile choice so it defaults next
-	 * time and reaches the after-transcription generation (which reads the
-	 * plugin settings).
+	 * Persists the run's choice of profile for one kind, so it defaults next
+	 * time and reaches whatever runs from the plugin settings rather than from
+	 * this dialog's copy: transcribe-on-save, and the after-transcription
+	 * chapter generation. One callback for every kind, because the dialog's
+	 * pickers differ in nothing but the kind they pick.
 	 */
-	onChapterProfileSelected?: (id: string) => Promise<void>;
-	/**
-	 * Persists the run's participant-profile choice so it defaults next time
-	 * and reaches transcribe-on-save (which reads the plugin settings).
-	 */
-	onSpeakerProfileSelected?: (id: string) => Promise<void>;
+	onProfileSelected?: (kind: ProfileKindId, id: string) => Promise<void>;
 	/**
 	 * Session-wide per-engine cost accumulator owned by the plugin, so the
 	 * dialog can add this run's cost and show the running session total.
@@ -376,11 +373,11 @@ export class TranscriptionModal extends PluginModal {
 			// Only meaningful with diarization: the roster this profile fills is
 			// written alongside the speakers the run detects, and there are none
 			// without it.
-			const speakerProfiles = SPEAKER_PROFILES.get(s);
+			const speakerProfiles = profilesOfKind(s.profiles, 'participants');
 			// A stored id whose profile was removed reads as None here.
-			const selectedSpeakerProfileId = effectiveProfileId(
-				speakerProfiles,
-				SPEAKER_PROFILES.selectedId(s),
+			const selectedSpeakerProfileId = selectedProfileId(
+				s,
+				'participants',
 			);
 			addDropdown(ctx, {
 				name: 'Participant profile',
@@ -396,8 +393,8 @@ export class TranscriptionModal extends PluginModal {
 				set: (v) => {
 					// Affects this run (runSettings clone); persist as the
 					// remembered choice for the next dialog and transcribe-on-save.
-					SPEAKER_PROFILES.setSelectedId(s, v);
-					void this.options.onSpeakerProfileSelected?.(v);
+					setSelectedProfileId(s, 'participants', v);
+					void this.options.onProfileSelected?.('participants', v);
 				},
 			});
 		}
@@ -421,11 +418,11 @@ export class TranscriptionModal extends PluginModal {
 			rerender: true,
 		});
 		if (s.transcriptionAdvancedSettingsEnabled) {
-			const profiles = DICTIONARY_PROFILES.get(s);
+			const profiles = profilesOfKind(s.profiles, 'dictionary');
 			// A stored id whose profile was removed reads as None here.
-			const selectedProfileId = effectiveProfileId(
-				profiles,
-				DICTIONARY_PROFILES.selectedId(s),
+			const selectedDictionaryProfileId = selectedProfileId(
+				s,
+				'dictionary',
 			);
 			addDropdown(ctx, {
 				name: 'Dictionary',
@@ -439,12 +436,12 @@ export class TranscriptionModal extends PluginModal {
 						label: profile.name,
 					})),
 				],
-				get: () => selectedProfileId,
+				get: () => selectedDictionaryProfileId,
 				set: (v) => {
 					// Affects this run (runSettings clone); persist as the
 					// remembered choice for the next dialog and transcribe-on-save.
-					DICTIONARY_PROFILES.setSelectedId(s, v);
-					void this.options.onProfileSelected?.(v);
+					setSelectedProfileId(s, 'dictionary', v);
+					void this.options.onProfileSelected?.('dictionary', v);
 				},
 			});
 
@@ -529,11 +526,14 @@ export class TranscriptionModal extends PluginModal {
 				rerender: true,
 			});
 			if (s.transcriptionAutoChaptersOnTranscribe) {
-				const chapterProfiles = CHAPTER_PROMPT_PROFILES.get(s);
+				const chapterProfiles = profilesOfKind(
+					s.profiles,
+					'chapterPrompt',
+				);
 				// A stored id whose profile was removed reads as None here.
-				const selectedChapterProfileId = effectiveProfileId(
-					chapterProfiles,
-					CHAPTER_PROMPT_PROFILES.selectedId(s),
+				const selectedChapterProfileId = selectedProfileId(
+					s,
+					'chapterPrompt',
 				);
 				// Compact one-line picker (no description) so the section does
 				// not grow tall; the guidance profile steers the chaptering.
@@ -550,8 +550,11 @@ export class TranscriptionModal extends PluginModal {
 					set: (v) => {
 						// Affects this run and, persisted, the after-transcription
 						// generation which reads the plugin settings.
-						CHAPTER_PROMPT_PROFILES.setSelectedId(s, v);
-						void this.options.onChapterProfileSelected?.(v);
+						setSelectedProfileId(s, 'chapterPrompt', v);
+						void this.options.onProfileSelected?.(
+							'chapterPrompt',
+							v,
+						);
 					},
 				});
 			}

@@ -18,7 +18,7 @@ import type {
 	AudioRecorderSettings,
 	LlmProviderId,
 } from '../settings/settingsSchema';
-import { resolveChapterGuidance } from '../settings/chapterPromptProfiles';
+import { resolveChapterGuidance } from '../settings/profileResolution';
 import { createLlmProvider } from '../transcription/factories';
 import { vendorMaxTokens } from '../providers/providers';
 import { probeMediaDurationSeconds } from '../utils/mediaDuration';

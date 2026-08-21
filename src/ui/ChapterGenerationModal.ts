@@ -21,8 +21,11 @@ import {
 	type TranscriptSectionReader,
 	type TranscriptLinesSource,
 } from '../chapters/transcriptSources';
-import { CHAPTER_PROMPT_PROFILES } from '../settings/chapterPromptProfiles';
-import { effectiveProfileId } from '../settings/profiles';
+import {
+	profilesOfKind,
+	selectedProfileId,
+	setSelectedProfileId,
+} from '../settings/profiles';
 import { ensureSelectedInList } from '../settings/modelList';
 import { ConfirmModal } from './ConfirmModal';
 import { PluginModal } from './PluginModal';
@@ -173,11 +176,8 @@ export class ChapterGenerationModal extends PluginModal {
 	 */
 	private renderProfilePicker(): void {
 		const s = this.runSettings;
-		const profiles = CHAPTER_PROMPT_PROFILES.get(s);
-		const current = effectiveProfileId(
-			profiles,
-			CHAPTER_PROMPT_PROFILES.selectedId(s),
-		);
+		const profiles = profilesOfKind(s.profiles, 'chapterPrompt');
+		const current = selectedProfileId(s, 'chapterPrompt');
 		new Setting(this.contentEl)
 			.setName('Chapter guidance profile')
 			.setDesc(
@@ -190,7 +190,7 @@ export class ChapterGenerationModal extends PluginModal {
 					dropdown.addOption(profile.id, profile.name);
 				}
 				dropdown.setValue(current).onChange((id) => {
-					CHAPTER_PROMPT_PROFILES.setSelectedId(s, id);
+					setSelectedProfileId(s, 'chapterPrompt', id);
 				});
 			});
 	}
@@ -310,9 +310,10 @@ export class ChapterGenerationModal extends PluginModal {
 		applyEngineSettings(live, vendorEngine(vendor.id).id, {
 			model: vendor.settings.model(this.runSettings),
 		});
-		CHAPTER_PROMPT_PROFILES.setSelectedId(
+		setSelectedProfileId(
 			live,
-			CHAPTER_PROMPT_PROFILES.selectedId(this.runSettings),
+			'chapterPrompt',
+			selectedProfileId(this.runSettings, 'chapterPrompt'),
 		);
 	}
 

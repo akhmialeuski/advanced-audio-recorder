@@ -54,3 +54,27 @@ export function mergeParticipantNames(
 ): string[] {
 	return normalizeParticipantNames([...current, ...added]);
 }
+
+/**
+ * Reads a roster written as text, one name per line, into names a run can use.
+ * A participant profile stores its roster the way every profile stores its
+ * body - as the text the user edits - so this is the single place that turns
+ * that text into names, and the normalization it applies is the same one a
+ * sidecar and a rename dialog get.
+ * @param body - The roster as edited, one name per line
+ * @returns A clean, order-preserving list of names
+ */
+export function parseParticipantBody(body: string): string[] {
+	return normalizeParticipantNames(body.split(/\r?\n/));
+}
+
+/**
+ * Writes names back as the text a profile body holds. The inverse of
+ * {@link parseParticipantBody}, so a roster grown by the rename dialog is
+ * stored in the form the editor shows.
+ * @param names - The roster to write
+ * @returns One name per line
+ */
+export function formatParticipantBody(names: readonly string[]): string {
+	return names.join('\n');
+}

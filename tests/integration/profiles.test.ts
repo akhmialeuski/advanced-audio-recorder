@@ -1,37 +1,40 @@
 /**
- * Tests the shared profile-list machinery once, and then runs the same
- * behavioural contract against every profile list in the plugin. The three
- * kinds (dictionary glossaries, chapter guidance prompts, participant rosters)
- * used to carry three copies of this logic with three naming conventions; these
- * tests are what keep them on one implementation.
- * @module tests/unit/profiles.test
+ * Tests the shared profile machinery once, and then runs the same behavioural
+ * contract against every kind of profile the plugin keeps. The kinds used to
+ * carry a copy of this logic each, with a naming convention each; these tests
+ * are what keep them on one implementation, and what makes a kind added to the
+ * registry arrive with the same rules as the rest.
+ * @module tests/integration/profiles.test
  */
 
 import {
 	addAndSelectProfile,
 	addProfile,
+	createProfile,
 	editingProfileId,
 	effectiveProfileId,
 	findProfile,
+	freeProfileName,
 	moveProfile,
+	profilesOfKind,
 	removeAndReselectProfile,
 	removeProfile,
 	selectedProfile,
+	selectedProfileId,
+	setSelectedProfileId,
+	PROFILE_KIND_IDS,
 	type Profile,
-	type ProfileList,
+	type ProfileKindId,
 } from 'src/settings/profiles';
-import { DICTIONARY_PROFILES } from 'src/settings/dictionaryProfiles';
-import { CHAPTER_PROMPT_PROFILES } from 'src/settings/chapterPromptProfiles';
-import { SPEAKER_PROFILES } from 'src/settings/speakerProfiles';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 
-/** A minimal profile list, so the generic helpers are tested on their own. */
-interface Simple extends Profile {
-	body: string;
-}
-
-const simple = (id: string, name: string): Simple => ({ id, name, body: '' });
+/** A profile of the kind under test, so the helpers are exercised on their own. */
+const simple = (
+	id: string,
+	name: string,
+	kind: ProfileKindId = 'dictionary',
+): Profile => ({ id, kind, name, body: '' });
 
 describe('profile list helpers', () => {
 	describe('addProfile', () => {
@@ -71,24 +74,38 @@ describe('profile list helpers', () => {
 		});
 	});
 
+	describe('profilesOfKind', () => {
+		it('returns one kind in stored order, and nothing of another', () => {
+			const profiles = [
+				simple('a', 'A'),
+				simple('p', 'P', 'participants'),
+				simple('b', 'B'),
+			];
+			expect(
+				profilesOfKind(profiles, 'dictionary').map((p) => p.id),
+			).toEqual(['a', 'b']);
+			expect(profilesOfKind(profiles, 'llmCleanup')).toEqual([]);
+		});
+	});
+
 	describe('moveProfile', () => {
 		const profiles = [simple('a', 'A'), simple('b', 'B'), simple('c', 'C')];
 
 		it('moves a profile down to the dropped position', () => {
 			expect(
-				moveProfile(profiles, 0, 2).map((profile) => profile.id),
+				moveProfile(profiles, 'dictionary', 0, 2).map((p) => p.id),
 			).toEqual(['b', 'c', 'a']);
 		});
 
 		it('moves a profile up to the dropped position', () => {
 			expect(
-				moveProfile(profiles, 2, 0).map((profile) => profile.id),
+				moveProfile(profiles, 'dictionary', 2, 0).map((p) => p.id),
 			).toEqual(['c', 'a', 'b']);
 		});
 
 		it('leaves the order alone for a drop on the same position', () => {
 			expect(
-				moveProfile(profiles, 1, 1).map((profile) => profile.id),
+				moveProfile(profiles, 'dictionary', 1, 1).map((p) => p.id),
 			).toEqual(['a', 'b', 'c']);
 		});
 
@@ -97,15 +114,35 @@ describe('profile list helpers', () => {
 			['a target outside the list', 0, 3],
 			['a negative index', -1, 0],
 		])('leaves the order alone for %s', (_case, from, to) => {
-			expect(moveProfile(profiles, from, to).map((p) => p.id)).toEqual([
-				'a',
-				'b',
-				'c',
-			]);
+			expect(
+				moveProfile(profiles, 'dictionary', from, to).map((p) => p.id),
+			).toEqual(['a', 'b', 'c']);
+		});
+
+		it('reorders one kind without disturbing another', () => {
+			// Every kind shares one stored list now, so a catalogue the user
+			// rearranges must rewrite only the slots its own profiles hold.
+			const mixed = [
+				simple('a', 'A'),
+				simple('p1', 'P1', 'participants'),
+				simple('b', 'B'),
+				simple('p2', 'P2', 'participants'),
+			];
+			const moved = moveProfile(mixed, 'participants', 0, 1);
+			expect(
+				moved
+					.filter((profile) => profile.kind === 'participants')
+					.map((profile) => profile.id),
+			).toEqual(['p2', 'p1']);
+			expect(
+				moved
+					.filter((profile) => profile.kind === 'dictionary')
+					.map((profile) => profile.id),
+			).toEqual(['a', 'b']);
 		});
 
 		it('returns a copy rather than reordering in place', () => {
-			const next = moveProfile(profiles, 0, 1);
+			const next = moveProfile(profiles, 'dictionary', 0, 1);
 			expect(next).not.toBe(profiles);
 			expect(profiles.map((profile) => profile.id)).toEqual([
 				'a',
@@ -153,88 +190,103 @@ describe('profile list helpers', () => {
 			expect(editingProfileId([], 'a')).toBe('');
 		});
 	});
-});
 
-/** The lists to run the shared contract against, with a persisted selection. */
-const SELECTABLE_LISTS: [string, ProfileList<Profile>][] = [
-	['dictionary', DICTIONARY_PROFILES],
-	['chapter guidance', CHAPTER_PROMPT_PROFILES],
-];
+	describe('freeProfileName', () => {
+		it('keeps counting until it finds a name no profile holds', () => {
+			const taken = [
+				simple('a', 'New profile'),
+				simple('b', 'New profile 2'),
+			];
 
-describe.each(SELECTABLE_LISTS)('%s profile list', (_name, list) => {
-	let settings: AudioRecorderSettings;
-
-	beforeEach(() => {
-		settings = mergeSettings();
-		list.set(settings, []);
-		list.setSelectedId(settings, '');
+			expect(freeProfileName(taken, 'New profile')).toBe('New profile 3');
+			expect(freeProfileName([], 'New profile')).toBe('New profile');
+		});
 	});
 
-	it('adds a profile and selects it', () => {
-		const created = addAndSelectProfile(list, settings, 'Standup');
-		expect(created?.name).toBe('Standup');
-		expect(list.get(settings)).toHaveLength(1);
-		expect(list.selectedId(settings)).toBe(created?.id);
-		expect(selectedProfile(list, settings)).toEqual(created);
-	});
-
-	it('refuses a blank name and leaves the list untouched', () => {
-		expect(addAndSelectProfile(list, settings, '   ')).toBeUndefined();
-		expect(list.get(settings)).toEqual([]);
-		expect(list.selectedId(settings)).toBe('');
-	});
-
-	it('reselects the first remaining profile after a removal', () => {
-		const first = addAndSelectProfile(list, settings, 'First');
-		const second = addAndSelectProfile(list, settings, 'Second');
-		removeAndReselectProfile(list, settings, second?.id ?? '');
-		expect(list.get(settings)).toHaveLength(1);
-		expect(list.selectedId(settings)).toBe(first?.id);
-	});
-
-	it('falls back to no selection when the last profile is removed', () => {
-		const only = addAndSelectProfile(list, settings, 'Only');
-		removeAndReselectProfile(list, settings, only?.id ?? '');
-		expect(list.get(settings)).toEqual([]);
-		expect(list.selectedId(settings)).toBe('');
-		expect(selectedProfile(list, settings)).toBeUndefined();
-	});
-
-	it('resolves no profile for a selection pointing at a removed one', () => {
-		const created = addAndSelectProfile(list, settings, 'Gone');
-		list.set(
-			settings,
-			removeProfile(list.get(settings), created?.id ?? ''),
-		);
-		// The id is still stored; the resolver must treat it as no selection.
-		expect(list.selectedId(settings)).toBe(created?.id);
-		expect(selectedProfile(list, settings)).toBeUndefined();
-	});
-
-	it('creates profiles with distinct ids and a trimmed name', () => {
-		const a = list.create('  Legal  ');
-		const b = list.create('Legal');
-		expect(a.name).toBe('Legal');
-		expect(a.id).toMatch(/[0-9a-f-]{36}/);
-		expect(a.id).not.toBe(b.id);
+	describe('createProfile', () => {
+		it('creates profiles of the kind asked for, with distinct ids and a trimmed name', () => {
+			const a = createProfile('llmSummary', '  Legal  ');
+			const b = createProfile('llmSummary', 'Legal');
+			expect(a.name).toBe('Legal');
+			expect(a.kind).toBe('llmSummary');
+			expect(a.body).toBe('');
+			expect(a.id).toMatch(/[0-9a-f-]{36}/);
+			expect(a.id).not.toBe(b.id);
+		});
 	});
 });
 
-describe('speaker profile list', () => {
-	// The pick is persisted like the dictionary and chapter ones: a
-	// transcription records it with the recording, and the next run defaults
-	// to it.
-	it('stores profiles and persists the selection', () => {
-		const settings = mergeSettings();
-		SPEAKER_PROFILES.set(settings, []);
-		const created = SPEAKER_PROFILES.create('Weekly sync');
-		SPEAKER_PROFILES.set(
-			settings,
-			addProfile(SPEAKER_PROFILES.get(settings), created),
-		);
-		expect(SPEAKER_PROFILES.get(settings)).toHaveLength(1);
-		SPEAKER_PROFILES.setSelectedId(settings, created.id);
-		expect(SPEAKER_PROFILES.selectedId(settings)).toBe(created.id);
-		expect(settings.transcriptionSpeakerProfileId).toBe(created.id);
-	});
-});
+describe.each(PROFILE_KIND_IDS.map((kind) => [kind, kind] as const))(
+	'%s profiles',
+	(_name, kind) => {
+		let settings: AudioRecorderSettings;
+
+		beforeEach(() => {
+			settings = mergeSettings();
+			// The seeded profiles are what a fresh install ships; the contract
+			// below is about a catalogue the user builds, so it starts empty.
+			settings.profiles = [];
+			setSelectedProfileId(settings, kind, '');
+		});
+
+		it('adds a profile and selects it', () => {
+			const created = addAndSelectProfile(settings, kind, 'Standup');
+			expect(created?.name).toBe('Standup');
+			expect(created?.kind).toBe(kind);
+			expect(profilesOfKind(settings.profiles, kind)).toHaveLength(1);
+			expect(selectedProfileId(settings, kind)).toBe(created?.id);
+			expect(selectedProfile(settings, kind)).toEqual(created);
+		});
+
+		it('refuses a blank name and leaves the list untouched', () => {
+			expect(addAndSelectProfile(settings, kind, '   ')).toBeUndefined();
+			expect(settings.profiles).toEqual([]);
+			expect(selectedProfileId(settings, kind)).toBe('');
+		});
+
+		it('reselects the first remaining profile after a removal', () => {
+			const first = addAndSelectProfile(settings, kind, 'First');
+			const second = addAndSelectProfile(settings, kind, 'Second');
+			removeAndReselectProfile(settings, kind, second?.id ?? '');
+			expect(profilesOfKind(settings.profiles, kind)).toHaveLength(1);
+			expect(selectedProfileId(settings, kind)).toBe(first?.id);
+		});
+
+		it('falls back to no selection when the last profile is removed', () => {
+			const only = addAndSelectProfile(settings, kind, 'Only');
+			removeAndReselectProfile(settings, kind, only?.id ?? '');
+			expect(settings.profiles).toEqual([]);
+			expect(selectedProfileId(settings, kind)).toBe('');
+			expect(selectedProfile(settings, kind)).toBeUndefined();
+		});
+
+		it('resolves no profile for a selection pointing at a removed one', () => {
+			const created = addAndSelectProfile(settings, kind, 'Gone');
+			settings.profiles = removeProfile(
+				settings.profiles,
+				created?.id ?? '',
+			);
+			// The id is still stored; the resolver must treat it as no
+			// selection rather than as an error.
+			expect(settings.selectedProfileIds[kind]).toBe(created?.id);
+			expect(selectedProfile(settings, kind)).toBeUndefined();
+		});
+
+		it('leaves every other kind alone while its own is edited', () => {
+			// One stored list serves them all, so an edit to one catalogue must
+			// be invisible to the others.
+			const others = PROFILE_KIND_IDS.filter((other) => other !== kind);
+			for (const other of others) {
+				addAndSelectProfile(settings, other, `${other} profile`);
+			}
+			const created = addAndSelectProfile(settings, kind, 'Mine');
+			removeAndReselectProfile(settings, kind, created?.id ?? '');
+			for (const other of others) {
+				expect(profilesOfKind(settings.profiles, other)).toHaveLength(
+					1,
+				);
+				expect(selectedProfileId(settings, other)).not.toBe('');
+			}
+		});
+	},
+);

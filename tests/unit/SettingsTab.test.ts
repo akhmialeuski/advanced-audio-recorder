@@ -152,6 +152,38 @@ const testRecordingDefinitionOf = (
 	) as RenderDefinition;
 };
 
+/** One stored profile, as the settings hold it. */
+type StoredProfile = AudioRecorderSettings['profiles'][number];
+
+/** One stored profile of a kind, as the unified model holds it. */
+function profileOf(
+	kind: StoredProfile['kind'],
+	id: string,
+	name: string,
+	body: string,
+): StoredProfile {
+	return { id, kind, name, body };
+}
+
+/** A dictionary profile with the terms under test. */
+function dictionaryProfile(
+	id: string,
+	name: string,
+	body: string,
+): StoredProfile {
+	return profileOf('dictionary', id, name, body);
+}
+
+/** A chapter guidance profile with the prompt under test. */
+function chapterProfile(id: string, name: string, body: string): StoredProfile {
+	return profileOf('chapterPrompt', id, name, body);
+}
+
+/** The glossaries a config holds, which is what these catalogues edit. */
+function glossaries(settings: AudioRecorderSettings): StoredProfile[] {
+	return settings.profiles.filter((profile) => profile.kind === 'dictionary');
+}
+
 describe('AudioRecorderSettingTab', () => {
 	let tab: AudioRecorderSettingTab;
 	let mockSettings: AudioRecorderSettings;
@@ -409,42 +441,40 @@ describe('AudioRecorderSettingTab', () => {
 		});
 
 		it('reads the tree again when another profile becomes the default', async () => {
-			mockSettings.transcriptionDictionaryProfiles = [
-				{ id: 'a', name: 'SWIFT', terms: 'vdura-api' },
-				{ id: 'b', name: 'Robot', terms: 'ros2, rclcpp' },
+			mockSettings.profiles = [
+				dictionaryProfile('a', 'SWIFT', 'vdura-api'),
+				dictionaryProfile('b', 'Robot', 'ros2, rclcpp'),
 			];
-			mockSettings.transcriptionDictionaryProfileId = 'a';
+			mockSettings.selectedProfileIds.dictionary = 'a';
 
-			await tab.setControlValue(
-				'transcriptionDictionaryProfileId#b',
-				true,
-			);
+			await tab.setControlValue('profile.dictionary.selection#b', true);
 
 			// Every entry of the catalogue says whether it is the one in use,
 			// which no visible predicate can express: without reading the tree
 			// again both entries keep the answer they were built with.
-			expect(mockSettings.transcriptionDictionaryProfileId).toBe('b');
+			expect(mockSettings.selectedProfileIds.dictionary).toBe('b');
 			expect(updateSpy).toHaveBeenCalledTimes(1);
 		});
 
 		it('runs the chapter catalogue through the same mechanism', async () => {
-			mockSettings.transcriptionChapterPromptProfiles = [
-				{ id: 'a', name: 'Standup', prompt: 'by speaker' },
-				{ id: 'b', name: 'Lecture', prompt: 'by topic' },
+			mockSettings.profiles = [
+				chapterProfile('a', 'Standup', 'by speaker'),
+				chapterProfile('b', 'Lecture', 'by topic'),
 			];
-			mockSettings.transcriptionChapterPromptProfileId = 'a';
+			mockSettings.selectedProfileIds.chapterPrompt = 'a';
 
 			await tab.setControlValue(
-				'transcriptionChapterPromptProfileId#b',
+				'profile.chapterPrompt.selection#b',
 				true,
 			);
-			await tab.setControlValue('chapterProfile.prompt#b', 'by chapter');
+			await tab.setControlValue(
+				'profile.chapterPrompt.body#b',
+				'by chapter',
+			);
 
 			// One catalogue, two kinds: the keys differ, the behaviour does not.
-			expect(mockSettings.transcriptionChapterPromptProfileId).toBe('b');
-			expect(
-				mockSettings.transcriptionChapterPromptProfiles[1]?.prompt,
-			).toBe('by chapter');
+			expect(mockSettings.selectedProfileIds.chapterPrompt).toBe('b');
+			expect(mockSettings.profiles[1]?.body).toBe('by chapter');
 			expect(updateSpy).toHaveBeenCalledTimes(1);
 		});
 
@@ -1274,26 +1304,70 @@ describe('AudioRecorderSettingTab', () => {
 			]);
 		});
 
+		it('offers the prompt catalogue of the task in hand, and no other', () => {
+			// Three catalogues, one task: the prompts of the task being run
+			// are the ones to choose between, and the other two would only be
+			// prompts that do nothing.
+			mockSettings.llmPostProcessEnabled = true;
+			mockSettings.llmPostProcessTask = 'summary';
+
+			const definitions = tab.getSettingDefinitions();
+			const shown = (heading: string): boolean => {
+				const visible = pageOf(definitions, heading).visible;
+				// A page may declare its visibility as a fixed answer or as a
+				// predicate; a catalogue's is a predicate over the settings.
+				return typeof visible === 'function'
+					? visible()
+					: visible !== false;
+			};
+
+			expect(shown('Summary prompt profiles')).toBe(true);
+			expect(shown('Cleanup prompt profiles')).toBe(false);
+			expect(shown('Custom instruction profiles')).toBe(false);
+		});
+
+		it('edits a prompt profile through the keys of its own page', async () => {
+			mockSettings.llmPostProcessEnabled = true;
+			mockSettings.llmPostProcessTask = 'cleanup';
+			tab.getSettingDefinitions();
+			const seeded = mockSettings.profiles.find(
+				(profile) => profile.kind === 'llmCleanup',
+			);
+
+			await tab.setControlValue(
+				`profile.llmCleanup.body#${seeded?.id ?? ''}`,
+				'Fix the punctuation, nothing else.',
+			);
+
+			// A prompt is a profile body like any other, so the catalogue that
+			// edits a glossary edits this with the same keys.
+			expect(
+				tab.getControlValue(
+					`profile.llmCleanup.body#${seeded?.id ?? ''}`,
+				),
+			).toBe('Fix the punctuation, nothing else.');
+		});
+
 		it('adds the first dictionary profile and adopts it', async () => {
-			mockSettings.transcriptionDictionaryProfiles = [];
+			mockSettings.profiles = [];
 
 			listOf('Dictionary profiles').addItem?.action();
 			await tick();
 
-			const profiles = mockSettings.transcriptionDictionaryProfiles;
+			const profiles = glossaries(mockSettings);
 			expect(profiles).toHaveLength(1);
 			// Nothing usable was selected, so the first one becomes the default.
-			expect(mockSettings.transcriptionDictionaryProfileId).toBe(
+			expect(mockSettings.selectedProfileIds.dictionary).toBe(
 				profiles[0]?.id,
 			);
 		});
 
 		it('numbers a further profile and leaves the default alone', async () => {
-			mockSettings.transcriptionDictionaryProfiles = [];
+			mockSettings.profiles = [];
 
 			listOf('Dictionary profiles').addItem?.action();
 			await tick();
-			const first = mockSettings.transcriptionDictionaryProfileId;
+			const first = mockSettings.selectedProfileIds.dictionary;
 			listOf('Dictionary profiles').addItem?.action();
 			await tick();
 
@@ -1301,21 +1375,18 @@ describe('AudioRecorderSettingTab', () => {
 			// the first one's name; and adding a glossary must not silently
 			// change which one a run uses.
 			expect(
-				mockSettings.transcriptionDictionaryProfiles.map(
-					(profile) => profile.name,
-				),
+				glossaries(mockSettings).map((profile) => profile.name),
 			).toEqual(['New profile', 'New profile 2']);
-			expect(mockSettings.transcriptionDictionaryProfileId).toBe(first);
+			expect(mockSettings.selectedProfileIds.dictionary).toBe(first);
 		});
 
 		it('edits a profile through the keys of its own page', async () => {
 			listOf('Dictionary profiles').addItem?.action();
 			listOf('Dictionary profiles').addItem?.action();
 			await tick();
-			const [first, second] =
-				mockSettings.transcriptionDictionaryProfiles;
+			const [first, second] = glossaries(mockSettings);
 			const bodyKey = (id: string): string =>
-				`dictionaryProfile.terms#${id}`;
+				`profile.dictionary.body#${id}`;
 
 			await tab.setControlValue(
 				bodyKey(second?.id ?? ''),
@@ -1323,8 +1394,8 @@ describe('AudioRecorderSettingTab', () => {
 			);
 
 			// A row on one profile's page can never write to another's.
-			expect(second?.terms).toBe('Kubernetes, kubectl');
-			expect(first?.terms).toBe('');
+			expect(second?.body).toBe('Kubernetes, kubectl');
+			expect(first?.body).toBe('');
 			expect(tab.getControlValue(bodyKey(second?.id ?? ''))).toBe(
 				'Kubernetes, kubectl',
 			);
@@ -1334,36 +1405,34 @@ describe('AudioRecorderSettingTab', () => {
 			listOf('Dictionary profiles').addItem?.action();
 			listOf('Dictionary profiles').addItem?.action();
 			await tick();
-			const [, second] = mockSettings.transcriptionDictionaryProfiles;
-			const key = `transcriptionDictionaryProfileId#${second?.id ?? ''}`;
+			const [, second] = glossaries(mockSettings);
+			const key = `profile.dictionary.selection#${second?.id ?? ''}`;
 			expect(tab.getControlValue(key)).toBe(false);
 
 			await tab.setControlValue(key, true);
 
-			expect(mockSettings.transcriptionDictionaryProfileId).toBe(
-				second?.id,
-			);
+			expect(mockSettings.selectedProfileIds.dictionary).toBe(second?.id);
 			expect(tab.getControlValue(key)).toBe(true);
 		});
 
 		it('clears the default when a profile stops being it', async () => {
 			listOf('Dictionary profiles').addItem?.action();
 			await tick();
-			const [only] = mockSettings.transcriptionDictionaryProfiles;
-			const key = `transcriptionDictionaryProfileId#${only?.id ?? ''}`;
+			const [only] = glossaries(mockSettings);
+			const key = `profile.dictionary.selection#${only?.id ?? ''}`;
 
 			await tab.setControlValue(key, false);
 
 			// Off means "no default of this kind", which the run-time resolver
 			// reads as None.
-			expect(mockSettings.transcriptionDictionaryProfileId).toBe('');
+			expect(mockSettings.selectedProfileIds.dictionary).toBe('');
 		});
 
 		it('deletes a profile from its own page', async () => {
 			listOf('Dictionary profiles').addItem?.action();
 			listOf('Dictionary profiles').addItem?.action();
 			await tick();
-			const [first] = mockSettings.transcriptionDictionaryProfiles;
+			const [first] = glossaries(mockSettings);
 
 			rowIn(
 				pageOf(tab.getSettingDefinitions(), 'New profile'),
@@ -1372,9 +1441,7 @@ describe('AudioRecorderSettingTab', () => {
 			await tick();
 
 			expect(
-				mockSettings.transcriptionDictionaryProfiles.map(
-					(profile) => profile.id,
-				),
+				glossaries(mockSettings).map((profile) => profile.id),
 			).not.toContain(first?.id);
 		});
 
@@ -1384,7 +1451,7 @@ describe('AudioRecorderSettingTab', () => {
 
 			// A profile deleted while its page was open leaves that page's
 			// controls standing until the page is torn down.
-			expect(tab.getControlValue('dictionaryProfile.terms#gone')).toBe(
+			expect(tab.getControlValue('profile.dictionary.body#gone')).toBe(
 				'',
 			);
 		});
@@ -1683,11 +1750,14 @@ describe('AudioRecorderSettingTab profile catalogues', () => {
 	beforeEach(() => {
 		mockProfileDialogs.length = 0;
 		mockSettings = { ...DEFAULT_SETTINGS };
-		mockSettings.transcriptionDictionaryProfiles = [
-			{ id: 'a', name: 'Legal', terms: 'tort' },
-			{ id: 'b', name: 'Medical', terms: 'triage' },
+		mockSettings.profiles = [
+			dictionaryProfile('a', 'Legal', 'tort'),
+			dictionaryProfile('b', 'Medical', 'triage'),
 		];
-		mockSettings.transcriptionDictionaryProfileId = 'a';
+		mockSettings.selectedProfileIds = {
+			...DEFAULT_SETTINGS.selectedProfileIds,
+			dictionary: 'a',
+		};
 		saveSettings = jest.fn().mockResolvedValue(undefined);
 		tab = new AudioRecorderSettingTab(
 			new App(),
@@ -1717,9 +1787,7 @@ describe('AudioRecorderSettingTab profile catalogues', () => {
 		lastPrompt().onSubmit('Contracts');
 		await tick();
 
-		expect(at(mockSettings.transcriptionDictionaryProfiles, 0).name).toBe(
-			'Contracts',
-		);
+		expect(at(glossaries(mockSettings), 0).name).toBe('Contracts');
 		expect(saveSettings).toHaveBeenCalledTimes(1);
 		expect(jest.mocked(closeSettingsPage)).toHaveBeenCalledTimes(1);
 	});
@@ -1753,11 +1821,9 @@ describe('AudioRecorderSettingTab profile catalogues', () => {
 		profileAction('Medical', 'Delete profile')();
 		await tick();
 
-		expect(
-			mockSettings.transcriptionDictionaryProfiles.map(
-				(profile) => profile.name,
-			),
-		).toEqual(['Legal']);
+		expect(glossaries(mockSettings).map((profile) => profile.name)).toEqual(
+			['Legal'],
+		);
 		expect(jest.mocked(closeSettingsPage)).toHaveBeenCalledTimes(1);
 	});
 
@@ -1765,7 +1831,7 @@ describe('AudioRecorderSettingTab profile catalogues', () => {
 		profileAction('Legal', 'Delete profile')();
 		await tick();
 
-		expect(mockSettings.transcriptionDictionaryProfileId).toBe('b');
+		expect(mockSettings.selectedProfileIds.dictionary).toBe('b');
 	});
 
 	/**
@@ -1797,11 +1863,9 @@ describe('AudioRecorderSettingTab profile catalogues', () => {
 		reorderProfiles('Dictionary profiles')(1, 0);
 		await tick();
 
-		expect(
-			mockSettings.transcriptionDictionaryProfiles.map(
-				(profile) => profile.name,
-			),
-		).toEqual(['Medical', 'Legal']);
+		expect(glossaries(mockSettings).map((profile) => profile.name)).toEqual(
+			['Medical', 'Legal'],
+		);
 		expect(saveSettings).toHaveBeenCalledTimes(1);
 	});
 
@@ -1810,7 +1874,7 @@ describe('AudioRecorderSettingTab profile catalogues', () => {
 		reorderProfiles('Dictionary profiles')(1, 0);
 		await tick();
 
-		expect(mockSettings.transcriptionDictionaryProfileId).toBe('a');
+		expect(mockSettings.selectedProfileIds.dictionary).toBe('a');
 	});
 
 	it.each([
@@ -1820,11 +1884,9 @@ describe('AudioRecorderSettingTab profile catalogues', () => {
 		reorderProfiles('Dictionary profiles')(from, to);
 		await tick();
 
-		expect(
-			mockSettings.transcriptionDictionaryProfiles.map(
-				(profile) => profile.name,
-			),
-		).toEqual(['Legal', 'Medical']);
+		expect(glossaries(mockSettings).map((profile) => profile.name)).toEqual(
+			['Legal', 'Medical'],
+		);
 		expect(saveSettings).not.toHaveBeenCalled();
 	});
 
@@ -1834,9 +1896,7 @@ describe('AudioRecorderSettingTab profile catalogues', () => {
 	])('does nothing when $name a profile that is already gone', ({ row }) => {
 		// The page can still be open on a profile a sync just removed.
 		const act = profileAction('Medical', row);
-		mockSettings.transcriptionDictionaryProfiles = [
-			at(mockSettings.transcriptionDictionaryProfiles, 0),
-		];
+		mockSettings.profiles = [at(glossaries(mockSettings), 0)];
 
 		expect(act).not.toThrow();
 		expect(mockProfileDialogs).toHaveLength(0);
