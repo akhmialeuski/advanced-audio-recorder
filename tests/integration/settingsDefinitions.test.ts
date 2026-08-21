@@ -71,6 +71,7 @@ describe('settings definitions', () => {
 	let removeProfile: jest.Mock;
 	let reorderProfile: jest.Mock;
 	let profileEntries: Array<{ id: string; name: string; summary: string }>;
+	let selectedProfileId: string;
 	let declareListAddRow: boolean;
 	let removeModel: jest.Mock;
 	let selectModel: jest.Mock;
@@ -95,6 +96,7 @@ describe('settings definitions', () => {
 			{ id: 'a', name: 'Standup', summary: '3 terms' },
 			{ id: 'b', name: 'Legal', summary: 'In use, 12 terms' },
 		];
+		selectedProfileId = 'b';
 		declareListAddRow = false;
 		removeModel = jest.fn();
 		selectModel = jest.fn();
@@ -166,6 +168,7 @@ describe('settings definitions', () => {
 		bodyDesc: 'The profile body.',
 		selectionName: 'Use by default',
 		selectionDesc: 'Offer this profile in the Transcribe dialog.',
+		selectedId: () => selectedProfileId,
 		selectionKey: `${heading} id`,
 		bodyKey: `${heading}.body`,
 		entries: () => profileEntries,

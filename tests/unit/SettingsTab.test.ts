@@ -1304,6 +1304,71 @@ describe('AudioRecorderSettingTab', () => {
 			]);
 		});
 
+		it('picks the profile in use through the catalogue dropdown', async () => {
+			mockSettings.profiles = [
+				dictionaryProfile('a', 'SWIFT', 'vdura-api'),
+				dictionaryProfile('b', 'Robot', 'ros2'),
+			];
+			mockSettings.selectedProfileIds = {
+				...DEFAULT_SETTINGS.selectedProfileIds,
+				dictionary: 'a',
+			};
+			tab.getSettingDefinitions();
+			const key = 'profile.dictionary.selection';
+			expect(tab.getControlValue(key)).toBe('a');
+
+			await tab.setControlValue(key, 'b');
+
+			// The dropdown and the per-profile toggle move the same selection,
+			// which is the one a run reads; a key of its own here would be a
+			// second answer to which profile is in use.
+			expect(mockSettings.selectedProfileIds.dictionary).toBe('b');
+			expect(tab.getControlValue(key)).toBe('b');
+			expect(
+				(mockSettings as unknown as Record<string, unknown>)[key],
+			).toBeUndefined();
+		});
+
+		it('reads None from the catalogue dropdown for a selection that is gone', async () => {
+			mockSettings.profiles = [dictionaryProfile('a', 'SWIFT', 'x')];
+			mockSettings.selectedProfileIds = {
+				...DEFAULT_SETTINGS.selectedProfileIds,
+				dictionary: 'gone',
+			};
+			tab.getSettingDefinitions();
+			const key = 'profile.dictionary.selection';
+
+			expect(tab.getControlValue(key)).toBe('');
+
+			await tab.setControlValue(key, '');
+
+			expect(mockSettings.selectedProfileIds.dictionary).toBe('');
+		});
+
+		it('names the profile in use on the entry that opens the catalogue', () => {
+			mockSettings.profiles = [
+				chapterProfile('c1', 'Agenda', 'by agenda'),
+				chapterProfile('c2', 'Lecture', 'by topic'),
+			];
+			mockSettings.selectedProfileIds = {
+				...DEFAULT_SETTINGS.selectedProfileIds,
+				chapterPrompt: 'c2',
+			};
+			mockSettings.transcriptionAutoChaptersEnabled = true;
+
+			const page = pageOf(
+				tab.getSettingDefinitions(),
+				'Chapter guidance profiles',
+			);
+
+			// The entry is read without opening it, so it has to say which
+			// profile a generation would actually run with.
+			const shown = page.displayValue;
+			expect(typeof shown === 'function' ? shown() : shown).toBe(
+				'Lecture',
+			);
+		});
+
 		it('offers the prompt catalogue of the task in hand, and no other', () => {
 			// Three catalogues, one task: the prompts of the task being run
 			// are the ones to choose between, and the other two would only be

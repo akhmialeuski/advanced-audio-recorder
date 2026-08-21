@@ -901,7 +901,9 @@ export interface ProfileCatalogue {
 	/** Label and description of the row that makes a profile the default one. */
 	readonly selectionName: string;
 	readonly selectionDesc: string;
-	/** Settings key holding the selected profile id. */
+	/** The profile of this kind a run applies ('' for none). */
+	selectedId(settings: AudioRecorderSettings): string;
+	/** Control key of the row that picks the profile in use. */
 	readonly selectionKey: string;
 	/** Control key of a profile's body. */
 	readonly bodyKey: string;
@@ -1082,9 +1084,9 @@ function profileGroups(
 	const entries = catalogue.entries(settings);
 	const visible = (): boolean => catalogue.visible(settings);
 	const selectedName = (): string => {
-		const selected = settings[
-			catalogue.selectionKey as keyof AudioRecorderSettings
-		] as string;
+		// The selection lives in the profile store, not in a settings field of
+		// its own, so the catalogue is what answers which profile is in use.
+		const selected = catalogue.selectedId(settings);
 		return (
 			catalogue.entries(settings).find((entry) => entry.id === selected)
 				?.name ?? 'None'

@@ -380,6 +380,13 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				selection.id
 			);
 		}
+		const picker = this.profileSelections.get(key);
+		if (picker) {
+			// The catalogue's own dropdown, which names a kind rather than one
+			// profile of it. A stale stored id reads as None, so the row never
+			// shows an option the list no longer offers.
+			return selectedProfileId(this.plugin.settings, picker);
+		}
 		const track = parseTrackControlKey(key);
 		if (track) {
 			const source = this.plugin.settings.trackAudioSources.get(
@@ -449,6 +456,13 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			}
 			// Every entry of the catalogue says whether it is the one in use,
 			// so the tree is read again rather than re-evaluated in place.
+			return this.commit();
+		}
+		const picker = this.profileSelections.get(key);
+		if (picker) {
+			// The dropdown picks among the kind's profiles, so it writes the
+			// same selection the per-profile toggle does; '' is its None.
+			setSelectedProfileId(this.plugin.settings, picker, String(value));
 			return this.commit();
 		}
 		const track = parseTrackControlKey(key);
@@ -665,6 +679,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			bodyDesc: kind.bodyDesc,
 			selectionName: kind.selectionName,
 			selectionDesc: kind.selectionDesc,
+			selectedId: (settings) => selectedProfileId(settings, kindId),
 			selectionKey: kind.selectionKey,
 			bodyKey: kind.bodyKey,
 			entries: (settings) =>
