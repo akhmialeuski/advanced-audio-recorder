@@ -41,6 +41,9 @@ function shownTime(root: HTMLElement): string | null {
 	return null;
 }
 
+/** Obsidian's class for a control showing its engaged state. */
+const ACTIVE_CLASS = 'is-active';
+
 expect.extend({
 	/**
 	 * The element offers a control with the given accessible name.
@@ -60,6 +63,29 @@ expect.extend({
 						(labels.length > 0
 							? labels.map((one) => `"${one}"`).join(', ')
 							: '(none)'),
+		};
+	},
+
+	/**
+	 * The control is showing its engaged state - loop on, mute on, the
+	 * marker row the playhead is inside.
+	 *
+	 * Obsidian's own `is-active` is the class every one of these uses, and
+	 * three suites were spelling it out with `classList.contains`. Naming it
+	 * once keeps the class string out of test bodies and makes the failure
+	 * say which control was not engaged.
+	 * @param node - The control
+	 * @returns Jest matcher result
+	 */
+	toBeActiveControl(node: HTMLElement) {
+		const pass = node.classList.contains(ACTIVE_CLASS);
+		const name = node.getAttribute('aria-label') ?? node.className;
+		return {
+			pass,
+			message: (): string =>
+				pass
+					? `Expected "${name}" not to be active, but it is`
+					: `Expected "${name}" to be active, but it is not`,
 		};
 	},
 
@@ -157,6 +183,8 @@ declare global {
 		interface Matchers<R> {
 			/** The element offers a control with this accessible name. */
 			toHaveControl(label: string): R;
+			/** The control shows its engaged state (loop on, mute on). */
+			toBeActiveControl(): R;
 			/** The control is rendered but not operable. */
 			toBeDisabledControl(): R;
 			/** The element's time readout shows exactly this timecode. */

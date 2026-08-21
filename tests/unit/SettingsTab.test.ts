@@ -36,6 +36,7 @@ import { SETTING } from '../helpers/selectors';
 import {
 	rowSelect,
 	rowToggle,
+	rowToggleOn,
 	settingNames,
 	settingRow,
 } from '../helpers/settingRows';
@@ -1508,6 +1509,53 @@ describe('AudioRecorderSettingTab', () => {
 			expect(disabledOf('Input device')).toBe(true);
 			expect(disabledOf('Sample rate')).toBe(true);
 			expect(disabledOf('Recording channels')).toBe(true);
+		});
+
+		// A switch synced from a desktop where the feature works reads as OFF
+		// here, so the toggle never claims a result this device cannot give.
+		// The stored value is left alone so it survives the sync back.
+		it.each([
+			{
+				name: 'multi-track recording',
+				row: 'Enable multi-track recording',
+				key: 'enableMultiTrack' as const,
+			},
+			{
+				name: 'automatic splitting',
+				row: 'Split recordings automatically',
+				key: 'autoSplitEnabled' as const,
+			},
+		])(
+			'shows $name switched off where the platform cannot honour it',
+			({ row, key }) => {
+				mockSettings[key] = true;
+				setPlatform({ isMobile: true });
+
+				tab.display();
+
+				expect(rowToggleOn(rowNamed(row))).toBe(false);
+				// Left alone in storage, so a sync back to a desktop restores it
+				expect(mockSettings[key]).toBe(true);
+			},
+		);
+
+		it.each([
+			{
+				name: 'multi-track recording',
+				row: 'Enable multi-track recording',
+				key: 'enableMultiTrack' as const,
+			},
+			{
+				name: 'automatic splitting',
+				row: 'Split recordings automatically',
+				key: 'autoSplitEnabled' as const,
+			},
+		])('shows $name switched on where it does work', ({ row, key }) => {
+			mockSettings[key] = true;
+
+			tab.display();
+
+			expect(rowToggleOn(rowNamed(row))).toBe(true);
 		});
 
 		it('blocks recording formats the device cannot produce (iOS profile)', async () => {

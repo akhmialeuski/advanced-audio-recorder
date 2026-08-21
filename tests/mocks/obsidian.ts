@@ -1445,13 +1445,18 @@ export class ToggleComponent {
 			if (this.disabled) {
 				return;
 			}
-			this.value = !this.value;
+			this.setValue(!this.value);
 			this.changeCallback?.(this.value);
 		});
 	}
 
 	setValue(value: boolean): this {
 		this.value = value;
+		// Obsidian marks an on toggle with is-enabled rather than a checked
+		// attribute, since it is a div and not an input. Without this a test
+		// asking what the row shows reads nothing at all, and an assertion
+		// that the toggle is off passes however it was set.
+		this.toggleEl.classList.toggle('is-enabled', value);
 		return this;
 	}
 

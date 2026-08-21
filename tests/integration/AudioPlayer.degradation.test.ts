@@ -14,8 +14,13 @@ import { AudioPlayer } from 'src/player/AudioPlayer';
 import { WaveformPeakCache } from 'src/player/WaveformData';
 import type { AudioPlayerRegistry } from 'src/player/AudioPlayerRegistry';
 import type { ResolvedPlayerSettings } from 'src/player/playerSettings';
-import { PLAYER_PLAYBACK_RATE_PRESETS } from 'src/constants';
+import {
+	PLAYER_ATTACH_WAIT_FRAMES,
+	PLAYER_PLAYBACK_RATE_PRESETS,
+} from 'src/constants';
+import { App as ObsidianApp, Modal } from 'obsidian';
 import { at } from '../helpers/assertions';
+import { PLAYER } from '../helpers/selectors';
 import { tick } from '../helpers/async';
 import { menuInstances, noticeMessages } from '../mocks/obsidian';
 import type { Menu as MockMenu } from '../mocks/obsidian';
@@ -223,6 +228,96 @@ describe('waiting for Obsidian to populate the embed', () => {
 	});
 });
 
+// The embed registry renders a player before Obsidian has put the embed in
+// the document, and "is this Live Preview or Reading view" cannot be told
+// from a detached element. The mode is therefore resolved on the first frame
+// where the container is attached - or not at all.
+describe('waiting for the embed to be attached to the document', () => {
+	/** A container built outside the document, as the registry renders into. */
+	function detachedContainer(): HTMLElement {
+		return new Modal(new ObsidianApp()).contentEl.createDiv();
+	}
+
+	/** Takes over requestAnimationFrame so a test can step frame by frame. */
+	function manualFrames(): { step: () => void; count: () => number } {
+		const pending: FrameRequestCallback[] = [];
+		jest.spyOn(window, 'requestAnimationFrame').mockImplementation(
+			(callback) => {
+				pending.push(callback);
+				return pending.length;
+			},
+		);
+		return {
+			step: () => {
+				pending.shift()?.(0);
+			},
+			count: () => pending.length,
+		};
+	}
+
+	it('resolves the mode at once when the container is already attached', () => {
+		const container = makeContainer();
+
+		makePlayer(container, makeRegistry(makeFakeAudio())).onload();
+
+		expect(container.matches(PLAYER.readonly)).toBe(true);
+	});
+
+	it('holds off while the container is still detached', () => {
+		const frames = manualFrames();
+		const container = detachedContainer();
+
+		makePlayer(container, makeRegistry(makeFakeAudio())).onload();
+		frames.step();
+
+		expect(container.matches(PLAYER.readonly)).toBe(false);
+	});
+
+	it('resolves the mode on the first frame after it is attached', () => {
+		const frames = manualFrames();
+		const container = detachedContainer();
+		makePlayer(container, makeRegistry(makeFakeAudio())).onload();
+
+		frames.step();
+		document.body.appendChild(container);
+		frames.step();
+
+		expect(container.matches(PLAYER.readonly)).toBe(true);
+	});
+
+	// A note closed while the embed was still detached leaves a callback
+	// holding the container; it has to fizzle rather than touch it.
+	it('stops waiting when the player unloads first', () => {
+		const frames = manualFrames();
+		const container = detachedContainer();
+		const player = makePlayer(container, makeRegistry(makeFakeAudio()));
+		// load(), not onload(): the flag the wait checks is set by a
+		// registration, and unload() only runs those for a component the
+		// framework actually loaded.
+		player.load();
+
+		player.unload();
+		document.body.appendChild(container);
+		frames.step();
+
+		expect(container.matches(PLAYER.readonly)).toBe(false);
+	});
+
+	// An embed that never attaches must not keep a frame callback alive for
+	// the life of the note.
+	it('gives up after a bounded number of frames', () => {
+		const frames = manualFrames();
+		const container = detachedContainer();
+		makePlayer(container, makeRegistry(makeFakeAudio())).onload();
+
+		for (let i = 0; i <= PLAYER_ATTACH_WAIT_FRAMES; i++) {
+			frames.step();
+		}
+
+		expect(frames.count()).toBe(0);
+	});
+});
+
 describe('the playback speed menu', () => {
 	/** Opens the speed menu over a player whose rate is set. */
 	function openSpeedMenu(rate: number): {
@@ -396,7 +491,9 @@ describe('settings applied to a live player', () => {
 	it('ignores settings applied after unload', async () => {
 		const container = makeContainer();
 		const player = makePlayer(container, makeRegistry(makeFakeAudio()));
-		player.onload();
+		// load(), not onload(): the unloaded flag applySettings checks is set
+		// by a registration, which unload() only runs for a loaded component.
+		player.load();
 		const render = jest.spyOn(internals(player), 'renderPlayer');
 
 		player.unload();

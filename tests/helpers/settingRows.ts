@@ -71,6 +71,19 @@ export function rowToggle(row: ParentNode): HTMLElement {
 }
 
 /**
+ * Whether the row's toggle is showing as on.
+ *
+ * Obsidian's toggle is a div, not an input: what it shows is a class, and
+ * `.checked` on it reads `undefined` - which compares equal to nothing and
+ * makes an assertion pass whatever the toggle is doing.
+ * @param row - The setting row
+ * @returns True when the toggle is rendered on
+ */
+export function rowToggleOn(row: ParentNode): boolean {
+	return rowToggle(row).matches(SETTING.toggleOn);
+}
+
+/**
  * The row's button, by its text when the row has more than one.
  * @param row - The setting row
  * @param text - The button's label, when the row offers several

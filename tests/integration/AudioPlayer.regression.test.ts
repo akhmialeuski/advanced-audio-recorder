@@ -149,9 +149,7 @@ describe('shared playback state survives a re-render (F1)', () => {
 
 		const container = makeContainer();
 		makePlayer(container, registry, PLAIN).onload();
-		expect(control(container, 'Loop').classList.contains('is-active')).toBe(
-			true,
-		);
+		expect(control(container, 'Loop')).toBeActiveControl();
 	});
 
 	it('reflects the live playback rate on the speed button after a re-render', () => {

@@ -14,12 +14,13 @@ import {
 } from 'src/transcription/api';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { createFile } from '../helpers/createApp';
-import { allEls, el, maybeEl } from '../helpers/dom';
+import { allEls, maybeEl } from '../helpers/dom';
 import {
 	hasSettingRow,
 	rowInput,
 	rowSelect,
 	rowToggle,
+	rowToggleOn,
 	settingRow,
 } from '../helpers/settingRows';
 import { setPlatform, useDesktopPlatform } from '../helpers/platform';
@@ -853,13 +854,23 @@ describe('TranscriptionModal per-run options', () => {
 		});
 
 		const row = settingRow(modal.contentEl, 'Speaker diarization');
-		const toggle = el(row, '.checkbox-container');
 
 		// Disabled and off: a toggle left switched on but unclickable reads
 		// as "diarization is happening", which is the promise Whisper cannot
 		// keep.
-		expect(toggle.classList).toContain('is-disabled');
-		expect(toggle.classList).not.toContain('is-enabled');
+		expect(rowToggle(row)).toBeDisabledControl();
+		expect(rowToggleOn(row)).toBe(false);
+	});
+
+	it('leaves the speaker toggle on for an engine that can diarize', () => {
+		const { modal } = openWithEverything({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			transcriptionDiarize: true,
+		});
+
+		const row = settingRow(modal.contentEl, 'Speaker diarization');
+
+		expect(rowToggleOn(row)).toBe(true);
 	});
 });
 

@@ -416,6 +416,120 @@ describe('RecordingSidecarStore', () => {
 		});
 	});
 
+	// The store mirrors what the vault does to the recording. When the vault
+	// refuses the mirroring move or delete, the recording is already renamed
+	// or gone: the sidecar mismatch is logged, never thrown at the caller in
+	// the middle of a file operation they did not start.
+	describe('a vault that refuses the mirroring operation', () => {
+		it('reports a sidecar it could not move', async () => {
+			const warn = jest.spyOn(console, 'warn').mockImplementation();
+			const { app } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setSpeakers('rec.wav', [{ label: 'Speaker 1' }]);
+			jest.mocked(app.vault.adapter.rename).mockRejectedValueOnce(
+				new Error('the vault is read-only'),
+			);
+
+			await expect(
+				store.handleRename('rec.wav', 'renamed.wav'),
+			).resolves.toBeUndefined();
+
+			expect(warn).toHaveBeenCalledWith(
+				expect.stringContaining('Failed to move sidecar'),
+				expect.any(Error),
+			);
+		});
+
+		it('reports a sidecar it could not delete', async () => {
+			const warn = jest.spyOn(console, 'warn').mockImplementation();
+			const { app } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			await store.setSpeakers('rec.wav', [{ label: 'Speaker 1' }]);
+			jest.mocked(app.vault.adapter.remove).mockRejectedValueOnce(
+				new Error('the vault is read-only'),
+			);
+
+			await expect(
+				store.handleDelete('rec.wav'),
+			).resolves.toBeUndefined();
+
+			expect(warn).toHaveBeenCalledWith(
+				expect.stringContaining('Failed to delete sidecar'),
+				expect.any(Error),
+			);
+		});
+
+		// A corrupt sidecar is remembered so its recording is not written
+		// over; the flag has to follow the recording when it is renamed, or
+		// the new path starts writing over the file that failed to parse.
+		it('carries the corrupt flag to the new path on a rename', async () => {
+			const warn = jest.spyOn(console, 'warn').mockImplementation();
+			const { app, files } = makeApp();
+			files.set('rec.wav.markers.json', '{not json');
+			const store = new RecordingSidecarStore(app);
+			await store.getMarkers('rec.wav');
+
+			await store.handleRename('rec.wav', 'renamed.wav');
+
+			// The rename moved the unreadable file; the store still refuses to
+			// write over it under its new name, and says why.
+			await expect(
+				store.setMarkers('renamed.wav', [marker('a', 1)]),
+			).rejects.toThrow(/could not be read/);
+			expect(files.get('renamed.wav.markers.json')).toBe('{not json');
+			expect(warn).toHaveBeenCalled();
+		});
+	});
+
+	describe('a failure inside the write chain', () => {
+		// The chain is shared by every recording, so one failed write must
+		// not poison the writes queued behind it for other files.
+		it('keeps serving later writes after one failed', async () => {
+			const warn = jest.spyOn(console, 'warn').mockImplementation();
+			const { app, files } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			jest.mocked(app.vault.adapter.write).mockRejectedValueOnce(
+				new Error('the disk is full'),
+			);
+
+			await store.setMarkers('first.wav', [marker('a', 1)]);
+			await store.setMarkers('second.wav', [marker('b', 2)]);
+
+			expect(warn).toHaveBeenCalledWith(
+				expect.stringContaining(
+					'Failed to write sidecar for first.wav',
+				),
+				expect.any(Error),
+			);
+			expect(files.has('second.wav.markers.json')).toBe(true);
+		});
+	});
+
+	describe('clearCache', () => {
+		// Teardown must not leave a corrupt flag behind: the next load starts
+		// from the file on disk, which the user may have fixed by hand.
+		it('forgets both the cached documents and the corrupt flags', async () => {
+			jest.spyOn(console, 'warn').mockImplementation();
+			const { app, files } = makeApp();
+			const store = new RecordingSidecarStore(app);
+			files.set('rec.wav.markers.json', '{not json');
+			await store.getMarkers('rec.wav');
+
+			store.clearCache();
+			files.set(
+				'rec.wav.markers.json',
+				JSON.stringify({
+					version: 2,
+					markers: [
+						{ id: 'a', time: 1, label: 'a', kind: 'bookmark' },
+					],
+				}),
+			);
+
+			expect(await store.getMarkers('rec.wav')).toHaveLength(1);
+		});
+	});
+
 	describe('rename/delete racing queued mutations', () => {
 		it('carries a mutation queued before the rename into the new path', async () => {
 			const { app, files } = makeApp();

@@ -180,6 +180,17 @@ describe('settings definitions', () => {
 		buildSettingsDefinitions(createContext());
 
 	/**
+	 * Whether a control is blocked, however the row declared it.
+	 * @param control - The row's control, when it has one
+	 */
+	const disabledOf = (
+		control: { disabled?: unknown } | undefined,
+	): boolean =>
+		typeof control?.disabled === 'function'
+			? (control.disabled as () => boolean)()
+			: control?.disabled === true;
+
+	/**
 	 * Names of a page's own children, rows and entries alike. A page whose rows
 	 * are one block declares that block itself, so what it shows is a level in.
 	 * @param name - Name on the page's entry
@@ -1721,6 +1732,47 @@ describe('settings definitions', () => {
 				expect(control?.options).toEqual(labels);
 			},
 		);
+
+		// The row is blocked for two different reasons, and they are not the
+		// same fix: a device that cannot choose at all, versus a chosen input
+		// that reports one layout only.
+		it('leaves the channel row open for a device that can choose', () => {
+			settings.audioDeviceId = 'iface-1';
+
+			const control = rowOf(
+				build(),
+				'Audio input',
+				'Recording channels',
+			).control;
+
+			expect(disabledOf(control)).toBe(false);
+		});
+
+		it('blocks the channel row for an input that offers one layout', () => {
+			settings.audioDeviceId = 'mic-1';
+
+			const control = rowOf(
+				build(),
+				'Audio input',
+				'Recording channels',
+			).control;
+
+			expect(disabledOf(control)).toBe(true);
+		});
+
+		// The platform default has no device id to ask about, so the choice
+		// stays open rather than being blocked on an unknown.
+		it('leaves the channel row open for the platform default input', () => {
+			settings.audioDeviceId = '';
+
+			const control = rowOf(
+				build(),
+				'Audio input',
+				'Recording channels',
+			).control;
+
+			expect(disabledOf(control)).toBe(false);
+		});
 
 		it('offers the same engines on every row that picks one', () => {
 			// Three jobs pick an engine, on three pages. They are the same
