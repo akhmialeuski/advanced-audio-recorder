@@ -16,6 +16,7 @@ import { at } from '../helpers/assertions';
 import {
 	GEMINI_FILE_MAX_WAIT_MS,
 	GEMINI_FILE_MIN_WAIT_MS,
+	GEMINI_FILE_POLL_INTERVAL_MS,
 } from 'src/constants';
 // Mock-only surface: these exist on the test double, not on Obsidian's
 // API, so they are imported from the mock by path. Jest maps 'obsidian'
@@ -24,7 +25,7 @@ import {
 	type MockRequestUrlParam,
 	type MockRequestUrlResponse,
 } from '../mocks/obsidian';
-import { withRequestUrl } from '../helpers/network';
+import { queueResponses, withRequestUrl } from '../helpers/network';
 
 const BASE_URL = 'https://gemini.example';
 const API_KEY = 'gm-test';
@@ -119,12 +120,50 @@ describe('uploadFile', () => {
 		).rejects.toThrow(/authentication failed/i);
 	});
 
+	// Headers the response really does carry, so the search has something to
+	// skip past: a handler answering with none at all never runs the compare.
 	it('throws when the start step omits the upload URL header', async () => {
-		withRequestUrl(() => ({ status: 200, headers: {}, text: '' }));
+		withRequestUrl(() => ({
+			status: 200,
+			headers: {
+				'Content-Type': 'application/json',
+				'X-Goog-Upload-Status': 'active',
+			},
+			text: '',
+		}));
 
 		await expect(
 			uploadFile(BASE_URL, API_KEY, new ArrayBuffer(1), 'audio/wav', 'a'),
 		).rejects.toThrow(/upload url/i);
+	});
+
+	it.each([
+		{ name: 'is not an object', body: 'nope' },
+		{ name: 'names no file', body: {} },
+		{ name: 'carries a name but no uri', body: { name: 'files/x' } },
+		{
+			name: 'carries a uri but no name',
+			body: { uri: 'https://files.example/x' },
+		},
+		{
+			name: 'wraps a file that is itself unusable',
+			body: { file: { name: 'files/x' } },
+		},
+	])('throws when the finalized response $name', async ({ body }) => {
+		withRequestUrl((param): MockRequestUrlResponse => {
+			if (param.url.includes('/upload/')) {
+				return {
+					status: 200,
+					headers: { 'x-goog-upload-url': 'https://up.example' },
+					text: '',
+				};
+			}
+			return { status: 200, headers: {}, text: JSON.stringify(body) };
+		});
+
+		await expect(
+			uploadFile(BASE_URL, API_KEY, new ArrayBuffer(1), 'audio/wav', 'a'),
+		).rejects.toThrow(/unexpected file response/i);
 	});
 });
 
@@ -163,6 +202,92 @@ describe('waitUntilActive', () => {
 		await expect(
 			waitUntilActive(BASE_URL, API_KEY, 'files/x'),
 		).rejects.toThrow(/failed to process/i);
+	});
+
+	describe('a file Gemini is still working on', () => {
+		beforeEach(() => {
+			jest.useFakeTimers();
+		});
+
+		afterEach(() => {
+			jest.useRealTimers();
+		});
+
+		/** One status response reporting the given processing state. */
+		const status = (state: string): Partial<MockRequestUrlResponse> => ({
+			status: 200,
+			headers: {},
+			text: JSON.stringify({
+				name: 'files/x',
+				uri: 'https://files.example/x',
+				state,
+			}),
+		});
+
+		it('polls until the file turns ACTIVE', async () => {
+			const sent = queueResponses([
+				status('PROCESSING'),
+				status('PROCESSING'),
+				status('ACTIVE'),
+			]);
+
+			const pending = waitUntilActive(BASE_URL, API_KEY, 'files/x');
+			await jest.advanceTimersByTimeAsync(
+				GEMINI_FILE_POLL_INTERVAL_MS * 2,
+			);
+
+			await expect(pending).resolves.toBeUndefined();
+			expect(sent).toHaveLength(3);
+		});
+
+		it('waits the poll interval between attempts rather than spinning', async () => {
+			const sent = queueResponses([
+				status('PROCESSING'),
+				status('ACTIVE'),
+			]);
+
+			const pending = waitUntilActive(BASE_URL, API_KEY, 'files/x');
+			await jest.advanceTimersByTimeAsync(
+				GEMINI_FILE_POLL_INTERVAL_MS - 1,
+			);
+
+			expect(sent).toHaveLength(1);
+
+			await jest.advanceTimersByTimeAsync(1);
+			await expect(pending).resolves.toBeUndefined();
+		});
+	});
+
+	it('gives up once the wait budget is spent', async () => {
+		withRequestUrl(() => ({
+			status: 200,
+			headers: {},
+			text: JSON.stringify({
+				name: 'files/x',
+				uri: 'https://files.example/x',
+				state: 'PROCESSING',
+			}),
+		}));
+
+		await expect(
+			waitUntilActive(BASE_URL, API_KEY, 'files/x', 0),
+		).rejects.toThrow(/timed out/i);
+	});
+
+	it.each([
+		{ name: 'is not an object', body: 'nope' },
+		{ name: 'names no file', body: {} },
+		{ name: 'carries a name but no uri', body: { name: 'files/x' } },
+	])('throws when the status response $name', async ({ body }) => {
+		withRequestUrl(() => ({
+			status: 200,
+			headers: {},
+			text: JSON.stringify(body),
+		}));
+
+		await expect(
+			waitUntilActive(BASE_URL, API_KEY, 'files/x'),
+		).rejects.toThrow(/unexpected file response/i);
 	});
 });
 

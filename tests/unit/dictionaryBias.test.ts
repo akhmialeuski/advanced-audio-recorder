@@ -162,6 +162,19 @@ describe('planDictionaryBias', () => {
 		expect(aggregate).toBeLessThanOrEqual(DEEPGRAM_KEYTERM_TOKEN_LIMIT);
 	});
 
+	it('passes a short list through for a Deepgram keywords model', () => {
+		const input = manyTerms(DEEPGRAM_KEYWORDS_LIMIT - 1);
+		const plan = planDictionaryBias(
+			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			'nova-2',
+			input,
+		);
+
+		expect(plan.applied).toEqual(input);
+		expect(plan.omitted).toEqual([]);
+		expect(plan).not.toHaveProperty('reason');
+	});
+
 	it('caps Deepgram keywords models at the entry limit', () => {
 		const input = manyTerms(DEEPGRAM_KEYWORDS_LIMIT + 25);
 		const plan = planDictionaryBias(

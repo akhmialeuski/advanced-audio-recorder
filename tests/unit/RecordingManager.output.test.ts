@@ -27,6 +27,7 @@ import {
 } from '../helpers/recordingManagerTestKit';
 import { useDesktopPlatform } from '../helpers/platform';
 import { MarkdownView, Notice } from 'obsidian';
+import { noticeMessages } from '../mocks/obsidian';
 import { PcmStreamRecorder } from 'src/recording/PcmStreamRecorder';
 import { encodeAudioBuffer } from 'src/audio/AudioEncoder';
 import { getAudioSourceName } from 'src/recording/AudioStreamHandler';
@@ -658,6 +659,34 @@ describe('RecordingManager', () => {
 			expect(result.audioPaths.length).toBeGreaterThan(0);
 			expect(result.notePath).toBe('Notes/active.md');
 			expect(result.durationSeconds).toEqual(expect.any(Number));
+		});
+
+		// The hook is fire-and-forget: transcribe-on-save opening a dialog
+		// that throws must not lose the recording that was already written.
+		it('finishes the save when the post-save hook throws', async () => {
+			const consoleErrorSpy = jest
+				.spyOn(console, 'error')
+				.mockImplementation(() => {});
+			const onRecordingSaved = jest.fn(() => {
+				throw new Error('the dialog would not open');
+			});
+			manager = new RecordingManager(
+				mockApp,
+				{ ...DEFAULT_SETTINGS, insertAtOriginalPosition: false },
+				statusChangeCallback,
+				makeFakeMarkerStore().store,
+				undefined,
+				onRecordingSaved,
+			);
+
+			await recordOneChunk(manager, mockMediaRecorder);
+
+			expect(consoleErrorSpy).toHaveBeenCalledWith(
+				expect.stringContaining('Post-save hook failed'),
+				expect.any(Error),
+			);
+			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+			expect(noticeMessages()).toContain('Recording stopped');
 		});
 
 		it('uses replaceRange at stored position when insertAtOriginalPosition is enabled', async () => {

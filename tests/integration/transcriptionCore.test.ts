@@ -256,6 +256,50 @@ describe('buildPostProcessPrompt', () => {
 		});
 		expect(summary.system).toContain(DEFAULT_LLM_SUMMARY_PROMPT);
 	});
+
+	// The engine may not report a language (a whole-file run with detection
+	// off), and a summary written in the wrong language is unusable.
+	it('asks for the summary in the transcript language when none was detected', () => {
+		const prompt = buildPostProcessPrompt('t', { task: 'summary' });
+
+		expect(prompt.system).toContain(
+			'in the same language as the transcript',
+		);
+	});
+
+	it('names the detected language in the summary instruction', () => {
+		const prompt = buildPostProcessPrompt('t', {
+			task: 'summary',
+			language: 'de',
+		});
+
+		expect(prompt.system).toContain('Write the summary in de.');
+	});
+
+	it.each([
+		{ name: 'was cleared', customInstruction: '' },
+		{ name: 'is only whitespace', customInstruction: '   ' },
+	])(
+		'falls back to a usable instruction when the custom one $name',
+		({ customInstruction }) => {
+			const prompt = buildPostProcessPrompt('t', {
+				task: 'custom',
+				customInstruction,
+			});
+
+			expect(prompt.system).toBe(
+				'Process the following transcript as instructed.',
+			);
+		},
+	);
+
+	it('falls back to a usable instruction when none was ever set', () => {
+		const prompt = buildPostProcessPrompt('t', { task: 'custom' });
+
+		expect(prompt.system).toBe(
+			'Process the following transcript as instructed.',
+		);
+	});
 });
 
 describe('buildTranscriptFilePath', () => {

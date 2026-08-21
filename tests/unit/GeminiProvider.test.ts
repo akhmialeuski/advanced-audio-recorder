@@ -206,6 +206,41 @@ describe('GeminiProvider.transcribe', () => {
 		expect(instruction).not.toContain('Prefer these spellings');
 	});
 
+	it('names the language the run declared in the instruction', async () => {
+		const flow = scriptFlow(
+			transcriptBody({ segments: [{ start: 0, text: 'hi' }] }),
+		);
+
+		await provider().transcribe(payload('audio/wav'), {
+			diarize: false,
+			wordTimestamps: false,
+			language: 'de',
+		});
+
+		const instruction = at(flow.generateBody().contents, 0)
+			.parts.map((p) => p.text ?? '')
+			.join(' ');
+		// Named as the primary language rather than the only one: a bilingual
+		// recording still has to be transcribed in the language spoken.
+		expect(instruction).toContain('primary language is "de"');
+	});
+
+	it('asks Gemini to label speakers when the run diarizes', async () => {
+		const flow = scriptFlow(
+			transcriptBody({ segments: [{ start: 0, text: 'hi' }] }),
+		);
+
+		await provider().transcribe(payload('audio/wav'), {
+			diarize: true,
+			wordTimestamps: false,
+		});
+
+		const instruction = at(flow.generateBody().contents, 0)
+			.parts.map((p) => p.text ?? '')
+			.join(' ');
+		expect(instruction).toContain('Identify distinct speakers');
+	});
+
 	it('decodes an unsupported container to WAV before upload', async () => {
 		const flow = scriptFlow(
 			transcriptBody({ segments: [{ start: 0, text: 'hi' }] }),

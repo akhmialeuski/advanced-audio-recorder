@@ -7,6 +7,7 @@
  */
 
 import {
+	advancedBiasUnsupportedReason,
 	advancedTwoPassWillRun,
 	meetsLengthSafeguard,
 } from 'src/transcription/advanced/advancedBias';
@@ -106,5 +107,39 @@ describe('advancedTwoPassWillRun', () => {
 				}),
 			),
 		).toBe(false);
+	});
+});
+
+describe('advancedBiasUnsupportedReason', () => {
+	// Every engine gets a row: adding one without deciding whether it can
+	// carry a bias is how an engine ends up silently degraded to one pass.
+	it.each(
+		Object.values(TRANSCRIPTION_PROVIDER_IDS).map((engineId) => ({
+			engineId,
+		})),
+	)('lets $engineId bias on a model that can', ({ engineId }) => {
+		expect(advancedBiasUnsupportedReason(engineId, 'nova-3')).toBeNull();
+	});
+
+	it('names the Deepgram model that cannot carry one', () => {
+		const reason = advancedBiasUnsupportedReason(
+			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			'whisper-large',
+		);
+
+		expect(reason).toContain('whisper-large');
+		expect(reason).toMatch(/cannot bias recognition/);
+	});
+
+	// The Deepgram model is consulted for Deepgram alone: an engine with no
+	// per-model rule must not inherit whichever model the settings happen to
+	// hold from a previous engine.
+	it('ignores the Deepgram model for every other engine', () => {
+		expect(
+			advancedBiasUnsupportedReason(
+				TRANSCRIPTION_PROVIDER_IDS.GEMINI,
+				'whisper-large',
+			),
+		).toBeNull();
 	});
 });

@@ -12,7 +12,10 @@
 
 import type { App, TFile } from 'obsidian';
 import { Notice } from 'obsidian';
-import { TranscriptionService } from 'src/transcription/TranscriptionService';
+import {
+	TranscriptionCancelledError,
+	TranscriptionService,
+} from 'src/transcription/TranscriptionService';
 import type {
 	TranscribeOptions,
 	TranscriptionProvider,
@@ -427,5 +430,156 @@ describe('TranscriptionService advanced two-pass mode', () => {
 		expect(mockNotice).toHaveBeenCalledWith(
 			expect.stringContaining('failed'),
 		);
+	});
+});
+
+describe('a second pass that does not come back whole', () => {
+	// The second pass is a bonus: it is only adopted when it covers the same
+	// audio the first one did. A pass that lost a part would silently drop
+	// that stretch from a transcript the user already paid for.
+	it('keeps the first pass when a part of the second one fails', async () => {
+		prepareTwoParts();
+		const calls: TranscribeOptions[] = [];
+		let biasedCalls = 0;
+		const provider: TranscriptionProvider = {
+			id: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			label: 'Fake engine',
+			requiresNetwork: false,
+			capabilities: WHISPER_API_CAPABILITIES,
+			transcribe: (_payload, options) => {
+				calls.push(options);
+				const biased = Boolean(
+					options.biasPrompt ?? options.keyterms?.length,
+				);
+				if (biased) {
+					biasedCalls += 1;
+					if (biasedCalls === 2) {
+						return Promise.reject(new Error('the part failed'));
+					}
+					return Promise.resolve({
+						language: 'ru',
+						segments: PASS2_SEGMENTS,
+					});
+				}
+				return Promise.resolve({
+					language: 'ru',
+					segments: PASS1_SEGMENTS,
+				});
+			},
+		};
+		const { llm } = makeLlm();
+		const service = makeService(provider, llm, {
+			transcriptionAdvancedEnabled: true,
+		});
+
+		const result = await service.run(audioFile, {
+			notePathForLinks: 'note.md',
+		});
+
+		expect(mockNotice).toHaveBeenCalledWith(
+			expect.stringContaining('Advanced second pass failed'),
+		);
+		expect(result.markdown).toContain('кубернетис');
+	});
+
+	// A cancel inside the context pipeline reaches the service as an
+	// ordinary error, and degrading to "keep the single pass" would save a
+	// run the user cancelled.
+	it('aborts rather than degrading when the pipeline is cancelled', async () => {
+		const { provider } = makeProvider();
+		const settings = mergeSettings({
+			transcriptionEnabled: true,
+			transcriptionAdvancedSettingsEnabled: true,
+			transcriptionAdvancedEnabled: true,
+		});
+		let cancelled = false;
+		const service = new TranscriptionService(makeApp(), () => settings, {
+			createProvider: () => provider,
+			createLlm: () => ({
+				id: LLM_PROVIDER_IDS.GEMINI,
+				label: 'Cancelling LLM',
+				complete: () => {
+					cancelled = true;
+					return Promise.reject(new Error('aborted'));
+				},
+			}),
+		});
+
+		await expect(
+			service.run(audioFile, {
+				notePathForLinks: 'note.md',
+				token: { isCancelled: () => cancelled },
+			}),
+		).rejects.toBeInstanceOf(TranscriptionCancelledError);
+	});
+});
+
+describe('a cancel that lands during the second pass', () => {
+	// The cancel is raised inside the advanced block, which otherwise
+	// degrades any failure to "keep the single-pass transcript". A cancelled
+	// run must abort instead of quietly saving the first pass.
+	it('aborts the run rather than keeping the first pass', async () => {
+		const { llm } = makeLlm();
+		let cancelled = false;
+		const provider: TranscriptionProvider = {
+			id: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			label: 'Fake engine',
+			requiresNetwork: false,
+			capabilities: WHISPER_API_CAPABILITIES,
+			transcribe: (_payload, options) => {
+				if (options.biasPrompt ?? options.keyterms?.length) {
+					cancelled = true;
+					return Promise.resolve({
+						language: 'ru',
+						segments: PASS2_SEGMENTS,
+					});
+				}
+				return Promise.resolve({
+					language: 'ru',
+					segments: PASS1_SEGMENTS,
+				});
+			},
+		};
+		const settings = mergeSettings({
+			transcriptionEnabled: true,
+			transcriptionAdvancedSettingsEnabled: true,
+			transcriptionAdvancedEnabled: true,
+		});
+		const service = new TranscriptionService(makeApp(), () => settings, {
+			createProvider: () => provider,
+			createLlm: () => llm,
+		});
+
+		await expect(
+			service.run(audioFile, {
+				notePathForLinks: 'note.md',
+				token: { isCancelled: () => cancelled },
+			}),
+		).rejects.toBeInstanceOf(TranscriptionCancelledError);
+	});
+});
+
+describe('a first pass that produced nothing to bias from', () => {
+	// A silent recording has no extent to price the context agents by, and
+	// no text to mine terms from; the run has to fall through to the plain
+	// single pass instead of failing on the missing duration.
+	it('keeps the empty transcript and skips the second pass', async () => {
+		const provider: TranscriptionProvider = {
+			id: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			label: 'Fake engine',
+			requiresNetwork: false,
+			capabilities: WHISPER_API_CAPABILITIES,
+			transcribe: () => Promise.resolve({ segments: [] }),
+		};
+		const { llm } = makeLlm();
+		const service = makeService(provider, llm, {
+			transcriptionAdvancedEnabled: true,
+		});
+
+		const result = await service.run(audioFile, {
+			notePathForLinks: 'note.md',
+		});
+
+		expect(result.transcript.segments).toEqual([]);
 	});
 });

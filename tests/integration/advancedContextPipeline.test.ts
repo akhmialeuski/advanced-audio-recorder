@@ -168,6 +168,16 @@ describe('similarity and fuzzy matching', () => {
 		).toBe(0);
 	});
 
+	// A term the tokenizer finds no words in cannot match anything, and must
+	// not fall through to a zero-length window that matches everywhere.
+	it.each([
+		{ name: 'punctuation only', term: '---' },
+		{ name: 'whitespace only', term: '   ' },
+		{ name: 'empty', term: '' },
+	])('counts no occurrences of a $name term', ({ term }) => {
+		expect(countFuzzyOccurrences(term, ['Иванов', 'деплой'], 0.85)).toBe(0);
+	});
+
 	it('keeps heard terms and drops inventions', () => {
 		const words = 'Иванову нужно сделать деплой и ревью'.split(' ');
 		expect(
@@ -246,6 +256,20 @@ describe('buildFallbackPrompt', () => {
 		expect(prompt).toContain('Kubernetes');
 		expect(prompt).toContain('Иванов');
 		expect(prompt).not.toContain('topic');
+	});
+});
+
+describe('a prompt with nothing left to say', () => {
+	// The topic alone overruns the window and there are no mined terms to
+	// fall back on, so there is no prompt to send at all.
+	it('builds no prompt from an oversized topic and no terms', () => {
+		const hugeTopic = Array.from({ length: 80 }, () => 'topic').join(' ');
+
+		expect(buildFallbackPrompt(hugeTopic, [])).toBe('');
+	});
+
+	it('builds no prompt from no topic and no terms', () => {
+		expect(buildFallbackPrompt('', [])).toBe('');
 	});
 });
 
@@ -429,6 +453,96 @@ describe('generateContext', () => {
 			'names',
 			'jargon',
 		]);
+	});
+
+	// One dead agent is not two: the run keeps going and simply mines
+	// nothing from the category that failed.
+	it('carries on with the categories the working agents produced', async () => {
+		const { llm } = scriptedLlm({
+			...replies,
+			jargon: new Error('LLM unreachable'),
+		});
+
+		const context = await generateContext(russianBaseline(), llm, {
+			settings: RUN_SETTINGS,
+			language: 'ru',
+		});
+
+		expect(context?.names).toEqual(['Иванов', 'Петров']);
+		expect(context?.jargon).toEqual([]);
+	});
+
+	it('skips the decider entirely when there is nothing to vet', async () => {
+		const { llm, calls } = scriptedLlm({
+			...replies,
+			acronyms: new Error('LLM unreachable'),
+		});
+
+		const context = await generateContext(russianBaseline(), llm, {
+			settings: RUN_SETTINGS,
+			language: 'ru',
+		});
+
+		expect(context?.acronyms).toEqual([]);
+		expect(calls.map((call) => agentKeyOf(call.system))).not.toContain(
+			'decider',
+		);
+	});
+
+	it('builds the sentence without a topic when the topic agent fails', async () => {
+		const { llm } = scriptedLlm({
+			...replies,
+			topic: new Error('LLM unreachable'),
+		});
+
+		const context = await generateContext(russianBaseline(), llm, {
+			settings: RUN_SETTINGS,
+			language: 'ru',
+		});
+
+		expect(context?.topic).toBe('');
+		expect(context?.keyterms).toContain('Kubernetes');
+	});
+
+	// Every agent answered, and every answer was an invention absent from
+	// the draft: there is nothing to bias with, so the run degrades to a
+	// plain single pass rather than sending an empty bias.
+	it('returns null when the agents mined nothing that was actually heard', async () => {
+		const { llm } = scriptedLlm({
+			names: 'Наполеон',
+			jargon: 'фотосинтез',
+			acronyms: '',
+			topic: '',
+			sentence: '',
+		});
+
+		const context = await generateContext(russianBaseline(), llm, {
+			settings: RUN_SETTINGS,
+			language: 'ru',
+		});
+
+		expect(context).toBeNull();
+	});
+
+	// The topic is already a natural sentence, so with no terms to weave in
+	// there is nothing for the sentence agent to do and it is not called.
+	it('uses the topic as the bias sentence when nothing was mined', async () => {
+		const { llm, calls } = scriptedLlm({
+			names: 'Наполеон',
+			jargon: 'фотосинтез',
+			acronyms: '',
+			topic: 'Митинг про инфраструктуру.',
+		});
+
+		const context = await generateContext(russianBaseline(), llm, {
+			settings: RUN_SETTINGS,
+			language: 'ru',
+		});
+
+		expect(context?.promptSentence).toBe('Митинг про инфраструктуру.');
+		expect(calls.map((call) => agentKeyOf(call.system))).not.toContain(
+			'sentence',
+		);
 	});
 
 	it('returns null for an empty draft without calling the LLM', async () => {

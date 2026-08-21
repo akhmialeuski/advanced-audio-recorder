@@ -447,3 +447,517 @@ describe('TranscriptionService multi-part salvage', () => {
 		);
 	});
 });
+
+describe('what the user is told about the parts that went missing', () => {
+	/** Three prepared parts on the timeline, spans unmeasured. */
+	function prepareThreeParts(): void {
+		mockPrepareAudio.mockResolvedValue({
+			payloads: [0, 60, 120].map((offsetSeconds, index) => ({
+				contentType: 'audio/wav',
+				filename: `audio-${String(index)}.wav`,
+				offsetSeconds,
+				createData: () => new ArrayBuffer(4),
+			})),
+			diarizationSplitWarning: false,
+		});
+	}
+
+	// One missing part reads "is missing", several read "are missing". The
+	// sentence is the only place the user learns how much of the recording
+	// is not in the note.
+	it('counts the missing parts in the warning it writes', async () => {
+		prepareThreeParts();
+		const transcribe = jest
+			.fn()
+			.mockResolvedValueOnce({
+				segments: [{ start: 0, end: 1, text: 'kept' }],
+			})
+			.mockRejectedValueOnce(new Error('second failed'))
+			.mockRejectedValueOnce(new Error('third failed'));
+		const service = new TranscriptionService(
+			makeApp(),
+			() => mergeSettings(baseSettings),
+			{ createProvider: () => makeProvider(transcribe) },
+		);
+
+		const result = await service.run(audioFile, {
+			notePathForLinks: 'note.md',
+			token: NEVER_CANCELLED,
+		});
+
+		expect(result.markdown).toContain(
+			'part 2 of 3, part 3 of 3 could not be transcribed and are missing',
+		);
+	});
+
+	it('names a single missing part in the singular', async () => {
+		prepareTwoParts();
+		const transcribe = jest
+			.fn()
+			.mockResolvedValueOnce({
+				segments: [{ start: 0, end: 1, text: 'kept' }],
+			})
+			.mockRejectedValueOnce(new Error('second failed'));
+		const service = new TranscriptionService(
+			makeApp(),
+			() => mergeSettings(baseSettings),
+			{ createProvider: () => makeProvider(transcribe) },
+		);
+
+		const result = await service.run(audioFile, {
+			notePathForLinks: 'note.md',
+			token: NEVER_CANCELLED,
+		});
+
+		expect(result.markdown).toContain(
+			'part 2 of 2 could not be transcribed and is missing',
+		);
+	});
+});
+
+describe('a part that cannot be subdivided any further', () => {
+	// The decode path stamps a subdivide() on parts it split itself; a part
+	// that came straight from the file has none, so the retry has nothing to
+	// fall back on and the part is reported rather than retried forever.
+	it('reports the part rather than retrying when it cannot split', async () => {
+		prepareTwoParts();
+		const transcribe = jest
+			.fn()
+			.mockResolvedValueOnce({
+				segments: [{ start: 0, end: 1, text: 'kept' }],
+			})
+			.mockRejectedValueOnce(
+				new TranscriptTruncatedError('output token limit reached'),
+			);
+		const service = new TranscriptionService(
+			makeApp(),
+			() => mergeSettings(baseSettings),
+			{ createProvider: () => makeProvider(transcribe) },
+		);
+
+		const result = await service.run(audioFile, {
+			notePathForLinks: 'note.md',
+			token: NEVER_CANCELLED,
+		});
+
+		expect(transcribe).toHaveBeenCalledTimes(2);
+		expect(result.markdown).toContain('Transcription incomplete');
+		expect(result.markdown).toContain('kept');
+	});
+
+	// The only part of a single-part job has no label, so there is nothing to
+	// salvage: the run fails with the provider's own error rather than
+	// writing an empty note.
+	it('fails the run outright when the only part cannot be salvaged', async () => {
+		mockPrepareAudio.mockResolvedValue({
+			payloads: [
+				{
+					contentType: 'audio/wav',
+					filename: 'audio.wav',
+					offsetSeconds: 0,
+					createData: () => new ArrayBuffer(4),
+				},
+			],
+			diarizationSplitWarning: false,
+		});
+		const transcribe = jest
+			.fn()
+			.mockRejectedValue(new Error('the key is invalid'));
+		const service = new TranscriptionService(
+			makeApp(),
+			() => mergeSettings(baseSettings),
+			{ createProvider: () => makeProvider(transcribe) },
+		);
+
+		await expect(
+			service.run(audioFile, {
+				notePathForLinks: 'note.md',
+				token: NEVER_CANCELLED,
+			}),
+		).rejects.toThrow('the key is invalid');
+	});
+
+	it('names a failure that threw something other than an Error', async () => {
+		prepareTwoParts();
+		const transcribe = jest
+			.fn()
+			.mockResolvedValueOnce({
+				segments: [{ start: 0, end: 1, text: 'kept' }],
+			})
+			.mockRejectedValueOnce('the connection dropped');
+		const service = new TranscriptionService(
+			makeApp(),
+			() => mergeSettings(baseSettings),
+			{ createProvider: () => makeProvider(transcribe) },
+		);
+
+		const result = await service.run(audioFile, {
+			notePathForLinks: 'note.md',
+			token: NEVER_CANCELLED,
+		});
+
+		expect(result.markdown).toContain('Transcription incomplete');
+		expect(mockNotice).toHaveBeenCalledWith(
+			expect.stringContaining('the connection dropped'),
+		);
+	});
+});
+
+describe('the LLM pass that runs after the transcript exists', () => {
+	beforeEach(() => {
+		prepareTwoParts();
+	});
+
+	/** A service whose post-processing runs the given task on a fake LLM. */
+	function serviceWithPostProcess(
+		task: 'cleanup' | 'summary' | 'custom',
+		output: string,
+	): TranscriptionService {
+		const transcribe = jest.fn().mockResolvedValue({
+			segments: [{ start: 0, end: 1, text: 'the raw transcript' }],
+		});
+		return new TranscriptionService(
+			makeApp(),
+			() =>
+				mergeSettings({
+					...baseSettings,
+					llmPostProcessEnabled: true,
+					llmPostProcessTask: task,
+					llmProvider: LLM_PROVIDER_IDS.GEMINI,
+					geminiApiKey: 'gm-test',
+				}),
+			{
+				createProvider: () => makeProvider(transcribe),
+				createLlm: () => makeLlm(output),
+			},
+		);
+	}
+
+	// A summary is additive: it sits above the transcript rather than
+	// replacing it, because losing the transcript to a summary would lose
+	// the timecodes the player links to.
+	it('puts a summary above the transcript it summarises', async () => {
+		const result = await serviceWithPostProcess(
+			'summary',
+			'the short version',
+		).run(audioFile, {
+			notePathForLinks: 'note.md',
+			token: NEVER_CANCELLED,
+		});
+
+		expect(result.markdown).toContain('### Summary');
+		expect(result.markdown).toContain('the short version');
+		expect(result.markdown).toContain('### Transcript');
+		expect(result.markdown).toContain('the raw transcript');
+		expect(result.markdown.indexOf('### Summary')).toBeLessThan(
+			result.markdown.indexOf('### Transcript'),
+		);
+	});
+
+	it('replaces the body with what a cleanup pass returned', async () => {
+		const result = await serviceWithPostProcess(
+			'cleanup',
+			'the tidy version',
+		).run(audioFile, {
+			notePathForLinks: 'note.md',
+			token: NEVER_CANCELLED,
+		});
+
+		expect(result.markdown).toContain('the tidy version');
+		expect(result.markdown).not.toContain('the raw transcript');
+	});
+
+	// An LLM that answers with nothing has produced no cleanup, and an empty
+	// note is worse than an unclean one.
+	it('keeps the raw transcript when the pass came back empty', async () => {
+		const result = await serviceWithPostProcess('cleanup', '').run(
+			audioFile,
+			{ notePathForLinks: 'note.md', token: NEVER_CANCELLED },
+		);
+
+		expect(result.markdown).toContain('the raw transcript');
+	});
+});
+
+describe('what the prepared audio tells the run', () => {
+	/** A provider that answers every part with one segment. */
+	function alwaysSucceeds(): jest.Mock {
+		return jest.fn().mockResolvedValue({
+			segments: [{ start: 0, end: 1, text: 'hi' }],
+		});
+	}
+
+	it('warns that speaker labels may differ once the audio had to be split', async () => {
+		mockPrepareAudio.mockResolvedValue({
+			payloads: [
+				{
+					contentType: 'audio/wav',
+					filename: 'audio.wav',
+					offsetSeconds: 0,
+					createData: () => new ArrayBuffer(4),
+				},
+			],
+			diarizationSplitWarning: true,
+		});
+		const service = new TranscriptionService(
+			makeApp(),
+			() => mergeSettings(baseSettings),
+			{ createProvider: () => makeProvider(alwaysSucceeds()) },
+		);
+
+		await service.run(audioFile, {
+			notePathForLinks: 'note.md',
+			token: NEVER_CANCELLED,
+		});
+
+		expect(mockNotice).toHaveBeenCalledWith(
+			expect.stringContaining('speaker labels may differ between parts'),
+		);
+	});
+
+	// Nothing to transcribe and nothing that failed: the run has to say so
+	// rather than write an empty note and report success.
+	it('fails when the preparation produced nothing to transcribe', async () => {
+		mockPrepareAudio.mockResolvedValue({
+			payloads: [],
+			diarizationSplitWarning: false,
+		});
+		const transcribe = alwaysSucceeds();
+		const service = new TranscriptionService(
+			makeApp(),
+			() => mergeSettings(baseSettings),
+			{ createProvider: () => makeProvider(transcribe) },
+		);
+
+		await expect(
+			service.run(audioFile, {
+				notePathForLinks: 'note.md',
+				token: NEVER_CANCELLED,
+			}),
+		).rejects.toThrow('Transcription produced no output.');
+		expect(transcribe).not.toHaveBeenCalled();
+	});
+
+	it('sends the configured language, and nothing when it is set to auto', async () => {
+		prepareTwoParts();
+		const transcribe = alwaysSucceeds();
+		const settings = mergeSettings({
+			...baseSettings,
+			transcriptionLanguage: 'de',
+		});
+		await new TranscriptionService(makeApp(), () => settings, {
+			createProvider: () => makeProvider(transcribe),
+		}).run(audioFile, {
+			notePathForLinks: 'note.md',
+			token: NEVER_CANCELLED,
+		});
+
+		expect(transcribe).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ language: 'de' }),
+		);
+	});
+
+	it.each([
+		{ name: 'auto', transcriptionLanguage: 'auto' },
+		{ name: 'blank', transcriptionLanguage: '' },
+	])(
+		'lets the engine detect the language when it is set to $name',
+		async ({ transcriptionLanguage }) => {
+			prepareTwoParts();
+			const transcribe = alwaysSucceeds();
+			const settings = mergeSettings({
+				...baseSettings,
+				transcriptionLanguage,
+			});
+			await new TranscriptionService(makeApp(), () => settings, {
+				createProvider: () => makeProvider(transcribe),
+			}).run(audioFile, {
+				notePathForLinks: 'note.md',
+				token: NEVER_CANCELLED,
+			});
+
+			expect(transcribe).toHaveBeenCalledWith(
+				expect.anything(),
+				expect.objectContaining({ language: undefined }),
+			);
+		},
+	);
+
+	// A single-part run has no part to name, so the progress line says what
+	// is happening without an ordinal that would read as "part 1 of 1".
+	it('reports progress without a part number on a single-part run', async () => {
+		mockPrepareAudio.mockResolvedValue({
+			payloads: [
+				{
+					contentType: 'audio/wav',
+					filename: 'audio.wav',
+					offsetSeconds: 0,
+					createData: () => new ArrayBuffer(4),
+				},
+			],
+			diarizationSplitWarning: false,
+		});
+		const descriptions: string[] = [];
+		const service = new TranscriptionService(
+			makeApp(),
+			() => mergeSettings(baseSettings),
+			{ createProvider: () => makeProvider(alwaysSucceeds()) },
+		);
+
+		await service.run(audioFile, {
+			notePathForLinks: 'note.md',
+			token: NEVER_CANCELLED,
+			onProgress: (_percent, description) => {
+				descriptions.push(description);
+			},
+		});
+
+		expect(descriptions).toContain('Transcribing...');
+	});
+});
+
+describe('a single indivisible part that overran the output limit', () => {
+	it('fails the run, naming the audio rather than a part number', async () => {
+		mockPrepareAudio.mockResolvedValue({
+			payloads: [
+				{
+					contentType: 'audio/wav',
+					filename: 'audio.wav',
+					offsetSeconds: 0,
+					createData: () => new ArrayBuffer(4),
+				},
+			],
+			diarizationSplitWarning: false,
+		});
+		const debug = jest.spyOn(console, 'debug').mockImplementation();
+		const transcribe = jest
+			.fn()
+			.mockRejectedValue(
+				new TranscriptTruncatedError('output token limit reached'),
+			);
+		const service = new TranscriptionService(
+			makeApp(),
+			() => mergeSettings(baseSettings),
+			{ createProvider: () => makeProvider(transcribe) },
+		);
+
+		await expect(
+			service.run(audioFile, {
+				notePathForLinks: 'note.md',
+				token: NEVER_CANCELLED,
+			}),
+		).rejects.toThrow('output token limit reached');
+		expect(debug).toHaveBeenCalledWith(
+			expect.stringContaining('The audio still overran'),
+		);
+	});
+
+	// A subdivision whose span was never measured cannot be named by a time
+	// range, so it is named by where it starts.
+	it('labels a subdivision with no measured span by its start time', async () => {
+		mockPrepareAudio.mockResolvedValue({
+			payloads: [
+				{
+					contentType: 'audio/wav',
+					filename: 'audio.wav',
+					offsetSeconds: 0,
+					endSeconds: 900,
+					createData: () => new ArrayBuffer(4),
+					subdivide: () => [
+						{
+							contentType: 'audio/wav',
+							filename: 'half-0.wav',
+							offsetSeconds: 450,
+							createData: () => new ArrayBuffer(4),
+							subdivide: () => [],
+						},
+					],
+				},
+			],
+			diarizationSplitWarning: false,
+		});
+		jest.spyOn(console, 'debug').mockImplementation();
+		const transcribe = jest
+			.fn()
+			.mockRejectedValue(
+				new TranscriptTruncatedError('output token limit reached'),
+			);
+		const service = new TranscriptionService(
+			makeApp(),
+			() => mergeSettings(baseSettings),
+			{ createProvider: () => makeProvider(transcribe) },
+		);
+
+		await expect(
+			service.run(audioFile, {
+				notePathForLinks: 'note.md',
+				token: NEVER_CANCELLED,
+			}),
+		).rejects.toThrow(/the segment at 7:30/);
+	});
+});
+
+describe('a recording that turned out to hold no speech', () => {
+	// A silent (or music-only) recording transcribes to nothing. The run is
+	// still a success, and every step that prices itself by the transcript's
+	// extent has to cope with there being none.
+	it('post-processes a transcript with no segments at all', async () => {
+		mockPrepareAudio.mockResolvedValue({
+			payloads: [
+				{
+					contentType: 'audio/wav',
+					filename: 'audio.wav',
+					offsetSeconds: 0,
+					createData: () => new ArrayBuffer(4),
+				},
+			],
+			diarizationSplitWarning: false,
+		});
+		const transcribe = jest.fn().mockResolvedValue({ segments: [] });
+		const service = new TranscriptionService(
+			makeApp(),
+			() =>
+				mergeSettings({
+					...baseSettings,
+					llmPostProcessEnabled: true,
+					llmProvider: LLM_PROVIDER_IDS.GEMINI,
+					geminiApiKey: 'gm-test',
+				}),
+			{
+				createProvider: () => makeProvider(transcribe),
+				createLlm: () => makeLlm('nothing was said'),
+			},
+		);
+
+		const result = await service.run(audioFile, {
+			notePathForLinks: 'note.md',
+			token: NEVER_CANCELLED,
+		});
+
+		expect(result.transcript.segments).toEqual([]);
+		expect(result.markdown).toContain('nothing was said');
+	});
+});
+
+describe('the collaborators the service builds when it is given none', () => {
+	// The dependency object exists for the tests; the shipping plugin
+	// constructs the service with nothing and must still reach the real
+	// engine registry - which is what refuses a run with no key configured.
+	it('builds its provider from the engine registry', async () => {
+		prepareTwoParts();
+		const service = new TranscriptionService(makeApp(), () =>
+			mergeSettings({
+				transcriptionProvider: 'gemini',
+				geminiApiKey: '',
+			}),
+		);
+
+		await expect(
+			service.run(audioFile, {
+				notePathForLinks: 'note.md',
+				token: NEVER_CANCELLED,
+			}),
+		).rejects.toThrow(/API key/i);
+	});
+});

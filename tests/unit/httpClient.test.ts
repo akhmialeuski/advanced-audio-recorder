@@ -8,6 +8,7 @@ import {
 	friendlyHttpHint,
 	HttpError,
 	providerMessage,
+	requestJson,
 	requestRaw,
 	uploadTimeoutMs,
 } from 'src/transcription/httpClient';
@@ -184,6 +185,14 @@ describe('providerMessage', () => {
 		);
 	});
 
+	it.each([
+		{ name: 'a JSON string', body: '"just a sentence"' },
+		{ name: 'a JSON array', body: '[{"error":"nope"}]' },
+		{ name: 'a JSON number', body: '42' },
+	])('keeps $name, which carries no envelope to look in', ({ body }) => {
+		expect(providerMessage(body)).toBe(body);
+	});
+
 	it('keeps the body when there is no sentence to lift', () => {
 		// An HTML error page from a proxy, a truncated excerpt, or JSON with no
 		// message field: there is nothing better to show than what arrived.
@@ -334,5 +343,187 @@ describe('requestRaw abort support', () => {
 		});
 
 		expect(fetchMock).not.toHaveBeenCalled();
+	});
+});
+
+describe('requests that never come back', () => {
+	afterEach(() => {
+		jest.useRealTimers();
+		delete (globalThis as { fetch?: unknown }).fetch;
+	});
+
+	// requestUrl cannot be aborted, so the request itself keeps running; the
+	// timeout is what lets the dialog stop waiting on it.
+	it('gives up on a requestUrl transport that hangs past the deadline', async () => {
+		jest.useFakeTimers();
+		withRequestUrl(() => new Promise(() => undefined));
+
+		// The rejection lands while the clock is being advanced, so the
+		// handler is attached before the tick rather than after it.
+		const settled = requestRaw({
+			url: 'https://api.example.com/v1/transcribe?key=secret',
+			method: 'POST',
+			timeoutMs: 5_000,
+		}).catch((error: unknown) => error);
+		await jest.advanceTimersByTimeAsync(5_000);
+
+		const error = await settled;
+		expect(error).toBeInstanceOf(HttpError);
+		// The message names the endpoint without the key that was in its query.
+		expect(error).toHaveProperty(
+			'message',
+			'Request to https://api.example.com/v1/transcribe timed out after 5000 ms.',
+		);
+	});
+
+	it('reports a hanging fetch as a timeout rather than a cancellation', async () => {
+		jest.useFakeTimers();
+		(globalThis as { fetch?: unknown }).fetch = jest.fn(
+			(_url: unknown, init?: { signal?: AbortSignal }) =>
+				new Promise((_resolve, reject) => {
+					init?.signal?.addEventListener('abort', () => {
+						reject(
+							new DOMException(
+								'The operation was aborted.',
+								'AbortError',
+							),
+						);
+					});
+				}),
+		);
+
+		const settled = requestRaw({
+			url: 'https://api.example.com/v1/transcribe',
+			method: 'POST',
+			timeoutMs: 5_000,
+			signal: new AbortController().signal,
+		}).catch((error: unknown) => error);
+		await jest.advanceTimersByTimeAsync(5_000);
+
+		expect(await settled).toHaveProperty(
+			'message',
+			expect.stringMatching(/timed out after 5000 ms/),
+		);
+	});
+
+	// A run cancelled before the request went out must not reach the network
+	// at all; the abort is applied to the new controller straight away.
+	it('never waits on a request whose signal was already aborted', async () => {
+		const controller = new AbortController();
+		controller.abort();
+		(globalThis as { fetch?: unknown }).fetch = jest.fn(
+			(_url: unknown, init?: { signal?: AbortSignal }) =>
+				init?.signal?.aborted
+					? Promise.reject(new DOMException('Aborted', 'AbortError'))
+					: Promise.resolve({
+							status: 200,
+							text: () => Promise.resolve('{}'),
+							headers: new Map(),
+						} as unknown as Response),
+		);
+
+		await expect(
+			requestRaw({
+				url: 'https://api.example.com/v1/transcribe',
+				method: 'POST',
+				signal: controller.signal,
+			}),
+		).rejects.toThrow(/was cancelled/);
+	});
+});
+
+describe('a transport that fails for a reason of its own', () => {
+	afterEach(() => {
+		delete (globalThis as { fetch?: unknown }).fetch;
+	});
+
+	it('wraps a transport failure as an HttpError naming the endpoint', async () => {
+		withRequestUrl(() => {
+			throw new Error('net::ERR_NAME_NOT_RESOLVED');
+		});
+
+		const failing = requestRaw({
+			url: 'https://api.example.com/v1/transcribe?key=secret',
+			method: 'POST',
+		});
+
+		await expect(failing).rejects.toThrow(HttpError);
+		await expect(failing).rejects.toThrow(
+			'Request to https://api.example.com/v1/transcribe failed: net::ERR_NAME_NOT_RESOLVED',
+		);
+	});
+
+	it('names a transport that rejected with something other than an Error', async () => {
+		withRequestUrl(() => Promise.reject('the socket closed'));
+
+		await expect(
+			requestRaw({
+				url: 'https://api.example.com/v1/transcribe',
+				method: 'POST',
+			}),
+		).rejects.toThrow(/failed: the socket closed/);
+	});
+
+	it('sends the content type the caller named through fetch', async () => {
+		const fetchMock = jest.fn(() =>
+			Promise.resolve({
+				status: 200,
+				text: () => Promise.resolve('{}'),
+				headers: new Map(),
+			} as unknown as Response),
+		);
+		(globalThis as { fetch?: unknown }).fetch = fetchMock;
+
+		await requestRaw({
+			url: 'https://api.example.com/v1/transcribe',
+			method: 'POST',
+			contentType: 'audio/wav',
+			signal: new AbortController().signal,
+		});
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			'https://api.example.com/v1/transcribe',
+			expect.objectContaining({
+				headers: expect.objectContaining({
+					'Content-Type': 'audio/wav',
+				}),
+			}),
+		);
+	});
+});
+
+describe('requestJson', () => {
+	// A 2xx that is not JSON (an HTML error page from a proxy, a truncated
+	// body) would otherwise surface as a raw SyntaxError with no endpoint.
+	it.each([
+		{ name: 'an HTML error page', text: '<html>Gateway</html>' },
+		{ name: 'an empty body', text: '' },
+		{ name: 'a truncated object', text: '{"segments":' },
+	])('reports $name as a non-JSON response', async ({ text }) => {
+		withRequestUrl(() => ({ status: 200, headers: {}, text }));
+
+		await expect(
+			requestJson({
+				url: 'https://api.example.com/v1/transcribe?key=secret',
+				method: 'POST',
+			}),
+		).rejects.toThrow(
+			'Request to https://api.example.com/v1/transcribe returned a non-JSON response.',
+		);
+	});
+
+	it('parses a JSON body into the value the caller asked for', async () => {
+		withRequestUrl(() => ({
+			status: 200,
+			headers: {},
+			text: '{"text":"hi"}',
+		}));
+
+		await expect(
+			requestJson<{ text: string }>({
+				url: 'https://api.example.com/v1/transcribe',
+				method: 'POST',
+			}),
+		).resolves.toEqual({ text: 'hi' });
 	});
 });

@@ -1,7 +1,7 @@
 /**
- * Tests that DeepgramProvider forwards the custom dictionary as query params,
- * choosing keyterm for nova-3 and keywords for nova-2 and older, and sends
- * neither when the dictionary is empty. The outgoing request is captured
+ * Tests the query the DeepgramProvider builds: the custom dictionary (keyterm
+ * for nova-3, keywords for nova-2 and older, neither when it is empty) and the
+ * per-run switches that travel beside it. The outgoing request is captured
  * through the shared requestUrl mock (the provider has no injectable client).
  * @module tests/unit/DeepgramProviderDictionary.test
  */
@@ -184,5 +184,67 @@ describe('DeepgramProvider dictionary biasing', () => {
 		expect(queryOf(calls).getAll('keywords')).toHaveLength(
 			DEEPGRAM_KEYWORDS_LIMIT,
 		);
+	});
+});
+
+describe('DeepgramProvider per-run switches', () => {
+	/** A provider on the model the switches do not depend on. */
+	function nova3(): DeepgramProvider {
+		return new DeepgramProvider({
+			baseUrl: BASE_URL,
+			apiKey: 'k',
+			model: 'nova-3',
+		});
+	}
+
+	it('asks Deepgram to diarize when the run does', async () => {
+		const calls = capture();
+
+		await nova3().transcribe(payload(), {
+			diarize: true,
+			wordTimestamps: false,
+		});
+
+		expect(queryOf(calls).get('diarize')).toBe('true');
+	});
+
+	it('leaves diarization out when the run does not', async () => {
+		const calls = capture();
+
+		await nova3().transcribe(payload(), {
+			diarize: false,
+			wordTimestamps: false,
+		});
+
+		expect(queryOf(calls).has('diarize')).toBe(false);
+	});
+
+	it('pins the language the run declared', async () => {
+		const calls = capture();
+
+		await nova3().transcribe(payload(), {
+			diarize: false,
+			wordTimestamps: false,
+			language: 'de',
+		});
+
+		const params = queryOf(calls);
+		expect(params.get('language')).toBe('de');
+		// Pinning and detecting are exclusive: sending both lets Deepgram
+		// override the language the user chose.
+		expect(params.has('detect_language')).toBe(false);
+	});
+
+	it('asks Deepgram to detect the language when the run declared none', async () => {
+		const calls = capture();
+
+		await nova3().transcribe(payload(), {
+			diarize: false,
+			wordTimestamps: false,
+		});
+
+		const params = queryOf(calls);
+		expect(params.get('detect_language')).toBe('true');
+		expect(params.has('language')).toBe(false);
 	});
 });

@@ -23,6 +23,7 @@ import {
 	type MockRequestUrlResponse,
 } from '../mocks/obsidian';
 import { withRequestUrl } from '../helpers/network';
+import { installNodeSurface, type NodeSurface } from '../helpers/nodeSurface';
 
 const BIAS_SENTENCE =
 	'Митинг про деплой и ревью, обсуждаются gRPC, CI/CD и Kubernetes.';
@@ -244,49 +245,14 @@ describe('GeminiProvider advanced bias', () => {
 });
 
 describe('LocalWhisperProvider advanced bias', () => {
-	interface RequireWindow {
-		require?: (id: string) => unknown;
-	}
-	let capturedArgs: string[] = [];
+	let node: NodeSurface;
 
 	beforeEach(() => {
-		capturedArgs = [];
-		const childProcess = {
-			execFile: (
-				_file: string,
-				args: string[],
-				_options: unknown,
-				callback: (
-					error: Error | null,
-					stdout: string,
-					stderr: string,
-				) => void,
-			): void => {
-				capturedArgs = args;
-				callback(null, '', '');
-			},
-		};
-		const modules: Record<string, unknown> = {
-			child_process: childProcess,
-			fs: {
-				writeFileSync: (): void => undefined,
-				readFileSync: (): string =>
-					JSON.stringify({
-						transcription: [
-							{ offsets: { from: 0, to: 1000 }, text: 'hi' },
-						],
-					}),
-				rmSync: (): void => undefined,
-			},
-			os: { tmpdir: (): string => '/tmp' },
-			path: { join: (...parts: string[]): string => parts.join('/') },
-		};
-		(window as RequireWindow).require = (id: string): unknown =>
-			modules[id];
+		node = installNodeSurface();
 	});
 
 	afterEach(() => {
-		delete (window as RequireWindow).require;
+		node.restore();
 	});
 
 	it('passes the bias sentence as --prompt, over the dictionary join', async () => {
@@ -303,9 +269,49 @@ describe('LocalWhisperProvider advanced bias', () => {
 			biasPrompt: BIAS_SENTENCE,
 		});
 
-		const promptIndex = capturedArgs.indexOf('--prompt');
+		const args = node.lastArgs();
+		const promptIndex = args.indexOf('--prompt');
 		expect(promptIndex).toBeGreaterThanOrEqual(0);
-		expect(capturedArgs[promptIndex + 1]).toBe(BIAS_SENTENCE);
-		expect(capturedArgs).not.toContain('Kubernetes, gRPC');
+		expect(args[promptIndex + 1]).toBe(BIAS_SENTENCE);
+		expect(args).not.toContain('Kubernetes, gRPC');
+	});
+
+	it('names the language the run declared with -l', async () => {
+		const provider = new LocalWhisperProvider({
+			binaryPath: '/bin/whisper',
+			modelPath: '/models/ggml.bin',
+			extraArgs: [],
+		});
+
+		await provider.transcribe(payload(), {
+			diarize: false,
+			wordTimestamps: false,
+			language: 'de',
+		});
+
+		const args = node.lastArgs();
+		expect(args[args.indexOf('-l') + 1]).toBe('de');
+	});
+
+	// extraArgs come last so a user who typed their own --prompt or -l wins;
+	// the provider's own flags are defaults, not overrides.
+	it('places the user extra arguments after its own', async () => {
+		const provider = new LocalWhisperProvider({
+			binaryPath: '/bin/whisper',
+			modelPath: '/models/ggml.bin',
+			extraArgs: ['--prompt', 'mine'],
+		});
+
+		await provider.transcribe(payload(), {
+			diarize: false,
+			wordTimestamps: false,
+			biasPrompt: BIAS_SENTENCE,
+		});
+
+		const args = node.lastArgs();
+		expect(args.lastIndexOf('--prompt')).toBeGreaterThan(
+			args.indexOf('--prompt'),
+		);
+		expect(args.at(-1)).toBe('mine');
 	});
 });

@@ -21,6 +21,8 @@ import { mergeSettings } from 'src/settings/settingsSerialization';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 import { fakeProvider, NO_DIARIZATION } from '../helpers/providerFixtures';
+import { LLM_PROVIDER_IDS } from 'src/constants';
+import { noticeMessages } from '../mocks/obsidian';
 
 const audioFile = partial<TFile>({
 	name: 'rec.webm',
@@ -159,5 +161,153 @@ describe('TranscriptionService cancellation', () => {
 		);
 
 		expect(create).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('a cancel that lands while a request is in flight', () => {
+	// A cancelled request is aborted at the transport, so what reaches the
+	// service is an ordinary network error. Reported as-is it would read as
+	// "transcription failed" for something the user asked for on purpose.
+	it('reads a transport failure after a cancel as the cancel it was', async () => {
+		let cancelled = false;
+		const provider = fakeProvider({
+			capabilities: NO_DIARIZATION,
+			transcribe: () => {
+				cancelled = true;
+				return Promise.reject(new Error('The user aborted'));
+			},
+		});
+		const service = new TranscriptionService(
+			makeApp(),
+			() => mergeSettings(baseSettings),
+			{ createProvider: () => provider },
+		);
+
+		await expect(
+			service.run(audioFile, {
+				notePathForLinks: 'note.md',
+				token: { isCancelled: () => cancelled },
+			}),
+		).rejects.toBeInstanceOf(TranscriptionCancelledError);
+		expect(provider.transcribe).toHaveBeenCalledTimes(1);
+	});
+
+	// The provider itself can raise the cancellation, when it is the one
+	// watching the abort signal; it must travel out untouched rather than
+	// being re-wrapped as a failed part.
+	it('lets a cancellation raised by the provider through as it is', async () => {
+		const raised = new TranscriptionCancelledError();
+		const provider = fakeProvider({
+			capabilities: NO_DIARIZATION,
+			transcribe: () => Promise.reject(raised),
+		});
+		const service = new TranscriptionService(
+			makeApp(),
+			() => mergeSettings(baseSettings),
+			{ createProvider: () => provider },
+		);
+
+		await expect(
+			service.run(audioFile, {
+				notePathForLinks: 'note.md',
+				token: NEVER_CANCELLED,
+			}),
+		).rejects.toBe(raised);
+	});
+
+	it('reports a genuine failure as itself when nothing was cancelled', async () => {
+		const provider = fakeProvider({
+			capabilities: NO_DIARIZATION,
+			transcribe: () => Promise.reject(new Error('the key is invalid')),
+		});
+		const service = new TranscriptionService(
+			makeApp(),
+			() => mergeSettings(baseSettings),
+			{ createProvider: () => provider },
+		);
+
+		await expect(
+			service.run(audioFile, {
+				notePathForLinks: 'note.md',
+				token: NEVER_CANCELLED,
+			}),
+		).rejects.toThrow('the key is invalid');
+	});
+
+	// Post-processing runs after the transcript exists. A cancel there must
+	// still abort rather than fall through to the "cleanup was skipped"
+	// fallback, which would save a transcript the user cancelled.
+	it('aborts rather than saving when the cleanup pass is cancelled', async () => {
+		let cancelled = false;
+		const provider = makeProvider(() => {
+			/* the request itself completes */
+		});
+		const service = new TranscriptionService(
+			makeApp(),
+			() =>
+				mergeSettings({
+					...baseSettings,
+					llmPostProcessEnabled: true,
+					llmProvider: LLM_PROVIDER_IDS.GEMINI,
+					geminiApiKey: 'gm-test',
+				}),
+			{
+				createProvider: () => provider,
+				createLlm: () => ({
+					id: LLM_PROVIDER_IDS.GEMINI,
+					label: 'Fake LLM',
+					complete: () => {
+						cancelled = true;
+						return Promise.reject(
+							new TranscriptionCancelledError(),
+						);
+					},
+				}),
+			},
+		);
+
+		await expect(
+			service.run(audioFile, {
+				notePathForLinks: 'note.md',
+				token: { isCancelled: () => cancelled },
+			}),
+		).rejects.toBeInstanceOf(TranscriptionCancelledError);
+	});
+
+	// The same failure that is not a cancel keeps the transcript: the run is
+	// already paid for and the cleanup is a bonus pass on top of it.
+	it('keeps the raw transcript when the cleanup pass merely fails', async () => {
+		const provider = makeProvider(() => {
+			/* the request itself completes */
+		});
+		const service = new TranscriptionService(
+			makeApp(),
+			() =>
+				mergeSettings({
+					...baseSettings,
+					llmPostProcessEnabled: true,
+					llmProvider: LLM_PROVIDER_IDS.GEMINI,
+					geminiApiKey: 'gm-test',
+				}),
+			{
+				createProvider: () => provider,
+				createLlm: () => ({
+					id: LLM_PROVIDER_IDS.GEMINI,
+					label: 'Fake LLM',
+					complete: () =>
+						Promise.reject(new Error('the LLM key is invalid')),
+				}),
+			},
+		);
+
+		const result = await service.run(audioFile, {
+			notePathForLinks: 'note.md',
+			token: NEVER_CANCELLED,
+		});
+
+		expect(result.markdown).toContain('hi');
+		expect(noticeMessages()).toContain(
+			'LLM post-processing failed; saving the raw transcript.',
+		);
 	});
 });

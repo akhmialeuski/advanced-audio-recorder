@@ -24,6 +24,7 @@ import {
 	type MockRequestUrlResponse,
 } from '../mocks/obsidian';
 import { withRequestUrl } from '../helpers/network';
+import { WHISPER_PROMPT_TOKEN_LIMIT } from 'src/transcription/dictionaryBias';
 
 const BASE_URL = 'https://whisper.example';
 
@@ -91,6 +92,22 @@ describe('WhisperApiProvider request fields', () => {
 			diarize: false,
 			wordTimestamps: false,
 		});
+
+		expect(bodyText(calls)).not.toContain('name="prompt"');
+	});
+
+	// The service bounds the dictionary and warns about what it dropped, but
+	// a directly driven provider has to bound it too - and a single term
+	// longer than the window leaves nothing at all to send.
+	it('omits the prompt field when no term fits the prompt window', async () => {
+		const calls = capture();
+
+		await provider().transcribe(
+			payload(),
+			options({
+				dictionary: ['x'.repeat(WHISPER_PROMPT_TOKEN_LIMIT + 1)],
+			}),
+		);
 
 		expect(bodyText(calls)).not.toContain('name="prompt"');
 	});
