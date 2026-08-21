@@ -203,10 +203,9 @@ export function similarity(a: string, b: string): number {
 	if (left === right) {
 		return 1;
 	}
+	// Two empty strings are equal, so the check above already returned for
+	// them: maxLength is positive from here and the division below is safe.
 	const maxLength = Math.max(left.length, right.length);
-	if (maxLength === 0) {
-		return 1;
-	}
 	let previous = Array.from({ length: right.length + 1 }, (_, i) => i);
 	for (let i = 1; i <= left.length; i++) {
 		const current = [i];

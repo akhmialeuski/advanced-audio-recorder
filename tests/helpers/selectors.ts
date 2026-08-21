@@ -96,6 +96,8 @@ export const SETTING = {
 	name: '.setting-item-name',
 	description: '.setting-item-description',
 	checkbox: '.checkbox-container',
+	/** A toggle rendered in its on state. */
+	toggleOn: '.checkbox-container.is-enabled',
 	root: '.aar-settings-root',
 	searchInput: '.aar-search-row input',
 	addItemButton: '.aar-add-item-row button',

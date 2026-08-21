@@ -17,8 +17,8 @@
  *    which upgraded probed files by rebuilding the embedding leaves.
  */
 
-import { Component, MarkdownView, TFile } from 'obsidian';
-import { at } from '../helpers/assertions';
+import { App as MockApp, Component, MarkdownView, TFile } from 'obsidian';
+import { at, defined } from '../helpers/assertions';
 import type { App, Plugin, WorkspaceLeaf } from 'obsidian';
 import { EnhancedPlayerRegistrar } from 'src/player/EnhancedPlayerRegistrar';
 import { MediaEmbedShell } from 'src/player/MediaEmbedShell';
@@ -33,7 +33,7 @@ import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import type { EmbedInfo } from 'src/obsidian/embedRegistry';
 import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
-import { partialPlugin } from '../helpers/obsidianMock';
+import { asMockApp, partialPlugin } from '../helpers/obsidianMock';
 import { partial } from '../helpers/doubles';
 import { pastDebounce } from '../helpers/async';
 import { createMockApp } from '../helpers/createApp';
@@ -157,6 +157,21 @@ function kindStoreStub(): jest.Mocked<
  * Builds a registrar wired to fakes and registers it. Returns the installed
  * embed creator plus the spies needed to assert behaviour.
  */
+/** The sidecar store as the registrar drives it: four spies, nothing else. */
+function markerStoreStub(): {
+	handleRename: jest.Mock;
+	handleDelete: jest.Mock;
+	handleOutputRename: jest.Mock;
+	clearCache: jest.Mock;
+} {
+	return {
+		handleRename: jest.fn().mockResolvedValue(undefined),
+		handleDelete: jest.fn().mockResolvedValue(undefined),
+		handleOutputRename: jest.fn().mockResolvedValue(undefined),
+		clearCache: jest.fn(),
+	};
+}
+
 function setup(
 	enabled = true,
 	kindStore: ReturnType<typeof kindStoreStub> | null = null,
@@ -233,12 +248,7 @@ function setup(
 		registerEvent: jest.fn(),
 	});
 
-	const markerStore = {
-		handleRename: jest.fn().mockResolvedValue(undefined),
-		handleDelete: jest.fn().mockResolvedValue(undefined),
-		handleOutputRename: jest.fn().mockResolvedValue(undefined),
-		clearCache: jest.fn(),
-	};
+	const markerStore = markerStoreStub();
 
 	const registrar = new EnhancedPlayerRegistrar(
 		plugin,
@@ -335,7 +345,7 @@ describe('EnhancedPlayerRegistrar embed creation', () => {
 		expect(audioPlayerMock).toHaveBeenCalledTimes(1);
 		const player = at(audioPlayerMock.mock.results, 0)
 			.value as unknown as EnhancedInstance;
-		expect(player.load).toHaveBeenCalled();
+		expect(player.load).toHaveBeenCalledTimes(1);
 		// The core of issue #39: no leaf was inspected or rebuilt, so a
 		// large embedding note is never re-rendered by a probe verdict
 		expect(getLeaves).not.toHaveBeenCalled();
@@ -683,6 +693,41 @@ describe('EnhancedPlayerRegistrar vault rename/delete wiring', () => {
 		expect(markerStore.handleOutputRename).not.toHaveBeenCalled();
 	});
 
+	// The suite above reaches the handler through the registration, which
+	// proves the handler is right but not that anything ever calls it. This
+	// one goes the whole way: a real vault, the real event it fires when a
+	// file is trashed, and the cleanup that has to follow.
+	it('cleans up after a recording the vault actually trashed', async () => {
+		const app = new MockApp();
+		const [audio] = asMockApp(app).vault.seed([
+			{ path: 'Recordings/rec.wav', data: new ArrayBuffer(8) },
+		]);
+		const markerStore = markerStoreStub();
+		const kindStore = kindStoreStub();
+		new EnhancedPlayerRegistrar(
+			partialPlugin({
+				registerMarkdownPostProcessor: jest.fn(),
+				registerDomEvent: jest.fn(),
+				registerEvent: jest.fn(),
+			}),
+			app,
+			() => ({ ...DEFAULT_SETTINGS, enhancedPlayerEnabled: true }),
+			partial<RecordingSidecarStore>(markerStore),
+			partial<MediaKindStore>(kindStore),
+		).register();
+
+		await asMockApp(app).fileManager.trashFile(
+			defined(audio, 'seeded recording'),
+		);
+
+		expect(markerStore.handleDelete).toHaveBeenCalledWith(
+			'Recordings/rec.wav',
+		);
+		expect(kindStore.handleDelete).toHaveBeenCalledWith(
+			'Recordings/rec.wav',
+		);
+	});
+
 	it('removes the sidecar only for a deleted audio file', () => {
 		const kindStore = kindStoreStub();
 		const { app, markerStore } = setup(true, kindStore);
@@ -750,7 +795,7 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 
 		expect(seek).toHaveBeenCalledWith('rec.mp4', 30);
 		expect(detachedStartMock).not.toHaveBeenCalled();
-		expect(prevent).toHaveBeenCalled();
+		expect(prevent).toHaveBeenCalledTimes(1);
 	});
 
 	it('plays from the timecode when no player is on screen', () => {
@@ -771,7 +816,7 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 			30,
 			expect.any(Function),
 		);
-		expect(prevent).toHaveBeenCalled();
+		expect(prevent).toHaveBeenCalledTimes(1);
 	});
 
 	it('reuses the detached playback for another timestamp of the same file', () => {
@@ -868,7 +913,7 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 			30,
 			expect.any(Function),
 		);
-		expect(prevent).toHaveBeenCalled();
+		expect(prevent).toHaveBeenCalledTimes(1);
 	});
 
 	it('leaves a Live Preview click that is not on a wikilink to Obsidian', () => {
@@ -949,7 +994,7 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 		settings.enhancedPlayerEnabled = false;
 		registrar.refresh();
 
-		expect(detached.dispose).toHaveBeenCalled();
+		expect(detached.dispose).toHaveBeenCalledTimes(1);
 	});
 });
 
@@ -1009,7 +1054,9 @@ describe('EnhancedPlayerRegistrar without the internal embed registry', () => {
 			expect(warn).toHaveBeenCalledWith(
 				expect.stringContaining(expected),
 			);
-			expect(plugin.registerMarkdownPostProcessor).toHaveBeenCalled();
+			expect(plugin.registerMarkdownPostProcessor).toHaveBeenCalledTimes(
+				1,
+			);
 		},
 	);
 
@@ -1164,7 +1211,7 @@ describe('EnhancedPlayerRegistrar rebuilding open notes', () => {
 		registrar.refresh();
 		await pastDebounce(RERENDER_DEBOUNCE_MS);
 
-		expect(good).toHaveBeenCalled();
+		expect(good).toHaveBeenCalledTimes(1);
 		expect(error).toHaveBeenCalledWith(
 			expect.stringContaining('Failed to re-render'),
 			expect.any(Error),
@@ -1258,7 +1305,7 @@ describe('EnhancedPlayerRegistrar when the embed registry blows up', () => {
 			expect.stringContaining('Failed to set up the embed registry'),
 			expect.any(Error),
 		);
-		expect(plugin.registerMarkdownPostProcessor).toHaveBeenCalled();
+		expect(plugin.registerMarkdownPostProcessor).toHaveBeenCalledTimes(1);
 	});
 
 	it('hands back the native embed when building the player throws', () => {
@@ -1276,7 +1323,7 @@ describe('EnhancedPlayerRegistrar when the embed registry blows up', () => {
 
 		const embed = creator(embedInfo(), fileOf('mp3'), '');
 
-		expect(nativeCreator).toHaveBeenCalled();
+		expect(nativeCreator).toHaveBeenCalledTimes(1);
 		expect((embed as NativeEmbed).__native).toBe('mp3');
 		expect(error).toHaveBeenCalledWith(
 			expect.stringContaining('Failed to create the audio embed'),
@@ -1360,7 +1407,7 @@ describe('EnhancedPlayerRegistrar timecode links that go nowhere', () => {
 		expect(() => {
 			clicks()(event);
 		}).not.toThrow();
-		expect(plugin.registerMarkdownPostProcessor).toHaveBeenCalled();
+		expect(plugin.registerMarkdownPostProcessor).toHaveBeenCalledTimes(1);
 	});
 
 	it('falls back to the href when the link carries no data-href', () => {
@@ -1415,7 +1462,7 @@ describe('EnhancedPlayerRegistrar handing playback between surfaces', () => {
 		seek.mockReturnValue(true);
 		clicks()(linkClick('rec.mp4#t=30'));
 
-		expect(detached.dispose).toHaveBeenCalled();
+		expect(detached.dispose).toHaveBeenCalledTimes(1);
 	});
 
 	it('leaves the detached playback of another file alone', () => {
@@ -1445,7 +1492,7 @@ describe('EnhancedPlayerRegistrar handing playback between surfaces', () => {
 
 		clicks()(linkClick('rec.mp4#t=30'));
 
-		expect(seekShared).toHaveBeenCalled();
+		expect(seekShared).toHaveBeenCalledTimes(1);
 		expect(detachedStartMock).not.toHaveBeenCalled();
 	});
 
@@ -1463,7 +1510,7 @@ describe('EnhancedPlayerRegistrar handing playback between surfaces', () => {
 
 		clicks()(linkClick('second.mp4#t=20'));
 
-		expect(first.dispose).toHaveBeenCalled();
+		expect(first.dispose).toHaveBeenCalledTimes(1);
 		expect(detachedStartMock).toHaveBeenCalledTimes(2);
 	});
 });

@@ -16,12 +16,16 @@ import {
 	createRecordingSut,
 	installMediaRecorder,
 	installRecordingMediaStubs,
+	failNextPcmRecorderStop,
 	makeMediaRecorderDouble,
+	pcmRecorderDoubles,
 	recordingManagerOver,
 	stubAudioStreams,
 	type MockMediaRecorder,
 } from '../helpers/recordingManagerTestKit';
 import { useDesktopPlatform } from '../helpers/platform';
+import { at } from '../helpers/assertions';
+import { flushMicrotasks } from '../helpers/async';
 import { noticeMessages } from '../mocks/obsidian';
 import {
 	getAudioStreams,
@@ -49,6 +53,39 @@ jest.mock('src/recording/PcmStreamRecorder', () =>
 );
 
 installRecordingMediaStubs();
+
+/** Puts the environment where a WAV session captures PCM directly. */
+function pcmSession(): void {
+	useDesktopPlatform();
+	makeMediaRecorderDouble();
+	stubAudioStreams();
+}
+
+/**
+ * Installs a MediaRecorder that is running and refuses to stop, plus the
+ * streams it captures from.
+ * @returns The capture streams, for asserting they were released
+ */
+function recorderThatWillNotStop(): MediaStream[] {
+	makeMediaRecorderDouble({
+		state: 'recording',
+		stop: jest.fn(() => {
+			throw new Error('InvalidStateError');
+		}),
+	});
+	return stubAudioStreams();
+}
+
+/**
+ * Makes the workspace throw when the manager reads the cursor position, the
+ * last thing a start does after the recorders are already running.
+ * @param app - The app double the manager was built over
+ */
+function failTheWorkspace(app: App): void {
+	(app.workspace.getActiveViewOfType as jest.Mock).mockImplementation(() => {
+		throw new Error('the workspace is gone');
+	});
+}
 
 describe('RecordingManager', () => {
 	let manager: RecordingManager;
@@ -171,6 +208,82 @@ describe('RecordingManager', () => {
 				undefined,
 			);
 		});
+
+		it('tells the user which way the recording just went', async () => {
+			await manager.toggleRecording();
+
+			manager.togglePauseResume();
+			manager.togglePauseResume();
+
+			expect(noticeMessages()).toEqual(
+				expect.arrayContaining([
+					'Recording paused',
+					'Recording resumed',
+				]),
+			);
+		});
+
+		it('says there is nothing to pause when nothing is recording', () => {
+			manager.togglePauseResume();
+
+			expect(noticeMessages()).toContain(
+				'No active recording to pause or resume',
+			);
+		});
+	});
+
+	// WAV is captured straight from an AudioWorklet rather than through a
+	// MediaRecorder, so pause and resume have to reach a different set of
+	// recorders entirely. Reaching the wrong ones leaves a paused session
+	// still writing samples to disk.
+	describe('togglePauseResume on a WAV recording, which captures PCM', () => {
+		let mockMediaRecorder: MockMediaRecorder;
+
+		beforeEach(() => {
+			useDesktopPlatform();
+			mockMediaRecorder = makeMediaRecorderDouble();
+			stubAudioStreams({ count: 2 });
+			({
+				manager,
+				app: mockApp,
+				settings: mockSettings,
+				onStatusChange: statusChangeCallback,
+			} = createRecordingSut({ settings: { recordingFormat: 'wav' } }));
+		});
+
+		it('pauses every PCM recorder of the session', async () => {
+			await manager.startRecording();
+
+			manager.togglePauseResume();
+
+			const recorders = pcmRecorderDoubles();
+			expect(recorders).toHaveLength(2);
+			for (const recorder of recorders) {
+				expect(recorder.pause).toHaveBeenCalledTimes(1);
+			}
+			expect(manager.getStatus()).toBe(RecordingStatus.Paused);
+		});
+
+		it('resumes every PCM recorder of the session', async () => {
+			await manager.startRecording();
+
+			manager.togglePauseResume();
+			manager.togglePauseResume();
+
+			for (const recorder of pcmRecorderDoubles()) {
+				expect(recorder.resume).toHaveBeenCalledTimes(1);
+			}
+			expect(manager.getStatus()).toBe(RecordingStatus.Recording);
+		});
+
+		it('leaves the MediaRecorder path alone, which this session never built', async () => {
+			await manager.startRecording();
+
+			manager.togglePauseResume();
+
+			expect(mockMediaRecorder.pause).not.toHaveBeenCalled();
+			expect(global.MediaRecorder).not.toHaveBeenCalled();
+		});
 	});
 
 	describe('stopMediaRecorder watchdog', () => {
@@ -234,6 +347,139 @@ describe('RecordingManager', () => {
 
 			expect(jest.mocked(stopAllStreams)).toHaveBeenCalled();
 		});
+
+		// Unload runs while the app is closing: whatever a recorder does on
+		// the way out, the microphone still has to be handed back, or the
+		// device stays busy until the OS notices the process is gone.
+		it('releases the microphone even when a recorder refuses to stop', async () => {
+			const streams = recorderThatWillNotStop();
+
+			await manager.startRecording();
+			manager.cleanup();
+
+			expect(consoleErrorSpy).toHaveBeenCalledWith(
+				expect.stringContaining('Failed to stop recorder on unload'),
+				expect.any(Error),
+			);
+			expect(jest.mocked(stopAllStreams)).toHaveBeenCalledWith(streams);
+		});
+
+		// A recorder that already stopped itself must not be stopped again:
+		// MediaRecorder throws InvalidStateError for that, which would abort
+		// the rest of the unload.
+		it('leaves a recorder that already stopped alone', async () => {
+			const recorder = makeMediaRecorderDouble({ state: 'inactive' });
+			stubAudioStreams();
+
+			await manager.startRecording();
+			manager.cleanup();
+
+			expect(recorder.stop).not.toHaveBeenCalled();
+			expect(consoleErrorSpy).not.toHaveBeenCalled();
+		});
+
+		it('reports a PCM recorder that would not release on unload', async () => {
+			pcmSession();
+			({ manager } = createRecordingSut({
+				settings: { recordingFormat: 'wav' },
+			}));
+
+			await manager.startRecording();
+			at(pcmRecorderDoubles(), 0).stop.mockRejectedValue(
+				new Error('worklet gone'),
+			);
+			manager.cleanup();
+			await flushMicrotasks();
+
+			expect(consoleErrorSpy).toHaveBeenCalledWith(
+				expect.stringContaining(
+					'Failed to release PCM recorder on unload',
+				),
+				expect.any(Error),
+			);
+		});
+	});
+
+	// A start that fails partway has already taken the microphone and may
+	// have built recorders; leaving either behind is what makes the next
+	// attempt fail too, so the release runs whatever the teardown throws.
+	describe('a start that fails after the recorders exist', () => {
+		it('releases the microphone when a recorder refuses to stop', async () => {
+			const streams = recorderThatWillNotStop();
+			({ manager, app: mockApp } = createRecordingSut({
+				settings: { insertAtOriginalPosition: true },
+			}));
+			failTheWorkspace(mockApp);
+
+			await manager.startRecording();
+
+			expect(consoleErrorSpy).toHaveBeenCalledWith(
+				expect.stringContaining(
+					'Failed to stop recorder after start failure',
+				),
+				expect.any(Error),
+			);
+			expect(jest.mocked(stopAllStreams)).toHaveBeenCalledWith(streams);
+			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+		});
+
+		it('leaves a recorder that already stopped alone', async () => {
+			const recorder = makeMediaRecorderDouble({ state: 'inactive' });
+			stubAudioStreams();
+			({ manager, app: mockApp } = createRecordingSut({
+				settings: { insertAtOriginalPosition: true },
+			}));
+			failTheWorkspace(mockApp);
+
+			await manager.startRecording();
+
+			expect(recorder.stop).not.toHaveBeenCalled();
+			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
+		});
+
+		it('reports a PCM recorder that would not release', async () => {
+			pcmSession();
+			({ manager, app: mockApp } = createRecordingSut({
+				settings: {
+					recordingFormat: 'wav',
+					insertAtOriginalPosition: true,
+				},
+			}));
+			failTheWorkspace(mockApp);
+			failNextPcmRecorderStop(new Error('worklet gone'));
+
+			await manager.startRecording();
+			await flushMicrotasks();
+
+			expect(consoleErrorSpy).toHaveBeenCalledWith(
+				expect.stringContaining(
+					'Failed to release PCM recorder after start failure',
+				),
+				expect.any(Error),
+			);
+		});
+	});
+
+	// MediaRecorder reports a capture failure through its own error event
+	// rather than by rejecting anything the manager awaited, so this is the
+	// only place a mid-session hardware fault can be noticed at all.
+	describe('a recorder that reports an error mid-session', () => {
+		it('tells the user and leaves the session running to be stopped', async () => {
+			const recorder = makeMediaRecorderDouble();
+			stubAudioStreams();
+
+			await manager.startRecording();
+			recorder.onerror?.(new Event('error'));
+
+			expect(consoleErrorSpy).toHaveBeenCalledWith(
+				expect.stringContaining('Recorder error'),
+				expect.any(Event),
+			);
+			expect(noticeMessages()).toContain(
+				'Recording error occurred. Check console for details.',
+			);
+			expect(manager.getStatus()).toBe(RecordingStatus.Recording);
+		});
 	});
 
 	describe('stopRecording error recovery', () => {
@@ -266,6 +512,28 @@ describe('RecordingManager', () => {
 				RecordingStatus.Idle,
 				undefined,
 			);
+		});
+
+		// The message is what the Notice shows, so a thrown string (or
+		// anything else that is not an Error) has to read as a sentence
+		// rather than as "[object Object]".
+		// A worklet teardown can reject with anything at all, and the Notice
+		// shows the message: an unwrapped value has to read as a sentence
+		// rather than as "[object Object]".
+		it('names a stop failure that threw something other than an Error', async () => {
+			pcmSession();
+			({ manager } = createRecordingSut({
+				settings: { recordingFormat: 'wav' },
+			}));
+			failNextPcmRecorderStop('the audio device went away');
+
+			await manager.startRecording();
+			await manager.stopRecording();
+
+			expect(noticeMessages()).toContain(
+				'Error stopping recording: the audio device went away',
+			);
+			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
 		});
 
 		it('stops streams even when save fails', async () => {

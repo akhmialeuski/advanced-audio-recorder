@@ -47,6 +47,22 @@ const RULES = [
 		fix: 'name the behaviour in the third person, as jest/valid-title requires',
 	},
 	{
+		// "It was called" is the weakest thing a spy can be asked. It passes
+		// for a call with the wrong file, the wrong path, the wrong marker -
+		// every mistake worth catching in code that writes to the vault. The
+		// negative form is not counted: "nothing was written" is a strong
+		// claim that has no arguments to name.
+		//
+		// The lookbehind spans whitespace on purpose. Prettier keeps `.not`
+		// next to its matcher today, but it wraps a long member chain, and a
+		// ceiling pinned to the exact count would then fail the build for a
+		// change that made a test stronger.
+		name: 'assertions that a call happened without saying with what',
+		pattern: /(?<!\.not\s*\.\s*)toHaveBeenCalled\(\)/g,
+		limit: 168,
+		fix: 'name the arguments with toHaveBeenCalledWith, or the count with toHaveBeenCalledTimes',
+	},
+	{
 		// Obsidian extends HTMLElement at runtime, and a suite that reproduces
 		// a corner of that surface gets a subtly different one - a `cls` that
 		// takes no array, a `createEl` that appends before it fills. The

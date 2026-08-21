@@ -290,7 +290,10 @@ describe('RecordingManager', () => {
 
 			await manager.stopRecording();
 			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
-			expect(mockApp.vault.createBinary).toHaveBeenCalled();
+			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
+				expect.stringMatching(/\.webm$/),
+				expect.any(ArrayBuffer),
+			);
 		});
 
 		it('res-arm the failure Notice after a successful flush', async () => {
@@ -335,6 +338,12 @@ describe('RecordingManager', () => {
 
 		it('contains PCM flush failures without dropping later chunks', async () => {
 			useDesktopPlatform();
+			// Installs a recorder that reports every format recordable, and
+			// stubs the streams. Without it this test inherits whichever
+			// recorder the previous one left installed - and the sibling that
+			// narrows support to audio/webm makes WAV unrecordable here,
+			// which is a failure that only appears in some orders.
+			createDesktopRecorder();
 
 			mockSettings = { ...DEFAULT_SETTINGS, recordingFormat: 'wav' };
 			manager = recordingManagerOver(
@@ -343,7 +352,6 @@ describe('RecordingManager', () => {
 				statusChangeCallback,
 			);
 
-			stubAudioStreams();
 			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
 				new Uint8Array([1, 2, 3, 4]).buffer,
 			);
@@ -839,6 +847,37 @@ describe('RecordingManager', () => {
 			manager.togglePauseResume();
 			expect(mockMediaRecorder.pause).toHaveBeenCalledTimes(1);
 			expect(manager.getStatus()).toBe(RecordingStatus.Paused);
+		});
+
+		// A rotation stops and rebuilds the recorders. A session paused
+		// across that window has to come back paused, or the rotation
+		// silently resumes a recording the user stopped.
+		it('restores the paused state across a rotation', async () => {
+			startOneMinuteSplitClock();
+
+			await manager.startRecording();
+
+			jest.setSystemTime(61_000);
+			const chunk = new Blob([new Uint8Array([1, 2, 3])], {
+				type: 'audio/webm',
+			});
+			mockMediaRecorder.ondataavailable?.({ data: chunk } as BlobEvent);
+			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
+			await flushMicrotasks(10);
+
+			// Paused inside the rotation window, where the recorders are
+			// momentarily gone: the restart is what has to re-apply it
+			mockMediaRecorder.state = 'inactive';
+			manager.togglePauseResume();
+			expect(manager.getStatus()).toBe(RecordingStatus.Paused);
+			expect(mockMediaRecorder.pause).not.toHaveBeenCalled();
+
+			await getInternals(manager).rotationPromise;
+
+			expect(global.MediaRecorder).toHaveBeenCalledTimes(2);
+			// The rebuilt recorder comes back paused rather than running
+			expect(manager.getStatus()).toBe(RecordingStatus.Paused);
+			expect(mockMediaRecorder.pause).toHaveBeenCalledTimes(1);
 		});
 
 		it('stops and salvage the session when recorder restart fails', async () => {

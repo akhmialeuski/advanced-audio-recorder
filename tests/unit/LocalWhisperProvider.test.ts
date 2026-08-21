@@ -20,74 +20,21 @@ import type {
 	TranscribeOptions,
 } from 'src/transcription/providers/TranscriptionProvider';
 import { at } from '../helpers/assertions';
+import {
+	installNodeSurface,
+	type NodeSurface,
+	type NodeSurfaceBehaviour,
+} from '../helpers/nodeSurface';
 
-interface RequireWindow {
-	require?: (id: string) => unknown;
-}
-
-/** What the fake Node surface should do on this run. */
-interface NodeBehaviour {
-	/** Error handed to the execFile callback, when the binary fails. */
-	execError?: Error;
-	/** Output file contents, or a thrower for a binary that wrote none. */
-	output?: string | (() => never);
-	/** Makes window.require itself throw, as it does on mobile. */
-	noRequire?: boolean;
-}
-
-/** Files the run removed on its way out. */
-let removed: string[] = [];
-/** Files the run wrote before invoking the binary. */
-let written: string[] = [];
+/** The fake Node surface of the current test, installed by installNode. */
+// Null until a test installs one: the JSON-mapping tests below need no Node
+// surface at all, and in a random order one of them can run first.
+let node: NodeSurface | null = null;
 
 /** Installs a fake Node surface so the desktop-only provider can run. */
-function installNode(behaviour: NodeBehaviour = {}): void {
-	removed = [];
-	written = [];
-	if (behaviour.noRequire) {
-		(window as RequireWindow).require = (): never => {
-			throw new Error('require is not available here');
-		};
-		return;
-	}
-	const modules: Record<string, unknown> = {
-		child_process: {
-			execFile: (
-				_file: string,
-				_args: string[],
-				_options: unknown,
-				callback: (error: Error | null) => void,
-			): void => {
-				callback(behaviour.execError ?? null);
-			},
-		},
-		fs: {
-			writeFileSync: (path: string): void => {
-				written.push(path);
-			},
-			readFileSync: (): string => {
-				const output = behaviour.output;
-				if (typeof output === 'function') {
-					return output();
-				}
-				return (
-					output ??
-					JSON.stringify({
-						language: 'en',
-						transcription: [
-							{ offsets: { from: 0, to: 1000 }, text: 'hi' },
-						],
-					})
-				);
-			},
-			rmSync: (path: string): void => {
-				removed.push(path);
-			},
-		},
-		os: { tmpdir: (): string => '/tmp' },
-		path: { join: (...parts: string[]): string => parts.join('/') },
-	};
-	(window as RequireWindow).require = (id: string): unknown => modules[id];
+function installNode(behaviour: NodeSurfaceBehaviour = {}): NodeSurface {
+	node = installNodeSurface(behaviour);
+	return node;
 }
 
 /** A provider over the fake Node surface. */
@@ -115,7 +62,8 @@ function payload(): AudioPayload {
 }
 
 afterEach(() => {
-	delete (window as RequireWindow).require;
+	node?.restore();
+	node = null;
 });
 
 describe('availability', () => {
@@ -167,9 +115,7 @@ describe('running the binary', () => {
 
 	it('says the binary wrote no output rather than that the audio was empty', async () => {
 		installNode({
-			output: (): never => {
-				throw new Error('ENOENT');
-			},
+			writesNoOutput: true,
 		});
 
 		await expect(
@@ -200,13 +146,13 @@ describe('running the binary', () => {
 	])('removes both temporary files after $name', async ({ behaviour }) => {
 		// The temp files are the audio and the transcript; leaving them
 		// behind fills the system temp directory a recording at a time.
-		installNode(behaviour);
+		const surface = installNode(behaviour);
 
 		await createSut()
 			.transcribe(payload(), options())
 			.catch(() => undefined);
 
-		expect(removed).toHaveLength(2);
+		expect(surface.removed).toHaveLength(2);
 	});
 });
 

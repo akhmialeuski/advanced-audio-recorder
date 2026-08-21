@@ -261,7 +261,7 @@ describe('ContextMenu', () => {
 				mockApp,
 				file,
 			);
-			expect(jest.mocked(AudioFileInfoModal)).toHaveBeenCalled();
+			expect(jest.mocked(AudioFileInfoModal)).toHaveBeenCalledTimes(1);
 		});
 
 		it('does not open the file-info modal when analysis fails', async () => {
@@ -363,7 +363,7 @@ describe('ContextMenu', () => {
 			await clickItem(menu, 'Delete recording');
 
 			expect(Notice).toHaveBeenCalledWith('Failed to delete recording');
-			expect(consoleSpy).toHaveBeenCalled();
+			expect(consoleSpy).toHaveBeenCalledTimes(1);
 		});
 	});
 
@@ -486,7 +486,7 @@ describe('ContextMenu', () => {
 			await clickItem(menu, 'Delete recording & link to file');
 
 			expect(Notice).toHaveBeenCalledWith('Failed to delete recording');
-			expect(consoleSpy).toHaveBeenCalled();
+			expect(consoleSpy).toHaveBeenCalledTimes(1);
 		});
 
 		it('recognizes markdown-style links', () => {
@@ -601,7 +601,7 @@ describe('ContextMenu', () => {
 
 				playerMenuCallback(event);
 
-				expect(event.preventDefault).toHaveBeenCalled();
+				expect(event.preventDefault).toHaveBeenCalledTimes(1);
 				expect(mockWorkspace.trigger).toHaveBeenCalledWith(
 					'file-menu',
 					expect.any(Object),
@@ -650,8 +650,8 @@ describe('ContextMenu', () => {
 
 			playerMenuCallback(event);
 
-			expect(event.preventDefault).toHaveBeenCalled();
-			expect(event.stopPropagation).toHaveBeenCalled();
+			expect(event.preventDefault).toHaveBeenCalledTimes(1);
+			expect(event.stopPropagation).toHaveBeenCalledTimes(1);
 			expect(mockMetadataCache.getFirstLinkpathDest).toHaveBeenCalledWith(
 				'audio.mp3',
 				'active.md',
@@ -686,7 +686,7 @@ describe('ContextMenu', () => {
 				'audio.mp3',
 				'',
 			);
-			expect(mockWorkspace.trigger).toHaveBeenCalled();
+			expect(mockWorkspace.trigger).toHaveBeenCalledTimes(1);
 		});
 
 		it('resolves the embed against the note that contains it, not the active file', () => {
@@ -943,7 +943,7 @@ describe('ContextMenu', () => {
 			);
 
 			expect(menuTitles()).not.toContain('Add marker here');
-			expect(mockWorkspace.trigger).toHaveBeenCalled();
+			expect(mockWorkspace.trigger).toHaveBeenCalledTimes(1);
 		});
 	});
 });

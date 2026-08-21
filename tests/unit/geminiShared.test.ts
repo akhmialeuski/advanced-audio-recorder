@@ -32,11 +32,43 @@ describe('geminiCandidateText', () => {
 		expect(text).toBe(' Hello world');
 	});
 
-	it('returns empty string when candidates or parts are absent', () => {
-		expect(geminiCandidateText({})).toBe('');
-		expect(geminiCandidateText({ candidates: [] })).toBe('');
-		expect(geminiCandidateText({ candidates: [{ content: {} }] })).toBe('');
-		expect(geminiCandidateText(null)).toBe('');
+	it.each([
+		{ name: 'the body is null', body: null },
+		{ name: 'there are no candidates', body: {} },
+		{ name: 'the candidate list is empty', body: { candidates: [] } },
+		{
+			name: 'the candidate carries no parts',
+			body: { candidates: [{ content: {} }] },
+		},
+		{
+			name: 'the parts are not an array',
+			body: { candidates: [{ content: { parts: 'Hello' } }] },
+		},
+	])('returns empty string when $name', ({ body }) => {
+		expect(geminiCandidateText(body)).toBe('');
+	});
+
+	// A part can be a function call or inline data rather than text; skipping
+	// those is what keeps a tool-augmented response from stringifying into
+	// the transcript.
+	it('skips the parts that carry no text of their own', () => {
+		const text = geminiCandidateText({
+			candidates: [
+				{
+					content: {
+						parts: [
+							{ text: 'kept' },
+							null,
+							'Hello',
+							{ functionCall: { name: 'lookup' } },
+							{ text: ' and kept' },
+						],
+					},
+				},
+			],
+		});
+
+		expect(text).toBe('kept and kept');
 	});
 });
 
@@ -189,6 +221,24 @@ describe('assertGeminiNotBlocked', () => {
 				candidates: [{ finishReason: 'RECITATION' }],
 			}),
 		).toThrow(/without usable output \(RECITATION\)/i);
+	});
+
+	// promptFeedback is present but says nothing usable: treated as no block
+	// rather than as a block with an unprintable reason.
+	it.each([
+		{ name: 'not a string', blockReason: 7 },
+		{ name: 'missing', blockReason: undefined },
+		{ name: 'an empty string', blockReason: '' },
+	])('does not throw when the block reason is $name', ({ blockReason }) => {
+		expect(() =>
+			assertGeminiNotBlocked({ promptFeedback: { blockReason } }),
+		).not.toThrow();
+	});
+
+	it('does not throw when promptFeedback is not an object', () => {
+		expect(() =>
+			assertGeminiNotBlocked({ promptFeedback: 'SAFETY' }),
+		).not.toThrow();
 	});
 
 	it('does not throw for a normal stop, MAX_TOKENS, or an empty body', () => {

@@ -11,6 +11,7 @@
 
 import { at } from '../helpers/assertions';
 import { clickControl, control, el } from '../helpers/dom';
+import { menuInstances, noticeMessages } from '../mocks/obsidian';
 import { PLAYER } from '../helpers/selectors';
 import { AudioPlayer } from 'src/player/AudioPlayer';
 import { WaveformPeakCache } from 'src/player/WaveformData';
@@ -99,11 +100,11 @@ describe('control row drives the shared audio (PlayerControlsView wiring)', () =
 
 		mute.click();
 		expect(audio.muted).toBe(true);
-		expect(mute.classList.contains('is-active')).toBe(true);
+		expect(mute).toBeActiveControl();
 
 		mute.click();
 		expect(audio.muted).toBe(false);
-		expect(mute.classList.contains('is-active')).toBe(false);
+		expect(mute).not.toBeActiveControl();
 	});
 
 	it('raising the volume slider unmutes the shared audio', () => {
@@ -128,7 +129,7 @@ describe('control row drives the shared audio (PlayerControlsView wiring)', () =
 
 		loop.click();
 		expect(audio.loop).toBe(true);
-		expect(loop.classList.contains('is-active')).toBe(true);
+		expect(loop).toBeActiveControl();
 
 		loop.click();
 		expect(audio.loop).toBe(false);
@@ -146,6 +147,65 @@ describe('control row drives the shared audio (PlayerControlsView wiring)', () =
 
 		play.click();
 		expect(audio.pause).toHaveBeenCalled();
+	});
+});
+
+describe('the controls that hand work back to the player', () => {
+	it("the speed button opens the player's own rate menu", () => {
+		const container = makeContainer();
+		makePlayer(container, makeRegistry(makeFakeAudio())).onload();
+
+		control(container, 'Playback speed').dispatchEvent(
+			new MouseEvent('click'),
+		);
+
+		expect(menuInstances).toHaveLength(1);
+	});
+
+	it('the copy button writes the link the player built', async () => {
+		const writeText = jest.fn(() => Promise.resolve(undefined));
+		Object.defineProperty(navigator, 'clipboard', {
+			configurable: true,
+			value: { writeText },
+		});
+		const audio = makeFakeAudio();
+		audio.currentTime = 65;
+		const container = makeContainer();
+		makePlayer(container, makeRegistry(audio)).onload();
+
+		clickControl(container, 'Copy timestamp link');
+		await tick();
+
+		// The link text itself comes from Obsidian's link generator; what
+		// the wiring has to get right is that the press reached the player
+		// at the position the audio is actually at.
+		expect(writeText).toHaveBeenCalledTimes(1);
+		expect(noticeMessages()).toContain('Copied timestamp link at 1:05');
+	});
+});
+
+// Obsidian renders its own <audio> into the same container when it decides
+// the embed is a plain one. Two elements means two playheads, so the guard
+// removes whichever is not the player's.
+describe('a default embed appearing next to the enhanced one', () => {
+	it('removes an audio element it did not create', async () => {
+		const container = makeContainer();
+		makePlayer(container, makeRegistry(makeFakeAudio())).onload();
+
+		container.appendChild(document.createElement('audio'));
+		await tick();
+
+		expect(container.querySelectorAll('audio')).toHaveLength(0);
+	});
+
+	it('leaves elements that are not audio alone', async () => {
+		const container = makeContainer();
+		makePlayer(container, makeRegistry(makeFakeAudio())).onload();
+
+		container.appendChild(document.createElement('span'));
+		await tick();
+
+		expect(container.querySelectorAll('span')).toHaveLength(1);
 	});
 });
 

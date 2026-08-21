@@ -289,6 +289,7 @@ export class App {
 	vault: Vault = new Vault();
 	workspace: Workspace = new Workspace();
 	metadataCache: MetadataCache = new MetadataCache();
+	fileManager: FileManager = new FileManager(this.vault);
 	/**
 	 * The settings dialog, which is internal API in the real app and absent
 	 * unless a test stands one up (see obsidian/settingsNavigation).
@@ -301,10 +302,51 @@ export class App {
 }
 
 /**
+ * Mock FileManager.
+ *
+ * Two methods, and the plugin cannot do without either: trashing a source
+ * after a conversion, and building the wikilink a transcript timestamp is
+ * written as. Both were absent, so anything that reached them from a test
+ * driving the plugin threw on `undefined`.
+ */
+export class FileManager {
+	constructor(private readonly vault: Vault) {}
+
+	trashFile = jest.fn(
+		async (file: TFile, _system?: boolean): Promise<void> => {
+			this.vault.forget(file.path);
+		},
+	);
+
+	// Obsidian drops the extension for a note and keeps it for anything else,
+	// which is the difference between an audio embed that resolves and one
+	// that silently points at nothing. Subpath and alias are appended as it
+	// does.
+	generateMarkdownLink = jest.fn(
+		(
+			file: TFile,
+			_sourcePath: string,
+			subpath?: string,
+			alias?: string,
+		): string => {
+			const target = file.extension === 'md' ? file.basename : file.name;
+			return `[[${target}${subpath ?? ''}${alias ? `|${alias}` : ''}]]`;
+		},
+	);
+}
+
+/**
  * Mock MetadataCache. Events-backed like the real one; the plugin listens for
  * `changed` and `resolved`.
  */
 export class MetadataCache extends Events {
+	/**
+	 * The link graph Obsidian maintains: note path -> linked path -> count.
+	 * The vault-wide link rewrite starts from this to find which notes to
+	 * open at all, so a test that seeds no graph rewrites nothing.
+	 */
+	resolvedLinks: Record<string, Record<string, number>> = {};
+
 	getFileCache = jest.fn((_file: TFile): unknown => null);
 	getFirstLinkpathDest = jest.fn(
 		(_linkpath: string, _sourcePath: string): TFile | null => null,
@@ -421,9 +463,59 @@ export class Vault extends Events {
 		this.text.set(file.path, data);
 	});
 
+	// The atomic read-modify-write Obsidian added for exactly the case a
+	// plain read-then-modify gets wrong: an edit landing between the two.
+	// Code that rewrites a note the user may have open uses this and nothing
+	// else, so a vault without it fails every such rewrite.
+	//
+	// It refuses a path the vault does not hold, as the real one does.
+	// Answering "" for an unknown file instead would make a rewrite aimed at
+	// the wrong note report success - the rewrite of an empty string equals
+	// the empty string, so nothing looks changed and nothing looks failed -
+	// and would invent a file at that path for the rest of the test.
+	process = jest.fn(
+		async (file: TFile, fn: (data: string) => string): Promise<string> => {
+			if (!this.text.has(file.path)) {
+				throw new Error(
+					`Vault.process: no file at ${file.path}. Seed it, or ` +
+						'check the path the code under test resolved.',
+				);
+			}
+			const next = fn(this.text.get(file.path) ?? '');
+			this.text.set(file.path, next);
+			return next;
+		},
+	);
+
 	getFileByPath = jest.fn(
 		(path: string): TFile | null => this.files.get(path) ?? null,
 	);
+
+	/**
+	 * Drops a file from the index, the stores, and its folder, as trashing it
+	 * does, then fires the `delete` event the real vault fires.
+	 *
+	 * Detaching from the folder matters: `Vault.recurseChildren` walks the
+	 * tree, not the index, so a file removed from one and not the other is
+	 * still listed by anything reading the tree - and re-creating the path
+	 * would then give its folder two children for one file.
+	 * @param path - Vault-relative path
+	 */
+	forget(path: string): void {
+		const file = this.files.get(path);
+		if (!file) {
+			return;
+		}
+		const siblings = file.parent?.children;
+		const index = siblings?.indexOf(file) ?? -1;
+		if (siblings && index >= 0) {
+			siblings.splice(index, 1);
+		}
+		this.files.delete(path);
+		this.text.delete(path);
+		this.binary.delete(path);
+		this.trigger('delete', file);
+	}
 
 	getAbstractFileByPath = jest.fn(
 		(path: string): TAbstractFile | null => this.files.get(path) ?? null,
@@ -540,11 +632,17 @@ export class Vault extends Events {
  */
 export class Workspace extends Events {
 	private activeView: unknown = null;
+	private activeFile: TFile | null = null;
 
 	getActiveViewOfType = jest.fn(
 		<T>(_type: new (...args: unknown[]) => T): T | null =>
 			this.activeView as T | null,
 	);
+
+	// The file every file-action command resolves itself against: the palette
+	// entries are checkCallbacks over whatever is open, so a workspace that
+	// cannot report one leaves every one of them permanently unavailable.
+	getActiveFile = jest.fn((): TFile | null => this.activeFile);
 
 	onLayoutReady = jest.fn((callback: () => void): void => {
 		// The mock workspace is always "ready"
@@ -563,6 +661,14 @@ export class Workspace extends Events {
 	 */
 	seedActiveView(view: unknown): void {
 		this.activeView = view;
+	}
+
+	/**
+	 * Sets what getActiveFile answers with.
+	 * @param file - File to report as open, or null for none
+	 */
+	seedActiveFile(file: TFile | null): void {
+		this.activeFile = file;
 	}
 }
 
@@ -888,6 +994,16 @@ export class MarkdownRenderChild extends Component {
 /**
  * Mock Modal class.
  */
+/**
+ * Every dialog opened since the last test, in the order they were opened.
+ *
+ * A test driving a command cannot construct the dialog the command opened, and
+ * reaching it through the constructor mock only works for a suite that
+ * replaced the class. Recording the instances lets a test read what the user
+ * would be looking at. Cleared in tests/setupAfterEnv.ts.
+ */
+export const modalInstances: Modal[] = [];
+
 export class Modal {
 	app: App;
 	contentEl: HTMLElement;
@@ -907,6 +1023,7 @@ export class Modal {
 	// spies the instance (or the prototype, to catch a modal it never sees),
 	// and an instance-level jest.fn would put neither within reach of spyOn.
 	open(): void {
+		modalInstances.push(this);
 		// Mirrors Obsidian: opening renders the modal contents
 		this.onOpen();
 	}
@@ -1445,13 +1562,18 @@ export class ToggleComponent {
 			if (this.disabled) {
 				return;
 			}
-			this.value = !this.value;
+			this.setValue(!this.value);
 			this.changeCallback?.(this.value);
 		});
 	}
 
 	setValue(value: boolean): this {
 		this.value = value;
+		// Obsidian marks an on toggle with is-enabled rather than a checked
+		// attribute, since it is a div and not an input. Without this a test
+		// asking what the row shows reads nothing at all, and an assertion
+		// that the toggle is off passes however it was set.
+		this.toggleEl.classList.toggle('is-enabled', value);
 		return this;
 	}
 

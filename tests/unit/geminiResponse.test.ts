@@ -122,6 +122,24 @@ describe('mapGeminiResponse', () => {
 		expect(mapGeminiResponse(geminiBody({}), false).segments).toEqual([]);
 	});
 
+	it.each([
+		{ name: 'a null segment', entry: null },
+		{ name: 'a string segment', entry: 'Hello' },
+		{ name: 'a segment with no text', entry: { start: 0 } },
+		{
+			name: 'a segment whose text is a number',
+			entry: { start: 0, text: 7 },
+		},
+	])('drops $name and keeps the rest', ({ entry }) => {
+		const result = mapGeminiResponse(
+			geminiBody({ segments: [entry, { start: 1, text: 'kept' }] }),
+			false,
+		);
+
+		expect(result.segments).toHaveLength(1);
+		expect(at(result.segments, 0).text).toBe('kept');
+	});
+
 	it('warns and returns empty on non-JSON candidate text', () => {
 		// After the provider's truncation/block guards, a non-JSON body is
 		// unexpected; it must be logged rather than silently dropped.
@@ -147,6 +165,41 @@ describe('mapGeminiResponse', () => {
 		);
 		expect(mapGeminiResponse(null, false).segments).toEqual([]);
 		expect(warnSpy).not.toHaveBeenCalled();
+	});
+});
+
+describe('the tokens a run is billed for', () => {
+	const usageMetadata = {
+		promptTokenCount: 900,
+		candidatesTokenCount: 100,
+		totalTokenCount: 1000,
+	};
+
+	/** The same body, plus the usage counts Gemini reports beside it. */
+	function billed(body: unknown): unknown {
+		return { ...(body as Record<string, unknown>), usageMetadata };
+	}
+
+	// Gemini bills for the audio it read whatever came back, so a run that
+	// produced no transcript still has to report its cost - otherwise the
+	// session total silently under-counts exactly the runs worth noticing.
+	it.each([
+		{
+			name: 'a transcript came back',
+			body: geminiBody({ segments: [{ start: 0, text: 'hi' }] }),
+		},
+		{ name: 'the candidate was empty', body: geminiTextBody('  ') },
+		{
+			name: 'the candidate was not JSON',
+			body: geminiTextBody('not json'),
+		},
+		{ name: 'the JSON had no segments array', body: geminiBody({}) },
+	])('reports the usage when $name', ({ body }) => {
+		const result = mapGeminiResponse(billed(body), false);
+
+		expect(result.usage).toEqual(
+			expect.objectContaining({ inputTokens: 900, outputTokens: 100 }),
+		);
 	});
 });
 

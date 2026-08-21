@@ -240,7 +240,12 @@ describe('status-bar markers follow the player edit mode', () => {
 			expect(state?.markersEnabled).toBe(true);
 			state?.onAddMarker('chapter');
 			await tick();
-			expect(store.updateMarkers).toHaveBeenCalled();
+			// The marker is written against the recording the status bar is
+			// controlling, not whatever file happens to be open.
+			expect(store.updateMarkers).toHaveBeenCalledWith(
+				'rec.mp4',
+				expect.any(Function),
+			);
 		} finally {
 			shared.restore();
 		}

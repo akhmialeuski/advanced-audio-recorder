@@ -233,6 +233,91 @@ describe('SessionJournal', () => {
 		});
 	});
 
+	// The journal is read at startup to offer crash recovery, so a file that
+	// is not a journal must read as "nothing to recover" rather than as a
+	// session whose fields are all undefined.
+	describe('a journal file that is not one', () => {
+		it.each([
+			{ name: 'a JSON string', body: '"hello"' },
+			{ name: 'a JSON array', body: '[]' },
+			{ name: 'null', body: 'null' },
+			{ name: 'no version', body: JSON.stringify({ sessions: [] }) },
+			{
+				name: 'a version that is not a number',
+				body: JSON.stringify({ version: 'one', sessions: [] }),
+			},
+			{
+				name: 'sessions that are not a list',
+				body: JSON.stringify({
+					version: JOURNAL_VERSION,
+					sessions: {},
+				}),
+			},
+			{
+				name: 'a session that is not an object',
+				body: JSON.stringify({
+					version: JOURNAL_VERSION,
+					sessions: ['nope'],
+				}),
+			},
+			{
+				name: 'a session with no id',
+				body: JSON.stringify({
+					version: JOURNAL_VERSION,
+					sessions: [{ tracks: [] }],
+				}),
+			},
+			{
+				name: 'a session whose tracks are not a list',
+				body: JSON.stringify({
+					version: JOURNAL_VERSION,
+					sessions: [{ sessionId: 'x', tracks: 'nope' }],
+				}),
+			},
+		])('reads $name as corrupt', async ({ body }) => {
+			files.set(JOURNAL_PATH, body);
+
+			expect(await journal.readJournal()).toEqual({
+				data: null,
+				corrupt: true,
+			});
+		});
+
+		// A mutation is not a recovery check: it starts a fresh journal over
+		// the unusable one rather than refusing to record.
+		it('starts a fresh journal when a session begins over an unusable one', async () => {
+			files.set(JOURNAL_PATH, JSON.stringify({ foo: 'bar' }));
+
+			journal.startSession(createSession({ sessionId: 'fresh' }));
+			await journal.flush();
+
+			expect(
+				readStoredJournal().sessions.map((s) => s.sessionId),
+			).toEqual(['fresh']);
+		});
+
+		it('starts a fresh journal when the file cannot be read at all', async () => {
+			files.set(
+				JOURNAL_PATH,
+				JSON.stringify({ version: JOURNAL_VERSION, sessions: [] }),
+			);
+			jest.mocked(mockApp.vault.adapter.read).mockRejectedValueOnce(
+				new Error('locked'),
+			);
+
+			journal.startSession(createSession({ sessionId: 'fresh' }));
+			await journal.flush();
+
+			expect(consoleWarnSpy).toHaveBeenCalledWith(
+				expect.stringContaining('Failed to load the recording journal'),
+				expect.any(Error),
+			);
+			expect(
+				readStoredJournal().sessions.map((s) => s.sessionId),
+			).toEqual(['fresh']);
+		});
+	});
+
 	describe('replaceSessions', () => {
 		it('rewrites non-active sessions', async () => {
 			files.set(
@@ -265,6 +350,23 @@ describe('SessionJournal', () => {
 				readStoredJournal().sessions.map((s) => s.sessionId),
 			).toEqual(['active']);
 		});
+
+		// The recovery scan reads the journal, then writes back what is left
+		// after the user's choice. A session that started recording in that
+		// window is in both lists, and must end up in the file once.
+		it('keeps the active session once when the replacement also names it', async () => {
+			journal.startSession(createSession({ sessionId: 'active' }));
+			await journal.flush();
+
+			await journal.replaceSessions([
+				createSession({ sessionId: 'active' }),
+				createSession({ sessionId: 'old' }),
+			]);
+
+			expect(
+				readStoredJournal().sessions.map((s) => s.sessionId),
+			).toEqual(['old', 'active']);
+		});
 	});
 
 	describe('discardJournalFile', () => {
@@ -274,6 +376,44 @@ describe('SessionJournal', () => {
 			await journal.discardJournalFile();
 
 			expect(files.has(JOURNAL_PATH)).toBe(false);
+		});
+
+		// Discarding runs from the recovery prompt, which the user answered:
+		// a vault that refuses the delete is logged, not thrown at them.
+		it('reports a file it could not remove instead of throwing', async () => {
+			files.set(JOURNAL_PATH, '{not json');
+			jest.mocked(mockApp.vault.adapter.remove).mockRejectedValueOnce(
+				new Error('the vault is read-only'),
+			);
+
+			await expect(journal.discardJournalFile()).resolves.toBeUndefined();
+
+			expect(consoleWarnSpy).toHaveBeenCalledWith(
+				expect.stringContaining(
+					'Failed to remove the recording journal',
+				),
+				expect.any(Error),
+			);
+		});
+
+		it('does nothing where no journal is kept at all', async () => {
+			await new SessionJournal(null, mockApp).discardJournalFile();
+
+			expect(mockApp.vault.adapter.remove).not.toHaveBeenCalled();
+		});
+	});
+
+	// flush() is called on every stop and again on unload; writing a journal
+	// that has not changed would rewrite the file for nothing.
+	describe('flushing with nothing to write', () => {
+		it('writes once for a flush repeated with no change between', async () => {
+			journal.startSession(createSession());
+			await journal.flush();
+			const writesAfterFirst = writeMock.mock.calls.length;
+
+			await journal.flush();
+
+			expect(writeMock.mock.calls).toHaveLength(writesAfterFirst);
 		});
 	});
 

@@ -180,6 +180,17 @@ describe('settings definitions', () => {
 		buildSettingsDefinitions(createContext());
 
 	/**
+	 * Whether a control is blocked, however the row declared it.
+	 * @param control - The row's control, when it has one
+	 */
+	const disabledOf = (
+		control: { disabled?: unknown } | undefined,
+	): boolean =>
+		typeof control?.disabled === 'function'
+			? (control.disabled as () => boolean)()
+			: control?.disabled === true;
+
+	/**
 	 * Names of a page's own children, rows and entries alike. A page whose rows
 	 * are one block declares that block itself, so what it shows is a level in.
 	 * @param name - Name on the page's entry
@@ -1719,6 +1730,42 @@ describe('settings definitions', () => {
 				const control = rowOf(build(), heading, name).control;
 
 				expect(control?.options).toEqual(labels);
+			},
+		);
+
+		// The row is blocked for two different reasons, and they are not the
+		// same fix: a device that cannot choose at all, versus a chosen input
+		// that reports one layout only. The platform default has no device id
+		// to ask about, so the choice stays open rather than being blocked on
+		// an unknown.
+		it.each([
+			{
+				name: 'a device that can choose',
+				audioDeviceId: 'iface-1',
+				blocked: false,
+			},
+			{
+				name: 'an input that offers one layout',
+				audioDeviceId: 'mic-1',
+				blocked: true,
+			},
+			{
+				name: 'the platform default input',
+				audioDeviceId: '',
+				blocked: false,
+			},
+		])(
+			'blocks the channel row for $name: $blocked',
+			({ audioDeviceId, blocked }) => {
+				settings.audioDeviceId = audioDeviceId;
+
+				const control = rowOf(
+					build(),
+					'Audio input',
+					'Recording channels',
+				).control;
+
+				expect(disabledOf(control)).toBe(blocked);
 			},
 		);
 

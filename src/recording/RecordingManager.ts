@@ -156,7 +156,10 @@ export class RecordingManager {
 		private readonly onRecordingSaved?: (
 			result: RecordingSaveResult,
 		) => void,
-		getWorkerClient: () => EncodingWorkerClient | null = () => null,
+		// No default of its own: the finalizer, which is the only thing that
+		// asks for a worker, already falls back to "no worker" - a second
+		// default here would be a second answer to the same question.
+		getWorkerClient?: () => EncodingWorkerClient | null,
 	) {
 		this.onStatusChange = onStatusChange;
 		this.debugLogger = new DebugLogger(settings);

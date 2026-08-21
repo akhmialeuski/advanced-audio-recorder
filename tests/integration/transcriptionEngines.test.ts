@@ -32,6 +32,8 @@ import {
 } from 'src/settings/labels';
 import { providerBiasChannel } from 'src/transcription/providers/capabilities';
 import { advancedBiasChannel } from 'src/transcription/advanced/advancedBias';
+import { useMobilePlatform } from '../helpers/platform';
+import { installNodeSurface } from '../helpers/nodeSurface';
 import {
 	ENGINE_IDS,
 	engineAccess,
@@ -212,6 +214,65 @@ describe('registry-derived consumers stay in step', () => {
 			expect(createTranscriptionProvider(settings).id).toBe(id);
 		}
 	});
+
+	describe('the local engine, which is desktop-only', () => {
+		/** Settings selecting local whisper.cpp, with both paths filled. */
+		const configured = (): ReturnType<typeof mergeSettings> =>
+			mergeSettings({
+				transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+				localWhisperBinaryPath: '/bin/whisper',
+				localWhisperModelPath: '/models/ggml.bin',
+			});
+
+		it('refuses to build it on a device that cannot run a binary', () => {
+			useMobilePlatform();
+
+			expect(() => createTranscriptionProvider(configured())).toThrow(
+				`${TRANSCRIPTION_ENGINES[TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER].label} is not available on this device.`,
+			);
+		});
+
+		it.each([
+			{
+				name: 'no binary path',
+				overrides: { localWhisperBinaryPath: '' },
+			},
+			{ name: 'no model path', overrides: { localWhisperModelPath: '' } },
+			{
+				name: 'neither path',
+				overrides: {
+					localWhisperBinaryPath: '',
+					localWhisperModelPath: '',
+				},
+			},
+		])('points at the setup instructions given $name', ({ overrides }) => {
+			const settings = { ...configured(), ...overrides };
+
+			expect(() => createTranscriptionProvider(settings)).toThrow(
+				ProviderConfigError,
+			);
+		});
+
+		// The desktop check is the provider's own: it looks for the Node
+		// modules Obsidian only exposes there, which jsdom does not have.
+		it('refuses to build it where the desktop modules are unreachable', () => {
+			expect(() => createTranscriptionProvider(configured())).toThrow(
+				'Local transcription is only available in the desktop app.',
+			);
+		});
+
+		it('builds it where the desktop modules are reachable', () => {
+			const node = installNodeSurface();
+
+			try {
+				expect(createTranscriptionProvider(configured()).id).toBe(
+					TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+				);
+			} finally {
+				node.restore();
+			}
+		});
+	});
 });
 
 describe('every seeded model has a built-in rate', () => {
@@ -238,6 +299,21 @@ describe('every seeded model has a built-in rate', () => {
 				expect(Number.isFinite(rate)).toBe(true);
 			}
 		}
+	});
+});
+
+describe('a model no rate card knows', () => {
+	// A model the user typed by hand, or one the vendor shipped after this
+	// release. The estimate must read "no price" rather than invent a zero,
+	// which would show the run as free right before it is billed.
+	it.each([
+		{ engineId: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API },
+		{ engineId: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM },
+		{ engineId: TRANSCRIPTION_PROVIDER_IDS.GEMINI },
+	])('prices $engineId at nothing at all', ({ engineId }) => {
+		expect(
+			transcriptionEngine(engineId).pricing('made-up-model'),
+		).toBeNull();
 	});
 });
 

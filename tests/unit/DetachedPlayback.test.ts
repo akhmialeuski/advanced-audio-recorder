@@ -13,6 +13,7 @@ import type { PlaybackControlsState } from 'src/player/playbackControls';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 import { installControlledAudio } from '../helpers/mediaMocks';
+import { tick } from '../helpers/async';
 
 /** App stub exposing only the media resource lookup DetachedPlayback needs. */
 function appStub(): App {
@@ -215,6 +216,78 @@ describe('DetachedPlayback', () => {
 		expect(harness.audio.currentTime).toBe(30);
 		expect(harness.play).toHaveBeenCalledTimes(1);
 		expect(listener.mock.lastCall?.[0]?.duration).toBe(3600);
+	});
+
+	// The user clicked a timecode link, so the browser's autoplay policy
+	// should allow it; when it does not, the position is still right and the
+	// status bar's play button works. It is a log, not a Notice.
+	it('says why playback did not start rather than failing the seek', async () => {
+		const harness = installControlledAudio();
+		const warn = jest.spyOn(console, 'warn').mockImplementation();
+		harness.blockAutoplay();
+		const registry = new AudioPlayerRegistry();
+
+		DetachedPlayback.start(registry, appStub(), fileStub(), 30, jest.fn());
+		await tick();
+
+		expect(harness.audio.currentTime).toBe(30);
+		expect(warn).toHaveBeenCalledWith(
+			expect.stringContaining('Detached playback could not start'),
+			expect.any(Error),
+		);
+	});
+
+	// A note closed while the probe was still coaxing a duration out of the
+	// stream: the offset must not be applied to audio nobody is listening to.
+	it('does not seek when the duration arrives after disposal', () => {
+		const harness = installControlledAudio({
+			duration: Number.POSITIVE_INFINITY,
+			readyState: 1,
+		});
+		const registry = new AudioPlayerRegistry();
+		const playback = DetachedPlayback.start(
+			registry,
+			appStub(),
+			fileStub(),
+			30,
+			jest.fn(),
+		);
+
+		playback.dispose();
+		harness.play.mockClear();
+		harness.setDuration(3600);
+
+		expect(harness.play).not.toHaveBeenCalled();
+	});
+
+	// Metadata arrives for a playback that was already positioned; there is
+	// no deferred offset left to apply, and re-applying one would restart it.
+	it('does nothing on metadata when nothing is waiting to be sought', () => {
+		const harness = installControlledAudio();
+		const registry = new AudioPlayerRegistry();
+		DetachedPlayback.start(registry, appStub(), fileStub(), 30, jest.fn());
+		harness.play.mockClear();
+
+		harness.loadMetadata();
+
+		expect(harness.play).not.toHaveBeenCalled();
+		expect(harness.audio.currentTime).toBe(30);
+	});
+
+	// Metadata that arrives with a usable length applies the deferred offset
+	// straight away instead of paying for a probe.
+	it('applies the deferred offset on metadata without probing', () => {
+		const harness = installControlledAudio({
+			duration: 120,
+			readyState: 0,
+		});
+		const registry = new AudioPlayerRegistry();
+		DetachedPlayback.start(registry, appStub(), fileStub(), 45, jest.fn());
+
+		harness.loadMetadata();
+
+		expect(harness.audio.currentTime).toBe(45);
+		expect(harness.load).not.toHaveBeenCalled();
 	});
 
 	it('tears down only once when disposed repeatedly', () => {

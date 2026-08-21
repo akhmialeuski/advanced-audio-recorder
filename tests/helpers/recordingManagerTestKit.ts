@@ -15,6 +15,7 @@ import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { PlayerMarker } from 'src/markers/markerModel';
 import type { TrackAudioSource } from 'src/recording/AudioStreamHandler';
 import { partial } from './doubles';
+import type { PcmRecorderDouble } from '../mocks/modules/pcmStreamRecorder';
 
 /** The MediaRecorder constructor double, with its static format probe. */
 export type MediaRecorderCtorMock = jest.Mock & {
@@ -493,4 +494,42 @@ export const recordOneChunk = async (
 	// The Blob read the write chain performs settles a microtask later.
 	await Promise.resolve();
 	await manager.stopRecording();
+};
+
+/**
+ * The PCM recorder doubles the manager built for the current session.
+ *
+ * WAV is captured straight from an AudioWorklet rather than through
+ * MediaRecorder, so the suites that drive a WAV session assert against these
+ * instead of the MediaRecorder double. Read through the mocked constructor's
+ * results, which `clearMocks` empties between tests.
+ * @returns One double per capture stream, in track order
+ */
+export const pcmRecorderDoubles = (): PcmRecorderDouble[] => {
+	const { PcmStreamRecorder } = jest.requireMock<{
+		PcmStreamRecorder: jest.Mock;
+	}>('src/recording/PcmStreamRecorder');
+	return PcmStreamRecorder.mock.results.map(
+		(result) => result.value as PcmRecorderDouble,
+	);
+};
+
+/**
+ * Makes the next PCM recorder the manager builds refuse to stop.
+ *
+ * A recorder built inside `startRecording` cannot be reached from the test
+ * until that call has already returned, which is too late for the release
+ * paths that run on the way out of a failed start. The double answers a flag
+ * instead, so nothing is queued on the constructor: `clearMocks` does not
+ * clear an unconsumed `mockImplementationOnce`, and one left behind would
+ * reach whichever test ran next. tests/setupAfterEnv.ts disarms the flag for
+ * every test.
+ * @param error - What its `stop()` should reject with; not necessarily an
+ *   Error, since a worklet teardown can reject with anything
+ */
+export const failNextPcmRecorderStop = (error: unknown): void => {
+	const { __failNextStop } = jest.requireMock<{
+		__failNextStop: (reason: unknown) => void;
+	}>('src/recording/PcmStreamRecorder');
+	__failNextStop(error);
 };
