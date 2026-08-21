@@ -133,6 +133,18 @@ function scriptFlow(generateText: string): ScriptedFlow {
 	};
 }
 
+/** A flow that answers with a one-segment transcript, as most tests need. */
+function scriptTranscriptFlow(): ScriptedFlow {
+	return scriptFlow(transcriptBody({ segments: [{ start: 0, text: 'hi' }] }));
+}
+
+/** The instruction text sent alongside the audio, as one string. */
+function instructionOf(flow: ScriptedFlow): string {
+	return at(flow.generateBody().contents, 0)
+		.parts.map((part) => part.text ?? '')
+		.join(' ');
+}
+
 describe('GeminiProvider.transcribe', () => {
 	it('uploads a WAV payload as-is and maps the structured transcript', async () => {
 		const flow = scriptFlow(
@@ -173,9 +185,7 @@ describe('GeminiProvider.transcribe', () => {
 	});
 
 	it('folds dictionary terms into the instruction text', async () => {
-		const flow = scriptFlow(
-			transcriptBody({ segments: [{ start: 0, text: 'hi' }] }),
-		);
+		const flow = scriptTranscriptFlow();
 
 		await provider().transcribe(payload('audio/wav'), {
 			diarize: false,
@@ -184,32 +194,24 @@ describe('GeminiProvider.transcribe', () => {
 		});
 
 		// The instruction is the text part sent alongside the audio file part.
-		const instruction = at(flow.generateBody().contents, 0)
-			.parts.map((p) => p.text ?? '')
-			.join(' ');
+		const instruction = instructionOf(flow);
 		expect(instruction).toContain('Kubernetes, gRPC');
 	});
 
 	it('omits the dictionary sentence when no terms are given', async () => {
-		const flow = scriptFlow(
-			transcriptBody({ segments: [{ start: 0, text: 'hi' }] }),
-		);
+		const flow = scriptTranscriptFlow();
 
 		await provider().transcribe(payload('audio/wav'), {
 			diarize: false,
 			wordTimestamps: false,
 		});
 
-		const instruction = at(flow.generateBody().contents, 0)
-			.parts.map((p) => p.text ?? '')
-			.join(' ');
+		const instruction = instructionOf(flow);
 		expect(instruction).not.toContain('Prefer these spellings');
 	});
 
 	it('names the language the run declared in the instruction', async () => {
-		const flow = scriptFlow(
-			transcriptBody({ segments: [{ start: 0, text: 'hi' }] }),
-		);
+		const flow = scriptTranscriptFlow();
 
 		await provider().transcribe(payload('audio/wav'), {
 			diarize: false,
@@ -217,34 +219,26 @@ describe('GeminiProvider.transcribe', () => {
 			language: 'de',
 		});
 
-		const instruction = at(flow.generateBody().contents, 0)
-			.parts.map((p) => p.text ?? '')
-			.join(' ');
+		const instruction = instructionOf(flow);
 		// Named as the primary language rather than the only one: a bilingual
 		// recording still has to be transcribed in the language spoken.
 		expect(instruction).toContain('primary language is "de"');
 	});
 
 	it('asks Gemini to label speakers when the run diarizes', async () => {
-		const flow = scriptFlow(
-			transcriptBody({ segments: [{ start: 0, text: 'hi' }] }),
-		);
+		const flow = scriptTranscriptFlow();
 
 		await provider().transcribe(payload('audio/wav'), {
 			diarize: true,
 			wordTimestamps: false,
 		});
 
-		const instruction = at(flow.generateBody().contents, 0)
-			.parts.map((p) => p.text ?? '')
-			.join(' ');
+		const instruction = instructionOf(flow);
 		expect(instruction).toContain('Identify distinct speakers');
 	});
 
 	it('decodes an unsupported container to WAV before upload', async () => {
-		const flow = scriptFlow(
-			transcriptBody({ segments: [{ start: 0, text: 'hi' }] }),
-		);
+		const flow = scriptTranscriptFlow();
 
 		await provider().transcribe(payload('audio/webm'), {
 			diarize: false,
@@ -292,9 +286,7 @@ describe('GeminiProvider.transcribe', () => {
 	});
 
 	it('uses the Pro minimum thinking budget for a Pro model', async () => {
-		const flow = scriptFlow(
-			transcriptBody({ segments: [{ start: 0, text: 'hi' }] }),
-		);
+		const flow = scriptTranscriptFlow();
 
 		await provider('gemini-2.5-pro').transcribe(payload('audio/wav'), {
 			diarize: false,
@@ -307,9 +299,7 @@ describe('GeminiProvider.transcribe', () => {
 	});
 
 	it('omits thinkingConfig for a model without a thinking budget (2.0)', async () => {
-		const flow = scriptFlow(
-			transcriptBody({ segments: [{ start: 0, text: 'hi' }] }),
-		);
+		const flow = scriptTranscriptFlow();
 
 		await provider('gemini-2.0-flash').transcribe(payload('audio/wav'), {
 			diarize: false,

@@ -285,19 +285,7 @@ describe('requestRaw abort support', () => {
 
 	it('rejects with a cancellation HttpError when the signal aborts mid-flight', async () => {
 		const controller = new AbortController();
-		mockFetch(
-			(_url, init) =>
-				new Promise((_resolve, reject) => {
-					init?.signal?.addEventListener('abort', () => {
-						reject(
-							new DOMException(
-								'The operation was aborted.',
-								'AbortError',
-							),
-						);
-					});
-				}),
-		);
+		(globalThis as { fetch?: unknown }).fetch = fetchThatOnlyAborts();
 
 		const pending = requestRaw({
 			url: 'https://api.example.com/v1/transcribe',
@@ -346,6 +334,23 @@ describe('requestRaw abort support', () => {
 	});
 });
 
+/** A fetch that never settles until its signal aborts, then rejects. */
+function fetchThatOnlyAborts(): jest.Mock {
+	return jest.fn(
+		(_url: unknown, init?: { signal?: AbortSignal }) =>
+			new Promise((_resolve, reject) => {
+				init?.signal?.addEventListener('abort', () => {
+					reject(
+						new DOMException(
+							'The operation was aborted.',
+							'AbortError',
+						),
+					);
+				});
+			}),
+	);
+}
+
 describe('requests that never come back', () => {
 	afterEach(() => {
 		jest.useRealTimers();
@@ -378,19 +383,7 @@ describe('requests that never come back', () => {
 
 	it('reports a hanging fetch as a timeout rather than a cancellation', async () => {
 		jest.useFakeTimers();
-		(globalThis as { fetch?: unknown }).fetch = jest.fn(
-			(_url: unknown, init?: { signal?: AbortSignal }) =>
-				new Promise((_resolve, reject) => {
-					init?.signal?.addEventListener('abort', () => {
-						reject(
-							new DOMException(
-								'The operation was aborted.',
-								'AbortError',
-							),
-						);
-					});
-				}),
-		);
+		(globalThis as { fetch?: unknown }).fetch = fetchThatOnlyAborts();
 
 		const settled = requestRaw({
 			url: 'https://api.example.com/v1/transcribe',

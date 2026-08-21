@@ -424,7 +424,7 @@ describe('AudioRecorderSettingTab', () => {
 			// which no visible predicate can express: without reading the tree
 			// again both entries keep the answer they were built with.
 			expect(mockSettings.transcriptionDictionaryProfileId).toBe('b');
-			expect(updateSpy).toHaveBeenCalled();
+			expect(updateSpy).toHaveBeenCalledTimes(1);
 		});
 
 		it('runs the chapter catalogue through the same mechanism', async () => {
@@ -445,7 +445,7 @@ describe('AudioRecorderSettingTab', () => {
 			expect(
 				mockSettings.transcriptionChapterPromptProfiles[1]?.prompt,
 			).toBe('by chapter');
-			expect(updateSpy).toHaveBeenCalled();
+			expect(updateSpy).toHaveBeenCalledTimes(1);
 		});
 
 		it.each(PROFILE_KINDS.map((kind) => [kind.heading, kind.selectionKey]))(
@@ -459,7 +459,7 @@ describe('AudioRecorderSettingTab', () => {
 				// other two.
 				await tab.setControlValue(selectionKey, 'a');
 
-				expect(updateSpy).toHaveBeenCalled();
+				expect(updateSpy).toHaveBeenCalledTimes(1);
 			},
 		);
 
@@ -496,7 +496,7 @@ describe('AudioRecorderSettingTab', () => {
 
 			// The model catalogue and the credential fields are another
 			// engine's now, in the rows that were already there.
-			expect(updateSpy).toHaveBeenCalled();
+			expect(updateSpy).toHaveBeenCalledTimes(1);
 		});
 
 		it('stores a language code the way the engines receive it', () => {
@@ -534,7 +534,7 @@ describe('AudioRecorderSettingTab', () => {
 				deviceId: 'mic-1',
 				channelMode: 'source',
 			});
-			expect(saveSettingsMock).toHaveBeenCalled();
+			expect(saveSettingsMock).toHaveBeenCalledTimes(1);
 		});
 
 		it('keeps the channel layout across a device swap', async () => {
@@ -1178,7 +1178,7 @@ describe('AudioRecorderSettingTab', () => {
 			expect(mockSettings.whisperApiModels).toContain('whisper-large-v3');
 			// A model is added to be used, so the addition is also the selection.
 			expect(mockSettings.whisperApiModel).toBe('whisper-large-v3');
-			expect(saveSettingsMock).toHaveBeenCalled();
+			expect(saveSettingsMock).toHaveBeenCalledTimes(1);
 		});
 
 		it('moves the selection off a model it deletes', async () => {
@@ -1720,8 +1720,8 @@ describe('AudioRecorderSettingTab profile catalogues', () => {
 		expect(at(mockSettings.transcriptionDictionaryProfiles, 0).name).toBe(
 			'Contracts',
 		);
-		expect(saveSettings).toHaveBeenCalled();
-		expect(jest.mocked(closeSettingsPage)).toHaveBeenCalled();
+		expect(saveSettings).toHaveBeenCalledTimes(1);
+		expect(jest.mocked(closeSettingsPage)).toHaveBeenCalledTimes(1);
 	});
 
 	it.each([
@@ -1758,7 +1758,7 @@ describe('AudioRecorderSettingTab profile catalogues', () => {
 				(profile) => profile.name,
 			),
 		).toEqual(['Legal']);
-		expect(jest.mocked(closeSettingsPage)).toHaveBeenCalled();
+		expect(jest.mocked(closeSettingsPage)).toHaveBeenCalledTimes(1);
 	});
 
 	it('moves the selection off a profile it deletes', async () => {
@@ -1802,7 +1802,7 @@ describe('AudioRecorderSettingTab profile catalogues', () => {
 				(profile) => profile.name,
 			),
 		).toEqual(['Medical', 'Legal']);
-		expect(saveSettings).toHaveBeenCalled();
+		expect(saveSettings).toHaveBeenCalledTimes(1);
 	});
 
 	it('leaves the selection on the profile that was in use', async () => {

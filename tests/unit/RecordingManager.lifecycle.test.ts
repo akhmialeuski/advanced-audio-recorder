@@ -54,6 +54,28 @@ jest.mock('src/recording/PcmStreamRecorder', () =>
 
 installRecordingMediaStubs();
 
+/** Puts the environment where a WAV session captures PCM directly. */
+function pcmSession(): void {
+	useDesktopPlatform();
+	makeMediaRecorderDouble();
+	stubAudioStreams();
+}
+
+/**
+ * Installs a MediaRecorder that is running and refuses to stop, plus the
+ * streams it captures from.
+ * @returns The capture streams, for asserting they were released
+ */
+function recorderThatWillNotStop(): MediaStream[] {
+	makeMediaRecorderDouble({
+		state: 'recording',
+		stop: jest.fn(() => {
+			throw new Error('InvalidStateError');
+		}),
+	});
+	return stubAudioStreams();
+}
+
 /**
  * Makes the workspace throw when the manager reads the cursor position, the
  * last thing a start does after the recorders are already running.
@@ -330,13 +352,7 @@ describe('RecordingManager', () => {
 		// the way out, the microphone still has to be handed back, or the
 		// device stays busy until the OS notices the process is gone.
 		it('releases the microphone even when a recorder refuses to stop', async () => {
-			makeMediaRecorderDouble({
-				state: 'recording',
-				stop: jest.fn(() => {
-					throw new Error('InvalidStateError');
-				}),
-			});
-			const streams = stubAudioStreams();
+			const streams = recorderThatWillNotStop();
 
 			await manager.startRecording();
 			manager.cleanup();
@@ -363,9 +379,7 @@ describe('RecordingManager', () => {
 		});
 
 		it('reports a PCM recorder that would not release on unload', async () => {
-			useDesktopPlatform();
-			makeMediaRecorderDouble();
-			stubAudioStreams();
+			pcmSession();
 			({ manager } = createRecordingSut({
 				settings: { recordingFormat: 'wav' },
 			}));
@@ -391,13 +405,7 @@ describe('RecordingManager', () => {
 	// attempt fail too, so the release runs whatever the teardown throws.
 	describe('a start that fails after the recorders exist', () => {
 		it('releases the microphone when a recorder refuses to stop', async () => {
-			makeMediaRecorderDouble({
-				state: 'recording',
-				stop: jest.fn(() => {
-					throw new Error('InvalidStateError');
-				}),
-			});
-			const streams = stubAudioStreams();
+			const streams = recorderThatWillNotStop();
 			({ manager, app: mockApp } = createRecordingSut({
 				settings: { insertAtOriginalPosition: true },
 			}));
@@ -430,9 +438,7 @@ describe('RecordingManager', () => {
 		});
 
 		it('reports a PCM recorder that would not release', async () => {
-			useDesktopPlatform();
-			makeMediaRecorderDouble();
-			stubAudioStreams();
+			pcmSession();
 			({ manager, app: mockApp } = createRecordingSut({
 				settings: {
 					recordingFormat: 'wav',
@@ -515,9 +521,7 @@ describe('RecordingManager', () => {
 		// shows the message: an unwrapped value has to read as a sentence
 		// rather than as "[object Object]".
 		it('names a stop failure that threw something other than an Error', async () => {
-			useDesktopPlatform();
-			makeMediaRecorderDouble();
-			stubAudioStreams();
+			pcmSession();
 			({ manager } = createRecordingSut({
 				settings: { recordingFormat: 'wav' },
 			}));

@@ -27,11 +27,14 @@ import {
 } from '../helpers/nodeSurface';
 
 /** The fake Node surface of the current test, installed by installNode. */
-let node: NodeSurface;
+// Null until a test installs one: the JSON-mapping tests below need no Node
+// surface at all, and in a random order one of them can run first.
+let node: NodeSurface | null = null;
 
 /** Installs a fake Node surface so the desktop-only provider can run. */
-function installNode(behaviour: NodeSurfaceBehaviour = {}): void {
+function installNode(behaviour: NodeSurfaceBehaviour = {}): NodeSurface {
 	node = installNodeSurface(behaviour);
+	return node;
 }
 
 /** A provider over the fake Node surface. */
@@ -59,7 +62,8 @@ function payload(): AudioPayload {
 }
 
 afterEach(() => {
-	node.restore();
+	node?.restore();
+	node = null;
 });
 
 describe('availability', () => {
@@ -144,13 +148,13 @@ describe('running the binary', () => {
 	])('removes both temporary files after $name', async ({ behaviour }) => {
 		// The temp files are the audio and the transcript; leaving them
 		// behind fills the system temp directory a recording at a time.
-		installNode(behaviour);
+		const surface = installNode(behaviour);
 
 		await createSut()
 			.transcribe(payload(), options())
 			.catch(() => undefined);
 
-		expect(node.removed).toHaveLength(2);
+		expect(surface.removed).toHaveLength(2);
 	});
 });
 

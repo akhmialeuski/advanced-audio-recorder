@@ -290,7 +290,10 @@ describe('RecordingManager', () => {
 
 			await manager.stopRecording();
 			expect(manager.getStatus()).toBe(RecordingStatus.Idle);
-			expect(mockApp.vault.createBinary).toHaveBeenCalled();
+			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
+				expect.stringMatching(/\.webm$/),
+				expect.any(ArrayBuffer),
+			);
 		});
 
 		it('res-arm the failure Notice after a successful flush', async () => {
@@ -335,6 +338,12 @@ describe('RecordingManager', () => {
 
 		it('contains PCM flush failures without dropping later chunks', async () => {
 			useDesktopPlatform();
+			// Installs a recorder that reports every format recordable, and
+			// stubs the streams. Without it this test inherits whichever
+			// recorder the previous one left installed - and the sibling that
+			// narrows support to audio/webm makes WAV unrecordable here,
+			// which is a failure that only appears in some orders.
+			createDesktopRecorder();
 
 			mockSettings = { ...DEFAULT_SETTINGS, recordingFormat: 'wav' };
 			manager = recordingManagerOver(
@@ -343,7 +352,6 @@ describe('RecordingManager', () => {
 				statusChangeCallback,
 			);
 
-			stubAudioStreams();
 			(mockApp.vault.adapter.readBinary as jest.Mock).mockResolvedValue(
 				new Uint8Array([1, 2, 3, 4]).buffer,
 			);

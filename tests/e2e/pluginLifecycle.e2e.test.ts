@@ -147,7 +147,7 @@ describe('the command line', () => {
 
 		await asMockPlugin(plugin).invokeCliCommand(`${MANIFEST.id}:stop`);
 
-		expect(recorder().stopRecording).toHaveBeenCalled();
+		expect(recorder().stopRecording).toHaveBeenCalledTimes(1);
 	});
 
 	it('answers with the state the recorder is in', async () => {
@@ -205,7 +205,7 @@ describe('the command line', () => {
 		const { answer, plugin } = await transcribeFromCli(transcribable);
 
 		expect(answer).toBe(`Started transcribing ${RECORDING} in Obsidian.`);
-		expect(jest.mocked(TranscriptionModal)).toHaveBeenCalled();
+		expect(jest.mocked(TranscriptionModal)).toHaveBeenCalledTimes(1);
 		// The dialog is handed a reader of the live settings rather than a
 		// copy of them, so a run started here sees an edit made while it waits.
 		const [, file, getSettings] = at(
@@ -282,7 +282,7 @@ describe('the recording commands', () => {
 
 		asMockPlugin(plugin).invokeCommand(COMMAND_IDS.startStopRecording);
 
-		expect(recorder().toggleRecording).toHaveBeenCalled();
+		expect(recorder().toggleRecording).toHaveBeenCalledTimes(1);
 	});
 
 	it('pauses and resumes from the palette', async () => {
@@ -290,7 +290,7 @@ describe('the recording commands', () => {
 
 		asMockPlugin(plugin).invokeCommand(COMMAND_IDS.pauseResumeRecording);
 
-		expect(recorder().togglePauseResume).toHaveBeenCalled();
+		expect(recorder().togglePauseResume).toHaveBeenCalledTimes(1);
 	});
 
 	it('hides the marker command while no recording can take one', async () => {
@@ -315,7 +315,7 @@ describe('the recording commands', () => {
 		);
 
 		expect(available).toBe(true);
-		expect(recorder().captureMarkerDraft).toHaveBeenCalled();
+		expect(recorder().captureMarkerDraft).toHaveBeenCalledTimes(1);
 	});
 
 	it('drops the marker command when the recorder has no draft to give', async () => {
@@ -351,7 +351,7 @@ describe('the device selection command', () => {
 		);
 
 		expect(available).toBe(true);
-		expect(showDeviceSelectionModal).toHaveBeenCalled();
+		expect(showDeviceSelectionModal).toHaveBeenCalledTimes(1);
 	});
 
 	it('remembers the device that was picked', async () => {
@@ -368,7 +368,7 @@ describe('the device selection command', () => {
 		expect(plugin.settings.audioDeviceId).toBe('usb-mic');
 		expect(
 			(plugin as unknown as { saveData: jest.Mock }).saveData,
-		).toHaveBeenCalled();
+		).toHaveBeenCalledTimes(1);
 	});
 });
 
@@ -378,7 +378,7 @@ describe('unloading the plugin', () => {
 
 		plugin.onunload();
 
-		expect(recorder().cleanup).toHaveBeenCalled();
+		expect(recorder().cleanup).toHaveBeenCalledTimes(1);
 	});
 
 	it('leaves the ribbon icon and status bar in their idle state', async () => {
@@ -490,7 +490,7 @@ describe('work still in flight when the plugin is unloaded', () => {
 
 		plugin.onunload();
 
-		expect(recorder().cleanup).toHaveBeenCalled();
+		expect(recorder().cleanup).toHaveBeenCalledTimes(1);
 	});
 
 	it('paints no status change that arrives after the teardown', async () => {

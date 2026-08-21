@@ -137,7 +137,7 @@ describe('getAudioFileInfo', () => {
 		});
 		// The probe answered, so the expensive full decode never ran
 		expect(mockDecodeAudioData).not.toHaveBeenCalled();
-		expect(mockDispose).toHaveBeenCalled();
+		expect(mockDispose).toHaveBeenCalledTimes(1);
 	});
 
 	it('reads only ranges, never the whole file, when the probe parses', async () => {
@@ -174,7 +174,7 @@ describe('getAudioFileInfo', () => {
 		// An environment that does not honor the range request still gets
 		// its metadata, from the bytes rather than from a decode.
 		expect(result?.duration).toBe('1:30');
-		expect(app.vault.readBinary).toHaveBeenCalled();
+		expect(app.vault.readBinary).toHaveBeenCalledTimes(1);
 		expect(mockDecodeAudioData).not.toHaveBeenCalled();
 	});
 
@@ -183,7 +183,7 @@ describe('getAudioFileInfo', () => {
 		await getAudioFileInfo(app, file);
 		expect(mockDispose).toHaveBeenCalled();
 		// The decode fallback provided the metadata instead
-		expect(mockDecodeAudioData).toHaveBeenCalled();
+		expect(mockDecodeAudioData).toHaveBeenCalledTimes(1);
 	});
 
 	it('accuratelies extract and format audio metadata', async () => {
@@ -329,7 +329,7 @@ describe('getAudioFileInfo', () => {
 
 		const result = await getAudioFileInfo(app, file);
 
-		expect(app.vault.readBinary).toHaveBeenCalled();
+		expect(app.vault.readBinary).toHaveBeenCalledTimes(1);
 		expect(result?.duration).toBe('0:12');
 		expect(result?.sampleRate).toBe('44100 Hz');
 	});
@@ -355,7 +355,7 @@ describe('getAudioFileInfo', () => {
 
 	it('closes AudioContext in finally block', async () => {
 		await getAudioFileInfo(app, file);
-		expect(mockClose).toHaveBeenCalled();
+		expect(mockClose).toHaveBeenCalledTimes(1);
 	});
 
 	it('returns null if AudioContext is not supported', async () => {
@@ -415,7 +415,7 @@ describe('readAudioMetadata', () => {
 		const result = await readAudioMetadata(new ArrayBuffer(8), 'a.webm');
 
 		expect(result?.durationSeconds).toBe(90);
-		expect(mockDecodeAudioData).toHaveBeenCalled();
+		expect(mockDecodeAudioData).toHaveBeenCalledTimes(1);
 	});
 
 	it('reads the length through the browser when the headers carry none, and never decodes', async () => {

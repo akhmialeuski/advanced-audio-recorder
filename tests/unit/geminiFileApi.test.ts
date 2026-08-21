@@ -30,6 +30,37 @@ import { queueResponses, withRequestUrl } from '../helpers/network';
 const BASE_URL = 'https://gemini.example';
 const API_KEY = 'gm-test';
 
+/** One status response reporting the given processing state. */
+function statusResponse(state: string): MockRequestUrlResponse {
+	return {
+		status: 200,
+		headers: {},
+		text: JSON.stringify({
+			name: 'files/x',
+			uri: 'https://files.example/x',
+			state,
+		}),
+	};
+}
+
+/**
+ * Answers the resumable upload: the start step hands back an upload URL, the
+ * finalize step hands back whatever this test wants the file to be.
+ * @param finalized - Body the finalize step answers with
+ */
+function scriptUpload(finalized: unknown): void {
+	withRequestUrl((param): MockRequestUrlResponse => {
+		if (param.url.includes('/upload/')) {
+			return {
+				status: 200,
+				headers: { 'x-goog-upload-url': 'https://up.example' },
+				text: '',
+			};
+		}
+		return { status: 200, headers: {}, text: JSON.stringify(finalized) };
+	});
+}
+
 describe('uploadFile', () => {
 	it('starts a resumable session then finalizes, returning the file', async () => {
 		const calls: MockRequestUrlParam[] = [];
@@ -79,21 +110,8 @@ describe('uploadFile', () => {
 	});
 
 	it('reads the upload URL header case-insensitively and defaults a missing state', async () => {
-		withRequestUrl((param): MockRequestUrlResponse => {
-			if (param.url.includes('/upload/')) {
-				return {
-					status: 200,
-					headers: { 'x-goog-upload-url': 'https://up.example' },
-					text: '',
-				};
-			}
-			return {
-				status: 200,
-				headers: {},
-				text: JSON.stringify({
-					file: { name: 'files/x', uri: 'https://files.example/x' },
-				}),
-			};
+		scriptUpload({
+			file: { name: 'files/x', uri: 'https://files.example/x' },
 		});
 
 		const file = await uploadFile(
@@ -150,16 +168,7 @@ describe('uploadFile', () => {
 			body: { file: { name: 'files/x' } },
 		},
 	])('throws when the finalized response $name', async ({ body }) => {
-		withRequestUrl((param): MockRequestUrlResponse => {
-			if (param.url.includes('/upload/')) {
-				return {
-					status: 200,
-					headers: { 'x-goog-upload-url': 'https://up.example' },
-					text: '',
-				};
-			}
-			return { status: 200, headers: {}, text: JSON.stringify(body) };
-		});
+		scriptUpload(body);
 
 		await expect(
 			uploadFile(BASE_URL, API_KEY, new ArrayBuffer(1), 'audio/wav', 'a'),
@@ -189,15 +198,7 @@ describe('waitUntilActive', () => {
 	});
 
 	it('throws when the file processing FAILED', async () => {
-		withRequestUrl(() => ({
-			status: 200,
-			headers: {},
-			text: JSON.stringify({
-				name: 'files/x',
-				uri: 'https://files.example/x',
-				state: 'FAILED',
-			}),
-		}));
+		withRequestUrl(() => statusResponse('FAILED'));
 
 		await expect(
 			waitUntilActive(BASE_URL, API_KEY, 'files/x'),
@@ -213,22 +214,11 @@ describe('waitUntilActive', () => {
 			jest.useRealTimers();
 		});
 
-		/** One status response reporting the given processing state. */
-		const status = (state: string): Partial<MockRequestUrlResponse> => ({
-			status: 200,
-			headers: {},
-			text: JSON.stringify({
-				name: 'files/x',
-				uri: 'https://files.example/x',
-				state,
-			}),
-		});
-
 		it('polls until the file turns ACTIVE', async () => {
 			const sent = queueResponses([
-				status('PROCESSING'),
-				status('PROCESSING'),
-				status('ACTIVE'),
+				statusResponse('PROCESSING'),
+				statusResponse('PROCESSING'),
+				statusResponse('ACTIVE'),
 			]);
 
 			const pending = waitUntilActive(BASE_URL, API_KEY, 'files/x');
@@ -242,8 +232,8 @@ describe('waitUntilActive', () => {
 
 		it('waits the poll interval between attempts rather than spinning', async () => {
 			const sent = queueResponses([
-				status('PROCESSING'),
-				status('ACTIVE'),
+				statusResponse('PROCESSING'),
+				statusResponse('ACTIVE'),
 			]);
 
 			const pending = waitUntilActive(BASE_URL, API_KEY, 'files/x');
@@ -259,15 +249,7 @@ describe('waitUntilActive', () => {
 	});
 
 	it('gives up once the wait budget is spent', async () => {
-		withRequestUrl(() => ({
-			status: 200,
-			headers: {},
-			text: JSON.stringify({
-				name: 'files/x',
-				uri: 'https://files.example/x',
-				state: 'PROCESSING',
-			}),
-		}));
+		withRequestUrl(() => statusResponse('PROCESSING'));
 
 		await expect(
 			waitUntilActive(BASE_URL, API_KEY, 'files/x', 0),

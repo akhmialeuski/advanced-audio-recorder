@@ -81,22 +81,32 @@ function createSut(state: Partial<PlayerControlsState> = {}): Sut {
 	return { view, container, callbacks };
 }
 
+/** The controls every render offers, in the order they are laid out. */
+const FIXED_CONTROLS = [
+	'Play / pause',
+	`Back ${String(PLAYER_SKIP_SECONDS)}s`,
+	`Forward ${String(PLAYER_SKIP_SECONDS)}s`,
+	'Playback speed',
+	'Mute / unmute',
+	'Volume',
+	'Loop',
+];
+
+/** The four a markerless render leaves out, in their place in the row. */
+const MARKER_CONTROLS = [
+	'Add marker at current position',
+	'Add chapter at current position',
+	'Previous chapter',
+	'Next chapter',
+];
+
 describe('the controls the row offers', () => {
 	it('names every control, so each is reachable without the mouse', () => {
 		const { container } = createSut();
 
 		expect(controlLabels(container)).toEqual([
-			'Play / pause',
-			`Back ${String(PLAYER_SKIP_SECONDS)}s`,
-			`Forward ${String(PLAYER_SKIP_SECONDS)}s`,
-			'Playback speed',
-			'Mute / unmute',
-			'Volume',
-			'Loop',
-			'Add marker at current position',
-			'Add chapter at current position',
-			'Previous chapter',
-			'Next chapter',
+			...FIXED_CONTROLS,
+			...MARKER_CONTROLS,
 			'Copy timestamp link',
 		]);
 	});
@@ -107,13 +117,7 @@ describe('the controls the row offers', () => {
 		const { container } = createSut({ markersEnabled: false });
 
 		expect(controlLabels(container)).toEqual([
-			'Play / pause',
-			`Back ${String(PLAYER_SKIP_SECONDS)}s`,
-			`Forward ${String(PLAYER_SKIP_SECONDS)}s`,
-			'Playback speed',
-			'Mute / unmute',
-			'Volume',
-			'Loop',
+			...FIXED_CONTROLS,
 			'Copy timestamp link',
 		]);
 	});

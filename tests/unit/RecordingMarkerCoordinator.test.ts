@@ -212,6 +212,30 @@ describe('writing the session markers out at stop', () => {
 // so the commit and the cancel have to reach the file rather than a buffer
 // that no longer holds it.
 describe('a naming modal still open when the session ended', () => {
+	/**
+	 * A marker already written to disk, whose sidecar then starts refusing
+	 * every write - the state both late-edit failures are reported from.
+	 * @returns The handle the modal still holds, and the console spy
+	 */
+	async function persistedThenReadOnly(): Promise<{
+		handle: ReturnType<RecordingMarkerCoordinator['captureDraft']>;
+		error: jest.SpyInstance;
+	}> {
+		const store = makeStatefulMarkerStore();
+		const error = jest.spyOn(console, 'error').mockImplementation();
+		const coordinator = new RecordingMarkerCoordinator(store.store);
+		coordinator.beginSession();
+		const handle = coordinator.captureDraft({
+			partOrdinal: 1,
+			offsetSeconds: 5,
+		});
+		await coordinator.persistMarkers(ONE_FILE);
+		jest.mocked(store.store.updateMarkers).mockRejectedValue(
+			new Error('the vault is read-only'),
+		);
+		return { handle, error };
+	}
+
 	it('pushes the typed name onto the marker already on disk', async () => {
 		const { coordinator, read } = createSut();
 		const handle = coordinator.captureDraft({
@@ -293,18 +317,7 @@ describe('a naming modal still open when the session ended', () => {
 	});
 
 	it('reports a sidecar that refused the edit', async () => {
-		const store = makeStatefulMarkerStore();
-		const error = jest.spyOn(console, 'error').mockImplementation();
-		const coordinator = new RecordingMarkerCoordinator(store.store);
-		coordinator.beginSession();
-		const handle = coordinator.captureDraft({
-			partOrdinal: 1,
-			offsetSeconds: 5,
-		});
-		await coordinator.persistMarkers(ONE_FILE);
-		jest.mocked(store.store.updateMarkers).mockRejectedValue(
-			new Error('the vault is read-only'),
-		);
+		const { handle, error } = await persistedThenReadOnly();
 
 		handle.commit('Late name', MARKER_KIND.bookmark);
 		await Promise.resolve();
@@ -316,18 +329,7 @@ describe('a naming modal still open when the session ended', () => {
 	});
 
 	it('reports a sidecar that refused the removal', async () => {
-		const store = makeStatefulMarkerStore();
-		const error = jest.spyOn(console, 'error').mockImplementation();
-		const coordinator = new RecordingMarkerCoordinator(store.store);
-		coordinator.beginSession();
-		const handle = coordinator.captureDraft({
-			partOrdinal: 1,
-			offsetSeconds: 5,
-		});
-		await coordinator.persistMarkers(ONE_FILE);
-		jest.mocked(store.store.updateMarkers).mockRejectedValue(
-			new Error('the vault is read-only'),
-		);
+		const { handle, error } = await persistedThenReadOnly();
 
 		handle.cancel();
 		await Promise.resolve();

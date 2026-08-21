@@ -179,7 +179,7 @@ describe('mount and reset', () => {
 			expect(observe).toHaveBeenCalledWith(seekEl);
 
 			at(cleanups, 0)();
-			expect(disconnect).toHaveBeenCalled();
+			expect(disconnect).toHaveBeenCalledTimes(1);
 		} finally {
 			globalThis.ResizeObserver = original;
 		}
@@ -213,7 +213,7 @@ describe('scheduleLoad without IntersectionObserver', () => {
 		controller.scheduleLoad(document.createElement('div'));
 		await tick();
 
-		expect(readBinary).toHaveBeenCalled();
+		expect(readBinary).toHaveBeenCalledTimes(1);
 	});
 });
 
@@ -268,7 +268,7 @@ describe('scheduleLoad with IntersectionObserver', () => {
 
 		firstCleanup();
 
-		expect(at(observers, 0).disconnect).toHaveBeenCalled();
+		expect(at(observers, 0).disconnect).toHaveBeenCalledTimes(1);
 		expect(at(observers, 1).disconnect).not.toHaveBeenCalled();
 	});
 
@@ -304,7 +304,7 @@ describe('scheduleLoad with IntersectionObserver', () => {
 		await tick();
 
 		expect(readBinary).toHaveBeenCalledTimes(1);
-		expect(at(observers, 0).disconnect).toHaveBeenCalled();
+		expect(at(observers, 0).disconnect).toHaveBeenCalledTimes(1);
 	});
 
 	it('decodes only once even if the observer fires again', async () => {
@@ -342,7 +342,7 @@ describe('scheduleLoad with IntersectionObserver', () => {
 			cleanup();
 		}
 
-		expect(at(observers, 0).disconnect).toHaveBeenCalled();
+		expect(at(observers, 0).disconnect).toHaveBeenCalledTimes(1);
 	});
 });
 
@@ -379,7 +379,7 @@ describe('the decode pipeline', () => {
 
 		await load(sut, seekEl);
 
-		expect(sut.decode).toHaveBeenCalled();
+		expect(sut.decode).toHaveBeenCalledTimes(1);
 		expect(seekEl.querySelector('canvas')).not.toBeNull();
 		// Bars were painted, not just peaks stored.
 		expect(canvas.rects.length).toBeGreaterThan(0);
@@ -443,7 +443,7 @@ describe('the decode pipeline', () => {
 
 		await load(sut, createSeekEl(200));
 
-		expect(warn).toHaveBeenCalled();
+		expect(warn).toHaveBeenCalledTimes(1);
 	});
 
 	it.each([
@@ -581,7 +581,7 @@ describe('work that lands after the player is gone', () => {
 		await tick();
 		await tick();
 
-		expect(decode).toHaveBeenCalled();
+		expect(decode).toHaveBeenCalledTimes(1);
 		expect(canvas.rectsOf(seekEl)).toHaveLength(0);
 	});
 

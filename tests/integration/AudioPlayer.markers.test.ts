@@ -302,7 +302,7 @@ describe('the actions the note context menu offers', () => {
 
 		// The link text comes from Obsidian; what this asserts is that the
 		// position the menu was opened over is the one reported back.
-		expect(write).toHaveBeenCalled();
+		expect(write).toHaveBeenCalledWith(expect.any(String));
 		expect(noticeMessages()).toContain('Copied timestamp link at 0:42');
 	});
 });

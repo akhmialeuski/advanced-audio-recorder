@@ -164,6 +164,15 @@ ones in this codebase:
 An error path is a behaviour: assert what the user is told, not only that
 something threw.
 
+**Say what a call was made with.** `expect(spy).toHaveBeenCalled()` is the
+weakest thing a spy can be asked: it passes for a call with the wrong file, the
+wrong path, the wrong marker - every mistake worth catching in code that writes
+to the vault. Name the arguments with `toHaveBeenCalledWith`, or the count with
+`toHaveBeenCalledTimes` where a second call is the defect (a settings save that
+runs twice per edit, a tree rebuilt twice). Counted by
+`scripts/test-conventions.mjs`. The negative form is not counted and needs no
+apology: "nothing was written" is a strong claim with no arguments to name.
+
 ## 8. No mutating shared state
 
 `clearMocks` and `restoreMocks` are on, which resets mocks and spies. They do
@@ -198,9 +207,15 @@ options, and the first is usually the better one:
 2. **Add it to `tests/mocks/obsidian.ts`**, for genuine API surface -
    `Vault.process`, a new `Menu` affordance, an event type. Model the behaviour
    the plugin depends on, not the whole API, and record what happened
-   (`noticeInstances`, `menuInstances`) so tests can assert on it. Keep methods
-   tests spy on as _prototype_ methods: turning `Modal.open` into an instance
-   `jest.fn` breaks `jest.spyOn(Modal.prototype, 'open')`.
+   (`noticeInstances`, `menuInstances`, `modalInstances`) so tests can assert
+   on it. Keep methods tests spy on as _prototype_ methods: turning
+   `Modal.open` into an instance `jest.fn` breaks
+   `jest.spyOn(Modal.prototype, 'open')`.
+
+    Missing API is not a small thing: `Workspace.getActiveFile` was absent, and
+    every file-action command is a checkCallback over it, so no e2e test could
+    invoke any of them at all. A journey the suite cannot reach reads as a
+    journey nobody wrote a test for.
 
 The mock has its own tests, under `tests/unit/mocks/`. A double complex enough
 to be wrong is complex enough to test.
@@ -215,11 +230,20 @@ strings of their own:
   `clickControl`. `el` throws naming the selector that matched nothing, instead
   of handing back a nullable that `?.` turns into a vacuous pass.
 - `tests/helpers/matchers.ts` - `toHaveControl`, `toShowTime`,
-  `toHaveMarkerAt`, `toBeDisabledControl`, registered globally.
-- `tests/helpers/settingRows.ts` - reads a rendered settings tab by row name.
+  `toHaveMarkerAt`, `toBeDisabledControl`, `toBeActiveControl`, registered
+  globally.
+- `tests/helpers/settingRows.ts` - reads a rendered settings tab by row name,
+  including `rowToggleOn`.
 
 Prefer the accessible name over the class: `control(root, 'Stop playback')`
 asserts the control is reachable at the same time as it finds it.
+
+Read a control's state through these too, never off the element directly.
+Obsidian's toggle and its active controls are `div`s whose state is a class:
+`.checked` on one reads `undefined`, which compares equal to nothing, so
+`expect(toggle.checked).toBe(false)` passes however the toggle is set. That is
+not hypothetical - it is how an assertion that a row was switched off stayed
+green next to a row that was on.
 
 ## 11. Coverage, and what to do when the guard fails
 
@@ -231,11 +255,12 @@ npm run test:layers      # the unit/integration boundary
 npm run test:conventions # the ceilings the sections above describe
 ```
 
-`test:conventions` is what keeps sections 4, 5, 9 and 10 from being
+`test:conventions` is what keeps sections 4, 5, 7, 9 and 10 from being
 suggestions: it counts CSS selectors and bare `as unknown as` casts in test
-bodies, `should` titles, and inline mocks shadowing the Obsidian one, and fails
-when a count creeps above the ceiling the suite currently sits at. The ceilings
-are lowered deliberately, in the commit that does the work to lower them.
+bodies, `should` titles, inline mocks shadowing the Obsidian one, and
+argument-less `toHaveBeenCalled()`, and fails when a count creeps above the
+ceiling the suite currently sits at. The ceilings are lowered deliberately, in
+the commit that does the work to lower them.
 
 Two mechanisms guard coverage, and they catch different things.
 

@@ -77,7 +77,7 @@ describe('AudioEncoder', () => {
 				format: 'wav',
 			});
 
-			expect(WavOutputFormat).toHaveBeenCalled();
+			expect(WavOutputFormat).toHaveBeenCalledTimes(1);
 			// PCM is uncompressed: no bitrate option may be passed
 			expect(AudioBufferSource).toHaveBeenCalledWith({
 				codec: 'pcm-s16',
@@ -97,7 +97,7 @@ describe('AudioEncoder', () => {
 				bitrate: 128000,
 			});
 
-			expect(Mp3OutputFormat).toHaveBeenCalled();
+			expect(Mp3OutputFormat).toHaveBeenCalledTimes(1);
 			expect(AudioBufferSource).toHaveBeenCalledWith(
 				expect.objectContaining({ codec: 'mp3', bitrate: 128000 }),
 			);
@@ -154,18 +154,18 @@ describe('AudioEncoder', () => {
 				bitrate: 128000,
 			});
 
-			expect(WebMOutputFormat).toHaveBeenCalled();
+			expect(WebMOutputFormat).toHaveBeenCalledTimes(1);
 			expect(AudioBufferSource).toHaveBeenCalledWith(
 				expect.objectContaining({
 					codec: 'opus',
 					bitrate: 128000,
 				}),
 			);
-			expect(Output).toHaveBeenCalled();
-			expect(mockAddAudioTrack).toHaveBeenCalled();
-			expect(mockStart).toHaveBeenCalled();
+			expect(Output).toHaveBeenCalledTimes(1);
+			expect(mockAddAudioTrack).toHaveBeenCalledTimes(1);
+			expect(mockStart).toHaveBeenCalledTimes(1);
 			expect(mockAdd).toHaveBeenCalledWith(buffer);
-			expect(mockFinalize).toHaveBeenCalled();
+			expect(mockFinalize).toHaveBeenCalledTimes(1);
 			expect(result).toBeInstanceOf(Blob);
 			expect(result.type).toBe('audio/webm');
 		});
@@ -216,7 +216,7 @@ describe('AudioEncoder', () => {
 					format,
 				});
 
-				expect(mediabunny[container]).toHaveBeenCalled();
+				expect(mediabunny[container]).toHaveBeenCalledTimes(1);
 				expect(mediabunny['AudioBufferSource']).toHaveBeenCalledWith(
 					expect.objectContaining({ codec }),
 				);
@@ -375,7 +375,7 @@ describe('AudioEncoder', () => {
 			await expect(probeOfflineEncodingSupport('mp3')).resolves.toBe(
 				true,
 			);
-			expect(jest.mocked(registerMp3Encoder)).toHaveBeenCalled();
+			expect(jest.mocked(registerMp3Encoder)).toHaveBeenCalledTimes(1);
 		});
 
 		it('returns false for unknown formats without probing', async () => {

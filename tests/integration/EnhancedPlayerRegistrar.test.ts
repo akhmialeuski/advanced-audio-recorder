@@ -335,7 +335,7 @@ describe('EnhancedPlayerRegistrar embed creation', () => {
 		expect(audioPlayerMock).toHaveBeenCalledTimes(1);
 		const player = at(audioPlayerMock.mock.results, 0)
 			.value as unknown as EnhancedInstance;
-		expect(player.load).toHaveBeenCalled();
+		expect(player.load).toHaveBeenCalledTimes(1);
 		// The core of issue #39: no leaf was inspected or rebuilt, so a
 		// large embedding note is never re-rendered by a probe verdict
 		expect(getLeaves).not.toHaveBeenCalled();
@@ -750,7 +750,7 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 
 		expect(seek).toHaveBeenCalledWith('rec.mp4', 30);
 		expect(detachedStartMock).not.toHaveBeenCalled();
-		expect(prevent).toHaveBeenCalled();
+		expect(prevent).toHaveBeenCalledTimes(1);
 	});
 
 	it('plays from the timecode when no player is on screen', () => {
@@ -771,7 +771,7 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 			30,
 			expect.any(Function),
 		);
-		expect(prevent).toHaveBeenCalled();
+		expect(prevent).toHaveBeenCalledTimes(1);
 	});
 
 	it('reuses the detached playback for another timestamp of the same file', () => {
@@ -868,7 +868,7 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 			30,
 			expect.any(Function),
 		);
-		expect(prevent).toHaveBeenCalled();
+		expect(prevent).toHaveBeenCalledTimes(1);
 	});
 
 	it('leaves a Live Preview click that is not on a wikilink to Obsidian', () => {
@@ -949,7 +949,7 @@ describe('EnhancedPlayerRegistrar timecode links', () => {
 		settings.enhancedPlayerEnabled = false;
 		registrar.refresh();
 
-		expect(detached.dispose).toHaveBeenCalled();
+		expect(detached.dispose).toHaveBeenCalledTimes(1);
 	});
 });
 
@@ -1009,7 +1009,9 @@ describe('EnhancedPlayerRegistrar without the internal embed registry', () => {
 			expect(warn).toHaveBeenCalledWith(
 				expect.stringContaining(expected),
 			);
-			expect(plugin.registerMarkdownPostProcessor).toHaveBeenCalled();
+			expect(plugin.registerMarkdownPostProcessor).toHaveBeenCalledTimes(
+				1,
+			);
 		},
 	);
 
@@ -1164,7 +1166,7 @@ describe('EnhancedPlayerRegistrar rebuilding open notes', () => {
 		registrar.refresh();
 		await pastDebounce(RERENDER_DEBOUNCE_MS);
 
-		expect(good).toHaveBeenCalled();
+		expect(good).toHaveBeenCalledTimes(1);
 		expect(error).toHaveBeenCalledWith(
 			expect.stringContaining('Failed to re-render'),
 			expect.any(Error),
@@ -1258,7 +1260,7 @@ describe('EnhancedPlayerRegistrar when the embed registry blows up', () => {
 			expect.stringContaining('Failed to set up the embed registry'),
 			expect.any(Error),
 		);
-		expect(plugin.registerMarkdownPostProcessor).toHaveBeenCalled();
+		expect(plugin.registerMarkdownPostProcessor).toHaveBeenCalledTimes(1);
 	});
 
 	it('hands back the native embed when building the player throws', () => {
@@ -1276,7 +1278,7 @@ describe('EnhancedPlayerRegistrar when the embed registry blows up', () => {
 
 		const embed = creator(embedInfo(), fileOf('mp3'), '');
 
-		expect(nativeCreator).toHaveBeenCalled();
+		expect(nativeCreator).toHaveBeenCalledTimes(1);
 		expect((embed as NativeEmbed).__native).toBe('mp3');
 		expect(error).toHaveBeenCalledWith(
 			expect.stringContaining('Failed to create the audio embed'),
@@ -1360,7 +1362,7 @@ describe('EnhancedPlayerRegistrar timecode links that go nowhere', () => {
 		expect(() => {
 			clicks()(event);
 		}).not.toThrow();
-		expect(plugin.registerMarkdownPostProcessor).toHaveBeenCalled();
+		expect(plugin.registerMarkdownPostProcessor).toHaveBeenCalledTimes(1);
 	});
 
 	it('falls back to the href when the link carries no data-href', () => {
@@ -1415,7 +1417,7 @@ describe('EnhancedPlayerRegistrar handing playback between surfaces', () => {
 		seek.mockReturnValue(true);
 		clicks()(linkClick('rec.mp4#t=30'));
 
-		expect(detached.dispose).toHaveBeenCalled();
+		expect(detached.dispose).toHaveBeenCalledTimes(1);
 	});
 
 	it('leaves the detached playback of another file alone', () => {
@@ -1445,7 +1447,7 @@ describe('EnhancedPlayerRegistrar handing playback between surfaces', () => {
 
 		clicks()(linkClick('rec.mp4#t=30'));
 
-		expect(seekShared).toHaveBeenCalled();
+		expect(seekShared).toHaveBeenCalledTimes(1);
 		expect(detachedStartMock).not.toHaveBeenCalled();
 	});
 
@@ -1463,7 +1465,7 @@ describe('EnhancedPlayerRegistrar handing playback between surfaces', () => {
 
 		clicks()(linkClick('second.mp4#t=20'));
 
-		expect(first.dispose).toHaveBeenCalled();
+		expect(first.dispose).toHaveBeenCalledTimes(1);
 		expect(detachedStartMock).toHaveBeenCalledTimes(2);
 	});
 });

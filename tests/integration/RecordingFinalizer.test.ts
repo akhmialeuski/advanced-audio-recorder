@@ -265,7 +265,12 @@ describe('RecordingFinalizer', () => {
 
 			await finalizer.assembleWavFile(target, '/final.wav');
 
-			expect(mockApp.vault.createBinary).toHaveBeenCalled();
+			// The assembled recording is the point: a segment that would not
+			// delete must not cost the user the file it was assembled into.
+			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
+				'/final.wav',
+				expect.any(ArrayBuffer),
+			);
 			expect(
 				getNotices().some((message) =>
 					message.includes('temporary files could not be removed'),

@@ -258,9 +258,9 @@ describe('MonoCaptureBridge', () => {
 
 		await bridge.start();
 
-		expect(mockAudioContext.resume).toHaveBeenCalled();
+		expect(mockAudioContext.resume).toHaveBeenCalledTimes(1);
 		// The graph was built only after the context reached running
-		expect(mockSourceNode.connect).toHaveBeenCalled();
+		expect(mockSourceNode.connect).toHaveBeenCalledTimes(1);
 	});
 
 	it('fails the start when the context stays suspended after resume', async () => {
@@ -277,7 +277,7 @@ describe('MonoCaptureBridge', () => {
 		await expect(bridge.start()).rejects.toThrow(
 			'recording would be silent',
 		);
-		expect(mockAudioContext.close).toHaveBeenCalled();
+		expect(mockAudioContext.close).toHaveBeenCalledTimes(1);
 		expect(mockAudioContext.createMediaStreamSource).not.toHaveBeenCalled();
 	});
 
@@ -291,7 +291,7 @@ describe('MonoCaptureBridge', () => {
 		);
 
 		await expect(bridge.start()).rejects.toThrow('resume failed');
-		expect(mockAudioContext.close).toHaveBeenCalled();
+		expect(mockAudioContext.close).toHaveBeenCalledTimes(1);
 	});
 
 	it('releases the graph, stops bridged tracks, and closes the context', async () => {
@@ -304,11 +304,11 @@ describe('MonoCaptureBridge', () => {
 
 		bridge.release();
 
-		expect(mockSourceNode.disconnect).toHaveBeenCalled();
-		expect(mockSplitterNode.disconnect).toHaveBeenCalled();
-		expect(mockGainNode.disconnect).toHaveBeenCalled();
-		expect(destinationTrackStop).toHaveBeenCalled();
-		expect(mockAudioContext.close).toHaveBeenCalled();
+		expect(mockSourceNode.disconnect).toHaveBeenCalledTimes(1);
+		expect(mockSplitterNode.disconnect).toHaveBeenCalledTimes(1);
+		expect(mockGainNode.disconnect).toHaveBeenCalledTimes(1);
+		expect(destinationTrackStop).toHaveBeenCalledTimes(1);
+		expect(mockAudioContext.close).toHaveBeenCalledTimes(1);
 	});
 
 	it('releases acquired resources when the graph setup fails', async () => {
@@ -322,7 +322,7 @@ describe('MonoCaptureBridge', () => {
 		);
 
 		await expect(bridge.start()).rejects.toThrow('destination failed');
-		expect(mockAudioContext.close).toHaveBeenCalled();
+		expect(mockAudioContext.close).toHaveBeenCalledTimes(1);
 	});
 
 	it('never throws when the context close fails during release', async () => {
