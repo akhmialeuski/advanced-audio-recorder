@@ -52,21 +52,6 @@ function selectedBody(
 }
 
 /**
- * Resolves the raw dictionary text to bias with for a run: the selected
- * profile's terms, or an empty string when nothing is selected or the stored id
- * points to a removed profile. Returning '' is what makes both "None" and a
- * stale selection safe, since the downstream pipeline
- * ({@link parseDictionary} then planDictionaryBias) treats '' as no terms.
- * @param settings - The active settings
- * @returns The selected profile's terms, or '' when none applies
- */
-export function resolveDictionaryTerms(
-	settings: AudioRecorderSettings,
-): string {
-	return selectedBody(settings, 'dictionary');
-}
-
-/**
  * Resolves the run's effective dictionary terms as a clean, de-duplicated list.
  * The single source of the terms a run biases toward: the single-pass
  * dictionary plan, the advanced two-pass context candidates, and the LLM
@@ -74,6 +59,9 @@ export function resolveDictionaryTerms(
  * stage and there is no second, parallel glossary to keep in sync. The
  * dictionary lives under the advanced settings, so this returns an empty list
  * whenever that master switch is off - a plain run applies no term biasing.
+ *
+ * A body of '' is what makes both "None" and a selection naming a removed
+ * profile safe, since {@link parseDictionary} reads it as no terms at all.
  * @param settings - The active settings (the advanced switch and the profiles)
  * @returns The selected profile's terms, de-duplicated; empty when the advanced
  *   settings are off, none is selected, or the selected profile is gone
@@ -84,7 +72,7 @@ export function resolveDictionaryTermList(
 	if (!settings.transcriptionAdvancedSettingsEnabled) {
 		return [];
 	}
-	return parseDictionary(resolveDictionaryTerms(settings));
+	return parseDictionary(selectedBody(settings, 'dictionary'));
 }
 
 /**
@@ -150,30 +138,32 @@ export function participantsOf(
 
 /**
  * Adds names to a profile's roster, skipping ones already present, so names
- * applied in the rename dialog become suggestions next time. Returns the
- * profiles unchanged (a copy) when the id names no participant profile or
- * nothing new was added, so callers can compare references to decide whether
- * to persist.
+ * applied in the rename dialog become suggestions next time. Nothing to add is
+ * answered with undefined rather than with a list, because a copy of the input
+ * is indistinguishable from a grown roster by anything a caller can compare:
+ * the one question a caller has is whether there is something to persist, and
+ * the return value answers exactly that.
  * @param profiles - All stored profiles
  * @param id - Id of the profile to extend
  * @param names - Names to add
- * @returns A new list with that profile's roster extended
+ * @returns A new list with that profile's roster extended, or undefined when
+ *   the id names no participant profile or every name was already there
  */
 export function addParticipantsToProfile(
 	profiles: readonly Profile[],
 	id: string,
 	names: readonly string[],
-): Profile[] {
+): Profile[] | undefined {
 	const target = findProfile(profiles, id);
 	if (!target || target.kind !== 'participants') {
-		return [...profiles];
+		return undefined;
 	}
 	const current = parseParticipantBody(target.body);
 	const merged = mergeParticipantNames(current, names);
-	// A merge that added nothing comes back the same length; returning a copy
-	// then lets the caller skip the settings save on a reference comparison.
+	// A merge that added nothing comes back the same length, and a roster that
+	// did not grow is nothing to write.
 	if (merged.length === current.length) {
-		return [...profiles];
+		return undefined;
 	}
 	return profiles.map((profile) =>
 		profile.id === id

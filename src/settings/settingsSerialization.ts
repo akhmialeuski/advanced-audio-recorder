@@ -570,9 +570,7 @@ function migrateLegacyPrompts(
  * @param key - The superseded field
  */
 function deleteLegacyField(merged: AudioRecorderSettings, key: string): void {
-	if (isRecord(merged)) {
-		delete (merged as unknown as Record<string, unknown>)[key];
-	}
+	delete (merged as unknown as Record<string, unknown>)[key];
 }
 
 /**
@@ -635,11 +633,13 @@ function normalizeProfiles(merged: AudioRecorderSettings): void {
 			];
 		},
 	);
-	const selections: Record<string, unknown> = isRecord(
-		merged.selectedProfileIds,
-	)
-		? merged.selectedProfileIds
-		: {};
+	// Always an object, whatever data.json held: the merge builds it by
+	// spreading the stored value over the defaults. Only its values still come
+	// from disk unchecked, which is what the cast says and legacyString answers.
+	const selections = merged.selectedProfileIds as unknown as Record<
+		string,
+		unknown
+	>;
 	const normalized = noSelectedProfiles();
 	for (const kind of PROFILE_KIND_IDS) {
 		normalized[kind] = legacyString(selections[kind]);

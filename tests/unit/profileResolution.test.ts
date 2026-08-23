@@ -16,7 +16,6 @@ import {
 	participantsOf,
 	resolveChapterGuidance,
 	resolveDictionaryTermList,
-	resolveDictionaryTerms,
 	resolveLlmPrompt,
 	resolveRunParticipants,
 } from 'src/settings/profileResolution';
@@ -44,39 +43,6 @@ const withSelection = (
 		...extra,
 	});
 
-describe('resolveDictionaryTerms', () => {
-	const profiles = [profile('a', 'dictionary', 'Kubernetes\ngRPC')];
-
-	it('returns the selected profile terms', () => {
-		expect(
-			resolveDictionaryTerms(withSelection('dictionary', 'a', profiles)),
-		).toBe('Kubernetes\ngRPC');
-	});
-
-	it('returns an empty string for None, a removed profile, or no profiles', () => {
-		expect(
-			resolveDictionaryTerms(withSelection('dictionary', '', profiles)),
-		).toBe('');
-		expect(
-			resolveDictionaryTerms(
-				withSelection('dictionary', 'gone', profiles),
-			),
-		).toBe('');
-		expect(
-			resolveDictionaryTerms(withSelection('dictionary', 'a', [])),
-		).toBe('');
-	});
-
-	it('reads only its own kind, whatever a hand-edited selection names', () => {
-		// A selection pointing at another kind's profile is a config no editor
-		// can produce, and it must not feed a chapter prompt to the glossary.
-		const settings = withSelection('dictionary', 'c', [
-			profile('c', 'chapterPrompt', 'Split by agenda item.'),
-		]);
-		expect(resolveDictionaryTerms(settings)).toBe('');
-	});
-});
-
 describe('resolveDictionaryTermList', () => {
 	const profiles = [
 		profile('a', 'dictionary', 'Kubernetes\ngRPC\n\nkubernetes\n'),
@@ -98,11 +64,31 @@ describe('resolveDictionaryTermList', () => {
 		]);
 	});
 
-	it('returns an empty list when none is selected or the profile is gone', () => {
+	it('returns an empty list when none is selected, the profile is gone, or the catalogue is empty', () => {
 		expect(resolveDictionaryTermList(withAdvanced(true, ''))).toEqual([]);
 		expect(resolveDictionaryTermList(withAdvanced(true, 'gone'))).toEqual(
 			[],
 		);
+		expect(
+			resolveDictionaryTermList(
+				withSelection('dictionary', 'a', [], {
+					transcriptionAdvancedSettingsEnabled: true,
+				}),
+			),
+		).toEqual([]);
+	});
+
+	it('reads only its own kind, whatever a hand-edited selection names', () => {
+		// A selection pointing at another kind's profile is a config no editor
+		// can produce, and it must not feed a chapter prompt to the glossary.
+		const settings = withSelection(
+			'dictionary',
+			'c',
+			[profile('c', 'chapterPrompt', 'Split by agenda item.')],
+			{ transcriptionAdvancedSettingsEnabled: true },
+		);
+
+		expect(resolveDictionaryTermList(settings)).toEqual([]);
 	});
 
 	it('returns an empty list when the advanced settings are off', () => {
@@ -245,19 +231,22 @@ describe('addParticipantsToProfile', () => {
 			'Alex',
 			'',
 		]);
-		expect(next[0]?.body).toBe('Alex\nMaria');
-		expect(next[1]).toBe(base[1]);
-		expect(next[2]).toBe(base[2]);
+		expect(next?.[0]?.body).toBe('Alex\nMaria');
+		expect(next?.[1]).toBe(base[1]);
+		expect(next?.[2]).toBe(base[2]);
 	});
 
-	it('returns an unchanged copy when nothing new is added', () => {
-		const next = addParticipantsToProfile(base, 'p1', ['Alex']);
-		expect(next).toEqual(base);
-		expect(next).not.toBe(base);
+	it('answers nothing when the roster did not grow', () => {
+		// The caller's only question is whether there is something to save, and
+		// a copy of the input cannot answer it: every profile in it compares
+		// equal to the one it came from. Undefined says it plainly.
+		expect(addParticipantsToProfile(base, 'p1', ['Alex'])).toBeUndefined();
 	});
 
-	it('returns an unchanged copy for an absent id or a profile of another kind', () => {
-		expect(addParticipantsToProfile(base, 'missing', ['X'])).toEqual(base);
-		expect(addParticipantsToProfile(base, 'c1', ['X'])).toEqual(base);
+	it('answers nothing for an absent id or a profile of another kind', () => {
+		expect(
+			addParticipantsToProfile(base, 'missing', ['X']),
+		).toBeUndefined();
+		expect(addParticipantsToProfile(base, 'c1', ['X'])).toBeUndefined();
 	});
 });

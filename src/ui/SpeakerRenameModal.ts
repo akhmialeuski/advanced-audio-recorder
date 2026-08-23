@@ -622,19 +622,15 @@ export class SpeakerRenameModal extends PluginModal {
 			return;
 		}
 		const settings = this.options.getSettings();
-		const profiles = addParticipantsToProfile(
+		// Undefined is a roster that did not grow - every name entered was
+		// already in it - and there is then nothing to save.
+		const grown = addParticipantsToProfile(
 			settings.profiles,
 			this.selectedProfileId,
 			names,
 		);
-		// A merge that added nothing comes back as a copy, so the reference
-		// says whether anything is worth persisting.
-		if (
-			profiles.some(
-				(profile, index) => profile !== settings.profiles[index],
-			)
-		) {
-			settings.profiles = profiles;
+		if (grown) {
+			settings.profiles = grown;
 			await this.options.saveSettings();
 		}
 	}

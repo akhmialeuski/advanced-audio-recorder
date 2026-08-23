@@ -254,14 +254,14 @@ The exact headings come from the model following the summary prompt; the `### Su
 
 All controls live under **Settings > Advanced Audio Recorder > Transcription > LLM post-processing**.
 
-| Setting                        | Description                                                                                                       | Default          |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------- | ---------------- |
-| **Enable LLM post-processing** | Run an LLM pass over the transcript after transcription. Reveals the controls below.                              | Off              |
-| **Task**                       | `Clean up`, `Summarize`, or `Custom`.                                                                             | Clean up         |
-| **Cleanup prompt profiles**    | Named prompts for Clean up (language clause appended). None = built-in default. Shown when Task is Clean up.      | Default profile  |
-| **Summary prompt profiles**    | Named prompts for Summarize (language clause appended). None = built-in default. Shown when Task is Summarize.    | Default profile  |
-| **Custom instruction profiles**| Named instructions sent verbatim. Shown when Task is Custom.                                                      | Default profile  |
-| **Post-processing engine**     | `OpenAI`, `Anthropic (Claude)`, or `Google Gemini`. Only the choice; the service is configured under **Engines**. | OpenAI           |
+| Setting                         | Description                                                                                                       | Default         |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------- |
+| **Enable LLM post-processing**  | Run an LLM pass over the transcript after transcription. Reveals the controls below.                              | Off             |
+| **Task**                        | `Clean up`, `Summarize`, or `Custom`.                                                                             | Clean up        |
+| **Cleanup prompt profiles**     | Named prompts for Clean up (language clause appended). None = built-in default. Shown when Task is Clean up.      | Default profile |
+| **Summary prompt profiles**     | Named prompts for Summarize (language clause appended). None = built-in default. Shown when Task is Summarize.    | Default profile |
+| **Custom instruction profiles** | Named instructions sent verbatim. Shown when Task is Custom.                                                      | Default profile |
+| **Post-processing engine**      | `OpenAI`, `Anthropic (Claude)`, or `Google Gemini`. Only the choice; the service is configured under **Engines**. | OpenAI          |
 
 The rows that describe the service itself sit on its page under **Engines**, shared by every job that calls it:
 

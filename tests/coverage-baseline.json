@@ -1,10 +1,10 @@
 {
 	"coverage": {
 		"total": {
-			"statements": 98.38,
-			"branches": 93.03,
+			"statements": 98.39,
+			"branches": 93.16,
 			"functions": 98.29,
-			"lines": 98.39
+			"lines": 98.4
 		},
 		"files": {
 			"src/constants.ts": {
@@ -500,10 +500,10 @@
 				"lines": 96.49
 			},
 			"src/settings/SettingsTab.ts": {
-				"statements": 94.25,
-				"branches": 89.26,
+				"statements": 94.34,
+				"branches": 89.65,
 				"functions": 88.88,
-				"lines": 94.2
+				"lines": 94.29
 			},
 			"src/settings/labels.ts": {
 				"statements": 100,
@@ -572,8 +572,8 @@
 				"lines": 100
 			},
 			"src/settings/settingsSerialization.ts": {
-				"statements": 98.97,
-				"branches": 92.42,
+				"statements": 98.96,
+				"branches": 95.31,
 				"functions": 100,
 				"lines": 98.96
 			},
@@ -926,10 +926,10 @@
 				"lines": 100
 			},
 			"src/ui/SpeakerRenameModal.ts": {
-				"statements": 95.6,
-				"branches": 82.65,
-				"functions": 86.36,
-				"lines": 96.05
+				"statements": 96.09,
+				"branches": 84.69,
+				"functions": 86.04,
+				"lines": 96.55
 			},
 			"src/ui/SplitModal.ts": {
 				"statements": 100,
@@ -1061,8 +1061,8 @@
 	},
 	"suite": {
 		"suites": 203,
-		"tests": 4216,
-		"passed": 4216,
+		"tests": 4226,
+		"passed": 4226,
 		"failed": 0,
 		"todo": 0
 	}

@@ -459,14 +459,6 @@ export type LlmProviderId =
 	(typeof LLM_PROVIDER_IDS)[keyof typeof LLM_PROVIDER_IDS];
 
 /**
- * Fields the plugin no longer stores but still reads once when loading a
- * data.json written by an older version, so the value migrates onto its
- * replacement instead of being silently dropped. Declared here rather than
- * reached for through a `Record<string, unknown>` cast at each migration, so
- * the set of fields a load still understands is one list a reader can check
- * against - and removing one becomes a compile error at its migration.
- */
-/**
  * A dictionary profile as the pre-unification schema stored it: its body lived
  * in a field named after its kind.
  */
@@ -493,6 +485,14 @@ export interface LegacySpeakerProfile {
 	participants: string[];
 }
 
+/**
+ * Fields the plugin no longer stores but still reads once when loading a
+ * data.json written by an older version, so the value migrates onto its
+ * replacement instead of being silently dropped. Declared here rather than
+ * reached for through a `Record<string, unknown>` cast at each migration, so
+ * the set of fields a load still understands is one list a reader can check
+ * against - and removing one becomes a compile error at its migration.
+ */
 export interface LegacyAudioRecorderSettings {
 	/**
 	 * Pre-vendor-split single LLM key, moved onto the selected vendor's own key
@@ -561,9 +561,9 @@ export interface AudioRecorderSettingsInput
 	trackAudioSources?: TrackAudioSources | TrackAudioSourcesRecord;
 	perPlatform?: Partial<Record<PlatformKind, PlatformScopedSettingsInput>>;
 	/**
-	 * Stored selections, which need name no kind they have nothing selected
-	 * for: a config written before a kind existed has no entry for it, and the
-	 * load fills the rest in as none.
+	 * Stored selections, which need not name every kind: a config written
+	 * before a kind existed carries no entry for it, and the load fills in the
+	 * kinds it left out.
 	 */
 	selectedProfileIds?: Partial<SelectedProfileIds>;
 }
@@ -590,9 +590,6 @@ export interface SerializedAudioRecorderSettings extends Omit<
 	perPlatform: Record<PlatformKind, SerializedPlatformScopedSettings>;
 }
 
-/**
- * Default plugin settings.
- */
 /**
  * The profiles a fresh install starts with: the built-in chapter guidance and
  * one prompt per post-processing task. They are seeded rather than left empty
@@ -629,6 +626,9 @@ function seededProfiles(): Profile[] {
 	];
 }
 
+/**
+ * Default plugin settings.
+ */
 export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	recordingFormat: FORMAT_WEBM,
 	saveFolder: '',

@@ -1123,6 +1123,42 @@ describe('SpeakerRenameModal', () => {
 		expect(saveSettings).toHaveBeenCalledTimes(1);
 	});
 
+	it('writes no settings when the applied name is already in the roster', async () => {
+		// The roster the profile holds is what a save would persist, and a name
+		// it already carries leaves it exactly as it was. Saving anyway would
+		// rewrite data.json on every rename that changes nothing there.
+		const settings: AudioRecorderSettings = mergeSettings({
+			profiles: [
+				{
+					id: 'p1',
+					kind: 'participants',
+					name: 'Standup',
+					body: 'Maria',
+				},
+			],
+		});
+		const { internals, saveSettings } = makeModal(
+			settings,
+			makeSidecar(
+				rosterSection({
+					speakers: [{ label: 'Speaker 1' }],
+				}),
+			),
+		);
+		await internals.render();
+		internals.selectedProfileId = 'p1';
+		const first = internals.inputs.get('Speaker 1');
+		if (!first) {
+			throw new Error('missing input');
+		}
+		first.value = 'Maria';
+
+		await internals.apply();
+
+		expect(settings.profiles[0]?.body).toBe('Maria');
+		expect(saveSettings).not.toHaveBeenCalled();
+	});
+
 	it('adds nothing to a profile when every field was left blank', async () => {
 		// Applying with no names is already a no-op; the profile must not
 		// gain empty participants from it either.

@@ -92,8 +92,9 @@ export function createProfile(
 }
 
 /**
- * The profiles of one kind, in stored order. The single reader of the `kind`
- * field, so every catalogue, picker, and resolver sees the same list.
+ * The profiles of one kind, in stored order. The one place a catalogue, a
+ * picker, or a resolver turns the single stored list into one kind's list, so
+ * all three see the same profiles in the same order.
  * @param profiles - All stored profiles
  * @param kind - Kind to filter to
  * @returns That kind's profiles
@@ -283,29 +284,6 @@ export function setSelectedProfileId(
 }
 
 /**
- * Adds a profile to a kind's list and selects it, so a freshly created profile
- * opens for editing. Returns the created profile, or undefined when the name
- * was blank and nothing was added.
- * @param settings - The settings to update in place
- * @param kind - Kind the profile belongs to
- * @param name - Name for the new profile
- * @returns The created profile, or undefined
- */
-export function addAndSelectProfile(
-	settings: AudioRecorderSettings,
-	kind: ProfileKindId,
-	name: string,
-): Profile | undefined {
-	const created = createProfile(kind, name);
-	if (created.name === '') {
-		return undefined;
-	}
-	settings.profiles = addProfile(settings.profiles, created);
-	setSelectedProfileId(settings, kind, created.id);
-	return created;
-}
-
-/**
  * Removes a profile, and moves the kind's selection to the first remaining
  * profile (or to none when the kind is now empty) only when the profile
  * removed was the one in use.
@@ -366,20 +344,4 @@ export function profileNameRejection(
 	)
 		? 'Another profile already uses this name.'
 		: undefined;
-}
-
-/**
- * The profile the settings editor should open: the persisted run selection
- * when it is a real profile, otherwise the first profile of the kind. Falling
- * back to the first one shows something to edit without silently changing a
- * stored "none" default until the user actually picks from the selector.
- * @param profiles - The kind's profiles
- * @param selectedId - The stored run selection
- * @returns The id to edit, or '' when the kind has no profiles
- */
-export function editingProfileId(
-	profiles: readonly Profile[],
-	selectedId: string,
-): string {
-	return effectiveProfileId(profiles, selectedId) || (profiles[0]?.id ?? '');
 }

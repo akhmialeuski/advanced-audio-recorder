@@ -184,6 +184,40 @@ describe('upgrading a pre-unification config', () => {
 		expect(result.selectedProfileIds.llmCleanup).toBe('');
 	});
 
+	it('survives a unified list that is not a list', () => {
+		// The stored profiles are read from disk like every other field, so a
+		// truncated or hand-edited data.json holding text where the list
+		// belongs must load as an empty catalogue rather than throw and reset
+		// every other setting to its default.
+		const result = mergeSettings({
+			profiles: 'not a list' as never,
+			selectedProfileIds: { dictionary: 'd1' },
+		});
+
+		expect(result.profiles).toEqual([]);
+		// The selection survives its catalogue: an id naming no profile already
+		// reads as none everywhere, and the profile may come back on the next
+		// sync from the device that still has it.
+		expect(result.selectedProfileIds.dictionary).toBe('d1');
+	});
+
+	it('reads a legacy roster whose names are not a list as an empty one', () => {
+		// The roster was the one legacy body stored parsed, so it is the one
+		// that can arrive as something other than text. A profile whose names
+		// are unusable keeps its id and name and loses only the roster.
+		const result = mergeSettings({
+			transcriptionSpeakerProfiles: [
+				{ id: 's1', name: 'Weekly sync', participants: 'Maria' },
+			] as never,
+			transcriptionSpeakerProfileId: 's1',
+		});
+
+		expect(profilesOfKind(result.profiles, 'participants')).toEqual([
+			{ id: 's1', kind: 'participants', name: 'Weekly sync', body: '' },
+		]);
+		expect(result.selectedProfileIds.participants).toBe('s1');
+	});
+
 	it('survives a legacy list that is not a list, or holds things that are not profiles', () => {
 		// The old fields are read from disk, not from a type: a corrupted or
 		// hand-edited data.json must degrade to a shorter catalogue rather
