@@ -71,14 +71,18 @@ import {
 } from './sections/transcriptionEngineSection';
 import {
 	addProfile,
-	effectiveProfileId,
+	createProfile,
 	findProfile,
 	freeProfileName,
 	moveProfile,
+	profileNameRejection,
+	profilesOfKind,
 	removeAndReselectProfile,
+	selectedProfileId,
+	setSelectedProfileId,
 	NEW_PROFILE_NAME,
 	type Profile,
-	type ProfileList,
+	type ProfileKindId,
 } from './profiles';
 import { PROFILE_KINDS, type ProfileKind } from './profileKinds';
 import { ProfileNameModal } from '../ui/ProfileNameModal';
@@ -203,24 +207,14 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * in a stored list rather than a settings property, so the key its page
 	 * carries names the field here and the profile by id.
 	 */
-	private readonly profileAccess = new Map<
-		string,
-		{
-			list: ProfileList<Profile>;
-			read: (profile: Profile) => string;
-			write: (profile: Profile, value: string) => void;
-		}
-	>();
+	private readonly profileAccess = new Map<string, ProfileKindId>();
 
 	/**
 	 * Base control keys addressing whether a profile is the selected one. The
 	 * row is a toggle per profile, so the value is a comparison against the
 	 * stored selection rather than a field of the profile.
 	 */
-	private readonly profileSelections = new Map<
-		string,
-		ProfileList<Profile>
-	>();
+	private readonly profileSelections = new Map<string, ProfileKindId>();
 
 	/**
 	 * Creates a new AudioRecorderSettingTab.
@@ -377,13 +371,21 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			// A profile deleted while its page was open leaves the controls of
 			// that page standing until the page is torn down; an empty body is
 			// what they read then.
-			return field.profile ? field.access.read(field.profile) : '';
+			return field.profile?.body ?? '';
 		}
 		const selection = this.profileSelectionFor(key);
 		if (selection) {
 			return (
-				selection.list.selectedId(this.plugin.settings) === selection.id
+				selectedProfileId(this.plugin.settings, selection.kind) ===
+				selection.id
 			);
+		}
+		const picker = this.profileSelections.get(key);
+		if (picker) {
+			// The catalogue's own dropdown, which names a kind rather than one
+			// profile of it. A stale stored id reads as None, so the row never
+			// shows an option the list no longer offers.
+			return selectedProfileId(this.plugin.settings, picker);
 		}
 		const track = parseTrackControlKey(key);
 		if (track) {
@@ -432,7 +434,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		const field = this.profileFieldFor(key);
 		if (field) {
 			if (field.profile) {
-				field.access.write(field.profile, String(value));
+				field.profile.body = String(value);
 			}
 			// The body is a text area, so this fires per keystroke: the value
 			// is live in memory either way, only the write to disk waits.
@@ -446,12 +448,21 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			// resolver reads as None. Turning another profile on moves the
 			// selection; turning this one off only clears its own.
 			if (value === true) {
-				selection.list.setSelectedId(settings, selection.id);
-			} else if (selection.list.selectedId(settings) === selection.id) {
-				selection.list.setSelectedId(settings, '');
+				setSelectedProfileId(settings, selection.kind, selection.id);
+			} else if (
+				selectedProfileId(settings, selection.kind) === selection.id
+			) {
+				setSelectedProfileId(settings, selection.kind, '');
 			}
 			// Every entry of the catalogue says whether it is the one in use,
 			// so the tree is read again rather than re-evaluated in place.
+			return this.commit();
+		}
+		const picker = this.profileSelections.get(key);
+		if (picker) {
+			// The dropdown picks among the kind's profiles, so it writes the
+			// same selection the per-profile toggle does; '' is its None.
+			setSelectedProfileId(this.plugin.settings, picker, String(value));
 			return this.commit();
 		}
 		const track = parseTrackControlKey(key);
@@ -527,52 +538,40 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * The profile body a control key addresses. The key names the field and the
-	 * profile it belongs to, so a row on one profile's page can never write to
-	 * another's.
+	 * The profile whose body a control key addresses. The key names the kind
+	 * the field belongs to and the profile it belongs to, so a row on one
+	 * profile's page can never write to another's.
 	 * @param key - The control key to resolve
-	 * @returns The field's accessors and the profile, or undefined for any
-	 * other key. The profile is undefined when the key resolves to a kind of
-	 * profile that no longer holds this id.
+	 * @returns The profile, or undefined for any other key. The `profile` is
+	 * undefined when the key addresses a kind that no longer holds this id.
 	 */
-	private profileFieldFor(key: string):
-		| {
-				profile: Profile | undefined;
-				access: {
-					read: (profile: Profile) => string;
-					write: (profile: Profile, value: string) => void;
-				};
-		  }
-		| undefined {
+	private profileFieldFor(
+		key: string,
+	): { profile: Profile | undefined } | undefined {
 		const parsed = parseProfileControlKey(key);
-		const access = parsed && this.profileAccess.get(parsed.base);
-		if (!parsed || !access) {
+		const kind = parsed && this.profileAccess.get(parsed.base);
+		if (!parsed || !kind) {
 			return undefined;
 		}
-		return {
-			profile: findProfile(
-				access.list.get(this.plugin.settings),
-				parsed.id,
-			),
-			access,
-		};
+		const profile = findProfile(this.plugin.settings.profiles, parsed.id);
+		return { profile: profile?.kind === kind ? profile : undefined };
 	}
 
 	/**
 	 * The profile a selection toggle addresses.
 	 * @param key - The control key to resolve
-	 * @returns The profile list and the id the toggle speaks for, or undefined
-	 * for any other key
+	 * @returns The kind and the id the toggle speaks for, or undefined for any
+	 * other key
 	 */
 	private profileSelectionFor(
 		key: string,
-	): { list: ProfileList<Profile>; id: string } | undefined {
+	): { kind: ProfileKindId; id: string } | undefined {
 		const parsed = parseProfileControlKey(key);
-		const list = parsed && this.profileSelections.get(parsed.base);
-		if (!parsed || !list) {
+		const kind = parsed && this.profileSelections.get(parsed.base);
+		if (!parsed || !kind) {
 			return undefined;
 		}
-		return { list, id: parsed.id };
+		return { kind, id: parsed.id };
 	}
 
 	/**
@@ -657,25 +656,18 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * @param kind - The kind of profile being described
 	 */
 	private profileCatalogue(kind: ProfileKind): ProfileCatalogue {
-		const list = kind.list;
-		this.profileAccess.set(kind.bodyKey, {
-			list,
-			read: (profile) => kind.body(profile),
-			write: (profile, value) => {
-				kind.setBody(profile, value);
-			},
-		});
-		this.profileSelections.set(kind.selectionKey, list);
-		const rejection = (id: string, name: string): string | undefined => {
-			if (name === '') {
-				return 'Give the profile a name.';
-			}
-			return list
-				.get(this.plugin.settings)
-				.some((profile) => profile.id !== id && profile.name === name)
-				? 'Another profile already uses this name.'
-				: undefined;
-		};
+		const kindId = kind.id;
+		const ofKind = (): Profile[] =>
+			profilesOfKind(this.plugin.settings.profiles, kindId);
+		this.profileAccess.set(kind.bodyKey, kindId);
+		this.profileSelections.set(kind.selectionKey, kindId);
+		const rejection = (id: string, name: string): string | undefined =>
+			profileNameRejection(
+				this.plugin.settings.profiles,
+				kindId,
+				id,
+				name,
+			);
 		return {
 			section: kind.section,
 			heading: kind.heading,
@@ -684,47 +676,41 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 			bodyDesc: kind.bodyDesc,
 			selectionName: kind.selectionName,
 			selectionDesc: kind.selectionDesc,
+			selectedId: (settings) => selectedProfileId(settings, kindId),
 			selectionKey: kind.selectionKey,
 			bodyKey: kind.bodyKey,
 			entries: (settings) =>
-				list.get(settings).map((profile) => ({
+				profilesOfKind(settings.profiles, kindId).map((profile) => ({
 					id: profile.id,
 					name: profile.name,
 					summary:
-						profile.id === list.selectedId(settings)
+						profile.id === selectedProfileId(settings, kindId)
 							? `In use, ${kind.summary(profile)}`
 							: kind.summary(profile),
 				})),
 			visible: kind.visible,
 			add: (): void => {
-				const created = addProfile(
-					list.get(this.plugin.settings),
-					list.create(
-						freeProfileName(
-							list.get(this.plugin.settings),
-							NEW_PROFILE_NAME,
-						),
-					),
+				const settings = this.plugin.settings;
+				const created = createProfile(
+					kindId,
+					freeProfileName(ofKind(), NEW_PROFILE_NAME),
 				);
-				list.set(this.plugin.settings, created);
+				// Asked of the catalogue as it stands, before the new profile
+				// joins it: what decides whether the profile is adopted is
+				// whether there was anything to use in the first place.
+				const hadNothingToUse =
+					ofKind().length === 0 &&
+					selectedProfileId(settings, kindId) === '';
+				settings.profiles = addProfile(settings.profiles, created);
 				// Adding a profile must not silently change which one a run
 				// uses; only a catalogue with nothing usable selected adopts it.
-				if (
-					effectiveProfileId(
-						created,
-						list.selectedId(this.plugin.settings),
-					) === '' &&
-					created.length === 1
-				) {
-					list.setSelectedId(
-						this.plugin.settings,
-						created[0]?.id ?? '',
-					);
+				if (hadNothingToUse) {
+					setSelectedProfileId(settings, kindId, created.id);
 				}
 				void this.commit();
 			},
 			rename: (id): void => {
-				const profile = findProfile(list.get(this.plugin.settings), id);
+				const profile = findProfile(ofKind(), id);
 				if (!profile) {
 					return;
 				}
@@ -744,8 +730,9 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				}).open();
 			},
 			reorder: (from, to): void => {
-				const profiles = list.get(this.plugin.settings);
-				const moved = moveProfile(profiles, from, to);
+				const settings = this.plugin.settings;
+				const profiles = settings.profiles;
+				const moved = moveProfile(profiles, kindId, from, to);
 				// A drop that changes nothing - the same position, or an index
 				// the list does not hold - is not a write.
 				if (
@@ -753,17 +740,17 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				) {
 					return;
 				}
-				list.set(this.plugin.settings, moved);
+				settings.profiles = moved;
 				void this.commit();
 			},
 			remove: (id): void => {
-				const profile = findProfile(list.get(this.plugin.settings), id);
+				const profile = findProfile(ofKind(), id);
 				if (!profile) {
 					return;
 				}
 				removeAndReselectProfile(
-					list,
 					this.plugin.settings,
+					kindId,
 					profile.id,
 				);
 				void this.commit().then(() => {

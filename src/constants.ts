@@ -789,6 +789,23 @@ export const DEFAULT_LLM_CUSTOM_INSTRUCTION =
 export const DEFAULT_CHAPTER_PROMPT_PROFILE_ID = 'default';
 
 /**
+ * Fixed ids of the built-in post-processing prompt profiles seeded on first
+ * run, one per task. Stable literals for the same reason the chapter one is:
+ * the selection in DEFAULT_SETTINGS names them, and an upgrade that moves a
+ * user's edited prompt into its profile has to find the profile again.
+ */
+export const DEFAULT_LLM_CLEANUP_PROFILE_ID = 'default-llm-cleanup';
+export const DEFAULT_LLM_SUMMARY_PROFILE_ID = 'default-llm-summary';
+export const DEFAULT_LLM_CUSTOM_PROFILE_ID = 'default-llm-custom';
+
+/**
+ * Name every seeded profile carries. A profile the plugin created rather than
+ * the user reads as the default one at a glance, and a user who edits it keeps
+ * the name unless they rename it.
+ */
+export const DEFAULT_PROFILE_NAME = 'Default';
+
+/**
  * Default chapter-splitting guidance, seeded as the first (selected) chapter
  * prompt profile and freely editable. It steers HOW the recording is divided;
  * the strict JSON response contract and the timecode rules live in the fixed

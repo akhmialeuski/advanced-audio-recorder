@@ -179,34 +179,18 @@ describe('the options a transcription run is opened with', () => {
 	}
 
 	it.each([
-		{
-			name: 'the dictionary profile',
-			callback: 'onProfileSelected',
-			setting: 'transcriptionDictionaryProfileId',
-		},
-		{
-			name: 'the chapter profile',
-			callback: 'onChapterProfileSelected',
-			setting: 'transcriptionChapterPromptProfileId',
-		},
-		{
-			name: 'the participant profile',
-			callback: 'onSpeakerProfileSelected',
-			setting: 'transcriptionSpeakerProfileId',
-		},
-	])('remembers $name the run was given', async ({ callback, setting }) => {
+		{ name: 'the dictionary profile', kind: 'dictionary' },
+		{ name: 'the chapter profile', kind: 'chapterPrompt' },
+		{ name: 'the participant profile', kind: 'participants' },
+	] as const)('remembers $name the run was given', async ({ kind }) => {
 		// The choice defaults the next run and applies to transcribe-on-save,
-		// so it has to survive the dialog it was made in.
+		// so it has to survive the dialog it was made in. One callback serves
+		// every kind, so the kind it was given is what decides where it lands.
 		const { plugin, modalOptions } = await options();
-		const remember = modalOptions[
-			callback as keyof TranscriptionModalOptions
-		] as (id: string) => Promise<void>;
 
-		await remember('profile-7');
+		await modalOptions.onProfileSelected?.(kind, 'profile-7');
 
-		expect(
-			(plugin.settings as unknown as Record<string, unknown>)[setting],
-		).toBe('profile-7');
+		expect(plugin.settings.selectedProfileIds[kind]).toBe('profile-7');
 		expect(
 			(plugin as unknown as { saveData: jest.Mock }).saveData,
 		).toHaveBeenCalled();
@@ -286,13 +270,13 @@ describe('a collaborator that fails under the plugin', () => {
 		).saveData.mockRejectedValue(new Error('disk full'));
 		const modalOptions = actionServices().createTranscriptionModalOptions();
 
-		await modalOptions.onProfileSelected?.('profile-7').catch(() => {
-			// The write failing is the scenario; what it did to the settings
-			// in memory is what this test is about.
-		});
+		await modalOptions
+			.onProfileSelected?.('dictionary', 'profile-7')
+			.catch(() => {
+				// The write failing is the scenario; what it did to the
+				// settings in memory is what this test is about.
+			});
 
-		expect(plugin.settings.transcriptionDictionaryProfileId).toBe(
-			'profile-7',
-		);
+		expect(plugin.settings.selectedProfileIds.dictionary).toBe('profile-7');
 	});
 });

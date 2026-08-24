@@ -8,6 +8,7 @@
  * @module tests/unit/AutoChapterServiceProbe.test
  */
 
+import { noSelectedProfiles } from 'src/settings/profiles';
 import { AutoChapterService } from 'src/chapters/AutoChapterService';
 import { AUTO_CHAPTER_ID_PREFIX } from 'src/chapters/chapterGeneration';
 import { loadTranscriptLines } from 'src/chapters/transcriptSources';
@@ -82,8 +83,8 @@ function makeLlm(output: string): LlmProvider {
 const settings = partial<AudioRecorderSettings>({
 	llmMaxTokens: 4096,
 	transcriptionLanguage: 'auto',
-	transcriptionChapterPromptProfiles: [],
-	transcriptionChapterPromptProfileId: '',
+	profiles: [],
+	selectedProfileIds: noSelectedProfiles(),
 });
 
 describe('AutoChapterService.hasExistingChapters', () => {

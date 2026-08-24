@@ -97,14 +97,15 @@ function settingsWithProfile(): AudioRecorderSettings {
 	return mergeSettings({
 		transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
 		transcriptionDiarize: true,
-		transcriptionSpeakerProfiles: [
+		profiles: [
 			{
 				id: 'p1',
+				kind: 'participants',
 				name: 'Weekly sync',
-				participants: ['Maria', 'Ivan'],
+				body: 'Maria\nIvan',
 			},
 		],
-		transcriptionSpeakerProfileId: 'p1',
+		selectedProfileIds: { participants: 'p1' },
 	});
 }
 
@@ -234,11 +235,7 @@ describe('speaker roster round trip', () => {
 			{ label: 'Speaker 2', firstStart: 10, firstEnd: 14 },
 		]);
 		// The profile learned it too, for the next recording that picks it.
-		expect(settings.transcriptionSpeakerProfiles[0]?.participants).toEqual([
-			'Maria',
-			'Ivan',
-			'Priya',
-		]);
+		expect(settings.profiles[0]?.body).toBe('Maria\nIvan\nPriya');
 	});
 
 	it('a re-transcription keeps the name and refreshes the offsets', async () => {

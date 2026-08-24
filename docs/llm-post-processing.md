@@ -8,7 +8,7 @@
     - [Clean up](#clean-up)
     - [Summarize](#summarize)
     - [Custom](#custom)
-- [Editable prompts](#editable-prompts)
+- [Prompt profiles](#prompt-profiles)
 - [Default prompts](#default-prompts)
 - [Providers and models](#providers-and-models)
 - [Shared API keys](#shared-api-keys)
@@ -41,7 +41,7 @@ LLM post-processing lives at the bottom of the transcription settings, after the
 1. Open **Settings > Advanced Audio Recorder**.
 2. Turn on **Enable transcription** (the whole **Transcription** section only appears when it is on).
 3. Scroll to the **LLM post-processing** heading.
-4. Turn on **Enable LLM post-processing**. The task, prompt, provider, key, model, and token controls appear below it.
+4. Turn on **Enable LLM post-processing**. The task, its prompt profiles, provider, key, model, and token controls appear below it.
 
 If transcription itself is off, there is nothing for this step to process, so the option is hidden.
 
@@ -71,28 +71,30 @@ Your **Custom instruction** is sent to the model **verbatim** as the system prom
 
 ---
 
-## Editable prompts
+## Prompt profiles
 
-Each task has its own editable prompt, shown in a text area below the **Task** dropdown. The field that appears depends on the selected task:
+Each task has its own catalogue of named prompts, shown below the **Task** dropdown. The catalogue that appears is the one belonging to the selected task:
 
-| Task          | Field shown            | Language handling                                                                                   |
-| ------------- | ---------------------- | --------------------------------------------------------------------------------------------------- |
-| **Clean up**  | **Cleanup prompt**     | The transcript language is **appended automatically** at request time - you do not add it yourself. |
-| **Summarize** | **Summary prompt**     | The transcript language is **appended automatically** at request time - you do not add it yourself. |
-| **Custom**    | **Custom instruction** | **Not** appended - sent verbatim in a larger (8-row) editor. Include your own language directive.   |
+| Task          | Catalogue shown                 | Language handling                                                                                   |
+| ------------- | ------------------------------- | --------------------------------------------------------------------------------------------------- |
+| **Clean up**  | **Cleanup prompt profiles**     | The transcript language is **appended automatically** at request time - you do not add it yourself. |
+| **Summarize** | **Summary prompt profiles**     | The transcript language is **appended automatically** at request time - you do not add it yourself. |
+| **Custom**    | **Custom instruction profiles** | **Not** appended - sent verbatim. Include your own language directive.                              |
 
-For **Clean up** and **Summarize**, leave the field empty to use the built-in default shown below. Whatever base text is in the field, the plugin appends a sentence telling the model to respond in the transcript's language (using the detected/declared language when known, e.g. `Respond in the same language as the transcript.` or `The transcript language is en; respond in that same language.`). That is why these two base prompts carry no language directive - adding one yourself would duplicate it.
+A profile is a named prompt on a page of its own, with the prompt text, a use-by-default switch, and rename and delete - the same catalogue the dictionary, participant, and chapter guidance profiles use. Every task starts with one **Default** profile holding the built-in prompt shown below, and an upgrade from an earlier version moves whatever you had in the single prompt field into that profile, still in use. Add profiles for the cases you actually run: a cleanup for interviews and another for lectures, a summary for standups and another for client calls, and pick the one you want before a run.
 
-For **Custom**, the editor is larger because nothing is added: the instruction you type is the entire system prompt. If you leave it empty, the plugin falls back to a generic instruction (`Process the following transcript as instructed.`), which is rarely what you want - type a real instruction.
+Setting a **Clean up** or **Summarize** catalogue to **None** falls back to that task's built-in default, so the pass always has a real prompt to run with. **Custom** ships no default of its own: with None (or an empty profile) the model is only told `Process the following transcript as instructed.`, which is rarely what you want - keep a profile selected there. For **Clean up** and **Summarize**, the plugin appends a sentence telling the model to respond in the transcript's language (using the detected/declared language when known, e.g. `Respond in the same language as the transcript.` or `The transcript language is en; respond in that same language.`). That is why these two base prompts carry no language directive - adding one yourself would duplicate it.
+
+For **Custom**, nothing is added: the instruction in the selected profile is the entire system prompt. A profile with an empty body, like None, leaves only the generic instruction above - write a real one.
 
 ![Cleanup prompt text area populated with the default editor instruction](images/settings-llm-prompt-editor.png)
-_Figure: the per-task prompt editor; the Custom instruction field is taller and is sent verbatim._
+_Figure: a prompt profile's page; the custom instruction is sent verbatim._
 
 ---
 
 ## Default prompts
 
-These ship with the plugin and are used whenever the matching prompt field is empty. The transcript-language sentence is appended to the cleanup and summary prompts automatically. The cleanup prompt also gets a glossary clause automatically whenever the selected dictionary profile has terms: the canonical spellings are listed so the model corrects garbled names and acronyms ("кубернетис" to `Kubernetes`) without inserting terms that were not spoken.
+These ship with the plugin as the **Default** profile of each task, and are used whenever no profile is selected for it or the selected profile is empty. The transcript-language sentence is appended to the cleanup and summary prompts automatically. The cleanup prompt also gets a glossary clause automatically whenever the selected dictionary profile has terms: the canonical spellings are listed so the model corrects garbled names and acronyms ("кубернетис" to `Kubernetes`) without inserting terms that were not spoken.
 
 **Default Clean up prompt:**
 
@@ -252,14 +254,14 @@ The exact headings come from the model following the summary prompt; the `### Su
 
 All controls live under **Settings > Advanced Audio Recorder > Transcription > LLM post-processing**.
 
-| Setting                        | Description                                                                                                       | Default          |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------- | ---------------- |
-| **Enable LLM post-processing** | Run an LLM pass over the transcript after transcription. Reveals the controls below.                              | Off              |
-| **Task**                       | `Clean up`, `Summarize`, or `Custom`.                                                                             | Clean up         |
-| **Cleanup prompt**             | System prompt for Clean up (language clause appended). Empty = built-in default. Shown when Task is Clean up.     | Built-in default |
-| **Summary prompt**             | System prompt for Summarize (language clause appended). Empty = built-in default. Shown when Task is Summarize.   | Built-in default |
-| **Custom instruction**         | System prompt sent verbatim, larger editor. Shown when Task is Custom.                                            | Built-in starter |
-| **Post-processing engine**     | `OpenAI`, `Anthropic (Claude)`, or `Google Gemini`. Only the choice; the service is configured under **Engines**. | OpenAI           |
+| Setting                         | Description                                                                                                       | Default         |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------- |
+| **Enable LLM post-processing**  | Run an LLM pass over the transcript after transcription. Reveals the controls below.                              | Off             |
+| **Task**                        | `Clean up`, `Summarize`, or `Custom`.                                                                             | Clean up        |
+| **Cleanup prompt profiles**     | Named prompts for Clean up (language clause appended). None = built-in default. Shown when Task is Clean up.      | Default profile |
+| **Summary prompt profiles**     | Named prompts for Summarize (language clause appended). None = built-in default. Shown when Task is Summarize.    | Default profile |
+| **Custom instruction profiles** | Named instructions sent verbatim. Shown when Task is Custom.                                                      | Default profile |
+| **Post-processing engine**      | `OpenAI`, `Anthropic (Claude)`, or `Google Gemini`. Only the choice; the service is configured under **Engines**. | OpenAI          |
 
 The rows that describe the service itself sit on its page under **Engines**, shared by every job that calls it:
 

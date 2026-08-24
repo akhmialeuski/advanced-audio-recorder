@@ -17,6 +17,7 @@ import {
 	isRecordingBannerSupported,
 } from './platform/capabilities';
 import type { AudioRecorderSettings } from './settings/settingsSchema';
+import { setSelectedProfileId, type ProfileKindId } from './settings/profiles';
 import {
 	mergeSettingsAsync,
 	serializeSettings,
@@ -1043,22 +1044,14 @@ export default class AudioRecorderPlugin extends Plugin {
 	private createTranscriptionModalOptions(): TranscriptionModalOptions {
 		const id = ++this.nextBackgroundTranscriptionId;
 		return {
-			// Remember the run's dictionary-profile choice so it defaults next
-			// time and applies to transcribe-on-save.
-			onProfileSelected: async (profileId: string) => {
-				this.settings.transcriptionDictionaryProfileId = profileId;
-				await this.saveSettings();
-			},
-			// Remember the run's chapter-profile choice so it defaults next
-			// time and applies to the after-transcription generation.
-			onChapterProfileSelected: async (profileId: string) => {
-				this.settings.transcriptionChapterPromptProfileId = profileId;
-				await this.saveSettings();
-			},
-			// Remember the run's participant-profile choice so it defaults next
-			// time and applies to transcribe-on-save.
-			onSpeakerProfileSelected: async (profileId: string) => {
-				this.settings.transcriptionSpeakerProfileId = profileId;
+			// Remember the run's profile choices so they default next time and
+			// apply to what runs from the settings rather than from the dialog:
+			// transcribe-on-save, and the after-transcription chapters.
+			onProfileSelected: async (
+				kind: ProfileKindId,
+				profileId: string,
+			) => {
+				setSelectedProfileId(this.settings, kind, profileId);
 				await this.saveSettings();
 			},
 			costTracker: this.transcriptionCostTracker,

@@ -35,6 +35,10 @@ import {
 	DEFAULT_LLM_CUSTOM_INSTRUCTION,
 	DEFAULT_CHAPTER_PROMPT,
 	DEFAULT_CHAPTER_PROMPT_PROFILE_ID,
+	DEFAULT_LLM_CLEANUP_PROFILE_ID,
+	DEFAULT_LLM_SUMMARY_PROFILE_ID,
+	DEFAULT_LLM_CUSTOM_PROFILE_ID,
+	DEFAULT_PROFILE_NAME,
 	DEFAULT_CLEANUP_HIGHPASS_HZ,
 	DEFAULT_CLEANUP_GATE_THRESHOLD_DB,
 	DEFAULT_CLEANUP_LEVELING_MAKEUP_DB,
@@ -45,6 +49,8 @@ import type {
 	TranscriptFileFormat,
 } from '../transcription/TranscriptTypes';
 import type { LlmTask } from '../transcription/llmPostProcess';
+import { noSelectedProfiles } from './profiles';
+import type { Profile, SelectedProfileIds } from './profiles';
 import { CHANNEL_MODE_SOURCE } from '../audio/downmix';
 import type { ChannelMode } from '../audio/downmix';
 import type { PlatformKind } from '../platform/platformKind';
@@ -158,52 +164,6 @@ function createPerPlatformDefaults(): PlatformScopedSettingsMap {
 }
 
 /**
- * A named custom-dictionary glossary selectable per transcription run. Several
- * profiles let a user keep separate term lists for different meeting types
- * (standup, legal, medical) instead of one merged glossary that dilutes the bias.
- */
-export interface DictionaryProfile {
-	/** Stable id (crypto.randomUUID); selection persists by id, not by name. */
-	id: string;
-	/** Display name shown in the settings editor and the run dialog. */
-	name: string;
-	/** One term per line; parsed and biased exactly like the legacy field. */
-	terms: string;
-}
-
-/**
- * A named chapter-splitting guidance prompt, selectable per case. Several
- * profiles let a user keep separate instructions for different recording types
- * (meeting by agenda, lecture by topic, interview by question) instead of one
- * prompt that fits none well. The guidance steers HOW the LLM divides the
- * recording; the strict JSON response contract lives in the fixed base prompt
- * and is never part of a profile, so a customized profile cannot break parsing.
- */
-export interface ChapterPromptProfile {
-	/** Stable id (crypto.randomUUID, or the seeded default's fixed id). */
-	id: string;
-	/** Display name shown in the settings editor and the profile picker. */
-	name: string;
-	/** Guidance text appended to the chapter system prompt. */
-	prompt: string;
-}
-
-/**
- * A named roster of participant names, reused across recordings. A recurring
- * meeting with the same attendees is entered once and picked in the rename
- * dialog, whose speaker fields then suggest the profile's names. Managed from
- * the rename dialog, not the settings tab; stored here so it survives reloads.
- */
-export interface SpeakerProfile {
-	/** Stable id (crypto.randomUUID); selection persists by id, not by name. */
-	id: string;
-	/** Display name shown in the rename dialog's profile picker. */
-	name: string;
-	/** Participant names, one per entry, offered as rename suggestions. */
-	participants: string[];
-}
-
-/**
  * Plugin settings interface.
  */
 export interface AudioRecorderSettings {
@@ -308,10 +268,6 @@ export interface AudioRecorderSettings {
 	 * Turning it on reveals the dictionary profiles and the two-pass toggle.
 	 */
 	transcriptionAdvancedSettingsEnabled: boolean;
-	/** Named custom-dictionary profiles (add/edit/remove in the settings tab). */
-	transcriptionDictionaryProfiles: DictionaryProfile[];
-	/** Id of the profile applied to a run; '' means None (no biasing terms). */
-	transcriptionDictionaryProfileId: string;
 	/**
 	 * Advanced two-pass transcription: the recording is transcribed twice,
 	 * with LLM agents mining the first draft for the meeting's names, jargon,
@@ -337,27 +293,6 @@ export interface AudioRecorderSettings {
 	transcriptionAutoChaptersEnabled: boolean;
 	/** Automatically generate chapters after each transcription run. */
 	transcriptionAutoChaptersOnTranscribe: boolean;
-	/**
-	 * Named chapter-splitting guidance prompts (add/edit/remove in the settings
-	 * tab). Seeded with one built-in default; the selected profile's guidance is
-	 * appended to the fixed chapter base prompt at generation time.
-	 */
-	transcriptionChapterPromptProfiles: ChapterPromptProfile[];
-	/**
-	 * Id of the selected chapter guidance profile; '' means no extra guidance
-	 * (the base prompt only). A stale id also resolves to no guidance.
-	 */
-	transcriptionChapterPromptProfileId: string;
-	/**
-	 * Participant-name profiles reused across recordings. Created and filled
-	 * from the rename dialog rather than the settings tab.
-	 */
-	transcriptionSpeakerProfiles: SpeakerProfile[];
-	/**
-	 * Id of the participant profile a transcription run records into the
-	 * recording's sidecar; '' means none. A stale id also resolves to none.
-	 */
-	transcriptionSpeakerProfileId: string;
 	/** Upload size limit per chunk, in megabytes (Whisper API) */
 	transcriptionChunkMb: number;
 	/** Per-request transcription timeout, in minutes (a hung request fails after this) */
@@ -412,16 +347,23 @@ export interface AudioRecorderSettings {
 	transcriptLineFormat: string;
 	/** Heading inserted above the in-note transcript (empty for none) */
 	transcriptHeading: string;
+	/**
+	 * Every named profile the user keeps, of every kind: glossaries, rosters,
+	 * chapter guidance, and the post-processing prompts. One list rather than
+	 * one per kind, so a kind is a description rather than a settings field,
+	 * and the entries carry the kind they belong to.
+	 */
+	profiles: Profile[];
+	/**
+	 * The profile each kind applies, by kind; '' means none. An id naming a
+	 * profile that was removed reads as none, so nothing has to be cleaned up
+	 * here when a profile is deleted.
+	 */
+	selectedProfileIds: SelectedProfileIds;
 	/** Enable LLM post-processing of the transcript */
 	llmPostProcessEnabled: boolean;
 	/** LLM post-processing task */
 	llmPostProcessTask: LlmTask;
-	/** Editable system prompt for the cleanup task (language clause auto-appended) */
-	llmCleanupPrompt: string;
-	/** Editable system prompt for the summary task (language clause auto-appended) */
-	llmSummaryPrompt: string;
-	/** Editable instruction for the 'custom' task (sent verbatim) */
-	llmCustomInstruction: string;
 	/** Engine that runs the post-processing pass */
 	llmProvider: LlmProviderId;
 	/** Engine that divides a transcript into chapters */
@@ -517,6 +459,33 @@ export type LlmProviderId =
 	(typeof LLM_PROVIDER_IDS)[keyof typeof LLM_PROVIDER_IDS];
 
 /**
+ * A dictionary profile as the pre-unification schema stored it: its body lived
+ * in a field named after its kind.
+ */
+export interface LegacyDictionaryProfile {
+	id: string;
+	name: string;
+	terms: string;
+}
+
+/** A chapter guidance profile as the pre-unification schema stored it. */
+export interface LegacyChapterPromptProfile {
+	id: string;
+	name: string;
+	prompt: string;
+}
+
+/**
+ * A participant profile as the pre-unification schema stored it: the roster
+ * was kept parsed, where a unified profile keeps the text the user edits.
+ */
+export interface LegacySpeakerProfile {
+	id: string;
+	name: string;
+	participants: string[];
+}
+
+/**
  * Fields the plugin no longer stores but still reads once when loading a
  * data.json written by an older version, so the value migrates onto its
  * replacement instead of being silently dropped. Declared here rather than
@@ -530,6 +499,25 @@ export interface LegacyAudioRecorderSettings {
 	 * field (OpenAI reuses the Whisper key, Gemini its transcription key).
 	 */
 	llmApiKey?: string;
+	/**
+	 * Pre-unification profile lists, one stored field per kind, each with its
+	 * own body field name. They merge into the single `profiles` list, keeping
+	 * their ids so a selection and a recording's stored roster still resolve.
+	 */
+	transcriptionDictionaryProfiles?: LegacyDictionaryProfile[];
+	transcriptionDictionaryProfileId?: string;
+	transcriptionChapterPromptProfiles?: LegacyChapterPromptProfile[];
+	transcriptionChapterPromptProfileId?: string;
+	transcriptionSpeakerProfiles?: LegacySpeakerProfile[];
+	transcriptionSpeakerProfileId?: string;
+	/**
+	 * Pre-profile single post-processing prompts, one editable text per task.
+	 * Each moves into a "Default" profile of its kind, which is then selected,
+	 * so a user's edited prompt keeps running after the upgrade.
+	 */
+	llmCleanupPrompt?: string;
+	llmSummaryPrompt?: string;
+	llmCustomInstruction?: string;
 	/** Pre-vendor-split single LLM model, moved onto the vendor's model. */
 	llmModel?: string;
 	/** Pre-profile single dictionary text, moved into a "General" profile. */
@@ -564,11 +552,20 @@ export interface LegacyAudioRecorderSettings {
 export interface AudioRecorderSettingsInput
 	extends
 		Partial<
-			Omit<AudioRecorderSettings, 'trackAudioSources' | 'perPlatform'>
+			Omit<
+				AudioRecorderSettings,
+				'trackAudioSources' | 'perPlatform' | 'selectedProfileIds'
+			>
 		>,
 		LegacyAudioRecorderSettings {
 	trackAudioSources?: TrackAudioSources | TrackAudioSourcesRecord;
 	perPlatform?: Partial<Record<PlatformKind, PlatformScopedSettingsInput>>;
+	/**
+	 * Stored selections, which need not name every kind: a config written
+	 * before a kind existed carries no entry for it, and the load fills in the
+	 * kinds it left out.
+	 */
+	selectedProfileIds?: Partial<SelectedProfileIds>;
 }
 
 /**
@@ -591,6 +588,42 @@ export interface SerializedAudioRecorderSettings extends Omit<
 	'trackAudioSources' | 'audioDeviceId' | 'recordingChannels' | 'perPlatform'
 > {
 	perPlatform: Record<PlatformKind, SerializedPlatformScopedSettings>;
+}
+
+/**
+ * The profiles a fresh install starts with: the built-in chapter guidance and
+ * one prompt per post-processing task. They are seeded rather than left empty
+ * because a task with no profile falls back to the built-in prompt anyway, and
+ * a seeded profile is the copy the user can actually edit.
+ * @returns The seeded profiles, in the order their catalogues show them
+ */
+function seededProfiles(): Profile[] {
+	return [
+		{
+			id: DEFAULT_CHAPTER_PROMPT_PROFILE_ID,
+			kind: 'chapterPrompt',
+			name: DEFAULT_PROFILE_NAME,
+			body: DEFAULT_CHAPTER_PROMPT,
+		},
+		{
+			id: DEFAULT_LLM_CLEANUP_PROFILE_ID,
+			kind: 'llmCleanup',
+			name: DEFAULT_PROFILE_NAME,
+			body: DEFAULT_LLM_CLEANUP_PROMPT,
+		},
+		{
+			id: DEFAULT_LLM_SUMMARY_PROFILE_ID,
+			kind: 'llmSummary',
+			name: DEFAULT_PROFILE_NAME,
+			body: DEFAULT_LLM_SUMMARY_PROMPT,
+		},
+		{
+			id: DEFAULT_LLM_CUSTOM_PROFILE_ID,
+			kind: 'llmCustom',
+			name: DEFAULT_PROFILE_NAME,
+			body: DEFAULT_LLM_CUSTOM_INSTRUCTION,
+		},
+	];
 }
 
 /**
@@ -634,23 +667,11 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	transcriptionDiarize: false,
 	transcriptionWordTimestamps: false,
 	transcriptionAdvancedSettingsEnabled: false,
-	transcriptionDictionaryProfiles: [],
-	transcriptionDictionaryProfileId: '',
 	transcriptionAdvancedEnabled: false,
 	advancedSecondPassMinRatio: DEFAULT_ADVANCED_SECOND_PASS_MIN_RATIO,
 	transcriptionSpeakerRenameEnabled: false,
 	transcriptionAutoChaptersEnabled: false,
 	transcriptionAutoChaptersOnTranscribe: false,
-	transcriptionChapterPromptProfiles: [
-		{
-			id: DEFAULT_CHAPTER_PROMPT_PROFILE_ID,
-			name: 'Default',
-			prompt: DEFAULT_CHAPTER_PROMPT,
-		},
-	],
-	transcriptionChapterPromptProfileId: DEFAULT_CHAPTER_PROMPT_PROFILE_ID,
-	transcriptionSpeakerProfiles: [],
-	transcriptionSpeakerProfileId: '',
 	transcriptionChunkMb: DEFAULT_TRANSCRIBE_CHUNK_MB,
 	transcriptionTimeoutMinutes: DEFAULT_TRANSCRIPTION_TIMEOUT_MINUTES,
 	whisperApiBaseUrl: DEFAULT_OPENAI_BASE_URL,
@@ -680,9 +701,14 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	transcriptHeading: '## Transcript',
 	llmPostProcessEnabled: false,
 	llmPostProcessTask: 'cleanup',
-	llmCleanupPrompt: DEFAULT_LLM_CLEANUP_PROMPT,
-	llmSummaryPrompt: DEFAULT_LLM_SUMMARY_PROMPT,
-	llmCustomInstruction: DEFAULT_LLM_CUSTOM_INSTRUCTION,
+	profiles: seededProfiles(),
+	selectedProfileIds: {
+		...noSelectedProfiles(),
+		chapterPrompt: DEFAULT_CHAPTER_PROMPT_PROFILE_ID,
+		llmCleanup: DEFAULT_LLM_CLEANUP_PROFILE_ID,
+		llmSummary: DEFAULT_LLM_SUMMARY_PROFILE_ID,
+		llmCustom: DEFAULT_LLM_CUSTOM_PROFILE_ID,
+	},
 	llmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
 	chaptersLlmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,
 	advancedLlmProvider: LLM_PROVIDER_IDS.OPENAI_COMPATIBLE,

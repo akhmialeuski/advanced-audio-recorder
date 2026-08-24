@@ -171,6 +171,49 @@ describe('LegacySettingsRenderer', () => {
 			expect(setControlValue).toHaveBeenCalledWith('mode', 'multiple');
 		});
 
+		it('falls back to the declared default when nothing is stored', () => {
+			// A control the settings hold no value for yet - a fresh install,
+			// or a key the store answers with nothing - opens on what the
+			// definition declares rather than on the first option by accident.
+			renderer.render(containerEl, [
+				{
+					name: 'Output mode',
+					control: {
+						type: 'dropdown',
+						key: 'mode',
+						defaultValue: 'multiple',
+						options: {
+							single: 'Single file',
+							multiple: 'Multiple',
+						},
+					},
+				},
+			]);
+
+			expect(rowSelect(rowFor('Output mode')).value).toBe('multiple');
+		});
+
+		it('opens on no option at all when nothing is stored and none is declared', () => {
+			// With neither a stored value nor a declared default there is no
+			// answer to show, and showing the first option would claim one the
+			// settings never made.
+			renderer.render(containerEl, [
+				{
+					name: 'Output mode',
+					control: {
+						type: 'dropdown',
+						key: 'mode',
+						options: {
+							'': 'None',
+							single: 'Single file',
+						},
+					},
+				},
+			]);
+
+			expect(rowSelect(rowFor('Output mode')).value).toBe('');
+		});
+
 		it('writes a text value back through the host', () => {
 			renderer.render(containerEl, [
 				{

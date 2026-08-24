@@ -826,37 +826,20 @@ function audioPlayerPage(settings: AudioRecorderSettings): SettingGroupItem {
 
 /**
  * LLM post-processing: the switch, the engine that writes it, and the task and
- * prompt that steer it. Nothing here is shared with the other two LLM jobs any
- * more - each names its own engine beside its own switch - so the rows follow
- * this feature alone.
+ * prompt profiles that steer it. Nothing here is shared with the other two LLM
+ * jobs any more - each names its own engine beside its own switch - so the rows
+ * follow this feature alone.
  *
- * Two blocks rather than one, because the prompt of the chosen task is a
- * multi-line editor: it is laid out under its name across the row, and that
- * layout is declared per block (see {@link STACKED_TEXT_CLASS}). The task
- * decides which of the three prompts is shown, so the second block always holds
- * exactly the one being edited, and disappears with the feature.
- * @param settings - Live settings, read by the predicates
+ * The prompt is a catalogue rather than a field: each task keeps its own named
+ * prompts, so a standup and a client call are two profiles instead of one text
+ * area rewritten between runs. The task decides which catalogue is shown, so
+ * the block always holds exactly the prompts being chosen between.
+ * @param ctx - Everything the tree reads from the tab
  */
-function llmGroup(settings: AudioRecorderSettings): SettingDefinitionItem[] {
+function llmGroup(ctx: SettingsDefinitionContext): SettingDefinitionItem[] {
+	const settings = ctx.settings;
 	const postProcessing = (): boolean =>
 		settings.transcriptionEnabled && settings.llmPostProcessEnabled;
-	const promptRow = (
-		task: string,
-		name: string,
-		desc: string,
-		key: string,
-		rows?: number,
-	): SettingDefinition => ({
-		name,
-		desc,
-		visible: (): boolean =>
-			postProcessing() && settings.llmPostProcessTask === task,
-		control: {
-			type: 'textarea',
-			key,
-			...(rows === undefined ? {} : { rows }),
-		},
-	});
 	return [
 		{
 			type: 'group',
@@ -886,32 +869,9 @@ function llmGroup(settings: AudioRecorderSettings): SettingDefinitionItem[] {
 						options: LLM_TASK_LABELS,
 					},
 				},
-			],
-		},
-		{
-			type: 'group',
-			cls: `${SETTINGS_SECTION_CLASS} ${STACKED_TEXT_CLASS}`,
-			visible: (): boolean => settings.transcriptionEnabled,
-			items: [
-				promptRow(
-					'cleanup',
-					'Cleanup prompt',
-					'System instruction for the cleanup pass. The transcript language is appended automatically; empty uses the built-in default.',
-					'llmCleanupPrompt',
-				),
-				promptRow(
-					'summary',
-					'Summary prompt',
-					'System instruction for the summary pass. The transcript language is appended automatically; empty uses the built-in default.',
-					'llmSummaryPrompt',
-				),
-				promptRow(
-					'custom',
-					'Custom instruction',
-					'System instruction applied to the transcript text, sent verbatim.',
-					'llmCustomInstruction',
-					8,
-				),
+				// The prompt profiles of whichever task is selected: each kind
+				// answers the task itself, so this is one entry, not a branch.
+				...profileCatalogues(ctx, 'llm'),
 			],
 		},
 	];
@@ -941,7 +901,9 @@ export interface ProfileCatalogue {
 	/** Label and description of the row that makes a profile the default one. */
 	readonly selectionName: string;
 	readonly selectionDesc: string;
-	/** Settings key holding the selected profile id. */
+	/** The profile of this kind a run applies ('' for none). */
+	selectedId(settings: AudioRecorderSettings): string;
+	/** Control key of the row that picks the profile in use. */
 	readonly selectionKey: string;
 	/** Control key of a profile's body. */
 	readonly bodyKey: string;
@@ -1122,9 +1084,9 @@ function profileGroups(
 	const entries = catalogue.entries(settings);
 	const visible = (): boolean => catalogue.visible(settings);
 	const selectedName = (): string => {
-		const selected = settings[
-			catalogue.selectionKey as keyof AudioRecorderSettings
-		] as string;
+		// The selection lives in the profile store, not in a settings field of
+		// its own, so the catalogue is what answers which profile is in use.
+		const selected = catalogue.selectedId(settings);
 		return (
 			catalogue.entries(settings).find((entry) => entry.id === selected)
 				?.name ?? 'None'
@@ -2163,7 +2125,7 @@ export function buildSettingsDefinitions(
 					transcriptionGroup(ctx, enginesPage(ctx)),
 					transcriptOutputGroup(ctx.settings),
 					autoChaptersGroup(ctx, 'chapters'),
-					...llmGroup(ctx.settings),
+					...llmGroup(ctx),
 					transcriptionAdvancedGroup(ctx, 'advanced'),
 				],
 			},
@@ -2224,6 +2186,9 @@ export const CONTROL_WRITE_EFFECTS: Readonly<
 	// need no entry: every service is configured on its own page now, so
 	// nothing under such a row holds the chosen vendor's fields.
 	transcriptionProvider: { reshapesTree: true },
+	// The prompt catalogue under the task row is the catalogue of the task in
+	// hand, so picking another task replaces the rows below it.
+	llmPostProcessTask: { reshapesTree: true },
 	// Every catalogue names the profile in use on the entry that opens it, so
 	// moving that selection leaves those rows holding something else. Read from
 	// the kinds themselves, so a kind added there arrives with this behaviour
