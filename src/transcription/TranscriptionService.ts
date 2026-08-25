@@ -647,15 +647,10 @@ export class TranscriptionService {
 						}
 					}
 				} catch (error) {
-					if (error instanceof TranscriptionCancelledError) {
-						throw error;
-					}
 					// Cancellation inside context generation surfaces as an
 					// ordinary error; map it back to the cancel the user asked
 					// for instead of a best-effort fallback.
-					if (token.isCancelled()) {
-						throw new TranscriptionCancelledError();
-					}
+					this.rethrowIfCancelled(error, token);
 					console.warn(
 						`${PLUGIN_LOG_PREFIX} Advanced two-pass transcription failed; keeping the single-pass transcript.`,
 						error,
@@ -735,9 +730,11 @@ export class TranscriptionService {
 					token,
 				);
 			} catch (error) {
-				if (error instanceof TranscriptionCancelledError) {
-					throw error;
-				}
+				// The abort of the call in flight arrives as a transport
+				// failure, so a Cancel pressed here is not the pass breaking:
+				// reporting it as one told the user their own doing had gone
+				// wrong and then saved the transcript they had cancelled.
+				this.rethrowIfCancelled(error, token);
 				console.warn(
 					`${PLUGIN_LOG_PREFIX} LLM post-processing failed; keeping the raw transcript.`,
 					error,
@@ -895,12 +892,7 @@ export class TranscriptionService {
 			// A cancel aborts the whole run; never salvage past it. An abort
 			// of the in-flight request surfaces as a transport error, so map
 			// it back to the cancellation the user asked for.
-			if (error instanceof TranscriptionCancelledError) {
-				throw error;
-			}
-			if (token.isCancelled()) {
-				throw new TranscriptionCancelledError();
-			}
+			this.rethrowIfCancelled(error, token);
 			// The part overran the provider's output token budget. Retrying it as
 			// smaller pieces keeps each piece's output under the cap, so a dense
 			// stretch is recovered rather than discarded. Each retry is a real
@@ -1127,6 +1119,29 @@ export class TranscriptionService {
 		if (token.isCancelled()) {
 			throw new TranscriptionCancelledError();
 		}
+	}
+
+	/**
+	 * Re-raises the run's own cancellation when this failure is it.
+	 *
+	 * A cancel does not reach a catch in one shape. A step that checked the
+	 * token between calls throws {@link TranscriptionCancelledError}; a
+	 * request the abort reached first throws the transport's own failure; a
+	 * spend refused before it started throws the platform's AbortError. Every
+	 * step that has to tell a cancel from a genuine failure needs the same
+	 * two questions asked in the same order, and each of them used to ask
+	 * them for itself: the one that asked only the first read the user's own
+	 * Cancel as a broken post-processing pass, told them the pass had failed,
+	 * and saved the transcript they had just cancelled.
+	 * @param error - What the step failed with
+	 * @param token - Cancellation for the run the step belongs to
+	 * @throws TranscriptionCancelledError when this failure is the cancel
+	 */
+	private rethrowIfCancelled(error: unknown, token: CancellationToken): void {
+		if (error instanceof TranscriptionCancelledError) {
+			throw error;
+		}
+		this.throwIfCancelled(token);
 	}
 }
 
