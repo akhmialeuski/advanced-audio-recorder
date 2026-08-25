@@ -17,6 +17,30 @@ interface WorkerDouble {
 }
 const createdWorkers: WorkerDouble[] = [];
 
+/**
+ * Starts a conversion that reports progress, which two suites drive: one
+ * checks that the reports reach the caller, the other that they keep the
+ * watchdog from firing.
+ * @param client - The client to convert through
+ * @returns The conversion, the worker it went to, and the progress spy
+ */
+function convertWatchingProgress(client: EncodingWorkerClient): {
+	conversion: Promise<Blob>;
+	worker: WorkerDouble;
+	onProgress: jest.Mock;
+} {
+	const onProgress = jest.fn();
+	const conversion = client.convertBlob(
+		new Blob(['audio']),
+		'mp3',
+		128000,
+		false,
+		'source',
+		onProgress,
+	);
+	return { conversion, worker: at(createdWorkers, 0), onProgress };
+}
+
 class MockWorker implements WorkerDouble {
 	postMessage = jest.fn();
 	terminate = jest.fn();
@@ -106,16 +130,8 @@ describe('EncodingWorkerClient', () => {
 
 	it('forwards progress updates', async () => {
 		const client = new EncodingWorkerClient('worker-source');
-		const onProgress = jest.fn();
-		const conversion = client.convertBlob(
-			new Blob(['audio']),
-			'mp3',
-			128000,
-			false,
-			'source',
-			onProgress,
-		);
-		const worker = at(createdWorkers, 0);
+		const { conversion, worker, onProgress } =
+			convertWatchingProgress(client);
 		const requestId = (
 			at(worker.postMessage.mock.calls, 0)[0] as { id: number }
 		).id;
@@ -257,31 +273,41 @@ describe('a worker that stops answering', () => {
 		jest.useRealTimers();
 	});
 
-	it('rejects the request once the worker has gone quiet for its budget', async () => {
+	/**
+	 * Sends one conversion into a worker that never answers and waits out its
+	 * budget, asserting the rejection along the way.
+	 *
+	 * The expectation is attached before the clock moves, because the
+	 * rejection lands inside the advance and a handler added afterwards
+	 * arrives too late.
+	 * @returns The client and the worker double, after the timeout has fired
+	 */
+	async function waitOutTheBudget(): Promise<{
+		client: EncodingWorkerClient;
+		worker: WorkerDouble;
+	}> {
 		const client = new EncodingWorkerClient('worker-source');
-		const { conversion } = convertThrough(client);
-		// Attached before the clock moves: the rejection lands inside the
-		// advance, and a handler added afterwards arrives too late.
+		const { worker, conversion } = convertThrough(client);
 		const rejected = expect(conversion).rejects.toThrow('did not answer');
 
 		await jest.advanceTimersByTimeAsync(PAST_THE_BUDGET);
-
 		await rejected;
+
+		return { client, worker };
+	}
+
+	it('rejects the request once the worker has gone quiet for its budget', async () => {
+		// The rejection itself is the assertion, made inside the helper.
+		await expect(waitOutTheBudget()).resolves.toBeDefined();
 	});
 
 	it('leaves nothing waiting behind a timed-out request', async () => {
-		const client = new EncodingWorkerClient('worker-source');
-		const { worker, conversion } = convertThrough(client);
-		const id = requestId(worker);
-		const rejected = expect(conversion).rejects.toThrow('did not answer');
-
-		await jest.advanceTimersByTimeAsync(PAST_THE_BUDGET);
-		await rejected;
+		const { worker } = await waitOutTheBudget();
 
 		// A late answer to a request nobody waits on must find nothing to
 		// resolve, or the entry is a leak that also settles a second time.
 		expect(() => {
-			answer(worker, resultFor(id));
+			answer(worker, resultFor(requestId(worker)));
 		}).not.toThrow();
 	});
 
@@ -289,22 +315,13 @@ describe('a worker that stops answering', () => {
 	// whole budget before falling back. The caller checks availability first,
 	// so marking it unavailable sends them straight to the main thread.
 	it('stops offering the worker after one has hung', async () => {
-		const client = new EncodingWorkerClient('worker-source');
-		const { conversion } = convertThrough(client);
-		const rejected = expect(conversion).rejects.toThrow('did not answer');
-
-		await jest.advanceTimersByTimeAsync(PAST_THE_BUDGET);
-		await rejected;
+		const { client } = await waitOutTheBudget();
 
 		expect(client.isAvailable()).toBe(false);
 	});
 
 	it('refuses a conversion once the worker has been given up on', async () => {
-		const client = new EncodingWorkerClient('worker-source');
-		const { conversion } = convertThrough(client);
-		const rejected = expect(conversion).rejects.toThrow('did not answer');
-		await jest.advanceTimersByTimeAsync(PAST_THE_BUDGET);
-		await rejected;
+		const { client } = await waitOutTheBudget();
 
 		await expect(
 			client.convertBlob(new Blob(['a']), 'mp3', 128000, false),
@@ -315,16 +332,8 @@ describe('a worker that stops answering', () => {
 	// at a fixed deadline would abandon work that was going to finish.
 	it('gives a worker reporting progress its budget again', async () => {
 		const client = new EncodingWorkerClient('worker-source');
-		const onProgress = jest.fn();
-		const conversion = client.convertBlob(
-			new Blob(['audio']),
-			'mp3',
-			128000,
-			false,
-			'source',
-			onProgress,
-		);
-		const worker = at(createdWorkers, 0);
+		const { conversion, worker, onProgress } =
+			convertWatchingProgress(client);
 		const id = requestId(worker);
 
 		for (let round = 0; round < 3; round++) {
@@ -343,7 +352,7 @@ describe('a worker that stops answering', () => {
 	// worker. Terminating it on one timeout would take the healthy siblings.
 	it('leaves a second conversion of the same worker alone', async () => {
 		const client = new EncodingWorkerClient('worker-source');
-		const first = client.convertBlob(new Blob(['a']), 'mp3', 128000, false);
+		const { worker, conversion: first } = convertThrough(client);
 		const rejected = expect(first).rejects.toThrow('did not answer');
 		const second = client.convertBlob(
 			new Blob(['b']),
@@ -351,7 +360,6 @@ describe('a worker that stops answering', () => {
 			128000,
 			false,
 		);
-		const worker = at(createdWorkers, 0);
 
 		await jest.advanceTimersByTimeAsync(
 			ENCODING_WORKER_MIN_TIMEOUT_MS / 2,
@@ -367,9 +375,9 @@ describe('a worker that stops answering', () => {
 	it('clears the watchdog when the worker answers in time', async () => {
 		const client = new EncodingWorkerClient('worker-source');
 		const { worker, conversion } = convertThrough(client);
-
 		answer(worker, resultFor(requestId(worker)));
 		await conversion;
+
 		await jest.advanceTimersByTimeAsync(PAST_THE_BUDGET);
 
 		expect(client.isAvailable()).toBe(true);

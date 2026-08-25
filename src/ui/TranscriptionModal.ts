@@ -56,6 +56,7 @@ import {
 	type Transcript,
 	type TranscriptOutputSidecar,
 } from '../transcription/api';
+import { CancellationSource } from '../utils/cancellation';
 import {
 	profilesOfKind,
 	selectedProfileId,
@@ -132,9 +133,14 @@ function formatCostLine(line: CostEstimateLine): string {
  * Transcription dialog for a single audio file.
  */
 export class TranscriptionModal extends PluginModal {
-	private cancelled = false;
-	/** Aborts the in-flight run's HTTP requests when cancelled. */
-	private abortController: AbortController | null = null;
+	/**
+	 * The run's cancellation, replaced whenever a run starts. One object
+	 * answers both halves of a cancel - the flag the run checks between parts
+	 * and the signal its requests abort on - so the two cannot disagree. Held
+	 * non-null and rebuilt in setRunning, which makes "a running job can be
+	 * cancelled" true by construction rather than by ordering.
+	 */
+	private cancellation = new CancellationSource();
 	private statusEl: HTMLElement | null = null;
 	private elapsedEl: HTMLElement | null = null;
 	/** Interval handle for the live elapsed-time counter (null when stopped). */
@@ -835,13 +841,9 @@ export class TranscriptionModal extends PluginModal {
 		// Snapshot the options so a control toggled mid-run cannot change an
 		// in-flight job; edits only affect the next attempt after a failure.
 		const settings = { ...this.runSettings };
-		this.abortController = new AbortController();
-		const token: CancellationToken = {
-			isCancelled: () => this.cancelled,
-			// Lets abort-capable providers stop an in-flight upload at once;
-			// requestUrl-only endpoints still finish or time out on their own.
-			signal: this.abortController.signal,
-		};
+		// Lets abort-capable providers stop an in-flight request at once, and
+		// requestUrl-only endpoints still finish or time out on their own.
+		const token: CancellationToken = this.cancellation.token;
 		this.runningCostEl?.setText('');
 		// The last cumulative cost the run reported, kept so an already-billed
 		// run is still counted when the transcript write fails after the
@@ -951,8 +953,7 @@ export class TranscriptionModal extends PluginModal {
 	 * current HTTP request where the transport supports it.
 	 */
 	private cancelRun(): void {
-		this.cancelled = true;
-		this.abortController?.abort();
+		this.cancellation.cancel();
 	}
 
 	/**
@@ -964,7 +965,9 @@ export class TranscriptionModal extends PluginModal {
 	private setRunning(running: boolean): void {
 		this.busy = running;
 		if (running) {
-			this.cancelled = false;
+			// A fresh source per run, so a cancel from a previous attempt
+			// cannot leave this one starting out already cancelled.
+			this.cancellation = new CancellationSource();
 			this.startElapsedTimer();
 		} else {
 			this.stopElapsedTimer();

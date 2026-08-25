@@ -188,6 +188,7 @@ export class GeminiProvider implements TranscriptionProvider {
 				this.config.apiKey,
 				file.name,
 				fileProcessingWaitMs(data.byteLength),
+				options.signal,
 			);
 			const url = geminiGenerateContentUrl(
 				this.config.baseUrl,

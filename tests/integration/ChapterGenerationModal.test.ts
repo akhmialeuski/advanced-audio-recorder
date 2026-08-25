@@ -203,7 +203,12 @@ describe('ChapterGenerationModal run settings', () => {
 		expect(settings.chaptersLlmProvider).toBe(LLM_PROVIDER_IDS.ANTHROPIC);
 		expect(settings.llmProvider).toBe(LLM_PROVIDER_IDS.GEMINI);
 		expect(saveSettings).toHaveBeenCalled();
-		expect(generate).toHaveBeenCalledWith(file, undefined, SOURCE);
+		expect(generate).toHaveBeenCalledWith(
+			file,
+			undefined,
+			SOURCE,
+			expect.any(AbortSignal),
+		);
 	});
 
 	it('moves only the model of the engine it generates with', async () => {
@@ -308,7 +313,12 @@ describe('ChapterGenerationModal run settings', () => {
 
 		// The service must receive the located source, so it does not scan the
 		// sidecar and the notes a second time.
-		expect(generate).toHaveBeenCalledWith(file, undefined, SOURCE);
+		expect(generate).toHaveBeenCalledWith(
+			file,
+			undefined,
+			SOURCE,
+			expect.any(AbortSignal),
+		);
 		expect(loadTranscriptLines).toHaveBeenCalledTimes(1);
 	});
 });
@@ -324,5 +334,68 @@ describe('ChapterGenerationModal with existing chapters', () => {
 		at(buttons(modal), 0).click();
 		// Generation waits behind the confirmation dialog.
 		expect(generate).not.toHaveBeenCalled();
+	});
+});
+
+// The dialog used to commit the choices, close, and leave generation running
+// with nothing able to stop it. That is a paid call on a transcript of any
+// length, so it stays open while it runs and offers a way out.
+describe('a generation the user can stop', () => {
+	/** A generate that only settles when its signal aborts. */
+	function abortableGenerate(): jest.Mock<Promise<boolean>, unknown[]> {
+		return jest.fn(
+			(
+				_file: unknown,
+				_transcript: unknown,
+				_preloaded: unknown,
+				signal: AbortSignal,
+			) =>
+				new Promise<boolean>((resolve) => {
+					signal.addEventListener('abort', () => {
+						resolve(false);
+					});
+				}),
+		) as jest.Mock<Promise<boolean>, unknown[]>;
+	}
+
+	it('stays open while the chapters are being generated', async () => {
+		const { modal, generate } = build();
+		generate.mockImplementation(abortableGenerate());
+		await open(modal);
+
+		at(buttons(modal), 0).click();
+		await Promise.resolve();
+
+		expect(modal.contentEl.textContent).toContain('Generating chapters');
+		expect(defined(buttons(modal)[0]).textContent).toBe('Cancel');
+	});
+
+	it('aborts the run the signal it handed over', async () => {
+		const { modal, generate } = build();
+		const running = abortableGenerate();
+		generate.mockImplementation(running);
+		await open(modal);
+		at(buttons(modal), 0).click();
+		await Promise.resolve();
+
+		at(buttons(modal), 0).click();
+		await Promise.resolve();
+
+		const signal = at(at(running.mock.calls, 0), 3) as AbortSignal;
+		expect(signal.aborted).toBe(true);
+	});
+
+	it('closes itself once the generation is done', async () => {
+		const { modal, generate } = build();
+		generate.mockResolvedValue(true);
+		const close = jest.spyOn(modal, 'close').mockImplementation();
+		await open(modal);
+
+		at(buttons(modal), 0).click();
+		await Promise.resolve();
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(close).toHaveBeenCalledTimes(1);
 	});
 });

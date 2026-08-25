@@ -42,7 +42,7 @@ type TranscriptionModalInternals = {
 	startRun: () => Promise<void>;
 	minimize: () => void;
 	restore: () => void;
-	cancelled: boolean;
+	cancellation: { isCancelled: () => boolean };
 	minimized: boolean;
 	busy: boolean;
 };
@@ -99,7 +99,7 @@ describe('TranscriptionModal minimize behavior', () => {
 			expect.any(Function),
 		);
 		expect(callbacks.clear).not.toHaveBeenCalled();
-		expect(internals.cancelled).toBe(false);
+		expect(internals.cancellation.isCancelled()).toBe(false);
 		expect(internals.minimized).toBe(true);
 		expect(modal.contentEl.textContent).toContain('Source: meeting.webm');
 	});
@@ -141,7 +141,7 @@ describe('TranscriptionModal minimize behavior', () => {
 		internals.setRunning(true);
 		modal.onClose();
 
-		expect(internals.cancelled).toBe(true);
+		expect(internals.cancellation.isCancelled()).toBe(true);
 		expect(callbacks.clear).toHaveBeenCalledTimes(1);
 		expect(modal.contentEl.textContent).toBe('');
 	});
@@ -1186,6 +1186,6 @@ describe('TranscriptionModal buttons', () => {
 
 		button(modal, 'Cancel').click();
 
-		expect(internals.cancelled).toBe(true);
+		expect(internals.cancellation.isCancelled()).toBe(true);
 	});
 });

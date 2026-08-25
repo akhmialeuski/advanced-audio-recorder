@@ -17,6 +17,7 @@ import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
 import { LLM_PROVIDER_IDS } from 'src/constants';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
+import { waitFor } from '../helpers/async';
 
 const tf = (path: string): TFile => {
 	const name = path.split('/').pop() ?? path;
@@ -369,5 +370,89 @@ describe('AutoChapterService.generate', () => {
 		await service.generate(tf('rec.wav'), TRANSCRIPT);
 
 		expect(saved()?.map((m) => m.label)).toEqual(['Intro']);
+	});
+});
+
+// Generation is a paid LLM call on a transcript that can run to thousands of
+// lines, and until the dialog grew a Cancel there was no way to stop one. The
+// signal reaches the call the same way it reaches every other LLM step.
+describe('a chapter run the user cancels', () => {
+	/** An LLM whose call only ends when the caller aborts it. */
+	function abortableLlm(): LlmProvider & { started: () => boolean } {
+		let started = false;
+		return {
+			id: LLM_PROVIDER_IDS.GEMINI,
+			label: 'Fake',
+			started: () => started,
+			complete: jest.fn(
+				(_prompt, _maxTokens, options) =>
+					new Promise<string>((_resolve, reject) => {
+						started = true;
+						options?.signal?.addEventListener('abort', () => {
+							reject(new Error('The user aborted a request.'));
+						});
+					}),
+			),
+		};
+	}
+
+	/**
+	 * Starts a run, waits for the LLM call to be in flight, and cancels it.
+	 * @returns What the run answered and what it managed to write
+	 */
+	async function cancelMidCall(): Promise<{
+		answered: boolean;
+		written: PlayerMarker[] | null;
+	}> {
+		const llm = abortableLlm();
+		const { store, saved } = makeStore();
+		const service = makeService({ llm, store });
+		const controller = new AbortController();
+
+		const run = service.generate(
+			tf('rec.wav'),
+			TRANSCRIPT,
+			undefined,
+			controller.signal,
+		);
+		await waitFor(() => llm.started(), {
+			message: 'the chapter call to start',
+		});
+		controller.abort();
+
+		return { answered: await run, written: saved() };
+	}
+
+	it('ends the call instead of running it to its own timeout', async () => {
+		const { answered, written } = await cancelMidCall();
+
+		expect(answered).toBe(false);
+		expect(written).toBeNull();
+	});
+
+	// The user asked for the stop, so reporting it as a failure would be the
+	// plugin telling them something went wrong with what they just did.
+	it('reports the stop as a cancellation rather than a failure', async () => {
+		await cancelMidCall();
+
+		expect(noticeTexts()).toContain('Chapter generation cancelled.');
+		expect(noticeTexts().join(' ')).not.toContain('failed');
+	});
+
+	// Nothing was asked to stop, so the run proceeds exactly as before.
+	it('generates as usual when the signal never fires', async () => {
+		const llm = makeLlm('[{"time": 0, "title": "Intro"}]');
+		const { store, saved } = makeStore();
+		const service = makeService({ llm, store });
+
+		const ok = await service.generate(
+			tf('rec.wav'),
+			TRANSCRIPT,
+			undefined,
+			new AbortController().signal,
+		);
+
+		expect(ok).toBe(true);
+		expect(saved()).not.toBeNull();
 	});
 });

@@ -40,8 +40,12 @@ import {
 	missingModelMessage,
 	type EngineDescriptor,
 	type EngineId,
+	type ProviderConnection,
 } from 'src/providers/providers';
-import type { TranscriptionProviderId } from 'src/settings/settingsSchema';
+import type {
+	AudioRecorderSettings,
+	TranscriptionProviderId,
+} from 'src/settings/settingsSchema';
 import { defined } from '../helpers/assertions';
 
 /** The engines a transcription run reaches over an account. */
@@ -73,6 +77,26 @@ const EVERY_ENGINE_ID: TranscriptionProviderId[] = [
 	TRANSCRIPTION_PROVIDER_IDS.GEMINI,
 	TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
 ];
+
+/**
+ * Settings that select one cloud engine with its key field emptied, which is
+ * the starting point of both key questions: whether the run is refused, and
+ * whether a repointed endpoint makes the refusal wrong.
+ * @param engineId - The cloud engine to select
+ * @returns The engine, its account, and the settings selecting it
+ */
+function selectedWithNoKey(engineId: EngineId): {
+	engine: EngineDescriptor;
+	account: ProviderConnection;
+	settings: AudioRecorderSettings;
+} {
+	const { engine, account } = engineAccess(engineId);
+	const settings = mergeSettings({
+		transcriptionProvider: transcriptionIdOf(engine),
+	});
+	account.setApiKey(settings, '');
+	return { engine, account, settings };
+}
 
 describe('transcription engine registry', () => {
 	it('describes every engine id', () => {
@@ -170,11 +194,7 @@ describe('registry-derived consumers stay in step', () => {
 
 	it('refuses to build a cloud engine with no key, in the account wording', () => {
 		for (const engineId of CLOUD_ENGINES) {
-			const { engine, account } = engineAccess(engineId);
-			const settings = mergeSettings({
-				transcriptionProvider: transcriptionIdOf(engine),
-			});
-			account.setApiKey(settings, '');
+			const { account, settings } = selectedWithNoKey(engineId);
 
 			expect(() => createTranscriptionProvider(settings)).toThrow(
 				ProviderConfigError,
@@ -191,13 +211,9 @@ describe('registry-derived consumers stay in step', () => {
 	// and a local one wants no key. Refusing before the client was built left
 	// that endpoint unreachable unless the user typed a decoy key, which then
 	// travelled in a real Authorization header.
-	it('builds a cloud engine with no key once the endpoint is the user\'s own', () => {
+	it("builds a cloud engine with no key once the endpoint is the user's own", () => {
 		for (const engineId of CLOUD_ENGINES) {
-			const { engine, account } = engineAccess(engineId);
-			const settings = mergeSettings({
-				transcriptionProvider: transcriptionIdOf(engine),
-			});
-			account.setApiKey(settings, '');
+			const { engine, account, settings } = selectedWithNoKey(engineId);
 			account.setBaseUrl(settings, 'http://localhost:1234/v1');
 
 			expect(createTranscriptionProvider(settings).id).toBe(

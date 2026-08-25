@@ -249,7 +249,7 @@ describe('delay', () => {
 		await jest.advanceTimersByTimeAsync(20);
 		await waiting;
 
-		expect(settled).toHaveBeenCalled();
+		expect(settled).toHaveBeenCalledTimes(1);
 	});
 });
 

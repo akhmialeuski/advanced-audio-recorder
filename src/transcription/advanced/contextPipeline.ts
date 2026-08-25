@@ -141,6 +141,12 @@ export interface ContextPipelineOptions {
 	/** Cancellation probe checked before each agent call. */
 	isCancelled?: (() => boolean) | undefined;
 	/**
+	 * Aborts the agent call that is in flight. The probe above only fires
+	 * between calls, so without this a Cancel pressed during one waited out
+	 * the request's own timeout and paid for it.
+	 */
+	signal?: AbortSignal | undefined;
+	/**
 	 * The run's settings, used to price each agent call. Required, so there is
 	 * no way to reach the agents without pricing them: an unaccounted branch
 	 * here is spending the session total would never show.
@@ -632,6 +638,7 @@ export async function generateContext(
 				settings: options.settings,
 				durationSeconds: options.durationSeconds ?? null,
 				costSink: options.costSink,
+				signal: options.signal,
 			});
 		} catch (error) {
 			console.warn(

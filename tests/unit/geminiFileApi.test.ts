@@ -246,6 +246,86 @@ describe('waitUntilActive', () => {
 			await jest.advanceTimersByTimeAsync(1);
 			await expect(pending).resolves.toBeUndefined();
 		});
+
+		// The budget scales with the upload up to twenty minutes. A Cancel
+		// that only took effect at the next boundary left the user watching a
+		// dialog they had already dismissed, while the run kept polling.
+		it('ends the wait when the run is cancelled between polls', async () => {
+			const sent = queueResponses([statusResponse('PROCESSING')]);
+			const controller = new AbortController();
+			const reason = new Error('Transcription cancelled');
+
+			const pending = waitUntilActive(
+				BASE_URL,
+				API_KEY,
+				'files/x',
+				undefined,
+				controller.signal,
+			);
+			const rejected = expect(pending).rejects.toBe(reason);
+			await jest.advanceTimersByTimeAsync(1);
+			controller.abort(reason);
+
+			await rejected;
+			expect(sent).toHaveLength(1);
+		});
+
+		it('polls on as usual while nothing has been cancelled', async () => {
+			const sent = queueResponses([
+				statusResponse('PROCESSING'),
+				statusResponse('ACTIVE'),
+			]);
+			const controller = new AbortController();
+
+			const pending = waitUntilActive(
+				BASE_URL,
+				API_KEY,
+				'files/x',
+				undefined,
+				controller.signal,
+			);
+			await jest.advanceTimersByTimeAsync(
+				GEMINI_FILE_POLL_INTERVAL_MS,
+			);
+
+			await expect(pending).resolves.toBeUndefined();
+			expect(sent).toHaveLength(2);
+		});
+
+		// Not only between polls: the poll request goes out on the abortable
+		// transport too, so an abort inside one is not waited out either.
+		it('sends the poll on a transport that can abort', async () => {
+			let init: RequestInit | undefined;
+			(globalThis as { fetch?: unknown }).fetch = jest.fn(
+				(_url: string, sent: RequestInit) => {
+					init = sent;
+					return Promise.resolve({
+						status: 200,
+						headers: new Headers(),
+						text: () =>
+							Promise.resolve(
+								JSON.stringify({
+									name: 'files/x',
+									uri: 'u',
+									state: 'ACTIVE',
+								}),
+							),
+					});
+				},
+			);
+			const controller = new AbortController();
+
+			await waitUntilActive(
+				BASE_URL,
+				API_KEY,
+				'files/x',
+				undefined,
+				controller.signal,
+			);
+			delete (globalThis as { fetch?: unknown }).fetch;
+
+			expect(init?.signal).toBeDefined();
+		});
 	});
 
 	it('gives up once the wait budget is spent', async () => {

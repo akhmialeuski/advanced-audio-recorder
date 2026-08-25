@@ -165,12 +165,17 @@ export async function uploadFile(
  * @param maxWaitMs - Overall wait budget; defaults to the floor. Callers that
  *   know the upload size should pass {@link fileProcessingWaitMs} so large
  *   files are not aborted prematurely.
+ * @param signal - Ends the wait when the run is cancelled. Reaches both the
+ *   poll request and the pause between polls, because the budget scales with
+ *   the upload up to twenty minutes and a Cancel that only took effect at the
+ *   next boundary would leave the user watching a dialog they already dismissed
  */
 export async function waitUntilActive(
 	baseUrl: string,
 	apiKey: string,
 	fileName: string,
 	maxWaitMs: number = GEMINI_FILE_MIN_WAIT_MS,
+	signal?: AbortSignal,
 ): Promise<void> {
 	const base = trimTrailingSlash(baseUrl);
 	const deadline = Date.now() + maxWaitMs;
@@ -180,6 +185,7 @@ export async function waitUntilActive(
 				url: `${base}/v1beta/${fileName}`,
 				method: 'GET',
 				headers: authHeader(GEMINI_API_KEY_HEADER, apiKey),
+				signal,
 			}),
 		);
 		if (file.state === FILE_STATE_ACTIVE) {
@@ -197,7 +203,7 @@ export async function waitUntilActive(
 				'Timed out waiting for Gemini to process the uploaded audio file.',
 			);
 		}
-		await delay(GEMINI_FILE_POLL_INTERVAL_MS);
+		await delay(GEMINI_FILE_POLL_INTERVAL_MS, signal);
 	}
 }
 

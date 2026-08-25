@@ -24,6 +24,8 @@ import { createMockApp } from '../helpers/createApp';
 import { fakeProvider, NO_DIARIZATION } from '../helpers/providerFixtures';
 import { LLM_PROVIDER_IDS } from 'src/constants';
 import { noticeMessages } from '../mocks/obsidian';
+import { CancellationSource } from 'src/utils/cancellation';
+import { waitFor } from '../helpers/async';
 
 const audioFile = partial<TFile>({
 	name: 'rec.webm',
@@ -294,6 +296,88 @@ describe('a cancel that lands while a request is in flight', () => {
 		await expect(
 			runWatching(service, () => cancelled),
 		).rejects.toBeInstanceOf(TranscriptionCancelledError);
+	});
+
+	// The cancel used to reach the transcription request and nothing else, so
+	// pressing it during post-processing released nothing: the dialog stayed
+	// busy for the request's own five-minute timeout, and the provider ran the
+	// call and billed for it. What the user pressed the button for was exactly
+	// not to pay for it.
+	describe('a cancel pressed while the cleanup pass is running', () => {
+		/**
+		 * Runs to the post-processing stage, cancels there, and reports what
+		 * the pass saw.
+		 * @param costSink - Where the run reports LLM spending, when a test
+		 *   cares whether anything was billed
+		 * @returns Whether the pass was aborted, once the run has rejected
+		 */
+		async function cancelDuringCleanup(
+			costSink?: TranscriptionServiceDeps['costSink'],
+		): Promise<boolean> {
+			const source = new CancellationSource();
+			let started = false;
+			let aborted = false;
+			const service = new TranscriptionService(
+				makeApp(),
+				() => mergeSettings({ ...baseSettings, ...withCleanup }),
+				{
+					createProvider: () =>
+						makeProvider(() => {
+							/* the transcription itself completes */
+						}),
+					createLlm: () => ({
+						id: LLM_PROVIDER_IDS.GEMINI,
+						label: 'Fake LLM',
+						complete: (_prompt, _maxTokens, options) =>
+							new Promise((_resolve, reject) => {
+								started = true;
+								options?.signal?.addEventListener(
+									'abort',
+									() => {
+										aborted = true;
+										reject(
+											new TranscriptionCancelledError(),
+										);
+									},
+								);
+							}),
+					}),
+					...(costSink ? { costSink } : {}),
+				},
+			);
+
+			const run = service.run(audioFile, {
+				notePathForLinks: 'note.md',
+				token: source.token,
+			});
+			const rejected = expect(run).rejects.toBeInstanceOf(
+				TranscriptionCancelledError,
+			);
+			await waitFor(() => started, {
+				message: 'the post-processing call to start',
+			});
+			source.cancel();
+			await rejected;
+			return aborted;
+		}
+
+		it('aborts the request rather than waiting it out', async () => {
+			expect(await cancelDuringCleanup()).toBe(true);
+		});
+
+		// A call that was aborted was never answered, so it is not spending
+		// the session counter should show.
+		it('accounts nothing for the call it cancelled', async () => {
+			const records: string[] = [];
+
+			await cancelDuringCleanup({
+				recordLlmCall: (providerId) => {
+					records.push(providerId);
+				},
+			});
+
+			expect(records).toEqual([]);
+		});
 	});
 
 	// The same failure that is not a cancel keeps the transcript: the run is

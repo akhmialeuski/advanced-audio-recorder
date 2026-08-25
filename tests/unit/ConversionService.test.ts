@@ -6,7 +6,10 @@
  */
 
 import { ConversionService } from 'src/recording/ConversionService';
-import type { ConversionRequest } from 'src/recording/ConversionService';
+import type {
+	ConversionOutcome,
+	ConversionRequest,
+} from 'src/recording/ConversionService';
 import { App, TFile } from 'obsidian';
 import { noticeMessages } from '../mocks/obsidian';
 import { createMockApp } from '../helpers/createApp';
@@ -236,17 +239,23 @@ describe('ConversionService', () => {
 	// file. Conversion never did, so a phone was handed a whole recording and
 	// a full PCM expansion of it, and the OS killed the WebView rather than
 	// raising anything the plugin could report.
-	it('refuses a file too large for this device before reading it', async () => {
-		useMobilePlatform();
+	/**
+	 * Converts a file just over the mobile decode ceiling to WAV.
+	 * @returns What the pipeline answered
+	 */
+	const convertOversized = (): Promise<ConversionOutcome> => {
 		const sourceFile = createSourceFile('webm');
 		sourceFile.stat.size = MOBILE_MAX_DECODE_BYTES + 1;
-
-		const outcome = await service.convert(
+		return service.convert(
 			createRequest({ sourceFile, targetFormat: 'wav' }),
 			jest.fn(),
 		);
+	};
 
-		expect(outcome).toEqual({ status: 'aborted' });
+	it('refuses a file too large for this device before reading it', async () => {
+		useMobilePlatform();
+
+		expect(await convertOversized()).toEqual({ status: 'aborted' });
 		expect(mockApp.vault.adapter.readBinary).not.toHaveBeenCalled();
 		expect(getNotices()).toContain(
 			'File is too large to convert on this device. Convert or split ' +
@@ -256,15 +265,8 @@ describe('ConversionService', () => {
 
 	it('converts that same file on desktop, where the ceiling is higher', async () => {
 		useDesktopPlatform();
-		const sourceFile = createSourceFile('webm');
-		sourceFile.stat.size = MOBILE_MAX_DECODE_BYTES + 1;
 
-		const outcome = await service.convert(
-			createRequest({ sourceFile, targetFormat: 'wav' }),
-			jest.fn(),
-		);
-
-		expect(outcome).toEqual({
+		expect(await convertOversized()).toEqual({
 			status: 'completed',
 			newFileName: 'recording.wav',
 			newPath: 'Audio/recording.wav',

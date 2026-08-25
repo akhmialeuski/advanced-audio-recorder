@@ -483,6 +483,9 @@ export class TranscriptionService {
 								settings.transcriptionProvider,
 							) === 'prompt',
 						isCancelled: () => token.isCancelled(),
+						// The probe above only fires between agent calls;
+						// during one, only the signal reaches the request.
+						signal: token.signal,
 						settings,
 						durationSeconds: stitched.segments.at(-1)?.end ?? null,
 						costSink: this.costSink,
@@ -642,6 +645,7 @@ export class TranscriptionService {
 					settings,
 					transcript,
 					markdown,
+					token,
 				);
 			} catch (error) {
 				if (error instanceof TranscriptionCancelledError) {
@@ -932,11 +936,17 @@ export class TranscriptionService {
 	/**
 	 * Runs the configured LLM post-processing step and returns the new
 	 * Markdown body (cleanup/custom replace the body; summary is prepended).
+	 * @param settings - The run's settings
+	 * @param transcript - The transcript the pass reads
+	 * @param markdown - The rendered body a cleanup or custom pass replaces
+	 * @param token - Cancellation for the run, so a Cancel pressed here ends
+	 *   the request instead of leaving it to its own timeout and the bill
 	 */
 	private async postProcess(
 		settings: AudioRecorderSettings,
 		transcript: Transcript,
 		markdown: string,
+		token: CancellationToken,
 	): Promise<string> {
 		const vendorId = jobVendorId(settings, 'postProcess');
 		const llm = this.createLlm(settings, vendorId);
@@ -966,6 +976,7 @@ export class TranscriptionService {
 			// estimate exactly as the pre-run breakdown does.
 			durationSeconds: transcript.segments.at(-1)?.end ?? null,
 			costSink: this.costSink,
+			signal: token.signal,
 		});
 		if (!output) {
 			return markdown;

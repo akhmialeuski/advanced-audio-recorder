@@ -144,12 +144,16 @@ export class AutoChapterService {
 	 * @param preloaded - Transcript lines the caller already located (the
 	 *   on-demand dialog loads them to show the source and cost estimate), so
 	 *   the sidecar/notes are not read a second time here
+	 * @param signal - Ends the run when the caller cancels. Generation is a
+	 *   paid call on a transcript that can run to thousands of lines, so the
+	 *   dialog that starts one offers a Cancel and this is what it pulls
 	 * @returns True when chapters were written
 	 */
 	async generate(
 		file: TFile,
 		transcript?: Transcript,
 		preloaded?: TranscriptLinesSource,
+		signal?: AbortSignal,
 	): Promise<boolean> {
 		try {
 			// The transcription check: without a transcript (given or found)
@@ -221,6 +225,7 @@ export class AutoChapterService {
 				settings,
 				durationSeconds,
 				costSink: this.costSink,
+				signal,
 			});
 			const chapters = parseChapterResponse(
 				output,
@@ -247,6 +252,13 @@ export class AutoChapterService {
 			);
 			return true;
 		} catch (error) {
+			// A cancel is what the user asked for, so it is reported as one.
+			// Calling it a failure would be the plugin telling them something
+			// went wrong with the thing they just did on purpose.
+			if (signal?.aborted) {
+				new Notice('Chapter generation cancelled.');
+				return false;
+			}
 			const message =
 				error instanceof Error ? error.message : String(error);
 			console.warn(
