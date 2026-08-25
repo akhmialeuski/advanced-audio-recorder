@@ -201,8 +201,10 @@ describe('saving progress', () => {
 	});
 
 	// A save the user did not ask for reads as an ordinary one unless the bar
-	// says why, and the Notice that explained it has usually gone by then.
-	it('says the input was lost when the save was not asked for', () => {
+	// says why, and the Notice that explained it has usually gone by then. The
+	// finalizer's own progress line used to replace the reason the moment it
+	// arrived, which is most of the save.
+	it('keeps saying the input was lost while the save runs', () => {
 		const statusBarItem = createStatusBar();
 
 		updateStatusBar(statusBarItem, RecordingStatus.Interrupted, {
@@ -211,7 +213,7 @@ describe('saving progress', () => {
 		});
 
 		expect(el(statusBarItem, 'span').textContent).toBe(
-			'Assembling audio...',
+			'Input lost: Assembling audio...',
 		);
 		expect(statusBarItem.classList.contains('is-saving')).toBe(true);
 		expect(statusBarItem.classList.contains('is-recording')).toBe(false);

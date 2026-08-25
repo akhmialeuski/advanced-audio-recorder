@@ -847,6 +847,26 @@ describe('an input device that disappears mid-session', () => {
 		expect(noticeMessages().join(' ')).toContain('was disconnected');
 	});
 
+	// The reason a save is running holds for as long as the save does. The
+	// finalizer's first progress line used to report an ordinary Saving over
+	// it, putting the recorder back into the state a stop the user pressed
+	// leaves it in, with the reason nowhere but a Notice already dismissed.
+	it('stays interrupted for the whole save, carrying its progress', async () => {
+		const sut = await startedSession();
+
+		endStream(0);
+		await untilSaved(sut);
+
+		expect(sut.onStatusChange).not.toHaveBeenCalledWith(
+			RecordingStatus.Saving,
+			expect.anything(),
+		);
+		expect(sut.onStatusChange).toHaveBeenCalledWith(
+			RecordingStatus.Interrupted,
+			expect.objectContaining({ percent: 100 }),
+		);
+	});
+
 	it('names the lost input rather than reporting a generic failure', async () => {
 		await startedSession(1, { useSourceNamesForTracks: false });
 

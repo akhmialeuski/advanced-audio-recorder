@@ -50,6 +50,14 @@ export interface RecordingLiveStats {
 }
 
 /**
+ * Why a save nobody asked for is running, shown for as long as it runs.
+ *
+ * Written once because it appears twice: before the finalizer has reported
+ * anything, and in front of every line it reports after that.
+ */
+const INTERRUPTED_REASON = 'Input lost';
+
+/**
  * Options for an interactive background progress indicator.
  */
 export type BackgroundProgressOptions = {
@@ -97,14 +105,20 @@ export function updateStatusBar(
 			break;
 		case RecordingStatus.Interrupted:
 			// The same progress surface as an ordinary save, because that is
-			// what is happening, under a label that says why: the user did not
-			// press stop, and a bare "Saving..." would leave them to work that
-			// out from a Notice that has already gone.
+			// what is happening, under a label that keeps saying why: the user
+			// did not press stop, and a bare "Saving..." would leave them to
+			// work that out from a Notice that has already gone. The reason
+			// stays in front of whatever the finalizer reports rather than
+			// being replaced by its first line, because it holds for as long
+			// as the save does.
 			renderProgressState(
 				statusBarItem,
-				saveProgress,
+				saveProgress && {
+					...saveProgress,
+					description: `${INTERRUPTED_REASON}: ${saveProgress.description}`,
+				},
 				'is-saving',
-				'Input lost, saving...',
+				`${INTERRUPTED_REASON}, saving...`,
 			);
 			break;
 		case RecordingStatus.Saving:

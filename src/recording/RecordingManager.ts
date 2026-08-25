@@ -1040,12 +1040,28 @@ export class RecordingManager {
 		this.captureStreams = [];
 	}
 
+	/**
+	 * Moves the session to a status and reports it.
+	 *
+	 * A `Saving` does not displace an `Interrupted`. The session is saving
+	 * either way, and what separates the two is why - which holds for as long
+	 * as the save does, rather than for the instant it began. Reported as an
+	 * ordinary save, which the finalizer's first progress line used to do, the
+	 * reason survived only in a Notice the user had already dismissed.
+	 * @param status - The status the session is moving to
+	 * @param saveProgress - Progress of the save, when one is in flight
+	 */
 	private setStatus(
 		status: RecordingStatus,
 		saveProgress?: SaveProgress,
 	): void {
-		this.status = status;
-		this.onStatusChange(status, saveProgress);
+		const effective =
+			status === RecordingStatus.Saving &&
+			this.status === RecordingStatus.Interrupted
+				? RecordingStatus.Interrupted
+				: status;
+		this.status = effective;
+		this.onStatusChange(effective, saveProgress);
 	}
 
 	private async handleChunk(index: number, data: Blob): Promise<void> {

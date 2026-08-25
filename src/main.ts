@@ -1209,8 +1209,11 @@ export default class AudioRecorderPlugin extends Plugin {
 			return;
 		}
 		this.recordingStatus = status;
-		this.recordingSaveProgress =
-			status === RecordingStatus.Saving ? saveProgress : undefined;
+		// Whatever arrived with the status. The manager passes progress
+		// exactly when a save is in flight, so re-deriving that from the
+		// status could only disagree with it - which is what left an
+		// interrupted save rendering its bar at zero.
+		this.recordingSaveProgress = saveProgress;
 		// Route through renderStatusBar so minimized transcription progress
 		// keeps its precedence when recording returns to idle.
 		this.renderStatusBar();

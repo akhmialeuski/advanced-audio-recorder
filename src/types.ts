@@ -19,9 +19,15 @@ export const RecordingStatus = {
 	 * Capture ended without the user asking for it: the input device went
 	 * away mid-session. A state of its own because it is the one ending the
 	 * user did not initiate, and every surface that shows what the recorder
-	 * is doing has to say so rather than showing an ordinary save. It is
-	 * brief - the session finalizes what it already captured and moves on to
-	 * Saving - which is exactly why it needs to be visible.
+	 * is doing has to say so rather than showing an ordinary save.
+	 *
+	 * It holds for the whole save that follows, not for the instant the input
+	 * went. The session is saving either way, and the reason is the only thing
+	 * separating this from a stop somebody pressed, so a {@link
+	 * RecordingStatus.Saving} does not displace it - which is what used to
+	 * happen on the finalizer's first progress line, leaving the reason
+	 * nowhere but a Notice already dismissed. The session leaves it for Idle
+	 * when the save is done.
 	 */
 	Interrupted: 'interrupted',
 	Saving: 'saving',
