@@ -1,11 +1,12 @@
 /**
- * Tests for friendlyHttpHint (human-readable guidance for common provider
- * HTTP failures) and uploadTimeoutMs (the payload-scaled request deadline
- * that keeps a large but healthy upload from being aborted prematurely).
+ * Tests for what a failed request carries out of the HTTP client - the
+ * human-readable guidance and whether the run may send it again, both read off
+ * the HttpError the client throws - and for uploadTimeoutMs, the
+ * payload-scaled request deadline that keeps a large but healthy upload from
+ * being aborted prematurely.
  */
 
 import {
-	friendlyHttpHint,
 	HttpError,
 	providerMessage,
 	requestJson,
@@ -19,7 +20,46 @@ import {
 import { withRequestUrl } from '../helpers/network';
 import { defined } from '../helpers/assertions';
 
-describe('friendlyHttpHint', () => {
+/**
+ * Sends one request against a scripted answer and returns the failure it
+ * raised.
+ *
+ * Asserted off the error rather than off a classifier exported for the
+ * purpose: the guidance and the retry decision are two readings of one
+ * response, and this is the object both of them travel on.
+ * @param status - Status the endpoint answers with
+ * @param body - Body the endpoint answers with
+ * @param headers - Headers the endpoint answers with
+ * @returns The HttpError the request failed with
+ */
+async function failureFor(
+	status: number,
+	body = '',
+	headers: Record<string, string> = {},
+): Promise<HttpError> {
+	withRequestUrl(() => ({ status, headers, text: body }));
+	try {
+		await requestRaw({ url: 'https://api.example/v1/x', method: 'GET' });
+	} catch (error) {
+		if (error instanceof HttpError) {
+			return error;
+		}
+		throw error;
+	}
+	throw new Error('the request did not fail');
+}
+
+/**
+ * The sentence a failed request hands the user, lowercased for matching.
+ * @param status - Status the endpoint answers with
+ * @param body - Body the endpoint answers with
+ * @returns The message, lowercased
+ */
+async function hintFor(status: number, body = ''): Promise<string> {
+	return (await failureFor(status, body)).message.toLowerCase();
+}
+
+describe('the guidance a failed request carries', () => {
 	it.each([
 		{
 			name: 'an OpenAI insufficient_quota 429',
@@ -69,17 +109,17 @@ describe('friendlyHttpHint', () => {
 			body: 'Internal Server Error',
 			says: 'server error',
 		},
-	])('reads $name as "$says"', ({ status, body, says }) => {
-		expect(friendlyHttpHint(status, body).toLowerCase()).toContain(says);
+	])('reads $name as "$says"', async ({ status, body, says }) => {
+		expect(await hintFor(status, body)).toContain(says);
 	});
 
-	it('treats a 403 "insufficient permissions" as auth, not billing', () => {
+	it('treats a 403 "insufficient permissions" as auth, not billing', async () => {
 		// Regression: the bare "insufficient" marker used to misclassify a
 		// forbidden/scope error as a billing problem. It must read as auth.
-		const hint = friendlyHttpHint(
+		const hint = await hintFor(
 			403,
 			'{"error":"insufficient permissions for this resource"}',
-		).toLowerCase();
+		);
 		expect(hint).toContain('authentication failed');
 		expect(hint).not.toContain('quota or credit');
 	});
@@ -101,21 +141,21 @@ describe('friendlyHttpHint', () => {
 			status: 403,
 			body: '{"error":{"code":"unsupported_country_region_territory","message":"Country, region, or territory not supported"}}',
 		},
-	])('names the region for $name', ({ status, body }) => {
-		const hint = friendlyHttpHint(status, body).toLowerCase();
+	])('names the region for $name', async ({ status, body }) => {
+		const hint = await hintFor(status, body);
 
 		expect(hint).toContain('does not serve your region');
 		expect(hint).not.toContain('authentication failed');
 	});
 
-	it('names both ways out of a region refusal', () => {
+	it('names both ways out of a region refusal', async () => {
 		// Another engine, or an endpoint that does serve the caller. The
 		// second is what a user in a blocked country already relies on, and it
 		// is a field on the same page.
-		const hint = friendlyHttpHint(
+		const hint = await hintFor(
 			400,
 			'{"error":{"code":400,"message":"User location is not supported for the API use.","status":"FAILED_PRECONDITION"}}',
-		).toLowerCase();
+		);
 
 		expect(hint).toContain('engines');
 		expect(hint).toContain('base url');
@@ -127,7 +167,6 @@ describe('friendlyHttpHint', () => {
 			status: 404,
 			body: 'Not Found',
 		},
-		{ name: 'a success status', status: 200, body: 'OK' },
 		{ name: 'a redirect', status: 302, body: 'Found' },
 		// The bodies a failing endpoint returns when it is not the API at
 		// all. Each must read as "no hint" rather than break the error path
@@ -146,8 +185,12 @@ describe('friendlyHttpHint', () => {
 			body: '{"problem":{"kind":"unknown"}}',
 		},
 		{ name: 'truncated JSON', status: 400, body: '{"error":{' },
-	])('returns no hint for $name', ({ status, body }) => {
-		expect(friendlyHttpHint(status, body)).toBe('');
+	])('carries no guidance for $name', async ({ status, body }) => {
+		// No hint means nothing is prefixed to the diagnostic detail, which
+		// is what the message then opens with.
+		expect((await failureFor(status, body)).message).toMatch(
+			/^Request to /,
+		);
 	});
 
 	it.each([
@@ -160,11 +203,14 @@ describe('friendlyHttpHint', () => {
 		{ status: 599, hinted: true },
 		{ status: 499, hinted: false },
 		{ status: 404, hinted: false },
-	])('treats $status as a server fault: $hinted', ({ status, hinted }) => {
-		const hint = friendlyHttpHint(status, '').toLowerCase();
+	])(
+		'treats $status as a server fault: $hinted',
+		async ({ status, hinted }) => {
+			const hint = await hintFor(status);
 
-		expect(hint.includes('server error')).toBe(hinted);
-	});
+			expect(hint.includes('server error')).toBe(hinted);
+		},
+	);
 });
 
 describe('providerMessage', () => {
@@ -610,34 +656,6 @@ describe('requestJson', () => {
 // them back. Whether re-sending could help is decided where the status, the
 // body, and the headers are all still in hand.
 describe('a failure the run could try again', () => {
-	/** Answers one request with the given status, body, and headers. */
-	function answerWith(
-		status: number,
-		text = '',
-		headers: Record<string, string> = {},
-	): void {
-		withRequestUrl(() => ({ status, headers, text }));
-	}
-
-	/**
-	 * Sends one request and returns the failure it raised.
-	 * @returns The HttpError the request failed with
-	 */
-	async function failure(): Promise<HttpError> {
-		try {
-			await requestRaw({
-				url: 'https://api.example/v1/x',
-				method: 'GET',
-			});
-		} catch (error) {
-			if (error instanceof HttpError) {
-				return error;
-			}
-			throw error;
-		}
-		throw new Error('the request did not fail');
-	}
-
 	it.each([
 		{ name: 'a rate limit', status: 429, body: '', retryable: true },
 		{
@@ -672,41 +690,43 @@ describe('a failure the run could try again', () => {
 	])(
 		'reports $name as retryable: $retryable',
 		async ({ status, body, retryable }) => {
-			answerWith(status, body);
-
-			expect((await failure()).retryable).toBe(retryable);
+			expect((await failureFor(status, body)).retryable).toBe(retryable);
 		},
 	);
 
 	// A quota that ran out is a rate limit shaped like one and fixed by
 	// nothing a retry can do, so the billing branch wins over the 429.
 	it('keeps the billing wording on an exhausted quota', async () => {
-		answerWith(429, '{"error":{"message":"insufficient_quota"}}');
+		const failure = await failureFor(
+			429,
+			'{"error":{"message":"insufficient_quota"}}',
+		);
 
-		expect((await failure()).message).toContain('Out of API quota');
+		expect(failure.message).toContain('Out of API quota');
 	});
 
 	it('reads the pause a provider asked for in seconds', async () => {
-		answerWith(429, '', { 'Retry-After': '12' });
+		const failure = await failureFor(429, '', { 'Retry-After': '12' });
 
-		expect((await failure()).retryAfterMs).toBe(12000);
+		expect(failure.retryAfterMs).toBe(12000);
 	});
 
 	it('reads the pause a provider gave as a date', async () => {
 		const when = new Date(Date.now() + 30_000).toUTCString();
-		answerWith(429, '', { 'Retry-After': when });
+
+		const failure = await failureFor(429, '', { 'Retry-After': when });
 
 		// Wall-clock arithmetic, so the exact value drifts by the odd
 		// millisecond; what matters is that it landed near the half minute.
-		expect(defined((await failure()).retryAfterMs)).toBeGreaterThan(25_000);
-		expect(defined((await failure()).retryAfterMs)).toBeLessThan(35_000);
+		expect(defined(failure.retryAfterMs)).toBeGreaterThan(25_000);
+		expect(defined(failure.retryAfterMs)).toBeLessThan(35_000);
 	});
 
 	// Header names arrive in whatever case the server sent them.
 	it('reads the pause whatever case the header came in', async () => {
-		answerWith(429, '', { 'retry-after': '5' });
+		const failure = await failureFor(429, '', { 'retry-after': '5' });
 
-		expect((await failure()).retryAfterMs).toBe(5000);
+		expect(failure.retryAfterMs).toBe(5000);
 	});
 
 	it.each([
@@ -717,8 +737,8 @@ describe('a failure the run could try again', () => {
 			headers: { 'Retry-After': 'Thu, 01 Jan 1970 00:00:00 GMT' },
 		},
 	])('advises no particular pause for $name', async ({ headers }) => {
-		answerWith(429, '', headers);
+		const failure = await failureFor(429, '', headers);
 
-		expect((await failure()).retryAfterMs).toBeUndefined();
+		expect(failure.retryAfterMs).toBeUndefined();
 	});
 });

@@ -483,21 +483,6 @@ async function dispatchRequest(
 	return response;
 }
 
-/**
- * Maps an HTTP failure to a short, human-readable hint for the common cases -
- * out of quota/credit, bad key, rate limit, provider outage - or '' when no
- * specific guidance applies. Provider-neutral: matches OpenAI
- * `insufficient_quota`, Anthropic "credit balance is too low", and Deepgram
- * `INSUFFICIENT_CREDITS` alike. The caller still appends the raw status and
- * body excerpt for diagnostics.
- * @param status - HTTP status code (0 for transport/timeout failures)
- * @param body - Response body excerpt (may be empty)
- * @returns A human-readable hint, or '' when none applies
- */
-export function friendlyHttpHint(status: number, body: string): string {
-	return classifyHttpFailure(status, body).hint;
-}
-
 /** What one HTTP failure is, as far as the run is concerned. */
 interface HttpFailureKind {
 	/** Human-readable guidance, or '' when none applies. */
@@ -515,6 +500,11 @@ interface HttpFailureKind {
  * separately whether to retry would be a second reading of the same response,
  * free to disagree with the first. So the branch that says "wait a moment and
  * try again" is the branch that says the run may.
+ *
+ * The hint is provider-neutral: it matches OpenAI `insufficient_quota`,
+ * Anthropic "credit balance is too low", and Deepgram `INSUFFICIENT_CREDITS`
+ * alike. {@link requestRaw} is the only caller, and appends the raw status and
+ * body excerpt to whatever comes back here.
  * @param status - HTTP status code (0 for transport/timeout failures)
  * @param body - Response body excerpt (may be empty)
  */
