@@ -20,7 +20,7 @@ import {
 } from '../audio/AudioFormatConverter';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import {
-	isDecodableSize,
+	isReadableSize,
 	tooLargeToDecodeMessage,
 } from '../platform/capabilities';
 import { updateLinksInVault } from '../utils/LinkUpdater';
@@ -130,11 +130,13 @@ export class ConversionService {
 				return { status: 'aborted' };
 			}
 
-			// Asked before the bytes are read, not only by the decoder
-			// underneath: on a phone, holding a whole recording in memory is
-			// itself most of the allocation that gets the WebView killed, and
-			// a refusal the user can read beats a silent restart.
-			if (!isDecodableSize(request.sourceFile.stat.size)) {
+			// The ceiling on the read, which is what happens next, and not
+			// the one on decoding: the compressed path below remuxes or
+			// streams, and neither ever expands the file to PCM. Asking the
+			// decode question here would refuse a long recording that the
+			// converter handles without allocating for it. What decoding
+			// costs is bounded by decodeAudioBlob, where the allocation is.
+			if (!isReadableSize(request.sourceFile.stat.size)) {
 				new Notice(tooLargeToDecodeMessage('convert'));
 				return { status: 'aborted' };
 			}

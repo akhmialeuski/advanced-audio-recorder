@@ -19,8 +19,9 @@ import {
 	getMaxCleanupSeconds,
 	getMaxDecodeBytes,
 	isDecodableSize,
+	isReadableSize,
 	tooLargeToDecodeMessage,
-	getMaxSplitSourceBytes,
+	getMaxSourceReadBytes,
 	getPlatformCapabilities,
 	isAutoSplitSupported,
 	isChannelModeSelectionSupported,
@@ -122,10 +123,10 @@ describe('platform capability table', () => {
 			MAX_AUDIO_CLEANUP_DECODED_SAMPLES,
 		);
 		expect(desktop.maxCleanupSeconds).toBe(MAX_AUDIO_CLEANUP_SECONDS);
-		expect(desktop.maxSplitSourceBytes).toBe(Number.POSITIVE_INFINITY);
+		expect(desktop.maxSourceReadBytes).toBe(Number.POSITIVE_INFINITY);
 		expect(mobile.chunkFlushThresholdBytes).toBe(MOBILE_BUFFER_LIMIT_BYTES);
 		expect(mobile.maxDecodeBytes).toBe(MOBILE_MAX_DECODE_BYTES);
-		expect(mobile.maxSplitSourceBytes).toBe(MOBILE_MAX_DECODE_BYTES);
+		expect(mobile.maxSourceReadBytes).toBe(MOBILE_MAX_DECODE_BYTES);
 		expect(mobile.maxCleanupDecodedSamples).toBe(
 			MOBILE_MAX_CLEANUP_DECODED_SAMPLES,
 		);
@@ -212,7 +213,7 @@ describe('capability helper functions', () => {
 		});
 
 		it('bounds the source a split may read', () => {
-			expect(getMaxSplitSourceBytes(limits.platform)).toBe(
+			expect(getMaxSourceReadBytes(limits.platform)).toBe(
 				limits.maxSplitSource,
 			);
 		});
@@ -261,6 +262,43 @@ describe('capability helper functions', () => {
 		expect(isDecodableSize(MOBILE_MAX_DECODE_BYTES + 1)).toBe(true);
 		setPlatform({ isMobile: true });
 		expect(isDecodableSize(MOBILE_MAX_DECODE_BYTES + 1)).toBe(false);
+	});
+});
+
+// Reading a file whole and expanding it to PCM are two allocations, and only
+// one of them grows the file. Answering the read with the decode ceiling
+// refused work a platform does perfectly well: a streaming conversion or a
+// lossless WAV split never decodes, and desktop reads a source of any size.
+describe('whether a file may be read whole', () => {
+	it('reads a source of any size on desktop', () => {
+		expect(isReadableSize(WAVEFORM_MAX_DECODE_BYTES + 1, 'desktop')).toBe(
+			true,
+		);
+		expect(getMaxSourceReadBytes('desktop')).toBe(Number.POSITIVE_INFINITY);
+	});
+
+	// On a phone, holding the bytes plus one working copy is itself most of
+	// the allocation that gets the WebView killed.
+	it('bounds the read on mobile', () => {
+		expect(isReadableSize(MOBILE_MAX_DECODE_BYTES, 'mobile')).toBe(true);
+		expect(isReadableSize(MOBILE_MAX_DECODE_BYTES + 1, 'mobile')).toBe(
+			false,
+		);
+	});
+
+	it('follows the current platform when none is named', () => {
+		expect(isReadableSize(MOBILE_MAX_DECODE_BYTES + 1)).toBe(true);
+		setPlatform({ isMobile: true });
+		expect(isReadableSize(MOBILE_MAX_DECODE_BYTES + 1)).toBe(false);
+	});
+
+	// The two ceilings part company exactly where it matters: desktop reads
+	// what it will not decode.
+	it('parts company with the decode ceiling on desktop', () => {
+		const past = WAVEFORM_MAX_DECODE_BYTES + 1;
+
+		expect(isReadableSize(past, 'desktop')).toBe(true);
+		expect(isDecodableSize(past, 'desktop')).toBe(false);
 	});
 });
 

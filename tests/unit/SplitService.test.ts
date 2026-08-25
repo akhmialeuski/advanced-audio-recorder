@@ -36,7 +36,7 @@ jest.mock('src/platform/capabilities', () => {
 	return {
 		...actual,
 		isDecodableSize: jest.fn(actual.isDecodableSize),
-		getMaxSplitSourceBytes: jest.fn(actual.getMaxSplitSourceBytes),
+		isReadableSize: jest.fn(actual.isReadableSize),
 	};
 });
 
@@ -153,10 +153,10 @@ describe('SplitService', () => {
 			// On mobile even materializing the source bytes can get the
 			// WebView killed, so the size gate must run on stat.size,
 			// before adapter.readBinary
-			const { getMaxSplitSourceBytes } = jest.requireMock<{
-				getMaxSplitSourceBytes: jest.Mock;
+			const { isReadableSize } = jest.requireMock<{
+				isReadableSize: jest.Mock;
 			}>('src/platform/capabilities');
-			getMaxSplitSourceBytes.mockReturnValueOnce(16);
+			isReadableSize.mockReturnValueOnce(false);
 
 			const outcome = await service.split(createRequest(), jest.fn());
 

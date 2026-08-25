@@ -15,8 +15,8 @@ import {
 import { FORMAT_WAV, PLUGIN_LOG_PREFIX } from '../constants';
 import {
 	isDecodableSize,
+	isReadableSize,
 	tooLargeToDecodeMessage,
-	getMaxSplitSourceBytes,
 } from '../platform/capabilities';
 import { decodeAudioBlob } from '../audio/AudioFormatConverter';
 import {
@@ -118,7 +118,7 @@ export class SplitService {
 			// the source (plus one part copy) can get the WebView killed.
 			// Desktop is unbounded here - the lossless WAV byte path must
 			// keep splitting files beyond the decode ceiling.
-			if (request.sourceFile.stat.size > getMaxSplitSourceBytes()) {
+			if (!isReadableSize(request.sourceFile.stat.size)) {
 				new Notice(
 					'File is too large to split on this device. Split it on desktop instead.',
 				);

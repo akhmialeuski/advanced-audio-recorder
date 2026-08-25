@@ -304,12 +304,40 @@ describe('a worker that stops answering', () => {
 		return { client, worker };
 	}
 
-	it('rejects the request once the worker has gone quiet for its budget', async () => {
-		// The rejection is asserted inside the helper; what this case adds is
-		// that the worker itself was left running rather than torn down.
+	// The rejection is asserted inside the helper; what this case adds is that
+	// the thread goes with it. Giving up on the client is not the same as
+	// releasing the worker, and only the first used to happen: a wedged thread
+	// kept running - holding whatever payload it was handed - until unload.
+	it('releases the thread once nothing is waiting on it', async () => {
 		const { worker } = await waitOutTheBudget();
 
+		expect(worker.terminate).toHaveBeenCalledTimes(1);
+	});
+
+	// The one reason not to terminate on the spot: multi-track finalization
+	// converts several tracks through one worker, and a sibling still waiting
+	// would go down with the wedged request. That reason expires when the last
+	// of them settles, which is the only thing the release waits for.
+	it('keeps the thread while a sibling is still waiting on it', async () => {
+		const client = new EncodingWorkerClient('worker-source');
+		const { worker, conversion: first } = convertThrough(client);
+		const wedged = outcomeOf(first);
+		// Sent half a budget later, so the sibling's own deadline outlives the
+		// first request's.
+		await jest.advanceTimersByTimeAsync(ENCODING_WORKER_MIN_TIMEOUT_MS / 2);
+		const sibling = outcomeOf(
+			client.convertBlob(new Blob(['b']), 'mp3', 128000, false),
+		);
+
+		await jest.advanceTimersByTimeAsync(
+			ENCODING_WORKER_MIN_TIMEOUT_MS / 2 + 1,
+		);
+		expect(await wedged).toEqual(timedOut);
 		expect(worker.terminate).not.toHaveBeenCalled();
+
+		await jest.advanceTimersByTimeAsync(PAST_THE_BUDGET);
+		expect(await sibling).toEqual(timedOut);
+		expect(worker.terminate).toHaveBeenCalledTimes(1);
 	});
 
 	it('leaves nothing waiting behind a timed-out request', async () => {
@@ -375,10 +403,12 @@ describe('a worker that stops answering', () => {
 		await jest.advanceTimersByTimeAsync(ENCODING_WORKER_MIN_TIMEOUT_MS / 2);
 		answer(worker, resultFor(requestId(worker, 1)));
 		await expect(second).resolves.toBeInstanceOf(Blob);
+		// The wedged request has not run out yet, so the thread the healthy
+		// sibling just used was never at risk.
+		expect(worker.terminate).not.toHaveBeenCalled();
 
 		await jest.advanceTimersByTimeAsync(PAST_THE_BUDGET);
 		expect(await settled).toEqual(timedOut);
-		expect(worker.terminate).not.toHaveBeenCalled();
 	});
 
 	it('clears the watchdog when the worker answers in time', async () => {

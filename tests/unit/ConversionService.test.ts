@@ -14,7 +14,10 @@ import { App, TFile } from 'obsidian';
 import { noticeMessages } from '../mocks/obsidian';
 import { createMockApp } from '../helpers/createApp';
 import { useDesktopPlatform, useMobilePlatform } from '../helpers/platform';
-import { MOBILE_MAX_DECODE_BYTES } from 'src/constants';
+import {
+	MOBILE_MAX_DECODE_BYTES,
+	WAVEFORM_MAX_DECODE_BYTES,
+} from 'src/constants';
 import {
 	convertBlobToFormatBuffer,
 	decodeAudioBlob,
@@ -232,10 +235,13 @@ describe('ConversionService', () => {
 		).toBe(true);
 	});
 
-	// Every other decode-heavy feature asks the platform before it reads the
-	// file. Conversion never did, so a phone was handed a whole recording and
-	// a full PCM expansion of it, and the OS killed the WebView rather than
-	// raising anything the plugin could report.
+	// Every other feature that reads a whole file asks the platform first.
+	// Conversion never did, so a phone was handed a whole recording and a full
+	// PCM expansion of it, and the OS killed the WebView rather than raising
+	// anything the plugin could report. The question asked here is about the
+	// read, not the decode: the compressed path below remuxes or streams and
+	// never expands the file, so a decode ceiling would refuse work the
+	// converter does without allocating for it.
 	/**
 	 * Converts a file just over the mobile decode ceiling to WAV.
 	 * @returns What the pipeline answered
@@ -267,6 +273,27 @@ describe('ConversionService', () => {
 			status: 'completed',
 			newFileName: 'recording.wav',
 			newPath: 'Audio/recording.wav',
+		});
+	});
+
+	// Desktop reads a source of any size, and the compressed path converts it
+	// without ever expanding it to PCM. Refusing here on the decode ceiling
+	// turned away the long recordings the feature exists to compress: a
+	// two-hour stereo WAV is past that ceiling and streams through fine.
+	it('converts a source past the decode ceiling to a compressed format', async () => {
+		useDesktopPlatform();
+		const sourceFile = createSourceFile('wav');
+		sourceFile.stat.size = WAVEFORM_MAX_DECODE_BYTES + 1;
+
+		const outcome = await service.convert(
+			createRequest({ sourceFile, targetFormat: 'mp3' }),
+			jest.fn(),
+		);
+
+		expect(outcome).toEqual({
+			status: 'completed',
+			newFileName: 'recording.mp3',
+			newPath: 'Audio/recording.mp3',
 		});
 	});
 

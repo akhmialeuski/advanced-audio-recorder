@@ -78,15 +78,6 @@ export class EncodingWorkerClient {
 		channelMode: ChannelMode = CHANNEL_MODE_SOURCE,
 		onProgress?: (percent: number) => void,
 	): Promise<Blob> {
-		// Asked before the worker is handed over, not only inside
-		// ensureWorker: a client given up on after a hang still holds a live
-		// worker object, and returning it would send the next conversion to
-		// wait on the thread that already stopped answering.
-		if (!this.isAvailable()) {
-			return Promise.reject(
-				new Error('Encoding worker is not available'),
-			);
-		}
 		const worker = this.ensureWorker();
 		if (!worker) {
 			return Promise.reject(
@@ -143,6 +134,7 @@ export class EncodingWorkerClient {
 			}
 			this.pending.delete(id);
 			this.unavailable = true;
+			this.releaseIfSpent();
 			request.reject(
 				new Error(
 					`Encoding worker did not answer within ${String(
@@ -151,6 +143,25 @@ export class EncodingWorkerClient {
 				),
 			);
 		}, timeoutMs);
+	}
+
+	/**
+	 * Releases the worker thread once it has been given up on and nothing is
+	 * still waiting on it.
+	 *
+	 * Giving up on the client is not the same as releasing the thread, and
+	 * only the first used to happen: a worker wedged in its demux loop kept
+	 * running - holding whatever payload it was handed - until the plugin
+	 * unloaded. It cannot be terminated the moment one request times out,
+	 * because multi-track finalization converts several tracks through one
+	 * worker and the healthy ones would go down with the wedged one. That
+	 * reason expires when the last of them settles, which is what this
+	 * watches for, from every path a request leaves the table by.
+	 */
+	private releaseIfSpent(): void {
+		if (this.unavailable && this.worker && this.pending.size === 0) {
+			this.terminate();
+		}
 	}
 
 	/**
@@ -180,11 +191,15 @@ export class EncodingWorkerClient {
 	 * @returns The worker, or null when it cannot run
 	 */
 	private ensureWorker(): Worker | null {
-		if (this.worker) {
-			return this.worker;
-		}
+		// Availability is asked first, ahead of the cached worker: a client
+		// given up on after a hang still holds a live worker object, and
+		// handing it back would send the next conversion to wait on the very
+		// thread that stopped answering.
 		if (!this.isAvailable() || this.workerSource === null) {
 			return null;
+		}
+		if (this.worker) {
+			return this.worker;
 		}
 		try {
 			this.workerUrl = URL.createObjectURL(
@@ -242,6 +257,7 @@ export class EncodingWorkerClient {
 			case 'result':
 				window.clearTimeout(request.timer);
 				this.pending.delete(response.id);
+				this.releaseIfSpent();
 				request.resolve(
 					new Blob([response.buffer], { type: response.mimeType }),
 				);
@@ -249,6 +265,7 @@ export class EncodingWorkerClient {
 			case 'error':
 				window.clearTimeout(request.timer);
 				this.pending.delete(response.id);
+				this.releaseIfSpent();
 				request.reject(new Error(response.message));
 				break;
 		}

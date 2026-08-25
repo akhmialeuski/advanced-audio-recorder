@@ -67,14 +67,19 @@ export interface PlatformCapabilities {
 	 */
 	readonly maxDecodeBytes: number;
 	/**
-	 * Largest source file the splitter will read into memory at all.
-	 * Desktop is unbounded: the lossless WAV byte path splits files far
-	 * beyond the decode ceiling without decoding (and cleanup points
-	 * users at split for oversized files, so split must accept them).
-	 * Mobile bounds every full-file read, because just holding the bytes
-	 * (plus one part copy) can get the WebView killed.
+	 * Largest source file this platform will read into memory whole, before
+	 * anything is done with the bytes.
+	 *
+	 * A separate ceiling from {@link PlatformCapabilities.maxDecodeBytes},
+	 * because reading and decoding are separate allocations and only one of
+	 * them expands the file. Desktop is unbounded: the splitter's lossless WAV
+	 * byte path and the converter's streaming path both handle files far
+	 * beyond the decode ceiling without ever expanding one, and cleanup points
+	 * users at split for oversized files, so split must accept them. Mobile
+	 * bounds every full-file read, because just holding the bytes (plus one
+	 * working copy) can get the WebView killed.
 	 */
-	readonly maxSplitSourceBytes: number;
+	readonly maxSourceReadBytes: number;
 	/** Largest decoded working set (frames x channels) cleanup accepts. */
 	readonly maxCleanupDecodedSamples: number;
 	/** Longest recording duration cleanup accepts, in seconds. */
@@ -94,7 +99,7 @@ const DESKTOP_CAPABILITIES: PlatformCapabilities = {
 	settingsListAddRow: false,
 	chunkFlushThresholdBytes: DESKTOP_FLUSH_THRESHOLD_BYTES,
 	maxDecodeBytes: WAVEFORM_MAX_DECODE_BYTES,
-	maxSplitSourceBytes: Number.POSITIVE_INFINITY,
+	maxSourceReadBytes: Number.POSITIVE_INFINITY,
 	maxCleanupDecodedSamples: MAX_AUDIO_CLEANUP_DECODED_SAMPLES,
 	maxCleanupSeconds: MAX_AUDIO_CLEANUP_SECONDS,
 };
@@ -112,7 +117,7 @@ const MOBILE_CAPABILITIES: PlatformCapabilities = {
 	settingsListAddRow: true,
 	chunkFlushThresholdBytes: MOBILE_BUFFER_LIMIT_BYTES,
 	maxDecodeBytes: MOBILE_MAX_DECODE_BYTES,
-	maxSplitSourceBytes: MOBILE_MAX_DECODE_BYTES,
+	maxSourceReadBytes: MOBILE_MAX_DECODE_BYTES,
 	maxCleanupDecodedSamples: MOBILE_MAX_CLEANUP_DECODED_SAMPLES,
 	maxCleanupSeconds: MOBILE_MAX_AUDIO_CLEANUP_SECONDS,
 };
@@ -237,9 +242,24 @@ export function tooLargeToDecodeMessage(
 	return `File is too large to ${action}. Split it into parts first.`;
 }
 
-/** Largest source file the splitter reads into memory on this platform. */
-export function getMaxSplitSourceBytes(kind?: PlatformKind): number {
-	return getPlatformCapabilities(kind).maxSplitSourceBytes;
+/** Largest source file this platform reads into memory whole. */
+export function getMaxSourceReadBytes(kind?: PlatformKind): number {
+	return getPlatformCapabilities(kind).maxSourceReadBytes;
+}
+
+/**
+ * Whether a file of this size may be read into memory whole on this platform.
+ *
+ * The mirror of {@link isDecodableSize}, and separate from it on purpose: a
+ * path that streams or remuxes reads the bytes without ever expanding them,
+ * so it is bounded by this and not by the decode ceiling. Asking the decode
+ * question at an entry point that may never decode refuses files the platform
+ * handles perfectly well.
+ * @param bytes - Size of the source file
+ * @param kind - Platform to answer for (defaults to the current one)
+ */
+export function isReadableSize(bytes: number, kind?: PlatformKind): boolean {
+	return bytes <= getMaxSourceReadBytes(kind);
 }
 
 /** Largest decoded working set cleanup accepts on this platform. */
