@@ -17,6 +17,10 @@ import {
 	GEMINI_FINISH_MAX_TOKENS,
 } from 'src/transcription/providers/geminiShared';
 import { TranscriptTruncatedError } from 'src/transcription/transcriptionErrors';
+import {
+	DEFAULT_GEMINI_MODEL,
+	GEMINI_MODEL_SUGGESTIONS,
+} from 'src/constants';
 
 describe('geminiCandidateText', () => {
 	it('concatenates the text parts of the first candidate without trimming', () => {
@@ -294,7 +298,75 @@ describe('geminiThinkingConfig', () => {
 		// thinkingBudget is a 2.5-series feature; sending thinkingConfig to a
 		// 2.0 model is rejected by the API, so the config must be omitted.
 		expect(geminiThinkingConfig('gemini-2.0-flash')).toBeUndefined();
-		// "pro" alone must not enable thinking - the 2.5 marker is required.
+		// "pro" alone must not enable thinking - the generation decides.
 		expect(geminiThinkingConfig('gemini-1.5-pro')).toBeUndefined();
+	});
+});
+
+// The 3.x generation controls reasoning through a level rather than a budget,
+// and the plugin sent neither: the default model ran with dynamic thinking,
+// spent part of its output budget on it, and hit the cap before finishing the
+// transcript often enough that parts were subdivided and re-sent, with the
+// discarded request billed in full.
+describe('which reasoning control each Gemini generation takes', () => {
+	// The whole seeded catalogue, so a model added to it arrives with an
+	// answer rather than with whichever branch its id happens to match.
+	it.each(GEMINI_MODEL_SUGGESTIONS)('decides for %s', (model) => {
+		const version = /^gemini-(\d+)(?:\.(\d+))?/.exec(model);
+		const major = Number(version?.[1] ?? '0');
+		const minor = Number(version?.[2] ?? '0');
+		const config = geminiThinkingConfig(model);
+
+		if (major >= 3) {
+			expect(config).toEqual({ thinkingLevel: 'low' });
+			return;
+		}
+		if (major === 2 && minor >= 5) {
+			expect(config).toEqual({
+				thinkingBudget: model.includes('pro') ? 128 : 0,
+			});
+			return;
+		}
+		// 2.0 and earlier reject a thinkingConfig outright.
+		expect(config).toBeUndefined();
+	});
+
+	it('sends the level rather than a budget on the default model', () => {
+		expect(geminiThinkingConfig(DEFAULT_GEMINI_MODEL)).toEqual({
+			thinkingLevel: 'low',
+		});
+	});
+
+	// The API refuses a request that carries both, so whichever generation is
+	// in play, exactly one control goes out.
+	it.each([...GEMINI_MODEL_SUGGESTIONS, 'gemini-2.0-flash', 'my-own-model'])(
+		'never sends both controls for %s',
+		(model) => {
+			const config = geminiThinkingConfig(model) ?? {};
+
+			expect(
+				'thinkingLevel' in config && 'thinkingBudget' in config,
+			).toBe(false);
+		},
+	);
+
+	// A model id typed into the picker by hand is not something the plugin
+	// knows the reasoning contract of, and a control the endpoint does not
+	// take is a 400 before anything is transcribed. Saying nothing leaves the
+	// model on its own defaults, which is the one answer that always works.
+	it.each([
+		{ name: 'a name from another vendor', model: 'my-own-model' },
+		{ name: 'a bare family name', model: 'gemini-flash' },
+		{ name: 'a version-less id', model: 'gemini' },
+		{ name: 'an empty id', model: '' },
+	])('sends no control for $name', ({ model }) => {
+		expect(geminiThinkingConfig(model)).toBeUndefined();
+	});
+
+	// The picker stores whatever the user typed, including the case.
+	it('reads the generation whatever case the id came in', () => {
+		expect(geminiThinkingConfig('GEMINI-3.5-FLASH')).toEqual({
+			thinkingLevel: 'low',
+		});
 	});
 });

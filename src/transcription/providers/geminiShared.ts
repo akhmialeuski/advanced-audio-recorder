@@ -10,6 +10,7 @@
 import { isRecord } from './responseUtils';
 import { trimTrailingSlash } from '../httpClient';
 import {
+	GEMINI_LOW_THINKING_LEVEL,
 	GEMINI_PRO_MIN_THINKING_BUDGET,
 	GEMINI_THINKING_BUDGET_OFF,
 } from '../../constants';
@@ -20,19 +21,56 @@ import type { TranscriptionUsage } from '../TranscriptTypes';
 export const GEMINI_FINISH_MAX_TOKENS = 'MAX_TOKENS';
 
 /**
- * Substring that identifies a Gemini Pro model id. Pro cannot disable thinking
- * (it rejects a 0 budget), so it is given the minimum budget instead.
+ * Substring that identifies a Gemini Pro model id. Pro of the 2.5 generation
+ * cannot disable thinking (it rejects a 0 budget), so it is given the minimum
+ * budget instead.
  */
 const GEMINI_PRO_MODEL_MARKER = 'pro';
 
 /**
- * Substring that identifies a model accepting the `thinkingBudget` parameter.
- * Thinking budgets are a Gemini 2.5-series feature: 2.0 and earlier reject a
- * `thinkingConfig` outright, and Gemini 3 controls reasoning with a different
- * parameter. Gating on this marker keeps the config off requests to models that
- * would 400 on it.
+ * Reads the version out of a Gemini model id, e.g. `gemini-3.5-flash-lite`.
+ *
+ * Which reasoning control a model takes follows from its generation, and until
+ * now that was decided by looking for the substring `2.5` anywhere in the id.
+ * Such a test does not extend: every new generation needs the condition edited,
+ * and it answers by accident for an id it was never written for. Reading the
+ * version says what is actually being asked.
  */
-const GEMINI_THINKING_BUDGET_MODEL_MARKER = '2.5';
+const GEMINI_VERSION_PATTERN = /^gemini-(\d+)(?:\.(\d+))?/;
+
+/** First Gemini generation that takes `thinkingLevel` instead of a budget. */
+const GEMINI_THINKING_LEVEL_GENERATION = 3;
+
+/** Generation whose models take a `thinkingBudget`, from this minor up. */
+const GEMINI_THINKING_BUDGET_MAJOR = 2;
+const GEMINI_THINKING_BUDGET_MIN_MINOR = 5;
+
+/** Generation and minor version of a Gemini model, when its id names them. */
+interface GeminiVersion {
+	readonly major: number;
+	readonly minor: number;
+}
+
+/**
+ * The version a Gemini model id names, or null when it names none.
+ *
+ * A null is what a model the plugin knows nothing about looks like: an id typed
+ * into the picker by hand, or one from another vendor behind a compatible
+ * endpoint. Such a model gets no reasoning control at all, because a control it
+ * does not accept is a 400 before anything is transcribed, while its own
+ * defaults always work.
+ * @param model - Gemini model id
+ */
+function geminiVersion(model: string): GeminiVersion | null {
+	const found = GEMINI_VERSION_PATTERN.exec(model.toLowerCase());
+	if (!found) {
+		return null;
+	}
+	return {
+		major: Number(found[1]),
+		minor: Number(found[2] ?? '0'),
+	};
+}
 
 /**
  * Terminal finish reasons that mean the model produced no usable output (a
@@ -62,25 +100,50 @@ export function geminiGenerateContentUrl(
 	return `${trimTrailingSlash(baseUrl)}/v1beta/models/${model}:generateContent`;
 }
 
+/** The reasoning control one generation of Gemini accepts. */
+export type GeminiThinkingConfig =
+	| { thinkingBudget: number }
+	| { thinkingLevel: string };
+
 /**
  * Builds the `thinkingConfig` for a deterministic Gemini request (transcription
- * or post-processing), neither of which benefits from chain-of-thought. Returns
- * undefined for a model that does not accept a thinking budget (2.0 and
- * earlier), so the caller omits the field rather than sending one the API
- * rejects. For a 2.5 model it turns thinking off; Gemini 2.5 Pro cannot disable
- * it and rejects a 0 budget, so it gets the minimum supported budget instead.
+ * or post-processing), neither of which benefits from chain-of-thought.
+ *
+ * Which control the model takes follows from its generation, and the two are
+ * mutually exclusive: sending both in one request is a 400.
+ *
+ * - The 3.x generation takes a named level, and gets the lowest one every model
+ *   of that generation accepts. It got nothing before, so the default model ran
+ *   with dynamic thinking, spent part of the output budget on it, and reached
+ *   the cap before finishing often enough that parts were subdivided and
+ *   re-sent, the discarded request billed in full.
+ * - The 2.5 generation takes a token budget, turned off outright; Pro cannot
+ *   disable thinking and rejects a 0 budget, so it gets the minimum instead.
+ * - Everything else, 2.0 and earlier and any id the plugin cannot read, gets no
+ *   config at all, which those models would otherwise reject.
  * @param model - Gemini model id
- * @returns A thinkingConfig object, or undefined when the model has no thinking budget
+ * @returns The control this model takes, or undefined when it takes none
  */
 export function geminiThinkingConfig(
 	model: string,
-): { thinkingBudget: number } | undefined {
-	const lower = model.toLowerCase();
-	if (!lower.includes(GEMINI_THINKING_BUDGET_MODEL_MARKER)) {
+): GeminiThinkingConfig | undefined {
+	const version = geminiVersion(model);
+	if (!version) {
+		return undefined;
+	}
+	if (version.major >= GEMINI_THINKING_LEVEL_GENERATION) {
+		return { thinkingLevel: GEMINI_LOW_THINKING_LEVEL };
+	}
+	if (
+		version.major !== GEMINI_THINKING_BUDGET_MAJOR ||
+		version.minor < GEMINI_THINKING_BUDGET_MIN_MINOR
+	) {
 		return undefined;
 	}
 	return {
-		thinkingBudget: lower.includes(GEMINI_PRO_MODEL_MARKER)
+		thinkingBudget: model
+			.toLowerCase()
+			.includes(GEMINI_PRO_MODEL_MARKER)
 			? GEMINI_PRO_MIN_THINKING_BUDGET
 			: GEMINI_THINKING_BUDGET_OFF,
 	};

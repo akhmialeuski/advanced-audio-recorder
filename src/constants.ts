@@ -601,6 +601,19 @@ export const GEMINI_THINKING_BUDGET_OFF = 0;
 export const GEMINI_PRO_MIN_THINKING_BUDGET = 128;
 
 /**
+ * Reasoning level sent to the Gemini 3.x generation, which replaced the token
+ * budget with a named level (`minimal`, `low`, `medium`, `high`).
+ *
+ * `low` rather than `minimal`, although transcription and post-processing need
+ * no reasoning at all: `minimal` is not offered by every model of the
+ * generation, and a level a model does not take is a 400 before anything is
+ * transcribed, on the model the plugin ships as its default. `low` is accepted
+ * across the generation and is the practical floor for a deterministic task.
+ * See {@link GEMINI_MODELS_DOC_URL} for what each model accepts.
+ */
+export const GEMINI_LOW_THINKING_LEVEL = 'low';
+
+/**
  * Floor for the Gemini transcription `generateContent` timeout, in
  * milliseconds. Inference time scales with audio duration, which the upload
  * byte size underestimates for compressed accepted containers (mp3, aac, ogg,
