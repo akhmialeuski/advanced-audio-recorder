@@ -2,8 +2,8 @@
 	"coverage": {
 		"total": {
 			"statements": 98.44,
-			"branches": 93.32,
-			"functions": 98.36,
+			"branches": 93.36,
+			"functions": 98.37,
 			"lines": 98.45
 		},
 		"files": {
@@ -21,7 +21,7 @@
 			},
 			"src/main.ts": {
 				"statements": 99.42,
-				"branches": 97.14,
+				"branches": 97.1,
 				"functions": 98.73,
 				"lines": 99.7
 			},
@@ -69,7 +69,7 @@
 			},
 			"src/audio/AudioFormatConverter.ts": {
 				"statements": 100,
-				"branches": 97.82,
+				"branches": 97.87,
 				"functions": 100,
 				"lines": 100
 			},
@@ -374,10 +374,10 @@
 				"lines": 98.9
 			},
 			"src/recording/AudioStreamHandler.ts": {
-				"statements": 99.21,
-				"branches": 93.93,
+				"statements": 99.24,
+				"branches": 94.11,
 				"functions": 100,
-				"lines": 99.18
+				"lines": 99.21
 			},
 			"src/recording/CaptureLossWatcher.ts": {
 				"statements": 100,
@@ -435,7 +435,7 @@
 			},
 			"src/recording/RecordingManager.ts": {
 				"statements": 98.85,
-				"branches": 93.16,
+				"branches": 93.38,
 				"functions": 100,
 				"lines": 98.84
 			},
@@ -651,7 +651,7 @@
 			},
 			"src/transcription/TranscriptionService.ts": {
 				"statements": 99.57,
-				"branches": 98.01,
+				"branches": 97.9,
 				"functions": 100,
 				"lines": 99.56
 			},
@@ -699,7 +699,7 @@
 			},
 			"src/transcription/httpClient.ts": {
 				"statements": 100,
-				"branches": 96.73,
+				"branches": 98.93,
 				"functions": 100,
 				"lines": 100
 			},
@@ -1073,8 +1073,8 @@
 	},
 	"suite": {
 		"suites": 205,
-		"tests": 4406,
-		"passed": 4406,
+		"tests": 4415,
+		"passed": 4415,
 		"failed": 0,
 		"todo": 0
 	}
