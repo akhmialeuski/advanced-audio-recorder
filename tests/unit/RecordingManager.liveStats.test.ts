@@ -14,6 +14,7 @@ import { InputLevelMonitor } from 'src/recording/InputLevelMonitor';
 import {
 	createDesktopRecorder,
 	createRecordingSut,
+	installMediaRecorderFactory,
 	installRecordingMediaStubs,
 	stubAudioStreams,
 } from '../helpers/recordingManagerTestKit';
@@ -202,5 +203,49 @@ describe('the elapsed time the clock shows', () => {
 		await manager.stopRecording();
 
 		expect(manager.getElapsedMs()).toBe(0);
+	});
+});
+
+// The meter is started before the recorders are built, so every failure below
+// that point used to leave its AudioContext open: the rollback listed the
+// resources it released by name and the meter was not among them. Chromium
+// caps the live contexts per document, so a user whose start fails regularly
+// loses the meter altogether until Obsidian restarts.
+describe('a start that fails after the meter is already running', () => {
+	beforeEach(() => {
+		useDesktopPlatform();
+		jest.spyOn(console, 'error').mockImplementation();
+		installMediaRecorderFactory(() => {
+			throw new Error('mimeType is not supported');
+		});
+		stubAudioStreams();
+	});
+
+	it('releases the monitor when building the recorders throws', async () => {
+		const { manager } = createRecordingSut({
+			settings: { showInputLevelMeter: true },
+		});
+
+		await manager.startRecording();
+
+		expect(monitor().stop).toHaveBeenCalledTimes(1);
+		expect(manager.getInputLevel()).toBe(0);
+	});
+
+	it('leaves nothing running after three failed starts in a row', async () => {
+		const { manager } = createRecordingSut({
+			settings: { showInputLevelMeter: true },
+		});
+
+		await manager.startRecording();
+		await manager.startRecording();
+		await manager.startRecording();
+
+		const built = jest.mocked(InputLevelMonitor).mock
+			.instances as unknown as MockInputLevelMonitor[];
+		expect(built).toHaveLength(3);
+		for (const instance of built) {
+			expect(instance.stop).toHaveBeenCalledTimes(1);
+		}
 	});
 });

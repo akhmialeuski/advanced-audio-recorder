@@ -462,10 +462,26 @@ export class RecordingManager {
 	 */
 	private releasePartialSession(): void {
 		this.journal.endSession();
+		this.stopRecordersNow('after start failure');
+		this.releaseSessionResources();
+	}
+
+	/**
+	 * Stops whatever recorders the session built without waiting for their
+	 * stop events.
+	 *
+	 * The two paths that abandon a session rather than finalize it - a failed
+	 * start and plugin unload - have nothing left to receive a final chunk, so
+	 * they stop the hardware and move on. Every failure is logged and
+	 * swallowed: one recorder that refuses to stop must not keep the rest of
+	 * the teardown from running.
+	 * @param when - Names the path in the log line
+	 */
+	private stopRecordersNow(when: string): void {
 		for (const recorder of this.pcmRecorders) {
 			recorder.stop().catch((error: unknown) => {
 				console.error(
-					`${PLUGIN_LOG_PREFIX} Failed to release PCM recorder after start failure:`,
+					`${PLUGIN_LOG_PREFIX} Failed to release PCM recorder ${when}:`,
 					error,
 				);
 			});
@@ -477,11 +493,26 @@ export class RecordingManager {
 				}
 			} catch (error) {
 				console.error(
-					`${PLUGIN_LOG_PREFIX} Failed to stop recorder after start failure:`,
+					`${PLUGIN_LOG_PREFIX} Failed to stop recorder ${when}:`,
 					error,
 				);
 			}
 		}
+	}
+
+	/**
+	 * Releases everything one session acquired, as a single list.
+	 *
+	 * That list used to be written three times over - the rollback of a failed
+	 * start, the `finally` of a normal stop, and unload - and kept in step by
+	 * hand. It was not in step: the input-level meter reached two of the three,
+	 * so a failed start left the meter's AudioContext open, and Chromium caps
+	 * how many of those one document may hold. Reading the list from one place
+	 * is what makes a resource added to a session reach every path that ends
+	 * one, instead of whichever path its author happened to edit.
+	 */
+	private releaseSessionResources(): void {
+		this.stopLevelMonitor();
 		this.releaseMonoBridges();
 		stopAllStreams(this.streams);
 		this.streams = [];
@@ -491,7 +522,11 @@ export class RecordingManager {
 		this.chunkTargets = [];
 		this.trackOrder = [];
 		this.recordingTimestamp = null;
+		this.totalChunks = 0;
+		this.recordedBytes = 0;
+		this.isWavPcmRecording = false;
 		this.insertionContext = null;
+		this.sessionSplitEnabled = false;
 		this.markers.clearBuffer();
 	}
 
@@ -814,22 +849,7 @@ export class RecordingManager {
 				error,
 			);
 		} finally {
-			this.stopLevelMonitor();
-			this.releaseMonoBridges();
-			stopAllStreams(this.streams);
-			this.streams = [];
-			detachRecorderHandlers(this.recorders);
-			this.recorders = [];
-			this.pcmRecorders = [];
-			this.chunkTargets = [];
-			this.trackOrder = [];
-			this.recordingTimestamp = null;
-			this.totalChunks = 0;
-			this.recordedBytes = 0;
-			this.isWavPcmRecording = false;
-			this.insertionContext = null;
-			this.sessionSplitEnabled = false;
-			this.markers.clearBuffer();
+			this.releaseSessionResources();
 			this.setStatus(RecordingStatus.Idle);
 		}
 		return stopFailure;
@@ -938,45 +958,18 @@ export class RecordingManager {
 		// Prevent an in-flight part rotation from recreating recorders
 		// on the released streams after unload
 		this.rotation.requestStop();
+		// Cleared here rather than with the rest of the session state below,
+		// because a PCM chunk arriving during the flushes would otherwise
+		// still try to finalize a part on a session that is going away.
 		this.sessionSplitEnabled = false;
-		this.stopLevelMonitor();
-		for (const recorder of this.pcmRecorders) {
-			recorder.stop().catch((error: unknown) => {
-				console.error(
-					`${PLUGIN_LOG_PREFIX} Failed to release PCM recorder on unload:`,
-					error,
-				);
-			});
-		}
-		for (const recorder of this.recorders) {
-			try {
-				if (recorder.state !== 'inactive') {
-					recorder.stop();
-				}
-			} catch (error) {
-				console.error(
-					`${PLUGIN_LOG_PREFIX} Failed to stop recorder on unload:`,
-					error,
-				);
-			}
-		}
+		this.stopRecordersNow('on unload');
 		for (const target of this.chunkTargets) {
 			void this.writeQueue.enqueue(target, async () => {
 				await this.writeQueue.flushChunkBuffer(target);
 				await this.writeQueue.flushPcmBuffer(target);
 			});
 		}
-		this.releaseMonoBridges();
-		stopAllStreams(this.streams);
-		detachRecorderHandlers(this.recorders);
-		this.recorders = [];
-		this.pcmRecorders = [];
-		this.chunkTargets = [];
-		this.streams = [];
-		this.recordingTimestamp = null;
-		this.totalChunks = 0;
-		this.isWavPcmRecording = false;
-		this.insertionContext = null;
+		this.releaseSessionResources();
 	}
 
 	/**

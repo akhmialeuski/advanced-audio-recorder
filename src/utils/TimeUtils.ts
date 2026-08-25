@@ -9,11 +9,63 @@ import { SECONDS_PER_MINUTE, SECONDS_PER_HOUR } from '../constants';
  * Delays execution for the specified number of milliseconds.
  * Uses activeWindow so the timer is attached to the active Obsidian
  * window (multi-window support).
+ *
+ * A wait the caller can be released from takes a signal: the retry pause
+ * between provider attempts and the interval between Gemini file-status polls
+ * are both waits a Cancel has to end at once rather than after they run out.
+ * The rejection carries `signal.reason`, which is what the platform hands an
+ * aborted `fetch`, so a caller sees one shape of cancellation whether it was
+ * waiting or requesting.
  * @param ms - Delay duration in milliseconds
+ * @param signal - Optional abort signal; firing it rejects the wait
  * @returns Promise resolved after the delay
  */
-export function delay(ms: number): Promise<void> {
-	return new Promise((resolve) => window.setTimeout(resolve, ms));
+export function delay(ms: number, signal?: AbortSignal): Promise<void> {
+	return new Promise((resolve, reject) => {
+		if (signal?.aborted) {
+			reject(signal.reason);
+			return;
+		}
+		const onAbort = (): void => {
+			window.clearTimeout(timer);
+			reject(signal?.reason);
+		};
+		const timer = window.setTimeout(() => {
+			signal?.removeEventListener('abort', onAbort);
+			resolve();
+		}, ms);
+		signal?.addEventListener('abort', onAbort, { once: true });
+	});
+}
+
+/** A deadline that grows with the size of the payload it covers. */
+export interface ScaledTimeoutBudget {
+	/** Deadline for an empty payload, and the floor for every other one. */
+	readonly floorMs: number;
+	/** Bytes assumed to be handled per millisecond above the floor. */
+	readonly bytesPerMs: number;
+	/** Hard cap, whatever the payload size works out to. */
+	readonly maxMs: number;
+}
+
+/**
+ * Scales a deadline with the size of the payload it covers, so a large but
+ * healthy job is not abandoned at a limit written for a small one.
+ *
+ * Two boundaries need this and reached for it separately: an upload whose
+ * transfer time tracks its byte count, and a worker conversion whose
+ * demux/transcode loop does the same. The rate and the bounds differ between
+ * them, so each names its own; the arithmetic is the same and lives here.
+ * @param byteLength - Size of the payload in bytes
+ * @param budget - Floor, assumed throughput, and cap
+ * @returns Timeout in milliseconds
+ */
+export function scaledTimeoutMs(
+	byteLength: number,
+	budget: ScaledTimeoutBudget,
+): number {
+	const scaled = budget.floorMs + Math.ceil(byteLength / budget.bytesPerMs);
+	return Math.min(scaled, budget.maxMs);
 }
 
 /**

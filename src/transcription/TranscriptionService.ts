@@ -13,6 +13,10 @@
 import { Notice } from 'obsidian';
 import type { App, TFile } from 'obsidian';
 import {
+	NEVER_CANCELLED,
+	type CancellationToken,
+} from '../utils/cancellation';
+import {
 	BYTES_PER_MB,
 	PLUGIN_LOG_PREFIX,
 	TRANSCRIBE_CHUNK_PROGRESS_CEILING,
@@ -85,21 +89,10 @@ import {
 	sumUsage,
 } from './costs';
 
-/** Cooperative cancellation signal checked between chunks. */
-export interface CancellationToken {
-	isCancelled(): boolean;
-	/**
-	 * Optional abort signal that fires when the run is cancelled, so
-	 * in-flight HTTP requests can be aborted immediately instead of only
-	 * being checked between chunks.
-	 */
-	signal?: AbortSignal;
-}
-
-/** A token that is never cancelled. */
-export const NEVER_CANCELLED: CancellationToken = {
-	isCancelled: () => false,
-};
+// Cancellation belongs to every long job, not to transcription alone, so it
+// lives in utils and is re-exported here for the callers that already reach
+// for it through the service.
+export { NEVER_CANCELLED, type CancellationToken };
 
 /** Options for a transcription run. */
 export interface TranscribeRunOptions {

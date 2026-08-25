@@ -13,6 +13,7 @@ import {
 	TRANSCRIBE_UPLOAD_BYTES_PER_MS,
 } from '../constants';
 import { randomToken } from '../utils/ids';
+import { scaledTimeoutMs } from '../utils/TimeUtils';
 import { isRecord } from '../utils/objects';
 
 /** One field of a multipart/form-data body. */
@@ -96,10 +97,11 @@ export function uploadTimeoutMs(
 	byteLength: number,
 	maxMs: number = TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS,
 ): number {
-	const scaled =
-		TRANSCRIBE_REQUEST_TIMEOUT_MS +
-		Math.ceil(byteLength / TRANSCRIBE_UPLOAD_BYTES_PER_MS);
-	return Math.min(scaled, maxMs);
+	return scaledTimeoutMs(byteLength, {
+		floorMs: TRANSCRIBE_REQUEST_TIMEOUT_MS,
+		bytesPerMs: TRANSCRIBE_UPLOAD_BYTES_PER_MS,
+		maxMs,
+	});
 }
 
 /** Status used for errors that never reached an HTTP response (transport/timeout). */
