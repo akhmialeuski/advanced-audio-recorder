@@ -11,6 +11,11 @@ import { App, TFile } from 'obsidian';
 import { noticeMessages } from '../mocks/obsidian';
 import { createMockApp } from '../helpers/createApp';
 import {
+	useDesktopPlatform,
+	useMobilePlatform,
+} from '../helpers/platform';
+import { MOBILE_MAX_DECODE_BYTES } from 'src/constants';
+import {
 	convertBlobToFormatBuffer,
 	decodeAudioBlob,
 } from 'src/audio/AudioFormatConverter';
@@ -225,6 +230,45 @@ describe('ConversionService', () => {
 				message.includes('requires a mono channels option'),
 			),
 		).toBe(true);
+	});
+
+	// Every other decode-heavy feature asks the platform before it reads the
+	// file. Conversion never did, so a phone was handed a whole recording and
+	// a full PCM expansion of it, and the OS killed the WebView rather than
+	// raising anything the plugin could report.
+	it('refuses a file too large for this device before reading it', async () => {
+		useMobilePlatform();
+		const sourceFile = createSourceFile('webm');
+		sourceFile.stat.size = MOBILE_MAX_DECODE_BYTES + 1;
+
+		const outcome = await service.convert(
+			createRequest({ sourceFile, targetFormat: 'wav' }),
+			jest.fn(),
+		);
+
+		expect(outcome).toEqual({ status: 'aborted' });
+		expect(mockApp.vault.adapter.readBinary).not.toHaveBeenCalled();
+		expect(getNotices()).toContain(
+			'File is too large to convert on this device. Convert or split ' +
+				'it on desktop instead.',
+		);
+	});
+
+	it('converts that same file on desktop, where the ceiling is higher', async () => {
+		useDesktopPlatform();
+		const sourceFile = createSourceFile('webm');
+		sourceFile.stat.size = MOBILE_MAX_DECODE_BYTES + 1;
+
+		const outcome = await service.convert(
+			createRequest({ sourceFile, targetFormat: 'wav' }),
+			jest.fn(),
+		);
+
+		expect(outcome).toEqual({
+			status: 'completed',
+			newFileName: 'recording.wav',
+			newPath: 'Audio/recording.wav',
+		});
 	});
 
 	it('aborts when the target file already exists', async () => {

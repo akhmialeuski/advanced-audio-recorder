@@ -19,6 +19,7 @@ import {
 	getMaxCleanupSeconds,
 	getMaxDecodeBytes,
 	isDecodableSize,
+	tooLargeToDecodeMessage,
 	getMaxSplitSourceBytes,
 	getPlatformCapabilities,
 	isAutoSplitSupported,
@@ -41,7 +42,11 @@ import {
 	MOBILE_MAX_DECODE_BYTES,
 	WAVEFORM_MAX_DECODE_BYTES,
 } from 'src/constants';
-import { setPlatform } from '../helpers/platform';
+import {
+	setPlatform,
+	useDesktopPlatform,
+	useMobilePlatform,
+} from '../helpers/platform';
 
 describe('platformKind', () => {
 	it('resolves desktop when no mobile flag is set', () => {
@@ -256,5 +261,38 @@ describe('capability helper functions', () => {
 		expect(isDecodableSize(MOBILE_MAX_DECODE_BYTES + 1)).toBe(true);
 		setPlatform({ isMobile: true });
 		expect(isDecodableSize(MOBILE_MAX_DECODE_BYTES + 1)).toBe(false);
+	});
+});
+
+// One limit, and until now three different pieces of advice about it: the
+// splitter said one thing, cleanup another, and conversion said nothing at all
+// because it never asked. The advice is a fact about the platform the limit
+// belongs to, so it is written once here.
+describe('what a user is told when a file will not decode', () => {
+	it('points a phone at the desktop app, where the limit is far higher', () => {
+		useMobilePlatform();
+
+		expect(tooLargeToDecodeMessage('split')).toBe(
+			'File is too large to split on this device. Convert or split it ' +
+				'on desktop instead.',
+		);
+	});
+
+	// On desktop there is no bigger machine to move to, so the advice is the
+	// one thing that does help: make the file smaller first.
+	it('tells a desktop user to split the file first', () => {
+		useDesktopPlatform();
+
+		expect(tooLargeToDecodeMessage('clean up')).toBe(
+			'File is too large to clean up. Split it into parts first.',
+		);
+	});
+
+	it('names the operation the user actually asked for', () => {
+		useMobilePlatform();
+
+		expect(tooLargeToDecodeMessage('convert')).toContain(
+			'too large to convert',
+		);
 	});
 });

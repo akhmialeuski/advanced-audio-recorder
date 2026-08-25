@@ -14,6 +14,10 @@ import {
 } from './downmix';
 import { autoClosing } from '../utils/disposables';
 import {
+	isDecodableSize,
+	tooLargeToDecodeMessage,
+} from '../platform/capabilities';
+import {
 	MIME_TYPE_AUDIO_PREFIX,
 	PLUGIN_LOG_PREFIX,
 	FORMAT_WAV,
@@ -138,6 +142,16 @@ export async function convertBlobToWavBuffer(
 export async function decodeAudioBlob(
 	arrayBuffer: ArrayBuffer,
 ): Promise<AudioBuffer> {
+	// Asked here rather than by each caller. The ceiling exists because this
+	// call is the allocation - it expands the file to full PCM in memory - and
+	// on a phone exceeding it is not a catchable error but the OS killing the
+	// WebView. Applied per caller it was applied per caller who remembered:
+	// the waveform, cleanup, the splitter and the metadata read all asked,
+	// and conversion, added later, did not. Asked before the context is built,
+	// because the allocation starts there.
+	if (!isDecodableSize(arrayBuffer.byteLength)) {
+		throw new Error(tooLargeToDecodeMessage('decode'));
+	}
 	// Closed even when decoding fails (corrupted/unsupported input),
 	// otherwise the AudioContext leaks
 	await using audioContext = autoClosing(new AudioContext());

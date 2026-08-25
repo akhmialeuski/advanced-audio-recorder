@@ -19,6 +19,10 @@ import {
 	convertBlobToFormatBuffer,
 } from '../audio/AudioFormatConverter';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
+import {
+	isDecodableSize,
+	tooLargeToDecodeMessage,
+} from '../platform/capabilities';
 import { updateLinksInVault } from '../utils/LinkUpdater';
 import type { VaultLinkUpdateResult } from '../utils/LinkUpdater';
 import type { ConversionLinkAction } from '../settings/settingsSchema';
@@ -123,6 +127,15 @@ export class ConversionService {
 				new Notice(
 					`File "${newFileName}" already exists. Choose a different format or rename the existing file.`,
 				);
+				return { status: 'aborted' };
+			}
+
+			// Asked before the bytes are read, not only by the decoder
+			// underneath: on a phone, holding a whole recording in memory is
+			// itself most of the allocation that gets the WebView killed, and
+			// a refusal the user can read beats a silent restart.
+			if (!isDecodableSize(request.sourceFile.stat.size)) {
+				new Notice(tooLargeToDecodeMessage('convert'));
 				return { status: 'aborted' };
 			}
 

@@ -118,8 +118,16 @@ import {
 	mergeAudioTracks,
 } from 'src/audio/AudioFormatConverter';
 import { EncodingWorkerClient } from 'src/audio/EncodingWorkerClient';
-import { ENCODING_WORKER_MAX_TIMEOUT_MS } from 'src/constants';
+import {
+	ENCODING_WORKER_MAX_TIMEOUT_MS,
+	MOBILE_MAX_DECODE_BYTES,
+	WAVEFORM_MAX_DECODE_BYTES,
+} from 'src/constants';
 import { partial } from '../helpers/doubles';
+import {
+	useDesktopPlatform,
+	useMobilePlatform,
+} from '../helpers/platform';
 import {
 	encodeAudioBuffer,
 	ensureEncoderRegistered,
@@ -1261,5 +1269,54 @@ describe('AudioFormatConverter', () => {
 			).value;
 			expect(ctxInstance.close).toHaveBeenCalledTimes(1);
 		});
+	});
+});
+
+// The decode ceiling used to be applied by each caller, so a new entry point
+// simply did without: conversion read a file of any size and expanded it to
+// full PCM. On a phone that is not a catchable error, it is the OS killing the
+// WebView. The question belongs to the decoder, which is the thing that
+// allocates, so every caller inherits the answer.
+describe('the decode ceiling', () => {
+	/** A buffer of the given size, without allocating one. */
+	function bufferOf(byteLength: number): ArrayBuffer {
+		return partial<ArrayBuffer>({ byteLength });
+	}
+
+	it('refuses a file above the mobile ceiling', async () => {
+		useMobilePlatform();
+
+		await expect(
+			decodeAudioBlob(bufferOf(MOBILE_MAX_DECODE_BYTES + 1)),
+		).rejects.toThrow('too large');
+	});
+
+	it('accepts that same file on desktop, where the ceiling is higher', async () => {
+		useDesktopPlatform();
+
+		await expect(
+			decodeAudioBlob(bufferOf(MOBILE_MAX_DECODE_BYTES + 1)),
+		).resolves.toBeDefined();
+	});
+
+	it('refuses a file above the desktop ceiling too', async () => {
+		useDesktopPlatform();
+
+		await expect(
+			decodeAudioBlob(bufferOf(WAVEFORM_MAX_DECODE_BYTES + 1)),
+		).rejects.toThrow('too large');
+	});
+
+	// Asked before the context is built, because the allocation the ceiling
+	// exists to prevent starts with the context.
+	it('builds no audio context for a file it will not decode', async () => {
+		useMobilePlatform();
+		jest.mocked(global.AudioContext).mockClear();
+
+		await expect(
+			decodeAudioBlob(bufferOf(MOBILE_MAX_DECODE_BYTES + 1)),
+		).rejects.toThrow('too large');
+
+		expect(global.AudioContext).not.toHaveBeenCalled();
 	});
 });

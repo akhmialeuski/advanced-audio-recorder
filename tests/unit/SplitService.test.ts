@@ -164,7 +164,10 @@ describe('SplitService', () => {
 			expect(mockApp.vault.adapter.readBinary).not.toHaveBeenCalled();
 			expect(
 				noticeMessages().some((message) =>
-					message.includes('too large to split on this device'),
+					// The advice that follows depends on the platform and is
+					// pinned in the capability suite; what matters here is that
+					// the path refused and said which operation it refused.
+					message.includes('too large to split'),
 				),
 			).toBe(true);
 		});
@@ -189,7 +192,10 @@ describe('SplitService', () => {
 			expect(createdFiles).toEqual([]);
 			expect(
 				noticeMessages().some((message) =>
-					message.includes('too large to split on this device'),
+					// The advice that follows depends on the platform and is
+					// pinned in the capability suite; what matters here is that
+					// the path refused and said which operation it refused.
+					message.includes('too large to split'),
 				),
 			).toBe(true);
 		});
