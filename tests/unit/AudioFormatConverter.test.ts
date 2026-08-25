@@ -117,7 +117,8 @@ import {
 	decodeAudioBlob,
 	mergeAudioTracks,
 } from 'src/audio/AudioFormatConverter';
-import type { EncodingWorkerClient } from 'src/audio/EncodingWorkerClient';
+import { EncodingWorkerClient } from 'src/audio/EncodingWorkerClient';
+import { ENCODING_WORKER_MAX_TIMEOUT_MS } from 'src/constants';
 import { partial } from '../helpers/doubles';
 import {
 	encodeAudioBuffer,
@@ -431,6 +432,38 @@ describe('AudioFormatConverter', () => {
 
 			expect(conversionInit).toHaveBeenCalledTimes(1);
 			expect(result).toBeInstanceOf(ArrayBuffer);
+		});
+
+		// The regression this pair exists for: a worker that hangs used to
+		// raise nothing at all, so the fallback below it was unreachable and
+		// the save waited forever. Driven through the real client rather than
+		// a rejecting double, because what was broken is the client turning
+		// silence into a failure the caller can act on.
+		it('reaches the main thread when the worker goes silent', async () => {
+			jest.spyOn(console, 'warn').mockImplementation();
+			jest.useFakeTimers();
+			(global as Record<string, unknown>).Worker = class {
+				postMessage = jest.fn();
+				terminate = jest.fn();
+				onmessage = null;
+				onerror = null;
+			};
+			global.URL.createObjectURL = jest.fn(() => 'blob:worker');
+			global.URL.revokeObjectURL = jest.fn();
+
+			const converted = convertBlobToFormatBuffer(
+				new Blob(['test'], { type: 'audio/webm' }),
+				'mp4',
+				128000,
+				undefined,
+				{ workerClient: new EncodingWorkerClient('worker-source') },
+			);
+			await jest.advanceTimersByTimeAsync(ENCODING_WORKER_MAX_TIMEOUT_MS);
+			const result = await converted;
+
+			expect(conversionInit).toHaveBeenCalledTimes(1);
+			expect(result).toBeInstanceOf(ArrayBuffer);
+			jest.useRealTimers();
 		});
 
 		it('falls back to decode and re-encode when streaming fails too', async () => {

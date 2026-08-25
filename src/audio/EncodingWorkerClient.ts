@@ -7,7 +7,13 @@
  * @module audio/EncodingWorkerClient
  */
 
-import { PLUGIN_LOG_PREFIX } from '../constants';
+import {
+	ENCODING_WORKER_BYTES_PER_MS,
+	ENCODING_WORKER_MAX_TIMEOUT_MS,
+	ENCODING_WORKER_MIN_TIMEOUT_MS,
+	PLUGIN_LOG_PREFIX,
+} from '../constants';
+import { scaledTimeoutMs } from '../utils/TimeUtils';
 import { CHANNEL_MODE_SOURCE, type ChannelMode } from './downmix';
 import type { WorkerRequest, WorkerResponse } from './encodingWorker';
 
@@ -16,6 +22,10 @@ interface PendingRequest {
 	resolve: (blob: Blob) => void;
 	reject: (error: Error) => void;
 	onProgress?: ((percent: number) => void) | undefined;
+	/** Watchdog for a worker that stops answering; re-armed by progress. */
+	timer: number;
+	/** How long this request may go unanswered, for each re-arming. */
+	readonly timeoutMs: number;
 }
 
 /**
@@ -68,6 +78,15 @@ export class EncodingWorkerClient {
 		channelMode: ChannelMode = CHANNEL_MODE_SOURCE,
 		onProgress?: (percent: number) => void,
 	): Promise<Blob> {
+		// Asked before the worker is handed over, not only inside
+		// ensureWorker: a client given up on after a hang still holds a live
+		// worker object, and returning it would send the next conversion to
+		// wait on the thread that already stopped answering.
+		if (!this.isAvailable()) {
+			return Promise.reject(
+				new Error('Encoding worker is not available'),
+			);
+		}
 		const worker = this.ensureWorker();
 		if (!worker) {
 			return Promise.reject(
@@ -76,8 +95,19 @@ export class EncodingWorkerClient {
 		}
 
 		const id = this.nextRequestId++;
+		const timeoutMs = scaledTimeoutMs(blob.size, {
+			floorMs: ENCODING_WORKER_MIN_TIMEOUT_MS,
+			bytesPerMs: ENCODING_WORKER_BYTES_PER_MS,
+			maxMs: ENCODING_WORKER_MAX_TIMEOUT_MS,
+		});
 		return new Promise<Blob>((resolve, reject) => {
-			this.pending.set(id, { resolve, reject, onProgress });
+			this.pending.set(id, {
+				resolve,
+				reject,
+				onProgress,
+				timeoutMs,
+				timer: this.armWatchdog(id, timeoutMs),
+			});
 			const request: WorkerRequest = {
 				id,
 				kind: 'convertBlob',
@@ -89,6 +119,38 @@ export class EncodingWorkerClient {
 			};
 			worker.postMessage(request);
 		});
+	}
+
+	/**
+	 * Starts the deadline by which this request must have heard something.
+	 *
+	 * Only this request is failed. The worker keeps running and its siblings
+	 * keep their own deadlines, because multi-track finalization converts
+	 * several tracks through one worker and terminating it would take the
+	 * healthy ones down with the wedged one. The client is marked unavailable
+	 * though: a worker that hung once will hang again, and every later
+	 * conversion would otherwise sit out its whole budget before falling back
+	 * to the main thread.
+	 * @param id - Request the deadline belongs to
+	 * @param timeoutMs - How long to wait for anything at all
+	 * @returns The timer handle
+	 */
+	private armWatchdog(id: number, timeoutMs: number): number {
+		return window.setTimeout(() => {
+			const request = this.pending.get(id);
+			if (!request) {
+				return;
+			}
+			this.pending.delete(id);
+			this.unavailable = true;
+			request.reject(
+				new Error(
+					`Encoding worker did not answer within ${String(
+						timeoutMs,
+					)} ms`,
+				),
+			);
+		}, timeoutMs);
 	}
 
 	/**
@@ -167,15 +229,25 @@ export class EncodingWorkerClient {
 		}
 		switch (response.kind) {
 			case 'progress':
+				// A worker that is reporting progress is working, so the
+				// deadline starts over: what it bounds is silence, not the
+				// length of a legitimately long conversion.
+				window.clearTimeout(request.timer);
+				request.timer = this.armWatchdog(
+					response.id,
+					request.timeoutMs,
+				);
 				request.onProgress?.(response.percent);
 				break;
 			case 'result':
+				window.clearTimeout(request.timer);
 				this.pending.delete(response.id);
 				request.resolve(
 					new Blob([response.buffer], { type: response.mimeType }),
 				);
 				break;
 			case 'error':
+				window.clearTimeout(request.timer);
 				this.pending.delete(response.id);
 				request.reject(new Error(response.message));
 				break;
@@ -188,6 +260,7 @@ export class EncodingWorkerClient {
 	 */
 	private rejectAllPending(error: Error): void {
 		for (const request of this.pending.values()) {
+			window.clearTimeout(request.timer);
 			request.reject(error);
 		}
 		this.pending.clear();

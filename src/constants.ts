@@ -56,6 +56,32 @@ export const RECORDER_STOP_TIMEOUT_MS = 5000;
  */
 export const PCM_FLUSH_TIMEOUT_MS = 5000;
 
+/**
+ * Floor for how long the encoding worker may go without saying anything, in
+ * milliseconds. A worker wedged inside its demux loop answers neither a result
+ * nor an error, so without a deadline the save it was doing waits forever.
+ * Every progress message it sends starts this over, so the budget bounds
+ * silence rather than the conversion, and a large payload raises the floor
+ * through {@link ENCODING_WORKER_BYTES_PER_MS}.
+ */
+export const ENCODING_WORKER_MIN_TIMEOUT_MS = 2 * 60_000;
+
+/**
+ * Assumed conversion throughput, in bytes per millisecond (~200 KB/s), used to
+ * raise the encoding worker's silence budget with the size of what it was
+ * handed. Deliberately far below what a healthy transcode manages, because the
+ * cost of guessing low is a hang detected late and the cost of guessing high is
+ * a conversion abandoned while it was working.
+ */
+export const ENCODING_WORKER_BYTES_PER_MS = 200;
+
+/**
+ * Ceiling on the encoding worker's silence budget, in milliseconds (20
+ * minutes). A multi-gigabyte input would otherwise scale the budget past any
+ * useful bound, which is the hang this deadline exists to catch.
+ */
+export const ENCODING_WORKER_MAX_TIMEOUT_MS = 20 * 60_000;
+
 /** Bytes in one megabyte (binary), for size settings expressed in MB. */
 export const BYTES_PER_MB = 1024 * 1024;
 

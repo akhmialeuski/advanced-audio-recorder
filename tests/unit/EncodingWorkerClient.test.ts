@@ -4,6 +4,7 @@
  */
 
 import { EncodingWorkerClient } from 'src/audio/EncodingWorkerClient';
+import { ENCODING_WORKER_MIN_TIMEOUT_MS } from 'src/constants';
 import { at } from '../helpers/assertions';
 import type { WorkerResponse } from 'src/audio/encodingWorker';
 
@@ -27,20 +28,21 @@ class MockWorker implements WorkerDouble {
 	}
 }
 
+// Shared by both suites below: the client builds its worker from a Blob URL,
+// so both the constructor and the URL functions have to exist before anything
+// asks for one.
+beforeEach(() => {
+	createdWorkers.length = 0;
+	jest.spyOn(console, 'warn').mockImplementation();
+	(global as Record<string, unknown>).Worker = MockWorker;
+	global.URL.createObjectURL = jest.fn().mockReturnValue('blob:worker-url');
+	global.URL.revokeObjectURL = jest.fn();
+});
+
 describe('EncodingWorkerClient', () => {
 	const respond = (worker: WorkerDouble, response: WorkerResponse): void => {
 		worker.onmessage?.(new MessageEvent('message', { data: response }));
 	};
-
-	beforeEach(() => {
-		createdWorkers.length = 0;
-		jest.spyOn(console, 'warn').mockImplementation();
-		(global as Record<string, unknown>).Worker = MockWorker;
-		global.URL.createObjectURL = jest
-			.fn()
-			.mockReturnValue('blob:worker-url');
-		global.URL.revokeObjectURL = jest.fn();
-	});
 
 	it('is unavailable without bundled worker source', async () => {
 		const client = new EncodingWorkerClient(null);
@@ -199,5 +201,177 @@ describe('EncodingWorkerClient', () => {
 		await expect(conversion).rejects.toThrow('terminated');
 		expect(worker.terminate).toHaveBeenCalled();
 		expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:worker-url');
+	});
+});
+
+// The one asynchronous boundary of the plugin that had no watchdog, and the
+// one that handles the largest payloads. A worker wedged inside its demux loop
+// answers neither a result nor an error, so the promise never settled, the save
+// sat at "encoding" with its cancel button disabled, and the only way out was
+// restarting Obsidian. The main-thread fallback the caller wraps this in was
+// unreachable dead code, because a hang raises nothing to fall back from.
+describe('a worker that stops answering', () => {
+	/** Comfortably past any budget these small payloads work out to. */
+	const PAST_THE_BUDGET = ENCODING_WORKER_MIN_TIMEOUT_MS * 2;
+
+	/** Builds a worker double and the conversion waiting on it. */
+	function convertThrough(client: EncodingWorkerClient): {
+		worker: WorkerDouble;
+		conversion: Promise<Blob>;
+	} {
+		const conversion = client.convertBlob(
+			new Blob(['audio']),
+			'mp3',
+			128000,
+			false,
+		);
+		return { worker: at(createdWorkers, 0), conversion };
+	}
+
+	/** The id the worker was asked to answer under. */
+	function requestId(worker: WorkerDouble, call = 0): number {
+		return (at(worker.postMessage.mock.calls, call)[0] as { id: number })
+			.id;
+	}
+
+	/** Delivers one worker response. */
+	function answer(worker: WorkerDouble, response: WorkerResponse): void {
+		worker.onmessage?.(new MessageEvent('message', { data: response }));
+	}
+
+	/** A result response for the given request. */
+	function resultFor(id: number): WorkerResponse {
+		return {
+			id,
+			kind: 'result',
+			buffer: new Uint8Array([1]).buffer,
+			mimeType: 'audio/mp3',
+		};
+	}
+
+	beforeEach(() => {
+		jest.useFakeTimers();
+	});
+
+	afterEach(() => {
+		jest.useRealTimers();
+	});
+
+	it('rejects the request once the worker has gone quiet for its budget', async () => {
+		const client = new EncodingWorkerClient('worker-source');
+		const { conversion } = convertThrough(client);
+		// Attached before the clock moves: the rejection lands inside the
+		// advance, and a handler added afterwards arrives too late.
+		const rejected = expect(conversion).rejects.toThrow('did not answer');
+
+		await jest.advanceTimersByTimeAsync(PAST_THE_BUDGET);
+
+		await rejected;
+	});
+
+	it('leaves nothing waiting behind a timed-out request', async () => {
+		const client = new EncodingWorkerClient('worker-source');
+		const { worker, conversion } = convertThrough(client);
+		const id = requestId(worker);
+		const rejected = expect(conversion).rejects.toThrow('did not answer');
+
+		await jest.advanceTimersByTimeAsync(PAST_THE_BUDGET);
+		await rejected;
+
+		// A late answer to a request nobody waits on must find nothing to
+		// resolve, or the entry is a leak that also settles a second time.
+		expect(() => {
+			answer(worker, resultFor(id));
+		}).not.toThrow();
+	});
+
+	// A wedged worker stays wedged, so every later conversion would pay the
+	// whole budget before falling back. The caller checks availability first,
+	// so marking it unavailable sends them straight to the main thread.
+	it('stops offering the worker after one has hung', async () => {
+		const client = new EncodingWorkerClient('worker-source');
+		const { conversion } = convertThrough(client);
+		const rejected = expect(conversion).rejects.toThrow('did not answer');
+
+		await jest.advanceTimersByTimeAsync(PAST_THE_BUDGET);
+		await rejected;
+
+		expect(client.isAvailable()).toBe(false);
+	});
+
+	it('refuses a conversion once the worker has been given up on', async () => {
+		const client = new EncodingWorkerClient('worker-source');
+		const { conversion } = convertThrough(client);
+		const rejected = expect(conversion).rejects.toThrow('did not answer');
+		await jest.advanceTimersByTimeAsync(PAST_THE_BUDGET);
+		await rejected;
+
+		await expect(
+			client.convertBlob(new Blob(['a']), 'mp3', 128000, false),
+		).rejects.toThrow('not available');
+	});
+
+	// A long conversion that is making progress is healthy, and cutting it off
+	// at a fixed deadline would abandon work that was going to finish.
+	it('gives a worker reporting progress its budget again', async () => {
+		const client = new EncodingWorkerClient('worker-source');
+		const onProgress = jest.fn();
+		const conversion = client.convertBlob(
+			new Blob(['audio']),
+			'mp3',
+			128000,
+			false,
+			'source',
+			onProgress,
+		);
+		const worker = at(createdWorkers, 0);
+		const id = requestId(worker);
+
+		for (let round = 0; round < 3; round++) {
+			await jest.advanceTimersByTimeAsync(
+				ENCODING_WORKER_MIN_TIMEOUT_MS - 1,
+			);
+			answer(worker, { id, kind: 'progress', percent: round * 30 });
+		}
+		answer(worker, resultFor(id));
+
+		await expect(conversion).resolves.toBeInstanceOf(Blob);
+		expect(onProgress).toHaveBeenCalledTimes(3);
+	});
+
+	// Multi-track finalization converts the tracks side by side through one
+	// worker. Terminating it on one timeout would take the healthy siblings.
+	it('leaves a second conversion of the same worker alone', async () => {
+		const client = new EncodingWorkerClient('worker-source');
+		const first = client.convertBlob(new Blob(['a']), 'mp3', 128000, false);
+		const rejected = expect(first).rejects.toThrow('did not answer');
+		const second = client.convertBlob(
+			new Blob(['b']),
+			'mp3',
+			128000,
+			false,
+		);
+		const worker = at(createdWorkers, 0);
+
+		await jest.advanceTimersByTimeAsync(
+			ENCODING_WORKER_MIN_TIMEOUT_MS / 2,
+		);
+		answer(worker, resultFor(requestId(worker, 1)));
+		await expect(second).resolves.toBeInstanceOf(Blob);
+
+		await jest.advanceTimersByTimeAsync(PAST_THE_BUDGET);
+		await rejected;
+		expect(worker.terminate).not.toHaveBeenCalled();
+	});
+
+	it('clears the watchdog when the worker answers in time', async () => {
+		const client = new EncodingWorkerClient('worker-source');
+		const { worker, conversion } = convertThrough(client);
+
+		answer(worker, resultFor(requestId(worker)));
+		await conversion;
+		await jest.advanceTimersByTimeAsync(PAST_THE_BUDGET);
+
+		expect(client.isAvailable()).toBe(true);
 	});
 });
