@@ -10,7 +10,6 @@
  */
 
 import { CaptureLossWatcher } from 'src/recording/CaptureLossWatcher';
-import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import { missingCaptureIndexes } from 'src/recording/AudioStreamHandler';
 import { partial } from '../helpers/doubles';
 import { at } from '../helpers/assertions';
@@ -95,7 +94,7 @@ describe('CaptureLossWatcher', () => {
 	 * @param streams - The session's capture streams
 	 */
 	function watchStreams(streams: MediaStream[]): void {
-		watcher.start(streams, () => DEFAULT_SETTINGS, onStreamEnded);
+		watcher.start(streams, onStreamEnded);
 	}
 
 	/**
@@ -177,6 +176,19 @@ describe('CaptureLossWatcher', () => {
 		await announceDeviceChange();
 
 		expect(onStreamEnded).toHaveBeenCalledWith(1, 2);
+	});
+
+	// The index a re-check answers with has to address the streams this
+	// session is holding. Resolved against the live settings instead, it
+	// answered in a list the user can edit mid-session, and an index from that
+	// list named a stream the session never had.
+	it("re-checks the session's own streams", async () => {
+		const streams = [streamDouble(), streamDouble()];
+		watchStreams(streams);
+
+		await announceDeviceChange();
+
+		expect(missingCaptureIndexes).toHaveBeenCalledWith(streams);
 	});
 
 	it('reports every stream a single device change lost', async () => {

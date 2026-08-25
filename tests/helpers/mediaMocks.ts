@@ -180,6 +180,37 @@ export function mediaDevice(
 	};
 }
 
+/**
+ * Puts a `navigator.mediaDevices` double in place for every test of the
+ * calling suite, and puts the real one back afterwards.
+ *
+ * Call it in the describe body; it registers both hooks. jsdom ships no media
+ * devices, so every suite that touches an input has to install its own, and
+ * every one of them wrote the same defineProperty pair by hand - which is
+ * where a leaked global comes from, since the restore is a convention rather
+ * than a guarantee. Pairing them here means the restore cannot be forgotten.
+ * @param build - Builds the MediaDevices members this suite needs, per test
+ * @returns Reads the double the current test is running against
+ */
+export function withMediaDevices<T extends object>(build: () => T): () => T {
+	const original = navigator.mediaDevices;
+	let current: T;
+	beforeEach(() => {
+		current = build();
+		Object.defineProperty(navigator, 'mediaDevices', {
+			value: current,
+			configurable: true,
+		});
+	});
+	afterEach(() => {
+		Object.defineProperty(navigator, 'mediaDevices', {
+			value: original,
+			configurable: true,
+		});
+	});
+	return () => current;
+}
+
 /** The device id the browser uses for the system default input. */
 export const DEFAULT_DEVICE_ID = 'default';
 

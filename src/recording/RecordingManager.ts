@@ -451,13 +451,9 @@ export class RecordingManager {
 			// on with a dead input. Nothing that happened while the recorders
 			// were being built is missed: the watcher reads the state of the
 			// tracks as well as subscribing to their events.
-			this.captureLoss.start(
-				this.streams,
-				() => this.settings,
-				(index, remaining) => {
-					this.handleStreamEnded(index, remaining);
-				},
-			);
+			this.captureLoss.start(this.streams, (index, remaining) => {
+				this.handleStreamEnded(index, remaining);
+			});
 			return null;
 		} catch (error) {
 			this.releasePartialSession();

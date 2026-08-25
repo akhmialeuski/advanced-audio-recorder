@@ -15,11 +15,16 @@
  * are reduced to one fact - this stream is gone - so the session has a single
  * rule for what a loss means, and each stream is reported at most once
  * whichever signal came first.
+ *
+ * Both are also read off the same object: the session's own streams. That is
+ * what makes them one fact rather than two that happen to be numbered alike.
+ * The device-list signal used to be resolved against the live settings, which
+ * describe the session only until someone edits them, and an index from the
+ * one list applied to the other named a stream the session did not have.
  * @module recording/CaptureLossWatcher
  */
 
 import { PLUGIN_LOG_PREFIX } from '../constants';
-import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import {
 	missingCaptureIndexes,
 	watchStreamEndings,
@@ -44,23 +49,29 @@ export class CaptureLossWatcher {
 	private onStreamEnded: CaptureLossHandler | null = null;
 	/** Streams already reported, so two signals for one loss report once. */
 	private readonly lost = new Set<number>();
-	private streamCount = 0;
+	/**
+	 * The session's own streams, which are what an index means here.
+	 *
+	 * Held rather than counted, because both signals are read off them: the
+	 * track subscription reports their position, and the device re-check asks
+	 * which of these streams named a device that has gone. One object defines
+	 * the index space, so nothing else can answer in a different one.
+	 */
+	private streams: readonly MediaStream[] = [];
 
 	/**
 	 * Starts watching one session. Releases any previous subscription first,
 	 * so a second session never inherits the first one's bookkeeping.
 	 * @param streams - The session's capture streams, in track order
-	 * @param getSettings - Reads the live settings for the device re-check
 	 * @param onStreamEnded - Where losses are reported
 	 */
 	start(
 		streams: readonly MediaStream[],
-		getSettings: () => AudioRecorderSettings,
 		onStreamEnded: CaptureLossHandler,
 	): void {
 		this.release();
 		this.onStreamEnded = onStreamEnded;
-		this.streamCount = streams.length;
+		this.streams = streams;
 		this.detachTracks = watchStreamEndings(streams, (index) => {
 			this.reportStreamEnded(index);
 		});
@@ -72,7 +83,7 @@ export class CaptureLossWatcher {
 			return;
 		}
 		this.deviceChangeHandler = (): void => {
-			void this.reportMissingDevices(getSettings());
+			void this.reportMissingDevices();
 		};
 		devices.addEventListener('devicechange', this.deviceChangeHandler);
 	}
@@ -95,7 +106,7 @@ export class CaptureLossWatcher {
 		this.deviceChangeHandler = null;
 		this.onStreamEnded = null;
 		this.lost.clear();
-		this.streamCount = 0;
+		this.streams = [];
 	}
 
 	/**
@@ -108,14 +119,11 @@ export class CaptureLossWatcher {
 	 * A check that could not run says nothing about the devices. Reading its
 	 * own failure as a lost input - which a rejected `enumerateDevices` used
 	 * to be - ends a session that is recording perfectly well.
-	 * @param settings - Live settings naming the configured inputs
 	 */
-	private async reportMissingDevices(
-		settings: AudioRecorderSettings,
-	): Promise<void> {
+	private async reportMissingDevices(): Promise<void> {
 		let missing: number[];
 		try {
-			missing = await missingCaptureIndexes(settings);
+			missing = await missingCaptureIndexes(this.streams);
 		} catch (error) {
 			console.warn(
 				`${PLUGIN_LOG_PREFIX} Could not re-check the capture devices:`,
@@ -158,6 +166,6 @@ export class CaptureLossWatcher {
 			return;
 		}
 		this.lost.add(index);
-		this.onStreamEnded?.(index, this.streamCount - this.lost.size);
+		this.onStreamEnded?.(index, this.streams.length - this.lost.size);
 	}
 }
