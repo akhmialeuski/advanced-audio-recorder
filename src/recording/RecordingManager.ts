@@ -55,6 +55,7 @@ import {
 	type ChannelMode,
 } from '../audio/downmix';
 import { MonoCaptureBridge } from './MonoCaptureBridge';
+import { CaptureLossWatcher } from './CaptureLossWatcher';
 import type { PcmStreamRecorder } from './PcmStreamRecorder';
 import {
 	createAndStartMediaRecorders,
@@ -109,6 +110,8 @@ export class RecordingManager {
 	private recordedBytes: number = 0;
 	/** Live input-level meter for the primary stream, when enabled. */
 	private levelMonitor: InputLevelMonitor | null = null;
+	/** Watches the session's capture devices for going away mid-session. */
+	private readonly captureLoss = new CaptureLossWatcher();
 	private isWavPcmRecording: boolean = false;
 	private activeRecorderFormat: string = FORMAT_WEBM;
 	private insertionContext: InsertionContext | null = null;
@@ -401,6 +404,14 @@ export class RecordingManager {
 			this.markers.beginSession();
 			this.recordedBytes = 0;
 			this.startLevelMonitor();
+			this.captureLoss.start(this.streams, () => this.settings, {
+				onStreamEnded: (index, remaining) => {
+					this.handleStreamEnded(index, remaining);
+				},
+				onSelectedDeviceMissing: (reason) => {
+					this.handleCaptureLoss(reason);
+				},
+			});
 
 			if (this.isWavPcmRecording) {
 				await this.initPcmRecording();
@@ -513,6 +524,7 @@ export class RecordingManager {
 	 */
 	private releaseSessionResources(): void {
 		this.stopLevelMonitor();
+		this.captureLoss.release();
 		this.releaseMonoBridges();
 		stopAllStreams(this.streams);
 		this.streams = [];
@@ -745,6 +757,58 @@ export class RecordingManager {
 				},
 			},
 		);
+	}
+
+	/**
+	 * Answers one capture stream ending.
+	 *
+	 * A multi-track session keeps whatever is still capturing: pulling one
+	 * interface out is a reason to lose that track, not the interview. The
+	 * user is told which one went, because "a track stopped" is not something
+	 * anybody can act on. Losing the last live stream ends the session.
+	 * @param index - Which of the session's streams ended
+	 * @param remaining - How many are still live
+	 */
+	private handleStreamEnded(index: number, remaining: number): void {
+		const name = this.chunkTargets[index]?.sourceName ?? 'the input device';
+		if (remaining > 0) {
+			new Notice(
+				`Track "${name}" stopped: its input device was disconnected. ` +
+					'The other tracks are still recording.',
+			);
+			return;
+		}
+		this.handleCaptureLoss(
+			`Recording stopped: the input device "${name}" was disconnected.`,
+		);
+	}
+
+	/**
+	 * Ends a session whose input is gone, keeping everything captured so far.
+	 *
+	 * The buffers hold real audio right up to the moment the device went, so
+	 * this finalizes the session the way a stop does rather than discarding
+	 * them. It runs only from an active session: one loss can arrive twice
+	 * (the track ends and the device list changes), and a session that is
+	 * already saving has nothing left to interrupt.
+	 * @param detail - What to tell the user went wrong
+	 */
+	private handleCaptureLoss(detail: string): void {
+		if (
+			this.status !== RecordingStatus.Recording &&
+			this.status !== RecordingStatus.Paused
+		) {
+			return;
+		}
+		// Capture genuinely ended at this instant, so the active span since
+		// the last resume is folded in before the status stops counting it.
+		// Without this the saved duration loses everything since that resume.
+		if (this.status === RecordingStatus.Recording) {
+			this.rotation.markPaused();
+		}
+		this.setStatus(RecordingStatus.Interrupted);
+		new Notice(`${detail} Saving what was recorded so far.`);
+		void this.stopRecording();
 	}
 
 	/**

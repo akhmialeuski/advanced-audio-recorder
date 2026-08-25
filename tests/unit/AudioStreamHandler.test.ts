@@ -13,12 +13,14 @@ import {
 	isMultiTrackSessionEnabled,
 	resolveCaptureDeviceId,
 	validateSelectedDevices,
+	watchStreamEndings,
 } from 'src/recording/AudioStreamHandler';
 import { AudioStreamError } from 'src/errors';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { setPlatform, useDesktopPlatform } from '../helpers/platform';
 import { partial } from '../helpers/doubles';
+import { at } from '../helpers/assertions';
 
 /** Builds a MediaStream stub whose tracks record stop() calls. */
 function fakeStream(): { stream: MediaStream; stop: jest.Mock } {
@@ -720,5 +722,102 @@ describe('AudioStreamHandler', () => {
 				getAudioSourceName('abcdefghijklmnopqrstuvwxyz'),
 			).resolves.toBe('Deviceabcdefgh');
 		});
+	});
+});
+
+// Nothing in the plugin used to listen for a track ending, so a microphone
+// unplugged mid-session was noticed only when the finished file turned out to
+// hold silence. The subscription is the mirror image of stopAllStreams, and
+// lives beside it for the same reason: both walk every track of every stream.
+describe('watchStreamEndings', () => {
+	/** A track that records what was subscribed to it. */
+	function fakeTrack(): {
+		track: MediaStreamTrack;
+		add: jest.Mock;
+		remove: jest.Mock;
+	} {
+		const add = jest.fn();
+		const remove = jest.fn();
+		return {
+			track: partial<MediaStreamTrack>({
+				addEventListener: add,
+				removeEventListener: remove,
+			}),
+			add,
+			remove,
+		};
+	}
+
+	/** A stream over the given tracks. */
+	function streamOf(tracks: MediaStreamTrack[]): MediaStream {
+		return partial<MediaStream>({ getTracks: () => tracks });
+	}
+
+	it('subscribes to the end of every track of every stream', () => {
+		const first = fakeTrack();
+		const second = fakeTrack();
+
+		watchStreamEndings(
+			[streamOf([first.track]), streamOf([second.track])],
+			jest.fn(),
+		);
+
+		expect(first.add).toHaveBeenCalledWith('ended', expect.any(Function));
+		expect(second.add).toHaveBeenCalledWith('ended', expect.any(Function));
+	});
+
+	it('reports which stream ended', () => {
+		const first = fakeTrack();
+		const second = fakeTrack();
+		const onEnded = jest.fn();
+
+		watchStreamEndings(
+			[streamOf([first.track]), streamOf([second.track])],
+			onEnded,
+		);
+		at(second.add.mock.calls, 0)[1]();
+
+		expect(onEnded).toHaveBeenCalledWith(1);
+	});
+
+	// The session outlives several of these on a multi-part recording, so a
+	// subscription left attached is a listener per rotation on a dead track.
+	it('takes every subscription back down when released', () => {
+		const first = fakeTrack();
+		const second = fakeTrack();
+
+		const release = watchStreamEndings(
+			[streamOf([first.track]), streamOf([second.track])],
+			jest.fn(),
+		);
+		release();
+
+		expect(first.remove).toHaveBeenCalledWith(
+			'ended',
+			at(first.add.mock.calls, 0)[1],
+		);
+		expect(second.remove).toHaveBeenCalledWith(
+			'ended',
+			at(second.add.mock.calls, 0)[1],
+		);
+	});
+
+	it('releases a second time without complaint', () => {
+		const only = fakeTrack();
+
+		const release = watchStreamEndings([streamOf([only.track])], jest.fn());
+		release();
+		release();
+
+		expect(only.remove).toHaveBeenCalledTimes(1);
+	});
+
+	it('subscribes to nothing when the session has no streams', () => {
+		const onEnded = jest.fn();
+
+		const release = watchStreamEndings([], onEnded);
+		release();
+
+		expect(onEnded).not.toHaveBeenCalled();
 	});
 });

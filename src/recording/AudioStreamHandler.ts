@@ -375,3 +375,41 @@ export function stopAllStreams(streams: MediaStream[]): void {
 		}
 	}
 }
+
+/**
+ * Subscribes to the end of every track of every capture stream, which is how
+ * the platform reports that an input has gone away: a USB interface pulled
+ * out, a Bluetooth headset that dropped its link, an output the operating
+ * system switched. The browser ends the track, and until something listens
+ * for that the session keeps its status, its clock, and its silent file.
+ *
+ * The mirror image of {@link stopAllStreams}, and here for the same reason:
+ * both walk every track of every stream, and a session that acquires the
+ * streams together releases them together.
+ * @param streams - The session's capture streams, in track order
+ * @param onEnded - Called with the index of the stream whose track ended
+ * @returns Takes every subscription back down; safe to call more than once
+ */
+export function watchStreamEndings(
+	streams: readonly MediaStream[],
+	onEnded: (streamIndex: number) => void,
+): () => void {
+	const detach: (() => void)[] = [];
+	streams.forEach((stream, index) => {
+		for (const track of stream.getTracks()) {
+			const handler = (): void => {
+				onEnded(index);
+			};
+			track.addEventListener('ended', handler);
+			detach.push(() => {
+				track.removeEventListener('ended', handler);
+			});
+		}
+	});
+	return () => {
+		for (const remove of detach) {
+			remove();
+		}
+		detach.length = 0;
+	};
+}

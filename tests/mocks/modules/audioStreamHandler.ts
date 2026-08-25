@@ -20,3 +20,6 @@ export const getAudioStreams = jest.fn();
 export const getAudioSourceName = jest.fn().mockResolvedValue('TestDevice');
 export const stopAllStreams = jest.fn();
 export const validateSelectedDevices = jest.fn();
+// Returns the release function the real one does, so a manager tearing a
+// session down calls something rather than tripping over undefined.
+export const watchStreamEndings = jest.fn(() => jest.fn());

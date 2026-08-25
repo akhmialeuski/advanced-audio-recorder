@@ -59,6 +59,18 @@ describe('RibbonIcon', () => {
 			);
 		});
 
+		// An interrupted session is saving too, and the icon says so; what
+		// makes it different is stated where there is room to state it.
+		it('shows the saving icon while an interrupted session finalizes', () => {
+			updateRibbonIcon(ribbonElement, RecordingStatus.Interrupted);
+
+			expect(ribbonElement.getAttribute('data-icon')).toBe('save');
+			expect(ribbonElement.classList.contains('is-saving')).toBe(true);
+			expect(ribbonElement.classList.contains('is-recording')).toBe(
+				false,
+			);
+		});
+
 		it('removes is-saving class when transitioning from saving to idle', () => {
 			ribbonElement.classList.add('is-saving');
 			ribbonElement.setAttribute('data-icon', 'save');

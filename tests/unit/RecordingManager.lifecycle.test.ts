@@ -25,11 +25,12 @@ import {
 } from '../helpers/recordingManagerTestKit';
 import { useDesktopPlatform } from '../helpers/platform';
 import { at } from '../helpers/assertions';
-import { flushMicrotasks } from '../helpers/async';
+import { flushMicrotasks, waitFor } from '../helpers/async';
 import { noticeMessages } from '../mocks/obsidian';
 import {
 	getAudioStreams,
 	stopAllStreams,
+	watchStreamEndings,
 } from 'src/recording/AudioStreamHandler';
 
 // Mock AudioStreamHandler
@@ -743,5 +744,123 @@ describe('RecordingManager', () => {
 				undefined,
 			);
 		});
+	});
+});
+
+// The input going away used to be outside the session's model entirely: the
+// status stayed Recording, the clock kept counting, and silence went to disk
+// until the user opened the finished file. The session now says what happened
+// the moment it happens and finalizes what it already has.
+describe('an input device that disappears mid-session', () => {
+	/**
+	 * Ends the given capture stream, the way the platform does when its
+	 * device goes away.
+	 * @param streamIndex - Which of the session's streams to end
+	 */
+	function endStream(streamIndex: number): void {
+		at(jest.mocked(watchStreamEndings).mock.calls, 0)[1](streamIndex);
+	}
+
+	beforeEach(() => {
+		useDesktopPlatform();
+		jest.spyOn(console, 'error').mockImplementation();
+	});
+
+	it('finalizes the session when the only input is lost', async () => {
+		makeMediaRecorderDouble();
+		stubAudioStreams();
+		const sut = createRecordingSut();
+		await sut.manager.startRecording();
+
+		endStream(0);
+		await waitFor(
+			() => sut.manager.getStatus() === RecordingStatus.Idle,
+			{ message: 'the interrupted session to finish saving' },
+		);
+
+		expect(sut.onStatusChange).toHaveBeenCalledWith(
+			RecordingStatus.Interrupted,
+			undefined,
+		);
+	});
+
+	it('names the lost input rather than reporting a generic failure', async () => {
+		makeMediaRecorderDouble();
+		stubAudioStreams();
+		const sut = createRecordingSut({
+			settings: { useSourceNamesForTracks: false },
+		});
+		await sut.manager.startRecording();
+
+		endStream(0);
+		await flushMicrotasks();
+
+		expect(noticeMessages().join(' ')).toContain('Track1');
+	});
+
+	// Losing one interface of a multi-track session must not throw away the
+	// tracks that are still capturing; the user is told which one went.
+	it('keeps the other tracks recording when one of several is lost', async () => {
+		makeMediaRecorderDouble();
+		stubAudioStreams({ count: 3 });
+		const sut = createRecordingSut({
+			settings: {
+				enableMultiTrack: true,
+				useSourceNamesForTracks: false,
+			},
+		});
+		await sut.manager.startRecording();
+
+		endStream(1);
+		await flushMicrotasks();
+
+		expect(sut.manager.getStatus()).toBe(RecordingStatus.Recording);
+		expect(noticeMessages().join(' ')).toContain('Track2');
+	});
+
+	it('finalizes once the last of several tracks is lost', async () => {
+		makeMediaRecorderDouble();
+		stubAudioStreams({ count: 2 });
+		const sut = createRecordingSut({
+			settings: { enableMultiTrack: true },
+		});
+		await sut.manager.startRecording();
+
+		endStream(0);
+		endStream(1);
+		await waitFor(
+			() => sut.manager.getStatus() === RecordingStatus.Idle,
+			{ message: 'the interrupted session to finish saving' },
+		);
+	});
+
+	// A device that vanishes after the session already stopped has nothing to
+	// interrupt, and a second Notice would report a thing that did not happen.
+	it('says nothing when a stream ends after the session already stopped', async () => {
+		makeMediaRecorderDouble();
+		stubAudioStreams();
+		const sut = createRecordingSut();
+		await sut.manager.startRecording();
+		await sut.manager.stopRecording();
+		const before = noticeMessages().length;
+
+		endStream(0);
+		await flushMicrotasks();
+
+		expect(noticeMessages()).toHaveLength(before);
+	});
+
+	it('takes the subscription back down when a start fails', async () => {
+		const release = jest.fn();
+		jest.mocked(watchStreamEndings).mockReturnValue(release);
+		recorderThatWillNotStop();
+		const sut = createRecordingSut({
+			settings: { insertAtOriginalPosition: true },
+		});
+		failTheWorkspace(sut.app);
+
+		await sut.manager.startRecording();
+
+		expect(release).toHaveBeenCalledTimes(1);
 	});
 });

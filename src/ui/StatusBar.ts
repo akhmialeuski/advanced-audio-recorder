@@ -95,6 +95,18 @@ export function updateStatusBar(
 				liveOptions,
 			);
 			break;
+		case RecordingStatus.Interrupted:
+			// The same progress surface as an ordinary save, because that is
+			// what is happening, under a label that says why: the user did not
+			// press stop, and a bare "Saving..." would leave them to work that
+			// out from a Notice that has already gone.
+			renderProgressState(
+				statusBarItem,
+				saveProgress,
+				'is-saving',
+				'Input lost, saving...',
+			);
+			break;
 		case RecordingStatus.Saving:
 			renderSavingState(statusBarItem, saveProgress);
 			break;

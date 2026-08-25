@@ -15,6 +15,15 @@ export const RecordingStatus = {
 	Idle: 'idle',
 	Recording: 'recording',
 	Paused: 'paused',
+	/**
+	 * Capture ended without the user asking for it: the input device went
+	 * away mid-session. A state of its own because it is the one ending the
+	 * user did not initiate, and every surface that shows what the recorder
+	 * is doing has to say so rather than showing an ordinary save. It is
+	 * brief - the session finalizes what it already captured and moves on to
+	 * Saving - which is exactly why it needs to be visible.
+	 */
+	Interrupted: 'interrupted',
 	Saving: 'saving',
 } as const;
 

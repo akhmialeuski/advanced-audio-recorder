@@ -77,6 +77,8 @@ function statusLine(host: CliHost): string {
 			return 'Recording.';
 		case RecordingStatus.Paused:
 			return 'Recording, paused.';
+		case RecordingStatus.Interrupted:
+			return 'The input device was lost; saving what was recorded.';
 		case RecordingStatus.Saving:
 			return 'Saving the recording that just stopped.';
 		default:
