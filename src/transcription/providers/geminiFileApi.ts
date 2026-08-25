@@ -106,6 +106,10 @@ function parseFile(body: unknown): GeminiFile {
  * @param mimeType - MIME type of the bytes
  * @param displayName - Human-readable name stored with the file
  * @param maxTimeoutMs - Per-request timeout cap for the byte-upload step
+ * @param signal - Ends the upload when the run is cancelled. Reaches both the
+ *   resumable-session start and the byte transfer, which on a long recording
+ *   is the largest request the run makes and the one a Cancel most needs to
+ *   let go of
  */
 export async function uploadFile(
 	baseUrl: string,
