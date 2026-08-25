@@ -30,7 +30,7 @@ import { noticeMessages } from '../mocks/obsidian';
 import {
 	getAudioStreams,
 	stopAllStreams,
-	validateSelectedDevices,
+	missingCaptureIndexes,
 	watchStreamEndings,
 } from 'src/recording/AudioStreamHandler';
 
@@ -803,14 +803,13 @@ describe('an input device that disappears mid-session', () => {
 	}
 
 	/**
-	 * Makes the next device check report the selected input as gone, and only
-	 * the next one: the mocked module keeps its implementation between tests,
-	 * and a rejection left behind would fail the next session before it began.
+	 * Makes the next device check report the given stream's input as gone, and
+	 * only the next one: the mocked module keeps its implementation between
+	 * tests, and an answer left behind would end the next session on sight.
+	 * @param streamIndex - Which of the session's streams lost its device
 	 */
-	function loseTheSelectedDevice(): void {
-		jest.mocked(validateSelectedDevices).mockRejectedValueOnce(
-			new Error('Selected audio input device is no longer available.'),
-		);
+	function loseTheSelectedDevice(streamIndex = 0): void {
+		jest.mocked(missingCaptureIndexes).mockResolvedValueOnce([streamIndex]);
 	}
 
 	/**
@@ -888,6 +887,21 @@ describe('an input device that disappears mid-session', () => {
 		);
 	});
 
+	// The name is read out of the session's targets by the stream's index, and
+	// the compiler will not take that read as certain. What the fallback is
+	// for is a sentence rather than "undefined" if the watcher ever names a
+	// stream this session has no target for.
+	it('names the input generically when it has no target for the stream', async () => {
+		const sut = await startedSession();
+
+		endStream(3);
+		await untilSaved(sut);
+
+		expect(noticeMessages().join(' ')).toContain(
+			'the input device "the input device" was disconnected',
+		);
+	});
+
 	// A device that vanishes after the session already stopped has nothing to
 	// interrupt, and a second Notice would report a thing that did not happen.
 	it('says nothing when a stream ends after the session already stopped', async () => {
@@ -903,7 +917,8 @@ describe('an input device that disappears mid-session', () => {
 
 	// The other half of the watch: some platforms end the track, and some only
 	// say the device list moved. A session whose configured input is no longer
-	// in that list has lost it whichever way it was told.
+	// in that list has lost it whichever way it was told, and is told so in
+	// the same words either way.
 	it('finalizes when the device list loses the selected input', async () => {
 		const listeners = watchDeviceList();
 		const sut = await startedSession();
@@ -912,7 +927,42 @@ describe('an input device that disappears mid-session', () => {
 		at(listeners, 0)();
 		await untilSaved(sut);
 
-		expect(noticeMessages().join(' ')).toContain('no longer available');
+		expect(noticeMessages().join(' ')).toContain('was disconnected');
+	});
+
+	// The two signals used to answer differently: a track ending cost that
+	// track, and the same loss seen through the device list ended the whole
+	// session. Whichever fired first decided, so a multi-track rig could lose
+	// an interview to one interface being unplugged.
+	it('keeps the other tracks when the device list loses one of them', async () => {
+		const listeners = watchDeviceList();
+		const sut = await startedSession(3, {
+			enableMultiTrack: true,
+			useSourceNamesForTracks: false,
+		});
+		loseTheSelectedDevice(1);
+
+		at(listeners, 0)();
+		await flushMicrotasks();
+
+		expect(sut.manager.getStatus()).toBe(RecordingStatus.Recording);
+		expect(noticeMessages().join(' ')).toContain('Track2');
+	});
+
+	// A check that could not run says nothing about the devices, and
+	// enumerateDevices rejects for reasons of its own.
+	it('records on when the device check itself fails', async () => {
+		jest.spyOn(console, 'warn').mockImplementation();
+		const listeners = watchDeviceList();
+		const sut = await startedSession();
+		jest.mocked(missingCaptureIndexes).mockRejectedValueOnce(
+			new Error('enumeration failed'),
+		);
+
+		at(listeners, 0)();
+		await flushMicrotasks();
+
+		expect(sut.manager.getStatus()).toBe(RecordingStatus.Recording);
 	});
 
 	// One disconnection can be reported twice: the track ends and the device
@@ -935,9 +985,10 @@ describe('an input device that disappears mid-session', () => {
 		).toHaveLength(1);
 	});
 
-	it('takes the subscription back down when a start fails', async () => {
-		const release = jest.fn();
-		jest.mocked(watchStreamEndings).mockReturnValue(release);
+	// A session is watched from the moment it is recording, because a loss is
+	// answered by finalizing one and there is nothing to finalize before then.
+	// A start that never got there leaves nothing subscribed at all.
+	it('attaches no capture watch when the start fails', async () => {
 		recorderThatWillNotStop();
 		const sut = createRecordingSut({
 			settings: { insertAtOriginalPosition: true },
@@ -946,6 +997,25 @@ describe('an input device that disappears mid-session', () => {
 
 		await sut.manager.startRecording();
 
-		expect(release).toHaveBeenCalledTimes(1);
+		expect(jest.mocked(watchStreamEndings)).not.toHaveBeenCalled();
+	});
+
+	// The window the ordering above opens, and the reason the watch reads the
+	// state of the tracks as well as subscribing to their events: an input
+	// pulled out while the recorders were being built ends its track before
+	// anything is listening, and that event does not come again. The session
+	// used to run on with a dead microphone and a lit indicator.
+	it('reports an input that was already gone before the session was ready', async () => {
+		makeMediaRecorderDouble();
+		stubAudioStreams({ trackState: 'ended' });
+		const sut = createRecordingSut({});
+
+		await sut.manager.startRecording();
+		await untilSaved(sut);
+
+		expect(sut.onStatusChange).toHaveBeenCalledWith(
+			RecordingStatus.Interrupted,
+			undefined,
+		);
 	});
 });

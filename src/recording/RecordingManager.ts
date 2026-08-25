@@ -404,14 +404,6 @@ export class RecordingManager {
 			this.markers.beginSession();
 			this.recordedBytes = 0;
 			this.startLevelMonitor();
-			this.captureLoss.start(this.streams, () => this.settings, {
-				onStreamEnded: (index, remaining) => {
-					this.handleStreamEnded(index, remaining);
-				},
-				onSelectedDeviceMissing: (reason) => {
-					this.handleCaptureLoss(reason);
-				},
-			});
 
 			if (this.isWavPcmRecording) {
 				await this.initPcmRecording();
@@ -452,6 +444,20 @@ export class RecordingManager {
 			this.rotation.markResumed();
 			this.setStatus(RecordingStatus.Recording);
 			new Notice('Recording started');
+			// Watched from here rather than from the moment the streams
+			// opened. A loss is answered by finalizing the session, so one
+			// reported before the session is recording has nothing to act on
+			// and used to be dropped for good - the very session that carries
+			// on with a dead input. Nothing that happened while the recorders
+			// were being built is missed: the watcher reads the state of the
+			// tracks as well as subscribing to their events.
+			this.captureLoss.start(
+				this.streams,
+				() => this.settings,
+				(index, remaining) => {
+					this.handleStreamEnded(index, remaining);
+				},
+			);
 			return null;
 		} catch (error) {
 			this.releasePartialSession();
@@ -765,7 +771,15 @@ export class RecordingManager {
 	 * A multi-track session keeps whatever is still capturing: pulling one
 	 * interface out is a reason to lose that track, not the interview. The
 	 * user is told which one went, because "a track stopped" is not something
-	 * anybody can act on. Losing the last live stream ends the session.
+	 * anybody can act on.
+	 *
+	 * Losing the last live stream ends the session, keeping everything it
+	 * captured: the buffers hold real audio right up to the moment the device
+	 * went, so the session is finalized the way a stop does it rather than
+	 * discarded. One disconnection can be noticed twice - the track ends and
+	 * the device list changes - and this runs once per stream either way,
+	 * because {@link CaptureLossWatcher} counts the losses and this reads the
+	 * count. Two places deciding that would be two rules for one fact.
 	 * @param index - Which of the session's streams ended
 	 * @param remaining - How many are still live
 	 */
@@ -778,28 +792,6 @@ export class RecordingManager {
 			);
 			return;
 		}
-		this.handleCaptureLoss(
-			`Recording stopped: the input device "${name}" was disconnected.`,
-		);
-	}
-
-	/**
-	 * Ends a session whose input is gone, keeping everything captured so far.
-	 *
-	 * The buffers hold real audio right up to the moment the device went, so
-	 * this finalizes the session the way a stop does rather than discarding
-	 * them. It runs only from an active session: one loss can arrive twice
-	 * (the track ends and the device list changes), and a session that is
-	 * already saving has nothing left to interrupt.
-	 * @param detail - What to tell the user went wrong
-	 */
-	private handleCaptureLoss(detail: string): void {
-		if (
-			this.status !== RecordingStatus.Recording &&
-			this.status !== RecordingStatus.Paused
-		) {
-			return;
-		}
 		// Capture genuinely ended at this instant, so the active span since
 		// the last resume is folded in before the status stops counting it.
 		// Without this the saved duration loses everything since that resume.
@@ -807,7 +799,10 @@ export class RecordingManager {
 			this.rotation.markPaused();
 		}
 		this.setStatus(RecordingStatus.Interrupted);
-		new Notice(`${detail} Saving what was recorded so far.`);
+		new Notice(
+			`Recording stopped: the input device "${name}" was disconnected. ` +
+				'Saving what was recorded so far.',
+		);
 		void this.stopRecording();
 	}
 

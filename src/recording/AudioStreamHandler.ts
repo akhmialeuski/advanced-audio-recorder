@@ -310,43 +310,73 @@ export function getOrderedTrackSources(
 }
 
 /**
- * Validates that selected audio devices are still available. A no-op
- * where device selection is unavailable (mobile): stored ids are not
+ * Which of this configuration's capture streams name a device the system no
+ * longer lists, by their index in {@link getAudioStreams}' `streams`.
+ *
+ * The index is the answer rather than a sentence, because it is the one thing
+ * a session can act on: it is the same index the `ended` event of a track
+ * reports, so a loss learned from the device list and a loss learned from the
+ * track are one fact in one shape. Answering with a message instead left the
+ * caller to decide what a message meant, and the two readings disagreed - one
+ * lost track ended its own track, and the same loss seen through the device
+ * list ended the whole session.
+ *
+ * Empty where device selection is unavailable (mobile): stored ids are not
  * used for capture there (see {@link resolveCaptureDeviceId}), so their
- * absence - e.g. desktop ids arriving through a synced data.json - must
- * not block recording on the default microphone.
+ * absence - e.g. desktop ids arriving through a synced data.json - must not
+ * block recording on the default microphone. Empty, too, for the system
+ * default input, which has no stored id to look for.
+ * @param settings - Plugin settings holding the configured inputs
+ * @returns Stream indexes whose device is gone, in stream order
+ */
+export async function missingCaptureIndexes(
+	settings: AudioRecorderSettings,
+): Promise<number[]> {
+	if (!isDeviceSelectionSupported()) {
+		return [];
+	}
+	const available = new Set(
+		(await getAudioInputDevices()).map((device) => device.deviceId),
+	);
+	if (isMultiTrackSessionEnabled(settings)) {
+		// The ordered sources are what getAudioStreams opens, in the order it
+		// opens them, so their position is the stream index.
+		return getOrderedTrackSources(settings).flatMap((source, index) =>
+			available.has(source.deviceId) ? [] : [index],
+		);
+	}
+	return settings.audioDeviceId && !available.has(settings.audioDeviceId)
+		? [0]
+		: [];
+}
+
+/**
+ * Validates that selected audio devices are still available, in the words the
+ * user reads when a session refuses to start. Asks
+ * {@link missingCaptureIndexes}, so the check that runs before a session and
+ * the one that runs during it cannot answer differently.
+ * @param settings - Plugin settings holding the configured inputs
+ * @throws Error naming what is missing, when anything is
  */
 export async function validateSelectedDevices(
 	settings: AudioRecorderSettings,
 ): Promise<void> {
-	if (!isDeviceSelectionSupported()) {
+	const missing = await missingCaptureIndexes(settings);
+	if (missing.length === 0) {
 		return;
 	}
-	const devices = await getAudioInputDevices();
-	const availableDeviceIds = new Set(
-		devices.map((device) => device.deviceId),
-	);
-
-	if (isMultiTrackSessionEnabled(settings)) {
-		const missingTracks = getOrderedTrackSources(settings)
-			.filter((source) => !availableDeviceIds.has(source.deviceId))
-			.map((source) => source.trackNumber);
-		if (missingTracks.length > 0) {
-			throw new Error(
-				`Selected audio device(s) for track(s) ${missingTracks.join(', ')} are no longer available.`,
-			);
-		}
-		return;
-	}
-
-	if (
-		settings.audioDeviceId &&
-		!availableDeviceIds.has(settings.audioDeviceId)
-	) {
+	if (!isMultiTrackSessionEnabled(settings)) {
 		throw new Error(
 			'Selected audio input device is no longer available. Please choose another device in settings.',
 		);
 	}
+	const gone = new Set(missing);
+	const tracks = getOrderedTrackSources(settings)
+		.filter((_source, index) => gone.has(index))
+		.map((source) => source.trackNumber);
+	throw new Error(
+		`Selected audio device(s) for track(s) ${tracks.join(', ')} are no longer available.`,
+	);
 }
 
 /**

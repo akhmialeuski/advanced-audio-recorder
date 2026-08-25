@@ -3,15 +3,15 @@
  *
  * Two signals say the same thing and neither used to be listened for. The
  * platform ends a track when its device goes away, and it fires `devicechange`
- * when the device list itself changes. The first is exact and the second is
- * the backstop for a platform that does not fire the first, so the watcher
- * takes both and reports each stream at most once whichever arrived.
+ * when the device list itself changes. Both are reduced to one fact - this
+ * stream is gone - so a session has a single rule for what a loss means, and
+ * each stream is reported at most once whichever signal arrived.
  * @module tests/unit/CaptureLossWatcher.test
  */
 
 import { CaptureLossWatcher } from 'src/recording/CaptureLossWatcher';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
-import { validateSelectedDevices } from 'src/recording/AudioStreamHandler';
+import { missingCaptureIndexes } from 'src/recording/AudioStreamHandler';
 import { partial } from '../helpers/doubles';
 import { at } from '../helpers/assertions';
 import { flushMicrotasks } from '../helpers/async';
@@ -21,17 +21,21 @@ import { flushMicrotasks } from '../helpers/async';
 // the platform's device list.
 jest.mock('src/recording/AudioStreamHandler', () => ({
 	...jest.requireActual('src/recording/AudioStreamHandler'),
-	validateSelectedDevices: jest.fn(),
+	missingCaptureIndexes: jest.fn(),
 }));
 
 /** Every `ended` handler subscribed to the streams, by stream index. */
 const endedHandlers: (() => void)[] = [];
 
-/** A stream whose single track records its subscription. */
-function streamDouble(): MediaStream {
+/**
+ * A stream whose single track records its subscription.
+ * @param readyState - Whether the track is still live when the watch begins
+ */
+function streamDouble(readyState: MediaStreamTrackState = 'live'): MediaStream {
 	return partial<MediaStream>({
 		getTracks: () => [
 			partial<MediaStreamTrack>({
+				readyState,
 				addEventListener: (_event: string, handler: unknown) => {
 					endedHandlers.push(handler as () => void);
 				},
@@ -73,15 +77,13 @@ function removeMediaDevices(): void {
 describe('CaptureLossWatcher', () => {
 	let watcher: CaptureLossWatcher;
 	let onStreamEnded: jest.Mock;
-	let onSelectedDeviceMissing: jest.Mock;
 
 	beforeEach(() => {
 		endedHandlers.length = 0;
 		installMediaDevices();
-		jest.mocked(validateSelectedDevices).mockResolvedValue(undefined);
+		jest.mocked(missingCaptureIndexes).mockResolvedValue([]);
 		watcher = new CaptureLossWatcher();
 		onStreamEnded = jest.fn();
-		onSelectedDeviceMissing = jest.fn();
 	});
 
 	afterEach(() => {
@@ -89,15 +91,27 @@ describe('CaptureLossWatcher', () => {
 	});
 
 	/**
-	 * Starts the watcher over the given number of streams.
+	 * Starts the watcher over the given streams.
+	 * @param streams - The session's capture streams
+	 */
+	function watchStreams(streams: MediaStream[]): void {
+		watcher.start(streams, () => DEFAULT_SETTINGS, onStreamEnded);
+	}
+
+	/**
+	 * Starts the watcher over the given number of live streams.
 	 * @param count - How many capture streams the session holds
 	 */
 	function watch(count: number): void {
-		watcher.start(
-			Array.from({ length: count }, () => streamDouble()),
-			() => DEFAULT_SETTINGS,
-			{ onStreamEnded, onSelectedDeviceMissing },
-		);
+		watchStreams(Array.from({ length: count }, () => streamDouble()));
+	}
+
+	/**
+	 * Announces a device change and lets the check that follows it settle.
+	 */
+	async function announceDeviceChange(): Promise<void> {
+		at(deviceChangeHandlers, 0)();
+		await flushMicrotasks();
 	}
 
 	it('reports how many streams are still live when one ends', () => {
@@ -128,26 +142,71 @@ describe('CaptureLossWatcher', () => {
 		expect(onStreamEnded).toHaveBeenCalledTimes(1);
 	});
 
+	// A device pulled out while the recorders were still being built ends its
+	// track before anything is listening, and that event does not come again.
+	// Subscribing alone would leave the session running on a dead input, which
+	// is the defect the whole watcher exists to remove.
+	it('reports a stream whose track had already ended', () => {
+		watchStreams([streamDouble('ended')]);
+
+		expect(onStreamEnded).toHaveBeenCalledWith(0, 0);
+	});
+
+	it('leaves a session whose tracks are all live alone', () => {
+		watch(2);
+
+		expect(onStreamEnded).not.toHaveBeenCalled();
+	});
+
 	it('says nothing on a device change that leaves the selection intact', async () => {
 		watch(1);
 
-		at(deviceChangeHandlers, 0)();
-		await flushMicrotasks();
+		await announceDeviceChange();
 
-		expect(onSelectedDeviceMissing).not.toHaveBeenCalled();
+		expect(onStreamEnded).not.toHaveBeenCalled();
 	});
 
-	it('reports the reason when a device change loses the selected input', async () => {
-		jest.mocked(validateSelectedDevices).mockRejectedValue(
-			new Error('Selected audio input device is no longer available.'),
+	// The device list and the track events describe the same loss, so they are
+	// reported the same way. Answering the device path with a session-wide
+	// stop instead made one signal contradict the other about a multi-track
+	// session, and whichever fired first decided.
+	it('reports the stream the device list says is gone', async () => {
+		jest.mocked(missingCaptureIndexes).mockResolvedValue([1]);
+		watch(3);
+
+		await announceDeviceChange();
+
+		expect(onStreamEnded).toHaveBeenCalledWith(1, 2);
+	});
+
+	it('reports every stream a single device change lost', async () => {
+		jest.mocked(missingCaptureIndexes).mockResolvedValue([0, 2]);
+		watch(3);
+
+		await announceDeviceChange();
+
+		expect(onStreamEnded.mock.calls).toEqual([
+			[0, 2],
+			[2, 1],
+		]);
+	});
+
+	// A check that could not run says nothing about the devices. Reading its
+	// own failure as a lost input ends a session that is recording perfectly
+	// well - and enumerateDevices rejects for reasons of its own.
+	it('leaves the session alone when the device check itself fails', async () => {
+		jest.spyOn(console, 'warn').mockImplementation();
+		jest.mocked(missingCaptureIndexes).mockRejectedValue(
+			new Error('enumeration failed'),
 		);
 		watch(1);
 
-		at(deviceChangeHandlers, 0)();
-		await flushMicrotasks();
+		await announceDeviceChange();
 
-		expect(onSelectedDeviceMissing).toHaveBeenCalledWith(
-			'Selected audio input device is no longer available.',
+		expect(onStreamEnded).not.toHaveBeenCalled();
+		expect(console.warn).toHaveBeenCalledWith(
+			expect.stringContaining('re-check the capture devices'),
+			expect.any(Error),
 		);
 	});
 
