@@ -14,7 +14,7 @@ import type {
 import type { TranscriptionProvider } from './providers/TranscriptionProvider';
 import type { LlmProvider } from './llm/LlmProvider';
 import { jobVendorId, llmVendor } from './llm/vendors';
-import { accountRequiresKey, vendorConnection } from '../providers/providers';
+import { accountKeyMissing, vendorConnection } from '../providers/providers';
 import { ProviderConfigError } from './providerConfigError';
 
 export { ProviderConfigError } from './providerConfigError';
@@ -51,7 +51,7 @@ export function createLlmProvider(
 	// The same rule the transcription factory follows, read from the same
 	// registry: only the vendor's own endpoint is refused without a key, so a
 	// Base URL pointed at a local server is reachable with the field empty.
-	if (!apiKey && accountRequiresKey(connection, settings)) {
+	if (accountKeyMissing(connection, settings)) {
 		throw new ProviderConfigError(vendor.missingKeyMessage);
 	}
 	const model = vendor.settings.model(settings);

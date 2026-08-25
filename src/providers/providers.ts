@@ -512,6 +512,28 @@ export function accountRequiresKey(
 }
 
 /**
+ * Whether this account is short of the key a run through it needs.
+ *
+ * The question every surface actually asks, and the reason it is asked here:
+ * it was being restated wherever it came up - both provider factories, the
+ * refusal the command line answers with, the engine summary, the count of
+ * configured accounts - and each copy read the key on its own. A copy that
+ * was not updated does not fail; it disagrees, and a run the factory would
+ * have started is refused a level above it instead.
+ * @param connection - The endpoint and key the run is reached through
+ * @param settings - Plugin settings holding the configured endpoint and key
+ * @returns True when the missing key should stop the run
+ */
+export function accountKeyMissing(
+	connection: ProviderConnection,
+	settings: AudioRecorderSettings,
+): boolean {
+	return (
+		!connection.apiKey(settings) && accountRequiresKey(connection, settings)
+	);
+}
+
+/**
  * Every engine reached through one account, in registry order.
  * @param account - The account being asked about
  * @returns The engines behind it

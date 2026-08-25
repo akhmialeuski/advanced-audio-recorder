@@ -13,6 +13,7 @@ import {
 	ENGINES,
 	ENGINE_IDS,
 	ENGINE_ORDER,
+	accountKeyMissing,
 	accountOf,
 	accountRequiresKey,
 	accountTranscribes,
@@ -240,4 +241,61 @@ describe('which endpoints actually need a key', () => {
 			accountRequiresKey(ACCOUNTS[ACCOUNT_IDS.DEEPGRAM], settings),
 		).toBe(true);
 	});
+});
+
+// The composite every surface asks - both factories, the refusal a command
+// line answers with, the engine summary, the count of configured accounts.
+// Each of them used to read the key on its own, so a copy that was not brought
+// along when the rule moved onto the endpoint did not fail: it disagreed.
+describe('whether an account is short of the key a run needs', () => {
+	/** Settings selecting an account with an empty key. */
+	function withNoKey(accountId: AccountId): AudioRecorderSettings {
+		const settings = mergeSettings({});
+		ACCOUNTS[accountId].setApiKey(settings, '');
+		return settings;
+	}
+
+	it('is short of one at the default endpoint, which is the cloud', () => {
+		expect(
+			accountKeyMissing(
+				ACCOUNTS[ACCOUNT_IDS.OPENAI],
+				withNoKey(ACCOUNT_IDS.OPENAI),
+			),
+		).toBe(true);
+	});
+
+	it('is not short of one the endpoint never wanted', () => {
+		const settings = withNoKey(ACCOUNT_IDS.OPENAI);
+		ACCOUNTS[ACCOUNT_IDS.OPENAI].setBaseUrl(
+			settings,
+			'http://localhost:11434/v1',
+		);
+
+		expect(accountKeyMissing(ACCOUNTS[ACCOUNT_IDS.OPENAI], settings)).toBe(
+			false,
+		);
+	});
+
+	it('is not short of one it holds', () => {
+		const settings = mergeSettings({});
+		ACCOUNTS[ACCOUNT_IDS.GEMINI].setApiKey(settings, 'k');
+
+		expect(accountKeyMissing(ACCOUNTS[ACCOUNT_IDS.GEMINI], settings)).toBe(
+			false,
+		);
+	});
+
+	// The two halves are one question, and asking them apart is what let the
+	// answers drift. Every account is checked, so a new one arrives answered.
+	it.each(Object.values(ACCOUNT_IDS))(
+		'reads %s as its two halves together',
+		(accountId) => {
+			const account = ACCOUNTS[accountId];
+			const settings = withNoKey(accountId);
+
+			expect(accountKeyMissing(account, settings)).toBe(
+				accountRequiresKey(account, settings),
+			);
+		},
+	);
 });

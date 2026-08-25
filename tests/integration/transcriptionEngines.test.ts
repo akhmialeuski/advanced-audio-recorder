@@ -32,6 +32,7 @@ import {
 } from 'src/settings/labels';
 import { providerBiasChannel } from 'src/transcription/providers/capabilities';
 import { advancedBiasChannel } from 'src/transcription/advanced/advancedBias';
+import { transcriptionRefusal } from 'src/settings/settingsAttention';
 import { useMobilePlatform } from '../helpers/platform';
 import { installNodeSurface } from '../helpers/nodeSurface';
 import {
@@ -219,6 +220,39 @@ describe('registry-derived consumers stay in step', () => {
 			expect(createTranscriptionProvider(settings).id).toBe(
 				transcriptionIdOf(engine),
 			);
+		}
+	});
+
+	// The refusal a surface with nobody in front of it answers with - the
+	// command line, transcribe-on-save - is a second reading of the same two
+	// facts the factory reads. It was left behind when the key rule moved onto
+	// the endpoint, so a run the factory would have started was refused a
+	// level above it and the local endpoint stayed unreachable that way.
+	it('refuses a run exactly where the factory would refuse to build one', () => {
+		const buildFails = (settings: AudioRecorderSettings): boolean => {
+			try {
+				createTranscriptionProvider(settings);
+				return false;
+			} catch {
+				return true;
+			}
+		};
+		for (const engineId of CLOUD_ENGINES) {
+			const { account, settings } = selectedWithNoKey(engineId);
+			// The refusal answers for the feature as well as the engine, and
+			// a vault with transcription switched off is refused for that
+			// before the key is ever looked at.
+			settings.transcriptionEnabled = true;
+
+			expect(transcriptionRefusal(settings)).toBe(
+				account.missingKeyMessage,
+			);
+			expect(buildFails(settings)).toBe(true);
+
+			account.setBaseUrl(settings, 'http://localhost:1234/v1');
+
+			expect(transcriptionRefusal(settings)).toBeNull();
+			expect(buildFails(settings)).toBe(false);
 		}
 	});
 
