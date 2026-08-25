@@ -18,9 +18,16 @@ import {
 } from '../utils/cancellation';
 import {
 	BYTES_PER_MB,
+	MS_PER_SECOND,
 	PLUGIN_LOG_PREFIX,
 	TRANSCRIBE_CHUNK_PROGRESS_CEILING,
+	TRANSCRIBE_RETRY_BASE_DELAY_MS,
+	TRANSCRIBE_RETRY_MAX_ATTEMPTS,
+	TRANSCRIBE_RETRY_MAX_DELAY_MS,
 } from '../constants';
+import { HttpError } from './httpClient';
+import { delay } from '../utils/TimeUtils';
+import type { WhisperResult } from './providers/whisperResponse';
 import type {
 	AudioRecorderSettings,
 	LlmProviderId,
@@ -194,6 +201,77 @@ export interface TranscriptionServiceDeps {
 		settings: AudioRecorderSettings,
 		vendorId: LlmProviderId,
 	) => LlmProvider;
+}
+
+/** One part of a run, and everywhere its outcome is recorded. */
+interface PartRun {
+	/** The active transcription provider. */
+	readonly provider: TranscriptionProvider;
+	/** The prepared part to transcribe. */
+	readonly prepared: PreparedPayload;
+	/** Per-request provider options (language, diarize, bias). */
+	readonly providerOptions: TranscribeOptions;
+	/** Cancellation for the run this part belongs to. */
+	readonly token: CancellationToken;
+	/** Human label for the part ('' for a single indivisible job). */
+	readonly label: string;
+	/** Accumulates successful per-part transcripts (mutated). */
+	readonly results: {
+		offsetSeconds: number;
+		transcript: Transcript;
+		usage?: TranscriptionUsage;
+	}[];
+	/** Accumulates recoverable per-part failures (mutated). */
+	readonly failedParts: { label: string; message: string }[];
+	/**
+	 * Accumulates usage from billed-but-discarded truncated attempts, so their
+	 * cost is counted even though their transcript is thrown away and retried
+	 * (mutated).
+	 */
+	readonly discardedUsage: TranscriptionUsage[];
+	/**
+	 * Reports that the part is waiting before being sent again, so the dialog
+	 * says the run is still working rather than sitting on a frozen line.
+	 * @param waitMs - How long the run is about to wait
+	 */
+	onRetryWait(waitMs: number): void;
+}
+
+/**
+ * How long to wait before sending a part again, or null when it should not be
+ * sent again at all.
+ *
+ * Retrying was designed around one situation - a model that truncated its own
+ * answer, where the point is to send smaller input - and the far more common
+ * class of failure had no place in it: the temporary refusals that come with
+ * every paid endpoint. A rate limit is temporary by definition and clears in
+ * seconds, and the plugin already told the user so while doing nothing about it
+ * itself.
+ *
+ * What the provider asks for beats any guess, so `Retry-After` wins when it
+ * arrives. A provider asking for longer than the run is willing to sit out is
+ * telling the user to come back later rather than to wait, so the part is
+ * reported missing instead of freezing the run on a dialog that says nothing is
+ * happening.
+ * @param error - What the attempt failed with
+ * @param attempt - Which attempt just failed, counting from one
+ * @returns The pause in milliseconds, or null to stop trying
+ */
+function retryWaitMs(error: unknown, attempt: number): number | null {
+	if (attempt >= TRANSCRIBE_RETRY_MAX_ATTEMPTS) {
+		return null;
+	}
+	if (!(error instanceof HttpError) || !error.retryable) {
+		return null;
+	}
+	const advised = error.retryAfterMs;
+	if (advised !== undefined) {
+		return advised <= TRANSCRIBE_RETRY_MAX_DELAY_MS ? advised : null;
+	}
+	return Math.min(
+		TRANSCRIBE_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1),
+		TRANSCRIBE_RETRY_MAX_DELAY_MS,
+	);
 }
 
 /**
@@ -391,16 +469,28 @@ export class TranscriptionService {
 					progressBase + (i / partCount) * progressSpan,
 					partLabel ? `${verb} ${partLabel}...` : `${verb}...`,
 				);
-				await this.transcribePart(
+				const partProgress =
+					progressBase + (i / partCount) * progressSpan;
+				await this.transcribePart({
 					provider,
-					payload,
-					passOptions,
+					prepared: payload,
+					providerOptions: passOptions,
 					token,
-					partLabel,
-					passResults,
-					passFailed,
+					label: partLabel,
+					results: passResults,
+					failedParts: passFailed,
 					discardedUsage,
-				);
+					onRetryWait: (waitMs) => {
+						// A pause is the run still working, and a progress
+						// line that stopped moving reads as a hang.
+						options.onProgress?.(
+							partProgress,
+							`Rate limited; retrying ${partLabel || 'the audio'} in ${String(
+								Math.ceil(waitMs / MS_PER_SECOND),
+							)}s...`,
+						);
+					},
+				});
 				options.onCost?.(runCost());
 			}
 		};
@@ -779,31 +869,17 @@ export class TranscriptionService {
 	 * length (subdivision yields nothing) does it count as a failure. A part with
 	 * an empty label is a single indivisible job and fails the whole run as
 	 * before.
-	 * @param provider - The active transcription provider
-	 * @param prepared - The prepared part to transcribe
-	 * @param providerOptions - Per-request provider options (language, diarize)
-	 * @param token - Cancellation token
-	 * @param label - Human label for the part ('' for a single indivisible job)
-	 * @param results - Accumulates successful per-part transcripts (mutated)
-	 * @param failedParts - Accumulates recoverable per-part failures (mutated)
-	 * @param discardedUsage - Accumulates usage from billed-but-discarded
-	 *   truncated attempts, so their cost is counted even though their
-	 *   transcript is thrown away and retried (mutated)
+	 * @param part - The part to transcribe and everything it reports into
 	 */
-	private async transcribePart(
-		provider: TranscriptionProvider,
-		prepared: PreparedPayload,
-		providerOptions: TranscribeOptions,
-		token: CancellationToken,
-		label: string,
-		results: {
-			offsetSeconds: number;
-			transcript: Transcript;
-			usage?: TranscriptionUsage;
-		}[],
-		failedParts: { label: string; message: string }[],
-		discardedUsage: TranscriptionUsage[],
-	): Promise<void> {
+	private async transcribePart(part: PartRun): Promise<void> {
+		const {
+			prepared,
+			token,
+			label,
+			results,
+			failedParts,
+			discardedUsage,
+		} = part;
 		this.throwIfCancelled(token);
 		// Materialize this payload's bytes only now, so a multi-chunk job never
 		// holds more than one chunk's WAV in memory at a time.
@@ -814,10 +890,7 @@ export class TranscriptionService {
 			offsetSeconds: prepared.offsetSeconds,
 		};
 		try {
-			const chunkResult = await provider.transcribe(
-				payload,
-				providerOptions,
-			);
+			const chunkResult = await this.transcribeWithRetries(part, payload);
 			results.push({
 				offsetSeconds: payload.offsetSeconds,
 				transcript: buildTranscript(chunkResult.segments, {
@@ -858,16 +931,11 @@ export class TranscriptionService {
 							`${String(halves.length)} smaller pieces.`,
 					);
 					for (const half of halves) {
-						await this.transcribePart(
-							provider,
-							half,
-							providerOptions,
-							token,
-							this.partTimeLabel(half),
-							results,
-							failedParts,
-							discardedUsage,
-						);
+						await this.transcribePart({
+							...part,
+							prepared: half,
+							label: this.partTimeLabel(half),
+						});
 					}
 					return;
 				}
@@ -891,6 +959,43 @@ export class TranscriptionService {
 				throw error;
 			}
 			failedParts.push({ label, message: detail });
+		}
+	}
+
+	/**
+	 * Sends one part, trying again while the refusal is a temporary one.
+	 *
+	 * The pause is interruptible, because a Cancel pressed while the run is
+	 * waiting must end it there rather than after the wait it was already
+	 * regretting.
+	 * @param part - The part being transcribed
+	 * @param payload - Its materialized bytes
+	 * @returns What the provider answered
+	 */
+	private async transcribeWithRetries(
+		part: PartRun,
+		payload: AudioPayload,
+	): Promise<WhisperResult> {
+		for (let attempt = 1; ; attempt++) {
+			try {
+				return await part.provider.transcribe(
+					payload,
+					part.providerOptions,
+				);
+			} catch (error) {
+				const waitMs = retryWaitMs(error, attempt);
+				if (waitMs === null) {
+					throw error;
+				}
+				part.onRetryWait(waitMs);
+				try {
+					await delay(waitMs, part.token.signal);
+				} catch {
+					// The only thing that ends the pause early is the cancel.
+					throw new TranscriptionCancelledError();
+				}
+				this.throwIfCancelled(part.token);
+			}
 		}
 	}
 

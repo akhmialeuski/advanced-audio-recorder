@@ -17,6 +17,7 @@ import {
 	TRANSCRIBE_REQUEST_TIMEOUT_MS,
 } from 'src/constants';
 import { withRequestUrl } from '../helpers/network';
+import { defined } from '../helpers/assertions';
 
 describe('friendlyHttpHint', () => {
 	it.each([
@@ -518,5 +519,114 @@ describe('requestJson', () => {
 				method: 'POST',
 			}),
 		).resolves.toEqual({ text: 'hi' });
+	});
+});
+
+// The plugin recognised a rate limit well enough to tell the user to wait and
+// try again, and then never did either: the part failed, its ten minutes
+// vanished from the transcript, and only a full re-run (paid again) could get
+// them back. Whether re-sending could help is decided where the status, the
+// body, and the headers are all still in hand.
+describe('a failure the run could try again', () => {
+	/** Answers one request with the given status, body, and headers. */
+	function answerWith(
+		status: number,
+		text = '',
+		headers: Record<string, string> = {},
+	): void {
+		withRequestUrl(() => ({ status, headers, text }));
+	}
+
+	/**
+	 * Sends one request and returns the failure it raised.
+	 * @returns The HttpError the request failed with
+	 */
+	async function failure(): Promise<HttpError> {
+		try {
+			await requestRaw({ url: 'https://api.example/v1/x', method: 'GET' });
+		} catch (error) {
+			if (error instanceof HttpError) {
+				return error;
+			}
+			throw error;
+		}
+		throw new Error('the request did not fail');
+	}
+
+	it.each([
+		{ name: 'a rate limit', status: 429, body: '', retryable: true },
+		{
+			name: 'a rate limit the body names on another status',
+			status: 400,
+			body: 'rate limit exceeded',
+			retryable: true,
+		},
+		{ name: 'a provider outage', status: 503, body: '', retryable: true },
+		{ name: 'an internal error', status: 500, body: '', retryable: true },
+		{ name: 'a bad key', status: 401, body: '', retryable: false },
+		{ name: 'a forbidden key', status: 403, body: '', retryable: false },
+		{
+			name: 'an exhausted quota',
+			status: 429,
+			body: '{"error":{"message":"insufficient_quota"}}',
+			retryable: false,
+		},
+		{
+			name: 'a region refusal',
+			status: 400,
+			body: 'User location is not supported for the API use',
+			retryable: false,
+		},
+		{ name: 'a malformed request', status: 400, body: '', retryable: false },
+		{ name: 'a missing model', status: 404, body: '', retryable: false },
+	])('reports $name as retryable: $retryable', async ({
+		status,
+		body,
+		retryable,
+	}) => {
+		answerWith(status, body);
+
+		expect((await failure()).retryable).toBe(retryable);
+	});
+
+	// A quota that ran out is a rate limit shaped like one and fixed by
+	// nothing a retry can do, so the billing branch wins over the 429.
+	it('keeps the billing wording on an exhausted quota', async () => {
+		answerWith(429, '{"error":{"message":"insufficient_quota"}}');
+
+		expect((await failure()).message).toContain('Out of API quota');
+	});
+
+	it('reads the pause a provider asked for in seconds', async () => {
+		answerWith(429, '', { 'Retry-After': '12' });
+
+		expect((await failure()).retryAfterMs).toBe(12000);
+	});
+
+	it('reads the pause a provider gave as a date', async () => {
+		const when = new Date(Date.now() + 30_000).toUTCString();
+		answerWith(429, '', { 'Retry-After': when });
+
+		// Wall-clock arithmetic, so the exact value drifts by the odd
+		// millisecond; what matters is that it landed near the half minute.
+		expect(defined((await failure()).retryAfterMs)).toBeGreaterThan(25_000);
+		expect(defined((await failure()).retryAfterMs)).toBeLessThan(35_000);
+	});
+
+	// Header names arrive in whatever case the server sent them.
+	it('reads the pause whatever case the header came in', async () => {
+		answerWith(429, '', { 'retry-after': '5' });
+
+		expect((await failure()).retryAfterMs).toBe(5000);
+	});
+
+	it.each([
+		{ name: 'no header at all', headers: {} },
+		{ name: 'a value that is neither', headers: { 'Retry-After': 'soon' } },
+		{ name: 'a date in the past', headers: { 'Retry-After': 'Thu, 01 Jan 1970 00:00:00 GMT' } },
+	])('advises no particular pause for $name', async ({ headers }) => {
+		answerWith(429, '', headers);
+
+		expect((await failure()).retryAfterMs).toBeUndefined();
 	});
 });

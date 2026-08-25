@@ -8,6 +8,7 @@
 import { requestUrl } from 'obsidian';
 import type { RequestUrlResponse } from 'obsidian';
 import {
+	MS_PER_SECOND,
 	TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS,
 	TRANSCRIBE_REQUEST_TIMEOUT_MS,
 	TRANSCRIBE_UPLOAD_BYTES_PER_MS,
@@ -214,10 +215,51 @@ export class HttpError extends Error {
 	constructor(
 		readonly status: number,
 		message: string,
+		/**
+		 * Whether sending the same request again could succeed. True only for
+		 * the temporary refusals - a rate limit, a provider fault - and never
+		 * for a bad key, an exhausted quota, or a region the service does not
+		 * serve, which a retry would only pay for twice.
+		 */
+		readonly retryable: boolean = false,
+		/**
+		 * The pause the provider asked for through `Retry-After`, in
+		 * milliseconds, when it named one. Undefined leaves the caller to
+		 * choose its own backoff.
+		 */
+		readonly retryAfterMs?: number,
 	) {
 		super(message);
 		this.name = 'HttpError';
 	}
+}
+
+/**
+ * Reads the pause a provider asked for, in milliseconds.
+ *
+ * The header comes in two forms by specification: a whole number of seconds,
+ * or an HTTP date to wait until. A date already in the past means the wait is
+ * over, which is the same as having asked for nothing.
+ * @param headers - The response headers as they arrived
+ * @returns The requested pause, or undefined when none was named
+ */
+function retryAfterMs(headers: Record<string, string>): number | undefined {
+	const raw = Object.entries(headers).find(
+		([name]) => name.toLowerCase() === 'retry-after',
+	)?.[1];
+	if (!raw) {
+		return undefined;
+	}
+	const seconds = Number(raw.trim());
+	if (Number.isFinite(seconds) && seconds > 0) {
+		return seconds * MS_PER_SECOND;
+	}
+	const until = Date.parse(raw);
+	if (Number.isNaN(until)) {
+		return undefined;
+	}
+	const wait = until - Date.now();
+	return wait > 0 ? wait : undefined;
 }
 
 /**
@@ -395,6 +437,30 @@ async function dispatchRequest(
  * @returns A human-readable hint, or '' when none applies
  */
 export function friendlyHttpHint(status: number, body: string): string {
+	return classifyHttpFailure(status, body).hint;
+}
+
+/** What one HTTP failure is, as far as the run is concerned. */
+interface HttpFailureKind {
+	/** Human-readable guidance, or '' when none applies. */
+	readonly hint: string;
+	/** Whether sending the same request again could succeed. */
+	readonly retryable: boolean;
+}
+
+/**
+ * Decides what a failure is: what to tell the user, and whether the run should
+ * try the same request again.
+ *
+ * The two answers come from the same branches on purpose. The plugin already
+ * recognised a rate limit well enough to advise waiting and retrying; deciding
+ * separately whether to retry would be a second reading of the same response,
+ * free to disagree with the first. So the branch that says "wait a moment and
+ * try again" is the branch that says the run may.
+ * @param status - HTTP status code (0 for transport/timeout failures)
+ * @param body - Response body excerpt (may be empty)
+ */
+function classifyHttpFailure(status: number, body: string): HttpFailureKind {
 	const lower = body.toLowerCase();
 	// Before the billing and auth branches: a region refusal arrives on a
 	// status those branches would otherwise claim, and it is neither.
@@ -402,39 +468,53 @@ export function friendlyHttpHint(status: number, body: string): string {
 		// Two ways out, and the second is the one a user in a blocked country
 		// already relies on: the same page holds the endpoint, so a request can
 		// be sent somewhere that does serve them.
-		return (
-			'This provider does not serve your region. Under Engines, either ' +
-			'pick a different engine for this job, or point this one at an ' +
-			'endpoint that serves you via its Base URL.'
-		);
+		return {
+			hint:
+				'This provider does not serve your region. Under Engines, either ' +
+				'pick a different engine for this job, or point this one at an ' +
+				'endpoint that serves you via its Base URL.',
+			retryable: false,
+		};
 	}
 	const looksLikeBilling =
 		status === HTTP_PAYMENT_REQUIRED ||
 		QUOTA_BODY_MARKERS.some((marker) => lower.includes(marker));
 	if (looksLikeBilling) {
-		return (
-			'Out of API quota or credit. Check the provider plan and billing ' +
-			'details - a chat subscription (e.g. ChatGPT Plus) does not include ' +
-			'API credit.'
-		);
+		// A quota that ran out arrives shaped like a rate limit and is fixed by
+		// nothing a retry can do, so this branch stands ahead of that one.
+		return {
+			hint:
+				'Out of API quota or credit. Check the provider plan and billing ' +
+				'details - a chat subscription (e.g. ChatGPT Plus) does not include ' +
+				'API credit.',
+			retryable: false,
+		};
 	}
 	if (status === HTTP_UNAUTHORIZED || status === HTTP_FORBIDDEN) {
-		return (
-			'Authentication failed. Check that the API key is correct and ' +
-			'authorized for this provider.'
-		);
+		return {
+			hint:
+				'Authentication failed. Check that the API key is correct and ' +
+				'authorized for this provider.',
+			retryable: false,
+		};
 	}
 	if (
 		status === HTTP_TOO_MANY_REQUESTS ||
 		lower.includes('rate limit') ||
 		lower.includes('too many requests')
 	) {
-		return 'Rate limit reached. Wait a moment and try again.';
+		return {
+			hint: 'Rate limit reached. Wait a moment and try again.',
+			retryable: true,
+		};
 	}
 	if (status >= HTTP_SERVER_ERROR_MIN) {
-		return 'The provider had a server error. Try again shortly.';
+		return {
+			hint: 'The provider had a server error. Try again shortly.',
+			retryable: true,
+		};
 	}
-	return '';
+	return { hint: '', retryable: false };
 }
 
 /**
@@ -527,13 +607,19 @@ export async function requestRaw(
 			0,
 			ERROR_BODY_EXCERPT_LENGTH,
 		);
-		// The hint reads the whole excerpt, because what it looks for is as
-		// likely to be in a status field as in the message.
-		const hint = friendlyHttpHint(response.status, excerpt);
+		// Classified on the whole excerpt, because what it looks for is as
+		// likely to be in a status field as in the message. Done here, where
+		// the status, the body, and the headers are all still in hand.
+		const { hint, retryable } = classifyHttpFailure(
+			response.status,
+			excerpt,
+		);
 		const detail = `Request to ${safeUrl} failed with status ${String(response.status)}: ${providerMessage(excerpt)}`;
 		throw new HttpError(
 			response.status,
 			hint ? `${hint} (${detail})` : detail,
+			retryable,
+			retryAfterMs(response.headers),
 		);
 	}
 	return response;

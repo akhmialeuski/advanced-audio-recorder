@@ -172,6 +172,9 @@ export const SECONDS_PER_HOUR = 3600;
 /** Milliseconds in one minute. */
 export const MS_PER_MINUTE = 60_000;
 
+/** Milliseconds in one second. */
+export const MS_PER_SECOND = 1000;
+
 /** Default duration of one split part in minutes. */
 export const DEFAULT_SPLIT_CHUNK_MINUTES = 15;
 
@@ -895,6 +898,30 @@ export const TRANSCRIBE_UPLOAD_BYTES_PER_MS = 1024;
  * deadline would discard completed (and billed) work as a false timeout.
  */
 export const LLM_REQUEST_TIMEOUT_MS = 5 * 60_000;
+
+/**
+ * How many times one part of a transcription is sent before it is reported as
+ * missing, counting the first attempt. Three covers the temporary refusals that
+ * actually happen - a burst over a free-tier rate limit, a provider fault that
+ * clears in seconds - without turning a persistent one into a long, paid
+ * sequence of requests that fail the same way.
+ */
+export const TRANSCRIBE_RETRY_MAX_ATTEMPTS = 3;
+
+/**
+ * Pause before the second attempt at a part, in milliseconds; each further
+ * attempt doubles it. Only used when the provider named no pause of its own
+ * through `Retry-After`, which is the better answer whenever it arrives.
+ */
+export const TRANSCRIBE_RETRY_BASE_DELAY_MS = 2000;
+
+/**
+ * Longest pause the run will sit out before another attempt, in milliseconds.
+ * A provider asking for longer is telling the user to come back later rather
+ * than to wait, so the part is reported as missing instead of freezing the run
+ * on a dialog that says nothing is happening.
+ */
+export const TRANSCRIBE_RETRY_MAX_DELAY_MS = 60_000;
 
 /**
  * Maximum bytes buffered from the local whisper.cpp child process's stdout
