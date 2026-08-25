@@ -141,9 +141,7 @@ export function geminiThinkingConfig(
 		return undefined;
 	}
 	return {
-		thinkingBudget: model
-			.toLowerCase()
-			.includes(GEMINI_PRO_MODEL_MARKER)
+		thinkingBudget: model.toLowerCase().includes(GEMINI_PRO_MODEL_MARKER)
 			? GEMINI_PRO_MIN_THINKING_BUDGET
 			: GEMINI_THINKING_BUDGET_OFF,
 	};

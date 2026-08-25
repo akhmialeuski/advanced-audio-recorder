@@ -12,10 +12,7 @@
 
 import { Notice } from 'obsidian';
 import type { App, TFile } from 'obsidian';
-import {
-	NEVER_CANCELLED,
-	type CancellationToken,
-} from '../utils/cancellation';
+import { NEVER_CANCELLED, type CancellationToken } from '../utils/cancellation';
 import {
 	BYTES_PER_MB,
 	MS_PER_SECOND,
@@ -872,14 +869,8 @@ export class TranscriptionService {
 	 * @param part - The part to transcribe and everything it reports into
 	 */
 	private async transcribePart(part: PartRun): Promise<void> {
-		const {
-			prepared,
-			token,
-			label,
-			results,
-			failedParts,
-			discardedUsage,
-		} = part;
+		const { prepared, token, label, results, failedParts, discardedUsage } =
+			part;
 		this.throwIfCancelled(token);
 		// Materialize this payload's bytes only now, so a multi-chunk job never
 		// holds more than one chunk's WAV in memory at a time.

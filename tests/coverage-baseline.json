@@ -1,10 +1,10 @@
 {
 	"coverage": {
 		"total": {
-			"statements": 98.39,
-			"branches": 93.16,
-			"functions": 98.29,
-			"lines": 98.4
+			"statements": 98.43,
+			"branches": 93.28,
+			"functions": 98.36,
+			"lines": 98.44
 		},
 		"files": {
 			"src/constants.ts": {
@@ -69,15 +69,15 @@
 			},
 			"src/audio/AudioFormatConverter.ts": {
 				"statements": 100,
-				"branches": 97.72,
+				"branches": 97.82,
 				"functions": 100,
 				"lines": 100
 			},
 			"src/audio/EncodingWorkerClient.ts": {
-				"statements": 96.66,
-				"branches": 90.47,
+				"statements": 97.36,
+				"branches": 92,
 				"functions": 100,
-				"lines": 96.66
+				"lines": 97.36
 			},
 			"src/audio/RecordingFileManager.ts": {
 				"statements": 100,
@@ -122,10 +122,10 @@
 				"lines": 100
 			},
 			"src/chapters/AutoChapterService.ts": {
-				"statements": 98.55,
-				"branches": 88.88,
+				"statements": 98.61,
+				"branches": 89.36,
 				"functions": 90.9,
-				"lines": 98.52
+				"lines": 98.59
 			},
 			"src/chapters/chapterGeneration.ts": {
 				"statements": 99,
@@ -362,10 +362,10 @@
 				"lines": 98.5
 			},
 			"src/providers/providers.ts": {
-				"statements": 96.7,
-				"branches": 78.57,
-				"functions": 98.38,
-				"lines": 96.55
+				"statements": 96.93,
+				"branches": 81.25,
+				"functions": 98.41,
+				"lines": 96.8
 			},
 			"src/recording/AudioSplitter.ts": {
 				"statements": 98.93,
@@ -374,16 +374,22 @@
 				"lines": 98.9
 			},
 			"src/recording/AudioStreamHandler.ts": {
-				"statements": 99.08,
+				"statements": 99.18,
 				"branches": 93.54,
 				"functions": 100,
-				"lines": 99.04
+				"lines": 99.15
+			},
+			"src/recording/CaptureLossWatcher.ts": {
+				"statements": 100,
+				"branches": 90,
+				"functions": 100,
+				"lines": 100
 			},
 			"src/recording/ConversionService.ts": {
-				"statements": 94.2,
-				"branches": 81.08,
+				"statements": 94.52,
+				"branches": 82.05,
 				"functions": 100,
-				"lines": 94.2
+				"lines": 94.52
 			},
 			"src/recording/InputLevelMonitor.ts": {
 				"statements": 100,
@@ -428,10 +434,10 @@
 				"lines": 96.6
 			},
 			"src/recording/RecordingManager.ts": {
-				"statements": 98.89,
-				"branches": 92.92,
+				"statements": 98.87,
+				"branches": 92.56,
 				"functions": 100,
-				"lines": 98.87
+				"lines": 98.85
 			},
 			"src/recording/RecordingMarkerCoordinator.ts": {
 				"statements": 100,
@@ -644,10 +650,10 @@
 				"lines": 100
 			},
 			"src/transcription/TranscriptionService.ts": {
-				"statements": 99.53,
-				"branches": 97.81,
+				"statements": 99.57,
+				"branches": 98.01,
 				"functions": 100,
-				"lines": 99.52
+				"lines": 99.57
 			},
 			"src/transcription/api.ts": {
 				"statements": 100,
@@ -693,7 +699,7 @@
 			},
 			"src/transcription/httpClient.ts": {
 				"statements": 100,
-				"branches": 95.71,
+				"branches": 97.61,
 				"functions": 100,
 				"lines": 100
 			},
@@ -752,10 +758,10 @@
 				"lines": 100
 			},
 			"src/transcription/llm/LlmProvider.ts": {
-				"statements": 97.95,
-				"branches": 94.73,
+				"statements": 97.87,
+				"branches": 100,
 				"functions": 100,
-				"lines": 97.95
+				"lines": 97.87
 			},
 			"src/transcription/llm/llmResponse.ts": {
 				"statements": 100,
@@ -854,10 +860,10 @@
 				"lines": 100
 			},
 			"src/ui/ChapterGenerationModal.ts": {
-				"statements": 95.6,
-				"branches": 83.33,
-				"functions": 89.47,
-				"lines": 95.6
+				"statements": 96.9,
+				"branches": 86.36,
+				"functions": 90.9,
+				"lines": 96.9
 			},
 			"src/ui/ConfirmModal.ts": {
 				"statements": 100,
@@ -950,10 +956,10 @@
 				"lines": 100
 			},
 			"src/ui/TranscriptionModal.ts": {
-				"statements": 96.3,
+				"statements": 96.58,
 				"branches": 90,
-				"functions": 94.8,
-				"lines": 96.3
+				"functions": 96.05,
+				"lines": 96.58
 			},
 			"src/ui/formatDescriptions.ts": {
 				"statements": 100,
@@ -986,10 +992,10 @@
 				"lines": 100
 			},
 			"src/utils/TimeUtils.ts": {
-				"statements": 97.29,
-				"branches": 96,
+				"statements": 98.03,
+				"branches": 96.29,
 				"functions": 100,
-				"lines": 97.14
+				"lines": 97.95
 			},
 			"src/utils/audioFile.ts": {
 				"statements": 100,
@@ -998,6 +1004,12 @@
 				"lines": 100
 			},
 			"src/utils/buffers.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
+			"src/utils/cancellation.ts": {
 				"statements": 100,
 				"branches": 100,
 				"functions": 100,
@@ -1060,9 +1072,9 @@
 		}
 	},
 	"suite": {
-		"suites": 203,
-		"tests": 4226,
-		"passed": 4226,
+		"suites": 205,
+		"tests": 4370,
+		"passed": 4370,
 		"failed": 0,
 		"todo": 0
 	}

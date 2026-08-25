@@ -13,10 +13,7 @@ import type {
 import { App, TFile } from 'obsidian';
 import { noticeMessages } from '../mocks/obsidian';
 import { createMockApp } from '../helpers/createApp';
-import {
-	useDesktopPlatform,
-	useMobilePlatform,
-} from '../helpers/platform';
+import { useDesktopPlatform, useMobilePlatform } from '../helpers/platform';
 import { MOBILE_MAX_DECODE_BYTES } from 'src/constants';
 import {
 	convertBlobToFormatBuffer,

@@ -6,6 +6,7 @@
 import { EncodingWorkerClient } from 'src/audio/EncodingWorkerClient';
 import { ENCODING_WORKER_MIN_TIMEOUT_MS } from 'src/constants';
 import { at } from '../helpers/assertions';
+import { outcomeOf } from '../helpers/async';
 import type { WorkerResponse } from 'src/audio/encodingWorker';
 
 /** Captured worker doubles created by the client. */
@@ -227,6 +228,13 @@ describe('EncodingWorkerClient', () => {
 // restarting Obsidian. The main-thread fallback the caller wraps this in was
 // unreachable dead code, because a hang raises nothing to fall back from.
 describe('a worker that stops answering', () => {
+	/** The rejection a request that went unanswered ends with. */
+	const timedOut = {
+		error: expect.objectContaining({
+			message: expect.stringContaining('did not answer'),
+		}),
+	};
+
 	/** Comfortably past any budget these small payloads work out to. */
 	const PAST_THE_BUDGET = ENCODING_WORKER_MIN_TIMEOUT_MS * 2;
 
@@ -288,17 +296,20 @@ describe('a worker that stops answering', () => {
 	}> {
 		const client = new EncodingWorkerClient('worker-source');
 		const { worker, conversion } = convertThrough(client);
-		const rejected = expect(conversion).rejects.toThrow('did not answer');
+		const settled = outcomeOf(conversion);
 
 		await jest.advanceTimersByTimeAsync(PAST_THE_BUDGET);
-		await rejected;
 
+		expect(await settled).toEqual(timedOut);
 		return { client, worker };
 	}
 
 	it('rejects the request once the worker has gone quiet for its budget', async () => {
-		// The rejection itself is the assertion, made inside the helper.
-		await expect(waitOutTheBudget()).resolves.toBeDefined();
+		// The rejection is asserted inside the helper; what this case adds is
+		// that the worker itself was left running rather than torn down.
+		const { worker } = await waitOutTheBudget();
+
+		expect(worker.terminate).not.toHaveBeenCalled();
 	});
 
 	it('leaves nothing waiting behind a timed-out request', async () => {
@@ -353,7 +364,7 @@ describe('a worker that stops answering', () => {
 	it('leaves a second conversion of the same worker alone', async () => {
 		const client = new EncodingWorkerClient('worker-source');
 		const { worker, conversion: first } = convertThrough(client);
-		const rejected = expect(first).rejects.toThrow('did not answer');
+		const settled = outcomeOf(first);
 		const second = client.convertBlob(
 			new Blob(['b']),
 			'mp3',
@@ -361,14 +372,12 @@ describe('a worker that stops answering', () => {
 			false,
 		);
 
-		await jest.advanceTimersByTimeAsync(
-			ENCODING_WORKER_MIN_TIMEOUT_MS / 2,
-		);
+		await jest.advanceTimersByTimeAsync(ENCODING_WORKER_MIN_TIMEOUT_MS / 2);
 		answer(worker, resultFor(requestId(worker, 1)));
 		await expect(second).resolves.toBeInstanceOf(Blob);
 
 		await jest.advanceTimersByTimeAsync(PAST_THE_BUDGET);
-		await rejected;
+		expect(await settled).toEqual(timedOut);
 		expect(worker.terminate).not.toHaveBeenCalled();
 	});
 

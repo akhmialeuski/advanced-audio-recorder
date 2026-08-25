@@ -124,10 +124,7 @@ import {
 	WAVEFORM_MAX_DECODE_BYTES,
 } from 'src/constants';
 import { partial } from '../helpers/doubles';
-import {
-	useDesktopPlatform,
-	useMobilePlatform,
-} from '../helpers/platform';
+import { useDesktopPlatform, useMobilePlatform } from '../helpers/platform';
 import {
 	encodeAudioBuffer,
 	ensureEncoderRegistered,

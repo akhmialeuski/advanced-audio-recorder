@@ -30,6 +30,7 @@ import { noticeMessages } from '../mocks/obsidian';
 import {
 	getAudioStreams,
 	stopAllStreams,
+	validateSelectedDevices,
 	watchStreamEndings,
 } from 'src/recording/AudioStreamHandler';
 
@@ -765,32 +766,90 @@ describe('an input device that disappears mid-session', () => {
 		useDesktopPlatform();
 		jest.spyOn(console, 'error').mockImplementation();
 	});
-
-	it('finalizes the session when the only input is lost', async () => {
+	/**
+	 * Starts a session over the given number of capture streams.
+	 * @param streams - How many inputs the session records from
+	 * @param settings - What this test needs different from the defaults
+	 * @returns The manager and its collaborators, already recording
+	 */
+	async function startedSession(
+		streams = 1,
+		settings: Partial<AudioRecorderSettings> = {},
+	): Promise<ReturnType<typeof createRecordingSut>> {
 		makeMediaRecorderDouble();
-		stubAudioStreams();
-		const sut = createRecordingSut();
+		stubAudioStreams({ count: streams });
+		const sut = createRecordingSut({ settings });
 		await sut.manager.startRecording();
+		return sut;
+	}
+
+	/**
+	 * Installs a device list the test can announce a change on, which is the
+	 * other signal a lost input arrives by.
+	 * @returns The listeners the watcher attached, in order
+	 */
+	function watchDeviceList(): (() => void)[] {
+		const listeners: (() => void)[] = [];
+		Object.defineProperty(navigator, 'mediaDevices', {
+			value: {
+				addEventListener: (_event: string, handler: () => void) => {
+					listeners.push(handler);
+				},
+				removeEventListener: jest.fn(),
+			},
+			configurable: true,
+		});
+		return listeners;
+	}
+
+	/**
+	 * Makes the next device check report the selected input as gone, and only
+	 * the next one: the mocked module keeps its implementation between tests,
+	 * and a rejection left behind would fail the next session before it began.
+	 */
+	function loseTheSelectedDevice(): void {
+		jest.mocked(validateSelectedDevices).mockRejectedValueOnce(
+			new Error('Selected audio input device is no longer available.'),
+		);
+	}
+
+	/**
+	 * Waits for an interrupted session to finish saving.
+	 * @param sut - The manager under test and its collaborators
+	 */
+	async function untilSaved(sut: {
+		manager: { getStatus: () => RecordingStatus };
+	}): Promise<void> {
+		await waitFor(() => sut.manager.getStatus() === RecordingStatus.Idle, {
+			message: 'the interrupted session to finish saving',
+		});
+	}
+
+	// Whether the session was capturing or paused when the input went, the
+	// loss is announced and what was already captured is finalized. A paused
+	// session has folded its active span in, so folding it again would count
+	// the time twice.
+	it.each([
+		{ name: 'a capturing session', pause: false },
+		{ name: 'a paused session', pause: true },
+	])('finalizes $name when its only input is lost', async ({ pause }) => {
+		const sut = await startedSession();
+		if (pause) {
+			sut.manager.togglePauseResume();
+		}
 
 		endStream(0);
-		await waitFor(
-			() => sut.manager.getStatus() === RecordingStatus.Idle,
-			{ message: 'the interrupted session to finish saving' },
-		);
+		await untilSaved(sut);
 
 		expect(sut.onStatusChange).toHaveBeenCalledWith(
 			RecordingStatus.Interrupted,
 			undefined,
 		);
+		expect(noticeMessages().join(' ')).toContain('was disconnected');
 	});
 
 	it('names the lost input rather than reporting a generic failure', async () => {
-		makeMediaRecorderDouble();
-		stubAudioStreams();
-		const sut = createRecordingSut({
-			settings: { useSourceNamesForTracks: false },
-		});
-		await sut.manager.startRecording();
+		await startedSession(1, { useSourceNamesForTracks: false });
 
 		endStream(0);
 		await flushMicrotasks();
@@ -801,15 +860,10 @@ describe('an input device that disappears mid-session', () => {
 	// Losing one interface of a multi-track session must not throw away the
 	// tracks that are still capturing; the user is told which one went.
 	it('keeps the other tracks recording when one of several is lost', async () => {
-		makeMediaRecorderDouble();
-		stubAudioStreams({ count: 3 });
-		const sut = createRecordingSut({
-			settings: {
-				enableMultiTrack: true,
-				useSourceNamesForTracks: false,
-			},
+		const sut = await startedSession(3, {
+			enableMultiTrack: true,
+			useSourceNamesForTracks: false,
 		});
-		await sut.manager.startRecording();
 
 		endStream(1);
 		await flushMicrotasks();
@@ -819,28 +873,25 @@ describe('an input device that disappears mid-session', () => {
 	});
 
 	it('finalizes once the last of several tracks is lost', async () => {
-		makeMediaRecorderDouble();
-		stubAudioStreams({ count: 2 });
-		const sut = createRecordingSut({
-			settings: { enableMultiTrack: true },
-		});
-		await sut.manager.startRecording();
+		const sut = await startedSession(2, { enableMultiTrack: true });
 
 		endStream(0);
 		endStream(1);
-		await waitFor(
-			() => sut.manager.getStatus() === RecordingStatus.Idle,
-			{ message: 'the interrupted session to finish saving' },
+		await untilSaved(sut);
+
+		// Losing the last live track ends the session, and it passes through
+		// the interrupted state on the way rather than looking like a stop the
+		// user asked for.
+		expect(sut.onStatusChange).toHaveBeenCalledWith(
+			RecordingStatus.Interrupted,
+			undefined,
 		);
 	});
 
 	// A device that vanishes after the session already stopped has nothing to
 	// interrupt, and a second Notice would report a thing that did not happen.
 	it('says nothing when a stream ends after the session already stopped', async () => {
-		makeMediaRecorderDouble();
-		stubAudioStreams();
-		const sut = createRecordingSut();
-		await sut.manager.startRecording();
+		const sut = await startedSession();
 		await sut.manager.stopRecording();
 		const before = noticeMessages().length;
 
@@ -848,6 +899,40 @@ describe('an input device that disappears mid-session', () => {
 		await flushMicrotasks();
 
 		expect(noticeMessages()).toHaveLength(before);
+	});
+
+	// The other half of the watch: some platforms end the track, and some only
+	// say the device list moved. A session whose configured input is no longer
+	// in that list has lost it whichever way it was told.
+	it('finalizes when the device list loses the selected input', async () => {
+		const listeners = watchDeviceList();
+		const sut = await startedSession();
+		loseTheSelectedDevice();
+
+		at(listeners, 0)();
+		await untilSaved(sut);
+
+		expect(noticeMessages().join(' ')).toContain('no longer available');
+	});
+
+	// One disconnection can be reported twice: the track ends and the device
+	// list changes. The second report finds a session that is already
+	// finalizing and has to leave it alone, or the user is told twice and the
+	// stop is asked for twice.
+	it('answers the second report of one loss with silence', async () => {
+		const listeners = watchDeviceList();
+		const sut = await startedSession();
+		loseTheSelectedDevice();
+
+		endStream(0);
+		at(listeners, 0)();
+		await untilSaved(sut);
+
+		expect(
+			noticeMessages().filter((message) =>
+				message.includes('was disconnected'),
+			),
+		).toHaveLength(1);
 	});
 
 	it('takes the subscription back down when a start fails', async () => {

@@ -26,6 +26,7 @@ import {
 	type MockRequestUrlResponse,
 } from '../mocks/obsidian';
 import { queueResponses, withRequestUrl } from '../helpers/network';
+import { outcomeOf } from '../helpers/async';
 
 const BASE_URL = 'https://gemini.example';
 const API_KEY = 'gm-test';
@@ -262,11 +263,11 @@ describe('waitUntilActive', () => {
 				undefined,
 				controller.signal,
 			);
-			const rejected = expect(pending).rejects.toBe(reason);
+			const settled = outcomeOf(pending);
 			await jest.advanceTimersByTimeAsync(1);
 			controller.abort(reason);
 
-			await rejected;
+			expect(await settled).toEqual({ error: reason });
 			expect(sent).toHaveLength(1);
 		});
 
@@ -284,9 +285,7 @@ describe('waitUntilActive', () => {
 				undefined,
 				controller.signal,
 			);
-			await jest.advanceTimersByTimeAsync(
-				GEMINI_FILE_POLL_INTERVAL_MS,
-			);
+			await jest.advanceTimersByTimeAsync(GEMINI_FILE_POLL_INTERVAL_MS);
 
 			await expect(pending).resolves.toBeUndefined();
 			expect(sent).toHaveLength(2);

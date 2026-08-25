@@ -178,7 +178,9 @@ describe('provider registry', () => {
 describe('which endpoints actually need a key', () => {
 	it('requires one at every account default, which is a cloud endpoint', () => {
 		for (const id of EVERY_ACCOUNT_ID) {
-			expect(accountRequiresKey(ACCOUNTS[id], mergeSettings({}))).toBe(true);
+			expect(accountRequiresKey(ACCOUNTS[id], mergeSettings({}))).toBe(
+				true,
+			);
 		}
 	});
 
@@ -200,7 +202,9 @@ describe('which endpoints actually need a key', () => {
 			'https://api.openai.com/v1/',
 		);
 
-		expect(accountRequiresKey(ACCOUNTS[ACCOUNT_IDS.OPENAI], settings)).toBe(true);
+		expect(accountRequiresKey(ACCOUNTS[ACCOUNT_IDS.OPENAI], settings)).toBe(
+			true,
+		);
 	});
 
 	// Another vendor's cloud host does want a key, but saying so here would be
@@ -213,14 +217,18 @@ describe('which endpoints actually need a key', () => {
 			'https://api.groq.com/openai/v1',
 		);
 
-		expect(accountRequiresKey(ACCOUNTS[ACCOUNT_IDS.OPENAI], settings)).toBe(false);
+		expect(accountRequiresKey(ACCOUNTS[ACCOUNT_IDS.OPENAI], settings)).toBe(
+			false,
+		);
 	});
 
 	it("treats an unparsable endpoint as the user's own", () => {
 		const settings = mergeSettings({});
 		ACCOUNTS[ACCOUNT_IDS.GEMINI].setBaseUrl(settings, 'not a url');
 
-		expect(accountRequiresKey(ACCOUNTS[ACCOUNT_IDS.GEMINI], settings)).toBe(false);
+		expect(accountRequiresKey(ACCOUNTS[ACCOUNT_IDS.GEMINI], settings)).toBe(
+			false,
+		);
 	});
 
 	// An emptied field is the default endpoint, which is where a key is needed.
@@ -228,6 +236,8 @@ describe('which endpoints actually need a key', () => {
 		const settings = mergeSettings({});
 		ACCOUNTS[ACCOUNT_IDS.DEEPGRAM].setBaseUrl(settings, '');
 
-		expect(accountRequiresKey(ACCOUNTS[ACCOUNT_IDS.DEEPGRAM], settings)).toBe(true);
+		expect(
+			accountRequiresKey(ACCOUNTS[ACCOUNT_IDS.DEEPGRAM], settings),
+		).toBe(true);
 	});
 });

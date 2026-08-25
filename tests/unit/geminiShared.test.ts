@@ -17,10 +17,7 @@ import {
 	GEMINI_FINISH_MAX_TOKENS,
 } from 'src/transcription/providers/geminiShared';
 import { TranscriptTruncatedError } from 'src/transcription/transcriptionErrors';
-import {
-	DEFAULT_GEMINI_MODEL,
-	GEMINI_MODEL_SUGGESTIONS,
-} from 'src/constants';
+import { DEFAULT_GEMINI_MODEL, GEMINI_MODEL_SUGGESTIONS } from 'src/constants';
 
 describe('geminiCandidateText', () => {
 	it('concatenates the text parts of the first candidate without trimming', () => {
@@ -309,26 +306,30 @@ describe('geminiThinkingConfig', () => {
 // transcript often enough that parts were subdivided and re-sent, with the
 // discarded request billed in full.
 describe('which reasoning control each Gemini generation takes', () => {
-	// The whole seeded catalogue, so a model added to it arrives with an
-	// answer rather than with whichever branch its id happens to match.
-	it.each(GEMINI_MODEL_SUGGESTIONS)('decides for %s', (model) => {
+	/**
+	 * What the generation in an id calls for, worked out here rather than read
+	 * from the code under test, so the two have to agree.
+	 * @param model - Gemini model id
+	 * @returns The control that model should be sent, or undefined for none
+	 */
+	function controlFor(model: string): object | undefined {
 		const version = /^gemini-(\d+)(?:\.(\d+))?/.exec(model);
 		const major = Number(version?.[1] ?? '0');
 		const minor = Number(version?.[2] ?? '0');
-		const config = geminiThinkingConfig(model);
-
 		if (major >= 3) {
-			expect(config).toEqual({ thinkingLevel: 'low' });
-			return;
+			return { thinkingLevel: 'low' };
 		}
 		if (major === 2 && minor >= 5) {
-			expect(config).toEqual({
-				thinkingBudget: model.includes('pro') ? 128 : 0,
-			});
-			return;
+			return { thinkingBudget: model.includes('pro') ? 128 : 0 };
 		}
 		// 2.0 and earlier reject a thinkingConfig outright.
-		expect(config).toBeUndefined();
+		return undefined;
+	}
+
+	// The whole seeded catalogue, so a model added to it arrives with an
+	// answer rather than with whichever branch its id happens to match.
+	it.each(GEMINI_MODEL_SUGGESTIONS)('decides for %s', (model) => {
+		expect(geminiThinkingConfig(model)).toEqual(controlFor(model));
 	});
 
 	it('sends the level rather than a budget on the default model', () => {
@@ -358,9 +359,19 @@ describe('which reasoning control each Gemini generation takes', () => {
 		{ name: 'a name from another vendor', model: 'my-own-model' },
 		{ name: 'a bare family name', model: 'gemini-flash' },
 		{ name: 'a version-less id', model: 'gemini' },
+		{ name: 'a name that only starts alike', model: 'geminix-3-flash' },
 		{ name: 'an empty id', model: '' },
 	])('sends no control for $name', ({ model }) => {
 		expect(geminiThinkingConfig(model)).toBeUndefined();
+	});
+
+	// A generation named without a minor is still a generation, and the next
+	// one may well be published that way.
+	it('reads a generation given without a minor version', () => {
+		expect(geminiThinkingConfig('gemini-4-flash')).toEqual({
+			thinkingLevel: 'low',
+		});
+		expect(geminiThinkingConfig('gemini-2-flash')).toBeUndefined();
 	});
 
 	// The picker stores whatever the user typed, including the case.

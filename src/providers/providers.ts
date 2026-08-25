@@ -504,8 +504,7 @@ export function accountRequiresKey(
 	}
 	try {
 		return (
-			new URL(configured).host ===
-			new URL(connection.defaultBaseUrl).host
+			new URL(configured).host === new URL(connection.defaultBaseUrl).host
 		);
 	} catch {
 		return false;

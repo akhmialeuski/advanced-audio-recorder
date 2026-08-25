@@ -543,7 +543,10 @@ describe('a failure the run could try again', () => {
 	 */
 	async function failure(): Promise<HttpError> {
 		try {
-			await requestRaw({ url: 'https://api.example/v1/x', method: 'GET' });
+			await requestRaw({
+				url: 'https://api.example/v1/x',
+				method: 'GET',
+			});
 		} catch (error) {
 			if (error instanceof HttpError) {
 				return error;
@@ -577,17 +580,21 @@ describe('a failure the run could try again', () => {
 			body: 'User location is not supported for the API use',
 			retryable: false,
 		},
-		{ name: 'a malformed request', status: 400, body: '', retryable: false },
+		{
+			name: 'a malformed request',
+			status: 400,
+			body: '',
+			retryable: false,
+		},
 		{ name: 'a missing model', status: 404, body: '', retryable: false },
-	])('reports $name as retryable: $retryable', async ({
-		status,
-		body,
-		retryable,
-	}) => {
-		answerWith(status, body);
+	])(
+		'reports $name as retryable: $retryable',
+		async ({ status, body, retryable }) => {
+			answerWith(status, body);
 
-		expect((await failure()).retryable).toBe(retryable);
-	});
+			expect((await failure()).retryable).toBe(retryable);
+		},
+	);
 
 	// A quota that ran out is a rate limit shaped like one and fixed by
 	// nothing a retry can do, so the billing branch wins over the 429.
@@ -623,7 +630,10 @@ describe('a failure the run could try again', () => {
 	it.each([
 		{ name: 'no header at all', headers: {} },
 		{ name: 'a value that is neither', headers: { 'Retry-After': 'soon' } },
-		{ name: 'a date in the past', headers: { 'Retry-After': 'Thu, 01 Jan 1970 00:00:00 GMT' } },
+		{
+			name: 'a date in the past',
+			headers: { 'Retry-After': 'Thu, 01 Jan 1970 00:00:00 GMT' },
+		},
 	])('advises no particular pause for $name', async ({ headers }) => {
 		answerWith(429, '', headers);
 

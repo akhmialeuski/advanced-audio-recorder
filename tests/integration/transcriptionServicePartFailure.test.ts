@@ -33,6 +33,7 @@ import { CancellationSource } from 'src/utils/cancellation';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 import { fakeProvider, NO_DIARIZATION } from '../helpers/providerFixtures';
+import { outcomeOf } from '../helpers/async';
 
 // Replace audio preparation so the test drives the part count directly without
 // decoding real audio (the Web Audio path is unavailable under jsdom).
@@ -62,25 +63,6 @@ function makeApp(): App {
 		},
 		workspace: { getLeavesOfType: jest.fn(() => []) },
 	}).app;
-}
-
-/**
- * Captures how a run ends without leaving its rejection unhandled.
- *
- * A run driven by fake timers settles inside `advanceTimersByTimeAsync`, and a
- * handler attached after that call arrives too late: the rejection is already
- * loose. Attaching one up front and reporting the outcome as a value lets the
- * assertion come afterwards, in the order a test reads best.
- * @param run - The run to watch
- * @returns Its value or the error it threw
- */
-function outcomeOf<T>(
-	run: Promise<T>,
-): Promise<{ value: T } | { error: unknown }> {
-	return run.then(
-		(value) => ({ value }),
-		(error: unknown) => ({ error }),
-	);
 }
 
 /** Two prepared parts on the timeline (0s and 60s), each a tiny WAV payload. */
@@ -950,7 +932,9 @@ describe('a part the provider refused for now', () => {
 		const transcribe = jest
 			.fn()
 			.mockRejectedValueOnce(rateLimited(9000))
-			.mockResolvedValue({ segments: [{ start: 0, end: 5, text: 'ok' }] });
+			.mockResolvedValue({
+				segments: [{ start: 0, end: 5, text: 'ok' }],
+			});
 		const service = serviceOver(transcribe);
 
 		const run = runToCompletion(service);
@@ -970,7 +954,9 @@ describe('a part the provider refused for now', () => {
 			.mockRejectedValueOnce(
 				rateLimited(TRANSCRIBE_RETRY_MAX_DELAY_MS + 1),
 			)
-			.mockResolvedValue({ segments: [{ start: 0, end: 5, text: 'ok' }] });
+			.mockResolvedValue({
+				segments: [{ start: 0, end: 5, text: 'ok' }],
+			});
 
 		const result = await runPastThePauses(serviceOver(transcribe));
 
@@ -999,30 +985,52 @@ describe('a part the provider refused for now', () => {
 			.mockRejectedValueOnce(
 				new HttpError(401, 'Authentication failed.', false),
 			)
-			.mockResolvedValue({ segments: [{ start: 0, end: 5, text: 'ok' }] });
+			.mockResolvedValue({
+				segments: [{ start: 0, end: 5, text: 'ok' }],
+			});
 
 		await runPastThePauses(serviceOver(transcribe));
 
 		expect(transcribe).toHaveBeenCalledTimes(2);
 	});
 
-	it('says it is waiting rather than looking stuck', async () => {
+	/**
+	 * Runs a job whose first attempt is refused, and reports every progress
+	 * line it showed while waiting to try again.
+	 * @returns The labels shown, joined in the order they appeared
+	 */
+	async function labelsWhileRetrying(): Promise<string> {
 		const transcribe = jest
 			.fn()
 			.mockRejectedValueOnce(rateLimited())
-			.mockResolvedValue({ segments: [{ start: 0, end: 5, text: 'ok' }] });
+			.mockResolvedValue({
+				segments: [{ start: 0, end: 5, text: 'ok' }],
+			});
 		const labels: string[] = [];
-		const service = serviceOver(transcribe);
-
-		const run = service.run(audioFile, {
-			notePathForLinks: 'note.md',
-			token: NEVER_CANCELLED,
-			onProgress: (_fraction, label) => labels.push(label),
-		});
+		const settled = outcomeOf(
+			serviceOver(transcribe).run(audioFile, {
+				notePathForLinks: 'note.md',
+				token: NEVER_CANCELLED,
+				onProgress: (_fraction, label) => labels.push(label),
+			}),
+		);
 		await jest.advanceTimersByTimeAsync(TRANSCRIBE_RETRY_MAX_DELAY_MS * 4);
-		await run;
+		await settled;
+		return labels.join(' | ');
+	}
 
-		expect(labels.join(' | ')).toMatch(/retrying/i);
+	// A progress line that stops moving reads as a hang, and the pause before
+	// another attempt is the run still working.
+	it('says it is waiting rather than looking stuck', async () => {
+		expect(await labelsWhileRetrying()).toMatch(/retrying/i);
+	});
+
+	// A job small enough to send whole has no part number to name, so the
+	// waiting line says what it is waiting on in words instead.
+	it('names the audio itself when there is only one request', async () => {
+		prepareOnePart();
+
+		expect(await labelsWhileRetrying()).toContain('retrying the audio in');
 	});
 
 	// Waiting out a pause the user has already given up on is the same

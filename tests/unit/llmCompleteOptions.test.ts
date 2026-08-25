@@ -23,6 +23,7 @@ import {
 	type MockRequestUrlResponse,
 } from '../mocks/obsidian';
 import { withRequestUrl } from '../helpers/network';
+import { outcomeOf } from '../helpers/async';
 
 const PROMPT: LlmPrompt = { system: 'You extract terms.', user: 'hello' };
 
@@ -173,21 +174,21 @@ describe('LlmProvider.complete cancellation', () => {
 				}),
 			response: GEMINI_RESPONSE,
 		},
-	])('sends the $name request on an abortable transport', async ({
-		build,
-		response,
-	}) => {
-		const init = captureFetch(response);
+	])(
+		'sends the $name request on an abortable transport',
+		async ({ build, response }) => {
+			const init = captureFetch(response);
 
-		await build().complete(PROMPT, 256, {
-			signal: new AbortController().signal,
-		});
+			await build().complete(PROMPT, 256, {
+				signal: new AbortController().signal,
+			});
 
-		// `requestUrl` cannot abort anything, so the only way a Cancel can
-		// release the socket is for the request to go out through fetch with
-		// a signal on it. That it did is the whole fix.
-		expect(init().signal).toBeDefined();
-	});
+			// `requestUrl` cannot abort anything, so the only way a Cancel can
+			// release the socket is for the request to go out through fetch with
+			// a signal on it. That it did is the whole fix.
+			expect(init().signal).toBeDefined();
+		},
+	);
 
 	// The point of the signal: a Cancel while the model is still writing ends
 	// the request instead of leaving it to run to its own timeout and be
@@ -208,13 +209,16 @@ describe('LlmProvider.complete cancellation', () => {
 			model: 'gpt-4o-mini',
 		});
 
-		const call = provider.complete(PROMPT, 256, {
-			signal: controller.signal,
-		});
-		const rejected = expect(call).rejects.toThrow('cancelled');
+		const settled = outcomeOf(
+			provider.complete(PROMPT, 256, { signal: controller.signal }),
+		);
 		controller.abort();
 
-		await rejected;
+		expect(await settled).toEqual({
+			error: expect.objectContaining({
+				message: expect.stringContaining('cancelled'),
+			}),
+		});
 	});
 
 	// Nothing to cancel with means nothing to gain from fetch, and requestUrl

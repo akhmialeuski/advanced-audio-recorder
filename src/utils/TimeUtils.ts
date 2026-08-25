@@ -22,13 +22,18 @@ import { SECONDS_PER_MINUTE, SECONDS_PER_HOUR } from '../constants';
  */
 export function delay(ms: number, signal?: AbortSignal): Promise<void> {
 	return new Promise((resolve, reject) => {
+		// The reason is whatever aborted the signal, which the platform fills
+		// with a DOMException and a caller with an error of its own. Passing it
+		// through unchanged is what lets a cancelled wait and a cancelled
+		// request reject with the same thing.
+		const abortReason = (): Error => signal?.reason as Error;
 		if (signal?.aborted) {
-			reject(signal.reason);
+			reject(abortReason());
 			return;
 		}
 		const onAbort = (): void => {
 			window.clearTimeout(timer);
-			reject(signal?.reason);
+			reject(abortReason());
 		};
 		const timer = window.setTimeout(() => {
 			signal?.removeEventListener('abort', onAbort);

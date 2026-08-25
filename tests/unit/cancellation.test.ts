@@ -9,10 +9,7 @@
  * @module tests/unit/cancellation.test
  */
 
-import {
-	CancellationSource,
-	NEVER_CANCELLED,
-} from 'src/utils/cancellation';
+import { CancellationSource, NEVER_CANCELLED } from 'src/utils/cancellation';
 
 describe('NEVER_CANCELLED', () => {
 	it('never reports a cancellation', () => {

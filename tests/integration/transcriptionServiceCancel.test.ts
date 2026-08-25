@@ -25,7 +25,7 @@ import { fakeProvider, NO_DIARIZATION } from '../helpers/providerFixtures';
 import { LLM_PROVIDER_IDS } from 'src/constants';
 import { noticeMessages } from '../mocks/obsidian';
 import { CancellationSource } from 'src/utils/cancellation';
-import { waitFor } from '../helpers/async';
+import { outcomeOf, waitFor } from '../helpers/async';
 
 const audioFile = partial<TFile>({
 	name: 'rec.webm',
@@ -346,18 +346,20 @@ describe('a cancel that lands while a request is in flight', () => {
 				},
 			);
 
-			const run = service.run(audioFile, {
-				notePathForLinks: 'note.md',
-				token: source.token,
-			});
-			const rejected = expect(run).rejects.toBeInstanceOf(
-				TranscriptionCancelledError,
+			const settled = outcomeOf(
+				service.run(audioFile, {
+					notePathForLinks: 'note.md',
+					token: source.token,
+				}),
 			);
 			await waitFor(() => started, {
 				message: 'the post-processing call to start',
 			});
 			source.cancel();
-			await rejected;
+
+			expect(await settled).toEqual({
+				error: expect.any(TranscriptionCancelledError),
+			});
 			return aborted;
 		}
 

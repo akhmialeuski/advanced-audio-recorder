@@ -155,7 +155,7 @@ describe('registry-derived consumers stay in step', () => {
 	// The same rule the transcription side follows, from the same registry:
 	// whether a key is needed is a fact about the endpoint, and a local one
 	// needs none. Both factories ask the account, so they cannot diverge.
-	it('builds each vendor with no key once its endpoint is the user\'s own', () => {
+	it("builds each vendor with no key once its endpoint is the user's own", () => {
 		for (const id of LLM_VENDOR_IDS) {
 			const vendor = LLM_VENDORS[id];
 			const settings = mergeSettings({ llmProvider: id });
