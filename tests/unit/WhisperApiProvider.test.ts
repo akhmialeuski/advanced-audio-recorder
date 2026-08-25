@@ -70,6 +70,31 @@ function options(
 	return { diarize: false, wordTimestamps: false, ...overrides };
 }
 
+// An empty key used to be sent anyway, as a bare `Bearer ` with nothing after
+// it. A local server ignores the header, but a header that carries nothing is
+// still a header claiming an identity that does not exist, so it is left off.
+describe('the authorization header', () => {
+	it('carries the key when one is configured', async () => {
+		const calls = capture();
+
+		await provider().transcribe(payload(), options());
+
+		expect(at(calls, 0).headers?.Authorization).toBe('Bearer k');
+	});
+
+	it('is absent when no key is configured', async () => {
+		const calls = capture();
+
+		await new WhisperApiProvider({
+			baseUrl: BASE_URL,
+			apiKey: '',
+			model: 'whisper-1',
+		}).transcribe(payload(), options());
+
+		expect(at(calls, 0).headers).not.toHaveProperty('Authorization');
+	});
+});
+
 describe('WhisperApiProvider request fields', () => {
 	it('sends the dictionary as a comma-joined prompt field', async () => {
 		const calls = capture();

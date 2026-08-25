@@ -15,7 +15,12 @@ import {
 	termsWithinDeepgramKeyterm,
 } from '../dictionaryBias';
 import { dedupeTerms } from '../dictionary';
-import { requestJson, trimTrailingSlash, uploadTimeoutMs } from '../httpClient';
+import {
+	authHeader,
+	requestJson,
+	trimTrailingSlash,
+	uploadTimeoutMs,
+} from '../httpClient';
 import { DEEPGRAM_CAPABILITIES } from './capabilities';
 import { mapDeepgramResponse } from './deepgramResponse';
 import type { WhisperResult } from './whisperResponse';
@@ -98,7 +103,7 @@ export class DeepgramProvider implements TranscriptionProvider {
 		const json = await requestJson({
 			url,
 			method: 'POST',
-			headers: { Authorization: `Token ${this.config.apiKey}` },
+			headers: authHeader('Authorization', this.config.apiKey, 'Token '),
 			contentType: payload.contentType,
 			body: payload.data,
 			timeoutMs: uploadTimeoutMs(

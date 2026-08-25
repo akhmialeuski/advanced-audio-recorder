@@ -22,6 +22,10 @@
 import {
 	ANTHROPIC_MODELS_DOC_URL,
 	DEEPGRAM_MODELS_DOC_URL,
+	DEFAULT_ANTHROPIC_BASE_URL,
+	DEFAULT_DEEPGRAM_BASE_URL,
+	DEFAULT_GEMINI_BASE_URL,
+	DEFAULT_OPENAI_BASE_URL,
 	GEMINI_MODELS_DOC_URL,
 	LLM_PROVIDER_IDS,
 	OPENAI_MODELS_DOC_URL,
@@ -61,7 +65,8 @@ export type EngineId = (typeof ENGINE_IDS)[keyof typeof ENGINE_IDS];
 
 /** Description shown under every stored key field. */
 const STORED_LOCALLY_DESC =
-	'Stored in plugin data on this device. Avoid syncing data.json to untrusted locations.';
+	'Stored in plugin data on this device. Avoid syncing data.json to untrusted locations. ' +
+	'Leave it empty when the Base URL points at a local endpoint, which needs no key.';
 
 /**
  * How an account is reached: one endpoint and one key, whatever the engines
@@ -71,6 +76,14 @@ export interface ProviderConnection {
 	/** Settings keys the fields are stored under, for declaring the controls. */
 	readonly baseUrlKey: PrimitiveSettingKey;
 	readonly apiKeyKey: PrimitiveSettingKey;
+	/**
+	 * The vendor's own endpoint, which is where the stored value starts and
+	 * where a cleared field returns to. Named here because it is the one thing
+	 * that distinguishes "this account, as the vendor serves it" from "some
+	 * endpoint the user pointed it at", and a key is only mandatory for the
+	 * former; see {@link accountRequiresKey}.
+	 */
+	readonly defaultBaseUrl: string;
 	readonly baseUrl: (settings: AudioRecorderSettings) => string;
 	readonly setBaseUrl: (settings: AudioRecorderSettings, url: string) => void;
 	readonly apiKey: (settings: AudioRecorderSettings) => string;
@@ -167,6 +180,7 @@ export interface EngineNumericField {
 export const ACCOUNTS: Record<AccountId, ProviderConnection> = {
 	[ACCOUNT_IDS.OPENAI]: {
 		baseUrlKey: 'whisperApiBaseUrl',
+		defaultBaseUrl: DEFAULT_OPENAI_BASE_URL,
 		apiKeyKey: 'whisperApiKey',
 		baseUrl: (s) => s.whisperApiBaseUrl,
 		setBaseUrl: (s, url) => (s.whisperApiBaseUrl = url),
@@ -180,6 +194,7 @@ export const ACCOUNTS: Record<AccountId, ProviderConnection> = {
 	},
 	[ACCOUNT_IDS.DEEPGRAM]: {
 		baseUrlKey: 'deepgramBaseUrl',
+		defaultBaseUrl: DEFAULT_DEEPGRAM_BASE_URL,
 		apiKeyKey: 'deepgramApiKey',
 		baseUrl: (s) => s.deepgramBaseUrl,
 		setBaseUrl: (s, url) => (s.deepgramBaseUrl = url),
@@ -193,6 +208,7 @@ export const ACCOUNTS: Record<AccountId, ProviderConnection> = {
 	},
 	[ACCOUNT_IDS.GEMINI]: {
 		baseUrlKey: 'geminiBaseUrl',
+		defaultBaseUrl: DEFAULT_GEMINI_BASE_URL,
 		apiKeyKey: 'geminiApiKey',
 		baseUrl: (s) => s.geminiBaseUrl,
 		setBaseUrl: (s, url) => (s.geminiBaseUrl = url),
@@ -206,6 +222,7 @@ export const ACCOUNTS: Record<AccountId, ProviderConnection> = {
 	},
 	[ACCOUNT_IDS.ANTHROPIC]: {
 		baseUrlKey: 'anthropicBaseUrl',
+		defaultBaseUrl: DEFAULT_ANTHROPIC_BASE_URL,
 		apiKeyKey: 'anthropicApiKey',
 		baseUrl: (s) => s.anthropicBaseUrl,
 		setBaseUrl: (s, url) => (s.anthropicBaseUrl = url),
@@ -454,6 +471,45 @@ export function accountOf(
 	engine: EngineDescriptor,
 ): ProviderConnection | undefined {
 	return engine.account ? ACCOUNTS[engine.account] : undefined;
+}
+
+/**
+ * Whether a run through this account must have a key before it starts.
+ *
+ * Requiring one unconditionally treated the key as a property of the provider.
+ * It is a property of the endpoint. The Base URL row exists precisely so a run
+ * can be sent to a compatible server, and the case worth having it for is a
+ * local one - Ollama, LM Studio, LocalAI, a whisper-server build - none of
+ * which wants a key. Refusing there left that endpoint unreachable unless the
+ * user invented a key, which then travelled in a real Authorization header.
+ *
+ * The vendor's own endpoint keeps the check, because a request to it without a
+ * key cannot succeed and failing early says so in the plugin's own words.
+ * Anywhere else the endpoint answers for itself: a host that does want a key
+ * says 401, and that answer is never wrong the way a guess here would be.
+ * Compared by host, since the path and a trailing slash are the user's
+ * business. An endpoint that will not parse is treated as the user's own.
+ * @param connection - The endpoint and key the run is reached through
+ * @param settings - Plugin settings holding the configured endpoint
+ * @returns True when a missing key should stop the run before it starts
+ */
+export function accountRequiresKey(
+	connection: ProviderConnection,
+	settings: AudioRecorderSettings,
+): boolean {
+	const configured = connection.baseUrl(settings).trim();
+	if (!configured) {
+		// A cleared field is the default endpoint, which is a cloud one.
+		return true;
+	}
+	try {
+		return (
+			new URL(configured).host ===
+			new URL(connection.defaultBaseUrl).host
+		);
+	} catch {
+		return false;
+	}
 }
 
 /**

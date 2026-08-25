@@ -19,7 +19,7 @@ import {
 } from '../../constants';
 import { decodeToMono16k, encodeMonoWav } from '../audioChunks';
 import { DICTIONARY_JOIN_SEPARATOR } from '../dictionaryBias';
-import { requestJson, uploadTimeoutMs } from '../httpClient';
+import { authHeader, requestJson, uploadTimeoutMs } from '../httpClient';
 import { GEMINI_CAPABILITIES } from './capabilities';
 import {
 	deleteFile,
@@ -202,7 +202,7 @@ export class GeminiProvider implements TranscriptionProvider {
 			const json = await requestJson({
 				url,
 				method: 'POST',
-				headers: { [GEMINI_API_KEY_HEADER]: this.config.apiKey },
+				headers: authHeader(GEMINI_API_KEY_HEADER, this.config.apiKey),
 				contentType: 'application/json',
 				body: JSON.stringify({
 					contents: [

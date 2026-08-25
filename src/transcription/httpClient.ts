@@ -78,6 +78,30 @@ export function buildMultipart(fields: MultipartField[]): MultipartBody {
 	};
 }
 
+/**
+ * An authorization header, or nothing at all when there is no key.
+ *
+ * The endpoint decides whether a key is needed (see `accountRequiresKey`), and
+ * a run against a local server has none. Sending the header anyway meant a bare
+ * `Bearer ` or an empty `x-goog-api-key`: a header that claims an identity
+ * which does not exist. Every provider builds its own header object, and each
+ * of them asks here rather than restating the condition.
+ * @param name - Header the provider carries its key in
+ * @param key - The configured key, possibly empty
+ * @param scheme - Prefix the header value takes, e.g. `Bearer `
+ * @returns The single header, or an empty object
+ */
+export function authHeader(
+	name: string,
+	key: string,
+	scheme = '',
+): Record<string, string> {
+	// The scheme is applied here rather than by the caller, because a caller
+	// that formats first hands over `Bearer ` with nothing after it, which is
+	// exactly the header this exists to leave out.
+	return key ? { [name]: `${scheme}${key}` } : {};
+}
+
 /** Removes a single trailing slash from a base URL. */
 export function trimTrailingSlash(url: string): string {
 	return url.endsWith('/') ? url.slice(0, -1) : url;

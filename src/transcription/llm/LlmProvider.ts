@@ -11,7 +11,12 @@ import {
 	LLM_PROVIDER_IDS,
 	LLM_REQUEST_TIMEOUT_MS,
 } from '../../constants';
-import { HttpError, requestJson, trimTrailingSlash } from '../httpClient';
+import {
+	authHeader,
+	HttpError,
+	requestJson,
+	trimTrailingSlash,
+} from '../httpClient';
 import type { LlmProviderId } from '../../settings/settingsSchema';
 import type { LlmPrompt } from '../llmPostProcess';
 import {
@@ -141,10 +146,11 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
 		maxTokens: number,
 		options?: LlmCompleteOptions,
 	): Promise<string> {
-		const headers: Record<string, string> = {};
-		if (this.config.apiKey) {
-			headers.Authorization = `Bearer ${this.config.apiKey}`;
-		}
+		const headers = authHeader(
+			'Authorization',
+			this.config.apiKey,
+			'Bearer ',
+		);
 		const candidates = this.candidateParams();
 		let lastError: unknown;
 		for (const [index, param] of candidates.entries()) {
@@ -240,7 +246,7 @@ export class AnthropicLlmProvider implements LlmProvider {
 			url: `${trimTrailingSlash(this.config.baseUrl)}/messages`,
 			method: 'POST',
 			headers: {
-				'x-api-key': this.config.apiKey,
+				...authHeader('x-api-key', this.config.apiKey),
 				'anthropic-version': ANTHROPIC_API_VERSION,
 				'anthropic-dangerous-direct-browser-access': 'true',
 			},
@@ -288,7 +294,7 @@ export class GeminiLlmProvider implements LlmProvider {
 		const json = await requestJson({
 			url,
 			method: 'POST',
-			headers: { [GEMINI_API_KEY_HEADER]: this.config.apiKey },
+			headers: authHeader(GEMINI_API_KEY_HEADER, this.config.apiKey),
 			contentType: 'application/json',
 			body: JSON.stringify({
 				systemInstruction: { parts: [{ text: prompt.system }] },

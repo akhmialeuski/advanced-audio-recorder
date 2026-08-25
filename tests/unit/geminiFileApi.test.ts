@@ -289,6 +289,27 @@ describe('deleteFile', () => {
 	});
 });
 
+// Gemini's key travels in a header of its own, and an empty one used to be
+// sent as an empty string. A compatible local endpoint ignores it either way,
+// but a header claiming an identity that does not exist is left off.
+describe('the api-key header', () => {
+	it('is absent from every request when no key is configured', async () => {
+		const sent: MockRequestUrlParam[] = [];
+		withRequestUrl((param): MockRequestUrlResponse => {
+			sent.push(param);
+			return {
+				status: 200,
+				headers: {},
+				text: JSON.stringify({ name: 'files/x', uri: 'u' }),
+			};
+		});
+
+		await deleteFile(BASE_URL, '', 'files/x');
+
+		expect(at(sent, 0).headers).not.toHaveProperty('x-goog-api-key');
+	});
+});
+
 describe('fileProcessingWaitMs', () => {
 	it('uses the floor for a tiny file', () => {
 		expect(fileProcessingWaitMs(0)).toBe(GEMINI_FILE_MIN_WAIT_MS);

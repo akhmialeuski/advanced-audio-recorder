@@ -14,6 +14,7 @@ import {
 	ENGINE_IDS,
 	ENGINE_ORDER,
 	accountOf,
+	accountRequiresKey,
 	accountTranscribes,
 	engineAccess,
 	enginesOfAccount,
@@ -166,5 +167,67 @@ describe('provider registry', () => {
 		expect(accountTranscribes(ACCOUNT_IDS.GEMINI)).toBe(true);
 		expect(accountTranscribes(ACCOUNT_IDS.DEEPGRAM)).toBe(true);
 		expect(accountTranscribes(ACCOUNT_IDS.ANTHROPIC)).toBe(false);
+	});
+});
+
+// A key is a property of the endpoint, not of the engine. The Base URL row
+// exists so a run can be pointed at a compatible server, and the most valuable
+// thing to point it at - Ollama, LM Studio, LocalAI, a whisper-server build -
+// wants no key at all. Demanding one there sent users to type a decoy string
+// that then travelled in a real Authorization header.
+describe('which endpoints actually need a key', () => {
+	it('requires one at every account default, which is a cloud endpoint', () => {
+		for (const id of EVERY_ACCOUNT_ID) {
+			expect(accountRequiresKey(ACCOUNTS[id], mergeSettings({}))).toBe(true);
+		}
+	});
+
+	it('requires none once the endpoint has been repointed', () => {
+		for (const id of EVERY_ACCOUNT_ID) {
+			const settings = mergeSettings({});
+			ACCOUNTS[id].setBaseUrl(settings, 'http://localhost:1234/v1');
+
+			expect(accountRequiresKey(ACCOUNTS[id], settings)).toBe(false);
+		}
+	});
+
+	// The path and a trailing slash are the user's business; what identifies
+	// the vendor's own endpoint is the host it answers on.
+	it('still requires one when only the path or slash differs', () => {
+		const settings = mergeSettings({});
+		ACCOUNTS[ACCOUNT_IDS.OPENAI].setBaseUrl(
+			settings,
+			'https://api.openai.com/v1/',
+		);
+
+		expect(accountRequiresKey(ACCOUNTS[ACCOUNT_IDS.OPENAI], settings)).toBe(true);
+	});
+
+	// Another vendor's cloud host does want a key, but saying so here would be
+	// guessing: it answers 401 itself, in its own wording, which is the one
+	// answer that is never wrong.
+	it('leaves another host to refuse the request itself', () => {
+		const settings = mergeSettings({});
+		ACCOUNTS[ACCOUNT_IDS.OPENAI].setBaseUrl(
+			settings,
+			'https://api.groq.com/openai/v1',
+		);
+
+		expect(accountRequiresKey(ACCOUNTS[ACCOUNT_IDS.OPENAI], settings)).toBe(false);
+	});
+
+	it("treats an unparsable endpoint as the user's own", () => {
+		const settings = mergeSettings({});
+		ACCOUNTS[ACCOUNT_IDS.GEMINI].setBaseUrl(settings, 'not a url');
+
+		expect(accountRequiresKey(ACCOUNTS[ACCOUNT_IDS.GEMINI], settings)).toBe(false);
+	});
+
+	// An emptied field is the default endpoint, which is where a key is needed.
+	it('requires one again when the endpoint is cleared', () => {
+		const settings = mergeSettings({});
+		ACCOUNTS[ACCOUNT_IDS.DEEPGRAM].setBaseUrl(settings, '');
+
+		expect(accountRequiresKey(ACCOUNTS[ACCOUNT_IDS.DEEPGRAM], settings)).toBe(true);
 	});
 });

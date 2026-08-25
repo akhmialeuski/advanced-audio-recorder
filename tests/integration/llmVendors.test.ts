@@ -12,6 +12,7 @@ import {
 	llmVendor,
 } from 'src/transcription/llm/vendors';
 import { LLM_PROVIDER_IDS } from 'src/constants';
+import { vendorConnection } from 'src/providers/providers';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { resolveLlmPricing } from 'src/transcription/costs';
 import {
@@ -148,6 +149,23 @@ describe('registry-derived consumers stay in step', () => {
 			const configured = mergeSettings({ llmProvider: id });
 			vendor.settings.setApiKey(configured, 'token');
 			expect(createLlmProvider(configured).id).toBe(id);
+		}
+	});
+
+	// The same rule the transcription side follows, from the same registry:
+	// whether a key is needed is a fact about the endpoint, and a local one
+	// needs none. Both factories ask the account, so they cannot diverge.
+	it('builds each vendor with no key once its endpoint is the user\'s own', () => {
+		for (const id of LLM_VENDOR_IDS) {
+			const vendor = LLM_VENDORS[id];
+			const settings = mergeSettings({ llmProvider: id });
+			vendor.settings.setApiKey(settings, '');
+			vendorConnection(id).setBaseUrl(
+				settings,
+				'http://localhost:1234/v1',
+			);
+
+			expect(createLlmProvider(settings).id).toBe(id);
 		}
 	});
 });

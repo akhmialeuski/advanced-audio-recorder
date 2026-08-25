@@ -16,6 +16,7 @@ import {
 	GEMINI_FILE_WAIT_BYTES_PER_MS,
 } from '../../constants';
 import {
+	authHeader,
 	HttpError,
 	requestJson,
 	requestRaw,
@@ -123,7 +124,7 @@ export async function uploadFile(
 		url: `${base}/upload/v1beta/files`,
 		method: 'POST',
 		headers: {
-			[GEMINI_API_KEY_HEADER]: apiKey,
+			...authHeader(GEMINI_API_KEY_HEADER, apiKey),
 			'X-Goog-Upload-Protocol': 'resumable',
 			'X-Goog-Upload-Command': 'start',
 			'X-Goog-Upload-Header-Content-Length': numBytes,
@@ -178,7 +179,7 @@ export async function waitUntilActive(
 			await requestJson<unknown>({
 				url: `${base}/v1beta/${fileName}`,
 				method: 'GET',
-				headers: { [GEMINI_API_KEY_HEADER]: apiKey },
+				headers: authHeader(GEMINI_API_KEY_HEADER, apiKey),
 			}),
 		);
 		if (file.state === FILE_STATE_ACTIVE) {
@@ -215,6 +216,6 @@ export async function deleteFile(
 	await requestRaw({
 		url: `${trimTrailingSlash(baseUrl)}/v1beta/${fileName}`,
 		method: 'DELETE',
-		headers: { [GEMINI_API_KEY_HEADER]: apiKey },
+		headers: authHeader(GEMINI_API_KEY_HEADER, apiKey),
 	});
 }

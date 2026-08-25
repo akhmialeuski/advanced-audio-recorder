@@ -14,7 +14,7 @@ import type {
 import type { TranscriptionProvider } from './providers/TranscriptionProvider';
 import type { LlmProvider } from './llm/LlmProvider';
 import { jobVendorId, llmVendor } from './llm/vendors';
-import { vendorConnection } from '../providers/providers';
+import { accountRequiresKey, vendorConnection } from '../providers/providers';
 import { ProviderConfigError } from './providerConfigError';
 
 export { ProviderConfigError } from './providerConfigError';
@@ -44,8 +44,14 @@ export function createLlmProvider(
 	vendorId: LlmProviderId = jobVendorId(settings, 'postProcess'),
 ): LlmProvider {
 	const vendor = llmVendor(vendorId);
+	// The endpoint belongs to the provider the vendor is a capability of,
+	// which is the same one its transcription side is reached through.
+	const connection = vendorConnection(vendor.id);
 	const apiKey = vendor.settings.apiKey(settings);
-	if (!apiKey) {
+	// The same rule the transcription factory follows, read from the same
+	// registry: only the vendor's own endpoint is refused without a key, so a
+	// Base URL pointed at a local server is reachable with the field empty.
+	if (!apiKey && accountRequiresKey(connection, settings)) {
 		throw new ProviderConfigError(vendor.missingKeyMessage);
 	}
 	const model = vendor.settings.model(settings);
@@ -53,9 +59,7 @@ export function createLlmProvider(
 		throw new ProviderConfigError(vendor.missingModelMessage);
 	}
 	return vendor.create({
-		// The endpoint belongs to the provider the vendor is a capability of,
-		// which is the same one its transcription side is reached through.
-		baseUrl: vendorConnection(vendor.id).baseUrl(settings),
+		baseUrl: connection.baseUrl(settings),
 		apiKey,
 		model,
 	});

@@ -187,6 +187,25 @@ describe('registry-derived consumers stay in step', () => {
 		}
 	});
 
+	// The Base URL row exists so a run can be sent to a compatible endpoint,
+	// and a local one wants no key. Refusing before the client was built left
+	// that endpoint unreachable unless the user typed a decoy key, which then
+	// travelled in a real Authorization header.
+	it('builds a cloud engine with no key once the endpoint is the user\'s own', () => {
+		for (const engineId of CLOUD_ENGINES) {
+			const { engine, account } = engineAccess(engineId);
+			const settings = mergeSettings({
+				transcriptionProvider: transcriptionIdOf(engine),
+			});
+			account.setApiKey(settings, '');
+			account.setBaseUrl(settings, 'http://localhost:1234/v1');
+
+			expect(createTranscriptionProvider(settings).id).toBe(
+				transcriptionIdOf(engine),
+			);
+		}
+	});
+
 	it('refuses to build a cloud engine whose catalogue holds no model', () => {
 		// A request naming no model cannot succeed; it used to be sent anyway
 		// and fail at the endpoint in the provider's own wording.
