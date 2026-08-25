@@ -217,19 +217,22 @@ export function isDecodableSize(bytes: number, kind?: PlatformKind): boolean {
 }
 
 /**
- * What to tell a user whose file will not fit under {@link isDecodableSize}.
+ * What to tell a user whose file will not fit under one of this platform's
+ * size ceilings - {@link isDecodableSize} or {@link isReadableSize}.
  *
- * One limit used to produce three different pieces of advice: the splitter
- * pointed at the desktop app, cleanup said to split the file first, and
- * conversion said nothing because it never asked. Which advice is the useful
- * one is a fact about the platform rather than about the operation. A phone has
- * a bigger machine to move to, and the desktop app does not, so there the only
- * thing that helps is making the file smaller.
+ * One sentence for both, because which advice is the useful one turns on the
+ * platform rather than on which allocation was refused, or on the operation
+ * that was going to make it. A phone has a bigger machine to move to, and the
+ * desktop app does not, so there the only thing that helps is making the file
+ * smaller. The ceilings used to grow a piece of advice each: the splitter
+ * pointed at the desktop app for the read and at the desktop app again, in
+ * different words, for the decode; cleanup said to split the file first; and
+ * conversion said nothing because it never asked.
  * @param action - The operation the user asked for, named as a verb phrase
  * @param kind - Platform to answer for (defaults to the current one)
  * @returns The refusal, ready to show
  */
-export function tooLargeToDecodeMessage(
+export function tooLargeMessage(
 	action: string,
 	kind: PlatformKind = getPlatformKind(),
 ): string {

@@ -16,7 +16,7 @@ import { FORMAT_WAV, PLUGIN_LOG_PREFIX } from '../constants';
 import {
 	isDecodableSize,
 	isReadableSize,
-	tooLargeToDecodeMessage,
+	tooLargeMessage,
 } from '../platform/capabilities';
 import { decodeAudioBlob } from '../audio/AudioFormatConverter';
 import {
@@ -119,9 +119,7 @@ export class SplitService {
 			// Desktop is unbounded here - the lossless WAV byte path must
 			// keep splitting files beyond the decode ceiling.
 			if (!isReadableSize(request.sourceFile.stat.size)) {
-				new Notice(
-					'File is too large to split on this device. Split it on desktop instead.',
-				);
+				new Notice(tooLargeMessage('split'));
 				onProgress('');
 				return { status: 'aborted' };
 			}
@@ -290,12 +288,12 @@ export class SplitService {
 		// decode path expands the file to full PCM in memory. The lossless
 		// WAV byte path above never decodes, so it is not capped here.
 		if (!isDecodableSize(sourceBytes.byteLength)) {
-			new Notice(tooLargeToDecodeMessage('split'));
+			new Notice(tooLargeMessage('split'));
 			return null;
 		}
 
 		onProgress('Decoding audio...');
-		const audioBuffer = await decodeAudioBlob(sourceBytes);
+		const audioBuffer = await decodeAudioBlob(sourceBytes, 'split');
 		const partSamples = request.partSeconds * audioBuffer.sampleRate;
 		if (audioBuffer.length <= partSamples) {
 			new Notice('File is shorter than one part.');

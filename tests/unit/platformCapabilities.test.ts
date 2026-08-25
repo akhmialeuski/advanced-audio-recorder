@@ -20,7 +20,7 @@ import {
 	getMaxDecodeBytes,
 	isDecodableSize,
 	isReadableSize,
-	tooLargeToDecodeMessage,
+	tooLargeMessage,
 	getMaxSourceReadBytes,
 	getPlatformCapabilities,
 	isAutoSplitSupported,
@@ -302,15 +302,16 @@ describe('whether a file may be read whole', () => {
 	});
 });
 
-// One limit, and until now three different pieces of advice about it: the
-// splitter said one thing, cleanup another, and conversion said nothing at all
-// because it never asked. The advice is a fact about the platform the limit
-// belongs to, so it is written once here.
-describe('what a user is told when a file will not decode', () => {
+// Two ceilings, and until now a piece of advice each: the splitter said one
+// thing about the read and another about the decode, cleanup said a third, and
+// conversion said nothing at all because it never asked. Which advice helps is
+// a fact about the platform rather than about which allocation was refused, so
+// it is written once here.
+describe('what a user is told when a file will not fit', () => {
 	it('points a phone at the desktop app, where the limit is far higher', () => {
 		useMobilePlatform();
 
-		expect(tooLargeToDecodeMessage('split')).toBe(
+		expect(tooLargeMessage('split')).toBe(
 			'File is too large to split on this device. Convert or split it ' +
 				'on desktop instead.',
 		);
@@ -321,7 +322,7 @@ describe('what a user is told when a file will not decode', () => {
 	it('tells a desktop user to split the file first', () => {
 		useDesktopPlatform();
 
-		expect(tooLargeToDecodeMessage('clean up')).toBe(
+		expect(tooLargeMessage('clean up')).toBe(
 			'File is too large to clean up. Split it into parts first.',
 		);
 	});
@@ -329,8 +330,6 @@ describe('what a user is told when a file will not decode', () => {
 	it('names the operation the user actually asked for', () => {
 		useMobilePlatform();
 
-		expect(tooLargeToDecodeMessage('convert')).toContain(
-			'too large to convert',
-		);
+		expect(tooLargeMessage('convert')).toContain('too large to convert');
 	});
 });

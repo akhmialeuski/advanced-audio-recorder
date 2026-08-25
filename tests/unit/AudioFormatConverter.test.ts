@@ -159,9 +159,7 @@ describe('AudioFormatConverter', () => {
 		});
 	});
 
-	// ---------------------------------------------------------------
 	// resolveRecorderFormat
-	// ---------------------------------------------------------------
 	describe('resolveRecorderFormat', () => {
 		it.each([
 			['webm (native support)', 'webm', 'webm'],
@@ -226,9 +224,7 @@ describe('AudioFormatConverter', () => {
 		});
 	});
 
-	// ---------------------------------------------------------------
 	// isOfflineOnlyFormat
-	// ---------------------------------------------------------------
 	describe('isOfflineOnlyFormat', () => {
 		it.each([
 			['mp4', 'webm', true],
@@ -255,9 +251,7 @@ describe('AudioFormatConverter', () => {
 		});
 	});
 
-	// ---------------------------------------------------------------
 	// convertBlobToWav
-	// ---------------------------------------------------------------
 	describe('convertBlobToWav', () => {
 		it('converts through the streaming pipeline to a WAV blob', async () => {
 			const inputBlob = new Blob(['audio-data'], { type: 'audio/webm' });
@@ -328,9 +322,7 @@ describe('AudioFormatConverter', () => {
 		});
 	});
 
-	// ---------------------------------------------------------------
 	// The buffer-returning variants, which the save path uses
-	// ---------------------------------------------------------------
 	describe('converting straight to bytes', () => {
 		/** An encoding worker whose conversion succeeds. */
 		function workingWorker(): {
@@ -549,9 +541,7 @@ describe('AudioFormatConverter', () => {
 		});
 	});
 
-	// ---------------------------------------------------------------
 	// decodeAudioBlob
-	// ---------------------------------------------------------------
 	describe('decodeAudioBlob', () => {
 		it('decodes exactly once and close the context', async () => {
 			const buffer = new ArrayBuffer(8);
@@ -585,9 +575,7 @@ describe('AudioFormatConverter', () => {
 		});
 	});
 
-	// ---------------------------------------------------------------
 	// convertBlobToFormat
-	// ---------------------------------------------------------------
 	describe('convertBlobToFormat', () => {
 		it('uses the encoding worker when one is available', async () => {
 			const workerClient = {
@@ -898,9 +886,7 @@ describe('AudioFormatConverter', () => {
 		});
 	});
 
-	// ---------------------------------------------------------------
 	// mergeAudioTracks
-	// ---------------------------------------------------------------
 	describe('mergeAudioTracks', () => {
 		const createMockTarget = (name: string): RecordingTarget =>
 			createTarget({ fileBaseName: name, sourceName: name });
@@ -1315,5 +1301,16 @@ describe('the decode ceiling', () => {
 		).rejects.toThrow('too large');
 
 		expect(global.AudioContext).not.toHaveBeenCalled();
+	});
+
+	// The ceiling belongs to the decoder, but "decode" is the name of the
+	// allocation rather than of anything a user asked for, and on desktop
+	// this is the only refusal a conversion over the ceiling ever produces.
+	it('names the operation the caller was asked for', async () => {
+		useDesktopPlatform();
+
+		await expect(
+			decodeAudioBlob(bufferOf(WAVEFORM_MAX_DECODE_BYTES + 1), 'convert'),
+		).rejects.toThrow('too large to convert');
 	});
 });

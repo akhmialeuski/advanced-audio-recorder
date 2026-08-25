@@ -147,7 +147,7 @@ export async function decodeToMono16k(
 ): Promise<Float32Array> {
 	// Reuse the shared decoder (owns the AudioContext lifecycle and closes it
 	// even on failure) instead of re-implementing decode here.
-	const decoded = await decodeAudioBlob(data);
+	const decoded = await decodeAudioBlob(data, 'transcribe');
 	const frameCount = Math.round(decoded.duration * TRANSCRIBE_SAMPLE_RATE);
 	if (!Number.isFinite(frameCount) || frameCount <= 0) {
 		return new Float32Array(0);

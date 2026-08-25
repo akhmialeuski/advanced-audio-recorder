@@ -19,10 +19,7 @@ import {
 	convertBlobToFormatBuffer,
 } from '../audio/AudioFormatConverter';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
-import {
-	isReadableSize,
-	tooLargeToDecodeMessage,
-} from '../platform/capabilities';
+import { isReadableSize, tooLargeMessage } from '../platform/capabilities';
 import { updateLinksInVault } from '../utils/LinkUpdater';
 import type { VaultLinkUpdateResult } from '../utils/LinkUpdater';
 import type { ConversionLinkAction } from '../settings/settingsSchema';
@@ -137,7 +134,7 @@ export class ConversionService {
 			// converter handles without allocating for it. What decoding
 			// costs is bounded by decodeAudioBlob, where the allocation is.
 			if (!isReadableSize(request.sourceFile.stat.size)) {
-				new Notice(tooLargeToDecodeMessage('convert'));
+				new Notice(tooLargeMessage('convert'));
 				return { status: 'aborted' };
 			}
 
@@ -152,7 +149,10 @@ export class ConversionService {
 				// WAV needs a full decode; the streaming pipeline only
 				// targets compressed formats
 				onProgress('Decoding audio...');
-				const audioBuffer = await decodeAudioBlob(arrayBuffer);
+				const audioBuffer = await decodeAudioBlob(
+					arrayBuffer,
+					'convert',
+				);
 				onProgress('Encoding...');
 				const blob = await encodeAudioBuffer(
 					downmixAudioBuffer(audioBuffer, channelMode),
