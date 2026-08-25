@@ -357,6 +357,31 @@ describe('requestRaw abort support', () => {
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 
+	// A CORS refusal and an unreachable network reach fetch as the same
+	// opaque TypeError, so the refusal on its own proves nothing about which
+	// it was. Remembering it anyway cost the origin its abortable transport
+	// for the whole session - and with it every Cancel pressed against that
+	// provider - over one dropped link. What tells them apart is whether the
+	// fallback answered where fetch could not.
+	it('keeps asking an origin whose fallback failed too', async () => {
+		const fetchMock = corsRefusingEndpoint();
+		withRequestUrl(() => Promise.reject(new Error('network is down')));
+		const url = 'https://briefly-offline.example.com/v1/transcribe';
+
+		await expect(sendAbortable(url)).rejects.toThrow(/network is down/);
+
+		// The link came back, and the origin is owed its fetch: nothing was
+		// ever learned about whether it takes one.
+		withRequestUrl(() => ({
+			status: 200,
+			headers: {},
+			text: '{"via":"requestUrl"}',
+		}));
+		await sendAbortable(url);
+
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+	});
+
 	// A URL with no origin to remember is simply attempted, rather than
 	// tripping the memory over on a value it cannot key.
 	it('attempts a URL it cannot read an origin from', async () => {

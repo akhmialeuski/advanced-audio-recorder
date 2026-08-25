@@ -383,7 +383,7 @@ async function fetchResponse(
 }
 
 /**
- * Origins that answered a `fetch` with a network-layer refusal, which for an
+ * Origins that refused a `fetch` and then answered `requestUrl`, which for an
  * API endpoint is all but always CORS.
  *
  * Which transport an endpoint takes cannot be read off anything the plugin
@@ -392,10 +392,14 @@ async function fetchResponse(
  * So it is asked - once. Asking per request meant a run against a
  * CORS-refusing server sent every body twice, once for the refusal and once
  * for the request that works, which on an LLM step is a whole transcript.
- * The memory lasts the session: a server whose CORS is fixed while Obsidian
- * is open is picked up on the next reload, and the cost of being wrong is a
- * request that cannot be aborted, which is where such an endpoint stood
- * before it was ever tried.
+ *
+ * Both halves of the condition are needed, because `fetch` reports a CORS
+ * refusal and an unreachable network as the same opaque TypeError. Only the
+ * fallback's own answer tells them apart, so it is what admits an origin here
+ * (see {@link dispatchRequest}). The memory then lasts the session: a server
+ * whose CORS is fixed while Obsidian is open is picked up on the next reload,
+ * and the cost of being wrong is a request that cannot be aborted, which is
+ * where such an endpoint stood before it was ever tried.
  */
 const corsRefusingOrigins = new Set<string>();
 
@@ -418,8 +422,10 @@ function originOf(url: string): string | null {
  * that fails at the network layer (typically a CORS rejection from an
  * OpenAI-compatible endpoint that only expects server-side clients) is
  * retried once through `requestUrl` - re-sending the body, but that
- * matches the pre-abort behavior where every request went that way - and
- * that origin is not asked again for the rest of the session.
+ * matches the pre-abort behavior where every request went that way. An
+ * origin that answers there is not asked through `fetch` again for the rest
+ * of the session; one that answers neither transport is asked again next
+ * time, because nothing about it was learned.
  * @param options - Request options
  * @param timeoutMs - Deadline in milliseconds
  * @param safeUrl - Query-stripped URL for error messages
@@ -433,6 +439,7 @@ async function dispatchRequest(
 	const abortable =
 		options.signal !== undefined &&
 		!(origin !== null && corsRefusingOrigins.has(origin));
+	let fetchRefused = false;
 	if (abortable) {
 		try {
 			return await fetchResponse(options, timeoutMs, safeUrl);
@@ -443,12 +450,10 @@ async function dispatchRequest(
 			if (error instanceof HttpError || !(error instanceof TypeError)) {
 				throw error;
 			}
-			if (origin !== null) {
-				corsRefusingOrigins.add(origin);
-			}
+			fetchRefused = true;
 		}
 	}
-	return withTimeout(
+	const response = await withTimeout(
 		requestUrl({
 			url: options.url,
 			method: options.method,
@@ -464,6 +469,18 @@ async function dispatchRequest(
 		timeoutMs,
 		safeUrl,
 	);
+	// The fallback answered where fetch could not, and that difference is the
+	// evidence: `fetch` reports a CORS refusal and a dead network with the
+	// same opaque TypeError, so the refusal alone says nothing about which it
+	// was. A host that answers requestUrl is reachable, which leaves CORS. A
+	// host that answers neither was simply unreachable for a moment - a
+	// dropped link, a machine waking up - and remembering that as a refusal
+	// used to cost the origin its abortable transport for the rest of the
+	// session, so a Cancel there stopped releasing anything.
+	if (fetchRefused && origin !== null) {
+		corsRefusingOrigins.add(origin);
+	}
+	return response;
 }
 
 /**
