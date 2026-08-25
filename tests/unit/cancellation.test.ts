@@ -26,7 +26,7 @@ describe('CancellationSource', () => {
 	it('starts uncancelled with an unaborted signal', () => {
 		const source = new CancellationSource();
 
-		expect(source.isCancelled()).toBe(false);
+		expect(source.token.isCancelled()).toBe(false);
 		expect(source.token.isCancelled()).toBe(false);
 		expect(source.token.signal?.aborted).toBe(false);
 	});
@@ -36,7 +36,7 @@ describe('CancellationSource', () => {
 
 		source.cancel();
 
-		expect(source.isCancelled()).toBe(true);
+		expect(source.token.isCancelled()).toBe(true);
 		expect(source.token.isCancelled()).toBe(true);
 		expect(source.token.signal?.aborted).toBe(true);
 	});
@@ -61,7 +61,7 @@ describe('CancellationSource', () => {
 		source.cancel(new Error('second'));
 
 		expect(source.token.signal?.reason).toBe(first);
-		expect(source.isCancelled()).toBe(true);
+		expect(source.token.isCancelled()).toBe(true);
 	});
 
 	it('gives every source its own signal', () => {
@@ -70,6 +70,6 @@ describe('CancellationSource', () => {
 
 		one.cancel();
 
-		expect(other.isCancelled()).toBe(false);
+		expect(other.token.isCancelled()).toBe(false);
 	});
 });

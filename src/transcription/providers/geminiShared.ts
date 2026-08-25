@@ -36,7 +36,10 @@ const GEMINI_PRO_MODEL_MARKER = 'pro';
  * and it answers by accident for an id it was never written for. Reading the
  * version says what is actually being asked.
  */
-const GEMINI_VERSION_PATTERN = /^gemini-(\d+)(?:\.(\d+))?/;
+const GEMINI_VERSION_PATTERN = /^(?:models\/)?gemini-(\d+)(?:\.(\d+))?/;
+
+/** The `models/` prefix the API's own documentation writes model ids with. */
+const GEMINI_MODELS_PREFIX_PATTERN = /^models\//i;
 
 /** First Gemini generation that takes `thinkingLevel` instead of a budget. */
 const GEMINI_THINKING_LEVEL_GENERATION = 3;
@@ -89,28 +92,43 @@ const GEMINI_BLOCKING_FINISH_REASONS: ReadonlySet<string> = new Set([
  * Builds the `generateContent` endpoint URL for a model. The base URL carries
  * no version segment, so the `/v1beta/models/{model}:generateContent` path is
  * appended here.
+ *
+ * The id is taken bare, whether or not the user typed the `models/` prefix the
+ * API's own documentation writes ids with. Left in, it produced
+ * `/v1beta/models/models/gemini-...`, which is a 404 an hour before anyone
+ * works out why.
  * @param baseUrl - Gemini base URL (no version segment)
- * @param model - Gemini model id
+ * @param model - Gemini model id, with or without the `models/` prefix
  * @returns The full generateContent URL
  */
 export function geminiGenerateContentUrl(
 	baseUrl: string,
 	model: string,
 ): string {
-	return `${trimTrailingSlash(baseUrl)}/v1beta/models/${model}:generateContent`;
+	const bare = model.replace(GEMINI_MODELS_PREFIX_PATTERN, '');
+	return `${trimTrailingSlash(baseUrl)}/v1beta/models/${bare}:generateContent`;
 }
 
+/** The reasoning depth a Gemini 3.x request may ask for. */
+type GeminiThinkingLevel = 'minimal' | 'low' | 'medium' | 'high';
+
 /** The reasoning control one generation of Gemini accepts. */
-export type GeminiThinkingConfig =
+type GeminiThinkingConfig =
 	| { thinkingBudget: number }
-	| { thinkingLevel: string };
+	| { thinkingLevel: GeminiThinkingLevel };
+
+/** The generation-dependent fields of a deterministic Gemini request. */
+export interface GeminiGenerationControls {
+	readonly thinkingConfig?: GeminiThinkingConfig;
+	readonly temperature?: number;
+}
 
 /**
- * Builds the `thinkingConfig` for a deterministic Gemini request (transcription
- * or post-processing), neither of which benefits from chain-of-thought.
+ * The reasoning control this model's generation takes, or undefined for a
+ * generation that takes none.
  *
- * Which control the model takes follows from its generation, and the two are
- * mutually exclusive: sending both in one request is a 400.
+ * The two controls are mutually exclusive: sending both in one request is a
+ * 400.
  *
  * - The 3.x generation takes a named level, and gets the lowest one every model
  *   of that generation accepts. It got nothing before, so the default model ran
@@ -121,13 +139,14 @@ export type GeminiThinkingConfig =
  *   disable thinking and rejects a 0 budget, so it gets the minimum instead.
  * - Everything else, 2.0 and earlier and any id the plugin cannot read, gets no
  *   config at all, which those models would otherwise reject.
- * @param model - Gemini model id
+ * @param version - The generation the id names, or null when it names none
+ * @param model - Gemini model id, read for the Pro marker
  * @returns The control this model takes, or undefined when it takes none
  */
-export function geminiThinkingConfig(
+function thinkingConfigFor(
+	version: GeminiVersion | null,
 	model: string,
 ): GeminiThinkingConfig | undefined {
-	const version = geminiVersion(model);
 	if (!version) {
 		return undefined;
 	}
@@ -144,6 +163,44 @@ export function geminiThinkingConfig(
 		thinkingBudget: model.toLowerCase().includes(GEMINI_PRO_MODEL_MARKER)
 			? GEMINI_PRO_MIN_THINKING_BUDGET
 			: GEMINI_THINKING_BUDGET_OFF,
+	};
+}
+
+/**
+ * Builds the generation-dependent half of `generationConfig` for a
+ * deterministic Gemini request (transcription or post-processing), neither of
+ * which benefits from chain-of-thought.
+ *
+ * Both fields turn on the same fact - which generation the model belongs to -
+ * so they are answered together rather than by two conditionals the callers
+ * each wrote out.
+ *
+ * The temperature is dropped for the 3.x generation. Google's guidance is that
+ * reasoning there is tuned for the default of 1.0 and that lowering it "can
+ * cause unexpected behavior, looping, or degraded performance", which on a
+ * transcription is a part that overran its output cap and had to be sent
+ * again - the very cost the reasoning level above exists to stop paying.
+ * Determinism on that generation comes from the system instruction and the
+ * response schema, which the request already carries. Earlier generations, and
+ * any id the plugin cannot read (a hand-typed one, or another vendor behind a
+ * compatible endpoint), keep the temperature the caller asked for.
+ * @param model - Gemini model id
+ * @param temperature - What the caller would send to a model that takes one;
+ *   omitted for a request that names no temperature at all
+ * @returns The fields to spread into `generationConfig`
+ */
+export function geminiGenerationControls(
+	model: string,
+	temperature?: number,
+): GeminiGenerationControls {
+	const version = geminiVersion(model);
+	const thinkingConfig = thinkingConfigFor(version, model);
+	const takesTemperature =
+		temperature !== undefined &&
+		!(version && version.major >= GEMINI_THINKING_LEVEL_GENERATION);
+	return {
+		...(thinkingConfig ? { thinkingConfig } : {}),
+		...(takesTemperature ? { temperature } : {}),
 	};
 }
 

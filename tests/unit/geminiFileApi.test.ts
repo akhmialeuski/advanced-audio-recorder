@@ -29,6 +29,17 @@ import { queueResponses, withRequestUrl } from '../helpers/network';
 import { outcomeOf } from '../helpers/async';
 
 const BASE_URL = 'https://gemini.example';
+
+/**
+ * A second endpoint, for the one case that has to go out through `fetch`.
+ *
+ * The polls elsewhere in this file run with a signal and no fetch double
+ * installed, which is what a CORS refusal looks like from inside the client -
+ * and the client remembers a refusing origin for the rest of the session
+ * rather than paying for the discovery on every request. A fresh origin is
+ * therefore a fresh answer.
+ */
+const ABORTABLE_BASE_URL = 'https://gemini-cors.example';
 const API_KEY = 'gm-test';
 
 /** One status response reporting the given processing state. */
@@ -315,7 +326,7 @@ describe('waitUntilActive', () => {
 			const controller = new AbortController();
 
 			await waitUntilActive(
-				BASE_URL,
+				ABORTABLE_BASE_URL,
 				API_KEY,
 				'files/x',
 				undefined,

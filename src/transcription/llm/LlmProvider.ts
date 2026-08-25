@@ -28,7 +28,7 @@ import {
 	assertGeminiNotBlocked,
 	assertGeminiNotTruncated,
 	geminiGenerateContentUrl,
-	geminiThinkingConfig,
+	geminiGenerationControls,
 } from '../providers/geminiShared';
 
 /**
@@ -156,7 +156,7 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
 		const headers = authHeader(
 			'Authorization',
 			this.config.apiKey,
-			'Bearer ',
+			'Bearer',
 		);
 		const candidates = this.candidateParams();
 		let lastError: unknown;
@@ -304,9 +304,13 @@ export class GeminiLlmProvider implements LlmProvider {
 		);
 		// Cleanup/summary is deterministic; on models that support a thinking
 		// budget, thinking would otherwise consume maxOutputTokens and truncate
-		// or empty the answer. Models without a thinking budget (2.0 and
-		// earlier) get no thinkingConfig, which they would otherwise reject.
-		const thinkingConfig = geminiThinkingConfig(this.config.model);
+		// or empty the answer. The temperature travels with that decision,
+		// because a generation that reasons by level is tuned for its own
+		// default and reads a lowered one as a reason to loop.
+		const controls = geminiGenerationControls(
+			this.config.model,
+			options?.temperature,
+		);
 		const json = await requestJson({
 			url,
 			method: 'POST',
@@ -317,10 +321,7 @@ export class GeminiLlmProvider implements LlmProvider {
 				contents: [{ role: 'user', parts: [{ text: prompt.user }] }],
 				generationConfig: {
 					maxOutputTokens: maxTokens,
-					...(options?.temperature !== undefined
-						? { temperature: options.temperature }
-						: {}),
-					...(thinkingConfig ? { thinkingConfig } : {}),
+					...controls,
 				},
 			}),
 			timeoutMs: LLM_REQUEST_TIMEOUT_MS,

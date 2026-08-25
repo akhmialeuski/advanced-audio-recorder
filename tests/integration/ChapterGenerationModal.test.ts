@@ -18,6 +18,7 @@ import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import type { AutoChapterService } from 'src/chapters/AutoChapterService';
 import type { TranscriptLinesSource } from 'src/chapters/transcriptSources';
 import { at, defined } from '../helpers/assertions';
+import { flushMicrotasks } from '../helpers/async';
 
 const loadTranscriptLines = jest.fn();
 jest.mock('src/chapters/transcriptSources', () => ({
@@ -358,31 +359,75 @@ describe('a generation the user can stop', () => {
 		) as jest.Mock<Promise<boolean>, unknown[]>;
 	}
 
-	it('stays open while the chapters are being generated', async () => {
-		const { modal, generate } = build();
-		generate.mockImplementation(abortableGenerate());
-		await open(modal);
-
-		at(buttons(modal), 0).click();
-		await Promise.resolve();
-
-		expect(modal.contentEl.textContent).toContain('Generating chapters');
-		expect(defined(buttons(modal)[0]).textContent).toBe('Cancel');
-	});
-
-	it('aborts the run the signal it handed over', async () => {
+	/**
+	 * Opens the dialog and starts a generation that only ends when its signal
+	 * fires, leaving the run in flight for the test to end its own way.
+	 * @returns The dialog and the generate double it is waiting on
+	 */
+	async function generationInFlight(): Promise<{
+		modal: ChapterGenerationModal;
+		running: jest.Mock<Promise<boolean>, unknown[]>;
+	}> {
 		const { modal, generate } = build();
 		const running = abortableGenerate();
 		generate.mockImplementation(running);
 		await open(modal);
 		at(buttons(modal), 0).click();
 		await Promise.resolve();
+		return { modal, running };
+	}
+
+	/**
+	 * The signal the dialog handed the service.
+	 * @param running - The generate double it was handed to
+	 * @returns That signal
+	 */
+	function handedSignal(
+		running: jest.Mock<Promise<boolean>, unknown[]>,
+	): AbortSignal {
+		return at(at(running.mock.calls, 0), 3) as AbortSignal;
+	}
+
+	it('stays open while the chapters are being generated', async () => {
+		const { modal } = await generationInFlight();
+
+		expect(modal.contentEl.textContent).toContain('Generating chapters');
+		expect(defined(buttons(modal)[0]).textContent).toBe('Cancel');
+	});
+
+	it('aborts the run the signal it handed over', async () => {
+		const { modal, running } = await generationInFlight();
 
 		at(buttons(modal), 0).click();
 		await Promise.resolve();
 
-		const signal = at(at(running.mock.calls, 0), 3) as AbortSignal;
-		expect(signal.aborted).toBe(true);
+		expect(handedSignal(running).aborted).toBe(true);
+	});
+
+	// The Cancel button is not the only way out of a dialog: Escape and the
+	// window's own close control dismiss it too, and a run whose cancellation
+	// only the button could reach kept going - paid, and with nothing left on
+	// screen to stop it.
+	it('cancels the run when the dialog is dismissed', async () => {
+		const { modal, running } = await generationInFlight();
+
+		modal.close();
+
+		expect(handedSignal(running).aborted).toBe(true);
+	});
+
+	// A run that answered has nothing left to cancel, and the close that
+	// follows it must not look like one.
+	it('leaves a finished run alone when it closes itself', async () => {
+		const { modal, generate } = build();
+		generate.mockResolvedValue(true);
+		await open(modal);
+
+		at(buttons(modal), 0).click();
+		await flushMicrotasks();
+
+		const signal = at(at(generate.mock.calls, 0), 3) as AbortSignal;
+		expect(signal.aborted).toBe(false);
 	});
 
 	it('closes itself once the generation is done', async () => {

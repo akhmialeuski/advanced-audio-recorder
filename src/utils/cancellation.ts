@@ -46,18 +46,17 @@ export class CancellationSource {
 		signal: this.controller.signal,
 	};
 
-	/** Whether this source has been cancelled. */
-	isCancelled(): boolean {
-		return this.controller.signal.aborted;
-	}
-
 	/**
 	 * Cancels the job. Safe to call more than once, because the button that
 	 * calls it can be pressed again before the job notices; the first reason is
 	 * the one that stands.
+	 *
+	 * An Error, or nothing at all - in which case the platform fills in its
+	 * own `AbortError`. Everything the run has in flight rejects with this
+	 * reason, and a rejection carries an Error here by rule.
 	 * @param reason - What to reject in-flight work with
 	 */
-	cancel(reason?: unknown): void {
+	cancel(reason?: Error): void {
 		this.controller.abort(reason);
 	}
 }

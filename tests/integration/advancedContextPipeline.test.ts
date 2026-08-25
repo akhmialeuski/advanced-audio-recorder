@@ -34,6 +34,7 @@ import { LLM_PROVIDER_IDS } from 'src/constants';
 import { mergeSettings } from 'src/settings/settingsSerialization';
 import { SessionCostTracker } from 'src/transcription/SessionCostTracker';
 import { estimateLlmCallCost, estimateStepCost } from 'src/transcription/costs';
+import { CancellationSource } from 'src/utils/cancellation';
 import { at, defined } from '../helpers/assertions';
 
 /**
@@ -559,9 +560,60 @@ describe('generateContext', () => {
 		await expect(
 			generateContext(russianBaseline(), llm, {
 				settings: RUN_SETTINGS,
-				isCancelled: () => true,
+				token: { isCancelled: () => true },
 			}),
 		).rejects.toBeInstanceOf(ContextGenerationCancelledError);
+	});
+
+	// The probe fires only between calls, so a Cancel pressed during one
+	// arrives in the catch that treats any failure as an agent giving up. It
+	// was logged there as a provider failure - misleading in a bug report -
+	// and the run walked on to the next agent before anything stopped it.
+	it('reports an aborted call as the cancellation it is', async () => {
+		const warn = jest.spyOn(console, 'warn').mockImplementation();
+		const source = new CancellationSource();
+		const llm: LlmProvider = {
+			id: LLM_PROVIDER_IDS.GEMINI,
+			label: 'Fake',
+			complete: (): Promise<string> => {
+				source.cancel();
+				return Promise.reject(new Error('The user aborted a request.'));
+			},
+		};
+
+		await expect(
+			generateContext(russianBaseline(), llm, {
+				settings: RUN_SETTINGS,
+				token: source.token,
+			}),
+		).rejects.toBeInstanceOf(ContextGenerationCancelledError);
+		expect(warn).not.toHaveBeenCalled();
+	});
+
+	// The signal is what ends the call in flight, and it travels with the
+	// probe rather than beside it, so no caller can hand over one and not the
+	// other.
+	it('hands the agents the signal its token carries', async () => {
+		const source = new CancellationSource();
+		const seen: (AbortSignal | undefined)[] = [];
+		const { llm } = scriptedLlm(replies);
+		const watched: LlmProvider = {
+			...llm,
+			complete: (prompt, maxTokens, options): Promise<string> => {
+				seen.push(options?.signal);
+				return llm.complete(prompt, maxTokens, options);
+			},
+		};
+
+		await generateContext(russianBaseline(), watched, {
+			settings: RUN_SETTINGS,
+			token: source.token,
+		});
+
+		expect(seen.every((signal) => signal === source.token.signal)).toBe(
+			true,
+		);
+		expect(seen.length).toBeGreaterThan(0);
 	});
 
 	it('bounds the agent input sample for a long draft', async () => {

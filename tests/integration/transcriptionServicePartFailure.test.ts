@@ -929,12 +929,7 @@ describe('a part the provider refused for now', () => {
 	});
 
 	it('waits the pause the provider asked for', async () => {
-		const transcribe = jest
-			.fn()
-			.mockRejectedValueOnce(rateLimited(9000))
-			.mockResolvedValue({
-				segments: [{ start: 0, end: 5, text: 'ok' }],
-			});
+		const transcribe = refusesThenAnswers(rateLimited(9000));
 		const service = serviceOver(transcribe);
 
 		const run = runToCompletion(service);
@@ -949,14 +944,9 @@ describe('a part the provider refused for now', () => {
 	// A pause longer than the run is willing to sit out is the provider saying
 	// come back later, which is a different thing from a hiccup to wait out.
 	it('gives up rather than freezing on a pause it will not sit out', async () => {
-		const transcribe = jest
-			.fn()
-			.mockRejectedValueOnce(
-				rateLimited(TRANSCRIBE_RETRY_MAX_DELAY_MS + 1),
-			)
-			.mockResolvedValue({
-				segments: [{ start: 0, end: 5, text: 'ok' }],
-			});
+		const transcribe = refusesThenAnswers(
+			rateLimited(TRANSCRIBE_RETRY_MAX_DELAY_MS + 1),
+		);
 
 		const result = await runPastThePauses(serviceOver(transcribe));
 
@@ -980,14 +970,9 @@ describe('a part the provider refused for now', () => {
 	// A key that is wrong is wrong on every attempt, and each one is a request
 	// the user is charged for asking.
 	it('does not retry a refusal a retry cannot fix', async () => {
-		const transcribe = jest
-			.fn()
-			.mockRejectedValueOnce(
-				new HttpError(401, 'Authentication failed.', false),
-			)
-			.mockResolvedValue({
-				segments: [{ start: 0, end: 5, text: 'ok' }],
-			});
+		const transcribe = refusesThenAnswers(
+			new HttpError(401, 'Authentication failed.', false),
+		);
 
 		await runPastThePauses(serviceOver(transcribe));
 
@@ -995,17 +980,30 @@ describe('a part the provider refused for now', () => {
 	});
 
 	/**
-	 * Runs a job whose first attempt is refused, and reports every progress
-	 * line it showed while waiting to try again.
+	 * A provider that refuses the given attempts in order and answers the one
+	 * after them.
+	 * @param failures - What each attempt before the answer fails with
+	 * @returns The transcribe double
+	 */
+	function refusesThenAnswers(...failures: unknown[]): jest.Mock {
+		const transcribe = jest.fn();
+		for (const failure of failures) {
+			transcribe.mockRejectedValueOnce(failure);
+		}
+		return transcribe.mockResolvedValue({
+			segments: [{ start: 0, end: 5, text: 'ok' }],
+		});
+	}
+
+	/**
+	 * Runs a job whose attempts are scripted, and reports every progress line
+	 * it showed while waiting to try again.
+	 * @param transcribe - What the provider answers, attempt by attempt
 	 * @returns The labels shown, joined in the order they appeared
 	 */
-	async function labelsWhileRetrying(): Promise<string> {
-		const transcribe = jest
-			.fn()
-			.mockRejectedValueOnce(rateLimited())
-			.mockResolvedValue({
-				segments: [{ start: 0, end: 5, text: 'ok' }],
-			});
+	async function labelsWhileRetrying(
+		transcribe: jest.Mock = refusesThenAnswers(rateLimited()),
+	): Promise<string> {
 		const labels: string[] = [];
 		const settled = outcomeOf(
 			serviceOver(transcribe).run(audioFile, {
@@ -1031,6 +1029,23 @@ describe('a part the provider refused for now', () => {
 		prepareOnePart();
 
 		expect(await labelsWhileRetrying()).toContain('retrying the audio in');
+	});
+
+	// A subdivided piece carries its parent's callback, and the label the
+	// callback reported used to be captured in it rather than passed to it:
+	// the piece that was waiting was announced under the name of the part it
+	// came from, which for an indivisible job is no name at all.
+	it('names the piece that is waiting, not the part it came from', async () => {
+		prepareSubdividingPart();
+
+		const labels = await labelsWhileRetrying(
+			refusesThenAnswers(
+				new TranscriptTruncatedError('output token limit'),
+				rateLimited(),
+			),
+		);
+
+		expect(labels).toContain('retrying the 0:00-7:30 segment in');
 	});
 
 	// Waiting out a pause the user has already given up on is the same

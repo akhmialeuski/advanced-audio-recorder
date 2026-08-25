@@ -118,7 +118,7 @@ export class WhisperApiProvider implements TranscriptionProvider {
 		const json = await requestJson({
 			url: `${trimTrailingSlash(this.config.baseUrl)}/audio/transcriptions`,
 			method: 'POST',
-			headers: authHeader('Authorization', this.config.apiKey, 'Bearer '),
+			headers: authHeader('Authorization', this.config.apiKey, 'Bearer'),
 			contentType,
 			body,
 			timeoutMs: uploadTimeoutMs(

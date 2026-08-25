@@ -89,7 +89,8 @@ export function buildMultipart(fields: MultipartField[]): MultipartBody {
  * of them asks here rather than restating the condition.
  * @param name - Header the provider carries its key in
  * @param key - The configured key, possibly empty
- * @param scheme - Prefix the header value takes, e.g. `Bearer `
+ * @param scheme - Scheme the value is prefixed with, e.g. `Bearer`, joined to
+ *   the key with a single space; omitted for a header that is the bare key
  * @returns The single header, or an empty object
  */
 export function authHeader(
@@ -99,8 +100,10 @@ export function authHeader(
 ): Record<string, string> {
 	// The scheme is applied here rather than by the caller, because a caller
 	// that formats first hands over `Bearer ` with nothing after it, which is
-	// exactly the header this exists to leave out.
-	return key ? { [name]: `${scheme}${key}` } : {};
+	// exactly the header this exists to leave out. The separator is this
+	// function's too, so a caller cannot hand over `Bearerabc` - a header no
+	// endpoint accepts and nothing here could tell apart from a key.
+	return key ? { [name]: scheme ? `${scheme} ${key}` : key } : {};
 }
 
 /** Removes a single trailing slash from a base URL. */
@@ -380,12 +383,43 @@ async function fetchResponse(
 }
 
 /**
+ * Origins that answered a `fetch` with a network-layer refusal, which for an
+ * API endpoint is all but always CORS.
+ *
+ * Which transport an endpoint takes cannot be read off anything the plugin
+ * holds: `requestUrl` is exempt from CORS and cannot abort, `fetch` is the
+ * reverse, and only the endpoint's own answer says which one it will accept.
+ * So it is asked - once. Asking per request meant a run against a
+ * CORS-refusing server sent every body twice, once for the refusal and once
+ * for the request that works, which on an LLM step is a whole transcript.
+ * The memory lasts the session: a server whose CORS is fixed while Obsidian
+ * is open is picked up on the next reload, and the cost of being wrong is a
+ * request that cannot be aborted, which is where such an endpoint stood
+ * before it was ever tried.
+ */
+const corsRefusingOrigins = new Set<string>();
+
+/**
+ * The origin a request belongs to, or null for a URL that does not parse -
+ * about which nothing is remembered, since it has no origin to remember.
+ * @param url - Full request URL
+ */
+function originOf(url: string): string | null {
+	try {
+		return new URL(url).origin;
+	} catch {
+		return null;
+	}
+}
+
+/**
  * Chooses the transport for one request: abortable `fetch` when a signal
  * was provided, otherwise Obsidian's CORS-exempt `requestUrl`. A fetch
  * that fails at the network layer (typically a CORS rejection from an
  * OpenAI-compatible endpoint that only expects server-side clients) is
  * retried once through `requestUrl` - re-sending the body, but that
- * matches the pre-abort behavior where every request went that way.
+ * matches the pre-abort behavior where every request went that way - and
+ * that origin is not asked again for the rest of the session.
  * @param options - Request options
  * @param timeoutMs - Deadline in milliseconds
  * @param safeUrl - Query-stripped URL for error messages
@@ -395,7 +429,11 @@ async function dispatchRequest(
 	timeoutMs: number,
 	safeUrl: string,
 ): Promise<HttpResponse> {
-	if (options.signal) {
+	const origin = originOf(options.url);
+	const abortable =
+		options.signal !== undefined &&
+		!(origin !== null && corsRefusingOrigins.has(origin));
+	if (abortable) {
 		try {
 			return await fetchResponse(options, timeoutMs, safeUrl);
 		} catch (error) {
@@ -404,6 +442,9 @@ async function dispatchRequest(
 			// only then is requestUrl worth a try.
 			if (error instanceof HttpError || !(error instanceof TypeError)) {
 				throw error;
+			}
+			if (origin !== null) {
+				corsRefusingOrigins.add(origin);
 			}
 		}
 	}

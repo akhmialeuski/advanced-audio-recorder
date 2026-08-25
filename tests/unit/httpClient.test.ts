@@ -299,21 +299,78 @@ describe('requestRaw abort support', () => {
 		await expect(pending).rejects.toThrow(/was cancelled/);
 	});
 
-	it('falls back to requestUrl when fetch fails at the network layer (CORS)', async () => {
-		mockFetch(() => Promise.reject(new TypeError('Failed to fetch')));
+	/**
+	 * An endpoint that refuses fetch the way a CORS-less server does, with
+	 * requestUrl answering behind it.
+	 * @returns The fetch double, for counting how often it was asked
+	 */
+	function corsRefusingEndpoint(): jest.Mock {
+		const fetchMock = mockFetch(() =>
+			Promise.reject(new TypeError('Failed to fetch')),
+		);
 		withRequestUrl(() => ({
 			status: 200,
 			headers: {},
 			text: '{"via":"requestUrl"}',
 		}));
+		return fetchMock;
+	}
 
+	/**
+	 * Sends one abortable request to the given endpoint.
+	 * @param url - Where to send it
+	 * @returns The response body
+	 */
+	async function sendAbortable(url: string): Promise<string> {
 		const response = await requestRaw({
-			url: 'https://api.example.com/v1/transcribe',
+			url,
+			method: 'POST',
+			signal: new AbortController().signal,
+		});
+		return response.text;
+	}
+
+	// On its own origin, because a refusal is remembered: the cases after
+	// this one expect fetch to be tried, and would find it already ruled out
+	// for a host this test had refused.
+	it('falls back to requestUrl when fetch fails at the network layer (CORS)', async () => {
+		const fetchMock = corsRefusingEndpoint();
+
+		const body = await sendAbortable(
+			'https://cors-refusing.example.com/v1/transcribe',
+		);
+
+		expect(body).toBe('{"via":"requestUrl"}');
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
+	// The discovery costs a whole request body, which on an LLM step is a
+	// transcript. Paying it per call meant every request to such a server went
+	// out twice for the rest of the run.
+	it('asks a refusing origin only once, then goes straight to requestUrl', async () => {
+		const fetchMock = corsRefusingEndpoint();
+		const url = 'https://remembered.example.com/v1/transcribe';
+
+		await sendAbortable(url);
+		await sendAbortable(url);
+
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
+	// A URL with no origin to remember is simply attempted, rather than
+	// tripping the memory over on a value it cannot key.
+	it('attempts a URL it cannot read an origin from', async () => {
+		const fetchMock = mockFetch(() =>
+			Promise.resolve(fakeResponse(200, '{}')),
+		);
+
+		await requestRaw({
+			url: '/relative/transcribe',
 			method: 'POST',
 			signal: new AbortController().signal,
 		});
 
-		expect(response.text).toBe('{"via":"requestUrl"}');
+		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 
 	it('does not touch fetch when no signal is provided', async () => {

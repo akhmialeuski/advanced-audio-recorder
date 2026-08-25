@@ -103,7 +103,7 @@ export class DeepgramProvider implements TranscriptionProvider {
 		const json = await requestJson({
 			url,
 			method: 'POST',
-			headers: authHeader('Authorization', this.config.apiKey, 'Token '),
+			headers: authHeader('Authorization', this.config.apiKey, 'Token'),
 			contentType: payload.contentType,
 			body: payload.data,
 			timeoutMs: uploadTimeoutMs(

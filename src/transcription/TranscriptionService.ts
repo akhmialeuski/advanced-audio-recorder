@@ -230,8 +230,11 @@ interface PartRun {
 	 * Reports that the part is waiting before being sent again, so the dialog
 	 * says the run is still working rather than sitting on a frozen line.
 	 * @param waitMs - How long the run is about to wait
+	 * @param label - The part that is waiting. Passed rather than captured,
+	 *   because a subdivided piece carries its parent's callback and does not
+	 *   share its label
 	 */
-	onRetryWait(waitMs: number): void;
+	onRetryWait(waitMs: number, label: string): void;
 }
 
 /**
@@ -462,12 +465,12 @@ export class TranscriptionService {
 					partCount > 1
 						? this.describePart(payload, i, partCount)
 						: '';
-				options.onProgress?.(
-					progressBase + (i / partCount) * progressSpan,
-					partLabel ? `${verb} ${partLabel}...` : `${verb}...`,
-				);
 				const partProgress =
 					progressBase + (i / partCount) * progressSpan;
+				options.onProgress?.(
+					partProgress,
+					partLabel ? `${verb} ${partLabel}...` : `${verb}...`,
+				);
 				await this.transcribePart({
 					provider,
 					prepared: payload,
@@ -477,12 +480,12 @@ export class TranscriptionService {
 					results: passResults,
 					failedParts: passFailed,
 					discardedUsage,
-					onRetryWait: (waitMs) => {
+					onRetryWait: (waitMs, label) => {
 						// A pause is the run still working, and a progress
 						// line that stopped moving reads as a hang.
 						options.onProgress?.(
 							partProgress,
-							`Rate limited; retrying ${partLabel || 'the audio'} in ${String(
+							`Rate limited; retrying ${label || 'the audio'} in ${String(
 								Math.ceil(waitMs / MS_PER_SECOND),
 							)}s...`,
 						);
@@ -569,10 +572,7 @@ export class TranscriptionService {
 							advancedBiasChannel(
 								settings.transcriptionProvider,
 							) === 'prompt',
-						isCancelled: () => token.isCancelled(),
-						// The probe above only fires between agent calls;
-						// during one, only the signal reaches the request.
-						signal: token.signal,
+						token,
 						settings,
 						durationSeconds: stitched.segments.at(-1)?.end ?? null,
 						costSink: this.costSink,
@@ -978,7 +978,7 @@ export class TranscriptionService {
 				if (waitMs === null) {
 					throw error;
 				}
-				part.onRetryWait(waitMs);
+				part.onRetryWait(waitMs, part.label);
 				try {
 					await delay(waitMs, part.token.signal);
 				} catch {

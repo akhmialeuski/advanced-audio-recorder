@@ -22,11 +22,17 @@ import { SECONDS_PER_MINUTE, SECONDS_PER_HOUR } from '../constants';
  */
 export function delay(ms: number, signal?: AbortSignal): Promise<void> {
 	return new Promise((resolve, reject) => {
-		// The reason is whatever aborted the signal, which the platform fills
-		// with a DOMException and a caller with an error of its own. Passing it
-		// through unchanged is what lets a cancelled wait and a cancelled
-		// request reject with the same thing.
-		const abortReason = (): Error => signal?.reason as Error;
+		// The reason is whatever aborted the signal: a DOMException when the
+		// platform filled it in, or whatever the canceller named. It travels
+		// through untouched, which is what lets a cancelled wait and a
+		// cancelled request reject with the same thing. A reason that is not
+		// an Error is wrapped rather than asserted to be one: a rejection is
+		// an Error by rule here, and the cast only hid the reasons that were
+		// not.
+		const abortReason = (): Error =>
+			signal?.reason instanceof Error
+				? signal.reason
+				: new Error(String(signal?.reason));
 		if (signal?.aborted) {
 			reject(abortReason());
 			return;

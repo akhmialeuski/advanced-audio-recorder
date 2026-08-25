@@ -103,6 +103,16 @@ export class ChapterGenerationModal extends PluginModal {
 	 * handled per-run overrides.
 	 */
 	private readonly runSettings: AudioRecorderSettings;
+	/**
+	 * The cancellation of the run in flight, or null when none is.
+	 *
+	 * Held on the dialog rather than inside the method that starts the run,
+	 * because the Cancel button is not the only way out of a dialog: Escape
+	 * and the window's own close control dismiss it too, and a run whose
+	 * cancellation only the button could reach kept going - paid, and with
+	 * nothing left on screen to stop it.
+	 */
+	private cancellation: CancellationSource | null = null;
 
 	constructor(
 		app: App,
@@ -332,6 +342,7 @@ export class ChapterGenerationModal extends PluginModal {
 		this.commitRunSettings();
 		void this.options.saveSettings();
 		const cancellation = new CancellationSource();
+		this.cancellation = cancellation;
 		this.renderRunning(cancellation);
 		void this.runExclusive(async () => {
 			// Reuse the transcript already located for the dialog, so the
@@ -342,8 +353,21 @@ export class ChapterGenerationModal extends PluginModal {
 				this.source ?? undefined,
 				cancellation.token.signal,
 			);
+			// Dropped before the close, so the dialog's own teardown does not
+			// cancel a run that has already answered.
+			this.cancellation = null;
 			this.close();
 		});
+	}
+
+	/**
+	 * Dismissing the dialog is the same intent as pressing its Cancel, and
+	 * once it is gone there is nowhere else the run could be stopped from.
+	 */
+	override onClose(): void {
+		this.cancellation?.cancel();
+		this.cancellation = null;
+		super.onClose();
 	}
 
 	/**

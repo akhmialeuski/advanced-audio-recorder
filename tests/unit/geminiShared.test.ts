@@ -12,7 +12,7 @@ import {
 	geminiCandidateText,
 	geminiFinishReason,
 	geminiGenerateContentUrl,
-	geminiThinkingConfig,
+	geminiGenerationControls,
 	geminiUsage,
 	GEMINI_FINISH_MAX_TOKENS,
 } from 'src/transcription/providers/geminiShared';
@@ -272,21 +272,31 @@ describe('geminiGenerateContentUrl', () => {
 	});
 });
 
-describe('geminiThinkingConfig', () => {
+/**
+ * The reasoning control a model is sent, read off the generation controls the
+ * request actually carries.
+ * @param model - Gemini model id
+ * @returns The thinkingConfig for it, or undefined when it takes none
+ */
+function thinkingFor(model: string): object | undefined {
+	return geminiGenerationControls(model).thinkingConfig;
+}
+
+describe('the reasoning control per generation', () => {
 	it('turns thinking off for 2.5 flash-family models', () => {
-		expect(geminiThinkingConfig('gemini-2.5-flash')).toEqual({
+		expect(thinkingFor('gemini-2.5-flash')).toEqual({
 			thinkingBudget: 0,
 		});
-		expect(geminiThinkingConfig('gemini-2.5-flash-lite')).toEqual({
+		expect(thinkingFor('gemini-2.5-flash-lite')).toEqual({
 			thinkingBudget: 0,
 		});
 	});
 
 	it('uses the minimum budget for 2.5 Pro, which cannot disable thinking', () => {
-		expect(geminiThinkingConfig('gemini-2.5-pro')).toEqual({
+		expect(thinkingFor('gemini-2.5-pro')).toEqual({
 			thinkingBudget: 128,
 		});
-		expect(geminiThinkingConfig('GEMINI-2.5-PRO')).toEqual({
+		expect(thinkingFor('GEMINI-2.5-PRO')).toEqual({
 			thinkingBudget: 128,
 		});
 	});
@@ -294,9 +304,9 @@ describe('geminiThinkingConfig', () => {
 	it('returns undefined for models without a thinking budget (2.0 and earlier)', () => {
 		// thinkingBudget is a 2.5-series feature; sending thinkingConfig to a
 		// 2.0 model is rejected by the API, so the config must be omitted.
-		expect(geminiThinkingConfig('gemini-2.0-flash')).toBeUndefined();
+		expect(thinkingFor('gemini-2.0-flash')).toBeUndefined();
 		// "pro" alone must not enable thinking - the generation decides.
-		expect(geminiThinkingConfig('gemini-1.5-pro')).toBeUndefined();
+		expect(thinkingFor('gemini-1.5-pro')).toBeUndefined();
 	});
 });
 
@@ -329,11 +339,11 @@ describe('which reasoning control each Gemini generation takes', () => {
 	// The whole seeded catalogue, so a model added to it arrives with an
 	// answer rather than with whichever branch its id happens to match.
 	it.each(GEMINI_MODEL_SUGGESTIONS)('decides for %s', (model) => {
-		expect(geminiThinkingConfig(model)).toEqual(controlFor(model));
+		expect(thinkingFor(model)).toEqual(controlFor(model));
 	});
 
 	it('sends the level rather than a budget on the default model', () => {
-		expect(geminiThinkingConfig(DEFAULT_GEMINI_MODEL)).toEqual({
+		expect(thinkingFor(DEFAULT_GEMINI_MODEL)).toEqual({
 			thinkingLevel: 'low',
 		});
 	});
@@ -343,7 +353,7 @@ describe('which reasoning control each Gemini generation takes', () => {
 	it.each([...GEMINI_MODEL_SUGGESTIONS, 'gemini-2.0-flash', 'my-own-model'])(
 		'never sends both controls for %s',
 		(model) => {
-			const config = geminiThinkingConfig(model) ?? {};
+			const config = thinkingFor(model) ?? {};
 
 			expect(
 				'thinkingLevel' in config && 'thinkingBudget' in config,
@@ -362,21 +372,77 @@ describe('which reasoning control each Gemini generation takes', () => {
 		{ name: 'a name that only starts alike', model: 'geminix-3-flash' },
 		{ name: 'an empty id', model: '' },
 	])('sends no control for $name', ({ model }) => {
-		expect(geminiThinkingConfig(model)).toBeUndefined();
+		expect(thinkingFor(model)).toBeUndefined();
 	});
 
 	// A generation named without a minor is still a generation, and the next
 	// one may well be published that way.
 	it('reads a generation given without a minor version', () => {
-		expect(geminiThinkingConfig('gemini-4-flash')).toEqual({
+		expect(thinkingFor('gemini-4-flash')).toEqual({
 			thinkingLevel: 'low',
 		});
-		expect(geminiThinkingConfig('gemini-2-flash')).toBeUndefined();
+		expect(thinkingFor('gemini-2-flash')).toBeUndefined();
 	});
 
 	// The picker stores whatever the user typed, including the case.
 	it('reads the generation whatever case the id came in', () => {
-		expect(geminiThinkingConfig('GEMINI-3.5-FLASH')).toEqual({
+		expect(thinkingFor('GEMINI-3.5-FLASH')).toEqual({
+			thinkingLevel: 'low',
+		});
+	});
+});
+
+// Google's guidance for every Gemini 3.x model is to leave the temperature at
+// its default of 1.0: reasoning there is tuned for it, and a lowered one
+// "can cause unexpected behavior, looping, or degraded performance". On a
+// transcription that shows up as a part that overran its output cap and was
+// sent again - the exact cost the reasoning level was added to stop paying.
+describe('which generations are sent a temperature at all', () => {
+	it('keeps the temperature for the generation that is tuned for one', () => {
+		expect(geminiGenerationControls('gemini-2.5-flash', 0)).toEqual({
+			thinkingConfig: { thinkingBudget: 0 },
+			temperature: 0,
+		});
+	});
+
+	it('drops it for 3.x, whose reasoning is tuned for the default', () => {
+		expect(geminiGenerationControls(DEFAULT_GEMINI_MODEL, 0)).toEqual({
+			thinkingConfig: { thinkingLevel: 'low' },
+		});
+	});
+
+	// An id the plugin cannot read is most likely another vendor behind a
+	// compatible endpoint, where a temperature is ordinary and expected.
+	it('keeps it for an id whose generation cannot be read', () => {
+		expect(geminiGenerationControls('my-own-model', 0)).toEqual({
+			temperature: 0,
+		});
+	});
+
+	it('sends none when the caller named none', () => {
+		expect(geminiGenerationControls('gemini-2.5-flash')).toEqual({
+			thinkingConfig: { thinkingBudget: 0 },
+		});
+	});
+});
+
+// The API documents its ids with a `models/` prefix, and a user who copies one
+// in used to get a 404 from `/v1beta/models/models/gemini-...` and a model the
+// plugin could not read the generation of.
+describe("a model id carrying the API's own prefix", () => {
+	it('reaches the endpoint the bare id would', () => {
+		expect(
+			geminiGenerateContentUrl(
+				'https://gen.example',
+				'models/gemini-3.5-flash',
+			),
+		).toBe(
+			'https://gen.example/v1beta/models/gemini-3.5-flash:generateContent',
+		);
+	});
+
+	it('is read for its generation like any other', () => {
+		expect(thinkingFor('models/gemini-3.5-flash')).toEqual({
 			thinkingLevel: 'low',
 		});
 	});
