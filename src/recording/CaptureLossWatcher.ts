@@ -121,14 +121,25 @@ export class CaptureLossWatcher {
 	 * to be - ends a session that is recording perfectly well.
 	 */
 	private async reportMissingDevices(): Promise<void> {
+		// The streams this answer will be about, held across the read. An
+		// index means nothing on its own: it addresses one particular array,
+		// and reading the device list is slow enough for a session to end and
+		// another to begin while it runs. Applied to whatever the watcher
+		// holds by then, an answer about the previous session's streams
+		// retired a stream of the new one - which for a single-track session
+		// is the whole recording, finalized seconds after it started.
+		const watched = this.streams;
 		let missing: number[];
 		try {
-			missing = await missingCaptureIndexes(this.streams);
+			missing = await missingCaptureIndexes(watched);
 		} catch (error) {
 			console.warn(
 				`${PLUGIN_LOG_PREFIX} Could not re-check the capture devices:`,
 				error,
 			);
+			return;
+		}
+		if (watched !== this.streams) {
 			return;
 		}
 		for (const index of missing) {

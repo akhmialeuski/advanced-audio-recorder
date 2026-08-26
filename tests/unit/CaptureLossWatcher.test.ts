@@ -252,6 +252,30 @@ describe('CaptureLossWatcher', () => {
 		expect(onStreamEnded).toHaveBeenCalledWith(0, 0);
 	});
 
+	// Reading the device list takes long enough for a session to end and
+	// another to begin while the answer is on its way, and an index means
+	// nothing apart from the streams it was answered for. Applied to whoever
+	// is watching by the time it lands, an answer about the session before
+	// retired a stream of the session after - which for a single-track one is
+	// the whole recording, finalized seconds after it started.
+	it('drops a device check the session that asked for it has outlived', async () => {
+		let answer: (indexes: number[]) => void = () => undefined;
+		jest.mocked(missingCaptureIndexes).mockReturnValueOnce(
+			new Promise<number[]>((resolve) => {
+				answer = resolve;
+			}),
+		);
+		watch(2);
+		at(deviceChangeHandlers, 0)();
+
+		const next = jest.fn();
+		watcher.start([streamDouble()], next);
+		answer([0]);
+		await flushMicrotasks();
+
+		expect(next).not.toHaveBeenCalled();
+	});
+
 	// Not every platform exposes the device list, and a session there still
 	// has to watch its tracks.
 	it('watches the tracks where the platform exposes no device list', () => {
