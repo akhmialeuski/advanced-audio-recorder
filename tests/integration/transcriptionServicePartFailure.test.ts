@@ -1028,7 +1028,26 @@ describe('a part the provider refused for now', () => {
 	it('names the audio itself when there is only one request', async () => {
 		prepareOnePart();
 
-		expect(await labelsWhileRetrying()).toContain('retrying the audio in');
+		expect(await labelsWhileRetrying()).toContain('Retrying the audio in');
+	});
+
+	// A provider fault is retried on the same terms as a rate limit, and the
+	// line used to name the second whichever one it was: a user waiting out a
+	// 502 was told they had been sending too many requests. Which refusal it
+	// was reaches them in the error the run reports if the attempts run out.
+	it('does not name a cause the waiting line cannot know', async () => {
+		const labels = await labelsWhileRetrying(
+			refusesThenAnswers(
+				new HttpError(
+					502,
+					'The provider had a server error. Try again shortly.',
+					true,
+				),
+			),
+		);
+
+		expect(labels).toMatch(/retrying/i);
+		expect(labels).not.toMatch(/rate limit/i);
 	});
 
 	// A subdivided piece carries its parent's callback, and the label the
@@ -1045,7 +1064,7 @@ describe('a part the provider refused for now', () => {
 			),
 		);
 
-		expect(labels).toContain('retrying the 0:00-7:30 segment in');
+		expect(labels).toContain('Retrying the 0:00-7:30 segment in');
 	});
 
 	// Waiting out a pause the user has already given up on is the same

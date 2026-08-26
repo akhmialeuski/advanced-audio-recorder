@@ -482,10 +482,17 @@ export class TranscriptionService {
 					discardedUsage,
 					onRetryWait: (waitMs, label) => {
 						// A pause is the run still working, and a progress
-						// line that stopped moving reads as a hang.
+						// line that stopped moving reads as a hang. It says
+						// what is happening and not why: the same pause
+						// covers a rate limit and a provider fault, this
+						// line cannot tell them apart, and naming one of
+						// them told a user waiting out a 502 that they had
+						// been sending too many requests. Which refusal it
+						// was reaches them in the error the run reports if
+						// the attempts run out.
 						options.onProgress?.(
 							partProgress,
-							`Rate limited; retrying ${label || 'the audio'} in ${String(
+							`Retrying ${label || 'the audio'} in ${String(
 								Math.ceil(waitMs / MS_PER_SECOND),
 							)}s...`,
 						);
