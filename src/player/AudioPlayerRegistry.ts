@@ -268,6 +268,87 @@ export class AudioPlayerRegistry {
 	}
 
 	/**
+	 * Reads the active playback as it stands right now. Subscribers are pushed
+	 * this same value whenever a media event fires; a caller that has to act on
+	 * the live state pulls it instead, because a snapshot handed out earlier
+	 * describes the playback as it was at the last event and a command must not
+	 * compute from that. Commands in the returned state capture the key, so a
+	 * stale DOM event can never affect a newer playback that replaced it.
+	 * @returns Current playback controls, or null while no audio is active
+	 */
+	currentPlaybackState(): PlaybackControlsState | null {
+		const key = this.activePlaybackKey;
+		if (key === null) {
+			return null;
+		}
+		const entry = this.audioByKey.get(key);
+		if (!entry) {
+			return null;
+		}
+		const snapshot = readPlaybackSnapshot(entry.audio);
+
+		return {
+			currentTime: snapshot.currentTime,
+			duration: snapshot.duration,
+			paused: snapshot.paused,
+			volume: snapshot.volume,
+			muted: snapshot.muted,
+			playbackRate: snapshot.playbackRate,
+			markersEnabled: this.controllerFor(entry, withMarkers) !== null,
+			chaptersEnabled: this.controllerFor(entry, withChapters) !== null,
+			onTogglePlay: () => {
+				this.runPlaybackCommand(key, (controller) => {
+					controller.togglePlay();
+				});
+			},
+			onStop: () => {
+				this.stopPlayback(key);
+			},
+			onSkip: (deltaSeconds) => {
+				this.runPlaybackCommand(key, (controller) => {
+					controller.skip(deltaSeconds);
+				});
+			},
+			onToggleMute: () => {
+				this.runPlaybackCommand(key, (controller) => {
+					controller.toggleMute();
+				});
+			},
+			onVolumeInput: (volume) => {
+				this.runPlaybackCommand(key, (controller) => {
+					controller.setVolume(volume);
+				});
+			},
+			onSetPlaybackRate: (rate) => {
+				this.runPlaybackCommand(key, (controller) => {
+					controller.setPlaybackRate(rate);
+				});
+			},
+			onAddMarker: (kind) => {
+				this.addPlaybackMarker(key, kind);
+			},
+			onPreviousChapter: () => {
+				this.runPlaybackCommand(
+					key,
+					(controller) => {
+						controller.previousChapter();
+					},
+					withChapters,
+				);
+			},
+			onNextChapter: () => {
+				this.runPlaybackCommand(
+					key,
+					(controller) => {
+						controller.nextChapter();
+					},
+					withChapters,
+				);
+			},
+		};
+	}
+
+	/**
 	 * Registers a player for a file path.
 	 * @param path - Vault-relative path of the played file
 	 * @param player - Player to register
@@ -462,6 +543,10 @@ export class AudioPlayerRegistry {
 		audio.addEventListener('loadedmetadata', refresh);
 		audio.addEventListener('durationchange', refresh);
 		audio.addEventListener('volumechange', refresh);
+		// The rate also changes from the embed's speed menu, which writes the
+		// element directly; without this the snapshot would keep reporting the
+		// speed the playback started at.
+		audio.addEventListener('ratechange', refresh);
 		audio.addEventListener('ended', finish);
 
 		return () => {
@@ -471,6 +556,7 @@ export class AudioPlayerRegistry {
 			audio.removeEventListener('loadedmetadata', refresh);
 			audio.removeEventListener('durationchange', refresh);
 			audio.removeEventListener('volumechange', refresh);
+			audio.removeEventListener('ratechange', refresh);
 			audio.removeEventListener('ended', finish);
 		};
 	}
@@ -481,83 +567,6 @@ export class AudioPlayerRegistry {
 		for (const listener of this.playbackListeners) {
 			listener(state);
 		}
-	}
-
-	/**
-	 * Builds the controls for the active playback key. Commands capture the key
-	 * so a stale DOM event can never affect a newer playback that replaced it.
-	 * @returns Current playback controls, or null while no audio is active
-	 */
-	private currentPlaybackState(): PlaybackControlsState | null {
-		const key = this.activePlaybackKey;
-		if (key === null) {
-			return null;
-		}
-		const entry = this.audioByKey.get(key);
-		if (!entry) {
-			return null;
-		}
-		const snapshot = readPlaybackSnapshot(entry.audio);
-
-		return {
-			currentTime: snapshot.currentTime,
-			duration: snapshot.duration,
-			paused: snapshot.paused,
-			volume: snapshot.volume,
-			muted: snapshot.muted,
-			playbackRate: snapshot.playbackRate,
-			markersEnabled: this.controllerFor(entry, withMarkers) !== null,
-			chaptersEnabled: this.controllerFor(entry, withChapters) !== null,
-			onTogglePlay: () => {
-				this.runPlaybackCommand(key, (controller) => {
-					controller.togglePlay();
-				});
-			},
-			onStop: () => {
-				this.stopPlayback(key);
-			},
-			onSkip: (deltaSeconds) => {
-				this.runPlaybackCommand(key, (controller) => {
-					controller.skip(deltaSeconds);
-				});
-			},
-			onToggleMute: () => {
-				this.runPlaybackCommand(key, (controller) => {
-					controller.toggleMute();
-				});
-			},
-			onVolumeInput: (volume) => {
-				this.runPlaybackCommand(key, (controller) => {
-					controller.setVolume(volume);
-				});
-			},
-			onSetPlaybackRate: (rate) => {
-				this.runPlaybackCommand(key, (controller) => {
-					controller.setPlaybackRate(rate);
-				});
-			},
-			onAddMarker: (kind) => {
-				this.addPlaybackMarker(key, kind);
-			},
-			onPreviousChapter: () => {
-				this.runPlaybackCommand(
-					key,
-					(controller) => {
-						controller.previousChapter();
-					},
-					withChapters,
-				);
-			},
-			onNextChapter: () => {
-				this.runPlaybackCommand(
-					key,
-					(controller) => {
-						controller.nextChapter();
-					},
-					withChapters,
-				);
-			},
-		};
 	}
 
 	/**

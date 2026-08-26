@@ -394,7 +394,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 		// settings save would reset the user's chosen speed and loop.
 		if (isNew) {
 			this.audio.loop = PLAYER_LOOP;
-			this.audio.playbackRate = PLAYER_PLAYBACK_RATE;
+			setAudioPlaybackRate(this.audio, PLAYER_PLAYBACK_RATE);
 		}
 		const unregisterPlaybackController =
 			this.registry.registerPlaybackController(this.audioKey, {

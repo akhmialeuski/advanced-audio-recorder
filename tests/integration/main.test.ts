@@ -54,6 +54,7 @@ jest.mock('src/player/EnhancedPlayerRegistrar', () => ({
 		dispose: jest.fn(),
 		refresh: jest.fn(),
 		subscribePlayback: jest.fn(),
+		currentPlaybackState: jest.fn(() => null),
 		primeSavedRecordingsForEnhancement: jest.fn(),
 	})),
 }));
@@ -715,21 +716,30 @@ describe('AudioRecorderPlugin crash recovery wiring', () => {
 	});
 });
 
+/** The slice of the mocked player registrar these cases drive. */
+interface PlayerRegistrarDouble {
+	subscribePlayback: jest.Mock;
+	currentPlaybackState: jest.Mock;
+}
+
 /**
- * Loads a plugin and hands back the playback listener the player registrar
- * gave it, which is the only way a test can feed it a snapshot.
- * @returns The loaded plugin and its playback listener
+ * Loads a plugin and hands back the two playback paths the registrar gives
+ * it: the listener it pushes snapshots to, which is what the status bar
+ * renders, and the reader the palette commands pull from.
+ * @returns The loaded plugin, its playback listener, and its registrar double
  */
 async function pluginWithPlayback(): Promise<{
 	plugin: AudioRecorderPlugin;
 	onPlayback: (state: PlaybackControlsState | null) => void;
+	registrar: PlayerRegistrarDouble;
 }> {
 	const { plugin } = createPlugin([null]);
 	await onloadWithTimers(plugin);
 	const registrar = at((EnhancedPlayerRegistrar as jest.Mock).mock.results, 0)
-		.value as { subscribePlayback: jest.Mock };
+		.value as PlayerRegistrarDouble;
 	return {
 		plugin,
+		registrar,
 		onPlayback: registrar.subscribePlayback.mock.calls[0][0] as (
 			state: PlaybackControlsState | null,
 		) => void,
@@ -930,24 +940,28 @@ describe('AudioRecorderPlugin background transcription status bar', () => {
 		expect(renderPlaybackStatusBar).not.toHaveBeenCalled();
 	});
 
-	it('offers the playback commands only while a playback is active', async () => {
-		const { plugin, onPlayback } = await pluginWithPlayback();
+	it('drives the playback the registry reports, not the one on screen', async () => {
+		const { plugin, onPlayback, registrar } = await pluginWithPlayback();
+		const rendered = makePlaybackState();
+		const live = makePlaybackState();
 
-		// The commands are registered before the registrar exists, so a
-		// palette that asks now must be told there is nothing to drive
+		// The status bar is still showing a playback the registry has since
+		// let go of, so the command has nothing to drive and says so
+		onPlayback(rendered);
 		expect(
 			asMockPlugin(plugin).invokeCommand(COMMAND_IDS.togglePlayback),
 		).toBe(false);
 
-		const playbackState = makePlaybackState();
-		onPlayback(playbackState);
+		registrar.currentPlaybackState.mockReturnValue(live);
 
 		expect(
 			asMockPlugin(plugin).invokeCommand(COMMAND_IDS.togglePlayback),
 		).toBe(true);
-		expect(playbackState.onTogglePlay).toHaveBeenCalledTimes(1);
+		// The pushed snapshot is never what a command acts on
+		expect(live.onTogglePlay).toHaveBeenCalledTimes(1);
+		expect(rendered.onTogglePlay).not.toHaveBeenCalled();
 
-		onPlayback(null);
+		registrar.currentPlaybackState.mockReturnValue(null);
 		expect(
 			asMockPlugin(plugin).invokeCommand(COMMAND_IDS.togglePlayback),
 		).toBe(false);

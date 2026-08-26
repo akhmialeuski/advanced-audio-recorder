@@ -33,6 +33,7 @@ export function installSharedAudio(): {
 	let currentTime = 0;
 	let duration = NaN;
 	let ready = 0;
+	let playbackRate = 1;
 	Object.defineProperties(el, {
 		paused: { configurable: true, get: () => paused },
 		currentTime: {
@@ -41,6 +42,14 @@ export function installSharedAudio(): {
 			set: (value: number) => {
 				currentTime = value;
 				el.dispatchEvent(new Event('timeupdate'));
+			},
+		},
+		playbackRate: {
+			configurable: true,
+			get: () => playbackRate,
+			set: (value: number) => {
+				playbackRate = value;
+				el.dispatchEvent(new Event('ratechange'));
 			},
 		},
 		duration: { configurable: true, get: () => duration },

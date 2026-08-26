@@ -767,12 +767,12 @@ export default class AudioRecorderPlugin extends Plugin {
 		);
 
 		// The player registrar is created after this method runs, so the
-		// snapshot is read through the field it later fills rather than
-		// captured here
-		registerActionCommands(
-			this,
-			PLAYBACK_ACTIONS,
-			() => this.playbackState,
+		// resolver reaches it through the field it later fills. It pulls the
+		// live playback rather than reusing the snapshot the status bar was
+		// last pushed: a command has to act on the playback as it stands, and
+		// a pushed snapshot only describes it as of the last media event.
+		registerActionCommands(this, PLAYBACK_ACTIONS, () =>
+			this.playerRegistrar.currentPlaybackState(),
 		);
 	}
 

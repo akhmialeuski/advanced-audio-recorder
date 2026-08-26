@@ -12,6 +12,8 @@
  */
 
 import { App, Modal } from 'obsidian';
+import { menuInstances } from '../mocks/obsidian';
+import { at } from '../helpers/assertions';
 import { allEls, el } from '../helpers/dom';
 import { MARKER, PLAYER } from '../helpers/selectors';
 import { PLAYBACK_ACTIONS } from 'src/actions/playbackActions';
@@ -121,11 +123,12 @@ afterEach(() => {
 });
 
 /**
- * Registers the real playback commands against the registry's live snapshot,
- * the way the plugin does at load, and hands back a reader for the snapshot
- * the commands see.
+ * Registers the real playback commands the way the plugin does at load: they
+ * pull the live playback from the registry on every check. A subscriber
+ * records what the status bar is pushed alongside, so a case can assert that
+ * the two agree instead of assuming it.
  * @param registry - The registry publishing the active playback
- * @returns The plugin holding the commands and the latest snapshot reader
+ * @returns The plugin holding the commands and a reader for what was pushed
  */
 function withPlaybackCommands(registry: AudioPlayerRegistry): {
 	plugin: ReturnType<typeof asMockPlugin>;
@@ -136,8 +139,33 @@ function withPlaybackCommands(registry: AudioPlayerRegistry): {
 	registry.subscribePlayback((state) => {
 		latest = state;
 	});
-	registerActionCommands(plugin, PLAYBACK_ACTIONS, () => latest);
+	registerActionCommands(plugin, PLAYBACK_ACTIONS, () =>
+		registry.currentPlaybackState(),
+	);
 	return { plugin: asMockPlugin(plugin), snapshot: () => latest };
+}
+
+/**
+ * The arrangement every playback-command case opens with: a player mounted on
+ * the shared element, the real commands over the same registry, and playback
+ * parked at a known position.
+ * @param shared - The installed shared audio element
+ * @returns The player's container, the command host, and a reader for what
+ *   the status bar was pushed
+ */
+async function playingEmbed(
+	shared: ReturnType<typeof installSharedAudio>,
+): Promise<{
+	container: HTMLElement;
+	plugin: ReturnType<typeof asMockPlugin>;
+	snapshot: () => PlaybackControlsState | null;
+}> {
+	const registry = new AudioPlayerRegistry();
+	const { plugin, snapshot } = withPlaybackCommands(registry);
+	const container = mountPlayer(registry);
+	await tick();
+	startPlaybackAt(registry, shared.audio, 30);
+	return { container, plugin, snapshot };
 }
 
 /** Starts the shared playback and parks it at a known position. */
@@ -379,11 +407,7 @@ describe('playback commands drive the same playback as the controls', () => {
 	it('pauses the shared element and the status-bar snapshot together', async () => {
 		const shared = installSharedAudio();
 		try {
-			const registry = new AudioPlayerRegistry();
-			const { plugin, snapshot } = withPlaybackCommands(registry);
-			mountPlayer(registry);
-			await tick();
-			startPlaybackAt(registry, shared.audio, 30);
+			const { plugin, snapshot } = await playingEmbed(shared);
 
 			expect(plugin.invokeCommand('toggle-playback')).toBe(true);
 
@@ -397,11 +421,7 @@ describe('playback commands drive the same playback as the controls', () => {
 	it('withdraws the commands once playback is stopped', async () => {
 		const shared = installSharedAudio();
 		try {
-			const registry = new AudioPlayerRegistry();
-			const { plugin } = withPlaybackCommands(registry);
-			mountPlayer(registry);
-			await tick();
-			startPlaybackAt(registry, shared.audio, 30);
+			const { plugin } = await playingEmbed(shared);
 
 			expect(plugin.invokeCommand('stop-playback')).toBe(true);
 
@@ -415,11 +435,7 @@ describe('playback commands drive the same playback as the controls', () => {
 	it('steps the speed on the element, the embed, and the snapshot', async () => {
 		const shared = installSharedAudio();
 		try {
-			const registry = new AudioPlayerRegistry();
-			const { plugin, snapshot } = withPlaybackCommands(registry);
-			const container = mountPlayer(registry);
-			await tick();
-			startPlaybackAt(registry, shared.audio, 30);
+			const { container, plugin, snapshot } = await playingEmbed(shared);
 
 			expect(plugin.invokeCommand('increase-playback-speed')).toBe(true);
 
@@ -432,6 +448,34 @@ describe('playback commands drive the same playback as the controls', () => {
 			expect(plugin.invokeCommand('decrease-playback-speed')).toBe(true);
 			expect(shared.audio.playbackRate).toBe(1);
 			expect(el(container, PLAYER.speed).textContent).toBe('1x');
+		} finally {
+			shared.restore();
+		}
+	});
+
+	it('steps the speed on from where the embed menu left it', async () => {
+		const shared = installSharedAudio();
+		try {
+			const { container, plugin, snapshot } = await playingEmbed(shared);
+			shared.audio.pause();
+
+			// The speed is raised from the embed's own menu, which writes the
+			// element and tells no surface about it
+			el(container, PLAYER.speed).click();
+			at(menuInstances, menuInstances.length - 1)
+				.items.find((item) => item.title === '2x')
+				?.click();
+
+			expect(shared.audio.playbackRate).toBe(2);
+			// The status bar hears about it all the same, with no command run
+			expect(snapshot()?.playbackRate).toBe(2);
+
+			expect(plugin.invokeCommand('increase-playback-speed')).toBe(true);
+
+			// One preset on from 2x, not from the speed playback started at
+			expect(shared.audio.playbackRate).toBe(2.5);
+			expect(el(container, PLAYER.speed).textContent).toBe('2.5x');
+			expect(snapshot()?.playbackRate).toBe(2.5);
 		} finally {
 			shared.restore();
 		}
@@ -468,11 +512,7 @@ describe('playback commands drive the same playback as the controls', () => {
 	it('hides the chapter commands for a player without markers', async () => {
 		const shared = installSharedAudio();
 		try {
-			const registry = new AudioPlayerRegistry();
-			const { plugin } = withPlaybackCommands(registry);
-			mountPlayer(registry);
-			await tick();
-			startPlaybackAt(registry, shared.audio, 30);
+			const { plugin } = await playingEmbed(shared);
 
 			// Markers are off for this player, so it defines no chapters to
 			// navigate, while the transport commands stay available

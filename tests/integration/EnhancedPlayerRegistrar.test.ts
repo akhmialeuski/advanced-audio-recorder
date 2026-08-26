@@ -36,6 +36,7 @@ import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import { asMockApp, partialPlugin } from '../helpers/obsidianMock';
 import { partial } from '../helpers/doubles';
 import { pastDebounce } from '../helpers/async';
+import { makePlaybackState } from '../helpers/playbackHarness';
 import { createMockApp } from '../helpers/createApp';
 import { registerDomEventOnAllWindows } from 'src/utils/multiWindowDomEvents';
 
@@ -576,6 +577,19 @@ describe('EnhancedPlayerRegistrar persistent media kinds', () => {
 		registrar.subscribePlayback(listener);
 
 		expect(subscribe).toHaveBeenCalledWith(listener);
+	});
+
+	it('reads the live playback from the shared registry', () => {
+		const state = makePlaybackState();
+		const read = jest
+			.spyOn(AudioPlayerRegistry.prototype, 'currentPlaybackState')
+			.mockReturnValue(state);
+		const { registrar } = setup(true);
+
+		// The palette commands ask through here on every check, so the
+		// registrar must reach the registry rather than hold a copy.
+		expect(registrar.currentPlaybackState()).toBe(state);
+		expect(read).toHaveBeenCalledTimes(1);
 	});
 
 	it('loads the persisted store on register', () => {
