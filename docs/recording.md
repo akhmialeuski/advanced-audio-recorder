@@ -10,6 +10,7 @@ Recording is the core of Advanced Audio Recorder: start a capture from the ribbo
 - [Marking moments while recording](#marking-moments-while-recording)
 - [Pausing and resuming](#pausing-and-resuming)
 - [Stopping and saving](#stopping-and-saving)
+- [Losing the input device](#losing-the-input-device)
 - [Insert at original position](#insert-at-original-position)
 - [Crash recovery](#crash-recovery)
 - [Recording on mobile](#recording-on-mobile)
@@ -199,6 +200,18 @@ For longer recordings the save can take a noticeable moment. The status bar show
 While saving is in progress the ribbon icon switches from the recording indicator to a **save** icon, then returns to the plain microphone once the file is written.
 
 A recording that is slow to save is expected behaviour for long captures, not an error. For multi-part recordings, see [Automatic splitting](#automatic-splitting); for the full list of output formats and how each is encoded, see [Formats](formats.md).
+
+---
+
+## Losing the input device
+
+An input can go away without anyone pressing stop: a USB interface is pulled out, a Bluetooth headset drops its link, or the operating system switches to another device. The plugin watches the session's capture devices for exactly that, and what it does about a loss depends on how many inputs the session still has.
+
+A single-track session, or a multi-track one that has just lost its last live input, stops and saves everything captured up to the disconnection, so the recording ends where the audio ended instead of being discarded. A multi-track session that still has a live input keeps recording on it and ends only the track whose device went, naming that track in a notice so it is clear which one is short.
+
+While the save that follows a disconnection runs, the status bar reads `Input lost` in front of every stage listed under [Save progress in the status bar](#save-progress-in-the-status-bar), where a stop you pressed shows the stage on its own. The reason holds for as long as the save does, so it stays in front of each stage rather than being replaced by the first one. The ribbon icon switches to the same save icon an ordinary stop uses, and the recorder returns to idle once the file is written.
+
+An input pulled out while a stop you pressed is still writing its file is not treated as a disconnection: the capture had already ended, so the save runs to completion as an ordinary one.
 
 ---
 
