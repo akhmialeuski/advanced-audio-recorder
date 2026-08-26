@@ -33,6 +33,18 @@ import { delay } from '../utils/TimeUtils';
 import type { ConversionLinkAction } from '../settings/settingsSchema';
 
 /**
+ * The way out of a desktop size ceiling for the splitter, which cannot use
+ * the generic one: telling a user that a file is too large to split, and that
+ * they should split it first, sends them back to the button that just
+ * refused. What is true instead is the reason the ceiling exists. It bounds
+ * the decode, and a WAV file with raw sample data never reaches one - its
+ * parts are copied straight out of the source, at any size.
+ */
+const SPLIT_DESKTOP_ADVICE =
+	'Only a WAV source splits at this size, because its parts are copied ' +
+	'rather than decoded.';
+
+/**
  * Parameters of one split operation.
  */
 export interface SplitRequest {
@@ -119,7 +131,11 @@ export class SplitService {
 			// Desktop is unbounded here - the lossless WAV byte path must
 			// keep splitting files beyond the decode ceiling.
 			if (!isReadableSize(request.sourceFile.stat.size)) {
-				new Notice(tooLargeMessage('split'));
+				new Notice(
+					tooLargeMessage('split', {
+						desktopAdvice: SPLIT_DESKTOP_ADVICE,
+					}),
+				);
 				onProgress('');
 				return { status: 'aborted' };
 			}
@@ -288,7 +304,11 @@ export class SplitService {
 		// decode path expands the file to full PCM in memory. The lossless
 		// WAV byte path above never decodes, so it is not capped here.
 		if (!isDecodableSize(sourceBytes.byteLength)) {
-			new Notice(tooLargeMessage('split'));
+			new Notice(
+				tooLargeMessage('split', {
+					desktopAdvice: SPLIT_DESKTOP_ADVICE,
+				}),
+			);
 			return null;
 		}
 

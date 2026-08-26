@@ -332,4 +332,30 @@ describe('what a user is told when a file will not fit', () => {
 
 		expect(tooLargeMessage('convert')).toContain('too large to convert');
 	});
+
+	// Which route to a smaller file helps does depend on the operation, and
+	// for one of them the generic route is the operation: "too large to
+	// split, split it first" sends the user back to the button that just
+	// refused. Such an operation names its own way out.
+	it('lets an operation replace advice that would be itself', () => {
+		useDesktopPlatform();
+
+		expect(
+			tooLargeMessage('split', {
+				desktopAdvice: 'Only a WAV source splits at this size.',
+			}),
+		).toBe(
+			'File is too large to split. Only a WAV source splits at this size.',
+		);
+	});
+
+	// A phone has a bigger machine to move to whatever was refused, so an
+	// operation's own desktop advice never displaces that.
+	it('keeps pointing a phone at the desktop app', () => {
+		useMobilePlatform();
+
+		expect(
+			tooLargeMessage('split', { desktopAdvice: 'irrelevant here' }),
+		).toContain('on desktop instead');
+	});
 });

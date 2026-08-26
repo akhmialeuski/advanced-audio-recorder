@@ -216,33 +216,56 @@ export function isDecodableSize(bytes: number, kind?: PlatformKind): boolean {
 	return bytes <= getMaxDecodeBytes(kind);
 }
 
+/** How a size refusal is worded for one operation. */
+export interface TooLargeOptions {
+	/** Platform to answer for (defaults to the current one). */
+	readonly kind?: PlatformKind;
+	/**
+	 * What helps on desktop, where the generic answer - split the file first
+	 * - is the operation the user already asked for. Named by the operation
+	 * because only it knows what else would work; everything else keeps the
+	 * generic sentence.
+	 */
+	readonly desktopAdvice?: string;
+}
+
+/** The way out of a desktop ceiling for every operation but the splitter. */
+const DESKTOP_SIZE_ADVICE = 'Split it into parts first.';
+
 /**
  * What to tell a user whose file will not fit under one of this platform's
  * size ceilings - {@link isDecodableSize} or {@link isReadableSize}.
  *
- * One sentence for both, because which advice is the useful one turns on the
- * platform rather than on which allocation was refused, or on the operation
- * that was going to make it. A phone has a bigger machine to move to, and the
- * desktop app does not, so there the only thing that helps is making the file
- * smaller. The ceilings used to grow a piece of advice each: the splitter
- * pointed at the desktop app for the read and at the desktop app again, in
- * different words, for the decode; cleanup said to split the file first; and
- * conversion said nothing because it never asked.
+ * One sentence for both ceilings, because which way out exists turns on the
+ * platform rather than on which allocation was refused. A phone has a bigger
+ * machine to move to, and the desktop app does not, so there the only thing
+ * that helps is a smaller file. Which route to a smaller file helps does
+ * depend on the operation, though, and for the splitter the generic one is
+ * the operation itself: "too large to split, split it first" sends the user
+ * back to the button that just refused. That one names its own way out
+ * through {@link TooLargeOptions.desktopAdvice}.
+ *
+ * The ceilings used to grow a piece of advice each: the splitter pointed at
+ * the desktop app for the read and at the desktop app again, in different
+ * words, for the decode; cleanup said to split the file first; and conversion
+ * said nothing because it never asked.
  * @param action - The operation the user asked for, named as a verb phrase
- * @param kind - Platform to answer for (defaults to the current one)
+ * @param options - Platform to answer for, and the operation's own way out
  * @returns The refusal, ready to show
  */
 export function tooLargeMessage(
 	action: string,
-	kind: PlatformKind = getPlatformKind(),
+	options: TooLargeOptions = {},
 ): string {
-	if (kind === 'mobile') {
+	if ((options.kind ?? getPlatformKind()) === 'mobile') {
 		return (
 			`File is too large to ${action} on this device. ` +
 			'Convert or split it on desktop instead.'
 		);
 	}
-	return `File is too large to ${action}. Split it into parts first.`;
+	return `File is too large to ${action}. ${
+		options.desktopAdvice ?? DESKTOP_SIZE_ADVICE
+	}`;
 }
 
 /** Largest source file this platform reads into memory whole. */
