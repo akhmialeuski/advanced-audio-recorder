@@ -80,6 +80,8 @@ export interface FileContext {
 export interface RecordingSessionPort {
 	/** Starts capture, or stops and saves a running session. */
 	toggleRecording(): Promise<void>;
+	/** Whether a session is live: capturing or paused mid-capture. */
+	isSessionActive(): boolean;
 	/** Pauses a running session or resumes a paused one. */
 	togglePauseResume(): void;
 	/** Whether a marker can be dropped at the live position right now. */

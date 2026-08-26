@@ -253,8 +253,25 @@ function invokeCommand(commands: RegisteredCommand[], id: string): boolean {
 	return true;
 }
 
-/** A recording session double whose port calls are observable. */
-function makeSession(canDropMarker: boolean): {
+/** What the session double reports about itself. */
+interface SessionState {
+	/** Whether a session is recording or paused right now. */
+	active?: boolean;
+	/** Whether the player markers feature is on. */
+	markersEnabled?: boolean;
+}
+
+/**
+ * A recording session double whose port calls are observable. It derives
+ * canDropMarker from the two conditions the manager derives it from, so a
+ * test cannot describe a recorder that could not exist.
+ * @param state - The session the double stands for
+ * @returns The services the actions run against, plus the spies behind them
+ */
+function makeSession({
+	active = true,
+	markersEnabled = true,
+}: SessionState = {}): {
 	services: SessionServices;
 	recording: jest.Mocked<RecordingSessionPort>;
 	openMarkerModal: jest.Mock;
@@ -263,8 +280,9 @@ function makeSession(canDropMarker: boolean): {
 } {
 	const recording = {
 		toggleRecording: jest.fn().mockResolvedValue(undefined),
+		isSessionActive: jest.fn(() => active),
 		togglePauseResume: jest.fn(),
-		canDropMarker: jest.fn(() => canDropMarker),
+		canDropMarker: jest.fn(() => active && markersEnabled),
 	} as unknown as jest.Mocked<RecordingSessionPort>;
 	const openMarkerModal = jest.fn();
 	const saveSettings = jest.fn().mockResolvedValue(undefined);
@@ -287,15 +305,15 @@ function makeSession(canDropMarker: boolean): {
 describe('session actions over the recorder', () => {
 	/**
 	 * Registers the real session actions against one session double.
-	 * @param canDropMarker - What the session reports for marker gating
+	 * @param state - The session the double stands for
 	 * @returns The registered commands and the session double behind them
 	 */
-	function registerSession(canDropMarker: boolean): {
+	function registerSession(state: SessionState = {}): {
 		commands: RegisteredCommand[];
 		session: ReturnType<typeof makeSession>;
 	} {
 		const commands: RegisteredCommand[] = [];
-		const session = makeSession(canDropMarker);
+		const session = makeSession(state);
 		registerActionCommands(
 			makePlugin(commands),
 			SESSION_ACTIONS,
@@ -305,7 +323,7 @@ describe('session actions over the recorder', () => {
 	}
 
 	it('registers every session command in palette order', () => {
-		const { commands } = registerSession(true);
+		const { commands } = registerSession();
 
 		expect(commands.map((command) => command.id)).toEqual([
 			COMMAND_IDS.startStopRecording,
@@ -317,22 +335,45 @@ describe('session actions over the recorder', () => {
 		]);
 	});
 
-	it('drives capture and pause whatever the session is doing', () => {
-		const { commands, session } = registerSession(false);
+	it('drives capture whether or not a session is running', () => {
+		const idle = registerSession({ active: false });
+		const live = registerSession({ active: true });
 
-		expect(invokeCommand(commands, COMMAND_IDS.startStopRecording)).toBe(
-			true,
-		);
-		expect(invokeCommand(commands, COMMAND_IDS.pauseResumeRecording)).toBe(
-			true,
-		);
+		expect(
+			invokeCommand(idle.commands, COMMAND_IDS.startStopRecording),
+		).toBe(true);
+		expect(
+			invokeCommand(live.commands, COMMAND_IDS.startStopRecording),
+		).toBe(true);
 
-		expect(session.recording.toggleRecording).toHaveBeenCalledTimes(1);
-		expect(session.recording.togglePauseResume).toHaveBeenCalledTimes(1);
+		// Starting is what this command does when nothing is running, so it
+		// is the one session command with nothing to gate on.
+		expect(idle.session.recording.toggleRecording).toHaveBeenCalledTimes(1);
+		expect(live.session.recording.toggleRecording).toHaveBeenCalledTimes(1);
+	});
+
+	it('drives pause only while a session is running', () => {
+		const idle = registerSession({ active: false });
+		// Markers are off, so the gate that answers here is the session one
+		const live = registerSession({ active: true, markersEnabled: false });
+
+		expect(
+			invokeCommand(idle.commands, COMMAND_IDS.pauseResumeRecording),
+		).toBe(false);
+		expect(
+			invokeCommand(live.commands, COMMAND_IDS.pauseResumeRecording),
+		).toBe(true);
+
+		// An idle recorder has nothing to pause, so a key bound to this falls
+		// through to whatever else claims it.
+		expect(idle.session.recording.togglePauseResume).not.toHaveBeenCalled();
+		expect(live.session.recording.togglePauseResume).toHaveBeenCalledTimes(
+			1,
+		);
 	});
 
 	it('opens the marker modal with the kind the command fixes', () => {
-		const { commands, session } = registerSession(true);
+		const { commands, session } = registerSession();
 
 		// The chooser command fixes no kind, so the modal asks for one
 		expect(invokeCommand(commands, COMMAND_IDS.addRecordingMarker)).toBe(
@@ -354,7 +395,9 @@ describe('session actions over the recorder', () => {
 	});
 
 	it('withholds all three marker commands when nothing can be dropped', () => {
-		const { commands, session } = registerSession(false);
+		const { commands, session } = registerSession({
+			markersEnabled: false,
+		});
 
 		expect(invokeCommand(commands, COMMAND_IDS.addRecordingMarker)).toBe(
 			false,
@@ -374,7 +417,7 @@ describe('session actions over the recorder', () => {
 				await onDeviceSelected('device-7', 'Device 7');
 			},
 		);
-		const { commands, session } = registerSession(true);
+		const { commands, session } = registerSession();
 
 		expect(
 			invokeCommand(commands, COMMAND_IDS.selectAudioInputDevice),
@@ -389,7 +432,7 @@ describe('session actions over the recorder', () => {
 		// Mobile records from the default microphone, so the command has
 		// nothing to offer and must stay out of the palette.
 		useMobilePlatform();
-		const { commands } = registerSession(true);
+		const { commands } = registerSession();
 
 		expect(
 			invokeCommand(commands, COMMAND_IDS.selectAudioInputDevice),

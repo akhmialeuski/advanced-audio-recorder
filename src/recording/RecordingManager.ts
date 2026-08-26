@@ -218,16 +218,24 @@ export class RecordingManager {
 	}
 
 	/**
+	 * Whether a session is live: capturing or paused mid-capture. A save in
+	 * flight is not, because nothing about the session can be changed once it
+	 * is being written.
+	 */
+	isSessionActive(): boolean {
+		return (
+			this.status === RecordingStatus.Recording ||
+			this.status === RecordingStatus.Paused
+		);
+	}
+
+	/**
 	 * Whether a marker can be dropped right now: a session must be active
 	 * (recording or paused) and the player markers feature must be enabled,
 	 * since markers are only ever surfaced by the enhanced player.
 	 */
 	canDropMarker(): boolean {
-		return (
-			(this.status === RecordingStatus.Recording ||
-				this.status === RecordingStatus.Paused) &&
-			this.settings.playerEnableMarkers
-		);
+		return this.isSessionActive() && this.settings.playerEnableMarkers;
 	}
 
 	/**

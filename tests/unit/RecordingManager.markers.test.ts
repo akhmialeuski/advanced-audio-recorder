@@ -288,6 +288,7 @@ describe('RecordingManager', () => {
 				statusChangeCallback,
 			);
 
+			expect(manager.isSessionActive()).toBe(false);
 			expect(manager.canDropMarker()).toBe(false);
 			expect(manager.captureMarkerDraft()).toBeNull();
 		});
@@ -301,6 +302,9 @@ describe('RecordingManager', () => {
 			);
 
 			await manager.startRecording();
+			// The session is live; only the markers feature says no, which is
+			// what separates this gate from the one pause/resume reads.
+			expect(manager.isSessionActive()).toBe(true);
 			expect(manager.canDropMarker()).toBe(false);
 			expect(manager.captureMarkerDraft()).toBeNull();
 			await manager.stopRecording();
@@ -317,6 +321,7 @@ describe('RecordingManager', () => {
 			await manager.startRecording();
 			manager.togglePauseResume();
 			expect(manager.getStatus()).toBe(RecordingStatus.Paused);
+			expect(manager.isSessionActive()).toBe(true);
 			expect(manager.canDropMarker()).toBe(true);
 			expect(manager.captureMarkerDraft()).not.toBeNull();
 			await manager.stopRecording();

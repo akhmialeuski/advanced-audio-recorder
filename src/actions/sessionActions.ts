@@ -14,8 +14,12 @@ import { isDeviceSelectionSupported } from '../platform/capabilities';
 import { showDeviceSelectionModal } from '../ui/DeviceSelectionModal';
 import type { SessionAction, SessionServices } from './PluginAction';
 
-/** Availability gate for actions usable whatever the session is doing. */
+/** Availability gate for the action that starts a session as well as ends it. */
 const always = (): boolean => true;
+
+/** Availability gate for actions that need a live session. */
+const whileRecording = ({ recording }: SessionServices): boolean =>
+	recording.isSessionActive();
 
 /** Availability gate for actions that need a live, marker-enabled session. */
 const whileDropping = ({ recording }: SessionServices): boolean =>
@@ -38,7 +42,9 @@ export const SESSION_ACTIONS: readonly SessionAction[] = [
 		commandId: COMMAND_IDS.pauseResumeRecording,
 		title: 'Pause/resume recording',
 		icon: PLAYER_ICONS.pause,
-		isAvailable: always,
+		// There is nothing to pause or resume without a session, so the key
+		// bound to this stays free while the recorder is idle.
+		isAvailable: whileRecording,
 		run: ({ recording }: SessionServices): void => {
 			recording.togglePauseResume();
 		},
