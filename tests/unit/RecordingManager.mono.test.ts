@@ -25,6 +25,7 @@ import { PcmStreamRecorder } from 'src/recording/PcmStreamRecorder';
 import {
 	getAudioStreams,
 	stopAllStreams,
+	watchStreamEndings,
 } from 'src/recording/AudioStreamHandler';
 
 jest.mock('src/recording/AudioStreamHandler', () =>
@@ -134,9 +135,14 @@ describe('RecordingManager mono channel wiring', () => {
 		expect(bridge.release).toHaveBeenCalled();
 	});
 
-	it('applies each track its own channel mode in multi-track sessions', async () => {
+	/**
+	 * Starts a two-track session in which each track records in its own mono
+	 * mode, which is the arrangement a per-track bridge exists for.
+	 * @returns The session's capture streams, in track order
+	 */
+	async function startTwoMonoTracks(): Promise<MediaStream[]> {
 		createDesktopRecorder();
-		const [streamA, streamB] = stubAudioStreams({
+		const streams = stubAudioStreams({
 			count: 2,
 			trackOrder: [
 				{ trackNumber: 1, deviceId: 'a', channelMode: 'mono-left' },
@@ -148,8 +154,12 @@ describe('RecordingManager mono channel wiring', () => {
 			[2, { deviceId: 'b', channelMode: 'mono-mix' as const }],
 		]);
 		mockSettings.outputMode = 'multiple';
-
 		await manager.startRecording();
+		return streams;
+	}
+
+	it('applies each track its own channel mode in multi-track sessions', async () => {
+		const [streamA, streamB] = await startTwoMonoTracks();
 
 		expect(createdBridges).toHaveLength(2);
 		expect(at(createdBridges, 0).stream).toBe(streamA);
@@ -158,8 +168,27 @@ describe('RecordingManager mono channel wiring', () => {
 		expect(at(createdBridges, 1).mode).toBe('mono-mix');
 
 		await manager.stopRecording();
-		expect(at(createdBridges, 0).release).toHaveBeenCalled();
-		expect(at(createdBridges, 1).release).toHaveBeenCalled();
+		expect(at(createdBridges, 0).release).toHaveBeenCalledTimes(1);
+		expect(at(createdBridges, 1).release).toHaveBeenCalledTimes(1);
+	});
+
+	// A track recorded straight off its capture stream stops on its own when
+	// that stream goes inactive, because the browser ends a recorder whose
+	// tracks have all ended. A bridged one records the bridge's destination
+	// track instead, which stays live and feeds silence for the rest of the
+	// session, so one disconnection truncated a track's file on one capture
+	// path and left a full-length silent one on the other - under a Notice
+	// that told the user the track had stopped either way.
+	it('ends the bridge of a track whose input went away', async () => {
+		await startTwoMonoTracks();
+
+		at(jest.mocked(watchStreamEndings).mock.calls, 0)[1](1);
+
+		expect(at(createdBridges, 1).release).toHaveBeenCalledTimes(1);
+		// The session keeps recording what is still live, so the track that
+		// kept its input keeps its bridge.
+		expect(at(createdBridges, 0).release).toHaveBeenCalledTimes(0);
+		await manager.stopRecording();
 	});
 
 	it('does not reread a changed track mode after stream acquisition', async () => {

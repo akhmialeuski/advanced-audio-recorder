@@ -86,8 +86,14 @@ export class RecordingManager {
 	private pcmRecorders: PcmStreamRecorder[] = [];
 	private chunkTargets: RecordingTarget[] = [];
 	private streams: MediaStream[] = [];
-	/** Mono bridges wrapping the raw streams (MediaRecorder path only). */
-	private monoBridges: MonoCaptureBridge[] = [];
+	/**
+	 * Mono bridges wrapping the raw streams (MediaRecorder path only),
+	 * aligned with {@link RecordingManager.streams} and null where a track
+	 * records its raw stream. Indexed rather than packed, because a stream
+	 * that loses its device has to reach its own bridge and nothing else
+	 * says which one that is.
+	 */
+	private monoBridges: (MonoCaptureBridge | null)[] = [];
 	/** Streams the MediaRecorders record from (bridged or raw). */
 	private captureStreams: MediaStream[] = [];
 	/**
@@ -709,19 +715,16 @@ export class RecordingManager {
 		// registers before any starts, so a failed start (e.g. an audio
 		// context stuck in the suspended state) still releases all
 		// acquired contexts via releasePartialSession.
-		const bridgeByStream = this.streams.map((stream, index) => {
+		this.monoBridges = this.streams.map((stream, index) => {
 			const mode = this.sessionChannelModes[index] ?? CHANNEL_MODE_SOURCE;
 			return isMonoChannelMode(mode)
 				? new MonoCaptureBridge(stream, mode, this.settings.sampleRate)
 				: null;
 		});
-		this.monoBridges = bridgeByStream.filter(
-			(bridge): bridge is MonoCaptureBridge => bridge !== null,
-		);
 		this.captureStreams = await Promise.all(
 			this.streams.map(
 				(stream, index) =>
-					bridgeByStream[index]?.start() ?? Promise.resolve(stream),
+					this.monoBridges[index]?.start() ?? Promise.resolve(stream),
 			),
 		);
 		this.startMediaRecorders();
@@ -782,6 +785,16 @@ export class RecordingManager {
 	private handleStreamEnded(index: number, remaining: number): void {
 		const name = this.chunkTargets[index]?.sourceName ?? 'the input device';
 		if (remaining > 0) {
+			// A track recorded straight off its capture stream stops by
+			// itself, because a recorder whose stream has gone inactive is
+			// ended by the browser. A bridged one does not: what it records
+			// is the bridge's own destination track, which stays live and
+			// feeds silence for the rest of the session. So one disconnection
+			// truncated the file on one capture path and left a full-length
+			// silent one on the other, and the sentence below was true of
+			// only the first. Releasing this stream's bridge ends its output
+			// too, which is the same thing the direct path does.
+			this.monoBridges[index]?.release();
 			new Notice(
 				`Track "${name}" stopped: its input device was disconnected. ` +
 					'The other tracks are still recording.',
@@ -1041,7 +1054,7 @@ export class RecordingManager {
 	 */
 	private releaseMonoBridges(): void {
 		for (const bridge of this.monoBridges) {
-			bridge.release();
+			bridge?.release();
 		}
 		this.monoBridges = [];
 		this.captureStreams = [];
