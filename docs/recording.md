@@ -165,7 +165,7 @@ You can pause a recording without losing progress and resume it later in the sam
 - To pause: click the **Pause** button in the status bar, or run **Pause/resume recording**. The status bar switches to `Recording paused`, the **Pause** button becomes **Resume**, and a `Recording paused` notice appears.
 - To resume: click **Resume**, or run the same command again. The label returns to `Recording...` and a `Recording resumed` notice appears.
 
-The **Pause/resume recording** command is available only while a recording is active; running it with no session shows `No active recording to pause or resume`.
+The **Pause/resume recording** command is available only while a recording is active, so with no session it is absent from the command palette and a hotkey bound to it stays free for whatever else uses that key.
 
 Paused intervals do not count toward the elapsed time, and the recorded size stops growing while paused. You can add markers while paused, too.
 
