@@ -11,6 +11,7 @@
  */
 
 import type { Plugin } from 'obsidian';
+import { PLUGIN_LOG_PREFIX } from '../constants';
 import type { PluginCommand } from './PluginAction';
 
 /**
@@ -18,6 +19,10 @@ import type { PluginCommand } from './PluginAction';
  * resolver produces. The resolver runs on every check, so the command
  * disappears from the palette (and its hotkey goes inert) the moment its
  * context stops existing.
+ *
+ * An action that rejects is reported here. Obsidian discards whatever a
+ * command returns, so without this the only trace of a failed action would
+ * be an unhandled rejection with nothing naming the command it came from.
  * @param plugin - Plugin to register commands on
  * @param actions - Actions to register, in palette order
  * @param resolve - Produces the context, or null when there is none
@@ -38,7 +43,16 @@ export function registerActionCommands<TContext>(
 					return false;
 				}
 				if (!checking) {
-					void action.run(context);
+					// The action owns whatever it tells the user; this is the
+					// diagnostic that survives when it tells them nothing.
+					void Promise.resolve(action.run(context)).catch(
+						(error: unknown) => {
+							console.error(
+								`${PLUGIN_LOG_PREFIX} Command ${action.commandId} failed:`,
+								error,
+							);
+						},
+					);
 				}
 				return true;
 			},

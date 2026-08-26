@@ -22,6 +22,7 @@ import { MARKER_KIND } from 'src/markers/markerModel';
 import type {
 	ActionServices,
 	FileAction,
+	PluginCommand,
 	RecordingSessionPort,
 	SessionServices,
 } from 'src/actions/PluginAction';
@@ -561,5 +562,33 @@ describe('playback actions over the active snapshot', () => {
 		expect(invoke(COMMAND_IDS.previousChapter)).toBe(false);
 		expect(invoke(COMMAND_IDS.nextChapter)).toBe(false);
 		expect(state.onNextChapter).not.toHaveBeenCalled();
+	});
+});
+
+describe('an action that fails', () => {
+	it('names the command in the console instead of vanishing', async () => {
+		const commands: RegisteredCommand[] = [];
+		const failure = new Error('the modal refused to open');
+		const reported = jest
+			.spyOn(console, 'error')
+			.mockImplementation(() => undefined);
+		const failing: PluginCommand<object> = {
+			commandId: 'failing-action',
+			title: 'Failing action',
+			icon: 'bug',
+			isAvailable: () => true,
+			run: () => Promise.reject(failure),
+		};
+		registerActionCommands(makePlugin(commands), [failing], () => ({}));
+
+		expect(at(commands, 0).checkCallback(false)).toBe(true);
+		await tick();
+
+		// Obsidian discards whatever a command returns, so this line is the
+		// only trace a rejected action leaves behind.
+		expect(reported).toHaveBeenCalledWith(
+			expect.stringContaining('failing-action'),
+			failure,
+		);
 	});
 });
