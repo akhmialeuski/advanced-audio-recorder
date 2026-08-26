@@ -40,12 +40,18 @@ export interface PlatformCapabilities {
 	readonly channelModeSelection: boolean;
 	/** Choosing the capture sample rate (mobile OSes fix their own). */
 	readonly sampleRateSelection: boolean;
-	/** Automatic splitting of a live recording into part files. */
-	readonly autoSplit: boolean;
 	/** Direct PCM capture via AudioWorklet for WAV output. */
 	readonly pcmWavCapture: boolean;
-	/** Crash-recovery journaling of in-progress recordings. */
-	readonly recoveryJournal: boolean;
+	/**
+	 * Whether a plain buffer flush may leave a raw mid-stream segment on
+	 * disk. Such a segment carries no container header of its own, so it
+	 * is only usable where the finalization that follows is guaranteed to
+	 * concatenate the segments back into one container. Where the
+	 * operating system may kill the app without warning, every flush has
+	 * to produce a complete, self-contained file instead, which means
+	 * stopping and restarting the recorders: a part rotation.
+	 */
+	readonly midStreamSegmentFlush: boolean;
 	/** Local (on-device) whisper.cpp transcription. */
 	readonly localTranscription: boolean;
 	/** Floating on-screen recording banner (mobile has no ribbon/status bar). */
@@ -91,9 +97,8 @@ const DESKTOP_CAPABILITIES: PlatformCapabilities = {
 	deviceSelection: true,
 	channelModeSelection: true,
 	sampleRateSelection: true,
-	autoSplit: true,
 	pcmWavCapture: true,
-	recoveryJournal: true,
+	midStreamSegmentFlush: true,
 	localTranscription: true,
 	recordingBanner: false,
 	settingsListAddRow: false,
@@ -109,9 +114,8 @@ const MOBILE_CAPABILITIES: PlatformCapabilities = {
 	deviceSelection: false,
 	channelModeSelection: false,
 	sampleRateSelection: false,
-	autoSplit: false,
 	pcmWavCapture: false,
-	recoveryJournal: false,
+	midStreamSegmentFlush: false,
 	localTranscription: false,
 	recordingBanner: true,
 	settingsListAddRow: true,
@@ -160,19 +164,14 @@ export function isSampleRateSelectionSupported(kind?: PlatformKind): boolean {
 	return getPlatformCapabilities(kind).sampleRateSelection;
 }
 
-/** Whether live recordings can auto-split into parts on this platform. */
-export function isAutoSplitSupported(kind?: PlatformKind): boolean {
-	return getPlatformCapabilities(kind).autoSplit;
-}
-
 /** Whether WAV records via direct PCM capture on this platform. */
 export function isPcmWavCaptureSupported(kind?: PlatformKind): boolean {
 	return getPlatformCapabilities(kind).pcmWavCapture;
 }
 
-/** Whether in-progress recordings are journaled for crash recovery. */
-export function isRecoveryJournalSupported(kind?: PlatformKind): boolean {
-	return getPlatformCapabilities(kind).recoveryJournal;
+/** Whether a buffer flush may write a raw mid-stream segment here. */
+export function isMidStreamSegmentFlushAllowed(kind?: PlatformKind): boolean {
+	return getPlatformCapabilities(kind).midStreamSegmentFlush;
 }
 
 /** Whether local whisper.cpp transcription is available on this platform. */

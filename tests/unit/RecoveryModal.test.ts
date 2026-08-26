@@ -94,6 +94,72 @@ describe('RecoveryModal', () => {
 		).not.toContain('already saved part');
 	});
 
+	it('names the parts as the recording itself for a rotation session', () => {
+		const modal = openModal([
+			createSession({
+				captureMode: 'rotation',
+				tracks: [
+					{
+						fileBaseName: 'recording-Track1-stamp',
+						isPcm: false,
+						pcmChannels: 1,
+						pcmSampleRate: 44100,
+						segmentPaths: [],
+						partPaths: ['part1.webm', 'part2.webm'],
+					},
+				],
+			}),
+		]);
+
+		// Here a discard deletes finished audio, so the dialog has to say so
+		// before the user presses it
+		const line = el(modal.contentEl, MODAL.recoverySession);
+		expect(line.textContent).toContain(
+			'2 part file(s) hold this recording',
+		);
+		expect(line.textContent).toContain('discarding deletes them');
+	});
+
+	it('mentions the unfinished part of a rotation session', () => {
+		const modal = openModal([
+			createSession({
+				captureMode: 'rotation',
+				tracks: [
+					{
+						fileBaseName: 'recording-Track1-stamp',
+						isPcm: false,
+						pcmChannels: 1,
+						pcmSampleRate: 44100,
+						segmentPaths: ['a.tmp'],
+						partPaths: ['part1.webm'],
+					},
+				],
+			}),
+		]);
+
+		// A rotation only leaves a segment when the app died inside one, and
+		// that audio is recovered along with the finished parts
+		expect(
+			el(modal.contentEl, MODAL.recoverySession).textContent,
+		).toContain('1 temporary segment(s), which are recovered too');
+	});
+
+	it('shows the recorded length the journal kept', () => {
+		const modal = openModal([createSession({ recordedMs: 900_000 })]);
+
+		expect(
+			el(modal.contentEl, MODAL.recoverySession).textContent,
+		).toContain('15:00 recorded');
+	});
+
+	it('says nothing about length where the journal has none', () => {
+		const modal = openModal([createSession()]);
+
+		expect(
+			el(modal.contentEl, MODAL.recoverySession).textContent,
+		).not.toContain('recorded');
+	});
+
 	it('runs the recover callback and close', async () => {
 		const modal = openModal([createSession()]);
 

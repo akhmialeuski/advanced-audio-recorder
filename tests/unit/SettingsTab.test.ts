@@ -1646,30 +1646,32 @@ describe('AudioRecorderSettingTab', () => {
 		// A switch synced from a desktop where the feature works reads as OFF
 		// here, so the toggle never claims a result this device cannot give.
 		// The stored value is left alone so it survives the sync back.
-		it.each([
-			{
-				name: 'multi-track recording',
-				row: 'Enable multi-track recording',
-				key: 'enableMultiTrack' as const,
-			},
-			{
-				name: 'automatic splitting',
-				row: 'Split recordings automatically',
-				key: 'autoSplitEnabled' as const,
-			},
-		])(
-			'shows $name switched off where the platform cannot honour it',
-			({ row, key }) => {
-				mockSettings[key] = true;
-				setPlatform({ isMobile: true });
+		it('shows multi-track recording switched off where the platform cannot honour it', () => {
+			mockSettings.enableMultiTrack = true;
+			setPlatform({ isMobile: true });
 
-				tab.display();
+			tab.display();
 
-				expect(rowToggleOn(rowNamed(row))).toBe(false);
-				// Left alone in storage, so a sync back to a desktop restores it
-				expect(mockSettings[key]).toBe(true);
-			},
-		);
+			expect(rowToggleOn(rowNamed('Enable multi-track recording'))).toBe(
+				false,
+			);
+			// Left alone in storage, so a sync back to a desktop restores it
+			expect(mockSettings.enableMultiTrack).toBe(true);
+		});
+
+		// Auto-split is honoured on every platform: a mobile session already
+		// rotates parts at the buffer boundary, and the setting only moves
+		// that boundary, which is also what bounds a crash's loss there.
+		it('shows automatic splitting switched on for a mobile device', () => {
+			mockSettings.autoSplitEnabled = true;
+			setPlatform({ isMobile: true });
+
+			tab.display();
+
+			expect(
+				rowToggleOn(rowNamed('Split recordings automatically')),
+			).toBe(true);
+		});
 
 		it.each([
 			{

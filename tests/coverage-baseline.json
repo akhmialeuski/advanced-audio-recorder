@@ -1,10 +1,10 @@
 {
 	"coverage": {
 		"total": {
-			"statements": 98.45,
-			"branches": 93.36,
-			"functions": 98.43,
-			"lines": 98.46
+			"statements": 98.46,
+			"branches": 93.39,
+			"functions": 98.44,
+			"lines": 98.47
 		},
 		"files": {
 			"src/constants.ts": {
@@ -440,10 +440,10 @@
 				"lines": 96.6
 			},
 			"src/recording/RecordingManager.ts": {
-				"statements": 98.86,
-				"branches": 93.44,
+				"statements": 98.85,
+				"branches": 93.1,
 				"functions": 100,
-				"lines": 98.84
+				"lines": 98.83
 			},
 			"src/recording/RecordingMarkerCoordinator.ts": {
 				"statements": 100,
@@ -452,16 +452,16 @@
 				"lines": 100
 			},
 			"src/recording/RecoveryService.ts": {
-				"statements": 97.53,
-				"branches": 90,
+				"statements": 98.9,
+				"branches": 95.45,
 				"functions": 100,
-				"lines": 97.5
+				"lines": 98.88
 			},
 			"src/recording/SessionJournal.ts": {
-				"statements": 98.36,
-				"branches": 94.54,
+				"statements": 98.38,
+				"branches": 94.73,
 				"functions": 100,
-				"lines": 98.36
+				"lines": 98.38
 			},
 			"src/recording/SplitService.ts": {
 				"statements": 99.2,
@@ -512,10 +512,10 @@
 				"lines": 96.49
 			},
 			"src/settings/SettingsTab.ts": {
-				"statements": 94.34,
-				"branches": 89.65,
+				"statements": 94.31,
+				"branches": 89.36,
 				"functions": 88.88,
-				"lines": 94.29
+				"lines": 94.25
 			},
 			"src/settings/labels.ts": {
 				"statements": 100,
@@ -567,7 +567,7 @@
 			},
 			"src/settings/settingsDefinitions.ts": {
 				"statements": 99.26,
-				"branches": 94.37,
+				"branches": 94.23,
 				"functions": 100,
 				"lines": 99.24
 			},
@@ -1078,9 +1078,9 @@
 		}
 	},
 	"suite": {
-		"suites": 205,
-		"tests": 4468,
-		"passed": 4468,
+		"suites": 206,
+		"tests": 4485,
+		"passed": 4485,
 		"failed": 0,
 		"todo": 0
 	}

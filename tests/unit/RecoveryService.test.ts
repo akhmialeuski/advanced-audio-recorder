@@ -48,6 +48,26 @@ const createJournalSession = (
 	...overrides,
 });
 
+/** The two part files a mobile session is left holding here. */
+const TWO_PARTS = ['Audio/rec-part1.webm', 'Audio/rec-part2.webm'];
+
+/**
+ * A session whose part files are the recording itself, which is what a
+ * platform that rotates every flush leaves behind.
+ * @param track - What this case varies about the single track
+ * @param overrides - What it varies about the session
+ * @returns The journaled session
+ */
+const rotationSession = (
+	track: Partial<JournalTrack> = { partPaths: TWO_PARTS },
+	overrides: Partial<JournalSession> = {},
+): JournalSession =>
+	createJournalSession({
+		captureMode: 'rotation',
+		tracks: [createTrack(track)],
+		...overrides,
+	});
+
 describe('RecoveryService', () => {
 	/** In-memory text file store (journal). */
 	let textFiles: Map<string, string>;
@@ -67,6 +87,16 @@ describe('RecoveryService', () => {
 				sessions,
 			}),
 		);
+	};
+
+	/**
+	 * Puts files on disk for the paths a case journals.
+	 * @param paths - Vault-relative paths to create
+	 */
+	const seedFiles = (paths: string[]): void => {
+		for (const path of paths) {
+			binaryFiles.set(path, new ArrayBuffer(64));
+		}
 	};
 
 	const readStoredJournal = (): JournalFile | null => {
@@ -179,6 +209,39 @@ describe('RecoveryService', () => {
 			expect(at(at(sessions, 0).tracks, 0).segmentPaths).toEqual([
 				'Audio/rec-part1.webm.tmp',
 			]);
+		});
+
+		it('keeps a rotation session whose only files are its parts', async () => {
+			// The mobile shape: every flush rotated a whole part, so nothing
+			// mid-stream is left and the parts are all there is to offer
+			seedFiles(TWO_PARTS);
+			storeJournal([rotationSession(undefined, { recordedMs: 900_000 })]);
+
+			const sessions = await collectRecoverableSessions(journal, mockApp);
+
+			expect(sessions).toHaveLength(1);
+			expect(at(at(sessions, 0).tracks, 0).partPaths).toEqual(TWO_PARTS);
+			expect(at(at(sessions, 0).tracks, 0).headerLost).toBe(false);
+		});
+
+		it('prunes part files the user has since deleted', async () => {
+			seedFiles(['Audio/rec-part2.webm']);
+			storeJournal([rotationSession()]);
+
+			const sessions = await collectRecoverableSessions(journal, mockApp);
+
+			expect(at(at(sessions, 0).tracks, 0).partPaths).toEqual([
+				'Audio/rec-part2.webm',
+			]);
+		});
+
+		it('self-clears a rotation session whose parts are all gone', async () => {
+			storeJournal([rotationSession()]);
+
+			const sessions = await collectRecoverableSessions(journal, mockApp);
+
+			expect(sessions).toEqual([]);
+			expect(textFiles.has(JOURNAL_PATH)).toBe(false);
 		});
 
 		it('marks media tracks whose first segment is gone as header-lost', async () => {
@@ -359,6 +422,61 @@ describe('RecoveryService', () => {
 		});
 	});
 
+	describe('recovering a rotation session', () => {
+		it('hands back the part files and clears the journal', async () => {
+			seedFiles(TWO_PARTS);
+			const session = rotationSession();
+			storeJournal([session]);
+
+			const result = await recoverSession(session, journal, mockApp);
+
+			// The parts already carry the names the normal finalization would
+			// have given them, so recovery keeps them where they are
+			expect(result.recoveredPaths).toEqual(TWO_PARTS);
+			expect(result.failedTracks).toEqual([]);
+			expect(binaryFiles.has('Audio/rec-part1.webm')).toBe(true);
+			expect(readStoredJournal()).toBeNull();
+		});
+
+		it('recovers a residual segment alongside the parts', async () => {
+			seedFiles(['Audio/rec-part1.webm', 'Audio/rec-part1.webm.tmp']);
+			const session = rotationSession({
+				partPaths: ['Audio/rec-part1.webm'],
+				segmentPaths: ['Audio/rec-part1.webm.tmp'],
+			});
+			storeJournal([session]);
+
+			const result = await recoverSession(session, journal, mockApp);
+
+			expect(result.recoveredPaths).toEqual([
+				'Audio/rec-part1.webm',
+				'Audio/recording-Track1-stamp-recovered.webm',
+			]);
+			expect(binaryFiles.has('Audio/rec-part1.webm.tmp')).toBe(false);
+		});
+
+		it('leaves the auto-split parts of a stream session unreported', async () => {
+			seedFiles(['Audio/rec-part1.webm', 'Audio/rec-part2.webm.tmp']);
+			const session = createJournalSession({
+				tracks: [
+					createTrack({
+						partPaths: ['Audio/rec-part1.webm'],
+						segmentPaths: ['Audio/rec-part2.webm.tmp'],
+					}),
+				],
+			});
+			storeJournal([session]);
+
+			const result = await recoverSession(session, journal, mockApp);
+
+			// A finished auto-split part is output the user already has; only
+			// what recovery itself assembled is reported as recovered
+			expect(result.recoveredPaths).toEqual([
+				'Audio/recording-Track1-stamp-recovered.webm',
+			]);
+		});
+	});
+
 	describe('discardSession', () => {
 		it('removes segments and clear the session', async () => {
 			binaryFiles.set('Audio/rec-part1.webm.tmp', new ArrayBuffer(4));
@@ -418,6 +536,35 @@ describe('RecoveryService', () => {
 			await discardSession(session, journal, mockApp);
 
 			expect(binaryFiles.has('Audio/rec-part1.webm')).toBe(true);
+		});
+
+		it('removes the part files of a rotation session', async () => {
+			seedFiles(TWO_PARTS);
+			const session = rotationSession();
+			storeJournal([session]);
+
+			const failed = await discardSession(session, journal, mockApp);
+
+			// Here the parts ARE the recording the user just turned down
+			expect(failed).toEqual([]);
+			expect(binaryFiles.size).toBe(0);
+			expect(readStoredJournal()).toBeNull();
+		});
+
+		it('keeps a rotation part that could not be removed journaled', async () => {
+			seedFiles(['Audio/rec-part1.webm']);
+			(mockApp.vault.adapter.remove as jest.Mock).mockRejectedValue(
+				new Error('locked'),
+			);
+			const session = rotationSession({
+				partPaths: ['Audio/rec-part1.webm'],
+			});
+			storeJournal([session]);
+
+			const failed = await discardSession(session, journal, mockApp);
+
+			expect(failed).toEqual(['Audio/rec-part1.webm']);
+			expect(readStoredJournal()?.sessions).toHaveLength(1);
 		});
 	});
 });

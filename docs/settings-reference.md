@@ -104,11 +104,11 @@ _Figure: The File storage section. The Active file subfolder field appears only 
 
 ## Audio splitting
 
-Split a long recording into fixed-duration parts, and set the defaults the manual split dialog starts from. Auto-split is desktop only and is not applied to merged multi-track recordings. See [Splitting](splitting.md).
+Split a long recording into fixed-duration parts, and set the defaults the manual split dialog starts from. Auto-split is not applied to merged multi-track recordings. See [Splitting](splitting.md).
 
 | Setting                            | What it does                                                                                                                                                                                                 | Options / range                          | Default |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------- | ------- |
-| **Split recordings automatically** | Save the recording as separate part files of fixed duration instead of one long file. Desktop only; not for merged multi-track.                                                                              | On / Off                                 | Off     |
+| **Split recordings automatically** | Save the recording as separate part files of fixed duration instead of one long file. Not for merged multi-track; on mobile it also bounds what a crash can cost.                                            | On / Off                                 | Off     |
 | **Part duration**                  | Length of each part, in minutes. Also the default duration for manual splitting from the context menu.                                                                                                       | Number field, 1-180 minutes              | 15      |
 | **Part name suffix**               | Suffix joined with the part number in file names (for example `part` > `-part1`, `-part2`). Letters, digits, hyphens, underscores only; an invalid value is rejected and the last valid one stays in effect. | Letters / digits / hyphens / underscores | `part`  |
 | **Delete source after split**      | Default state of the "delete source file" option in the manual split dialog.                                                                                                                                 | On / Off                                 | Off     |

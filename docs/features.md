@@ -57,13 +57,13 @@ Learn more: [Recording](recording.md#marking-moments-while-recording)
 
 ## Crash recovery
 
-Desktop recordings journal their temporary segment files (`recording-journal.json` in the plugin folder) while a session is active. If Obsidian crashes, loses power, or the plugin is disabled mid-recording, the next launch detects the interrupted session and offers a modal with three choices: **Recover audio** (reassembles surviving segments with no re-encode), **Discard** (deletes temp segments; already-finalized auto-split parts are untouched), or **Decide later** (prompt returns next launch). Audio still buffered in memory at the moment of the crash - up to the flush threshold - cannot be recovered; everything already flushed to disk can.
+Recordings journal what they have already put on disk (`recording-journal.json` in the plugin folder) while a session is active, on desktop and on mobile alike. If Obsidian crashes, loses power, the plugin is disabled mid-recording, or a phone's operating system closes the app in the background, the next launch detects the interrupted session and offers a modal with three choices: **Recover audio** (reassembles surviving segments with no re-encode, and keeps mobile part files where they already are), **Discard** (deletes the temporary files, and on mobile the parts of that session with them), or **Decide later** (prompt returns next launch). Audio still buffered in memory at the moment of the crash cannot be recovered; everything already written to disk can, which on mobile is every part the recording finished.
 
 Learn more: [Recording](recording.md#crash-recovery)
 
 ## Automatic splitting
 
-Enable **Split recordings automatically** to save a recording as separate part files of a fixed duration (`...-part1.webm`, `...-part2.webm`, ...) instead of one long file. Each finished part is written to disk while recording continues, and links to all parts are inserted into the note when you stop. WAV is split sample-exactly; compressed formats restart the recorder at each boundary, so parts are approximately the configured length. Auto-split is desktop only and is not applied to merged multi-track recordings.
+Enable **Split recordings automatically** to save a recording as separate part files of a fixed duration (`...-part1.webm`, `...-part2.webm`, ...) instead of one long file. Each finished part is written to disk while recording continues, and links to all parts are inserted into the note when you stop. WAV is split sample-exactly; compressed formats restart the recorder at each boundary, so parts are approximately the configured length. It works on mobile as well, where it also bounds how much an interrupted session can lose. Auto-split is not applied to merged multi-track recordings.
 
 Learn more: [Splitting](splitting.md#automatic-splitting-during-recording)
 

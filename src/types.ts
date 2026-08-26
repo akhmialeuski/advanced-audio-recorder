@@ -118,11 +118,13 @@ export interface RecordingSessionConfig {
 	/**
 	 * Chunk-buffer size that forces a part rotation, or null where a
 	 * plain buffer flush may write raw mid-stream segments instead.
-	 * Mid-stream segments are only usable where a guaranteed
-	 * concatenate-and-finalize step follows (the journaled desktop
-	 * pipeline); platforms without the recovery journal (mobile) must
-	 * produce a self-contained container per flush, which requires
-	 * stopping and restarting the recorders - a rotation.
+	 * A mid-stream segment carries no container header, so it only means
+	 * anything together with its siblings and the journal that lists
+	 * them. Where the operating system may kill the app without warning
+	 * (mobile), each flush has to leave a file that plays on its own,
+	 * which requires stopping and restarting the recorders: a rotation.
+	 * The platform capability midStreamSegmentFlush decides which of the
+	 * two a session gets.
 	 */
 	chunkRotationBytes: number | null;
 	/** Whether the session captures raw PCM for WAV output (desktop). */

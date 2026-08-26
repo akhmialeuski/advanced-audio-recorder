@@ -102,6 +102,7 @@ describe('RecordingManager', () => {
 			expect(mockJournal.startSession).toHaveBeenCalledWith(
 				expect.objectContaining({
 					recorderFormat: 'webm',
+					captureMode: 'stream',
 					tracks: [
 						expect.objectContaining({
 							fileBaseName: expect.stringContaining('Track1'),
@@ -134,15 +135,23 @@ describe('RecordingManager', () => {
 			expect(mockJournal.endSession).toHaveBeenCalledTimes(1);
 		});
 
-		it('does not journal mobile sessions', async () => {
+		it('journals a mobile session as the rotation capture mode', async () => {
 			useMobilePlatform();
 			createDesktopRecorder();
 			manager = createManager();
 
 			await manager.startRecording();
+
+			// Mobile flushes rotate whole parts instead of writing raw
+			// mid-stream segments, so what recovery is offered later is the
+			// part files themselves; the mode is what tells it so.
+			expect(mockJournal.startSession).toHaveBeenCalledWith(
+				expect.objectContaining({ captureMode: 'rotation' }),
+			);
+
 			await manager.stopRecording();
 
-			expect(mockJournal.startSession).not.toHaveBeenCalled();
+			expect(mockJournal.endSession).toHaveBeenCalled();
 		});
 
 		it('records flushed segments in the journal', async () => {

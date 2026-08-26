@@ -104,6 +104,35 @@ describe('SessionJournal', () => {
 			).toEqual(['rec-part1.webm']);
 		});
 
+		it('records the length a part put safely on disk', async () => {
+			journal.startSession(createSession());
+			journal.addPart(
+				'recording-Track1-2026-06-12T10-00-00-000Z',
+				'rec-part1.webm',
+				900_000,
+			);
+			await journal.flush();
+
+			// What the recovery dialog offers the user as the length of an
+			// interrupted session
+			expect(at(readStoredJournal().sessions, 0).recordedMs).toBe(
+				900_000,
+			);
+		});
+
+		it('leaves the length unset where the caller keeps no clock', async () => {
+			journal.startSession(createSession());
+			journal.addPart(
+				'recording-Track1-2026-06-12T10-00-00-000Z',
+				'rec-part1.wav',
+			);
+			await journal.flush();
+
+			expect(
+				at(readStoredJournal().sessions, 0).recordedMs,
+			).toBeUndefined();
+		});
+
 		it('removes the file when the last session ends', async () => {
 			journal.startSession(createSession());
 			await journal.flush();

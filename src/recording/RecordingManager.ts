@@ -39,9 +39,8 @@ import {
 } from '../constants';
 import {
 	getChunkFlushThresholdBytes,
-	isAutoSplitSupported,
+	isMidStreamSegmentFlushAllowed,
 	isPcmWavCaptureSupported,
-	isRecoveryJournalSupported,
 } from '../platform/capabilities';
 import { DebugLogger } from '../utils/DebugLogger';
 import {
@@ -393,10 +392,10 @@ export class RecordingManager {
 
 			this.snapshotSessionSettings(streams.length, outputFormat);
 			const sessionConfig = {
-				// Platforms without the recovery journal must never leave
-				// raw mid-stream segments behind, so their buffer flushes
-				// run as full part rotations at this size boundary.
-				chunkRotationBytes: isRecoveryJournalSupported()
+				// Platforms that must not leave raw mid-stream segments
+				// behind run their buffer flushes as full part rotations
+				// at this size boundary.
+				chunkRotationBytes: isMidStreamSegmentFlushAllowed()
 					? null
 					: getChunkFlushThresholdBytes(),
 				isWavPcm: this.isWavPcmRecording,
@@ -425,28 +424,31 @@ export class RecordingManager {
 				await this.initMediaRecording();
 			}
 
-			if (isRecoveryJournalSupported()) {
-				// Where the journal is unavailable (mobile), flushes run as
-				// rotations whose segments are converted and removed right
-				// away, so there is nothing lasting to journal
-				this.journal.startSession({
-					sessionId:
-						this.recordingTimestamp ??
-						String(this.recordingStartTime),
-					startedAt: this.recordingStartTime,
-					outputFormat: this.sessionOutputFormat,
-					recorderFormat: this.activeRecorderFormat,
-					bitrate: this.sessionBitrate,
-					tracks: this.chunkTargets.map((target) => ({
-						fileBaseName: target.fileBaseName,
-						isPcm: this.isWavPcmRecording,
-						pcmChannels: target.pcmChannels,
-						pcmSampleRate: target.pcmSampleRate,
-						segmentPaths: [],
-						partPaths: [],
-					})),
-				});
-			}
+			// Every session is journaled. What differs per platform is what
+			// the journal points at: raw mid-stream segments to concatenate
+			// on the desktop, and self-contained rotation parts where a
+			// flush must produce a complete file. recordedMs is left unset
+			// until the first part lands, so a session that never reached a
+			// rotation reports no duration rather than a false zero.
+			this.journal.startSession({
+				sessionId:
+					this.recordingTimestamp ?? String(this.recordingStartTime),
+				startedAt: this.recordingStartTime,
+				captureMode: isMidStreamSegmentFlushAllowed()
+					? 'stream'
+					: 'rotation',
+				outputFormat: this.sessionOutputFormat,
+				recorderFormat: this.activeRecorderFormat,
+				bitrate: this.sessionBitrate,
+				tracks: this.chunkTargets.map((target) => ({
+					fileBaseName: target.fileBaseName,
+					isPcm: this.isWavPcmRecording,
+					pcmChannels: target.pcmChannels,
+					pcmSampleRate: target.pcmSampleRate,
+					segmentPaths: [],
+					partPaths: [],
+				})),
+			});
 
 			this.insertionContext = captureInsertionContext(
 				this.app,
@@ -601,11 +603,7 @@ export class RecordingManager {
 		this.sessionPartSuffix = sanitizePartSuffix(
 			this.settings.splitPartSuffix,
 		);
-		this.sessionSplitEnabled =
-			this.settings.autoSplitEnabled && isAutoSplitSupported();
-		if (this.settings.autoSplitEnabled && !isAutoSplitSupported()) {
-			new Notice('Auto-split is not available on this device.');
-		}
+		this.sessionSplitEnabled = this.settings.autoSplitEnabled;
 
 		if (
 			this.sessionSplitEnabled &&

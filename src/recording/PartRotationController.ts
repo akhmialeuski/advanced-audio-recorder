@@ -446,7 +446,14 @@ export class PartRotationController {
 			);
 			if (filePath) {
 				target.partPaths.push(filePath);
-				this.journal.addPart(target.fileBaseName, filePath);
+				// The part's active span was folded into the session clock
+				// before this ran, so the journal learns exactly how much
+				// audio is now safe on disk
+				this.journal.addPart(
+					target.fileBaseName,
+					filePath,
+					this.sessionActiveMs,
+				);
 				this.debugLogger.log('Auto-split part saved', { filePath });
 				new Notice(`Recording part ${String(target.partIndex)} saved`);
 			} else {

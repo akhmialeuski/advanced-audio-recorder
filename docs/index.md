@@ -29,7 +29,7 @@ What it does:
 - **Post-processes transcripts with an LLM** to clean up punctuation, summarize into key points and action items, or apply a custom instruction.
 - **Ships diagnostics** - a test recording, a system-info report, and a debug mode - for troubleshooting devices, codecs, and the runtime environment.
 
-It runs on **desktop and mobile** (iOS and Android) and requires Obsidian **1.6.6+**, with a few features desktop-only (multi-track recording, automatic splitting, input device selection, the command line, and local whisper.cpp transcription) - see [Mobile support](mobile-support.md). Search terms people use for this plugin include: voice recorder, dictation, meeting recorder, audio notes, speech-to-text, transcription, Whisper, Deepgram, and Gemini.
+It runs on **desktop and mobile** (iOS and Android) and requires Obsidian **1.6.6+**, with a few features desktop-only (multi-track recording, input device selection, the command line, and local whisper.cpp transcription) - see [Mobile support](mobile-support.md). Search terms people use for this plugin include: voice recorder, dictation, meeting recorder, audio notes, speech-to-text, transcription, Whisper, Deepgram, and Gemini.
 
 ---
 
