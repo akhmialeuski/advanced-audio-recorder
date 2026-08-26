@@ -67,6 +67,16 @@ export interface LlmStepRequest {
 	durationSeconds: number | null;
 	/** Optional generation options (temperature). */
 	options?: LlmCompleteOptions;
+	/**
+	 * Aborts the call when the run it belongs to is cancelled.
+	 *
+	 * Carried on the request rather than inside {@link LlmStepRequest.options}
+	 * so a caller cannot forget it: cancellation used to reach the
+	 * transcription request alone, and every LLM step - post-processing, the
+	 * context agents, chapter generation - ran to its own five-minute timeout
+	 * after the user pressed Cancel, and was billed in full.
+	 */
+	signal?: AbortSignal | undefined;
 	/** Where to report the call's estimated cost. */
 	costSink?: LlmCostSink | undefined;
 }
@@ -83,10 +93,15 @@ export interface LlmStepRequest {
  * @returns The assistant's text
  */
 export async function runLlmStep(request: LlmStepRequest): Promise<string> {
+	// A run cancelled between two calls must not pay for the next one, so the
+	// spend is refused before it starts rather than aborted mid-flight.
+	request.signal?.throwIfAborted();
 	const text = await request.llm.complete(
 		request.prompt,
 		request.maxTokens,
-		request.options,
+		request.signal
+			? { ...request.options, signal: request.signal }
+			: request.options,
 	);
 	// Reported only after the call returns: a failed call was not billed, and
 	// the caller's own error handling decides what happens next. Priced per

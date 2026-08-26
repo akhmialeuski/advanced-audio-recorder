@@ -3,7 +3,12 @@
  * @module tests/unit/TimeUtils.test
  */
 
-import { delay, formatTimecode, parseTimecode } from 'src/utils/TimeUtils';
+import {
+	delay,
+	formatTimecode,
+	parseTimecode,
+	scaledTimeoutMs,
+} from 'src/utils/TimeUtils';
 
 describe('formatTimecode', () => {
 	it.each([
@@ -202,5 +207,81 @@ describe('delay', () => {
 		await waiting;
 
 		expect(settled).toHaveBeenCalled();
+	});
+
+	it('rejects with the abort reason when the signal fires during the wait', async () => {
+		const controller = new AbortController();
+		const reason = new Error('cancelled by the user');
+		const waiting = delay(500, controller.signal);
+
+		await jest.advanceTimersByTimeAsync(100);
+		controller.abort(reason);
+
+		await expect(waiting).rejects.toBe(reason);
+	});
+
+	// A rejection carries an Error here by rule, and the platform's own
+	// AbortError is one. A reason that is not gets wrapped rather than
+	// asserted to be one, which is what the assertion used to do.
+	it('wraps an abort reason that is not an Error', async () => {
+		const controller = new AbortController();
+		const waiting = delay(500, controller.signal);
+
+		await jest.advanceTimersByTimeAsync(100);
+		controller.abort('pulled the plug');
+
+		await expect(waiting).rejects.toThrow('pulled the plug');
+	});
+
+	// A caller that aborted before it ever waited must not sit out the delay.
+	it('rejects immediately when the signal is already aborted', async () => {
+		const controller = new AbortController();
+		const reason = new Error('already cancelled');
+		controller.abort(reason);
+
+		await expect(delay(500, controller.signal)).rejects.toBe(reason);
+	});
+
+	// The listener outliving the wait would pile one up per retry pause.
+	it('stops listening to the signal once the delay has elapsed', async () => {
+		const controller = new AbortController();
+		const remove = jest.spyOn(controller.signal, 'removeEventListener');
+
+		const waiting = delay(10, controller.signal);
+		await jest.advanceTimersByTimeAsync(10);
+		await waiting;
+
+		expect(remove).toHaveBeenCalledWith('abort', expect.any(Function));
+	});
+
+	it('resolves normally when a signal is given and never aborted', async () => {
+		const controller = new AbortController();
+		const settled = jest.fn();
+		const waiting = delay(20, controller.signal).then(settled);
+
+		await jest.advanceTimersByTimeAsync(20);
+		await waiting;
+
+		expect(settled).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('scaledTimeoutMs', () => {
+	const budget = { floorMs: 1000, bytesPerMs: 10, maxMs: 5000 };
+
+	it('returns the floor for an empty payload', () => {
+		expect(scaledTimeoutMs(0, budget)).toBe(1000);
+	});
+
+	it('adds time in proportion to the payload', () => {
+		expect(scaledTimeoutMs(20000, budget)).toBe(3000);
+	});
+
+	it('rounds a partial millisecond of payload up', () => {
+		expect(scaledTimeoutMs(1, budget)).toBe(1001);
+	});
+
+	it('caps the scaled budget at the maximum', () => {
+		expect(scaledTimeoutMs(10_000_000, budget)).toBe(5000);
 	});
 });

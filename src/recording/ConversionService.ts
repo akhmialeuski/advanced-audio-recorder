@@ -19,6 +19,7 @@ import {
 	convertBlobToFormatBuffer,
 } from '../audio/AudioFormatConverter';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
+import { isReadableSize, tooLargeMessage } from '../platform/capabilities';
 import { updateLinksInVault } from '../utils/LinkUpdater';
 import type { VaultLinkUpdateResult } from '../utils/LinkUpdater';
 import type { ConversionLinkAction } from '../settings/settingsSchema';
@@ -126,6 +127,17 @@ export class ConversionService {
 				return { status: 'aborted' };
 			}
 
+			// The ceiling on the read, which is what happens next, and not
+			// the one on decoding: the compressed path below remuxes or
+			// streams, and neither ever expands the file to PCM. Asking the
+			// decode question here would refuse a long recording that the
+			// converter handles without allocating for it. What decoding
+			// costs is bounded by decodeAudioBlob, where the allocation is.
+			if (!isReadableSize(request.sourceFile.stat.size)) {
+				new Notice(tooLargeMessage('convert'));
+				return { status: 'aborted' };
+			}
+
 			onProgress('Reading source file...');
 			const arrayBuffer = await this.app.vault.adapter.readBinary(
 				request.sourceFile.path,
@@ -137,7 +149,10 @@ export class ConversionService {
 				// WAV needs a full decode; the streaming pipeline only
 				// targets compressed formats
 				onProgress('Decoding audio...');
-				const audioBuffer = await decodeAudioBlob(arrayBuffer);
+				const audioBuffer = await decodeAudioBlob(
+					arrayBuffer,
+					'convert',
+				);
 				onProgress('Encoding...');
 				const blob = await encodeAudioBuffer(
 					downmixAudioBuffer(audioBuffer, channelMode),

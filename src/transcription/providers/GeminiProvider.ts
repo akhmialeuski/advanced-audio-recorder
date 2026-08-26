@@ -19,7 +19,7 @@ import {
 } from '../../constants';
 import { decodeToMono16k, encodeMonoWav } from '../audioChunks';
 import { DICTIONARY_JOIN_SEPARATOR } from '../dictionaryBias';
-import { requestJson, uploadTimeoutMs } from '../httpClient';
+import { authHeader, requestJson, uploadTimeoutMs } from '../httpClient';
 import { GEMINI_CAPABILITIES } from './capabilities';
 import {
 	deleteFile,
@@ -32,7 +32,7 @@ import {
 	assertGeminiNotBlocked,
 	assertGeminiNotTruncated,
 	geminiGenerateContentUrl,
-	geminiThinkingConfig,
+	geminiGenerationControls,
 } from './geminiShared';
 import type { WhisperResult } from './whisperResponse';
 import type {
@@ -41,6 +41,13 @@ import type {
 	TranscribeOptions,
 	TranscriptionProvider,
 } from './TranscriptionProvider';
+
+/**
+ * Temperature asked for by a transcription, which has one right answer and no
+ * use for variety. Sent only to the generations that are tuned to take it; see
+ * {@link geminiGenerationControls}.
+ */
+const DETERMINISTIC_TEMPERATURE = 0;
 
 /** Configuration for the Gemini provider. */
 export interface GeminiConfig {
@@ -188,21 +195,24 @@ export class GeminiProvider implements TranscriptionProvider {
 				this.config.apiKey,
 				file.name,
 				fileProcessingWaitMs(data.byteLength),
+				options.signal,
 			);
 			const url = geminiGenerateContentUrl(
 				this.config.baseUrl,
 				this.config.model,
 			);
-			// Transcription is deterministic; on models that support a thinking
-			// budget, disabling thinking frees the whole output budget for the
-			// transcript and avoids MAX_TOKENS truncation. Models without a
-			// thinking budget (2.0 and earlier) get no thinkingConfig at all,
-			// which they would otherwise reject.
-			const thinkingConfig = geminiThinkingConfig(this.config.model);
+			// Transcription is deterministic, so the request asks for as
+			// little reasoning as this model's generation allows and for the
+			// temperature that generation is tuned for. Both follow from the
+			// generation, so both are answered in one place.
+			const controls = geminiGenerationControls(
+				this.config.model,
+				DETERMINISTIC_TEMPERATURE,
+			);
 			const json = await requestJson({
 				url,
 				method: 'POST',
-				headers: { [GEMINI_API_KEY_HEADER]: this.config.apiKey },
+				headers: authHeader(GEMINI_API_KEY_HEADER, this.config.apiKey),
 				contentType: 'application/json',
 				body: JSON.stringify({
 					contents: [
@@ -215,10 +225,9 @@ export class GeminiProvider implements TranscriptionProvider {
 					],
 					systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
 					generationConfig: {
-						temperature: 0,
 						responseMimeType: 'application/json',
 						responseSchema: TRANSCRIPT_SCHEMA,
-						...(thinkingConfig ? { thinkingConfig } : {}),
+						...controls,
 					},
 				}),
 				timeoutMs: geminiGenerateTimeoutMs(

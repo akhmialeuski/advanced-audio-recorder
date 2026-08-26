@@ -16,6 +16,7 @@ import {
 	type MockRequestUrlResponse,
 } from '../mocks/obsidian';
 import { withRequestUrl } from '../helpers/network';
+import { DEFAULT_GEMINI_MODEL } from 'src/constants';
 
 const BASE_URL = 'https://gemini.example';
 const API_KEY = 'gm-test';
@@ -27,7 +28,7 @@ const PROMPT: LlmPrompt = { system: 'You clean transcripts.', user: 'hello' };
 interface LlmGenerateBody {
 	generationConfig: {
 		maxOutputTokens: number;
-		thinkingConfig?: { thinkingBudget: number };
+		thinkingConfig?: { thinkingBudget?: number; thinkingLevel?: string };
 	};
 }
 
@@ -75,6 +76,23 @@ describe('GeminiLlmProvider.complete', () => {
 
 		const body = jsonBody<LlmGenerateBody>(seen);
 		expect(body.generationConfig.thinkingConfig?.thinkingBudget).toBe(128);
+	});
+
+	// Post-processing reads the same catalogue transcription does, so the
+	// generation the plugin defaults to has to be handled on both paths.
+	it('sends the reasoning level on a 3.x model', async () => {
+		let seen: MockRequestUrlParam | undefined;
+		withRequestUrl((param): MockRequestUrlResponse => {
+			seen = param;
+			return { status: 200, headers: {}, text: geminiText('ok') };
+		});
+
+		await provider(DEFAULT_GEMINI_MODEL).complete(PROMPT, MAX_TOKENS);
+
+		const body = jsonBody<LlmGenerateBody>(seen);
+		expect(body.generationConfig.thinkingConfig).toEqual({
+			thinkingLevel: 'low',
+		});
 	});
 
 	it('omits thinkingConfig for a model without a thinking budget (2.0)', async () => {

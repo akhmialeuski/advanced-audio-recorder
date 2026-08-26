@@ -15,7 +15,8 @@ import {
 import { FORMAT_WAV, PLUGIN_LOG_PREFIX } from '../constants';
 import {
 	isDecodableSize,
-	getMaxSplitSourceBytes,
+	isReadableSize,
+	tooLargeMessage,
 } from '../platform/capabilities';
 import { decodeAudioBlob } from '../audio/AudioFormatConverter';
 import {
@@ -30,6 +31,18 @@ import { updateLinksInVault } from '../utils/LinkUpdater';
 import type { VaultLinkUpdateResult } from '../utils/LinkUpdater';
 import { delay } from '../utils/TimeUtils';
 import type { ConversionLinkAction } from '../settings/settingsSchema';
+
+/**
+ * The way out of a desktop size ceiling for the splitter, which cannot use
+ * the generic one: telling a user that a file is too large to split, and that
+ * they should split it first, sends them back to the button that just
+ * refused. What is true instead is the reason the ceiling exists. It bounds
+ * the decode, and a WAV file with raw sample data never reaches one - its
+ * parts are copied straight out of the source, at any size.
+ */
+const SPLIT_DESKTOP_ADVICE =
+	'Only a WAV source splits at this size, because its parts are copied ' +
+	'rather than decoded.';
 
 /**
  * Parameters of one split operation.
@@ -117,9 +130,11 @@ export class SplitService {
 			// the source (plus one part copy) can get the WebView killed.
 			// Desktop is unbounded here - the lossless WAV byte path must
 			// keep splitting files beyond the decode ceiling.
-			if (request.sourceFile.stat.size > getMaxSplitSourceBytes()) {
+			if (!isReadableSize(request.sourceFile.stat.size)) {
 				new Notice(
-					'File is too large to split on this device. Split it on desktop instead.',
+					tooLargeMessage('split', {
+						desktopAdvice: SPLIT_DESKTOP_ADVICE,
+					}),
 				);
 				onProgress('');
 				return { status: 'aborted' };
@@ -290,13 +305,15 @@ export class SplitService {
 		// WAV byte path above never decodes, so it is not capped here.
 		if (!isDecodableSize(sourceBytes.byteLength)) {
 			new Notice(
-				'File is too large to split on this device. Convert or split it on desktop instead.',
+				tooLargeMessage('split', {
+					desktopAdvice: SPLIT_DESKTOP_ADVICE,
+				}),
 			);
 			return null;
 		}
 
 		onProgress('Decoding audio...');
-		const audioBuffer = await decodeAudioBlob(sourceBytes);
+		const audioBuffer = await decodeAudioBlob(sourceBytes, 'split');
 		const partSamples = request.partSeconds * audioBuffer.sampleRate;
 		if (audioBuffer.length <= partSamples) {
 			new Notice('File is shorter than one part.');

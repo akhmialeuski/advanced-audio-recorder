@@ -32,6 +32,7 @@ import type { LlmProvider } from '../llm/LlmProvider';
 import { runLlmStep, type LlmCostSink } from '../llm/llmStep';
 import type { AudioRecorderSettings } from '../../settings/settingsSchema';
 import type { Transcript } from '../TranscriptTypes';
+import type { CancellationToken } from '../../utils/cancellation';
 
 /**
  * Minimum similarity for a proper name to count as heard in the draft.
@@ -138,8 +139,16 @@ export interface ContextPipelineOptions {
 	 * output that would be discarded. Defaults to true.
 	 */
 	buildPromptSentence?: boolean;
-	/** Cancellation probe checked before each agent call. */
-	isCancelled?: (() => boolean) | undefined;
+	/**
+	 * The run's cancellation, whole.
+	 *
+	 * One object rather than a probe beside a signal: an agent call needs
+	 * both halves - the probe to stop before the next call, the signal to end
+	 * the one in flight - and two fields is two chances for a caller to pass
+	 * one and not the other, which reads as cancelled from one side and
+	 * running from the other.
+	 */
+	token?: CancellationToken | undefined;
 	/**
 	 * The run's settings, used to price each agent call. Required, so there is
 	 * no way to reach the agents without pricing them: an unaccounted branch
@@ -604,7 +613,7 @@ export async function generateContext(
 		return null;
 	}
 	const throwIfCancelled = (): void => {
-		if (options.isCancelled?.()) {
+		if (options.token?.isCancelled()) {
 			throw new ContextGenerationCancelledError();
 		}
 	};
@@ -632,8 +641,14 @@ export async function generateContext(
 				settings: options.settings,
 				durationSeconds: options.durationSeconds ?? null,
 				costSink: options.costSink,
+				signal: options.token?.signal,
 			});
 		} catch (error) {
+			// A cancel is not a failed agent. The probe above fires only
+			// between calls, so the abort of the call in flight arrives here,
+			// and reporting it as a provider failure both misled the log and
+			// let the run walk on to the next agent before it stopped.
+			throwIfCancelled();
 			console.warn(
 				`${PLUGIN_LOG_PREFIX} Advanced context agent "${label}" failed; continuing without it.`,
 				error,

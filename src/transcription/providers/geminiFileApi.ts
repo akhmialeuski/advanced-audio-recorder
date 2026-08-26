@@ -16,6 +16,7 @@ import {
 	GEMINI_FILE_WAIT_BYTES_PER_MS,
 } from '../../constants';
 import {
+	authHeader,
 	HttpError,
 	requestJson,
 	requestRaw,
@@ -105,6 +106,10 @@ function parseFile(body: unknown): GeminiFile {
  * @param mimeType - MIME type of the bytes
  * @param displayName - Human-readable name stored with the file
  * @param maxTimeoutMs - Per-request timeout cap for the byte-upload step
+ * @param signal - Ends the upload when the run is cancelled. Reaches both the
+ *   resumable-session start and the byte transfer, which on a long recording
+ *   is the largest request the run makes and the one a Cancel most needs to
+ *   let go of
  */
 export async function uploadFile(
 	baseUrl: string,
@@ -123,7 +128,7 @@ export async function uploadFile(
 		url: `${base}/upload/v1beta/files`,
 		method: 'POST',
 		headers: {
-			[GEMINI_API_KEY_HEADER]: apiKey,
+			...authHeader(GEMINI_API_KEY_HEADER, apiKey),
 			'X-Goog-Upload-Protocol': 'resumable',
 			'X-Goog-Upload-Command': 'start',
 			'X-Goog-Upload-Header-Content-Length': numBytes,
@@ -164,12 +169,17 @@ export async function uploadFile(
  * @param maxWaitMs - Overall wait budget; defaults to the floor. Callers that
  *   know the upload size should pass {@link fileProcessingWaitMs} so large
  *   files are not aborted prematurely.
+ * @param signal - Ends the wait when the run is cancelled. Reaches both the
+ *   poll request and the pause between polls, because the budget scales with
+ *   the upload up to twenty minutes and a Cancel that only took effect at the
+ *   next boundary would leave the user watching a dialog they already dismissed
  */
 export async function waitUntilActive(
 	baseUrl: string,
 	apiKey: string,
 	fileName: string,
 	maxWaitMs: number = GEMINI_FILE_MIN_WAIT_MS,
+	signal?: AbortSignal,
 ): Promise<void> {
 	const base = trimTrailingSlash(baseUrl);
 	const deadline = Date.now() + maxWaitMs;
@@ -178,7 +188,8 @@ export async function waitUntilActive(
 			await requestJson<unknown>({
 				url: `${base}/v1beta/${fileName}`,
 				method: 'GET',
-				headers: { [GEMINI_API_KEY_HEADER]: apiKey },
+				headers: authHeader(GEMINI_API_KEY_HEADER, apiKey),
+				signal,
 			}),
 		);
 		if (file.state === FILE_STATE_ACTIVE) {
@@ -196,7 +207,7 @@ export async function waitUntilActive(
 				'Timed out waiting for Gemini to process the uploaded audio file.',
 			);
 		}
-		await delay(GEMINI_FILE_POLL_INTERVAL_MS);
+		await delay(GEMINI_FILE_POLL_INTERVAL_MS, signal);
 	}
 }
 
@@ -215,6 +226,6 @@ export async function deleteFile(
 	await requestRaw({
 		url: `${trimTrailingSlash(baseUrl)}/v1beta/${fileName}`,
 		method: 'DELETE',
-		headers: { [GEMINI_API_KEY_HEADER]: apiKey },
+		headers: authHeader(GEMINI_API_KEY_HEADER, apiKey),
 	});
 }

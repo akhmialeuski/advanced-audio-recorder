@@ -19,7 +19,9 @@ import {
 	getMaxCleanupSeconds,
 	getMaxDecodeBytes,
 	isDecodableSize,
-	getMaxSplitSourceBytes,
+	isReadableSize,
+	tooLargeMessage,
+	getMaxSourceReadBytes,
 	getPlatformCapabilities,
 	isAutoSplitSupported,
 	isChannelModeSelectionSupported,
@@ -41,7 +43,11 @@ import {
 	MOBILE_MAX_DECODE_BYTES,
 	WAVEFORM_MAX_DECODE_BYTES,
 } from 'src/constants';
-import { setPlatform } from '../helpers/platform';
+import {
+	setPlatform,
+	useDesktopPlatform,
+	useMobilePlatform,
+} from '../helpers/platform';
 
 describe('platformKind', () => {
 	it('resolves desktop when no mobile flag is set', () => {
@@ -117,10 +123,10 @@ describe('platform capability table', () => {
 			MAX_AUDIO_CLEANUP_DECODED_SAMPLES,
 		);
 		expect(desktop.maxCleanupSeconds).toBe(MAX_AUDIO_CLEANUP_SECONDS);
-		expect(desktop.maxSplitSourceBytes).toBe(Number.POSITIVE_INFINITY);
+		expect(desktop.maxSourceReadBytes).toBe(Number.POSITIVE_INFINITY);
 		expect(mobile.chunkFlushThresholdBytes).toBe(MOBILE_BUFFER_LIMIT_BYTES);
 		expect(mobile.maxDecodeBytes).toBe(MOBILE_MAX_DECODE_BYTES);
-		expect(mobile.maxSplitSourceBytes).toBe(MOBILE_MAX_DECODE_BYTES);
+		expect(mobile.maxSourceReadBytes).toBe(MOBILE_MAX_DECODE_BYTES);
 		expect(mobile.maxCleanupDecodedSamples).toBe(
 			MOBILE_MAX_CLEANUP_DECODED_SAMPLES,
 		);
@@ -207,7 +213,7 @@ describe('capability helper functions', () => {
 		});
 
 		it('bounds the source a split may read', () => {
-			expect(getMaxSplitSourceBytes(limits.platform)).toBe(
+			expect(getMaxSourceReadBytes(limits.platform)).toBe(
 				limits.maxSplitSource,
 			);
 		});
@@ -256,5 +262,100 @@ describe('capability helper functions', () => {
 		expect(isDecodableSize(MOBILE_MAX_DECODE_BYTES + 1)).toBe(true);
 		setPlatform({ isMobile: true });
 		expect(isDecodableSize(MOBILE_MAX_DECODE_BYTES + 1)).toBe(false);
+	});
+});
+
+// Reading a file whole and expanding it to PCM are two allocations, and only
+// one of them grows the file. Answering the read with the decode ceiling
+// refused work a platform does perfectly well: a streaming conversion or a
+// lossless WAV split never decodes, and desktop reads a source of any size.
+describe('whether a file may be read whole', () => {
+	it('reads a source of any size on desktop', () => {
+		expect(isReadableSize(WAVEFORM_MAX_DECODE_BYTES + 1, 'desktop')).toBe(
+			true,
+		);
+		expect(getMaxSourceReadBytes('desktop')).toBe(Number.POSITIVE_INFINITY);
+	});
+
+	// On a phone, holding the bytes plus one working copy is itself most of
+	// the allocation that gets the WebView killed.
+	it('bounds the read on mobile', () => {
+		expect(isReadableSize(MOBILE_MAX_DECODE_BYTES, 'mobile')).toBe(true);
+		expect(isReadableSize(MOBILE_MAX_DECODE_BYTES + 1, 'mobile')).toBe(
+			false,
+		);
+	});
+
+	it('follows the current platform when none is named', () => {
+		expect(isReadableSize(MOBILE_MAX_DECODE_BYTES + 1)).toBe(true);
+		setPlatform({ isMobile: true });
+		expect(isReadableSize(MOBILE_MAX_DECODE_BYTES + 1)).toBe(false);
+	});
+
+	// The two ceilings part company exactly where it matters: desktop reads
+	// what it will not decode.
+	it('parts company with the decode ceiling on desktop', () => {
+		const past = WAVEFORM_MAX_DECODE_BYTES + 1;
+
+		expect(isReadableSize(past, 'desktop')).toBe(true);
+		expect(isDecodableSize(past, 'desktop')).toBe(false);
+	});
+});
+
+// Two ceilings, and until now a piece of advice each: the splitter said one
+// thing about the read and another about the decode, cleanup said a third, and
+// conversion said nothing at all because it never asked. Which advice helps is
+// a fact about the platform rather than about which allocation was refused, so
+// it is written once here.
+describe('what a user is told when a file will not fit', () => {
+	it('points a phone at the desktop app, where the limit is far higher', () => {
+		useMobilePlatform();
+
+		expect(tooLargeMessage('split')).toBe(
+			'File is too large to split on this device. Convert or split it ' +
+				'on desktop instead.',
+		);
+	});
+
+	// On desktop there is no bigger machine to move to, so the advice is the
+	// one thing that does help: make the file smaller first.
+	it('tells a desktop user to split the file first', () => {
+		useDesktopPlatform();
+
+		expect(tooLargeMessage('clean up')).toBe(
+			'File is too large to clean up. Split it into parts first.',
+		);
+	});
+
+	it('names the operation the user actually asked for', () => {
+		useMobilePlatform();
+
+		expect(tooLargeMessage('convert')).toContain('too large to convert');
+	});
+
+	// Which route to a smaller file helps does depend on the operation, and
+	// for one of them the generic route is the operation: "too large to
+	// split, split it first" sends the user back to the button that just
+	// refused. Such an operation names its own way out.
+	it('lets an operation replace advice that would be itself', () => {
+		useDesktopPlatform();
+
+		expect(
+			tooLargeMessage('split', {
+				desktopAdvice: 'Only a WAV source splits at this size.',
+			}),
+		).toBe(
+			'File is too large to split. Only a WAV source splits at this size.',
+		);
+	});
+
+	// A phone has a bigger machine to move to whatever was refused, so an
+	// operation's own desktop advice never displaces that.
+	it('keeps pointing a phone at the desktop app', () => {
+		useMobilePlatform();
+
+		expect(
+			tooLargeMessage('split', { desktopAdvice: 'irrelevant here' }),
+		).toContain('on desktop instead');
 	});
 });

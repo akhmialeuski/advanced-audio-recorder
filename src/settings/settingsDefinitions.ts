@@ -65,6 +65,7 @@ import {
 	ACCOUNTS,
 	ENGINES,
 	ENGINE_ORDER,
+	accountKeyMissing,
 	accountOf,
 	type EngineDescriptor,
 	type EngineId,
@@ -1319,7 +1320,7 @@ function engineSummary(
 		}
 		return settings.localWhisperModelPath ? 'Configured' : 'No model file';
 	}
-	if (!connection.apiKey(settings)) {
+	if (accountKeyMissing(connection, settings)) {
 		return 'No key';
 	}
 	if (!engine.models) {
@@ -1329,14 +1330,17 @@ function engineSummary(
 }
 
 /**
- * How many accounts a key has been entered for. An account is what a key
- * belongs to, so the accounts themselves are counted rather than the engines
- * behind them: two engines over one account are one answer, not two.
- * @param settings - Live settings, read for each account's key
+ * How many accounts are ready to be called. An account is what a key belongs
+ * to, so the accounts themselves are counted rather than the engines behind
+ * them: two engines over one account are one answer, not two. An account
+ * pointed at a local endpoint counts without a key, because that is what the
+ * factories do with it.
+ * @param settings - Live settings, read for each account's key and endpoint
  */
 function configuredAccountCount(settings: AudioRecorderSettings): number {
-	return Object.values(ACCOUNTS).filter((account) => account.apiKey(settings))
-		.length;
+	return Object.values(ACCOUNTS).filter(
+		(account) => !accountKeyMissing(account, settings),
+	).length;
 }
 
 /**

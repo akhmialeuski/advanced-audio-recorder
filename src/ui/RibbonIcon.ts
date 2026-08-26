@@ -38,6 +38,7 @@ export function updateRibbonIcon(
 			ribbonIconEl.classList.add('is-recording');
 			ribbonIconEl.classList.remove('is-saving');
 			break;
+		case RecordingStatus.Interrupted:
 		case RecordingStatus.Saving:
 			setIcon(ribbonIconEl, ICON_SAVING);
 			ribbonIconEl.classList.remove('is-recording');

@@ -67,14 +67,19 @@ export interface PlatformCapabilities {
 	 */
 	readonly maxDecodeBytes: number;
 	/**
-	 * Largest source file the splitter will read into memory at all.
-	 * Desktop is unbounded: the lossless WAV byte path splits files far
-	 * beyond the decode ceiling without decoding (and cleanup points
-	 * users at split for oversized files, so split must accept them).
-	 * Mobile bounds every full-file read, because just holding the bytes
-	 * (plus one part copy) can get the WebView killed.
+	 * Largest source file this platform will read into memory whole, before
+	 * anything is done with the bytes.
+	 *
+	 * A separate ceiling from {@link PlatformCapabilities.maxDecodeBytes},
+	 * because reading and decoding are separate allocations and only one of
+	 * them expands the file. Desktop is unbounded: the splitter's lossless WAV
+	 * byte path and the converter's streaming path both handle files far
+	 * beyond the decode ceiling without ever expanding one, and cleanup points
+	 * users at split for oversized files, so split must accept them. Mobile
+	 * bounds every full-file read, because just holding the bytes (plus one
+	 * working copy) can get the WebView killed.
 	 */
-	readonly maxSplitSourceBytes: number;
+	readonly maxSourceReadBytes: number;
 	/** Largest decoded working set (frames x channels) cleanup accepts. */
 	readonly maxCleanupDecodedSamples: number;
 	/** Longest recording duration cleanup accepts, in seconds. */
@@ -94,7 +99,7 @@ const DESKTOP_CAPABILITIES: PlatformCapabilities = {
 	settingsListAddRow: false,
 	chunkFlushThresholdBytes: DESKTOP_FLUSH_THRESHOLD_BYTES,
 	maxDecodeBytes: WAVEFORM_MAX_DECODE_BYTES,
-	maxSplitSourceBytes: Number.POSITIVE_INFINITY,
+	maxSourceReadBytes: Number.POSITIVE_INFINITY,
 	maxCleanupDecodedSamples: MAX_AUDIO_CLEANUP_DECODED_SAMPLES,
 	maxCleanupSeconds: MAX_AUDIO_CLEANUP_SECONDS,
 };
@@ -112,7 +117,7 @@ const MOBILE_CAPABILITIES: PlatformCapabilities = {
 	settingsListAddRow: true,
 	chunkFlushThresholdBytes: MOBILE_BUFFER_LIMIT_BYTES,
 	maxDecodeBytes: MOBILE_MAX_DECODE_BYTES,
-	maxSplitSourceBytes: MOBILE_MAX_DECODE_BYTES,
+	maxSourceReadBytes: MOBILE_MAX_DECODE_BYTES,
 	maxCleanupDecodedSamples: MOBILE_MAX_CLEANUP_DECODED_SAMPLES,
 	maxCleanupSeconds: MOBILE_MAX_AUDIO_CLEANUP_SECONDS,
 };
@@ -211,9 +216,76 @@ export function isDecodableSize(bytes: number, kind?: PlatformKind): boolean {
 	return bytes <= getMaxDecodeBytes(kind);
 }
 
-/** Largest source file the splitter reads into memory on this platform. */
-export function getMaxSplitSourceBytes(kind?: PlatformKind): number {
-	return getPlatformCapabilities(kind).maxSplitSourceBytes;
+/** How a size refusal is worded for one operation. */
+export interface TooLargeOptions {
+	/** Platform to answer for (defaults to the current one). */
+	readonly kind?: PlatformKind;
+	/**
+	 * What helps on desktop, where the generic answer - split the file first
+	 * - is the operation the user already asked for. Named by the operation
+	 * because only it knows what else would work; everything else keeps the
+	 * generic sentence.
+	 */
+	readonly desktopAdvice?: string;
+}
+
+/** The way out of a desktop ceiling for every operation but the splitter. */
+const DESKTOP_SIZE_ADVICE = 'Split it into parts first.';
+
+/**
+ * What to tell a user whose file will not fit under one of this platform's
+ * size ceilings - {@link isDecodableSize} or {@link isReadableSize}.
+ *
+ * One sentence for both ceilings, because which way out exists turns on the
+ * platform rather than on which allocation was refused. A phone has a bigger
+ * machine to move to, and the desktop app does not, so there the only thing
+ * that helps is a smaller file. Which route to a smaller file helps does
+ * depend on the operation, though, and for the splitter the generic one is
+ * the operation itself: "too large to split, split it first" sends the user
+ * back to the button that just refused. That one names its own way out
+ * through {@link TooLargeOptions.desktopAdvice}.
+ *
+ * The ceilings used to grow a piece of advice each: the splitter pointed at
+ * the desktop app for the read and at the desktop app again, in different
+ * words, for the decode; cleanup said to split the file first; and conversion
+ * said nothing because it never asked.
+ * @param action - The operation the user asked for, named as a verb phrase
+ * @param options - Platform to answer for, and the operation's own way out
+ * @returns The refusal, ready to show
+ */
+export function tooLargeMessage(
+	action: string,
+	options: TooLargeOptions = {},
+): string {
+	if ((options.kind ?? getPlatformKind()) === 'mobile') {
+		return (
+			`File is too large to ${action} on this device. ` +
+			'Convert or split it on desktop instead.'
+		);
+	}
+	return `File is too large to ${action}. ${
+		options.desktopAdvice ?? DESKTOP_SIZE_ADVICE
+	}`;
+}
+
+/** Largest source file this platform reads into memory whole. */
+export function getMaxSourceReadBytes(kind?: PlatformKind): number {
+	return getPlatformCapabilities(kind).maxSourceReadBytes;
+}
+
+/**
+ * Whether a file of this size may be read into memory whole on this platform.
+ *
+ * The mirror of {@link isDecodableSize}, and separate from it on purpose: a
+ * path that streams or remuxes reads the bytes without ever expanding them,
+ * so it is bounded by this and not by the decode ceiling. Asking the decode
+ * question at an entry point that may never decode refuses files the platform
+ * handles perfectly well.
+ * @param bytes - Size of the source file
+ * @param kind - Platform to answer for (defaults to the current one)
+ */
+export function isReadableSize(bytes: number, kind?: PlatformKind): boolean {
+	return bytes <= getMaxSourceReadBytes(kind);
 }
 
 /** Largest decoded working set cleanup accepts on this platform. */

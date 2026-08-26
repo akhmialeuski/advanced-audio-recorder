@@ -1,11 +1,12 @@
 /**
- * Tests for friendlyHttpHint (human-readable guidance for common provider
- * HTTP failures) and uploadTimeoutMs (the payload-scaled request deadline
- * that keeps a large but healthy upload from being aborted prematurely).
+ * Tests for what a failed request carries out of the HTTP client - the
+ * human-readable guidance and whether the run may send it again, both read off
+ * the HttpError the client throws - and for uploadTimeoutMs, the
+ * payload-scaled request deadline that keeps a large but healthy upload from
+ * being aborted prematurely.
  */
 
 import {
-	friendlyHttpHint,
 	HttpError,
 	providerMessage,
 	requestJson,
@@ -17,8 +18,48 @@ import {
 	TRANSCRIBE_REQUEST_TIMEOUT_MS,
 } from 'src/constants';
 import { withRequestUrl } from '../helpers/network';
+import { defined } from '../helpers/assertions';
 
-describe('friendlyHttpHint', () => {
+/**
+ * Sends one request against a scripted answer and returns the failure it
+ * raised.
+ *
+ * Asserted off the error rather than off a classifier exported for the
+ * purpose: the guidance and the retry decision are two readings of one
+ * response, and this is the object both of them travel on.
+ * @param status - Status the endpoint answers with
+ * @param body - Body the endpoint answers with
+ * @param headers - Headers the endpoint answers with
+ * @returns The HttpError the request failed with
+ */
+async function failureFor(
+	status: number,
+	body = '',
+	headers: Record<string, string> = {},
+): Promise<HttpError> {
+	withRequestUrl(() => ({ status, headers, text: body }));
+	try {
+		await requestRaw({ url: 'https://api.example/v1/x', method: 'GET' });
+	} catch (error) {
+		if (error instanceof HttpError) {
+			return error;
+		}
+		throw error;
+	}
+	throw new Error('the request did not fail');
+}
+
+/**
+ * The sentence a failed request hands the user, lowercased for matching.
+ * @param status - Status the endpoint answers with
+ * @param body - Body the endpoint answers with
+ * @returns The message, lowercased
+ */
+async function hintFor(status: number, body = ''): Promise<string> {
+	return (await failureFor(status, body)).message.toLowerCase();
+}
+
+describe('the guidance a failed request carries', () => {
 	it.each([
 		{
 			name: 'an OpenAI insufficient_quota 429',
@@ -68,17 +109,17 @@ describe('friendlyHttpHint', () => {
 			body: 'Internal Server Error',
 			says: 'server error',
 		},
-	])('reads $name as "$says"', ({ status, body, says }) => {
-		expect(friendlyHttpHint(status, body).toLowerCase()).toContain(says);
+	])('reads $name as "$says"', async ({ status, body, says }) => {
+		expect(await hintFor(status, body)).toContain(says);
 	});
 
-	it('treats a 403 "insufficient permissions" as auth, not billing', () => {
+	it('treats a 403 "insufficient permissions" as auth, not billing', async () => {
 		// Regression: the bare "insufficient" marker used to misclassify a
 		// forbidden/scope error as a billing problem. It must read as auth.
-		const hint = friendlyHttpHint(
+		const hint = await hintFor(
 			403,
 			'{"error":"insufficient permissions for this resource"}',
-		).toLowerCase();
+		);
 		expect(hint).toContain('authentication failed');
 		expect(hint).not.toContain('quota or credit');
 	});
@@ -100,21 +141,21 @@ describe('friendlyHttpHint', () => {
 			status: 403,
 			body: '{"error":{"code":"unsupported_country_region_territory","message":"Country, region, or territory not supported"}}',
 		},
-	])('names the region for $name', ({ status, body }) => {
-		const hint = friendlyHttpHint(status, body).toLowerCase();
+	])('names the region for $name', async ({ status, body }) => {
+		const hint = await hintFor(status, body);
 
 		expect(hint).toContain('does not serve your region');
 		expect(hint).not.toContain('authentication failed');
 	});
 
-	it('names both ways out of a region refusal', () => {
+	it('names both ways out of a region refusal', async () => {
 		// Another engine, or an endpoint that does serve the caller. The
 		// second is what a user in a blocked country already relies on, and it
 		// is a field on the same page.
-		const hint = friendlyHttpHint(
+		const hint = await hintFor(
 			400,
 			'{"error":{"code":400,"message":"User location is not supported for the API use.","status":"FAILED_PRECONDITION"}}',
-		).toLowerCase();
+		);
 
 		expect(hint).toContain('engines');
 		expect(hint).toContain('base url');
@@ -126,7 +167,6 @@ describe('friendlyHttpHint', () => {
 			status: 404,
 			body: 'Not Found',
 		},
-		{ name: 'a success status', status: 200, body: 'OK' },
 		{ name: 'a redirect', status: 302, body: 'Found' },
 		// The bodies a failing endpoint returns when it is not the API at
 		// all. Each must read as "no hint" rather than break the error path
@@ -145,8 +185,12 @@ describe('friendlyHttpHint', () => {
 			body: '{"problem":{"kind":"unknown"}}',
 		},
 		{ name: 'truncated JSON', status: 400, body: '{"error":{' },
-	])('returns no hint for $name', ({ status, body }) => {
-		expect(friendlyHttpHint(status, body)).toBe('');
+	])('carries no guidance for $name', async ({ status, body }) => {
+		// No hint means nothing is prefixed to the diagnostic detail, which
+		// is what the message then opens with.
+		expect((await failureFor(status, body)).message).toMatch(
+			/^Request to /,
+		);
 	});
 
 	it.each([
@@ -159,11 +203,14 @@ describe('friendlyHttpHint', () => {
 		{ status: 599, hinted: true },
 		{ status: 499, hinted: false },
 		{ status: 404, hinted: false },
-	])('treats $status as a server fault: $hinted', ({ status, hinted }) => {
-		const hint = friendlyHttpHint(status, '').toLowerCase();
+	])(
+		'treats $status as a server fault: $hinted',
+		async ({ status, hinted }) => {
+			const hint = await hintFor(status);
 
-		expect(hint.includes('server error')).toBe(hinted);
-	});
+			expect(hint.includes('server error')).toBe(hinted);
+		},
+	);
 });
 
 describe('providerMessage', () => {
@@ -298,21 +345,103 @@ describe('requestRaw abort support', () => {
 		await expect(pending).rejects.toThrow(/was cancelled/);
 	});
 
-	it('falls back to requestUrl when fetch fails at the network layer (CORS)', async () => {
-		mockFetch(() => Promise.reject(new TypeError('Failed to fetch')));
+	/**
+	 * An endpoint that refuses fetch the way a CORS-less server does, with
+	 * requestUrl answering behind it.
+	 * @returns The fetch double, for counting how often it was asked
+	 */
+	function corsRefusingEndpoint(): jest.Mock {
+		const fetchMock = mockFetch(() =>
+			Promise.reject(new TypeError('Failed to fetch')),
+		);
 		withRequestUrl(() => ({
 			status: 200,
 			headers: {},
 			text: '{"via":"requestUrl"}',
 		}));
+		return fetchMock;
+	}
 
+	/**
+	 * Sends one abortable request to the given endpoint.
+	 * @param url - Where to send it
+	 * @returns The response body
+	 */
+	async function sendAbortable(url: string): Promise<string> {
 		const response = await requestRaw({
-			url: 'https://api.example.com/v1/transcribe',
+			url,
+			method: 'POST',
+			signal: new AbortController().signal,
+		});
+		return response.text;
+	}
+
+	// On its own origin, because a refusal is remembered: the cases after
+	// this one expect fetch to be tried, and would find it already ruled out
+	// for a host this test had refused.
+	it('falls back to requestUrl when fetch fails at the network layer (CORS)', async () => {
+		const fetchMock = corsRefusingEndpoint();
+
+		const body = await sendAbortable(
+			'https://cors-refusing.example.com/v1/transcribe',
+		);
+
+		expect(body).toBe('{"via":"requestUrl"}');
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
+	// The discovery costs a whole request body, which on an LLM step is a
+	// transcript. Paying it per call meant every request to such a server went
+	// out twice for the rest of the run.
+	it('asks a refusing origin only once, then goes straight to requestUrl', async () => {
+		const fetchMock = corsRefusingEndpoint();
+		const url = 'https://remembered.example.com/v1/transcribe';
+
+		await sendAbortable(url);
+		await sendAbortable(url);
+
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
+	// A CORS refusal and an unreachable network reach fetch as the same
+	// opaque TypeError, so the refusal on its own proves nothing about which
+	// it was. Remembering it anyway cost the origin its abortable transport
+	// for the whole session - and with it every Cancel pressed against that
+	// provider - over one dropped link. What tells them apart is whether the
+	// fallback answered where fetch could not.
+	it('keeps asking an origin whose fallback failed too', async () => {
+		const fetchMock = corsRefusingEndpoint();
+		withRequestUrl(() => Promise.reject(new Error('network is down')));
+		const url = 'https://briefly-offline.example.com/v1/transcribe';
+
+		await expect(sendAbortable(url)).rejects.toThrow(/network is down/);
+
+		// The link came back, and the origin is owed its fetch: nothing was
+		// ever learned about whether it takes one.
+		withRequestUrl(() => ({
+			status: 200,
+			headers: {},
+			text: '{"via":"requestUrl"}',
+		}));
+		await sendAbortable(url);
+
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+	});
+
+	// A URL with no origin to remember is simply attempted, rather than
+	// tripping the memory over on a value it cannot key.
+	it('attempts a URL it cannot read an origin from', async () => {
+		const fetchMock = mockFetch(() =>
+			Promise.resolve(fakeResponse(200, '{}')),
+		);
+
+		await requestRaw({
+			url: '/relative/transcribe',
 			method: 'POST',
 			signal: new AbortController().signal,
 		});
 
-		expect(response.text).toBe('{"via":"requestUrl"}');
+		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 
 	it('does not touch fetch when no signal is provided', async () => {
@@ -518,5 +647,98 @@ describe('requestJson', () => {
 				method: 'POST',
 			}),
 		).resolves.toEqual({ text: 'hi' });
+	});
+});
+
+// The plugin recognised a rate limit well enough to tell the user to wait and
+// try again, and then never did either: the part failed, its ten minutes
+// vanished from the transcript, and only a full re-run (paid again) could get
+// them back. Whether re-sending could help is decided where the status, the
+// body, and the headers are all still in hand.
+describe('a failure the run could try again', () => {
+	it.each([
+		{ name: 'a rate limit', status: 429, body: '', retryable: true },
+		{
+			name: 'a rate limit the body names on another status',
+			status: 400,
+			body: 'rate limit exceeded',
+			retryable: true,
+		},
+		{ name: 'a provider outage', status: 503, body: '', retryable: true },
+		{ name: 'an internal error', status: 500, body: '', retryable: true },
+		{ name: 'a bad key', status: 401, body: '', retryable: false },
+		{ name: 'a forbidden key', status: 403, body: '', retryable: false },
+		{
+			name: 'an exhausted quota',
+			status: 429,
+			body: '{"error":{"message":"insufficient_quota"}}',
+			retryable: false,
+		},
+		{
+			name: 'a region refusal',
+			status: 400,
+			body: 'User location is not supported for the API use',
+			retryable: false,
+		},
+		{
+			name: 'a malformed request',
+			status: 400,
+			body: '',
+			retryable: false,
+		},
+		{ name: 'a missing model', status: 404, body: '', retryable: false },
+	])(
+		'reports $name as retryable: $retryable',
+		async ({ status, body, retryable }) => {
+			expect((await failureFor(status, body)).retryable).toBe(retryable);
+		},
+	);
+
+	// A quota that ran out is a rate limit shaped like one and fixed by
+	// nothing a retry can do, so the billing branch wins over the 429.
+	it('keeps the billing wording on an exhausted quota', async () => {
+		const failure = await failureFor(
+			429,
+			'{"error":{"message":"insufficient_quota"}}',
+		);
+
+		expect(failure.message).toContain('Out of API quota');
+	});
+
+	it('reads the pause a provider asked for in seconds', async () => {
+		const failure = await failureFor(429, '', { 'Retry-After': '12' });
+
+		expect(failure.retryAfterMs).toBe(12000);
+	});
+
+	it('reads the pause a provider gave as a date', async () => {
+		const when = new Date(Date.now() + 30_000).toUTCString();
+
+		const failure = await failureFor(429, '', { 'Retry-After': when });
+
+		// Wall-clock arithmetic, so the exact value drifts by the odd
+		// millisecond; what matters is that it landed near the half minute.
+		expect(defined(failure.retryAfterMs)).toBeGreaterThan(25_000);
+		expect(defined(failure.retryAfterMs)).toBeLessThan(35_000);
+	});
+
+	// Header names arrive in whatever case the server sent them.
+	it('reads the pause whatever case the header came in', async () => {
+		const failure = await failureFor(429, '', { 'retry-after': '5' });
+
+		expect(failure.retryAfterMs).toBe(5000);
+	});
+
+	it.each([
+		{ name: 'no header at all', headers: {} },
+		{ name: 'a value that is neither', headers: { 'Retry-After': 'soon' } },
+		{
+			name: 'a date in the past',
+			headers: { 'Retry-After': 'Thu, 01 Jan 1970 00:00:00 GMT' },
+		},
+	])('advises no particular pause for $name', async ({ headers }) => {
+		const failure = await failureFor(429, '', headers);
+
+		expect(failure.retryAfterMs).toBeUndefined();
 	});
 });

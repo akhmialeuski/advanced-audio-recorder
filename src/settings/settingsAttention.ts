@@ -20,6 +20,7 @@
  */
 
 import {
+	accountKeyMissing,
 	accountOf,
 	engineOfTranscription,
 	engineOfVendor,
@@ -66,7 +67,7 @@ export function engineSetupReason(
 			? LOCAL_WHISPER_SETUP_MESSAGE
 			: null;
 	}
-	if (account.apiKey(settings) === '') {
+	if (accountKeyMissing(account, settings)) {
 		return account.missingKeyMessage;
 	}
 	return engine.models !== null && engine.models.model(settings) === ''

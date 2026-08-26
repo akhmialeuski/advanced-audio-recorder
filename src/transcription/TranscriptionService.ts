@@ -12,11 +12,19 @@
 
 import { Notice } from 'obsidian';
 import type { App, TFile } from 'obsidian';
+import { NEVER_CANCELLED, type CancellationToken } from '../utils/cancellation';
 import {
 	BYTES_PER_MB,
+	MS_PER_SECOND,
 	PLUGIN_LOG_PREFIX,
 	TRANSCRIBE_CHUNK_PROGRESS_CEILING,
+	TRANSCRIBE_RETRY_BASE_DELAY_MS,
+	TRANSCRIBE_RETRY_MAX_ATTEMPTS,
+	TRANSCRIBE_RETRY_MAX_DELAY_MS,
 } from '../constants';
+import { HttpError } from './httpClient';
+import { delay } from '../utils/TimeUtils';
+import type { WhisperResult } from './providers/whisperResponse';
 import type {
 	AudioRecorderSettings,
 	LlmProviderId,
@@ -85,21 +93,10 @@ import {
 	sumUsage,
 } from './costs';
 
-/** Cooperative cancellation signal checked between chunks. */
-export interface CancellationToken {
-	isCancelled(): boolean;
-	/**
-	 * Optional abort signal that fires when the run is cancelled, so
-	 * in-flight HTTP requests can be aborted immediately instead of only
-	 * being checked between chunks.
-	 */
-	signal?: AbortSignal;
-}
-
-/** A token that is never cancelled. */
-export const NEVER_CANCELLED: CancellationToken = {
-	isCancelled: () => false,
-};
+// Cancellation belongs to every long job, not to transcription alone, so it
+// lives in utils and is re-exported here for the callers that already reach
+// for it through the service.
+export { NEVER_CANCELLED, type CancellationToken };
 
 /** Options for a transcription run. */
 export interface TranscribeRunOptions {
@@ -201,6 +198,80 @@ export interface TranscriptionServiceDeps {
 		settings: AudioRecorderSettings,
 		vendorId: LlmProviderId,
 	) => LlmProvider;
+}
+
+/** One part of a run, and everywhere its outcome is recorded. */
+interface PartRun {
+	/** The active transcription provider. */
+	readonly provider: TranscriptionProvider;
+	/** The prepared part to transcribe. */
+	readonly prepared: PreparedPayload;
+	/** Per-request provider options (language, diarize, bias). */
+	readonly providerOptions: TranscribeOptions;
+	/** Cancellation for the run this part belongs to. */
+	readonly token: CancellationToken;
+	/** Human label for the part ('' for a single indivisible job). */
+	readonly label: string;
+	/** Accumulates successful per-part transcripts (mutated). */
+	readonly results: {
+		offsetSeconds: number;
+		transcript: Transcript;
+		usage?: TranscriptionUsage;
+	}[];
+	/** Accumulates recoverable per-part failures (mutated). */
+	readonly failedParts: { label: string; message: string }[];
+	/**
+	 * Accumulates usage from billed-but-discarded truncated attempts, so their
+	 * cost is counted even though their transcript is thrown away and retried
+	 * (mutated).
+	 */
+	readonly discardedUsage: TranscriptionUsage[];
+	/**
+	 * Reports that the part is waiting before being sent again, so the dialog
+	 * says the run is still working rather than sitting on a frozen line.
+	 * @param waitMs - How long the run is about to wait
+	 * @param label - The part that is waiting. Passed rather than captured,
+	 *   because a subdivided piece carries its parent's callback and does not
+	 *   share its label
+	 */
+	onRetryWait(waitMs: number, label: string): void;
+}
+
+/**
+ * How long to wait before sending a part again, or null when it should not be
+ * sent again at all.
+ *
+ * Retrying was designed around one situation - a model that truncated its own
+ * answer, where the point is to send smaller input - and the far more common
+ * class of failure had no place in it: the temporary refusals that come with
+ * every paid endpoint. A rate limit is temporary by definition and clears in
+ * seconds, and the plugin already told the user so while doing nothing about it
+ * itself.
+ *
+ * What the provider asks for beats any guess, so `Retry-After` wins when it
+ * arrives. A provider asking for longer than the run is willing to sit out is
+ * telling the user to come back later rather than to wait, so the part is
+ * reported missing instead of freezing the run on a dialog that says nothing is
+ * happening.
+ * @param error - What the attempt failed with
+ * @param attempt - Which attempt just failed, counting from one
+ * @returns The pause in milliseconds, or null to stop trying
+ */
+function retryWaitMs(error: unknown, attempt: number): number | null {
+	if (attempt >= TRANSCRIBE_RETRY_MAX_ATTEMPTS) {
+		return null;
+	}
+	if (!(error instanceof HttpError) || !error.retryable) {
+		return null;
+	}
+	const advised = error.retryAfterMs;
+	if (advised !== undefined) {
+		return advised <= TRANSCRIBE_RETRY_MAX_DELAY_MS ? advised : null;
+	}
+	return Math.min(
+		TRANSCRIBE_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1),
+		TRANSCRIBE_RETRY_MAX_DELAY_MS,
+	);
 }
 
 /**
@@ -394,20 +465,39 @@ export class TranscriptionService {
 					partCount > 1
 						? this.describePart(payload, i, partCount)
 						: '';
+				const partProgress =
+					progressBase + (i / partCount) * progressSpan;
 				options.onProgress?.(
-					progressBase + (i / partCount) * progressSpan,
+					partProgress,
 					partLabel ? `${verb} ${partLabel}...` : `${verb}...`,
 				);
-				await this.transcribePart(
+				await this.transcribePart({
 					provider,
-					payload,
-					passOptions,
+					prepared: payload,
+					providerOptions: passOptions,
 					token,
-					partLabel,
-					passResults,
-					passFailed,
+					label: partLabel,
+					results: passResults,
+					failedParts: passFailed,
 					discardedUsage,
-				);
+					onRetryWait: (waitMs, label) => {
+						// A pause is the run still working, and a progress
+						// line that stopped moving reads as a hang. It says
+						// what is happening and not why: the same pause
+						// covers a rate limit and a provider fault, this
+						// line cannot tell them apart, and naming one of
+						// them told a user waiting out a 502 that they had
+						// been sending too many requests. Which refusal it
+						// was reaches them in the error the run reports if
+						// the attempts run out.
+						options.onProgress?.(
+							partProgress,
+							`Retrying ${label || 'the audio'} in ${String(
+								Math.ceil(waitMs / MS_PER_SECOND),
+							)}s...`,
+						);
+					},
+				});
 				options.onCost?.(runCost());
 			}
 		};
@@ -489,7 +579,7 @@ export class TranscriptionService {
 							advancedBiasChannel(
 								settings.transcriptionProvider,
 							) === 'prompt',
-						isCancelled: () => token.isCancelled(),
+						token,
 						settings,
 						durationSeconds: stitched.segments.at(-1)?.end ?? null,
 						costSink: this.costSink,
@@ -564,15 +654,10 @@ export class TranscriptionService {
 						}
 					}
 				} catch (error) {
-					if (error instanceof TranscriptionCancelledError) {
-						throw error;
-					}
 					// Cancellation inside context generation surfaces as an
 					// ordinary error; map it back to the cancel the user asked
 					// for instead of a best-effort fallback.
-					if (token.isCancelled()) {
-						throw new TranscriptionCancelledError();
-					}
+					this.rethrowIfCancelled(error, token);
 					console.warn(
 						`${PLUGIN_LOG_PREFIX} Advanced two-pass transcription failed; keeping the single-pass transcript.`,
 						error,
@@ -649,11 +734,14 @@ export class TranscriptionService {
 					settings,
 					transcript,
 					markdown,
+					token,
 				);
 			} catch (error) {
-				if (error instanceof TranscriptionCancelledError) {
-					throw error;
-				}
+				// The abort of the call in flight arrives as a transport
+				// failure, so a Cancel pressed here is not the pass breaking:
+				// reporting it as one told the user their own doing had gone
+				// wrong and then saved the transcript they had cancelled.
+				this.rethrowIfCancelled(error, token);
 				console.warn(
 					`${PLUGIN_LOG_PREFIX} LLM post-processing failed; keeping the raw transcript.`,
 					error,
@@ -782,31 +870,11 @@ export class TranscriptionService {
 	 * length (subdivision yields nothing) does it count as a failure. A part with
 	 * an empty label is a single indivisible job and fails the whole run as
 	 * before.
-	 * @param provider - The active transcription provider
-	 * @param prepared - The prepared part to transcribe
-	 * @param providerOptions - Per-request provider options (language, diarize)
-	 * @param token - Cancellation token
-	 * @param label - Human label for the part ('' for a single indivisible job)
-	 * @param results - Accumulates successful per-part transcripts (mutated)
-	 * @param failedParts - Accumulates recoverable per-part failures (mutated)
-	 * @param discardedUsage - Accumulates usage from billed-but-discarded
-	 *   truncated attempts, so their cost is counted even though their
-	 *   transcript is thrown away and retried (mutated)
+	 * @param part - The part to transcribe and everything it reports into
 	 */
-	private async transcribePart(
-		provider: TranscriptionProvider,
-		prepared: PreparedPayload,
-		providerOptions: TranscribeOptions,
-		token: CancellationToken,
-		label: string,
-		results: {
-			offsetSeconds: number;
-			transcript: Transcript;
-			usage?: TranscriptionUsage;
-		}[],
-		failedParts: { label: string; message: string }[],
-		discardedUsage: TranscriptionUsage[],
-	): Promise<void> {
+	private async transcribePart(part: PartRun): Promise<void> {
+		const { prepared, token, label, results, failedParts, discardedUsage } =
+			part;
 		this.throwIfCancelled(token);
 		// Materialize this payload's bytes only now, so a multi-chunk job never
 		// holds more than one chunk's WAV in memory at a time.
@@ -817,10 +885,7 @@ export class TranscriptionService {
 			offsetSeconds: prepared.offsetSeconds,
 		};
 		try {
-			const chunkResult = await provider.transcribe(
-				payload,
-				providerOptions,
-			);
+			const chunkResult = await this.transcribeWithRetries(part, payload);
 			results.push({
 				offsetSeconds: payload.offsetSeconds,
 				transcript: buildTranscript(chunkResult.segments, {
@@ -834,12 +899,7 @@ export class TranscriptionService {
 			// A cancel aborts the whole run; never salvage past it. An abort
 			// of the in-flight request surfaces as a transport error, so map
 			// it back to the cancellation the user asked for.
-			if (error instanceof TranscriptionCancelledError) {
-				throw error;
-			}
-			if (token.isCancelled()) {
-				throw new TranscriptionCancelledError();
-			}
+			this.rethrowIfCancelled(error, token);
 			// The part overran the provider's output token budget. Retrying it as
 			// smaller pieces keeps each piece's output under the cap, so a dense
 			// stretch is recovered rather than discarded. Each retry is a real
@@ -861,16 +921,11 @@ export class TranscriptionService {
 							`${String(halves.length)} smaller pieces.`,
 					);
 					for (const half of halves) {
-						await this.transcribePart(
-							provider,
-							half,
-							providerOptions,
-							token,
-							this.partTimeLabel(half),
-							results,
-							failedParts,
-							discardedUsage,
-						);
+						await this.transcribePart({
+							...part,
+							prepared: half,
+							label: this.partTimeLabel(half),
+						});
 					}
 					return;
 				}
@@ -894,6 +949,43 @@ export class TranscriptionService {
 				throw error;
 			}
 			failedParts.push({ label, message: detail });
+		}
+	}
+
+	/**
+	 * Sends one part, trying again while the refusal is a temporary one.
+	 *
+	 * The pause is interruptible, because a Cancel pressed while the run is
+	 * waiting must end it there rather than after the wait it was already
+	 * regretting.
+	 * @param part - The part being transcribed
+	 * @param payload - Its materialized bytes
+	 * @returns What the provider answered
+	 */
+	private async transcribeWithRetries(
+		part: PartRun,
+		payload: AudioPayload,
+	): Promise<WhisperResult> {
+		for (let attempt = 1; ; attempt++) {
+			try {
+				return await part.provider.transcribe(
+					payload,
+					part.providerOptions,
+				);
+			} catch (error) {
+				const waitMs = retryWaitMs(error, attempt);
+				if (waitMs === null) {
+					throw error;
+				}
+				part.onRetryWait(waitMs, part.label);
+				try {
+					await delay(waitMs, part.token.signal);
+				} catch {
+					// The only thing that ends the pause early is the cancel.
+					throw new TranscriptionCancelledError();
+				}
+				this.throwIfCancelled(part.token);
+			}
 		}
 	}
 
@@ -939,11 +1031,17 @@ export class TranscriptionService {
 	/**
 	 * Runs the configured LLM post-processing step and returns the new
 	 * Markdown body (cleanup/custom replace the body; summary is prepended).
+	 * @param settings - The run's settings
+	 * @param transcript - The transcript the pass reads
+	 * @param markdown - The rendered body a cleanup or custom pass replaces
+	 * @param token - Cancellation for the run, so a Cancel pressed here ends
+	 *   the request instead of leaving it to its own timeout and the bill
 	 */
 	private async postProcess(
 		settings: AudioRecorderSettings,
 		transcript: Transcript,
 		markdown: string,
+		token: CancellationToken,
 	): Promise<string> {
 		const vendorId = jobVendorId(settings, 'postProcess');
 		const llm = this.createLlm(settings, vendorId);
@@ -973,6 +1071,7 @@ export class TranscriptionService {
 			// estimate exactly as the pre-run breakdown does.
 			durationSeconds: transcript.segments.at(-1)?.end ?? null,
 			costSink: this.costSink,
+			signal: token.signal,
 		});
 		if (!output) {
 			return markdown;
@@ -1027,6 +1126,29 @@ export class TranscriptionService {
 		if (token.isCancelled()) {
 			throw new TranscriptionCancelledError();
 		}
+	}
+
+	/**
+	 * Re-raises the run's own cancellation when this failure is it.
+	 *
+	 * A cancel does not reach a catch in one shape. A step that checked the
+	 * token between calls throws {@link TranscriptionCancelledError}; a
+	 * request the abort reached first throws the transport's own failure; a
+	 * spend refused before it started throws the platform's AbortError. Every
+	 * step that has to tell a cancel from a genuine failure needs the same
+	 * two questions asked in the same order, and each of them used to ask
+	 * them for itself: the one that asked only the first read the user's own
+	 * Cancel as a broken post-processing pass, told them the pass had failed,
+	 * and saved the transcript they had just cancelled.
+	 * @param error - What the step failed with
+	 * @param token - Cancellation for the run the step belongs to
+	 * @throws TranscriptionCancelledError when this failure is the cancel
+	 */
+	private rethrowIfCancelled(error: unknown, token: CancellationToken): void {
+		if (error instanceof TranscriptionCancelledError) {
+			throw error;
+		}
+		this.throwIfCancelled(token);
 	}
 }
 

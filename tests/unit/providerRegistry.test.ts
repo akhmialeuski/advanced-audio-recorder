@@ -13,7 +13,9 @@ import {
 	ENGINES,
 	ENGINE_IDS,
 	ENGINE_ORDER,
+	accountKeyMissing,
 	accountOf,
+	accountRequiresKey,
 	accountTranscribes,
 	engineAccess,
 	enginesOfAccount,
@@ -167,4 +169,133 @@ describe('provider registry', () => {
 		expect(accountTranscribes(ACCOUNT_IDS.DEEPGRAM)).toBe(true);
 		expect(accountTranscribes(ACCOUNT_IDS.ANTHROPIC)).toBe(false);
 	});
+});
+
+// A key is a property of the endpoint, not of the engine. The Base URL row
+// exists so a run can be pointed at a compatible server, and the most valuable
+// thing to point it at - Ollama, LM Studio, LocalAI, a whisper-server build -
+// wants no key at all. Demanding one there sent users to type a decoy string
+// that then travelled in a real Authorization header.
+describe('which endpoints actually need a key', () => {
+	it('requires one at every account default, which is a cloud endpoint', () => {
+		for (const id of EVERY_ACCOUNT_ID) {
+			expect(accountRequiresKey(ACCOUNTS[id], mergeSettings({}))).toBe(
+				true,
+			);
+		}
+	});
+
+	it('requires none once the endpoint has been repointed', () => {
+		for (const id of EVERY_ACCOUNT_ID) {
+			const settings = mergeSettings({});
+			ACCOUNTS[id].setBaseUrl(settings, 'http://localhost:1234/v1');
+
+			expect(accountRequiresKey(ACCOUNTS[id], settings)).toBe(false);
+		}
+	});
+
+	// The path and a trailing slash are the user's business; what identifies
+	// the vendor's own endpoint is the host it answers on.
+	it('still requires one when only the path or slash differs', () => {
+		const settings = mergeSettings({});
+		ACCOUNTS[ACCOUNT_IDS.OPENAI].setBaseUrl(
+			settings,
+			'https://api.openai.com/v1/',
+		);
+
+		expect(accountRequiresKey(ACCOUNTS[ACCOUNT_IDS.OPENAI], settings)).toBe(
+			true,
+		);
+	});
+
+	// Another vendor's cloud host does want a key, but saying so here would be
+	// guessing: it answers 401 itself, in its own wording, which is the one
+	// answer that is never wrong.
+	it('leaves another host to refuse the request itself', () => {
+		const settings = mergeSettings({});
+		ACCOUNTS[ACCOUNT_IDS.OPENAI].setBaseUrl(
+			settings,
+			'https://api.groq.com/openai/v1',
+		);
+
+		expect(accountRequiresKey(ACCOUNTS[ACCOUNT_IDS.OPENAI], settings)).toBe(
+			false,
+		);
+	});
+
+	it("treats an unparsable endpoint as the user's own", () => {
+		const settings = mergeSettings({});
+		ACCOUNTS[ACCOUNT_IDS.GEMINI].setBaseUrl(settings, 'not a url');
+
+		expect(accountRequiresKey(ACCOUNTS[ACCOUNT_IDS.GEMINI], settings)).toBe(
+			false,
+		);
+	});
+
+	// An emptied field is the default endpoint, which is where a key is needed.
+	it('requires one again when the endpoint is cleared', () => {
+		const settings = mergeSettings({});
+		ACCOUNTS[ACCOUNT_IDS.DEEPGRAM].setBaseUrl(settings, '');
+
+		expect(
+			accountRequiresKey(ACCOUNTS[ACCOUNT_IDS.DEEPGRAM], settings),
+		).toBe(true);
+	});
+});
+
+// The composite every surface asks - both factories, the refusal a command
+// line answers with, the engine summary, the count of configured accounts.
+// Each of them used to read the key on its own, so a copy that was not brought
+// along when the rule moved onto the endpoint did not fail: it disagreed.
+describe('whether an account is short of the key a run needs', () => {
+	/** Settings selecting an account with an empty key. */
+	function withNoKey(accountId: AccountId): AudioRecorderSettings {
+		const settings = mergeSettings({});
+		ACCOUNTS[accountId].setApiKey(settings, '');
+		return settings;
+	}
+
+	it('is short of one at the default endpoint, which is the cloud', () => {
+		expect(
+			accountKeyMissing(
+				ACCOUNTS[ACCOUNT_IDS.OPENAI],
+				withNoKey(ACCOUNT_IDS.OPENAI),
+			),
+		).toBe(true);
+	});
+
+	it('is not short of one the endpoint never wanted', () => {
+		const settings = withNoKey(ACCOUNT_IDS.OPENAI);
+		ACCOUNTS[ACCOUNT_IDS.OPENAI].setBaseUrl(
+			settings,
+			'http://localhost:11434/v1',
+		);
+
+		expect(accountKeyMissing(ACCOUNTS[ACCOUNT_IDS.OPENAI], settings)).toBe(
+			false,
+		);
+	});
+
+	it('is not short of one it holds', () => {
+		const settings = mergeSettings({});
+		ACCOUNTS[ACCOUNT_IDS.GEMINI].setApiKey(settings, 'k');
+
+		expect(accountKeyMissing(ACCOUNTS[ACCOUNT_IDS.GEMINI], settings)).toBe(
+			false,
+		);
+	});
+
+	// The two halves are one question, and asking them apart is what let the
+	// answers drift. Every account is checked, so a new one arrives answered.
+	it.each(Object.values(ACCOUNT_IDS))(
+		'reads %s as its two halves together',
+		(accountId) => {
+			const account = ACCOUNTS[accountId];
+			const settings = withNoKey(accountId);
+
+			expect(accountKeyMissing(account, settings)).toBe(
+				accountRequiresKey(account, settings),
+			);
+		},
+	);
 });

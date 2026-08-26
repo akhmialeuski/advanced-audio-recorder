@@ -55,6 +55,7 @@ import {
 	type ChannelMode,
 } from '../audio/downmix';
 import { MonoCaptureBridge } from './MonoCaptureBridge';
+import { CaptureLossWatcher } from './CaptureLossWatcher';
 import type { PcmStreamRecorder } from './PcmStreamRecorder';
 import {
 	createAndStartMediaRecorders,
@@ -85,8 +86,14 @@ export class RecordingManager {
 	private pcmRecorders: PcmStreamRecorder[] = [];
 	private chunkTargets: RecordingTarget[] = [];
 	private streams: MediaStream[] = [];
-	/** Mono bridges wrapping the raw streams (MediaRecorder path only). */
-	private monoBridges: MonoCaptureBridge[] = [];
+	/**
+	 * Mono bridges wrapping the raw streams (MediaRecorder path only),
+	 * aligned with {@link RecordingManager.streams} and null where a track
+	 * records its raw stream. Indexed rather than packed, because a stream
+	 * that loses its device has to reach its own bridge and nothing else
+	 * says which one that is.
+	 */
+	private monoBridges: (MonoCaptureBridge | null)[] = [];
 	/** Streams the MediaRecorders record from (bridged or raw). */
 	private captureStreams: MediaStream[] = [];
 	/**
@@ -109,6 +116,8 @@ export class RecordingManager {
 	private recordedBytes: number = 0;
 	/** Live input-level meter for the primary stream, when enabled. */
 	private levelMonitor: InputLevelMonitor | null = null;
+	/** Watches the session's capture devices for going away mid-session. */
+	private readonly captureLoss = new CaptureLossWatcher();
 	private isWavPcmRecording: boolean = false;
 	private activeRecorderFormat: string = FORMAT_WEBM;
 	private insertionContext: InsertionContext | null = null;
@@ -441,6 +450,16 @@ export class RecordingManager {
 			this.rotation.markResumed();
 			this.setStatus(RecordingStatus.Recording);
 			new Notice('Recording started');
+			// Watched from here rather than from the moment the streams
+			// opened. A loss is answered by finalizing the session, so one
+			// reported before the session is recording has nothing to act on
+			// and used to be dropped for good - the very session that carries
+			// on with a dead input. Nothing that happened while the recorders
+			// were being built is missed: the watcher reads the state of the
+			// tracks as well as subscribing to their events.
+			this.captureLoss.start(this.streams, (index, remaining) => {
+				this.handleStreamEnded(index, remaining);
+			});
 			return null;
 		} catch (error) {
 			this.releasePartialSession();
@@ -462,10 +481,26 @@ export class RecordingManager {
 	 */
 	private releasePartialSession(): void {
 		this.journal.endSession();
+		this.stopRecordersNow('after start failure');
+		this.releaseSessionResources();
+	}
+
+	/**
+	 * Stops whatever recorders the session built without waiting for their
+	 * stop events.
+	 *
+	 * The two paths that abandon a session rather than finalize it - a failed
+	 * start and plugin unload - have nothing left to receive a final chunk, so
+	 * they stop the hardware and move on. Every failure is logged and
+	 * swallowed: one recorder that refuses to stop must not keep the rest of
+	 * the teardown from running.
+	 * @param when - Names the path in the log line
+	 */
+	private stopRecordersNow(when: string): void {
 		for (const recorder of this.pcmRecorders) {
 			recorder.stop().catch((error: unknown) => {
 				console.error(
-					`${PLUGIN_LOG_PREFIX} Failed to release PCM recorder after start failure:`,
+					`${PLUGIN_LOG_PREFIX} Failed to release PCM recorder ${when}:`,
 					error,
 				);
 			});
@@ -477,11 +512,27 @@ export class RecordingManager {
 				}
 			} catch (error) {
 				console.error(
-					`${PLUGIN_LOG_PREFIX} Failed to stop recorder after start failure:`,
+					`${PLUGIN_LOG_PREFIX} Failed to stop recorder ${when}:`,
 					error,
 				);
 			}
 		}
+	}
+
+	/**
+	 * Releases everything one session acquired, as a single list.
+	 *
+	 * That list used to be written three times over - the rollback of a failed
+	 * start, the `finally` of a normal stop, and unload - and kept in step by
+	 * hand. It was not in step: the input-level meter reached two of the three,
+	 * so a failed start left the meter's AudioContext open, and Chromium caps
+	 * how many of those one document may hold. Reading the list from one place
+	 * is what makes a resource added to a session reach every path that ends
+	 * one, instead of whichever path its author happened to edit.
+	 */
+	private releaseSessionResources(): void {
+		this.stopLevelMonitor();
+		this.captureLoss.release();
 		this.releaseMonoBridges();
 		stopAllStreams(this.streams);
 		this.streams = [];
@@ -491,7 +542,11 @@ export class RecordingManager {
 		this.chunkTargets = [];
 		this.trackOrder = [];
 		this.recordingTimestamp = null;
+		this.totalChunks = 0;
+		this.recordedBytes = 0;
+		this.isWavPcmRecording = false;
 		this.insertionContext = null;
+		this.sessionSplitEnabled = false;
 		this.markers.clearBuffer();
 	}
 
@@ -660,19 +715,16 @@ export class RecordingManager {
 		// registers before any starts, so a failed start (e.g. an audio
 		// context stuck in the suspended state) still releases all
 		// acquired contexts via releasePartialSession.
-		const bridgeByStream = this.streams.map((stream, index) => {
+		this.monoBridges = this.streams.map((stream, index) => {
 			const mode = this.sessionChannelModes[index] ?? CHANNEL_MODE_SOURCE;
 			return isMonoChannelMode(mode)
 				? new MonoCaptureBridge(stream, mode, this.settings.sampleRate)
 				: null;
 		});
-		this.monoBridges = bridgeByStream.filter(
-			(bridge): bridge is MonoCaptureBridge => bridge !== null,
-		);
 		this.captureStreams = await Promise.all(
 			this.streams.map(
 				(stream, index) =>
-					bridgeByStream[index]?.start() ?? Promise.resolve(stream),
+					this.monoBridges[index]?.start() ?? Promise.resolve(stream),
 			),
 		);
 		this.startMediaRecorders();
@@ -713,6 +765,57 @@ export class RecordingManager {
 	}
 
 	/**
+	 * Answers one capture stream ending.
+	 *
+	 * A multi-track session keeps whatever is still capturing: pulling one
+	 * interface out is a reason to lose that track, not the interview. The
+	 * user is told which one went, because "a track stopped" is not something
+	 * anybody can act on.
+	 *
+	 * Losing the last live stream ends the session, keeping everything it
+	 * captured: the buffers hold real audio right up to the moment the device
+	 * went, so the session is finalized the way a stop does it rather than
+	 * discarded. One disconnection can be noticed twice - the track ends and
+	 * the device list changes - and this runs once per stream either way,
+	 * because {@link CaptureLossWatcher} counts the losses and this reads the
+	 * count. Two places deciding that would be two rules for one fact.
+	 * @param index - Which of the session's streams ended
+	 * @param remaining - How many are still live
+	 */
+	private handleStreamEnded(index: number, remaining: number): void {
+		const name = this.chunkTargets[index]?.sourceName ?? 'the input device';
+		if (remaining > 0) {
+			// A track recorded straight off its capture stream stops by
+			// itself, because a recorder whose stream has gone inactive is
+			// ended by the browser. A bridged one does not: what it records
+			// is the bridge's own destination track, which stays live and
+			// feeds silence for the rest of the session. So one disconnection
+			// truncated the file on one capture path and left a full-length
+			// silent one on the other, and the sentence below was true of
+			// only the first. Releasing this stream's bridge ends its output
+			// too, which is the same thing the direct path does.
+			this.monoBridges[index]?.release();
+			new Notice(
+				`Track "${name}" stopped: its input device was disconnected. ` +
+					'The other tracks are still recording.',
+			);
+			return;
+		}
+		// Capture genuinely ended at this instant, so the active span since
+		// the last resume is folded in before the status stops counting it.
+		// Without this the saved duration loses everything since that resume.
+		if (this.status === RecordingStatus.Recording) {
+			this.rotation.markPaused();
+		}
+		this.setStatus(RecordingStatus.Interrupted);
+		new Notice(
+			`Recording stopped: the input device "${name}" was disconnected. ` +
+				'Saving what was recorded so far.',
+		);
+		void this.stopRecording();
+	}
+
+	/**
 	 * Handles errors during recording start with user-friendly messages.
 	 * @param error - What the start threw
 	 * @returns The sentence the user was shown, for a caller to answer with
@@ -738,6 +841,13 @@ export class RecordingManager {
 		if (!this.rotation.requestStop()) {
 			return 'A stop is already in progress.';
 		}
+		// The watch belongs to the capture, not to the session, and this is
+		// where the capture ends. Left running for the save that follows, it
+		// still holds live tracks and a devicechange listener, so an input
+		// unplugged while a stop the user pressed was writing its file was
+		// read as the reason the recording ended: the save relabelled itself
+		// "Input lost" and announced a disconnection nobody had suffered.
+		this.captureLoss.release();
 		// Snapshot active audio time before recorder shutdown and saving add
 		// wall-clock latency. The post-save detector uses this to reject long
 		// sessions before reading or decoding their files.
@@ -814,22 +924,7 @@ export class RecordingManager {
 				error,
 			);
 		} finally {
-			this.stopLevelMonitor();
-			this.releaseMonoBridges();
-			stopAllStreams(this.streams);
-			this.streams = [];
-			detachRecorderHandlers(this.recorders);
-			this.recorders = [];
-			this.pcmRecorders = [];
-			this.chunkTargets = [];
-			this.trackOrder = [];
-			this.recordingTimestamp = null;
-			this.totalChunks = 0;
-			this.recordedBytes = 0;
-			this.isWavPcmRecording = false;
-			this.insertionContext = null;
-			this.sessionSplitEnabled = false;
-			this.markers.clearBuffer();
+			this.releaseSessionResources();
 			this.setStatus(RecordingStatus.Idle);
 		}
 		return stopFailure;
@@ -938,45 +1033,18 @@ export class RecordingManager {
 		// Prevent an in-flight part rotation from recreating recorders
 		// on the released streams after unload
 		this.rotation.requestStop();
+		// Cleared here rather than with the rest of the session state below,
+		// because a PCM chunk arriving during the flushes would otherwise
+		// still try to finalize a part on a session that is going away.
 		this.sessionSplitEnabled = false;
-		this.stopLevelMonitor();
-		for (const recorder of this.pcmRecorders) {
-			recorder.stop().catch((error: unknown) => {
-				console.error(
-					`${PLUGIN_LOG_PREFIX} Failed to release PCM recorder on unload:`,
-					error,
-				);
-			});
-		}
-		for (const recorder of this.recorders) {
-			try {
-				if (recorder.state !== 'inactive') {
-					recorder.stop();
-				}
-			} catch (error) {
-				console.error(
-					`${PLUGIN_LOG_PREFIX} Failed to stop recorder on unload:`,
-					error,
-				);
-			}
-		}
+		this.stopRecordersNow('on unload');
 		for (const target of this.chunkTargets) {
 			void this.writeQueue.enqueue(target, async () => {
 				await this.writeQueue.flushChunkBuffer(target);
 				await this.writeQueue.flushPcmBuffer(target);
 			});
 		}
-		this.releaseMonoBridges();
-		stopAllStreams(this.streams);
-		detachRecorderHandlers(this.recorders);
-		this.recorders = [];
-		this.pcmRecorders = [];
-		this.chunkTargets = [];
-		this.streams = [];
-		this.recordingTimestamp = null;
-		this.totalChunks = 0;
-		this.isWavPcmRecording = false;
-		this.insertionContext = null;
+		this.releaseSessionResources();
 	}
 
 	/**
@@ -986,18 +1054,34 @@ export class RecordingManager {
 	 */
 	private releaseMonoBridges(): void {
 		for (const bridge of this.monoBridges) {
-			bridge.release();
+			bridge?.release();
 		}
 		this.monoBridges = [];
 		this.captureStreams = [];
 	}
 
+	/**
+	 * Moves the session to a status and reports it.
+	 *
+	 * A `Saving` does not displace an `Interrupted`. The session is saving
+	 * either way, and what separates the two is why - which holds for as long
+	 * as the save does, rather than for the instant it began. Reported as an
+	 * ordinary save, which the finalizer's first progress line used to do, the
+	 * reason survived only in a Notice the user had already dismissed.
+	 * @param status - The status the session is moving to
+	 * @param saveProgress - Progress of the save, when one is in flight
+	 */
 	private setStatus(
 		status: RecordingStatus,
 		saveProgress?: SaveProgress,
 	): void {
-		this.status = status;
-		this.onStatusChange(status, saveProgress);
+		const effective =
+			status === RecordingStatus.Saving &&
+			this.status === RecordingStatus.Interrupted
+				? RecordingStatus.Interrupted
+				: status;
+		this.status = effective;
+		this.onStatusChange(effective, saveProgress);
 	}
 
 	private async handleChunk(index: number, data: Blob): Promise<void> {

@@ -198,6 +198,11 @@ export interface StubStreamOptions {
 	stopTrack?: jest.Mock;
 	/** Track order the handler reports, empty unless a suite pins it. */
 	trackOrder?: TrackAudioSource[];
+	/**
+	 * State every track reports. Live unless a suite is about an input that
+	 * had already gone by the time the session was ready to watch for it.
+	 */
+	trackState?: MediaStreamTrackState;
 }
 
 /**
@@ -209,14 +214,22 @@ export interface StubStreamOptions {
 export const stubAudioStreams = (
 	options: StubStreamOptions = {},
 ): MediaStream[] => {
-	const { count = 1, stopTrack, trackOrder = [] } = options;
+	const {
+		count = 1,
+		stopTrack,
+		trackOrder = [],
+		trackState = 'live',
+	} = options;
 	const { getAudioStreams } = jest.requireMock<{
 		getAudioStreams: jest.Mock;
 	}>('src/recording/AudioStreamHandler');
 	const streams = Array.from({ length: count }, () =>
 		partial<MediaStream>({
 			getTracks: () => [
-				partial<MediaStreamTrack>({ stop: stopTrack ?? jest.fn() }),
+				partial<MediaStreamTrack>({
+					stop: stopTrack ?? jest.fn(),
+					readyState: trackState,
+				}),
 			],
 		}),
 	);

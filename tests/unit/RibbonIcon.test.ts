@@ -49,8 +49,19 @@ describe('RibbonIcon', () => {
 			);
 		});
 
-		it('changes icon to save and add is-saving class when saving', () => {
-			updateRibbonIcon(ribbonElement, RecordingStatus.Saving);
+		// An interrupted session is finalizing too, so the icon says the same
+		// thing; what makes it different is stated where there is room for it.
+		it.each([
+			{
+				name: 'a stop the user asked for',
+				status: RecordingStatus.Saving,
+			},
+			{
+				name: 'a session whose input was lost',
+				status: RecordingStatus.Interrupted,
+			},
+		])('shows the saving icon for $name', ({ status }) => {
+			updateRibbonIcon(ribbonElement, status);
 
 			expect(ribbonElement.getAttribute('data-icon')).toBe('save');
 			expect(ribbonElement.classList.contains('is-saving')).toBe(true);

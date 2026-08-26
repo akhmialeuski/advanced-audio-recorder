@@ -23,6 +23,7 @@ import {
 	TRANSCRIPTION_PROVIDER_IDS,
 } from '../../constants';
 import {
+	accountKeyMissing,
 	ENGINE_IDS,
 	engineAccess,
 	missingModelMessage,
@@ -102,7 +103,10 @@ function cloudEngineFactory(
 	return (settings, requestTimeoutMs) => {
 		const { engine, account, models } = engineAccess(id);
 		const apiKey = account.apiKey(settings);
-		if (!apiKey) {
+		// Only the vendor's own endpoint is refused without a key. A user who
+		// repointed the Base URL at a local server is reached by a request
+		// that carries no Authorization header at all.
+		if (accountKeyMissing(account, settings)) {
 			throw new ProviderConfigError(account.missingKeyMessage);
 		}
 		const model = models.model(settings);

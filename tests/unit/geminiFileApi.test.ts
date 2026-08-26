@@ -26,8 +26,20 @@ import {
 	type MockRequestUrlResponse,
 } from '../mocks/obsidian';
 import { queueResponses, withRequestUrl } from '../helpers/network';
+import { outcomeOf } from '../helpers/async';
 
 const BASE_URL = 'https://gemini.example';
+
+/**
+ * A second endpoint, for the one case that has to go out through `fetch`.
+ *
+ * The polls elsewhere in this file run with a signal and no fetch double
+ * installed, which is what a CORS refusal looks like from inside the client -
+ * and the client remembers a refusing origin for the rest of the session
+ * rather than paying for the discovery on every request. A fresh origin is
+ * therefore a fresh answer.
+ */
+const ABORTABLE_BASE_URL = 'https://gemini-cors.example';
 const API_KEY = 'gm-test';
 
 /** One status response reporting the given processing state. */
@@ -246,6 +258,84 @@ describe('waitUntilActive', () => {
 			await jest.advanceTimersByTimeAsync(1);
 			await expect(pending).resolves.toBeUndefined();
 		});
+
+		// The budget scales with the upload up to twenty minutes. A Cancel
+		// that only took effect at the next boundary left the user watching a
+		// dialog they had already dismissed, while the run kept polling.
+		it('ends the wait when the run is cancelled between polls', async () => {
+			const sent = queueResponses([statusResponse('PROCESSING')]);
+			const controller = new AbortController();
+			const reason = new Error('Transcription cancelled');
+
+			const pending = waitUntilActive(
+				BASE_URL,
+				API_KEY,
+				'files/x',
+				undefined,
+				controller.signal,
+			);
+			const settled = outcomeOf(pending);
+			await jest.advanceTimersByTimeAsync(1);
+			controller.abort(reason);
+
+			expect(await settled).toEqual({ error: reason });
+			expect(sent).toHaveLength(1);
+		});
+
+		it('polls on as usual while nothing has been cancelled', async () => {
+			const sent = queueResponses([
+				statusResponse('PROCESSING'),
+				statusResponse('ACTIVE'),
+			]);
+			const controller = new AbortController();
+
+			const pending = waitUntilActive(
+				BASE_URL,
+				API_KEY,
+				'files/x',
+				undefined,
+				controller.signal,
+			);
+			await jest.advanceTimersByTimeAsync(GEMINI_FILE_POLL_INTERVAL_MS);
+
+			await expect(pending).resolves.toBeUndefined();
+			expect(sent).toHaveLength(2);
+		});
+
+		// Not only between polls: the poll request goes out on the abortable
+		// transport too, so an abort inside one is not waited out either.
+		it('sends the poll on a transport that can abort', async () => {
+			let init: RequestInit | undefined;
+			(globalThis as { fetch?: unknown }).fetch = jest.fn(
+				(_url: string, sent: RequestInit) => {
+					init = sent;
+					return Promise.resolve({
+						status: 200,
+						headers: new Headers(),
+						text: () =>
+							Promise.resolve(
+								JSON.stringify({
+									name: 'files/x',
+									uri: 'u',
+									state: 'ACTIVE',
+								}),
+							),
+					});
+				},
+			);
+			const controller = new AbortController();
+
+			await waitUntilActive(
+				ABORTABLE_BASE_URL,
+				API_KEY,
+				'files/x',
+				undefined,
+				controller.signal,
+			);
+			delete (globalThis as { fetch?: unknown }).fetch;
+
+			expect(init?.signal).toBeDefined();
+		});
 	});
 
 	it('gives up once the wait budget is spent', async () => {
@@ -286,6 +376,27 @@ describe('deleteFile', () => {
 		expect(seen?.method).toBe('DELETE');
 		expect(seen?.url).toBe(`${BASE_URL}/v1beta/files/x`);
 		expect(seen?.headers?.['x-goog-api-key']).toBe(API_KEY);
+	});
+});
+
+// Gemini's key travels in a header of its own, and an empty one used to be
+// sent as an empty string. A compatible local endpoint ignores it either way,
+// but a header claiming an identity that does not exist is left off.
+describe('the api-key header', () => {
+	it('is absent from every request when no key is configured', async () => {
+		const sent: MockRequestUrlParam[] = [];
+		withRequestUrl((param): MockRequestUrlResponse => {
+			sent.push(param);
+			return {
+				status: 200,
+				headers: {},
+				text: JSON.stringify({ name: 'files/x', uri: 'u' }),
+			};
+		});
+
+		await deleteFile(BASE_URL, '', 'files/x');
+
+		expect(at(sent, 0).headers).not.toHaveProperty('x-goog-api-key');
 	});
 });
 

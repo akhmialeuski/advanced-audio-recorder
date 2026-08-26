@@ -54,6 +54,27 @@ export const flushMicrotasks = async (turns = 5): Promise<void> => {
 	}
 };
 
+/** How a watched promise ended: with a value, or with what it threw. */
+export type Outcome<T> = { value: T } | { error: unknown };
+
+/**
+ * Captures how a promise ends without leaving its rejection unhandled.
+ *
+ * Work driven by fake timers settles inside `advanceTimersByTimeAsync`, and a
+ * handler attached after that call arrives too late: the rejection is already
+ * loose and jest reports it against whichever test was running. Attaching one
+ * up front and reporting the outcome as a value lets the assertion come
+ * afterwards, in the order a test reads best.
+ * @param work - The promise to watch
+ * @returns Its value, or the error it threw
+ */
+export function outcomeOf<T>(work: Promise<T>): Promise<Outcome<T>> {
+	return work.then(
+		(value) => ({ value }),
+		(error: unknown) => ({ error }),
+	);
+}
+
 /**
  * Polls until the condition holds, then returns. Throws a readable error if it
  * never does, so a hung expectation names what it was waiting for instead of

@@ -12,7 +12,10 @@ import {
 import { at, jsonBody } from '../helpers/assertions';
 import type { AudioPayload } from 'src/transcription/providers/TranscriptionProvider';
 import { uploadTimeoutMs } from 'src/transcription/httpClient';
-import { GEMINI_GENERATE_MIN_TIMEOUT_MS } from 'src/constants';
+import {
+	DEFAULT_GEMINI_MODEL,
+	GEMINI_GENERATE_MIN_TIMEOUT_MS,
+} from 'src/constants';
 // Mock-only surface: these exist on the test double, not on Obsidian's
 // API, so they are imported from the mock by path. Jest maps 'obsidian'
 // to the same module, so both imports share one instance.
@@ -43,7 +46,7 @@ interface GenerateBody {
 	generationConfig: {
 		temperature: number;
 		responseMimeType: string;
-		thinkingConfig?: { thinkingBudget: number };
+		thinkingConfig?: { thinkingBudget?: number; thinkingLevel?: string };
 	};
 }
 
@@ -295,6 +298,22 @@ describe('GeminiProvider.transcribe', () => {
 
 		expect(flow.generateBody().generationConfig.thinkingConfig).toEqual({
 			thinkingBudget: 128,
+		});
+	});
+
+	// The default model belongs to the 3.x generation, which takes a level
+	// rather than a budget and was being sent neither: it ran with dynamic
+	// thinking, spent output budget on it, and hit the cap on dense audio.
+	it('sends the reasoning level on the default model', async () => {
+		const flow = scriptTranscriptFlow();
+
+		await provider(DEFAULT_GEMINI_MODEL).transcribe(payload('audio/wav'), {
+			diarize: false,
+			wordTimestamps: false,
+		});
+
+		expect(flow.generateBody().generationConfig.thinkingConfig).toEqual({
+			thinkingLevel: 'low',
 		});
 	});
 

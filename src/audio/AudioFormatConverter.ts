@@ -13,6 +13,7 @@ import {
 	type ChannelMode,
 } from './downmix';
 import { autoClosing } from '../utils/disposables';
+import { isDecodableSize, tooLargeMessage } from '../platform/capabilities';
 import {
 	MIME_TYPE_AUDIO_PREFIX,
 	PLUGIN_LOG_PREFIX,
@@ -133,11 +134,28 @@ export async function convertBlobToWavBuffer(
  * produced an identical buffer while doubling decode time and peak
  * memory (two full PCM copies of the recording).
  * @param arrayBuffer - Encoded audio file bytes
+ * @param action - What the user asked for, named as a verb phrase, for the
+ *   refusal when the file will not fit under the decode ceiling. Named by the
+ *   caller because only the caller knows it: the ceiling belongs here, where
+ *   the allocation is, but "decode" is the name of the allocation and not of
+ *   anything anybody asked for, and it is what a desktop user converting an
+ *   oversized file was told
  * @returns Decoded AudioBuffer
  */
 export async function decodeAudioBlob(
 	arrayBuffer: ArrayBuffer,
+	action = 'open',
 ): Promise<AudioBuffer> {
+	// Asked here rather than by each caller. The ceiling exists because this
+	// call is the allocation - it expands the file to full PCM in memory - and
+	// on a phone exceeding it is not a catchable error but the OS killing the
+	// WebView. Applied per caller it was applied per caller who remembered:
+	// the waveform, cleanup, the splitter and the metadata read all asked,
+	// and conversion, added later, did not. Asked before the context is built,
+	// because the allocation starts there.
+	if (!isDecodableSize(arrayBuffer.byteLength)) {
+		throw new Error(tooLargeMessage(action));
+	}
 	// Closed even when decoding fails (corrupted/unsupported input),
 	// otherwise the AudioContext leaks
 	await using audioContext = autoClosing(new AudioContext());
@@ -267,7 +285,7 @@ export async function convertBlobToFormat(
 	}
 
 	const arrayBuffer = await recordedBlob.arrayBuffer();
-	const decodedBuffer = await decodeAudioBlob(arrayBuffer);
+	const decodedBuffer = await decodeAudioBlob(arrayBuffer, 'convert');
 
 	return encodeAudioBuffer(
 		downmixAudioBuffer(decodedBuffer, channelMode),
@@ -339,7 +357,7 @@ export async function convertBlobToFormatBuffer(
 	}
 
 	const arrayBuffer = await recordedBlob.arrayBuffer();
-	const decodedBuffer = await decodeAudioBlob(arrayBuffer);
+	const decodedBuffer = await decodeAudioBlob(arrayBuffer, 'convert');
 	const encoded = await encodeAudioBuffer(
 		downmixAudioBuffer(decodedBuffer, channelMode),
 		{ format: targetFormat, bitrate },

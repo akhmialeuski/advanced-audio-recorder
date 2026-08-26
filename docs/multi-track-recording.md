@@ -100,6 +100,7 @@ When **two tracks use the same device**, their source names would be identical a
 - **Recording stats sum across tracks.** The live size shown in the status bar is the **total across all tracks and parts**, so a multi-track session grows faster on disk than a single-track one. See [Recording feedback](recording.md#live-feedback).
 - **Same device on several tracks is allowed.** Files are kept from colliding by the track-number suffix described above.
 - **Format and mode are locked for the session.** The output format and output mode are snapshotted when recording starts; changing them in settings mid-recording takes effect on the **next** session, not the current one.
+- **A track whose input disappears ends there.** Pulling out one interface costs that one track. Its file ends at the disconnection, a notice names the track so it is clear which one is short, and every other track keeps recording. Losing the last live input stops the session and saves what it has. See [Losing the input device](recording.md#losing-the-input-device).
 
 ---
 

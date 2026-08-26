@@ -24,6 +24,9 @@ import { createMockApp } from '../helpers/createApp';
 import { fakeProvider, NO_DIARIZATION } from '../helpers/providerFixtures';
 import { LLM_PROVIDER_IDS } from 'src/constants';
 import { noticeMessages } from '../mocks/obsidian';
+import { CancellationSource } from 'src/utils/cancellation';
+import { HttpError } from 'src/transcription/httpClient';
+import { outcomeOf, waitFor } from '../helpers/async';
 
 const audioFile = partial<TFile>({
 	name: 'rec.webm',
@@ -294,6 +297,175 @@ describe('a cancel that lands while a request is in flight', () => {
 		await expect(
 			runWatching(service, () => cancelled),
 		).rejects.toBeInstanceOf(TranscriptionCancelledError);
+	});
+
+	// The cancel used to reach the transcription request and nothing else, so
+	// pressing it during post-processing released nothing: the dialog stayed
+	// busy for the request's own five-minute timeout, and the provider ran the
+	// call and billed for it. What the user pressed the button for was exactly
+	// not to pay for it.
+	describe('a cancel pressed while the cleanup pass is running', () => {
+		/**
+		 * What an aborted LLM call really rejects with.
+		 *
+		 * The transport aborts the socket and reports it the way it reports
+		 * any request that never received an answer. Nothing on that path
+		 * raises the service's own cancellation, which is precisely what the
+		 * run has to recognise, so the double raises what the real client
+		 * raises rather than the conclusion the run is meant to draw from it.
+		 * @returns The failure an aborted request raises
+		 */
+		function abortedRequest(): Error {
+			return new HttpError(
+				0,
+				'Request to https://generativelanguage.googleapis.com ' +
+					'was cancelled.',
+			);
+		}
+
+		/**
+		 * Dependencies whose transcription completes and whose cleanup pass
+		 * then hangs, failing the way an aborted request really fails once
+		 * the run's signal reaches it.
+		 * @param costSink - Where the run reports LLM spending, when a test
+		 *   cares whether anything was billed
+		 * @returns The dependencies, plus probes for what the pass saw
+		 */
+		function hangingCleanup(
+			costSink?: TranscriptionServiceDeps['costSink'],
+		): {
+			deps: TranscriptionServiceDeps;
+			started: () => boolean;
+			aborted: () => boolean;
+		} {
+			let started = false;
+			let aborted = false;
+			return {
+				started: () => started,
+				aborted: () => aborted,
+				deps: {
+					createProvider: () =>
+						makeProvider(() => {
+							/* the transcription itself completes */
+						}),
+					createLlm: () => ({
+						id: LLM_PROVIDER_IDS.GEMINI,
+						label: 'Fake LLM',
+						complete: (_prompt, _maxTokens, options) =>
+							new Promise((_resolve, reject) => {
+								started = true;
+								options?.signal?.addEventListener(
+									'abort',
+									() => {
+										aborted = true;
+										reject(abortedRequest());
+									},
+								);
+							}),
+					}),
+					...(costSink ? { costSink } : {}),
+				},
+			};
+		}
+
+		/**
+		 * Waits until the cleanup pass is in flight, then cancels the run.
+		 * @param pass - The hanging pass to wait on
+		 * @param source - The run's cancellation
+		 */
+		async function cancelOnceRunning(
+			pass: { started: () => boolean },
+			source: CancellationSource,
+		): Promise<void> {
+			await waitFor(pass.started, {
+				message: 'the post-processing call to start',
+			});
+			source.cancel();
+		}
+
+		/**
+		 * Runs to the post-processing stage, cancels there, and reports what
+		 * the pass saw.
+		 * @param costSink - Where the run reports LLM spending, when a test
+		 *   cares whether anything was billed
+		 * @returns Whether the pass was aborted, once the run has rejected
+		 */
+		async function cancelDuringCleanup(
+			costSink?: TranscriptionServiceDeps['costSink'],
+		): Promise<boolean> {
+			const source = new CancellationSource();
+			const pass = hangingCleanup(costSink);
+			const settled = outcomeOf(
+				new TranscriptionService(
+					makeApp(),
+					() => mergeSettings({ ...baseSettings, ...withCleanup }),
+					pass.deps,
+				).run(audioFile, {
+					notePathForLinks: 'note.md',
+					token: source.token,
+				}),
+			);
+
+			await cancelOnceRunning(pass, source);
+
+			expect(await settled).toEqual({
+				error: expect.any(TranscriptionCancelledError),
+			});
+			return pass.aborted();
+		}
+
+		it('aborts the request rather than waiting it out', async () => {
+			expect(await cancelDuringCleanup()).toBe(true);
+		});
+
+		// A call that was aborted was never answered, so it is not spending
+		// the session counter should show.
+		it('accounts nothing for the call it cancelled', async () => {
+			const records: string[] = [];
+
+			await cancelDuringCleanup({
+				recordLlmCall: (providerId) => {
+					records.push(providerId);
+				},
+			});
+
+			expect(records).toEqual([]);
+		});
+
+		// Regression: the aborted call raises a transport failure, and the
+		// pass read that as its own breakage. The run then told the user the
+		// cleanup had failed, carried on, and wrote the transcript they had
+		// just cancelled.
+		it('regression: writes nothing and calls the cancel a cancel', async () => {
+			const source = new CancellationSource();
+			const pass = hangingCleanup();
+			const create = jest.fn(async () => audioFile);
+
+			const settled = outcomeOf(
+				transcribeFile(
+					makeApp(create),
+					() =>
+						mergeSettings({
+							...baseSettings,
+							...withCleanup,
+							transcriptDestination: 'file',
+						}),
+					audioFile,
+					{ notePathForLinks: 'note.md', token: source.token },
+					pass.deps,
+				),
+			);
+
+			await cancelOnceRunning(pass, source);
+
+			expect(await settled).toEqual({
+				error: expect.any(TranscriptionCancelledError),
+			});
+			expect(create).not.toHaveBeenCalled();
+			expect(noticeMessages()).not.toContain(
+				'LLM post-processing failed; saving the raw transcript.',
+			);
+		});
 	});
 
 	// The same failure that is not a cancel keeps the transcript: the run is

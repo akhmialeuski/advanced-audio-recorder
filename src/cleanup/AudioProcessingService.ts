@@ -12,6 +12,7 @@ import {
 	getMaxCleanupDecodedSamples,
 	getMaxCleanupSeconds,
 	isDecodableSize,
+	tooLargeMessage,
 } from '../platform/capabilities';
 import {
 	isKnownLongerThan,
@@ -96,9 +97,7 @@ export class AudioProcessingService {
 		// Platform-dependent ceiling: mobile WebViews get a far smaller
 		// memory budget than the desktop renderer.
 		if (!isDecodableSize(file.stat.size)) {
-			throw new Error(
-				'Audio file is too large to clean up here. Split it into parts first.',
-			);
+			throw new Error(tooLargeMessage('clean up'));
 		}
 		const data = await this.app.vault.readBinary(file);
 		// Estimate the decoded working set from container metadata BEFORE

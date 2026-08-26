@@ -11,14 +11,18 @@ import {
 	getAudioSourceName,
 	getOrderedTrackSources,
 	isMultiTrackSessionEnabled,
+	missingCaptureIndexes,
 	resolveCaptureDeviceId,
 	validateSelectedDevices,
+	watchStreamEndings,
 } from 'src/recording/AudioStreamHandler';
 import { AudioStreamError } from 'src/errors';
 import { DEFAULT_SETTINGS } from 'src/settings/settingsSchema';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { setPlatform, useDesktopPlatform } from '../helpers/platform';
 import { partial } from '../helpers/doubles';
+import { at } from '../helpers/assertions';
+import { withMediaDevices } from '../helpers/mediaMocks';
 
 /** Builds a MediaStream stub whose tracks record stop() calls. */
 function fakeStream(): { stream: MediaStream; stop: jest.Mock } {
@@ -655,23 +659,9 @@ describe('AudioStreamHandler', () => {
 	});
 
 	describe('naming a device for the filename', () => {
-		const originalMediaDevices = navigator.mediaDevices;
-		let enumerateDevices: jest.Mock;
-
-		beforeEach(() => {
-			enumerateDevices = jest.fn().mockResolvedValue([]);
-			Object.defineProperty(navigator, 'mediaDevices', {
-				value: { enumerateDevices },
-				configurable: true,
-			});
-		});
-
-		afterEach(() => {
-			Object.defineProperty(navigator, 'mediaDevices', {
-				value: originalMediaDevices,
-				configurable: true,
-			});
-		});
+		const devices = withMediaDevices(() => ({
+			enumerateDevices: jest.fn().mockResolvedValue([]),
+		}));
 
 		it.each([
 			{
@@ -692,7 +682,7 @@ describe('AudioStreamHandler', () => {
 		])('$name', async ({ label, expected }) => {
 			// The name goes into a track's filename, so a slash or a colon
 			// would produce a path the vault cannot write.
-			enumerateDevices.mockResolvedValue([
+			devices().enumerateDevices.mockResolvedValue([
 				{ kind: 'audioinput', deviceId: 'device-1', label },
 			]);
 
@@ -708,7 +698,7 @@ describe('AudioStreamHandler', () => {
 		});
 
 		it('shortens a long device id in the fallback name', async () => {
-			enumerateDevices.mockResolvedValue([
+			devices().enumerateDevices.mockResolvedValue([
 				{
 					kind: 'audioinput',
 					deviceId: 'abcdefghijklmnopqrstuvwxyz',
@@ -720,5 +710,190 @@ describe('AudioStreamHandler', () => {
 				getAudioSourceName('abcdefghijklmnopqrstuvwxyz'),
 			).resolves.toBe('Deviceabcdefgh');
 		});
+	});
+});
+
+// Nothing in the plugin used to listen for a track ending, so a microphone
+// unplugged mid-session was noticed only when the finished file turned out to
+// hold silence. The subscription is the mirror image of stopAllStreams, and
+// lives beside it for the same reason: both walk every track of every stream.
+describe('watchStreamEndings', () => {
+	/** A track that records what was subscribed to it. */
+	function fakeTrack(): {
+		track: MediaStreamTrack;
+		add: jest.Mock;
+		remove: jest.Mock;
+	} {
+		const add = jest.fn();
+		const remove = jest.fn();
+		return {
+			track: partial<MediaStreamTrack>({
+				addEventListener: add,
+				removeEventListener: remove,
+			}),
+			add,
+			remove,
+		};
+	}
+
+	/** A stream over the given tracks. */
+	function streamOf(tracks: MediaStreamTrack[]): MediaStream {
+		return partial<MediaStream>({ getTracks: () => tracks });
+	}
+
+	it('subscribes to the end of every track of every stream', () => {
+		const first = fakeTrack();
+		const second = fakeTrack();
+
+		watchStreamEndings(
+			[streamOf([first.track]), streamOf([second.track])],
+			jest.fn(),
+		);
+
+		expect(first.add).toHaveBeenCalledWith('ended', expect.any(Function));
+		expect(second.add).toHaveBeenCalledWith('ended', expect.any(Function));
+	});
+
+	it('reports which stream ended', () => {
+		const first = fakeTrack();
+		const second = fakeTrack();
+		const onEnded = jest.fn();
+
+		watchStreamEndings(
+			[streamOf([first.track]), streamOf([second.track])],
+			onEnded,
+		);
+		at(second.add.mock.calls, 0)[1]();
+
+		expect(onEnded).toHaveBeenCalledWith(1);
+	});
+
+	// The session outlives several of these on a multi-part recording, so a
+	// subscription left attached is a listener per rotation on a dead track.
+	it('takes every subscription back down when released', () => {
+		const first = fakeTrack();
+		const second = fakeTrack();
+
+		const release = watchStreamEndings(
+			[streamOf([first.track]), streamOf([second.track])],
+			jest.fn(),
+		);
+		release();
+
+		expect(first.remove).toHaveBeenCalledWith(
+			'ended',
+			at(first.add.mock.calls, 0)[1],
+		);
+		expect(second.remove).toHaveBeenCalledWith(
+			'ended',
+			at(second.add.mock.calls, 0)[1],
+		);
+	});
+
+	it('releases a second time without complaint', () => {
+		const only = fakeTrack();
+
+		const release = watchStreamEndings([streamOf([only.track])], jest.fn());
+		release();
+		release();
+
+		expect(only.remove).toHaveBeenCalledTimes(1);
+	});
+
+	it('subscribes to nothing when the session has no streams', () => {
+		const onEnded = jest.fn();
+
+		const release = watchStreamEndings([], onEnded);
+		release();
+
+		expect(onEnded).not.toHaveBeenCalled();
+	});
+});
+
+// The re-check behind the devicechange backstop. Its index has to address the
+// streams the session is holding, which is why it is asked of them: resolved
+// against the live settings it answered in a list the user can edit
+// mid-session, and an index out of that list named a stream the session never
+// had - enough of those retired a session whose inputs were all still live.
+describe('missingCaptureIndexes', () => {
+	const devices = withMediaDevices(() => ({
+		enumerateDevices: jest.fn().mockResolvedValue([]),
+	}));
+
+	/**
+	 * A capture stream whose single track names this device.
+	 * @param deviceId - What the track reports it is capturing from
+	 * @returns The stream double
+	 */
+	function streamFrom(deviceId: string): MediaStream {
+		return partial<MediaStream>({
+			getTracks: () => [
+				partial<MediaStreamTrack>({
+					getSettings: () => ({ deviceId }),
+				}),
+			],
+		});
+	}
+
+	/**
+	 * Answers the enumeration with exactly these audio inputs.
+	 * @param deviceIds - The ids the system lists
+	 */
+	function listInputs(...deviceIds: string[]): void {
+		devices().enumerateDevices.mockResolvedValue(
+			deviceIds.map((deviceId) => ({
+				kind: 'audioinput',
+				deviceId,
+				label: deviceId,
+			})),
+		);
+	}
+
+	it('names the stream whose device is gone', async () => {
+		listInputs('kept');
+
+		await expect(
+			missingCaptureIndexes([streamFrom('kept'), streamFrom('gone')]),
+		).resolves.toEqual([1]);
+	});
+
+	it('names every stream one check finds gone', async () => {
+		listInputs('kept');
+
+		await expect(
+			missingCaptureIndexes([
+				streamFrom('gone-a'),
+				streamFrom('kept'),
+				streamFrom('gone-b'),
+			]),
+		).resolves.toEqual([0, 2]);
+	});
+
+	it('leaves a session whose inputs are all listed alone', async () => {
+		listInputs('one', 'two');
+
+		await expect(
+			missingCaptureIndexes([streamFrom('one'), streamFrom('two')]),
+		).resolves.toEqual([]);
+	});
+
+	// A list that came back empty is a platform declining to answer. Read as
+	// every input going away at once, it ends a session that is recording
+	// perfectly well.
+	it('says nothing when the platform lists no inputs at all', async () => {
+		await expect(
+			missingCaptureIndexes([streamFrom('one')]),
+		).resolves.toEqual([]);
+	});
+
+	// The system default input reports no id on some platforms, and a track
+	// that names no device says nothing about itself. Its `ended` event still
+	// speaks for it.
+	it('says nothing about a stream whose track names no device', async () => {
+		listInputs('something-else');
+
+		await expect(missingCaptureIndexes([streamFrom('')])).resolves.toEqual(
+			[],
+		);
 	});
 });

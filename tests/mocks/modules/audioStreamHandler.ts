@@ -20,3 +20,9 @@ export const getAudioStreams = jest.fn();
 export const getAudioSourceName = jest.fn().mockResolvedValue('TestDevice');
 export const stopAllStreams = jest.fn();
 export const validateSelectedDevices = jest.fn();
+// Answers with the stream indexes whose device is gone; empty by default, so
+// a session whose inputs are all present is the case a suite gets for free.
+export const missingCaptureIndexes = jest.fn(() => Promise.resolve([]));
+// Returns the release function the real one does, so a manager tearing a
+// session down calls something rather than tripping over undefined.
+export const watchStreamEndings = jest.fn(() => jest.fn());

@@ -70,6 +70,110 @@ describe('runLlmStep', () => {
 		expect(at(llm.calls, 0)).toEqual([prompt, 100, { temperature: 0 }]);
 	});
 
+	// Cancellation used to reach the transcription request and nothing else,
+	// so pressing Cancel during post-processing, the context agents, or
+	// chapter generation stopped nothing and the run was billed in full. The
+	// signal is carried on the request itself rather than inside `options`, so
+	// no caller can forget to assemble the options object.
+	it('carries the signal into the provider call', async () => {
+		const llm = stubLlm();
+		const controller = new AbortController();
+
+		await runLlmStep({
+			step: 'postProcess',
+			llm,
+			prompt: { system: 's', user: 'u' },
+			maxTokens: 100,
+			settings,
+			durationSeconds: 60,
+			signal: controller.signal,
+		});
+
+		expect(at(at(llm.calls, 0), 2)).toEqual({
+			signal: controller.signal,
+		});
+	});
+
+	it("keeps the caller's own options alongside the signal", async () => {
+		const llm = stubLlm();
+		const controller = new AbortController();
+
+		await runLlmStep({
+			step: 'contextAgents',
+			llm,
+			prompt: { system: 's', user: 'u' },
+			maxTokens: 100,
+			settings,
+			durationSeconds: 60,
+			options: { temperature: 0 },
+			signal: controller.signal,
+		});
+
+		expect(at(at(llm.calls, 0), 2)).toEqual({
+			temperature: 0,
+			signal: controller.signal,
+		});
+	});
+
+	it('leaves options untouched when there is nothing to cancel with', async () => {
+		const llm = stubLlm();
+
+		await runLlmStep({
+			step: 'contextAgents',
+			llm,
+			prompt: { system: 's', user: 'u' },
+			maxTokens: 100,
+			settings,
+			durationSeconds: 60,
+			options: { temperature: 0 },
+		});
+
+		expect(at(at(llm.calls, 0), 2)).toEqual({ temperature: 0 });
+	});
+
+	// A run cancelled between two agent calls must not pay for the next one.
+	it('refuses to spend on a call the user already cancelled', async () => {
+		const llm = stubLlm();
+		const sink = stubSink();
+		const controller = new AbortController();
+		controller.abort(new Error('cancelled'));
+
+		await expect(
+			runLlmStep({
+				step: 'contextAgents',
+				llm,
+				prompt: { system: 's', user: 'u' },
+				maxTokens: 100,
+				settings,
+				durationSeconds: 60,
+				costSink: sink,
+				signal: controller.signal,
+			}),
+		).rejects.toThrow('cancelled');
+		expect(llm.calls).toHaveLength(0);
+		expect(sink.records).toHaveLength(0);
+	});
+
+	// A cancelled call was never answered, so it is not spending the session
+	// counter should show.
+	it('accounts nothing for a call the provider aborted', async () => {
+		const llm = stubLlm('unused', new Error('The user aborted a request.'));
+		const sink = stubSink();
+
+		await expect(
+			runLlmStep({
+				step: 'postProcess',
+				llm,
+				prompt: { system: 's', user: 'u' },
+				maxTokens: 100,
+				settings,
+				durationSeconds: 60,
+				costSink: sink,
+			}),
+		).rejects.toThrow('aborted');
+		expect(sink.records).toHaveLength(0);
+	});
+
 	it('reports the step cost the shared model prices', async () => {
 		const sink = stubSink();
 

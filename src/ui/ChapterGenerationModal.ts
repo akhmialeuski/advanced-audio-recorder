@@ -16,6 +16,7 @@ import type {
 	LlmProviderId,
 } from '../settings/settingsSchema';
 import type { AutoChapterService } from '../chapters/AutoChapterService';
+import { CancellationSource } from '../utils/cancellation';
 import {
 	loadTranscriptLines,
 	type TranscriptSectionReader,
@@ -102,6 +103,16 @@ export class ChapterGenerationModal extends PluginModal {
 	 * handled per-run overrides.
 	 */
 	private readonly runSettings: AudioRecorderSettings;
+	/**
+	 * The cancellation of the run in flight, or null when none is.
+	 *
+	 * Held on the dialog rather than inside the method that starts the run,
+	 * because the Cancel button is not the only way out of a dialog: Escape
+	 * and the window's own close control dismiss it too, and a run whose
+	 * cancellation only the button could reach kept going - paid, and with
+	 * nothing left on screen to stop it.
+	 */
+	private cancellation: CancellationSource | null = null;
 
 	constructor(
 		app: App,
@@ -318,28 +329,65 @@ export class ChapterGenerationModal extends PluginModal {
 	}
 
 	/**
-	 * Commits the run's choices, delegates generation to the shared service,
-	 * and closes. The service reports every outcome with a Notice and never
-	 * throws, so the dialog closes immediately and lets it run in the
-	 * background.
+	 * Commits the run's choices and generates, staying open until it is done.
+	 *
+	 * The dialog used to close the moment it delegated, which left a paid call
+	 * on a transcript of any length running with nothing able to stop it.
+	 * Staying open is what gives the run somewhere to be cancelled from.
 	 */
 	private runGeneration(): void {
-		if (this.busy) {
-			return;
-		}
-		this.busy = true;
 		// The shared service reads the LLM and profile from the plugin settings,
 		// so the run's choices become the stored defaults at this point - and
 		// only at this point, because the user committed to a run.
 		this.commitRunSettings();
 		void this.options.saveSettings();
-		this.close();
-		// Reuse the transcript already located for the dialog, so the service
-		// does not read the sidecar (or scan the notes) a second time.
-		void this.options.autoChapters.generate(
-			this.file,
-			undefined,
-			this.source ?? undefined,
-		);
+		const cancellation = new CancellationSource();
+		this.cancellation = cancellation;
+		this.renderRunning(cancellation);
+		void this.runExclusive(async () => {
+			// Reuse the transcript already located for the dialog, so the
+			// service does not read the sidecar (or scan the notes) again.
+			await this.options.autoChapters.generate(
+				this.file,
+				undefined,
+				this.source ?? undefined,
+				cancellation.token.signal,
+			);
+			// Dropped before the close, so the dialog's own teardown does not
+			// cancel a run that has already answered.
+			this.cancellation = null;
+			this.close();
+		});
+	}
+
+	/**
+	 * Dismissing the dialog is the same intent as pressing its Cancel, and
+	 * once it is gone there is nowhere else the run could be stopped from.
+	 */
+	override onClose(): void {
+		this.cancellation?.cancel();
+		this.cancellation = null;
+		super.onClose();
+	}
+
+	/**
+	 * Replaces the form with what the run is doing and the way out of it. The
+	 * service reports the outcome with a Notice of its own, so this says only
+	 * that something is happening and offers the Cancel.
+	 * @param cancellation - The run's cancellation, pulled by the button
+	 */
+	private renderRunning(cancellation: CancellationSource): void {
+		this.contentEl.empty();
+		this.renderSource(this.file);
+		this.contentEl.createEl('p', {
+			cls: 'aar-modal-config',
+			text: `Generating chapters for ${this.file.name}...`,
+		});
+		this.renderActions({
+			text: 'Cancel',
+			onClick: () => {
+				cancellation.cancel();
+			},
+		});
 	}
 }

@@ -15,6 +15,7 @@ import {
 	termsWithinWhisperPrompt,
 } from '../dictionaryBias';
 import {
+	authHeader,
 	buildMultipart,
 	requestJson,
 	trimTrailingSlash,
@@ -117,7 +118,7 @@ export class WhisperApiProvider implements TranscriptionProvider {
 		const json = await requestJson({
 			url: `${trimTrailingSlash(this.config.baseUrl)}/audio/transcriptions`,
 			method: 'POST',
-			headers: { Authorization: `Bearer ${this.config.apiKey}` },
+			headers: authHeader('Authorization', this.config.apiKey, 'Bearer'),
 			contentType,
 			body,
 			timeoutMs: uploadTimeoutMs(

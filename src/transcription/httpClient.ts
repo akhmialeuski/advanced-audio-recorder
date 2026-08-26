@@ -8,11 +8,13 @@
 import { requestUrl } from 'obsidian';
 import type { RequestUrlResponse } from 'obsidian';
 import {
+	MS_PER_SECOND,
 	TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS,
 	TRANSCRIBE_REQUEST_TIMEOUT_MS,
 	TRANSCRIBE_UPLOAD_BYTES_PER_MS,
 } from '../constants';
 import { randomToken } from '../utils/ids';
+import { scaledTimeoutMs } from '../utils/TimeUtils';
 import { isRecord } from '../utils/objects';
 
 /** One field of a multipart/form-data body. */
@@ -77,6 +79,33 @@ export function buildMultipart(fields: MultipartField[]): MultipartBody {
 	};
 }
 
+/**
+ * An authorization header, or nothing at all when there is no key.
+ *
+ * The endpoint decides whether a key is needed (see `accountRequiresKey`), and
+ * a run against a local server has none. Sending the header anyway meant a bare
+ * `Bearer ` or an empty `x-goog-api-key`: a header that claims an identity
+ * which does not exist. Every provider builds its own header object, and each
+ * of them asks here rather than restating the condition.
+ * @param name - Header the provider carries its key in
+ * @param key - The configured key, possibly empty
+ * @param scheme - Scheme the value is prefixed with, e.g. `Bearer`, joined to
+ *   the key with a single space; omitted for a header that is the bare key
+ * @returns The single header, or an empty object
+ */
+export function authHeader(
+	name: string,
+	key: string,
+	scheme = '',
+): Record<string, string> {
+	// The scheme is applied here rather than by the caller, because a caller
+	// that formats first hands over `Bearer ` with nothing after it, which is
+	// exactly the header this exists to leave out. The separator is this
+	// function's too, so a caller cannot hand over `Bearerabc` - a header no
+	// endpoint accepts and nothing here could tell apart from a key.
+	return key ? { [name]: scheme ? `${scheme} ${key}` : key } : {};
+}
+
 /** Removes a single trailing slash from a base URL. */
 export function trimTrailingSlash(url: string): string {
 	return url.endsWith('/') ? url.slice(0, -1) : url;
@@ -96,10 +125,11 @@ export function uploadTimeoutMs(
 	byteLength: number,
 	maxMs: number = TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS,
 ): number {
-	const scaled =
-		TRANSCRIBE_REQUEST_TIMEOUT_MS +
-		Math.ceil(byteLength / TRANSCRIBE_UPLOAD_BYTES_PER_MS);
-	return Math.min(scaled, maxMs);
+	return scaledTimeoutMs(byteLength, {
+		floorMs: TRANSCRIBE_REQUEST_TIMEOUT_MS,
+		bytesPerMs: TRANSCRIBE_UPLOAD_BYTES_PER_MS,
+		maxMs,
+	});
 }
 
 /** Status used for errors that never reached an HTTP response (transport/timeout). */
@@ -188,10 +218,51 @@ export class HttpError extends Error {
 	constructor(
 		readonly status: number,
 		message: string,
+		/**
+		 * Whether sending the same request again could succeed. True only for
+		 * the temporary refusals - a rate limit, a provider fault - and never
+		 * for a bad key, an exhausted quota, or a region the service does not
+		 * serve, which a retry would only pay for twice.
+		 */
+		readonly retryable: boolean = false,
+		/**
+		 * The pause the provider asked for through `Retry-After`, in
+		 * milliseconds, when it named one. Undefined leaves the caller to
+		 * choose its own backoff.
+		 */
+		readonly retryAfterMs?: number,
 	) {
 		super(message);
 		this.name = 'HttpError';
 	}
+}
+
+/**
+ * Reads the pause a provider asked for, in milliseconds.
+ *
+ * The header comes in two forms by specification: a whole number of seconds,
+ * or an HTTP date to wait until. A date already in the past means the wait is
+ * over, which is the same as having asked for nothing.
+ * @param headers - The response headers as they arrived
+ * @returns The requested pause, or undefined when none was named
+ */
+function retryAfterMs(headers: Record<string, string>): number | undefined {
+	const raw = Object.entries(headers).find(
+		([name]) => name.toLowerCase() === 'retry-after',
+	)?.[1];
+	if (!raw) {
+		return undefined;
+	}
+	const seconds = Number(raw.trim());
+	if (Number.isFinite(seconds) && seconds > 0) {
+		return seconds * MS_PER_SECOND;
+	}
+	const until = Date.parse(raw);
+	if (Number.isNaN(until)) {
+		return undefined;
+	}
+	const wait = until - Date.now();
+	return wait > 0 ? wait : undefined;
 }
 
 /**
@@ -312,12 +383,49 @@ async function fetchResponse(
 }
 
 /**
+ * Origins that refused a `fetch` and then answered `requestUrl`, which for an
+ * API endpoint is all but always CORS.
+ *
+ * Which transport an endpoint takes cannot be read off anything the plugin
+ * holds: `requestUrl` is exempt from CORS and cannot abort, `fetch` is the
+ * reverse, and only the endpoint's own answer says which one it will accept.
+ * So it is asked - once. Asking per request meant a run against a
+ * CORS-refusing server sent every body twice, once for the refusal and once
+ * for the request that works, which on an LLM step is a whole transcript.
+ *
+ * Both halves of the condition are needed, because `fetch` reports a CORS
+ * refusal and an unreachable network as the same opaque TypeError. Only the
+ * fallback's own answer tells them apart, so it is what admits an origin here
+ * (see {@link dispatchRequest}). The memory then lasts the session: a server
+ * whose CORS is fixed while Obsidian is open is picked up on the next reload,
+ * and the cost of being wrong is a request that cannot be aborted, which is
+ * where such an endpoint stood before it was ever tried.
+ */
+const corsRefusingOrigins = new Set<string>();
+
+/**
+ * The origin a request belongs to, or null for a URL that does not parse -
+ * about which nothing is remembered, since it has no origin to remember.
+ * @param url - Full request URL
+ */
+function originOf(url: string): string | null {
+	try {
+		return new URL(url).origin;
+	} catch {
+		return null;
+	}
+}
+
+/**
  * Chooses the transport for one request: abortable `fetch` when a signal
  * was provided, otherwise Obsidian's CORS-exempt `requestUrl`. A fetch
  * that fails at the network layer (typically a CORS rejection from an
  * OpenAI-compatible endpoint that only expects server-side clients) is
  * retried once through `requestUrl` - re-sending the body, but that
- * matches the pre-abort behavior where every request went that way.
+ * matches the pre-abort behavior where every request went that way. An
+ * origin that answers there is not asked through `fetch` again for the rest
+ * of the session; one that answers neither transport is asked again next
+ * time, because nothing about it was learned.
  * @param options - Request options
  * @param timeoutMs - Deadline in milliseconds
  * @param safeUrl - Query-stripped URL for error messages
@@ -327,7 +435,12 @@ async function dispatchRequest(
 	timeoutMs: number,
 	safeUrl: string,
 ): Promise<HttpResponse> {
-	if (options.signal) {
+	const origin = originOf(options.url);
+	const abortable =
+		options.signal !== undefined &&
+		!(origin !== null && corsRefusingOrigins.has(origin));
+	let fetchRefused = false;
+	if (abortable) {
 		try {
 			return await fetchResponse(options, timeoutMs, safeUrl);
 		} catch (error) {
@@ -337,9 +450,10 @@ async function dispatchRequest(
 			if (error instanceof HttpError || !(error instanceof TypeError)) {
 				throw error;
 			}
+			fetchRefused = true;
 		}
 	}
-	return withTimeout(
+	const response = await withTimeout(
 		requestUrl({
 			url: options.url,
 			method: options.method,
@@ -355,20 +469,46 @@ async function dispatchRequest(
 		timeoutMs,
 		safeUrl,
 	);
+	// The fallback answered where fetch could not, and that difference is the
+	// evidence: `fetch` reports a CORS refusal and a dead network with the
+	// same opaque TypeError, so the refusal alone says nothing about which it
+	// was. A host that answers requestUrl is reachable, which leaves CORS. A
+	// host that answers neither was simply unreachable for a moment - a
+	// dropped link, a machine waking up - and remembering that as a refusal
+	// used to cost the origin its abortable transport for the rest of the
+	// session, so a Cancel there stopped releasing anything.
+	if (fetchRefused && origin !== null) {
+		corsRefusingOrigins.add(origin);
+	}
+	return response;
+}
+
+/** What one HTTP failure is, as far as the run is concerned. */
+interface HttpFailureKind {
+	/** Human-readable guidance, or '' when none applies. */
+	readonly hint: string;
+	/** Whether sending the same request again could succeed. */
+	readonly retryable: boolean;
 }
 
 /**
- * Maps an HTTP failure to a short, human-readable hint for the common cases -
- * out of quota/credit, bad key, rate limit, provider outage - or '' when no
- * specific guidance applies. Provider-neutral: matches OpenAI
- * `insufficient_quota`, Anthropic "credit balance is too low", and Deepgram
- * `INSUFFICIENT_CREDITS` alike. The caller still appends the raw status and
- * body excerpt for diagnostics.
+ * Decides what a failure is: what to tell the user, and whether the run should
+ * try the same request again.
+ *
+ * The two answers come from the same branches on purpose. The plugin already
+ * recognised a rate limit well enough to advise waiting and retrying; deciding
+ * separately whether to retry would be a second reading of the same response,
+ * free to disagree with the first. So the branch that says "wait a moment and
+ * try again" is the branch that says the run may.
+ *
+ * The hint is provider-neutral: it matches OpenAI `insufficient_quota`,
+ * Anthropic "credit balance is too low", and Deepgram `INSUFFICIENT_CREDITS`
+ * alike. {@link requestRaw} is the only caller, and appends the raw status and
+ * body excerpt to whatever comes back here.
  * @param status - HTTP status code (0 for transport/timeout failures)
  * @param body - Response body excerpt (may be empty)
- * @returns A human-readable hint, or '' when none applies
  */
-export function friendlyHttpHint(status: number, body: string): string {
+function classifyHttpFailure(status: number, body: string): HttpFailureKind {
 	const lower = body.toLowerCase();
 	// Before the billing and auth branches: a region refusal arrives on a
 	// status those branches would otherwise claim, and it is neither.
@@ -376,39 +516,53 @@ export function friendlyHttpHint(status: number, body: string): string {
 		// Two ways out, and the second is the one a user in a blocked country
 		// already relies on: the same page holds the endpoint, so a request can
 		// be sent somewhere that does serve them.
-		return (
-			'This provider does not serve your region. Under Engines, either ' +
-			'pick a different engine for this job, or point this one at an ' +
-			'endpoint that serves you via its Base URL.'
-		);
+		return {
+			hint:
+				'This provider does not serve your region. Under Engines, either ' +
+				'pick a different engine for this job, or point this one at an ' +
+				'endpoint that serves you via its Base URL.',
+			retryable: false,
+		};
 	}
 	const looksLikeBilling =
 		status === HTTP_PAYMENT_REQUIRED ||
 		QUOTA_BODY_MARKERS.some((marker) => lower.includes(marker));
 	if (looksLikeBilling) {
-		return (
-			'Out of API quota or credit. Check the provider plan and billing ' +
-			'details - a chat subscription (e.g. ChatGPT Plus) does not include ' +
-			'API credit.'
-		);
+		// A quota that ran out arrives shaped like a rate limit and is fixed by
+		// nothing a retry can do, so this branch stands ahead of that one.
+		return {
+			hint:
+				'Out of API quota or credit. Check the provider plan and billing ' +
+				'details - a chat subscription (e.g. ChatGPT Plus) does not include ' +
+				'API credit.',
+			retryable: false,
+		};
 	}
 	if (status === HTTP_UNAUTHORIZED || status === HTTP_FORBIDDEN) {
-		return (
-			'Authentication failed. Check that the API key is correct and ' +
-			'authorized for this provider.'
-		);
+		return {
+			hint:
+				'Authentication failed. Check that the API key is correct and ' +
+				'authorized for this provider.',
+			retryable: false,
+		};
 	}
 	if (
 		status === HTTP_TOO_MANY_REQUESTS ||
 		lower.includes('rate limit') ||
 		lower.includes('too many requests')
 	) {
-		return 'Rate limit reached. Wait a moment and try again.';
+		return {
+			hint: 'Rate limit reached. Wait a moment and try again.',
+			retryable: true,
+		};
 	}
 	if (status >= HTTP_SERVER_ERROR_MIN) {
-		return 'The provider had a server error. Try again shortly.';
+		return {
+			hint: 'The provider had a server error. Try again shortly.',
+			retryable: true,
+		};
 	}
-	return '';
+	return { hint: '', retryable: false };
 }
 
 /**
@@ -501,13 +655,19 @@ export async function requestRaw(
 			0,
 			ERROR_BODY_EXCERPT_LENGTH,
 		);
-		// The hint reads the whole excerpt, because what it looks for is as
-		// likely to be in a status field as in the message.
-		const hint = friendlyHttpHint(response.status, excerpt);
+		// Classified on the whole excerpt, because what it looks for is as
+		// likely to be in a status field as in the message. Done here, where
+		// the status, the body, and the headers are all still in hand.
+		const { hint, retryable } = classifyHttpFailure(
+			response.status,
+			excerpt,
+		);
 		const detail = `Request to ${safeUrl} failed with status ${String(response.status)}: ${providerMessage(excerpt)}`;
 		throw new HttpError(
 			response.status,
 			hint ? `${hint} (${detail})` : detail,
+			retryable,
+			retryAfterMs(response.headers),
 		);
 	}
 	return response;

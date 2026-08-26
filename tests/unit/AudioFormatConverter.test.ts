@@ -117,8 +117,14 @@ import {
 	decodeAudioBlob,
 	mergeAudioTracks,
 } from 'src/audio/AudioFormatConverter';
-import type { EncodingWorkerClient } from 'src/audio/EncodingWorkerClient';
+import { EncodingWorkerClient } from 'src/audio/EncodingWorkerClient';
+import {
+	ENCODING_WORKER_MAX_TIMEOUT_MS,
+	MOBILE_MAX_DECODE_BYTES,
+	WAVEFORM_MAX_DECODE_BYTES,
+} from 'src/constants';
 import { partial } from '../helpers/doubles';
+import { useDesktopPlatform, useMobilePlatform } from '../helpers/platform';
 import {
 	encodeAudioBuffer,
 	ensureEncoderRegistered,
@@ -153,9 +159,7 @@ describe('AudioFormatConverter', () => {
 		});
 	});
 
-	// ---------------------------------------------------------------
 	// resolveRecorderFormat
-	// ---------------------------------------------------------------
 	describe('resolveRecorderFormat', () => {
 		it.each([
 			['webm (native support)', 'webm', 'webm'],
@@ -220,9 +224,7 @@ describe('AudioFormatConverter', () => {
 		});
 	});
 
-	// ---------------------------------------------------------------
 	// isOfflineOnlyFormat
-	// ---------------------------------------------------------------
 	describe('isOfflineOnlyFormat', () => {
 		it.each([
 			['mp4', 'webm', true],
@@ -249,9 +251,7 @@ describe('AudioFormatConverter', () => {
 		});
 	});
 
-	// ---------------------------------------------------------------
 	// convertBlobToWav
-	// ---------------------------------------------------------------
 	describe('convertBlobToWav', () => {
 		it('converts through the streaming pipeline to a WAV blob', async () => {
 			const inputBlob = new Blob(['audio-data'], { type: 'audio/webm' });
@@ -322,9 +322,7 @@ describe('AudioFormatConverter', () => {
 		});
 	});
 
-	// ---------------------------------------------------------------
 	// The buffer-returning variants, which the save path uses
-	// ---------------------------------------------------------------
 	describe('converting straight to bytes', () => {
 		/** An encoding worker whose conversion succeeds. */
 		function workingWorker(): {
@@ -433,6 +431,38 @@ describe('AudioFormatConverter', () => {
 			expect(result).toBeInstanceOf(ArrayBuffer);
 		});
 
+		// The regression this pair exists for: a worker that hangs used to
+		// raise nothing at all, so the fallback below it was unreachable and
+		// the save waited forever. Driven through the real client rather than
+		// a rejecting double, because what was broken is the client turning
+		// silence into a failure the caller can act on.
+		it('reaches the main thread when the worker goes silent', async () => {
+			jest.spyOn(console, 'warn').mockImplementation();
+			jest.useFakeTimers();
+			(global as Record<string, unknown>).Worker = class {
+				postMessage = jest.fn();
+				terminate = jest.fn();
+				onmessage = null;
+				onerror = null;
+			};
+			global.URL.createObjectURL = jest.fn(() => 'blob:worker');
+			global.URL.revokeObjectURL = jest.fn();
+
+			const converted = convertBlobToFormatBuffer(
+				new Blob(['test'], { type: 'audio/webm' }),
+				'mp4',
+				128000,
+				undefined,
+				{ workerClient: new EncodingWorkerClient('worker-source') },
+			);
+			await jest.advanceTimersByTimeAsync(ENCODING_WORKER_MAX_TIMEOUT_MS);
+			const result = await converted;
+
+			expect(conversionInit).toHaveBeenCalledTimes(1);
+			expect(result).toBeInstanceOf(ArrayBuffer);
+			jest.useRealTimers();
+		});
+
 		it('falls back to decode and re-encode when streaming fails too', async () => {
 			jest.spyOn(console, 'warn').mockImplementation();
 			conversionInit.mockRejectedValueOnce(
@@ -511,9 +541,7 @@ describe('AudioFormatConverter', () => {
 		});
 	});
 
-	// ---------------------------------------------------------------
 	// decodeAudioBlob
-	// ---------------------------------------------------------------
 	describe('decodeAudioBlob', () => {
 		it('decodes exactly once and close the context', async () => {
 			const buffer = new ArrayBuffer(8);
@@ -547,9 +575,7 @@ describe('AudioFormatConverter', () => {
 		});
 	});
 
-	// ---------------------------------------------------------------
 	// convertBlobToFormat
-	// ---------------------------------------------------------------
 	describe('convertBlobToFormat', () => {
 		it('uses the encoding worker when one is available', async () => {
 			const workerClient = {
@@ -860,9 +886,7 @@ describe('AudioFormatConverter', () => {
 		});
 	});
 
-	// ---------------------------------------------------------------
 	// mergeAudioTracks
-	// ---------------------------------------------------------------
 	describe('mergeAudioTracks', () => {
 		const createMockTarget = (name: string): RecordingTarget =>
 			createTarget({ fileBaseName: name, sourceName: name });
@@ -1228,5 +1252,65 @@ describe('AudioFormatConverter', () => {
 			).value;
 			expect(ctxInstance.close).toHaveBeenCalledTimes(1);
 		});
+	});
+});
+
+// The decode ceiling used to be applied by each caller, so a new entry point
+// simply did without: conversion read a file of any size and expanded it to
+// full PCM. On a phone that is not a catchable error, it is the OS killing the
+// WebView. The question belongs to the decoder, which is the thing that
+// allocates, so every caller inherits the answer.
+describe('the decode ceiling', () => {
+	/** A buffer of the given size, without allocating one. */
+	function bufferOf(byteLength: number): ArrayBuffer {
+		return partial<ArrayBuffer>({ byteLength });
+	}
+
+	it('refuses a file above the mobile ceiling', async () => {
+		useMobilePlatform();
+
+		await expect(
+			decodeAudioBlob(bufferOf(MOBILE_MAX_DECODE_BYTES + 1)),
+		).rejects.toThrow('too large');
+	});
+
+	it('accepts that same file on desktop, where the ceiling is higher', async () => {
+		useDesktopPlatform();
+
+		await expect(
+			decodeAudioBlob(bufferOf(MOBILE_MAX_DECODE_BYTES + 1)),
+		).resolves.toBeDefined();
+	});
+
+	it('refuses a file above the desktop ceiling too', async () => {
+		useDesktopPlatform();
+
+		await expect(
+			decodeAudioBlob(bufferOf(WAVEFORM_MAX_DECODE_BYTES + 1)),
+		).rejects.toThrow('too large');
+	});
+
+	// Asked before the context is built, because the allocation the ceiling
+	// exists to prevent starts with the context.
+	it('builds no audio context for a file it will not decode', async () => {
+		useMobilePlatform();
+		jest.mocked(global.AudioContext).mockClear();
+
+		await expect(
+			decodeAudioBlob(bufferOf(MOBILE_MAX_DECODE_BYTES + 1)),
+		).rejects.toThrow('too large');
+
+		expect(global.AudioContext).not.toHaveBeenCalled();
+	});
+
+	// The ceiling belongs to the decoder, but "decode" is the name of the
+	// allocation rather than of anything a user asked for, and on desktop
+	// this is the only refusal a conversion over the ceiling ever produces.
+	it('names the operation the caller was asked for', async () => {
+		useDesktopPlatform();
+
+		await expect(
+			decodeAudioBlob(bufferOf(WAVEFORM_MAX_DECODE_BYTES + 1), 'convert'),
+		).rejects.toThrow('too large to convert');
 	});
 });

@@ -56,6 +56,32 @@ export const RECORDER_STOP_TIMEOUT_MS = 5000;
  */
 export const PCM_FLUSH_TIMEOUT_MS = 5000;
 
+/**
+ * Floor for how long the encoding worker may go without saying anything, in
+ * milliseconds. A worker wedged inside its demux loop answers neither a result
+ * nor an error, so without a deadline the save it was doing waits forever.
+ * Every progress message it sends starts this over, so the budget bounds
+ * silence rather than the conversion, and a large payload raises the floor
+ * through {@link ENCODING_WORKER_BYTES_PER_MS}.
+ */
+export const ENCODING_WORKER_MIN_TIMEOUT_MS = 2 * 60_000;
+
+/**
+ * Assumed conversion throughput, in bytes per millisecond (~200 KB/s), used to
+ * raise the encoding worker's silence budget with the size of what it was
+ * handed. Deliberately far below what a healthy transcode manages, because the
+ * cost of guessing low is a hang detected late and the cost of guessing high is
+ * a conversion abandoned while it was working.
+ */
+export const ENCODING_WORKER_BYTES_PER_MS = 200;
+
+/**
+ * Ceiling on the encoding worker's silence budget, in milliseconds (20
+ * minutes). A multi-gigabyte input would otherwise scale the budget past any
+ * useful bound, which is the hang this deadline exists to catch.
+ */
+export const ENCODING_WORKER_MAX_TIMEOUT_MS = 20 * 60_000;
+
 /** Bytes in one megabyte (binary), for size settings expressed in MB. */
 export const BYTES_PER_MB = 1024 * 1024;
 
@@ -145,6 +171,9 @@ export const SECONDS_PER_HOUR = 3600;
 
 /** Milliseconds in one minute. */
 export const MS_PER_MINUTE = 60_000;
+
+/** Milliseconds in one second. */
+export const MS_PER_SECOND = 1000;
 
 /** Default duration of one split part in minutes. */
 export const DEFAULT_SPLIT_CHUNK_MINUTES = 15;
@@ -572,6 +601,19 @@ export const GEMINI_THINKING_BUDGET_OFF = 0;
 export const GEMINI_PRO_MIN_THINKING_BUDGET = 128;
 
 /**
+ * Reasoning level sent to the Gemini 3.x generation, which replaced the token
+ * budget with a named level (`minimal`, `low`, `medium`, `high`).
+ *
+ * `low` rather than `minimal`, although transcription and post-processing need
+ * no reasoning at all: `minimal` is not offered by every model of the
+ * generation, and a level a model does not take is a 400 before anything is
+ * transcribed, on the model the plugin ships as its default. `low` is accepted
+ * across the generation and is the practical floor for a deterministic task.
+ * See {@link GEMINI_MODELS_DOC_URL} for what each model accepts.
+ */
+export const GEMINI_LOW_THINKING_LEVEL = 'low';
+
+/**
  * Floor for the Gemini transcription `generateContent` timeout, in
  * milliseconds. Inference time scales with audio duration, which the upload
  * byte size underestimates for compressed accepted containers (mp3, aac, ogg,
@@ -869,6 +911,30 @@ export const TRANSCRIBE_UPLOAD_BYTES_PER_MS = 1024;
  * deadline would discard completed (and billed) work as a false timeout.
  */
 export const LLM_REQUEST_TIMEOUT_MS = 5 * 60_000;
+
+/**
+ * How many times one part of a transcription is sent before it is reported as
+ * missing, counting the first attempt. Three covers the temporary refusals that
+ * actually happen - a burst over a free-tier rate limit, a provider fault that
+ * clears in seconds - without turning a persistent one into a long, paid
+ * sequence of requests that fail the same way.
+ */
+export const TRANSCRIBE_RETRY_MAX_ATTEMPTS = 3;
+
+/**
+ * Pause before the second attempt at a part, in milliseconds; each further
+ * attempt doubles it. Only used when the provider named no pause of its own
+ * through `Retry-After`, which is the better answer whenever it arrives.
+ */
+export const TRANSCRIBE_RETRY_BASE_DELAY_MS = 2000;
+
+/**
+ * Longest pause the run will sit out before another attempt, in milliseconds.
+ * A provider asking for longer is telling the user to come back later rather
+ * than to wait, so the part is reported as missing instead of freezing the run
+ * on a dialog that says nothing is happening.
+ */
+export const TRANSCRIBE_RETRY_MAX_DELAY_MS = 60_000;
 
 /**
  * Maximum bytes buffered from the local whisper.cpp child process's stdout

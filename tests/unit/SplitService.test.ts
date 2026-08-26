@@ -10,6 +10,8 @@ import type { SplitRequest } from 'src/recording/SplitService';
 import { App, TFile } from 'obsidian';
 import { noticeMessages } from '../mocks/obsidian';
 import { createMockApp } from '../helpers/createApp';
+import { defined } from '../helpers/assertions';
+import { useDesktopPlatform } from '../helpers/platform';
 
 jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest
@@ -36,7 +38,7 @@ jest.mock('src/platform/capabilities', () => {
 	return {
 		...actual,
 		isDecodableSize: jest.fn(actual.isDecodableSize),
-		getMaxSplitSourceBytes: jest.fn(actual.getMaxSplitSourceBytes),
+		isReadableSize: jest.fn(actual.isReadableSize),
 	};
 });
 
@@ -153,10 +155,10 @@ describe('SplitService', () => {
 			// On mobile even materializing the source bytes can get the
 			// WebView killed, so the size gate must run on stat.size,
 			// before adapter.readBinary
-			const { getMaxSplitSourceBytes } = jest.requireMock<{
-				getMaxSplitSourceBytes: jest.Mock;
+			const { isReadableSize } = jest.requireMock<{
+				isReadableSize: jest.Mock;
 			}>('src/platform/capabilities');
-			getMaxSplitSourceBytes.mockReturnValueOnce(16);
+			isReadableSize.mockReturnValueOnce(false);
 
 			const outcome = await service.split(createRequest(), jest.fn());
 
@@ -164,7 +166,10 @@ describe('SplitService', () => {
 			expect(mockApp.vault.adapter.readBinary).not.toHaveBeenCalled();
 			expect(
 				noticeMessages().some((message) =>
-					message.includes('too large to split on this device'),
+					// The advice that follows depends on the platform and is
+					// pinned in the capability suite; what matters here is that
+					// the path refused and said which operation it refused.
+					message.includes('too large to split'),
 				),
 			).toBe(true);
 		});
@@ -189,9 +194,34 @@ describe('SplitService', () => {
 			expect(createdFiles).toEqual([]);
 			expect(
 				noticeMessages().some((message) =>
-					message.includes('too large to split on this device'),
+					// The advice that follows depends on the platform and is
+					// pinned in the capability suite; what matters here is that
+					// the path refused and said which operation it refused.
+					message.includes('too large to split'),
 				),
 			).toBe(true);
+		});
+
+		// On desktop the generic way out of a size ceiling is to split the
+		// file into parts, which is the button the user just pressed. The
+		// splitter answers with the reason the ceiling exists instead: it
+		// bounds the decode, and a raw WAV source is never decoded.
+		it('does not answer a refused split by advising a split', async () => {
+			useDesktopPlatform();
+			const { isDecodableSize } = jest.requireMock<{
+				isDecodableSize: jest.Mock;
+			}>('src/platform/capabilities');
+			isDecodableSize.mockReturnValueOnce(false);
+
+			await service.split(createRequest(), jest.fn());
+
+			const refusal = defined(
+				noticeMessages().find((message) =>
+					message.includes('too large to split'),
+				),
+			);
+			expect(refusal).not.toMatch(/split it/i);
+			expect(refusal).toContain('WAV');
 		});
 
 		it('aborts on a name collision before writing anything', async () => {

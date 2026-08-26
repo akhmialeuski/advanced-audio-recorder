@@ -84,6 +84,10 @@ describe('the status command', () => {
 		[RecordingStatus.Recording, 'Recording.'],
 		[RecordingStatus.Paused, 'Recording, paused.'],
 		[RecordingStatus.Saving, 'Saving the recording that just stopped.'],
+		[
+			RecordingStatus.Interrupted,
+			'The input device was lost; saving what was recorded.',
+		],
 	])('reports %s', async (status, expected) => {
 		const host = makeHost({ recordingStatus: jest.fn(() => status) });
 

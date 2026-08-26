@@ -11,7 +11,12 @@ import {
 	LLM_PROVIDER_IDS,
 	LLM_REQUEST_TIMEOUT_MS,
 } from '../../constants';
-import { HttpError, requestJson, trimTrailingSlash } from '../httpClient';
+import {
+	authHeader,
+	HttpError,
+	requestJson,
+	trimTrailingSlash,
+} from '../httpClient';
 import type { LlmProviderId } from '../../settings/settingsSchema';
 import type { LlmPrompt } from '../llmPostProcess';
 import {
@@ -23,7 +28,7 @@ import {
 	assertGeminiNotBlocked,
 	assertGeminiNotTruncated,
 	geminiGenerateContentUrl,
-	geminiThinkingConfig,
+	geminiGenerationControls,
 } from '../providers/geminiShared';
 
 /**
@@ -37,6 +42,13 @@ export interface LlmCompleteOptions {
 	 * to 0 so the same recording yields the same bias prompt on every run.
 	 */
 	temperature?: number;
+	/**
+	 * Aborts the request when the run is cancelled. Without it a Cancel
+	 * pressed during an LLM step released nothing: the request ran to its own
+	 * timeout and the provider billed for it, which is the opposite of what
+	 * the user pressed the button for.
+	 */
+	signal?: AbortSignal | undefined;
 }
 
 /** A provider that completes a single prompt and returns text. */
@@ -141,21 +153,27 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
 		maxTokens: number,
 		options?: LlmCompleteOptions,
 	): Promise<string> {
-		const headers: Record<string, string> = {};
-		if (this.config.apiKey) {
-			headers.Authorization = `Bearer ${this.config.apiKey}`;
-		}
+		const headers = authHeader(
+			'Authorization',
+			this.config.apiKey,
+			'Bearer',
+		);
 		const candidates = this.candidateParams();
 		let lastError: unknown;
 		for (const [index, param] of candidates.entries()) {
 			let json: unknown;
 			try {
-				json = await this.request(prompt, headers, {
-					[param]: maxTokens,
-					...(options?.temperature !== undefined
-						? { temperature: options.temperature }
-						: {}),
-				});
+				json = await this.request(
+					prompt,
+					headers,
+					{
+						[param]: maxTokens,
+						...(options?.temperature !== undefined
+							? { temperature: options.temperature }
+							: {}),
+					},
+					options?.signal,
+				);
 			} catch (error) {
 				lastError = error;
 				const isLast = index === candidates.length - 1;
@@ -196,12 +214,14 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
 	 * @param prompt - System + user prompt
 	 * @param headers - Authorization headers, when a key is configured
 	 * @param generation - The generation fields this attempt carries
+	 * @param signal - Aborts the request when the run is cancelled
 	 * @returns The parsed response body
 	 */
 	private request(
 		prompt: LlmPrompt,
 		headers: Record<string, string>,
 		generation: Record<string, number>,
+		signal?: AbortSignal,
 	): Promise<unknown> {
 		return requestJson({
 			url: `${trimTrailingSlash(this.config.baseUrl)}/chat/completions`,
@@ -217,6 +237,7 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
 				],
 			}),
 			timeoutMs: LLM_REQUEST_TIMEOUT_MS,
+			signal,
 		});
 	}
 }
@@ -240,7 +261,7 @@ export class AnthropicLlmProvider implements LlmProvider {
 			url: `${trimTrailingSlash(this.config.baseUrl)}/messages`,
 			method: 'POST',
 			headers: {
-				'x-api-key': this.config.apiKey,
+				...authHeader('x-api-key', this.config.apiKey),
 				'anthropic-version': ANTHROPIC_API_VERSION,
 				'anthropic-dangerous-direct-browser-access': 'true',
 			},
@@ -255,6 +276,7 @@ export class AnthropicLlmProvider implements LlmProvider {
 				messages: [{ role: 'user', content: prompt.user }],
 			}),
 			timeoutMs: LLM_REQUEST_TIMEOUT_MS,
+			signal: options?.signal,
 		});
 		return extractAnthropicText(json);
 	}
@@ -282,26 +304,28 @@ export class GeminiLlmProvider implements LlmProvider {
 		);
 		// Cleanup/summary is deterministic; on models that support a thinking
 		// budget, thinking would otherwise consume maxOutputTokens and truncate
-		// or empty the answer. Models without a thinking budget (2.0 and
-		// earlier) get no thinkingConfig, which they would otherwise reject.
-		const thinkingConfig = geminiThinkingConfig(this.config.model);
+		// or empty the answer. The temperature travels with that decision,
+		// because a generation that reasons by level is tuned for its own
+		// default and reads a lowered one as a reason to loop.
+		const controls = geminiGenerationControls(
+			this.config.model,
+			options?.temperature,
+		);
 		const json = await requestJson({
 			url,
 			method: 'POST',
-			headers: { [GEMINI_API_KEY_HEADER]: this.config.apiKey },
+			headers: authHeader(GEMINI_API_KEY_HEADER, this.config.apiKey),
 			contentType: 'application/json',
 			body: JSON.stringify({
 				systemInstruction: { parts: [{ text: prompt.system }] },
 				contents: [{ role: 'user', parts: [{ text: prompt.user }] }],
 				generationConfig: {
 					maxOutputTokens: maxTokens,
-					...(options?.temperature !== undefined
-						? { temperature: options.temperature }
-						: {}),
-					...(thinkingConfig ? { thinkingConfig } : {}),
+					...controls,
 				},
 			}),
 			timeoutMs: LLM_REQUEST_TIMEOUT_MS,
+			signal: options?.signal,
 		});
 		// A MAX_TOKENS stop yields a partial/empty answer; a safety/policy block
 		// yields no candidate. Fail loudly instead of silently replacing the

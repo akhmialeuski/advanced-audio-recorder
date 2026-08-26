@@ -14,6 +14,7 @@ import type { App, TFile } from 'obsidian';
 import { Notice } from 'obsidian';
 import {
 	NEVER_CANCELLED,
+	TranscriptionCancelledError,
 	TranscriptionService,
 } from 'src/transcription/TranscriptionService';
 import type { TranscriptionProvider } from 'src/transcription/providers/TranscriptionProvider';
@@ -22,10 +23,17 @@ import { TranscriptTruncatedError } from 'src/transcription/transcriptionErrors'
 import type { LlmProvider } from 'src/transcription/llm/LlmProvider';
 import type { TranscriptSegment } from 'src/transcription/TranscriptTypes';
 import { mergeSettings } from 'src/settings/settingsSerialization';
-import { LLM_PROVIDER_IDS } from 'src/constants';
+import {
+	LLM_PROVIDER_IDS,
+	TRANSCRIBE_RETRY_MAX_ATTEMPTS,
+	TRANSCRIBE_RETRY_MAX_DELAY_MS,
+} from 'src/constants';
+import { HttpError } from 'src/transcription/httpClient';
+import { CancellationSource } from 'src/utils/cancellation';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 import { fakeProvider, NO_DIARIZATION } from '../helpers/providerFixtures';
+import { outcomeOf } from '../helpers/async';
 
 // Replace audio preparation so the test drives the part count directly without
 // decoding real audio (the Web Audio path is unavailable under jsdom).
@@ -861,5 +869,223 @@ describe('the collaborators the service builds when it is given none', () => {
 		);
 
 		await expect(runToCompletion(service)).rejects.toThrow(/API key/i);
+	});
+});
+
+// A 429 or a provider fault used to end the part outright: ten minutes of the
+// recording vanished from the transcript, and only a full re-run - paid again -
+// could get them back. The plugin recognised the status well enough to advise
+// waiting and retrying, and then did neither itself.
+describe('a part the provider refused for now', () => {
+	beforeEach(() => {
+		jest.useFakeTimers();
+		prepareTwoParts();
+	});
+
+	afterEach(() => {
+		jest.useRealTimers();
+	});
+
+	/** A refusal of the kind that a later attempt could get past. */
+	function rateLimited(retryAfterMs?: number): HttpError {
+		return new HttpError(
+			429,
+			'Rate limit reached. Wait a moment and try again.',
+			true,
+			retryAfterMs,
+		);
+	}
+
+	/**
+	 * Runs a two-part transcription to completion, letting every retry pause
+	 * elapse.
+	 * @param service - The service under test
+	 */
+	async function runPastThePauses(
+		service: TranscriptionService,
+	): ReturnType<TranscriptionService['run']> {
+		const settled = outcomeOf(runToCompletion(service));
+		await jest.advanceTimersByTimeAsync(TRANSCRIBE_RETRY_MAX_DELAY_MS * 4);
+		const outcome = await settled;
+		if ('error' in outcome) {
+			throw outcome.error;
+		}
+		return outcome.value;
+	}
+
+	it('sends the part again and keeps the whole transcript', async () => {
+		const transcribe = jest
+			.fn()
+			.mockRejectedValueOnce(rateLimited())
+			.mockResolvedValue({
+				segments: [{ start: 0, end: 5, text: 'recovered' }],
+			});
+
+		const result = await runPastThePauses(serviceOver(transcribe));
+
+		expect(transcribe).toHaveBeenCalledTimes(3);
+		expect(result.markdown).not.toContain('Transcription incomplete');
+		expect(result.transcript.segments).toHaveLength(2);
+	});
+
+	it('waits the pause the provider asked for', async () => {
+		const transcribe = refusesThenAnswers(rateLimited(9000));
+		const service = serviceOver(transcribe);
+
+		const run = runToCompletion(service);
+		await jest.advanceTimersByTimeAsync(8999);
+		expect(transcribe).toHaveBeenCalledTimes(1);
+
+		await jest.advanceTimersByTimeAsync(1);
+		await run;
+		expect(transcribe).toHaveBeenCalledTimes(3);
+	});
+
+	// A pause longer than the run is willing to sit out is the provider saying
+	// come back later, which is a different thing from a hiccup to wait out.
+	it('gives up rather than freezing on a pause it will not sit out', async () => {
+		const transcribe = refusesThenAnswers(
+			rateLimited(TRANSCRIBE_RETRY_MAX_DELAY_MS + 1),
+		);
+
+		const result = await runPastThePauses(serviceOver(transcribe));
+
+		expect(transcribe).toHaveBeenCalledTimes(2);
+		expect(result.markdown).toContain('Transcription incomplete');
+	});
+
+	it('stops after the attempts are spent and reports the part missing', async () => {
+		const transcribe = jest.fn().mockRejectedValue(rateLimited());
+
+		const service = serviceOver(transcribe);
+		await expect(runPastThePauses(service)).rejects.toThrow(/rate limit/i);
+
+		// Both parts are tried their full allowance and no further: a
+		// persistent refusal must not turn into an unbounded, billed sequence.
+		expect(transcribe).toHaveBeenCalledTimes(
+			TRANSCRIBE_RETRY_MAX_ATTEMPTS * 2,
+		);
+	});
+
+	// A key that is wrong is wrong on every attempt, and each one is a request
+	// the user is charged for asking.
+	it('does not retry a refusal a retry cannot fix', async () => {
+		const transcribe = refusesThenAnswers(
+			new HttpError(401, 'Authentication failed.', false),
+		);
+
+		await runPastThePauses(serviceOver(transcribe));
+
+		expect(transcribe).toHaveBeenCalledTimes(2);
+	});
+
+	/**
+	 * A provider that refuses the given attempts in order and answers the one
+	 * after them.
+	 * @param failures - What each attempt before the answer fails with
+	 * @returns The transcribe double
+	 */
+	function refusesThenAnswers(...failures: unknown[]): jest.Mock {
+		const transcribe = jest.fn();
+		for (const failure of failures) {
+			transcribe.mockRejectedValueOnce(failure);
+		}
+		return transcribe.mockResolvedValue({
+			segments: [{ start: 0, end: 5, text: 'ok' }],
+		});
+	}
+
+	/**
+	 * Runs a job whose attempts are scripted, and reports every progress line
+	 * it showed while waiting to try again.
+	 * @param transcribe - What the provider answers, attempt by attempt
+	 * @returns The labels shown, joined in the order they appeared
+	 */
+	async function labelsWhileRetrying(
+		transcribe: jest.Mock = refusesThenAnswers(rateLimited()),
+	): Promise<string> {
+		const labels: string[] = [];
+		const settled = outcomeOf(
+			serviceOver(transcribe).run(audioFile, {
+				notePathForLinks: 'note.md',
+				token: NEVER_CANCELLED,
+				onProgress: (_fraction, label) => labels.push(label),
+			}),
+		);
+		await jest.advanceTimersByTimeAsync(TRANSCRIBE_RETRY_MAX_DELAY_MS * 4);
+		await settled;
+		return labels.join(' | ');
+	}
+
+	// A progress line that stops moving reads as a hang, and the pause before
+	// another attempt is the run still working.
+	it('says it is waiting rather than looking stuck', async () => {
+		expect(await labelsWhileRetrying()).toMatch(/retrying/i);
+	});
+
+	// A job small enough to send whole has no part number to name, so the
+	// waiting line says what it is waiting on in words instead.
+	it('names the audio itself when there is only one request', async () => {
+		prepareOnePart();
+
+		expect(await labelsWhileRetrying()).toContain('Retrying the audio in');
+	});
+
+	// A provider fault is retried on the same terms as a rate limit, and the
+	// line used to name the second whichever one it was: a user waiting out a
+	// 502 was told they had been sending too many requests. Which refusal it
+	// was reaches them in the error the run reports if the attempts run out.
+	it('does not name a cause the waiting line cannot know', async () => {
+		const labels = await labelsWhileRetrying(
+			refusesThenAnswers(
+				new HttpError(
+					502,
+					'The provider had a server error. Try again shortly.',
+					true,
+				),
+			),
+		);
+
+		expect(labels).toMatch(/retrying/i);
+		expect(labels).not.toMatch(/rate limit/i);
+	});
+
+	// A subdivided piece carries its parent's callback, and the label the
+	// callback reported used to be captured in it rather than passed to it:
+	// the piece that was waiting was announced under the name of the part it
+	// came from, which for an indivisible job is no name at all.
+	it('names the piece that is waiting, not the part it came from', async () => {
+		prepareSubdividingPart();
+
+		const labels = await labelsWhileRetrying(
+			refusesThenAnswers(
+				new TranscriptTruncatedError('output token limit'),
+				rateLimited(),
+			),
+		);
+
+		expect(labels).toContain('Retrying the 0:00-7:30 segment in');
+	});
+
+	// Waiting out a pause the user has already given up on is the same
+	// complaint the retry was added to answer, one level down.
+	it('ends the pause at once when the run is cancelled', async () => {
+		const transcribe = jest.fn().mockRejectedValue(rateLimited());
+		const source = new CancellationSource();
+		const settled = outcomeOf(
+			serviceOver(transcribe).run(audioFile, {
+				notePathForLinks: 'note.md',
+				token: source.token,
+			}),
+		);
+
+		await jest.advanceTimersByTimeAsync(1);
+		source.cancel();
+		await jest.advanceTimersByTimeAsync(1);
+
+		expect(await settled).toEqual({
+			error: expect.any(TranscriptionCancelledError),
+		});
+		expect(transcribe).toHaveBeenCalledTimes(1);
 	});
 });

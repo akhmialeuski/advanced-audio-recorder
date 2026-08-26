@@ -32,6 +32,7 @@ import {
 } from 'src/settings/labels';
 import { providerBiasChannel } from 'src/transcription/providers/capabilities';
 import { advancedBiasChannel } from 'src/transcription/advanced/advancedBias';
+import { transcriptionRefusal } from 'src/settings/settingsAttention';
 import { useMobilePlatform } from '../helpers/platform';
 import { installNodeSurface } from '../helpers/nodeSurface';
 import {
@@ -40,8 +41,12 @@ import {
 	missingModelMessage,
 	type EngineDescriptor,
 	type EngineId,
+	type ProviderConnection,
 } from 'src/providers/providers';
-import type { TranscriptionProviderId } from 'src/settings/settingsSchema';
+import type {
+	AudioRecorderSettings,
+	TranscriptionProviderId,
+} from 'src/settings/settingsSchema';
 import { defined } from '../helpers/assertions';
 
 /** The engines a transcription run reaches over an account. */
@@ -73,6 +78,26 @@ const EVERY_ENGINE_ID: TranscriptionProviderId[] = [
 	TRANSCRIPTION_PROVIDER_IDS.GEMINI,
 	TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
 ];
+
+/**
+ * Settings that select one cloud engine with its key field emptied, which is
+ * the starting point of both key questions: whether the run is refused, and
+ * whether a repointed endpoint makes the refusal wrong.
+ * @param engineId - The cloud engine to select
+ * @returns The engine, its account, and the settings selecting it
+ */
+function selectedWithNoKey(engineId: EngineId): {
+	engine: EngineDescriptor;
+	account: ProviderConnection;
+	settings: AudioRecorderSettings;
+} {
+	const { engine, account } = engineAccess(engineId);
+	const settings = mergeSettings({
+		transcriptionProvider: transcriptionIdOf(engine),
+	});
+	account.setApiKey(settings, '');
+	return { engine, account, settings };
+}
 
 describe('transcription engine registry', () => {
 	it('describes every engine id', () => {
@@ -170,11 +195,7 @@ describe('registry-derived consumers stay in step', () => {
 
 	it('refuses to build a cloud engine with no key, in the account wording', () => {
 		for (const engineId of CLOUD_ENGINES) {
-			const { engine, account } = engineAccess(engineId);
-			const settings = mergeSettings({
-				transcriptionProvider: transcriptionIdOf(engine),
-			});
-			account.setApiKey(settings, '');
+			const { account, settings } = selectedWithNoKey(engineId);
 
 			expect(() => createTranscriptionProvider(settings)).toThrow(
 				ProviderConfigError,
@@ -184,6 +205,54 @@ describe('registry-derived consumers stay in step', () => {
 			expect(() => createTranscriptionProvider(settings)).toThrow(
 				account.missingKeyMessage,
 			);
+		}
+	});
+
+	// The Base URL row exists so a run can be sent to a compatible endpoint,
+	// and a local one wants no key. Refusing before the client was built left
+	// that endpoint unreachable unless the user typed a decoy key, which then
+	// travelled in a real Authorization header.
+	it("builds a cloud engine with no key once the endpoint is the user's own", () => {
+		for (const engineId of CLOUD_ENGINES) {
+			const { engine, account, settings } = selectedWithNoKey(engineId);
+			account.setBaseUrl(settings, 'http://localhost:1234/v1');
+
+			expect(createTranscriptionProvider(settings).id).toBe(
+				transcriptionIdOf(engine),
+			);
+		}
+	});
+
+	// The refusal a surface with nobody in front of it answers with - the
+	// command line, transcribe-on-save - is a second reading of the same two
+	// facts the factory reads. It was left behind when the key rule moved onto
+	// the endpoint, so a run the factory would have started was refused a
+	// level above it and the local endpoint stayed unreachable that way.
+	it('refuses a run exactly where the factory would refuse to build one', () => {
+		const buildFails = (settings: AudioRecorderSettings): boolean => {
+			try {
+				createTranscriptionProvider(settings);
+				return false;
+			} catch {
+				return true;
+			}
+		};
+		for (const engineId of CLOUD_ENGINES) {
+			const { account, settings } = selectedWithNoKey(engineId);
+			// The refusal answers for the feature as well as the engine, and
+			// a vault with transcription switched off is refused for that
+			// before the key is ever looked at.
+			settings.transcriptionEnabled = true;
+
+			expect(transcriptionRefusal(settings)).toBe(
+				account.missingKeyMessage,
+			);
+			expect(buildFails(settings)).toBe(true);
+
+			account.setBaseUrl(settings, 'http://localhost:1234/v1');
+
+			expect(transcriptionRefusal(settings)).toBeNull();
+			expect(buildFails(settings)).toBe(false);
 		}
 	});
 
