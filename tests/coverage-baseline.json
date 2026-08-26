@@ -1,10 +1,10 @@
 {
 	"coverage": {
 		"total": {
-			"statements": 98.44,
-			"branches": 93.36,
-			"functions": 98.36,
-			"lines": 98.45
+			"statements": 98.45,
+			"branches": 93.38,
+			"functions": 98.43,
+			"lines": 98.47
 		},
 		"files": {
 			"src/constants.ts": {
@@ -22,8 +22,8 @@
 			"src/main.ts": {
 				"statements": 99.42,
 				"branches": 97.1,
-				"functions": 98.73,
-				"lines": 99.7
+				"functions": 98.75,
+				"lines": 99.71
 			},
 			"src/types.ts": {
 				"statements": 100,
@@ -32,6 +32,12 @@
 				"lines": 100
 			},
 			"src/actions/fileActions.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
+			"src/actions/playbackActions.ts": {
 				"statements": 100,
 				"branches": 100,
 				"functions": 100,
@@ -218,22 +224,22 @@
 				"lines": 100
 			},
 			"src/player/AudioPlayer.ts": {
-				"statements": 98.75,
+				"statements": 98.77,
 				"branches": 88.65,
-				"functions": 98.14,
-				"lines": 98.75
+				"functions": 98.21,
+				"lines": 98.76
 			},
 			"src/player/AudioPlayerRegistry.ts": {
-				"statements": 99.48,
-				"branches": 93.58,
-				"functions": 97.67,
-				"lines": 99.47
+				"statements": 99.49,
+				"branches": 93.5,
+				"functions": 98.03,
+				"lines": 99.49
 			},
 			"src/player/DetachedPlayback.ts": {
-				"statements": 91.04,
+				"statements": 92.95,
 				"branches": 72.22,
-				"functions": 90.47,
-				"lines": 92.42
+				"functions": 96,
+				"lines": 94.28
 			},
 			"src/player/DurationProbe.ts": {
 				"statements": 100,
@@ -296,10 +302,10 @@
 				"lines": 100
 			},
 			"src/player/playbackCommands.ts": {
-				"statements": 97.5,
+				"statements": 97.61,
 				"branches": 86.36,
 				"functions": 100,
-				"lines": 97.5
+				"lines": 97.61
 			},
 			"src/player/playbackProgress.ts": {
 				"statements": 100,
@@ -1073,8 +1079,8 @@
 	},
 	"suite": {
 		"suites": 205,
-		"tests": 4422,
-		"passed": 4422,
+		"tests": 4458,
+		"passed": 4458,
 		"failed": 0,
 		"todo": 0
 	}

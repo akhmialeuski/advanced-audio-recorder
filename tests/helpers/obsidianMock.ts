@@ -11,8 +11,16 @@
  * @module tests/helpers/obsidianMock
  */
 
-import type { App, Menu, Plugin, Vault, Workspace } from 'obsidian';
+import type {
+	App,
+	Menu,
+	Plugin,
+	PluginManifest,
+	Vault,
+	Workspace,
+} from 'obsidian';
 import { partial } from './doubles';
+import { Plugin as MockPluginClass } from '../mocks/obsidian';
 import type {
 	App as MockApp,
 	Menu as MockMenu,
@@ -85,4 +93,19 @@ export function partialApp(parts: object): App {
  */
 export function partialPlugin(parts: object): Plugin {
 	return partial<Plugin>(parts);
+}
+
+/**
+ * A live plugin from the mock, typed as the Plugin the code under test
+ * expects. The published Plugin type is abstract, so a suite that needs a
+ * real command host - one that both records what was registered and runs it
+ * the way the palette does - cannot construct one from the specifier.
+ * @param app - The app the plugin runs in
+ * @returns A plugin the production code can register commands on
+ */
+export function mockPluginHost(app: App): Plugin {
+	return new MockPluginClass(
+		app as unknown as ConstructorParameters<typeof MockPluginClass>[0],
+		partial<PluginManifest>({}),
+	) as unknown as Plugin;
 }

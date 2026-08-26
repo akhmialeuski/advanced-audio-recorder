@@ -10,9 +10,11 @@
 import { TFile } from 'obsidian';
 import type { Plugin } from 'obsidian';
 import { isAudioFile } from '../utils/audioFile';
+import type { PlaybackControlsState } from '../player/playbackControls';
 import type {
 	ActionServices,
 	FileAction,
+	PlaybackAction,
 	RecordingMarkerAction,
 } from './PluginAction';
 
@@ -71,6 +73,39 @@ export function registerRecordingActionCommands(
 				}
 				if (!checking) {
 					action.run();
+				}
+				return true;
+			},
+		});
+	}
+}
+
+/**
+ * Registers playback actions gated on the active playback snapshot. The
+ * snapshot is read at check time rather than captured, so a command that
+ * is offered now always drives the audio that is playing now, and every
+ * command disappears from the palette once playback ends.
+ * @param plugin - Plugin to register commands on
+ * @param actions - Playback actions to register
+ * @param getState - Reads the current playback snapshot, null while idle
+ */
+export function registerPlaybackActionCommands(
+	plugin: Plugin,
+	actions: readonly PlaybackAction[],
+	getState: () => PlaybackControlsState | null,
+): void {
+	for (const action of actions) {
+		plugin.addCommand({
+			id: action.commandId,
+			name: action.title,
+			icon: action.icon,
+			checkCallback: (checking: boolean): boolean => {
+				const state = getState();
+				if (!state || !action.isAvailable(state)) {
+					return false;
+				}
+				if (!checking) {
+					action.run(state);
 				}
 				return true;
 			},

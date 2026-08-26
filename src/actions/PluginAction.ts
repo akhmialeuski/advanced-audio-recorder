@@ -13,6 +13,7 @@ import type { TranscriptionModalOptions } from '../ui/TranscriptionModal';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import type { AutoChapterService } from '../chapters/AutoChapterService';
 import type { RecordingSidecarStore } from '../sidecar/RecordingSidecarStore';
+import type { PlaybackControlsState } from '../player/playbackControls';
 
 /**
  * Primes freshly written files for the enhanced player: starts their
@@ -77,4 +78,25 @@ export interface RecordingMarkerAction {
 	readonly icon: string;
 	/** Executes the action. */
 	run(): void;
+}
+
+/**
+ * An action on the audio that is playing right now. Registered as a
+ * palette command gated on the active playback snapshot, so it is absent
+ * from the palette (and inert as a hotkey) while nothing plays.
+ */
+export interface PlaybackAction {
+	/** Command id. */
+	readonly commandId: string;
+	/** Command title in sentence case. */
+	readonly title: string;
+	/** Lucide icon name, shown on the mobile toolbar. */
+	readonly icon: string;
+	/**
+	 * Availability gate beyond an active playback, evaluated against the
+	 * snapshot (e.g. markers or chapters being offered by the player).
+	 */
+	isAvailable(state: PlaybackControlsState): boolean;
+	/** Executes the action against the active playback. */
+	run(state: PlaybackControlsState): void;
 }

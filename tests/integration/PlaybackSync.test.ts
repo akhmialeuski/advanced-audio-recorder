@@ -4,13 +4,18 @@
  * factory is stubbed so both bind to the same controllable element), so a
  * regression that lets a timecode seek, a second view of the file, or the
  * status bar drift onto a different element - the "plays but the embed shows
- * 0:00" class of bug - fails here instead of only in Obsidian.
+ * 0:00" class of bug - fails here instead of only in Obsidian. The palette
+ * commands are driven the same way, through the mock plugin's command
+ * registry, so a hotkey and a click on the control row are proven to reach
+ * the one element.
  * @jest-environment jsdom
  */
 
 import { App, Modal } from 'obsidian';
-import { allEls } from '../helpers/dom';
-import { MARKER } from '../helpers/selectors';
+import { allEls, el } from '../helpers/dom';
+import { MARKER, PLAYER } from '../helpers/selectors';
+import { createPlaybackActions } from 'src/actions/playbackActions';
+import { registerPlaybackActionCommands } from 'src/actions/registerActionCommands';
 import { AudioPlayer } from 'src/player/AudioPlayer';
 import {
 	AudioPlayerRegistry,
@@ -29,6 +34,7 @@ import {
 	tick,
 } from '../helpers/playbackHarness';
 import { partial } from '../helpers/doubles';
+import { asMockPlugin, mockPluginHost } from '../helpers/obsidianMock';
 import { createMockApp } from '../helpers/createApp';
 
 const app = createMockApp({
@@ -113,6 +119,41 @@ function mountMarkerPlayer(
 afterEach(() => {
 	document.body.innerHTML = '';
 });
+
+/**
+ * Registers the real playback commands against the registry's live snapshot,
+ * the way the plugin does at load, and hands back a reader for the snapshot
+ * the commands see.
+ * @param registry - The registry publishing the active playback
+ * @returns The plugin holding the commands and the latest snapshot reader
+ */
+function withPlaybackCommands(registry: AudioPlayerRegistry): {
+	plugin: ReturnType<typeof asMockPlugin>;
+	snapshot: () => PlaybackControlsState | null;
+} {
+	const plugin = mockPluginHost(app);
+	let latest: PlaybackControlsState | null = null;
+	registry.subscribePlayback((state) => {
+		latest = state;
+	});
+	registerPlaybackActionCommands(
+		plugin,
+		createPlaybackActions(),
+		() => latest,
+	);
+	return { plugin: asMockPlugin(plugin), snapshot: () => latest };
+}
+
+/** Starts the shared playback and parks it at a known position. */
+function startPlaybackAt(
+	registry: AudioPlayerRegistry,
+	audio: { setReady(value: number): void; setDuration(value: number): void },
+	seconds: number,
+): void {
+	audio.setReady(1);
+	audio.setDuration(600);
+	registry.seekSharedAudio(playbackKey('rec.mp4', null), seconds);
+}
 
 describe('timecode seek stays in sync with the embedded player', () => {
 	it('reuses the embed element so a seek moves the visible time display', async () => {
@@ -320,6 +361,179 @@ describe('generated chapters reach an already-open player', () => {
 			expect(container.isConnected).toBe(true);
 			expect(allEls(container, MARKER.row)).toHaveLength(2);
 			expect(markerLabels(container)).toEqual(['Intro', 'Middle']);
+		} finally {
+			shared.restore();
+		}
+	});
+});
+
+describe('playback commands drive the same playback as the controls', () => {
+	it('offers no command while nothing is playing', () => {
+		const registry = new AudioPlayerRegistry();
+		const { plugin } = withPlaybackCommands(registry);
+
+		const ids = plugin.registeredCommands.map((command) => command.id);
+
+		// Every playback command is registered, and every one of them reports
+		// itself unavailable, so none reaches the palette or fires a hotkey
+		expect(ids).toHaveLength(11);
+		expect(ids.filter((id) => plugin.invokeCommand(id))).toEqual([]);
+	});
+
+	it('pauses the shared element and the status-bar snapshot together', async () => {
+		const shared = installSharedAudio();
+		try {
+			const registry = new AudioPlayerRegistry();
+			const { plugin, snapshot } = withPlaybackCommands(registry);
+			mountPlayer(registry);
+			await tick();
+			startPlaybackAt(registry, shared.audio, 30);
+
+			expect(plugin.invokeCommand('toggle-playback')).toBe(true);
+
+			expect(shared.audio.paused).toBe(true);
+			expect(snapshot()?.paused).toBe(true);
+		} finally {
+			shared.restore();
+		}
+	});
+
+	it('withdraws the commands once playback is stopped', async () => {
+		const shared = installSharedAudio();
+		try {
+			const registry = new AudioPlayerRegistry();
+			const { plugin } = withPlaybackCommands(registry);
+			mountPlayer(registry);
+			await tick();
+			startPlaybackAt(registry, shared.audio, 30);
+
+			expect(plugin.invokeCommand('stop-playback')).toBe(true);
+
+			// Stop dismisses the controls, so the hotkeys go quiet with them
+			expect(plugin.invokeCommand('toggle-playback')).toBe(false);
+		} finally {
+			shared.restore();
+		}
+	});
+
+	it('steps the speed on the element, the embed, and the snapshot', async () => {
+		const shared = installSharedAudio();
+		try {
+			const registry = new AudioPlayerRegistry();
+			const { plugin, snapshot } = withPlaybackCommands(registry);
+			const container = mountPlayer(registry);
+			await tick();
+			startPlaybackAt(registry, shared.audio, 30);
+
+			expect(plugin.invokeCommand('increase-playback-speed')).toBe(true);
+
+			// One step lands on the preset the embed's own speed menu offers,
+			// and all three surfaces report it
+			expect(shared.audio.playbackRate).toBe(1.25);
+			expect(el(container, PLAYER.speed).textContent).toBe('1.25x');
+			expect(snapshot()?.playbackRate).toBe(1.25);
+
+			expect(plugin.invokeCommand('decrease-playback-speed')).toBe(true);
+			expect(shared.audio.playbackRate).toBe(1);
+			expect(el(container, PLAYER.speed).textContent).toBe('1x');
+		} finally {
+			shared.restore();
+		}
+	});
+
+	it('jumps to a chapter in the embed and the snapshot', async () => {
+		const shared = installSharedAudio();
+		try {
+			const registry = new AudioPlayerRegistry();
+			const { plugin, snapshot } = withPlaybackCommands(registry);
+			const store = makeMarkerStore();
+			const container = makeEditableContainer();
+			mountMarkerPlayer(registry, store, container);
+			await tick();
+			await store.updateMarkers('rec.mp4', () => CHAPTERS);
+			registry.reloadMarkers('rec.mp4', null);
+			await tick();
+			startPlaybackAt(registry, shared.audio, 30);
+
+			expect(plugin.invokeCommand('go-to-next-chapter')).toBe(true);
+
+			// The chapter at 2:00 is reached on the one shared element, so the
+			// embed display and the status-bar snapshot agree
+			expect(timeText(container)).toBe('2:00 / 10:00');
+			expect(snapshot()?.currentTime).toBe(120);
+
+			expect(plugin.invokeCommand('go-to-previous-chapter')).toBe(true);
+			expect(timeText(container)).toBe('0:00 / 10:00');
+		} finally {
+			shared.restore();
+		}
+	});
+
+	it('hides the chapter commands for a player without markers', async () => {
+		const shared = installSharedAudio();
+		try {
+			const registry = new AudioPlayerRegistry();
+			const { plugin } = withPlaybackCommands(registry);
+			mountPlayer(registry);
+			await tick();
+			startPlaybackAt(registry, shared.audio, 30);
+
+			// Markers are off for this player, so it defines no chapters to
+			// navigate, while the transport commands stay available
+			expect(plugin.invokeCommand('go-to-next-chapter')).toBe(false);
+			expect(plugin.invokeCommand('go-to-previous-chapter')).toBe(false);
+			expect(plugin.invokeCommand('skip-playback-forward')).toBe(true);
+		} finally {
+			shared.restore();
+		}
+	});
+
+	it('withholds the marker commands from a read-only player', async () => {
+		const shared = installSharedAudio();
+		try {
+			const registry = new AudioPlayerRegistry();
+			const { plugin } = withPlaybackCommands(registry);
+			const store = makeMarkerStore();
+			// Reading view container (not inside a CodeMirror editor)
+			mountMarkerPlayer(registry, store, makeContainer());
+			await tick();
+			startPlaybackAt(registry, shared.audio, 30);
+
+			expect(plugin.invokeCommand('add-playback-bookmark')).toBe(false);
+			expect(plugin.invokeCommand('add-playback-chapter')).toBe(false);
+			await tick();
+			expect(store.updateMarkers).not.toHaveBeenCalled();
+
+			// Chapter navigation only reads the markers, so it survives where
+			// creating one does not
+			expect(plugin.invokeCommand('go-to-next-chapter')).toBe(true);
+		} finally {
+			shared.restore();
+		}
+	});
+
+	it('adds a marker at the playing position from an editable player', async () => {
+		const shared = installSharedAudio();
+		try {
+			const registry = new AudioPlayerRegistry();
+			const { plugin } = withPlaybackCommands(registry);
+			const store = makeMarkerStore();
+			// Live Preview container (inside a CodeMirror editor)
+			const container = makeEditableContainer();
+			mountMarkerPlayer(registry, store, container);
+			await tick();
+			startPlaybackAt(registry, shared.audio, 42);
+
+			expect(plugin.invokeCommand('add-playback-bookmark')).toBe(true);
+			await tick();
+
+			// The marker lands on the recording the command was offered for,
+			// at the position the embed is showing
+			expect(store.updateMarkers).toHaveBeenCalledWith(
+				'rec.mp4',
+				expect.any(Function),
+			);
+			expect(container).toHaveMarkerAt(42);
 		} finally {
 			shared.restore();
 		}

@@ -49,8 +49,10 @@ import { ContextMenu } from './ui/ContextMenu';
 import type { ActionServices } from './actions/PluginAction';
 import { FILE_ACTIONS } from './actions/fileActions';
 import { createRecordingMarkerActions } from './actions/recordingMarkerActions';
+import { createPlaybackActions } from './actions/playbackActions';
 import {
 	registerFileActionCommands,
+	registerPlaybackActionCommands,
 	registerRecordingActionCommands,
 } from './actions/registerActionCommands';
 import { EnhancedPlayerRegistrar } from './player/EnhancedPlayerRegistrar';
@@ -755,10 +757,10 @@ export default class AudioRecorderPlugin extends Plugin {
 	}
 
 	/**
-	 * Registers plugin commands: the recording-session commands plus
-	 * every file action from the shared registry, so each context-menu
-	 * feature is also reachable from the palette and assignable in the
-	 * Hotkeys settings.
+	 * Registers plugin commands: the recording-session commands, every
+	 * file action from the shared registry, and the playback actions, so
+	 * each context-menu feature and every player control is also reachable
+	 * from the palette and assignable in the Hotkeys settings.
 	 */
 	private registerCommands(): void {
 		this.addCommand({
@@ -825,6 +827,15 @@ export default class AudioRecorderPlugin extends Plugin {
 			this,
 			FILE_ACTIONS,
 			this.createActionServices(),
+		);
+
+		// The player registrar is created after this method runs, so the
+		// snapshot is read through the field it later fills rather than
+		// captured here
+		registerPlaybackActionCommands(
+			this,
+			createPlaybackActions(),
+			() => this.playbackState,
 		);
 	}
 
