@@ -16,6 +16,9 @@ import { createFile } from '../helpers/createApp';
 import { allEls, el } from '../helpers/dom';
 import { MODAL } from '../helpers/selectors';
 import { partial } from '../helpers/doubles';
+import { asMockPlugin } from '../helpers/obsidianMock';
+import { makePlaybackState } from '../helpers/playbackHarness';
+import { COMMAND_IDS } from 'src/constants';
 import { RecordingManager } from 'src/recording/RecordingManager';
 import { EnhancedPlayerRegistrar } from 'src/player/EnhancedPlayerRegistrar';
 import { detectSilentChannel } from 'src/recording/silentChannelDetector';
@@ -51,6 +54,7 @@ jest.mock('src/player/EnhancedPlayerRegistrar', () => ({
 		dispose: jest.fn(),
 		refresh: jest.fn(),
 		subscribePlayback: jest.fn(),
+		currentPlaybackState: jest.fn(() => null),
 		primeSavedRecordingsForEnhancement: jest.fn(),
 	})),
 }));
@@ -712,6 +716,36 @@ describe('AudioRecorderPlugin crash recovery wiring', () => {
 	});
 });
 
+/** The slice of the mocked player registrar these cases drive. */
+interface PlayerRegistrarDouble {
+	subscribePlayback: jest.Mock;
+	currentPlaybackState: jest.Mock;
+}
+
+/**
+ * Loads a plugin and hands back the two playback paths the registrar gives
+ * it: the listener it pushes snapshots to, which is what the status bar
+ * renders, and the reader the palette commands pull from.
+ * @returns The loaded plugin, its playback listener, and its registrar double
+ */
+async function pluginWithPlayback(): Promise<{
+	plugin: AudioRecorderPlugin;
+	onPlayback: (state: PlaybackControlsState | null) => void;
+	registrar: PlayerRegistrarDouble;
+}> {
+	const { plugin } = createPlugin([null]);
+	await onloadWithTimers(plugin);
+	const registrar = at((EnhancedPlayerRegistrar as jest.Mock).mock.results, 0)
+		.value as PlayerRegistrarDouble;
+	return {
+		plugin,
+		registrar,
+		onPlayback: registrar.subscribePlayback.mock.calls[0][0] as (
+			state: PlaybackControlsState | null,
+		) => void,
+	};
+}
+
 describe('AudioRecorderPlugin background transcription status bar', () => {
 	beforeEach(() => {
 		jest.useFakeTimers();
@@ -803,15 +837,7 @@ describe('AudioRecorderPlugin background transcription status bar', () => {
 	});
 
 	it('prioritizes recording, then playback, then minimized transcription', async () => {
-		const { plugin } = createPlugin([null]);
-		await onloadWithTimers(plugin);
-		const registrar = at(
-			(EnhancedPlayerRegistrar as jest.Mock).mock.results,
-			0,
-		).value as { subscribePlayback: jest.Mock };
-		const onPlayback = registrar.subscribePlayback.mock.calls[0][0] as (
-			state: PlaybackControlsState | null,
-		) => void;
+		const { plugin, onPlayback } = await pluginWithPlayback();
 		const { renderPlaybackStatusBar, renderTranscriptionStatusBar } =
 			jest.requireMock('src/ui/StatusBar');
 		const playbackState: PlaybackControlsState = {
@@ -820,13 +846,18 @@ describe('AudioRecorderPlugin background transcription status bar', () => {
 			paused: false,
 			volume: 1,
 			muted: false,
+			playbackRate: 1,
 			markersEnabled: true,
+			chaptersEnabled: true,
 			onTogglePlay: jest.fn(),
 			onStop: jest.fn(),
 			onSkip: jest.fn(),
 			onToggleMute: jest.fn(),
 			onVolumeInput: jest.fn(),
+			onSetPlaybackRate: jest.fn(),
 			onAddMarker: jest.fn(),
+			onPreviousChapter: jest.fn(),
+			onNextChapter: jest.fn(),
 		};
 
 		onPlayback(playbackState);
@@ -869,15 +900,7 @@ describe('AudioRecorderPlugin background transcription status bar', () => {
 	});
 
 	it('does not rebuild recording controls when playback updates mid-recording', async () => {
-		const { plugin } = createPlugin([null]);
-		await onloadWithTimers(plugin);
-		const registrar = at(
-			(EnhancedPlayerRegistrar as jest.Mock).mock.results,
-			0,
-		).value as { subscribePlayback: jest.Mock };
-		const onPlayback = registrar.subscribePlayback.mock.calls[0][0] as (
-			state: PlaybackControlsState | null,
-		) => void;
+		const { plugin, onPlayback } = await pluginWithPlayback();
 		const { renderPlaybackStatusBar, updateStatusBar } =
 			jest.requireMock('src/ui/StatusBar');
 
@@ -898,18 +921,50 @@ describe('AudioRecorderPlugin background transcription status bar', () => {
 			paused: false,
 			volume: 1,
 			muted: false,
+			playbackRate: 1,
 			markersEnabled: false,
+			chaptersEnabled: false,
 			onTogglePlay: jest.fn(),
 			onStop: jest.fn(),
 			onSkip: jest.fn(),
 			onToggleMute: jest.fn(),
 			onVolumeInput: jest.fn(),
+			onSetPlaybackRate: jest.fn(),
 			onAddMarker: jest.fn(),
+			onPreviousChapter: jest.fn(),
+			onNextChapter: jest.fn(),
 		};
 		onPlayback(playbackState);
 
 		expect(jest.mocked(updateStatusBar)).not.toHaveBeenCalled();
 		expect(renderPlaybackStatusBar).not.toHaveBeenCalled();
+	});
+
+	it('drives the playback the registry reports, not the one on screen', async () => {
+		const { plugin, onPlayback, registrar } = await pluginWithPlayback();
+		const rendered = makePlaybackState();
+		const live = makePlaybackState();
+
+		// The status bar is still showing a playback the registry has since
+		// let go of, so the command has nothing to drive and says so
+		onPlayback(rendered);
+		expect(
+			asMockPlugin(plugin).invokeCommand(COMMAND_IDS.togglePlayback),
+		).toBe(false);
+
+		registrar.currentPlaybackState.mockReturnValue(live);
+
+		expect(
+			asMockPlugin(plugin).invokeCommand(COMMAND_IDS.togglePlayback),
+		).toBe(true);
+		// The pushed snapshot is never what a command acts on
+		expect(live.onTogglePlay).toHaveBeenCalledTimes(1);
+		expect(rendered.onTogglePlay).not.toHaveBeenCalled();
+
+		registrar.currentPlaybackState.mockReturnValue(null);
+		expect(
+			asMockPlugin(plugin).invokeCommand(COMMAND_IDS.togglePlayback),
+		).toBe(false);
 	});
 });
 

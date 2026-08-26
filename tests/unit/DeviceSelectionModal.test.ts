@@ -2,7 +2,8 @@
  * Unit tests for DeviceSelectionModal: renders the device dropdown from
  * the real modal DOM, invokes the selection callback with the chosen
  * device, and confirms/closes after the callback settles. Also covers
- * showDeviceSelectionModal's audio-input filtering and empty-list notice.
+ * showDeviceSelectionModal's audio-input filtering, its empty-list notice,
+ * and the refusal it answers when the browser will not enumerate at all.
  * @module tests/unit/DeviceSelectionModal.test
  */
 
@@ -110,6 +111,35 @@ describe('showDeviceSelectionModal', () => {
 			},
 		});
 	}
+
+	it('notifies and does not open when enumeration is refused', async () => {
+		const refusal = new Error('Permission denied');
+		Object.defineProperty(navigator, 'mediaDevices', {
+			configurable: true,
+			value: {
+				enumerateDevices: jest.fn().mockRejectedValue(refusal),
+			},
+		});
+		const reported = jest
+			.spyOn(console, 'error')
+			.mockImplementation(() => undefined);
+		const openSpy = jest.spyOn(DeviceSelectionModal.prototype, 'open');
+
+		// Whoever asked for a device is owed an answer either way: rejecting
+		// here would leave the command looking like it did nothing.
+		await expect(
+			showDeviceSelectionModal(new App(), jest.fn()),
+		).resolves.toBeUndefined();
+
+		expect(Notice).toHaveBeenCalledWith(
+			'Could not list audio input devices',
+		);
+		expect(reported).toHaveBeenCalledWith(
+			expect.stringContaining('Could not list audio input devices'),
+			refusal,
+		);
+		expect(openSpy).not.toHaveBeenCalled();
+	});
 
 	it('notifies and does not open when no audio inputs exist', async () => {
 		mockEnumerate([makeDevice('cam-1', 'Webcam', 'videoinput')]);

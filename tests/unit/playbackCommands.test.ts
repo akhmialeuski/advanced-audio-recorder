@@ -8,6 +8,7 @@ import {
 	readPlaybackSnapshot,
 	resetPlayback,
 	seekAudio,
+	setAudioPlaybackRate,
 	setAudioVolume,
 	skipAudio,
 	toggleAudioMuted,
@@ -134,6 +135,17 @@ describe('setAudioVolume', () => {
 	});
 });
 
+describe('setAudioPlaybackRate', () => {
+	it('applies the rate to the element', () => {
+		const fake = installControlledAudio({
+			duration: 100,
+			asConstructor: false,
+		});
+		setAudioPlaybackRate(fake.audio, 1.5);
+		expect(fake.audio.playbackRate).toBe(1.5);
+	});
+});
+
 describe('seekAudio', () => {
 	it('seeks, autoplays, and runs the applied hook when metadata is ready', () => {
 		const fake = installControlledAudio({
@@ -190,12 +202,14 @@ describe('readPlaybackSnapshot', () => {
 		});
 		fake.audio.currentTime = 12;
 		fake.audio.volume = 0.6;
+		fake.audio.playbackRate = 1.25;
 		expect(readPlaybackSnapshot(fake.audio)).toEqual({
 			currentTime: 12,
 			duration: 100,
 			paused: true,
 			volume: 0.6,
 			muted: false,
+			playbackRate: 1.25,
 		});
 	});
 

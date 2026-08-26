@@ -30,6 +30,17 @@ import type {
  */
 const PLAYBACK_KEY_SEPARATOR = '\u0000';
 
+/** Accepts the newest live player whatever it can do. */
+const anyController = (): boolean => true;
+
+/** Accepts a player that permits marker creation. */
+const withMarkers = (controller: PlaybackController): boolean =>
+	controller.canAddMarkers();
+
+/** Accepts a player that can jump between chapters. */
+const withChapters = (controller: PlaybackController): boolean =>
+	controller.canNavigateChapters();
+
 /**
  * Builds the identity key a player's shared audio element is stored under:
  * the file path plus the embed's parsed #t= start. Distinct embeds of one
@@ -257,6 +268,87 @@ export class AudioPlayerRegistry {
 	}
 
 	/**
+	 * Reads the active playback as it stands right now. Subscribers are pushed
+	 * this same value whenever a media event fires; a caller that has to act on
+	 * the live state pulls it instead, because a snapshot handed out earlier
+	 * describes the playback as it was at the last event and a command must not
+	 * compute from that. Commands in the returned state capture the key, so a
+	 * stale DOM event can never affect a newer playback that replaced it.
+	 * @returns Current playback controls, or null while no audio is active
+	 */
+	currentPlaybackState(): PlaybackControlsState | null {
+		const key = this.activePlaybackKey;
+		if (key === null) {
+			return null;
+		}
+		const entry = this.audioByKey.get(key);
+		if (!entry) {
+			return null;
+		}
+		const snapshot = readPlaybackSnapshot(entry.audio);
+
+		return {
+			currentTime: snapshot.currentTime,
+			duration: snapshot.duration,
+			paused: snapshot.paused,
+			volume: snapshot.volume,
+			muted: snapshot.muted,
+			playbackRate: snapshot.playbackRate,
+			markersEnabled: this.controllerFor(entry, withMarkers) !== null,
+			chaptersEnabled: this.controllerFor(entry, withChapters) !== null,
+			onTogglePlay: () => {
+				this.runPlaybackCommand(key, (controller) => {
+					controller.togglePlay();
+				});
+			},
+			onStop: () => {
+				this.stopPlayback(key);
+			},
+			onSkip: (deltaSeconds) => {
+				this.runPlaybackCommand(key, (controller) => {
+					controller.skip(deltaSeconds);
+				});
+			},
+			onToggleMute: () => {
+				this.runPlaybackCommand(key, (controller) => {
+					controller.toggleMute();
+				});
+			},
+			onVolumeInput: (volume) => {
+				this.runPlaybackCommand(key, (controller) => {
+					controller.setVolume(volume);
+				});
+			},
+			onSetPlaybackRate: (rate) => {
+				this.runPlaybackCommand(key, (controller) => {
+					controller.setPlaybackRate(rate);
+				});
+			},
+			onAddMarker: (kind) => {
+				this.addPlaybackMarker(key, kind);
+			},
+			onPreviousChapter: () => {
+				this.runPlaybackCommand(
+					key,
+					(controller) => {
+						controller.previousChapter();
+					},
+					withChapters,
+				);
+			},
+			onNextChapter: () => {
+				this.runPlaybackCommand(
+					key,
+					(controller) => {
+						controller.nextChapter();
+					},
+					withChapters,
+				);
+			},
+		};
+	}
+
+	/**
 	 * Registers a player for a file path.
 	 * @param path - Vault-relative path of the played file
 	 * @param player - Player to register
@@ -451,6 +543,10 @@ export class AudioPlayerRegistry {
 		audio.addEventListener('loadedmetadata', refresh);
 		audio.addEventListener('durationchange', refresh);
 		audio.addEventListener('volumechange', refresh);
+		// The rate also changes from the embed's speed menu, which writes the
+		// element directly; without this the snapshot would keep reporting the
+		// speed the playback started at.
+		audio.addEventListener('ratechange', refresh);
 		audio.addEventListener('ended', finish);
 
 		return () => {
@@ -460,6 +556,7 @@ export class AudioPlayerRegistry {
 			audio.removeEventListener('loadedmetadata', refresh);
 			audio.removeEventListener('durationchange', refresh);
 			audio.removeEventListener('volumechange', refresh);
+			audio.removeEventListener('ratechange', refresh);
 			audio.removeEventListener('ended', finish);
 		};
 	}
@@ -473,82 +570,25 @@ export class AudioPlayerRegistry {
 	}
 
 	/**
-	 * Builds the controls for the active playback key. Commands capture the key
-	 * so a stale DOM event can never affect a newer playback that replaced it.
-	 * @returns Current playback controls, or null while no audio is active
-	 */
-	private currentPlaybackState(): PlaybackControlsState | null {
-		const key = this.activePlaybackKey;
-		if (key === null) {
-			return null;
-		}
-		const entry = this.audioByKey.get(key);
-		if (!entry) {
-			return null;
-		}
-		const snapshot = readPlaybackSnapshot(entry.audio);
-		const markerController = this.markerController(entry);
-
-		return {
-			currentTime: snapshot.currentTime,
-			duration: snapshot.duration,
-			paused: snapshot.paused,
-			volume: snapshot.volume,
-			muted: snapshot.muted,
-			markersEnabled: markerController !== null,
-			onTogglePlay: () => {
-				this.runPlaybackCommand(key, (controller) => {
-					controller.togglePlay();
-				});
-			},
-			onStop: () => {
-				this.stopPlayback(key);
-			},
-			onSkip: (deltaSeconds) => {
-				this.runPlaybackCommand(key, (controller) => {
-					controller.skip(deltaSeconds);
-				});
-			},
-			onToggleMute: () => {
-				this.runPlaybackCommand(key, (controller) => {
-					controller.toggleMute();
-				});
-			},
-			onVolumeInput: (volume) => {
-				this.runPlaybackCommand(key, (controller) => {
-					controller.setVolume(volume);
-				});
-			},
-			onAddMarker: (kind) => {
-				this.addPlaybackMarker(key, kind);
-			},
-		};
-	}
-
-	/**
-	 * Returns the newest live player that currently permits marker creation.
+	 * Returns the newest live player the caller accepts. Several players can
+	 * share one key (the same embed in reading view and Live Preview), and a
+	 * command belongs to the one rendered last; an operation the newest player
+	 * cannot perform, such as marker creation in reading view, falls back to an
+	 * older player that can.
 	 * @param entry - Shared audio entry whose players are considered
-	 * @returns Eligible marker controller, or null when marker creation is off
+	 * @param eligible - Accepts a player for the operation at hand
+	 * @returns Newest accepted controller, or null when no player qualifies
 	 */
-	private markerController(entry: SharedAudio): PlaybackController | null {
-		const controllers = [...entry.playbackControllers];
-		for (let index = controllers.length - 1; index >= 0; index--) {
-			const controller = controllers[index];
-			if (controller?.canAddMarkers()) {
+	private controllerFor(
+		entry: SharedAudio,
+		eligible: (controller: PlaybackController) => boolean,
+	): PlaybackController | null {
+		for (const controller of [...entry.playbackControllers].reverse()) {
+			if (eligible(controller)) {
 				return controller;
 			}
 		}
 		return null;
-	}
-
-	/**
-	 * Returns the newest live player for a playback key.
-	 * @param entry - Shared audio entry whose players are considered
-	 * @returns Newest playback controller, or null during lifecycle handoff
-	 */
-	private playbackController(entry: SharedAudio): PlaybackController | null {
-		const controllers = [...entry.playbackControllers];
-		return controllers[controllers.length - 1] ?? null;
 	}
 
 	/**
@@ -561,7 +601,7 @@ export class AudioPlayerRegistry {
 			return;
 		}
 		this.activePlaybackKey = null;
-		const controller = this.playbackController(entry);
+		const controller = this.controllerFor(entry, anyController);
 		if (controller) {
 			controller.stop();
 		} else {
@@ -577,16 +617,18 @@ export class AudioPlayerRegistry {
 	 * the resulting shared-audio state without waiting for a media event.
 	 * @param key - Playback key captured by the status snapshot
 	 * @param command - Operation to run against the newest live player
+	 * @param eligible - Narrows which players may run the command
 	 */
 	private runPlaybackCommand(
 		key: string,
 		command: (controller: PlaybackController) => void,
+		eligible: (controller: PlaybackController) => boolean = anyController,
 	): void {
 		const entry = this.activeEntry(key);
 		if (!entry) {
 			return;
 		}
-		const controller = this.playbackController(entry);
+		const controller = this.controllerFor(entry, eligible);
 		if (controller) {
 			command(controller);
 			this.emitPlaybackState();
@@ -601,7 +643,7 @@ export class AudioPlayerRegistry {
 	private addPlaybackMarker(key: string, kind: MarkerKind): void {
 		const entry = this.activeEntry(key);
 		if (entry) {
-			this.markerController(entry)?.addMarker(kind);
+			this.controllerFor(entry, withMarkers)?.addMarker(kind);
 		}
 	}
 

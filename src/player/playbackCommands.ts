@@ -2,8 +2,8 @@
  * The single source of truth for playback commands on a shared audio element.
  * Every surface that drives playback - the embedded player, the status-bar
  * controls, and note-independent timecode playback - goes through these
- * functions, so play/pause, stop, skip, mute, volume, and seek can never
- * behave differently between them. Each function operates only on the audio
+ * functions, so play/pause, stop, skip, mute, volume, rate, and seek can
+ * never behave differently between them. Each function operates only on the audio
  * element; view-specific side effects (progress redraw, control icons, the
  * #t= start hint) stay with the caller.
  * @module player/playbackCommands
@@ -23,6 +23,8 @@ export interface PlaybackSnapshot {
 	volume: number;
 	/** Whether output is muted. */
 	muted: boolean;
+	/** Current playback rate multiplier. */
+	playbackRate: number;
 }
 
 /** Options for {@link seekAudio}. */
@@ -107,6 +109,18 @@ export function toggleAudioMuted(audio: HTMLAudioElement): boolean {
 }
 
 /**
+ * Applies a playback rate multiplier.
+ * @param audio - The audio element to adjust
+ * @param rate - Playback rate multiplier
+ */
+export function setAudioPlaybackRate(
+	audio: HTMLAudioElement,
+	rate: number,
+): void {
+	audio.playbackRate = rate;
+}
+
+/**
  * Applies a volume level, unmuting when the requested level is audible.
  * @param audio - The audio element to adjust
  * @param volume - Volume in the inclusive 0..1 range
@@ -177,5 +191,6 @@ export function readPlaybackSnapshot(
 		paused: audio.paused,
 		volume: audio.volume,
 		muted: audio.muted,
+		playbackRate: audio.playbackRate,
 	};
 }

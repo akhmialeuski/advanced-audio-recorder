@@ -1,8 +1,9 @@
 /**
  * Pure helpers for the playback-rate control. They are the single source
- * of truth for how a rate is labelled and which dropdown entries are
- * shown, so the player presents the exact same speed chooser in every
- * render mode (reading view and Live Preview).
+ * of truth for how a rate is labelled, which dropdown entries are shown,
+ * and where a step lands, so the player presents the exact same speed
+ * chooser in every render mode (reading view and Live Preview) and the
+ * palette commands step between the very entries that chooser offers.
  * @module player/playbackRate
  */
 
@@ -52,4 +53,38 @@ export function speedMenuItems(
 		label: formatPlaybackRate(rate),
 		checked: Math.abs(currentRate - rate) < RATE_COMPARISON_EPSILON,
 	}));
+}
+
+/**
+ * Returns the preset one step away from the current rate, in the given
+ * direction. The rate reaching this helper is read off the media element,
+ * so it may sit between two presets (or carry a float drift); the scan
+ * therefore looks for the first preset strictly past it rather than for an
+ * index. At either end of the presets the current rate is returned, so a
+ * repeated hotkey press stops instead of wrapping around to the opposite
+ * extreme.
+ * @param currentRate - The player's current playback rate
+ * @param presets - Selectable rate presets in ascending order
+ * @param direction - 1 to speed up, -1 to slow down
+ * @returns The rate to apply
+ */
+export function steppedPlaybackRate(
+	currentRate: number,
+	presets: readonly number[],
+	direction: 1 | -1,
+): number {
+	if (direction === 1) {
+		for (const rate of presets) {
+			if (rate > currentRate + RATE_COMPARISON_EPSILON) {
+				return rate;
+			}
+		}
+		return currentRate;
+	}
+	for (const rate of [...presets].reverse()) {
+		if (rate < currentRate - RATE_COMPARISON_EPSILON) {
+			return rate;
+		}
+	}
+	return currentRate;
 }

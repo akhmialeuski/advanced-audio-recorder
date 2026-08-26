@@ -1,10 +1,10 @@
 {
 	"coverage": {
 		"total": {
-			"statements": 98.44,
+			"statements": 98.45,
 			"branches": 93.36,
-			"functions": 98.36,
-			"lines": 98.45
+			"functions": 98.43,
+			"lines": 98.46
 		},
 		"files": {
 			"src/constants.ts": {
@@ -20,10 +20,10 @@
 				"lines": 100
 			},
 			"src/main.ts": {
-				"statements": 99.42,
-				"branches": 97.1,
-				"functions": 98.73,
-				"lines": 99.7
+				"statements": 99.39,
+				"branches": 96.92,
+				"functions": 98.71,
+				"lines": 99.69
 			},
 			"src/types.ts": {
 				"statements": 100,
@@ -37,7 +37,7 @@
 				"functions": 100,
 				"lines": 100
 			},
-			"src/actions/recordingMarkerActions.ts": {
+			"src/actions/playbackActions.ts": {
 				"statements": 100,
 				"branches": 100,
 				"functions": 100,
@@ -50,6 +50,12 @@
 				"lines": 100
 			},
 			"src/actions/renderActionsIntoMenu.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
+			"src/actions/sessionActions.ts": {
 				"statements": 100,
 				"branches": 100,
 				"functions": 100,
@@ -218,22 +224,22 @@
 				"lines": 100
 			},
 			"src/player/AudioPlayer.ts": {
-				"statements": 98.75,
+				"statements": 98.77,
 				"branches": 88.65,
-				"functions": 98.14,
-				"lines": 98.75
+				"functions": 98.21,
+				"lines": 98.76
 			},
 			"src/player/AudioPlayerRegistry.ts": {
-				"statements": 99.48,
-				"branches": 93.58,
-				"functions": 97.67,
-				"lines": 99.47
+				"statements": 99.5,
+				"branches": 93.5,
+				"functions": 98.03,
+				"lines": 99.49
 			},
 			"src/player/DetachedPlayback.ts": {
-				"statements": 91.04,
+				"statements": 92.95,
 				"branches": 72.22,
-				"functions": 90.47,
-				"lines": 92.42
+				"functions": 96,
+				"lines": 94.28
 			},
 			"src/player/DurationProbe.ts": {
 				"statements": 100,
@@ -244,7 +250,7 @@
 			"src/player/EnhancedPlayerRegistrar.ts": {
 				"statements": 98.73,
 				"branches": 93.33,
-				"functions": 96.87,
+				"functions": 96.96,
 				"lines": 98.73
 			},
 			"src/player/MediaEmbedShell.ts": {
@@ -296,10 +302,10 @@
 				"lines": 100
 			},
 			"src/player/playbackCommands.ts": {
-				"statements": 97.5,
+				"statements": 97.61,
 				"branches": 86.36,
 				"functions": 100,
-				"lines": 97.5
+				"lines": 97.61
 			},
 			"src/player/playbackProgress.ts": {
 				"statements": 100,
@@ -434,8 +440,8 @@
 				"lines": 96.6
 			},
 			"src/recording/RecordingManager.ts": {
-				"statements": 98.85,
-				"branches": 93.38,
+				"statements": 98.86,
+				"branches": 93.44,
 				"functions": 100,
 				"lines": 98.84
 			},
@@ -1073,8 +1079,8 @@
 	},
 	"suite": {
 		"suites": 205,
-		"tests": 4422,
-		"passed": 4422,
+		"tests": 4468,
+		"passed": 4468,
 		"failed": 0,
 		"todo": 0
 	}

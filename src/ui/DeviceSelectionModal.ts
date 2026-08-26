@@ -5,6 +5,7 @@
 
 import { Notice } from 'obsidian';
 import type { App } from 'obsidian';
+import { PLUGIN_LOG_PREFIX } from '../constants';
 import { PluginModal } from './PluginModal';
 
 /**
@@ -80,7 +81,20 @@ export async function showDeviceSelectionModal(
 	app: App,
 	onDeviceSelected: DeviceSelectedCallback,
 ): Promise<void> {
-	const devices = await navigator.mediaDevices.enumerateDevices();
+	let devices: MediaDeviceInfo[];
+	try {
+		devices = await navigator.mediaDevices.enumerateDevices();
+	} catch (error) {
+		// Enumeration is refused when microphone access is blocked, and the
+		// caller has no way to say so: this function is the whole of what the
+		// user sees after asking to pick a device.
+		console.error(
+			`${PLUGIN_LOG_PREFIX} Could not list audio input devices:`,
+			error,
+		);
+		new Notice('Could not list audio input devices');
+		return;
+	}
 	const audioDevices = devices.filter(
 		(device) => device.kind === 'audioinput',
 	);

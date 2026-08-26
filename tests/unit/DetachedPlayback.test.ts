@@ -10,6 +10,7 @@ import {
 } from 'src/player/AudioPlayerRegistry';
 import { DetachedPlayback } from 'src/player/DetachedPlayback';
 import type { PlaybackControlsState } from 'src/player/playbackControls';
+import { at } from '../helpers/assertions';
 import { partial } from '../helpers/doubles';
 import { createMockApp } from '../helpers/createApp';
 import { installControlledAudio } from '../helpers/mediaMocks';
@@ -48,12 +49,36 @@ describe('DetachedPlayback', () => {
 				markersEnabled: false,
 			}),
 		);
-		// A detached playback has no marker UI, so add-marker is inert
+		// A detached playback has no marker UI, so add-marker and the
+		// chapter jumps it would navigate are inert
+		expect(state?.chaptersEnabled).toBe(false);
 		state?.onAddMarker('bookmark');
+		state?.onPreviousChapter();
+		state?.onNextChapter();
+		expect(harness.audio.currentTime).toBe(30);
 		expect(onDispose).not.toHaveBeenCalled();
 	});
 
-	it('delegates transport, mute, and volume to the shared audio', () => {
+	it('answers the operations it cannot perform without moving', () => {
+		const harness = installControlledAudio();
+		const registry = new AudioPlayerRegistry();
+		const registered = jest.spyOn(registry, 'registerPlaybackController');
+		DetachedPlayback.start(registry, appStub(), fileStub(), 30, jest.fn());
+
+		// The registry withholds these from the snapshot, but the contract
+		// still has to answer them: a controller that threw would break the
+		// surface the moment the gating changed.
+		const controller = at(registered.mock.calls, 0)[1];
+		controller.addMarker('bookmark');
+		controller.previousChapter();
+		controller.nextChapter();
+
+		expect(controller.canAddMarkers()).toBe(false);
+		expect(controller.canNavigateChapters()).toBe(false);
+		expect(harness.audio.currentTime).toBe(30);
+	});
+
+	it('delegates transport, mute, volume, and speed to the shared audio', () => {
 		const harness = installControlledAudio();
 		const registry = new AudioPlayerRegistry();
 		const listener = jest.fn<void, [PlaybackControlsState | null]>();
@@ -73,6 +98,9 @@ describe('DetachedPlayback', () => {
 		state?.onVolumeInput(0.4);
 		expect(harness.audio.volume).toBe(0.4);
 		expect(harness.audio.muted).toBe(false);
+		state = listener.mock.lastCall?.[0];
+		state?.onSetPlaybackRate(1.5);
+		expect(harness.audio.playbackRate).toBe(1.5);
 		state = listener.mock.lastCall?.[0];
 		state?.onTogglePlay();
 		expect(harness.pause).toHaveBeenCalled();

@@ -232,6 +232,7 @@ export const PLAYER_ICONS = {
 	addChapter: 'list-plus',
 	previousChapter: 'chevron-first',
 	nextChapter: 'chevron-last',
+	speed: 'gauge',
 	copyLink: 'link',
 } as const;
 
@@ -1104,4 +1105,15 @@ export const COMMAND_IDS = {
 	renameSpeakers: 'rename-transcript-speakers',
 	generateChapters: 'generate-chapters-from-transcript',
 	deleteRecording: 'delete-recording',
+	togglePlayback: 'toggle-playback',
+	stopPlayback: 'stop-playback',
+	skipPlaybackBack: 'skip-playback-back',
+	skipPlaybackForward: 'skip-playback-forward',
+	togglePlaybackMute: 'toggle-playback-mute',
+	increasePlaybackSpeed: 'increase-playback-speed',
+	decreasePlaybackSpeed: 'decrease-playback-speed',
+	previousChapter: 'go-to-previous-chapter',
+	nextChapter: 'go-to-next-chapter',
+	addPlaybackBookmark: 'add-playback-bookmark',
+	addPlaybackChapter: 'add-playback-chapter',
 } as const;

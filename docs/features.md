@@ -45,7 +45,7 @@ Learn more: [From the command line](recording.md#from-the-command-line)
 
 ## Pause and resume
 
-Pause an active recording and pick it up again without losing what you have captured. Run `Pause/resume recording` or click **Pause** in the status bar; the bar then reads `Recording paused` with **Resume** and **Stop**. Paused time is excluded from the elapsed counter, so the timer reflects actual recorded audio. The command is available only while a recording is active.
+Pause an active recording and pick it up again without losing what you have captured. Run `Pause/resume recording` or click **Pause** in the status bar; the bar then reads `Recording paused` with **Resume** and **Stop**. Paused time is excluded from the elapsed counter, so the timer reflects actual recorded audio. The command is available only while a recording is active, so the key bound to it stays free the rest of the time.
 
 Learn more: [Recording](recording.md#pausing-and-resuming)
 
@@ -105,7 +105,7 @@ Learn more: [File operations](file-operations.md#delete-recording)
 
 ## Enhanced audio player
 
-When **Enhanced audio player** is enabled, the plugin replaces Obsidian's built-in audio embed with a richer player anywhere an audio file is embedded. It adds a **waveform seek bar** (click, drag, or use the keyboard to seek; the played portion uses the theme accent), **playback speed** presets (0.5×-3×), **skip** buttons (±10s), **volume** and **mute**, a **loop** toggle, a **time display** (elapsed/total), and a **copy timestamp link** button. While a recording plays, the same transport, volume, marker, chapter, and time controls also appear in the **status bar**, and they dismiss when playback stops. Timecode links (`#t=90`, `#t=1:30`, `#t=1:02:03`) jump a visible player to that position, so clicking a transcript timestamp moves playback straight to that line. The enhanced player takes over audio-only files; files with a video track and undecodable files keep Obsidian's built-in player.
+When **Enhanced audio player** is enabled, the plugin replaces Obsidian's built-in audio embed with a richer player anywhere an audio file is embedded. It adds a **waveform seek bar** (click, drag, or use the keyboard to seek; the played portion uses the theme accent), **playback speed** presets (0.5×-3×), **skip** buttons (±10s), **volume** and **mute**, a **loop** toggle, a **time display** (elapsed/total), and a **copy timestamp link** button. While a recording plays, the same transport, volume, marker, chapter, and time controls also appear in the **status bar**, and they dismiss when playback stops. Each of those actions, plus the speed steps and the chapter jumps, is also a **command**, so any of them can carry a hotkey; the commands are offered only while a recording is playing. Timecode links (`#t=90`, `#t=1:30`, `#t=1:02:03`) jump a visible player to that position, so clicking a transcript timestamp moves playback straight to that line. The enhanced player takes over audio-only files; files with a video track and undecodable files keep Obsidian's built-in player.
 
 ![Enhanced audio player with waveform seek bar, speed, skip, volume, loop, and time display](images/player-overview.png)
 _Figure: The enhanced player replaces the built-in audio embed._
@@ -170,29 +170,30 @@ _Figure: The right-click context menu collects most per-file actions in one plac
 
 ## Feature matrix
 
-| Feature                       | What it does                                                      | Where to configure                              | Deep-dive link                                                 |
-| ----------------------------- | ----------------------------------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------- |
-| Recording                     | Start/stop capture; ribbon, status bar, save-progress feedback    | Ribbon icon / command palette                   | [Recording](recording.md)                                      |
-| Switch input device           | Quick-pick modal to change the microphone                         | Command palette                                 | [Recording](recording.md#switching-the-input-device)           |
-| Command line (desktop)        | Start, stop, report state, transcribe a file from a terminal      | Obsidian CLI (1.12.2+)                          | [Recording](recording.md#from-the-command-line)                |
-| Pause and resume              | Pause and continue a session without losing progress              | Command palette / status bar                    | [Recording](recording.md#pausing-and-resuming)                 |
-| Markers while recording       | Drop a bookmark or chapter at the live position                   | Status bar / command palette (markers enabled)  | [Recording](recording.md#marking-moments-while-recording)      |
-| Crash recovery                | Recover audio after a crash, power loss, or mid-recording disable | Automatic modal on next launch                  | [Recording](recording.md#crash-recovery)                       |
-| Automatic splitting           | Save a recording as fixed-duration part files                     | Settings > Audio splitting                      | [Splitting](splitting.md#automatic-splitting-during-recording) |
-| Multi-track recording         | Capture up to 8 input devices at once; single or per-track files  | Settings > Multi-track recording                | [Multi-track recording](multi-track-recording.md)              |
-| Output formats and encoding   | 8 formats with online/offline encoding                            | Settings > Output format                        | [Formats](formats.md)                                          |
-| Format conversion             | Transcode a file to another format and bitrate                    | Context menu / palette > Convert audio format   | [File operations](file-operations.md#convert-audio-format)     |
-| Manual splitting              | Split an existing file into fixed-duration parts                  | Context menu / palette > Split audio into parts | [Splitting](splitting.md#manual-splitting-existing-file)       |
-| Audio file info               | Inspect metadata; copy it as Markdown                             | Context menu / palette > Audio file info        | [File operations](file-operations.md#audio-file-info)          |
-| Delete / delete and link      | Trash a recording, optionally removing its embed link             | Context menu / palette > Delete actions         | [File operations](file-operations.md#delete-recording)         |
-| Enhanced audio player         | Waveform seek bar, speed, skip, volume, loop, timecode links      | Settings > Audio player                         | [Audio player](audio-player.md)                                |
-| Markers and chapters          | Per-file bookmarks and chapters stored in a sidecar               | Settings > Audio player                         | [Audio player](audio-player.md#markers-and-chapters)           |
-| On-demand audio cleanup       | Offline noise removal and loudness leveling to a new copy         | Context menu / palette > Clean up audio         | [Audio cleanup](audio-cleanup.md)                              |
-| Input processing and feedback | Noise/echo/AGC toggles, input meter, stats, mobile banner         | Settings > Audio processing & feedback          | [Recording](recording.md#live-feedback)                        |
-| Transcription                 | Speech-to-text via 4 engines, diarization, output formats         | Settings > Transcription                        | [Transcription](transcription.md)                              |
-| LLM post-processing           | Clean up, summarize, or custom-process a transcript with an LLM   | Settings > Transcription > LLM post-processing  | [LLM post-processing](llm-post-processing.md)                  |
-| Auto chapters                 | LLM-generated titled chapters from an existing transcript         | Settings > Transcription > Auto chapters        | [Transcription](transcription.md#auto-chapters)                |
-| Diagnostics                   | Test recording, system info, debug mode                           | Settings > Diagnostics                          | [Troubleshooting](troubleshooting.md)                          |
+| Feature                       | What it does                                                        | Where to configure                              | Deep-dive link                                                 |
+| ----------------------------- | ------------------------------------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------- |
+| Recording                     | Start/stop capture; ribbon, status bar, save-progress feedback      | Ribbon icon / command palette                   | [Recording](recording.md)                                      |
+| Switch input device           | Quick-pick modal to change the microphone                           | Command palette                                 | [Recording](recording.md#switching-the-input-device)           |
+| Command line (desktop)        | Start, stop, report state, transcribe a file from a terminal        | Obsidian CLI (1.12.2+)                          | [Recording](recording.md#from-the-command-line)                |
+| Pause and resume              | Pause and continue a session without losing progress                | Command palette / status bar                    | [Recording](recording.md#pausing-and-resuming)                 |
+| Markers while recording       | Drop a bookmark or chapter at the live position                     | Status bar / command palette (markers enabled)  | [Recording](recording.md#marking-moments-while-recording)      |
+| Crash recovery                | Recover audio after a crash, power loss, or mid-recording disable   | Automatic modal on next launch                  | [Recording](recording.md#crash-recovery)                       |
+| Automatic splitting           | Save a recording as fixed-duration part files                       | Settings > Audio splitting                      | [Splitting](splitting.md#automatic-splitting-during-recording) |
+| Multi-track recording         | Capture up to 8 input devices at once; single or per-track files    | Settings > Multi-track recording                | [Multi-track recording](multi-track-recording.md)              |
+| Output formats and encoding   | 8 formats with online/offline encoding                              | Settings > Output format                        | [Formats](formats.md)                                          |
+| Format conversion             | Transcode a file to another format and bitrate                      | Context menu / palette > Convert audio format   | [File operations](file-operations.md#convert-audio-format)     |
+| Manual splitting              | Split an existing file into fixed-duration parts                    | Context menu / palette > Split audio into parts | [Splitting](splitting.md#manual-splitting-existing-file)       |
+| Audio file info               | Inspect metadata; copy it as Markdown                               | Context menu / palette > Audio file info        | [File operations](file-operations.md#audio-file-info)          |
+| Delete / delete and link      | Trash a recording, optionally removing its embed link               | Context menu / palette > Delete actions         | [File operations](file-operations.md#delete-recording)         |
+| Enhanced audio player         | Waveform seek bar, speed, skip, volume, loop, timecode links        | Settings > Audio player                         | [Audio player](audio-player.md)                                |
+| Playback commands             | Transport, speed, chapters, and markers as hotkey-bindable commands | Command palette (while playing)                 | [Audio player](audio-player.md#playback-commands-and-hotkeys)  |
+| Markers and chapters          | Per-file bookmarks and chapters stored in a sidecar                 | Settings > Audio player                         | [Audio player](audio-player.md#markers-and-chapters)           |
+| On-demand audio cleanup       | Offline noise removal and loudness leveling to a new copy           | Context menu / palette > Clean up audio         | [Audio cleanup](audio-cleanup.md)                              |
+| Input processing and feedback | Noise/echo/AGC toggles, input meter, stats, mobile banner           | Settings > Audio processing & feedback          | [Recording](recording.md#live-feedback)                        |
+| Transcription                 | Speech-to-text via 4 engines, diarization, output formats           | Settings > Transcription                        | [Transcription](transcription.md)                              |
+| LLM post-processing           | Clean up, summarize, or custom-process a transcript with an LLM     | Settings > Transcription > LLM post-processing  | [LLM post-processing](llm-post-processing.md)                  |
+| Auto chapters                 | LLM-generated titled chapters from an existing transcript           | Settings > Transcription > Auto chapters        | [Transcription](transcription.md#auto-chapters)                |
+| Diagnostics                   | Test recording, system info, debug mode                             | Settings > Diagnostics                          | [Troubleshooting](troubleshooting.md)                          |
 
 ---
 

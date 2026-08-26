@@ -22,7 +22,7 @@ import { getPlayerEmbedActions } from '../player/playerEmbedActions';
 import { MARKER_KIND, type MarkerKind } from '../markers/markerModel';
 import { isAudioFile } from '../utils/audioFile';
 import type { ActionServices, FileAction } from '../actions/PluginAction';
-import { renderFileActionsIntoMenu } from '../actions/renderActionsIntoMenu';
+import { renderActionsIntoMenu } from '../actions/renderActionsIntoMenu';
 
 export type { EnhancementPrimer } from '../actions/PluginAction';
 
@@ -285,11 +285,10 @@ export class ContextMenu {
 				'file-menu',
 				(menu: Menu, file: TAbstractFile) => {
 					if (file instanceof TFile && isAudioFile(file)) {
-						renderFileActionsIntoMenu(
+						renderActionsIntoMenu(
 							menu,
 							this.fileActions,
-							file,
-							this.services,
+							{ file, services: this.services },
 							this.renderedSetFor(menu),
 						);
 					}
@@ -345,11 +344,10 @@ export class ContextMenu {
 			return;
 		}
 
-		renderFileActionsIntoMenu(
+		renderActionsIntoMenu(
 			menu,
 			this.fileActions.filter((action) => action.showInEditorMenu),
-			file,
-			this.services,
+			{ file, services: this.services },
 			this.renderedSetFor(menu),
 		);
 		this.addDeleteRecordingAndLinkMenuItem(

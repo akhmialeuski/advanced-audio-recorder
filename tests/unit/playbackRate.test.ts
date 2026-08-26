@@ -3,7 +3,11 @@
  * the speed control shared by both render modes.
  */
 
-import { formatPlaybackRate, speedMenuItems } from 'src/player/playbackRate';
+import {
+	formatPlaybackRate,
+	speedMenuItems,
+	steppedPlaybackRate,
+} from 'src/player/playbackRate';
 
 describe('formatPlaybackRate', () => {
 	it.each([
@@ -55,4 +59,67 @@ describe('speedMenuItems', () => {
 	it('returns an empty list for no presets', () => {
 		expect(speedMenuItems(1, [])).toEqual([]);
 	});
+});
+
+describe('steppedPlaybackRate', () => {
+	const presets = [0.5, 1, 1.5, 2];
+
+	it.each([
+		{
+			name: 'up from a preset',
+			current: 1,
+			direction: 1 as const,
+			next: 1.5,
+		},
+		{
+			name: 'down from a preset',
+			current: 1.5,
+			direction: -1 as const,
+			next: 1,
+		},
+		{
+			name: 'up from between two presets',
+			current: 1.2,
+			direction: 1 as const,
+			next: 1.5,
+		},
+		{
+			name: 'down from between two presets',
+			current: 1.2,
+			direction: -1 as const,
+			next: 1,
+		},
+	])('steps $name', ({ current, direction, next }) => {
+		expect(steppedPlaybackRate(current, presets, direction)).toBe(next);
+	});
+
+	it.each([
+		{ name: 'the fastest preset', current: 2, direction: 1 as const },
+		{ name: 'the slowest preset', current: 0.5, direction: -1 as const },
+	])('holds at $name', ({ current, direction }) => {
+		// A held hotkey must stop at the end instead of wrapping around to
+		// the opposite extreme, which would make the audio unlistenable.
+		expect(steppedPlaybackRate(current, presets, direction)).toBe(current);
+	});
+
+	it.each([
+		{ name: 'up', direction: 1 as const, next: 1.5 },
+		{ name: 'down', direction: -1 as const, next: 0.5 },
+	])(
+		'steps $name past a rate the element drifted off',
+		({ direction, next }) => {
+			// The rate comes back from the browser, so a drifted 1 must not
+			// count as a step of its own.
+			expect(steppedPlaybackRate(1.0000000001, presets, direction)).toBe(
+				next,
+			);
+		},
+	);
+
+	it.each([1 as const, -1 as const])(
+		'keeps the current rate with no presets in direction %s',
+		(direction) => {
+			expect(steppedPlaybackRate(1.25, [], direction)).toBe(1.25);
+		},
+	);
 });

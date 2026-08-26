@@ -6,9 +6,9 @@
  * @module actions/fileActions
  */
 
-import { Notice } from 'obsidian';
-import type { TFile } from 'obsidian';
+import { Notice, TFile } from 'obsidian';
 import { COMMAND_IDS } from '../constants';
+import { isAudioFile } from '../utils/audioFile';
 import { getAudioFileInfo } from '../utils/AudioFileAnalyzer';
 import { AudioFileInfoModal } from '../ui/AudioFileInfoModal';
 import { ConversionModal } from '../ui/ConversionModal';
@@ -18,10 +18,29 @@ import { SpeakerRenameModal } from '../ui/SpeakerRenameModal';
 import { ChapterGenerationModal } from '../ui/ChapterGenerationModal';
 import { AudioProcessingModal } from '../cleanup/AudioProcessingModal';
 import { insertProcessedAudioEmbed } from '../recording/NoteInserter';
-import type { ActionServices, FileAction } from './PluginAction';
+import type { ActionServices, FileAction, FileContext } from './PluginAction';
 
 /** Availability gate for actions with no extra conditions. */
 const always = (): boolean => true;
+
+/**
+ * Builds the resolver the palette uses for file actions: the active file
+ * when it is audio, and nothing otherwise, which is what keeps every file
+ * command out of the palette while a note or an image is open.
+ * @param services - Injected services every file action shares
+ * @returns Resolver producing the context, or null when there is no
+ *   active audio file
+ */
+export function activeAudioFile(
+	services: ActionServices,
+): () => FileContext | null {
+	return (): FileContext | null => {
+		const file = services.app.workspace.getActiveFile();
+		return file instanceof TFile && isAudioFile(file)
+			? { file, services }
+			: null;
+	};
+}
 
 /**
  * All per-file actions in menu order: info, convert, split, clean up,
@@ -36,7 +55,7 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		icon: 'info',
 		showInEditorMenu: true,
 		isAvailable: always,
-		run: async (file: TFile, services: ActionServices): Promise<void> => {
+		run: async ({ file, services }: FileContext): Promise<void> => {
 			const info = await getAudioFileInfo(services.app, file);
 			if (info) {
 				new AudioFileInfoModal(services.app, info).open();
@@ -49,7 +68,7 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		icon: 'file-audio',
 		showInEditorMenu: true,
 		isAvailable: always,
-		run: (file: TFile, services: ActionServices): void => {
+		run: ({ file, services }: FileContext): void => {
 			new ConversionModal(services.app, file, services.getSettings, {
 				onConverted: (convertedPath) => {
 					// The note link is already rewritten by the conversion's
@@ -67,7 +86,7 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		icon: 'scissors',
 		showInEditorMenu: true,
 		isAvailable: always,
-		run: (file: TFile, services: ActionServices): void => {
+		run: ({ file, services }: FileContext): void => {
 			new SplitModal(services.app, file, services.getSettings).open();
 		},
 	},
@@ -77,7 +96,7 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		icon: 'wand-2',
 		showInEditorMenu: true,
 		isAvailable: always,
-		run: (file: TFile, services: ActionServices): void => {
+		run: ({ file, services }: FileContext): void => {
 			new AudioProcessingModal(
 				services.app,
 				file,
@@ -102,9 +121,9 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		title: 'Transcribe audio',
 		icon: 'captions',
 		showInEditorMenu: true,
-		isAvailable: (_file: TFile, services: ActionServices): boolean =>
+		isAvailable: ({ services }: FileContext): boolean =>
 			services.getSettings().transcriptionEnabled,
-		run: (file: TFile, services: ActionServices): void => {
+		run: ({ file, services }: FileContext): void => {
 			new TranscriptionModal(
 				services.app,
 				file,
@@ -118,9 +137,9 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		title: 'Rename speakers',
 		icon: 'users',
 		showInEditorMenu: true,
-		isAvailable: (_file: TFile, services: ActionServices): boolean =>
+		isAvailable: ({ services }: FileContext): boolean =>
 			services.getSettings().transcriptionSpeakerRenameEnabled,
-		run: (file: TFile, services: ActionServices): void => {
+		run: ({ file, services }: FileContext): void => {
 			new SpeakerRenameModal(services.app, file, {
 				getSettings: services.getSettings,
 				saveSettings: services.saveSettings,
@@ -133,9 +152,9 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		title: 'Generate chapters from transcript',
 		icon: 'sparkles',
 		showInEditorMenu: true,
-		isAvailable: (_file: TFile, services: ActionServices): boolean =>
+		isAvailable: ({ services }: FileContext): boolean =>
 			services.getSettings().transcriptionAutoChaptersEnabled,
-		run: (file: TFile, services: ActionServices): void => {
+		run: ({ file, services }: FileContext): void => {
 			// Open the dialog to pick the guidance profile and see the cost
 			// estimate before the run; it delegates to the shared service.
 			new ChapterGenerationModal(services.app, file, {
@@ -152,7 +171,7 @@ export const FILE_ACTIONS: readonly FileAction[] = [
 		icon: 'trash',
 		showInEditorMenu: false,
 		isAvailable: always,
-		run: async (file: TFile, services: ActionServices): Promise<void> => {
+		run: async ({ file, services }: FileContext): Promise<void> => {
 			try {
 				await services.app.fileManager.trashFile(file);
 				new Notice('Recording deleted');

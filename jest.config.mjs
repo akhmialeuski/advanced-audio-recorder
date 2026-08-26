@@ -70,11 +70,14 @@ export default {
 			functions: 98.8,
 			lines: 98.3,
 		},
+		// Re-pinned when the four inline commands moved into the action
+		// registry: the file lost covered lines and branches, so the same
+		// single uncovered line now weighs more.
 		'./src/main.ts': {
-			statements: 99.4,
-			branches: 97.1,
+			statements: 99.3,
+			branches: 96.9,
 			functions: 98.7,
-			lines: 99.7,
+			lines: 99.6,
 		},
 		'src/player/views/': {
 			statements: 100,

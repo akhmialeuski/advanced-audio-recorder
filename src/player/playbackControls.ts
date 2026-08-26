@@ -9,6 +9,8 @@ import type { MarkerKind } from '../markers/markerModel';
 export interface PlaybackController {
 	/** Whether marker and chapter creation is enabled for this player. */
 	canAddMarkers(): boolean;
+	/** Whether this player can jump between chapters. */
+	canNavigateChapters(): boolean;
 	/** Starts paused playback or pauses running playback. */
 	togglePlay(): void;
 	/** Stops playback and resets the player position. */
@@ -19,8 +21,14 @@ export interface PlaybackController {
 	toggleMute(): void;
 	/** Applies a volume in the inclusive 0..1 range. */
 	setVolume(volume: number): void;
+	/** Applies a playback rate multiplier. */
+	setPlaybackRate(rate: number): void;
 	/** Adds a marker or chapter at the current playback position. */
 	addMarker(kind: MarkerKind): void;
+	/** Jumps to the chapter before the current position. */
+	previousChapter(): void;
+	/** Jumps to the chapter after the current position. */
+	nextChapter(): void;
 }
 
 /**
@@ -38,8 +46,12 @@ export interface PlaybackControlsState {
 	volume: number;
 	/** Whether audio output is muted. */
 	muted: boolean;
+	/** Current playback rate multiplier. */
+	playbackRate: number;
 	/** Whether marker and chapter creation is available. */
 	markersEnabled: boolean;
+	/** Whether chapter navigation is available. */
+	chaptersEnabled: boolean;
 	/** Starts paused playback or pauses running playback. */
 	onTogglePlay(): void;
 	/** Stops playback, resets it to the start, and dismisses the controls. */
@@ -50,8 +62,14 @@ export interface PlaybackControlsState {
 	onToggleMute(): void;
 	/** Applies a volume in the inclusive 0..1 range. */
 	onVolumeInput(volume: number): void;
+	/** Applies a playback rate multiplier. */
+	onSetPlaybackRate(rate: number): void;
 	/** Adds a marker or chapter at the current position. */
 	onAddMarker(kind: MarkerKind): void;
+	/** Jumps to the chapter before the current position. */
+	onPreviousChapter(): void;
+	/** Jumps to the chapter after the current position. */
+	onNextChapter(): void;
 }
 
 /** Receives the active playback snapshot, or null after playback stops. */

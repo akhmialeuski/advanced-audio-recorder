@@ -287,10 +287,28 @@ describe('the recording commands', () => {
 
 	it('pauses and resumes from the palette', async () => {
 		const { plugin } = await loadPlugin();
+		recorder().isSessionActive.mockReturnValue(true);
 
-		asMockPlugin(plugin).invokeCommand(COMMAND_IDS.pauseResumeRecording);
+		const available = asMockPlugin(plugin).invokeCommand(
+			COMMAND_IDS.pauseResumeRecording,
+		);
 
+		expect(available).toBe(true);
 		expect(recorder().togglePauseResume).toHaveBeenCalledTimes(1);
+	});
+
+	it('hides the pause command while no session is running', async () => {
+		const { plugin } = await loadPlugin();
+		recorder().isSessionActive.mockReturnValue(false);
+
+		const available = asMockPlugin(plugin).invokeCommand(
+			COMMAND_IDS.pauseResumeRecording,
+		);
+
+		// Nothing to pause, so the key bound to it belongs to whatever else
+		// claims it until a session starts.
+		expect(available).toBe(false);
+		expect(recorder().togglePauseResume).not.toHaveBeenCalled();
 	});
 
 	it('hides the marker command while no recording can take one', async () => {

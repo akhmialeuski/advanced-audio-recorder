@@ -15,6 +15,7 @@ export interface RecorderDouble {
 	toggleRecording: jest.Mock;
 	startRecording: jest.Mock;
 	togglePauseResume: jest.Mock;
+	isSessionActive: jest.Mock;
 	stopRecording: jest.Mock;
 	cleanup: jest.Mock;
 	updateSettings: jest.Mock;
@@ -31,6 +32,7 @@ export const RecordingManager = jest.fn(
 		toggleRecording: jest.fn().mockResolvedValue(undefined),
 		startRecording: jest.fn().mockResolvedValue(undefined),
 		togglePauseResume: jest.fn(),
+		isSessionActive: jest.fn(() => false),
 		stopRecording: jest.fn().mockResolvedValue(undefined),
 		cleanup: jest.fn(),
 		updateSettings: jest.fn(),

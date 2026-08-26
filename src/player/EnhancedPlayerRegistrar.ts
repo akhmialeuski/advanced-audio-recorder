@@ -46,7 +46,10 @@ import {
 } from '../player/playerSettings';
 import { AudioPlayerRegistry, playbackKey } from './AudioPlayerRegistry';
 import { DetachedPlayback } from './DetachedPlayback';
-import type { PlaybackControlsListener } from './playbackControls';
+import type {
+	PlaybackControlsListener,
+	PlaybackControlsState,
+} from './playbackControls';
 import { WaveformPeakCache, SharedAudioDecoder } from './WaveformData';
 import { AudioPlayer } from './AudioPlayer';
 import {
@@ -215,6 +218,15 @@ export class EnhancedPlayerRegistrar {
 	 */
 	subscribePlayback(listener: PlaybackControlsListener): void {
 		this.registry.subscribePlayback(listener);
+	}
+
+	/**
+	 * Reads the active playback as it stands right now, for a caller that has
+	 * to act on it rather than render it.
+	 * @returns Current playback controls, or null while no audio is active
+	 */
+	currentPlaybackState(): PlaybackControlsState | null {
+		return this.registry.currentPlaybackState();
 	}
 
 	/**
