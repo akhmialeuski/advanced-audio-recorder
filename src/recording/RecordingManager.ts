@@ -828,6 +828,13 @@ export class RecordingManager {
 		if (!this.rotation.requestStop()) {
 			return 'A stop is already in progress.';
 		}
+		// The watch belongs to the capture, not to the session, and this is
+		// where the capture ends. Left running for the save that follows, it
+		// still holds live tracks and a devicechange listener, so an input
+		// unplugged while a stop the user pressed was writing its file was
+		// read as the reason the recording ended: the save relabelled itself
+		// "Input lost" and announced a disconnection nobody had suffered.
+		this.captureLoss.release();
 		// Snapshot active audio time before recorder shutdown and saving add
 		// wall-clock latency. The post-save detector uses this to reject long
 		// sessions before reading or decoding their files.

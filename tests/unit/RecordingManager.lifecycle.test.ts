@@ -867,6 +867,25 @@ describe('an input device that disappears mid-session', () => {
 		);
 	});
 
+	// The watch belongs to the capture, and a stop the user pressed is where
+	// the capture ends. Kept alive for the save that follows it, the watch
+	// still held live tracks and a device listener, so an input unplugged
+	// while the file was being written was read as the reason the recording
+	// had ended: the save relabelled itself Input lost and announced a
+	// disconnection nobody had suffered.
+	it('says nothing about an input lost during a stop the user asked for', async () => {
+		const sut = await startedSession();
+
+		const stopped = sut.manager.stopRecording();
+		endStream(0);
+		await stopped;
+
+		expect(
+			sut.onStatusChange.mock.calls.map(([status]) => status),
+		).not.toContain(RecordingStatus.Interrupted);
+		expect(noticeMessages().join(' ')).not.toContain('was disconnected');
+	});
+
 	it('names the lost input rather than reporting a generic failure', async () => {
 		await startedSession(1, { useSourceNamesForTracks: false });
 
