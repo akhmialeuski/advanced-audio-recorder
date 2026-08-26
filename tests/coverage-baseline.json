@@ -3,7 +3,7 @@
 		"total": {
 			"statements": 98.44,
 			"branches": 93.36,
-			"functions": 98.37,
+			"functions": 98.36,
 			"lines": 98.45
 		},
 		"files": {
@@ -458,10 +458,10 @@
 				"lines": 98.36
 			},
 			"src/recording/SplitService.ts": {
-				"statements": 99.19,
+				"statements": 99.2,
 				"branches": 96.66,
 				"functions": 100,
-				"lines": 99.15
+				"lines": 99.16
 			},
 			"src/recording/StreamingMixer.ts": {
 				"statements": 96.66,
@@ -1073,8 +1073,8 @@
 	},
 	"suite": {
 		"suites": 205,
-		"tests": 4415,
-		"passed": 4415,
+		"tests": 4422,
+		"passed": 4422,
 		"failed": 0,
 		"todo": 0
 	}
