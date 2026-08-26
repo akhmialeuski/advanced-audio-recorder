@@ -1,6 +1,6 @@
 # Enhanced audio player
 
-The **Enhanced audio player** replaces Obsidian's built-in audio embed with a richer player wherever an audio file is embedded (`![[recording.webm]]`). It adds a waveform seek bar, playback-speed control, skip buttons, volume and mute, a loop toggle, a time display, per-file markers and chapters, and a copy-timestamp-link action. While a recording plays, a companion strip of playback controls also appears in the status bar so you can drive it without scrolling back to the embed. The takeover is opt-in, applies in both Reading view and Live Preview, and falls back cleanly to Obsidian's native embed for video files, undecodable files, or when the feature is off.
+The **Enhanced audio player** replaces Obsidian's built-in audio embed with a richer player wherever an audio file is embedded (`![[recording.webm]]`). It adds a waveform seek bar, playback-speed control, skip buttons, volume and mute, a loop toggle, a time display, per-file markers and chapters, and a copy-timestamp-link action. While a recording plays, a companion strip of playback controls also appears in the status bar so you can drive it without scrolling back to the embed, and every one of those actions is also a command you can bind to a hotkey. The takeover is opt-in, applies in both Reading view and Live Preview, and falls back cleanly to Obsidian's native embed for video files, undecodable files, or when the feature is off.
 
 - [Enabling the player](#enabling-the-player)
 - [How the takeover works](#how-the-takeover-works)
@@ -13,6 +13,7 @@ The **Enhanced audio player** replaces Obsidian's built-in audio embed with a ri
     - [Time display](#time-display)
     - [Copy timestamp link](#copy-timestamp-link)
 - [Playback controls in the status bar](#playback-controls-in-the-status-bar)
+- [Playback commands and hotkeys](#playback-commands-and-hotkeys)
 - [Markers and chapters](#markers-and-chapters)
 - [Timecode links](#timecode-links)
 - [Audio, video, and unsupported files](#audio-video-and-unsupported-files)
@@ -127,9 +128,35 @@ The strip carries:
 - **Add marker** and **add chapter** at the current position. These two appear only when **Markers and chapters** is enabled for the playing recording.
 - The **elapsed over total time** readout, formatted the same way as the embed.
 
-Playback speed is deliberately left out here to keep the strip compact; change the speed from the embed's speed button instead. Every button drives the **same playback** as the embedded control row, because both delegate to one shared audio element per recording, so an action in one surface is reflected in the other.
+Playback speed is deliberately left out here to keep the strip compact; change the speed from the embed's speed button or with the [speed commands](#playback-commands-and-hotkeys) instead. Every button drives the **same playback** as the embedded control row, because both delegate to one shared audio element per recording, so an action in one surface is reflected in the other.
 
 The strip **appears when playback starts** and **disappears when you stop it** - with the stop button here, with the stop action in the embed, or when the recording reaches its end. Pausing keeps the strip visible, showing the play icon, so you can resume from the status bar; only stopping or reaching the end dismisses it. Recording and saving always take precedence: starting a recording while a player is paused shows the recording controls instead, and the playback strip returns once recording stops if the audio is still active.
+
+---
+
+## Playback commands and hotkeys
+
+Every playback action is also a **command**, so a recording can be driven entirely from the keyboard while your hands stay on the transcript. The plugin assigns **no default hotkeys**; bind the ones you use under **Settings > Hotkeys** and search for `Advanced Audio Recorder`.
+
+| Command                                   | What it does                                                                            |
+| ----------------------------------------- | --------------------------------------------------------------------------------------- |
+| Play/pause playback                       | Starts the paused recording or pauses the running one, exactly as the play button does. |
+| Stop playback                             | Stops playback, resets it to the start, and dismisses the status-bar strip.             |
+| Skip playback back 10 seconds             | Moves back by the same step the skip buttons use.                                       |
+| Skip playback forward 10 seconds          | Moves forward by that same step.                                                        |
+| Mute/unmute playback                      | Toggles the output without touching the volume level.                                   |
+| Increase playback speed                   | Steps up to the next speed preset and stops at the fastest one.                         |
+| Decrease playback speed                   | Steps down to the previous preset and stops at the slowest one.                         |
+| Go to previous chapter                    | Jumps to the chapter before the current position, or to the start when there is none.   |
+| Go to next chapter                        | Jumps to the chapter after the current position.                                        |
+| Add bookmark at current playback position | Drops a bookmark where playback stands.                                                 |
+| Add chapter at current playback position  | Drops a chapter where playback stands.                                                  |
+
+The commands exist **only while something is playing**. Obsidian hides a command whose availability check fails, so with nothing active none of them appear in the command palette and a bound hotkey stays inert, which leaves the key free for whatever else it is used for. Stopping playback, or letting a recording reach its end, withdraws them again; pausing keeps them, so the same key resumes what it paused.
+
+Two of them carry a further condition. The chapter jumps are offered only when **Markers and chapters** is enabled for the recording that is playing, because a recording without them defines no chapters to move between. The two add commands need that setting **and** an editable view, exactly like the add buttons in the embed and in the status bar, so a player rendered in Reading view offers neither.
+
+The speed commands move between the same presets the embed's speed button lists, so a hotkey can never land on a speed that button cannot show. Every command drives the **same shared audio element** as the embedded control row and the status-bar strip, which is why a speed change from a hotkey updates the embed's speed button and a chapter jump moves the time readout in both surfaces at once.
 
 ---
 
