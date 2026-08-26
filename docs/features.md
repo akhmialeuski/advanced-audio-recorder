@@ -45,7 +45,7 @@ Learn more: [From the command line](recording.md#from-the-command-line)
 
 ## Pause and resume
 
-Pause an active recording and pick it up again without losing what you have captured. Run `Pause/resume recording` or click **Pause** in the status bar; the bar then reads `Recording paused` with **Resume** and **Stop**. Paused time is excluded from the elapsed counter, so the timer reflects actual recorded audio. The command is available only while a recording is active.
+Pause an active recording and pick it up again without losing what you have captured. Run `Pause/resume recording` or click **Pause** in the status bar; the bar then reads `Recording paused` with **Resume** and **Stop**. Paused time is excluded from the elapsed counter, so the timer reflects actual recorded audio. The command itself is always in the palette and does nothing when no session is running.
 
 Learn more: [Recording](recording.md#pausing-and-resuming)
 

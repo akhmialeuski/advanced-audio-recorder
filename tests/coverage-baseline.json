@@ -2,9 +2,9 @@
 	"coverage": {
 		"total": {
 			"statements": 98.45,
-			"branches": 93.38,
+			"branches": 93.36,
 			"functions": 98.43,
-			"lines": 98.47
+			"lines": 98.46
 		},
 		"files": {
 			"src/constants.ts": {
@@ -20,10 +20,10 @@
 				"lines": 100
 			},
 			"src/main.ts": {
-				"statements": 99.42,
-				"branches": 97.1,
-				"functions": 98.75,
-				"lines": 99.71
+				"statements": 99.39,
+				"branches": 96.92,
+				"functions": 98.71,
+				"lines": 99.69
 			},
 			"src/types.ts": {
 				"statements": 100,
@@ -43,12 +43,6 @@
 				"functions": 100,
 				"lines": 100
 			},
-			"src/actions/recordingMarkerActions.ts": {
-				"statements": 100,
-				"branches": 100,
-				"functions": 100,
-				"lines": 100
-			},
 			"src/actions/registerActionCommands.ts": {
 				"statements": 100,
 				"branches": 100,
@@ -56,6 +50,12 @@
 				"lines": 100
 			},
 			"src/actions/renderActionsIntoMenu.ts": {
+				"statements": 100,
+				"branches": 100,
+				"functions": 100,
+				"lines": 100
+			},
+			"src/actions/sessionActions.ts": {
 				"statements": 100,
 				"branches": 100,
 				"functions": 100,
@@ -1079,8 +1079,8 @@
 	},
 	"suite": {
 		"suites": 205,
-		"tests": 4458,
-		"passed": 4458,
+		"tests": 4462,
+		"passed": 4462,
 		"failed": 0,
 		"todo": 0
 	}

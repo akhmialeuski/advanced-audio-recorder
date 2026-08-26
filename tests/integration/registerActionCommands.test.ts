@@ -1,26 +1,30 @@
 /**
- * Unit tests for the action registry command registration: every file
- * action becomes a palette command over the active file, and the
- * recording marker actions register kind-fixed commands behind the
- * session gate, and the playback actions register behind the active
- * playback snapshot.
- * @module tests/unit/registerActionCommands.test
+ * Tests for the one registration path every action kind shares: a file
+ * action becomes a palette command over the active audio file, a session
+ * action over the recorder, and a playback action over the snapshot of
+ * what is playing. What differs between them is the resolver, so the
+ * cases below drive the same registrar three times.
+ * @module tests/integration/registerActionCommands.test
  */
 
 import { TFile } from 'obsidian';
 import { at } from '../helpers/assertions';
 import type { Plugin } from 'obsidian';
-import {
-	registerFileActionCommands,
-	registerPlaybackActionCommands,
-	registerRecordingActionCommands,
-} from 'src/actions/registerActionCommands';
-import { FILE_ACTIONS } from 'src/actions/fileActions';
-import { createRecordingMarkerActions } from 'src/actions/recordingMarkerActions';
-import { createPlaybackActions } from 'src/actions/playbackActions';
+import { registerActionCommands } from 'src/actions/registerActionCommands';
+import { activeAudioFile, FILE_ACTIONS } from 'src/actions/fileActions';
+import { SESSION_ACTIONS } from 'src/actions/sessionActions';
+import { PLAYBACK_ACTIONS } from 'src/actions/playbackActions';
+import { showDeviceSelectionModal } from 'src/ui/DeviceSelectionModal';
+import { useMobilePlatform } from '../helpers/platform';
+import { tick } from '../helpers/async';
 import { COMMAND_IDS } from 'src/constants';
 import { MARKER_KIND } from 'src/markers/markerModel';
-import type { ActionServices, FileAction } from 'src/actions/PluginAction';
+import type {
+	ActionServices,
+	FileAction,
+	RecordingSessionPort,
+	SessionServices,
+} from 'src/actions/PluginAction';
 import type { PlaybackControlsState } from 'src/player/playbackControls';
 import { makePlaybackState } from '../helpers/playbackHarness';
 import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
@@ -48,6 +52,9 @@ jest.mock('src/cleanup/AudioProcessingModal', () => ({
 	AudioProcessingModal: jest
 		.fn()
 		.mockImplementation(() => ({ open: jest.fn() })),
+}));
+jest.mock('src/ui/DeviceSelectionModal', () => ({
+	showDeviceSelectionModal: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('src/audio/AudioEncoder', () => ({
 	encodeAudioBuffer: jest.fn(),
@@ -102,13 +109,13 @@ function makePlugin(commands: RegisteredCommand[]): Plugin {
 	});
 }
 
-describe('registerFileActionCommands', () => {
+describe('file actions over the active audio file', () => {
 	it('registers a palette command for every file action', () => {
 		const commands: RegisteredCommand[] = [];
-		registerFileActionCommands(
+		registerActionCommands(
 			makePlugin(commands),
 			FILE_ACTIONS,
-			makeServices(audioFile()),
+			activeAudioFile(makeServices(audioFile())),
 		);
 
 		expect(commands.map((c) => c.id)).toEqual([
@@ -125,10 +132,10 @@ describe('registerFileActionCommands', () => {
 
 	it('reports commands available when the active file is audio', () => {
 		const commands: RegisteredCommand[] = [];
-		registerFileActionCommands(
+		registerActionCommands(
 			makePlugin(commands),
 			FILE_ACTIONS,
-			makeServices(audioFile()),
+			activeAudioFile(makeServices(audioFile())),
 		);
 
 		for (const command of commands) {
@@ -138,10 +145,10 @@ describe('registerFileActionCommands', () => {
 
 	it('reports commands unavailable without an active audio file', () => {
 		const commands: RegisteredCommand[] = [];
-		registerFileActionCommands(
+		registerActionCommands(
 			makePlugin(commands),
 			FILE_ACTIONS,
-			makeServices(null),
+			activeAudioFile(makeServices(null)),
 		);
 
 		for (const command of commands) {
@@ -151,10 +158,10 @@ describe('registerFileActionCommands', () => {
 
 	it('reports commands unavailable for a non-audio active file', () => {
 		const commands: RegisteredCommand[] = [];
-		registerFileActionCommands(
+		registerActionCommands(
 			makePlugin(commands),
 			FILE_ACTIONS,
-			makeServices(audioFile('md')),
+			activeAudioFile(makeServices(audioFile('md'))),
 		);
 
 		for (const command of commands) {
@@ -173,7 +180,11 @@ describe('registerFileActionCommands', () => {
 			isAvailable: () => false,
 			run: jest.fn(),
 		};
-		registerFileActionCommands(makePlugin(commands), [gated], services);
+		registerActionCommands(
+			makePlugin(commands),
+			[gated],
+			activeAudioFile(services),
+		);
 
 		expect(at(commands, 0).checkCallback(true)).toBe(false);
 	});
@@ -191,10 +202,14 @@ describe('registerFileActionCommands', () => {
 			isAvailable: () => true,
 			run,
 		};
-		registerFileActionCommands(makePlugin(commands), [action], services);
+		registerActionCommands(
+			makePlugin(commands),
+			[action],
+			activeAudioFile(services),
+		);
 
 		expect(at(commands, 0).checkCallback(false)).toBe(true);
-		expect(run).toHaveBeenCalledWith(file, services);
+		expect(run).toHaveBeenCalledWith({ file, services });
 	});
 
 	it('does not run the action while only checking', () => {
@@ -208,10 +223,10 @@ describe('registerFileActionCommands', () => {
 			isAvailable: () => true,
 			run,
 		};
-		registerFileActionCommands(
+		registerActionCommands(
 			makePlugin(commands),
 			[action],
-			makeServices(audioFile()),
+			activeAudioFile(makeServices(audioFile())),
 		);
 
 		at(commands, 0).checkCallback(true);
@@ -219,45 +234,171 @@ describe('registerFileActionCommands', () => {
 	});
 });
 
-describe('registerRecordingActionCommands', () => {
-	it('registers kind-fixed bookmark and chapter commands', () => {
-		const commands: RegisteredCommand[] = [];
-		const openMarkerModal = jest.fn();
-		registerRecordingActionCommands(
-			makePlugin(commands),
-			createRecordingMarkerActions(openMarkerModal),
-			() => true,
-		);
+/**
+ * Runs a registered command the way the palette does: ask first, run only
+ * when the answer is yes.
+ * @param commands - The commands the registrar recorded
+ * @param id - Command to invoke
+ * @returns Whether the command reported itself available
+ */
+function invokeCommand(commands: RegisteredCommand[], id: string): boolean {
+	const command = at(
+		commands.filter((entry) => entry.id === id),
+		0,
+	);
+	if (!command.checkCallback(true)) {
+		return false;
+	}
+	command.checkCallback(false);
+	return true;
+}
 
-		expect(commands.map((c) => c.id)).toEqual([
+/** A recording session double whose port calls are observable. */
+function makeSession(canDropMarker: boolean): {
+	services: SessionServices;
+	recording: jest.Mocked<RecordingSessionPort>;
+	openMarkerModal: jest.Mock;
+	saveSettings: jest.Mock;
+	settings: AudioRecorderSettings;
+} {
+	const recording = {
+		toggleRecording: jest.fn().mockResolvedValue(undefined),
+		togglePauseResume: jest.fn(),
+		canDropMarker: jest.fn(() => canDropMarker),
+	} as unknown as jest.Mocked<RecordingSessionPort>;
+	const openMarkerModal = jest.fn();
+	const saveSettings = jest.fn().mockResolvedValue(undefined);
+	const settings = partial<AudioRecorderSettings>({ audioDeviceId: '' });
+	return {
+		recording,
+		openMarkerModal,
+		saveSettings,
+		settings,
+		services: {
+			app: createMockApp({}).app,
+			getSettings: () => settings,
+			saveSettings,
+			recording,
+			openMarkerModal,
+		},
+	};
+}
+
+describe('session actions over the recorder', () => {
+	/**
+	 * Registers the real session actions against one session double.
+	 * @param canDropMarker - What the session reports for marker gating
+	 * @returns The registered commands and the session double behind them
+	 */
+	function registerSession(canDropMarker: boolean): {
+		commands: RegisteredCommand[];
+		session: ReturnType<typeof makeSession>;
+	} {
+		const commands: RegisteredCommand[] = [];
+		const session = makeSession(canDropMarker);
+		registerActionCommands(
+			makePlugin(commands),
+			SESSION_ACTIONS,
+			() => session.services,
+		);
+		return { commands, session };
+	}
+
+	it('registers every session command in palette order', () => {
+		const { commands } = registerSession(true);
+
+		expect(commands.map((command) => command.id)).toEqual([
+			COMMAND_IDS.startStopRecording,
+			COMMAND_IDS.pauseResumeRecording,
+			COMMAND_IDS.addRecordingMarker,
 			COMMAND_IDS.addRecordingBookmark,
 			COMMAND_IDS.addRecordingChapter,
+			COMMAND_IDS.selectAudioInputDevice,
 		]);
-
-		at(commands, 0).checkCallback(false);
-		expect(openMarkerModal).toHaveBeenLastCalledWith(MARKER_KIND.bookmark);
-		at(commands, 1).checkCallback(false);
-		expect(openMarkerModal).toHaveBeenLastCalledWith(MARKER_KIND.chapter);
 	});
 
-	it('gates both commands on the recording state', () => {
-		const commands: RegisteredCommand[] = [];
-		const openMarkerModal = jest.fn();
-		registerRecordingActionCommands(
-			makePlugin(commands),
-			createRecordingMarkerActions(openMarkerModal),
-			() => false,
+	it('drives capture and pause whatever the session is doing', () => {
+		const { commands, session } = registerSession(false);
+
+		expect(invokeCommand(commands, COMMAND_IDS.startStopRecording)).toBe(
+			true,
+		);
+		expect(invokeCommand(commands, COMMAND_IDS.pauseResumeRecording)).toBe(
+			true,
 		);
 
-		for (const command of commands) {
-			expect(command.checkCallback(true)).toBe(false);
-			expect(command.checkCallback(false)).toBe(false);
-		}
-		expect(openMarkerModal).not.toHaveBeenCalled();
+		expect(session.recording.toggleRecording).toHaveBeenCalledTimes(1);
+		expect(session.recording.togglePauseResume).toHaveBeenCalledTimes(1);
+	});
+
+	it('opens the marker modal with the kind the command fixes', () => {
+		const { commands, session } = registerSession(true);
+
+		// The chooser command fixes no kind, so the modal asks for one
+		expect(invokeCommand(commands, COMMAND_IDS.addRecordingMarker)).toBe(
+			true,
+		);
+		expect(session.openMarkerModal).toHaveBeenLastCalledWith();
+		expect(invokeCommand(commands, COMMAND_IDS.addRecordingBookmark)).toBe(
+			true,
+		);
+		expect(session.openMarkerModal).toHaveBeenLastCalledWith(
+			MARKER_KIND.bookmark,
+		);
+		expect(invokeCommand(commands, COMMAND_IDS.addRecordingChapter)).toBe(
+			true,
+		);
+		expect(session.openMarkerModal).toHaveBeenLastCalledWith(
+			MARKER_KIND.chapter,
+		);
+	});
+
+	it('withholds all three marker commands when nothing can be dropped', () => {
+		const { commands, session } = registerSession(false);
+
+		expect(invokeCommand(commands, COMMAND_IDS.addRecordingMarker)).toBe(
+			false,
+		);
+		expect(invokeCommand(commands, COMMAND_IDS.addRecordingBookmark)).toBe(
+			false,
+		);
+		expect(invokeCommand(commands, COMMAND_IDS.addRecordingChapter)).toBe(
+			false,
+		);
+		expect(session.openMarkerModal).not.toHaveBeenCalled();
+	});
+
+	it('stores the device the picker returns', async () => {
+		jest.mocked(showDeviceSelectionModal).mockImplementation(
+			async (_app, onDeviceSelected) => {
+				await onDeviceSelected('device-7', 'Device 7');
+			},
+		);
+		const { commands, session } = registerSession(true);
+
+		expect(
+			invokeCommand(commands, COMMAND_IDS.selectAudioInputDevice),
+		).toBe(true);
+		await tick();
+
+		expect(session.settings.audioDeviceId).toBe('device-7');
+		expect(session.saveSettings).toHaveBeenCalledTimes(1);
+	});
+
+	it('hides the device picker where the platform cannot select one', () => {
+		// Mobile records from the default microphone, so the command has
+		// nothing to offer and must stay out of the palette.
+		useMobilePlatform();
+		const { commands } = registerSession(true);
+
+		expect(
+			invokeCommand(commands, COMMAND_IDS.selectAudioInputDevice),
+		).toBe(false);
+		expect(showDeviceSelectionModal).not.toHaveBeenCalled();
 	});
 });
 
-describe('registerPlaybackActionCommands', () => {
+describe('playback actions over the active snapshot', () => {
 	/**
 	 * Registers the real playback actions against one snapshot and returns
 	 * a runner that invokes a command the way the palette would.
@@ -269,23 +410,15 @@ describe('registerPlaybackActionCommands', () => {
 		invoke: (id: string) => boolean;
 	} {
 		const commands: RegisteredCommand[] = [];
-		registerPlaybackActionCommands(
+		registerActionCommands(
 			makePlugin(commands),
-			createPlaybackActions(),
+			PLAYBACK_ACTIONS,
 			() => state,
 		);
-		const invoke = (id: string): boolean => {
-			const command = at(
-				commands.filter((entry) => entry.id === id),
-				0,
-			);
-			if (!command.checkCallback(true)) {
-				return false;
-			}
-			command.checkCallback(false);
-			return true;
+		return {
+			commands,
+			invoke: (id: string): boolean => invokeCommand(commands, id),
 		};
-		return { commands, invoke };
 	}
 
 	it('registers every playback command in palette order', () => {

@@ -12,10 +12,7 @@ import type {
 	RecordingSaveResult,
 } from './types';
 import { PLUGIN_LOG_PREFIX } from './constants';
-import {
-	isDeviceSelectionSupported,
-	isRecordingBannerSupported,
-} from './platform/capabilities';
+import { isRecordingBannerSupported } from './platform/capabilities';
 import type { AudioRecorderSettings } from './settings/settingsSchema';
 import { setSelectedProfileId, type ProfileKindId } from './settings/profiles';
 import {
@@ -44,17 +41,12 @@ import {
 } from './ui/StatusBar';
 import { RecordingBanner } from './ui/RecordingBanner';
 import { updateRibbonIcon, initializeRibbonIcon } from './ui/RibbonIcon';
-import { showDeviceSelectionModal } from './ui/DeviceSelectionModal';
 import { ContextMenu } from './ui/ContextMenu';
-import type { ActionServices } from './actions/PluginAction';
-import { FILE_ACTIONS } from './actions/fileActions';
-import { createRecordingMarkerActions } from './actions/recordingMarkerActions';
-import { createPlaybackActions } from './actions/playbackActions';
-import {
-	registerFileActionCommands,
-	registerPlaybackActionCommands,
-	registerRecordingActionCommands,
-} from './actions/registerActionCommands';
+import type { ActionServices, SessionServices } from './actions/PluginAction';
+import { activeAudioFile, FILE_ACTIONS } from './actions/fileActions';
+import { SESSION_ACTIONS } from './actions/sessionActions';
+import { PLAYBACK_ACTIONS } from './actions/playbackActions';
+import { registerActionCommands } from './actions/registerActionCommands';
 import { EnhancedPlayerRegistrar } from './player/EnhancedPlayerRegistrar';
 import { MediaKindStore, MEDIA_KIND_STORE_FILE } from './player/MediaKindStore';
 import { RecordingSidecarStore } from './sidecar/RecordingSidecarStore';
@@ -70,7 +62,6 @@ import {
 	isProviderAvailableOnPlatform,
 	SessionCostTracker,
 } from './transcription/api';
-import { COMMAND_IDS } from './constants';
 import type { MarkerKind } from './markers/markerModel';
 import type { PlaybackControlsState } from './player/playbackControls';
 import { delay } from './utils/TimeUtils';
@@ -757,86 +748,50 @@ export default class AudioRecorderPlugin extends Plugin {
 	}
 
 	/**
-	 * Registers plugin commands: the recording-session commands, every
-	 * file action from the shared registry, and the playback actions, so
-	 * each context-menu feature and every player control is also reachable
-	 * from the palette and assignable in the Hotkeys settings.
+	 * Registers every plugin command through the shared action registry.
+	 * The three lists differ only in the context they resolve - the active
+	 * audio file, the recording session, the playback that is running -
+	 * so a feature added to a list reaches the palette, the Hotkeys
+	 * settings, and (for file actions) the context menus at once.
 	 */
 	private registerCommands(): void {
-		this.addCommand({
-			id: COMMAND_IDS.startStopRecording,
-			name: 'Start/stop recording',
-			callback: () => {
-				void this.recordingManager.toggleRecording();
-			},
-		});
+		// Each resolver runs on every palette check, so the services are
+		// built once here; they read live state through their closures.
+		const session = this.createSessionServices();
+		registerActionCommands(this, SESSION_ACTIONS, () => session);
 
-		this.addCommand({
-			id: COMMAND_IDS.pauseResumeRecording,
-			name: 'Pause/resume recording',
-			callback: () => {
-				this.recordingManager.togglePauseResume();
-			},
-		});
-
-		this.addCommand({
-			id: COMMAND_IDS.addRecordingMarker,
-			name: 'Add marker/chapter at current position',
-			checkCallback: (checking: boolean) => {
-				if (!this.recordingManager.canDropMarker()) {
-					return false;
-				}
-				if (!checking) {
-					this.openMarkerModal();
-				}
-				return true;
-			},
-		});
-
-		this.addCommand({
-			id: COMMAND_IDS.selectAudioInputDevice,
-			name: 'Select audio input device',
-			// Hidden from the palette where device selection is
-			// unavailable (mobile records from the default microphone).
-			checkCallback: (checking: boolean) => {
-				if (!isDeviceSelectionSupported()) {
-					return false;
-				}
-				if (!checking) {
-					void showDeviceSelectionModal(
-						this.app,
-						async (deviceId: string) => {
-							this.settings.audioDeviceId = deviceId;
-							await this.saveSettings();
-						},
-					);
-				}
-				return true;
-			},
-		});
-
-		registerRecordingActionCommands(
-			this,
-			createRecordingMarkerActions((kind) => {
-				this.openMarkerModal(kind);
-			}),
-			() => this.recordingManager.canDropMarker(),
-		);
-
-		registerFileActionCommands(
+		registerActionCommands(
 			this,
 			FILE_ACTIONS,
-			this.createActionServices(),
+			activeAudioFile(this.createActionServices()),
 		);
 
 		// The player registrar is created after this method runs, so the
 		// snapshot is read through the field it later fills rather than
 		// captured here
-		registerPlaybackActionCommands(
+		registerActionCommands(
 			this,
-			createPlaybackActions(),
+			PLAYBACK_ACTIONS,
 			() => this.playbackState,
 		);
+	}
+
+	/**
+	 * Builds the services injected into every recording-session action.
+	 * The recorder is handed over as the narrow port the actions declare,
+	 * so their definitions never reach into the manager itself.
+	 * @returns Session services for the action registry
+	 */
+	private createSessionServices(): SessionServices {
+		return {
+			app: this.app,
+			getSettings: () => this.settings,
+			saveSettings: () => this.saveSettings(),
+			recording: this.recordingManager,
+			openMarkerModal: (kind) => {
+				this.openMarkerModal(kind);
+			},
+		};
 	}
 
 	/**

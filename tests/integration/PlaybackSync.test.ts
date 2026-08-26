@@ -14,8 +14,8 @@
 import { App, Modal } from 'obsidian';
 import { allEls, el } from '../helpers/dom';
 import { MARKER, PLAYER } from '../helpers/selectors';
-import { createPlaybackActions } from 'src/actions/playbackActions';
-import { registerPlaybackActionCommands } from 'src/actions/registerActionCommands';
+import { PLAYBACK_ACTIONS } from 'src/actions/playbackActions';
+import { registerActionCommands } from 'src/actions/registerActionCommands';
 import { AudioPlayer } from 'src/player/AudioPlayer';
 import {
 	AudioPlayerRegistry,
@@ -136,11 +136,7 @@ function withPlaybackCommands(registry: AudioPlayerRegistry): {
 	registry.subscribePlayback((state) => {
 		latest = state;
 	});
-	registerPlaybackActionCommands(
-		plugin,
-		createPlaybackActions(),
-		() => latest,
-	);
+	registerActionCommands(plugin, PLAYBACK_ACTIONS, () => latest);
 	return { plugin: asMockPlugin(plugin), snapshot: () => latest };
 }
 

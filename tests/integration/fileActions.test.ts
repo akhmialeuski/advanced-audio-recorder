@@ -160,8 +160,12 @@ describe('FILE_ACTIONS availability', () => {
 			const on = createServices({ [setting]: true }).services;
 			const off = createServices({ [setting]: false }).services;
 
-			expect(action(commandId).isAvailable(file, on)).toBe(true);
-			expect(action(commandId).isAvailable(file, off)).toBe(false);
+			expect(action(commandId).isAvailable({ file, services: on })).toBe(
+				true,
+			);
+			expect(action(commandId).isAvailable({ file, services: off })).toBe(
+				false,
+			);
 		},
 	);
 
@@ -174,7 +178,7 @@ describe('FILE_ACTIONS availability', () => {
 	])('always offers %s', (commandId) => {
 		const { services } = createServices();
 
-		expect(action(commandId).isAvailable(file, services)).toBe(true);
+		expect(action(commandId).isAvailable({ file, services })).toBe(true);
 	});
 });
 
@@ -215,7 +219,7 @@ describe('FILE_ACTIONS dialogs', () => {
 		async ({ commandId, dialog }) => {
 			const { services } = createServices();
 
-			await action(commandId).run(file, services);
+			await action(commandId).run({ file, services });
 
 			expect(dialog).toHaveBeenCalledTimes(1);
 			const [openedApp, openedFile] =
@@ -230,7 +234,7 @@ describe('FILE_ACTIONS dialogs', () => {
 
 	it('primes the converted file so its embed becomes the enhanced player', async () => {
 		const { services, primeForEnhancement } = createServices();
-		await action(COMMAND_IDS.convertAudioFormat).run(file, services);
+		await action(COMMAND_IDS.convertAudioFormat).run({ file, services });
 		const options = jest.mocked(ConversionModal).mock.calls[0]?.[3] as {
 			onConverted: (path: string) => void;
 		};
@@ -244,7 +248,7 @@ describe('FILE_ACTIONS dialogs', () => {
 
 	it('links the cleaned-up file into the note and primes it', async () => {
 		const { services, primeForEnhancement } = createServices();
-		await action(COMMAND_IDS.cleanupAudio).run(file, services);
+		await action(COMMAND_IDS.cleanupAudio).run({ file, services });
 		const onDone = jest.mocked(AudioProcessingModal).mock
 			.calls[0]?.[3] as (result: {
 			outputPath: string;
@@ -272,7 +276,7 @@ describe('the audio file info action', () => {
 	it('opens the dialog with what the analyser read', async () => {
 		const { services } = createServices();
 
-		await action(COMMAND_IDS.audioFileInfo).run(file, services);
+		await action(COMMAND_IDS.audioFileInfo).run({ file, services });
 
 		expect(getAudioFileInfo).toHaveBeenCalledWith(services.app, file);
 		expect(AudioFileInfoModal).toHaveBeenCalledWith(services.app, {
@@ -284,7 +288,7 @@ describe('the audio file info action', () => {
 		jest.mocked(getAudioFileInfo).mockResolvedValueOnce(null);
 		const { services } = createServices();
 
-		await action(COMMAND_IDS.audioFileInfo).run(file, services);
+		await action(COMMAND_IDS.audioFileInfo).run({ file, services });
 
 		// The analyser has already told the user why; a dialog with no
 		// content would only say it twice.
@@ -296,7 +300,7 @@ describe('the delete action', () => {
 	it('trashes the recording and says so', async () => {
 		const { services } = createServices();
 
-		await action(COMMAND_IDS.deleteRecording).run(file, services);
+		await action(COMMAND_IDS.deleteRecording).run({ file, services });
 
 		expect(services.app.fileManager.trashFile).toHaveBeenCalledWith(file);
 		expect(noticeMessages()).toContain('Recording deleted');
@@ -311,7 +315,7 @@ describe('the delete action', () => {
 			new Error('locked'),
 		);
 
-		await action(COMMAND_IDS.deleteRecording).run(file, services);
+		await action(COMMAND_IDS.deleteRecording).run({ file, services });
 
 		expect(noticeMessages()).toContain('Failed to delete recording');
 		expect(noticeMessages()).not.toContain('Recording deleted');
@@ -321,7 +325,7 @@ describe('the delete action', () => {
 	it('raises exactly one notice per attempt', async () => {
 		const { services } = createServices();
 
-		await action(COMMAND_IDS.deleteRecording).run(file, services);
+		await action(COMMAND_IDS.deleteRecording).run({ file, services });
 
 		expect(jest.mocked(Notice)).toHaveBeenCalledTimes(1);
 	});
@@ -335,7 +339,7 @@ describe('the transcribe action', () => {
 			options as never,
 		);
 
-		await action(COMMAND_IDS.transcribeAudio).run(file, services);
+		await action(COMMAND_IDS.transcribeAudio).run({ file, services });
 
 		expect(at(jest.mocked(TranscriptionModal).mock.calls, 0)[3]).toBe(
 			options,

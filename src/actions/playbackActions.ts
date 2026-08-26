@@ -24,122 +24,119 @@ import type { PlaybackAction } from './PluginAction';
 const whilePlaying = (): boolean => true;
 
 /**
- * Builds the playback actions in palette order: transport first, then
- * output, speed, chapter navigation, and marker creation.
- * @returns Playback actions for command registration
+ * All playback actions in palette order: transport first, then output,
+ * speed, chapter navigation, and marker creation.
  */
-export function createPlaybackActions(): readonly PlaybackAction[] {
-	return [
-		{
-			commandId: COMMAND_IDS.togglePlayback,
-			title: 'Play/pause playback',
-			icon: PLAYER_ICONS.play,
-			isAvailable: whilePlaying,
-			run: (state): void => {
-				state.onTogglePlay();
-			},
+export const PLAYBACK_ACTIONS: readonly PlaybackAction[] = [
+	{
+		commandId: COMMAND_IDS.togglePlayback,
+		title: 'Play/pause playback',
+		icon: PLAYER_ICONS.play,
+		isAvailable: whilePlaying,
+		run: (state): void => {
+			state.onTogglePlay();
 		},
-		{
-			commandId: COMMAND_IDS.stopPlayback,
-			title: 'Stop playback',
-			icon: PLAYER_ICONS.stop,
-			isAvailable: whilePlaying,
-			run: (state): void => {
-				state.onStop();
-			},
+	},
+	{
+		commandId: COMMAND_IDS.stopPlayback,
+		title: 'Stop playback',
+		icon: PLAYER_ICONS.stop,
+		isAvailable: whilePlaying,
+		run: (state): void => {
+			state.onStop();
 		},
-		{
-			commandId: COMMAND_IDS.skipPlaybackBack,
-			title: `Skip playback back ${String(PLAYER_SKIP_SECONDS)} seconds`,
-			icon: PLAYER_ICONS.skipBack,
-			isAvailable: whilePlaying,
-			run: (state): void => {
-				state.onSkip(-PLAYER_SKIP_SECONDS);
-			},
+	},
+	{
+		commandId: COMMAND_IDS.skipPlaybackBack,
+		title: `Skip playback back ${String(PLAYER_SKIP_SECONDS)} seconds`,
+		icon: PLAYER_ICONS.skipBack,
+		isAvailable: whilePlaying,
+		run: (state): void => {
+			state.onSkip(-PLAYER_SKIP_SECONDS);
 		},
-		{
-			commandId: COMMAND_IDS.skipPlaybackForward,
-			title: `Skip playback forward ${String(PLAYER_SKIP_SECONDS)} seconds`,
-			icon: PLAYER_ICONS.skipForward,
-			isAvailable: whilePlaying,
-			run: (state): void => {
-				state.onSkip(PLAYER_SKIP_SECONDS);
-			},
+	},
+	{
+		commandId: COMMAND_IDS.skipPlaybackForward,
+		title: `Skip playback forward ${String(PLAYER_SKIP_SECONDS)} seconds`,
+		icon: PLAYER_ICONS.skipForward,
+		isAvailable: whilePlaying,
+		run: (state): void => {
+			state.onSkip(PLAYER_SKIP_SECONDS);
 		},
-		{
-			commandId: COMMAND_IDS.togglePlaybackMute,
-			title: 'Mute/unmute playback',
-			icon: PLAYER_ICONS.muted,
-			isAvailable: whilePlaying,
-			run: (state): void => {
-				state.onToggleMute();
-			},
+	},
+	{
+		commandId: COMMAND_IDS.togglePlaybackMute,
+		title: 'Mute/unmute playback',
+		icon: PLAYER_ICONS.muted,
+		isAvailable: whilePlaying,
+		run: (state): void => {
+			state.onToggleMute();
 		},
-		{
-			commandId: COMMAND_IDS.increasePlaybackSpeed,
-			title: 'Increase playback speed',
-			icon: PLAYER_ICONS.speed,
-			isAvailable: whilePlaying,
-			run: (state): void => {
-				state.onSetPlaybackRate(
-					steppedPlaybackRate(
-						state.playbackRate,
-						PLAYER_PLAYBACK_RATE_PRESETS,
-						1,
-					),
-				);
-			},
+	},
+	{
+		commandId: COMMAND_IDS.increasePlaybackSpeed,
+		title: 'Increase playback speed',
+		icon: PLAYER_ICONS.speed,
+		isAvailable: whilePlaying,
+		run: (state): void => {
+			state.onSetPlaybackRate(
+				steppedPlaybackRate(
+					state.playbackRate,
+					PLAYER_PLAYBACK_RATE_PRESETS,
+					1,
+				),
+			);
 		},
-		{
-			commandId: COMMAND_IDS.decreasePlaybackSpeed,
-			title: 'Decrease playback speed',
-			icon: PLAYER_ICONS.speed,
-			isAvailable: whilePlaying,
-			run: (state): void => {
-				state.onSetPlaybackRate(
-					steppedPlaybackRate(
-						state.playbackRate,
-						PLAYER_PLAYBACK_RATE_PRESETS,
-						-1,
-					),
-				);
-			},
+	},
+	{
+		commandId: COMMAND_IDS.decreasePlaybackSpeed,
+		title: 'Decrease playback speed',
+		icon: PLAYER_ICONS.speed,
+		isAvailable: whilePlaying,
+		run: (state): void => {
+			state.onSetPlaybackRate(
+				steppedPlaybackRate(
+					state.playbackRate,
+					PLAYER_PLAYBACK_RATE_PRESETS,
+					-1,
+				),
+			);
 		},
-		{
-			commandId: COMMAND_IDS.previousChapter,
-			title: 'Go to previous chapter',
-			icon: PLAYER_ICONS.previousChapter,
-			isAvailable: (state): boolean => state.chaptersEnabled,
-			run: (state): void => {
-				state.onPreviousChapter();
-			},
+	},
+	{
+		commandId: COMMAND_IDS.previousChapter,
+		title: 'Go to previous chapter',
+		icon: PLAYER_ICONS.previousChapter,
+		isAvailable: (state): boolean => state.chaptersEnabled,
+		run: (state): void => {
+			state.onPreviousChapter();
 		},
-		{
-			commandId: COMMAND_IDS.nextChapter,
-			title: 'Go to next chapter',
-			icon: PLAYER_ICONS.nextChapter,
-			isAvailable: (state): boolean => state.chaptersEnabled,
-			run: (state): void => {
-				state.onNextChapter();
-			},
+	},
+	{
+		commandId: COMMAND_IDS.nextChapter,
+		title: 'Go to next chapter',
+		icon: PLAYER_ICONS.nextChapter,
+		isAvailable: (state): boolean => state.chaptersEnabled,
+		run: (state): void => {
+			state.onNextChapter();
 		},
-		{
-			commandId: COMMAND_IDS.addPlaybackBookmark,
-			title: 'Add bookmark at current playback position',
-			icon: PLAYER_ICONS.addBookmark,
-			isAvailable: (state): boolean => state.markersEnabled,
-			run: (state): void => {
-				state.onAddMarker(MARKER_KIND.bookmark);
-			},
+	},
+	{
+		commandId: COMMAND_IDS.addPlaybackBookmark,
+		title: 'Add bookmark at current playback position',
+		icon: PLAYER_ICONS.addBookmark,
+		isAvailable: (state): boolean => state.markersEnabled,
+		run: (state): void => {
+			state.onAddMarker(MARKER_KIND.bookmark);
 		},
-		{
-			commandId: COMMAND_IDS.addPlaybackChapter,
-			title: 'Add chapter at current playback position',
-			icon: PLAYER_ICONS.addChapter,
-			isAvailable: (state): boolean => state.markersEnabled,
-			run: (state): void => {
-				state.onAddMarker(MARKER_KIND.chapter);
-			},
+	},
+	{
+		commandId: COMMAND_IDS.addPlaybackChapter,
+		title: 'Add chapter at current playback position',
+		icon: PLAYER_ICONS.addChapter,
+		isAvailable: (state): boolean => state.markersEnabled,
+		run: (state): void => {
+			state.onAddMarker(MARKER_KIND.chapter);
 		},
-	];
-}
+	},
+];
