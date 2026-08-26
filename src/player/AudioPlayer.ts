@@ -32,6 +32,7 @@ import {
 	playAudio,
 	resetPlayback,
 	seekAudio,
+	setAudioPlaybackRate,
 	setAudioVolume,
 	skipAudio,
 	toggleAudioMuted,
@@ -402,6 +403,10 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				// never offers the status-bar marker actions or writes a sidecar
 				canAddMarkers: () =>
 					this.settings.enableMarkers && this.editable,
+				// Chapter navigation only reads the markers, so it stays
+				// available in reading view exactly as the embedded chapter
+				// buttons do
+				canNavigateChapters: () => this.settings.enableMarkers,
 				togglePlay: () => {
 					this.togglePlay();
 				},
@@ -417,8 +422,17 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 				setVolume: (volume) => {
 					this.setVolume(volume);
 				},
+				setPlaybackRate: (rate) => {
+					this.setPlaybackRate(rate);
+				},
 				addMarker: (kind) => {
 					void this.markerCtl.addAt(this.audio.currentTime, kind);
+				},
+				previousChapter: () => {
+					this.jumpToPreviousChapter();
+				},
+				nextChapter: () => {
+					this.jumpToNextChapter();
 				},
 			});
 		this.register(unregisterPlaybackController);
@@ -995,7 +1009,7 @@ export class AudioPlayer extends MarkdownRenderChild implements SeekablePlayer {
 	 * @param rate - Playback rate multiplier
 	 */
 	private setPlaybackRate(rate: number): void {
-		this.audio.playbackRate = rate;
+		setAudioPlaybackRate(this.audio, rate);
 		this.controls?.setPlaybackRate(rate);
 	}
 

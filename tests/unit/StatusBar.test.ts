@@ -19,6 +19,7 @@ import { at } from '../helpers/assertions';
 import { allEls, control, el, maybeEl } from '../helpers/dom';
 import { PLAYBACK, PLAYER, STATUS } from '../helpers/selectors';
 import { addObsidianDomExtensions } from '../mocks/domExtensions';
+import { makePlaybackState } from '../helpers/playbackHarness';
 import type { PlaybackControlsState } from 'src/player/playbackControls';
 import { RecordingStatus } from 'src/types';
 import type { RecordingControls } from 'src/types';
@@ -26,31 +27,6 @@ import type { RecordingControls } from 'src/types';
 /** A status bar element with the DOM extensions Obsidian adds at runtime. */
 function createStatusBar(): HTMLElement {
 	return addObsidianDomExtensions(document.createElement('div'));
-}
-
-/**
- * A complete playback snapshot with jest-backed commands.
- * @param overrides - State fields to replace for a specific assertion
- * @returns Playback state accepted by the status-bar renderer
- */
-function makePlaybackState(
-	overrides: Partial<PlaybackControlsState> = {},
-): PlaybackControlsState {
-	return {
-		currentTime: 65,
-		duration: 222,
-		paused: false,
-		volume: 0.75,
-		muted: false,
-		markersEnabled: true,
-		onTogglePlay: jest.fn(),
-		onStop: jest.fn(),
-		onSkip: jest.fn(),
-		onToggleMute: jest.fn(),
-		onVolumeInput: jest.fn(),
-		onAddMarker: jest.fn(),
-		...overrides,
-	};
 }
 
 /**

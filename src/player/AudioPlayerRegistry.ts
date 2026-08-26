@@ -30,6 +30,17 @@ import type {
  */
 const PLAYBACK_KEY_SEPARATOR = '\u0000';
 
+/** Accepts the newest live player whatever it can do. */
+const anyController = (): boolean => true;
+
+/** Accepts a player that permits marker creation. */
+const withMarkers = (controller: PlaybackController): boolean =>
+	controller.canAddMarkers();
+
+/** Accepts a player that can jump between chapters. */
+const withChapters = (controller: PlaybackController): boolean =>
+	controller.canNavigateChapters();
+
 /**
  * Builds the identity key a player's shared audio element is stored under:
  * the file path plus the embed's parsed #t= start. Distinct embeds of one
@@ -487,7 +498,6 @@ export class AudioPlayerRegistry {
 			return null;
 		}
 		const snapshot = readPlaybackSnapshot(entry.audio);
-		const markerController = this.markerController(entry);
 
 		return {
 			currentTime: snapshot.currentTime,
@@ -495,7 +505,9 @@ export class AudioPlayerRegistry {
 			paused: snapshot.paused,
 			volume: snapshot.volume,
 			muted: snapshot.muted,
-			markersEnabled: markerController !== null,
+			playbackRate: snapshot.playbackRate,
+			markersEnabled: this.controllerFor(entry, withMarkers) !== null,
+			chaptersEnabled: this.controllerFor(entry, withChapters) !== null,
 			onTogglePlay: () => {
 				this.runPlaybackCommand(key, (controller) => {
 					controller.togglePlay();
@@ -519,36 +531,55 @@ export class AudioPlayerRegistry {
 					controller.setVolume(volume);
 				});
 			},
+			onSetPlaybackRate: (rate) => {
+				this.runPlaybackCommand(key, (controller) => {
+					controller.setPlaybackRate(rate);
+				});
+			},
 			onAddMarker: (kind) => {
 				this.addPlaybackMarker(key, kind);
+			},
+			onPreviousChapter: () => {
+				this.runPlaybackCommand(
+					key,
+					(controller) => {
+						controller.previousChapter();
+					},
+					withChapters,
+				);
+			},
+			onNextChapter: () => {
+				this.runPlaybackCommand(
+					key,
+					(controller) => {
+						controller.nextChapter();
+					},
+					withChapters,
+				);
 			},
 		};
 	}
 
 	/**
-	 * Returns the newest live player that currently permits marker creation.
+	 * Returns the newest live player the caller accepts. Several players can
+	 * share one key (the same embed in reading view and Live Preview), and a
+	 * command belongs to the one rendered last; an operation the newest player
+	 * cannot perform, such as marker creation in reading view, falls back to an
+	 * older player that can.
 	 * @param entry - Shared audio entry whose players are considered
-	 * @returns Eligible marker controller, or null when marker creation is off
+	 * @param eligible - Accepts a player for the operation at hand
+	 * @returns Newest accepted controller, or null when no player qualifies
 	 */
-	private markerController(entry: SharedAudio): PlaybackController | null {
-		const controllers = [...entry.playbackControllers];
-		for (let index = controllers.length - 1; index >= 0; index--) {
-			const controller = controllers[index];
-			if (controller?.canAddMarkers()) {
+	private controllerFor(
+		entry: SharedAudio,
+		eligible: (controller: PlaybackController) => boolean,
+	): PlaybackController | null {
+		for (const controller of [...entry.playbackControllers].reverse()) {
+			if (eligible(controller)) {
 				return controller;
 			}
 		}
 		return null;
-	}
-
-	/**
-	 * Returns the newest live player for a playback key.
-	 * @param entry - Shared audio entry whose players are considered
-	 * @returns Newest playback controller, or null during lifecycle handoff
-	 */
-	private playbackController(entry: SharedAudio): PlaybackController | null {
-		const controllers = [...entry.playbackControllers];
-		return controllers[controllers.length - 1] ?? null;
 	}
 
 	/**
@@ -561,7 +592,7 @@ export class AudioPlayerRegistry {
 			return;
 		}
 		this.activePlaybackKey = null;
-		const controller = this.playbackController(entry);
+		const controller = this.controllerFor(entry, anyController);
 		if (controller) {
 			controller.stop();
 		} else {
@@ -577,16 +608,18 @@ export class AudioPlayerRegistry {
 	 * the resulting shared-audio state without waiting for a media event.
 	 * @param key - Playback key captured by the status snapshot
 	 * @param command - Operation to run against the newest live player
+	 * @param eligible - Narrows which players may run the command
 	 */
 	private runPlaybackCommand(
 		key: string,
 		command: (controller: PlaybackController) => void,
+		eligible: (controller: PlaybackController) => boolean = anyController,
 	): void {
 		const entry = this.activeEntry(key);
 		if (!entry) {
 			return;
 		}
-		const controller = this.playbackController(entry);
+		const controller = this.controllerFor(entry, eligible);
 		if (controller) {
 			command(controller);
 			this.emitPlaybackState();
@@ -601,7 +634,7 @@ export class AudioPlayerRegistry {
 	private addPlaybackMarker(key: string, kind: MarkerKind): void {
 		const entry = this.activeEntry(key);
 		if (entry) {
-			this.markerController(entry)?.addMarker(kind);
+			this.controllerFor(entry, withMarkers)?.addMarker(kind);
 		}
 	}
 

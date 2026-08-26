@@ -19,6 +19,7 @@ import { DurationProbe } from './DurationProbe';
 import {
 	resetPlayback,
 	seekAudio,
+	setAudioPlaybackRate,
 	setAudioVolume,
 	skipAudio,
 	toggleAudioMuted,
@@ -154,8 +155,11 @@ export class DetachedPlayback {
 		this.unregisterController = this.registry.registerPlaybackController(
 			this.key,
 			{
-				// No marker UI is attached to a detached playback
+				// No marker UI is attached to a detached playback, so it
+				// neither creates markers nor navigates the chapters they
+				// would define
 				canAddMarkers: () => false,
+				canNavigateChapters: () => false,
 				togglePlay: () => {
 					togglePlayback(this.audio, this.onPlayError);
 				},
@@ -171,7 +175,12 @@ export class DetachedPlayback {
 				setVolume: (volume) => {
 					setAudioVolume(this.audio, volume);
 				},
+				setPlaybackRate: (rate) => {
+					setAudioPlaybackRate(this.audio, rate);
+				},
 				addMarker: () => undefined,
+				previousChapter: () => undefined,
+				nextChapter: () => undefined,
 			},
 		);
 		this.audio.addEventListener('ended', this.handleEnded);

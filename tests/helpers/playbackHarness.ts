@@ -9,6 +9,7 @@
 
 import type { RecordingSidecarStore } from 'src/sidecar/RecordingSidecarStore';
 import type { PlayerMarker } from 'src/markers/markerModel';
+import type { PlaybackControlsState } from 'src/player/playbackControls';
 
 /** Controllable audio element whose setters emit the matching media events. */
 export interface ControllableAudio extends HTMLAudioElement {
@@ -99,6 +100,38 @@ export function makeMarkerStore(): RecordingSidecarStore {
 		handleDelete: jest.fn().mockResolvedValue(undefined),
 		clearCache: jest.fn(),
 	} as unknown as RecordingSidecarStore;
+}
+
+/**
+ * A complete playback snapshot with jest-backed commands, as the registry
+ * publishes it. Shared so the status bar and the palette commands are
+ * exercised against the very same contract.
+ * @param overrides - State fields to replace for a specific assertion
+ * @returns A playback snapshot every consumer accepts
+ */
+export function makePlaybackState(
+	overrides: Partial<PlaybackControlsState> = {},
+): PlaybackControlsState {
+	return {
+		currentTime: 65,
+		duration: 222,
+		paused: false,
+		volume: 0.75,
+		muted: false,
+		playbackRate: 1,
+		markersEnabled: true,
+		chaptersEnabled: true,
+		onTogglePlay: jest.fn(),
+		onStop: jest.fn(),
+		onSkip: jest.fn(),
+		onToggleMute: jest.fn(),
+		onVolumeInput: jest.fn(),
+		onSetPlaybackRate: jest.fn(),
+		onAddMarker: jest.fn(),
+		onPreviousChapter: jest.fn(),
+		onNextChapter: jest.fn(),
+		...overrides,
+	};
 }
 
 /** Reads the elapsed / total text the player renders. */

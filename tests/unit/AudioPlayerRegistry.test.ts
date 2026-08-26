@@ -24,12 +24,16 @@ function makePlaybackController(
 ): PlaybackController {
 	return {
 		canAddMarkers: jest.fn(() => true),
+		canNavigateChapters: jest.fn(() => true),
 		togglePlay: jest.fn(),
 		stop: jest.fn(),
 		skip: jest.fn(),
 		toggleMute: jest.fn(),
 		setVolume: jest.fn(),
+		setPlaybackRate: jest.fn(),
 		addMarker: jest.fn(),
+		previousChapter: jest.fn(),
+		nextChapter: jest.fn(),
 		...overrides,
 	};
 }
