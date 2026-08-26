@@ -7,8 +7,14 @@ import { SECONDS_PER_MINUTE, SECONDS_PER_HOUR } from '../constants';
 
 /**
  * Delays execution for the specified number of milliseconds.
- * Uses activeWindow so the timer is attached to the active Obsidian
- * window (multi-window support).
+ *
+ * Timed on the main window rather than on Obsidian's `activeWindow`, which is
+ * what the rest of the plugin reaches for. The two differ for work that
+ * belongs to a window - a canvas reading its own device pixel ratio, an
+ * element asking for its computed style - and a pause belongs to none: what
+ * waits here is a retry between provider attempts or the gap between two
+ * Gemini file-status polls, neither of which has a window to be attached to,
+ * and either of which would keep waiting on a window the user has closed.
  *
  * A wait the caller can be released from takes a signal: the retry pause
  * between provider attempts and the interval between Gemini file-status polls
