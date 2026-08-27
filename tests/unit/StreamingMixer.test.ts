@@ -4,7 +4,11 @@
  * @module tests/unit/StreamingMixer.test
  */
 
-import { canStreamMix, mixPcmTracksToWav } from 'src/recording/StreamingMixer';
+import {
+	canStreamMix,
+	mixLayout,
+	mixPcmTracksToWav,
+} from 'src/recording/StreamingMixer';
 import type { PcmMixTrack } from 'src/recording/StreamingMixer';
 import type { App } from 'obsidian';
 import { createMockApp } from '../helpers/createApp';
@@ -59,6 +63,55 @@ describe('StreamingMixer', () => {
 				},
 			},
 		}).app;
+	});
+
+	// The size of the mixed file is asked for from both ends: here, to
+	// allocate it, and by a running recording, to warn before the container
+	// ceiling is reached. One rule answers both, so the warning cannot be
+	// computed from an arithmetic the mixer does differently.
+	describe('mixLayout', () => {
+		it('sizes a mix of equal mono tracks as one of them', () => {
+			const layout = mixLayout([
+				{ pcmBytes: 800, channels: 1 },
+				{ pcmBytes: 800, channels: 1 },
+			]);
+
+			expect(layout).toEqual({
+				totalFrames: 400,
+				outChannels: 1,
+				pcmByteLength: 800,
+			});
+		});
+
+		// The case the warning was blind to: the mixed file is twice the mono
+		// track that is most of it, because one stereo track takes the whole
+		// mix up to stereo.
+		it('doubles a long mono track that a stereo one takes up to stereo', () => {
+			const layout = mixLayout([
+				{ pcmBytes: 800, channels: 1 },
+				{ pcmBytes: 80, channels: 2 },
+			]);
+
+			expect(layout.outChannels).toBe(2);
+			expect(layout.pcmByteLength).toBe(1600);
+		});
+
+		it('takes its length from the longest track', () => {
+			expect(
+				mixLayout([
+					{ pcmBytes: 400, channels: 2 },
+					{ pcmBytes: 1200, channels: 2 },
+				]).pcmByteLength,
+			).toBe(1200);
+		});
+
+		it('sizes nothing at all as nothing', () => {
+			expect(mixLayout([])).toEqual({
+				totalFrames: 0,
+				outChannels: 0,
+				pcmByteLength: 0,
+			});
+		});
 	});
 
 	describe('canStreamMix', () => {

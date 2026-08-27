@@ -68,6 +68,7 @@ import { WAV_PCM_WARNING_BYTES } from '../audio/WavEncoder';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import { TrackWriteQueue } from './TrackWriteQueue';
 import { RecordingFinalizer } from './RecordingFinalizer';
+import { mixLayout } from './StreamingMixer';
 import { PartRotationController } from './PartRotationController';
 import { SessionJournal } from './SessionJournal';
 import {
@@ -1167,12 +1168,12 @@ export class RecordingManager {
 	 * at the stop, where the only outcomes left are a refused save or a file
 	 * players read as truncated. Auto-split is named because it is the one
 	 * setting that takes the ceiling off the session entirely.
-	 * @param target - The track whose current file is filling up
+	 * @param target - The track whose audio was just written to
 	 */
 	private warnOnApproachingWavCeiling(target: RecordingTarget): void {
 		if (
 			target.wavCeilingWarned ||
-			target.filePcmBytes < WAV_PCM_WARNING_BYTES
+			this.destinationWavPcmBytes(target) < WAV_PCM_WARNING_BYTES
 		) {
 			return;
 		}
@@ -1182,6 +1183,34 @@ export class RecordingManager {
 				'Enable auto-split in the settings, or stop and start a new ' +
 				'recording, so the audio can be saved.',
 		);
+	}
+
+	/**
+	 * Size of the WAV this target's audio is actually destined for.
+	 *
+	 * A session merging its tracks into one file writes no per-track WAV at
+	 * all, so the target's own counter names a file that never exists, and the
+	 * one that does is larger than any track that feeds it: a mono track
+	 * beside a stereo one is mixed up to stereo, which doubles it. Measuring
+	 * the track instead of the mix let the merged file pass the ceiling with
+	 * no warning at any point.
+	 * @param target - The track whose audio was just written to
+	 * @returns PCM bytes of the WAV that faces the container ceiling
+	 */
+	private destinationWavPcmBytes(target: RecordingTarget): number {
+		if (
+			!this.isWavPcmRecording ||
+			this.sessionOutputMode !== 'single' ||
+			this.chunkTargets.length < 2
+		) {
+			return target.filePcmBytes;
+		}
+		return mixLayout(
+			this.chunkTargets.map((chunkTarget) => ({
+				pcmBytes: chunkTarget.filePcmBytes,
+				channels: chunkTarget.pcmChannels,
+			})),
+		).pcmByteLength;
 	}
 
 	/**

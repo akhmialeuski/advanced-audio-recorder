@@ -6,7 +6,7 @@
  */
 
 import { RecordingManager } from 'src/recording/RecordingManager';
-import { at } from '../helpers/assertions';
+import { at, defined } from '../helpers/assertions';
 import { RecordingStatus } from 'src/types';
 import {
 	DEFAULT_SETTINGS,
@@ -399,6 +399,7 @@ describe('RecordingManager', () => {
 			pcmBufferedBytes: number;
 			partPcmBytes: number;
 			filePcmBytes: number;
+			pcmChannels: number;
 		}
 
 		interface ManagerInternals {
@@ -556,6 +557,40 @@ describe('RecordingManager', () => {
 			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
 
 			expect(getCeilingNotices()).toHaveLength(0);
+		});
+
+		// A session merging its tracks writes no per-track WAV at all, and the
+		// file it does write is larger than any track feeding it: a long mono
+		// track beside a stereo one is mixed up to stereo, which doubles it.
+		// Warning on the track let the merged file pass the ceiling in
+		// silence, and the refusal then arrived at the stop with the whole
+		// session already recorded.
+		it('warns on the merged file rather than on the track feeding it', async () => {
+			useDesktopPlatform();
+			stubAudioStreams({ count: 2 });
+			createManagerWithSettings({
+				recordingFormat: 'wav',
+				autoSplitEnabled: false,
+				enableMultiTrack: true,
+				outputMode: 'single',
+			});
+			await manager.startRecording();
+			const [mono, stereo] = getInternals(manager).chunkTargets;
+			defined(mono).pcmChannels = 1;
+			defined(stereo).pcmChannels = 2;
+			// A quarter of the ceiling in frames, which the up-mix to stereo
+			// turns into the whole of it, while the track itself stays at
+			// half and would never have warned on its own.
+			defined(mono).filePcmBytes =
+				Math.ceil(WAV_PCM_WARNING_BYTES / 4) * 2 - 2;
+
+			pcmChunkCallback()(new ArrayBuffer(2));
+			await defined(mono).pendingWrite;
+
+			expect(defined(mono).filePcmBytes).toBeLessThan(
+				WAV_PCM_WARNING_BYTES,
+			);
+			expect(getCeilingNotices()).toHaveLength(1);
 		});
 
 		it('does not split PCM recordings when auto-split is disabled', async () => {

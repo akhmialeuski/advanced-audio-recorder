@@ -36,6 +36,59 @@ export interface PcmMixTrack {
 	sampleRate: number;
 }
 
+/** One track's captured PCM, as the mix sizing rule reads it. */
+export interface PcmMixSize {
+	/** Raw int16 PCM captured for this track, in bytes. */
+	pcmBytes: number;
+	/** Interleaved channel count. */
+	channels: number;
+}
+
+/** The shape of the WAV a mix of a set of tracks produces. */
+export interface MixLayout {
+	/** Frames the mixed file holds, which is the longest track's. */
+	totalFrames: number;
+	/** Interleaved channels of the mixed file. */
+	outChannels: number;
+	/** PCM payload of the mixed WAV, in bytes. */
+	pcmByteLength: number;
+}
+
+/**
+ * The WAV a mix of these tracks comes out as.
+ *
+ * Its own rule rather than an arithmetic the mixer keeps to itself, because
+ * the size is asked for twice and from opposite ends: the mixer needs it to
+ * allocate, and a running recording needs it to warn before the container
+ * ceiling is reached. Mixing up to stereo is what makes the two answers
+ * differ from a plain sum, and the case it decides is a long mono track
+ * beside a short stereo one, where the mixed file is twice the mono track it
+ * is mostly made of.
+ * @param tracks - What each track captured, in bytes and channels
+ * @returns The mixed file's frames, channels, and PCM size
+ */
+export function mixLayout(tracks: readonly PcmMixSize[]): MixLayout {
+	if (tracks.length === 0) {
+		return { totalFrames: 0, outChannels: 0, pcmByteLength: 0 };
+	}
+	const totalFrames = Math.max(
+		...tracks.map((track) =>
+			Math.floor(
+				track.pcmBytes / (PCM_BYTES_PER_SAMPLE * track.channels),
+			),
+		),
+	);
+	const outChannels = Math.min(
+		2,
+		Math.max(...tracks.map((track) => track.channels)),
+	);
+	return {
+		totalFrames,
+		outChannels,
+		pcmByteLength: totalFrames * outChannels * PCM_BYTES_PER_SAMPLE,
+	};
+}
+
 /**
  * Checks whether the tracks can be mixed by this streaming mixer.
  * @param tracks - Candidate tracks
@@ -148,8 +201,8 @@ export async function mixPcmTracksToWav(
 		);
 	}
 
-	// Frame counts per track from the segment sizes on disk
-	const frameCounts: number[] = [];
+	// Captured bytes per track from the segment sizes on disk
+	const sizes: PcmMixSize[] = [];
 	for (const track of tracks) {
 		let bytes = 0;
 		for (const path of track.segmentPaths) {
@@ -159,25 +212,19 @@ export async function mixPcmTracksToWav(
 			}
 			bytes += stat.size;
 		}
-		frameCounts.push(
-			Math.floor(bytes / (PCM_BYTES_PER_SAMPLE * track.channels)),
-		);
+		sizes.push({ pcmBytes: bytes, channels: track.channels });
 	}
 	const firstTrack = tracks[0];
 	if (!firstTrack) {
 		throw new Error('No tracks to mix');
 	}
-	const totalFrames = Math.max(...frameCounts);
-	const outChannels = Math.min(
-		2,
-		Math.max(...tracks.map((track) => track.channels)),
-	);
+	const { totalFrames, outChannels, pcmByteLength } = mixLayout(sizes);
 	const sampleRate = firstTrack.sampleRate;
 
 	const wavBuffer = createWavFileBuffer(
 		outChannels,
 		sampleRate,
-		totalFrames * outChannels * PCM_BYTES_PER_SAMPLE,
+		pcmByteLength,
 	);
 	const output = new Int16Array(wavBuffer, WAV_HEADER_SIZE);
 
