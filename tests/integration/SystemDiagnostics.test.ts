@@ -288,6 +288,20 @@ describe('SystemDiagnostics.collectAudioDevices', () => {
 		expect(result).toEqual([]);
 	});
 
+	// Absent outside a secure context and in some embedded WebViews, which is
+	// exactly where a user is likely to be collecting diagnostics: the report
+	// says there are no devices rather than failing to be produced at all.
+	it('reports no devices where the environment exposes no device API', async () => {
+		Object.defineProperty(global.navigator, 'mediaDevices', {
+			value: undefined,
+			configurable: true,
+		});
+
+		const result = await SystemDiagnostics.collectAudioDevices();
+
+		expect(result).toEqual([]);
+	});
+
 	it('filters out videoinput devices', async () => {
 		mockEnumerate.mockResolvedValueOnce([
 			{

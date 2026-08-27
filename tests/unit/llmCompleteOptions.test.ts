@@ -194,13 +194,22 @@ describe('LlmProvider.complete cancellation', () => {
 	// the request instead of leaving it to run to its own timeout and be
 	// billed in full.
 	it('ends an in-flight request when the caller cancels', async () => {
+		// A signal that is already aborted when the request is made rejects
+		// straight away, the way a real fetch does. Waiting for an abort event
+		// that has been and gone would hang here, and the client asks about
+		// this origin before it sends the prompt, so the cancel can land
+		// before either request is made.
 		(globalThis as { fetch?: unknown }).fetch = jest.fn(
 			(_url: string, init: RequestInit) =>
-				new Promise((_resolve, reject) => {
-					init.signal?.addEventListener('abort', () => {
-						reject(new Error('The user aborted a request.'));
-					});
-				}),
+				init.signal?.aborted
+					? Promise.reject(new Error('The user aborted a request.'))
+					: new Promise((_resolve, reject) => {
+							init.signal?.addEventListener('abort', () => {
+								reject(
+									new Error('The user aborted a request.'),
+								);
+							});
+						}),
 		);
 		const controller = new AbortController();
 		const provider = new OpenAiCompatibleLlmProvider({

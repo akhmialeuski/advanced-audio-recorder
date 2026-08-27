@@ -537,13 +537,6 @@ async function dispatchRequest(
 	let refusalToConfirm = false;
 	if (options.signal !== undefined) {
 		const usable = await fetchIsUsable(options.url, origin, options.signal);
-		// The probe is a round trip, and a Cancel pressed during it has to
-		// stop the run here: the fallback below cannot be aborted, so sending
-		// the body through it would upload audio the user has already
-		// cancelled.
-		if (options.signal.aborted) {
-			throw cancelledError(safeUrl);
-		}
 		refusalToConfirm = usable === null;
 		if (usable === true) {
 			try {
@@ -562,6 +555,13 @@ async function dispatchRequest(
 				refusalToConfirm = true;
 			}
 		}
+	}
+	// The fallback cannot be aborted, so a Cancel that landed while the probe
+	// was in flight has to stop the run here rather than send a body nobody is
+	// waiting for. The abortable path above answers its own cancel, which is
+	// why the question is asked on this side of the branch and not before it.
+	if (options.signal?.aborted) {
+		throw cancelledError(safeUrl);
 	}
 	const response = await withTimeout(
 		requestUrl({
