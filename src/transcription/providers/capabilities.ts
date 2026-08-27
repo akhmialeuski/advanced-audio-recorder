@@ -182,7 +182,7 @@ export function wordTimestampsNote(id: TranscriptionProviderId): string {
 		case 'always':
 			return 'This engine returns per-word timing on every run, so there is nothing to turn on. Recorded in JSON file output only.';
 		default:
-			return 'This engine returns segment-level timing only, so per-word timing is not available for it.';
+			return 'This engine returns segment-level timing only, so the JSON file output carries segment times and no words.';
 	}
 }
 

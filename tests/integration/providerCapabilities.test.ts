@@ -160,6 +160,17 @@ describe('per-word timing gates', () => {
 		expect(wordTimestampsNote('gemini')).toMatch(/segment-level/);
 	});
 
+	// Where the timing lands is what makes the option intelligible at all, and
+	// a user who has only ever seen the row disabled has never been told it.
+	// The note that dropped the JSON clause was the note on the two engines
+	// where the row is always disabled.
+	it.each(Object.values(TRANSCRIPTION_PROVIDER_IDS))(
+		'says where the timing is recorded on %s',
+		(id) => {
+			expect(wordTimestampsNote(id)).toMatch(/JSON/);
+		},
+	);
+
 	it('answers the same question through the table and the accessor', () => {
 		expect(providerWordTimestamps('deepgram')).toBe(
 			DEEPGRAM_CAPABILITIES.wordTimestamps,
