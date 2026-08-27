@@ -171,6 +171,54 @@ describe('MarkerListView interaction', () => {
 	});
 });
 
+// Reading view is where the whole row is the jump target, and it used to be a
+// block element carrying a data attribute: tab skipped it, Enter and Space did
+// nothing, and a screen reader read it as text, so the chapters of a recording
+// could only be reached with a pointer. Making the row the button it behaves
+// like is what fixes all three, and what these tests hold it to.
+describe('MarkerListView keyboard access in reading view', () => {
+	it('builds a read-only row as a button', () => {
+		const { listContainer } = setup(false);
+
+		expect(el(listContainer, MARKER.byId('a')).tagName).toBe('BUTTON');
+	});
+
+	it('keeps an editable row a plain block, which holds controls of its own', () => {
+		const { listContainer } = setup(true);
+
+		expect(el(listContainer, MARKER.row).tagName).toBe('DIV');
+	});
+
+	it('puts a read-only row in the tab order', () => {
+		const { listContainer } = setup(false);
+
+		// A button is focusable without a tabindex, which is the point of
+		// using one: the order is the document's rather than a number here.
+		expect(el(listContainer, MARKER.byId('a')).tabIndex).toBe(0);
+	});
+
+	it('does not submit a form when a row is pressed', () => {
+		const { listContainer } = setup(false);
+
+		expect(el(listContainer, MARKER.byId('a')).getAttribute('type')).toBe(
+			'button',
+		);
+	});
+
+	// A button turns Enter and Space into a click, which the delegated handler
+	// already answers; the row is focused first because that is how a user
+	// reaches it.
+	it('jumps when a focused row is activated from the keyboard', () => {
+		const { listContainer, callbacks } = setup(false);
+		const row = el(listContainer, MARKER.byId('b'));
+
+		row.focus();
+		row.click();
+
+		expect(callbacks.onJump).toHaveBeenCalledWith(30);
+	});
+});
+
 describe('MarkerListView active highlight and tick refresh', () => {
 	it('highlights the row whose segment contains the current time', () => {
 		const { view, listContainer } = setup(false);

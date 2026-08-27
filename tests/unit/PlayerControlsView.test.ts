@@ -382,3 +382,57 @@ describe('a state change reported before anything is mounted', () => {
 		expect(maybeControl(container, 'Play / pause')).toBeNull();
 	});
 });
+
+// A styling class showed the state and announced nothing, so a listener using
+// a screen reader could not tell whether looping was on or the sound was off
+// without playing the track and finding out. aria-pressed is what a button
+// that stays pressed reports itself with.
+describe('reporting a toggle state to assistive technology', () => {
+	/** What a control announces about being pressed. */
+	function pressed(container: HTMLElement, label: string): string | null {
+		return control(container, label).getAttribute('aria-pressed');
+	}
+
+	it('reports the loop state the audio was already in', () => {
+		const { container } = createSut({ loop: true });
+
+		expect(pressed(container, 'Loop')).toBe('true');
+	});
+
+	it('reports looping as off when it is', () => {
+		const { container } = createSut({ loop: false });
+
+		expect(pressed(container, 'Loop')).toBe('false');
+	});
+
+	it('reports the loop state the player answered a press with', () => {
+		const { container, callbacks } = createSut({ loop: false });
+		callbacks.onToggleLoop.mockReturnValue(true);
+
+		control(container, 'Loop').click();
+
+		expect(pressed(container, 'Loop')).toBe('true');
+	});
+
+	it('reports the muted state the audio was already in', () => {
+		const { container } = createSut({ muted: true });
+
+		expect(pressed(container, 'Mute / unmute')).toBe('true');
+	});
+
+	it('reports the mute state the player moved to', () => {
+		const { view, container } = createSut({ muted: false });
+
+		view.setMuted(true);
+
+		expect(pressed(container, 'Mute / unmute')).toBe('true');
+	});
+
+	it('reports the sound as on again once the player unmuted it', () => {
+		const { view, container } = createSut({ muted: true });
+
+		view.setMuted(false);
+
+		expect(pressed(container, 'Mute / unmute')).toBe('false');
+	});
+});

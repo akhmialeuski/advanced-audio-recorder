@@ -7,6 +7,13 @@
  * marker data - this view only renders what it is given and reports user
  * intent back. Handlers are delegated once per container so rebuilding rows or
  * ticks never accumulates per-element listeners.
+ *
+ * A read-only row is a button, and an editable one is not. The whole row is
+ * the jump target in reading view, and a block element carrying a data
+ * attribute is reachable by pointer alone: tab skips it, Enter and Space do
+ * nothing, and a screen reader announces plain text. The editable row never
+ * had the problem, because there the jump is a real button beside the rename
+ * field. Reading view gets one too, and it is the row itself.
  * @module player/views/MarkerListView
  */
 
@@ -283,9 +290,15 @@ export class MarkerListView {
 			durationSeconds ??
 			rows.reduce((max, row) => Math.max(max, row.time), 0);
 		for (const row of rows) {
-			const rowEl = this.listEl.createDiv({
-				cls: 'aar-player-marker-row',
-			});
+			// A button in reading view, where the row is the jump target, and a
+			// plain block in edit mode, where it holds a text field and two
+			// buttons of its own and nesting them in a button is invalid.
+			const rowEl = this.editable
+				? this.listEl.createDiv({ cls: 'aar-player-marker-row' })
+				: this.listEl.createEl('button', {
+						cls: 'aar-player-marker-row',
+						attr: { type: 'button' },
+					});
 			this.rowEls.push(rowEl);
 			if (this.editable) {
 				this.buildEditableRow(rowEl, row, reference);
@@ -349,6 +362,8 @@ export class MarkerListView {
 		row: MarkerRow,
 		referenceSeconds: number,
 	): void {
+		// The element is a button (see renderList), so focus order, Enter and
+		// Space come from the platform rather than from a key handler here.
 		rowEl.addClass('aar-player-marker-row-clickable');
 		rowEl.dataset.action = MARKER_ROW_ACTION.jump;
 		rowEl.dataset.markerId = row.id;

@@ -59,6 +59,22 @@ export interface PlayerControlsHost {
 }
 
 /**
+ * Shows a toggle button's state, to the eye and to a screen reader.
+ *
+ * The styling class alone left the state visible and unannounced: nothing said
+ * whether looping was on or the sound was off, so a listener using a reader
+ * had to play the track to find out. `aria-pressed` is what a button that
+ * stays pressed reports itself with, and it is set here rather than at each
+ * call site so the class and the attribute cannot drift apart.
+ * @param button - The toggle button
+ * @param active - Whether it is currently engaged
+ */
+function setToggleState(button: HTMLElement, active: boolean): void {
+	button.toggleClass('is-active', active);
+	button.setAttribute('aria-pressed', String(active));
+}
+
+/**
  * Builds and updates the control row. One instance per render pass; the
  * DOM it owns is recreated by the player's containerEl.empty().
  */
@@ -155,13 +171,10 @@ export class PlayerControlsView {
 			PLAYER_ICONS.loop,
 			'Loop',
 			() => {
-				loopButton.toggleClass(
-					'is-active',
-					this.callbacks.onToggleLoop(),
-				);
+				setToggleState(loopButton, this.callbacks.onToggleLoop());
 			},
 		);
-		loopButton.toggleClass('is-active', state.loop);
+		setToggleState(loopButton, state.loop);
 
 		if (state.markersEnabled) {
 			// Adding markers/chapters is edit-only; hidden in reading view
@@ -245,7 +258,7 @@ export class PlayerControlsView {
 				this.muteButton,
 				muted ? PLAYER_ICONS.muted : PLAYER_ICONS.volume,
 			);
-			this.muteButton.toggleClass('is-active', muted);
+			setToggleState(this.muteButton, muted);
 		}
 	}
 
