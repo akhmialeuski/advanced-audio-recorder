@@ -15,6 +15,7 @@
 
 import {
 	LOCAL_WHISPER_MAX_BUFFER_BYTES,
+	PLUGIN_LOG_PREFIX,
 	TRANSCRIPTION_PROVIDER_IDS,
 } from '../../constants';
 import {
@@ -126,14 +127,17 @@ export function mapWhisperCppJson(body: unknown): WhisperResult {
 	return { language, segments };
 }
 
+/** Node's code for a child killed for outgrowing `maxBuffer`. */
+const MAX_BUFFER_ERROR_CODE = 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER';
+
 /**
- * Says which of the three ways a run can end badly this error is.
+ * Says which of the four ways a run can end badly this error is.
  *
  * Node reports a process it killed the same way it reports one that exited
  * with a status, so the error alone reads as "the binary failed" whether the
- * user pressed Cancel, the limit ran out, or the model path was wrong. Only
- * the caller can tell them apart, because only it holds the cancel and set the
- * limit.
+ * user pressed Cancel, the limit ran out, the output outgrew the buffer, or
+ * the model path was wrong. Only the caller can tell them apart, because only
+ * it holds the cancel and set the limit.
  * @param error - What execFile handed back
  * @param options - The run's options, holding its cancel
  * @returns The error to reject with
@@ -142,8 +146,19 @@ function describeRunFailure(error: Error, options: TranscribeOptions): Error {
 	if (options.signal?.aborted) {
 		return new Error('Local whisper.cpp run was cancelled.');
 	}
+	const { killed, code } = error as { killed?: boolean; code?: string };
+	// Ahead of the branch below, which reads the same `killed` marker: Node
+	// sets it for a child it stopped for writing too much as well as for one
+	// it stopped for running too long, and raising a time limit that was never
+	// reached does nothing for the first.
+	if (code === MAX_BUFFER_ERROR_CODE) {
+		return new Error(
+			'Local whisper.cpp produced more output than the plugin can read. ' +
+				'Split the recording and transcribe it in parts.',
+		);
+	}
 	// Node's own marker for a process it killed, which here means the limit.
-	if ((error as { killed?: boolean }).killed) {
+	if (killed) {
 		return new Error(
 			'Local whisper.cpp did not finish within the run timeout and was ' +
 				'stopped. Raise Local run timeout in the settings, or use a ' +
@@ -264,8 +279,24 @@ export class LocalWhisperProvider implements TranscriptionProvider {
 			}
 			return mapWhisperCppJson(parsed);
 		} finally {
-			node.fs.rmSync(wavPath, { force: true });
-			node.fs.rmSync(jsonPath, { force: true });
+			for (const path of [wavPath, jsonPath]) {
+				try {
+					node.fs.rmSync(path, { force: true });
+				} catch (error) {
+					// `force` answers a file that is not there and nothing
+					// else, and the run can now end while the binary is still
+					// holding its input open: Node kills the child on the
+					// cancel or the timeout, and Windows refuses to unlink a
+					// file with a live handle. A throw from here would replace
+					// the reason the run ended, so the user would be told
+					// about a temp path instead of about their own Cancel.
+					console.warn(
+						`${PLUGIN_LOG_PREFIX} Temporary whisper.cpp file could not be removed:`,
+						path,
+						error,
+					);
+				}
+			}
 		}
 	}
 }

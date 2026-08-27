@@ -38,6 +38,14 @@ export interface NodeSurfaceBehaviour {
 	 * time from a binary that simply failed.
 	 */
 	neverSettles?: boolean;
+	/**
+	 * Error thrown by `rmSync`, for a temp file the platform will not unlink.
+	 *
+	 * `force` answers a file that is not there and nothing else, so Windows
+	 * refusing to remove one the killed binary still holds open reaches the
+	 * caller as a throw from its cleanup.
+	 */
+	removalFails?: Error;
 }
 
 /** How a child process was bounded and cancelled, as the caller asked. */
@@ -202,6 +210,9 @@ export function installNodeSurface(
 			},
 			rmSync: (path: string): void => {
 				surface.removed.push(path);
+				if (behaviour.removalFails) {
+					throw behaviour.removalFails;
+				}
 				files.delete(path);
 			},
 		},

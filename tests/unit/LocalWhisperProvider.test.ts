@@ -250,6 +250,60 @@ describe('a run that does not come back', () => {
 			expect.stringMatching(/\.json$/),
 		]);
 	});
+
+	// A run stopped for writing too much is killed by Node exactly like one
+	// stopped for taking too long, so reading `killed` alone sends the user to
+	// raise a time limit that was never reached and would change nothing.
+	it('tells a run that wrote too much from one that took too long', async () => {
+		installNode({
+			execError: Object.assign(
+				new Error('stdout maxBuffer length exceeded'),
+				{ killed: true, code: 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' },
+			),
+		});
+
+		const settled = await createSut()
+			.transcribe(payload(), options())
+			.catch((error: unknown) => error);
+
+		expect(settled).toHaveProperty(
+			'message',
+			expect.stringContaining('more output'),
+		);
+		expect(settled).not.toHaveProperty(
+			'message',
+			expect.stringContaining('Local run timeout'),
+		);
+	});
+
+	// The run can now end while the binary still holds its input open, since
+	// Node kills the child on the cancel and on the limit, and Windows refuses
+	// to unlink a file with a live handle. Cleanup throwing there would answer
+	// the user's Cancel with a temp path they can do nothing about.
+	it('keeps a cleanup failure from replacing the reason the run ended', async () => {
+		const reported = jest
+			.spyOn(console, 'warn')
+			.mockImplementation(() => undefined);
+		installNode({
+			neverSettles: true,
+			removalFails: Object.assign(new Error('EPERM'), { code: 'EPERM' }),
+		});
+		const controller = new AbortController();
+
+		const settled = createSut()
+			.transcribe(payload(), { ...options(), signal: controller.signal })
+			.catch((error: unknown) => error);
+		controller.abort();
+
+		expect(await settled).toHaveProperty(
+			'message',
+			'Local whisper.cpp run was cancelled.',
+		);
+		// Both were attempted: a first path that will not go must not take the
+		// second one down with it.
+		expect(removedFiles()).toHaveLength(2);
+		expect(reported).toHaveBeenCalledTimes(2);
+	});
 });
 
 describe('reading whisper.cpp JSON', () => {
