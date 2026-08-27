@@ -17,7 +17,8 @@ import {
 	TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS,
 	TRANSCRIBE_REQUEST_TIMEOUT_MS,
 } from 'src/constants';
-import { withRequestUrl } from '../helpers/network';
+import { captureRequests, withRequestUrl } from '../helpers/network';
+import { flushMicrotasks } from '../helpers/async';
 import { defined } from '../helpers/assertions';
 
 /**
@@ -310,6 +311,16 @@ describe('requestRaw abort support', () => {
 		} as unknown as Response;
 	}
 
+	/** The calls a fetch double was asked to make that carried a body. */
+	function bodiesSentByFetch(fetchMock: jest.Mock): unknown[] {
+		return fetchMock.mock.calls.filter(
+			(call) => (call[1] as { body?: unknown } | undefined)?.body,
+		);
+	}
+
+	// Each of these owns its host name: what an origin does with a browser
+	// request is learned once and remembered for the session, so two tests
+	// sharing a host would be reading each other's answer.
 	it('sends the request through fetch when a signal is provided', async () => {
 		const fetchMock = mockFetch(() =>
 			Promise.resolve(
@@ -318,16 +329,34 @@ describe('requestRaw abort support', () => {
 		);
 
 		const response = await requestRaw({
-			url: 'https://api.example.com/v1/transcribe',
+			url: 'https://takes-fetch.example.com/v1/transcribe',
 			method: 'POST',
 			body: 'payload',
 			signal: new AbortController().signal,
 		});
 
-		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(bodiesSentByFetch(fetchMock)).toHaveLength(1);
 		expect(response.status).toBe(200);
 		expect(response.text).toBe('{"ok":true}');
 		expect(response.headers['x-test']).toBe('yes');
+	});
+
+	// The probe is what keeps the discovery off the request: it asks the same
+	// URL with no body, so a refusal costs a round trip instead of an upload.
+	it('asks an unknown origin with a bodyless request first', async () => {
+		const fetchMock = mockFetch(() =>
+			Promise.resolve(fakeResponse(200, '{}')),
+		);
+
+		await requestRaw({
+			url: 'https://asked-first.example.com/v1/transcribe',
+			method: 'POST',
+			body: 'payload',
+			signal: new AbortController().signal,
+		});
+
+		expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: 'HEAD' });
+		expect(fetchMock.mock.calls[0]?.[1]).not.toHaveProperty('body');
 	});
 
 	it('rejects with a cancellation HttpError when the signal aborts mid-flight', async () => {
@@ -335,14 +364,41 @@ describe('requestRaw abort support', () => {
 		(globalThis as { fetch?: unknown }).fetch = fetchThatOnlyAborts();
 
 		const pending = requestRaw({
-			url: 'https://api.example.com/v1/transcribe',
+			url: 'https://cancels-midflight.example.com/v1/transcribe',
 			method: 'POST',
 			signal: controller.signal,
 		});
+		// The probe runs before the request does, and aborting during it is a
+		// different case (covered below). Letting it settle first puts the
+		// cancel where this test says it is: on the request in flight.
+		await flushMicrotasks();
 		controller.abort();
 
 		await expect(pending).rejects.toThrow(HttpError);
 		await expect(pending).rejects.toThrow(/was cancelled/);
+	});
+
+	// The fallback transport cannot be aborted, so a run that reaches it after
+	// the user pressed Cancel would upload audio nobody is waiting for. The
+	// cancel is therefore answered between the probe and the request.
+	it('rejects when the signal aborts while the origin is being probed', async () => {
+		const controller = new AbortController();
+		const fetchMock = mockFetch(() =>
+			Promise.reject(new TypeError('Failed to fetch')),
+		);
+		const sent = captureRequests({ status: 200, text: '{}' });
+
+		const pending = requestRaw({
+			url: 'https://cancels-during-probe.example.com/v1/transcribe',
+			method: 'POST',
+			body: 'the audio',
+			signal: controller.signal,
+		});
+		controller.abort();
+
+		await expect(pending).rejects.toThrow(/was cancelled/);
+		expect(bodiesSentByFetch(fetchMock)).toHaveLength(0);
+		expect(sent).toHaveLength(0);
 	});
 
 	/**
@@ -376,7 +432,30 @@ describe('requestRaw abort support', () => {
 		return response.text;
 	}
 
-	// On its own origin, because a refusal is remembered: the cases after
+	// The whole point of the probe. A CORS refusal reaches the browser only
+	// after the server has taken the upload, decoded it and billed it, so
+	// discovering the refusal with the request itself paid for the audio
+	// twice. The probe carries no body, so it cannot.
+	it('sends the body once to an endpoint that refuses browser requests', async () => {
+		const fetchMock = mockFetch(() =>
+			Promise.reject(new TypeError('Failed to fetch')),
+		);
+		const sent = captureRequests({ status: 200, text: '{}' });
+
+		await requestRaw({
+			url: 'https://billed-twice.example.com/v1/transcribe',
+			method: 'POST',
+			body: 'the audio',
+			signal: new AbortController().signal,
+		});
+
+		expect(bodiesSentByFetch(fetchMock)).toHaveLength(0);
+		expect(
+			sent.filter((request) => request.body === 'the audio'),
+		).toHaveLength(1);
+	});
+
+	// On its own origin, because an answer is remembered: the cases after
 	// this one expect fetch to be tried, and would find it already ruled out
 	// for a host this test had refused.
 	it('falls back to requestUrl when fetch fails at the network layer (CORS)', async () => {
@@ -463,20 +542,32 @@ describe('requestRaw abort support', () => {
 	});
 });
 
-/** A fetch that never settles until its signal aborts, then rejects. */
+/**
+ * A fetch that never settles until its signal aborts, then rejects.
+ *
+ * The bodyless probe is answered straight away: it is a different question
+ * from the one this double exists to hang on, and leaving it unanswered would
+ * park the client on the probe's own deadline instead of the request.
+ */
 function fetchThatOnlyAborts(): jest.Mock {
 	return jest.fn(
-		(_url: unknown, init?: { signal?: AbortSignal }) =>
-			new Promise((_resolve, reject) => {
-				init?.signal?.addEventListener('abort', () => {
-					reject(
-						new DOMException(
-							'The operation was aborted.',
-							'AbortError',
-						),
-					);
-				});
-			}),
+		(_url: unknown, init?: { method?: string; signal?: AbortSignal }) =>
+			init?.method === 'HEAD'
+				? Promise.resolve({
+						status: 200,
+						text: () => Promise.resolve(''),
+						headers: new Map<string, string>(),
+					} as unknown as Response)
+				: new Promise((_resolve, reject) => {
+						init?.signal?.addEventListener('abort', () => {
+							reject(
+								new DOMException(
+									'The operation was aborted.',
+									'AbortError',
+								),
+							);
+						});
+					}),
 	);
 }
 
