@@ -20,7 +20,10 @@ import type {
 import type { AudioRecorderSettings } from '../settings/settingsSchema';
 import { PLUGIN_LOG_PREFIX, FORMAT_WAV } from '../constants';
 import { DebugLogger } from '../utils/DebugLogger';
-import { assembleWavFromPcmSegmentFiles } from '../audio/WavEncoder';
+import {
+	assembleWavFromPcmSegmentFiles,
+	WavSizeLimitError,
+} from '../audio/WavEncoder';
 import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
 import {
 	resolveUniquePath,
@@ -583,6 +586,17 @@ export class RecordingFinalizer {
 				type: audioMimeForExtension(FORMAT_WAV),
 			});
 		} catch (error) {
+			// The one failure the fallback cannot answer. Every other reason
+			// the streaming mix gives up is a property of the route - a rate
+			// mismatch, an adapter without stat - and the Web Audio mix takes
+			// another route to the same file. The container ceiling is a
+			// property of the audio: that mix encodes through mediabunny,
+			// which is outside the check entirely, so it would spend the
+			// decode only to write a file whose stated sizes have wrapped.
+			// The refusal names auto-split, which is what the user can act on.
+			if (error instanceof WavSizeLimitError) {
+				throw error;
+			}
 			console.warn(
 				`${PLUGIN_LOG_PREFIX} Streaming mix failed, falling back to the Web Audio mix:`,
 				error,

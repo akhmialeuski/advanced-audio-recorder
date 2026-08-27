@@ -83,6 +83,22 @@ export const WAV_SIZE_LIMIT_MESSAGE =
 	'saved as parts; the captured audio is kept and can be recovered.';
 
 /**
+ * The refusal of audio that outgrew the container.
+ *
+ * A type of its own because a caller has to be able to tell it from a failure
+ * of the way it happened to be building the file. A mix that can be attempted
+ * another way answers a failure by trying that way, and this is the one
+ * failure where the other way is no better: the ceiling belongs to the audio,
+ * not to the route taken to encode it, so every route reaches it.
+ */
+export class WavSizeLimitError extends Error {
+	constructor() {
+		super(WAV_SIZE_LIMIT_MESSAGE);
+		this.name = 'WavSizeLimitError';
+	}
+}
+
+/**
  * Refuses a PCM payload the container cannot describe.
  *
  * Asked before the allocation on every path that builds a WAV, because both
@@ -91,11 +107,11 @@ export const WAV_SIZE_LIMIT_MESSAGE =
  * the engine's own ceiling throws only after the recording has stopped. Asked
  * here, the refusal costs nothing and the PCM segments are still on disk.
  * @param pcmByteLength - Total PCM payload in bytes
- * @throws Error when the payload does not fit a WAV container
+ * @throws WavSizeLimitError when the payload does not fit a WAV container
  */
 function assertPcmFitsWav(pcmByteLength: number): void {
 	if (pcmByteLength > WAV_MAX_PCM_BYTES) {
-		throw new Error(WAV_SIZE_LIMIT_MESSAGE);
+		throw new WavSizeLimitError();
 	}
 }
 
@@ -116,7 +132,7 @@ const WAV_FORMAT_PCM = 1;
  * @param sampleRate - Sample rate in Hz
  * @param pcmDataLength - Total length of PCM data in bytes
  * @returns ArrayBuffer containing the WAV header
- * @throws Error when the PCM data is too large for the container
+ * @throws WavSizeLimitError when the PCM data is too large for the container
  */
 export function createWavHeader(
 	numChannels: number,
@@ -171,7 +187,7 @@ export function createWavHeader(
  * @param sampleRate - Sample rate in Hz
  * @param pcmByteLength - Total length of PCM data in bytes
  * @returns ArrayBuffer sized for header plus PCM, header written
- * @throws Error when the PCM data is too large for the container
+ * @throws WavSizeLimitError when the PCM data is too large for the container
  */
 export function createWavFileBuffer(
 	numChannels: number,
@@ -194,7 +210,8 @@ export function createWavFileBuffer(
  * @param numChannels - Number of audio channels
  * @param sampleRate - Sample rate in Hz
  * @returns ArrayBuffer containing the complete WAV file
- * @throws Error when the segments together are too large for a WAV container
+ * @throws WavSizeLimitError when the segments together are too large for a
+ *   WAV container
  */
 export function assembleWavFromPcmSegments(
 	segments: ArrayBuffer[],
@@ -232,8 +249,9 @@ export function assembleWavFromPcmSegments(
  * @param sampleRate - Sample rate in Hz
  * @param app - Obsidian App instance
  * @returns ArrayBuffer containing the complete WAV file
- * @throws Error when a segment grew between stat and read, or when the
- *   segments together are too large for a WAV container
+ * @throws Error when a segment grew between stat and read
+ * @throws WavSizeLimitError when the segments together are too large for a
+ *   WAV container
  */
 export async function assembleWavFromPcmSegmentFiles(
 	segmentPaths: string[],

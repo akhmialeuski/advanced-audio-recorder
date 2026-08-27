@@ -31,6 +31,17 @@ export const WAV_PCM_WARNING_BYTES = jest.requireActual<
 	typeof import('src/audio/WavEncoder')
 >('src/audio/WavEncoder').WAV_PCM_WARNING_BYTES;
 
+/**
+ * The container refusal, taken from the real module for the same reason.
+ *
+ * Callers tell it from other failures with `instanceof`, so a double declaring
+ * a class of its own would make every one of those checks answer no and the
+ * suites would pass against a branch that can never be taken.
+ */
+export const WavSizeLimitError = jest.requireActual<
+	typeof import('src/audio/WavEncoder')
+>('src/audio/WavEncoder').WavSizeLimitError;
+
 export const assembleWavFromPcmSegmentFiles = jest
 	.fn()
 	.mockResolvedValue(new ArrayBuffer(WAV_HEADER_BYTES));

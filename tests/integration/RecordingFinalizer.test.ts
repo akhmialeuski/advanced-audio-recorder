@@ -23,7 +23,10 @@ import {
 	convertBlobToWavBuffer,
 	mergeAudioTracks,
 } from 'src/audio/AudioFormatConverter';
-import { assembleWavFromPcmSegmentFiles } from 'src/audio/WavEncoder';
+import {
+	assembleWavFromPcmSegmentFiles,
+	WavSizeLimitError,
+} from 'src/audio/WavEncoder';
 import { insertFileLinks } from 'src/recording/NoteInserter';
 import { canStreamMix, mixPcmTracksToWav } from 'src/recording/StreamingMixer';
 import { createSession, createTarget } from '../helpers/recordingFixtures';
@@ -582,6 +585,37 @@ describe('RecordingFinalizer', () => {
 				expect.any(Function),
 				expect.any(Function),
 			);
+		});
+
+		// Every other streaming-mix failure is a reason to mix another way, so
+		// the fallback answers them all. The container ceiling is the one that
+		// belongs to the audio rather than to the route: the Web Audio mix
+		// builds the same oversized WAV through mediabunny, where nothing
+		// checks the ceiling at all, and the message naming auto-split - the
+		// one thing that makes a session this long saveable - is lost on the
+		// way to a mix that cannot succeed either.
+		it('refuses a mix past the container ceiling instead of falling back', async () => {
+			jest.mocked(mixPcmTracksToWav).mockRejectedValueOnce(
+				new WavSizeLimitError(),
+			);
+			buildFinalizer(
+				createSession({
+					isWavPcm: true,
+					outputMode: 'single',
+					outputFormat: 'wav',
+				}),
+			);
+			const targets = [
+				createTarget({ segmentPaths: ['a-pcm.tmp'] }),
+				createTarget({ segmentPaths: ['b-pcm.tmp'] }),
+			];
+
+			await expect(
+				finalizer.saveRecording(targets, 'stamp', null),
+			).rejects.toThrow(/cannot exceed 4 GB/);
+
+			expect(jest.mocked(mergeAudioTracks)).not.toHaveBeenCalled();
+			expect(mockApp.vault.createBinary).not.toHaveBeenCalled();
 		});
 
 		it('keeps compressed merged outputs on the Web Audio mix', async () => {
