@@ -35,6 +35,7 @@ import { flushMicrotasks } from '../helpers/async';
 import { Notice } from 'obsidian';
 import { internalsOf } from '../helpers/doubles';
 import { PcmStreamRecorder } from 'src/recording/PcmStreamRecorder';
+import { WAV_PCM_WARNING_BYTES } from 'src/audio/WavEncoder';
 import { tickTimes } from '../helpers/async';
 
 // Mock AudioStreamHandler
@@ -397,6 +398,7 @@ describe('RecordingManager', () => {
 			pcmBuffers: ArrayBuffer[];
 			pcmBufferedBytes: number;
 			partPcmBytes: number;
+			filePcmBytes: number;
 		}
 
 		interface ManagerInternals {
@@ -494,6 +496,66 @@ describe('RecordingManager', () => {
 				expect.stringMatching(/-part2\.wav$/),
 				expect.anything(),
 			);
+		});
+
+		/** Notices about the recording running out of WAV container. */
+		const getCeilingNotices = (): unknown[][] =>
+			(Notice as jest.Mock).mock.calls.filter((call) =>
+				String(call[0]).includes('approaching the 4 GB limit'),
+			);
+
+		/**
+		 * Starts a WAV session with auto-split off and puts its file counter
+		 * a couple of bytes below the warning threshold, so the next chunk
+		 * crosses it without anyone allocating four gigabytes.
+		 * @returns The track's internals, ready to be fed chunks
+		 */
+		async function startNearTheCeiling(): Promise<TargetInternals> {
+			createManagerWithSettings({
+				recordingFormat: 'wav',
+				autoSplitEnabled: false,
+			});
+			await manager.startRecording();
+			const target = at(getInternals(manager).chunkTargets, 0);
+			target.filePcmBytes = WAV_PCM_WARNING_BYTES - 2;
+			return target;
+		}
+
+		// Auto-split off is the case that can reach the ceiling at all, and
+		// the warning has to arrive while the session can still act on it: at
+		// the stop the only outcomes left are a refused save and a file
+		// players read as truncated.
+		it('warns when a WAV recording approaches the container ceiling', async () => {
+			const target = await startNearTheCeiling();
+
+			pcmChunkCallback()(new ArrayBuffer(2));
+			await target.pendingWrite;
+
+			expect(getCeilingNotices()).toHaveLength(1);
+		});
+
+		it('warns once rather than on every chunk past the threshold', async () => {
+			const target = await startNearTheCeiling();
+
+			pcmChunkCallback()(new ArrayBuffer(2));
+			await target.pendingWrite;
+			pcmChunkCallback()(new ArrayBuffer(2));
+			await target.pendingWrite;
+
+			expect(getCeilingNotices()).toHaveLength(1);
+		});
+
+		it('stays quiet while the file is still well inside the container', async () => {
+			createManagerWithSettings({
+				recordingFormat: 'wav',
+				autoSplitEnabled: false,
+			});
+			await manager.startRecording();
+
+			pcmChunkCallback()(new ArrayBuffer(6_000_000));
+			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
+
+			expect(getCeilingNotices()).toHaveLength(0);
 		});
 
 		it('does not split PCM recordings when auto-split is disabled', async () => {

@@ -64,6 +64,7 @@ import {
 import { describeRecordingError } from './recordingErrors';
 import { InputLevelMonitor } from './InputLevelMonitor';
 import { resolveRecorderFormat } from '../audio/AudioFormatConverter';
+import { WAV_PCM_WARNING_BYTES } from '../audio/WavEncoder';
 import type { EncodingWorkerClient } from '../audio/EncodingWorkerClient';
 import { TrackWriteQueue } from './TrackWriteQueue';
 import { RecordingFinalizer } from './RecordingFinalizer';
@@ -676,6 +677,8 @@ export class RecordingManager {
 			partIndex: 0,
 			partPaths: [],
 			partPcmBytes: 0,
+			filePcmBytes: 0,
+			wavCeilingWarned: false,
 		}));
 	}
 
@@ -1137,6 +1140,8 @@ export class RecordingManager {
 		await this.writeQueue.enqueue(target, async () => {
 			target.pcmBuffers.push(data);
 			target.pcmBufferedBytes += data.byteLength;
+			target.filePcmBytes += data.byteLength;
+			this.warnOnApproachingWavCeiling(target);
 			if (this.sessionSplitEnabled) {
 				target.partPcmBytes += data.byteLength;
 				const partLimitBytes = computePcmPartLimitBytes(
@@ -1152,6 +1157,31 @@ export class RecordingManager {
 				await this.writeQueue.flushPcmBuffer(target);
 			}
 		});
+	}
+
+	/**
+	 * Tells the user once that the WAV being written is nearing the size a
+	 * RIFF container can describe.
+	 *
+	 * Said while the recording still runs, because the alternative is saying it
+	 * at the stop, where the only outcomes left are a refused save or a file
+	 * players read as truncated. Auto-split is named because it is the one
+	 * setting that takes the ceiling off the session entirely.
+	 * @param target - The track whose current file is filling up
+	 */
+	private warnOnApproachingWavCeiling(target: RecordingTarget): void {
+		if (
+			target.wavCeilingWarned ||
+			target.filePcmBytes < WAV_PCM_WARNING_BYTES
+		) {
+			return;
+		}
+		target.wavCeilingWarned = true;
+		new Notice(
+			'This recording is approaching the 4 GB limit of the WAV format. ' +
+				'Enable auto-split in the settings, or stop and start a new ' +
+				'recording, so the audio can be saved.',
+		);
 	}
 
 	/**

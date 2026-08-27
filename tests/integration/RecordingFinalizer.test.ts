@@ -256,6 +256,23 @@ describe('RecordingFinalizer', () => {
 			expect(mockApp.vault.adapter.remove).toHaveBeenCalledTimes(2);
 		});
 
+		// Until the file is written the audio exists only in those segments, so
+		// a refused assembly - a recording past the container ceiling - has to
+		// leave them where the recovery journal can still find them.
+		it('keeps the segments when the assembly refuses the recording', async () => {
+			jest.mocked(assembleWavFromPcmSegmentFiles).mockRejectedValueOnce(
+				new Error('This recording is too long for a WAV file'),
+			);
+			const target = createTarget({ segmentPaths: ['pcm1.tmp'] });
+
+			await expect(
+				finalizer.assembleWavFile(target, '/final.wav'),
+			).rejects.toThrow(/too long for a WAV file/);
+
+			expect(mockApp.vault.createBinary).not.toHaveBeenCalled();
+			expect(mockApp.vault.adapter.remove).not.toHaveBeenCalled();
+		});
+
 		it('keeps the file and notify when segment removal fails', async () => {
 			(mockApp.vault.adapter.remove as jest.Mock).mockRejectedValue(
 				new Error('locked'),

@@ -330,6 +330,12 @@ export class PartRotationController {
 		target.pcmBuffers = carry;
 		target.pcmBufferedBytes = totalByteLength(carry);
 		target.partPcmBytes = target.pcmBufferedBytes;
+		// A new part file starts here, so the container ceiling starts over
+		// with it, and so does the warning that names it. Left untouched on
+		// the failure path above, where the audio lands in the next part and
+		// keeps counting toward the same file.
+		target.filePcmBytes = target.pcmBufferedBytes;
+		target.wavCeilingWarned = false;
 	}
 
 	/**
