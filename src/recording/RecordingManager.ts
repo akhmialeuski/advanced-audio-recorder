@@ -1177,12 +1177,40 @@ export class RecordingManager {
 		) {
 			return;
 		}
-		target.wavCeilingWarned = true;
+		// Marked on every track feeding the file, not only on the one the
+		// crossing was noticed on. The counter this was measured from belongs
+		// to the file, so the memory of having spoken about it has to as well:
+		// kept per track, a merged session repeated the same warning once for
+		// each track as its next chunk arrived.
+		for (const feeding of this.targetsSharingDestinationWav(target)) {
+			feeding.wavCeilingWarned = true;
+		}
 		new Notice(
 			'This recording is approaching the 4 GB limit of the WAV format. ' +
 				'Enable auto-split in the settings, or stop and start a new ' +
 				'recording, so the audio can be saved.',
 		);
+	}
+
+	/**
+	 * The tracks whose audio lands in the same WAV as this one's.
+	 *
+	 * The container ceiling applies to a file, and which tracks make up that
+	 * file is one question: a merged session writes one WAV for all of them, a
+	 * per-track session writes one for this track alone. Both the size that
+	 * faces the ceiling and the memory of having warned about it are properties
+	 * of that file, so both ask here instead of each deciding for itself.
+	 * @param target - The track whose audio was just written to
+	 * @returns The tracks sharing its destination file, itself included
+	 */
+	private targetsSharingDestinationWav(
+		target: RecordingTarget,
+	): readonly RecordingTarget[] {
+		const merged =
+			this.isWavPcmRecording &&
+			this.sessionOutputMode === 'single' &&
+			this.chunkTargets.length > 1;
+		return merged ? this.chunkTargets : [target];
 	}
 
 	/**
@@ -1198,15 +1226,12 @@ export class RecordingManager {
 	 * @returns PCM bytes of the WAV that faces the container ceiling
 	 */
 	private destinationWavPcmBytes(target: RecordingTarget): number {
-		if (
-			!this.isWavPcmRecording ||
-			this.sessionOutputMode !== 'single' ||
-			this.chunkTargets.length < 2
-		) {
+		const feeding = this.targetsSharingDestinationWav(target);
+		if (feeding.length < 2) {
 			return target.filePcmBytes;
 		}
 		return mixLayout(
-			this.chunkTargets.map((chunkTarget) => ({
+			feeding.map((chunkTarget) => ({
 				pcmBytes: chunkTarget.filePcmBytes,
 				channels: chunkTarget.pcmChannels,
 			})),

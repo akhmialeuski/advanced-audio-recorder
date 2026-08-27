@@ -55,9 +55,13 @@ jest.mock('src/recording/PcmStreamRecorder', () =>
 	require('../mocks/modules/pcmStreamRecorder'),
 );
 
-/** The chunk callback the manager gave the PCM recorder it built. */
-function pcmChunkCallback(): (data: ArrayBuffer) => void {
-	return at(jest.mocked(PcmStreamRecorder).mock.calls, 0)[2];
+/**
+ * The chunk callback the manager gave one of the PCM recorders it built.
+ * @param track - Index of the recorder, in the order the manager built them
+ * @returns The callback that recorder reports captured audio through
+ */
+function pcmChunkCallback(track = 0): (data: ArrayBuffer) => void {
+	return at(jest.mocked(PcmStreamRecorder).mock.calls, track)[2];
 }
 
 installRecordingMediaStubs();
@@ -565,7 +569,15 @@ describe('RecordingManager', () => {
 		// Warning on the track let the merged file pass the ceiling in
 		// silence, and the refusal then arrived at the stop with the whole
 		// session already recorded.
-		it('warns on the merged file rather than on the track feeding it', async () => {
+		/**
+		 * Starts a merged two-track WAV session, a mono track beside a stereo
+		 * one, with the mono track's counter just below where the up-mix puts
+		 * the merged file over the warning threshold.
+		 * @returns Both tracks' internals, mono first
+		 */
+		async function startMergedNearTheCeiling(): Promise<
+			[TargetInternals, TargetInternals]
+		> {
 			useDesktopPlatform();
 			stubAudioStreams({ count: 2 });
 			createManagerWithSettings({
@@ -583,13 +595,31 @@ describe('RecordingManager', () => {
 			// half and would never have warned on its own.
 			defined(mono).filePcmBytes =
 				Math.ceil(WAV_PCM_WARNING_BYTES / 4) * 2 - 2;
+			return [defined(mono), defined(stereo)];
+		}
+
+		it('warns on the merged file rather than on the track feeding it', async () => {
+			const [mono] = await startMergedNearTheCeiling();
 
 			pcmChunkCallback()(new ArrayBuffer(2));
-			await defined(mono).pendingWrite;
+			await mono.pendingWrite;
 
-			expect(defined(mono).filePcmBytes).toBeLessThan(
-				WAV_PCM_WARNING_BYTES,
-			);
+			expect(mono.filePcmBytes).toBeLessThan(WAV_PCM_WARNING_BYTES);
+			expect(getCeilingNotices()).toHaveLength(1);
+		});
+
+		// The merged session writes one file, so it gets one warning. Held per
+		// track, the memory of having warned said nothing about the other
+		// tracks feeding the same file, and each of them repeated the notice
+		// as its own next chunk arrived - four tracks, four notices, one file.
+		it('warns once about the merged file however many tracks feed it', async () => {
+			const [mono, stereo] = await startMergedNearTheCeiling();
+
+			pcmChunkCallback(0)(new ArrayBuffer(2));
+			await mono.pendingWrite;
+			pcmChunkCallback(1)(new ArrayBuffer(2));
+			await stereo.pendingWrite;
+
 			expect(getCeilingNotices()).toHaveLength(1);
 		});
 
