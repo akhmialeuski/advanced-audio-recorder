@@ -98,6 +98,7 @@ import {
 import { ModelIdModal } from '../ui/ModelIdModal';
 import type { SettingsSectionContext } from './settingControls';
 import { isMultiTrackCaptureSupported } from '../platform/capabilities';
+import { effectiveWordTimestamps } from '../transcription/providers/capabilities';
 
 /** Debounce delay for saving text settings, in milliseconds. */
 const TEXT_SETTING_SAVE_DEBOUNCE_MS = 500;
@@ -404,6 +405,19 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		// to a device that can.
 		if (key === 'enableMultiTrack') {
 			return stored === true && isMultiTrackCaptureSupported();
+		}
+		// The same rule with an engine in the platform's place, and the row
+		// needs it for a reason the switch above never had: an engine that
+		// returns per-word timing whether it is asked or not. Left as stored,
+		// that row showed a disabled switch turned off directly beneath a
+		// sentence saying the words come back on every run. The stored value
+		// is untouched here too, so the choice is still there on an engine
+		// that reads it.
+		if (key === 'transcriptionWordTimestamps') {
+			return effectiveWordTimestamps(
+				this.plugin.settings.transcriptionProvider,
+				stored === true,
+			);
 		}
 		// A dropdown over a numeric setting reads it as the option value it
 		// offers, which is that number written out.

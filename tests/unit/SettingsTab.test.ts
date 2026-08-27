@@ -1649,6 +1649,64 @@ describe('AudioRecorderSettingTab', () => {
 		});
 	});
 
+	// The switch is live on the one engine that reads the request, and the
+	// three others decide per-word timing for themselves. Seeded from storage,
+	// the row then showed a position its own description contradicted: on
+	// Deepgram, a disabled switch turned off directly beneath a sentence
+	// saying the words come back on every run. What the row shows is what the
+	// run will produce, which is what the per-run dialog has always shown.
+	describe('the word-timestamp row against the engine that decides it', () => {
+		/** Whether the word-timestamp switch is rendered on. */
+		function wordTimestampsOn(): boolean {
+			return rowToggleOn(
+				settingRow(tab.containerEl, 'Word-level timestamps'),
+			);
+		}
+
+		beforeEach(() => {
+			mockSettings.transcriptionEnabled = true;
+		});
+
+		it('shows the switch on for an engine that always returns the words', () => {
+			mockSettings.transcriptionProvider = 'deepgram';
+			mockSettings.transcriptionWordTimestamps = false;
+
+			tab.display();
+
+			expect(wordTimestampsOn()).toBe(true);
+		});
+
+		it('shows the switch off for an engine that never returns them', () => {
+			mockSettings.transcriptionProvider = 'gemini';
+			mockSettings.transcriptionWordTimestamps = true;
+
+			tab.display();
+
+			expect(wordTimestampsOn()).toBe(false);
+		});
+
+		it('shows the stored choice on the engine that reads the request', () => {
+			mockSettings.transcriptionProvider = 'whisper-api';
+			mockSettings.transcriptionWordTimestamps = true;
+
+			tab.display();
+
+			expect(wordTimestampsOn()).toBe(true);
+		});
+
+		// What the engine does is not an answer to what the user asked for, so
+		// the choice waits where they left it rather than being rewritten by
+		// the engine that was selected in the meantime.
+		it('leaves the stored choice alone whatever the engine does with it', () => {
+			mockSettings.transcriptionProvider = 'deepgram';
+			mockSettings.transcriptionWordTimestamps = false;
+
+			tab.display();
+
+			expect(mockSettings.transcriptionWordTimestamps).toBe(false);
+		});
+	});
+
 	describe('platform gating of the settings UI', () => {
 		afterEach(() => {
 			useDesktopPlatform();
