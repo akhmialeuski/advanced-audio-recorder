@@ -18,6 +18,7 @@ import { MS_PER_MINUTE } from 'src/constants';
 import type { App } from 'obsidian';
 import type { TrackWriteQueue } from 'src/recording/TrackWriteQueue';
 import type { RecordingFinalizer } from 'src/recording/RecordingFinalizer';
+import type { SessionJournal } from 'src/recording/SessionJournal';
 import { noticeMessages } from '../mocks/obsidian';
 import { createMockApp } from '../helpers/createApp';
 import { createSession, createTarget } from '../helpers/recordingFixtures';
@@ -42,6 +43,8 @@ describe('PartRotationController', () => {
 	let targets: RecordingTarget[];
 	let mockApp: App;
 	let mockSettings: AudioRecorderSettings;
+	/** addPart is the only journal call the controller makes. */
+	let journal: { addPart: jest.Mock };
 
 	const buildController = (session: RecordingSessionConfig): void => {
 		controller = new PartRotationController(
@@ -51,6 +54,7 @@ describe('PartRotationController', () => {
 			finalizer as unknown as RecordingFinalizer,
 			new DebugLogger(mockSettings),
 			hooks,
+			journal as unknown as SessionJournal,
 		);
 		controller.beginSession(session);
 	};
@@ -75,6 +79,7 @@ describe('PartRotationController', () => {
 			finalizeSegmentsToFile: jest.fn().mockResolvedValue('/part.webm'),
 			assembleWavFile: jest.fn().mockResolvedValue(undefined),
 		};
+		journal = { addPart: jest.fn() };
 		mockApp = createMockApp({
 			vault: {
 				adapter: {
@@ -337,6 +342,33 @@ describe('PartRotationController', () => {
 			expect(at(targets, 0).partPaths).toEqual(['/part.webm']);
 			expect(at(targets, 0).segmentPaths).toEqual([]);
 			expect(at(targets, 0).segmentIndex).toBe(0);
+		});
+
+		it('journals the length the boundary reached, not one a pause folded in', async () => {
+			writeQueue.flushChunkBuffer.mockImplementation(
+				async (target: RecordingTarget) => {
+					target.segmentPaths = ['seg1.tmp'];
+				},
+			);
+			finalizer.finalizeSegmentsToFile.mockImplementation(async () => {
+				// Transcoding a part takes real time, and a pause landing in
+				// that window folds it into the session clock
+				advanceMinutes(3);
+				controller.markPaused();
+				return '/part1.webm';
+			});
+
+			controller.maybeRotate();
+			await controller.waitForPendingRotation();
+
+			// The part holds the audio up to the boundary. The span after it
+			// belongs to the next part, and counting it here would offer an
+			// interrupted session more length than its files carry.
+			expect(journal.addPart).toHaveBeenCalledWith(
+				expect.any(String),
+				'/part1.webm',
+				15 * MS_PER_MINUTE,
+			);
 		});
 
 		it('does not restart when a stop arrived mid-rotation but still finalize', async () => {

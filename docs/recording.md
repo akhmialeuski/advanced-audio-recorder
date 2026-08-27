@@ -227,14 +227,16 @@ This setting works together with the [file storage options](file-operations.md) 
 
 ## Crash recovery
 
-Desktop recordings are crash-resilient. While a session is active the plugin journals its temporary segment files in `recording-journal.json` (in the plugin folder) and flushes audio to disk as it goes. If Obsidian crashes, the machine loses power, or the plugin is disabled mid-recording, the next launch detects the interrupted session and opens a recovery dialog.
+Recordings are crash-resilient on both desktop and mobile. While a session is active the plugin journals what it has already put on disk in `recording-journal.json` (in the plugin folder) and flushes audio as it goes. If Obsidian crashes, the machine loses power, the plugin is disabled mid-recording, or a phone's operating system closes the app in the background, the next launch detects the interrupted session and opens a recovery dialog.
 
-The dialog lists each interrupted session (start time, track count, and number of temporary segments) and offers three choices:
+What the journal points at differs by platform, because the two record to disk differently. A desktop session writes raw mid-stream segments that only mean something together, so recovery reassembles them. A mobile session flushes by rotating a whole part, so every file it left is already a complete recording and the dialog offers the set of parts as it stands.
+
+The dialog lists each interrupted session with its start time, the length already on disk, and what it left there, then offers three choices:
 
 | Choice            | Effect                                                                                                                                                        |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Recover audio** | Reassembles the surviving segments into playable files next to where the recording was being saved. No re-encoding is done, so even a truncated stream plays. |
-| **Discard**       | Deletes the temporary segment files. Auto-split part files that were already finalized are never touched.                                                     |
+| **Discard**       | Deletes the temporary segment files, and on mobile the part files of the interrupted session too, since there they are the recording being turned down. Auto-split parts of a desktop session are never touched. |
 | **Decide later**  | Leaves everything in place; the prompt returns on the next launch.                                                                                            |
 
 Notes on what can and cannot be recovered:
@@ -242,7 +244,8 @@ Notes on what can and cannot be recovered:
 - Recovered WAV (PCM) sessions are written as `<name>-recovered.wav`; compressed sessions are written in their raw recorder container as `<name>-recovered.<ext>`. The output lands in the directory where the recording was being saved, not in your current save folder (which may have changed since the crash).
 - **Audio still buffered in memory** at the instant of the crash (up to the flush threshold) **cannot be recovered**. Everything already flushed to disk can.
 - For a compressed track, the first segment carries the container header. If that first segment was lost, the track cannot be made playable and is reported as a failed track rather than producing a broken file.
-- A session with **no surviving segments on disk** is pruned automatically and never prompts - so a crash before the first flush self-clears.
+- A session with **no surviving files on disk** is pruned automatically and never prompts, so a crash before the first flush self-clears. The same prune drops journal entries whose part files you have since deleted yourself.
+- On mobile the parts keep the names the normal finalization would have given them (`-part1`, `-part2`, and so on), so recovering a session leaves the files exactly where a finished recording would have put them. How much a crash can cost you there is set by the part duration: see [Automatic splitting](splitting.md#automatic-splitting-during-recording).
 
 ---
 
@@ -252,8 +255,8 @@ Recording works in the Obsidian mobile app, with platform limits the plugin appl
 
 - **Single track from the default microphone.** Phones expose one microphone to the app, so multi-track recording and input device selection are desktop-only; a multi-track configuration synced from desktop silently records a normal single-track session on the phone.
 - **Formats follow the device.** The format dropdown blocks formats the device genuinely cannot produce (recording support and encoder support are both probed at runtime). On iOS the system records AAC (`mp4`, and `m4a` - the same container under its audio extension) natively; other formats are produced by converting that recording when it is saved, where a working encoder exists. On Android, Opus (`webm`/`ogg`) is recorded natively as on desktop. If the stored format cannot be recorded on this device (for example a config synced from desktop), recording does not fail: it falls back to the platform's best recordable format and says so.
-- **Long recordings are saved as parts.** When a mobile recording exceeds the in-memory buffer limit (about 50 MB), the recorder is rotated: the finished chunk is saved as a complete, playable part file (`-part1`, `-part2`, ...) and capture continues seamlessly into the next part.
-- **Time-based auto-split and crash recovery are desktop-only.** On mobile, audio still buffered in memory at the moment the OS kills the app cannot be recovered; already-saved parts are unaffected.
+- **Long recordings are saved as parts.** When a mobile recording exceeds the in-memory buffer limit (about 50 MB), the recorder is rotated: the finished chunk is saved as a complete, playable part file (`-part1`, `-part2`, ...) and capture continues seamlessly into the next part. Turning on **Split recordings automatically** rotates on a duration you choose as well, which is what bounds how much an interrupted session can cost you.
+- **A crash costs the unfinished part only.** Every part already written is a valid file, and the next launch offers the set of them for recovery. Audio still buffered in memory when the operating system closes the app is gone with it, so the part duration is worth setting for a long meeting or lecture. See [Crash recovery](#crash-recovery).
 - **Local whisper.cpp transcription is desktop-only** (it runs an external program). The cloud engines - Whisper API, Deepgram, Gemini - work on mobile; if a synced config selects the local engine, automatic transcription after recording is skipped with a notice.
 - **The OS pauses background apps.** Locking the screen, switching apps, or an incoming call can suspend Obsidian and interrupt the capture. This is a mobile OS limitation, not a plugin setting: keep the app in the foreground and the screen on for long recordings.
 - Device-bound settings (input device, channel layouts) are stored **per platform**, so a vault synced between desktop and phone keeps each device's configuration intact.
@@ -274,7 +277,7 @@ In brief:
 
 - **Part duration** (default 15 minutes, range 1-180) sets the length of each part.
 - WAV recordings split sample-exactly at the boundary; compressed formats restart the recorder at each boundary, so parts are approximately the configured length and a sub-second gap may occur between them.
-- Auto-split is **desktop only** and is **not** applied to merged multi-track output (one `Single file` mixed from several tracks); the plugin shows a notice and saves a single merged file in that case.
+- Auto-split is **not** applied to merged multi-track output (one `Single file` mixed from several tracks); the plugin shows a notice and saves a single merged file in that case.
 
 This is only a summary. For the full behaviour - manual splitting of existing files, naming, link rewriting, and memory notes - see [Splitting](splitting.md).
 
@@ -295,7 +298,7 @@ These settings shape the recording workflow. See the [settings reference](settin
 | **Save recordings near active file** | Writes the file beside the active note instead; takes priority over Save folder.                        | [File storage](settings-reference.md#file-storage)                              |
 | **File prefix**                      | The filename prefix for new recordings (default `recording`).                                           | [File storage](settings-reference.md#file-storage)                              |
 | **Insert at original position**      | Places the embed link where recording started rather than at the cursor on stop (default Off).          | [File storage](settings-reference.md#file-storage)                              |
-| **Split recordings automatically**   | Saves a long recording as fixed-duration part files (desktop only, default Off).                        | [Audio splitting](settings-reference.md#audio-splitting)                        |
+| **Split recordings automatically**   | Saves a long recording as fixed-duration part files (default Off).                                      | [Audio splitting](settings-reference.md#audio-splitting)                        |
 | **Part duration**                    | The length of each auto-split part in minutes (default 15, range 1-180).                                | [Audio splitting](settings-reference.md#audio-splitting)                        |
 | **Markers and chapters**             | Enables the **Add marker** control while recording and the marker list in the player (default On).      | [Audio player](settings-reference.md#audio-player)                              |
 | **Input level meter**                | Shows the live VU meter in the status bar (default On).                                                 | [Audio processing & feedback](settings-reference.md#audio-processing--feedback) |

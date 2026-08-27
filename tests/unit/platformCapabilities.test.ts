@@ -23,14 +23,13 @@ import {
 	tooLargeMessage,
 	getMaxSourceReadBytes,
 	getPlatformCapabilities,
-	isAutoSplitSupported,
 	isChannelModeSelectionSupported,
 	isDeviceSelectionSupported,
 	isLocalTranscriptionSupported,
+	isMidStreamSegmentFlushAllowed,
 	isMultiTrackCaptureSupported,
 	isPcmWavCaptureSupported,
 	isRecordingBannerSupported,
-	isRecoveryJournalSupported,
 	isSampleRateSelectionSupported,
 } from 'src/platform/capabilities';
 import {
@@ -92,9 +91,8 @@ describe('platform capability table', () => {
 		expect(desktop.deviceSelection).toBe(true);
 		expect(desktop.channelModeSelection).toBe(true);
 		expect(desktop.sampleRateSelection).toBe(true);
-		expect(desktop.autoSplit).toBe(true);
 		expect(desktop.pcmWavCapture).toBe(true);
-		expect(desktop.recoveryJournal).toBe(true);
+		expect(desktop.midStreamSegmentFlush).toBe(true);
 		expect(desktop.localTranscription).toBe(true);
 		expect(desktop.recordingBanner).toBe(false);
 	});
@@ -105,9 +103,8 @@ describe('platform capability table', () => {
 		expect(mobile.deviceSelection).toBe(false);
 		expect(mobile.channelModeSelection).toBe(false);
 		expect(mobile.sampleRateSelection).toBe(false);
-		expect(mobile.autoSplit).toBe(false);
 		expect(mobile.pcmWavCapture).toBe(false);
-		expect(mobile.recoveryJournal).toBe(false);
+		expect(mobile.midStreamSegmentFlush).toBe(false);
 		expect(mobile.localTranscription).toBe(false);
 		expect(mobile.recordingBanner).toBe(true);
 	});
@@ -165,9 +162,12 @@ describe('capability helper functions', () => {
 			isSampleRateSelectionSupported,
 			true,
 		],
-		['isAutoSplitSupported', isAutoSplitSupported, true],
 		['isPcmWavCaptureSupported', isPcmWavCaptureSupported, true],
-		['isRecoveryJournalSupported', isRecoveryJournalSupported, true],
+		[
+			'isMidStreamSegmentFlushAllowed',
+			isMidStreamSegmentFlushAllowed,
+			true,
+		],
 		['isLocalTranscriptionSupported', isLocalTranscriptionSupported, true],
 		['isRecordingBannerSupported', isRecordingBannerSupported, false],
 	] as const)(

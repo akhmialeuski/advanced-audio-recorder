@@ -72,7 +72,6 @@ import {
 	type ProviderModels,
 } from '../providers/providers';
 import {
-	isAutoSplitSupported,
 	isChannelModeSelectionSupported,
 	isDeviceSelectionSupported,
 	isMultiTrackCaptureSupported,
@@ -623,26 +622,22 @@ function audioInputGroup(
  * @param settings - Live settings, read by the entry's value
  */
 function audioSplittingPage(settings: AudioRecorderSettings): SettingGroupItem {
-	const available = isAutoSplitSupported();
 	return {
 		type: 'page',
 		name: 'Audio splitting',
 		desc: 'Saving a long recording as fixed-length part files instead of one.',
 		displayValue: (): string =>
-			available && settings.autoSplitEnabled
+			settings.autoSplitEnabled
 				? `Every ${String(settings.splitChunkMinutes)} min`
 				: 'Off',
 		items: sectionItems([
 			{
 				name: 'Split recordings automatically',
 				aliases: ['chunk', 'segment', 'long recording'],
-				desc: available
-					? 'Save the recording as separate part files of fixed duration instead of one long file. Not applied to merged multi-track recordings.'
-					: 'Not available on this device. Recordings are saved as one file; manual splitting from the context menu still works.',
+				desc: 'Save the recording as separate part files of fixed duration instead of one long file. Not applied to merged multi-track recordings. On mobile this also bounds how much audio a crash can take with it, since each finished part is already on disk.',
 				control: {
 					type: 'toggle',
 					key: 'autoSplitEnabled',
-					disabled: !available,
 				},
 			},
 			{

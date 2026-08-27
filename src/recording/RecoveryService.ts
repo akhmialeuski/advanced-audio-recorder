@@ -1,10 +1,13 @@
 /**
  * Startup recovery for recording sessions that died mid-recording
  * (crash, power loss, plugin unload). Reads the session journal,
- * prunes entries whose temporary files no longer exist, and either
- * reassembles the surviving segments into playable audio files or
- * discards them. Recovery never transcodes: a raw reassembled
- * container is the safest artifact a truncated stream can produce.
+ * prunes entries whose files no longer exist, and either hands the
+ * surviving audio back to the user or discards it. What survives
+ * depends on how the session wrote to disk: raw mid-stream segments
+ * that have to be reassembled, or rotation parts that are already
+ * complete files. Recovery never transcodes, because a raw
+ * reassembled container is the safest artifact a truncated stream can
+ * produce.
  * @module recording/RecoveryService
  */
 
@@ -35,13 +38,46 @@ export interface RecoveryResult {
 }
 
 /**
- * Collects the sessions that still have recoverable segment files on
- * disk. Prunes segments that no longer exist (and whole tracks and
- * sessions without any), persisting the pruned journal: a crash
- * before the first flush therefore self-clears without prompting.
- * A corrupt journal is deleted - nothing in it is actionable. A
- * journal written by a newer plugin version is left untouched so a
- * downgrade never destroys recovery data it cannot interpret.
+ * Whether the session's part files are the interrupted recording
+ * itself. They are on the rotation capture mode, where every part is a
+ * forced buffer flush; on the stream mode they are auto-split
+ * deliverables the user asked for, which recovery reports on but never
+ * creates, moves, or deletes. A journal written before the field
+ * existed can only have come from the stream mode.
+ * @param session - Journaled session
+ * @returns True when recovery owns the part files
+ */
+function ownsPartFiles(session: JournalSession): boolean {
+	return session.captureMode === 'rotation';
+}
+
+/**
+ * Keeps the paths that still exist on disk, in their journaled order.
+ * @param paths - Journaled file paths
+ * @param app - Obsidian App instance
+ * @returns The subset that is still there
+ */
+async function survivingPaths(paths: string[], app: App): Promise<string[]> {
+	const existing: string[] = [];
+	for (const path of paths) {
+		if (await app.vault.adapter.exists(path)) {
+			existing.push(path);
+		}
+	}
+	return existing;
+}
+
+/**
+ * Collects the sessions that still have recoverable files on disk.
+ * Prunes segments and part files that no longer exist, and drops the
+ * tracks (and sessions) left holding nothing recovery can act on,
+ * persisting the pruned journal: a crash before the first flush
+ * therefore self-clears without prompting, and so does one that left
+ * auto-split deliverables and no unfinished stream behind them.
+ * A corrupt journal is deleted - nothing in it is
+ * actionable. A journal written by a newer plugin version is left
+ * untouched so a downgrade never destroys recovery data it cannot
+ * interpret.
  * @param journal - Session journal
  * @param app - Obsidian App instance
  * @returns Sessions worth offering recovery for
@@ -72,23 +108,30 @@ export async function collectRecoverableSessions(
 	for (const session of data.sessions) {
 		const tracks: JournalTrack[] = [];
 		for (const track of session.tracks) {
-			const existing: string[] = [];
-			for (const path of track.segmentPaths) {
-				if (await app.vault.adapter.exists(path)) {
-					existing.push(path);
-				}
-			}
-			if (existing.length === 0) {
+			const segmentPaths = await survivingPaths(track.segmentPaths, app);
+			// Part files are pruned on every session, so an entry pointing
+			// at a file the user has since deleted never survives. They
+			// keep a track alive only where recovery acts on them: on the
+			// stream mode they are auto-split output that recovery reports
+			// and never assembles, moves, or removes, so a track holding
+			// nothing else has no answer to give the dialog's buttons.
+			const partPaths = await survivingPaths(track.partPaths, app);
+			const hasRecoverableParts =
+				ownsPartFiles(session) && partPaths.length > 0;
+			if (segmentPaths.length === 0 && !hasRecoverableParts) {
 				continue;
 			}
 			// A MediaRecorder stream is only playable from its first
 			// segment (it carries the container header); losing it makes
-			// the track discard-only
+			// the segments discard-only
 			const headerLost =
-				!track.isPcm && existing[0] !== track.segmentPaths[0];
+				!track.isPcm &&
+				segmentPaths.length > 0 &&
+				segmentPaths[0] !== track.segmentPaths[0];
 			tracks.push({
 				...track,
-				segmentPaths: existing,
+				segmentPaths,
+				partPaths,
 				headerLost,
 			});
 		}
@@ -121,13 +164,17 @@ async function persistSessionUpdate(
 }
 
 /**
- * Recovers one interrupted session: PCM tracks are reassembled into
- * WAV files, MediaRecorder tracks are byte-concatenated into their
- * recorder container format. The output lands in the directory of the
- * first segment - where the user was recording - not in the currently
+ * Recovers one interrupted session. A rotation session's part files
+ * are already complete recordings carrying the names the normal
+ * finalization would have given them, so recovering them means keeping
+ * them and naming the set back to the user. Whatever segments a
+ * session left are reassembled: PCM tracks into WAV files,
+ * MediaRecorder tracks byte-concatenated into their recorder container
+ * format. Reassembled output lands in the directory of the first
+ * segment - where the user was recording - not in the currently
  * configured save folder, which may have changed since the crash.
- * Successfully recovered tracks leave the journal; failed tracks stay
- * for the next launch.
+ * Successfully recovered tracks leave the journal; tracks whose
+ * segments failed stay for the next launch.
  * @param session - Session to recover (as returned by collect)
  * @param journal - Session journal
  * @param app - Obsidian App instance
@@ -140,8 +187,15 @@ export async function recoverSession(
 ): Promise<RecoveryResult> {
 	const result: RecoveryResult = { recoveredPaths: [], failedTracks: [] };
 	const remainingTracks: JournalTrack[] = [];
+	const adoptsParts = ownsPartFiles(session);
 
 	for (const track of session.tracks) {
+		if (adoptsParts) {
+			result.recoveredPaths.push(...track.partPaths);
+		}
+		// An adopted part is settled whatever happens to the segments of
+		// the same track, so a track kept for a retry keeps only those
+		const journaled = adoptsParts ? { ...track, partPaths: [] } : track;
 		try {
 			if (track.segmentPaths.length === 0) {
 				continue;
@@ -149,7 +203,7 @@ export async function recoverSession(
 			if (!track.isPcm && track.headerLost) {
 				// No container header - the data is not playable
 				result.failedTracks.push(track.fileBaseName);
-				remainingTracks.push(track);
+				remainingTracks.push(journaled);
 				continue;
 			}
 
@@ -201,7 +255,7 @@ export async function recoverSession(
 				error,
 			);
 			result.failedTracks.push(track.fileBaseName);
-			remainingTracks.push(track);
+			remainingTracks.push(journaled);
 		}
 	}
 
@@ -213,10 +267,12 @@ export async function recoverSession(
 }
 
 /**
- * Discards the temporary files of one interrupted session. Finalized
- * part files (partPaths) are never touched - they are complete audio
- * the user may want to keep. Segments that could not be removed stay
- * journaled for a retry on the next launch.
+ * Discards the files of one interrupted session that the user turned
+ * down. Segments always go. Part files go only on the rotation capture
+ * mode, where they are the recording being turned down; on the stream
+ * mode they are auto-split output the user already has and they are
+ * never touched. Anything that could not be removed stays journaled
+ * for a retry on the next launch.
  * @param session - Session to discard (as returned by collect)
  * @param journal - Session journal
  * @param app - Obsidian App instance
@@ -227,10 +283,14 @@ export async function discardSession(
 	journal: SessionJournal,
 	app: App,
 ): Promise<string[]> {
-	const allSegments = session.tracks.flatMap((track) => track.segmentPaths);
+	const discardsParts = ownsPartFiles(session);
+	const doomed = session.tracks.flatMap((track) => [
+		...track.segmentPaths,
+		...(discardsParts ? track.partPaths : []),
+	]);
 	const failedPaths = await removeTemporaryArtifacts(
-		allSegments,
-		'Failed to discard segment file of an interrupted recording',
+		doomed,
+		'Failed to discard a file of an interrupted recording',
 		app,
 	);
 
@@ -239,8 +299,15 @@ export async function discardSession(
 		.map((track) => ({
 			...track,
 			segmentPaths: track.segmentPaths.filter((path) => failed.has(path)),
+			partPaths: discardsParts
+				? track.partPaths.filter((path) => failed.has(path))
+				: track.partPaths,
 		}))
-		.filter((track) => track.segmentPaths.length > 0);
+		.filter(
+			(track) =>
+				track.segmentPaths.length > 0 ||
+				(discardsParts && track.partPaths.length > 0),
+		);
 
 	await persistSessionUpdate(journal, {
 		...session,

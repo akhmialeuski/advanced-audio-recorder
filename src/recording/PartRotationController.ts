@@ -407,11 +407,16 @@ export class PartRotationController {
 		}
 
 		// Transcode and write the part files while the next part is
-		// already being captured by the restarted recorders
+		// already being captured by the restarted recorders. The session
+		// clock is read here rather than inside the loop: the finalization
+		// awaits, and a pause landing in that window folds time recorded
+		// after the boundary into a counter that must name the boundary.
+		const boundaryActiveMs = this.sessionActiveMs;
 		for (const snapshot of snapshots) {
 			await this.finalizeMediaPartSnapshot(
 				snapshot.target,
 				snapshot.segmentPaths,
+				boundaryActiveMs,
 			);
 		}
 	}
@@ -423,10 +428,13 @@ export class PartRotationController {
 	 * the audio lands in the next part instead of being lost.
 	 * @param target - Recording target the snapshot belongs to
 	 * @param segmentPaths - Detached segment files in capture order
+	 * @param boundaryActiveMs - Session active time at the rotation
+	 *   boundary, captured before this ran
 	 */
 	private async finalizeMediaPartSnapshot(
 		target: RecordingTarget,
 		segmentPaths: string[],
+		boundaryActiveMs: number,
 	): Promise<void> {
 		const session = this.session;
 		if (!session) {
@@ -446,7 +454,14 @@ export class PartRotationController {
 			);
 			if (filePath) {
 				target.partPaths.push(filePath);
-				this.journal.addPart(target.fileBaseName, filePath);
+				// The part's active span was folded into the session clock
+				// before this ran, so the journal learns exactly how much
+				// audio is now safe on disk
+				this.journal.addPart(
+					target.fileBaseName,
+					filePath,
+					boundaryActiveMs,
+				);
 				this.debugLogger.log('Auto-split part saved', { filePath });
 				new Notice(`Recording part ${String(target.partIndex)} saved`);
 			} else {

@@ -96,10 +96,7 @@ import {
 } from '../providers/engineSettings';
 import { ModelIdModal } from '../ui/ModelIdModal';
 import type { SettingsSectionContext } from './settingControls';
-import {
-	isAutoSplitSupported,
-	isMultiTrackCaptureSupported,
-} from '../platform/capabilities';
+import { isMultiTrackCaptureSupported } from '../platform/capabilities';
 
 /** Debounce delay for saving text settings, in milliseconds. */
 const TEXT_SETTING_SAVE_DEBOUNCE_MS = 500;
@@ -405,9 +402,6 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		// to a device that can.
 		if (key === 'enableMultiTrack') {
 			return stored === true && isMultiTrackCaptureSupported();
-		}
-		if (key === 'autoSplitEnabled') {
-			return stored === true && isAutoSplitSupported();
 		}
 		// A dropdown over a numeric setting reads it as the option value it
 		// offers, which is that number written out.

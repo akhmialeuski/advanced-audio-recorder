@@ -9,7 +9,8 @@
 
 import { App, Notice, Setting } from 'obsidian';
 import { PluginModal } from './PluginModal';
-import { PLUGIN_LOG_PREFIX } from '../constants';
+import { MS_PER_SECOND, PLUGIN_LOG_PREFIX } from '../constants';
+import { formatTimecode } from '../utils/TimeUtils';
 import type { JournalSession } from '../recording/api';
 
 /**
@@ -18,8 +19,53 @@ import type { JournalSession } from '../recording/api';
 export interface RecoveryModalCallbacks {
 	/** Recovers all offered sessions into playable audio files. */
 	onRecover: () => Promise<void>;
-	/** Discards the temporary files of all offered sessions. */
+	/** Discards the files of all offered sessions. */
 	onDiscard: () => Promise<void>;
+}
+
+/**
+ * One line describing what an interrupted session left on disk. The
+ * two capture modes leave different things behind, and the choice the
+ * user is about to make differs with them: rotation parts are the
+ * recording, so a discard deletes them, while auto-split parts are
+ * output the user already has and are only mentioned. A rotation
+ * session that never finished a part is neither: it is described by
+ * the unfinished stream it did leave.
+ * @param session - Interrupted session as returned by the collect step
+ * @returns Text of the session line
+ */
+function describeSession(session: JournalSession): string {
+	const startedAt = new Date(session.startedAt).toLocaleString();
+	const segmentCount = session.tracks.reduce(
+		(sum, track) => sum + track.segmentPaths.length,
+		0,
+	);
+	const partCount = session.tracks.reduce(
+		(sum, track) => sum + track.partPaths.length,
+		0,
+	);
+	const recorded =
+		session.recordedMs === undefined
+			? ''
+			: `, ${formatTimecode(session.recordedMs / MS_PER_SECOND)} recorded`;
+	if (session.captureMode === 'rotation' && partCount > 0) {
+		const residue =
+			segmentCount > 0
+				? ` The unfinished part left ${String(segmentCount)} temporary segment(s), which are recovered too.`
+				: '';
+		return `${startedAt}${recorded} - ${String(partCount)} part file(s) hold this recording. Recovering keeps them, discarding deletes them.${residue}`;
+	}
+	if (session.captureMode === 'rotation') {
+		// Interrupted before its first rotation, or left with the parts
+		// deleted: the unfinished stream is the whole of what survived,
+		// and it is reassembled the way any other stream is
+		return `${startedAt} - an unfinished recording of ${String(segmentCount)} temporary segment(s), reassembled into one file.`;
+	}
+	const parts =
+		partCount > 0
+			? ` ${String(partCount)} already saved part file(s) are safe and stay untouched.`
+			: '';
+	return `${startedAt}${recorded} - ${String(session.tracks.length)} track(s), ${String(segmentCount)} temporary segment(s).${parts}`;
 }
 
 /**
@@ -52,27 +98,13 @@ export class RecoveryModal extends PluginModal {
 			.setName('Interrupted recording found')
 			.setHeading();
 		contentEl.createEl('p', {
-			text: 'A previous recording session did not finish. Its temporary audio data is still on disk and can be recovered into playable files.',
+			text: 'A previous recording session did not finish. What it wrote to disk is listed below, and you can keep it or discard it.',
 			cls: 'aar-recovery-intro',
 		});
 
 		for (const session of this.sessions) {
-			const startedAt = new Date(session.startedAt).toLocaleString();
-			const trackCount = session.tracks.length;
-			const segmentCount = session.tracks.reduce(
-				(sum, track) => sum + track.segmentPaths.length,
-				0,
-			);
-			const partCount = session.tracks.reduce(
-				(sum, track) => sum + track.partPaths.length,
-				0,
-			);
-			const parts =
-				partCount > 0
-					? ` ${String(partCount)} already saved part file(s) are safe and stay untouched.`
-					: '';
 			contentEl.createEl('p', {
-				text: `${startedAt} - ${String(trackCount)} track(s), ${String(segmentCount)} temporary segment(s).${parts}`,
+				text: describeSession(session),
 				cls: 'aar-recovery-session',
 			});
 		}

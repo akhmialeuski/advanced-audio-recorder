@@ -1,7 +1,7 @@
 /**
- * Crash-recovery journal for recording sessions. Tracks the temporary
- * segment files of every active desktop recording in a JSON file next
- * to the plugin's data.json, so a session interrupted by a crash,
+ * Crash-recovery journal for recording sessions. Tracks the files an
+ * active recording has already put on disk in a JSON file next to the
+ * plugin's data.json, so a session interrupted by a crash,
  * power loss, or plugin unload can be recovered (or its leftovers
  * cleaned up) on the next launch. All operations are best-effort and
  * never throw into the recording hot path; mutations are serialized
@@ -32,7 +32,11 @@ export interface JournalTrack {
 	pcmSampleRate: number;
 	/** Live .tmp segment files (vault-relative), in capture order. */
 	segmentPaths: string[];
-	/** Finalized auto-split part files (informational; never deleted). */
+	/**
+	 * Finalized part files (vault-relative), in creation order. On the
+	 * 'stream' capture mode they are auto-split deliverables recovery
+	 * only reports; on 'rotation' they are the recording itself.
+	 */
 	partPaths: string[];
 	/**
 	 * True when the first MediaRecorder segment (which carries the
@@ -50,6 +54,32 @@ export interface JournalSession {
 	sessionId: string;
 	/** Epoch milliseconds of the recording start. */
 	startedAt: number;
+	/**
+	 * How the audio of this session reached disk. 'stream' is the
+	 * journaled pipeline whose flushes write raw mid-stream segments;
+	 * its part files are auto-split deliverables recovery never touches.
+	 * 'rotation' is the pipeline whose every flush is a full part
+	 * rotation, where the part files together ARE the interrupted
+	 * recording, so recovery offers them and a discard removes them.
+	 * Absent in journals written before the field existed, which were
+	 * all of the first kind.
+	 *
+	 * Adding it deliberately did not bump JOURNAL_VERSION. The cost is
+	 * that a downgraded plugin prunes a rotation session to nothing and
+	 * never offers its parts, which stay on disk unclaimed. The bump
+	 * would cost more: the version guard makes an older plugin skip the
+	 * whole journal, losing recovery of the far commoner stream session
+	 * as well.
+	 */
+	captureMode?: 'stream' | 'rotation';
+	/**
+	 * Active recorded milliseconds already finalized into part files.
+	 * Written at every part rotation, so an interrupted session can be
+	 * offered with its length. Absent until the first part lands, and on
+	 * the PCM path, which splits by exact byte count and keeps no active
+	 * clock per part.
+	 */
+	recordedMs?: number;
 	/** Output format snapshotted at session start. */
 	outputFormat: string;
 	/** Container format of the MediaRecorder segments. */
@@ -220,16 +250,23 @@ export class SessionJournal {
 	}
 
 	/**
-	 * Records a finalized auto-split part file of the active session.
+	 * Records a finalized part file of the active session, together with
+	 * the recorded length that is now safely on disk.
 	 * @param fileBaseName - Track identifier (RecordingTarget base name)
 	 * @param partPath - Vault-relative part file path
+	 * @param recordedMs - Active milliseconds finalized so far, where the
+	 *   caller keeps that clock; omitted on the PCM path, which splits by
+	 *   byte count and never folds an active span at a part boundary
 	 */
-	addPart(fileBaseName: string, partPath: string): void {
+	addPart(fileBaseName: string, partPath: string, recordedMs?: number): void {
 		this.mutateActiveSession((session) => {
 			const track = session.tracks.find(
 				(entry) => entry.fileBaseName === fileBaseName,
 			);
 			track?.partPaths.push(partPath);
+			if (recordedMs !== undefined) {
+				session.recordedMs = recordedMs;
+			}
 		});
 	}
 

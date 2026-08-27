@@ -535,18 +535,27 @@ describe('RecordingManager', () => {
 			);
 		});
 
-		it('notifies that auto-split is unavailable on mobile', async () => {
+		it('rotates a mobile part on the configured duration', async () => {
 			setPlatform({ isMobile: true });
-			createManagerWithSettings({
-				recordingFormat: 'webm',
-				autoSplitEnabled: true,
-				splitChunkMinutes: 1,
-			});
+			startOneMinuteSplitClock();
 
 			await manager.startRecording();
+			jest.setSystemTime(61_000);
+			mockMediaRecorder.ondataavailable?.({
+				data: new Blob([new Uint8Array([1, 2, 3])], {
+					type: 'audio/webm',
+				}),
+			} as BlobEvent);
+			await at(getInternals(manager).chunkTargets, 0).pendingWrite;
+			await flushMicrotasks(10);
+			await getInternals(manager).rotationPromise;
 
-			expect(Notice).toHaveBeenCalledWith(
-				'Auto-split is not available on this device.',
+			// Auto-split runs on the phone too. Without it a mobile part
+			// only lands at the 50 MB buffer boundary, and that boundary is
+			// the whole of what a crash can take with it.
+			expect(mockApp.vault.createBinary).toHaveBeenCalledWith(
+				expect.stringMatching(/-part1\.webm$/),
+				expect.anything(),
 			);
 			await manager.stopRecording();
 		});
