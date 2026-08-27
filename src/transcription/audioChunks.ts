@@ -67,36 +67,64 @@ export interface ChunkPlan {
 }
 
 /**
- * Plans how to divide a duration into chunks that each stay within the
- * upload byte budget once resampled to 16 kHz mono. A non-positive or
- * non-finite duration yields no chunks; a duration that fits in one
- * chunk yields a single chunk covering the whole file.
+ * The longest chunk, in seconds, whose encoded WAV stays within a provider's
+ * per-request byte limit.
+ *
+ * The header every chunk carries is subtracted before the division, because
+ * the limit is on the request and the header is part of it: a chunk sized to
+ * the limit exceeds it by those 44 bytes otherwise.
+ *
+ * This is the conversion for a byte-shaped limit alone. A provider whose limit
+ * is a duration already states the answer, and putting it through here would
+ * cost it a second - which is exactly how a fifteen-minute recording used to
+ * become a fourteen-fifty-nine part and a one-second one (see
+ * {@link audioPrepOptions}).
+ * @param maxBytes - Maximum request size in bytes
+ * @returns Longest chunk duration in whole seconds, at least one
+ */
+export function secondsWithinRequestBytes(maxBytes: number): number {
+	return Math.max(
+		1,
+		Math.floor((maxBytes - WAV_HEADER_SIZE) / TRANSCRIBE_BYTES_PER_SEC),
+	);
+}
+
+/**
+ * Plans how to divide a duration into chunks no longer than the provider takes
+ * in one request. A non-positive or non-finite duration yields no chunks; a
+ * duration within the limit yields a single chunk covering the whole file.
+ *
+ * The parts come out equal rather than full-then-remainder. A greedy walk
+ * leaves whatever is left over as its own request, and just past the limit
+ * that remainder is seconds long: a whole extra call, its instruction tokens
+ * paid in full, for audio that carries almost nothing - and on a diarized run,
+ * a speaker numbering that restarts for it.
  * @param totalSeconds - Total audio duration in seconds
- * @param maxBytes - Maximum upload size per chunk in bytes
+ * @param maxChunkSeconds - Longest chunk the provider accepts, in seconds
  * @returns Ordered chunk plans covering the full duration
  */
 export function planChunks(
 	totalSeconds: number,
-	maxBytes: number,
+	maxChunkSeconds: number,
 ): ChunkPlan[] {
 	if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) {
 		return [];
 	}
-	// Budget the PCM payload only, leaving room for the WAV header each chunk
-	// carries, so a chunk's encoded size never exceeds the provider limit
-	// (it would by 44 bytes if the header were not subtracted).
-	const maxChunkSeconds = Math.max(
-		1,
-		Math.floor((maxBytes - WAV_HEADER_SIZE) / TRANSCRIBE_BYTES_PER_SEC),
-	);
+	// An unbounded limit divides to zero here, which is one part after the
+	// floor: the whole recording, which is what no limit means.
+	const count = Math.max(1, Math.ceil(totalSeconds / maxChunkSeconds));
+	const chunkSeconds = totalSeconds / count;
 	const chunks: ChunkPlan[] = [];
-	let start = 0;
-	let index = 0;
-	while (start < totalSeconds) {
-		const end = Math.min(totalSeconds, start + maxChunkSeconds);
-		chunks.push({ index, startSeconds: start, endSeconds: end });
-		start = end;
-		index += 1;
+	for (let index = 0; index < count; index++) {
+		chunks.push({
+			index,
+			startSeconds: index * chunkSeconds,
+			// The last end is the duration itself rather than a multiple of
+			// the part length, so the plans cover the recording exactly
+			// whatever the division did to the last decimal place.
+			endSeconds:
+				index === count - 1 ? totalSeconds : (index + 1) * chunkSeconds,
+		});
 	}
 	return chunks;
 }

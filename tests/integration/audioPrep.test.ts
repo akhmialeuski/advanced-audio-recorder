@@ -38,8 +38,8 @@ function samplesForSeconds(seconds: number): Float32Array {
 	return new Float32Array(seconds * TRANSCRIBE_SAMPLE_RATE);
 }
 
-/** A chunk byte budget that yields parts of exactly `seconds` each. */
-function chunkBudgetForSeconds(seconds: number): number {
+/** Encoded size of a WAV part covering `seconds` of 16 kHz mono audio. */
+function wavBytesForSeconds(seconds: number): number {
 	return WAV_HEADER_SIZE + seconds * TRANSCRIBE_BYTES_PER_SEC;
 }
 
@@ -104,7 +104,8 @@ describe('audioPrepOptions', () => {
 			100 * 1024 * 1024,
 			false,
 		);
-		expect(options.chunkBytes).toBe(25 * 1024 * 1024);
+		// 25 MB, less the header each part carries, is 819 whole seconds.
+		expect(options.chunkSeconds).toBe(819);
 		expect(options.maxRequestBytes).toBe(25 * 1024 * 1024);
 		expect(options.maxRequestSeconds).toBe(Number.POSITIVE_INFINITY);
 		expect(options.acceptsOriginalContainer).toBe(true);
@@ -117,7 +118,8 @@ describe('audioPrepOptions', () => {
 			10 * 1024 * 1024,
 			false,
 		);
-		expect(options.chunkBytes).toBe(10 * 1024 * 1024);
+		// 10 MB, less the header, is 327 whole seconds.
+		expect(options.chunkSeconds).toBe(327);
 	});
 
 	it('produces a single chunk for an unbounded local provider', () => {
@@ -135,7 +137,7 @@ describe('audioPrepOptions', () => {
 			10 * 1024 * 1024,
 			false,
 		);
-		expect(options.chunkBytes).toBe(Number.POSITIVE_INFINITY);
+		expect(options.chunkSeconds).toBe(Number.POSITIVE_INFINITY);
 	});
 
 	it('sizes parts by the duration cap, ignoring the user chunk size', () => {
@@ -154,7 +156,10 @@ describe('audioPrepOptions', () => {
 			24 * 1024 * 1024,
 			true,
 		);
-		expect(options.chunkBytes).toBe(900 * TRANSCRIBE_BYTES_PER_SEC);
+		// The cap itself, not the cap round-tripped through bytes: the header
+		// allowance that conversion applies is a whole second at 16 kHz mono,
+		// and 899 here is what made a fifteen-minute recording two parts.
+		expect(options.chunkSeconds).toBe(900);
 		expect(options.maxRequestSeconds).toBe(900);
 	});
 
@@ -194,7 +199,7 @@ describe('prepareAudio (whole-file path)', () => {
 			maxRequestBytes: 1000,
 			maxRequestSeconds: Number.POSITIVE_INFINITY,
 			acceptsOriginalContainer: true,
-			chunkBytes: 1000,
+			chunkSeconds: 60,
 			diarize: false,
 		});
 		expect(result.payloads).toHaveLength(1);
@@ -211,7 +216,7 @@ describe('prepareAudio (whole-file path)', () => {
 			maxRequestBytes: 1000,
 			maxRequestSeconds: Number.POSITIVE_INFINITY,
 			acceptsOriginalContainer: true,
-			chunkBytes: 1000,
+			chunkSeconds: 60,
 			diarize: true,
 		});
 		expect(result.diarizationSplitWarning).toBe(false);
@@ -223,7 +228,7 @@ describe('prepareAudio (whole-file path)', () => {
 			maxRequestBytes: 10_000_000,
 			maxRequestSeconds: 900,
 			acceptsOriginalContainer: true,
-			chunkBytes: 900 * TRANSCRIBE_BYTES_PER_SEC,
+			chunkSeconds: 900,
 			diarize: true,
 		});
 		expect(result.payloads).toHaveLength(1);
@@ -243,7 +248,7 @@ describe('prepareAudio (duration-cap decode path)', () => {
 			maxRequestBytes: 10_000_000,
 			maxRequestSeconds: 2,
 			acceptsOriginalContainer: true,
-			chunkBytes: chunkBudgetForSeconds(2),
+			chunkSeconds: 2,
 			diarize: true,
 		});
 		expect(decodeMock).toHaveBeenCalledTimes(1);
@@ -265,11 +270,48 @@ describe('prepareAudio (duration-cap decode path)', () => {
 			maxRequestBytes: 10_000_000,
 			maxRequestSeconds: 2,
 			acceptsOriginalContainer: true,
-			chunkBytes: chunkBudgetForSeconds(2),
+			chunkSeconds: 2,
 			diarize: false,
 		});
 		expect(result.payloads).toHaveLength(3);
 		expect(result.diarizationSplitWarning).toBe(false);
+	});
+
+	// The threshold and the part size have to be one number. Deriving the part
+	// from a byte round-trip made it a second smaller, so a recording of
+	// exactly the cap came out as a full part plus a one-second sliver: an
+	// extra billed request, and a speaker-numbering warning for a split that
+	// carried no content.
+	it('sends a recording of exactly the cap as one part', async () => {
+		decodeMock.mockResolvedValue(samplesForSeconds(4));
+		const raw = new Uint8Array(500_000).buffer;
+
+		const result = await prepareAudio(raw, 'rec.mp4', 'audio/mp4', {
+			maxRequestBytes: 10_000_000,
+			maxRequestSeconds: 4,
+			acceptsOriginalContainer: true,
+			chunkSeconds: 4,
+			diarize: true,
+		});
+
+		expect(result.payloads).toHaveLength(1);
+		expect(result.diarizationSplitWarning).toBe(false);
+	});
+
+	it('divides a recording just past the cap into parts of comparable length', async () => {
+		decodeMock.mockResolvedValue(samplesForSeconds(5));
+		const raw = new Uint8Array(500_000).buffer;
+
+		const result = await prepareAudio(raw, 'rec.mp4', 'audio/mp4', {
+			maxRequestBytes: 10_000_000,
+			maxRequestSeconds: 4,
+			acceptsOriginalContainer: true,
+			chunkSeconds: 4,
+			diarize: false,
+		});
+
+		expect(result.payloads).toHaveLength(2);
+		expect(at(result.payloads, 1).offsetSeconds).toBeCloseTo(2.5);
 	});
 
 	it('emits a single decoded part when the recording still fits the cap', async () => {
@@ -282,7 +324,7 @@ describe('prepareAudio (duration-cap decode path)', () => {
 			maxRequestBytes: 10_000_000,
 			maxRequestSeconds: 900,
 			acceptsOriginalContainer: true,
-			chunkBytes: chunkBudgetForSeconds(900),
+			chunkSeconds: 900,
 			diarize: true,
 		});
 		expect(decodeMock).toHaveBeenCalledTimes(1);
@@ -314,7 +356,7 @@ describe('prepareAudio (a decoded part the provider still rejects)', () => {
 				maxRequestBytes: 10_000_000,
 				maxRequestSeconds: partSeconds,
 				acceptsOriginalContainer: true,
-				chunkBytes: chunkBudgetForSeconds(partSeconds),
+				chunkSeconds: partSeconds,
 				diarize: false,
 			},
 		);
@@ -329,7 +371,7 @@ describe('prepareAudio (a decoded part the provider still rejects)', () => {
 
 		const rendered = await at(result.payloads, 0).createData();
 
-		expect(rendered.byteLength).toBe(chunkBudgetForSeconds(2));
+		expect(rendered.byteLength).toBe(wavBytesForSeconds(2));
 		expect(at(result.payloads, 0).contentType).toBe('audio/wav');
 	});
 
@@ -380,7 +422,7 @@ describe('prepareAudio (a decoded part the provider still rejects)', () => {
 		expect(at(halves, 1).endSeconds).toBe(whole.endSeconds);
 		// And each renders itself rather than sharing the parent's bytes.
 		expect((await at(halves, 0).createData()).byteLength).toBe(
-			chunkBudgetForSeconds(MIN_SUBDIVIDE_SECONDS),
+			wavBytesForSeconds(MIN_SUBDIVIDE_SECONDS),
 		);
 	});
 });

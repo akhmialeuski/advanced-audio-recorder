@@ -4,7 +4,10 @@
  * provider-factory validation.
  */
 
-import { planChunks } from 'src/transcription/audioChunks';
+import {
+	planChunks,
+	secondsWithinRequestBytes,
+} from 'src/transcription/audioChunks';
 import { at, defined } from '../helpers/assertions';
 import { mapWhisperResponse } from 'src/transcription/providers/whisperResponse';
 import { mapWhisperCppJson } from 'src/transcription/providers/LocalWhisperProvider';
@@ -28,31 +31,62 @@ import {
 } from 'src/constants';
 import { WAV_HEADER_SIZE } from 'src/audio/WavEncoder';
 
+describe('secondsWithinRequestBytes', () => {
+	it('leaves room for the WAV header each part carries', () => {
+		// 10 s of PCM plus the 44-byte header is over a 10 s budget, so the
+		// longest part that still fits the request is 9 s.
+		expect(secondsWithinRequestBytes(10 * TRANSCRIBE_BYTES_PER_SEC)).toBe(
+			9,
+		);
+	});
+
+	it('never goes below a single second', () => {
+		expect(secondsWithinRequestBytes(WAV_HEADER_SIZE)).toBe(1);
+	});
+});
+
 describe('planChunks', () => {
 	it('returns nothing for non-positive duration', () => {
-		expect(planChunks(0, 1_000_000)).toEqual([]);
-		expect(planChunks(Number.NaN, 1_000_000)).toEqual([]);
+		expect(planChunks(0, 30)).toEqual([]);
+		expect(planChunks(Number.NaN, 30)).toEqual([]);
 	});
 
 	it('returns one chunk when the file fits', () => {
-		const plans = planChunks(60, 100 * TRANSCRIBE_BYTES_PER_SEC);
+		const plans = planChunks(60, 100);
 		expect(plans).toEqual([{ index: 0, startSeconds: 0, endSeconds: 60 }]);
 	});
 
-	it('splits into chunks bounded by the byte budget (leaving room for the WAV header)', () => {
-		// 10s of PCM plus the 44-byte WAV header exceeds the budget, so the
-		// per-chunk budget is 9s: 25s total -> 3 chunks (9, 9, 7).
-		const plans = planChunks(25, 10 * TRANSCRIBE_BYTES_PER_SEC);
-		expect(plans).toEqual([
-			{ index: 0, startSeconds: 0, endSeconds: 9 },
-			{ index: 1, startSeconds: 9, endSeconds: 18 },
-			{ index: 2, startSeconds: 18, endSeconds: 25 },
+	it('returns one chunk for a recording of exactly the limit', () => {
+		expect(planChunks(900, 900)).toEqual([
+			{ index: 0, startSeconds: 0, endSeconds: 900 },
 		]);
 	});
 
-	it('keeps every chunk within the byte limit once the WAV header is added', () => {
+	// A greedy walk answered 901 s with a 900 s part and a 1 s part: a second
+	// request, its instruction tokens paid in full, for a second of audio.
+	it('divides a recording just past the limit into equal parts', () => {
+		const plans = planChunks(901, 900);
+
+		expect(plans).toHaveLength(2);
+		expect(at(plans, 0).endSeconds).toBeCloseTo(450.5);
+		expect(at(plans, 1).startSeconds).toBeCloseTo(450.5);
+		expect(at(plans, 1).endSeconds).toBe(901);
+	});
+
+	it('covers the whole recording with parts that tile', () => {
+		const plans = planChunks(25, 9);
+
+		expect(at(plans, 0).startSeconds).toBe(0);
+		expect(at(plans, plans.length - 1).endSeconds).toBe(25);
+		for (let i = 1; i < plans.length; i++) {
+			expect(at(plans, i).startSeconds).toBe(at(plans, i - 1).endSeconds);
+		}
+	});
+
+	it('keeps every part within the byte limit once the WAV header is added', () => {
 		const maxBytes = 10 * TRANSCRIBE_BYTES_PER_SEC;
-		const plans = planChunks(25, maxBytes);
+		const plans = planChunks(25, secondsWithinRequestBytes(maxBytes));
+
 		for (const plan of plans) {
 			const pcmBytes =
 				(plan.endSeconds - plan.startSeconds) *

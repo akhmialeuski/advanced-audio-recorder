@@ -12,7 +12,6 @@
 import {
 	MIN_AUDIO_BYTES_PER_SEC,
 	MIN_SUBDIVIDE_SECONDS,
-	TRANSCRIBE_BYTES_PER_SEC,
 	TRANSCRIBE_SAMPLE_RATE,
 	MIME_TYPE_AUDIO_PREFIX,
 } from '../constants';
@@ -21,6 +20,7 @@ import {
 	decodeToMono16k,
 	extractChunkWav,
 	planChunks,
+	secondsWithinRequestBytes,
 	splitChunkPlan,
 	type ChunkPlan,
 } from './audioChunks';
@@ -50,10 +50,11 @@ export interface AudioPrepOptions {
 	/** Whether the provider accepts the original container bytes. */
 	acceptsOriginalContainer: boolean;
 	/**
-	 * Target chunk size, in bytes, when decoding is required. Ignored on the
-	 * whole-file path. Use Number.POSITIVE_INFINITY to produce a single chunk.
+	 * Longest part, in seconds, produced when decoding is required. Ignored on
+	 * the whole-file path. Use Number.POSITIVE_INFINITY to produce a single
+	 * part.
 	 */
-	chunkBytes: number;
+	chunkSeconds: number;
 	/** Whether speaker diarization is requested for this run. */
 	diarize: boolean;
 }
@@ -154,7 +155,7 @@ export function withinDurationCap(
  *
  * Decode path: otherwise (an unsupported container, an over-limit file, or a
  * recording too long for one request) the file is decoded to 16 kHz mono and
- * split into WAV chunks bounded by `chunkBytes` (a single chunk when it still
+ * split into WAV chunks bounded by `chunkSeconds` (a single chunk when it still
  * fits, e.g. a duration cap the byte proxy could not rule out cheaply). A
  * diarized split is flagged so the caller can warn that speaker numbering may
  * reset between parts.
@@ -206,7 +207,7 @@ export async function prepareAudio(
 	// long-recording memory pressure ever outweighs that trade.
 	const samples = await decodeToMono16k(raw);
 	const totalSeconds = samples.length / TRANSCRIBE_SAMPLE_RATE;
-	const plans = planChunks(totalSeconds, options.chunkBytes);
+	const plans = planChunks(totalSeconds, options.chunkSeconds);
 	const multiChunk = plans.length > 1;
 	// Build a payload for a plan, retaining the decoded samples so the part can
 	// be re-split on demand when a provider overruns its output token budget.
@@ -241,13 +242,21 @@ export async function prepareAudio(
 
 /**
  * Computes provider-ready preparation options from capabilities and the
- * user's preferred chunk size. A provider with a per-request duration cap
- * (Gemini) sizes its parts by that cap, so the whole-file threshold and the
- * split size agree and a recording just over the cap divides into even parts;
- * the user's byte-oriented chunk size targets the Whisper API's 25 MB request
- * limit and does not apply. Otherwise a network provider honors the user's
- * chunk size (bounded by the provider limit) and a local provider with no
- * upload limit produces a single chunk.
+ * user's preferred chunk size.
+ *
+ * Two different limits arrive here and only one of them is about bytes. A
+ * per-request duration cap (Gemini) is already the answer the planner needs,
+ * so it is passed through as it stands: the whole-file threshold and the split
+ * size then agree, and a recording of exactly the cap goes in one request.
+ * Converting it into bytes and back used to cost it the WAV header allowance,
+ * which is a whole second at 16 kHz mono, so fifteen minutes came out as a
+ * part of 899 seconds and a part of one. The user's byte-oriented chunk size
+ * targets the Whisper API's 25 MB request limit and does not apply to such a
+ * provider.
+ *
+ * A byte limit is converted, header allowance and all. A network provider
+ * honors the user's chunk size within the provider limit; a local provider
+ * with no upload limit produces a single part.
  * @param capabilities - The provider's declared capabilities
  * @param requiresNetwork - Whether the provider uploads over the network
  * @param userChunkBytes - The user-configured chunk size in bytes
@@ -260,19 +269,20 @@ export function audioPrepOptions(
 	userChunkBytes: number,
 	diarize: boolean,
 ): AudioPrepOptions {
-	const chunkBytes = Number.isFinite(capabilities.maxRequestSeconds)
+	const byteBudget = requiresNetwork
+		? Math.min(capabilities.maxRequestBytes, userChunkBytes)
+		: capabilities.maxRequestBytes;
+	const chunkSeconds = Number.isFinite(capabilities.maxRequestSeconds)
 		? Math.min(
-				capabilities.maxRequestSeconds * TRANSCRIBE_BYTES_PER_SEC,
-				capabilities.maxRequestBytes,
+				capabilities.maxRequestSeconds,
+				secondsWithinRequestBytes(capabilities.maxRequestBytes),
 			)
-		: requiresNetwork
-			? Math.min(capabilities.maxRequestBytes, userChunkBytes)
-			: capabilities.maxRequestBytes;
+		: secondsWithinRequestBytes(byteBudget);
 	return {
 		maxRequestBytes: capabilities.maxRequestBytes,
 		maxRequestSeconds: capabilities.maxRequestSeconds,
 		acceptsOriginalContainer: capabilities.acceptsOriginalContainer,
-		chunkBytes,
+		chunkSeconds,
 		diarize,
 	};
 }
