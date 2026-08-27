@@ -257,6 +257,34 @@ describe('MarkerListView active highlight and tick refresh', () => {
 		expect(at(rows, 1).classList.contains('is-active')).toBe(false);
 	});
 
+	// In reading view the row is a real button, so a reader announces its name
+	// and nothing else about it. The accent edge marking the segment being
+	// played was visible and unannounced, which left a listener working
+	// through the chapters with no way to tell where the track had reached.
+	it('marks the playing row as the current one for a reader', () => {
+		const { view, listContainer } = setup(false);
+
+		view.updateActive(15);
+
+		const rows = allEls(listContainer, MARKER.row);
+		expect(at(rows, 0).getAttribute('aria-current')).toBe('true');
+		expect(at(rows, 1).hasAttribute('aria-current')).toBe(false);
+	});
+
+	// aria-current spells "not the current one" by absence, so a row the
+	// position has left has to give the attribute up rather than carry it
+	// saying false, which some readers announce anyway.
+	it('takes the mark off a row the position has moved past', () => {
+		const { view, listContainer } = setup(false);
+
+		view.updateActive(15);
+		view.updateActive(45);
+
+		const rows = allEls(listContainer, MARKER.row);
+		expect(at(rows, 0).hasAttribute('aria-current')).toBe(false);
+		expect(at(rows, 1).getAttribute('aria-current')).toBe('true');
+	});
+
 	it('refreshes ticks without rebuilding the list', () => {
 		const { view, listContainer } = setup(true);
 		const firstRow = el(listContainer, MARKER.row);

@@ -227,6 +227,40 @@ describe('reaching a chapter from the keyboard in reading view', () => {
 		expect(audio.currentTime).toBe(30);
 		expect(audio.play).not.toHaveBeenCalled();
 	});
+
+	// Driven through the real audio element rather than through updateActive,
+	// because the mark has to follow the position the element reports as it
+	// plays. A row announced by name alone told a listener which chapters
+	// exist and never which one they were in.
+	it('marks the chapter the position is inside as the audio plays', async () => {
+		const { container, audio } = await openReadingWithMarkers();
+
+		audio.currentTime = 15;
+		audio.emit('timeupdate');
+
+		expect(
+			el(container, MARKER.byId('a')).getAttribute('aria-current'),
+		).toBe('true');
+		expect(
+			el(container, MARKER.byId('b')).hasAttribute('aria-current'),
+		).toBe(false);
+	});
+
+	it('moves the mark on as the position reaches the next chapter', async () => {
+		const { container, audio } = await openReadingWithMarkers();
+
+		audio.currentTime = 15;
+		audio.emit('timeupdate');
+		audio.currentTime = 45;
+		audio.emit('timeupdate');
+
+		expect(
+			el(container, MARKER.byId('a')).hasAttribute('aria-current'),
+		).toBe(false);
+		expect(
+			el(container, MARKER.byId('b')).getAttribute('aria-current'),
+		).toBe('true');
+	});
 });
 
 describe('the chapter controls', () => {

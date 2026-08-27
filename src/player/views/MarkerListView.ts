@@ -234,7 +234,19 @@ export class MarkerListView {
 		}
 		const index = activeMarkerIndex(this.sortedMarkers, currentTime);
 		this.rowEls.forEach((rowEl, i) => {
-			rowEl.toggleClass('is-active', i === index);
+			const playing = i === index;
+			rowEl.toggleClass('is-active', playing);
+			// Beside the class rather than instead of it. The accent edge says
+			// which segment is playing to the eye and said it to nobody else,
+			// which in reading view leaves a real button whose announced name
+			// is the same whether the track is inside it or nowhere near it.
+			// Removed rather than set false, which is how aria-current spells
+			// "not this one".
+			if (playing) {
+				rowEl.setAttribute('aria-current', 'true');
+			} else {
+				rowEl.removeAttribute('aria-current');
+			}
 		});
 	}
 
