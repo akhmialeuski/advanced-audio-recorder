@@ -414,10 +414,19 @@ const CORS_PROBE_TIMEOUT_MS = 10 * MS_PER_SECOND;
  * and the cost of being wrong is a request that cannot be aborted, which is
  * where such an endpoint stood before it was ever tried.
  *
- * Only a confirmed answer is stored. `fetch` reports a CORS refusal and an
- * unreachable network as the same opaque TypeError, so a failed probe on its
- * own says nothing: it is the fallback answering where `fetch` could not that
- * tells the two apart, and that is what writes `false` here.
+ * Only a confirmed answer is stored, and only the real request confirms one.
+ * `true` is written by an answer the browser could read, from the probe or
+ * from the request itself. `false` is written only where `fetch` was refused
+ * carrying this request's own method and headers and `requestUrl` then
+ * answered, which is what separates a refusal from an unreachable host.
+ *
+ * A probe that could not be read writes nothing at all. It reports a CORS
+ * refusal and a dropped link as the same opaque TypeError, and it asks about a
+ * bodyless HEAD rather than about the request behind it - an endpoint may
+ * serve one and turn away the other, which is what a reverse proxy adding its
+ * CORS headers on 2xx alone does. Such an origin stays unanswered and is asked
+ * again by the next request, at the cost of one bodyless round trip; the body
+ * meanwhile goes by the transport that cannot be made to send it twice.
  */
 const originTakesFetch = new Map<string, boolean>();
 
@@ -442,10 +451,14 @@ function originOf(url: string): string | null {
  * no preflight, and there is no body to lose if it is refused. A response that
  * comes back at all had to carry the headers that make it readable, so its
  * status is beside the point - a 404 or a 405 proves as much as a 200.
+ * It answers for a HEAD and not for the request behind it, so a refusal here
+ * is not one there: see {@link originTakesFetch} for what is remembered.
  * @param url - The URL the real request is about to go to
  * @param outer - The run's own cancel, so pressing Cancel during the probe
  *   does not leave the dialog waiting out the probe's deadline
  * @throws TypeError when the browser could not read an answer
+ * @throws DOMException named AbortError when the run was cancelled or the
+ *   probe outlived {@link CORS_PROBE_TIMEOUT_MS}
  */
 async function probeCors(
 	url: string,
@@ -480,10 +493,14 @@ async function probeCors(
 /**
  * Whether the abortable transport is usable for this URL: true when the origin
  * answers browser requests, false when it is known not to, and null when the
- * question could not be answered and the caller has to confirm before
- * remembering anything.
+ * question went unanswered, which leaves the origin exactly as unknown as it
+ * was and is asked again by the next request.
  * @param url - Full request URL
  * @param origin - The URL's origin, or null when it has none to remember
+ * @param outer - The run's own cancel, handed to the probe so a Cancel during
+ *   it ends the run rather than waiting out the probe's deadline
+ * @returns True to use `fetch`, false to use `requestUrl`, null when the
+ *   question could not be answered
  */
 async function fetchIsUsable(
 	url: string,
@@ -502,6 +519,10 @@ async function fetchIsUsable(
 	try {
 		await probeCors(url, outer);
 	} catch {
+		// Deliberately remembering nothing: a HEAD the browser could not read
+		// rules out neither a reachable host nor an endpoint that takes the
+		// real request. The caller sends this one through the transport that
+		// cannot double-send, and the next one asks again.
 		return null;
 	}
 	originTakesFetch.set(origin, true);
@@ -533,11 +554,12 @@ async function dispatchRequest(
 	safeUrl: string,
 ): Promise<HttpResponse> {
 	const origin = originOf(options.url);
-	// Unconfirmed until `requestUrl` answers: see originTakesFetch.
+	// Unconfirmed until `requestUrl` answers: see originTakesFetch. Set only
+	// where the real request was the one refused, never from a probe: what a
+	// probe could not read says nothing about the request it went ahead of.
 	let refusalToConfirm = false;
 	if (options.signal !== undefined) {
 		const usable = await fetchIsUsable(options.url, origin, options.signal);
-		refusalToConfirm = usable === null;
 		if (usable === true) {
 			try {
 				return await fetchResponse(options, timeoutMs, safeUrl);
@@ -581,10 +603,11 @@ async function dispatchRequest(
 	);
 	// The fallback answered where fetch could not, and that difference is the
 	// evidence: a host that answers requestUrl is reachable, which leaves
-	// CORS. A host that answers neither was simply unreachable for a moment -
-	// a dropped link, a machine waking up - and remembering that as a refusal
-	// used to cost the origin its abortable transport for the rest of the
-	// session, so a Cancel there stopped releasing anything.
+	// CORS. Both halves are about this request rather than about the probe -
+	// fetch was refused carrying its own method and headers - which is what
+	// makes the pair worth remembering. A host that answers neither was simply
+	// unreachable for a moment, a dropped link or a machine waking up, and
+	// nothing is written for it.
 	if (refusalToConfirm && origin !== null) {
 		originTakesFetch.set(origin, false);
 	}

@@ -290,6 +290,10 @@ describe('uploadTimeoutMs', () => {
 describe('requestRaw abort support', () => {
 	afterEach(() => {
 		delete (globalThis as { fetch?: unknown }).fetch;
+		// Restored here rather than at the end of the one test that installs
+		// fake timers: a failing assertion there would otherwise leave them
+		// running for every test after it in this block.
+		jest.useRealTimers();
 	});
 
 	/** What a real fetch rejects with once its signal aborts. */
@@ -450,6 +454,25 @@ describe('requestRaw abort support', () => {
 	}
 
 	/**
+	 * An endpoint that answers the bodyless probe and then refuses the request
+	 * behind it, which is what an Authorization header's preflight meets.
+	 * @returns The fetch double, for counting how often it was asked
+	 */
+	function probePassingEndpoint(): jest.Mock {
+		const fetchMock = mockFetch((_url: unknown, init?: RequestInit) =>
+			init?.method === 'HEAD'
+				? Promise.resolve(fakeResponse(200, ''))
+				: Promise.reject(new TypeError('Failed to fetch')),
+		);
+		withRequestUrl(() => ({
+			status: 200,
+			headers: {},
+			text: '{"via":"requestUrl"}',
+		}));
+		return fetchMock;
+	}
+
+	/**
 	 * Sends one abortable request to the given endpoint.
 	 * @param url - Where to send it
 	 * @returns The response body
@@ -491,16 +514,7 @@ describe('requestRaw abort support', () => {
 	// endpoint may refuse. That refusal costs nothing, because the body is not
 	// sent, but the run still has to reach the transport that works.
 	it('falls back when the request is refused after the probe passed', async () => {
-		const fetchMock = mockFetch((_url: unknown, init?: RequestInit) =>
-			init?.method === 'HEAD'
-				? Promise.resolve(fakeResponse(200, ''))
-				: Promise.reject(new TypeError('Failed to fetch')),
-		);
-		withRequestUrl(() => ({
-			status: 200,
-			headers: {},
-			text: '{"via":"requestUrl"}',
-		}));
+		const fetchMock = probePassingEndpoint();
 
 		const body = await sendAbortable(
 			'https://preflight-refused.example.com/v1/transcribe',
@@ -510,6 +524,44 @@ describe('requestRaw abort support', () => {
 		// The probe and the request it cleared: both were tried, and the
 		// fallback is what answered.
 		expect(fetchMock).toHaveBeenCalledTimes(2);
+	});
+
+	// A probe that could not be read is not a refusal. fetch reports a CORS
+	// refusal and a dropped link as the same opaque TypeError, so a failed
+	// probe says only that the question went unanswered, and requestUrl
+	// answering afterwards speaks to reachability rather than to CORS. Writing
+	// a refusal from the two together cost the origin its abortable transport
+	// for the session, so Cancel stopped releasing anything - over a link that
+	// was back by the very next request.
+	it('asks again after a probe that could not be read', async () => {
+		let probes = 0;
+		const fetchMock = mockFetch((_url: unknown, init?: RequestInit) => {
+			if (init?.method !== 'HEAD') {
+				return Promise.resolve(fakeResponse(200, '{"via":"fetch"}'));
+			}
+			probes += 1;
+			// Unreachable for the first probe, answering by the second.
+			return probes === 1
+				? Promise.reject(new TypeError('Failed to fetch'))
+				: Promise.resolve(fakeResponse(200, ''));
+		});
+		withRequestUrl(() => ({
+			status: 200,
+			headers: {},
+			text: '{"via":"requestUrl"}',
+		}));
+		const url = 'https://probe-blipped.example.com/v1/transcribe';
+
+		const first = await sendAbortable(url);
+		const second = await sendAbortable(url);
+
+		// The first request keeps its body off a transport that might refuse
+		// it; the second finds the origin still unanswered, asks again, and
+		// gets the abortable transport back.
+		expect(first).toBe('{"via":"requestUrl"}');
+		expect(second).toBe('{"via":"fetch"}');
+		expect(probes).toBe(2);
+		expect(fetchMock).toHaveBeenCalledTimes(3);
 	});
 
 	// The probe answers on its own deadline rather than the request's, which
@@ -531,7 +583,6 @@ describe('requestRaw abort support', () => {
 
 		expect(await settled).toBe('{"via":"requestUrl"}');
 		expect(bodiesSentByFetch(fetchMock)).toHaveLength(0);
-		jest.useRealTimers();
 	});
 
 	// Nothing goes out at all for a run the user has already cancelled, on
@@ -596,15 +647,43 @@ describe('requestRaw abort support', () => {
 
 	// The discovery costs a whole request body, which on an LLM step is a
 	// transcript. Paying it per call meant every request to such a server went
-	// out twice for the rest of the run.
-	it('asks a refusing origin only once, then goes straight to requestUrl', async () => {
-		const fetchMock = corsRefusingEndpoint();
+	// out twice for the rest of the run. A refusal the real request earned is
+	// what settles the question, so it is remembered and the call after it
+	// spends neither a probe nor a body on asking again.
+	it('asks an origin that refused the request itself only once', async () => {
+		const fetchMock = probePassingEndpoint();
 		const url = 'https://remembered.example.com/v1/transcribe';
 
 		await sendAbortable(url);
 		await sendAbortable(url);
 
-		expect(fetchMock).toHaveBeenCalledTimes(1);
+		// The probe and the request that earned the refusal, both from the
+		// first call. The second went straight to the fallback.
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+	});
+
+	// What the memory above exists to protect, held whatever the memory does:
+	// an origin whose probe never reads keeps being asked, and no call to it
+	// ever puts the body on the transport that could be made to send it twice.
+	it('keeps the body off fetch on every call to a refusing origin', async () => {
+		const fetchMock = corsRefusingEndpoint();
+		const sent = captureRequests({ status: 200, text: '{}' });
+		const url = 'https://never-readable.example.com/v1/transcribe';
+		const send = (): Promise<unknown> =>
+			requestRaw({
+				url,
+				method: 'POST',
+				body: 'the audio',
+				signal: new AbortController().signal,
+			});
+
+		await send();
+		await send();
+
+		expect(bodiesSentByFetch(fetchMock)).toHaveLength(0);
+		expect(
+			sent.filter((request) => request.body === 'the audio'),
+		).toHaveLength(2);
 	});
 
 	// A CORS refusal and an unreachable network reach fetch as the same
