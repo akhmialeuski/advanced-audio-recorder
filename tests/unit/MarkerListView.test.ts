@@ -217,6 +217,34 @@ describe('MarkerListView keyboard access in reading view', () => {
 
 		expect(callbacks.onJump).toHaveBeenCalledWith(30);
 	});
+
+	// The row being a button makes its aria-label the accessible name, which
+	// replaces the text inside it rather than adding to it. A constant one
+	// therefore hides the very thing the reader is tabbing through the list to
+	// find, and every chapter of a recording announces identically.
+	it('names a read-only row by the marker it jumps to', () => {
+		const { listContainer } = setup(false);
+
+		const name = el(listContainer, MARKER.byId('a')).getAttribute(
+			'aria-label',
+		);
+
+		expect(name).toContain('Intro');
+		expect(name).toContain('0:10');
+	});
+
+	// A marker keeps its timecode as the only thing that tells it apart when
+	// it was never given a name, so the label falls back to that rather than
+	// leaving an empty gap in the sentence.
+	it('names an unlabelled read-only row by its time alone', () => {
+		const { listContainer } = setup(false, {
+			markers: [{ id: 'a', time: 10, label: '', kind: 'chapter' }],
+		});
+
+		expect(
+			el(listContainer, MARKER.byId('a')).getAttribute('aria-label'),
+		).toBe('Jump to chapter at 0:10');
+	});
 });
 
 describe('MarkerListView active highlight and tick refresh', () => {

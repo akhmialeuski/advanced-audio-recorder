@@ -37,6 +37,17 @@ import {
  */
 const RENAME_DEBOUNCE_MS = 400;
 
+/**
+ * What activating a jump target does, worded by the kind of marker it leads
+ * to. Both rows say it: the editable row's timecode button and the read-only
+ * row itself, which is a button of its own.
+ * @param kind - Whether the row holds a chapter or a bookmark
+ * @returns The action, as the opening of an accessible name
+ */
+function jumpAction(kind: MarkerKind): string {
+	return kind === MARKER_KIND.chapter ? 'Jump to chapter' : 'Jump to marker';
+}
+
 /** Lifecycle hooks the view borrows from the owning render child. */
 export interface MarkerListHost {
 	/** Registers a cleanup callback that runs on the player's unload. */
@@ -325,12 +336,9 @@ export class MarkerListView {
 		});
 		jump.dataset.action = MARKER_ROW_ACTION.jump;
 		jump.dataset.markerId = row.id;
-		jump.setAttribute(
-			'aria-label',
-			row.kind === MARKER_KIND.chapter
-				? 'Jump to chapter'
-				: 'Jump to marker',
-		);
+		// The action alone here: this button sits inside the row rather than
+		// being it, so the rename field beside it still carries the identity.
+		jump.setAttribute('aria-label', jumpAction(row.kind));
 		setIcon(
 			rowEl.createSpan({ cls: 'aar-player-marker-kind' }),
 			row.kind === MARKER_KIND.chapter ? 'list' : 'bookmark',
@@ -367,15 +375,20 @@ export class MarkerListView {
 		rowEl.addClass('aar-player-marker-row-clickable');
 		rowEl.dataset.action = MARKER_ROW_ACTION.jump;
 		rowEl.dataset.markerId = row.id;
+		const timecode = formatTimecode(row.time, referenceSeconds);
+		// The row is the button, so this name replaces the text inside it
+		// rather than introducing it: what the spans below show has to be said
+		// here too, or every chapter in the list announces identically. A
+		// marker with no name of its own is told apart by its time alone.
 		rowEl.setAttribute(
 			'aria-label',
-			row.kind === MARKER_KIND.chapter
-				? 'Jump to chapter'
-				: 'Jump to marker',
+			row.label
+				? `${jumpAction(row.kind)}: ${row.label} at ${timecode}`
+				: `${jumpAction(row.kind)} at ${timecode}`,
 		);
 		rowEl.createSpan({
 			cls: 'aar-player-marker-time',
-			text: formatTimecode(row.time, referenceSeconds),
+			text: timecode,
 		});
 		setIcon(
 			rowEl.createSpan({ cls: 'aar-player-marker-kind' }),
