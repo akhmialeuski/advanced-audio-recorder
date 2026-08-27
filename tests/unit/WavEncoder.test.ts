@@ -11,6 +11,7 @@ import {
 	assembleWavFromPcmSegments,
 	assembleWavFromPcmSegmentFiles,
 	WAV_MAX_PCM_BYTES,
+	WAV_SIZE_LIMIT_MESSAGE,
 } from 'src/audio/WavEncoder';
 import { createMockApp } from '../helpers/createApp';
 
@@ -381,6 +382,15 @@ describe('the WAV container ceiling', () => {
 		expect(() => createWavHeader(2, 48000, WAV_MAX_PCM_BYTES + 1)).toThrow(
 			/auto-split/,
 		);
+	});
+
+	// Recovery reads the very segments that survive, but it assembles through
+	// this module and meets this refusal again, so offering it as the way to
+	// the audio sends the user round a loop that ends where it started. What
+	// survives is worth saying; what cannot rescue it is not.
+	it('does not offer recovery as the way past the ceiling', () => {
+		expect(WAV_SIZE_LIMIT_MESSAGE).toMatch(/kept as raw segments/);
+		expect(WAV_SIZE_LIMIT_MESSAGE).not.toMatch(/recover/i);
 	});
 
 	it('refuses an over-size file buffer before allocating it', () => {

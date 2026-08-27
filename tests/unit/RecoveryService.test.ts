@@ -22,7 +22,10 @@ import { createMockApp } from '../helpers/createApp';
 
 jest.mock('src/audio/WavEncoder', () => require('../mocks/modules/wavEncoder'));
 
-import { assembleWavFromPcmSegmentFiles } from 'src/audio/WavEncoder';
+import {
+	assembleWavFromPcmSegmentFiles,
+	WavSizeLimitError,
+} from 'src/audio/WavEncoder';
 
 const JOURNAL_PATH = '.obsidian/plugins/aar/recording-journal.json';
 
@@ -400,6 +403,36 @@ describe('RecoveryService', () => {
 			expect(result.recoveredPaths).toEqual([]);
 			expect(result.failedTracks).toEqual(['recording-Track1-stamp']);
 			expect(binaryFiles.has('Audio/rec-part2.webm.tmp')).toBe(true);
+			expect(readStoredJournal()?.sessions).toHaveLength(1);
+		});
+
+		// Recovery assembles through the same encoder the recording did, so a
+		// session that outgrew the WAV container is refused here too. The
+		// refusal the user reads at the stop therefore must not offer recovery
+		// as the way to the audio: it would send them round a loop that ends
+		// where it started, with the track reported as one that failed.
+		it('reports a track past the container ceiling as failed and keeps it journaled', async () => {
+			jest.mocked(assembleWavFromPcmSegmentFiles).mockRejectedValueOnce(
+				new WavSizeLimitError(),
+			);
+			binaryFiles.set('Audio/rec-pcm-part1.tmp', new ArrayBuffer(4));
+			const session = createJournalSession({
+				outputFormat: 'wav',
+				recorderFormat: 'wav',
+				tracks: [
+					createTrack({
+						isPcm: true,
+						segmentPaths: ['Audio/rec-pcm-part1.tmp'],
+					}),
+				],
+			});
+			storeJournal([session]);
+
+			const result = await recoverSession(session, journal, mockApp);
+
+			expect(result.recoveredPaths).toEqual([]);
+			expect(result.failedTracks).toEqual(['recording-Track1-stamp']);
+			expect(binaryFiles.has('Audio/rec-pcm-part1.tmp')).toBe(true);
 			expect(readStoredJournal()?.sessions).toHaveLength(1);
 		});
 

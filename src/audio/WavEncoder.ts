@@ -76,11 +76,20 @@ export const WAV_PCM_WARNING_BYTES = Math.floor(
 	WAV_MAX_PCM_BYTES * WAV_PCM_WARNING_RATIO,
 );
 
-/** What a caller is told when the audio outgrew the container. */
+/**
+ * What a caller is told when the audio outgrew the container.
+ *
+ * Recovery is deliberately not offered as the way out, though the segments it
+ * reads are exactly what survives: it assembles through this same module, so
+ * it meets this same refusal and reports the track as one it could not
+ * recover. Naming it would send the user round a loop that cannot end, and the
+ * only thing that does end it is a session that was split as it was recorded.
+ */
 export const WAV_SIZE_LIMIT_MESSAGE =
 	'This recording is too long for a WAV file, which cannot exceed 4 GB. ' +
-	'Enable auto-split in the recording settings so a long recording is ' +
-	'saved as parts; the captured audio is kept and can be recovered.';
+	'The captured audio is kept as raw segments, but it cannot be assembled ' +
+	'into one WAV. Enable auto-split in the recording settings so a long ' +
+	'recording is saved as parts.';
 
 /**
  * The refusal of audio that outgrew the container.
