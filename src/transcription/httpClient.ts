@@ -404,6 +404,36 @@ async function fetchResponse(
 const CORS_PROBE_TIMEOUT_MS = 10 * MS_PER_SECOND;
 
 /**
+ * What asking an origin about browser requests came back as.
+ *
+ * `answered` is a response the browser could read, whatever its status.
+ * `unreadable` is a refusal, a dropped link, or the run's own cancel, which
+ * arrive indistinguishably and say nothing that outlives this request.
+ * `silent` is the host accepting the connection and never answering, which is
+ * the one ending that describes the host rather than the moment.
+ */
+type CorsProbeOutcome = 'answered' | 'unreadable' | 'silent';
+
+/**
+ * Origins that let the probe's deadline run out.
+ *
+ * The other way a probe fails is worth repeating and this one is not, on both
+ * counts that matter. A refusal and a dropped link are the same opaque
+ * TypeError, so the next request asks again in case the link is simply back,
+ * and it pays a round trip to find out. A host that accepts the connection and
+ * then says nothing is not a blip that clears by the next request, and asking
+ * it again costs {@link CORS_PROBE_TIMEOUT_MS} rather than a round trip - on a
+ * recording split into a dozen parts, two minutes of the run spent waiting out
+ * the same silence twelve times, on top of each request's own limit.
+ *
+ * Held apart from {@link originTakesFetch} rather than written into it,
+ * because it answers a different question: not what this origin does with a
+ * browser request, which is still unknown, but whether asking again could tell
+ * us. The body goes by `requestUrl` either way.
+ */
+const silentOrigins = new Set<string>();
+
+/**
  * What each origin does with a browser request, learned once per session.
  *
  * Which transport an endpoint takes cannot be read off anything the plugin
@@ -426,7 +456,9 @@ const CORS_PROBE_TIMEOUT_MS = 10 * MS_PER_SECOND;
  * serve one and turn away the other, which is what a reverse proxy adding its
  * CORS headers on 2xx alone does. Such an origin stays unanswered and is asked
  * again by the next request, at the cost of one bodyless round trip; the body
- * meanwhile goes by the transport that cannot be made to send it twice.
+ * meanwhile goes by the transport that cannot be made to send it twice. The
+ * exception is a host that answers nothing at all, which is remembered in
+ * {@link silentOrigins} so the asking stops costing a deadline apiece.
  */
 const originTakesFetch = new Map<string, boolean>();
 
@@ -456,16 +488,16 @@ function originOf(url: string): string | null {
  * @param url - The URL the real request is about to go to
  * @param outer - The run's own cancel, so pressing Cancel during the probe
  *   does not leave the dialog waiting out the probe's deadline
- * @throws TypeError when the browser could not read an answer
- * @throws DOMException named AbortError when the run was cancelled or the
- *   probe outlived {@link CORS_PROBE_TIMEOUT_MS}
+ * @returns Which of the three answers came back
  */
 async function probeCors(
 	url: string,
 	outer: AbortSignal | undefined,
-): Promise<void> {
+): Promise<CorsProbeOutcome> {
 	const controller = new AbortController();
+	let silent = false;
 	const timer = window.setTimeout(() => {
+		silent = true;
 		controller.abort();
 	}, CORS_PROBE_TIMEOUT_MS);
 	const onOuterAbort = (): void => {
@@ -484,6 +516,14 @@ async function probeCors(
 			method: 'HEAD',
 			signal: controller.signal,
 		});
+		return 'answered';
+	} catch {
+		// Two of the three answers arrive as one exception, and only the flag
+		// above tells them apart: a refusal, a dropped link and the run's own
+		// cancel are all a rejection here, while the deadline is the single
+		// ending that says the host will not answer at all. Reported rather
+		// than thrown, because which ending it was is the question asked.
+		return silent ? 'silent' : 'unreadable';
 	} finally {
 		window.clearTimeout(timer);
 		outer?.removeEventListener('abort', onOuterAbort);
@@ -494,7 +534,9 @@ async function probeCors(
  * Whether the abortable transport is usable for this URL: true when the origin
  * answers browser requests, false when it is known not to, and null when the
  * question went unanswered, which leaves the origin exactly as unknown as it
- * was and is asked again by the next request.
+ * was. An unknown origin is asked again by the next request, unless the last
+ * ask ran out its deadline - see {@link silentOrigins} for why that one is not
+ * repeated.
  * @param url - Full request URL
  * @param origin - The URL's origin, or null when it has none to remember
  * @param outer - The run's own cancel, handed to the probe so a Cancel during
@@ -516,17 +558,22 @@ async function fetchIsUsable(
 	if (known !== undefined) {
 		return known;
 	}
-	try {
-		await probeCors(url, outer);
-	} catch {
-		// Deliberately remembering nothing: a HEAD the browser could not read
-		// rules out neither a reachable host nor an endpoint that takes the
-		// real request. The caller sends this one through the transport that
-		// cannot double-send, and the next one asks again.
+	if (silentOrigins.has(origin)) {
 		return null;
 	}
-	originTakesFetch.set(origin, true);
-	return true;
+	const outcome = await probeCors(url, outer);
+	if (outcome === 'answered') {
+		originTakesFetch.set(origin, true);
+		return true;
+	}
+	if (outcome === 'silent') {
+		silentOrigins.add(origin);
+	}
+	// Nothing goes into originTakesFetch either way: a HEAD the browser could
+	// not read rules out neither a reachable host nor an endpoint that takes
+	// the real request. The caller sends this one through the transport that
+	// cannot double-send.
+	return null;
 }
 
 /**

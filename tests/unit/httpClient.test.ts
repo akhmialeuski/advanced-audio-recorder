@@ -585,6 +585,37 @@ describe('requestRaw abort support', () => {
 		expect(bodiesSentByFetch(fetchMock)).toHaveLength(0);
 	});
 
+	// The one probe failure that is worth remembering. A refusal and a dropped
+	// link cost a round trip to re-ask and might genuinely have changed, but a
+	// host that takes the connection and says nothing has neither property:
+	// asking again buys the same silence for the whole deadline, and a
+	// recording split into a dozen parts paid it a dozen times over, on top of
+	// each request's own limit.
+	it('asks a host that never answers the probe only once', async () => {
+		jest.useFakeTimers();
+		const fetchMock = mockFetch(() => new Promise(() => undefined));
+		withRequestUrl(() => ({
+			status: 200,
+			headers: {},
+			text: '{"via":"requestUrl"}',
+		}));
+		const url = 'https://always-silent.example.com/v1/transcribe';
+
+		const first = sendAbortable(url);
+		await jest.advanceTimersByTimeAsync(10_000);
+		expect(await first).toBe('{"via":"requestUrl"}');
+		const second = sendAbortable(url);
+		await flushMicrotasks();
+		// Counted before the clock moves, where a second probe would still be
+		// in flight. Asserting after would report the extra probe as a hung
+		// request rather than as the extra probe it is.
+		const probesBeforeTheClockMoved = fetchMock.mock.calls.length;
+		await jest.advanceTimersByTimeAsync(10_000);
+
+		expect(await second).toBe('{"via":"requestUrl"}');
+		expect(probesBeforeTheClockMoved).toBe(1);
+	});
+
 	// Nothing goes out at all for a run the user has already cancelled, on
 	// either transport: the probe is entered with the cancel in hand, and the
 	// fallback is refused before it is reached.
