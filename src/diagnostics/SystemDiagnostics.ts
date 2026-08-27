@@ -21,6 +21,7 @@ import {
 } from '../audio/AudioCapabilityDetector';
 import type { CodecSupportEntry } from '../audio/AudioCapabilityDetector';
 import { resolveRecorderFormat } from '../audio/AudioFormatConverter';
+import { audioDeviceApi } from '../recording/AudioStreamHandler';
 
 /**
  * Serialized plugin settings for diagnostics.
@@ -209,7 +210,11 @@ export class SystemDiagnostics {
 	 * @returns Array of audio device descriptors
 	 */
 	static async collectAudioDevices(): Promise<DiagnosticsAudioDevice[]> {
-		const devices = await navigator.mediaDevices.enumerateDevices();
+		const api = audioDeviceApi();
+		if (!api) {
+			return [];
+		}
+		const devices = await api.enumerateDevices();
 		return devices
 			.filter((d) => d.kind === 'audioinput' || d.kind === 'audiooutput')
 			.map((d) => ({
@@ -228,8 +233,7 @@ export class SystemDiagnostics {
 		const capabilities = await detectCapabilities();
 		const mediaRecorderAvailable = typeof MediaRecorder !== 'undefined';
 		const getUserMediaAvailable =
-			typeof navigator.mediaDevices !== 'undefined' &&
-			typeof navigator.mediaDevices.getUserMedia === 'function';
+			typeof audioDeviceApi()?.getUserMedia === 'function';
 
 		return {
 			supportedFormats: capabilities.supportedFormats,

@@ -427,6 +427,59 @@ describe('AudioRecorderSettingTab', () => {
 
 			expect(updateSpy).not.toHaveBeenCalled();
 		});
+
+		// navigator.mediaDevices is absent outside a secure context and in
+		// some embedded WebViews. The device watch runs from the first row the
+		// tab renders, so reading it unguarded threw there and emptied the
+		// whole tab: every setting, including the ones that have nothing to do
+		// with audio devices.
+		describe('where the environment exposes no device API', () => {
+			beforeEach(() => {
+				Object.defineProperty(global, 'navigator', {
+					value: {},
+					writable: true,
+				});
+			});
+
+			it('renders the tab instead of failing on its first row', () => {
+				const frame = renderDeclaratively();
+
+				expect(
+					maybeEl(frame.containerEl, SETTING.docCalloutLink),
+				).not.toBeNull();
+			});
+
+			it('still declares every section', () => {
+				renderDeclaratively();
+				const defs = tab.getSettingDefinitions();
+
+				expect(groupOf(defs, 'Audio input').items).not.toHaveLength(0);
+				expect(groupOf(defs, 'Transcription').items).not.toHaveLength(
+					0,
+				);
+			});
+
+			it('says the device list could not be read rather than showing an empty one', async () => {
+				renderDeclaratively();
+				await tick();
+
+				expect(
+					rowOf(
+						tab.getSettingDefinitions(),
+						'Audio input',
+						'Input device',
+					).desc,
+				).toMatch(/could not be read/);
+			});
+
+			it('leaves the tab without throwing on the way out', () => {
+				renderDeclaratively();
+
+				expect(() => {
+					tab.hide();
+				}).not.toThrow();
+			});
+		});
 	});
 
 	describe('writes that mean more than storing a value', () => {

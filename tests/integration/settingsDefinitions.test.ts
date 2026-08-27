@@ -120,6 +120,7 @@ describe('settings definitions', () => {
 		},
 		renderDocumentationLink: renderDocs as (host: HTMLElement) => void,
 		devices: {
+			enumerated: true,
 			inputs: {
 				'mic-1': 'Built-in microphone',
 				'iface-1': 'Audio interface',

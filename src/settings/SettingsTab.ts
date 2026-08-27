@@ -55,6 +55,7 @@ import { AUDIO_FORMAT_IDS } from '../audio/formatRegistry';
 import { isOfflineEncodingSupported } from '../audio/AudioEncoder';
 import { CHANNEL_MODE_SOURCE, normalizeChannelMode } from '../audio/downmix';
 import {
+	audioDeviceApi,
 	channelSelectionAvailable,
 	getAudioInputDeviceSnapshot,
 	type AudioInputDeviceSnapshot,
@@ -279,6 +280,7 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 				this.renderDocumentationLink(host);
 			},
 			devices: {
+				enumerated: this.deviceSnapshot.enumerationSucceeded,
 				inputs: Object.fromEntries(
 					this.deviceSnapshot.devices.map((device) => [
 						device.deviceId,
@@ -817,14 +819,18 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 	 * open and again whenever the system reports a change.
 	 */
 	private ensureDeviceWatch(): void {
-		if (!this.deviceChangeHandler) {
+		// Absent outside a secure context and in some embedded WebViews. This
+		// runs from the first row the tab renders, so reading through it
+		// unguarded took the whole tab down - every setting, including the ones
+		// that have nothing to do with audio devices. Without a device list
+		// there is nothing to watch; the rows below still report that the
+		// enumeration failed.
+		const devices = audioDeviceApi();
+		if (devices && !this.deviceChangeHandler) {
 			this.deviceChangeHandler = (): void => {
 				void this.refreshDeviceList();
 			};
-			navigator.mediaDevices.addEventListener(
-				'devicechange',
-				this.deviceChangeHandler,
-			);
+			devices.addEventListener('devicechange', this.deviceChangeHandler);
 		}
 		void this.refreshDeviceList();
 	}
@@ -1137,12 +1143,13 @@ export class AudioRecorderSettingTab extends PluginSettingTab {
 		// framework runs them itself and this renderer holds nothing.
 		this.legacyRenderer.release();
 		this.cleanupTestRecording();
-		if (this.deviceChangeHandler) {
-			navigator.mediaDevices.removeEventListener(
+		const devices = audioDeviceApi();
+		if (devices && this.deviceChangeHandler) {
+			devices.removeEventListener(
 				'devicechange',
 				this.deviceChangeHandler,
 			);
-			this.deviceChangeHandler = null;
 		}
+		this.deviceChangeHandler = null;
 	}
 }

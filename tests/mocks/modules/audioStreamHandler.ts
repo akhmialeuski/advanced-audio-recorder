@@ -26,3 +26,10 @@ export const missingCaptureIndexes = jest.fn(() => Promise.resolve([]));
 // Returns the release function the real one does, so a manager tearing a
 // session down calls something rather than tripping over undefined.
 export const watchStreamEndings = jest.fn(() => jest.fn());
+// The device API as this environment has it. Answered from the ambient
+// navigator rather than faked, so a suite that installs a mediaDevices double
+// is watched through it and one that installs none is simply not watched -
+// both of which are real environments the watcher runs in.
+export const audioDeviceApi = jest.fn(
+	() => (navigator.mediaDevices as MediaDevices | undefined) ?? null,
+);

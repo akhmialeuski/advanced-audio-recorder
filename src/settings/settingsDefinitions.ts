@@ -321,6 +321,13 @@ export interface DeviceOptions {
 	/** Device id to label, for the input dropdowns. */
 	readonly inputs: Record<string, string>;
 	/**
+	 * Whether the device list could be read at all. False where the
+	 * environment exposes no device API, or where enumeration was refused: an
+	 * empty dropdown then means "nothing could be asked" rather than "no
+	 * microphone", and the rows say which.
+	 */
+	readonly enumerated: boolean;
+	/**
 	 * Whether a device offers a channel layout worth choosing. False for a
 	 * device that positively reports a single capture channel, and for no
 	 * device at all.
@@ -554,6 +561,33 @@ function outputFormatGroup(rows: OutputFormatRows): SettingDefinitionItem {
 }
 
 /**
+ * What a device-picking row says under its dropdown.
+ *
+ * An empty dropdown reads as "this machine has no microphone", which is the
+ * one thing it does not mean when the list could not be read: an environment
+ * with no device API - a vault served over plain HTTP, some embedded WebViews
+ * - or an enumeration the platform refused. The row says so rather than
+ * leaving the user to guess at an empty list.
+ * @param devices - The audio-input picture the rows are built from
+ * @param whenListed - What the row says when the list was read
+ * @param selectable - Whether this platform offers the choice at all
+ * @returns The row's description
+ */
+function deviceRowDesc(
+	devices: DeviceOptions,
+	whenListed: string,
+	selectable: boolean,
+): string {
+	if (!selectable) {
+		return 'Not selectable on this device; recording uses the system default microphone.';
+	}
+	if (!devices.enumerated) {
+		return 'The list of audio devices could not be read here, so recording uses the system default microphone.';
+	}
+	return whenListed;
+}
+
+/**
  * The capture hardware: which input, at what rate, in what channel layout.
  * @param settings - Live settings, read by the predicates
  * @param devices - Input devices as last enumerated
@@ -574,9 +608,11 @@ function audioInputGroup(
 			{
 				name: 'Input device',
 				aliases: ['microphone', 'mic', 'source'],
-				desc: deviceSelectable
-					? 'Default input device for single-track recordings. Also changeable from the command palette.'
-					: 'Not selectable on this device; recording uses the system default microphone.',
+				desc: deviceRowDesc(
+					devices,
+					'Default input device for single-track recordings. Also changeable from the command palette.',
+					deviceSelectable,
+				),
 				control: {
 					type: 'dropdown',
 					key: 'audioDeviceId',
@@ -702,7 +738,11 @@ function multiTrackPage(
 				{
 					name: `Track ${String(track)} input`,
 					aliases: ['audio source', 'device'],
-					desc: `Input device recorded into track ${String(track)}.`,
+					desc: deviceRowDesc(
+						devices,
+						`Input device recorded into track ${String(track)}.`,
+						true,
+					),
 					visible: offered,
 					control: {
 						type: 'dropdown',
