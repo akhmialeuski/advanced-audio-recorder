@@ -70,12 +70,16 @@ Offline encoding needs a working intermediate format: if neither WebM nor OGG is
 There is no single best format - it depends on what you do with the recording. Practical guidance:
 
 - **WebM (default)** - the best all-round choice. Opus is efficient, so files are small at high quality, and WebM has the broadest support. Use it unless you have a specific reason not to.
-- **WAV** - choose it for **long recordings**, **lossless** capture, and **reliability**. WAV is captured as raw PCM and streamed to disk, so an hour-long session never risks a memory problem. It is uncompressed, so files are large.
+- **WAV** - choose it for **long recordings**, **lossless** capture, and **reliability**. WAV is captured as raw PCM and streamed to disk, so an hour-long session never risks a memory problem. It is uncompressed, so files are large, and a single file cannot exceed **4 GB** (see below).
 - **FLAC** - **lossless but compressed**: the same audio quality as WAV at roughly half the size. Good for archival when you want lossless without the bulk of WAV. Encoded offline after you stop.
 - **MP3** - choose it for **maximum compatibility** with older players, hardware devices, and software that does not understand Opus or AAC.
 - **MP4 / M4A** - AAC in a standard container, well suited to **Apple ecosystems** (macOS, iOS, iTunes/Music) and many video tools. M4A is the same codec with the Apple-conventional extension.
 - **AAC** - a raw AAC stream; pick it only when a downstream tool specifically expects a bare `.aac` file. Its availability is browser-dependent.
 - **OGG** - Opus or Vorbis in an Ogg container; a good alternative when a tool prefers Ogg over WebM.
+
+A WAV file states its own size in two 32-bit fields, so **no WAV file can be larger than 4 GB**, which at 48 kHz stereo 16-bit arrives at roughly the sixth hour of continuous recording. Turn on **auto-split** in the recording settings before a session that long: the recording is then written as a series of part files, each well inside the limit, and nothing about the capture changes. Without it a recording that reaches the ceiling is refused at the moment you press stop, with a message naming the limit and pointing at auto-split. The audio is not lost when that happens, because the captured PCM segments stay on disk and the recording is offered back through the recovery prompt on the next start, but the only way to turn them into playable files is to record in parts, so it is worth deciding before the session rather than after it.
+
+RF64 is the standard extension of RIFF that moves those size fields to 64 bits, and the plugin deliberately does not write it. Auto-split already answers the long recording end to end, from the recorder through the player to the splitter, while none of the transcription engines these files are handed to afterwards reads RF64, so an RF64 recording would be unplayable in the very workflow it was made for.
 
 A short recommendation table:
 

@@ -34,8 +34,8 @@ Open **Settings > Advanced Audio Recorder > Transcription** and turn on **Enable
 2. **Transcription engine** - the row naming the service that transcribes, with the **Engines** entry under it opening the page where that service is configured: base URL, API key, and model.
 3. **Language** - `auto` to detect, or an ISO code.
 4. **Speaker diarization** - request speaker labels (only some engines).
-5. **Word-level timestamps** - per-word timing in JSON output.
-6. **Request timeout** - the per-request network deadline (cloud engines only).
+5. **Word-level timestamps** - per-word timing in JSON output, selectable on Whisper API and decided by the engine on the other three.
+6. **Request timeout** - the per-request network deadline (cloud engines only), replaced by **Local run timeout** on local whisper.cpp.
 7. **Transcript output** - destination, file format, and in-note formatting.
 8. **Auto chapters** - optional LLM-generated chapters for the enhanced player (see [Auto chapters](#auto-chapters)).
 9. **LLM post-processing** - optional, documented separately in [LLM post-processing](llm-post-processing.md).
@@ -137,7 +137,7 @@ Behavior and limits:
 
 - **Up to 2 GB uploaded whole** via the File API, then transcribed in one request - so diarization keeps consistent speaker numbering across the whole file.
 - **Container conversion.** Containers Gemini does not accept directly (notably `webm`, `mp4`, and `m4a`) are decoded to **16 kHz mono WAV** before upload. WAV, MP3, AAC, OGG, FLAC, and AIFF are sent as-is.
-- **Long recordings are split.** A recording **longer than 15 minutes** is split into parts, each transcribed and stitched back onto the timeline. Splitting **resets Gemini's per-request speaker numbering**, so a diarized split shows a warning that speaker labels may differ between parts; the message suggests using Deepgram or splitting the recording for consistent speakers.
+- **Long recordings are split.** A recording **longer than 15 minutes** is split into parts of equal length, each transcribed and stitched back onto the timeline; a recording of exactly 15 minutes still goes in one request. Splitting **resets Gemini's per-request speaker numbering**, so a diarized split shows a warning that speaker labels may differ between parts; the message suggests using Deepgram or splitting the recording for consistent speakers.
 - **Diarization supported.** Turn on **Speaker diarization** to request speaker labels.
 
 Getting a key: [Gemini API key](use-cases/gemini-api-key.md). The catalogue link points at the [Gemini model list](https://ai.google.dev/gemini-api/docs/models).
@@ -308,7 +308,7 @@ When you ask for in-note output but the note is not open in an editable view (re
 | **WebVTT (.vtt)**               | `.vtt`             | WebVTT cues with `HH:MM:SS.mmm` timing; speaker as a line prefix.            |
 | **Plain text (.txt)**           | `.txt`             | Readable lines, each prefixed with `[timecode]` and the speaker.             |
 
-The sidecar is written **next to the audio file**, sharing its base name (JSON uses a `.transcript.json` suffix so it is not mistaken for other JSON). If a file with that name already exists, a numeric suffix is appended to avoid overwriting it. **Word-level timestamps** (the global toggle) only appear in the **JSON** output, and only some engines populate them: **Whisper API** requests per-word timings when the toggle is on, **Deepgram** always returns them regardless of the toggle, while **Google Gemini** and **local whisper.cpp** return segment-level timing only, so the toggle has no effect for those three.
+The sidecar is written **next to the audio file**, sharing its base name (JSON uses a `.transcript.json` suffix so it is not mistaken for other JSON). If a file with that name already exists, a numeric suffix is appended to avoid overwriting it. **Word-level timestamps** only appear in the **JSON** output, and which engine gives them is not the toggle's to decide: **Whisper API** requests per-word timings when it is on, **Deepgram** returns them on every run whatever it says, and **Google Gemini** and **local whisper.cpp** return segment-level timing only. The toggle is therefore live on Whisper API alone; on the other three it is shown disabled with that engine's own behaviour named under it, so a run never promises a words array it will not produce. Your choice is kept while another engine is selected and takes effect again on Whisper API.
 
 With the default templates and timestamp links on, a diarized transcript renders like this:
 
@@ -353,7 +353,7 @@ When you run **Transcribe audio** from the context menu or the command palette, 
 - **Language** - `auto` or an ISO code.
 - **Speaker diarization** - request speaker labels (enabled only when the chosen engine can diarize).
 - **Participant profile** - shown only when the run will actually produce speaker labels. Picks the roster of names stored with this recording, so **Rename speakers** suggests the right people afterwards. The last pick is remembered and also applies to transcribe-on-save; profiles are created in the rename dialog. See [Naming speakers](#naming-speakers).
-- **Word-level timestamps** - per-word timing (JSON output only).
+- **Word-level timestamps** - per-word timing (JSON output only). Live on Whisper API; on the other engines it shows what that engine will do and cannot be changed.
 - **Advanced settings** - a master switch (off by default) that reveals the term-biasing controls for this run; with it off the recording transcribes in one plain pass with no biasing. When on it shows a **Dictionary** picker (choose a named profile to bias this run, or None) and an **Advanced two-pass transcription** toggle (the experimental context-biased two-pass mode, roughly 2x the engine cost plus LLM calls, reusing the Dictionary terms above and leaving its length safeguard in the settings tab).
 - **Destination** - Insert into note / Save to file / Note and file / Save to file and link it in the note.
 - **File format** - shown when the destination is not note-only.
@@ -447,8 +447,9 @@ All transcription settings live under **Settings > Advanced Audio Recorder > Tra
 | **Transcription engine**            | Whisper API / Deepgram / Google Gemini / Local whisper.cpp.                                             | Whisper API                    |
 | **Language**                        | `auto` to detect, or an ISO code (`en`, `ru`, `es`).                                                    | `auto`                         |
 | **Speaker diarization**             | Request speaker labels (Deepgram and Gemini only).                                                      | Off                            |
-| **Word-level timestamps**           | Per-word timing, recorded in JSON file output only.                                                     | Off                            |
+| **Word-level timestamps**           | Per-word timing in JSON file output. Selectable on Whisper API; the other engines decide it themselves.  | Off                            |
 | **Request timeout**                 | Minutes before one request is aborted and reported (cloud engines only). Range 1-60.                    | 10                             |
+| **Local run timeout**               | Minutes before the local whisper.cpp process is stopped (that engine only). Range 1-720.                | 120                            |
 | **Advanced settings**               | Master switch revealing the dictionary and the two-pass mode; off keeps one plain pass with no biasing. | Off                            |
 | **Advanced two-pass transcription** | Two engine passes with LLM-generated context biasing the second (roughly 2x cost; experimental).        | Off                            |
 | **Second-pass length safeguard**    | Keep the biased second pass only when its text is at least this fraction of the first pass.             | 0.8                            |
@@ -481,9 +482,10 @@ Per-engine fields (base URL, key, model picker, upload chunk size) are documente
 - **"Transcribe audio" is missing from the menu** - enable **Enable transcription** in settings first.
 - **The Transcribe audio palette command does nothing** - it runs only when the active file is an audio file and transcription is enabled. Open the audio file (or its note) and try again.
 - **Speaker labels never appear** - only Deepgram and Gemini diarize; the toggle is disabled for Whisper API and local whisper.cpp. With a diarizing engine, make sure **Speaker diarization** and **Include speakers** are on. Without diarization in effect, labels are stripped everywhere, including the JSON file.
-- **Speaker numbers change partway through a Gemini transcript** - a recording over 15 minutes is split into parts and Gemini renumbers speakers per part. Use **Deepgram** (sends the whole file) or split the recording for consistent speakers.
+- **Speaker numbers change partway through a Gemini transcript** - a recording longer than 15 minutes is split into parts and Gemini renumbers speakers per part. Use **Deepgram** (sends the whole file) or split the recording for consistent speakers. A recording of exactly 15 minutes is not split and shows no such warning.
 - **"Could not insert the transcript into the note"** - the note was not open in editing mode. The transcript is saved as a sidecar file as a fallback; the notice shows its path. Open the note in editing mode to insert there.
-- **A request times out** - raise **Request timeout** (up to 60 minutes) for slow connections or very large uploads, or split the file first. Local whisper.cpp has no request timeout.
+- **A request times out** - raise **Request timeout** (up to 60 minutes) for slow connections or very large uploads, or split the file first.
+- **A local whisper.cpp run is stopped before it finishes** - the process outlived **Local run timeout**. Raise it (up to 720 minutes) or point the engine at a smaller model; a large model on a slow CPU can take longer than the recording itself.
 - **A part of a long recording is missing** - that part failed; a `> [!warning]` callout names the stretch and a notice explains the cause. Re-run the failed file, or check the engine's quota and key.
 - **A large file uploaded to Whisper** - there is no "file too large" error. Whisper has a hard 25 MB limit, but files over it are resampled to 16 kHz mono and split into chunks automatically, so the run proceeds without an error. If a chunk still fails, lower **Upload chunk size**.
 - **API errors (401/403/quota)** - verify the **API key** and **base URL** for the engine, and check the account's billing or starter credit. A key is only required while the **Base URL** points at the vendor's own host, so a `401` from an endpoint you pointed elsewhere means that endpoint wants a key after all. See the per-engine use-case guides for getting and checking keys, and the [Engines reference](settings-reference.md#transcription) for when the key field may be left empty.

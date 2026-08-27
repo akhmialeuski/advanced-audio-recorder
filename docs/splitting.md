@@ -21,6 +21,7 @@ A two-hour lecture or an all-day meeting recorded as one file is awkward to work
 - **Navigate long material.** Shorter parts are quicker to open, scrub, and share. You can link to the exact part of a meeting that matters instead of one giant file.
 - **Process big files in pieces.** Some actions (for example [Audio cleanup](audio-cleanup.md)) work better on shorter inputs. Split first, then clean or convert each part.
 - **Keep recording reliably.** With automatic splitting on, each finished part is flushed to disk while recording continues, so a crash costs you at most the unfinished last part rather than the whole session. This matters most on a phone, where the operating system can close a backgrounded app without warning. See [Crash recovery](recording.md#crash-recovery).
+- **Record WAV past the format's own ceiling.** A WAV file cannot describe more than 4 GB, which at 48 kHz stereo 16-bit is roughly six hours, and a session that reaches it is refused at the moment you stop. Automatic splitting keeps every part well inside the limit, so it is what makes a WAV session of that length possible at all. See [Audio formats](formats.md#choosing-a-format).
 
 ---
 

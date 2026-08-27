@@ -188,9 +188,12 @@ Transcription stops with an error, or the progress dialog reports a failure.
 | `Request … timed out after … ms.`                  | The request exceeded the configured **Request timeout** (default 10 minutes, range 1-60). Raise the timeout for long files, or split the recording first.                                             |
 | File too large                                     | The **Whisper API** caps each request at **25 MB**. Files over that are automatically resampled to 16 kHz mono and split into upload-sized chunks. **Deepgram** and **Gemini** accept up to **2 GB**. |
 | `Speaker diarization` greyed out                   | Diarization is only supported by **Deepgram** and **Google Gemini**. It is disabled and greyed for **Whisper API** and **Local whisper.cpp** - switch engines if you need speaker labels.             |
+| `Word-level timestamps` greyed out                 | Only **Whisper API** reads that request. **Deepgram** returns per-word timing on every run, and **Gemini** and **Local whisper.cpp** return segment-level timing only, so on those three the switch shows what the engine does and cannot be changed. |
 | Gemini diarization warning on long files           | Gemini splits recordings longer than 15 minutes into parts and stitches them; diarized splits reset speaker numbering, which the plugin surfaces as a warning.                                        |
 | Play buttons greyed out in **Rename speakers**     | That recording's roster was stored before speaker samples existed, so it carries no timings. Transcribe it once more with **Speaker diarization** on and the buttons come back.                       |
 | Local `whisper.cpp` fails to start                 | Check the **binary path** and **model path** (an absolute path to a GGML `.bin` file). Make sure the binary is executable and the model file exists.                                                  |
+| Local `whisper.cpp` run stopped before it finished | The process outlived **Local run timeout** (default 120 minutes, range 1-720). Raise it, or point the engine at a smaller model: a large model on a slow CPU can take longer than the recording itself. |
+| Cancel does nothing on a local run                 | Fixed: Cancel now stops the `whisper.cpp` process straight away and removes its temporary files, instead of leaving the dialog busy until Obsidian is restarted.                                      |
 
 Other tips:
 
