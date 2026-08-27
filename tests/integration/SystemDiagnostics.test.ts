@@ -265,14 +265,15 @@ describe('SystemDiagnostics.collectAudioDevices', () => {
 
 		const result = await SystemDiagnostics.collectAudioDevices();
 
-		expect(result).toHaveLength(2);
-		expect(result[0]).toEqual({
+		expect(result.enumerated).toBe(true);
+		expect(result.devices).toHaveLength(2);
+		expect(result.devices[0]).toEqual({
 			deviceId: 'in-1',
 			label: 'Mic 1',
 			groupId: 'grp-1',
 			kind: 'audioinput',
 		});
-		expect(result[1]).toEqual({
+		expect(result.devices[1]).toEqual({
 			deviceId: 'out-1',
 			label: 'Speaker 1',
 			groupId: 'grp-2',
@@ -280,12 +281,15 @@ describe('SystemDiagnostics.collectAudioDevices', () => {
 		});
 	});
 
-	it('returns empty array when no audio devices exist', async () => {
+	// A machine with no audio hardware and a list that could not be read both
+	// end with nothing to show, and only the first of them is what an empty
+	// list is normally taken to mean.
+	it('reports an empty list it was able to read as read', async () => {
 		mockEnumerate.mockResolvedValueOnce([]);
 
 		const result = await SystemDiagnostics.collectAudioDevices();
 
-		expect(result).toEqual([]);
+		expect(result).toEqual({ enumerated: true, devices: [] });
 	});
 
 	// Absent outside a secure context and in some embedded WebViews, which is
@@ -299,7 +303,23 @@ describe('SystemDiagnostics.collectAudioDevices', () => {
 
 		const result = await SystemDiagnostics.collectAudioDevices();
 
-		expect(result).toEqual([]);
+		expect(result).toEqual({ enumerated: false, devices: [] });
+	});
+
+	// Blocked microphone access is one of the situations a user is asked for
+	// this report in, and enumeration is refused there. Letting the refusal
+	// out rejected the whole snapshot, so the report could not be produced at
+	// exactly the moment it was wanted.
+	it('reports a refused enumeration rather than failing the report', async () => {
+		const reported = jest
+			.spyOn(console, 'warn')
+			.mockImplementation(() => undefined);
+		mockEnumerate.mockRejectedValueOnce(new Error('Permission denied'));
+
+		const result = await SystemDiagnostics.collectAudioDevices();
+
+		expect(result).toEqual({ enumerated: false, devices: [] });
+		expect(reported).toHaveBeenCalled();
 	});
 
 	it('filters out videoinput devices', async () => {
@@ -314,7 +334,7 @@ describe('SystemDiagnostics.collectAudioDevices', () => {
 
 		const result = await SystemDiagnostics.collectAudioDevices();
 
-		expect(result).toHaveLength(0);
+		expect(result.devices).toHaveLength(0);
 	});
 });
 
@@ -550,7 +570,7 @@ describe('SystemDiagnostics.collect', () => {
 		expect(result).toHaveProperty('activeRecordingConfig');
 		expect(result.environment.obsidianVersion).toBe('1.13.0');
 		expect(result.pluginSettings.recordingFormat).toBe(FORMAT_WEBM);
-		expect(Array.isArray(result.audioDevices)).toBe(true);
+		expect(Array.isArray(result.audioDevices.devices)).toBe(true);
 	});
 
 	it('propagates audio devices collected asynchronously', async () => {
@@ -568,8 +588,8 @@ describe('SystemDiagnostics.collect', () => {
 			makeApp(),
 		);
 
-		expect(result.audioDevices).toHaveLength(1);
-		expect(at(result.audioDevices, 0).deviceId).toBe('in-1');
+		expect(result.audioDevices.devices).toHaveLength(1);
+		expect(at(result.audioDevices.devices, 0).deviceId).toBe('in-1');
 	});
 
 	it('activeRecordingConfig reflects current settings format', async () => {

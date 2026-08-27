@@ -22,6 +22,7 @@ import {
 import type { CodecSupportEntry } from '../audio/AudioCapabilityDetector';
 import { resolveRecorderFormat } from '../audio/AudioFormatConverter';
 import { audioDeviceApi } from '../recording/AudioStreamHandler';
+import { PLUGIN_LOG_PREFIX } from '../constants';
 
 /**
  * Serialized plugin settings for diagnostics.
@@ -85,6 +86,22 @@ export interface DiagnosticsAudioDevice {
 }
 
 /**
+ * The audio devices this environment lists, and whether it could be asked.
+ *
+ * An empty list on its own reads as "this machine has no audio hardware",
+ * which is the one thing it does not mean when the list could not be read:
+ * an environment exposing no device API, or an enumeration the platform
+ * refused because microphone access is blocked. A report is asked for in
+ * exactly those situations, so it has to say which of the three it is.
+ */
+export interface DiagnosticsAudioDevices {
+	/** Whether the device list could be read at all. */
+	enumerated: boolean;
+	/** The devices listed, empty when the list could not be read. */
+	devices: DiagnosticsAudioDevice[];
+}
+
+/**
  * Audio capabilities for diagnostics.
  */
 export interface DiagnosticsAudioCapabilities {
@@ -125,7 +142,7 @@ export interface ActiveRecordingConfig {
 export interface DiagnosticsData {
 	pluginSettings: DiagnosticsPluginSettings;
 	environment: DiagnosticsEnvironment;
-	audioDevices: DiagnosticsAudioDevice[];
+	audioDevices: DiagnosticsAudioDevices;
 	audioCapabilities: DiagnosticsAudioCapabilities;
 	activeRecordingConfig: ActiveRecordingConfig;
 }
@@ -206,23 +223,43 @@ export class SystemDiagnostics {
 	}
 
 	/**
-	 * Enumerates all available audio devices.
-	 * @returns Array of audio device descriptors
+	 * Enumerates all available audio devices, reporting whether the list
+	 * could be read rather than answering "no devices" either way.
+	 *
+	 * A refused enumeration is answered here rather than thrown, because this
+	 * runs inside the snapshot's Promise.all: rejecting took the whole report
+	 * down, and blocked microphone access is one of the situations the report
+	 * exists to describe.
+	 * @returns The devices listed, and whether the list could be read
 	 */
-	static async collectAudioDevices(): Promise<DiagnosticsAudioDevice[]> {
+	static async collectAudioDevices(): Promise<DiagnosticsAudioDevices> {
 		const api = audioDeviceApi();
 		if (!api) {
-			return [];
+			return { enumerated: false, devices: [] };
 		}
-		const devices = await api.enumerateDevices();
-		return devices
-			.filter((d) => d.kind === 'audioinput' || d.kind === 'audiooutput')
-			.map((d) => ({
-				deviceId: d.deviceId,
-				label: d.label,
-				groupId: d.groupId,
-				kind: d.kind,
-			}));
+		try {
+			const devices = await api.enumerateDevices();
+			return {
+				enumerated: true,
+				devices: devices
+					.filter(
+						(d) =>
+							d.kind === 'audioinput' || d.kind === 'audiooutput',
+					)
+					.map((d) => ({
+						deviceId: d.deviceId,
+						label: d.label,
+						groupId: d.groupId,
+						kind: d.kind,
+					})),
+			};
+		} catch (error) {
+			console.warn(
+				`${PLUGIN_LOG_PREFIX} Audio devices could not be listed for the diagnostics report:`,
+				error,
+			);
+			return { enumerated: false, devices: [] };
+		}
 	}
 
 	/**

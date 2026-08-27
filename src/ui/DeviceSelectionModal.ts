@@ -6,6 +6,7 @@
 import { Notice } from 'obsidian';
 import type { App } from 'obsidian';
 import { PLUGIN_LOG_PREFIX } from '../constants';
+import { getAudioInputDevices } from '../recording/AudioStreamHandler';
 import { PluginModal } from './PluginModal';
 
 /**
@@ -81,13 +82,15 @@ export async function showDeviceSelectionModal(
 	app: App,
 	onDeviceSelected: DeviceSelectedCallback,
 ): Promise<void> {
-	let devices: MediaDeviceInfo[];
+	let audioDevices: MediaDeviceInfo[];
 	try {
-		devices = await navigator.mediaDevices.enumerateDevices();
+		audioDevices = await getAudioInputDevices();
 	} catch (error) {
-		// Enumeration is refused when microphone access is blocked, and the
-		// caller has no way to say so: this function is the whole of what the
-		// user sees after asking to pick a device.
+		// Enumeration is refused when microphone access is blocked, and it is
+		// unavailable outside a secure context, where the shared reader says
+		// so rather than reading through a device API that is not there. The
+		// caller has no way to report either: this function is the whole of
+		// what the user sees after asking to pick a device.
 		console.error(
 			`${PLUGIN_LOG_PREFIX} Could not list audio input devices:`,
 			error,
@@ -95,9 +98,6 @@ export async function showDeviceSelectionModal(
 		new Notice('Could not list audio input devices');
 		return;
 	}
-	const audioDevices = devices.filter(
-		(device) => device.kind === 'audioinput',
-	);
 
 	if (audioDevices.length === 0) {
 		new Notice('No audio input devices found');

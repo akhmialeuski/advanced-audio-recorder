@@ -112,6 +112,31 @@ describe('showDeviceSelectionModal', () => {
 		});
 	}
 
+	/**
+	 * Asks for a device where the list cannot be read, and holds the command
+	 * to the answer it owes either way: whoever asked is told, and nothing is
+	 * opened. Rejecting instead would leave the command looking like it did
+	 * nothing at all.
+	 * @returns What was logged behind the notice, which is the only place the
+	 *   reason survives
+	 */
+	async function askWhereTheListFails(): Promise<jest.SpyInstance> {
+		const reported = jest
+			.spyOn(console, 'error')
+			.mockImplementation(() => undefined);
+		const openSpy = jest.spyOn(DeviceSelectionModal.prototype, 'open');
+
+		await expect(
+			showDeviceSelectionModal(new App(), jest.fn()),
+		).resolves.toBeUndefined();
+
+		expect(Notice).toHaveBeenCalledWith(
+			'Could not list audio input devices',
+		);
+		expect(openSpy).not.toHaveBeenCalled();
+		return reported;
+	}
+
 	it('notifies and does not open when enumeration is refused', async () => {
 		const refusal = new Error('Permission denied');
 		Object.defineProperty(navigator, 'mediaDevices', {
@@ -120,25 +145,27 @@ describe('showDeviceSelectionModal', () => {
 				enumerateDevices: jest.fn().mockRejectedValue(refusal),
 			},
 		});
-		const reported = jest
-			.spyOn(console, 'error')
-			.mockImplementation(() => undefined);
-		const openSpy = jest.spyOn(DeviceSelectionModal.prototype, 'open');
 
-		// Whoever asked for a device is owed an answer either way: rejecting
-		// here would leave the command looking like it did nothing.
-		await expect(
-			showDeviceSelectionModal(new App(), jest.fn()),
-		).resolves.toBeUndefined();
+		const reported = await askWhereTheListFails();
 
-		expect(Notice).toHaveBeenCalledWith(
-			'Could not list audio input devices',
-		);
 		expect(reported).toHaveBeenCalledWith(
 			expect.stringContaining('Could not list audio input devices'),
 			refusal,
 		);
-		expect(openSpy).not.toHaveBeenCalled();
+	});
+
+	// Absent outside a secure context and in some embedded WebViews, where
+	// reading through it unguarded raised "Cannot read properties of
+	// undefined". The user sees the same notice either way, so what the fix
+	// changes is the reason logged behind it, and that reason is the whole of
+	// what a bug report carries back about an environment nobody can inspect.
+	it('reports the missing device API rather than a read through it', async () => {
+		const reported = await askWhereTheListFails();
+
+		expect(reported.mock.calls[0]?.[1]).toHaveProperty(
+			'message',
+			'This environment exposes no audio device list.',
+		);
 	});
 
 	it('notifies and does not open when no audio inputs exist', async () => {
