@@ -4,6 +4,12 @@
  * app. The service hands this provider a single decoded WAV per request (it
  * declares no upload limit), which is written to a temp file, transcribed to
  * JSON, then both temp files are removed.
+ *
+ * The run is bounded the way a network request is, because it is the same kind
+ * of thing: an external operation of unpredictable length. A limit on the
+ * process is what a limit on a socket is elsewhere, and the run's cancel
+ * reaches it the same way. Node's `execFile` takes both as options, so neither
+ * needs a mechanism of its own.
  * @module transcription/providers/LocalWhisperProvider
  */
 
@@ -27,13 +33,22 @@ import type {
 	TranscriptionProvider,
 } from './TranscriptionProvider';
 
+/** How one child process is bounded and cancelled. */
+interface ExecFileOptions {
+	maxBuffer: number;
+	/** Milliseconds after which Node kills the process. */
+	timeout?: number;
+	/** The run's cancel; aborting it kills the process. */
+	signal?: AbortSignal;
+}
+
 /** Minimal Node surface used by the local provider. */
 interface NodeModules {
 	childProcess: {
 		execFile: (
 			file: string,
 			args: string[],
-			options: { maxBuffer: number },
+			options: ExecFileOptions,
 			callback: (
 				error: Error | null,
 				stdout: string,
@@ -55,6 +70,8 @@ export interface LocalWhisperConfig {
 	binaryPath: string;
 	modelPath: string;
 	extraArgs: string[];
+	/** Time limit for one run, in milliseconds, from the user's setting. */
+	processTimeoutMs: number;
 }
 
 /**
@@ -107,6 +124,33 @@ export function mapWhisperCppJson(body: unknown): WhisperResult {
 		segments.push({ start: fromMs / 1000, end: toMs / 1000, text });
 	}
 	return { language, segments };
+}
+
+/**
+ * Says which of the three ways a run can end badly this error is.
+ *
+ * Node reports a process it killed the same way it reports one that exited
+ * with a status, so the error alone reads as "the binary failed" whether the
+ * user pressed Cancel, the limit ran out, or the model path was wrong. Only
+ * the caller can tell them apart, because only it holds the cancel and set the
+ * limit.
+ * @param error - What execFile handed back
+ * @param options - The run's options, holding its cancel
+ * @returns The error to reject with
+ */
+function describeRunFailure(error: Error, options: TranscribeOptions): Error {
+	if (options.signal?.aborted) {
+		return new Error('Local whisper.cpp run was cancelled.');
+	}
+	// Node's own marker for a process it killed, which here means the limit.
+	if ((error as { killed?: boolean }).killed) {
+		return new Error(
+			'Local whisper.cpp did not finish within the run timeout and was ' +
+				'stopped. Raise Local run timeout in the settings, or use a ' +
+				'smaller model.',
+		);
+	}
+	return error;
 }
 
 /**
@@ -179,12 +223,23 @@ export class LocalWhisperProvider implements TranscriptionProvider {
 				node.childProcess.execFile(
 					this.config.binaryPath,
 					args,
-					// whisper.cpp streams the full transcript to stdout; raise the
-					// buffer so a long recording is not killed at Node's 1 MB default.
-					{ maxBuffer: LOCAL_WHISPER_MAX_BUFFER_BYTES },
+					{
+						// whisper.cpp streams the full transcript to stdout;
+						// raise the buffer so a long recording is not killed at
+						// Node's 1 MB default.
+						maxBuffer: LOCAL_WHISPER_MAX_BUFFER_BYTES,
+						// Node kills the process on either of these, which is
+						// what makes the dialog releasable. Without them a
+						// binary that never returns left the promise pending
+						// until Obsidian was restarted, and Cancel had nothing
+						// to act on, because the run's token is only read
+						// between parts and this engine has one.
+						timeout: this.config.processTimeoutMs,
+						...(options.signal ? { signal: options.signal } : {}),
+					},
 					(error) => {
 						if (error) {
-							reject(error);
+							reject(describeRunFailure(error, options));
 						} else {
 							resolve();
 						}

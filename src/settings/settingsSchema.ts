@@ -20,6 +20,7 @@ import {
 	DEFAULT_GEMINI_BASE_URL,
 	DEFAULT_GEMINI_MODEL,
 	GEMINI_MODEL_SUGGESTIONS,
+	DEFAULT_LOCAL_WHISPER_TIMEOUT_MINUTES,
 	DEFAULT_TRANSCRIPTION_TIMEOUT_MINUTES,
 	TRANSCRIPTION_PROVIDER_IDS,
 	LLM_PROVIDER_IDS,
@@ -297,6 +298,13 @@ export interface AudioRecorderSettings {
 	transcriptionChunkMb: number;
 	/** Per-request transcription timeout, in minutes (a hung request fails after this) */
 	transcriptionTimeoutMinutes: number;
+	/**
+	 * Time limit for one local whisper.cpp run, in minutes. Bounds the child
+	 * process rather than a request: the local engine makes no HTTP call, and a
+	 * run on this machine's CPU takes a different order of time from a cloud
+	 * one, so it gets a limit of its own.
+	 */
+	localWhisperTimeoutMinutes: number;
 	/** Whisper API base URL (OpenAI-compatible) */
 	whisperApiBaseUrl: string;
 	/** Whisper API key. Shared with the OpenAI LLM provider as the OpenAI vendor key. */
@@ -689,6 +697,7 @@ export const DEFAULT_SETTINGS: AudioRecorderSettings = {
 	localWhisperBinaryPath: '',
 	localWhisperModelPath: '',
 	localWhisperExtraArgs: '',
+	localWhisperTimeoutMinutes: DEFAULT_LOCAL_WHISPER_TIMEOUT_MINUTES,
 	transcriptDestination: 'note',
 	transcriptFileFormat: 'json',
 	transcriptIncludeTimestamps: true,

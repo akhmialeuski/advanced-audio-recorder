@@ -559,6 +559,21 @@ describe('settings definitions', () => {
 			expect(isVisible('Request timeout')).toBe(false);
 		});
 
+		// Its mirror: the local engine still runs something of unpredictable
+		// length, and that something is a process rather than a request. One of
+		// the two rows is always on screen, and never both.
+		it('offers the local run timeout only to the engine that runs a process', () => {
+			settings.transcriptionEnabled = true;
+			settings.transcriptionProvider =
+				TRANSCRIPTION_PROVIDER_IDS.WHISPER_API;
+			expect(isVisible('Local run timeout')).toBe(false);
+
+			settings.transcriptionProvider =
+				TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER;
+
+			expect(isVisible('Local run timeout')).toBe(true);
+		});
+
 		it('lists every engine and refuses the ones this device cannot run', () => {
 			// The list reads the same on every device; picking an engine this
 			// one cannot run is refused with the reason, rather than silently

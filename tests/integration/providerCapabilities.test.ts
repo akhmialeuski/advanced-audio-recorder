@@ -183,6 +183,7 @@ describe('transcription engine id constants', () => {
 				binaryPath: '',
 				modelPath: '',
 				extraArgs: [],
+				processTimeoutMs: 60_000,
 			}).id,
 		).toBe(TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER);
 	});

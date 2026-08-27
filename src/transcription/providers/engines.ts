@@ -368,6 +368,11 @@ export const TRANSCRIPTION_ENGINES: Record<
 				binaryPath: settings.localWhisperBinaryPath,
 				modelPath: settings.localWhisperModelPath,
 				extraArgs: parseArgs(settings.localWhisperExtraArgs),
+				// Its own limit rather than the shared per-request one: the
+				// work here is a process on this machine, and the CPU takes an
+				// order of time an accelerator behind an API does not.
+				processTimeoutMs:
+					settings.localWhisperTimeoutMinutes * MS_PER_MINUTE,
 			});
 			if (!provider.isAvailable()) {
 				throw new ProviderConfigError(
@@ -420,7 +425,7 @@ export function createTranscriptionProvider(
 	}
 	// Per-request timeout cap shared by every network provider, from the
 	// user-configured limit (minutes). Local whisper.cpp makes no HTTP request,
-	// so its descriptor ignores this.
+	// so its descriptor ignores this and reads its own run limit instead.
 	return engine.create(
 		settings,
 		settings.transcriptionTimeoutMinutes * MS_PER_MINUTE,

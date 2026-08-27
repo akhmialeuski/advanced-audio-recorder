@@ -31,7 +31,9 @@ import {
 	ADVANCED_SECOND_PASS_RATIO_STEP,
 	MAX_ADVANCED_SECOND_PASS_MIN_RATIO,
 	MIN_ADVANCED_SECOND_PASS_MIN_RATIO,
+	MAX_LOCAL_WHISPER_TIMEOUT_MINUTES,
 	MAX_TRANSCRIPTION_TIMEOUT_MINUTES,
+	MIN_LOCAL_WHISPER_TIMEOUT_MINUTES,
 	MIN_TRANSCRIPTION_TIMEOUT_MINUTES,
 	TRANSCRIPTION_PROVIDER_IDS,
 	CLEANUP_GATE_STEP_DB,
@@ -1613,7 +1615,8 @@ function transcriptionGroup(
 				name: 'Request timeout',
 				desc: 'Minutes before one transcription request is aborted, so a stalled request cannot hang the run.',
 				// Local whisper.cpp runs no HTTP request, so the timeout has
-				// nothing to bound there.
+				// nothing to bound there. The run it does make is bounded by
+				// the row below, which takes this one's place on that engine.
 				visible: (): boolean =>
 					enabled() &&
 					settings.transcriptionProvider !==
@@ -1623,6 +1626,24 @@ function transcriptionGroup(
 					key: 'transcriptionTimeoutMinutes',
 					min: MIN_TRANSCRIPTION_TIMEOUT_MINUTES,
 					max: MAX_TRANSCRIPTION_TIMEOUT_MINUTES,
+					step: 1,
+				},
+			},
+			{
+				name: 'Local run timeout',
+				aliases: ['whisper.cpp', 'process', 'offline'],
+				desc: 'Minutes before the local whisper.cpp process is stopped, so a run that hangs cannot hold the dialog or the CPU. Longer than a network timeout on purpose: the model runs on this machine, and a large one can take longer than the recording itself.',
+				// The mirror of the row above: exactly one of the two is shown,
+				// because exactly one of them bounds the work this engine does.
+				visible: (): boolean =>
+					enabled() &&
+					settings.transcriptionProvider ===
+						TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+				control: {
+					type: 'number',
+					key: 'localWhisperTimeoutMinutes',
+					min: MIN_LOCAL_WHISPER_TIMEOUT_MINUTES,
+					max: MAX_LOCAL_WHISPER_TIMEOUT_MINUTES,
 					step: 1,
 				},
 			},

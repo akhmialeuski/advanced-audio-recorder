@@ -938,6 +938,24 @@ export const TRANSCRIBE_RETRY_BASE_DELAY_MS = 2000;
 export const TRANSCRIBE_RETRY_MAX_DELAY_MS = 60_000;
 
 /**
+ * Default time limit for one local whisper.cpp run, in minutes.
+ *
+ * Separate from {@link DEFAULT_TRANSCRIPTION_TIMEOUT_MINUTES}, which is sized
+ * for a network request: a cloud engine answers in seconds to minutes because
+ * the inference runs on somebody else's accelerator, while whisper.cpp runs on
+ * this machine's CPU and a large model can take longer than the recording
+ * itself. Two hours leaves a long meeting room to finish on a slow machine and
+ * still ends a process that has genuinely hung.
+ */
+export const DEFAULT_LOCAL_WHISPER_TIMEOUT_MINUTES = 120;
+
+/** Smallest configurable local whisper.cpp run limit, in minutes. */
+export const MIN_LOCAL_WHISPER_TIMEOUT_MINUTES = 1;
+
+/** Largest configurable local whisper.cpp run limit, in minutes (12 hours). */
+export const MAX_LOCAL_WHISPER_TIMEOUT_MINUTES = 720;
+
+/**
  * Maximum bytes buffered from the local whisper.cpp child process's stdout
  * and stderr (64 MB). whisper.cpp prints the full transcript to stdout, so
  * Node's 1 MB default would kill the process on a long recording; a

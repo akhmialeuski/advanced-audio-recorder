@@ -43,6 +43,7 @@ function createSut(): LocalWhisperProvider {
 		binaryPath: '/bin/whisper',
 		modelPath: '/models/ggml.bin',
 		extraArgs: [],
+		processTimeoutMs: 60_000,
 	});
 }
 
@@ -153,6 +154,101 @@ describe('running the binary', () => {
 			.catch(() => undefined);
 
 		expect(surface.removed).toHaveLength(2);
+	});
+});
+
+// A binary the plugin only knows by the path a user typed can hang, and until
+// it was bounded nothing could end it: the promise stayed pending, the dialog
+// stayed busy until Obsidian restarted, and the process kept the CPU. Cancel
+// did nothing either, because the run's token is read between parts and this
+// engine has one part.
+describe('a run that does not come back', () => {
+	afterEach(() => {
+		jest.useRealTimers();
+	});
+
+	/** The temp files a run leaves behind, whichever way it ended. */
+	function removedFiles(): string[] {
+		return node?.removed ?? [];
+	}
+
+	it('asks Node to stop the process at the configured limit', async () => {
+		installNode();
+
+		await createSut().transcribe(payload(), options());
+
+		expect(node?.lastOptions()?.timeout).toBe(60_000);
+	});
+
+	it('hands the run cancel to the process it starts', async () => {
+		installNode();
+		const signal = new AbortController().signal;
+
+		await createSut().transcribe(payload(), { ...options(), signal });
+
+		expect(node?.lastOptions()?.signal).toBe(signal);
+	});
+
+	it('fails a run that outlives its limit, naming the setting that raises it', async () => {
+		jest.useFakeTimers();
+		installNode({ neverSettles: true });
+
+		const settled = createSut()
+			.transcribe(payload(), options())
+			.catch((error: unknown) => error);
+		await jest.advanceTimersByTimeAsync(60_000);
+
+		expect(await settled).toHaveProperty(
+			'message',
+			expect.stringContaining('Local run timeout'),
+		);
+	});
+
+	it('removes both temp files when the run is stopped at its limit', async () => {
+		jest.useFakeTimers();
+		installNode({ neverSettles: true });
+
+		const settled = createSut()
+			.transcribe(payload(), options())
+			.catch((error: unknown) => error);
+		await jest.advanceTimersByTimeAsync(60_000);
+		await settled;
+
+		expect(removedFiles()).toEqual([
+			expect.stringMatching(/\.wav$/),
+			expect.stringMatching(/\.json$/),
+		]);
+	});
+
+	it('reports a cancelled run as cancelled rather than as a failed binary', async () => {
+		installNode({ neverSettles: true });
+		const controller = new AbortController();
+
+		const settled = createSut()
+			.transcribe(payload(), { ...options(), signal: controller.signal })
+			.catch((error: unknown) => error);
+		controller.abort();
+
+		expect(await settled).toHaveProperty(
+			'message',
+			'Local whisper.cpp run was cancelled.',
+		);
+	});
+
+	it('removes both temp files when the run is cancelled', async () => {
+		installNode({ neverSettles: true });
+		const controller = new AbortController();
+
+		const settled = createSut()
+			.transcribe(payload(), { ...options(), signal: controller.signal })
+			.catch((error: unknown) => error);
+		controller.abort();
+		await settled;
+
+		expect(removedFiles()).toEqual([
+			expect.stringMatching(/\.wav$/),
+			expect.stringMatching(/\.json$/),
+		]);
 	});
 });
 
