@@ -94,6 +94,7 @@ describe('audioPrepOptions', () => {
 		acceptsOriginalContainer: true,
 		supportsDiarization: false,
 		supportsDictionary: false,
+		wordTimestamps: 'none',
 		biasChannel: 'prompt',
 	};
 
@@ -129,6 +130,7 @@ describe('audioPrepOptions', () => {
 			acceptsOriginalContainer: false,
 			supportsDiarization: false,
 			supportsDictionary: false,
+			wordTimestamps: 'none',
 			biasChannel: 'prompt',
 		};
 		const options = audioPrepOptions(
@@ -148,6 +150,7 @@ describe('audioPrepOptions', () => {
 			acceptsOriginalContainer: true,
 			supportsDiarization: true,
 			supportsDictionary: false,
+			wordTimestamps: 'none',
 			biasChannel: 'prompt',
 		};
 		const options = audioPrepOptions(
@@ -170,6 +173,7 @@ describe('audioPrepOptions', () => {
 			acceptsOriginalContainer: true,
 			supportsDiarization: true,
 			supportsDictionary: false,
+			wordTimestamps: 'none',
 			biasChannel: 'prompt',
 		};
 		const options = audioPrepOptions(diarizingCaps, true, 1000, true);

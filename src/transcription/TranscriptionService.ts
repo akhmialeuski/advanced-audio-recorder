@@ -82,7 +82,10 @@ import { selectedProfileId } from '../settings/profiles';
 import { createLlmProvider, createTranscriptionProvider } from './factories';
 import { vendorMaxTokens } from '../providers/providers';
 import { jobVendorId } from './llm/vendors';
-import { effectiveDiarize } from './providers/capabilities';
+import {
+	effectiveDiarize,
+	effectiveWordTimestamps,
+} from './providers/capabilities';
 import type { LlmProvider } from './llm/LlmProvider';
 import { runLlmStep, type LlmCostSink } from './llm/llmStep';
 import type { Transcript, TranscriptionUsage } from './TranscriptTypes';
@@ -345,7 +348,13 @@ export class TranscriptionService {
 					? settings.transcriptionLanguage
 					: undefined,
 			diarize,
-			wordTimestamps: settings.transcriptionWordTimestamps,
+			// Gated like diarize above: an engine that returns segment-level
+			// timing only never sees a request it would drop, and a stored "on"
+			// left from an engine that reads it stops travelling.
+			wordTimestamps: effectiveWordTimestamps(
+				settings.transcriptionProvider,
+				settings.transcriptionWordTimestamps,
+			),
 			dictionary: dictionaryPlan.applied.length
 				? dictionaryPlan.applied
 				: undefined,

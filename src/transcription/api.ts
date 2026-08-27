@@ -10,9 +10,12 @@ export { transcribeFile } from './runTranscription';
 export type { TranscriptOutputSidecar } from './runTranscription';
 export {
 	effectiveDiarize,
+	effectiveWordTimestamps,
 	isProviderAvailableOnPlatform,
 	providerSupportsDiarization,
 	providerSupportsDictionary,
+	wordTimestampsNote,
+	wordTimestampsSelectable,
 } from './providers/capabilities';
 export { effectiveTranscriptDestination } from './transcriptOutput';
 export { TranscriptionCancelledError } from './TranscriptionService';

@@ -90,6 +90,8 @@ import {
 	effectiveDiarize,
 	isProviderAvailableOnPlatform,
 	providerSupportsDiarization,
+	wordTimestampsNote,
+	wordTimestampsSelectable,
 } from '../transcription/providers/capabilities';
 import type { TranscriptionProviderId } from './settingsSchema';
 
@@ -1591,11 +1593,20 @@ function transcriptionGroup(
 			...profileCatalogues(ctx, 'transcription'),
 			{
 				name: 'Word-level timestamps',
-				desc: 'Request per-word timing when the provider supports it. Recorded in JSON file output only.',
+				// Read at build time rather than per render, which is enough:
+				// picking another engine reshapes the tree (see
+				// CONTROL_WRITE_EFFECTS), so this row is built again with it.
+				desc: wordTimestampsNote(settings.transcriptionProvider),
 				visible: enabled,
 				control: {
 					type: 'toggle',
 					key: 'transcriptionWordTimestamps',
+					// Kept visible on an engine that decides this for itself:
+					// the option exists, this engine just does not take it.
+					disabled: (): boolean =>
+						!wordTimestampsSelectable(
+							settings.transcriptionProvider,
+						),
 				},
 			},
 			{

@@ -20,6 +20,7 @@ import type { TranscriptionProviderId } from '../../settings/settingsSchema';
 import type {
 	AdvancedBiasChannel,
 	ProviderCapabilities,
+	WordTimestampSupport,
 } from './TranscriptionProvider';
 
 /**
@@ -33,6 +34,8 @@ export const WHISPER_API_CAPABILITIES: ProviderCapabilities = {
 	supportsDiarization: false,
 	// OpenAI Whisper accepts a `prompt` that seeds recognition with spellings.
 	supportsDictionary: true,
+	// The one engine that reads the request: it adds the `word` granularity.
+	wordTimestamps: 'requested',
 	biasChannel: 'prompt',
 };
 
@@ -44,6 +47,9 @@ export const DEEPGRAM_CAPABILITIES: ProviderCapabilities = {
 	supportsDiarization: true,
 	// Deepgram biases via keyterm (nova-3) or keywords (nova-2 and older).
 	supportsDictionary: true,
+	// Every Deepgram response carries its words, asked for or not, and the
+	// mapping keeps them; there is nothing to request and nothing to turn off.
+	wordTimestamps: 'always',
 	biasChannel: 'keyterm',
 };
 
@@ -55,6 +61,8 @@ export const LOCAL_WHISPER_CAPABILITIES: ProviderCapabilities = {
 	supportsDiarization: false,
 	// whisper.cpp accepts an initial prompt via the --prompt CLI flag.
 	supportsDictionary: true,
+	// The -oj output carries segment offsets and nothing finer.
+	wordTimestamps: 'none',
 	biasChannel: 'prompt',
 };
 
@@ -74,6 +82,9 @@ export const GEMINI_CAPABILITIES: ProviderCapabilities = {
 	supportsDiarization: true,
 	// Gemini biases via the instruction text sent alongside the audio.
 	supportsDictionary: true,
+	// The transcript comes back as timed segments; the model is not asked for,
+	// and does not return, a timing per word.
+	wordTimestamps: 'none',
 	biasChannel: 'prompt',
 };
 
@@ -114,6 +125,65 @@ export function effectiveDiarize(
 	requested: boolean,
 ): boolean {
 	return requested && providerSupportsDiarization(id);
+}
+
+/**
+ * What the engine does with a request for per-word timing.
+ * @param id - Selected transcription engine id
+ * @returns The engine's answer to the request
+ */
+export function providerWordTimestamps(
+	id: TranscriptionProviderId,
+): WordTimestampSupport {
+	return TRANSCRIPTION_PROVIDER_CAPABILITIES[id].wordTimestamps;
+}
+
+/**
+ * Whether the user's choice makes any difference on this engine. False both
+ * for an engine that returns per-word timing regardless and for one that never
+ * returns it: in either case the switch is offered disabled, because the
+ * outcome is the engine's to decide and not the user's.
+ * @param id - Selected transcription engine id
+ * @returns True when the switch actually steers the request
+ */
+export function wordTimestampsSelectable(id: TranscriptionProviderId): boolean {
+	return providerWordTimestamps(id) === 'requested';
+}
+
+/**
+ * Whether this run's output will carry per-word timing: the user's preference
+ * where the engine reads it, the engine's own answer where it does not. The
+ * single place that AND-gate lives, so the settings tab, the per-run dialog,
+ * and the request the service builds cannot disagree - and a stored "on" left
+ * from Whisper API never reaches an engine that would drop it.
+ * @param id - Selected transcription engine id
+ * @param requested - The user's word-timestamp preference
+ * @returns Whether the transcript will carry per-word timing
+ */
+export function effectiveWordTimestamps(
+	id: TranscriptionProviderId,
+	requested: boolean,
+): boolean {
+	const support = providerWordTimestamps(id);
+	return support === 'always' || (support === 'requested' && requested);
+}
+
+/**
+ * What to tell the user about per-word timing on this engine. Kept beside the
+ * capability rather than at each surface, so the settings tab and the per-run
+ * dialog cannot describe the same engine differently.
+ * @param id - Selected transcription engine id
+ * @returns The sentence for the switch's description
+ */
+export function wordTimestampsNote(id: TranscriptionProviderId): string {
+	switch (providerWordTimestamps(id)) {
+		case 'requested':
+			return 'Request per-word timing. Recorded in JSON file output only.';
+		case 'always':
+			return 'This engine returns per-word timing on every run, so there is nothing to turn on. Recorded in JSON file output only.';
+		default:
+			return 'This engine returns segment-level timing only, so per-word timing is not available for it.';
+	}
 }
 
 /**

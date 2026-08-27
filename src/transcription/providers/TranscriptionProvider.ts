@@ -16,7 +16,11 @@ export interface TranscribeOptions {
 	language?: string | undefined;
 	/** Request speaker diarization when the provider supports it. */
 	diarize: boolean;
-	/** Request word-level timestamps when supported. */
+	/**
+	 * Whether this run's output should carry per-word timing. Already gated by
+	 * the engine's {@link ProviderCapabilities.wordTimestamps}, so a provider
+	 * that cannot deliver it never sees a true here.
+	 */
 	wordTimestamps: boolean;
 	/**
 	 * Optional abort signal for the provider's HTTP requests. Providers on
@@ -79,6 +83,17 @@ export interface AudioPayload {
 export type AdvancedBiasChannel = 'prompt' | 'keyterm';
 
 /**
+ * What an engine does with a request for per-word timing.
+ *
+ * Three answers rather than two, because the engines give three. Whisper API
+ * reads the request and adds the granularity to it. Deepgram returns per-word
+ * timing on every response whether it was asked or not. Gemini and local
+ * whisper.cpp return segment-level timing and nothing finer. A switch offered
+ * on all four told the user nothing about which of those they would get.
+ */
+export type WordTimestampSupport = 'requested' | 'always' | 'none';
+
+/**
  * What a provider can accept in a single request. The service uses these
  * to decide whether to send the original file untouched or to decode and
  * split it into chunks that stay within the provider's limit.
@@ -118,6 +133,14 @@ export interface ProviderCapabilities {
 	 * would be silently dropped and mislead the user.
 	 */
 	supportsDictionary: boolean;
+	/**
+	 * What the engine does with a request for per-word timing. Gates the
+	 * word-timestamp switch the way {@link supportsDiarization} gates the
+	 * diarization toggle: a switch that changes nothing on the chosen engine is
+	 * offered disabled, with the engine's actual behaviour named beside it,
+	 * rather than accepting a request the engine will drop.
+	 */
+	wordTimestamps: WordTimestampSupport;
 	/**
 	 * Which representation of the advanced mode's generated context this engine
 	 * reads. The context pipeline builds only what the channel needs, so a

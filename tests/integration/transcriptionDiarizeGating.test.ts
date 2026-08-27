@@ -1,10 +1,13 @@
 /**
- * Tests that the service requests diarization only when the chosen engine can
- * actually diarize. The earlier behavior sent a diarize field to engines that
- * silently ignored it (OpenAI's Whisper), so a user could enable speaker
- * labels and get an unlabeled transcript with no warning. The diarize option
- * must now be the AND of the user's setting and the engine's capability,
- * derived from the configured engine id (effectiveDiarize).
+ * Tests that the service asks an engine only for what that engine can deliver.
+ *
+ * The earlier behavior sent a diarize field to engines that silently ignored
+ * it (OpenAI's Whisper), so a user could enable speaker labels and get an
+ * unlabeled transcript with no warning. Per-word timing had the same shape:
+ * only Whisper API reads the request, and the switch was offered on all four
+ * engines. Both options are now the AND of the user's setting and the engine's
+ * capability, derived from the configured engine id (effectiveDiarize,
+ * effectiveWordTimestamps).
  * @module tests/unit/transcriptionDiarizeGating.test
  */
 
@@ -13,6 +16,7 @@ import { TranscriptionService } from 'src/transcription/TranscriptionService';
 import type { TranscribeOptions } from 'src/transcription/providers/TranscriptionProvider';
 import type { TranscriptionProviderId } from 'src/settings/settingsSchema';
 import { mergeSettings } from 'src/settings/settingsSerialization';
+import type { AudioRecorderSettings } from 'src/settings/settingsSchema';
 import { TRANSCRIPTION_PROVIDER_IDS } from 'src/constants';
 import type {
 	Transcript,
@@ -68,18 +72,19 @@ function makeApp(): App {
 	}).app;
 }
 
+/**
+ * Runs one transcription over the given settings and hands back the provider
+ * double, so a test can read what the service asked it for.
+ * @param overrides - The settings this test cares about
+ * @returns The double the service ran through
+ */
 async function runWith(
-	engineId: TranscriptionProviderId,
-	diarizeSetting: boolean,
+	overrides: Partial<AudioRecorderSettings>,
 ): Promise<FakeProvider> {
 	const provider = makeProvider();
 	const service = new TranscriptionService(
 		makeApp(),
-		() =>
-			mergeSettings({
-				transcriptionProvider: engineId,
-				transcriptionDiarize: diarizeSetting,
-			}),
+		() => mergeSettings(overrides),
 		{ createProvider: () => provider },
 	);
 	await service.run(audioFile, { notePathForLinks: 'note.md' });
@@ -88,34 +93,34 @@ async function runWith(
 
 describe('TranscriptionService diarization gating', () => {
 	it('does not request diarization for a non-diarizing engine, even if enabled', async () => {
-		const provider = await runWith(
-			TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
-			true,
-		);
+		const provider = await runWith({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			transcriptionDiarize: true,
+		});
 		expect(lastOptions(provider)?.diarize).toBe(false);
 	});
 
 	it('does not request diarization for local whisper, even if enabled', async () => {
-		const provider = await runWith(
-			TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
-			true,
-		);
+		const provider = await runWith({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+			transcriptionDiarize: true,
+		});
 		expect(lastOptions(provider)?.diarize).toBe(false);
 	});
 
 	it('requests diarization for a diarizing engine when enabled', async () => {
-		const provider = await runWith(
-			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-			true,
-		);
+		const provider = await runWith({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			transcriptionDiarize: true,
+		});
 		expect(lastOptions(provider)?.diarize).toBe(true);
 	});
 
 	it('does not request diarization when a capable engine has it disabled', async () => {
-		const provider = await runWith(
-			TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
-			false,
-		);
+		const provider = await runWith({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM,
+			transcriptionDiarize: false,
+		});
 		expect(lastOptions(provider)?.diarize).toBe(false);
 	});
 });
@@ -192,6 +197,44 @@ async function runWithProfileId(
 	await service.run(audioFile, { notePathForLinks: 'note.md' });
 	return provider;
 }
+
+describe('TranscriptionService word-timestamp gating', () => {
+	it('requests per-word timing for the engine that reads the request', async () => {
+		const provider = await runWith({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			transcriptionWordTimestamps: true,
+		});
+
+		expect(lastOptions(provider)?.wordTimestamps).toBe(true);
+	});
+
+	it('does not request per-word timing for Gemini, even if enabled', async () => {
+		const provider = await runWith({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.GEMINI,
+			transcriptionWordTimestamps: true,
+		});
+
+		expect(lastOptions(provider)?.wordTimestamps).toBe(false);
+	});
+
+	it('does not request per-word timing for local whisper, even if enabled', async () => {
+		const provider = await runWith({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.LOCAL_WHISPER,
+			transcriptionWordTimestamps: true,
+		});
+
+		expect(lastOptions(provider)?.wordTimestamps).toBe(false);
+	});
+
+	it('does not request per-word timing when the capable engine has it off', async () => {
+		const provider = await runWith({
+			transcriptionProvider: TRANSCRIPTION_PROVIDER_IDS.WHISPER_API,
+			transcriptionWordTimestamps: false,
+		});
+
+		expect(lastOptions(provider)?.wordTimestamps).toBe(false);
+	});
+});
 
 describe('TranscriptionService dictionary passthrough', () => {
 	it('forwards the parsed, de-duplicated dictionary to the provider', async () => {

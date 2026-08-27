@@ -620,6 +620,42 @@ describe('settings definitions', () => {
 			expect(typeof disabled === 'function' && disabled()).toBe(false);
 		});
 
+		// Same shape as the diarization row above, for the same reason: an
+		// engine decides this for itself, so the switch is shown and locked
+		// with its description saying what the engine does instead.
+		it('leaves word timestamps selectable on the engine that reads them', () => {
+			settings.transcriptionEnabled = true;
+			settings.transcriptionProvider =
+				TRANSCRIPTION_PROVIDER_IDS.WHISPER_API;
+			const row = rowOf(build(), TRANSCRIPTION, 'Word-level timestamps');
+			const disabled = row.control?.disabled;
+
+			expect(isVisible('Word-level timestamps')).toBe(true);
+			expect(typeof disabled === 'function' && disabled()).toBe(false);
+			expect(row.desc).toMatch(/Request per-word/);
+		});
+
+		it('locks word timestamps on an engine that returns none', () => {
+			settings.transcriptionEnabled = true;
+			settings.transcriptionProvider = TRANSCRIPTION_PROVIDER_IDS.GEMINI;
+			const row = rowOf(build(), TRANSCRIPTION, 'Word-level timestamps');
+			const disabled = row.control?.disabled;
+
+			expect(typeof disabled === 'function' && disabled()).toBe(true);
+			expect(row.desc).toMatch(/segment-level/);
+		});
+
+		it('locks word timestamps on an engine that returns them anyway', () => {
+			settings.transcriptionEnabled = true;
+			settings.transcriptionProvider =
+				TRANSCRIPTION_PROVIDER_IDS.DEEPGRAM;
+			const row = rowOf(build(), TRANSCRIPTION, 'Word-level timestamps');
+			const disabled = row.control?.disabled;
+
+			expect(typeof disabled === 'function' && disabled()).toBe(true);
+			expect(row.desc).toMatch(/on every run/);
+		});
+
 		it('hosts a provider key on that provider\u2019s page', () => {
 			// A password field is the one row no control type covers, and it
 			// belongs to the service rather than to either use of it.
