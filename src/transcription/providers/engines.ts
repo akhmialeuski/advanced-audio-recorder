@@ -18,7 +18,10 @@
  */
 
 import {
+	DEFAULT_LOCAL_WHISPER_TIMEOUT_MINUTES,
 	LOCAL_WHISPER_SETUP_MESSAGE,
+	MAX_LOCAL_WHISPER_TIMEOUT_MINUTES,
+	MIN_LOCAL_WHISPER_TIMEOUT_MINUTES,
 	MS_PER_MINUTE,
 	TRANSCRIPTION_PROVIDER_IDS,
 } from '../../constants';
@@ -371,8 +374,9 @@ export const TRANSCRIPTION_ENGINES: Record<
 				// Its own limit rather than the shared per-request one: the
 				// work here is a process on this machine, and the CPU takes an
 				// order of time an accelerator behind an API does not.
-				processTimeoutMs:
-					settings.localWhisperTimeoutMinutes * MS_PER_MINUTE,
+				processTimeoutMs: localWhisperTimeoutMs(
+					settings.localWhisperTimeoutMinutes,
+				),
 			});
 			if (!provider.isAvailable()) {
 				throw new ProviderConfigError(
@@ -469,4 +473,34 @@ export function parseArgs(raw: string): string[] {
 		.split(/\s+/)
 		.map((part) => part.trim())
 		.filter((part) => part.length > 0);
+}
+
+/**
+ * The time limit for one local whisper.cpp run, in milliseconds.
+ *
+ * Clamped rather than read straight through, for the reason the auto-split
+ * part length is: the row declaring the range is not the only way a value
+ * reaches the field. A data.json edited by hand or synced from another install
+ * never passes that row, and the load path fills a missing field from the
+ * defaults without normalising any number it does find.
+ *
+ * What makes an out-of-range value worth guarding here rather than leaving to
+ * the process is where it lands. Node arms no kill timer at all for a limit at
+ * or below zero, so a stored 0 would restore the unbounded run this setting
+ * exists to end, and restore it silently: a process nobody ever kills reports
+ * nothing at all.
+ * @param minutes - The configured limit in minutes
+ * @returns Whole minutes within the supported range, as milliseconds, or the
+ *   default for a value that is not a number
+ */
+export function localWhisperTimeoutMs(minutes: number): number {
+	if (!Number.isFinite(minutes)) {
+		return DEFAULT_LOCAL_WHISPER_TIMEOUT_MINUTES * MS_PER_MINUTE;
+	}
+	return (
+		Math.min(
+			MAX_LOCAL_WHISPER_TIMEOUT_MINUTES,
+			Math.max(MIN_LOCAL_WHISPER_TIMEOUT_MINUTES, Math.floor(minutes)),
+		) * MS_PER_MINUTE
+	);
 }
