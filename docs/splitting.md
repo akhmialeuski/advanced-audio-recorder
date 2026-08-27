@@ -53,6 +53,7 @@ How exactly a part lands on the configured boundary depends on the recording for
 ### Constraints
 
 - **Worth turning on for mobile.** Automatic splitting works on a phone or tablet as well, and it is the setting that decides how much an interrupted recording can cost you there: a mobile session already rotates a part when its memory buffer fills (about 50 MB, roughly fifty minutes of audio), and the part duration moves that boundary in. See [Crash recovery](recording.md#crash-recovery).
+- **Discarding an interrupted mobile session deletes its parts.** On a phone the parts of a session that never stopped are the recording itself, so the recovery dialog offers them as one set and **Discard** removes them. Choose **Recover audio** to keep them. The parts of a desktop session are never deleted this way. See [Crash recovery on mobile](mobile-support.md#crash-recovery-on-mobile).
 - **Not for merged multi-track.** A multi-track recording with **Output mode** set to `Single file` is mixed into one file and cannot be auto-split; the plugin shows a notice and saves the single merged file. To auto-split a multi-track session, use **Multiple files** output mode, where each track is recorded independently. See [Multi-track recording](multi-track-recording.md).
 - **Changes apply next session.** Split settings changed during an active recording take effect on the **next** recording, not the one in progress.
 

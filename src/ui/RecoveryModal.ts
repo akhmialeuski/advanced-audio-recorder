@@ -28,7 +28,9 @@ export interface RecoveryModalCallbacks {
  * two capture modes leave different things behind, and the choice the
  * user is about to make differs with them: rotation parts are the
  * recording, so a discard deletes them, while auto-split parts are
- * output the user already has and are only mentioned.
+ * output the user already has and are only mentioned. A rotation
+ * session that never finished a part is neither: it is described by
+ * the unfinished stream it did leave.
  * @param session - Interrupted session as returned by the collect step
  * @returns Text of the session line
  */
@@ -46,12 +48,18 @@ function describeSession(session: JournalSession): string {
 		session.recordedMs === undefined
 			? ''
 			: `, ${formatTimecode(session.recordedMs / MS_PER_SECOND)} recorded`;
-	if (session.captureMode === 'rotation') {
+	if (session.captureMode === 'rotation' && partCount > 0) {
 		const residue =
 			segmentCount > 0
 				? ` The unfinished part left ${String(segmentCount)} temporary segment(s), which are recovered too.`
 				: '';
 		return `${startedAt}${recorded} - ${String(partCount)} part file(s) hold this recording. Recovering keeps them, discarding deletes them.${residue}`;
+	}
+	if (session.captureMode === 'rotation') {
+		// Interrupted before its first rotation, or left with the parts
+		// deleted: the unfinished stream is the whole of what survived,
+		// and it is reassembled the way any other stream is
+		return `${startedAt} - an unfinished recording of ${String(segmentCount)} temporary segment(s), reassembled into one file.`;
 	}
 	const parts =
 		partCount > 0

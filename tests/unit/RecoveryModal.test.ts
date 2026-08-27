@@ -144,6 +144,19 @@ describe('RecoveryModal', () => {
 		).toContain('1 temporary segment(s), which are recovered too');
 	});
 
+	it('describes a rotation session that finished no part by its stream', () => {
+		const session = createSession({ captureMode: 'rotation' });
+		at(session.tracks, 0).partPaths = [];
+		const modal = openModal([session]);
+
+		// A phone unloaded before its first rotation leaves the stream and
+		// nothing else, where "0 part file(s) hold this recording" would be
+		// both untrue and self-contradictory
+		const line = el(modal.contentEl, MODAL.recoverySession);
+		expect(line.textContent).toContain('2 temporary segment(s)');
+		expect(line.textContent).not.toContain('hold this recording');
+	});
+
 	it('shows the recorded length the journal kept', () => {
 		const modal = openModal([createSession({ recordedMs: 900_000 })]);
 

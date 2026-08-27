@@ -69,10 +69,12 @@ async function survivingPaths(paths: string[], app: App): Promise<string[]> {
 
 /**
  * Collects the sessions that still have recoverable files on disk.
- * Prunes segments and part files that no longer exist (and whole
- * tracks and sessions without any), persisting the pruned journal: a
- * crash before the first flush therefore self-clears without
- * prompting. A corrupt journal is deleted - nothing in it is
+ * Prunes segments and part files that no longer exist, and drops the
+ * tracks (and sessions) left holding nothing recovery can act on,
+ * persisting the pruned journal: a crash before the first flush
+ * therefore self-clears without prompting, and so does one that left
+ * auto-split deliverables and no unfinished stream behind them.
+ * A corrupt journal is deleted - nothing in it is
  * actionable. A journal written by a newer plugin version is left
  * untouched so a downgrade never destroys recovery data it cannot
  * interpret.
@@ -107,12 +109,16 @@ export async function collectRecoverableSessions(
 		const tracks: JournalTrack[] = [];
 		for (const track of session.tracks) {
 			const segmentPaths = await survivingPaths(track.segmentPaths, app);
-			// Part files are checked too: on a rotation session they are
-			// the whole of what can be recovered, and on any session an
-			// entry pointing at a file the user has since deleted must
-			// not keep the journal alive
+			// Part files are pruned on every session, so an entry pointing
+			// at a file the user has since deleted never survives. They
+			// keep a track alive only where recovery acts on them: on the
+			// stream mode they are auto-split output that recovery reports
+			// and never assembles, moves, or removes, so a track holding
+			// nothing else has no answer to give the dialog's buttons.
 			const partPaths = await survivingPaths(track.partPaths, app);
-			if (segmentPaths.length === 0 && partPaths.length === 0) {
+			const hasRecoverableParts =
+				ownsPartFiles(session) && partPaths.length > 0;
+			if (segmentPaths.length === 0 && !hasRecoverableParts) {
 				continue;
 			}
 			// A MediaRecorder stream is only playable from its first

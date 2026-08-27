@@ -63,6 +63,13 @@ export interface JournalSession {
 	 * recording, so recovery offers them and a discard removes them.
 	 * Absent in journals written before the field existed, which were
 	 * all of the first kind.
+	 *
+	 * Adding it deliberately did not bump JOURNAL_VERSION. The cost is
+	 * that a downgraded plugin prunes a rotation session to nothing and
+	 * never offers its parts, which stay on disk unclaimed. The bump
+	 * would cost more: the version guard makes an older plugin skip the
+	 * whole journal, losing recovery of the far commoner stream session
+	 * as well.
 	 */
 	captureMode?: 'stream' | 'rotation';
 	/**

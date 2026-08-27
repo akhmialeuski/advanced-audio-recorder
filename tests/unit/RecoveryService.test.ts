@@ -68,6 +68,16 @@ const rotationSession = (
 		...overrides,
 	});
 
+/**
+ * A session whose part files are auto-split deliverables the user
+ * already has, which is what a platform allowed to flush raw mid-stream
+ * segments leaves behind.
+ * @param track - What this case varies about the single track
+ * @returns The journaled session
+ */
+const streamSession = (track: Partial<JournalTrack>): JournalSession =>
+	createJournalSession({ tracks: [createTrack(track)] });
+
 describe('RecoveryService', () => {
 	/** In-memory text file store (journal). */
 	let textFiles: Map<string, string>;
@@ -242,6 +252,40 @@ describe('RecoveryService', () => {
 
 			expect(sessions).toEqual([]);
 			expect(textFiles.has(JOURNAL_PATH)).toBe(false);
+		});
+
+		it('self-clears a stream session left holding only auto-split parts', async () => {
+			// A desktop rotation deletes its segments as it finalizes the
+			// part, so between boundaries the journal points at finished
+			// deliverables alone. Recovery neither assembles nor removes
+			// those, so offering the session would open a dialog whose
+			// buttons have nothing to do.
+			seedFiles(TWO_PARTS);
+			storeJournal([streamSession({ partPaths: TWO_PARTS })]);
+
+			const sessions = await collectRecoverableSessions(journal, mockApp);
+
+			expect(sessions).toEqual([]);
+			expect(textFiles.has(JOURNAL_PATH)).toBe(false);
+		});
+
+		it('keeps the surviving parts of a stream session that still has a segment', async () => {
+			seedFiles(['Audio/rec-part1.webm', 'Audio/rec-part2.webm.tmp']);
+			storeJournal([
+				streamSession({
+					partPaths: ['Audio/rec-part1.webm'],
+					segmentPaths: ['Audio/rec-part2.webm.tmp'],
+				}),
+			]);
+
+			const sessions = await collectRecoverableSessions(journal, mockApp);
+
+			// The dialog names them as output that stays untouched, so they
+			// have to reach it; what they may not do is carry a session on
+			// their own
+			expect(at(at(sessions, 0).tracks, 0).partPaths).toEqual([
+				'Audio/rec-part1.webm',
+			]);
 		});
 
 		it('marks media tracks whose first segment is gone as header-lost', async () => {
@@ -457,13 +501,9 @@ describe('RecoveryService', () => {
 
 		it('leaves the auto-split parts of a stream session unreported', async () => {
 			seedFiles(['Audio/rec-part1.webm', 'Audio/rec-part2.webm.tmp']);
-			const session = createJournalSession({
-				tracks: [
-					createTrack({
-						partPaths: ['Audio/rec-part1.webm'],
-						segmentPaths: ['Audio/rec-part2.webm.tmp'],
-					}),
-				],
+			const session = streamSession({
+				partPaths: ['Audio/rec-part1.webm'],
+				segmentPaths: ['Audio/rec-part2.webm.tmp'],
 			});
 			storeJournal([session]);
 
